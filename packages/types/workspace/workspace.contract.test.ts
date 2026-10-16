@@ -19,6 +19,10 @@ import {
 	WorkspaceRole,
 } from "./common.ts";
 import { RESERVED_HANDLES } from "../profile/reserved.ts";
+import { EntitlementKey } from "../finance/entitlements.ts";
+import { SplitRuleType } from "../finance/vault.ts";
+import { SplitRuleInputSchema } from "./policy.ts";
+import { UpdatePayoutInputSchema } from "./workspace.ts";
 
 // #region Reading the SQL
 
@@ -160,6 +164,70 @@ Deno.test("org.fn_is_reserved_handle reserves exactly RESERVED_HANDLES", () => {
 	const list = literals(reservedBody.slice(start, reservedBody.indexOf("]", start)));
 	assertEquals(new Set(list), new Set(RESERVED_HANDLES));
 	assertEquals(list.length, new Set(list).size, "the SQL list repeats a handle");
+});
+
+Deno.test("finance.split_rule_type declares SplitRuleType.options, and the template input covers each", () => {
+	const sql = read(ENUMS_SQL);
+	const match = /CREATE TYPE finance\.split_rule_type AS ENUM \(([^)]*)\)/.exec(sql);
+	assert(match, "finance.split_rule_type is no longer declared in 00000004_enums_domains.sql");
+	assertEquals(literals(match[1]), [...SplitRuleType.options]);
+	const covered = SplitRuleInputSchema.options.map((o) => o.shape.ruleType.value);
+	assertEquals([...covered].sort(), [...SplitRuleType.options].sort());
+	// finance.save_split_rule gates each template on `split_template_<type>`, in SQL and in the SSOT.
+	const keyBlock = /CREATE TYPE finance\.entitlement_key AS ENUM \(([\s\S]*?)\);/.exec(sql);
+	assert(keyBlock, "finance.entitlement_key is no longer declared in 00000004_enums_domains.sql");
+	const sqlKeys = literals(keyBlock[1].replace(/--.*$/gm, ""));
+	assertEquals(sqlKeys, [...EntitlementKey.options]);
+	for (const type of SplitRuleType.options) {
+		assert(
+			(EntitlementKey.options as readonly string[]).includes(`split_template_${type}`),
+			`no split_template_${type} entitlement key`,
+		);
+	}
+});
+
+Deno.test("UpdatePayoutInputSchema: a template, stakes, or both — never neither", () => {
+	const stakes = [{ memberId: "m1", shareBp: 10_000 }];
+	assert(UpdatePayoutInputSchema.safeParse({ workspaceId: "t", stakes }).success);
+	assert(
+		UpdatePayoutInputSchema.safeParse({
+			workspaceId: "t",
+			rule: { ruleType: "finders_fee", vaultBp: 1000, finderUserId: "u1", finderBp: 500 },
+		}).success,
+	);
+	assert(
+		UpdatePayoutInputSchema.safeParse({
+			workspaceId: "t",
+			rule: { ruleType: "benevolent_dictator" },
+			stakes,
+		}).success,
+	);
+	assert(!UpdatePayoutInputSchema.safeParse({ workspaceId: "t" }).success, "neither");
+	assert(
+		!UpdatePayoutInputSchema.safeParse({
+			workspaceId: "t",
+			rule: { ruleType: "finders_fee", vaultBp: 1000, finderBp: 500 },
+		}).success,
+		"a finder's fee without a finder",
+	);
+	assert(
+		!UpdatePayoutInputSchema.safeParse({
+			workspaceId: "t",
+			rule: { ruleType: "finders_fee", vaultBp: 1000, finderUserId: "u1", finderBp: 0 },
+		}).success,
+		"a finder's cut of 0",
+	);
+	assert(
+		!UpdatePayoutInputSchema.safeParse({
+			workspaceId: "t",
+			rule: { ruleType: "co_op", vaultBp: 10_001 },
+		}).success,
+		"a vault cut above 100%",
+	);
+	assert(
+		!UpdatePayoutInputSchema.safeParse({ workspaceId: "t", rule: { ruleType: "by_role" } }).success,
+		"an unknown template",
+	);
 });
 
 // #endregion

@@ -26,6 +26,7 @@ import {
 	spentInPeriod,
 	toOutgoingInvite,
 	toRoleDef,
+	toSplitRule,
 	usedFraction,
 	verificationPrompt,
 	workloadPercent,
@@ -341,6 +342,48 @@ Deno.test("evenSplit totals exactly 10 000 with the remainder on the owner", () 
 	);
 	assertEquals(evenSplit(["x", "y", "z"], "not-a-member")[0].shareBp, 3334);
 	assertEquals(evenSplit([], "o"), []);
+});
+
+Deno.test("toSplitRule reads the active template the way fn_team_split_plan applies it", () => {
+	const none = { ruleType: "co_op", vaultBp: 0, finderUserId: null, finderBp: null } as const;
+	assertEquals(toSplitRule(null), none);
+	assertEquals(
+		toSplitRule({ rule_type: "by_role", vault_bp: 900, finder_user_id: null, finder_bp: null }),
+		none,
+	);
+	assertEquals(
+		toSplitRule({ rule_type: "co_op", vault_bp: 1500, finder_user_id: null, finder_bp: null }),
+		{ ruleType: "co_op", vaultBp: 1500, finderUserId: null, finderBp: null },
+	);
+	assertEquals(
+		toSplitRule({
+			rule_type: "finders_fee",
+			vault_bp: 1000,
+			finder_user_id: "u-1",
+			finder_bp: 500,
+		}),
+		{ ruleType: "finders_fee", vaultBp: 1000, finderUserId: "u-1", finderBp: 500 },
+	);
+	// A finder's cut with no finder pays nobody in the plan, so none is reported.
+	assertEquals(
+		toSplitRule({ rule_type: "finders_fee", vault_bp: 1000, finder_user_id: null, finder_bp: 500 }),
+		{ ruleType: "finders_fee", vaultBp: 1000, finderUserId: null, finderBp: null },
+	);
+	// Everything goes to the vault whatever was stored; stray finder fields are not reported.
+	assertEquals(
+		toSplitRule({
+			rule_type: "benevolent_dictator",
+			vault_bp: 0,
+			finder_user_id: "u-1",
+			finder_bp: 500,
+		}),
+		{ ruleType: "benevolent_dictator", vaultBp: 10_000, finderUserId: null, finderBp: null },
+	);
+	assertEquals(
+		toSplitRule({ rule_type: "co_op", vault_bp: 12_000, finder_user_id: null, finder_bp: null })
+			.vaultBp,
+		10_000,
+	);
 });
 
 Deno.test("projectedShare floors exactly as fn_team_split_plan does", () => {

@@ -155,8 +155,10 @@ export const WorkspaceService = {
 	// --- Money policy -----------------------------------------------------------------------------
 
 	/**
-	 * Write a team's payout split. The server re-validates the 100% invariant, which is why the refreshed
-	 * detail is authoritative and the editor re-seeds from it rather than keeping its optimistic stakes.
+	 * Write a team's payout split — its template (`rule`: co_op · finders_fee · benevolent_dictator), its
+	 * stakes, or both. The server re-validates the 100% invariant and the template's cuts, which is why
+	 * the refreshed detail is authoritative and the editor re-seeds from it (stakes and `payout.rule`)
+	 * rather than keeping its optimistic copy.
 	 */
 	updatePayout(input: UpdatePayoutInput): Promise<WorkspaceResult<WorkspaceDetail>> {
 		return postWorkspace<WorkspaceDetail>(WORKSPACE_ENDPOINTS.payout, input);
@@ -174,7 +176,10 @@ export const WorkspaceService = {
 
 	/** Pay a business invoice's amount due from the business wallet. */
 	payInvoice(invoiceId: string): Promise<WorkspaceResult<BusinessBillingView>> {
-		return postWorkspace<BusinessBillingView>(`/api/finance/invoices/${encodeURIComponent(invoiceId)}/pay`, {});
+		return postWorkspace<BusinessBillingView>(
+			`/api/finance/invoices/${encodeURIComponent(invoiceId)}/pay`,
+			{},
+		);
 	},
 
 	/** Approve or decline an outstanding spend request on a business's pooled wallet. */

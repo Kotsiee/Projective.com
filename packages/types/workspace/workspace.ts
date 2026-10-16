@@ -13,7 +13,11 @@ import {
 	WorkspaceMemberSchema,
 	WorkspaceRoleDefSchema,
 } from "./members.ts";
-import { BusinessSpendPolicySchema, TeamPayoutPolicySchema } from "./policy.ts";
+import {
+	BusinessSpendPolicySchema,
+	SplitRuleInputSchema,
+	TeamPayoutPolicySchema,
+} from "./policy.ts";
 
 /**
  * workspace/workspace — the read projections the `/teams` and `/businesses` surfaces render, plus the
@@ -322,14 +326,22 @@ export const ArchiveRoleInputSchema = z.object({
 });
 export type ArchiveRoleInput = z.infer<typeof ArchiveRoleInputSchema>;
 
-/** Write a team's split. Rejected server-side unless the active members' stakes sum to exactly 100%. */
+/**
+ * Write a team's split: its template (`rule`), its members' stakes, or both — at least one. Stakes are
+ * rejected server-side unless the active members' shares sum to exactly 100%; a template is checked by
+ * `finance.save_split_rule`. When both travel the template is written first, then the stakes.
+ */
 export const UpdatePayoutInputSchema = z.object({
 	workspaceId: z.string().max(64),
 	stakes: z.array(z.object({
 		memberId: z.string().max(64),
 		shareBp: z.number().int().min(0).max(10_000),
 		held: z.boolean().default(false),
-	})).min(1),
+	})).min(1).optional(),
+	rule: SplitRuleInputSchema.optional(),
+}).refine((input) => input.stakes !== undefined || input.rule !== undefined, {
+	message: "Change the split's template or its stakes.",
+	path: ["stakes"],
 });
 export type UpdatePayoutInput = z.infer<typeof UpdatePayoutInputSchema>;
 

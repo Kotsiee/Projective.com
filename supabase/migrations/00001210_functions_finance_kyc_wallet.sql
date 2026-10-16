@@ -2045,6 +2045,108 @@ BEGIN
 END;
 $$;
 
+-- A team's split TEMPLATE (finance-model.md §5, Decision #228 (F)) — the rule fn_team_split_plan reads
+-- beside the stakes. The new template replaces the active one: under a per-team advisory lock the
+-- current active row is retired (`active = false`, kept as history — never deleted) and the new row
+-- inserted active, so uq_split_rules_team_active always holds exactly one. Cuts are basis points:
+--   co_op                vault_bp 0–10000; no finder.
+--   finders_fee          vault_bp 0–10000, plus an ACTIVE member as finder with finder_bp ≥ 1, and
+--                        finder_bp + vault_bp ≤ 10000.
+--   benevolent_dictator  everything to the vault — p_vault_bp is ignored and 10000 stored, the figure
+--                        the plan reports for this template; no finder.
+-- Needs `manage_finances`; an archived team must be restored first; the team's plan must carry the
+-- template's `split_template_<type>` flag (PK402 `entitlement:` otherwise). Audits
+-- `team.split_rule_changed`.
+CREATE OR REPLACE FUNCTION finance.save_split_rule(
+    p_team_id uuid,
+    p_rule_type finance.split_rule_type,
+    p_vault_bp integer,
+    p_finder_user_id uuid DEFAULT NULL,
+    p_finder_bp integer DEFAULT NULL
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_status text;
+    v_vault_bp integer := p_vault_bp;
+    v_previous uuid;
+    v_id uuid;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+    END IF;
+    SELECT t.status INTO v_status FROM org.teams t WHERE t.id = p_team_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'workspace: not found';
+    END IF;
+    IF NOT org.fn_member_can('team', p_team_id, 'manage_finances') THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'rule: you cannot change how this team splits its income';
+    END IF;
+    IF v_status = 'archived' THEN
+        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'workspace: restore this team before changing its split';
+    END IF;
+    IF p_rule_type IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'rule_type: choose how the team splits its income';
+    END IF;
+    -- Which templates a team's plan unlocks is data: one `split_template_<type>` flag per template in
+    -- finance.plan_entitlements (Decision #226 (d): co_op free, finders_fee and benevolent_dictator Pro).
+    IF NOT finance.fn_has_entitlement('team', p_team_id,
+        ('split_template_' || p_rule_type::text)::finance.entitlement_key) THEN
+        RAISE EXCEPTION USING ERRCODE = 'PK402', HINT = 'split_template_' || p_rule_type::text,
+            MESSAGE = 'entitlement: this split template is part of Pro Team — upgrade the team to use it';
+    END IF;
+
+    IF p_rule_type = 'benevolent_dictator' THEN
+        v_vault_bp := 10000;
+    ELSIF v_vault_bp IS NULL OR v_vault_bp < 0 OR v_vault_bp > 10000 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023',
+            MESSAGE = 'vault_bp: the vault''s cut is a whole number of basis points from 0 to 10000';
+    END IF;
+
+    IF p_rule_type = 'finders_fee' THEN
+        IF p_finder_user_id IS NULL OR NOT EXISTS (
+            SELECT 1 FROM org.team_members m
+             WHERE m.team_id = p_team_id AND m.user_id = p_finder_user_id AND m.status = 'active'
+        ) THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'finder_user_id: the finder must be an active member of this team';
+        END IF;
+        IF p_finder_bp IS NULL OR p_finder_bp < 1 OR p_finder_bp > 10000 THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = 'finder_bp: the finder''s cut is a whole number of basis points from 1 to 10000';
+        END IF;
+        IF p_finder_bp + v_vault_bp > 10000 THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = 'finder_bp: the finder''s and the vault''s cuts together cannot exceed 100%';
+        END IF;
+    ELSE
+        IF p_finder_user_id IS NOT NULL THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'finder_user_id: only a finder''s fee names a finder';
+        END IF;
+        IF p_finder_bp IS NOT NULL THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'finder_bp: only a finder''s fee takes a finder''s cut';
+        END IF;
+    END IF;
+
+    PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('split:' || p_team_id::text));
+    UPDATE finance.split_rules SET active = false, updated_at = now()
+     WHERE team_id = p_team_id AND active
+    RETURNING id INTO v_previous;
+    INSERT INTO finance.split_rules (team_id, rule_type, vault_bp, finder_user_id, finder_bp, active)
+    VALUES (p_team_id, p_rule_type, v_vault_bp, p_finder_user_id, p_finder_bp, true)
+    RETURNING id INTO v_id;
+
+    INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
+    VALUES (v_uid, 'team.split_rule_changed', 'org.teams', p_team_id, jsonb_build_object(
+        'rule_id', v_id, 'previous_rule_id', v_previous, 'rule_type', p_rule_type,
+        'vault_bp', v_vault_bp, 'finder_user_id', p_finder_user_id, 'finder_bp', p_finder_bp));
+    RETURN v_id;
+END;
+$$;
+
 -- What the team's NEXT release will pay, by the same plan the release runs (fn_team_split_plan). The
 -- honest gross is the team's oldest escrow still held; a team with none has no projection (`gross`
 -- NULL) rather than an invented one. The fee is that escrow's payer's rate (fn_escrow_fee_bp), the one

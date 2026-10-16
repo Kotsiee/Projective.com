@@ -158,7 +158,9 @@ CREATE TYPE finance.entitlement_key     AS ENUM (
     'team_seats', 'team_public_projects', 'business_public_projects', 'business_managers',
     'enterprise_seats', 'enterprise_businesses', 'departments',
     'promoted_placement', 'advanced_analytics', 'discovery_boost', 'instant_payouts_included',
-    'pooled_wallet_full', 'advanced_vault_splits', 'intervaled_invoicing',
+    'pooled_wallet_full',
+    'split_template_co_op', 'split_template_finders_fee', 'split_template_benevolent_dictator',
+    'intervaled_invoicing',
     'sso_enabled', 'api_access', 'audit_log_retention_days', 'dedicated_support',
     'negotiated_platform_fee'
 );

@@ -26,9 +26,11 @@ import {
 	moneyOf,
 	type Person,
 	projectedShare,
+	type RawSplitRule,
 	relativeLabel,
 	spendRequestState,
 	spentInPeriod,
+	toSplitRule,
 	usedFraction,
 	verificationPrompt,
 } from "./mappers.ts";
@@ -98,7 +100,8 @@ export interface TeamMoneyFacts {
 	agreements: Map<string, { bp: number; held: boolean }>;
 	preview: RawSplitPreview | null;
 	walletCurrency: string;
-	rule: { rule_type: string; vault_bp: number } | null;
+	/** The active `finance.split_rules` row; `null` when the team has never stored one. */
+	rule: RawSplitRule | null;
 }
 
 /** Read a team's split agreements, its release projection, its vault currency and its split rule. */
@@ -114,8 +117,10 @@ export async function readTeamMoney(actor: LiveActor, teamId: string): Promise<T
 			"owner_id",
 			teamId,
 		),
-		db.from("split_rules").select("rule_type, vault_bp").eq("team_id", teamId).eq("active", true)
-			.maybeSingle(),
+		db.from("split_rules").select("rule_type, vault_bp, finder_user_id, finder_bp").eq(
+			"team_id",
+			teamId,
+		).eq("active", true).maybeSingle(),
 	]);
 	if (agreementsRes.error) {
 		throw new Error(`finance.contribution_agreements read failed: ${agreementsRes.error.message}`);
@@ -138,7 +143,7 @@ export async function readTeamMoney(actor: LiveActor, teamId: string): Promise<T
 	}
 	const wallets = ((walletsRes.data ?? []) as { currency: string; balance_cents: number }[])
 		.sort((a, b) => (Number(b.balance_cents) || 0) - (Number(a.balance_cents) || 0));
-	const rule = ruleRes.data as { rule_type: string; vault_bp: number } | null;
+	const rule = ruleRes.data as RawSplitRule | null;
 	return {
 		agreements,
 		preview: (previewRes.data ?? null) as RawSplitPreview | null,
@@ -225,11 +230,8 @@ export function buildPayoutPolicy(
 
 	// With no release held the plan answers for a zero payout, whose vault figure is 0 by construction;
 	// the team's standing rule still says what the vault WILL take, so that is what is shown.
-	const vaultBp = released && plan
-		? Number(plan.vault_bp) || 0
-		: facts.rule
-		? (facts.rule.rule_type === "benevolent_dictator" ? 10_000 : Number(facts.rule.vault_bp) || 0)
-		: 0;
+	const rule = toSplitRule(facts.rule);
+	const vaultBp = released && plan ? Number(plan.vault_bp) || 0 : rule.vaultBp;
 
 	return {
 		model,
@@ -238,6 +240,7 @@ export function buildPayoutPolicy(
 		projectedRelease: released ? moneyOf(Number(preview.gross_minor) || 0, currency) : null,
 		platformFee: released ? moneyOf(Number(preview.fee_minor) || 0, currency) : null,
 		vaultBp: Math.max(0, Math.min(10_000, vaultBp)),
+		rule,
 		vaultCut: released && plan ? moneyOf(Number(plan.vault_total_minor) || 0, currency) : null,
 		withdrawApprovers: members.filter((m) => m.capabilities.includes("withdraw_funds")).map((m) =>
 			m.memberId

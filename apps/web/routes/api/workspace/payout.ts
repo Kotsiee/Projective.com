@@ -10,14 +10,14 @@ import { canReadLive } from "@server/services/read-actor.ts";
 import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBackendService.ts";
 
 /**
- * `POST /api/workspace/payout` — thin route: refuse a guest, Zod-validate a TEAM's split (per-member
- * stakes in basis points, each optionally held), then delegate to the fat
+ * `POST /api/workspace/payout` — thin route: refuse a guest, Zod-validate a TEAM's split (its template
+ * `rule`, its per-member stakes in basis points, or both), then delegate to the fat
  * {@link WorkspaceBackendService.updatePayout}.
  *
- * **The route does not check that the shares total 100%.** That invariant is money policy, enforced
- * exactly once where the stored split lives (`finance.save_team_split`), with the human message the
- * editor renders verbatim. A route-side copy of that arithmetic is how two layers start disagreeing
- * about money.
+ * **The route does not check that the shares total 100%, nor that a finder's and the vault's cuts fit
+ * together.** Those invariants are money policy, enforced exactly once where the stored split lives
+ * (`finance.save_team_split`, `finance.save_split_rule`), with the human message the editor renders
+ * verbatim. A route-side copy of that arithmetic is how two layers start disagreeing about money.
  */
 export const handler = define.handlers({
 	async POST(ctx) {

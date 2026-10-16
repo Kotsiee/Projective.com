@@ -793,6 +793,31 @@ is validated before anything is written; then every agreement row of the team go
 members are written to their share — an active member left out is 0, a departed member zeroed,
 nothing deleted. Needs `manage_finances`. Audits `team.split_changed`.
 
+### `finance.save_split_rule(p_team_id, p_rule_type, p_vault_bp, p_finder_user_id DEFAULT NULL, p_finder_bp DEFAULT NULL)` → uuid
+
+The team's split **template** (Decision #228 (F)), the `finance.split_rules` row that
+`fn_team_split_plan` applies before the stakes. It is the table's only writer. `SECURITY DEFINER`,
+`search_path = ''`, granted to `authenticated`. It refuses, in this order:
+
+- `42501 auth:` when signed out. `P0002 workspace: not found` for an unknown team.
+- `42501 rule:` without `manage_finances`. `55000 workspace:` when the team is archived.
+- `22023 rule_type:` when no template is named.
+- `PK402 entitlement:` when the team's plan lacks the template's flag. The flag is
+  `fn_has_entitlement('team', team, 'split_template_' || rule_type)`; HINT names the missing key, and
+  it maps to 402 in the app. Team Free unlocks co_op only, Pro Team all three (Decision #226 (d)).
+- `22023 vault_bp:` outside 0–10000. benevolent_dictator ignores `p_vault_bp` and stores 10000,
+  the figure the plan reports for it.
+- finders_fee only: `22023 finder_user_id:` unless the finder is an **active** member;
+  `22023 finder_bp:` for a cut below 1 bp, or when `finder_bp + vault_bp` exceeds 10000.
+- co_op and benevolent_dictator only: `22023 finder_user_id:` / `finder_bp:` when a finder field is
+  set.
+
+Under `pg_advisory_xact_lock(hashtext('split:' || team))` it retires the active row
+(`active = false`, kept — never deleted) and inserts the new row active, so
+`uq_split_rules_team_active` holds one. It audits `team.split_rule_changed` (metadata: `rule_id`,
+`previous_rule_id`, the cuts) and returns the new rule's id. `POST /api/workspace/payout` calls it
+before `save_team_split` when the request carries a `rule`. Probe: `supabase/probes/save_split_rule.sql`.
+
 ### `finance.preview_team_split(p_team_id)` → jsonb
 
 What the team's NEXT release will pay, by `fn_team_split_plan`. Any active member may read it. The

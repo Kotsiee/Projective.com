@@ -5,7 +5,7 @@
  */
 import { assert, assertEquals, assertStrictEquals } from "@std/assert";
 import { refusalFrom, sentence, splitRefusal } from "./live-support.ts";
-import { memberPatch, spendPatch } from "./live-writes.ts";
+import { memberPatch, spendPatch, splitRuleArgs } from "./live-writes.ts";
 import {
 	buildPayoutPolicy,
 	buildSpendPolicy,
@@ -40,6 +40,21 @@ Deno.test("refusalFrom: snake_case fields are camelCased; a subject prefix keys 
 	);
 	const subject = refusalFrom({ code: "22023", message: "patch: expected an object" });
 	assertEquals([subject.status, subject.errors], [422, undefined]);
+});
+
+Deno.test("refusalFrom: a plan gate's PK402 is a 402 naming the entitlement the plan lacks", () => {
+	const res = refusalFrom({
+		code: "PK402",
+		message: "entitlement: this split template is part of Pro Team — upgrade the team to use it",
+		hint: "split_template_finders_fee",
+	});
+	assertEquals(res.status, 402);
+	assertEquals(
+		res.message,
+		"This split template is part of Pro Team — upgrade the team to use it.",
+	);
+	assertEquals(res.errors, undefined);
+	assertEquals(res.details, { reason: "entitlement", entitlement: "split_template_finders_fee" });
 });
 
 Deno.test("refusalFrom: the Teams persona gate is a 403 carrying the `persona` code", () => {
@@ -220,7 +235,7 @@ Deno.test("buildPayoutPolicy: projected shares come from the preview plan; a mem
 			},
 		},
 		walletCurrency: "USD",
-		rule: { rule_type: "co_op", vault_bp: 1000 },
+		rule: { rule_type: "co_op", vault_bp: 1000, finder_user_id: null, finder_bp: null },
 	};
 	const policy = buildPayoutPolicy(members, facts);
 	assertEquals(policy.stakes.map((s) => [s.memberId, s.shareBp, s.projected.minor]), [
@@ -236,6 +251,12 @@ Deno.test("buildPayoutPolicy: projected shares come from the preview plan; a mem
 		policy.vaultBp,
 	], [10_000, 500, 950, 1000]);
 	assertEquals(policy.withdrawApprovers, ["m-owner"]);
+	assertEquals(policy.rule, {
+		ruleType: "co_op",
+		vaultBp: 1000,
+		finderUserId: null,
+		finderBp: null,
+	});
 	assertEquals(policy.templates.map((t) => [t.name, t.isDefault]), [["Current split", true], [
 		"Even split",
 		false,
@@ -269,10 +290,16 @@ Deno.test("buildPayoutPolicy: no release held → nothing projected, but the sta
 			},
 		},
 		walletCurrency: "GBP",
-		rule: { rule_type: "co_op", vault_bp: 1500 },
+		rule: { rule_type: "co_op", vault_bp: 1500, finder_user_id: null, finder_bp: null },
 	});
 	assertEquals([policy.projectedRelease, policy.platformFee, policy.vaultCut], [null, null, null]);
 	assertEquals(policy.vaultBp, 1500);
+	assertEquals(policy.rule, {
+		ruleType: "co_op",
+		vaultBp: 1500,
+		finderUserId: null,
+		finderBp: null,
+	});
 	assertEquals(
 		policy.stakes.every((s) => s.projected.minor === 0 && s.projected.currency === "GBP"),
 		true,
@@ -280,6 +307,92 @@ Deno.test("buildPayoutPolicy: no release held → nothing projected, but the sta
 	assertEquals(policy.model, "equal");
 	// The current split IS the even split, so no duplicate template is offered.
 	assertEquals(policy.templates.length, 1);
+});
+
+Deno.test("buildPayoutPolicy: the active template travels in the payout block; none stored reads as co_op 0", () => {
+	const facts = (rule: TeamMoneyFacts["rule"]): TeamMoneyFacts => ({
+		agreements: new Map([["u-owner", { bp: 10_000, held: false }]]),
+		preview: null,
+		walletCurrency: "GBP",
+		rule,
+	});
+	const finders = buildPayoutPolicy(
+		members.slice(0, 2),
+		facts({ rule_type: "finders_fee", vault_bp: 1000, finder_user_id: "u-lead", finder_bp: 500 }),
+	);
+	assertEquals(finders.rule, {
+		ruleType: "finders_fee",
+		vaultBp: 1000,
+		finderUserId: "u-lead",
+		finderBp: 500,
+	});
+	assertEquals(finders.vaultBp, 1000);
+
+	const dictator = buildPayoutPolicy(
+		members.slice(0, 2),
+		facts({ rule_type: "benevolent_dictator", vault_bp: 0, finder_user_id: null, finder_bp: null }),
+	);
+	assertEquals([dictator.rule.ruleType, dictator.rule.vaultBp, dictator.vaultBp], [
+		"benevolent_dictator",
+		10_000,
+		10_000,
+	]);
+
+	const none = buildPayoutPolicy(members.slice(0, 2), facts(null));
+	assertEquals(none.rule, { ruleType: "co_op", vaultBp: 0, finderUserId: null, finderBp: null });
+	assertEquals(none.vaultBp, 0);
+});
+
+Deno.test("splitRuleArgs: a finder travels only under finders_fee; benevolent_dictator sends 10 000", () => {
+	assertEquals(splitRuleArgs("t1", { ruleType: "co_op", vaultBp: 1500 }), {
+		p_team_id: "t1",
+		p_rule_type: "co_op",
+		p_vault_bp: 1500,
+	});
+	assertEquals(
+		splitRuleArgs("t1", {
+			ruleType: "finders_fee",
+			vaultBp: 1000,
+			finderUserId: "u2",
+			finderBp: 500,
+		}),
+		{
+			p_team_id: "t1",
+			p_rule_type: "finders_fee",
+			p_vault_bp: 1000,
+			p_finder_user_id: "u2",
+			p_finder_bp: 500,
+		},
+	);
+	assertEquals(splitRuleArgs("t1", { ruleType: "benevolent_dictator" }), {
+		p_team_id: "t1",
+		p_rule_type: "benevolent_dictator",
+		p_vault_bp: 10_000,
+	});
+});
+
+Deno.test("splitRuleArgs names exactly the parameters finance.save_split_rule declares", () => {
+	const sql = Deno.readTextFileSync(
+		new URL(
+			"../../../../supabase/migrations/00001210_functions_finance_kyc_wallet.sql",
+			import.meta.url,
+		),
+	);
+	const start = sql.indexOf("CREATE OR REPLACE FUNCTION finance.save_split_rule(");
+	assert(start >= 0, "finance.save_split_rule is no longer defined");
+	const signature = sql.slice(start, sql.indexOf("RETURNS", start));
+	const declared = [...signature.matchAll(/\b(p_[a-z_]+)\s/g)].map((m) => m[1]);
+	assertEquals(declared, [
+		"p_team_id",
+		"p_rule_type",
+		"p_vault_bp",
+		"p_finder_user_id",
+		"p_finder_bp",
+	]);
+	const sent = Object.keys(
+		splitRuleArgs("t1", { ruleType: "finders_fee", vaultBp: 0, finderUserId: "u", finderBp: 1 }),
+	);
+	assertEquals(sent, declared);
 });
 
 Deno.test("buildSpendPolicy: capabilities decide approvers/contributors/spenders; rejected → declined; ledger merged", () => {

@@ -1,4 +1,9 @@
-import { currencyExponent, formatMoney, type MoneyView } from "@projective/types/finance";
+import {
+	currencyExponent,
+	formatMoney,
+	type MoneyView,
+	SplitRuleType,
+} from "@projective/types/finance";
 import {
 	type ActivityEntry,
 	type IncomingInvite,
@@ -6,6 +11,7 @@ import {
 	type MemberFace,
 	type SetupStep,
 	type SplitModel,
+	type TeamSplitRule,
 	type VerificationState,
 	type WorkspaceCapability,
 	WorkspaceCapability as WorkspaceCapabilityEnum,
@@ -698,6 +704,41 @@ export function projectedShare(poolMinor: number, shareBp: number): number {
 	const pool = Math.max(0, Math.trunc(Number(poolMinor) || 0));
 	const bp = Math.max(0, Math.min(10_000, Math.trunc(Number(shareBp) || 0)));
 	return Math.floor((pool * bp) / 10_000);
+}
+
+/** The active `finance.split_rules` row, as the team's money read selects it. */
+export interface RawSplitRule {
+	rule_type: string;
+	vault_bp: number | null;
+	finder_user_id: string | null;
+	finder_bp: number | null;
+}
+
+/** A basis-point figure clamped into 0–10 000. */
+function bpOf(raw: number | null | undefined): number {
+	return Math.max(0, Math.min(10_000, Math.trunc(Number(raw) || 0)));
+}
+
+/**
+ * The team's active split template, read the way `finance.fn_team_split_plan` applies it: no row (or a
+ * type this layer does not know) is `co_op` with no vault cut; `benevolent_dictator` is the whole
+ * release to the vault (10 000 bp) whatever was stored; a finder is reported only under `finders_fee`.
+ */
+export function toSplitRule(raw: RawSplitRule | null | undefined): TeamSplitRule {
+	const parsed = SplitRuleType.safeParse(raw?.rule_type);
+	if (!raw || !parsed.success) {
+		return { ruleType: "co_op", vaultBp: 0, finderUserId: null, finderBp: null };
+	}
+	if (parsed.data === "benevolent_dictator") {
+		return { ruleType: parsed.data, vaultBp: 10_000, finderUserId: null, finderBp: null };
+	}
+	const finder = parsed.data === "finders_fee" && raw.finder_user_id ? raw.finder_user_id : null;
+	return {
+		ruleType: parsed.data,
+		vaultBp: bpOf(raw.vault_bp),
+		finderUserId: finder,
+		finderBp: finder ? bpOf(raw.finder_bp) : null,
+	};
 }
 
 // #endregion
