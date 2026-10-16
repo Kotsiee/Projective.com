@@ -278,6 +278,15 @@ export type DevAgeRestriction = "auto" | "minor" | "adult";
 export type DevPayoutReadiness = "auto" | "not_ready";
 
 /**
+ * Operator mode (`org.users_public.is_operator`, Decision #228 (A)): `auto` follows the session token's
+ * `isOperator` claim; `on` acts as a freelancer in operator mode, so Teams leave the chrome, the
+ * dashboard guard sends `/teams*` home and the team create route answers the persona 403; `off` skips
+ * both mirrors for a real operator, so the database's own refusal answers. Reaches the server through
+ * the `pj.dev.operator-mode` cookie, which only a development build reads.
+ */
+export type DevOperatorMode = "auto" | "on" | "off";
+
+/**
  * The operator dispute desk (`/admin/disputes`, Decision #212) — a capability only `ops.admin_users`
  * holds, which no page control grants. `auto` lets the database decide (a non-operator gets the 404);
  * `queue` renders the desk with sample cases (one per live status plus an overdue one), `empty` with
@@ -348,8 +357,9 @@ export type DevAccountLifecycle =
  * substitutes the STATUS those surfaces render, so the shipping copy, countdown and gate run on it:
  * `healthy` (plenty left), `low` (≤ 5 weekly — the upgrade link), `paced` (no buffer token, enforced:
  * submit disabled, live countdown), `paced_soft` (no buffer token while enforcement is off — the
- * notice says it still goes through), `weekly` (the week spent, enforced) and `team_small` (a
- * one-member team). Client-side only: the server's gate still answers from the real allowance.
+ * notice says it still goes through), `weekly` (the week spent, enforced), `team_draft` (an unpublished
+ * team — the notice and its Open settings link) and `team_small` (a one-member team). Client-side
+ * only: the server's gate still answers from the real allowance.
  *
  * Its own axis because each value is a metered SERVER fact (tokens spent, a drip clock, a roster) that
  * no page control can reach without spending real proposals.
@@ -361,6 +371,7 @@ export type DevProposalAllowance =
 	| "paced"
 	| "paced_soft"
 	| "weekly"
+	| "team_draft"
 	| "team_small";
 
 /** The DOM event the Context Switcher dispatches whenever the active override changes. */
@@ -456,6 +467,8 @@ export interface DevSeamState {
 	ageRestriction?: DevAgeRestriction;
 	/** The simulated earning gate. Optional like `walletAurora`; absent reads as `auto`. */
 	payoutReadiness?: DevPayoutReadiness;
+	/** The simulated operator mode. Optional like `walletAurora`; absent reads as `auto`. */
+	operatorMode?: DevOperatorMode;
 	/** The operator-desk preview. Optional like `walletAurora`; absent reads as `auto`. */
 	operatorDesk?: DevOperatorDesk;
 	/** The simulated catalogue analytics. Optional like `walletAurora`; absent reads as `auto`. */
@@ -568,6 +581,7 @@ const PROPOSAL_ALLOWANCES: readonly DevProposalAllowance[] = [
 	"paced",
 	"paced_soft",
 	"weekly",
+	"team_draft",
 	"team_small",
 ];
 const VERIFICATION_STAMPS: readonly DevVerificationStamp[] = [
@@ -621,6 +635,7 @@ const EMAIL_CONFIRMATIONS: readonly DevEmailConfirmation[] = [
 ];
 const AGE_RESTRICTIONS: readonly DevAgeRestriction[] = ["auto", "minor", "adult"];
 const PAYOUT_READINESS: readonly DevPayoutReadiness[] = ["auto", "not_ready"];
+const OPERATOR_MODES: readonly DevOperatorMode[] = ["auto", "on", "off"];
 const OPERATOR_DESKS: readonly DevOperatorDesk[] = ["auto", "queue", "empty"];
 const CATALOGUE_ANALYTICS: readonly DevCatalogueAnalytics[] = ["auto", "empty", "sparse", "rich"];
 const CLIENT_PIPELINES: readonly DevClientPipeline[] = ["auto", "empty", "action_required", "busy"];
@@ -694,6 +709,7 @@ export function readDevSeam(): DevSeamState | null {
 		emailConfirmation: coerce(ds.devEmailConfirmation, EMAIL_CONFIRMATIONS, "auto"),
 		ageRestriction: coerce(ds.devAgeRestriction, AGE_RESTRICTIONS, "auto"),
 		payoutReadiness: coerce(ds.devPayoutReadiness, PAYOUT_READINESS, "auto"),
+		operatorMode: coerce(ds.devOperator, OPERATOR_MODES, "auto"),
 		operatorDesk: coerce(ds.devOperatorDesk, OPERATOR_DESKS, "auto"),
 		catalogueAnalytics: coerce(ds.devCatalogueAnalytics, CATALOGUE_ANALYTICS, "auto"),
 		clientPipeline: coerce(ds.devClientPipeline, CLIENT_PIPELINES, "auto"),

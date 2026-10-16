@@ -628,11 +628,24 @@ spend and a removed member kept `withdraw`. It is now a **projection** of the wo
 
 - **`fn_vault_capabilities_for(kind, entity, user)`** — the table above; `'{}'` for anyone who is not
   an active member (their row is KEPT, inert, never deleted).
-- **`fn_sync_vault_permissions(kind, entity, user = NULL)`** — rewrites the projection for one member
-  (or, with `NULL`, every member) across every wallet the entity holds; an upsert that only touches a
-  row whose capabilities changed. Called by every RPC below that changes who holds what, and by the
-  `finance.wallets` insert trigger (`finance.fn_sync_vault_on_wallet`), so a wallet opened in a new
-  currency is governed from birth.
+- **`fn_sync_vault_permissions(kind, entity, user = NULL)`** — rewrites the projection for one
+  member (or, with `NULL`, every member) across every wallet the entity holds; an upsert that only
+  touches a row whose capabilities changed. Called by every RPC below that changes who holds what,
+  and by the `finance.wallets` insert trigger (`finance.fn_sync_vault_on_wallet`), so a wallet
+  opened in a new currency is governed from birth. It is the ONLY writer of
+  `finance.vault_permissions`.
+- **`fn_trg_sync_vault_member()` / `fn_trg_sync_vault_role()`** — the backstop (Decision #226 (e)),
+  four `AFTER … FOR EACH ROW` triggers bound in `00001895`, so a write path that forgets the
+  explicit call cannot leave a stale grant (a revoked `withdraw_funds` still projecting `withdraw`):
+  - `trg_team_members_sync_vault` / `trg_business_members_sync_vault` — on `INSERT`, and on an
+    `UPDATE OF` `role_id`, `status`, `granted_capabilities` or `revoked_capabilities`, of the member
+    table; re-projects that member.
+  - `trg_team_roles_sync_vault` / `trg_business_roles_sync_vault` — on an `UPDATE OF` `capabilities`
+    or `base_preset` of the role table; re-projects every ACTIVE holder of the role.
+
+  The RPCs keep their explicit calls; a trigger that finds the projection already matching writes
+  nothing (the upsert's `IS DISTINCT FROM` guard). A member who leaves is rewritten to `'{}'`, never
+  deleted. Probe: `supabase/probes/vault_sync_backstop.sql`.
 - **`fn_set_member_capability(kind, member, cap, want)`** — moves a member's override so their
   EFFECTIVE set does or does not hold `cap`, as the smallest honest override (a grant only when the
   role lacks it, a revocation only when the role has it). The spend-policy editor and the member
@@ -675,8 +688,22 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   Member). Internal.
 - **`fn_refresh_membership_flags(user)`** — keeps `users_public.has_team` / `has_business` true to
   ACTIVE membership. Internal.
+- **`fn_assert_team_persona(user) → void`** — Teams are freelancer-only (Decision #228 (A)). Passes
+  only a user with an `org.freelancer_profiles` row (the row `finance.fn_freelancer_payout_ready`
+  reads) **and** `users_public.is_freelancer` (a scheduled freelancer removal keeps the row but drops
+  the persona, and that account is a client) **and** `is_operator IS NOT TRUE`. Otherwise raises
+  `PK403`, MESSAGE `persona_not_freelancer: Teams are for freelancer accounts` (the caller) or
+  `persona_not_freelancer: only freelancer accounts can join a team` (someone else), HINT `self` /
+  `other`, DETAIL `client` / `operator`. Called **before** the earning gate so the refusal names the
+  real reason, at four sites: `create_workspace` (`team`), `invite_workspace_member` (a `team`
+  invitee named by handle; an email invitee is asked at accept), `respond_to_workspace_invitation`
+  (accepting a `team`'s) and `transfer_workspace_ownership` (a `team` successor, §14). Business kinds
+  are never asked. Internal (no client grant; `org` is deny-by-default). The API maps it to a `403`
+  with `details.reason = 'persona'` (`packages/backend/core/team-persona-gate.ts`). Probe:
+  `supabase/probes/teams_persona_gate.sql`.
 - **`create_workspace(kind, name, handle) → {id, kind, handle}`** — `authenticated`. A `team` needs
-  its creator payout-ready (`finance.fn_assert_payout_ready`, `PK403 payout_not_ready`, Decision #196). The ONE create
+  its creator to pass `fn_assert_team_persona` (`PK403 persona_not_freelancer`, Decision #228 (A)) and
+  then be payout-ready (`finance.fn_assert_payout_ready`, `PK403 payout_not_ready`, Decision #196). The ONE create
   door. Requires a `users_public` row; name 2–80; the handle passes `fn_handle_refusal` under the
   advisory lock; the plan's `teams_owned` / `businesses_owned` entitlement (`fn_effective_limit` vs
   `fn_footprint_usage`) → `55000` when full. In one transaction: the entity row at **`draft`**, the
@@ -709,7 +736,8 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   needs `invite_members`. Exactly one of `handle` / `email`; the entity must not be archived; the role
   must be a live role of THIS entity, never owner-ranked ("ownership moves only by transfer"), and —
   because offering a role is granting it (`mayGrant`) — carry nothing the caller lacks. A handle must
-  resolve, not be the caller, not already be a member; an email must look like one (≤ 160). Seat
+  resolve, not be the caller, not already be a member, and for a `team` pass `fn_assert_team_persona`
+  (HINT `other`); an email must look like one (≤ 160) and is persona-checked only at accept. Seat
   cap checked. Inserts `pending` with a fresh 48-hex token and **`expires_at = now() + 14 days`**; a
   second pending offer collides on the partial unique index → `23505` ("they already have a pending
   invitation"). Notifies a platform invitee with `{kind}.invite`. Audits `{kind}.member_invited`.
@@ -717,7 +745,9 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   their **VERIFIED** `org.user_emails` (never an unverified one — registering someone else's address
   must not intercept their invitations). Internal.
 - **`respond_to_workspace_invitation(invitation, accept) → {status, kind, id, handle?, member_id?}`**
-  (accepting a TEAM invitation needs the invitee payout-ready — `PK403 payout_not_ready`, Decision #196)
+  (accepting a TEAM invitation needs the invitee to pass `fn_assert_team_persona` — `PK403
+  persona_not_freelancer`, Decision #228 (A) — and then be payout-ready — `PK403 payout_not_ready`,
+  Decision #196; declining is never gated)
   — `authenticated`, invitee only (anyone else gets `P0002`). Refuses an answered (`55000`) or expired
   (`55000`) invitation. Decline → `declined` + `responded_at`. Accept additionally refuses an archived
   entity, an account with no profile, and an archived role; re-checks the seat cap (the invitation
@@ -764,11 +794,16 @@ namespace under a `pg_advisory_xact_lock` on the handle.
 
 - **`transfer_workspace_ownership(kind, entity, successor_member, leave = false) → {id, owner_user_id}`**
   — `authenticated`, the current owner only. Exactly one owner (product decision 2026-09-28). The
-  successor must be another ACTIVE member. Order is load-bearing: `owner_user_id` moves FIRST (so the
-  row-level check sees the new owner), the outgoing owner is re-seated to the **Admin** preset (or, with
-  `leave`, to Admin and `left` in the same transaction, a team stake rebalanced), and only then the
-  successor takes the owner seat with cleared overrides — the one-owner partial index is not
-  deferrable. Both vault projections re-synced; `{kind}.ownership_transferred` notified.
+  successor must be another ACTIVE member. A **team** successor must also pass
+  `fn_assert_team_persona` (a freelancer account, not an operator — Decision #228 (A)) and then
+  `finance.fn_assert_payout_ready('freelancer', successor)` (Decision #196), both `PK403` before
+  anything moves: the team's withdrawer and its verification follow the owner (§16). A business
+  transfer is not gated. Probe: `supabase/probes/ownership_transfer_gate.sql`. Order is
+  load-bearing: `owner_user_id` moves FIRST (so the row-level check sees the new owner), the
+  outgoing owner is re-seated to the **Admin** preset (or, with `leave`, to Admin and `left` in the
+  same transaction, a team stake rebalanced), and only then the successor takes the owner seat with
+  cleared overrides — the one-owner partial index is not deferrable. Both vault projections
+  re-synced; `{kind}.ownership_transferred` notified.
 
 ### §15 — Custom roles
 

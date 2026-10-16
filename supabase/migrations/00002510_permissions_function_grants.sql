@@ -70,6 +70,8 @@ REVOKE ALL ON FUNCTION projects.fn_enter_review (uuid) FROM PUBLIC, anon, authen
 GRANT EXECUTE ON FUNCTION projects.review_submission (uuid, text, jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION projects.assign_from_application (uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION projects.fund_stage (uuid, uuid) TO authenticated;
+-- The team apply gate is a step of apply_to_seat / apply_to_project, never a door of its own.
+REVOKE ALL ON FUNCTION projects.fn_assert_team_can_apply (uuid) FROM PUBLIC, anon, authenticated, service_role;
 
 -- The two assignment doors: a self-claim (00001120) and the reviewer's pin (00001140). The claim core
 -- they share, projects.fn_assign_ticket_core, takes any assignee and checks nothing, so it is not granted.

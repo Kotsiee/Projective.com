@@ -191,12 +191,8 @@ import {
 } from "@projective/types/projects";
 import { intakeRefusal, normaliseIntakeAnswers } from "@projective/types/services";
 import { plainTextToHtml } from "@projective/types/richtext";
-import {
-	allowanceNotice,
-	allowanceNoticeText,
-	isDisplayCurrency,
-	toDisplayCurrency,
-} from "@projective/types/finance";
+import { isDisplayCurrency, toDisplayCurrency } from "@projective/types/finance";
+import { allowanceRefusal } from "./apply-gate.ts";
 import {
 	AllowanceAccessError,
 	readProposalAllowance,
@@ -557,8 +553,9 @@ function requireIdentity<T>(actor: ReadActor, action: string): ServiceResult<T> 
  * It reads the SAME subject the application will be metered against — the team named on the request,
  * else the person — through `finance.get_proposal_allowance`, and refuses only what that status says
  * refuses: eligibility always, the meters only while `proposal_allowance_enforced` is on (Decision
- * #58's fail-open switch; #154). A refusal here happens before the insert, so the metering trigger never
- * runs, and the gate records `entitlement.denied` itself.
+ * #58's fail-open switch; #154) — and a team's eligibility (`missing_permission`, `team_not_active`,
+ * `team_too_small`, Decision #228 (E)) never waits on the switch. A refusal here happens before the
+ * insert, so the metering trigger never runs, and the gate records `entitlement.denied` itself.
  *
  * A read that FAILS lets the application through: the insert trigger still meters it, and still
  * refuses it when enforcement is on, so a flaky read never strands an applicant who has headroom.
@@ -578,24 +575,11 @@ async function proposalGate<T>(
 		console.warn("[ProjectBackendService.apply] allowance pre-flight unavailable:", error);
 		return null;
 	}
-	if (status.canApply || !status.blockReason) return null;
-	const notice = allowanceNotice(status);
-	void recordProposalDenial(actor, status.blockReason, teamId, project);
-	return fail<T>(422, {
-		message: notice
-			? allowanceNoticeText(notice, Date.parse(status.serverNow))
-			: "You can't apply right now.",
-		errors: { allowance: status.blockReason },
-		details: {
-			blockReason: status.blockReason,
-			weeklyRemaining: status.weeklyRemaining,
-			weeklyGranted: status.weeklyGranted,
-			bufferUnits: status.bufferUnits,
-			bufferCap: status.bufferCap,
-			nextBufferRefillAt: status.nextBufferRefillAt,
-			weeklyResetsAt: status.weeklyResetsAt,
-		},
-	});
+	const refusal = allowanceRefusal<T>(status);
+	if (refusal && status.blockReason) {
+		void recordProposalDenial(actor, status.blockReason, teamId, project);
+	}
+	return refusal;
 }
 
 /** The uniform 404 for a slug or id that resolved to nothing the viewer can see. */

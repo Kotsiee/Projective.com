@@ -1376,9 +1376,9 @@ unknown project (`no_data_found`), the owner's own project, a project that is no
 `public`/`unlisted`, a caller with no freelancer profile (personal applications), a stage of another
 project or one not taking applications, a role not open to applications (all `check_violation`), a
 person (or team) already on the stage, and a second pending application for the same target from the
-same applicant (`unique_violation`). A team application additionally needs `bind_seat` on the team
-(`org.is_team_lead`, `insufficient_privilege`), two active members, and a project the team does not
-own (`check_violation`). The duplicate and already-on-stage checks are applicant-aware, so a lead may
+same applicant (`unique_violation`). A team application first passes
+`projects.fn_assert_team_can_apply` (below: `bind_seat`, an `active` team, two active members,
+payout-ready shareholders), then needs a project the team does not own (`check_violation`). The duplicate and already-on-stage checks are applicant-aware, so a lead may
 hold one pending application as themselves and one for the team. Inserts the
 `project_applications` row (`pending`) with its `project_application_targets` row, the cover note
 masked while the project is protected, logs `application_submitted` on `project_activity` (with
@@ -1550,15 +1550,32 @@ triggers.
 `check_violation`. It is the only writer of `stage_open_seat_skills`, which has no client write policy.
 `EXECUTE`: `service_role` only — no client grant.
 
+### `projects.fn_assert_team_can_apply(p_team_id uuid) → void`
+
+`00001130` §5b, `SECURITY DEFINER`, `STABLE`, `search_path = ''`; no `EXECUTE` for any role
+(`00002510` — a step of the two apply doors, never a door). The one team gate `apply_to_seat` and
+`apply_to_project` run (Decision #228 (E)). Refuses, in this order: the caller does not hold
+`bind_seat` (`org.is_team_lead`) → `insufficient_privilege` "Only a team member who can commit the
+team to work may apply on its behalf."; the team is not `active` (draft or archived) →
+`check_violation` `team_not_active: only a published team can apply — publish it in Settings`; fewer
+than two `active` `org.team_members` → `check_violation` "Teams must have at least 2 members before
+applying to client projects."; a shareholder not payout-ready → `PK403 payout_not_ready`
+(`finance.fn_assert_payout_ready('team', …)`, Decision #196). `finance.get_proposal_allowance`
+reports the same facts (`can_bind_seat`, `team_status`, `team_member_count`) so the app refuses first;
+`ProjectBackendService` maps a `team_not_active:` refusal onto the pre-flight's `422`
+(`errors.allowance`, `details.blockReason`). Pinned by `supabase/probes/team_apply_gates.sql`.
+
 ### `projects.apply_to_seat(p_seat_id uuid, p_applicant_type text, p_applicant_profile_id uuid, p_message text DEFAULT NULL) → jsonb`
 
 `00001130` §6. Files a `pending` `project_applications` row (`applicant_user_id = auth.uid()`) with a
 `seat` target; returns `fn_serialize_application`. `search_path = public, projects, org, auth`.
 Refusals, in order: `auth.uid() IS NULL` → `insufficient_privilege`; type not `freelancer` / `team` →
 `check_violation`; unknown seat → `no_data_found`; seat not `open` → `check_violation`; a team
-application whose caller fails `org.is_team_lead(p_applicant_profile_id)`, or a freelancer
-application whose `p_applicant_profile_id <> auth.uid()` → `insufficient_privilege`; a duplicate
-pending application → `unique_violation`. Unlike `apply_to_project` it does **not** check that the
+application that fails `projects.fn_assert_team_can_apply(p_applicant_profile_id)` (below — the same
+gate as `apply_to_project`, so a draft, archived or one-member team is refused here too, per
+Decision #228 (E)), or a freelancer application whose `p_applicant_profile_id <> auth.uid()` →
+`insufficient_privilege` (a freelancer then needs to be payout-ready, `PK403`); a duplicate pending
+application → `unique_violation`. Unlike `apply_to_project` it does **not** check that the
 project is `active` and discoverable, that the caller is not its owner, or that they have a freelancer
 profile, and it neither masks the note in the protected phase nor notifies the owner. Fires
 `trg_meter_application_allowance`. `EXECUTE`: `service_role` only — no client grant.

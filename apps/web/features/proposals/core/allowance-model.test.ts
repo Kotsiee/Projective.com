@@ -41,6 +41,7 @@ const STATUS: ProposalAllowanceStatus = {
 	upgrade: { planLabel: "Individual Pro", weeklyUnits: 150 },
 	standingLevel: 3,
 	standingBonus: 20,
+	teamStatus: null,
 	teamMemberCount: null,
 	canBindSeat: null,
 	serverNow: new Date(SERVER_NOW).toISOString(),
@@ -109,4 +110,9 @@ Deno.test("simulated positions keep the viewer's plan and move only the metered 
 	const team = simulateAllowance("team_small", null, SERVER_NOW)!;
 	assertStrictEquals(team.teamMemberCount, 1);
 	assertStrictEquals(team.canApply, false);
+
+	const draft = simulateAllowance("team_draft", null, SERVER_NOW)!;
+	assertStrictEquals(draft.teamStatus, "draft");
+	assertStrictEquals(draft.blockReason, "team_not_active");
+	assertStrictEquals(draft.canApply, false);
 });

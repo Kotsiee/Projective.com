@@ -34,8 +34,10 @@ export const PROJECTS_PATH = "/projects";
  *
  * `room-not-found` is carried to the engagement's own Overview rather than to the list (Decision
  * #144): the project exists, only the room address under it named nothing this viewer can enter.
+ * `teams-freelancer` is carried to `/home` by the dashboard guard when a client or an operator-mode
+ * account asks for `/teams` (Decision #228 (A)).
  */
-export type ProjectNoticeCode = "project-not-found" | "room-not-found";
+export type ProjectNoticeCode = "project-not-found" | "room-not-found" | "teams-freelancer";
 
 /**
  * The sentence each code renders.
@@ -48,6 +50,7 @@ export type ProjectNoticeCode = "project-not-found" | "room-not-found";
 const MESSAGES: Readonly<Record<ProjectNoticeCode, string>> = {
 	"project-not-found": "Project does not exist",
 	"room-not-found": "That room doesn’t exist or isn’t open to you",
+	"teams-freelancer": "Teams are for freelancer accounts",
 };
 
 /**

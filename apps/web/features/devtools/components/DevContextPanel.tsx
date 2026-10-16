@@ -28,6 +28,7 @@ import {
 	DEV_EMAIL_CONFIRMATIONS,
 	DEV_AGE_RESTRICTIONS,
 	DEV_PAYOUT_READINESS,
+	DEV_OPERATOR_MODES,
 	DEV_OPERATOR_DESKS,
 	DEV_CATALOGUE_ANALYTICS,
 	DEV_CLIENT_PIPELINES,
@@ -769,6 +770,16 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.payoutReadiness}
 						disabled={!o.enabled}
 						onChange={(payoutReadiness) => patchDevContext({ payoutReadiness })}
+					/>
+				</Field>
+
+				<Field label="Operator mode" hint="Teams persona 403">
+					<Segment
+						name="Operator mode"
+						options={DEV_OPERATOR_MODES}
+						value={o.operatorMode}
+						disabled={!o.enabled}
+						onChange={(operatorMode) => patchDevContext({ operatorMode })}
 					/>
 				</Field>
 

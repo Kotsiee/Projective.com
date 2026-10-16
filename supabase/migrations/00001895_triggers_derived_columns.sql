@@ -10,7 +10,8 @@
 -- Scope: the three tables whose schemas became reachable through PostgREST with the live discovery
 -- reads (`marketplace`, `catalogue`), and the two `org` profile owners a client once wrote
 -- directly (`org.teams`, `org.enterprises`; both are definer-only now) — see the `org` region
--- below for the audit that cleared them.
+-- below for the audit that cleared them. The `org` membership regions keep two other derived facts in
+-- step: a member's `role` and the vault projection (finance.vault_permissions).
 -- =============================================================================================
 
 DROP TRIGGER IF EXISTS trg_service_blueprints_derived ON marketplace.service_blueprints;
@@ -105,4 +106,30 @@ DROP TRIGGER IF EXISTS trg_business_members_role_sync ON org.business_members;
 CREATE TRIGGER trg_business_members_role_sync
     BEFORE INSERT OR UPDATE ON org.business_members
     FOR EACH ROW EXECUTE FUNCTION org.fn_member_role_sync();
+-- #endregion
+
+-- #region org — the vault projection's backstop (Decision #226 (e))
+-- finance.vault_permissions is derived from who holds what (org.fn_sync_vault_permissions, 00001020).
+-- The workspace RPCs sync it explicitly; these re-project it on every other write to a member's role,
+-- status or overrides, or to a role's capabilities. AFTER, so the member row (and its `role`, set by
+-- the BEFORE trigger above) is what the projection reads.
+DROP TRIGGER IF EXISTS trg_team_members_sync_vault ON org.team_members;
+CREATE TRIGGER trg_team_members_sync_vault
+    AFTER INSERT OR UPDATE OF role_id, status, granted_capabilities, revoked_capabilities ON org.team_members
+    FOR EACH ROW EXECUTE FUNCTION org.fn_trg_sync_vault_member();
+
+DROP TRIGGER IF EXISTS trg_business_members_sync_vault ON org.business_members;
+CREATE TRIGGER trg_business_members_sync_vault
+    AFTER INSERT OR UPDATE OF role_id, status, granted_capabilities, revoked_capabilities ON org.business_members
+    FOR EACH ROW EXECUTE FUNCTION org.fn_trg_sync_vault_member();
+
+DROP TRIGGER IF EXISTS trg_team_roles_sync_vault ON org.team_roles;
+CREATE TRIGGER trg_team_roles_sync_vault
+    AFTER UPDATE OF capabilities, base_preset ON org.team_roles
+    FOR EACH ROW EXECUTE FUNCTION org.fn_trg_sync_vault_role();
+
+DROP TRIGGER IF EXISTS trg_business_roles_sync_vault ON org.business_roles;
+CREATE TRIGGER trg_business_roles_sync_vault
+    AFTER UPDATE OF capabilities, base_preset ON org.business_roles
+    FOR EACH ROW EXECUTE FUNCTION org.fn_trg_sync_vault_role();
 -- #endregion

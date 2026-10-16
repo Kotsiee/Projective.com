@@ -7,6 +7,7 @@ import {
 import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
 import { isPayoutNotReady, type PayoutGateError, payoutNotReadyRefusal } from "../../core/payout-gate.ts";
 import type { ReadActor } from "../read-actor.ts";
+import { teamNotActiveRefusal } from "./apply-gate.ts";
 import { projectsDb } from "./live-support.ts";
 import { refusalFrom, type WriteOutcome, type WriteRefusal } from "./live-writes.ts";
 
@@ -88,7 +89,7 @@ export async function applyLive(
 	});
 	if (error) {
 		if (error.code === "P0002") return null;
-		return { refusal: handshakeRefusal(error, "stageId") };
+		return { refusal: teamNotActiveRefusal(error) ?? handshakeRefusal(error, "stageId") };
 	}
 	return { data: data as AppliedRow };
 }

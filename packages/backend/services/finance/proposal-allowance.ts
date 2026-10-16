@@ -170,7 +170,8 @@ function stubRow(actor: ReadActor, teamId: string | null, now: number): Proposal
 		upgrade_weekly_units: 150,
 		standing_level: 1,
 		enforced: false,
-		// The fixture world has no rosters; a named team reads as an eligible two-person team.
+		// The fixture world has no rosters; a named team reads as an eligible, published two-person team.
+		team_status: teamId ? "active" : null,
 		team_member_count: teamId ? 2 : null,
 		can_bind_seat: teamId ? true : null,
 		server_now: new Date(now).toISOString(),

@@ -42,6 +42,18 @@ Deno.test("refusalFrom: snake_case fields are camelCased; a subject prefix keys 
 	assertEquals([subject.status, subject.errors], [422, undefined]);
 });
 
+Deno.test("refusalFrom: the Teams persona gate is a 403 carrying the `persona` code", () => {
+	const res = refusalFrom({
+		code: "PK403",
+		message: "persona_not_freelancer: Teams are for freelancer accounts",
+		hint: "self",
+		details: "operator",
+	});
+	assertEquals(res.status, 403);
+	assertEquals(res.message, "Teams are for freelancer accounts.");
+	assertEquals(res.details, { reason: "persona", actor: "self", persona: "operator" });
+});
+
 Deno.test("refusalFrom: the status map", () => {
 	assertEquals(
 		refusalFrom({ code: "42501", message: "member: you cannot manage this member" }).status,

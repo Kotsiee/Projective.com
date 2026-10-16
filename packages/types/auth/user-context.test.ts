@@ -2,6 +2,7 @@ import { assertEquals } from "@std/assert";
 import {
 	type AccessTokenClaims,
 	GUEST_CONTEXT,
+	parseOperatorModeOverride,
 	PERSONAL_MEMBER_CONTEXT,
 	resolveUserContext,
 } from "./user-context.ts";
@@ -67,5 +68,36 @@ Deno.test("an absent or non-boolean restriction claim reads unrestricted", () =>
 	}
 	assertEquals(GUEST_CONTEXT.restricted, false);
 	assertEquals(PERSONAL_MEMBER_CONTEXT.restricted, false);
+});
+// #endregion
+
+// #region isOperator — operator mode, the Teams persona gate's second fact (Decision #228 (A))
+Deno.test("a token whose hook stamped operator mode resolves isOperator", () => {
+	const ctx = resolveUserContext(claims({ isFreelancer: true, isClient: true, isOperator: true }));
+	assertEquals([ctx.isFreelancer, ctx.isOperator], [true, true]);
+});
+
+Deno.test("an absent or non-boolean operator claim reads false, and an enterprise is never an operator", () => {
+	for (const value of [undefined, null, false, 1, "true"]) {
+		assertEquals(
+			resolveUserContext(claims({ isOperator: value })).isOperator,
+			false,
+			String(value),
+		);
+	}
+	assertEquals(
+		resolveUserContext(claims({ type: "enterprise", isOperator: true })).isOperator,
+		false,
+	);
+	assertEquals(GUEST_CONTEXT.isOperator, false);
+	assertEquals(PERSONAL_MEMBER_CONTEXT.isOperator, false);
+});
+
+Deno.test("the operator-mode dev override reads only `on` and `off`", () => {
+	assertEquals(parseOperatorModeOverride("on"), "on");
+	assertEquals(parseOperatorModeOverride(" off "), "off");
+	for (const raw of [undefined, null, "", "true", "ON"]) {
+		assertEquals(parseOperatorModeOverride(raw), null);
+	}
 });
 // #endregion

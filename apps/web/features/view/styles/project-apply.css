@@ -51,6 +51,11 @@
 	color: var(--text-secondary);
 }
 
+.pam__settings {
+	align-self: flex-start;
+	text-decoration: none;
+}
+
 .pam__error {
 	margin: 0;
 	font-size: var(--text-sm);

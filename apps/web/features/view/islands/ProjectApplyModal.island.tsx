@@ -8,7 +8,7 @@ import "../styles/project-apply.css";
 import "@features/proposals/styles/proposals.css";
 import type { ProjectStage } from "@projective/types/explore";
 import { HIRE_MESSAGE_MAX, type SentApplication } from "@projective/types/projects";
-import type { WorkspaceSummary } from "@projective/types/workspace";
+import { workspaceHref, type WorkspaceSummary } from "@projective/types/workspace";
 import { WorkspaceService } from "@web/features/workspaces/core/WorkspaceService.ts";
 import { AllowanceService } from "@features/proposals/core/AllowanceService.ts";
 import {
@@ -53,8 +53,9 @@ export interface ProjectApplyModalProps {
  *
  * On open, and whenever the applicant changes, it reads that applicant's allowance
  * (`GET /api/user/allowance?as=self | ?team=`). When the status says the application would be refused —
- * an enforced empty buffer or spent week, a one-member team, a team the viewer may not bind — the submit
- * stays disabled and an `AllowanceNotice` says why, with a live countdown to the next token. While
+ * an enforced empty buffer or spent week, an unpublished team (with **Open settings** to publish it), a
+ * one-member team, a team the viewer may not bind — the submit stays disabled and an `AllowanceNotice`
+ * says why, with a live countdown to the next token. While
  * enforcement is off (Decision #58's switch) the same notice says it will still go through, and submit
  * stays enabled. The server's `422` is the backstop for everything this cannot know.
  *
@@ -139,6 +140,10 @@ export default function ProjectApplyModal(
 	const roleOptions = (chosenStage?.roles ?? []).filter((r) => r.id);
 	const blocked = status ? !status.canApply : !!readError.value;
 	const canSubmit = !!chosenStage && !blocked && !reading.value;
+	const unpublishedTeamId = applicant.value === SELF ? actingTeamId : applicant.value;
+	const unpublishedTeam = status?.blockReason === "team_not_active"
+		? (teams.value ?? []).find((t) => t.id === unpublishedTeamId) ?? null
+		: null;
 
 	const applicantOptions = [
 		{ label: "Yourself", value: SELF },
@@ -340,6 +345,16 @@ export default function ProjectApplyModal(
 						)}
 
 					{snapshot.value ? <AllowanceNotice snapshot={snapshot.value} /> : null}
+					{unpublishedTeam
+						? (
+							<a
+								class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm pam__settings"
+								href={workspaceHref("team", unpublishedTeam.handle, "settings")}
+							>
+								<span class="ui-button__label">Open settings</span>
+							</a>
+						)
+						: null}
 					{readError.value ? <p class="pam__error" role="alert">{readError.value}</p> : null}
 					{error.value
 						? (

@@ -733,6 +733,49 @@ BEGIN
 END;
 $$;
 
+-- The backstop (Decision #226 (e)): the RPCs above sync explicitly, and these triggers re-project on
+-- ANY write to a member's role, status or overrides, or to a role's capabilities, so a future write
+-- path that forgets the call cannot leave a stale vault grant. Both are no-ops when the projection
+-- already matches (fn_sync_vault_permissions writes only a changed row). A departed member's row is
+-- rewritten to '{}', never deleted. Bound in 00001895.
+CREATE OR REPLACE FUNCTION org.fn_trg_sync_vault_member()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF TG_TABLE_NAME = 'team_members' THEN
+        PERFORM org.fn_sync_vault_permissions('team', NEW.team_id, NEW.user_id);
+    ELSE
+        PERFORM org.fn_sync_vault_permissions('business', NEW.business_id, NEW.user_id);
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION org.fn_trg_sync_vault_role()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    r record;
+BEGIN
+    IF TG_TABLE_NAME = 'team_roles' THEN
+        FOR r IN SELECT m.user_id FROM org.team_members m WHERE m.role_id = NEW.id AND m.status = 'active' LOOP
+            PERFORM org.fn_sync_vault_permissions('team', NEW.team_id, r.user_id);
+        END LOOP;
+    ELSE
+        FOR r IN SELECT m.user_id FROM org.business_members m WHERE m.role_id = NEW.id AND m.status = 'active' LOOP
+            PERFORM org.fn_sync_vault_permissions('business', NEW.business_id, r.user_id);
+        END LOOP;
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
 -- Move a member's workspace override so their EFFECTIVE set does (p_want) or does not hold a
 -- capability, recording it as the smallest honest override: a grant only when the role lacks it, a
 -- revocation only when the role has it. The Spend-policy editor and the member drawer both write
@@ -947,6 +990,41 @@ AS $$
      WHERE up.user_id = p_user;
 $$;
 
+-- Teams are freelancer-only (Decision #228 (A)): a client, or a freelancer in operator mode, never
+-- creates, joins or is invited to one. "Is a freelancer" is the row finance.fn_freelancer_payout_ready
+-- reads (org.freelancer_profiles) AND the live persona flag: dropping the persona (a scheduled removal)
+-- keeps the row but clears is_freelancer, and that account is a client. Asked before the earning gate,
+-- so the refusal names the real reason. HINT says whose persona it is — `self` or `other` (an invitee,
+-- a successor); DETAIL says which side they are on — `client` or `operator`.
+CREATE OR REPLACE FUNCTION org.fn_assert_team_persona(p_user uuid)
+RETURNS void
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_freelancer boolean;
+    v_operator boolean;
+BEGIN
+    SELECT u.is_freelancer AND EXISTS (SELECT 1 FROM org.freelancer_profiles fp WHERE fp.user_id = u.user_id),
+           u.is_operator IS TRUE
+      INTO v_freelancer, v_operator
+      FROM org.users_public u
+     WHERE u.user_id = p_user;
+    IF v_freelancer IS TRUE AND NOT v_operator THEN
+        RETURN;
+    END IF;
+    RAISE EXCEPTION USING
+        ERRCODE = 'PK403',
+        MESSAGE = 'persona_not_freelancer: ' || CASE WHEN p_user = auth.uid()
+            THEN 'Teams are for freelancer accounts'
+            ELSE 'only freelancer accounts can join a team' END,
+        HINT = CASE WHEN p_user = auth.uid() THEN 'self' ELSE 'other' END,
+        DETAIL = CASE WHEN v_freelancer IS TRUE AND v_operator THEN 'operator' ELSE 'client' END;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION org.create_workspace(p_kind text, p_name text, p_handle text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -980,8 +1058,10 @@ BEGIN
     IF length(v_name) < 2 OR length(v_name) > 80 THEN
         RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'name: give it a name between 2 and 80 characters';
     END IF;
-    -- A team earns as one; everyone in it must be payable before it exists (Decision #196).
+    -- A team is a freelancer persona made multi-seat (Decision #228 (A)), and it earns as one:
+    -- everyone in it must be payable before it exists (Decision #196).
     IF p_kind = 'team' THEN
+        PERFORM org.fn_assert_team_persona(v_uid);
         PERFORM finance.fn_assert_payout_ready('freelancer', v_uid);
     END IF;
 
@@ -1302,6 +1382,10 @@ BEGIN
         IF EXISTS (SELECT 1 FROM org.fn_member_seat(p_kind, p_entity, v_target)) THEN
             RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'handle: they are already a member';
         END IF;
+        -- A named invitee must be able to accept (Decision #228 (A)); an email one is asked at accept.
+        IF p_kind = 'team' THEN
+            PERFORM org.fn_assert_team_persona(v_target);
+        END IF;
     ELSIF v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' OR length(v_email) > 160 THEN
         RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'email: enter a valid email address';
     END IF;
@@ -1418,6 +1502,7 @@ BEGIN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: finish setting up your account first';
     END IF;
     IF v_kind = 'team' THEN
+        PERFORM org.fn_assert_team_persona(v_uid);
         PERFORM finance.fn_assert_payout_ready('freelancer', v_uid);
     END IF;
     IF EXISTS (SELECT 1 FROM org.fn_role_of_entity(v_kind, v_entity, v_role) r WHERE r.archived) THEN
@@ -1894,6 +1979,13 @@ BEGIN
     END IF;
     IF v_successor_user IS NULL OR v_successor_status <> 'active' OR v_successor_user = v_uid THEN
         RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'successor: choose another active member';
+    END IF;
+    -- A team's withdrawer and its verification follow the owner (§16), so its successor must be a
+    -- freelancer account (Decision #228 (A)) who can be paid (Decision #196). Persona first, so the
+    -- refusal names the real reason.
+    IF p_kind = 'team' THEN
+        PERFORM org.fn_assert_team_persona(v_successor_user);
+        PERFORM finance.fn_assert_payout_ready('freelancer', v_successor_user);
     END IF;
 
     -- Order matters: the one-active-owner index is not deferrable, so the outgoing owner is demoted

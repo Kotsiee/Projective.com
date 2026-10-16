@@ -1,6 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { refuseIfPayoutNotReady } from "@web/utils/payout-gate.ts";
+import { refuseIfSimulatedOperator } from "@web/utils/operator-mode.ts";
 import { CreateWorkspaceInputSchema } from "@projective/types/workspace";
 import {
 	guestRefusal,
@@ -27,6 +28,8 @@ export const handler = define.handlers({
 		const parsed = CreateWorkspaceInputSchema.safeParse(await ctx.req.json().catch(() => null));
 		if (!parsed.success) return invalidPayload(parsed.error);
 		if (parsed.data.kind === "team") {
+			const operator = refuseIfSimulatedOperator(ctx.req);
+			if (operator) return operator;
 			const unpayable = refuseIfPayoutNotReady(ctx.req);
 			if (unpayable) return unpayable;
 		}

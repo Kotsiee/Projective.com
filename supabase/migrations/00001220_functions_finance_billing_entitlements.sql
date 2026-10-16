@@ -461,7 +461,8 @@ $$;
 -- the week and paying out the lazy drip are writes, so this is VOLATILE, and reading it is also what keeps
 -- the buffer current. Everything the meter, the countdown and the pre-flight gate need comes back in one
 -- object: the period, the drip dials, the plan, the earned rung, the enforcement switch, and — for a team —
--- the active head-count and whether the caller may bind the team to work (`bind_seat`).
+-- its lifecycle status, the active head-count and whether the caller may bind the team to work
+-- (`bind_seat`). It is a report: `projects.fn_assert_team_can_apply` is what refuses.
 CREATE OR REPLACE FUNCTION finance.get_proposal_allowance(p_team_id uuid DEFAULT NULL)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -478,6 +479,7 @@ DECLARE
     v_plan finance.plans%ROWTYPE;
     v_members integer;
     v_can_bind boolean;
+    v_team_status text;
     v_up_label text;
     v_up_weekly integer;
 BEGIN
@@ -498,6 +500,7 @@ BEGIN
         FROM org.team_members m
         WHERE m.team_id = p_team_id AND m.status = 'active';
         v_can_bind := org.is_team_lead (p_team_id);
+        SELECT t.status INTO v_team_status FROM org.teams t WHERE t.id = p_team_id;
     END IF;
 
     v_row := finance.fn_current_allowance (v_subject_type, v_subject_id, 'weekly_proposals');
@@ -542,6 +545,7 @@ BEGIN
         'upgrade_weekly_units', v_up_weekly,
         'standing_level', finance.fn_subject_standing_level (v_subject_type, v_subject_id),
         'enforced', COALESCE(v_enforced, false),
+        'team_status', v_team_status,
         'team_member_count', v_members,
         'can_bind_seat', v_can_bind,
         'server_now', now()
@@ -573,7 +577,7 @@ BEGIN
     IF v_actor IS NULL THEN
         RAISE EXCEPTION 'Sign in to apply to a project.' USING ERRCODE = 'insufficient_privilege';
     END IF;
-    IF p_reason NOT IN ('weekly_exhausted', 'buffer_exhausted', 'team_too_small', 'missing_permission') THEN
+    IF p_reason NOT IN ('weekly_exhausted', 'buffer_exhausted', 'team_too_small', 'team_not_active', 'missing_permission') THEN
         RAISE EXCEPTION 'Unknown proposal denial reason %.', p_reason USING ERRCODE = '22023';
     END IF;
     IF p_team_id IS NOT NULL AND NOT org.is_active_team_member (p_team_id) THEN

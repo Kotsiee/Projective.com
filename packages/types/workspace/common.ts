@@ -301,3 +301,45 @@ export function kindFromPath(pathname: string): WorkspaceKind | null {
 	return null;
 }
 // #endregion
+
+// #region Persona gate
+/**
+ * Teams are freelancer-only (Decision #228 (A)): `org.fn_assert_team_persona` refuses a client or an
+ * operator-mode account at every door that creates a team or seats someone in one. The database is the
+ * authority; these are the shapes the API and the islands share for its refusal.
+ */
+
+/** The SQLSTATE the gate raises (shared with the other verification refusals). */
+export const TEAM_PERSONA_SQLSTATE = "PK403";
+
+/** The database message's prefix. */
+export const TEAM_PERSONA_DB_REASON = "persona_not_freelancer";
+
+/** The refusal code on the API envelope (`details.reason`), so a form can show its own sentence. */
+export const TEAM_PERSONA_REASON = "persona";
+
+/** The refusal a person gets about themselves, used by the API mirror and as the fallback copy. */
+export const TEAM_PERSONA_REFUSAL = "Teams are for freelancer accounts.";
+
+/** Whose persona was refused: `self` (the caller) or `other` (an invitee, a successor). The HINT. */
+export const TeamPersonaActor = z.enum(["self", "other"]);
+export type TeamPersonaActor = z.infer<typeof TeamPersonaActor>;
+
+/** Which side the refused account is on — a `client`, or a freelancer in `operator` mode. The DETAIL. */
+export const TeamPersonaSide = z.enum(["client", "operator"]);
+export type TeamPersonaSide = z.infer<typeof TeamPersonaSide>;
+
+/** `details` of a persona refusal. */
+export const TeamPersonaDetailsSchema = z.object({
+	reason: z.literal(TEAM_PERSONA_REASON),
+	actor: TeamPersonaActor,
+	persona: TeamPersonaSide,
+});
+export type TeamPersonaDetails = z.infer<typeof TeamPersonaDetailsSchema>;
+
+/** Read a refusal's `details` as the persona gate's, or `null` when it is any other refusal. */
+export function readTeamPersonaDetails(details: unknown): TeamPersonaDetails | null {
+	const parsed = TeamPersonaDetailsSchema.safeParse(details);
+	return parsed.success ? parsed.data : null;
+}
+// #endregion

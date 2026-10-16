@@ -160,7 +160,9 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   is visible only when the active persona is a Freelancer profile, and is never surfaced to a
   Client/Business persona. `/teams*`, the Create Team action and every team write are
   freelancer-only: client and operator (`org.users_public.is_operator = true`) accounts are refused
-  in the app **and** the database (Decision #228 (A)).
+  in the app **and** the database (Decision #228 (A)). A member acting as a team keeps its console
+  whatever their personal persona; anyone else who types a `/teams` address is sent to `/home`, which
+  says why. A Business stays open to any adult account.
 - **Additive, Unlockable Personas:** A user's persona is not fixed at signup. Someone who onboarded
   as a Client/Operator can unlock a Freelancer profile at any time from the **Become a Partner**
   conversion page (`/become-partner`) — the freelancer suite layers on top of the same identity and
@@ -1387,7 +1389,9 @@ apply to every posting, the average freelancer is less likely to be chosen and t
 is worse. A ceiling therefore exists on **every** tier — a paid plan raises it, never removes it, and
 proposals are never sold à la carte. Withdrawing a proposal returns its unit.
 
-An entity must hold at least **two members** before it may send proposals as a team.
+An entity must be **published** (`active` — a draft or archived team sends nothing) and hold at least
+**two members** before it may send proposals as a team, on every application path — a stage, a role
+or a posted seat (Decision #228 (E)).
 
 How it reads to the person sending them:
 
@@ -1401,9 +1405,10 @@ How it reads to the person sending them:
   empty, the way to accelerate (a paid plan) is offered; it is never the only way forward.
 - **Told before, not after.** The application form checks the allowance before it is sent and says
   plainly what stands in the way — the pacing limit with a live countdown to the next token, the
-  spent week with its reset, a team with fewer than two members, or a member without the authority
-  to commit the team to work. While the platform runs the allowance as a meter only, the form still
-  says so but lets the application through.
+  spent week with its reset, a team that is not yet published (with a way to its settings), a team
+  with fewer than two members, or a member without the authority to commit the team to work. While
+  the platform runs the allowance as a meter only, the form still says so but lets a metered
+  application through; the three team rules refuse regardless.
 - **Withdrawal returns the week, not the token.** Withdrawing a pending proposal returns its weekly
   unit at once; the buffer token stays spent, because a token that came back would let a sender
   apply, withdraw and apply again to the same client without limit.
@@ -1700,7 +1705,8 @@ This model allows for **Elastic Squads**:
   custom role or a per-member grant may — so an ordinary member cannot bind the team to a seat. An
   individual freelancer may only apply as themselves. (Enforced by `org.is_team_lead`, which since
   2026-09-28 asks the workspace permission engine for `bind_seat` rather than a role-name list,
-  inside `projects.apply_to_seat`.)
+  inside `projects.fn_assert_team_can_apply` — the one team gate both `projects.apply_to_seat` and
+  `projects.apply_to_project` run, which also refuses an unpublished or sub-two-member team.)
 
 ---
 

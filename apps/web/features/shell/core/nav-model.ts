@@ -1,9 +1,9 @@
 import type { UserContext } from "@projective/types/auth";
 import { PERSONAL_MEMBER_CONTEXT } from "@projective/types/auth";
-import type { IconName } from "./nav-icons.tsx";
+import type { IconName } from "./nav-icon-names.ts";
 import { getAccountCapabilities, getOfferings, getRecentWorkspaces } from "./nav-fixtures.ts";
 import { isExploreSurface } from "./explore-surface.ts";
-import { isRestrictedPath } from "./restricted-surfaces.ts";
+import { canUseTeams, isRestrictedPath } from "./restricted-surfaces.ts";
 
 /**
  * nav-model — the single source of truth for the global sidebar's destinations, their glyphs, active
@@ -61,7 +61,8 @@ function isActive(path: string, base: string): boolean {
  * Role/context tailoring (chrome only — never an access decision; the server re-checks under RLS):
  *  - **Files** → everyone, ungated. An asset hub is not a side of the market.
  *  - **Products & Services** → freelancers and teams only (a seller surface).
- *  - **Teams** → freelancers and teams only.
+ *  - **Teams** → {@link canUseTeams}: a freelancer outside operator mode, or a team context
+ *    (Decision #228 (A)).
  *  - **Businesses** → only when the account has enabled a business account (independent of seller
  *    capability), or when acting inside a `business` context.
  *  - **Analytics** (replaces the generic Dashboard) → freelancers, teams, businesses, or anyone who
@@ -91,7 +92,7 @@ export function globalNav(
 	/** Seller-surface actors: individual freelancers or a team context. */
 	const isSeller = isFreelancer || isTeamCtx;
 	const showServices = isSeller;
-	const showTeams = isSeller;
+	const showTeams = canUseTeams(context);
 	const showBusinesses = caps.businessAccountEnabled || isBusinessCtx;
 	const showAnalytics = isFreelancer || isTeamCtx || isBusinessCtx || belongsToOrg;
 	// #endregion
@@ -207,7 +208,8 @@ export function globalNav(
 				children: offeringSublinks(),
 			}
 			: null,
-		// Teams — freelancers and teams only; disclosure is STRICTLY teams.
+		// Teams — the freelancer persona outside operator mode, or a team context; disclosure is STRICTLY
+		// teams.
 		showTeams
 			? {
 				key: "teams",
