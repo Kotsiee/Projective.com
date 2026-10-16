@@ -196,6 +196,7 @@ function profile(id: string, handle: string, name: string): CatalogInputs["profi
 		standing_label: "New",
 		discovery_weight_bp: 10_000,
 		workload_cap: 10,
+		verification_stamp: "none",
 	};
 }
 

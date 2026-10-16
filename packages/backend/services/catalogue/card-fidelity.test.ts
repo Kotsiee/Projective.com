@@ -1,7 +1,7 @@
 import { assert, assertEquals } from "@std/assert";
 import { listingCardItem } from "@projective/types/explore";
 import { resolveSkill } from "../explore/skills.ts";
-import { assemble } from "../explore/live-catalog.ts";
+import { assemble, stampOf } from "../explore/live-catalog.ts";
 import { metricsOf, projectDetail } from "./live-catalogue.ts";
 import {
 	FIXTURE_LISTINGS,
@@ -81,6 +81,7 @@ function workspaceDetail(fixture: (typeof FIXTURE_LISTINGS)[number]) {
 			avatar: "",
 			kind: owner.entity_type,
 			verified: owner.verified,
+			verificationStamp: stampOf(owner.verification_stamp),
 		},
 		metrics: metricsOf(fixture.listing, fixture.blueprint ?? fixture.product, [], (minor) => minor),
 		skills: fixture.skillIds.map((id) => resolveSkill(label.get(id) ?? "")),

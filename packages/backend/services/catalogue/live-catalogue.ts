@@ -21,7 +21,7 @@ import {
 } from "@projective/types/catalogue";
 import type { ExploreOwner, SkillRef } from "@projective/types/explore";
 import type { MediaRef } from "@projective/types/files";
-import { CreateCategory } from "@projective/types/org";
+import { CreateCategory, VerificationStampSchema } from "@projective/types/org";
 import { IntakeFieldSchema } from "@projective/types/services";
 import { PLATFORM_BASE_CURRENCY, toMajorUnits } from "@projective/types/finance";
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
@@ -532,7 +532,7 @@ function detailOf(
 /** The owner a console listing credits: its team when team-owned, else the seller themselves. */
 async function ownerFor(scope: Scope): Promise<ExploreOwner> {
 	const { data } = await getAnonClient().schema("org").from("profiles_index")
-		.select("handle, name, avatar_bucket, avatar_path, entity_type, verified")
+		.select("handle, name, avatar_bucket, avatar_path, entity_type, verified, verification_stamp")
 		.eq("entity_id", scope.teamId ?? scope.userId)
 		.maybeSingle();
 	const row = data as
@@ -543,6 +543,7 @@ async function ownerFor(scope: Scope): Promise<ExploreOwner> {
 			avatar_path: string | null;
 			entity_type: ExploreOwner["kind"];
 			verified: boolean;
+			verification_stamp: string | null;
 		}
 		| null;
 	return {
@@ -551,6 +552,7 @@ async function ownerFor(scope: Scope): Promise<ExploreOwner> {
 		avatar: row ? publicObjectUrl(row.avatar_bucket, row.avatar_path) ?? "" : "",
 		kind: row?.entity_type ?? "freelancer",
 		verified: row?.verified ?? false,
+		verificationStamp: VerificationStampSchema.safeParse(row?.verification_stamp).data,
 	};
 }
 

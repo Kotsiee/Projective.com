@@ -51,7 +51,7 @@ export function ProfileDetail(
 				eyebrow={[ENTITY_LABEL[item.type]]}
 				title={item.title}
 				titleId={titleId}
-				badge={item.owner.verified && <VerifiedBadge size="md" kind={item.owner.kind} />}
+				badge={item.owner.verified && <VerifiedBadge size="md" owner={item.owner} />}
 			>
 				<InlineList items={byline} meta />
 			</DetailHead>
