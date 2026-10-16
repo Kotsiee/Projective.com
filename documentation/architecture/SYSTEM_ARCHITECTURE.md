@@ -1744,7 +1744,7 @@ full decode), and variant bytes are not metered against the owner's storage quot
 
 ### Teams & Businesses — the workspace console (live-only)
 
-`/teams` and `/businesses` are **live-only** since 2026-09-28 (root `CLAUDE.md` §8 Decision #122),
+`/teams` and `/businesses` are **live-only** since 2026-09-28 (root `CLAUDE.md` §8 Decision #61),
 like the profile: the fixture corpus (`workspace-fixtures.ts`), its six Dev Context Switcher axes and
 the `WORKSPACE_BACKEND_LIVE` gate are gone. The fat `WorkspaceBackendService`
 (`@server/services/workspace/`) is async, takes the caller's `ReadActor`, answers a guest `401`, and

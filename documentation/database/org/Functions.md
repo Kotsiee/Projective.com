@@ -576,7 +576,7 @@ a crafted request and the row.
 **Migration:**
 [`00001020_functions_org_entities.sql`](../../../supabase/migrations/00001020_functions_org_entities.sql)
 §6–§16 · **Grants:** [`00002510`](../../../supabase/migrations/00002510_permissions_function_grants.sql)
-(the workspace region at the end) · **Decision:** root `CLAUDE.md` §8 #122 (Teams & Businesses goes
+(the workspace region at the end) · **Decision:** root `CLAUDE.md` §8 #61 (Teams & Businesses goes
 live). Tables: [Tables.md § Workspace membership](Tables.md#-workspace-membership-teams--businesses).
 
 Every function below pins `SET search_path = ''` and is `SECURITY DEFINER`: `org.business_profiles`

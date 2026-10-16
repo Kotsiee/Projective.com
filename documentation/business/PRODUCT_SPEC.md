@@ -158,7 +158,9 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   projects without setting up a legal entity or a joint bank account.
 - **Freelancer-Only Space:** The Teams workspace belongs to the freelancer side of the platform. It
   is visible only when the active persona is a Freelancer profile, and is never surfaced to a
-  Client/Business persona.
+  Client/Business persona. `/teams*`, the Create Team action and every team write are
+  freelancer-only: client and operator (`org.users_public.is_operator = true`) accounts are refused
+  in the app **and** the database (Decision #228 (A)).
 - **Additive, Unlockable Personas:** A user's persona is not fixed at signup. Someone who onboarded
   as a Client/Operator can unlock a Freelancer profile at any time from the **Become a Partner**
   conversion page (`/become-partner`) — the freelancer suite layers on top of the same identity and
@@ -2972,13 +2974,15 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `[section]`              | One section: account · profile · workspaces · language & region · appearance · notifications · messaging · scheduling & calls · billing |
 |               |                           | `verification`           | Verification & payouts — identity check, payout account, business verification                 |
 |               |                           | `integrations`           | Connected cloud-storage drives (Google Drive, Dropbox, Frame.io, custom S3)                    |
-|               | `/teams`                  | `index`                  | Show all teams                                                                                 |
+|               | `/teams`                  | `index`                  | Show all teams (freelancer persona only — Decision #228 (A))                                   |
 |               | `/teams/create`           |                          | Create a new team                                                                              |
-|               | `/teams/[team id]`        | `index`                  | View team details                                                                              |
-|               |                           | `members`                | View team members                                                                              |
-|               |                           | `settings`               | Edit team settings                                                                             |
-|               |                           | `projects`               | View team projects                                                                             |
-|               |                           | `vault`                  | Shared wallet access                                                                           |
+|               | `/teams/[teamHandle]`     | `index`                  | The console's **Overview** — addressed by the team's `@handle`; a uuid or wrong-case handle **308→** the handle ([ROUTING.md](../architecture/ROUTING.md) team rows, Decision #228 (B)) |
+|               |                           | `members`                | Members                                                                                        |
+|               |                           | `projects`               | Projects                                                                                       |
+|               |                           | `payouts`                | Payouts                                                                                        |
+|               |                           | `roles`                  | Roles                                                                                          |
+|               |                           | `settings`               | Settings                                                                                       |
+|               |                           | _secondary group_        | The other modules stay reachable in the lane's secondary group: `catalogue` · `calendar` · `messages` · `invitations` · `finance` (the Team Vault) · `analytics` · `standing` · `profile` · `verification` (Decision #228 (C)) |
 |               | `/analytics`              | `index`                  | Performance data                                                                               |
 |               | `/wallet`                 | `index`                  | **The command centre.** A balance hero (total · available · in escrow · clearing) with every money action, over a sheet of accounts, cash flow, upcoming obligations, recent transactions and payment methods. A middle-nav lane links the wallet's pages and carries every money action. The retired deep pages `activity` **308→** `analytics`; `payouts`, `funding`, `access`, `methods` **308→** overview sections |
 |               |                           | `transactions`           | The full ledger, newest first, paged, with a CSV export                                         |

@@ -45,7 +45,7 @@ Before writing code:
      documentation/CLAUDE.md, packages/ui/CLAUDE.md, documentation/database/CLAUDE.md when SQL
      changes), then documentation/reference/guardrails.md and documentation/reference/pr-checklist.md.
   2. Read documentation/architecture/TEAMS_AUDIT.md — the finding IDs cited below — and Decision
-     #226 (+ #227 once T0 has landed) in documentation/reference/decisions/decisions-122-126.md.
+     #226 (+ #228 once T0 has landed) in documentation/reference/decisions/decisions-122-126.md.
   3. Grep documentation/reference/decisions/README.md for the surface you touch and read the
      decision files it names (at minimum #61, #154, #196, #208, #222, #224).
   4. Teams and Businesses share ONE implementation (WorkspaceKind, Decision #61). Every UI change
@@ -130,12 +130,12 @@ Commit on the branch you were given with a clear message; do not open a PR unles
 ### T0 — Record the owner rulings and correct the stale spec rows
 
 ```text
-PROMPT T0: Decision #227 — Teams owner rulings, and the factual spec corrections
+PROMPT T0: Decision #228 — Teams owner rulings, and the factual spec corrections
 
 ROLE: Documentation steward. Docs only; no code.
 
 CONTEXT: The Teams rebuild brief (2026-10-16) rules several questions Decision #226 left open.
-Record them once so every later prompt cites #227 instead of re-arguing them.
+Record them once so every later prompt cites #228 instead of re-arguing them.
 
 FILES:
   - documentation/reference/decisions/decisions-122-126.md (append row 227)
@@ -146,7 +146,7 @@ FILES:
   - documentation/architecture/SYSTEM_ARCHITECTURE.md (:1747), documentation/database/org/Functions.md
     (:579), documentation/database/org/Tables.md (:226) — decision citation only
 
-SPEC — Decision #227 records these OWNER RULINGS (quote the brief as the source):
+SPEC — Decision #228 records these OWNER RULINGS (quote the brief as the source):
   (A) Persona: /teams*, the Create Team action and every team write are freelancer-only. Client and
       operator (org.users_public.is_operator = true) accounts are refused in the app AND the
       database. RESOLVES #226 (g).
@@ -162,7 +162,7 @@ SPEC — Decision #227 records these OWNER RULINGS (quote the brief as the sourc
       both apply_to_project and apply_to_seat.
   (F) Split templates are writable (finance.save_split_rule); dust stays with the Team Vault.
   (G) The DataTable in @projective/ui/display is "the Table" the brief names (Decision #224).
-  Still OPEN after #227 (list them; later prompts stop on them): #226 (a) Contributor role,
+  Still OPEN after #228 (list them; later prompts stop on them): #226 (a) Contributor role,
   (b) lead vs edit_profile, (c) restore target, (d) which templates are Pro-only, (f) the team
   member preset, (h) team W_i column.
 
@@ -190,7 +190,7 @@ ACCEPTANCE:
 ```text
 PROMPT B1: Persona gate — Teams are freelancer-only, refused for client and operator accounts
 
-ROLE: Full-stack engineer (Postgres + Fresh middleware). Audit P2, P3, P4, P5; Decision #227 (A).
+ROLE: Full-stack engineer (Postgres + Fresh middleware). Audit P2, P3, P4, P5; Decision #228 (A).
 
 FILES:
   - supabase/migrations/00001020_functions_org_entities.sql (new helper + calls in
@@ -251,7 +251,7 @@ ACCEPTANCE:
 ```text
 PROMPT B2: Team applications refuse non-active teams and teams under two members
 
-ROLE: Postgres engineer. Audit A3, A4; Decision #227 (E); Decision #154.
+ROLE: Postgres engineer. Audit A3, A4; Decision #228 (E); Decision #154.
 
 FILES:
   - supabase/migrations/00001130_functions_projects_stages.sql (apply_to_project ~:980-1050,
@@ -342,7 +342,7 @@ ACCEPTANCE:
 ```text
 PROMPT B4: Split templates become writable — finance.save_split_rule end to end
 
-ROLE: Full-stack engineer (finance). Audit F11, §4.4; Decision #227 (F); open #226 (d).
+ROLE: Full-stack engineer (finance). Audit F11, §4.4; Decision #228 (F); open #226 (d).
 
 🧑 DECISION — stop and ask before step 6: which templates are Pro-only ("Advanced vault splits",
 documentation/business/finance-model.md:482)? Recommend: co_op free; finders_fee and
@@ -436,7 +436,7 @@ ACCEPTANCE:
 ```text
 PROMPT B6: uuid → handle answers 308; the console's primary views lead the module registry
 
-ROLE: Fresh routing engineer. Audit §4.1; Decision #227 (B), (C); ROUTING.md rows 98-101.
+ROLE: Fresh routing engineer. Audit §4.1; Decision #228 (B), (C); ROUTING.md rows 98-101.
 
 FILES:
   - apps/web/features/workspaces/core/workspace-route.tsx (consoleOutcome :86-110)
@@ -568,7 +568,7 @@ ACCEPTANCE:
 ```text
 PROMPT U2: Tier 2 becomes a first-class tone; LaneCreateButton renders monochrome on every lane
 
-ROLE: Design-system engineer. Audit D22-D24; Decision #227 (D); DESIGN_SYSTEM §B.8.1, §D.7.7.
+ROLE: Design-system engineer. Audit D22-D24; Decision #228 (D); DESIGN_SYSTEM §B.8.1, §D.7.7.
 
 FILES:
   - packages/ui/fields/components/Button.tsx (+ its CSS), packages/ui/fields/mod.ts
@@ -752,7 +752,7 @@ ACCEPTANCE:
 PROMPT L1: WorkspaceLane rebuilt as four zones — header strip · primary views · context controls ·
 docked footer rig
 
-ROLE: Frontend engineer (navigation). Audit D23, D17 (lane), §3.1 lane rows; Decisions #227 (C),
+ROLE: Frontend engineer (navigation). Audit D23, D17 (lane), §3.1 lane rows; Decisions #228 (C),
 (D); needs B6, U1, U2, W1.
 
 FILES:
@@ -1313,7 +1313,7 @@ FILES:
 
 SPEC:
   - Rollup, not restatement (documentation/CLAUDE.md rule 2): link to the SSOT row.
-  - Every #226 flag ends Resolved (by #227 or a later ruling) or explicitly Open with its owner.
+  - Every #226 flag ends Resolved (by #228 or a later ruling) or explicitly Open with its owner.
 
 ACCEPTANCE:
   - grep -rn "Contributor" documentation/business/PRODUCT_SPEC.md → only in the ruled form.
@@ -1336,7 +1336,7 @@ STEPS:
      client, operator-mode freelancer, unready freelancer, team owner, team admin, team lead, team
      member, minor. For each: visit /teams, /teams/create, every primary module, a forbidden module,
      the uuid URL of a team, and the team's /:handle. Assert redirects (303/308), refusals and the
-     visible controls against TEAMS_AUDIT §1 and Decision #227.
+     visible controls against TEAMS_AUDIT §1 and Decision #228.
   3. Design gates per page at 1440/900/390 × light/dark/high-contrast × data-motion reduced:
      - count filled buttons per [data-region] (or per landmark/section) ≤ 1 (tier-1 + tier-2 pair
        allowed);
