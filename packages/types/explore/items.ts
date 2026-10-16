@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ImagePlaceholderSchema } from "../files/metadata.ts";
 import { MediaDimensionsSchema, showcaseAspectOf } from "../files/aspect.ts";
 import type { ShowcaseAspect } from "../files/aspect.ts";
+import { VerificationStampSchema } from "../org/standing.ts";
 
 /**
  * explore.items — the Zod SSOT for the discovery domain shapes (freelancers, teams, users,
@@ -101,6 +102,13 @@ export const ExploreOwnerSchema = z.object({
 	avatarPlaceholder: ImagePlaceholderSchema.optional(),
 	kind: z.enum(["user", "freelancer", "team", "business"]),
 	verified: z.boolean().optional(),
+	/**
+	 * The owner's verification authority — the same `org.entity_standing` / KYB derivation the profile
+	 * read (`org.get_profile_view`) uses, projected by `org.profiles_index`, so a card draws the crest
+	 * the owner's profile draws. Absent when the producer cannot see it; renderers then fall back to
+	 * `stampForVerifiedOwner` (Decision #155(g)).
+	 */
+	verificationStamp: VerificationStampSchema.optional(),
 });
 export type ExploreOwner = z.infer<typeof ExploreOwnerSchema>;
 // #endregion

@@ -47,6 +47,12 @@ FROM org.business_members bm
 -- same rule as `org.get_public_profile`: a seller with no computed row yet reads as level 1 ("New"),
 -- the rung every seller starts on, and a buyer-only entity carries none at all.
 --
+-- The verification crest (`verification_stamp`, Decision #155) is projected under the SAME rule as
+-- `org.get_profile_view`: a person's stored `org.entity_standing.verification_stamp` (read whether or
+-- not they sell — the stamp is an identity fact), a business's `corporate_verified` from its own KYB,
+-- and none for a team. A card, a review byline and a listing's seller line therefore draw the crest
+-- the owner's profile hero draws, instead of guessing one from `verified` and the kind.
+--
 -- Columns are APPENDED after the original set, never reordered: `CREATE OR REPLACE VIEW` may only add
 -- trailing columns, so reordering would make this file unappliable over a database that already has
 -- the view.
@@ -133,7 +139,11 @@ u.active_project_count,
         (SELECT (pp.value #>> '{}')::numeric FROM security.platform_params pp
           WHERE pp.key = 'global_workload_cap_default'),
         10.00
-    ) END::numeric as workload_cap
+    ) END::numeric as workload_cap,
+    COALESCE((
+        SELECT es_v.verification_stamp FROM org.entity_standing es_v
+        WHERE es_v.subject_type = 'freelancer'::org.standing_subject AND es_v.subject_id = u.user_id
+    ), 'none') as verification_stamp
 FROM org.users_public u
     LEFT JOIN org.freelancer_profiles f ON u.user_id = f.user_id
     LEFT JOIN org.entity_standing es ON u.is_freelancer
@@ -202,7 +212,9 @@ b.active_project_count,
     NULL::smallint as standing_level,
     NULL::text as standing_label,
     NULL::integer as discovery_weight_bp,
-    NULL::numeric as workload_cap
+    NULL::numeric as workload_cap,
+    CASE WHEN b.kyb_status = 'verified'::finance.kyc_status
+        THEN 'corporate_verified' ELSE 'none' END as verification_stamp
 FROM org.business_profiles b
     LEFT JOIN files.items fa ON fa.id = b.logo_file_id AND fa.visibility = 'public' AND fa.deleted_at IS NULL
     LEFT JOIN files.items fb ON fb.id = b.banner_file_id AND fb.visibility = 'public' AND fb.deleted_at IS NULL
@@ -271,7 +283,9 @@ t.active_project_count,
     ) * GREATEST(
         (SELECT COUNT(*) FROM org.team_members tm WHERE tm.team_id = t.id AND tm.status = 'active'),
         1
-    ))::numeric as workload_cap
+    ))::numeric as workload_cap,
+    -- A team holds no verification of its own; its members' crests are their own.
+    'none'::text as verification_stamp
 FROM org.teams t
     LEFT JOIN org.entity_standing es ON es.subject_type = 'team'::org.standing_subject AND es.subject_id = t.id
     LEFT JOIN org.standing_levels sl ON sl.level = COALESCE(es.level, 1)

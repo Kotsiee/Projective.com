@@ -79,7 +79,7 @@ export function ArticleViewScreen(
 						/>
 						<span class="art-author__name">
 							{owner.name}
-							{owner.verified ? <VerifiedBadge size="sm" kind={owner.kind} /> : null}
+							<VerifiedBadge owner={owner} size="sm" />
 						</span>
 					</a>
 					<span class="art-header__sep" aria-hidden="true" />

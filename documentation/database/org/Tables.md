@@ -838,7 +838,7 @@ may only add trailing columns):
 | `city`                              | The location line's city.                                                                            |
 | `avatar_bucket` / `avatar_path`     | The avatar's storage object — only for a file that is itself `public`. Never a URL: the URL is a deployment fact built by `packages/backend/core/storage-url.ts`. |
 | `banner_bucket` / `banner_path`     | Same, for the banner.                                                                               |
-| `verified`                          | The verified crest.                                                                                  |
+| `verified`                          | KYC/KYB passed (the "Verified only" filter); the crest drawn is `verification_stamp`.                                                                                  |
 | `skills`                            | `org.skills` slugs.                                                                                  |
 | `workload`                          | Current workload intensity (the card's capacity meter).                                              |
 | `joined_at`                         |                                                                                                      |
@@ -849,6 +849,7 @@ may only add trailing columns):
 | `standing_level` / `standing_label` | _(appended 2026-09-23)_ A SELLER's earned Standing rung (a freelancer or a team) from `org.entity_standing` joined to `org.standing_levels`. `org.entity_standing` is readable only by a signed-in caller, so this is how a guest sees the rung a listing and a card print. Same rule as `org.get_public_profile`: a seller with no computed row reads as level 1 ("New"); a buyer-only account and a business carry NULL. |
 | `discovery_weight_bp`               | _(appended 2026-10-12, Decision #178)_ The seller's rung's discovery multiplier (`org.standing_levels.discovery_weight_bp`, 10000 = 1.0×), which scales their discovery score. NULL for a buyer and a business. |
 | `workload_cap`                      | _(appended 2026-10-12, Decision #178)_ The Global Intensity Cap `workload` is measured against: a person's `max_workload_intensity`, else `security.platform_params.global_workload_cap_default` (read here because a guest cannot read that table); a team's is its active members' defaults combined, since the W_i cap is per person. NULL for a buyer and a business. The discovery card's meter and the ranking's availability term both read `workload` as a share of it. |
+| `verification_stamp`                | _(appended 2026-10-12, Decision #227)_ The owner's verification crest (Decision #155): a person's `org.entity_standing.verification_stamp` (`none` when no row exists, read whether or not they sell), a business's `corporate_verified` once its KYB is `verified`, and `none` for a team. The same rule `org.get_profile_view` applies, so explore cards, review bylines and listing seller lines draw the crest the profile hero draws (resolves Decision #155(g)). |
 
 ---
 

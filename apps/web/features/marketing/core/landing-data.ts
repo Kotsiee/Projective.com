@@ -20,6 +20,7 @@ import type {
 	ServiceItem,
 } from "@features/explore/types/explore-types.ts";
 import { freelancerFloor } from "@features/explore/core/pricing.ts";
+import type { VerificationStamp } from "@projective/types/org";
 
 // #region Search
 /**
@@ -87,6 +88,8 @@ export interface ProfileShowcase {
 	/** Delivery reputation from real reviews, or `null` when nobody has reviewed them yet. */
 	rating: { value: number; count: number } | null;
 	verified: boolean;
+	/** The owner's verification crest, when the discovery read carries it. */
+	verificationStamp?: VerificationStamp;
 	/** Delivered stages — social proof of delivery. */
 	delivered: number;
 	/** The cheapest active service, pre-formatted (`from $90`); `""` when they list none. */
@@ -171,6 +174,7 @@ function profileShowcase(p: ProfileItem): ProfileShowcase {
 			? { value: p.rating.asHelper.value, count: p.rating.asHelper.count }
 			: null,
 		verified: p.owner.verified ?? false,
+		verificationStamp: p.owner.verificationStamp,
 		delivered: p.delivered,
 		rate: freelancerFloor(p) ?? "",
 		skills: p.skills.map((s) => s.label),

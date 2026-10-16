@@ -5,6 +5,7 @@ import {
 	loadCatalog,
 	type PlacementSurface,
 	readProjectPreview,
+	stampOf,
 } from "./live-catalog.ts";
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
 import { serverEnv } from "../../core/env.ts";
@@ -607,6 +608,7 @@ export class ExploreBackendService {
 						avatar: publicObjectUrl(author.avatar_bucket, author.avatar_path) ?? "",
 						kind: author.entity_type,
 						verified: author.verified,
+						verificationStamp: stampOf(author.verification_stamp),
 					},
 					role: author.headline ?? "",
 				});

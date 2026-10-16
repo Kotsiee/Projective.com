@@ -8,8 +8,9 @@
  * shells' own sheets — this block only lays the content out. It mounts OUTSIDE `.pf`, so it reads no
  * `--pf-*` token (the `--wlt-*` lesson, Decision #60): everything here is on the global ramp.
  *
- * Monochrome, like the hero it condenses (Decision #96): the crest is ink with the band's own ground
- * cut out of it, the badge's pip is a solid ⁄ hollow disc rather than a colour, and the star is ink.
+ * Monochrome, like the hero it condenses (Decision #96): the badge's pip is a solid ⁄ hollow disc
+ * rather than a colour, and the star is ink. The crest is the one exception — it wears the shared
+ * stamp ink the hero and every explore card wear (Decision #155), with the band's own ground cut out.
  *
  * SECONDARY TEXT ON GLASS IS `--on-surface-variant`, NEVER `--text-secondary`. The band's ground is
  * a 76% veil over whatever scrolls beneath it, and the veil scale's own note records the arithmetic:

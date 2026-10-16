@@ -4,7 +4,7 @@ import { PIPELINE_HIGH, PIPELINE_LOW } from "./pricing.ts";
 import { lowestActivePrice } from "./query.ts";
 import { resolveSkill } from "./skills.ts";
 import type { Catalog, CatalogMedia, ProfileRow } from "./live-catalog.ts";
-import { displayPrice, entityKey, peekCatalog } from "./live-catalog.ts";
+import { displayPrice, entityKey, peekCatalog, stampOf } from "./live-catalog.ts";
 import { nearestToEntity } from "../search/embedding-index.ts";
 import { reportEmbeddingFallback } from "../search/EmbeddingBackendService.ts";
 import {
@@ -404,6 +404,7 @@ function authorOf(row: ProfileRow | undefined): ExploreOwner {
 		avatar: publicObjectUrl(row.avatar_bucket, row.avatar_path) ?? "",
 		kind: row.entity_type,
 		verified: row.verified,
+		verificationStamp: stampOf(row.verification_stamp),
 	};
 }
 
