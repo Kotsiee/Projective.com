@@ -57,7 +57,8 @@ import {
  *
  * ### Primary views
  * `primary` + `order` mark the views a console leads with (Decision #228 (C): a team's Overview ·
- * Members · Projects · Payouts · Roles · Settings; a business's set is provisional, Decision #232).
+ * Members · Projects · Payouts · Roles · Settings; a business's Overview · Members · Projects ·
+ * Spend · Billing · Settings, Decision #232).
  * {@link primaryModules} and {@link secondaryModules} split the viewer's visible set in two — the same
  * capability filter, so a primary module the viewer may not open is simply absent, never shown locked.
  *
@@ -264,8 +265,6 @@ export const MODULES: readonly WorkspaceModule[] = [
 		 */
 		permission: (kind) => kind === "team" ? "manage_finances" : "contribute_funds",
 		blurb: "The entity's money at a glance, with a hand-off to the wallet.",
-		primary: BUSINESS,
-		order: 4,
 	},
 	{
 		key: "payouts",
@@ -289,7 +288,7 @@ export const MODULES: readonly WorkspaceModule[] = [
 		permission: () => "spend_funds",
 		blurb: "Limits, approval thresholds and the attributable pool ledger.",
 		primary: BUSINESS,
-		order: 5,
+		order: 4,
 	},
 	{
 		key: "billing",
@@ -299,6 +298,8 @@ export const MODULES: readonly WorkspaceModule[] = [
 		kinds: BUSINESS,
 		permission: () => "manage_finances",
 		blurb: "Invoices to pay, statements, auto-funding and the balance floor.",
+		primary: BUSINESS,
+		order: 5,
 	},
 
 	// --- Growth -----------------------------------------------------------------------------------

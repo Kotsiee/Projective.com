@@ -88,13 +88,14 @@ Deno.test("registry: a capability-less member keeps the permissionless primaries
 	assertEquals(keys(primaryModules("business", [])), ["overview", "members", "projects"]);
 });
 
-Deno.test("registry: a business keeps its own primary set", () => {
+Deno.test("registry: a business's primary views are Decision #232's six, in order", () => {
 	assertEquals(keys(primaryModules("business", OWNER)), [
 		"overview",
 		"members",
 		"projects",
-		"finance",
 		"spend",
+		"billing",
 		"settings",
 	]);
+	assertEquals(keys(secondaryModules("business", OWNER)).includes("finance"), true);
 });
