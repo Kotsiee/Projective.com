@@ -656,32 +656,54 @@ A Business is a collaborative shell for project consumers. It acts as the "Emplo
 the platform's workflows, providing a centralised point of management for work requested by various
 team members.
 
-- **Client / Operator Mode (Visibility Gate):** The Businesses space is a client-side surface gated
-  by an account-level **Client / Operator Mode** modifier. An account only sees the Businesses space
-  — and can only create or manage Businesses — once it has opted into Operator Mode. This keeps the
-  client/hiring surface out of the way for accounts that operate purely as freelancers.
+- **Who may create a Business:** any adult account — a client, a freelancer (a freelancer is a
+  superset of a client) or an operator. A Business is buyer-side: acting as one is always acting as
+  a client, whatever else the account does elsewhere. How many Businesses an account may own is
+  metered by its personal plan (`finance-model.md` §16.1); joining one is never capped (Decision
+  #230 (a)).
 - **Draft-First Creation:** Creating a Business is low-friction — the owner supplies only a display
   **Name** and a unique alphanumeric **`@handle`**. The Business is created instantly in a
   **Draft/Unverified** state; legal name, logo, billing details, member roles, and financial setup
   are completed afterwards on the Business settings page.
+- **Visibility:** a Business takes the same visibility a team does — **public**, **unlisted** or
+  **invite-only** — and only a public Business is listed in the directory (Decision #230 (h)).
 - **Unified Management:** Instead of isolated projects, a Business can manage "Sets" of projects,
   allowing for cross-project visibility.
 - **Shared Capital (The Business Wallet):** Much like Freelancer Teams, Businesses utilise a shared
   wallet. Funds can be pre-loaded into the vault, allowing individual managers to initiate "Escrow
   Locks" without needing access to a primary corporate credit card for every transaction.
+  Per-member spending caps and an approval threshold are **Business Pro** features; a free Business
+  has the shared wallet without caps (`finance-model.md` §16.1, Decision #230 (e)).
 - **Legal Simplicity:** The Business entity handles the administrative side of hiring, ensuring all
   contracts and invoices are issued to the organizational entity rather than individual employees.
 
 ##### Hierarchy & Role-Based Permissions
 
 To prevent unauthorized spending and ensure project quality, Businesses utilise a strict hierarchy.
-Roles define what a user can do within the Business context:
+Every member holds one role — a preset, or a custom role the Business writes itself:
 
-| Role                | Actions                                                                                                  |
-| :------------------ | :------------------------------------------------------------------------------------------------------- |
-| **Owner / Admin**   | Full access. Can manage the Business Wallet, set budget caps, and invite/remove members.                 |
-| **Project Manager** | Can create new Projects/Pipelines, approve submissions, and release Escrow payments.                     |
-| **Observer**        | View-only access to progress, analytics, and chat logs. Cannot approve payments or change project scope. |
+| Role       | Actions                                                                                                                                                                  |
+| :--------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Owner**  | Everything, including withdrawing from the Business Wallet, archiving the Business, and its billing and business verification. One per Business.                        |
+| **Admin**  | Manages the Business Wallet, sets budget caps and invites/removes members — everything but withdrawing, archiving, billing and verification, unless the Owner grants them. |
+| **Member** | Contributes to the Business Wallet and sees analytics; anything more comes from a custom role.                                                                           |
+
+- **Project Manager and Observer are templates, not presets.** The role editor offers them as
+  starting points for a custom role: a **Project Manager** creates Projects/Pipelines, approves
+  submissions and releases Escrow payments; an **Observer** has view-only access to progress,
+  analytics and chat logs and cannot approve payments or change project scope. The plan's manager
+  cap counts Admins plus every member whose role may manage projects (`finance-model.md` §16.1,
+  Decision #230 (b)).
+- **Billing and verification are the Owner's.** Invoices, payment instruments, invoicing terms and
+  the Business's verification (KYB) need the billing right, and the Billing and Verification views
+  open only to its holders. Only the Owner holds it unless the Owner grants it explicitly to a named
+  Admin, after a warning. The Owner may also grant an Admin their own exact permissions — a
+  co-owner in all but name — after an explicit warning of what that Admin can then do. The Business
+  still has one Owner (Decision #230 (d)).
+- **Contracted project managers (post-MVP).** A Business will be able to hire a freelancer into a
+  temporary or contractual project-management role, on Projective and on third-party tools. It is
+  out of scope for the MVP — it needs third-party integrations and may need the Business to share
+  credentials — and it will join the future tooling for virtual assistants (Decision #230 (b)).
 
 ##### Multi-Business Ownership
 
@@ -704,8 +726,10 @@ Model**.
 
 - Instead of hundreds of micro-transactions on a bank statement, Projective generates a single,
   consolidated monthly invoice.
-- This invoice summarises all Escrow movements, bonuses, and platform fees processed during that
-  period.
+- This invoice lists every Escrow **released** in the period with its deadline bonus, the platform
+  fee and tax. The fee is shown as the part of the total the platform kept, never added on top
+  (§Escrow, Wallets & Finance — Consolidated Invoice).
+- Intervaled invoicing is a **Business Pro** feature (`finance-model.md` §16.1, Decision #230 (e)).
 
 ##### Expenditure Analytics
 
@@ -716,6 +740,11 @@ The Business Dashboard provides a "Bird's Eye View" of organizational spend and 
   what remains in the Business Wallet.
 - **Performance Grading:** Data-driven insights into which Freelancers or Teams are delivering the
   highest ROI for the business based on revision counts and deadline adherence.
+
+##### The Bench
+
+A Business's **Talent** view is its bench: every freelancer and team it has hired, each with
+**Re-hire** and **Message** (Decision #230 (i)).
 
 ##### Workflow Orchestration
 
@@ -1264,6 +1293,9 @@ Money enters and leaves the platform through two deliberately asymmetric paths:
 - **A business pays only from its wallet or with a card on its own account.** A card that a member
   with billing rights saves to the business is that business's card; a personal card cannot pay for
   a business purchase.
+- **A short pool is refused, never made up from a person.** When the Business Wallet holds less than
+  a purchase or an escrow funding needs, the payment is refused; members who may add money to the
+  wallet are offered a one-click **Contribute**, and no personal card is charged (Decision #230 (c)).
 - **An individual client funds escrow like a business does.** A project with no client business is
   funded by its owner — by card, or from their own wallet — and every release, refund and fair-exit
   split returns money to that person. Only the project's owner may fund it.
@@ -2949,14 +2981,17 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 | **Dashboard** | `/home`                   |                          | Persona-adaptive engagement feed (recommended work, reels, activity, profile-setup tracker)    |
 |               | `/become-partner`         |                          | Freelancer conversion funnel (Client/Operator → unlock freelancer suite)                       |
 |               | `/articles/[slug]`        |                          | Editorial reader for freelancer stories linked from `/become-partner`                          |
-|               | `/business`               |                          | Show all businesses                                                                            |
-|               | `/business/create`        |                          | Create a new business                                                                          |
-|               | `/business/[business id]` | `index`                  | View business details                                                                          |
-|               |                           | `members`                | View business members                                                                          |
-|               |                           | `settings`               | Edit business settings                                                                         |
-|               |                           | `projects`               | View business projects                                                                         |
+|               | `/businesses`             | `index`                  | Show all businesses (any adult account — Decision #230 (a))                                   |
+|               | `/businesses/create`      |                          | Create a new business                                                                          |
+|               | `/businesses/[businessHandle]` | `index`             | The console's **Overview** — addressed by the business's `@handle` ([ROUTING.md](../architecture/ROUTING.md) business rows) |
+|               |                           | `members`                | Members                                                                                        |
+|               |                           | `projects`               | Projects the business has commissioned                                                         |
+|               |                           | `spend`                  | Limits, approval thresholds, the approval queue and the attributable pool ledger                |
 |               |                           | `billing`                | Invoices (with **Pay**), statement PDFs, invoicing terms, auto-funding and the balance floor (§Escrow, Wallets & Finance #4) |
-|               |                           | `invoices`               |                                                                                                |
+|               |                           | `talent`                 | The bench — freelancers and teams the business has hired (Decision #230 (i))                    |
+|               |                           | `verification`           | Business verification (KYB)                                                                    |
+|               |                           | `settings`               | Handle, defaults, ownership transfer and archiving                                             |
+|               |                           | _other modules_          | `roles` · `invitations` · `finance` (the Business Wallet) · `calendar` · `messages` · `analytics` · `standing` · `profile` — the rest of the kind-business module registry (`features/workspaces/core/module-registry.tsx`) |
 |               | `/connections`            | `index`                  | View network connections                                                                       |
 |               | `/calendar`               | `index`                  | Personal agenda — the union of every engagement the account is on, over its own working hours, call windows and booked leave. The same occurrence as on `/projects/[project id]/calendar`, not a copy |
 |               | `/catalogue`              | `index`                  | Seller console — the listings (cards or rows by zoom, facets, a batch bar for the selection) and the Analytics and Clients views (`?view=`). A listing is created in the `?create=` Quick-Init modal, never on a page of its own |

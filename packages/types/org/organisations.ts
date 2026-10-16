@@ -3,9 +3,9 @@ import { z } from "zod";
 /**
  * org.organisations — the Zod SSOT for the **client/buyer-only** corporate entity.
  *
- * An Organisation is distinct from `org.business_profiles` (the seller-side entity that offers
- * services/products): an organisation registers only to hire/buy, never to sell. Multi-tenancy is
- * modelled as a membership join table, not a single `users.organisation_id`, because a user may
+ * An Organisation is distinct from `org.business_profiles` (a Business — the buyer-side entity with
+ * members and a pooled wallet, Decision #61): an organisation registers only to hire/buy, never to
+ * sell. Multi-tenancy is modelled as a membership join table, not a single `users.organisation_id`, because a user may
  * belong to several organisations. These shapes mirror migration
  * `supabase/migrations/0314_organisations.sql` column-for-column and back the
  * `documentation/database/org/*` docs — the three land together (root CLAUDE.md §1).

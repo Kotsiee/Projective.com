@@ -240,8 +240,9 @@ read under RLS by the wallet surface, and its console reads through `org.get_wor
 **`projects.fund_stage` spends the client's money, so it checks the payer, not just project
 access** (2026-09-23, `00001150`). Project access alone admitted every participant — a hired
 freelancer could fund the client's escrow from the client's wallet. It now resolves the payer
-from `projects.projects.client_business_id` (NULL → `PS501`: an individual client has no escrow
-path, #56(a)) and requires `finance.fn_owner_capability('business', payer, 'spend')`, else `42501`
+from `projects.projects.client_business_id` (NULL → the project's owner pays as an individual
+client from their personal wallet, and only the owner may — Decisions #126 / #165 (D)) and, for a
+business, requires `finance.fn_owner_capability('business', payer, 'spend')`, else `42501`
 ("Only a member who can spend from the client's wallet can fund this stage."). The KYB gate on
 funding (Decision #54(e)) is **not** added here — that behavioural change still needs sign-off.
 

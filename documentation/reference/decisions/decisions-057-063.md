@@ -314,12 +314,14 @@ permanently dirty after a successful save — the baseline is now a signal adopt
 own response. **Flagged (surface, do not silently resolve):** (a) the **Businesses nav gate**
 remains `businessAccountEnabled` while migration `20260709` gates on `org.users_public.is_operator`
 — settling the buyer-side question rules out `isFreelancer` but the remaining two still need one
-human decision (inherits Decisions #17/#18); (b) **Organisations** now overlap Businesses
+human decision (inherits Decisions #17/#18) — **RESOLVED by Decision #230 (a)** (2026-10-16): any adult
+account, operators included; (b) **Organisations** now overlap Businesses
 considerably (both buyers with members and a pooled wallet) — own console, scale tier of
 `/businesses`, or profile-only is undecided; (c) entity-owned **catalogue scope** still depends on
 Decision #53's flag (d) fixtures-own-the-whole-corpus issue; (d) whose payment method funds a
 business purchase when the pool is short (fail / prompt to contribute / charge personal) has refund
-and attribution consequences and is undecided; (e) member and counterparty links follow the
+and attribution consequences and is undecided — **RESOLVED by Decision #230 (c)** (2026-10-16): refused,
+with a Contribute prompt, never a personal card; (e) member and counterparty links follow the
 canonical `/@handle` (Decision #3), not `/profiles/[id]`; (f) `isWorkspaceBackendLive()` lives
 beside its service rather than in `core/supabase.ts` with its eight siblings — reconcile if the
 gates become one registry. | root CLAUDE.md §2/§3/§5 · `packages/types/workspace/*` ·

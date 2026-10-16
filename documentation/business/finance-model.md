@@ -54,7 +54,7 @@ Two payment planes, because a user and the entities they own are separately scal
 - **Entity plan** — attached to each _Team / Business / Organisation_. Raises that entity's seats,
   concurrent public projects, pooled-wallet features and departments.
 
-**Ownership ≠ power.** A personal Pro plan lets you spin up 5 businesses; each of those businesses
+**Ownership ≠ power.** A personal Pro plan lets you spin up 3 businesses; each of those businesses
 still only gets 3 concurrent public projects until _it_ is upgraded.
 
 | Plan             | Audience                | Price              | What it raises                                                                                                                                                       |
@@ -476,11 +476,17 @@ superset of a client. There is no separate buyer plan to reconcile.
 | Lever                      | Team Free | Pro Team (Â£29) |   | Lever                      | Business Free | Business Pro |
 | :------------------------- | :-------- | :-------------- | - | :------------------------- | :------------ | :----------- |
 | Members / seats            | 4         | 15              |   | Concurrent public projects | 3             | 25           |
-| Concurrent public projects | 2         | 15              |   | PMs / Observers            | 2             | 15           |
+| Concurrent public projects | 2         | 15              |   | Managers (admins + PM roles) | 2           | 15           |
 | Proposal pool              | members'  | dedicated       |   | Pooled wallet              | basic         | full + caps  |
 | Stored assets              | 25 GiB    | **500 GiB**     |   | Stored assets              | 25 GiB        | **500 GiB**  |
 | Advanced vault splits      | â€”       | âœ…             |   | Intervaled invoicing       | â€”           | âœ…          |
 | Promoted placement         | â€”       | âœ…             |   | Departments                | 0             | 5            |
+
+**Business Pro gates are enforced** (Decision #230 (e)): monthly intervaled invoicing and the full
+pooled wallet (per-member caps, an approval threshold) refuse a Business without Business Pro.
+Unlike the fail-open family in §16.2, the switch over them is seeded **on**, and each environment
+sets its own (being built: `architecture/BUSINESSES_BUILD_PROMPTS.md` BB7). The manager cap counts
+admins plus every member whose role may manage projects (Decision #230 (b)).
 
 A team must hold **â‰¥ 2 members** before it may send proposals.
 

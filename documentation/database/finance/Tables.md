@@ -632,10 +632,11 @@ behind the deposit sweep's retry of unbound runs.
 > **No PII.** A payment row holds amounts, states, ids and the processor's own codes. The card, the
 > payer's name and the billing address stay with Stripe; `provider_ref` is the pointer to them.
 
-> **⚠️ Individual clients cannot lock escrow by card yet.** `finance.escrows.payer_business_id` is
-> NOT NULL, so `finance.begin_card_payment` refuses an `escrow_lock` on a project with no
-> `client_business_id` (`PS501`). A top-up still works for anyone. Relaxing that column is a change to
-> a protected table and needs human sign-off (inherits Decision #56(a)).
+> **Individual clients lock escrow by card too.** `finance.escrows.payer_business_id` is nullable
+> (Decision #126) and `ck_escrows_one_payer` requires exactly one of `payer_business_id` /
+> `payer_user_id` (Decision #165 (D)), so `finance.begin_card_payment` takes an `escrow_lock` on a
+> project with no `client_business_id` from its owner — only the owner may fund it — and the hold
+> debits the owner's personal wallet in the project's currency.
 
 ### The Connect payout account (`finance.payout_accounts`, amended in place)
 
