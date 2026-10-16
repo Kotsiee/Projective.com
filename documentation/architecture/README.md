@@ -11,6 +11,7 @@ Technical architecture and system directives for Projective.
 | [`MVP_FLOW_AUDIT.md`](MVP_FLOW_AUDIT.md)                                 | **Evaluation, not binding.** End-to-end trace (Oct 2026) of auth/onboarding, the project lifecycle, and the fiat/wallet rails: a per-step status matrix, the P0 integrity defects, spec↔code contradictions to flag under §8, and the phased post-MVP roadmap. |
 | [`MVP_FIX_PROMPTS.md`](MVP_FIX_PROMPTS.md)                               | **Work orders, not binding.** One self-contained Claude Code prompt per open `MVP_FLOW_AUDIT.md` item (security → money integrity → gates → lifecycle → rails → auth → archetypes → post-MVP → docs), with run order and the prompts that must stop for a human decision. |
 | [`TEAMS_AUDIT.md`](TEAMS_AUDIT.md) | **Evaluation, not binding.** Teams roster and console audit (Oct 2026): functional matrix vs spec, design-system defect log, file-by-file `@projective/ui` refactor plan, and resolutions for routing, the handle namespace, ownership transfer and vault splits (Decision #226). |
+| [`TEAMS_BUILD_PROMPTS.md`](TEAMS_BUILD_PROMPTS.md) | **Work orders, not binding.** One self-contained Claude Code prompt per step of the Teams rebuild (rulings → backend gates → money/read model → `packages/ui` primitives → CSS sweep → chrome → roster → console modules → storefront → docs/verification), with run order and the prompts that must stop for a human decision. |
 
 ## Relationship to the other pillars
 
