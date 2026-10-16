@@ -8,7 +8,7 @@ import type { StepId } from "../core/wizardStore.ts";
  *  - {@link HeroScene}: a single big illustration that anchors the deep-primary sidebar and *shifts*
  *    to represent the active step — a persistent orbital frame + a progress arc + a per-step glyph
  *    that crossfades on change (keyed remount replays the enter animation).
- *  - {@link ChoiceArt}: the four full-bleed card illustrations (Individual / Organisation / Client /
+ *  - {@link ChoiceArt}: the four full-bleed card illustrations (Individual / Enterprise / Client /
  *    Freelancer) that replace the old small badge-icons as the primary focal point of each choice.
  *
  * Everything is token-only: the hero draws in `var(--on-primary)` (it sits on the primary field) and
@@ -182,7 +182,7 @@ function heroGlyph(step: StepId): JSX.Element {
 
 // #region Choice-card art (form column)
 /** The account/intent options that get a full illustration. */
-export type ChoiceArtKind = "individual" | "organization" | "client" | "freelancer";
+export type ChoiceArtKind = "individual" | "enterprise" | "client" | "freelancer";
 
 /**
  * Full-bleed card illustration used as the focal point of a choice card. Drawn in `var(--primary)`
@@ -223,7 +223,7 @@ function choiceArt(kind: ChoiceArtKind): JSX.Element {
 					</g>
 				</g>
 			);
-		case "organization":
+		case "enterprise":
 			// A small city of buildings — a workspace with teams.
 			return (
 				<g>

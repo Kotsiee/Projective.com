@@ -123,7 +123,7 @@ function ordinal(day: number): string {
  * The account's invoicing terms and whether it may change them.
  *
  * Eligibility is the SAME rule the SSOT gates the `invoice` provider on — a KYB-verified (Level 3)
- * business — because they are one decision asked in two places. An organisation has no invoicing
+ * business — because they are one decision asked in two places. An enterprise has no invoicing
  * columns yet, so it is honestly not offered rather than offered and then refused.
  */
 export function invoicingOf(owner: ResolvedOwner): MonthlyInvoicing {
@@ -300,7 +300,7 @@ export async function billingContextsFor(
 	}));
 }
 
-/** The spend departments an account declares — an organisation's, today. */
+/** The spend departments an account declares — an enterprise's, today. */
 export function departmentsOf(owner: ResolvedOwner): { id: string; label: string }[] {
 	return owner.departments.map((name) => ({ id: name.slice(0, 120), label: name.slice(0, 120) }));
 }
@@ -434,7 +434,7 @@ const PERIOD_LABEL: Record<string, string | null> = {
  * cap: `applies: false`, and the surface renders no control at all.
  *
  * A member with the `spend` capability and no limit row is uncapped — the capability is what grants
- * spending, and a limit only narrows it. KYB gates a BUSINESS or organisation wallet; a team is not
+ * spending, and a limit only narrows it. KYB gates a BUSINESS or enterprise wallet; a team is not
  * subject to it.
  */
 export async function spendLimitFor(

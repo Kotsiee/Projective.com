@@ -107,7 +107,7 @@ export const ProjectFeedParamsSchema = z.object({
 	sort: ProjectSort,
 	scope: ProjectScope,
 	/**
-	 * When scoping to a SPECIFIC tenant (a Team/Business/Organisation toggle) rather than the active
+	 * When scoping to a SPECIFIC tenant (a Team/Business/Enterprise toggle) rather than the active
 	 * one, the chosen workspace. `null` = the actor's active context (scope `context`) or irrelevant
 	 * (scope `global`).
 	 */

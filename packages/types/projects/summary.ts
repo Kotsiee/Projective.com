@@ -11,7 +11,7 @@ import { ContextType } from "../auth/mod.ts";
  * the Postgres enum types in `supabase/migrations/0000_init_enums.sql` and `0007_projects_tables.sql`
  * column-for-column; the richer full-row schemas land alongside their own reads later (root
  * CLAUDE.md §1). Only enum/array/min/max/number primitives are used so the schema stays stable
- * across Zod majors (matching `org/organisations.ts`).
+ * across Zod majors (matching `org/enterprises.ts`).
  */
 
 // #region Primitives
@@ -33,7 +33,7 @@ export type ProjectStatus = z.infer<typeof ProjectStatus>;
 
 /**
  * The multi-tenant role the acting user holds in a given engagement — the union the feed collapses
- * `projects.project_participants.role` + `org.{team,business,organisation}_members.role` into for
+ * `projects.project_participants.role` + `org.{team,business,enterprise}_members.role` into for
  * the role filter. `owner`/`admin` are authority tiers; `freelancer`/`client` are the two sides of a
  * hire; `member` is any other tenant seat.
  */
@@ -100,7 +100,7 @@ export const ProjectSummarySchema = z.object({
 	viewerRole: ProjectViewerRole,
 	/** Which structural workspace the engagement belongs to — the partition axis for context scoping. */
 	scopeType: ContextType,
-	/** The owning tenant/context id (team/business/org id, or the user id for a personal engagement). */
+	/** The owning tenant/context id (team/business/enterprise id, or the user id for a personal engagement). */
 	scopeId: z.string().max(64),
 	/** Human label of the owning workspace (e.g. "Northwind Studio", "Personal"). */
 	scopeLabel: z.string().min(1).max(120),

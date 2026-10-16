@@ -21,16 +21,16 @@ import { DateFormat } from "../org/preferences.ts";
 // #region Enums
 /**
  * The structural context the user is currently acting within. `personal` is the individual's own
- * space (and the neutral default for guests); `team`/`business`/`organisation` are the multi-tenant
+ * space (and the neutral default for guests); `team`/`business`/`enterprise` are the multi-tenant
  * entities a user can switch into.
  */
-export const ContextType = z.enum(["personal", "team", "business", "organisation"]);
+export const ContextType = z.enum(["personal", "team", "business", "enterprise"]);
 export type ContextType = z.infer<typeof ContextType>;
 
 /**
  * The actor's authority *within the active context*, collapsed to the three levels the chrome needs.
  * Guests are unauthenticated; `member` is the standard authenticated actor; `admin` unlocks
- * management chrome. Richer entity roles (e.g. an organisation `owner`) collapse to `admin` here —
+ * management chrome. Richer entity roles (e.g. an enterprise `owner`) collapse to `admin` here —
  * see {@link normaliseRole} — because the shell only needs "can this actor see admin controls".
  */
 export const ContextRole = z.enum(["guest", "member", "admin"]);
@@ -46,13 +46,13 @@ export const UserContextSchema = z.object({
 	/** The structural space the request is acting within. */
 	contextType: ContextType,
 	/**
-	 * The active entity id for a `team`/`business`/`organisation` context (the tenant id), or the
+	 * The active entity id for a `team`/`business`/`enterprise` context (the tenant id), or the
 	 * user's own id for `personal`. Empty string for guests / when unresolved.
 	 */
 	contextId: z.string().max(64),
 	/** The actor's authority within {@link contextType}. */
 	role: ContextRole,
-	/** Whether the actor can hire/buy (client/buyer capability). Organisations are always clients. */
+	/** Whether the actor can hire/buy (client/buyer capability). Enterprises are always clients. */
 	isClient: z.boolean(),
 	/** Whether the actor can offer/sell services (freelancer/seller capability). */
 	isFreelancer: z.boolean(),
@@ -234,7 +234,7 @@ function normaliseContextType(raw: string | undefined): ContextType {
 }
 
 /**
- * Collapse a raw entity role to a chrome {@link ContextRole}. `owner` (organisations) and any
+ * Collapse a raw entity role to a chrome {@link ContextRole}. `owner` (enterprises) and any
  * admin-equivalent map to `admin`; an unauthenticated/unknown value stays `member` for an
  * authenticated actor (callers pass `guest` explicitly for no session).
  */
@@ -258,7 +258,7 @@ function normaliseRole(raw: string | undefined): ContextRole {
  *
  * Capability rules (chrome only — the server re-derives authoritatively):
  *  - Individuals: `objective: "freelancer"` → seller; `"client"` → buyer.
- *  - Organisations are **client/buyer-only** (root CLAUDE.md Decision #9/#10) → always `isClient`.
+ *  - Enterprises are **client/buyer-only** (root CLAUDE.md Decision #9/#10) → always `isClient`.
  */
 export function resolveUserContext(claims: AccessTokenClaims | null | undefined): UserContext {
 	if (!claims || !str(claims.sub)) return GUEST_CONTEXT;
@@ -279,15 +279,15 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 
 	// Capability flags. Prefer the authoritative booleans the access-token hook stamps (resolved
 	// server-side from org.users_public + the active context); fall back to the onboarding objective
-	// for legacy/un-stamped tokens. An organisation context is always buyer-only by product rule.
-	const isOrganisation = contextType === "organisation";
+	// for legacy/un-stamped tokens. An enterprise context is always buyer-only by product rule.
+	const isEnterprise = contextType === "enterprise";
 	const objective = (str(user.objective) ?? "").toLowerCase();
 	const isFreelancer = typeof active.isFreelancer === "boolean"
-		? active.isFreelancer && !isOrganisation
-		: !isOrganisation && objective === "freelancer";
+		? active.isFreelancer && !isEnterprise
+		: !isEnterprise && objective === "freelancer";
 	const isClient = typeof active.isClient === "boolean"
-		? active.isClient || isOrganisation
-		: isOrganisation || objective === "client" || !isFreelancer;
+		? active.isClient || isEnterprise
+		: isEnterprise || objective === "client" || !isFreelancer;
 
 	const handle = str(active.handle) ?? str(user.username) ?? null;
 

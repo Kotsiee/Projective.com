@@ -58,7 +58,7 @@ AS $$
         WHEN 'freelancer' THEN 'individual'
         WHEN 'team' THEN 'team'
         WHEN 'business' THEN 'business'
-        WHEN 'organisation' THEN 'organisation'
+        WHEN 'enterprise' THEN 'enterprise'
     END::finance.plan_audience;
 $$;
 
@@ -87,7 +87,7 @@ AS $$
     );
 $$;
 
--- The subject's earned rung, for the two scaling modes. Business/organisation subjects do not carry
+-- The subject's earned rung, for the two scaling modes. Business/enterprise subjects do not carry
 -- Standing (they are buyers, ranked by the separate Client Trust Score) → they resolve to rung 1.
 --
 -- A PERSON is metered as `user` (the proposal trigger spends the applicant's own allowance) but earns
@@ -229,7 +229,7 @@ AS $$
 $$;
 
 -- The 5% project service fee. It does NOT taper with Standing and is NOT sold with any plan; the only
--- sanctioned flex is an admin-approved `finance.negotiated_rates` row for an Organisation/Business
+-- sanctioned flex is an admin-approved `finance.negotiated_rates` row for an Enterprise/Business
 -- volume commitment (owner decision, 2026-07-24). Falls back to the platform param.
 CREATE OR REPLACE FUNCTION finance.fn_effective_platform_fee_bp(p_subject_type text, p_subject_id uuid)
 RETURNS integer
@@ -638,12 +638,12 @@ BEGIN
         SELECT count(*) INTO v_count FROM org.team_members m
         WHERE m.team_id = p_subject_id AND m.status = 'active';
 
-    ELSIF p_key = 'organisation_seats' THEN
-        SELECT count(*) INTO v_count FROM org.organisation_members m
-        WHERE m.organisation_id = p_subject_id AND m.status = 'active';
+    ELSIF p_key = 'enterprise_seats' THEN
+        SELECT count(*) INTO v_count FROM org.enterprise_members m
+        WHERE m.enterprise_id = p_subject_id AND m.status = 'active';
 
-    ELSIF p_key = 'organisation_businesses' THEN
-        -- Businesses are not yet FK-linked to an organisation (Phase 2); counted as 0 until they are.
+    ELSIF p_key = 'enterprise_businesses' THEN
+        -- Businesses are not yet FK-linked to an enterprise (Phase 2); counted as 0 until they are.
         v_count := 0;
 
     ELSIF p_key = 'storage_megabytes' THEN

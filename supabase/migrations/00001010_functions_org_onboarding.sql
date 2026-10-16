@@ -1,6 +1,6 @@
 -- ============================================================================
 -- 00001010 functions org onboarding
--- Consolidated verbatim from: 0304_onboarding_session_and_audit.sql, 0312_email_verification_sync.sql, 0315_create_organisation_rpc.sql, 20260722120000_seed_user_preferences.sql
+-- Consolidated verbatim from: 0304_onboarding_session_and_audit.sql, 0312_email_verification_sync.sql, 0315_create_enterprise_rpc.sql, 20260722120000_seed_user_preferences.sql
 -- ============================================================================
 
 -- US-001 · Multi-Persona Onboarding — provisioning, session context (AC4) & audit (AC6)
@@ -272,26 +272,26 @@ BEGIN
 END;
 $$;
 
--- 0315_create_organisation_rpc.sql — atomic organisation provisioning RPC.
+-- 0315_create_enterprise_rpc.sql — atomic enterprise provisioning RPC.
 --
 -- Additive: adds one SECURITY DEFINER function; no table/column/FK is changed. Pairs with
--- 0314_organisations.sql. Called by @projective/backend's AuthBackendService (service-role) AFTER it
--- admin-creates the owner identity in GoTrue: it inserts org.organisations and seeds the owner's
--- org.organisation_members row in a single transaction, and writes the onboarding audit entry
+-- 0314_enterprises.sql. Called by @projective/backend's AuthBackendService (service-role) AFTER it
+-- admin-creates the owner identity in GoTrue: it inserts org.enterprises and seeds the owner's
+-- org.enterprise_members row in a single transaction, and writes the onboarding audit entry
 -- (security.audit_logs is definer-only — see 0205/0304 — so provisioning that audits must run here,
 -- not in the TS service).
 --
--- The payload keys are the camelCase @projective/types `CreateOrganisation` shape, so the service can
+-- The payload keys are the camelCase @projective/types `CreateEnterprise` shape, so the service can
 -- pass the validated object straight through as jsonb.
 
-CREATE OR REPLACE FUNCTION public.create_organisation(p_owner uuid, p_payload jsonb)
+CREATE OR REPLACE FUNCTION public.create_enterprise(p_owner uuid, p_payload jsonb)
 RETURNS uuid
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, org, security
 AS $$
 DECLARE
-    v_org uuid;
+    v_enterprise uuid;
     v_handle text := lower(btrim(COALESCE(p_payload->>'handle', '')));
     v_refusal text;
 BEGIN
@@ -302,8 +302,8 @@ BEGIN
         RAISE EXCEPTION 'legalName and handle are required' USING ERRCODE = '22023';
     END IF;
 
-    -- One handle namespace across people, teams, businesses and organisations (00001020 §9). The
-    -- UNIQUE on org.organisations.handle only ever saw other organisations, so an organisation could
+    -- One handle namespace across people, teams, businesses and enterprises (00001020 §9). The
+    -- UNIQUE on org.enterprises.handle only ever saw other enterprises, so an enterprise could
     -- claim a person's `@username` or a team's slug and the two would fight over `/{handle}`. The
     -- refusal is the same sentence the create forms' availability probe shows.
     v_refusal := org.fn_handle_refusal(v_handle);
@@ -312,9 +312,9 @@ BEGIN
             USING ERRCODE = CASE WHEN org.fn_handle_taken(v_handle) THEN '23505' ELSE '22023' END;
     END IF;
 
-    -- The org row. NULLIF collapses the client's empty-string defaults to NULL; the
+    -- The enterprise row. NULLIF collapses the client's empty-string defaults to NULL; the
     -- industry_other CHECK (0314) still enforces a specifier when primary_industry = 'other'.
-    INSERT INTO org.organisations (
+    INSERT INTO org.enterprises (
         owner_user_id, legal_name, trading_name, handle, registration_number,
         corporate_email, corporate_phone, website,
         address_line_1, address_city, address_postcode, address_country,
@@ -345,25 +345,25 @@ BEGIN
         ),
         p_payload->>'corporateEmail'
     )
-    RETURNING id INTO v_org;
+    RETURNING id INTO v_enterprise;
 
     -- Seed the owner membership (RLS INSERT policy also allows this via the owner_user_id EXISTS).
-    INSERT INTO org.organisation_members (organisation_id, user_id, role, status)
-    VALUES (v_org, p_owner, 'owner', 'active');
+    INSERT INTO org.enterprise_members (enterprise_id, user_id, role, status)
+    VALUES (v_enterprise, p_owner, 'owner', 'active');
 
     -- AC6-style immutable onboarding audit (mirrors provision_user_profile in 0304).
     INSERT INTO security.audit_logs (
         user_id, action, entity_table, entity_id, metadata, actor_profile_id
     ) VALUES (
         p_owner,
-        'organisation.created',
-        'org.organisations',
-        v_org,
+        'enterprise.created',
+        'org.enterprises',
+        v_enterprise,
         jsonb_build_object('handle', v_handle, 'legal_name', p_payload->>'legalName'),
         NULL
     );
 
-    RETURN v_org;
+    RETURN v_enterprise;
 END;
 $$;
 
@@ -388,8 +388,8 @@ $$;
 -- org.supported_locales, a display currency with seeded rates both ways in finance.fx_rates — and
 -- otherwise left to the column default. A row that already exists is never touched.
 --
--- An organisation owner gets no org.users_public row (Decision #87 flag (b)), so the owner membership
--- public.create_organisation writes seeds theirs (org.seed_owner_preferences). Their
+-- An enterprise owner gets no org.users_public row (Decision #87 flag (b)), so the owner membership
+-- public.create_enterprise writes seeds theirs (org.seed_owner_preferences). Their
 -- comms.notification_prefs waits for a profile row, because that table keys onto org.users_public.
 
 -- #region 1. Sign-up preference seeding
@@ -436,7 +436,7 @@ $$;
 
 -- The sign-up metadata a person is being provisioned from: the payload public.provision_user_profile
 -- publishes for the transaction (keyed by user, so it never applies to anybody else), else the
--- identity's raw_user_meta_data — the organisation owner's path. '{}' when there is neither.
+-- identity's raw_user_meta_data — the enterprise owner's path. '{}' when there is neither.
 CREATE OR REPLACE FUNCTION org.fn_signup_meta(p_user_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -513,7 +513,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION org.seed_owner_preferences() IS
-  'Seeds an organisation owner''s org.user_preferences from their owner membership (they get no public profile), and their comms.notification_prefs when a profile exists. Idempotent. Decision #207.';
+  'Seeds an enterprise owner''s org.user_preferences from their owner membership (they get no public profile), and their comms.notification_prefs when a profile exists. Idempotent. Decision #207.';
 -- #endregion
 
 -- #region 2. Profile setup progress (Decision #155)
@@ -771,7 +771,7 @@ BEGIN
 END;
 $$;
 
--- Refuses a row that would put a minor in a team, business or organisation, or address an invitation
+-- Refuses a row that would put a minor in a team, business or enterprise, or address an invitation
 -- to one (Decision #208) — every path in, the definers' upserts included. TG_ARGV[0] names the column
 -- holding the person.
 CREATE OR REPLACE FUNCTION org.trg_workspace_member_adult()
@@ -784,7 +784,7 @@ DECLARE
     v_person uuid := (pg_catalog.to_jsonb(NEW) ->> TG_ARGV[0])::uuid;
 BEGIN
     IF v_person IS NOT NULL AND org.fn_is_minor(v_person) THEN
-        RAISE EXCEPTION 'workspace: people under 18 cannot join a team, business or organisation'
+        RAISE EXCEPTION 'workspace: people under 18 cannot join a team, business or enterprise'
             USING ERRCODE = 'PM403';
     END IF;
     RETURN NEW;

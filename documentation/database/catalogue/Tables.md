@@ -18,7 +18,7 @@ created here. `catalogue.listings` POINTS AT its subject — `service_blueprint_
 `product_id` for a product — rather than restating it, which keeps one answer to "what does this
 cost".
 
-Sellers are individuals and teams (businesses and organisations are buyer-side, Decisions
+Sellers are individuals and teams (businesses and enterprises are buyer-side, Decisions
 #9/#10/#61). Every table carries `owner_user_id` (the accountable human, FK → `org.users_public`)
 and a nullable `owner_team_id` (FK → `org.teams`), never an untyped `owner_type` + `owner_id` pair
 that could not carry a foreign key.

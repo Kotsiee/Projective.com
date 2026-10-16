@@ -131,7 +131,7 @@ storage-object rules, because every row here names a stored object.
 Same INSERT/UPDATE/DELETE shape as `files.items` (including the `WITH CHECK` arm and its
 `fn_owns_library` clause, so a folder can be neither created in nor re-parented **into** another
 tenant's tree). `SELECT` mirrors `fn_can_read`'s ownership arms
-inline — creator, `public`, or active member of the owning team / business / organisation. Folders
+inline — creator, `public`, or active member of the owning team / business / enterprise. Folders
 carry no project-mount case: a mounted connector directory is reached through its connection, and a
 project's tree is the channel tree, not a folder.
 
@@ -184,7 +184,7 @@ There is no "any member" arm: revocation authority sits with the person who took
 publish.
 
 > **Deliberately strict, and it fails CLOSED.** Authority is `owner_user_id = auth.uid()`, so an
-> **entity-owned** (team / business / organisation) asset cannot currently be shared by a member who
+> **entity-owned** (team / business / enterprise) asset cannot currently be shared by a member who
 > is not its owner — even though that member can _read_ it. That is the correct direction to be
 > wrong in while the entity share-capability question is open (the same owner-axis question flagged
 > for connections, Decision #59). Widening it belongs with whoever settles that question, not with a
@@ -260,7 +260,7 @@ independently, which is why a `files.items` read leaking metadata (hole 1) never
 themselves.
 
 Four policies, anchored on `{entity_id}` and gated by **active membership** of that entity — team
-**or** business **or** organisation, OR-ed because one uuid anchor may name any of the three.
+**or** business **or** enterprise, OR-ed because one uuid anchor may name any of the three.
 Deliberately **not** `auth.uid() = owner`: an entity asset must outlive the member who uploaded it.
 `DELETE` is narrower than `UPDATE` on purpose (any member may revise a shared asset; only the
 uploader may destroy one).

@@ -17,7 +17,7 @@ import { CropStateSchema } from "../files/crop.ts";
  * mutual follow" is one that will disagree about somebody.
  *
  * The tiers, in descending weight (PRODUCT_SPEC §Unified Messaging):
- *  1. `shared_entity`  — a team, business or organisation both people belong to.
+ *  1. `shared_entity`  — a team, business or enterprise both people belong to.
  *  2. `mutual_follow`  — each follows the other.
  *  3. `follows`        — the viewer follows them (not back).
  *  4. `collaborated`   — they were both on a project (a completed one ranks as the same tier; the
@@ -77,7 +77,7 @@ export const TIER_LABEL: Readonly<Record<ContactTier, string>> = {
 
 // #region Evidence → rank (the one derivation)
 /** The kind of shared workspace an affiliation is through. */
-export type SharedEntityKind = "team" | "business" | "organisation";
+export type SharedEntityKind = "team" | "business" | "enterprise";
 
 /** One shared affiliation. `since` is when the CANDIDATE joined, or null when unknown. */
 export interface SharedEntityEvidence {
@@ -135,7 +135,7 @@ export interface ContactRank {
 const ENTITY_KIND_LABEL: Readonly<Record<SharedEntityKind, string>> = {
 	team: "team",
 	business: "business",
-	organisation: "organisation",
+	enterprise: "enterprise",
 };
 
 /** Parse an ISO instant defensively; an unparseable value counts as no instant. */

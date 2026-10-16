@@ -337,7 +337,7 @@ const PLAN_CODES: ReadonlySet<string> = new Set(Object.keys(PLAN_STORAGE_MIB));
 
 /** What the storage meter says for a plan code. */
 function tierLabelFor(plan: string): string {
-	if (plan === "organisation") return "Organisation";
+	if (plan === "enterprise") return "Enterprise";
 	return plan.endsWith("_pro") ? "Pro" : "Free";
 }
 

@@ -43,7 +43,7 @@ One owner-level header. Everything below it is expressed in **this row's timezon
 | Column                 | Type                    | Notes                                                                                        |
 | :--------------------- | :---------------------- | :------------------------------------------------------------------------------------------- |
 | `id`                   | uuid                    | PK.                                                                                          |
-| `owner_type`           | `scheduling.owner_type` | `user` / `freelancer` / `team` / `business` / `organisation` — mirrors `wallets.owner_type`. |
+| `owner_type`           | `scheduling.owner_type` | `user` / `freelancer` / `team` / `business` / `enterprise` — mirrors `wallets.owner_type`. |
 | `owner_id`             | uuid                    | The owning entity.                                                                           |
 | `timezone`             | text                    | IANA id, default `Europe/London`. Every minute-of-day column resolves in this zone. Must be a name in `pg_catalog.pg_timezone_names` — `trg_check_schedule_timezone` (BEFORE INSERT / UPDATE OF `timezone`, every role) refuses anything else with `22023` `timezone: not a recognised time zone`. |
 | `is_published`         | boolean                 | Whether `/[handle]/availability` renders to a visitor at all. Default `false`.               |
@@ -465,7 +465,7 @@ the gate reads the seeded weekly bands until the scheduling service compiles the
 ## Enums added
 
 ```sql
-CREATE TYPE scheduling.owner_type        AS ENUM ('user', 'freelancer', 'team', 'business', 'organisation');
+CREATE TYPE scheduling.owner_type        AS ENUM ('user', 'freelancer', 'team', 'business', 'enterprise');
 CREATE TYPE scheduling.availability_kind AS ENUM ('working_hours', 'call_window');
 CREATE TYPE scheduling.event_kind        AS ENUM ('deadline','milestone','sync','session','booking','availability','busy','holiday','general');
 CREATE TYPE scheduling.event_status      AS ENUM ('confirmed','tentative','busy','available','cancelled');

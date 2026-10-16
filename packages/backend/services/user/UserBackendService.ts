@@ -355,7 +355,7 @@ export class UserBackendService {
 	 *
 	 * The RPC does the whole conversion in one transaction — the freelancer profile with its starter
 	 * skills, the `is_freelancer` flag, the switch into the freelancer persona (through the one
-	 * session-context writer, so a person acting as a team or an organisation converts cleanly) and the
+	 * session-context writer, so a person acting as a team or an enterprise converts cleanly) and the
 	 * audit — and it is idempotent: a second call re-activates the persona and reports `created: false`.
 	 * The ACCESS TOKEN does not change here; the caller must refresh the session so the hook re-mints
 	 * `app_metadata.active_context` with `isFreelancer: true` before the seller chrome can show.
@@ -531,7 +531,7 @@ export class UserBackendService {
 	}
 
 	/**
-	 * The acting entity's display name — the team's or business's `name`, the organisation's trading
+	 * The acting entity's display name — the team's or business's `name`, the enterprise's trading
 	 * name else its legal name — through `org.get_acting_context_details`, which answers only for an
 	 * entity the caller holds an active seat in. Not an RLS table read: `org.business_profiles` has no
 	 * client SELECT policy, so a business member read `null` and the header showed the slug. `null` in

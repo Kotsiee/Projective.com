@@ -82,7 +82,7 @@ DECLARE
     v_owner_id uuid;
     v_business_id uuid;
     v_team_id uuid;
-    v_org_id uuid;
+    v_enterprise_id uuid;
     v_scope_count integer;
     v_title text;
     v_slug text;
@@ -130,11 +130,11 @@ BEGIN
     -- somebody else's team.
     v_business_id := NULLIF(payload->>'client_business_id', '')::uuid;
     v_team_id     := NULLIF(payload->>'owner_team_id', '')::uuid;
-    v_org_id      := NULLIF(payload->>'owner_organisation_id', '')::uuid;
+    v_enterprise_id      := NULLIF(payload->>'owner_enterprise_id', '')::uuid;
 
     v_scope_count := (v_business_id IS NOT NULL)::int
                    + (v_team_id IS NOT NULL)::int
-                   + (v_org_id IS NOT NULL)::int;
+                   + (v_enterprise_id IS NOT NULL)::int;
     IF v_scope_count > 1 THEN
         RAISE EXCEPTION 'A project belongs to one workspace.' USING ERRCODE = '23514';
     END IF;
@@ -161,14 +161,14 @@ BEGIN
         END IF;
     END IF;
 
-    IF v_org_id IS NOT NULL THEN
+    IF v_enterprise_id IS NOT NULL THEN
         IF NOT EXISTS (
-            SELECT 1 FROM org.organisation_members om
-            WHERE om.organisation_id = v_org_id
+            SELECT 1 FROM org.enterprise_members om
+            WHERE om.enterprise_id = v_enterprise_id
               AND om.user_id = v_owner_id
               AND om.status = 'active'
         ) THEN
-            RAISE EXCEPTION 'You are not an active member of this organisation' USING ERRCODE = '42501';
+            RAISE EXCEPTION 'You are not an active member of this enterprise' USING ERRCODE = '42501';
         END IF;
     END IF;
 
@@ -238,7 +238,7 @@ BEGIN
     LOOP
         BEGIN
             INSERT INTO projects.projects (
-                id, owner_user_id, client_business_id, owner_team_id, owner_organisation_id,
+                id, owner_user_id, client_business_id, owner_team_id, owner_enterprise_id,
                 title, slug, description, description_text,
                 format, structure_variation, session_kind, status,
                 budget_type, budget_amount_cents,
@@ -248,7 +248,7 @@ BEGIN
                 portfolio_display_rights, allow_deadline_bonuses,
                 location_restriction, language_requirement, screening_questions, is_personal
             ) VALUES (
-                v_project_id, v_owner_id, v_business_id, v_team_id, v_org_id,
+                v_project_id, v_owner_id, v_business_id, v_team_id, v_enterprise_id,
                 v_title, v_slug,
                 v_description,
                 v_description_text,

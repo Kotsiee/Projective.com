@@ -3,7 +3,7 @@
 -- comms.seed_notification_prefs read the browser's locale, zone and display-currency hint from the
 -- sign-up metadata on both provisioning paths (the GoTrue on_auth_user_created trigger and
 -- public.complete_onboarding), keep only supported values, and fall back to the column defaults; a
--- profile-less organisation owner gets org.user_preferences from the owner membership.
+-- profile-less enterprise owner gets org.user_preferences from the owner membership.
 --
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated local DB:
 --   docker exec -i supabase_db_Projective psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
@@ -107,26 +107,26 @@ BEGIN
     IF v_ok THEN RAISE NOTICE 'PASS %', v_label; ELSE v_failures := v_failures || format('%s — got %s / %s / %s / %s', v_label, v_up.locale, v_up.preferred_display_currency, v_np.timezone, v_np.locale); END IF;
     -- #endregion
 
-    -- #region Organisation owner: no profile row, preferences from the owner membership
+    -- #region Enterprise owner: no profile row, preferences from the owner membership
     INSERT INTO auth.users (id, email, aud, role, raw_user_meta_data)
     VALUES (v_owner, 'prefs-probe-' || v_owner || '@projective.invalid', 'authenticated', 'authenticated',
-        jsonb_build_object('objective', 'organization', 'locale', 'ja-JP', 'display_currency', 'JPY'));
-    PERFORM public.create_organisation(v_owner, jsonb_build_object(
+        jsonb_build_object('objective', 'enterprise', 'locale', 'ja-JP', 'display_currency', 'JPY'));
+    PERFORM public.create_enterprise(v_owner, jsonb_build_object(
         'legalName', 'Prefs Probe ' || v_tag || ' Ltd', 'handle', 'prefsorg' || v_tag,
         'corporateEmail', 'owner-' || v_tag || '@projective.invalid'));
 
     SELECT * INTO v_up FROM org.user_preferences WHERE user_id = v_owner;
-    v_label := 'a profile-less organisation owner gets user_preferences (ja-JP / JPY)';
+    v_label := 'a profile-less enterprise owner gets user_preferences (ja-JP / JPY)';
     v_ok := FOUND AND v_up.locale = 'ja-JP' AND v_up.preferred_display_currency = 'JPY';
     IF v_ok THEN RAISE NOTICE 'PASS %', v_label; ELSE v_failures := v_failures || format('%s — got %s / %s', v_label, v_up.locale, v_up.preferred_display_currency); END IF;
 
-    v_label := 'a profile-less organisation owner gets no notification_prefs (FK onto users_public)';
+    v_label := 'a profile-less enterprise owner gets no notification_prefs (FK onto users_public)';
     v_ok := NOT EXISTS (SELECT 1 FROM comms.notification_prefs WHERE user_id = v_owner);
     IF v_ok THEN RAISE NOTICE 'PASS %', v_label; ELSE v_failures := v_failures || v_label; END IF;
 
-    -- An onboarded person who creates an organisation keeps the preferences they already chose.
+    -- An onboarded person who creates an enterprise keeps the preferences they already chose.
     UPDATE org.user_preferences SET locale = 'it-IT', preferred_display_currency = 'EUR' WHERE user_id = v_email;
-    PERFORM public.create_organisation(v_email, jsonb_build_object(
+    PERFORM public.create_enterprise(v_email, jsonb_build_object(
         'legalName', 'Prefs Probe Two ' || v_tag || ' Ltd', 'handle', 'prefsorgb' || v_tag,
         'corporateEmail', 'owner-b-' || v_tag || '@projective.invalid'));
     SELECT * INTO v_up FROM org.user_preferences WHERE user_id = v_email;

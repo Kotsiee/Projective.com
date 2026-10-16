@@ -66,7 +66,7 @@ export const handler = define.handlers({
 		 * entity's fact rather than the buyer's. An identity with none yields an empty list, which the
 		 * form renders as absence — an entity with no departments is a real state, not a blank field.
 		 *
-		 * Read through the fat service, as the signed-in caller: an organisation's departments are
+		 * Read through the fat service, as the signed-in caller: an enterprise's departments are
 		 * visible to its members only.
 		 */
 		const resolved = await CheckoutBackendService.departments(

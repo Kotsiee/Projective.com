@@ -64,7 +64,7 @@ import { resolveChannelRef } from "./live-support.ts";
  * id, and `projects.stage_assignments` can likewise name a `team_id` instead of a freelancer. Neither
  * has a name in `org.users_public`, an email, a presence or a join date the way a person does;
  * emitting one would produce a row reading "Unknown · offline · —" that looks like a failed lookup
- * rather than an organisation. Entity participants are therefore EXCLUDED and their seats are not
+ * rather than an enterprise. Entity participants are therefore EXCLUDED and their seats are not
  * enumerated: expanding a business or a team into its members is an `org.*_members` read behind its
  * own gate, not something to infer here.
  *

@@ -75,7 +75,7 @@ AS $$
             EXISTS (SELECT 1 FROM org.users_public u WHERE lower(u.username) = lower(p_handle))
             OR EXISTS (SELECT 1 FROM org.teams t WHERE lower(t.slug) = lower(p_handle))
             OR EXISTS (SELECT 1 FROM org.business_profiles b WHERE lower(b.slug) = lower(p_handle))
-            OR EXISTS (SELECT 1 FROM org.organisations o WHERE lower(o.handle) = lower(p_handle))
+            OR EXISTS (SELECT 1 FROM org.enterprises o WHERE lower(o.handle) = lower(p_handle))
         )
         AND EXISTS (
             SELECT 1 FROM org.handle_changes h
@@ -233,7 +233,7 @@ BEGIN
              WHERE bm.user_id = p_user AND bm.role = 'owner' AND bm.status = 'active'
                AND b.status <> 'archived'
         ) OR EXISTS (
-            SELECT 1 FROM org.organisation_members om
+            SELECT 1 FROM org.enterprise_members om
              WHERE om.user_id = p_user AND om.role = 'owner' AND om.status = 'active'
         ) THEN
             v_out := array_append(v_out, 'owns_workspaces');

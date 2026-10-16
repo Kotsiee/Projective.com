@@ -28,10 +28,10 @@ while a business is by definition a buyer.
 
 | Assumption a reader might hold | Actual (source) |
 | :-- | :-- |
-| A business is seller-side | **Buyer-side**: "a Business is a Client with multiple members" (#61, `decisions-057-063.md:264-266`). `packages/types/org/organisations.ts:6` still says "seller-side" — stale. |
+| A business is seller-side | **Buyer-side**: "a Business is a Client with multiple members" (#61, `decisions-057-063.md:264-266`). `packages/types/org/enterprises.ts:6` still says "seller-side" — stale. |
 | Roles mirror teams | `owner · admin · member` — **no `lead`** (`ck_business_member_role`, `00000011_tables_org.sql:373-417`). PRODUCT_SPEC:678-682 names Owner/Admin · Project Manager · Observer (BX-b). |
 | Business has a seat cap | `fn_assert_seat` returns early for business (F1020:1199-1213). A `business_managers` entitlement (2 → 15) is seeded but unread (BX-b). |
-| Business and Organisation are one thing | Two tables, two verification models, no FK link yet; #61 flag (b) undecided. Out of scope here except where it leaks. |
+| Business and Enterprise are one thing | Two tables, two verification models, no FK link yet; #61 flag (b) undecided. Out of scope here except where it leaks. |
 | Console URL `/business/[business id]` | `/businesses/:businessHandle` (`ROUTING.md:102`); `PRODUCT_SPEC.md:2950-2957` is stale. |
 
 ---
@@ -276,4 +276,4 @@ Same contract as Teams #228 (B): uuid/case → **308**; module the viewer may no
 | P1 | BD18-BD24 console branches, tint, roster table | UI |
 | P2 | BF9 visibility; BF33-BF35 entitlement reads (per BX-e/b); BF39 roles admin arm | DB |
 | P2 | BF43 Talent (per BX-i); BD21, BD25-BD26 tidy | UI |
-| Out | BF37 business plan purchase (price TBD); #61 (b) Organisations overlap | — |
+| Out | BF37 business plan purchase (price TBD); #61 (b) Enterprises overlap | — |

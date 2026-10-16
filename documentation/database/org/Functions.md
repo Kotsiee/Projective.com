@@ -21,7 +21,7 @@ migration-numbering and RLS conventions.
 > revoke. `org` is exposed to PostgREST, and Postgres grants `EXECUTE` to `PUBLIC` by default — so
 > before this every org function, predicate and internal helper was an RPC anybody could call. The
 > three membership predicates the policies are built from (`is_active_team_member`,
-> `is_active_business_member`, `is_organisation_member`) stay executable by both client roles,
+> `is_active_business_member`, `is_enterprise_member`) stay executable by both client roles,
 > because a policy expression runs as the invoking role.
 
 ## `org.enable_freelancer_profile(p_payload jsonb) → jsonb`
@@ -48,9 +48,9 @@ than ten, or any slug the taxonomy does not hold, raises `22023`. In one transac
 2. **Flips** `org.users_public.is_freelancer = true` (the denormalised flag `getMe` + nav gates
    read).
 3. **Activates** the freelancer persona through `security.fn_set_session_context('freelancer',
-   uid, NULL, NULL, uid)` — the one session-context writer, which clears the team and organisation
+   uid, NULL, NULL, uid)` — the one session-context writer, which clears the team and enterprise
    slots in the same statement (and audits `session.switch_context`). Until 2026-10-06 this step
-   upserted only the profile slot, so a caller acting as a team or an organisation held two slots
+   upserted only the profile slot, so a caller acting as a team or an enterprise held two slots
    and `ck_session_context_one_slot` failed the whole conversion.
 4. **Audits** a genuine conversion only — `security.audit_logs` `freelancer.unlocked` (written from
    the definer context because `audit_logs` is not granted to `authenticated`; cf. `0205`/`0304`).
@@ -72,21 +72,21 @@ re-issues the session after it returns so the hook stamps `active_context.isFree
 `STABLE`, `SET search_path = ''` · **Grant:** `authenticated` (revoked from `PUBLIC`, `anon`).
 
 The acting entity's display name for the account popover (`UserBackendService.me` →
-`workspace.name`). `p_context_type` is `team` · `business` · `organisation`; answers
+`workspace.name`). `p_context_type` is `team` · `business` · `enterprise`; answers
 `{ context_type, context_id, name, handle }` only when the caller holds an **active** seat in that
-entity (an organisation's owner counts), else `NULL` — so it can never read an entity the caller is
+entity (an enterprise's owner counts), else `NULL` — so it can never read an entity the caller is
 not acting inside. It exists because `org.business_profiles` has no client SELECT policy: the
 previous RLS read returned nothing for a business member and the header fell back to the slug. An
-organisation's `name` is its trading name, else its legal name.
+enterprise's `name` is its trading name, else its legal name.
 
-## `org.update_organisation(p_org_id uuid, p_payload jsonb) → jsonb`
+## `org.update_enterprise(p_enterprise_id uuid, p_payload jsonb) → jsonb`
 
 **Migration:** `00001020_functions_org_entities.sql` §5c · **Security:** `SECURITY DEFINER`,
 `SET search_path = ''` · **Grant:** `authenticated` (revoked from `PUBLIC`, `anon`).
 
-The **only** write door on `org.organisations` since 2026-10-06 — the table's client UPDATE policy
+The **only** write door on `org.enterprises` since 2026-10-06 — the table's client UPDATE policy
 is gone (`org/Policies.md`). `p_payload` is the camelCase `@projective/types/org`
-`UpdateOrganisation` partial:
+`UpdateEnterprise` partial:
 
 - **Who:** the owner, an active `admin` member, or a platform admin (`security.is_admin()`);
   otherwise `42501`.
@@ -106,9 +106,9 @@ is gone (`org/Policies.md`). `p_payload` is the camelCase `@projective/types/org
   be an `org.employee_scale` value; `departments` (≤ 60 chars each) and `purpose` (≤ 40) must be
   string arrays; choosing `primaryIndustry = 'other'` without an `industryOther` is `22023`. An empty
   string clears an optional field.
-- **Audit:** `security.audit_logs` `organisation.updated` with `{ fields, as_platform_admin }`.
+- **Audit:** `security.audit_logs` `enterprise.updated` with `{ fields, as_platform_admin }`.
 
-Returns `{ id, updated_fields }`. No service or route calls it yet — organisation settings have no
+Returns `{ id, updated_fields }`. No service or route calls it yet — enterprise settings have no
 UI (Decision #150 flag).
 
 ## `org.seed_user_preferences() → trigger`
@@ -130,12 +130,12 @@ completion path (`complete_onboarding`). Idempotent — a row that already exist
 through the INSERT-own-preferences policy, or chosen in Settings) is never touched. Reads/writes for
 own preferences remain owner-scoped per `org/Policies.md` (Decision #47).
 
-### Sign-up hints and organisation owners (Decision #207)
+### Sign-up hints and enterprise owners (Decision #207)
 
 A new row then takes the browser's hints from the sign-up metadata — `locale` and
 `display_currency`, sent by `/join` (`preferenceHints` in `@projective/types/org`, validated again
 by the join schema) — each kept only when the platform offers it, else left at the column default.
-An organisation owner gets no `org.users_public` row (Decision #87 flag (b)), so their owner
+An enterprise owner gets no `org.users_public` row (Decision #87 flag (b)), so their owner
 membership seeds theirs.
 
 | Function | Role |
@@ -144,50 +144,50 @@ membership seeds theirs.
 | `org.fn_supported_display_currency(p_code text) → text` | `p_code` upper-cased when it is the platform base (`security.platform_params.base_currency`) or has a seeded `finance.fx_rates` row both ways against it — the `DISPLAY_CURRENCIES` rule; else `NULL`. `STABLE`. |
 | `org.fn_signup_meta(p_user_id uuid) → jsonb` | The metadata a person is provisioned from: the payload `public.provision_user_profile` publishes for the transaction (setting `projective.signup_meta`, keyed by user — `complete_onboarding`'s payload never reaches `auth.users`), else `auth.users.raw_user_meta_data`; `'{}'` when neither. `SECURITY DEFINER`. |
 | `org.fn_seed_user_preferences(p_user_id uuid, p_meta jsonb) → void` | Inserts the row and, only when it is new, applies the supported hints. Called by both seed triggers. |
-| `org.seed_owner_preferences() → trigger` | `on_organisation_owner_created`, `AFTER INSERT ON org.organisation_members` `WHEN (NEW.role = 'owner')` (`00001810`): seeds the owner's preferences from the metadata `AuthBackendService` gives the owner identity. `comms.notification_prefs` is seeded here only when the owner already has a profile row — that table keys onto `org.users_public`, so a profile-less owner's row waits for one (Decision #207 flag). `SECURITY DEFINER`. |
+| `org.seed_owner_preferences() → trigger` | `on_enterprise_owner_created`, `AFTER INSERT ON org.enterprise_members` `WHEN (NEW.role = 'owner')` (`00001810`): seeds the owner's preferences from the metadata `AuthBackendService` gives the owner identity. `comms.notification_prefs` is seeded here only when the owner already has a profile row — that table keys onto `org.users_public`, so a profile-less owner's row waits for one (Decision #207 flag). `SECURITY DEFINER`. |
 
 None is granted to a client role (`org` is deny-by-default, `00002510`). The notification side is
 `comms.fn_seed_notification_prefs` ([comms/Functions.md](../comms/Functions.md#triggers)). Probe:
 `supabase/probes/signup_preferences.sql`.
 
-## `org.is_organisation_member(p_org uuid, p_min_role org.organisation_role = 'member') → boolean`
+## `org.is_enterprise_member(p_enterprise uuid, p_min_role org.enterprise_role = 'member') → boolean`
 
-**Migration:** `supabase/migrations/0314_organisations.sql` · **Security:** `SECURITY DEFINER`,
+**Migration:** `supabase/migrations/0314_enterprises.sql` · **Security:** `SECURITY DEFINER`,
 `STABLE`, `SET search_path = org, public`.
 
-Returns `true` when `auth.uid()` is an **active** member of organisation `p_org` at or above
+Returns `true` when `auth.uid()` is an **active** member of enterprise `p_enterprise` at or above
 `p_min_role` (the enum ranks `owner` ≥ `admin` ≥ `member`). It exists so the RLS policies on
-`org.organisations` / `org.organisation_members` can check membership without the policy on one
+`org.enterprises` / `org.enterprise_members` can check membership without the policy on one
 table triggering the policy on the other — the definer context bypasses RLS on
-`org.organisation_members`, breaking the recursion the Policies doc's Security Notes warn about.
+`org.enterprise_members`, breaking the recursion the Policies doc's Security Notes warn about.
 Keyed off `auth.uid()`; safe to call from any policy `USING`/`WITH CHECK` clause.
 
-## `public.create_organisation(p_owner uuid, p_payload jsonb) → uuid`
+## `public.create_enterprise(p_owner uuid, p_payload jsonb) → uuid`
 
 **Migration:** `supabase/migrations/00001010_functions_org_onboarding.sql` (from `0315`) · **Security:**
 `SECURITY DEFINER`, `SET search_path = public, org, security` · **Grant:** `service_role` only.
 
-Atomic organisation provisioning, called by `@projective/backend`'s `AuthBackendService`
+Atomic enterprise provisioning, called by `@projective/backend`'s `AuthBackendService`
 (service-role) **after** it admin-creates the owner identity in GoTrue. In one transaction it:
-inserts `org.organisations` (owner = `p_owner`; `NULLIF` collapses the client's empty-string
+inserts `org.enterprises` (owner = `p_owner`; `NULLIF` collapses the client's empty-string
 defaults to `NULL`, and the 0314 `industry_other` CHECK still applies), seeds the owner's
-`org.organisation_members` row (`role = 'owner'`), and writes an `organisation.created` entry to
+`org.enterprise_members` row (`role = 'owner'`), and writes an `enterprise.created` entry to
 `security.audit_logs` (definer context, because that table isn't granted to `authenticated` — cf.
 `provision_user_profile` in 0304). `p_payload` is the camelCase `@projective/types`
-`CreateOrganisation` shape. Returns the new org id.
+`CreateEnterprise` shape. Returns the new org id.
 
 **Handles share one namespace** (2026-10-06): the handle is trimmed and lower-cased, then checked
 with `org.fn_handle_refusal` BEFORE the insert — the same rule (3–40 chars, lowercase letters,
-digits and hyphens, not reserved, not taken by any person, team, business or organisation) and the
+digits and hyphens, not reserved, not taken by any person, team, business or enterprise) and the
 same sentence the create forms' availability probe shows. A taken handle raises `23505`, any other
 refusal `22023`; `AuthBackendService` returns the message with a 422. The `UNIQUE` on
-`organisations.handle` only ever saw other organisations, so before this an organisation could claim
+`enterprises.handle` only ever saw other enterprises, so before this an enterprise could claim
 a person's `@username` and the two fought over `/{handle}`.
 
 **Grant:** `service_role` only, and explicitly `REVOKE`d from `PUBLIC`, `anon` and `authenticated`
 (`00002510`) — it trusts the `p_owner` it is handed, and Postgres grants a new `public` function to
-`PUBLIC`, so until 2026-10-06 any signed-out caller could mint an organisation owned by anybody.
-Owner-only (buyer) by construction — organisations carry no service/product surface.
+`PUBLIC`, so until 2026-10-06 any signed-out caller could mint an enterprise owned by anybody.
+Owner-only (buyer) by construction — enterprises carry no service/product surface.
 
 ## Onboarding provisioning (`public`, `00001010`)
 
@@ -250,7 +250,7 @@ assignment) and `projects.assign_from_application`; and with the listing's owner
 CALLER's `auth.users` row — only while it has no `users_public` row and only for a date of birth
 under 13 in `p_zone` (a future or 13+ date answers `false`); `/api/auth/join` calls it when an OAuth
 sign-up gives an under-13 date. `org.trg_workspace_member_adult(column)` (BEFORE INSERT / UPDATE of
-the person column on `team_members`, `business_members`, `organisation_members` and
+the person column on `team_members`, `business_members`, `enterprise_members` and
 `org_invitations`) refuses a minor (`PM403`); `create_workspace` and accepting through
 `respond_to_workspace_invitation` assert an adult first. `org.trg_users_public_minor_visibility`
 refuses a minor's profile going `public` (`PM403`). `fn_compute_profile_setup_progress` returns
@@ -333,7 +333,7 @@ is deny-by-default). **Refusals** are the exception MESSAGE with `P0001`, one `A
 | `org.fn_handle_is_own_hold(p_handle, p_user)` | `boolean` | The handle is free in the four tables and held only by `p_user`'s own change in the last 90 days — they may take it back. |
 | `org.get_handle_policy()` | `jsonb` | The caller's policy plus `handle`. |
 | `org.change_username(p_handle text)` | `jsonb` | Lower-cases + trims; refuses `handle_unchanged` · `account_closing` · `handle_locked` · `handle_refused` (`fn_handle_refusal`, except the caller's own hold; a racing `unique_violation` too). Writes `users_public.username`, a `handle_changes` row and `user.handle_changed` to the audit log; answers the new policy + `previous`. The token carries the handle, so the caller renews the session. |
-| `org.fn_account_blockers(p_user, p_scope)` | `text[]` | `escrow_held` (payee as a freelancer; payer too for `account`) · `live_work` (a live stage assignment on an active / on-hold project) · `wallet_balance` (a `freelancer` wallet; a `user` one too for `account`) · for `account` only, `active_projects` (owned, active / on hold) and `owns_workspaces` (an active owner seat on a live team, business or organisation). |
+| `org.fn_account_blockers(p_user, p_scope)` | `text[]` | `escrow_held` (payee as a freelancer; payer too for `account`) · `live_work` (a live stage assignment on an active / on-hold project) · `wallet_balance` (a `freelancer` wallet; a `user` one too for `account`) · for `account` only, `active_projects` (owned, active / on hold) and `owns_workspaces` (an active owner seat on a live team, business or enterprise). |
 | `org.get_account_lifecycle()` | `jsonb` | `{is_freelancer, has_freelancer_profile, freelancer_removal, account_deletion, freelancer_blockers, account_blockers}`. |
 | `org.schedule_freelancer_removal(p_confirmation)` | `jsonb` | Requires `CONFIRM`; `already_scheduled` · `not_freelancer` · `blocked`. Pauses the person's own published listings and unpublishes their own services (ids recorded in `metadata`), sets `is_freelancer = false`, returns the session context to personal, and schedules the erasure for **90 days**. |
 | `org.schedule_account_deletion(p_confirmation)` | `jsonb` | Requires `CONFIRM`; `already_scheduled` · `blocked`. Pauses listings, hides the profile (`visibility = 'private'`, the prior value recorded) and schedules the erasure for **30 days**. |
@@ -457,7 +457,7 @@ every recompute (the stamp for a `freelancer` subject only), so the sweep keeps 
 · **Grants:** [`00002510`](../../../supabase/migrations/00002510_permissions_function_grants.sql).
 
 `/[handle]` resolves one of four entity kinds — an individual (`org.users_public`), a team, a business
-or an organisation — and paints the same page for all of them. Everything it reads and writes comes
+or an enterprise — and paints the same page for all of them. Everything it reads and writes comes
 through the definer functions below, and that is the security model, not a convenience: the entity
 rows hold far more than a visitor may see (`users_public.dob`, a business's billing email, a team's
 payout model) and RLS is ROW-level, so any policy that admits a visitor to a row admits them to every
@@ -467,7 +467,7 @@ capability flags beside the handful of owner-editable fields, and a row-level UP
 tell `headline` from `rating_average` — so their client write policies are gone
 ([Policies.md](Policies.md)) and `org.save_profile` is the one door.
 
-The owner vocabulary everywhere is `'user' · 'team' · 'business' · 'organisation'`. Every function
+The owner vocabulary everywhere is `'user' · 'team' · 'business' · 'enterprise'`. Every function
 pins `SET search_path = ''`. Every function returns **raw facts** (a bio document, skill labels,
 language codes, storage **references**); the fat service maps them onto the `ProfileView` Zod SSOT, so
 labels, tiers and URLs are decided once, in TypeScript
@@ -477,10 +477,10 @@ labels, tiers and URLs are decided once, in TypeScript
 
 | Function                                   | Grant                     | Answers                                                                                                                                                                                                                                                                                                               |
 | :----------------------------------------- | :------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fn_profile_manages(owner_type, owner_id)` | revoked from every client | May the caller EDIT this profile? A user their own; a team or a business whoever holds the `edit_profile` workspace capability there (`org.fn_member_can` — the owner and admin presets, or a custom role or override that grants it; since 2026-09-28); an organisation its owner or an admin member; a platform admin any. Deliberately narrower than membership.                                                                                                   |
+| `fn_profile_manages(owner_type, owner_id)` | revoked from every client | May the caller EDIT this profile? A user their own; a team or a business whoever holds the `edit_profile` workspace capability there (`org.fn_member_can` — the owner and admin presets, or a custom role or override that grants it; since 2026-09-28); an enterprise its owner or an admin member; a platform admin any. Deliberately narrower than membership.                                                                                                   |
 | `can_manage_profile(owner_type, owner_id)` | `authenticated`           | The same predicate as an RPC, so the fat service can refuse an unauthorised media upload **before** it spends a decode on it.                                                                                                                                                                                         |
-| `fn_profile_visible(owner_type, owner_id)` | `anon` · `authenticated`  | May the caller SEE it? Whoever manages it, plus: a `public`/`unlisted` individual; an `active` team that is `public`/`unlisted`, or its active member; an `active` business or its member; an `active` organisation or its member. It is also the SELECT predicate on the profile ledgers (education, experience, languages, certifications, showcase, settings), and — through `scheduling.fn_schedule_is_public` (since 2026-09-28) — the reason a hidden profile's published schedule is not visitor-readable. |
-| `fn_resolve_profile(handle)`               | revoked from every client | `@handle` → `(owner_type, owner_id)`. Leading `@`s and case are ignored. The four namespaces are separate `UNIQUE` columns, so the tie-break is fixed: a person, then a team, a business, an organisation. It ignores visibility, which is why it is internal.                                                         |
+| `fn_profile_visible(owner_type, owner_id)` | `anon` · `authenticated`  | May the caller SEE it? Whoever manages it, plus: a `public`/`unlisted` individual; an `active` team that is `public`/`unlisted`, or its active member; an `active` business or its member; an `active` enterprise or its member. It is also the SELECT predicate on the profile ledgers (education, experience, languages, certifications, showcase, settings), and — through `scheduling.fn_schedule_is_public` (since 2026-09-28) — the reason a hidden profile's published schedule is not visitor-readable. |
+| `fn_resolve_profile(handle)`               | revoked from every client | `@handle` → `(owner_type, owner_id)`. Leading `@`s and case are ignored. The four namespaces are separate `UNIQUE` columns, so the tie-break is fixed: a person, then a team, a business, an enterprise. It ignores visibility, which is why it is internal.                                                         |
 
 ### Reads (`anon` · `authenticated`)
 
@@ -491,10 +491,10 @@ so a private profile's existence is never disclosed by a different answer. The f
 | Function                             | Returns                                                                                                                                                                                                                                                                                                                  |
 | :----------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `get_profile_owner(handle)`          | `{owner_type, owner_id}` — the cheap resolution the scheduling readers use to find an owner's schedule without the whole document.                                                                                                                                                                                       |
-| `get_profile_view(handle)`           | The whole profile chrome in one call: identity, avatar and banner references, the showcase (slot order, alt, references), the context-bar facts, the metrics strip and earned Standing, the `verification_stamp` (a person's stored stamp; a business's or organisation's `corporate_verified` derived from its own KYB; a team `none`) and a seller's unranked `adornments` (always `[]` for a buyer, business or organisation — the service ranks and caps them), the owner's presentation switches, the seller's hire intake, and the **viewer's** relationship to the profile (owner, follows). |
+| `get_profile_view(handle)`           | The whole profile chrome in one call: identity, avatar and banner references, the showcase (slot order, alt, references), the context-bar facts, the metrics strip and earned Standing, the `verification_stamp` (a person's stored stamp; a business's or enterprise's `corporate_verified` derived from its own KYB; a team `none`) and a seller's unranked `adornments` (always `[]` for a buyer, business or enterprise — the service ranks and caps them), the owner's presentation switches, the seller's hire intake, and the **viewer's** relationship to the profile (owner, follows). |
 | `get_profile_experience(handle)`     | Career, education and certifications (individuals only).                                                                                                                                                                                                                                                                 |
 | `get_profile_reviews(handle, limit)` | The latest reviews of the profile (default 60), each with its author's card.                                                                                                                                                                                                                                              |
-| `get_profile_roster(handle)`         | A team's, business's or organisation's members. A team/business member's `role` label is their `title`, else the NAME of the role row they hold (was `initcap(role)`), ordered by preset rank then join date.                                                                                                                  |
+| `get_profile_roster(handle)`         | A team's, business's or enterprise's members. A team/business member's `role` label is their `title`, else the NAME of the role row they hold (was `initcap(role)`), ordered by preset rank then join date.                                                                                                                  |
 | `get_profile_portfolio(handle)`      | The "Selected work" pieces with their cover references; a piece with no picture is omitted, never drawn empty.                                                                                                                                                                                                          |
 | `get_profile_past_projects(handle)`  | Up to 24 **completed** projects the profile posted or delivered on (a delivery assignment that was not declined, cancelled or never funded), only where the project is `public` **and** its `portfolio_display_rights = 'allowed'`, newest first.                                                                        |
 
@@ -522,7 +522,7 @@ resolves `files.fn_public_media_ref` at run time — that function is created la
 
 `STABLE` · `SECURITY DEFINER` · granted to `anon`, `authenticated` and `service_role` (Decision #180).
 Pairs are `(p_types[i], p_ids[i])` over the polymorphic owner vocabulary (`user` · `team` · `business` ·
-`organisation`), at most **500**. Returns `(owner_type, owner_id, kind, handle, name, avatar,
+`enterprise`), at most **500**. Returns `(owner_type, owner_id, kind, handle, name, avatar,
 oauth_avatar)` — `kind` is `freelancer` / `client` for a person, else the entity kind; `avatar` a
 `files.fn_public_media_ref`; `oauth_avatar` a person's raw sign-in picture (rendered only through the
 allowlist, as for `get_party_cards`). **A pair the caller may not see (`org.fn_profile_visible`) is
@@ -548,14 +548,14 @@ a crafted request and the row.
     `verified` is preserved on an unchanged row and **cleared** when the name or issuer changes).
   - Team: `name` (≤ 80), headline, story, `visibility` (`public` / `unlisted` / `invite_only`).
   - Business: name, headline, story, city, country, timezone.
-  - Organisation: trading name, city, country.
+  - Enterprise: trading name, city, country.
   - Every kind: `settings` (`allow_avatar_expand`, `show_location`, `show_local_time`), upserted into
     `org.profile_settings`.
 - **`org.set_profile_avatar(owner_type, owner_id, file_id) → jsonb`** — points the profile photo at
   a new **avatar rendition**. It re-checks the file rather than trusting where the id came from: a
   live, public, `uploaded` row with `purpose = 'avatar'` in the `avatars` bucket, owned by this
   profile's owner (`file: not a processed profile photo for this profile`). It writes
-  `users_public.avatar_file_id`, `teams.avatar_file_id`, or the business's or organisation's
+  `users_public.avatar_file_id`, `teams.avatar_file_id`, or the business's or enterprise's
   `logo_file_id`, and retires the previous rendition (a soft delete — it leaves every listing, and its
   bytes stay). Returns `{ok, file_id, previous}`.
 - **`org.save_showcase(owner_type, owner_id, slots jsonb) → jsonb`** — replaces the whole six-slot
@@ -564,7 +564,7 @@ a crafted request and the row.
   of the profile leads with. Renditions that drop out of the grid are retired.
 
 > **The derived- and identity-column guards** that stop a client writing `org.teams` /
-> `org.organisations` ratings, counters, plan, ownership, verification, handle or media ids directly
+> `org.enterprises` ratings, counters, plan, ownership, verification, handle or media ids directly
 > are `security.fn_guard_derived_columns` / `fn_guard_immutable_columns`, bound in `00001895` — see
 > [`../security/Functions.md`](../security/Functions.md). These functions pass them because a
 > definer's `current_user` is its owner.
@@ -650,7 +650,7 @@ spend and a removed member kept `withdraw`. It is now a **projection** of the wo
 ### §9 — Handles: one namespace across people and entities
 
 Four columns hold a public `@handle` (`users_public.username`, `teams.slug`,
-`business_profiles.slug`, `organisations.handle`), each `UNIQUE` only within itself, and
+`business_profiles.slug`, `enterprises.handle`), each `UNIQUE` only within itself, and
 `org.fn_resolve_profile` ranks a person above a team above a business — so an entity could claim a
 handle a person held and be unreachable at `/@handle` forever. Every create now asks the whole
 namespace under a `pg_advisory_xact_lock` on the handle.

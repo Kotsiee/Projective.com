@@ -2612,7 +2612,7 @@ GRANT EXECUTE ON FUNCTION projects.get_engagement_context(uuid) TO authenticated
 -- (its tickets moved without escrow, and turning that off would leave work no hold ever covered).
 -- Every rule is a table trigger, because the app writes these tables directly under RLS and an owner
 -- holds FOR ALL policies on most of them — an RPC-only check is one PATCH away from being skipped.
---   * The project: one owner (no business, team or organisation), visibility pinned to `invite_only`
+--   * The project: one owner (no business, team or enterprise), visibility pinned to `invite_only`
 --     (only an active+public project is world-readable, and nobody can be invited), no sessions, no
 --     budget, no auto-fund, no deadline bonuses.
 --   * Its stages and tickets: prices forced empty, hiring off; only the owner may hold a ticket.
@@ -2652,8 +2652,8 @@ BEGIN
         RETURN NEW;
     END IF;
     IF NEW.client_business_id IS NOT NULL OR NEW.owner_team_id IS NOT NULL
-       OR NEW.owner_organisation_id IS NOT NULL THEN
-        RAISE EXCEPTION 'project: a personal project belongs to one person, not a business, team or organisation'
+       OR NEW.owner_enterprise_id IS NOT NULL THEN
+        RAISE EXCEPTION 'project: a personal project belongs to one person, not a business, team or enterprise'
             USING ERRCODE = 'PM403';
     END IF;
     NEW.visibility := 'invite_only'::public.visibility;

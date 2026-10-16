@@ -381,7 +381,7 @@ const STATUSES: ReadonlySet<string> = new Set([
 
 const VISIBILITIES: ReadonlySet<string> = new Set(["private", "link", "public"]);
 
-const OWNER_KINDS: ReadonlySet<string> = new Set(["user", "team", "business", "organisation"]);
+const OWNER_KINDS: ReadonlySet<string> = new Set(["user", "team", "business", "enterprise"]);
 
 const SCAN_STATUSES: ReadonlySet<string> = new Set([
 	"pending",

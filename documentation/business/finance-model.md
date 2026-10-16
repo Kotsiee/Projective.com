@@ -51,7 +51,7 @@ Two payment planes, because a user and the entities they own are separately scal
 
 - **Personal plan** — attached to the _user_. Raises their proposal allowance, how many teams and
   businesses they may own, their promoted placement and analytics.
-- **Entity plan** — attached to each _Team / Business / Organisation_. Raises that entity's seats,
+- **Entity plan** — attached to each _Team / Business / Enterprise_. Raises that entity's seats,
   concurrent public projects, pooled-wallet features and departments.
 
 **Ownership ≠ power.** A personal Pro plan lets you spin up 3 businesses; each of those businesses
@@ -63,14 +63,14 @@ still only gets 3 concurrent public projects until _it_ is upgraded.
 | **Pro**          | Individuals             | **£12.99/mo**      | Proposals 50 → 150/wk, live public projects 3 → 15, listings ×2, teams owned 3 → 6, businesses owned 1 → 3, promoted placement, full analytics.                      |
 | **Pro Team**     | Micro-agencies          | £29/mo per team    | Seats 4 → 15, team public projects 2 → 15, a dedicated pooled proposal quota, advanced vault splits.                                                                 |
 | **Business Pro** | SMB buyers              | **TBD** ⚠️         | Public projects 3 → 25, managers 2 → 15, full pooled wallet + spending caps, intervaled invoicing, light departments.                                                |
-| **Organisation** | Enterprise/procurement  | Custom, seat-based | Unlimited nested businesses + full departmental isolation, SSO/SAML, API access, audit logs, consolidated invoicing, dedicated support, **negotiated platform fee**. |
+| **Enterprise** | Enterprise/procurement  | Custom, seat-based | Unlimited nested businesses + full departmental isolation, SSO/SAML, API access, audit logs, consolidated invoicing, dedicated support, **negotiated platform fee**. |
 
 > ⚠️ **Business Pro price is not set.** The entitlements are seeded in `finance.plan_entitlements`;
 > `finance.plans.price_cents` is deliberately `NULL` until the product owner sets it. Flagged in
 > root `CLAUDE.md` §8.
 
-Organisation seat pricing keys off the existing `org.employee_scale` tiers (1-50 / 51-200 / 201-500
-/ 500+). An Organisation is **free to draft** — creating and configuring one costs nothing; going
+Enterprise seat pricing keys off the existing `org.employee_scale` tiers (1-50 / 51-200 / 201-500
+/ 500+). An Enterprise is **free to draft** — creating and configuring one costs nothing; going
 active and adding seats requires the subscription, the same draft-first pattern used everywhere
 else.
 
@@ -82,7 +82,7 @@ else.
 - **Search Boosts:** paid promotion for profiles/templates on the Explore page or hiring
   suggestions.
 
-### 1.5 Organizational Limits (The Scale Ladder)
+### 1.5 Entity Limits (The Scale Ladder)
 
 - Team/Business profile count per user.
 - Seat limits within a Team/Business entity (Phase 3).
@@ -374,7 +374,7 @@ stored — only an opaque Stripe reference + safe display fragments (`brand`, `l
 
 ## 14. Vault Permissions, Caps & Approvals
 
-Governs shared wallets (Business / Team / Organisation).
+Governs shared wallets (Business / Team / Enterprise).
 
 - **Capability grants** (`finance.vault_permissions`, not a single role): `view` · `add_funds` ·
   `spend` · `distribute` · `withdraw` · `manage_members` · `manage_billing` · `approve_spend`.
@@ -490,7 +490,7 @@ admins plus every member whose role may manage projects (Decision #230 (b)).
 
 A team must hold **â‰¥ 2 members** before it may send proposals.
 
-**Organisation** â€” unlimited seats, nested businesses, departments and projects; adds SSO/SAML,
+**Enterprise** â€” unlimited seats, nested businesses, departments and projects; adds SSO/SAML,
 API access, 730-day audit retention, dedicated support, consolidated cross-department invoicing, and
 the only sanctioned platform-fee negotiation.
 
@@ -546,7 +546,7 @@ the top of the ladder.
 ### 16.4 The 5% service fee and where it may flex
 
 The project service fee does **not** taper with Standing and is **not** bundled into any plan. The
-one sanctioned exception (owner decision, 2026-07-24) is an **Organisation or Business volume
+one sanctioned exception (owner decision, 2026-07-24) is an **Enterprise or Business volume
 commitment**, recorded as an explicit, admin-approved, time-boxed `finance.negotiated_rates` row
 with its `minimum_volume_cents` commitment and `contract_ref`.
 `finance.fn_effective_platform_fee_bp` resolves it; absent a contract it falls through to
@@ -593,8 +593,8 @@ resource** one tenant occupies, which is the only category of thing this platfor
 | `team_pro`          |     512 000 | 500 GiB | Shared production assets: video, source files, delivery archives.         |
 | `business_free`     |      25 600 | 25 GiB  | The business pool gets its own 25 GiB, metered against the business.      |
 | `business_pro`      |     512 000 | 500 GiB | Matches Pro Team — a buyer accumulates briefs and deliverables comparably. |
-| `organisation_free` |      25 600 | 25 GiB  | Draft tier: enough to configure and evaluate.                             |
-| `organisation`      |  **`NULL`** | ∞       | `is_unlimited = true`. The enterprise tier is never asked to budget bytes. |
+| `enterprise_free` |      25 600 | 25 GiB  | Draft tier: enough to configure and evaluate.                             |
+| `enterprise`      |  **`NULL`** | ∞       | `is_unlimited = true`. The enterprise tier is never asked to budget bytes. |
 
 #### Five rules that make those numbers mean something
 

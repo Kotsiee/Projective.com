@@ -365,7 +365,7 @@ CREATE TABLE integrations.plugin_versions (
 
 -- #region integrations.plugin_installations
 -- A user's (or workspace's) install of a plugin, with the consented scope set. `install_scope` +
--- `owner_id` mirror the platform owner axis (personal vs a team/business/org vault); `version_id`
+-- `owner_id` mirror the platform owner axis (personal vs a team/business/enterprise vault); `version_id`
 -- is the pinned installed version. Uninstall is soft (`revoked`), nothing is hard-deleted.
 CREATE TABLE integrations.plugin_installations (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
@@ -373,7 +373,7 @@ CREATE TABLE integrations.plugin_installations (
     version_id uuid NOT NULL REFERENCES integrations.plugin_versions (id) ON DELETE RESTRICT,
     installer_user_id uuid NOT NULL REFERENCES org.users_public (user_id) ON DELETE CASCADE,
     install_scope integrations.install_scope NOT NULL DEFAULT 'user',
-    -- The team/business/org id when install_scope is not 'user'; NULL for a personal install.
+    -- The team/business/enterprise id when install_scope is not 'user'; NULL for a personal install.
     owner_id uuid,
     status integrations.install_status NOT NULL DEFAULT 'active',
     -- The capability scopes the installer actually consented to (a subset of the version's request).

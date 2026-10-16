@@ -17,7 +17,7 @@
 
 -- #region The host behind a schedule
 -- The accountable PERSON a schedule belongs to: the individual for a personal schedule, and the
--- owner of the team / business / organisation otherwise. A discovery call names a host user (it is
+-- owner of the team / business / enterprise otherwise. A discovery call names a host user (it is
 -- a meeting between two people), so a team's calls are hosted by the person who answers for the team.
 CREATE OR REPLACE FUNCTION scheduling.fn_schedule_host(p_schedule uuid)
 RETURNS uuid
@@ -35,8 +35,8 @@ AS $$
         WHEN 'business'::scheduling.owner_type THEN (
             SELECT b.owner_user_id FROM org.business_profiles b WHERE b.id = s.owner_id
         )
-        WHEN 'organisation'::scheduling.owner_type THEN (
-            SELECT o.owner_user_id FROM org.organisations o WHERE o.id = s.owner_id
+        WHEN 'enterprise'::scheduling.owner_type THEN (
+            SELECT o.owner_user_id FROM org.enterprises o WHERE o.id = s.owner_id
         )
     END
     FROM scheduling.schedules s

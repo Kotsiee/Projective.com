@@ -1,8 +1,8 @@
 /**
- * `org` schema shapes — identity, organisations, membership, preferences, and the earned Standing /
+ * `org` schema shapes — identity, enterprises, membership, preferences, and the earned Standing /
  * progression ladder.
  */
-export * from "./organisations.ts";
+export * from "./enterprises.ts";
 export * from "./preferences.ts";
 export * from "./locales.ts";
 export * from "./date-format.ts";

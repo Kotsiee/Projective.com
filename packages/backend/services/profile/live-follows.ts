@@ -111,7 +111,7 @@ export async function fetchFollowing(
 
 /**
  * One page of a profile's followers or (a person's) following, newest first, keyset on the follow
- * instant. Only a person follows, so a team's, business's or organisation's `following` is empty.
+ * instant. Only a person follows, so a team's, business's or enterprise's `following` is empty.
  */
 export async function fetchConnections(
 	client: SupabaseClient,

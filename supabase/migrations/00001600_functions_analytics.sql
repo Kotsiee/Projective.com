@@ -23,7 +23,7 @@ AS $$
         OR (p_subject_kind IN ('user', 'freelancer') AND p_subject_id = auth.uid ())
         OR (p_subject_kind = 'business' AND org.is_active_business_member (p_subject_id))
         OR (p_subject_kind = 'team' AND org.is_active_team_member (p_subject_id))
-        OR (p_subject_kind = 'organisation' AND org.is_organisation_member (p_subject_id))
+        OR (p_subject_kind = 'enterprise' AND org.is_enterprise_member (p_subject_id))
         OR (p_subject_kind = 'listing' AND catalogue.fn_manages_listing (p_subject_id));
 $$;
 

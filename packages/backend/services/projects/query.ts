@@ -16,12 +16,12 @@ import { matchesProjectKey } from "./project-identity.ts";
  * it swaps cleanly for the RLS-scoped `projects.*` ranking query later (mirrors `explore/query.ts`).
  */
 
-// #region Scope order (stable grouping — personal → team → business → organisation)
+// #region Scope order (stable grouping — personal → team → business → enterprise)
 const SCOPE_ORDER: Record<string, number> = {
 	personal: 0,
 	team: 1,
 	business: 2,
-	organisation: 3,
+	enterprise: 3,
 };
 // #endregion
 
@@ -135,7 +135,7 @@ function applySort(rows: ProjectSummary[], sort: ProjectFeedParams["sort"]): Pro
 
 // #region Group
 /**
- * Group the matched rows into context sections (display order: personal → team → business → org,
+ * Group the matched rows into context sections (display order: personal → team → business → enterprise,
  * then by label). Returns an empty list when the feed resolves to a single scope — the island then
  * renders one flat list rather than a single redundant section header.
  */

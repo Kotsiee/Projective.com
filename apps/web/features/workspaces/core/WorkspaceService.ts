@@ -2,7 +2,7 @@ import { getWorkspace, postWorkspace, queryOf } from "./api.ts";
 import type { UserContext } from "@projective/types/auth";
 import type { BusinessBillingView, UpdateBillingInput } from "@projective/types/finance";
 import type {
-	ActingOrganisation,
+	ActingEnterprise,
 	ArchiveRoleInput,
 	CreateWorkspaceInput,
 	HandleCheck,
@@ -64,7 +64,7 @@ export const WORKSPACE_ENDPOINTS = {
 	spend: "/api/workspace/spend",
 	spendDecide: "/api/workspace/spend-decide",
 	contextSwitch: "/api/context/switch",
-	contextOrganisations: "/api/context/organisations",
+	contextEnterprises: "/api/context/enterprises",
 } as const;
 // #endregion
 
@@ -196,13 +196,13 @@ export const WorkspaceService = {
 	},
 
 	/**
-	 * The organisations the viewer may act as (owned, or an active membership) — the switcher's third
-	 * list beside the team and business rosters. An organisation is not a {@link WorkspaceKind}, so it
+	 * The enterprises the viewer may act as (owned, or an active membership) — the switcher's third
+	 * list beside the team and business rosters. An enterprise is not a {@link WorkspaceKind}, so it
 	 * has no roster of its own.
 	 */
-	actingOrganisations(): Promise<WorkspaceResult<{ organisations: ActingOrganisation[] }>> {
-		return getWorkspace<{ organisations: ActingOrganisation[] }>(
-			WORKSPACE_ENDPOINTS.contextOrganisations,
+	actingEnterprises(): Promise<WorkspaceResult<{ enterprises: ActingEnterprise[] }>> {
+		return getWorkspace<{ enterprises: ActingEnterprise[] }>(
+			WORKSPACE_ENDPOINTS.contextEnterprises,
 		);
 	},
 };

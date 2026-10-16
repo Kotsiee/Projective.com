@@ -25,7 +25,7 @@ Deno.test("a draft nobody has been hired onto draws neither group", () => {
 	assertEquals(shown("prj-tm2bjk9mdq"), { teams: false, dms: false });
 });
 
-Deno.test("a live engagement the viewer only watches from a buying organisation draws neither", () => {
+Deno.test("a live engagement the viewer only watches from a buying enterprise draws neither", () => {
 	assertEquals(shown("prj-mvztqq7ftf"), { teams: false, dms: false });
 });
 

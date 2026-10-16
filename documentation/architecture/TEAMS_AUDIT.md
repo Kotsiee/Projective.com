@@ -51,7 +51,7 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | # | Check | Implementation | Status |
 | :-- | :-- | :-- | :-- |
 | P1 | Hidden from Client persona (nav) | `nav-model.ts:91-94` `showTeams = isSeller \|\| contextType==='team'` | ✅ |
-| P2 | Hidden from Client persona (create menu) | `actions-model.ts:43-45` offers **Create Team** to every non-organisation context, clients included | ❌ |
+| P2 | Hidden from Client persona (create menu) | `actions-model.ts:43-45` offers **Create Team** to every non-enterprise context, clients included | ❌ |
 | P3 | Route guard for `/teams*` by persona | Only the minor guard (`restricted-surfaces.ts:16`) applies; a client can type `/teams` and reach the roster + create modal | ❌ |
 | P4 | DB refusal for a non-freelancer | Incidental only: `fn_assert_payout_ready('freelancer')` fails for lack of a `freelancer_profiles` row → refusal reads `payout_not_ready`, not a persona refusal | ⚠️ |
 | P5 | Operator mode | `org.is_operator` never consulted by team paths; no app gate | ❌ (needs a ruling — #226 (g)) |
@@ -233,7 +233,7 @@ Order: P0 = gate violations, P1 = matrix/parity, P2 = tidy. All paths under `wsp
 | `LaneCreateButton` **tier-2 skin** (monochrome inverted) | `navigation` | §B.8.1 names it tier 2; it still ships teal (agent finding). Fix once, every lane inherits. |
 | `MetaLine` (`items: string[]`, middot-joined, `--text-secondary`, optional `tabular` per item) | `display` | Every chip→meta migration (D17-D21) and the catalogue/projects equivalents re-implement this. One primitive enforces §B.11. |
 | `Button severity="inverse"` (tier 2) if not present | `fields` | Tier 2 is currently a per-surface recipe (§D.7.7); a severity makes it auditable. |
-| `PermissionMatrix` cell primitive (tri-state allowed / conditional / locked, keyboardable, press-scaled, opaque tints) | `display` | Roles grid is the only custom grid control left; Businesses and Organisations need the same. |
+| `PermissionMatrix` cell primitive (tri-state allowed / conditional / locked, keyboardable, press-scaled, opaque tints) | `display` | Roles grid is the only custom grid control left; Businesses and Enterprises need the same. |
 | `SplitBar` (draggable proportional bar, bp-integer output, `aria-valuenow` per handle) | `fields` | Money control used by team payouts; must meet §A.7 focus + reduced motion. |
 | Motion tokens `--dur-stagger`, `--dur-ambient` | `system/` tokens | Removes D3 literals. |
 
@@ -267,7 +267,7 @@ Each is logged under **Decision #226** with a proposal; items marked *needs ruli
 ### 4.2 Single namespace & console vs public profile
 
 - **Collision prevention is sound:** `fn_handle_refusal` → `fn_handle_taken` checks
-  `users_public.username`, `teams.slug`, `business_profiles.slug`, `organisations.handle`
+  `users_public.username`, `teams.slug`, `business_profiles.slug`, `enterprises.handle`
   (case-insensitive) plus 90-day `handle_changes`; `fn_is_reserved_handle` blocks every top-level
   route segment (`teams`, `team`, `create`, …); `create_workspace` takes
   `pg_advisory_xact_lock(hashtext('handle:'||handle))` so two concurrent creates cannot both pass.

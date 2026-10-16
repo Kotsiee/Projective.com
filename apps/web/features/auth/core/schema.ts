@@ -9,7 +9,7 @@ import { isIdentifier } from "./validate.ts";
  * regex/min/max/enum/literal primitives are used so the schema is stable across Zod majors.
  */
 
-export { IndividualJoinSchema, JoinSchema, OrganizationJoinSchema } from "@projective/types/auth";
+export { IndividualJoinSchema, JoinSchema, EnterpriseJoinSchema } from "@projective/types/auth";
 
 const email = z.string().trim().regex(EMAIL_RE, "Enter a valid email address.");
 const password = z.string().min(8, "Use at least 8 characters.").max(128);

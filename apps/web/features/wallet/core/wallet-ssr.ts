@@ -65,7 +65,7 @@ function toRead<T, U>(res: ServiceResult<T>, pick: (data: T) => U): WalletRead<U
 }
 
 function vaultScope(param: string | null | undefined): boolean {
-	return !!param && /^(team|business|organisation):/.test(param);
+	return !!param && /^(team|business|enterprise):/.test(param);
 }
 
 /**

@@ -206,7 +206,7 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
 
 - **A team or business console is addressed by its `@handle`.** `:teamHandle` / `:businessHandle`
   is `org.teams.slug` / `org.business_profiles.slug` — the entity's handle in the ONE namespace it
-  shares with people and organisations (`org.fn_handle_refusal`), so `/teams/north-loop` and
+  shares with people and enterprises (`org.fn_handle_refusal`), so `/teams/north-loop` and
   `/@north-loop` name the same entity. Builder: `workspaceHref(kind, handle, module?)`
   (`@projective/types/workspace`; the `overview` module is the bare console URL). The row's uuid does
   not route; `org.get_workspace_detail` accepts a uuid only so a WRITE (which knows the id) can re-read
@@ -430,7 +430,7 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
 
   **Query params, all optional.** `?basket=` selects a named basket (a list is a named
   `finance.baskets` row, not a separate table); `?owner=` selects the acting principal's scope
-  (`personal` · `team:{id}` · `business:{id}` · `organisation:{id}`); `?order=` names the order the
+  (`personal` · `team:{id}` · `business:{id}` · `enterprise:{id}`); `?order=` names the order the
   confirmation resolves (absent → the account's most recent); `?project_id=` / `?service_id=` narrow
   the flow to one engagement; `?edit=1` on Details forces the form open. Dev Context Switcher axes
   travel as separate validated `sim*` params (`simOwnerScope` · `simProviders` · `simWalletCover` ·
@@ -649,8 +649,8 @@ themselves or left in a transfer), so an island adopts the server's state. RPC r
 | `/api/workspace/payout`              | `POST`                | `finance.save_team_split`                                                               |
 | `/api/workspace/spend`               | `POST`                | `finance.save_spend_policy`                                                             |
 | `/api/workspace/spend-decide`        | `POST`                | `finance.decide_spend_approval`                                                         |
-| `/api/context/switch`                | `POST`                | `security.switch_session_context` · `switch_team_context` · `switch_organisation_context` · `clear_session_context` |
-| `/api/context/organisations`         | `GET`                 | RLS reads of `org.organisation_members` (own active rows) + `org.organisations` — the orgs the caller owns or actively belongs to, archived excluded (the account switcher's third list; Decision #149) |
+| `/api/context/switch`                | `POST`                | `security.switch_session_context` · `switch_team_context` · `switch_enterprise_context` · `clear_session_context` |
+| `/api/context/enterprises`         | `GET`                 | RLS reads of `org.enterprise_members` (own active rows) + `org.enterprises` — the enterprises the caller owns or actively belongs to, archived excluded (the account switcher's third list; Decision #149) |
 
 An over-limit spend REQUEST is not a workspace route: it is filed from the wallet surface through
 `finance.request_spend_approval`. A context switch re-stamps the JWT: the route re-issues the session on its own response (or answers

@@ -227,7 +227,7 @@ BEGIN
         IF NOT (
             (v_wallet.owner_type IN ('user', 'freelancer') AND v_wallet.owner_id = v_uid)
             OR (
-                v_wallet.owner_type IN ('team', 'business', 'organisation')
+                v_wallet.owner_type IN ('team', 'business', 'enterprise')
                 AND finance.fn_has_vault_capability(v_wallet.id, v_uid, 'add_funds'::finance.vault_capability)
             )
         ) THEN

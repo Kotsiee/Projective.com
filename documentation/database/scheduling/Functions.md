@@ -221,7 +221,7 @@ visible) or the caller may already view it; the request door requires `fn_schedu
 ### `scheduling.fn_schedule_host(schedule) → uuid`
 
 The accountable **person** a schedule belongs to: the individual for a `user`/`freelancer` schedule,
-and the `owner_user_id` of the team, business or organisation otherwise. A discovery call names a
+and the `owner_user_id` of the team, business or enterprise otherwise. A discovery call names a
 host user (it is a meeting between two people), so a team's calls are hosted by whoever answers for
 the team. `SECURITY DEFINER`; **`EXECUTE` is `service_role` only** — it is an internal resolver for
 the request door below, not something a client needs to call.

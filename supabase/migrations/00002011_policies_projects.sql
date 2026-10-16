@@ -688,7 +688,7 @@ SELECT TO authenticated USING (
     OR visibility = 'public'::files.file_visibility
     OR (owner_type = 'team'::files.owner_kind AND org.is_active_team_member (owner_entity_id))
     OR (owner_type = 'business'::files.owner_kind AND org.is_active_business_member (owner_entity_id))
-    OR (owner_type = 'organisation'::files.owner_kind AND org.is_organisation_member (owner_entity_id))
+    OR (owner_type = 'enterprise'::files.owner_kind AND org.is_enterprise_member (owner_entity_id))
 );
 
 CREATE POLICY "Users can insert own folders" ON files.folders FOR
@@ -730,7 +730,7 @@ CREATE POLICY "Users can delete own folders" ON files.folders FOR DELETE TO auth
 -- asset after the fact.
 --
 -- Deliberately STRICT: authority is `owner_user_id = auth.uid()`, so an ENTITY-owned (team /
--- business / organisation) asset cannot currently be shared by a member who is not its owner. That
+-- business / enterprise) asset cannot currently be shared by a member who is not its owner. That
 -- fails CLOSED, which is the correct direction to be wrong in while the entity share-capability
 -- question is still open (see the connections owner-axis flag, Decision #59). Widening it is a
 -- deliberate decision that belongs with whoever settles that, not a side effect of this pass.
@@ -814,7 +814,7 @@ SELECT TO authenticated USING (
     (owner_type = 'user'::files.owner_kind AND owner_id = auth.uid ())
     OR (owner_type = 'team'::files.owner_kind AND org.is_active_team_member (owner_id))
     OR (owner_type = 'business'::files.owner_kind AND org.is_active_business_member (owner_id))
-    OR (owner_type = 'organisation'::files.owner_kind AND org.is_organisation_member (owner_id))
+    OR (owner_type = 'enterprise'::files.owner_kind AND org.is_enterprise_member (owner_id))
 );
 
 -- --- from 0303_projects_lifecycle_rls.sql ---

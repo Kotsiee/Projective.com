@@ -33,7 +33,7 @@ SELECT TO authenticated USING (
         security.is_admin ()
         OR (subject_type IN ('freelancer', 'user') AND subject_id = auth.uid ())
         OR (subject_type = 'business' AND org.is_active_business_member (subject_id))
-        OR (subject_type = 'organisation' AND org.is_organisation_member (subject_id))
+        OR (subject_type = 'enterprise' AND org.is_enterprise_member (subject_id))
     );
 
 
@@ -195,7 +195,7 @@ USING (finance.fn_owner_capability (owner_type, owner_id, 'manage_billing'::fina
 -- the row it belongs to, with no second copy of the rule to drift.
 
 -- A wallet, its ledger and its payouts are seen by whoever may see their owner: the person, or the
--- active members of the team, business or organisation (fn_owner_visible — the rule every sibling
+-- active members of the team, business or enterprise (fn_owner_visible — the rule every sibling
 -- in this schema already reads).
 CREATE POLICY "View visible wallets" ON finance.wallets FOR
 SELECT TO authenticated USING (finance.fn_owner_visible (owner_type, owner_id));

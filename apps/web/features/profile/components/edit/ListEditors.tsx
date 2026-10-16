@@ -292,7 +292,7 @@ export function ExperienceEditor(
 						onValue={(v) => update({ role: v })}
 					/>
 					<Field
-						label="Organisation"
+						label="Enterprise"
 						required
 						value={row.orgName}
 						maxLength={120}

@@ -63,7 +63,7 @@ $$;
 
 -- #region 2. Context switches — the only writers of security.session_context
 -- The acting context is ONE of: personal (every slot NULL), a freelancer profile, a business, a team
--- or an organisation — ck_session_context_one_slot makes a second slot unrepresentable. Every switch
+-- or an enterprise — ck_session_context_one_slot makes a second slot unrepresentable. Every switch
 -- UPSERTS: a user with no row yet (nothing seeded one) used to UPDATE zero rows, return success and
 -- stay exactly where they were. The table carries a SELECT-only client policy, so these definers are
 -- the only way a context changes, and each re-checks the membership it claims — the access-token hook
@@ -72,7 +72,7 @@ CREATE OR REPLACE FUNCTION security.fn_set_session_context(
   p_type public.profile_type,
   p_profile uuid,
   p_team uuid,
-  p_org uuid,
+  p_enterprise uuid,
   p_audit_entity uuid
 )
 RETURNS void
@@ -82,13 +82,13 @@ SET search_path = ''
 AS $$
 BEGIN
   INSERT INTO security.session_context (
-    user_id, active_profile_type, active_profile_id, active_team_id, active_organisation_id, updated_at
-  ) VALUES (auth.uid(), p_type, p_profile, p_team, p_org, now())
+    user_id, active_profile_type, active_profile_id, active_team_id, active_enterprise_id, updated_at
+  ) VALUES (auth.uid(), p_type, p_profile, p_team, p_enterprise, now())
   ON CONFLICT (user_id) DO UPDATE SET
     active_profile_type = EXCLUDED.active_profile_type,
     active_profile_id = EXCLUDED.active_profile_id,
     active_team_id = EXCLUDED.active_team_id,
-    active_organisation_id = EXCLUDED.active_organisation_id,
+    active_enterprise_id = EXCLUDED.active_enterprise_id,
     updated_at = now();
 
   INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, actor_profile_id, actor_team_id)
@@ -151,8 +151,8 @@ BEGIN
 END;
 $$;
 
--- An organisation the caller owns or is an active member of (buyer-only, Decisions #9/#10).
-CREATE OR REPLACE FUNCTION security.switch_organisation_context(p_org_id uuid)
+-- An enterprise the caller owns or is an active member of (buyer-only, Decisions #9/#10).
+CREATE OR REPLACE FUNCTION security.switch_enterprise_context(p_enterprise_id uuid)
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -162,14 +162,14 @@ BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM org.organisations o WHERE o.id = p_org_id AND o.owner_user_id = auth.uid())
+  IF NOT EXISTS (SELECT 1 FROM org.enterprises o WHERE o.id = p_enterprise_id AND o.owner_user_id = auth.uid())
      AND NOT EXISTS (
-       SELECT 1 FROM org.organisation_members m
-       WHERE m.organisation_id = p_org_id AND m.user_id = auth.uid() AND m.status = 'active'
+       SELECT 1 FROM org.enterprise_members m
+       WHERE m.enterprise_id = p_enterprise_id AND m.user_id = auth.uid() AND m.status = 'active'
      ) THEN
-    RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'context: you are not an active member of this organisation';
+    RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'context: you are not an active member of this enterprise';
   END IF;
-  PERFORM security.fn_set_session_context(NULL, NULL, NULL, p_org_id, p_org_id);
+  PERFORM security.fn_set_session_context(NULL, NULL, NULL, p_enterprise_id, p_enterprise_id);
 END;
 $$;
 
@@ -191,7 +191,7 @@ $$;
 
 -- #endregion
 
--- #region 3. current_context() also exposes the active organisation (additive)
+-- #region 3. current_context() also exposes the active enterprise (additive)
 -- Extend the RLS helper (migration 0099) to surface the new claim alongside the existing three.
 CREATE OR REPLACE FUNCTION security.current_context()
 RETURNS jsonb
@@ -203,7 +203,7 @@ AS $$
     'active_profile_type',    auth.jwt()->>'active_profile_type',
     'active_profile_id',      auth.jwt()->>'active_profile_id',
     'active_team_id',         auth.jwt()->>'active_team_id',
-    'active_organisation_id', auth.jwt()->>'active_organisation_id'
+    'active_enterprise_id', auth.jwt()->>'active_enterprise_id'
   );
 $$;
 

@@ -8,7 +8,7 @@ const DOMAIN_RE = /^[a-z0-9.-]+\.[a-z]{2,}$/i;
 
 /**
  * SsoPanel — the **Enterprise SSO** entry: a toggle styled like the OAuth buttons that reveals a
- * single corporate-domain field, which queries the org's SAML/OIDC provider through
+ * single corporate-domain field, which queries the company's SAML/OIDC provider through
  * {@link AuthService.sso} and follows the resolved authorize URL.
  *
  * ONE implementation shared by the `/login` screen and the in-page {@link SignInPrompt} dialog (the

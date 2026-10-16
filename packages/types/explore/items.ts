@@ -11,7 +11,7 @@ import { VerificationStampSchema } from "../org/standing.ts";
  * These are the shapes the fat {@link ExploreBackendService} returns and the app's cards render. They
  * currently back curated fixtures; when the discovery API/tables land, the same schemas validate the
  * DB reads (root CLAUDE.md §1, the Zod SSOT rule). Only enum/array/object/number/string primitives are
- * used so the schema is stable across Zod majors (matching `org/organisations.ts`).
+ * used so the schema is stable across Zod majors (matching `org/enterprises.ts`).
  */
 
 // #region Entity taxonomy

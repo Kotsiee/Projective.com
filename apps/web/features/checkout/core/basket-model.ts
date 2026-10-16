@@ -251,16 +251,16 @@ export function itemKindLabel(item: BasketItem): string {
 
 // #region Owner scope
 /** Which kind of principal an owner scope key names (`personal` has no prefix). */
-export function ownerKindOf(owner: string): "personal" | "team" | "business" | "organisation" {
+export function ownerKindOf(owner: string): "personal" | "team" | "business" | "enterprise" {
 	const prefix = owner.slice(0, owner.indexOf(":"));
-	return prefix === "team" || prefix === "business" || prefix === "organisation"
+	return prefix === "team" || prefix === "business" || prefix === "enterprise"
 		? prefix
 		: "personal";
 }
 
 /**
  * The `owner` param a context defaults to: `personal` for an individual, `{entity}:{id}` for a
- * team/business/organisation context.
+ * team/business/enterprise context.
  *
  * Mirrors the fat service's `defaultOwnerParam` and the wallet's `defaultWalletParam`, so switching
  * context moves the wallet and the basket together. Restated app-side rather than imported because
@@ -272,8 +272,8 @@ export function defaultOwnerParam(context: UserContext): string {
 			return context.contextId ? `team:${context.contextId}` : "personal";
 		case "business":
 			return context.contextId ? `business:${context.contextId}` : "personal";
-		case "organisation":
-			return context.contextId ? `organisation:${context.contextId}` : "personal";
+		case "enterprise":
+			return context.contextId ? `enterprise:${context.contextId}` : "personal";
 		default:
 			return "personal";
 	}

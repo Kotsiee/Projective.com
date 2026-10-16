@@ -1,7 +1,7 @@
 import type { EmployeeTier, Industry } from "@projective/types/auth";
 
 /**
- * Static option sets and reserved words for the auth forms. The organisation tiers and industries
+ * Static option sets and reserved words for the auth forms. The enterprise tiers and industries
  * label the values `@projective/types/auth` owns, which the join schema validates against.
  */
 
@@ -11,7 +11,7 @@ export interface Choice {
 	readonly label: string;
 }
 
-/** Estimated headcount tiers for the Organization onboarding "Scale" step. */
+/** Estimated headcount tiers for the Enterprise onboarding "Scale" step. */
 export const EMPLOYEE_TIERS: readonly (Choice & { readonly value: EmployeeTier })[] = [
 	{ value: "1-50", label: "1–50 employees" },
 	{ value: "51-200", label: "51–200 employees" },
@@ -51,7 +51,7 @@ export const COUNTRIES: readonly Choice[] = [
 	{ value: "other", label: "Other" },
 ];
 
-/** Base permission tiers offered when inviting initial stakeholders (maps to org RBAC roles). */
+/** Base permission tiers offered when inviting initial stakeholders (maps to enterprise RBAC roles). */
 export const PERMISSION_TIERS: readonly Choice[] = [
 	{ value: "admin", label: "Admin — full control" },
 	{ value: "manager", label: "Manager — projects & members" },

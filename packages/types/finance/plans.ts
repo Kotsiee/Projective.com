@@ -21,7 +21,7 @@ import { basisPoints, currency, minorUnits, minorUnitsNonNeg, timestamp, uuid } 
 
 // #region Vocabulary
 /** `finance.plan_audience` — which catalogue a subject shops from. */
-export const PlanAudience = z.enum(["individual", "team", "business", "organisation"]);
+export const PlanAudience = z.enum(["individual", "team", "business", "enterprise"]);
 export type PlanAudience = z.infer<typeof PlanAudience>;
 
 /** `finance.plan_tier`. */
@@ -51,8 +51,8 @@ export const PlanCode = z.enum([
 	"team_pro",
 	"business_free",
 	"business_pro",
-	"organisation_free",
-	"organisation",
+	"enterprise_free",
+	"enterprise",
 ]);
 export type PlanCode = z.infer<typeof PlanCode>;
 
@@ -62,7 +62,7 @@ export const SubscriptionSubject = z.enum([
 	"freelancer",
 	"team",
 	"business",
-	"organisation",
+	"enterprise",
 ]);
 export type SubscriptionSubject = z.infer<typeof SubscriptionSubject>;
 // #endregion
@@ -71,7 +71,7 @@ export type SubscriptionSubject = z.infer<typeof SubscriptionSubject>;
 /**
  * A row of `finance.plans`.
  *
- * `priceCents` is `null` for a custom/negotiated plan (Organisation) **and** for `business_pro`,
+ * `priceCents` is `null` for a custom/negotiated plan (Enterprise) **and** for `business_pro`,
  * whose monthly rate is still TBD (flagged, root CLAUDE.md §8) — the entitlements are seeded, the
  * price is not.
  */
@@ -85,7 +85,7 @@ export const PlanSchema = z.object({
 	currency,
 	billingInterval: BillingInterval,
 	isCustomPriced: z.boolean(),
-	/** Seat-based pricing (Organisation) keys off `org.employee_scale`. */
+	/** Seat-based pricing (Enterprise) keys off `org.employee_scale`. */
 	perSeatCents: minorUnitsNonNeg.nullable(),
 	/** The free plan every subject of this audience implicitly holds. */
 	isDefault: z.boolean(),
@@ -182,12 +182,12 @@ export type StandingCommissionTier = z.infer<typeof StandingCommissionTierSchema
 
 /**
  * A row of `finance.negotiated_rates` — the ONE sanctioned flex of the 5% service fee (owner
- * decision, 2026-07-24: it may flex for Organisation volume commitments). Every flex is an explicit,
+ * decision, 2026-07-24: it may flex for Enterprise volume commitments). Every flex is an explicit,
  * admin-approved, time-boxed contract row, never an implicit consequence of holding a plan.
  */
 export const NegotiatedRateSchema = z.object({
 	id: uuid,
-	subjectType: z.enum(["business", "organisation"]),
+	subjectType: z.enum(["business", "enterprise"]),
 	subjectId: uuid,
 	platformFeeBp: basisPoints,
 	marketplaceCommissionBp: basisPoints.nullable(),

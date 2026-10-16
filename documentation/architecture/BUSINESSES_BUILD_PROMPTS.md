@@ -151,7 +151,7 @@ FILES:
   - documentation/reference/decisions/decisions-122-126.md (row 230) + README.md index
   - documentation/business/PRODUCT_SPEC.md (§647-725 Businesses; sitemap :2950-2957; persona per (a))
   - documentation/business/finance-model.md (per (e), (f))
-  - packages/types/org/organisations.ts:6 comment ("seller-side" → buyer-side) — the ONE code edit,
+  - packages/types/org/enterprises.ts:6 comment ("seller-side" → buyer-side) — the ONE code edit,
     a comment correction
 
 SPEC:
@@ -198,7 +198,7 @@ SPEC:
      the context (the person's own flags stay on the personal claims). Probe: a freelancer switching
      into a business context gets context isClient=true; switching back restores.
   2. Create Business predicate per #230(a). With [1]: shown to every adult not in a restricted
-     account and not in an organisation context; update the doc comment (:30) — Business is a
+     account and not in an enterprise context; update the doc comment (:30) — Business is a
      buyer surface. With [2]/[3]: add the matching DB refusal in create_workspace for p_kind =
      'business' with a typed code and mirror it in the predicate (one exported function used by
      both actions-model and nav-model).
@@ -209,7 +209,7 @@ SPEC:
   4. showBusinesses = belongsToBusiness || businessAccountEnabled || isBusinessCtx.
 
 ACCEPTANCE:
-  - nav-model and actions-model tests: client adult, freelancer, minor, organisation context,
+  - nav-model and actions-model tests: client adult, freelancer, minor, enterprise context,
     business member without create headroom — each gets the expected Businesses link and Create item.
   - Probe passes; no seller surface (Services, Products, Teams create) is shown in a business context.
 ```

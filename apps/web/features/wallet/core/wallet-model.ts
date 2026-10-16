@@ -28,8 +28,8 @@ export function defaultWalletParam(context: UserContext): string {
 			return context.contextId ? `team:${context.contextId}` : "personal";
 		case "business":
 			return context.contextId ? `business:${context.contextId}` : "personal";
-		case "organisation":
-			return context.contextId ? `organisation:${context.contextId}` : "personal";
+		case "enterprise":
+			return context.contextId ? `enterprise:${context.contextId}` : "personal";
 		default:
 			return "personal";
 	}

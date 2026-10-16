@@ -50,7 +50,7 @@ The tiered vault. One row per `(owner_type, owner_id, currency)`.
 | Column          | Type   | Notes                                                                    |
 | :-------------- | :----- | :----------------------------------------------------------------------- |
 | `id`            | uuid   | PK.                                                                      |
-| `owner_type`    | text   | `user` / `freelancer` / `business` / `team` / `organisation` / `system`. |
+| `owner_type`    | text   | `user` / `freelancer` / `business` / `team` / `enterprise` / `system`. |
 | `owner_id`      | uuid   | The owning entity.                                                       |
 | `currency`      | text   | ISO-4217 origin currency.                                                |
 | `balance_cents` | bigint | **Materialised** Available balance (`CHECK >= 0`).                       |
@@ -195,7 +195,7 @@ The auditable identity/business verification trail. **No PII** — only opaque p
 
 | Column         | Type                 | Notes                                                     |
 | :------------- | :------------------- | :-------------------------------------------------------- |
-| `subject_type` | text                 | `freelancer`/`business`/`organisation`/`user`.            |
+| `subject_type` | text                 | `freelancer`/`business`/`enterprise`/`user`.            |
 | `subject_id`   | uuid                 | The verified entity.                                      |
 | `kind`         | text                 | `kyc` (individual) or `kyb` (business).                   |
 | `status`       | `finance.kyc_status` | `unverified`/`pending`/`verified`/`rejected`/`expired`.   |
@@ -207,8 +207,8 @@ The auditable identity/business verification trail. **No PII** — only opaque p
 `kyc_status`,`kyc_tier`,`kyc_verified_at`,`payout_ready`,`identity_provider_ref` (KYC); and
 `org.business_profiles` gains `kyb_status`,`kyb_verified_at`,`kyb_provider_ref` (KYB) — documented
 in [`../org/Tables.md`](../org/Tables.md). ⚠️ **Distinct from email verification**
-(`org.user_emails.verified_at`, migration 0312). Organisations keep their own
-`org.organisation_verification_level` (0314). The gating rule (freelancer onboarding gate; clients
+(`org.user_emails.verified_at`, migration 0312). Enterprises keep their own
+`org.enterprise_verification_level` (0314). The gating rule (freelancer onboarding gate; clients
 exempt; business KYB to operate the pooled wallet) is in `finance-model.md` §KYC/KYB Gating.
 
 ---
@@ -273,7 +273,7 @@ The **PAID ladder**. Zod SSOT: `packages/types/finance/plans.ts` + `entitlements
 | `finance.subscription_events`        | Billing audit trail: `event_type` (started/upgraded/downgraded/renewed/payment_failed/paused/resumed/cancelled/expired), `from_plan_id`/`to_plan_id`, `amount_cents`, `provider_ref`.                                                                                                                                |
 | `finance.entitlement_grants`         | Manual overrides (comps, trials, negotiation): `entitlement_key`, `limit_value`/`is_unlimited`/`flag_value`, `reason`, `granted_by`, `starts_at`/`expires_at`. A grant may only **raise** an effective limit, never lower it — a misconfigured comp can never suffocate a paying subject.                            |
 | `finance.standing_commission_tiers`  | The **earned** marketplace-commission taper keyed to `org.standing_levels.level`: 8% · 8% · 7.5% · 7% · 6.5%. `platform_fee_bp` is `NULL` at every rung — the 5% service fee does **not** taper with Standing.                                                                                                       |
-| `finance.negotiated_rates`           | The one sanctioned flex of the 5%: `subject_type` (business/organisation), `platform_fee_bp`, optional `marketplace_commission_bp`, `minimum_volume_cents`, `contract_ref`, `approved_by`, `starts_at`/`ends_at`, `status`. Explicit, admin-approved, time-boxed — never an implicit consequence of holding a plan.  |
+| `finance.negotiated_rates`           | The one sanctioned flex of the 5%: `subject_type` (business/enterprise), `platform_fee_bp`, optional `marketplace_commission_bp`, `minimum_volume_cents`, `contract_ref`, `approved_by`, `starts_at`/`ends_at`, `status`. Explicit, admin-approved, time-boxed — never an implicit consequence of holding a plan.  |
 | `finance.allowance_periods`          | Metered distribution, one live row per `(subject, key, period_start)`: `granted_units`, `consumed_units`, `base_units`, `standing_bonus_units`, `buffer_units`, `buffer_cap`, `buffer_refreshed_at`.                                                                                                                 |
 | `finance.allowance_ledger`           | Append-only consumption record behind "42/50 used this week": `period_id`, `units` (negative = refund), `reason`, `ref_table`/`ref_id`.                                                                                                                                                                              |
 
@@ -287,8 +287,8 @@ The **PAID ladder**. Zod SSOT: `packages/types/finance/plans.ts` + `entitlements
 | `team_pro`          | team         | £29/mo per team    | Pre-existing rate (`finance-model.md` §1.3).                                                                                                        |
 | `business_free`     | business     | £0                 | Pooled wallet in basic mode; KYB still gates operation.                                                                                             |
 | `business_pro`      | business     | **`NULL` (TBD)**   | ⚠️ Entitlements seeded, **price not set** — flagged, root `CLAUDE.md` §8.                                                                           |
-| `organisation_free` | organisation | £0                 | Free-to-draft; going active + adding seats needs the paid tier.                                                                                     |
-| `organisation`      | organisation | Custom, seat-based | Keyed to `org.employee_scale`. The only place the platform fee may flex.                                                                            |
+| `enterprise_free` | enterprise | £0                 | Free-to-draft; going active + adding seats needs the paid tier.                                                                                     |
+| `enterprise`      | enterprise | Custom, seat-based | Keyed to `org.employee_scale`. The only place the platform fee may flex.                                                                            |
 
 ### The entitlement matrix (starting dials)
 
@@ -313,9 +313,9 @@ The **PAID ladder**. Zod SSOT: `packages/types/finance/plans.ts` + `entitlements
 | `promoted_placement`      | —         | ✅              | `intervaled_invoicing`     | —             | ✅           |
 | `storage_megabytes`       | 25600     | 512000          | `storage_megabytes`        | 25600         | 512000       |
 
-The Organisation tier is unlimited on seats/businesses/departments/projects and adds `sso_enabled`,
+The Enterprise tier is unlimited on seats/businesses/departments/projects and adds `sso_enabled`,
 `api_access`, `audit_log_retention_days` (730), `dedicated_support` and `negotiated_platform_fee`.
-`organisation_free` carries 25600 MiB of draft-tier storage; the paid `organisation` plan is the
+`enterprise_free` carries 25600 MiB of draft-tier storage; the paid `enterprise` plan is the
 schema's only `storage_megabytes` row with `is_unlimited = true`.
 
 ### `storage_megabytes` — the asset-management footprint lever
@@ -373,7 +373,7 @@ is why there is no `kind` column. One owner may hold many baskets; at most one i
 | Column       | Type        | Notes                                                                                        |
 | :----------- | :---------- | :------------------------------------------------------------------------------------------- |
 | `id`         | uuid        | PK, `gen_random_uuid()`.                                                                     |
-| `owner_type` | text        | `CHECK IN ('user','freelancer','business','team','organisation')` — the wide finance axis.   |
+| `owner_type` | text        | `CHECK IN ('user','freelancer','business','team','enterprise')` — the wide finance axis.   |
 | `owner_id`   | uuid        | The owning principal.                                                                        |
 | `name`       | text        | NOT NULL, `DEFAULT 'Main Basket'`.                                                           |
 | `is_default` | boolean     | NOT NULL `DEFAULT false`. At most one per owner (`uq_basket_default_per_owner`, partial).    |
@@ -383,7 +383,7 @@ is why there is no `kind` column. One owner may hold many baskets; at most one i
 > **⚠️ `owner_type` is the wide axis, deliberately.** It matches `finance.payment_methods` /
 > `payout_schedules` / `statements` rather than a narrower `('user','business')` pair, because a
 > narrower pair **cannot express a team basket** — and the app's context switcher (root `CLAUDE.md`
-> Decisions #16/#61) switches between personal / team / business / organisation, with the basket
+> Decisions #16/#61) switches between personal / team / business / enterprise, with the basket
 > required to re-scope alongside it.
 >
 > Its Zod counterpart is **`PurchaseOwnerType`**, not `WalletOwnerType`. The wallet axis carries a

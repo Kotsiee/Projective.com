@@ -132,7 +132,7 @@
 	min-inline-size: 0;
 }
 
-/* Grouped rosters (by role, or by department on an organisation-shaped roster). */
+/* Grouped rosters (by role, or by department on an enterprise-shaped roster). */
 .wsp-people__group + .wsp-people__group {
 	margin-block-start: var(--space-5);
 }

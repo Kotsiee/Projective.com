@@ -13,7 +13,7 @@
 -- Ownership is a PAIR, not one column: (owner_type, owner_entity_id) names the principal that owns
 -- the bytes and is metered for quota, while `owner_user_id` always names the human who created the
 -- row. For a personal asset owner_type = 'user' and owner_entity_id IS NULL (owner_user_id carries
--- the identity); for an entity asset owner_entity_id names the team/business/organisation. The
+-- the identity); for an entity asset owner_entity_id names the team/business/enterprise. The
 -- CHECK constraint below makes the NULL combination unrepresentable.
 --
 -- DEPENDENCY NOTE: `source_connection_id` references integrations.user_connections, which is

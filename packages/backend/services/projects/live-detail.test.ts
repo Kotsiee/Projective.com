@@ -168,7 +168,7 @@ const PROJECT_ROW = {
 	currency: "GBP",
 	owner_user_id: OWNER_ID,
 	owner_team_id: null,
-	owner_organisation_id: null,
+	owner_enterprise_id: null,
 	client_business_id: BUSINESS_ID,
 	source_blueprint_id: null,
 	updated_at: "2026-10-01T00:00:00.000Z",

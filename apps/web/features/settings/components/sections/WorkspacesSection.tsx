@@ -5,7 +5,7 @@ import { Button } from "@projective/ui/fields";
 import { InlineNotice } from "@projective/ui/feedback";
 import type { UserContext } from "@projective/types/auth";
 import type {
-	ActingOrganisation,
+	ActingEnterprise,
 	WorkspaceKind,
 	WorkspaceSummary,
 } from "@projective/types/workspace";
@@ -16,7 +16,7 @@ import { sectionEntries, sectionMeta } from "../../core/settings-registry.ts";
 
 /**
  * Settings → Workspaces (Decision #150): who the session is acting as, and every team, business and
- * organisation the person can act for — read through the same roster routes the account popover's
+ * enterprise the person can act for — read through the same roster routes the account popover's
  * switcher uses, switched through the same `useContextSwitch` sequence (switch → re-mint the token →
  * hard navigation), so "Act as" here and in the header can never behave differently. Creating and
  * managing a workspace stays on `/teams` and `/businesses`.
@@ -25,14 +25,14 @@ import { sectionEntries, sectionMeta } from "../../core/settings-registry.ts";
 type Lists = {
 	team: WorkspaceSummary[] | null;
 	business: WorkspaceSummary[] | null;
-	organisations: ActingOrganisation[] | null;
+	enterprises: ActingEnterprise[] | null;
 };
 
 const CONTEXT_LABEL: Readonly<Record<UserContext["contextType"], string>> = {
 	personal: "Yourself",
 	team: "A team",
 	business: "A business",
-	organisation: "An organisation",
+	enterprise: "An enterprise",
 };
 
 export interface WorkspacesSectionProps {
@@ -41,7 +41,7 @@ export interface WorkspacesSectionProps {
 
 export function WorkspacesSection(props: WorkspacesSectionProps): JSX.Element {
 	const meta = sectionMeta("workspaces");
-	const lists = useSignal<Lists>({ team: null, business: null, organisations: null });
+	const lists = useSignal<Lists>({ team: null, business: null, enterprises: null });
 	const failed = useSignal<string | null>(null);
 	const { switching, error, switchTo, exitToPersonal } = useContextSwitch();
 	const ctx = props.context;
@@ -54,9 +54,9 @@ export function WorkspacesSection(props: WorkspacesSectionProps): JSX.Element {
 		Promise.all([
 			showsTeams ? roster("team") : Promise.resolve(null),
 			showsBusinesses ? roster("business") : Promise.resolve(null),
-			WorkspaceService.actingOrganisations(),
+			WorkspaceService.actingEnterprises(),
 		])
-			.then(([teams, businesses, orgs]) => {
+			.then(([teams, businesses, enterprises]) => {
 				if (!live) return;
 				const keep = (items: WorkspaceSummary[]) =>
 					items.filter((item) => item.status !== "archived");
@@ -67,7 +67,7 @@ export function WorkspacesSection(props: WorkspacesSectionProps): JSX.Element {
 						: showsBusinesses
 						? null
 						: [],
-					organisations: orgs.ok && orgs.data ? orgs.data.organisations : null,
+					enterprises: enterprises.ok && enterprises.data ? enterprises.data.enterprises : null,
 				};
 				if (businesses && !businesses.ok) {
 					failed.value = businesses.message ?? "Your workspaces couldn't be loaded just now.";
@@ -86,7 +86,7 @@ export function WorkspacesSection(props: WorkspacesSectionProps): JSX.Element {
 			name: string;
 			meta: string;
 			href: string;
-			type: "team" | "business" | "organisation";
+			type: "team" | "business" | "enterprise";
 			handle: string;
 		},
 	) {
@@ -119,7 +119,7 @@ export function WorkspacesSection(props: WorkspacesSectionProps): JSX.Element {
 				name: string;
 				meta: string;
 				href: string;
-				type: "team" | "business" | "organisation";
+				type: "team" | "business" | "enterprise";
 				handle: string;
 			}[] | null;
 			empty: string;
@@ -224,16 +224,16 @@ export function WorkspacesSection(props: WorkspacesSectionProps): JSX.Element {
 				)
 				: null}
 
-			<SettingsBlock anchor="organisations" title="Organisations">
+			<SettingsBlock anchor="enterprises" title="Enterprises">
 				<List
-					label="Your organisations"
-					empty="You don't act for any organisation."
-					items={l.organisations?.map((o) => ({
+					label="Your enterprises"
+					empty="You don't act for any enterprise."
+					items={l.enterprises?.map((o) => ({
 						id: o.id,
 						name: o.name,
 						meta: o.owner ? "Owner" : "Member",
 						href: `/${o.handle}`,
-						type: "organisation" as const,
+						type: "enterprise" as const,
 						handle: o.handle,
 					})) ?? null}
 				/>

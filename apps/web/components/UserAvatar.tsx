@@ -28,7 +28,7 @@ export type UserAvatarProps = Omit<AvatarProps, "fallbackImage" | "label"> & {
  * This component adds the last rung: for a `null` picture, AND for one that fails to load, it paints
  * {@link DEFAULT_AVATAR_URL}, with the person's initials beneath should that fail too.
  *
- * Use it for PEOPLE only. An organisation, team, workspace or group chat is drawn with `Avatar`
+ * Use it for PEOPLE only. An enterprise, team, workspace or group chat is drawn with `Avatar`
  * directly (or `EntityMark`), because a stranger's face is the wrong stand-in for a company.
  */
 export function UserAvatar(props: UserAvatarProps): JSX.Element {
@@ -37,7 +37,7 @@ export function UserAvatar(props: UserAvatarProps): JSX.Element {
 
 /**
  * The owner kinds that are a PERSON across the app's projections (`ProfileKind`, the explore owner,
- * the review author, the wallet scope). Everything else — `team`, `business`, `organisation` — is an
+ * the review author, the wallet scope). Everything else — `team`, `business`, `enterprise` — is an
  * entity.
  */
 const PERSON_KINDS: ReadonlySet<string> = new Set(["user", "client", "freelancer", "personal"]);

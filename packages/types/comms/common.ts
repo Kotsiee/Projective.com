@@ -5,7 +5,7 @@ import { z } from "zod";
  *
  * These mirror the Postgres enums added by migration `20260724090000_comms_notification_catalog.sql`
  * exactly. Only regex/min/max/enum/int primitives are used so the schemas stay stable across Zod
- * majors (matching `packages/types/finance/common.ts` and `packages/types/org/organisations.ts`).
+ * majors (matching `packages/types/finance/common.ts` and `packages/types/org/enterprises.ts`).
  *
  * The migration, these schemas, and `documentation/database/comms/*` land together
  * (root CLAUDE.md §1).
@@ -115,7 +115,7 @@ export const NotificationContextType = z.enum([
 	"project",
 	"team",
 	"business",
-	"organisation",
+	"enterprise",
 	"conversation",
 ]);
 export type NotificationContextType = z.infer<typeof NotificationContextType>;

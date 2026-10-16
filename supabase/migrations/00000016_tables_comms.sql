@@ -123,7 +123,7 @@ CREATE TABLE comms.notifications (
         CONSTRAINT notifications_actor_user_id_fkey
             FOREIGN KEY (actor_user_id) REFERENCES org.users_public (user_id) ON DELETE SET NULL,
         CONSTRAINT notifications_context_type_check
-            CHECK (context_type IS NULL OR context_type IN ('personal', 'project', 'team', 'business', 'organisation', 'conversation')),
+            CHECK (context_type IS NULL OR context_type IN ('personal', 'project', 'team', 'business', 'enterprise', 'conversation')),
         CONSTRAINT notifications_group_count_positive CHECK (group_count >= 1)
 );
 

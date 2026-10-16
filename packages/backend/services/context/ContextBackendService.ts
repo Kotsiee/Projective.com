@@ -1,5 +1,5 @@
 import type { UserContext } from "@projective/types/auth";
-import type { ActingOrganisation, SwitchContextInput } from "@projective/types/workspace";
+import type { ActingEnterprise, SwitchContextInput } from "@projective/types/workspace";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { getUserClient } from "../../core/supabase.ts";
 
@@ -8,13 +8,13 @@ import { getUserClient } from "../../core/supabase.ts";
  *
  * It sits deliberately outside the workspace service even though the workspace surface is its loudest
  * caller: the acting context is a **session-wide** concern that also drives the header account popover,
- * the global sidebar's gating, RLS scoping and every `/wallet` read, and the `organisation` context it must
+ * the global sidebar's gating, RLS scoping and every `/wallet` read, and the `enterprise` context it must
  * also serve is not a workspace kind at all.
  *
  * ## The database invariant this service exists to protect
  *
  * `security.session_context` holds **four mutually-exclusive active slots** — `active_profile_type` +
- * `active_profile_id`, `active_team_id`, `active_organisation_id`. "One context at a time" is a **schema
+ * `active_profile_id`, `active_team_id`, `active_enterprise_id`. "One context at a time" is a **schema
  * invariant, not a UI convention**: every switch RPC upserts the whole row through one internal setter
  * that NULLs every slot it is not setting, so there is no representable state in which a session is acting
  * as two identities. The table is SELECT-only to clients; these four RPCs are the only doors:
@@ -24,7 +24,7 @@ import { getUserClient } from "../../core/supabase.ts";
  * | `personal`     | `security.clear_session_context()`                   |
  * | `team`         | `security.switch_team_context(p_team_id)`            |
  * | `business`     | `security.switch_session_context('business', p_id)`  |
- * | `organisation` | `security.switch_organisation_context(p_org_id)`     |
+ * | `enterprise` | `security.switch_enterprise_context(p_enterprise_id)`     |
  *
  * Each resolves the caller from `auth.uid()` and refuses (`42501`) anybody who is not an active member of
  * a non-archived target — so authority is the database's, and this service only forwards and maps.
@@ -102,8 +102,8 @@ export class ContextBackendService {
 				? await db.rpc("switch_team_context", { p_team_id: targetId })
 				: input.contextType === "business"
 				? await db.rpc("switch_session_context", { p_type: "business", p_id: targetId })
-				: input.contextType === "organisation"
-				? await db.rpc("switch_organisation_context", { p_org_id: targetId })
+				: input.contextType === "enterprise"
+				? await db.rpc("switch_enterprise_context", { p_enterprise_id: targetId })
 				: await db.rpc("clear_session_context");
 			if (error) return refusalFrom(error);
 			return ok<SwitchContextResult>({}, { message: switchedMessage(input) });
@@ -115,51 +115,51 @@ export class ContextBackendService {
 	}
 
 	/**
-	 * The organisations the caller may switch into: the ones they OWN plus the ones they hold an ACTIVE
-	 * membership in, archived ones excluded — the same admission `security.switch_organisation_context`
+	 * The enterprises the caller may switch into: the ones they OWN plus the ones they hold an ACTIVE
+	 * membership in, archived ones excluded — the same admission `security.switch_enterprise_context`
 	 * applies, so the switcher never offers a row the RPC would refuse.
 	 *
 	 * Both reads are RLS-scoped as the caller. The filters are explicit rather than left to the policy,
-	 * because the `org.organisations` SELECT policy also admits platform admins to EVERY organisation —
+	 * because the `org.enterprises` SELECT policy also admits platform admins to EVERY enterprise —
 	 * which is a viewing right, not a list of identities the admin can act as.
 	 */
-	static async organisations(
+	static async enterprises(
 		request: ContextRequest,
-	): Promise<ServiceResult<{ organisations: ActingOrganisation[] }>> {
+	): Promise<ServiceResult<{ enterprises: ActingEnterprise[] }>> {
 		const userId = request.context.userId;
 		// The id is interpolated into a PostgREST filter, so it must be exactly a uuid, never free text.
 		if (!request.accessToken || !userId || !UUID_RE.test(userId)) {
-			return fail(401, { message: "Sign in to see your organisations." });
+			return fail(401, { message: "Sign in to see your enterprises." });
 		}
 		try {
 			const db = getUserClient(request.accessToken).schema("org");
-			const memberships = await db.from("organisation_members")
-				.select("organisation_id")
+			const memberships = await db.from("enterprise_members")
+				.select("enterprise_id")
 				.eq("user_id", userId)
 				.eq("status", "active");
 			if (memberships.error) throw new Error(memberships.error.message);
-			const memberOf = (memberships.data ?? []).map((row) => String(row.organisation_id));
+			const memberOf = (memberships.data ?? []).map((row) => String(row.enterprise_id));
 
 			const filter = memberOf.length > 0
 				? `owner_user_id.eq.${userId},id.in.(${memberOf.join(",")})`
 				: `owner_user_id.eq.${userId}`;
-			const orgs = await db.from("organisations")
+			const enterpriseRows = await db.from("enterprises")
 				.select("id,owner_user_id,legal_name,trading_name,handle,status")
 				.or(filter)
 				.neq("status", "archived")
 				.order("legal_name");
-			if (orgs.error) throw new Error(orgs.error.message);
+			if (enterpriseRows.error) throw new Error(enterpriseRows.error.message);
 
-			const organisations = (orgs.data ?? []).map((row): ActingOrganisation => ({
+			const enterprises = (enterpriseRows.data ?? []).map((row): ActingEnterprise => ({
 				id: String(row.id),
 				name: String(row.trading_name ?? "").trim() || String(row.legal_name),
 				handle: String(row.handle),
 				owner: row.owner_user_id === userId,
 			}));
-			return ok({ organisations });
+			return ok({ enterprises });
 		} catch (error) {
-			console.error("[context:organisations]", error instanceof Error ? error.message : error);
-			return fail(503, { message: "Couldn't load your organisations just now." });
+			console.error("[context:enterprises]", error instanceof Error ? error.message : error);
+			return fail(503, { message: "Couldn't load your enterprises just now." });
 		}
 	}
 }
@@ -182,8 +182,8 @@ function switchedMessage(input: SwitchContextInput): string {
 			return "Now acting as this team.";
 		case "business":
 			return "Now acting as this business.";
-		case "organisation":
-			return "Now acting as this organisation.";
+		case "enterprise":
+			return "Now acting as this enterprise.";
 	}
 }
 

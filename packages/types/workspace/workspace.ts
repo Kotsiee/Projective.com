@@ -356,27 +356,27 @@ export type UpdateSpendInput = z.infer<typeof UpdateSpendInputSchema>;
 
 /** Switch the session's acting context. `null` returns to personal. */
 export const SwitchContextInputSchema = z.object({
-	contextType: z.enum(["personal", "team", "business", "organisation"]),
+	contextType: z.enum(["personal", "team", "business", "enterprise"]),
 	contextId: z.string().max(64).nullable(),
 });
 export type SwitchContextInput = z.infer<typeof SwitchContextInputSchema>;
 
 /**
- * An organisation the caller may act as (`GET /api/context/organisations`) — the third list beside the
+ * An enterprise the caller may act as (`GET /api/context/enterprises`) — the third list beside the
  * team and business rosters in the account popover's context switcher. A thin projection over
- * `org.organisations` for the orgs the caller OWNS or holds an ACTIVE membership in; an organisation is
+ * `org.enterprises` for the enterprises the caller OWNS or holds an ACTIVE membership in; an enterprise is
  * not a {@link WorkspaceKind}, so it has no roster entry of its own.
  */
-export const ActingOrganisationSchema = z.object({
+export const ActingEnterpriseSchema = z.object({
 	id: z.string().max(64),
 	/** The trading name, else the legal name. */
 	name: z.string().max(200),
-	/** The organisation's `@handle`, without the `@`. */
+	/** The enterprise's `@handle`, without the `@`. */
 	handle: z.string().max(40),
 	/** Whether the caller owns it (otherwise a member). */
 	owner: z.boolean(),
 });
-export type ActingOrganisation = z.infer<typeof ActingOrganisationSchema>;
+export type ActingEnterprise = z.infer<typeof ActingEnterpriseSchema>;
 
 /** The outcome of a handle-availability probe. */
 export const HandleCheckSchema = z.object({

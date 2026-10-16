@@ -6,7 +6,7 @@ import { mockAvatar } from "../../mocks/assets.ts";
  * `/projects` feed from while `PROJECTS_BACKEND_LIVE` is off (thin-frontend pattern, root CLAUDE.md
  * §10). Deliberately spans the full multi-tenant matrix for ONE acting account: an independent
  * freelancer who is also a member of a Team, an admin of a Business, and a member of a buyer-only
- * Organisation — so every scope toggle, role filter, and the client-by-service filter have real
+ * Enterprise — so every scope toggle, role filter, and the client-by-service filter have real
  * data to exercise. When the live path lands, the RLS-scoped `projects.*` + `org.*` reads replace
  * these arrays behind the same gate, with zero shape churn (the rows are already the SSOT
  * {@link ProjectSummary}). No RNG — deterministic so SSR/resume are stable.
@@ -52,8 +52,8 @@ export const ACTOR_HANDLE = "ahmed";
 export const TEAM_NORTHWIND = "t_northwind";
 /** Monarch Labs — a client-side Business the actor administers. */
 export const BUSINESS_MONARCH = "b_monarch";
-/** Helios Corp — a buyer-only Organisation the actor belongs to. */
-export const ORG_HELIOS = "o_helios";
+/** Helios Corp — a buyer-only Enterprise the actor belongs to. */
+export const ENTERPRISE_HELIOS = "o_helios";
 // #endregion
 
 // #region Avatars (Unsplash face crops — open registry, DESIGN_SYSTEM.md §C.4)
@@ -413,7 +413,7 @@ const PROJECTS: readonly ProjectSummary[] = [
 		updatedAt: "2026-07-17T08:40:00Z",
 	},
 
-	// —— Helios Corp (Organisation, buyer-only) ——————————————————————————————————
+	// —— Helios Corp (Enterprise, buyer-only) ——————————————————————————————————
 	{
 		id: "44444444-4444-4444-8444-444444444401",
 		slug: "prj-mvztqq7ftf",
@@ -422,8 +422,8 @@ const PROJECTS: readonly ProjectSummary[] = [
 		format: "pipeline",
 		status: "active",
 		viewerRole: "member",
-		scopeType: "organisation",
-		scopeId: ORG_HELIOS,
+		scopeType: "enterprise",
+		scopeId: ENTERPRISE_HELIOS,
 		scopeLabel: "Helios Corp",
 		owner: party("Omar Haddad", OMAR, "omar"),
 		counterparty: party("Northwind Studio", DANIEL, "northwind"),
@@ -444,8 +444,8 @@ const PROJECTS: readonly ProjectSummary[] = [
 		format: "one_off",
 		status: "completed",
 		viewerRole: "member",
-		scopeType: "organisation",
-		scopeId: ORG_HELIOS,
+		scopeType: "enterprise",
+		scopeId: ENTERPRISE_HELIOS,
 		scopeLabel: "Helios Corp",
 		owner: party("Omar Haddad", OMAR, "omar"),
 		counterparty: party("Mara Ellison", MARA, "mara"),
@@ -494,8 +494,8 @@ export function allScopes(): readonly ScopeOption[] {
 			count: 0,
 		},
 		{
-			id: ORG_HELIOS,
-			type: "organisation",
+			id: ENTERPRISE_HELIOS,
+			type: "enterprise",
 			label: "Helios Corp",
 			handle: "helios",
 			role: "member",

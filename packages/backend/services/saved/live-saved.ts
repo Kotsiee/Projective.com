@@ -57,14 +57,14 @@ const LISTINGS = {
 type ListingType = keyof typeof LISTINGS;
 
 /** The bookmark entity types a person's profile can be. */
-const PROFILE_ENTITIES = ["user", "team", "business", "organisation"] as const;
+const PROFILE_ENTITIES = ["user", "team", "business", "enterprise"] as const;
 
 const PROFILE_LABEL: Record<ProfileKind, string> = {
 	freelancer: "Freelancer",
 	client: "Client",
 	team: "Team",
 	business: "Business",
-	organisation: "Organisation",
+	enterprise: "Enterprise",
 };
 
 function isListing(type: SavedEntityType): type is ListingType {

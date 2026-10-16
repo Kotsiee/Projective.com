@@ -12,7 +12,7 @@ import { isRestrictedPath } from "./restricted-surfaces.ts";
  *
  * The roster is **tailored to the hydrated {@link UserContext}** (User Context Hydration) so the
  * correct skeleton ships in the first byte: seller-only destinations appear only for freelancers,
- * Teams is hidden inside an organisation context, and management links are gated to `admin`. This is
+ * Teams is hidden inside an enterprise context, and management links are gated to `admin`. This is
  * a read-only visual guide — every destination re-checks access server-side + under RLS on navigation.
  */
 
@@ -87,7 +87,7 @@ export function globalNav(
 	const isTeamCtx = contextType === "team";
 	const isBusinessCtx = contextType === "business";
 	const belongsToOrg = caps.belongsToTeam || caps.belongsToBusiness || isTeamCtx || isBusinessCtx ||
-		contextType === "organisation";
+		contextType === "enterprise";
 	/** Seller-surface actors: individual freelancers or a team context. */
 	const isSeller = isFreelancer || isTeamCtx;
 	const showServices = isSeller;

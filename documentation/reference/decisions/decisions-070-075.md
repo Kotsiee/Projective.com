@@ -15,7 +15,7 @@ because a charge now records an order the confirmation reads back. `checkoutTota
 percentage of a voluntary gift would make the buyer's generosity revenue. Plus `SpendLimitBlock` and
 the `missing_details` / `spend_limit` blocker codes. **Reuse over invention:** monthly invoicing is
 the EXISTING `org.business_profiles.invoicing_mode` + `billing_day` (1–28 CHECK), the department
-allocation is `org.organisations.departments`, a user "list" is a named `finance.baskets` row (that
+allocation is `org.enterprises.departments`, a user "list" is a named `finance.baskets` row (that
 table's own comment says a wishlist is not a separate kind), and the invoice's FX record COMPOSES
 `ledger.ts`'s `FxSnapshotSchema` rather than restating `fx_rate`/`fx_base`/`fx_as_of`. **No DB
 migration** — a read+write projection over fixtures like every sibling, behind the existing

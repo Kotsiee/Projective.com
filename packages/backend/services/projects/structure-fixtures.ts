@@ -33,7 +33,7 @@ const STRUCTURE_FOR_FORMAT: Record<ProjectFormat, ProjectStructure> = {
  * `ProjectSummary` carries no structure — it is a feed projection, and which sections a setup form
  * renders is not a feed concern — while `projects.projects.structure_variation` carries it on the live
  * path. Rather than widen the feed shape for one surface, the fixtures name the rows the same way the
- * profile corpus names its organisations: an explicit set, so the branch is reachable and reachable
+ * profile corpus names its enterprises: an explicit set, so the branch is reachable and reachable
  * for a stated reason.
  *
  * It matters that this is a declaration and not a derivation. `single_task` swaps the ladder's

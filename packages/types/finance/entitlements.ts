@@ -45,8 +45,8 @@ export const EntitlementKey = z.enum([
 	"team_public_projects",
 	"business_public_projects",
 	"business_managers",
-	"organisation_seats",
-	"organisation_businesses",
+	"enterprise_seats",
+	"enterprise_businesses",
 	"departments",
 	// Capability flags
 	"promoted_placement",

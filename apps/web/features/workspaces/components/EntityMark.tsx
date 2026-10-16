@@ -9,7 +9,7 @@ import { initialsOf } from "../core/workspace-model.ts";
  *
  * The one hard visual rule of `/teams` and `/businesses` is **squares are entities, circles are
  * people**. That distinction does real work: a roster row, an invitation strip and an org chart all
- * mix organisations and humans, and a reader must be able to tell which is which before reading a
+ * mix enterprises and humans, and a reader must be able to tell which is which before reading a
  * single word. `Avatar` from `@projective/ui/display` stays the only way to draw a person; this is
  * the only way to draw an entity, and nothing on the surface renders an entity square by hand.
  *

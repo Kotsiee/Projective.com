@@ -61,7 +61,7 @@ function flag(raw: string | null): boolean | undefined {
 
 /**
  * The `owner` param a context defaults to: `personal` for an individual, `{entity}:{id}` for a
- * team/business/organisation context. Mirrors the wallet's `defaultWalletParam`, so switching context
+ * team/business/enterprise context. Mirrors the wallet's `defaultWalletParam`, so switching context
  * moves the wallet and the basket together.
  */
 export function defaultOwnerParam(context: UserContext): string {
@@ -70,8 +70,8 @@ export function defaultOwnerParam(context: UserContext): string {
 			return context.contextId ? `team:${context.contextId}` : "personal";
 		case "business":
 			return context.contextId ? `business:${context.contextId}` : "personal";
-		case "organisation":
-			return context.contextId ? `organisation:${context.contextId}` : "personal";
+		case "enterprise":
+			return context.contextId ? `enterprise:${context.contextId}` : "personal";
 		default:
 			return "personal";
 	}

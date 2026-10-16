@@ -23,7 +23,7 @@ remain the SSOT for those relationships, and `files.items` deliberately carries 
 `owner_user_id` always names the human who created the row.
 
 - Personal asset → `owner_type = 'user'`, `owner_entity_id IS NULL` (`owner_user_id` carries it).
-- Entity asset → `owner_entity_id` names the team / business / organisation.
+- Entity asset → `owner_entity_id` names the team / business / enterprise.
 
 A `CHECK (owner_type = 'user' OR owner_entity_id IS NOT NULL)` on both tables makes the NULL
 combination unrepresentable.
@@ -36,7 +36,7 @@ combination unrepresentable.
 | `files.file_visibility`  | `private` · `link` · `public`                                        |
 | `files.file_status`      | `pending_upload` · `scanning` · `uploaded` · `error` · `quarantined` |
 | `files.link_scan_status` | `pending` · `safe` · `suspicious` · `blocked` · `unscannable`        |
-| `files.owner_kind`       | `user` · `team` · `business` · `organisation`                        |
+| `files.owner_kind`       | `user` · `team` · `business` · `enterprise`                        |
 | `files.download_via`     | `hub` · `share` · `picker` · `preview` · `api`                       |
 | `files.file_category`    | the 28 `FileCategory` literals (pre-existing)                        |
 | `files.asset_purpose`    | `library` · `avatar` · `showcase`                                    |
@@ -61,7 +61,7 @@ Metered against `(owner_type, owner_id)` via `files.storage_usage`, checked agai
 > … 500 GiB) inside 2,147,483,647.
 
 Ladder (MiB): `individual_free` 25600 · `individual_pro` 153600 · `team_free` 25600 · `team_pro`
-512000 · `business_free` 25600 · `business_pro` 512000 · `organisation_free` 25600 · `organisation`
+512000 · `business_free` 25600 · `business_pro` 512000 · `enterprise_free` 25600 · `enterprise`
 `is_unlimited = true`.
 
 **Enforcement ships fail-open** behind `security.platform_params.storage_quota_enforced` (seeded
@@ -71,7 +71,7 @@ Ladder (MiB): `individual_free` 25600 · `individual_pro` 153600 · `team_free` 
 
 ### `files.folders`
 
-Hierarchical organization of assets. Carries the same ownership / provenance / visibility axes as
+Hierarchical grouping of assets. Carries the same ownership / provenance / visibility axes as
 `files.items`, so a folder can itself be a mounted connector directory or a shared node.
 
 | Column                 | Type                    | Notes                                                                 |

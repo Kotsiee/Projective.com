@@ -41,7 +41,7 @@ export function tabSegment(tab: ProfileTab): string {
 /**
  * The sections shown for a profile kind (root CLAUDE.md §8 Decision #96). Work · Reviews · Posts are
  * universal; **Experience is an individual's section** — a career history, degrees and personal
- * certifications belong to a person, and a team / business / organisation has no such ledger, so
+ * certifications belong to a person, and a team / business / enterprise has no such ledger, so
  * rendering the tab for them would be an empty section with a name on it.
  */
 export function tabsFor(kind: ProfileKind): ProfileTab[] {
@@ -51,7 +51,7 @@ export function tabsFor(kind: ProfileKind): ProfileTab[] {
 			return ["work", "experience", "reviews", "posts"];
 		case "team":
 		case "business":
-		case "organisation":
+		case "enterprise":
 			return ["work", "reviews", "posts"];
 	}
 }
@@ -152,7 +152,7 @@ export function isSellerKind(kind: ProfileKind): boolean {
  *    through it ends at the sign-in prompt, so the control is withheld rather than offered and then
  *    refused (product owner, 2026-09-20).
  *
- * A BUYER entity (client · business · organisation) cannot be hired or assigned, so Message stays
+ * A BUYER entity (client · business · enterprise) cannot be hired or assigned, so Message stays
  * its text primary with Follow as a text secondary.
  *
  * Hire renders for a guest exactly as it does for a member — a listing's preview and a provider's

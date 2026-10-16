@@ -23,7 +23,7 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA org TO service_role;
 -- a policy expression runs as the invoking role — so they stay executable by both client roles.
 GRANT EXECUTE ON FUNCTION org.is_active_team_member (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION org.is_active_business_member (uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION org.is_organisation_member (uuid, org.organisation_role) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION org.is_enterprise_member (uuid, org.enterprise_role) TO anon, authenticated;
 
 -- org.profiles_index masks a minor's location with these, and a view's function calls run as the
 -- reader. They compute only on their arguments and read no table, so granting them exposes nothing;
@@ -253,18 +253,18 @@ GRANT EXECUTE ON FUNCTION org.enable_freelancer_profile (jsonb) TO authenticated
 REVOKE EXECUTE ON FUNCTION org.get_acting_context_details (text, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION org.get_acting_context_details (text, uuid) TO authenticated;
 
--- The one write door on org.organisations (00001020 §5c); the client UPDATE policy is gone.
-REVOKE EXECUTE ON FUNCTION org.update_organisation (uuid, jsonb) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION org.update_organisation (uuid, jsonb) TO authenticated;
+-- The one write door on org.enterprises (00001020 §5c); the client UPDATE policy is gone.
+REVOKE EXECUTE ON FUNCTION org.update_enterprise (uuid, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION org.update_enterprise (uuid, jsonb) TO authenticated;
 
--- --- from 0315_create_organisation_rpc.sql ---
+-- --- from 0315_create_enterprise_rpc.sql ---
 
--- Only the service-role backend provisions organisations (after admin-creating the owner identity).
+-- Only the service-role backend provisions enterprises (after admin-creating the owner identity).
 -- It trusts the `p_owner` it is handed, and Postgres grants a new `public` function to PUBLIC — so
--- until 2026-10-06 any signed-out caller could mint an organisation owned by anybody. Revoked.
-REVOKE EXECUTE ON FUNCTION public.create_organisation (uuid, jsonb) FROM PUBLIC, anon, authenticated;
+-- until 2026-10-06 any signed-out caller could mint an enterprise owned by anybody. Revoked.
+REVOKE EXECUTE ON FUNCTION public.create_enterprise (uuid, jsonb) FROM PUBLIC, anon, authenticated;
 GRANT
-EXECUTE ON FUNCTION public.create_organisation (uuid, jsonb) TO service_role;
+EXECUTE ON FUNCTION public.create_enterprise (uuid, jsonb) TO service_role;
 
 -- --- from 20260709120000_business_teams_overhaul.sql ---
 
@@ -274,7 +274,7 @@ EXECUTE ON FUNCTION org.set_operator_mode (boolean) TO authenticated;
 -- --- from 20260715120000_access_token_context_hook.sql ---
 
 GRANT
-EXECUTE ON FUNCTION security.switch_organisation_context (uuid) TO authenticated;
+EXECUTE ON FUNCTION security.switch_enterprise_context (uuid) TO authenticated;
 
 -- Only the GoTrue admin role may run the hook; no client role may.
 GRANT
@@ -1651,11 +1651,11 @@ REVOKE ALL ON FUNCTION security.fn_set_session_context (public.profile_type, uui
 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION security.switch_session_context (public.profile_type, uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION security.switch_team_context (uuid) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION security.switch_organisation_context (uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION security.switch_enterprise_context (uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION security.clear_session_context () FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION security.switch_session_context (public.profile_type, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION security.switch_team_context (uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION security.switch_organisation_context (uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION security.switch_enterprise_context (uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION security.clear_session_context () TO authenticated;
 -- #endregion
 

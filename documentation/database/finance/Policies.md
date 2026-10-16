@@ -22,8 +22,8 @@ function — including the ledger primitives — callable over the API.
 
 - **`finance.fn_owner_visible(owner_type, owner_id)`** — `SECURITY DEFINER`; true when the caller
   may see that owner's finances (self for `user`/`freelancer`; `org.is_active_business_member` for
-  `business`; `org.is_active_team_member` for `team`; `org.is_organisation_member` for
-  `organisation`; or `security.is_admin()`).
+  `business`; `org.is_active_team_member` for `team`; `org.is_enterprise_member` for
+  `enterprise`; or `security.is_admin()`).
 - **`finance.fn_can_view_wallet(wallet_id)`** — resolves a wallet's owner then defers to
   `fn_owner_visible`. Both are `SECURITY DEFINER` so they read the un-policied `finance.wallets`
   without recursion. Reused by every wallet-scoped policy below.

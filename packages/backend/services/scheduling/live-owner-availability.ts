@@ -33,7 +33,7 @@ import type { ProfileOwnerType } from "@projective/types/profile";
  */
 export function scheduleOwnerType(
 	type: ProfileOwnerType,
-): "user" | "team" | "business" | "organisation" {
+): "user" | "team" | "business" | "enterprise" {
 	return type;
 }
 

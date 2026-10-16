@@ -23,7 +23,7 @@ export const AnalyticsSubjectKind = z.enum([
 	"freelancer",
 	"business",
 	"team",
-	"organisation",
+	"enterprise",
 	"project",
 	"stage",
 	"ticket",

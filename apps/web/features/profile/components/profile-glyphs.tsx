@@ -58,7 +58,7 @@ export type ProfileGlyph =
 	| "entity-client"
 	| "entity-team"
 	| "entity-business"
-	| "entity-organisation";
+	| "entity-enterprise";
 // #endregion
 
 const PATHS: Record<ProfileGlyph, VNode> = {
@@ -238,7 +238,7 @@ const PATHS: Record<ProfileGlyph, VNode> = {
 			<path d="M8 8v0M8 12v0M8 16v0M15 13v0M15 17v0" />
 		</>
 	),
-	"entity-organisation": (
+	"entity-enterprise": (
 		<>
 			<rect x="9" y="3.5" width="6" height="4.5" rx="1" />
 			<rect x="3.5" y="15.5" width="5" height="4.5" rx="1" />
@@ -284,6 +284,6 @@ export const ENTITY_META: Record<ProfileKind, { label: string; glyph: ProfileGly
 	client: { label: "Client", glyph: "entity-client" },
 	team: { label: "Team", glyph: "entity-team" },
 	business: { label: "Business", glyph: "entity-business" },
-	organisation: { label: "Organisation", glyph: "entity-organisation" },
+	enterprise: { label: "Enterprise", glyph: "entity-enterprise" },
 };
 // #endregion

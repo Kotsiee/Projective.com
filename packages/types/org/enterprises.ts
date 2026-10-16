@@ -1,13 +1,13 @@
 import { z } from "zod";
 
 /**
- * org.organisations — the Zod SSOT for the **client/buyer-only** corporate entity.
+ * org.enterprises — the Zod SSOT for the **client/buyer-only** corporate entity.
  *
- * An Organisation is distinct from `org.business_profiles` (a Business — the buyer-side entity with
- * members and a pooled wallet, Decision #61): an organisation registers only to hire/buy, never to
- * sell. Multi-tenancy is modelled as a membership join table, not a single `users.organisation_id`, because a user may
- * belong to several organisations. These shapes mirror migration
- * `supabase/migrations/0314_organisations.sql` column-for-column and back the
+ * An Enterprise is distinct from `org.business_profiles` (a Business — the buyer-side entity with
+ * members and a pooled wallet, Decision #61): an enterprise registers only to hire/buy, never to
+ * sell. Multi-tenancy is modelled as a membership join table, not a single `users.enterprise_id`, because a user may
+ * belong to several enterprises. These shapes mirror migration
+ * `supabase/migrations/0314_enterprises.sql` column-for-column and back the
  * `documentation/database/org/*` docs — the three land together (root CLAUDE.md §1).
  *
  * Only regex/min/max/enum/array primitives are used, so the schema is stable across Zod majors
@@ -23,31 +23,31 @@ const timestamp = z.string();
 // #endregion
 
 // #region Enums (mirror the Postgres enum types created in migration 0314)
-/** `org.organisation_role` — a member's authority within an organisation. */
-export const OrganisationRole = z.enum(["owner", "admin", "member"]);
-export type OrganisationRole = z.infer<typeof OrganisationRole>;
+/** `org.enterprise_role` — a member's authority within an enterprise. */
+export const EnterpriseRole = z.enum(["owner", "admin", "member"]);
+export type EnterpriseRole = z.infer<typeof EnterpriseRole>;
 
 /** `org.employee_scale` — headcount tier collected at onboarding. */
 export const EmployeeScale = z.enum(["1-50", "51-200", "201-500", "500+"]);
 export type EmployeeScale = z.infer<typeof EmployeeScale>;
 
-/** `org.organisation_status` — lifecycle state (nothing is hard-deleted; use `archived`). */
-export const OrganisationStatus = z.enum(["draft", "active", "suspended", "archived"]);
-export type OrganisationStatus = z.infer<typeof OrganisationStatus>;
+/** `org.enterprise_status` — lifecycle state (nothing is hard-deleted; use `archived`). */
+export const EnterpriseStatus = z.enum(["draft", "active", "suspended", "archived"]);
+export type EnterpriseStatus = z.infer<typeof EnterpriseStatus>;
 
-/** `org.organisation_verification_level` — KYB stays deferred; starts `unverified`. */
-export const OrganisationVerificationLevel = z.enum([
+/** `org.enterprise_verification_level` — KYB stays deferred; starts `unverified`. */
+export const EnterpriseVerificationLevel = z.enum([
 	"unverified",
 	"email_verified",
 	"kyb_pending",
 	"verified",
 ]);
-export type OrganisationVerificationLevel = z.infer<typeof OrganisationVerificationLevel>;
+export type EnterpriseVerificationLevel = z.infer<typeof EnterpriseVerificationLevel>;
 // #endregion
 
 // #region Row shapes
-/** A row of `org.organisations`. */
-export const OrganisationSchema = z.object({
+/** A row of `org.enterprises`. */
+export const EnterpriseSchema = z.object({
 	id: uuid,
 	ownerUserId: uuid,
 	legalName: z.string().min(1).max(160),
@@ -69,37 +69,37 @@ export const OrganisationSchema = z.object({
 	industryOther: z.string().max(80).nullable(),
 	departments: z.array(z.string().max(60)),
 	purpose: z.array(z.string().max(40)),
-	status: OrganisationStatus,
-	verificationLevel: OrganisationVerificationLevel,
+	status: EnterpriseStatus,
+	verificationLevel: EnterpriseVerificationLevel,
 	logoFileId: uuid.nullable(),
 	billingEmail: z.string().max(160).nullable(),
 	defaultCurrency: z.string().max(8),
 	createdAt: timestamp,
 	updatedAt: timestamp,
 });
-export type Organisation = z.infer<typeof OrganisationSchema>;
+export type Enterprise = z.infer<typeof EnterpriseSchema>;
 
-/** A row of `org.organisation_members` — the multi-tenant user↔organisation link + role. */
-export const OrganisationMemberSchema = z.object({
+/** A row of `org.enterprise_members` — the multi-tenant user↔enterprise link + role. */
+export const EnterpriseMemberSchema = z.object({
 	id: uuid,
-	organisationId: uuid,
+	enterpriseId: uuid,
 	userId: uuid,
-	role: OrganisationRole,
+	role: EnterpriseRole,
 	status: z.string().max(20),
 	invitedBy: uuid.nullable(),
 	joinedAt: timestamp,
 	createdAt: timestamp,
 });
-export type OrganisationMember = z.infer<typeof OrganisationMemberSchema>;
+export type EnterpriseMember = z.infer<typeof EnterpriseMemberSchema>;
 // #endregion
 
 // #region Insert shape (onboarding wizard payload → columns the app sets)
 /**
- * The fields the `/join` organisation flow supplies when provisioning a new organisation. The DB
+ * The fields the `/join` enterprise flow supplies when provisioning a new enterprise. The DB
  * derives id/owner/status/verification/timestamps; the CHECK constraint on `industry_other` is
  * mirrored here as a refinement so the same rule is enforced client-, service-, and DB-side.
  */
-export const CreateOrganisationSchema = z.object({
+export const CreateEnterpriseSchema = z.object({
 	legalName: z.string().min(1).max(160),
 	tradingName: z.string().max(160).default(""),
 	handle: z.string().min(1).max(40),
@@ -125,22 +125,22 @@ export const CreateOrganisationSchema = z.object({
 		});
 	}
 });
-export type CreateOrganisation = z.infer<typeof CreateOrganisationSchema>;
+export type CreateEnterprise = z.infer<typeof CreateEnterpriseSchema>;
 // #endregion
 
-// #region Update shape (org.update_organisation payload)
+// #region Update shape (org.update_enterprise payload)
 /**
- * The keys `org.update_organisation(p_org_id, p_payload)` accepts — the only write door on
- * `org.organisations` (the client UPDATE policy is gone). A genuine partial: send only what changes;
+ * The keys `org.update_enterprise(p_enterprise_id, p_payload)` accepts — the only write door on
+ * `org.enterprises` (the client UPDATE policy is gone). A genuine partial: send only what changes;
  * an empty string clears an optional field. `.strict()` mirrors the RPC, which refuses an unknown key
  * rather than ignoring it, and never lists the platform-owned columns (owner · handle · status ·
  * verification · logo).
  *
- * {@link ORGANISATION_IDENTITY_KEYS} are the LEGAL identity: the owner's alone to change, and refused
+ * {@link ENTERPRISE_IDENTITY_KEYS} are the LEGAL identity: the owner's alone to change, and refused
  * by the RPC once `verificationLevel` is `kyb_pending` or `verified`. The cross-field `other`
  * industry rule is checked by the RPC against the stored row, since a partial cannot see it.
  */
-export const UpdateOrganisationSchema = z.object({
+export const UpdateEnterpriseSchema = z.object({
 	legalName: z.string().trim().min(1).max(160),
 	tradingName: z.string().trim().max(160),
 	registrationNumber: z.string().trim().max(60),
@@ -161,10 +161,10 @@ export const UpdateOrganisationSchema = z.object({
 }).partial().strict().refine((value) => Object.keys(value).length > 0, {
 	message: "Nothing to update.",
 });
-export type UpdateOrganisation = z.infer<typeof UpdateOrganisationSchema>;
+export type UpdateEnterprise = z.infer<typeof UpdateEnterpriseSchema>;
 
-/** The legal-identity keys of {@link UpdateOrganisationSchema}: owner-only, frozen once KYB begins. */
-export const ORGANISATION_IDENTITY_KEYS = [
+/** The legal-identity keys of {@link UpdateEnterpriseSchema}: owner-only, frozen once KYB begins. */
+export const ENTERPRISE_IDENTITY_KEYS = [
 	"legalName",
 	"registrationNumber",
 	"corporateEmail",

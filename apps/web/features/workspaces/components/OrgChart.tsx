@@ -20,7 +20,7 @@ import { ChevronDownIcon, type MemberAction, PersonAvatar, roleNameOf } from "./
  *   - a roster where nobody has a null `reportsTo`, so there is no root at all.
  *
  * All three land in the "Not placed" group beneath the chart. Silently rooting them would draw an
- * organisation chart that quietly lies about who answers to whom, and dropping them would make the chart
+ * reporting chart that quietly lies about who answers to whom, and dropping them would make the chart
  * show fewer people than the roster — a chart you cannot trust to be complete is worse than no chart.
  */
 

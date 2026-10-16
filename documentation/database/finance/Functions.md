@@ -269,14 +269,14 @@ result.
 ### Plan resolution
 
 - **`finance.fn_audience_for(subject_type) â†’ finance.plan_audience`** â€” `IMMUTABLE`.
-  `user`/`freelancer` â†’ `individual`; `team` â†’ `team`; `business` â†’ `business`; `organisation`
-  â†’ `organisation`.
+  `user`/`freelancer` â†’ `individual`; `team` â†’ `team`; `business` â†’ `business`; `enterprise`
+  â†’ `enterprise`.
 - **`finance.fn_active_plan(subject_type, subject_id) â†’ uuid`** â€” the subject's live plan
   (`state IN ('trialing','active','past_due')` and not past `current_period_end`), falling back to
   its audience's default free plan. **Every subject always resolves to a plan** â€” there is no
   unentitled state.
 - **`finance.fn_subject_standing_level(subject_type, subject_id) → smallint`** — defers to
-  `org.fn_standing_level` for earning subjects; buyer subjects (`business`/`organisation`) resolve
+  `org.fn_standing_level` for earning subjects; buyer subjects (`business`/`enterprise`) resolve
   to rung `1`, because they carry the Client Trust Score rather than Standing. A person metered as
   **`user`** reads their **`freelancer`** rung — `org.entity_standing` keys a seller by user id under
   that type and no recompute writes a `user` row, so reading `user` literally pinned every individual
@@ -310,7 +310,7 @@ Both are mirrored by pure TypeScript twins in `packages/types/finance/entitlemen
 - **`finance.fn_effective_platform_fee_bp(subject_type, subject_id) â†’ integer`** â€” negotiated
   rate â†’ `security.platform_params.platform_fee_bp` â†’ `0`. The 5% project service fee does
   **not** taper with Standing and is not bundled with any plan; the only sanctioned flex is an
-  admin-approved `finance.negotiated_rates` row for an Organisation/Business volume commitment.
+  admin-approved `finance.negotiated_rates` row for an Enterprise/Business volume commitment.
 
 ### Allowance metering
 
@@ -359,7 +359,7 @@ Both are mirrored by pure TypeScript twins in `packages/types/finance/entitlemen
   `projects.projects` where `status IN ('active','on_hold')` **and** `visibility = 'public'`),
   `teams_owned`, `businesses_owned` (an **archived** entity no longer occupies a slot — the create
   refusal tells an owner at their limit to "archive one or upgrade", which is only true if it frees one),
-  `team_seats`, `organisation_seats`.
+  `team_seats`, `enterprise_seats`.
 
   **Drafts are never counted** â€” unlimited private drafting is the baseline promise.
   `published_listings` returns `0` until the `catalogue.*` listing tables land (Decision #53 keeps
@@ -456,14 +456,14 @@ it, never re-derive it.
 
 - **`finance.fn_can_manage_basket(owner_type, owner_id)`** → boolean — may the caller **write** this
   owner's basket? Personal (`user`/`freelancer`) → self only. Shared (`business`/`team`/
-  `organisation`) → `fn_owner_visible` **and** the `spend` vault capability on one of that owner's
+  `enterprise`) → `fn_owner_visible` **and** the `spend` vault capability on one of that owner's
   wallets, i.e. the same grant that would let the member actually pay for the line. Admin passes. ⚠️
   **Fails closed**: an entity with no wallet, or with no `vault_permissions` rows, has nobody who
   may write its basket. That is the correct posture for a spend surface — a silent fallback to "any
   member" would make the capability decorative — but vault provisioning must precede shared-basket
   use. (For a team or business it now always does: `org.create_workspace` opens the wallet and the
   wallet insert trigger projects the grants. The projection covers teams and businesses only — an
-  organisation's vault grants are not written by it.)
+  enterprise's vault grants are not written by it.)
 - **`finance.fn_can_move_wallet_funds(wallet_id)`** → boolean — strictly narrower than
   `fn_can_view_wallet`. Personal wallet → owner only; shared wallet → the `spend` capability (which
   admits admin via `fn_has_vault_capability`).
@@ -558,7 +558,7 @@ itself and answers for nothing it was not asked about. `EXECUTE` is `authenticat
 ### `finance.get_purchase_owner(p_owner_type, p_owner_id)` → jsonb · `finance.list_purchase_owners()` → jsonb
 
 The checkout identity of one purchase owner, and every identity the caller may buy or bill as
-(themselves first, then each team, business and organisation they own or are an **active** member
+(themselves first, then each team, business and enterprise they own or are an **active** member
 of). Both return the one shape the internal builder `finance.fn_purchase_owner_json` produces, so the
 application maps it once:
 
@@ -576,7 +576,7 @@ and the charge cannot disagree (Decision #187). It is `NULL` unless the caller p
 | `user`         | the person themselves (or admin)      | `NULL` — a person answers only about themselves          |
 | `team`         | anyone                                | the public face (name, handle, avatar); no billing facts |
 | `business`     | anyone                                | the public face; KYB, currency, invoicing and `billing` are `NULL` |
-| `organisation` | members only                          | `NULL` — not even that the id exists                     |
+| `enterprise` | members only                          | `NULL` — not even that the id exists                     |
 
 `can_spend` is `fn_can_manage_basket`, so "may pay from this account" has one answer in the schema.
 `person` (first/last name, primary email, city, country) is filled for the caller's own identity only
@@ -615,7 +615,7 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
    `replayed: true` and nothing is charged. A key belonging to an order the caller cannot see is
    refused (`42501`).
 2. **The basket** is locked `FOR UPDATE`; the caller needs `fn_can_manage_basket`; a business or
-   organisation payer must be KYB-verified (`PK403`).
+   enterprise payer must be KYB-verified (`PK403`).
 3. **The lines are exactly the submitted ones** — live, selected, not parked, not purchased — or the
    call refuses (`PC409`). A basket changed in another tab cannot widen or narrow the charge.
 4. **Every line is re-priced from the catalogue.** Digital products, and **one-ticket project lines**
@@ -1192,7 +1192,7 @@ Proven by `supabase/probes/pending_window.sql`.
 - `finance.record_saved_card(owner_type, owner_id, pm_ref, brand, last4, exp_month, exp_year, created_by,
   make_default)` (processor) — writes the funding `payment_methods` row and its `saved_cards` display
   projection, linked; idempotent on (owner, payment method); the first card becomes the default. A card
-  saved to a team / business / organisation is recorded `is_business_card = true` (Decision #153): it
+  saved to a team / business / enterprise is recorded `is_business_card = true` (Decision #153): it
   can only arrive through `card_owner_for` (manage_billing on the entity), so it is the entity's own
   instrument — without this, the business-card rule refused every card a business added at checkout.
 

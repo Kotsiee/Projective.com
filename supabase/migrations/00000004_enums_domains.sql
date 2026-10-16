@@ -42,7 +42,7 @@ CREATE TYPE finance.statement_status AS ENUM ('draft', 'issued', 'final');
 
 CREATE TYPE finance.chargeback_status AS ENUM ('opened', 'under_review', 'won', 'lost', 'refunded');
 
-CREATE TYPE finance.plan_audience AS ENUM ('individual', 'team', 'business', 'organisation');
+CREATE TYPE finance.plan_audience AS ENUM ('individual', 'team', 'business', 'enterprise');
 
 CREATE TYPE finance.plan_tier AS ENUM ('free', 'pro', 'enterprise');
 
@@ -79,8 +79,8 @@ CREATE TYPE finance.entitlement_key AS ENUM (
     'team_public_projects',
     'business_public_projects',
     'business_managers',
-    'organisation_seats',
-    'organisation_businesses',
+    'enterprise_seats',
+    'enterprise_businesses',
     'departments',
     -- Capability flags
     'promoted_placement',
@@ -160,7 +160,7 @@ CREATE TYPE comms.notification_category AS ENUM (
     'messages',   -- DMs, channel messages, mentions, reactions
     'schedule',   -- sessions, bookings, reminders, reschedules
     'discovery',  -- marketplace, catalogue, reviews, follows, suggestions
-    'account',    -- identity, verification, team/org membership, permissions
+    'account',    -- identity, verification, team/enterprise membership, permissions
     'system',     -- security, moderation, policy, maintenance
     'marketing'   -- opt-in only; never mandatory
 );
@@ -177,7 +177,7 @@ CREATE TYPE comms.queue_status AS ENUM ('scheduled', 'processing', 'sent', 'canc
 -- #endregion
 
 -- #region scheduling
-CREATE TYPE scheduling.owner_type AS ENUM ('user', 'freelancer', 'team', 'business', 'organisation');
+CREATE TYPE scheduling.owner_type AS ENUM ('user', 'freelancer', 'team', 'business', 'enterprise');
 
 CREATE TYPE scheduling.availability_kind AS ENUM ('working_hours', 'call_window');
 
@@ -299,8 +299,8 @@ CREATE TYPE integrations.plugin_surface AS ENUM (
 CREATE TYPE integrations.install_status AS ENUM ('active', 'disabled', 'revoked');
 
 -- `install_scope` — WHERE an installation runs and whose data it may touch. Mirrors the platform's
--- owner axis (personal vs team/business/organisation vault).
-CREATE TYPE integrations.install_scope AS ENUM ('user', 'team', 'business', 'organisation');
+-- owner axis (personal vs team/business/enterprise vault).
+CREATE TYPE integrations.install_scope AS ENUM ('user', 'team', 'business', 'enterprise');
 
 -- `scope_risk` — drives how loudly the consent UI must surface a requested Plugin-API scope.
 CREATE TYPE integrations.scope_risk AS ENUM ('low', 'medium', 'high');
@@ -314,7 +314,7 @@ CREATE TYPE integrations.plugin_action AS ENUM (
 
 -- #region analytics
 CREATE TYPE analytics.subject_kind AS ENUM (
-    'user', 'freelancer', 'business', 'team', 'organisation',
+    'user', 'freelancer', 'business', 'team', 'enterprise',
     'project', 'stage', 'ticket', 'listing', 'platform'
 );
 -- #endregion
@@ -372,7 +372,7 @@ CREATE TYPE files.link_scan_status AS ENUM (
 -- against (files.storage_usage is keyed on it), so it deliberately does NOT include the
 -- `freelancer` pseudo-owner that scheduling.owner_type carries: a freelancer's bytes are their
 -- user's bytes, and a second key for the same human would double-count the quota.
-CREATE TYPE files.owner_kind AS ENUM ('user', 'team', 'business', 'organisation');
+CREATE TYPE files.owner_kind AS ENUM ('user', 'team', 'business', 'enterprise');
 
 -- `download_via` — the route a download was served through, recorded on every
 -- files.download_events row. `share` is the anonymous share-slug path (the only one an

@@ -17,7 +17,7 @@ export const LANDING_META = {
 
 /**
  * schema.org JSON-LD graph for the landing page. Serialised into a `<script type="application/ld+json">`
- * so crawlers and answer engines read the organisation, the software product, and the primary FAQ
+ * so crawlers and answer engines read the company, the software product, and the primary FAQ
  * intents without scraping prose. Kept in one graph to avoid duplicate `@context` blocks.
  */
 export function landingJsonLd(origin = "https://projective.app"): string {

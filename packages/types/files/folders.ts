@@ -89,7 +89,7 @@ export const AssetFolderSchema = z.object({
 	/** Materialised ancestor segments, root-first — the breadcrumb trail with no second round trip. */
 	path: z.array(z.string().max(120)).max(24),
 	ownerType: AssetOwnerType,
-	/** The owning principal's id — a user id, or a team/business/organisation id. */
+	/** The owning principal's id — a user id, or a team/business/enterprise id. */
 	ownerId: z.string().min(1).max(80),
 	source: AssetSource,
 	/** The connector's own folder id when `source !== "supabase"`; `null` for a hub-native folder. */

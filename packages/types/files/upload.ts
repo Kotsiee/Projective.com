@@ -53,7 +53,7 @@ export const UploadInitSchema = z.object({
 	fingerprint: ContentFingerprintSchema.nullable(),
 	folderId,
 	ownerType: AssetOwnerType,
-	/** The owning principal — a user id, or a team/business/organisation id. */
+	/** The owning principal — a user id, or a team/business/enterprise id. */
 	ownerId: z.string().min(1).max(80),
 	visibility: AssetVisibility,
 });

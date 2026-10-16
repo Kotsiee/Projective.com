@@ -8,7 +8,7 @@ import { z } from "zod";
  * re-validates the body, and the fat `NewsletterBackendService` consumes the parsed result. When the
  * `newsletter.subscriptions` table lands (Phase 2), the same schema validates the DB insert (root
  * CLAUDE.md §1, the Zod SSOT rule). Only regex/max/enum primitives are used so it is stable across
- * Zod majors (matching `explore/items.ts`, `org/organisations.ts`).
+ * Zod majors (matching `explore/items.ts`, `org/enterprises.ts`).
  */
 
 // #region Primitives

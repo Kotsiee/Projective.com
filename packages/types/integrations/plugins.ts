@@ -63,7 +63,7 @@ export const InstallStatus = z.enum(["active", "disabled", "revoked"]);
 export type InstallStatus = z.infer<typeof InstallStatus>;
 
 /** `integrations.install_scope` — WHERE an installation runs (mirrors the owner axis). */
-export const InstallScope = z.enum(["user", "team", "business", "organisation"]);
+export const InstallScope = z.enum(["user", "team", "business", "enterprise"]);
 export type InstallScope = z.infer<typeof InstallScope>;
 
 /** `integrations.scope_risk` — how loudly the consent UI surfaces a requested Plugin-API scope. */

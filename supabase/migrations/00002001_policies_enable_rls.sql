@@ -304,14 +304,14 @@ ALTER TABLE projects.project_applications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE projects.project_application_targets ENABLE ROW LEVEL SECURITY;
 
 
--- --- from 0314_organisations.sql ---
+-- --- from 0314_enterprises.sql ---
 
 -- #endregion
 
 -- #region RLS
-ALTER TABLE org.organisations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE org.enterprises ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE org.organisation_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE org.enterprise_members ENABLE ROW LEVEL SECURITY;
 
 
 -- --- from 20260723090000_finance_currency_fx.sql ---

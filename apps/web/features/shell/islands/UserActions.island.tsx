@@ -16,7 +16,7 @@ import { cycleThemePreference, type ThemePreference, themePreference } from "@pr
 import { type IconName, NavIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { createMenuOptions, profileLinks } from "@web/features/shell/core/actions-model.ts";
 import {
-	type ActingOrganisation,
+	type ActingEnterprise,
 	roleLabel as workspaceRoleLabel,
 	workspaceHref,
 	type WorkspaceKind,
@@ -50,7 +50,7 @@ const CONTEXT_KIND_LABEL: Record<ContextType, string> = {
 	personal: "Personal",
 	team: "Team",
 	business: "Business",
-	organisation: "Organisation",
+	enterprise: "Enterprise",
 };
 
 /** The theme control's glyph + spoken name per preference, and the one a press moves to. */
@@ -67,7 +67,7 @@ const PRESENCE_TICK_MS = 60_000;
 export interface UserActionsProps {
 	/**
 	 * The hydrated user context — gates the Create menu (seller-only Business/Service/Product; Team
-	 * hidden in an organisation), the "Become a Freelancer" action (shown only for a client context), and
+	 * hidden in an enterprise), the "Become a Freelancer" action (shown only for a client context), and
 	 * seeds the profile links + the account popover's fallback identity. Chrome only; access is
 	 * re-checked server-side + under RLS. Defaults to a personal member so the tray is never empty.
 	 */
@@ -104,7 +104,7 @@ export interface UserActionsProps {
  *    the destinations (View profile · Become a Freelancer · Availability & hours · Wallet & payouts ·
  *    Settings); and a footer with a light ⁄ dark ⁄ system theme control and Log out.
  *  - **context** — the switcher: the person themself, then their Teams, Businesses and
- *    Organisations; choosing one re-stamps the session through `useContextSwitch`.
+ *    Enterprises; choosing one re-stamps the session through `useContextSwitch`.
  *
  * Presence is DERIVED from the person's published working hours and the clock (the same rule a
  * visitor's "Available now ⁄ Away" badge reads), never chosen — there is no presence service, and a
@@ -144,7 +144,7 @@ export default function UserActions(
 		team: null,
 		business: null,
 	});
-	const organisations = useSignal<readonly ActingOrganisation[] | null>(null);
+	const enterprises = useSignal<readonly ActingEnterprise[] | null>(null);
 	const membershipsError = useSignal<string | null>(null);
 	// The acting-context switch: POST /api/context/switch → re-mint the token → hard navigation.
 	const contextSwitch = useContextSwitch();
@@ -337,11 +337,11 @@ export default function UserActions(
 		memberships.value = { ...memberships.peek(), [kind]: live };
 	}
 
-	/** Read the organisations the viewer may act as, once. */
-	async function loadOrganisations(): Promise<void> {
-		if (organisations.peek() !== null) return;
-		const res = await WorkspaceService.actingOrganisations();
-		organisations.value = res.ok && res.data ? res.data.organisations : [];
+	/** Read the enterprises the viewer may act as, once. */
+	async function loadEnterprises(): Promise<void> {
+		if (enterprises.peek() !== null) return;
+		const res = await WorkspaceService.actingEnterprises();
+		enterprises.value = res.ok && res.data ? res.data.enterprises : [];
 	}
 
 	// Load every list the first time the switcher shows.
@@ -350,18 +350,18 @@ export default function UserActions(
 		membershipsError.value = null;
 		void loadMemberships("team");
 		void loadMemberships("business");
-		void loadOrganisations();
+		void loadEnterprises();
 	});
 
 	/**
 	 * Switch the acting context through the shared hook: the session is re-stamped server-side, the
-	 * token re-minted, then a hard navigation lands on the entity's console (an organisation, which has
+	 * token re-minted, then a hard navigation lands on the entity's console (an enterprise, which has
 	 * no console of its own, lands on its profile). The popover stays open while that runs so the busy
 	 * state is visible rather than a menu that simply vanished.
 	 */
 	function switchTo(kind: Exclude<ContextType, "personal">, id: string, handle: string): void {
 		void contextSwitch.switchTo(kind, id, {
-			destination: kind === "organisation" ? `/${handle}` : workspaceHref(kind, handle),
+			destination: kind === "enterprise" ? `/${handle}` : workspaceHref(kind, handle),
 			handle,
 		});
 	}
@@ -573,7 +573,7 @@ export default function UserActions(
 		</li>
 	);
 
-	/** A titled section of the switcher (Teams · Businesses · Organisations). */
+	/** A titled section of the switcher (Teams · Businesses · Enterprises). */
 	const contextSection = (
 		title: string,
 		manage: { href: string; label: string } | null,
@@ -624,11 +624,11 @@ export default function UserActions(
 	/** The in-popover context switcher view. */
 	const contextView = (onNavigate: () => void): JSX.Element => {
 		const switching = contextSwitch.switching.value;
-		const orgs = organisations.value;
+		const enterpriseList = enterprises.value;
 		// Teams are the freelancer side of the platform (PRODUCT_SPEC §Freelancer-Only Space), gated
 		// exactly as the sidebar gates its Teams entry.
 		const showTeams = !restricted && (effCtx.isFreelancer || effCtx.contextType === "team");
-		const canCreateTeam = showTeams && effCtx.contextType !== "organisation";
+		const canCreateTeam = showTeams && effCtx.contextType !== "enterprise";
 		const canCreateBusiness = !restricted && effCtx.isFreelancer;
 
 		return (
@@ -672,22 +672,22 @@ export default function UserActions(
 						workspaceRows("business"),
 					)}
 					{
-						/* Organisations appear only when the viewer has one — most people never will, and an
-						   empty "Organisations" heading would advertise a kind of account they cannot open. */
+						/* Enterprises appear only when the viewer has one — most people never will, and an
+						   empty "Enterprises" heading would advertise a kind of account they cannot open. */
 					}
-					{orgs && orgs.length > 0
+					{enterpriseList && enterpriseList.length > 0
 						? contextSection(
-							"Organisations",
+							"Enterprises",
 							null,
 							onNavigate,
-							orgs.map((o) =>
+							enterpriseList.map((o) =>
 								contextRow(
 									o.id,
 									<Avatar label={o.name} size="sm" shape="square" />,
 									o.name,
 									o.owner ? "Owner" : "Member",
-									effCtx.contextType === "organisation" && effCtx.contextId === o.id,
-									() => switchTo("organisation", o.id, o.handle),
+									effCtx.contextType === "enterprise" && effCtx.contextId === o.id,
+									() => switchTo("enterprise", o.id, o.handle),
 								)
 							),
 						)

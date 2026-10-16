@@ -18,7 +18,7 @@ export const AccountSetupSchema = z.object({
 	/**
 	 * The PERSON's own handle, without the `@` (`org.users_public.username`). Distinct from
 	 * `UserContext.handle`, which is the ENTITY's slug while acting as a team, business or
-	 * organisation — the setup steps edit the person's profile, never the entity's.
+	 * enterprise — the setup steps edit the person's profile, never the entity's.
 	 */
 	handle: z.string().max(40),
 	/** Whether the person holds a seller (freelancer) profile. */

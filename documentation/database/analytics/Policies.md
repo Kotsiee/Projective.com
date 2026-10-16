@@ -12,7 +12,7 @@ append-only sources.
 - **`analytics.fn_subject_visible(subject_kind, subject_id)`** — `SECURITY DEFINER`, `STABLE`. True
   when the caller may see telemetry attributed to that subject: self for `user`/`freelancer`,
   `org.is_active_business_member` for `business`, `org.is_active_team_member` for `team`,
-  `org.is_organisation_member` for `organisation`, `catalogue.fn_manages_listing` for `listing` (the
+  `org.is_enterprise_member` for `enterprise`, `catalogue.fn_manages_listing` for `listing` (the
   owner of a personal listing; a holder of `publish_listings` on the owning team for a team's), or
   `security.is_admin()`.
 

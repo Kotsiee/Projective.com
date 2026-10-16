@@ -19,7 +19,7 @@ caller (`42501`), re-checks the membership it claims, and then **UPSERTS** throu
 exactly where they were. `EXECUTE` on the four public switches is `authenticated` only (revoked from
 `PUBLIC` and `anon`, `00002510`). Refusals are `42501 'context: …'` / `22023 'context: …'`.
 
-### `security.fn_set_session_context(p_type, p_profile, p_team, p_org, p_audit_entity)` — internal
+### `security.fn_set_session_context(p_type, p_profile, p_team, p_enterprise, p_audit_entity)` — internal
 
 The shared writer: one upsert of all four slots (so every switch sets the slot it names and clears
 the rest in one statement) plus a `session.switch_context` row in `security.audit_logs`. **Not
@@ -37,9 +37,9 @@ that is **not archived**. Anything else → `22023` ("choose a freelancer profil
 A **team** the caller is an active member of and that is not archived. The hook always read
 `active_team_id`; before this nothing wrote it (a team switch in the app returned a hard 501).
 
-### `security.switch_organisation_context(p_org_id uuid)`
+### `security.switch_enterprise_context(p_enterprise_id uuid)`
 
-An **organisation** the caller owns or is an active member of (the buyer-only entity, Decisions
+An **enterprise** the caller owns or is an active member of (the buyer-only entity, Decisions
 #9/#10). (Migration `20260715120000`; rewritten onto the shared writer 2026-09-28.)
 
 ### `security.clear_session_context()` — new
@@ -52,9 +52,9 @@ profile).
 ### `security.current_context()`
 
 `STABLE` SQL helper reading the active-context claims back out of `auth.jwt()` —
-`active_profile_type` / `active_profile_id` / `active_team_id` / `active_organisation_id` — for use
+`active_profile_type` / `active_profile_id` / `active_team_id` / `active_enterprise_id` — for use
 in RLS policies. These claims are only populated once the access-token hook below is enabled.
-(Migration 0099; extended `20260715120000` to expose `active_organisation_id`.)
+(Migration 0099; extended `20260715120000` to expose `active_enterprise_id`.)
 
 ### `public.custom_access_token_hook(event jsonb) → jsonb`
 
@@ -64,11 +64,11 @@ context from `security.session_context` (+ membership/handle lookups), and stamp
 the token's claims:
 
 1. **Raw top-level claims** — `active_profile_type`, `active_profile_id`, `active_team_id`,
-   `active_organisation_id` — the exact keys `security.current_context()` reads for RLS.
+   `active_enterprise_id` — the exact keys `security.current_context()` reads for RLS.
 2. **`app_metadata.active_context`** — the resolved presentation object
    `{ type, id, role, handle, isClient, isFreelancer, onboarded, isRestricted, displayCurrency, locale }` the web
    app decodes for chrome (`@projective/types/auth` `ActiveContextClaim` / `resolveUserContext`).
-   `type` is the four-context matrix (`personal` | `team` | `business` | `organisation`); `role`
+   `type` is the four-context matrix (`personal` | `team` | `business` | `enterprise`); `role`
    is `admin` for the owner and admin presets (the member row's derived `role`, maintained by
    `org.fn_member_role_sync`), else `member` — the chrome's coarse answer, while capability checks
    ask `org.fn_member_can` (since 2026-09-28; before it read a hard-coded
@@ -110,7 +110,7 @@ the token's claims:
 > amount.
 
 > **A stored context is only a PREFERENCE** (2026-09-28). The hook honours `session_context` only
-> while the membership it names still holds, re-checked at **every mint**: an organisation the user
+> while the membership it names still holds, re-checked at **every mint**: an enterprise the user
 > no longer owns or actively belongs to, a team they are no longer an active member of or that is
 > archived, or a business likewise, is dropped — back to personal, raw claims included. So a member
 > removed from a team, or a team archived, stops acting as it at the next token refresh instead of
@@ -235,7 +235,7 @@ parties and subject of a row, which a policy cannot protect because it sees only
 | :--------------------------- | :--------------------------- | :------------------------------------------------- |
 | `trg_quote_requests_parties` | `marketplace.quote_requests` | `requester_user_id`, `host_user_id`, `blueprint_id` |
 | `trg_teams_immutable`        | `org.teams`                  | `owner_user_id`, `treasury_wallet_id`, `subscription_tier`, `slug`, `avatar_file_id`, `banner_file_id` (`member_limit` left with the column, 2026-09-28) |
-| `trg_organisations_immutable` | `org.organisations`         | `owner_user_id`, `status`, `verification_level`, `handle`, `logo_file_id` |
+| `trg_enterprises_immutable` | `org.enterprises`         | `owner_user_id`, `status`, `verification_level`, `handle`, `logo_file_id` |
 | `trg_wallet_pots_immutable` (`00001830`)     | `finance.wallet_pots`     | `wallet_id`, `currency` |
 | `trg_payment_methods_immutable` (`00001830`) | `finance.payment_methods` | `owner_type`, `owner_id`, `method_role`, `provider`, `external_ref`, `brand`, `last4`, `status` |
 | `trg_saved_cards_immutable` (`00001830`)     | `finance.saved_cards`     | the owner, the instrument references, brand, last four, expiry, cardholder, BIN and creator |
@@ -248,16 +248,16 @@ triggers, and the full write posture they complete is in
 `org.business_profiles` and — since 2026-09-28 — `org.teams` carry no client write policy, so
 nothing reaches them but a definer (a team is renamed through `org.update_workspace`, which checks
 `edit_profile`). The team guards stay as **defence in depth**: a future policy that re-opens the
-table must not re-open these columns with it. `org.organisations` keeps its owner/admin UPDATE policy
+table must not re-open these columns with it. `org.enterprises` keeps its owner/admin UPDATE policy
 and so still genuinely needs its guard. Every writer of the guarded columns was checked and is
 `SECURITY DEFINER` — `reviews.recalculate_entity_rating`, `projects.update_entity_project_counts`,
 `projects.fn_sync_workload_intensity`, `org.create_workspace` and
 `org.transfer_workspace_ownership` (formerly `org.create_team`), `org.save_profile`,
-`org.set_profile_avatar`, and `public.create_organisation` (service role) — so no `INVOKER` trigger
+`org.set_profile_avatar`, and `public.create_enterprise` (service role) — so no `INVOKER` trigger
 maintains any of them on a client's behalf and the guards refuse only the client. Verified by
 execution against the running database, as `authenticated`: a rename still succeeds, `save_profile`
 still succeeds, and a forged rating, a counter, a plan tier, a member cap, a handle, an ownership
-change (including an organisation admin naming themselves owner), a verification level, a status
+change (including an enterprise admin naming themselves owner), a verification level, a status
 and a borrowed picture are each refused with `42501`. The two client INSERT policies that would have
 let those columns be set at birth were removed in the same change (`org/Policies.md`).
 

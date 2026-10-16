@@ -50,7 +50,7 @@
  * The identity a cache key is scoped to.
  *
  * Both fields are required. `contextId` is the entity the caller is ACTING AS (a team, business or
- * organisation), which is a distinct cache dimension from `userId`: the same person switching
+ * enterprise), which is a distinct cache dimension from `userId`: the same person switching
  * context sees a different feed, and collapsing the two would serve their personal projects into
  * their team's lane. An empty string is a legitimate value for `contextId` (a personal context) and
  * is preserved verbatim rather than dropped, so "personal" and "team X" cannot collide.

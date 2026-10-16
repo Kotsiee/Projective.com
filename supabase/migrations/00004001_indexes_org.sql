@@ -75,10 +75,10 @@ CREATE INDEX idx_team_members_reports_to ON org.team_members (reports_to) WHERE 
 CREATE INDEX idx_business_members_reports_to ON org.business_members (reports_to) WHERE reports_to IS NOT NULL;
 -- #endregion
 
-CREATE INDEX idx_organisations_owner ON org.organisations (owner_user_id);
-CREATE INDEX idx_organisations_handle ON org.organisations (lower(handle));
-CREATE INDEX idx_organisation_members_user ON org.organisation_members (user_id);
-CREATE INDEX idx_organisation_members_org ON org.organisation_members (organisation_id);
+CREATE INDEX idx_enterprises_owner ON org.enterprises (owner_user_id);
+CREATE INDEX idx_enterprises_handle ON org.enterprises (lower(handle));
+CREATE INDEX idx_enterprise_members_user ON org.enterprise_members (user_id);
+CREATE INDEX idx_enterprise_members_org ON org.enterprise_members (enterprise_id);
 
 -- #region Public profile resolution + the profile detail ledgers (00001040)
 -- org.fn_resolve_profile matches a handle case-insensitively in four namespaces; without these the

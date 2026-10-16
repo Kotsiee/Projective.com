@@ -394,7 +394,7 @@ function toAssetVisibility(raw: string | null | undefined): AssetVisibility {
 	return (raw && VISIBILITIES.has(raw) ? raw : "private") as AssetVisibility;
 }
 
-const OWNER_KINDS: ReadonlySet<string> = new Set(["user", "team", "business", "organisation"]);
+const OWNER_KINDS: ReadonlySet<string> = new Set(["user", "team", "business", "enterprise"]);
 
 /** Unknown → `user`, matching the column's own default and the `owner_entity_id IS NULL` case. */
 function toAssetOwnerType(raw: string | null | undefined): AssetOwnerType {

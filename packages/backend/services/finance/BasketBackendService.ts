@@ -90,7 +90,7 @@ export class BasketBackendService {
 	}
 
 	/**
-	 * Every account the actor can buy for — themselves, then each team, business and organisation they
+	 * Every account the actor can buy for — themselves, then each team, business and enterprise they
 	 * may spend from — with each one's baskets and lists, item counts and selected subtotals, in the
 	 * query's display currency. The basket switcher's whole model in one read.
 	 */

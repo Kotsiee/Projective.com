@@ -86,7 +86,7 @@ function ownerOf(detail: ProjectDetail): ExploreOwner {
 		// ExploreOwner.avatar is a required string; "" makes the Avatar fall back to initials.
 		avatar: p.avatar ?? "",
 		// Provider-side identity — the project read model doesn't carry an entity kind, so default to an
-		// individual (circular avatar). Buyer-only orgs still render their name/handle correctly.
+		// individual (circular avatar). Buyer-only enterprises still render their name/handle correctly.
 		kind: "user",
 	};
 }

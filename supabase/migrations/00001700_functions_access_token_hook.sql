@@ -27,7 +27,7 @@ DECLARE
   v_profile_type text;
   v_profile_id uuid;
   v_team_id uuid;
-  v_org_id uuid;
+  v_enterprise_id uuid;
 
   -- Profile inputs.
   v_username text;
@@ -85,8 +85,8 @@ BEGIN
   v_restricted := v_onboarded AND org.fn_is_minor(v_user_id);
 
   -- Raw active-context state.
-  SELECT sc.active_profile_type::text, sc.active_profile_id, sc.active_team_id, sc.active_organisation_id
-    INTO v_profile_type, v_profile_id, v_team_id, v_org_id
+  SELECT sc.active_profile_type::text, sc.active_profile_id, sc.active_team_id, sc.active_enterprise_id
+    INTO v_profile_type, v_profile_id, v_team_id, v_enterprise_id
   FROM security.session_context sc
   WHERE sc.user_id = v_user_id;
 
@@ -105,11 +105,11 @@ BEGIN
   -- and dropped (back to personal, raw claims included) the moment it does not — a member removed
   -- from a team, or a team archived, stops acting as it at the next mint instead of carrying the
   -- claim until they happen to switch. security.current_context() reads these raw claims for RLS.
-  IF v_org_id IS NOT NULL AND NOT (
-       EXISTS (SELECT 1 FROM org.organisations o WHERE o.id = v_org_id AND o.owner_user_id = v_user_id)
-       OR EXISTS (SELECT 1 FROM org.organisation_members m
-                  WHERE m.organisation_id = v_org_id AND m.user_id = v_user_id AND m.status = 'active')) THEN
-    v_org_id := NULL;
+  IF v_enterprise_id IS NOT NULL AND NOT (
+       EXISTS (SELECT 1 FROM org.enterprises o WHERE o.id = v_enterprise_id AND o.owner_user_id = v_user_id)
+       OR EXISTS (SELECT 1 FROM org.enterprise_members m
+                  WHERE m.enterprise_id = v_enterprise_id AND m.user_id = v_user_id AND m.status = 'active')) THEN
+    v_enterprise_id := NULL;
   END IF;
   IF v_team_id IS NOT NULL AND NOT EXISTS (
        SELECT 1 FROM org.team_members tm JOIN org.teams t ON t.id = tm.team_id
@@ -123,22 +123,22 @@ BEGIN
     v_profile_id := NULL;
   END IF;
 
-  -- Resolve the four-context matrix (organisation > team > business > personal). role collapses to
+  -- Resolve the four-context matrix (enterprise > team > business > personal). role collapses to
   -- admin for the owner and admin presets (the member row's derived `role`, org.fn_member_role_sync),
   -- member otherwise — the chrome's coarse answer; capability checks ask org.fn_member_can.
-  IF v_org_id IS NOT NULL THEN
-    v_type := 'organisation';
-    v_id := v_org_id;
-    SELECT o.handle INTO v_handle FROM org.organisations o WHERE o.id = v_org_id;
-    IF EXISTS (SELECT 1 FROM org.organisations o WHERE o.id = v_org_id AND o.owner_user_id = v_user_id) THEN
+  IF v_enterprise_id IS NOT NULL THEN
+    v_type := 'enterprise';
+    v_id := v_enterprise_id;
+    SELECT o.handle INTO v_handle FROM org.enterprises o WHERE o.id = v_enterprise_id;
+    IF EXISTS (SELECT 1 FROM org.enterprises o WHERE o.id = v_enterprise_id AND o.owner_user_id = v_user_id) THEN
       v_role := 'admin';
     ELSE
       SELECT CASE WHEN m.role IN ('owner', 'admin') THEN 'admin' ELSE 'member' END
         INTO v_role
-      FROM org.organisation_members m
-      WHERE m.organisation_id = v_org_id AND m.user_id = v_user_id AND m.status = 'active';
+      FROM org.enterprise_members m
+      WHERE m.enterprise_id = v_enterprise_id AND m.user_id = v_user_id AND m.status = 'active';
     END IF;
-    -- Organisations are the buyer-only entity (Decision #9/#10).
+    -- Enterprises are the buyer-only entity (Decision #9/#10).
     v_ctx_is_freelancer := false;
     v_ctx_is_client := true;
 
@@ -181,7 +181,7 @@ BEGIN
   v_claims := jsonb_set(v_claims, '{active_profile_type}', COALESCE(to_jsonb(v_profile_type), 'null'::jsonb), true);
   v_claims := jsonb_set(v_claims, '{active_profile_id}', COALESCE(to_jsonb(v_profile_id), 'null'::jsonb), true);
   v_claims := jsonb_set(v_claims, '{active_team_id}', COALESCE(to_jsonb(v_team_id), 'null'::jsonb), true);
-  v_claims := jsonb_set(v_claims, '{active_organisation_id}', COALESCE(to_jsonb(v_org_id), 'null'::jsonb), true);
+  v_claims := jsonb_set(v_claims, '{active_enterprise_id}', COALESCE(to_jsonb(v_enterprise_id), 'null'::jsonb), true);
 
   -- 2. Resolved chrome context for the web app (@projective/types/auth).
   --

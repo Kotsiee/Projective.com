@@ -133,10 +133,10 @@ export function joinCompletionTarget(
  * actually produced for: a federated sign-up, which is the one path that reaches GoTrue with no
  * username and no dob.
  *
- * An ORGANISATION owner lands in the same profile-less state by a different door —
- * `provisionAccount` admin-creates them with only `objective: "organization"`, and
- * `create_organisation` writes the org and the membership without ever calling
- * `provision_user_profile`. That may well be deliberate (`org.organisations.owner_user_id`
+ * An ENTERPRISE owner lands in the same profile-less state by a different door —
+ * `provisionAccount` admin-creates them with only `objective: "enterprise"`, and
+ * `create_enterprise` writes the enterprise and the membership without ever calling
+ * `provision_user_profile`. That may well be deliberate (`org.enterprises.owner_user_id`
  * references `auth.users`, not `org.users_public`, so the schema does not require the owner to have a
  * personal profile at all), and deciding whether they should be given one is a product question, not
  * a routing one. They are deliberately NOT bounced here; the write path refuses them in words

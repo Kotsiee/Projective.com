@@ -22,13 +22,13 @@ import {
  */
 
 // #region Wallet
-/** Which kind of entity a wallet belongs to. `organisation` is the buyer-only pooled entity (#0314). */
+/** Which kind of entity a wallet belongs to. `enterprise` is the buyer-only pooled entity (#0314). */
 export const WalletOwnerType = z.enum([
 	"user",
 	"freelancer",
 	"business",
 	"team",
-	"organisation",
+	"enterprise",
 	"system",
 ]);
 export type WalletOwnerType = z.infer<typeof WalletOwnerType>;

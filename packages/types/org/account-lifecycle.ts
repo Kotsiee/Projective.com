@@ -175,6 +175,6 @@ export const DELETION_BLOCKER_COPY: Readonly<Record<DeletionBlocker, string>> = 
 	live_work: "You're still assigned to live work. Finish it or hand it back first.",
 	wallet_balance: "Your wallet still holds money. Withdraw it first.",
 	active_projects: "You own projects that are still running. Complete or close them first.",
-	owns_workspaces: "You own a team, business or organisation. Transfer or archive it first.",
+	owns_workspaces: "You own a team, business or enterprise. Transfer or archive it first.",
 };
 // #endregion

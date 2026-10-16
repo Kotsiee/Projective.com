@@ -391,7 +391,7 @@ JSON distinguishes `null` from absent natively where a query string cannot.
 	"involvement": "worker",
 	"sort": "alphabetical",
 	"scope": "global",
-	"scopeType": "organisation",
+	"scopeType": "enterprise",
 	"scopeId": "3f2a91c4-7b8e-4d51-9a06-c2ee81f4d7b3",
 	"workspaces": ["3f2a91c4-7b8e-4d51-9a06-c2ee81f4d7b3", "8c1d40b9-2e77-4a13-b5fe-0d9a6c3e1f52"],
 	"roles": ["owner", "admin"],

@@ -80,7 +80,7 @@ import { UUID_RE } from "./live-support.ts";
  * `stage → submitter → unit`, and no deeper. There is no `dir` level on the live path, because
  * `projects.submission_files` is a flat `(submission_id, file_id)` pivot — nothing persists a
  * directory structure inside a submission. The one adjacent hierarchy that does exist,
- * `files.items.folder_id` → `files.folders`, is the SUBMITTER's own private library organisation;
+ * `files.items.folder_id` → `files.folders`, is the SUBMITTER's own private library structure;
  * rendering it here would both invent a structure the submission does not have and disclose how a
  * freelancer files their personal work inside the client's review tree. `folderPath` is `[]` for the
  * same reason. A path is therefore at most three segments deep, well inside the schema's `max(12)`.
@@ -490,7 +490,7 @@ function toFileItem(
 		),
 		folderId: row.folder_id ? clamp(row.folder_id, 120) : null,
 		// See the module docblock: the owning folder chain is the SUBMITTER's private library
-		// organisation, and materialising its names here would disclose it inside the client's tree.
+		// enterprise, and materialising its names here would disclose it inside the client's tree.
 		folderPath: [],
 		contentHash: row.content_hash ? clamp(row.content_hash, 128) : null,
 		hashSampled: row.hash_sampled === true,

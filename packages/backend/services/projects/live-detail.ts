@@ -52,7 +52,7 @@ import {
  * tree.
  *
  * That is not merely tidy. Every one of those eleven fields is the output of a decision already
- * written down once — which of `owner_organisation_id` / `owner_team_id` / `client_business_id` wins
+ * written down once — which of `owner_enterprise_id` / `owner_team_id` / `client_business_id` wins
  * the scope race, whether a `source_blueprint_id` makes an engagement a service, which
  * `project_status` members the Zod enum can express, and how three separate `org` tables resolve a
  * workspace's human name. Re-deriving them here would be a second implementation of all five, and the

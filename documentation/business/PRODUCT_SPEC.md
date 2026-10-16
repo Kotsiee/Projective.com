@@ -490,7 +490,7 @@ history entry when it IS the target, so the page comes back as it was left. In t
 shell, another entity's profile lights **Explore** in the rail and the phone's bottom bar — a
 stranger's page is a discovery destination; the viewer's own profile lights nothing.
 **Work** (the index) shows the client proof, the completed projects, the portfolio, and — for a
-team, business or organisation — the roster. A portfolio tile whose piece is a video carries the
+team, business or enterprise — the roster. A portfolio tile whose piece is a video carries the
 same control set's compact pair — play ⁄ pause and mute — in its top corner, revealed with the
 caption; it never starts on its own, and pressing a control never opens the piece. **Experience** shows a person's career history,
 education and verified certifications, and renders only for an individual (a company has no CV).
@@ -519,7 +519,7 @@ larger copy of someone's face is theirs to offer); otherwise the avatar is a pic
 The rig depends on what the entity
 IS: a **seller** (freelancer · team) carries two conversion controls — **Hire** and **Add to
 project** — with Message and Follow folded into compact icon-only secondaries beside them; a
-**buyer** (client · business · organisation) cannot be hired, so **Message** stays its primary with
+**buyer** (client · business · enterprise) cannot be hired, so **Message** stays its primary with
 Follow as its secondary. Both conversion controls open a popover **at the button**, never a scroll
 to the Services row. **Hire** lists the seller's listings (thumbnail · title · starting price ·
 rating) and, when the seller takes discovery calls, a "Book consultation" row carrying its price or
@@ -591,7 +591,7 @@ neighbouring signal.
 
 **The owner manages the profile from three views of it.** When the person looking at a profile is
 the one who manages it — the individual, a team's owner or lead, a business's owner, an
-organisation's owner or admin — an owner header sits above the page with three tabs, each its own
+enterprise's owner or admin — an owner header sits above the page with three tabs, each its own
 address:
 
 - **Preview** (`/[handle]`) is the profile as a visitor sees it, and its conversion controls say
@@ -647,7 +647,7 @@ the new one.
 ### Clients & Businesses
 
 While an individual can hire freelancers directly, the **Business** entity is designed for
-organisations that need to coordinate multiple stakeholders, budgets, and projects under a single
+companies that need to coordinate multiple stakeholders, budgets, and projects under a single
 umbrella.
 
 ##### What is a Projective Business?
@@ -675,7 +675,7 @@ team members.
   Per-member spending caps and an approval threshold are **Business Pro** features; a free Business
   has the shared wallet without caps (`finance-model.md` §16.1, Decision #230 (e)).
 - **Legal Simplicity:** The Business entity handles the administrative side of hiring, ensuring all
-  contracts and invoices are issued to the organizational entity rather than individual employees.
+  contracts and invoices are issued to the Business entity rather than individual employees.
 
 ##### Hierarchy & Role-Based Permissions
 
@@ -707,7 +707,7 @@ Every member holds one role — a preset, or a custom role the Business writes i
 
 ##### Multi-Business Ownership
 
-A single Projective account (User ID) is not tethered to a single organization.
+A single Projective account (User ID) is not tethered to a single Business.
 
 - **Entrepreneurial Flexibility:** A user can own multiple Businesses (e.g., "Main Corp" and "Side
   Venture") and switch between them via the dashboard without re-logging.
@@ -733,7 +733,7 @@ Model**.
 
 ##### Expenditure Analytics
 
-The Business Dashboard provides a "Bird's Eye View" of organizational spend and project health:
+The Business Dashboard provides a "Bird's Eye View" of company-wide spend and project health:
 
 - **Velocity Tracking:** Visualize how quickly tickets are moving through your various Pipelines.
 - **Budget Burn-down:** Real-time tracking of how much capital is currently locked in Escrow versus
@@ -752,7 +752,7 @@ A Business can deploy its members across different initiatives:
 
 - **Departmental Isolation:** "Marketing" members only see marketing pipelines, while "Product"
   members see software development timelines.
-- **Centralized Oversight:** Owners can see the totality of the organization's engagement with the
+- **Centralized Oversight:** Owners can see the totality of the company's engagement with the
   marketplace, ensuring no duplicate work is being commissioned across different departments.
 
 ---
@@ -949,7 +949,7 @@ context without "ping fatigue."
   person's. A group with no photo shows a stand-in picture (temporarily `test_images/banner_5.jpg`).
 - **Who is offered (the ranked picker):** before the viewer types, the picker suggests people
   ranked by how the viewer knows them, then by the most recent interaction, newest first —
-  (1) a **shared team / business / organisation**, (2) a **mutual follow**, (3) somebody the
+  (1) a **shared team / business / enterprise**, (2) a **mutual follow**, (3) somebody the
   viewer **follows**, (4) a **prior collaboration** (a project both were on; a completed one is
   named first), and, below the brief's four, (5) an existing **conversation**. Being followed
   WITHOUT following back earns no tier — that is the other person's choice, not the viewer's.
@@ -1114,7 +1114,7 @@ funding and no payment is released without verification.
 #### 1. The Wallet Ecosystem
 
 Every entity on Projective has an associated **Vault**, but their behaviors differ based on their
-organizational role.
+entity kind.
 
 ##### Individual Wallets
 
@@ -1126,13 +1126,13 @@ or personal funds for hiring.
 
 ##### Business Wallets (The Pooled Fund)
 
-Designed for organizations managing multiple projects and teams.
+Designed for companies managing multiple projects and teams.
 
 - **Centralized Capital:** Funds are held at the Business level. Individual Project Managers use
   this shared pool to fund Escrow tickets.
 - **Hierarchy Controls:** Owners can set "Spending Caps" for Project Managers to prevent
   unauthorized budget depletion.
-- **Analytics:** Provides a macro-view of organizational burn-rate across all departments, read
+- **Analytics:** Provides a macro-view of company-wide burn-rate across all departments, read
   under the member's own RLS by the wallet surface and summarised on the business console
   (`/businesses/[businessHandle]`). (The former `org.get_business_finance` wrapper and its
   `/dashboard` page are retired — Decision #122.)
@@ -1375,7 +1375,7 @@ purchasable rung would make the trust signal worthless. Both are permanently off
 - **A freelancer is a superset of a client.** There is one universal free baseline that carries the
   full buyer experience; seller and scale upgrades layer on top. There is no separate client plan.
 - **Two payment planes.** A **personal** plan raises what a _user_ may do; an **entity** plan raises
-  what a _team/business/organisation_ may do. Owning more entities never powers them — each pays for
+  what a _team/business/enterprise_ may do. Owning more entities never powers them — each pays for
   its own muscle.
 - **Joining is never capped.** Owning teams and businesses is metered; joining them is not.
 
@@ -1708,7 +1708,7 @@ This model allows for **Elastic Squads**:
 
 To ensure project velocity and prevent freelancer burnout or "ticket hoarding," Projective utilises
 a weighted resource allocation engine. This system balances automation (Pull-based work) with
-organizational control (Push-based work).
+managerial control (Push-based work).
 
 #### 1. The Claim-and-Commit Protocol (Pipelines)
 
@@ -2046,7 +2046,7 @@ keeps asking (`teamRolesRequired` / `timelinePresetApplies`, `packages/types/pro
 
 ### Stage Management
 
-Stages are the client's primary organizational unit within a project, and clients retain full CRUD
+Stages are the client's primary structural unit within a project, and clients retain full CRUD
 control over them, subject to the protections described below once tickets are actively claimed.
 
 #### 1. Client Capabilities
@@ -2182,7 +2182,7 @@ it changes at once, persists, and — if the platform refuses — changes back a
 | What is saved | Where the control lives | Notes |
 | :-- | :-- | :-- |
 | A service, product or article | The Explore card's star; the listing page's **Save** and **Add to collection…** | A bookmark. |
-| A person, team, business or organisation | The Explore card's star | A bookmark — private. **Following** is separate and public (the profile's Follow); the people someone follows are listed on `/saved` under **People you follow**, and unfollowing there is the same unfollow. |
+| A person, team, business or enterprise | The Explore card's star | A bookmark — private. **Following** is separate and public (the profile's Follow); the people someone follows are listed on `/saved` under **People you follow**, and unfollowing there is the same unfollow. |
 | A project | The star on `/projects` cards and the project header; **Save project** on its public page | The project's star — the `/projects` **Starred** filter and `/saved` agree. |
 | A project room | The channel header's star | The room tree's **Starred** filter reads it (Decision #181). |
 | A conversation | The conversation header, row menu and inbox row | The `/messages` **Starred** view reads it. |
@@ -2196,7 +2196,7 @@ it changes at once, persists, and — if the platform refuses — changes back a
 - **The page.** Tabs All · Services & products · People · Projects · Messages · Files; newest save
   first; rows are removed in place; nothing is boxed or tagged (DESIGN_SYSTEM §C.1, Saved).
 - **Followers / following.** A profile's follower and following counts open the list of the people
-  behind them (a person's profile only has a following list — teams, businesses and organisations do
+  behind them (a person's profile only has a following list — teams, businesses and enterprises do
   not follow). A profile the viewer may not see is left out of every list.
 
 ---
@@ -2364,7 +2364,7 @@ one line of plain text with an explanation on demand — never as badges (the ru
 **Verification is shown as a crest beside the name, one per authority:** _Identity verified_ (a
 government ID check), _Payout verified_ (identity AND a verified payout account — the
 No-Forever-Escrow pair, so escrow can always be released to them) and, on a business or
-organisation profile, _Corporate verified_ (KYB). The crest shows the STRONGEST authority behind the
+enterprise profile, _Corporate verified_ (KYB). The crest shows the STRONGEST authority behind the
 profile and moves the moment the provider's verdict lands. A verification landing or profile setup
 reaching 100% is congratulated in place — a brief animation and one notification that says only
 what the milestone unlocks — never a blocking screen and never a claim the platform does not honour
@@ -2378,7 +2378,7 @@ unconfirmed email.
 
 ##### Buyers are not gamified
 
-Clients, businesses and organisations carry the **Client Trust Score** and verification badges, not a
+Clients, businesses and enterprises carry the **Client Trust Score** and verification badges, not a
 Standing rung. Buyers want efficiency and trust, not quests; over-gamifying that side makes serious
 clients leave.
 
@@ -2529,7 +2529,7 @@ Compliance doesn't end with money; it extends to the **Chain of Title** for Inte
   signed **Deed of Transfer**. This document links the specific file hashes, project IDs, and
   participant IDs, serving as a permanent legal record of the IP handover.
 - **Verified Audit Trail:** In the event of a dispute or an acquisition, Projective can provide an
-  "Organization Audit Pack," which includes all contracts, invoices, and IP deeds in a single,
+  "Audit Pack," which includes all contracts, invoices, and IP deeds in a single,
   verified bundle.
 
 #### 5. Data Privacy & The "Vault"
@@ -2565,7 +2565,7 @@ link was opened in this browser, the page continues in. If it was opened on anot
 page says "Email confirmed" and asks the reader to sign in here.
 
 `/login` additionally offers an **Enterprise SSO** path (new, 2026-07-13): the user enters a
-corporate email **domain** (e.g. `company.com`) which is resolved to that organization's configured
+corporate email **domain** (e.g. `company.com`) which is resolved to that company's configured
 **SAML/OIDC** identity provider to begin the handshake (`/api/auth/sso`). SSO IdP wiring is deferred
 (the surface ships now, provider resolution lands with Supabase/enterprise onboarding); this sits
 alongside the roadmap's Microsoft/GitHub/Apple SSO in `SYSTEM_ARCHITECTURE.md` §Authentication.
@@ -2579,17 +2579,17 @@ titles (never a literal "Step 1.2"), and a progress track — beside a stepped f
 **neutral** (neither account type pre-selected).
 
 **Account paths diverge on the first choice.** An **Individual** is asked **1.2** Client or
-Freelancer _(required)_. An **Organization is a buyer/client by definition** — it registers to hire,
+Freelancer _(required)_. An **Enterprise is a buyer/client by definition** — it registers to hire,
 **not to provide services** — so it **skips 1.2 entirely** and never sees the Freelancer-only skills
 step.
 
-Step slots: **Step 1** account type (Individual / Organization) · **1.2** Client or Freelancer
+Step slots: **Step 1** account type (Individual / Enterprise) · **1.2** Client or Freelancer
 _(Individual only; required)_ · **1.3** Purpose _(Individual: optional interest tags, max 5;
-Organization: scale — employees + industry + **website / corporate domain**)_ · **1.4** Skills &
-interests _(Individual: optional, max 5, **shown only when Freelancer**; Organization: structure —
-address + departments)_ · **1.5** identity _(Individual: first/last/username; Organization:
+Enterprise: scale — employees + industry + **website / corporate domain**)_ · **1.4** Skills &
+interests _(Individual: optional, max 5, **shown only when Freelancer**; Enterprise: structure —
+address + departments)_ · **1.5** identity _(Individual: first/last/username; Enterprise:
 legal/brand name, handle, CRN)_ · **1.6** credentials _(Individual: email, DoB, password;
-Organization: corporate email, phone, admin password)_. **Password setup is skipped entirely for
+Enterprise: corporate email, phone, admin password)_. **Password setup is skipped entirely for
 OAuth/SSO signups.** Individuals may reach for **Google OAuth at any step** — authenticating
 mid-flow pre-fills their identity and returns them to the flow rather than bypassing it.
 
@@ -2662,7 +2662,7 @@ never accepted from a request body, never stored as a flag — and lifts on the 
    tickets, selling, publishing listings, or booking calls or session seats.
 2. **No payout account, no wallet.** No Stripe Connect payout account, no linked bank or card details,
    no withdrawals, no wallet. A restricted account never **creates or joins a Team, Business or
-   Organisation** (each holds a pooled wallet and signs for work).
+   Enterprise** (each holds a pooled wallet and signs for work).
 3. **High-privacy defaults (Children's Code).** No profiling or behavioural tracking — no viewing
    history, no interest events, no personalised discovery, and searches are logged anonymously. The
    profile's location and local time are never shown to anyone else. No published working hours,
@@ -2690,7 +2690,7 @@ never accepted from a request body, never stored as a flag — and lifts on the 
 **Personal projects — every account.** Anyone can create a project as a **personal** management tool,
 and every project a restricted account creates is one:
 
-- Owned by one person, never public or listed (and never under a business, team or organisation),
+- Owned by one person, never public or listed (and never under a business, team or enterprise),
   with stages, tickets, a board, files and a timeline but **no money at all** — no prices, budget,
   funding, escrow, payments or paid revisions. Work moves across the board without a hold.
 - **Nobody joins it:** no members, invitations, invite links, open seats, staffing roles, applications
@@ -2706,7 +2706,7 @@ Business vault, execute the stage contracts and assume full legal, contractual a
 liability; the minor never holds money. **Raw guardian IDs are never stored for child freelancing**
 unless the platform is operating an enterprise entity proxy (GDPR Article 9 special-category
 exposure). For the MVP this is off: the database refuses every minor as a member of a Team, Business
-or Organisation (the owner's decision, 2026-10-13).
+or Enterprise (the owner's decision, 2026-10-13).
 
 ### Individual onboarding — "quick to onboard, slow to set up"
 
@@ -2722,7 +2722,7 @@ Businesses). Collected at signup **only**:
 Everything else (photo, headline, story, skills, professional details) is completed later inside the
 app shell — the UI states this explicitly.
 
-### Organization onboarding — comprehensive, multi-step
+### Enterprise onboarding — comprehensive, multi-step
 
 Business/enterprise signup is the deliberate opposite: a structured wizard. Collected at signup:
 
@@ -2736,11 +2736,11 @@ Business/enterprise signup is the deliberate opposite: a structured wizard. Coll
   invites** (repeatable Name · Email · base permission tier).
 - **Admin login:** the owning admin's name + password (signs in with the corporate email).
 
-> The organization is still created in a **Draft/Unverified** state; full KYB (registration
+> The enterprise is still created in a **Draft/Unverified** state; full KYB (registration
 > documents, UBO) remains deferred to verification Level 3 before a Business Wallet opens. This
 > onboarding **gathers** the identity/scale/IAM baselines up front; it does not itself complete KYB.
 >
-> **After creation (Decision #150):** the organisation's `@handle` shares one namespace with
+> **After creation (Decision #150):** the enterprise's `@handle` shares one namespace with
 > people, teams and businesses, so it is refused at creation if any of them holds it. Its owner and
 > admins may edit the trading name, contact details, address, scale, industry, departments,
 > purpose, billing email and default currency; the **legal identity** — legal name, registration
@@ -2758,7 +2758,7 @@ full **Settings console** (`/settings`), one page per section. One search finds 
 - **What a section is.** Account (legal name, date of birth, `@handle`, freelancer or client, email
   addresses, password, connected sign-in accounts, deleting the account — Decision #156) ·
   Profile (who can find you, local time and city on your page, photo zoom) · Workspaces (who you are
-  acting as; your teams, businesses and organisations) · Language & region (number and date format,
+  acting as; your teams, businesses and enterprises) · Language & region (number and date format,
   display currency, text direction) · Appearance (theme, high contrast, a dyslexia-friendly font, a
   colour-vision adjustment, reduced motion) · Notifications · Messaging (read receipts, typing,
   message alerts, away replies) · Scheduling & calls (working hours, discovery calls, courtesy-call
@@ -2793,7 +2793,7 @@ full **Settings console** (`/settings`), one page per section. One search finds 
 - **Deleting an account.** Behind the same typed confirmation, a person may delete their account:
   their profile is hidden at once and their personal data is erased after **30 days**, during which
   they can cancel from Settings. It cannot be done while money is held, work is live, a wallet holds
-  money, a project they own is running or they own a team, business or organisation. Erasure
+  money, a project they own is running or they own a team, business or enterprise. Erasure
   anonymises; records of money that moved are kept anonymised for the retention period
   (§Security — Retention Policies).
 - **Connected accounts.** A person can sign in with Google, Apple, Facebook, LinkedIn, Microsoft or
@@ -2829,14 +2829,14 @@ full **Settings console** (`/settings`), one page per section. One search finds 
 - **A new account starts where the person is.** Signing up takes the browser's language and region
   as the account's locale, its time zone for notifications, and that region's display currency —
   each only when Projective offers it, otherwise English (United Kingdom), UTC and pounds sterling.
-  An organisation owner's account starts the same way. All of it is changeable in Settings.
+  An enterprise owner's account starts the same way. All of it is changeable in Settings.
 - **Display currency is presentation only** (§Global Multi-Currency & Localized Money): it changes
   how prices read, never what is charged or paid.
 
 ## Assets & Attachments
 
 Every file, image, recording and web link on the platform is one **asset**, owned by one principal
-(a user, team, business or organisation) and reachable through one hub at `/files`. The same asset
+(a user, team, business or enterprise) and reachable through one hub at `/files`. The same asset
 appears wherever it is used — a deliverable in a submission, a banner on a profile, an attachment in
 a channel — without being copied, so renaming or revoking it takes effect everywhere at once.
 
@@ -2866,10 +2866,10 @@ connected drive counts against that provider, and a web link stores no bytes at 
 
 | Plan tier                                                       | Included storage |
 | :-------------------------------------------------------------- | :--------------- |
-| Free (individual, team, business, organisation)                 | 25 GB            |
+| Free (individual, team, business, enterprise)                 | 25 GB            |
 | Individual Pro                                                  | 150 GB           |
 | Team Pro · Business Pro                                         | 500 GB           |
-| Organisation                                                    | Unlimited        |
+| Enterprise                                                    | Unlimited        |
 
 Consistent with every other footprint cap, the quota **meters and warns before it refuses**:
 enforcement is gated by a platform parameter that ships off, so exceeding a quota is visible long

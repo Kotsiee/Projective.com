@@ -321,7 +321,7 @@ working hours/timezone-clock/blackouts)
   (`@server/services/scheduling/`): the project/channel calendar behind `PROJECTS_BACKEND_LIVE`
   (derived from `ProjectDetail` — stage syncs/review milestones/deadlines + session-format
   sessions), `@handle` availability behind `PROFILE_BACKEND_LIVE` (weekly working
-  hours/blackouts/masked slots — only freelancers bookable, buyer-only orgs get hours-only per
+  hours/blackouts/masked slots — only freelancers bookable, buyer-only enterprises get hours-only per
   Decisions #9/#10), an entity schedule behind `EXPLORE_BACKEND_LIVE` (recurring session slots +
   attendee counts). Fixtures DERIVE deterministically (shared fixed clock `NOW=2026-07-17T16:20Z`,
   unsigned `>>>` hash, timezone-aware `Intl` slot placement) so a calendar agrees with the
@@ -456,19 +456,19 @@ styles/explore-results.css}`
 · `apps/web/features/shell/{components/GuestShell,styles/guest-shell.css}` · Decisions #14 / #31 /
 #38 |
 
-| 40 | **Profile — Organisation entity kind + tab-bar overflow + color-coded languages
+| 40 | **Profile — Enterprise entity kind + tab-bar overflow + color-coded languages
 (2026-07-22).** Four refinements to the `/[handle]` profile (no DB migration — the profile stays a
-read projection over fixtures, like Decision #36). **(A) New `organisation` profile kind.** Extends
+read projection over fixtures, like Decision #36). **(A) New `enterprise` profile kind.** Extends
 the SSOT `ProfileKind` enum (`@projective/types/profile`) with a fifth, **buyer-only,
-department-structured** entity (consistent with the buyer-only Organisation rule of Decisions
-#9/#10/#16 — the `organisation` context, now surfaced AS a profile). Its tab matrix is Projects ·
+department-structured** entity (consistent with the buyer-only Enterprise rule of Decisions
+#9/#10/#16 — the `enterprise` context, now surfaced AS a profile). Its tab matrix is Projects ·
 **Departments** · **Members** · Articles · Businesses · Reviews (no seller
 Services/Products/Portfolio). A new `departments` tab (`ProfileTab` enum) + `DepartmentEntry`
 schema + `MemberEntry.departments[]` (multi-department assignment) + `ProfileMetrics.departments`
-land in the SSOT; fixtures **derive** organisations deterministically from the handle (a NAMED set —
-`@northwind`/`@meridian`/`@atlasgroup` — plus an open `org-*` convention), building departments and
+land in the SSOT; fixtures **derive** enterprises deterministically from the handle (a NAMED set —
+`@northwind`/`@meridian`/`@atlasgroup` — plus an open `enterprise-*` convention), building departments and
 members **together** so a department's `memberCount` and its members always agree. **(B)
-Department-grouped Members view** — organisation Members render grouped by department; a member in
+Department-grouped Members view** — enterprise Members render grouped by department; a member in
 multiple departments appears under EACH with multi-department chips on the card (root CLAUDE.md —
 Part 2.2). **(C) Tab-bar overflow (Part 3).** `ProfileTabs` became an **island**: **Reviews is
 always pinned last** on the right with its own glyph (a latent bug — the `reviews`/ `members` tabs
@@ -478,16 +478,16 @@ had NO glyph, `tabGlyph` returned the raw tab name with no matching path — is 
 tabs the secondary ones collapse into a portal **`More ▾`** `Popover` while the key tabs (Services ·
 Projects · Portfolio) + Reviews stay visible (`arrangeTabs` in `profile-model.ts`). **(D)
 Entity-type badge (Part 1)** — an explicit icon+label chip per kind (Freelancer · Client · Team ·
-Business · Organisation, `ENTITY_META`/`EntityBadge`) beside the `@handle`. **(E) Color-coded
+Business · Enterprise, `ENTITY_META`/`EntityBadge`) beside the `@handle`. **(E) Color-coded
 language proficiency (Part 4)** — the split `Language ⁄ Proficiency` pill tints by level, token-only
 (`data-level`): Native → `--success` (green), Fluent → `--secondary` (cyan), Professional → neutral
 slate, Conversational/ Basic → `--warning` (amber); the language generator now ramps levels by
 position so the ladder is legible. No `@projective/ui` primitive added (reuses
 `Popover`/`Tooltip`/`Avatar`) → no `DESIGN_SYSTEM.md` §C.1 change. **Deviation flagged (surface, do
 not silently resolve):** the task named the entity types as
-Freelancer/Team/Business/**Organisation** (omitting the existing individual `client` kind) —
-resolved by KEEPING `client` (individual buyer, badge "Client") AND adding `organisation`, so both
-get a badge; reconcile with a human if `client` was meant to be folded into `organisation`. |
+Freelancer/Team/Business/**Enterprise** (omitting the existing individual `client` kind) —
+resolved by KEEPING `client` (individual buyer, badge "Client") AND adding `enterprise`, so both
+get a badge; reconcile with a human if `client` was meant to be folded into `enterprise`. |
 `PRODUCT_SPEC.md` §Sitemap (`/[handle]`) · `packages/types/profile/{profile,tabs,
 reserved}.ts` ·
 `packages/backend/services/profile/profile-fixtures.ts` ·
@@ -587,7 +587,7 @@ DB/lifecycle/business-rule change — the profile stays a read projection over f
 #36). **(A) Tab partial views.** The monolithic `ProfileTabContent` render-dump was split into
 focused per-tab partial components under a new `apps/web/features/profile/components/tabs/` folder
 (`ServicesTab` · `ProductsTab` [also Portfolio] · `ProjectsTab` · `ArticlesTab` · `EntitiesTab`
-[Teams/Businesses] · `EducationTab` · `ExperienceTab` · `MembersTab` [flat + org department-grouped]
+[Teams/Businesses] · `EducationTab` · `ExperienceTab` · `MembersTab` [flat + enterprise department-grouped]
 · `DepartmentsTab` · `ReviewsTab` + shared `Empty`/`formatDate` + a `mod.ts` barrel);
 `ProfileTabContent` is now a thin dispatcher (panel header + routing table). The **Availability**
 page stays a standalone full-page calendar (Decision #37, untouched). **(B) Genuinely width-aware

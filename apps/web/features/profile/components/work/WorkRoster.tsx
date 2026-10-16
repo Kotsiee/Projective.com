@@ -6,10 +6,10 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
 /**
  * WorkRoster — the people behind a multi-member entity. A team or business renders one flat
  * auto-fill grid of avatar · name · role rows, each a link to the member's own `/@handle`. An
- * organisation groups the same rows by department, a member sitting in several departments listed
+ * enterprise groups the same rows by department, a member sitting in several departments listed
  * under each (no chips — the group heading already says which department the row is in), with
  * members assigned to no department gathered last under "Unassigned". Departments with nobody in
- * them are omitted, and an organisation with no department set falls back to the flat grid.
+ * them are omitted, and an enterprise with no department set falls back to the flat grid.
  */
 export function WorkRoster(
 	{ members, departments, kind }: {
@@ -19,7 +19,7 @@ export function WorkRoster(
 	},
 ): JSX.Element | null {
 	if (!members.length) return null;
-	if (kind !== "organisation" || !departments.length) return <PersonList members={members} />;
+	if (kind !== "enterprise" || !departments.length) return <PersonList members={members} />;
 
 	const groups = departments
 		.map((dept) => ({

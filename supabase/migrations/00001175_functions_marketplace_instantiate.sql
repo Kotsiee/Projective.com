@@ -137,7 +137,7 @@ BEGIN
         AND p.status IN ('draft'::public.project_status, 'active'::public.project_status)
         AND p.owner_team_id IS NULL
         AND p.client_business_id IS NULL
-        AND p.owner_organisation_id IS NULL
+        AND p.owner_enterprise_id IS NULL
     ORDER BY p.created_at DESC, p.id
     LIMIT 1;
     IF v_project IS NULL THEN
@@ -328,7 +328,7 @@ BEGIN
         AND p.status IN ('draft'::project_status, 'active'::project_status)
         AND p.owner_team_id IS NULL
         AND p.client_business_id IS NULL
-        AND p.owner_organisation_id IS NULL
+        AND p.owner_enterprise_id IS NULL
     ORDER BY p.created_at DESC, p.id
     LIMIT 1;
     IF FOUND THEN

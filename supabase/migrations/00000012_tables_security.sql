@@ -1,7 +1,7 @@
 -- =============================================================================================
 -- 00000012_tables_security.sql — security schema tables (Category 0). Source: 0004_security_tables.sql.
 -- Folded ALTER:
---   * security.session_context += active_organisation_id (FK org.organisations) (20260715120000)
+--   * security.session_context += active_enterprise_id (FK org.enterprises) (20260715120000)
 -- =============================================================================================
 
 CREATE TABLE security.feature_flags (
@@ -64,13 +64,13 @@ CREATE TABLE security.session_context (
     updated_at timestamp
     with
         time zone NOT NULL DEFAULT now(),
-        -- Folded (20260715120000): the active organisation (buyer-only) context slot.
-        active_organisation_id uuid REFERENCES org.organisations (id) ON DELETE SET NULL,
+        -- Folded (20260715120000): the active enterprise (buyer-only) context slot.
+        active_enterprise_id uuid REFERENCES org.enterprises (id) ON DELETE SET NULL,
         CONSTRAINT session_context_pkey PRIMARY KEY (user_id),
         -- One acting context at a time: personal (every slot NULL), a profile, a team or an
-        -- organisation. A profile slot is the (type, id) pair, set or cleared together.
+        -- enterprise. A profile slot is the (type, id) pair, set or cleared together.
         CONSTRAINT ck_session_context_one_slot CHECK (
-            num_nonnulls (active_profile_id, active_team_id, active_organisation_id) <= 1
+            num_nonnulls (active_profile_id, active_team_id, active_enterprise_id) <= 1
             AND (active_profile_type IS NULL) = (active_profile_id IS NULL)
         ),
         CONSTRAINT session_context_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id),

@@ -161,7 +161,7 @@ AS $$
         OR (p_owner_type IN ('user', 'freelancer') AND p_owner_id = auth.uid ())
         OR (p_owner_type = 'business' AND org.is_active_business_member (p_owner_id))
         OR (p_owner_type = 'team' AND org.is_active_team_member (p_owner_id))
-        OR (p_owner_type = 'organisation' AND org.is_organisation_member (p_owner_id));
+        OR (p_owner_type = 'enterprise' AND org.is_enterprise_member (p_owner_id));
 $$;
 
 -- Same question for a wallet id (resolves the wallet's owner, then defers to fn_owner_visible).
@@ -237,7 +237,7 @@ AS $$
         security.is_admin ()
         OR (p_owner_type IN ('user', 'freelancer') AND p_owner_id = auth.uid ())
         OR (
-            p_owner_type IN ('business', 'team', 'organisation')
+            p_owner_type IN ('business', 'team', 'enterprise')
             AND finance.fn_owner_visible (p_owner_type, p_owner_id)
             AND EXISTS (
                 SELECT 1 FROM finance.wallets w
@@ -264,7 +264,7 @@ AS $$
           AND (
               (w.owner_type IN ('user', 'freelancer') AND w.owner_id = auth.uid ())
               OR (
-                  w.owner_type IN ('business', 'team', 'organisation')
+                  w.owner_type IN ('business', 'team', 'enterprise')
                   AND finance.fn_has_vault_capability (w.id, auth.uid (), 'spend'::finance.vault_capability)
               )
           )
@@ -296,7 +296,7 @@ AS $$
         security.is_admin ()
         OR (p_owner_type IN ('user', 'freelancer') AND p_owner_id = auth.uid ())
         OR (
-            p_owner_type IN ('business', 'team', 'organisation')
+            p_owner_type IN ('business', 'team', 'enterprise')
             AND finance.fn_owner_visible (p_owner_type, p_owner_id)
             AND EXISTS (
                 SELECT 1 FROM finance.wallets w
@@ -711,14 +711,14 @@ BEGIN
         RETURN v_out;
     END IF;
 
-    IF p_owner_type = 'organisation' THEN
-        -- An organisation has no public directory entry, so a non-member learns nothing — not even
+    IF p_owner_type = 'enterprise' THEN
+        -- An enterprise has no public directory entry, so a non-member learns nothing — not even
         -- that the id exists.
         IF NOT v_member THEN
             RETURN NULL;
         END IF;
         SELECT pg_catalog.jsonb_build_object(
-            'owner_type', 'organisation',
+            'owner_type', 'enterprise',
             'owner_id', o.id,
             'name', COALESCE(o.trading_name, o.legal_name),
             'handle', o.handle,
@@ -749,7 +749,7 @@ BEGIN
             'departments', pg_catalog.to_jsonb(COALESCE(o.departments, '{}'::text[]))
         )
         INTO v_out
-        FROM org.organisations o
+        FROM org.enterprises o
         LEFT JOIN files.items av ON av.id = o.logo_file_id
         WHERE o.id = p_owner_id;
         RETURN v_out;
@@ -762,7 +762,7 @@ $$;
 COMMENT ON FUNCTION finance.fn_purchase_owner_json(text, uuid) IS
 'The checkout identity of one purchase owner, as the CALLER may see it: a person answers only about
 themselves; a team or business answers its public face to anyone and its KYB, invoicing and billing
-facts to members only; an organisation answers members only. NULL when there is nothing the caller
+facts to members only; an enterprise answers members only. NULL when there is nothing the caller
 may know. The shape is identical for every kind.';
 
 -- The owner a basket or checkout is scoped to, with the platform fee rate a payment from it is charged
@@ -800,7 +800,7 @@ COMMENT ON FUNCTION finance.get_purchase_owner(text, uuid) IS
 anonymous caller.';
 
 -- Every identity the caller may buy or bill as: themselves first, then each team, business and
--- organisation they own or are an ACTIVE member of. The Details step's billing-identity switcher and
+-- enterprise they own or are an ACTIVE member of. The Details step's billing-identity switcher and
 -- the checkout's account list read this one answer.
 CREATE OR REPLACE FUNCTION finance.list_purchase_owners()
 RETURNS jsonb
@@ -823,11 +823,11 @@ AS $$
            OR EXISTS (SELECT 1 FROM org.business_members bm
                       WHERE bm.business_id = b.id AND bm.user_id = me.uid AND bm.status = 'active')
         UNION
-        SELECT 'organisation', o.id, COALESCE(o.trading_name, o.legal_name)
-        FROM org.organisations o, me
+        SELECT 'enterprise', o.id, COALESCE(o.trading_name, o.legal_name)
+        FROM org.enterprises o, me
         WHERE o.owner_user_id = me.uid
-           OR EXISTS (SELECT 1 FROM org.organisation_members om
-                      WHERE om.organisation_id = o.id AND om.user_id = me.uid AND om.status = 'active')
+           OR EXISTS (SELECT 1 FROM org.enterprise_members om
+                      WHERE om.enterprise_id = o.id AND om.user_id = me.uid AND om.status = 'active')
     )
     SELECT CASE
         WHEN (SELECT uid FROM me) IS NULL THEN '[]'::jsonb
@@ -847,7 +847,7 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION finance.list_purchase_owners() IS
-'The caller''s purchase identities: themselves, then every team, business and organisation they own
+'The caller''s purchase identities: themselves, then every team, business and enterprise they own
 or are an active member of — each in the fn_purchase_owner_json shape. Empty for an anonymous caller.';
 -- #endregion
 
@@ -1103,8 +1103,8 @@ BEGIN
         RAISE EXCEPTION 'Complete business verification (KYB) to pay from this account'
             USING ERRCODE = 'PK403';
     END IF;
-    IF v_basket.owner_type = 'organisation' AND NOT EXISTS (
-        SELECT 1 FROM org.organisations o
+    IF v_basket.owner_type = 'enterprise' AND NOT EXISTS (
+        SELECT 1 FROM org.enterprises o
         WHERE o.id = v_basket.owner_id AND o.verification_level = 'verified'
     ) THEN
         RAISE EXCEPTION 'Complete business verification (KYB) to pay from this account'
@@ -1450,7 +1450,7 @@ BEGIN
     IF v_wallet.balance_cents < v_net THEN
         RAISE EXCEPTION 'Your wallet balance doesn''t cover this order' USING ERRCODE = 'PF402';
     END IF;
-    IF v_basket.owner_type IN ('business', 'team', 'organisation') THEN
+    IF v_basket.owner_type IN ('business', 'team', 'enterprise') THEN
         IF COALESCE(v_wallet.approval_threshold_cents, 0) > 0 AND v_net >= v_wallet.approval_threshold_cents THEN
             RAISE EXCEPTION 'This purchase needs approval before it can be paid for'
                 USING ERRCODE = 'PA403';
@@ -1715,14 +1715,14 @@ BEGIN
 
     IF NOT (
         (v_from.owner_type IN ('user', 'freelancer') AND v_from.owner_id = v_uid)
-        OR (v_from.owner_type IN ('team', 'business', 'organisation')
+        OR (v_from.owner_type IN ('team', 'business', 'enterprise')
             AND finance.fn_has_vault_capability (v_from.id, v_uid, 'withdraw'::finance.vault_capability))
     ) THEN
         RAISE EXCEPTION 'You can''t move money out of that wallet' USING ERRCODE = '42501';
     END IF;
     IF NOT (
         (v_to.owner_type IN ('user', 'freelancer') AND v_to.owner_id = v_uid)
-        OR (v_to.owner_type IN ('team', 'business', 'organisation')
+        OR (v_to.owner_type IN ('team', 'business', 'enterprise')
             AND finance.fn_owner_visible (v_to.owner_type, v_to.owner_id))
     ) THEN
         RAISE EXCEPTION 'You can only transfer between your own wallets' USING ERRCODE = '42501';
@@ -1737,7 +1737,7 @@ BEGIN
         RAISE EXCEPTION 'Complete business verification (KYB) to move money out of this account'
             USING ERRCODE = 'PK403';
     END IF;
-    IF v_from.owner_type IN ('team', 'business', 'organisation')
+    IF v_from.owner_type IN ('team', 'business', 'enterprise')
        AND NOT finance.fn_check_spending_limit (v_from.id, v_uid, p_amount) THEN
         RAISE EXCEPTION 'That is over your spending limit on this account' USING ERRCODE = 'PA403';
     END IF;
@@ -1751,12 +1751,12 @@ BEGIN
     PERFORM finance.fn_wallet_credit (v_to.owner_id, v_to.owner_type, v_to.currency, p_amount,
         'transfer_in', 'wallets', v_from.id);
 
-    IF v_from.owner_type IN ('team', 'business', 'organisation') THEN
+    IF v_from.owner_type IN ('team', 'business', 'enterprise') THEN
         INSERT INTO finance.ledger_audit (wallet_id, actor_user_id, action, amount_cents, currency, ref_table, ref_id, metadata)
         VALUES (v_from.id, v_uid, 'withdraw', p_amount, v_from.currency, 'wallets', v_to.id,
                 pg_catalog.jsonb_build_object('kind', 'transfer_out', 'note', v_note));
     END IF;
-    IF v_to.owner_type IN ('team', 'business', 'organisation') THEN
+    IF v_to.owner_type IN ('team', 'business', 'enterprise') THEN
         INSERT INTO finance.ledger_audit (wallet_id, actor_user_id, action, amount_cents, currency, ref_table, ref_id, metadata)
         VALUES (v_to.id, v_uid, 'add_funds', p_amount, v_to.currency, 'wallets', v_from.id,
                 pg_catalog.jsonb_build_object('kind', 'transfer_in', 'note', v_note));

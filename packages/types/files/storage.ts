@@ -130,7 +130,7 @@ export const BUCKETS: Readonly<Record<StorageBucket, BucketMeta>> = {
 		maxBytes: 5 * MiB,
 		allowedMime: [...IMAGE_MIME],
 		anchor: "entity_id",
-		purpose: "Profile / team / business / org branding.",
+		purpose: "Profile / team / business / enterprise branding.",
 	},
 	catalogue: {
 		access: "public",
@@ -144,7 +144,7 @@ export const BUCKETS: Readonly<Record<StorageBucket, BucketMeta>> = {
 		maxBytes: 50 * MiB,
 		allowedMime: null,
 		anchor: "entity_id",
-		purpose: "Entity-owned (team / business / organisation) library assets for the /files hub.",
+		purpose: "Entity-owned (team / business / enterprise) library assets for the /files hub.",
 	},
 	showcase: {
 		access: "public",
@@ -213,7 +213,7 @@ export const AvatarEntity = z.enum([
 	"users",
 	"teams",
 	"businesses",
-	"organisations",
+	"enterprises",
 ]);
 export type AvatarEntity = z.infer<typeof AvatarEntity>;
 
@@ -308,7 +308,7 @@ export function personalLocation(
 /**
  * `workspace/{entityId}/...segments` — the entity-owned counterpart of {@link personalLocation}.
  *
- * The anchor is the TEAM / BUSINESS / ORGANISATION id, not a user id: the storage policies gate on
+ * The anchor is the TEAM / BUSINESS / ENTERPRISE id, not a user id: the storage policies gate on
  * active membership of that entity, so a personal-bucket path would both mis-name the object and
  * resolve against the wrong predicate (`personal` is anchored on `auth.uid()`).
  */
@@ -382,7 +382,7 @@ export function libraryLocation(
 /**
  * Where a public RENDITION lives — the cropped copy cut for one surface:
  * `{bucket}/{ownerId}/{surface}/{renditionId}/{filename}`, anchored on the OWNING entity (a user, or
- * the team / business / organisation whose profile it is) exactly as the seeded branding assets
+ * the team / business / enterprise whose profile it is) exactly as the seeded branding assets
  * are. `avatars` for the profile photo, `showcase` for a showcase slot.
  */
 export function renditionLocation(

@@ -17,7 +17,7 @@ import { destinationEmail, PurchaseOwnerType, reference } from "./basket.ts";
  * nullability rather than inventing a parallel one — each is named in its doc comment. The business
  * block in particular is a projection over `org.business_profiles` (`legal_name`, `tax_id`,
  * `billing_email`, `address_line_1`, `address_city`, `address_zip`, `country`, `invoicing_mode`,
- * `billing_day`) and `org.organisations` (`registration_number`, `corporate_email`,
+ * `billing_day`) and `org.enterprises` (`registration_number`, `corporate_email`,
  * `corporate_phone`, `address_postcode`, `address_country`, `departments`).
  *
  * **What has no column yet.** There is no per-user billing address anywhere in the schema, and no
@@ -46,7 +46,7 @@ export type BillingContextKind = z.infer<typeof BillingContextKind>;
  * identity, plus one entry per entity they may bill through.
  */
 export const BillingContextSchema = z.object({
-	/** `personal`, or the entity reference (`business:{id}` / `organisation:{id}`). */
+	/** `personal`, or the entity reference (`business:{id}` / `enterprise:{id}`). */
 	id: reference,
 	kind: BillingContextKind,
 	/** Display name ("Personal", "Flower Shop"). */
@@ -72,7 +72,7 @@ export type BillingContext = z.infer<typeof BillingContextSchema>;
 /**
  * A postal address.
  *
- * Field names mirror `org.organisations` (`address_line_1`, `address_city`, `address_postcode`,
+ * Field names mirror `org.enterprises` (`address_line_1`, `address_city`, `address_postcode`,
  * `address_country`) rather than `org.business_profiles`, whose `address_zip` is the same fact under
  * a US-centric name; the resolving service maps the one column onto {@link postcode}. `line2` and
  * {@link state} have no column on either table and are projection-only — both are required by real
@@ -149,25 +149,25 @@ export type PersonalBilling = z.infer<typeof PersonalBillingSchema>;
  *
  * The three identifiers are distinct on purpose and are not interchangeable: {@link companyName} is
  * `org.business_profiles.legal_name`, {@link registrationNumber} is the incorporation number
- * (`org.organisations.registration_number`, documented there as "CRN / EIN / VAT / Tax ID"), and
+ * (`org.enterprises.registration_number`, documented there as "CRN / EIN / VAT / Tax ID"), and
  * {@link taxId} is the tax registration (`org.business_profiles.tax_id`). A company can hold a CRN
  * and no VAT registration, so collapsing them into one field makes a legitimate state unfilable.
  */
 export const BusinessBillingSchema = z.object({
 	/** `org.business_profiles.legal_name`. */
 	companyName: z.string().trim().max(160),
-	/** `org.organisations.registration_number` — the CRN / incorporation number. */
+	/** `org.enterprises.registration_number` — the CRN / incorporation number. */
 	registrationNumber: z.string().trim().max(60),
 	/** `org.business_profiles.tax_id` — the VAT / EIN registration. */
 	taxId: z.string().trim().max(60),
-	/** `org.organisations.corporate_email` (`billing_email` on a business profile). */
+	/** `org.enterprises.corporate_email` (`billing_email` on a business profile). */
 	corporateEmail: destinationEmail.or(z.literal("")),
-	/** `org.organisations.corporate_phone`. */
+	/** `org.enterprises.corporate_phone`. */
 	phone: z.string().trim().max(32),
 	/** The registered address. */
 	address: PostalAddressSchema,
 	/**
-	 * Which department the spend is attributed to — one of `org.organisations.departments`. `null`
+	 * Which department the spend is attributed to — one of `org.enterprises.departments`. `null`
 	 * when the entity declares no departments, which is a real state and not an unfilled field.
 	 */
 	departmentId: reference.nullable(),

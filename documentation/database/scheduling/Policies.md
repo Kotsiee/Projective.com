@@ -9,7 +9,7 @@ order to book them — so the model is **shape is public, content is not**.
 | Tier                    | Who                                                                                             | Sees                                                                                                                                                                  |
 | :---------------------- | :---------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Visitor** (`anon`)    | Anyone, only when `fn_schedule_is_public` — the schedule is published **and** its owner's profile is visible | Bands, blackout **spans** (`get_public_blackouts`, label masked), free/busy **spans** (`get_free_busy`), the public call offer — never an event row, never a blackout row |
-| **Owner side**          | `fn_owner_visible` — self / team / business / organisation                                      | Everything on the schedule, except an event's **room** unless they created it or are seated on it                                                                    |
+| **Owner side**          | `fn_owner_visible` — self / team / business / enterprise                                      | Everything on the schedule, except an event's **room** unless they created it or are seated on it                                                                    |
 | **Project participant** | `projects.has_project_access` on the event's engagement                                         | A project event's row — its time, title and kind — but not its room, and not its coordination unless they are a party                                                |
 | **Event party**         | Seated on the event, or its creator (coordination also admits whoever manages its schedule)     | That event's row, its room (`get_event_rooms`), its roster, negotiation, log and attachments                                                                         |
 | **Call party**          | The two people on a `discovery_calls` row (+ admins)                                            | That call, its attendance log, its audit trail                                                                                                                        |
@@ -30,13 +30,13 @@ All `SECURITY DEFINER` (so a policy reads membership tables without RLS recursio
 
 - **`scheduling.fn_owner_visible(owner_type, owner_id)`** — may the caller see this owner's schedule
   internals? Self for `user`/`freelancer`; `org.is_active_team_member` /
-  `org.is_active_business_member` / `org.is_organisation_member` for the shared kinds; or
+  `org.is_active_business_member` / `org.is_enterprise_member` for the shared kinds; or
   `security.is_admin()`.
 - **`scheduling.fn_owner_manages(owner_type, owner_id)`** — may the caller **mutate** it?
   Deliberately narrower: an individual owns their schedule outright, a team's is edited by
   `org.is_team_lead` (since 2026-09-28: a member holding the `bind_seat` workspace capability).
   > ⚠️ **Flagged (root `CLAUDE.md` §8):** tightening the shared-entity write gate to a specific
-  > `org.workspace_capability` (rather than "any active member" for a business / organisation) is
+  > `org.workspace_capability` (rather than "any active member" for a business / enterprise) is
   > left for human sign-off rather than guessed at. (The `org.team_permission` /
   > `org.business_permission` enums this note once named were retired 2026-09-28.)
 - **`scheduling.fn_can_view_schedule(schedule_id)`** / **`fn_can_manage_schedule(schedule_id)`** —

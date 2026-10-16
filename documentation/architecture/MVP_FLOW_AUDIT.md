@@ -86,9 +86,9 @@ does, rotate it and untrack the file.
 | 1.12 | `org.seed_user_preferences()` | **Wired** | Trigger `on_users_public_created` (`mig/00001810:15`) → `mig/00001010:342` | Inserts `user_id` only. Column defaults give `theme='system'`, `locale='en-GB'`, `preferred_display_currency='GBP'`, `layout_direction='auto'`. Browser locale and currency at signup are not captured. |
 | 1.13 | `comms.seed_notification_prefs()` | **Wired** | Trigger `mig/00001810:19` → `mig/00001310:46` | email and in_app on; push and sms off; `digest_frequency='off'`, `digest_hour=8`, `timezone='UTC'`. |
 | 1.14 | Duplicate notification toggles | **Stubbed / Broken** | `org.user_preferences.notification_email/push` written by `UserBackendService.ts:117` | No SQL reads the `org` pair. Delivery uses `comms.notification_prefs`, so the settings toggles have no effect. |
-| 1.15 | Org-owner preference rows | **Missing** | `create_organisation` path | Organisation owners never get an `org.users_public` row, so neither seed trigger runs for them. |
+| 1.15 | Enterprise-owner preference rows | **Missing** | `create_enterprise` path | Enterprise owners never get an `org.users_public` row, so neither seed trigger runs for them. |
 | 1.16 | `/become-partner` | **Wired** | `BecomePartnerWizard.island.tsx` → `partner-service.ts` → `api/user/freelancer.ts` → `UserBackendService.enableFreelancer` (:368) → `org.enable_freelancer_profile` (`mig/00001020:53`) | Inserts with `ON CONFLICT DO NOTHING` and keeps `is_operator`, so the client persona is intact. No KYC or age gate, so a 13–17-year-old can unlock selling. |
-| 1.17 | JWT hook after unlock / switch | **Wired (client-forced)** | `public.custom_access_token_hook` (`mig/00001700`) | Emits `active_profile_*`, `active_team_id`, `active_organisation_id` and `app_metadata.active_context{type,id,role,isClient,isFreelancer,onboarded,…}`. A refresh is forced only by the client (`remintSession`, `useContextSwitch`). `POST /api/context/switch` does not refresh server-side, so any other caller leaves the claims stale. |
+| 1.17 | JWT hook after unlock / switch | **Wired (client-forced)** | `public.custom_access_token_hook` (`mig/00001700`) | Emits `active_profile_*`, `active_team_id`, `active_enterprise_id` and `app_metadata.active_context{type,id,role,isClient,isFreelancer,onboarded,…}`. A refresh is forced only by the client (`remintSession`, `useContextSwitch`). `POST /api/context/switch` does not refresh server-side, so any other caller leaves the claims stale. |
 
 ### 1.2 Core project lifecycle
 
@@ -268,8 +268,8 @@ registry is complete (`feat/workspaces/core/module-registry.tsx:146`).
    overrides (`finance.contribution_agreements` keyed by stage and escrow) that freeze at funding
    time, as revision terms do, so a mid-project split edit can't redirect held money. Approval
    notifications go to every split recipient.
-2. **Org → business hierarchy.** `org.organisations` has only `departments text[]`. Add a parent
-   link (`org.organisation_businesses`), a hierarchical spend policy (department budget → business
+2. **Org → business hierarchy.** `org.enterprises` has only `departments text[]`. Add a parent
+   link (`org.enterprise_businesses`), a hierarchical spend policy (department budget → business
    vault), a console switcher level, and JWT `active_context` support. `PRODUCT_SPEC.md:661` covers
    multi-business ownership.
 3. **Seat billing.** Tie seat count to `finance.plans` (Phase 3.4) and prorate via the billing cycle.

@@ -427,7 +427,7 @@ async function resolve(query: BasketQuery, actor: ReadActor): Promise<Resolved |
 
 /**
  * A business's standing for paying on account (`finance.get_on_account_standing`), read as the caller.
- * `null` for a person, a team or an organisation, and on any failure — the Invoice route then reads as
+ * `null` for a person, a team or an enterprise, and on any failure — the Invoice route then reads as
  * unavailable, and `finance.place_on_account_order` re-checks every gate at payment anyway.
  */
 async function onAccountStanding(

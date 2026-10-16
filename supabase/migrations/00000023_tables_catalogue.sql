@@ -40,7 +40,7 @@
 -- ---------------------------------------------------------------------------------------------
 -- OWNERSHIP
 -- ---------------------------------------------------------------------------------------------
--- Sellers are individuals and teams. Businesses and organisations are buyer-side entities
+-- Sellers are individuals and teams. Businesses and enterprises are buyer-side entities
 -- (Decisions #9/#10/#61), so they cannot own a listing, and the shape enforces that structurally:
 -- `owner_user_id` is always the accountable human and `owner_team_id` is set only when the listing
 -- belongs to a team.

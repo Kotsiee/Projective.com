@@ -33,14 +33,14 @@ function title(lead: string, strong: string): VNode {
 
 /** Imaginative, non-technical copy for each step + selection. */
 function heroCopy(store: JoinStore): HeroCopy {
-	const org = store.isOrg.value;
+	const enterprise = store.isEnterprise.value;
 	const intent = store.intent.value;
 	switch (store.current.value.id) {
 		case "account":
 			return {
 				kicker: "Welcome to Projective",
 				title: title("First,", "who are you?"),
-				lede: "Tell us how you'll show up — as a person, or an organisation.",
+				lede: "Tell us how you'll show up — as a person, or an enterprise.",
 			};
 		case "intent":
 			if (intent === "client") {
@@ -63,7 +63,7 @@ function heroCopy(store: JoinStore): HeroCopy {
 				lede: "Will you hire brilliant people, or be one? You can do both later.",
 			};
 		case "purpose":
-			return org
+			return enterprise
 				? {
 					kicker: "Your scale",
 					title: title("How big is", "your world?"),
@@ -75,10 +75,10 @@ function heroCopy(store: JoinStore): HeroCopy {
 					lede: "Pick what you're here to do — nothing's set in stone.",
 				};
 		case "specialize":
-			return org
+			return enterprise
 				? {
 					kicker: "Your footprint",
-					title: title("Map your", "organisation."),
+					title: title("Map your", "enterprise."),
 					lede: "Where you're based and the teams that make it run.",
 				}
 				: {
@@ -87,7 +87,7 @@ function heroCopy(store: JoinStore): HeroCopy {
 					lede: "A few skills so exactly the right clients find you.",
 				};
 		case "identity":
-			return org
+			return enterprise
 				? {
 					kicker: "Your identity",
 					title: title("Your company,", "named."),
@@ -99,7 +99,7 @@ function heroCopy(store: JoinStore): HeroCopy {
 					lede: "Your name and @handle — this is how people find you.",
 				};
 		case "credentials":
-			if (org) {
+			if (enterprise) {
 				return {
 					kicker: "Almost there",
 					title: title("Admin &", "access."),

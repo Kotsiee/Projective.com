@@ -1,5 +1,5 @@
 -- =============================================================================
--- RLS POLICIES — org schema (users, teams, businesses, organisations, profiles, skills, preferences)
+-- RLS POLICIES — org schema (users, teams, businesses, enterprises, profiles, skills, preferences)
 -- Consolidated verbatim from the original numbered migrations (Category 2:
 -- Security, RLS & Permissions). Source file noted before each statement group.
 -- =============================================================================
@@ -177,40 +177,40 @@ SELECT TO anon, authenticated USING (true);
 
 
 
--- --- from 0314_organisations.sql ---
+-- --- from 0314_enterprises.sql ---
 
--- organisations: the owner, any active member, or an admin may view.
-CREATE POLICY "Members can view their organisation" ON org.organisations FOR
+-- enterprises: the owner, any active member, or an admin may view.
+CREATE POLICY "Members can view their enterprise" ON org.enterprises FOR
 SELECT TO public USING (
         owner_user_id = auth.uid ()
-        OR org.is_organisation_member (id)
+        OR org.is_enterprise_member (id)
         OR security.is_admin ()
     );
 
--- NO client INSERT policy on org.organisations (2026-09-23). An organisation is provisioned by
--- public.create_organisation (service role) with its owner membership in the same transaction; a raw
+-- NO client INSERT policy on org.enterprises (2026-09-23). An enterprise is provisioned by
+-- public.create_enterprise (service role) with its owner membership in the same transaction; a raw
 -- client INSERT could set `verification_level` and `status` at birth, where the UPDATE-only
 -- immutability guard (00001895) cannot reach.
 
--- NO client UPDATE (or DELETE) policy on org.organisations (2026-10-06). The bare
--- "Owners and admins can update the organisation" policy this replaces had no column list and no
+-- NO client UPDATE (or DELETE) policy on org.enterprises (2026-10-06). The bare
+-- "Owners and admins can update the enterprise" policy this replaces had no column list and no
 -- WITH CHECK, so any admin could rewrite the legal name, registration number and corporate and
 -- billing emails over PostgREST, unvalidated and unaudited. Every edit now goes through
--- org.update_organisation (00001020 §5c): an allow-list of keys, the legal identity owner-only and
+-- org.update_enterprise (00001020 §5c): an allow-list of keys, the legal identity owner-only and
 -- frozen once KYB begins, every value bounded, every edit audited.
 
--- organisation_members: a user sees their own row; owners/admins see the whole roster.
-CREATE POLICY "Members can view the roster" ON org.organisation_members FOR
+-- enterprise_members: a user sees their own row; owners/admins see the whole roster.
+CREATE POLICY "Members can view the roster" ON org.enterprise_members FOR
 SELECT TO public USING (
         user_id = auth.uid ()
-        OR org.is_organisation_member (organisation_id, 'admin')
+        OR org.is_enterprise_member (enterprise_id, 'admin')
         OR security.is_admin ()
     );
 
--- NO client write policy on org.organisation_members (2026-09-28). An organisation's owner membership
--- is written by public.create_organisation (service role). The policies this replaces let an admin
+-- NO client write policy on org.enterprise_members (2026-09-28). An enterprise's owner membership
+-- is written by public.create_enterprise (service role). The policies this replaces let an admin
 -- UPDATE any row to role `owner` — including their own — and hard-DELETE the owner. Nothing in the
--- app writes the table today; organisation roster management will get definer RPCs of its own.
+-- app writes the table today; enterprise roster management will get definer RPCs of its own.
 
 
 -- =============================================================================

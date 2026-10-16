@@ -40,7 +40,7 @@ import {
 
 /**
  * Profile shell (`/[handle]` wildcard namespace) — one layout for every profile entity (individual,
- * team, business, organisation) resolved by `@handle`.
+ * team, business, enterprise) resolved by `@handle`.
  *
  * The surface is ONE column in the native window scroll (root CLAUDE.md §8 Decision #96): the split
  * hero → the context bar → a seller's Services row → the four-section tab bar → the routed section

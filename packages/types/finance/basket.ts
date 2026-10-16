@@ -51,7 +51,7 @@ export const destinationEmail = z.string().trim().regex(
  *
  * This is {@link WalletOwnerType} **minus `system`**, and the narrowing is load-bearing rather than
  * stylistic: `finance.baskets.owner_type` and `finance.saved_cards.owner_type` both carry
- * `CHECK (owner_type IN ('user','freelancer','business','team','organisation'))`, so a schema that
+ * `CHECK (owner_type IN ('user','freelancer','business','team','enterprise'))`, so a schema that
  * accepted `system` would validate a write payload the database then refuses — a payload passing
  * validation and failing at INSERT is exactly the drift this package exists to prevent. The hidden
  * system wallets (Escrow Pool, Fee Collection, Dispute Lockbox) hold platform money and are never
@@ -66,7 +66,7 @@ const PURCHASE_OWNER_TYPES = [
 	"freelancer",
 	"business",
 	"team",
-	"organisation",
+	"enterprise",
 ] as const satisfies readonly WalletOwnerType[];
 
 /** Whose money a purchase spends — {@link WalletOwnerType} without the platform's `system` wallets. */
@@ -468,13 +468,13 @@ export const BasketSummarySchema = z.object({
 export type BasketSummary = z.infer<typeof BasketSummarySchema>;
 
 /** Which kind of principal an owner scope names — the `?owner=` prefix (`personal` has none). */
-export const BasketOwnerKind = z.enum(["personal", "team", "business", "organisation"]);
+export const BasketOwnerKind = z.enum(["personal", "team", "business", "enterprise"]);
 export type BasketOwnerKind = z.infer<typeof BasketOwnerKind>;
 
 /**
  * One account the caller can buy for, with every basket and list it keeps — the basket switcher's
  * group. `owner` is the scope key a read or write names (`personal` · `team:{id}` · `business:{id}` ·
- * `organisation:{id}`, ROUTING.md §Checkout); each basket carries its own count and selected subtotal.
+ * `enterprise:{id}`, ROUTING.md §Checkout); each basket carries its own count and selected subtotal.
  */
 export const BasketOwnerSummarySchema = z.object({
 	owner: z.string().min(1).max(160),

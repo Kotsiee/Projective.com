@@ -234,7 +234,7 @@ grouping, and virtualization.
 
 **TagField (TagInput)** Input field for managing an array of string tags.
 
-- **Use Cases:** SEO keywords, user interests, organizational labels.
+- **Use Cases:** SEO keywords, user interests, grouping labels.
 - **Design:** Renders tags as removable chips inside the input container.
 - **Logic:** Adds tags on `Enter` or `,` keys. Prevents duplicates and handles
   backspace-to-delete-last functionality.
@@ -1776,13 +1776,13 @@ Every write returns the RE-READ console so an island adopts the server's state. 
   through `org.get_party_cards` (`profile/party-cards.ts`) and pictures through
   `files.get_public_media` + `core/storage-url.ts`. Balances and ledgers are read under the caller's
   RLS with the wallet surface's own entity projection, never re-derived.
-- **The acting context is written only by the switch RPCs.** (Its organisation targets are listed by
-  `GET /api/context/organisations` → `ContextBackendService.organisations`: owned or ACTIVE-member
-  organisations, archived excluded, filtered explicitly because the `org.organisations` SELECT
+- **The acting context is written only by the switch RPCs.** (Its enterprise targets are listed by
+  `GET /api/context/enterprises` → `ContextBackendService.enterprises`: owned or ACTIVE-member
+  enterprises, archived excluded, filtered explicitly because the `org.enterprises` SELECT
   policy also admits platform admins to every row.) `security.session_context` is
   SELECT-only to clients; `POST /api/context/switch` → `ContextBackendService` calls
   `security.switch_session_context` (freelancer | business), `switch_team_context`,
-  `switch_organisation_context` or `clear_session_context` (back to personal), each of which re-checks
+  `switch_enterprise_context` or `clear_session_context` (back to personal), each of which re-checks
   the membership it names and upserts one slot (`ck_session_context_one_slot` makes a second
   unrepresentable). The access-token hook re-checks that membership at **every mint** and drops a
   stale context to personal — the stored context is a preference, never a grant — and the chrome's
@@ -1996,7 +1996,7 @@ the command palette.
   `EnableFreelancerInputSchema`) → `UserBackendService.enableFreelancer` →
   `org.enable_freelancer_profile` in the caller's JWT, which creates the freelancer profile with its
   starter skills, flips `is_freelancer`, and switches the acting context to the freelancer persona
-  through `security.fn_set_session_context` (clearing any team or organisation slot). The claims
+  through `security.fn_set_session_context` (clearing any team or enterprise slot). The claims
   then lag the database exactly as after a context switch, so the route re-issues the session on
   the same response (the hook re-mints `active_context.isFreelancer`; Decision #193) and the client
   hard-navigates to `/[handle]/edit` so the server-painted chrome (sidebar Services/Teams, the
@@ -2020,9 +2020,9 @@ the command palette.
   with none configured the panel shows a friendly "no provider" note.
 - **Corporate-domain member signal.** On a standard (email/password) individual signup,
   `AuthBackendService.provisionAccount` fires a best-effort, non-blocking check: if the new
-  address's domain matches an existing `org.organisations` registered domain (`website`, normalised
+  address's domain matches an existing `org.enterprises` registered domain (`website`, normalised
   — scheme / `www.` / path stripped; sub-domains match), it inserts a `comms.notifications` row
-  (`type: "organisation.domain_member_signup"`) for that org's active **owners/admins** so they can
+  (`type: "enterprise.domain_member_signup"`) for that enterprise's active **owners/admins** so they can
   invite or approve the colleague. No new schema — it reuses `comms.notifications` + the org
   membership join. Gated by `AUTH_BACKEND_LIVE` (non-live: no-op); any failure is swallowed so it
   can never fail account creation. OAuth completions are excluded (only inbound email
@@ -2268,8 +2268,8 @@ request lifecycle.
   `(dashboard)` guard admits only a verified session, renewing or clearing the rest (§Sessions,
   "Access-token verification", Decision #205).
 - **Role-Based Access Control (RBAC):** Permissions are checked at the Service layer using custom
-  claims within the JWT (e.g., `org_role`), ensuring that "Projective" users can only access
-  resources within their authorized organizations.
+  claims within the JWT (e.g., the acting context's `role`), ensuring that "Projective" users can
+  only access resources within the entities they are authorised for.
 - **Session Integrity:** We use secure, HTTP-only cookies for session persistence to mitigate
   XSS-based token theft.
 
@@ -2277,10 +2277,10 @@ request lifecycle.
 
 RLS is mandatory for all database tables to prevent cross-tenant data leakage.
 
-- **Tenant Isolation:** Every table containing user or organization data includes an
-  `organization_id` or `user_id` column.
+- **Tenant Isolation:** Every table containing user or entity data includes an
+  owning-entity id or `user_id` column.
 - **Policies:** Migration series `0200_org_rls.sql` defines strict `USING` and `WITH CHECK` clauses
-  that verify the user's `auth.uid()` or `auth.jwt() -> 'org_id'` matches the row data.
+  that verify the user's `auth.uid()` or an acting-context claim in `auth.jwt()` matches the row data.
 - **Bypassing:** Only the service-role key (used within authenticated Edge Functions) can bypass RLS
   for administrative tasks like file scanning.
 
@@ -2481,7 +2481,7 @@ PostgreSQL RLS.
   only) and `/api/auth/join` clears its session cookies; nothing about the attempt is logged; the
   browser session is locked (`SessionKeys.JOIN_AGE_LOCK` client-side, the data-less HttpOnly
   `pj_join_age_lock` cookie server-side). **13–17**: `trg_workspace_member_adult` refuses a minor on
-  `team_members` / `business_members` / `organisation_members` / `org_invitations`, and
+  `team_members` / `business_members` / `enterprise_members` / `org_invitations`, and
   `create_workspace`, `respond_to_workspace_invitation` and `finance.record_payout_account` assert an
   adult; `scheduling.trg_schedule_age_gate` refuses published hours and accepted calls, and
   `request_discovery_call` / `reserve_seat` assert an adult; `comms.trg_dm_shield` (on

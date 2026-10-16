@@ -3,7 +3,7 @@
 -- (Category 1: functions).
 --
 -- `/[handle]` resolves one of four entity kinds by handle — an individual (org.users_public), a
--- team, a business or an organisation — and paints the same page for all of them. Everything that
+-- team, a business or an enterprise — and paints the same page for all of them. Everything that
 -- page reads comes through the definer functions below, for the reason org.profiles_index is a
 -- definer view: the underlying tables hold far more than a visitor may see (`users_public.dob`, a
 -- business's tax id and billing email, a team's payout model) and RLS is ROW-level, so any policy
@@ -16,7 +16,7 @@
 -- `headline` from `rating_average`. So the client write policies on those tables are gone
 -- (00002010) and org.save_profile is the one door — it names every column it will touch.
 --
--- The polymorphic owner vocabulary ('user' · 'team' · 'business' · 'organisation') is the
+-- The polymorphic owner vocabulary ('user' · 'team' · 'business' · 'enterprise') is the
 -- org.profile_follows one: an individual is ONE owner whether their profile renders as a client or a
 -- freelancer.
 -- =============================================================================================
@@ -26,7 +26,7 @@
 -- May the caller MANAGE this profile — edit its fields, media and settings? An individual owns
 -- their own; a team's or a business's is whoever holds `edit_profile` there (the owner and admin
 -- presets, or a custom role that grants it — the workspace permission twin, org.fn_member_can); an
--- organisation's its owner's or an admin's. Deliberately narrower than membership: a member may
+-- enterprise's its owner's or an admin's. Deliberately narrower than membership: a member may
 -- READ an unlisted entity profile, not rewrite it.
 CREATE OR REPLACE FUNCTION org.fn_profile_manages(p_owner_type text, p_owner_id uuid)
 RETURNS boolean
@@ -43,9 +43,9 @@ AS $$
             org.fn_member_can ('team', p_owner_id, 'edit_profile')
         WHEN p_owner_type = 'business' THEN
             org.fn_member_can ('business', p_owner_id, 'edit_profile')
-        WHEN p_owner_type = 'organisation' THEN
-            EXISTS (SELECT 1 FROM org.organisations o WHERE o.id = p_owner_id AND o.owner_user_id = auth.uid ())
-            OR org.is_organisation_member (p_owner_id, 'admin'::org.organisation_role)
+        WHEN p_owner_type = 'enterprise' THEN
+            EXISTS (SELECT 1 FROM org.enterprises o WHERE o.id = p_owner_id AND o.owner_user_id = auth.uid ())
+            OR org.is_enterprise_member (p_owner_id, 'admin'::org.enterprise_role)
         ELSE false
     END;
 $$;
@@ -64,7 +64,7 @@ AS $$
 $$;
 
 -- May the caller SEE this profile at all? The same visibility rule as org.profiles_index — a public
--- or unlisted individual, an ACTIVE business, an active public/unlisted team, an active organisation
+-- or unlisted individual, an ACTIVE business, an active public/unlisted team, an active enterprise
 -- — plus two arms the directory has no reason for: whoever manages the profile always sees it (the
 -- owner of a private profile must be able to look at it), and a member sees their own entity.
 CREATE OR REPLACE FUNCTION org.fn_profile_visible(p_owner_type text, p_owner_id uuid)
@@ -89,12 +89,12 @@ AS $$
         WHEN p_owner_type = 'business' THEN
             EXISTS (SELECT 1 FROM org.business_profiles b WHERE b.id = p_owner_id AND b.status = 'active')
             OR org.is_active_business_member (p_owner_id)
-        WHEN p_owner_type = 'organisation' THEN
+        WHEN p_owner_type = 'enterprise' THEN
             EXISTS (
-                SELECT 1 FROM org.organisations o
-                WHERE o.id = p_owner_id AND o.status = 'active'::org.organisation_status
+                SELECT 1 FROM org.enterprises o
+                WHERE o.id = p_owner_id AND o.status = 'active'::org.enterprise_status
             )
-            OR org.is_organisation_member (p_owner_id)
+            OR org.is_enterprise_member (p_owner_id)
         ELSE false
     END;
 $$;
@@ -122,7 +122,7 @@ AS $$
         UNION ALL
         SELECT 3, 'business', b.id FROM org.business_profiles b, h WHERE lower(b.slug) = h.v
         UNION ALL
-        SELECT 4, 'organisation', o.id FROM org.organisations o, h WHERE lower(o.handle) = h.v
+        SELECT 4, 'enterprise', o.id FROM org.enterprises o, h WHERE lower(o.handle) = h.v
     ) x, h
     WHERE h.v <> ''
     ORDER BY x.rank
@@ -329,7 +329,7 @@ BEGIN
 
     ELSE
         SELECT jsonb_build_object(
-            'kind', 'organisation',
+            'kind', 'enterprise',
             'handle', o.handle,
             'name', COALESCE(NULLIF(btrim(o.trading_name), ''), o.legal_name),
             'headline', '',
@@ -348,15 +348,15 @@ BEGIN
                 'as_helper', jsonb_build_object('value', 0, 'count', 0),
                 'as_client', jsonb_build_object('value', 0, 'count', 0)
             ),
-            'verified', o.verification_level <> 'unverified'::org.organisation_verification_level,
-            'verification_stamp', CASE WHEN o.verification_level = 'verified'::org.organisation_verification_level
+            'verified', o.verification_level <> 'unverified'::org.enterprise_verification_level,
+            'verification_stamp', CASE WHEN o.verification_level = 'verified'::org.enterprise_verification_level
                 THEN 'corporate_verified' ELSE 'none' END,
             'hire_intake', '[]'::jsonb,
             'response_minutes', NULL
         )
         INTO v_base
-        FROM org.organisations o WHERE o.id = v_id;
-        v_sched_type := 'organisation';
+        FROM org.enterprises o WHERE o.id = v_id;
+        v_sched_type := 'enterprise';
     END IF;
 
     IF v_base IS NULL THEN
@@ -564,7 +564,7 @@ BEGIN
 END;
 $$;
 
--- The roster of a multi-member entity, and — for an organisation — the departments it is grouped
+-- The roster of a multi-member entity, and — for an enterprise — the departments it is grouped
 -- by. Active memberships only; a member's display facts come from their public row and their
 -- avatar from its public rendition. Empty for an individual.
 CREATE OR REPLACE FUNCTION org.get_profile_roster(p_handle text)
@@ -613,17 +613,17 @@ BEGIN
             JOIN org.users_public up ON up.user_id = bm.user_id
             WHERE bm.business_id = v_id AND bm.status = 'active'
         ), '[]'::jsonb));
-    ELSIF v_type = 'organisation' THEN
+    ELSIF v_type = 'enterprise' THEN
         RETURN jsonb_build_object(
             'departments', COALESCE((
                 SELECT jsonb_agg(jsonb_build_object(
                     'name', d.name,
                     'member_count', (
-                        SELECT count(*) FROM org.organisation_members m
-                        WHERE m.organisation_id = v_id AND m.status = 'active' AND d.name = ANY (m.departments)
+                        SELECT count(*) FROM org.enterprise_members m
+                        WHERE m.enterprise_id = v_id AND m.status = 'active' AND d.name = ANY (m.departments)
                     )
                 ) ORDER BY d.ord)
-                FROM org.organisations o, unnest(o.departments) WITH ORDINALITY AS d (name, ord)
+                FROM org.enterprises o, unnest(o.departments) WITH ORDINALITY AS d (name, ord)
                 WHERE o.id = v_id
             ), '[]'::jsonb),
             'members', COALESCE((
@@ -635,9 +635,9 @@ BEGIN
                     'is_freelancer', up.is_freelancer,
                     'departments', to_jsonb(m.departments)
                 ) ORDER BY m.joined_at)
-                FROM org.organisation_members m
+                FROM org.enterprise_members m
                 JOIN org.users_public up ON up.user_id = m.user_id
-                WHERE m.organisation_id = v_id AND m.status = 'active'
+                WHERE m.enterprise_id = v_id AND m.status = 'active'
             ), '[]'::jsonb)
         );
     END IF;
@@ -788,7 +788,7 @@ BEGIN
                       )
                   ))
                   OR (v_type = 'business' AND p.client_business_id = v_id)
-                  OR (v_type = 'organisation' AND p.owner_organisation_id = v_id)
+                  OR (v_type = 'enterprise' AND p.owner_enterprise_id = v_id)
               )
             ORDER BY p.updated_at DESC
             LIMIT 24
@@ -841,7 +841,7 @@ BEGIN
 END;
 $$;
 
--- The same public identity for a profile of ANY kind — a person, team, business or organisation — as
+-- The same public identity for a profile of ANY kind — a person, team, business or enterprise — as
 -- the /saved page and a profile's followers / following lists show it (Decision #180). Pairs are
 -- (p_types[i], p_ids[i]); a pair the caller may not see (org.fn_profile_visible) is simply absent, so
 -- a private profile never leaks through someone's saved list or follow graph. PL/pgSQL for the same
@@ -884,10 +884,10 @@ BEGIN
     SELECT p.owner_type, p.owner_id, 'business', b.slug, b.name, files.fn_public_media_ref (b.logo_file_id), NULL
     FROM pairs p JOIN org.business_profiles b ON p.owner_type = 'business' AND b.id = p.owner_id
     UNION ALL
-    SELECT p.owner_type, p.owner_id, 'organisation', o.handle,
+    SELECT p.owner_type, p.owner_id, 'enterprise', o.handle,
            COALESCE(NULLIF(btrim(o.trading_name), ''), o.legal_name),
            files.fn_public_media_ref (o.logo_file_id), NULL
-    FROM pairs p JOIN org.organisations o ON p.owner_type = 'organisation' AND o.id = p.owner_id;
+    FROM pairs p JOIN org.enterprises o ON p.owner_type = 'enterprise' AND o.id = p.owner_id;
 END;
 $$;
 -- #endregion
@@ -919,7 +919,7 @@ BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in to edit a profile';
     END IF;
-    IF p_owner_type NOT IN ('user', 'team', 'business', 'organisation') THEN
+    IF p_owner_type NOT IN ('user', 'team', 'business', 'enterprise') THEN
         RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'owner: unknown profile kind';
     END IF;
     IF NOT org.fn_profile_manages (p_owner_type, p_owner_id) THEN
@@ -1047,7 +1047,7 @@ BEGIN
                    OR COALESCE(v_item ->> 'start_year', '') !~ '^\d{4}$'
                    OR (NULLIF(v_item ->> 'end_year', '') IS NOT NULL AND v_item ->> 'end_year' !~ '^\d{4}$')
                    OR char_length(COALESCE(v_item ->> 'summary', '')) > 600 THEN
-                    RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = format('experience.%s: check the organisation, role and years', v_i);
+                    RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = format('experience.%s: check the enterprise, role and years', v_i);
                 END IF;
                 v_id := NULLIF(v_item ->> 'id', '')::uuid;
                 IF v_id IS NOT NULL AND EXISTS (SELECT 1 FROM org.experience_entries e WHERE e.id = v_id AND e.user_id = p_owner_id) THEN
@@ -1192,12 +1192,12 @@ BEGIN
         WHERE b.id = p_owner_id;
     -- #endregion
 
-    -- #region Organisation — the trading name is the only presentational field it carries
+    -- #region Enterprise — the trading name is the only presentational field it carries
     ELSE
         IF v_patch ? 'name' AND char_length(btrim(COALESCE(v_patch ->> 'name', ''))) > 120 THEN
             RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'name: must be 120 characters or fewer';
         END IF;
-        UPDATE org.organisations o SET
+        UPDATE org.enterprises o SET
             trading_name = CASE WHEN v_patch ? 'name' THEN NULLIF(btrim(v_patch ->> 'name'), '') ELSE o.trading_name END,
             address_city = CASE WHEN v_patch ? 'city' THEN NULLIF(btrim(v_patch ->> 'city'), '') ELSE o.address_city END,
             address_country = CASE WHEN v_patch ? 'country' THEN NULLIF(btrim(v_patch ->> 'country'), '') ELSE o.address_country END,
@@ -1273,8 +1273,8 @@ BEGIN
         SELECT b.logo_file_id INTO v_prev FROM org.business_profiles b WHERE b.id = p_owner_id;
         UPDATE org.business_profiles SET logo_file_id = p_file_id, updated_at = now() WHERE id = p_owner_id;
     ELSE
-        SELECT o.logo_file_id INTO v_prev FROM org.organisations o WHERE o.id = p_owner_id;
-        UPDATE org.organisations SET logo_file_id = p_file_id, updated_at = now() WHERE id = p_owner_id;
+        SELECT o.logo_file_id INTO v_prev FROM org.enterprises o WHERE o.id = p_owner_id;
+        UPDATE org.enterprises SET logo_file_id = p_file_id, updated_at = now() WHERE id = p_owner_id;
     END IF;
 
     IF v_prev IS NOT NULL AND v_prev <> p_file_id THEN

@@ -9,7 +9,7 @@ import type { OAuthPrefill } from "./oauth.ts";
  * prop threading. Everything is signal-first (DESIGN_SYSTEM.md §C.2).
  */
 
-/** The six onboarding step slots (kept identical for Individual & Organization to sync routing/state). */
+/** The six onboarding step slots (kept identical for Individual & Enterprise to sync routing/state). */
 export type StepId = "account" | "intent" | "purpose" | "specialize" | "identity" | "credentials";
 
 export interface StepMeta {
@@ -51,15 +51,15 @@ export interface JoinStore {
 	lastName: Signal<string>;
 	username: Signal<string>;
 
-	// organization identity
+	// enterprise identity
 	legalName: Signal<string>;
 	tradingName: Signal<string>;
 	handle: Signal<string>;
 	crn: Signal<string>;
-	/** Corporate web footprint — official website / domain (organization only). */
+	/** Corporate web footprint — official website / domain (enterprise only). */
 	website: Signal<string>;
 
-	// scale / structure (organization)
+	// scale / structure (enterprise)
 	employeeTier: Signal<string>;
 	industry: Signal<string>;
 	/** Free-text sector, required only when {@link industry} is the `"other"` catch-all. */
@@ -92,7 +92,7 @@ export interface JoinStore {
 	current: ReadonlySignal<StepMeta>;
 	stepCount: ReadonlySignal<number>;
 	progress: ReadonlySignal<number>;
-	isOrg: ReadonlySignal<boolean>;
+	isEnterprise: ReadonlySignal<boolean>;
 	displayName: ReadonlySignal<string>;
 	displayHandle: ReadonlySignal<string>;
 	displayEmail: ReadonlySignal<string>;
@@ -102,7 +102,7 @@ export interface JoinStore {
 /**
  * Build the (reactive) list of visible steps for the current selections.
  *
- * Organizations follow a **client-only** path (PRODUCT_SPEC.md — an org registers to buy/hire, not
+ * Enterprises follow a **client-only** path (PRODUCT_SPEC.md — an enterprise registers to buy/hire, not
  * to provide services), so their flow skips the individual "intent" (hire vs. work) branch entirely
  * and never surfaces the freelancer-only "skills" step.
  */
@@ -111,24 +111,24 @@ function buildSteps(
 	intent: Signal<UserIntent | "">,
 	isOAuth: boolean,
 ): StepMeta[] {
-	const org = accountType.value === "organization";
+	const enterprise = accountType.value === "enterprise";
 	const steps: StepMeta[] = [];
 	// OAuth arrivals already have a verified provider identity AND are individuals by definition, so
 	// the account-type choice step is skipped entirely — they land straight on "intent".
 	if (!isOAuth) steps.push({ id: "account", tag: "1", label: "Account", optional: false });
-	// Individuals choose hire vs. work; organizations are buyers by definition, so no branch.
-	if (!org) steps.push({ id: "intent", tag: "1.2", label: "You", optional: false });
-	steps.push({ id: "purpose", tag: "1.3", label: org ? "Scale" : "Purpose", optional: !org });
-	const showSpecialize = org || intent.value === "freelancer";
+	// Individuals choose hire vs. work; enterprises are buyers by definition, so no branch.
+	if (!enterprise) steps.push({ id: "intent", tag: "1.2", label: "You", optional: false });
+	steps.push({ id: "purpose", tag: "1.3", label: enterprise ? "Scale" : "Purpose", optional: !enterprise });
+	const showSpecialize = enterprise || intent.value === "freelancer";
 	if (showSpecialize) {
 		steps.push({
 			id: "specialize",
 			tag: "1.4",
-			label: org ? "Structure" : "Skills",
-			optional: !org,
+			label: enterprise ? "Structure" : "Skills",
+			optional: !enterprise,
 		});
 	}
-	steps.push({ id: "identity", tag: "1.5", label: org ? "Company" : "Profile", optional: false });
+	steps.push({ id: "identity", tag: "1.5", label: enterprise ? "Company" : "Profile", optional: false });
 	// The credentials step (email + password) is redundant for OAuth: the provider already
 	// authenticated them, so the only remaining detail — date of birth — folds up into identity (1.5),
 	// which then carries the "Create account" submission.
@@ -142,7 +142,7 @@ const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n
 export function createJoinStore(init: JoinInit): JoinStore {
 	const prefill = init.prefill;
 	const isOAuth = !!prefill;
-	// OAuth sign-up is individual-only (Google onboarding never provisions an organisation), so pin
+	// OAuth sign-up is individual-only (Google onboarding never provisions an enterprise), so pin
 	// the account type to "individual" regardless of any stray `?type=` param on the return URL.
 	const accountType = signal<AccountType>(isOAuth ? "individual" : init.accountType);
 	const intent = signal<UserIntent | "">(init.intent);
@@ -158,7 +158,7 @@ export function createJoinStore(init: JoinInit): JoinStore {
 	const progress = computed(() =>
 		steps.value.length <= 1 ? 1 : (stepIndex.value + 1) / steps.value.length
 	);
-	const isOrg = computed(() => accountType.value === "organization");
+	const isEnterprise = computed(() => accountType.value === "enterprise");
 
 	const firstNameS = firstName;
 	const lastNameS = lastName;
@@ -167,22 +167,22 @@ export function createJoinStore(init: JoinInit): JoinStore {
 	const handle = signal("");
 
 	const displayName = computed(() => {
-		if (accountType.value === "organization") return legalName.value.trim();
+		if (accountType.value === "enterprise") return legalName.value.trim();
 		return `${firstNameS.value} ${lastNameS.value}`.trim();
 	});
 	const displayHandle = computed(() =>
-		accountType.value === "organization" ? handle.value.trim() : username.value.trim()
+		accountType.value === "enterprise" ? handle.value.trim() : username.value.trim()
 	);
 	const corpEmail = signal("");
 	const displayEmail = computed(() =>
-		accountType.value === "organization" ? corpEmail.value.trim() : email.value.trim()
+		accountType.value === "enterprise" ? corpEmail.value.trim() : email.value.trim()
 	);
 	const initials = computed(() => {
 		const src = displayName.value;
 		if (src) {
 			return src.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
 		}
-		return accountType.value === "organization" ? "◆" : "?";
+		return accountType.value === "enterprise" ? "◆" : "?";
 	});
 
 	return {
@@ -227,7 +227,7 @@ export function createJoinStore(init: JoinInit): JoinStore {
 		current,
 		stepCount,
 		progress,
-		isOrg,
+		isEnterprise,
 		displayName,
 		displayHandle,
 		displayEmail,

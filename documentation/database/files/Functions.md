@@ -110,7 +110,7 @@ left open in the other (the `scheduling` refusal-function precedent).
 | `owner_user_id = auth.uid()`                                                        |
 | `owner_type = 'team'` and `org.is_active_team_member(owner_entity_id)`              |
 | `owner_type = 'business'` and `org.is_active_business_member(owner_entity_id)`      |
-| `owner_type = 'organisation'` and `org.is_organisation_member(owner_entity_id)`     |
+| `owner_type = 'enterprise'` and `org.is_enterprise_member(owner_entity_id)`     |
 | `bucket_id = 'project'` and `projects.has_project_access({project_id} path anchor)` |
 | attached (`comms.message_attachments`) to a message `comms.can_read_message()` admits |
 | filed as dispute evidence (`finance.dispute_evidence`) and the reader is a party (`finance.fn_dispute_party`) or `security.is_admin()` |
@@ -329,7 +329,7 @@ by the `items` / `folders` INSERT and UPDATE policies' `WITH CHECK`:
 | `user`         | `owner_entity_id IS NULL` (a personal row names no entity)        |
 | `team`         | the entity is set and `org.is_active_team_member(entity)`         |
 | `business`     | the entity is set and `org.is_active_business_member(entity)`     |
-| `organisation` | the entity is set and `org.is_organisation_member(entity)`        |
+| `enterprise` | the entity is set and `org.is_enterprise_member(entity)`        |
 
 Those policies used to check only `owner_user_id = auth.uid()` — who **created** the row — and never
 whether the creator belonged to the library they filed it into. Verified by execution before it was

@@ -323,11 +323,11 @@ export function emptyScope(basket: Basket): EmptyCopy {
 				title: `${basket.name}’s business basket is empty`,
 				note: "Anything added here is paid for by the business wallet, not by you personally.",
 			};
-		case "organisation":
+		case "enterprise":
 			return {
-				title: `${basket.name}’s organisation basket is empty`,
+				title: `${basket.name}’s enterprise basket is empty`,
 				note:
-					"Anything added here is paid for by the organisation’s wallet, not by you personally.",
+					"Anything added here is paid for by the enterprise’s wallet, not by you personally.",
 			};
 		default:
 			return {

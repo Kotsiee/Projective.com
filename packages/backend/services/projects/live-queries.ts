@@ -116,7 +116,7 @@ const SUMMARY_COLUMNS = [
 	"currency",
 	"owner_user_id",
 	"owner_team_id",
-	"owner_organisation_id",
+	"owner_enterprise_id",
 	"client_business_id",
 	"source_blueprint_id",
 	"updated_at",
@@ -158,7 +158,7 @@ export interface ProjectRow {
 	currency: string | null;
 	owner_user_id: string;
 	owner_team_id: string | null;
-	owner_organisation_id: string | null;
+	owner_enterprise_id: string | null;
 	client_business_id: string | null;
 	source_blueprint_id: string | null;
 	updated_at: string;
@@ -243,12 +243,12 @@ function resolveSummaryRole(row: ProjectRow, ctx: SummaryContext): ProjectViewer
 /**
  * Which workspace an engagement belongs to.
  *
- * The columns are checked most-specific first — an organisation-owned project also carries a team,
+ * The columns are checked most-specific first — an enterprise-owned project also carries a team,
  * and reading the team would file it under the wrong scope in the feed's grouping.
  */
 function scopeOf(row: ProjectRow): { scopeType: ContextType; scopeId: string } {
-	if (row.owner_organisation_id) {
-		return { scopeType: "organisation", scopeId: row.owner_organisation_id };
+	if (row.owner_enterprise_id) {
+		return { scopeType: "enterprise", scopeId: row.owner_enterprise_id };
 	}
 	if (row.owner_team_id) return { scopeType: "team", scopeId: row.owner_team_id };
 	if (row.client_business_id) return { scopeType: "business", scopeId: row.client_business_id };
@@ -364,9 +364,9 @@ export function toSummary(row: ProjectRow, ctx: SummaryContext): ProjectSummary 
  * split into "Personal" and `a3f1c2de-9b40-4e77-8c12-5f0e1b7d9a44`.
  *
  * Three tables because the three workspace kinds are three tables, and the name column differs:
- * `org.teams.name`, `org.business_profiles.name`, and `org.organisations` — which has no `name` at
+ * `org.teams.name`, `org.business_profiles.name`, and `org.enterprises` — which has no `name` at
  * all, only `legal_name`, an optional `trading_name` and a `handle`. Trading name is preferred there
- * because it is what an organisation calls itself in public; the legal name is the fallback.
+ * because it is what an enterprise calls itself in public; the legal name is the fallback.
  *
  * Only the kinds actually present on the page are queried. A lookup that fails leaves that scope
  * unresolved and {@link toSummary} falls back to a generic label for its TYPE — never to the id.
@@ -378,10 +378,10 @@ async function fetchScopeLabels(
 	const labels = new Map<string, string>();
 	const teamIds: string[] = [];
 	const businessIds: string[] = [];
-	const orgIds: string[] = [];
+	const enterpriseIds: string[] = [];
 
 	for (const row of rows) {
-		if (row.owner_organisation_id) orgIds.push(row.owner_organisation_id);
+		if (row.owner_enterprise_id) enterpriseIds.push(row.owner_enterprise_id);
 		else if (row.owner_team_id) teamIds.push(row.owner_team_id);
 		else if (row.client_business_id) businessIds.push(row.client_business_id);
 	}
@@ -415,15 +415,15 @@ async function fetchScopeLabels(
 			),
 		);
 	}
-	if (orgIds.length > 0) {
+	if (enterpriseIds.length > 0) {
 		reads.push(
-			db.from("organisations").select("id, trading_name, legal_name").in(
+			db.from("enterprises").select("id, trading_name, legal_name").in(
 				"id",
-				[...new Set(orgIds)],
+				[...new Set(enterpriseIds)],
 			).then(({ data, error }) => {
 				if (error) return;
-				type OrgRow = { id: string; trading_name: string | null; legal_name: string | null };
-				for (const r of (data ?? []) as OrgRow[]) {
+				type EnterpriseRow = { id: string; trading_name: string | null; legal_name: string | null };
+				for (const r of (data ?? []) as EnterpriseRow[]) {
 					const name = r.trading_name?.trim() || r.legal_name?.trim();
 					if (name) labels.set(r.id, name.slice(0, 120));
 				}
@@ -449,8 +449,8 @@ function fallbackScopeLabel(scopeType: ContextType): string {
 			return "Team";
 		case "business":
 			return "Business";
-		case "organisation":
-			return "Organisation";
+		case "enterprise":
+			return "Enterprise";
 		default:
 			return "Workspace";
 	}

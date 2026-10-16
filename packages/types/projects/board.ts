@@ -917,7 +917,7 @@ export const BoardPageSchema = z.object({
 	/** That workspace's human name ("Northwind Studio") — the selector's group label. */
 	workspaceLabel: z.string().max(120).default("Personal"),
 	/**
-	 * The client-side members a ticket can be assigned to inside a team/business/organisation. Empty
+	 * The client-side members a ticket can be assigned to inside a team/business/enterprise. Empty
 	 * on a personal engagement.
 	 */
 	clientMembers: z.array(ProjectPartySchema).max(60).default([]),

@@ -12,7 +12,7 @@ import { z } from "zod";
  *
  * These are **read/write projections** for the console surface, not table mirrors: the live path
  * reads the existing `org.teams` / `org.business_profiles` / `org.*_members` / `org.*_roles` tables,
- * so no migration accompanies them (contrast `org/organisations.ts`, which mirrors migration 0314
+ * so no migration accompanies them (contrast `org/enterprises.ts`, which mirrors migration 0314
  * column-for-column). That is why they live under their own `@projective/types/workspace` sub-path
  * rather than polluting the DB-row `org` namespace.
  *

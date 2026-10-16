@@ -440,7 +440,7 @@ ordinary prose keeps proportional figures. */
 
 /* #region The entity mark — a rounded-square initial badge */
 /*
- * Rounded square, always: an entity is an organisation, and the surface's one hard visual rule is
+ * Rounded square, always: an entity is an enterprise, and the surface's one hard visual rule is
  * that squares are entities and circles are people. A logo drops in as an `<img>` child; the badge
  * behind it carries the kind tint so the mark still reads as a team or a business while the image
  * loads or when there is none.

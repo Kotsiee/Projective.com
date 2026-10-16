@@ -28,11 +28,11 @@ export const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // #endregion
 
 // #region Option values
-/** Organization headcount tiers; the app's `EMPLOYEE_TIERS` labels these values. */
+/** Enterprise headcount tiers; the app's `EMPLOYEE_TIERS` labels these values. */
 export const EMPLOYEE_TIER_VALUES = ["1-50", "51-200", "201-500", "500+"] as const;
 export type EmployeeTier = typeof EMPLOYEE_TIER_VALUES[number];
 
-/** Organization primary industries (`other` is the catch-all); the app's `INDUSTRIES` labels these. */
+/** Enterprise primary industries (`other` is the catch-all); the app's `INDUSTRIES` labels these. */
 export const INDUSTRY_VALUES = [
 	"software",
 	"design",
@@ -111,12 +111,12 @@ export const IndividualJoinSchema = z.object({
 export type IndividualJoin = z.infer<typeof IndividualJoinSchema>;
 
 /**
- * Organization (comprehensive, multi-step) onboarding. Organizations are **client/buyer-only** on
+ * Enterprise (comprehensive, multi-step) onboarding. Enterprises are **client/buyer-only** on
  * Projective (they hire, they don't sell), so `intent` is pinned to `client`. `website` is the
  * optional corporate web footprint.
  */
-export const OrganizationJoinSchema = z.object({
-	type: z.literal("organization"),
+export const EnterpriseJoinSchema = z.object({
+	type: z.literal("enterprise"),
 	intent: z.literal("client").default("client"),
 	legalName: name,
 	tradingName: z.string().trim().max(120).default(""),
@@ -142,12 +142,12 @@ export const OrganizationJoinSchema = z.object({
 	password,
 	redirectTo,
 });
-export type OrganizationJoin = z.infer<typeof OrganizationJoinSchema>;
+export type EnterpriseJoin = z.infer<typeof EnterpriseJoinSchema>;
 
 /** Discriminated on `type` so one endpoint validates either onboarding shape. */
 export const JoinSchema = z.discriminatedUnion("type", [
 	IndividualJoinSchema,
-	OrganizationJoinSchema,
+	EnterpriseJoinSchema,
 ]);
 export type Join = z.infer<typeof JoinSchema>;
 // #endregion

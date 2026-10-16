@@ -119,7 +119,7 @@ $$;
 -- What grants a read:
 --   * `public` visibility — world readable by design.
 --   * Personal ownership — owner_type = 'user' and the caller is owner_user_id.
---   * Entity membership — an active member of the owning team / business / organisation.
+--   * Entity membership — an active member of the owning team / business / enterprise.
 --   * A project mount — the asset sits in the `project` bucket and the caller passes the existing
 --     projects.has_project_access gate for the {project_id} path anchor.
 --
@@ -166,8 +166,8 @@ BEGIN
         RETURN org.is_active_team_member (v_item.owner_entity_id);
     ELSIF v_item.owner_type = 'business'::files.owner_kind THEN
         RETURN org.is_active_business_member (v_item.owner_entity_id);
-    ELSIF v_item.owner_type = 'organisation'::files.owner_kind THEN
-        RETURN org.is_organisation_member (v_item.owner_entity_id);
+    ELSIF v_item.owner_type = 'enterprise'::files.owner_kind THEN
+        RETURN org.is_enterprise_member (v_item.owner_entity_id);
     END IF;
 
     -- Mounted engagement attachment: the `project` bucket anchors on {project_id}, the same anchor
@@ -267,7 +267,7 @@ BEGIN
         WHEN 'user' THEN 'user'
         WHEN 'team' THEN 'team'
         WHEN 'business' THEN 'business'
-        WHEN 'organisation' THEN 'organisation'
+        WHEN 'enterprise' THEN 'enterprise'
     END;
 
     v_limit_mib := finance.fn_effective_limit (
@@ -581,8 +581,8 @@ AS $$
             p_owner_entity_id IS NOT NULL AND org.is_active_team_member (p_owner_entity_id)
         WHEN 'business'::files.owner_kind THEN
             p_owner_entity_id IS NOT NULL AND org.is_active_business_member (p_owner_entity_id)
-        WHEN 'organisation'::files.owner_kind THEN
-            p_owner_entity_id IS NOT NULL AND org.is_organisation_member (p_owner_entity_id)
+        WHEN 'enterprise'::files.owner_kind THEN
+            p_owner_entity_id IS NOT NULL AND org.is_enterprise_member (p_owner_entity_id)
         ELSE false
     END;
 $$;
@@ -627,7 +627,7 @@ BEGIN
         (p_owner_type = 'user'::files.owner_kind AND p_owner_id = v_uid)
         OR (p_owner_type = 'team'::files.owner_kind AND org.is_active_team_member (p_owner_id))
         OR (p_owner_type = 'business'::files.owner_kind AND org.is_active_business_member (p_owner_id))
-        OR (p_owner_type = 'organisation'::files.owner_kind AND org.is_organisation_member (p_owner_id))
+        OR (p_owner_type = 'enterprise'::files.owner_kind AND org.is_enterprise_member (p_owner_id))
     ) THEN
         RAISE EXCEPTION 'That allowance isn''t yours to read' USING ERRCODE = '42501';
     END IF;

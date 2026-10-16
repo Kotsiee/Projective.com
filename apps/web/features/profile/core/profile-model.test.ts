@@ -58,7 +58,7 @@ Deno.test("rigFor: a seller with something to hire for leads with Hire; Add-to-p
 		},
 	);
 	// A buyer entity cannot be hired or assigned, whatever it offers.
-	for (const kind of ["client", "business", "organisation"] as const) {
+	for (const kind of ["client", "business", "enterprise"] as const) {
 		assertEquals(rigFor(kind, { hasServices: true, offersConsultation: true, authed: true }), {
 			layout: "buyer",
 			hire: false,

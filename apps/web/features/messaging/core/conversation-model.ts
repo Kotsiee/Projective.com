@@ -93,11 +93,11 @@ export const KIND_LABEL: Record<ConversationKind, string> = {
 
 /**
  * The acting messaging view derived from the user context — the SSR baseline the dev seam layers onto.
- * A business/organisation context browses as a buyer (`business`); an individual who offers services is
- * a `freelancer`; everyone else is a `client`. (Decisions #9/#10 — Organisations are buyer-only.)
+ * A business/enterprise context browses as a buyer (`business`); an individual who offers services is
+ * a `freelancer`; everyone else is a `client`. (Decisions #9/#10 — Enterprises are buyer-only.)
  */
 export function defaultMessagingRole(context: UserContext): MessagingRole {
-	if (context.contextType === "business" || context.contextType === "organisation") {
+	if (context.contextType === "business" || context.contextType === "enterprise") {
 		return "business";
 	}
 	if (context.isFreelancer) return "freelancer";

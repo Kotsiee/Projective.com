@@ -496,7 +496,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 	const done = result?.status === "succeeded";
 	const cardStep = cardStepPending(result);
 	const showsInvoicing = view.buyer.contextKind === "business" ||
-		view.owner.ownerType === "business" || view.owner.ownerType === "organisation";
+		view.owner.ownerType === "business" || view.owner.ownerType === "enterprise";
 	const detailsHref = editDetailsHref(initial.owner);
 	const buyLabel = submitting.value ? "Taking payment…" : `Buy Now · ${view.totals.total.display}`;
 	// The route the confirmation is actually about, so the dialog never names the instrument the buyer

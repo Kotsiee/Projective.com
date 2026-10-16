@@ -38,6 +38,6 @@ canonical file they point to.
    the durable decision log for any new ones.)
 6. **Living source of record.** These docs are the immutable-by-discipline system of record. Treat
    moves/renames as reversible-only-via-stub (this workspace has no git safety net) — preserve
-   content verbatim on any reorganization and leave a redirect.
+   content verbatim on any restructure and leave a redirect.
 
 See the root [`CLAUDE.md`](../CLAUDE.md) for the full architectural and PR-validation guardrails.

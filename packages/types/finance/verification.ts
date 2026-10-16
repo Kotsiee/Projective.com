@@ -10,8 +10,8 @@ import { timestamp, uuid } from "./common.ts";
  * Gating rule (finance-model.md §KYC/KYB Gating): freelancers (earners) must be verified + payout-ready
  * before landing a gig / joining a team; individual clients need NO ID verification (tap-and-pay);
  * business owners need KYB to operate the pooled Business Wallet. Distinct from EMAIL verification
- * (`org.user_emails.verified_at`, migration 0312) — never conflated. Organisations keep their own
- * `org.organisation_verification_level` (migration 0314), unchanged.
+ * (`org.user_emails.verified_at`, migration 0312) — never conflated. Enterprises keep their own
+ * `org.enterprise_verification_level` (migration 0314), unchanged.
  *
  * ⚠️ NO PII: only opaque provider references (Stripe Identity session / Connect account id) are
  * modelled — never a document number, image, or SSN.
@@ -28,7 +28,7 @@ export const VerificationTier = z.number().int().min(1).max(3);
 
 // #region Verification case (audit trail)
 /** The subject of a verification case. */
-export const VerificationSubjectType = z.enum(["freelancer", "business", "organisation", "user"]);
+export const VerificationSubjectType = z.enum(["freelancer", "business", "enterprise", "user"]);
 export type VerificationSubjectType = z.infer<typeof VerificationSubjectType>;
 
 /** Whether the case is individual identity (`kyc`) or business (`kyb`). */

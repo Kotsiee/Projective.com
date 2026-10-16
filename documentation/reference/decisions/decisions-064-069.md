@@ -365,7 +365,7 @@ Quotas are an ENTITLEMENT, not a parallel system** — a new `storage_megabytes`
 existing `fn_effective_limit`/`fn_footprint_usage`, which needed one `ELSIF`. Denominated in
 **MEBIBYTES** because `plan_entitlements.limit_value` and all three resolver return types are
 `integer`: 25 GB in bytes is 26,843,545,600 and overflows int4, and 1 TB is off by ~512×. Ladder:
-free tiers 25600 · individual_pro 153600 · team/business_pro 512000 · organisation unlimited
+free tiers 25600 · individual_pro 153600 · team/business_pro 512000 · enterprise unlimited
 (`NULL`, never a huge number that would eventually be rendered as a promise). Enforcement ships
 **fail-open** behind `storage_quota_enforced`, matching both existing footprint gates. **(F) Dedup**
 is a client fingerprint BEFORE the bytes move: full SHA-256 under 256 MiB, sampled (head ‖ tail ‖

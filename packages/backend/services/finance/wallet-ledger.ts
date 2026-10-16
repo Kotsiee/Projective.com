@@ -867,7 +867,7 @@ export function accountOfWallet(
 /** The kind of party a wallet account is, as a ledger counterparty. */
 function partyKindOf(account: WalletAccount): LedgerPartyKind {
 	if (account.scope === "team") return "team";
-	if (account.scope === "business" || account.scope === "organisation") return "business";
+	if (account.scope === "business" || account.scope === "enterprise") return "business";
 	return "user";
 }
 

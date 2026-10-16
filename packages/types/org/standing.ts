@@ -20,7 +20,7 @@ import { z } from "zod";
 
 // #region Vocabulary
 /**
- * Standing applies to the three EARNING subjects. Clients/businesses/organisations carry the separate
+ * Standing applies to the three EARNING subjects. Clients/businesses/enterprises carry the separate
  * Client Trust Score (`PRODUCT_SPEC.md` §Reciprocal Reviews) and are deliberately not ranked here.
  */
 export const StandingSubject = z.enum(["user", "freelancer", "team"]);
@@ -54,7 +54,7 @@ export type StandingLevelValue = z.infer<typeof StandingLevelValue>;
 // #region Trust signals — verification stamps
 /**
  * The strongest verification authority behind a profile (Decision #155). A person's is stored on
- * `org.entity_standing.verification_stamp`; a business's or organisation's `corporate_verified` is
+ * `org.entity_standing.verification_stamp`; a business's or enterprise's `corporate_verified` is
  * derived from its own KYB by `org.get_profile_view`.
  */
 export const VerificationStampSchema = z.enum([
@@ -113,13 +113,13 @@ export function stampRank(stamp: VerificationStamp): number {
 
 /**
  * The crest a surface draws when it knows only that an owner is verified and what kind it is — an
- * explore card, a review author, a listing's seller line. A business's or organisation's check is its
+ * explore card, a review author, a listing's seller line. A business's or enterprise's check is its
  * KYB; anyone else's is an identity check. It never claims the payout stamp, which only the profile
  * read (`org.get_profile_view`) can see.
  */
 export function stampForVerifiedOwner(verified: boolean | undefined, kind: string): VerificationStamp {
 	if (!verified) return "none";
-	return kind === "business" || kind === "organisation" ? "corporate_verified" : "id_verified";
+	return kind === "business" || kind === "enterprise" ? "corporate_verified" : "id_verified";
 }
 
 /** The verification facts any owner attribution carries (an explore owner, a review author, a seller line). */

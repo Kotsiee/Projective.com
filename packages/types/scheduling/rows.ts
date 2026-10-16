@@ -35,7 +35,7 @@ export const ianaTimezone = z.string().min(1).max(60);
  * `scheduling.owner_type` — who owns a schedule. Mirrors the `finance.wallets.owner_type`
  * vocabulary so one mental model spans money and time.
  */
-export const ScheduleOwnerType = z.enum(["user", "freelancer", "team", "business", "organisation"]);
+export const ScheduleOwnerType = z.enum(["user", "freelancer", "team", "business", "enterprise"]);
 export type ScheduleOwnerType = z.infer<typeof ScheduleOwnerType>;
 
 /**

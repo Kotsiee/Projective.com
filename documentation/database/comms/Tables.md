@@ -115,7 +115,7 @@ additive.
 | `category`      | `comms.notification_category`  | Denormalised at write time, so a re-classification never rewrites history. |
 | `urgency`       | `comms.notification_urgency`   | Denormalised likewise.                                                     |
 | `actor_user_id` | uuid                           | Who caused it. NULL = the platform (cron, webhook, system).                |
-| `context_type`  | text                           | `personal`/`project`/`team`/`business`/`organisation`/`conversation`.      |
+| `context_type`  | text                           | `personal`/`project`/`team`/`business`/`enterprise`/`conversation`.      |
 | `context_id`    | uuid                           | Scopes the inbox to the active context (Decision #16).                     |
 | `action_url`    | text                           | Resolved deep link, or NULL — never a broken one.                          |
 | `payload`       | jsonb                          | Render/localization data only. **Never PII, never secrets.**               |

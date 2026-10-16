@@ -22,13 +22,13 @@ import { DisplayPreferencesSchema } from "../org/preferences.ts";
 /**
  * The account's headline role badge — the persona chip shown beside the name. Derived from the
  * structural context + capability flags: an entity context reads as its kind (`team`/`business`/
- * `organisation`); an individual reads as `freelancer` when they can sell, else `client`.
+ * `enterprise`); an individual reads as `freelancer` when they can sell, else `client`.
  */
-export const AccountRole = z.enum(["client", "freelancer", "team", "business", "organisation"]);
+export const AccountRole = z.enum(["client", "freelancer", "team", "business", "enterprise"]);
 export type AccountRole = z.infer<typeof AccountRole>;
 
 /** The structural kind of the active workspace (mirrors the context's structural space). */
-export const WorkspaceKind = z.enum(["personal", "team", "business", "organisation"]);
+export const WorkspaceKind = z.enum(["personal", "team", "business", "enterprise"]);
 export type WorkspaceKind = z.infer<typeof WorkspaceKind>;
 // #endregion
 
@@ -98,8 +98,8 @@ export function resolveAccountRole(
 	context: Pick<UserContext, "contextType" | "isFreelancer">,
 ): AccountBadge {
 	switch (context.contextType) {
-		case "organisation":
-			return { role: "organisation", label: "Organisation" };
+		case "enterprise":
+			return { role: "enterprise", label: "Enterprise" };
 		case "business":
 			return { role: "business", label: "Business" };
 		case "team":

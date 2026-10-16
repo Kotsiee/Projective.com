@@ -114,7 +114,7 @@ export const PROFILE_LIMITS = {
 export const ProfileSavePatchSchema = z.object({
 	firstName: line(60, 1).optional(),
 	lastName: line(60).optional(),
-	/** A team / business / organisation name (an individual's name is first + last). */
+	/** A team / business / enterprise name (an individual's name is first + last). */
 	name: line(80, 1).optional(),
 	headline: line(PROFILE_LIMITS.headline).optional(),
 	story: z.string().max(PROFILE_LIMITS.story).optional(),
@@ -211,7 +211,7 @@ export const ProfileEditModelSchema = z.object({
 	/** Individual only. */
 	firstName: z.string(),
 	lastName: z.string(),
-	/** Team / business / organisation only. */
+	/** Team / business / enterprise only. */
 	name: z.string(),
 	headline: z.string(),
 	story: z.string(),

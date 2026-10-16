@@ -13,12 +13,12 @@ export function PassportCard({ store }: { store: JoinStore }): JSX.Element {
 	const name = store.displayName.value;
 	const handle = store.displayHandle.value;
 	const email = store.displayEmail.value;
-	const org = store.isOrg.value;
+	const enterprise = store.isEnterprise.value;
 	const intent = store.intent.value;
 	const initials = store.initials.value;
-	const avatar = !org ? store.prefill?.avatar : undefined;
+	const avatar = !enterprise ? store.prefill?.avatar : undefined;
 
-	const accountLabel = org ? "Organization" : "Individual";
+	const accountLabel = enterprise ? "Enterprise" : "Individual";
 	const intentLabel = intent === "freelancer" ? "Freelancer" : intent === "client" ? "Client" : "";
 
 	// Up to three tag chips: skills (freelancer) then purposes.
@@ -31,7 +31,7 @@ export function PassportCard({ store }: { store: JoinStore }): JSX.Element {
 		<div class="passport" aria-hidden="true">
 			<div class="passport__head">
 				<div class="passport__avatar pop" key={avatar ?? initials}>
-					{org ? initials : (
+					{enterprise ? initials : (
 						<UserAvatar
 							class="passport__photo"
 							image={avatar}
@@ -50,7 +50,7 @@ export function PassportCard({ store }: { store: JoinStore }): JSX.Element {
 			</div>
 
 			<div class={`passport__name${name ? "" : " passport__name--ghost"}`}>
-				{name || (org ? "Your company" : "Your name")}
+				{name || (enterprise ? "Your company" : "Your name")}
 			</div>
 			<div class="passport__handle">{handle ? `@${handle}` : "@handle"}</div>
 			<div class="passport__email">{email || "you@example.com"}</div>

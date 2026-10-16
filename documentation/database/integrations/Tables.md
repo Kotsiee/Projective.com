@@ -324,7 +324,7 @@ pins the GitHub commit.
 ## 13. `integrations.plugin_installations`
 
 A user's (or workspace's) install with the consented scope set. `install_scope` + `owner_id` mirror
-the platform owner axis (personal vs a team/business/org vault); `version_id` is the pinned version.
+the platform owner axis (personal vs a team/business/enterprise vault); `version_id` is the pinned version.
 Uninstall is soft (`status = revoked`).
 
 | Column                       | Type                      | Notes                                                                                   |
@@ -332,7 +332,7 @@ Uninstall is soft (`status = revoked`).
 | `plugin_id`                  | uuid → `plugins`          | RESTRICT.                                                                               |
 | `version_id`                 | uuid → `plugin_versions`  | RESTRICT — the pinned version.                                                          |
 | `installer_user_id`          | uuid → `org.users_public` | CASCADE.                                                                                |
-| `install_scope` · `owner_id` | `install_scope` · uuid    | `user` (personal) or a team/business/org vault.                                         |
+| `install_scope` · `owner_id` | `install_scope` · uuid    | `user` (personal) or a team/business/enterprise vault.                                         |
 | `status`                     | `install_status`          | `active` / `disabled` / `revoked`.                                                      |
 | `granted_scopes`             | text[]                    | The scopes the installer **actually consented to** (a subset of the version's request). |
 | `config` · `auto_update`     | jsonb · boolean           | Per-install config.                                                                     |
@@ -381,7 +381,7 @@ CREATE TYPE integrations.plugin_version_status AS ENUM ('draft','submitted','in_
 CREATE TYPE integrations.plugin_runtime        AS ENUM ('iframe','declarative','headless');
 CREATE TYPE integrations.plugin_surface        AS ENUM ('page_tab','panel','dashboard_widget','sidebar_item','command','settings_section','automation_action');
 CREATE TYPE integrations.install_status        AS ENUM ('active','disabled','revoked');
-CREATE TYPE integrations.install_scope         AS ENUM ('user','team','business','organisation');
+CREATE TYPE integrations.install_scope         AS ENUM ('user','team','business','enterprise');
 CREATE TYPE integrations.scope_risk            AS ENUM ('low','medium','high');
 CREATE TYPE integrations.plugin_action         AS ENUM ('installed','updated','enabled','disabled','uninstalled','scope_granted','scope_revoked','version_pinned','invoked','api_call','error');
 ```

@@ -45,7 +45,7 @@ Deno.test("isAuthPath matches whole segments only", () => {
 
 Deno.test("safeRedirect refuses to send a signed-in user back into the auth flow", () => {
 	assertEquals(safeRedirect("/login"), DEFAULT_REDIRECT);
-	assertEquals(safeRedirect("/join?type=organization"), DEFAULT_REDIRECT);
+	assertEquals(safeRedirect("/join?type=enterprise"), DEFAULT_REDIRECT);
 	assertEquals(safeRedirect("/api/auth/oauth/google"), DEFAULT_REDIRECT);
 });
 

@@ -177,23 +177,23 @@ function kindOf(type: ProfileItem["type"]): ProfileKind {
 }
 // #endregion
 
-// #region Organisations (department-structured buyer entities)
+// #region Enterprises (department-structured buyer entities)
 /**
- * Organisations are a distinct buyer-only profile kind (root CLAUDE.md Decision #16 — the
- * `organisation` context) with a DEPARTMENT structure. There is no organisation corpus in the
- * discovery fixtures, so this module owns a small deterministic set: a handful of NAMED organisations
- * plus an open `org-*` handle convention, so any `/@org-<name>` also resolves to a coherent org page.
+ * Enterprises are a distinct buyer-only profile kind (root CLAUDE.md Decision #16 — the
+ * `enterprise` context) with a DEPARTMENT structure. There is no enterprise corpus in the
+ * discovery fixtures, so this module owns a small deterministic set: a handful of NAMED enterprises
+ * plus an open `enterprise-*` handle convention, so any `/@enterprise-<name>` also resolves to a coherent enterprise page.
  * Everything derives from the handle (no RNG) so the Departments tab and the department-grouped Members
  * view always agree.
  */
-interface OrgIdentity {
+interface EnterpriseIdentity {
 	name: string;
 	headline: string;
 	summary: string;
 }
 
-/** Named organisations — clean demo handles that resolve to a department-structured org profile. */
-const NAMED_ORGS: Record<string, OrgIdentity> = {
+/** Named enterprises — clean demo handles that resolve to a department-structured enterprise profile. */
+const NAMED_ENTERPRISES: Record<string, EnterpriseIdentity> = {
 	northwind: {
 		name: "Northwind Collective",
 		headline: "A product & brand studio, org-wide",
@@ -202,19 +202,19 @@ const NAMED_ORGS: Record<string, OrgIdentity> = {
 	},
 	meridian: {
 		name: "Meridian Labs",
-		headline: "Research-led product organisation",
+		headline: "Research-led product enterprise",
 		summary:
 			"Meridian brings together specialist teams to ship measured, accountable work for its partners worldwide.",
 	},
 	atlasgroup: {
 		name: "Atlas Group",
-		headline: "Multi-department delivery organisation",
+		headline: "Multi-department delivery enterprise",
 		summary:
 			"Atlas Group coordinates design, engineering, product and operations to deliver end-to-end for its clients.",
 	},
 };
 
-/** The department catalogue an organisation draws from (stable order → deterministic slices). */
+/** The department catalogue an enterprise draws from (stable order → deterministic slices). */
 const DEPARTMENTS_POOL: ReadonlyArray<{ id: string; name: string; summary: string }> = [
 	{ id: "design", name: "Design", summary: "Brand, product & experience design." },
 	{ id: "engineering", name: "Engineering", summary: "Platform, web & infrastructure." },
@@ -238,24 +238,24 @@ const MEMBER_NAMES = [
 	"Hana Suzuki",
 ];
 
-/** Title-case an `org-north-wind` slug into "North Wind" for a synthesised organisation name. */
+/** Title-case an `enterprise-north-wind` slug into "North Wind" for a synthesised enterprise name. */
 function titleize(bare: string): string {
 	return bare
-		.replace(/^org-/, "")
+		.replace(/^enterprise-/, "")
 		.split(/[-_]+/)
 		.filter(Boolean)
 		.map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-		.join(" ") || "Organisation";
+		.join(" ") || "Enterprise";
 }
 
-/** Resolve a handle to its organisation identity, or `null` if it isn't an organisation. */
-function resolveOrg(bare: string): OrgIdentity | null {
-	if (NAMED_ORGS[bare]) return NAMED_ORGS[bare];
-	if (bare.startsWith("org-")) {
+/** Resolve a handle to its enterprise identity, or `null` if it isn't an enterprise. */
+function resolveEnterprise(bare: string): EnterpriseIdentity | null {
+	if (NAMED_ENTERPRISES[bare]) return NAMED_ENTERPRISES[bare];
+	if (bare.startsWith("enterprise-")) {
 		const name = titleize(bare);
 		return {
 			name,
-			headline: "A multi-department organisation on Projective",
+			headline: "A multi-department enterprise on Projective",
 			summary:
 				`${name} commissions independent talent across its departments, running every engagement in clear, escrow-backed stages.`,
 		};
@@ -264,14 +264,14 @@ function resolveOrg(bare: string): OrgIdentity | null {
 }
 
 /**
- * The organisation's roster — its departments AND its members, built together so the two always agree
+ * The enterprise's roster — its departments AND its members, built together so the two always agree
  * (a department's `memberCount` is exactly the members assigned to it, and every member's
  * `departments` reference a real department). Members may sit in MORE than one department (root
  * CLAUDE.md — Part 2.2, multi-department assignment): ~1 in 4 gets a second department, and the grouped
  * Members view renders such a member under each. Derived only from the bare handle → stable across the
  * Departments and Members tabs.
  */
-function orgRoster(bare: string): { departments: DepartmentEntry[]; members: MemberEntry[] } {
+function enterpriseRoster(bare: string): { departments: DepartmentEntry[]; members: MemberEntry[] } {
 	const dSeed = hash(bare + ":depts");
 	const mSeed = hash(bare + ":members");
 	const deptCount = 3 + (dSeed % 3); // 3–5 departments
@@ -348,7 +348,7 @@ function tiersUpTo(top: VerificationTier): VerificationTier[] {
 }
 
 function tierFor(kind: ProfileKind, verified: boolean, seed: number): VerificationTier {
-	if (kind === "business" || kind === "organisation") return "L3";
+	if (kind === "business" || kind === "enterprise") return "L3";
 	if (verified && seed % 5 === 0) return "architect";
 	if (verified) return "L2";
 	return "L1";
@@ -359,7 +359,7 @@ function stampFor(owner: ExploreOwner, kind: ProfileKind, seed: number): Verific
 	// The discovery row's own crest wins, so a card and the profile it opens draw the same mark.
 	if (owner.verificationStamp) return owner.verificationStamp;
 	if (!owner.verified) return "none";
-	if (kind === "business" || kind === "organisation") return "corporate_verified";
+	if (kind === "business" || kind === "enterprise") return "corporate_verified";
 	return seed % 2 === 0 ? "vault_verified" : "id_verified";
 }
 
@@ -381,8 +381,8 @@ function storyOf(name: string, headline: string, summary: string, kind: ProfileK
 		? craft
 			? `${name} is a collaborative studio focused on ${craft}.`
 			: `${name} is a collaborative studio.`
-		: kind === "organisation"
-		? `${name} is a multi-department organisation commissioning work across its teams.`
+		: kind === "enterprise"
+		? `${name} is a multi-department enterprise commissioning work across its teams.`
 		: kind === "business"
 		? craft
 			? `${name} works with independent talent and teams across ${craft}.`
@@ -418,7 +418,7 @@ function showcaseStill(id: string, alt: string): ProfileShowcaseItem {
  * must be reachable from the stub or the single-column hero would only ever be seen the day a real
  * profile has nothing uploaded. The primary is always the cover; the extras are drawn from the
  * banner pool after it, so no two slides of one profile show the same picture. Buyer entities
- * (business / organisation) carry a brand cover and one more still: a company has a mark, not a reel.
+ * (business / enterprise) carry a brand cover and one more still: a company has a mark, not a reel.
  */
 function showcaseFor(
 	kind: ProfileKind,
@@ -433,7 +433,7 @@ function showcaseFor(
 	};
 	const others = BANNERS.filter((id) => id !== coverId);
 	const still = (i: number) => showcaseStill(others[(seed + i) % others.length], `${name} — work`);
-	if (kind === "business" || kind === "organisation") {
+	if (kind === "business" || kind === "enterprise") {
 		return { primary, extras: [still(0)] };
 	}
 	switch (seed % 3) {
@@ -499,15 +499,15 @@ export function findProfile(handle: string): ProfileView | null {
 	if (!bare) return null;
 	const seed = hash(bare);
 	const row = KNOWN[bare];
-	// A known discovery row wins; otherwise the handle may resolve as an organisation; else it
+	// A known discovery row wins; otherwise the handle may resolve as an enterprise; else it
 	// synthesises a freelancer-shaped profile so every handle in the stub resolves to a coherent page.
-	const org = row ? null : resolveOrg(bare);
+	const enterprise = row ? null : resolveEnterprise(bare);
 
-	const owner: ExploreOwner = row?.owner ?? (org
+	const owner: ExploreOwner = row?.owner ?? (enterprise
 		? {
 			handle: `@${bare}`,
-			name: org.name,
-			// Organisations use a square brand-mark banner crop as their avatar (a logo, not a face).
+			name: enterprise.name,
+			// Enterprises use a square brand-mark banner crop as their avatar (a logo, not a face).
 			avatar: unsplash(BANNERS[seed % BANNERS.length], 96, 96),
 			kind: "business",
 			verified: true,
@@ -519,12 +519,12 @@ export function findProfile(handle: string): ProfileView | null {
 			kind: "freelancer",
 			verified: seed % 3 === 0,
 		});
-	const kind: ProfileKind = org ? "organisation" : row ? kindOf(row.type) : "freelancer";
-	const name = org?.name ?? row?.title ?? owner.name;
+	const kind: ProfileKind = enterprise ? "enterprise" : row ? kindOf(row.type) : "freelancer";
+	const name = enterprise?.name ?? row?.title ?? owner.name;
 	// A synthesised handle has written no headline yet — an EMPTY one, never a platform default
 	// (the owner is prompted to write theirs; a visitor sees nothing).
-	const headline = org?.headline ?? row?.craft ?? "";
-	const summary = org?.summary ?? row?.summary ??
+	const headline = enterprise?.headline ?? row?.craft ?? "";
+	const summary = enterprise?.summary ?? row?.summary ??
 		`${name} builds considered, high-craft work with clients worldwide.`;
 	const verified = owner.verified ?? false;
 	const tier = tierFor(kind, verified, seed);
@@ -563,7 +563,7 @@ export function findProfile(handle: string): ProfileView | null {
 		location,
 		online: seed % 2 === 0,
 		availabilityLabel: row?.workload?.status ??
-			(kind === "organisation"
+			(kind === "enterprise"
 				? "Actively commissioning"
 				: kind === "business"
 				? "Actively hiring"
@@ -612,9 +612,9 @@ function metricsFor(kind: ProfileKind, seed: number, bare: string): ProfileView[
 	const seller = kind === "freelancer" || kind === "team";
 	const teamsCount = TEAMS.filter((t) => bareHandle(t.owner.handle) !== bare).length;
 	const businessesCount = BUSINESSES.filter((b) => bareHandle(b.owner.handle) !== bare).length;
-	// Organisations carry a real department + member roster (derived from the handle), so their
+	// Enterprises carry a real department + member roster (derived from the handle), so their
 	// Departments/Members chips read the SAME roster the tabs render (never divergent).
-	const roster = kind === "organisation" ? orgRoster(bare) : null;
+	const roster = kind === "enterprise" ? enterpriseRoster(bare) : null;
 	return {
 		services: seller ? SERVICES.length : undefined,
 		products: seller ? PRODUCTS.length : undefined,
@@ -773,7 +773,7 @@ function membersFor(seed: number, count: number): MemberEntry[] {
 		avatar: face(FACES[(seed + i) % FACES.length]),
 		role: roles[i % roles.length],
 		kind: i % 3 === 0 ? "user" : "freelancer",
-		// Team/business rosters are flat (no departments) — only organisations group by department.
+		// Team/business rosters are flat (no departments) — only enterprises group by department.
 		departments: [],
 	}));
 }
@@ -822,7 +822,7 @@ function ownerOf(profile: ProfileView): ExploreOwner {
 		handle: profile.handle,
 		name: profile.name,
 		avatar: profile.avatar,
-		// Map the profile kind onto the narrower discovery-owner kind (organisation reads as a business
+		// Map the profile kind onto the narrower discovery-owner kind (enterprise reads as a business
 		// buyer for attribution; client reads as a plain user).
 		kind: profile.kind === "client"
 			? "user"
@@ -920,10 +920,10 @@ export function findProfileTab(handle: string, tab: ProfileTab): ProfileTabPaylo
 		case "work": {
 			const projects = reown(pick(PROJECTS, PROJECTS.length, hash(bare + "projects")), owner, "pj");
 			const products = reown(pick(PRODUCTS, 8, hash(bare + "portfolio")), owner, "pf");
-			// The roster: an organisation groups by department; a team / business is flat; an
+			// The roster: an enterprise groups by department; a team / business is flat; an
 			// individual has none.
-			const roster = profile.kind === "organisation"
-				? orgRoster(bare)
+			const roster = profile.kind === "enterprise"
+				? enterpriseRoster(bare)
 				: profile.kind === "team" || profile.kind === "business"
 				? {
 					members: membersFor(hash(bare + "members"), profile.metrics.members ?? 5),

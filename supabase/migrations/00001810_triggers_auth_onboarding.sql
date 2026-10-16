@@ -20,10 +20,10 @@ CREATE TRIGGER on_users_public_created_notification_prefs
     AFTER INSERT ON org.users_public
     FOR EACH ROW EXECUTE FUNCTION comms.seed_notification_prefs();
 
--- An organisation owner gets no org.users_public row; the owner membership seeds their preferences
+-- An enterprise owner gets no org.users_public row; the owner membership seeds their preferences
 -- (Decision #207).
-CREATE TRIGGER on_organisation_owner_created
-    AFTER INSERT ON org.organisation_members
+CREATE TRIGGER on_enterprise_owner_created
+    AFTER INSERT ON org.enterprise_members
     FOR EACH ROW
     WHEN (NEW.role = 'owner')
     EXECUTE FUNCTION org.seed_owner_preferences();
@@ -45,7 +45,7 @@ CREATE TRIGGER trg_workspace_member_adult BEFORE INSERT OR UPDATE OF user_id ON 
     FOR EACH ROW EXECUTE FUNCTION org.trg_workspace_member_adult('user_id');
 CREATE TRIGGER trg_workspace_member_adult BEFORE INSERT OR UPDATE OF user_id ON org.business_members
     FOR EACH ROW EXECUTE FUNCTION org.trg_workspace_member_adult('user_id');
-CREATE TRIGGER trg_workspace_member_adult BEFORE INSERT OR UPDATE OF user_id ON org.organisation_members
+CREATE TRIGGER trg_workspace_member_adult BEFORE INSERT OR UPDATE OF user_id ON org.enterprise_members
     FOR EACH ROW EXECUTE FUNCTION org.trg_workspace_member_adult('user_id');
 CREATE TRIGGER trg_workspace_member_adult BEFORE INSERT OR UPDATE OF target_user_id ON org.org_invitations
     FOR EACH ROW EXECUTE FUNCTION org.trg_workspace_member_adult('target_user_id');

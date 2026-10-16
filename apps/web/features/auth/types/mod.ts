@@ -5,8 +5,8 @@
 
 import type { OAuthPrefill } from "../core/oauth.ts";
 
-/** The two onboarding shapes: a lean individual account, or a comprehensive organization. */
-export type AccountType = "individual" | "organization";
+/** The two onboarding shapes: a lean individual account, or a comprehensive enterprise. */
+export type AccountType = "individual" | "enterprise";
 
 /**
  * Initial account intent chosen at signup. Personas remain **additive** (PRODUCT_SPEC.md §Additive,
@@ -15,17 +15,17 @@ export type AccountType = "individual" | "organization";
  */
 export type UserIntent = "client" | "freelancer";
 
-/** Base permission tier for an invited stakeholder (mirrors org RBAC roles). */
+/** Base permission tier for an invited stakeholder (mirrors enterprise RBAC roles). */
 export type PermissionTier = "admin" | "manager" | "member" | "observer";
 
-/** A single "invite a stakeholder" row in the Organization IAM step. */
+/** A single "invite a stakeholder" row in the Enterprise IAM step. */
 export interface StakeholderInvite {
 	name: string;
 	email: string;
 	tier: PermissionTier;
 }
 
-/** Registered business address (Organization "Contact" step). */
+/** Registered business address (Enterprise "Contact" step). */
 export interface BusinessAddress {
 	street: string;
 	city: string;
@@ -48,10 +48,10 @@ export interface IndividualJoinPayload {
 	redirectTo: string;
 }
 
-/** Organization (comprehensive) onboarding payload. */
-export interface OrganizationJoinPayload {
-	type: "organization";
-	/** Organizations are buyers on Projective — always the client persona, never a seller. */
+/** Enterprise (comprehensive) onboarding payload. */
+export interface EnterpriseJoinPayload {
+	type: "enterprise";
+	/** Enterprises are buyers on Projective — always the client persona, never a seller. */
 	intent: "client";
 	legalName: string;
 	tradingName: string;
@@ -73,7 +73,7 @@ export interface OrganizationJoinPayload {
 	redirectTo: string;
 }
 
-export type JoinPayload = IndividualJoinPayload | OrganizationJoinPayload;
+export type JoinPayload = IndividualJoinPayload | EnterpriseJoinPayload;
 
 /** Props the `/join` route hands to the JoinExperience island (parsed server-side from the URL). */
 export interface JoinFormProps {

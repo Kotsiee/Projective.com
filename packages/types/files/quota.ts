@@ -127,9 +127,9 @@ export const PLAN_STORAGE_MIB: Record<PlanCode, number | null> = {
 	team_pro: 512_000,
 	business_free: 25_600,
 	business_pro: 512_000,
-	organisation_free: 25_600,
-	/** Organisation is the negotiated tier — `is_unlimited = true` on its entitlement row. */
-	organisation: null,
+	enterprise_free: 25_600,
+	/** Enterprise is the negotiated tier — `is_unlimited = true` on its entitlement row. */
+	enterprise: null,
 };
 
 // #endregion

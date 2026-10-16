@@ -1,6 +1,6 @@
 -- =============================================================================================
 -- 00000011_tables_org.sql — org schema tables (Category 0), in final folded form.
--- Base: 0003_org_tables.sql, 0314_organisations.sql, 20260724111000_standing_reputation.sql.
+-- Base: 0003_org_tables.sql, 0314_enterprises.sql, 20260724111000_standing_reputation.sql.
 -- Folded ALTERs:
 --   * org.users_public       += is_operator                              (20260709120000)
 --   * org.business_profiles  += status (+CHECK), kyb_status/kyb_verified_at/kyb_provider_ref;
@@ -30,7 +30,7 @@ CREATE TABLE org.users_public (
     -- Nullable rather than NOT NULL DEFAULT '': a profile that has never stated a city must stay
     -- distinguishable from one that deliberately cleared it, and the rail then degrades to the
     -- country alone instead of drawing an empty leading segment. address_city exists only on
-    -- business_profiles and organisations, so the individual/freelancer kind had no city at all.
+    -- business_profiles and enterprises, so the individual/freelancer kind had no city at all.
     city text,
     country text,
     timezone text,
@@ -612,7 +612,7 @@ CREATE TABLE org.experience_entries (
     id uuid NOT NULL DEFAULT gen_random_uuid (),
     user_id uuid NOT NULL,
     -- The employer as the owner wrote it. Free text, with no FK to org.business_profiles or
-    -- org.organisations: most past employers are not Projective entities, and a nullable FK plus a
+    -- org.enterprises: most past employers are not Projective entities, and a nullable FK plus a
     -- fallback string would be two sources for one name that could disagree.
     org_name text NOT NULL,
     role text NOT NULL,
@@ -660,16 +660,16 @@ CREATE TABLE org.profile_follows (
     -- kinds 'client'/'freelancer': an individual is ONE row in org.users_public whichever way their
     -- profile renders, and a per-kind discriminator would let the same person be followed twice and
     -- counted twice. This is not org.user_bookmarks: a bookmark is a private saved item whose enum
-    -- cannot express a client or an organisation, whereas a follow is a public, counted edge.
+    -- cannot express a client or an enterprise, whereas a follow is a public, counted edge.
     target_entity_type text NOT NULL,
     target_entity_id uuid NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT profile_follows_pkey PRIMARY KEY (id),
     CONSTRAINT profile_follows_follower_fkey FOREIGN KEY (follower_user_id) REFERENCES org.users_public (user_id) ON DELETE CASCADE,
     CONSTRAINT profile_follows_target_type_check CHECK (
-        target_entity_type IN ('user', 'team', 'business', 'organisation')
+        target_entity_type IN ('user', 'team', 'business', 'enterprise')
     ),
-    -- A user id can never collide with a team/business/organisation id, so this only ever blocks the
+    -- A user id can never collide with a team/business/enterprise id, so this only ever blocks the
     -- one bad state it is aimed at: following yourself, which would inflate your own follower count.
     CONSTRAINT profile_follows_no_self_follow_check CHECK (target_entity_id <> follower_user_id),
     -- Following is idempotent: the control is a toggle, so a repeat press must not add an edge.
@@ -712,7 +712,7 @@ CREATE TABLE org.certifications (
 -- #endregion
 
 -- #region Profile presentation — the showcase grid and the owner's privacy switches
--- The polymorphic owner vocabulary below ('user' · 'team' · 'business' · 'organisation') is the
+-- The polymorphic owner vocabulary below ('user' · 'team' · 'business' · 'enterprise') is the
 -- org.profile_follows one, for the same reason: an individual is ONE row in org.users_public however
 -- their profile renders, and a per-kind discriminator would let one person own two showcases. There
 -- is no FK on (owner_type, owner_id) — a polymorphic target cannot carry one — so every WRITE goes
@@ -741,7 +741,7 @@ CREATE TABLE org.profile_showcase_items (
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT profile_showcase_items_pkey PRIMARY KEY (id),
     CONSTRAINT profile_showcase_items_owner_type_check CHECK (
-        owner_type IN ('user', 'team', 'business', 'organisation')
+        owner_type IN ('user', 'team', 'business', 'enterprise')
     ),
     CONSTRAINT profile_showcase_items_position_check CHECK (position BETWEEN 1 AND 6),
     CONSTRAINT profile_showcase_items_alt_check CHECK (char_length(alt) <= 200),
@@ -766,7 +766,7 @@ CREATE TABLE org.profile_settings (
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT profile_settings_pkey PRIMARY KEY (owner_type, owner_id),
     CONSTRAINT profile_settings_owner_type_check CHECK (
-        owner_type IN ('user', 'team', 'business', 'organisation')
+        owner_type IN ('user', 'team', 'business', 'enterprise')
     )
 );
 -- #endregion
@@ -829,8 +829,8 @@ CREATE TABLE org.org_invitations (
 	)
 );
 
--- #region Organisations (0314_organisations.sql) — the client/buyer-only entity
-CREATE TABLE org.organisations (
+-- #region Enterprises (0314_enterprises.sql) — the client/buyer-only entity
+CREATE TABLE org.enterprises (
     id uuid NOT NULL DEFAULT gen_random_uuid (),
     owner_user_id uuid NOT NULL,
     legal_name text NOT NULL,
@@ -849,17 +849,17 @@ CREATE TABLE org.organisations (
     industry_other text, -- free-text sector when primary_industry = 'other'
     departments text[] NOT NULL DEFAULT '{}'::text[],
     purpose text[] NOT NULL DEFAULT '{}'::text[],
-    status org.organisation_status NOT NULL DEFAULT 'draft',
-    verification_level org.organisation_verification_level NOT NULL DEFAULT 'unverified',
+    status org.enterprise_status NOT NULL DEFAULT 'draft',
+    verification_level org.enterprise_verification_level NOT NULL DEFAULT 'unverified',
     logo_file_id uuid REFERENCES files.items (id) ON DELETE SET NULL,
     billing_email text,
     default_currency text NOT NULL DEFAULT 'USD',
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT organisations_pkey PRIMARY KEY (id),
-    CONSTRAINT organisations_owner_fkey FOREIGN KEY (owner_user_id) REFERENCES auth.users (id),
+    CONSTRAINT enterprises_pkey PRIMARY KEY (id),
+    CONSTRAINT enterprises_owner_fkey FOREIGN KEY (owner_user_id) REFERENCES auth.users (id),
     -- Mirror the @projective/types refinement: 'other' requires a free-text specifier.
-    CONSTRAINT organisations_industry_other_ck CHECK (
+    CONSTRAINT enterprises_industry_other_ck CHECK (
         primary_industry IS DISTINCT FROM 'other'
         OR (
             industry_other IS NOT NULL
@@ -868,15 +868,15 @@ CREATE TABLE org.organisations (
     )
 );
 
-CREATE TABLE org.organisation_members (
+CREATE TABLE org.enterprise_members (
     id uuid NOT NULL DEFAULT gen_random_uuid (),
-    organisation_id uuid NOT NULL,
+    enterprise_id uuid NOT NULL,
     user_id uuid NOT NULL,
-    role org.organisation_role NOT NULL DEFAULT 'member',
+    role org.enterprise_role NOT NULL DEFAULT 'member',
     status text NOT NULL DEFAULT 'active',
     -- Which departments this member sits in. An array rather than a child table because a member
     -- belongs to a handful of departments at most and every read wants all of them at once; and
-    -- because the department CATALOGUE is itself org.organisations.departments text[], so a child
+    -- because the department CATALOGUE is itself org.enterprises.departments text[], so a child
     -- table would give the assignment a stronger shape than the thing it points at. Multi-valued by
     -- product rule: a member in N departments renders under EACH of them in the grouped Members view
     -- and carries a multi-department badge, and DepartmentEntry.memberCount counts them in each.
@@ -886,11 +886,11 @@ CREATE TABLE org.organisation_members (
     invited_by uuid,
     joined_at timestamptz NOT NULL DEFAULT now(),
     created_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT organisation_members_pkey PRIMARY KEY (id),
-    CONSTRAINT organisation_members_org_fkey FOREIGN KEY (organisation_id) REFERENCES org.organisations (id) ON DELETE CASCADE,
-    CONSTRAINT organisation_members_user_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE,
-    CONSTRAINT organisation_members_inviter_fkey FOREIGN KEY (invited_by) REFERENCES auth.users (id) ON DELETE SET NULL,
-    CONSTRAINT organisation_members_unique UNIQUE (organisation_id, user_id)
+    CONSTRAINT enterprise_members_pkey PRIMARY KEY (id),
+    CONSTRAINT enterprise_members_org_fkey FOREIGN KEY (enterprise_id) REFERENCES org.enterprises (id) ON DELETE CASCADE,
+    CONSTRAINT enterprise_members_user_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE,
+    CONSTRAINT enterprise_members_inviter_fkey FOREIGN KEY (invited_by) REFERENCES auth.users (id) ON DELETE SET NULL,
+    CONSTRAINT enterprise_members_unique UNIQUE (enterprise_id, user_id)
 );
 -- #endregion
 

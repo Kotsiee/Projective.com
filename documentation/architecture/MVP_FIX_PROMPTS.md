@@ -818,15 +818,15 @@ Do:
 3. Tests.
 ```
 
-### A4 · Preference seeding: capture signup locale/currency; org owners (audit 1.12, 1.15)
+### A4 · Preference seeding: capture signup locale/currency; enterprise owners (audit 1.12, 1.15)
 
 ```text
-TASK: Seed meaningful preferences and cover organisation owners.
+TASK: Seed meaningful preferences and cover enterprise owners.
 
 Context:
 - org.seed_user_preferences() (00001010:342) inserts user_id only, so every user gets en-GB / GBP /
   system / auto.
-- Organisation owners (public.create_organisation path) never get an org.users_public row, so
+- Enterprise owners (public.create_enterprise path) never get an org.users_public row, so
   neither seed trigger (00001810:15-21) runs for them. See the note in
   apps/web/utils/auth-routing.ts:136-143.
 
@@ -835,8 +835,8 @@ Do:
    Zod schema into raw_user_meta_data. Make seed_user_preferences / seed_notification_prefs read it,
    validated against supported locales and currencies (find the reference tables in 00005050), and
    fall back to the defaults.
-2. Seed preferences and notification prefs for organisation owners too, on whatever row they do
-   get. Read Decision index entries on organisations first.
+2. Seed preferences and notification prefs for enterprise owners too, on whatever row they do
+   get. Read Decision index entries on enterprises first.
 3. Tests and a probe. Update database docs, including the stale filename at
    documentation/database/org/Functions.md:112.
 ```
@@ -1003,12 +1003,12 @@ dedicated RPC with Zod validation. Update ServiceCreation.md Status, the DESIGN_
 and tests. Pairs with P1.
 ```
 
-### C3 · Organisation → business hierarchy (roadmap Phase 1.2)
+### C3 · Enterprise → business hierarchy (roadmap Phase 1.2)
 
 ```text
 TASK: Design, then implement, a group hierarchy.
 
-Context: org.organisations (00000011 ~:821) has only departments text[]. Multi-business ownership
+Context: org.enterprises (00000011 ~:821) has only departments text[]. Multi-business ownership
 is spec-only (PRODUCT_SPEC.md ~:661). The console module registry is in
 apps/web/features/workspaces/core/module-registry.tsx:146. JWT active_context is built in
 00001700.

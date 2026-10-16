@@ -1846,7 +1846,7 @@ export async function fetchBoardPage(
 	 * rather than empty.
 	 *
 	 * On a shared workspace this list is the participant rows alone. The buying side's full seat
-	 * roster lives in `org.team_members` / `org.business_members` / `org.organisation_members` —
+	 * roster lives in `org.team_members` / `org.business_members` / `org.enterprise_members` —
 	 * the workspace domain's read, behind its own gate — and composing it here would offer a
 	 * selector naming people this module cannot confirm are on the engagement at all.
 	 */

@@ -135,7 +135,7 @@ strings. See [comms/Tables.md](comms/Tables.md).
 
 ```sql
 -- The event substrate (analytics schema — its first tables)
-CREATE TYPE analytics.subject_kind AS ENUM ('user', 'freelancer', 'business', 'team', 'organisation',
+CREATE TYPE analytics.subject_kind AS ENUM ('user', 'freelancer', 'business', 'team', 'enterprise',
                                             'project', 'stage', 'ticket', 'listing', 'platform');
 
 -- The EARNED ladder (org schema). Standing is never purchasable.
@@ -145,7 +145,7 @@ CREATE TYPE org.streak_kind        AS ENUM ('on_time_delivery', 'fast_response',
 CREATE TYPE org.achievement_tier   AS ENUM ('milestone', 'bronze', 'silver', 'gold', 'designation');
 
 -- The PAID ladder (finance schema)
-CREATE TYPE finance.plan_audience       AS ENUM ('individual', 'team', 'business', 'organisation');
+CREATE TYPE finance.plan_audience       AS ENUM ('individual', 'team', 'business', 'enterprise');
 CREATE TYPE finance.plan_tier           AS ENUM ('free', 'pro', 'enterprise');
 CREATE TYPE finance.billing_interval    AS ENUM ('monthly', 'annual', 'custom');
 CREATE TYPE finance.subscription_state  AS ENUM ('trialing', 'active', 'past_due', 'paused', 'cancelled', 'expired');
@@ -156,7 +156,7 @@ CREATE TYPE finance.entitlement_key     AS ENUM (
     'weekly_proposals', 'proposal_buffer_per_10h',
     'teams_owned', 'businesses_owned', 'teams_joined', 'businesses_joined',
     'team_seats', 'team_public_projects', 'business_public_projects', 'business_managers',
-    'organisation_seats', 'organisation_businesses', 'departments',
+    'enterprise_seats', 'enterprise_businesses', 'departments',
     'promoted_placement', 'advanced_analytics', 'discovery_boost', 'instant_payouts_included',
     'pooled_wallet_full', 'advanced_vault_splits', 'intervaled_invoicing',
     'sso_enabled', 'api_access', 'audit_log_retention_days', 'dedicated_support',
@@ -181,7 +181,7 @@ CREATE TYPE integrations.plugin_runtime    AS ENUM ('iframe','declarative','head
 --   plugin_surface, install_status, install_scope, scope_risk, plugin_action
 
 -- Availability & calendar entries
-CREATE TYPE scheduling.owner_type          AS ENUM ('user', 'freelancer', 'team', 'business', 'organisation');
+CREATE TYPE scheduling.owner_type          AS ENUM ('user', 'freelancer', 'team', 'business', 'enterprise');
 CREATE TYPE scheduling.availability_kind   AS ENUM ('working_hours', 'call_window');
 CREATE TYPE scheduling.event_kind          AS ENUM ('deadline', 'milestone', 'sync', 'session', 'booking', 'availability', 'busy', 'holiday', 'general');
 CREATE TYPE scheduling.event_status        AS ENUM ('confirmed', 'tentative', 'busy', 'available', 'cancelled');

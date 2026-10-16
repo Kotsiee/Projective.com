@@ -56,7 +56,7 @@ export type LegacyProfileTab = z.infer<typeof LegacyProfileTab>;
  * Where each retired segment lands. Anything that was WORK a visitor could buy, browse or hire
  * against folds into the Work index; the two learning-history tabs fold into Experience; articles
  * become Posts. The multi-member rosters (members · departments · teams · businesses) also land on
- * Work, which is where the roster now renders for a team / business / organisation.
+ * Work, which is where the roster now renders for a team / business / enterprise.
  */
 export const LEGACY_TAB_TARGET: Record<LegacyProfileTab, ProfileTab> = {
 	about: "work",
@@ -121,7 +121,7 @@ export const CertificationEntrySchema = z.object({
 });
 export type CertificationEntry = z.infer<typeof CertificationEntrySchema>;
 
-/** A member of a team / business / organisation (Work roster), links to their own `/@handle`. */
+/** A member of a team / business / enterprise (Work roster), links to their own `/@handle`. */
 export const MemberEntrySchema = z.object({
 	handle: z.string(),
 	name: z.string(),
@@ -131,7 +131,7 @@ export const MemberEntrySchema = z.object({
 	/** Entity kind of the member (drives which reputation applies). */
 	kind: z.enum(["user", "freelancer"]),
 	/**
-	 * Department ids this member belongs to (Organisation only). A member may sit in MORE than one
+	 * Department ids this member belongs to (Enterprise only). A member may sit in MORE than one
 	 * department — the grouped roster renders their row under every listed department. Empty for
 	 * team/business members (a flat roster). Ids reference {@link DepartmentEntry.id}.
 	 */
@@ -140,7 +140,7 @@ export const MemberEntrySchema = z.object({
 export type MemberEntry = z.infer<typeof MemberEntrySchema>;
 
 /**
- * A department within an Organisation (the grouping key for the Work roster). A profile-level read
+ * A department within an Enterprise (the grouping key for the Work roster). A profile-level read
  * projection — no DB table yet; the eventual `org.departments` table validates against the same shape.
  */
 export const DepartmentEntrySchema = z.object({
@@ -238,9 +238,9 @@ export const ProfileTabPayloadSchema = z.object({
 	pastProjects: z.array(ProjectItemSchema).default([]),
 	/** Work — the portfolio masonry. */
 	pieces: z.array(WorkPieceSchema).default([]),
-	/** Work — the roster of a team / business / organisation. */
+	/** Work — the roster of a team / business / enterprise. */
 	members: z.array(MemberEntrySchema).default([]),
-	/** Work — the department set an organisation's roster is grouped by. */
+	/** Work — the department set an enterprise's roster is grouped by. */
 	departments: z.array(DepartmentEntrySchema).default([]),
 	/** Experience. */
 	experience: z.array(ExperienceEntrySchema).default([]),

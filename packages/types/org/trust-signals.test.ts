@@ -92,7 +92,7 @@ Deno.test("ownerVerificationStamp — a projected stamp wins, so a card draws th
 });
 
 Deno.test("ownerVerificationStamp — without a stamp it falls back to the identity ⁄ corporate rule", () => {
-	for (const kind of ["user", "freelancer", "team", "business", "organisation"]) {
+	for (const kind of ["user", "freelancer", "team", "business", "enterprise"]) {
 		assertEquals(ownerVerificationStamp({ verified: true, kind }), stampForVerifiedOwner(true, kind));
 		assertEquals(ownerVerificationStamp({ verified: false, kind }), "none");
 	}

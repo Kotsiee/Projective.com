@@ -10,7 +10,7 @@
 --   project       - projects.has_project_access({project_id}) for read AND write
 --   messages       - comms.dm_participants membership on {thread_id} for read AND write
 --   personal      - owner = auth.uid()
---   workspace     - active membership of the {entity_id} anchor (team OR business OR organisation)
+--   workspace     - active membership of the {entity_id} anchor (team OR business OR enterprise)
 --   invoices      - owner read on {owner_id}; NO authenticated write (service-role generates)
 --   verification  - NO authenticated policy at all → service-role ONLY (RLS-bypass)
 --   public_assets - public read; per-owner write on {owner_id}
@@ -152,7 +152,7 @@ WITH
 -- The entity counterpart of `personal`. Deliberately NOT `auth.uid() = owner`: an entity asset must
 -- outlive the member who uploaded it, so the gate is membership of the anchor, not ownership of the
 -- object. The three membership helpers are OR-ed because a single uuid anchor may name a team, a
--- business or an organisation — the caller passes exactly one and the other two return false.
+-- business or an enterprise — the caller passes exactly one and the other two return false.
 --
 -- ⚠️ These are written as the SOLE policies for this bucket. Multiple permissive SELECT policies on
 -- storage.objects are OR-combined, so adding a broad "any authenticated" read here would not
@@ -168,7 +168,7 @@ SELECT TO authenticated USING (
             OR org.is_active_business_member (
                 (storage.foldername (name)) [1]::uuid
             )
-            OR org.is_organisation_member (
+            OR org.is_enterprise_member (
                 (storage.foldername (name)) [1]::uuid
             )
         )
@@ -188,7 +188,7 @@ WITH
             OR org.is_active_business_member (
                 (storage.foldername (name)) [1]::uuid
             )
-            OR org.is_organisation_member (
+            OR org.is_enterprise_member (
                 (storage.foldername (name)) [1]::uuid
             )
         )
@@ -204,7 +204,7 @@ UPDATE TO authenticated USING (
         OR org.is_active_business_member (
             (storage.foldername (name)) [1]::uuid
         )
-        OR org.is_organisation_member (
+        OR org.is_enterprise_member (
             (storage.foldername (name)) [1]::uuid
         )
     )
@@ -219,7 +219,7 @@ WITH
             OR org.is_active_business_member (
                 (storage.foldername (name)) [1]::uuid
             )
-            OR org.is_organisation_member (
+            OR org.is_enterprise_member (
                 (storage.foldername (name)) [1]::uuid
             )
         )
@@ -238,7 +238,7 @@ CREATE POLICY "Workspace uploaders can delete their workspace files" ON storage.
         OR org.is_active_business_member (
             (storage.foldername (name)) [1]::uuid
         )
-        OR org.is_organisation_member (
+        OR org.is_enterprise_member (
             (storage.foldername (name)) [1]::uuid
         )
     )
@@ -284,7 +284,7 @@ WITH
 -- #endregion
 
 
--- #region avatars — profile/team/business/org branding: public read; SERVICE-ROLE write
+-- #region avatars — profile/team/business/enterprise branding: public read; SERVICE-ROLE write
 --
 -- Deliberately NO authenticated write policy (2026-09-22). Every object in this bucket is served to
 -- the whole internet, so every object must have been through the quarantine scan and the media

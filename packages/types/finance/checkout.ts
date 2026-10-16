@@ -205,7 +205,7 @@ export interface ProviderContext {
 
 /** Owner types whose money belongs to an entity rather than to the acting individual. */
 function isEntityOwner(ownerType: PurchaseOwnerType): boolean {
-	return ownerType === "business" || ownerType === "team" || ownerType === "organisation";
+	return ownerType === "business" || ownerType === "team" || ownerType === "enterprise";
 }
 
 const KYB_TIER = 3;

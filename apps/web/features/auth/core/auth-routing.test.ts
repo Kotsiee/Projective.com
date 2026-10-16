@@ -30,7 +30,7 @@ Deno.test("an authenticated visitor with no captured path falls back to the land
 });
 
 Deno.test("an existing user is never walked back through /join", () => {
-	assertEquals(resolveAuthScreenBounce(at("/join?type=organization"), true), DEFAULT_REDIRECT);
+	assertEquals(resolveAuthScreenBounce(at("/join?type=enterprise"), true), DEFAULT_REDIRECT);
 	assertEquals(resolveAuthScreenBounce(at("/join?redirectTo=/explore"), true), "/explore");
 });
 
@@ -113,7 +113,7 @@ Deno.test("an ABSENT onboarding claim lets the page render", () => {
 
 Deno.test("an identity /join cannot complete is left alone rather than sent to a dead end", () => {
 	// No pre-fill means no email, and /join renders that field read-only for an already-authenticated
-	// account — so the form could not be submitted. An organisation owner is exactly this shape.
+	// account — so the form could not be submitted. An enterprise owner is exactly this shape.
 	assertEquals(resolveOnboardingBounce({ onboarded: false }, null, at("/projects")), null);
 });
 Deno.test("a CONFIRMED absent profile is sent to /join with its pre-fill and its captured path", () => {

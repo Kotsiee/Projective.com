@@ -143,7 +143,7 @@ export interface DataTableProps<T> {
 	/** Formats numbers and dates; defaults to `en-GB`, the interface's language. */
 	locale?: string;
 	timeZone?: string;
-	/** The app's date formatting (an organisation's date preference). */
+	/** The app's date formatting (an enterprise's date preference). */
 	formatDate?: (ms: number, format: DateFormat) => string;
 	/** The stand-in picture for a person without one. */
 	avatarFallback?: string;

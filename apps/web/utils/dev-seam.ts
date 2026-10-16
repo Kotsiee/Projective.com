@@ -481,7 +481,7 @@ export interface PersonaCapabilities {
  * `applyDevContext` (chrome deriver) AND by the `/projects` seam consumer, so both agree.
  *
  * A **business is buyer-only** (`isFreelancer: false`) — consistent with the platform's client/buyer
- * Organisation & Business rule (root `CLAUDE.md` Decisions #9/#10/#16): an individual client and a
+ * Enterprise & Business rule (root `CLAUDE.md` Decisions #9/#10/#16): an individual client and a
  * business both act only in an owner/client capacity, whereas a freelancer and a team can also deliver
  * services. This drives the `/projects` Projects/Services tabs and the ownership role toggle.
  */

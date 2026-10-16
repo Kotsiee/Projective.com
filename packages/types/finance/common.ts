@@ -7,7 +7,7 @@ import { z } from "zod";
  * (`amount_minor BIGINT`, e.g. cents/pence) and currencies are ISO-4217 codes — every finance shape
  * carries the `(amount, currency)` pair, and balances are a projection over the ledger, never an
  * app-computed float. Only regex/min/max/enum/int primitives are used so the schemas stay stable
- * across Zod majors (matching `packages/types/org/organisations.ts`).
+ * across Zod majors (matching `packages/types/org/enterprises.ts`).
  *
  * The row schemas across this domain back both the EXISTING finance tables (migrations 0009 / 0305 /
  * 0310) and the ADDITIVE tables from `supabase/migrations/20260723090000..20260723094000_*` — the
@@ -42,7 +42,7 @@ export const basisPoints = z.number().int().min(0).max(10000);
  * database then refuses. Declared here, in the leaf module, so any finance file can reuse it without
  * an import cycle.
  */
-export const FinanceOwnerType = z.enum(["user", "freelancer", "team", "business", "organisation"]);
+export const FinanceOwnerType = z.enum(["user", "freelancer", "team", "business", "enterprise"]);
 export type FinanceOwnerType = z.infer<typeof FinanceOwnerType>;
 // #endregion
 

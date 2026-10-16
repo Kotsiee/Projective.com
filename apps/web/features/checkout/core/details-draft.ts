@@ -52,7 +52,7 @@ export function detailsFieldId(path: string, scope = "cko-details"): string {
 
 // #region Department allocation
 /**
- * One selectable department, mirroring an entry of `org.organisations.departments`.
+ * One selectable department, mirroring an entry of `org.enterprises.departments`.
  *
  * Restated app-side rather than imported from the fat service because `packages/backend` is a server
  * member an island may not reach into — the two sides share the SHAPE, never a module.

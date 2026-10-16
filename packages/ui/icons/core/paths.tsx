@@ -498,7 +498,7 @@ const PEOPLE = {
 			<path d="M15 11h6" />
 		</>
 	),
-	/** A business or organisation — a building. */
+	/** A business or enterprise — a building. */
 	"building": () => (
 		<>
 			<path d="M4 20.5V6.2l8-2.7v17M4 20.5h16M20 20.5V10l-8-2.6" />

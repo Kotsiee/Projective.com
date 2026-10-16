@@ -1,6 +1,6 @@
 # org Schema: Tables
 
-The `org` schema serves as the identity and organizational backbone of Projective. It handles user
+The `org` schema serves as the identity and entity backbone of Projective. It handles user
 profiles (freelancer and business), team structures, skill taxonomies, and cross-profile linkages.
 
 ## 👤 Identity Tables
@@ -83,15 +83,15 @@ projects).
 | `kyb_status`       | `finance.kyc_status` | **Additive (`20260723091000`).** `unverified` (default) → `verified`. **Required to OPERATE the pooled Business Wallet.** |
 | `kyb_verified_at`  | timestamptz          | **Additive.** When KYB was granted.                                                                                       |
 | `kyb_provider_ref` | text                 | **Additive.** Stripe Connect account id (placeholder; **no PII**).                                                        |
-| `slug`             | text                 | The business's `@handle` — one namespace with people, teams and organisations (see `org.fn_handle_refusal`, [Functions.md](Functions.md#-the-workspace-console-00001020)). The console is addressed by it (`/businesses/[businessHandle]`). |
+| `slug`             | text                 | The business's `@handle` — one namespace with people, teams and enterprises (see `org.fn_handle_refusal`, [Functions.md](Functions.md#-the-workspace-console-00001020)). The console is addressed by it (`/businesses/[businessHandle]`). |
 | `status`           | text                 | `CHECK IN ('draft','active','archived')` (`business_profiles_status_check`). Created `draft` by `org.create_workspace`; moved only by `org.set_workspace_status`. |
 
 > A business is created by **`org.create_workspace`** (Decision #61) — never a client INSERT, and
 > the retired `org.create_business` no longer exists. Its members, roles and invitations are the
 > tables in [§ Workspace membership](#-workspace-membership-teams--businesses) below.
 
-> KYB verification for **businesses** is the new `kyb_*` cache here; **organisations** keep their
-> own `org.organisation_verification_level` (migration 0314). Reconciles with the tiered KYC/KYB
+> KYB verification for **businesses** is the new `kyb_*` cache here; **enterprises** keep their
+> own `org.enterprise_verification_level` (migration 0314). Reconciles with the tiered KYC/KYB
 > model (Decisions #6/#7). Predicate: `finance.fn_business_kyb_verified(business_id)`.
 
 ### `org.user_emails`
@@ -185,7 +185,7 @@ ran. Read-own like `org.handle_changes`; written only by the 00001060 definers.
 
 ---
 
-## 🧑‍🤝‍🧑 Organization & Teams
+## 🧑‍🤝‍🧑 Teams
 
 ### `org.teams`
 
@@ -380,7 +380,7 @@ RLS is on with **no policy** — every read is `org.get_profile_portfolio` (defi
 ## 🪪 Profile presentation (`/[handle]`)
 
 The owner vocabulary on the two presentation tables is polymorphic — `'user' · 'team' · 'business' ·
-'organisation'`, the `org.profile_follows` one — because an individual is ONE owner however their
+'enterprise'`, the `org.profile_follows` one — because an individual is ONE owner however their
 profile renders. A polymorphic target cannot carry a foreign key, so **every write goes through a
 definer RPC** (`org.save_showcase` / `org.save_profile`) that checks the owner exists and that the
 caller manages it; none of the three tables below has a client write policy. Reads follow the
@@ -500,7 +500,7 @@ bookmarks (the FK sets them `NULL`), never deletes them.
 
 ```sql
 CREATE TYPE org.bookmark_entity_type AS ENUM (
-    'service_blueprint', 'product', 'article', 'user', 'team', 'business', 'organisation', 'project_channel'
+    'service_blueprint', 'product', 'article', 'user', 'team', 'business', 'enterprise', 'project_channel'
 );
 ```
 
@@ -565,17 +565,17 @@ The formatting locales the platform offers (Settings → Language & region) — 
 `org.user_preferences.locale` carries no FK onto it: a Settings write is not checked against the
 list (Decision #207 flag).
 
-## 🏢 Organisations (client/buyer-only)
+## 🏢 Enterprises (client/buyer-only)
 
-Added in `supabase/migrations/0314_organisations.sql`; Zod SSOT in
-`packages/types/org/organisations.ts`. An **Organisation** is a corporate **client/buyer** entity —
+Added in `supabase/migrations/0314_enterprises.sql`; Zod SSOT in
+`packages/types/org/enterprises.ts`. An **Enterprise** is a corporate **client/buyer** entity —
 it registers only to hire/buy and **cannot offer services**. It is deliberately **distinct** from
 `org.business_profiles` (also buyer-side — a Client with multiple members, root `CLAUDE.md` §8
 Decision #61; the distinction is scale and structure, not side of market): different table,
-different purpose, no service/product surface. Multi-tenancy is a membership join table, **not** a `users.organisation_id`
-column, because a user can belong to several organisations.
+different purpose, no service/product surface. Multi-tenancy is a membership join table, **not** a `users.enterprise_id`
+column, because a user can belong to several enterprises.
 
-### `org.organisations`
+### `org.enterprises`
 
 | Column                | Type                                  | Notes                                                                                 |
 | :-------------------- | :------------------------------------ | :------------------------------------------------------------------------------------ |
@@ -597,25 +597,25 @@ column, because a user can belong to several organisations.
 | `industry_other`      | text                                  | Free-text sector; **required by CHECK** when `primary_industry = 'other'`.            |
 | `departments`         | text[]                                | Initial departments (presets + custom-typed).                                         |
 | `purpose`             | text[]                                | Optional stated goals.                                                                |
-| `status`              | `org.organisation_status`             | `draft` (default) / `active` / `suspended` / `archived`. Nothing is hard-deleted.     |
-| `verification_level`  | `org.organisation_verification_level` | `unverified` (default) → `email_verified` → `kyb_pending` → `verified`. KYB deferred. |
+| `status`              | `org.enterprise_status`             | `draft` (default) / `active` / `suspended` / `archived`. Nothing is hard-deleted.     |
+| `verification_level`  | `org.enterprise_verification_level` | `unverified` (default) → `email_verified` → `kyb_pending` → `verified`. KYB deferred. |
 | `logo_file_id`        | uuid                                  | FK → `files.items.id` (ON DELETE SET NULL).                                           |
 | `billing_email`       | text                                  | Invoicing contact.                                                                    |
 | `default_currency`    | text                                  | Default `USD`.                                                                        |
 
-### `org.organisation_members`
+### `org.enterprise_members`
 
-Join table mapping users to organisations with a role — the multi-tenant link.
+Join table mapping users to enterprises with a role — the multi-tenant link.
 
 | Column            | Type                    | Notes                                                           |
 | :---------------- | :---------------------- | :-------------------------------------------------------------- |
 | `id`              | uuid                    | PK.                                                             |
-| `organisation_id` | uuid                    | FK → `org.organisations.id` (ON DELETE CASCADE).                |
+| `enterprise_id` | uuid                    | FK → `org.enterprises.id` (ON DELETE CASCADE).                |
 | `user_id`         | uuid                    | FK → `auth.users.id` (ON DELETE CASCADE).                       |
-| `role`            | `org.organisation_role` | `owner` / `admin` / `member`.                                   |
+| `role`            | `org.enterprise_role` | `owner` / `admin` / `member`.                                   |
 | `status`          | text                    | Default `active`.                                               |
 | `invited_by`      | uuid                    | FK → `auth.users.id` (ON DELETE SET NULL).                      |
-| UNIQUE            | —                       | `(organisation_id, user_id)` — one membership per user per org. |
+| UNIQUE            | —                       | `(enterprise_id, user_id)` — one membership per user per org. |
 
 ---
 
@@ -693,8 +693,8 @@ SELECT on this table (`"Read standing"`) and nothing else.
   `vault_verified` needs KYC **and** a verified payout account (the `finance.fn_freelancer_payout_ready`
   pair), `id_verified` KYC alone. A row is created only when there is a stamp to hold. The CHECK
   admits `corporate_verified` so the vocabulary is one type, but no person's row ever holds it: a
-  business or organisation has no Standing row, and `org.get_profile_view` derives its stamp from its
-  own KYB (`business_profiles.kyb_status = 'verified'` / `organisations.verification_level =
+  business or enterprise has no Standing row, and `org.get_profile_view` derives its stamp from its
+  own KYB (`business_profiles.kyb_status = 'verified'` / `enterprises.verification_level =
   'verified'`).
 
 | Dimension     | Tier 1                                   | Tier 2                                        | Tier 3                                          |

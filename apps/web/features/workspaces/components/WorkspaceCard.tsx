@@ -28,7 +28,7 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  * pre-formatted from the server and are rendered verbatim (root CLAUDE.md §12).
  *
  * Presentation follows the surface's two hard rules. The mark is a **rounded square** because an entity
- * is an organisation; the member stack is **circular** because those are people. In-row state is
+ * is an enterprise; the member stack is **circular** because those are people. In-row state is
  * **iconographic** — a state dot, a verification dot, a pulsing update dot — and the words live only in
  * the portal `Tooltip` (§B.6), never as inline prose beside the name.
  */

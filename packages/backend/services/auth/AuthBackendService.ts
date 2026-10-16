@@ -24,7 +24,7 @@ import {
 	verificationPollLimiter,
 } from "./verification-status.ts";
 import { refreshFailure, SESSION_EXPIRED_MESSAGE } from "./refresh-outcome.ts";
-import type { CreateOrganisation } from "@projective/types/org";
+import type { CreateEnterprise } from "@projective/types/org";
 import {
 	AGE_SQLSTATE,
 	bracketFromDob,
@@ -68,7 +68,7 @@ function emailDomain(email: string): string | null {
 	return domain.length > 0 ? domain : null;
 }
 
-/** Normalise an organisation website/domain to a bare host (strip scheme, `www.`, port, and path). */
+/** Normalise an enterprise website/domain to a bare host (strip scheme, `www.`, port, and path). */
 function siteDomain(website: string | null | undefined): string | null {
 	if (!website) return null;
 	const host = website
@@ -81,9 +81,9 @@ function siteDomain(website: string | null | undefined): string | null {
 	return host.length > 0 ? host : null;
 }
 
-/** True when an email's domain equals — or is a sub-domain of — an organisation's registered domain. */
-function domainMatches(emailDom: string, orgDom: string): boolean {
-	return emailDom === orgDom || emailDom.endsWith(`.${orgDom}`);
+/** True when an email's domain equals — or is a sub-domain of — an enterprise's registered domain. */
+function domainMatches(emailDom: string, enterpriseDom: string): boolean {
+	return emailDom === enterpriseDom || emailDom.endsWith(`.${enterpriseDom}`);
 }
 // #endregion
 
@@ -174,9 +174,9 @@ export interface ProvisionIndividualInput {
 	redirectTo: string;
 }
 
-/** Organisation account provisioning input. */
-export interface ProvisionOrganisationInput {
-	type: "organization";
+/** Enterprise account provisioning input. */
+export interface ProvisionEnterpriseInput {
+	type: "enterprise";
 	corporateEmail: string;
 	password: string;
 	/** The owner's supported browser locale → their `org.user_preferences.locale` (Decision #207). */
@@ -184,18 +184,18 @@ export interface ProvisionOrganisationInput {
 	/** An offerable display currency → the owner's `org.user_preferences.preferred_display_currency`. */
 	displayCurrency?: string;
 	/**
-	 * The validated organisation to provision (the {@link CreateOrganisation} SSOT shape from
+	 * The validated enterprise to provision (the {@link CreateEnterprise} SSOT shape from
 	 * `@projective/types`). The live path admin-creates the owner identity, then inserts it into
-	 * `org.organisations` + seeds the owner's `org.organisation_members` row via the
-	 * `public.create_organisation` RPC (migrations 0314/0315).
+	 * `org.enterprises` + seeds the owner's `org.enterprise_members` row via the
+	 * `public.create_enterprise` RPC (migrations 0314/0315).
 	 */
-	organisation: CreateOrganisation;
+	enterprise: CreateEnterprise;
 	/** Server-sanitised return path. */
 	redirectTo: string;
 }
 
-/** Fields the fat service needs to provision an individual or organisation account. */
-export type ProvisionAccountInput = ProvisionIndividualInput | ProvisionOrganisationInput;
+/** Fields the fat service needs to provision an individual or enterprise account. */
+export type ProvisionAccountInput = ProvisionIndividualInput | ProvisionEnterpriseInput;
 
 /** Credentials for a password sign-in. */
 export interface AuthenticateInput {
@@ -303,8 +303,8 @@ export class AuthBackendService {
 	 *  - **Individual, OAuth completion** — the caller is already authenticated (they OAuth'd, landed
 	 *    profile-less on `/join`), so provision in-context via the `complete_onboarding` RPC. OAuth
 	 *    email is pre-verified → `requiresVerification: false`.
-	 *  - **Organisation** — admin-create the owner identity, then insert the org + owner membership
-	 *    atomically via the `create_organisation` RPC (migrations 0314/0315). Email unconfirmed → the
+	 *  - **Enterprise** — admin-create the owner identity, then insert the enterprise + owner membership
+	 *    atomically via the `create_enterprise` RPC (migrations 0314/0315). Email unconfirmed → the
 	 *    confirmation email is dispatched, then `requiresVerification: true`.
 	 *
 	 * The admin create sends no mail of its own, so both unconfirmed paths dispatch explicitly through
@@ -364,31 +364,31 @@ export class AuthBackendService {
 		}
 
 		try {
-			if (input.type === "organization") {
+			if (input.type === "enterprise") {
 				const admin = getServiceClient();
 				const { data: created, error } = await admin.auth.admin.createUser({
 					email: input.corporateEmail,
 					password: input.password,
 					email_confirm: false,
 					user_metadata: {
-						objective: "organization",
+						objective: "enterprise",
 						locale: input.locale ?? null,
 						display_currency: input.displayCurrency ?? null,
 					},
 				});
 				if (error || !created?.user) {
 					return fail(422, {
-						message: error?.message ?? "We couldn't create the organisation owner account.",
+						message: error?.message ?? "We couldn't create the enterprise owner account.",
 					});
 				}
-				const { error: rpcError } = await admin.rpc("create_organisation", {
+				const { error: rpcError } = await admin.rpc("create_enterprise", {
 					p_owner: created.user.id,
-					p_payload: input.organisation,
+					p_payload: input.enterprise,
 				});
 				if (rpcError) {
 					// e.g. a duplicate handle surfaces here as a unique_violation.
 					return fail(422, {
-						message: rpcError.message ?? "We couldn't create the organisation.",
+						message: rpcError.message ?? "We couldn't create the enterprise.",
 					});
 				}
 				return ok({
@@ -439,9 +439,9 @@ export class AuthBackendService {
 			if (error || !created?.user) {
 				return fail(422, { message: error?.message ?? "We couldn't create your account." });
 			}
-			// Corporate-domain signal: if this address belongs to a registered organisation's domain,
-			// alert that org so it can invite/approve the colleague. Best-effort — never blocks signup.
-			await AuthBackendService.alertOrganisationsForDomain(input.email, created.user.id);
+			// Corporate-domain signal: if this address belongs to a registered enterprise's domain,
+			// alert that enterprise so it can invite/approve the colleague. Best-effort — never blocks signup.
+			await AuthBackendService.alertEnterprisesForDomain(input.email, created.user.id);
 			return ok({
 				requiresVerification: true,
 				verificationSent: await AuthBackendService.dispatchConfirmation(input.email),
@@ -458,13 +458,13 @@ export class AuthBackendService {
 	 * Corporate-domain onboarding signal.
 	 *
 	 * When a standard (email/password) individual signs up with an address whose domain matches an
-	 * existing Organisation's registered domain (e.g. `ada@acme.com` ↔ an org whose website is
-	 * `acme.com`), notify that org's owners and admins (catalog key `org.domain_colleague`) so they
+	 * existing Enterprise's registered domain (e.g. `ada@acme.com` ↔ an enterprise whose website is
+	 * `acme.com`), notify that enterprise's owners and admins (catalog key `enterprise.domain_colleague`) so they
 	 * can invite or approve the new colleague. Sub-domains (`ada@eu.acme.com`) match too. Live-only,
 	 * best-effort, and non-blocking — every failure is swallowed so it can never affect account
 	 * creation.
 	 */
-	private static async alertOrganisationsForDomain(
+	private static async alertEnterprisesForDomain(
 		email: string,
 		newUserId?: string,
 	): Promise<void> {
@@ -473,28 +473,28 @@ export class AuthBackendService {
 		if (!dom) return;
 		try {
 			const db = getServiceClient();
-			const { data: orgs } = await db
+			const { data: enterprises } = await db
 				.schema("org")
-				.from("organisations")
+				.from("enterprises")
 				.select("id, legal_name, website")
 				.not("website", "is", null);
 
-			const matched = (orgs ?? []).filter((o) => {
-				const orgDom = siteDomain(o.website as string | null);
-				return orgDom ? domainMatches(dom, orgDom) : false;
+			const matched = (enterprises ?? []).filter((o) => {
+				const enterpriseDom = siteDomain(o.website as string | null);
+				return enterpriseDom ? domainMatches(dom, enterpriseDom) : false;
 			});
 
-			for (const org of matched) {
+			for (const enterprise of matched) {
 				const { data: members } = await db
 					.schema("org")
-					.from("organisation_members")
+					.from("enterprise_members")
 					.select("user_id")
-					.eq("organisation_id", org.id)
+					.eq("enterprise_id", enterprise.id)
 					.eq("status", "active")
 					.in("role", ["owner", "admin"]);
 
 				const recipients = (members ?? [])
-					// Don't notify the joiner about themselves (e.g. an org owner re-registering).
+					// Don't notify the joiner about themselves (e.g. an enterprise owner re-registering).
 					.filter((m) => m.user_id !== newUserId);
 
 				// Through the router, not a raw insert: comms.fn_notify applies the catalog row (category,
@@ -502,14 +502,14 @@ export class AuthBackendService {
 				for (const m of recipients) {
 					await db.schema("comms").rpc("fn_notify", {
 						p_user_id: m.user_id as string,
-						p_type: "org.domain_colleague",
+						p_type: "enterprise.domain_colleague",
 						p_title: "Someone from your domain just joined",
 						p_body: `${email} signed up on Projective using your ${dom} domain.`,
-						p_entity_table: "org.organisations",
-						p_entity_id: org.id as string,
-						p_context_type: "organisation",
-						p_context_id: org.id as string,
-						p_group_key: `org-domain:${org.id}`,
+						p_entity_table: "org.enterprises",
+						p_entity_id: enterprise.id as string,
+						p_context_type: "enterprise",
+						p_context_id: enterprise.id as string,
+						p_group_key: `enterprise-domain:${enterprise.id}`,
 					});
 				}
 			}

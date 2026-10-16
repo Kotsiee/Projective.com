@@ -97,7 +97,7 @@ Standing is the discretised rung of the EXISTING Reliability Index ($R_i$, `PROD
 into `org.achievements` rather than reinvented. **Owner decisions applied (2026-07-24):** Individual
 Pro = **£12.99/mo**; free published listings **10 scaling with rank** (Pro = 2×); active public
 projects **3 free / 15 Pro**; **no cap on joining** teams/businesses; the 5% **may** flex for
-Organisation volume deals; governing constraint = _"never feel suffocated; upgrading should just
+Enterprise volume deals; governing constraint = _"never feel suffocated; upgrading should just
 make sense."_ **Flagged conflicts / open items (surface, do NOT silently resolve):** (a)
 **`finance-model.md` §1.1 reworded** — "no paywall on freelancer **project** volume" → "no paywall
 on **execution** volume"; this is a real semantic change to a previously absolute guardrail, made on
@@ -112,7 +112,7 @@ trigger** — it is a sweep (`standing_recompute_interval_hours`), because recom
 inside a stage-approval transaction would couple money movement to reputation math; the sweep job
 itself is not yet written. (f) `standing_demotion_grace_days` is seeded but **not yet consumed** by
 `fn_recompute_standing` (anti-flapping guard reserved). (g) `finance.plan_entitlements`
-`organisation_businesses` counts 0 because businesses are **not yet FK-linked** to an organisation
+`enterprise_businesses` counts 0 because businesses are **not yet FK-linked** to an enterprise
 (Phase 2). (h) The Standing metric inputs (`completion_rate`, `on_time_rate`, dual-track ratings,
 `dispute_rate`, `workload_reliability`) have **no writer yet** — the backfill from
 `projects.*`/`finance.ratings` is a follow-up. (i) **Timestamp collision avoided:** these migrations
@@ -315,7 +315,7 @@ own response. **Flagged (surface, do not silently resolve):** (a) the **Business
 remains `businessAccountEnabled` while migration `20260709` gates on `org.users_public.is_operator`
 — settling the buyer-side question rules out `isFreelancer` but the remaining two still need one
 human decision (inherits Decisions #17/#18) — **RESOLVED by Decision #230 (a)** (2026-10-16): any adult
-account, operators included; (b) **Organisations** now overlap Businesses
+account, operators included; (b) **Enterprises** now overlap Businesses
 considerably (both buyers with members and a pooled wallet) — own console, scale tier of
 `/businesses`, or profile-only is undecided; (c) entity-owned **catalogue scope** still depends on
 Decision #53's flag (d) fixtures-own-the-whole-corpus issue; (d) whose payment method funds a

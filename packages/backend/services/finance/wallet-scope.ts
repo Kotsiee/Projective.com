@@ -18,7 +18,7 @@ import { safeTimeZone } from "./wallet-ledger.ts";
  * wallet-scope — WHICH wallet a `/wallet` read or movement is about, and what the viewer may do there.
  *
  * A viewer's wallets are their personal wallet plus the vault of every team, business and
- * organisation they belong to. Membership, names and faces come from `finance.list_purchase_owners`
+ * enterprise they belong to. Membership, names and faces come from `finance.list_purchase_owners`
  * (the same member-gated door the checkout uses); the wallet ROWS are read with the viewer's own token
  * (`View visible wallets`), and so are their vault permissions — so the set of wallets this module can
  * name is exactly the set the database will let the viewer see, and nothing here decides membership.
@@ -115,7 +115,7 @@ function parseWallet(raw: string | null | undefined): { scope: WalletScope; id: 
 	const at = raw.indexOf(":");
 	const scope = at === -1 ? raw : raw.slice(0, at);
 	const id = at === -1 ? "" : raw.slice(at + 1).toLowerCase();
-	if ((scope === "team" || scope === "business" || scope === "organisation") && id) return { scope, id };
+	if ((scope === "team" || scope === "business" || scope === "enterprise") && id) return { scope, id };
 	return { scope: "personal", id: "" };
 }
 
@@ -124,7 +124,7 @@ function activeKey(actor: ReadActor): string {
 	switch (actor.contextType) {
 		case "team":
 		case "business":
-		case "organisation":
+		case "enterprise":
 			return actor.contextId ? `${actor.contextType}:${actor.contextId}` : "personal";
 		default:
 			return "personal";

@@ -25,7 +25,7 @@ export interface CellContext {
 	now: number;
 	/** Whether rows are tall enough for a `file` cell to show its thumbnail instead of its glyph. */
 	showThumbs: boolean;
-	/** App-supplied date formatting (an organisation's date preference), used instead of `Intl` defaults. */
+	/** App-supplied date formatting (an enterprise's date preference), used instead of `Intl` defaults. */
 	formatDate?: (ms: number, format: DateFormat) => string;
 	/** The stand-in picture for a person without one. */
 	avatarFallback?: string;

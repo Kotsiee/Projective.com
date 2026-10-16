@@ -701,7 +701,7 @@ here and there must never be one. */
     color: var(--text-secondary);
 }
 
-/* The counterparty is a PERSON or an organisation acting as one, so it stays circular — squares are
+/* The counterparty is a PERSON or an enterprise acting as one, so it stays circular — squares are
 reserved for the entity whose console this is. */
 .wsp-projects__party-avatar {
     flex: none;

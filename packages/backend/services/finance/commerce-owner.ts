@@ -10,8 +10,8 @@ import type { MoneyProjector } from "./commerce-money.ts";
  * knows about that principal.
  *
  * Every commerce read and write starts here. A basket belongs to a person, a team, a business or an
- * organisation; the request names which through its `owner` param (`personal` · `team:{id}` ·
- * `business:{id}` · `organisation:{id}`, defaulted from the acting context), and this module turns
+ * enterprise; the request names which through its `owner` param (`personal` · `team:{id}` ·
+ * `business:{id}` · `enterprise:{id}`, defaulted from the acting context), and this module turns
  * that into a {@link ResolvedOwner} by asking the DATABASE — `finance.get_purchase_owner`, a
  * member-gated definer read (00001210 §8). The application never decides membership itself:
  * `actingIsMember` is `finance.fn_can_manage_basket`, the same predicate the basket's RLS policies
@@ -53,7 +53,7 @@ export interface PurchasePerson {
 
 /** The finance identity a basket or checkout read is scoped to. */
 export interface ResolvedOwner {
-	/** The canonical scope key (`personal` · `team:{id}` · `business:{id}` · `organisation:{id}`). */
+	/** The canonical scope key (`personal` · `team:{id}` · `business:{id}` · `enterprise:{id}`). */
 	key: string;
 	ownerType: PurchaseOwnerType;
 	ownerId: string;
@@ -64,7 +64,7 @@ export interface ResolvedOwner {
 	actingIsMember: boolean;
 	/** Whether the caller may SEE this account's finances (`finance.fn_owner_visible`). */
 	isMember: boolean;
-	/** KYB state of a spending business or organisation; `null` for a person or a team. */
+	/** KYB state of a spending business or enterprise; `null` for a person or a team. */
 	kybStatus: KycStatus | null;
 	/** Verification tier — Level 3 is Business/KYB (`PRODUCT_SPEC` §Identity). */
 	verificationTier: number | null;
@@ -79,7 +79,7 @@ export interface ResolvedOwner {
 	billing: PurchaseBilling | null;
 	/** The person behind a personal basket. */
 	person: PurchasePerson | null;
-	/** The spend departments an organisation declares. */
+	/** The spend departments an enterprise declares. */
 	departments: string[];
 	/**
 	 * The platform fee rate a payment from this owner is charged (`finance.fn_effective_platform_fee_bp`
@@ -126,7 +126,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** The owner a request names, before anything has been checked. */
 export type OwnerRequest =
 	| { scope: "personal" }
-	| { scope: "team" | "business" | "organisation"; id: string };
+	| { scope: "team" | "business" | "enterprise"; id: string };
 
 /**
  * Parse an `owner` param. Anything that is not a well-formed entity key — `personal`, `user`,
@@ -139,7 +139,7 @@ export function parseOwnerParam(raw: string | null | undefined): OwnerRequest {
 	const scope = at === -1 ? raw : raw.slice(0, at);
 	const id = at === -1 ? "" : raw.slice(at + 1);
 	if (
-		(scope === "team" || scope === "business" || scope === "organisation") && UUID_RE.test(id)
+		(scope === "team" || scope === "business" || scope === "enterprise") && UUID_RE.test(id)
 	) {
 		return { scope, id: id.toLowerCase() };
 	}
@@ -160,7 +160,7 @@ function asOwnerType(value: string): PurchaseOwnerType | null {
 			return "user";
 		case "team":
 		case "business":
-		case "organisation":
+		case "enterprise":
 			return value;
 		default:
 			return null;
@@ -262,7 +262,7 @@ function displayFor(query: OwnerQuery, ownerCurrency: string | null): string {
  *
  * `null` when the caller cannot be identified at all (a guest, or an expired token) — every commerce
  * surface is a signed-in surface, and answering a guest with somebody's basket is not a degraded
- * answer, it is a wrong one. An entity id the database knows nothing about (or an organisation the
+ * answer, it is a wrong one. An entity id the database knows nothing about (or an enterprise the
  * caller does not belong to) resolves to the caller's PERSONAL scope, the one account every caller
  * has; a known entity the caller cannot spend from resolves normally with `actingIsMember: false`, so
  * the surface can say why the account is closed to them rather than silently switching accounts.
@@ -293,7 +293,7 @@ export async function resolveOwner(
 
 /**
  * Every identity the caller may buy or bill as — themselves first, then each team, business and
- * organisation they own or actively belong to. The Details step's billing-identity switcher.
+ * enterprise they own or actively belong to. The Details step's billing-identity switcher.
  */
 export async function listOwners(query: OwnerQuery, actor: ReadActor): Promise<ResolvedOwner[]> {
 	if (!canReadLive(actor)) return [];

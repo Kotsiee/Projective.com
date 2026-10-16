@@ -6,7 +6,7 @@
 --   * projects.application_target_type       += 'seat'       (from 0306_staffing_enums.sql)
 -- Sources: 0000_init_enums.sql, 0003_org_tables.sql, 0006_marketplace_tables.sql,
 --          0007_projects_tables.sql, 0010_search_tables.sql, 0011_reviews_tables.sql,
---          0310_ticket_automation_engine.sql, 0314_organisations.sql,
+--          0310_ticket_automation_engine.sql, 0314_enterprises.sql,
 --          20260723090000_finance_currency_fx.sql (org.layout_direction),
 --          20260724111000_standing_reputation.sql (org standing enums).
 -- =============================================================================================
@@ -58,7 +58,7 @@ CREATE TYPE org.bookmark_entity_type AS ENUM (
     'user',
     'team',
     'business',
-    'organisation',
+    'enterprise',
     'project_channel'
 );
 
@@ -67,13 +67,13 @@ CREATE TYPE org.bookmark_entity_type AS ENUM (
 -- authority is `org.workspace_capability` (00000004), the same vocabulary as the member overrides
 -- and the TypeScript SSOT, so the three layers of the permission engine speak one language.
 
-CREATE TYPE org.organisation_role AS ENUM ('owner', 'admin', 'member');
+CREATE TYPE org.enterprise_role AS ENUM ('owner', 'admin', 'member');
 
 CREATE TYPE org.employee_scale AS ENUM ('1-50', '51-200', '201-500', '500+');
 
-CREATE TYPE org.organisation_status AS ENUM ('draft', 'active', 'suspended', 'archived');
+CREATE TYPE org.enterprise_status AS ENUM ('draft', 'active', 'suspended', 'archived');
 
-CREATE TYPE org.organisation_verification_level AS ENUM (
+CREATE TYPE org.enterprise_verification_level AS ENUM (
     'unverified',
     'email_verified',
     'kyb_pending',

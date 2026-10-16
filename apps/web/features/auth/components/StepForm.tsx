@@ -36,8 +36,8 @@ import { armResendCooldown } from "../core/resend-cooldown.ts";
  * `@projective/ui` field components), the step's navigation, and submission. It reads/writes the
  * shared wizard store, so every keystroke is reflected live in the summary on the left. Steps
  * slide/fade on change (keyed remount + `data-dir`), and choice-only steps **auto-advance** the
- * instant a card is picked. Individual and Organization render different field sets into the same
- * step slots (organizations follow a client-only path — no "intent" branch, no skills step).
+ * instant a card is picked. Individual and Enterprise render different field sets into the same
+ * step slots (enterprises follow a client-only path — no "intent" branch, no skills step).
  *
  * Keyboard: the steps are not a `<form>`, so Enter is given one rule here (`core/enter-chain.ts`) —
  * on a field it moves to the step's next field, on the last field it does what Continue does, and
@@ -257,7 +257,7 @@ function DobField(
 	);
 }
 
-/** Render the fields for one step slot, branching Individual vs Organization. */
+/** Render the fields for one step slot, branching Individual vs Enterprise. */
 function StepFields(
 	{ store, dobDate, onChoose }: {
 		store: JoinStore;
@@ -267,7 +267,7 @@ function StepFields(
 	},
 ): JSX.Element {
 	const e = store.errors.value as Err;
-	const org = store.isOrg.value;
+	const enterprise = store.isEnterprise.value;
 	const chosen = store.accountChosen.value;
 	const id = store.current.value.id;
 
@@ -278,7 +278,7 @@ function StepFields(
 					<ChoiceCard
 						name="accountType"
 						value="individual"
-						active={chosen && !org}
+						active={chosen && !enterprise}
 						neutral={!chosen}
 						art="individual"
 						title="Individual"
@@ -291,16 +291,16 @@ function StepFields(
 					/>
 					<ChoiceCard
 						name="accountType"
-						value="organization"
-						active={chosen && org}
+						value="enterprise"
+						active={chosen && enterprise}
 						neutral={!chosen}
-						art="organization"
-						title="Organisation"
+						art="enterprise"
+						title="Enterprise"
 						desc="A company workspace that hires talent."
 						onSelect={() => {
-							store.accountType.value = "organization";
+							store.accountType.value = "enterprise";
 							store.accountChosen.value = true;
-							// Organizations are buyers only — pin the client persona, no intent branch.
+							// Enterprises are buyers only — pin the client persona, no intent branch.
 							store.intent.value = "client";
 							onChoose();
 						}}
@@ -315,7 +315,7 @@ function StepFields(
 	}
 
 	if (id === "intent") {
-		// Individual-only step (organizations skip straight past — they're always the client).
+		// Individual-only step (enterprises skip straight past — they're always the client).
 		return (
 			<>
 				<div class="auth-choices auth-choices--2">
@@ -352,7 +352,7 @@ function StepFields(
 	}
 
 	if (id === "purpose") {
-		return org
+		return enterprise
 			? (
 				<>
 					<Row>
@@ -420,7 +420,7 @@ function StepFields(
 	}
 
 	if (id === "specialize") {
-		return org
+		return enterprise
 			? (
 				<>
 					<Row>
@@ -484,7 +484,7 @@ function StepFields(
 	}
 
 	if (id === "identity") {
-		return org
+		return enterprise
 			? (
 				<>
 					<Row>
@@ -550,7 +550,7 @@ function StepFields(
 	}
 
 	// credentials
-	if (org) {
+	if (enterprise) {
 		return (
 			<>
 				<Row>
@@ -633,7 +633,7 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 	// it in sync until the user edits the handle directly. `peek()` reads the current handle WITHOUT
 	// subscribing, so this only re-runs when the name changes — never clobbering a customised handle.
 	useSignalEffect(() => {
-		if (store.isOrg.value) return;
+		if (store.isEnterprise.value) return;
 		const suggestion = suggestHandle(store.firstName.value, store.lastName.value);
 		const current = store.username.peek();
 		if (current === "" || current === autoHandle.value) {
@@ -736,7 +736,7 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 			globalThis.location.href = dest;
 			return;
 		}
-		const email = store.isOrg.value ? store.corpEmail.value.trim() : store.email.value.trim();
+		const email = store.isEnterprise.value ? store.corpEmail.value.trim() : store.email.value.trim();
 		if (result.verificationSent === true) armResendCooldown();
 		const failed = result.verificationSent === false ? "&sent=0" : "";
 		globalThis.location.href = withRedirect(
@@ -794,7 +794,7 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 	}
 
 	const continueLabel = last
-		? (store.isOrg.value ? "Create organisation" : "Create account")
+		? (store.isEnterprise.value ? "Create enterprise" : "Create account")
 		: "Continue";
 
 	// Choice steps auto-advance on first pick, but ALSO carry a visible "Continue" so a user who
@@ -806,8 +806,8 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 		: step.id === "intent"
 		? store.intent.value !== ""
 		: true;
-	// Individuals can reach for Google at any step; org sign-up is corporate-credential based.
-	const showInlineOAuth = !store.isOrg.value && !store.isOAuth && step.id !== "account";
+	// Individuals can reach for Google at any step; enterprise sign-up is corporate-credential based.
+	const showInlineOAuth = !store.isEnterprise.value && !store.isOAuth && step.id !== "account";
 	const oauthHref = withRedirect("/api/auth/oauth/google?mode=signup", store.redirectTo);
 
 	return (

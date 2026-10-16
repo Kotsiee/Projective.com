@@ -141,7 +141,7 @@ CREATE TABLE finance.escrows (
 CREATE TABLE finance.payout_accounts (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
     owner_type text NOT NULL
-        CHECK (owner_type IN ('user', 'freelancer', 'team', 'business', 'organisation')),
+        CHECK (owner_type IN ('user', 'freelancer', 'team', 'business', 'enterprise')),
     owner_id uuid NOT NULL,
     provider text NOT NULL,
     account_id text NOT NULL,
@@ -380,7 +380,7 @@ CREATE TABLE finance.fx_rates (
 -- #region KYC / KYB (20260723091000_finance_verification_kyc.sql)
 CREATE TABLE finance.verification_cases (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
-    subject_type text NOT NULL CHECK (subject_type IN ('freelancer', 'business', 'organisation', 'user')),
+    subject_type text NOT NULL CHECK (subject_type IN ('freelancer', 'business', 'enterprise', 'user')),
     subject_id uuid NOT NULL,
     kind text NOT NULL CHECK (kind IN ('kyc', 'kyb')),
     status finance.kyc_status NOT NULL DEFAULT 'pending',
@@ -397,7 +397,7 @@ CREATE TABLE finance.verification_cases (
 -- #region Payment methods & money-movement rules (20260723092000)
 CREATE TABLE finance.payment_methods (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
-    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'business', 'team', 'organisation')),
+    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'business', 'team', 'enterprise')),
     owner_id uuid NOT NULL,
     method_role finance.method_role NOT NULL,
     provider text NOT NULL DEFAULT 'stripe',
@@ -430,7 +430,7 @@ CREATE TABLE finance.deposit_rules (
 
 CREATE TABLE finance.payout_schedules (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
-    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'business', 'team', 'organisation')),
+    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'business', 'team', 'enterprise')),
     owner_id uuid NOT NULL,
     mode finance.payout_mode NOT NULL DEFAULT 'manual',
     destination_method_id uuid REFERENCES finance.payment_methods (id) ON DELETE SET NULL,
@@ -604,7 +604,7 @@ A failed payout is a first-class row precisely because it produces no transactio
 
 CREATE TABLE finance.statements (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
-    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'business', 'team', 'organisation')),
+    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'business', 'team', 'enterprise')),
     owner_id uuid NOT NULL,
     period_start timestamptz NOT NULL,
     period_end timestamptz NOT NULL,
@@ -676,7 +676,7 @@ CREATE TABLE finance.plan_entitlements (
 CREATE TABLE finance.subscription_events (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
     subscription_id uuid REFERENCES finance.subscriptions (id) ON DELETE SET NULL,
-    subject_type text NOT NULL CHECK (subject_type IN ('user', 'freelancer', 'business', 'team', 'organisation')),
+    subject_type text NOT NULL CHECK (subject_type IN ('user', 'freelancer', 'business', 'team', 'enterprise')),
     subject_id uuid NOT NULL,
     event_type text NOT NULL CHECK (event_type IN
         ('started', 'upgraded', 'downgraded', 'renewed', 'payment_failed', 'paused', 'resumed', 'cancelled', 'expired')),
@@ -691,7 +691,7 @@ CREATE TABLE finance.subscription_events (
 
 CREATE TABLE finance.entitlement_grants (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
-    subject_type text NOT NULL CHECK (subject_type IN ('user', 'freelancer', 'business', 'team', 'organisation')),
+    subject_type text NOT NULL CHECK (subject_type IN ('user', 'freelancer', 'business', 'team', 'enterprise')),
     subject_id uuid NOT NULL,
     entitlement_key finance.entitlement_key NOT NULL,
     limit_value integer CHECK (limit_value IS NULL OR limit_value >= 0),
@@ -713,7 +713,7 @@ CREATE TABLE finance.standing_commission_tiers (
 
 CREATE TABLE finance.negotiated_rates (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
-    subject_type text NOT NULL CHECK (subject_type IN ('business', 'organisation')),
+    subject_type text NOT NULL CHECK (subject_type IN ('business', 'enterprise')),
     subject_id uuid NOT NULL,
     platform_fee_bp integer NOT NULL CHECK (platform_fee_bp BETWEEN 0 AND 10000),
     marketplace_commission_bp integer CHECK (marketplace_commission_bp IS NULL OR marketplace_commission_bp BETWEEN 0 AND 10000),
@@ -731,7 +731,7 @@ CREATE TABLE finance.negotiated_rates (
 -- #region Allowances & enforcement (20260724113000)
 CREATE TABLE finance.allowance_periods (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
-    subject_type text NOT NULL CHECK (subject_type IN ('user', 'freelancer', 'team', 'business', 'organisation')),
+    subject_type text NOT NULL CHECK (subject_type IN ('user', 'freelancer', 'team', 'business', 'enterprise')),
     subject_id uuid NOT NULL,
     entitlement_key finance.entitlement_key NOT NULL,
     period_start timestamptz NOT NULL,
@@ -824,10 +824,10 @@ not retroactively invalidate rows that were legitimately issued under the old on
 -- ⚠️ `owner_type` is the WIDE finance owner axis, deliberately matching finance.payment_methods /
 -- finance.payout_schedules / finance.statements. A narrower ('user','business') pair could not
 -- express a TEAM basket, and the app's context switcher (root CLAUDE.md Decisions #16/#61) switches
--- between personal / team / business / organisation — the basket must re-scope with it.
+-- between personal / team / business / enterprise — the basket must re-scope with it.
 CREATE TABLE finance.baskets (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
-    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'business', 'team', 'organisation')),
+    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'business', 'team', 'enterprise')),
     owner_id uuid NOT NULL,
     name text NOT NULL DEFAULT 'Main Basket',      -- 'Main Basket' / '3D Asset Wishlist' / …
     is_default boolean NOT NULL DEFAULT false,     -- at most one per owner (partial UNIQUE index, cat 4)
@@ -845,7 +845,7 @@ CREATE TABLE finance.baskets (
 );
 
 COMMENT ON TABLE finance.baskets IS
-'A named collection of purchasable intents for one owner (personal, team, business or organisation).
+'A named collection of purchasable intents for one owner (personal, team, business or enterprise).
 A wishlist is a non-default basket, not a separate entity. Holds no money and reserves no capacity.';
 
 -- One line in a basket. Polymorphic by (item_type, item_id) across the catalogue and the project
@@ -947,7 +947,7 @@ authoritative price server-side, so a stale or tampered line can never set what 
 -- ⚠️ Read the table comment below before adding a column here.
 CREATE TABLE finance.saved_cards (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
-    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'business', 'team', 'organisation')),
+    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'business', 'team', 'enterprise')),
     owner_id uuid NOT NULL,
     -- Ties the display projection back to the money-movement instrument so the two cannot diverge.
     -- Nullable: a card may be saved before its finance.payment_methods row is provisioned, and the
@@ -997,7 +997,7 @@ CREATE TABLE finance.orders (
     placed_at timestamptz NOT NULL DEFAULT now(),
 
     -- The wide 5-value finance owner axis, matching finance.baskets rather than inventing a narrower
-    -- one — a team, business or organisation can all buy.
+    -- one — a team, business or enterprise can all buy.
     owner_type text NOT NULL,
     owner_id uuid NOT NULL,
 
@@ -1325,7 +1325,7 @@ finance.* definer functions; no client role writes here.';
 -- finance.record_processor_customer, which authorise the caller themselves.
 CREATE TABLE finance.processor_customers (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
-    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'business', 'team', 'organisation')),
+    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'business', 'team', 'enterprise')),
     owner_id uuid NOT NULL,
     provider text NOT NULL DEFAULT 'stripe',
     customer_ref text NOT NULL,                   -- Stripe Customer id (cus_…); XXXX-XXXX in docs

@@ -36,7 +36,7 @@ function readAccessToken(req: Request): string | undefined {
 }
 
 /**
- * `POST /api/auth/join` — thin route: parse + Zod-validate the individual OR organisation payload,
+ * `POST /api/auth/join` — thin route: parse + Zod-validate the individual OR enterprise payload,
  * then delegate to the fat {@link AuthBackendService}, which enforces eligibility (age-gate, password
  * rule) and provisions. Islands are dumb: they POST here and act on the result.
  */
@@ -98,12 +98,12 @@ export const handler = define.handlers({
 		return toAuthResponse(
 			ctx.req,
 			await AuthBackendService.provisionAccount({
-				type: "organization",
+				type: "enterprise",
 				corporateEmail: data.corporateEmail,
 				password: data.password,
 				locale: data.locale,
 				displayCurrency: data.displayCurrency,
-				organisation: {
+				enterprise: {
 					legalName: data.legalName,
 					tradingName: data.tradingName,
 					handle: data.handle,

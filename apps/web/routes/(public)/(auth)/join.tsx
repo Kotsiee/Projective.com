@@ -9,15 +9,15 @@ import type { AccountType, UserIntent } from "@features/auth/types/mod.ts";
  * `/join` — account creation (canonical signup route; supersedes `/register`). Thin controller: it
  * parses the return path, account type, initial intent, and any Google OAuth pre-fill off the URL
  * server-side, then hands them to the JoinForm island. The island owns the interactive flow
- * (individual quick form ⇄ organization wizard, age-gate, validation).
+ * (individual quick form ⇄ enterprise wizard, age-gate, validation).
  */
 export const handler = define.handlers({
 	GET(ctx) {
 		ctx.state.title = "Join Projective";
 		ctx.state.description = "Create your Projective account — hire, work, and get paid by stage.";
 		const params = ctx.url.searchParams;
-		const accountType: AccountType = params.get("type") === "organization"
-			? "organization"
+		const accountType: AccountType = params.get("type") === "enterprise"
+			? "enterprise"
 			: "individual";
 		const intentParam = params.get("intent");
 		const intent: UserIntent | "" = intentParam === "freelancer"

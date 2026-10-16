@@ -9,7 +9,7 @@ import type { ProfileTabPayload, ProfileView } from "../../types/profile-types.t
  * WorkTab — the profile's index section, as a stack of sections each omitted when its data is
  * empty: the client-proof strip · Selected work (the portfolio masonry, first because it is the
  * thing a visitor came to look at) · Hiring now (a buyer's open briefs) · Completed projects ·
- * People (the roster of a team / business / organisation). The seller's Services are NOT here: the
+ * People (the roster of a team / business / enterprise). The seller's Services are NOT here: the
  * layout renders them as their own region above the section tabs (`ProfileServicesSection`), so
  * they stay on screen whichever section is routed. Every collection is a server component; the
  * sheet is `profile-work.css`, which reaches the page through the profile islands' barrel import.
@@ -23,7 +23,7 @@ export function WorkTab(
 	},
 ): JSX.Element {
 	const multiMember = profile.kind === "team" || profile.kind === "business" ||
-		profile.kind === "organisation";
+		profile.kind === "enterprise";
 	return (
 		<div class="pf-work">
 			<ClientProofStrip clients={profile.notableClients} />

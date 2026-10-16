@@ -349,7 +349,7 @@ export class IntegrationsBackendService {
 		connectionId: string;
 		externalFileId: string;
 		folderId: string | null;
-		ownerType: "user" | "team" | "business" | "organisation";
+		ownerType: "user" | "team" | "business" | "enterprise";
 		ownerId: string;
 	}, actor: ReadActor): Promise<ServiceResult<AssetItem>> {
 		return signedIn("import", actor, async (a) => {

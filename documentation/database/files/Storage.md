@@ -22,11 +22,11 @@ build storage paths through it rather than hardcoding bucket ids or path strings
 | `project`       | Private     | 50 MiB · any     | `{project_id}`     | Project / channel / stage collaboration files.                                        |
 | `messages`      | Private     | 50 MiB · any     | `{thread_id}`      | Global DM / inbox attachments (not project-scoped).                                   |
 | `personal`      | Private     | 50 MiB · any     | owner (`auth.uid`) | Owner-only drive: drafts, personal templates, WIP.                                    |
-| `workspace`     | Private     | 50 MiB · any     | `{entity_id}`      | **Entity-owned** drive: the team / business / organisation counterpart of `personal`. |
+| `workspace`     | Private     | 50 MiB · any     | `{entity_id}`      | **Entity-owned** drive: the team / business / enterprise counterpart of `personal`. |
 | `invoices`      | Private     | 20 MiB · pdf     | `{owner_id}`       | Wallet statements / invoices / receipts.                                              |
 | `verification`  | **Service** | 20 MiB · img,pdf | `{subject_id}`     | KYC / KYB identity documents — service-role only.                                     |
 | `public_assets` | Public      | 10 MiB · img     | `{owner_id}`       | Misc public assets (general/legacy).                                                  |
-| `avatars`       | Public      | 5 MiB · img      | `{entity_id}`      | Profile photos (user / team / business / org) and group-conversation photos (under the uploader's id). **Service-role write only.** |
+| `avatars`       | Public      | 5 MiB · img      | `{entity_id}`      | Profile photos (user / team / business / enterprise) and group-conversation photos (under the uploader's id). **Service-role write only.** |
 | `showcase`      | Public      | 50 MiB · img,vid | `{entity_id}`      | A profile's six-slot showcase — stills and full-length videos. **Service-role write.** |
 | `catalogue`     | Public      | 10 MiB · img     | `{seller_id}`      | Marketplace storefront media (products, service showcase).                            |
 
@@ -54,7 +54,7 @@ arbitrary, unscanned file straight into a public bucket over the Storage API.
 
 ```text
 avatars/
-└── [entity_id]/                          -- the user, team, business or organisation it belongs to
+└── [entity_id]/                          -- the user, team, business or enterprise it belongs to
     ├── avatar/[rendition_id]/
     │   ├── full.webp                     -- the cropped 1:1 rendition (≤ 2048 px)
     │   └── {sm|md|lg}.webp               -- 96 / 256 / 1024 px tiers (files.item_variants)
@@ -148,12 +148,12 @@ into `avatars` or `showcase`, never the original itself.
 ### `workspace` (Private)
 
 The **entity-owned** counterpart of `personal` — the shared drive behind a team / business /
-organisation library in the `/files` hub. Seeded alongside the other private buckets in `00005040`
+enterprise library in the `/files` hub. Seeded alongside the other private buckets in `00005040`
 (private, **50 MiB**, any MIME); policies in `00002017`.
 
 ```text
 workspace/
-└── [entity_id]/          -- a team_id OR a business_id OR an organisation_id
+└── [entity_id]/          -- a team_id OR a business_id OR an enterprise_id
     └── ...
 ```
 
@@ -166,7 +166,7 @@ someone left. The gate is therefore **active membership of the anchor**, not obj
 bucket_id = 'workspace' AND (
      org.is_active_team_member    ((storage.foldername(name))[1]::uuid)
   OR org.is_active_business_member((storage.foldername(name))[1]::uuid)
-  OR org.is_organisation_member   ((storage.foldername(name))[1]::uuid)
+  OR org.is_enterprise_member   ((storage.foldername(name))[1]::uuid)
 )
 ```
 
@@ -185,7 +185,7 @@ authority belongs behind a capability check in the fat service, not in a blanket
 > `messages`.)
 
 Metering is the matching half: a `workspace` object's `files.items` row carries
-`owner_type ∈ {team, business, organisation}` with `owner_entity_id` = the anchor, so its bytes are
+`owner_type ∈ {team, business, enterprise}` with `owner_entity_id` = the anchor, so its bytes are
 charged to the **entity's** `storage_megabytes` allowance, never to the uploader's personal one. See
 [Tables.md](Tables.md#storage-quota).
 
@@ -196,7 +196,7 @@ write — documents are generated and written by the service role.
 
 ```text
 invoices/
-└── [owner_id]/            -- personal user id OR team/business/org wallet-scope id
+└── [owner_id]/            -- personal user id OR team/business/enterprise wallet-scope id
     └── [period]/statement.pdf
 ```
 
@@ -209,7 +209,7 @@ by a `SECURITY DEFINER` / service-role move, so no user JWT ever reads or writes
 
 ```text
 verification/
-└── [subject_id]/         -- user_id (KYC) or business/org_id (KYB)
+└── [subject_id]/         -- user_id (KYC) or business/enterprise id (KYB)
     └── [document_type]/file.xyz
 ```
 
@@ -273,7 +273,7 @@ any file the sniff does not identify as a program is admitted (a document, an ar
 a picture the pipeline can decode gets tiers and a measured envelope, and the server replaces the
 client's fingerprint with its own full SHA-256 of the bytes on promotion. The destination is the
 library the upload was declared into — `personal/users/{user_id}/library/{asset_id}/…` for a person,
-`workspace/{entity_id}/library/{asset_id}/…` for a team, business or organisation the caller is an
+`workspace/{entity_id}/library/{asset_id}/…` for a team, business or enterprise the caller is an
 active member of.
 
 A row that never completes (`pending_upload`) or was refused (`quarantined` / `error`) is never
@@ -366,7 +366,7 @@ what a policy would check.
 | `avatarLocation(...)` · `catalogueLocation(...)` · `publicAssetLocation(...)` | the three public buckets                     |
 
 > **`workspaceLocation()` is the one builder whose misuse is silent.** It takes the **team /
-> business / organisation id**, and is the entity counterpart of `personalLocation()`. Reaching for
+> business / enterprise id**, and is the entity counterpart of `personalLocation()`. Reaching for
 > `personalLocation()` for an entity asset does **two** wrong things at once: it mis-names the
 > object _and_ it resolves against the wrong predicate — `personal` is gated on
 > `auth.uid() = owner`, so the write would still **succeed** for the uploader and then be invisible

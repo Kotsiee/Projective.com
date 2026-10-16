@@ -168,13 +168,13 @@ function walletKey(ref: WalletRef): string {
 /**
  * Map a wallet scope onto the debugger's three-kind vocabulary.
  *
- * An **organisation** folds to `business`: the debugger's kinds describe how a principal SPENDS
- * (individually, as a team, as a company), and an organisation spends as a company. `aggregate` is a
+ * An **enterprise** folds to `business`: the debugger's kinds describe how a principal SPENDS
+ * (individually, as a team, as a company), and an enterprise spends as a company. `aggregate` is a
  * read-only rollup rather than a principal and is filtered out before this is called.
  */
 function scopeKindOf(scope: WalletRef["scope"]): FlowScopeKind {
 	if (scope === "team") return "team";
-	if (scope === "business" || scope === "organisation") return "business";
+	if (scope === "business" || scope === "enterprise") return "business";
 	return "user";
 }
 // #endregion

@@ -92,7 +92,7 @@ const LINE_COLS =
 	"destination_email, metadata, created_at, updated_at";
 const PROJECT_COLS =
 	"id, slug, title, status, currency, budget_amount_cents, owner_user_id, owner_team_id, " +
-	"client_business_id, owner_organisation_id, source_blueprint_id, format, structure_variation";
+	"client_business_id, owner_enterprise_id, source_blueprint_id, format, structure_variation";
 const TICKET_COLS =
 	"id, slug, project_id, title, text_description, payment_status, current_stage_id, " +
 	"current_assignee_id, unit_price_cents";
@@ -156,7 +156,7 @@ interface ProjectFact {
 	owner_user_id: string;
 	owner_team_id: string | null;
 	client_business_id: string | null;
-	owner_organisation_id: string | null;
+	owner_enterprise_id: string | null;
 	source_blueprint_id: string | null;
 	format: string;
 	structure_variation: string;
@@ -300,13 +300,13 @@ function projectBelongsTo(project: ProjectFact, owner: ResolvedOwner): boolean {
 			return project.owner_team_id === owner.ownerId;
 		case "business":
 			return project.client_business_id === owner.ownerId;
-		case "organisation":
-			return project.owner_organisation_id === owner.ownerId;
+		case "enterprise":
+			return project.owner_enterprise_id === owner.ownerId;
 		default:
 			// A personal project is one no workspace owns: the three workspace columns are exclusive, and
 			// a project filed under one of them is that workspace's to fund.
 			return project.owner_user_id === owner.ownerId && !project.owner_team_id &&
-				!project.client_business_id && !project.owner_organisation_id;
+				!project.client_business_id && !project.owner_enterprise_id;
 	}
 }
 
@@ -1443,7 +1443,7 @@ export async function readLists(
 /** The switcher's kind for an owner scope key. */
 function ownerKindOf(key: string): BasketOwnerKind {
 	const prefix = key.slice(0, key.indexOf(":"));
-	return prefix === "team" || prefix === "business" || prefix === "organisation" ? prefix : "personal";
+	return prefix === "team" || prefix === "business" || prefix === "enterprise" ? prefix : "personal";
 }
 
 /**

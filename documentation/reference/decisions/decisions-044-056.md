@@ -135,7 +135,7 @@ that renders the shell** (`protectedRoute` threaded `(dashboard)/_layout` → `U
 (route groups are stripped from the path). **(C) Account popover real-data binding.** The
 `ui-popover__content` account menu was cosmetic (initials "You" + `@handle`). It now binds **live
 account data** — real name, avatar, email, role badge
-(Client/Freelancer/Team/Business/Organisation), online status, and active workspace — via the 12th
+(Client/Freelancer/Team/Business/Enterprise), online status, and active workspace — via the 12th
 thin/fat read: `AccountService.current()` (client, chrome-safe: a failed load → context fallback,
 never a redirect) → thin `GET /api/user/me` → fat `UserBackendService.me({ context, accessToken })`,
 which **composes** the chrome `UserContext` (role + workspace via `resolveAccountRole`) with the
@@ -478,7 +478,7 @@ engine (migrations 0009/0305/0309/0310) **plus** the new tables, and `org`/`secu
 contract), `PRODUCT_MANAGEMENT.md` §3.5 (finance domain lifecycles ≠ build states). **Reused, NOT
 forked:** spending caps = `finance.spending_limits`; team split shares =
 `finance.contribution_agreements` (the new `finance.split_rules` adds only the ruleset template);
-org KYB = existing `org.organisation_verification_level`. **Flagged conflicts (surface, do NOT
+enterprise KYB = existing `org.enterprise_verification_level`. **Flagged conflicts (surface, do NOT
 resolve):** (a) **FX economics OPEN** — who bears the spread / how the conversion fee is charged is
 undecided (finance-model §11). (b) **Materialised single-entry balance** (`wallets.balance_cents` +
 `transactions.balance_after_cents`) vs the derived-double-entry model finance-model §7 aspires to —
@@ -521,7 +521,7 @@ balance/split/fee/conversion). Added to the SSOT (never inlined):
 `PayoutsView`/`FundingView`/`MethodsView`/`InvoicesView`/`AccessView` + the action inputs + the pure
 `formatMoney`/`capabilitiesForRole`/`walletVariant` helpers + the `WalletQuery`/`WalletSim` read
 shapes). **The wallet is the finance face of the active context** (Decisions #16/#17): a personal
-wallet, a team/business/organisation vault (same route, `?w=scope:id` switcher override), or a
+wallet, a team/business/enterprise vault (same route, `?w=scope:id` switcher override), or a
 read-only **"All accounts"** aggregate rollup; three overview faces (personal freelancer/client ·
 team split · business burn-down). Fixtures DERIVE a coherent finance world from the SAME cast as the
 rest of the app (`nav-fixtures` `northwind`/`atlas-collective`/`monarch-labs`/`verdant-studio`,

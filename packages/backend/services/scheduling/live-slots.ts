@@ -32,7 +32,7 @@ import {
 // #region Owner
 /** Whose schedule: an individual is ONE schedule (`user`) whatever their freelancer flag; a team is `team`. */
 export interface ScheduleOwner {
-	type: "user" | "team" | "business" | "organisation";
+	type: "user" | "team" | "business" | "enterprise";
 	id: string;
 }
 

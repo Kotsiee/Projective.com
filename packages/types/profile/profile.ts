@@ -32,10 +32,10 @@ import { AdornmentSlugSchema, PUBLIC_ADORNMENT_LIMIT, VerificationStampSchema } 
 // #region Taxonomy
 /**
  * The profile entity types that drive the tab matrix + capability chrome (root CLAUDE.md
- * Decisions #9/#10 — organisations/businesses are client/buyer-only). Maps 1:1 from the discovery
+ * Decisions #9/#10 — enterprises/businesses are client/buyer-only). Maps 1:1 from the discovery
  * `ProfileEntity` (`users`→`client`, `freelancers`→`freelancer`, `teams`→`team`,
- * `businesses`→`business`); **`organisation`** is the department-structured buyer entity (root
- * CLAUDE.md Decision #16 — the `organisation` context) surfaced as a profile: it adds the Departments
+ * `businesses`→`business`); **`enterprise`** is the department-structured buyer entity (root
+ * CLAUDE.md Decision #16 — the `enterprise` context) surfaced as a profile: it adds the Departments
  * tab and a department-grouped Members view. Like a client/business it never sells (buyer-only).
  */
 export const ProfileKind = z.enum([
@@ -43,7 +43,7 @@ export const ProfileKind = z.enum([
 	"freelancer",
 	"team",
 	"business",
-	"organisation",
+	"enterprise",
 ]);
 export type ProfileKind = z.infer<typeof ProfileKind>;
 
@@ -78,7 +78,7 @@ export const ProfileLanguageSchema = z.object({
 });
 export type ProfileLanguage = z.infer<typeof ProfileLanguageSchema>;
 
-/** A verified notable client / organisation the profile has worked with (a trust signal, logo-led). */
+/** A verified notable client / enterprise the profile has worked with (a trust signal, logo-led). */
 export const NotableClientSchema = z.object({
 	name: z.string(),
 	/** Logo/avatar URL. */
@@ -220,7 +220,7 @@ export const ProfileVisibility = z.enum(["public", "unlisted", "private"]);
 export type ProfileVisibility = z.infer<typeof ProfileVisibility>;
 
 /** The polymorphic owner of a profile — the `org.profile_follows` vocabulary. */
-export const ProfileOwnerType = z.enum(["user", "team", "business", "organisation"]);
+export const ProfileOwnerType = z.enum(["user", "team", "business", "enterprise"]);
 export type ProfileOwnerType = z.infer<typeof ProfileOwnerType>;
 
 /**
@@ -239,7 +239,7 @@ export const ProfileMetricsSchema = z.object({
 	articles: z.number().optional(),
 	reviews: z.number().optional(),
 	members: z.number().optional(),
-	/** Organisation only — number of departments (drives the Departments tab count chip). */
+	/** Enterprise only — number of departments (drives the Departments tab count chip). */
 	departments: z.number().optional(),
 });
 export type ProfileMetrics = z.infer<typeof ProfileMetricsSchema>;
@@ -286,7 +286,7 @@ export const ProfileViewSchema = z.object({
 	skills: z.array(SkillRefSchema),
 	/** Languages + proficiency levels. */
 	languages: z.array(ProfileLanguageSchema),
-	/** Verified notable clients / organisations worked with. */
+	/** Verified notable clients / enterprises worked with. */
 	notableClients: z.array(NotableClientSchema),
 	/** Base location + timezone. */
 	location: ProfileLocationSchema,
@@ -341,12 +341,12 @@ export const ProfileViewSchema = z.object({
 	verifications: z.array(VerificationTier),
 	/**
 	 * The strongest verification authority — the crest beside the name (Decision #155). A person's
-	 * identity or payout check; a business's or organisation's corporate KYB.
+	 * identity or payout check; a business's or enterprise's corporate KYB.
 	 */
 	verificationStamp: VerificationStampSchema,
 	/**
 	 * The earned trust signals a public surface shows: ranked by `rankAdornments` and capped at
-	 * {@link PUBLIC_ADORNMENT_LIMIT}. Always empty for a buyer, a business and an organisation.
+	 * {@link PUBLIC_ADORNMENT_LIMIT}. Always empty for a buyer, a business and an enterprise.
 	 */
 	adornments: z.array(AdornmentSlugSchema).max(PUBLIC_ADORNMENT_LIMIT),
 	/** Follower / following counts. */

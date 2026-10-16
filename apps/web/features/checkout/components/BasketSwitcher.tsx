@@ -9,7 +9,7 @@ import type { BasketOwnerSummary, BasketSummary } from "../types/checkout-types.
 /**
  * BasketSwitcher — which account's basket or list is open, as one grouped `Select` (Decision #70(k)).
  *
- * Grouped by owner — Personal, then each team, business and organisation the buyer can spend from —
+ * Grouped by owner — Personal, then each team, business and enterprise the buyer can spend from —
  * each listing that owner's baskets and named lists with their item count and selected subtotal. The
  * last row is "New list". Shared by the header basket drawer and the `/checkout` header band below
  * `--bp-md`, where the list lane is not rendered, so a phone switches lists with the same control.

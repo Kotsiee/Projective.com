@@ -63,7 +63,7 @@ the only write path is `analytics.fn_emit`.
 on `actor_user_id`.
 
 > **Scale-out (deferred, deliberate):** monthly `RANGE` partitioning is the documented next step. It
-> is a physical reorganisation rather than an additive change, so it is left to a dedicated
+> is a physical restructuring rather than an additive change, so it is left to a dedicated
 > migration with human sign-off.
 
 ---
@@ -122,7 +122,7 @@ occurrence counts and last-seen timestamps. `service_role` only.
 
 ```sql
 CREATE TYPE analytics.subject_kind AS ENUM (
-    'user', 'freelancer', 'business', 'team', 'organisation',
+    'user', 'freelancer', 'business', 'team', 'enterprise',
     'project', 'stage', 'ticket', 'listing', 'platform'
 );
 ```

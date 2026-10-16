@@ -1,6 +1,6 @@
 -- ============================================================================
 -- 00001020 functions org entities
--- Consolidated from: 0109_is_active_team_member.sql, 0111_business_helpers.sql, 0307_stage_staffing.sql, 0313_freelancer_conversion.sql, 0314_organisations.sql, 20260709120000_business_teams_overhaul.sql; the workspace permission engine and its write/read RPCs are Decision #122.
+-- Consolidated from: 0109_is_active_team_member.sql, 0111_business_helpers.sql, 0307_stage_staffing.sql, 0313_freelancer_conversion.sql, 0314_enterprises.sql, 20260709120000_business_teams_overhaul.sql; the workspace permission engine and its write/read RPCs are Decision #122.
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION org.is_active_team_member(_team_id uuid)
@@ -128,9 +128,9 @@ BEGIN
 
     -- 3. Activate the freelancer persona immediately so the suite unlocks without a manual switch.
     --    Freelancer profiles are keyed by user_id, so the active profile id is the user id. It goes
-    --    through the one session-context writer, which clears the team and organisation slots in the
+    --    through the one session-context writer, which clears the team and enterprise slots in the
     --    same statement: writing only the profile slot left a caller acting as a team or an
-    --    organisation holding two slots, which ck_session_context_one_slot refuses — so the
+    --    enterprise holding two slots, which ck_session_context_one_slot refuses — so the
     --    conversion failed for exactly the people most likely to attempt it.
     PERFORM security.fn_set_session_context('freelancer', v_uid, NULL, NULL, v_uid);
 
@@ -163,9 +163,9 @@ $$;
 -- #endregion
 
 -- #region Membership helper (SECURITY DEFINER — bypasses RLS so the policies below can't recurse)
-CREATE OR REPLACE FUNCTION org.is_organisation_member(
-    p_org uuid,
-    p_min_role org.organisation_role DEFAULT 'member'
+CREATE OR REPLACE FUNCTION org.is_enterprise_member(
+    p_enterprise uuid,
+    p_min_role org.enterprise_role DEFAULT 'member'
 ) RETURNS boolean
 LANGUAGE sql
 SECURITY DEFINER
@@ -174,8 +174,8 @@ SET search_path = org, public
 AS $$
     SELECT EXISTS (
         SELECT 1
-        FROM org.organisation_members m
-        WHERE m.organisation_id = p_org
+        FROM org.enterprise_members m
+        WHERE m.enterprise_id = p_enterprise
           AND m.user_id = auth.uid ()
           AND m.status = 'active'
           AND (
@@ -206,10 +206,10 @@ $$;
 
 -- #region 5b. The acting entity's own name — read through a door, not through RLS
 -- `UserBackendService.me` names the entity a person acts as. It read the name as the caller under
--- RLS, which works for a team (members may SELECT their team) and an organisation, and returns
+-- RLS, which works for a team (members may SELECT their team) and an enterprise, and returns
 -- NOTHING for a business: `org.business_profiles` has no client SELECT policy at all, so a business
 -- member's header fell back to the slug. This answers for exactly one entity — the one named — and
--- only when the caller holds an active seat in it (the owner of an organisation counts), so it can
+-- only when the caller holds an active seat in it (the owner of an enterprise counts), so it can
 -- never be used to read an entity the caller is not acting inside. NULL when they are not.
 CREATE OR REPLACE FUNCTION org.get_acting_context_details(p_context_type text, p_context_id uuid)
 RETURNS jsonb
@@ -243,16 +243,16 @@ BEGIN
               SELECT 1 FROM org.business_members m
               WHERE m.business_id = b.id AND m.user_id = v_uid AND m.status = 'active'
           );
-    ELSIF p_context_type = 'organisation' THEN
+    ELSIF p_context_type = 'enterprise' THEN
         SELECT COALESCE(NULLIF(btrim(o.trading_name), ''), o.legal_name), o.handle
           INTO v_name, v_handle
-        FROM org.organisations o
+        FROM org.enterprises o
         WHERE o.id = p_context_id
           AND (
               o.owner_user_id = v_uid
               OR EXISTS (
-                  SELECT 1 FROM org.organisation_members m
-                  WHERE m.organisation_id = o.id AND m.user_id = v_uid AND m.status = 'active'
+                  SELECT 1 FROM org.enterprise_members m
+                  WHERE m.enterprise_id = o.id AND m.user_id = v_uid AND m.status = 'active'
               )
           );
     ELSE
@@ -273,21 +273,21 @@ END;
 $$;
 -- #endregion
 
--- #region 5c. Editing an organisation — the one write door
--- `org.organisations` had a bare `FOR UPDATE` policy for its owner and admins: no column list, no
+-- #region 5c. Editing an enterprise — the one write door
+-- `org.enterprises` had a bare `FOR UPDATE` policy for its owner and admins: no column list, no
 -- WITH CHECK, no validation. Any admin could rewrite the legal name, the registration number and the
 -- corporate and billing addresses over PostgREST, with nothing checked and nothing recorded. The
--- policy is gone (00002010); this is the only way an organisation changes now.
+-- policy is gone (00002010); this is the only way an enterprise changes now.
 --
 --   * Only the keys below are accepted; an unknown key is refused, never ignored, and the
 --     platform-owned columns (owner · handle · status · verification · logo) are refused by name.
 --   * The LEGAL identity — legal name, registration number, corporate email — is the owner's to
 --     change, and is frozen once KYB has begun (`kyb_pending`, `verified`): a verified identity that
 --     could be edited afterwards would verify nothing.
---   * Every value is checked against the bounds `@projective/types/org` UpdateOrganisationSchema
+--   * Every value is checked against the bounds `@projective/types/org` UpdateEnterpriseSchema
 --     states; an empty string clears an optional field.
---   * Every edit is audited (`organisation.updated`, with the keys changed).
-CREATE OR REPLACE FUNCTION org.update_organisation(p_org_id uuid, p_payload jsonb)
+--   * Every edit is audited (`enterprise.updated`, with the keys changed).
+CREATE OR REPLACE FUNCTION org.update_enterprise(p_enterprise_id uuid, p_payload jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -295,9 +295,9 @@ SET search_path = ''
 AS $$
 DECLARE
     v_uid uuid := auth.uid();
-    v_org org.organisations%ROWTYPE;
+    v_enterprise org.enterprises%ROWTYPE;
     v_is_owner boolean;
-    v_is_org_admin boolean;
+    v_is_enterprise_admin boolean;
     v_key text;
     v_text text;
     v_spec record;
@@ -320,15 +320,15 @@ BEGIN
         RAISE EXCEPTION 'Nothing to update' USING ERRCODE = '22023';
     END IF;
 
-    SELECT * INTO v_org FROM org.organisations o WHERE o.id = p_org_id FOR UPDATE;
+    SELECT * INTO v_enterprise FROM org.enterprises o WHERE o.id = p_enterprise_id FOR UPDATE;
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'Organisation not found' USING ERRCODE = 'P0002';
+        RAISE EXCEPTION 'Enterprise not found' USING ERRCODE = 'P0002';
     END IF;
 
-    v_is_owner := v_org.owner_user_id = v_uid;
-    v_is_org_admin := org.is_organisation_member(p_org_id, 'admin');
-    IF NOT v_is_owner AND NOT v_is_org_admin AND NOT security.is_admin() THEN
-        RAISE EXCEPTION 'Only the owner or an admin can edit this organisation' USING ERRCODE = '42501';
+    v_is_owner := v_enterprise.owner_user_id = v_uid;
+    v_is_enterprise_admin := org.is_enterprise_member(p_enterprise_id, 'admin');
+    IF NOT v_is_owner AND NOT v_is_enterprise_admin AND NOT security.is_admin() THEN
+        RAISE EXCEPTION 'Only the owner or an admin can edit this enterprise' USING ERRCODE = '42501';
     END IF;
 
     -- Which keys, and who may send them.
@@ -340,10 +340,10 @@ BEGIN
         END IF;
         IF v_key = ANY (v_identity_keys) THEN
             IF NOT v_is_owner AND NOT security.is_admin() THEN
-                RAISE EXCEPTION 'Only the owner can change the organisation''s legal identity'
+                RAISE EXCEPTION 'Only the owner can change the enterprise''s legal identity'
                     USING ERRCODE = '42501';
             END IF;
-            IF v_org.verification_level IN ('kyb_pending', 'verified') THEN
+            IF v_enterprise.verification_level IN ('kyb_pending', 'verified') THEN
                 RAISE EXCEPTION 'The legal identity is locked while verification is under way or complete'
                     USING ERRCODE = '55000';
             END IF;
@@ -401,20 +401,20 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- An 'other' industry needs its specifier (organisations_industry_other_ck) — said in words here
+    -- An 'other' industry needs its specifier (enterprises_industry_other_ck) — said in words here
     -- rather than as a constraint violation.
     IF COALESCE(
            CASE WHEN p_payload ? 'primaryIndustry' THEN NULLIF(btrim(p_payload->>'primaryIndustry'), '')
-                ELSE v_org.primary_industry END, ''
+                ELSE v_enterprise.primary_industry END, ''
        ) = 'other'
        AND COALESCE(
            CASE WHEN p_payload ? 'industryOther' THEN NULLIF(btrim(p_payload->>'industryOther'), '')
-                ELSE v_org.industry_other END, ''
+                ELSE v_enterprise.industry_other END, ''
        ) = '' THEN
         RAISE EXCEPTION 'Name the industry when choosing Other' USING ERRCODE = '22023';
     END IF;
 
-    UPDATE org.organisations o SET
+    UPDATE org.enterprises o SET
         legal_name = CASE WHEN p_payload ? 'legalName' THEN btrim(p_payload->>'legalName') ELSE o.legal_name END,
         trading_name = CASE WHEN p_payload ? 'tradingName'
             THEN NULLIF(btrim(p_payload->>'tradingName'), '') ELSE o.trading_name END,
@@ -453,23 +453,23 @@ BEGIN
         default_currency = CASE WHEN p_payload ? 'defaultCurrency'
             THEN upper(btrim(p_payload->>'defaultCurrency')) ELSE o.default_currency END,
         updated_at = now()
-    WHERE o.id = p_org_id;
+    WHERE o.id = p_enterprise_id;
 
     SELECT jsonb_agg(k ORDER BY k) INTO v_fields FROM jsonb_object_keys(p_payload) k;
 
     INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
     VALUES (
         v_uid,
-        'organisation.updated',
-        'org.organisations',
-        p_org_id,
+        'enterprise.updated',
+        'org.enterprises',
+        p_enterprise_id,
         jsonb_build_object(
             'fields', v_fields,
-            'as_platform_admin', NOT v_is_owner AND NOT v_is_org_admin
+            'as_platform_admin', NOT v_is_owner AND NOT v_is_enterprise_admin
         )
     );
 
-    RETURN jsonb_build_object('id', p_org_id, 'updated_fields', v_fields);
+    RETURN jsonb_build_object('id', p_enterprise_id, 'updated_fields', v_fields);
 END;
 $$;
 -- #endregion
@@ -820,7 +820,7 @@ $$;
 
 -- #region 9. Handles — one namespace across people and entities
 -- Four tables hold a public `@handle` (users_public.username, teams.slug, business_profiles.slug,
--- organisations.handle), each UNIQUE only within itself, and org.fn_resolve_profile ranks a person
+-- enterprises.handle), each UNIQUE only within itself, and org.fn_resolve_profile ranks a person
 -- above a team above a business. So an entity could claim a handle a person already held and then
 -- be unreachable at /@handle forever. Every create path now asks the whole namespace, under an
 -- advisory lock on the handle so two creates racing for it cannot both see it free.
@@ -859,7 +859,7 @@ AS $$
     SELECT EXISTS (SELECT 1 FROM org.users_public u WHERE lower(u.username) = lower(p_handle))
         OR EXISTS (SELECT 1 FROM org.teams t WHERE lower(t.slug) = lower(p_handle))
         OR EXISTS (SELECT 1 FROM org.business_profiles b WHERE lower(b.slug) = lower(p_handle))
-        OR EXISTS (SELECT 1 FROM org.organisations o WHERE lower(o.handle) = lower(p_handle))
+        OR EXISTS (SELECT 1 FROM org.enterprises o WHERE lower(o.handle) = lower(p_handle))
         OR EXISTS (
             SELECT 1 FROM org.handle_changes h
              WHERE lower(h.old_handle) = lower(p_handle) AND h.changed_at > now() - interval '90 days'

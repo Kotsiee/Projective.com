@@ -11,7 +11,7 @@ import type { AuthResult } from "../types/mod.ts";
  * place that knows the endpoint map. See `SYSTEM_ARCHITECTURE.md` §Backend Services.
  */
 export const AuthService = {
-	/** Create an individual or organisation account. */
+	/** Create an individual or enterprise account. */
 	join(payload: unknown): Promise<AuthResult> {
 		return postAuth("/api/auth/join", payload);
 	},

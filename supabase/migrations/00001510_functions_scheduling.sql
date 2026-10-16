@@ -24,12 +24,12 @@ AS $$
         OR (p_owner_type IN ('user', 'freelancer') AND p_owner_id = auth.uid ())
         OR (p_owner_type = 'team' AND org.is_active_team_member (p_owner_id))
         OR (p_owner_type = 'business' AND org.is_active_business_member (p_owner_id))
-        OR (p_owner_type = 'organisation' AND org.is_organisation_member (p_owner_id));
+        OR (p_owner_type = 'enterprise' AND org.is_enterprise_member (p_owner_id));
 $$;
 
 -- May the caller MUTATE this owner's schedule? Deliberately narrower than visibility: an individual
 -- owns their own schedule outright, while a shared entity's schedule is edited by a team lead /
--- business member / organisation member. Tightening the shared-entity write gate to a specific
+-- business member / enterprise member. Tightening the shared-entity write gate to a specific
 -- permission (`org.team_permission` / `org.business_permission`) is FLAGGED for human sign-off
 -- rather than guessed at here (root CLAUDE.md §8).
 CREATE OR REPLACE FUNCTION scheduling.fn_owner_manages(
@@ -46,7 +46,7 @@ AS $$
         OR (p_owner_type IN ('user', 'freelancer') AND p_owner_id = auth.uid ())
         OR (p_owner_type = 'team' AND org.is_team_lead (p_owner_id))
         OR (p_owner_type = 'business' AND org.is_active_business_member (p_owner_id))
-        OR (p_owner_type = 'organisation' AND org.is_organisation_member (p_owner_id));
+        OR (p_owner_type = 'enterprise' AND org.is_enterprise_member (p_owner_id));
 $$;
 
 -- Resolve a schedule id to its owner then defer to the two predicates above.

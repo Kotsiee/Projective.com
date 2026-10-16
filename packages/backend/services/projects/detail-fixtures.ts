@@ -223,7 +223,7 @@ function stageChannels(row: ProjectSummary, structure: ProjectStructure): StageC
 /**
  * The hired team the viewer is on, if any. In this corpus that is a team-scope engagement past draft
  * with a client on the other side: Northwind Studio — the freelancer-side team the actor belongs to —
- * was hired onto it. Business and organisation scopes are the buying side and personal work has no
+ * was hired onto it. Business and enterprise scopes are the buying side and personal work has no
  * team, so those never have a Teams group.
  */
 function teamChannels(row: ProjectSummary, stages: StageChannel[]): TeamChannel[] {

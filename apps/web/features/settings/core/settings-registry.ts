@@ -330,14 +330,14 @@ export const SETTINGS_REGISTRY: readonly SettingsRegistryEntry[] = [
 		anchor: "businesses",
 	},
 	{
-		key: "workspaces.organisations",
+		key: "workspaces.enterprises",
 		section: "workspaces",
-		label: "Organisations",
-		description: "Organisations you can act for",
+		label: "Enterprises",
+		description: "Enterprises you can act for",
 		icon: "building",
-		keywords: ["organisation", "organization", "institution"],
+		keywords: ["enterprise", "institution"],
 		surface: "modal",
-		anchor: "organisations",
+		anchor: "enterprises",
 	},
 	// Language & region
 	{

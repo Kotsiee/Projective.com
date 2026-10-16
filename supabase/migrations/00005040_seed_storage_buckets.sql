@@ -63,7 +63,7 @@ VALUES (
         NULL
     ) ON CONFLICT (id) DO NOTHING;
 
--- ENTITY-owned private drive: the team / business / organisation counterpart of `personal`. Anchored
+-- ENTITY-owned private drive: the team / business / enterprise counterpart of `personal`. Anchored
 -- on {entity_id} rather than {user_id}, because the whole point of an entity asset is that it
 -- OUTLIVES the member who uploaded it — anchoring on the uploader would strand a departing member's
 -- files behind a personal gate. Access is active membership of that entity, not object ownership.
@@ -115,7 +115,7 @@ VALUES (
         ARRAY['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']
     ) ON CONFLICT (id) DO NOTHING;
 
--- Profile / team / business / org branding: avatars, banners, logos. Public read; owner write.
+-- Profile / team / business / enterprise branding: avatars, banners, logos. Public read; owner write.
 INSERT INTO
     storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (

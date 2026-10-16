@@ -5,7 +5,7 @@ import type { Option } from "@projective/ui/fields";
  * step form, the summary panel, and (where relevant) server validation.
  */
 
-/** "What are you here to do?" — optional purpose chips (individual + org share the pool). */
+/** "What are you here to do?" — optional purpose chips (individual + enterprise share the pool). */
 export const PURPOSES: readonly Option[] = [
 	{ value: "find-work", label: "Find freelance work" },
 	{ value: "hire-talent", label: "Hire talent" },

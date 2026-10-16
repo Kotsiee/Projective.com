@@ -66,7 +66,7 @@ export const AssetVisibility = z.enum(["private", "link", "public"]);
 export type AssetVisibility = z.infer<typeof AssetVisibility>;
 
 /** Which kind of principal owns an asset — the axis storage quota is metered against. */
-export const AssetOwnerType = z.enum(["user", "team", "business", "organisation"]);
+export const AssetOwnerType = z.enum(["user", "team", "business", "enterprise"]);
 export type AssetOwnerType = z.infer<typeof AssetOwnerType>;
 
 /**
@@ -280,7 +280,7 @@ export const AssetItemSchema = z.object({
 	status: FileStatus,
 	visibility: AssetVisibility,
 	ownerType: AssetOwnerType,
-	/** The owning principal's id — a user id, or a team/business/organisation id. */
+	/** The owning principal's id — a user id, or a team/business/enterprise id. */
 	ownerId: z.string().min(1).max(80),
 	/** The owning folder id; `null` at the library root. */
 	folderId: z.string().max(120).nullable(),

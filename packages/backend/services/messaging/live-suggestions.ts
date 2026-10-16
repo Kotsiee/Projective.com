@@ -36,9 +36,9 @@ import { fetchConversations } from "./live-queries.ts";
  * a connection, a follow or a contact list". Four tables now do, each readable under the caller's
  * own row-level policy, and each is exactly one tier of the picker's ladder:
  *
- *  - `org.team_members` · `org.business_members` · `org.organisation_members` — a SHARED WORKSPACE.
- *    A member reads the whole roster of a team or business they are active in; an organisation's
- *    roster is admin-readable only, so a plain member's organisation contributes nobody (a true
+ *  - `org.team_members` · `org.business_members` · `org.enterprise_members` — a SHARED WORKSPACE.
+ *    A member reads the whole roster of a team or business they are active in; an enterprise's
+ *    roster is admin-readable only, so a plain member's enterprise contributes nobody (a true
  *    answer, not a failure).
  *  - `org.profile_follows` — FOLLOWS, in both directions, keyed on `target_entity_type = 'user'`.
  *    Read as a public, counted edge (the table's own comment) under the policy added with this
@@ -96,7 +96,7 @@ const HANDLE_MAX = 40;
 const DEFAULT_ENTITY_NAME: Readonly<Record<SharedEntityKind, string>> = {
 	team: "Team",
 	business: "Business",
-	organisation: "Organisation",
+	enterprise: "Enterprise",
 };
 
 /**
@@ -120,7 +120,7 @@ interface NamedEntityRow {
 	name: string | null;
 }
 
-interface OrganisationRow {
+interface EnterpriseRow {
 	id: string;
 	trading_name: string | null;
 	legal_name: string | null;
@@ -181,7 +181,7 @@ function chunked<T>(items: readonly T[], size: number): T[][] {
 
 /**
  * Shared workspaces — for each kind, the viewer's active memberships, then the rosters of those
- * workspaces, then the workspaces' names. The organisation read degrades to nothing for a plain
+ * workspaces, then the workspaces' names. The enterprise read degrades to nothing for a plain
  * member (admin-only roster policy) rather than erroring.
  */
 async function gatherSharedEntities(actor: Actor, map: EvidenceMap): Promise<void> {
@@ -192,7 +192,7 @@ async function gatherSharedEntities(actor: Actor, map: EvidenceMap): Promise<voi
 		table: string;
 		fk: string;
 		entityTable: string;
-		nameOf: (row: NamedEntityRow & OrganisationRow) => string;
+		nameOf: (row: NamedEntityRow & EnterpriseRow) => string;
 	};
 	const specs: Spec[] = [
 		{
@@ -210,11 +210,11 @@ async function gatherSharedEntities(actor: Actor, map: EvidenceMap): Promise<voi
 			nameOf: (r) => r.name ?? "Business",
 		},
 		{
-			kind: "organisation",
-			table: "organisation_members",
-			fk: "organisation_id",
-			entityTable: "organisations",
-			nameOf: (r) => r.trading_name ?? r.legal_name ?? "Organisation",
+			kind: "enterprise",
+			table: "enterprise_members",
+			fk: "enterprise_id",
+			entityTable: "enterprises",
+			nameOf: (r) => r.trading_name ?? r.legal_name ?? "Enterprise",
 		},
 	];
 
@@ -235,7 +235,7 @@ async function gatherSharedEntities(actor: Actor, map: EvidenceMap): Promise<voi
 		];
 		if (entityIds.length === 0) return;
 
-		const nameCols = spec.kind === "organisation" ? "id, trading_name, legal_name" : "id, name";
+		const nameCols = spec.kind === "enterprise" ? "id, trading_name, legal_name" : "id, name";
 		const [rosters, names] = await Promise.all([
 			Promise.all(
 				chunked(entityIds, LOOKUP_CHUNK).map((ids) =>
@@ -257,7 +257,7 @@ async function gatherSharedEntities(actor: Actor, map: EvidenceMap): Promise<voi
 		const nameById = new Map<string, string>();
 		for (const res of names) {
 			if (res.error) continue;
-			for (const row of (res.data ?? []) as unknown as (NamedEntityRow & OrganisationRow)[]) {
+			for (const row of (res.data ?? []) as unknown as (NamedEntityRow & EnterpriseRow)[]) {
 				nameById.set(row.id, spec.nameOf(row));
 			}
 		}

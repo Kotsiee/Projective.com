@@ -59,7 +59,7 @@ export const ANONYMOUS_VIEWER: SchedulingViewer = { authenticated: false, handle
  *
  * The test reads the seating the SERVER performed (`viewerIsHost`, and the roster row it marked
  * `isViewer`) rather than comparing handles here, because a handle comparison cannot see a
- * team-owned engagement where the acting seat is an organisation's, and because the client must
+ * team-owned engagement where the acting seat is an enterprise's, and because the client must
  * never be the one deciding. Resolving identity and applying privacy stay two steps: the reader
  * seats whoever is asking, this predicate reads the seating.
  *

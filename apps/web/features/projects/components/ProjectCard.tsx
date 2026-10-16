@@ -97,7 +97,7 @@ export function ProjectCard(
 		? Math.max(0, Math.min(1, (item.completedStages ?? 0) / (item.totalStages as number)))
 		: 0;
 
-	// Row 3: a shared workspace (team/business/org) surfaces its owning mark; individual freelancer
+	// Row 3: a shared workspace (team/business/enterprise) surfaces its owning mark; individual freelancer
 	// (personal) work hides it. The footer renders when there's a mark or an involvement state to show.
 	const isShared = item.scopeType !== "personal";
 	const hasFooter = isShared || Boolean(item.activity);

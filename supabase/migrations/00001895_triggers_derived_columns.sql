@@ -9,7 +9,7 @@
 --
 -- Scope: the three tables whose schemas became reachable through PostgREST with the live discovery
 -- reads (`marketplace`, `catalogue`), and the two `org` profile owners a client once wrote
--- directly (`org.teams`, `org.organisations`; both are definer-only now) — see the `org` region
+-- directly (`org.teams`, `org.enterprises`; both are definer-only now) — see the `org` region
 -- below for the audit that cleared them.
 -- =============================================================================================
 
@@ -50,9 +50,9 @@ CREATE TRIGGER trg_listings_derived
 -- `org.users_public`, `org.freelancer_profiles`, `org.business_profiles` and (since 2026-09-28)
 -- `org.teams` carry no client write policy at all, so nothing reaches them but a definer — a team is
 -- renamed through org.update_workspace, which checks `edit_profile`. Since 2026-10-06 the same holds
--- for `org.organisations`: its bare UPDATE policy is gone and org.update_organisation (00001020 §5c)
+-- for `org.enterprises`: its bare UPDATE policy is gone and org.update_enterprise (00001020 §5c)
 -- is the one write door. The guards below stay as defence in depth: a future policy that re-opens
--- either table must not re-open these columns with it — an organisation must never be set to a
+-- either table must not re-open these columns with it — an enterprise must never be set to a
 -- rating, handed to an admin, marked verified, given somebody else's `@handle`, or have its picture
 -- pointed at a file from another person's library.
 --
@@ -63,8 +63,8 @@ CREATE TRIGGER trg_listings_derived
 --   current_workload_intensity         projects.fn_sync_workload_intensity           (00001140)
 --   owner · treasury · tier            org.create_workspace, org.transfer_workspace_ownership (00001020)
 --   avatar · banner · logo             org.set_profile_avatar — checks the file's owner (00001040)
---   organisation owner · status ·
---   verification · handle              public.create_organisation (service role)     (00001010)
+--   enterprise owner · status ·
+--   verification · handle              public.create_enterprise (service role)     (00001010)
 -- No INVOKER trigger writes any of them on a client's behalf, so the guards refuse only the client.
 -- `service_count` / `product_count` have no writer yet; the guard holds them at what the platform set.
 
@@ -84,9 +84,9 @@ CREATE TRIGGER trg_teams_immutable
         'avatar_file_id', 'banner_file_id'
     );
 
-DROP TRIGGER IF EXISTS trg_organisations_immutable ON org.organisations;
-CREATE TRIGGER trg_organisations_immutable
-    BEFORE UPDATE ON org.organisations
+DROP TRIGGER IF EXISTS trg_enterprises_immutable ON org.enterprises;
+CREATE TRIGGER trg_enterprises_immutable
+    BEFORE UPDATE ON org.enterprises
     FOR EACH ROW EXECUTE FUNCTION security.fn_guard_immutable_columns(
         'owner_user_id', 'status', 'verification_level', 'handle', 'logo_file_id'
     );

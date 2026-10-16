@@ -28,7 +28,7 @@ import { ContextBackendService } from "@server/services/context/ContextBackendSe
  *
  * It lives at `/api/context/*` rather than under `/api/workspace/*` because the acting context is a
  * session-wide concern (it also drives the header account popover, the sidebar's gating and every
- * `/wallet` read), and `organisation` — one of its four targets — is not a workspace kind.
+ * `/wallet` read), and `enterprise` — one of its four targets — is not a workspace kind.
  *
  * Authority over the target is proven by the RPC itself, which resolves the caller from `auth.uid()` and
  * refuses a non-member; the route only establishes that there IS a caller, reading the session the same

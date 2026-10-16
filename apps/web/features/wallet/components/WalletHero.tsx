@@ -57,7 +57,7 @@ const ROLE_LABEL: Readonly<Record<string, string>> = {
 const VAULT_NOUN: Readonly<Record<string, string>> = {
 	team: "Team vault",
 	business: "Business vault",
-	organisation: "Organisation vault",
+	enterprise: "Enterprise vault",
 };
 
 /** Whether the read-only "All accounts" rollup is worth offering: with one account it only repeats it. */

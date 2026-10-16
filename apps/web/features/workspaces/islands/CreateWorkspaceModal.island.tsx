@@ -28,7 +28,7 @@ import { PayoutGateLink } from "@features/settings/components/PayoutGateLink.tsx
  *
  * **The handle verdict is server-authoritative.** The client renders an answer it was given and never
  * decides availability itself — the handle namespace is shared across users, teams, businesses and
- * organisations, and only the server can see all four. The probe is debounced, because an availability
+ * enterprises, and only the server can see all four. The probe is debounced, because an availability
  * check that fires per keystroke is a scraper rather than a form.
  *
  * The dialog is `@projective/ui` `Dialog`, which portals to `document.body`: the shell's glass chrome

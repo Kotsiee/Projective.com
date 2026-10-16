@@ -960,7 +960,7 @@ a.shell-setup__step:hover {
 }
 /* #endregion */
 
-/* #region Context switcher — the person, then Teams · Businesses · Organisations */
+/* #region Context switcher — the person, then Teams · Businesses · Enterprises */
 .shell-ctx {
     display: flex;
     flex-direction: column;

@@ -75,10 +75,10 @@ export type MoneyView = z.infer<typeof MoneyViewSchema>;
  * stays independent of `@projective/types/auth`) plus the read-only **aggregate** rollup — the personal
  * "All accounts" view summing the personal wallet and the viewer's share in each vault.
  */
-export const WalletScope = z.enum(["personal", "team", "business", "organisation", "aggregate"]);
+export const WalletScope = z.enum(["personal", "team", "business", "enterprise", "aggregate"]);
 export type WalletScope = z.infer<typeof WalletScope>;
 
-/** The three overview faces (organisation folds into the buyer-only business face). */
+/** The three overview faces (enterprise folds into the buyer-only business face). */
 export const WalletVariant = z.enum(["personal", "team", "business"]);
 export type WalletVariant = z.infer<typeof WalletVariant>;
 
@@ -763,7 +763,7 @@ export const WalletOverviewSchema = z.object({
 	verification: WalletVerificationSchema,
 	/**
 	 * The earned Standing rung + its commission taper. `null` for a buyer-only subject (a client
-	 * wallet, a business/organisation vault) and for the read-only aggregate — those carry no
+	 * wallet, a business/enterprise vault) and for the read-only aggregate — those carry no
 	 * Standing, so the surface omits the gauge rather than drawing an empty one.
 	 */
 	standing: WalletStandingSchema.nullable(),
@@ -1472,10 +1472,10 @@ export function hasCapability(caps: readonly VaultCapability[], cap: VaultCapabi
 	return caps.includes(cap);
 }
 
-/** Map a wallet scope to its overview face (organisation folds into the business face). */
+/** Map a wallet scope to its overview face (enterprise folds into the business face). */
 export function walletVariant(scope: WalletScope): WalletVariant {
 	if (scope === "team") return "team";
-	if (scope === "business" || scope === "organisation") return "business";
+	if (scope === "business" || scope === "enterprise") return "business";
 	return "personal";
 }
 // #endregion
@@ -1486,7 +1486,7 @@ export function walletVariant(scope: WalletScope): WalletVariant {
  * signed-in caller — the service reads everything as them, so nothing about the viewer travels here.
  */
 export interface WalletQuery {
-	/** `personal` · `team:{id}` · `business:{id}` · `organisation:{id}` · `aggregate`; null → active. */
+	/** `personal` · `team:{id}` · `business:{id}` · `enterprise:{id}` · `aggregate`; null → active. */
 	wallet?: string | null;
 	/** An explicit display currency (the page's `?display=`); wins over the viewer's preference. */
 	display?: string | null;

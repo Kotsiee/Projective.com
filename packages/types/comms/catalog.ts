@@ -125,7 +125,7 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"business.member_joined",
 	"business.member_removed",
 	"business.ownership_transferred",
-	"org.domain_colleague",
+	"enterprise.domain_colleague",
 	"business.permission_changed",
 	// system
 	"system.security_alert",

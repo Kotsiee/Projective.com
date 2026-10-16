@@ -22,12 +22,12 @@ CREATE TABLE projects.projects (
 -- / `scopeId`, which the feed groups and filters on. Personal scope is the ABSENCE of all three:
 -- `owner_user_id` alone answers it, so there is no fourth column and no sentinel row to keep in
 -- step. A Team is the seller-side workspace (a Team is a Freelancer with multiple members); an
--- Organisation is a buyer-side one (Organisations are client-only). They are separate typed
+-- Enterprise is a buyer-side one (Enterprises are client-only). They are separate typed
 -- columns rather than one polymorphic (scope_type, scope_id) pair because a pair cannot carry a
 -- foreign key, and an owning workspace that has been deleted is exactly the dangling reference
 -- this schema should refuse rather than discover at read time.
 owner_team_id uuid,
-owner_organisation_id uuid,
+owner_enterprise_id uuid,
 title text NOT NULL,
 
 -- The CANONICAL public address. `/projects/[projectSlug]` carries this and nothing else: the row's
@@ -175,7 +175,7 @@ archived_at timestamptz,
   CONSTRAINT projects_client_business_id_fkey FOREIGN KEY (client_business_id) REFERENCES org.business_profiles(id),
   CONSTRAINT projects_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES org.users_public(user_id),
   CONSTRAINT projects_owner_team_id_fkey FOREIGN KEY (owner_team_id) REFERENCES org.teams(id),
-  CONSTRAINT projects_owner_organisation_id_fkey FOREIGN KEY (owner_organisation_id) REFERENCES org.organisations(id),
+  CONSTRAINT projects_owner_enterprise_id_fkey FOREIGN KEY (owner_enterprise_id) REFERENCES org.enterprises(id),
   CONSTRAINT projects_slug_key UNIQUE (slug),
   CONSTRAINT projects_source_blueprint_id_fkey FOREIGN KEY (source_blueprint_id) REFERENCES marketplace.service_blueprints(id) ON DELETE SET NULL,
   CONSTRAINT projects_nda_document_id_fkey FOREIGN KEY (nda_document_id) REFERENCES files.items(id) ON DELETE SET NULL,

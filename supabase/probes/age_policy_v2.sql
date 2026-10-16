@@ -1,6 +1,6 @@
 -- =============================================================================================
 -- Probe: age policy v2 (Decision #208) — under 13 leaves nothing behind; a restricted (13–17) account
--- creates and joins no team, business or organisation, opens no payout account, schedules nothing
+-- creates and joins no team, business or enterprise, opens no payout account, schedules nothing
 -- with other people, is not profiled, does not broadcast its location, stays unlisted, and messages
 -- only people it follows who follow it back; anyone may create a personal project.
 --

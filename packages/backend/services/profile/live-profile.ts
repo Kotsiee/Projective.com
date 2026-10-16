@@ -209,7 +209,7 @@ function stampOf(raw: string | undefined): VerificationStamp {
 /** The trust ladder the profile has climbed, in ladder order. */
 function tiersOf(raw: RawProfile): { tier: VerificationTier; verifications: VerificationTier[] } {
 	const ladder: VerificationTier[] = ["L1"];
-	const entity = raw.owner_type === "business" || raw.owner_type === "organisation";
+	const entity = raw.owner_type === "business" || raw.owner_type === "enterprise";
 	if (raw.verified) ladder.push(entity ? "L3" : "L2");
 	if (raw.architect) ladder.push("architect");
 	return { tier: ladder[ladder.length - 1], verifications: ladder };
@@ -508,7 +508,7 @@ export function departmentId(name: string): string {
 	return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "department";
 }
 
-/** The roster of a team / business / organisation (empty for an individual). */
+/** The roster of a team / business / enterprise (empty for an individual). */
 export async function fetchRoster(
 	handle: string,
 	actor: ReadActor,
@@ -704,7 +704,7 @@ export async function fetchEditModel(
 		showcase: showcaseSlotsOf(raw.showcase ?? []),
 		sections: {
 			identity: true,
-			about: raw.owner_type !== "organisation",
+			about: raw.owner_type !== "enterprise",
 			languages: individual,
 			skills: individual && raw.kind === "freelancer",
 			experience: individual,

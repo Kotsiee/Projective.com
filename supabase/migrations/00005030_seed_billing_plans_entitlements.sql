@@ -16,10 +16,10 @@ INSERT INTO finance.plans
         'Attached to a business. Pooled wallet in basic mode.'),
     ('business_pro',    'Business Pro',    'business',     'pro',     NULL, 'GBP', 'monthly', false, false, 60,
         'PRICE TBD (flagged, root CLAUDE.md §8): the per-business monthly rate has not been set by the product owner. Entitlements are seeded; price_cents stays NULL until confirmed.'),
-    ('organisation',    'Organisation',    'organisation', 'enterprise', NULL, 'GBP', 'custom', true, false, 70,
+    ('enterprise',    'Enterprise',    'enterprise', 'enterprise', NULL, 'GBP', 'custom', true, false, 70,
         'Seat-based, custom-priced, keyed to org.employee_scale (1-50 / 51-200 / 201-500 / 500+). The one place the platform fee may be negotiated (finance.negotiated_rates).'),
-    ('organisation_free','Organisation (draft)', 'organisation', 'free', 0, 'GBP', 'monthly', false, true, 65,
-        'Free-to-draft. An organisation may be created and configured at no cost; going active and adding seats requires the Organisation subscription — the same draft-first pattern used everywhere else.')
+    ('enterprise_free','Enterprise (draft)', 'enterprise', 'free', 0, 'GBP', 'monthly', false, true, 65,
+        'Free-to-draft. An enterprise may be created and configured at no cost; going active and adding seats requires the Enterprise subscription — the same draft-first pattern used everywhere else.')
 ON CONFLICT (code) DO NOTHING;
 
 -- Individual Free — the universal baseline (buyer + seller).
@@ -121,7 +121,7 @@ FROM finance.plans p, (VALUES
     ('private_drafts',            'limit', NULL,          true,  false, 'none',          10000, NULL),
     ('pooled_wallet_full',        'flag',  NULL,          false, true,  'none',          10000, 'Full pooled wallet + spending caps. Still requires KYB.'),
     ('intervaled_invoicing',      'flag',  NULL,          false, true,  'none',          10000, 'Monthly consolidated invoicing (finance-model.md §Invoicing).'),
-    ('departments',               'limit', 5,             false, false, 'none',          10000, 'Light departmental scoping; full isolation is the Organisation tier.'),
+    ('departments',               'limit', 5,             false, false, 'none',          10000, 'Light departmental scoping; full isolation is the Enterprise tier.'),
     ('advanced_analytics',        'flag',  NULL,          false, true,  'none',          10000, NULL),
     ('promoted_placement',        'flag',  NULL,          false, true,  'none',          10000, NULL),
     ('storage_megabytes',         'limit', 512000,        false, false, 'none',          10000, '500 GiB — matches Pro Team; a buyer accumulates briefs and deliverables at a comparable rate.')
@@ -129,26 +129,26 @@ FROM finance.plans p, (VALUES
 WHERE p.code = 'business_pro'
 ON CONFLICT (plan_id, entitlement_key) DO NOTHING;
 
--- Organisation (draft, free) — create and configure at no cost.
+-- Enterprise (draft, free) — create and configure at no cost.
 INSERT INTO finance.plan_entitlements (plan_id, entitlement_key, kind, limit_value, is_unlimited, flag_value, scaling, multiplier_bp, note)
 SELECT p.id, v.k::finance.entitlement_key, v.kind::finance.entitlement_kind, v.lim, v.unl, v.flg, v.scal::finance.entitlement_scaling, v.mult, v.note
 FROM finance.plans p, (VALUES
-    ('organisation_seats',        'limit', 3,             false, false, 'none',          10000, 'Enough to configure and evaluate; going active needs the paid tier.'),
-    ('organisation_businesses',   'limit', 1,             false, false, 'none',          10000, NULL),
+    ('enterprise_seats',        'limit', 3,             false, false, 'none',          10000, 'Enough to configure and evaluate; going active needs the paid tier.'),
+    ('enterprise_businesses',   'limit', 1,             false, false, 'none',          10000, NULL),
     ('departments',               'limit', 2,             false, false, 'none',          10000, NULL),
     ('private_drafts',            'limit', NULL,          true,  false, 'none',          10000, NULL),
     ('active_public_projects',    'limit', 1,             false, false, 'none',          10000, NULL),
-    ('storage_megabytes',         'limit', 25600,         false, false, 'none',          10000, 'Draft-tier storage: enough to configure and evaluate. The paid Organisation plan is unlimited.')
+    ('storage_megabytes',         'limit', 25600,         false, false, 'none',          10000, 'Draft-tier storage: enough to configure and evaluate. The paid Enterprise plan is unlimited.')
 ) AS v(k, kind, lim, unl, flg, scal, mult, note)
-WHERE p.code = 'organisation_free'
+WHERE p.code = 'enterprise_free'
 ON CONFLICT (plan_id, entitlement_key) DO NOTHING;
 
--- Organisation (paid, custom) — the enterprise ceiling.
+-- Enterprise (paid, custom) — the enterprise ceiling.
 INSERT INTO finance.plan_entitlements (plan_id, entitlement_key, kind, limit_value, is_unlimited, flag_value, scaling, multiplier_bp, note)
 SELECT p.id, v.k::finance.entitlement_key, v.kind::finance.entitlement_kind, v.lim, v.unl, v.flg, v.scal::finance.entitlement_scaling, v.mult, v.note
 FROM finance.plans p, (VALUES
-    ('organisation_seats',        'limit', NULL::integer, true,  false, 'none',          10000, 'Seat count is the PRICING dial (org.employee_scale), not a hard cap.'),
-    ('organisation_businesses',   'limit', NULL,          true,  false, 'none',          10000, 'Unlimited businesses nested under the organisation.'),
+    ('enterprise_seats',        'limit', NULL::integer, true,  false, 'none',          10000, 'Seat count is the PRICING dial (org.employee_scale), not a hard cap.'),
+    ('enterprise_businesses',   'limit', NULL,          true,  false, 'none',          10000, 'Unlimited businesses nested under the enterprise.'),
     ('departments',               'limit', NULL,          true,  false, 'none',          10000, 'Full departmental isolation — Marketing sees only marketing pipelines.'),
     ('business_public_projects',  'limit', NULL,          true,  false, 'none',          10000, NULL),
     ('business_managers',         'limit', NULL,          true,  false, 'none',          10000, NULL),
@@ -164,7 +164,7 @@ FROM finance.plans p, (VALUES
     ('negotiated_platform_fee',   'flag',  NULL,          false, true,  'none',          10000, 'The ONE place the 5% service fee may flex — via finance.negotiated_rates, admin-approved.'),
     ('storage_megabytes',         'limit', NULL,          true,  false, 'none',          10000, 'Unlimited. is_unlimited=true resolves through fn_effective_limit to NULL, which files.fn_check_storage_quota treats as no ceiling — the enterprise tier is never asked to budget bytes.')
 ) AS v(k, kind, lim, unl, flg, scal, mult, note)
-WHERE p.code = 'organisation'
+WHERE p.code = 'enterprise'
 ON CONFLICT (plan_id, entitlement_key) DO NOTHING;
 
 INSERT INTO finance.standing_commission_tiers (level, marketplace_commission_bp, platform_fee_bp, note) VALUES

@@ -311,7 +311,7 @@ BEGIN
     IF NOT (
         (v_wallet.owner_type IN ('user', 'freelancer') AND v_wallet.owner_id = v_uid)
         OR (
-            v_wallet.owner_type IN ('team', 'business', 'organisation')
+            v_wallet.owner_type IN ('team', 'business', 'enterprise')
             AND finance.fn_has_vault_capability(v_wallet.id, v_uid, 'withdraw'::finance.vault_capability)
         )
     ) THEN
@@ -872,7 +872,7 @@ $$;
 -- processor returned — brand, last four, expiry — and never anything that could charge the card.
 -- Idempotent on (owner, payment method id). The first card an owner saves becomes their default.
 --
--- A card saved to a TEAM, BUSINESS or ORGANISATION is recorded as that entity's business card
+-- A card saved to a TEAM, BUSINESS or ENTERPRISE is recorded as that entity's business card
 -- (Decision #153). It can only get here through finance.card_owner_for, which requires the saver to
 -- hold manage_billing on the entity — so it is the entity's own instrument by ownership and by who put
 -- it there. Without this, `availableProviders` (an entity pays only by business card) refused every
@@ -902,7 +902,7 @@ DECLARE
     v_brand finance.card_brand;
     v_default boolean;
 BEGIN
-    IF p_owner_type IS NULL OR p_owner_type NOT IN ('user', 'freelancer', 'business', 'team', 'organisation')
+    IF p_owner_type IS NULL OR p_owner_type NOT IN ('user', 'freelancer', 'business', 'team', 'enterprise')
        OR p_owner_id IS NULL THEN
         RAISE EXCEPTION 'owner: not a finance owner' USING ERRCODE = '22023';
     END IF;
@@ -951,7 +951,7 @@ BEGIN
             CASE WHEN p_exp_month BETWEEN 1 AND 12 THEN p_exp_month END,
             CASE WHEN p_exp_year BETWEEN 2000 AND 2100 THEN p_exp_year END,
             p_created_by, v_method.is_default_funding,
-            p_owner_type IN ('team', 'business', 'organisation')
+            p_owner_type IN ('team', 'business', 'enterprise')
         )
         RETURNING * INTO v_card;
     END IF;
@@ -1010,7 +1010,7 @@ BEGIN
     IF NOT (
         (v_wallet.owner_type IN ('user', 'freelancer') AND v_wallet.owner_id = v_uid)
         OR (
-            v_wallet.owner_type IN ('team', 'business', 'organisation')
+            v_wallet.owner_type IN ('team', 'business', 'enterprise')
             AND finance.fn_has_vault_capability(v_wallet.id, v_uid, 'add_funds'::finance.vault_capability)
         )
     ) THEN
@@ -1475,7 +1475,7 @@ BEGIN
             RAISE EXCEPTION 'auth: you can only pay from your own wallet' USING ERRCODE = '42501';
         END IF;
         v_type := finance.fn_person_wallet_type(v_uid);
-    ELSIF p_owner_type IN ('business', 'team', 'organisation') THEN
+    ELSIF p_owner_type IN ('business', 'team', 'enterprise') THEN
         IF NOT finance.fn_can_manage_basket(p_owner_type, p_owner_id) THEN
             RAISE EXCEPTION 'auth: only a member who can spend from this account can pay from it' USING ERRCODE = '42501';
         END IF;

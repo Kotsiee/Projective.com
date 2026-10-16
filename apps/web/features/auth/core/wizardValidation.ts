@@ -14,7 +14,7 @@ import {
 /**
  * Per-step validation and payload assembly for the onboarding wizard. Each step validates only the
  * fields it renders (so a partial wizard never reports errors for steps the user hasn't reached),
- * and the same six step slots carry either Individual or Organization field sets.
+ * and the same six step slots carry either Individual or Enterprise field sets.
  */
 /**
  * Date-of-birth validation shared by the two places it can live: the (email) credentials step for a
@@ -27,15 +27,15 @@ function dobError(store: JoinStore): string | null {
 }
 
 export function validateStep(store: JoinStore, id: StepId): Record<string, string | null> {
-	const org = store.isOrg.value;
+	const enterprise = store.isEnterprise.value;
 	switch (id) {
 		case "account":
 			return {};
 		case "intent":
 			return { intent: store.intent.value ? null : "Choose how you'll use Projective." };
 		case "purpose":
-			// Individual: optional. Organization: this slot carries the required scale baselines.
-			return org
+			// Individual: optional. Enterprise: this slot carries the required scale baselines.
+			return enterprise
 				? {
 					employeeTier: store.employeeTier.value ? null : "Select a headcount range.",
 					industry: store.industry.value ? null : "Select an industry.",
@@ -47,8 +47,8 @@ export function validateStep(store: JoinStore, id: StepId): Record<string, strin
 				}
 				: {};
 		case "specialize":
-			// Individual: skills are optional. Organization: registered address is required.
-			return org
+			// Individual: skills are optional. Enterprise: registered address is required.
+			return enterprise
 				? {
 					street: requiredError(store.street.value, "Street"),
 					city: requiredError(store.city.value, "City"),
@@ -57,7 +57,7 @@ export function validateStep(store: JoinStore, id: StepId): Record<string, strin
 				}
 				: {};
 		case "identity":
-			return org
+			return enterprise
 				? {
 					legalName: requiredError(store.legalName.value, "Legal company name"),
 					handle: usernameError(store.handle.value),
@@ -70,7 +70,7 @@ export function validateStep(store: JoinStore, id: StepId): Record<string, strin
 					...(store.isOAuth ? { dob: dobError(store) } : {}),
 				};
 		case "credentials":
-			if (org) {
+			if (enterprise) {
 				return {
 					corpEmail: emailError(store.corpEmail.value),
 					phone: phoneError(store.phone.value),
@@ -98,10 +98,10 @@ function browserPreferenceHints() {
 
 /** Assemble the API payload from the completed wizard state. */
 export function buildPayload(store: JoinStore): Record<string, unknown> {
-	if (store.isOrg.value) {
+	if (store.isEnterprise.value) {
 		return {
-			type: "organization",
-			// Organizations are buyers on Projective — the client persona is implicit, never a choice.
+			type: "enterprise",
+			// Enterprises are buyers on Projective — the client persona is implicit, never a choice.
 			intent: "client",
 			legalName: store.legalName.value.trim(),
 			tradingName: store.tradingName.value.trim(),

@@ -26,9 +26,9 @@ export interface CreateOption {
  * The quick-create options for the acting {@link UserContext}, mirroring the sidebar's capability
  * gating (see {@link globalNav}) so the two never disagree:
  *  - **Project** and **Article** — available to everyone (clients post projects; anyone can write).
- *  - **Team** — hidden inside an `organisation` context (an org is its own tenant, not a team).
+ *  - **Team** — hidden inside an `enterprise` context (an enterprise is its own tenant, not a team).
  *  - **Business**, **Service**, **Product** — seller surfaces → shown only when `isFreelancer`, so a
- *    client/buyer-only profile (e.g. an organisation) never sees "Create Product".
+ *    client/buyer-only profile (e.g. an enterprise) never sees "Create Product".
  *  - A **restricted** (13–17) account keeps only Project and Article: every other target is a
  *    surface it cannot see (Decision #192).
  */
@@ -40,7 +40,7 @@ export function createMenuOptions(context: UserContext): CreateOption[] {
 		// segment would fall into `[projectId]`, resolve nothing, and render "not found" from the global
 		// header of every authenticated route.
 		{ key: "project", label: "Create Project", href: "/projects?create=1", icon: "projects" },
-		contextType !== "organisation"
+		contextType !== "enterprise"
 			? { key: "team", label: "Create Team", href: "/teams/create", icon: "teams" }
 			: null,
 		isFreelancer

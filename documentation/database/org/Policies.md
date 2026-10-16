@@ -12,13 +12,13 @@ layer.
 - **`security.is_admin()`**: Returns true if the `auth.uid()` exists in `ops.admin_users`.
 - **`org.is_active_team_member(_team_id)`** / **`org.is_active_business_member(_business_id)`**:
   `SECURITY DEFINER`; true if `auth.uid()` holds an `active` row in `org.team_members` /
-  `org.business_members` for that entity. These (with `is_organisation_member`) are the only `org`
+  `org.business_members` for that entity. These (with `is_enterprise_member`) are the only `org`
   functions `anon` and `authenticated` may still `EXECUTE` besides the named RPCs — a policy
   expression runs as the invoking role, and `EXECUTE` on the rest of the schema is revoked
   (`00002510`, 2026-09-28; [Functions.md](Functions.md)).
-- **`org.is_organisation_member(p_org, p_min_role)`**: `SECURITY DEFINER`; returns true if the
-  `auth.uid()` is an active member of the organisation at or above `p_min_role`
-  (`member`/`admin`/`owner`). Definer context bypasses RLS so the organisation policies below don't
+- **`org.is_enterprise_member(p_enterprise, p_min_role)`**: `SECURITY DEFINER`; returns true if the
+  `auth.uid()` is an active member of the enterprise at or above `p_min_role`
+  (`member`/`admin`/`owner`). Definer context bypasses RLS so the enterprise policies below don't
   recurse. See `org/Functions.md`.
 
 ---
@@ -229,47 +229,47 @@ primary email**; under the caller's own rights the roster is their own businesse
 
 ---
 
-## 🏢 Organisation Policies
+## 🏢 Enterprise Policies
 
-Added in `0314_organisations.sql`. Both tables have RLS enabled. Membership checks go through the
-`SECURITY DEFINER` helper `org.is_organisation_member()` to avoid the self-referential recursion the
+Added in `0314_enterprises.sql`. Both tables have RLS enabled. Membership checks go through the
+`SECURITY DEFINER` helper `org.is_enterprise_member()` to avoid the self-referential recursion the
 Security Notes warn about.
 
-### `org.organisations`
+### `org.enterprises`
 
 ```sql
 -- SELECT: owner, any active member, or an admin
-CREATE POLICY "Members can view their organisation"
-ON org.organisations FOR SELECT TO public
-USING (owner_user_id = auth.uid() OR org.is_organisation_member(id) OR security.is_admin());
+CREATE POLICY "Members can view their enterprise"
+ON org.enterprises FOR SELECT TO public
+USING (owner_user_id = auth.uid() OR org.is_enterprise_member(id) OR security.is_admin());
 ```
 
-**No client INSERT policy** (2026-09-23): an organisation is provisioned by
-`public.create_organisation` (service role) together with its owner membership, and a raw client
+**No client INSERT policy** (2026-09-23): an enterprise is provisioned by
+`public.create_enterprise` (service role) together with its owner membership, and a raw client
 INSERT could set `verification_level` and `status` at birth.
 
 **No client UPDATE or DELETE policy** (2026-10-06, Decision #150). The former
-`"Owners and admins can update the organisation"` policy (`FOR UPDATE TO public USING (owner OR admin
+`"Owners and admins can update the enterprise"` policy (`FOR UPDATE TO public USING (owner OR admin
 member OR platform admin)`) had no column list and no `WITH CHECK`, so any admin could rewrite
 `legal_name`, `registration_number`, `corporate_email` and `billing_email` over PostgREST with
 nothing validated and nothing audited — and, since `USING` judged the post-image too, write
-themselves in as owner. Every edit now goes through `org.update_organisation(p_org_id, p_payload)`
+themselves in as owner. Every edit now goes through `org.update_enterprise(p_enterprise_id, p_payload)`
 (`org/Functions.md`): an allow-list of keys, the legal identity owner-only and frozen once KYB
 begins, every value bounded, every edit audited. A raw client `UPDATE` now matches zero rows.
 
-`trg_organisations_immutable` (trigger file `00001895`) stays as defence in depth: it refuses a
+`trg_enterprises_immutable` (trigger file `00001895`) stays as defence in depth: it refuses a
 client UPDATE of `owner_user_id`, `status` (which includes `suspended`), `verification_level` (the
 KYB tier), `handle` and `logo_file_id` (set through `org.set_profile_avatar`), so a future policy
 that re-opens the table cannot re-open those columns with it.
 
-### `org.organisation_members`
+### `org.enterprise_members`
 
 `SELECT` lets a user see their own row and lets owners/admins see the whole roster.
 
 **No client write policy** (2026-09-28). The owner membership is written by
-`public.create_organisation` (service role). The `INSERT` / `UPDATE` / `DELETE` policies this
+`public.create_enterprise` (service role). The `INSERT` / `UPDATE` / `DELETE` policies this
 replaces let an admin UPDATE any row to role `owner` — **including their own** — and hard-DELETE the
-owner. Nothing in the app writes the table today; organisation roster management will get definer
+owner. Nothing in the app writes the table today; enterprise roster management will get definer
 RPCs of its own.
 
 ---

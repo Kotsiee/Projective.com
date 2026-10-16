@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { IndividualJoinSchema, OrganizationJoinSchema } from "./join.ts";
+import { IndividualJoinSchema, EnterpriseJoinSchema } from "./join.ts";
 
 const individual = {
 	type: "individual",
@@ -12,8 +12,8 @@ const individual = {
 	dob: "1990-03-14",
 };
 
-const organization = {
-	type: "organization",
+const enterprise = {
+	type: "enterprise",
 	legalName: "Acme Ltd",
 	corporateEmail: "owner@acme.example",
 	phone: "+44 20 7946 0000",
@@ -50,9 +50,9 @@ Deno.test("join hints: absent hints leave the account on the defaults", () => {
 	assertEquals(parsed.displayCurrency, undefined);
 });
 
-Deno.test("join hints: an organisation owner's hints are read too", () => {
-	const parsed = OrganizationJoinSchema.parse({
-		...organization,
+Deno.test("join hints: an enterprise owner's hints are read too", () => {
+	const parsed = EnterpriseJoinSchema.parse({
+		...enterprise,
 		locale: "ja-JP",
 		displayCurrency: "JPY",
 	});
