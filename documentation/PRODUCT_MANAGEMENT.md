@@ -191,7 +191,7 @@ and block taking precedence:
 The §3.1 state-machine governs **build Tasks** on the delivery tracker. The 2026-07-23 Wallet &
 Finance foundation, the 2026-07-24 Availability & Discovery Calls foundation, the 2026-07-24
 Notification Engine, the 2026-08-04 Asset Management foundation, the 2026-08-26 Service Booking
-pass, the 2026-09-28 Teams & Businesses console (root `CLAUDE.md` §8 Decision #122), the
+pass, the 2026-09-28 Teams & Businesses console (root `CLAUDE.md` §8 Decision #61), the
 2026-09-29 Stripe fiat rails (Decision #125) and the 2026-09-30 money movement on those rails
 (Decision #126) add several
 **product domain lifecycles** — these are **separate** finite state machines that live at the

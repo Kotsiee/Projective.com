@@ -94,7 +94,7 @@ CREATE TYPE finance.chargeback_status AS ENUM ('opened', 'under_review', 'won', 
 CREATE TYPE org.layout_direction    AS ENUM ('ltr', 'rtl', 'auto');
 ```
 
-### Workspace permissions (teams & businesses — `00000004`, Decision #122)
+### Workspace permissions (teams & businesses — `00000004`, Decision #61)
 
 ```sql
 -- The ONE authority vocabulary of the Teams & Businesses console: role capability lists, the

@@ -86,7 +86,7 @@ projects).
 | `slug`             | text                 | The business's `@handle` — one namespace with people, teams and organisations (see `org.fn_handle_refusal`, [Functions.md](Functions.md#-the-workspace-console-00001020)). The console is addressed by it (`/businesses/[businessHandle]`). |
 | `status`           | text                 | `CHECK IN ('draft','active','archived')` (`business_profiles_status_check`). Created `draft` by `org.create_workspace`; moved only by `org.set_workspace_status`. |
 
-> A business is created by **`org.create_workspace`** (Decision #122) — never a client INSERT, and
+> A business is created by **`org.create_workspace`** (Decision #61) — never a client INSERT, and
 > the retired `org.create_business` no longer exists. Its members, roles and invitations are the
 > tables in [§ Workspace membership](#-workspace-membership-teams--businesses) below.
 
@@ -223,7 +223,7 @@ Micro-agencies or collaborative units.
 ## 👥 Workspace membership (teams & businesses)
 
 Migration [`00000011_tables_org.sql`](../../../supabase/migrations/00000011_tables_org.sql), reshaped
-2026-09-28 for the Teams & Businesses console (root `CLAUDE.md` §8 Decision #122). Zod SSOT:
+2026-09-28 for the Teams & Businesses console (root `CLAUDE.md` §8 Decision #61). Zod SSOT:
 `@projective/types/workspace` (`members.ts`, `common.ts`). A team (seller side) and a business
 (buyer side) are ONE architecture parameterised by kind (Decision #61), so the two role tables and
 the two member tables are **column-for-column twins** — one roles editor and one SQL twin
