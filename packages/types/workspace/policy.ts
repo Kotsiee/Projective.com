@@ -102,8 +102,22 @@ export const SplitRuleInputSchema = z.discriminatedUnion("ruleType", [
 ]);
 export type SplitRuleInput = z.infer<typeof SplitRuleInputSchema>;
 
-/** The team's payout policy — the split editor's whole state. */
+/**
+ * The team's payout policy — the split editor's whole state. Present on the console detail ONLY for a
+ * viewer holding `manage_finances` (Decision #233); everybody else reads `null`.
+ */
 export const TeamPayoutPolicySchema = z.object({
+	/** The vault wallet the figures below are read from (the treasury wallet, else the fullest). */
+	walletId: z.string().max(64).nullable(),
+	/**
+	 * ISO 4217 code of the vault wallet — the unit of {@link availableMinor} and {@link pendingMinor}.
+	 * (The projection's MoneyViews carry their own currency: the held release's, when one is held.)
+	 */
+	currency: z.string().regex(/^[A-Z]{3}$/),
+	/** The vault's spendable balance, integer minor units of {@link currency}. */
+	availableMinor: z.number().int().min(0),
+	/** Releases still clearing into the vault, integer minor units of {@link currency}. */
+	pendingMinor: z.number().int().min(0),
 	model: SplitModel,
 	stakes: z.array(SplitStakeSchema),
 	templates: z.array(SplitTemplateSchema),

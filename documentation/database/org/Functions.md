@@ -826,7 +826,8 @@ namespace under a `pg_advisory_xact_lock` on the handle.
 
 ### §16 — Reads, as raw facts
 
-Both are `STABLE`, `authenticated`, and return RAW facts (ids, file refs, codes, instants); the fat
+Both are `authenticated` (the roster `STABLE`; the detail `VOLATILE`, because its team allowance read
+opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
 `WorkspaceBackendService` maps them onto `@projective/types/workspace` once, resolving faces through
 `org.get_party_cards` and media through `files.get_public_media`.
 
@@ -846,10 +847,32 @@ Both are `STABLE`, `authenticated`, and return RAW facts (ids, file refs, codes,
   of (the public profile already discloses it exists; the console discloses nothing else). Otherwise
   `status: 'ok'` with identity + pictures (file ids), `entity_status`, owner, verification, the
   `viewer` (member id, role id, EFFECTIVE capabilities), the ACTIVE members (role id, derived rank,
-  overrides, title, reports-to, `is_self`, **email for the caller's own row only**, workload current /
-  max — falling back to `security.platform_params.global_workload_cap_default` — and availability),
-  the live roles with RESOLVED capabilities and holder counts, the outgoing pending invitations
-  **only when the viewer holds `invite_members`**, a team's Standing label, the projects (team: via
-  its stage assignments; business: as client, excluding `draft`/`archived`), the 30 most recent
-  activity events (joins and `finance.ledger_audit` money movements), and the setup facts
-  (`logo` · `bio` · `invite` · `money`).
+  overrides, title, reports-to, `is_self`, **email for the caller's own row only**, availability,
+  `wi` — the LIVE Workload Intensity, Σ `workload_intensity` of the member's `claimed` / `in_progress`
+  / `in_review` tickets, summed exactly as `projects.check_ticket_capacity` sums it — and `wi_cap`,
+  their `max_workload_intensity` else `security.platform_params.global_workload_cap_default` else 10;
+  a team member also carries `share_bp` / `share_held` from `finance.contribution_agreements`), the
+  live roles with RESOLVED capabilities and holder counts, the outgoing pending invitations **only
+  when the viewer holds `invite_members`**, a team's Standing label, the projects (team: via its stage
+  assignments, each with its client business's `client` face; business: as client, excluding
+  `draft`/`archived`, each with `provider_user_ids` and `provider_teams` faces — faces are
+  `org.profiles_index` name + avatar bucket/path), the 30 most recent activity events (joins and
+  `finance.ledger_audit` money movements), and the setup facts (`logo` · `bio` · `invite` · `money`).
+  For a **team** it also answers (Decision #233 — the console's ONE read; the service makes no other
+  read of the entity):
+  - `payout` — **only when the caller holds `manage_finances`**, else `null` (every member holds
+    vault `view`, so that is not the gate): `rule` (the active `finance.split_rules` row: `rule_type`,
+    `vault_bp`, `finder_user_id`, `finder_bp`, or `null`), `wallet` (the treasury wallet, else the
+    fullest: `id`, `currency`, `available_minor` = `balance_cents`, `pending_minor` = Σ
+    `amount_cents − recovered_cents` of its `pending` `finance.pending_releases`, both integer minor
+    units) and `preview` (`finance.preview_team_split`'s answer).
+  - `engagements` — the team's live `projects.stage_assignments` (status not `declined` /
+    `cancelled` / `released` / `completed`; project `active` or `on_hold`), one per stage:
+    `project_slug` (`prj-…`), `title`, `stage_slug` (`stg-…`), `stage_title`, `assignment_status`,
+    `project_status`, `stage_cap` (`max_concurrent_intensity`, the per-person stage cap, W_i units),
+    `stage_wi` and `assignees` (each active member holding live tickets on the stage: `user_id`,
+    `stage_wi`). No other uuid; the service resolves assignees to faces and drops their ids.
+  - `allowance` — `finance.get_proposal_allowance(team)`'s answer (incl. `team_status`,
+    `team_member_count`, `can_bind_seat` for the caller).
+  A business answers `engagements = []`, `payout = null`, `allowance = null`. **VOLATILE**: the
+  allowance read opens the week and pays out the lazy drip.

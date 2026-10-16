@@ -109,8 +109,15 @@ export const WorkspaceMemberSchema = z.object({
 	joinedAt: z.string().max(40),
 	/** Short job title shown under the name ("Design lead"). */
 	title: z.string().max(80).nullable(),
-	/** Current commitment, 0–100, driving the workload meter on the roster. */
+	/** Current commitment, 0–100, driving the workload meter on the roster ({@link wi} over {@link wiCap}). */
 	workload: z.number().int().min(0).max(100),
+	/**
+	 * Live Workload Intensity, in W_i units: the summed `workload_intensity` of every claimed /
+	 * in-progress / in-review ticket the member holds — the figure `projects.check_ticket_capacity` sums.
+	 */
+	wi: z.number().min(0).default(0),
+	/** The member's global W_i cap (their own override, else the platform default), in W_i units. */
+	wiCap: z.number().positive().default(10),
 	/** Coarse availability signal (mirrors `org.freelancer_profiles.availability_status`). */
 	availability: z.enum(["available", "limited", "unavailable"]),
 	/** Whether this row is the viewer. */

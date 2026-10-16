@@ -11,6 +11,7 @@ import {
 	type MemberFace,
 	type SetupStep,
 	type SplitModel,
+	type TeamEngagement,
 	type TeamSplitRule,
 	type VerificationState,
 	type WorkspaceCapability,
@@ -26,6 +27,7 @@ import {
 	WorkspaceStatus as WorkspaceStatusEnum,
 } from "@projective/types/workspace";
 import { clamp, clampOr } from "../../core/text.ts";
+import type { RawTeamPayout } from "./live-money.ts";
 
 /**
  * mappers — the PURE half of the live workspace console: every rule that turns the raw facts the
@@ -97,9 +99,40 @@ export interface RawMember {
 	reports_to: string | null;
 	is_self: boolean;
 	email: string | null;
-	workload_current: number | null;
-	workload_max: number | null;
+	/** Live W_i: Σ `workload_intensity` of the member's claimed / in-progress / in-review tickets. */
+	wi: number | string | null;
+	/** The member's global W_i cap — their override, else the platform default. */
+	wi_cap: number | string | null;
 	availability: string | null;
+	/** A team member's split stake in basis points; `null` with no agreement (and for a business). */
+	share_bp?: number | null;
+	share_held?: boolean | null;
+}
+
+/** A counterparty's directory face (`org.profiles_index` name + mark), as the detail read embeds it. */
+export interface RawDirectoryFace {
+	name: string | null;
+	avatar_bucket: string | null;
+	avatar_path: string | null;
+}
+
+/** One assignee of a team engagement: an active member holding live tickets on the stage. */
+export interface RawEngagementAssignee {
+	user_id: string;
+	stage_wi: number | string | null;
+}
+
+/** One live stage assignment of a team on the detail read. */
+export interface RawEngagement {
+	project_slug: string;
+	title: string;
+	stage_slug: string;
+	stage_title: string;
+	assignment_status: string;
+	project_status: string;
+	stage_cap: number | string | null;
+	stage_wi: number | string | null;
+	assignees: RawEngagementAssignee[] | null;
 }
 
 /** One role row on the detail read, capabilities already RESOLVED by `org.fn_role_capabilities`. */
@@ -137,6 +170,12 @@ export interface RawProject {
 	due: string | null;
 	stages_total: number;
 	stages_done: number;
+	/** A team's project: its client business's face (`null` for a personal client). */
+	client?: RawDirectoryFace | null;
+	/** A business's project: the individual freelancers delivering it. */
+	provider_user_ids?: string[] | null;
+	/** A business's project: the teams delivering it. */
+	provider_teams?: RawDirectoryFace[] | null;
 }
 
 /** One activity event on the detail read. */
@@ -172,6 +211,12 @@ export interface RawDetail {
 	projects: RawProject[];
 	activity: RawActivity[];
 	setup: { logo: boolean; bio: boolean; invite: boolean; money: boolean };
+	/** A team's live stage assignments (`[]` for a business). */
+	engagements?: RawEngagement[] | null;
+	/** A team's payout block — present ONLY for a caller holding `manage_finances`. */
+	payout?: RawTeamPayout | null;
+	/** A team's `finance.get_proposal_allowance` answer (`null` for a business). */
+	allowance?: unknown;
 }
 
 /** Every answer `org.get_workspace_detail` can give. */
@@ -246,6 +291,63 @@ export function workloadPercent(
 	const cap = Number(max ?? 0);
 	if (!Number.isFinite(cur) || !Number.isFinite(cap) || cap <= 0) return 0;
 	return Math.max(0, Math.min(100, Math.round((100 * cur) / cap)));
+}
+
+/** The platform's global W_i cap when nothing else is recorded (`global_workload_cap_default`). */
+const DEFAULT_WI_CAP = 10;
+
+/** A W_i figure (Postgres `numeric`, which may arrive as a string) as a non-negative number. */
+export function wiOf(raw: number | string | null | undefined): number {
+	const value = Number(raw ?? 0);
+	return Number.isFinite(value) && value > 0 ? Math.round(value * 100) / 100 : 0;
+}
+
+/** A W_i cap as a positive number, else the platform default — a cap is never zero. */
+export function wiCapOf(raw: number | string | null | undefined): number {
+	const value = wiOf(raw);
+	return value > 0 ? value : DEFAULT_WI_CAP;
+}
+
+// #endregion
+
+// #region Engagements
+
+/**
+ * A team's live stage assignment, as the Projects module renders it. Assignees are resolved to faces
+ * (their user ids never leave this function) and carry their GLOBAL W_i and cap from the same member
+ * row the roster reads, beside their W_i on this stage. An assignee who is not an active member is
+ * dropped — the read only names active members, so this is defence, not policy.
+ */
+export function toEngagement(
+	raw: RawEngagement,
+	people: ReadonlyMap<string, Person>,
+	members: ReadonlyMap<string, Pick<RawMember, "wi" | "wi_cap">>,
+): TeamEngagement {
+	const assignees = (raw.assignees ?? []).flatMap((a) => {
+		const member = members.get(a.user_id);
+		if (!member) return [];
+		const person = people.get(a.user_id);
+		return [{
+			handle: clamp(person?.username, 40),
+			displayName: clampOr(person?.name, 120, "Member"),
+			avatarUrl: avatarOf(person?.avatar),
+			wi: wiOf(member.wi),
+			wiCap: wiCapOf(member.wi_cap),
+			stageWi: wiOf(a.stage_wi),
+		}];
+	});
+	const cap = raw.stage_cap === null || raw.stage_cap === undefined ? null : wiOf(raw.stage_cap);
+	return {
+		projectSlug: clamp(raw.project_slug, 64),
+		title: clampOr(raw.title, 160, "Untitled project"),
+		stageSlug: clamp(raw.stage_slug, 64),
+		stageTitle: clampOr(raw.stage_title, 160, "Stage"),
+		assignmentStatus: clamp(raw.assignment_status, 32),
+		projectStatus: raw.project_status === "on_hold" ? "on_hold" : "active",
+		assignees,
+		stageWi: wiOf(raw.stage_wi),
+		stageCap: cap !== null && cap > 0 ? cap : null,
+	};
 }
 
 // #endregion

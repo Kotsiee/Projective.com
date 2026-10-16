@@ -22,7 +22,11 @@ import { RESERVED_HANDLES } from "../profile/reserved.ts";
 import { EntitlementKey } from "../finance/entitlements.ts";
 import { SplitRuleType } from "../finance/vault.ts";
 import { SplitRuleInputSchema } from "./policy.ts";
-import { UpdatePayoutInputSchema } from "./workspace.ts";
+import {
+	TeamEngagementSchema,
+	UpdatePayoutInputSchema,
+	WorkspaceDetailSchema,
+} from "./workspace.ts";
 
 // #region Reading the SQL
 
@@ -228,6 +232,87 @@ Deno.test("UpdatePayoutInputSchema: a template, stakes, or both — never neithe
 		!UpdatePayoutInputSchema.safeParse({ workspaceId: "t", rule: { ruleType: "by_role" } }).success,
 		"an unknown template",
 	);
+});
+
+// #endregion
+
+// #region The one console read (Decision #233)
+
+const detailBody = functionBody(entities, "org.get_workspace_detail");
+
+Deno.test("org.get_workspace_detail answers every key the service maps — and no stored team W_i", () => {
+	for (
+		const key of [
+			"'wi'",
+			"'wi_cap'",
+			"'share_bp'",
+			"'share_held'",
+			"'client'",
+			"'provider_user_ids'",
+			"'provider_teams'",
+			"'engagements'",
+			"'project_slug'",
+			"'stage_slug'",
+			"'stage_wi'",
+			"'stage_cap'",
+			"'assignees'",
+			"'payout'",
+			"'rule'",
+			"'wallet'",
+			"'available_minor'",
+			"'pending_minor'",
+			"'preview'",
+			"'allowance'",
+		]
+	) {
+		assert(detailBody.includes(key), `get_workspace_detail no longer answers ${key}`);
+	}
+	assert(
+		/'payout', CASE WHEN p_kind = 'team' AND 'manage_finances' = ANY \(v_caps\)/.test(detailBody),
+		"the payout block must be gated on manage_finances",
+	);
+	assert(
+		detailBody.includes("finance.get_proposal_allowance(v_e.id)"),
+		"the allowance must be get_proposal_allowance's own answer",
+	);
+	assert(/\bVOLATILE\b/.test(detailBody), "the allowance read writes, so the detail is VOLATILE");
+	assert(!detailBody.includes("current_workload_intensity"), "W_i is summed live, never stored");
+});
+
+Deno.test("WorkspaceDetailSchema: engagements are slug-addressed; a business defaults to none", () => {
+	const engagement = {
+		projectSlug: "prj-abc123",
+		title: "Atlas",
+		stageSlug: "stg-def456",
+		stageTitle: "Build",
+		assignmentStatus: "accepted",
+		projectStatus: "active",
+		assignees: [{
+			handle: "ana",
+			displayName: "Ana",
+			avatarUrl: "",
+			wi: 2.5,
+			wiCap: 10,
+			stageWi: 2.5,
+		}],
+		stageWi: 2.5,
+		stageCap: null,
+	};
+	assert(TeamEngagementSchema.safeParse(engagement).success);
+	assert(
+		!TeamEngagementSchema.safeParse({
+			...engagement,
+			projectSlug: "3f1c2a9e-0000-4000-8000-000000000000",
+		}).success,
+		"a uuid never addresses a project",
+	);
+	assert(
+		!TeamEngagementSchema.safeParse({ ...engagement, projectStatus: "completed" }).success,
+		"a completed project is not a live engagement",
+	);
+	const shape = WorkspaceDetailSchema.shape;
+	assertEquals(shape.engagements.parse(undefined), []);
+	assertEquals(shape.allowance.parse(undefined), null);
 });
 
 // #endregion

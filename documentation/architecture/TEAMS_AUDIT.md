@@ -88,7 +88,7 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | :-- | :-- | :-- | :-- |
 | W1 | Per-person stage hard cap + global soft cap at claim/assign | `projects.check_ticket_capacity` (`00001140…:183-260`), used by `fn_assign_ticket_core` and RR/parallel assignment | ✅ |
 | W2 | Accepting a seat adds no W_i (Decision #214) | Keyed on `current_assignee_id` | ✅ |
-| W3 | Team-level capacity | `org.teams.current_workload_intensity` has **no writer** (`fn_sync_workload_intensity` updates `freelancer_profiles` only); view's team `workload_cap` = default × members, cosmetic (`00003001…:265-273`) | ⚠️ no spec requires a team cap — the dead column + cosmetic figure should either be wired or removed (#226 (h)) |
+| W3 | Team-level capacity | `org.teams.current_workload_intensity` has **no writer** (`fn_sync_workload_intensity` updates `freelancer_profiles` only); view's team `workload_cap` = default × members, cosmetic (`00003001…:265-273`) | ✅ ruled by #233 (a): the team figure is the members' live W_i summed in the read (`org.profiles_index`, `get_workspace_detail`); the column is no longer read (`supabase/probes/workspace_detail_payload.sql`) |
 
 ### 1.6 Backend & data integrity
 
@@ -98,7 +98,7 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | B2 | Detail RPC | `.detail` → `org.get_workspace_detail('team', handle)` (`live-detail.ts:228-238`); `not_found`→404, `forbidden`→403 | ✅ |
 | B3 | `ServiceResult<T>` everywhere; guest 401, DB down 503 | `WorkspaceBackendService.ts:18, 223-235` | ✅ |
 | B4 | Thin routes | 15 `/api/workspace/*` routes, each one RPC via `live-writes.ts`; each write re-reads detail | ✅ |
-| B5 | Direct table reads in service | `live-detail.ts:120` reads `org.profiles_index`; `live-money.ts:112-117` selects `finance.wallets` / `finance.split_rules` directly (user JWT, RLS applies) | ⚠️ acceptable under RLS; prefer folding into `get_workspace_detail` for one read |
+| B5 | Direct table reads in service | `live-detail.ts:120` reads `org.profiles_index`; `live-money.ts:112-117` selects `finance.wallets` / `finance.split_rules` directly (user JWT, RLS applies) | ✅ fixed by B7: folded into `get_workspace_detail` — one RPC per detail read; the payout block for `manage_finances` only (#233 (b)) |
 | B6 | RLS on `org.teams` / `team_members` / `team_roles` / `org_invitations` | Enabled (`00002001…:76-93`); SELECT-only policies; zero write policies; invitations zero policies (token = capability); all writes are definer doors | ✅ |
 | B7 | `finance.vault_permissions` projection | `fn_vault_capabilities_for` + `fn_sync_vault_permissions` (F1020:666-733) | ✅ mapping |
 | B8 | Projection kept in sync | Called explicitly by every RPC + wallet-insert trigger. **No trigger on `team_members` / `team_roles`** — any future write path that forgets the call leaves a stale vault grant (e.g. a revoked `withdraw_funds` still in `vault_permissions`) | ⚠️ add a backstop trigger (#226 (e)) |

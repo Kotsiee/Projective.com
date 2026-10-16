@@ -4,6 +4,11 @@
  * over raw finance facts.
  */
 import { assert, assertEquals, assertStrictEquals } from "@std/assert";
+import { stub } from "@std/testing/mock";
+import type { WorkspaceFinance } from "@projective/types/workspace";
+import { detailIo, readDetail } from "./live-detail.ts";
+import type { LiveActor } from "./live-support.ts";
+import type { RawDetail } from "./mappers.ts";
 import { refusalFrom, sentence, splitRefusal } from "./live-support.ts";
 import { memberPatch, spendPatch, splitRuleArgs } from "./live-writes.ts";
 import {
@@ -510,6 +515,198 @@ Deno.test("trendOf: earnings for a team, spend for a business, empty when nothin
 		trendOf("team", [{ label: "a", start: "2026-10-01", inMinor: 0, outMinor: 9, netMinor: -9 }]),
 		[],
 	);
+});
+
+// #endregion
+
+// #region The one console read (Decision #233)
+
+/** A raw `org.get_workspace_detail` team answer, as the definer returns it, for the given viewer. */
+function rawTeamDetail(withPayout: boolean): RawDetail {
+	const member = (id: string, userId: string, role: string, wi: number, share: number) => ({
+		id,
+		user_id: userId,
+		role_id: `r-${role}`,
+		role,
+		status: "active",
+		granted: [],
+		revoked: [],
+		joined_at: "2026-09-01T00:00:00Z",
+		title: null,
+		reports_to: null,
+		is_self: userId === "u-owner",
+		email: null,
+		wi,
+		wi_cap: "10.00",
+		availability: "available",
+		share_bp: share,
+		share_held: false,
+	});
+	return {
+		status: "ok",
+		id: "team-1",
+		name: "Northloop",
+		handle: "northloop",
+		avatar_file_id: null,
+		banner_file_id: null,
+		headline: "",
+		entity_status: "active",
+		owner_user_id: "u-owner",
+		created_at: "2026-09-01T00:00:00Z",
+		verification: "unverified",
+		viewer: { member_id: "m-owner", role_id: "r-owner", capabilities: ["manage_finances"] },
+		members: [
+			member("m-owner", "u-owner", "owner", 2, 6000),
+			member("m-lead", "u-lead", "member", 1, 4000),
+		],
+		roles: [],
+		invites: [],
+		standing: null,
+		projects: [{
+			slug: "prj-abc123",
+			title: "Atlas",
+			status: "active",
+			client_business_id: "biz-1",
+			owner_user_id: "u-client",
+			stage_name: "Build",
+			stage_status: "in_progress",
+			due: null,
+			stages_total: 2,
+			stages_done: 1,
+			client: { name: "Atlas Labs", avatar_bucket: null, avatar_path: null },
+		}],
+		activity: [],
+		setup: { logo: false, bio: false, invite: true, money: true },
+		engagements: [{
+			project_slug: "prj-abc123",
+			title: "Atlas",
+			stage_slug: "stg-def456",
+			stage_title: "Build",
+			assignment_status: "accepted",
+			project_status: "active",
+			stage_cap: null,
+			stage_wi: "3.00",
+			assignees: [{ user_id: "u-owner", stage_wi: "2.00" }, { user_id: "u-lead", stage_wi: 1 }],
+		}],
+		payout: withPayout
+			? {
+				rule: { rule_type: "co_op", vault_bp: 1000, finder_user_id: null, finder_bp: null },
+				wallet: { id: "w-1", currency: "usd", available_minor: 285_618, pending_minor: 0 },
+				preview: null,
+			}
+			: null,
+		allowance: null,
+	};
+}
+
+const FINANCE_TILES: WorkspaceFinance = {
+	available: { minor: 0, currency: "USD", display: "$0.00", origin: null },
+	locked: { minor: 0, currency: "USD", display: "$0.00", origin: null },
+	pending: { minor: 0, currency: "USD", display: "$0.00", origin: null },
+	walletHref: "/wallet?w=team:team-1",
+	trend: [],
+	delta: null,
+};
+
+/** Run one detail read with every outside reach stubbed; returns the result and the RPC spy. */
+async function readStubbed(raw: RawDetail) {
+	const rpc = stub(
+		detailIo,
+		"rpc",
+		// deno-lint-ignore require-await
+		(async () => ({ ok: true, data: raw })) as unknown as typeof detailIo.rpc,
+	);
+	const tiles = stub(detailIo, "financeTiles", () => Promise.resolve(FINANCE_TILES));
+	const media = stub(detailIo, "publicMedia", () => Promise.resolve(new Map()));
+	const cards = stub(detailIo, "partyCards", () =>
+		Promise.resolve(
+			new Map(["u-owner", "u-lead"].map((id) => [id, {
+				userId: id,
+				username: id.slice(2),
+				name: id === "u-owner" ? "Kwame" : "Sam",
+				isFreelancer: true,
+				avatar: null,
+				avatarLarge: null,
+			}])),
+		));
+	const money = stub(detailIo, "businessMoney", () => Promise.reject(new Error("not a business")));
+	try {
+		const actor = {
+			userId: "u-owner",
+			contextId: "",
+			contextType: "personal",
+			accessToken: "test",
+		} as unknown as LiveActor;
+		const res = await readDetail("team", "northloop", actor, { nowMs: NOW });
+		return {
+			res,
+			detail: res.ok ? res.data ?? null : null,
+			rpcCalls: rpc.calls.length,
+			rpcArgs: rpc.calls[0]?.args,
+		};
+	} finally {
+		rpc.restore();
+		tiles.restore();
+		media.restore();
+		cards.restore();
+		money.restore();
+	}
+}
+
+Deno.test("readDetail: one RPC per detail read — get_workspace_detail, nothing else", async () => {
+	const { res, rpcCalls, rpcArgs } = await readStubbed(rawTeamDetail(true));
+	assert(res.ok);
+	assertEquals(rpcCalls, 1);
+	assertEquals(rpcArgs?.slice(1), ["org", "get_workspace_detail", {
+		p_kind: "team",
+		p_handle: "northloop",
+	}]);
+});
+
+Deno.test("readDetail: the payout block maps the rule, the vault wallet and the members' stakes", async () => {
+	const { detail } = await readStubbed(rawTeamDetail(true));
+	assert(detail);
+	const payout = detail.payout;
+	assert(payout);
+	assertEquals(
+		[payout.walletId, payout.currency, payout.availableMinor, payout.pendingMinor],
+		["w-1", "USD", 285_618, 0],
+	);
+	assertEquals([payout.rule.ruleType, payout.rule.vaultBp, payout.vaultBp], ["co_op", 1000, 1000]);
+	assertEquals(payout.stakes.map((s) => [s.memberId, s.shareBp]), [["m-owner", 6000], [
+		"m-lead",
+		4000,
+	]]);
+});
+
+Deno.test("readDetail: a member without manage_finances receives no payout block", async () => {
+	const { detail } = await readStubbed(rawTeamDetail(false));
+	assert(detail);
+	assertStrictEquals(detail.payout, null);
+	// The roster still shows each member's stake and W_i — those are not the payout block.
+	assertEquals(detail.members.map((m) => [m.handle, m.shareBp, m.wi, m.wiCap, m.workload]), [
+		["owner", 6000, 2, 10, 20],
+		["lead", 4000, 1, 10, 10],
+	]);
+});
+
+Deno.test("readDetail: engagements carry slugs and faces, never a user id", async () => {
+	const { detail } = await readStubbed(rawTeamDetail(true));
+	assert(detail);
+	assertEquals(detail.engagements.length, 1);
+	const [engagement] = detail.engagements;
+	assertEquals([engagement.projectSlug, engagement.stageSlug, engagement.stageWi], [
+		"prj-abc123",
+		"stg-def456",
+		3,
+	]);
+	assertEquals(
+		engagement.assignees.map((a) => [a.handle, a.displayName, a.wi, a.wiCap, a.stageWi]),
+		[["owner", "Kwame", 2, 10, 2], ["lead", "Sam", 1, 10, 1]],
+	);
+	assert(!JSON.stringify(detail.engagements).includes("u-owner"));
+	assertEquals(detail.projects[0].counterparty, "Atlas Labs");
+	assertStrictEquals(detail.allowance, null);
 });
 
 // #endregion

@@ -24,11 +24,14 @@ import {
 	setupSteps,
 	spendRequestState,
 	spentInPeriod,
+	toEngagement,
 	toOutgoingInvite,
 	toRoleDef,
 	toSplitRule,
 	usedFraction,
 	verificationPrompt,
+	wiCapOf,
+	wiOf,
 	workloadPercent,
 } from "./mappers.ts";
 
@@ -452,6 +455,48 @@ Deno.test("spentInPeriod: a reset period has spent nothing; a total limit never 
 	assertEquals(usedFraction(800, 2500), 0.32);
 	assertEquals(usedFraction(5000, 2500), 1);
 	assertEquals(usedFraction(800, null), 0);
+});
+
+// #endregion
+
+// #region Workload & engagements (Decision #233)
+
+Deno.test("wiOf / wiCapOf: numeric strings parse; nothing is 0; a cap is never 0", () => {
+	assertEquals([wiOf("3.50"), wiOf(2), wiOf(null), wiOf("x"), wiOf(-1)], [3.5, 2, 0, 0, 0]);
+	assertEquals([wiCapOf("12.00"), wiCapOf(null), wiCapOf(0)], [12, 10, 10]);
+});
+
+Deno.test("toEngagement: faces from people, W_i from the member row; non-members dropped; no cap is null", () => {
+	const engagement = toEngagement(
+		{
+			project_slug: "prj-abc123",
+			title: "",
+			stage_slug: "stg-def456",
+			stage_title: "Build",
+			assignment_status: "accepted",
+			project_status: "on_hold",
+			stage_cap: "0",
+			stage_wi: "4.00",
+			assignees: [
+				{ user_id: "u-a", stage_wi: "3.00" },
+				{ user_id: "u-gone", stage_wi: "1.00" },
+			],
+		},
+		new Map([["u-a", { username: "ana", name: "Ana", avatar: null }]]),
+		new Map([["u-a", { wi: "7.25", wi_cap: null }]]),
+	);
+	assertEquals(engagement.title, "Untitled project");
+	assertEquals(engagement.projectStatus, "on_hold");
+	assertStrictEquals(engagement.stageCap, null);
+	assertEquals(engagement.stageWi, 4);
+	assertEquals(engagement.assignees, [{
+		handle: "ana",
+		displayName: "Ana",
+		avatarUrl: "",
+		wi: 7.25,
+		wiCap: 10,
+		stageWi: 3,
+	}]);
 });
 
 // #endregion
