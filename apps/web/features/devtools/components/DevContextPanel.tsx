@@ -54,6 +54,7 @@ import {
 import { openMoneyFlow } from "@features/checkout/core/money-flow-state.ts";
 import { DevThemeControls } from "./DevThemeControls.tsx";
 import { DevEmbeddingsStatus } from "./DevEmbeddingsStatus.tsx";
+import { DevPayoutReadyAction } from "./DevPayoutReadyAction.tsx";
 
 // #region Props
 /** Props for {@link DevContextPanel}. */
@@ -856,6 +857,11 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 					<button type="button" class="dev-ctx__reset" onClick={openMoneyFlow}>
 						Open debugger
 					</button>
+				</Field>
+				<Field label="Earning gate" hint="live KYC + payout">
+					<DevPayoutReadyAction
+						simulatedNotReady={o.enabled && o.payoutReadiness === "not_ready"}
+					/>
 				</Field>
 			</div>
 

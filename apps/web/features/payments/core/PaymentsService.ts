@@ -152,6 +152,11 @@ export const PaymentsService = {
 		return send("/api/finance/verify/status");
 	},
 
+	/** DEV ONLY — force the caller identity-verified and payout-ready, skipping Stripe. */
+	forcePayoutReady(): Promise<PaymentsResponse<VerificationStatus>> {
+		return post("/api/finance/verify/force", {});
+	},
+
 	/** Start the Level-2 identity check; the answer carries Stripe's hosted URL. */
 	startKyc(): Promise<PaymentsResponse<IdentitySessionHandoff>> {
 		return post("/api/finance/verify/kyc", {});
