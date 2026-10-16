@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { PlanAudience, PlanTier } from "./plans.ts";
 import { timestamp, uuid } from "./common.ts";
+import { WorkspaceStatus } from "../workspace/common.ts";
 
 /**
  * finance allowance — the proposal allowance as the product reads it: the weekly quota, the anti-burst
@@ -18,8 +19,8 @@ import { timestamp, uuid } from "./common.ts";
  * - **Metering is not enforcement.** The over-cap reasons (`weekly_exhausted`, `buffer_exhausted`) only
  *   REFUSE while `security.platform_params.proposal_allowance_enforced` is on (Decision #58's fail-open
  *   switch); while it is off the meter still reads empty, the UI says so, and the application goes
- *   through. The eligibility reasons (`team_too_small`, `missing_permission`) are rules, not meters,
- *   and always refuse.
+ *   through. The eligibility reasons (`missing_permission`, `team_not_active`, `team_too_small`) are
+ *   rules, not meters, and always refuse — in the order `projects.fn_assert_team_can_apply` checks them.
  */
 
 // #region Vocabulary
@@ -28,6 +29,7 @@ export const AllowanceBlockReason = z.enum([
 	"weekly_exhausted",
 	"buffer_exhausted",
 	"team_too_small",
+	"team_not_active",
 	"missing_permission",
 ]);
 export type AllowanceBlockReason = z.infer<typeof AllowanceBlockReason>;
@@ -40,6 +42,10 @@ export const METERED_BLOCK_REASONS: readonly AllowanceBlockReason[] = [
 
 /** The minimum active members a team needs before it may send proposals (PRODUCT_SPEC). */
 export const TEAM_PROPOSAL_MIN_MEMBERS = 2;
+
+/** What an unpublished (draft or archived) team is told — the notice and the server's `422` alike. */
+export const TEAM_NOT_ACTIVE_NOTICE =
+	"Publish the team before applying. Only a published team can send proposals.";
 // #endregion
 
 // #region Status
@@ -82,6 +88,8 @@ export const ProposalAllowanceStatusSchema = z.object({
 	standingLevel: z.number().int().min(1).max(5),
 	/** Weekly units the rung adds on top of the plan's base. */
 	standingBonus: z.number().int().min(0),
+	/** The team's lifecycle status — only an `active` team applies; `null` for a person. */
+	teamStatus: WorkspaceStatus.nullable(),
 	/** Active members, for a team subject; `null` for a person. */
 	teamMemberCount: z.number().int().min(0).nullable(),
 	/** Whether the caller may bind the team to work (`bind_seat`); `null` for a person. */
@@ -112,6 +120,7 @@ export const ProposalAllowanceRowSchema = z.object({
 	upgrade_weekly_units: z.number().int().nullable(),
 	standing_level: z.number().int(),
 	enforced: z.boolean(),
+	team_status: WorkspaceStatus.nullable(),
 	team_member_count: z.number().int().nullable(),
 	can_bind_seat: z.boolean().nullable(),
 	server_now: timestamp,
@@ -139,21 +148,25 @@ export function nextBufferRefillAt(
 
 /**
  * The first reason an application would be stopped, most fundamental first: eligibility before the
- * meters, and the weekly quota before the buffer (a drip cannot help an empty week).
+ * meters, and the weekly quota before the buffer (a drip cannot help an empty week). Eligibility runs
+ * in `projects.fn_assert_team_can_apply`'s order — permission, then a published team, then two members
+ * — so the pre-flight names the same reason the database would raise.
  */
 export function allowanceBlockReason(
 	input: {
 		weeklyRemaining: number;
 		bufferUnits: number;
 		bufferCap: number;
+		teamStatus: WorkspaceStatus | null;
 		teamMemberCount: number | null;
 		canBindSeat: boolean | null;
 	},
 ): AllowanceBlockReason | undefined {
+	if (input.canBindSeat === false) return "missing_permission";
+	if (input.teamStatus !== null && input.teamStatus !== "active") return "team_not_active";
 	if (input.teamMemberCount !== null && input.teamMemberCount < TEAM_PROPOSAL_MIN_MEMBERS) {
 		return "team_too_small";
 	}
-	if (input.canBindSeat === false) return "missing_permission";
 	if (input.weeklyRemaining <= 0) return "weekly_exhausted";
 	if (input.bufferCap > 0 && input.bufferUnits <= 0) return "buffer_exhausted";
 	return undefined;
@@ -184,6 +197,7 @@ export function resolveProposalAllowance(row: ProposalAllowanceRow): ProposalAll
 		weeklyRemaining,
 		bufferUnits: row.buffer_units,
 		bufferCap: row.buffer_cap,
+		teamStatus: row.team_status,
 		teamMemberCount: row.team_member_count,
 		canBindSeat: row.can_bind_seat,
 	});
@@ -218,6 +232,7 @@ export function resolveProposalAllowance(row: ProposalAllowanceRow): ProposalAll
 			: null,
 		standingLevel: Math.min(5, Math.max(1, row.standing_level)),
 		standingBonus: Math.max(0, row.standing_bonus_units),
+		teamStatus: row.team_status,
 		teamMemberCount: row.team_member_count,
 		canBindSeat: row.can_bind_seat,
 		serverNow: row.server_now,
@@ -287,6 +302,14 @@ export function allowanceNotice(status: ProposalAllowanceStatus): AllowanceNotic
 				tail: "",
 			};
 		}
+		case "team_not_active":
+			return {
+				reason,
+				blocking,
+				lead: TEAM_NOT_ACTIVE_NOTICE,
+				countdownTo: null,
+				tail: "",
+			};
 		case "team_too_small":
 			return {
 				reason,

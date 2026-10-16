@@ -9,6 +9,7 @@ import {
 	type ProposalAllowanceRow,
 	refusesApplication,
 	resolveProposalAllowance,
+	TEAM_NOT_ACTIVE_NOTICE,
 } from "./allowance.ts";
 
 /**
@@ -41,6 +42,7 @@ function row(overrides: Partial<ProposalAllowanceRow> = {}): ProposalAllowanceRo
 		upgrade_weekly_units: 150,
 		standing_level: 1,
 		enforced: false,
+		team_status: null,
 		team_member_count: null,
 		can_bind_seat: null,
 		server_now: NOW,
@@ -79,27 +81,48 @@ Deno.test("an empty buffer refuses once enforcement is on", () => {
 
 Deno.test("eligibility rules refuse regardless of the enforcement switch", () => {
 	assertStrictEquals(refusesApplication("team_too_small", false), true);
+	assertStrictEquals(refusesApplication("team_not_active", false), true);
 	assertStrictEquals(refusesApplication("missing_permission", false), true);
 	assertStrictEquals(refusesApplication("weekly_exhausted", false), false);
 	const team = resolveProposalAllowance(
-		row({ subject_type: "team", team_member_count: 1, can_bind_seat: true }),
+		row({ subject_type: "team", team_status: "active", team_member_count: 1, can_bind_seat: true }),
 	);
 	assertStrictEquals(team.blockReason, "team_too_small");
 	assertStrictEquals(team.canApply, false);
 });
 
-Deno.test("the most fundamental reason wins: eligibility, then the week, then the buffer", () => {
+Deno.test("a draft or archived team is refused as team_not_active, even unenforced", () => {
+	for (const status of ["draft", "archived"] as const) {
+		const team = resolveProposalAllowance(
+			row({ subject_type: "team", team_status: status, team_member_count: 3, can_bind_seat: true }),
+		);
+		assertStrictEquals(team.blockReason, "team_not_active");
+		assertStrictEquals(team.teamStatus, status);
+		assertStrictEquals(team.canApply, false);
+		assertStrictEquals(allowanceNotice(team)?.lead, TEAM_NOT_ACTIVE_NOTICE);
+	}
+});
+
+Deno.test("the most fundamental reason wins in the database's order, then the week, then the buffer", () => {
 	const base = { weeklyRemaining: 0, bufferUnits: 0, bufferCap: 12 };
 	assertStrictEquals(
-		allowanceBlockReason({ ...base, teamMemberCount: 1, canBindSeat: false }),
-		"team_too_small",
-	);
-	assertStrictEquals(
-		allowanceBlockReason({ ...base, teamMemberCount: 3, canBindSeat: false }),
+		allowanceBlockReason({ ...base, teamStatus: "draft", teamMemberCount: 1, canBindSeat: false }),
 		"missing_permission",
 	);
 	assertStrictEquals(
-		allowanceBlockReason({ ...base, teamMemberCount: null, canBindSeat: null }),
+		allowanceBlockReason({ ...base, teamStatus: "draft", teamMemberCount: 1, canBindSeat: true }),
+		"team_not_active",
+	);
+	assertStrictEquals(
+		allowanceBlockReason({ ...base, teamStatus: "active", teamMemberCount: 1, canBindSeat: true }),
+		"team_too_small",
+	);
+	assertStrictEquals(
+		allowanceBlockReason({ ...base, teamStatus: "active", teamMemberCount: 2, canBindSeat: true }),
+		"weekly_exhausted",
+	);
+	assertStrictEquals(
+		allowanceBlockReason({ ...base, teamStatus: null, teamMemberCount: null, canBindSeat: null }),
 		"weekly_exhausted",
 	);
 });

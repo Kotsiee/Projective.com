@@ -600,6 +600,7 @@ export const DEV_PROPOSAL_ALLOWANCES: ReadonlyArray<DevOption<DevProposalAllowan
 	{ value: "paced", label: "Paced" },
 	{ value: "paced_soft", label: "Paced (unenforced)" },
 	{ value: "weekly", label: "Week spent" },
+	{ value: "team_draft", label: "Team unpublished" },
 	{ value: "team_small", label: "Team < 2" },
 ];
 

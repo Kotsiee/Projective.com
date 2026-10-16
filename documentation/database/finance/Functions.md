@@ -343,13 +343,14 @@ Both are mirrored by pure TypeScript twins in `packages/types/finance/entitlemen
   `buffer_refreshed_at`, `buffer_window_hours`, `buffer_drip`, `plan_code` / `plan_label` /
   `plan_tier` / `plan_audience`, `upgrade_plan_label` / `upgrade_weekly_units` (the same audience's
   public Pro plan, free tiers only), `standing_level`, `enforced` (`proposal_allowance_enforced`),
-  `team_member_count` and `can_bind_seat` (team only), and `server_now`. Resolved by
-  `resolveProposalAllowance` (`@projective/types/finance`).
+  `team_status`, `team_member_count` and `can_bind_seat` (team only), and `server_now`. Resolved by
+  `resolveProposalAllowance` (`@projective/types/finance`). A report only — the apply doors enforce
+  through `projects.fn_assert_team_can_apply`.
 - **`finance.record_proposal_denial(p_reason text, p_team_id uuid DEFAULT NULL, p_project text DEFAULT NULL) → void`**
   — writes `entitlement.denied` (`gate: preflight`) for a refusal the app's pre-flight gate made
   before `apply_to_project` inserted, which the metering trigger therefore never saw. Caller-scoped
   like the read; `p_reason` ∈ `weekly_exhausted · buffer_exhausted · team_too_small ·
-  missing_permission`; `p_project` is a slug or uuid. Granted to `authenticated` (the `analytics`
+  team_not_active · missing_permission`; `p_project` is a slug or uuid. Granted to `authenticated` (the `analytics`
   schema is not exposed to PostgREST).
 
 ### Footprint

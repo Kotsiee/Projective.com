@@ -76,8 +76,8 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | :-- | :-- | :-- | :-- |
 | A1 | Only `bind_seat` holders apply for the team | `apply_to_project` → `org.is_team_lead` = `fn_member_can(…,'bind_seat')` (`00001130…:1025-1041`; F1020:642-650) | ✅ |
 | A2 | Team needs ≥2 active members | Enforced in `apply_to_project` (`check_violation`) | ✅ |
-| A3 | ≥2 on `apply_to_seat` | **Missing** (`00001130…:881ff` checks lead + payout-ready only) | ❌ |
-| A4 | Team status checked on apply | Neither path checks `org.teams.status` — a **draft or archived** team can apply | ❌ |
+| A3 | ≥2 on `apply_to_seat` | **Missing** (`00001130…:881ff` checks lead + payout-ready only) | ✅ fixed by B2: both doors run `projects.fn_assert_team_can_apply` (`supabase/probes/team_apply_gates.sql`) |
+| A4 | Team status checked on apply | Neither path checks `org.teams.status` — a **draft or archived** team can apply | ✅ fixed by B2: `team_not_active` on both doors and in the pre-flight (#228 (E)) |
 | A5 | `team_too_small` / `missing_permission` refuse even meter-only | `SYSTEM_ARCHITECTURE.md:1985-1986`; pre-flight in `ProjectBackendService.apply` | ✅ |
 | A6 | Team pool vs members' pool | `finance-model.md:480` vs `database/finance/Tables.md:311` vs `PRODUCT_SPEC.md:1376` | 📄 (#154 flag b, still open) |
 | A7 | Apply modal defaults to "Yourself" in team context | #154 flag (c) | ⚠️ open |

@@ -1983,7 +1983,8 @@ the command palette.
   `services/finance/proposal-allowance.ts`, an in-memory twin with finance off) →
   `resolveProposalAllowance` (`@projective/types/finance`), which owns the one refusal rule: the
   metered reasons refuse only while `proposal_allowance_enforced` is on, the eligibility reasons
-  (team under two members, no `bind_seat`) always. `ProjectBackendService.apply` runs the same read as
+  (no `bind_seat`, an unpublished team, a team under two members — `projects.fn_assert_team_can_apply`'s
+  order, Decision #228 (E)) always. `ProjectBackendService.apply` runs the same read as
   a **pre-flight gate** for the subject the application will be metered against and, when it refuses,
   records `entitlement.denied` through `finance.record_proposal_denial` — the app-layer emission
   #58 called for, since the insert trigger never runs. A gate read that FAILS lets the application

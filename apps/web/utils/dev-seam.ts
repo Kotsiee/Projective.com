@@ -348,8 +348,9 @@ export type DevAccountLifecycle =
  * substitutes the STATUS those surfaces render, so the shipping copy, countdown and gate run on it:
  * `healthy` (plenty left), `low` (≤ 5 weekly — the upgrade link), `paced` (no buffer token, enforced:
  * submit disabled, live countdown), `paced_soft` (no buffer token while enforcement is off — the
- * notice says it still goes through), `weekly` (the week spent, enforced) and `team_small` (a
- * one-member team). Client-side only: the server's gate still answers from the real allowance.
+ * notice says it still goes through), `weekly` (the week spent, enforced), `team_draft` (an unpublished
+ * team — the notice and its Open settings link) and `team_small` (a one-member team). Client-side
+ * only: the server's gate still answers from the real allowance.
  *
  * Its own axis because each value is a metered SERVER fact (tokens spent, a drip clock, a roster) that
  * no page control can reach without spending real proposals.
@@ -361,6 +362,7 @@ export type DevProposalAllowance =
 	| "paced"
 	| "paced_soft"
 	| "weekly"
+	| "team_draft"
 	| "team_small";
 
 /** The DOM event the Context Switcher dispatches whenever the active override changes. */
@@ -568,6 +570,7 @@ const PROPOSAL_ALLOWANCES: readonly DevProposalAllowance[] = [
 	"paced",
 	"paced_soft",
 	"weekly",
+	"team_draft",
 	"team_small",
 ];
 const VERIFICATION_STAMPS: readonly DevVerificationStamp[] = [

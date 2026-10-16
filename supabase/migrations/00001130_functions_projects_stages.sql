@@ -877,6 +877,51 @@ $$;
 
 -- #endregion
 
+-- #region 5b. fn_assert_team_can_apply — the one gate both team apply doors run (Decision #228 (E))
+-- A team application seats the TEAM on acceptance, so the team is what must be able to work. In order:
+-- the caller holds `bind_seat` (`org.is_team_lead`); the team is published (`active` — a draft or an
+-- archived team sends nothing); it has two active members (PRODUCT_SPEC §Proposal allowances); and
+-- every shareholder is payout-ready (Decision #196). `finance.get_proposal_allowance` reports the
+-- same facts so the app's pre-flight refuses before the door does; this is the enforcement.
+CREATE OR REPLACE FUNCTION projects.fn_assert_team_can_apply(p_team_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_status  text;
+    v_members integer;
+BEGIN
+    IF NOT org.is_team_lead(p_team_id) THEN
+        RAISE EXCEPTION 'Only a team member who can commit the team to work may apply on its behalf.'
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+
+    SELECT t.status INTO v_status FROM org.teams t WHERE t.id = p_team_id;
+    IF v_status IS DISTINCT FROM 'active' THEN
+        RAISE EXCEPTION USING ERRCODE = 'check_violation',
+            MESSAGE = 'team_not_active: only a published team can apply — publish it in Settings';
+    END IF;
+
+    SELECT count(*)::integer INTO v_members
+      FROM org.team_members m
+     WHERE m.team_id = p_team_id AND m.status = 'active';
+    IF v_members < 2 THEN
+        RAISE EXCEPTION 'Teams must have at least 2 members before applying to client projects.'
+            USING ERRCODE = 'check_violation';
+    END IF;
+
+    PERFORM finance.fn_assert_payout_ready('team', p_team_id);
+END;
+$$;
+
+COMMENT ON FUNCTION projects.fn_assert_team_can_apply(uuid) IS
+'Refuses a team application unless the caller holds bind_seat (42501), the team is active (23514 team_not_active:), it has two active members (23514) and every shareholder is payout-ready (PK403). Shared by apply_to_seat and apply_to_project; not granted to any role.';
+
+-- #endregion
+
 -- #region 6. apply_to_seat — AC2 multi-type applications + AC3 team-lead gate
 CREATE OR REPLACE FUNCTION projects.apply_to_seat(
     p_seat_id             uuid,
@@ -916,19 +961,16 @@ BEGIN
         RAISE EXCEPTION 'This seat is no longer open for applications.' USING ERRCODE = 'check_violation';
     END IF;
 
-    -- AC3: a team application must be filed by a lead of that team; a freelancer application must be
-    -- filed for the caller's own freelancer profile.
+    -- AC3: a team application passes the shared team gate; a freelancer application must be filed for
+    -- the caller's own freelancer profile.
     IF p_applicant_type = 'team' THEN
-        IF NOT org.is_team_lead(p_applicant_profile_id) THEN
-            RAISE EXCEPTION 'Only a team lead may apply on behalf of the team.'
-                USING ERRCODE = 'insufficient_privilege';
-        END IF;
+        PERFORM projects.fn_assert_team_can_apply(p_applicant_profile_id);
     ELSE
         IF p_applicant_profile_id <> v_actor THEN
             RAISE EXCEPTION 'You may only apply as yourself.' USING ERRCODE = 'insufficient_privilege';
         END IF;
+        PERFORM finance.fn_assert_payout_ready('freelancer', v_actor);
     END IF;
-    PERFORM finance.fn_assert_payout_ready(p_applicant_type, p_applicant_profile_id);
 
     -- No duplicate live application from the same applicant to the same seat.
     IF EXISTS (
@@ -973,10 +1015,10 @@ $$;
 -- comms.send_request_message, which files it in the owner's Requests folder.
 --
 -- `p_team_id` applies on a TEAM's behalf instead (`applicant_type = 'team'`, the team as the
--- applicant profile, so acceptance seats the team). Only a member holding `bind_seat` may commit the
--- team to work (`org.is_team_lead`), and a team needs two active members before it may send
--- proposals at all (PRODUCT_SPEC §Proposal allowances). The proposal is metered against the team's
--- pool by the insert trigger, exactly as a personal one is metered against the person's.
+-- applicant profile, so acceptance seats the team), through `fn_assert_team_can_apply` (§5b): a
+-- `bind_seat` holder, a published team, two active members, payout-ready shareholders. The proposal is
+-- metered against the team's pool by the insert trigger, exactly as a personal one is metered against
+-- the person's.
 CREATE OR REPLACE FUNCTION projects.apply_to_project(
     p_project text,
     p_stage   text,
@@ -1001,7 +1043,6 @@ DECLARE
     v_name        text;
     v_username    text;
     v_team_name   text;
-    v_members     integer;
 BEGIN
     IF v_actor IS NULL THEN
         RAISE EXCEPTION 'Sign in to apply to a project.' USING ERRCODE = 'insufficient_privilege';
@@ -1023,30 +1064,19 @@ BEGIN
         RAISE EXCEPTION 'This project is not taking applications.' USING ERRCODE = 'check_violation';
     END IF;
     IF p_team_id IS NOT NULL THEN
-        -- A team application seats the TEAM on acceptance, so the team is what must be able to work.
-        IF NOT org.is_team_lead(p_team_id) THEN
-            RAISE EXCEPTION 'Only a team member who can commit the team to work may apply on its behalf.'
-                USING ERRCODE = 'insufficient_privilege';
-        END IF;
+        PERFORM projects.fn_assert_team_can_apply(p_team_id);
         IF v_project.owner_team_id = p_team_id THEN
             RAISE EXCEPTION 'A team cannot apply to its own project.' USING ERRCODE = 'check_violation';
         END IF;
-        SELECT count(*)::integer INTO v_members
-          FROM org.team_members m
-         WHERE m.team_id = p_team_id AND m.status = 'active';
-        IF v_members < 2 THEN
-            RAISE EXCEPTION 'Teams must have at least 2 members before applying to client projects.'
-                USING ERRCODE = 'check_violation';
-        END IF;
         SELECT t.name INTO v_team_name FROM org.teams t WHERE t.id = p_team_id;
-    -- An accepted application becomes a freelancer stage assignment, whose FK is the freelancer profile.
-    ELSIF NOT EXISTS (SELECT 1 FROM org.freelancer_profiles fp WHERE fp.user_id = v_actor) THEN
-        RAISE EXCEPTION 'Set up your freelancer profile before applying.' USING ERRCODE = 'check_violation';
+    ELSE
+        -- An accepted application becomes a freelancer stage assignment, whose FK is the freelancer
+        -- profile, and whoever acceptance would seat must be able to be paid (Decision #196).
+        IF NOT EXISTS (SELECT 1 FROM org.freelancer_profiles fp WHERE fp.user_id = v_actor) THEN
+            RAISE EXCEPTION 'Set up your freelancer profile before applying.' USING ERRCODE = 'check_violation';
+        END IF;
+        PERFORM finance.fn_assert_payout_ready('freelancer', v_actor);
     END IF;
-    -- Whoever acceptance would seat must be able to be paid (Decision #196).
-    PERFORM finance.fn_assert_payout_ready(
-        CASE WHEN p_team_id IS NULL THEN 'freelancer' ELSE 'team' END, COALESCE(p_team_id, v_actor)
-    );
 
     SELECT * INTO v_stage FROM projects.project_stages s
      WHERE s.project_id = v_project.id AND (s.slug = p_stage OR s.id::text = p_stage);
@@ -1162,7 +1192,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION projects.apply_to_project(text, text, uuid, text, uuid) IS
-'A freelancer applies, as themselves or (p_team_id) on behalf of a team they may bind to work, to a stage (optionally one of its staffing roles) of an active, public or unlisted project. A team needs two active members. Masks the cover note in the protected phase, records a pending application (metered against the applicant''s proposal allowance by trigger), and notifies the owner (application.received). Project and stage accept a slug or a uuid.';
+'A freelancer applies, as themselves or (p_team_id) on behalf of a team they may bind to work, to a stage (optionally one of its staffing roles) of an active, public or unlisted project. A team must pass projects.fn_assert_team_can_apply (bind_seat, active, two active members, payout-ready). Masks the cover note in the protected phase, records a pending application (metered against the applicant''s proposal allowance by trigger), and notifies the owner (application.received). Project and stage accept a slug or a uuid.';
 
 REVOKE ALL ON FUNCTION projects.apply_to_project(text, text, uuid, text, uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION projects.apply_to_project(text, text, uuid, text, uuid) TO authenticated;

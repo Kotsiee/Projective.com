@@ -118,6 +118,7 @@ export function simulateAllowance(
 		upgrade: { planLabel: "Individual Pro", weeklyUnits: 150 },
 		standingLevel: 1,
 		standingBonus: 0,
+		teamStatus: null,
 		teamMemberCount: null,
 		canBindSeat: null,
 		serverNow: new Date(anchor).toISOString(),
@@ -170,10 +171,21 @@ export function simulateAllowance(
 				canApply: false,
 				blockReason: "weekly_exhausted",
 			};
+		case "team_draft":
+			return {
+				...common,
+				subjectType: "team",
+				teamStatus: "draft",
+				teamMemberCount: TEAM_PROPOSAL_MIN_MEMBERS,
+				canBindSeat: true,
+				canApply: false,
+				blockReason: "team_not_active",
+			};
 		case "team_small":
 			return {
 				...common,
 				subjectType: "team",
+				teamStatus: "active",
 				teamMemberCount: TEAM_PROPOSAL_MIN_MEMBERS - 1,
 				canBindSeat: true,
 				canApply: false,
