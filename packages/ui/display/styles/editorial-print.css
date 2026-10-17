@@ -1,0 +1,130 @@
+/*
+ * PrintStylesheet — the `@media print` layer for any page that renders a `.ui-doc` (DESIGN_SYSTEM.md
+ * §C.1). A printed legal or help page is the document and nothing else.
+ *
+ * Chrome is removed STRUCTURALLY rather than by naming it: every element that neither contains the
+ * document, is the document, nor sits inside it is not printed. That reaches the guest header pill,
+ * the authenticated top bar and rail, footers, floating windows and the developer tools without this
+ * package knowing a single app class name — and a future shell inherits it for free. The document's
+ * ancestors stay in the tree but give up their geometry (shell grids, reserved header bands, fixed
+ * surface fills), so the first printed line is the title.
+ *
+ * Token-only: the print sizes are tokens declared once here, colour is the `Canvas` / `CanvasText`
+ * system pair under a forced light scheme (a dark-mode reader still prints dark ink on paper), and
+ * spacing reads the shared ramp.
+ */
+@media print {
+	:root:has(.ui-doc) {
+		--doc-print-body: 11pt;
+		--doc-print-small: 9pt;
+		color-scheme: light;
+	}
+
+	/* #region Everything that is not the document */
+	body:has(.ui-doc) :not(:has(.ui-doc)):not(.ui-doc):not(.ui-doc *) {
+		display: none !important;
+	}
+
+	:root:has(.ui-doc),
+	:root:has(.ui-doc) :has(.ui-doc) {
+		position: static !important;
+		display: block !important;
+		inline-size: auto !important;
+		max-inline-size: none !important;
+		min-block-size: 0 !important;
+		margin: 0 !important;
+		padding: 0 !important;
+		border: 0 !important;
+		box-shadow: none !important;
+		background: none !important;
+		overflow: visible !important;
+	}
+
+	:root:has(.ui-doc) :has(.ui-doc)::before,
+	:root:has(.ui-doc) :has(.ui-doc)::after {
+		display: none !important;
+	}
+	/* #endregion */
+
+	/* #region The document */
+	/*
+	 * The colour tokens re-mapped for paper, ON the document so every descendant inherits them: a
+	 * dark-mode reader's light ink would otherwise print near-invisible. `--hairline` is re-declared
+	 * here, not just its colour, because a derived token resolves where it is declared (`:root`).
+	 */
+	.ui-doc {
+		--on-surface: CanvasText;
+		--on-surface-variant: GrayText;
+		--text-secondary: GrayText;
+		--border-subtle: GrayText;
+		--hairline-color: GrayText;
+		--hairline: 1px solid GrayText;
+		--primary: CanvasText;
+		--bg: Canvas;
+		--surface-1: Canvas;
+		--surface-2: Canvas;
+		color: CanvasText;
+		background: Canvas;
+		print-color-adjust: economy;
+	}
+
+	.ui-doc :is(.ui-doc__toc, .ui-reading-progress, .ui-anchor-heading__glyph, button, [data-print="hide"]) {
+		display: none !important;
+	}
+
+	.ui-doc__article {
+		display: block;
+		padding: 0;
+		font-size: var(--doc-print-body);
+	}
+
+	.ui-doc__body,
+	.ui-doc__meta,
+	.ui-doc__footer {
+		margin-block-start: var(--space-5);
+	}
+
+	.ui-doc :is(.ui-prose, .ui-doc-header__summary, .ui-doc-section__tldr) {
+		max-inline-size: none;
+		font-family: var(--font-reading);
+		font-size: var(--doc-print-body);
+		line-height: var(--leading-normal);
+		color: CanvasText;
+	}
+
+	.ui-doc :is(.ui-doc-header__eyebrow, .ui-doc-header__meta, .ui-prose__caption, .ui-prose__cite) {
+		font-size: var(--doc-print-small);
+		color: CanvasText;
+	}
+
+	.ui-doc :is(h1, h2, h3, .ui-doc-header__title) {
+		color: CanvasText;
+		break-after: avoid;
+		break-inside: avoid;
+	}
+
+	.ui-doc :is(table, .ui-prose__table, .ui-prose__figure, .ui-prose__pre, .ui-callout, blockquote) {
+		break-inside: avoid;
+	}
+
+	.ui-doc .ui-prose__table {
+		overflow: visible;
+	}
+
+	.ui-doc .ui-prose__pre {
+		white-space: pre-wrap;
+		overflow: visible;
+	}
+
+	.ui-doc .ui-prose a {
+		color: CanvasText;
+	}
+
+	/* An external link prints its destination, since paper cannot be clicked. */
+	.ui-doc .ui-prose a[href^="http"]::after {
+		content: " (" attr(href) ")";
+		font-size: var(--doc-print-small);
+		overflow-wrap: anywhere;
+	}
+	/* #endregion */
+}

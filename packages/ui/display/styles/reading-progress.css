@@ -1,0 +1,38 @@
+/*
+ * ReadingProgress — a 2px bar pinned under the site header (DESIGN_SYSTEM.md §C.1, §B.10.5).
+ *
+ * The host is a ZERO-height sticky anchor at the chrome's bottom edge (`--doc-chrome-h`, set by the
+ * document frame) and the bar hangs from it absolutely, so the component reserves no space and can
+ * never shift the page. Progress is encoded in `transform: scaleX()` on a statically full-width bar —
+ * never in `inline-size` — the toast countdown's rule, so a frozen frame can only be stale, not wrong
+ * about its geometry. Until the island has measured, and on a page too short to need it, the bar is
+ * hidden and withdrawn from the accessibility tree.
+ */
+.ui-reading-progress {
+	position: sticky;
+	inset-block-start: var(--doc-chrome-h, 0px);
+	z-index: var(--z-sticky);
+	block-size: 0;
+	pointer-events: none;
+}
+
+.ui-reading-progress[data-state="idle"],
+.ui-reading-progress[data-state="short"] {
+	visibility: hidden;
+}
+
+.ui-reading-progress__bar {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline: 0;
+	block-size: 2px;
+	background: var(--primary);
+	/* `transform-origin` has no logical keywords, so RTL is flipped explicitly below. */
+	transform-origin: left center;
+	transform: scaleX(var(--doc-progress, 0));
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+[dir="rtl"] .ui-reading-progress__bar {
+	transform-origin: right center;
+}
