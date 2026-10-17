@@ -1,6 +1,6 @@
 import type { ServiceResult } from "@server/services/ServiceResult.ts";
 import type { NewsletterResult } from "../types/newsletter.ts";
-import type { NewsletterSubscribeResult } from "@projective/types/newsletter";
+import type { NewsletterSubscribeResult } from "@projective/types/community";
 
 /**
  * Fold a fat-service {@link ServiceResult} into the client {@link NewsletterResult} HTTP body and echo

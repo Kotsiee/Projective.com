@@ -15,6 +15,8 @@
 		"./catalogue": "./catalogue/mod.ts",
 		"./comms": "./comms/mod.ts",
 		"./newsletter": "./newsletter/mod.ts",
+		"./community": "./community/mod.ts",
+		"./editorial": "./editorial/mod.ts",
 		"./projects": "./projects/mod.ts",
 		"./messaging": "./messaging/mod.ts",
 		"./profile": "./profile/mod.ts",

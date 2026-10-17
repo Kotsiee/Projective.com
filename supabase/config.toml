@@ -10,7 +10,11 @@ enabled = true
 port = 54321
 # Schemas to expose in your API. Tables, views and stored procedures in this schema will get API
 # endpoints. `public` and `graphql_public` schemas are included by default.
-schemas = ["public", "graphql_public", "org", "security", "projects", "comms", "files", "search", "marketplace", "catalogue", "reviews", "finance", "scheduling", "integrations", "ops"]
+# `editorial` and `community` (Decision #274): the public help centre, changelog, articles,
+# newsletter and feedback board. Adding a schema here takes effect only after `supabase stop &&
+# supabase start` — until then PostgREST answers PGRST106 for both. A hosted project must add them to
+# Settings → API → Exposed schemas as well.
+schemas = ["public", "graphql_public", "org", "security", "projects", "comms", "files", "search", "marketplace", "catalogue", "reviews", "finance", "scheduling", "integrations", "ops", "editorial", "community"]
 # Extra schemas to add to the search_path of every request.
 extra_search_path = ["public", "extensions", "org", "projects"]
 # The maximum number of rows returns from a view, table, or stored procedure. Limits payload size

@@ -90,6 +90,10 @@ function gateValue(domain: MockDomain): boolean {
 			return env.integrationsBackendLive;
 		case "LOGGING_BACKEND_LIVE":
 			return env.loggingBackendLive;
+		case "EDITORIAL_BACKEND_LIVE":
+			return env.editorialBackendLive;
+		case "COMMUNITY_BACKEND_LIVE":
+			return env.communityBackendLive;
 	}
 }
 

@@ -720,6 +720,46 @@ catalogue.collection_listings TO authenticated;
 GRANT ALL ON ALL TABLES IN SCHEMA catalogue TO service_role;
 
 
+-- --- editorial + community (Decision #274) ---
+--
+-- No schema-wide grant to a client role, on purpose: a table in either schema is reachable by
+-- `anon` / `authenticated` only once its surface's region below names it, with the narrowest verbs it
+-- needs — SELECT on an editorial table (its rows are written by the generated seed migrations and
+-- the service role, never a client); for community, SELECT where the surface reads directly and
+-- nothing at all where a definer door writes. Never `GRANT ALL` to a client role here: ALL carries
+-- TRUNCATE, which RLS does not bound (Decision #83). The service role holds every table of both
+-- schemas, including the ones a region adds later, because this runs after every table exists.
+GRANT ALL ON ALL TABLES IN SCHEMA editorial, community TO service_role;
+
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA editorial, community TO service_role;
+
+-- #region [editorial.help]
+-- #endregion
+
+
+-- #region [editorial.changelog]
+-- #endregion
+
+
+-- #region [editorial.articles]
+-- #endregion
+
+
+-- #region [community.newsletter]
+-- ⚠️ community.newsletter_subscriptions gets NO anon or authenticated grant, and must never get one:
+-- every row is an address paired with its unsubscribe token (00002021). The service role's grant
+-- above is the only privilege on it; community.subscribe_newsletter is its one writer.
+-- #endregion
+
+
+-- #region [community.help_feedback]
+-- #endregion
+
+
+-- #region [community.feedback]
+-- #endregion
+
+
 -- --- projects: what a signed-out visitor may read about a PUBLIC project ---
 --
 -- Exactly the tables the public project page and the discovery card read, and SELECT only. Each is

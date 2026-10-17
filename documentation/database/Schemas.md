@@ -24,6 +24,8 @@ The following schemas are initialized to isolate data by business domain:
 | **`scheduling`**   | Availability (working hours, call windows, blackouts), calendar events, and discovery/courtesy calls.                                                                                                                            |
 | **`catalogue`**    | The seller publication layer: digital products, articles, and the listings (with galleries, skills, tags, availability and collections) that put a service or product up for sale.                                               |
 | **`reviews`**      | Every review on the platform — of a person as a client or a seller, a team, a business, a service or a product — and the trigger that keeps each target's rating in step.                                                        |
+| **`editorial`**    | Content the platform authors and publishes (Decision #274): help categories, articles and FAQs, changelog releases, and Projective's own articles with their authors. Seeded by generated category-5 migrations in every environment. |
+| **`community`**    | What people do around the platform and its promises (Decision #274): newsletter subscriptions (moved from `comms`), help-article helpfulness votes, and the feedback board's ideas, votes and status history.                  |
 
 ---
 
@@ -232,3 +234,18 @@ CREATE SCHEMA IF NOT EXISTS scheduling;
 > 2026-07-21 (root `CLAUDE.md` §8 Decision #37). Creating it is additive; the pre-existing
 > `projects.session_events` / `cohorts` / `session_attendance` tables remain the SSOT for a **paid
 > Session Service's delivery** and were not touched.
+
+Two more were added on 2026-10-17 for the public surfaces (Decision #274), in
+`00000001_schemas_core.sql`:
+
+```sql
+CREATE SCHEMA IF NOT EXISTS editorial;  -- platform-authored: help centre, changelog, Projective articles
+CREATE SCHEMA IF NOT EXISTS community;  -- user-generated: newsletter, helpfulness votes, feedback board
+```
+
+Both are exposed to PostgREST (`supabase/config.toml` `[api].schemas`) with `USAGE` for `anon`,
+`authenticated` and `service_role`, and nothing broader: no schema-wide table grant to a client role,
+and every function revoked from the client roles until its surface grants it by name. The newsletter
+table moved from `comms` to `community` in the same change; `comms` keeps outbound delivery,
+including the suppression list a send to it must consult. Their docs:
+[editorial/](editorial/Tables.md) · [community/](community/Tables.md).

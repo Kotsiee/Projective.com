@@ -110,6 +110,14 @@
   modules (`features/<x>/core/content/*.ts`) whose schema lives in `@projective/types`.
   User-generated content (feedback, contact requests, helpfulness votes) goes in Postgres. Editorial
   articles stay in `catalogue.articles`.
+  > **Superseded for help, changelog, articles, helpfulness votes and feedback (owner, 2026-10-17;
+  > Decision #274).** Help, changelog and Projective's articles are rows in the `editorial` schema,
+  > authored as Zod-validated content sources in `packages/backend/services/editorial/content/` and
+  > emitted into seed migrations by `deno task db:editorial:generate`; Projective's articles are
+  > canonical at `/articles/[slug]` and `catalogue.articles` keeps member posts only. Helpfulness
+  > votes and the feedback board live in the `community` schema (not `ops` / `comms`), as does the
+  > newsletter. Legal stays TypeScript modules; contact requests stay in `ops`. Every shared SQL file
+  > carries a named region per surface — fill only yours.
 
 ---
 

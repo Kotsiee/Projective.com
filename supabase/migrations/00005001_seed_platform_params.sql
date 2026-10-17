@@ -41,6 +41,13 @@ INSERT INTO security.platform_params (key, value, description) VALUES
         'Default global cap on a freelancer''s summed active-ticket Workload Intensity (W_i) when the profile has no per-user override.')
 ON CONFLICT (key) DO NOTHING;
 
+-- Public surfaces (Decision #274): one region per surface, each holding its OWN complete
+-- `INSERT INTO security.platform_params (key, value, description) VALUES … ON CONFLICT (key) DO
+-- NOTHING;` statement, so parallel work orders never edit another statement in this file.
+
+-- #region [about_metrics] /about live-metrics thresholds (P4)
+-- #endregion
+
 -- from 20260723090000
 INSERT INTO security.platform_params (key, value, description) VALUES
     ('base_currency', '"GBP"'::jsonb,

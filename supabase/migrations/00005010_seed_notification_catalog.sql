@@ -117,6 +117,21 @@ VALUES
 ('report.filed',             '{}',                'system',    'high',     ARRAY['in_app','email']::comms.notification_channel[],        true,  false, false, true,  NULL,              NULL,                                        NULL, 'Content you own was reported.'),
 ('moderation.action',        '{}',                'system',    'high',     ARRAY['in_app','email']::comms.notification_channel[],        true,  false, false, true,  NULL,              NULL,                                        NULL, 'A moderation decision was applied to your account or content.'),
 -- ── marketing (opt-in only; `mandatory` is barred by CHECK) ────────────────────────────────────
-('marketing.newsletter',     '{}',                'marketing', 'low',      ARRAY['email']::comms.notification_channel[],                 false, false, true,  false, NULL,              NULL,                                        NULL, 'Platform newsletter (double opt-in, see packages/types/newsletter).'),
+('marketing.newsletter',     '{}',                'marketing', 'low',      ARRAY['email']::comms.notification_channel[],                 false, false, true,  false, NULL,              NULL,                                        NULL, 'Platform newsletter (double opt-in, per topic; community.newsletter_subscriptions).'),
 ('marketing.product_update', '{}',                'marketing', 'low',      ARRAY['in_app','email']::comms.notification_channel[],        false, false, true,  false, NULL,              NULL,                                        NULL, 'New platform features and product news.')
 ON CONFLICT (key) DO NOTHING;
+
+
+-- ── public & community surfaces (Decision #274) ─────────────────────────────────────────────────
+-- One region per surface, each holding its OWN complete statement — `INSERT INTO
+-- comms.notification_types (<the column list above>) VALUES ('<key>', …) ON CONFLICT (key) DO
+-- NOTHING;` — so parallel work orders never edit the shared VALUES list above. Start every row on
+-- its own line with `('<key>',` (packages/types/comms/catalog.contract.test.ts reads them), and add
+-- each key to KNOWN_NOTIFICATION_TYPES in packages/types/comms/catalog.ts, in the same-named region.
+
+-- #region [contact] Contact requests (P3)
+-- #endregion
+
+
+-- #region [feedback] Feedback board status changes (P7)
+-- #endregion

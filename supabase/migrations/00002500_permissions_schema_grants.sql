@@ -304,6 +304,17 @@ GRANT USAGE ON SCHEMA analytics TO authenticated;
 -- by the policies in 00002020 — usage on the schema grants nothing by itself.
 GRANT USAGE ON SCHEMA catalogue TO anon, authenticated, service_role;
 
+-- `editorial` and `community` (Decision #274), granted the way `catalogue` is: usage for all three
+-- roles, because the help centre, the changelog, Projective's articles and the public feedback board
+-- are read by signed-out visitors as often as by members. Usage grants nothing by itself — and
+-- nothing broad follows it: there is no schema-wide table grant to either client role. Every table a
+-- client role reaches is named in 00002520 with the narrowest verbs it needs, under its surface's
+-- region, has RLS on (00002001) and is filtered by 00002021; every function is revoked from the
+-- client roles by default in 00002510 and granted back by name.
+GRANT USAGE ON SCHEMA editorial TO anon, authenticated, service_role;
+
+GRANT USAGE ON SCHEMA community TO anon, authenticated, service_role;
+
 -- `finance` is exposed to PostgREST under RLS (Decision #68(a), lifted 2026-09-23 with the product
 -- owner's approval). Usage grants nothing by itself — and nothing broad follows it: every table a
 -- client role reaches is named in 00002520 with the narrowest privilege it needs, has RLS on

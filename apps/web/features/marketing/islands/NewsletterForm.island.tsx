@@ -6,15 +6,27 @@ import { ArrowIcon } from "../components/footer-icons.tsx";
 // This island renders inside the footer on every public surface, so it is the reliable carrier.
 import "../styles/footer.css";
 import { Icon } from "@projective/ui/icons";
+import type { NewsletterSource, NewsletterTopic } from "@projective/types/community";
+
+/** Props for {@link NewsletterForm}. Both are optional: the footer passes neither. */
+export interface NewsletterFormProps {
+	/** The list this capture opts into — `general` (the default) or `changelog` (the changelog). */
+	topic?: NewsletterTopic;
+	/** Where the capture sits, for attribution — `footer` (the default), `landing` or `explore`. */
+	source?: NewsletterSource;
+}
 
 /**
- * NewsletterForm — the footer "stay updated" capture. A DUMB island (no DB, no logic): it holds the
+ * NewsletterForm — the "stay updated" capture, in the footer by default and reusable on a page with a
+ * `topic` (the changelog subscribes to `changelog`). A DUMB island (no DB, no logic): it holds the
  * email input, delegates validation + the network round-trip to the thin {@link NewsletterService}
  * (which Zod-validates against the SSOT before hitting `/api/newsletter/subscribe`), and reflects the
  * returned {@link NewsletterResult} as an inline field error or a success confirmation. The submit is
  * icon-only; the accessible name lives on the button, the status is announced via `aria-live`.
  */
-export default function NewsletterForm() {
+export default function NewsletterForm(
+	{ topic = "general", source = "footer" }: NewsletterFormProps,
+) {
 	const email = useSignal("");
 	const submitting = useSignal(false);
 	const error = useSignal<string | null>(null);
@@ -26,7 +38,7 @@ export default function NewsletterForm() {
 		error.value = null;
 
 		submitting.value = true;
-		const result = await NewsletterService.subscribe(email.value.trim(), "footer");
+		const result = await NewsletterService.subscribe(email.value.trim(), source, topic);
 		submitting.value = false;
 
 		if (!result.ok) {
@@ -47,7 +59,8 @@ export default function NewsletterForm() {
 		);
 	}
 
-	const errorId = "lp-footer-news-error";
+	// One id per topic, so the footer's capture and a page's own capture can share a page.
+	const errorId = topic === "general" ? "lp-footer-news-error" : `lp-footer-news-error-${topic}`;
 	return (
 		<form class="lp-footer__news-form" onSubmit={onSubmit} noValidate>
 			<div class={`lp-footer__news-field${error.value ? " lp-footer__news-field--invalid" : ""}`}>

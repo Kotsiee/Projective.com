@@ -3,7 +3,8 @@
 -- Every unique CREATE SCHEMA gathered from the historical migration set, deduplicated.
 -- Sources: 0001_init_schemas.sql (security..reviews); 0011_reviews_tables.sql (reviews, dup);
 --          20260724100000_scheduling_schema_availability.sql (scheduling);
---          20260724110000_analytics_event_substrate.sql (analytics, dup).
+--          20260724110000_analytics_event_substrate.sql (analytics, dup);
+--          editorial + community (Decision #274, 2026-10-17).
 -- =============================================================================================
 
 CREATE SCHEMA IF NOT EXISTS security;
@@ -42,3 +43,17 @@ CREATE SCHEMA IF NOT EXISTS scheduling;
 -- a seller has listed for sale and its publication lifecycle. See the header of
 -- 00000023_tables_catalogue.sql for the seam between them, which is a flagged open decision.
 CREATE SCHEMA IF NOT EXISTS catalogue;
+
+-- `editorial` — the content the PLATFORM authors and publishes (Decision #274): the help centre's
+-- categories, articles and FAQs, the changelog's releases, and Projective's own articles with their
+-- authors. It is reference data, not demo-world data, so it must exist in every environment: its
+-- rows are category-5 migrations GENERATED from Zod-validated TypeScript content sources
+-- (`deno task db:editorial:generate`), never the development seed. Member-authored posts stay in
+-- `catalogue.articles`; legal documents stay versioned TypeScript modules.
+CREATE SCHEMA IF NOT EXISTS editorial;
+
+-- `community` — what people DO around the platform and its promises (Decision #274): newsletter
+-- subscriptions (moved here from `comms`), help-article helpfulness votes and the feedback board's
+-- ideas, votes and status history. Every row is written by a person, through a definer door or the
+-- service role, never by a content generator. Contact requests stay in `ops`.
+CREATE SCHEMA IF NOT EXISTS community;

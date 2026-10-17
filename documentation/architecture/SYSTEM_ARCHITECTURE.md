@@ -886,13 +886,34 @@ package.
 The public footer's "stay updated" capture is the third implementation of the contract, and the
 smallest write: `NewsletterService` (client) → `POST /api/newsletter/subscribe` (thin) →
 `services/newsletter/NewsletterBackendService.ts` (fat) → `ServiceResult<T>`. The subscribe shape is
-the Zod SSOT at **`@projective/types/newsletter`** (`NewsletterSubscribeSchema`), validated in three
-places without drift: the client service (before the round-trip), the thin route (the request body),
-and the fat service (defence in depth). Stub-first behind **`NEWSLETTER_BACKEND_LIVE`** (default
-off), gated by `isNewsletterBackendLive()`; every well-formed address gets a friendly confirmation
-while the live path (an upsert into `newsletter.subscriptions` + email-provider sync) waits behind
-that guard. The footer's `NewsletterForm` island is the only client touchpoint — it `fetch`es the
-route and never reaches the service.
+the Zod SSOT at **`@projective/types/community`** (`NewsletterSubscribeSchema`; the old
+`@projective/types/newsletter` path re-exports it), validated in three places without drift: the
+client service (before the round-trip), the thin route (the request body), and the fat service
+(defence in depth). A submission carries an optional **topic** (`general` by default, `changelog`
+for the changelog's capture). Behind **`NEWSLETTER_BACKEND_LIVE`** (default off, gated by
+`isNewsletterBackendLive()`) the service calls `community.subscribe_newsletter` with the service role
+— the table's one writer, which adds a topic idempotently and reopens an unsubscribed address with
+only the requested topic (Decision #274); off, it answers the same plan and stores nothing. The
+email-provider sync and the confirmation mail are still to come. The `NewsletterForm` island (with
+optional `topic` / `source` props) is the only client touchpoint — it `fetch`es the route and never
+reaches the service.
+
+### Editorial & community services
+
+Two schemas carry the public surfaces (Decision #274). **`editorial`** holds platform-authored
+content — the help centre, the changelog, Projective's articles — authored as Zod-validated
+TypeScript in `services/editorial/content/<surface>.ts` and emitted by
+`deno task db:editorial:generate` into one category-5 migration per surface, so it exists in every
+environment. `services/editorial/editorial-source.ts` is the one shared module: the
+**`EDITORIAL_BACKEND_LIVE`** gate (`isEditorialBackendLive()`), `defineEditorialTable` (a table's row
+schema, natural key and both mapping directions, `core/row-mapper.ts`) and `readEditorialTable`, which
+reads the table through the anon client when live and otherwise pushes the same authored records
+through the same row parse and mapping — so a fixture cannot drift from the database.
+**`community`** holds what people do: the newsletter, helpfulness votes and the feedback board.
+`services/community/community-source.ts` is its shared module: the **`COMMUNITY_BACKEND_LIVE`** gate,
+`defineCommunityTable`, `readCommunityTable` (the caller's client live, declared fixtures otherwise,
+both through one row parse) and `communityRpc` for the schema's definer doors. Surface services are
+built on these by their own work orders; the newsletter keeps its own gate.
 
 ### Messaging services
 
@@ -3337,6 +3358,17 @@ FINANCE_BACKEND_LIVE=false
 # profile — there is no fixture branch left for a gate to choose.)
 FILES_BACKEND_LIVE=false
 INTEGRATIONS_BACKEND_LIVE=false
+# Platform-authored content — the help centre, the changelog, Projective's articles (Decision #274).
+# Off, each answers from its Zod-validated content source through the same row parse and mapping the
+# live read uses (the source is also what `deno task db:editorial:generate` writes into the seed
+# migrations), so turning it on changes where the rows are read from, not what they say.
+EDITORIAL_BACKEND_LIVE=false
+# User-generated community activity — helpfulness votes and the feedback board (Decision #274). A
+# write surface open to signed-out visitors; off, it answers fixtures and writes nothing. The
+# newsletter, also in `community`, keeps NEWSLETTER_BACKEND_LIVE. Both schemas must be in
+# supabase/config.toml [api].schemas (then `supabase stop && supabase start`) or a hosted project's
+# Exposed schemas before either gate, or the newsletter's live path, can reach them.
+COMMUNITY_BACKEND_LIVE=false
 ```
 
 ---

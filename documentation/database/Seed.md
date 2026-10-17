@@ -41,6 +41,15 @@ deno task embeddings:backfill             # needs VOYAGE_API_KEY in .env.local; 
 On the seed world that is 49 public entities and about 1.6K tokens (≈ $0.0001); a second run embeds
 nothing.
 
+**Editorial content is not seed data** (Decision #274). The help centre, the changelog and
+Projective's articles must exist in every environment, and this seed runs only on a local reset, so
+their rows are category-5 MIGRATIONS instead — `supabase/migrations/0000507x_seed_editorial_*.sql`,
+one per surface, generated from the Zod-validated content sources in
+`packages/backend/services/editorial/content/` by `deno task db:editorial:generate` (see
+[editorial/Tables.md](editorial/Tables.md)). They therefore never reference a persona, a team or a
+storage object this seed creates. Community activity (helpfulness votes, feedback ideas) IS
+world-shaped demo data and belongs here, in `gen/world.ts`, authored by existing personas.
+
 ## Sign-in
 
 Every account uses the password **`password123`** at `<username>@projective.dev`. The access-token

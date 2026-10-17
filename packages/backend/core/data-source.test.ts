@@ -51,6 +51,8 @@ const ALL_LIVE: Record<string, string> = {
 	FILES_BACKEND_LIVE: "true",
 	INTEGRATIONS_BACKEND_LIVE: "true",
 	LOGGING_BACKEND_LIVE: "true",
+	EDITORIAL_BACKEND_LIVE: "true",
+	COMMUNITY_BACKEND_LIVE: "true",
 };
 
 Deno.test("USE_MOCKS unset is off — the pre-existing default is preserved", () => {

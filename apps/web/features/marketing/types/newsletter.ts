@@ -1,4 +1,4 @@
-import type { NewsletterSubscribeResult } from "@projective/types/newsletter";
+import type { NewsletterSubscribeResult } from "@projective/types/community";
 
 /**
  * NewsletterResult — the client-facing transport envelope for `/api/newsletter/*` responses.
@@ -6,7 +6,7 @@ import type { NewsletterSubscribeResult } from "@projective/types/newsletter";
  * Mirrors the auth feature's `AuthResult` and Explore's `ExploreResult`: a thin
  * `{ ok, data?, message?, errors? }` shape the dumb client {@link NewsletterService} returns to the
  * footer island. The `data` payload is the Zod-SSOT {@link NewsletterSubscribeResult} from
- * `@projective/types/newsletter`; nothing here couples to the backend.
+ * `@projective/types/community`; nothing here couples to the backend.
  */
 export interface NewsletterResult {
 	/** Whether the request succeeded. */
