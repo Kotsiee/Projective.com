@@ -290,6 +290,7 @@ with the row or its container would vanish. */
 	padding-inline: var(--space-2);
 	padding-block-start: var(--space-1);
 	font-size: var(--wsp-fs-micro);
+	font-variant-numeric: tabular-nums;
 	color: var(--text-secondary);
 }
 /* #endregion */

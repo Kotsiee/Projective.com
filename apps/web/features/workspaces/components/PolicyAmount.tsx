@@ -67,7 +67,10 @@ function splitAmount(display: string, code: string): AmountParts {
 export interface PolicyAmountProps {
 	/** The server-computed figure. Rendered verbatim; never recomputed. */
 	value: MoneyView;
-	/** Type scale — `key` for a legend figure, `figure` for a band headline. */
+	/**
+	 * Type scale — `key` for a legend figure, `figure` for a band headline. Only those two shrink and
+	 * fade the minor run; at `body` and `micro` it stays at full size and ink, as in `MoneyView`.
+	 */
 	size?: "figure" | "key" | "body" | "micro";
 	/** Secondary tone, for a supporting figure that must not compete with the row's subject. */
 	muted?: boolean;

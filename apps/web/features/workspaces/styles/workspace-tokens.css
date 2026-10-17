@@ -521,6 +521,18 @@ ordinary prose keeps proportional figures. */
 	font-weight: var(--fw-semibold);
 }
 
+/*
+ * The two smallest steps keep the minor run whole, as `MoneyView`'s `body` and `micro` do
+ * (DESIGN_SYSTEM §C.1). At 0.55em a 14px body figure's cents render at 7.7px and a micro figure's at
+ * 6px, faded on top: the split stops de-emphasising and starts hiding part of the amount. Only the
+ * `figure` and `key` steps, where the tail is still legible, carry the size-and-fade split.
+ */
+.wsp-money--body,
+.wsp-money--micro {
+	--wsp-minor-size: 1em;
+	--wsp-minor-fade: 1;
+}
+
 .wsp-money--muted {
 	color: var(--text-secondary);
 }

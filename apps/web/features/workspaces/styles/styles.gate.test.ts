@@ -396,12 +396,33 @@ Deno.test("workspace styles: figure classes are tabular", () => {
 		".wsp-card__stat-delta",
 		".wsp-split__pip",
 		".wsp-split__drift-text",
+		// Text that carries a count or an amount: the lane's entity count, a role's member count, a
+		// band's live queue count ("2 requests waiting"), a counterparty's "+N" and a feed line's sum.
+		".wsp-lane__note",
+		".wsp-matrix__rownote",
+		".wsp-band__title",
+		".wsp-projects__party",
+		".wsp-activity__text",
 	]
 		.filter((selector) => {
 			const at = all.search(new RegExp(`(^|\\n)${selector.replace(/[.-]/g, "\\$&")}\\s*\\{`));
 			return at < 0 || !ruleBody(all, all.indexOf("{", at) + 1).includes("tabular-nums");
 		});
 	assertNone(untabular, "figure class without tabular-nums (§A.4):");
+});
+
+Deno.test("workspace styles: the body and micro money steps keep the minor run whole", () => {
+	// MoneyView's contract (DESIGN_SYSTEM §C.1): only the larger steps shrink and fade the minor run.
+	const rules = SHEETS.flatMap((sheet) => blockSelectors(sheet.css, -1, sheet.css.length));
+	const split = [".wsp-money--body", ".wsp-money--micro"].flatMap((step) => {
+		const declared = rules.filter((rule) => rule.selector === step).map((rule) => rule.body)
+			.join(";");
+		return [
+			/(^|[;{\s])--wsp-minor-size\s*:\s*1em\s*(;|$)/.test(declared) ? [] : [`${step} shrinks it`],
+			/(^|[;{\s])--wsp-minor-fade\s*:\s*1\s*(;|$)/.test(declared) ? [] : [`${step} fades it`],
+		];
+	}).flat();
+	assertNone(split, "a small money step splits its minor run (MoneyView body/micro):");
 });
 
 Deno.test("workspace styles: the dead rules stay deleted", () => {

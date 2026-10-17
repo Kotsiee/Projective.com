@@ -240,6 +240,7 @@
 .wsp-matrix__rownote {
 	flex: none;
 	font-size: var(--wsp-fs-micro);
+	font-variant-numeric: tabular-nums;
 	color: var(--text-secondary);
 }
 /* #endregion */
