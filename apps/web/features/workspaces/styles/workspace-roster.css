@@ -202,12 +202,26 @@
 	color: var(--on-surface);
 }
 
-/* A refused answer: the notice, and the fix beside it when the reader can make it. */
+/*
+ * A refused answer: the notice, and the fix beside it when the reader can make it. It sits on the row's
+ * text column, one spacing step below the facts it answers — so the notice drops InlineNotice's own
+ * edge-of-region padding (doubled class, so the override never depends on bundle order).
+ */
 .wsp-invitestrip__refusal {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--space-2);
+	margin-block-start: var(--space-1);
+}
+
+.ui-inline-notice.wsp-invitestrip__notice {
+	padding: 0;
+}
+
+/* The fix is an anchor drawn as a Button, so it sheds the user agent's link underline. */
+.wsp-invitestrip__fix {
+	text-decoration: none;
 }
 
 .wsp-invitestrip__actions {

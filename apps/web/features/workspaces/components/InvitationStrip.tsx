@@ -209,10 +209,15 @@ function InviteRow(
 function RefusalNotice({ refusal }: { refusal: InviteRefusal }): JSX.Element {
 	return (
 		<div class="wsp-invitestrip__refusal">
-			<InlineNotice align="start" assertive text={refusal.text} />
+			<InlineNotice
+				class="wsp-invitestrip__notice"
+				align="start"
+				assertive
+				text={refusal.text}
+			/>
 			{refusal.fix && (
 				<a
-					class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm"
+					class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm wsp-invitestrip__fix"
 					href={refusal.fix.href}
 					onClick={(event) => {
 						if (
