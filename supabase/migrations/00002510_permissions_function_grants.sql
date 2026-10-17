@@ -158,6 +158,10 @@ GRANT EXECUTE ON FUNCTION community.subscribe_newsletter (text, text, text) TO s
 
 
 -- #region [community.help_feedback]
+-- The vote's one writer, open to guests and members alike: it stamps the voter from auth.uid() itself
+-- and rate-limits, so reaching it as a browser RPC grants nothing the help route does not.
+REVOKE ALL ON FUNCTION community.submit_help_feedback (text, boolean, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION community.submit_help_feedback (text, boolean, text) TO anon, authenticated, service_role;
 -- #endregion
 
 

@@ -21,6 +21,20 @@
 
 
 -- #region [editorial.help]
+-- Categories are never hidden: every category row is public reference data.
+CREATE POLICY help_categories_select_public ON editorial.help_categories
+    FOR SELECT TO anon, authenticated
+    USING (true);
+
+-- An article is readable from its publication date until it is archived, both UTC dates — exactly
+-- the content source's `visible` predicate (isHelpCentreArticleVisible), so the live read and the
+-- fixture read serve the same articles and a direct PostgREST read is closed the same way.
+CREATE POLICY help_articles_select_published ON editorial.help_articles
+    FOR SELECT TO anon, authenticated
+    USING (
+        published_on <= (now() AT TIME ZONE 'UTC')::date
+        AND (archived_on IS NULL OR archived_on > (now() AT TIME ZONE 'UTC')::date)
+    );
 -- #endregion
 
 
@@ -52,6 +66,11 @@
 
 
 -- #region [community.help_feedback]
+-- NO POLICY, ON PURPOSE. RLS is enabled in 00002001 and no client role holds any privilege on the
+-- table (00002520), so it is default-deny for `anon` and `authenticated`: a vote is never read, edited
+-- or deleted through PostgREST. Votes arrive only through community.submit_help_feedback (00001320),
+-- the SECURITY DEFINER door that stamps the voter, masks the comment and rate-limits; operators read
+-- them as the service role.
 -- #endregion
 
 

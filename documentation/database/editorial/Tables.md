@@ -54,8 +54,59 @@ Each surface owns one region of every SQL file it adds to and one heading below:
 
 ## Help
 
-_Not yet documented._ (P2: help categories and articles; an article's FAQ flag lives on the
-article.)
+The help centre at `/help` (P2): eight categories, each a list of articles, and the hub's FAQ.
+Authored in `services/editorial/content/help.ts` (+ one module per category under `content/help/`,
+each article's JSDoc citing the PRODUCT_SPEC section or decision it explains) and generated into
+`00005071_seed_editorial_help.sql`; read by `HelpBackendService`. Zod SSOT:
+`@projective/types/editorial` (`HelpCentreCategoryRowSchema`, `HelpCentreArticleRowSchema` and the
+domain records `HelpCentreCategory` / `HelpCentreArticle` — not `HelpArticle`, which the root barrel
+already gives the Explore promo link). Every CHECK below is mirrored in the row schema.
+
+Both tables are keyed by a **readable, permanent slug** (Decision #274 (k)): authored apart from the
+title and frozen by `editorial.fn_guard_slug_immutable` (`00001898`, see
+[Functions.md](Functions.md#help)). An article moved to another category keeps its slug; the route
+answers the old address with a `308` to the new one.
+
+### `editorial.help_categories`
+
+| Column        | Type     | Notes                                                                                                   |
+| :------------ | :------- | :------------------------------------------------------------------------------------------------------ |
+| `slug`        | text PK  | Readable and permanent (`help_categories_slug_format`: lower-case kebab).                               |
+| `position`    | smallint | NOT NULL, UNIQUE, ≥ 0 — the hub's Topics order.                                                         |
+| `title`       | text     | NOT NULL, 1–60 characters.                                                                              |
+| `description` | text     | NOT NULL, 1–200 characters — the topic row's one line and the category page's lead.                     |
+| `icon`        | text     | NOT NULL, one of the registry glyphs `HELP_CENTRE_CATEGORY_ICONS` names (`help_categories_icon_check`). |
+
+Never hidden: no visibility column; a category with no visible article is left out of the hub by the
+service.
+
+### `editorial.help_articles`
+
+| Column          | Type     | Notes                                                                                                                                                                                  |
+| :-------------- | :------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `slug`          | text PK  | Readable and permanent; globally unique (never equal to a category slug — `help.test.ts`).                                                                                             |
+| `category_slug` | text     | NOT NULL, FK → `help_categories(slug)` ON DELETE RESTRICT.                                                                                                                             |
+| `position`      | smallint | NOT NULL, ≥ 0; UNIQUE with `category_slug` (`help_articles_category_position_key`) — the order inside a category, and the previous / next pager.                                       |
+| `title`         | text     | NOT NULL, 1–120 characters.                                                                                                                                                            |
+| `summary`       | text     | NOT NULL, 1–320 characters — the lead, the meta description and the FAQ answer.                                                                                                        |
+| `roles`         | text[]   | NOT NULL, ≥ 1, ⊆ `{client, freelancer, team, business}` (`ContentAudience`, owner ruling (c)) — who it is written for; the meta line's "For …".                                        |
+| `start_here`    | text[]   | NOT NULL, default `{}`, ⊆ `roles` (`help_articles_start_here_check`) — the roles whose "Start here by role" column on the hub lists it (4–6 per role, `help.test.ts`).                 |
+| `related`       | text[]   | NOT NULL, default `{}`, ≤ 4, never itself (`help_articles_related_size`) — other article slugs in reading order. An array carries no FK, so `help.test.ts` checks every slug resolves. |
+| `faq_rank`      | smallint | Nullable, 1–8, UNIQUE — the article's place in the hub's FAQ (its FAQ flag). Set together with `faq_question` (`help_articles_faq_pair`).                                              |
+| `faq_question`  | text     | Nullable, 1–160 characters — the question as a reader asks it; the answer is `summary` plus a link to the article.                                                                     |
+| `sections`      | jsonb    | NOT NULL, a non-empty array (`help_articles_sections_shape`) of P0 `DocSection`s — ContentNode bodies, validated by `DocSectionSchema` and the anchor rule before generation.          |
+| `updated_on`    | date     | NOT NULL, ≥ `published_on` — when its facts were last checked against the product; the meta line's "Updated".                                                                          |
+| `published_on`  | date     | NOT NULL — shown from this UTC date.                                                                                                                                                   |
+| `archived_on`   | date     | Nullable, ≥ `published_on` — hidden from this UTC date (`help_articles_dates_order`). Content is retracted this way, never deleted.                                                    |
+
+**Visibility** is `published_on <= today (UTC) AND (archived_on IS NULL OR archived_on > today)`,
+the table's `visible` predicate (`isHelpCentreArticleVisible`) and `help_articles_select_published`
+alike ([Policies.md](Policies.md#help)).
+
+**Indexes**: none beyond the constraints — the service reads both tables whole;
+`help_articles_category_position_key` leads with `category_slug` and serves its FK, and
+`help_articles_faq_rank_key` the FAQ order. Votes on articles are `community.help_feedback`
+([community Tables](../community/Tables.md#help-feedback)).
 
 ## Changelog
 

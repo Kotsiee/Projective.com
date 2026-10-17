@@ -101,6 +101,44 @@ CREATE TABLE community.newsletter_subscriptions (
 
 
 -- #region [help_feedback] Help-article helpfulness votes (P2)
+-- One row per "Was this helpful?" answer on a help article (/help/<category>/<article>). Insert-only
+-- and written by ONE door, community.submit_help_feedback (00001320): it stamps the voter from
+-- auth.uid() (never from an argument), refuses an article that is not published, rate-limits, and
+-- stores a comment only after comms.mask_pii (Decision #147). No client role holds any privilege on
+-- the table and it has no policy (00002520 / 00002021), so nobody reads, edits or deletes a vote
+-- through PostgREST; operators read it as the service role. The Zod SSOT is
+-- packages/types/community/help-feedback.ts.
+CREATE TABLE community.help_feedback (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    -- The article voted on. RESTRICT: an editorial article is retracted by visibility, never
+    -- deleted, so a delete that would orphan its votes is refused.
+    article_slug text NOT NULL,
+    helpful boolean NOT NULL,
+    -- What was missing, only after a "No". Stored MASKED. The reader may type at most 280 characters
+    -- (the writer refuses more before masking); a placeholder can be longer than what it replaced
+    -- (`$ab` → `[handle hidden]`), so the stored text may run to five times that.
+    comment text,
+    -- The categories comms.mask_pii hid in the comment (`email` · `payment_link` · `handle` ·
+    -- `phone`), empty when it hid nothing — the same evidence a masked message keeps.
+    comment_pii_categories text[] NOT NULL DEFAULT '{}'::text[],
+    -- The signed-in voter, or NULL for a guest (and for a session with no profile row). SET NULL:
+    -- an erased account's votes stay counted, unattributed.
+    user_id uuid,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT help_feedback_pkey PRIMARY KEY (id),
+    CONSTRAINT help_feedback_article_slug_fkey
+        FOREIGN KEY (article_slug) REFERENCES editorial.help_articles (slug) ON DELETE RESTRICT,
+    CONSTRAINT help_feedback_user_id_fkey
+        FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE SET NULL,
+    CONSTRAINT help_feedback_comment_length CHECK (
+        comment IS NULL OR char_length(comment) BETWEEN 1 AND 1400
+    ),
+    CONSTRAINT help_feedback_comment_on_no CHECK (comment IS NULL OR NOT helpful),
+    CONSTRAINT help_feedback_pii_categories_check CHECK (
+        array_position(comment_pii_categories, NULL) IS NULL
+        AND (comment IS NOT NULL OR cardinality(comment_pii_categories) = 0)
+    )
+);
 -- #endregion
 
 

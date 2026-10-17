@@ -26,7 +26,16 @@ and `USING (true)`.
 
 ## Help
 
-_Not yet documented._ (P2.)
+RLS on both tables (`00002001`, `[editorial.help]`); `GRANT SELECT` to `anon` and `authenticated`
+(`00002520`) and nothing else.
+
+| Policy                           | Table                       | Command | Roles               | Rule                                                                                                                                                                             |
+| :------------------------------- | :-------------------------- | :------ | :------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `help_categories_select_public`  | `editorial.help_categories` | SELECT  | anon, authenticated | `true` — categories are never hidden.                                                                                                                                            |
+| `help_articles_select_published` | `editorial.help_articles`   | SELECT  | anon, authenticated | `published_on <= (now() AT TIME ZONE 'UTC')::date AND (archived_on IS NULL OR archived_on > (now() AT TIME ZONE 'UTC')::date)` — the content source's `visible`, never narrower. |
+
+Verified by `supabase/probes/help_centre.sql`: anon reads every published article and no future or
+archived one, and neither client role may INSERT, UPDATE or DELETE either table (`42501`).
 
 ## Changelog
 

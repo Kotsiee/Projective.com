@@ -920,6 +920,19 @@ gate, `defineCommunityTable`, `readCommunityTable` (the caller's client live, de
 otherwise, both through one row parse) and `communityRpc` for the schema's definer doors. Surface
 services are built on these by their own work orders; the newsletter keeps its own gate.
 
+**The help centre (P2)** is the first surface on both. `services/editorial/HelpBackendService.ts`
+reads `editorial.help_categories` / `help_articles` through `readEditorialTable`, organises them
+into a library (`help-library.ts`: topics, reading order, neighbours, related reads, role columns,
+the FAQ) and builds an in-memory search index (`help-search.ts`: folded terms, title > headings >
+summary > category > body weighting, prefix matching and a one- or two-edit typo fallback, AND with
+an OR fallback, sentence snippets and `[start, end)` highlight runs — pure, no search dependency),
+cached five minutes and never cached on failure. `services/community/HelpFeedbackBackendService.ts`
+writes "Was this helpful?" through the definer door `community.submit_help_feedback` as the caller
+(their JWT when signed in, anon otherwise), behind per-process `SlidingWindowLimiter`s (10 per signed-in voter
+per 10 minutes, 20 per guest address a minute) in front of the door's durable limits; with `COMMUNITY_BACKEND_LIVE` off it validates
+and answers without storing. Routes: `/help/[...path]`, `GET /api/help/search`,
+`POST /api/help/feedback` (ROUTING.md).
+
 ### Messaging services
 
 The global inbox (`/messages`) is a READ-heavy implementation of the contract: `MessagingService`

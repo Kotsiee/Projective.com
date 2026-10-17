@@ -17,7 +17,16 @@ derived read, never a write door. Tables: [Tables.md](Tables.md) · Policies:
 
 ## Help
 
-_Not yet documented._ (P2.)
+No help function: the help service reads both tables whole under their SELECT policies. Triggers
+(`00001898`, `[editorial.help]`):
+
+| Trigger                              | Table                       | Fires                    | Function                                 |
+| :----------------------------------- | :-------------------------- | :----------------------- | :--------------------------------------- |
+| `trg_help_categories_slug_immutable` | `editorial.help_categories` | BEFORE UPDATE OF `slug` | `editorial.fn_guard_slug_immutable()`   |
+| `trg_help_articles_slug_immutable`   | `editorial.help_articles`   | BEFORE UPDATE OF `slug` | `editorial.fn_guard_slug_immutable()`   |
+
+The generated seed upserts on `slug` without setting it, so a regenerated file never fires them; a
+hand-written slug change is refused `23514` (`help_centre.sql` §4).
 
 ## Changelog
 

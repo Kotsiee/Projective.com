@@ -1,14 +1,5 @@
-import { define } from "@web/utils/state.ts";
-import { PagePlaceholder } from "@web/components/PagePlaceholder.tsx";
-
-/** Catch-all help/docs route — matches /help, /help/getting-started, /help/a/b/c, etc. */
-export default define.page(function HelpPage(ctx) {
-	const sub = ctx.params.path ? `/${ctx.params.path}` : "";
-	return (
-		<PagePlaceholder
-			title="Help Center"
-			path={`/help${sub}`}
-			note="Catch-all documentation route ([...path])."
-		/>
-	);
-});
+/**
+ * `/help` and `/help/*` — the help centre (P2): the hub, a category (`/help/<category>`) or an article
+ * (`/help/<category>/<article>`). The controller lives in the help feature.
+ */
+export { default, handler } from "@features/help/routes/help.tsx";

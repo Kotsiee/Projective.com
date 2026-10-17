@@ -34,7 +34,14 @@ on SELECT, INSERT, UPDATE and on the writer itself, before RLS is consulted.
 
 ## Help feedback
 
-_Not yet documented._ (P2.)
+`community.help_feedback`: RLS on (`00002001`), **no policy and no client privilege** (`00002021` /
+`00002520`, `[community.help_feedback]`). A vote is never read, edited or deleted through PostgREST;
+the only way in is the SECURITY DEFINER door `community.submit_help_feedback`, which `anon` and
+`authenticated` may EXECUTE (`00002510`) because it stamps the voter and rate-limits by itself.
+Operators read votes as the service role.
+
+Verified by `supabase/probes/help_centre.sql`: both client roles are refused `42501` on SELECT,
+INSERT, UPDATE and DELETE.
 
 ## Feedback board
 

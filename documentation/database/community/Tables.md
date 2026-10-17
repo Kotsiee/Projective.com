@@ -63,7 +63,29 @@ writer is [`community.subscribe_newsletter`](Functions.md#newsletter).
 
 ## Help feedback
 
-_Not yet documented._ (P2: the help centre's "Was this helpful?" votes.)
+### `community.help_feedback`
+
+One row per "Was this helpful?" answer on a help article (P2). Insert-only, written by ONE door —
+[`community.submit_help_feedback`](Functions.md#help-feedback) — and readable by the service role
+only. Zod SSOT: `@projective/types/community` (`HelpFeedbackRowSchema`, `HelpFeedbackInputSchema`,
+`HelpFeedbackRpcResultSchema`).
+
+| Column                   | Type        | Notes                                                                                                                                                                                                                                                                                                      |
+| :----------------------- | :---------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                     | uuid PK     | `gen_random_uuid()`.                                                                                                                                                                                                                                                                                       |
+| `article_slug`           | text        | NOT NULL, FK → `editorial.help_articles(slug)` ON DELETE RESTRICT (an article is retracted by visibility, never deleted).                                                                                                                                                                                  |
+| `helpful`                | boolean     | NOT NULL.                                                                                                                                                                                                                                                                                                  |
+| `comment`                | text        | Nullable; only with `helpful = false` (`help_feedback_comment_on_no`). Stored **masked** by `comms.mask_pii` (Decision #147). The reader types ≤ 280 characters (refused before masking); a placeholder can be longer than what it replaced, so the column holds ≤ 1,400 (`help_feedback_comment_length`). |
+| `comment_pii_categories` | text[]      | NOT NULL, default `{}` — what the mask hid (`email` · `payment_link` · `handle` · `phone`); empty without a comment.                                                                                                                                                                                       |
+| `user_id`                | uuid        | Nullable; FK → `org.users_public(user_id)` ON DELETE SET NULL. Stamped from `auth.uid()` by the writer when it names a profile; NULL for a guest.                                                                                                                                                          |
+| `created_at`             | timestamptz | `now()`.                                                                                                                                                                                                                                                                                                   |
+
+**Indexes** (`00004013`): `idx_help_feedback_voter_recent` (`user_id, created_at DESC` where
+`user_id` is set) for the writer's per-voter checks and the user FK;
+`idx_help_feedback_article_recent` (`article_slug, created_at DESC`) for the per-article guest
+ceiling, an operator's tally and the article FK.
+
+**Access**: no policy and no client privilege — see [Policies.md](Policies.md#help-feedback).
 
 ## Feedback board
 

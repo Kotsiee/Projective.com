@@ -734,6 +734,8 @@ GRANT ALL ON ALL TABLES IN SCHEMA editorial, community TO service_role;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA editorial, community TO service_role;
 
 -- #region [editorial.help]
+-- Read-only for both client roles; the help_articles_select_published policy decides which rows.
+GRANT SELECT ON editorial.help_categories, editorial.help_articles TO anon, authenticated;
 -- #endregion
 
 
@@ -753,6 +755,8 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA editorial, community TO service_r
 
 
 -- #region [community.help_feedback]
+-- community.help_feedback gets NO anon or authenticated grant: votes are written only through
+-- community.submit_help_feedback (00002510) and read only by the service role.
 -- #endregion
 
 
