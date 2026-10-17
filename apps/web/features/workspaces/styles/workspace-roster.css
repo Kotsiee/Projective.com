@@ -122,53 +122,34 @@
 
 /* #region The invitation strip */
 /*
- * Somebody is waiting on the viewer, so this sits above the roster and is the one place on the index
- * allowed a tonal plate. It is dismissible and it never blocks: the roster below it stays fully usable.
+ * Somebody is waiting on the viewer, so this sits above the roster. It is a SECTION, not a plate: the
+ * section-header register (`.wsp-label`) names it, a count badge counts it, and its rows are separated
+ * by one hairline each — no fill, no per-row box (§B.4, §B.9). Every control is a `Button` on the
+ * matrix (§B.8.1), so the strip owns layout only. It is dismissible and it never blocks.
  */
 .wsp-invitestrip {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-2);
 	inline-size: 100%;
 	min-inline-size: 0;
-	padding: var(--space-3);
-	border-radius: var(--radius-container-lg);
-	background: var(--wsp-kind-tint);
 }
 
 .wsp-invitestrip__head {
 	display: flex;
 	align-items: center;
+	justify-content: space-between;
 	gap: var(--space-2);
+	margin-block-end: var(--space-3);
 }
 
 .wsp-invitestrip__title {
-	margin: 0;
-	font-size: var(--wsp-fs-micro);
-	letter-spacing: var(--wsp-label-track);
-	text-transform: uppercase;
-	font-weight: var(--fw-semibold);
-	color: var(--wsp-kind);
-}
-
-.wsp-invitestrip__dismiss {
-	margin-inline-start: auto;
 	display: inline-flex;
 	align-items: center;
-	justify-content: center;
-	inline-size: 1.75rem;
-	block-size: 1.75rem;
-	padding: 0;
-	border: none;
-	border-radius: var(--radius-base);
-	background: none;
-	color: var(--text-secondary);
-	cursor: pointer;
+	gap: var(--space-2);
 }
 
-.wsp-invitestrip__dismiss:hover {
-	background: var(--surface-2);
-	color: var(--on-surface);
+.wsp-invitestrip__count {
+	font-variant-numeric: tabular-nums;
 }
 
 .wsp-invitestrip__list {
@@ -182,44 +163,51 @@
 .wsp-invitestrip__item {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr) auto;
-	align-items: center;
+	align-items: start;
 	gap: var(--space-3);
-	padding-block: var(--space-2);
+	padding-block: var(--space-3);
 	border-block-start: var(--hairline);
 }
 
 .wsp-invitestrip__item:first-child {
+	padding-block-start: 0;
 	border-block-start: none;
 }
 
 .wsp-invitestrip__body {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-px);
+	gap: var(--space-1);
 	min-inline-size: 0;
 }
 
-.wsp-invitestrip__text {
+/* The entity's name in the title register — the card's own step, so a row reads as the same entity. */
+.wsp-invitestrip__name {
 	margin: 0;
-	font-size: var(--wsp-fs-body);
+	font-size: var(--wsp-fs-key);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.wsp-invitestrip__name {
-	font-weight: var(--fw-medium);
+/* The sender's note is body text: the reader's own register, capped at the measure. */
+.wsp-invitestrip__note {
+	margin: 0;
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-body);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface);
 }
 
-.wsp-invitestrip__meta {
+/* A refused answer: the notice, and the fix beside it when the reader can make it. */
+.wsp-invitestrip__refusal {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--space-2);
-	font-size: var(--wsp-fs-micro);
-	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
-	min-inline-size: 0;
 }
 
 .wsp-invitestrip__actions {
@@ -229,40 +217,16 @@
 	flex: none;
 }
 
-.wsp-invitestrip__accept,
-.wsp-invitestrip__decline {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	padding-inline: var(--space-3);
-	padding-block: var(--space-1);
-	border: var(--hairline-strong);
-	border-color: transparent;
-	border-radius: var(--radius-base);
-	font: inherit;
-	font-size: var(--wsp-fs-body);
-	white-space: nowrap;
-	cursor: pointer;
-}
-
-.wsp-invitestrip__accept {
-	background: var(--wsp-kind);
-	color: var(--wsp-kind-on);
-}
-
-.wsp-invitestrip__accept:hover {
-	background: color-mix(in srgb, var(--wsp-kind) 86%, var(--on-surface));
-}
-
-.wsp-invitestrip__decline {
-	background: none;
-	border-color: var(--hairline-strong-color);
+.wsp-invitestrip__empty,
+.wsp-invitestrip__outcome {
+	margin: 0;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
 
-.wsp-invitestrip__decline:hover {
-	color: var(--on-surface);
-	background: var(--surface-2);
+/* The status line is always mounted, so an answer is announced; it takes room only once it speaks. */
+.wsp-invitestrip__outcome:not(:empty) {
+	margin-block-start: var(--space-2);
 }
 
 /* #endregion */
