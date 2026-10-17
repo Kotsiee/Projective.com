@@ -1,8 +1,10 @@
 import { assertEquals } from "@std/assert";
 import {
+	canActOnSetupStep,
 	isCoOwner,
 	OWNER_RESERVED,
 	presetCapabilities,
+	SetupStepId,
 	spendAccess,
 	type WorkspaceCapability,
 	type WorkspaceKind,
@@ -94,3 +96,61 @@ Deno.test("co-owner: the admin preset is unchanged — it lacks exactly the rese
 		[...OWNER_RESERVED].sort((a, b) => OWNER.indexOf(a) - OWNER.indexOf(b)),
 	);
 });
+
+// #region Setup steps (Teams C1)
+/** The module each setup step's action lands on (`mappers.ts` `setupSteps` hrefs). */
+const STEP_MODULE: Record<SetupStepId, (kind: WorkspaceKind) => string> = {
+	invite: () => "invitations",
+	money: (kind) => kind === "team" ? "payouts" : "spend",
+	profile: () => "profile",
+	logo: () => "profile",
+	bio: () => "profile",
+	verification: () => "verification",
+	publish: () => "settings",
+};
+
+/** Every preset of both kinds plus single-right custom roles. */
+const VIEWERS: readonly WorkspaceCapability[][] = [
+	...(["owner", "admin", "lead", "member"] as const).flatMap((preset) => [
+		presetCapabilities(preset, "team"),
+		presetCapabilities(preset, "business"),
+	]),
+	BILLING_ADMIN,
+	APPROVER,
+	SPENDER,
+	["view_analytics"],
+	["invite_members"],
+	["manage_finances"],
+	["edit_profile"],
+	["manage_settings"],
+	["manage_billing"],
+	[],
+];
+
+Deno.test("setup steps: a step a viewer may act on always lands on a module they may open", () => {
+	for (const kind of ["team", "business"] as const) {
+		for (const caps of VIEWERS) {
+			for (const step of SetupStepId.options) {
+				if (!canActOnSetupStep(kind, step, caps)) continue;
+				assertEquals(
+					mayViewModule(STEP_MODULE[step](kind), kind, caps),
+					true,
+					`${kind} ${step} for [${caps.join(", ")}]`,
+				);
+			}
+		}
+	}
+});
+
+Deno.test("setup steps: a team's steps are actionable exactly when their module opens", () => {
+	for (const caps of VIEWERS) {
+		for (const step of ["invite", "money", "profile", "verification", "publish"] as const) {
+			assertEquals(
+				canActOnSetupStep("team", step, caps),
+				mayViewModule(STEP_MODULE[step]("team"), "team", caps),
+				`team ${step} for [${caps.join(", ")}]`,
+			);
+		}
+	}
+});
+// #endregion

@@ -1786,7 +1786,13 @@ Every write returns the RE-READ console so an island adopts the server's state. 
   file ids, codes and instants; the fat service maps them onto the Zod SSOT once, resolving people
   through `org.get_party_cards` (`profile/party-cards.ts`) and pictures through
   `files.get_public_media` + `core/storage-url.ts`. Balances and ledgers are read under the caller's
-  RLS with the wallet surface's own entity projection, never re-derived.
+  RLS with the wallet surface's own entity projection, never re-derived. The mapping also answers
+  each viewer only what is theirs to act on: an activity line that moves money reaches only a
+  viewer who may open Finance (`visibleActivity`), and every Draft-First setup step carries
+  `actionable` from `canActOnSetupStep` (`@projective/types/workspace`) — the same right that opens
+  the step's module, pinned by `module-registry-gates.test.ts` — so the Overview's pure model
+  (`features/workspaces/core/overview-model.ts`, Teams C1) never draws a control its viewer cannot
+  use.
 - **The acting context is written only by the switch RPCs.** (Its enterprise targets are listed by
   `GET /api/context/enterprises` → `ContextBackendService.enterprises`: owned or ACTIVE-member
   enterprises, archived excluded, filtered explicitly because the `org.enterprises` SELECT

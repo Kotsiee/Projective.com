@@ -1,104 +1,140 @@
 import type { JSX } from "preact";
-import { useComputed, useSignal } from "@preact/signals";
+import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import "../styles/workspace.css";
-import { Tooltip } from "@projective/ui/feedback";
+import { compactCount, MetaLine, MoneyView, StatTile, StatTileRow } from "@projective/ui/display";
+import { InlineNotice, Tooltip } from "@projective/ui/feedback";
 import {
-	activeMembers,
 	canOpenVerification,
 	kindCopy,
-	setupProgress,
 	type WorkspaceDetail,
 	workspaceHref,
 } from "@projective/types/workspace";
-import { publishDetail } from "../core/workspace-state.ts";
-import { countLabel } from "../core/workspace-model.ts";
+import { WorkspaceService } from "../core/WorkspaceService.ts";
+import { openInvite, publishDetail } from "../core/workspace-state.ts";
+import {
+	heroDismissKey,
+	type OverviewMetric,
+	overviewModel,
+	readHeroDismissed,
+	writeHeroDismissed,
+} from "../core/overview-model.ts";
 import { EntityMark } from "../components/EntityMark.tsx";
-import { SetupChecklist } from "../components/SetupChecklist.tsx";
-import { StatTile, StatTileRow } from "@projective/ui/display";
+import { SetupHero } from "../components/SetupHero.tsx";
 import { ProjectList } from "../components/ProjectList.tsx";
 import { ActivityFeed } from "../components/ActivityFeed.tsx";
-import { FinanceSummary } from "../components/FinanceSummary.tsx";
 import { VerificationLock } from "../components/VerificationLock.tsx";
-import {
-	cloneGlyph,
-	InviteGlyph,
-	MembersGlyph,
-	ProjectsGlyph,
-	StandingGlyph,
-} from "../core/workspace-glyphs.tsx";
+import InviteModal from "./InviteModal.island.tsx";
 
 /**
- * WorkspaceOverview — the entity's home, for both kinds.
+ * WorkspaceOverview — the console's home, for both kinds, and permissionless (Decision #61 (A)): every
+ * active member lands here, whatever they hold.
  *
- * It answers, top to bottom: who is this, is anything blocking me, what needs me, and how are we
- * doing. Everything that differs between a team and a business is a lookup in the SSOT's per-kind copy
- * table or a capability check — there is no `kind === "team" ? <TeamOverview/> : <BusinessOverview/>`
- * anywhere, because that fork is exactly how the two sides drift into different products.
+ * Top to bottom it answers: who is this (the identity band), what is left to set up (the setup hero,
+ * only while a step is open), what is true right now (the metric tiles), what is being delivered (the
+ * projects preview) and what has happened (the activity stream). Which of those render, and which
+ * controls they carry, is `overviewModel` (`core/overview-model.ts`) — pure and unit-tested — so the
+ * rules the surface is judged by hold by construction:
  *
- * **Two gates behave differently, on purpose.** A capability the viewer lacks makes its band ABSENT —
- * a member with no finance rights is not shown a greyed-out vault teasing them. Verification is the
- * opposite: the band RENDERS AND LOCKS, because hiding the path to getting paid means nobody ever
- * finds it, whereas locking it teaches that it exists and what clears it.
+ *   - **One filled control.** The hero's next step the viewer can act on carries the only fill: the
+ *     tier-2 structural Invite member, else the tier-3 Publish or the step's page.
+ *   - **No dead controls.** A step the viewer cannot act on (the read's `actionable`) shows none, and
+ *     a plain member sees where the entity is without a button they cannot use.
+ *   - **No money they were not answered.** The vault tile exists only when the read carried the payout
+ *     block (`manage_finances`, Decision #233); a business's pool only with its money tiles; the money
+ *     movements in the stream were already withheld by the read.
  *
- * **A one-person team gets an honest pre-state, not a scold.** It is a legal entity that simply cannot
- * bid yet (`canPropose === false`), so the band names the gap and offers the fix rather than treating a
- * solo team as a mistake.
+ * There is no `kind === "team" ? <TeamOverview/> : <BusinessOverview/>` here: the differences are the
+ * server's data (the steps, the payout block, the money tiles) and the SSOT's per-kind copy.
  */
 
 export interface WorkspaceOverviewProps {
 	workspace: WorkspaceDetail;
-	/** Server-resolved reference year, so an SSR date and its hydration agree across a New Year. */
-	referenceYear?: number;
+}
+
+/** One metric as a StatTile; money always through MoneyView, in the viewer's currency. */
+function MetricTile({ metric }: { metric: OverviewMetric }): JSX.Element {
+	return (
+		<StatTile
+			label={metric.label}
+			value={metric.type === "money"
+				? (
+					<MoneyView
+						minor={metric.money.minor}
+						currency={metric.money.currency}
+						size="body"
+					/>
+				)
+				: compactCount(metric.value)}
+			caption={metric.caption ?? undefined}
+		/>
+	);
 }
 
 export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.Element {
-	const detail = props.workspace;
-	const copy = kindCopy(detail.kind);
-	const held = new Set(detail.viewerCapabilities);
+	/** The server's projection — replaced wholesale by every write's re-read, never patched here. */
+	const detail = useSignal(props.workspace);
+	/** This viewer's remembered choice to hide the setup hero. */
+	const dismissed = useSignal(false);
+	const publishing = useSignal(false);
+	const publishError = useSignal<string | null>(null);
 
-	/** Session-local dismissal — the checklist should not nag once waved off in this sitting. */
-	const checklistDismissed = useSignal(false);
+	// The lane, the header band and the footer rig read the same projection through the relay, so a
+	// write made here (an invitation, a publish) reaches them without a second fetch.
+	useSignalEffect(() => {
+		publishDetail(detail.value);
+	});
 
-	// Publish the SSR detail so the lane, header band and footer rig read ONE projection rather than
-	// each fetching their own and disagreeing about, say, how many members there are.
+	// The dismissal lives in this browser's storage — an external read, made after mount so the first
+	// paint matches the server's.
 	useEffect(() => {
-		publishDetail(detail);
-	}, [detail.id, detail.members.length, detail.viewerCapabilities.length]);
+		dismissed.value = readHeroDismissed(heroDismissKey(detail.peek()));
+	}, []);
 
-	const members = useComputed(() => activeMembers(detail.members));
-	const progress = setupProgress(detail.setup);
-	const showChecklist = progress < 1 && !checklistDismissed.value;
+	const model = useComputed(() => overviewModel(detail.value, { dismissed: dismissed.value }));
 
-	const openProjects = detail.projects.filter((p) => p.state === "active");
-	const proposals = detail.projects.filter((p) => p.state === "proposal");
-	const canSeeMoney = held.has("manage_finances") || held.has("spend_funds") ||
-		held.has("withdraw_funds");
-	const canInvite = held.has("invite_members");
+	const ws = detail.value;
+	const view = model.value;
+	const copy = kindCopy(ws.kind);
+	const canInvite = ws.viewerCapabilities.includes("invite_members");
 
-	/**
-	 * Band order, written as each band's `data-i` (the stylesheet's ladder turns it into the entrance
-	 * delay), so the stagger reads top-to-bottom regardless of which bands render.
-	 */
+	function adopt(next: WorkspaceDetail): void {
+		detail.value = next;
+	}
+
+	async function publish(): Promise<void> {
+		publishing.value = true;
+		publishError.value = null;
+		const res = await WorkspaceService.update({ kind: ws.kind, id: ws.id, status: "active" });
+		publishing.value = false;
+		if (!res.ok || !res.data) {
+			publishError.value = res.message ?? `Could not publish the ${copy.noun} just now.`;
+			return;
+		}
+		adopt(res.data);
+	}
+
+	function dismiss(): void {
+		writeHeroDismissed(heroDismissKey(ws));
+		dismissed.value = true;
+	}
+
+	/** Band order as each band's `data-i`, so the entrance stagger reads top to bottom. */
 	let band = 0;
 	const next = () => band++;
 
 	return (
-		<div class="wsp" data-kind={detail.kind}>
+		<div class="wsp" data-kind={ws.kind}>
 			<div class="wsp__stack">
 				{/* #region Identity */}
-				<section
-					class="wsp-band wsp-band--head"
-					data-i={next()}
-					aria-label={`${detail.name} header`}
-				>
+				<section class="wsp-band wsp-band--head" data-i={next()} aria-label={`${ws.name} header`}>
 					<div class="wsp-band__inner">
 						<div class="wsp-idhead">
-							{detail.banner && (
+							{ws.banner && (
 								<div class="wsp-idhead__banner">
 									<img
 										class="wsp-idhead__banner-img"
-										src={detail.banner}
+										src={ws.banner}
 										alt=""
 										loading="lazy"
 										decoding="async"
@@ -108,22 +144,32 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 							<div class="wsp-idhead__row">
 								<EntityMark
 									class="wsp-idhead__mark"
-									kind={detail.kind}
-									name={detail.name}
-									handle={detail.handle}
-									image={detail.avatar}
+									kind={ws.kind}
+									name={ws.name}
+									handle={ws.handle}
+									image={ws.avatar}
 									size="lg"
 								/>
 								<div class="wsp-idhead__ident">
-									<h1 class="wsp-idhead__name">{detail.name}</h1>
+									<h1 class="wsp-idhead__name">{ws.name}</h1>
 									{/* The handle resolves to the canonical public profile, never a console page. */}
-									<a class="wsp-idhead__handle" href={`/@${detail.handle}`}>@{detail.handle}</a>
-									{detail.tagline && <p class="wsp-idhead__tagline">{detail.tagline}</p>}
+									<a class="wsp-idhead__handle" href={`/@${ws.handle}`}>@{ws.handle}</a>
+									{ws.tagline && <p class="wsp-idhead__tagline">{ws.tagline}</p>}
+									<MetaLine
+										items={[
+											ws.standing
+												? {
+													text: `${ws.standing} standing`,
+													title: "Earned standing — it cannot be bought",
+												}
+												: null,
+										]}
+									/>
 								</div>
 								<div class="wsp-idhead__badges">
-									{detail.isActing && (
+									{ws.isActing && (
 										<Tooltip
-											content={`Everything you do right now is on behalf of ${detail.name}`}
+											content={`Everything you do right now is on behalf of ${ws.name}`}
 											placement="bottom"
 										>
 											<span class="wsp-actingchip">
@@ -132,174 +178,113 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 											</span>
 										</Tooltip>
 									)}
-									{detail.standing && (
-										<Tooltip content="Earned standing — it cannot be bought" placement="bottom">
-											<span class="wsp-capchip">
-												<span aria-hidden="true">{cloneGlyph(StandingGlyph)}</span>
-												{detail.standing}
-											</span>
-										</Tooltip>
-									)}
 								</div>
-							</div>
-							<div class="wsp-idhead__meta">
-								<span class="wsp-idhead__metaitem">
-									<span aria-hidden="true">{cloneGlyph(MembersGlyph)}</span>
-									{countLabel(detail.kind, members.value.length)}
-								</span>
-								<span class="wsp-idhead__metaitem">
-									<span aria-hidden="true">{cloneGlyph(ProjectsGlyph)}</span>
-									{openProjects.length} active
-								</span>
 							</div>
 						</div>
 					</div>
 				</section>
 				{/* #endregion */}
 
-				{
-					/*
-					 * Verification LOCKS rather than hides — see the module header. `VerificationLock` returns
-					 * null once verified, so this costs nothing in the settled state.
-					 */
-				}
-				<VerificationLock
-					kind={detail.kind}
-					verification={detail.verification}
-					prompt={detail.verificationPrompt}
-					href={workspaceHref(detail.kind, detail.handle, "verification")}
-					canManage={canOpenVerification(detail.kind, detail.viewerCapabilities)}
-					tone="band"
-				/>
-
-				{showChecklist && (
+				{/* #region Setup hero */}
+				{view.hero && (
 					<section
-						class="wsp-band wsp-band--checklist"
+						class="wsp-band wsp-band--hero"
 						data-i={next()}
-						aria-label="Finish setting up"
+						aria-labelledby="wsp-overview-setup"
 					>
 						<div class="wsp-band__inner">
-							<SetupChecklist
-								kind={detail.kind}
-								workspaceId={detail.id}
-								name={detail.name}
-								handle={detail.handle}
-								steps={detail.setup}
-								isActing={detail.isActing}
-								onDismiss={() => {
-									checklistDismissed.value = true;
-								}}
+							<SetupHero
+								hero={view.hero}
+								titleId="wsp-overview-setup"
+								onInvite={() => openInvite()}
+								onPublish={publish}
+								publishing={publishing.value}
+								publishError={publishError.value}
+								onDismiss={dismiss}
 							/>
 						</div>
 					</section>
 				)}
+				{/* #endregion */}
 
-				{
-					/*
-					 * The >=2-members proposal rule, stated as a pre-state. A one-person team is legal; it just
-					 * cannot bid. Naming the gap and offering the fix beats blocking creation (brief §12B (d)).
-					 */
-				}
-				{detail.kind === "team" && !detail.canPropose && (
-					<section class="wsp-band wsp-band--plain" data-i={next()}>
+				{/* #region Notices — what the hero would say, when it is not on screen to say it */}
+				{view.lock && (
+					<VerificationLock
+						kind={ws.kind}
+						verification={ws.verification}
+						prompt={ws.verificationPrompt}
+						href={workspaceHref(ws.kind, ws.handle, "verification")}
+						canManage={canOpenVerification(ws.kind, ws.viewerCapabilities)}
+						tone="band"
+					/>
+				)}
+				{view.propose && (
+					<section
+						class="wsp-band wsp-band--plain wsp-band--notice"
+						data-i={next()}
+						aria-label="Proposals"
+					>
 						<div class="wsp-band__inner">
-							<p class="wsp-propose">
-								<span class="wsp-propose__glyph" aria-hidden="true">{cloneGlyph(InviteGlyph)}</span>
-								<span class="wsp-propose__text">
-									A team needs at least two members before it can send proposals. Everything else
-									here works now — this only gates bidding as a team.
-								</span>
-								{canInvite && (
-									<a
-										class="wsp-propose__link"
-										href={workspaceHref(detail.kind, detail.handle, "members")}
-									>
-										Invite someone
-									</a>
-								)}
-							</p>
+							<InlineNotice
+								align="start"
+								text="Teams need two members to send proposals."
+								actionLabel={view.propose.canInvite ? "Invite member" : undefined}
+								onAction={view.propose.canInvite ? () => openInvite() : undefined}
+							/>
 						</div>
 					</section>
 				)}
+				{/* #endregion */}
 
-				{/* #region At a glance */}
-				<section class="wsp-band wsp-band--stats" data-i={next()} aria-label="At a glance">
+				{/* #region Metrics */}
+				<section class="wsp-band" data-i={next()} aria-label="At a glance">
 					<div class="wsp-band__inner">
-						<StatTileRow label="Workspace figures" class="wsp-tiles">
-							<StatTile
-								label="Members"
-								value={String(members.value.length)}
-								caption={detail.invites.length > 0
-									? `${detail.invites.length} awaiting a decision`
-									: "Everyone is settled"}
-								icon={cloneGlyph(MembersGlyph)}
-							/>
-							<StatTile
-								label="Active projects"
-								value={String(openProjects.length)}
-								caption={detail.kind === "team" ? "In delivery" : "Commissioned"}
-								icon={cloneGlyph(ProjectsGlyph)}
-							/>
-							{proposals.length > 0 && (
-								<StatTile
-									label="Proposals out"
-									value={String(proposals.length)}
-									caption="Awaiting a reply"
-								/>
-							)}
+						<StatTileRow label={`${ws.name} at a glance`} class="wsp-tiles">
+							{view.metrics.map((metric) => <MetricTile key={metric.key} metric={metric} />)}
 						</StatTileRow>
 					</div>
 				</section>
 				{/* #endregion */}
 
-				{/* Money is ABSENT for a viewer without finance rights — see the module header. */}
-				{canSeeMoney && (
-					<section class="wsp-band wsp-band--money" data-i={next()} aria-label="Money">
-						<div class="wsp-band__inner">
-							<div class="wsp-band__head">
-								<h2 class="wsp-band__title">Money</h2>
-							</div>
-							<div class="wsp-band__body">
-								<FinanceSummary kind={detail.kind} finance={detail.finance} />
-							</div>
-						</div>
-					</section>
-				)}
-
-				<section class="wsp-band wsp-band--projects" data-i={next()} aria-label="Projects">
+				{/* #region Projects preview */}
+				<section class="wsp-band" data-i={next()} aria-labelledby="wsp-overview-projects">
 					<div class="wsp-band__inner">
 						<div class="wsp-band__head">
-							<h2 class="wsp-band__title">
-								{detail.kind === "team" ? "Delivering" : "Commissioned"}
-							</h2>
+							<h2 class="wsp-band__title" id="wsp-overview-projects">Projects</h2>
 							<a
-								class="wsp-band__action"
-								href={workspaceHref(detail.kind, detail.handle, "projects")}
+								class="ui-button ui-button--primary ui-button--text ui-button--size-sm"
+								href={view.projectsHref}
 							>
-								All projects
+								<span class="ui-button__label">See all</span>
 							</a>
 						</div>
-						<div class="wsp-band__body">
-							<ProjectList projects={detail.projects} kind={detail.kind} limit={5} />
-						</div>
+						<ProjectList
+							rows={view.projects}
+							empty={ws.kind === "team"
+								? "No live engagements yet."
+								: "Nothing commissioned is in delivery yet."}
+						/>
 					</div>
 				</section>
+				{/* #endregion */}
 
+				{/* #region Activity */}
 				<section
-					class="wsp-band wsp-band--activity wsp-band--tail"
+					class="wsp-band wsp-band--tail"
 					data-i={next()}
-					aria-label="Recent activity"
+					aria-labelledby="wsp-overview-activity"
 				>
 					<div class="wsp-band__inner">
 						<div class="wsp-band__head">
-							<h2 class="wsp-band__title">Recent activity</h2>
+							<h2 class="wsp-band__title" id="wsp-overview-activity">Activity</h2>
 						</div>
-						<div class="wsp-band__body">
-							<ActivityFeed entries={detail.activity} limit={8} />
-						</div>
+						<ActivityFeed rows={view.activity} />
 					</div>
 				</section>
+				{/* #endregion */}
 			</div>
+
+			{canInvite && <InviteModal workspace={ws} onUpdated={adopt} />}
 		</div>
 	);
 }

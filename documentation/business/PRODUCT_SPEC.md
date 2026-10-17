@@ -182,8 +182,14 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   counted (Decision #149).
 - **Draft-First Creation:** Creating a Team is deliberately low-friction — a member supplies only a
   display **Name** and a unique alphanumeric **`@handle`**. The Team is created instantly in a
-  **Draft/Unverified** state; branding, contribution splits, roles, and member invitations are
-  completed afterwards on the Team's settings page.
+  **Draft/Unverified** state; the rest is completed afterwards from the console. Its Overview leads
+  with a setup band of five steps, each DERIVED from stored facts: invite a second member (two
+  ACTIVE members are required to apply — an invitation still out does not count, Decision #228 (E)),
+  set the split, complete the public profile (mark and one-liner), verify the owner (the payout-ready
+  gate, Decision #196), and publish. A step's action is offered only to a member who holds its right
+  (the same right that opens its module), so a plain member sees where the team stands and no
+  control they cannot use; the band is dismissible per member, and the two-member rule and the
+  verification lock still show once it is hidden.
 - **Automated Payment Splitting:** Payments are distributed at the moment of Escrow release. If a
   Stage payout is $1,000, Projective automatically routes percentages to individual member wallets
   based on predefined **Contribution Agreements**.

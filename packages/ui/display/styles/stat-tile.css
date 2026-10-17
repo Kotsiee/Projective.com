@@ -59,6 +59,19 @@
 	color: var(--on-surface);
 }
 
+/* A MoneyView figure takes the tile's register: its own weight and line box would make one tile in a
+   row read heavier than its neighbours. Its size step is `body` (inherit), so only these two move —
+   and its estimate disclosure, always shown, steps down to the tile's meta size rather than 0.8125em of
+   a display figure. */
+.ui-stat__value .ui-money__amount {
+	font-weight: inherit;
+	line-height: inherit;
+}
+
+.ui-stat__value .ui-money__origin {
+	font-size: var(--ui-stat-meta-size);
+}
+
 .ui-stat__icon {
 	display: inline-flex;
 	flex: none;

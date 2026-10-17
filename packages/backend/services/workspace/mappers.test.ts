@@ -4,6 +4,7 @@
  * parsers — each pinned against the behaviour the console depends on, with an injected clock.
  */
 import { assertEquals, assertStrictEquals } from "@std/assert";
+import { presetCapabilities, type WorkspaceCapability } from "@projective/types/workspace";
 import {
 	activityText,
 	availabilityOf,
@@ -18,9 +19,11 @@ import {
 	projectedShare,
 	projectState,
 	projectStatusLabel,
+	type RawActivity,
 	relativeLabel,
 	rosterStats,
 	setupCompletion,
+	type SetupFacts,
 	setupSteps,
 	spendRequestState,
 	spentInPeriod,
@@ -30,6 +33,7 @@ import {
 	toSplitRule,
 	usedFraction,
 	verificationPrompt,
+	visibleActivity,
 	wiCapOf,
 	wiOf,
 	workloadPercent,
@@ -95,54 +99,97 @@ Deno.test("createBlockedReason: unlimited or under the cap → null; at the cap 
 
 // #region Setup checklist
 
-Deno.test("setupSteps: five steps, identity to the profile editor, the rest to their modules, by handle", () => {
-	const steps = setupSteps("team", "northloop", {
-		logo: true,
-		bio: false,
-		invite: true,
-		money: false,
-		verified: false,
-	});
-	assertEquals(steps.map((s) => s.id), ["logo", "bio", "invite", "money", "verification"]);
+/** Facts for a brand-new entity, overridden per case. */
+const facts = (over: Partial<SetupFacts> = {}): SetupFacts => ({
+	logo: false,
+	bio: false,
+	activeMembers: 1,
+	invitePending: false,
+	money: false,
+	verified: false,
+	published: false,
+	...over,
+});
+
+Deno.test("setupSteps: a team walks invite · split · profile · owner · publish, by handle", () => {
+	const steps = setupSteps("team", "northloop", facts({ logo: true, money: true }));
+	assertEquals(steps.map((s) => s.id), ["invite", "money", "profile", "verification", "publish"]);
 	assertEquals(steps.map((s) => s.href), [
-		"/@northloop/edit",
-		"/@northloop/edit",
 		"/teams/northloop/invitations",
 		"/teams/northloop/payouts",
+		"/@northloop/edit",
 		"/teams/northloop/verification",
+		"/teams/northloop/settings",
 	]);
-	assertEquals(steps.map((s) => s.done), [true, false, true, false, false]);
-	assertEquals(setupCompletion(steps), 0.4);
-	const biz = setupSteps("business", "helia", {
-		logo: true,
-		bio: true,
-		invite: true,
-		money: true,
-		verified: true,
+	// The profile needs BOTH the mark and the one-liner.
+	assertEquals(steps.map((s) => s.done), [false, true, false, false, false]);
+	assertEquals(setupCompletion(steps), 0.2);
+	assertEquals(
+		setupSteps("team", "northloop", facts({ logo: true, bio: true })).map((s) => s.done),
+		[false, false, true, false, false],
+	);
+	const ready = setupSteps("team", "northloop", {
+		...facts({ logo: true, bio: true, money: true, verified: true, published: true }),
+		activeMembers: 2,
 	});
+	assertEquals(setupCompletion(ready), 1);
+});
+
+Deno.test("setupSteps: a team's invite step needs two ACTIVE members — an invitation out is not enough", () => {
+	const pending = setupSteps("team", "northloop", facts({ invitePending: true }))[0];
+	assertEquals(pending.done, false);
+	assertEquals(pending.note.startsWith("An invitation is out"), true);
+	assertEquals(setupSteps("team", "northloop", facts())[0].note.startsWith("A team needs"), true);
+	assertEquals(setupSteps("team", "northloop", facts({ activeMembers: 2 }))[0].done, true);
+	// Published means it has left draft — an archived team was published once.
+	assertEquals(setupSteps("team", "northloop", facts({ published: true }))[4].done, true);
+});
+
+Deno.test("setupSteps: a business keeps mark · one-liner · invite · threshold · KYB", () => {
+	const biz = setupSteps("business", "helia", {
+		...facts({ logo: true, bio: true, money: true, verified: true }),
+		invitePending: true,
+	});
+	assertEquals(biz.map((s) => s.id), ["logo", "bio", "invite", "money", "verification"]);
 	assertEquals(biz[3].href, "/businesses/helia/spend");
 	assertEquals(biz[4].label, "Finish KYB");
+	// A business's invite step is finished by an invitation sent, or a second member.
+	assertEquals(biz[2].done, true);
+	assertEquals(setupSteps("business", "helia", facts({ activeMembers: 2 }))[2].done, true);
+	assertEquals(setupSteps("business", "helia", facts())[2].done, false);
 	assertEquals(setupCompletion(biz), 1);
 	assertEquals(setupCompletion([]), 1);
 });
 
-Deno.test("setupSteps: a viewer who may not open Verification gets its step unlinked, never a dead end", () => {
-	const facts = { logo: true, bio: true, invite: true, money: true, verified: false };
-	const unlinked = setupSteps("business", "atlaslabs", { ...facts, canVerify: false });
-	assertEquals(unlinked[4].id, "verification");
-	assertEquals(unlinked[4].href, "");
-	assertEquals(unlinked.slice(0, 4).map((s) => s.href), [
-		"/@atlaslabs/edit",
-		"/@atlaslabs/edit",
-		"/businesses/atlaslabs/invitations",
-		"/businesses/atlaslabs/spend",
+Deno.test("setupSteps: each step is actionable only for a viewer holding its right", () => {
+	const actionable = (kind: "team" | "business", viewer?: WorkspaceCapability[]) =>
+		setupSteps(kind, "northloop", facts({ viewer })).map((s) => `${s.id}:${s.actionable}`);
+	// No viewer (the roster) — nothing is offered.
+	assertEquals(actionable("team"), [
+		"invite:false",
+		"money:false",
+		"profile:false",
+		"verification:false",
+		"publish:false",
 	]);
+	// A plain member (`view_analytics` only) can act on none of them.
+	assertEquals(actionable("team", ["view_analytics"]).every((s) => s.endsWith(":false")), true);
+	// The owner's preset can act on all five.
 	assertEquals(
-		setupSteps("business", "atlaslabs", { ...facts, canVerify: true })[4].href,
-		"/businesses/atlaslabs/verification",
+		actionable("team", [...presetCapabilities("owner", "team")]).every((s) => s.endsWith(":true")),
+		true,
 	);
-	// The step still counts toward completion whether or not it links.
-	assertEquals(setupCompletion(unlinked), 0.8);
+	// One right each.
+	assertEquals(actionable("team", ["invite_members"])[0], "invite:true");
+	assertEquals(actionable("team", ["manage_finances"])[1], "money:true");
+	assertEquals(actionable("team", ["edit_profile"])[2], "profile:true");
+	assertEquals(actionable("team", ["manage_settings"]).slice(3), [
+		"verification:true",
+		"publish:true",
+	]);
+	// A business's KYB follows the billing right, not settings (Decision #230 (d)).
+	assertEquals(actionable("business", ["manage_settings"])[4], "verification:false");
+	assertEquals(actionable("business", ["manage_billing"])[4], "verification:true");
 });
 
 Deno.test("verificationPrompt: null once verified, worded by kind and state otherwise", () => {
@@ -296,6 +343,24 @@ Deno.test("projectState / projectStatusLabel / progressOf", () => {
 	assertEquals(progressOf(1, 3), 1 / 3);
 	assertEquals(progressOf(4, 3), 1);
 	assertEquals(progressOf(0, 0), 0);
+});
+
+Deno.test("visibleActivity: money movements only for a viewer who may open Finance", () => {
+	const events: RawActivity[] = [
+		{ kind: "member", event: "joined", actor_user_id: "u1", at: daysAgo(1) },
+		{
+			kind: "money",
+			event: "add_funds",
+			actor_user_id: "u2",
+			amount_minor: 1_000,
+			currency: "USD",
+			at: daysAgo(2),
+		},
+		{ kind: "member", event: "joined", actor_user_id: "u3", at: daysAgo(3) },
+	];
+	assertEquals(visibleActivity(events, true), events);
+	assertEquals(visibleActivity(events, false).map((e) => e.actor_user_id), ["u1", "u3"]);
+	assertEquals(visibleActivity([], false), []);
 });
 
 Deno.test("activityText: one line per event, money in its own currency", () => {

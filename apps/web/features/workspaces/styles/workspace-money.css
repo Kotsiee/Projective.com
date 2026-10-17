@@ -19,14 +19,6 @@
  */
 
 /* #region Money module frame */
-.wsp-money-mod {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-5);
-	inline-size: 100%;
-	min-inline-size: 0;
-}
-
 /*
  * The handoff to `/wallet`. The console shows the SHAPE of the money (who gets what, who may spend);
  * the wallet remains the single place money is actually held and moved, so this surface never grows a
@@ -38,13 +30,6 @@
 	justify-content: space-between;
 	gap: var(--space-4);
 	flex-wrap: wrap;
-	min-inline-size: 0;
-}
-
-/* The figure beside the hand-off link — the one number worth repeating next to the door. */
-.wsp-moneyhead__figure {
-	display: inline-flex;
-	align-items: baseline;
 	min-inline-size: 0;
 }
 
@@ -905,65 +890,31 @@ down to the secondary register — never through `opacity` (§B.12). */
  * So this block is the only place on the surface that draws a lock, and the policy editor above it
  * stays fully usable while the gate is closed — a business can compose its spend rules before KYB
  * clears, and a team can compose its split before its members' KYC does.
+ *
+ * The lock is the ui `InlineNotice` — unboxed, no fill and no border (TEAMS_AUDIT D12): a required
+ * disclosure on one meta-register line. Its glyph leads in the warning ink while the check is
+ * outstanding and steps back to the meta ink once it is with the reviewers (pending is not a warning);
+ * the headline keeps the body ink so it reads as the line's subject. Its inline inset is the band's,
+ * so it aligns with the stack's content.
  */
-.wsp-lock {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	flex-wrap: wrap;
-	inline-size: 100%;
-	min-inline-size: 0;
-	padding: var(--space-3) var(--space-4);
-	border-radius: var(--radius-container-lg);
-	background: color-mix(in srgb, var(--warning) var(--tint-soft), var(--surface-1));
+.wsp-lock.ui-inline-notice {
+	padding-inline: 0;
+	padding-block: var(--space-2);
 }
 
-.wsp-lock--inline {
-	margin-block-start: var(--space-3);
-	padding: var(--space-2) var(--space-3);
-	border-radius: var(--radius-lg);
-}
-
-/* Pending is not a warning — the work is already with us, so it goes achromatic. */
-.wsp-lock[data-state="pending"] {
-	background: var(--surface-2);
-}
-
-.wsp-lock__glyph {
-	display: inline-flex;
-	flex: none;
+.wsp-lock .ui-inline-notice__icon {
 	color: var(--warning);
-	line-height: 0;
 }
 
-.wsp-lock[data-state="pending"] .wsp-lock__glyph {
+.wsp-lock--pending .ui-inline-notice__icon {
 	color: var(--text-secondary);
-}
-
-.wsp-lock__body {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-px);
-	flex: 1 1 18rem;
-	min-inline-size: 0;
 }
 
 .wsp-lock__text {
-	margin: 0;
-	font-size: var(--wsp-fs-body);
 	color: var(--on-surface);
 }
 
-.wsp-lock__prompt {
-	margin: 0;
-	max-inline-size: var(--wsp-prose);
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
-}
-
 .wsp-lock__link {
-	flex: none;
-	font-size: var(--wsp-fs-body);
 	color: var(--primary);
 	text-decoration: none;
 	white-space: nowrap;
