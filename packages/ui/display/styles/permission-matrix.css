@@ -1,0 +1,290 @@
+/*
+ * PermissionMatrix — capabilities × roles, four cell states. Token-only, opaque everywhere.
+ *
+ * The matrix sits on --surface-1, the surface the U1 status tints are mixed against, so every fill
+ * here is a measured opaque tone: --primary-tint (allowed), --warning-tint (conditional),
+ * --surface-2 (locked) and the row's own surface (off). Nothing is mixed with `transparent` — the
+ * pinned header and capability column must hide the cells scrolling under them.
+ *
+ * Geometry is a fixed table: every role column is the same width and every cell at least
+ * --fld-h-md square, so cells never overlap or reflow when a state changes. Narrow widths scroll
+ * inside the ScrollArea with the first column pinned.
+ */
+
+/* #region Root */
+.ui-permission-matrix {
+	--pm-surface: var(--surface-1);
+	--pm-cell-size: var(--fld-h-md);
+	--pm-col-size: calc(var(--fld-h-md) * 3);
+	--pm-head-size: calc(var(--fld-h-md) * 6);
+	--pm-allowed: var(--primary-tint);
+	--pm-conditional: var(--warning-tint);
+	--pm-locked: var(--surface-2);
+	--pm-hover-mix: var(--tint-soft);
+	position: relative;
+	min-inline-size: 0;
+	max-inline-size: 100%;
+	color: var(--on-surface);
+	background: var(--pm-surface);
+	font-family: var(--font-sans);
+}
+
+.ui-permission-matrix__scroll {
+	block-size: 100%;
+	max-block-size: inherit;
+}
+
+/* A focused cell scrolls clear of the pinned column and header row, not under them. */
+.ui-permission-matrix__scroll .ui-scroll-area__viewport {
+	scroll-padding-inline-start: var(--pm-head-size);
+	scroll-padding-block-start: calc(var(--pm-cell-size) * 1.5);
+}
+/* #endregion */
+
+/* #region Table */
+.ui-permission-matrix__table {
+	table-layout: fixed;
+	border-collapse: separate;
+	border-spacing: 0;
+	inline-size: max-content;
+	min-inline-size: 100%;
+	background: var(--pm-surface);
+}
+
+.ui-permission-matrix__caption {
+	padding-block: 0 var(--space-3);
+	padding-inline: var(--space-3);
+	text-align: start;
+	font-size: var(--text-base);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+}
+
+.ui-permission-matrix__col--head {
+	inline-size: var(--pm-head-size);
+}
+
+.ui-permission-matrix__col {
+	inline-size: var(--pm-col-size);
+}
+/* #endregion */
+
+/* #region Headers (pinned, solid) */
+.ui-permission-matrix__corner,
+.ui-permission-matrix__colhead {
+	position: sticky;
+	inset-block-start: 0;
+	z-index: var(--z-raised);
+	padding: var(--space-2) var(--space-2) var(--space-3);
+	vertical-align: bottom;
+	background: var(--pm-surface);
+	border-block-end: var(--hairline);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+}
+
+.ui-permission-matrix__corner {
+	inset-inline-start: 0;
+	z-index: calc(var(--z-raised) + 1);
+	text-align: start;
+	color: var(--text-secondary);
+}
+
+/* Role labels share a top line whether or not a meta line hangs under them. */
+.ui-permission-matrix__colhead {
+	text-align: center;
+	vertical-align: top;
+}
+
+.ui-permission-matrix__colhead-label {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	overflow-wrap: anywhere;
+}
+
+.ui-permission-matrix__colhead-lock {
+	display: inline-flex;
+	color: var(--text-secondary);
+}
+
+.ui-permission-matrix__rowhead {
+	position: sticky;
+	inset-inline-start: 0;
+	z-index: var(--z-raised);
+	padding: var(--space-2) var(--space-3) var(--space-2) var(--space-3);
+	text-align: start;
+	vertical-align: middle;
+	background: var(--pm-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-normal);
+	line-height: var(--leading-snug);
+}
+
+.ui-permission-matrix__rowhead-label {
+	display: block;
+	overflow-wrap: anywhere;
+}
+
+.ui-permission-matrix__meta {
+	display: block;
+	margin-block-start: var(--space-1);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-normal);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+	overflow-wrap: anywhere;
+}
+
+.ui-permission-matrix__sep {
+	margin-inline: var(--space-1);
+}
+
+.ui-permission-matrix__sensitive {
+	color: var(--on-surface);
+	font-weight: var(--fw-medium);
+}
+
+/* Group rows take the section-header register (§A.4); the label stays pinned left while the row
+   scrolls under it. */
+.ui-permission-matrix__group-head {
+	padding: var(--space-4) var(--space-3) var(--space-1);
+	text-align: start;
+	background: var(--pm-surface);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.ui-permission-matrix__group-label {
+	position: sticky;
+	inset-inline-start: var(--space-3);
+}
+/* #endregion */
+
+/* #region Cells */
+.ui-permission-matrix__slot {
+	padding: var(--space-1);
+	text-align: center;
+	vertical-align: middle;
+}
+
+.ui-permission-matrix__cell {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 100%;
+	min-inline-size: var(--pm-cell-size);
+	min-block-size: var(--pm-cell-size);
+	margin: 0;
+	padding: 0;
+	border: var(--hairline-strong);
+	border-radius: var(--radius-sm);
+	background: var(--pm-surface);
+	color: var(--on-surface);
+	font: inherit;
+	transition: var(--btn-transition-press);
+}
+
+button.ui-permission-matrix__cell {
+	cursor: pointer;
+}
+
+.ui-permission-matrix__cell--allowed {
+	background: var(--pm-allowed);
+}
+
+.ui-permission-matrix__cell--conditional {
+	background: var(--pm-conditional);
+}
+
+.ui-permission-matrix__cell--locked {
+	background: var(--pm-locked);
+	color: var(--text-secondary);
+}
+
+/* A cell that cannot change drops the interactive edge — the fill and glyph still read its state. */
+.ui-permission-matrix__cell--fixed {
+	border-color: var(--pm-surface);
+}
+
+button.ui-permission-matrix__cell--fixed {
+	cursor: not-allowed;
+}
+
+.ui-permission-matrix__glyph {
+	display: inline-flex;
+	pointer-events: none;
+}
+
+/* Hover and keyboard focus share one opaque tonal step, so a focused cell is still tellable from its
+   neighbours where the product draws no focus ring. */
+button.ui-permission-matrix__cell:not(.ui-permission-matrix__cell--fixed):hover,
+button.ui-permission-matrix__cell:focus-visible,
+.ui-permission-matrix__slot--read:focus-visible .ui-permission-matrix__cell {
+	background: color-mix(in oklab, var(--on-surface) var(--pm-hover-mix), var(--pm-surface));
+}
+
+button.ui-permission-matrix__cell--allowed:not(.ui-permission-matrix__cell--fixed):hover,
+button.ui-permission-matrix__cell--allowed:focus-visible,
+.ui-permission-matrix__slot--read:focus-visible .ui-permission-matrix__cell--allowed {
+	background: color-mix(in oklab, var(--on-surface) var(--pm-hover-mix), var(--pm-allowed));
+}
+
+button.ui-permission-matrix__cell--conditional:not(.ui-permission-matrix__cell--fixed):hover,
+button.ui-permission-matrix__cell--conditional:focus-visible,
+.ui-permission-matrix__slot--read:focus-visible .ui-permission-matrix__cell--conditional {
+	background: color-mix(in oklab, var(--on-surface) var(--pm-hover-mix), var(--pm-conditional));
+}
+
+.ui-permission-matrix__cell--locked:focus-visible,
+.ui-permission-matrix__slot--read:focus-visible .ui-permission-matrix__cell--locked {
+	background: color-mix(in oklab, var(--on-surface) var(--pm-hover-mix), var(--pm-locked));
+}
+
+button.ui-permission-matrix__cell:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.ui-permission-matrix__slot--read:focus-visible {
+	outline: none;
+}
+
+.ui-permission-matrix__slot--read:focus-visible .ui-permission-matrix__cell {
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/* Press: compression only (§B.12) — nothing in the box model moves. */
+button.ui-permission-matrix__cell:active:not(.ui-permission-matrix__cell--fixed) {
+	transform: scale(var(--btn-press-scale-icon));
+	transition-duration: var(--dur-press);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-permission-matrix__cell,
+	button.ui-permission-matrix__cell:active:not(.ui-permission-matrix__cell--fixed) {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .ui-permission-matrix__cell,
+:root[data-motion="reduced"] button.ui-permission-matrix__cell:active:not(.ui-permission-matrix__cell--fixed) {
+	transform: none;
+}
+/* #endregion */
+
+/* #region High contrast */
+/* The fills stay; the glyph ink and the cell edge harden so the state reads without the tint. */
+:root[data-contrast="high"] .ui-permission-matrix__cell {
+	border-color: var(--outline);
+}
+
+:root[data-contrast="high"] .ui-permission-matrix__cell--locked,
+:root[data-contrast="high"] .ui-permission-matrix__colhead-lock {
+	color: var(--on-surface);
+}
+/* #endregion */

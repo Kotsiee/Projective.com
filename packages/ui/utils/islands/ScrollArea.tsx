@@ -22,6 +22,12 @@ export interface ScrollAreaProps {
 	type?: ScrollAreaType;
 	/** Accessible label for the scroll region. */
 	"aria-label"?: string;
+	/**
+	 * Make the viewport a tab stop so the keyboard can scroll it (default `true`). Turn it off when
+	 * the content is itself focusable — a roving-focus grid scrolls its focused cell into view, and a
+	 * second stop in front of it would break the one-tab-stop contract.
+	 */
+	focusable?: boolean;
 	/** Scrollable content. */
 	children?: ComponentChildren;
 	class?: string;
@@ -52,6 +58,7 @@ export function ScrollArea(props: ScrollAreaProps): JSX.Element {
 		orientation = "vertical",
 		type = "hover",
 		"aria-label": ariaLabel,
+		focusable = true,
 		children,
 		class: className,
 	} = props;
@@ -156,7 +163,7 @@ export function ScrollArea(props: ScrollAreaProps): JSX.Element {
 				class="ui-scroll-area__viewport"
 				role="region"
 				aria-label={ariaLabel}
-				tabIndex={0}
+				tabIndex={focusable ? 0 : undefined}
 				onScroll={onScroll}
 			>
 				{children}

@@ -41,7 +41,13 @@ export type {
 	SortCycle,
 	StatusCellValue,
 } from "./types/data-table.ts";
-export { formatBytes, formatDate, formatDuration, formatNumber, formatRelative } from "./core/table-format.ts";
+export {
+	formatBytes,
+	formatDate,
+	formatDuration,
+	formatNumber,
+	formatRelative,
+} from "./core/table-format.ts";
 export { headerCheckState, pruneSelection } from "./core/table-selection.ts";
 export { TreeTable } from "./islands/TreeTable.tsx";
 export type { TreeTableProps } from "./islands/TreeTable.tsx";
@@ -71,6 +77,33 @@ export type {
 } from "./islands/Scroller.tsx";
 export { VirtualGrid } from "./islands/VirtualGrid.tsx";
 export type { VirtualGridProps } from "./islands/VirtualGrid.tsx";
+// #endregion
+
+// #region Permission matrix (§B.13)
+export { PermissionMatrix } from "./components/PermissionMatrix.tsx";
+export type {
+	PermissionMatrixGlyphs,
+	PermissionMatrixProps,
+} from "./components/PermissionMatrix.tsx";
+export {
+	cellAccessibleName,
+	cellPressed,
+	cellToggleable,
+	groupRuns,
+	matrixKeyIntent,
+	moveFocus,
+	PERMISSION_STATE_LABELS,
+} from "./core/permission-matrix-nav.ts";
+export type {
+	MatrixDims,
+	MatrixIntent,
+	MatrixKey,
+	MatrixPos,
+	PermissionCellState,
+	PermissionMatrixColumn,
+	PermissionMatrixRow,
+	PermissionRowRun,
+} from "./core/permission-matrix-nav.ts";
 // #endregion
 
 // #region Hierarchy & time
