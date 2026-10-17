@@ -1360,7 +1360,8 @@ other commits in tier 2 — is open as Decision #157 flag (j); the docs follow t
 - a business checkout's short-pool **Add money** (`.cko-gate__add`, an anchor in the accent pill's
   classes) — it starts the business wallet's top-up and returns to the checkout (Decision #243). The
   same gate's **Request approval** and its dialog's **Send request** are tier 3: they file a request
-  and move no money (Decision #243 flag (h) against "every commit of the checkout" above). Either
+  and move no money (Decision #243 (h), ruled by the owner 2026-10-17: the one stated exception to
+  "every commit of the checkout" above). Either
   fill is the payment step's commit while it renders: the rail's Buy Now is then not rendered at all
   (`gateTakesCommit`), as for a pending card step (B.8.2), and the rail keeps its "Pay is off
   until…" line;
