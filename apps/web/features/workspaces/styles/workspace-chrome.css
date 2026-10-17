@@ -6,8 +6,10 @@
  *
  * The shared `.ui-lane-*` chrome from `@projective/ui/navigation` is NOT restyled here. `/teams` and
  * `/businesses` must read as the same control set as `/projects`, `/messages` and `/wallet`, so the
- * lane composes `LaneHead` / `LaneSearch` / `LaneSections` / `LaneList` / `LaneFooter` verbatim and
- * only this feature's own additions carry rules.
+ * lane's four zones (L1) compose `LaneHead` / `LaneList` / `LaneSection` / `LaneSearch` /
+ * `LaneFooter` / `LaneCreateButton`, `NavItem`, `SelectButton` and `Button` verbatim, and only this
+ * feature's own additions carry rules. Press feedback and both reduced-motion channels therefore come
+ * from the package: no lane control here is hand-rolled.
  *
  * Both bands are mounted into shell slots, which means they EXPORT their intrinsic width to the page:
  * a band wider than the content region widens the region. Both therefore carry
@@ -57,88 +59,131 @@
 }
 /* #endregion */
 
-/* #region Lane head — the entity switcher */
-.wsp-lane__head {
-	padding: var(--space-3);
-}
-
+/* #region Zone 1 — header strip */
 /*
- * The switcher is a control, so it earns a full contour on hover (§B.4). At rest it is borderless: the
- * lane head is not a place to spend a box.
+ * The strip is the shared `LaneHead` band (its padding, its `--surface-1` and its one block-end
+ * hairline are the package's), so this only lays out what sits inside it. On the roster index: the
+ * kind's title in the title register over a MetaLine count. Inside a console: Back, then the
+ * identity (mark · name · `@handle` · lifecycle Tag), then the acting switch on its own line.
  */
-.wsp-lane__switch {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	inline-size: 100%;
-	padding: var(--space-2);
-	font: inherit;
-	color: inherit;
-	text-align: start;
-	background: none;
-	/* Reserved transparent at rest, so hover and acting recolour a border rather than adding one. */
-	border: var(--hairline-strong);
-	border-color: transparent;
-	border-radius: var(--radius-lg);
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.wsp-lane__switch:hover {
-	border-color: var(--hairline-strong-color);
-	background: var(--surface-2);
-}
-
-/* Acting: a contour + one tonal step. The switcher is a control, so the contour is legal here; the
-loud channel is still the chip in the body. */
-.wsp-lane__switch[data-acting="true"] {
-	background: var(--wsp-acting-tint);
-	border-color: var(--wsp-acting-ring);
-}
-
-.wsp-lane__ident {
+.wsp-lane__titleblock {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-px);
+	gap: var(--space-1);
 	min-inline-size: 0;
-	flex: 1 1 auto;
 }
 
+/* The title register: one size step over the body, medium weight — never heavier (§A.4). */
+.wsp-lane__title,
 .wsp-lane__name {
-	font-size: var(--wsp-fs-body);
+	margin: 0;
+	font-size: var(--wsp-fs-key);
 	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.wsp-lane__meta {
+.wsp-lane__identrow {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	font-size: var(--wsp-fs-micro);
-	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
 	min-inline-size: 0;
 }
 
-.wsp-lane__caret {
-	display: inline-flex;
-	flex: none;
-	color: var(--text-secondary);
-	line-height: 0;
+/*
+ * Acting is the reserved leading rule (`--wsp-acting-ring`), held transparent at rest so marking the
+ * identity moves no box (§B.12.3) — never a contour around static content (§B.4).
+ */
+.wsp-lane__ident {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	padding-inline-start: var(--space-2);
+	border-inline-start: var(--hairline-strong);
+	border-inline-start-width: var(--wsp-acting-line-h);
+	border-inline-start-color: transparent;
 }
 
-/* The switcher popover's list of entities. */
-.wsp-lane__entities {
+.wsp-lane__ident[data-acting="true"] {
+	border-inline-start-color: var(--wsp-acting-ring);
+}
+
+.wsp-lane__identbody {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-1);
-	min-inline-size: 17rem;
-	padding: var(--space-1);
+	gap: var(--space-px);
+	flex: 1 1 auto;
+	min-inline-size: 0;
 }
 
+/* `@handle` then the lifecycle Tag — the strip's one container (§B.11). The handle yields first. */
+.wsp-lane__identmeta {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.wsp-ctxswitch {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.wsp-ctxswitch--icon {
+	display: inline-flex;
+}
+
+.wsp-ctxswitch__error {
+	margin: 0;
+	font-size: var(--wsp-fs-micro);
+	color: var(--wsp-alert);
+}
+/* #endregion */
+
+/* #region Zone 2 — primary views */
+/*
+ * The views fill the `LaneList` scroll body. Inside a console they are the registry's primary modules
+ * as `NavItem` rows, then the "More" `LaneSection`; the rows share the lane's inline axis, so the list
+ * cancels the row's own inline margin (the Project Details lane's top tier does the same).
+ */
+.wsp-lane__nav {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.wsp-lane__navlist {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	margin-block: 0;
+	margin-inline: calc(-1 * var(--space-2));
+	padding: 0;
+	list-style: none;
+}
+
+/* A queue's size at the row's end — plain tabular text, never a pill (§B.6); its words are in the
+row's accessible name. On the filled active row it takes the row's own ink. */
+.wsp-lane__navcount {
+	font-size: var(--wsp-fs-micro);
+	font-weight: var(--fw-semibold);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.wsp-lane__navlist .ui-nav-item--active .wsp-lane__navcount {
+	color: currentColor;
+}
+
+/* The roster index's rows: mark · name over one MetaLine (`Owner · 4 members · Active`). */
 .wsp-lane__entity {
 	display: flex;
 	align-items: center;
@@ -156,16 +201,20 @@ loud channel is still the chip in the body. */
 	border-inline-start-color: transparent;
 	cursor: pointer;
 	text-align: start;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
 }
 
-.wsp-lane__entity:hover {
+.wsp-lane__entity:hover,
+.wsp-lane__entity[aria-current="page"] {
 	background: var(--surface-2);
 }
 
-/* The quiet chip ("Invited") is a `--surface-2` step, the tone the row hovers to, so it steps up one
-with the row or its container would vanish. */
-.wsp-lane__entity:hover .wsp-chip[data-tone="muted"] {
-	background: var(--surface-3);
+/* A row is a link the reader presses, so it compresses like the package controls around it (§B.12). */
+.wsp-lane__entity:active {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-press);
 }
 
 /* Acting: one tonal step plus a leading rule — never a four-sided ring (§B.4). */
@@ -189,233 +238,33 @@ with the row or its container would vanish. */
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+/* #endregion */
 
-.wsp-lane__entity-role {
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
-}
-
-.wsp-lane__sep {
-	block-size: 0;
-	border-block-start: var(--hairline);
-	margin-block: var(--space-1);
-}
-
+/* #region Zone 3 — context controls */
 /*
- * Lane Filter popover — the panel behind the `ui-lane-bar` Filter button, matching the `/projects` and
- * `/catalogue` lane filter panels. The popover itself supplies the surface, hairline, radius and
- * shadow; this only lays out the one facet inside it.
+ * Drawn only when the view has something to partition. A docked band between the views and the
+ * footer rig: the lane's `--surface-1`, one block-start hairline, the lane's inline inset — no box.
  */
-.wsp-lane__filter {
+.wsp-lane__context {
+	flex: none;
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-2);
-	inline-size: 13rem;
-	max-inline-size: 100%;
+	padding: var(--space-3) var(--space-4);
+	background: var(--surface-1);
+	border-block-start: var(--hairline);
 }
 
-/* The facet's name is the section-header register (§A.4), so it reads the label tokens. */
-.wsp-lane__filter-label {
-	margin: 0;
-	font-size: var(--wsp-fs-label);
-	font-weight: var(--fw-semibold);
-	letter-spacing: var(--wsp-label-track);
-	text-transform: uppercase;
-	color: var(--text-secondary);
-}
-
-.wsp-lane__filter-pills {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-1);
-}
-
-.wsp-lane__filter-pill {
-	padding: var(--space-px) var(--space-2);
-	border: var(--hairline-strong);
-	border-radius: var(--radius-full);
-	background: transparent;
-	color: var(--text-secondary);
-	font: inherit;
-	font-size: var(--wsp-fs-label);
-	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
-}
-
-.wsp-lane__filter-pill:hover {
-	color: var(--on-surface);
-	border-color: var(--on-surface-variant);
-}
-
-.wsp-lane__filter-pill[data-on="true"] {
-	background: var(--surface-2);
-	border-color: var(--on-surface);
-	color: var(--on-surface);
-}
-
-.wsp-lane__filter-reset {
+.wsp-lane__reset {
 	align-self: flex-start;
-	padding: 0;
-	border: none;
-	background: none;
-	font: inherit;
-	font-size: var(--wsp-fs-label);
-	color: var(--text-secondary);
-	text-decoration: underline;
-	text-underline-offset: var(--space-px);
-	cursor: pointer;
-	transition: color var(--dur-fast) var(--ease-standard);
-}
-
-.wsp-lane__filter-reset:hover {
-	color: var(--on-surface);
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.wsp-lane__filter-pill,
-	.wsp-lane__filter-reset {
-		transition: none;
-	}
-}
-
-:root[data-motion="reduced"] .wsp-lane__filter-pill,
-:root[data-motion="reduced"] .wsp-lane__filter-reset {
-	transition: none;
-}
-
-.wsp-lane__note {
-	display: block;
-	padding-inline: var(--space-2);
-	padding-block-start: var(--space-1);
-	font-size: var(--wsp-fs-micro);
-	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
-}
-/* #endregion */
-
-/* #region Lane nav — the module registry's grouped rows */
-.wsp-lane__nav {
-	flex: 1 1 auto;
-	min-block-size: 0;
-	overflow-y: auto;
-}
-
-.wsp-lane__row {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	inline-size: 100%;
-	min-inline-size: 0;
-	padding-inline: var(--space-2);
-	padding-block: var(--space-2);
-	border-radius: var(--radius-base);
-	color: var(--text-secondary);
-	text-decoration: none;
-	font-size: var(--wsp-fs-body);
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.wsp-lane__row:hover {
-	background: var(--surface-2);
-	color: var(--on-surface);
-}
-
-.wsp-lane__row[data-active="true"] {
-	background: var(--wsp-kind-tint);
-	color: var(--wsp-kind-ink);
-	font-weight: var(--fw-medium);
-}
-
-.wsp-lane__row-icon {
-	display: inline-flex;
-	flex: none;
-	line-height: 0;
-}
-
-.wsp-lane__row-label {
-	min-inline-size: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-/* A module that needs attention shows a dot; a module with a queue shows a bare count. Neither is a
-sentence, and the explanation lives in the row's Tooltip (§B.6). */
-.wsp-lane__row-dot {
-	margin-inline-start: auto;
-	flex: none;
-}
-
-.wsp-lane__row-count {
-	margin-inline-start: auto;
-	flex: none;
-	font-size: var(--wsp-fs-micro);
-	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
-}
-/* #endregion */
-
-/* #region Lane foot — the ambient verification chip */
-.wsp-lane__foot {
-	flex: none;
-}
-
-/*
- * Ambient, never an alarm. The state is always present so the path to getting verified stays
- * discoverable; the CTA appears only when there is something to do.
- */
-.wsp-lane__verify {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding: var(--space-3);
-	border-block-start: var(--hairline);
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
-}
-
-.wsp-lane__verify-dot {
-	flex: none;
-}
-
-.wsp-lane__verify-text {
-	min-inline-size: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.wsp-lane__verify-link {
-	margin-inline-start: auto;
-	flex: none;
-	color: var(--primary);
-	text-decoration: none;
-	white-space: nowrap;
-}
-
-.wsp-lane__verify-link:hover {
-	text-decoration: underline;
-}
-
-.wsp-lane__acting {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding-inline: var(--space-3);
-	padding-block: var(--space-2);
-	border-block-start: var(--hairline);
-	background: var(--wsp-acting-tint);
 }
 /* #endregion */
 
 /* #region Collapsed rail */
 /*
- * Every rail control mirrors the global sidebar's collapsed `.ui-nav-item` exactly — a
- * `--shell-nav-block` square, `--radius-base`, the same hover and active tints — and carries a portal
- * `Tooltip` plus an `aria-label`, never a native `title` (§B.6).
+ * The same four zones folded to glyphs. Every rail control mirrors the global sidebar's collapsed
+ * `.ui-nav-item` exactly — a `--shell-nav-block` square, `--radius-base`, the same hover and active
+ * tints — and carries a portal `Tooltip` plus an `aria-label`, never a native `title` (§B.6).
  */
 .wsp-rail {
 	flex-direction: column;
@@ -426,9 +275,12 @@ sentence, and the explanation lives in the row's Tooltip (§B.6). */
 	padding-block: var(--space-3);
 }
 
+/* Zone 1: the mark over the acting switch. */
 .wsp-rail__brand {
 	display: flex;
-	justify-content: center;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
 	padding-block-end: var(--space-2);
 }
 
@@ -493,7 +345,21 @@ words — a ring colour on its own is not a channel. */
 	color: var(--wsp-kind-ink);
 }
 
-/* The module-group boundary, so a 12-icon rail still reads as five groups. */
+/* The rail's squares and mark are icon-only links: the icon press step (§B.12). */
+.wsp-rail__item,
+.wsp-rail__switch {
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.wsp-rail__item:active,
+.wsp-rail__switch:active {
+	transform: scale(var(--btn-press-scale-icon));
+	transition-duration: var(--dur-press);
+}
+
+/* Zone 2's boundary between the primary views and "More". */
 .wsp-rail__group-sep {
 	inline-size: 60%;
 	block-size: 0;
@@ -508,16 +374,13 @@ words — a ring colour on its own is not a channel. */
 	inset-inline-end: var(--space-2);
 }
 
+/* Zone 4: the create glyph over the expand toggle. */
 .wsp-rail__bottom {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	gap: var(--space-2);
 	margin-block-start: auto;
-}
-
-.wsp-rail__verify {
-	flex: none;
 }
 /* #endregion */
 
@@ -898,17 +761,33 @@ drops its secondary identity text before it drops a tab. */
 /* #region Reduced motion */
 @media (prefers-reduced-motion: reduce) {
 	.wsp-headerband__tab::after,
-	.wsp-lane__row,
-	.wsp-lane__switch,
 	.wsp-footerrig__action {
 		transition: none;
+	}
+
+	.wsp-lane__entity,
+	.wsp-lane__entity:active,
+	.wsp-rail__item,
+	.wsp-rail__item:active,
+	.wsp-rail__switch,
+	.wsp-rail__switch:active {
+		transition: none;
+		transform: none;
 	}
 }
 
 :root[data-motion="reduced"] .wsp-headerband__tab::after,
-:root[data-motion="reduced"] .wsp-lane__row,
-:root[data-motion="reduced"] .wsp-lane__switch,
 :root[data-motion="reduced"] .wsp-footerrig__action {
 	transition: none;
+}
+
+:root[data-motion="reduced"] .wsp-lane__entity,
+:root[data-motion="reduced"] .wsp-lane__entity:active,
+:root[data-motion="reduced"] .wsp-rail__item,
+:root[data-motion="reduced"] .wsp-rail__item:active,
+:root[data-motion="reduced"] .wsp-rail__switch,
+:root[data-motion="reduced"] .wsp-rail__switch:active {
+	transition: none;
+	transform: none;
 }
 /* #endregion */

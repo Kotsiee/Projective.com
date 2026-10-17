@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { useComputed, useSignal } from "@preact/signals";
+import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/workspace.css";
 import { Grid } from "@projective/ui/layout";
@@ -17,7 +17,7 @@ import {
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import type { RosterNotice } from "../core/console-route.ts";
 import { useContextSwitch } from "../core/useContextSwitch.ts";
-import { openCreate, rosterView } from "../core/workspace-state.ts";
+import { openCreate, rosterTab, rosterView, selectRosterTab } from "../core/workspace-state.ts";
 import { displayZoom, gridColWidth, workspaceZoom } from "../core/view-state.ts";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 import {
@@ -94,6 +94,11 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 	// #region State
 	const roster = useSignal<RosterPage>(props.initial);
 	const tab = useSignal<RosterTab>(toRosterTab(props.initialTab ?? null));
+	// The partition is shared with the lane's context controls: mirror it once either root picks one.
+	useSignalEffect(() => {
+		const shared = rosterTab.value;
+		if (shared !== null) tab.value = shared;
+	});
 	const search = useSignal(props.initialSearch ?? "");
 	/** Invitations answered in this session — filtered out immediately, before the server replies. */
 	const answered = useSignal<ReadonlySet<string>>(new Set());
@@ -307,7 +312,7 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 												class="wsp-roster__tab"
 												aria-selected={tab.value === option.value}
 												aria-controls={bodyId}
-												onClick={() => (tab.value = option.value)}
+												onClick={() => selectRosterTab(option.value)}
 											>
 												{option.label}
 												<span class="wsp-roster__tab-count wsp-num">
