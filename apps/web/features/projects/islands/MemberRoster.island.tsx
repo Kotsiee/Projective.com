@@ -20,7 +20,11 @@ import type {
 	MemberStageRef,
 	ProjectMemberRow,
 } from "../types/projects-types.ts";
-import { AssignableMemberRole, memberStagePicture } from "../types/projects-types.ts";
+import {
+	AssignableMemberRole,
+	memberStagePicture,
+	TICKET_MANAGER_ROLES,
+} from "../types/projects-types.ts";
 import { MembersService } from "../core/MembersService.ts";
 import { RequestService } from "../core/RequestService.ts";
 import {
@@ -122,6 +126,7 @@ function seamToParams(
 		simProjectType: s.projectType,
 		simPendingInvites: s.pendingInvites,
 		simPendingRequests: s.pendingRequests,
+		simBusinessClient: s.memberClient === "auto" ? undefined : s.memberClient === "business",
 	};
 }
 
@@ -202,7 +207,7 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 		if (!IS_DEV) return;
 		const keyOf = (s: DevSeamState | null) =>
 			s?.enabled
-				? `${s.memberRole}|${s.projectType}|${s.pendingInvites}|${s.pendingRequests}|${s.serviceType}`
+				? `${s.memberRole}|${s.projectType}|${s.pendingInvites}|${s.pendingRequests}|${s.serviceType}|${s.memberClient}`
 				: null;
 		const apply = (s: DevSeamState | null) => {
 			seam.value = s;
@@ -418,9 +423,43 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 		const res = await MembersService.updateRole(projectId, id, parsed.data);
 		if (!res.ok || !res.data) return res.message ?? "That role could not be changed.";
 		const saved = res.data.role;
-		members.value = members.value.map((m) => m.id === id ? { ...m, role: saved } : m);
+		// Leaving an admin/manager seat ends a ticket-management grant (Decision #294) — the database
+		// clears it in the same write, so the row follows.
+		members.value = members.value.map((m) =>
+			m.id === id
+				? {
+					...m,
+					role: saved,
+					canManageTickets: TICKET_MANAGER_ROLES.has(saved) && m.canManageTickets === true,
+				}
+				: m
+		);
 		say("success", res.message ?? "Role updated.");
 		return null;
+	}
+
+	/**
+	 * Let a delegated project manager compose and edit tickets for the business client, or stop them
+	 * (Decision #294). Not optimistic, like a role: what the person may do changes on the roster only
+	 * once the database holds it.
+	 */
+	async function setTicketManager(m: ProjectMemberRow, allowed: boolean): Promise<void> {
+		if (busy.value.has(m.id)) return;
+		markBusy(m.id, true);
+		const res = await MembersService.setTicketManager(projectId, m.id, allowed);
+		markBusy(m.id, false);
+		if (!res.ok || !res.data) {
+			say("danger", res.message ?? "That could not be changed.");
+			return;
+		}
+		const granted = res.data.canManageTickets;
+		members.value = members.value.map((row) =>
+			row.id === m.id ? { ...row, canManageTickets: granted } : row
+		);
+		say(
+			"success",
+			res.message ?? (granted ? "They can now manage tickets." : "They no longer manage tickets."),
+		);
 	}
 
 	/** Open the consequence-aware confirmation — from a kebab, or from an accepted invitation. */
@@ -563,7 +602,9 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 				picture={pictureOf(m)}
 				caps={caps}
 				manageable={caps.canManage && !m.isViewer}
+				businessClient={page.value?.businessClient === true}
 				onEdit={openEdit}
+				onTicketManager={setTicketManager}
 				onInviteToStages={inviteToStages}
 				onRemove={askRemove}
 			/>

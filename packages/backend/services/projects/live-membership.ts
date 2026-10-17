@@ -242,3 +242,72 @@ export async function setMemberRoleRow(
 	return { data: row };
 }
 // #endregion
+
+// #region Ticket management (Decision #294)
+/** What `projects.set_ticket_manager` returns. */
+interface TicketManagerRpcRow {
+	participant_id: string;
+	can_manage_tickets: boolean;
+	changed: boolean;
+}
+
+/**
+ * The grant's refusals that name a rule the client can act on — a business-only engagement, a seat
+ * that is not an admin/manager, their own seat, a closed project, a member no longer on it. The
+ * authority refusal is not here: `refusalFrom` answers it as a 403.
+ */
+const TICKET_MANAGER_RULES = [
+	"Only a business client delegates",
+	"Make this member a project admin or manager",
+	"cannot change your own ticket permission",
+	"can no longer change",
+	"not part of this project",
+];
+
+/**
+ * Let a delegated project manager compose and edit tickets for the business client, or stop them,
+ * through `projects.set_ticket_manager` (review authority + `hire`, audited in the same transaction).
+ */
+export async function setTicketManagerRow(
+	actor: LiveActor,
+	slug: string,
+	memberId: string,
+	allowed: boolean,
+): Promise<WriteOutcome<TicketManagerRpcRow>> {
+	if (memberId.startsWith("owner:")) {
+		return {
+			refusal: {
+				status: 409,
+				message: "The project owner already manages its tickets.",
+				errors: { memberId: "owner" },
+			},
+		};
+	}
+	if (!UUID_RE.test(memberId)) return null;
+	const project = await resolveProject(actor, slug);
+	if (!project) return null;
+	const { data, error } = await projectsDb(actor).rpc("set_ticket_manager", {
+		p_project_id: project.id,
+		p_participant_id: memberId,
+		p_allowed: allowed,
+	});
+	if (error) {
+		const rule = TICKET_MANAGER_RULES.find((sentence) => error.message.includes(sentence));
+		if (rule) {
+			return {
+				refusal: {
+					status: 422,
+					message: error.message.replace(/^ERROR:\s*/i, "").trim(),
+					errors: { allowed: "not_allowed" },
+				},
+			};
+		}
+		return { refusal: refusalFrom(error.message, "allowed") };
+	}
+	const row = data as TicketManagerRpcRow | null;
+	if (!row?.participant_id) {
+		return { refusal: refusalFrom("set_ticket_manager returned nothing", "allowed") };
+	}
+	return { data: row };
+}
+// #endregion
