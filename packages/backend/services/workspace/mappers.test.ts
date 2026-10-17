@@ -126,6 +126,25 @@ Deno.test("setupSteps: five steps, identity to the profile editor, the rest to t
 	assertEquals(setupCompletion([]), 1);
 });
 
+Deno.test("setupSteps: a viewer who may not open Verification gets its step unlinked, never a dead end", () => {
+	const facts = { logo: true, bio: true, invite: true, money: true, verified: false };
+	const unlinked = setupSteps("business", "atlaslabs", { ...facts, canVerify: false });
+	assertEquals(unlinked[4].id, "verification");
+	assertEquals(unlinked[4].href, "");
+	assertEquals(unlinked.slice(0, 4).map((s) => s.href), [
+		"/@atlaslabs/edit",
+		"/@atlaslabs/edit",
+		"/businesses/atlaslabs/invitations",
+		"/businesses/atlaslabs/spend",
+	]);
+	assertEquals(
+		setupSteps("business", "atlaslabs", { ...facts, canVerify: true })[4].href,
+		"/businesses/atlaslabs/verification",
+	);
+	// The step still counts toward completion whether or not it links.
+	assertEquals(setupCompletion(unlinked), 0.8);
+});
+
 Deno.test("verificationPrompt: null once verified, worded by kind and state otherwise", () => {
 	assertStrictEquals(verificationPrompt("team", "verified"), null);
 	assertStrictEquals(verificationPrompt("business", "verified"), null);

@@ -575,11 +575,13 @@ const KYB_REQUIREMENTS = new Set<string>(KybRequirement.options);
  * (`GET /api/finance/connect/refresh`), which mints a fresh single-use link for the EXISTING account
  * and redirects — so it is offered only to a `startKyb` holder whose business has an account; one
  * without starts at `POST /api/finance/verify/kyb`, which needs the registration country.
+ * `processorConnected` is the environment's (`isPaymentsLive`), passed in so this stays pure.
  */
 export function toKyb(
 	raw: RawKyb | null | undefined,
 	businessId: string,
 	canStart: boolean,
+	processorConnected: boolean,
 ): BusinessKyb {
 	const status = raw?.status === "verified" || raw?.status === "pending"
 		? raw.status
@@ -594,6 +596,7 @@ export function toKyb(
 		requirementsDue: (raw?.requirements_due ?? []).filter((code): code is KybRequirement =>
 			KYB_REQUIREMENTS.has(code)
 		),
+		processorConnected,
 	};
 }
 

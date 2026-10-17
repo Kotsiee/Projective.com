@@ -18,6 +18,7 @@ import {
 	DEV_REVISION_ALLOTMENTS,
 	DEV_AUTO_FUND_MODES,
 	DEV_LOW_BALANCES,
+	DEV_BUSINESS_KYBS,
 	DEV_SESSION_STATES,
 	DEV_DISPUTE_STATES,
 	DEV_NOTIFICATIONS,
@@ -612,6 +613,17 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.lowBalance}
 						disabled={!o.enabled}
 						onChange={(lowBalance) => patchDevContext({ lowBalance })}
+					/>
+				</Field>
+
+				{/* A business's KYB is written only by Stripe; this substitutes the Verification module's picture. */}
+				<Field label="Business KYB" hint="verification module">
+					<Segment
+						name="Business KYB"
+						options={DEV_BUSINESS_KYBS}
+						value={o.businessKyb}
+						disabled={!o.enabled}
+						onChange={(businessKyb) => patchDevContext({ businessKyb })}
 					/>
 				</Field>
 

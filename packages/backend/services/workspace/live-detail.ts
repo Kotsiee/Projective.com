@@ -7,6 +7,7 @@ import type { MediaRef } from "@projective/types/files";
 import {
 	type ArchiveBlocker,
 	ArchiveBlockerSchema,
+	canOpenVerification,
 	effectivePermissions,
 	type WorkspaceDetail,
 	type WorkspaceFinance,
@@ -19,6 +20,7 @@ import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { fetchPartyCards, type PartyCard } from "../profile/party-cards.ts";
 import { fetchPublicMedia, mediaUrl } from "../files/public-media.ts";
 import { publicObjectUrl } from "../../core/storage-url.ts";
+import { isPaymentsLive } from "../../core/stripe.ts";
 import { clamp, clampOr } from "../../core/text.ts";
 import { callRpc, clientFor, type LiveActor } from "./live-support.ts";
 import {
@@ -380,7 +382,7 @@ async function assemble(
 		finance,
 		moneyTiles: kind === "business" ? (raw.money_tiles ?? []).map(toMoneyTile) : [],
 		viewerCan: kind === "business" ? viewerCan : null,
-		kyb: kind === "business" ? toKyb(raw.kyb, raw.id, viewerCan.startKyb) : null,
+		kyb: kind === "business" ? toKyb(raw.kyb, raw.id, viewerCan.startKyb, isPaymentsLive()) : null,
 		projects: projects.map((p) => toProject(p, counterpartyOf(p), nowMs)),
 		engagements: engagements.map((e) => toEngagement(e, people, byUser)),
 		allowance: kind === "team" ? allowanceOf(raw.allowance) : null,
@@ -394,6 +396,7 @@ async function assemble(
 			invite: !!raw.setup?.invite,
 			money: !!raw.setup?.money,
 			verified: verification === "verified",
+			canVerify: canOpenVerification(kind, viewerCaps),
 		}),
 		standing: raw.standing ? clamp(raw.standing, 40) : null,
 		canPropose: kind === "business" || active >= 2,

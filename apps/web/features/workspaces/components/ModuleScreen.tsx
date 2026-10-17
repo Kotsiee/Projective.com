@@ -14,6 +14,7 @@ import RolesMatrix from "../islands/RolesMatrix.island.tsx";
 import PayoutPolicyScreen from "../islands/PayoutPolicyScreen.island.tsx";
 import SpendPolicyScreen from "../islands/SpendPolicyScreen.island.tsx";
 import BillingScreen from "../islands/BillingScreen.island.tsx";
+import BusinessVerificationScreen from "../islands/BusinessVerificationScreen.island.tsx";
 import type { BusinessBillingView } from "@projective/types/finance";
 
 /**
@@ -185,12 +186,29 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 				/>
 			);
 		case "verification":
+			// A business's KYB is a real screen on BB9's read; a team's verification is still next.
+			if (ws.kind === "business") {
+				return (
+					<BusinessVerificationScreen
+						businessId={ws.id}
+						name={ws.name}
+						kyb={ws.kyb ?? {
+							status: ws.verification,
+							verifiedAt: null,
+							connectOnboardingUrl: null,
+							requirementsDue: [],
+							processorConnected: false,
+						}}
+						canStart={ws.viewerCan?.startKyb === true}
+					/>
+				);
+			}
 			return (
 				<ModulePlaceholder
 					kind={ws.kind}
 					module={mod!}
 					note={ws.verificationPrompt ??
-						`${ws.name} is verified — payouts and pooled spending are unlocked.`}
+						`${ws.name}'s owner is verified, so the team can withdraw what it earns.`}
 				/>
 			);
 

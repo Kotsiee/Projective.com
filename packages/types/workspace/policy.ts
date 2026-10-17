@@ -394,6 +394,11 @@ export const BusinessKybSchema = z.object({
 	 */
 	connectOnboardingUrl: z.string().max(300).nullable(),
 	requirementsDue: z.array(KybRequirement),
+	/**
+	 * Whether the payment processor that runs the check is connected in this environment. Without it
+	 * neither door can reach Stripe, so the module offers no action and says why (Decision #225 (B)).
+	 */
+	processorConnected: z.boolean().default(false),
 });
 export type BusinessKyb = z.infer<typeof BusinessKybSchema>;
 

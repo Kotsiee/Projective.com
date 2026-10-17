@@ -580,16 +580,21 @@ Deno.test("toKyb: the resume link only for a startKyb holder whose business has 
 		has_account: true,
 		requirements_due: ["finish_onboarding", "something_new"],
 	};
-	const kyb = toKyb(raw, "b-1", true);
+	const kyb = toKyb(raw, "b-1", true, true);
 	assertEquals(kyb.status, "pending");
 	assertEquals(kyb.requirementsDue, ["finish_onboarding"]);
 	assertEquals(
 		kyb.connectOnboardingUrl,
 		"/api/finance/connect/refresh?scope=business&businessId=b-1&back=settings",
 	);
-	assertStrictEquals(toKyb(raw, "b-1", false).connectOnboardingUrl, null);
-	assertStrictEquals(toKyb({ ...raw, has_account: false }, "b-1", true).connectOnboardingUrl, null);
-	assertEquals(toKyb({ ...raw, status: "rejected" }, "b-1", true).status, "unverified");
+	assertStrictEquals(kyb.processorConnected, true);
+	assertStrictEquals(toKyb(raw, "b-1", false, true).connectOnboardingUrl, null);
+	assertStrictEquals(
+		toKyb({ ...raw, has_account: false }, "b-1", true, true).connectOnboardingUrl,
+		null,
+	);
+	assertEquals(toKyb({ ...raw, status: "rejected" }, "b-1", true, true).status, "unverified");
+	assertStrictEquals(toKyb(raw, "b-1", true, false).processorConnected, false);
 });
 
 Deno.test("toMoneyTile: every figure in its own currency, never a negative", () => {

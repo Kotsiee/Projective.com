@@ -198,6 +198,14 @@ export type DevAutoFundMode = "auto" | AutoFundMode;
 export type DevLowBalance = "auto" | "below" | "above";
 
 /**
+ * The simulated KYB picture on a business's Verification module: `auto` shows the server's read;
+ * `unverified` nothing started or finished, `in_review` with Stripe, `action_needed` restricted,
+ * rejected or lapsed, `verified` cleared. Its own axis because a business's KYB is written only by
+ * Stripe's account updates. Client-side: the database, every lock and every money door are unchanged.
+ */
+export type DevBusinessKyb = "auto" | "unverified" | "in_review" | "action_needed" | "verified";
+
+/**
  * The simulated notification inbox (DESIGN_SYSTEM §D.9): `empty` answers no notifications at all;
  * `many` answers a large unread set spread over every inbox category (tab counts, paging, bulk
  * select); `burst` keeps the real inbox and lands a run of new arrivals a second apart (the live
@@ -452,6 +460,8 @@ export interface DevSeamState {
 	autoFundMode?: DevAutoFundMode;
 	/** The simulated low-balance state. Optional like `walletAurora`; absent reads as `auto`. */
 	lowBalance?: DevLowBalance;
+	/** The simulated business KYB picture. Optional like `walletAurora`; absent reads as `auto`. */
+	businessKyb?: DevBusinessKyb;
 	/** The simulated session state. Optional like `walletAurora`; absent reads as `auto`. */
 	sessionState?: DevSessionState;
 	/** The simulated no-show dispute. Optional like `walletAurora`; absent reads as `auto`. */
@@ -631,6 +641,13 @@ const DISPUTE_STATES: readonly DevDisputeState[] = [
 ];
 const AUTO_FUND_MODES: readonly DevAutoFundMode[] = ["auto", "off", "add_to_basket", "from_wallet"];
 const LOW_BALANCES: readonly DevLowBalance[] = ["auto", "below", "above"];
+const BUSINESS_KYBS: readonly DevBusinessKyb[] = [
+	"auto",
+	"unverified",
+	"in_review",
+	"action_needed",
+	"verified",
+];
 const NOTIFICATION_SIMS: readonly DevNotifications[] = ["auto", "empty", "many", "burst"];
 const BASKET_SCENARIOS: readonly DevBasketScenario[] = ["auto", "empty", "multi_owner", "unavailable"];
 const SAVED_SIMS: readonly DevSaved[] = ["auto", "empty", "many"];
@@ -709,6 +726,7 @@ export function readDevSeam(): DevSeamState | null {
 		revisionAllotment: coerce(ds.devRevisionAllotment, REVISION_ALLOTMENTS, "auto"),
 		autoFundMode: coerce(ds.devAutoFundMode, AUTO_FUND_MODES, "auto"),
 		lowBalance: coerce(ds.devLowBalance, LOW_BALANCES, "auto"),
+		businessKyb: coerce(ds.devBusinessKyb, BUSINESS_KYBS, "auto"),
 		sessionState: coerce(ds.devSessionState, SESSION_STATES, "auto"),
 		disputeState: coerce(ds.devDisputeState, DISPUTE_STATES, "auto"),
 		notifications: coerce(ds.devNotifications, NOTIFICATION_SIMS, "auto"),

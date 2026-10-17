@@ -45,6 +45,7 @@ import {
 	type DevRevisionAllotment,
 	type DevAutoFundMode,
 	type DevLowBalance,
+	type DevBusinessKyb,
 	type DevNotifications,
 	type DevSessionState,
 	type DevDisputeState,
@@ -102,6 +103,7 @@ export type {
 	DevRevisionAllotment,
 	DevAutoFundMode,
 	DevLowBalance,
+	DevBusinessKyb,
 	DevNotifications,
 	DevSessionState,
 	DevDisputeState,
@@ -289,6 +291,12 @@ export interface DevOverrides {
 	/** The Billing module's low-balance warning: `below` shows it, `above` hides it, `auto` reads the floor. */
 	lowBalance: DevLowBalance;
 	/**
+	 * The KYB picture a business's Verification module shows (BU4): unverified, in review, action
+	 * needed or verified. Its own axis because a business's KYB is written only by Stripe's account
+	 * updates; the locks and every money door still read the stored status.
+	 */
+	businessKyb: DevBusinessKyb;
+	/**
 	 * A session's server-only facts (Decision #171): a full cohort, a sitting in progress, every sitting
 	 * over, and a seat escrow waiting out the 24-hour window. Each takes a real booking, a real clock or
 	 * the auto-release sweep to reach, so the listing lane and the session sidebar preview them here.
@@ -441,6 +449,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	revisionAllotment: "auto",
 	autoFundMode: "auto",
 	lowBalance: "auto",
+	businessKyb: "auto",
 	sessionState: "auto",
 	disputeState: "auto",
 	notifications: "auto",
@@ -684,6 +693,15 @@ export const DEV_LOW_BALANCES: ReadonlyArray<DevOption<DevLowBalance>> = [
 	{ value: "above", label: "Above floor" },
 ];
 
+/** Business KYB picture options (the Verification module, BU4). */
+export const DEV_BUSINESS_KYBS: ReadonlyArray<DevOption<DevBusinessKyb>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "unverified", label: "Unverified" },
+	{ value: "in_review", label: "In review" },
+	{ value: "action_needed", label: "Action needed" },
+	{ value: "verified", label: "Verified" },
+];
+
 /** Notification inbox options (DESIGN_SYSTEM §D.9). */
 export const DEV_NOTIFICATIONS: ReadonlyArray<DevOption<DevNotifications>> = [
 	{ value: "auto", label: "Auto" },
@@ -917,6 +935,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devAutoFundMode;
 		if (next.lowBalance !== "auto") root.dataset.devLowBalance = next.lowBalance;
 		else delete root.dataset.devLowBalance;
+		if (next.businessKyb !== "auto") root.dataset.devBusinessKyb = next.businessKyb;
+		else delete root.dataset.devBusinessKyb;
 		if (next.sessionState !== "auto") root.dataset.devSessionState = next.sessionState;
 		else delete root.dataset.devSessionState;
 		if (next.disputeState !== "auto") root.dataset.devDisputeState = next.disputeState;
@@ -995,6 +1015,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devRevisionAllotment;
 		delete root.dataset.devAutoFundMode;
 		delete root.dataset.devLowBalance;
+		delete root.dataset.devBusinessKyb;
 		delete root.dataset.devSessionState;
 		delete root.dataset.devDisputeState;
 		delete root.dataset.devNotifications;

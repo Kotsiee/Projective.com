@@ -3037,7 +3037,7 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `spend`                  | Limits, approval thresholds, the approval queue and the attributable pool ledger                |
 |               |                           | `billing`                | Invoices (with **Pay**), statement PDFs, invoicing terms, auto-funding and the balance floor (§Escrow, Wallets & Finance #4) |
 |               |                           | `talent`                 | The bench — freelancers and teams the business has hired (Decision #230 (i))                    |
-|               |                           | `verification`           | Business verification (KYB)                                                                    |
+|               |                           | `verification`           | Business verification (KYB) — where it stands, what is still due, what it unlocks, and the start of Stripe Connect onboarding for whoever holds the billing right (Decision #242) |
 |               |                           | `settings`               | Handle, defaults, ownership transfer and archiving                                             |
 |               |                           | _other modules_          | `roles` · `invitations` · `finance` (the Business Wallet) · `calendar` · `messages` · `analytics` · `standing` · `profile` — the rest of the kind-business module registry (`features/workspaces/core/module-registry.tsx`) |
 |               | `/connections`            | `index`                  | View network connections                                                                       |

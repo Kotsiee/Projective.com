@@ -526,6 +526,12 @@ export interface SetupFacts {
 	invite: boolean;
 	money: boolean;
 	verified: boolean;
+	/**
+	 * Whether the viewer may open the Verification module (`canOpenVerification`); `false` leaves its
+	 * step unlinked, so the checklist never sends someone to a page that turns them away. Absent reads
+	 * as linked — the roster's cards only count the steps.
+	 */
+	canVerify?: boolean;
 }
 
 /**
@@ -576,7 +582,7 @@ export function setupSteps(kind: WorkspaceKind, handle: string, facts: SetupFact
 				? "The owner's verified identity unlocks withdrawals from the vault."
 				: "Verification unlocks the pooled wallet so you can hire.",
 			done: facts.verified,
-			href: workspaceHref(kind, handle, "verification"),
+			href: facts.canVerify === false ? "" : workspaceHref(kind, handle, "verification"),
 		},
 	];
 }
