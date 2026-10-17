@@ -10,6 +10,7 @@ import { isCheckoutEligible, resolveCardArt } from "@projective/types/finance";
 import { BasketService } from "../core/BasketService.ts";
 import { CheckoutService } from "../core/CheckoutService.ts";
 import { checkoutHref } from "../core/basket-model.ts";
+import { gatedSentence, refusalLines } from "../core/business-gate.ts";
 import { CardChooser } from "../components/PaymentChoice.tsx";
 import { StripeElementPanel } from "@features/payments/components/StripeElementPanel.tsx";
 import { PaymentsService } from "@features/payments/core/PaymentsService.ts";
@@ -373,7 +374,7 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 									: "hourglass"}
 								size="xl"
 							/>
-							<p class="bnow__result-msg">{result.message}</p>
+							<p class="bnow__result-msg">{refusalLines(result, view ?? null).headline}</p>
 							{/* Server-formatted. The client never renders a figure it computed. */}
 							{result.status === "succeeded"
 								? <p class="bnow__result-amount">{result.charged.display}</p>
@@ -412,10 +413,10 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 									</a>
 								)
 								: null}
-							{result.blockers.map((blocker) => (
+							{refusalLines(result, view ?? null).reasons.map(({ blocker, sentence }) => (
 								<p key={`${blocker.code}-${blocker.itemId ?? "account"}`} class="bnow__blocker">
 									<Icon name="warning" size="sm" />
-									<span>{blocker.message}</span>
+									<span>{sentence}</span>
 								</p>
 							))}
 							<Button variant="text" rounded label="Done" onClick={dismiss} />
@@ -454,7 +455,7 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 												class="bnow__blocker"
 											>
 												<Icon name="warning" size="sm" />
-												<span>{blocker.message}</span>
+												<span>{gatedSentence(blocker, view)}</span>
 											</li>
 										))}
 									</ul>

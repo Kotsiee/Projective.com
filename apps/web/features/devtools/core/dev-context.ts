@@ -50,6 +50,7 @@ import {
 	type DevSessionState,
 	type DevDisputeState,
 	type DevBasketScenario,
+	type DevCheckoutGate,
 	type DevSaved,
 	type DevPromoDismissal,
 	type DevDiscoveryViewer,
@@ -108,6 +109,7 @@ export type {
 	DevSessionState,
 	DevDisputeState,
 	DevBasketScenario,
+	DevCheckoutGate,
 	DevSaved,
 	DevServiceType,
 	DevSessionBookingStatus,
@@ -321,6 +323,13 @@ export interface DevOverrides {
 	 */
 	basketScenario: DevBasketScenario;
 	/**
+	 * A business checkout's gate on the payment step (Decision #243): a refusal offering Request
+	 * approval, a request waiting or approved, nobody else able to approve, the business wallet short,
+	 * or KYB. Its own axis because each takes a threshold, an envelope, a second member's decision or a
+	 * Stripe KYB update to reach; the server still decides every Pay and every request.
+	 */
+	checkoutGate: DevCheckoutGate;
+	/**
 	 * The saved set behind `/saved` and every star / save control: the real one, nothing saved, or
 	 * saved items of every kind in two collections (Decision #180). Its own axis because filling every
 	 * kind by hand takes a project, a conversation, a file and a listing.
@@ -454,6 +463,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	disputeState: "auto",
 	notifications: "auto",
 	basketScenario: "auto",
+	checkoutGate: "auto",
 	saved: "auto",
 	promoDismissal: "auto",
 	discoveryViewer: "auto",
@@ -718,6 +728,18 @@ export const DEV_BASKET_SCENARIOS: ReadonlyArray<DevOption<DevBasketScenario>> =
 	{ value: "unavailable", label: "Unavailable item" },
 ];
 
+/** Business checkout gate states (the payment step, Decision #243). */
+export const DEV_CHECKOUT_GATES: ReadonlyArray<DevOption<DevCheckoutGate>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "needs_approval", label: "Approval" },
+	{ value: "over_limit", label: "Over limit" },
+	{ value: "pending", label: "Pending" },
+	{ value: "approved", label: "Approved" },
+	{ value: "no_approver", label: "No approver" },
+	{ value: "pool_short", label: "Pool short" },
+	{ value: "kyb_required", label: "KYB" },
+];
+
 /** Saved-set scenarios (Decision #180). */
 export const DEV_SAVED: ReadonlyArray<DevOption<DevSaved>> = [
 	{ value: "auto", label: "Auto" },
@@ -945,6 +967,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devNotifications;
 		if (next.basketScenario !== "auto") root.dataset.devBasketScenario = next.basketScenario;
 		else delete root.dataset.devBasketScenario;
+		if (next.checkoutGate !== "auto") root.dataset.devCheckoutGate = next.checkoutGate;
+		else delete root.dataset.devCheckoutGate;
 		if (next.saved !== "auto") root.dataset.devSaved = next.saved;
 		else delete root.dataset.devSaved;
 		if (next.promoDismissal !== "auto") root.dataset.devPromoDismissal = next.promoDismissal;
@@ -1020,6 +1044,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devDisputeState;
 		delete root.dataset.devNotifications;
 		delete root.dataset.devBasketScenario;
+		delete root.dataset.devCheckoutGate;
 		delete root.dataset.devSaved;
 		delete root.dataset.devPromoDismissal;
 		delete root.dataset.devDiscoveryViewer;

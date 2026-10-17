@@ -1569,8 +1569,19 @@ deferred live path behind the same gate with zero shape churn.
 | Half        | Client (thin)      | Routes (thin)                                                        | Service (fat)                |
 | :---------- | :----------------- | :-------------------------------------------------------------------- | :--------------------------- |
 | The basket  | `BasketService`    | `/api/basket/{index,item,move,promo,lists,owners}`                   | `BasketBackendService`       |
-| The flow    | `CheckoutService`  | `/api/checkout/{session,create,details,order,calendar/[orderId]/[lineId]}` | `CheckoutBackendService` |
+| The flow    | `CheckoutService`  | `/api/checkout/{session,create,details,approval,order,calendar/[orderId]/[lineId]}` | `CheckoutBackendService` |
 | The wallet of cards | `CardsService` | `/api/cards/{index,[id],default}`                                  | `CardsBackendService`        |
+
+`approval` is a business checkout's "Request approval" (Decision #243): it files a spend request
+bound to the basket through `wallet-actions.fileSpendRequest` → `finance.request_spend_approval` —
+the one door `/wallet` files through too — with the amount computed server-side from the named
+lines, and answers the fresh session in the page's deep-link scope (`preselect`) with a sentence. A
+PC409 that the session does not show as the member's own is another member's request on the shared
+basket and answers 409 saying so; a "needs no approval" the session disagrees with answers 409 too.
+The spend pre-flight (`live-buyer.spendPositionFor`) reads what the database's gate reads: the
+envelope rolled at `resets_at` and the platform threshold behind a wallet's NULL one. Database
+refusals at Pay map to blockers in `checkout-refusal.ts`; a business refusal carries its `gate` so
+the surface words it from the business refusal map.
 
 Cross-boundary shapes are the Zod SSOT at **`@projective/types/finance`** — `basket.ts` (items,
 lists, the `BasketLists` projection), `checkout.ts` (the session context, `CheckoutTotals`,

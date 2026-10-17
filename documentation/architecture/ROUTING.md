@@ -229,7 +229,14 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   pages read over one (overview · analytics draw cash flow over it, the ledger lists it; set from the
   pinned range ruler; the pre-ruler names `week|month|quarter|year` still resolve; each page omits its
   OWN default — `1m` for the cash-flow pages, `all` for the ledger, `defaultPeriodFor`),
-  `?display=` the currency the figures are drawn in. `/wallet/transactions` also carries its filter bar
+  `?display=` the currency the figures are drawn in. Two intents open the wallet mid-flow
+  (`apps/web/features/wallet/core/wallet-intent.ts`, Decision #243): `?do=<action>` opens that
+  action's dialog once — only an action the wallet draws for the viewer, offered or locked with its
+  reason — and is stripped from the address at once (`replaceState`), so a reload does not reopen it;
+  `?back=<path>` is where the movement's done step offers to return, allowlisted by `safeBack` to a
+  same-origin `/checkout` path (no scheme, no `//`, no backslash or control character) because it is
+  an open-redirect surface — the checkout's tier-1 Add money is
+  `/wallet?w=business:<id>&do=top_up&back=<this checkout step>`. `/wallet/transactions` also carries its filter bar
   (Decision #152): `?q=` the search, `?dir=in|out` the direction, `?kind=a,b` the line families
   (`LEDGER_KIND_CHOICES`), each dropped at its default (`withLedgerFilters`), so a filtered ledger links
   and reloads as it was. The island adds `?tz=<IANA zone>` to its own `/api/wallet/*` reads (never to a

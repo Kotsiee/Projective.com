@@ -400,3 +400,25 @@ export function countLabel(kind: WorkspaceKind, count: number): string {
 	return `${count} ${count === 1 ? copy.noun : copy.plural}`;
 }
 // #endregion
+
+// #region Refusal copy
+/**
+ * The business refusal map (BU6 step 4, Decision #243) — one sentence, way forward and ask per
+ * business refusal code. The business screens import it from here; it LIVES in the `refusal-copy.ts`
+ * leaf so a checkout island can import it without this module's registry and glyphs.
+ */
+export {
+	approverList,
+	BUSINESS_REFUSAL_CODES,
+	BUSINESS_REFUSAL_COPY,
+	type BusinessRefusalCode,
+	type BusinessRefusalContext,
+	CHECK_AGAIN_LABEL,
+	isBusinessRefusalCode,
+	possessive,
+	type RefusalCopy,
+	SPEND_REQUEST_COPY,
+	type SpendRequestCopyContext,
+	type SpendRequestCopyState,
+} from "./refusal-copy.ts";
+// #endregion

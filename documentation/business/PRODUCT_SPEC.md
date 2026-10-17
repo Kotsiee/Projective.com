@@ -1333,7 +1333,18 @@ Money enters and leaves the platform through two deliberately asymmetric paths:
   a business purchase.
 - **A short pool is refused, never made up from a person.** When the Business Wallet holds less than
   a purchase or an escrow funding needs, the payment is refused; members who may add money to the
-  wallet are offered a one-click **Contribute**, and no personal card is charged (Decision #230 (c)).
+  wallet are offered a one-click **Add money**, which opens the Business Wallet's top-up and comes
+  back to the checkout, and no personal card is charged (Decision #230 (c); at checkout, #243).
+- **A purchase that needs a sign-off is asked for at checkout.** Over the member's spending limit,
+  or at or above the Business Wallet's approval threshold, the checkout names who can approve it and
+  the member asks in place, saying what it is for; nobody is sent elsewhere to ask. The order then
+  waits ("Waiting for approval", until the request expires 7 days after it was filed). Once
+  approved, the next payment for that basket uses the approval, once — a second order needs a fresh
+  one; an order that has since dropped under every limit is not held by a request left waiting. If
+  nobody else in the business can approve, the member is told to ask the owner to add an approver
+  (the owner, to give a member approval rights). An unverified business cannot buy: members with its
+  billing right are sent to its verification, everyone else is told to ask the owner
+  (`finance-model.md` §14, Decision #243).
 - **An individual client funds escrow like a business does.** A project with no client business is
   funded by its owner — by card, or from their own wallet — and every release, refund and fair-exit
   split returns money to that person. Only the project's owner may fund it.

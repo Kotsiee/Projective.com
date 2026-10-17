@@ -1357,6 +1357,13 @@ other commits in tier 2 — is open as Decision #157 flag (j); the docs follow t
   `confirm_seat` Button;
 - the project board footer's **Checkout N** pill (`.brd-rig__action--accent`, a feature-local
   control whose hover and press blend toward `--on-scrim` by `--tint-soft` / `--tint`, B.12.4);
+- a business checkout's short-pool **Add money** (`.cko-gate__add`, an anchor in the accent pill's
+  classes) — it starts the business wallet's top-up and returns to the checkout (Decision #243). The
+  same gate's **Request approval** and its dialog's **Send request** are tier 3: they file a request
+  and move no money (Decision #243 flag (h) against "every commit of the checkout" above). Either
+  fill is the payment step's commit while it renders: the rail's Buy Now is then not rendered at all
+  (`gateTakesCommit`), as for a pending card step (B.8.2), and the rail keeps its "Pay is off
+  until…" line;
 - Settings → Verification & payouts' **Set up payouts** / **Continue setup** — the start of the
   personal Connect account money is transferred to, and only while it is the page's one next step
   (`nextVerificationStep`); otherwise, and as **Update payout details** on a verified account, it

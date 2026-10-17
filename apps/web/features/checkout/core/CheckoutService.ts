@@ -4,6 +4,7 @@ import type { CheckoutResponse } from "../types/results.ts";
 import type {
 	BillingContext,
 	BuyerDetails,
+	CheckoutApprovalRequest,
 	CheckoutContext,
 	CheckoutResult,
 	CheckoutSessionContext,
@@ -66,6 +67,18 @@ export const CheckoutService = {
 		ctx: CheckoutContext,
 	): Promise<CheckoutResponse<{ result: CheckoutResult }>> {
 		return postCheckout("/api/checkout/create", withContext({ ...input }, ctx));
+	},
+
+	/**
+	 * Ask for approval of a business checkout, bound to its basket (Decision #243). The payload names
+	 * the lines and the reason — never an amount: the server files the charge those lines make. Answers
+	 * the fresh session, whose spend position then shows the request as pending.
+	 */
+	requestApproval(
+		input: CheckoutApprovalRequest,
+		ctx: CheckoutContext,
+	): Promise<CheckoutResponse<{ session: CheckoutSessionContext }>> {
+		return postCheckout("/api/checkout/approval", withContext({ ...input }, ctx));
 	},
 
 	/**

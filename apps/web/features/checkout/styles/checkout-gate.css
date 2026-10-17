@@ -1,0 +1,82 @@
+/*
+ * checkout-gate — a business checkout's refusal and its one way forward (BP2, Decision #243).
+ *
+ * A statement, its facts and one control, separated by spacing alone (§B.4): no fill, no border, no
+ * shadow and no backdrop. The notice is a required disclosure in the meta register and the control is
+ * the only contained thing in the region, so the row never reads as a card. Figures are tabular
+ * through MetaLine; the anchors wear the shared Button classes and so its press feedback, which both
+ * reduced-motion channels already remove.
+ */
+
+/* #region Gate */
+.cko-gate {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin-block-end: var(--space-5);
+	min-inline-size: 0;
+}
+
+/* The notice is the region's statement, so it sits flush with the column and in the page's ink. */
+.cko-gate .cko-gate__notice {
+	padding: 0;
+	color: var(--on-surface);
+}
+
+.cko-gate__meta {
+	margin: 0;
+}
+
+.cko-gate__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-3);
+	margin-block-start: var(--space-1);
+}
+
+.cko-gate__add,
+.cko-gate__verify {
+	text-decoration: none;
+}
+
+.cko-gate__ask {
+	margin: 0;
+	max-inline-size: var(--measure);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+}
+
+/* What the last approval request said when the gate does not say it already — meta register, unboxed. */
+.cko-gate__note {
+	margin: 0 0 var(--space-5);
+	max-inline-size: var(--measure);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+}
+/* #endregion */
+
+/* #region Request approval dialog */
+.cko-approve__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.cko-approve__lead {
+	margin: 0;
+	max-inline-size: var(--measure);
+	color: var(--on-surface);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+}
+
+.cko-approve__foot {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: var(--space-2);
+}
+/* #endregion */

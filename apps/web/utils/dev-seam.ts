@@ -223,6 +223,23 @@ export type DevNotifications = "auto" | "empty" | "many" | "burst";
 export type DevBasketScenario = "auto" | "empty" | "multi_owner" | "unavailable";
 
 /**
+ * The simulated business checkout gate (Decision #243): `needs_approval` / `over_limit` a refusal
+ * offering Request approval, `pending` a request waiting, `approved` one the next Pay spends,
+ * `no_approver` nobody else able to decide, `pool_short` the business wallet short (Add money),
+ * `kyb_required` an unverified business. `auto` shows the server's read. Client-side only: the payment
+ * step substitutes its view of a REAL business session; Pay and every request still go to the server.
+ */
+export type DevCheckoutGate =
+	| "auto"
+	| "needs_approval"
+	| "over_limit"
+	| "pending"
+	| "approved"
+	| "no_approver"
+	| "pool_short"
+	| "kyb_required";
+
+/**
  * The simulated saved set (`/saved` and every star / save control, Decision #180): `empty` answers
  * nothing saved; `many` answers saved items of every kind, in two collections, with follows. `auto`
  * uses the real saved set. Client-side only: the thin `SavedService` substitutes its answers, and
@@ -470,6 +487,8 @@ export interface DevSeamState {
 	notifications?: DevNotifications;
 	/** The simulated basket. Optional like `walletAurora`; absent reads as `auto`. */
 	basketScenario?: DevBasketScenario;
+	/** The simulated business checkout gate. Optional like `walletAurora`; absent reads as `auto`. */
+	checkoutGate?: DevCheckoutGate;
 	/** The simulated saved set. Optional like `walletAurora`; absent reads as `auto`. */
 	saved?: DevSaved;
 	/** The simulated promo dismissals. Optional like `walletAurora`; absent reads as `auto`. */
@@ -650,6 +669,16 @@ const BUSINESS_KYBS: readonly DevBusinessKyb[] = [
 ];
 const NOTIFICATION_SIMS: readonly DevNotifications[] = ["auto", "empty", "many", "burst"];
 const BASKET_SCENARIOS: readonly DevBasketScenario[] = ["auto", "empty", "multi_owner", "unavailable"];
+const CHECKOUT_GATES: readonly DevCheckoutGate[] = [
+	"auto",
+	"needs_approval",
+	"over_limit",
+	"pending",
+	"approved",
+	"no_approver",
+	"pool_short",
+	"kyb_required",
+];
 const SAVED_SIMS: readonly DevSaved[] = ["auto", "empty", "many"];
 const PROMO_DISMISSALS: readonly DevPromoDismissal[] = ["auto", "visible", "dismissed"];
 const DISCOVERY_VIEWERS: readonly DevDiscoveryViewer[] = ["auto", "no_history", "no_signals"];
@@ -731,6 +760,7 @@ export function readDevSeam(): DevSeamState | null {
 		disputeState: coerce(ds.devDisputeState, DISPUTE_STATES, "auto"),
 		notifications: coerce(ds.devNotifications, NOTIFICATION_SIMS, "auto"),
 		basketScenario: coerce(ds.devBasketScenario, BASKET_SCENARIOS, "auto"),
+		checkoutGate: coerce(ds.devCheckoutGate, CHECKOUT_GATES, "auto"),
 		saved: coerce(ds.devSaved, SAVED_SIMS, "auto"),
 		promoDismissal: coerce(ds.devPromoDismissal, PROMO_DISMISSALS, "auto"),
 		discoveryViewer: coerce(ds.devDiscoveryViewer, DISCOVERY_VIEWERS, "auto"),

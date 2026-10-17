@@ -6,6 +6,7 @@ import { formatMoney, MoneyViewSchema } from "./wallet.ts";
 import { CardBrand } from "./card-art.ts";
 import { CardPaymentHandoffSchema } from "./payments.ts";
 import { SpendApprovalRefSchema } from "./vault.ts";
+import { SpendGateReason } from "./spend-gate.ts";
 import {
 	AppliedPromoSchema,
 	BasketGroupSchema,
@@ -555,6 +556,30 @@ export type ProcessingContributionOffer = z.infer<typeof ProcessingContributionO
 
 // #region Spending limit
 /**
+ * The acting member's latest unspent approval request for THIS basket (`finance.spend_approvals`,
+ * filed by them, bound to `('baskets', basketId)`, not yet consumed) — what the checkout shows in place
+ * of "Request approval" once one exists (Decision #243).
+ *
+ * A spent request is history and is never projected here: the next order on the same basket needs a
+ * fresh approval (Decision #239). The database's `rejected` reads `declined` (PRODUCT_MANAGEMENT
+ * §Spend approval), and a pending request past its `expires_at` reads `expired` before the database's
+ * next filing closes it.
+ */
+export const CheckoutSpendRequestSchema = z.object({
+	id: reference,
+	state: z.enum(["pending", "approved", "declined", "expired"]),
+	/** The amount filed, in the wallet's own currency — the figure the approver approved. */
+	amount: MoneyViewSchema,
+	/** Whether the request's amount covers this basket's charge now (an approval may be outgrown). */
+	covers: z.boolean(),
+	/** "Expires 24 Oct", composed server-side; `null` when the request has no expiry. */
+	expiresLabel: z.string().max(60).nullable(),
+	/** Who approved or declined it; `null` while pending, or when the decider cannot be named. */
+	decidedBy: z.string().max(120).nullable(),
+});
+export type CheckoutSpendRequest = z.infer<typeof CheckoutSpendRequestSchema>;
+
+/**
  * How the acting member's spending limit bears on THIS basket.
  *
  * A projection over `finance.spending_limits` (`cap_cents`, `period_interval`, `spent_cents`,
@@ -588,8 +613,20 @@ export const SpendLimitBlockSchema = z.object({
 	remaining: MoneyViewSchema.nullable(),
 	/** `period_interval` as a phrase ("this month"); `null` when the cap is a lifetime total. */
 	periodLabel: z.string().max(60).nullable(),
-	/** Where a `needs_approval` request is raised; `null` otherwise. */
-	requestHref: z.string().max(200).nullable(),
+	/**
+	 * The business spend gate's sub-code for this basket (Decision #240) — `kyb_required`, `over_limit`
+	 * or `needs_approval` — so the surface words the refusal from the one business refusal map and
+	 * offers its way forward. `null` when the verdict is `allowed`, and always for a team or an
+	 * enterprise, whose refusals are not the business gate's.
+	 */
+	gate: SpendGateReason.nullable().default(null),
+	/**
+	 * The member's latest unspent request for this basket, when one exists. It bears on the verdict
+	 * only while the order still needs approval: a `pending` one is then what Pay waits on, and an
+	 * `approved` one that covers the charge is why the verdict reads `allowed` with {@link approved}.
+	 * An order that no longer needs approval is not held by a request left pending for it.
+	 */
+	request: CheckoutSpendRequestSchema.nullable().default(null),
 	/**
 	 * What a `needs_approval` request must be filed against — this basket — so the approval it earns
 	 * is the one this checkout's charge can spend (`finance.fn_redeem_spend_approval`). `null`
@@ -666,6 +703,26 @@ export const CheckoutBlockerCode = z.enum([
 ]);
 export type CheckoutBlockerCode = z.infer<typeof CheckoutBlockerCode>;
 
+/**
+ * The business refusal behind a checkout blocker — the code the business screens word from their one
+ * refusal map (Decision #243), so a business buyer reads one sentence per refusal whether the
+ * pre-flight or the database caught it:
+ *
+ *  - `purchase` — the member holds vault `spend` but not the business's purchasing right (#237).
+ *  - `kyb_required` — the business is not KYB-verified; its pooled wallet pays for nothing (#240).
+ *  - `over_limit` — over the member's own envelope; an approval for this basket carries it (#240).
+ *  - `needs_approval` — at or above the vault's threshold; it needs an approval (#239, #240).
+ *  - `business_not_active` — a draft or archived business buys nothing (#236).
+ */
+export const CheckoutBusinessGate = z.enum([
+	"purchase",
+	"kyb_required",
+	"over_limit",
+	"needs_approval",
+	"business_not_active",
+]);
+export type CheckoutBusinessGate = z.infer<typeof CheckoutBusinessGate>;
+
 /** One reason Pay is refused, pointing at the line responsible when there is one. */
 export const CheckoutBlockerSchema = z.object({
 	code: CheckoutBlockerCode,
@@ -675,11 +732,39 @@ export const CheckoutBlockerSchema = z.object({
 	itemId: reference.nullable(),
 	/**
 	 * A `spend_limit` blocker that a second sign-off would clear: the ref a request must be filed
-	 * against (`POST /api/wallet/action` `request_spend`) so the approval is spendable by this charge.
+	 * against (`POST /api/checkout/approval`) so the approval is spendable by this charge.
 	 */
 	approvalRef: SpendApprovalRefSchema.optional(),
+	/** The business refusal behind this blocker, when it is one; absent for every other refusal. */
+	gate: CheckoutBusinessGate.optional(),
 });
 export type CheckoutBlocker = z.infer<typeof CheckoutBlockerSchema>;
+
+/**
+ * What a business checkout needs to offer the way past its refusals, read as the acting member
+ * (`finance.vault_permissions`, Decision #238's projection of the business capabilities). `null` on
+ * the session for anyone not buying as a member of a business.
+ */
+export const CheckoutBusinessAccountSchema = z.object({
+	/**
+	 * Who can decide this member's spend request — the vault's other `approve_spend` /
+	 * `manage_members` holders, owner first. Empty when nobody else can (Decision #239 flag (e)): the
+	 * surface then asks the owner to add an approver instead of offering a request nobody can decide.
+	 */
+	approvers: z.array(z.string().max(120)).max(12),
+	/** Whether the member may add money to the business wallet (vault `add_funds`, `contribute_funds`). */
+	canAddFunds: z.boolean(),
+	/** Whether the member may start the business's KYB (the billing right, `startKyb`). */
+	canStartKyb: z.boolean(),
+	/**
+	 * Whether the member manages the vault's members (`manage_members`, the owner's): with no other
+	 * approver they are the one who can add one, so they are told where rather than to ask the owner.
+	 */
+	canManageMembers: z.boolean().default(false),
+	/** The business's KYB state. */
+	kybStatus: KycStatus.nullable(),
+});
+export type CheckoutBusinessAccount = z.infer<typeof CheckoutBusinessAccountSchema>;
 
 /**
  * What this checkout will settle in, and — when the goods were priced elsewhere — the FX observation
@@ -790,6 +875,11 @@ export const CheckoutSessionContextSchema = z.object({
 	processingOffer: ProcessingContributionOfferSchema,
 	/** How the acting member's spending limit bears on this basket. */
 	spendLimit: SpendLimitBlockSchema,
+	/**
+	 * A business checkout's way past its refusals — who approves, whether the member may add money or
+	 * start KYB. `null` unless the acting member is buying as a business they may spend for.
+	 */
+	businessAccount: CheckoutBusinessAccountSchema.nullable().default(null),
 });
 export type CheckoutSessionContext = z.infer<typeof CheckoutSessionContextSchema>;
 
@@ -867,6 +957,25 @@ export const CreateCheckoutSchema = z.object({
 	idempotencyKey: z.string().min(8).max(120),
 });
 export type CreateCheckout = z.infer<typeof CreateCheckoutSchema>;
+
+/**
+ * Ask for approval of a business checkout (`POST /api/checkout/approval`, Decision #243): the request
+ * is bound to this basket (`ref_table 'baskets'`) and its amount is computed server-side from the
+ * named lines — a client-supplied amount could ask for more than the order. The reason is what the
+ * approver reads (1–400 characters, `finance.request_spend_approval`'s own bound).
+ */
+export const CheckoutApprovalRequestSchema = z.object({
+	basketId: reference,
+	/** The lines the order would pay for — the same lines `create` will be sent. */
+	itemIds: z.array(reference).min(1).max(200),
+	reason: z.string().trim().min(1).max(400),
+	/**
+	 * The deep link the checkout is narrowed to (`?project_id=` / `?service_id=`), so the session the
+	 * request answers with is read in the page's own scope rather than over the whole basket.
+	 */
+	preselect: CheckoutPreselectSchema.optional(),
+});
+export type CheckoutApprovalRequest = z.infer<typeof CheckoutApprovalRequestSchema>;
 
 /** The outcome of a checkout attempt. */
 export const CheckoutResultStatus = z.enum([

@@ -34,6 +34,10 @@ function buttonTags(source: string): string[] {
 }
 
 const COMMITS: ReadonlyArray<readonly [string, number]> = [
+	// Request approval and Send request are workflow commits that move no money: tier 3, never amber
+	// (Decision #243). The gate's one amber control is the Add money anchor, pinned below.
+	["components/BusinessSpendGate.tsx", 0],
+	["components/RequestApprovalDialog.tsx", 0],
 	["components/ConfirmPayDialog.tsx", 1],
 	["islands/AddPaymentMethodModal.island.tsx", 2],
 	["islands/CheckoutDetailsScreen.island.tsx", 1],
@@ -79,6 +83,25 @@ Deno.test("the basket's Proceed to Checkout anchor wears the accent Button class
 	}
 });
 
+Deno.test("the business gate's Add money anchor wears the accent Button classes; Request approval is tier 3", async () => {
+	const tsx = await read("components/BusinessSpendGate.tsx");
+	const add = tsx.match(/class="([^"]*\bcko-gate__add\b[^"]*)"/);
+	assert(add, "cko-gate__add not found");
+	for (const cls of ["ui-button--accent", "ui-button--filled", "ui-button--rounded"]) {
+		assert(add[1].split(/\s+/).includes(cls), `cko-gate__add lacks ${cls}`);
+	}
+	const request = buttonTags(tsx).find((tag) => /cko-gate__request/.test(tag));
+	assert(request, "the Request approval Button is not found");
+	assert(
+		/severity="primary"/.test(request) && /variant="filled"/.test(request),
+		"Request approval is not tier 3",
+	);
+	assert(
+		!/["`][^"`\n]*\/spend\b[^"`\n]*["`]/.test(tsx.replace(/\/\*\*[\s\S]*?\*\//g, "")),
+		"the gate links to /spend",
+	);
+});
+
 const HANDOFF: CardPaymentHandoff = {
 	paymentId: "00000000-0000-4000-8000-000000000001",
 	purpose: "wallet_topup",
@@ -100,14 +123,18 @@ Deno.test("a pending card step owns the commit, so the rail's Buy Now steps out"
 	assert(!cardStepPending(null));
 });
 
-Deno.test("the rail's accent Buy Now renders only while no card step is pending", async () => {
+Deno.test("the rail's accent Buy Now renders only while no card step or gate fill holds the commit", async () => {
 	const tsx = await read("islands/CheckoutPaymentScreen.island.tsx");
 	assert(
 		/const cardStep = cardStepPending\(result\);/.test(tsx),
 		"cardStep is not derived from the result",
 	);
 	assert(
-		/\{!cardStep && \(\s*<div class="cko-rail__commit">/.test(tsx),
-		"the rail commit is not gated on the card step",
+		/const gateCommits = gateTakesCommit\(businessGate\);/.test(tsx),
+		"gateCommits is not derived from the business gate",
+	);
+	assert(
+		/\{!cardStep && !gateCommits && \(\s*<div class="cko-rail__commit">/.test(tsx),
+		"the rail commit is not gated on the card step and the gate's fill",
 	);
 });

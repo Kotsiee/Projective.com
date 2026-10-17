@@ -23,6 +23,7 @@ import {
 	DEV_DISPUTE_STATES,
 	DEV_NOTIFICATIONS,
 	DEV_BASKET_SCENARIOS,
+	DEV_CHECKOUT_GATES,
 	DEV_PROMO_DISMISSALS,
 	DEV_DISCOVERY_VIEWERS,
 	DEV_DISCOVERY_ACTIVITIES,
@@ -684,6 +685,21 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.basketScenario}
 						disabled={!o.enabled}
 						onChange={(basketScenario) => patchDevContext({ basketScenario })}
+					/>
+				</Field>
+
+				{
+					/* A business checkout's gate (Decision #243). Each state waits on a threshold, an envelope,
+				    another member's decision or Stripe, so the payment step substitutes its view of a real
+				    business session here; Pay and Request approval still reach the server. */
+				}
+				<Field label="Checkout gate" hint="business payment step">
+					<Segment
+						name="Checkout gate"
+						options={DEV_CHECKOUT_GATES}
+						value={o.checkoutGate}
+						disabled={!o.enabled}
+						onChange={(checkoutGate) => patchDevContext({ checkoutGate })}
 					/>
 				</Field>
 

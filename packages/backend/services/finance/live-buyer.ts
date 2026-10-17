@@ -1,16 +1,27 @@
 import type {
 	BillingContext,
 	BuyerDetails,
+	CheckoutBusinessAccount,
+	CheckoutSpendRequest,
+	MoneyView,
 	MonthlyInvoicing,
 	PostalAddress,
 	ProcessingContributionOffer,
 	SaveBuyerDetails,
+	SpendGateReason,
 	SpendLimitBlock,
 } from "@projective/types/finance";
-import { buyerDetailsComplete, destinationEmail, EMPTY_ADDRESS } from "@projective/types/finance";
+import {
+	buyerDetailsComplete,
+	DEFAULT_LOCALE,
+	destinationEmail,
+	EMPTY_ADDRESS,
+	formatMoney,
+} from "@projective/types/finance";
 import { evaluateSpend } from "@projective/types/workspace";
 import { isPlanGateRefusal, planGateHeaders, planGateRefusal } from "../../core/plan-gate.ts";
 import { getUserClient } from "../../core/supabase.ts";
+import { fetchPartyCards } from "../profile/party-cards.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import type { MoneyProjector } from "./commerce-money.ts";
 import type { ResolvedOwner } from "./commerce-owner.ts";
@@ -425,6 +436,8 @@ export function processingOfferFor(money: MoneyProjector): ProcessingContributio
 	};
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const PERIOD_LABEL: Record<string, string | null> = {
 	weekly: "this week",
 	monthly: "this month",
@@ -444,20 +457,33 @@ const PERIOD_LABEL: Record<string, string | null> = {
  * spending, and a limit only narrows it. KYB gates a BUSINESS or enterprise wallet; a team is not
  * subject to it.
  *
- * A business `needs_approval` verdict is bound to the basket (`requestRef`): the request is filed
- * against it, and once approved — unspent, unexpired, filed by this member, covering the total — the
- * verdict reads `allowed` with `approved: true`, because the charge will spend that approval
- * (`finance.fn_redeem_spend_approval` decides; this read only stops Pay refusing what the database
- * would accept). A team has nobody holding `approve_spend` (BUSINESSES_AUDIT BF44), so its
- * `needs_approval` is `blocked`: there is no request to offer.
+ * The inputs are the ones the database's gate reads: the envelope rolled at `resets_at` as
+ * `finance.fn_check_spending_limit` rolls it, and a business wallet's threshold with the platform's
+ * `vault_approval_threshold_cents` behind a NULL column (`finance.fn_business_threshold`), so the
+ * pre-flight refuses exactly what the gate would and offers a request the database will file.
+ *
+ * A business `needs_approval` verdict is bound to the basket (`requestRef`) and names the business
+ * gate's sub-code (`gate`, Decision #240). The member's latest unspent request for the basket is read
+ * with it (`request`), and bears on the verdict only while the order needs approval: an approved one —
+ * unexpired, filed by this member, covering the charge — turns the verdict `allowed` with
+ * `approved: true`, because the charge will spend that approval (`finance.fn_redeem_spend_approval`
+ * decides; this read only stops Pay refusing what the database would accept); a pending one keeps
+ * `needs_approval` with "waiting" as its reason. An order that no longer needs approval is not held
+ * by a request left pending for it, and is not told it spends an approval it will not touch. A team
+ * has nobody holding `approve_spend` (BUSINESSES_AUDIT BF44), so its `needs_approval` is `blocked`:
+ * there is no request to offer.
+ *
+ * For a business member it also reads what the checkout needs to offer the way past a refusal
+ * (`businessAccount`, Decision #243): who can approve, and whether the member may add money or start
+ * KYB — one read of the vault's permissions, which any active member may see.
  */
-export async function spendLimitFor(
+export async function spendPositionFor(
 	owner: ResolvedOwner,
 	totalMinor: number,
 	money: MoneyProjector,
 	actor: ReadActor,
-	basketId: string | null = null,
-): Promise<SpendLimitBlock> {
+	binding: SpendBinding = { basketId: null, charge: null },
+): Promise<SpendPosition> {
 	const zero = money.derived(0);
 	const none: SpendLimitBlock = {
 		applies: false,
@@ -467,11 +493,12 @@ export async function spendLimitFor(
 		spent: zero,
 		remaining: zero,
 		periodLabel: null,
-		requestHref: null,
+		gate: null,
+		request: null,
 		requestRef: null,
 		approved: false,
 	};
-	if (!owner.isEntity || !canReadLive(actor)) return none;
+	if (!owner.isEntity || !canReadLive(actor)) return { spendLimit: none, businessAccount: null };
 
 	const db = getUserClient(actor.accessToken).schema("finance");
 	const wallets = await db.from("wallets")
@@ -485,25 +512,36 @@ export async function spendLimitFor(
 		approval_threshold_cents: number | string | null;
 	}[];
 
+	// The wallet the order is paid from is the account's wallet in the CHARGE currency
+	// (`place_wallet_order`), so its limit and threshold are the ones the database will apply.
+	const chargeCurrency = binding.charge?.currency.toUpperCase() ?? null;
+	const paying = chargeCurrency
+		? walletRows.find((w) => w.currency.toUpperCase() === chargeCurrency) ?? null
+		: null;
+
 	interface LimitRow {
 		wallet_id: string;
 		cap_cents: number | string | null;
 		per_transaction_cents: number | string | null;
 		spent_cents: number | string;
 		period_interval: string;
+		resets_at: string | null;
 	}
 	let limit: LimitRow | null = null;
 	if (walletRows.length > 0) {
 		const limits = await db.from("spending_limits")
-			.select("wallet_id, cap_cents, per_transaction_cents, spent_cents, period_interval")
+			.select(
+				"wallet_id, cap_cents, per_transaction_cents, spent_cents, period_interval, resets_at",
+			)
 			.eq("member_user_id", actor.userId)
-			.in("wallet_id", walletRows.map((w) => w.id))
+			.in("wallet_id", paying ? [paying.id] : walletRows.map((w) => w.id))
 			.limit(1);
 		if (limits.error) throw new Error(`finance.spending_limits read failed: ${limits.error.message}`);
 		limit = ((limits.data ?? []) as LimitRow[])[0] ?? null;
 	}
 
-	const wallet = walletRows.find((w) => w.id === limit?.wallet_id) ?? walletRows[0] ?? null;
+	const wallet = paying ?? walletRows.find((w) => w.id === limit?.wallet_id) ?? walletRows[0] ??
+		null;
 	const currency = wallet?.currency ?? money.display;
 	const convert = (minor: number | string | null) =>
 		minor === null ? null : money.canConvert(currency) ? money.convertMinor(Number(minor) || 0, currency) : null;
@@ -512,11 +550,18 @@ export async function spendLimitFor(
 	// refused every purchase from an uncapped member's envelope (#125(e)).
 	const capped = limit !== null && limit.cap_cents !== null;
 	const capMinor = capped ? convert(limit!.cap_cents) ?? 0 : 0;
-	const spentMinor = limit ? convert(limit.spent_cents) ?? 0 : 0;
+	const spentMinor = limit && !periodLapsed(limit, Date.now())
+		? convert(limit.spent_cents) ?? 0
+		: 0;
 	const remainingMinor = Math.max(capMinor - spentMinor, 0);
-	const threshold = wallet?.approval_threshold_cents !== null && wallet?.approval_threshold_cents !== undefined
-		? convert(wallet.approval_threshold_cents)
+	const business = owner.ownerType === "business";
+	const ownThreshold = wallet?.approval_threshold_cents ?? null;
+	const thresholdCents = ownThreshold !== null
+		? ownThreshold
+		: business && wallet !== null
+		? await platformThresholdCents(actor.accessToken)
 		: null;
+	const threshold = thresholdCents !== null ? convert(thresholdCents) : null;
 
 	const verdict = evaluateSpend(
 		totalMinor,
@@ -531,64 +576,286 @@ export async function spendLimitFor(
 		},
 	);
 
-	const bindTo = verdict.outcome === "needs_approval" && owner.ownerType === "business"
-		? basketId
+	// Only a stored basket binds a request: an owner with none yet reads the synthetic default basket,
+	// whose id is no row's (`DEFAULT_BASKET_ID`) and nothing could be filed against.
+	const basketId = business && binding.basketId && UUID.test(binding.basketId)
+		? binding.basketId
 		: null;
-	const approved = bindTo !== null && wallet !== null &&
-		await approvedFor(db, wallet.id, bindTo, actor.userId, totalMinor, convert);
+	const [requestRows, vaultRows] = wallet !== null
+		? await Promise.all([
+			basketId ? readRequests(db, wallet.id, basketId, actor.userId) : Promise.resolve([]),
+			business && owner.actingIsMember && binding.account !== false
+				? readVault(db, wallet.id)
+				: Promise.resolve(null),
+		])
+		: [[], null];
+
+	// What an approval's amount is compared with: the charge itself when the two share a currency (no
+	// conversion to round), else the display total, projected like every other figure here.
+	const covers = (row: ApprovalRow): boolean =>
+		binding.charge && row.currency.toUpperCase() === binding.charge.currency.toUpperCase()
+			? Number(row.amount_cents) >= binding.charge.minor
+			: (convert(row.amount_cents) ?? -1) >= totalMinor;
+	const latest = latestRequest(requestRows, Date.now(), covers);
+
+	const approverIds = vaultRows ? approversIn(vaultRows, actor.userId) : [];
+	const names = binding.account !== false && (vaultRows || latest?.row.approver_user_id)
+		? await fetchPartyCards(getUserClient(actor.accessToken), [
+			...approverIds.map((a) => a.userId),
+			latest?.row.approver_user_id,
+		])
+		: new Map<string, { name: string }>();
+	const request = latest ? requestView(latest, names) : null;
+
+	// A request bears on the verdict only while the order needs one (`fn_assert_business_spend` redeems
+	// on its over-cap and threshold paths alone).
+	const needs = business && verdict.outcome === "needs_approval";
+	const approved = needs && request?.state === "approved" && request.covers;
+	const pending = needs && request?.state === "pending";
 	const outcome = approved
 		? "allowed"
 		: verdict.outcome === "needs_approval" && owner.ownerType === "team"
 		? "blocked"
 		: verdict.outcome;
+	const gate: SpendGateReason | null =
+		!business || outcome === "allowed" || verdict.outcome === "allowed" ||
+			verdict.code === "no_spend"
+			? null
+			: verdict.code;
 
-	const slug = owner.handle ?? owner.ownerId;
-	return {
+	const spendLimit: SpendLimitBlock = {
 		applies: true,
 		verdict: outcome,
-		reason: outcome === "allowed" || verdict.outcome === "allowed" ? null : verdict.reason,
+		reason: outcome === "allowed" || verdict.outcome === "allowed"
+			? null
+			: pending
+			? "Waiting for an approver's decision."
+			: verdict.reason,
 		cap: capped ? money.derived(capMinor) : null,
 		spent: money.derived(spentMinor),
 		remaining: capped ? money.derived(remainingMinor) : null,
 		periodLabel: limit ? PERIOD_LABEL[limit.period_interval] ?? null : null,
-		requestHref: outcome === "needs_approval" && owner.ownerType === "business"
-			? `/businesses/${slug}/spend`
-			: null,
-		requestRef: outcome === "needs_approval" && bindTo !== null
-			? { refTable: "baskets", refId: bindTo }
+		gate,
+		request,
+		requestRef: outcome === "needs_approval" && basketId !== null
+			? { refTable: "baskets", refId: basketId }
 			: null,
 		approved,
 	};
+	const businessAccount: CheckoutBusinessAccount | null = vaultRows
+		? accountOf(vaultRows, approverIds, names, actor.userId, owner)
+		: null;
+	return { spendLimit, businessAccount };
 }
 
 /**
- * Whether this member holds an approved, unspent, unexpired request for this basket on this wallet
- * whose amount (in the wallet's currency, projected like every other figure here) covers the total —
- * the same match `finance.fn_redeem_spend_approval` makes. Read through RLS ("View wallet spend
- * approvals").
+ * How the acting member's spending limit bears on this basket — {@link spendPositionFor}'s verdict
+ * alone, for a caller that renders nothing of the business account (the charge's own pre-flight).
  */
-async function approvedFor(
-	db: ReturnType<ReturnType<typeof getUserClient>["schema"]>,
+export async function spendLimitFor(
+	owner: ResolvedOwner,
+	totalMinor: number,
+	money: MoneyProjector,
+	actor: ReadActor,
+	binding: SpendBinding = { basketId: null, charge: null },
+): Promise<SpendLimitBlock> {
+	return (await spendPositionFor(owner, totalMinor, money, actor, { ...binding, account: false }))
+		.spendLimit;
+}
+// #endregion
+
+// #region Spend requests & the vault
+/** What a checkout's spend read binds to, beyond the total. */
+export interface SpendBinding {
+	/** The basket a business `needs_approval` request binds to; `null` when there is none. */
+	basketId: string | null;
+	/**
+	 * The charge in the listings' own currency (the session's `charge`): it picks the paying wallet —
+	 * the one `place_wallet_order` debits — and is what an approval's amount is compared with when the
+	 * two share a currency, so a covering approval is never read as short by a conversion's rounding.
+	 */
+	charge: MoneyView | null;
+	/** Read the business account (who approves, add money, KYB) — default `true`. */
+	account?: boolean;
+}
+
+/** A checkout's spend position: the verdict, and for a business member the way past its refusals. */
+export interface SpendPosition {
+	spendLimit: SpendLimitBlock;
+	businessAccount: CheckoutBusinessAccount | null;
+}
+
+type FinanceDb = ReturnType<ReturnType<typeof getUserClient>["schema"]>;
+
+interface ApprovalRow {
+	id: string;
+	amount_cents: number | string;
+	currency: string;
+	status: "pending" | "approved" | "rejected" | "expired";
+	approver_user_id: string | null;
+	expires_at: string | null;
+	created_at: string;
+}
+
+interface VaultRow {
+	member_user_id: string;
+	capabilities: string[] | null;
+}
+
+const EXPIRY = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
+	day: "numeric",
+	month: "short",
+	timeZone: "UTC",
+});
+
+/**
+ * The member's own unspent requests for this basket on this wallet, newest first, read through RLS
+ * ("View wallet spend approvals" — a member sees their own). A spent request is history: the next
+ * order on the basket needs a fresh approval, so `consumed_at IS NULL` is part of the question.
+ */
+async function readRequests(
+	db: FinanceDb,
 	walletId: string,
 	basketId: string,
 	userId: string,
-	totalMinor: number,
-	convert: (minor: number | string | null) => number | null,
-): Promise<boolean> {
+): Promise<ApprovalRow[]> {
 	const { data, error } = await db.from("spend_approvals")
-		.select("amount_cents, expires_at")
+		.select("id, amount_cents, currency, status, approver_user_id, expires_at, created_at")
 		.eq("wallet_id", walletId)
 		.eq("ref_table", "baskets")
 		.eq("ref_id", basketId)
 		.eq("requested_by", userId)
-		.eq("status", "approved")
-		.is("consumed_at", null);
+		.is("consumed_at", null)
+		.order("created_at", { ascending: false })
+		.limit(5);
 	if (error) throw new Error(`finance.spend_approvals read failed: ${error.message}`);
-	const now = Date.now();
-	const rows = (data ?? []) as { amount_cents: number | string; expires_at: string | null }[];
-	return rows.some((row) =>
-		(row.expires_at === null || Date.parse(row.expires_at) > now) &&
-		(convert(row.amount_cents) ?? -1) >= totalMinor
-	);
+	return (data ?? []) as ApprovalRow[];
+}
+
+/**
+ * Whether a limit row's window has lapsed, so its `spent_cents` no longer counts — the roll
+ * `finance.fn_check_spending_limit` and `request_spend_approval` make: a weekly or monthly window whose
+ * `resets_at` has passed; a lifetime `total` never rolls.
+ */
+function periodLapsed(
+	row: { period_interval: string; resets_at: string | null },
+	now: number,
+): boolean {
+	return row.period_interval !== "total" && row.resets_at !== null &&
+		Date.parse(row.resets_at) <= now;
+}
+
+/**
+ * The platform's approval threshold (`security.platform_params` `vault_approval_threshold_cents`), the
+ * one a business wallet with no threshold of its own answers to (`finance.fn_business_threshold`), in
+ * the wallet's minor units. `null` when it is unset or zero — no threshold. Read as the caller ("Read
+ * platform params" — any signed-in member).
+ */
+async function platformThresholdCents(accessToken: string): Promise<number | null> {
+	const { data, error } = await getUserClient(accessToken).schema("security")
+		.from("platform_params")
+		.select("value")
+		.eq("key", "vault_approval_threshold_cents")
+		.maybeSingle();
+	if (error) throw new Error(`security.platform_params read failed: ${error.message}`);
+	const cents = Number((data as { value: unknown } | null)?.value ?? 0);
+	return Number.isFinite(cents) && cents > 0 ? cents : null;
+}
+
+/** The wallet's vault permissions, read through RLS ("View vault permissions" — any member). */
+async function readVault(db: FinanceDb, walletId: string): Promise<VaultRow[]> {
+	const { data, error } = await db.from("vault_permissions")
+		.select("member_user_id, capabilities")
+		.eq("wallet_id", walletId);
+	if (error) throw new Error(`finance.vault_permissions read failed: ${error.message}`);
+	return (data ?? []) as VaultRow[];
+}
+
+/** A request's state as the checkout shows it: `rejected` reads `declined`, a lapsed one `expired`. */
+function stateOf(row: ApprovalRow, now: number): CheckoutSpendRequest["state"] {
+	const lapsed = row.expires_at !== null && Date.parse(row.expires_at) <= now;
+	if (row.status === "rejected") return "declined";
+	if (row.status === "expired" || lapsed) return "expired";
+	return row.status;
+}
+
+/**
+ * The request the checkout shows: an approved, unexpired one covering the charge first — the one the
+ * redeemer would spend — else the newest, whatever its state.
+ */
+function latestRequest(
+	rows: readonly ApprovalRow[],
+	now: number,
+	covers: (row: ApprovalRow) => boolean,
+): { row: ApprovalRow; state: CheckoutSpendRequest["state"]; covers: boolean } | null {
+	const read = rows.map((row) => ({ row, state: stateOf(row, now), covers: covers(row) }));
+	return read.find((r) => r.state === "approved" && r.covers) ?? read[0] ?? null;
+}
+
+function requestView(
+	latest: { row: ApprovalRow; state: CheckoutSpendRequest["state"]; covers: boolean },
+	names: ReadonlyMap<string, { name: string }>,
+): CheckoutSpendRequest {
+	const { row } = latest;
+	const minor = Number(row.amount_cents) || 0;
+	const currency = row.currency.toUpperCase();
+	return {
+		id: row.id,
+		state: latest.state,
+		amount: {
+			minor,
+			currency,
+			display: formatMoney(minor, currency, DEFAULT_LOCALE),
+			origin: null,
+		},
+		covers: latest.covers,
+		expiresLabel: row.expires_at ? `Expires ${EXPIRY.format(new Date(row.expires_at))}` : null,
+		decidedBy: row.approver_user_id
+			? names.get(row.approver_user_id)?.name.slice(0, 120) ?? null
+			: null,
+	};
+}
+
+const DECIDES = ["approve_spend", "manage_members"];
+
+/**
+ * Who can decide this member's request: the vault's OTHER members holding `approve_spend` or
+ * `manage_members` — the same set `finance.request_spend_approval` notifies — owner (`manage_members`)
+ * first.
+ */
+function approversIn(
+	rows: readonly VaultRow[],
+	self: string,
+): { userId: string; owner: boolean }[] {
+	return rows
+		.filter((row) =>
+			row.member_user_id !== self && (row.capabilities ?? []).some((c) => DECIDES.includes(c))
+		)
+		.map((row) => ({
+			userId: row.member_user_id,
+			owner: (row.capabilities ?? []).includes("manage_members"),
+		}));
+}
+
+function accountOf(
+	rows: readonly VaultRow[],
+	approvers: readonly { userId: string; owner: boolean }[],
+	names: ReadonlyMap<string, { name: string }>,
+	self: string,
+	owner: ResolvedOwner,
+): CheckoutBusinessAccount {
+	const mine = new Set(rows.find((row) => row.member_user_id === self)?.capabilities ?? []);
+	return {
+		approvers: approvers
+			.map((a) => ({ owner: a.owner, name: names.get(a.userId)?.name.slice(0, 120) ?? "" }))
+			.filter((a) => a.name !== "")
+			.sort((a, b) => Number(b.owner) - Number(a.owner) || a.name.localeCompare(b.name))
+			.slice(0, 12)
+			.map((a) => a.name),
+		canAddFunds: mine.has("add_funds") || mine.has("manage_members"),
+		canStartKyb: mine.has("manage_billing") || mine.has("manage_members"),
+		canManageMembers: mine.has("manage_members"),
+		kybStatus: owner.kybStatus,
+	};
 }
 // #endregion
