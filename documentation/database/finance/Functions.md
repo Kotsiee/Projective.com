@@ -226,6 +226,12 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   member for any reason (a direct write, a sync not yet run) authorises nothing. **Internal**: no
   client role may call it (it answers for an arbitrary user id — a capability oracle — and no policy
   calls it; its callers are definer predicates and money RPCs).
+- **`finance.fn_reads_wallet_envelopes(wallet_id)`** → boolean (`00001210`, BB6) — may the CALLER
+  read every member's spend envelope and every spend request on the wallet, not only their own? Yes
+  for `distribute` (workspace `manage_finances`) or `approve_spend` — and the owner, whose
+  `manage_members` implies both (and a platform admin, through `fn_has_vault_capability`). Granted to
+  `authenticated`: the `spending_limits` / `spend_approvals` SELECT policies ask it beside the
+  reader's own rows, and definer reads that mirror those screens call it too.
 - **`finance.fn_owner_capability(owner_type, owner_id, cap)`** → boolean (`00001210`, 2026-09-23) —
   the **owner**-keyed form of the vault gate, for tables that belong to a principal rather than a
   wallet (`payment_methods`, `saved_cards`, `payout_schedules`). Admin, or self for a personal owner
@@ -1119,7 +1125,11 @@ this exists to prevent. Prices nothing: the units and promo are re-checked again
 
 `payment_intent.succeeded`. Credits `p_amount_received` — what arrived, not what was asked for — to
 the row's wallet (`reason = 'topup'`, `ref_table = 'inbound_payments'`), marks the row `succeeded`
-and links the ledger line. A settlement in another currency, or of nothing, is `unmatched`, not a
+and links the ledger line. A `wallet_topup` of a shared (team · business · enterprise) wallet also
+writes its contribution in the same transaction, exactly as `transfer_funds` does: a
+`finance.ledger_audit` row, action `add_funds`, actor the payer (`created_by`), amount what arrived,
+`ref_table = 'inbound_payments'`, metadata `{kind: 'card_topup'}` — so the contribution ledger never
+misses card money (BUSINESSES_AUDIT BF25; probe `business_vault_alignment.sql` §1). A settlement in another currency, or of nothing, is `unmatched`, not a
 credit. For an `escrow_lock` it then runs `projects.fund_stage` **as the payer who authorised it**
 (`request.jwt.claim.sub` set to `created_by` for the call, restored after), inside a subtransaction:
 the lock re-checks that person's access and spend right NOW, and a refusal rolls back only the lock —

@@ -233,7 +233,9 @@ the two member tables are **column-for-column twins** — one roles editor and o
 resolved as `role ∪ granted − revoked`, intersected with what the kind renders. The vocabulary of
 every layer is the one enum **`org.workspace_capability`** (`00000004`). The two older per-kind enums
 `org.team_permission` / `org.business_permission` were **retired** (`00000003`): nothing read them and
-they could not express a custom role.
+they could not express a custom role. Its `manage_billing` value (business only, Decision #230 (d))
+is never a role's: the owner holds it and grants it to a named admin as a per-member override
+([Functions.md §7b](Functions.md)).
 
 No table in this section has a client write policy ([Policies.md](Policies.md)); every change is a
 `SECURITY DEFINER` workspace RPC.

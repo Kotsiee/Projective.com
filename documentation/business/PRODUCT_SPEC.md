@@ -717,7 +717,15 @@ Every member holds one role — a preset, or a custom role the Business writes i
   open only to its holders. Only the Owner holds it unless the Owner grants it explicitly to a named
   Admin, after a warning. The Owner may also grant an Admin their own exact permissions — a
   co-owner in all but name — after an explicit warning of what that Admin can then do. The Business
-  still has one Owner (Decision #230 (d)).
+  still has one Owner (Decision #230 (d)). A co-owner holds the three rights the Admin preset lacks —
+  withdrawal, billing and archiving; only transferring ownership stays the Owner's. Only the Owner
+  grants or takes away any of the three, to anyone: a co-owner or billing Admin cannot pass them on,
+  and no custom role carries them. The holder may give a grant up; leaving the Business, being
+  removed, or moving off an Admin seat (for billing) ends it; and a transfer of ownership ends every
+  such grant, so the new Owner grants afresh (Decision #238).
+- **Who sees whose spend envelope.** A member sees their own spending limit and their own spend
+  requests. Every member's, and the whole request queue, are seen by those who manage finances or
+  approve spend, and by the Owner (Decision #238).
 - **Contracted project managers (post-MVP).** A Business will be able to hire a freelancer into a
   temporary or contractual project-management role, on Projective and on third-party tools. It is
   out of scope for the MVP — it needs third-party integrations and may need the Business to share

@@ -494,7 +494,7 @@ AS $$
         SELECT e.c
         FROM unnest(enum_range(NULL::org.workspace_capability)) WITH ORDINALITY AS e(c, n)
         WHERE CASE p_kind
-            WHEN 'team' THEN e.c NOT IN ('purchase', 'hire', 'contribute_funds', 'approve_spend')
+            WHEN 'team' THEN e.c NOT IN ('purchase', 'hire', 'contribute_funds', 'approve_spend', 'manage_billing')
             WHEN 'business' THEN e.c NOT IN ('bind_seat', 'publish_listings')
             ELSE false
         END
@@ -661,6 +661,8 @@ $$;
 --   contribute_funds      → add_funds          spend_funds      → spend
 --   withdraw_funds        → withdraw           manage_finances  → distribute
 --   approve_spend         → approve_spend      the owner        → manage_members + manage_billing
+--   manage_billing        → manage_billing     (business only: the owner's explicit grant to a named
+--                                               admin, Decision #230 (d); a team's stays the owner's)
 --
 -- Anybody who is not an active member projects to the empty set (their row is kept, inert).
 CREATE OR REPLACE FUNCTION org.fn_vault_capabilities_for(p_kind text, p_entity uuid, p_user uuid)
@@ -692,6 +694,8 @@ BEGIN
     IF 'approve_spend' = ANY (v_caps) THEN v_out := v_out || 'approve_spend'::finance.vault_capability; END IF;
     IF v_owner = p_user THEN
         v_out := v_out || ARRAY['manage_members', 'manage_billing']::finance.vault_capability[];
+    ELSIF p_kind = 'business' AND 'manage_billing' = ANY (v_caps) THEN
+        v_out := v_out || 'manage_billing'::finance.vault_capability;
     END IF;
     RETURN v_out;
 END;
@@ -817,6 +821,66 @@ BEGIN
         UPDATE org.team_members SET granted_capabilities = v_granted, revoked_capabilities = v_revoked WHERE id = p_member;
     ELSE
         UPDATE org.business_members SET granted_capabilities = v_granted, revoked_capabilities = v_revoked WHERE id = p_member;
+    END IF;
+END;
+$$;
+-- #endregion
+
+-- #region 7b. Owner-reserved rights (business) — Decision #230 (d), (d.1)
+-- A business's withdraw_funds, manage_billing and archive_entity are the OWNER's: the owner preset
+-- holds them and the admin preset does not. The owner — and only the owner — hands them on, one named
+-- member at a time: the billing right to an admin seat, and all three to an admin seat to make a
+-- co-owner (the owner's own set on an admin seat; never a second owner seat — fn_member_role_sync's
+-- 23514 stands). They are never a role's on a business (org.upsert_workspace_role refuses them), so a
+-- member's per-person override is the only way to hold one, and org.update_workspace_member is the
+-- only door that moves it: the owner grants (answered with the typed CONFIRM the console's warning
+-- asks for) or revokes, the holder may give a grant up (`relinquish`), leaving clears it, and an
+-- ownership transfer clears every grant of them. A team reserves nothing.
+CREATE OR REPLACE FUNCTION org.fn_reserved_capabilities(p_kind text)
+RETURNS org.workspace_capability[]
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT CASE WHEN p_kind = 'business'
+        THEN ARRAY['withdraw_funds', 'manage_billing', 'archive_entity']::org.workspace_capability[]
+        ELSE '{}'::org.workspace_capability[]
+    END;
+$$;
+
+-- The one check every reserved-right move answers: when a member's EFFECTIVE hold on the reserved
+-- set differs between p_before and p_after, the caller must be the owner, and a newly held right needs
+-- the typed confirmation.
+CREATE OR REPLACE FUNCTION org.fn_assert_reserved_change(
+    p_kind text, p_entity uuid, p_before org.workspace_capability[], p_after org.workspace_capability[], p_confirm text
+)
+RETURNS void
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_reserved org.workspace_capability[] := org.fn_reserved_capabilities(p_kind);
+    v_before org.workspace_capability[];
+    v_after org.workspace_capability[];
+BEGIN
+    IF cardinality(v_reserved) = 0 THEN
+        RETURN;
+    END IF;
+    v_before := ARRAY(SELECT DISTINCT c FROM unnest(COALESCE(p_before, '{}')) c WHERE c = ANY (v_reserved) ORDER BY c);
+    v_after := ARRAY(SELECT DISTINCT c FROM unnest(COALESCE(p_after, '{}')) c WHERE c = ANY (v_reserved) ORDER BY c);
+    IF v_before = v_after THEN
+        RETURN;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM org.business_profiles b WHERE b.id = p_entity AND b.owner_user_id = auth.uid()) THEN
+        RAISE EXCEPTION USING ERRCODE = '42501',
+            MESSAGE = 'reserved: only the owner grants or takes away billing, withdrawal or archiving';
+    END IF;
+    IF EXISTS (SELECT 1 FROM unnest(v_after) c WHERE NOT (c = ANY (v_before)))
+       AND COALESCE(p_confirm, '') <> 'CONFIRM' THEN
+        RAISE EXCEPTION USING ERRCODE = '22023',
+            MESSAGE = 'confirm: type CONFIRM to grant billing, withdrawal or archiving';
     END IF;
 END;
 $$;
@@ -1738,6 +1802,9 @@ DECLARE
     v_limit bigint;
     v_per_tx bigint;
     v_period text;
+    v_before_caps org.workspace_capability[];
+    v_seat_role text;
+    v_seat_granted org.workspace_capability[];
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
@@ -1798,6 +1865,30 @@ BEGIN
     END IF;
     -- #endregion
 
+    -- #region giving up an owner-reserved grant (business, §7b) — the one change to one's own seat
+    IF p_patch ? 'relinquish' THEN
+        IF p_kind <> 'business' OR NOT v_self THEN
+            RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'relinquish: only the holder gives up their own grant';
+        END IF;
+        IF v_target_user = v_owner THEN
+            RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'relinquish: the owner''s rights move only by transfer';
+        END IF;
+        SELECT COALESCE(array_agg(DISTINCT x::org.workspace_capability), '{}') INTO v_caps
+          FROM jsonb_array_elements_text(p_patch->'relinquish') x;
+        IF EXISTS (SELECT 1 FROM unnest(v_caps) c WHERE NOT (c = ANY (org.fn_reserved_capabilities('business')))) THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'relinquish: only billing, withdrawal or archiving is given up this way';
+        END IF;
+        UPDATE org.business_members
+           SET granted_capabilities = ARRAY(SELECT c FROM unnest(granted_capabilities) c WHERE NOT (c = ANY (v_caps)))
+         WHERE id = p_member;
+        PERFORM org.fn_sync_vault_permissions('business', v_entity, v_target_user);
+        INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
+        VALUES (v_uid, 'business.reserved_relinquished', 'org.business_members', p_member,
+                jsonb_build_object('entity', v_entity, 'capabilities', to_jsonb(v_caps)));
+        RETURN jsonb_build_object('id', p_member);
+    END IF;
+    -- #endregion
+
     -- Everything below changes somebody else's standing.
     IF v_self THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'member: you can''t change your own role or permissions';
@@ -1808,6 +1899,7 @@ BEGIN
     IF v_target_user = v_owner THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'member: the owner''s standing only changes by transfer';
     END IF;
+    v_before_caps := org.fn_member_capabilities(p_kind, v_entity, v_target_user);
 
     IF p_patch ? 'role_id' THEN
         SELECT * INTO v_role FROM org.fn_role_of_entity(p_kind, v_entity, (p_patch->>'role_id')::uuid);
@@ -1938,6 +2030,24 @@ BEGIN
         END IF;
     END IF;
 
+    -- Owner-reserved rights (§7b): the billing right lives only on an admin seat, so a member moved
+    -- off one loses it with the move — unless this very patch grants it, which is refused. Then the
+    -- whole patch's effect on the reserved set answers the owner-only, typed-confirm check.
+    IF p_kind = 'business' THEN
+        SELECT m.role, m.granted_capabilities INTO v_seat_role, v_seat_granted
+          FROM org.business_members m WHERE m.id = p_member;
+        IF v_seat_role <> 'admin' AND 'manage_billing' = ANY (v_seat_granted) THEN
+            IF p_patch ? 'granted' AND p_patch->'granted' ? 'manage_billing' THEN
+                RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'granted: the billing right goes only to an admin';
+            END IF;
+            UPDATE org.business_members
+               SET granted_capabilities = array_remove(granted_capabilities, 'manage_billing')
+             WHERE id = p_member;
+        END IF;
+        PERFORM org.fn_assert_reserved_change('business', v_entity, v_before_caps,
+            org.fn_member_capabilities('business', v_entity, v_target_user), p_patch->>'confirm');
+    END IF;
+
     PERFORM org.fn_sync_vault_permissions(p_kind, v_entity, v_target_user);
     IF p_kind = 'business' THEN
         PERFORM comms.fn_notify(
@@ -2033,6 +2143,15 @@ BEGIN
             UPDATE org.business_members SET role_id = v_admin_role WHERE id = v_self_member;
         END IF;
         UPDATE org.business_members SET role_id = v_owner_role, granted_capabilities = '{}', revoked_capabilities = '{}' WHERE id = p_successor;
+        -- The owner-reserved grants were the outgoing owner's to give (§7b, Decision #230 (d.1)): they
+        -- end with the transfer, and the new owner grants afresh whoever they choose.
+        UPDATE org.business_members
+           SET granted_capabilities = ARRAY(
+                   SELECT c FROM unnest(granted_capabilities) c
+                    WHERE NOT (c = ANY (org.fn_reserved_capabilities('business'))))
+         WHERE business_id = p_entity AND status = 'active'
+           AND granted_capabilities && org.fn_reserved_capabilities('business');
+        PERFORM org.fn_sync_vault_permissions('business', p_entity);
     END IF;
 
     PERFORM org.fn_sync_vault_permissions(p_kind, p_entity, v_successor_user);
@@ -2102,6 +2221,11 @@ BEGIN
     v_caps := org.fn_role_capabilities(p_kind, NULL, COALESCE(p_capabilities, '{}'));
     IF EXISTS (SELECT 1 FROM unnest(v_caps) c WHERE NOT (c = ANY (v_actor))) THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'capabilities: you cannot grant a permission you do not hold';
+    END IF;
+    -- A business's owner-reserved rights are granted to a named member, never carried by a role (§7b).
+    IF v_caps && org.fn_reserved_capabilities(p_kind) THEN
+        RAISE EXCEPTION USING ERRCODE = '22023',
+            MESSAGE = 'capabilities: billing, withdrawal and archiving are the owner''s to grant to a named admin, never a role''s';
     END IF;
 
     BEGIN

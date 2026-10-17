@@ -28,6 +28,7 @@ const OWNER: readonly WorkspaceCapability[] = [
 	"withdraw_funds",
 	"manage_finances",
 	"approve_spend",
+	"manage_billing",
 	"view_analytics",
 	"view_audit",
 	"archive_entity",

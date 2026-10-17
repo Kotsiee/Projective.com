@@ -322,6 +322,16 @@ export const UpdateMemberInputSchema = z.object({
 	canSpend: z.boolean().optional(),
 	/** Remove them from the entity (soft — becomes `left`). */
 	remove: z.boolean().optional(),
+	/**
+	 * Business only — the typed answer (`RESERVED_GRANT_CONFIRMATION`) to the warning a grant of an
+	 * owner-reserved right shows: the billing right, or the co-owner set (Decision #230 (d)).
+	 */
+	confirm: z.string().max(16).optional(),
+	/**
+	 * Business only, the caller's own seat — owner-reserved rights they were granted and now give up.
+	 * The one change a member may make to their own permissions.
+	 */
+	relinquish: z.array(WorkspaceCapability).optional(),
 });
 export type UpdateMemberInput = z.infer<typeof UpdateMemberInputSchema>;
 

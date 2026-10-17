@@ -320,6 +320,10 @@ EXECUTE ON FUNCTION finance.fn_owner_visible (text, uuid) TO authenticated;
 GRANT
 EXECUTE ON FUNCTION finance.fn_can_view_wallet (uuid) TO authenticated;
 
+-- Asked by the spending_limits / spend_approvals SELECT policies; it answers for the caller only.
+GRANT
+EXECUTE ON FUNCTION finance.fn_reads_wallet_envelopes (uuid) TO authenticated;
+
 -- --- from 20260723093000_finance_vault_governance.sql ---
 
 -- finance.fn_has_vault_capability is NOT granted to any client role (2026-09-28): it answers for an

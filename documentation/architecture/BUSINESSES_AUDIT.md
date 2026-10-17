@@ -78,12 +78,12 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | BF22 | No double counting | A basket ticket line counts against the caller's envelope in `place_wallet_order` and again against the project owner's in `fn_hold_ticket_escrow` (`fn_check_spending_limit` increments `spent_cents`, F1200:262) | ❌ |
 | BF23 | Who can fund a business project | `has_project_access` admits a business only via a `project_participants` row whose business **owner** is the caller (`00001100:661-745`): a member holding `spend` cannot fund; yet every member passes `can_review_project` (BF14) — the authorities are inverted | ❌ |
 | BF24 | Pool short | `place_wallet_order` raises PF402; #61 flag (d) undecided (fail / prompt to contribute / charge personal); PRODUCT_SPEC:1262-1264 forbids a personal card for a business purchase | 🧑 BX-c |
-| BF25 | Contribution ledger complete | Reads `ledger_audit WHERE action='add_funds'`, written only by `transfer_funds` — **card top-ups never appear** (`live-money.ts:356-358`) | ❌ |
+| BF25 | Contribution ledger complete | Reads `ledger_audit WHERE action='add_funds'`, written only by `transfer_funds` — **card top-ups never appear** (`live-money.ts:356-358`) | ✅ card top-ups write `add_funds` at settlement (BB6, Decision #238) |
 | BF26 | Withdrawals | `begin_payout`: vault `withdraw` (owner preset only), KYB, verified payout account | ✅ |
 | BF27 | KYB start | `record_payout_account('business')` needs `manage_billing` (owner only); `sync_payout_account` sets `kyb_status` | ✅ backend |
 | BF28 | KYB UI | Verification module is a `ModulePlaceholder` with **no action**, yet every "Finish KYB" / "Verify {name}" link targets it (`ModuleScreen.tsx:160-168`; `VerificationLock.tsx`; `BillingScreen:296`; `WorkspaceLane:768`) — a **dead-end loop** (§3.11) | ❌ |
-| BF29 | `manage_billing` vs module gate | Every billing write needs `manage_billing` (owner only), but the Billing module is gated on `manage_finances` (admins see it, cannot act); Verification gated on `manage_settings` though KYB start needs `manage_billing` | ❌ 🧑 BX-d |
-| BF30 | Spend module gate | Gated on `spend_funds`; editing needs `manage_finances`, deciding needs `approve_spend` — an approver-only role cannot reach the queue; a `member` without `spend_funds` cannot open the screen but RLS lets it read every member's limits and requests (`00002013:90-105`) | ❌ |
+| BF29 | `manage_billing` vs module gate | Every billing write needs `manage_billing` (owner only), but the Billing module is gated on `manage_finances` (admins see it, cannot act); Verification gated on `manage_settings` though KYB start needs `manage_billing` | ✅ Billing and Verification gated on `manage_billing`, owner-grantable to a named admin (BB6, #238) |
+| BF30 | Spend module gate | Gated on `spend_funds`; editing needs `manage_finances`, deciding needs `approve_spend` — an approver-only role cannot reach the queue; a `member` without `spend_funds` cannot open the screen but RLS lets it read every member's limits and requests (`00002013:90-105`) | ✅ Spend opens on spend · manage finances · approve spend; envelopes read by their owner or `fn_reads_wallet_envelopes` (BB6) |
 
 ### 1.4 Billing, plans, entitlements
 
@@ -102,7 +102,7 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | # | Capability | Implementation | Status |
 | :-- | :-- | :-- | :-- |
 | BF38 | RLS on `org.business_profiles` | RLS enabled, **zero policies** → clients denied; all reads through definers / `profiles_index` | ✅ by design — document it |
-| BF39 | RLS on members / roles | SELECT-only for active members (+ admin on roster; roles policy lacks the `is_admin()` arm) | ⚠️ add the arm for parity |
+| BF39 | RLS on members / roles | SELECT-only for active members (+ admin on roster; roles policy lacks the `is_admin()` arm) | ✅ roles policy gained the `is_admin()` arm (BB6) |
 | BF40 | uuid → handle | 303 (should be 308, as Teams #228 B) | ❌ |
 | BF41 | `/businesses/x/overview` | Renders — a duplicate URL of `/businesses/x` (not canonicalised) | ❌ |
 | BF42 | Missing / forbidden | Silent 303 → `/businesses`; from `[module]` it is **two hops** (`/businesses/<ref>` → `/businesses`) | ❌ |

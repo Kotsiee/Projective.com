@@ -753,6 +753,15 @@ BEGIN
     IF v_tx IS NULL THEN
         RAISE EXCEPTION 'ledger: the credit for payment % left no ledger row', v_payment.id USING ERRCODE = 'PL404';
     END IF;
+    -- A card top-up of a shared wallet is a contribution, recorded exactly as finance.transfer_funds
+    -- records one (`add_funds`, the payer as the actor, what actually arrived) and in the same
+    -- transaction as the credit — so the contribution ledger never misses card money (BUSINESSES_AUDIT
+    -- BF25). An escrow lock's credit is not a contribution: it is held for the stage at once.
+    IF v_payment.purpose = 'wallet_topup' AND v_wallet.owner_type IN ('team', 'business', 'enterprise') THEN
+        INSERT INTO finance.ledger_audit (wallet_id, actor_user_id, action, amount_cents, currency, ref_table, ref_id, metadata)
+        VALUES (v_wallet.id, v_payment.created_by, 'add_funds', p_amount_received, v_wallet.currency,
+                'inbound_payments', v_payment.id, pg_catalog.jsonb_build_object('kind', 'card_topup'));
+    END IF;
 
     UPDATE finance.inbound_payments
        SET status = 'succeeded',

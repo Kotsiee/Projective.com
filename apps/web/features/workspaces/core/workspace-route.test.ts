@@ -23,10 +23,12 @@ const { firstModuleFor, mayViewModule } = await importWithoutGlyphs<RegistryApi>
 const UUID = "6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b";
 const HANDLE = "north-loop";
 const MEMBER: readonly WorkspaceCapability[] = [];
+/** An admin holding the owner's billing grant, so a business's Billing opens for them. */
 const ADMIN: readonly WorkspaceCapability[] = [
 	"manage_roles",
 	"manage_settings",
 	"manage_finances",
+	"manage_billing",
 ];
 
 /**

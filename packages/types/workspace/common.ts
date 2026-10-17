@@ -94,6 +94,7 @@ export const WorkspaceCapability = z.enum([
 	"withdraw_funds",
 	"manage_finances",
 	"approve_spend",
+	"manage_billing",
 	// Oversight
 	"view_analytics",
 	"view_audit",
@@ -110,6 +111,7 @@ const BUSINESS_ONLY: readonly WorkspaceCapability[] = [
 	"hire",
 	"contribute_funds",
 	"approve_spend",
+	"manage_billing",
 ];
 
 /**
@@ -142,6 +144,7 @@ export const CAPABILITY_LABEL: Record<WorkspaceCapability, string> = {
 	withdraw_funds: "Withdraw funds",
 	manage_finances: "Manage finances",
 	approve_spend: "Approve spend",
+	manage_billing: "Manage billing",
 	view_analytics: "View analytics",
 	view_audit: "View audit log",
 	archive_entity: "Archive entity",
@@ -156,9 +159,47 @@ export const CONSEQUENTIAL: readonly WorkspaceCapability[] = [
 	"spend_funds",
 	"withdraw_funds",
 	"approve_spend",
+	"manage_billing",
 	"manage_roles",
 	"archive_entity",
 ];
+
+/**
+ * A business's **owner-reserved** rights (Decision #230 (d), (d.1)): the three acts the owner holds and
+ * the admin preset does not. Only the owner grants or revokes them, the holder may give a granted one
+ * up, and an ownership transfer clears every grant of them. `manage_billing` is never a role's — it
+ * goes to a named admin seat by an explicit owner grant. A team reserves nothing (its billing right
+ * stays the owner's, projected on the vault).
+ */
+export const OWNER_RESERVED: readonly WorkspaceCapability[] = [
+	"withdraw_funds",
+	"manage_billing",
+	"archive_entity",
+];
+
+/** The reserved rights for a kind — {@link OWNER_RESERVED} on a business, none on a team. */
+export function reservedCapabilities(kind: WorkspaceKind): WorkspaceCapability[] {
+	return kind === "business" ? [...OWNER_RESERVED] : [];
+}
+
+/**
+ * The word a grant of a reserved right must be answered with (`UpdateMemberInput.confirm`). The
+ * console shows the warning; the server refuses the grant without the word.
+ */
+export const RESERVED_GRANT_CONFIRMATION = "CONFIRM";
+
+/**
+ * Whether an effective set is a business **co-owner's**: an admin seat holding every reserved right,
+ * which is the owner's own set. Never a second owner seat — the owner role stays single.
+ */
+export function isCoOwner(
+	kind: WorkspaceKind,
+	role: WorkspaceRole,
+	effective: readonly WorkspaceCapability[],
+): boolean {
+	return kind === "business" && role === "admin" &&
+		OWNER_RESERVED.every((c) => effective.includes(c));
+}
 // #endregion
 
 // #region Role presets

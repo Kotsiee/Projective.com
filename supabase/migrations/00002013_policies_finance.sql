@@ -93,8 +93,13 @@ SELECT TO authenticated USING (finance.fn_can_view_wallet (wallet_id));
 CREATE POLICY "View team split rules" ON finance.split_rules FOR
 SELECT TO authenticated USING (org.is_active_team_member (team_id) OR security.is_admin ());
 
+-- A member sees their OWN requests; the whole queue is for those who run the policy or decide it
+-- (finance.fn_reads_wallet_envelopes — BUSINESSES_AUDIT BF30).
 CREATE POLICY "View wallet spend approvals" ON finance.spend_approvals FOR
-SELECT TO authenticated USING (finance.fn_can_view_wallet (wallet_id));
+SELECT TO authenticated USING (
+        finance.fn_can_view_wallet (wallet_id)
+        AND (requested_by = auth.uid () OR finance.fn_reads_wallet_envelopes (wallet_id))
+    );
 
 -- NO client INSERT policy (2026-09-28). A request is filed by finance.request_spend_approval, which
 -- requires the `spend` capability on the wallet, refuses a spend that needs no approval, and sets the
@@ -272,9 +277,14 @@ SELECT TO authenticated USING (
         OR EXISTS (SELECT 1 FROM finance.escrows e WHERE e.id = escrow_id)
     );
 
--- A spending cap is seen by anyone who may see the wallet it caps, which includes the member it binds.
+-- A spending cap is seen by the member it binds, and by those who run the policy or decide the queue
+-- (finance.fn_reads_wallet_envelopes): a plain member reading every colleague's ceiling is a
+-- disclosure no screen intended (BUSINESSES_AUDIT BF30).
 CREATE POLICY "View wallet spending limits" ON finance.spending_limits FOR
-SELECT TO authenticated USING (finance.fn_can_view_wallet (wallet_id));
+SELECT TO authenticated USING (
+        finance.fn_can_view_wallet (wallet_id)
+        AND (member_user_id = auth.uid () OR finance.fn_reads_wallet_envelopes (wallet_id))
+    );
 
 -- A card payment into a wallet is part of that wallet's history, seen by exactly the readers of its
 -- ledger — the same predicate as finance.transactions and finance.payouts (Decision #125). No write

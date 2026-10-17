@@ -391,6 +391,23 @@ AS $$
         );
 $$;
 
+-- May the CALLER read every member's spend envelope and every spend request on this wallet, not
+-- only their own? Those who run the policy or decide the queue: `distribute` (workspace
+-- manage_finances) or `approve_spend` — and the owner, whose vault manage_members implies both. A
+-- plain member reading every colleague's ceiling is a disclosure no screen intended (BUSINESSES_AUDIT
+-- BF30). The spending_limits and spend_approvals SELECT policies ask it beside the reader's own rows;
+-- definer reads that mirror those screens (org.get_workspace_detail) call it too.
+CREATE OR REPLACE FUNCTION finance.fn_reads_wallet_envelopes(p_wallet uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = finance, org, security, public
+AS $$
+    SELECT finance.fn_has_vault_capability (p_wallet, auth.uid (), 'distribute'::finance.vault_capability)
+        OR finance.fn_has_vault_capability (p_wallet, auth.uid (), 'approve_spend'::finance.vault_capability);
+$$;
+
 -- #endregion
 
 -- #region 6. Basket & simulation gates (Basket, Wishlist & Saved Cards)

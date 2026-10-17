@@ -202,6 +202,8 @@ export function memberPatch(input: UpdateMemberInput): Record<string, unknown> {
 		patch.per_transaction_minor = input.perTransactionMinor;
 	}
 	if (input.remove !== undefined) patch.remove = input.remove;
+	if (input.confirm !== undefined) patch.confirm = input.confirm;
+	if (input.relinquish !== undefined) patch.relinquish = input.relinquish;
 	return patch;
 }
 

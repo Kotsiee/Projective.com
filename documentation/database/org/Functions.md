@@ -600,8 +600,8 @@ would be a capability oracle.
 
 | Function                                               | Answers                                                                                                                                                                                                         |
 | :----------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fn_kind_capabilities(kind)`                           | `IMMUTABLE`. The capabilities a kind renders, in enum order. A team never has `purchase` · `hire` · `contribute_funds` · `approve_spend`; a business never has `bind_seat` · `publish_listings`.            |
-| `fn_preset_capabilities(preset, kind)`                 | `IMMUTABLE`. A preset's bundle, kind-filtered. `owner` = everything the kind renders; `admin` = everything but `withdraw_funds` · `archive_entity`; `lead` = invite · bind seat · projects · listings · purchase · contribute · spend · analytics; `member` = contribute · analytics. |
+| `fn_kind_capabilities(kind)`                           | `IMMUTABLE`. The capabilities a kind renders, in enum order. A team never has `purchase` · `hire` · `contribute_funds` · `approve_spend` · `manage_billing`; a business never has `bind_seat` · `publish_listings`.            |
+| `fn_preset_capabilities(preset, kind)`                 | `IMMUTABLE`. A preset's bundle, kind-filtered. `owner` = everything the kind renders; `admin` = everything but `withdraw_funds` · `manage_billing` · `archive_entity` (a business's owner-reserved rights, §7b); `lead` = invite · bind seat · projects · listings · purchase · contribute · spend · analytics; `member` = contribute · analytics. |
 | `fn_preset_rank(preset)`                               | `IMMUTABLE`. owner 4 · admin 3 · lead 2 · member 1 · else 0. A custom role ranks as its `base_preset`.                                                                                                    |
 | `fn_role_capabilities(kind, preset, caps)`             | `IMMUTABLE`. A role row's resolved set — the preset bundle, or the custom list kind-filtered, so a stale capability on a custom row cannot leak into a kind that does not render it.                       |
 | `fn_member_capabilities(kind, entity, user)`           | A member's EFFECTIVE set: `role ∪ granted − revoked`, kind-filtered, **revocation wins**. Empty for anybody who is not an ACTIVE member.                                                                     |
@@ -625,6 +625,7 @@ spend and a removed member kept `withdraw`. It is now a **projection** of the wo
 | `withdraw_funds`    | `withdraw`                          |
 | `approve_spend`     | `approve_spend` (new enum value)    |
 | the entity's owner  | `manage_members` + `manage_billing` |
+| `manage_billing` (business only — the owner's grant to a named admin, §7b) | `manage_billing` |
 
 - **`fn_vault_capabilities_for(kind, entity, user)`** — the table above; `'{}'` for anyone who is not
   an active member (their row is KEPT, inert, never deleted).
@@ -650,6 +651,34 @@ spend and a removed member kept `withdraw`. It is now a **projection** of the wo
   EFFECTIVE set does or does not hold `cap`, as the smallest honest override (a grant only when the
   role lacks it, a revocation only when the role has it). The spend-policy editor and the member
   drawer both write through it, so "can spend" is one fact with one representation.
+
+### §7b — Owner-reserved rights (business) — Decision #230 (d), (d.1)
+
+A business's `withdraw_funds`, `manage_billing` and `archive_entity` are the **owner's**: the owner
+preset holds them, the admin preset does not (`PRESET_GRANTS` unchanged). The owner — and only the
+owner — hands them on, one named member at a time: the **billing right** to an admin seat, and all
+three to an admin seat to make a **co-owner** (the owner's exact set on an admin seat; never a second
+owner seat — `fn_member_role_sync`'s `23514` stands). Transferring ownership stays the owner's act.
+
+- **`fn_reserved_capabilities(kind)`** — `IMMUTABLE`. The three on a business; `'{}'` on a team
+  (a team's billing right stays the owner's, projected on the vault).
+- **`fn_assert_reserved_change(kind, entity, before, after, confirm)`** — when a member's EFFECTIVE
+  hold on the reserved set differs between `before` and `after`: the caller must be the owner
+  (`42501 reserved:`), and a newly held right must be answered with the typed `CONFIRM` the
+  console's warning asks for (`22023 confirm:`; `RESERVED_GRANT_CONFIRMATION` in
+  `@projective/types/workspace`). Taking a right away needs no confirmation.
+
+The rules every door answers (probe `supabase/probes/business_vault_alignment.sql` §4):
+
+| Act | Rule |
+| :-- | :-- |
+| Grant (`update_workspace_member` `granted`) | Owner only, with `confirm`; `manage_billing` only to an admin seat (`22023`). |
+| Pass on | Nobody: a co-owner or billing admin holds the rights but cannot grant them (Decision #230 (d.1)). |
+| Revoke | The owner; or the holder gives a grant up (`relinquish`). An admin rewriting another member's overrides must leave their reserved grants as they are. |
+| Role | Never: `upsert_workspace_role` refuses a business role carrying any of the three (`22023`). |
+| Move off an admin seat | The billing grant goes with the move (refused if the same patch grants it). |
+| Leave / removal | Overrides cleared, as for every grant. |
+| Ownership transfer | Every reserved grant on the business is cleared; the new owner grants afresh. |
 
 ### §8 — Membership integrity
 
@@ -776,7 +805,11 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   nobody to absorb it, the owner does. The split still totals exactly 10000.
 - **`update_workspace_member(kind, member, patch) → {id}` or `{id, status: 'left'}`** —
   `authenticated`. Patch keys: `role_id`, `granted` / `revoked` (text[]), `title`, `reports_to`
-  (member id or null), `can_spend`, `spend_limit_minor`, `per_transaction_minor`, `period`, `remove`.
+  (member id or null), `can_spend`, `spend_limit_minor`, `per_transaction_minor`, `period`, `remove`,
+  and on a business `confirm` (the typed word a reserved grant needs) and `relinquish` (text[]).
+  - **`relinquish`** (business, the caller's OWN seat — the one change to one's own permissions):
+    drops the listed owner-reserved grants (§7b). Anything else listed → `22023`; someone else's seat
+    or the owner's → `42501`. Re-projects the vault; audits `business.reserved_relinquished`.
   - **`remove`**: the owner can never leave or be removed here (`55000`, "transfer ownership first");
     anyone may remove THEMSELVES (leave); removing someone else needs `remove_members` **and**
     `manage_roles` **and** to outrank them. The row goes `left` with `left_at`, overrides and the
@@ -793,6 +826,8 @@ namespace under a `pg_advisory_xact_lock` on the handle.
     monthly) upsert `finance.spending_limits` on every business wallet — `NULL` limit = no ceiling.
   - `title` ≤ 80; `reports_to` must be an active member of the entity and must not close a loop (the
     RPC walks the chain up to 64 levels).
+  - Business: the billing grant is dropped from a seat that is no longer an admin's; then the whole
+    patch's effect on the member's reserved rights answers `fn_assert_reserved_change` (§7b).
   - Re-projects the vault; a business member is notified with `business.permission_changed`. Audits
     `{kind}.member_updated`.
 
@@ -808,8 +843,9 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   load-bearing: `owner_user_id` moves FIRST (so the row-level check sees the new owner), the
   outgoing owner is re-seated to the **Admin** preset (or, with `leave`, to Admin and `left` in the
   same transaction, a team stake rebalanced), and only then the successor takes the owner seat with
-  cleared overrides — the one-owner partial index is not deferrable. Both vault projections
-  re-synced; `{kind}.ownership_transferred` notified.
+  cleared overrides — the one-owner partial index is not deferrable. On a business every
+  owner-reserved grant (§7b) is then cleared from every member and the whole vault re-projected.
+  Both vault projections re-synced; `{kind}.ownership_transferred` notified.
 
 ### §15 — Custom roles
 
@@ -818,7 +854,7 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   (a preset is read-only → "duplicate it to a custom role"). Name 1–48 (unique among live roles →
   `23505`), summary ≤ 160; `base_preset` is `admin` · `lead` · `member` (no `lead` on a business) and
   may not rank above the caller; the capability list is kind-filtered and may carry nothing the
-  caller lacks. An update re-touches every holder (so `fn_member_role_sync` re-derives `role`) and
+  caller lacks, and on a business none of the owner-reserved rights (§7b, `22023`). An update re-touches every holder (so `fn_member_role_sync` re-derives `role`) and
   re-projects the vault — a role edit flows to its holders.
 - **`archive_workspace_role(kind, entity, role) → {id, archived}`** — `authenticated`, needs
   `manage_roles`. Custom roles only; refused (`55000`) while any ACTIVE member holds it or a PENDING

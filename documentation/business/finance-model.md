@@ -394,7 +394,8 @@ Governs shared wallets (Business / Team / Enterprise).
   Enforced in-DB by `finance.fn_has_vault_capability`. **Reconciled 2026-09-28 (Decision #122):** the
   grants are a PROJECTION of the workspace capabilities (`org.workspace_capability` — contribute →
   `add_funds`, spend → `spend`, manage finances → `distribute`, withdraw → `withdraw`, approve spend →
-  `approve_spend`, the owner → `manage_members` + `manage_billing`), rewritten on every membership
+  `approve_spend`, the owner → `manage_members` + `manage_billing`, and on a business a named
+  admin's owner-granted `manage_billing` → `manage_billing`, Decision #238), rewritten on every membership
   change; the per-kind `org.business_permission` / `org.team_permission` enums are retired. Deciding an
   over-limit spend needs `approve_spend`, not `manage_members` (which also carries `withdraw`).
 - **Spending caps** (`finance.spending_limits`, existing): per-member `cap_cents` per `weekly` /

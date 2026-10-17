@@ -128,6 +128,7 @@ SELECT TO authenticated USING (
 CREATE POLICY "Members can view business roles" ON org.business_roles FOR
 SELECT TO authenticated USING (
         org.is_active_business_member (business_id)
+        OR security.is_admin ()
     );
 
 

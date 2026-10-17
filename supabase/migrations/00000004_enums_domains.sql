@@ -515,6 +515,7 @@ CREATE TYPE org.workspace_capability AS ENUM (
     'purchase', 'hire',
     -- Money
     'contribute_funds', 'spend_funds', 'withdraw_funds', 'manage_finances', 'approve_spend',
+    'manage_billing',
     -- Oversight
     'view_analytics', 'view_audit',
     -- Terminal

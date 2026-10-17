@@ -187,7 +187,7 @@ USING (org.is_active_team_member(team_id) OR security.is_admin());
 
 CREATE POLICY "Members can view business roles"
 ON org.business_roles FOR SELECT TO authenticated
-USING (org.is_active_business_member(business_id));
+USING (org.is_active_business_member(business_id) OR security.is_admin());
 ```
 
 Read by every active member (the matrix, the role picker). **No client write policy** on either

@@ -1,5 +1,12 @@
 import type { VNode } from "preact";
-import type { WorkspaceCapability, WorkspaceKind } from "@projective/types/workspace";
+import {
+	canOpenBilling,
+	canOpenFinance,
+	canOpenSpend,
+	canOpenVerification,
+	type WorkspaceCapability,
+	type WorkspaceKind,
+} from "@projective/types/workspace";
 import {
 	AnalyticsGlyph,
 	BillingGlyph,
@@ -46,6 +53,14 @@ import {
  * pool they are paying into, while having no business rewriting policy. Encoding that as
  * `permission: (kind) => …` keeps the difference a **capability table** rather than a forked module list
  * or an `if (kind === …)` buried in a nav component.
+ *
+ * ### Why `permission` may be a predicate
+ * Some modules are opened by several different people for different reasons. A business's Spend is
+ * a spender's envelope, an approver's queue and the policy editor's ladder, so it is gated on *any of*
+ * `spend_funds`, `manage_finances`, `approve_spend` — one capability would lock an approve-only role
+ * out of the queue it exists to work (BUSINESSES_AUDIT BF30). Such a gate is a {@link ModuleGate}
+ * predicate over the viewer's capabilities, taken from `@projective/types/workspace` `access.ts` so
+ * the Overview bands (BU6) and the console read model ask the very same function.
  *
  * ### Why `permission` must be able to return `null`
  * `null` means *every active member may view this*. It is not a convenience — it is what guarantees the
@@ -110,6 +125,15 @@ export const MODULE_GROUPS: readonly ModuleGroup[] = [
 	"Admin",
 ];
 
+/**
+ * What guards a module for one kind: one capability, a predicate over the viewer's effective set (for
+ * a module several roles open — see the file header), or `null` when every active member may view it.
+ */
+export type ModuleGate =
+	| WorkspaceCapability
+	| ((capabilities: readonly WorkspaceCapability[]) => boolean)
+	| null;
+
 /** One module: everything the lane, the rail, the header and the route validator need to know. */
 export interface WorkspaceModule {
 	/** Stable key — also the URL segment (`/teams/:id/members`). */
@@ -123,10 +147,10 @@ export interface WorkspaceModule {
 	/** Which entity kinds render it at all. */
 	kinds: readonly WorkspaceKind[];
 	/**
-	 * The capability required to view it, resolved per kind, or `null` when every active member may.
-	 * See the file header for why `null` is load-bearing rather than lazy.
+	 * What guards it, resolved per kind: a capability, a predicate over capabilities, or `null` when
+	 * every active member may. See the file header for why `null` is load-bearing rather than lazy.
 	 */
-	permission: (kind: WorkspaceKind) => WorkspaceCapability | null;
+	permission: (kind: WorkspaceKind) => ModuleGate;
 	/** One line for the rail tooltip's second row and the module's own header — what it is FOR. */
 	blurb: string;
 	/**
@@ -260,10 +284,10 @@ export const MODULES: readonly WorkspaceModule[] = [
 		/**
 		 * The clearest example of why this is a function of kind. A team's Finance is an earnings summary
 		 * — reading it means reading the team's income, so it takes `manage_finances`. A business's
-		 * Finance is the pooled wallet its members personally fund, so anyone who may contribute may see
-		 * the pool; rewriting its policy is separately gated on the Spend module.
+		 * Finance is the pooled wallet its members personally fund, so anyone who pays into it, spends
+		 * from it or runs it may see the pool; rewriting its policy is separately gated on Spend.
 		 */
-		permission: (kind) => kind === "team" ? "manage_finances" : "contribute_funds",
+		permission: (kind) => (caps) => canOpenFinance(kind, caps),
 		blurb: "The entity's money at a glance, with a hand-off to the wallet.",
 	},
 	{
@@ -283,9 +307,9 @@ export const MODULES: readonly WorkspaceModule[] = [
 		group: "Money",
 		glyph: SpendGlyph,
 		kinds: BUSINESS,
-		// A spender needs their own envelope and the request queue; the approval ladder itself is
-		// edited only by `manage_finances`, enforced inside the module.
-		permission: () => "spend_funds",
+		// A spender's envelope, an approver's queue, the editor's ladder — any of the three opens it;
+		// which sections render is `spendAccess`, and every write is enforced by its RPC.
+		permission: (kind) => (caps) => canOpenSpend(kind, caps),
 		blurb: "Limits, approval thresholds and the attributable pool ledger.",
 		primary: BUSINESS,
 		order: 4,
@@ -296,7 +320,9 @@ export const MODULES: readonly WorkspaceModule[] = [
 		group: "Money",
 		glyph: BillingGlyph,
 		kinds: BUSINESS,
-		permission: () => "manage_finances",
+		// The billing right (Decision #230 (d)): the owner's, or a named admin's by the owner's grant —
+		// the same right every billing write checks, so nobody opens a screen they cannot act on.
+		permission: (kind) => (caps) => canOpenBilling(kind, caps),
 		blurb: "Invoices to pay, statements, auto-funding and the balance floor.",
 		primary: BUSINESS,
 		order: 5,
@@ -349,7 +375,8 @@ export const MODULES: readonly WorkspaceModule[] = [
 		group: "Admin",
 		glyph: VerificationGlyph,
 		kinds: BOTH,
-		permission: () => "manage_settings",
+		// A business's KYB is started by the billing right; a team's verification follows its settings.
+		permission: (kind) => (caps) => canOpenVerification(kind, caps),
 		blurb: "Identity checks that unlock payouts and pooled spending.",
 	},
 	{
@@ -367,6 +394,15 @@ export const MODULES: readonly WorkspaceModule[] = [
 // #endregion
 
 // #region Lookups
+/** Whether a gate admits a viewer's server-resolved capabilities. */
+export function gateAllows(
+	gate: ModuleGate,
+	capabilities: readonly WorkspaceCapability[],
+): boolean {
+	if (gate === null) return true;
+	return typeof gate === "function" ? gate(capabilities) : capabilities.includes(gate);
+}
+
 /** Fast key → module index, built once. */
 const BY_KEY: Record<string, WorkspaceModule> = Object.fromEntries(
 	MODULES.map((m) => [m.key, m]),
@@ -403,11 +439,7 @@ export function modulesForViewer(
 	kind: WorkspaceKind,
 	capabilities: readonly WorkspaceCapability[],
 ): WorkspaceModule[] {
-	const held = new Set(capabilities);
-	return modulesForKind(kind).filter((m) => {
-		const needed = m.permission(kind);
-		return needed === null || held.has(needed);
-	});
+	return modulesForKind(kind).filter((m) => gateAllows(m.permission(kind), capabilities));
 }
 
 /**
@@ -443,8 +475,7 @@ export function mayViewModule(
 ): boolean {
 	const module = moduleFor(key);
 	if (!module || !module.kinds.includes(kind)) return false;
-	const needed = module.permission(kind);
-	return needed === null || capabilities.includes(needed);
+	return gateAllows(module.permission(kind), capabilities);
 }
 
 /**

@@ -282,6 +282,7 @@ export const CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
 			"withdraw_funds",
 			"manage_finances",
 			"approve_spend",
+			"manage_billing",
 		],
 	},
 	{ title: "Oversight", capabilities: ["view_analytics", "view_audit"] },
