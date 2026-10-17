@@ -110,8 +110,10 @@
 	font-size: var(--text-sm);
 	font-weight: var(--fw-semibold);
 	line-height: 1;
-	color: var(--on-primary);
-	background: var(--primary);
+	/* Tier 2 of the Interaction Matrix (§B.8.1, Decision #228 (D)): the §D.7.7 monochrome inverted
+	   pair `.ui-button--structural` sets, so it swaps sides with the theme by construction. */
+	color: var(--surface);
+	background: var(--on-surface);
 	border: var(--fld-bw) solid transparent;
 	border-radius: var(--radius-full);
 	cursor: pointer;
@@ -121,8 +123,9 @@
 	transition: var(--btn-transition-press);
 }
 
+/* The §B.12 zero tonal step: the fill never moves, so the hover is drawn on the reserved border. */
 .ui-lane-create:hover {
-	border-color: color-mix(in srgb, var(--on-primary) 60%, transparent);
+	border-color: color-mix(in srgb, var(--surface) 60%, transparent);
 }
 
 .ui-lane-create:active {

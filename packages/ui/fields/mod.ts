@@ -61,6 +61,7 @@ export {
 	type ButtonProps,
 	type ButtonSemanticTone,
 	type ButtonSeverity,
+	type ButtonStructuralTone,
 	type ButtonVariant,
 } from "./components/Button.tsx";
 export { type MenuAction, SplitButton, type SplitButtonProps } from "./islands/SplitButton.tsx";

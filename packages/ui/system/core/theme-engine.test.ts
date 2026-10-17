@@ -115,12 +115,19 @@ Deno.test("the scrollbar track is not registered as a palette token", () => {
  * amount of reading the stylesheet reveals it.
  */
 
-/** Roles whose fill/ink polarity FOLLOWS the theme, and therefore widen under the HC overlay. */
+/**
+ * Roles whose fill/ink polarity FOLLOWS the theme, and therefore widen under the HC overlay.
+ *
+ * `--on-surface` / `--surface` is tier 2's monochrome inverted pair (§B.8.1, §D.7.7) — the fill of
+ * `.ui-button--structural`, `.ui-lane-create` and the profile rig's `--mono` override. It is not a
+ * severity, but it is a filled control's ink-on-fill relationship, so it answers to the same floors.
+ */
 const ADAPTIVE_PAIRS = [
 	["--secondary", "--on-secondary"],
 	["--tertiary", "--on-tertiary"],
+	["--on-surface", "--surface"],
 ] as const;
-/** Every filled pair a `Button` severity can resolve to, brand included. */
+/** Every filled pair a `Button` severity or the structural tone can resolve to, brand included. */
 const FILLED_PAIRS = [["--primary", "--on-primary"], ...ADAPTIVE_PAIRS] as const;
 
 /** WCAG 2.2 SC 1.4.3 — normal-size text. A button label is normal-size text. */
@@ -281,6 +288,8 @@ const MIX_FOR: Record<string, { hover: number; active: number }> = {
 	"--primary": { hover: 100, active: 100 },
 	"--secondary": { hover: HOVER_MIX, active: ACTIVE_MIX },
 	"--tertiary": { hover: HOVER_MIX, active: ACTIVE_MIX },
+	// `.ui-button--structural`: the fill IS the pole, so its hover is the border channel.
+	"--on-surface": { hover: 100, active: 100 },
 };
 
 /** `color-mix(in srgb, a p%, b)` — sRGB, matching what the stylesheet resolves to. */

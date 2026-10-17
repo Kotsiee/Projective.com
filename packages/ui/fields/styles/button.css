@@ -241,6 +241,28 @@
 }
 /* #endregion */
 
+/* #region Structural tone — tier 2 of the Interaction Matrix (§B.8.1)
+ *
+ * Not a severity: the §D.7.7 monochrome inverted pair laid over whatever ramp the Button carries,
+ * declared after every severity so it wins on source order. The page's ink becomes the fill and the
+ * page becomes the ink, so the pair swaps sides with the theme by construction and is pinned by
+ * `theme-engine.test.ts` in all four mode/contrast states.
+ *
+ * Its hover is the §B.12 zero tonal step. The base ramp blends toward `--on-surface`, which IS this
+ * fill, so any step would be a no-op that reads as a dead control — the border channel carries the
+ * hover instead, exactly as it does for the brand fill and `.ui-lane-create`.
+ */
+.ui-button--structural {
+	--btn-accent: var(--on-surface);
+	--btn-on: var(--surface);
+	--btn-mix-hover: 100%;
+	--btn-mix-active: 100%;
+}
+.ui-button--structural:hover:not(:disabled):not([aria-disabled="true"]):not(:focus-visible):not(.ui-button--outlined):not(.ui-button--text):not(.ui-button--link) {
+	border-color: color-mix(in srgb, var(--btn-on) 60%, transparent);
+}
+/* #endregion */
+
 /* #region Variants */
 .ui-button--outlined {
 	background: transparent;
