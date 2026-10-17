@@ -20,6 +20,7 @@ import { Popover, Tooltip } from "@projective/ui/feedback";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import {
+	canOpenVerification,
 	type IncomingInvite,
 	type KindCopy,
 	kindCopy,
@@ -761,7 +762,7 @@ function EntityLane(props: EntityLaneProps): JSX.Element {
 					/>
 					<span class="wsp-lane__verify-text">{verify.text}</span>
 					{detail.verificationPrompt &&
-						detail.viewerCapabilities.includes("manage_settings") && (
+						canOpenVerification(props.kind, detail.viewerCapabilities) && (
 						<Tooltip content={detail.verificationPrompt}>
 							<a
 								class="wsp-lane__verify-link"
