@@ -34,6 +34,43 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   concurrent spends cannot both fit under one cap. A `NULL` cap is "no ceiling"; no row at all is
   "no envelope" (true). The previous body read then wrote without a lock, ignored
   `per_transaction_cents` and `period_interval`, and so counted a lifetime total as the month.
+  Business money reaches it only through the spend gate below; a team or enterprise vault still
+  calls it directly (the basket, a transfer out).
+- **`finance.fn_business_threshold(wallet)`** → bigint (`00001210`, BUSINESSES_AUDIT BF19) — the
+  approval threshold that governs one vault: `wallets.approval_threshold_cents`, else the platform's
+  `vault_approval_threshold_cents`, else `0` (none). Every threshold read uses it — the business
+  basket, the spend gate, `request_spend_approval`, `fn_redeem_spend_approval`'s `DETAIL` and the
+  auto-fund drain. Revoked from `PUBLIC`, `anon`, `authenticated`.
+- **`finance.fn_assert_business_spend(wallet, actor, amount, ref_table, ref_id, count_envelope =
+  true)`** → void (`00001210`, BUSINESSES_AUDIT BF21 / BF22 / §4.2) — **the one business spend
+  gate**, called in the transaction that moves the money by `place_wallet_order` (and so
+  `place_on_account_order`), `transfer_funds` (business source), `projects.fund_stage`,
+  `projects.fund_ticket`, `projects.fund_paid_revision`, the card escrow lock
+  (`begin_card_payment`, as a check) and the two escrow holds. A wallet that is not a business's
+  returns at once — team and personal spending keep their own rules. Otherwise:
+  (b) KYB — `fn_business_kyb_verified`, else `PK403` `kyb_required: …`;
+  (c) the **actor's** envelope — `fn_check_spending_limit(wallet, actor, amount)`, never the project
+  owner's; over the cap or the per-transaction ceiling, an approved request for this ref may still
+  carry it (finance-model §14) — it is redeemed and the spend counted past the cap — else `PA403`
+  `over_limit: …` with the redeemer's `DETAIL` plus `reason: 'over_limit'`;
+  (d) the threshold — at or above `fn_business_threshold`, `fn_redeem_spend_approval` (else `PA403`
+  `needs_approval: …`). One approval clears (c) and (d) for one spend and is consumed once.
+  **Counted once:** the earliest door the actor touches makes the full check and leaves a
+  transaction-local cover (`finance.spend_cover`, bound to `pg_current_xact_id()`) for the holds
+  beneath it — a basket or a stage opens a budget on the wallet, closed by its door with
+  `fn_close_spend_cover`; `fund_ticket` / `fund_paid_revision` leave one ref for the hold they call.
+  A call the cover still pays for (for no more than was counted) re-asserts KYB and passes without
+  counting again — so a basket ticket line counts once, against the buyer. A refused
+  subtransaction rolls its cover back. `count_envelope = false` is a **check**: KYB and the
+  threshold (`fn_redeem_spend_approval(…, p_consume => false)`), nothing counted, consumed or
+  covered — the card escrow lock before anyone is charged; settlement runs the real gate. Refs:
+  `baskets` · `project_stages` · `tickets` · `revisions` · `transfers`. Definer, `search_path = ''`;
+  revoked from `PUBLIC`, `anon`, `authenticated`. TS: `@projective/types/finance` `SpendGateReason`
+  / `SPEND_GATE_REFUSAL` / `SpendGateDetailsSchema`, mapped by `packages/backend/core/spend-gate.ts`.
+  Probe: `supabase/probes/business_spend_gate.sql`.
+- **`finance.fn_close_spend_cover(wallet)`** → void (`00001210`) — drops what a basket or stage door
+  left of its cover on one wallet once its holds are made (the unspent budget, any untaken ref), so a
+  later door in the same transaction is never waved through on that door's count. Revoked as above.
 - **`finance.fn_person_wallet_type(user)`** → text (2026-09-28) — the wallet type a person actually
   holds: an existing `freelancer` wallet wins over a `user` one; with none, a freelancer profile means
   `freelancer`, else `user`.
@@ -84,7 +121,9 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   be made is refused, never skipped (Decision #165):** `PF402`, a "Needs funding — …" message, and
   `DETAIL` = `{state: 'needs_funding', reason, amount_minor, currency}` with `reason` one of `no_price`
   · `no_wallet` (no payer wallet in the project's currency) · `insufficient_funds` (checked for both
-  wallet types — a business no longer relies on the `balance_cents` CHECK) · `spending_limit`. A missing
+  wallet types — a business no longer relies on the `balance_cents` CHECK) · `spending_limit` ·
+  `needs_approval` · `kyb_required` (the business spend gate refused it; its `DETAIL` keys —
+  `wallet_id`, `ref_table`, `ref_id`, `threshold_minor` — are merged in). A missing
   stage is not a funding problem → `check_violation`; a missing payee is a **prepaid** hold (Decision
   #197): the escrow is written with `payee_type`/`payee_id` NULL, only the client is told ("It is
   paid to whoever claims it."), and the claim binds it. The payee is `finance.fn_ticket_payee`. Already held (a held escrow with no
@@ -92,9 +131,13 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   cannot see a sibling transaction's uncommitted hold, so the INSERT is the arbiter —
   `uq_escrows_ticket_base_held` makes the later one wait, and once the first commits it gets
   `unique_violation`, which the function reads as "already held": `NULL`, nothing debited, no notice.
-  A `unique_violation` on any other constraint is re-raised. The envelope checked is the **SPENDER's — the project owner**
-  (`projects.projects.owner_user_id`) who commits the business's money (fixed 2026-09-28): it used to
-  check `auth.uid()`, which here is the freelancer whose claim triggered the hold. On success it sets
+  A `unique_violation` on any other constraint is re-raised. A business payer's hold goes through
+  `fn_assert_business_spend` (ref `tickets`): when a door (`fund_stage`, `fund_ticket`, the basket)
+  gated this spend for its funder in this transaction, its cover passes the hold without counting
+  again; otherwise the hold is **automatic** (a claim, the Chain Reaction, the auto-fund drain) and
+  the spender is the **project owner** (`projects.projects.owner_user_id`) — never `auth.uid()`, which
+  here is the freelancer whose claim triggered it. The gate's `PA403` / `PK403` become this `PF402`, so
+  every caller that turns a refused hold into Needs funding still does. On success it sets
   `payment_status = 'escrow_funded'` and notifies the payee ("Funded — you can start") and, unless the
   client made the hold themselves (`auth.uid()`), the project owner, both `escrow.funded` with a
   `?tkv=` ticket link. `search_path = public, finance, projects, org, comms, auth`.
@@ -113,7 +156,8 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   a round is held once (`uq_escrows_revision`, Decision #189). Same payee rule (an accepted team seat, else the ticket's assignee; none →
   `check_violation`) and the same refusal shape as `fn_hold_ticket_escrow` under #165: `PF402` with
   `DETAIL` `{state: 'needs_funding', reason: no_price | no_wallet | insufficient_funds |
-  spending_limit, amount_minor, currency}`. Internal (`EXECUTE` revoked from `authenticated`); only
+  spending_limit | needs_approval | kyb_required, amount_minor, currency}` — through the spend gate
+  with ref `revisions`, covered by `fund_paid_revision`'s own gate. Internal (`EXECUTE` revoked from `authenticated`); only
   `projects.fund_paid_revision` calls it, under a lock on the round. Released with the ticket's other
   held rows by `fn_release_ticket_escrow`.
 - **`finance.fn_release_ticket_escrow(ticket_id)`** — releases held escrow to the payee, applying
@@ -255,8 +299,12 @@ freelancer could fund the client's escrow from the client's wallet. It now resol
 from `projects.projects.client_business_id` (NULL → the project's owner pays as an individual
 client from their personal wallet, and only the owner may — Decisions #126 / #165 (D)) and, for a
 business, requires `finance.fn_owner_capability('business', payer, 'spend')`, else `42501`
-("Only a member who can spend from the client's wallet can fund this stage."). The KYB gate on
-funding (Decision #54(e)) is **not** added here — that behavioural change still needs sign-off.
+("Only a member who can spend from the client's wallet can fund this stage."). Since BB3
+(BUSINESSES_AUDIT BF21) every funding door — `fund_stage` (the stage's total, ref
+`project_stages`), `fund_ticket` (`tickets`), `fund_paid_revision` (`revisions`) and the card escrow
+lock (a check at `begin_card_payment`, the real gate at settlement) — passes
+`finance.fn_assert_business_spend` for the **funder**: the KYB gate on funding (Decision #54(e)), the
+funder's own envelope and the approval threshold.
 
 ## Deferred (documented target, not yet implemented)
 
@@ -628,7 +676,8 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
    `replayed: true` and nothing is charged. A key belonging to an order the caller cannot see is
    refused (`42501`).
 2. **The basket** is locked `FOR UPDATE`; the caller needs `fn_can_manage_basket`; a business or
-   enterprise payer must be KYB-verified (`PK403`).
+   enterprise payer must be KYB-verified (`PK403`) — refused before re-pricing; the spend gate in
+   step 6 re-asserts it.
 3. **The lines are exactly the submitted ones** — live, selected, not parked, not purchased — or the
    call refuses (`PC409`). A basket changed in another tab cannot widen or narrow the charge.
 4. **Every line is re-priced from the catalogue.** Digital products, and **one-ticket project lines**
@@ -641,8 +690,13 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
    basket (a code the page refused applies nothing here either). Non-null → it must still be the
    basket's code, still valid, and applicable (a flat code only in its own currency) — or `PC409`.
 6. **The wallet** in `p_currency` is locked (a personal owner's `user` and `freelancer` wallets are
-   interchangeable) and must cover the net (`PF402`). A shared payer additionally clears its approval
-   threshold and the member's spending limit (`PA403`).
+   interchangeable) and must cover the net (`PF402`). A **business** payer then passes
+   `fn_assert_business_spend(wallet, caller, net, 'baskets', basket)` once for the whole charge — KYB,
+   the buyer's envelope, the threshold with the platform fallback, an approval bound to the basket
+   (`PK403` / `PA403` with the `kyb_required` / `over_limit` / `needs_approval` prefix) — and its
+   cover lets the ticket and revision lines hold without counting anyone again; the cover is closed
+   before the order is finalised. A team or enterprise payer clears its own wallet threshold and the
+   member's spending limit inline (`PA403`), unchanged.
 7. **Money moves through the ledger primitives**: `fn_wallet_debit(… 'order_payment', 'orders', id)`
    on the buyer; per line, a pro-rata share of the promo (the remainder on the last line, so shares
    sum exactly), the platform fee on what was actually paid for that line — the **payer's** effective
@@ -724,8 +778,9 @@ belong to — so a transfer can never be a payment to somebody else. Both rows a
 (two crossing transfers cannot deadlock). Money leaves a personal wallet only for its owner and a vault
 only for a member holding `withdraw`; it lands only in the caller's own personal wallet or a vault they
 are a member of (`fn_owner_visible`). Same currency only (`PX409` — a transfer is not a conversion). A
-business source must be KYB-verified (`PK403`); a vault source must clear the member's spending limit
-(`PA403`) and hold the amount (`PF402`). The ledger lines are `transfer_out` / `transfer_in`, each
+business source passes `fn_assert_business_spend(…, 'transfers', to_wallet)` — KYB (`PK403`), the
+mover's envelope and the approval threshold (`PA403`); a team or enterprise vault source clears the
+member's spending limit (`PA403`); the source must hold the amount (`PF402`). The ledger lines are `transfer_out` / `transfer_in`, each
 pointing at the OTHER wallet (`ref_table = 'wallets'`), and a vault on either side gets a
 `finance.ledger_audit` row carrying the note. Returns `{ amount_minor, currency, from_wallet,
 to_wallet, replayed }`.
@@ -761,7 +816,7 @@ sweep marks it). A decision notifies the requester through `comms.fn_notify` (`s
 | `PB404`  | the wallet or request no longer exists                   |
 | `PX409`  | the two wallets hold different currencies               |
 | `PK403`  | the paying business is not KYB-verified                  |
-| `PA403`  | over the member's spending limit                         |
+| `PA403`  | over the member's spending limit, or (business) at/above the approval threshold with no approval |
 | `PF402`  | the wallet doesn't hold enough                           |
 | `PD422`  | the team has no agreed split                             |
 | `PC409`  | the spend request was already decided                    |

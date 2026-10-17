@@ -133,6 +133,187 @@ AS $$
     ), false);
 $$;
 
+-- #region Business spend gate (BUSINESSES_AUDIT BF19, BF21, BF22)
+-- The approval threshold that governs ONE vault: its own `approval_threshold_cents`, else the platform's
+-- `vault_approval_threshold_cents`, else 0 (no threshold). A NULL on the wallet is "no local override"
+-- (00000017), so every reader falls back the same way — the basket, the spend gate, a spend request
+-- and the auto-fund drain read this, never the column.
+CREATE OR REPLACE FUNCTION finance.fn_business_threshold(p_wallet uuid)
+RETURNS bigint
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE(
+        (SELECT w.approval_threshold_cents FROM finance.wallets w WHERE w.id = p_wallet),
+        (SELECT (pp.value #>> '{}')::bigint FROM security.platform_params pp
+          WHERE pp.key = 'vault_approval_threshold_cents'),
+        0
+    );
+$$;
+
+-- The ONE gate every door that moves a business's pooled money calls, in the transaction that moves it:
+-- the basket, paying on account, a transfer out, fund_stage / fund_ticket / fund_paid_revision, the card
+-- escrow lock, and the escrow holds themselves. A wallet that is not a business's returns at once (team
+-- and personal spending keep their own rules). Otherwise, in order:
+--   (a) the business is published — org.fn_assert_business_active, else 55000 `business_not_active:`
+--       (BB5): a draft or archived business spends nothing, on any door, counted or not.
+--   (b) KYB — the business is verified, else PK403 `kyb_required:`.
+--   (c) the ACTOR's envelope (never the project owner's) is counted by fn_check_spending_limit. Over the
+--       cap or the per-transaction ceiling, an approved request for this ref may still carry it
+--       (finance-model §14: over a member's cap queues for a second approver) — it is redeemed and the
+--       spend counted past the cap; with none, PA403 `over_limit:` and the redeemer's DETAIL.
+--   (d) the threshold (fn_business_threshold): at or above it, an approved request for this ref is
+--       redeemed (finance.fn_redeem_spend_approval), else PA403 `needs_approval:`. One approval clears
+--       (c) and (d) for one spend and is consumed once.
+-- Counted ONCE. The earliest door the actor touches makes the full check and leaves a transaction-local
+-- cover (`finance.spend_cover`, bound to this transaction's id) for the escrow holds beneath it: a
+-- basket or a stage, which hold several escrows, opens a budget on the wallet that its door closes when
+-- it is done (finance.fn_close_spend_cover); fund_ticket / fund_paid_revision leave their one ref for
+-- the hold they call. A hold — or a ticket line of a basket — that the cover still pays for, for no
+-- more than was counted, re-asserts KYB and passes without counting again, so a basket ticket line
+-- counts once, against the buyer. A refused subtransaction rolls its cover back with it.
+-- `p_count_envelope = false` is a CHECK, not a spend (the card escrow lock before anyone is charged):
+-- KYB and the threshold are asserted, nothing is counted, consumed or covered; the settlement's
+-- fund_stage / fund_ticket / fund_paid_revision run the real gate.
+-- Refs name what an approval binds to: baskets · project_stages · tickets · revisions · transfers.
+CREATE OR REPLACE FUNCTION finance.fn_assert_business_spend(
+    p_wallet uuid,
+    p_actor uuid,
+    p_amount bigint,
+    p_ref_table text,
+    p_ref_id uuid,
+    p_count_envelope boolean DEFAULT true
+)
+RETURNS void
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_wallet finance.wallets;
+    v_tx text := pg_catalog.pg_current_xact_id()::text;
+    v_cover jsonb;
+    v_ref text := p_wallet::text || '|' || COALESCE(p_ref_table, '') || ':' || COALESCE(p_ref_id::text, '');
+    v_budget bigint;
+    v_threshold bigint;
+    v_redeemed boolean := false;
+    v_detail text;
+BEGIN
+    SELECT * INTO v_wallet FROM finance.wallets w WHERE w.id = p_wallet;
+    IF NOT FOUND OR v_wallet.owner_type <> 'business' OR p_amount IS NULL OR p_amount <= 0 THEN
+        RETURN;
+    END IF;
+
+    PERFORM org.fn_assert_business_active(v_wallet.owner_id);
+
+    IF NOT finance.fn_business_kyb_verified(v_wallet.owner_id) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = 'PK403',
+            MESSAGE = 'kyb_required: complete business verification (KYB) before spending from this account',
+            DETAIL = pg_catalog.jsonb_build_object('wallet_id', p_wallet, 'business_id', v_wallet.owner_id)::text;
+    END IF;
+
+    v_threshold := finance.fn_business_threshold(p_wallet);
+    IF NOT p_count_envelope THEN
+        IF v_threshold > 0 AND p_amount >= v_threshold THEN
+            PERFORM finance.fn_redeem_spend_approval(p_wallet, p_actor, p_amount, p_ref_table, p_ref_id, false);
+        END IF;
+        RETURN;
+    END IF;
+
+    -- #region Already counted by an earlier door in this transaction
+    v_cover := NULLIF(pg_catalog.current_setting('finance.spend_cover', true), '')::jsonb;
+    IF v_cover IS NULL OR v_cover ->> 'tx' IS DISTINCT FROM v_tx THEN
+        v_cover := pg_catalog.jsonb_build_object('tx', v_tx, 'budget', '{}'::jsonb, 'refs', '{}'::jsonb);
+    END IF;
+    IF (v_cover -> 'refs' ->> v_ref)::bigint >= p_amount THEN
+        PERFORM pg_catalog.set_config('finance.spend_cover', (v_cover #- ARRAY['refs', v_ref])::text, true);
+        RETURN;
+    END IF;
+    v_budget := COALESCE((v_cover -> 'budget' ->> p_wallet::text)::bigint, 0);
+    IF v_budget >= p_amount THEN
+        v_cover := pg_catalog.jsonb_set(v_cover, ARRAY['budget', p_wallet::text], pg_catalog.to_jsonb(v_budget - p_amount));
+        v_cover := pg_catalog.jsonb_set(v_cover, ARRAY['refs', v_ref], pg_catalog.to_jsonb(p_amount));
+        PERFORM pg_catalog.set_config('finance.spend_cover', v_cover::text, true);
+        RETURN;
+    END IF;
+    -- #endregion
+
+    -- #region (c) The actor's envelope
+    IF NOT finance.fn_check_spending_limit(p_wallet, p_actor, p_amount) THEN
+        BEGIN
+            PERFORM finance.fn_redeem_spend_approval(p_wallet, p_actor, p_amount, p_ref_table, p_ref_id, true);
+        EXCEPTION WHEN SQLSTATE 'PA403' THEN
+            GET STACKED DIAGNOSTICS v_detail = PG_EXCEPTION_DETAIL;
+            RAISE EXCEPTION USING
+                ERRCODE = 'PA403',
+                MESSAGE = 'over_limit: this is over your spending limit for this account',
+                DETAIL = (COALESCE(NULLIF(v_detail, '')::jsonb, '{}'::jsonb)
+                          || pg_catalog.jsonb_build_object('reason', 'over_limit'))::text;
+        END;
+        v_redeemed := true;
+        -- The approved spend still counts: fn_check_spending_limit has already rolled the period.
+        UPDATE finance.spending_limits sl
+           SET spent_cents = sl.spent_cents + p_amount
+         WHERE sl.wallet_id = p_wallet AND sl.member_user_id = p_actor;
+    END IF;
+    -- #endregion
+
+    -- #region (d) The threshold
+    IF NOT v_redeemed AND v_threshold > 0 AND p_amount >= v_threshold THEN
+        PERFORM finance.fn_redeem_spend_approval(p_wallet, p_actor, p_amount, p_ref_table, p_ref_id, true);
+    END IF;
+    -- #endregion
+
+    IF p_ref_table IN ('baskets', 'project_stages') THEN
+        v_cover := pg_catalog.jsonb_set(v_cover, ARRAY['budget', p_wallet::text], pg_catalog.to_jsonb(v_budget + p_amount));
+    ELSIF p_ref_table IN ('tickets', 'revisions') THEN
+        v_cover := pg_catalog.jsonb_set(v_cover, ARRAY['refs', v_ref], pg_catalog.to_jsonb(p_amount));
+    ELSE
+        RETURN;
+    END IF;
+    PERFORM pg_catalog.set_config('finance.spend_cover', v_cover::text, true);
+END;
+$$;
+
+COMMENT ON FUNCTION finance.fn_assert_business_spend(uuid, uuid, bigint, text, uuid, boolean) IS
+'The business spend gate: KYB (PK403 kyb_required), the ACTOR''s envelope counted once per transaction
+(PA403 over_limit unless an approval for the ref carries it) and the approval threshold with the platform
+fallback (PA403 needs_approval unless an approval for the ref is redeemed). No-op for a non-business
+wallet. p_count_envelope = false checks KYB and the threshold only, counting and consuming nothing.
+Internal — called by the money doors and the escrow holds; not executable by clients.';
+
+-- Close what a basket or stage door left of its cover on one wallet, once its holds are made: the
+-- unspent budget and any ref a hold did not take. Nothing a later door in the same transaction does is
+-- then waved through on this door's count.
+CREATE OR REPLACE FUNCTION finance.fn_close_spend_cover(p_wallet uuid)
+RETURNS void
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_cover jsonb := NULLIF(pg_catalog.current_setting('finance.spend_cover', true), '')::jsonb;
+    v_key text;
+BEGIN
+    IF v_cover IS NULL OR p_wallet IS NULL THEN
+        RETURN;
+    END IF;
+    v_cover := v_cover #- ARRAY['budget', p_wallet::text];
+    FOR v_key IN SELECT k FROM pg_catalog.jsonb_object_keys(COALESCE(v_cover -> 'refs', '{}'::jsonb)) AS k
+                  WHERE k LIKE p_wallet::text || '|%'
+    LOOP
+        v_cover := v_cover #- ARRAY['refs', v_key];
+    END LOOP;
+    PERFORM pg_catalog.set_config('finance.spend_cover', v_cover::text, true);
+END;
+$$;
+-- #endregion
+
 -- =============================================================================================
 -- 20260723092000_finance_payment_methods_money_movement.sql
 -- Wallet & Finance foundation (3/5) — Payment methods (spend vs earn) + money-movement rules.
@@ -1450,7 +1631,12 @@ BEGIN
     IF v_wallet.balance_cents < v_net THEN
         RAISE EXCEPTION 'Your wallet balance doesn''t cover this order' USING ERRCODE = 'PF402';
     END IF;
-    IF v_basket.owner_type IN ('business', 'team', 'enterprise') THEN
+    -- A business basket passes the spend gate once for the whole charge (BB3): KYB, the buyer's envelope,
+    -- the threshold with the platform fallback, an approval bound to this basket. Its cover lets the
+    -- ticket and revision lines below hold without counting the buyer — or anyone — again.
+    IF v_basket.owner_type = 'business' THEN
+        PERFORM finance.fn_assert_business_spend (v_wallet.id, v_uid, v_net, 'baskets', v_basket.id);
+    ELSIF v_basket.owner_type IN ('team', 'enterprise') THEN
         IF COALESCE(v_wallet.approval_threshold_cents, 0) > 0 AND v_net >= v_wallet.approval_threshold_cents THEN
             RAISE EXCEPTION 'This purchase needs approval before it can be paid for'
                 USING ERRCODE = 'PA403';
@@ -1612,6 +1798,9 @@ BEGIN
          WHERE id = (v_line.l ->> 'id')::uuid;
     END LOOP;
 
+    IF v_basket.owner_type = 'business' THEN
+        PERFORM finance.fn_close_spend_cover (v_wallet.id);
+    END IF;
     UPDATE finance.orders SET platform_fee_minor = v_fee_total WHERE id = v_order_id;
     UPDATE finance.baskets SET updated_at = pg_catalog.now(), promo_code = NULL WHERE id = v_basket.id;
     IF v_promo.id IS NOT NULL AND v_promo_minor > 0 THEN
@@ -1731,13 +1920,12 @@ BEGIN
         RAISE EXCEPTION 'Both wallets must hold % — a transfer is not a currency conversion', v_from.currency
             USING ERRCODE = 'PX409';
     END IF;
-    -- Operating a pooled business wallet is gated on KYB (finance-model.md §KYC/KYB Gating); a team
-    -- vault is not subject to it.
-    IF v_from.owner_type = 'business' AND NOT finance.fn_business_kyb_verified (v_from.owner_id) THEN
-        RAISE EXCEPTION 'Complete business verification (KYB) to move money out of this account'
-            USING ERRCODE = 'PK403';
-    END IF;
-    IF v_from.owner_type IN ('team', 'business', 'enterprise')
+    -- Money leaving a pooled business wallet passes the spend gate (BB3): KYB (finance-model.md §KYC/KYB
+    -- Gating), the mover's envelope and the threshold, an approval bound to the destination wallet. A
+    -- team or enterprise vault keeps its envelope only.
+    IF v_from.owner_type = 'business' THEN
+        PERFORM finance.fn_assert_business_spend (v_from.id, v_uid, p_amount, 'transfers', v_to.id);
+    ELSIF v_from.owner_type IN ('team', 'enterprise')
        AND NOT finance.fn_check_spending_limit (v_from.id, v_uid, p_amount) THEN
         RAISE EXCEPTION 'That is over your spending limit on this account' USING ERRCODE = 'PA403';
     END IF;
@@ -1774,10 +1962,11 @@ $$;
 
 COMMENT ON FUNCTION finance.transfer_funds(uuid, uuid, bigint, text, text) IS
 'Move money between two of the caller''s own wallets (their personal wallet and the vaults they belong
-to), same currency only. Leaving a vault needs the withdraw capability, business KYB and the member''s
-spending limit; landing needs membership. Idempotent on the attempt key. Refusals: 42501 not allowed ·
+to), same currency only. Leaving a vault needs the withdraw capability and the member''s spending limit;
+leaving a business wallet passes finance.fn_assert_business_spend (KYB, the envelope, the approval
+threshold). Landing needs membership. Idempotent on the attempt key. Refusals: 42501 not allowed ·
 22023 bad input or key · PB404 wallet gone · PX409 different currencies · PK403 KYB · PA403 spending
-limit · PF402 not enough.';
+limit or approval · PF402 not enough.';
 
 -- Distribute part of a TEAM vault to its members by their agreed stakes
 -- (`finance.contribution_agreements.percent_bp`, active members only). Each share is floored to the

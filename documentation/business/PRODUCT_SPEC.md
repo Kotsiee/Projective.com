@@ -1337,6 +1337,12 @@ Money enters and leaves the platform through two deliberately asymmetric paths:
 - **Business owners verify to operate the pool.** Wallet verification (KYB) is required to _operate_
   a pooled Business Wallet — see §Identity Verification. (Concrete gates: `finance-model.md` §10
   KYC/KYB Gating.)
+- **Whoever spends the pool answers for it.** Every way a Business's money moves — a checkout,
+  paying on account, a transfer out, funding a stage, a ticket or a paid revision, a card escrow
+  lock — checks KYB, the **acting member's** own spending limit and the approval threshold, and
+  counts the spend once, against that member (a ticket bought in a basket is not counted again when
+  its escrow is held). Only when no person acts — a claim, the Chain Reaction, the auto-fund queue —
+  does the spend count against the project owner. (Concrete rules: `finance-model.md` §14.)
 
 #### 6. Global Multi-Currency & Localized Money
 

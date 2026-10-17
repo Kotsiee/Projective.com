@@ -626,11 +626,13 @@ AS $$
 DECLARE
     v record;
     v_escrow uuid;
+    v_wallet uuid;
 BEGIN
     PERFORM org.fn_assert_adult(auth.uid());
     SELECT rv.status, rv.reason, rv.requested_by, rv.submission_id, rv.ticket_id, rv.project_stage_id,
            rv.request_type, rv.price_cents, ps.extra_revision_price_cents AS stage_price,
-           ps.project_id, p.client_business_id AS payer, p.owner_user_id AS owner, ss.status AS submission_status
+           ps.project_id, p.client_business_id AS payer, p.owner_user_id AS owner, ss.status AS submission_status,
+           upper(COALESCE(p.currency, 'USD')) AS currency
       INTO v
       FROM projects.stage_revision_requests rv
       JOIN projects.project_stages ps ON ps.id = rv.project_stage_id
@@ -660,6 +662,14 @@ BEGIN
     IF v.request_type <> 'paid_revision' OR v.price_cents IS DISTINCT FROM v.stage_price THEN
         RAISE EXCEPTION 'This revision''s price no longer matches the stage''s terms — raise it again.'
             USING ERRCODE = 'PC409';
+    END IF;
+
+    -- The business spend gate, for the funder (BB3): KYB, their envelope, the threshold. The hold then
+    -- finds this spend covered and does not count it again. Nothing for an individual's own wallet.
+    IF v.payer IS NOT NULL THEN
+        SELECT w.id INTO v_wallet FROM finance.wallets w
+         WHERE w.owner_type = 'business' AND w.owner_id = v.payer AND w.currency = v.currency;
+        PERFORM finance.fn_assert_business_spend(v_wallet, auth.uid(), v.price_cents, 'revisions', p_revision_id);
     END IF;
 
     v_escrow := finance.fn_hold_revision_escrow(p_revision_id);
@@ -797,6 +807,7 @@ DECLARE
     v_available bigint;
     v_need jsonb;
     v_unpriced int;
+    v_wallet uuid;
 BEGIN
     PERFORM org.fn_assert_adult(auth.uid());
     IF NOT projects.has_project_access(p_project_id) THEN
@@ -864,6 +875,16 @@ BEGIN
             USING ERRCODE = 'PC409';
     END IF;
 
+    -- A business stage passes the spend gate ONCE, for the whole stage and for the funder (BB3): KYB,
+    -- the funder's envelope, the threshold against the stage's total. Its cover then lets each hold
+    -- below through without counting again.
+    IF v_payer IS NOT NULL THEN
+        SELECT w.id INTO v_wallet FROM finance.wallets w
+         WHERE w.owner_type = 'business' AND w.owner_id = v_payer AND w.currency = upper(COALESCE(v_currency, 'USD'));
+        PERFORM finance.fn_assert_business_spend(v_wallet, auth.uid(), (v_need ->> 'amount_cents')::bigint,
+            'project_stages', p_stage_id);
+    END IF;
+
     -- Each hold refuses (PF402) on its own and the transaction makes the stage all or nothing; an
     -- individual's whole stage is checked first so the refusal names the stage, not one ticket.
     IF v_payer IS NULL THEN
@@ -881,7 +902,7 @@ BEGIN
 
     -- Hold escrow for each not-yet-funded ticket in the stage — prepaid (no payee) where nobody has
     -- claimed it yet, bound at the claim (Decision #197). fn_hold_ticket_escrow
-    -- reuses fn_check_spending_limit (AC2), isolates the escrow to project_stage_id (AC3) and
+    -- draws on the gate's cover above (AC2), isolates the escrow to project_stage_id (AC3) and
     -- writes the wallet-debit ledger entry (AC6). Each hold also tells its assignee they can start
     -- (AC5, `escrow.funded`).
     FOREACH v_ticket IN ARRAY v_tickets LOOP
@@ -890,6 +911,7 @@ BEGIN
             v_funded := v_funded + 1;
         END IF;
     END LOOP;
+    PERFORM finance.fn_close_spend_cover(v_wallet);
 
     IF v_funded = 0 THEN
         RAISE EXCEPTION 'Nothing in this stage is waiting for funding.' USING ERRCODE = 'PC409';
@@ -932,6 +954,7 @@ DECLARE
     t record;
     v_balance bigint;
     v_escrow uuid;
+    v_wallet uuid;
 BEGIN
     PERFORM org.fn_assert_adult(auth.uid());
     IF NOT projects.has_project_access(p_project_id) THEN
@@ -988,6 +1011,12 @@ BEGIN
             RAISE EXCEPTION 'Your wallet does not hold enough to fund "%" — pay by card instead.', t.title
                 USING ERRCODE = 'PF402';
         END IF;
+    ELSE
+        -- The business spend gate, for the funder (BB3). Inside a basket the basket already counted this
+        -- line and its cover passes it; on its own (Buy now, a card lock) this is the earliest door.
+        SELECT w.id INTO v_wallet FROM finance.wallets w
+         WHERE w.owner_type = 'business' AND w.owner_id = v_payer AND w.currency = v_currency;
+        PERFORM finance.fn_assert_business_spend(v_wallet, auth.uid(), t.amount, 'tickets', p_ticket_id);
     END IF;
 
     v_escrow := finance.fn_hold_ticket_escrow(p_ticket_id);

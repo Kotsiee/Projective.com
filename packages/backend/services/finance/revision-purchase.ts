@@ -1,6 +1,7 @@
 import type { FundPaidRevision, PaidRevisionFunding } from "@projective/types/finance";
 import { formatMoney } from "@projective/types/finance";
 import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
+import { spendGateRefusal } from "../../core/spend-gate.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { isFinanceBackendLive } from "../../core/supabase.ts";
@@ -135,8 +136,13 @@ export function revisionFundingCheck(
 }
 
 /** The buyer-facing refusal for an error `projects.fund_paid_revision` raised. */
-export function walletFundingRefusal(error: { code?: string; message: string }): RevisionRefusal {
+export function walletFundingRefusal(
+	error: { code?: string; message: string; details?: string | null },
+): RevisionRefusal {
 	if (isAgeRestricted(error)) return { status: AGE_RESTRICTED.status, message: AGE_RESTRICTED.message };
+	// KYB, the payer's envelope, the approval threshold — the business spend gate (BB3).
+	const spend = spendGateRefusal(error);
+	if (spend) return { status: spend.status, message: spend.message };
 	const said = error.message.replace(/\s+/g, " ").trim().slice(0, 300);
 	switch (error.code) {
 		case "PF402":

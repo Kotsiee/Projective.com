@@ -396,6 +396,19 @@ BEGIN
             COALESCE(v_payer, v_owner),
             COALESCE(v_project_currency, 'USD')
         );
+        -- The business spend gate as a CHECK (BB3): nobody is charged for a lock KYB or the threshold
+        -- would refuse. Nothing is counted or consumed here — the settlement's fund_stage / fund_ticket /
+        -- fund_paid_revision run the real gate as the payer, and re-check all of it.
+        IF v_payer IS NOT NULL THEN
+            PERFORM finance.fn_assert_business_spend(
+                v_wallet_id, v_uid, v_amount,
+                CASE WHEN p_revision_id IS NOT NULL THEN 'revisions'
+                     WHEN p_ticket_id IS NOT NULL THEN 'tickets'
+                     ELSE 'project_stages' END,
+                COALESCE(p_revision_id, p_ticket_id, p_stage_id),
+                false
+            );
+        END IF;
     END IF;
 
     INSERT INTO finance.inbound_payments (

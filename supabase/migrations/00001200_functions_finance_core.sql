@@ -353,9 +353,15 @@ $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, projects;
 -- A hold that cannot be made is REFUSED, never skipped: SQLSTATE PF402, a "Needs funding — …" message,
 -- and DETAIL = {state: 'needs_funding', reason, amount_minor, currency} for the caller to read. Reasons:
 -- `no_price` · `no_wallet` (no payer wallet in the project's currency) · `insufficient_funds` ·
--- `spending_limit` (the project owner's envelope on a business wallet). A missing stage is not a funding
--- problem and raises check_violation; a missing payee is a PREPAID hold (Decision #197), whose payee
--- the claim binds (fn_bind_ticket_escrow). Already held -> NULL, the one early return (#165(A)),
+-- `spending_limit` · `needs_approval` · `kyb_required` (the business spend gate refused it). A missing
+-- stage is not a funding problem and raises check_violation; a missing payee is a PREPAID hold
+-- (Decision #197), whose payee the claim binds (fn_bind_ticket_escrow). A business payer's hold goes
+-- through finance.fn_assert_business_spend (ref `tickets`): when a door (fund_stage, fund_ticket, the
+-- basket) already gated this spend for its funder in this transaction, the gate's cover passes it
+-- without counting again; otherwise the hold is AUTOMATIC (a claim, the Chain Reaction, the auto-fund
+-- drain) and the project owner is the spender, as before. A gate refusal here is a PF402 needs-funding
+-- refusal like any other, with the gate's DETAIL merged in, so every caller that turns PF402 into Needs
+-- funding (and the auto-fund queue that files the approval) still does. Already held -> NULL, the one early return (#165(A)),
 -- also when a concurrent hold commits first (uq_escrows_ticket_base_held, #189: nothing is debited). The
 -- payer is the project's client business or, when the project has none, its owner as an INDIVIDUAL
 -- client (PRODUCT_SPEC §Escrow, Wallets & Finance #5). The wallet and balance are checked before the
@@ -376,6 +382,9 @@ DECLARE
     v_wallet uuid;
     v_balance bigint;
     v_reason text;
+    v_gate_msg text;
+    v_gate_raw text;
+    v_gate_detail jsonb := '{}'::jsonb;
     v_href text;
     v_constraint text;
 BEGIN
@@ -426,11 +435,21 @@ BEGIN
             v_reason := 'no_wallet';
         ELSIF v_balance < v_amount THEN
             v_reason := 'insufficient_funds';
-        -- The envelope is the SPENDER's: the project owner who commits the business's money. auth.uid()
-        -- here is the freelancer whose claim triggered the hold, who never has an envelope on the payer's
-        -- wallet, so checking them waved every hold through. An individual's own wallet has no envelope.
-        ELSIF v_payer_type = 'business' AND NOT finance.fn_check_spending_limit(v_wallet, v.spender, v_amount) THEN
-            v_reason := 'spending_limit';
+        ELSIF v_payer_type = 'business' THEN
+            -- An automatic hold's spender is the project owner who commits the business's money: auth.uid()
+            -- here is the freelancer whose claim triggered it, who never has an envelope on the payer's
+            -- wallet. A door that gated this spend for its funder has covered it already.
+            BEGIN
+                PERFORM finance.fn_assert_business_spend(v_wallet, v.spender, v_amount, 'tickets', p_ticket_id);
+            EXCEPTION WHEN SQLSTATE 'PA403' OR SQLSTATE 'PK403' THEN
+                GET STACKED DIAGNOSTICS v_gate_msg = MESSAGE_TEXT, v_gate_raw = PG_EXCEPTION_DETAIL;
+                v_gate_detail := COALESCE(NULLIF(v_gate_raw, '')::jsonb, '{}'::jsonb);
+                v_reason := CASE split_part(v_gate_msg, ':', 1)
+                    WHEN 'kyb_required' THEN 'kyb_required'
+                    WHEN 'needs_approval' THEN 'needs_approval'
+                    ELSE 'spending_limit'
+                END;
+            END;
         END IF;
     END IF;
 
@@ -441,12 +460,14 @@ BEGIN
                 WHEN 'no_price' THEN 'this ticket has no price to hold in escrow yet.'
                 WHEN 'no_wallet' THEN 'the client has no wallet in ' || v_currency || ' to hold this ticket''s escrow from.'
                 WHEN 'insufficient_funds' THEN 'the client''s wallet doesn''t hold enough for this ticket''s escrow.'
+                WHEN 'kyb_required' THEN 'the business must complete verification (KYB) before its wallet can hold escrow.'
+                WHEN 'needs_approval' THEN 'this ticket''s escrow is at or above the business''s approval threshold and needs an approver.'
                 ELSE 'this would exceed the project owner''s spending limit on the business wallet.'
             END,
-            DETAIL = jsonb_build_object(
+            DETAIL = (v_gate_detail || jsonb_build_object(
                 'state', 'needs_funding', 'reason', v_reason,
                 'amount_minor', v_amount, 'currency', v_currency
-            )::text;
+            ))::text;
     END IF;
 
     BEGIN
@@ -568,6 +589,9 @@ DECLARE
     v_wallet uuid;
     v_balance bigint;
     v_reason text;
+    v_gate_msg text;
+    v_gate_raw text;
+    v_gate_detail jsonb := '{}'::jsonb;
 BEGIN
     SELECT rv.id, rv.ticket_id, rv.project_stage_id AS stage_id, rv.price_cents AS amount,
            t.current_assignee_id AS assignee,
@@ -613,8 +637,20 @@ BEGIN
             v_reason := 'no_wallet';
         ELSIF v_balance < v.amount THEN
             v_reason := 'insufficient_funds';
-        ELSIF v_payer_type = 'business' AND NOT finance.fn_check_spending_limit(v_wallet, v.spender, v.amount) THEN
-            v_reason := 'spending_limit';
+        ELSIF v_payer_type = 'business' THEN
+            -- fund_paid_revision gated this spend for its funder (the gate's cover passes it); a hold
+            -- reached any other way spends as the project owner. Refusals read as fn_hold_ticket_escrow's.
+            BEGIN
+                PERFORM finance.fn_assert_business_spend(v_wallet, v.spender, v.amount, 'revisions', p_revision_id);
+            EXCEPTION WHEN SQLSTATE 'PA403' OR SQLSTATE 'PK403' THEN
+                GET STACKED DIAGNOSTICS v_gate_msg = MESSAGE_TEXT, v_gate_raw = PG_EXCEPTION_DETAIL;
+                v_gate_detail := COALESCE(NULLIF(v_gate_raw, '')::jsonb, '{}'::jsonb);
+                v_reason := CASE split_part(v_gate_msg, ':', 1)
+                    WHEN 'kyb_required' THEN 'kyb_required'
+                    WHEN 'needs_approval' THEN 'needs_approval'
+                    ELSE 'spending_limit'
+                END;
+            END;
         END IF;
     END IF;
     IF v_reason IS NOT NULL THEN
@@ -624,12 +660,14 @@ BEGIN
                 WHEN 'no_price' THEN 'this revision has no price to hold in escrow.'
                 WHEN 'no_wallet' THEN 'the client has no wallet in ' || v_currency || ' to hold this revision''s escrow from.'
                 WHEN 'insufficient_funds' THEN 'the client''s wallet doesn''t hold enough for this revision''s escrow.'
+                WHEN 'kyb_required' THEN 'the business must complete verification (KYB) before its wallet can hold escrow.'
+                WHEN 'needs_approval' THEN 'this revision''s escrow is at or above the business''s approval threshold and needs an approver.'
                 ELSE 'this would exceed the project owner''s spending limit on the business wallet.'
             END,
-            DETAIL = jsonb_build_object(
+            DETAIL = (v_gate_detail || jsonb_build_object(
                 'state', 'needs_funding', 'reason', v_reason,
                 'amount_minor', v.amount, 'currency', v_currency
-            )::text;
+            ))::text;
     END IF;
 
     INSERT INTO finance.escrows (

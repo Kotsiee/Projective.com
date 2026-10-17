@@ -510,6 +510,8 @@ BEGIN
             USING ERRCODE = 'PF402';
     END IF;
 
+    -- The spend gate (KYB, the buyer's envelope, the threshold — BB3) runs once, in place_wallet_order
+    -- below, on what the order actually charges; a refusal there takes this credit back with it.
     PERFORM finance.fn_ensure_wallet('business', v_business.id, v_currency);
     PERFORM finance.fn_wallet_credit(v_business.id, 'business', v_currency, p_amount, 'on_account_credit', 'baskets', v_basket.id);
     RETURN finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key);

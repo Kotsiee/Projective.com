@@ -398,10 +398,22 @@ Governs shared wallets (Business / Team / Enterprise).
   change; the per-kind `org.business_permission` / `org.team_permission` enums are retired. Deciding an
   over-limit spend needs `approve_spend`, not `manage_members` (which also carries `withdraw`).
 - **Spending caps** (`finance.spending_limits`, existing): per-member `cap_cents` per `weekly` /
-  `monthly` / `total` period; `spent_cents` tracked, `fn_check_spending_limit` enforced at hold
-  time.
+  `monthly` / `total` period and an optional per-transaction ceiling; `spent_cents` tracked,
+  `fn_check_spending_limit` enforced in the transaction that moves the money. A cap row, and a spend
+  request, is read by the member it binds and by holders of `distribute` or `approve_spend` (the owner
+  included) — `finance.fn_reads_wallet_envelopes`, Decision #238.
+- **One spend gate for business money** (`finance.fn_assert_business_spend`, BUSINESSES_AUDIT BF19 /
+  BF21 / BF22): every door that moves a business's pooled money — the basket, paying on account, a
+  transfer out, funding a stage, ticket or paid revision, the card escrow lock, and the escrow holds —
+  requires a **KYB-verified** business, counts the spend against the envelope of the **member who
+  acts** (never the project owner's, unless no person acts: a claim, the Chain Reaction or the
+  auto-fund drain spends as the project owner) **once** per spend (a basket's ticket line counts
+  against the buyer at the basket, not again at its hold), and applies the approval threshold. The
+  threshold is the wallet's own `approval_threshold_cents`, else the platform's
+  `vault_approval_threshold_cents` (seeded **0** = none) — one resolver, `fn_business_threshold`, for
+  every reader. Team and personal spending are not governed by this gate.
 - **Approval thresholds** (`finance.spend_approvals`): a spend at/above
-  `vault_approval_threshold_cents` (or over a member's cap) queues for a **second approver** before
+  the threshold above (or over a member's cap) queues for a **second approver** before
   it executes.
 - **Audit** (`finance.ledger_audit`): immutable who/when/amount for every
   add/spend/distribute/withdraw.

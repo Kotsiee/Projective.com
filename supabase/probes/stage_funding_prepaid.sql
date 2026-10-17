@@ -65,6 +65,8 @@ BEGIN
      ORDER BY fp.user_id LIMIT 1;
     IF v_fl IS NULL THEN RAISE EXCEPTION 'FAIL fixture: no freelancer'; END IF;
 
+    -- The business spend gate (BB3) refuses an unverified business; this probe is about what is held.
+    UPDATE org.business_profiles SET kyb_status = 'verified' WHERE id = v_biz;
     PERFORM finance.fn_ensure_wallet('business', v_biz, v_currency);
     PERFORM finance.fn_wallet_credit(v_biz, 'business', v_currency, 1000000, 'topup', 'inbound_payments', gen_random_uuid());
 

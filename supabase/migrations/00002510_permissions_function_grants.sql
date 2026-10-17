@@ -967,6 +967,12 @@ FROM authenticated;
 REVOKE ALL ON FUNCTION finance.fn_check_spending_limit (uuid, uuid, bigint)
 FROM authenticated;
 
+-- The business spend gate (BUSINESSES_AUDIT BF19, BF21, BF22): run only inside the money doors and holds.
+REVOKE ALL ON FUNCTION finance.fn_business_threshold (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_assert_business_spend (uuid, uuid, bigint, text, uuid, boolean)
+FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_close_spend_cover (uuid) FROM PUBLIC, anon, authenticated;
+
 
 -- --- finance: the Stripe fiat rails (00001230, Decision #125) ---
 -- USER doors: each authorises the caller with auth.uid() and records a REQUEST — it can never mark
