@@ -30,7 +30,16 @@ _Not yet documented._ (P2.)
 
 ## Changelog
 
-_Not yet documented._ (P5.)
+| Table                          | RLS | Policy                              | Command | Roles                   | Rule                                                                 |
+| :----------------------------- | :-- | :---------------------------------- | :------ | :---------------------- | :------------------------------------------------------------------- |
+| `editorial.changelog_releases` | on  | `changelog_releases_select_public`  | SELECT  | `anon`, `authenticated` | `NOT withdrawn AND released_on <= (now() AT TIME ZONE 'UTC')::date` |
+
+The rule is the content source's `visible` predicate (`!withdrawn && releasedOn <= UTC today`),
+pinned to UTC so it is never narrower than it whatever the session's TimeZone. Privileges
+(`00002520`, `[editorial.changelog]`): `GRANT SELECT … TO anon, authenticated` only — no client
+INSERT, UPDATE, DELETE or TRUNCATE; the service role holds the writes through the schema-wide grant.
+Pinned by `supabase/probes/editorial_changelog.sql` (one SELECT policy, read-only client roles, a
+scheduled and a withdrawn release invisible to both roles, every client write refused `42501`).
 
 ## Articles
 

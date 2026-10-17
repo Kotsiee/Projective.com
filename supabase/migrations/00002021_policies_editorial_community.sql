@@ -25,6 +25,13 @@
 
 
 -- #region [editorial.changelog]
+-- A release is public from its release day (UTC) while it is not withdrawn: the same rule as the
+-- content source's `visible` predicate (services/editorial/content/changelog.ts), pinned to UTC so it
+-- is never narrower than it whatever the session's TimeZone. No write policy: rows arrive through the
+-- generated 00005072 and any operator tooling runs as the service role.
+CREATE POLICY changelog_releases_select_public ON editorial.changelog_releases
+    FOR SELECT TO anon, authenticated
+    USING (NOT withdrawn AND released_on <= (now() AT TIME ZONE 'UTC')::date);
 -- #endregion
 
 

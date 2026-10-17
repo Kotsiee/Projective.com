@@ -210,6 +210,22 @@
 		font-size: var(--text-lg);
 	}
 }
+
+/*
+ * Feed (the changelog): from --bp-md of frame each entry sets a dated gutter beside its body, so the
+ * column widens by that gutter and its gap — the body still reads at --measure. The surface's own
+ * timeline reads --doc-feed-gutter for the gutter itself.
+ */
+.ui-doc--feed {
+	--doc-feed-gutter: 8.5rem;
+}
+
+@container ui-doc (min-width: 768px) {
+	.ui-doc--feed .ui-doc__article {
+		grid-template-columns: minmax(0, calc(var(--measure) + var(--doc-feed-gutter) +
+			var(--space-6)));
+	}
+}
 /* #endregion */
 
 /* #region Header — display · lead · meta (§A.4's registers) */
@@ -267,9 +283,13 @@
 	color: var(--text-secondary);
 }
 
+/*
+ * Flow content, not a flex row: as flex items, a fact's text runs lost their edge spaces, so
+ * "Updated <time>" read "Updated17 October 2026". In flow the words, the <time> and the middot
+ * share one line box and the baseline for free.
+ */
 .ui-doc-header__meta-item {
-	display: inline-flex;
-	align-items: baseline;
+	display: inline-block;
 }
 
 .ui-doc-header__sep {

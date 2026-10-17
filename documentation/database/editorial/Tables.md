@@ -59,7 +59,32 @@ article.)
 
 ## Changelog
 
-_Not yet documented._ (P5: releases.)
+**`editorial.changelog_releases`** — one row per release of the platform (P5, Decision #278), read
+by `/changelog`, `/changelog/[version]` and `/changelog/rss.xml` through `ChangelogBackendService`.
+Zod row schema `ChangelogReleaseRowSchema` (`@projective/types/editorial`); records authored in
+`services/editorial/content/changelog.ts`, generated into `00005072_seed_editorial_changelog.sql`.
+
+| Column        | Type      | Notes                                                                                                                                                                                                 |
+| :------------ | :-------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`     | `text`    | **PK.** A semantic version in lower case, ≤ 64 characters (`changelog_releases_version_semver`): the natural key the seed upserts on and the public address `/changelog/<version>`. Permanent — `trg_changelog_releases_version_immutable` refuses any change (`23514`). |
+| `released_on` | `date`    | The day the release shipped. A future day keeps the release hidden until that UTC day.                                                                                                                 |
+| `title`       | `text`    | 1–120 characters, not blank.                                                                                                                                                                          |
+| `summary`     | `text`    | 1–320 characters, not blank: the feed's lead line, the RSS `<description>` and the page's meta description.                                                                                           |
+| `categories`  | `text[]`  | At least one, no NULL, each from `CHANGELOG_CATEGORIES` — `escrow` · `projects` · `discovery` · `messaging` · `workspaces` · `ux` · `security` · `infrastructure` (`changelog_releases_categories_known`). Inline meta text on a release; the feed's filter facets. |
+| `body`        | `jsonb`   | A non-empty array of ContentNode blocks (`@projective/types/content`). The row schema refuses an `image` node (pictures are the gallery) and an explicit `h3` id (a feed anchors many bodies on one page). |
+| `images`      | `jsonb`   | The release's gallery, default `[]`, at most 12: `{ src, alt, w, h, caption? }` (`ChangelogImageSchema`), opened in the lightbox.                                                                       |
+| `withdrawn`   | `boolean` | Default `false`. A retracted release: hidden from every reader, never deleted (the seed never prunes).                                                                                                 |
+
+**Visibility:** a reader sees a release when `NOT withdrawn AND released_on <= today (UTC)` — the
+table's SELECT policy ([Policies.md](Policies.md#changelog)) and the content source's `visible`
+predicate state the same rule, so the fixture and live roads serve the same releases.
+
+**Versions and dates** are reconstructed from the build history: each MINOR version is one
+milestone of work that landed on `main`, dated by its last decision; every release is `0.x` until
+launch. The derivation is recorded in the content source's header and in Decision #278.
+
+No secondary index: the service reads the whole table (tens of rows) and orders it, and the one
+keyed read — a release by version — is the primary key.
 
 ## Articles
 

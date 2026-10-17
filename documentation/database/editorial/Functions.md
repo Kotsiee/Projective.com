@@ -21,7 +21,12 @@ _Not yet documented._ (P2.)
 
 ## Changelog
 
-_Not yet documented._ (P5.)
+| Function                                          | Returns   | Purpose                                                                                                                                                                                                                                                            |
+| :------------------------------------------------ | :-------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `editorial.fn_guard_release_version_immutable()`  | `trigger` | `BEFORE UPDATE OF version` on `editorial.changelog_releases` (`trg_changelog_releases_version_immutable`, `00001898`): a release's version is its permanent public address, so any change raises `23514` — the changelog's twin of `fn_guard_slug_immutable` (Decisions #274 (k) / #278). A mis-versioned release is withdrawn and authored again. The generated seed's upsert never sets the key, so re-running it never trips the guard. |
+
+No client EXECUTE grant (`00002510`, `[editorial.changelog]`): a trigger function needs none, and the
+changelog is read straight from its table.
 
 ## Articles
 

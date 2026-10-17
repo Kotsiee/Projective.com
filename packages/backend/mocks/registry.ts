@@ -256,9 +256,9 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		label: "Help centre, changelog & articles",
 		gate: "EDITORIAL_BACKEND_LIVE",
 		// The shared reader (`services/editorial/editorial-source.ts` readEditorialTable) has a real
-		// anon-client path, but no surface service calls it until the help centre, changelog and
-		// articles work orders add their tables — so nothing reads the database through this gate yet.
-		liveImplemented: false,
+		// anon-client path, and `ChangelogBackendService` reads `editorial.changelog_releases` through
+		// it (P5); the help centre and articles join it as their work orders land.
+		liveImplemented: true,
 		modules: [
 			"services/editorial/content/help.ts",
 			"services/editorial/content/changelog.ts",

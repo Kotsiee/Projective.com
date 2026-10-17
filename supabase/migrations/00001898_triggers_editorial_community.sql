@@ -12,6 +12,9 @@
 
 
 -- #region [editorial.changelog]
+CREATE TRIGGER trg_changelog_releases_version_immutable
+    BEFORE UPDATE OF version ON editorial.changelog_releases
+    FOR EACH ROW EXECUTE FUNCTION editorial.fn_guard_release_version_immutable();
 -- #endregion
 
 

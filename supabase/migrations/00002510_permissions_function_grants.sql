@@ -142,6 +142,8 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA editorial, community TO service_role;
 
 
 -- #region [editorial.changelog]
+-- Nothing to grant back: editorial.fn_guard_release_version_immutable() is a trigger function, which
+-- needs no EXECUTE for the writer that fires it, and the changelog is read straight from its table.
 -- #endregion
 
 
