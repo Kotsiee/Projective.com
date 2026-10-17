@@ -16,7 +16,8 @@ import {
 /**
  * invitation-strip-model — the pure rules of the `/teams` · `/businesses` invitation strip: which
  * control each row gets, where focus goes after an answer, what a row says about itself, what a refused
- * answer tells the reader, and when the strip is on screen at all.
+ * answer tells the reader, when the strip is on screen at all, whether it may be dismissed, and when it
+ * is the page's list.
  *
  * The strip is ONE decision region (DESIGN_SYSTEM §B.8.1), so it may carry exactly one filled button:
  * the first row's Accept is the tier-3 workflow commit and every other Accept is the tier-4 neutral
@@ -179,6 +180,27 @@ export function invitationStripShown(state: {
 }): boolean {
 	if (state.waiting === 0 && !state.answeredHere) return false;
 	return state.onInvitationsTab || !state.dismissed;
+}
+
+/**
+ * Whether the strip draws its dismiss control: only where dismissing hides it (§3.11 — a control that
+ * renders must do something). On the Invitations tab the strip IS the list and stays put, so a dismiss
+ * there would be inert.
+ */
+export function invitationStripDismissible(state: { onInvitationsTab: boolean }): boolean {
+	return !state.onInvitationsTab;
+}
+
+/**
+ * Whether the strip stands in for the roster body. On the Invitations tab, while the strip is on screen,
+ * it is the one list and carries the one empty line, so the body draws no entity count and no blank of
+ * its own — never "No invitations waiting." beside rows that are waiting, nor two empty sentences.
+ */
+export function invitationStripIsTheList(state: {
+	shown: boolean;
+	onInvitationsTab: boolean;
+}): boolean {
+	return state.shown && state.onInvitationsTab;
 }
 // #endregion
 

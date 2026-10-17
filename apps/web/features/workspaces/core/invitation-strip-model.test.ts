@@ -1,7 +1,8 @@
 /**
  * The invitation strip's pure rules (Teams work order R2): one filled Accept per strip, focus after an
- * answer, the row's meta facts, the typed refusals and the strip's visibility — plus two source gates
- * that hold the rebuild in place (the strip draws no kind chip and its sheet no fill of its own).
+ * answer, the row's meta facts, the typed refusals and the strip's visibility, dismissal and list role —
+ * plus two source gates that hold the rebuild in place (no file in the feature draws a kind chip, and
+ * the strip's rules paint no fill of their own).
  */
 import { assert, assertEquals, assertStrictEquals } from "@std/assert";
 import type { IncomingInvite } from "@projective/types/workspace";
@@ -11,6 +12,8 @@ import {
 	expiryLabel,
 	filledAcceptCount,
 	focusAfterResolving,
+	invitationStripDismissible,
+	invitationStripIsTheList,
 	invitationStripShown,
 	inviteMeta,
 	inviteRefusal,
@@ -196,6 +199,34 @@ Deno.test("invitationStripShown: something to show, and not dismissed unless on 
 	// Emptied by an answer given here: the heading stays so focus has somewhere to land.
 	assertEquals(invitationStripShown({ ...base, waiting: 0, answeredHere: true }), true);
 });
+
+Deno.test("invitationStripDismissible: no dismiss control where dismissing cannot hide the strip", () => {
+	assertEquals(invitationStripDismissible({ onInvitationsTab: false }), true);
+	assertEquals(invitationStripDismissible({ onInvitationsTab: true }), false);
+	// Every state that offers a dismiss must actually hide the strip once it is pressed (§3.11).
+	for (const waiting of [0, 1, 3]) {
+		for (const answeredHere of [false, true]) {
+			for (const onInvitationsTab of [false, true]) {
+				const state = { waiting, answeredHere, onInvitationsTab };
+				if (!invitationStripShown({ ...state, dismissed: false })) continue;
+				if (!invitationStripDismissible(state)) continue;
+				assertEquals(
+					invitationStripShown({ ...state, dismissed: true }),
+					false,
+					`a dismiss offered at ${JSON.stringify(state)} is inert`,
+				);
+			}
+		}
+	}
+});
+
+Deno.test("invitationStripIsTheList: on the Invitations tab the strip carries the list and its empty line", () => {
+	assertEquals(invitationStripIsTheList({ shown: true, onInvitationsTab: true }), true);
+	// No strip on that tab (nothing ever waited): the body's own blank says so, once.
+	assertEquals(invitationStripIsTheList({ shown: false, onInvitationsTab: true }), false);
+	// Any other tab: the strip sits above the entities, which the body still lists.
+	assertEquals(invitationStripIsTheList({ shown: true, onInvitationsTab: false }), false);
+});
 // #endregion
 
 // #region Immutable collections
@@ -215,15 +246,25 @@ Deno.test("the id-set and map helpers never mutate their input", () => {
 // #endregion
 
 // #region Source gates
+/** Every source file under `dir` (components, islands, sheets, core), recursively. */
+function* featureSources(dir: URL): Generator<URL> {
+	for (const entry of Deno.readDirSync(dir)) {
+		if (entry.isDirectory) yield* featureSources(new URL(`${entry.name}/`, dir));
+		else if (/\.(tsx?|css)$/.test(entry.name)) yield new URL(entry.name, dir);
+	}
+}
+
 Deno.test("the strip draws the kind as text: no wsp-chip--kind anywhere in the feature", () => {
-	const strip = Deno.readTextFileSync(
-		new URL("../components/InvitationStrip.tsx", import.meta.url),
-	);
-	assert(!/wsp-chip--kind/.test(strip), "InvitationStrip.tsx still draws a kind chip");
-	const tokens = Deno.readTextFileSync(
-		new URL("../styles/workspace-tokens.css", import.meta.url),
-	);
-	assert(!/\.wsp-chip--kind\b/.test(tokens), "the dead .wsp-chip--kind rule is back");
+	const self = new URL(import.meta.url).href;
+	const offenders: string[] = [];
+	let read = 0;
+	for (const file of featureSources(new URL("../", import.meta.url))) {
+		if (file.href === self) continue;
+		read++;
+		if (/wsp-chip--kind\b/.test(Deno.readTextFileSync(file))) offenders.push(file.pathname);
+	}
+	assert(read > 20, `the walk read only ${read} files — it is not covering the feature`);
+	assertEquals(offenders, [], "a kind chip (or its .wsp-chip--kind rule) is back in the feature");
 });
 
 Deno.test("the strip's rules carry no fill of their own and no hand-made Accept", () => {

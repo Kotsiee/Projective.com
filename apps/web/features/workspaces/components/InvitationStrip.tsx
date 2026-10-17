@@ -25,7 +25,8 @@ import { EntityMark } from "./EntityMark.tsx";
  *
  *   1. **It never blocks.** The roster below stays usable and the strip is dismissible: an invitation
  *      the reader is not ready to answer must not hold their own entities hostage. Dismissing hides it;
- *      declining answers it. Different acts, not conflated.
+ *      declining answers it. Different acts, not conflated. On the Invitations tab the strip IS the list,
+ *      so it cannot be hidden there and draws no dismiss control (§3.11).
  *   2. **One filled button in the whole strip** (§B.8.1). The first row's Accept is the tier-3 commit,
  *      every other Accept the tier-4 neutral outline, Decline the tier-5 text on every row. The plan is
  *      computed by the caller ({@link InviteRowActions}), so answering the first row hands the fill on.
@@ -49,6 +50,11 @@ export interface InvitationStripProps {
 	outcome: string | null;
 	/** Answer one invitation. */
 	onRespond: (invite: IncomingInvite, accept: boolean) => void;
+	/**
+	 * Whether dismissing can hide the strip here (`invitationStripDismissible`). When `false` — the
+	 * Invitations tab, where the strip IS the list — no dismiss control renders at all.
+	 */
+	dismissible: boolean;
 	/** Hide the strip for this visit without answering anything. */
 	onDismiss: () => void;
 	/** The clock the day count reads (default: now). */
@@ -67,7 +73,7 @@ function acceptId(inviteId: string): string {
 
 /** The strip: heading + count, one row per waiting invitation, and the polite outcome line. */
 export function InvitationStrip(props: InvitationStripProps): JSX.Element {
-	const { invitations, actions, refusals, outcome, onRespond, onDismiss } = props;
+	const { invitations, actions, refusals, outcome, onRespond, dismissible, onDismiss } = props;
 	const headingRef = useRef<HTMLHeadingElement>(null);
 	const now = props.nowMs ?? Date.now();
 	const count = invitations.length;
@@ -93,17 +99,19 @@ export function InvitationStrip(props: InvitationStripProps): JSX.Element {
 						</>
 					)}
 				</h2>
-				<Tooltip content="Hide until next time — this does not decline them" placement="top">
-					<Button
-						iconOnly
-						variant="text"
-						severity="secondary"
-						size="sm"
-						icon={cloneGlyph(CloseGlyph)}
-						aria-label="Hide invitations"
-						onClick={onDismiss}
-					/>
-				</Tooltip>
+				{dismissible && (
+					<Tooltip content="Hide until next time — this does not decline them" placement="top">
+						<Button
+							iconOnly
+							variant="text"
+							severity="secondary"
+							size="sm"
+							icon={cloneGlyph(CloseGlyph)}
+							aria-label="Hide invitations"
+							onClick={onDismiss}
+						/>
+					</Tooltip>
+				)}
 			</div>
 
 			{count > 0

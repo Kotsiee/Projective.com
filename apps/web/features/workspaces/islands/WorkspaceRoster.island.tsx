@@ -18,7 +18,11 @@ import { WorkspaceService } from "../core/WorkspaceService.ts";
 import type { RosterNotice } from "../core/console-route.ts";
 import { useContextSwitch } from "../core/useContextSwitch.ts";
 import { useInvitationAnswers } from "../core/useInvitationAnswers.ts";
-import { invitationStripShown } from "../core/invitation-strip-model.ts";
+import {
+	invitationStripDismissible,
+	invitationStripIsTheList,
+	invitationStripShown,
+} from "../core/invitation-strip-model.ts";
 import { openCreate, rosterView } from "../core/workspace-state.ts";
 import { displayZoom, gridColWidth, workspaceZoom } from "../core/view-state.ts";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
@@ -133,6 +137,13 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 			waiting: invites.value.length,
 			answeredHere: answers.answeredHere.value,
 			dismissed: stripDismissed.value,
+			onInvitationsTab: tab.value === "invitations",
+		})
+	);
+	/** On the Invitations tab the strip is the one list and its one empty line; the body defers to it. */
+	const stripIsTheList = useComputed(() =>
+		invitationStripIsTheList({
+			shown: stripVisible.value,
 			onInvitationsTab: tab.value === "invitations",
 		})
 	);
@@ -317,6 +328,9 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 								refusals={answers.refusals.value}
 								outcome={answers.outcome.value}
 								onRespond={respond}
+								dismissible={invitationStripDismissible({
+									onInvitationsTab: tab.value === "invitations",
+								})}
 								onDismiss={() => (stripDismissed.value = true)}
 							/>
 						</div>
@@ -383,7 +397,7 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 										onCreate={() => openCreate(props.kind)}
 									/>
 								)
-								: (
+								: !stripIsTheList.value && (
 									<>
 										<p class="wsp-roster__count" aria-live="polite">
 											{countLabel(props.kind, rows.value.length)}
