@@ -1,5 +1,6 @@
 import { assert, assertEquals, assertFalse } from "@std/assert";
 import {
+	NEWSLETTER_EMAIL_MAX,
 	NEWSLETTER_TOPICS,
 	NewsletterSource,
 	NewsletterSubscribeRpcResultSchema,
@@ -18,6 +19,12 @@ const MIGRATION = new URL(
 	import.meta.url,
 );
 const sql = Deno.readTextFileSync(MIGRATION).replace(/\r\n/g, "\n");
+const writer = Deno.readTextFileSync(
+	new URL(
+		"../../../supabase/migrations/00001320_functions_editorial_community.sql",
+		import.meta.url,
+	),
+).replace(/\r\n/g, "\n");
 
 /** The quoted literals inside the first `ARRAY[…]` / `IN (…)` following `marker`. */
 function literalsAfter(marker: string, open: string, close: string): string[] {
@@ -59,6 +66,17 @@ Deno.test("a malformed address is still refused on the email field", () => {
 	assertFalse(parsed.success);
 	assertEquals(parsed.error.issues[0].path, ["email"]);
 });
+
+Deno.test("an address over 254 characters is a field error; 254 is accepted", () => {
+	const at = (n: number) => `${"a".repeat(n - "@example.com".length)}@example.com`;
+	assert(NewsletterSubscribeSchema.safeParse({ email: at(NEWSLETTER_EMAIL_MAX) }).success);
+	const long = NewsletterSubscribeSchema.safeParse({ email: at(NEWSLETTER_EMAIL_MAX + 1) });
+	assertFalse(long.success);
+	assertEquals(long.error.issues[0].path, ["email"]);
+	assertEquals(long.error.issues[0].message, "Enter a valid email address.");
+	// Measured after the trim, so surrounding spaces never push a valid address over.
+	assert(NewsletterSubscribeSchema.safeParse({ email: `  ${at(NEWSLETTER_EMAIL_MAX)}  ` }).success);
+});
 // #endregion
 
 // #region Twins of the table
@@ -67,6 +85,16 @@ Deno.test("NEWSLETTER_TOPICS mirrors newsletter_subscriptions_topics_check value
 	assertEquals([...NEWSLETTER_TOPICS], allowed);
 	assertEquals(NewsletterTopic.options, allowed);
 	assert(sql.includes("topics text[] NOT NULL DEFAULT ARRAY['general']::text[]"));
+});
+
+Deno.test("a pending re-subscribe holds the same topic set as the row's topics", () => {
+	const allowed = literalsAfter("resubscribe_topics <@ ARRAY[", "ARRAY[", "]");
+	assertEquals([...NEWSLETTER_TOPICS], allowed);
+});
+
+Deno.test("NEWSLETTER_EMAIL_MAX is the table's CHECK and the writer's guard", () => {
+	assert(sql.includes(`CHECK (char_length(email) <= ${NEWSLETTER_EMAIL_MAX})`));
+	assert(writer.includes(`char_length(v_email) > ${NEWSLETTER_EMAIL_MAX}`));
 });
 
 Deno.test("NewsletterSource mirrors newsletter_subscriptions_source_check value for value", () => {

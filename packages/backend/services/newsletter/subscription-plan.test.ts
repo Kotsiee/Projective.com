@@ -10,6 +10,7 @@ Deno.test("a new address is created with only the requested topic", () => {
 	assertEquals(planNewsletterSubscription(null, "changelog"), {
 		outcome: "created",
 		topics: ["changelog"],
+		resubscribeTopics: null,
 		writes: true,
 		needsConfirmation: true,
 		alreadySubscribed: false,
@@ -52,15 +53,42 @@ Deno.test("adding the topic twice converges: the second subscribe is unchanged",
 	assertEquals(second.topics, first.topics);
 });
 
-Deno.test("an unsubscribed address reopens with only the requested topic and must confirm again", () => {
+Deno.test("an unsubscribed address keeps its opt-out: the request is recorded, pending", () => {
 	const plan = planNewsletterSubscription(
-		{ topics: ["changelog", "general"], unsubscribedAt: "2026-10-01T00:00:00Z" },
+		{ topics: ["general", "changelog"], unsubscribedAt: "2026-10-01T00:00:00Z" },
 		"general",
 	);
 	assertEquals(plan.outcome, "resubscribed");
-	assertEquals(plan.topics, ["general"]);
+	// The row's topics are untouched (and unsendable while unsubscribed); the request waits.
+	assertEquals(plan.topics, ["changelog", "general"]);
+	assertEquals(plan.resubscribeTopics, ["general"]);
+	assertEquals(plan.writes, true);
 	assertEquals(plan.needsConfirmation, true);
 	assertEquals(plan.alreadySubscribed, false);
+});
+
+Deno.test("a second request on an unsubscribed address joins the pending set", () => {
+	const plan = planNewsletterSubscription(
+		{
+			topics: ["general"],
+			unsubscribedAt: "2026-10-01T00:00:00Z",
+			resubscribeTopics: ["general"],
+		},
+		"changelog",
+	);
+	assertEquals(plan.outcome, "resubscribed");
+	assertEquals(plan.resubscribeTopics, ["changelog", "general"]);
+	assertEquals(plan.alreadySubscribed, false);
+	const again = planNewsletterSubscription(
+		{
+			topics: ["general"],
+			unsubscribedAt: "2026-10-01T00:00:00Z",
+			resubscribeTopics: plan.resubscribeTopics,
+		},
+		"general",
+	);
+	assertEquals(again.outcome, "resubscribed");
+	assertEquals(again.resubscribeTopics, ["changelog", "general"]);
 });
 
 Deno.test("normalizeTopics is the stored form: distinct, codepoint-sorted", () => {

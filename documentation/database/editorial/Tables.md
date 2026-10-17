@@ -31,6 +31,15 @@ nobody hand-edits them; `content-sql.test.ts` fails while a committed file and i
 With `EDITORIAL_BACKEND_LIVE` off the same records are served through the same row parse and mapping
 (`services/editorial/editorial-source.ts`), so the fixture path cannot drift from the database.
 
+The generator's rules a table must fit: column names are plain lowercase identifiers
+(`[a-z_][a-z0-9_]*`), emitted double-quoted, so `order` or `default` is a fine column name; a NUL
+anywhere (text, or any string or key inside a jsonb value) fails generation. **Nothing is pruned:**
+a record removed from its source, or whose key changes, keeps its old row in any database that is
+not rebuilt — the removal lands only on the next reset. So content is retracted by authoring the
+record hidden (a visibility column the table's `visible` predicate and SELECT policy read — see
+[Policies.md](Policies.md)), never by deleting it, which is also the rule that nothing is
+hard-deleted.
+
 Because these migrations run where the development personas do not exist, an editorial row never
 foreign-keys onto a seeded `org.users_public` row or a seeded storage object: an article's author is
 an editorial row of its own, and an image is a static asset.

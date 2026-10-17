@@ -86,6 +86,65 @@ Deno.test("a drifted row is a 500 naming the table and row, not a crash", async 
 	assertEquals(result.details?.row, 0);
 });
 
+// #region Visibility
+const Dated = z.object({
+	slug: z.string(),
+	title: z.string(),
+	published_on: z.string().nullable(),
+});
+type Dated = z.infer<typeof Dated>;
+interface Release {
+	slug: string;
+	title: string;
+	/** ISO date it goes public; null for a draft. */
+	publishedOn: string | null;
+}
+
+const releases = defineEditorialTable<Dated, Release>({
+	table: "editorial.releases",
+	key: ["slug"],
+	row: Dated,
+	toRow: (r) => ({ slug: r.slug, title: r.title, published_on: r.publishedOn }),
+	fromRow: (r) => ({ slug: r.slug, title: r.title, publishedOn: r.published_on }),
+	visible: (r, now) => r.publishedOn !== null && Date.parse(r.publishedOn) <= now.getTime(),
+});
+
+const releaseRecords: Release[] = [
+	{ slug: "v1", title: "Out", publishedOn: "2026-10-01" },
+	{ slug: "v2", title: "Scheduled", publishedOn: "2026-11-01" },
+	{ slug: "v3", title: "Draft", publishedOn: null },
+];
+const releaseContent = editorialContent(releases, releaseRecords);
+const at = new Date("2026-10-17T00:00:00Z");
+
+Deno.test("a hidden record is hidden on the fixture road", async () => {
+	const result = await readEditorialTable(releaseContent, { source: "fixture", now: at });
+	assertEquals(result.data?.records.map((r) => r.slug), ["v1"]);
+});
+
+Deno.test("a hidden record is hidden on the live road, even when the policy lets it through", async () => {
+	// The stub answers every seeded row, as a `USING (true)` policy would: the predicate still hides.
+	const seeded = releaseContent.rows();
+	const { client } = stubClient({ data: seeded, error: null });
+	const live = await readEditorialTable(releaseContent, { source: "live", client, now: at });
+	const fixture = await readEditorialTable(releaseContent, { source: "fixture", now: at });
+	assertEquals(live.data?.records, fixture.data?.records);
+	assertEquals(live.data?.records.map((r) => r.slug), ["v1"]);
+});
+
+Deno.test("visibility is asked at `now`: a scheduled record appears once its date passes", async () => {
+	const later = await readEditorialTable(releaseContent, {
+		source: "fixture",
+		now: new Date("2026-11-02T00:00:00Z"),
+	});
+	assertEquals(later.data?.records.map((r) => r.slug), ["v1", "v2"]);
+});
+
+Deno.test("the generator still seeds every record, hidden ones included", () => {
+	assertEquals(releaseContent.rows().map((r) => r.slug), ["v1", "v2", "v3"]);
+});
+// #endregion
+
 Deno.test("an editorial table outside the editorial schema is refused", () => {
 	assertThrows(
 		() =>

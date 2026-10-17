@@ -30,7 +30,8 @@ CREATE TABLE community.newsletter_subscriptions (
     id uuid NOT NULL DEFAULT gen_random_uuid (),
     -- Stored lowercase, and enforced, because the capture is public and anonymous: the address is
     -- the only identity this row has, so two casings would mean two sends and two unsubscribe links
-    -- that each only work half the time.
+    -- that each only work half the time. At most 254 characters (RFC 5321's path limit), so an
+    -- oversized input is a field error at every layer rather than a btree row-size failure.
     email text NOT NULL,
     -- Where the FIRST capture happened, matching NewsletterSource in
     -- packages/types/community/newsletter.ts. A later capture that adds a topic keeps it.
@@ -47,11 +48,20 @@ CREATE TABLE community.newsletter_subscriptions (
     locale text,
     -- Double opt-in. NULL means captured but unconfirmed, so a send-eligible row is exactly
     -- (confirmed_at IS NOT NULL AND unsubscribed_at IS NULL) and neither state needs a boolean that
-    -- could end up contradicting its own timestamp. A re-subscribe after an unsubscribe clears it
-    -- again: whoever typed the address into a public form has not proved they own it.
+    -- could end up contradicting its own timestamp.
     confirmed_at timestamptz,
+    -- The opt-out, and the only record of it. A public form never clears these: whoever types an
+    -- unsubscribed address into it has not proved they own it, so the request is recorded below and
+    -- the address stays unsubscribed (and unsendable) until the confirm link applies it.
     unsubscribed_at timestamptz,
     unsubscribed_reason text,
+    -- A re-subscribe request on an unsubscribed address, pending its owner's confirmation: the topics
+    -- asked for since the unsubscribe (sorted, distinct, never empty) and when last asked. Both NULL
+    -- when nothing is pending, and only ever set while unsubscribed_at is. The confirm-link handler
+    -- (not built yet) applies it in one write: topics = resubscribe_topics, confirmed_at = now(),
+    -- and unsubscribed_at, unsubscribed_reason and both of these cleared.
+    resubscribe_topics text[],
+    resubscribe_requested_at timestamptz,
     -- The opaque handle carried in the confirm / unsubscribe link. One-click unsubscribe cannot ask
     -- the reader to sign in first, so the link itself has to be the credential.
     token uuid NOT NULL DEFAULT gen_random_uuid (),
@@ -60,17 +70,31 @@ CREATE TABLE community.newsletter_subscriptions (
     CONSTRAINT newsletter_subscriptions_pkey PRIMARY KEY (id),
     CONSTRAINT newsletter_subscriptions_user_id_fkey
         FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE SET NULL,
-    -- One row per address. A re-subscribe updates this row (clearing unsubscribed_at) rather than
+    -- One row per address. A re-subscribe updates this row (recording a pending request) rather than
     -- inserting a second one, which is what lets the service answer alreadySubscribed truthfully
     -- without leaking list membership through a differently shaped response.
     CONSTRAINT newsletter_subscriptions_email_key UNIQUE (email),
     CONSTRAINT newsletter_subscriptions_token_key UNIQUE (token),
     CONSTRAINT newsletter_subscriptions_email_lowercase CHECK (email = lower(email)),
+    CONSTRAINT newsletter_subscriptions_email_length CHECK (char_length(email) <= 254),
     CONSTRAINT newsletter_subscriptions_source_check CHECK (source IN ('footer', 'landing', 'explore')),
     CONSTRAINT newsletter_subscriptions_topics_check CHECK (
         cardinality(topics) >= 1
         AND array_position(topics, NULL) IS NULL
         AND topics <@ ARRAY['general', 'changelog']::text[]
+    ),
+    -- The same topic set as newsletter_subscriptions_topics_check, value for value.
+    CONSTRAINT newsletter_subscriptions_resubscribe_check CHECK (
+        (resubscribe_topics IS NULL) = (resubscribe_requested_at IS NULL)
+        AND (resubscribe_topics IS NULL OR unsubscribed_at IS NOT NULL)
+        AND (
+            resubscribe_topics IS NULL
+            OR (
+                cardinality(resubscribe_topics) >= 1
+                AND array_position(resubscribe_topics, NULL) IS NULL
+                AND resubscribe_topics <@ ARRAY['general', 'changelog']::text[]
+            )
+        )
     )
 );
 -- #endregion

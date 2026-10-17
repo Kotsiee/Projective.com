@@ -6,6 +6,7 @@ import { ArrowIcon } from "../components/footer-icons.tsx";
 // This island renders inside the footer on every public surface, so it is the reliable carrier.
 import "../styles/footer.css";
 import { Icon } from "@projective/ui/icons";
+import { useId } from "@projective/ui/hooks";
 import type { NewsletterSource, NewsletterTopic } from "@projective/types/community";
 
 /** Props for {@link NewsletterForm}. Both are optional: the footer passes neither. */
@@ -31,6 +32,9 @@ export default function NewsletterForm(
 	const submitting = useSignal(false);
 	const error = useSignal<string | null>(null);
 	const done = useSignal(false);
+	// One id per instance, so two captures on one page (the footer's and a page's own, even with the
+	// same topic) never share an id or an ambiguous aria-describedby.
+	const errorId = useId(undefined, "lp-footer-news-error");
 
 	async function onSubmit(e: Event) {
 		e.preventDefault();
@@ -59,8 +63,6 @@ export default function NewsletterForm(
 		);
 	}
 
-	// One id per topic, so the footer's capture and a page's own capture can share a page.
-	const errorId = topic === "general" ? "lp-footer-news-error" : `lp-footer-news-error-${topic}`;
 	return (
 		<form class="lp-footer__news-form" onSubmit={onSubmit} noValidate>
 			<div class={`lp-footer__news-field${error.value ? " lp-footer__news-field--invalid" : ""}`}>

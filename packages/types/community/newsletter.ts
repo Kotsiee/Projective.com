@@ -15,8 +15,15 @@ import { timestamp, uuid } from "./common.ts";
  */
 
 // #region Primitives
+/**
+ * The longest address the capture accepts (RFC 5321's 254), enforced at every layer: here, the
+ * table's `newsletter_subscriptions_email_length` CHECK and `community.subscribe_newsletter`'s guard.
+ * An oversized address is then a field error everywhere, never a btree row-size failure.
+ */
+export const NEWSLETTER_EMAIL_MAX = 254;
+
 /** Shared email shape — the same permissive structure check the auth feature uses (`EMAIL_RE`). */
-const email = z.string().trim().regex(
+const email = z.string().trim().max(NEWSLETTER_EMAIL_MAX, "Enter a valid email address.").regex(
 	/^[^\s@]+@[^\s@]+\.[^\s@]+$/,
 	"Enter a valid email address.",
 );
@@ -38,8 +45,9 @@ export type NewsletterTopic = z.infer<typeof NewsletterTopic>;
 
 /**
  * What a subscribe did, as `community.subscribe_newsletter` reports it: `created` (a new address),
- * `resubscribed` (an unsubscribed address reopened with only the requested topic), `topic_added`
- * (an active address gained the topic) or `unchanged` (it already held it — nothing was written).
+ * `resubscribed` (an unsubscribed address: the request is recorded as pending, and the opt-out stands
+ * until the confirm link applies it), `topic_added` (an active address gained the topic) or
+ * `unchanged` (it already held it — nothing was written).
  */
 export const NewsletterSubscribeOutcome = z.enum([
 	"created",
@@ -105,6 +113,13 @@ export const NewsletterSubscriptionRowSchema = z.object({
 	confirmed_at: timestamp.nullable(),
 	unsubscribed_at: timestamp.nullable(),
 	unsubscribed_reason: z.string().nullable(),
+	/**
+	 * A re-subscribe request pending its owner's confirmation — set only while unsubscribed, sorted,
+	 * distinct and never empty; NULL when nothing is pending. Applied by the confirm link, never by
+	 * the public form.
+	 */
+	resubscribe_topics: z.array(NewsletterTopic).min(1).nullable(),
+	resubscribe_requested_at: timestamp.nullable(),
 	token: uuid,
 	created_at: timestamp,
 	updated_at: timestamp,

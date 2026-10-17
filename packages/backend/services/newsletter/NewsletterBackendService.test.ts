@@ -139,6 +139,17 @@ Deno.test("an unknown topic is a 422 on the topic field, before any write", asyn
 	assertEquals(calls.length, 0);
 });
 
+Deno.test("an address over 254 characters is a 422 on the email field, before any write", async () => {
+	const { rpc, calls } = fakeWriter();
+	const result = await NewsletterBackendService.subscribe(
+		{ email: `${"a".repeat(6400)}@example.com` },
+		{ live: true, rpc, limiter: limiter() },
+	);
+	assertEquals(result.status, 422);
+	assert(result.errors?.email);
+	assertEquals(calls.length, 0);
+});
+
 Deno.test("the per-address limit refuses the sixth attempt in the window with a retry time", async () => {
 	const { rpc } = fakeWriter();
 	const deps = { live: true, rpc, limiter: limiter() };

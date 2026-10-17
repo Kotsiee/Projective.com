@@ -20,8 +20,20 @@ import type { AnyEditorialContent, EditorialSurfaceSource } from "./editorial-so
  * | array, cast ending in `[]`    | `ARRAY[…]::cast` (`'{}'::cast` when empty)                   |
  * | any other array, or an object | `'<json>'::jsonb` (or the declared cast)                     |
  *
+ * NUL is refused anywhere — in text, and in any string or key inside a jsonb value (Postgres
+ * rejects `\u0000` in jsonb) — so a bad record fails generation, not a reset.
+ *
  * Each table becomes one multi-row `INSERT … ON CONFLICT (<key>) DO UPDATE SET <every other column>`,
- * so re-running a file is a no-op and a regenerated file updates the rows it wrote before.
+ * so re-running a file is a no-op and a regenerated file updates the rows it wrote before. Column
+ * names (the row schema's keys) must be plain lowercase identifiers and are emitted double-quoted,
+ * so a column may be named `order` or `default`; the schema-qualified table name is validated by
+ * `defineRowMapper` and needs no quoting.
+ *
+ * **Nothing is pruned.** A record removed from its source (or whose key changes) leaves its old row
+ * in any database that is not rebuilt; the removal takes effect only on the next reset. So content
+ * is never retracted by deleting its record: give the table a visibility column, author the record
+ * hidden, and let the table's `visible` predicate (`defineEditorialTable`) and SELECT policy hide it
+ * — which is also the platform rule that nothing is hard-deleted.
  */
 
 // #region Literals
@@ -29,6 +41,33 @@ import type { AnyEditorialContent, EditorialSurfaceSource } from "./editorial-so
 function quote(text: string): string {
 	if (text.includes("\0")) throw new TypeError("A SQL text value cannot contain a NUL character.");
 	return `'${text.replace(/'/g, "''")}'`;
+}
+
+/**
+ * Whether any string or key inside a JSON-bound value holds NUL. `JSON.stringify` writes it as the
+ * six characters `\u0000`, which pass {@link quote} but which Postgres refuses in jsonb; a literal
+ * backslash followed by `u0000` in a string is fine, so this inspects the values, not the JSON text.
+ */
+function holdsNul(value: unknown): boolean {
+	if (typeof value === "string") return value.includes("\0");
+	if (Array.isArray(value)) return value.some(holdsNul);
+	if (value !== null && typeof value === "object") {
+		const json = value as { toJSON?: () => unknown };
+		if (typeof json.toJSON === "function") return holdsNul(json.toJSON());
+		return Object.entries(value).some(([key, inner]) => key.includes("\0") || holdsNul(inner));
+	}
+	return false;
+}
+
+/** A plain lowercase SQL identifier — what a column or key name must be. */
+const IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
+
+/** A validated, double-quoted column name (`order` → `"order"`). */
+export function sqlIdentifier(name: string): string {
+	if (!IDENTIFIER.test(name)) {
+		throw new TypeError(`"${name}" is not a plain lowercase SQL identifier ([a-z_][a-z0-9_]*).`);
+	}
+	return `"${name}"`;
 }
 
 /** Append `::cast` when one is declared. */
@@ -63,7 +102,10 @@ export function sqlValue(value: unknown, cast?: string): string {
 	if (Array.isArray(value) && cast?.endsWith("[]")) {
 		return value.length ? `ARRAY[${value.map(element).join(", ")}]::${cast}` : `'{}'::${cast}`;
 	}
-	if (typeof value === "object") return withCast(quote(JSON.stringify(value)), cast ?? "jsonb");
+	if (typeof value === "object") {
+		if (holdsNul(value)) throw new TypeError("A jsonb value cannot contain a NUL character.");
+		return withCast(quote(JSON.stringify(value)), cast ?? "jsonb");
+	}
 	throw new TypeError(`No SQL literal for a ${typeof value} value.`);
 }
 // #endregion
@@ -95,24 +137,28 @@ function assertKeys(table: RowMapperMeta, rows: readonly Record<string, unknown>
 /** One table's upsert, or a comment when it has no records yet. */
 export function emitTableSql(content: AnyEditorialContent): string {
 	const { table } = content;
+	const keys = table.key.map(sqlIdentifier).join(", ");
 	const rows = content.rows();
 	if (rows.length === 0) return `-- ${table.table}: no rows yet.\n`;
 	assertKeys(table, rows);
 
 	const columns = columnsOf(rows);
+	const names = new Map(columns.map((column) => [column, sqlIdentifier(column)]));
 	const values = rows.map((row) =>
 		`    (${columns.map((column) => sqlValue(row[column], table.casts[column])).join(", ")})`
 	);
 	const updates = columns.filter((column) => !table.key.includes(column));
 	const conflict = updates.length
-		? `ON CONFLICT (${table.key.join(", ")}) DO UPDATE SET\n${
-			updates.map((column) => `    ${column} = EXCLUDED.${column}`).join(",\n")
+		? `ON CONFLICT (${keys}) DO UPDATE SET\n${
+			updates.map((column) => `    ${names.get(column)} = EXCLUDED.${names.get(column)}`).join(
+				",\n",
+			)
 		};`
-		: `ON CONFLICT (${table.key.join(", ")}) DO NOTHING;`;
+		: `ON CONFLICT (${keys}) DO NOTHING;`;
 
 	return [
 		`-- #region ${table.table} (${rows.length} ${rows.length === 1 ? "row" : "rows"})`,
-		`INSERT INTO ${table.table} (${columns.join(", ")})`,
+		`INSERT INTO ${table.table} (${columns.map((column) => names.get(column)).join(", ")})`,
 		"VALUES",
 		values.join(",\n"),
 		conflict,

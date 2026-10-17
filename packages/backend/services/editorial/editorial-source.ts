@@ -23,14 +23,25 @@ import {
  * reader by one of two roads that share every step after the authoring:
  *
  *   database — `deno task db:editorial:generate` pushes each record through `toRow` and the row's Zod
- *              schema and emits the rows as a category-5 migration; the live read selects them back
- *              through the anon client (so RLS decides what a visitor sees) and maps every row with
- *              the same row schema and `fromRow`.
+ *              schema and emits the rows as a category-5 migration — EVERY record, hidden ones
+ *              included; the live read selects them back through the anon client and maps every row
+ *              with the same row schema and `fromRow`.
  *   fixture  — with `EDITORIAL_BACKEND_LIVE` off, {@link readEditorialTable} pushes the same records
  *              through the same `toRow`, row parse and `fromRow`, in memory.
  *
  * So the fixture path is not a second copy of the content that can drift: it is the database's own
  * input, served without the database.
+ *
+ * ## Visibility — one rule, applied on both roads
+ *
+ * A record a reader must not see yet (a draft, a release dated in the future, a retracted article) is
+ * hidden by its table's `visible` predicate ({@link defineEditorialTable}), which
+ * {@link readEditorialTable} applies to the MAPPED records on both roads, at the same `now`. It is the
+ * authority for what a service serves. The table's SELECT policy expresses the same predicate in SQL,
+ * so a direct PostgREST read is closed too, and is never NARROWER than it (a row the predicate shows
+ * but the policy hides would be served by the fixture road and missing live). A table where nothing
+ * is ever hidden declares no `visible` and a `USING (true)` policy. Content is retracted by authoring
+ * the record hidden, never by deleting it: the generated seed upserts and never prunes.
  *
  * ## Rules for a surface's tables
  *
@@ -63,20 +74,45 @@ export function editorialSource(): EditorialSource {
 // #endregion
 
 // #region Tables and content sources
+/**
+ * Whether a reader may see `record` at `now` (see "Visibility" in the module docblock). Pure: the
+ * same record and instant answer the same on both roads.
+ */
+export type EditorialVisibility<Domain> = (record: Domain, now: Date) => boolean;
+
 /** A table in the `editorial` schema, declared once for the generator, the reader and the fixtures. */
-export type EditorialTable<Row extends Record<string, unknown>, Domain> = RowMapper<Row, Domain>;
+export type EditorialTable<Row extends Record<string, unknown>, Domain> =
+	& RowMapper<Row, Domain>
+	& {
+		/** The table's visibility predicate; absent when every record is always visible. */
+		readonly visible?: EditorialVisibility<Domain>;
+	};
+
+/** What {@link defineEditorialTable} takes: a row mapper's spec, in `editorial`, plus `visible`. */
+export type EditorialTableSpec<Row extends Record<string, unknown>, Domain> =
+	& RowMapperSpec<Row, Domain>
+	& {
+		table: `editorial.${string}`;
+		/**
+		 * Hide a record from readers (a draft, a future-dated release, a retraction). Applied by
+		 * {@link readEditorialTable} on both roads; the table's SELECT policy states the same rule.
+		 * The generator ignores it — hidden records are seeded like any other.
+		 */
+		visible?: EditorialVisibility<Domain>;
+	};
 
 /**
  * Declare an editorial table. Refuses a table outside the `editorial` schema, so a content source
  * cannot emit seed rows into another domain's tables.
  */
 export function defineEditorialTable<Row extends Record<string, unknown>, Domain>(
-	spec: RowMapperSpec<Row, Domain> & { table: `editorial.${string}` },
+	spec: EditorialTableSpec<Row, Domain>,
 ): EditorialTable<Row, Domain> {
 	if (!spec.table.startsWith("editorial.")) {
 		throw new TypeError(`An editorial table lives in the editorial schema, got "${spec.table}".`);
 	}
-	return defineRowMapper(spec);
+	const visible = spec.visible;
+	return Object.freeze({ ...defineRowMapper(spec), visible });
 }
 
 /** One table's authored records, paired with the table that validates them. */
@@ -138,16 +174,19 @@ export interface EditorialRead<Domain> {
 	source: EditorialSource;
 }
 
-/** Overrides for {@link readEditorialTable} — tests inject both; services pass neither. */
+/** Overrides for {@link readEditorialTable} — tests inject them; services pass none. */
 export interface EditorialReadOptions {
 	/** Force a road instead of reading the gate. */
 	source?: EditorialSource;
 	/** The client the live read runs as. Defaults to the anon client: editorial is public content. */
 	client?: SupabaseClient;
+	/** The instant the table's `visible` predicate is asked at. Defaults to now. */
+	now?: Date;
 }
 
 /**
- * Read one editorial table's records by the road this environment takes (see the module docblock).
+ * Read one editorial table's records by the road this environment takes (see the module docblock),
+ * keeping only those the table's `visible` predicate shows at `now` — on both roads alike.
  *
  * Failures are answers, not throws: an unreachable or unexposed schema is a 503 (PostgREST answers
  * `PGRST106` until `editorial` is in `supabase/config.toml` and the stack restarted), and a row that
@@ -159,9 +198,13 @@ export async function readEditorialTable<Row extends Record<string, unknown>, Do
 ): Promise<ServiceResult<EditorialRead<Domain>>> {
 	const source = options.source ?? editorialSource();
 	const { table } = content;
+	const now = options.now ?? new Date();
+	const { visible } = table;
+	const shown = (records: Domain[]): Domain[] =>
+		visible ? records.filter((record) => visible(record, now)) : records;
 	try {
 		if (source === "fixture") {
-			return ok({ records: recordsFromRows(table, content.rows()), source });
+			return ok({ records: shown(recordsFromRows(table, content.rows())), source });
 		}
 		const client = options.client ?? getAnonClient();
 		const { data, error } = await client.schema(table.schema).from(table.name).select("*");
@@ -171,7 +214,7 @@ export async function readEditorialTable<Row extends Record<string, unknown>, Do
 				details: { table: table.table, code: error.code ?? null },
 			});
 		}
-		return ok({ records: recordsFromRows(table, data ?? []), source });
+		return ok({ records: shown(recordsFromRows(table, data ?? [])), source });
 	} catch (err) {
 		if (err instanceof RowMapperError) {
 			return fail(500, {

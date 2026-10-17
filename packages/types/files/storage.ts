@@ -391,10 +391,7 @@ export function renditionLocation(
 	renditionId: string,
 	filename: string,
 ): StorageLocation {
-	return {
-		bucket,
-		path: join(ownerId, bucket === "avatars" ? "avatar" : "showcase", renditionId, filename),
-	};
+	return { bucket, path: join(ownerId, bucket === "avatars" ? "avatar" : "showcase", renditionId, filename) };
 }
 
 // #endregion

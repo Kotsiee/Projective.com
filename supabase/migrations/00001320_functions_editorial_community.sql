@@ -34,16 +34,21 @@
 -- the same four outcomes this function returns:
 --
 --   created       no row for the address — insert it with the one requested topic;
---   resubscribed  the address had unsubscribed — reopen it with ONLY the requested topic, and clear
---                 confirmed_at, because whoever typed the address into a public form has not proved
---                 they own it (the old topics were withdrawn with the unsubscribe, not paused);
+--   resubscribed  the address had unsubscribed — RECORD the request and change nothing else: the
+--                 topic joins resubscribe_topics (sorted, distinct) and resubscribe_requested_at is
+--                 stamped, while unsubscribed_at / unsubscribed_reason (the only record of the
+--                 opt-out), topics and confirmed_at stay as they were, so the row stays unsendable.
+--                 Whoever typed the address into a public form has not proved they own it; the
+--                 confirm link (not built yet) applies the request;
 --   topic_added   active, and the topic is new — add it to the set (sorted, distinct);
 --   unchanged     active, and the topic is already held — write nothing, not even updated_at.
 --
 -- `already_subscribed` is true exactly for `unchanged`, so a repeat submission answers the same
 -- success the first one did. The row is locked before it is read, and a concurrent first subscribe of
 -- the same address is folded in rather than raised: INSERT … ON CONFLICT DO NOTHING, then loop to
--- lock the winner's row. The table's CHECKs are the authority on `source` and `topic` (23514).
+-- lock the winner's row. Topic sets sort by code point (COLLATE "C"), as the TypeScript twin's
+-- `normalizeTopics` does. The address guard refuses a malformed or over-long (> 254) address with
+-- 22023; the table's CHECKs are the authority on `source` and `topic` (23514).
 CREATE OR REPLACE FUNCTION community.subscribe_newsletter(
     p_email text,
     p_source text DEFAULT 'footer',
@@ -62,7 +67,7 @@ DECLARE
     v_prior community.newsletter_subscriptions%ROWTYPE;
     v_outcome text;
 BEGIN
-    IF v_email IS NULL OR v_email !~ '^[^\s@]+@[^\s@]+\.[^\s@]+$' THEN
+    IF v_email IS NULL OR v_email !~ '^[^\s@]+@[^\s@]+\.[^\s@]+$' OR char_length(v_email) > 254 THEN
         RAISE EXCEPTION 'A valid email address is required.' USING ERRCODE = '22023';
     END IF;
 
@@ -87,10 +92,12 @@ BEGIN
 
         IF v_prior.unsubscribed_at IS NOT NULL THEN
             UPDATE community.newsletter_subscriptions
-            SET topics = ARRAY[v_topic],
-                unsubscribed_at = NULL,
-                unsubscribed_reason = NULL,
-                confirmed_at = NULL,
+            SET resubscribe_topics = ARRAY(
+                    SELECT DISTINCT t COLLATE "C"
+                    FROM unnest(COALESCE(v_prior.resubscribe_topics, '{}'::text[]) || v_topic) AS u (t)
+                    ORDER BY 1
+                ),
+                resubscribe_requested_at = now(),
                 updated_at = now()
             WHERE id = v_prior.id;
             v_outcome := 'resubscribed';
@@ -99,7 +106,8 @@ BEGIN
         ELSE
             UPDATE community.newsletter_subscriptions
             SET topics = ARRAY(
-                    SELECT DISTINCT t FROM unnest(v_prior.topics || v_topic) AS u (t) ORDER BY t
+                    SELECT DISTINCT t COLLATE "C" FROM unnest(v_prior.topics || v_topic) AS u (t)
+                    ORDER BY 1
                 ),
                 updated_at = now()
             WHERE id = v_prior.id;

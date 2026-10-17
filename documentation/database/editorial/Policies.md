@@ -11,8 +11,18 @@ service role holds every table. Every function is revoked from the client roles 
 
 **The model:** platform-authored content. `anon` and `authenticated` READ what is published; no
 client role writes at all — rows arrive through the generated category-5 migrations, and any
-operator tooling runs as the service role. So an editorial table needs one SELECT policy (published
-rows, or every row where nothing is ever unpublished) and no write policy.
+operator tooling runs as the service role. So an editorial table needs one SELECT policy for `anon`
+and `authenticated` and no write policy; the probe `community_editorial_schemas.sql` fails on a
+client INSERT / UPDATE / DELETE grant or a non-SELECT policy anywhere in the schema.
+
+**Visibility is one rule on both roads.** Every authored record is seeded, hidden ones included (a
+draft, a release dated in the future, a retraction). What a reader is served is decided by the
+table's `visible` predicate (`defineEditorialTable`), which `readEditorialTable` applies to the
+mapped records on the live road and the fixture road alike — so turning `EDITORIAL_BACKEND_LIVE` on
+or off never changes what is shown. The SELECT policy states the same predicate in SQL, so a direct
+PostgREST read is closed too, and is never narrower than it (a row it hides that the predicate shows
+would be served by the fixture road and missing live). Where nothing is ever hidden: no `visible`,
+and `USING (true)`.
 
 ## Help
 

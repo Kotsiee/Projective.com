@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
 import { z } from "zod";
 import { RowMapperError } from "../../core/row-mapper.ts";
-import { emitEditorialSeed, emitTableSql, sqlValue } from "./content-sql.ts";
+import { emitEditorialSeed, emitTableSql, sqlIdentifier, sqlValue } from "./content-sql.ts";
 import {
 	defineEditorialSurface,
 	defineEditorialTable,
@@ -43,6 +43,22 @@ Deno.test("values SQL cannot hold are refused", () => {
 	assertThrows(() => sqlValue(Number.NaN), TypeError, "finite");
 	assertThrows(() => sqlValue("a\0b"), TypeError, "NUL");
 	assertThrows(() => sqlValue([{ nested: true }], "text[]"), TypeError, "scalars");
+	// JSON.stringify writes NUL as `\u0000`, which passes a text check but Postgres refuses in jsonb.
+	assertThrows(() => sqlValue([{ type: "p", text: "a\0b" }]), TypeError, "jsonb");
+	assertThrows(() => sqlValue({ ["k\0"]: 1 }), TypeError, "jsonb");
+	assertThrows(() => sqlValue({ deep: [{ deeper: ["\0"] }] }), TypeError, "jsonb");
+});
+
+Deno.test("a literal backslash-u0000 in a jsonb string is text, not NUL, and is kept", () => {
+	assertEquals(sqlValue({ code: "\\u0000" }), `'{"code":"\\\\u0000"}'::jsonb`);
+});
+
+Deno.test("column names are validated and double-quoted", () => {
+	assertEquals(sqlIdentifier("order"), `"order"`);
+	assertEquals(sqlIdentifier("published_on"), `"published_on"`);
+	for (const bad of ["Order", "two words", `x"y`, "1st", "a-b", ""]) {
+		assertThrows(() => sqlIdentifier(bad), TypeError, "identifier");
+	}
 });
 // #endregion
 
@@ -80,19 +96,55 @@ Deno.test("a table emits one multi-row upsert on its natural key", () => {
 		sql,
 		[
 			"-- #region editorial.help_articles (2 rows)",
-			"INSERT INTO editorial.help_articles (slug, title, roles, body, sort)",
+			`INSERT INTO editorial.help_articles ("slug", "title", "roles", "body", "sort")`,
 			"VALUES",
 			`    ('funding', 'Funding', ARRAY['client']::text[], '[{"type":"p","text":"Hi"}]'::jsonb, 1),`,
 			"    ('payouts', 'Payouts', '{}'::text[], '[]'::jsonb, DEFAULT)",
-			"ON CONFLICT (slug) DO UPDATE SET",
-			"    title = EXCLUDED.title,",
-			"    roles = EXCLUDED.roles,",
-			"    body = EXCLUDED.body,",
-			"    sort = EXCLUDED.sort;",
+			`ON CONFLICT ("slug") DO UPDATE SET`,
+			`    "title" = EXCLUDED."title",`,
+			`    "roles" = EXCLUDED."roles",`,
+			`    "body" = EXCLUDED."body",`,
+			`    "sort" = EXCLUDED."sort";`,
 			"-- #endregion",
 			"",
 		].join("\n"),
 	);
+});
+
+Deno.test("a reserved-word column is quoted everywhere it is named", () => {
+	const Ordered = z.object({ slug: z.string(), order: z.number() });
+	const ordered = defineEditorialTable<z.infer<typeof Ordered>, z.infer<typeof Ordered>>({
+		table: "editorial.help_categories",
+		key: ["slug"],
+		row: Ordered,
+		toRow: (r) => r,
+		fromRow: (r) => r,
+	});
+	const sql = emitTableSql(editorialContent(ordered, [{ slug: "start", order: 1 }]));
+	assertStringIncludes(sql, `INSERT INTO editorial.help_categories ("slug", "order")`);
+	assertStringIncludes(sql, `    "order" = EXCLUDED."order";`);
+});
+
+Deno.test("a column or key that is not a plain identifier is refused at generation", () => {
+	const Odd = z.object({ slug: z.string(), "Title Case": z.string() });
+	const odd = defineEditorialTable<z.infer<typeof Odd>, z.infer<typeof Odd>>({
+		table: "editorial.odd",
+		key: ["slug"],
+		row: Odd,
+		toRow: (r) => r,
+		fromRow: (r) => r,
+	});
+	assertThrows(
+		() => emitTableSql(editorialContent(odd, [{ slug: "a", "Title Case": "x" }])),
+		TypeError,
+		"identifier",
+	);
+	const badKey = defineEditorialTable<z.infer<typeof Odd>, z.infer<typeof Odd>>({
+		...odd,
+		table: "editorial.odd",
+		key: ["Title Case"],
+	});
+	assertThrows(() => emitTableSql(editorialContent(badKey, [])), TypeError, "identifier");
 });
 
 Deno.test("a key-only table does nothing on conflict; an empty one is a comment", () => {

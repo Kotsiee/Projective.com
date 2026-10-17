@@ -891,9 +891,11 @@ the Zod SSOT at **`@projective/types/community`** (`NewsletterSubscribeSchema`; 
 client service (before the round-trip), the thin route (the request body), and the fat service
 (defence in depth). A submission carries an optional **topic** (`general` by default, `changelog`
 for the changelog's capture). Behind **`NEWSLETTER_BACKEND_LIVE`** (default off, gated by
-`isNewsletterBackendLive()`) the service calls `community.subscribe_newsletter` with the service role
-— the table's one writer, which adds a topic idempotently and reopens an unsubscribed address with
-only the requested topic (Decision #274); off, it answers the same plan and stores nothing. The
+`isNewsletterBackendLive()`) the service calls `community.subscribe_newsletter` with the service
+role — the table's one writer, which adds a topic idempotently and, for an unsubscribed address,
+only records a pending re-subscribe: the opt-out stays on record and in force until the confirm link
+applies it (Decision #274); off, it answers the same plan and stores nothing. An address is at most
+254 characters at every layer, and a 429 carries `details.retryAt` and `Retry-After`. The
 email-provider sync and the confirmation mail are still to come. The `NewsletterForm` island (with
 optional `topic` / `source` props) is the only client touchpoint — it `fetch`es the route and never
 reaches the service.
@@ -905,15 +907,18 @@ content — the help centre, the changelog, Projective's articles — authored a
 TypeScript in `services/editorial/content/<surface>.ts` and emitted by
 `deno task db:editorial:generate` into one category-5 migration per surface, so it exists in every
 environment. `services/editorial/editorial-source.ts` is the one shared module: the
-**`EDITORIAL_BACKEND_LIVE`** gate (`isEditorialBackendLive()`), `defineEditorialTable` (a table's row
-schema, natural key and both mapping directions, `core/row-mapper.ts`) and `readEditorialTable`, which
-reads the table through the anon client when live and otherwise pushes the same authored records
-through the same row parse and mapping — so a fixture cannot drift from the database.
+**`EDITORIAL_BACKEND_LIVE`** gate (`isEditorialBackendLive()`), `defineEditorialTable` (a table's
+row schema, natural key and both mapping directions, `core/row-mapper.ts`) and `readEditorialTable`,
+which reads the table through the anon client when live and otherwise pushes the same authored
+records through the same row parse and mapping — so a fixture cannot drift from the database. A
+table's `visible` predicate (drafts, future-dated releases, retractions) is applied to the mapped
+records on both roads, and its SELECT policy states the same rule; the generator seeds every record
+and never prunes, so content is retracted by hiding it, never by deleting its record.
 **`community`** holds what people do: the newsletter, helpfulness votes and the feedback board.
-`services/community/community-source.ts` is its shared module: the **`COMMUNITY_BACKEND_LIVE`** gate,
-`defineCommunityTable`, `readCommunityTable` (the caller's client live, declared fixtures otherwise,
-both through one row parse) and `communityRpc` for the schema's definer doors. Surface services are
-built on these by their own work orders; the newsletter keeps its own gate.
+`services/community/community-source.ts` is its shared module: the **`COMMUNITY_BACKEND_LIVE`**
+gate, `defineCommunityTable`, `readCommunityTable` (the caller's client live, declared fixtures
+otherwise, both through one row parse) and `communityRpc` for the schema's definer doors. Surface
+services are built on these by their own work orders; the newsletter keeps its own gate.
 
 ### Messaging services
 
@@ -2317,9 +2322,10 @@ included.
 - **Deny by default.** `00002510_permissions_function_grants.sql` revokes `EXECUTE` schema-wide at
   the top of the file, before any per-function statement: `org` (from `PUBLIC`, `anon`,
   `authenticated`), `projects` (from `PUBLIC`, `anon`), `public` (from `PUBLIC`, `anon`,
-  `authenticated` on every function that is not an extension member), and `finance` later in the
-  file. `service_role` keeps them all. A client role then reaches a function only where it is
-  **granted by name**.
+  `authenticated` on every function that is not an extension member), `finance` later in the file,
+  and `editorial` and `community` (from `PUBLIC`, `anon`, `authenticated` — the mid-file
+  "editorial + community — deny by default" block, Decision #274). `service_role` keeps them all. A
+  client role then reaches a function only where it is **granted by name**.
 - **What gets a grant.** `authenticated`: a door the app calls with the user's JWT, which resolves
   the caller from `auth.uid()` and checks its own authority. `anon`: a guest read the public site
   needs (e.g. `projects.get_cohort_offer`). Both client roles: a predicate an RLS policy calls,

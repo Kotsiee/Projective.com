@@ -22,9 +22,10 @@ import { planNewsletterSubscription } from "./subscription-plan.ts";
  *
  * **Topics.** A submission names one topic (`general` by default, `changelog` from the changelog's
  * capture). Re-subscribing with a topic the address already holds changes nothing and answers the
- * same success; a new topic joins the set; an address that had unsubscribed is reopened with only the
- * requested topic and must confirm again. The rule is stated once, in SQL, with a tested TypeScript
- * twin (`subscription-plan.ts`).
+ * same success; a new topic joins the set; an address that had unsubscribed STAYS unsubscribed — the
+ * request is recorded as pending (`resubscribe_topics`) with the opt-out kept on record, and only the
+ * confirm link (not built yet) applies it, because a public form proves no one owns the address. The
+ * rule is stated once, in SQL, with a tested TypeScript twin (`subscription-plan.ts`).
  *
  * **Stub mode (default).** With `NEWSLETTER_BACKEND_LIVE` off (see {@link isNewsletterBackendLive})
  * nothing is stored: the service validates and answers what the live writer answers for a new
@@ -113,7 +114,8 @@ export class NewsletterBackendService {
 			p_topic: topic,
 		});
 		if (error) {
-			// 22023 is the writer's own address guard; the schema above should make it unreachable.
+			// 22023 is the writer's own address guard (malformed, or over NEWSLETTER_EMAIL_MAX); the
+			// schema above should make it unreachable.
 			if (error.code === "22023") {
 				return fail(422, { errors: { email: "Enter a valid email address." } });
 			}
