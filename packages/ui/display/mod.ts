@@ -207,6 +207,13 @@ export { TrustAdornments } from "./components/TrustAdornments.tsx";
 export type { TrustAdornmentItem, TrustAdornmentsProps } from "./components/TrustAdornments.tsx";
 export { Tag } from "./components/Tag.tsx";
 export type { TagProps, TagVariant } from "./components/Tag.tsx";
+export { MetaLine } from "./components/MetaLine.tsx";
+export type {
+	MetaLineElement,
+	MetaLineEntry,
+	MetaLineProps,
+	MetaLineSize,
+} from "./components/MetaLine.tsx";
 export { Flag } from "./components/Flag.tsx";
 export type { FlagProps, FlagSize } from "./components/Flag.tsx";
 export { FLAG_CODES, hasFlagArt } from "./core/flag-art.tsx";

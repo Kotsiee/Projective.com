@@ -513,6 +513,8 @@ attribute on `:root` or a `<DesignSystemProvider>` scope), never per-component p
 		--dur-medium: 0ms;
 		--dur-slow: 0ms;
 		--dur-highlight: 0ms;
+		--dur-stagger: 0ms;
+		--dur-ambient: 0ms;
 		--spring: none;
 	}
 	*,
@@ -869,6 +871,19 @@ indicator or the glyph fill tells them apart. The options are an active at `--su
 > content ever sits on an unmeasurable ground — the rim carries a section heading at most, inked
 > `--on-surface-variant` (the token the veil's floor was computed for). Scoped to `.wlt-sheet`.
 
+**Opaque status tints.** A region that takes a status hue as a quiet fill — a success banner's wash,
+a warning row, a danger callout, a brand-tinted band — reads one of four tokens: `--success-tint`,
+`--warning-tint`, `--danger-tint`, `--primary-tint`, each
+`color-mix(in oklab, var(--<ramp>) var(--status-tint-mix), var(--surface-1))`. Mixed against the
+solid `--surface-1`, **never `transparent`**, so the result is a measurable solid tone that does not
+compound when nested; mixed in OKLab so the step is perceptually even across hues. The strength is
+one knob per mode/contrast state (`packages/ui/styles/index.css`): light `--tint` (12%), dark
+`--tint-strong` (20%, since a 12% wash on a near-black surface does not read as tinted), and both
+high-contrast states one ramp step lower (`--tint-soft` light, `--tint` dark), which pulls the fill
+toward the surface and widens the ink on it. `--on-surface` on every tint clears 4.5:1 in all four
+states and never narrows under the high-contrast overlay — pinned in
+`packages/ui/system/core/theme-engine.test.ts`, which reads the knob from the stylesheet.
+
 #### B.4.3 Functional transparency only — where `--glass-blur` is allowed
 
 Glass is part of the identity (§D.1, §D.5) and it is expensive: `backdrop-filter` is the costliest
@@ -940,6 +955,18 @@ or Bounce effects" with spring physics: we use **critically/over-damped** spring
 layout shifts) · `--dur-highlight 1800ms` (a one-shot arrival highlight on content that changed since
 the reader's last visit — the Overview's `.pjd-arrival`, Decision #146; `0ms` and no animation under
 either reduced-motion channel).
+
+Two rhythm tokens sit beside the ramp, so a list entrance or a live loop never carries its own literal:
+
+| Token            | Value    | Use                                                                                          |
+| :--------------- | :------- | :------------------------------------------------------------------------------------------- |
+| `--dur-stagger`  | `40ms`   | per-item entrance offset — item `i` waits `calc(i * var(--dur-stagger))`                      |
+| `--dur-ambient`  | `2400ms` | one period of an ambient loop — a live dot's pulse, a pending mark's breathe                 |
+
+Both collapse to `0ms` with the rest of the ramp under **both** reduced-motion channels
+(`prefers-reduced-motion: reduce` and `:root[data-motion="reduced"]`), where `animation: none` also
+stops the loop itself. An ambient loop is still bounded where it signals something live (WCAG 2.2.2,
+below).
 
 #### Unitless spring constants
 
@@ -1914,7 +1941,17 @@ proficiency, location, read time and timestamps are **Meta register** (§A.4) �
 Branding · Marketing · Pipeline · 3 revisions · 5–7 days
 ```
 
-The separator is a real middot (`·`) in a `--text-disabled` span, `aria-hidden`, with the items as
+**`MetaLine` (`@projective/ui/display`) is THE way to render it** — never a hand-rolled join:
+
+```tsx
+<MetaLine items={["Owner", isPublic && "Public", { text: "4 members", tabular: true }]} />
+```
+
+`items` takes strings or `{ text, tabular?, title? }` and drops falsy entries, so a conditional fact
+needs no filter at the call site; `tabular` sets a changing figure in `tabular-nums` (§A.4); `title`
+carries a fact's long form (a full date). `as` picks `p` (default) · `span` · `div`, and `size` the
+Meta register's `sm` (default) or a dense row's `xs`. The separator is a real middot (`·`) in an
+`aria-hidden` `.ui-meta-line__sep` span, in the line's own `--text-secondary` ink, with the items as
 siblings so a screen reader reads a list rather than a sentence full of punctuation. It costs one
 line, no fills, no radii, and it scales to any number of facts, which a pill row does not: pills wrap
 into a ragged block whose height is unpredictable, which is why every card family that tagified its

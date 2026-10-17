@@ -61,6 +61,14 @@
     --dur-medium: 250ms;
     --dur-slow: 350ms;
     --dur-highlight: 1800ms;
+    /* The per-item entrance offset: item `i` of a staggered list waits `i × --dur-stagger`. Short
+	enough that a ten-row list has fully landed inside one --dur-slow, long enough that the eye reads
+	an order rather than a single block arriving. */
+    --dur-stagger: 40ms;
+    /* One period of an ambient loop — a live dot's pulse, a pending mark's breathe. Slower than any
+	interaction duration by an order of magnitude, so a loop reads as a state the surface is IN rather
+	than an event that just happened to it. */
+    --dur-ambient: 2400ms;
     --ease-standard: cubic-bezier(0.2, 0, 0, 1);
     --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
     --ease-exit: cubic-bezier(0.4, 0, 1, 1);
@@ -410,6 +418,28 @@
     /* a state that must be unmistakable at a glance */
     --tint-heavy: 40%;
     /* structural: a filled meter track, a strong edge */
+
+    /*
+	* --- Opaque status tints (§A.1, §B.4.2) ---
+	*
+	* The quiet fill a status ramp takes when it marks a region rather than a control: a success
+	* banner's wash, a warning row, a danger callout. Mixed against `--surface-1`, NEVER against
+	* `transparent` — an alpha fill composites against whatever happens to sit beneath it, so its
+	* contrast is unmeasurable and it darkens every time it nests (the §B.4.2 rule for region
+	* backgrounds). Mixed in OKLab so the step is perceptually even across the four hues: an sRGB mix
+	* of amber reads heavier than the same percentage of teal.
+	*
+	* One strength knob for all four, retuned per mode/contrast state below. Dark takes the stronger
+	* step because a 12% wash on a near-black surface is below what reads as tinted at all; the
+	* high-contrast states step DOWN, which pulls the fill toward the surface and widens the ink on it
+	* rather than narrowing it. `--on-surface` on every tint clears 4.5:1 in all four states —
+	* pinned in `system/core/theme-engine.test.ts`, which reads this knob from this file.
+	*/
+    --status-tint-mix: var(--tint);
+    --success-tint: color-mix(in oklab, var(--success) var(--status-tint-mix), var(--surface-1));
+    --warning-tint: color-mix(in oklab, var(--warning) var(--status-tint-mix), var(--surface-1));
+    --danger-tint: color-mix(in oklab, var(--danger) var(--status-tint-mix), var(--surface-1));
+    --primary-tint: color-mix(in oklab, var(--primary) var(--status-tint-mix), var(--surface-1));
 
     --hairline-color: color-mix(in srgb, var(--outline) 20%, transparent);
     --hairline: 1px solid var(--hairline-color);
@@ -873,6 +903,34 @@
 }
 
 /*
+ * Status-tint strength per mode/contrast state (see `--status-tint-mix`). The selector shape is the
+ * product's own, mirroring `TOKENS_CSS` in `apps/web/routes/_app.tsx`: `data-theme="dark"` for the
+ * mode, `prefers-contrast: more` under `:not([data-contrast="normal"])`, then the explicit in-app
+ * `[data-contrast="high"]` last so a deliberate choice beats the media query.
+ */
+:root[data-theme="dark"] {
+    --status-tint-mix: var(--tint-strong);
+}
+
+@media (prefers-contrast: more) {
+    :root:not([data-contrast="normal"]) {
+        --status-tint-mix: var(--tint-soft);
+    }
+
+    :root[data-theme="dark"]:not([data-contrast="normal"]) {
+        --status-tint-mix: var(--tint);
+    }
+}
+
+:root[data-contrast="high"] {
+    --status-tint-mix: var(--tint-soft);
+}
+
+:root[data-theme="dark"][data-contrast="high"] {
+    --status-tint-mix: var(--tint);
+}
+
+/*
  * Open-dyslexic overlay (§A.5) — `data-font="dyslexic"`.
  *
  * `applyConfig` in packages/ui/system/core/context.ts has written this attribute since the theming
@@ -1252,6 +1310,8 @@
         --dur-medium: 0ms;
         --dur-slow: 0ms;
         --dur-highlight: 0ms;
+        --dur-stagger: 0ms;
+        --dur-ambient: 0ms;
     }
 
     *,
@@ -1271,6 +1331,8 @@
     --dur-medium: 0ms;
     --dur-slow: 0ms;
     --dur-highlight: 0ms;
+    --dur-stagger: 0ms;
+    --dur-ambient: 0ms;
 }
 
 :root[data-motion="reduced"] *,

@@ -652,3 +652,179 @@ Deno.test("the outline ring and the shadow ring are the same thickness", async (
 	assertEquals(high, Math.round(high), `high-contrast --focus-ring-w ${high}px is fractional`);
 	assert(high > base, "high contrast must widen the ring, not merely retint it");
 });
+
+/**
+ * Opaque status tints (`--success-tint` · `--warning-tint` · `--danger-tint` · `--primary-tint`).
+ *
+ * A tint is a region fill that body text sits on, so the claim it makes is the text one: `--on-surface`
+ * on it clears 4.5:1 (WCAG 2.2 SC 1.4.3) in every mode/contrast state. The tokens are CSS — a
+ * `color-mix()` over engine-emitted roles — so this reads the mix strength per state from the
+ * stylesheet and re-derives the composite here, in OKLab, exactly as the browser does. It fails on
+ * the real edit: retuning `--status-tint-mix` in any state block is measured, not trusted.
+ */
+const TINT_RAMPS = ["--success", "--warning", "--danger", "--primary"] as const;
+
+/** Each state's two selectors: the explicit attribute and its `prefers-contrast` twin. */
+const TINT_STATES = [
+	{ dark: false, highContrast: false, selectors: [":root"] },
+	{ dark: true, highContrast: false, selectors: [':root[data-theme="dark"]'] },
+	{
+		dark: false,
+		highContrast: true,
+		selectors: [':root[data-contrast="high"]', ':root:not([data-contrast="normal"])'],
+	},
+	{
+		dark: true,
+		highContrast: true,
+		selectors: [
+			':root[data-theme="dark"][data-contrast="high"]',
+			':root[data-theme="dark"]:not([data-contrast="normal"])',
+		],
+	},
+] as const;
+
+/** Every flat rule in the sheet (media-nested rules included) as selector → declarations, first wins. */
+async function cssRules(): Promise<Map<string, Map<string, string>>> {
+	const css = (await Deno.readTextFile(new URL("../../styles/index.css", import.meta.url)))
+		.replace(/\/\*[\s\S]*?\*\//g, "");
+	const rules = new Map<string, Map<string, string>>();
+	for (const [, selector, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+		const key = selector.trim();
+		const decls = rules.get(key) ?? new Map<string, string>();
+		for (const [, prop, value] of body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
+			if (!decls.has(prop)) decls.set(prop, value.trim());
+		}
+		rules.set(key, decls);
+	}
+	return rules;
+}
+
+/** Resolve a `--status-tint-mix` value (`var(--tint-*)` or a literal %) to a fraction. */
+function tintFraction(value: string, root: Map<string, string>): number {
+	const ref = value.match(/^var\((--[\w-]+)\)$/);
+	const resolved = ref ? root.get(ref[1]) : value;
+	assert(resolved?.endsWith("%"), `--status-tint-mix ${value} does not resolve to a percentage`);
+	return parseFloat(resolved!) / 100;
+}
+
+function hexToLinear(hex: string): number[] {
+	const n = parseInt(hex.slice(1), 16);
+	return [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
+		const s = v / 255;
+		return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+	});
+}
+
+function linearToHex(rgb: number[]): string {
+	return "#" + rgb.map((v) => {
+		const c = Math.min(1, Math.max(0, v));
+		const s = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+		return Math.round(s * 255).toString(16).padStart(2, "0");
+	}).join("");
+}
+
+function linearToOklab([r, g, b]: number[]): number[] {
+	const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+	const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+	const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+	return [
+		0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+		1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+		0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+	];
+}
+
+function oklabToLinear([L, a, b]: number[]): number[] {
+	const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+	const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+	const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+	return [
+		4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+		-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+		-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+	];
+}
+
+/** `color-mix(in oklab, a p, b)` — `p` as a fraction, the remainder going to `b`. */
+function mixOklab(a: string, p: number, b: string): string {
+	const [x, y] = [linearToOklab(hexToLinear(a)), linearToOklab(hexToLinear(b))];
+	return linearToHex(oklabToLinear(x.map((v, i) => v * p + y[i] * (1 - p))));
+}
+
+Deno.test("every status tint is an opaque OKLab mix against --surface-1", async () => {
+	const root = (await cssRules()).get(":root")!;
+	for (const ramp of TINT_RAMPS) {
+		const value = root.get(`${ramp}-tint`);
+		assertEquals(
+			value,
+			`color-mix(in oklab, var(${ramp}) var(--status-tint-mix), var(--surface-1))`,
+			`${ramp}-tint must mix against a solid surface — never \`transparent\` (§B.4.2)`,
+		);
+	}
+});
+
+Deno.test("both high-contrast channels agree on the tint strength", async () => {
+	const rules = await cssRules();
+	for (const { selectors } of TINT_STATES) {
+		const values = selectors.map((s) => rules.get(s)?.get("--status-tint-mix"));
+		for (const [i, v] of values.entries()) {
+			assert(v, `--status-tint-mix is not declared under ${selectors[i]}`);
+		}
+		assertEquals(
+			new Set(values).size,
+			1,
+			`${selectors.join(" vs ")} disagree: ${values.join(" vs ")}`,
+		);
+	}
+});
+
+for (const state of TINT_STATES) {
+	const label = `${state.dark ? "dark" : "light"}${state.highContrast ? " + high contrast" : ""}`;
+	Deno.test(`--on-surface clears ${AA_FLOOR}:1 on every status tint — ${label}`, async () => {
+		const rules = await cssRules();
+		const p = tintFraction(
+			rules.get(state.selectors[0])!.get("--status-tint-mix")!,
+			rules.get(":root")!,
+		);
+		const scheme = buildScheme({ seed: SEED, dark: state.dark, highContrast: state.highContrast });
+		for (const ramp of TINT_RAMPS) {
+			const tint = mixOklab(scheme[ramp], p, scheme["--surface-1"]);
+			assert(
+				tint !== scheme["--surface-1"],
+				`${ramp}-tint is indistinguishable from --surface-1 in ${label}`,
+			);
+			const ratio = contrast(scheme["--on-surface"], tint);
+			assert(
+				ratio >= AA_FLOOR,
+				`--on-surface (${scheme["--on-surface"]}) on ${ramp}-tint (${tint}) is ${
+					ratio.toFixed(2)
+				}:1 in ${label} — below ${AA_FLOOR}:1`,
+			);
+		}
+	});
+}
+
+Deno.test("high contrast never narrows ink on a status tint", async () => {
+	const rules = await cssRules();
+	const root = rules.get(":root")!;
+	const ratioFor = (state: (typeof TINT_STATES)[number], ramp: string) => {
+		const p = tintFraction(rules.get(state.selectors[0])!.get("--status-tint-mix")!, root);
+		const scheme = buildScheme({ seed: SEED, dark: state.dark, highContrast: state.highContrast });
+		return contrast(scheme["--on-surface"], mixOklab(scheme[ramp], p, scheme["--surface-1"]));
+	};
+	for (const dark of [false, true]) {
+		const [base, hc] = [false, true].map((h) =>
+			TINT_STATES.find((s) => s.dark === dark && s.highContrast === h)!
+		);
+		for (const ramp of TINT_RAMPS) {
+			const before = ratioFor(base, ramp);
+			const after = ratioFor(hc, ramp);
+			assert(
+				after >= before,
+				`${ramp}-tint ink narrowed under high contrast in ${dark ? "dark" : "light"}: ${
+					before.toFixed(2)
+				}:1 -> ${after.toFixed(2)}:1`,
+			);
+		}
+	}
+});

@@ -1,0 +1,33 @@
+/*
+ * MetaLine — non-actionable metadata as inline Meta-register text (DESIGN_SYSTEM.md §A.4, §B.11).
+ *
+ * Deliberately nothing but type: no background, no border, no padding, no radius. Containment is a
+ * promise of interactivity (§B.11), and the separation between facts is carried by the middot and the
+ * space around it, never by boxing each one.
+ */
+
+/* #region Root */
+.ui-meta-line {
+	margin: 0;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-normal);
+	letter-spacing: var(--tracking-normal);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+	overflow-wrap: anywhere;
+}
+
+.ui-meta-line--xs {
+	font-size: var(--text-xs);
+}
+/* #endregion */
+
+/* #region Items */
+.ui-meta-line__item--tabular {
+	font-variant-numeric: tabular-nums;
+}
+
+.ui-meta-line__sep {
+	margin-inline: var(--space-1);
+}
+/* #endregion */
