@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ProposalAllowanceStatusSchema } from "../finance/allowance.ts";
 import { MoneyViewSchema } from "../finance/wallet.ts";
 import {
 	VerificationState,
@@ -13,7 +14,11 @@ import {
 	WorkspaceMemberSchema,
 	WorkspaceRoleDefSchema,
 } from "./members.ts";
-import { BusinessSpendPolicySchema, TeamPayoutPolicySchema } from "./policy.ts";
+import {
+	BusinessSpendPolicySchema,
+	SplitRuleInputSchema,
+	TeamPayoutPolicySchema,
+} from "./policy.ts";
 
 /**
  * workspace/workspace — the read projections the `/teams` and `/businesses` surfaces render, plus the
@@ -138,6 +143,45 @@ export const WorkspaceProjectSchema = z.object({
 });
 export type WorkspaceProject = z.infer<typeof WorkspaceProjectSchema>;
 
+/**
+ * A person working a team engagement. Every W_i figure is in Workload Intensity units (the summed
+ * `workload_intensity` of claimed / in-progress / in-review tickets, as `projects.check_ticket_capacity`
+ * sums it); `wi` and `wiCap` are the person's GLOBAL load and cap (the soft cap a warning reads),
+ * `stageWi` their load on this stage alone.
+ */
+export const EngagementAssigneeSchema = z.object({
+	handle: z.string().max(40),
+	displayName: z.string().max(120),
+	/** Avatar URL, or `""` for the initials fallback. */
+	avatarUrl: z.string().max(400),
+	wi: z.number().min(0),
+	wiCap: z.number().positive(),
+	stageWi: z.number().min(0),
+});
+export type EngagementAssignee = z.infer<typeof EngagementAssigneeSchema>;
+
+/**
+ * One of a team's live stage assignments (not declined, cancelled, released or completed; on an active
+ * or on-hold project) — the Projects module's row. Addressed by slugs only: uuids never reach the
+ * client (Decision #88).
+ */
+export const TeamEngagementSchema = z.object({
+	projectSlug: z.string().regex(/^prj-[a-z0-9]+$/).max(64),
+	title: z.string().max(160),
+	stageSlug: z.string().regex(/^stg-[a-z0-9]+$/).max(64),
+	stageTitle: z.string().max(160),
+	/** The `projects.stage_assignments.status` code (`accepted`, …). */
+	assignmentStatus: z.string().max(32),
+	projectStatus: z.enum(["active", "on_hold"]),
+	/** Active members holding live tickets on the stage, heaviest first. */
+	assignees: z.array(EngagementAssigneeSchema),
+	/** The team's total W_i on the stage — the sum of its assignees' `stageWi`. */
+	stageWi: z.number().min(0),
+	/** The stage's per-person hard cap (`max_concurrent_intensity`), W_i units; `null` when unset. */
+	stageCap: z.number().positive().nullable(),
+});
+export type TeamEngagement = z.infer<typeof TeamEngagementSchema>;
+
 /** One line of the overview's recent-activity feed. */
 export const ActivityEntrySchema = z.object({
 	id: z.string().max(64),
@@ -184,13 +228,20 @@ export const WorkspaceDetailSchema = z.object({
 	roles: z.array(WorkspaceRoleDefSchema),
 	invites: z.array(WorkspaceInviteSchema),
 
-	// Money — exactly one is present, matching {@link kind}.
+	// Money — at most one is present, matching {@link kind}; a team's payout only for `manage_finances`.
 	payout: TeamPayoutPolicySchema.nullable(),
 	spend: BusinessSpendPolicySchema.nullable(),
 	finance: WorkspaceFinanceSchema,
 
 	// Surfaces
 	projects: z.array(WorkspaceProjectSchema),
+	/** A team's live stage assignments with W_i; always `[]` for a business. */
+	engagements: z.array(TeamEngagementSchema).default([]),
+	/**
+	 * A team's proposal allowance — `finance.get_proposal_allowance`'s answer, resolved (team status,
+	 * head-count and the viewer's `bind_seat` included). `null` for a business.
+	 */
+	allowance: ProposalAllowanceStatusSchema.nullable().default(null),
 	activity: z.array(ActivityEntrySchema),
 	setup: z.array(SetupStepSchema),
 
@@ -322,14 +373,22 @@ export const ArchiveRoleInputSchema = z.object({
 });
 export type ArchiveRoleInput = z.infer<typeof ArchiveRoleInputSchema>;
 
-/** Write a team's split. Rejected server-side unless the active members' stakes sum to exactly 100%. */
+/**
+ * Write a team's split: its template (`rule`), its members' stakes, or both — at least one. Stakes are
+ * rejected server-side unless the active members' shares sum to exactly 100%; a template is checked by
+ * `finance.save_split_rule`. When both travel the template is written first, then the stakes.
+ */
 export const UpdatePayoutInputSchema = z.object({
 	workspaceId: z.string().max(64),
 	stakes: z.array(z.object({
 		memberId: z.string().max(64),
 		shareBp: z.number().int().min(0).max(10_000),
 		held: z.boolean().default(false),
-	})).min(1),
+	})).min(1).optional(),
+	rule: SplitRuleInputSchema.optional(),
+}).refine((input) => input.stakes !== undefined || input.rule !== undefined, {
+	message: "Change the split's template or its stakes.",
+	path: ["stakes"],
 });
 export type UpdatePayoutInput = z.infer<typeof UpdatePayoutInputSchema>;
 

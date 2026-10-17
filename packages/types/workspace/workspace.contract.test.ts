@@ -19,6 +19,14 @@ import {
 	WorkspaceRole,
 } from "./common.ts";
 import { RESERVED_HANDLES } from "../profile/reserved.ts";
+import { EntitlementKey } from "../finance/entitlements.ts";
+import { SplitRuleType } from "../finance/vault.ts";
+import { SplitRuleInputSchema } from "./policy.ts";
+import {
+	TeamEngagementSchema,
+	UpdatePayoutInputSchema,
+	WorkspaceDetailSchema,
+} from "./workspace.ts";
 
 // #region Reading the SQL
 
@@ -160,6 +168,151 @@ Deno.test("org.fn_is_reserved_handle reserves exactly RESERVED_HANDLES", () => {
 	const list = literals(reservedBody.slice(start, reservedBody.indexOf("]", start)));
 	assertEquals(new Set(list), new Set(RESERVED_HANDLES));
 	assertEquals(list.length, new Set(list).size, "the SQL list repeats a handle");
+});
+
+Deno.test("finance.split_rule_type declares SplitRuleType.options, and the template input covers each", () => {
+	const sql = read(ENUMS_SQL);
+	const match = /CREATE TYPE finance\.split_rule_type AS ENUM \(([^)]*)\)/.exec(sql);
+	assert(match, "finance.split_rule_type is no longer declared in 00000004_enums_domains.sql");
+	assertEquals(literals(match[1]), [...SplitRuleType.options]);
+	const covered = SplitRuleInputSchema.options.map((o) => o.shape.ruleType.value);
+	assertEquals([...covered].sort(), [...SplitRuleType.options].sort());
+	// finance.save_split_rule gates each template on `split_template_<type>`, in SQL and in the SSOT.
+	const keyBlock = /CREATE TYPE finance\.entitlement_key AS ENUM \(([\s\S]*?)\);/.exec(sql);
+	assert(keyBlock, "finance.entitlement_key is no longer declared in 00000004_enums_domains.sql");
+	const sqlKeys = literals(keyBlock[1].replace(/--.*$/gm, ""));
+	assertEquals(sqlKeys, [...EntitlementKey.options]);
+	for (const type of SplitRuleType.options) {
+		assert(
+			(EntitlementKey.options as readonly string[]).includes(`split_template_${type}`),
+			`no split_template_${type} entitlement key`,
+		);
+	}
+});
+
+Deno.test("UpdatePayoutInputSchema: a template, stakes, or both — never neither", () => {
+	const stakes = [{ memberId: "m1", shareBp: 10_000 }];
+	assert(UpdatePayoutInputSchema.safeParse({ workspaceId: "t", stakes }).success);
+	assert(
+		UpdatePayoutInputSchema.safeParse({
+			workspaceId: "t",
+			rule: { ruleType: "finders_fee", vaultBp: 1000, finderUserId: "u1", finderBp: 500 },
+		}).success,
+	);
+	assert(
+		UpdatePayoutInputSchema.safeParse({
+			workspaceId: "t",
+			rule: { ruleType: "benevolent_dictator" },
+			stakes,
+		}).success,
+	);
+	assert(!UpdatePayoutInputSchema.safeParse({ workspaceId: "t" }).success, "neither");
+	assert(
+		!UpdatePayoutInputSchema.safeParse({
+			workspaceId: "t",
+			rule: { ruleType: "finders_fee", vaultBp: 1000, finderBp: 500 },
+		}).success,
+		"a finder's fee without a finder",
+	);
+	assert(
+		!UpdatePayoutInputSchema.safeParse({
+			workspaceId: "t",
+			rule: { ruleType: "finders_fee", vaultBp: 1000, finderUserId: "u1", finderBp: 0 },
+		}).success,
+		"a finder's cut of 0",
+	);
+	assert(
+		!UpdatePayoutInputSchema.safeParse({
+			workspaceId: "t",
+			rule: { ruleType: "co_op", vaultBp: 10_001 },
+		}).success,
+		"a vault cut above 100%",
+	);
+	assert(
+		!UpdatePayoutInputSchema.safeParse({ workspaceId: "t", rule: { ruleType: "by_role" } }).success,
+		"an unknown template",
+	);
+});
+
+// #endregion
+
+// #region The one console read (Decision #233)
+
+const detailBody = functionBody(entities, "org.get_workspace_detail");
+
+Deno.test("org.get_workspace_detail answers every key the service maps — and no stored team W_i", () => {
+	for (
+		const key of [
+			"'wi'",
+			"'wi_cap'",
+			"'share_bp'",
+			"'share_held'",
+			"'client'",
+			"'provider_user_ids'",
+			"'provider_teams'",
+			"'engagements'",
+			"'project_slug'",
+			"'stage_slug'",
+			"'stage_wi'",
+			"'stage_cap'",
+			"'assignees'",
+			"'payout'",
+			"'rule'",
+			"'wallet'",
+			"'available_minor'",
+			"'pending_minor'",
+			"'preview'",
+			"'allowance'",
+		]
+	) {
+		assert(detailBody.includes(key), `get_workspace_detail no longer answers ${key}`);
+	}
+	assert(
+		/'payout', CASE WHEN p_kind = 'team' AND 'manage_finances' = ANY \(v_caps\)/.test(detailBody),
+		"the payout block must be gated on manage_finances",
+	);
+	assert(
+		detailBody.includes("finance.get_proposal_allowance(v_e.id)"),
+		"the allowance must be get_proposal_allowance's own answer",
+	);
+	assert(/\bVOLATILE\b/.test(detailBody), "the allowance read writes, so the detail is VOLATILE");
+	assert(!detailBody.includes("current_workload_intensity"), "W_i is summed live, never stored");
+});
+
+Deno.test("WorkspaceDetailSchema: engagements are slug-addressed; a business defaults to none", () => {
+	const engagement = {
+		projectSlug: "prj-abc123",
+		title: "Atlas",
+		stageSlug: "stg-def456",
+		stageTitle: "Build",
+		assignmentStatus: "accepted",
+		projectStatus: "active",
+		assignees: [{
+			handle: "ana",
+			displayName: "Ana",
+			avatarUrl: "",
+			wi: 2.5,
+			wiCap: 10,
+			stageWi: 2.5,
+		}],
+		stageWi: 2.5,
+		stageCap: null,
+	};
+	assert(TeamEngagementSchema.safeParse(engagement).success);
+	assert(
+		!TeamEngagementSchema.safeParse({
+			...engagement,
+			projectSlug: "3f1c2a9e-0000-4000-8000-000000000000",
+		}).success,
+		"a uuid never addresses a project",
+	);
+	assert(
+		!TeamEngagementSchema.safeParse({ ...engagement, projectStatus: "completed" }).success,
+		"a completed project is not a live engagement",
+	);
+	const shape = WorkspaceDetailSchema.shape;
+	assertEquals(shape.engagements.parse(undefined), []);
+	assertEquals(shape.allowance.parse(undefined), null);
 });
 
 // #endregion

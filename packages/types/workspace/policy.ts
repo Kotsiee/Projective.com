@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SplitRuleType } from "../finance/vault.ts";
 import { MoneyViewSchema } from "../finance/wallet.ts";
 import { VerificationState } from "./common.ts";
 
@@ -57,8 +58,66 @@ export const SplitTemplateSchema = z.object({
 });
 export type SplitTemplate = z.infer<typeof SplitTemplateSchema>;
 
-/** The team's payout policy — the split editor's whole state. */
+/** A cut in basis points (10 000 = 100%). */
+const splitBp = z.number().int().min(0).max(10_000);
+
+/**
+ * The team's ACTIVE split template (`finance.split_rules`, finance-model.md §5) — the rule the release
+ * plan applies before the members' stakes: the finder's cut (finders_fee), then the vault's, then the
+ * stakes on what is left. A team with no stored rule reads as `co_op` with no vault cut, which is what
+ * the plan applies to it. `benevolent_dictator` sends everything to the vault, so its `vaultBp` is
+ * 10 000.
+ */
+export const TeamSplitRuleSchema = z.object({
+	ruleType: SplitRuleType,
+	vaultBp: splitBp,
+	/** The finder's user id — set only under `finders_fee`. */
+	finderUserId: z.string().max(64).nullable(),
+	/** The finder's cut, taken first — set only under `finders_fee`. */
+	finderBp: splitBp.nullable(),
+});
+export type TeamSplitRule = z.infer<typeof TeamSplitRuleSchema>;
+
+/**
+ * A new split template, as the editor writes it (`finance.save_split_rule`). Discriminated on
+ * `ruleType` so a template carries exactly the fields it uses: a finder only under `finders_fee`, and
+ * no vault cut under `benevolent_dictator` (everything goes to the vault). Ranges are checked here;
+ * the combined `finderBp + vaultBp ≤ 10 000` rule, the finder's membership and the plan gate are
+ * money policy, enforced once in the RPC.
+ */
+export const SplitRuleInputSchema = z.discriminatedUnion("ruleType", [
+	z.object({
+		ruleType: z.literal(SplitRuleType.enum.co_op),
+		vaultBp: splitBp,
+	}),
+	z.object({
+		ruleType: z.literal(SplitRuleType.enum.finders_fee),
+		vaultBp: splitBp,
+		finderUserId: z.string().max(64),
+		finderBp: z.number().int().min(1).max(10_000),
+	}),
+	z.object({
+		ruleType: z.literal(SplitRuleType.enum.benevolent_dictator),
+	}),
+]);
+export type SplitRuleInput = z.infer<typeof SplitRuleInputSchema>;
+
+/**
+ * The team's payout policy — the split editor's whole state. Present on the console detail ONLY for a
+ * viewer holding `manage_finances` (Decision #233); everybody else reads `null`.
+ */
 export const TeamPayoutPolicySchema = z.object({
+	/** The vault wallet the figures below are read from (the treasury wallet, else the fullest). */
+	walletId: z.string().max(64).nullable(),
+	/**
+	 * ISO 4217 code of the vault wallet — the unit of {@link availableMinor} and {@link pendingMinor}.
+	 * (The projection's MoneyViews carry their own currency: the held release's, when one is held.)
+	 */
+	currency: z.string().regex(/^[A-Z]{3}$/),
+	/** The vault's spendable balance, integer minor units of {@link currency}. */
+	availableMinor: z.number().int().min(0),
+	/** Releases still clearing into the vault, integer minor units of {@link currency}. */
+	pendingMinor: z.number().int().min(0),
 	model: SplitModel,
 	stakes: z.array(SplitStakeSchema),
 	templates: z.array(SplitTemplateSchema),
@@ -72,6 +131,8 @@ export const TeamPayoutPolicySchema = z.object({
 	platformFee: MoneyViewSchema.nullable(),
 	/** The vault's cut of every release, in basis points, taken before the members' split. */
 	vaultBp: z.number().int().min(0).max(10_000),
+	/** The active split template the release plan applies before the stakes. */
+	rule: TeamSplitRuleSchema,
 	/** What the vault keeps of the projected release — its cut plus the rounding dust. */
 	vaultCut: MoneyViewSchema.nullable(),
 	/** Who may withdraw from the vault — member ids. */

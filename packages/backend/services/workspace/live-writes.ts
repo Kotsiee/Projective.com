@@ -4,6 +4,7 @@ import type {
 	InviteActionInput,
 	InviteMemberInput,
 	RespondInviteInput,
+	SplitRuleInput,
 	TransferOwnershipInput,
 	UpdateMemberInput,
 	UpdatePayoutInput,
@@ -283,23 +284,62 @@ export async function archiveRole(
 
 // #region Money governance
 
-/** Replace a team's split. The RPC refuses anything that does not total exactly 10 000 bp. */
+/**
+ * The arguments `finance.save_split_rule` takes for a template. A finder travels only under
+ * `finders_fee`; `benevolent_dictator` sends 10 000 bp, the vault cut the RPC stores for it.
+ */
+export function splitRuleArgs(teamId: string, rule: SplitRuleInput): Record<string, unknown> {
+	switch (rule.ruleType) {
+		case "finders_fee":
+			return {
+				p_team_id: teamId,
+				p_rule_type: rule.ruleType,
+				p_vault_bp: rule.vaultBp,
+				p_finder_user_id: rule.finderUserId,
+				p_finder_bp: rule.finderBp,
+			};
+		case "benevolent_dictator":
+			return { p_team_id: teamId, p_rule_type: rule.ruleType, p_vault_bp: 10_000 };
+		case "co_op":
+			return { p_team_id: teamId, p_rule_type: rule.ruleType, p_vault_bp: rule.vaultBp };
+	}
+}
+
+/**
+ * Write a team's split — its template, its stakes, or both. The template goes first, then the stakes
+ * (the release plan reads both); each RPC is its own transaction, so a stakes refusal after a saved
+ * template leaves the template saved, and the refusal is what returns. The stakes RPC refuses anything
+ * that does not total exactly 10 000 bp.
+ */
 export async function saveSplit(
 	input: UpdatePayoutInput,
 	actor: LiveActor,
 ): Promise<ServiceResult<WorkspaceDetail>> {
 	if (!isUuid(input.workspaceId)) return badId("workspaceId", "team");
-	const bad = input.stakes.find((s) => !isUuid(s.memberId));
-	if (bad) return badId("stakes", "member");
-	const res = await callRpc(actor, "finance", "save_team_split", {
-		p_team_id: input.workspaceId,
-		p_stakes: input.stakes.map((s) => ({
-			member_id: s.memberId,
-			share_bp: s.shareBp,
-			held: s.held ?? false,
-		})),
-	});
-	if (!res.ok) return res.refusal;
+	if (input.stakes?.some((s) => !isUuid(s.memberId))) return badId("stakes", "member");
+	if (input.rule?.ruleType === "finders_fee" && !isUuid(input.rule.finderUserId)) {
+		return badId("finderUserId", "member");
+	}
+	if (input.rule) {
+		const res = await callRpc(
+			actor,
+			"finance",
+			"save_split_rule",
+			splitRuleArgs(input.workspaceId, input.rule),
+		);
+		if (!res.ok) return res.refusal;
+	}
+	if (input.stakes) {
+		const res = await callRpc(actor, "finance", "save_team_split", {
+			p_team_id: input.workspaceId,
+			p_stakes: input.stakes.map((s) => ({
+				member_id: s.memberId,
+				share_bp: s.shareBp,
+				held: s.held ?? false,
+			})),
+		});
+		if (!res.ok) return res.refusal;
+	}
 	return reread("team", input.workspaceId, actor);
 }
 

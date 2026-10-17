@@ -170,9 +170,22 @@ split ratio defined before work starts.
 
 **Default ruleset templates:**
 
-- **Co-op (Equal):** `(100% − Vault%) / N members`.
+- **Co-op (Equal):** `(100% − Vault%) / N members`. **Free** on every team plan.
 - **Finder's Fee:** a fixed percentage to the member who originated the project; remainder split.
-- **Benevolent Dictator:** 100% to Team Vault, manually distributed by the admin.
+  **Pro Team.**
+- **Benevolent Dictator:** 100% to Team Vault, manually distributed by the admin. **Pro Team.**
+
+**Writing a template** (`finance.save_split_rule`, Decision #228 (F); the plan split ruled under
+Decision #226 (d)) needs `manage_finances` on a team that is not archived. Every cut is whole basis
+points. The vault cut is 0–10000; a finder's fee names an **active member** as finder with a cut of
+at least 1 bp, and the finder's and the vault's cuts together may not exceed 100% (10000 bp). Benevolent
+Dictator stores a vault cut of 10000. Saving a template **retires** the active one
+(`active = false`, kept as history), never deletes it, so a team always has exactly one active
+template. Which templates a plan unlocks is data: one `split_template_<type>` entitlement flag per
+template. Team Free carries `split_template_co_op` only; Pro Team carries all three; a grant can
+unlock a single template. A team without the flag is refused **402**. The gate applies to the
+**write** alone: a team that drops to Team Free keeps applying its stored template until it saves a
+new one.
 
 ---
 
@@ -394,9 +407,20 @@ Governs shared wallets (Business / Team / Enterprise).
   add/spend/distribute/withdraw.
 - **Team smart-splits** (`finance.split_rules` template → `finance.contribution_agreements`
   per-member, §5): **Co-op** `(100% − Vault%) / N` · **Finder's Fee** (fixed % to originator,
-  remainder split) · **Benevolent Dictator** (100% to Team Vault). **Deterministic remainder
+  remainder split) · **Benevolent Dictator** (100% to Team Vault); Finder's Fee and Benevolent
+  Dictator are Pro Team templates (§5). **Deterministic remainder
   rounding:** after integer division, any leftover minor unit(s) go to the **Team Vault**, so a
   split always sums back to the released total (the ledger nets to zero).
+- **Two remainder rules — money and stake — kept apart on purpose:**
+  - **Money dust → the Team Vault.** A release divides minor units: every cut is floored, and the
+    leftover (under one minor unit per staked member) is credited to the vault with its cut
+    (`finance.fn_team_split_plan`). The same inputs always give the same ledger, and member credits +
+    finder's fee + vault = the release less the platform fee, exactly.
+  - **Stake remainder → the largest absorber.** When a member leaves, their basis points are
+    redistributed across the remaining (unheld) stakes and the rounding remainder goes to the member
+    absorbing the most (`org.fn_rebalance_departed_stake`). It cannot go to the vault: stakes must
+    total 10000 bp and the vault holds no stake — its share is the rule's `vault_bp`, taken off the
+    top before stakes divide the rest.
 
 ---
 
@@ -481,6 +505,10 @@ superset of a client. There is no separate buyer plan to reconcile.
 | Stored assets              | 25 GiB    | **500 GiB**     |   | Stored assets              | 25 GiB        | **500 GiB**  |
 | Advanced vault splits      | â€”       | âœ…             |   | Intervaled invoicing       | â€”           | âœ…          |
 | Promoted placement         | â€”       | âœ…             |   | Departments                | 0             | 5            |
+
+**Advanced vault splits** are the Finder's Fee and Benevolent Dictator templates (Decision #226 (d)).
+They are enforced from day one, with no switch: `finance.save_split_rule` refuses a team whose plan
+lacks the template's `split_template_<type>` flag (§5).
 
 **Business Pro gates are enforced** (Decision #230 (e)): monthly intervaled invoicing and the full
 pooled wallet (per-member caps, an approval threshold) refuse a Business without Business Pro.

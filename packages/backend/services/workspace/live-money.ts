@@ -26,9 +26,12 @@ import {
 	moneyOf,
 	type Person,
 	projectedShare,
+	type RawMember,
+	type RawSplitRule,
 	relativeLabel,
 	spendRequestState,
 	spentInPeriod,
+	toSplitRule,
 	usedFraction,
 	verificationPrompt,
 } from "./mappers.ts";
@@ -37,8 +40,10 @@ import {
  * live-money — the Money modules of the console: a team's payout split, a business's spend policy, and
  * the finance tiles both share.
  *
- * Every read runs under the caller's own session (`finance.*` RLS: a member sees their entity's wallets,
- * split agreements, limits, audit and approvals), and every figure is a stored amount in its OWN
+ * A team's money arrives inside the console's one read (`org.get_workspace_detail`'s payout block, sent
+ * only to a `manage_finances` holder — Decision #233), so its builder ({@link teamMoneyFacts}) is pure.
+ * A business's reads run under the caller's own session (`finance.*` RLS: a member sees their entity's
+ * wallets, limits, audit and approvals). Every figure is a stored amount in its OWN
  * currency — nothing here converts, sums across currencies, or computes a split a different way from
  * the database. The projected release is `finance.preview_team_split`, which runs the same plan
  * (`finance.fn_team_split_plan`) the release itself runs, so what a team is shown is what it receives.
@@ -69,6 +74,11 @@ function faceOf(member: MoneyMember): { handle: string; name: string; avatar: st
 
 const ENTRY_LIMIT = 40;
 
+/** A stored amount as a non-negative integer of minor units (`0` for a figure nobody recorded). */
+function minorOf(raw: number | string | null | undefined): number {
+	return Math.max(0, Math.trunc(Number(raw) || 0));
+}
+
 // #endregion
 
 // #region Team — raw reads
@@ -98,52 +108,49 @@ export interface TeamMoneyFacts {
 	agreements: Map<string, { bp: number; held: boolean }>;
 	preview: RawSplitPreview | null;
 	walletCurrency: string;
-	rule: { rule_type: string; vault_bp: number } | null;
+	/** The active `finance.split_rules` row; `null` when the team has never stored one. */
+	rule: RawSplitRule | null;
+	/** The vault wallet the policy reports balances from; absent or `null` when the team has none. */
+	wallet?: RawVaultWallet | null;
 }
 
-/** Read a team's split agreements, its release projection, its vault currency and its split rule. */
-export async function readTeamMoney(actor: LiveActor, teamId: string): Promise<TeamMoneyFacts> {
-	const db = clientFor(actor).schema("finance");
-	const [agreementsRes, previewRes, walletsRes, ruleRes] = await Promise.all([
-		db.from("contribution_agreements").select("member_user_id, percent_bp, held").eq(
-			"team_id",
-			teamId,
-		),
-		db.rpc("preview_team_split", { p_team_id: teamId }),
-		db.from("wallets").select("currency, balance_cents").eq("owner_type", "team").eq(
-			"owner_id",
-			teamId,
-		),
-		db.from("split_rules").select("rule_type, vault_bp").eq("team_id", teamId).eq("active", true)
-			.maybeSingle(),
-	]);
-	if (agreementsRes.error) {
-		throw new Error(`finance.contribution_agreements read failed: ${agreementsRes.error.message}`);
-	}
-	if (previewRes.error) {
-		throw new Error(`finance.preview_team_split failed: ${previewRes.error.message}`);
-	}
-	if (walletsRes.error) throw new Error(`finance.wallets read failed: ${walletsRes.error.message}`);
-	if (ruleRes.error) throw new Error(`finance.split_rules read failed: ${ruleRes.error.message}`);
+/** The vault wallet on the detail's payout block — the treasury wallet, else the fullest. */
+export interface RawVaultWallet {
+	id: string;
+	currency: string;
+	available_minor: number;
+	pending_minor: number;
+}
 
+/**
+ * The payout block `org.get_workspace_detail` answers to a `manage_finances` holder (and to nobody
+ * else): the active split rule, the vault wallet and `finance.preview_team_split`'s projection.
+ */
+export interface RawTeamPayout {
+	rule: RawSplitRule | null;
+	wallet: RawVaultWallet | null;
+	preview: RawSplitPreview | null;
+}
+
+/**
+ * A team's money facts from the ONE detail read — the payout block plus the members' stakes the same
+ * read carries (`share_bp` / `share_held`). Pure: nothing here touches the database.
+ */
+export function teamMoneyFacts(
+	payout: RawTeamPayout,
+	members: readonly Pick<RawMember, "user_id" | "share_bp" | "share_held">[],
+): TeamMoneyFacts {
 	const agreements = new Map<string, { bp: number; held: boolean }>();
-	for (
-		const row of (agreementsRes.data ?? []) as {
-			member_user_id: string;
-			percent_bp: number;
-			held: boolean;
-		}[]
-	) {
-		agreements.set(row.member_user_id, { bp: Number(row.percent_bp) || 0, held: !!row.held });
+	for (const m of members) {
+		if (m.share_bp === null || m.share_bp === undefined) continue;
+		agreements.set(m.user_id, { bp: Number(m.share_bp) || 0, held: !!m.share_held });
 	}
-	const wallets = ((walletsRes.data ?? []) as { currency: string; balance_cents: number }[])
-		.sort((a, b) => (Number(b.balance_cents) || 0) - (Number(a.balance_cents) || 0));
-	const rule = ruleRes.data as { rule_type: string; vault_bp: number } | null;
 	return {
 		agreements,
-		preview: (previewRes.data ?? null) as RawSplitPreview | null,
-		walletCurrency: (wallets[0]?.currency ?? "USD").toUpperCase(),
-		rule,
+		preview: payout.preview ?? null,
+		walletCurrency: (payout.wallet?.currency ?? "USD").toUpperCase(),
+		rule: payout.rule ?? null,
+		wallet: payout.wallet ?? null,
 	};
 }
 
@@ -225,19 +232,22 @@ export function buildPayoutPolicy(
 
 	// With no release held the plan answers for a zero payout, whose vault figure is 0 by construction;
 	// the team's standing rule still says what the vault WILL take, so that is what is shown.
-	const vaultBp = released && plan
-		? Number(plan.vault_bp) || 0
-		: facts.rule
-		? (facts.rule.rule_type === "benevolent_dictator" ? 10_000 : Number(facts.rule.vault_bp) || 0)
-		: 0;
+	const rule = toSplitRule(facts.rule);
+	const vaultBp = released && plan ? Number(plan.vault_bp) || 0 : rule.vaultBp;
+	const wallet = facts.wallet ?? null;
 
 	return {
+		walletId: wallet?.id ?? null,
+		currency: facts.walletCurrency.toUpperCase(),
+		availableMinor: minorOf(wallet?.available_minor),
+		pendingMinor: minorOf(wallet?.pending_minor),
 		model,
 		stakes,
 		templates,
 		projectedRelease: released ? moneyOf(Number(preview.gross_minor) || 0, currency) : null,
 		platformFee: released ? moneyOf(Number(preview.fee_minor) || 0, currency) : null,
 		vaultBp: Math.max(0, Math.min(10_000, vaultBp)),
+		rule,
 		vaultCut: released && plan ? moneyOf(Number(plan.vault_total_minor) || 0, currency) : null,
 		withdrawApprovers: members.filter((m) => m.capabilities.includes("withdraw_funds")).map((m) =>
 			m.memberId

@@ -263,7 +263,16 @@ t.active_project_count,
     fb.storage_path as banner_path,
     false as verified,
     '{}'::text[] as skills,
-    COALESCE(t.current_workload_intensity, 0) as workload,
+    -- A team's load is its active members' LIVE W_i — every claimed / in-progress / in-review ticket
+    -- they hold, summed as projects.check_ticket_capacity sums it (Decision #233, #226 (h)). The stored
+    -- org.teams.current_workload_intensity has no writer and is not read.
+    COALESCE((
+        SELECT round(sum(tk.workload_intensity))::int
+          FROM org.team_members tm
+          JOIN projects.tickets tk ON tk.current_assignee_id = tm.user_id
+                                  AND tk.status::text IN ('claimed', 'in_progress', 'in_review')
+         WHERE tm.team_id = t.id AND tm.status = 'active'
+    ), 0) as workload,
     t.created_at as joined_at,
     NULL::int as verification_tier,
     '{}'::text[] as language_codes,
@@ -275,15 +284,20 @@ t.active_project_count,
     sl.label::text as standing_label,
     sl.discovery_weight_bp,
     -- The W_i cap is per PERSON (projects.check_ticket_capacity), so a team's ceiling is its active
-    -- members' default caps combined.
-    (COALESCE(
+    -- members' own caps combined: each member's override, else the platform default.
+    COALESCE((
+        SELECT sum(COALESCE(
+            fp.max_workload_intensity,
+            (SELECT (pp.value #>> '{}')::numeric FROM security.platform_params pp
+              WHERE pp.key = 'global_workload_cap_default'),
+            10.00))
+          FROM org.team_members tm
+          LEFT JOIN org.freelancer_profiles fp ON fp.user_id = tm.user_id
+         WHERE tm.team_id = t.id AND tm.status = 'active'
+    ), COALESCE(
         (SELECT (pp.value #>> '{}')::numeric FROM security.platform_params pp
           WHERE pp.key = 'global_workload_cap_default'),
-        10.00
-    ) * GREATEST(
-        (SELECT COUNT(*) FROM org.team_members tm WHERE tm.team_id = t.id AND tm.status = 'active'),
-        1
-    ))::numeric as workload_cap,
+        10.00))::numeric as workload_cap,
     -- A team holds no verification of its own; its members' crests are their own.
     'none'::text as verification_stamp
 FROM org.teams t

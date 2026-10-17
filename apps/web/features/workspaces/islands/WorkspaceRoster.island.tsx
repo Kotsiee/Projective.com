@@ -4,7 +4,7 @@ import { useEffect, useRef } from "preact/hooks";
 import "../styles/workspace.css";
 import { Grid } from "@projective/ui/layout";
 import { InputText } from "@projective/ui/fields";
-import { Message } from "@projective/ui/feedback";
+import { InlineNotice, Message } from "@projective/ui/feedback";
 import { styleVars } from "@ui/core/style.ts";
 import {
 	type IncomingInvite,
@@ -16,9 +16,10 @@ import {
 	type WorkspaceSummary,
 } from "@projective/types/workspace";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
+import type { RosterNotice } from "../core/console-route.ts";
 import { useContextSwitch } from "../core/useContextSwitch.ts";
 import { openCreate, rosterView } from "../core/workspace-state.ts";
-import { gridColWidth, workspaceZoom, displayZoom } from "../core/view-state.ts";
+import { displayZoom, gridColWidth, workspaceZoom } from "../core/view-state.ts";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 import {
 	countLabel,
@@ -80,6 +81,11 @@ export interface WorkspaceRosterProps {
 	 * separate page that would have to be kept in step with it.
 	 */
 	autoCreate?: boolean;
+	/**
+	 * Why the viewer was sent here (`?notice=`). `unavailable` — a console they followed a link to is not
+	 * theirs to open; the line says so without saying whether the entity exists.
+	 */
+	initialNotice?: RosterNotice | null;
 }
 // #endregion
 
@@ -342,6 +348,10 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 							<p class="wsp-roster__count" role="status" aria-live="polite" aria-busy="true">
 								Switching context…
 							</p>
+						)}
+
+						{props.initialNotice === "unavailable" && (
+							<InlineNotice align="start" text={`That ${copy.noun} isn't available to you`} />
 						)}
 
 						{(notice.value ?? switchError.value) && (

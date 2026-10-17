@@ -24,10 +24,14 @@ import {
 	setupSteps,
 	spendRequestState,
 	spentInPeriod,
+	toEngagement,
 	toOutgoingInvite,
 	toRoleDef,
+	toSplitRule,
 	usedFraction,
 	verificationPrompt,
+	wiCapOf,
+	wiOf,
 	workloadPercent,
 } from "./mappers.ts";
 
@@ -343,11 +347,91 @@ Deno.test("evenSplit totals exactly 10 000 with the remainder on the owner", () 
 	assertEquals(evenSplit([], "o"), []);
 });
 
+Deno.test("toSplitRule reads the active template the way fn_team_split_plan applies it", () => {
+	const none = { ruleType: "co_op", vaultBp: 0, finderUserId: null, finderBp: null } as const;
+	assertEquals(toSplitRule(null), none);
+	assertEquals(
+		toSplitRule({ rule_type: "by_role", vault_bp: 900, finder_user_id: null, finder_bp: null }),
+		none,
+	);
+	assertEquals(
+		toSplitRule({ rule_type: "co_op", vault_bp: 1500, finder_user_id: null, finder_bp: null }),
+		{ ruleType: "co_op", vaultBp: 1500, finderUserId: null, finderBp: null },
+	);
+	assertEquals(
+		toSplitRule({
+			rule_type: "finders_fee",
+			vault_bp: 1000,
+			finder_user_id: "u-1",
+			finder_bp: 500,
+		}),
+		{ ruleType: "finders_fee", vaultBp: 1000, finderUserId: "u-1", finderBp: 500 },
+	);
+	// A finder's cut with no finder pays nobody in the plan, so none is reported.
+	assertEquals(
+		toSplitRule({ rule_type: "finders_fee", vault_bp: 1000, finder_user_id: null, finder_bp: 500 }),
+		{ ruleType: "finders_fee", vaultBp: 1000, finderUserId: null, finderBp: null },
+	);
+	// Everything goes to the vault whatever was stored; stray finder fields are not reported.
+	assertEquals(
+		toSplitRule({
+			rule_type: "benevolent_dictator",
+			vault_bp: 0,
+			finder_user_id: "u-1",
+			finder_bp: 500,
+		}),
+		{ ruleType: "benevolent_dictator", vaultBp: 10_000, finderUserId: null, finderBp: null },
+	);
+	assertEquals(
+		toSplitRule({ rule_type: "co_op", vault_bp: 12_000, finder_user_id: null, finder_bp: null })
+			.vaultBp,
+		10_000,
+	);
+});
+
 Deno.test("projectedShare floors exactly as fn_team_split_plan does", () => {
 	assertEquals(projectedShare(2_025_000, 4000), 810_000);
 	assertEquals(projectedShare(1001, 3333), 333);
 	assertEquals(projectedShare(0, 5000), 0);
 	assertEquals(projectedShare(1000, 20_000), 1000);
+});
+
+/** mulberry32 — seeded, so a failing case reproduces from the seed. */
+function mulberry32(seed: number): () => number {
+	let a = seed >>> 0;
+	return () => {
+		a = (a + 0x6d2b79f5) >>> 0;
+		let t = a;
+		t = Math.imul(t ^ (t >>> 15), t | 1);
+		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+	};
+}
+
+Deno.test("projectedShare: over 500 seeded pools and stake sets, every cut is ⌊pool·bp/10000⌋ and the dust is under one unit a stake", () => {
+	const next = mulberry32(20_261_016);
+	const int = (min: number, max: number) => min + Math.floor(next() * (max - min + 1));
+	for (let c = 0; c < 500; c++) {
+		const pool = next() < 0.5
+			? int(0, 1_000_000_000)
+			: Math.floor(Math.exp(next() * Math.log(1_000_000_000)));
+		const weights = Array.from(
+			{ length: int(2, 15) },
+			(_, i) => i > 0 && next() < 0.1 ? 0 : int(1, 1000),
+		);
+		const total = weights.reduce((a, b) => a + b, 0);
+		const stakes = weights.map((w) => Math.floor((10_000 * w) / total));
+		stakes[weights.findIndex((w) => w > 0)] += 10_000 - stakes.reduce((a, b) => a + b, 0);
+		const label = `case ${c}: pool ${pool}, stakes ${stakes.join(",")}`;
+
+		const cuts = stakes.map((bp) => projectedShare(pool, bp));
+		cuts.forEach((cut, i) =>
+			assertEquals(BigInt(cut), (BigInt(pool) * BigInt(stakes[i])) / 10_000n, label)
+		);
+		const dust = pool - cuts.reduce((a, b) => a + b, 0);
+		const staked = stakes.filter((bp) => bp > 0).length;
+		assertEquals(dust >= 0 && dust < staked, true, `${label}: dust ${dust} outside [0, ${staked})`);
+	}
 });
 
 // #endregion
@@ -371,6 +455,48 @@ Deno.test("spentInPeriod: a reset period has spent nothing; a total limit never 
 	assertEquals(usedFraction(800, 2500), 0.32);
 	assertEquals(usedFraction(5000, 2500), 1);
 	assertEquals(usedFraction(800, null), 0);
+});
+
+// #endregion
+
+// #region Workload & engagements (Decision #233)
+
+Deno.test("wiOf / wiCapOf: numeric strings parse; nothing is 0; a cap is never 0", () => {
+	assertEquals([wiOf("3.50"), wiOf(2), wiOf(null), wiOf("x"), wiOf(-1)], [3.5, 2, 0, 0, 0]);
+	assertEquals([wiCapOf("12.00"), wiCapOf(null), wiCapOf(0)], [12, 10, 10]);
+});
+
+Deno.test("toEngagement: faces from people, W_i from the member row; non-members dropped; no cap is null", () => {
+	const engagement = toEngagement(
+		{
+			project_slug: "prj-abc123",
+			title: "",
+			stage_slug: "stg-def456",
+			stage_title: "Build",
+			assignment_status: "accepted",
+			project_status: "on_hold",
+			stage_cap: "0",
+			stage_wi: "4.00",
+			assignees: [
+				{ user_id: "u-a", stage_wi: "3.00" },
+				{ user_id: "u-gone", stage_wi: "1.00" },
+			],
+		},
+		new Map([["u-a", { username: "ana", name: "Ana", avatar: null }]]),
+		new Map([["u-a", { wi: "7.25", wi_cap: null }]]),
+	);
+	assertEquals(engagement.title, "Untitled project");
+	assertEquals(engagement.projectStatus, "on_hold");
+	assertStrictEquals(engagement.stageCap, null);
+	assertEquals(engagement.stageWi, 4);
+	assertEquals(engagement.assignees, [{
+		handle: "ana",
+		displayName: "Ana",
+		avatarUrl: "",
+		wi: 7.25,
+		wiCap: 10,
+		stageWi: 3,
+	}]);
 });
 
 // #endregion

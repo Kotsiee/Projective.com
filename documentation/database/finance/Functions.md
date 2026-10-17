@@ -48,6 +48,18 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   the rest, and whatever does not divide (or is unallocated) is dust to the vault. No active rule =
   co-op with no vault cut. Returns `{payout_minor, rule_type, vault_bp, finder_user_id, finder_minor,
   vault_minor, members:[{member_user_id, percent_bp, amount_minor}], dust_minor, vault_total_minor}`.
+  **Invariants** (property-tested by `supabase/probes/team_split_properties.sql` over 600 generated
+  cases — 2–15 members, stakes totalling 10000 bp, payouts 1–10⁹ minor units, every template; TEAMS_AUDIT
+  B9): with `payout` the released gross less its platform fee, Σ member `amount_minor` + `finder_minor`
+  + `vault_total_minor` = `payout` **exactly**; `pool = payout − finder_minor − vault_minor` and each
+  member cut = ⌊pool × `percent_bp` / 10000⌋, listed by `percent_bp` desc then member id; `dust_minor`
+  = pool − Σ member cuts ∈ [0, members with a stake) and is added to `vault_total_minor`
+  (= `vault_minor` + `dust_minor`); `benevolent_dictator` cuts no member and the vault takes all of
+  `payout`; the same inputs — however the stakes were written — give the same plan, and the preview
+  and the release credits agree with it to the minor unit. This **money** remainder (dust → the Team
+  Vault) is distinct from the **stake** remainder of a departure rebalance, which goes to the largest
+  absorber (`org.fn_rebalance_departed_stake`, `database/org/Functions.md`): stakes must total 10000 bp
+  and the vault holds no stake (`finance-model.md` §14).
 - **`finance.fn_split_team_payout(escrow_id, team_id, payout, currency, reason = 'escrow_release')`**
   — pays a team's released escrow out by `fn_team_split_plan`. Every member share and the finder's cut
   is a real credit to the person's real wallet (`fn_person_wallet_type` + `fn_ensure_wallet`), a
@@ -780,6 +792,31 @@ must total exactly 10000 (`stakes: the split must total 100% (it is over/under b
 is validated before anything is written; then every agreement row of the team goes to 0 and the listed
 members are written to their share — an active member left out is 0, a departed member zeroed,
 nothing deleted. Needs `manage_finances`. Audits `team.split_changed`.
+
+### `finance.save_split_rule(p_team_id, p_rule_type, p_vault_bp, p_finder_user_id DEFAULT NULL, p_finder_bp DEFAULT NULL)` → uuid
+
+The team's split **template** (Decision #228 (F)), the `finance.split_rules` row that
+`fn_team_split_plan` applies before the stakes. It is the table's only writer. `SECURITY DEFINER`,
+`search_path = ''`, granted to `authenticated`. It refuses, in this order:
+
+- `42501 auth:` when signed out. `P0002 workspace: not found` for an unknown team.
+- `42501 rule:` without `manage_finances`. `55000 workspace:` when the team is archived.
+- `22023 rule_type:` when no template is named.
+- `PK402 entitlement:` when the team's plan lacks the template's flag. The flag is
+  `fn_has_entitlement('team', team, 'split_template_' || rule_type)`; HINT names the missing key, and
+  it maps to 402 in the app. Team Free unlocks co_op only, Pro Team all three (Decision #226 (d)).
+- `22023 vault_bp:` outside 0–10000. benevolent_dictator ignores `p_vault_bp` and stores 10000,
+  the figure the plan reports for it.
+- finders_fee only: `22023 finder_user_id:` unless the finder is an **active** member;
+  `22023 finder_bp:` for a cut below 1 bp, or when `finder_bp + vault_bp` exceeds 10000.
+- co_op and benevolent_dictator only: `22023 finder_user_id:` / `finder_bp:` when a finder field is
+  set.
+
+Under `pg_advisory_xact_lock(hashtext('split:' || team))` it retires the active row
+(`active = false`, kept — never deleted) and inserts the new row active, so
+`uq_split_rules_team_active` holds one. It audits `team.split_rule_changed` (metadata: `rule_id`,
+`previous_rule_id`, the cuts) and returns the new rule's id. `POST /api/workspace/payout` calls it
+before `save_team_split` when the request carries a `rule`. Probe: `supabase/probes/save_split_rule.sql`.
 
 ### `finance.preview_team_split(p_team_id)` → jsonb
 

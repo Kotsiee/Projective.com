@@ -116,7 +116,9 @@ export function splitRefusal(message: string): { field: string; reason: string }
  * (`core/team-persona-gate.ts`) · the earning gate's `PK403 payout_not_ready` → 403 with its fix link
  * (`core/payout-gate.ts`) ·
  * `22023`/`23514`/`22P02` → 422 (field-keyed when the message names a field) · `42501` → 403 (401 when
- * the message is the "sign in" refusal) · `P0002` → 404 · `23505` → 409 (field-keyed) · `55000` → 409.
+ * the message is the "sign in" refusal) · `P0002` → 404 · `23505` → 409 (field-keyed) · `55000` → 409 ·
+ * a plan gate's `PK402 entitlement:` → 402 with `details` `{ reason: "entitlement", entitlement }` (the
+ * entitlement key the plan lacks, from HINT).
  * A JWT failure is a 401. Anything else is an error this layer cannot explain to a reader: it is logged
  * in full and answered with a generic 500, never the database's own text.
  */
@@ -164,6 +166,11 @@ export function refusalFrom(
 		case "55000":
 		case "PC409":
 			return fail(409, { message: reason });
+		case "PK402":
+			return fail(402, {
+				message: reason,
+				details: { reason: "entitlement", entitlement: error?.hint ?? null },
+			});
 		default:
 			console.error(`[workspace:${label}]`, code, message, error?.details ?? "");
 			return fail(500, { message: "That couldn't be completed. Try again in a moment." });

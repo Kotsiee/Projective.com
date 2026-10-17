@@ -54,7 +54,10 @@ export const EntitlementKey = z.enum([
 	"discovery_boost",
 	"instant_payouts_included",
 	"pooled_wallet_full",
-	"advanced_vault_splits",
+	// One flag per team split template, read by `finance.save_split_rule` as `split_template_<ruleType>`
+	"split_template_co_op",
+	"split_template_finders_fee",
+	"split_template_benevolent_dictator",
 	"intervaled_invoicing",
 	"sso_enabled",
 	"api_access",

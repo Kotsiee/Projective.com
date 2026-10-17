@@ -74,7 +74,9 @@ FROM finance.plans p, (VALUES
     ('team_public_projects',      'limit', 2,             false, false, 'none',          10000, NULL),
     ('published_listings',        'limit', NULL,          false, false, 'standing_base', 10000, NULL),
     ('weekly_proposals',          'limit', 50,            false, false, 'standing_bonus',10000, 'A free team draws on its members'' allowances rather than a dedicated pool.'),
-    ('advanced_vault_splits',     'flag',  NULL,          false, false, 'none',          10000, NULL),
+    ('split_template_co_op',      'flag',  NULL,          false, true,  'none',          10000, 'Co-op (equal, with an optional vault cut) is free.'),
+    ('split_template_finders_fee','flag',  NULL,          false, false, 'none',          10000, 'Finder''s fee is a Pro Team template (Decision #226 (d)).'),
+    ('split_template_benevolent_dictator','flag', NULL,   false, false, 'none',          10000, 'Benevolent dictator is a Pro Team template (Decision #226 (d)).'),
     ('advanced_analytics',        'flag',  NULL,          false, false, 'none',          10000, NULL),
     ('promoted_placement',        'flag',  NULL,          false, false, 'none',          10000, NULL),
     ('storage_megabytes',         'limit', 25600,         false, false, 'none',          10000, 'The team vault gets its own 25 GiB — it is metered against the TEAM, not against its owner''s personal library.')
@@ -89,7 +91,9 @@ FROM finance.plans p, (VALUES
     ('team_public_projects',      'limit', 15,            false, false, 'none',          10000, NULL),
     ('published_listings',        'limit', NULL,          false, false, 'standing_base', 20000, NULL),
     ('weekly_proposals',          'limit', 150,           false, false, 'standing_bonus',10000, 'A dedicated pooled team quota, separate from members'' personal allowances.'),
-    ('advanced_vault_splits',     'flag',  NULL,          false, true,  'none',          10000, NULL),
+    ('split_template_co_op',      'flag',  NULL,          false, true,  'none',          10000, NULL),
+    ('split_template_finders_fee','flag',  NULL,          false, true,  'none',          10000, NULL),
+    ('split_template_benevolent_dictator','flag', NULL,   false, true,  'none',          10000, NULL),
     ('advanced_analytics',        'flag',  NULL,          false, true,  'none',          10000, NULL),
     ('promoted_placement',        'flag',  NULL,          false, true,  'none',          10000, NULL),
     ('storage_megabytes',         'limit', 512000,        false, false, 'none',          10000, '500 GiB of shared team assets.')

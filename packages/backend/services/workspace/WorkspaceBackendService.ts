@@ -187,7 +187,11 @@ export class WorkspaceBackendService {
 
 	// #region Money governance
 
-	/** Replace a team's split. Refused unless the active members' stakes total exactly 10 000 bp. */
+	/**
+	 * Write a team's split — its template (`finance.save_split_rule`), then its stakes
+	 * (`finance.save_team_split`, refused unless the active members' stakes total exactly 10 000 bp) —
+	 * and answer with the re-read detail.
+	 */
 	static updatePayout(
 		input: UpdatePayoutInput,
 		actor: ReadActor,

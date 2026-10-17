@@ -1121,7 +1121,8 @@ $$;
 -- #region 11. Lifecycle — draft → active → archived (nothing is hard-deleted)
 -- Publishing needs `manage_settings`; archiving or restoring needs `archive_entity`. An entity with
 -- money in flight is not archived: a held escrow owed to (team) or funded by (business) the entity,
--- or a live stage assignment, would otherwise be stranded against something that says it is gone.
+-- a held escrow for a team's assigned stage that is unbound or bound to a member, or a live stage
+-- assignment, would otherwise be stranded against something that says it is gone.
 CREATE OR REPLACE FUNCTION org.set_workspace_status(p_kind text, p_id uuid, p_status text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1164,10 +1165,25 @@ BEGIN
     END IF;
 
     IF p_status = 'archived' THEN
+        -- A team's money in flight is wider than what names it as payee: a held escrow on a stage the
+        -- team is (or was, to completion) assigned to is the team's work while it is not bound yet
+        -- (Decision #197's prepaid escrow) or bound to one of its members (the team-seat payee rule can
+        -- bind a member's claim to that member). A non-member's escrow on a shared stage is theirs, and
+        -- a stage the team handed back (released · cancelled · declined) is its next assignee's.
         IF EXISTS (
             SELECT 1 FROM finance.escrows e
              WHERE e.status = 'held'
                AND ((p_kind = 'team' AND e.payee_type = 'team' AND e.payee_id = p_id)
+                 OR (p_kind = 'team'
+                     AND (e.payee_id IS NULL
+                          OR (e.payee_type = 'freelancer' AND EXISTS (
+                                SELECT 1 FROM org.team_members tm
+                                 WHERE tm.team_id = p_id AND tm.user_id = e.payee_id)))
+                     AND EXISTS (
+                        SELECT 1 FROM projects.stage_assignments sa
+                         WHERE sa.project_stage_id = e.project_stage_id
+                           AND sa.team_id = p_id
+                           AND sa.status NOT IN ('declined', 'cancelled', 'released')))
                  OR (p_kind = 'business' AND e.payer_business_id = p_id))
         ) THEN
             RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'status: money is held in escrow for this ' || p_kind || ' — let it release first';
@@ -2333,10 +2349,20 @@ $$;
 -- 'not_found'}` for a reference no entity of that kind holds; `{status:'forbidden'}` for one the caller
 -- is not an active member of — the entity's public profile already discloses that it exists, the
 -- console discloses nothing else.
+--
+-- It is the console's ONE read (Decision #233): besides the roster, roles and activity it answers
+--   * each member's live W_i (`wi`) and cap (`wi_cap`), summed exactly as projects.check_ticket_capacity
+--     sums them, and a team member's split stake (`share_bp`, `share_held`);
+--   * each project's counterparty face (a team's client; a business's providers) from org.profiles_index;
+--   * for a team: `payout` — the active split rule, the vault wallet and finance.preview_team_split —
+--     ONLY for a caller holding `manage_finances`; `engagements` — the team's live stage assignments with
+--     each assignee's W_i on the stage (slugs only, Decision #88); and `allowance` —
+--     finance.get_proposal_allowance's answer for the team.
+-- VOLATILE because the allowance read opens the week and pays out the lazy drip.
 CREATE OR REPLACE FUNCTION org.get_workspace_detail(p_kind text, p_handle text)
 RETURNS jsonb
 LANGUAGE plpgsql
-STABLE
+VOLATILE
 SECURITY DEFINER
 SET search_path = ''
 AS $$
@@ -2378,6 +2404,7 @@ BEGIN
         SELECT m.role_id FROM org.team_members m WHERE m.id = v_member
         UNION ALL SELECT m.role_id FROM org.business_members m WHERE m.id = v_member) x;
     SELECT (p.value #>> '{}')::numeric INTO v_cap_default FROM security.platform_params p WHERE p.key = 'global_workload_cap_default';
+    v_cap_default := COALESCE(v_cap_default, 10.00);
 
     RETURN jsonb_build_object(
         'status', 'ok',
@@ -2406,9 +2433,13 @@ BEGIN
                 'is_self', m.user_id = v_uid,
                 'email', CASE WHEN m.user_id = v_uid THEN (
                     SELECT e.email FROM org.user_emails e WHERE e.user_id = v_uid ORDER BY e.is_primary DESC NULLS LAST LIMIT 1) END,
-                'workload_current', fp.current_workload_intensity,
-                'workload_max', COALESCE(fp.max_workload_intensity, v_cap_default),
-                'availability', fp.availability_status
+                'wi', (SELECT COALESCE(sum(t.workload_intensity), 0) FROM projects.tickets t
+                        WHERE t.current_assignee_id = m.user_id
+                          AND t.status::text IN ('claimed', 'in_progress', 'in_review')),
+                'wi_cap', COALESCE(fp.max_workload_intensity, v_cap_default),
+                'availability', fp.availability_status,
+                'share_bp', ca.percent_bp,
+                'share_held', ca.held
             ) ORDER BY org.fn_preset_rank(m.role) DESC, m.joined_at), '[]'::jsonb)
             FROM (
                 SELECT x.id, x.user_id, x.role_id, x.role, x.status, x.granted_capabilities AS granted,
@@ -2419,7 +2450,9 @@ BEGIN
                        x.joined_at, x.title, x.reports_to
                   FROM org.business_members x WHERE p_kind = 'business' AND x.business_id = v_e.id AND x.status = 'active'
             ) m
-            LEFT JOIN org.freelancer_profiles fp ON fp.user_id = m.user_id),
+            LEFT JOIN org.freelancer_profiles fp ON fp.user_id = m.user_id
+            LEFT JOIN finance.contribution_agreements ca
+                   ON p_kind = 'team' AND ca.team_id = v_e.id AND ca.member_user_id = m.user_id),
         'roles', (SELECT COALESCE(jsonb_agg(jsonb_build_object(
                 'id', r.id,
                 'name', r.name,
@@ -2459,7 +2492,10 @@ BEGIN
                     'slug', p.slug, 'title', p.title, 'status', p.status,
                     'client_business_id', p.client_business_id, 'owner_user_id', p.owner_user_id,
                     'stage_name', p.stage_name, 'stage_status', p.stage_status, 'due', p.due,
-                    'stages_total', p.stages_total, 'stages_done', p.stages_done
+                    'stages_total', p.stages_total, 'stages_done', p.stages_done,
+                    'client', (SELECT jsonb_build_object('name', pi.name, 'avatar_bucket', pi.avatar_bucket,
+                                                         'avatar_path', pi.avatar_path)
+                                 FROM org.profiles_index pi WHERE pi.entity_id = p.client_business_id)
                 ) ORDER BY p.status = 'completed', p.updated_at DESC), '[]'::jsonb)
                 FROM (
                     SELECT DISTINCT ON (pr.id) pr.id, pr.slug, pr.title, pr.status, pr.client_business_id, pr.owner_user_id,
@@ -2478,10 +2514,84 @@ BEGIN
                     'client_business_id', pr.client_business_id, 'owner_user_id', pr.owner_user_id,
                     'stage_name', NULL, 'stage_status', NULL, 'due', NULL,
                     'stages_total', (SELECT count(*) FROM projects.project_stages s2 WHERE s2.project_id = pr.id),
-                    'stages_done', (SELECT count(*) FROM projects.project_stages s2 WHERE s2.project_id = pr.id AND s2.status IN ('approved', 'paid'))
+                    'stages_done', (SELECT count(*) FROM projects.project_stages s2 WHERE s2.project_id = pr.id AND s2.status IN ('approved', 'paid')),
+                    -- Who is delivering it: the teams by face, the individual freelancers by user id
+                    -- (the service resolves people in its one party-card batch).
+                    'provider_user_ids', (SELECT COALESCE(jsonb_agg(DISTINCT sa.freelancer_profile_id), '[]'::jsonb)
+                        FROM projects.stage_assignments sa JOIN projects.project_stages s2 ON s2.id = sa.project_stage_id
+                       WHERE s2.project_id = pr.id AND sa.team_id IS NULL AND sa.freelancer_profile_id IS NOT NULL
+                         AND sa.status NOT IN ('declined', 'cancelled', 'released')),
+                    'provider_teams', (SELECT COALESCE(jsonb_agg(jsonb_build_object('name', pi.name,
+                            'avatar_bucket', pi.avatar_bucket, 'avatar_path', pi.avatar_path) ORDER BY pi.name), '[]'::jsonb)
+                        FROM org.profiles_index pi
+                       WHERE pi.entity_id IN (
+                           SELECT sa.team_id FROM projects.stage_assignments sa
+                             JOIN projects.project_stages s2 ON s2.id = sa.project_stage_id
+                            WHERE s2.project_id = pr.id AND sa.team_id IS NOT NULL
+                              AND sa.status NOT IN ('declined', 'cancelled', 'released')))
                 ) ORDER BY pr.status = 'completed', pr.updated_at DESC), '[]'::jsonb)
                 FROM projects.projects pr
                 WHERE pr.client_business_id = v_e.id AND pr.status NOT IN ('draft', 'archived')) END,
+        -- A team's live stage assignments (not declined, cancelled, released or completed, on an active or
+        -- on-hold project), one row per stage, with every active member holding claimed / in-progress /
+        -- in-review tickets on it and their W_i there. Slugs address everything; the only ids are the
+        -- assignees' user ids, which the service turns into faces and never forwards.
+        'engagements', CASE WHEN p_kind = 'team' THEN (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                    'project_slug', g.project_slug, 'title', g.title,
+                    'stage_slug', g.stage_slug, 'stage_title', g.stage_title,
+                    'assignment_status', g.assignment_status, 'project_status', g.project_status,
+                    'stage_cap', g.stage_cap,
+                    'stage_wi', COALESCE(w.stage_wi, 0),
+                    'assignees', COALESCE(w.assignees, '[]'::jsonb)
+                ) ORDER BY g.updated_at DESC, g.project_slug, g.sort_order), '[]'::jsonb)
+                FROM (
+                    SELECT DISTINCT ON (ps.id) ps.id AS stage_id, pr.slug AS project_slug, pr.title,
+                           ps.slug AS stage_slug, ps.name AS stage_title, sa.status AS assignment_status,
+                           pr.status::text AS project_status, ps.max_concurrent_intensity AS stage_cap,
+                           pr.updated_at, ps.sort_order
+                      FROM projects.stage_assignments sa
+                      JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+                      JOIN projects.projects pr ON pr.id = ps.project_id
+                     WHERE sa.team_id = v_e.id
+                       AND sa.status NOT IN ('declined', 'cancelled', 'released', 'completed')
+                       AND pr.status::text IN ('active', 'on_hold')
+                     ORDER BY ps.id, sa.created_at DESC
+                ) g
+                LEFT JOIN LATERAL (
+                    SELECT jsonb_agg(jsonb_build_object('user_id', a.user_id, 'stage_wi', a.stage_wi)
+                               ORDER BY a.stage_wi DESC, a.user_id) AS assignees,
+                           sum(a.stage_wi) AS stage_wi
+                      FROM (
+                          SELECT t.current_assignee_id AS user_id, sum(t.workload_intensity) AS stage_wi
+                            FROM projects.tickets t
+                            JOIN org.team_members tm ON tm.team_id = v_e.id AND tm.user_id = t.current_assignee_id
+                                                    AND tm.status = 'active'
+                           WHERE t.current_stage_id = g.stage_id
+                             AND t.status::text IN ('claimed', 'in_progress', 'in_review')
+                           GROUP BY t.current_assignee_id
+                      ) a
+                ) w ON true)
+            ELSE '[]'::jsonb END,
+        -- The split rule, the vault wallet (the treasury wallet, else the fullest) and the projected release
+        -- — the Payouts module's facts, for the people who run the team's money and nobody else.
+        'payout', CASE WHEN p_kind = 'team' AND 'manage_finances' = ANY (v_caps) THEN jsonb_build_object(
+                'rule', (SELECT jsonb_build_object('rule_type', r.rule_type, 'vault_bp', r.vault_bp,
+                                                   'finder_user_id', r.finder_user_id, 'finder_bp', r.finder_bp)
+                           FROM finance.split_rules r WHERE r.team_id = v_e.id AND r.active
+                          ORDER BY r.created_at DESC LIMIT 1),
+                'wallet', (SELECT jsonb_build_object('id', w.id, 'currency', upper(w.currency),
+                                'available_minor', w.balance_cents,
+                                'pending_minor', COALESCE((
+                                    SELECT sum(GREATEST(pr.amount_cents - pr.recovered_cents, 0))
+                                      FROM finance.pending_releases pr
+                                     WHERE pr.wallet_id = w.id AND pr.state = 'pending'), 0))
+                             FROM finance.wallets w
+                            WHERE w.owner_type = 'team' AND w.owner_id = v_e.id
+                            ORDER BY COALESCE(w.id = v_e.treasury_wallet_id, false) DESC, w.balance_cents DESC, w.currency
+                            LIMIT 1),
+                'preview', finance.preview_team_split(v_e.id)
+            ) END,
+        'allowance', CASE WHEN p_kind = 'team' THEN finance.get_proposal_allowance(v_e.id) END,
         -- The 30 most recent events, joins and money movements interleaved by time.
         'activity', (SELECT COALESCE(jsonb_agg(q.a ORDER BY q.at DESC), '[]'::jsonb) FROM (
             SELECT u.a, u.at FROM (
