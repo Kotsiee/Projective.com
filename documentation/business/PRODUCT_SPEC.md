@@ -660,9 +660,12 @@ team members.
 
 - **Who may create a Business:** any adult account — a client, a freelancer (a freelancer is a
   superset of a client) or an operator. A Business is buyer-side: acting as one is always acting as
-  a client, whatever else the account does elsewhere. How many Businesses an account may own is
-  metered by its personal plan (`finance-model.md` §16.1); joining one is never capped (Decision
-  #230 (a)).
+  a client, whatever else the account does elsewhere — a Business context shows no seller surface
+  (Services, Products, Teams), and the person's own persona returns when they switch back. How many
+  Businesses an account may own is metered by its personal plan (`finance-model.md` §16.1); joining
+  one is never capped (Decision #230 (a)). The navigation offers **Create Business** while that
+  allowance has room, and the **Businesses** entry to anyone who may create one or already belongs
+  to one.
 - **Draft-First Creation:** Creating a Business is low-friction — the owner supplies only a display
   **Name** and a unique alphanumeric **`@handle`**. The Business is created instantly in a
   **Draft/Unverified** state; legal name, logo, billing details, member roles, and financial setup

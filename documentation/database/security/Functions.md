@@ -66,7 +66,7 @@ the token's claims:
 1. **Raw top-level claims** — `active_profile_type`, `active_profile_id`, `active_team_id`,
    `active_enterprise_id` — the exact keys `security.current_context()` reads for RLS.
 2. **`app_metadata.active_context`** — the resolved presentation object
-   `{ type, id, role, handle, isClient, isFreelancer, isOperator, onboarded, isRestricted, displayCurrency, locale }` the web
+   `{ type, id, role, handle, isClient, isFreelancer, isOperator, onboarded, isRestricted, belongsToTeam, belongsToBusiness, businessHeadroom, displayCurrency, locale, dateFormat }` the web
    app decodes for chrome (`@projective/types/auth` `ActiveContextClaim` / `resolveUserContext`).
    `type` is the four-context matrix (`personal` | `team` | `business` | `enterprise`); `role`
    is `admin` for the owner and admin presets (the member row's derived `role`, maintained by
@@ -74,7 +74,10 @@ the token's claims:
    ask `org.fn_member_can` (since 2026-09-28; before it read a hard-coded
    `owner`/`admin`/`manager` role list plus an ownership check); `isClient`/`isFreelancer` are
    resolved authoritatively from `org.users_public.is_freelancer` / `is_operator` and the active
-   context. `displayCurrency` + `locale` are read from `org.user_preferences`
+   context — except that an `enterprise` **or `business`** context is always stamped
+   `isClient = true`, `isFreelancer = false` (a business is buyer-side, Decisions #61 / #230 (a)):
+   a freelancer acting as a business buys, never sells, and their own persona returns on the
+   switch back. `displayCurrency` + `locale` are read from `org.user_preferences`
    (`preferred_display_currency` / `locale`, defaulting to `GBP` / `en-GB` when no preferences row
    exists yet) so the very first SSR byte formats every money figure in the viewer's own currency —
    they ride this claim rather than a second one because a figure that paints in one currency and
@@ -102,6 +105,20 @@ the token's claims:
 > `false` for a profile-less account. Derived from `users_public.dob` on every mint, so it clears at
 > the first refresh after the 18th birthday. Chrome only, like the rest: `resolveUserContext` reads
 > only an explicit `true`, and `org.fn_assert_adult` (`PM403`) is what refuses in every buy/sell door.
+
+> **`belongsToTeam` · `belongsToBusiness` · `businessHeadroom` — account facts (BUSINESSES_AUDIT
+> BF3, BB1).** The same in every context the person acts in: an `active` seat in a non-archived
+> `org.teams` / `org.business_profiles` row, and whether
+> `finance.fn_footprint_usage('user', uid, 'businesses_owned')` is below
+> `finance.fn_effective_limit(…)` (`NULL` limit = unlimited) — the allowance
+> `org.get_workspace_roster` meters and `org.create_workspace` enforces. Stamped `false` / `false` /
+> `true` for a profile-less account. They replace the shell's hard-coded capability fixture: the
+> sidebar's Businesses entry and the Create Business item read them
+> (`apps/web/features/shell/core/account-facts.ts`), and a token that carries none (a stub /
+> `dev:mock` session) reads the `dev:mock` fixture. `POST /api/workspace/create` re-issues the
+> session after a business is created so the new seat and the spent allowance reach the chrome at
+> once; other membership changes reach it at the next refresh. Chrome only — every door re-checks.
+> Probe: `supabase/probes/business_context_flags.sql`.
 
 > **`isOperator` — operator mode (Decision #228 (A)).** `org.users_public.is_operator` at mint time.
 > `isClient` alone cannot say why a freelancer is acting as a client, and the Teams persona rule needs

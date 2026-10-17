@@ -1,6 +1,7 @@
 import type { UserContext } from "@projective/types/auth";
 import type { IconName } from "./nav-icon-names.ts";
 import { canUseTeams, isRestrictedPath } from "./restricted-surfaces.ts";
+import { canCreateBusiness } from "./account-facts.ts";
 
 /**
  * actions-model — the header utility tray's data model: the context-aware **Create** menu and the
@@ -28,8 +29,11 @@ export interface CreateOption {
  *  - **Project** and **Article** — available to everyone (clients post projects; anyone can write).
  *  - **Team** — only where {@link canUseTeams} holds: a freelancer outside operator mode, or a member
  *    acting as a team (Decision #228 (A)), and never inside an `enterprise` context.
- *  - **Business**, **Service**, **Product** — seller surfaces → shown only when `isFreelancer`, so a
- *    client/buyer-only profile (e.g. an enterprise) never sees "Create Product".
+ *  - **Business** — a buyer surface (Decision #230 (a)) → {@link canCreateBusiness}: any adult outside
+ *    an enterprise context — client, freelancer or operator — while the plan's `businesses_owned`
+ *    allowance has room for one more.
+ *  - **Service**, **Product** — seller surfaces → shown only when `isFreelancer`, so a buyer-only
+ *    context (a business, an enterprise, a client) never sees "Create Product".
  *  - A **restricted** (13–17) account keeps only Project and Article: every other target is a
  *    surface it cannot see (Decision #192).
  */
@@ -44,7 +48,7 @@ export function createMenuOptions(context: UserContext): CreateOption[] {
 		canUseTeams(context) && contextType !== "enterprise"
 			? { key: "team", label: "Create Team", href: "/teams/create", icon: "teams" }
 			: null,
-		isFreelancer
+		canCreateBusiness(context)
 			? { key: "business", label: "Create Business", href: "/businesses/create", icon: "business" }
 			: null,
 		isFreelancer

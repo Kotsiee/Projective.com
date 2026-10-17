@@ -66,3 +66,51 @@ Deno.test("globalNav — a member acting as a team keeps Teams; a minor never se
 	assertEquals(hasTeams({ ...freelancer, restricted: true }), false);
 });
 // #endregion
+
+// #region Businesses — real account facts (BUSINESSES_AUDIT BF3, Decision #230 (a))
+/** A live session's account facts: no memberships yet, room for a business. */
+const fresh = { belongsToTeam: false, belongsToBusiness: false, businessHeadroom: true };
+const client: UserContext = { ...PERSONAL_MEMBER_CONTEXT, ...fresh };
+const keysOf = (ctx: UserContext): string[] => globalNav("/home", ctx).map((i) => i.key);
+const hasBusinesses = (ctx: UserContext): boolean => keysOf(ctx).includes("business");
+
+Deno.test("globalNav — a client adult and a freelancer see Businesses (they may create one)", () => {
+	assertEquals(hasBusinesses(client), true);
+	assertEquals(hasBusinesses({ ...client, isClient: false, isFreelancer: true }), true);
+});
+
+Deno.test("globalNav — a minor never sees Businesses", () => {
+	assertEquals(hasBusinesses({ ...client, restricted: true }), false);
+	assertEquals(hasBusinesses({ ...client, restricted: true, belongsToBusiness: true }), false);
+});
+
+Deno.test("globalNav — an enterprise context sees Businesses only through a membership", () => {
+	const enterprise: UserContext = { ...client, contextType: "enterprise", role: "admin" };
+	assertEquals(hasBusinesses(enterprise), false);
+	assertEquals(hasBusinesses({ ...enterprise, belongsToBusiness: true }), true);
+});
+
+Deno.test("globalNav — a business member with no allowance left keeps Businesses", () => {
+	assertEquals(
+		hasBusinesses({ ...client, belongsToBusiness: true, businessHeadroom: false }),
+		true,
+	);
+	assertEquals(hasBusinesses({ ...client, businessHeadroom: false }), false);
+});
+
+Deno.test("globalNav — acting as a business shows Businesses and no seller surface", () => {
+	const acting: UserContext = {
+		...client,
+		contextType: "business",
+		handle: "atlaslabs",
+		isClient: true,
+		isFreelancer: false,
+		belongsToBusiness: true,
+		businessHeadroom: false,
+	};
+	const keys = keysOf(acting);
+	assertEquals(keys.includes("business"), true);
+	assertEquals(keys.includes("catalogue"), false);
+	assertEquals(keys.includes("teams"), false);
+});
+// #endregion

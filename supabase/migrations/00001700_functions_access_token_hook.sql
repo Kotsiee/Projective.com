@@ -52,6 +52,15 @@ DECLARE
   -- locked buy/sell control up front; org.fn_assert_adult in each door is what refuses.
   v_restricted boolean := false;
 
+  -- The account's standing facts the sidebar gates on (BUSINESSES_AUDIT BF3), whichever context it
+  -- acts in: an active seat in a live (non-archived) team / business, and whether the plan's
+  -- `businesses_owned` allowance has room for one more (the figure org.get_workspace_roster meters).
+  -- Chrome only: org.create_workspace re-checks the allowance and refuses on its own.
+  v_belongs_team boolean := false;
+  v_belongs_business boolean := false;
+  v_business_limit integer;
+  v_business_headroom boolean := true;
+
   -- Presentation preferences (org.user_preferences). Chrome-only: they decide which currency and
   -- locale the viewer's figures are FORMATTED in, never what any ledger row stores or settles at.
   v_display_currency text;
@@ -83,6 +92,18 @@ BEGIN
   -- matters.
   v_onboarded := FOUND;
   v_restricted := v_onboarded AND org.fn_is_minor(v_user_id);
+
+  IF v_onboarded THEN
+    v_belongs_team := EXISTS (
+      SELECT 1 FROM org.team_members tm JOIN org.teams t ON t.id = tm.team_id
+       WHERE tm.user_id = v_user_id AND tm.status = 'active' AND t.status <> 'archived');
+    v_belongs_business := EXISTS (
+      SELECT 1 FROM org.business_members bm JOIN org.business_profiles b ON b.id = bm.business_id
+       WHERE bm.user_id = v_user_id AND bm.status = 'active' AND b.status <> 'archived');
+    v_business_limit := finance.fn_effective_limit('user', v_user_id, 'businesses_owned'::finance.entitlement_key);
+    v_business_headroom := v_business_limit IS NULL
+      OR finance.fn_footprint_usage('user', v_user_id, 'businesses_owned'::finance.entitlement_key) < v_business_limit;
+  END IF;
 
   -- Raw active-context state.
   SELECT sc.active_profile_type::text, sc.active_profile_id, sc.active_team_id, sc.active_enterprise_id
@@ -161,8 +182,11 @@ BEGIN
       INTO v_role
     FROM org.business_members bm
     WHERE bm.business_id = v_profile_id AND bm.user_id = v_user_id AND bm.status = 'active';
-    v_ctx_is_freelancer := v_is_freelancer;
-    v_ctx_is_client := v_is_operator OR NOT v_is_freelancer;
+    -- A business is buyer-side — "a Client with multiple members" (Decisions #61, #230 (a)) — so the
+    -- context is a client's whoever acts in it: a freelancer acting as a business buys, never sells.
+    -- The person's own persona is untouched (org.users_public) and returns on the switch back.
+    v_ctx_is_freelancer := false;
+    v_ctx_is_client := true;
 
   ELSE
     -- Personal: the individual's own space (freelancer persona, or a client with no entity selected).
@@ -214,6 +238,10 @@ BEGIN
       'isOperator', v_is_operator,
       'onboarded', v_onboarded,
       'isRestricted', v_restricted,
+      -- Account facts, not context facts: the same in every context the person acts in.
+      'belongsToTeam', v_belongs_team,
+      'belongsToBusiness', v_belongs_business,
+      'businessHeadroom', v_business_headroom,
       'displayCurrency', v_display_currency,
       'locale', v_locale,
       'dateFormat', v_date_format

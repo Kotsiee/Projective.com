@@ -6,8 +6,10 @@ import { CreateWorkspaceInputSchema } from "@projective/types/workspace";
 import {
 	guestRefusal,
 	invalidPayload,
+	toWorkspaceBody,
 	toWorkspaceResponse,
 } from "@features/workspaces/core/respond.ts";
+import { respondWithReissuedSession } from "@web/utils/session.ts";
 import { canReadLive } from "@server/services/read-actor.ts";
 import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBackendService.ts";
 
@@ -20,6 +22,11 @@ import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBac
  * The handle is re-validated server-side even though the form probes `/api/workspace/handle` first — the
  * probe is an affordance, not a lock, and two people can pass it for the same handle in the same second.
  * The plan's creation cap is the database's decision, refused with a human reason.
+ *
+ * A created business re-issues the session ({@link respondWithReissuedSession}): the token carries the
+ * account facts the shell gates Businesses and Create Business on (`belongsToBusiness`,
+ * `businessHeadroom`), and the owner's new seat and spent allowance must reach the chrome now rather
+ * than at the next hourly refresh.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -33,6 +40,8 @@ export const handler = define.handlers({
 			const unpayable = refuseIfPayoutNotReady(ctx.req);
 			if (unpayable) return unpayable;
 		}
-		return toWorkspaceResponse(await WorkspaceBackendService.create(parsed.data, actor));
+		const result = await WorkspaceBackendService.create(parsed.data, actor);
+		if (!result.ok || parsed.data.kind !== "business") return toWorkspaceResponse(result);
+		return respondWithReissuedSession(ctx.req, toWorkspaceBody(result), result.status);
 	},
 });

@@ -101,3 +101,41 @@ Deno.test("the operator-mode dev override reads only `on` and `off`", () => {
 	}
 });
 // #endregion
+
+// #region A business context is a client context (Decision #230 (a))
+Deno.test("a business context resolves buyer-only, even from a token that copied the persona", () => {
+	const ctx = resolveUserContext(claims({ type: "business", isFreelancer: true, isClient: false }));
+	assertEquals([ctx.contextType, ctx.isClient, ctx.isFreelancer], ["business", true, false]);
+});
+
+Deno.test("a personal context keeps the person's own persona", () => {
+	const ctx = resolveUserContext(claims({ type: "personal", isFreelancer: true, isClient: false }));
+	assertEquals([ctx.isClient, ctx.isFreelancer], [false, true]);
+});
+// #endregion
+
+// #region Account facts — carried only when the hook said
+Deno.test("stamped account facts are carried as booleans", () => {
+	const ctx = resolveUserContext(
+		claims({ belongsToTeam: false, belongsToBusiness: true, businessHeadroom: false }),
+	);
+	assertEquals([ctx.belongsToTeam, ctx.belongsToBusiness, ctx.businessHeadroom], [
+		false,
+		true,
+		false,
+	]);
+});
+
+Deno.test("an absent or non-boolean account fact stays unknown", () => {
+	for (const value of [undefined, null, 1, "true"]) {
+		const ctx = resolveUserContext(
+			claims({ belongsToTeam: value, belongsToBusiness: value, businessHeadroom: value }),
+		);
+		assertEquals([ctx.belongsToTeam, ctx.belongsToBusiness, ctx.businessHeadroom], [
+			undefined,
+			undefined,
+			undefined,
+		], String(value));
+	}
+});
+// #endregion

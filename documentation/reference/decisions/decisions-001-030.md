@@ -78,7 +78,9 @@ changes what the tamperer's own browser draws. The shape is the new Zod SSOT
 in `apps/web/utils/user-context.ts`; every failure path (no/opaque/malformed cookie) degrades to
 `GUEST_CONTEXT`. Both layouts bootstrap `asAuthenticatedContext(ctx.state.userContext)` into
 `UserShell`, and **`globalNav(path, context)`** tailors the rail (seller-only Services/Businesses
-gated on `isFreelancer`; Teams hidden in an enterprise context; Earnings/Reviews sublinks
+gated on `isFreelancer` — **Businesses re-gated as a buyer surface by Decision #230 (a), built by
+BUSINESSES_BUILD_PROMPTS BB1 (2026-10-17): shown to a business member, to an adult outside an
+enterprise context with `businesses_owned` headroom, or in a business context**; Teams hidden in an enterprise context; Earnings/Reviews sublinks
 seller-only) so the correct skeleton ships in the first byte. Consistent with the buyer-only
 Enterprise rule (Decisions #9/#10). Org `owner` role collapses to chrome `admin`. No DB migration
 (a derived runtime shape, not a table) → no `documentation/database/*` change. The real, signed-JWT
@@ -107,7 +109,11 @@ break login), `EXECUTE` granted only to `supabase_auth_admin`. Capability flags 
 prefers the stamped `isClient`/`isFreelancer` over the (staleable) onboarding `objective`. **Flagged
 inconsistency (surface, do not silently resolve):** the `20260709` overhaul gates the **Businesses**
 nav on `org.users_public.is_operator` (Client/Operator Mode), but `nav-model.ts` (Decision #16)
-gates Services/Businesses on `isFreelancer` — reconcile the Businesses-tab gate with a human. |
+gates Services/Businesses on `isFreelancer` — reconcile the Businesses-tab gate with a human.
+**RESOLVED by Decision #230 (a)** (any adult account may create a business, operators included) and
+built by BB1 (2026-10-17): neither gate survives — Businesses reads the account facts the hook now
+stamps (`belongsToBusiness`, `businessHeadroom`), and a business context is stamped
+`isClient = true`, `isFreelancer = false` whoever acts in it. |
 `documentation/database/security/{Functions,Tables}.md` ·
 `supabase/migrations/20260715120000_access_token_context_hook.sql` · `supabase/config.toml` ·
 `packages/types/auth/user-context.ts` (`ActiveContextClaim`, `resolveUserContext`) |
@@ -122,7 +128,9 @@ Profile** with all controls vertically centered and **soft circular** (`999px`) 
 **Create** is a context-aware Popover menu (Project/Team/Business/Service/Product/Article) gated on
 the hydrated `UserContext` with the SAME rule set as the sidebar (`actions-model.ts` mirrors
 `nav-model.ts`): seller surfaces (Business/Service/Product) only when `isFreelancer`; Team hidden in
-an `enterprise` context. **Notifications** + **Basket** open right-side **blurring** `Drawer`s
+an `enterprise` context. (**Business moved off the seller gate by Decision #230 (a) / BB1,
+2026-10-17:** Create Business is `canCreateBusiness` — an adult outside an enterprise context with
+`businesses_owned` headroom; Service/Product stay `isFreelancer`.) **Notifications** + **Basket** open right-side **blurring** `Drawer`s
 (fixtures via `nav-fixtures`, thin-frontend). **Profile** (circular avatar) opens a padded account
 Popover holding View profile, the **dark/light `ToggleSwitch` moved here entirely** (no longer loose
 in the header), Log out, and an **icon-only Settings** button. Sidebar polish: the collapse toggle's
@@ -132,7 +140,8 @@ panel via a lifted sticky stacking context (`.ui-app-shell__sidebar { z-index: -
 are vertically centered (native `useFloating` "right"); expanded labels step to **medium** weight
 with **bolder** glyph strokes. Same buyer-only Enterprise rule as Decisions #9/#10/#16. **Inherits
 the flagged, unresolved** Businesses-tab gate inconsistency from Decision #17 (Create's Business
-option follows `isFreelancer`, matching `nav-model.ts`, pending the human reconciliation). |
+option follows `isFreelancer`, matching `nav-model.ts`, pending the human reconciliation) —
+**RESOLVED by Decision #230 (a)**, see #17. |
 `DESIGN_SYSTEM.md` Part D.1 ·
 `apps/web/features/shell/islands/{NavSearchBar,UserActions}.island.tsx` ·
 `apps/web/features/shell/core/actions-model.ts` · `apps/web/features/shell/core/nav-fixtures.ts` ·

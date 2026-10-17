@@ -94,6 +94,19 @@ export const UserContextSchema = z.object({
 	 * refuses a minor in the database (`org.fn_assert_adult`, SQLSTATE `PM403`) whatever this says.
 	 */
 	restricted: z.boolean(),
+	// Account facts — the same in every context the person acts in, unlike the flags above. The
+	// access-token hook stamps all three at every mint; ABSENT means the token did not say (a stub or
+	// `dev:mock` session's hand-made token, or one minted before the claim existed), and the shell then
+	// reads its `dev:mock` fixture (`apps/web/features/shell/core/account-facts.ts`).
+	//
+	// Chrome only: they decide which sidebar entries and Create items are drawn. Every door re-checks
+	// under RLS, and `org.create_workspace` refuses a business past the plan's allowance on its own.
+	/** An active seat in at least one live (non-archived) team. */
+	belongsToTeam: z.boolean().optional(),
+	/** An active seat in at least one live (non-archived) business. */
+	belongsToBusiness: z.boolean().optional(),
+	/** The plan's `businesses_owned` allowance has room for one more business (BUSINESSES_AUDIT BF3). */
+	businessHeadroom: z.boolean().optional(),
 	/** The authenticated user's id (`sub`), or `null` for guests. */
 	userId: z.string().max(64).nullable(),
 	/**
@@ -169,6 +182,12 @@ export interface ActiveContextClaim {
 	onboarded?: boolean;
 	/** `org.fn_is_minor` at mint time — see {@link UserContextSchema.shape.restricted}. */
 	isRestricted?: boolean;
+	/** An active seat in a live team — see {@link UserContextSchema.shape.belongsToTeam}. */
+	belongsToTeam?: boolean;
+	/** An active seat in a live business — see {@link UserContextSchema.shape.belongsToBusiness}. */
+	belongsToBusiness?: boolean;
+	/** `businesses_owned` has room — see {@link UserContextSchema.shape.businessHeadroom}. */
+	businessHeadroom?: boolean;
 	/** `org.user_preferences.preferred_display_currency` — the viewer's money FORMATTING target. */
 	displayCurrency?: string;
 	/** `org.user_preferences.locale` — the BCP-47 locale `Intl` formats with. */
@@ -290,15 +309,18 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 
 	// Capability flags. Prefer the authoritative booleans the access-token hook stamps (resolved
 	// server-side from org.users_public + the active context); fall back to the onboarding objective
-	// for legacy/un-stamped tokens. An enterprise context is always buyer-only by product rule.
-	const isEnterprise = contextType === "enterprise";
+	// for legacy/un-stamped tokens. An enterprise or a business context is always buyer-only by
+	// product rule (Decisions #9/#10, #230 (a)) — the hook stamps it so, and a token minted before it
+	// did is held to it here.
+	const isBuyerEntity = contextType === "enterprise" || contextType === "business";
 	const objective = (str(user.objective) ?? "").toLowerCase();
 	const isFreelancer = typeof active.isFreelancer === "boolean"
-		? active.isFreelancer && !isEnterprise
-		: !isEnterprise && objective === "freelancer";
+		? active.isFreelancer && !isBuyerEntity
+		: !isBuyerEntity && objective === "freelancer";
 	const isClient = typeof active.isClient === "boolean"
-		? active.isClient || isEnterprise
-		: isEnterprise || objective === "client" || !isFreelancer;
+		? active.isClient || isBuyerEntity
+		: isBuyerEntity || objective === "client" || !isFreelancer;
+	const isEnterprise = contextType === "enterprise";
 	const isOperator = active.isOperator === true && !isEnterprise;
 
 	const handle = str(active.handle) ?? str(user.username) ?? null;
@@ -309,6 +331,9 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 	// send every holder of a pre-claim token back through onboarding they have already completed.
 	const onboarded = active.onboarded !== false;
 	const restricted = active.isRestricted === true;
+	// Account facts: carried only when the hook said, so "unknown" stays distinguishable from "no".
+	const fact = (value: unknown): boolean | undefined =>
+		typeof value === "boolean" ? value : undefined;
 
 	// Presentation preferences. `toDisplayCurrency` is total: an absent, malformed or unsupported
 	// claim collapses to the platform base rather than to a code the FX table cannot price — the one
@@ -326,6 +351,9 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 		isOperator,
 		onboarded,
 		restricted,
+		belongsToTeam: fact(active.belongsToTeam),
+		belongsToBusiness: fact(active.belongsToBusiness),
+		businessHeadroom: fact(active.businessHeadroom),
 		handle,
 		userId,
 		displayCurrency,

@@ -48,20 +48,18 @@ export interface OfferingSublink {
 }
 
 /**
- * Account-level navigation capabilities — the chrome-only flags that gate the role/context-sensitive
- * sidebar destinations (Analytics · Teams · Businesses · Products & Services). Unlike the JWT-derived
- * {@link UserContext} (which describes the *active* context), these describe the *account's* standing
- * memberships and enabled surfaces, which the context alone can't express. A later pass swaps
- * {@link getAccountCapabilities} for `/api/account/capabilities` with zero component churn. Chrome only
- * — every destination re-checks capability server-side + under RLS on navigation.
+ * The account's standing facts the sidebar and Create menu gate on — memberships and the plan's
+ * business allowance, which the acting context alone cannot express. The live values ride the session
+ * token (see `account-facts.ts`); this shape is shared by the live read and the `dev:mock` fixture
+ * below. Chrome only — every destination re-checks capability server-side + under RLS on navigation.
  */
 export interface AccountCapabilities {
-	/** The user is a member of at least one team (surfaces Analytics even for a plain client). */
+	/** The user is an active member of at least one live team (surfaces Analytics for a plain client). */
 	belongsToTeam: boolean;
-	/** The user is a member of at least one business. */
+	/** The user is an active member of at least one live business. */
 	belongsToBusiness: boolean;
-	/** The user has switched their account into a business (seller-side) account. */
-	businessAccountEnabled: boolean;
+	/** The plan's `businesses_owned` allowance has room for one more business. */
+	businessHeadroom: boolean;
 }
 
 // #endregion
@@ -118,11 +116,15 @@ const OFFERINGS: readonly OfferingSublink[] = [
 	},
 ];
 
-/** The account's standing capabilities — chrome-only fixture. Swap for `/api/account/capabilities`. */
+/**
+ * The `dev:mock` account — a member of a team and a business, with room for another business. Read
+ * only for a session whose token carries no account facts (`account-facts.ts`); a live session reads
+ * its own.
+ */
 const ACCOUNT_CAPABILITIES: AccountCapabilities = {
 	belongsToTeam: true,
 	belongsToBusiness: true,
-	businessAccountEnabled: true,
+	businessHeadroom: true,
 };
 
 // #endregion
@@ -137,7 +139,7 @@ export function getOfferings(): readonly OfferingSublink[] {
 	return OFFERINGS;
 }
 
-/** The account's standing navigation capabilities. Swap for `/api/account/capabilities`. */
+/** The `dev:mock` account's standing facts — the fallback for a token that carries none. */
 export function getAccountCapabilities(): AccountCapabilities {
 	return ACCOUNT_CAPABILITIES;
 }

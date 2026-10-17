@@ -1,7 +1,8 @@
 import type { UserContext } from "@projective/types/auth";
 import { PERSONAL_MEMBER_CONTEXT } from "@projective/types/auth";
 import type { IconName } from "./nav-icon-names.ts";
-import { getAccountCapabilities, getOfferings, getRecentWorkspaces } from "./nav-fixtures.ts";
+import { getOfferings, getRecentWorkspaces } from "./nav-fixtures.ts";
+import { accountFacts, canCreateBusiness } from "./account-facts.ts";
 import { isExploreSurface } from "./explore-surface.ts";
 import { canUseTeams, isRestrictedPath } from "./restricted-surfaces.ts";
 
@@ -53,7 +54,7 @@ function isActive(path: string, base: string): boolean {
 
 /**
  * The global navigation roster for a given pathname, tailored to the hydrated {@link UserContext} +
- * the account's standing {@link getAccountCapabilities}. Kind-strict disclosures expose the
+ * the account's standing {@link accountFacts}. Kind-strict disclosures expose the
  * most-recently-active workspaces of exactly one entity kind (Projects → projects, Teams → teams,
  * Businesses → businesses) and the seller's offerings (Products & Services → services/products),
  * pulled from `nav-fixtures`.
@@ -63,8 +64,9 @@ function isActive(path: string, base: string): boolean {
  *  - **Products & Services** → freelancers and teams only (a seller surface).
  *  - **Teams** → {@link canUseTeams}: a freelancer outside operator mode, or a team context
  *    (Decision #228 (A)).
- *  - **Businesses** → only when the account has enabled a business account (independent of seller
- *    capability), or when acting inside a `business` context.
+ *  - **Businesses** → a buyer surface (Decision #230 (a)): shown when the person belongs to a business,
+ *    may create one ({@link canCreateBusiness}: an adult outside an enterprise context with
+ *    `businesses_owned` headroom), or is acting as a business. Independent of seller capability.
  *  - **Analytics** (replaces the generic Dashboard) → freelancers, teams, businesses, or anyone who
  *    belongs to a team/business.
  *  - A **restricted** (13–17) account loses every entry {@link isRestrictedPath} names — Wallet,
@@ -78,7 +80,7 @@ export function globalNav(
 	context: UserContext = PERSONAL_MEMBER_CONTEXT,
 ): NavModelItem[] {
 	const { isFreelancer, contextType, role } = context;
-	const caps = getAccountCapabilities();
+	const caps = accountFacts(context);
 
 	// #region Capability predicates (chrome only)
 	// Chrome-only auth test. `asAuthenticatedContext` collapses a guest to `PERSONAL_MEMBER_CONTEXT`
@@ -93,7 +95,7 @@ export function globalNav(
 	const isSeller = isFreelancer || isTeamCtx;
 	const showServices = isSeller;
 	const showTeams = canUseTeams(context);
-	const showBusinesses = caps.businessAccountEnabled || isBusinessCtx;
+	const showBusinesses = caps.belongsToBusiness || canCreateBusiness(context) || isBusinessCtx;
 	const showAnalytics = isFreelancer || isTeamCtx || isBusinessCtx || belongsToOrg;
 	// #endregion
 
@@ -220,7 +222,8 @@ export function globalNav(
 				children: actingSublinks("team"),
 			}
 			: null,
-		// Businesses — only when a business account is enabled; disclosure is STRICTLY businesses.
+		// Businesses — a member, a person who may create one, or a business context; disclosure is
+		// STRICTLY businesses.
 		showBusinesses
 			? {
 				key: "business",
