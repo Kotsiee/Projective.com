@@ -1,17 +1,27 @@
 import "../styles/editorial.css";
 import type { JSX } from "preact";
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import type { TocEntry } from "@projective/types/content";
 import { Drawer } from "../../feedback/islands/Drawer.tsx";
 import { TocList, TocNav } from "../components/TocNav.tsx";
 import { EDITORIAL_ICONS } from "../core/editorial-icons.tsx";
-import { motionReduced, pickActiveHeading, readingLineFor, tocIds } from "../core/scroll-spy.ts";
+import {
+	motionReduced,
+	pickActiveHeading,
+	railScrollDelta,
+	readingLineFor,
+	tocIds,
+} from "../core/scroll-spy.ts";
 
 // #region Props
 /** Props for {@link TableOfContents}. */
 export interface TableOfContentsProps {
-	/** The tree to list — `docToc(anchorDoc(doc))`, so its ids are the rendered headings' ids. */
+	/**
+	 * The tree to list — `docToc(anchorDoc(doc))`, so its ids are the rendered headings' ids. It may
+	 * also hold cross-page entries (`TocEntry.href`, e.g. every legal document with the current one's
+	 * sections as its children); those link away and are never scroll-spied.
+	 */
 	entries: TocEntry[];
 	/** The navigation's name and visible label (default "On this page"). */
 	label?: string;
@@ -20,39 +30,56 @@ export interface TableOfContentsProps {
 }
 // #endregion
 
-/** How long the sheet takes to leave (the Drawer's exit, `--dur-medium`) plus one frame of margin. */
-const SHEET_EXIT_MS = 300;
+/** Breathing room kept between the current entry and the rail's edges when it is scrolled into view. */
+const RAIL_REVEAL_MARGIN = 24;
 
-/** Scroll `id` to its landing position (its scroll margin), record it in the address bar, focus it. */
-function jumpTo(id: string): void {
+/** Scroll `id` to its landing position (its scroll margin) and record it in the address bar. */
+function jumpTo(id: string): HTMLElement | null {
 	const heading = document.getElementById(id);
-	if (!heading) return;
+	if (!heading) return null;
 	heading.scrollIntoView({ behavior: motionReduced() ? "auto" : "smooth", block: "start" });
 	try {
 		history.pushState(history.state, "", `#${id}`);
 	} catch { /* a sandboxed frame can refuse history writes — the scroll still happened */ }
-	// After the sheet has gone and handed focus back to its trigger, move it on to the section, so the
-	// next Tab continues from where the reader now is — not from the top of the document.
-	setTimeout(() => {
-		const link = heading.querySelector<HTMLElement>("a[href]") ?? heading;
-		link.focus({ preventScroll: true });
-	}, SHEET_EXIT_MS);
+	return heading.querySelector<HTMLElement>("a[href]") ?? heading;
+}
+
+/**
+ * Keep the rail's current entry visible inside the rail, which is its own scroll container from
+ * `--bp-lg`. Moves only the rail (never the window, which a `scrollIntoView` would also scroll), and
+ * only while the rail is displayed.
+ */
+function revealInRail(navId: string, activeId: string): void {
+	const list = document.getElementById(`${navId}-list`);
+	const nav = document.getElementById(navId);
+	if (!list || !nav || list.offsetParent === null) return;
+	if (nav.scrollHeight <= nav.clientHeight) return;
+	const link = list.querySelector<HTMLElement>(`a[href="#${CSS.escape(activeId)}"]`);
+	if (!link) return;
+	const delta = railScrollDelta(
+		nav.getBoundingClientRect(),
+		link.getBoundingClientRect(),
+		RAIL_REVEAL_MARGIN,
+	);
+	if (delta !== 0) nav.scrollBy({ top: delta, behavior: motionReduced() ? "auto" : "smooth" });
 }
 
 /**
  * TableOfContents — the interactive "On this page" (island). Renders {@link TocNav} and adds:
  *
- * - **Scroll-spy.** An `IntersectionObserver` on every listed heading fires as headings cross the
- *   reading line (just below their scroll margin) or the viewport's edges; each callback re-reads the
- *   heading positions and marks the last one reached `aria-current="location"`. Re-reading on every
- *   callback is what keeps a long jump (a hash link, the sheet) correct — headings it skipped over
- *   never fire an intersection of their own.
+ * - **Scroll-spy.** An `IntersectionObserver` on every listed in-page heading fires as headings cross
+ *   the reading line (just below their scroll margin) or the viewport's edges; each callback re-reads
+ *   the heading positions and marks the last one reached `aria-current="location"`. Re-reading on
+ *   every callback is what keeps a long jump (a hash link, the sheet) correct — headings it skipped
+ *   over never fire an intersection of their own. When the current entry changes, the rail (its own
+ *   scroll container on a long table of contents) is scrolled just enough to keep it in view.
  * - **The bottom sheet** below `--bp-md`: the trigger opens a bottom `Drawer` (the overlay family,
- *   Decision #171 — portalled, focus-trapped, Escape and scrim dismissal, focus returned) listing the
- *   same tree; choosing a section closes the sheet, scrolls to it, writes its hash and moves focus to
- *   its heading.
+ *   Decision #171 — portalled, focus-trapped, Escape and scrim dismissal) listing the same tree;
+ *   choosing a section closes the sheet, scrolls to it and writes its hash, and the sheet hands focus
+ *   to that heading's link instead of back to its trigger (`returnFocusRef`), so the next Tab
+ *   continues from where the reader now is. Escape or the scrim return focus to the trigger.
  *
- * The rail and the disclosure stay plain in-page anchors, so they work before hydration and without
+ * The rail and the disclosure stay plain anchors, so they work before hydration and without
  * JavaScript. State is three signals local to the island; it reads nothing but the DOM it is in.
  */
 export default function TableOfContents(
@@ -61,6 +88,7 @@ export default function TableOfContents(
 	const active = useSignal<string | null>(null);
 	const enhanced = useSignal(false);
 	const sheetOpen = useSignal(false);
+	const returnFocus = useRef<HTMLElement | null>(null);
 
 	useEffect(() => {
 		enhanced.value = true;
@@ -81,7 +109,9 @@ export default function TableOfContents(
 					atEnd: globalThis.scrollY + globalThis.innerHeight >= root.scrollHeight - 2,
 				},
 			);
-			if (next !== active.value) active.value = next;
+			if (next === active.value) return;
+			active.value = next;
+			if (next !== null) revealInRail(id, next);
 		};
 
 		const observer = new IntersectionObserver(update, {
@@ -98,7 +128,7 @@ export default function TableOfContents(
 			globalThis.removeEventListener("scrollend", update);
 			globalThis.removeEventListener("hashchange", update);
 		};
-	}, [entries]);
+	}, [entries, id]);
 
 	return (
 		<>
@@ -110,11 +140,18 @@ export default function TableOfContents(
 				enhanced={enhanced.value}
 				sheetOpen={sheetOpen.value}
 				onOpenSheet={() => {
+					returnFocus.current = null;
 					sheetOpen.value = true;
 				}}
 				glyphs={EDITORIAL_ICONS}
 			/>
-			<Drawer visible={sheetOpen} position="bottom" header={label} class="ui-toc-sheet">
+			<Drawer
+				visible={sheetOpen}
+				position="bottom"
+				header={label}
+				class="ui-toc-sheet"
+				returnFocusRef={returnFocus}
+			>
 				<TocList
 					entries={entries}
 					activeId={active.value}
@@ -122,8 +159,8 @@ export default function TableOfContents(
 					id={`${id}-sheet`}
 					onNavigate={(target, event) => {
 						event.preventDefault();
+						returnFocus.current = jumpTo(target);
 						sheetOpen.value = false;
-						jumpTo(target);
 					}}
 				/>
 			</Drawer>

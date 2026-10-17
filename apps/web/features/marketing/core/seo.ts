@@ -15,8 +15,14 @@
  * The landing page's own copy and graph ({@link LANDING_META}, {@link landingJsonLd}) are unchanged
  * and still plain-language ("team of helpers", "pay step by step") so the human and machine layers
  * agree on the same friendly description of the product.
+ *
+ * Client-reachable: the `SchemaInjector` island imports this module, so it value-imports nothing
+ * that builds schemas or reads the environment — the plain-text projection comes from the
+ * schema-free `@projective/types/content/text` sub-path, the content types are type-only, and the
+ * request-origin policy lives server-side (`site-origin.ts`).
  */
-import { type FaqItem, nodesText } from "@projective/types/content";
+import type { ContentAuthor, ContentImage, FaqItem } from "@projective/types/content";
+import { nodesText } from "@projective/types/content/text";
 
 /** Page-level meta consumed by the route handler → `state.title` / `state.description`. */
 export const LANDING_META = {
@@ -130,6 +136,33 @@ export interface PageMetaImage {
 	height?: number;
 }
 
+/**
+ * Any picture a route can hand to the meta and JSON-LD builders: a {@link PageMetaImage}, a content
+ * module's `ContentImage` (`{ src, alt, w, h }` — an article cover, as is), or a bare path / URL with
+ * no alt text (avoid).
+ */
+export type MetaImageInput = PageMetaImage | ContentImage | string;
+
+/** Normalise a {@link MetaImageInput} to `{ src, alt, width?, height? }`. */
+export function metaImage(image: MetaImageInput): PageMetaImage {
+	if (typeof image === "string") return { src: image, alt: "" };
+	if ("w" in image) return { src: image.src, alt: image.alt, width: image.w, height: image.h };
+	return image;
+}
+
+/**
+ * An alternate representation of the page, written as `<link rel="alternate">` in the head — the
+ * changelog's RSS / Atom feed (`type: "application/rss+xml"`).
+ */
+export interface PageAlternate {
+	/** The media type (`application/rss+xml`, `application/atom+xml`, `application/feed+json`). */
+	type: string;
+	/** A same-origin path or an absolute URL; made absolute. */
+	href: string;
+	/** A human name (`Projective changelog`). */
+	title?: string;
+}
+
 /** What a route knows about its page. */
 export interface PageMetaInput {
 	/** The page's own title, without the brand (`Privacy Policy`). */
@@ -138,18 +171,24 @@ export interface PageMetaInput {
 	description: string;
 	/** The canonical path (`/legal/privacy`). Query and fragment are dropped. */
 	path: string;
-	/** The request origin — pass `ctx.url.origin`. */
+	/**
+	 * The site's public origin — pass `siteOrigin(ctx.url)` (`core/site-origin.ts`): `APP_URL` when
+	 * deployed, the request's own origin in development. Never `ctx.url.origin` alone in production,
+	 * where it reflects the Host header (a proxy's internal host, or a spoofed one).
+	 */
 	origin: string;
 	/** Keep the page out of search indexes (`noindex, follow`) — e.g. a legal draft not yet reviewed. */
 	noindex?: boolean;
-	/** The preview image; a bare string is a path or URL with no alt text (avoid). */
-	ogImage?: PageMetaImage | string;
+	/** The preview image (see {@link MetaImageInput}). */
+	ogImage?: MetaImageInput;
 	/** `article` for a dated document (articles, changelog entries); `website` otherwise. */
 	ogType?: "website" | "article";
 	/** ISO date or date-time the document was first published (`article:published_time`). */
 	publishedAt?: string;
 	/** ISO date or date-time it last changed (`article:modified_time`). */
 	modifiedAt?: string;
+	/** Alternate representations (feeds) — `<link rel="alternate">` each. */
+	alternates?: readonly PageAlternate[];
 }
 
 /** The `<head>` facts `_app` renders for a page (see {@link pageMeta}). */
@@ -174,6 +213,8 @@ export interface PageMeta {
 	};
 	/** Twitter card kind: a large image card when there is an image. */
 	twitterCard: "summary" | "summary_large_image";
+	/** Alternate representations, every `href` absolute. Empty when there are none. */
+	alternates: ReadonlyArray<{ type: string; href: string; title?: string }>;
 }
 
 /**
@@ -184,13 +225,13 @@ export interface PageMeta {
  * ```ts
  * applyPageMeta(ctx.state, pageMeta({
  *   title: doc.title, description: doc.summary, path: `/legal/${doc.slug}`,
- *   origin: ctx.url.origin, noindex: doc.reviewedAt === null,
+ *   origin: siteOrigin(ctx.url), noindex: doc.reviewedAt === null,
  * }));
  * ```
  */
 export function pageMeta(input: PageMetaInput): PageMeta {
 	const canonical = canonicalUrl(input.origin, input.path);
-	const image = typeof input.ogImage === "string" ? { src: input.ogImage, alt: "" } : input.ogImage;
+	const image = input.ogImage === undefined ? undefined : metaImage(input.ogImage);
 	return {
 		title: documentTitle(input.title),
 		description: input.description,
@@ -216,6 +257,11 @@ export function pageMeta(input: PageMetaInput): PageMeta {
 			...(input.modifiedAt ? { modifiedAt: input.modifiedAt } : {}),
 		},
 		twitterCard: image ? "summary_large_image" : "summary",
+		alternates: (input.alternates ?? []).map((alt) => ({
+			type: alt.type,
+			href: absoluteUrl(input.origin, alt.href),
+			...(alt.title ? { title: alt.title } : {}),
+		})),
 	};
 }
 
@@ -325,6 +371,8 @@ export interface WebPageJsonLdInput {
 	items?: ReadonlyArray<{ name: string; path: string }>;
 	/** BCP 47 language (default `en`). */
 	inLanguage?: string;
+	/** The document's version label (a legal document's `2.1`) — schema.org `version`. */
+	version?: string;
 }
 
 /** The `@id` of the page node at `path` (`https://…/legal/terms#webpage`). */
@@ -353,6 +401,7 @@ export function webPageJsonLd(
 		isPartOf: { "@id": websiteId(input.origin) },
 		publisher: { "@id": organizationId(input.origin) },
 		...(input.dateModified ? { dateModified: input.dateModified } : {}),
+		...(input.version ? { version: input.version } : {}),
 		...(input.breadcrumb ? { breadcrumb: { "@id": breadcrumbId(input.origin, input.path) } } : {}),
 		...(input.items && input.items.length > 0
 			? {
@@ -422,6 +471,14 @@ export interface JsonLdAuthor {
 	kind?: "Person" | "Organization";
 }
 
+/** A content module's author (`ContentAuthor`: `name`, `href`) as a {@link JsonLdAuthor}. */
+export function jsonLdAuthor(
+	author: ContentAuthor,
+	kind: JsonLdAuthor["kind"] = "Person",
+): JsonLdAuthor {
+	return { name: author.name, ...(author.href ? { url: author.href } : {}), kind };
+}
+
 /** Input for {@link articleJsonLd}. */
 export interface ArticleJsonLdInput {
 	origin: string;
@@ -434,14 +491,24 @@ export interface ArticleJsonLdInput {
 	datePublished: string;
 	/** ISO date or date-time last changed (default `datePublished`). */
 	dateModified?: string;
-	/** Authors; omitted, the platform is the author. */
+	/** Authors; omitted, the platform is the author. A content author maps through {@link jsonLdAuthor}. */
 	authors?: readonly JsonLdAuthor[];
-	/** A cover image path or URL. */
-	image?: string;
+	/**
+	 * The cover: a path or URL, or a `ContentImage` / {@link PageMetaImage} — which becomes an
+	 * `ImageObject` carrying its width and height.
+	 */
+	image?: MetaImageInput;
 	/** A section name (`Payments`, `Product updates`). */
 	section?: string;
 	/** The body's word count. */
 	wordCount?: number;
+	/** The document's version (a release's `1.4.0`) — schema.org `version`. */
+	version?: string;
+	/**
+	 * What the article is about, as a node — a release note's
+	 * `{ "@type": "SoftwareApplication", name: "Projective", softwareVersion: "1.4.0" }`.
+	 */
+	about?: JsonLdNode;
 }
 
 /** An `Article` (or a `TechArticle`, through {@link techArticleJsonLd}) published by the platform. */
@@ -469,10 +536,22 @@ export function articleJsonLd(
 		author: authors.length === 1 ? authors[0] : authors,
 		publisher: { "@id": organizationId(input.origin) },
 		inLanguage: "en",
-		...(input.image ? { image: absoluteUrl(input.origin, input.image) } : {}),
+		...(input.image ? { image: imageNode(input.origin, input.image) } : {}),
 		...(input.section ? { articleSection: input.section } : {}),
 		...(input.wordCount ? { wordCount: input.wordCount } : {}),
+		...(input.version ? { version: input.version } : {}),
+		...(input.about ? { about: input.about } : {}),
 	};
+}
+
+/**
+ * An image as structured data: a bare URL when its size is unknown (a path or a URL string), else
+ * an `ImageObject` with its intrinsic `width` and `height`.
+ */
+function imageNode(origin: string, image: MetaImageInput): string | JsonLdNode {
+	const { src, width, height } = metaImage(image);
+	const url = absoluteUrl(origin, src);
+	return width && height ? { "@type": "ImageObject", url, width, height } : url;
 }
 
 /** A `TechArticle` — a help article or a how-to. */

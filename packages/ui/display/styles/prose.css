@@ -7,8 +7,11 @@
  * their own.
  *
  * Spacing is asymmetric (§B.4.1): a heading sits far from what precedes it and close to what it
- * labels, so ownership needs no ink. Nothing static is boxed: a code sample is the one tonal step, a
- * quote / callout / summary line spends one inline-start rule, a table one hairline per row.
+ * labels, so ownership needs no ink. Nothing static is boxed (no border, no shadow): a code sample,
+ * inline code, a key and a section's summary line each take ONE solid tonal step (`--surface-2` for
+ * code, `--surface-1` for the summary); a quote spends one inline-start `--hairline` (the canonical
+ * static divider, §B.4 tier 4); a callout spends one 2px rule in its tone's hue, beside its tone
+ * WORD; a table one hairline per row.
  */
 
 /* #region Prose */
@@ -106,6 +109,17 @@
 	font-family: var(--font-mono);
 	font-size: var(--text-md);
 }
+
+/* A key the reader presses: the same tonal step as code, in the UI face, so it reads as a control. */
+.ui-prose__kbd {
+	padding-inline: var(--space-1);
+	border-radius: var(--radius-xs);
+	background: var(--surface-2);
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	white-space: nowrap;
+}
 /* #endregion */
 
 /* #region Lists */
@@ -129,6 +143,19 @@
 	list-style: circle;
 }
 
+/* An ordered list's chosen marker (`marker` → `<ol type>`) wins over the nesting order above. */
+.ui-prose ol[type="1"] {
+	list-style-type: decimal;
+}
+
+.ui-prose ol[type="a"] {
+	list-style-type: lower-alpha;
+}
+
+.ui-prose ol[type="i"] {
+	list-style-type: lower-roman;
+}
+
 .ui-prose li + li,
 .ui-prose li > :is(ul, ol) {
 	margin-block-start: var(--space-2);
@@ -140,16 +167,21 @@
 }
 /* #endregion */
 
-/* #region Quote · code · figure */
+/* #region Quote · code · figure · definitions */
+/* A bare `<blockquote>`, or the `<figure>` holding one and its attribution. */
 .ui-prose__quote {
 	margin-inline: 0;
 	padding-inline-start: var(--space-4);
-	border-inline-start: 2px solid var(--border-subtle);
+	border-inline-start: var(--hairline);
 	font-size: var(--text-lg);
 	line-height: var(--leading-normal);
 }
 
-.ui-prose__quote > p {
+.ui-prose__quote-body {
+	margin: 0;
+}
+
+.ui-prose__quote p {
 	margin: 0;
 }
 
@@ -169,7 +201,7 @@
 	padding-inline: var(--space-4);
 	overflow-x: auto;
 	border-radius: var(--radius-md);
-	background: var(--surface-1);
+	background: var(--surface-2);
 	font-family: var(--font-mono);
 	font-size: var(--text-sm);
 	line-height: var(--leading-normal);
@@ -201,6 +233,24 @@
 	font-size: var(--text-sm);
 	line-height: var(--leading-normal);
 	color: var(--text-secondary);
+}
+
+/* Definitions: the term carries the weight a word inside prose may (§A.4); the definition hangs. */
+.ui-prose__dl {
+	margin-inline: 0;
+}
+
+.ui-prose__dl-item + .ui-prose__dl-item {
+	margin-block-start: var(--space-3);
+}
+
+.ui-prose__dl dt {
+	font-weight: var(--fw-semibold);
+}
+
+.ui-prose__dl dd {
+	margin: var(--space-1) 0 0;
+	padding-inline-start: var(--space-4);
 }
 /* #endregion */
 
@@ -287,6 +337,14 @@
 	color: color-mix(in srgb, var(--callout-accent) 60%, var(--on-surface));
 }
 
+/*
+ * High contrast promises ≥ 7:1 text (§A.5), which the 5:1 mix cannot keep at this size: the tone word
+ * takes the full ink. The word itself and the hued rule still carry the tone.
+ */
+:root[data-contrast="high"] .ui-callout__title {
+	color: var(--on-surface);
+}
+
 .ui-callout__glyph {
 	display: inline-flex;
 	flex: none;
@@ -305,8 +363,12 @@
 }
 /* #endregion */
 
-/* #region Section summary line */
+/* #region Section summary line — one solid tonal step, no border (§B.4 tier 2) */
 .ui-doc-section__tldr {
+	padding-block: var(--space-3);
+	padding-inline: var(--space-4);
+	border-radius: var(--radius-md);
+	background: var(--surface-1);
 	font-size: var(--text-base);
 	line-height: var(--leading-relaxed);
 	color: var(--on-surface);
@@ -331,10 +393,31 @@
 	text-decoration: none;
 }
 
+/* A clause number: the mono face, secondary ink, tabular figures. */
 .ui-anchor-heading__num {
 	margin-inline-end: var(--space-2);
+	font-family: var(--font-mono);
 	color: var(--text-secondary);
 	font-variant-numeric: tabular-nums;
+}
+
+/*
+ * From --bp-md of frame the numbers HANG in the gutter, so every clause's text starts on the reading
+ * column's edge and the numbers form their own column (the gutter is widened beside the TOC rail,
+ * document-layout.css). Below it there is no gutter to hang into, and they stay inline.
+ */
+@container ui-doc (min-width: 768px) {
+	.ui-doc-body--numbered .ui-anchor-heading {
+		position: relative;
+	}
+
+	.ui-doc-body--numbered .ui-anchor-heading__num {
+		position: absolute;
+		inset-block-start: 0;
+		inset-inline-end: 100%;
+		margin-inline-end: var(--space-3);
+		white-space: nowrap;
+	}
 }
 
 .ui-anchor-heading__glyph {

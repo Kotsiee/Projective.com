@@ -16,6 +16,7 @@
 		"./comms": "./comms/mod.ts",
 		"./content": "./content/mod.ts",
 		"./content/fixtures": "./content/fixtures.ts",
+		"./content/text": "./content/text.ts",
 		"./newsletter": "./newsletter/mod.ts",
 		"./projects": "./projects/mod.ts",
 		"./messaging": "./messaging/mod.ts",

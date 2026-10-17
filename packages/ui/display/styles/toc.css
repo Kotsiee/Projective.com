@@ -14,7 +14,9 @@
  *
  * The rail is not a box (§B.4): text on the page's ground over a single inline-start hairline track,
  * the current section marked by weight and a 2px `--primary` bar the track reserves `transparent` at
- * rest, so marking a section moves no box (§B.12.3).
+ * rest, and each label's height reserved at the heavier weight, so marking a section moves no box
+ * (§B.12.3). From --bp-lg the rail is its own scroll container; the island keeps the current entry
+ * scrolled into it.
  */
 
 /* #region Shared parts */
@@ -75,13 +77,39 @@
 	border-inline-start-color: var(--primary);
 }
 
+/* A cross-page entry for the document being read: full ink, no bar — the bar marks the SECTION. */
+.ui-toc__link[aria-current="page"] {
+	color: var(--on-surface);
+}
+
+/* Clause numbers match the headings': the mono face, tabular figures. */
 .ui-toc__num {
 	flex: none;
+	font-family: var(--font-mono);
 	font-variant-numeric: tabular-nums;
 }
 
+/*
+ * The label and an invisible copy at the CURRENT weight share one grid cell, so the cell is always
+ * as tall as `--fw-medium` needs: marking an entry current can change where its line breaks, never
+ * how many lines it takes — the entries below do not move as the scroll-spy walks (§B.12.3).
+ */
 .ui-toc__text {
+	display: grid;
 	min-inline-size: 0;
+}
+
+.ui-toc__text-ink,
+.ui-toc__text-reserve {
+	grid-area: 1 / 1;
+	min-inline-size: 0;
+}
+
+.ui-toc__text-reserve {
+	visibility: hidden;
+	font-weight: var(--fw-medium);
+	pointer-events: none;
+	user-select: none;
 }
 /* #endregion */
 

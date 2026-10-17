@@ -11,9 +11,17 @@
  * | Changelog | `semver: SemverSchema`, `categories`, `images: z.array(ContentImageSchema)`          |
  * | Articles  | `cover: ContentImageSchema`, `author: ContentAuthorSchema`                          |
  *
- * `DocSchema` carries one refinement (anchor uniqueness, {@link checkDocAnchors}). Zod 4 keeps it
- * through `.extend()` when no existing key is overwritten; a consumer that must `.pick()`, `.omit()`
- * or `.partial()` starts from {@link DocBaseSchema} and re-applies `.superRefine(checkDocAnchors)`.
+ * `DocSchema` carries one refinement (anchor uniqueness, {@link checkDocAnchors}), so Zod 4 limits
+ * how it may be reshaped:
+ *
+ * - **Adding keys** — `DocSchema.extend({...})` keeps the refinement.
+ * - **Overriding an existing key** (a changelog whose `version` is a semver) — `.extend()` THROWS
+ *   ("Cannot overwrite keys on object schemas containing refinements"). Use
+ *   `DocSchema.safeExtend({ version: SemverSchema })`, which keeps the refinement, or
+ *   `DocBaseSchema.extend({...}).superRefine(checkDocAnchors)`.
+ * - **`.pick()` / `.omit()` / `.partial()`** — refused on a refined schema; start from
+ *   {@link DocBaseSchema} and re-apply `.superRefine(checkDocAnchors)`. The check tolerates a shape
+ *   with no `sections` (a listing row picks `id`, `slug`, `title`, `summary`) and simply passes it.
  *
  * @module
  */
@@ -148,13 +156,13 @@ export type Doc = z.infer<typeof DocBaseSchema>;
  * id is a public address (`#fees` in a shared link), so a collision is an authoring error to fix,
  * not something to suffix silently. Auto-generated ids (an `h3` without `id`) are de-duplicated by
  * `anchorDoc` instead.
+ *
+ * Shape-tolerant on purpose, so it can refine a `.pick()` / `.partial()` of {@link DocBaseSchema}:
+ * absent `sections` (or a section without `body`) has nothing to check and passes.
  */
-export function checkDocAnchors(
-	doc: {
-		sections: ReadonlyArray<{ id: string; body: ReadonlyArray<{ type: string; id?: string }> }>;
-	},
-	ctx: z.RefinementCtx,
-): void {
+export function checkDocAnchors(doc: object, ctx: z.RefinementCtx): void {
+	const { sections } = doc as AnchorShape;
+	if (!Array.isArray(sections)) return;
 	const seen = new Map<string, string>();
 	const claim = (id: string, path: (string | number)[], what: string) => {
 		if (RESERVED_ANCHOR_IDS.includes(id)) {
@@ -172,15 +180,23 @@ export function checkDocAnchors(
 		}
 		seen.set(id, `${what} at ${path.join(".")}`);
 	};
-	doc.sections.forEach((section, i) => {
-		claim(section.id, ["sections", i, "id"], "Section");
-		section.body.forEach((node, j) => {
-			if (node.type === "h3" && node.id) {
+	sections.forEach((section, i) => {
+		if (typeof section?.id === "string") claim(section.id, ["sections", i, "id"], "Section");
+		const body: AnchorShapeNodes = Array.isArray(section?.body) ? section.body : [];
+		body.forEach((node, j) => {
+			if (node?.type === "h3" && typeof node.id === "string" && node.id) {
 				claim(node.id, ["sections", i, "body", j, "id"], "Heading");
 			}
 		});
 	});
 }
+
+/** What {@link checkDocAnchors} reads — every part optional, since it refines reshaped schemas too. */
+type AnchorShape = {
+	sections?: ReadonlyArray<{ id?: unknown; body?: AnchorShapeNodes } | null>;
+};
+/** A section body as {@link checkDocAnchors} reads it. */
+type AnchorShapeNodes = ReadonlyArray<{ type?: unknown; id?: unknown } | null>;
 
 /** The validated document core. Extend it per surface (see the module table). */
 export const DocSchema = DocBaseSchema.superRefine(checkDocAnchors);

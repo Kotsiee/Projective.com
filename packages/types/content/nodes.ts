@@ -35,15 +35,22 @@ export function isExternalHref(href: string): boolean {
 	return /^https?:\/\//i.test(href);
 }
 
+/** A loopback origin (`http://127.0.0.1:54321`, `http://localhost:8000`, `http://[::1]`). */
+const LOOPBACK_HTTP = /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d{1,5})?(?:[/?#]|$)/i;
+
 /**
- * Whether `src` is an image source the renderer may emit: a same-origin path (`/test_images/…`, a
- * storage URL the app proxies) or an absolute `https:` URL (`https://placehold.co/…`, already allowed
- * by the CSP `img-src`).
+ * Whether `src` is an image source the renderer may emit: a same-origin path (`/test_images/…`, never
+ * the protocol-relative `//host` nor `/\host`, which browsers also read as protocol-relative), an
+ * absolute `https:` URL (`https://placehold.co/…`, a hosted storage object — the CSP `img-src`
+ * decides which hosts actually load), or a plain `http:` URL on a loopback host, which is what a
+ * local Supabase storage URL is (`SUPABASE_PUBLIC_URL` = `http://127.0.0.1:54321`). Any other
+ * `http:` image would be blocked as mixed content when deployed, so it is refused here, where a test
+ * sees it.
  */
 export function isSafeImageSrc(src: string): boolean {
-	if (/\s/.test(src)) return false;
-	if (src.startsWith("/")) return !src.startsWith("//");
-	return /^https:\/\/[^/]/i.test(src);
+	if (src.length === 0 || /\s/.test(src)) return false;
+	if (src.startsWith("/")) return !src.startsWith("//") && !src.startsWith("/\\");
+	return /^https:\/\/[^/\\]/i.test(src) || LOOPBACK_HTTP.test(src);
 }
 
 /** A link target, validated by {@link isSafeHref}. */
@@ -53,7 +60,7 @@ export const SafeHrefSchema = z.string().refine(isSafeHref, {
 
 /** An image source, validated by {@link isSafeImageSrc}. */
 export const SafeImageSrcSchema = z.string().refine(isSafeImageSrc, {
-	message: "Image src must be a same-origin /path or an https:// URL",
+	message: "Image src must be a same-origin /path, an https:// URL or a loopback http:// URL",
 });
 // #endregion
 
@@ -62,7 +69,8 @@ export const SafeImageSrcSchema = z.string().refine(isSafeImageSrc, {
  * One inline run. A bare string is shorthand for `{ type: "text" }`, so the common case reads like
  * prose: `["Funds are held in ", { type: "strong", text: "escrow" }, " until you approve."]`.
  * Runs are flat by design — a link carries its own text — which is the whole formatting vocabulary
- * legal, help and changelog copy needs, and keeps every run renderable by one `switch`.
+ * legal, help and changelog copy needs, and keeps every run renderable by one `switch`. `kbd` is a
+ * key or chord the reader presses (`/`, `Ctrl+/`), rendered `<kbd>`.
  */
 export const InlineRunSchema = z.union([
 	z.string(),
@@ -70,6 +78,7 @@ export const InlineRunSchema = z.union([
 	z.object({ type: z.literal("strong"), text: z.string().min(1) }),
 	z.object({ type: z.literal("em"), text: z.string().min(1) }),
 	z.object({ type: z.literal("code"), text: z.string().min(1) }),
+	z.object({ type: z.literal("kbd"), text: z.string().min(1) }),
 	z.object({ type: z.literal("link"), href: SafeHrefSchema, text: z.string().min(1) }),
 ]);
 /** One inline run (see {@link InlineRunSchema}). */
@@ -121,15 +130,33 @@ export interface ListItemObject {
 }
 /** One list item — a plain string, or {@link ListItemObject} when it carries runs or a nested list. */
 export type ListItem = string | ListItemObject;
+
+/**
+ * An ordered list's marker style: `decimal` (1, 2, 3), `lower-alpha` (a, b, c) or `lower-roman`
+ * (i, ii, iii) — a legal document's (a) / (i) sub-clauses.
+ */
+export const ListMarkerSchema = z.enum(["decimal", "lower-alpha", "lower-roman"]);
+/** An ordered list's marker style (see {@link ListMarkerSchema}). */
+export type ListMarker = z.infer<typeof ListMarkerSchema>;
+
 /** A list (unordered unless `ordered`), nestable through an item's `list`. */
 export interface ListNode {
 	type: "list";
 	ordered?: boolean;
+	/** An ordered list's marker style; omitted, the house nesting order (decimal, then lower-alpha). */
+	marker?: ListMarker;
 	items: ListItem[];
 }
 
+/*
+ * The recursive schemas name BOTH of Zod 4's type parameters (output, input). Annotated with the
+ * output alone, the input defaults to `unknown`, so `z.input<typeof DocSchema>` would type every body
+ * node as `unknown` and `defineContent` would accept a misspelt node at compile time, failing only at
+ * import. Input equals output here: nothing in the vocabulary transforms or defaults.
+ */
+
 /** A list item object (see {@link ListItemObject}); nesting is through `list`. */
-export const ListItemObjectSchema: z.ZodType<ListItemObject> = z.lazy(() =>
+export const ListItemObjectSchema: z.ZodType<ListItemObject, ListItemObject> = z.lazy(() =>
 	z.object({
 		content: InlineContentSchema,
 		list: ListNodeSchema.optional(),
@@ -137,16 +164,23 @@ export const ListItemObjectSchema: z.ZodType<ListItemObject> = z.lazy(() =>
 );
 
 /** A list item: a string or a {@link ListItemObjectSchema}. */
-export const ListItemSchema: z.ZodType<ListItem> = z.lazy(() =>
+export const ListItemSchema: z.ZodType<ListItem, ListItem> = z.lazy(() =>
 	z.union([z.string().min(1), ListItemObjectSchema])
 );
 
-/** A list node. `ordered` renders `<ol>`; nested lists may switch kind. */
-export const ListNodeSchema: z.ZodType<ListNode> = z.lazy(() =>
+/**
+ * A list node. `ordered` renders `<ol>` (its `marker` as the list's `type`); nested lists may switch
+ * kind. A `marker` on an unordered list is refused: it would silently do nothing.
+ */
+export const ListNodeSchema: z.ZodType<ListNode, ListNode> = z.lazy(() =>
 	z.object({
 		type: z.literal("list"),
 		ordered: z.boolean().optional(),
+		marker: ListMarkerSchema.optional(),
 		items: z.array(ListItemSchema).min(1),
+	}).refine((list) => list.marker === undefined || list.ordered === true, {
+		message: "A list marker applies to an ordered list only",
+		path: ["marker"],
 	})
 );
 
@@ -154,7 +188,10 @@ export const ListNodeSchema: z.ZodType<ListNode> = z.lazy(() =>
 export const QuoteNodeSchema = z.object({
 	type: z.literal("quote"),
 	content: InlineContentSchema,
-	/** Who said it — rendered as the quote's `<cite>` line. */
+	/**
+	 * Who said it — rendered as the quotation's `<figcaption>`, outside the `<blockquote>`, so the
+	 * attribution is never read as part of the quoted words.
+	 */
 	cite: z.string().min(1).optional(),
 });
 /** A quote node. */
@@ -246,6 +283,26 @@ export const TableNodeSchema = z.object({
 /** A table node. */
 export type TableNode = z.infer<typeof TableNodeSchema>;
 
+/** One defined term and its definition. */
+export const DefinitionItemSchema = z.object({
+	/** The term, as the document capitalises it where it uses it (`Escrow`, `Stage`). */
+	term: z.string().min(1),
+	definition: InlineContentSchema,
+});
+/** A defined term (see {@link DefinitionItemSchema}). */
+export type DefinitionItem = z.infer<typeof DefinitionItemSchema>;
+
+/**
+ * A definition list — a legal document's "Definitions" clause, a glossary. Rendered `<dl>`: each term
+ * a `<dt>`, its definition the `<dd>` after it.
+ */
+export const DefinitionListNodeSchema = z.object({
+	type: z.literal("dl"),
+	items: z.array(DefinitionItemSchema).min(1),
+});
+/** A definition-list node. */
+export type DefinitionListNode = z.infer<typeof DefinitionListNodeSchema>;
+
 /** Every block a section body may hold. */
 export type ContentNode =
 	| ParagraphNode
@@ -255,10 +312,11 @@ export type ContentNode =
 	| CodeNode
 	| ImageNode
 	| CalloutNode
-	| TableNode;
+	| TableNode
+	| DefinitionListNode;
 
-/** The block-node AST (see {@link ContentNode}). */
-export const ContentNodeSchema: z.ZodType<ContentNode> = z.union([
+/** The block-node AST (see {@link ContentNode}). Both type parameters are named, as above. */
+export const ContentNodeSchema: z.ZodType<ContentNode, ContentNode> = z.union([
 	ParagraphNodeSchema,
 	HeadingNodeSchema,
 	ListNodeSchema,
@@ -267,6 +325,7 @@ export const ContentNodeSchema: z.ZodType<ContentNode> = z.union([
 	ImageNodeSchema,
 	CalloutNodeSchema,
 	TableNodeSchema,
+	DefinitionListNodeSchema,
 ]);
 
 /** Every node `type`, in renderer order — the closed vocabulary the renderer must cover. */
@@ -279,5 +338,6 @@ export const CONTENT_NODE_TYPES = [
 	"image",
 	"callout",
 	"table",
+	"dl",
 ] as const satisfies readonly ContentNode["type"][];
 // #endregion

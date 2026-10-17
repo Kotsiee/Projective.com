@@ -493,14 +493,14 @@ why the denylist is not merely a duplicate of the route table:
   into a 404. It is listed in `RESERVED_HANDLES`, `org.fn_is_reserved_handle` and the auth form's
   username list (`features/auth/core/options.ts`, which still lacks `file`, `files` and `share` —
   pre-existing drift).
-- **`changelog`**, **`feedback`** and **`features`** (the public-routes build, 2026-10-17) are denied
-  ahead of their routes. `/changelog` and `/feedback` are public editorial surfaces that speak for the
-  platform — an `@changelog` or `@feedback` profile would borrow that voice the way `@share` would
-  borrow the share route's — and `/features` is the landing track's feature catalogue. Until each
-  route exists, a bare request meets no static route and falls through to `/:handle`, which the
-  denylist turns into a 404 rather than a fabricated profile. All three are in `RESERVED_HANDLES`,
-  `org.fn_is_reserved_handle` (pinned by `supabase/probes/reserved_handles.sql` as well as the contract
-  test) and the auth form's username list.
+- **`changelog`**, **`feedback`** and **`features`** (the public-routes build, 2026-10-17) are
+  denied ahead of their routes. `/changelog` and `/feedback` are public editorial surfaces that
+  speak for the platform — an `@changelog` or `@feedback` profile would borrow that voice the way
+  `@share` would borrow the share route's — and `/features` is the landing track's feature
+  catalogue. Until each route exists, a bare request meets no static route and falls through to
+  `/:handle`, which the denylist turns into a 404 rather than a fabricated profile. All three are in
+  `RESERVED_HANDLES`, `org.fn_is_reserved_handle` (pinned by `supabase/probes/reserved_handles.sql`
+  as well as the contract test) and the auth form's username list.
 
 All are enforced through the one SSOT guard (`isReservedHandle`) and its SQL twin
 `org.fn_is_reserved_handle` (pinned by `workspace.contract.test.ts`), so a future "claim your handle"

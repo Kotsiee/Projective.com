@@ -103,8 +103,13 @@
 		break-inside: avoid;
 	}
 
-	.ui-doc :is(table, .ui-prose__table, .ui-prose__figure, .ui-prose__pre, .ui-callout, blockquote) {
+	.ui-doc :is(table, .ui-prose__table, .ui-prose__figure, .ui-prose__pre, .ui-callout, .ui-prose__quote, .ui-prose__dl-item) {
 		break-inside: avoid;
+	}
+
+	/* The summary line's tonal step prints as nothing (economy colour), so its inset would only indent. */
+	.ui-doc .ui-doc-section__tldr {
+		padding-inline: 0;
 	}
 
 	.ui-doc .ui-prose__table {

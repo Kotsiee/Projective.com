@@ -6,9 +6,16 @@ import type { TocEntry } from "@projective/types/content";
 import { prefersJumpToFinal } from "../../core/motion.ts";
 
 // #region Table of contents
-/** Every id in a TOC tree, in document order (the order the scroll-spy walks). */
+/**
+ * Every IN-PAGE id in a TOC tree, in document order (the order the scroll-spy walks). A cross-page
+ * entry (`href`) has no heading on this page and is skipped — but its children are walked, since the
+ * current document's sections hang beneath its own entry.
+ */
 export function tocIds(entries: readonly TocEntry[]): string[] {
-	return entries.flatMap((entry) => [entry.id, ...tocIds(entry.children)]);
+	return entries.flatMap((entry) => [
+		...(entry.href === undefined ? [entry.id] : []),
+		...tocIds(entry.children),
+	]);
 }
 
 /** The text of the entry with `id`, searching the whole tree; `null` when absent. */
@@ -69,6 +76,30 @@ export function pickActiveHeading(
  */
 export function readingLineFor(scrollMarginTop: number, viewport: number): number {
 	return scrollMarginTop + Math.min(96, Math.max(24, viewport * 0.1));
+}
+
+/** A box's block-axis edges, in viewport pixels (`getBoundingClientRect().top` / `.bottom`). */
+export interface BlockEdges {
+	top: number;
+	bottom: number;
+}
+
+/**
+ * How far to scroll the rail (its own scroll container) so the current entry is in view: `0` when
+ * it already is, else the smallest move that brings it inside the rail with `margin` to spare. A long
+ * table of contents (numbered legal clauses, a multi-document rail) is taller than the viewport, and
+ * a scroll-spy whose current mark has scrolled out of sight tells the reader nothing.
+ */
+export function railScrollDelta(rail: BlockEdges, entry: BlockEdges, margin = 0): number {
+	if (entry.top < rail.top + margin) return entry.top - rail.top - margin;
+	if (entry.bottom > rail.bottom - margin) {
+		// An entry taller than the rail is aligned by its top: its start is what the reader looks for.
+		const room = rail.bottom - rail.top - margin * 2;
+		return entry.bottom - entry.top > room
+			? entry.top - rail.top - margin
+			: entry.bottom - rail.bottom + margin;
+	}
+	return 0;
 }
 // #endregion
 

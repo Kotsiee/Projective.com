@@ -13,10 +13,14 @@
 // #region Layout
 export { DocumentLayout } from "./components/DocumentLayout.tsx";
 export type { DocumentLayoutProps } from "./components/DocumentLayout.tsx";
-export { DocumentHeader } from "./components/DocumentHeader.tsx";
-export type { DocumentHeaderProps } from "./components/DocumentHeader.tsx";
+export { DocumentDate, DocumentHeader } from "./components/DocumentHeader.tsx";
+export type {
+	DocumentDateProps,
+	DocumentHeaderProps,
+	DocumentMetaFact,
+} from "./components/DocumentHeader.tsx";
 export { DocumentBody } from "./components/DocumentBody.tsx";
-export type { DocumentBodyProps } from "./components/DocumentBody.tsx";
+export type { DocumentBodyProps, DocumentSectionSlot } from "./components/DocumentBody.tsx";
 // #endregion
 
 // #region Prose & content
@@ -38,10 +42,16 @@ export type { TocListProps, TocNavProps } from "./components/TocNav.tsx";
 export {
 	motionReduced,
 	pickActiveHeading,
+	railScrollDelta,
 	readingLineFor,
 	readingRatio,
 	tocIds,
 	tocText,
 } from "./core/scroll-spy.ts";
-export type { HeadingPosition, ReadingGeometry, ReadingLine } from "./core/scroll-spy.ts";
+export type {
+	BlockEdges,
+	HeadingPosition,
+	ReadingGeometry,
+	ReadingLine,
+} from "./core/scroll-spy.ts";
 // #endregion

@@ -25,6 +25,8 @@ function renderRun(run: InlineRun, key: number): JSX.Element | string {
 			return <em key={key}>{run.text}</em>;
 		case "code":
 			return <code key={key} class="ui-prose__code">{run.text}</code>;
+		case "kbd":
+			return <kbd key={key} class="ui-prose__kbd">{run.text}</kbd>;
 		case "link":
 			return isExternalHref(run.href)
 				? <a key={key} href={run.href} rel="noopener noreferrer">{run.text}</a>
@@ -34,7 +36,7 @@ function renderRun(run: InlineRun, key: number): JSX.Element | string {
 
 /**
  * InlineContent — renders a paragraph's (or a cell's, an item's) inline runs as semantic phrasing
- * elements: `<strong>`, `<em>`, `<code>`, `<a>`. Every string reaches the DOM as a text child, so
+ * elements: `<strong>`, `<em>`, `<code>`, `<kbd>`, `<a>`. Every string reaches the DOM as a text child, so
  * the content model's guarantee holds end to end: nothing an author writes can become markup. Link
  * targets were validated by the schema; an external one gets `rel="noopener noreferrer"`. Zero-JS,
  * stylesheet-free (prose.css, via the editorial aggregate).

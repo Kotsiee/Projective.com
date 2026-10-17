@@ -9,15 +9,25 @@
  */
 import { assert, assertEquals, assertFalse, assertMatch } from "@std/assert";
 import { renderToString } from "npm:preact-render-to-string@^6.7.0";
-import { anchorDoc, type Doc, docToc } from "@projective/types/content";
+import {
+	anchorDoc,
+	createAnchorRegistry,
+	type Doc,
+	docToc,
+	flattenToc,
+	type TocEntry,
+} from "@projective/types/content";
 import { SAMPLE_DOC } from "@projective/types/content/fixtures";
 import {
 	ContentRenderer,
 	DocumentBody,
+	DocumentDate,
 	DocumentHeader,
 	DocumentLayout,
 	EditorialGlyphContext,
 	type EditorialGlyphs,
+	railScrollDelta,
+	tocIds,
 	TocNav,
 } from "../editorial.ts";
 
@@ -201,12 +211,15 @@ Deno.test("lists render ul/ol and nest", () => {
 	assertMatch(html, /<ul><li>Check your payout details are verified\.<\/li>/);
 });
 
-Deno.test("quote renders blockquote with its cite", () => {
+Deno.test("an attributed quote is a figure: the words quoted, the person captioned outside", () => {
 	const html = renderToString(<DocumentBody doc={anchored} />);
 	assertMatch(
 		html,
-		/<blockquote class="ui-prose__quote"><p>Knowing the stage was funded meant I could start on day one\.<\/p><cite class="ui-prose__cite">A freelancer on the platform<\/cite><\/blockquote>/,
+		/<figure class="ui-prose__quote"><blockquote class="ui-prose__quote-body"><p>Knowing the stage was funded meant I could start on day one\.<\/p><\/blockquote><figcaption class="ui-prose__cite">A freelancer on the platform<\/figcaption><\/figure>/,
 	);
+	assertFalse(html.includes("<cite"), "<cite> names a work, not a person");
+	const bare = renderToString(<ContentRenderer nodes={[{ type: "quote", content: "Ship it." }]} />);
+	assertEquals(bare, '<blockquote class="ui-prose__quote"><p>Ship it.</p></blockquote>');
 });
 
 Deno.test("code renders pre > code with its language, keyboard-scrollable", () => {
@@ -241,10 +254,18 @@ Deno.test("tables carry a caption, column headers and row headers in a named scr
 	const html = renderToString(<DocumentBody doc={anchored} />);
 	assertMatch(
 		html,
-		/<div class="ui-prose__table" role="region" tabindex="0" aria-label="A £1,000 stage, released"><table><caption>A £1,000 stage, released<\/caption>/,
+		/<div class="ui-prose__table" role="region" aria-label="A £1,000 stage, released" tabindex="0"><table><caption>A £1,000 stage, released<\/caption>/,
 	);
 	assertEquals(count(html, '<th scope="col">'), 2);
 	assertMatch(html, /<tr><th scope="row">Stage price<\/th><td>£1,000\.00<\/td><\/tr>/);
+});
+
+Deno.test("an uncaptioned table scrolls by keyboard but is no landmark", () => {
+	const html = renderToString(
+		<ContentRenderer nodes={[{ type: "table", head: ["a"], rows: [["1"]] }]} />,
+	);
+	assertMatch(html, /^<div class="ui-prose__table" tabindex="0"><table><thead>/);
+	assertFalse(html.includes('role="region"'), "a page of tables would flood the landmark list");
 });
 
 Deno.test("the section summary line renders under its heading with its label", () => {
@@ -266,6 +287,89 @@ Deno.test("a bare node list still gets unique sub-heading ids", () => {
 		/>,
 	);
 	assertEquals(ids(html), ["same", "same-3", "same-2"]);
+});
+
+Deno.test("bodies rendered against one registry never share a heading id (a release feed)", () => {
+	const registry = createAnchorRegistry();
+	const release = [{ type: "h3" as const, text: "Fixes" }, { type: "p" as const, content: "x" }];
+	const html = renderToString(
+		<>
+			<ContentRenderer nodes={release} registry={registry} />
+			<ContentRenderer nodes={release} registry={registry} />
+		</>,
+	);
+	assertEquals(ids(html), ["fixes", "fixes-2"]);
+});
+
+Deno.test("keys render <kbd>, definitions a <dl>, a list marker the <ol> type", () => {
+	const html = renderToString(<DocumentBody doc={anchored} />);
+	assertMatch(html, /\(press <kbd class="ui-prose__kbd">Ctrl\+\/<\/kbd> to search/);
+	assertMatch(
+		html,
+		/<ol type="a"><li>the client approves the stage; or<\/li><li>a Fair Exit settles it\.<\/li><\/ol>/,
+	);
+	assertMatch(
+		html,
+		/<dl class="ui-prose__dl"><div class="ui-prose__dl-item"><dt>Stage<\/dt><dd>One funded unit of a project's work\.<\/dd><\/div><div class="ui-prose__dl-item"><dt>Release<\/dt><dd>The moment a stage's money moves to the <strong>freelancer<\/strong>\.<\/dd><\/div><\/dl>/,
+	);
+	assertMatch(html, /<ol><li>The client funds the first stage/, "no marker, no type");
+});
+
+Deno.test("a numbered document marks its prose so clause numbers can hang", () => {
+	assertMatch(
+		renderToString(<DocumentBody doc={anchorDoc(SAMPLE_DOC, { numbered: true })} />),
+		/^<div class="ui-prose ui-doc-body ui-doc-body--numbered">/,
+	);
+	assertMatch(
+		renderToString(<DocumentBody doc={anchored} />),
+		/^<div class="ui-prose ui-doc-body">/,
+	);
+});
+
+Deno.test("sectionSlots add a class, a note after the heading and content after the body", () => {
+	const html = renderToString(
+		<DocumentBody
+			doc={anchored}
+			tldrLabel="Plain-English summary"
+			sectionSlots={(section, i) =>
+				section.anchor === "fees"
+					? {
+						class: "ui-doc-section--changed",
+						before: <p id="fees-change">Changed in 2.0</p>,
+						after: <p data-cta="end">Next step</p>,
+					}
+					: i === 0
+					? undefined
+					: {}}
+		/>,
+	);
+	assertMatch(
+		html,
+		/<section class="ui-doc-section ui-doc-section--changed"><h2 id="fees"[^>]*>.*?<\/h2><p id="fees-change">Changed in 2\.0<\/p><div class="ui-prose__table"/,
+	);
+	assertMatch(html, /<p data-cta="end">Next step<\/p><\/section><section class="ui-doc-section">/);
+	assertMatch(html, /<span class="ui-doc-section__tldr-label">Plain-English summary<\/span>/);
+});
+// #endregion
+
+// #region Header facts
+Deno.test("a meta date is machine-readable; facts may be text or phrasing content", () => {
+	const html = renderToString(
+		<DocumentHeader
+			title="T"
+			meta={[
+				<DocumentDate key="updated" prefix="Updated" iso="2026-10-17" />,
+				"Version 2.1",
+				null,
+				false,
+			]}
+		/>,
+	);
+	assertMatch(
+		html,
+		/<li class="ui-doc-header__meta-item">Updated <time datetime="2026-10-17">17 October 2026<\/time><\/li><li class="ui-doc-header__meta-item"><span class="ui-doc-header__sep" aria-hidden="true">·<\/span>Version 2\.1<\/li><\/ul>/,
+	);
+	assertEquals(count(html, "ui-doc-header__meta-item"), 2, "empty facts are skipped");
 });
 // #endregion
 
@@ -349,5 +453,50 @@ Deno.test("before hydration the TOC is not enhanced and marks nothing", () => {
 	const html = renderToString(<TocNav entries={toc} />);
 	assertFalse(html.includes("data-enhanced"));
 	assertFalse(html.includes("aria-current"));
+});
+
+Deno.test("each TOC label reserves its current-weight height with an aria-hidden copy", () => {
+	const html = renderToString(<TocNav entries={toc} activeId="fees" />);
+	assertMatch(
+		html,
+		/<a class="ui-toc__link" href="#fees" aria-current="location"><span class="ui-toc__text"><span class="ui-toc__text-ink">Fees<\/span><span class="ui-toc__text-reserve" aria-hidden="true">Fees<\/span><\/span><\/a>/,
+	);
+});
+
+Deno.test("cross-page TOC entries link away; the current document is aria-current=page", () => {
+	const legal: TocEntry[] = [
+		{ id: "doc-terms-link", text: "Terms", level: 2, href: "/legal/terms", children: [] },
+		{
+			id: "doc-privacy-link",
+			text: "Privacy",
+			level: 2,
+			href: "/legal/privacy",
+			current: true,
+			children: toc,
+		},
+	];
+	const html = renderToString(
+		<TocNav entries={legal} activeId="fees" label="Legal documents" onOpenSheet={() => {}} />,
+	);
+	assertMatch(html, /<nav id="doc-toc" class="ui-toc" aria-label="Legal documents">/);
+	assertMatch(html, /<a class="ui-toc__link" href="\/legal\/terms"><span class="ui-toc__text">/);
+	assertMatch(html, /<a class="ui-toc__link" href="\/legal\/privacy" aria-current="page">/);
+	assertMatch(html, /<a class="ui-toc__link" href="#fees" aria-current="location">/);
+	assertEquals(count(html, 'aria-current="page"'), 2, "the rail list and the disclosure list");
+	assertEquals(tocIds(legal), flattenToc(toc).map((e) => e.id), "only in-page ids are spied");
+});
+// #endregion
+
+// #region Rail reveal geometry
+Deno.test("railScrollDelta moves the rail only as far as the current entry needs", () => {
+	const rail = { top: 100, bottom: 500 };
+	assertEquals(railScrollDelta(rail, { top: 200, bottom: 220 }, 24), 0, "already in view");
+	assertEquals(railScrollDelta(rail, { top: 90, bottom: 110 }, 24), -34, "above: scroll up");
+	assertEquals(railScrollDelta(rail, { top: 490, bottom: 510 }, 24), 34, "below: scroll down");
+	assertEquals(
+		railScrollDelta(rail, { top: 600, bottom: 1200 }, 24),
+		476,
+		"taller than the rail: align its top",
+	);
 });
 // #endregion

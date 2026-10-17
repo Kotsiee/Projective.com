@@ -36,3 +36,12 @@
 [dir="rtl"] .ui-reading-progress__bar {
 	transform-origin: right center;
 }
+
+/*
+ * In the signed-in shell the bar runs along the page canvas's top edge, whose start corner is rounded
+ * by --frame-radius: start the bar where the curve ends, so its first pixels never paint over the
+ * ground outside the frame.
+ */
+.ui-page-canvas__body .ui-reading-progress__bar {
+	inset-inline-start: var(--frame-radius, 0px);
+}

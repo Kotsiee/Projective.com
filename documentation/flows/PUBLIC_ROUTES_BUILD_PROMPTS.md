@@ -68,9 +68,10 @@
     Check the extensions with `ls test_images`.
   - No unresolved imports, and no external stock URLs other than `placehold.co`.
 - **Reserved handles.** `/legal`, `/contact`, `/about`, `/help` and `/articles` are already in
-  `RESERVED_HANDLES`. **`changelog` and `feedback` are not.** Add them in
+  `RESERVED_HANDLES`. **P0 reserved `changelog`, `feedback` and `features`** (2026-10-17) in
   `packages/types/profile/reserved.ts` **and** `org.fn_is_reserved_handle` (SQL twin), keeping
-  `workspace.contract.test.ts` green (ROUTING.md §Reserved-handle precedence).
+  `workspace.contract.test.ts` green (ROUTING.md §Reserved-handle precedence). No later prompt
+  adds them again.
 - **Tokens** (`packages/ui/styles/index.css`) — use these names, never raw values:
 
   | Family          | Tokens                                                                                                                                                                     |
@@ -1487,8 +1488,8 @@ the home page stays light.
 1. ROUTE TARGET & SCOPE
 - Route: apps/web/routes/(public)/features.tsx, using LandingShell (it is in LANDING_PATHS; same
   lp- exemption).
-- Add "features" to RESERVED_HANDLES and org.fn_is_reserved_handle (keep
-  workspace.contract.test.ts green).
+- "features" is already reserved (P0) in RESERVED_HANDLES and org.fn_is_reserved_handle; verify
+  only — do not add it a second time (the contract test compares sets and would not notice).
 - URL state: ?section=<slug> scrolls to and opens a section; each section has an anchor.
 
 2. LAYOUT & COMPONENT ARCHITECTURE

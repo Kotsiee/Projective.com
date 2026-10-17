@@ -90,6 +90,58 @@ Deno.test("the TOC's active mark moves no box: a reserved transparent bar recolo
 		toc,
 		/\.ui-toc__link\[aria-current="location"\] \{[^}]*border-inline-start-color: var\(--primary\);/,
 	);
+	// The heavier current weight cannot re-wrap a label: its height is reserved at that weight.
+	assertMatch(toc, /\.ui-toc__text \{\s*display: grid;/);
+	assertMatch(toc, /\.ui-toc__text-ink,\s*\.ui-toc__text-reserve \{\s*grid-area: 1 \/ 1;/);
+	assertMatch(
+		toc,
+		/\.ui-toc__text-reserve \{[^}]*visibility: hidden;[^}]*font-weight: var\(--fw-medium\);/,
+	);
+});
+
+Deno.test("the pinned-chrome offset is a package hook, re-pointed to the shell's frame inset", () => {
+	const layout = css("document-layout.css");
+	assertMatch(layout, /--doc-chrome-h: var\(--chrome-pinned-h, 0px\);/);
+	assertMatch(
+		layout,
+		/\.ui-page-canvas__body \.ui-doc \{\s*--doc-chrome-h: var\(--shell-frame-inset-block, var\(--shell-topbar-h, 0px\)\);/,
+	);
+	for (const sheet of SHEETS) {
+		assertFalse(css(sheet).includes("--site-header"), `${sheet}: names an app token`);
+	}
+	const tokens = Deno.readTextFileSync(new URL("../../styles/index.css", import.meta.url));
+	assertMatch(tokens, /--chrome-pinned-h: 0px;/);
+});
+
+Deno.test("static content takes one solid step: code on --surface-2, the summary on --surface-1", () => {
+	const prose = css("prose.css");
+	assertMatch(prose, /\.ui-prose__pre \{[^}]*background: var\(--surface-2\);/);
+	assertMatch(prose, /\.ui-prose__code \{[^}]*background: var\(--surface-2\);/);
+	assertMatch(prose, /\.ui-doc-section__tldr \{[^}]*background: var\(--surface-1\);/);
+	assertFalse(
+		/\.ui-doc-section__tldr \{[^}]*border(?!-radius)/.test(prose),
+		"the summary is never boxed",
+	);
+	// A quote spends the canonical static divider; only a callout's tone rule is 2px.
+	assertMatch(prose, /\.ui-prose__quote \{[^}]*border-inline-start: var\(--hairline\);/);
+	assertFalse(/\.ui-prose__quote \{[^}]*2px/.test(prose));
+});
+
+Deno.test("high contrast gives the callout's tone word the full ink", () => {
+	assertMatch(
+		css("prose.css"),
+		/:root\[data-contrast="high"\] \.ui-callout__title \{\s*color: var\(--on-surface\);/,
+	);
+});
+
+Deno.test("clause numbers are mono and hang in the gutter from --bp-md of frame", () => {
+	const prose = css("prose.css");
+	assertMatch(prose, /\.ui-anchor-heading__num \{[^}]*font-family: var\(--font-mono\);/);
+	assertMatch(
+		prose,
+		/@container ui-doc \(min-width: 768px\) \{[\s\S]*?\.ui-doc-body--numbered \.ui-anchor-heading__num \{[^}]*position: absolute;[^}]*inset-inline-end: 100%;/,
+	);
+	assertMatch(css("toc.css"), /\.ui-toc__num \{[^}]*font-family: var\(--font-mono\);/);
 });
 
 Deno.test("smooth scrolling only without a reduced-motion request in either channel", () => {

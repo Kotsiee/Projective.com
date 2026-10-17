@@ -53,6 +53,8 @@ export function nodeText(node: ContentNode | SimpleBlock): string {
 			return node.body.map(nodeText).join("\n");
 		case "table":
 			return [node.head, ...node.rows].map((row) => row.map(inlineText).join(" · ")).join("\n");
+		case "dl":
+			return node.items.map((item) => `${item.term} — ${inlineText(item.definition)}`).join("\n");
 	}
 }
 

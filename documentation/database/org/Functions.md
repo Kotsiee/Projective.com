@@ -701,9 +701,9 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   (`@projective/types/profile`), pinned by the contract test. The two lists change together, edited
   in place in `00001020_functions_org_entities.sql`; the latest entries are `changelog`, `feedback`
   and `features`, the public editorial routes and the landing track's `/features` (2026-10-17,
-  probed by `supabase/probes/reserved_handles.sql`), after `inspect`, the shell-free file inspector's
-  top-level segment (Decision #161(G); the reasons per entry are in `ROUTING.md` §Reserved-handle
-  precedence).
+  probed by `supabase/probes/reserved_handles.sql`), after `inspect`, the shell-free file
+  inspector's top-level segment (Decision #161(G); the reasons per entry are in `ROUTING.md`
+  §Reserved-handle precedence).
 - **`fn_handle_taken(handle)`** — case-insensitively taken in any of the four tables, or **held**:
   given up by a person in the last 90 days (`org.handle_changes`, Decision #156), so nobody can step
   into a renamed person's old links. Only the previous owner may take it back (`org.change_username`).

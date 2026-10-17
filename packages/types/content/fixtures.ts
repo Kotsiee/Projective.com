@@ -8,6 +8,7 @@
  * Deliberate traps, each pinned by a test: two sub-headings share the text "An example" (their ids
  * must come out `an-example` and `an-example-2`), one sub-heading pins an explicit id, and a
  * sub-heading's text slugifies to an id a section already owns (`releases` vs the "Releases" h3).
+ * It also carries a `kbd` run, a `lower-alpha` ordered list and a definition list.
  *
  * @module
  */
@@ -175,6 +176,34 @@ export const SAMPLE_DOC: SampleDoc = defineContent(SampleDocSchema, {
 						{
 							type: "list",
 							items: ["Check your payout details are verified.", "Allow for the pending window."],
+						},
+					],
+				},
+				{
+					type: "p",
+					content: [
+						"A stage's money is released when either of these happens (press ",
+						{ type: "kbd", text: "Ctrl+/" },
+						" to search for the terms):",
+					],
+				},
+				{
+					type: "list",
+					ordered: true,
+					marker: "lower-alpha",
+					items: ["the client approves the stage; or", "a Fair Exit settles it."],
+				},
+				{
+					type: "dl",
+					items: [
+						{ term: "Stage", definition: "One funded unit of a project's work." },
+						{
+							term: "Release",
+							definition: [
+								"The moment a stage's money moves to the ",
+								{ type: "strong", text: "freelancer" },
+								".",
+							],
 						},
 					],
 				},

@@ -18,6 +18,10 @@ export {
 	CONTENT_NODE_TYPES,
 	type ContentNode,
 	ContentNodeSchema,
+	type DefinitionItem,
+	DefinitionItemSchema,
+	type DefinitionListNode,
+	DefinitionListNodeSchema,
 	type HeadingNode,
 	HeadingNodeSchema,
 	type ImageNode,
@@ -33,6 +37,8 @@ export {
 	type ListItemObject,
 	ListItemObjectSchema,
 	ListItemSchema,
+	type ListMarker,
+	ListMarkerSchema,
 	type ListNode,
 	ListNodeSchema,
 	type ParagraphNode,
@@ -75,6 +81,7 @@ export {
 	type AnchoredHeadingNode,
 	type AnchoredNode,
 	type AnchoredSection,
+	anchorNodes,
 	type AnchorRegistry,
 	createAnchorRegistry,
 	docToc,
@@ -96,3 +103,5 @@ export {
 } from "./text.ts";
 // The sample document is NOT re-exported here: it parses at import time, and a barrel import from an
 // island would carry it into the client bundle. Tests reach it at `@projective/types/content/fixtures`.
+// Client-reachable code that needs only the plain-text projections imports
+// `@projective/types/content/text`, which builds no schema, instead of this barrel.

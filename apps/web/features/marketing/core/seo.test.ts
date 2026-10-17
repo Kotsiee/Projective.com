@@ -20,10 +20,12 @@ import {
 	documentTitle,
 	faqJsonLdItems,
 	faqPageJsonLd,
+	jsonLdAuthor,
 	jsonLdGraph,
 	type JsonLdNode,
 	LANDING_META,
 	landingJsonLd,
+	metaImage,
 	organizationJsonLd,
 	type PageMeta,
 	pageMeta,
@@ -116,6 +118,39 @@ Deno.test("applyPageMeta fills the state _app reads", () => {
 	const meta = pageMeta({ title: "Help", description: "Answers.", path: "/help", origin: ORIGIN });
 	applyPageMeta(state, meta);
 	assertEquals(state, { title: "Help · Projective", description: "Answers.", meta });
+});
+
+Deno.test("pageMeta: a content image is taken as is; alternates are made absolute", () => {
+	const meta = pageMeta({
+		title: "Changelog",
+		description: "d",
+		path: "/changelog",
+		origin: ORIGIN,
+		ogImage: SAMPLE_DOC.cover,
+		alternates: [
+			{ type: "application/rss+xml", href: "/changelog/rss.xml", title: "Projective changelog" },
+			{ type: "application/feed+json", href: "https://cdn.example/feed.json" },
+		],
+	});
+	assertEquals(meta.og.image, {
+		url: "https://projective.app/test_images/banner_1.jpg",
+		alt: SAMPLE_DOC.cover.alt,
+		width: 643,
+		height: 360,
+	});
+	assertEquals(meta.alternates, [
+		{
+			type: "application/rss+xml",
+			href: "https://projective.app/changelog/rss.xml",
+			title: "Projective changelog",
+		},
+		{ type: "application/feed+json", href: "https://cdn.example/feed.json" },
+	]);
+	assertEquals(
+		pageMeta({ title: "T", description: "d", path: "/", origin: ORIGIN }).alternates,
+		[],
+	);
+	assertEquals(metaImage("/a.png"), { src: "/a.png", alt: "" });
 });
 // #endregion
 
@@ -249,6 +284,55 @@ Deno.test("Article / TechArticle: required properties, platform author by defaul
 
 	const long = articleJsonLd({ ...input, headline: "x".repeat(200) });
 	assert((long.headline as string).length <= 110);
+});
+
+Deno.test("Article: a content cover becomes an ImageObject; content authors map; version and about", () => {
+	const release = techArticleJsonLd({
+		origin: ORIGIN,
+		path: "/changelog/1-4-0",
+		headline: "Projective 1.4.0",
+		description: "What shipped.",
+		datePublished: "2026-10-17",
+		image: SAMPLE_DOC.cover,
+		authors: [jsonLdAuthor(SAMPLE_DOC.author)],
+		version: "1.4.0",
+		about: { "@type": "SoftwareApplication", name: "Projective", softwareVersion: "1.4.0" },
+	});
+	assertEquals(release.image, {
+		"@type": "ImageObject",
+		url: "https://projective.app/test_images/banner_1.jpg",
+		width: 643,
+		height: 360,
+	});
+	assertEquals(release.author, {
+		"@type": "Person",
+		name: "Projective Editorial",
+		url: "https://projective.app/about",
+	});
+	assertEquals(release.version, "1.4.0");
+	assertEquals(release.about, {
+		"@type": "SoftwareApplication",
+		name: "Projective",
+		softwareVersion: "1.4.0",
+	});
+	assertEquals(jsonLdAuthor({ name: "Team" }, "Organization"), {
+		name: "Team",
+		kind: "Organization",
+	});
+});
+
+Deno.test("WebPage carries a document's version when given", () => {
+	const page = webPageJsonLd({
+		origin: ORIGIN,
+		path: "/legal/terms",
+		name: "Terms",
+		description: "d",
+		version: "2.1",
+	});
+	assertEquals(page.version, "2.1");
+	assertFalse(
+		"version" in webPageJsonLd({ origin: ORIGIN, path: "/x", name: "X", description: "d" }),
+	);
 });
 
 Deno.test("FAQPage: every question carries one accepted answer, from content-module FAQ items", () => {

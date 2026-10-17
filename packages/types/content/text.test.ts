@@ -41,6 +41,22 @@ Deno.test("tables, quotes and callouts project to readable text", () => {
 	);
 });
 
+Deno.test("definition lists and key runs project to readable text", () => {
+	assertEquals(
+		nodesText([
+			{ type: "p", content: ["Press ", { type: "kbd", text: "Ctrl+/" }, "."] },
+			{
+				type: "dl",
+				items: [
+					{ term: "Stage", definition: "One funded unit." },
+					{ term: "Release", definition: ["Money ", { type: "em", text: "moves" }] },
+				],
+			},
+		]),
+		"Press Ctrl+/.\n\nStage — One funded unit.\nRelease — Money moves",
+	);
+});
+
 Deno.test("the document text starts with its title and summary and includes every section", () => {
 	const text = docText(SAMPLE_DOC);
 	assert(text.startsWith(`${SAMPLE_DOC.title}\n\n${SAMPLE_DOC.summary}`));

@@ -9,15 +9,19 @@ export interface PageMetaTagsProps {
 
 /**
  * PageMetaTags — the `<head>` tags a {@link PageMeta} stands for, beyond the title and description
- * the root `_app` already writes: the canonical link (one per page), robots, the Open Graph block
- * (with `article:*` times for a dated document) and the Twitter card kind. Rendered by `_app` inside
- * `<head>`; a page never writes these itself.
+ * the root `_app` already writes: the canonical link (one per page), any alternate representations
+ * (a feed's `<link rel="alternate">`), robots, the Open Graph block (with `article:*` times for a
+ * dated document) and the Twitter card kind. Rendered by `_app` inside `<head>`; a page never writes
+ * these itself.
  */
 export function PageMetaTags({ meta }: PageMetaTagsProps): JSX.Element {
 	const { og } = meta;
 	return (
 		<>
 			<link rel="canonical" href={meta.canonical} />
+			{(meta.alternates ?? []).map((alt) => (
+				<link key={alt.href} rel="alternate" type={alt.type} href={alt.href} title={alt.title} />
+			))}
 			<meta name="robots" content={meta.robots} />
 			<meta property="og:type" content={og.type} />
 			<meta property="og:site_name" content={og.siteName} />

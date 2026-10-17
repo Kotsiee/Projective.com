@@ -17,18 +17,25 @@
  *
  * Separation (§B.4): spacing first, then type. Nothing here is boxed; the rails are text on the
  * page's own ground.
+ *
+ * CONTAINMENT. `container-type: inline-size` applies layout containment, so `.ui-doc` is the
+ * containing block of any `position: fixed` descendant and opens its own stacking context. Anything
+ * a consumer means to pin to the VIEWPORT or float above the page from inside a document (a toast, a
+ * back-to-top control, a sheet) must portal out (`Portal` / `BodyPortal`); the bottom sheet already
+ * does (it is a `Drawer`). Sticky descendants are unaffected.
  */
 
 /* #region Frame */
 .ui-doc {
 	container: ui-doc / inline-size;
 	/*
-	 * The viewport-pinned chrome above the document: the guest shell publishes its scrolled header
-	 * pill's bottom edge as --site-header-pinned-h; the authenticated L-shell's top bar is
-	 * --shell-topbar-h (re-pointed below). Sticky rails, the reading-progress bar and every heading's
+	 * The viewport-pinned chrome above the document. Outside the authenticated shell it is the
+	 * package hook --chrome-pinned-h (0px by default, styles/index.css), which a host shell sets to
+	 * its pinned header's bottom edge — the guest shell sets it to the scrolled pill's. Inside the
+	 * L-shell it is re-pointed below. Sticky rails, the reading-progress bar and every heading's
 	 * scroll margin read this one value.
 	 */
-	--doc-chrome-h: var(--site-header-pinned-h, var(--shell-topbar-h, 0px));
+	--doc-chrome-h: var(--chrome-pinned-h, 0px);
 	--doc-sticky-top: calc(var(--doc-chrome-h) + var(--space-5));
 	--doc-rail-w: 14rem;
 	--doc-gap: var(--space-7);
@@ -40,9 +47,14 @@
 	color: var(--on-surface);
 }
 
-/* The page canvas exists only inside the authenticated shell — its top bar is the chrome there. */
+/*
+ * The page canvas exists only inside the authenticated shell, where the pinned chrome is the frame's
+ * own block inset: the top bar, plus the middle-nav header band when the route mounts one (that band
+ * is sticky at the top bar, middle-nav.css), and 0 under bare chrome. Read here — at the document —
+ * because the inset is augmented on `.ui-middle-nav--has-header`, between the shell and this frame.
+ */
 .ui-page-canvas__body .ui-doc {
-	--doc-chrome-h: var(--shell-topbar-h, 0px);
+	--doc-chrome-h: var(--shell-frame-inset-block, var(--shell-topbar-h, 0px));
 }
 
 .ui-doc__article {
@@ -106,6 +118,11 @@
 	margin-block-start: 0;
 }
 
+/* The body column's own blocks (an introduction or cover figure, then the prose) stand apart. */
+.ui-doc__body > * + * {
+	margin-block-start: var(--space-6);
+}
+
 /* Every anchor target clears the pinned chrome, however it was scrolled to (hash, find, restore). */
 .ui-doc :is(h2, h3)[id] {
 	scroll-margin-block-start: var(--doc-sticky-top);
@@ -161,6 +178,36 @@
 	.ui-doc__article--meta .ui-doc__meta-inner {
 		position: sticky;
 		inset-block-start: var(--doc-sticky-top);
+	}
+}
+
+/*
+ * A numbered document hangs its clause numbers in the gutter from --bp-md (prose.css); beside the
+ * TOC rail the gutter is the column gap, widened so a `12.3` clears the rail.
+ */
+.ui-doc__article--toc:has(.ui-doc-body--numbered) {
+	--doc-gap: var(--space-8);
+}
+/* #endregion */
+
+/* #region Variants — modifier classes on the frame (DocumentLayout / DocumentPage `class`) */
+/*
+ * A surface scopes its look through a modifier on the frame (`class`) or the prose (`bodyClass`),
+ * declared HERE in the shared family, never in a per-feature sheet that would restyle these classes
+ * from outside. A new variant is one appended block.
+ */
+
+/* Clauses (legal): each section after the first opens on one hairline — the boundary IS the clause. */
+.ui-doc--clauses .ui-prose > .ui-doc-section + .ui-doc-section {
+	margin-block-start: var(--space-6);
+	padding-block-start: var(--space-6);
+	border-block-start: var(--hairline);
+}
+
+/* Article (editorial long reads): the body steps up to --text-lg once the frame is wide. */
+@container ui-doc (min-width: 1024px) {
+	.ui-doc--article .ui-prose {
+		font-size: var(--text-lg);
 	}
 }
 /* #endregion */

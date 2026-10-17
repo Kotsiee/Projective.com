@@ -9,6 +9,7 @@
 import { assert, assertEquals, assertNotEquals } from "@std/assert";
 import {
 	anchorDoc,
+	anchorNodes,
 	createAnchorRegistry,
 	type Doc,
 	docToc,
@@ -122,6 +123,52 @@ Deno.test("page-level reserved ids are honoured for generated anchors", () => {
 	const h = a.sections[0].body[0];
 	assert(h.type === "h3");
 	assertEquals(h.id, "comments-2");
+});
+
+Deno.test("an explicit id is never suffixed, even when the page reserved it", () => {
+	const a = anchorDoc(
+		doc([{
+			id: "versions",
+			heading: "Versions",
+			body: [{ type: "h3", text: "x", id: "history" }, { type: "h3", text: "Versions" }],
+		}]),
+		{ reserved: ["versions", "history"] },
+	);
+	assertEquals(a.sections[0].anchor, "versions", "a shared /legal/terms#versions keeps working");
+	const [pinned, generated] = a.sections[0].body;
+	assert(pinned.type === "h3" && generated.type === "h3");
+	assertEquals(pinned.id, "history");
+	assertEquals(generated.id, "versions-2", "only the GENERATED id steps aside");
+});
+// #endregion
+
+// #region anchorNodes
+Deno.test("anchorNodes: bodies anchored against one registry never share an id", () => {
+	const registry = createAnchorRegistry([...RESERVED_ANCHOR_IDS, "release-1-4-0", "release-1-3-0"]);
+	const first = anchorNodes(
+		[{ type: "h3", text: "Fixes" }, P, { type: "h3", text: "New" }],
+		registry,
+	);
+	const second = anchorNodes(
+		[{ type: "h3", text: "Fixes" }, { type: "h3", text: "Pinned", id: "fixes-3" }],
+		registry,
+	);
+	const idsOf = (nodes: typeof first) => nodes.flatMap((n) => n.type === "h3" ? [n.id] : []);
+	assertEquals(idsOf(first), ["fixes", "new"]);
+	assertEquals(idsOf(second), ["fixes-2", "fixes-3"], "the explicit id is reserved, then kept");
+	assert(registry.has("fixes-3"));
+});
+
+Deno.test("anchorNodes: with no registry, one list is de-duplicated on its own", () => {
+	const nodes = anchorNodes([{ type: "h3", text: "Same" }, { type: "h3", text: "Same" }]);
+	assertEquals(nodes.map((n) => n.type === "h3" ? n.id : ""), ["same", "same-2"]);
+});
+
+Deno.test("registry.reserve marks an id used exactly as given", () => {
+	const r = createAnchorRegistry([]);
+	assertEquals(r.reserve("intro"), "intro");
+	assertEquals(r.reserve("intro"), "intro", "reserving twice never suffixes");
+	assertEquals(r.claim("intro"), "intro-2");
 });
 // #endregion
 

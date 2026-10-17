@@ -8,7 +8,9 @@
 import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 import { z } from "zod";
 import {
+	checkDocAnchors,
 	CONTENT_NODE_TYPES,
+	ContentImageSchema,
 	ContentNodeSchema,
 	defineContent,
 	DocBaseSchema,
@@ -84,12 +86,31 @@ Deno.test("external hrefs are exactly the absolute http(s) ones", () => {
 	assertFalse(isExternalHref("mailto:a@b.c"));
 });
 
-Deno.test("images: same-origin paths and https only; dimensions and alt are required", () => {
+Deno.test("images: same-origin paths, https, and loopback http; dimensions and alt are required", () => {
 	assert(isSafeImageSrc("/test_images/banner_1.jpg"));
 	assert(isSafeImageSrc("https://placehold.co/600x400?text=Figure"));
-	assertFalse(isSafeImageSrc("http://example.com/a.png"));
+	// A local Supabase storage URL (SUPABASE_PUBLIC_URL is http://127.0.0.1:54321 in development).
+	assert(isSafeImageSrc("http://127.0.0.1:54321/storage/v1/object/public/catalogue/c.jpg"));
+	assert(isSafeImageSrc("http://localhost:8000/a.png"));
+	assert(isSafeImageSrc("http://[::1]/a.png"));
+	assert(
+		ContentImageSchema.safeParse({
+			src: "http://127.0.0.1:54321/storage/v1/object/public/catalogue/c.jpg",
+			alt: "A cover",
+			w: 1200,
+			h: 630,
+		}).success,
+	);
+	assertFalse(isSafeImageSrc("http://example.com/a.png"), "plain http off loopback");
+	assertFalse(isSafeImageSrc("http://localhost.evil.example/a.png"), "a lookalike host");
 	assertFalse(isSafeImageSrc("data:image/png;base64,AAAA"));
 	assertFalse(isSafeImageSrc("//cdn.example/a.png"));
+	assertFalse(
+		isSafeImageSrc("/\\evil.example/a.png"),
+		"browsers read /\\host as protocol-relative",
+	);
+	assertFalse(isSafeImageSrc("https:/\\evil.example/a.png"));
+	assertFalse(isSafeImageSrc(""));
 	const base = { type: "image", src: "/a.png", alt: "A", w: 10, h: 10 };
 	assert(ContentNodeSchema.safeParse(base).success);
 	assertFalse(ContentNodeSchema.safeParse({ ...base, alt: "" }).success);
@@ -112,6 +133,10 @@ Deno.test("every node type parses, and the vocabulary is closed", () => {
 		image: { type: "image", src: "/a.png", alt: "A", w: 1, h: 1 },
 		callout: { type: "callout", tone: "warning", body: [P] },
 		table: { type: "table", head: ["a"], rows: [["1"]] },
+		dl: {
+			type: "dl",
+			items: [{ term: "Stage", definition: ["One ", { type: "em", text: "unit" }] }],
+		},
 	};
 	for (const [type, value] of Object.entries(samples)) {
 		const parsed = ContentNodeSchema.safeParse(value);
@@ -119,6 +144,39 @@ Deno.test("every node type parses, and the vocabulary is closed", () => {
 	}
 	assertFalse(ContentNodeSchema.safeParse({ type: "html", html: "<b>x</b>" }).success);
 	assertFalse(ContentNodeSchema.safeParse({ type: "h2", text: "Sections own the h2" }).success);
+	assertFalse(ContentNodeSchema.safeParse({ type: "dl", items: [] }).success);
+});
+
+Deno.test("keys are a run; list markers style ordered lists only", () => {
+	assert(
+		ContentNodeSchema.safeParse({ type: "p", content: ["Press ", { type: "kbd", text: "/" }] })
+			.success,
+	);
+	assertFalse(
+		ContentNodeSchema.safeParse({ type: "p", content: [{ type: "kbd", text: "" }] }).success,
+	);
+	for (const marker of ["decimal", "lower-alpha", "lower-roman"]) {
+		assert(
+			ContentNodeSchema.safeParse({ type: "list", ordered: true, marker, items: ["a"] }).success,
+			marker,
+		);
+	}
+	const unordered = ContentNodeSchema.safeParse({
+		type: "list",
+		marker: "lower-alpha",
+		items: ["a"],
+	});
+	assertFalse(unordered.success);
+	assert(z.prettifyError(unordered.error).includes("ordered list only"));
+	assertFalse(
+		ContentNodeSchema.safeParse({
+			type: "list",
+			ordered: true,
+			marker: "upper-greek",
+			items: ["a"],
+		})
+			.success,
+	);
 });
 
 Deno.test("a raw-HTML-shaped run is refused: runs have a closed vocabulary", () => {
@@ -211,6 +269,53 @@ Deno.test("consumers extend the core and keep its anchor rule", () => {
 	assertFalse(Legal.safeParse(repeated).success, "the refinement survives .extend()");
 	// The unrefined base still supports the reshaping operators a refined schema refuses.
 	assert(DocBaseSchema.omit({ version: true }).safeParse(value).success);
+});
+
+Deno.test("overriding an existing key: .extend throws, .safeExtend keeps the anchor rule", () => {
+	assertThrows(() => DocSchema.extend({ version: SemverSchema }), Error, "safeExtend");
+	const Release = DocSchema.safeExtend({ version: SemverSchema });
+	const base = doc([{ id: "a", heading: "A", body: [P] }]) as Record<string, unknown>;
+	assert(Release.safeParse({ ...base, version: "1.4.0" }).success);
+	assertFalse(Release.safeParse({ ...base, version: "1.4" }).success, "the override applies");
+	const repeated = {
+		...base,
+		version: "1.4.0",
+		sections: [{ id: "a", heading: "A", body: [P] }, { id: "a", heading: "B", body: [P] }],
+	};
+	assertFalse(Release.safeParse(repeated).success, "the refinement survives .safeExtend()");
+	const Rebuilt = DocBaseSchema.extend({ version: SemverSchema }).superRefine(checkDocAnchors);
+	assertFalse(Rebuilt.safeParse(repeated).success);
+});
+
+Deno.test("the anchor check refines a picked or partial shape without throwing", () => {
+	const Listing = DocBaseSchema.pick({ id: true, slug: true, title: true, summary: true })
+		.superRefine(checkDocAnchors);
+	assert(Listing.safeParse({ id: "d", slug: "d", title: "D", summary: "S" }).success);
+	const Patch = DocBaseSchema.partial().superRefine(checkDocAnchors);
+	assert(Patch.safeParse({ title: "x" }).success);
+	assertFalse(
+		Patch.safeParse({
+			sections: [{ id: "a", heading: "A", body: [P] }, { id: "a", heading: "B", body: [P] }],
+		}).success,
+		"sections, when present, are still checked",
+	);
+});
+
+Deno.test("type level: defineContent checks body nodes at compile time", () => {
+	const valid = doc([{ id: "a", heading: "A", body: [P] }]) as z.input<typeof DocSchema>;
+	if (false as boolean) {
+		defineContent(DocSchema, {
+			...valid,
+			// @ts-expect-error — a body node outside the vocabulary must not type-check.
+			sections: [{ id: "a", heading: "A", body: [{ type: "paragraph-typo", text: 42 }] }],
+		});
+		defineContent(DocSchema, {
+			...valid,
+			// @ts-expect-error — a list item of the wrong shape must not type-check either.
+			sections: [{ id: "a", heading: "A", body: [{ type: "list", items: [42] }] }],
+		});
+	}
+	assert(true);
 });
 
 Deno.test("defineContent returns the parsed module and names a broken one", () => {
