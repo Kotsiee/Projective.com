@@ -245,7 +245,13 @@
 /* #endregion */
 
 /* #region Cells — the tri-state */
+/*
+ * `--wsp-cell-fill` is the solid tone a cell paints, published so the locked hatch laid over it can be
+ * mixed against that tone rather than against a ground it does not cover. A cell with no state paints
+ * nothing, so its fill is the matrix's own `--surface`.
+ */
 .wsp-matrix__cell {
+	--wsp-cell-fill: var(--surface);
 	position: relative;
 	display: flex;
 	align-items: center;
@@ -267,7 +273,8 @@
 }
 
 .wsp-matrix__cell[data-state="allowed"] {
-	background: var(--wsp-allowed-tint);
+	--wsp-cell-fill: var(--wsp-allowed-tint);
+	background: var(--wsp-cell-fill);
 	color: var(--wsp-allowed);
 }
 
@@ -277,7 +284,8 @@
  * inline (§B.6).
  */
 .wsp-matrix__cell[data-state="conditional"] {
-	background: var(--wsp-conditional-tint);
+	--wsp-cell-fill: var(--wsp-conditional-tint);
+	background: var(--wsp-cell-fill);
 	color: var(--wsp-conditional);
 	background-image: repeating-linear-gradient(
 		115deg,
@@ -287,7 +295,8 @@
 }
 
 .wsp-matrix__cell[data-state="denied"] {
-	background: var(--wsp-denied-tint);
+	--wsp-cell-fill: var(--wsp-denied-tint);
+	background: var(--wsp-cell-fill);
 	color: var(--wsp-denied);
 }
 
@@ -295,11 +304,20 @@
  * Locked: a preset column, a preset row, or a cell the viewer may not grant because they do not hold
  * the capability themselves. The hatch plus the lock glyph say read-only without spending a colour, and
  * the cursor confirms it before the click.
+ *
+ * The hatch is a darker step of the fill it is laid over — an allowed, conditional or denied tint, or
+ * the column head's `--surface` — so it is declared here, where `--wsp-cell-fill` has resolved, and only
+ * its strength (`--wsp-locked-hatch-mix`, wider under high contrast) comes from the token layer.
  */
 .wsp-matrix__cell[data-preset="true"],
 .wsp-matrix__cell[data-locked="true"],
 .wsp-matrix__row[data-preset="true"] .wsp-matrix__cell,
 .wsp-matrix__col[data-preset="true"] {
+	--wsp-locked-hatch: color-mix(
+		in oklab,
+		var(--on-surface) var(--wsp-locked-hatch-mix),
+		var(--wsp-cell-fill, var(--surface))
+	);
 	cursor: not-allowed;
 	background-image: repeating-linear-gradient(
 		135deg,
@@ -312,7 +330,8 @@
 .wsp-matrix__cell[data-preset="true"]:hover,
 .wsp-matrix__cell[data-locked="true"]:hover,
 .wsp-matrix__row[data-preset="true"] .wsp-matrix__cell:hover {
-	background-color: var(--wsp-locked-tint);
+	--wsp-cell-fill: var(--wsp-locked-tint);
+	background-color: var(--wsp-cell-fill);
 }
 
 .wsp-matrix__row[data-preset="true"] .wsp-matrix__rowhead,

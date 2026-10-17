@@ -391,11 +391,13 @@
 	background: color-mix(in srgb, var(--warning) var(--tint), var(--surface-1));
 }
 
+/* The drift percentage changes while a handle is dragged, so its digits hold their width. */
 .wsp-split__drift-text {
 	margin: 0;
 	flex: 1 1 16rem;
 	min-inline-size: 0;
 	font-size: var(--wsp-fs-body);
+	font-variant-numeric: tabular-nums;
 	color: var(--on-surface);
 }
 
@@ -550,6 +552,17 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+/* The name links to the member's profile. The link takes the name's ink rather than the browser's link
+colour, so the row's no-spend dim below reaches it. */
+.wsp-spend__limit-link {
+	color: inherit;
+	text-decoration: none;
+}
+
+.wsp-spend__limit-link:hover {
+	text-decoration: underline;
 }
 
 .wsp-spend__limit-sub {

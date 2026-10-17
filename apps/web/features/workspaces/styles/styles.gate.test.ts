@@ -6,12 +6,13 @@
  * W1 sweep removed coming back: a translucent `color-mix`, a literal weight, a literal duration, a hex
  * or `rgb()` colour, glass, a `px` breakpoint, or an `outline: none` with no ring beside it. The
  * remaining gates hold the rest of the sweep in place — `px` only inside a token declaration, `opacity`
- * only inside an animation, both reduced-motion channels, the `data-i` stagger, the deleted dead rules
- * and the removed inset rings.
+ * only inside an animation, both reduced-motion channels (and an in-app stop for every opt-in
+ * animation), the `data-i` stagger, the deleted dead rules and the removed inset rings.
  *
  * Comments are blanked before matching (line breaks kept, so offsets still map to source lines): the
  * sheets explain their own history in prose — "never `opacity`", "the 767px step" — and prose must not
- * trip a gate.
+ * trip a gate. `url()` arguments are blanked for the colour, pixel and duration gates for the same
+ * reason: a resource path is a name, not a value.
  */
 import { assert } from "@std/assert";
 
@@ -110,11 +111,76 @@ function blocks(text: string, prelude: RegExp): [number, number][] {
 	return ranges;
 }
 
+/** True when `index` falls inside any of `ranges`. */
+function within(ranges: [number, number][], index: number): boolean {
+	return ranges.some(([open, close]) => index > open && index < close);
+}
+
 /** The declaration block of the rule enclosing `index`. */
 function ruleBody(text: string, index: number): string {
 	const open = text.lastIndexOf("{", index);
 	const close = text.indexOf("}", index);
 	return text.slice(open + 1, close < 0 ? text.length : close);
+}
+
+/** The selector list of the rule whose declaration block encloses `index`, whitespace collapsed. */
+function ruleSelector(text: string, index: number): string {
+	const open = text.lastIndexOf("{", index);
+	const start = Math.max(
+		text.lastIndexOf("}", open),
+		text.lastIndexOf("{", open - 1),
+		text.lastIndexOf(";", open),
+	) + 1;
+	return text.slice(start, open).replace(/\s+/g, " ").trim();
+}
+
+/** `source` with every regex metacharacter escaped, for building a pattern from a selector. */
+function escapeRegExp(source: string): string {
+	return source.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * The declaration block of the `:root[data-motion="reduced"] <selector>` twin, or `null` when the sheet
+ * has none. `flat` is the sheet with whitespace collapsed. The selector must END where the twin's
+ * selector does (at a `,` or the `{`), so `.x` is not satisfied by a twin for `.x-glyph` or `.x::after`.
+ */
+function reducedTwin(flat: string, selector: string): string | null {
+	const twin = new RegExp(
+		`:root\\[data-motion="reduced"\\] ${escapeRegExp(selector)}(?=\\s*[,{])`,
+	).exec(flat);
+	if (!twin) return null;
+	const open = flat.indexOf("{", twin.index);
+	const close = flat.indexOf("}", open);
+	return flat.slice(open + 1, close < 0 ? flat.length : close);
+}
+
+/** A selector list split on its top-level commas (a comma inside `:is(…)` does not split it). */
+function splitSelectorList(list: string): string[] {
+	const parts: string[] = [];
+	let depth = 0;
+	let start = 0;
+	for (let i = 0; i < list.length; i++) {
+		if (list[i] === "(") depth++;
+		else if (list[i] === ")") depth--;
+		else if (list[i] === "," && depth === 0) {
+			parts.push(list.slice(start, i));
+			start = i + 1;
+		}
+	}
+	parts.push(list.slice(start));
+	return parts.map((part) => part.replace(/\s+/g, " ").trim()).filter(Boolean);
+}
+
+/** Every selector of every rule directly inside the at-rule block `[open, close)`. */
+function blockSelectors(text: string, open: number, close: number): {
+	selector: string;
+	body: string;
+}[] {
+	const out: { selector: string; body: string }[] = [];
+	for (const rule of text.slice(open + 1, close).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+		for (const selector of splitSelectorList(rule[1])) out.push({ selector, body: rule[2] });
+	}
+	return out;
 }
 
 /** The single declaration (`prop: value`) that `index` falls inside. */
@@ -150,6 +216,14 @@ function offences(
 	return found;
 }
 
+/**
+ * The sheet with every `url()` argument blanked: a path such as `/icons/24px/mark.svg` or a fragment
+ * such as `#fade` is a resource name, not a pixel or a colour.
+ */
+function withoutUrls(sheet: Sheet): string {
+	return blankCalls(sheet.css, "url");
+}
+
 function assertNone(found: string[], gate: string): void {
 	assert(found.length === 0, `${gate}\n  ${found.join("\n  ")}`);
 }
@@ -172,8 +246,14 @@ Deno.test("workspace styles: no color-mix() against transparent", () => {
 });
 
 Deno.test("workspace styles: no literal font-weight", () => {
+	// The longhand, and a weight inside the `font` shorthand (`font: 600 1rem/1.2 …`).
 	assertNone(
-		offences(/font-weight:\s*([0-9]|bold|bolder|lighter)/),
+		[
+			...offences(/font-weight:\s*([0-9]|bold|bolder|lighter)/),
+			...offences(
+				/(?<=^|[;{\s])font\s*:[^;{}]*?(?<=[\s:])([1-9]00|bold|bolder|lighter)(?=[\s;}]|$)/,
+			),
+		],
 		"literal font-weight — use var(--fw-*) (§A.4):",
 	);
 });
@@ -184,13 +264,20 @@ Deno.test("workspace styles: no heading heavier than --fw-semibold", () => {
 
 Deno.test("workspace styles: no literal duration outside var()", () => {
 	assertNone(
-		offences(/\b\d+ms\b|\b\d+(\.\d+)?s\b/, undefined, (sheet) => blankCalls(sheet.css, "var")),
+		offences(
+			/\b\d+ms\b|\b\d+(\.\d+)?s\b/,
+			undefined,
+			(sheet) => blankCalls(withoutUrls(sheet), "var"),
+		),
 		"literal duration — use var(--dur-*):",
 	);
 });
 
 Deno.test("workspace styles: no hex colour", () => {
-	assertNone(offences(/#[0-9a-f]{3,8}\b/i), "hex colour — use a theme token:");
+	assertNone(
+		offences(/#[0-9a-f]{3,8}\b/i, undefined, withoutUrls),
+		"hex colour — use a theme token:",
+	);
 });
 
 Deno.test("workspace styles: no rgb()/rgba()", () => {
@@ -209,11 +296,15 @@ Deno.test("workspace styles: no px breakpoint", () => {
 });
 
 Deno.test("workspace styles: no outline: none without a ring in the same rule", () => {
+	// `outline: 0` and a zero `outline-width` hide the outline exactly as `none` does. The ring must be
+	// a real `box-shadow` declaration, not a custom property whose name happens to end in one.
 	assertNone(
 		offences(
-			/outline:\s*none/,
+			/(?<=^|[;{\s])outline(-style|-width)?\s*:\s*(none|0(\.0+)?[a-z]*)\s*(!important\s*)?(?=[;}]|$)/,
 			(sheet, index) =>
-				!/box-shadow:[^;]*var\(--(focus-ring|fld-focus)/.test(ruleBody(sheet.css, index)),
+				!/(^|[;{\s])box-shadow\s*:[^;]*var\(--(focus-ring|fld-focus)/.test(
+					ruleBody(sheet.css, index),
+				),
 		),
 		"outline: none with no box-shadow ring beside it:",
 	);
@@ -227,17 +318,19 @@ Deno.test("workspace styles: px literals live only in token declarations", () =>
 			/(\d*\.?\d+)px\b/,
 			(sheet, index, match) =>
 				Number(match[1]) !== 0 && !declarationAt(sheet.css, index).startsWith("--"),
+			withoutUrls,
 		),
 		"px literal in a rule — read a token (--space-*, --wsp-* geometry):",
 	);
 });
 
 Deno.test("workspace styles: opacity only animates", () => {
+	// Enter/exit motion may fade: a `@keyframes` step, or an `@starting-style` entry state.
 	assertNone(
 		offences(/\bopacity\s*:/, (sheet, index) => {
-			const inKeyframes = blocks(sheet.css, /@keyframes\s[^{]*\{/g)
-				.some(([open, close]) => index > open && index < close);
-			return !inKeyframes &&
+			const animating = within(blocks(sheet.css, /@keyframes\s[^{]*\{/g), index) ||
+				within(blocks(sheet.css, /@starting-style\s*\{/g), index);
+			return !animating &&
 				!/^opacity\s*:\s*var\(--wsp-minor-fade\)$/.test(declarationAt(sheet.css, index));
 		}),
 		"opacity used as a state — dim the ink with --text-secondary / --fld-disabled-mix:",
@@ -248,23 +341,42 @@ Deno.test("workspace styles: every reduced-motion rule has both channels", () =>
 	const missing: string[] = [];
 	for (const sheet of SHEETS) {
 		const flat = sheet.css.replace(/\s+/g, " ");
-		for (
-			const [open, close] of blocks(
-				sheet.css,
-				/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{/g,
-			)
-		) {
-			const inner = sheet.css.slice(open + 1, close);
-			for (const rule of inner.matchAll(/([^{}]+)\{[^{}]*\}/g)) {
-				for (const selector of rule[1].split(",").map((s) => s.trim()).filter(Boolean)) {
-					if (!flat.includes(`:root[data-motion="reduced"] ${selector}`)) {
-						missing.push(`${sheet.name}:${lineOf(sheet.css, open)}  ${selector}`);
-					}
+		// Any prelude that asks for reduced motion — `screen and (…)`, the boolean form — not one spelling.
+		const reduce = /@media[^{]*\(\s*prefers-reduced-motion(\s*:\s*reduce)?\s*\)[^{]*\{/g;
+		for (const [open, close] of blocks(sheet.css, reduce)) {
+			for (const { selector } of blockSelectors(sheet.css, open, close)) {
+				if (reducedTwin(flat, selector) === null) {
+					missing.push(`${sheet.name}:${lineOf(sheet.css, open)}  ${selector}`);
 				}
 			}
 		}
 	}
 	assertNone(missing, 'prefers-reduced-motion rule with no :root[data-motion="reduced"] twin:');
+});
+
+Deno.test("workspace styles: an opt-in animation stops under the in-app reduced-motion switch", () => {
+	// A `no-preference` block runs its animation for everyone whose OS has not asked for reduced
+	// motion — including a reader who switched motion off in the app. Each animated selector must be
+	// scoped out of `:root[data-motion="reduced"]` or reset there.
+	const unguarded: string[] = [];
+	for (const sheet of SHEETS) {
+		const flat = sheet.css.replace(/\s+/g, " ");
+		const opted = /@media[^{]*\(\s*prefers-reduced-motion\s*:\s*no-preference\s*\)[^{]*\{/g;
+		for (const [open, close] of blocks(sheet.css, opted)) {
+			for (const { selector, body } of blockSelectors(sheet.css, open, close)) {
+				if (!/(^|[;{\s])animation(-name)?\s*:/.test(body)) continue;
+				if (selector.startsWith(':root:not([data-motion="reduced"])')) continue;
+				const twin = reducedTwin(flat, selector);
+				if (twin === null || !/(^|[;\s])animation(-name)?\s*:\s*none\b/.test(twin)) {
+					unguarded.push(`${sheet.name}:${lineOf(sheet.css, open)}  ${selector}`);
+				}
+			}
+		}
+	}
+	assertNone(
+		unguarded,
+		'no-preference animation with no :root[data-motion="reduced"] { animation: none } twin:',
+	);
 });
 
 Deno.test("workspace styles: no four-sided inset ring on a card or row", () => {
@@ -283,6 +395,7 @@ Deno.test("workspace styles: figure classes are tabular", () => {
 		".wsp-card__stat",
 		".wsp-card__stat-delta",
 		".wsp-split__pip",
+		".wsp-split__drift-text",
 	]
 		.filter((selector) => {
 			const at = all.search(new RegExp(`(^|\\n)${selector.replace(/[.-]/g, "\\$&")}\\s*\\{`));
@@ -299,15 +412,64 @@ Deno.test("workspace styles: the dead rules stay deleted", () => {
 });
 
 Deno.test("workspace styles: the stagger is a data-i ladder, not an inline style", () => {
-	const ladder = SHEETS.map((sheet) => sheet.css).join("\n");
-	const rungs = Array.from({ length: 12 }, (_, i) => `[data-i="${i}"]`).filter((rung) =>
-		!ladder.includes(`${rung} {`)
-	);
-	if (!/(^|\n)\[data-i\] \{/.test(ladder)) rungs.push("[data-i] (the past-11 default)");
-	assertNone(rungs, "missing data-i ladder rung:");
+	const problems: string[] = [];
+	const step = (i: number) => new RegExp(`(^|\\n)\\[data-i="${i}"\\]\\s*\\{`);
+	const catchAll = /(^|\n)\[data-i\]\s*\{/g;
+
+	/** The value the rule opening at or after `index` gives `--wsp-i`, or `null`. */
+	const rungAt = (text: string, index: number): string | null => {
+		const open = text.indexOf("{", index);
+		const set = /--wsp-i\s*:\s*([^;}]*)/.exec(text.slice(open + 1, text.indexOf("}", open)));
+		return set ? set[1].trim() : null;
+	};
+
+	// The whole ladder lives in one sheet, so "before" and "after" are its own source order.
+	const home = SHEETS.find((sheet) => step(0).test(sheet.css));
+	if (!home) problems.push('[data-i="0"] is missing');
+	else {
+		// Every step 0-11 exists and sets its own index.
+		const steps = Array.from({ length: 12 }, (_, i) => {
+			const at = home.css.search(step(i));
+			if (at < 0) problems.push(`[data-i="${i}"] is missing from ${home.name}`);
+			else if (rungAt(home.css, at) !== String(i)) {
+				problems.push(`[data-i="${i}"] sets --wsp-i: ${rungAt(home.css, at)} (expected ${i})`);
+			}
+			return at;
+		});
+		const firstStep = Math.min(...steps.filter((at) => at >= 0));
+
+		// The bare catch-all sets the last delay and comes BEFORE every step: an equal-specificity rule
+		// after them would override each exact match and give every band the last delay.
+		let catchAlls = 0;
+		for (const sheet of SHEETS) {
+			for (const match of sheet.css.matchAll(catchAll)) {
+				catchAlls++;
+				const where = `${sheet.name}:${lineOf(sheet.css, match.index! + 1)}`;
+				if (sheet !== home) problems.push(`${where}  [data-i] outside the ladder's sheet`);
+				else if (match.index! > firstStep) {
+					problems.push(`${where}  [data-i] comes after the steps it would override`);
+				}
+				if (rungAt(sheet.css, match.index!) !== "11") {
+					problems.push(`${where}  [data-i] sets --wsp-i: ${rungAt(sheet.css, match.index!)}`);
+				}
+			}
+		}
+		if (catchAlls === 0) problems.push("[data-i] (the past-11 default) is missing");
+	}
+
+	// Nothing else in the sheets sets the index.
+	for (const sheet of SHEETS) {
+		for (const match of sheet.css.matchAll(/--wsp-i\s*:/g)) {
+			const selector = ruleSelector(sheet.css, match.index!);
+			if (!/^\[data-i(="\d+")?\]$/.test(selector)) {
+				problems.push(`${sheet.name}:${lineOf(sheet.css, match.index!)}  ${selector} sets --wsp-i`);
+			}
+		}
+	}
+	assertNone(problems, "the data-i ladder is broken:");
 
 	const inline = readFeatureTsx()
-		.filter((file) => file.src.includes('"--wsp-i"'))
+		.filter((file) => /['"`]--wsp-i['"`]|--wsp-i\s*:/.test(file.src))
 		.map((file) => file.name);
 	assertNone(inline, "a component writes --wsp-i inline — set data-i instead:");
 });

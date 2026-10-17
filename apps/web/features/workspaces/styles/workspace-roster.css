@@ -312,6 +312,12 @@
 	background: var(--surface-2);
 }
 
+/* The quiet chip is a `--surface-2` step, the same tone the card hovers to, so it steps up one with
+the card or its container would vanish. */
+.wsp-card:hover .wsp-chip[data-tone="muted"] {
+	background: var(--surface-3);
+}
+
 /*
  * Acting: one leading `--hairline-strong` rule plus one tonal step — never a four-sided ring around a
  * card (§B.4). Both are quiet on purpose — the chip in `__flags` is the loud channel, and two loud

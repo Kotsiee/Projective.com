@@ -161,6 +161,12 @@ loud channel is still the chip in the body. */
 	background: var(--surface-2);
 }
 
+/* The quiet chip ("Invited") is a `--surface-2` step, the tone the row hovers to, so it steps up one
+with the row or its container would vanish. */
+.wsp-lane__entity:hover .wsp-chip[data-tone="muted"] {
+	background: var(--surface-3);
+}
+
 /* Acting: one tonal step plus a leading rule — never a four-sided ring (§B.4). */
 .wsp-lane__entity[data-acting="true"] {
 	background: var(--wsp-acting-tint);
@@ -542,8 +548,10 @@ words — a ring colour on its own is not a channel. */
 	text-decoration: none;
 }
 
+/* The identity name and the selected tab share `--fw-medium` and `--on-surface`, so the name is told
+apart by SIZE: one step up the ramp, the title register above the tab strip's body register. */
 .wsp-headerband__name {
-	font-size: var(--wsp-fs-body);
+	font-size: var(--wsp-fs-key);
 	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 	overflow: hidden;

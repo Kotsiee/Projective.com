@@ -190,6 +190,12 @@ two declarations the package field draws its own disabled state with. */
 	background: var(--surface-2);
 }
 
+/* The revocation marker is a `--surface-2` step, the tone the card hovers to, so it steps up one with
+the card or its container would vanish. */
+.wsp-mcard:hover .wsp-override[data-override="revoke"] {
+	background: var(--surface-3);
+}
+
 /* The viewer's own card gets one leading `--hairline-strong` rule — orientation, not emphasis, and
 never a four-sided ring around static content. */
 .wsp-mcard[data-self="true"] {

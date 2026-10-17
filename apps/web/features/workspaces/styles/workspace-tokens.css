@@ -20,10 +20,11 @@
  * overlay.
  *
  * Every mix is OPAQUE (§B.4.2): it is mixed against the solid surface the colour actually lands on —
- * `--surface` for the matrix and the dialogs, `--surface-1` for cards and bands, a stake's own tone for
- * the hatch drawn over it — and never against `transparent`, so each tone is measurable and none of
- * them compounds when nested. The quiet status fills are the U1 tokens (`--success-tint`,
- * `--warning-tint`, `--danger-tint`), which already carry their own per-mode/contrast strength.
+ * `--surface` for the matrix and the dialogs, `--surface-1` for cards and bands, a stake's own tone or
+ * a matrix cell's own fill for the hatch drawn over it — and never against `transparent`, so each tone
+ * is measurable and none of them compounds when nested. The quiet status fills are the U1 tokens
+ * (`--success-tint`, `--warning-tint`, `--danger-tint`), which already carry their own
+ * per-mode/contrast strength.
  *
  * The literal px values on this surface live in the Geometry region below and nowhere else: a rule
  * reads a token, never a pixel. `styles.gate.test.ts` holds every sheet in this folder to that, and to
@@ -160,9 +161,12 @@
 	--wsp-consequential: var(--warning);
 
 	/* A preset role is read-only by design. The locked look is a hatch plus a lock glyph, so it is
-	legible without colour. Both are drawn on the matrix, whose ground is `--surface`. */
+	legible without colour. The hover tint is drawn on the matrix's `--surface` ground. The hatch is laid
+	over whatever fill the cell already paints (an allowed, conditional or denied tint), so the colour
+	itself, `--wsp-locked-hatch`, is mixed on the cell in workspace-matrix.css against that fill; this is
+	only its strength. */
 	--wsp-locked-tint: color-mix(in oklab, var(--on-surface) 5%, var(--surface));
-	--wsp-locked-hatch: color-mix(in oklab, var(--on-surface) 12%, var(--surface));
+	--wsp-locked-hatch-mix: 12%;
 	/* #endregion */
 
 	/* #region Money — the split bar, the spend envelopes, the approval ladder */
@@ -286,15 +290,21 @@
 
 	/*
 	 * Breakpoints. A media query cannot read a custom property and no build step here expands
-	 * `@custom-media`, so the sheets spell the `@projective/ui` breakpoints (§C.3) in `rem` — never
-	 * `px` — at exactly the pixel the package's own sheets use:
+	 * `@custom-media`, so the sheets spell the `@projective/ui` breakpoints (§C.3) in `rem`, never `px`:
 	 *
-	 *   `@media (max-width: 47.9375rem)`  below `--bp-md` (768px) — the phone layout (767px)
-	 *   `@media (max-width: 79.9375rem)`  below `--bp-xl` (1280px) — the laned-tablet layout (1279px)
+	 *   `@media (max-width: 47.9375rem)`  below `--bp-md` (768px) — the phone layout
+	 *   `@media (max-width: 79.9375rem)`  below `--bp-xl` (1280px) — the laned-tablet layout
 	 *
-	 * The tablet step used to be a bespoke 1100px. It snapped UP to `--bp-xl` rather than down to
-	 * `--bp-lg` because it adapts the content region under a 280px lane, and snapping up only widens
-	 * the range of windows that get that adaptation (now 1101–1279px too): no window loses one it had.
+	 * A `rem` inside `@media` resolves against the browser's default font size, not the root's, so these
+	 * match the package's own `px` queries (767px / 1279px in app-shell.css and middle-nav.css) only at
+	 * the usual 16px default. A reader who raised that default gets the phone and tablet layouts at a
+	 * proportionally wider window than the shell switches its own.
+	 *
+	 * The tablet step used to be a bespoke 1100px and snapped UP to `--bp-xl`, not down to `--bp-lg`, so
+	 * windows of 1101–1279px now take the tablet adaptation too: they hide the header band's handle and
+	 * badge, the footer rig's note and the split legend's avatars, and narrow the card, member grid and
+	 * matrix columns. Snapping down instead would hand windows of 1024–1100px a desktop layout the old
+	 * step kept from them.
 	 */
 
 	/* The ONLY two max-widths permitted on this surface: running text and form fields. No card, no
@@ -380,8 +390,18 @@
 }
 
 /*
- * High contrast — the tonal mixes widen so every state clears AAA separation. The attribute is
- * written by `packages/ui/system` (`applyConfig`).
+ * High contrast. The attribute is written by `packages/ui/system` (`applyConfig`). Two rules apply,
+ * in opposite directions:
+ *
+ *  - The kind tints, the edges, the acting ring and both hatches WIDEN, so every mark that separates
+ *    one state from another by tone alone clears a wider step.
+ *  - The status fills do NOT widen. The matrix's allowed / conditional cells (and their legend marks)
+ *    read the U1 `--success-tint` / `--warning-tint`, which step their own strength DOWN under high
+ *    contrast: a lighter fill pulls the cell toward its surface and widens the glyph ink drawn on it.
+ *    So in high contrast a cell's FILL sits closer to a denied cell's `--surface` than it does at
+ *    normal contrast, and the state is carried by the glyph (tick · conditional mark · dash) and, on
+ *    a conditional cell, the hatch. The ui PermissionMatrix makes the same trade on the same U1 tint
+ *    family; it is a deliberate step-down, not a widening.
  */
 :root[data-contrast="high"] {
 	--wsp-team-tint: color-mix(in srgb, var(--primary) 20%, var(--surface-1));
@@ -389,13 +409,9 @@
 	--wsp-business-tint: color-mix(in srgb, var(--secondary) 20%, var(--surface-1));
 	--wsp-business-edge: color-mix(in oklab, var(--secondary) 70%, var(--surface-1));
 	--wsp-acting-ring: color-mix(in oklab, var(--wsp-kind) 85%, var(--surface-1));
-	--wsp-locked-hatch: color-mix(in oklab, var(--on-surface) 26%, var(--surface));
+	--wsp-locked-hatch-mix: 26%;
 	--wsp-hatch: color-mix(in oklab, var(--on-surface) 30%, var(--wsp-conditional-tint));
 	/*
-	 * `--wsp-allowed-tint` / `--wsp-conditional-tint` are NOT widened here any more: they are the U1
-	 * `--success-tint` / `--warning-tint`, which step their own strength DOWN under high contrast — a
-	 * lighter fill pulls the cell toward its surface and widens the glyph ink drawn on it.
-	 *
 	 * The recessed track and the minor-unit fade widened here too, by exactly the amounts
 	 * wallet-tokens.css used; both moved to the global layer with their tokens, so re-declaring them
 	 * would pin the alias to a frozen copy and reintroduce the drift the promotion removed. They widen
