@@ -88,7 +88,7 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | :-- | :-- | :-- | :-- |
 | W1 | Per-person stage hard cap + global soft cap at claim/assign | `projects.check_ticket_capacity` (`00001140…:183-260`), used by `fn_assign_ticket_core` and RR/parallel assignment | ✅ |
 | W2 | Accepting a seat adds no W_i (Decision #214) | Keyed on `current_assignee_id` | ✅ |
-| W3 | Team-level capacity | `org.teams.current_workload_intensity` has **no writer** (`fn_sync_workload_intensity` updates `freelancer_profiles` only); view's team `workload_cap` = default × members, cosmetic (`00003001…:265-273`) | ✅ ruled by #233 (a): the team figure is the members' live W_i summed in the read (`org.profiles_index`, `get_workspace_detail`); the column is no longer read (`supabase/probes/workspace_detail_payload.sql`) |
+| W3 | Team-level capacity | `org.teams.current_workload_intensity` has **no writer** (`fn_sync_workload_intensity` updates `freelancer_profiles` only); view's team `workload_cap` = default × members, cosmetic (`00003001…:265-273`) | ✅ ruled by #233 (a): the team figure is the members' live W_i summed in the read (`org.profiles_index`, `get_workspace_detail`); the column is no longer read (`supabase/probes/workspace_detail_payload.sql`); the team's search row carries the same live figure (#235, `supabase/probes/team_search_workload.sql`) |
 
 ### 1.6 Backend & data integrity
 

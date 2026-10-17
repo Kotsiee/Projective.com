@@ -3,16 +3,80 @@
 -- Consolidated verbatim from: 0010_search_tables.sql, 0217_search_engine_pgvector.sql, 0219_search_engine_weights.sql, 0220_search_engine_rpc.sql
 -- ============================================================================
 
+-- #region A team's live W_i in the index (Decision #235, closes #233 FLAG (a))
+-- A team's load is its active members' LIVE W_i — Σ workload_intensity of the claimed / in-progress /
+-- in-review tickets they hold, rounded — exactly as org.profiles_index's team branch (00003001)
+-- computes `workload`. org.teams.current_workload_intensity has no writer and is not read (#233 (a)).
+-- The ranking's workload term reads search.profiles_index.current_workload_intensity, so the team row
+-- is kept on this figure: sync_team_to_index writes it, and fn_refresh_team_workload re-sums it when a
+-- ticket moves (projects.fn_sync_workload_intensity, 00001140) or a membership changes
+-- (trg_team_members_search_workload, 00001895).
+
+/** A team's live W_i: its active members' claimed / in_progress / in_review ticket intensity, summed. */
+CREATE OR REPLACE FUNCTION search.fn_team_live_workload(p_team_id uuid)
+RETURNS integer
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT COALESCE((
+        SELECT round(sum(tk.workload_intensity))::int
+          FROM org.team_members tm
+          JOIN projects.tickets tk ON tk.current_assignee_id = tm.user_id
+                                  AND tk.status::text IN ('claimed', 'in_progress', 'in_review')
+         WHERE tm.team_id = p_team_id AND tm.status = 'active'
+    ), 0);
+$$;
+
+/**
+ * Re-sums the live W_i of each listed team into its search row. A load change is not a profile edit,
+ * so `updated_at` (the `recent` sort key) is left alone, and an unchanged figure writes nothing.
+ */
+CREATE OR REPLACE FUNCTION search.fn_refresh_team_workload(p_team_ids uuid[])
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    UPDATE search.profiles_index pi
+       SET current_workload_intensity = w.live
+      FROM (SELECT DISTINCT ids.id, search.fn_team_live_workload(ids.id) AS live
+              FROM unnest(p_team_ids) AS ids(id)
+             WHERE ids.id IS NOT NULL) w
+     WHERE pi.entity_type = 'team'
+       AND pi.entity_id = w.id
+       AND pi.current_workload_intensity IS DISTINCT FROM w.live;
+END;
+$$;
+
+/** org.team_members trigger: a member joining, leaving or moving re-sums the teams on both sides. */
+CREATE OR REPLACE FUNCTION search.fn_team_members_workload_touch()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    PERFORM search.fn_refresh_team_workload(ARRAY[
+        CASE WHEN TG_OP IN ('UPDATE', 'DELETE') THEN OLD.team_id END,
+        CASE WHEN TG_OP IN ('UPDATE', 'INSERT') THEN NEW.team_id END
+    ]);
+    RETURN NULL;
+END;
+$$;
+-- #endregion
+
 CREATE OR REPLACE FUNCTION search.sync_team_to_index() RETURNS TRIGGER AS $$
 BEGIN
     INSERT INTO search.profiles_index (
-        entity_id, entity_type, display_name, fts, metadata, 
+        entity_id, entity_type, display_name, fts, metadata,
         rating_average, rating_count, current_workload_intensity, available_since, is_active, updated_at
     )
     VALUES (
         NEW.id, 'team', NEW.slug, to_tsvector('english', coalesce(NEW.slug, '')),
         jsonb_build_object('payout_model', NEW.payout_model),
-        NEW.rating_average, NEW.rating_count, NEW.current_workload_intensity, NEW.available_since, true, now()
+        NEW.rating_average, NEW.rating_count, search.fn_team_live_workload(NEW.id), NEW.available_since, true, now()
     )
     ON CONFLICT (entity_id, entity_type) DO UPDATE SET
         display_name = EXCLUDED.display_name, fts = EXCLUDED.fts,

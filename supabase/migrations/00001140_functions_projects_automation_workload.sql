@@ -142,6 +142,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, securit
 -- workload-aware ranking (0010/0220). Recompute it from the live sum of a freelancer's active-ticket
 -- W_i whenever their assignment, status, or a ticket's intensity changes. Rounds to the integer
 -- counter column; the authoritative (numeric) figure for caps/gauges comes from the RPCs below.
+-- The same change re-sums the search row of every team either holder is an active member of
+-- (search.fn_refresh_team_workload, 00001400); org.teams carries no counter of its own (#233 (a)).
 CREATE OR REPLACE FUNCTION projects.fn_sync_workload_intensity()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -169,6 +171,13 @@ BEGIN
         ), 0)
         WHERE fp.user_id = v_new;
     END IF;
+
+    -- A team's search row carries its active members' live W_i (Decision #235): re-sum every team
+    -- either holder actively sits on.
+    PERFORM search.fn_refresh_team_workload(ARRAY(
+        SELECT tm.team_id FROM org.team_members tm
+         WHERE tm.user_id IN (v_old, v_new) AND tm.status = 'active'
+    ));
 
     RETURN NULL;
 END;
