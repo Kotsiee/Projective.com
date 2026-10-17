@@ -55,6 +55,13 @@ import {
  * module. If every module required a capability, the least-privileged member — exactly the person most
  * likely to be confused — would be bounced out of a workspace they are legitimately in.
  *
+ * ### Primary views
+ * `primary` + `order` mark the views a console leads with (Decision #228 (C): a team's Overview ·
+ * Members · Projects · Payouts · Roles · Settings; a business's Overview · Members · Projects ·
+ * Spend · Billing · Settings, Decision #232).
+ * {@link primaryModules} and {@link secondaryModules} split the viewer's visible set in two — the same
+ * capability filter, so a primary module the viewer may not open is simply absent, never shown locked.
+ *
  * ### Purity
  * This module is deliberately dependency-light: types, glyph VNodes, nothing else. No signals, no
  * `@server/services`, no DOM. That is what lets BOTH a server-side slot resolver (`*-slot.tsx`, running
@@ -122,6 +129,17 @@ export interface WorkspaceModule {
 	permission: (kind: WorkspaceKind) => WorkspaceCapability | null;
 	/** One line for the rail tooltip's second row and the module's own header — what it is FOR. */
 	blurb: string;
+	/**
+	 * The kinds whose console leads with this module as a **primary view** (Decision #228 (C) for a
+	 * team). Absent means secondary on every kind. Primary is an ordering, never a permission: a primary
+	 * module is still filtered by {@link permission} exactly like any other.
+	 */
+	primary?: readonly WorkspaceKind[];
+	/**
+	 * Position among the primary views — the lane order (L1) and the header band order (L2). Set exactly
+	 * when {@link primary} is; no two modules primary on the same kind share a value.
+	 */
+	order?: number;
 }
 // #endregion
 
@@ -154,6 +172,8 @@ export const MODULES: readonly WorkspaceModule[] = [
 		// The guaranteed landing module. This one is permissionless by contract, not by judgement.
 		permission: OPEN,
 		blurb: "What is happening across the whole entity right now.",
+		primary: BOTH,
+		order: 1,
 	},
 	{
 		key: "projects",
@@ -165,6 +185,8 @@ export const MODULES: readonly WorkspaceModule[] = [
 		// enforced inside the module, not by hiding the module.
 		permission: OPEN,
 		blurb: "Engagements the entity is delivering or has commissioned.",
+		primary: BOTH,
+		order: 3,
 	},
 	{
 		key: "catalogue",
@@ -204,6 +226,8 @@ export const MODULES: readonly WorkspaceModule[] = [
 		// Knowing who else is in the entity is basic membership information; acting on them is not.
 		permission: OPEN,
 		blurb: "Who belongs, what they may do, and how loaded they are.",
+		primary: BOTH,
+		order: 2,
 	},
 	{
 		key: "roles",
@@ -213,6 +237,8 @@ export const MODULES: readonly WorkspaceModule[] = [
 		kinds: BOTH,
 		permission: () => "manage_roles",
 		blurb: "Preset and custom roles, and the capability matrix behind them.",
+		primary: TEAM,
+		order: 5,
 	},
 	{
 		key: "invitations",
@@ -248,6 +274,8 @@ export const MODULES: readonly WorkspaceModule[] = [
 		kinds: TEAM,
 		permission: () => "manage_finances",
 		blurb: "How a released payout splits across the people who did the work.",
+		primary: TEAM,
+		order: 4,
 	},
 	{
 		key: "spend",
@@ -259,6 +287,8 @@ export const MODULES: readonly WorkspaceModule[] = [
 		// edited only by `manage_finances`, enforced inside the module.
 		permission: () => "spend_funds",
 		blurb: "Limits, approval thresholds and the attributable pool ledger.",
+		primary: BUSINESS,
+		order: 4,
 	},
 	{
 		key: "billing",
@@ -268,6 +298,8 @@ export const MODULES: readonly WorkspaceModule[] = [
 		kinds: BUSINESS,
 		permission: () => "manage_finances",
 		blurb: "Invoices to pay, statements, auto-funding and the balance floor.",
+		primary: BUSINESS,
+		order: 5,
 	},
 
 	// --- Growth -----------------------------------------------------------------------------------
@@ -328,6 +360,8 @@ export const MODULES: readonly WorkspaceModule[] = [
 		kinds: BOTH,
 		permission: () => "manage_settings",
 		blurb: "Handle, defaults, ownership transfer and archiving.",
+		primary: BOTH,
+		order: 6,
 	},
 ];
 // #endregion
@@ -374,6 +408,31 @@ export function modulesForViewer(
 		const needed = m.permission(kind);
 		return needed === null || held.has(needed);
 	});
+}
+
+/**
+ * The viewer's **primary views**, in their {@link WorkspaceModule.order} — the lane's top group (L1)
+ * and the header band (L2). Filtered by capability exactly like {@link modulesForViewer}, so a member
+ * without `manage_roles` never sees Roles here (and `/roles` still 303s for them).
+ */
+export function primaryModules(
+	kind: WorkspaceKind,
+	capabilities: readonly WorkspaceCapability[],
+): WorkspaceModule[] {
+	return modulesForViewer(kind, capabilities)
+		.filter((m) => m.primary?.includes(kind))
+		.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+/**
+ * Every other module the viewer may open, in registry order — the lane's secondary group. Together with
+ * {@link primaryModules} it partitions {@link modulesForViewer}: nothing real becomes unreachable.
+ */
+export function secondaryModules(
+	kind: WorkspaceKind,
+	capabilities: readonly WorkspaceCapability[],
+): WorkspaceModule[] {
+	return modulesForViewer(kind, capabilities).filter((m) => !m.primary?.includes(kind));
 }
 
 /** Whether a viewer may open a specific module. The route gate and the lane use the same predicate. */
