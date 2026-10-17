@@ -4552,6 +4552,21 @@ A PR touching `@projective/ui` must satisfy (enforced via root `CLAUDE.md`):
    rather than how a *component* is built, which is why they are listed apart: a PR can satisfy every
    component law and still ship a boxed, tagified, three-column view page.
 
+**Off-system surfaces (Decision #280).** The marketing home page and its extension page are the one
+sanctioned exception to items 1, 3 and 9, and to §B.9 (cards) within item 7 — never to items 2, 4,
+5, 6 or 8: `apps/web/features/landing/**`, the `/` route and the `/features` route may carry their
+own palette, type, radii, shadows, glass, glows, cards and motion — but only as `lp-` BEM classes
+and `--lp-*` tokens scoped to `.lp-root` (and `.lp-portal` on a portalled panel),
+with the token values declared once in `features/landing/styles/lp-theme.css`. What stays enforced
+there: accessibility (AA contrast on every text-over-effect, keyboard paths, ARIA, and visible focus,
+which is OPEN against the no-focus-ring directive, #280 flag (b)), both reduced-motion channels,
+islands never touching Supabase, thin routes over fat services, security, SEO and the landing's
+performance budget ([`flows/LANDING.md`](../flows/LANDING.md) §7). L1 adds a `deno task test:unit`
+leak test that fails on any `lp-` class or `--lp-*` token outside those paths (after the existing
+`lp-footer*` block is renamed or allowlisted, #280 flag (a)). Every gate in this document still
+applies everywhere else, including to app components rendered inside the landing (the board mock
+keeps the app's own tokens), and the exemption widens only by a new decision row.
+
 ---
 
 ## Part F — Deferred / conflicted (awaiting a ruling)

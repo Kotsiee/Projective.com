@@ -3305,6 +3305,9 @@ easily accessible.
 The Projective brand is built on a "Calm Tech" aesthetic, utilizing a teal-primary palette that
 invokes trust and clarity.
 
+**Off-system surfaces:** `/` and `/features` run under the scoped `lp-` exemption (Decision #280);
+their direction, tokens, copy and claims table live in [`flows/LANDING.md`](../flows/LANDING.md).
+
 #### Logo Specifications
 
 - **Brand Teal:** #288690
