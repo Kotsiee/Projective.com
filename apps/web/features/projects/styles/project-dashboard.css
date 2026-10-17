@@ -398,7 +398,7 @@ a.pjd-row:focus-visible {
 	block-size: var(--pjd-dot-size);
 	border-radius: var(--radius-full);
 	background: var(--primary);
-	animation: pjd-dot-pulse 2.4s var(--ease-standard) infinite;
+	animation: pjd-dot-pulse var(--dur-ambient) var(--ease-standard) infinite;
 }
 /* #endregion */
 

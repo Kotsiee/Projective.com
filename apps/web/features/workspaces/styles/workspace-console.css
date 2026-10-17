@@ -1037,7 +1037,7 @@ a.wsp-activity__row:hover {
 @media (prefers-reduced-motion: no-preference) {
     .wsp-band {
         animation: wsp-band-in var(--dur-medium) var(--ease-standard) both;
-        animation-delay: calc(var(--wsp-i, 0) * 40ms);
+        animation-delay: calc(var(--wsp-i, 0) * var(--dur-stagger));
     }
 }
 

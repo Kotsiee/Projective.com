@@ -544,7 +544,7 @@ identity band, where the entity is the subject of the page. */
 frozen animation clock costs nothing. */
 @media (prefers-reduced-motion: no-preference) {
 	.wsp-actingchip__dot {
-		animation: wsp-breathe 2.4s var(--ease-standard) infinite;
+		animation: wsp-breathe var(--dur-ambient) var(--ease-standard) infinite;
 	}
 }
 
@@ -696,7 +696,7 @@ frozen animation clock costs nothing. */
 		inset: 0;
 		border-radius: 50%;
 		background: inherit;
-		animation: wsp-pulse 2s var(--ease-standard) infinite;
+		animation: wsp-pulse var(--dur-ambient) var(--ease-standard) infinite;
 	}
 }
 

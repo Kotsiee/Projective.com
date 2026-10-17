@@ -687,7 +687,7 @@
 
 .proj-card__dot[data-tone="unread"] {
 	background: var(--primary);
-	animation: proj-dot-pulse 2.4s var(--ease-standard) infinite;
+	animation: proj-dot-pulse var(--dur-ambient) var(--ease-standard) infinite;
 }
 
 @keyframes proj-dot-pulse {
