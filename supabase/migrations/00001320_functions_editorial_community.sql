@@ -11,8 +11,37 @@
 -- Every function in both schemas is revoked from PUBLIC, `anon` and `authenticated` by default
 -- (00002510) and granted back by name in its surface's region there. Triggers live in 00001898.
 --
--- REGIONS. One per surface; each work order fills only its own.
+-- REGIONS. One per surface; each work order fills only its own. [editorial.shared] holds the guards
+-- every editorial surface attaches to its own tables.
 -- =============================================================================================
+
+
+-- #region [editorial.shared] Guards shared by every editorial surface (Decision #274 (k))
+-- A platform-authored editorial row is addressed by a READABLE slug that is authored on its own,
+-- never derived from the title, and frozen once the row exists: the scoped amendment of Decision #88
+-- for editorial rows that #274 (k) records. A moved address is the defect #88 exists to prevent, so a
+-- renamed page is a NEW row (the generator upserts by slug and never prunes) plus a redirect, never
+-- an UPDATE of the slug. Attach it per table in 00001898, in the surface's own region:
+--   CREATE TRIGGER trg_<table>_slug_immutable BEFORE UPDATE OF slug ON editorial.<table>
+--       FOR EACH ROW EXECUTE FUNCTION editorial.fn_guard_slug_immutable();
+CREATE OR REPLACE FUNCTION editorial.fn_guard_slug_immutable()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+	IF NEW.slug IS DISTINCT FROM OLD.slug THEN
+		RAISE EXCEPTION 'editorial slug "%" is permanent and cannot change', OLD.slug
+			USING ERRCODE = '23514',
+				HINT = 'Author a new row under the new slug and redirect the old address to it.';
+	END IF;
+	RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION editorial.fn_guard_slug_immutable() IS
+	'BEFORE UPDATE OF slug guard for editorial tables: a readable editorial slug never changes once the row exists (Decision #274 (k), amending #88 for platform-authored rows).';
+-- #endregion
 
 
 -- #region [editorial.help]

@@ -356,4 +356,25 @@ BEGIN
 END $$;
 -- #endregion
 
+-- #region [editorial.shared] a readable editorial slug is permanent (Decision #274 (k))
+CREATE TABLE editorial.probe_slug_guard (slug text PRIMARY KEY, title text NOT NULL);
+CREATE TRIGGER trg_probe_slug_guard_slug_immutable BEFORE UPDATE OF slug ON editorial.probe_slug_guard
+    FOR EACH ROW EXECUTE FUNCTION editorial.fn_guard_slug_immutable();
+
+DO $$
+BEGIN
+    INSERT INTO editorial.probe_slug_guard VALUES ('how-stage-funding-works', 'Before');
+    UPDATE editorial.probe_slug_guard SET title = 'After' WHERE slug = 'how-stage-funding-works';
+    INSERT INTO editorial.probe_slug_guard VALUES ('how-stage-funding-works', 'Upserted')
+        ON CONFLICT (slug) DO UPDATE SET title = EXCLUDED.title;
+    RAISE NOTICE 'PASS a title edit and a by-slug upsert leave the slug alone';
+    BEGIN
+        UPDATE editorial.probe_slug_guard SET slug = 'stage-funding' WHERE slug = 'how-stage-funding-works';
+        RAISE EXCEPTION 'FAIL a published editorial slug changed';
+    EXCEPTION WHEN check_violation THEN
+        RAISE NOTICE 'PASS a slug change is refused [%]', SQLSTATE;
+    END;
+END $$;
+-- #endregion
+
 ROLLBACK;
