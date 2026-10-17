@@ -799,17 +799,68 @@ index, and it disappears at 100% — a completed checklist is noise. */
 	color: var(--danger);
 }
 
-/* A taken handle's free alternatives: text buttons in a row, never chips (§B.11). */
+/*
+ * Once the handle field's own error row explains a taken handle, the live line is empty and has
+ * nothing to add. It gives up its held line (the region itself stays mounted — it is the live
+ * region), and the alternatives tuck up under the field's sentence past the space a field keeps
+ * below its hint row, so they sit as close to that sentence as they sit under the live line when the
+ * live line is the one explaining — closer to what they answer than to the legend below them.
+ */
+.wsp-create__status:has(+ .wsp-create__suggest) > .wsp-create__check:empty {
+	min-block-size: 0;
+}
+
+.wsp-create__status:has(> .wsp-create__check:empty) + .wsp-create__suggest {
+	margin-block-start: calc(-1 * var(--space-4));
+}
+
+/*
+ * A taken handle's free alternatives: text buttons in a row, never chips (§B.11). "Try" is the row's
+ * label column and the alternatives wrap inside a column of their own, so one that does not fit
+ * starts under the first alternative, never under the label. The buttons sit flush — each text
+ * button's own inline padding is the space between two labels — which is what lets three short
+ * alternatives share one line in the 27rem dialog.
+ */
 .wsp-create__suggest {
 	display: flex;
-	align-items: center;
-	flex-wrap: wrap;
-	gap: var(--space-1) var(--space-2);
+	align-items: baseline;
+	gap: var(--space-2);
+	min-inline-size: 0;
 }
 
 .wsp-create__suggest-label {
+	flex: none;
 	font-size: var(--wsp-fs-micro);
 	color: var(--text-secondary);
+}
+
+.wsp-create__suggest-list {
+	display: flex;
+	flex: 1 1 0%;
+	flex-wrap: wrap;
+	align-items: center;
+	min-inline-size: 0;
+}
+
+/*
+ * The refusal is an InlineNotice (R3 spec 5), which is shaped for one SHORT line at a list's foot: it
+ * wraps its parts and pads itself, so a sentence that runs to a second line drops whole under its
+ * glyph, a gutter in from the fields. Here the glyph stays beside the text (no wrap — the text column
+ * shrinks instead) and sits on its first line, and the notice takes the form's own column, as the
+ * apply dialog's pre-flight notice does. Doubled class so the override never depends on bundle order.
+ */
+.ui-inline-notice.wsp-create__refusal {
+	flex-wrap: nowrap;
+	align-items: flex-start;
+	padding: 0;
+}
+
+.ui-inline-notice.wsp-create__refusal .ui-inline-notice__text {
+	flex: 1 1 auto;
+}
+
+.ui-inline-notice.wsp-create__refusal .ui-inline-notice__icon {
+	margin-block-start: var(--space-px);
 }
 
 .wsp-create__refusal-mark {
@@ -817,8 +868,9 @@ index, and it disappears at 100% — a completed checklist is noise. */
 	color: var(--danger);
 }
 
-.wsp-create__fix {
-	margin-inline-start: var(--space-2);
+/* The fix's label is one phrase: it moves to the next line whole rather than breaking inside. */
+.wsp-create__refusal .ui-link {
+	white-space: nowrap;
 }
 
 .wsp-create__actions {

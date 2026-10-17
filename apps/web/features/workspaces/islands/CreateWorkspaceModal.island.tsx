@@ -391,16 +391,18 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 					{suggestions.length > 0 && (
 						<div class="wsp-create__suggest" role="group" aria-label="Free alternatives">
 							<span class="wsp-create__suggest-label" aria-hidden="true">Try</span>
-							{suggestionActions(suggestions).map((action, i) => (
-								<Button
-									key={action.key}
-									{...tierProps(action.tier)}
-									size="sm"
-									label={action.label}
-									disabled={action.disabled}
-									onClick={() => applySuggestion(suggestions[i])}
-								/>
-							))}
+							<div class="wsp-create__suggest-list">
+								{suggestionActions(suggestions).map((action, i) => (
+									<Button
+										key={action.key}
+										{...tierProps(action.tier)}
+										size="sm"
+										label={action.label}
+										disabled={action.disabled}
+										onClick={() => applySuggestion(suggestions[i])}
+									/>
+								))}
+							</div>
 						</div>
 					)}
 				</div>
@@ -447,13 +449,15 @@ function RefusalNotice({ refusal }: { refusal: CreateRefusal }): JSX.Element {
 			icon={<span class="wsp-create__refusal-mark">{cloneGlyph(DeclineGlyph)}</span>}
 		>
 			<span>{refusal.message}</span>
-			{refusal.reason === "payout" && (
-				<PayoutGateLink details={refusal.details} class="wsp-create__fix" />
-			)}
+			{
+				/* A word space, not a margin, before the fix: when it wraps to its own line it starts
+				 * flush with the sentence, and its label never breaks (workspace-roster.css). */
+			}
+			{(refusal.reason === "payout" || refusal.reason === "entitlement") && " "}
+			{refusal.reason === "payout" && <PayoutGateLink details={refusal.details} />}
 			{refusal.reason === "entitlement" && (
 				<Link
 					href={PLAN_HREF}
-					class="wsp-create__fix"
 					onClick={(event: JSX.TargetedMouseEvent<HTMLAnchorElement>) => {
 						if (
 							event.metaKey || event.ctrlKey || event.shiftKey || event.altKey ||
