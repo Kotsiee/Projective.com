@@ -614,6 +614,7 @@ The guarded column transition the board calls. Returns the updated ticket row as
 | Cross-project stage | `p_to_stage_id` must belong to the ticket's project.    |
 | → `claimed` / `in_progress` / `in_review` from outside work | an escrow must be held — the no-hold-no-work gate in `trg_ticket_escrow_sync` raises `PF402` (Decision #165) |
 | Another stage, on a claimed ticket | **additionally** `projects.can_review_project(project)` — refused `42501` by `trg_ticket_immutability_guard`, because the hold is priced from the current stage (Decision #291) |
+| Any move of a claimed ticket | `projects.fn_assert_ticket_move` (below, Decision #293): only its assignee or review authority; the assignee only between `todo` / `in_progress` / `in_review` (and out of `claimed`); review authority not while it is `claimed` / `in_progress` (#94); nobody into `claimed`, `cancelled` or `reported_hidden` |
 
 ⚠️ **`status` is a money-moving column.** `trg_ticket_escrow_sync` releases escrow on entering
 `completed` and holds it on claim, which is why only the client/owner may drop a card into Done — a
@@ -630,9 +631,35 @@ Every move writes a `projects.ticket_history` row, which is why that table has n
 policy (see [Policies.md](Policies.md)).
 
 `SECURITY DEFINER`, `search_path = public, projects, finance, org, auth`; `EXECUTE`: `authenticated`,
-`service_role`. Refusals: unknown ticket `no_data_found` (`P0002`); the two authority guards
-`insufficient_privilege` (`42501`); a foreign stage `check_violation` (`23514`); entering work with no
-held escrow `PF402` ("Needs funding — …", from the trigger).
+`service_role`. The ticket row is read `FOR UPDATE`, so the move is judged on the row it writes.
+Refusals: unknown ticket `no_data_found` (`P0002`); the authority guards `insufficient_privilege`
+(`42501`); a foreign stage `check_violation` (`23514`); entering work with no held escrow `PF402`
+("Needs funding — …", from the trigger).
+
+### `projects.fn_assert_ticket_move(p_project_id uuid, p_assignee_id uuid, p_from_status ticket_status, p_to_status ticket_status, p_from_stage uuid, p_to_stage uuid) → void`
+
+`00001110`. Who may move a **claimed** ticket (`p_assignee_id` set), Decision #293. Returns when the
+move is allowed and raises `42501` otherwise. Called by `move_ticket`, which is a definer that RLS
+never sees, and by `fn_ticket_immutability_guard` for a statement PostgREST runs directly.
+
+| Caller | Allowed | Refusal |
+| :----- | :------ | :------ |
+| Neither the assignee nor review authority (another freelancer, a member or a delegate without `can_review_project`) | nothing | "Only the client or the freelancer working this ticket may move it." |
+| Anyone gated | never **into** `claimed`, `cancelled` or `reported_hidden`. A claim enters `claimed`, the stage's cancellation (`cancel_stage_fair_exit`) enters `cancelled` and a workload report enters `reported_hidden`. | "A ticket enters that state by a claim, its stage's cancellation or a workload report, never by a move." |
+| The assignee | from `todo` / `claimed` / `in_progress` / `in_review` to `todo` / `in_progress` / `in_review`. A stage change is then the stage rule's to refuse (#291). | "You move your ticket between To do, In progress and In review; any other move is the client's." |
+| Review authority | any move except from `claimed` / `in_progress`: status or stage (#94) | "A freelancer is working this ticket — it can be moved once the work is handed back." |
+
+Why `claimed` is closed: a move into it restamps `claimed_at` (`fn_ticket_claim_before`), and
+`fn_release_expired_claims` refunds an expired claim to the client in full. Verified by execution
+against the earlier definitions: the client moved a ticket handed back for review to `claimed`, and the
+sweep refunded the whole 800,000 hold to the client, so the freelancer was paid nothing for delivered work.
+
+Not gated: an unclaimed ticket, an unchanged status and stage, one person on both sides (the assignee
+who also holds `can_review_project`), `security.is_admin()`, a `NULL` `auth.uid()`. The reporting
+assignee moving a `reported_hidden` ticket is left to the suspension guard, which refuses it (#290).
+`SECURITY INVOKER`, `STABLE`, `search_path = public, projects, security, auth`; `EXECUTE`:
+`authenticated`, because the INVOKER trigger calls it as that role. It writes nothing. Regression
+probe: `supabase/probes/ticket_move_authority.sql`.
 
 ### `projects.claim_ticket(p_ticket_id uuid, p_assignee_id uuid) → uuid`
 
@@ -693,7 +720,8 @@ what the freelancer agreed to deliver is not the client's.
 | Rule | Who it binds | Refusal |
 | :--- | :----------- | :------ |
 | Once `OLD.current_assignee_id` is set, `title`, `description`, `text_description`, `unit_price_cents`, `required_stages` and `workload_intensity` do not change | Every signed-in caller, **the assignee included** | Client side `P0001` "…its content is locked to the client."; the assignee `42501` "You claimed this ticket on its client's terms…" |
-| Once claimed, `current_stage_id` moves only with `projects.can_review_project` | The assignee, and another freelancer on the project, on every path — `move_ticket` included (its own guard is `has_project_access`) | `42501` "Only the client moves a claimed ticket to another stage." |
+| Once claimed, `current_stage_id` moves only with `projects.can_review_project` | The assignee, and another freelancer on the project, on every path — `move_ticket` included | `42501` "Only the client moves a claimed ticket to another stage." |
+| A claimed ticket's `status` / `current_stage_id` move by `projects.fn_assert_ticket_move` (under [Tickets](#tickets), Decision #293). A change of assignee is not a move. | A statement run as `anon` / `authenticated`. `move_ticket` applies the same rule itself. | `42501`, the predicate's sentences |
 | An `INSERT` that names a `current_assignee_id` needs `projects.can_review_project` | Every signed-in caller | `42501` "A ticket is written by its client; a freelancer claims it." |
 | `payment_status` and `total_amount_paid` do not change; an `INSERT` starts them `unpaid` / `0` | A statement run as `anon` / `authenticated` | `42501` |
 
@@ -771,7 +799,7 @@ Grants are in `00002510` ("escrow settlement doors").
 | `projects.force_complete_stage(p_ticket_id uuid) → uuid`                         | `00001130` | Releases the current installment, advances to the next and holds it (the Chain Reaction, when the next stage's `chain_reaction` is on) | `authenticated`                  | signed in + `can_review_project`                             |
 | `projects.approve_stage(p_project_id uuid, p_stage_id uuid) → jsonb`             | `00001150` | Completes every hired ticket still holding escrow on the stage (via `fn_settle_ticket_stage`), releasing it; refunds a still-unclaimed prepaid ticket without completing it; stage → `paid` (#194, #213). Returns `released_count` / `refunded_count` (tickets), `total_paid_cents`, `fee_cents`, `refunded_cents`, `splits` | `authenticated`                  | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
 | `projects.cancel_stage_fair_exit(p_project_id uuid, p_stage_id uuid, p_tier integer) → jsonb` | `00001150` | Pays the tier (25/50/75 %) out, refunds the rest; stage → `cancelled`; the tickets left on it → `cancelled`; both sides notified (#198) | `authenticated`        | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
-| `projects.move_ticket(…)` (→ `completed`)                                        | `00001120` | Via `trg_ticket_escrow_sync`                                   | `authenticated`, `service_role`  | `has_project_access`, plus `can_review_project` for Done     |
+| `projects.move_ticket(…)` (→ `completed`)                                        | `00001120` | Via `trg_ticket_escrow_sync`                                   | `authenticated`, `service_role`  | `has_project_access`, plus `can_review_project` for Done; a claimed ticket from `claimed` / `in_progress` not even then (#94, `fn_assert_ticket_move`, #293) |
 | `projects.delete_stage(p_project_id uuid, p_stage_id uuid) → void`               | `00001130` | Releases claimed tickets' escrow in the stage                  | `authenticated`, `service_role`  | signed in + `can_review_project` (Decision #163)             |
 | `projects.remove_project_member(…)`                                              | `00001130` | Via `release_ticket_to_backlog`                                | `authenticated`, `service_role`  | project owner                                                |
 | `projects.release_ticket_to_backlog(p_ticket_id uuid) → void`                    | `00001120` | Releases a ticket's escrow, resets it to New                   | **none** (owner-only, internal)  | none — reachable only through `remove_project_member`        |

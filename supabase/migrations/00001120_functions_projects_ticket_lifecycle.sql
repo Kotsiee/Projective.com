@@ -313,6 +313,13 @@ $$;
 --   • Any transition        -> caller must have project access (has_project_access).
 --   • -> Done (completed)    -> caller must additionally hold review authority (can_review_project):
 --                              a freelancer cannot self-confirm milestone delivery / release escrow.
+--   • A claimed ticket       -> projects.fn_assert_ticket_move (Decision #293): only its assignee or
+--                              review authority moves it; the assignee only between To do, In
+--                              progress and In review; review authority not while it is claimed or
+--                              in progress (#94); nobody into claimed, cancelled or reported_hidden.
+--                              Checked here because this function is a definer and RLS never sees
+--                              its write; a direct PostgREST statement meets the same rule in
+--                              trg_ticket_immutability_guard.
 --   • -> claimed / in_progress / in_review from outside work -> an escrow must be held: the
 --                              no-hold-no-work gate in trg_ticket_escrow_sync raises PF402 (#165).
 -- The status write cascades through the existing ticket triggers (escrow release on completed,
@@ -337,6 +344,7 @@ AS $$
 DECLARE
     v_actor      uuid := auth.uid();
     v_project    uuid;
+    v_assignee   uuid;
     v_from_status ticket_status;
     v_from_stage uuid;
     v_to_stage   uuid;
@@ -346,9 +354,10 @@ BEGIN
     RAISE LOG '[KANBAN_API] move_ticket begin ts=% actor=% ticket=% target=% stage=%',
         v_started_at, v_actor, p_ticket_id, p_to_status, p_to_stage_id;
 
-    SELECT t.project_id, t.status, t.current_stage_id
-        INTO v_project, v_from_status, v_from_stage
-    FROM projects.tickets t WHERE t.id = p_ticket_id;
+    SELECT t.project_id, t.current_assignee_id, t.status, t.current_stage_id
+        INTO v_project, v_assignee, v_from_status, v_from_stage
+    FROM projects.tickets t WHERE t.id = p_ticket_id
+    FOR UPDATE;
 
     IF v_project IS NULL THEN
         RAISE EXCEPTION 'Ticket % not found.', p_ticket_id USING ERRCODE = 'no_data_found';
@@ -369,6 +378,9 @@ BEGIN
         AND NOT EXISTS (SELECT 1 FROM projects.project_stages ps WHERE ps.id = p_to_stage_id AND ps.project_id = v_project) THEN
         RAISE EXCEPTION 'Stage % does not belong to project %.', p_to_stage_id, v_project USING ERRCODE = 'check_violation';
     END IF;
+
+    PERFORM projects.fn_assert_ticket_move(v_project, v_assignee, v_from_status, p_to_status,
+        v_from_stage, v_to_stage);
 
     UPDATE projects.tickets
     SET status = p_to_status,

@@ -883,7 +883,12 @@ export function refusalFrom(message: string, field?: string): WriteRefusal {
 		// `create_project` raises 42501 with this wording when a caller names a workspace they do not
 		// belong to. It is a refusal of THIS caller in the database's own words, which is a 403 — and
 		// the errcode does not travel in the message, so the sentence is what there is to match on.
-		message.includes("not an active member");
+		message.includes("not an active member") ||
+		// `projects.fn_assert_ticket_move` (Decision #293): who may move a claimed ticket. Its 42501
+		// sentences are written for the person refused.
+		message.includes("working this ticket") ||
+		message.includes("never by a move") ||
+		message.includes("any other move is the client's");
 	if (denied) {
 		return {
 			status: 403,

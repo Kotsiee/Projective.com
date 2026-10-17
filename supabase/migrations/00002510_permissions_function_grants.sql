@@ -53,6 +53,11 @@ GRANT EXECUTE ON FUNCTION projects.can_review_project (uuid) TO anon, authentica
 GRANT EXECUTE ON FUNCTION projects.can_manage_project_members (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.is_cohort_member (uuid) TO anon, authenticated;
 
+-- Who may move a claimed ticket (Decision #293). trg_ticket_immutability_guard is INVOKER and calls
+-- it for a statement PostgREST runs as `authenticated`, so that role must be able to execute it. It
+-- writes nothing and answers only about auth.uid(); called directly it raises or returns, no more.
+GRANT EXECUTE ON FUNCTION projects.fn_assert_ticket_move (uuid, uuid, public.ticket_status, public.ticket_status, uuid, uuid) TO authenticated;
+
 -- The business-authority predicates (BB2): each answers only about auth.uid(), so a signed-in caller
 -- may ask them of a project (the app reads them to decide which commit to offer). Not `anon`: a
 -- signed-out caller holds no capability. The asserting twin is internal to the doors that call it.

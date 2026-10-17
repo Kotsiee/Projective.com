@@ -73,6 +73,92 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Who may move a claimed ticket between status columns (Decision #293; PRODUCT_SPEC §Ticket
+-- Movement, §The Claim-and-Commit Protocol). Raises 42501, or returns when the move is allowed.
+--   • Only the ticket's assignee or review authority moves it: another freelancer on the project
+--     never moves someone else's work.
+--   • Nobody moves it into `claimed`, `cancelled` or `reported_hidden`. The claim enters `claimed`
+--     (claim_ticket, the owner's routing), the stage's cancellation enters `cancelled`
+--     (cancel_stage_fair_exit) and a workload report enters `reported_hidden`; each settles or keeps
+--     the escrow on its own terms. A move into `claimed` restamps claimed_at, and
+--     projects.fn_release_expired_claims refunds an expired claim to the client in full, so a client
+--     who moved delivered work back there was refunded a day later and the freelancer paid nothing.
+--   • The assignee moves it only between the work columns of its stage — To do, In progress, In
+--     review (and out of Claimed into them). The New backlog, Done and every other move are the
+--     client's.
+--   • Review authority's move is locked while the ticket is `claimed` / `in_progress` (#94): the
+--     freelancer is mid-delivery, so the client waits for the hand-back to Review.
+-- A stage change is judged here only by the #94 lock; who may move a claimed ticket to another stage
+-- at all is the stage rule in projects.fn_ticket_immutability_guard (#291). An unclaimed ticket, an
+-- unchanged status and stage, one person on both sides, an admin and the platform (no auth.uid())
+-- are not gated. The reporting assignee of a suspended ticket is answered by the suspension guard
+-- (#290). Called by projects.move_ticket (a definer, so RLS never sees its write) and by
+-- fn_ticket_immutability_guard for a statement PostgREST runs directly.
+CREATE OR REPLACE FUNCTION projects.fn_assert_ticket_move(
+    p_project_id  uuid,
+    p_assignee_id uuid,
+    p_from_status ticket_status,
+    p_to_status   ticket_status,
+    p_from_stage  uuid,
+    p_to_stage    uuid
+)
+RETURNS void AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_payee boolean;
+    v_reviewer boolean;
+BEGIN
+    IF v_uid IS NULL
+        OR p_assignee_id IS NULL
+        OR (p_to_status IS NOT DISTINCT FROM p_from_status
+            AND p_to_stage IS NOT DISTINCT FROM p_from_stage)
+        OR security.is_admin() THEN
+        RETURN;
+    END IF;
+
+    v_payee := v_uid = p_assignee_id;
+    v_reviewer := projects.can_review_project(p_project_id);
+    IF v_payee AND v_reviewer THEN
+        RETURN;
+    END IF;
+
+    IF NOT v_payee AND NOT v_reviewer THEN
+        RAISE EXCEPTION 'Only the client or the freelancer working this ticket may move it.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    IF p_to_status IS DISTINCT FROM p_from_status
+        AND p_to_status IN ('claimed'::ticket_status, 'cancelled'::ticket_status,
+            'reported_hidden'::ticket_status) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '42501',
+            MESSAGE = 'A ticket enters that state by a claim, its stage''s cancellation or a '
+                || 'workload report, never by a move.';
+    END IF;
+
+    IF v_payee THEN
+        IF p_from_status = 'reported_hidden'::ticket_status
+            OR (p_from_status IN ('todo'::ticket_status, 'claimed'::ticket_status,
+                    'in_progress'::ticket_status, 'in_review'::ticket_status)
+                AND p_to_status IN ('todo'::ticket_status, 'claimed'::ticket_status,
+                    'in_progress'::ticket_status, 'in_review'::ticket_status)) THEN
+            RETURN;
+        END IF;
+        RAISE EXCEPTION USING
+            ERRCODE = '42501',
+            MESSAGE = 'You move your ticket between To do, In progress and In review; any other '
+                || 'move is the client''s.';
+    END IF;
+
+    IF p_from_status IN ('claimed'::ticket_status, 'in_progress'::ticket_status) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '42501',
+            MESSAGE = 'A freelancer is working this ticket — it can be moved once the work is '
+                || 'handed back.';
+    END IF;
+END;
+$$ LANGUAGE plpgsql STABLE SET search_path = public, projects, security, auth;
+
 -- Once claimed, a ticket's terms bind both parties and neither rewrites them alone (Decision #291;
 -- PRODUCT_SPEC §Editing & Reordering Restrictions, §Post-Onboarding Immutability). The terms are
 -- its title, description, price, stage sequence and W_i: the client may not change what the
@@ -82,8 +168,9 @@ $$ LANGUAGE plpgsql;
 -- client approves one, so a payee who could edit either column chose the figure the client's
 -- wallet was next held at. For the same reason only review authority moves a claimed ticket's
 -- current_stage_id, on any path: the hold reads that stage's price and the Chain Reaction counts
--- the next installment from it, and move_ticket admits anyone with project access — the
--- assignee, or another freelancer on the project. One person on both sides (the owner working
+-- the next installment from it, and move_ticket once admitted anyone with project access — the
+-- assignee, or another freelancer on the project. Status moves of a claimed ticket follow
+-- projects.fn_assert_ticket_move (Decision #293). One person on both sides (the owner working
 -- their own ticket, as on a personal project) has nobody to be held to; an admin and the platform
 -- (no auth.uid()) are not gated.
 --
@@ -156,6 +243,15 @@ BEGIN
     v_reviewer := projects.can_review_project(OLD.project_id);
     IF v_payee AND v_reviewer THEN
         RETURN NEW;
+    END IF;
+
+    -- A statement PostgREST runs directly moves a claimed ticket by the rule move_ticket applies
+    -- (Decision #293). A change of assignee is not a move: the doors that reassign or release work
+    -- own it, and fn_ticket_claim_before has already reset such a row's status.
+    IF current_user IN ('anon', 'authenticated')
+        AND NEW.current_assignee_id IS NOT DISTINCT FROM OLD.current_assignee_id THEN
+        PERFORM projects.fn_assert_ticket_move(OLD.project_id, OLD.current_assignee_id,
+            OLD.status, NEW.status, OLD.current_stage_id, NEW.current_stage_id);
     END IF;
 
     IF NEW.current_stage_id IS DISTINCT FROM OLD.current_stage_id AND NOT v_reviewer THEN

@@ -2028,6 +2028,15 @@ A claim whose escrow cannot be held is refused and the ticket moves to **Needs f
   applies to the Admin/Owner seat whether or not freelancers have been onboarded to the project:
   before a claim the client moves freely, and payment state is a badge for the client, never a
   barrier to a move. (Product-owner ruling, 2026-09-07 — root CLAUDE.md §8 Decision #94.)
+- **Who Moves a Claimed Ticket:** only its client and the freelancer who claimed it. Another
+  freelancer on the project never moves someone else's ticket. The freelancer moves their own ticket
+  between To do, In progress and In review. The New backlog, Done, another stage and every other move
+  are the client's, and the client's are subject to the lock above. No move puts a claimed ticket
+  into Claimed, Cancelled or Hidden. A claim enters Claimed, the stage's cancellation enters
+  Cancelled and a workload report enters Hidden, and each settles or keeps the escrow on its own
+  terms. Moving delivered work back to Claimed would restart the claim's time-to-live, and an expired
+  claim is refunded to the client in full. All of this holds in the database on every path, not only
+  on the board (Decision #293).
 - **Funding Scope & Freelancer Visibility:** A ticket is paid for either **in full** (every stage it
   requires) or **per stage** (a designated set of stages). Freelancers **never** see an unpaid
   ticket: a ticket appears on a freelancer's board only when it is paid for the stage it currently
