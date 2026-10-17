@@ -251,6 +251,30 @@ export {
 	type SortOption,
 } from "./islands/SortControl.tsx";
 export { ZoomSlider, type ZoomSliderProps } from "./islands/ZoomSlider.tsx";
+/**
+ * The proportional basis-point split: one rail, a `role="slider"` handle between each pair of
+ * neighbours. `core/split-bar-model.ts` owns every number — the 10 000 bp invariant, held segments,
+ * floors and key steps — and is exported so a consumer validating or seeding a split reaches the same
+ * answer the handles will.
+ */
+export { SplitBar, type SplitBarProps } from "./islands/SplitBar.tsx";
+export {
+	assertBalancedSplit,
+	boundaryAt,
+	bpToPercent,
+	dragHandleTo,
+	formatSplitPercent,
+	handleRange,
+	isBalancedSplit,
+	keyToSplit,
+	nudgeHandle,
+	setHandle,
+	SPLIT_TOTAL_BP,
+	type SplitChangeSource,
+	type SplitHandleRange,
+	type SplitSegment,
+	splitTotal,
+} from "./core/split-bar-model.ts";
 // #endregion
 
 // #region Pickers

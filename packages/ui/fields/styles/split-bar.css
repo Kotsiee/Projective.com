@@ -1,0 +1,155 @@
+/*
+ * SplitBar — a proportional basis-point split on one shared rail (DESIGN_SYSTEM.md §C.1).
+ * Token-only. Segment widths and handle positions arrive as `--split-bar-seg` / `--split-bar-at`
+ * from the component (the variable-mapping seam ProgressBar uses); every declaration lives here.
+ *
+ * Width is never transitioned: a segment's width encodes somebody's share, and a frozen animation
+ * clock must never leave the rail showing a value the model does not hold. Only the handle's press
+ * scale animates, via `transform`, so dragging causes no layout shift.
+ */
+
+/* #region Root */
+.ui-split-bar {
+	--split-bar-track: 0.75rem;
+	--split-bar-hit: 1.5rem;
+	--split-bar-hit-touch: 2.75rem;
+	--split-bar-grip: 0.25rem;
+	--split-bar-grip-edge: 0.125rem;
+	--split-bar-grip-reach: calc(var(--split-bar-track) + var(--space-2));
+
+	/* Default categorical tones — solid ramp tones, mixed opaque against a surface (never `transparent`). */
+	--split-bar-tone-1: var(--primary);
+	--split-bar-tone-2: var(--secondary);
+	--split-bar-tone-3: var(--tertiary);
+	--split-bar-tone-4: color-mix(in srgb, var(--primary) 55%, var(--surface-2));
+	--split-bar-tone-5: color-mix(in srgb, var(--secondary) 55%, var(--surface-2));
+	--split-bar-tone-6: color-mix(in srgb, var(--tertiary) 55%, var(--surface-2));
+
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+/* #endregion */
+
+/* #region Track + segments */
+.ui-split-bar__track {
+	position: relative;
+	block-size: var(--split-bar-track);
+	/* Reserve the handles' vertical overhang so a hit area never sits on the legend. */
+	margin-block: calc((var(--split-bar-hit) - var(--split-bar-track)) / 2);
+	touch-action: none;
+}
+
+.ui-split-bar__rail {
+	display: flex;
+	inline-size: 100%;
+	block-size: 100%;
+	overflow: hidden;
+	background: var(--surface-2);
+	border-radius: var(--radius-full);
+}
+
+.ui-split-bar__seg {
+	flex: 0 0 var(--split-bar-seg, 0%);
+	min-inline-size: 0;
+	background: var(--split-bar-seg-tone, var(--split-bar-tone-1));
+}
+/* #endregion */
+
+/* #region Handles */
+.ui-split-bar__handle {
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-start: var(--split-bar-at, 0%);
+	inline-size: var(--split-bar-hit);
+	block-size: var(--split-bar-hit);
+	/* Centred by margins, not a translate, so `transform` belongs to the press scale alone. */
+	margin-block-start: calc(var(--split-bar-hit) / -2);
+	margin-inline-start: calc(var(--split-bar-hit) / -2);
+	padding: 0;
+	border: 0;
+	background: transparent;
+	cursor: ew-resize;
+	touch-action: none;
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.ui-split-bar__handle::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	margin: auto;
+	inline-size: var(--split-bar-grip);
+	block-size: var(--split-bar-grip-reach);
+	background: var(--on-surface);
+	border: var(--split-bar-grip-edge) solid var(--surface-1);
+	border-radius: var(--radius-full);
+}
+
+.ui-split-bar__handle:focus-visible {
+	outline: none;
+}
+.ui-split-bar__handle:focus-visible::before {
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.ui-split-bar__handle:active:not([aria-disabled="true"]),
+.ui-split-bar__handle--dragging {
+	transform: scale(var(--btn-press-scale-icon));
+	transition-duration: var(--dur-press);
+}
+
+.ui-split-bar__handle[aria-disabled="true"] {
+	cursor: default;
+}
+.ui-split-bar__handle[aria-disabled="true"]::before {
+	background: var(--text-secondary);
+}
+
+.ui-split-bar--readonly .ui-split-bar__handle {
+	cursor: default;
+}
+/* #endregion */
+
+/* #region Legend */
+.ui-split-bar__legend {
+	min-inline-size: 0;
+}
+/* #endregion */
+
+/* #region Touch (< --bp-md, or any coarse pointer) — a 44px hit area; the visual track is unchanged */
+@media (max-width: 767.98px), (pointer: coarse) {
+	.ui-split-bar {
+		--split-bar-hit: var(--split-bar-hit-touch);
+	}
+}
+/* #endregion */
+
+/* #region Reduced motion — both channels (OS media query and the in-app overlay) */
+@media (prefers-reduced-motion: reduce) {
+	.ui-split-bar__handle,
+	.ui-split-bar__handle:active:not([aria-disabled="true"]),
+	.ui-split-bar__handle--dragging {
+		transform: none;
+	}
+}
+:root[data-motion="reduced"] .ui-split-bar__handle,
+:root[data-motion="reduced"] .ui-split-bar__handle:active:not([aria-disabled="true"]),
+:root[data-motion="reduced"] .ui-split-bar__handle--dragging {
+	transform: none;
+}
+/* #endregion */
+
+/* #region Forced colours */
+@media (forced-colors: active) {
+	.ui-split-bar__seg {
+		forced-color-adjust: none;
+	}
+	.ui-split-bar__handle::before {
+		background: CanvasText;
+		border-color: Canvas;
+	}
+}
+/* #endregion */
