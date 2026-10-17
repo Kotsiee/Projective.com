@@ -106,7 +106,7 @@ const facts = (over: Partial<SetupFacts> = {}): SetupFacts => ({
 	activeMembers: 1,
 	invitePending: false,
 	money: false,
-	verified: false,
+	verification: "unverified",
 	published: false,
 	...over,
 });
@@ -118,7 +118,8 @@ Deno.test("setupSteps: a team walks invite · split · profile · owner · publi
 		"/teams/northloop/invitations",
 		"/teams/northloop/payouts",
 		"/@northloop/edit",
-		"/teams/northloop/verification",
+		// The team's verification is the owner's own identity check, finished in their settings.
+		"/settings/verification#identity-check",
 		"/teams/northloop/settings",
 	]);
 	// The profile needs BOTH the mark and the one-liner.
@@ -129,7 +130,7 @@ Deno.test("setupSteps: a team walks invite · split · profile · owner · publi
 		[false, false, true, false, false],
 	);
 	const ready = setupSteps("team", "northloop", {
-		...facts({ logo: true, bio: true, money: true, verified: true, published: true }),
+		...facts({ logo: true, bio: true, money: true, verification: "verified", published: true }),
 		activeMembers: 2,
 	});
 	assertEquals(setupCompletion(ready), 1);
@@ -147,7 +148,7 @@ Deno.test("setupSteps: a team's invite step needs two ACTIVE members — an invi
 
 Deno.test("setupSteps: a business keeps mark · one-liner · invite · threshold · KYB", () => {
 	const biz = setupSteps("business", "helia", {
-		...facts({ logo: true, bio: true, money: true, verified: true }),
+		...facts({ logo: true, bio: true, money: true, verification: "verified" }),
 		invitePending: true,
 	});
 	assertEquals(biz.map((s) => s.id), ["logo", "bio", "invite", "money", "verification"]);
@@ -162,8 +163,14 @@ Deno.test("setupSteps: a business keeps mark · one-liner · invite · threshold
 });
 
 Deno.test("setupSteps: each step is actionable only for a viewer holding its right", () => {
-	const actionable = (kind: "team" | "business", viewer?: WorkspaceCapability[]) =>
-		setupSteps(kind, "northloop", facts({ viewer })).map((s) => `${s.id}:${s.actionable}`);
+	const actionable = (
+		kind: "team" | "business",
+		viewer?: WorkspaceCapability[],
+		viewerIsOwner?: boolean,
+	) =>
+		setupSteps(kind, "northloop", facts({ viewer, viewerIsOwner })).map((s) =>
+			`${s.id}:${s.actionable}`
+		);
 	// No viewer (the roster) — nothing is offered.
 	assertEquals(actionable("team"), [
 		"invite:false",
@@ -174,22 +181,73 @@ Deno.test("setupSteps: each step is actionable only for a viewer holding its rig
 	]);
 	// A plain member (`view_analytics` only) can act on none of them.
 	assertEquals(actionable("team", ["view_analytics"]).every((s) => s.endsWith(":false")), true);
-	// The owner's preset can act on all five.
+	// The owner can act on all five.
 	assertEquals(
-		actionable("team", [...presetCapabilities("owner", "team")]).every((s) => s.endsWith(":true")),
+		actionable("team", [...presetCapabilities("owner", "team")], true).every((s) =>
+			s.endsWith(":true")
+		),
 		true,
 	);
 	// One right each.
 	assertEquals(actionable("team", ["invite_members"])[0], "invite:true");
 	assertEquals(actionable("team", ["manage_finances"])[1], "money:true");
 	assertEquals(actionable("team", ["edit_profile"])[2], "profile:true");
+	// Settings publishes, but the owner's identity check is the owner's alone — an admin holding
+	// every right they can be given still cannot finish it for them.
 	assertEquals(actionable("team", ["manage_settings"]).slice(3), [
-		"verification:true",
+		"verification:false",
 		"publish:true",
 	]);
-	// A business's KYB follows the billing right, not settings (Decision #230 (d)).
-	assertEquals(actionable("business", ["manage_settings"])[4], "verification:false");
+	assertEquals(
+		actionable("team", [...presetCapabilities("admin", "team")])[3],
+		"verification:false",
+	);
+	assertEquals(actionable("team", [], true)[3], "verification:true");
+	// A business's KYB follows the billing right, not settings or ownership (Decision #230 (d)).
+	assertEquals(actionable("business", ["manage_settings"], true)[4], "verification:false");
 	assertEquals(actionable("business", ["manage_billing"])[4], "verification:true");
+});
+
+Deno.test("setupSteps: a viewer who may not open Verification gets no control on its step, never a dead end", () => {
+	const unlinked = setupSteps("business", "atlaslabs", {
+		...facts({ logo: true, bio: true, money: true, viewer: ["manage_settings"] }),
+		invitePending: true,
+	});
+	assertEquals(unlinked[4].id, "verification");
+	assertEquals(unlinked[4].actionable, false);
+	// The step keeps its page — it is the viewer's right, not the address, that is missing.
+	assertEquals(unlinked.map((s) => s.href), [
+		"/@atlaslabs/edit",
+		"/@atlaslabs/edit",
+		"/businesses/atlaslabs/invitations",
+		"/businesses/atlaslabs/spend",
+		"/businesses/atlaslabs/verification",
+	]);
+	// The step still counts toward completion whether or not the viewer may act on it.
+	assertEquals(setupCompletion(unlinked), 0.8);
+});
+
+Deno.test("setupSteps: a verification with the reviewers says so and offers nobody a control", () => {
+	for (const kind of ["team", "business"] as const) {
+		const owner = [...presetCapabilities("owner", kind)];
+		const open = setupSteps(kind, "northloop", facts({ viewer: owner, viewerIsOwner: true }));
+		const review = setupSteps(kind, "northloop", {
+			...facts({ viewer: owner, viewerIsOwner: true }),
+			verification: "pending",
+		});
+		const step = (steps: ReturnType<typeof setupSteps>) =>
+			steps.find((s) => s.id === "verification")!;
+		assertEquals(step(open).actionable, true, kind);
+		assertEquals([step(review).done, step(review).actionable], [false, false], kind);
+		assertEquals(step(review).note.includes("with our reviewers"), true, kind);
+		assertEquals(step(open).note.includes("reviewers"), false, kind);
+		// Only the verification step changes: the rest stay the viewer's to act on.
+		assertEquals(
+			review.filter((s) => s.id !== "verification").every((s) => s.actionable),
+			true,
+			kind,
+		);
+	}
 });
 
 Deno.test("verificationPrompt: null once verified, worded by kind and state otherwise", () => {

@@ -5,6 +5,7 @@
  */
 import { assert, assertEquals, assertStrictEquals } from "@std/assert";
 import {
+	canActOnSetupStep,
 	presetCapabilities,
 	type SetupStep,
 	type SetupStepId,
@@ -14,7 +15,9 @@ import {
 } from "@projective/types/workspace";
 import {
 	activityRows,
+	businessMoney,
 	filledControls,
+	heroDismissGuard,
 	heroDismissKey,
 	liveProjectCount,
 	overviewMetrics,
@@ -36,7 +39,7 @@ const HREF: Record<SetupStepId, string> = {
 	profile: "/@northloop/edit",
 	logo: "/@northloop/edit",
 	bio: "/@northloop/edit",
-	verification: "/teams/northloop/verification",
+	verification: "/settings/verification#identity-check",
 	publish: "/teams/northloop/settings",
 };
 
@@ -265,6 +268,62 @@ Deno.test("partial rights: the fill goes to the first step the viewer can act on
 	]);
 });
 
+Deno.test("partial rights: Publish is never the fill while the steps before it are open", () => {
+	// A custom role holding manage_settings alone (Decision #250 lets one be built): the owner is
+	// verified, but the invite, the split and the profile are still open. The DB would accept the
+	// publish; the band must not hand them the one-way commit ahead of the steps that come first.
+	const settingsOnly: WorkspaceCapability[] = ["manage_settings"];
+	const steps = stepsOf(
+		TEAM_STEPS,
+		0b01000,
+		(id) => canActOnSetupStep("team", id, settingsOnly),
+	);
+	const hero = setupHero({ name: "N", steps, dismissed: false })!;
+	assertEquals(controls(hero.steps), [
+		"invite:-",
+		"money:-",
+		"profile:-",
+		"verification:-",
+		"publish:-",
+	]);
+	assertEquals(hero.steps.find((s) => s.current)?.id, "invite");
+	const detail = teamDetail(settingsOnly, { setup: steps });
+	assertEquals(filledControls(overviewModel(detail, { dismissed: false })), 0);
+	// Once Publish IS the step at hand, the same viewer gets it as the band's fill.
+	const last = stepsOf(TEAM_STEPS, 0b01111, (id) => canActOnSetupStep("team", id, settingsOnly));
+	assertEquals(controls(setupHero({ name: "N", steps: last, dismissed: false })!.steps), [
+		"invite:-",
+		"money:-",
+		"profile:-",
+		"verification:-",
+		"publish:3*",
+	]);
+});
+
+Deno.test("partial rights: an admin is never offered the owner's identity check", () => {
+	const admin = presetCapabilities("admin", "team");
+	// Invite, split and profile done: the owner's check is the step at hand.
+	const steps = stepsOf(TEAM_STEPS, 0b00111, (id) => canActOnSetupStep("team", id, admin));
+	const hero = setupHero({ name: "N", steps, dismissed: false })!;
+	assertEquals(controls(hero.steps), [
+		"invite:-",
+		"money:-",
+		"profile:-",
+		"verification:-",
+		"publish:-",
+	]);
+	// The owner is, as the band's fill — a link to their own settings.
+	const own = stepsOf(TEAM_STEPS, 0b00111, (id) => canActOnSetupStep("team", id, OWNER, true));
+	const ownHero = setupHero({ name: "N", steps: own, dismissed: false })!;
+	assertEquals(ownHero.steps[3].action, {
+		kind: "link",
+		tier: 3,
+		filled: true,
+		label: "Step verification",
+		href: "/settings/verification#identity-check",
+	});
+});
+
 Deno.test("hero: a link step with no page offers no control", () => {
 	const steps = stepsOf(TEAM_STEPS, 0b00001).map((s) => s.id === "money" ? { ...s, href: "" } : s);
 	const hero = setupHero({ name: "N", steps, dismissed: false })!;
@@ -317,6 +376,42 @@ Deno.test("zones: the two-member rule is a team's — a business is never told i
 		setup: stepsOf(BUSINESS_STEPS, 31),
 	});
 	assertStrictEquals(overviewModel(detail, { dismissed: true }).propose, null);
+});
+
+Deno.test("zones: a business keeps its lock beside the hero, as it always has", () => {
+	const detail = teamDetail(OWNER, {
+		kind: "business",
+		canPropose: true,
+		verification: "pending",
+		setup: stepsOf(BUSINESS_STEPS, 0),
+	});
+	const model = overviewModel(detail, { dismissed: false });
+	assert(model.hero);
+	assertEquals(model.lock, true);
+	assertEquals(model.standIn, { lock: false, propose: null });
+});
+
+Deno.test("zones: what the hero carries stands in behind the guard, and only that", () => {
+	// A one-person, unverified team with the hero up: the lock and the two-member rule are the
+	// hero's to say, so they wait as stand-ins for a viewer whose dismissal the guard finds.
+	const shown = overviewModel(teamDetail(OWNER), { dismissed: false });
+	assertEquals([shown.lock, shown.propose], [false, null]);
+	assertEquals(shown.standIn, { lock: true, propose: { canInvite: true } });
+	// Dismissed, they are simply shown — nothing stands in.
+	const hidden = overviewModel(teamDetail(OWNER), { dismissed: true });
+	assertEquals(hidden.standIn, { lock: false, propose: null });
+	// With the invite and the owner's check done, the hero carries neither, so nothing stands in.
+	const settled = overviewModel(
+		teamDetail(OWNER, {
+			verification: "verified",
+			canPropose: true,
+			members: [member("m-1"), member("m-2")],
+			setup: stepsOf(TEAM_STEPS, 0b01001),
+		}),
+		{ dismissed: false },
+	);
+	assert(settled.hero);
+	assertEquals(settled.standIn, { lock: false, propose: null });
 });
 // #endregion
 
@@ -391,7 +486,7 @@ Deno.test("metrics: the vault from the payout block, the allowance from B7", () 
 	assertEquals(metrics[0].caption, "1 invitation out");
 });
 
-Deno.test("metrics: a business's pool, one tile per currency, only when answered", () => {
+Deno.test("metrics: a business's money stays in its own band; its proposals out are a tile", () => {
 	const tile = (currency: string, minor: number) => ({
 		currency,
 		available: money(minor, currency),
@@ -400,17 +495,56 @@ Deno.test("metrics: a business's pool, one tile per currency, only when answered
 		awaitingApproval: money(0, currency),
 		spent30d: money(0, currency),
 	});
-	const biz = (tiles: unknown[]) =>
-		teamDetail(OWNER, { kind: "business", canPropose: true, moneyTiles: tiles });
-	assertEquals(overviewMetrics(biz([])).map((m) => m.key), ["members", "live"]);
-	const two = overviewMetrics(biz([tile("GBP", 500), tile("EUR", 900)]));
-	assertEquals(two.map((m) => m.label), [
-		"Members",
-		"Live projects",
-		"Available · GBP",
-		"Available · EUR",
+	const project = (n: number, state: "active" | "proposal") => ({
+		id: `prj-b${n}`,
+		title: `Brief ${n}`,
+		href: `/projects/prj-b${n}`,
+		counterparty: "Juno Park",
+		counterpartyAvatar: "",
+		state,
+		statusLabel: state === "proposal" ? "Proposal" : "Active",
+		progress: 0,
+		due: null,
+	});
+	const biz = (caps: readonly WorkspaceCapability[], over: Record<string, unknown> = {}) =>
+		teamDetail(caps, { kind: "business", canPropose: true, ...over });
+	// The money tiles never become metric tiles — the band below carries the business's money.
+	const answered = biz(OWNER, { moneyTiles: [tile("GBP", 500), tile("EUR", 900)] });
+	assertEquals(overviewMetrics(answered).map((m) => m.key), ["members", "live"]);
+	// Proposals awaiting a reply are counted, and only when there are some.
+	const out = biz(OWNER, {
+		projects: [project(1, "proposal"), project(2, "proposal"), project(3, "active")],
+	});
+	const metrics = overviewMetrics(out);
+	assertEquals(metrics.map((m) => [m.key, m.label]), [
+		["members", "Members"],
+		["live", "Live projects"],
+		["proposals", "Proposals out"],
 	]);
-	assertEquals(overviewMetrics(biz([tile("GBP", 500)]))[2].label, "Available");
+	const proposals = metrics[2];
+	assert(proposals.type === "count");
+	assertEquals([proposals.value, proposals.caption], [2, "Awaiting a reply"]);
+	// A team's proposals are its allowance, never this count.
+	assertEquals(
+		overviewMetrics(teamDetail(OWNER, { projects: [project(1, "proposal")] })).some((m) =>
+			m.key === "proposals"
+		),
+		false,
+	);
+});
+
+Deno.test("money band: a business's three figures and wallet hand-off, for a money right only", () => {
+	const biz = (caps: readonly WorkspaceCapability[]) =>
+		teamDetail(caps, { kind: "business", canPropose: true });
+	for (const right of ["manage_finances", "spend_funds", "withdraw_funds"] as const) {
+		const finance = businessMoney(biz([right]));
+		assert(finance, right);
+		assertEquals(finance.walletHref, "/wallet?w=team:team-1");
+		assertEquals(overviewModel(biz([right]), { dismissed: false }).money, finance);
+	}
+	assertStrictEquals(businessMoney(biz(PLAIN)), null);
+	// A team's money is the vault tile — never this band, whatever the viewer holds.
+	assertStrictEquals(businessMoney(teamDetail(OWNER)), null);
 });
 
 Deno.test("metrics: a team's live projects are its distinct engaged projects", () => {
@@ -517,6 +651,33 @@ Deno.test("activity: sentence and [when, module], newest eight", () => {
 // #endregion
 
 // #region Dismissal
+Deno.test("dismissal guard: reads the viewer's key and marks the stack before the hero paints", () => {
+	const key = heroDismissKey(teamDetail(OWNER));
+	const guard = heroDismissGuard(key);
+	assertEquals(guard.includes(JSON.stringify(key)), true);
+	assertEquals(guard.includes('setAttribute("data-hero-dismissed","")'), true);
+	// No key can close the script element it is written into.
+	const hostile = heroDismissGuard("</script><script>alert(1)</script>");
+	assertEquals(hostile.includes("<"), false);
+	// It is a self-contained expression that swallows every storage failure.
+	assertEquals(guard.startsWith("(()=>{try{"), true);
+	assertEquals(guard.endsWith("catch(_){}})();"), true);
+	// And it runs: a stored dismissal marks the script's parent, anything else leaves it alone.
+	const run = (stored: string | null) => {
+		const marks: string[] = [];
+		const scope = {
+			localStorage: { getItem: (k: string) => (k === key ? stored : null) },
+			document: {
+				currentScript: { parentElement: { setAttribute: (name: string) => marks.push(name) } },
+			},
+		};
+		new Function("localStorage", "document", guard)(scope.localStorage, scope.document);
+		return marks;
+	};
+	assertEquals(run("1"), ["data-hero-dismissed"]);
+	assertEquals(run(null), []);
+});
+
 Deno.test("dismissal: per entity and per viewer; storage failures never throw", () => {
 	const detail = teamDetail(OWNER);
 	assertEquals(heroDismissKey(detail), "pj.wsp.setup-hero.dismissed:team:team-1:m-1");

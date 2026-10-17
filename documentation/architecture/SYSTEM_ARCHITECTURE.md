@@ -1790,9 +1790,14 @@ Every write returns the RE-READ console so an island adopts the server's state. 
   each viewer only what is theirs to act on: an activity line that moves money reaches only a
   viewer who may open Finance (`visibleActivity`), and every Draft-First setup step carries
   `actionable` from `canActOnSetupStep` (`@projective/types/workspace`) — the same right that opens
-  the step's module, pinned by `module-registry-gates.test.ts` — so the Overview's pure model
+  the step's module, pinned by `module-registry-gates.test.ts`; a team's owner-verification step is
+  the exception, actionable only for the owner (the read marks the viewer's own row against
+  `owner_user_id`) and linked to their `/settings/verification`, and a `pending` verification is
+  actionable for nobody — so the Overview's pure model
   (`features/workspaces/core/overview-model.ts`, Teams C1) never draws a control its viewer cannot
-  use.
+  use. The Overview's setup-hero dismissal lives in localStorage, so an inline pre-paint guard
+  (`heroDismissGuard`, allowed by the `'unsafe-inline'` `script-src` in `utils/csp.ts`; a
+  nonce-based policy must carry it) hides the band before first paint.
 - **The acting context is written only by the switch RPCs.** (Its enterprise targets are listed by
   `GET /api/context/enterprises` → `ContextBackendService.enterprises`: owned or ACTIVE-member
   enterprises, archived excluded, filtered explicitly because the `org.enterprises` SELECT

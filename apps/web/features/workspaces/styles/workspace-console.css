@@ -291,16 +291,6 @@ here and there must never be one. */
     flex-wrap: wrap;
 }
 
-.wsp-idhead__meta {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-    flex-wrap: wrap;
-    font-size: var(--wsp-fs-micro);
-    font-variant-numeric: tabular-nums;
-    color: var(--text-secondary);
-}
-
 .wsp-idhead__metaitem {
     display: inline-flex;
     align-items: center;
@@ -316,35 +306,7 @@ here and there must never be one. */
     justify-content: flex-end;
 }
 
-/*
- * A one-person team is LEGAL — it simply cannot bid yet. So this is an honest pre-state note, not a
- * warning: tonal, achromatic-leaning and phrased as a next step.
- */
-.wsp-propose {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    flex-wrap: wrap;
-    padding: var(--space-3) var(--space-4);
-    border-radius: var(--radius-container-lg);
-    background: var(--surface-2);
-}
-
-.wsp-propose__glyph {
-    display: inline-flex;
-    flex: none;
-    color: var(--text-secondary);
-    line-height: 0;
-}
-
-.wsp-propose__text {
-    margin: 0;
-    flex: 1 1 16rem;
-    min-inline-size: 0;
-    font-size: var(--wsp-fs-body);
-    color: var(--on-surface);
-}
-
+/* The Members screen's inline "invite someone" link, set in the body register. */
 .wsp-propose__link {
     flex: none;
     font-size: var(--wsp-fs-body);
@@ -375,6 +337,16 @@ here and there must never be one. */
     gap: var(--space-4) var(--space-7);
     inline-size: 100%;
     min-inline-size: 0;
+}
+
+/*
+ * A remembered dismissal, found by the Overview's pre-paint guard (`heroDismissGuard`) before the
+ * island hydrates: the hero is hidden from first paint and the notices it carries stand in for it.
+ * Without the mark the stand-ins stay hidden, because the hero on screen is already saying them.
+ */
+.wsp__stack[data-hero-dismissed] > .wsp-band--hero,
+.wsp__stack:not([data-hero-dismissed]) > [data-hero-standin] {
+    display: none;
 }
 
 .wsp-hero__head {

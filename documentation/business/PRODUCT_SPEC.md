@@ -188,8 +188,12 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   set the split, complete the public profile (mark and one-liner), verify the owner (the payout-ready
   gate, Decision #196), and publish. A step's action is offered only to a member who holds its right
   (the same right that opens its module), so a plain member sees where the team stands and no
-  control they cannot use; the band is dismissible per member, and the two-member rule and the
-  verification lock still show once it is hidden.
+  control they cannot use. Verifying the owner is the owner's own identity check, so only the owner
+  is offered it — in their personal settings, never to an admin — and once it is with the reviewers
+  the step says so and offers nobody anything. The next open step carries the band's one filled
+  action; Publish is offered only once every step before it is done. The band is dismissible per
+  member, and the two-member rule and the verification lock still show once it is hidden. The
+  `/teams` roster card's "% set up" (and its needs-setup filter) counts the same five steps.
 - **Automated Payment Splitting:** Payments are distributed at the moment of Escrow release. If a
   Stage payout is $1,000, Projective automatically routes percentages to individual member wallets
   based on predefined **Contribution Agreements**.

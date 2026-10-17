@@ -19,6 +19,14 @@
  */
 
 /* #region Money module frame */
+.wsp-money-mod {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
 /*
  * The handoff to `/wallet`. The console shows the SHAPE of the money (who gets what, who may spend);
  * the wallet remains the single place money is actually held and moved, so this surface never grows a
@@ -30,6 +38,13 @@
 	justify-content: space-between;
 	gap: var(--space-4);
 	flex-wrap: wrap;
+	min-inline-size: 0;
+}
+
+/* The figure beside the hand-off link — the one number worth repeating next to the door. */
+.wsp-moneyhead__figure {
+	display: inline-flex;
+	align-items: baseline;
 	min-inline-size: 0;
 }
 

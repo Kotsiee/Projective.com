@@ -123,11 +123,16 @@ export const SetupStepSchema = z.object({
 	/** What doing it gets them — never a bare instruction. */
 	note: z.string().max(160),
 	done: z.boolean(),
-	/** Where the step's action goes (a module route, or `""` for an in-place action). */
+	/**
+	 * Where the step's action goes: a console module, the public profile editor, or — for a team's
+	 * owner verification — the owner's own `/settings/verification`.
+	 */
 	href: z.string().max(200),
 	/**
 	 * Whether the VIEWER may act on the step — decided by the read from their effective capabilities
-	 * through {@link canActOnSetupStep}, so a step they cannot finish never offers them a control.
+	 * (and, for a team's verification, whether they are its owner) through {@link canActOnSetupStep},
+	 * so a step they cannot finish never offers them a control. A verification already with the
+	 * reviewers (`pending`) is actionable for nobody: nothing is left to do.
 	 */
 	actionable: z.boolean().default(false),
 });
@@ -613,13 +618,17 @@ export function setupProgress(steps: readonly SetupStep[]): number {
  * Whether a viewer holding `caps` may act on a setup step — the same right that opens the step's
  * module (`module-registry-gates.test.ts` pins the agreement), or the right its in-place write checks:
  * inviting needs `invite_members`; the split (a team's Payouts) and a business's threshold need
- * `manage_finances`; the profile needs `edit_profile`; verification follows {@link canOpenVerification};
- * publishing needs `manage_settings` (`org.set_workspace_status`).
+ * `manage_finances`; the profile needs `edit_profile`; publishing needs `manage_settings`
+ * (`org.set_workspace_status`). Verification differs by kind: a business's KYB follows
+ * {@link canOpenVerification} (the billing right), while a team's is its OWNER's own identity check
+ * (`org.fn_workspace_verification` reads the owner's `kyc_status`, Decision #196), finished in their
+ * personal settings — so only `viewerIsOwner` may act on it, whatever rights an admin holds.
  */
 export function canActOnSetupStep(
 	kind: WorkspaceKind,
 	step: SetupStepId,
 	caps: readonly WorkspaceCapability[],
+	viewerIsOwner = false,
 ): boolean {
 	switch (step) {
 		case "invite":
@@ -631,7 +640,7 @@ export function canActOnSetupStep(
 		case "bio":
 			return caps.includes("edit_profile");
 		case "verification":
-			return canOpenVerification(kind, caps);
+			return kind === "team" ? viewerIsOwner : canOpenVerification(kind, caps);
 		case "publish":
 			return caps.includes("manage_settings");
 	}

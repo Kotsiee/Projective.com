@@ -823,13 +823,18 @@ Deno.test("readDetail: engagements carry slugs and faces, never a user id", asyn
 	assertStrictEquals(detail.allowance, null);
 });
 
-/** A draft team's read with a join and a money movement, for the given viewer capabilities. */
-function rawDraftTeam(capabilities: string[]): RawDetail {
+/**
+ * A draft team's read with a join and a money movement, for the given viewer capabilities — seen by
+ * the owner, or by the second member (`u-lead`) holding them.
+ */
+function rawDraftTeam(capabilities: string[], self: "u-owner" | "u-lead" = "u-lead"): RawDetail {
 	const raw = rawTeamDetail(capabilities.includes("manage_finances"));
+	const selfMember = self === "u-owner" ? "m-owner" : "m-lead";
 	return {
 		...raw,
 		entity_status: "draft",
-		viewer: { ...raw.viewer, capabilities },
+		viewer: { ...raw.viewer, member_id: selfMember, capabilities },
+		members: raw.members.map((m) => ({ ...m, is_self: m.user_id === self })),
 		activity: [
 			{ kind: "member", event: "joined", actor_user_id: "u-lead", at: "2026-09-27T00:00:00Z" },
 			{
@@ -863,14 +868,31 @@ Deno.test("readDetail: a finance holder reads the money movements; steps follow 
 	const { detail } = await readStubbed(rawDraftTeam(["manage_finances", "manage_settings"]));
 	assert(detail);
 	assertEquals(detail.activity.map((a) => a.kind), ["member", "money"]);
-	// Two active members → the invite step is done; a draft → publish is open.
+	// Two active members → the invite step is done; a draft → publish is open. The owner's identity
+	// check is not an admin's to finish, whatever they hold.
 	assertEquals(detail.setup.map((s) => [s.id, s.done, s.actionable]), [
 		["invite", true, false],
 		["money", true, true],
 		["profile", false, false],
-		["verification", false, true],
+		["verification", false, false],
 		["publish", false, true],
 	]);
+});
+
+Deno.test("readDetail: only the owner is offered the owner's identity check, in their own settings", async () => {
+	const owner = await readStubbed(rawDraftTeam(["manage_finances", "manage_settings"], "u-owner"));
+	assert(owner.detail);
+	const step = owner.detail.setup.find((s) => s.id === "verification")!;
+	assertEquals([step.actionable, step.href], [true, "/settings/verification#identity-check"]);
+	// With the reviewers, nobody is offered anything — not even the owner.
+	const review = await readStubbed({
+		...rawDraftTeam(["manage_finances", "manage_settings"], "u-owner"),
+		verification: "pending",
+	});
+	assert(review.detail);
+	const pending = review.detail.setup.find((s) => s.id === "verification")!;
+	assertEquals([pending.done, pending.actionable], [false, false]);
+	assertEquals(pending.note.includes("with our reviewers"), true);
 });
 
 // #endregion

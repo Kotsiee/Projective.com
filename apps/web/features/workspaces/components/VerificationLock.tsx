@@ -112,6 +112,17 @@ export interface VerificationLockProps {
 	canManage?: boolean;
 	/** `band` is the full-width strip in a band; `inline` is the compact variant inside another block. */
 	tone?: "band" | "inline";
+	/**
+	 * The band's place in its stack's entrance stagger (`data-i`), so it enters in the stack's
+	 * top-to-bottom order rather than with the first band. `band` tone only.
+	 */
+	i?: number;
+	/**
+	 * Drawn only for a viewer whose remembered hero dismissal the Overview's pre-paint guard found
+	 * (`data-hero-standin`, hidden by the stylesheet otherwise), so the lock a dismissed hero hands back
+	 * is in place from first paint. `band` tone only.
+	 */
+	heroStandIn?: boolean;
 }
 
 /**
@@ -125,7 +136,8 @@ export interface VerificationLockProps {
  * own band so it aligns with the stack's content; `inline` is the bare line inside another block.
  */
 export function VerificationLock(props: VerificationLockProps): JSX.Element | null {
-	const { kind, verification, prompt, href, canManage = true, tone = "band" } = props;
+	const { kind, verification, prompt, href, canManage = true, tone = "band", i, heroStandIn } =
+		props;
 	if (verification === "verified") return null;
 
 	const headline = prompt ??
@@ -151,6 +163,8 @@ export function VerificationLock(props: VerificationLockProps): JSX.Element | nu
 	return (
 		<section
 			class="wsp-band wsp-band--plain wsp-band--notice"
+			data-i={i}
+			data-hero-standin={heroStandIn ? "" : undefined}
 			aria-label={`${kindCopy(kind).verification} status`}
 		>
 			<div class="wsp-band__inner">{notice}</div>

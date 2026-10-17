@@ -289,6 +289,8 @@ async function assemble(
 	const mapped: WorkspaceMember[] = [];
 	const moneyMembers: MoneyMember[] = [];
 	const byUser = new Map<string, RawMember>();
+	/** Whether the viewer's own row is the owner's — a team's verification step is theirs alone. */
+	let viewerIsOwner = false;
 	for (const m of members) {
 		byUser.set(m.user_id, m);
 		const person = people.get(m.user_id);
@@ -304,6 +306,7 @@ async function assemble(
 			m.role_id,
 		);
 		const isOwner = m.user_id === raw.owner_user_id;
+		if (isOwner && m.is_self) viewerIsOwner = true;
 		moneyMembers.push({ memberId: m.id, userId: m.user_id, isOwner, person, capabilities });
 		// Only an envelope the viewer may read (their own, unless they read the wallet's) is shown.
 		const envelope = envelopeFor(spend, m.user_id);
@@ -400,9 +403,10 @@ async function assemble(
 			// below two members it can only be true for a pending invitation.
 			invitePending: active < 2 && !!raw.setup?.invite,
 			money: !!raw.setup?.money,
-			verified: verification === "verified",
+			verification,
 			published: status !== "draft",
 			viewer: viewerCaps,
+			viewerIsOwner,
 		}),
 		standing: raw.standing ? clamp(raw.standing, 40) : null,
 		canPropose: kind === "business" || active >= 2,

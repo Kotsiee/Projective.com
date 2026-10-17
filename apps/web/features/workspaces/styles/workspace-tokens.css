@@ -138,7 +138,6 @@
 	--wsp-draft: var(--on-surface-variant);
 	--wsp-active: var(--wsp-kind);
 	--wsp-archived: var(--outline);
-	--wsp-alert: var(--danger);
 	/* #endregion */
 
 	/* #region Permission semantics — the matrix's tri-state and the override markers */

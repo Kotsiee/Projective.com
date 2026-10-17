@@ -530,7 +530,11 @@ export interface SetupFacts {
 	/** Whether an invitation is still waiting for an answer. */
 	invitePending: boolean;
 	money: boolean;
-	verified: boolean;
+	/**
+	 * The entity's verification — a team's is its owner's identity check, a business's its KYB.
+	 * `pending` is not done, and asks nothing of anyone: the check is with the reviewers.
+	 */
+	verification: VerificationState;
 	/** Whether the entity has left `draft` (it is `active`, or `archived` after being live). */
 	published: boolean;
 	/**
@@ -538,6 +542,11 @@ export interface SetupFacts {
 	 * shown the steps (the roster, which reads only their completion).
 	 */
 	viewer?: readonly WorkspaceCapability[];
+	/**
+	 * Whether the viewer is the entity's owner. A team's verification is the owner's own identity
+	 * check, so only they may act on that step ({@link canActOnSetupStep}).
+	 */
+	viewerIsOwner?: boolean;
 }
 
 /**
@@ -550,16 +559,28 @@ export interface SetupFacts {
  * Decision #196) and publishing. A **business** keeps its five: mark, one-liner, an invitation (sent
  * or accepted), the approval threshold and KYB. Identity steps are edited in the entity's public
  * profile editor — the media pipeline is the only door a picture may use — so they link to
- * `/@handle/edit`; the rest link to their console module.
+ * `/@handle/edit`; a team's owner verifies in their own settings (`/settings/verification`, the
+ * personal flow the team's state is read from); the rest link to their console module.
+ *
+ * A verification already with the reviewers (`pending`) says so and is actionable for nobody — there
+ * is nothing left to do, so no control is offered beside it.
  */
 export function setupSteps(kind: WorkspaceKind, handle: string, facts: SetupFacts): SetupStep[] {
 	const caps = facts.viewer ?? [];
+	const inReview = facts.verification === "pending";
 	const stamp = (step: Omit<SetupStep, "actionable">): SetupStep => ({
 		...step,
-		actionable: canActOnSetupStep(kind, step.id, caps),
+		actionable: !(step.id === "verification" && inReview) &&
+			canActOnSetupStep(kind, step.id, caps, facts.viewerIsOwner === true),
 	});
 	return (kind === "team" ? teamSteps(handle, facts) : businessSteps(handle, facts)).map(stamp);
 }
+
+/**
+ * Where a team's owner finishes the identity check the team's verification is read from — their own
+ * settings, the same door the apply refusals' `payout_not_ready` link uses.
+ */
+export const OWNER_VERIFICATION_HREF = "/settings/verification#identity-check";
 
 /** A team's five steps, in the order the setup hero walks them. */
 function teamSteps(handle: string, facts: SetupFacts): Omit<SetupStep, "actionable">[] {
@@ -591,9 +612,11 @@ function teamSteps(handle: string, facts: SetupFacts): Omit<SetupStep, "actionab
 		{
 			id: "verification",
 			label: "Verify the owner",
-			note: "Payouts and new seats wait on the owner's identity check.",
-			done: facts.verified,
-			href: workspaceHref("team", handle, "verification"),
+			note: facts.verification === "pending"
+				? "The owner's identity check is with our reviewers — nothing is needed meanwhile."
+				: "Payouts and new seats wait on the owner's identity check.",
+			done: facts.verification === "verified",
+			href: OWNER_VERIFICATION_HREF,
 		},
 		{
 			id: "publish",
@@ -641,8 +664,10 @@ function businessSteps(handle: string, facts: SetupFacts): Omit<SetupStep, "acti
 		{
 			id: "verification",
 			label: `Finish ${copy.verification}`,
-			note: "Verification unlocks the pooled wallet so you can hire.",
-			done: facts.verified,
+			note: facts.verification === "pending"
+				? `${copy.verification} is with our reviewers.`
+				: "Verification unlocks the pooled wallet so you can hire.",
+			done: facts.verification === "verified",
 			href: workspaceHref("business", handle, "verification"),
 		},
 	];

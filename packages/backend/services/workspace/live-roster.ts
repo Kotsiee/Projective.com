@@ -81,7 +81,7 @@ function toSummary(
 		activeMembers: memberCount,
 		invitePending: (Number(item.pending_invites) || 0) > 0,
 		money: !!item.setup?.money,
-		verified: verification === "verified",
+		verification,
 		published: status !== "draft",
 	});
 	const faces = (item.face_user_ids ?? []).slice(0, 5)

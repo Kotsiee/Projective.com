@@ -3,6 +3,7 @@ import {
 	type SetupStep,
 	type SetupStepId,
 	type WorkspaceDetail,
+	type WorkspaceFinance,
 	workspaceHref,
 } from "@projective/types/workspace";
 
@@ -14,9 +15,9 @@ import {
  * The island only paints what this returns, so the rules the Overview is judged by — exactly one filled
  * control whatever the setup state, no action a viewer cannot perform, no money for a viewer the read
  * answered none to — are unit-tested here (`overview-model.test.ts`) rather than read off a screenshot.
- * Nothing here guesses a fact: a step's `done` and `actionable`, a payout block, an allowance and a
- * money tile are the server's answers (`packages/backend/services/workspace/mappers.ts`), and an absent
- * one renders as absent. CSS-free and DOM-free, so `deno test` loads it directly.
+ * Nothing here guesses a fact: a step's `done` and `actionable`, a payout block and an allowance are
+ * the server's answers (`packages/backend/services/workspace/mappers.ts`), and an absent one renders as
+ * absent. CSS-free and DOM-free, so `deno test` loads it directly.
  */
 
 // #region Setup hero
@@ -80,7 +81,8 @@ function actionKind(id: SetupStepId): HeroActionKind {
  * The first unfinished step the viewer may act on carries the band's one fill: the tier-2 structural
  * Invite member, else the tier-3 primary (Publish, or the step's page). Every other step they may act on
  * gets a tier-4 utility — except Publish, a one-way commit offered only as the step at hand, never
- * beside the steps that come before it. A step whose page is unknown (`href: ""`) offers nothing.
+ * beside the steps that come before it ({@link setupHero} never makes it primary before then). A step
+ * whose page is unknown (`href: ""`) offers nothing.
  */
 function actionFor(step: SetupStep, primary: boolean): HeroAction | null {
 	if (step.done || !step.actionable) return null;
@@ -104,8 +106,12 @@ export function setupHero(
 	if (input.dismissed || steps.length === 0 || steps.every((s) => s.done)) return null;
 	const current = steps.findIndex((s) => !s.done);
 	// The first unfinished step the viewer can actually act on (done, unactionable and page-less
-	// steps all answer `null`).
-	const primary = steps.findIndex((s) => actionFor(s, true) !== null);
+	// steps all answer `null`). Publish qualifies only as the CURRENT step: a viewer who may publish
+	// but not invite, split or edit the profile is never handed the one-way commit while the steps
+	// before it are still open — the band then simply carries no fill for them.
+	const primary = steps.findIndex((s, i) =>
+		(s.id !== "publish" || i === current) && actionFor(s, true) !== null
+	);
 	const done = steps.filter((s) => s.done).length;
 	return {
 		title: `Get ${input.name} ready`,
@@ -162,9 +168,10 @@ export function liveProjectCount(detail: WorkspaceDetail): number {
 }
 
 /**
- * The metric row. Members and live projects for everyone; money only where the read answered it —
- * a team's vault from the payout block (`manage_finances` holders, Decision #233), a business's pool
- * from its money tiles (viewers who may open Finance) — and a team's proposal allowance.
+ * The metric row. Members and live projects for everyone; a team's vault only where the read answered
+ * it (the payout block, `manage_finances` holders — Decision #233) and its proposal allowance (B7); a
+ * business's proposals still awaiting a reply. A business's money is not a tile here: it keeps its own
+ * band ({@link businessMoney}) until BU6 rebuilds the business Overview's money on its BB9 tiles.
  */
 export function overviewMetrics(detail: WorkspaceDetail): OverviewMetric[] {
 	const members = detail.members.filter((m) => m.state === "active").length;
@@ -194,13 +201,16 @@ export function overviewMetrics(detail: WorkspaceDetail): OverviewMetric[] {
 			caption: "Ready to distribute or withdraw",
 		});
 	}
-	for (const tile of detail.moneyTiles) {
+	const proposals = detail.kind === "business"
+		? detail.projects.filter((p) => p.state === "proposal").length
+		: 0;
+	if (proposals > 0) {
 		metrics.push({
-			type: "money",
-			key: `wallet-${tile.currency}`,
-			label: detail.moneyTiles.length > 1 ? `Available · ${tile.currency}` : "Available",
-			money: { minor: tile.available.minor, currency: tile.available.currency },
-			caption: "In the pooled wallet",
+			type: "count",
+			key: "proposals",
+			label: "Proposals out",
+			value: proposals,
+			caption: "Awaiting a reply",
 		});
 	}
 	if (detail.allowance) {
@@ -213,6 +223,21 @@ export function overviewMetrics(detail: WorkspaceDetail): OverviewMetric[] {
 		});
 	}
 	return metrics;
+}
+
+/**
+ * A business's money band — its Available, Committed and Awaiting-approval figures and the hand-off
+ * to the full wallet (`FinanceSummary`) — for a viewer holding a money right (`manage_finances`,
+ * `spend_funds` or `withdraw_funds`), else `null`. The business Overview's money is BU6's to rebuild
+ * on its BB9 tiles; until then it renders exactly as it did. A team never has one: its money is the
+ * vault tile.
+ */
+export function businessMoney(detail: WorkspaceDetail): WorkspaceFinance | null {
+	if (detail.kind !== "business") return null;
+	const caps = detail.viewerCapabilities;
+	const canSee = caps.includes("manage_finances") || caps.includes("spend_funds") ||
+		caps.includes("withdraw_funds");
+	return canSee ? detail.finance : null;
 }
 // #endregion
 
@@ -317,15 +342,41 @@ export interface ProposeNotice {
 /** Everything the Overview renders, top to bottom. */
 export interface OverviewModel {
 	hero: SetupHeroModel | null;
-	/** The verification lock — only while unverified and not already a step on the hero. */
+	/**
+	 * The verification lock while unverified — for a team only when the hero is not already showing
+	 * the step; a business keeps its lock beside the hero, as it always has (BU6's surface).
+	 */
 	lock: boolean;
 	/** "Teams need two members to send proposals" — only for a team that cannot, off the hero. */
 	propose: ProposeNotice | null;
+	/**
+	 * The notices the hero is carrying right now — what {@link lock} and {@link propose} become once
+	 * it is dismissed. The island draws them hidden behind the pre-paint guard
+	 * ({@link heroDismissGuard}), so a viewer who dismissed the hero earlier sees them in place from
+	 * first paint instead of popping in once the island has read their choice.
+	 */
+	standIn: { lock: boolean; propose: ProposeNotice | null };
 	metrics: OverviewMetric[];
+	/** A business's money band ({@link businessMoney}); `null` for a team or a viewer without a money right. */
+	money: WorkspaceFinance | null;
 	projects: PreviewRow[];
 	/** The Projects module, for "See all". */
 	projectsHref: string;
 	activity: ActivityRow[];
+}
+
+/** The notices beside a hero (or none): the verification lock and the two-member rule. */
+function notices(
+	detail: WorkspaceDetail,
+	hero: SetupHeroModel | null,
+): Pick<OverviewModel, "lock" | "propose"> {
+	return {
+		lock: detail.verification !== "verified" &&
+			(detail.kind === "business" || !heroHasOpen(hero, "verification")),
+		propose: detail.kind === "team" && !detail.canPropose && !heroHasOpen(hero, "invite")
+			? { canInvite: detail.viewerCapabilities.includes("invite_members") }
+			: null,
+	};
 }
 
 /**
@@ -338,13 +389,18 @@ export function overviewModel(
 	opts: { dismissed: boolean },
 ): OverviewModel {
 	const hero = setupHero({ name: detail.name, steps: detail.setup, dismissed: opts.dismissed });
+	const shown = notices(detail, hero);
+	const away = hero ? notices(detail, null) : shown;
 	return {
 		hero,
-		lock: detail.verification !== "verified" && !heroHasOpen(hero, "verification"),
-		propose: detail.kind === "team" && !detail.canPropose && !heroHasOpen(hero, "invite")
-			? { canInvite: detail.viewerCapabilities.includes("invite_members") }
-			: null,
+		lock: shown.lock,
+		propose: shown.propose,
+		standIn: {
+			lock: away.lock && !shown.lock,
+			propose: shown.propose ? null : away.propose,
+		},
 		metrics: overviewMetrics(detail),
+		money: businessMoney(detail),
 		projects: projectPreview(detail),
 		projectsHref: workspaceHref(detail.kind, detail.handle, "projects"),
 		activity: activityRows(detail.activity),
@@ -353,8 +409,9 @@ export function overviewModel(
 
 /**
  * How many FILLED controls the Overview renders. Only the hero carries one — the notices act through a
- * link-weight control, the projects and activity rows are links, "See all" is tier 5 and the dismiss is
- * an icon-only text button — so this is the hero's count, held to at most one.
+ * link-weight control, the money band's wallet hand-off is a link, the projects and activity rows are
+ * links, "See all" is tier 5 and the dismiss is an icon-only text button — so this is the hero's
+ * count, held to at most one.
  */
 export function filledControls(model: OverviewModel): number {
 	return model.hero?.steps.filter((s) => s.action?.filled).length ?? 0;
@@ -370,6 +427,19 @@ export function heroDismissKey(
 	detail: Pick<WorkspaceDetail, "kind" | "id" | "viewerMemberId">,
 ): string {
 	return `pj.wsp.setup-hero.dismissed:${detail.kind}:${detail.id}:${detail.viewerMemberId}`;
+}
+
+/**
+ * The pre-paint guard for a remembered dismissal: an inline script the island renders just inside the
+ * stack, ahead of the hero band. On a server-rendered page it runs before the band is parsed, so a
+ * viewer who hid the hero never sees it painted and then pulled away — it marks its parent with
+ * `data-hero-dismissed`, which the stylesheet reads to hide the band until the island has read the
+ * same key and stopped rendering it. The key is JSON-encoded with `<` escaped, so no value can close
+ * the script element; storage failures are swallowed, and the hero then simply shows.
+ */
+export function heroDismissGuard(key: string): string {
+	const literal = JSON.stringify(key).replace(/</g, "\\u003c");
+	return `(()=>{try{if(localStorage.getItem(${literal})==="1")document.currentScript.parentElement.setAttribute("data-hero-dismissed","")}catch(_){}})();`;
 }
 
 /**

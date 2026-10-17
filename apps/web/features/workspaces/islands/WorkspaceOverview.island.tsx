@@ -13,6 +13,7 @@ import {
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import { openInvite, publishDetail } from "../core/workspace-state.ts";
 import {
+	heroDismissGuard,
 	heroDismissKey,
 	type OverviewMetric,
 	overviewModel,
@@ -20,6 +21,7 @@ import {
 	writeHeroDismissed,
 } from "../core/overview-model.ts";
 import { EntityMark } from "../components/EntityMark.tsx";
+import { FinanceSummary } from "../components/FinanceSummary.tsx";
 import { SetupHero } from "../components/SetupHero.tsx";
 import { ProjectList } from "../components/ProjectList.tsx";
 import { ActivityFeed } from "../components/ActivityFeed.tsx";
@@ -41,11 +43,15 @@ import InviteModal from "./InviteModal.island.tsx";
  *   - **No dead controls.** A step the viewer cannot act on (the read's `actionable`) shows none, and
  *     a plain member sees where the entity is without a button they cannot use.
  *   - **No money they were not answered.** The vault tile exists only when the read carried the payout
- *     block (`manage_finances`, Decision #233); a business's pool only with its money tiles; the money
- *     movements in the stream were already withheld by the read.
+ *     block (`manage_finances`, Decision #233); a business's money band only for a viewer holding a
+ *     money right; the money movements in the stream were already withheld by the read.
+ *   - **A dismissed hero stays dismissed from first paint.** The choice lives in localStorage, which
+ *     the server cannot read, so an inline guard ahead of the band hides it before it paints and
+ *     reveals the notices it was carrying; the island then stops rendering it.
  *
  * There is no `kind === "team" ? <TeamOverview/> : <BusinessOverview/>` here: the differences are the
- * server's data (the steps, the payout block, the money tiles) and the SSOT's per-kind copy.
+ * server's data (the steps, the payout block) and the SSOT's per-kind copy. A business's money band
+ * is the one kind-specific zone, kept as it was until BU6 rebuilds it.
  */
 
 export interface WorkspaceOverviewProps {
@@ -95,6 +101,8 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 
 	const ws = detail.value;
 	const view = model.value;
+	/** The two-member notice — shown, or standing in behind the pre-paint guard. */
+	const propose = view.propose ?? view.standIn.propose;
 	const copy = kindCopy(ws.kind);
 	const canInvite = ws.viewerCapabilities.includes("invite_members");
 
@@ -187,6 +195,11 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 
 				{/* #region Setup hero */}
 				{view.hero && (
+					// Hides the band before it paints when this viewer dismissed it earlier — see
+					// `heroDismissGuard`. It must stay ahead of the band so it runs first.
+					<script dangerouslySetInnerHTML={{ __html: heroDismissGuard(heroDismissKey(ws)) }} />
+				)}
+				{view.hero && (
 					<section
 						class="wsp-band wsp-band--hero"
 						data-i={next()}
@@ -208,7 +221,7 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 				{/* #endregion */}
 
 				{/* #region Notices — what the hero would say, when it is not on screen to say it */}
-				{view.lock && (
+				{(view.lock || view.standIn.lock) && (
 					<VerificationLock
 						kind={ws.kind}
 						verification={ws.verification}
@@ -216,20 +229,23 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 						href={workspaceHref(ws.kind, ws.handle, "verification")}
 						canManage={canOpenVerification(ws.kind, ws.viewerCapabilities)}
 						tone="band"
+						i={next()}
+						heroStandIn={!view.lock}
 					/>
 				)}
-				{view.propose && (
+				{propose && (
 					<section
 						class="wsp-band wsp-band--plain wsp-band--notice"
 						data-i={next()}
+						data-hero-standin={view.propose ? undefined : ""}
 						aria-label="Proposals"
 					>
 						<div class="wsp-band__inner">
 							<InlineNotice
 								align="start"
 								text="Teams need two members to send proposals."
-								actionLabel={view.propose.canInvite ? "Invite member" : undefined}
-								onAction={view.propose.canInvite ? () => openInvite() : undefined}
+								actionLabel={propose.canInvite ? "Invite member" : undefined}
+								onAction={propose.canInvite ? () => openInvite() : undefined}
 							/>
 						</div>
 					</section>
@@ -244,6 +260,21 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 						</StatTileRow>
 					</div>
 				</section>
+				{/* #endregion */}
+
+				{/* #region Money — a business's band, as it was until BU6 rebuilds it */}
+				{view.money && (
+					<section class="wsp-band wsp-band--money" data-i={next()} aria-label="Money">
+						<div class="wsp-band__inner">
+							<div class="wsp-band__head">
+								<h2 class="wsp-band__title">Money</h2>
+							</div>
+							<div class="wsp-band__body">
+								<FinanceSummary kind={ws.kind} finance={view.money} />
+							</div>
+						</div>
+					</section>
+				)}
 				{/* #endregion */}
 
 				{/* #region Projects preview */}
