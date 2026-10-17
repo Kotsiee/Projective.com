@@ -57,6 +57,8 @@ BEGIN
     IF NOT projects.can_review_project(p_project_id) THEN
         RAISE EXCEPTION 'Only the project owner may change a member''s role.' USING ERRCODE = 'insufficient_privilege';
     END IF;
+    -- A role decides who staffs the project, so on a business project it is a `hire` decision.
+    PERFORM projects.fn_assert_business_actor(p_project_id, 'hire');
     IF v_status IN ('archived', 'cancelled', 'completed') THEN
         RAISE EXCEPTION 'This project is closed — its roles can no longer change.' USING ERRCODE = 'check_violation';
     END IF;
@@ -160,6 +162,7 @@ BEGIN
     IF NOT projects.can_manage_project_members(p_project_id) THEN
         RAISE EXCEPTION 'Only the project owner, an admin or a manager may invite people to it.' USING ERRCODE = 'insufficient_privilege';
     END IF;
+    PERFORM projects.fn_assert_business_actor(p_project_id, 'hire', true);
     IF v_project.status IN ('archived', 'cancelled', 'completed') THEN
         RAISE EXCEPTION 'This project is closed — nobody can be invited to it.' USING ERRCODE = 'check_violation';
     END IF;
@@ -168,6 +171,9 @@ BEGIN
     END IF;
     IF p_role IN ('admin', 'manager') AND NOT projects.can_review_project(p_project_id) THEN
         RAISE EXCEPTION 'Only the project owner may invite an admin or a manager.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF p_role IN ('admin', 'manager') THEN
+        PERFORM projects.fn_assert_business_actor(p_project_id, 'hire');
     END IF;
     IF v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' OR length(v_email) > 160 THEN
         RAISE EXCEPTION 'Enter a valid email address.' USING ERRCODE = 'check_violation';
@@ -290,6 +296,7 @@ BEGIN
     IF NOT FOUND OR NOT projects.can_manage_project_members(v_inv.project_id) THEN
         RAISE EXCEPTION 'Invitation % not found.', p_invitation_id USING ERRCODE = 'no_data_found';
     END IF;
+    PERFORM projects.fn_assert_business_actor(v_inv.project_id, 'hire', true);
 
     IF p_action = 'cancel' THEN
         IF v_inv.status <> 'pending' THEN
@@ -433,6 +440,7 @@ BEGIN
         RAISE EXCEPTION 'Only the project owner, an admin or a manager may share an invite link.'
             USING ERRCODE = 'insufficient_privilege';
     END IF;
+    PERFORM projects.fn_assert_business_actor(v_stage.project_id, 'hire', true);
     SELECT p.status INTO v_status FROM projects.projects p WHERE p.id = v_stage.project_id;
     IF v_status IN ('archived', 'cancelled', 'completed') THEN
         RAISE EXCEPTION 'This project is closed — nobody can join it.' USING ERRCODE = 'check_violation';
@@ -512,6 +520,7 @@ BEGIN
         RAISE EXCEPTION 'Only the project owner, an admin or a manager may turn off an invite link.'
             USING ERRCODE = 'insufficient_privilege';
     END IF;
+    PERFORM projects.fn_assert_business_actor(v_project, 'hire', true);
 
     UPDATE projects.stage_invite_links
     SET status = 'revoked', revoked_at = now(), revoked_by = v_actor

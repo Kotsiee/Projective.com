@@ -51,6 +51,7 @@ import {
 } from "@projective/types/projects";
 import { flattenRichText, plainTextToHtml } from "@projective/types/richtext";
 import type { SupabaseClient } from "supabaseClient";
+import { businessAuthorityRefusalFromMessage } from "../../core/business-authority.ts";
 import type { FailureDetails, FieldErrors } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
 import {
@@ -865,6 +866,13 @@ export interface WriteRefusal {
  * internals.
  */
 export function refusalFrom(message: string, field?: string): WriteRefusal {
+	// One capability per act on a business project (BB2): `missing_permission: hire` and friends are a
+	// 403 whose `details.reason` names the capability, so the screen can say which one is missing.
+	const authority = businessAuthorityRefusalFromMessage(message);
+	if (authority) {
+		return { ...authority, errors: field ? { [field]: authority.details.reason } : undefined };
+	}
+
 	// `permission denied` is deliberately NOT in this list. It is Postgres's GRANT-level wording and
 	// it names the table it failed on — `permission denied for table projects_index` is a real,
 	// reachable example — so passing it through would hand the caller an internal table name. A

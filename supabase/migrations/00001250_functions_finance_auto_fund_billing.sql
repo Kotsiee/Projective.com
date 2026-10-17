@@ -489,6 +489,12 @@ BEGIN
     IF NOT finance.fn_can_manage_basket(v_basket.owner_type, v_basket.owner_id) THEN
         RAISE EXCEPTION 'Only a member who can spend from this account can pay from it' USING ERRCODE = '42501';
     END IF;
+    -- Buying as the business needs `purchase` as well as vault `spend`, as place_wallet_order (BB2).
+    IF NOT security.is_admin() AND NOT org.fn_member_can('business', v_basket.owner_id, 'purchase') THEN
+        RAISE EXCEPTION 'missing_permission: purchase'
+            USING ERRCODE = 'PK403',
+                  HINT = 'Ask the business owner or an admin for the "purchase" permission.';
+    END IF;
     SELECT * INTO v_business FROM org.business_profiles WHERE id = v_basket.owner_id;
     IF NOT finance.fn_business_kyb_verified(v_business.id) THEN
         RAISE EXCEPTION 'Complete business verification (KYB) to pay by invoice' USING ERRCODE = 'PK403';

@@ -53,6 +53,14 @@ GRANT EXECUTE ON FUNCTION projects.can_review_project (uuid) TO anon, authentica
 GRANT EXECUTE ON FUNCTION projects.can_manage_project_members (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.is_cohort_member (uuid) TO anon, authenticated;
 
+-- The business-authority predicates (BB2): each answers only about auth.uid(), so a signed-in caller
+-- may ask them of a project (the app reads them to decide which commit to offer). Not `anon`: a
+-- signed-out caller holds no capability. The asserting twin is internal to the doors that call it.
+GRANT EXECUTE ON FUNCTION projects.fn_business_actor_can (uuid, org.workspace_capability) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.fn_can_fund_project (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.fn_assert_business_actor (uuid, org.workspace_capability, boolean)
+FROM PUBLIC, anon, authenticated;
+
 -- The doors the app calls with the user's JWT that are not granted elsewhere. Each resolves the caller
 -- from auth.uid() and checks its own authority (review, staffing or project access).
 GRANT EXECUTE ON FUNCTION projects.create_stage (uuid, text, jsonb, text, bigint, jsonb) TO authenticated;

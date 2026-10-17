@@ -699,6 +699,19 @@ Every member holds one role — a preset, or a custom role the Business writes i
   analytics and chat logs and cannot approve payments or change project scope. The plan's manager
   cap counts Admins plus every member whose role may manage projects (`finance-model.md` §16.1,
   Decision #230 (b)).
+- **One permission per act.** Every member of a Business sees its projects, reads their details
+  and deliverables, and can comment and ask for a free revision. The acts that commit the Business
+  each need their own permission: **hiring** (accepting or declining an applicant, inviting,
+  assigning work, appointing a project delegate) and **approving work that releases escrow**
+  (accepting a submission, approving or force-completing a stage, a Fair Exit) need the hiring
+  permission; **creating a project billed to the Business** needs the project permission; **buying
+  with the Business Wallet** (the basket, on account) needs the purchasing permission on top of the
+  right to spend from the wallet; and **funding escrow** (a stage, a ticket, a paid revision, by
+  wallet or by card) needs the right to spend from the wallet — whoever created the project. The
+  member who created a project keeps the hiring and approval authority over it. The Owner and Admin
+  presets hold all of these; the Member preset holds none, and a custom role grants exactly what it
+  lists — a "Finance" role holding only the spend right funds escrow but hires nobody
+  (BUSINESSES_AUDIT §4.2, work order BB2).
 - **Billing and verification are the Owner's.** Invoices, payment instruments, invoicing terms and
   the Business's verification (KYB) need the billing right, and the Billing and Verification views
   open only to its holders. Only the Owner holds it unless the Owner grants it explicitly to a named

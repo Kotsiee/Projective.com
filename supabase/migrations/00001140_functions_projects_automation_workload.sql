@@ -467,6 +467,7 @@ BEGIN
     IF NOT projects.can_review_project(v_project) THEN
         RAISE EXCEPTION 'Only the project owner may pin an assignee.' USING ERRCODE = 'insufficient_privilege';
     END IF;
+    PERFORM projects.fn_assert_business_actor(v_project, 'hire');
 
     RETURN projects.fn_assign_ticket_core(p_ticket_id, p_assignee_id, true);
 END;
@@ -488,6 +489,7 @@ BEGIN
     IF NOT projects.can_review_project(v_project) THEN
         RAISE EXCEPTION 'Only the project owner may trigger auto-assignment.' USING ERRCODE = 'insufficient_privilege';
     END IF;
+    PERFORM projects.fn_assert_business_actor(v_project, 'hire');
 
     SELECT id INTO v_ticket
     FROM projects.tickets
@@ -549,6 +551,7 @@ BEGIN
     IF NOT projects.can_review_project(v_project) THEN
         RAISE EXCEPTION 'Only the project owner may open a parallel stream.' USING ERRCODE = 'insufficient_privilege';
     END IF;
+    PERFORM projects.fn_assert_business_actor(v_project, 'hire');
 
     FOR t IN
         SELECT id FROM projects.tickets

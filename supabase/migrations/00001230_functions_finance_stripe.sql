@@ -247,22 +247,16 @@ BEGIN
             RAISE EXCEPTION 'walletId: an escrow lock is paid into the client''s wallet, not a chosen one'
                 USING ERRCODE = '22023';
         END IF;
-        IF NOT projects.has_project_access(p_project_id) THEN
-            RAISE EXCEPTION 'auth: not authorized for this project' USING ERRCODE = '42501';
-        END IF;
         -- A business client pays from its wallet; a project with no client business is paid for by its
         -- OWNER as an individual client (PRODUCT_SPEC §Escrow, Wallets & Finance #5 — "zero friction,
-        -- no ID verification"), and only that owner may fund it. Mirrors projects.fund_stage.
+        -- no ID verification"), and only that owner may fund it. The funder predicate fund_stage,
+        -- fund_ticket and fund_paid_revision ask too (BB2), so nobody is charged for a lock they refuse.
+        IF NOT projects.fn_can_fund_project(p_project_id) THEN
+            RAISE EXCEPTION 'not_funder: only a member who can spend from the client''s wallet can fund this stage'
+                USING ERRCODE = 'PK403';
+        END IF;
         SELECT p.client_business_id, p.owner_user_id, p.currency INTO v_payer, v_owner, v_project_currency
           FROM projects.projects p WHERE p.id = p_project_id;
-        IF v_payer IS NOT NULL THEN
-            IF NOT finance.fn_owner_capability('business', v_payer, 'spend'::finance.vault_capability) THEN
-                RAISE EXCEPTION 'auth: only a member who can spend from the client''s wallet can fund this stage'
-                    USING ERRCODE = '42501';
-            END IF;
-        ELSIF v_owner IS NULL OR v_owner IS DISTINCT FROM v_uid THEN
-            RAISE EXCEPTION 'auth: only the project''s owner can fund this stage' USING ERRCODE = '42501';
-        END IF;
         IF p_revision_id IS NOT NULL THEN
             -- ONE paid revision round (Decision #199): projects.fund_paid_revision's gates, evaluated now
             -- so nobody is charged for a round that could not open — and again at settlement.

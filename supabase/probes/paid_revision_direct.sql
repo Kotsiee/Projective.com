@@ -127,8 +127,8 @@ BEGIN
     PERFORM finance.begin_card_payment('escrow_lock', NULL, pg_temp.s('project')::uuid, pg_temp.s('stage')::uuid,
         5000, 'USD', 'probe-rev-card-stranger', NULL, pg_temp.s('rev2')::uuid);
     RAISE EXCEPTION 'PROBE FAIL: the freelancer started a payment for the client''s round';
-EXCEPTION WHEN SQLSTATE '42501' THEN
-    PERFORM pg_temp.ok(true, 'card: only the project''s client may pay (42501)');
+EXCEPTION WHEN SQLSTATE 'PK403' THEN
+    PERFORM pg_temp.ok(SQLERRM LIKE 'not_funder:%', 'card: only the project''s client may pay (PK403 not_funder)');
 END $$;
 RESET ROLE;
 

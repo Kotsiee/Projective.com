@@ -1280,6 +1280,15 @@ BEGIN
         RAISE EXCEPTION 'Only a member who can spend from this account can pay from it'
             USING ERRCODE = '42501';
     END IF;
+    -- Buying as the business is its own act (BUSINESSES_AUDIT §4.2, BB2): vault `spend` says whose
+    -- money may move, the workspace `purchase` capability says who may buy with it.
+    IF v_basket.owner_type = 'business'
+        AND NOT security.is_admin ()
+        AND NOT org.fn_member_can ('business', v_basket.owner_id, 'purchase') THEN
+        RAISE EXCEPTION 'missing_permission: purchase'
+            USING ERRCODE = 'PK403',
+                  HINT = 'Ask the business owner or an admin for the "purchase" permission.';
+    END IF;
     IF v_basket.owner_type = 'business' AND NOT finance.fn_business_kyb_verified (v_basket.owner_id) THEN
         RAISE EXCEPTION 'Complete business verification (KYB) to pay from this account'
             USING ERRCODE = 'PK403';

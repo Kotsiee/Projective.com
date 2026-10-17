@@ -249,7 +249,8 @@ BEGIN
         PERFORM projects.fund_stage(v_q, v_qstage); v_ok := true;
     EXCEPTION WHEN OTHERS THEN v_ok := false; v_code := SQLSTATE;
     END;
-    IF v_ok OR v_code <> '42501' THEN RAISE EXCEPTION 'FAIL 8: a non-owner funded an individual stage % %', v_ok, v_code; END IF;
+    -- The funder predicate's typed refusal (BB2): only the owner funds a personal project.
+    IF v_ok OR v_code <> 'PK403' THEN RAISE EXCEPTION 'FAIL 8: a non-owner funded an individual stage % %', v_ok, v_code; END IF;
 
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_qowner, 'role', 'authenticated')::text, true);
     v_out := projects.get_stage_funding_quote(v_q, v_qstage);

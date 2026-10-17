@@ -191,7 +191,11 @@ function notConnected<T>(message = NOT_CONNECTED): Result<T> {
 }
 
 function refused<T>(refusal: DbRefusal): Result<T> {
-	return fail(refusal.status, { message: refusal.message, errors: refusal.errors });
+	return fail(refusal.status, {
+		message: refusal.message,
+		errors: refusal.errors,
+		details: refusal.details,
+	});
 }
 
 /** The Stripe settings, when payments may call Stripe here; `null` otherwise. */

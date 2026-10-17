@@ -97,7 +97,12 @@ export class StageFundingBackendService {
 			const refs = await resolveStageRefs(actor.accessToken, query.project, query.stage);
 			if (!refs) return fail(404, { message: "That stage wasn't found." });
 			const quoted = await readStageFundingQuote(actor.accessToken, refs.projectId, refs.stageId);
-			if (!quoted.ok) return fail(quoted.refusal.status, { message: quoted.refusal.message });
+			if (!quoted.ok) {
+				return fail(quoted.refusal.status, {
+					message: quoted.refusal.message,
+					details: quoted.refusal.details,
+				});
+			}
 			return ok({ quote: quoted.value });
 		} catch (error) {
 			console.error("[stage-funding:quote]", error instanceof Error ? error.message : error);

@@ -47,9 +47,14 @@ caller check of its own — it answers for `auth.uid()`, so a guest gets `false`
 
 ### `projects.can_review_project(_project_id uuid) → boolean`
 
-`00001100` §2. The "client viewer" authority every money-moving and adjudicating door asks:
-`p.owner_user_id = auth.uid() OR (p.client_business_id IS NOT NULL AND
-org.is_active_business_member(p.client_business_id))`. Deliberately **not** true for an assignee.
+`00001100` §2. The "client viewer" authority: `p.owner_user_id = auth.uid() OR
+(p.client_business_id IS NOT NULL AND org.is_active_business_member(p.client_business_id))`.
+Deliberately **not** true for an assignee. It gates reads (`/details`, `/preview`, the client side of
+the board — Decision #163), comments and the client-side configuration doors, and is the FIRST check
+of every adjudicating door; on a business project the doors that commit the business additionally
+ask a capability ([Business authority](#business-authority-one-capability-per-act-bb2)), so a plain
+member reads and reviews but cannot hire, release escrow, bill a project to the business or fund it.
+BB2 deliberately did not narrow this predicate.
 `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`, `search_path = public, projects, org, auth`; `EXECUTE`:
 `anon`, `authenticated`, `service_role` (it is a policy predicate, so it must run as the invoking
 role). An unknown id and a guest both answer `false`.
@@ -64,6 +69,55 @@ dismissing invitations and managing a stage's invite link, and the SELECT arm on
 `stage_invite_links`. Appointing an admin or manager is NOT covered — each issuing door re-checks
 `can_review_project` for those two roles. `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`; `EXECUTE`:
 `anon`, `authenticated`, `service_role` (a policy predicate, so it must run as the invoking role).
+Unchanged by BB2 (it still answers the SELECT arms); on a business project the staffing WRITE doors
+additionally require `hire` or a delegate role through `fn_assert_business_actor(…, 'hire', true)`.
+
+### Business authority: one capability per act (BB2)
+
+`00001100` §2b (BUSINESSES_AUDIT BF13–BF15, BF23, §4.2). On a project billed to a business
+(`client_business_id`), `can_review_project` admits every active member — right for reads, wrong for
+the acts that commit the business. Those ask three predicates, each answering only about
+`auth.uid()`; a personal project keeps its owner-only behaviour.
+
+- **`projects.fn_business_actor_can(p_project uuid, p_cap org.workspace_capability) → boolean`** —
+  the project's `owner_user_id`, or the project is billed to a business on which the caller holds
+  `p_cap` (`org.fn_member_can`: role ∪ granted − revoked). The project's owner keeps the authority
+  they created it with whatever they hold on the business. `LANGUAGE sql`, `STABLE`, `SECURITY
+  DEFINER`, `search_path = ''`; `EXECUTE`: `authenticated`.
+- **`projects.fn_assert_business_actor(p_project uuid, p_cap org.workspace_capability,
+  p_allow_delegate boolean DEFAULT false) → void`** — the typed refusal: **`PK403`
+  `missing_permission: <cap>`** (HINT names the permission to ask for). A no-op on a personal project
+  and for a `NULL` `auth.uid()` (service role, cron, seeds); with `p_allow_delegate` a
+  person-participant whose project `role` is `admin` / `manager` passes too (Decision #145). Each
+  door calls it AFTER its own authority check, so a stranger still gets that door's wording. plpgsql,
+  `STABLE`, `SECURITY DEFINER`, `search_path = ''`; internal (`EXECUTE` revoked from client roles).
+- **`projects.fn_can_fund_project(p_project uuid) → boolean`** — the funder predicate. A personal
+  project: its owner. A business project: vault `spend` on the business wallet in the project's
+  currency (`finance.fn_has_vault_capability`), or `spend_funds` (`org.fn_member_can`) before that
+  wallet exists. **Owning a business project is not a licence to spend the business's money** — a
+  spend-less project owner is refused. `has_project_access` is not consulted (a read predicate granted
+  to `anon` that admits the assignee, and which a spend-only member does not pass). plpgsql (the vault
+  helper is created later, in `00001210`), `STABLE`, `SECURITY DEFINER`, `search_path = ''`;
+  `EXECUTE`: `authenticated`.
+
+| Door | Business-project requirement | Refusal |
+| :-- | :-- | :-- |
+| `assign_from_application`, `reject_application`, `invite_to_project`, `invite_by_email`, `act_on_invitation`, `get_stage_invite_link`, `revoke_stage_invite_link` | `hire`, or a delegate (`admin`/`manager` participant) | `PK403 missing_permission: hire` |
+| Offering `admin`/`manager` (`invite_to_project`, `invite_by_email`), `set_member_role` | `hire` (no delegate) | `PK403 missing_permission: hire` |
+| `assign_ticket_manual`, `auto_assign_round_robin`, `assign_parallel_stream` | `hire` | `PK403 missing_permission: hire` |
+| `review_submission` with `accept`, `approve_stage`, `force_complete_stage`, `cancel_stage_fair_exit` | `hire` | `PK403 missing_permission: hire` |
+| Any ticket entering `completed`, or a delete that settles a claimed/funded ticket (`fn_ticket_settlement_guard` — covers `complete_ticket`, `move_ticket`, `delete_ticket` and the table path) | `hire` | `PK403 missing_permission: hire` |
+| `create_project` with `client_business_id`; re-pointing `client_business_id` (`fn_guard_project_ownership`) | `manage_projects` on that business | `PK403 missing_permission: manage_projects` |
+| `fund_stage`, `fund_ticket`, `fund_paid_revision`, `get_stage_funding_quote`, `finance.begin_card_payment` (`escrow_lock`) | `fn_can_fund_project` | `PK403 not_funder: …` |
+| `finance.place_wallet_order`, `finance.place_on_account_order` (business basket) | `purchase` on top of vault `spend` | `PK403 missing_permission: purchase` |
+
+Unchanged: `review_submission` with `request_revision` (moves no money), every read, and
+`remove_project_member` (already the project owner's alone, narrower than `hire`). The backend maps
+each refusal to a 403 whose `details.reason` is `hire` · `purchase` · `manage_projects` ·
+`not_funder` (`packages/backend/core/business-authority.ts`, `@projective/types/workspace`
+`BusinessAuthorityReason`); the screens' wording is BU6's. Proven by
+`supabase/probes/business_authority.sql` (owner · admin · `member` preset · a custom spend-only role ·
+a project owner without `hire`).
 
 ### `projects.is_cohort_member(_cohort_id uuid) → boolean`
 
@@ -142,7 +196,7 @@ or not at all:
 | `owner_user_id`                                                  | `auth.uid()`                | **Never** from the payload.                                                                                                        |
 | `status`                                                         | hardcoded `draft`           | Not from the payload — it gates the public-footprint trigger and the escrow lifecycle.                                             |
 | `visibility`                                                     | hardcoded `unlisted`        | Not from the payload — publishing is a later, deliberate write.                                                                    |
-| `client_business_id` / `owner_team_id` / `owner_enterprise_id` | payload, membership-checked | Active membership of that workspace is required; the three are mutually exclusive. Personal scope is the **absence** of all three. |
+| `client_business_id` / `owner_team_id` / `owner_enterprise_id` | payload, membership-checked | Active membership of that workspace is required; the three are mutually exclusive. Personal scope is the **absence** of all three. A business also needs the caller to hold `manage_projects` on it (`PK403 missing_permission: manage_projects`, BB2). |
 
 **The slug is MINTED, never derived** — not from the title, not from anything. `security.mint_slug`
 produces the canonical `prj-` address; the whole point of an opaque slug is that no input exists
@@ -803,7 +857,9 @@ tickets_ policy lets the **assignee** update and delete their own ticket, and
 `trg_ticket_escrow_sync` / `trg_ticket_delete_protocol` release escrow on entering `completed` and on
 delete — so one `PATCH` or `DELETE` against `/rest/v1/tickets` released the assignee's own escrow
 without touching any RPC. The guard refuses (`42501`) entering `completed` and any delete unless the
-caller passes `can_review_project`. Ordinary assignee moves (`in_progress`, `in_review`, …) are
+caller passes `can_review_project`; on a business project, entering `completed` and a delete that
+settles a claimed or funded ticket also need `hire` (`fn_assert_business_actor`, `PK403
+missing_permission: hire`, BB2) — so every completion path, RPC or table, answers to one rule. Ordinary assignee moves (`in_progress`, `in_review`, …) are
 untouched. A `NULL` `auth.uid()` — service role, cron, migrations, seeds — is not gated. Named to sort
 before `trg_ticket_claim_before` and `trg_ticket_delete_protocol`, so it reads the caller's own
 `NEW.status` and refuses before any escrow trigger runs. No role holds `EXECUTE` on it.
@@ -1045,14 +1101,14 @@ function (`00001130`).
 
 Client-side adjudication and funding (`approve_stage`, which pays out, is under
 [Escrow settlement doors](#escrow-settlement-doors)). `review_submission` is guarded by
-`can_review_project`, locks the submission row, and refuses anything not `pending_review` with
+`can_review_project` (and, for `accept` on a business project, `hire` — BB2), locks the submission row, and refuses anything not `pending_review` with
 `55000` (`object_not_in_prerequisite_state`) — a reviewer can read an unsent `draft` under RLS, and
 re-reviewing a decided one would rewrite the decision. The status check runs after the RBAC check,
-so a non-reviewer learns nothing about the submission. `fund_stage` checks `has_project_access` and then, because it spends the
-CLIENT's money, resolves the payer from `client_business_id` and requires that business's `spend`
-capability (`finance.fn_owner_capability`) — or, with no client business, that the caller is the
-owner paying as an individual — since project access alone would let a hired freelancer fund the
-client's escrow from the client's wallet ([finance/Functions.md](../finance/Functions.md#stage-level-wrappers-in-projects-invoke-this-engine--migration-0305)).
+so a non-reviewer learns nothing about the submission. `fund_stage` asks the funder predicate
+`projects.fn_can_fund_project` (BB2): vault `spend` on the paying business's wallet, or — with no
+client business — that the caller is the owner paying as an individual. It no longer asks
+`has_project_access`, which a spend-only business member does not pass and a hired freelancer does
+([finance/Functions.md](../finance/Functions.md#stage-level-wrappers-in-projects-invoke-this-engine--migration-0305)).
 
 Signatures: `review_submission(p_submission_id uuid, p_decision text, p_feedback jsonb DEFAULT NULL) →
 jsonb` and `fund_stage(p_project_id uuid, p_stage_id uuid) → jsonb`. Both `SECURITY DEFINER`;
@@ -1068,7 +1124,7 @@ or `extra_revision_price_cents = 0` — then it increments `revisions_used`, lin
 submission (`submission_id`) and calls `fn_notify_revision`. Past the allotment it raises **`PR402`**
 before writing anything, `DETAIL` = `{code: 'paid_revision_required', price_minor, currency, used,
 allowed}`. Either verdict cancels a round still `awaiting_payment` on the submission. `fund_stage` (`search_path = public, projects, finance, comms, org,
-auth`): payer refusals `42501`; foreign stage `P0002`; stage not `open`, `assigned` or `in_progress`
+auth`): payer refusal `PK403 not_funder`; foreign stage `P0002`; stage not `open`, `assigned` or `in_progress`
 `55000` (Decision #197); any ticket with no price `PC409` before anything moves; an individual
 owner's wallet short of the stage total `PF402`, and any ticket's own hold refusal (`PF402`, Decision
 #165) aborts the whole stage; nothing fundable `PC409`. Fundable means in the stage, `unpaid` or
@@ -1086,8 +1142,8 @@ so the doors never deadlock on each other. `finance.uq_escrows_ticket_base_held`
 
 ### `projects.fund_ticket(p_project_id uuid, p_ticket_id uuid)` → jsonb (Decision #166)
 
-Funds ONE ticket's escrow — the single-ticket Buy Now and a basket ticket line. The same payer rule
-as `fund_stage` (`42501`), then the PRODUCT_SPEC §5 purchasing gate and the hold's prerequisites, in
+Funds ONE ticket's escrow — the single-ticket Buy Now and a basket ticket line. The same funder
+predicate as `fund_stage` (`PK403 not_funder`), then the PRODUCT_SPEC §5 purchasing gate and the hold's prerequisites, in
 order: ticket not in the project `P0002`; no description `PU422`; already paid (`payment_status` not
 `unpaid`/`needs_funding`, or a held escrow) `PC409`; not in a stage, or the stage `approved`/`paid`/
 `cancelled` `PC409`; no price (own, else the stage's) `PC409`; an individual owner's wallet short of
@@ -1113,7 +1169,7 @@ refuses it. `SQL STABLE SECURITY DEFINER`, `search_path = ''`; internal (`EXECUT
 The payer's read before funding a stage (the wallet's Fund a stage, the board's Fund stage via
 `GET /api/finance/escrow/quote`): `fn_stage_funding_need` plus `{stage_id, stage_name, stage_status,
 fundable (open · assigned · in_progress), currency, payer_scope ('business' | 'personal'), payer_id,
-wallet_balance_cents}`. `fund_stage`'s access and payer rule (`42501`); a foreign stage `P0002`.
+wallet_balance_cents}`. `fund_stage`'s funder predicate (`PK403 not_funder`, BB2); a foreign stage `P0002`.
 Read-only; the doors re-check everything. `STABLE SECURITY DEFINER`; `EXECUTE`: `authenticated`.
 Called as the payer by `finance.place_wallet_order` (a ticket line) and `finance.settle_card_payment` (a card lock
 naming a ticket). Proven by `supabase/probes/single_ticket_purchase.sql`.
@@ -1171,8 +1227,11 @@ Decision #89's shape lock (Decision #139).
 projects.projects`, fired only when either value actually changes; bound in `00001820`, defined in
 `00001130` (Decision #163). Review authority may update the project row, but reassigning the owner or
 the paying business stays the owner's alone: a signed-in caller other than `OLD.owner_user_id` is
-refused (`insufficient_privilege`). A `NULL` `auth.uid()` (service role, seeds) passes. `SECURITY
-INVOKER`, `search_path = public, projects`; `EXECUTE` moot (a trigger).
+refused (`insufficient_privilege`). Pointing the project at a business (a new non-null
+`client_business_id`) needs `manage_projects` on it, the same gate as `create_project` (`PK403
+missing_permission: manage_projects`, BB2). A `NULL` `auth.uid()` (service role, seeds) passes.
+`SECURITY DEFINER` (to ask `org.fn_member_can`, which no client role may call), `search_path = ''`;
+`EXECUTE` moot (a trigger).
 
 `set_project_status` is `SECURITY DEFINER`, `search_path = public, projects, finance, org, auth`,
 `EXECUTE`: `authenticated`, `service_role`. Guard: unknown project `P0002`, then a `NULL` actor or not

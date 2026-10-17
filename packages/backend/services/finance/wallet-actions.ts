@@ -15,6 +15,7 @@ import type {
 	WithdrawInput,
 } from "@projective/types/finance";
 import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
+import { businessAuthorityRefusal } from "../../core/business-authority.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
@@ -347,7 +348,12 @@ export async function fundEscrow(input: FundEscrowInput, query: WalletQuery, act
 	const projectId = (stageRow as { project_id: string }).project_id;
 
 	const quoted = await readStageFundingQuote(ctx.actor.accessToken, projectId, input.stageId);
-	if (!quoted.ok) return refuse(quoted.refusal.status, quoted.refusal.message);
+	if (!quoted.ok) {
+		return fail(quoted.refusal.status, {
+			message: quoted.refusal.message,
+			details: quoted.refusal.details,
+		}) as Result;
+	}
 	const quote = quoted.value;
 	const payerId = account.scope === "business" ? account.id : ctx.viewer.userId;
 	if (quote.payer.scope !== account.scope || quote.payer.id !== payerId) {
@@ -367,7 +373,17 @@ export async function fundEscrow(input: FundEscrowInput, query: WalletQuery, act
 		p_project_id: projectId,
 		p_stage_id: input.stageId,
 	});
-	if (error) return refuse(statusFor(error.code), messageFor(error));
+	if (error) {
+		// Only a holder of vault `spend` on the paying business's wallet funds its escrow (BB2).
+		const authority = businessAuthorityRefusal(error);
+		if (authority) {
+			return fail(authority.status, {
+				message: authority.message,
+				details: authority.details,
+			}) as Result;
+		}
+		return refuse(statusFor(error.code), messageFor(error));
+	}
 	const waiting =
 		Number((data as { awaiting_claim_count?: number | string } | null)?.awaiting_claim_count) || 0;
 	const note = waiting === 0

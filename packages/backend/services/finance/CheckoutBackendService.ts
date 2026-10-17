@@ -30,6 +30,7 @@ import {
 	PLATFORM_FEE_BP,
 } from "@projective/types/finance";
 import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
+import { businessAuthorityRefusal } from "../../core/business-authority.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
@@ -786,6 +787,11 @@ export class CheckoutBackendService {
 					{ ...rpcArgs, p_amount: charge.minor },
 				);
 				if (error) {
+					// Buying as the business needs `purchase` as well as vault `spend` (BB2).
+					const authority = businessAuthorityRefusal(error);
+					if (authority) {
+						return refusal(authority.message, [blocker("not_authorised", authority.message)]);
+					}
 					const code = BLOCKER_FOR_SQLSTATE[error.code ?? ""] ?? (error.code === "22023" ? "no_provider" : undefined);
 					if (!code) throw new Error(`finance.place_on_account_order failed: ${error.message}`);
 					const message = isAgeRestricted(error)
@@ -883,6 +889,10 @@ export class CheckoutBackendService {
 				},
 			);
 			if (error) {
+				const authority = businessAuthorityRefusal(error);
+				if (authority) {
+					return refusal(authority.message, [blocker("not_authorised", authority.message)]);
+				}
 				const code = BLOCKER_FOR_SQLSTATE[error.code ?? ""];
 				if (!code) throw new Error(`finance.place_wallet_order failed: ${error.message}`);
 				const message = isAgeRestricted(error)

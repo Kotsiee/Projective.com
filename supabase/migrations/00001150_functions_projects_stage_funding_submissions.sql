@@ -392,6 +392,11 @@ BEGIN
         RAISE EXCEPTION 'Unsupported review decision %. Use accept | request_revision.', p_decision
             USING ERRCODE = 'check_violation';
     END IF;
+    -- Accepting settles the ticket's escrow, so on a business project it is a `hire` decision; asking
+    -- for a revision moves no money and stays review authority.
+    IF p_decision = 'accept' THEN
+        PERFORM projects.fn_assert_business_actor(v_project, 'hire');
+    END IF;
 
     v_new_status := CASE p_decision WHEN 'accept' THEN 'accepted' ELSE 'revisions_requested' END;
 
@@ -643,13 +648,9 @@ BEGIN
     IF NOT FOUND THEN
         RAISE EXCEPTION 'That revision no longer exists.' USING ERRCODE = 'no_data_found';
     END IF;
-    IF v.payer IS NOT NULL THEN
-        IF NOT finance.fn_owner_capability('business', v.payer, 'spend'::finance.vault_capability) THEN
-            RAISE EXCEPTION 'Only a member who can spend from the client''s wallet can pay for this revision.'
-                USING ERRCODE = '42501';
-        END IF;
-    ELSIF v.owner IS NULL OR v.owner IS DISTINCT FROM auth.uid() THEN
-        RAISE EXCEPTION 'Only the project''s owner can pay for this revision.' USING ERRCODE = '42501';
+    IF NOT projects.fn_can_fund_project(v.project_id) THEN
+        RAISE EXCEPTION 'not_funder: only a member who can spend from the client''s wallet can pay for this revision'
+            USING ERRCODE = 'PK403';
     END IF;
     IF v.status <> 'awaiting_payment' THEN
         RAISE EXCEPTION 'This revision is already paid for or was withdrawn.' USING ERRCODE = 'PC409';
@@ -748,20 +749,14 @@ DECLARE
     v_wallet_type text;
     v_balance bigint;
 BEGIN
-    IF NOT projects.has_project_access(p_project_id) THEN
-        RAISE EXCEPTION 'Not authorized for this project.' USING ERRCODE = '42501';
+    -- The quote is the funder's read, so it asks the funder predicate fund_stage asks (BB2).
+    IF NOT projects.fn_can_fund_project(p_project_id) THEN
+        RAISE EXCEPTION 'not_funder: only a member who can spend from the client''s wallet can fund this stage'
+            USING ERRCODE = 'PK403';
     END IF;
     SELECT p.client_business_id, p.owner_user_id, upper(COALESCE(p.currency, 'USD'))
       INTO v_payer, v_owner, v_currency
       FROM projects.projects p WHERE p.id = p_project_id;
-    IF v_payer IS NOT NULL THEN
-        IF NOT finance.fn_owner_capability('business', v_payer, 'spend'::finance.vault_capability) THEN
-            RAISE EXCEPTION 'Only a member who can spend from the client''s wallet can fund this stage.'
-                USING ERRCODE = '42501';
-        END IF;
-    ELSIF v_owner IS NULL OR v_owner IS DISTINCT FROM auth.uid() THEN
-        RAISE EXCEPTION 'Only the project''s owner can fund this stage.' USING ERRCODE = '42501';
-    END IF;
 
     SELECT ps.status, ps.name INTO v_status, v_name
       FROM projects.project_stages ps
@@ -810,25 +805,16 @@ DECLARE
     v_wallet uuid;
 BEGIN
     PERFORM org.fn_assert_adult(auth.uid());
-    IF NOT projects.has_project_access(p_project_id) THEN
-        RAISE EXCEPTION 'Not authorized for this project.' USING ERRCODE = '42501';
+    -- Funding moves the CLIENT's money into escrow, so project access is not the test — a freelancer on
+    -- the project has access too, and a business member holding `spend` may have none (BF23). The
+    -- funder predicate is: the owner of a personal project, or a holder of vault `spend` on the paying
+    -- business's wallet — the same capability the business checkout asks for (BB2).
+    IF NOT projects.fn_can_fund_project(p_project_id) THEN
+        RAISE EXCEPTION 'not_funder: only a member who can spend from the client''s wallet can fund this stage'
+            USING ERRCODE = 'PK403';
     END IF;
-
-    -- Funding moves the CLIENT's money into escrow, so project access is not enough: a freelancer on
-    -- the project has access too. For a business client the caller must be able to spend from the
-    -- paying business's wallet — the same capability the business checkout asks for. A project with no
-    -- client business is paid for by its owner as an INDIVIDUAL client (PRODUCT_SPEC §Escrow, Wallets &
-    -- Finance #5), and only that owner may fund it, from their own wallet.
     SELECT p.client_business_id, p.owner_user_id INTO v_payer, v_owner
       FROM projects.projects p WHERE p.id = p_project_id;
-    IF v_payer IS NOT NULL THEN
-        IF NOT finance.fn_owner_capability('business', v_payer, 'spend'::finance.vault_capability) THEN
-            RAISE EXCEPTION 'Only a member who can spend from the client''s wallet can fund this stage.'
-                USING ERRCODE = '42501';
-        END IF;
-    ELSIF v_owner IS NULL OR v_owner IS DISTINCT FROM auth.uid() THEN
-        RAISE EXCEPTION 'Only the project''s owner can fund this stage.' USING ERRCODE = '42501';
-    END IF;
 
     SELECT ps.status, ps.name, p.currency
     INTO v_status, v_stage_name, v_currency
@@ -957,20 +943,13 @@ DECLARE
     v_wallet uuid;
 BEGIN
     PERFORM org.fn_assert_adult(auth.uid());
-    IF NOT projects.has_project_access(p_project_id) THEN
-        RAISE EXCEPTION 'Not authorized for this project.' USING ERRCODE = '42501';
+    IF NOT projects.fn_can_fund_project(p_project_id) THEN
+        RAISE EXCEPTION 'not_funder: only a member who can spend from the client''s wallet can fund this ticket'
+            USING ERRCODE = 'PK403';
     END IF;
     SELECT p.client_business_id, p.owner_user_id, upper(COALESCE(p.currency, 'USD'))
       INTO v_payer, v_owner, v_currency
       FROM projects.projects p WHERE p.id = p_project_id;
-    IF v_payer IS NOT NULL THEN
-        IF NOT finance.fn_owner_capability('business', v_payer, 'spend'::finance.vault_capability) THEN
-            RAISE EXCEPTION 'Only a member who can spend from the client''s wallet can fund this ticket.'
-                USING ERRCODE = '42501';
-        END IF;
-    ELSIF v_owner IS NULL OR v_owner IS DISTINCT FROM auth.uid() THEN
-        RAISE EXCEPTION 'Only the project''s owner can fund this ticket.' USING ERRCODE = '42501';
-    END IF;
 
     SELECT tk.title, tk.text_description, tk.payment_status::text AS payment_status,
            tk.current_stage_id AS stage_id, tk.current_assignee_id AS assignee,
@@ -1183,6 +1162,7 @@ BEGIN
     IF NOT projects.can_review_project(p_project_id) THEN
         RAISE EXCEPTION 'Only the client/owner may cancel this stage.' USING ERRCODE = '42501';
     END IF;
+    PERFORM projects.fn_assert_business_actor(p_project_id, 'hire');
 
     IF p_tier IS NULL OR p_tier NOT IN (25, 50, 75) THEN
         RAISE EXCEPTION 'Fair-exit tier must be 25, 50, or 75 (got %).', p_tier
@@ -1565,6 +1545,7 @@ BEGIN
     IF NOT projects.can_review_project(p_project_id) THEN
         RAISE EXCEPTION 'Only the client/owner may approve this stage.' USING ERRCODE = '42501';
     END IF;
+    PERFORM projects.fn_assert_business_actor(p_project_id, 'hire');
 
     SELECT ps.name, ps.status, p.currency INTO v_stage_name, v_stage_status, v_currency
     FROM projects.project_stages ps

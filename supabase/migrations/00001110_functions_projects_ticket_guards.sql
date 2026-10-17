@@ -198,14 +198,24 @@ BEGIN
         IF NOT projects.can_review_project(OLD.project_id) THEN
             RAISE EXCEPTION 'Only the client/owner may delete a ticket.' USING ERRCODE = '42501';
         END IF;
+        -- Deleting a claimed or funded ticket pays its escrow out (fn_ticket_delete_protocol), which on
+        -- a business project is a `hire` decision (BB2). An unclaimed, unfunded ticket moves no money.
+        IF OLD.current_assignee_id IS NOT NULL
+            OR EXISTS (SELECT 1 FROM finance.escrows e WHERE e.ticket_id = OLD.id AND e.status = 'held') THEN
+            PERFORM projects.fn_assert_business_actor(OLD.project_id, 'hire');
+        END IF;
         RETURN OLD;
     END IF;
 
     IF NEW.status = 'completed'::public.ticket_status
-        AND OLD.status IS DISTINCT FROM 'completed'::public.ticket_status
-        AND NOT projects.can_review_project(NEW.project_id) THEN
-        RAISE EXCEPTION 'Only the client/owner may mark a ticket completed (confirm delivery).'
-            USING ERRCODE = '42501';
+        AND OLD.status IS DISTINCT FROM 'completed'::public.ticket_status THEN
+        IF NOT projects.can_review_project(NEW.project_id) THEN
+            RAISE EXCEPTION 'Only the client/owner may mark a ticket completed (confirm delivery).'
+                USING ERRCODE = '42501';
+        END IF;
+        -- Completion releases the ticket's escrow: every path (complete_ticket, move_ticket, a stage
+        -- approval) lands here, so this is the one place the `hire` rule cannot be skipped.
+        PERFORM projects.fn_assert_business_actor(NEW.project_id, 'hire');
     END IF;
     RETURN NEW;
 END;

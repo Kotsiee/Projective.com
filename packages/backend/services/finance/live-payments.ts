@@ -18,9 +18,10 @@ import {
 	VerificationCaseSchema,
 } from "@projective/types/finance";
 import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
+import { businessAuthorityRefusal } from "../../core/business-authority.ts";
 import { spendGateRefusal } from "../../core/spend-gate.ts";
 import { getServiceClient, getUserClient } from "../../core/supabase.ts";
-import type { FieldErrors } from "../ServiceResult.ts";
+import type { FailureDetails, FieldErrors } from "../ServiceResult.ts";
 import type { FundingPaymentInput } from "./funding-state.ts";
 
 /**
@@ -47,6 +48,8 @@ export interface DbRefusal {
 	status: number;
 	message: string;
 	errors?: FieldErrors;
+	/** A typed refusal's code for the screen to word (`details.reason`, e.g. BB2's `not_funder`). */
+	details?: FailureDetails;
 }
 
 /** Either the value a door returned, or the refusal it raised. */
@@ -111,6 +114,9 @@ export function refusalOf(
 	if (isAgeRestricted(error)) {
 		return { status: AGE_RESTRICTED.status, message: AGE_RESTRICTED.message };
 	}
+	// `not_funder:` — the card escrow lock asks the same funder predicate as fund_stage (BB2).
+	const authority = businessAuthorityRefusal(error);
+	if (authority) return authority;
 	// `kyb_required:` · `needs_approval:` — the card escrow lock's check of the business spend gate (BB3).
 	const spend = spendGateRefusal(error);
 	if (spend) return spend;

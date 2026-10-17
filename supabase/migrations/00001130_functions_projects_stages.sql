@@ -173,6 +173,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects;
 -- who owns the engagement and which business pays for it are the OWNER's to change — a business
 -- member re-pointing `client_business_id` would otherwise grant themselves the authority they used.
 -- A session with no user (the service role, seeds) is not a reviewer and passes through.
+-- Re-pointing the project at a business bills it to that business, which is create_project's
+-- `manage_projects` gate (BB2) — the owner must hold it there too, or the gate is one PATCH away.
+-- DEFINER so it can ask org.fn_member_can, which no client role may call.
 CREATE OR REPLACE FUNCTION projects.fn_guard_project_ownership()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -180,9 +183,17 @@ BEGIN
         RAISE EXCEPTION 'Only the project owner may change who owns or pays for the project.'
             USING ERRCODE = 'insufficient_privilege';
     END IF;
+    IF auth.uid() IS NOT NULL
+        AND NEW.client_business_id IS NOT NULL
+        AND NEW.client_business_id IS DISTINCT FROM OLD.client_business_id
+        AND NOT org.fn_member_can('business', NEW.client_business_id, 'manage_projects') THEN
+        RAISE EXCEPTION 'missing_permission: manage_projects'
+            USING ERRCODE = 'PK403',
+                  HINT = 'Ask the business owner or an admin for the "manage_projects" permission.';
+    END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, projects;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- ---------------------------------------------------------------------------------------------
 -- projects.create_stage(p_project_id, p_name, p_description, p_description_text, p_unit_price_cents,
@@ -662,6 +673,7 @@ BEGIN
     IF NOT projects.can_review_project(v_project_id) THEN
         RAISE EXCEPTION 'Only the client/owner may complete this stage.' USING ERRCODE = '42501';
     END IF;
+    PERFORM projects.fn_assert_business_actor(v_project_id, 'hire');
 
     -- Resolve the next required stage after the current one (by declared order).
     SELECT COALESCE((e->>'order')::int, 0) INTO v_current_ord
@@ -1434,6 +1446,8 @@ BEGIN
     IF NOT projects.can_manage_project_members(v_project) THEN
         RAISE EXCEPTION 'Only the project owner, an admin or a manager may accept requests.' USING ERRCODE = 'insufficient_privilege';
     END IF;
+    -- Accepting is hiring: on a business project it takes `hire` (or a delegate the project appointed).
+    PERFORM projects.fn_assert_business_actor(v_project, 'hire', true);
 
     -- Accepting seats the applicant on paid work, which a minor cannot take (Decision #190).
     PERFORM org.fn_assert_adult(v_app_user);
@@ -1643,6 +1657,7 @@ BEGIN
     IF NOT projects.can_manage_project_members(v_project) THEN
         RAISE EXCEPTION 'Only the project owner, an admin or a manager may decline requests.' USING ERRCODE = 'insufficient_privilege';
     END IF;
+    PERFORM projects.fn_assert_business_actor(v_project, 'hire', true);
 
     IF v_status <> 'pending' THEN
         RAISE EXCEPTION 'This application has already been %.', v_status USING ERRCODE = 'check_violation';
@@ -1945,6 +1960,7 @@ BEGIN
     IF NOT projects.can_manage_project_members(p_project_id) THEN
         RAISE EXCEPTION 'Only the project owner, an admin or a manager may invite people to it.' USING ERRCODE = 'insufficient_privilege';
     END IF;
+    PERFORM projects.fn_assert_business_actor(p_project_id, 'hire', true);
     IF v_project.status IN ('archived', 'cancelled', 'completed') THEN
         RAISE EXCEPTION 'This project is closed — nobody can be invited to it.' USING ERRCODE = 'check_violation';
     END IF;
@@ -1957,6 +1973,9 @@ BEGIN
     -- A delegate staffs the project; appointing another delegate is the owner's call.
     IF p_role IN ('admin', 'manager') AND NOT projects.can_review_project(p_project_id) THEN
         RAISE EXCEPTION 'Only the project owner may invite an admin or a manager.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF p_role IN ('admin', 'manager') THEN
+        PERFORM projects.fn_assert_business_actor(p_project_id, 'hire');
     END IF;
 
     -- The stage, when named, must be THIS project's. The FK only names the table.

@@ -1,6 +1,7 @@
 import type { FundPaidRevision, PaidRevisionFunding } from "@projective/types/finance";
 import { formatMoney } from "@projective/types/finance";
 import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
+import { businessAuthorityRefusal } from "../../core/business-authority.ts";
 import { spendGateRefusal } from "../../core/spend-gate.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
@@ -227,6 +228,10 @@ async function fundFromWallet(
 ): Promise<ServiceResult<PaidRevisionFunding>> {
 	const { data, error } = await projectsDb(actor).rpc("fund_paid_revision", { p_revision_id: facts.revision.id });
 	if (error) {
+		const authority = businessAuthorityRefusal(error);
+		if (authority) {
+			return fail(authority.status, { message: authority.message, details: authority.details });
+		}
 		const refused = walletFundingRefusal(error);
 		if (refused.status === 500) console.error("[revision-purchase:wallet]", error.code, error.message);
 		return fail(refused.status, { message: refused.message });

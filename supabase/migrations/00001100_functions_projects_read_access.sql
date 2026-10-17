@@ -148,6 +148,12 @@ BEGIN
         ) THEN
             RAISE EXCEPTION 'You are not an active member of this business' USING ERRCODE = '42501';
         END IF;
+        -- Billing a project to the business commits it as the buyer (BUSINESSES_AUDIT §4.2, BB2).
+        IF NOT org.fn_member_can('business', v_business_id, 'manage_projects') THEN
+            RAISE EXCEPTION 'missing_permission: manage_projects'
+                USING ERRCODE = 'PK403',
+                      HINT = 'Ask the business owner or an admin for the "manage_projects" permission.';
+        END IF;
     END IF;
 
     IF v_team_id IS NOT NULL THEN
@@ -981,6 +987,123 @@ AS $$
     );
 $$;
 
+-- #endregion
+
+-- #region 2b. One capability per act on a business project (BUSINESSES_AUDIT §4.2, BB2)
+-- `can_review_project` admits every active member of the paying business, which is right for what it
+-- gates — reading /details and /preview, commenting, the client side of the board (Decision #163) —
+-- and wrong for the acts that commit the business: hiring, approving work that releases its escrow,
+-- billing a new project to it, funding escrow. Those ask THESE predicates. Each answers only about
+-- auth.uid(); a personal project (no client business) keeps its owner-only behaviour.
+
+-- TRUE when the caller is the project's owner, or the project is billed to a business on which the
+-- caller holds `p_cap` (`org.fn_member_can`: role ∪ granted − revoked). The project's owner keeps the
+-- authority they created the project with whatever they hold on the business.
+CREATE OR REPLACE FUNCTION projects.fn_business_actor_can(p_project uuid, p_cap org.workspace_capability)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM projects.projects p
+        WHERE p.id = p_project
+            AND (
+                p.owner_user_id = auth.uid()
+                OR (p.client_business_id IS NOT NULL
+                    AND org.fn_member_can('business', p.client_business_id, p_cap))
+            )
+    );
+$$;
+
+-- The typed refusal behind `fn_business_actor_can`, called by each committing door AFTER its own
+-- authority check (which keeps that door's wording for a stranger). A no-op on a personal project
+-- (the door already demanded its owner) and for a session with no user (service role, cron, seeds).
+-- With `p_allow_delegate` a person-participant the project made `admin` / `manager` passes too: the
+-- staffing doors honour delegation (Decision #145), and only `hire` holders can appoint a delegate.
+-- Refuses `PK403 missing_permission: <cap>`.
+CREATE OR REPLACE FUNCTION projects.fn_assert_business_actor(
+    p_project uuid,
+    p_cap org.workspace_capability,
+    p_allow_delegate boolean DEFAULT false
+)
+RETURNS void
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RETURN;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM projects.projects p WHERE p.id = p_project AND p.client_business_id IS NOT NULL
+    ) THEN
+        RETURN;
+    END IF;
+    IF projects.fn_business_actor_can(p_project, p_cap) THEN
+        RETURN;
+    END IF;
+    IF p_allow_delegate AND EXISTS (
+        SELECT 1 FROM projects.project_participants pp
+        WHERE pp.project_id = p_project
+            AND pp.profile_type = 'freelancer'
+            AND pp.profile_id = auth.uid()
+            AND pp.role IN ('admin', 'manager')
+    ) THEN
+        RETURN;
+    END IF;
+    RAISE EXCEPTION 'missing_permission: %', p_cap
+        USING ERRCODE = 'PK403',
+              HINT = 'Ask the business owner or an admin for the "' || p_cap::text || '" permission.';
+END;
+$$;
+
+-- May the caller move the CLIENT's money into this project's escrow? A personal project is paid for
+-- by its owner from their own wallet (PRODUCT_SPEC §Escrow, Wallets & Finance #5), so only the owner.
+-- A business project is paid for from the business wallet in the project's currency, so the caller
+-- must hold vault `spend` on that wallet — the same grant the business checkout asks for; owning the
+-- project is not a licence to spend the business's money. Before the business has a wallet in that
+-- currency (the card path opens one at settlement) the answer is the capability the vault projects,
+-- `spend_funds`. `has_project_access` is deliberately not consulted: it is a read predicate granted to
+-- `anon` and admits the assignee. plpgsql because finance.fn_has_vault_capability is created later
+-- (00001210) and a `LANGUAGE sql` body is validated at CREATE.
+CREATE OR REPLACE FUNCTION projects.fn_can_fund_project(p_project uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_owner uuid;
+    v_business uuid;
+    v_currency text;
+    v_wallet uuid;
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RETURN false;
+    END IF;
+    SELECT p.owner_user_id, p.client_business_id, upper(COALESCE(p.currency, 'USD'))
+      INTO v_owner, v_business, v_currency
+      FROM projects.projects p WHERE p.id = p_project;
+    IF NOT FOUND THEN
+        RETURN false;
+    END IF;
+    IF v_business IS NULL THEN
+        RETURN v_owner = auth.uid();
+    END IF;
+    SELECT w.id INTO v_wallet
+      FROM finance.wallets w
+     WHERE w.owner_type = 'business' AND w.owner_id = v_business AND w.currency = v_currency;
+    IF FOUND THEN
+        RETURN finance.fn_has_vault_capability(v_wallet, auth.uid(), 'spend'::finance.vault_capability);
+    END IF;
+    RETURN org.fn_member_can('business', v_business, 'spend_funds');
+END;
+$$;
 -- #endregion
 
 -- #region 3. Guarded lifecycle state machine

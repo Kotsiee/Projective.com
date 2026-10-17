@@ -285,8 +285,9 @@ the ledger must be the one record nobody can rewrite, and the cache must be chec
 
 `projects.fund_stage`, `projects.approve_stage`, `projects.cancel_stage_fair_exit`,
 `projects.get_stage_finance` — all `SECURITY DEFINER`. `get_stage_finance` is guarded by
-`projects.has_project_access`; `fund_stage` adds the payer's `spend` capability; `approve_stage` and
-`cancel_stage_fair_exit` require `projects.can_review_project` and are `EXECUTE`-granted to
+`projects.has_project_access`; `fund_stage` asks the funder predicate `projects.fn_can_fund_project`
+(BB2); `approve_stage` and `cancel_stage_fair_exit` require `projects.can_review_project` (and, on a
+business project, the `hire` capability — BB2) and are `EXECUTE`-granted to
 `authenticated` only, because the assignee passes `has_project_access` and must not settle their own
 escrow ([projects/Functions.md](../projects/Functions.md#escrow-settlement-doors)).
 These are the client-facing Finance-tab actions; they call the `finance.*` engine above. (The 0309
@@ -295,11 +296,15 @@ read under RLS by the wallet surface, and its console reads through `org.get_wor
 
 **`projects.fund_stage` spends the client's money, so it checks the payer, not just project
 access** (2026-09-23, `00001150`). Project access alone admitted every participant — a hired
-freelancer could fund the client's escrow from the client's wallet. It now resolves the payer
-from `projects.projects.client_business_id` (NULL → the project's owner pays as an individual
-client from their personal wallet, and only the owner may — Decisions #126 / #165 (D)) and, for a
-business, requires `finance.fn_owner_capability('business', payer, 'spend')`, else `42501`
-("Only a member who can spend from the client's wallet can fund this stage."). Since BB3
+freelancer could fund the client's escrow from the client's wallet. Since BB2 the payer test
+is `projects.fn_can_fund_project` — the same predicate for `fund_stage`, `fund_ticket`,
+`fund_paid_revision`, `projects.get_stage_funding_quote` and the card escrow lock: with no
+`client_business_id` the project's owner pays as an individual client from their personal wallet, and
+only the owner may (Decisions #126 / #165 (D)); for a business, the caller must hold vault `spend` on
+the business wallet in the project's currency (or `spend_funds` before that wallet exists) — owning
+the project is not enough, and project access is no longer asked, so a spend-only business member who
+was refused before now funds (BUSINESSES_AUDIT BF23). Else `PK403` `not_funder: only a member who can
+spend from the client's wallet can fund …` ([projects/Functions.md](../projects/Functions.md#business-authority-one-capability-per-act-bb2)). Since BB3
 (BUSINESSES_AUDIT BF21) every funding door — `fund_stage` (the stage's total, ref
 `project_stages`), `fund_ticket` (`tickets`), `fund_paid_revision` (`revisions`) and the card escrow
 lock (a check at `begin_card_payment`, the real gate at settlement) — passes
@@ -675,7 +680,10 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
 1. **Idempotency first.** An order already carrying `p_idempotency_key` is returned with
    `replayed: true` and nothing is charged. A key belonging to an order the caller cannot see is
    refused (`42501`).
-2. **The basket** is locked `FOR UPDATE`; the caller needs `fn_can_manage_basket`; a business or
+2. **The basket** is locked `FOR UPDATE`; the caller needs `fn_can_manage_basket`; for a business
+   basket the caller must also hold the workspace `purchase` capability (`org.fn_member_can`; `PK403`
+   `missing_permission: purchase`, BB2 — `finance.place_on_account_order` asks the same right after its
+   own `fn_can_manage_basket`), since vault `spend` says whose money may move, not who may buy; a business or
    enterprise payer must be KYB-verified (`PK403`) — refused before re-pricing; the spend gate in
    step 6 re-asserts it.
 3. **The lines are exactly the submitted ones** — live, selected, not parked, not purchased — or the
@@ -1019,7 +1027,9 @@ the existing row with `replayed: true`.
 
 - **`wallet_topup`** — the caller's own wallet or a vault they may `add_funds` to; the currency must be
   the wallet's; the amount is the caller's.
-- **`escrow_lock`** — the amount is **never the caller's**: it is `projects.fn_stage_funding_need`'s
+- **`escrow_lock`** — the caller must pass `projects.fn_can_fund_project`, the funder predicate
+  `fund_stage` asks (`PK403 not_funder`, BB2; it replaced a `has_project_access` + payer check); the
+  amount is **never the caller's**: it is `projects.fn_stage_funding_need`'s
   `amount_cents` — every ticket in the stage that is `unpaid`/`needs_funding`, not finished and with
   no held escrow, **claimed or not**, at `COALESCE(ticket.unit_price_cents, stage.unit_price_cents)` —
   the one definition `projects.fund_stage` holds by (Decision #197). A stage with any unpriced ticket
