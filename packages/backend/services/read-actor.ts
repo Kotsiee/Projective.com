@@ -1,4 +1,5 @@
 import type { UserContext } from "@projective/types/auth";
+import type { PlanGatesOverride } from "@projective/types/finance";
 import type { CacheTenant } from "../core/cache.ts";
 
 /**
@@ -59,6 +60,12 @@ export interface ReadActor {
 	 * from this rather than from the cookie's mere presence.
 	 */
 	accessToken?: string;
+	/**
+	 * The Dev Context Switcher's business plan-gates override, set only by a development build's
+	 * route resolver. It reaches the database as a header and can only make a plan gate stricter, so a
+	 * forged one refuses nobody but its sender.
+	 */
+	planGatesOverride?: PlanGatesOverride;
 }
 
 /** The anonymous caller. Frozen and shared so "no session" is one identity, not a fresh object. */

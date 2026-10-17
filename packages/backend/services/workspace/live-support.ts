@@ -8,6 +8,7 @@ import {
 import { fail, type FieldErrors, type ServiceResult } from "../ServiceResult.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { isPayoutNotReady, payoutNotReadyRefusal } from "../../core/payout-gate.ts";
+import { planGateHeaders, planGateRefusal } from "../../core/plan-gate.ts";
 import { isTeamPersonaRefused, teamPersonaRefusal } from "../../core/team-persona-gate.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 
@@ -152,7 +153,7 @@ export function blockersFromDetail(detail: string | null | undefined): ArchiveBl
  * (with `details` `{ reason, blockers? }` for a {@link lifecycleReason} sub-code; `blockers` is the
  * archive blockers' codes, comma-joined) ·
  * a plan gate's `PK402 entitlement:` → 402 with `details` `{ reason: "entitlement", entitlement }` (the
- * entitlement key the plan lacks, from HINT).
+ * entitlement key the plan lacks — from `entitlement: <key>: …`, else HINT; `core/plan-gate.ts`).
  * A JWT failure is a 401. Anything else is an error this layer cannot explain to a reader: it is logged
  * in full and answered with a generic 500, never the database's own text.
  */
@@ -210,11 +211,10 @@ export function refusalFrom(
 			}
 			return fail(409, { message: reason });
 		}
-		case "PK402":
-			return fail(402, {
-				message: reason,
-				details: { reason: "entitlement", entitlement: error?.hint ?? null },
-			});
+		case "PK402": {
+			const refusal = planGateRefusal(error ?? {});
+			return fail(refusal.status, { message: refusal.message, details: refusal.details });
+		}
 		default:
 			console.error(`[workspace:${label}]`, code, message, error?.details ?? "");
 			return fail(500, { message: "That couldn't be completed. Try again in a moment." });
@@ -225,9 +225,12 @@ export function refusalFrom(
 
 // #region Calls
 
-/** The caller's user-scoped client. Every workspace call runs AS the caller, never as the service role. */
+/**
+ * The caller's user-scoped client. Every workspace call runs AS the caller, never as the service role.
+ * A development build's plan-gates override rides along as a header (`core/plan-gate.ts`).
+ */
 export function clientFor(actor: LiveActor): SupabaseClient {
-	return getUserClient(actor.accessToken);
+	return getUserClient(actor.accessToken, planGateHeaders(actor.planGatesOverride));
 }
 
 /**

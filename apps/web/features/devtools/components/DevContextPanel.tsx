@@ -28,6 +28,7 @@ import {
 	DEV_EMAIL_CONFIRMATIONS,
 	DEV_AGE_RESTRICTIONS,
 	DEV_PAYOUT_READINESS,
+	DEV_BUSINESS_PLAN_GATES,
 	DEV_OPERATOR_MODES,
 	DEV_OPERATOR_DESKS,
 	DEV_CATALOGUE_ANALYTICS,
@@ -770,6 +771,16 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.payoutReadiness}
 						disabled={!o.enabled}
 						onChange={(payoutReadiness) => patchDevContext({ payoutReadiness })}
+					/>
+				</Field>
+
+				<Field label="Business plan gates" hint="Business Pro 402">
+					<Segment
+						name="Business plan gates"
+						options={DEV_BUSINESS_PLAN_GATES}
+						value={o.businessPlanGates}
+						disabled={!o.enabled}
+						onChange={(businessPlanGates) => patchDevContext({ businessPlanGates })}
 					/>
 				</Field>
 

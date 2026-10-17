@@ -646,6 +646,20 @@ BEGIN
         SELECT count(*) INTO v_count FROM org.enterprise_members m
         WHERE m.enterprise_id = p_subject_id AND m.status = 'active';
 
+    -- A business's managers (Decision #230 (b)): every active member but the owner who sits as an
+    -- admin or whose EFFECTIVE capabilities hold `manage_projects` — a per-member grant counts, or the
+    -- override would be a way round the cap — plus the pending, unexpired invitations that offer such a
+    -- role, so an over-invite cannot have its acceptances refused (the team seat rule).
+    ELSIF p_key = 'business_managers' THEN
+        SELECT count(*) INTO v_count FROM org.business_members m
+        WHERE m.business_id = p_subject_id AND m.status = 'active'
+          AND org.fn_business_member_is_manager(p_subject_id, m.user_id);
+        v_count := v_count + (
+            SELECT count(*) FROM org.org_invitations i
+            WHERE i.business_id = p_subject_id AND i.status = 'pending'
+              AND (i.expires_at IS NULL OR i.expires_at > now())
+              AND org.fn_business_role_is_manager(p_subject_id, i.business_role_id));
+
     ELSIF p_key = 'enterprise_businesses' THEN
         -- Businesses are not yet FK-linked to an enterprise (Phase 2); counted as 0 until they are.
         v_count := 0;
@@ -700,3 +714,144 @@ BEGIN
     RETURN GREATEST(v_limit - finance.fn_footprint_usage (p_subject_type, p_subject_id, p_key), 0);
 END;
 $$;
+-- #endregion
+
+-- #region 7. Business plan gates — enforced behind one switch that ships ON (Decision #230 (e))
+-- Business Pro's paid acts — monthly invoicing (`intervaled_invoicing`), per-member ceilings and an
+-- approval threshold (`pooled_wallet_full`) and managers past the free plan's (`business_managers`) —
+-- are refused without the entitlement, `PK402` with MESSAGE `entitlement: <key>: <reason>` and the key
+-- again in HINT. One `security.platform_params` switch, `business_plan_gates_enforced`, decides
+-- whether they refuse at all. It is SEEDED TRUE and set per environment — deliberately the reverse of
+-- the fail-open family (`proposal_allowance_enforced`, `footprint_caps_enforced`,
+-- `storage_quota_enforced`, all seeded false) — and a missing row reads as on.
+--
+-- The Dev Context Switcher's `businessPlanGates` axis reaches these functions as the request header
+-- `x-pj-dev-plan-gates` (PostgREST's `request.headers`), which the app sends only in development. It
+-- can only make a gate STRICTER — `enforced` turns the gates on where the environment has them off,
+-- `free` also resolves the business as on Business Free — so honouring it from any caller grants
+-- nothing: a client who sends it only refuses itself.
+
+-- The development simulation the request carries: 'enforced', 'free', or NULL for none.
+CREATE OR REPLACE FUNCTION finance.fn_dev_plan_gates()
+RETURNS text
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT CASE lower(COALESCE(
+               (NULLIF(pg_catalog.current_setting('request.headers', true), '')::json) ->> 'x-pj-dev-plan-gates',
+               ''))
+        WHEN 'enforced' THEN 'enforced'
+        WHEN 'free' THEN 'free'
+    END;
+$$;
+
+-- Do the business plan gates refuse here? The switch (absent = on), or a development simulation.
+CREATE OR REPLACE FUNCTION finance.fn_business_plan_gates_enforced()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT finance.fn_dev_plan_gates() IS NOT NULL
+        OR COALESCE(
+               (SELECT (p.value #>> '{}')::boolean FROM security.platform_params p
+                 WHERE p.key = 'business_plan_gates_enforced'),
+               true);
+$$;
+
+-- The business's ceiling for a limit-kind gate (NULL = unlimited): its live plan's, or Business Free's
+-- under the `free` simulation (grants ignored — the simulation is of the bare free plan).
+CREATE OR REPLACE FUNCTION finance.fn_business_gate_limit(p_business uuid, p_key finance.entitlement_key)
+RETURNS integer
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_ent finance.plan_entitlements%ROWTYPE;
+BEGIN
+    IF finance.fn_dev_plan_gates() IS DISTINCT FROM 'free' THEN
+        RETURN finance.fn_effective_limit('business', p_business, p_key);
+    END IF;
+    SELECT e.* INTO v_ent
+      FROM finance.plan_entitlements e
+      JOIN finance.plans p ON p.id = e.plan_id
+     WHERE p.audience = 'business'::finance.plan_audience AND p.is_default AND e.entitlement_key = p_key
+     LIMIT 1;
+    IF NOT FOUND THEN
+        RETURN 0;
+    END IF;
+    RETURN CASE WHEN v_ent.is_unlimited THEN NULL ELSE COALESCE(v_ent.limit_value, 0) END;
+END;
+$$;
+
+-- The business's answer for a flag-kind gate: its live plan's (and grants), or Business Free's under
+-- the `free` simulation.
+CREATE OR REPLACE FUNCTION finance.fn_business_gate_flag(p_business uuid, p_key finance.entitlement_key)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT CASE
+        WHEN finance.fn_dev_plan_gates() IS DISTINCT FROM 'free'
+            THEN finance.fn_has_entitlement('business', p_business, p_key)
+        ELSE COALESCE(
+            (SELECT e.flag_value
+               FROM finance.plan_entitlements e
+               JOIN finance.plans p ON p.id = e.plan_id
+              WHERE p.audience = 'business'::finance.plan_audience AND p.is_default
+                AND e.entitlement_key = p_key
+              LIMIT 1),
+            false)
+    END;
+$$;
+
+-- Refuse a paid act a business's plan does not include. A flag gate (`intervaled_invoicing`,
+-- `pooled_wallet_full`) refuses outright; `business_managers` refuses when the managers counted
+-- (finance.fn_footprint_usage, invitations included) plus `p_extra` would pass the ceiling. A no-op
+-- while the switch is off.
+CREATE OR REPLACE FUNCTION finance.fn_assert_business_entitlement(
+    p_business uuid,
+    p_key finance.entitlement_key,
+    p_extra integer DEFAULT 0
+)
+RETURNS void
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_limit integer;
+BEGIN
+    IF NOT finance.fn_business_plan_gates_enforced() THEN
+        RETURN;
+    END IF;
+    IF p_key = 'business_managers' THEN
+        v_limit := finance.fn_business_gate_limit(p_business, p_key);
+        IF v_limit IS NULL
+           OR finance.fn_footprint_usage('business', p_business, p_key) + COALESCE(p_extra, 0) <= v_limit THEN
+            RETURN;
+        END IF;
+        RAISE EXCEPTION USING ERRCODE = 'PK402', HINT = 'business_managers',
+            MESSAGE = 'entitlement: business_managers: this business''s plan allows ' || v_limit
+                || CASE WHEN v_limit = 1 THEN ' manager' ELSE ' managers' END
+                || ' (admins and roles that manage projects), and they are all taken or offered — upgrade to Business Pro for more';
+    END IF;
+    IF finance.fn_business_gate_flag(p_business, p_key) THEN
+        RETURN;
+    END IF;
+    RAISE EXCEPTION USING ERRCODE = 'PK402', HINT = p_key::text,
+        MESSAGE = 'entitlement: ' || p_key::text || ': ' || CASE p_key
+            WHEN 'intervaled_invoicing' THEN 'monthly invoicing is part of Business Pro — upgrade the business to settle on a monthly statement'
+            WHEN 'pooled_wallet_full' THEN 'spending limits and an approval threshold are part of Business Pro — upgrade the business to set them'
+            ELSE 'this is part of Business Pro — upgrade the business to use it'
+        END;
+END;
+$$;
+-- #endregion

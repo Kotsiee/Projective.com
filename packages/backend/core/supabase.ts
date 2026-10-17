@@ -132,15 +132,19 @@ export function embeddingsStatus(req?: Request): EmbeddingsStatus {
 
 /**
  * An RLS-scoped client bound to the caller's access token. Every query runs as that user, so their
- * policies decide what they can see/do. Pass the JWT lifted from the session cookie.
+ * policies decide what they can see/do. Pass the JWT lifted from the session cookie. `headers` adds
+ * request headers PostgREST exposes to SQL as `request.headers` (a development override's only road).
  */
-export function getUserClient(accessToken: string): SupabaseClient {
+export function getUserClient(
+	accessToken: string,
+	headers: Record<string, string> = {},
+): SupabaseClient {
 	const env = serverEnv();
 	if (!env.supabaseUrl || !env.supabaseAnonKey) {
 		throw new Error("Supabase is not configured (SUPABASE_URL / SUPABASE_ANON_KEY).");
 	}
 	return createClient(env.supabaseUrl, env.supabaseAnonKey, {
-		global: { headers: { Authorization: `Bearer ${accessToken}` } },
+		global: { headers: { ...headers, Authorization: `Bearer ${accessToken}` } },
 		auth: { persistSession: false, autoRefreshToken: false },
 	});
 }

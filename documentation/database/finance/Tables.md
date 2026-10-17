@@ -314,6 +314,12 @@ The **PAID ladder**. Zod SSOT: `packages/types/finance/plans.ts` + `entitlements
 | `promoted_placement`      | —         | ✅              | `intervaled_invoicing`     | —             | ✅           |
 | `storage_megabytes`       | 25600     | 512000          | `storage_megabytes`        | 25600         | 512000       |
 
+The three Business Pro levers `business_managers`, `pooled_wallet_full` and `intervaled_invoicing`
+are **enforced** (`PK402`) behind `security.platform_params.business_plan_gates_enforced`, seeded
+`true` (Decision #230 (e)): managers past the plan's (admins and holders of `manage_projects`,
+pending invitations included), a spending ceiling or an approval threshold, and monthly invoicing.
+Where each is refused: [Functions.md § Business plan gates](Functions.md#-business-plan-gates-00001220-7-decision-230-b-e).
+
 The Enterprise tier is unlimited on seats/businesses/departments/projects and adds `sso_enabled`,
 `api_access`, `audit_log_retention_days` (730), `dedicated_support` and `negotiated_platform_fee`.
 `enterprise_free` carries 25600 MiB of draft-tier storage; the paid `enterprise` plan is the

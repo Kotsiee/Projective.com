@@ -788,6 +788,17 @@ namespace under a `pg_advisory_xact_lock` on the handle.
 - **`fn_assert_seat(kind, entity, extra)`** — a team's seat cap is its plan's `team_seats`
   entitlement (`NULL` = unlimited; a business has none). Active members **plus pending, unexpired
   invitations** count, or an owner could over-invite and have acceptances refused. `55000` when full.
+- **`fn_business_role_is_manager(business, role)`** / **`fn_business_member_is_manager(business,
+  user)`** — does a role, or an active member's effective capabilities, count against the business's
+  `business_managers` cap (Decision #230 (b)): admin-ranked, or holding `manage_projects`; never the
+  owner. Internal. A business's manager cap is not a seat cap: it is the plan gate
+  `finance.fn_assert_business_entitlement(business, 'business_managers', extra)`, `PK402`, behind
+  `business_plan_gates_enforced` — checked by `invite_workspace_member` (a manager's role, +1),
+  `respond_to_workspace_invitation` (accepting one, +0 — the invitation is counted),
+  `update_workspace_member` (a change that makes the member a manager) and `upsert_workspace_role`
+  (an edit that adds managers). See [`../finance/Functions.md`](../finance/Functions.md) § Business
+  plan gates. `update_workspace_member` also refuses a non-null spend ceiling without
+  `pooled_wallet_full`.
 - **`invite_workspace_member(kind, entity, handle, email, role, note) → {id}`** — `authenticated`,
   needs `invite_members`. Exactly one of `handle` / `email`; the entity must not be archived; the role
   must be a live role of THIS entity, never owner-ranked ("ownership moves only by transfer"), and —

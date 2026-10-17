@@ -531,9 +531,14 @@ lacks the template's `split_template_<type>` flag (§5).
 
 **Business Pro gates are enforced** (Decision #230 (e)): monthly intervaled invoicing and the full
 pooled wallet (per-member caps, an approval threshold) refuse a Business without Business Pro.
-Unlike the fail-open family in §16.2, the switch over them is seeded **on**, and each environment
-sets its own (being built: `architecture/BUSINESSES_BUILD_PROMPTS.md` BB7). The manager cap counts
-admins plus every member whose role may manage projects (Decision #230 (b)).
+Unlike the fail-open family in §16.2, the switch over them —
+`security.platform_params.business_plan_gates_enforced` — is seeded **on**, and each environment
+sets its own; off, nothing is refused. The manager cap (`business_managers`, 2 free / 15 Pro) counts
+admins plus every member whose role or own grant may manage projects, and the pending invitations
+that offer such a role (Decision #230 (b)); a downgrade removes nobody, it refuses the next manager.
+Clearing a cap or a threshold, and returning to per-transaction invoicing, are never refused. Each
+refusal is `PK402` naming the entitlement, which the console answers with an upgrade notice
+(`database/finance/Functions.md` § Business plan gates).
 
 A team must hold **â‰¥ 2 members** before it may send proposals.
 

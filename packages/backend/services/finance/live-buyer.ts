@@ -9,6 +9,7 @@ import type {
 } from "@projective/types/finance";
 import { buyerDetailsComplete, destinationEmail, EMPTY_ADDRESS } from "@projective/types/finance";
 import { evaluateSpend } from "@projective/types/workspace";
+import { isPlanGateRefusal, planGateHeaders, planGateRefusal } from "../../core/plan-gate.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import type { MoneyProjector } from "./commerce-money.ts";
@@ -333,7 +334,8 @@ export async function saveBuyerDetails(
 				"Only a member who can spend from this account can change its billing details. Switch to your personal account to buy this yourself.",
 		};
 	}
-	const db = getUserClient(actor.accessToken).schema("finance");
+	const headers = planGateHeaders(actor.planGatesOverride);
+	const db = getUserClient(actor.accessToken, headers).schema("finance");
 
 	const current = invoicingOf(owner);
 	const wantsMode = input.invoicingMode ?? current.mode;
@@ -351,6 +353,11 @@ export async function saveBuyerDetails(
 		if (terms.error) {
 			if (terms.error.code === "42501" || terms.error.code === "22023") {
 				return { ok: false, status: 403, message: terms.error.message.slice(0, 200) };
+			}
+			// Monthly terms are Business Pro's (`intervaled_invoicing`): the upgrade, not a failure.
+			if (isPlanGateRefusal(terms.error)) {
+				const gate = planGateRefusal(terms.error);
+				return { ok: false, status: gate.status, message: gate.message };
 			}
 			throw new Error(`finance.set_invoicing_terms failed: ${terms.error.message}`);
 		}

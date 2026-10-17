@@ -278,6 +278,15 @@ export type DevAgeRestriction = "auto" | "minor" | "adult";
 export type DevPayoutReadiness = "auto" | "not_ready";
 
 /**
+ * The business plan gates (Decision #230 (e)): `auto` lets the environment's
+ * `business_plan_gates_enforced` switch decide; `enforced` turns the gates on where it is off; `free`
+ * also resolves every business as on Business Free, so a Pro business meets each upgrade notice
+ * (`PK402` → 402). Reaches the database through the `pj.dev.plan-gates` cookie, which only a
+ * development build reads, and a request header that can only make a gate stricter.
+ */
+export type DevBusinessPlanGates = "auto" | "enforced" | "free";
+
+/**
  * Operator mode (`org.users_public.is_operator`, Decision #228 (A)): `auto` follows the session token's
  * `isOperator` claim; `on` acts as a freelancer in operator mode, so Teams leave the chrome, the
  * dashboard guard sends `/teams*` home and the team create route answers the persona 403; `off` skips
@@ -467,6 +476,8 @@ export interface DevSeamState {
 	ageRestriction?: DevAgeRestriction;
 	/** The simulated earning gate. Optional like `walletAurora`; absent reads as `auto`. */
 	payoutReadiness?: DevPayoutReadiness;
+	/** The simulated business plan gates. Optional like `walletAurora`; absent reads as `auto`. */
+	businessPlanGates?: DevBusinessPlanGates;
 	/** The simulated operator mode. Optional like `walletAurora`; absent reads as `auto`. */
 	operatorMode?: DevOperatorMode;
 	/** The operator-desk preview. Optional like `walletAurora`; absent reads as `auto`. */
@@ -635,6 +646,7 @@ const EMAIL_CONFIRMATIONS: readonly DevEmailConfirmation[] = [
 ];
 const AGE_RESTRICTIONS: readonly DevAgeRestriction[] = ["auto", "minor", "adult"];
 const PAYOUT_READINESS: readonly DevPayoutReadiness[] = ["auto", "not_ready"];
+const BUSINESS_PLAN_GATES: readonly DevBusinessPlanGates[] = ["auto", "enforced", "free"];
 const OPERATOR_MODES: readonly DevOperatorMode[] = ["auto", "on", "off"];
 const OPERATOR_DESKS: readonly DevOperatorDesk[] = ["auto", "queue", "empty"];
 const CATALOGUE_ANALYTICS: readonly DevCatalogueAnalytics[] = ["auto", "empty", "sparse", "rich"];
@@ -709,6 +721,7 @@ export function readDevSeam(): DevSeamState | null {
 		emailConfirmation: coerce(ds.devEmailConfirmation, EMAIL_CONFIRMATIONS, "auto"),
 		ageRestriction: coerce(ds.devAgeRestriction, AGE_RESTRICTIONS, "auto"),
 		payoutReadiness: coerce(ds.devPayoutReadiness, PAYOUT_READINESS, "auto"),
+		businessPlanGates: coerce(ds.devBusinessPlanGates, BUSINESS_PLAN_GATES, "auto"),
 		operatorMode: coerce(ds.devOperator, OPERATOR_MODES, "auto"),
 		operatorDesk: coerce(ds.devOperatorDesk, OPERATOR_DESKS, "auto"),
 		catalogueAnalytics: coerce(ds.devCatalogueAnalytics, CATALOGUE_ANALYTICS, "auto"),

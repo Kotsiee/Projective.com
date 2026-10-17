@@ -198,6 +198,19 @@ INSERT INTO security.platform_params (key, value, description) VALUES
         'When false (the default), finance.simulate_wallet_transaction refuses every call. When true it lets an authenticated caller move REAL balances between wallets they control, for ledger debugging. Fail-closed; flipping it is a human decision and must stay false wherever real money is held.')
 ON CONFLICT (key) DO NOTHING;
 
+-- finance: the business plan gates (00001220 finance.fn_assert_business_entitlement, Decision #230 (e)).
+--
+-- ⚠️ SEEDED TRUE — deliberately the REVERSE of the fail-open family above (`proposal_allowance_enforced`,
+-- `footprint_caps_enforced`, `storage_quota_enforced`). The product owner ruled the Business Pro gates
+-- enforced now, "for development testing and future proofing", behind one switch set per
+-- environment. While true, monthly invoicing (`intervaled_invoicing`), a spending ceiling or an
+-- approval threshold (`pooled_wallet_full`) and managers past the plan's (`business_managers`) are
+-- refused PK402 without Business Pro; set false, nothing is refused. A missing row reads as true.
+INSERT INTO security.platform_params (key, value, description) VALUES
+    ('business_plan_gates_enforced', 'true'::jsonb,
+        'When true (the default), a business without Business Pro is refused PK402 for monthly invoicing (intervaled_invoicing), spending ceilings or an approval threshold (pooled_wallet_full) and managers past its plan (business_managers). Set false per environment to refuse nothing. Seeded on, the reverse of the fail-open *_enforced family (Decision #230 (e)).')
+ON CONFLICT (key) DO NOTHING;
+
 
 -- from the service-booking pass (Add to Projects / the 30-day draft sweep)
 INSERT INTO security.platform_params (key, value, description) VALUES

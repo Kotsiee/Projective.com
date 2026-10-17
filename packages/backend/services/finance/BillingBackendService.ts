@@ -8,6 +8,7 @@ import {
 	InvoiceStatus,
 	type UpdateBillingInput,
 } from "@projective/types/finance";
+import { planGateHeaders, planGateRefusal } from "../../core/plan-gate.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
@@ -166,9 +167,14 @@ async function readView(accessToken: string, businessId: string): Promise<Busine
 }
 
 /** A database refusal in the reader's words, by the SQLSTATE the billing doors raise. */
-function refusal(error: { code?: string; message: string }): Result<never> {
+function refusal(error: { code?: string; message: string; hint?: string | null }): Result<never> {
 	const message = error.message.replace(/^[a-zA-Z]+: /, "").slice(0, 200);
 	switch (error.code) {
+		case "PK402": {
+			// A Business Pro gate (monthly invoicing): a 402 naming the entitlement, for the upgrade notice.
+			const gate = planGateRefusal(error);
+			return fail(gate.status, { message: gate.message, details: gate.details }) as Result<never>;
+		}
 		case "42501":
 		case "PK403":
 			return fail(403, { message }) as Result<never>;
@@ -209,7 +215,8 @@ export class BillingBackendService {
 		try {
 			const current = await readView(actor.accessToken, input.businessId);
 			if (!current) return NOT_FOUND as Result<BusinessBillingView>;
-			const finance = getUserClient(actor.accessToken).schema("finance");
+			const finance = getUserClient(actor.accessToken, planGateHeaders(actor.planGatesOverride))
+				.schema("finance");
 			if (input.invoicingMode !== undefined || input.billingDay !== undefined) {
 				const { error } = await finance.rpc("set_invoicing_terms", {
 					p_owner_type: "business",

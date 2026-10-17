@@ -1158,6 +1158,11 @@ BEGIN
         RAISE EXCEPTION 'Business not found' USING ERRCODE = 'P0002';
     END IF;
     PERFORM org.fn_assert_business_active(p_owner_id);
+    -- Monthly settlement is Business Pro's (`intervaled_invoicing`, Decision #230 (e)); going back to
+    -- per-transaction never is.
+    IF p_mode = 'intervaled_monthly' THEN
+        PERFORM finance.fn_assert_business_entitlement(p_owner_id, 'intervaled_invoicing'::finance.entitlement_key);
+    END IF;
     IF p_mode = 'intervaled_monthly' AND v_kyb IS DISTINCT FROM 'verified' THEN
         RAISE EXCEPTION 'Complete business verification (KYB) to settle on a monthly statement'
             USING ERRCODE = '42501';
@@ -1179,7 +1184,8 @@ $$;
 COMMENT ON FUNCTION finance.set_invoicing_terms(text, uuid, text, integer) IS
 'Set a business''s invoicing terms (per-transaction or a monthly statement on a day 1-28). Requires
 manage_billing on the business and an active business (55000 business_not_active); the monthly mode
-additionally requires KYB verification.';
+additionally requires the intervaled_invoicing entitlement (PK402, behind business_plan_gates_enforced)
+and KYB verification.';
 -- #endregion
 
 -- #region 11. Wallet orders — paying for a basket from the Projective wallet (2026-09-23)
@@ -2552,6 +2558,12 @@ BEGIN
         IF v_threshold IS NOT NULL AND v_threshold < 1 THEN
             RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'approvalThresholdMinor: a threshold is at least one minor unit — clear it to turn approvals off';
         END IF;
+        -- A threshold and per-member ceilings are the full pooled wallet, Business Pro's
+        -- (`pooled_wallet_full`, Decision #230 (e); finance-model §16.1 — basic mode is the shared
+        -- wallet without caps). Clearing either is never refused, so a downgraded business can lift them.
+        IF v_threshold IS NOT NULL THEN
+            PERFORM finance.fn_assert_business_entitlement(p_business_id, 'pooled_wallet_full'::finance.entitlement_key);
+        END IF;
         UPDATE finance.wallets SET approval_threshold_cents = v_threshold WHERE id = v_wallet;
     END IF;
 
@@ -2603,6 +2615,9 @@ BEGIN
                 v_per_tx := NULLIF(l->>'per_transaction_minor', '')::bigint;
                 IF (v_limit IS NOT NULL AND v_limit < 0) OR (v_per_tx IS NOT NULL AND v_per_tx < 0) THEN
                     RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'limits: a limit cannot be negative';
+                END IF;
+                IF v_limit IS NOT NULL OR v_per_tx IS NOT NULL THEN
+                    PERFORM finance.fn_assert_business_entitlement(p_business_id, 'pooled_wallet_full'::finance.entitlement_key);
                 END IF;
                 INSERT INTO finance.spending_limits (wallet_id, member_user_id, cap_cents, per_transaction_cents)
                 VALUES (v_wallet, r.user_id, v_limit, v_per_tx)

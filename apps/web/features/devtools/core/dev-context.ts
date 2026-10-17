@@ -23,7 +23,11 @@ import { encodeLandingSim, LANDING_SIM_COOKIE } from "@features/projects/core/la
 import { DISCOVERY_SIM_COOKIE, encodeDiscoverySim } from "@features/explore/core/discovery-sim.ts";
 import { EMBEDDINGS_OVERRIDE_COOKIE } from "@projective/types/explore";
 import { AGE_OVERRIDE_COOKIE, OPERATOR_MODE_OVERRIDE_COOKIE } from "@projective/types/auth";
-import { OPERATOR_DESK_OVERRIDE_COOKIE, PAYOUT_OVERRIDE_COOKIE } from "@projective/types/finance";
+import {
+	OPERATOR_DESK_OVERRIDE_COOKIE,
+	PAYOUT_OVERRIDE_COOKIE,
+	PLAN_GATES_OVERRIDE_COOKIE,
+} from "@projective/types/finance";
 import { logger } from "@web/utils/logger.ts";
 import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/storage-keys.ts";
 import {
@@ -53,6 +57,7 @@ import {
 	type DevEmailConfirmation,
 	type DevAgeRestriction,
 	type DevPayoutReadiness,
+	type DevBusinessPlanGates,
 	type DevOperatorMode,
 	type DevOperatorDesk,
 	type DevCatalogueAnalytics,
@@ -117,6 +122,7 @@ export type {
 	DevEmailConfirmation,
 	DevAgeRestriction,
 	DevPayoutReadiness,
+	DevBusinessPlanGates,
 	DevOperatorMode,
 	DevOperatorDesk,
 	DevCatalogueAnalytics,
@@ -355,6 +361,13 @@ export interface DevOverrides {
 	 */
 	payoutReadiness: DevPayoutReadiness;
 	/**
+	 * The business plan gates (Decision #230 (e)): let the environment's `business_plan_gates_enforced`
+	 * switch decide, enforce them where it is off, or also act as Business Free — so a Pro business meets
+	 * the PK402 upgrade refusal for monthly invoicing, spending caps and managers past two. Database-side,
+	 * through the `pj.dev.plan-gates` cookie and a header that can only make a gate stricter.
+	 */
+	businessPlanGates: DevBusinessPlanGates;
+	/**
 	 * Operator mode (Decision #228 (A)): follow the token's `isOperator` claim, act as a freelancer in
 	 * operator mode (Teams leave the chrome, `/teams*` is sent home, team create answers the persona
 	 * 403), or skip those mirrors so a real operator meets the database's own refusal. Server-side,
@@ -440,6 +453,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	emailConfirmation: "auto",
 	ageRestriction: "auto",
 	payoutReadiness: "auto",
+	businessPlanGates: "auto",
 	operatorMode: "auto",
 	operatorDesk: "auto",
 	catalogueAnalytics: "auto",
@@ -763,6 +777,16 @@ export const DEV_PAYOUT_READINESS: ReadonlyArray<DevOption<DevPayoutReadiness>> 
 	{ value: "not_ready", label: "Not ready" },
 ];
 
+/**
+ * Business plan-gate positions (Decision #230 (e)). `Environment` follows the database's
+ * `business_plan_gates_enforced` switch; there is no "off" — an override can only be stricter.
+ */
+export const DEV_BUSINESS_PLAN_GATES: ReadonlyArray<DevOption<DevBusinessPlanGates>> = [
+	{ value: "auto", label: "Environment" },
+	{ value: "enforced", label: "Enforced" },
+	{ value: "free", label: "Enforced, as Business Free" },
+];
+
 /** Operator-mode positions (Decision #228 (A)). `Token` follows the session's `isOperator` claim. */
 export const DEV_OPERATOR_MODES: ReadonlyArray<DevOption<DevOperatorMode>> = [
 	{ value: "auto", label: "Token" },
@@ -919,6 +943,9 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devAgeRestriction;
 		if (next.payoutReadiness !== "auto") root.dataset.devPayoutReadiness = next.payoutReadiness;
 		else delete root.dataset.devPayoutReadiness;
+		if (next.businessPlanGates !== "auto") {
+			root.dataset.devBusinessPlanGates = next.businessPlanGates;
+		} else delete root.dataset.devBusinessPlanGates;
 		if (next.operatorMode !== "auto") root.dataset.devOperator = next.operatorMode;
 		else delete root.dataset.devOperator;
 		if (next.operatorDesk !== "auto") root.dataset.devOperatorDesk = next.operatorDesk;
@@ -980,6 +1007,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devEmailConfirmation;
 		delete root.dataset.devAgeRestriction;
 		delete root.dataset.devPayoutReadiness;
+		delete root.dataset.devBusinessPlanGates;
 		delete root.dataset.devOperator;
 		delete root.dataset.devOperatorDesk;
 		delete root.dataset.devCatalogueAnalytics;
@@ -994,6 +1022,7 @@ function reflect(next: DevOverrides): void {
 	writeEmbeddingsCookie(next);
 	writeAgeCookie(next);
 	writePayoutCookie(next);
+	writePlanGatesCookie(next);
 	writeOperatorModeCookie(next);
 	writeOperatorDeskCookie(next);
 	globalThis.dispatchEvent?.(new CustomEvent(DEV_SEAM_EVENT, { detail: next }));
@@ -1013,6 +1042,13 @@ function writePayoutCookie(next: DevOverrides): void {
 	document.cookie = next.enabled && next.payoutReadiness !== "auto"
 		? `${PAYOUT_OVERRIDE_COOKIE}=${next.payoutReadiness}; path=/; samesite=lax`
 		: `${PAYOUT_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}
+
+/** Mirror the business plan-gates axis into `pj.dev.plan-gates` — the API resolver forwards it as a header. */
+function writePlanGatesCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.businessPlanGates !== "auto"
+		? `${PLAN_GATES_OVERRIDE_COOKIE}=${next.businessPlanGates}; path=/; samesite=lax`
+		: `${PLAN_GATES_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 /** Mirror the operator-mode axis into `pj.dev.operator-mode` — the dashboard guard's and team create's. */

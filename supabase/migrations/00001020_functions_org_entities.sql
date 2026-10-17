@@ -1531,6 +1531,42 @@ BEGIN
 END;
 $$;
 
+-- Does holding this business role make a member a MANAGER — the seat `business_managers` caps
+-- (Decision #230 (b))? An admin-ranked role, or one whose capabilities hold `manage_projects`; never
+-- the owner's, who is not counted.
+CREATE OR REPLACE FUNCTION org.fn_business_role_is_manager(p_business uuid, p_role uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE((
+        SELECT r.base_preset <> 'owner'
+               AND (r.base_preset = 'admin' OR 'manage_projects'::org.workspace_capability = ANY (r.capabilities))
+          FROM org.fn_role_of_entity('business', p_business, p_role) r
+    ), false);
+$$;
+
+-- Is this active business member counted as a manager now — their role, or a per-member grant of
+-- `manage_projects`? The predicate finance.fn_footprint_usage('business_managers') counts by.
+CREATE OR REPLACE FUNCTION org.fn_business_member_is_manager(p_business uuid, p_user uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE((
+        SELECT m.role <> 'owner'
+               AND (m.role = 'admin'
+                    OR 'manage_projects'::org.workspace_capability
+                       = ANY (org.fn_member_capabilities('business', p_business, p_user)))
+          FROM org.business_members m
+         WHERE m.business_id = p_business AND m.user_id = p_user AND m.status = 'active'
+    ), false);
+$$;
+
 CREATE OR REPLACE FUNCTION org.invite_workspace_member(
     p_kind text,
     p_entity uuid,
@@ -1616,6 +1652,10 @@ BEGIN
     END IF;
 
     PERFORM org.fn_assert_seat(p_kind, p_entity, 1);
+    -- Offering a manager's role takes one of the plan's manager seats (Decision #230 (b)).
+    IF p_kind = 'business' AND org.fn_business_role_is_manager(p_entity, p_role) THEN
+        PERFORM finance.fn_assert_business_entitlement(p_entity, 'business_managers'::finance.entitlement_key, 1);
+    END IF;
 
     BEGIN
         INSERT INTO org.org_invitations (
@@ -1735,6 +1775,11 @@ BEGIN
     END IF;
     -- This invitation already holds one of the counted seats, so it adds none.
     PERFORM org.fn_assert_seat(v_kind, v_entity, 0);
+    -- Likewise a manager's role: the pending invitation is counted, so the check adds nothing — it
+    -- refuses only when the business is already past its plan's managers (a downgrade, a role edit).
+    IF v_kind = 'business' AND org.fn_business_role_is_manager(v_entity, v_role) THEN
+        PERFORM finance.fn_assert_business_entitlement(v_entity, 'business_managers'::finance.entitlement_key, 0);
+    END IF;
 
     -- A former member is reactivated, never inserted twice (UNIQUE (entity, user)).
     IF v_kind = 'team' THEN
@@ -1947,6 +1992,7 @@ DECLARE
     v_limit bigint;
     v_per_tx bigint;
     v_period text;
+    v_was_manager boolean := false;
     v_before_caps org.workspace_capability[];
     v_seat_role text;
     v_seat_granted org.workspace_capability[];
@@ -1978,6 +2024,9 @@ BEGIN
     v_actor := org.fn_member_capabilities(p_kind, v_entity, v_uid);
     v_self := v_target_user = v_uid;
     v_kind_caps := org.fn_kind_capabilities(p_kind);
+    IF p_kind = 'business' THEN
+        v_was_manager := org.fn_business_member_is_manager(v_entity, v_target_user);
+    END IF;
 
     -- #region removal (and leaving)
     IF COALESCE((p_patch->>'remove')::boolean, false) THEN
@@ -2118,6 +2167,11 @@ BEGIN
             IF v_period NOT IN ('weekly', 'monthly', 'total') THEN
                 RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'period: choose weekly, monthly or total';
             END IF;
+            -- Setting a ceiling is Business Pro's (`pooled_wallet_full`, Decision #230 (e)); clearing one
+            -- never is, so a downgraded business can always lift its caps.
+            IF v_limit IS NOT NULL OR v_per_tx IS NOT NULL THEN
+                PERFORM finance.fn_assert_business_entitlement(v_entity, 'pooled_wallet_full'::finance.entitlement_key);
+            END IF;
             INSERT INTO finance.spending_limits (wallet_id, member_user_id, cap_cents, per_transaction_cents, period_interval)
             SELECT w.id, v_target_user, v_limit, v_per_tx, v_period
               FROM finance.wallets w WHERE w.owner_type = 'business' AND w.owner_id = v_entity
@@ -2173,6 +2227,13 @@ BEGIN
         ELSE
             UPDATE org.business_members SET reports_to = v_reports WHERE id = p_member;
         END IF;
+    END IF;
+
+    -- A role change or a `manage_projects` grant that makes this member a manager takes one of the
+    -- plan's manager seats (Decision #230 (b)); they are counted now, so nothing extra is added. A
+    -- change that leaves a manager a manager is never refused, even past a downgraded ceiling.
+    IF p_kind = 'business' AND NOT v_was_manager AND org.fn_business_member_is_manager(v_entity, v_target_user) THEN
+        PERFORM finance.fn_assert_business_entitlement(v_entity, 'business_managers'::finance.entitlement_key, 0);
     END IF;
 
     -- Owner-reserved rights (§7b): the billing right lives only on an admin seat, so a member moved
@@ -2338,6 +2399,7 @@ DECLARE
     v_caps org.workspace_capability[];
     v_existing record;
     v_id uuid;
+    v_managers_before integer;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
@@ -2394,8 +2456,14 @@ BEGIN
                 UPDATE org.team_roles SET name = v_name, summary = v_summary, base_preset = p_base_preset, capabilities = v_caps, updated_at = now() WHERE id = p_role;
                 UPDATE org.team_members SET role_id = role_id WHERE role_id = p_role;
             ELSE
+                v_managers_before := finance.fn_footprint_usage('business', p_entity, 'business_managers'::finance.entitlement_key);
                 UPDATE org.business_roles SET name = v_name, summary = v_summary, base_preset = p_base_preset, capabilities = v_caps, updated_at = now() WHERE id = p_role;
                 UPDATE org.business_members SET role_id = role_id WHERE role_id = p_role;
+                -- An edit that makes the role's holders (or its pending invitees) managers takes plan
+                -- seats (Decision #230 (b)): refused only when it ADDS managers past the ceiling.
+                IF finance.fn_footprint_usage('business', p_entity, 'business_managers'::finance.entitlement_key) > v_managers_before THEN
+                    PERFORM finance.fn_assert_business_entitlement(p_entity, 'business_managers'::finance.entitlement_key, 0);
+                END IF;
             END IF;
             v_id := p_role;
             -- Everyone holding the role is re-projected: a role edit flows to its holders.

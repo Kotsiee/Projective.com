@@ -521,6 +521,45 @@ the sole authority over how much work a freelancer may hold.
 | `standing_recompute_interval_hours` | `24`    | Standing sweep cadence (migration `20260724111000`).                                                                            |
 | `standing_demotion_grace_days`      | `30`    | Reserved anti-flapping guard on demotions.                                                                                      |
 | `finance_simulation_enabled`        | `false` | **Fails closed.** Gates `finance.simulate_wallet_transaction` — see below.                                                      |
+| `business_plan_gates_enforced`      | `true`  | **Seeded ON** (Decision #230 (e)). Gates the Business Pro refusals of `fn_assert_business_entitlement` — see below.             |
+
+## 💼 Business plan gates (`00001220` §7, Decision #230 (b), (e))
+
+Business Pro's paid acts are refused **without the entitlement** — `PK402`, MESSAGE
+`entitlement: <key>: <reason>`, the key again in HINT — behind **one** switch,
+`security.platform_params.business_plan_gates_enforced`. It is **seeded `true`** and set per
+environment: deliberately the **reverse** of the fail-open family above, by the owner's ruling
+("enforce now for development testing and future proofing"). A missing row reads as on; set it
+`false` and nothing is refused.
+
+| Entitlement            | Kind  | Free / Pro | Refused at                                                                                                                                                                                                                                                                                         |
+| :--------------------- | :---- | :--------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `business_managers`    | limit | 2 / 15     | `org.invite_workspace_member` to a manager's role (+1), `org.respond_to_workspace_invitation` accepting one (the invitation is already counted), `org.update_workspace_member` making a member a manager, `org.upsert_workspace_role` when an edit **adds** managers. Never a change that leaves a manager a manager. |
+| `intervaled_invoicing` | flag  | — / ✅     | `finance.set_invoicing_terms` to `intervaled_monthly` (before the KYB check). Back to `per_transaction` never.                                                                                                                                                                                     |
+| `pooled_wallet_full`   | flag  | basic / ✅ | A non-null `approval_threshold_minor` or per-member `limit_minor` / `per_transaction_minor` through `finance.save_spend_policy`, and a non-null `spend_limit_minor` / `per_transaction_minor` through `org.update_workspace_member`. Clearing either, and `can_spend`, never — basic mode is the shared wallet without caps. |
+
+A **manager** is an active member other than the owner who sits as an admin, or whose
+**effective** capabilities hold `manage_projects` — a per-member grant counts, or the override would
+be a way round the cap (`org.fn_business_member_is_manager`; a role's answer is
+`org.fn_business_role_is_manager`). Pending, unexpired invitations that offer such a role count too
+(the team-seat rule), so `finance.fn_footprint_usage('business', id, 'business_managers')` is
+members + invitations. A plan downgrade evicts nobody; it only refuses the next manager.
+
+- **`finance.fn_business_plan_gates_enforced() → boolean`** — the switch, or a development override.
+- **`finance.fn_business_gate_limit(business, key) → integer`** / **`fn_business_gate_flag(business,
+  key) → boolean`** — `fn_effective_limit` / `fn_has_entitlement` for the business, or the bare
+  Business Free plan under the `free` override.
+- **`finance.fn_assert_business_entitlement(business, key, extra = 0)`** — the refusal; a no-op while
+  the switch is off.
+- **`finance.fn_dev_plan_gates() → text`** — the Dev Context Switcher's `businessPlanGates` override,
+  read from PostgREST's `request.headers` (`x-pj-dev-plan-gates`): `enforced` turns the gates on
+  where the switch is off, `free` also resolves the business as on Business Free. It can only make
+  a gate **stricter**, so it is honoured from any caller — a client that sends it refuses only
+  itself. The app forwards it from the `pj.dev.plan-gates` cookie in development only.
+
+The app maps `PK402` to HTTP 402 with `details { reason: "entitlement", entitlement }`
+(`packages/backend/core/plan-gate.ts`) for the surface's upgrade notice. Probe:
+`supabase/probes/business_entitlements.sql`.
 
 ## 🧺 Basket authorization predicates (`00001210`)
 
