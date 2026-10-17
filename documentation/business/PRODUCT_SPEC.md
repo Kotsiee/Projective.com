@@ -1489,6 +1489,49 @@ A subject's effective limit is **plan × earned rung**, then optionally raised b
 grant. A grant may only ever raise a limit, never lower it. Concrete magnitudes, prices, the ladder
 table and the fee-flex rules are in `finance-model.md` §16.
 
+##### Public pricing — **Planned** (Decision #252)
+
+Anyone, signed in or not, can compare every plan at **`/pricing`** before they commit to anything.
+
+- **Two planes, three audiences.** The page is organised by who pays: **Individual** (the personal
+  plane), **Team / Agency** and **Business / Enterprise** (the entity plane). The plane a visitor
+  sees first follows who they are acting as — a team context opens the team plans — and a link may
+  name one plan to point at (an upgrade prompt names the next plan up). Pointing at a plan never
+  selects, starts or charges anything.
+- **Prices in your currency, charged in ours.** Plans are priced in the platform's base currency.
+  Each price is shown in the viewer's display currency beside the base figure that will actually
+  be charged (§6), and switching currency re-draws the page in place.
+- **The promises are on the page.** Beside the plans the page states what no plan changes: how much
+  work a freelancer may hold, the Standing they have earned, the proposal ceiling that exists on
+  every tier, and the 5% service fee (pending Decision #252 (l)).
+- **Honest about gaps.** A plan with no price yet reads "Price coming soon" and offers nothing to
+  press; a custom-priced plan offers a conversation, not a checkout. Until plans can be bought, no
+  plan offers a purchase button (pending Decision #252 (f)).
+- **Your plan.** A signed-in visitor sees which plan the account or entity they are acting as holds.
+
+##### Agency scale — **Planned** (Decision #252)
+
+A large team (an agency) may pay for a tier above Pro Team (named pending Decision #252 (a)). What
+it buys is **footprint and tools**, never an edge over a solo freelancer in winning or doing work:
+
+- **What scales:** seats (unlimited), concurrent public projects, stored assets, audit retention,
+  treasury exports and analytics.
+- **What never scales:** each member's own Workload Intensity caps — a 200-seat agency still has
+  every member capped individually, and a claimed ticket left unstarted returns to the backlog with
+  its escrow refunded, so idle seats cannot park work; Standing, which is earned per subject and
+  never bought; the discovery ranking, which no plan touches; and the 5% fee, which flexes only by
+  contract (§Escrow, Wallets & Finance 7, `finance-model.md` §16.4).
+- **One pool, with a ceiling.** An agency applies from one dedicated proposal pool that is larger
+  than Pro Team's but **finite**, and does **not** grow with its seat count — otherwise the largest
+  rosters would crowd every shortlist, which is exactly what the allowance exists to stop (pending
+  Decision #252 (c) for the size).
+- **Every earner is payable.** The payout-ready onboarding gate (Decision #196) applies to every
+  member of every roster: nobody unverified can join, hold a seat or take a share, however large
+  the team.
+- **Not yet decided:** layered treasuries (an agency vault feeding department or squad reserves) and
+  importing boards and files from other tools are not part of the tier until they are specified
+  (pending Decision #252 (d), (g)).
+
 ---
 
 ### The Hiring Process
@@ -3133,6 +3176,7 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 | **Public**    | `/index`                  |                          | Landing Page                                                                                   |
 |               | `/about`                  |                          | Company information                                                                            |
 |               | `/explore`                |                          | Discovery/Search                                                                               |
+|               | `/pricing`                |                          | **Planned** (Decision #252) — every plan by audience (Individual · Team / Agency · Business / Enterprise) over the two payment planes, in the viewer's currency, with what no plan changes (§Escrow, Wallets & Finance 7 "Public pricing") |
 |               | `/[handle]`               | `index`                  | Public profile — the **Work** section (client proof · services · completed projects · portfolio · roster) under the split hero + context bar (§The Public Profile) |
 |               |                           | `experience`             | Career history · education · verified certifications (individuals only)                        |
 |               |                           | `reviews`                | Verified client and peer reviews                                                               |

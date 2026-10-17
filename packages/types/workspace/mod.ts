@@ -16,8 +16,8 @@
  *   - `policy`  — team payout splits · business pooled-wallet spend governance.
  *   - `workspace` — the roster + console read projections and every mutation payload.
  */
-export * from "./authority.ts";
 export * from "./access.ts";
+export * from "./authority.ts";
 export * from "./common.ts";
 export * from "./members.ts";
 export * from "./policy.ts";
