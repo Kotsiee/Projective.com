@@ -164,10 +164,12 @@ export interface LaneCreateButtonProps {
 }
 
 /**
- * LaneCreateButton — a lane's ONE primary action, the filled brand pill in its footer band ("New
- * message", "Create project"), so every lane spells its create action the same way. The brand fill
- * takes the §B.12 zero tonal step (its hover is the border channel) and a press compresses by scale
- * only; in the collapsed rail the label folds away and the glyph stays, named by `aria-label`.
+ * LaneCreateButton — a lane's ONE primary action, the tier-2 monochrome pill in its footer band ("New
+ * message", "Create project"), so every lane spells its create action the same way (§B.8.1,
+ * Decision #228 (D)). The fill is the §D.7.7 inverted pair `--on-surface` · `--surface`, the same tone
+ * as `<Button structural>`; it takes the §B.12 zero tonal step (its hover is the border channel) and
+ * a press compresses by scale only; in the collapsed rail the label folds away and the glyph stays,
+ * named by `aria-label`.
  */
 export function LaneCreateButton(props: LaneCreateButtonProps): JSX.Element {
 	return (
