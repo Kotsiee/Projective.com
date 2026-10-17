@@ -1,12 +1,18 @@
 import type { FlowPoint } from "@projective/types/finance";
 import {
+	type BusinessKyb,
+	type BusinessMoneyTile,
 	type BusinessSpendPolicy,
+	type BusinessViewerCan,
+	KybRequirement,
 	type PoolEntry,
+	type SpendEnvelopePreview,
 	type SpendLimit,
 	type SpendRequest,
 	type SplitStake,
 	type SplitTemplate,
 	type TeamPayoutPolicy,
+	type UpdateSpendInput,
 	type VerificationState,
 	walletHrefFor,
 	type WorkspaceCapability,
@@ -14,15 +20,19 @@ import {
 	type WorkspaceKind,
 } from "@projective/types/workspace";
 import { clamp, clampOr } from "../../core/text.ts";
+import { ok, type ServiceResult } from "../ServiceResult.ts";
 import { overviewOf } from "../finance/live-wallet.ts";
 import { reasonMeta } from "../finance/wallet-ledger.ts";
 import { resolveWalletContext } from "../finance/wallet-scope.ts";
-import { clientFor, type LiveActor } from "./live-support.ts";
+import { fetchPartyCards, type PartyCard } from "../profile/party-cards.ts";
+import { badId, callRpc, clientFor, isUuid, type LiveActor } from "./live-support.ts";
+import { spendPatch } from "./live-writes.ts";
 import {
 	avatarOf,
 	dateLabel,
 	deriveSplitModel,
 	evenSplit,
+	isoOf,
 	moneyOf,
 	type Person,
 	projectedShare,
@@ -30,9 +40,7 @@ import {
 	type RawSplitRule,
 	relativeLabel,
 	spendRequestState,
-	spentInPeriod,
 	toSplitRule,
-	usedFraction,
 	verificationPrompt,
 } from "./mappers.ts";
 
@@ -40,10 +48,10 @@ import {
  * live-money — the Money modules of the console: a team's payout split, a business's spend policy, and
  * the finance tiles both share.
  *
- * A team's money arrives inside the console's one read (`org.get_workspace_detail`'s payout block, sent
- * only to a `manage_finances` holder — Decision #233), so its builder ({@link teamMoneyFacts}) is pure.
- * A business's reads run under the caller's own session (`finance.*` RLS: a member sees their entity's
- * wallets, limits, audit and approvals). Every figure is a stored amount in its OWN
+ * Both kinds' money arrives inside the console's one read (`org.get_workspace_detail`, Decision #233):
+ * a team's payout block (sent only to a `manage_finances` holder), and a business's spend block, money
+ * tiles, KYB and viewer flags (BB9) — each narrowed in SQL to what the viewer may see, every envelope
+ * figure computed there — so the builders here are pure. Every figure is a stored amount in its OWN
  * currency — nothing here converts, sums across currencies, or computes a split a different way from
  * the database. The projected release is `finance.preview_team_split`, which runs the same plan
  * (`finance.fn_team_split_plan`) the release itself runs, so what a team is shown is what it receives.
@@ -257,53 +265,48 @@ export function buildPayoutPolicy(
 
 // #endregion
 
-// #region Business — raw reads
+// #region Business — raw blocks (as org.get_workspace_detail answers them)
 
-/** A `finance.wallets` row of the business. */
-export interface BusinessWalletRow {
-	id: string;
-	currency: string;
-	approval_threshold_cents: number | null;
+/** One member's envelope from `finance.fn_business_envelopes` — every figure decided in SQL. */
+export interface RawEnvelope {
+	member_id: string;
+	user_id: string;
+	can_spend: boolean;
+	limit_minor: number | string | null;
+	per_transaction_minor: number | string | null;
+	period: string | null;
+	spent_minor: number | string | null;
+	remaining_minor: number | string | null;
+	used_fraction: number | string | null;
 }
 
-/** A `finance.spending_limits` row. */
-export interface LimitRow {
-	wallet_id: string;
-	member_user_id: string;
-	cap_cents: number | null;
-	per_transaction_cents: number | null;
-	period_interval: string | null;
-	spent_cents: number | null;
-	resets_at: string | null;
-}
-
-/** A `finance.ledger_audit` `add_funds` row. */
-export interface AuditRow {
+/** A `finance.ledger_audit` `add_funds` row on the spend block. */
+export interface RawContribution {
 	id: string;
-	wallet_id: string;
 	actor_user_id: string | null;
-	amount_cents: number;
+	amount_minor: number | string;
 	currency: string;
-	metadata: { note?: string } | null;
-	created_at: string;
+	/** The contributor's note, when they left one. */
+	note: string | null;
+	/** `card_topup` for a card top-up's audit row (BB6), else `null`. */
+	kind: string | null;
+	at: string;
 }
 
-/** A debit `finance.transactions` row. */
-export interface DebitRow {
+/** A debit `finance.transactions` row on the spend block. */
+export interface RawDebit {
 	id: string;
-	wallet_id: string;
-	amount_cents: number;
+	amount_minor: number | string;
 	currency: string;
 	reason: string;
-	created_at: string;
+	at: string;
 }
 
-/** A `finance.spend_approvals` row. */
-export interface ApprovalRow {
+/** A `finance.spend_approvals` row on the spend block. */
+export interface RawApproval {
 	id: string;
-	wallet_id: string;
 	requested_by: string;
-	amount_cents: number;
+	amount_minor: number | string;
 	currency: string;
 	reason: string;
 	status: string;
@@ -313,98 +316,62 @@ export interface ApprovalRow {
 	created_at: string;
 }
 
-/** Everything a business's spend policy is built from. */
-export interface BusinessMoneyFacts {
-	currency: string;
-	wallets: BusinessWalletRow[];
-	limits: LimitRow[];
-	audit: AuditRow[];
-	debits: DebitRow[];
-	approvals: ApprovalRow[];
-}
-
 /**
- * Read a business's wallets, the policy wallet's limits, the attributable ledger and the spend
- * requests. The policy currency is the business's DEFAULT currency, read through the member-gated
- * purchase-owner door (`org.business_profiles` itself has no client policy).
+ * A business's spend block — answered only to a viewer who may open Spend. `limits` and `approvals`
+ * are already narrowed to what the viewer may read (BB6): their own, unless they read the wallet's
+ * envelopes (`finance.fn_reads_wallet_envelopes`).
  */
-export async function readBusinessMoney(
-	actor: LiveActor,
-	businessId: string,
-): Promise<BusinessMoneyFacts> {
-	const db = clientFor(actor).schema("finance");
-	const [ownerRes, walletsRes] = await Promise.all([
-		db.rpc("get_purchase_owner", { p_owner_type: "business", p_owner_id: businessId }),
-		db.from("wallets").select("id, currency, approval_threshold_cents")
-			.eq("owner_type", "business").eq("owner_id", businessId),
-	]);
-	if (walletsRes.error) throw new Error(`finance.wallets read failed: ${walletsRes.error.message}`);
-	const wallets = ((walletsRes.data ?? []) as BusinessWalletRow[]).map((w) => ({
-		...w,
-		currency: w.currency.toUpperCase(),
-		approval_threshold_cents: w.approval_threshold_cents === null
-			? null
-			: Number(w.approval_threshold_cents),
-	}));
-	const ownerCurrency = ((ownerRes.data as { currency?: string | null } | null)?.currency ?? "")
-		.toUpperCase();
-	const currency = /^[A-Z]{3}$/.test(ownerCurrency) ? ownerCurrency : wallets[0]?.currency ?? "USD";
-
-	const ids = wallets.map((w) => w.id);
-	if (ids.length === 0) {
-		return { currency, wallets, limits: [], audit: [], debits: [], approvals: [] };
-	}
-	const policyWallet = wallets.find((w) => w.currency === currency);
-	const [limitsRes, auditRes, debitsRes, approvalsRes] = await Promise.all([
-		policyWallet
-			? db.from("spending_limits")
-				.select(
-					"wallet_id, member_user_id, cap_cents, per_transaction_cents, period_interval, spent_cents, resets_at",
-				)
-				.eq("wallet_id", policyWallet.id)
-			: Promise.resolve({ data: [], error: null }),
-		db.from("ledger_audit").select(
-			"id, wallet_id, actor_user_id, amount_cents, currency, metadata, created_at",
-		)
-			.in("wallet_id", ids).eq("action", "add_funds").order("created_at", { ascending: false })
-			.limit(ENTRY_LIMIT),
-		db.from("transactions").select("id, wallet_id, amount_cents, currency, reason, created_at")
-			.in("wallet_id", ids).eq("direction", "debit").neq("reason", "transfer_out")
-			.order("created_at", { ascending: false }).limit(ENTRY_LIMIT),
-		db.from("spend_approvals")
-			.select(
-				"id, wallet_id, requested_by, amount_cents, currency, reason, status, approver_user_id, decided_at, expires_at, created_at",
-			)
-			.in("wallet_id", ids).order("created_at", { ascending: false }).limit(ENTRY_LIMIT),
-	]);
-	if (limitsRes.error) {
-		throw new Error(`finance.spending_limits read failed: ${limitsRes.error.message}`);
-	}
-	if (auditRes.error) {
-		throw new Error(`finance.ledger_audit read failed: ${auditRes.error.message}`);
-	}
-	if (debitsRes.error) {
-		throw new Error(`finance.transactions read failed: ${debitsRes.error.message}`);
-	}
-	if (approvalsRes.error) {
-		throw new Error(`finance.spend_approvals read failed: ${approvalsRes.error.message}`);
-	}
-	return {
-		currency,
-		wallets,
-		limits: (limitsRes.data ?? []) as LimitRow[],
-		audit: (auditRes.data ?? []) as AuditRow[],
-		debits: (debitsRes.data ?? []) as DebitRow[],
-		approvals: (approvalsRes.data ?? []) as ApprovalRow[],
-	};
+export interface RawBusinessSpend {
+	currency: string;
+	approval_threshold_minor: number | string | null;
+	platform_threshold_minor: number | string | null;
+	approver_user_ids: string[] | null;
+	contributor_user_ids: string[] | null;
+	limits: RawEnvelope[] | null;
+	/** What each member has put into the policy wallet, all time. */
+	contributed: { user_id: string; minor: number | string }[] | null;
+	contributions: RawContribution[] | null;
+	debits: RawDebit[] | null;
+	approvals: { pending: RawApproval[] | null; decided: RawApproval[] | null } | null;
 }
 
-/** Every user id the business money facts name — for the one party-card batch. */
-export function businessMoneyPeople(facts: BusinessMoneyFacts): string[] {
+/** One currency's money tiles, summed in SQL in that currency. */
+export interface RawMoneyTile {
+	currency: string;
+	available_minor: number | string | null;
+	pending_minor: number | string | null;
+	committed_minor: number | string | null;
+	awaiting_approval_minor: number | string | null;
+	spent_30d_minor: number | string | null;
+}
+
+/** The business's KYB picture. */
+export interface RawKyb {
+	status: string | null;
+	verified_at: string | null;
+	/** Whether a Stripe Connect account exists for the business. */
+	has_account: boolean | null;
+	requirements_due: string[] | null;
+}
+
+/** The viewer's server-decided flags, snake_cased. */
+export type RawViewerCan = Partial<Record<string, boolean | null>>;
+
+/** `finance.preview_spend_envelope`'s answer. */
+export interface RawEnvelopePreview {
+	currency: string;
+	limits: RawEnvelope[] | null;
+}
+
+/** Every user id a spend block names — for the one party-card batch. */
+export function businessSpendPeople(raw: RawBusinessSpend | null | undefined): string[] {
+	if (!raw) return [];
+	const approvals = [...(raw.approvals?.pending ?? []), ...(raw.approvals?.decided ?? [])];
 	return [
-		...facts.audit.map((a) => a.actor_user_id ?? ""),
-		...facts.approvals.map((a) => a.requested_by),
-		...facts.approvals.map((a) => a.approver_user_id ?? ""),
+		...(raw.limits ?? []).map((l) => l.user_id),
+		...(raw.contributions ?? []).map((c) => c.actor_user_id ?? ""),
+		...approvals.map((a) => a.requested_by),
+		...approvals.map((a) => a.approver_user_id ?? ""),
 	].filter((id) => id.length > 0);
 }
 
@@ -412,65 +379,82 @@ export function businessMoneyPeople(facts: BusinessMoneyFacts): string[] {
 
 // #region Business — the policy
 
-/** A member's spend envelope on the policy wallet: the row's facts, or the no-ceiling defaults. */
-export function limitFor(facts: BusinessMoneyFacts, userId: string): LimitRow | undefined {
-	const wallet = facts.wallets.find((w) => w.currency === facts.currency);
-	return wallet
-		? facts.limits.find((l) => l.wallet_id === wallet.id && l.member_user_id === userId)
-		: undefined;
+/** A raw amount that may be absent: `null` stays `null`, anything else a non-negative integer. */
+function minorOrNull(raw: number | string | null | undefined): number | null {
+	return raw === null || raw === undefined ? null : minorOf(raw);
 }
 
-/** What a member has put into the pool, in the policy currency (a sum in ONE currency only). */
-export function contributedBy(facts: BusinessMoneyFacts, userId: string): number {
-	return facts.audit
-		.filter((a) => a.actor_user_id === userId && a.currency.trim().toUpperCase() === facts.currency)
-		.reduce((sum, a) => sum + (Number(a.amount_cents) || 0), 0);
+const PERIODS = new Set(["weekly", "monthly", "total"]);
+
+/** A member's envelope as the Spend module renders it — the SQL's figures, formatted. */
+export function toSpendLimit(
+	raw: RawEnvelope,
+	person: Person | undefined,
+	currency: string,
+): SpendLimit {
+	const limitMinor = minorOrNull(raw.limit_minor);
+	const spentMinor = minorOf(raw.spent_minor);
+	const fraction = Number(raw.used_fraction);
+	return {
+		memberId: raw.member_id,
+		handle: clamp(person?.username, 40),
+		name: clampOr(person?.name, 120, "Member"),
+		avatar: avatarOf(person?.avatar),
+		canSpend: raw.can_spend === true,
+		limitMinor,
+		limit: limitMinor === null ? null : moneyOf(limitMinor, currency),
+		period: PERIODS.has(raw.period ?? "") ? raw.period as SpendLimit["period"] : "monthly",
+		spentMinor,
+		spent: moneyOf(spentMinor, currency),
+		remainingMinor: limitMinor === null ? null : minorOf(raw.remaining_minor),
+		usedFraction: Number.isFinite(fraction) ? Math.max(0, Math.min(1, fraction)) : 0,
+		perTransactionMinor: minorOrNull(raw.per_transaction_minor),
+	};
+}
+
+/** What a member has put into the pool, in the policy currency — the SQL's all-time sum. */
+export function contributedBy(raw: RawBusinessSpend | null | undefined, userId: string): number {
+	const row = (raw?.contributed ?? []).find((c) => c.user_id === userId);
+	return row ? minorOf(row.minor) : 0;
+}
+
+/** The envelope the viewer may read for a member, or `undefined` (none, or not theirs to see). */
+export function envelopeFor(
+	raw: RawBusinessSpend | null | undefined,
+	userId: string,
+): RawEnvelope | undefined {
+	return (raw?.limits ?? []).find((l) => l.user_id === userId);
+}
+
+/** A member as the business builders need them: their member id and face. */
+export interface SpendMember {
+	memberId: string;
+	userId: string;
+	person: Person | undefined;
 }
 
 /**
- * A business's spend policy — the buyer-side editor's whole state. Approvers, contributors and
- * spenders are the members whose EFFECTIVE capabilities carry `approve_spend`, `contribute_funds` and
- * `spend_funds`; the ledger is attributed where the money path recorded an actor and left as the
- * business itself where it did not.
+ * A business's spend policy — the buyer-side editor's whole state, mapped from the detail's spend
+ * block. The database decided who approves and contributes, which envelopes and requests the viewer
+ * may read, and every figure on them; this only resolves faces and formats. The ledger is attributed
+ * where the money path recorded an actor and left as the business itself where it did not.
  */
 export function buildSpendPolicy(
-	members: readonly MoneyMember[],
-	facts: BusinessMoneyFacts,
+	raw: RawBusinessSpend,
+	members: readonly SpendMember[],
 	people: ReadonlyMap<string, Person>,
 	verification: VerificationState,
 	nowMs: number,
 ): BusinessSpendPolicy {
-	const currency = facts.currency;
-	const wallet = facts.wallets.find((w) => w.currency === currency);
-	const threshold =
-		wallet && wallet.approval_threshold_cents !== null && wallet.approval_threshold_cents > 0
-			? wallet.approval_threshold_cents
-			: null;
-	const approvers = members.filter((m) => m.capabilities.includes("approve_spend"));
+	const currency = (raw.currency || "USD").toUpperCase();
+	const threshold = minorOrNull(raw.approval_threshold_minor);
+	const platform = minorOrNull(raw.platform_threshold_minor);
 	const byUser = new Map(members.map((m) => [m.userId, m]));
-
-	const limits: SpendLimit[] = members.map((member) => {
-		const row = limitFor(facts, member.userId);
-		const limitMinor = row && row.cap_cents !== null && row.cap_cents !== undefined
-			? Number(row.cap_cents)
-			: null;
-		const spent = row
-			? spentInPeriod(row.spent_cents, row.period_interval, row.resets_at, nowMs)
-			: 0;
-		return {
-			memberId: member.memberId,
-			...faceOf(member),
-			canSpend: member.capabilities.includes("spend_funds"),
-			limitMinor,
-			limit: limitMinor === null ? null : moneyOf(limitMinor, currency),
-			spent: moneyOf(spent, currency),
-			usedFraction: usedFraction(spent, limitMinor),
-			perTransactionMinor:
-				row && row.per_transaction_cents !== null && row.per_transaction_cents !== undefined
-					? Number(row.per_transaction_cents)
-					: null,
-		};
-	});
+	const memberIdsOf = (userIds: readonly string[] | null) =>
+		(userIds ?? []).flatMap((id) => byUser.get(id) ?? []);
+	const approvers = memberIdsOf(raw.approver_user_ids);
+	const contributors = memberIdsOf(raw.contributor_user_ids);
+	const handleOf = (m: SpendMember) => clamp(m.person?.username, 40);
 
 	const entryOf = (userId: string | null) => {
 		const person = userId ? people.get(userId) : undefined;
@@ -483,45 +467,44 @@ export function buildSpendPolicy(
 		};
 	};
 	const entries: (PoolEntry & { sortAt: number })[] = [
-		...facts.audit.map((a) => ({
-			id: a.id,
+		...(raw.contributions ?? []).map((c) => ({
+			id: c.id,
 			kind: "contribution" as const,
-			...entryOf(a.actor_user_id),
-			amount: moneyOf(Number(a.amount_cents) || 0, a.currency),
-			reason: clampOr(a.metadata?.note, 160, "Added funds"),
-			at: clamp(dateLabel(a.created_at, nowMs), 40),
+			...entryOf(c.actor_user_id),
+			amount: moneyOf(minorOf(c.amount_minor), c.currency),
+			reason: clampOr(c.note, 160, c.kind === "card_topup" ? "Added by card" : "Added funds"),
+			at: clamp(dateLabel(c.at, nowMs), 40),
 			approvedBy: null,
-			sortAt: Date.parse(a.created_at) || 0,
+			sortAt: Date.parse(c.at) || 0,
 		})),
-		...facts.debits.map((d) => ({
+		...(raw.debits ?? []).map((d) => ({
 			id: d.id,
 			kind: "spend" as const,
 			memberId: null,
 			handle: null,
 			name: null,
 			avatar: null,
-			amount: moneyOf(Number(d.amount_cents) || 0, d.currency),
+			amount: moneyOf(minorOf(d.amount_minor), d.currency),
 			reason: clamp(reasonMeta(d.reason, "debit").label, 160),
-			at: clamp(dateLabel(d.created_at, nowMs), 40),
+			at: clamp(dateLabel(d.at, nowMs), 40),
 			approvedBy: null,
-			sortAt: Date.parse(d.created_at) || 0,
+			sortAt: Date.parse(d.at) || 0,
 		})),
 	];
 	entries.sort((a, b) => b.sortAt - a.sortAt);
 
-	const requests: SpendRequest[] = facts.approvals.map((row) => {
+	const requestOf = (row: RawApproval): SpendRequest => {
 		const requester = people.get(row.requested_by);
 		const decider = row.approver_user_id ? people.get(row.approver_user_id) : undefined;
-		const state = spendRequestState(row.status, row.expires_at, nowMs);
 		return {
 			id: row.id,
 			memberId: byUser.get(row.requested_by)?.memberId ?? row.requested_by,
 			handle: clamp(requester?.username, 40),
 			name: clampOr(requester?.name, 120, "A member"),
 			avatar: avatarOf(requester?.avatar),
-			amount: moneyOf(Number(row.amount_cents) || 0, row.currency),
+			amount: moneyOf(minorOf(row.amount_minor), row.currency),
 			reason: clampOr(row.reason, 160, "Spend request"),
-			state,
+			state: spendRequestState(row.status, row.expires_at, nowMs),
 			raisedAt: clamp(relativeLabel(row.created_at, nowMs), 40),
 			approvers: approvers
 				.filter((m) => m.userId !== row.requested_by)
@@ -529,23 +512,129 @@ export function buildSpendPolicy(
 			decidedBy: decider ? clampOr(decider.name, 120, "Member") : null,
 			decidedAt: row.decided_at ? clamp(relativeLabel(row.decided_at, nowMs), 40) || null : null,
 		};
-	});
-	requests.sort((a, b) => (a.state === "pending" ? 0 : 1) - (b.state === "pending" ? 0 : 1));
+	};
 
 	return {
 		currency,
-		approvalThresholdMinor: threshold,
-		approvalThreshold: threshold === null ? null : moneyOf(threshold, currency),
+		approvalThresholdMinor: threshold !== null && threshold > 0 ? threshold : null,
+		approvalThreshold: threshold !== null && threshold > 0 ? moneyOf(threshold, currency) : null,
+		platformThresholdMinor: platform !== null && platform > 0 ? platform : null,
 		approverIds: approvers.map((m) => m.memberId),
-		limits,
-		contributorIds: members.filter((m) => m.capabilities.includes("contribute_funds")).map((m) =>
-			m.memberId
-		),
+		approverHandles: approvers.map(handleOf),
+		limits: (raw.limits ?? []).map((l) => toSpendLimit(l, people.get(l.user_id), currency)),
+		contributorIds: contributors.map((m) => m.memberId),
+		contributorHandles: contributors.map(handleOf),
 		entries: entries.slice(0, ENTRY_LIMIT).map(({ sortAt: _sortAt, ...entry }) => entry),
-		requests,
+		approvals: {
+			pending: (raw.approvals?.pending ?? []).map(requestOf),
+			decided: (raw.approvals?.decided ?? []).map(requestOf),
+		},
 		verification,
 		verificationPrompt: verificationPrompt("business", verification),
 	};
+}
+
+/** One currency's tiles, formatted in that currency. */
+export function toMoneyTile(raw: RawMoneyTile): BusinessMoneyTile {
+	const currency = (raw.currency || "USD").toUpperCase();
+	return {
+		currency,
+		available: moneyOf(minorOf(raw.available_minor), currency),
+		pending: moneyOf(minorOf(raw.pending_minor), currency),
+		committed: moneyOf(minorOf(raw.committed_minor), currency),
+		awaitingApproval: moneyOf(minorOf(raw.awaiting_approval_minor), currency),
+		spent30d: moneyOf(minorOf(raw.spent_30d_minor), currency),
+	};
+}
+
+const VIEWER_CAN_KEYS = {
+	editPolicy: "edit_policy",
+	decide: "decide",
+	requestSpend: "request_spend",
+	payInvoice: "pay_invoice",
+	startKyb: "start_kyb",
+	hire: "hire",
+	purchase: "purchase",
+	manageProjects: "manage_projects",
+	archive: "archive",
+} as const satisfies Record<keyof BusinessViewerCan, string>;
+
+/** The viewer's flags — `true` only where the database said so; a missing flag is a refusal. */
+export function toViewerCan(raw: RawViewerCan | null | undefined): BusinessViewerCan {
+	const out = {} as BusinessViewerCan;
+	for (const [key, sqlKey] of Object.entries(VIEWER_CAN_KEYS)) {
+		out[key as keyof BusinessViewerCan] = raw?.[sqlKey] === true;
+	}
+	return out;
+}
+
+const KYB_REQUIREMENTS = new Set<string>(KybRequirement.options);
+
+/**
+ * The business's KYB picture. The resume link is the Connect refresh door
+ * (`GET /api/finance/connect/refresh`), which mints a fresh single-use link for the EXISTING account
+ * and redirects — so it is offered only to a `startKyb` holder whose business has an account; one
+ * without starts at `POST /api/finance/verify/kyb`, which needs the registration country.
+ */
+export function toKyb(
+	raw: RawKyb | null | undefined,
+	businessId: string,
+	canStart: boolean,
+): BusinessKyb {
+	const status = raw?.status === "verified" || raw?.status === "pending"
+		? raw.status
+		: "unverified";
+	const params = new URLSearchParams({ scope: "business", businessId, back: "settings" });
+	return {
+		status,
+		verifiedAt: raw?.verified_at ? isoOf(raw.verified_at) || null : null,
+		connectOnboardingUrl: canStart && raw?.has_account === true
+			? `/api/finance/connect/refresh?${params}`
+			: null,
+		requirementsDue: (raw?.requirements_due ?? []).filter((code): code is KybRequirement =>
+			KYB_REQUIREMENTS.has(code)
+		),
+	};
+}
+
+// #endregion
+
+// #region Business — the draft preview
+
+/**
+ * The envelopes a draft spend-policy patch WOULD produce (`finance.preview_spend_envelope`, read-only,
+ * `manage_finances`), with faces resolved in one party-card batch. The patch is the same one
+ * `finance.save_spend_policy` takes, so the preview and the save cannot read a draft differently.
+ */
+export async function previewSpendEnvelope(
+	input: UpdateSpendInput,
+	actor: LiveActor,
+	io: {
+		rpc: typeof callRpc;
+		partyCards: (actor: LiveActor, ids: readonly string[]) => Promise<Map<string, PartyCard>>;
+	} = { rpc: callRpc, partyCards: (a, ids) => fetchPartyCards(clientFor(a), ids) },
+): Promise<ServiceResult<SpendEnvelopePreview>> {
+	if (!isUuid(input.workspaceId)) return badId("workspaceId", "business");
+	const res = await io.rpc<RawEnvelopePreview>(actor, "finance", "preview_spend_envelope", {
+		p_business_id: input.workspaceId,
+		p_patch: spendPatch(input),
+	});
+	if (!res.ok) return res.refusal;
+	const raw = res.data;
+	const currency = (raw?.currency || input.currency || "USD").toUpperCase();
+	const limits = raw?.limits ?? [];
+	const cards = await io.partyCards(actor, limits.map((l) => l.user_id));
+	return ok({
+		currency,
+		limits: limits.map((l) => {
+			const card = cards.get(l.user_id);
+			return toSpendLimit(
+				l,
+				card ? { username: card.username, name: card.name, avatar: card.avatar } : undefined,
+				currency,
+			);
+		}),
+	});
 }
 
 // #endregion

@@ -1654,6 +1654,10 @@ GRANT EXECUTE ON FUNCTION finance.save_team_split (uuid, jsonb) TO authenticated
 GRANT EXECUTE ON FUNCTION finance.save_split_rule (uuid, finance.split_rule_type, integer, uuid, integer) TO authenticated;
 GRANT EXECUTE ON FUNCTION finance.preview_team_split (uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION finance.save_spend_policy (uuid, jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.preview_spend_envelope (uuid, jsonb) TO authenticated;
+-- The envelope reader behind the detail and the preview narrows by the caller, but answers for any
+-- business; only those definers call it.
+REVOKE ALL ON FUNCTION finance.fn_business_envelopes (uuid, uuid, jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION finance.request_spend_approval (uuid, bigint, text, text, uuid) TO authenticated;
 
 -- The wallet ledger reads (00001210 §14). SECURITY INVOKER: each answers under the caller's own RLS, so

@@ -27,7 +27,13 @@ import {
 	WorkspaceStatus as WorkspaceStatusEnum,
 } from "@projective/types/workspace";
 import { clamp, clampOr } from "../../core/text.ts";
-import type { RawTeamPayout } from "./live-money.ts";
+import type {
+	RawBusinessSpend,
+	RawKyb,
+	RawMoneyTile,
+	RawTeamPayout,
+	RawViewerCan,
+} from "./live-money.ts";
 
 /**
  * mappers — the PURE half of the live workspace console: every rule that turns the raw facts the
@@ -221,6 +227,14 @@ export interface RawDetail {
 	allowance?: unknown;
 	/** A business's `org.fn_business_archive_blockers` (`[]` without `archive_entity`, and for a team). */
 	archive_blockers?: unknown;
+	/** A business's spend block — present ONLY for a viewer who may open Spend. */
+	spend?: RawBusinessSpend | null;
+	/** A business's money tiles per wallet currency — `[]` unless the viewer may open Finance. */
+	money_tiles?: RawMoneyTile[] | null;
+	/** A business's KYB picture (`null` for a team). */
+	kyb?: RawKyb | null;
+	/** The viewer's server-decided flags on a business (`null` for a team). */
+	viewer_can?: RawViewerCan | null;
 }
 
 /** Every answer `org.get_workspace_detail` can give. */
@@ -430,10 +444,19 @@ export function isoOf(raw: string | null | undefined): string {
 
 // #region Roster
 
-/** The Earned/Spent stat's value: the largest currency's figure, or an em dash when nothing moved. */
+/**
+ * The Earned/Spent stat's value: the largest currency's figure, then `+N` for every other currency that
+ * moved (each is its own figure — currencies are never summed), or an em dash when nothing moved.
+ */
 function periodValue(amounts: RawRosterItem["money_30d"]): string {
 	const best = largestAmount(amounts);
-	return best ? clamp(moneyOf(best.minor, best.currency).display, 24) : "—";
+	if (!best) return "—";
+	const others = new Set(
+		(amounts ?? []).filter((a) => (Number(a.minor) || 0) > 0 && a.currency)
+			.map((a) => a.currency.toUpperCase()),
+	).size - 1;
+	const figure = moneyOf(best.minor, best.currency).display;
+	return clamp(others > 0 ? `${figure} +${others}` : figure, 24);
 }
 
 /**

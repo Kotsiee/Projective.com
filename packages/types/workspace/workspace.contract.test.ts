@@ -21,7 +21,12 @@ import {
 import { RESERVED_HANDLES } from "../profile/reserved.ts";
 import { EntitlementKey } from "../finance/entitlements.ts";
 import { SplitRuleType } from "../finance/vault.ts";
-import { SplitRuleInputSchema } from "./policy.ts";
+import {
+	BusinessViewerCanSchema,
+	KybRequirement,
+	SpendLimitSchema,
+	SplitRuleInputSchema,
+} from "./policy.ts";
 import {
 	TeamEngagementSchema,
 	UpdatePayoutInputSchema,
@@ -313,6 +318,96 @@ Deno.test("WorkspaceDetailSchema: engagements are slug-addressed; a business def
 	const shape = WorkspaceDetailSchema.shape;
 	assertEquals(shape.engagements.parse(undefined), []);
 	assertEquals(shape.allowance.parse(undefined), null);
+});
+
+// #endregion
+
+// #region The business console read (BB9)
+
+const WALLET_SQL = "supabase/migrations/00001210_functions_finance_kyc_wallet.sql";
+const wallet = read(WALLET_SQL);
+
+/** camelCase → the snake_case key the definer answers. */
+const snake = (key: string) => key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+
+Deno.test("org.get_workspace_detail answers every viewerCan flag BusinessViewerCanSchema declares", () => {
+	const start = detailBody.indexOf("'viewer_can'");
+	assert(start >= 0, "get_workspace_detail no longer answers 'viewer_can'");
+	const block = detailBody.slice(start, detailBody.indexOf("'kyb'", start));
+	assert(block.length > 0, "'viewer_can' must precede 'kyb'");
+	const answered = new Set(
+		[...block.matchAll(/'([a-z_]+)',/g)].map((m) => m[1]).filter((k) => k !== "viewer_can"),
+	);
+	assertEquals(
+		[...answered].sort(),
+		Object.keys(BusinessViewerCanSchema.shape).map(snake).sort(),
+		"the SQL flags and the schema's must be the same set",
+	);
+});
+
+Deno.test("the detail's envelopes and the preview's come from ONE helper, so a draft cannot drift", () => {
+	assert(
+		detailBody.includes("finance.fn_business_envelopes("),
+		"get_workspace_detail must read its limits from finance.fn_business_envelopes",
+	);
+	const preview = functionBody(wallet, "finance.preview_spend_envelope");
+	assert(
+		preview.includes("finance.fn_business_envelopes("),
+		"preview_spend_envelope must answer from finance.fn_business_envelopes",
+	);
+	assert(/\bSTABLE\b/.test(preview), "the preview writes nothing, so it is STABLE");
+	assert(
+		preview.includes("'manage_finances'"),
+		"only a policy manager may preview a draft policy",
+	);
+	const helper = functionBody(wallet, "finance.fn_business_envelopes");
+	for (const key of Object.keys(SpendLimitSchema.shape)) {
+		// Faces and server-formatted MoneyViews are resolved by the service, not the definer.
+		if (["handle", "name", "avatar", "limit", "spent", "memberId"].includes(key)) continue;
+		assert(
+			helper.includes(`'${snake(key)}'`),
+			`fn_business_envelopes no longer answers '${snake(key)}'`,
+		);
+	}
+	assert(
+		helper.includes("finance.fn_reads_wallet_envelopes("),
+		"a viewer who may not read the wallet's envelopes sees only their own (BB6)",
+	);
+});
+
+Deno.test("org.get_workspace_detail answers the business blocks the console maps", () => {
+	for (
+		const key of [
+			"'spend'",
+			"'approvals'",
+			"'decided'",
+			"'approver_user_ids'",
+			"'contributor_user_ids'",
+			"'platform_threshold_minor'",
+			"'money_tiles'",
+			"'awaiting_approval_minor'",
+			"'spent_30d_minor'",
+			"'committed_minor'",
+			"'kyb'",
+			"'requirements_due'",
+			"'archive_blockers'",
+		]
+	) {
+		assert(detailBody.includes(key), `get_workspace_detail no longer answers ${key}`);
+	}
+	for (const code of KybRequirement.options) {
+		assert(
+			detailBody.includes(`'${code}'`),
+			`get_workspace_detail never answers KYB requirement '${code}'`,
+		);
+	}
+});
+
+Deno.test("WorkspaceDetailSchema: the business blocks default to absent for a team", () => {
+	const shape = WorkspaceDetailSchema.shape;
+	assertEquals(shape.moneyTiles.parse(undefined), []);
+	assertEquals(shape.viewerCan.parse(undefined), null);
+	assertEquals(shape.kyb.parse(undefined), null);
 });
 
 // #endregion

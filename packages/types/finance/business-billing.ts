@@ -77,8 +77,13 @@ export const BusinessBillingViewSchema = z.object({
 	onAccount: z.object({ owedLabel: z.string().max(32), limitLabel: z.string().max(32) }).nullable(),
 	invoices: z.array(BillingInvoiceRowSchema).max(36),
 	statements: z.array(BillingStatementRowSchema).max(24),
-	/** The viewer holds manage_billing — edits and Pay render only then. */
+	/** The viewer holds manage_billing — the settings edits render only then. */
 	canManage: z.boolean(),
+	/**
+	 * Whether Pay may be offered — `finance.pay_invoice`'s own conditions, decided in SQL: the billing
+	 * right, a KYB-verified business, and an active one. Pay renders only then.
+	 */
+	canPay: z.boolean().default(false),
 });
 export type BusinessBillingView = z.infer<typeof BusinessBillingViewSchema>;
 // #endregion

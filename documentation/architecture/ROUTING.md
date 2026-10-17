@@ -648,6 +648,7 @@ themselves or left in a transfer), so an island adopts the server's state. RPC r
 | `/api/workspace/role-archive`        | `POST`                | `org.archive_workspace_role` — replaces the retired `role-delete` (nothing is hard-deleted) |
 | `/api/workspace/payout`              | `POST`                | `{ rule?, stakes? }`, at least one: `finance.save_split_rule` (the template, written first; 402 when the team's plan lacks its `split_template_<type>` flag) then `finance.save_team_split` (the stakes) |
 | `/api/workspace/spend`               | `POST`                | `finance.save_spend_policy`                                                             |
+| `/api/workspace/spend/preview`       | `POST`                | `finance.preview_spend_envelope` — the envelopes a draft patch (the `/spend` body) would produce; writes nothing |
 | `/api/workspace/spend-decide`        | `POST`                | `finance.decide_spend_approval`                                                         |
 | `/api/context/switch`                | `POST`                | `security.switch_session_context` · `switch_team_context` · `switch_enterprise_context` · `clear_session_context` |
 | `/api/context/enterprises`         | `GET`                 | RLS reads of `org.enterprise_members` (own active rows) + `org.enterprises` — the enterprises the caller owns or actively belongs to, archived excluded (the account switcher's third list; Decision #149) |

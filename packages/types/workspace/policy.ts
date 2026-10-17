@@ -245,20 +245,39 @@ export const SpendRequestSchema = z.object({
 });
 export type SpendRequest = z.infer<typeof SpendRequestSchema>;
 
-/** One member's spend envelope. */
+/**
+ * How a rolling ceiling resets (`finance.spending_limits.period_interval`): at the start of each ISO
+ * week, each calendar month, or never (`total` — a lifetime allowance).
+ */
+export const SpendPeriod = z.enum(["weekly", "monthly", "total"]);
+export type SpendPeriod = z.infer<typeof SpendPeriod>;
+
+/**
+ * One member's spend envelope on the policy wallet. Every figure is the DATABASE's: `spentMinor` is
+ * what the spend gate (`finance.fn_check_spending_limit`) would count right now — `0` once the period
+ * has rolled — and `remainingMinor` / `usedFraction` are derived from it in SQL, so a meter never
+ * divides on the client.
+ */
 export const SpendLimitSchema = z.object({
 	memberId: z.string().max(64),
+	/** The member's `@handle` (without the `@`). */
 	handle: z.string().max(40),
 	name: z.string().max(120),
 	avatar: z.string().max(400),
-	/** Whether they may spend at all. */
+	/** Whether they may spend at all (`spend_funds`). */
 	canSpend: z.boolean(),
-	/** Rolling ceiling in minor units, or `null` for unlimited (owners). */
+	/** Rolling ceiling (the cap) in minor units, or `null` for no ceiling. */
 	limitMinor: z.number().int().min(0).nullable(),
-	/** Pre-formatted ceiling for display. */
+	/** Pre-formatted ceiling for display; `null` with no ceiling. */
 	limit: MoneyViewSchema.nullable(),
-	/** Spent within the current period (server-computed). */
+	/** The period the ceiling rolls over. */
+	period: SpendPeriod.default("monthly"),
+	/** Spent within the current period, in minor units. */
+	spentMinor: z.number().int().min(0).default(0),
+	/** Spent within the current period (server-formatted). */
 	spent: MoneyViewSchema,
+	/** What is left of the ceiling this period (never below 0); `null` with no ceiling. */
+	remainingMinor: z.number().int().min(0).nullable().default(null),
 	/** Fraction of the ceiling consumed, 0–1 — drives the envelope meter without client division. */
 	usedFraction: z.number().min(0).max(1),
 	/** Per-transaction ceiling, or `null`. */
@@ -266,23 +285,49 @@ export const SpendLimitSchema = z.object({
 });
 export type SpendLimit = z.infer<typeof SpendLimitSchema>;
 
+/**
+ * The spend requests a viewer may see (their own; every request for an approver or a policy manager),
+ * split so the queue and its history render without client filtering. `decided` is the 30 most
+ * recent approved, declined or expired requests.
+ */
+export const SpendApprovalsSchema = z.object({
+	pending: z.array(SpendRequestSchema),
+	decided: z.array(SpendRequestSchema),
+});
+export type SpendApprovals = z.infer<typeof SpendApprovalsSchema>;
+
 /** The business's spend policy — the buyer-side editor's whole state. */
 export const BusinessSpendPolicySchema = z.object({
 	/** The wallet currency this policy governs (a threshold and a limit are amounts in ONE currency). */
 	currency: z.string().regex(/^[A-Z]{3}$/),
-	/** Spend at or above this needs an approval. `null` disables the ladder entirely. */
+	/**
+	 * The wallet's OWN threshold — spend at or above it needs an approval. `null` means no local
+	 * override: the platform default ({@link platformThresholdMinor}) governs instead.
+	 */
 	approvalThresholdMinor: z.number().int().min(1).nullable(),
 	approvalThreshold: MoneyViewSchema.nullable(),
-	/** Member ids who may approve. */
+	/**
+	 * The platform's `vault_approval_threshold_cents` — what the spend gate applies while
+	 * {@link approvalThresholdMinor} is `null`; `null` when the platform sets none either.
+	 */
+	platformThresholdMinor: z.number().int().min(1).nullable().default(null),
+	/** Member ids who may approve (`approve_spend`). */
 	approverIds: z.array(z.string().max(64)),
-	/** Per-member envelopes. */
+	/** The same approvers by `@handle`, in the same order. */
+	approverHandles: z.array(z.string().max(40)).default([]),
+	/**
+	 * Per-member envelopes. A viewer who may read the wallet's envelopes
+	 * (`finance.fn_reads_wallet_envelopes`) receives every member's; anybody else only their own.
+	 */
 	limits: z.array(SpendLimitSchema),
-	/** Who may top the pool up. */
+	/** Who may top the pool up (`contribute_funds`) — member ids. */
 	contributorIds: z.array(z.string().max(64)),
+	/** The same contributors by `@handle`, in the same order. */
+	contributorHandles: z.array(z.string().max(40)).default([]),
 	/** The attributable ledger. */
 	entries: z.array(PoolEntrySchema),
-	/** Outstanding + recently-decided requests. */
-	requests: z.array(SpendRequestSchema),
+	/** The spend requests the viewer may see — the pending queue and its recent history. */
+	approvals: SpendApprovalsSchema,
 	/**
 	 * KYB state. The pooled wallet cannot be OPERATED until verified — the pre-verified surface is an
 	 * actionable lock with the policy editor still usable, never a dead end (brief §8).
@@ -292,6 +337,91 @@ export const BusinessSpendPolicySchema = z.object({
 	verificationPrompt: z.string().max(200).nullable(),
 });
 export type BusinessSpendPolicy = z.infer<typeof BusinessSpendPolicySchema>;
+
+/**
+ * What the viewer may do on a business console, decided in SQL from their effective capabilities and
+ * the business's lifecycle and KYB — the same conditions the write doors enforce, so the screens
+ * render from these and never recompute policy.
+ */
+export const BusinessViewerCanSchema = z.object({
+	/** Edit the spend policy (`manage_finances`). */
+	editPolicy: z.boolean(),
+	/** Approve or decline a spend request (`approve_spend`, KYB verified). */
+	decide: z.boolean(),
+	/** File a spend request (vault `spend`, business active). */
+	requestSpend: z.boolean(),
+	/** Pay an invoice (`manage_billing`, KYB verified, business active). */
+	payInvoice: z.boolean(),
+	/** Start or resume KYB (`manage_billing`). */
+	startKyb: z.boolean(),
+	/** Hire onto the business's projects (`hire`, business active). */
+	hire: z.boolean(),
+	/** Place an order from the pooled wallet (`purchase` and vault `spend`, KYB verified, active). */
+	purchase: z.boolean(),
+	/** Create and run the business's projects (`manage_projects`, business active). */
+	manageProjects: z.boolean(),
+	/** Archive the business now (`archive_entity`, not archived, no archive blocker). */
+	archive: z.boolean(),
+});
+export type BusinessViewerCan = z.infer<typeof BusinessViewerCanSchema>;
+
+/**
+ * What still stands between a business and a verified KYB, as stable codes the screen words:
+ * `connect_account` — no Stripe Connect account exists yet (start onboarding);
+ * `finish_onboarding` — the account exists but the provider has not verified it;
+ * `provider_restricted` — the provider restricted or disabled the account;
+ * `kyb_rejected` / `kyb_expired` — the platform's KYB record says so.
+ * The provider's own field-level requirement list is not stored, so it is not invented here.
+ */
+export const KybRequirement = z.enum([
+	"connect_account",
+	"finish_onboarding",
+	"provider_restricted",
+	"kyb_rejected",
+	"kyb_expired",
+]);
+export type KybRequirement = z.infer<typeof KybRequirement>;
+
+/** A business's KYB picture for the Verification module and every lock that links to it. */
+export const BusinessKybSchema = z.object({
+	status: VerificationState,
+	/** ISO instant the business was verified, or `null`. */
+	verifiedAt: z.string().max(40).nullable(),
+	/**
+	 * Resume Stripe-hosted onboarding for the business's EXISTING Connect account (the refresh door,
+	 * which mints a fresh single-use link and redirects) — present only for a `startKyb` holder whose
+	 * business has an account. Without one, onboarding starts at `POST /api/finance/verify/kyb`.
+	 */
+	connectOnboardingUrl: z.string().max(300).nullable(),
+	requirementsDue: z.array(KybRequirement),
+});
+export type BusinessKyb = z.infer<typeof BusinessKybSchema>;
+
+/**
+ * One currency's money tiles for a business, every figure summed in SQL in that currency (no
+ * conversion): `available` — the wallet balance; `pending` — releases still clearing back into it;
+ * `committed` — escrow the business has funded and not yet released; `awaitingApproval` — open spend
+ * requests; `spent30d` — debits of the last 30 days other than transfers out.
+ */
+export const BusinessMoneyTileSchema = z.object({
+	currency: z.string().regex(/^[A-Z]{3}$/),
+	available: MoneyViewSchema,
+	pending: MoneyViewSchema,
+	committed: MoneyViewSchema,
+	awaitingApproval: MoneyViewSchema,
+	spent30d: MoneyViewSchema,
+});
+export type BusinessMoneyTile = z.infer<typeof BusinessMoneyTileSchema>;
+
+/**
+ * `finance.preview_spend_envelope`'s answer — the envelopes a draft policy patch WOULD produce, so a
+ * draft ceiling never renders against the stored figures it is about to replace. Nothing is written.
+ */
+export const SpendEnvelopePreviewSchema = z.object({
+	currency: z.string().regex(/^[A-Z]{3}$/),
+	limits: z.array(SpendLimitSchema),
+});
+export type SpendEnvelopePreview = z.infer<typeof SpendEnvelopePreviewSchema>;
 
 /**
  * Whether a spend of `amountMinor` by a member clears their envelope, and if not, why.

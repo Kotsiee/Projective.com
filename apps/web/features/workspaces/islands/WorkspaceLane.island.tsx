@@ -814,7 +814,7 @@ function moduleSignals(detail: WorkspaceDetail): ModuleSignals {
 
 	if (detail.invites.length > 0) out.invitations = { count: detail.invites.length };
 
-	const awaitingDecision = detail.spend?.requests.filter((r) => r.state === "pending").length ?? 0;
+	const awaitingDecision = detail.spend?.approvals.pending.length ?? 0;
 	if (awaitingDecision > 0) out.spend = { count: awaitingDecision };
 
 	if (detail.verification !== "verified") out.verification = { dot: true };

@@ -15,7 +15,15 @@ import {
 	buildPayoutPolicy,
 	buildSpendPolicy,
 	type MoneyMember,
+	type RawApproval,
+	type RawBusinessSpend,
+	type RawEnvelope,
+	type SpendMember,
 	type TeamMoneyFacts,
+	toKyb,
+	toMoneyTile,
+	toSpendLimit,
+	toViewerCan,
 	trendOf,
 } from "./live-money.ts";
 
@@ -400,105 +408,208 @@ Deno.test("splitRuleArgs names exactly the parameters finance.save_split_rule de
 	assertEquals(sent, declared);
 });
 
-Deno.test("buildSpendPolicy: capabilities decide approvers/contributors/spenders; rejected → declined; ledger merged", () => {
+/** The business members the spend builder resolves faces from. */
+const spendMembers: SpendMember[] = members.map(({ memberId, userId, person }) => ({
+	memberId,
+	userId,
+	person,
+}));
+
+/** One raw envelope as `finance.fn_business_envelopes` answers it. */
+function envelope(memberId: string, userId: string, extra: Partial<RawEnvelope> = {}): RawEnvelope {
+	return {
+		member_id: memberId,
+		user_id: userId,
+		can_spend: false,
+		limit_minor: null,
+		per_transaction_minor: null,
+		period: "monthly",
+		spent_minor: 0,
+		remaining_minor: null,
+		used_fraction: 0,
+		...extra,
+	};
+}
+
+Deno.test("buildSpendPolicy: the SQL's envelopes, approvers and queue — mapped, never recomputed", () => {
 	const people = new Map([
 		["u-owner", { username: "kwame", name: "Kwame", avatar: null }],
 		["u-lead", { username: "sam", name: "Sam", avatar: null }],
 	]);
+	const approval = (id: string, status: string, extra: Partial<RawApproval> = {}): RawApproval => ({
+		id,
+		requested_by: "u-lead",
+		amount_minor: 1600,
+		currency: "usd",
+		reason: "Fund a stage",
+		status,
+		approver_user_id: null,
+		decided_at: null,
+		expires_at: null,
+		created_at: "2026-09-26T00:00:00Z",
+		...extra,
+	});
 	const policy = buildSpendPolicy(
-		members,
 		{
-			currency: "USD",
-			wallets: [{ id: "w1", currency: "USD", approval_threshold_cents: 0 }],
-			limits: [{
-				wallet_id: "w1",
-				member_user_id: "u-lead",
-				cap_cents: 2500,
-				per_transaction_cents: 1000,
-				period_interval: "monthly",
-				spent_cents: 800,
-				resets_at: "2026-10-07T00:00:00Z",
-			}],
-			audit: [{
+			currency: "usd",
+			approval_threshold_minor: null,
+			platform_threshold_minor: "50000",
+			approver_user_ids: ["u-owner"],
+			contributor_user_ids: ["u-owner", "u-lead"],
+			limits: [
+				envelope("m-owner", "u-owner", { can_spend: true }),
+				envelope("m-lead", "u-lead", {
+					can_spend: true,
+					limit_minor: 2500,
+					per_transaction_minor: "1000",
+					spent_minor: 800,
+					remaining_minor: 1700,
+					used_fraction: "0.32",
+				}),
+			],
+			contributed: [{ user_id: "u-owner", minor: "6000" }],
+			contributions: [{
 				id: "a1",
-				wallet_id: "w1",
 				actor_user_id: "u-owner",
-				amount_cents: 6000,
+				amount_minor: 6000,
 				currency: "USD",
-				metadata: { note: "Q4 budget" },
-				created_at: "2026-08-29T00:00:00Z",
+				note: "Q4 budget",
+				kind: null,
+				at: "2026-08-29T00:00:00Z",
+			}, {
+				id: "a2",
+				actor_user_id: "u-lead",
+				amount_minor: 100,
+				currency: "USD",
+				note: null,
+				kind: "card_topup",
+				at: "2026-08-30T00:00:00Z",
 			}],
 			debits: [{
 				id: "d1",
-				wallet_id: "w1",
-				amount_cents: 800,
+				amount_minor: 800,
 				currency: "USD",
 				reason: "escrow_hold",
-				created_at: "2026-09-20T00:00:00Z",
+				at: "2026-09-20T00:00:00Z",
 			}],
-			approvals: [
-				{
-					id: "s1",
-					wallet_id: "w1",
-					requested_by: "u-lead",
-					amount_cents: 1600,
-					currency: "USD",
-					reason: "Fund a stage",
-					status: "rejected",
+			approvals: {
+				pending: [approval("s2", "pending", { amount_minor: 900 })],
+				decided: [approval("s1", "rejected", {
 					approver_user_id: "u-owner",
 					decided_at: "2026-09-27T00:00:00Z",
-					expires_at: null,
-					created_at: "2026-09-26T00:00:00Z",
-				},
-				{
-					id: "s2",
-					wallet_id: "w1",
-					requested_by: "u-lead",
-					amount_cents: 900,
-					currency: "USD",
-					reason: "More",
-					status: "pending",
-					approver_user_id: null,
-					decided_at: null,
-					expires_at: "2026-10-01T00:00:00Z",
-					created_at: "2026-09-27T00:00:00Z",
-				},
-			],
+				})],
+			},
 		},
+		spendMembers,
 		people,
 		"verified",
 		NOW,
 	);
+	assertEquals(policy.currency, "USD");
 	assertStrictEquals(policy.approvalThresholdMinor, null);
-	assertEquals(policy.approverIds, ["m-owner"]);
-	assertEquals(policy.contributorIds, ["m-owner", "m-lead"]);
+	assertStrictEquals(policy.platformThresholdMinor, 50_000);
+	assertEquals([policy.approverIds, policy.approverHandles], [["m-owner"], ["kwame"]]);
+	assertEquals([policy.contributorIds, policy.contributorHandles], [["m-owner", "m-lead"], [
+		"kwame",
+		"sam",
+	]]);
 	assertEquals(
-		policy.limits.map((
-			l,
-		) => [
+		policy.limits.map((l) => [
 			l.memberId,
 			l.canSpend,
 			l.limitMinor,
-			l.spent.minor,
+			l.period,
+			l.spentMinor,
+			l.remainingMinor,
 			l.usedFraction,
 			l.perTransactionMinor,
 		]),
 		[
-			["m-owner", true, null, 0, 0, null],
-			["m-lead", true, 2500, 800, 0.32, 1000],
-			["m-new", false, null, 0, 0, null],
+			["m-owner", true, null, "monthly", 0, null, 0, null],
+			["m-lead", true, 2500, "monthly", 800, 1700, 0.32, 1000],
 		],
 	);
-	assertEquals(policy.entries.map((e) => [e.kind, e.memberId, e.reason]), [[
-		"spend",
-		null,
-		"Escrow funded",
-	], ["contribution", "m-owner", "Q4 budget"]]);
-	assertEquals(policy.requests.map((r) => [r.id, r.state, r.memberId, r.decidedBy, r.approvers]), [
-		["s2", "pending", "m-lead", null, ["Kwame"]],
-		["s1", "declined", "m-lead", "Kwame", ["Kwame"]],
+	assertEquals(policy.entries.map((e) => [e.kind, e.memberId, e.reason]), [
+		["spend", null, "Escrow funded"],
+		["contribution", "m-lead", "Added by card"],
+		["contribution", "m-owner", "Q4 budget"],
+	]);
+	assertEquals(policy.approvals.pending.map((r) => [r.id, r.state, r.memberId, r.approvers]), [
+		["s2", "pending", "m-lead", ["Kwame"]],
+	]);
+	assertEquals(policy.approvals.decided.map((r) => [r.id, r.state, r.decidedBy]), [
+		["s1", "declined", "Kwame"],
 	]);
 	assertStrictEquals(policy.verificationPrompt, null);
+});
+
+Deno.test("toSpendLimit: no ceiling has no remainder; a drifted period reads monthly; the fraction is clamped", () => {
+	const limit = toSpendLimit(
+		envelope("m", "u", { period: "fortnightly", used_fraction: "7", spent_minor: "-5" }),
+		undefined,
+		"EUR",
+	);
+	assertEquals(
+		[limit.limitMinor, limit.remainingMinor, limit.period, limit.usedFraction, limit.spentMinor],
+		[null, null, "monthly", 1, 0],
+	);
+	assertEquals(limit.name, "Member");
+	assertEquals(limit.spent.currency, "EUR");
+});
+
+Deno.test("toViewerCan: only an explicit true grants — a missing or null flag is a refusal", () => {
+	const can = toViewerCan({ edit_policy: true, decide: null, start_kyb: true, archive: false });
+	assertEquals(can, {
+		editPolicy: true,
+		decide: false,
+		requestSpend: false,
+		payInvoice: false,
+		startKyb: true,
+		hire: false,
+		purchase: false,
+		manageProjects: false,
+		archive: false,
+	});
+	assertEquals(Object.values(toViewerCan(null)).every((v) => v === false), true);
+});
+
+Deno.test("toKyb: the resume link only for a startKyb holder whose business has an account", () => {
+	const raw = {
+		status: "pending",
+		verified_at: null,
+		has_account: true,
+		requirements_due: ["finish_onboarding", "something_new"],
+	};
+	const kyb = toKyb(raw, "b-1", true);
+	assertEquals(kyb.status, "pending");
+	assertEquals(kyb.requirementsDue, ["finish_onboarding"]);
+	assertEquals(
+		kyb.connectOnboardingUrl,
+		"/api/finance/connect/refresh?scope=business&businessId=b-1&back=settings",
+	);
+	assertStrictEquals(toKyb(raw, "b-1", false).connectOnboardingUrl, null);
+	assertStrictEquals(toKyb({ ...raw, has_account: false }, "b-1", true).connectOnboardingUrl, null);
+	assertEquals(toKyb({ ...raw, status: "rejected" }, "b-1", true).status, "unverified");
+});
+
+Deno.test("toMoneyTile: every figure in its own currency, never a negative", () => {
+	const tile = toMoneyTile({
+		currency: "gbp",
+		available_minor: "12000",
+		pending_minor: null,
+		committed_minor: 5000,
+		awaiting_approval_minor: 900,
+		spent_30d_minor: -1,
+	});
+	assertEquals(
+		[tile.currency, tile.available.minor, tile.pending.minor, tile.committed.minor],
+		["GBP", 12_000, 0, 5000],
+	);
+	assertEquals([tile.awaitingApproval.minor, tile.spent30d.minor, tile.spent30d.currency], [
+		900,
+		0,
+		"GBP",
+	]);
 });
 
 Deno.test("trendOf: earnings for a team, spend for a business, empty when nothing moved", () => {
@@ -609,7 +720,7 @@ const FINANCE_TILES: WorkspaceFinance = {
 };
 
 /** Run one detail read with every outside reach stubbed; returns the result and the RPC spy. */
-async function readStubbed(raw: RawDetail) {
+async function readStubbed(raw: RawDetail, kind: "team" | "business" = "team") {
 	const rpc = stub(
 		detailIo,
 		"rpc",
@@ -620,16 +731,15 @@ async function readStubbed(raw: RawDetail) {
 	const media = stub(detailIo, "publicMedia", () => Promise.resolve(new Map()));
 	const cards = stub(detailIo, "partyCards", () =>
 		Promise.resolve(
-			new Map(["u-owner", "u-lead"].map((id) => [id, {
+			new Map(["u-owner", "u-lead", "u-new"].map((id) => [id, {
 				userId: id,
 				username: id.slice(2),
-				name: id === "u-owner" ? "Kwame" : "Sam",
+				name: id === "u-owner" ? "Kwame" : id === "u-lead" ? "Sam" : "Noor",
 				isFreelancer: true,
 				avatar: null,
 				avatarLarge: null,
 			}])),
 		));
-	const money = stub(detailIo, "businessMoney", () => Promise.reject(new Error("not a business")));
 	try {
 		const actor = {
 			userId: "u-owner",
@@ -637,7 +747,7 @@ async function readStubbed(raw: RawDetail) {
 			contextType: "personal",
 			accessToken: "test",
 		} as unknown as LiveActor;
-		const res = await readDetail("team", "northloop", actor, { nowMs: NOW });
+		const res = await readDetail(kind, raw.handle, actor, { nowMs: NOW });
 		return {
 			res,
 			detail: res.ok ? res.data ?? null : null,
@@ -649,7 +759,6 @@ async function readStubbed(raw: RawDetail) {
 		tiles.restore();
 		media.restore();
 		cards.restore();
-		money.restore();
 	}
 }
 
@@ -707,6 +816,244 @@ Deno.test("readDetail: engagements carry slugs and faces, never a user id", asyn
 	assert(!JSON.stringify(detail.engagements).includes("u-owner"));
 	assertEquals(detail.projects[0].counterparty, "Atlas Labs");
 	assertStrictEquals(detail.allowance, null);
+});
+
+// #endregion
+
+// #region The business console read (BB9)
+
+type BusinessViewer = "owner" | "admin" | "member" | "spender";
+
+/** The viewer flags the definer answers, by viewer. */
+const FLAGS: Record<BusinessViewer, Record<string, boolean>> = {
+	owner: {
+		edit_policy: true,
+		decide: true,
+		request_spend: true,
+		pay_invoice: true,
+		start_kyb: true,
+		hire: true,
+		purchase: true,
+		manage_projects: true,
+		archive: false,
+	},
+	admin: {
+		edit_policy: true,
+		decide: true,
+		request_spend: true,
+		pay_invoice: false,
+		start_kyb: false,
+		hire: true,
+		purchase: true,
+		manage_projects: true,
+		archive: false,
+	},
+	member: {
+		edit_policy: false,
+		decide: false,
+		request_spend: false,
+		pay_invoice: false,
+		start_kyb: false,
+		hire: false,
+		purchase: false,
+		manage_projects: false,
+		archive: false,
+	},
+	spender: {
+		edit_policy: false,
+		decide: false,
+		request_spend: true,
+		pay_invoice: false,
+		start_kyb: false,
+		hire: false,
+		purchase: false,
+		manage_projects: false,
+		archive: false,
+	},
+};
+
+/**
+ * A raw `org.get_workspace_detail` business answer AS THE DEFINER NARROWS IT for each viewer: the
+ * owner and an admin read every envelope and the whole queue; a plain member (contribute_funds only)
+ * cannot open Spend, so receives no spend block; a member granted spend_funds reads only their own
+ * envelope and requests.
+ */
+function rawBusinessDetail(viewer: BusinessViewer): RawDetail {
+	const self = { owner: "u-owner", admin: "u-lead", member: "u-new", spender: "u-new" }[viewer];
+	const member = (id: string, userId: string, role: string) => ({
+		id,
+		user_id: userId,
+		role_id: `r-${role}`,
+		role,
+		status: "active",
+		granted: viewer === "spender" && userId === "u-new" ? ["spend_funds"] : [],
+		revoked: [],
+		joined_at: "2026-09-01T00:00:00Z",
+		title: null,
+		reports_to: null,
+		is_self: userId === self,
+		email: null,
+		wi: 0,
+		wi_cap: "10.00",
+		availability: "available",
+		share_bp: null,
+		share_held: null,
+	});
+	const allEnvelopes = [
+		envelope("m-owner", "u-owner", { can_spend: true }),
+		envelope("m-lead", "u-lead", { can_spend: true, limit_minor: 50_000, remaining_minor: 50_000 }),
+		envelope("m-new", "u-new", {
+			can_spend: viewer === "spender",
+			limit_minor: 10_000,
+			spent_minor: 2500,
+			remaining_minor: 7500,
+			used_fraction: 0.25,
+		}),
+	];
+	const reads = viewer === "owner" || viewer === "admin";
+	const spend: RawBusinessSpend = {
+		currency: "USD",
+		approval_threshold_minor: 100_000,
+		platform_threshold_minor: null,
+		approver_user_ids: ["u-owner", "u-lead"],
+		contributor_user_ids: ["u-owner", "u-lead", "u-new"],
+		limits: reads ? allEnvelopes : allEnvelopes.filter((l) => l.user_id === self),
+		contributed: [{ user_id: "u-owner", minor: 250_000 }],
+		contributions: [],
+		debits: [],
+		approvals: { pending: [], decided: [] },
+	};
+	const tile = (currency: string, available: number, committed: number, spent: number) => ({
+		currency,
+		available_minor: available,
+		pending_minor: 0,
+		committed_minor: committed,
+		awaiting_approval_minor: 0,
+		spent_30d_minor: spent,
+	});
+	return {
+		status: "ok",
+		id: "biz-1",
+		name: "Atlas Labs",
+		handle: "atlas-labs",
+		avatar_file_id: null,
+		banner_file_id: null,
+		headline: "",
+		entity_status: "active",
+		visibility: "invite_only",
+		owner_user_id: "u-owner",
+		created_at: "2026-09-01T00:00:00Z",
+		verification: "verified",
+		viewer: {
+			member_id: { owner: "m-owner", admin: "m-lead", member: "m-new", spender: "m-new" }[viewer],
+			role_id: viewer === "owner" ? "r-owner" : viewer === "admin" ? "r-admin" : "r-member",
+			capabilities: [],
+		},
+		members: [
+			member("m-owner", "u-owner", "owner"),
+			member("m-lead", "u-lead", "admin"),
+			member("m-new", "u-new", "member"),
+		],
+		roles: [],
+		invites: [],
+		standing: null,
+		projects: [],
+		activity: [],
+		setup: { logo: false, bio: false, invite: true, money: true },
+		engagements: [],
+		payout: null,
+		allowance: null,
+		archive_blockers: viewer === "owner" ? [{ code: "wallet_balance", count: 2 }] : [],
+		spend: viewer === "member" ? null : spend,
+		money_tiles: [tile("USD", 250_000, 40_000, 12_000), tile("EUR", 900, 0, 0)],
+		kyb: {
+			status: "verified",
+			verified_at: "2026-09-02T00:00:00Z",
+			has_account: true,
+			requirements_due: [],
+		},
+		viewer_can: FLAGS[viewer],
+	};
+}
+
+Deno.test("readDetail (business): one RPC per detail read — the spend facts ride the console read", async () => {
+	for (const viewer of ["owner", "admin", "member", "spender"] as const) {
+		const { res, rpcCalls, rpcArgs } = await readStubbed(rawBusinessDetail(viewer), "business");
+		assert(res.ok, viewer);
+		assertEquals(rpcCalls, 1, `${viewer}: exactly one RPC`);
+		assertEquals(rpcArgs?.slice(1), ["org", "get_workspace_detail", {
+			p_kind: "business",
+			p_handle: "atlas-labs",
+		}]);
+	}
+});
+
+Deno.test("readDetail (business): the owner reads every envelope, the tiles in every currency, the flags", async () => {
+	const { detail } = await readStubbed(rawBusinessDetail("owner"), "business");
+	assert(detail?.spend);
+	assertEquals(detail.spend.limits.map((l) => [l.handle, l.limitMinor, l.remainingMinor]), [
+		["owner", null, null],
+		["lead", 50_000, 50_000],
+		["new", 10_000, 7500],
+	]);
+	assertEquals(detail.spend.approverHandles, ["owner", "lead"]);
+	assertEquals(detail.moneyTiles.map((t) => [t.currency, t.available.minor, t.committed.minor]), [
+		["USD", 250_000, 40_000],
+		["EUR", 900, 0],
+	]);
+	assertEquals(detail.members.map((m) => [m.handle, m.spendLimitMinor, m.contributedMinor]), [
+		["owner", null, 250_000],
+		["lead", 50_000, 0],
+		["new", 10_000, 0],
+	]);
+	assert(detail.viewerCan?.payInvoice && detail.viewerCan.startKyb && !detail.viewerCan.archive);
+	assertEquals(detail.archiveBlockers, [{ code: "wallet_balance", count: 2 }]);
+	assert(detail.kyb?.connectOnboardingUrl?.startsWith("/api/finance/connect/refresh?"));
+});
+
+Deno.test("readDetail (business): an admin decides and edits but cannot pay or start KYB", async () => {
+	const { detail } = await readStubbed(rawBusinessDetail("admin"), "business");
+	assert(detail?.viewerCan);
+	const can = detail.viewerCan;
+	assertEquals([can.editPolicy, can.decide, can.payInvoice, can.startKyb], [
+		true,
+		true,
+		false,
+		false,
+	]);
+	assertStrictEquals(detail.kyb?.connectOnboardingUrl, null);
+	assertEquals(detail.spend?.limits.length, 3);
+	assertEquals(detail.archiveBlockers, []);
+});
+
+Deno.test("readDetail (business): a plain member sees no envelope, no queue, nobody's ceiling", async () => {
+	const { detail } = await readStubbed(rawBusinessDetail("member"), "business");
+	assert(detail);
+	assertStrictEquals(detail.spend, null);
+	assert(detail.members.every((m) => m.spendLimitMinor === null), "no member's ceiling leaks");
+	assert(detail.viewerCan && Object.values(detail.viewerCan).every((v) => v === false));
+	// Finance is theirs to open (contribute_funds), so the tiles are.
+	assertEquals(detail.moneyTiles.length, 2);
+});
+
+Deno.test("readDetail (business): a member who may spend reads only their own envelope", async () => {
+	const { detail } = await readStubbed(rawBusinessDetail("spender"), "business");
+	assert(detail?.spend);
+	assertEquals(detail.spend.limits.map((l) => [l.memberId, l.spentMinor, l.usedFraction]), [
+		["m-new", 2500, 0.25],
+	]);
+	assertEquals(detail.members.map((m) => [m.id, m.spendLimitMinor]), [
+		["m-owner", null],
+		["m-lead", null],
+		["m-new", 10_000],
+	]);
+	assert(detail.viewerCan?.requestSpend && !detail.viewerCan.decide);
+});
+
+Deno.test("readDetail (team): no business blocks", async () => {
+	const { detail } = await readStubbed(rawTeamDetail(true));
+	assert(detail);
+	assertEquals([detail.moneyTiles, detail.viewerCan, detail.kyb], [[], null, null]);
 });
 
 // #endregion

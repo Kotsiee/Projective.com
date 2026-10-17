@@ -65,3 +65,18 @@ Deno.test("the floor warning reads the default-currency balance; monthly terms n
 	});
 	assertEquals([perTransaction.belowFloor, perTransaction.nextInvoiceLabel, perTransaction.onAccount], [false, null, null]);
 });
+
+Deno.test("Pay is the database's call: the billing right alone does not offer it", () => {
+	const view = (over: Record<string, unknown>) =>
+		toBillingView({
+			settings: settings(over),
+			balanceMinor: 0,
+			standing: null,
+			invoices: [],
+			statements: [],
+			now: NOW,
+		});
+	assertEquals([view({}).canManage, view({}).canPay], [true, false]);
+	assertEquals(view({ can_pay: true }).canPay, true);
+	assertEquals(view({ can_manage: true, can_pay: null }).canPay, false);
+});

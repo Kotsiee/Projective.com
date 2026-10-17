@@ -15,7 +15,10 @@ import {
 	WorkspaceRoleDefSchema,
 } from "./members.ts";
 import {
+	BusinessKybSchema,
+	BusinessMoneyTileSchema,
 	BusinessSpendPolicySchema,
+	BusinessViewerCanSchema,
 	SplitRuleInputSchema,
 	TeamPayoutPolicySchema,
 } from "./policy.ts";
@@ -263,10 +266,24 @@ export const WorkspaceDetailSchema = z.object({
 	roles: z.array(WorkspaceRoleDefSchema),
 	invites: z.array(WorkspaceInviteSchema),
 
-	// Money — at most one is present, matching {@link kind}; a team's payout only for `manage_finances`.
+	// Money — at most one is present, matching {@link kind}; a team's payout only for `manage_finances`,
+	// a business's spend only for a viewer who may open Spend (`spend_funds` · `manage_finances` ·
+	// `approve_spend`).
 	payout: TeamPayoutPolicySchema.nullable(),
 	spend: BusinessSpendPolicySchema.nullable(),
 	finance: WorkspaceFinanceSchema,
+	/**
+	 * A business's money tiles, one per wallet currency (all of them, not only the largest) — present
+	 * for a viewer who may open Finance (`contribute_funds` · `spend_funds` · `manage_finances`); `[]`
+	 * for anybody else and for a team.
+	 */
+	moneyTiles: z.array(BusinessMoneyTileSchema).default([]),
+
+	// Business — server-decided (`null` for a team)
+	/** What the viewer may do here, decided in SQL; the screens render from it. */
+	viewerCan: BusinessViewerCanSchema.nullable().default(null),
+	/** The business's KYB picture. */
+	kyb: BusinessKybSchema.nullable().default(null),
 
 	// Surfaces
 	projects: z.array(WorkspaceProjectSchema),

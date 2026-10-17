@@ -2636,6 +2636,146 @@ BEGIN
 END;
 $$;
 
+-- The spend envelopes of a business's members on ONE of its wallets, as the Spend module shows them and
+-- as finance.fn_check_spending_limit would count them right now: `spent_minor` is 0 once a weekly or
+-- monthly period has rolled (resets_at passed), `remaining_minor` is what is left of the cap (never
+-- below 0; NULL with no cap), `used_fraction` the share of the cap consumed (0..1; 0 with no cap).
+-- A member with no spending_limits row has no ceilings. `can_spend` is their effective `spend_funds`.
+--
+-- Narrowed to what the CALLER may read, exactly as the spending_limits SELECT policy narrows it (BB6):
+-- their own envelope, and everybody's only when they read the wallet's envelopes
+-- (finance.fn_reads_wallet_envelopes). With no wallet in that currency yet there are no stored rows,
+-- and the same people — `manage_finances` or `approve_spend` holders — see every member's defaults.
+--
+-- `p_patch` is a finance.save_spend_policy patch (or NULL): its `limits` entries replace what they name
+-- — `can_spend`, `limit_minor`, `per_transaction_minor`, each only when present — so a draft is priced
+-- against the period's real spend. Read by org.get_workspace_detail and finance.preview_spend_envelope,
+-- so the console and the draft preview cannot disagree. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_business_envelopes(p_business uuid, p_wallet uuid, p_patch jsonb DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_reads_all boolean;
+BEGIN
+    v_reads_all := CASE WHEN p_wallet IS NOT NULL THEN finance.fn_reads_wallet_envelopes(p_wallet)
+        ELSE org.fn_member_can('business', p_business, 'manage_finances')
+          OR org.fn_member_can('business', p_business, 'approve_spend') END;
+    RETURN (
+        SELECT COALESCE(jsonb_agg(jsonb_build_object(
+            'member_id', e.member_id,
+            'user_id', e.user_id,
+            'can_spend', e.can_spend,
+            'limit_minor', e.cap,
+            'per_transaction_minor', e.per_tx,
+            'period', e.period,
+            'spent_minor', e.spent,
+            'remaining_minor', CASE WHEN e.cap IS NULL THEN NULL ELSE GREATEST(e.cap - e.spent, 0) END,
+            'used_fraction', CASE WHEN e.cap IS NULL OR e.cap <= 0 THEN 0
+                ELSE LEAST(1, round(e.spent::numeric / e.cap, 4)) END
+        ) ORDER BY e.rank DESC, e.joined_at), '[]'::jsonb)
+        FROM (
+            SELECT m.id AS member_id, m.user_id, org.fn_preset_rank(m.role) AS rank, m.joined_at,
+                   CASE WHEN p.l ? 'can_spend' THEN (p.l->>'can_spend')::boolean
+                        ELSE 'spend_funds' = ANY (org.fn_member_capabilities('business', p_business, m.user_id)) END
+                       AS can_spend,
+                   CASE WHEN p.l ? 'limit_minor' THEN NULLIF(p.l->>'limit_minor', '')::bigint ELSE sl.cap_cents END AS cap,
+                   CASE WHEN p.l ? 'per_transaction_minor' THEN NULLIF(p.l->>'per_transaction_minor', '')::bigint
+                        ELSE sl.per_transaction_cents END AS per_tx,
+                   COALESCE(sl.period_interval, 'monthly') AS period,
+                   CASE WHEN sl.id IS NULL THEN 0
+                        WHEN sl.period_interval <> 'total' AND sl.resets_at IS NOT NULL AND sl.resets_at <= now() THEN 0
+                        ELSE sl.spent_cents END AS spent
+              FROM org.business_members m
+              LEFT JOIN finance.spending_limits sl ON sl.wallet_id = p_wallet AND sl.member_user_id = m.user_id
+              LEFT JOIN LATERAL (
+                  SELECT x.l FROM jsonb_array_elements(
+                      CASE WHEN jsonb_typeof(p_patch->'limits') = 'array' THEN p_patch->'limits' ELSE '[]'::jsonb END
+                  ) x(l)
+                   WHERE x.l->>'member_id' = m.id::text
+                   LIMIT 1
+              ) p ON true
+             WHERE m.business_id = p_business AND m.status = 'active'
+               AND (m.user_id = v_uid OR v_reads_all)
+        ) e
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION finance.fn_business_envelopes(uuid, uuid, jsonb) IS
+'Every member''s spend envelope on one business wallet — can_spend, limit_minor, per_transaction_minor,
+period, spent_minor (0 once the period rolled), remaining_minor, used_fraction — narrowed to the caller''s
+own unless they read the wallet''s envelopes; a save_spend_policy patch''s limits applied on top. Read
+by org.get_workspace_detail and finance.preview_spend_envelope. Internal.';
+
+-- The envelopes a DRAFT spend policy would produce, so the editor never renders a draft ceiling
+-- against the stored figures it is about to replace (BUSINESSES_AUDIT BD2). Same patch, same authority
+-- (`manage_finances`) and the same validation of its limits as finance.save_spend_policy; writes
+-- nothing — the wallet is looked up, never created (a currency with no wallet yet has spent nothing).
+-- The rank rules (never your own row, the owner's, or someone you do not outrank) are the save's to
+-- refuse: a preview only prices the draft.
+CREATE OR REPLACE FUNCTION finance.preview_spend_envelope(p_business_id uuid, p_patch jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_currency text;
+    v_exists boolean;
+    v_wallet uuid;
+    l jsonb;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+    END IF;
+    IF p_patch IS NULL OR jsonb_typeof(p_patch) <> 'object' THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'patch: expected an object';
+    END IF;
+    SELECT true, upper(COALESCE(NULLIF(p_patch->>'currency', ''), b.default_currency, 'USD'))
+      INTO v_exists, v_currency
+      FROM org.business_profiles b WHERE b.id = p_business_id;
+    IF v_exists IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'workspace: not found';
+    END IF;
+    IF NOT org.fn_member_can('business', p_business_id, 'manage_finances') THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'policy: you cannot change this business''s spend policy';
+    END IF;
+    IF p_patch ? 'limits' THEN
+        IF jsonb_typeof(p_patch->'limits') <> 'array' THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'limits: expected a list';
+        END IF;
+        FOR l IN SELECT * FROM jsonb_array_elements(p_patch->'limits') LOOP
+            IF NOT EXISTS (SELECT 1 FROM org.business_members m
+                            WHERE m.id::text = l->>'member_id' AND m.business_id = p_business_id AND m.status = 'active') THEN
+                RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'limits: every limit must belong to an active member';
+            END IF;
+            IF COALESCE(NULLIF(l->>'limit_minor', '')::bigint, 0) < 0
+               OR COALESCE(NULLIF(l->>'per_transaction_minor', '')::bigint, 0) < 0 THEN
+                RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'limits: a limit cannot be negative';
+            END IF;
+        END LOOP;
+    END IF;
+    SELECT w.id INTO v_wallet FROM finance.wallets w
+     WHERE w.owner_type = 'business' AND w.owner_id = p_business_id AND upper(w.currency) = v_currency;
+    RETURN jsonb_build_object(
+        'currency', v_currency,
+        'limits', finance.fn_business_envelopes(p_business_id, v_wallet, p_patch)
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION finance.preview_spend_envelope(uuid, jsonb) IS
+'Read-only: the {currency, limits} a finance.save_spend_policy patch would produce (manage_finances; the
+same limit validation), priced against the period''s real spend by finance.fn_business_envelopes. Backs
+POST /api/workspace/spend/preview.';
+
 -- Ask for approval of a spend the caller's envelope does not cover. Replaces the client INSERT policy
 -- that let any member who could SEE a wallet file a request in any currency with any expiry: the
 -- requester must hold `spend` on the wallet, the request must genuinely need approval (the SQL twin of

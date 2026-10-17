@@ -5,6 +5,7 @@ import type {
 	InviteActionInput,
 	InviteMemberInput,
 	RespondInviteInput,
+	SpendEnvelopePreview,
 	TransferOwnershipInput,
 	UpdateMemberInput,
 	UpdatePayoutInput,
@@ -20,6 +21,7 @@ import type { ReadActor } from "../read-actor.ts";
 import { callRpc, isLive, type LiveActor, signedOut, unavailable } from "./live-support.ts";
 import { readRoster } from "./live-roster.ts";
 import { readDetail } from "./live-detail.ts";
+import { previewSpendEnvelope } from "./live-money.ts";
 import * as writes from "./live-writes.ts";
 import { reembedInBackground } from "../search/embedding-sync.ts";
 
@@ -205,6 +207,18 @@ export class WorkspaceBackendService {
 		actor: ReadActor,
 	): Promise<ServiceResult<WorkspaceDetail>> {
 		return guarded("spend", actor, (live) => writes.saveSpendPolicy(input, live));
+	}
+
+	/**
+	 * The envelopes a DRAFT spend-policy patch would produce (`finance.preview_spend_envelope` —
+	 * read-only, `manage_finances`), so the editor renders a draft ceiling against its own figures, never
+	 * against the stored ones it is about to replace. Nothing is written.
+	 */
+	static previewSpend(
+		input: UpdateSpendInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<SpendEnvelopePreview>> {
+		return guarded("spend-preview", actor, (live) => previewSpendEnvelope(input, live));
 	}
 
 	/** Approve or decline an outstanding spend request. */

@@ -51,6 +51,18 @@ Deno.test("rosterStats: team earns, business spends, members and projects are pl
 	assertEquals(team.every((s) => s.delta === null), true);
 	const biz = rosterStats("business", { member_count: 2, active_projects: 0, money_30d: [] });
 	assertEquals(biz[2], { label: "Spent (30d)", value: "—", delta: null });
+	// Every currency that moved counts: the largest figure, then how many others there are.
+	const multi = rosterStats("business", {
+		member_count: 2,
+		active_projects: 0,
+		money_30d: [
+			{ currency: "EUR", minor: 12_000 },
+			{ currency: "usd", minor: 2_850_000 },
+			{ currency: "GBP", minor: 0 },
+			{ currency: "JPY", minor: 900 },
+		],
+	});
+	assertEquals(multi[2].value, "US$28,500.00 +2");
 });
 
 Deno.test("largestAmount compares in major units and never sums currencies", () => {

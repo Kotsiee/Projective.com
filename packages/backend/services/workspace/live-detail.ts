@@ -24,14 +24,15 @@ import { callRpc, clientFor, type LiveActor } from "./live-support.ts";
 import {
 	buildPayoutPolicy,
 	buildSpendPolicy,
-	type BusinessMoneyFacts,
-	businessMoneyPeople,
+	businessSpendPeople,
 	contributedBy,
-	limitFor,
+	envelopeFor,
 	type MoneyMember,
-	readBusinessMoney,
 	readFinanceTiles,
 	teamMoneyFacts,
+	toKyb,
+	toMoneyTile,
+	toViewerCan,
 } from "./live-money.ts";
 import {
 	availabilityOf,
@@ -65,7 +66,9 @@ import {
  * `org.get_workspace_detail` is the console's ONE read of the entity (Decision #233): under the caller's
  * session it answers the roster, roles, invitations, activity, every member's live W_i and stake, each
  * project's counterparty face, and — for a team — the payout block (`manage_finances` holders only), the
- * live engagements and the proposal allowance. A non-member is `forbidden`, an unknown reference
+ * live engagements and the proposal allowance; for a business (BB9) the spend block, the per-currency
+ * money tiles, the KYB picture, the archive blockers and the viewer's server-decided flags, each
+ * narrowed in SQL to what the viewer may see. A non-member is `forbidden`, an unknown reference
  * `not_found`. This module then resolves only what the facts point at through the platform's shared
  * resolvers: the people (ONE `org.get_party_cards` batch), the entity's marks, and the finance tiles
  * (the `/wallet` projection, reused so the console and the wallet cannot disagree).
@@ -89,7 +92,6 @@ export interface DetailIo {
 		ids: readonly (string | null | undefined)[],
 	) => Promise<Map<string, MediaRef>>;
 	partyCards: (actor: LiveActor, ids: readonly string[]) => Promise<Map<string, PartyCard>>;
-	businessMoney: (actor: LiveActor, businessId: string) => Promise<BusinessMoneyFacts>;
 }
 
 /** The live implementations of {@link DetailIo}. */
@@ -98,7 +100,6 @@ export const detailIo: DetailIo = {
 	financeTiles: readFinanceTiles,
 	publicMedia: (actor, ids) => fetchPublicMedia(clientFor(actor), ids),
 	partyCards: (actor, ids) => fetchPartyCards(clientFor(actor), ids),
-	businessMoney: readBusinessMoney,
 };
 
 // #endregion
@@ -258,12 +259,10 @@ async function assemble(
 	const projects = raw.projects ?? [];
 	const engagements = kind === "team" ? raw.engagements ?? [] : [];
 	const teamMoney = kind === "team" && raw.payout ? teamMoneyFacts(raw.payout, members) : null;
+	const spend = kind === "business" ? raw.spend ?? null : null;
 
-	// Wave 1 — the money tiles, the marks and (for a business) its spend facts, in parallel.
-	const [businessMoney, finance, media] = await Promise.all([
-		kind === "business"
-			? detailIo.businessMoney(actor, raw.id)
-			: Promise.resolve<BusinessMoneyFacts | null>(null),
+	// Wave 1 — the wallet-page tiles and the marks, in parallel.
+	const [finance, media] = await Promise.all([
 		detailIo.financeTiles(actor, kind, raw.id),
 		detailIo.publicMedia(actor, [raw.avatar_file_id, raw.banner_file_id]),
 	]);
@@ -275,7 +274,7 @@ async function assemble(
 		...(raw.activity ?? []).map((a) => a.actor_user_id ?? ""),
 		...projects.map((p) => p.owner_user_id ?? ""),
 		...projects.flatMap((p) => p.provider_user_ids ?? []),
-		...(businessMoney ? businessMoneyPeople(businessMoney) : []),
+		...businessSpendPeople(spend),
 	].filter((id) => id.length > 0);
 	const cards = await detailIo.partyCards(actor, userIds);
 	const people = new Map<string, Person>();
@@ -303,7 +302,8 @@ async function assemble(
 		);
 		const isOwner = m.user_id === raw.owner_user_id;
 		moneyMembers.push({ memberId: m.id, userId: m.user_id, isOwner, person, capabilities });
-		const limit = businessMoney ? limitFor(businessMoney, m.user_id) : undefined;
+		// Only an envelope the viewer may read (their own, unless they read the wallet's) is shown.
+		const envelope = envelopeFor(spend, m.user_id);
 		const wi = wiOf(m.wi);
 		const wiCap = wiCapOf(m.wi_cap);
 		mapped.push({
@@ -323,10 +323,11 @@ async function assemble(
 			wiCap,
 			availability: availabilityOf(m.availability),
 			isSelf: !!m.is_self,
-			spendLimitMinor: limit && limit.cap_cents !== null && limit.cap_cents !== undefined
-				? Number(limit.cap_cents)
-				: null,
-			contributedMinor: businessMoney ? contributedBy(businessMoney, m.user_id) : 0,
+			spendLimitMinor:
+				envelope && envelope.limit_minor !== null && envelope.limit_minor !== undefined
+					? Math.max(0, Math.trunc(Number(envelope.limit_minor) || 0))
+					: null,
+			contributedMinor: contributedBy(spend, m.user_id),
 			shareBp: Math.max(0, Math.min(10_000, Number(m.share_bp) || 0)),
 			shareHeld: !!m.share_held,
 			reportsTo: m.reports_to ?? null,
@@ -347,6 +348,7 @@ async function assemble(
 	};
 
 	const viewerCaps = parseCapabilities(raw.viewer?.capabilities);
+	const viewerCan = toViewerCan(raw.viewer_can);
 	const active = mapped.length;
 	const avatarRef = raw.avatar_file_id ? media.get(raw.avatar_file_id) : undefined;
 	const bannerRef = raw.banner_file_id ? media.get(raw.banner_file_id) : undefined;
@@ -374,10 +376,11 @@ async function assemble(
 			toOutgoingInvite(i, i.target_user_id ? people.get(i.target_user_id) : undefined, nowMs)
 		),
 		payout: teamMoney ? buildPayoutPolicy(moneyMembers, teamMoney) : null,
-		spend: businessMoney
-			? buildSpendPolicy(moneyMembers, businessMoney, people, verification, nowMs)
-			: null,
+		spend: spend ? buildSpendPolicy(spend, moneyMembers, people, verification, nowMs) : null,
 		finance,
+		moneyTiles: kind === "business" ? (raw.money_tiles ?? []).map(toMoneyTile) : [],
+		viewerCan: kind === "business" ? viewerCan : null,
+		kyb: kind === "business" ? toKyb(raw.kyb, raw.id, viewerCan.startKyb) : null,
 		projects: projects.map((p) => toProject(p, counterpartyOf(p), nowMs)),
 		engagements: engagements.map((e) => toEngagement(e, people, byUser)),
 		allowance: kind === "team" ? allowanceOf(raw.allowance) : null,

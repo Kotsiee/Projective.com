@@ -2694,7 +2694,17 @@ $$;
 --   * for a team: `payout` — the active split rule, the vault wallet and finance.preview_team_split —
 --     ONLY for a caller holding `manage_finances`; `engagements` — the team's live stage assignments with
 --     each assignee's W_i on the stage (slugs only, Decision #88); and `allowance` —
---     finance.get_proposal_allowance's answer for the team.
+--     finance.get_proposal_allowance's answer for the team;
+--   * for a business (BB9), every flag and figure decided here so no screen recomputes policy:
+--     `spend` — for a viewer who may open Spend (spend_funds · manage_finances · approve_spend): the
+--     policy wallet's threshold and the platform default, the approvers and contributors, the members'
+--     envelopes (finance.fn_business_envelopes — their own unless they read the wallet's), what each
+--     member contributed, the attributable ledger, and the spend requests they may read (their own
+--     unless finance.fn_reads_wallet_envelopes) as `approvals {pending, decided (last 30)}`;
+--     `money_tiles` — for a viewer who may open Finance (contribute_funds · spend_funds ·
+--     manage_finances): per wallet currency, available · pending · committed · awaiting approval ·
+--     spent in 30 days; `viewer_can` — what the viewer may do, as the write doors decide it; and `kyb` —
+--     the KYB status, the Connect account's presence and what is still due.
 -- VOLATILE because the allowance read opens the week and pays out the lazy drip.
 CREATE OR REPLACE FUNCTION org.get_workspace_detail(p_kind text, p_handle text)
 RETURNS jsonb
@@ -2710,19 +2720,30 @@ DECLARE
     v_member uuid;
     v_member_role_id uuid;
     v_cap_default numeric;
+    -- Business only (BB9).
+    v_currency text;
+    v_wallet uuid;
+    v_active boolean := false;
+    v_verified boolean := false;
+    v_spender boolean := false;
+    v_sees_spend boolean := false;
+    v_sees_money boolean := false;
+    v_blockers jsonb := '[]'::jsonb;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
     END IF;
     IF p_kind = 'team' THEN
         SELECT t.id, t.name, t.slug, t.avatar_file_id AS avatar, t.banner_file_id AS banner, t.headline,
-               t.status, t.owner_user_id, t.created_at, t.treasury_wallet_id, t.visibility
+               t.status, t.owner_user_id, t.created_at, t.treasury_wallet_id, t.visibility,
+               NULL::text AS currency, NULL::finance.kyc_status AS kyb_status, NULL::timestamptz AS kyb_verified_at
           INTO v_e FROM org.teams t
          WHERE lower(t.slug) = lower(btrim(COALESCE(p_handle, '')))
             OR t.id = CASE WHEN p_handle ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN p_handle::uuid END;
     ELSIF p_kind = 'business' THEN
         SELECT b.id, b.name, b.slug, b.logo_file_id AS avatar, b.banner_file_id AS banner, b.headline,
-               b.status, b.owner_user_id, b.created_at, NULL::uuid AS treasury_wallet_id, b.visibility
+               b.status, b.owner_user_id, b.created_at, NULL::uuid AS treasury_wallet_id, b.visibility,
+               b.default_currency AS currency, b.kyb_status, b.kyb_verified_at
           INTO v_e FROM org.business_profiles b
          WHERE lower(b.slug) = lower(btrim(COALESCE(p_handle, '')))
             OR b.id = CASE WHEN p_handle ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN p_handle::uuid END;
@@ -2742,6 +2763,24 @@ BEGIN
         UNION ALL SELECT m.role_id FROM org.business_members m WHERE m.id = v_member) x;
     SELECT (p.value #>> '{}')::numeric INTO v_cap_default FROM security.platform_params p WHERE p.key = 'global_workload_cap_default';
     v_cap_default := COALESCE(v_cap_default, 10.00);
+    IF p_kind = 'business' THEN
+        -- The policy wallet is the one in the business's default currency (save_spend_policy's default).
+        v_currency := upper(COALESCE(v_e.currency, 'USD'));
+        SELECT w.id INTO v_wallet FROM finance.wallets w
+         WHERE w.owner_type = 'business' AND w.owner_id = v_e.id AND upper(w.currency) = v_currency;
+        v_active := v_e.status = 'active';
+        v_verified := finance.fn_business_kyb_verified(v_e.id);
+        -- Vault `spend` is what request_spend_approval and place_wallet_order check; before the wallet
+        -- exists, the workspace right it will be projected from.
+        v_spender := CASE WHEN v_wallet IS NOT NULL
+            THEN finance.fn_has_vault_capability(v_wallet, v_uid, 'spend'::finance.vault_capability)
+            ELSE 'spend_funds' = ANY (v_caps) END;
+        v_sees_spend := v_caps && ARRAY['spend_funds', 'manage_finances', 'approve_spend']::org.workspace_capability[];
+        v_sees_money := v_caps && ARRAY['contribute_funds', 'spend_funds', 'manage_finances']::org.workspace_capability[];
+        IF 'archive_entity' = ANY (v_caps) THEN
+            v_blockers := org.fn_business_archive_blockers(v_e.id);
+        END IF;
+    END IF;
 
     RETURN jsonb_build_object(
         'status', 'ok',
@@ -2932,8 +2971,115 @@ BEGIN
         'allowance', CASE WHEN p_kind = 'team' THEN finance.get_proposal_allowance(v_e.id) END,
         -- What would refuse an archive right now, for the people who may archive (Settings lists them
         -- before the confirm); `[]` for everybody else and for a team.
-        'archive_blockers', CASE WHEN p_kind = 'business' AND 'archive_entity' = ANY (v_caps)
-            THEN org.fn_business_archive_blockers(v_e.id) ELSE '[]'::jsonb END,
+        'archive_blockers', v_blockers,
+        -- A business's pooled-wallet governance, for the people who may open Spend (BB9).
+        'spend', CASE WHEN p_kind = 'business' AND v_sees_spend THEN jsonb_build_object(
+                'currency', v_currency,
+                'approval_threshold_minor', (SELECT w.approval_threshold_cents FROM finance.wallets w WHERE w.id = v_wallet),
+                'platform_threshold_minor', (SELECT NULLIF((pp.value #>> '{}')::bigint, 0) FROM security.platform_params pp
+                                              WHERE pp.key = 'vault_approval_threshold_cents'),
+                'approver_user_ids', (SELECT COALESCE(jsonb_agg(m.user_id ORDER BY org.fn_preset_rank(m.role) DESC, m.joined_at), '[]'::jsonb)
+                    FROM org.business_members m
+                   WHERE m.business_id = v_e.id AND m.status = 'active'
+                     AND 'approve_spend' = ANY (org.fn_member_capabilities('business', v_e.id, m.user_id))),
+                'contributor_user_ids', (SELECT COALESCE(jsonb_agg(m.user_id ORDER BY org.fn_preset_rank(m.role) DESC, m.joined_at), '[]'::jsonb)
+                    FROM org.business_members m
+                   WHERE m.business_id = v_e.id AND m.status = 'active'
+                     AND 'contribute_funds' = ANY (org.fn_member_capabilities('business', v_e.id, m.user_id))),
+                'limits', finance.fn_business_envelopes(v_e.id, v_wallet, NULL),
+                'contributed', (SELECT COALESCE(jsonb_agg(jsonb_build_object('user_id', c.actor_user_id, 'minor', c.total)), '[]'::jsonb)
+                    FROM (SELECT la.actor_user_id, sum(la.amount_cents) AS total FROM finance.ledger_audit la
+                           WHERE la.wallet_id = v_wallet AND la.action = 'add_funds' AND la.actor_user_id IS NOT NULL
+                           GROUP BY la.actor_user_id) c),
+                'contributions', (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                        'id', a.id, 'actor_user_id', a.actor_user_id, 'amount_minor', a.amount_cents,
+                        'currency', upper(a.currency), 'note', a.metadata->>'note', 'kind', a.metadata->>'kind',
+                        'at', a.created_at) ORDER BY a.created_at DESC), '[]'::jsonb)
+                    FROM (SELECT la.* FROM finance.ledger_audit la JOIN finance.wallets w ON w.id = la.wallet_id
+                           WHERE w.owner_type = 'business' AND w.owner_id = v_e.id AND la.action = 'add_funds'
+                           ORDER BY la.created_at DESC LIMIT 40) a),
+                'debits', (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                        'id', d.id, 'amount_minor', d.amount_cents, 'currency', upper(d.currency),
+                        'reason', d.reason, 'at', d.created_at) ORDER BY d.created_at DESC), '[]'::jsonb)
+                    FROM (SELECT tx.* FROM finance.transactions tx JOIN finance.wallets w ON w.id = tx.wallet_id
+                           WHERE w.owner_type = 'business' AND w.owner_id = v_e.id AND tx.direction = 'debit'
+                             AND tx.reason <> 'transfer_out'
+                           ORDER BY tx.created_at DESC LIMIT 40) d),
+                -- The requests the viewer may read, as the spend_approvals SELECT policy narrows them (BB6).
+                'approvals', (SELECT jsonb_build_object(
+                        'pending', COALESCE(jsonb_agg(q.row ORDER BY q.created_at DESC) FILTER (WHERE q.open), '[]'::jsonb),
+                        'decided', COALESCE((jsonb_agg(q.row ORDER BY q.settled_at DESC) FILTER (WHERE NOT q.open)), '[]'::jsonb))
+                    FROM (
+                        SELECT r.row, r.created_at, r.open, r.settled_at,
+                               row_number() OVER (PARTITION BY r.open ORDER BY r.settled_at DESC) AS n
+                          FROM (
+                            SELECT jsonb_build_object(
+                                       'id', sa.id, 'requested_by', sa.requested_by, 'amount_minor', sa.amount_cents,
+                                       'currency', upper(sa.currency), 'reason', sa.reason, 'status', sa.status,
+                                       'approver_user_id', sa.approver_user_id, 'decided_at', sa.decided_at,
+                                       'expires_at', sa.expires_at, 'created_at', sa.created_at) AS row,
+                                   sa.created_at,
+                                   sa.status = 'pending'::finance.approval_status
+                                       AND (sa.expires_at IS NULL OR sa.expires_at > now()) AS open,
+                                   COALESCE(sa.decided_at, LEAST(sa.expires_at, now()), sa.created_at) AS settled_at
+                              FROM finance.spend_approvals sa JOIN finance.wallets w ON w.id = sa.wallet_id
+                             WHERE w.owner_type = 'business' AND w.owner_id = v_e.id
+                               AND (sa.requested_by = v_uid OR finance.fn_reads_wallet_envelopes(sa.wallet_id))
+                          ) r
+                    ) q
+                   WHERE q.open OR q.n <= 30)
+            ) END,
+        -- One currency's tiles per business wallet, summed in that currency, for the people who may open
+        -- Finance; `[]` for everybody else and for a team.
+        'money_tiles', CASE WHEN p_kind = 'business' AND v_sees_money THEN (
+            SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                    'currency', upper(w.currency),
+                    'available_minor', w.balance_cents,
+                    'pending_minor', COALESCE((SELECT sum(GREATEST(pr.amount_cents - pr.recovered_cents, 0))
+                        FROM finance.pending_releases pr WHERE pr.wallet_id = w.id AND pr.state = 'pending'), 0),
+                    'committed_minor', COALESCE((SELECT sum(e.amount_cents) FROM finance.escrows e
+                        WHERE e.payer_business_id = v_e.id AND e.status IN ('held', 'funded')
+                          AND upper(e.currency) = upper(w.currency)), 0),
+                    'awaiting_approval_minor', COALESCE((SELECT sum(sa.amount_cents) FROM finance.spend_approvals sa
+                        WHERE sa.wallet_id = w.id AND sa.status = 'pending'::finance.approval_status
+                          AND (sa.expires_at IS NULL OR sa.expires_at > now())), 0),
+                    'spent_30d_minor', COALESCE((SELECT sum(tx.amount_cents) FROM finance.transactions tx
+                        WHERE tx.wallet_id = w.id AND tx.direction = 'debit' AND tx.reason <> 'transfer_out'
+                          AND tx.created_at > now() - interval '30 days'), 0)
+                ) ORDER BY upper(w.currency) = v_currency DESC, w.balance_cents DESC, w.currency), '[]'::jsonb)
+              FROM finance.wallets w WHERE w.owner_type = 'business' AND w.owner_id = v_e.id)
+            ELSE '[]'::jsonb END,
+        -- What the viewer may do, by the same conditions the doors enforce: the capability, plus an active
+        -- business (org.fn_assert_business_active) and KYB (the spend gate, pay_invoice) where they apply.
+        'viewer_can', CASE WHEN p_kind = 'business' THEN jsonb_build_object(
+                'edit_policy', 'manage_finances' = ANY (v_caps),
+                'decide', 'approve_spend' = ANY (v_caps) AND v_verified,
+                'request_spend', v_spender AND v_active,
+                'pay_invoice', 'manage_billing' = ANY (v_caps) AND v_verified AND v_active,
+                'start_kyb', 'manage_billing' = ANY (v_caps),
+                'hire', 'hire' = ANY (v_caps) AND v_active,
+                'purchase', 'purchase' = ANY (v_caps) AND v_spender AND v_verified AND v_active,
+                'manage_projects', 'manage_projects' = ANY (v_caps) AND v_active,
+                'archive', 'archive_entity' = ANY (v_caps) AND v_e.status <> 'archived' AND jsonb_array_length(v_blockers) = 0
+            ) END,
+        -- The business's KYB picture: its status, whether a Connect account exists, and what is still due
+        -- (stable codes; the provider's field-level list is not stored).
+        'kyb', CASE WHEN p_kind = 'business' THEN (
+            SELECT jsonb_build_object(
+                'status', v_e.kyb_status,
+                'verified_at', v_e.kyb_verified_at,
+                'has_account', pa.id IS NOT NULL,
+                'requirements_due', CASE
+                    WHEN v_e.kyb_status = 'verified' THEN '[]'::jsonb
+                    WHEN v_e.kyb_status = 'rejected' THEN jsonb_build_array('kyb_rejected')
+                    WHEN v_e.kyb_status = 'expired' THEN jsonb_build_array('kyb_expired')
+                    WHEN pa.id IS NULL THEN jsonb_build_array('connect_account')
+                    WHEN pa.status IN ('restricted', 'disabled') THEN jsonb_build_array('provider_restricted')
+                    ELSE jsonb_build_array('finish_onboarding') END)
+              FROM (SELECT 1) one
+              LEFT JOIN LATERAL (SELECT x.id, x.status FROM finance.payout_accounts x
+                                  WHERE x.owner_type = 'business' AND x.owner_id = v_e.id
+                                  ORDER BY x.updated_at DESC LIMIT 1) pa ON true) END,
         -- The 30 most recent events, joins and money movements interleaved by time.
         'activity', (SELECT COALESCE(jsonb_agg(q.a ORDER BY q.at DESC), '[]'::jsonb) FROM (
             SELECT u.a, u.at FROM (

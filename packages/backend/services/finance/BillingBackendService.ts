@@ -124,6 +124,7 @@ export function toBillingView(f: BillingFacts): BusinessBillingView {
 		invoices: f.invoices.slice(0, 36).map((row) => toInvoiceRow(row, f.now)),
 		statements: statements.slice(0, 24),
 		canManage: s.can_manage === true,
+		canPay: s.can_pay === true,
 	};
 }
 // #endregion

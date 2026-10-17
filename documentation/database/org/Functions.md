@@ -930,6 +930,33 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
   `fn_business_archive_blockers` **only when the viewer holds `archive_entity`**, else `[]` (always
   `[]` for a team) — so Settings lists what to clear before the archive confirm (BB5; `archiveBlockers`
   in `WorkspaceDetail`).
+  A **business** also answers, every flag and figure decided here so no screen recomputes policy
+  (BB9; always `null` / `[]` for a team):
+  - `spend` — **only when the viewer may open Spend** (`spend_funds` · `manage_finances` ·
+    `approve_spend`), else `null`: the policy wallet's `currency` (the business's `default_currency`),
+    its own `approval_threshold_minor` and the `platform_threshold_minor` (`vault_approval_threshold_cents`)
+    the gate falls back to, `approver_user_ids` / `contributor_user_ids` (effective `approve_spend` /
+    `contribute_funds`), `limits` from `finance.fn_business_envelopes` (the caller's own envelope unless
+    `finance.fn_reads_wallet_envelopes` — BB6's spending_limits policy, mirrored), `contributed` (each
+    member's all-time `add_funds` on the policy wallet), the 40 latest `contributions` and `debits`
+    (`transfer_out` excluded), and `approvals {pending, decided}` — the requests the caller may read
+    (their own unless `fn_reads_wallet_envelopes`): every open one, and the 30 latest approved /
+    rejected / expired.
+  - `money_tiles` — **only when the viewer may open Finance** (`contribute_funds` · `spend_funds` ·
+    `manage_finances`), else `[]`: one row per business wallet, the policy currency first —
+    `available_minor` (balance), `pending_minor` (`pending_releases` still clearing), `committed_minor`
+    (escrows it funded, `held`/`funded`), `awaiting_approval_minor` (open requests), `spent_30d_minor`
+    (debits of 30 days, `transfer_out` excluded). Each in its own currency; nothing is converted.
+  - `viewer_can` — `edit_policy` (`manage_finances`) · `decide` (`approve_spend`, KYB) ·
+    `request_spend` (vault `spend`, active) · `pay_invoice` (`manage_billing`, KYB, active) ·
+    `start_kyb` (`manage_billing`) · `hire` / `manage_projects` (the capability, active) · `purchase`
+    (`purchase` + vault `spend`, KYB, active) · `archive` (`archive_entity`, not archived, no blocker).
+    "Active" is `org.fn_assert_business_active`'s rule and "KYB" `finance.fn_business_kyb_verified`.
+  - `kyb` — `status` (`finance.kyc_status`), `verified_at`, `has_account` (a `finance.payout_accounts`
+    row exists) and `requirements_due`: `[]` once verified, else ONE of `kyb_rejected` · `kyb_expired` ·
+    `connect_account` (no Connect account yet) · `provider_restricted` (restricted / disabled) ·
+    `finish_onboarding`. The provider's field-level requirement list is not stored, so it is not
+    answered.
   For a **team** it also answers (Decision #233 — the console's ONE read; the service makes no other
   read of the entity):
   - `payout` — **only when the caller holds `manage_finances`**, else `null` (every member holds

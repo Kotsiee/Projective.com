@@ -989,6 +989,34 @@ never a capability the caller does not hold. Capability moves go through
 `org.fn_set_member_capability`, so "can spend" has one representation. Re-projects the whole vault;
 audits `business.spend_policy_changed`.
 
+### `finance.preview_spend_envelope(p_business_id, p_patch)` → `{currency, limits}`
+
+Read-only (`STABLE`): the envelopes a `save_spend_policy` patch WOULD produce, so the Spend editor
+never renders a draft ceiling against the stored figures it is about to replace (BUSINESSES_AUDIT
+BD2). Same authority (`manage_finances`, else `42501 policy:`) and the same limit validation (`22023
+limits:` — an inactive member, a negative limit); the rank rules stay the save's to refuse. The
+wallet is looked up, never created — a currency with no wallet yet has spent nothing. `limits` is
+`fn_business_envelopes` with the patch applied. Backs `POST /api/workspace/spend/preview`.
+
+### `finance.fn_business_envelopes(p_business, p_wallet, p_patch DEFAULT NULL)` → `jsonb` (internal)
+
+Every active member's envelope on one business wallet, highest rank first: `member_id`, `user_id`,
+`can_spend` (effective `spend_funds`), `limit_minor`, `per_transaction_minor`, `period`, `spent_minor`
+— what `fn_check_spending_limit` would count now (0 once a weekly / monthly period rolled) —
+`remaining_minor` (cap − spent, never below 0; `NULL` without a cap) and `used_fraction` (0–1, 4 dp; 0
+without a cap). Narrowed to the caller's own unless `fn_reads_wallet_envelopes(p_wallet)` (with no
+wallet yet: `manage_finances` or `approve_spend`). A patch's `limits` entries replace the keys they
+carry. The ONE envelope reader behind `org.get_workspace_detail` and `preview_spend_envelope`, so the
+console and the draft cannot disagree. Not executable by clients.
+
+### `finance.get_billing_settings(p_business_id)` → `jsonb | NULL`
+
+The Billing module's settings for whoever may see the business's finances (`fn_owner_visible`; `NULL`
+for anyone else): `currency`, `invoicing_mode`, `billing_day`, `kyb_verified`, `auto_fund_mode`,
+`low_balance_floor_cents`, `can_manage` (vault `manage_billing`) and `can_pay` — `pay_invoice`'s own
+conditions (`manage_billing`, KYB verified, an `active` business), so Pay is offered only when it
+would be accepted (BUSINESSES_AUDIT BD15).
+
 ### `finance.request_spend_approval(p_wallet, p_amount, p_reason, p_ref_table, p_ref_id)` → `{id, status}`
 
 Asks for approval of a spend the caller's envelope does not cover. The wallet must be a **business**

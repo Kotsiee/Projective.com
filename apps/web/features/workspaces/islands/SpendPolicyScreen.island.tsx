@@ -187,7 +187,7 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 		if (res.data.spend) policy.value = { ...res.data.spend };
 	}
 
-	const pendingCount = policy.value.requests.filter((r) => r.state === "pending").length;
+	const pendingCount = policy.value.approvals.pending.length;
 
 	return (
 		<div class="wsp" data-kind="business">
@@ -230,7 +230,7 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 							</div>
 							<div class="wsp-band__body">
 								<ApprovalQueue
-									requests={policy.value.requests}
+									requests={[...policy.value.approvals.pending, ...policy.value.approvals.decided]}
 									canApprove={canApprove && verified}
 									selfMemberId={ws.viewerMemberId}
 									busyId={busyId.value}

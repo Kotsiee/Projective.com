@@ -411,7 +411,10 @@ AS $$
         'kyb_verified', finance.fn_business_kyb_verified(b.id),
         'auto_fund_mode', b.auto_fund_mode,
         'low_balance_floor_cents', b.low_balance_floor_cents,
-        'can_manage', finance.fn_owner_capability('business', b.id, 'manage_billing'::finance.vault_capability)
+        'can_manage', finance.fn_owner_capability('business', b.id, 'manage_billing'::finance.vault_capability),
+        -- Whether Pay may be offered: pay_invoice's own conditions (the billing right, KYB, an active business).
+        'can_pay', finance.fn_owner_capability('business', b.id, 'manage_billing'::finance.vault_capability)
+            AND finance.fn_business_kyb_verified(b.id) AND b.status = 'active'
     ) END
       FROM org.business_profiles b
      WHERE b.id = p_business_id;
