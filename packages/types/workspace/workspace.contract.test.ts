@@ -2,7 +2,8 @@
  * The contract between the workspace permission engine's two implementations — the TypeScript SSOT
  * (`common.ts`: `capabilitiesForKind`, `presetCapabilities`, `roleRank`) and its SQL twin in
  * `00001020_functions_org_entities.sql` §6/§9 (`org.fn_kind_capabilities`, `org.fn_preset_capabilities`,
- * `org.fn_preset_rank`, `org.fn_is_reserved_handle`), plus the `org.workspace_capability` enum itself.
+ * `org.fn_preset_rank`, `org.fn_is_reserved_handle`), plus the `org.workspace_capability` enum itself,
+ * and the handle claim rule (`workspace.ts` `localHandleRefusal` ↔ `org.fn_handle_refusal`).
  *
  * Every write RPC gates on the SQL twin while every screen renders from the TypeScript, so a list that
  * moves on one side alone makes the console offer an action the database refuses (or hide one it would
@@ -28,8 +29,19 @@ import {
 	SplitRuleInputSchema,
 } from "./policy.ts";
 import {
+	CreateWorkspaceInputSchema,
+	HANDLE_REFUSALS,
+	handleAlternatives,
+	HandleRefusalCode,
+	handleRefusalOf,
+	localHandleRefusal,
 	TeamEngagementSchema,
 	UpdatePayoutInputSchema,
+	WORKSPACE_HANDLE_MAX,
+	WORKSPACE_HANDLE_MIN,
+	WORKSPACE_HANDLE_PATTERN,
+	WORKSPACE_NAME_MAX,
+	WORKSPACE_NAME_MIN,
 	WorkspaceDetailSchema,
 } from "./workspace.ts";
 
@@ -173,6 +185,85 @@ Deno.test("org.fn_is_reserved_handle reserves exactly RESERVED_HANDLES", () => {
 	const list = literals(reservedBody.slice(start, reservedBody.indexOf("]", start)));
 	assertEquals(new Set(list), new Set(RESERVED_HANDLES));
 	assertEquals(list.length, new Set(list).size, "the SQL list repeats a handle");
+});
+
+Deno.test("org.fn_handle_refusal judges a handle by the TS claim rule, branch for branch, in order", () => {
+	const body = functionBody(entities, "org.fn_handle_refusal");
+	const branches: Array<[HandleRefusalCode, string]> = [
+		["short", `length(p_handle) < ${WORKSPACE_HANDLE_MIN} THEN '${HANDLE_REFUSALS.short}'`],
+		["long", `length(p_handle) > ${WORKSPACE_HANDLE_MAX} THEN '${HANDLE_REFUSALS.long}'`],
+		[
+			"format",
+			`p_handle !~ '${WORKSPACE_HANDLE_PATTERN.source}' THEN '${HANDLE_REFUSALS.format}'`,
+		],
+		["reserved", `org.fn_is_reserved_handle(p_handle) THEN '${HANDLE_REFUSALS.reserved}'`],
+		["taken", `org.fn_handle_taken(p_handle) THEN '${HANDLE_REFUSALS.taken}'`],
+	];
+	let from = 0;
+	for (const [code, branch] of branches) {
+		const at = body.indexOf(branch, from);
+		assert(at >= 0, `fn_handle_refusal's ${code} branch no longer reads: ${branch}`);
+		from = at + branch.length;
+	}
+	assertEquals(
+		branches.map(([code]) => code),
+		[...HandleRefusalCode.options],
+		"HandleRefusalCode must list the branches in the database's order",
+	);
+});
+
+Deno.test("localHandleRefusal answers the local branches; CreateWorkspaceInputSchema agrees", () => {
+	const cases: Array<[string, HandleRefusalCode | null]> = [
+		["ab", "short"],
+		["a".repeat(WORKSPACE_HANDLE_MAX + 1), "long"],
+		["-studio", "format"],
+		["studio-", "format"],
+		["Studio", "format"],
+		["stu_dio", "format"],
+		["teams", "reserved"],
+		["create", "reserved"],
+		["northern-grid", null],
+		["a".repeat(WORKSPACE_HANDLE_MAX), null],
+	];
+	for (const [handle, code] of cases) {
+		assertEquals(localHandleRefusal(handle), code, handle);
+		const parsed = CreateWorkspaceInputSchema.safeParse({ kind: "team", name: "Grid", handle });
+		// A reserved word is well-formed: only the database (and the probe) refuses it.
+		assertEquals(parsed.success, code === null || code === "reserved", `schema on ${handle}`);
+	}
+	for (const code of HandleRefusalCode.options) {
+		assertEquals(handleRefusalOf(HANDLE_REFUSALS[code]), code);
+	}
+	assertEquals(handleRefusalOf(null), null);
+	assertEquals(handleRefusalOf("Something the client never heard of."), "taken");
+});
+
+Deno.test("org.create_workspace bounds a name exactly as CreateWorkspaceInputSchema does", () => {
+	const body = functionBody(entities, "org.create_workspace");
+	assert(
+		body.includes(
+			`length(v_name) < ${WORKSPACE_NAME_MIN} OR length(v_name) > ${WORKSPACE_NAME_MAX}`,
+		),
+		"create_workspace's name bounds moved away from WORKSPACE_NAME_MIN / WORKSPACE_NAME_MAX",
+	);
+});
+
+Deno.test("handleAlternatives: well-formed, distinct, within the length cap, never the original", () => {
+	const long = "a".repeat(WORKSPACE_HANDLE_MAX);
+	for (const handle of ["northern-grid", "abc", long, `${"b".repeat(37)}-cd`]) {
+		const out = handleAlternatives(handle);
+		assert(out.length >= 3, `${handle} offers too few candidates`);
+		assertEquals(out.length, new Set(out).size, `${handle} repeats a candidate`);
+		for (const candidate of out) {
+			assertEquals(localHandleRefusal(candidate), null, candidate);
+			assert(candidate !== handle, `${handle} offered itself`);
+		}
+	}
+	assertEquals(handleAlternatives("northern-grid").slice(0, 3), [
+		"northern-grid-hq",
+		"northern-grid-co",
+		"northern-grid-2",
+	]);
 });
 
 Deno.test("finance.split_rule_type declares SplitRuleType.options, and the template input covers each", () => {

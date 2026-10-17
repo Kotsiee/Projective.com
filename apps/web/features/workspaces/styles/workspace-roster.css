@@ -730,64 +730,101 @@ index, and it disappears at 100% — a completed checklist is noise. */
 
 /* #region The Draft-First create dialog */
 /*
- * Name plus handle is the whole form. Everything else is completed inside the entity, which is why
- * this dialog has no scroll, no sections and no optional fields beyond the logo.
+ * Name plus handle is the whole form (R3): the entity is created as a draft and finished inside, so
+ * the dialog has no sections, no optional fields and no scroll. Both fields are `@projective/ui`
+ * FormControls — label, hint, the §A.7 rest-only validation paint, the 16px type floor below
+ * `--bp-md` — so nothing here styles a field; these rules only space the form and draw the handle's
+ * live line and its alternatives.
  */
 .wsp-create {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-4);
 	min-inline-size: 0;
+	margin: 0;
 }
 
 .wsp-create__intro {
 	margin: 0;
 	max-inline-size: var(--wsp-prose);
 	font-size: var(--wsp-fs-body);
-	line-height: 1.6;
+	line-height: var(--leading-normal);
 	color: var(--text-secondary);
 }
 
-.wsp-create__row {
-	display: flex;
-	align-items: flex-start;
-	gap: var(--space-4);
-	flex-wrap: wrap;
-}
-
-.wsp-create__field {
+/* The handle, its live line and its alternatives read as one field: they sit closer than fields do. */
+.wsp-create__handle {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-2);
-	inline-size: 100%;
-	max-inline-size: var(--wsp-field);
+	gap: var(--space-1);
 	min-inline-size: 0;
 }
 
-/* A form label takes the package field register; `--wsp-fs-label` is the console's eyebrow step. */
-.wsp-create__label {
-	font-size: var(--fld-label-fs);
-	font-weight: var(--fld-label-fw);
-	color: var(--fld-label-fg);
-}
-
-.wsp-create__hint {
+/*
+ * The availability line — a polite live region that is empty until there is news. Its line is held
+ * open at rest so an answer arriving never shoves the alternatives or the footer down.
+ */
+.wsp-create__check {
 	display: flex;
 	align-items: center;
-	gap: var(--space-1);
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-2);
+	min-block-size: var(--space-5);
+	margin: 0;
 	font-size: var(--wsp-fs-micro);
 	color: var(--text-secondary);
 }
 
+.wsp-create__check-mark {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+}
+
+/* A non-text mark, so it carries the hue; the sentence beside it stays in the meta ink. */
+.wsp-create__check-mark[data-tone="success"] {
+	color: var(--success);
+}
+
+/* A taken handle's free alternatives: text buttons in a row, never chips (§B.11). */
+.wsp-create__suggest {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-2);
+}
+
+.wsp-create__suggest-label {
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wsp-create__refusal-mark {
+	display: inline-flex;
+	color: var(--danger);
+}
+
+.wsp-create__fix {
+	margin-inline-start: var(--space-2);
+}
+
+.wsp-create__actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+}
+
 /*
- * The kind chooser — shown only when the modal opens from a neutral surface, because a route that
- * already committed to a kind has answered this. Two full-bordered buttons: they are interactive, so
- * §B.4's ban on boxing applies to neither.
+ * Held for the screens that still borrow them — the billing, member-drawer and payout forms
+ * (`__label`, `__error`) and the invite dialog's mode chooser (`__kind*`). The create dialog uses
+ * none of them; each goes when its last borrower moves onto FormControl / SelectButton (C2, C4, BU).
  */
-.wsp-create__kinds {
-	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: var(--space-2);
+.wsp-create__label {
+	font-size: var(--fld-label-fs);
+	font-weight: var(--fld-label-fw);
+	color: var(--fld-label-fg);
 }
 
 .wsp-create__kind {
@@ -811,9 +848,8 @@ index, and it disappears at 100% — a completed checklist is noise. */
 }
 
 /*
- * The selected kind is marked by its own tint, so the chooser previews the mark colour the entity
- * will carry rather than using one generic accent for both. The tint is mixed against the dialog's
- * own solid `--surface`, never `transparent` (§B.4.2).
+ * The selected option is marked by its kind's own tint, mixed against the dialog's solid `--surface`,
+ * never `transparent` (§B.4.2).
  */
 .wsp-create__kind[data-on="true"][data-kind="team"] {
 	border-color: var(--primary);
@@ -843,97 +879,6 @@ index, and it disappears at 100% — a completed checklist is noise. */
 
 :root[data-motion="reduced"] .wsp-create__kind {
 	transition: none;
-}
-
-/* The handle probe's verdict — iconographic, with the words beside it because this one IS the
-answer to a question the user just asked. */
-.wsp-create__handle {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	min-inline-size: 0;
-}
-
-.wsp-create__handle-prefix {
-	flex: none;
-	font-size: var(--wsp-fs-body);
-	color: var(--text-secondary);
-}
-
-.wsp-create__handle-state {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
-}
-
-.wsp-create__handle-state[data-available="true"] {
-	color: var(--success);
-}
-
-.wsp-create__handle-state[data-available="false"] {
-	color: var(--warning);
-}
-
-.wsp-create__suggest {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	flex-wrap: wrap;
-}
-
-.wsp-create__suggestion {
-	padding-inline: var(--space-2);
-	padding-block: var(--space-px);
-	border: var(--hairline-strong);
-	border-radius: var(--radius-xs);
-	background: none;
-	color: var(--on-surface);
-	font: inherit;
-	font-size: var(--wsp-fs-micro);
-	cursor: pointer;
-}
-
-.wsp-create__suggestion:hover {
-	background: var(--surface-2);
-}
-
-/* A live preview of the mark, so the initial badge is never a surprise. */
-.wsp-create__preview {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	min-inline-size: 0;
-}
-
-.wsp-create__preview-body {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-px);
-	min-inline-size: 0;
-}
-
-.wsp-create__preview-name {
-	font-size: var(--wsp-fs-body);
-	font-weight: var(--fw-medium);
-	color: var(--on-surface);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.wsp-create__preview-handle {
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
-}
-
-.wsp-create__actions {
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
-	gap: var(--space-3);
-	flex-wrap: wrap;
 }
 
 .wsp-create__error {
@@ -974,10 +919,6 @@ answer to a question the user just asked. */
 
 	.wsp-card__stats {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
-	}
-
-	.wsp-create__row {
-		flex-direction: column;
 	}
 }
 /* #endregion */

@@ -18,8 +18,9 @@ import type {
 } from "@projective/types/workspace";
 import { ok, type ServiceResult } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
-import { callRpc, isLive, type LiveActor, signedOut, unavailable } from "./live-support.ts";
+import { isLive, type LiveActor, signedOut, unavailable } from "./live-support.ts";
 import { readRoster } from "./live-roster.ts";
+import { checkHandle } from "./live-handle.ts";
 import { readDetail } from "./live-detail.ts";
 import { previewSpendEnvelope } from "./live-money.ts";
 import * as writes from "./live-writes.ts";
@@ -71,23 +72,12 @@ export class WorkspaceBackendService {
 		return guarded("detail", actor, (live) => readDetail(kind, handleOrId, live));
 	}
 
-	/** Probe a handle's availability across the one namespace people and entities share. */
+	/**
+	 * Probe a handle's availability across the one namespace people and entities share. A TAKEN handle
+	 * is answered with up to three alternatives the namespace says are free (`live-handle.ts`).
+	 */
 	static checkHandle(handle: string, actor: ReadActor): Promise<ServiceResult<HandleCheck>> {
-		return guarded("check-handle", actor, async (live) => {
-			const res = await callRpc<{ handle: string; available: boolean; reason: string | null }>(
-				live,
-				"org",
-				"check_handle",
-				{ p_handle: handle },
-			);
-			if (!res.ok) return res.refusal;
-			return ok({
-				handle: res.data.handle.slice(0, 40),
-				available: res.data.available,
-				reason: res.data.reason ? res.data.reason.slice(0, 160) : null,
-				suggestions: [],
-			});
-		});
+		return guarded("check-handle", actor, (live) => checkHandle(handle, live));
 	}
 
 	// #endregion
