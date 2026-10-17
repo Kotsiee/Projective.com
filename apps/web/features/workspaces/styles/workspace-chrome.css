@@ -152,6 +152,7 @@ loud channel is still the chip in the body. */
 	border: none;
 	/* The acting rule's edge, reserved transparent at rest so marking a row moves no box (§B.12.3). */
 	border-inline-start: var(--hairline-strong);
+	border-inline-start-width: var(--wsp-acting-line-h);
 	border-inline-start-color: transparent;
 	cursor: pointer;
 	text-align: start;
@@ -170,7 +171,7 @@ with the row or its container would vanish. */
 /* Acting: one tonal step plus a leading rule — never a four-sided ring (§B.4). */
 .wsp-lane__entity[data-acting="true"] {
 	background: var(--wsp-acting-tint);
-	border-inline-start-color: var(--hairline-strong-color);
+	border-inline-start-color: var(--wsp-acting-ring);
 }
 
 .wsp-lane__entity-body {

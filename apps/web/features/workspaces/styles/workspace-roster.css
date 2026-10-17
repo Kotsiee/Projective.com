@@ -302,6 +302,7 @@
 	/* The acting rule's edge, reserved transparent at rest so the state recolours an edge and moves no
 	box (§B.12.3). */
 	border-inline-start: var(--hairline-strong);
+	border-inline-start-width: var(--wsp-acting-line-h);
 	border-inline-start-color: transparent;
 	border-radius: var(--radius-container-lg);
 	background: var(--surface-1);
@@ -325,7 +326,7 @@ the card or its container would vanish. */
  */
 .wsp-card[data-acting="true"] {
 	background: var(--wsp-acting-tint);
-	border-inline-start-color: var(--hairline-strong-color);
+	border-inline-start-color: var(--wsp-acting-ring);
 }
 
 /*

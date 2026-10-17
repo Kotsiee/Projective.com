@@ -116,8 +116,9 @@
 	 * header band and a shell-wide line). Only the CHIP is allowed to be loud: it is a filled,
 	 * high-contrast pill. Everywhere else acting is a single tonal step plus, on a row or a card, one
 	 * leading `--hairline-strong` rule — never a four-sided ring (§B.4) — so the markers accumulate
-	 * into one calm reading rather than four competing alarms. `-ring` survives only as the border
-	 * colour of the lane switcher, which is a control and so may carry a full contour.
+	 * into one calm reading rather than four competing alarms. `-ring` is the opaque kind edge: the
+	 * full contour of the lane switcher (a control), and the colour of the leading self/acting rule on
+	 * cards and lane rows, reserved at `--wsp-acting-line-h` so the state moves no box.
 	 */
 	--wsp-acting: var(--wsp-kind);
 	--wsp-acting-on: var(--wsp-kind-on);

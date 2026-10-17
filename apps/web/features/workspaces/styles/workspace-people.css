@@ -180,6 +180,7 @@ two declarations the package field draws its own disabled state with. */
 	/* One leading edge, reserved transparent at rest: the self and pending states below recolour it
 	rather than adding a box (§B.4, §B.12.3). */
 	border-inline-start: var(--hairline-strong);
+	border-inline-start-width: var(--wsp-acting-line-h);
 	border-inline-start-color: transparent;
 	border-radius: var(--radius-container-lg);
 	background: var(--surface-1);
@@ -196,10 +197,11 @@ the card or its container would vanish. */
 	background: var(--surface-3);
 }
 
-/* The viewer's own card gets one leading `--hairline-strong` rule — orientation, not emphasis, and
-never a four-sided ring around static content. */
+/* The viewer's own card gets one leading rule in the kind's opaque edge tone — orientation, not
+emphasis, and never a four-sided ring around static content. A neutral hairline here is invisible at
+1x, and this rule is the card's only self cue until the name line says "You". */
 .wsp-mcard[data-self="true"] {
-	border-inline-start-color: var(--hairline-strong-color);
+	border-inline-start-color: var(--wsp-acting-ring);
 }
 
 /* An invited or requested member is present but not yet counted: no tonal plate of their own, just
