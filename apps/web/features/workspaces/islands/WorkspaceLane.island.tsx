@@ -11,6 +11,7 @@ import {
 	LaneHead,
 	LaneIconButton,
 	LaneList,
+	type LaneMode,
 	LaneSearch,
 	LaneSection,
 	LaneSections,
@@ -59,6 +60,7 @@ import {
 	parseMoreOpen,
 	rosterFiltered,
 	signalLabel,
+	verificationWords,
 	withMoreOpen,
 } from "../core/lane-model.ts";
 import {
@@ -90,7 +92,8 @@ import { type LaneCreateTarget, WorkspaceRail } from "../components/WorkspaceRai
  * every console beneath them), built as **four zones** on `--surface-1` (Teams work order L1):
  *
  *   1. **Header strip** (`LaneHead`) — on the roster index the kind's title and a count line; inside
- *      a console Back, the entity's mark, name, `@handle` and lifecycle `Tag`, and the acting switch.
+ *      a console Back, the entity's mark, name, `@handle` and lifecycle `Tag`, then the acting switch
+ *      beside the verification state (dot + words — the rail's ring, said in the expanded lane).
  *   2. **Primary views** — the viewer's entities (owned first) on the index; inside a console the
  *      registry's primary modules as `NavItem` rows, then "More" (collapsed until the viewer opens it,
  *      remembered per viewer) with every other module they may open.
@@ -98,7 +101,7 @@ import { type LaneCreateTarget, WorkspaceRail } from "../components/WorkspaceRai
  *      only where the view has something to partition; otherwise the zone is not drawn.
  *   4. **Docked footer rig** (`LaneFooter`) — the collapse toggle and at most ONE tier-2
  *      `LaneCreateButton`: New team / New business on the index, Invite member inside a console for an
- *      `invite_members` holder, nothing for anybody else.
+ *      `invite_members` holder, nothing for anybody else. A roster at its plan's limit says so there.
  *
  * Which zones exist and what they hold is {@link laneZones} — a pure function of the kind, the view
  * and the server-resolved capabilities, shared with the collapsed {@link WorkspaceRail} and pinned by
@@ -153,21 +156,39 @@ export interface WorkspaceLaneProps {
 interface LaneChrome {
 	collapsed: boolean;
 	onCollapse: (next: boolean) => void;
+	/**
+	 * The splitter's density, mirrored after hydration (`null` on the server and the first frame). CSS
+	 * alone decides what the lane LOOKS like at each density; this only adds what CSS cannot — the
+	 * Tooltip a create action needs once the compact lane has folded its words away (§B.6).
+	 */
+	mode: LaneMode | null;
 }
 // #endregion
 
 // #region Island
 export default function WorkspaceLane(props: WorkspaceLaneProps): JSX.Element {
 	const collapsed = useSignal(false);
+	const mode = useSignal<LaneMode | null>(null);
 
 	useEffect(() => {
-		// The splitter owns the width; the lane mirrors its state only so the toggle glyph is correct.
+		// The splitter owns the width; the lane mirrors its state only so the toggle glyph is correct and
+		// the compact create can name itself. A drag changes the density without any lane event, so the
+		// attribute is watched rather than read once.
 		const el = document.querySelector(".ui-splitter") as HTMLElement | null;
-		if (el) collapsed.value = el.dataset.mode === "collapsed";
+		if (!el) return;
+		const read = () => {
+			mode.value = (el.dataset.mode as LaneMode | undefined) ?? null;
+		};
+		read();
+		collapsed.value = mode.value === "collapsed";
+		const watch = new MutationObserver(read);
+		watch.observe(el, { attributes: true, attributeFilter: ["data-mode"] });
+		return () => watch.disconnect();
 	}, []);
 
 	const chrome: LaneChrome = {
 		collapsed: collapsed.value,
+		mode: mode.value,
 		onCollapse: (next) => {
 			collapsed.value = next;
 			globalThis.dispatchEvent(
@@ -253,6 +274,7 @@ function RosterLane(props: RosterLaneProps): JSX.Element {
 		liveCount: rosterTabCounts(items, invitations).all,
 		invitationCount: invitations.length,
 		canCreate: props.roster?.canCreate ?? true,
+		createBlockedReason: props.roster?.createBlockedReason,
 	});
 	const list = laneRosterList(items, invitations, current, search.value);
 	const create = createTarget(props.kind, zones.footer.create);
@@ -534,18 +556,21 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 								</div>
 							</div>
 						</div>
-						<ContextSwitchControl
-							kind={props.kind}
-							id={detail.id}
-							name={detail.name}
-							handle={detail.handle}
-							acting={detail.isActing}
-							destination={workspaceHref(
-								props.kind,
-								detail.handle,
-								props.activeModule ?? "overview",
-							)}
-						/>
+						<div class="wsp-lane__actrow">
+							<ContextSwitchControl
+								kind={props.kind}
+								id={detail.id}
+								name={detail.name}
+								handle={detail.handle}
+								acting={detail.isActing}
+								destination={workspaceHref(
+									props.kind,
+									detail.handle,
+									props.activeModule ?? "overview",
+								)}
+							/>
+							<VerificationLine kind={props.kind} state={detail.verification} />
+						</div>
 					</LaneHead>
 				);
 			case "views":
@@ -635,6 +660,23 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 }
 
 /**
+ * The entity's verification state in the header strip, beside the acting switch: a state dot (each
+ * state its own silhouette) and its words in the meta register. It is ambient, never an alarm, and it
+ * is always present — the collapsed rail rings the mark with the same state, and the expanded lane
+ * must not go silent about the one fact that decides whether this entity can be paid.
+ */
+function VerificationLine(
+	props: { kind: WorkspaceKind; state: WorkspaceDetail["verification"] },
+): JSX.Element {
+	return (
+		<p class="wsp-lane__verification">
+			<span class="wsp-statedot" data-verify={props.state} aria-hidden="true" />
+			<span class="wsp-lane__verification-text">{verificationWords(props.kind, props.state)}</span>
+		</p>
+	);
+}
+
+/**
  * A module list — the registry's modules as `NavItem` rows (glyph + label), the rendered one marked
  * `aria-current="page"`. A queue's size sits at the row's end as plain tabular text; an attention mark
  * as a dot; both are folded into the row's accessible name (§B.6).
@@ -698,12 +740,26 @@ function ContextZone(
 
 /**
  * Zone 4 — the collapse toggle (it docks to the lane's corner) and the one create action: a button
- * when it opens a modal here, a link when it lands on another page.
+ * when it opens a modal here, a link when it lands on another page. A roster that withholds its create
+ * says why in the same place, as one line of meta text — never a dead control.
+ *
+ * A compact splitter folds the action's words away (`workspace-chrome.css`, the same fold the collapsed
+ * rail takes), so there the glyph carries a Tooltip naming it; at full density the words are on screen
+ * and a Tooltip would only repeat them.
  */
 function LaneFooterRig(
 	props: { footer: LaneFooterZone; target: LaneCreateTarget | null; chrome: LaneChrome },
 ): JSX.Element {
 	const create = props.footer.create;
+	const button = create && props.target
+		? (
+			<LaneCreateButton
+				label={create.label}
+				icon={cloneGlyph(create.action === "invite" ? InviteGlyph : PlusGlyph)}
+				{...props.target}
+			/>
+		)
+		: null;
 	return (
 		<LaneFooter>
 			<LaneCollapseButton
@@ -711,15 +767,14 @@ function LaneFooterRig(
 				icon={<SidebarToggleIcon />}
 				onToggle={() => props.chrome.onCollapse(!props.chrome.collapsed)}
 			/>
-			{create && props.target && (
+			{create && button && (
 				<LaneFooterActions>
-					<LaneCreateButton
-						label={create.label}
-						icon={cloneGlyph(create.action === "invite" ? InviteGlyph : PlusGlyph)}
-						{...props.target}
-					/>
+					{props.chrome.mode === "compact"
+						? <Tooltip content={create.label} placement="top">{button}</Tooltip>
+						: button}
 				</LaneFooterActions>
 			)}
+			{props.footer.note && <p class="wsp-lane__createnote">{props.footer.note}</p>}
 		</LaneFooter>
 	);
 }

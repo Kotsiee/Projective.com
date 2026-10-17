@@ -33,7 +33,8 @@ import { countLabel, filterRoster, type RosterTab } from "./workspace-model.ts";
  *      zone does not exist, so the lane never draws an empty band.
  *   4. **Docked footer rig** — at most ONE create action (the tier-2 `LaneCreateButton`): "New team"
  *      on the index, "Invite member" inside a console for an `invite_members` holder, and nothing at
- *      all for anybody else — never a control that cannot act.
+ *      all for anybody else — never a control that cannot act. A roster the viewer may not add to says
+ *      why in its place, as one line of meta text.
  *
  * Everything that decides those zones lives here and nowhere in the island, so the expanded lane, the
  * collapsed rail and the tests all read one answer. The capabilities are always the server-resolved
@@ -143,6 +144,12 @@ export type LaneCreate =
 /** Z4 — the docked footer rig. The collapse toggle is always there; the create action may not be. */
 export interface LaneFooterZone {
 	create: LaneCreate | null;
+	/**
+	 * Why the roster offers no create action — the plan's own reason — set exactly when the viewer may
+	 * not add another entity. The button is withheld (never a dead control), so this line is the only
+	 * place the lane says why; `null` whenever a create renders and everywhere inside a console.
+	 */
+	note: string | null;
 }
 
 /** The whole lane. */
@@ -176,6 +183,8 @@ export interface RosterLaneInput {
 	invitationCount: number;
 	/** Whether the viewer may create another entity of this kind (the roster's `canCreate`). */
 	canCreate: boolean;
+	/** The roster's `createBlockedReason` — the plan's words for why `canCreate` is false. */
+	createBlockedReason?: string | null;
 }
 
 /** A console's lane inputs. */
@@ -256,7 +265,9 @@ export function laneZones(input: RosterLaneInput | ConsoleLaneInput): LaneZones 
 				options: [...ROSTER_PARTITIONS],
 				search: true,
 			},
-			footer: { create: input.canCreate ? { action: "create", label: `New ${copy.noun}` } : null },
+			footer: input.canCreate
+				? { create: { action: "create", label: `New ${copy.noun}` }, note: null }
+				: { create: null, note: rosterCreateNote(input.kind, input.createBlockedReason) },
 		};
 	}
 
@@ -277,8 +288,18 @@ export function laneZones(input: RosterLaneInput | ConsoleLaneInput): LaneZones 
 			activeInMore: more.some((m) => m.key === input.module),
 		},
 		context: consoleContext(input),
-		footer: { create: consoleCreate(input) },
+		footer: { create: consoleCreate(input), note: null },
 	};
+}
+
+/**
+ * Z4's line when the roster may not grow: the server's reason (it carries the plan's number), or the
+ * kind's own words when the projection sent none — the reader is never left with a footer that is
+ * silently missing its action.
+ */
+function rosterCreateNote(kind: WorkspaceKind, reason: string | null | undefined): string {
+	const text = reason?.trim();
+	return text ? text : `Your plan does not include another ${kindCopy(kind).noun}.`;
 }
 
 /**

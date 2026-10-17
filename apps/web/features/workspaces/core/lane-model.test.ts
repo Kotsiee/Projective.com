@@ -41,7 +41,7 @@ interface Zones {
 			activeInMore: boolean;
 		};
 	context: { control: string; label: string; options: { value: string }[]; search: boolean } | null;
-	footer: { create: Create | null };
+	footer: { create: Create | null; note: string | null };
 }
 
 type RosterInput = {
@@ -50,6 +50,7 @@ type RosterInput = {
 	liveCount: number;
 	invitationCount: number;
 	canCreate: boolean;
+	createBlockedReason?: string | null;
 };
 
 type ConsoleInput = {
@@ -257,6 +258,31 @@ Deno.test("lane: the business roster speaks its own nouns", () => {
 
 Deno.test("lane: a roster the viewer may not add to has no create action at all", () => {
 	assertEquals(lane.laneZones(roster({ canCreate: false })).footer.create, null);
+});
+
+Deno.test("lane: a withheld create leaves the plan's reason in its place, and only then", () => {
+	const reason = "Your plan includes 1 business — archive one or upgrade to create another.";
+	assertEquals(
+		lane.laneZones(roster({ kind: "business", canCreate: false, createBlockedReason: reason }))
+			.footer,
+		{ create: null, note: reason },
+	);
+	// A projection with no reason still says why, in the kind's words.
+	for (const createBlockedReason of [null, undefined, "  "]) {
+		assertEquals(
+			lane.laneZones(roster({ canCreate: false, createBlockedReason })).footer.note,
+			"Your plan does not include another team.",
+		);
+	}
+	// A create that renders carries no note, whatever reason the projection holds.
+	assertEquals(
+		lane.laneZones(roster({ canCreate: true, createBlockedReason: reason })).footer.note,
+		null,
+	);
+	// Inside a console the footer never explains a missing invite: the capability gate is not a plan.
+	for (const capabilities of [OWNER, NO_INVITE, MEMBER]) {
+		assertEquals(lane.laneZones(inConsole({ capabilities })).footer.note, null);
+	}
 });
 
 Deno.test("lane: a team console leads with (C)'s primaries and puts every other module in More", () => {

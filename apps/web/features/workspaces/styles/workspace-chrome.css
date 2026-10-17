@@ -10,6 +10,13 @@
  * `LaneFooter` / `LaneCreateButton` / `LaneCollapseButton` / `LaneIconButton`, `NavItem`,
  * `SelectButton` and `Button` verbatim, and only this feature's own additions carry rules.
  *
+ * One narrow exception, LAYOUT only: a reader can drag the splitter down to 96px, and this lane puts
+ * more into its context and footer zones than any other (four segments; a two-word create). Under
+ * `.wsp-lane` the segmented control re-flows into rows by its zone's own width (an `@container`
+ * query, so the lane's width is asked, never the viewport's), and the create action folds its words
+ * away in a compact splitter exactly as the package already folds them in the collapsed one. No
+ * colour, shape, type or motion of a shared control is touched.
+ *
  * Press feedback (§B.12) is therefore split by owner:
  *   - From the package: `Button` (the acting switch, the Reset) and `LaneCreateButton` compress and
  *     drop the scale under both reduced-motion channels. `NavItem`, the "More" `LaneSection` toggle,
@@ -53,6 +60,16 @@
 
 .ui-splitter[data-mode="collapsed"] .wsp-rail {
 	display: flex;
+}
+
+/*
+ * The lane is ONE solid `--surface-1` column, top to bottom. The shared bands (`LaneHead`,
+ * `LaneFooter`) and zone 3 paint it already; the scroll body between them paints nothing, and the
+ * shell ground beneath it is `--surface-2` — so zone 2 read as a second tone, and every `--surface-2`
+ * hover and current fill drawn on it (the roster rows) matched the ground and vanished.
+ */
+.wsp-lane {
+	background: var(--surface-1);
 }
 
 /*
@@ -137,6 +154,38 @@
 	align-items: center;
 	gap: var(--space-2);
 	min-inline-size: 0;
+}
+
+/*
+ * The acting switch, then the verification state at the row's end. The state wraps beneath the switch
+ * when the lane is too narrow to hold both, rather than squeezing the control.
+ */
+.wsp-lane__actrow {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2) var(--space-3);
+	min-inline-size: 0;
+}
+
+/* Dot + words in the meta register — the same size as the identity's MetaLine above it. */
+.wsp-lane__verification {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	margin: 0;
+	font-size: var(--wsp-fs-label);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.wsp-lane__verification-text {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .wsp-ctxswitch {
@@ -274,10 +323,111 @@ row's accessible name. On the filled active row it takes the row's own ink. */
 	padding: var(--space-3) var(--space-4);
 	background: var(--surface-1);
 	border-block-start: var(--hairline);
+	/* The zone is the width the segmented control re-flows by (the narrow-lane rules below). Nothing in
+	it is positioned against an ancestor, so the containment moves nothing. */
+	container: wsp-lane-context / inline-size;
 }
 
 .wsp-lane__reset {
 	align-self: flex-start;
+}
+
+/*
+ * A narrow lane re-flows the segmented control; it never runs it past the lane's edge. The control
+ * wraps rather than overflows whatever the type (a wider face, a larger text step), and each segment
+ * keeps the control's own row height when it lands on a row of its own. A label clips to an ellipsis
+ * only in the last resort — a single segment wider than the whole zone.
+ *
+ * The track's inline inset goes: its ground is this zone's own `--surface-1`, so the track draws
+ * nothing there, and without the inset the first segment's pill lands on the search field's edge.
+ */
+.wsp-lane__context .ui-select-button {
+	flex-wrap: wrap;
+	block-size: auto;
+	min-block-size: var(--sb-height);
+	padding-inline: 0;
+}
+
+.wsp-lane__context .ui-select-button__option {
+	min-inline-size: 0;
+	min-block-size: calc(var(--sb-height) - 2 * var(--space-1));
+}
+
+.wsp-lane__context .ui-select-button__label {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	line-height: var(--leading-tight);
+}
+
+/*
+ * The roster's four segments need about 14.75rem of zone for one row; the lane's default width gives
+ * 15.25rem. Below 15rem they sit two by two, so the partition reads as an even grid rather than ragged
+ * rows; below 9.75rem — a compact lane — one per row, where "Invitations" still fits whole. The
+ * Members pair needs no step of its own: it wraps to one per row only when the zone cannot hold both.
+ */
+@container wsp-lane-context (max-width: 14.9375rem) {
+	.wsp-lane__context[data-control="roster"] .ui-select-button {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@container wsp-lane-context (max-width: 9.6875rem) {
+	.wsp-lane__context[data-control="roster"] .ui-select-button {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+/* #endregion */
+
+/* #region Zone 4 — docked footer rig */
+/*
+ * The create action may shrink before it runs past the lane: its glyph holds and its words take an
+ * ellipsis, which only ever happens in the few pixels between the compact fold and the width the full
+ * words need. The leading keeps a descender whole inside the clipped label.
+ */
+.wsp-lane .ui-lane-footer__actions,
+.wsp-lane .ui-lane-create {
+	flex: 0 1 auto;
+}
+
+.wsp-lane .ui-lane-create__label {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	line-height: var(--leading-tight);
+}
+
+/*
+ * A compact splitter folds the words away and keeps the glyph — the fold the package already gives the
+ * collapsed rail — and the lane island hands the glyph a Tooltip naming it (§B.6); its `aria-label`
+ * names it throughout.
+ */
+.ui-splitter[data-mode="compact"] .wsp-lane .ui-lane-create {
+	padding: var(--space-2);
+}
+
+.ui-splitter[data-mode="compact"] .wsp-lane .ui-lane-create__label {
+	display: none;
+}
+
+/*
+ * Why a roster offers no create — the plan's words, in the meta register where the action would be.
+ * Capped at four lines so a dragged-narrow lane keeps a footer, not a paragraph; the reason leads with
+ * the fact ("Your plan includes 1 business"), so a capped line still says why.
+ */
+.wsp-lane__createnote {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	margin: 0;
+	font-size: var(--wsp-fs-label);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+	display: -webkit-box;
+	-webkit-line-clamp: 4;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
 }
 /* #endregion */
 
