@@ -8,14 +8,17 @@ import {
 	type LanguageLevel,
 	type MemberEntry,
 	type ProfileEditModel,
+	ProfileHiddenReason,
 	type ProfileKind,
 	type ProfileLanguage,
+	type ProfileMessageTarget,
 	type ProfileOwnerType,
 	type ProfileSettings,
 	type ProfileShowcase,
 	type ProfileShowcaseItem,
 	type ProfileView,
 	ProfileVisibility,
+	type ProfileWorkspaceFacts,
 	type ReviewEntry,
 	type ShowcaseSlot,
 	SHOWCASE_EXTRA_MAX,
@@ -24,6 +27,7 @@ import {
 } from "@projective/types/profile";
 import { IntakeFieldSchema } from "@projective/types/services";
 import { rankAdornments, type VerificationStamp, VerificationStampSchema } from "@projective/types/org";
+import { workspaceHref } from "@projective/types/workspace";
 import type { MediaRef } from "@projective/types/files";
 import type { ExploreOwner, ProjectItem } from "@projective/types/explore";
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
@@ -109,7 +113,8 @@ interface RawShowcaseSlot {
 	media: unknown;
 }
 
-interface RawProfile {
+/** The `org.get_profile_view` document — exported so the mapper's tests can build one. */
+export interface RawProfile {
 	owner_type: ProfileOwnerType;
 	owner_id: string;
 	kind: ProfileKind;
@@ -149,6 +154,12 @@ interface RawProfile {
 		rules: Array<{ weekday: number; start_minute: number; end_minute: number; kind: string }>;
 	} | null;
 	free_consultation: boolean;
+	/** A business only (BP1): why outsiders cannot open it, and the viewer's own console doors. */
+	workspace?:
+		| { hidden_reason: string | null; viewer_edits: boolean; viewer_settings: boolean }
+		| null;
+	/** A business only: its owner, whom a Message reaches. */
+	contact?: { handle: string | null; name: string | null } | null;
 }
 
 // #endregion
@@ -224,9 +235,41 @@ function settingsOf(raw: RawProfile["settings"]): ProfileSettings {
 	};
 }
 
-function visibilityOf(raw: string): ProfileView["visibility"] {
+/**
+ * The profile's reach. A business's `invite_only` is members-only — the person scale's `private`
+ * (Decision #244). Every other kind reads exactly as it did: a team's value is Teams P1's to map.
+ */
+function visibilityOf(raw: string, ownerType: ProfileOwnerType): ProfileView["visibility"] {
+	if (ownerType === "business" && raw === "invite_only") return "private";
 	const parsed = ProfileVisibility.safeParse(raw);
 	return parsed.success ? parsed.data : "public";
+}
+
+/**
+ * A business's member-facing facts (BP1, Decision #244): why outsiders cannot open it, and the
+ * console doors the viewer's own seat holds — "Manage business" on `edit_profile`, the Settings link
+ * on `manage_settings`. `undefined` for every other kind, and when the read carried no facts.
+ */
+export function workspaceFactsOf(raw: RawProfile): ProfileWorkspaceFacts | undefined {
+	if (raw.owner_type !== "business" || !raw.workspace) return undefined;
+	const reason = ProfileHiddenReason.safeParse(raw.workspace.hidden_reason);
+	return {
+		hiddenReason: reason.success ? reason.data : null,
+		consoleHref: raw.workspace.viewer_edits ? workspaceHref("business", raw.handle) : null,
+		settingsHref: raw.workspace.viewer_settings
+			? workspaceHref("business", raw.handle, "settings")
+			: null,
+	};
+}
+
+/**
+ * Who a business profile's Message reaches — its owner, because a DM is person-to-person.
+ * `undefined` for every other kind, and for a business whose owner has no public handle.
+ */
+export function messageTargetOf(raw: RawProfile): ProfileMessageTarget | undefined {
+	const handle = raw.owner_type === "business" ? raw.contact?.handle?.trim() : undefined;
+	if (!handle) return undefined;
+	return { handle: `@${handle}`, name: raw.contact?.name?.trim() || handle };
 }
 
 // #endregion
@@ -362,9 +405,11 @@ export function mapProfileView(raw: RawProfile): ProfileView {
 		userId: raw.owner_type === "user" ? raw.owner_id : "",
 		metrics: { reviews: helper.count + client.count },
 		settings,
-		visibility: visibilityOf(raw.visibility),
+		visibility: visibilityOf(raw.visibility, raw.owner_type),
 		owner: { type: raw.owner_type, id: raw.owner_id },
 		viewer: { isOwner: !!raw.viewer_is_owner, follows: !!raw.viewer_follows },
+		workspace: workspaceFactsOf(raw),
+		messageTo: messageTargetOf(raw),
 	};
 }
 
@@ -491,13 +536,16 @@ export async function fetchReviews(handle: string, actor: ReadActor): Promise<Re
 	}));
 }
 
-interface RawRoster {
+/** The `org.get_profile_roster` document — exported so the mapper's tests can build one. */
+export interface RawRoster {
 	departments: Array<{ name: string; member_count: number }>;
 	members: Array<{
 		handle: string;
 		name: string | null;
 		avatar: unknown;
 		role: string | null;
+		/** A business row's membership start (BP1); absent for the other kinds. */
+		since?: string | null;
 		is_freelancer: boolean;
 		departments: string[];
 	}>;
@@ -516,12 +564,20 @@ export async function fetchRoster(
 	const raw = await orgRpc<RawRoster>(actor, "get_profile_roster", { p_handle: handle });
 	if (raw === undefined) return undefined;
 	if (raw === null) return null;
+	return rosterOf(raw);
+}
+
+/** Map the roster RPC's document onto the member + department rows. Pure — exported for tests. */
+export function rosterOf(
+	raw: RawRoster,
+): { members: MemberEntry[]; departments: DepartmentEntry[] } {
 	const members: MemberEntry[] = (raw.members ?? []).map((m) => ({
 		handle: `@${m.handle}`,
 		name: m.name?.trim() || m.handle,
 		avatar: mediaUrl(parseMediaRef(m.avatar), "sm") ?? "",
 		role: m.role?.trim() || "Member",
 		kind: m.is_freelancer ? "freelancer" : "user",
+		...(m.since ? { since: m.since } : {}),
 		departments: (m.departments ?? []).map(departmentId),
 	}));
 	const departments: DepartmentEntry[] = (raw.departments ?? []).map((d) => {
@@ -665,7 +721,7 @@ export async function fetchEditModel(
 		city: raw.city ?? "",
 		country: raw.country ?? "",
 		timezone: raw.timezone ?? "",
-		visibility: visibilityOf(raw.visibility) ?? "public",
+		visibility: visibilityOf(raw.visibility, raw.owner_type) ?? "public",
 		languages: (raw.languages ?? []).flatMap((l) => {
 			const lang = toLanguage(l);
 			return lang ? [{ code: lang.code, level: lang.level }] : [];

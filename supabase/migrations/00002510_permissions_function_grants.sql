@@ -1653,6 +1653,8 @@ GRANT EXECUTE ON FUNCTION org.upsert_workspace_role (text, uuid, uuid, text, tex
 GRANT EXECUTE ON FUNCTION org.archive_workspace_role (text, uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION org.get_workspace_roster (text) TO authenticated;
 GRANT EXECUTE ON FUNCTION org.get_workspace_detail (text, text) TO authenticated;
+-- The Talent module's bench (00001020 §17, BU5): answers `forbidden` to anybody without `hire`.
+GRANT EXECUTE ON FUNCTION org.get_business_bench (text) TO authenticated;
 
 -- Money governance (00001210 §13). The finance schema is deny-by-default (above), so each is granted.
 GRANT EXECUTE ON FUNCTION finance.save_team_split (uuid, jsonb) TO authenticated;

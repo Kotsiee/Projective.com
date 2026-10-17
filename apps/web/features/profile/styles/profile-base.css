@@ -350,3 +350,39 @@ a.pf-tag:focus-visible {
 }
 
 /* #endregion */
+
+/* #region Member notice */
+/*
+ * A member's note above a business page outsiders cannot open (`ProfileMemberNotice`, BP1): one
+ * InlineNotice line. Unboxed — no fill, no border; spacing is the only separation. It sits OUTSIDE
+ * `.pf`, so it cannot read `--pf-gutter` and restates that gutter's three steps instead.
+ */
+.pf-notice {
+    display: flex;
+    padding: var(--space-4) var(--space-6) 0;
+}
+
+/*
+ * InlineNotice pads itself for a list's foot; here the row already carries the page gutter, so the
+ * line drops its own inline padding and the glyph sits on the page column with the hero below it.
+ * Doubled class so the override never depends on bundle order.
+ */
+.ui-inline-notice.pf-notice__line {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    padding-inline: 0;
+}
+
+@container pf (max-width: 44rem) {
+    .pf-notice {
+        padding-inline: var(--space-4);
+    }
+}
+
+@media (max-width: 767px) {
+    .pf-notice {
+        padding-inline: var(--space-3);
+    }
+}
+
+/* #endregion */

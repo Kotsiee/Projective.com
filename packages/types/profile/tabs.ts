@@ -130,6 +130,8 @@ export const MemberEntrySchema = z.object({
 	role: z.string(),
 	/** Entity kind of the member (drives which reputation applies). */
 	kind: z.enum(["user", "freelancer"]),
+	/** ISO join date — a business roster row's "since" (BP1, Decision #244); absent for other kinds. */
+	since: z.string().max(40).optional(),
 	/**
 	 * Department ids this member belongs to (Enterprise only). A member may sit in MORE than one
 	 * department — the grouped roster renders their row under every listed department. Empty for

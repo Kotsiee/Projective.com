@@ -33,11 +33,13 @@ import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
  * are mounted once, by the hero, on the shared signals in `core/profile-state.ts`.
  *
  * Which controls render is `rigFor`'s decision (root CLAUDE.md §8 Decision #108): a SELLER leads
- * with **Hire** and **Add to project** with Message + Follow as icon-only secondaries; a BUYER sees
- * Message + Follow as text; the OWNER sees Settings + Share. Fills follow the Button Interaction
- * Matrix (DESIGN_SYSTEM §B.8.1 / §D.7.7, Decision #183): Hire is the teal brand pill on its white
- * ink, Add to project the monochrome inverted pill wherever it renders, every other control neutral
- * outlined. Hire renders
+ * with **Hire** and **Add to project** with Message + Follow as icon-only secondaries; a client or
+ * enterprise BUYER sees Message + Follow as text; a BUSINESS (Decision #244) leads with a filled
+ * **Message** that reaches its owner, Follow icon-only beside it, and a member who may edit it sees
+ * **Manage business** (a link to its console) where Message would be; the OWNER sees Settings +
+ * Share. Fills follow the Button Interaction Matrix (DESIGN_SYSTEM §B.8.1 / §D.7.7, Decision #183):
+ * Hire and a business's Message are the teal brand pill on its white ink, Add to project the
+ * monochrome inverted pill wherever it renders, every other control neutral outlined. Hire renders
  * for a guest (a listing's preview is public) but its PRESS opens the sign-in prompt in place of the
  * listings popover; Add to project is withheld from a guest outright, because its rows are the
  * viewer's own projects.
@@ -123,6 +125,8 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 		offersConsultation: consultation !== null,
 		authed,
 		restricted: props.restricted,
+		manages: !!profile.workspace?.consoleHref,
+		messageable: profile.kind !== "business" || !!profile.messageTo,
 	});
 	const isFollowing = followsNow(viewer);
 	const celebrating = followCelebrating.value;
@@ -144,41 +148,73 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 		)
 		: null;
 
-	/** The seller rig's icon-only Message + Follow pair. */
-	const iconPair = (
-		<>
-			<Tooltip content="Message" placement="bottom">
+	/** The icon-only Message — the seller rig's compact secondary. */
+	const messageIcon = (
+		<Tooltip content="Message" placement="bottom">
+			<Button
+				rounded
+				iconOnly
+				size={size}
+				severity="neutral"
+				variant="outlined"
+				class="pf-rig__cta pf-rig__cta--neutral pf-rig__cta--icon"
+				aria-label={`Message ${profile.name}`}
+				icon={<Icon name="message" size="sm" />}
+				onClick={() => openMessage(viewer)}
+			/>
+		</Tooltip>
+	);
+
+	/** The icon-only Follow — the seller's and the business's tier-4 secondary. */
+	const followIcon = (
+		<span class="pf-rig__follow" data-celebrate={celebrating ? "true" : undefined}>
+			<Tooltip content={followText} placement="bottom">
 				<Button
 					rounded
 					iconOnly
 					size={size}
 					severity="neutral"
 					variant="outlined"
-					class="pf-rig__cta pf-rig__cta--neutral pf-rig__cta--icon"
-					aria-label={`Message ${profile.name}`}
-					icon={<Icon name="message" size="sm" />}
-					onClick={() => openMessage(viewer)}
+					class="pf-rig__cta pf-rig__cta--neutral pf-rig__cta--icon pf-rig__cta--follow"
+					aria-label={followLabel}
+					aria-pressed={isFollowing}
+					icon={<Icon name={isFollowing ? "check" : "user-plus"} size="sm" />}
+					onClick={() => toggleFollow(viewer)}
 				/>
 			</Tooltip>
-			<span class="pf-rig__follow" data-celebrate={celebrating ? "true" : undefined}>
-				<Tooltip content={followText} placement="bottom">
-					<Button
-						rounded
-						iconOnly
-						size={size}
-						severity="neutral"
-						variant="outlined"
-						class="pf-rig__cta pf-rig__cta--neutral pf-rig__cta--icon pf-rig__cta--follow"
-						aria-label={followLabel}
-						aria-pressed={isFollowing}
-						icon={<Icon name={isFollowing ? "check" : "user-plus"} size="sm" />}
-						onClick={() => toggleFollow(viewer)}
-					/>
-				</Tooltip>
-				{burst}
-			</span>
-		</>
+			{burst}
+		</span>
 	);
+
+	/**
+	 * The business rig's lead (BP1): Message as the one filled control — Hire's tier-3 teal pill,
+	 * because it is the only way in — or, for a member who may edit the business, a tier-4 link to
+	 * its console in Message's place. Nothing at all when the read names no owner for Message to
+	 * reach (`primary: "none"`): Follow then stands alone.
+	 */
+	const consoleHref = profile.workspace?.consoleHref ?? null;
+	const recipient = profile.messageTo;
+	const businessLead = rig.primary === "manage" && consoleHref
+		? (
+			<a class={`${outlined} pf-rig__cta pf-rig__cta--neutral`} href={consoleHref}>
+				<span class="ui-button__label">Manage business</span>
+			</a>
+		)
+		: rig.primary === "message" && recipient
+		? (
+			<Button
+				rounded
+				size={size}
+				severity="primary"
+				variant="filled"
+				class="pf-rig__cta pf-rig__cta--message"
+				aria-label={`Message ${recipient.name} at ${profile.name}`}
+				onClick={() => openMessage(viewer)}
+			>
+				Message
+			</Button>
+		)
+		: null;
 
 	/** Picking a row closes the popover it was picked in — for BOTH rigs — then opens the flow. */
 	function pick<A extends unknown[]>(
@@ -292,7 +328,15 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 								/>
 							</Popover>
 						)}
-						{iconPair}
+						{messageIcon}
+						{followIcon}
+					</>
+				)
+				: rig.layout === "business"
+				? (
+					<>
+						{businessLead}
+						{followIcon}
 					</>
 				)
 				: (

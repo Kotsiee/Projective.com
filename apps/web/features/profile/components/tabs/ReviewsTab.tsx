@@ -14,6 +14,11 @@ export interface ReviewsTabProps {
 	payload: ProfileTabPayload;
 	/** The stance the URL asked for (`?as=`), so the first paint is already filtered. */
 	stance?: ReviewStance;
+	/**
+	 * Whether the stance filter applies. A business is only ever reviewed as a client (by the
+	 * freelancers it engaged), so its list has no filter (Decision #244). Defaults to `true`.
+	 */
+	stances?: boolean;
 }
 
 // #region Summary
@@ -29,7 +34,9 @@ function SummaryTrack({ role, track }: { role: string; track: RatingTrack }): JS
 }
 // #endregion
 
-export function ReviewsTab({ payload, stance = "all" }: ReviewsTabProps): JSX.Element {
+export function ReviewsTab(
+	{ payload, stance = "all", stances = true }: ReviewsTabProps,
+): JSX.Element {
 	const summary = payload.reviewSummary;
 	const asHelper = summary?.asHelper;
 	const asClient = summary?.asClient;
@@ -43,7 +50,11 @@ export function ReviewsTab({ payload, stance = "all" }: ReviewsTabProps): JSX.El
 					</div>
 				)
 				: null}
-			<ReviewsList reviews={payload.reviews} initialStance={stance} />
+			<ReviewsList
+				reviews={payload.reviews}
+				initialStance={stances ? stance : "all"}
+				stances={stances}
+			/>
 		</div>
 	);
 }

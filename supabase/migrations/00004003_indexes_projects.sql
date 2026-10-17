@@ -129,3 +129,13 @@ CREATE INDEX IF NOT EXISTS idx_service_instantiations_blueprint
 CREATE INDEX IF NOT EXISTS idx_stage_revision_requests_open
     ON projects.stage_revision_requests (project_stage_id)
     WHERE status = 'open';
+
+-- A business's projects — the console detail, the archive blockers and the bench all read by it.
+CREATE INDEX IF NOT EXISTS idx_projects_client_business
+    ON projects.projects (client_business_id)
+    WHERE client_business_id IS NOT NULL;
+
+-- Every assignment of a stage, whatever its status (uq_stage_assignment_active_assignee covers
+-- only the live ones); the bench reads completed seats too.
+CREATE INDEX IF NOT EXISTS idx_stage_assignments_stage
+    ON projects.stage_assignments (project_stage_id);

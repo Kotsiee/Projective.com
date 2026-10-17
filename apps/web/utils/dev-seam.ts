@@ -198,6 +198,14 @@ export type DevAutoFundMode = "auto" | AutoFundMode;
 export type DevLowBalance = "auto" | "below" | "above";
 
 /**
+ * The simulated KYB picture on a business's Verification module: `auto` shows the server's read;
+ * `unverified` nothing started or finished, `in_review` with Stripe, `action_needed` restricted,
+ * rejected or lapsed, `verified` cleared. Its own axis because a business's KYB is written only by
+ * Stripe's account updates. Client-side: the database, every lock and every money door are unchanged.
+ */
+export type DevBusinessKyb = "auto" | "unverified" | "in_review" | "action_needed" | "verified";
+
+/**
  * The simulated notification inbox (DESIGN_SYSTEM §D.9): `empty` answers no notifications at all;
  * `many` answers a large unread set spread over every inbox category (tab counts, paging, bulk
  * select); `burst` keeps the real inbox and lands a run of new arrivals a second apart (the live
@@ -213,6 +221,23 @@ export type DevNotifications = "auto" | "empty" | "many" | "burst";
  * only: the drawer substitutes its read; every write still goes to the server.
  */
 export type DevBasketScenario = "auto" | "empty" | "multi_owner" | "unavailable";
+
+/**
+ * The simulated business checkout gate (Decision #243): `needs_approval` / `over_limit` a refusal
+ * offering Request approval, `pending` a request waiting, `approved` one the next Pay spends,
+ * `no_approver` nobody else able to decide, `pool_short` the business wallet short (Add money),
+ * `kyb_required` an unverified business. `auto` shows the server's read. Client-side only: the payment
+ * step substitutes its view of a REAL business session; Pay and every request still go to the server.
+ */
+export type DevCheckoutGate =
+	| "auto"
+	| "needs_approval"
+	| "over_limit"
+	| "pending"
+	| "approved"
+	| "no_approver"
+	| "pool_short"
+	| "kyb_required";
 
 /**
  * The simulated saved set (`/saved` and every star / save control, Decision #180): `empty` answers
@@ -452,6 +477,8 @@ export interface DevSeamState {
 	autoFundMode?: DevAutoFundMode;
 	/** The simulated low-balance state. Optional like `walletAurora`; absent reads as `auto`. */
 	lowBalance?: DevLowBalance;
+	/** The simulated business KYB picture. Optional like `walletAurora`; absent reads as `auto`. */
+	businessKyb?: DevBusinessKyb;
 	/** The simulated session state. Optional like `walletAurora`; absent reads as `auto`. */
 	sessionState?: DevSessionState;
 	/** The simulated no-show dispute. Optional like `walletAurora`; absent reads as `auto`. */
@@ -460,6 +487,8 @@ export interface DevSeamState {
 	notifications?: DevNotifications;
 	/** The simulated basket. Optional like `walletAurora`; absent reads as `auto`. */
 	basketScenario?: DevBasketScenario;
+	/** The simulated business checkout gate. Optional like `walletAurora`; absent reads as `auto`. */
+	checkoutGate?: DevCheckoutGate;
 	/** The simulated saved set. Optional like `walletAurora`; absent reads as `auto`. */
 	saved?: DevSaved;
 	/** The simulated promo dismissals. Optional like `walletAurora`; absent reads as `auto`. */
@@ -631,8 +660,25 @@ const DISPUTE_STATES: readonly DevDisputeState[] = [
 ];
 const AUTO_FUND_MODES: readonly DevAutoFundMode[] = ["auto", "off", "add_to_basket", "from_wallet"];
 const LOW_BALANCES: readonly DevLowBalance[] = ["auto", "below", "above"];
+const BUSINESS_KYBS: readonly DevBusinessKyb[] = [
+	"auto",
+	"unverified",
+	"in_review",
+	"action_needed",
+	"verified",
+];
 const NOTIFICATION_SIMS: readonly DevNotifications[] = ["auto", "empty", "many", "burst"];
 const BASKET_SCENARIOS: readonly DevBasketScenario[] = ["auto", "empty", "multi_owner", "unavailable"];
+const CHECKOUT_GATES: readonly DevCheckoutGate[] = [
+	"auto",
+	"needs_approval",
+	"over_limit",
+	"pending",
+	"approved",
+	"no_approver",
+	"pool_short",
+	"kyb_required",
+];
 const SAVED_SIMS: readonly DevSaved[] = ["auto", "empty", "many"];
 const PROMO_DISMISSALS: readonly DevPromoDismissal[] = ["auto", "visible", "dismissed"];
 const DISCOVERY_VIEWERS: readonly DevDiscoveryViewer[] = ["auto", "no_history", "no_signals"];
@@ -709,10 +755,12 @@ export function readDevSeam(): DevSeamState | null {
 		revisionAllotment: coerce(ds.devRevisionAllotment, REVISION_ALLOTMENTS, "auto"),
 		autoFundMode: coerce(ds.devAutoFundMode, AUTO_FUND_MODES, "auto"),
 		lowBalance: coerce(ds.devLowBalance, LOW_BALANCES, "auto"),
+		businessKyb: coerce(ds.devBusinessKyb, BUSINESS_KYBS, "auto"),
 		sessionState: coerce(ds.devSessionState, SESSION_STATES, "auto"),
 		disputeState: coerce(ds.devDisputeState, DISPUTE_STATES, "auto"),
 		notifications: coerce(ds.devNotifications, NOTIFICATION_SIMS, "auto"),
 		basketScenario: coerce(ds.devBasketScenario, BASKET_SCENARIOS, "auto"),
+		checkoutGate: coerce(ds.devCheckoutGate, CHECKOUT_GATES, "auto"),
 		saved: coerce(ds.devSaved, SAVED_SIMS, "auto"),
 		promoDismissal: coerce(ds.devPromoDismissal, PROMO_DISMISSALS, "auto"),
 		discoveryViewer: coerce(ds.devDiscoveryViewer, DISCOVERY_VIEWERS, "auto"),

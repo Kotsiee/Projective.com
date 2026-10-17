@@ -25,6 +25,7 @@ import {
 	spendRequestState,
 	spentInPeriod,
 	toEngagement,
+	toIncomingInvite,
 	toOutgoingInvite,
 	toRoleDef,
 	toSplitRule,
@@ -124,6 +125,25 @@ Deno.test("setupSteps: five steps, identity to the profile editor, the rest to t
 	assertEquals(biz[4].label, "Finish KYB");
 	assertEquals(setupCompletion(biz), 1);
 	assertEquals(setupCompletion([]), 1);
+});
+
+Deno.test("setupSteps: a viewer who may not open Verification gets its step unlinked, never a dead end", () => {
+	const facts = { logo: true, bio: true, invite: true, money: true, verified: false };
+	const unlinked = setupSteps("business", "atlaslabs", { ...facts, canVerify: false });
+	assertEquals(unlinked[4].id, "verification");
+	assertEquals(unlinked[4].href, "");
+	assertEquals(unlinked.slice(0, 4).map((s) => s.href), [
+		"/@atlaslabs/edit",
+		"/@atlaslabs/edit",
+		"/businesses/atlaslabs/invitations",
+		"/businesses/atlaslabs/spend",
+	]);
+	assertEquals(
+		setupSteps("business", "atlaslabs", { ...facts, canVerify: true })[4].href,
+		"/businesses/atlaslabs/verification",
+	);
+	// The step still counts toward completion whether or not it links.
+	assertEquals(setupCompletion(unlinked), 0.8);
 });
 
 Deno.test("verificationPrompt: null once verified, worded by kind and state otherwise", () => {
@@ -255,6 +275,38 @@ Deno.test("toOutgoingInvite: an email-only invite has no handle and is named by 
 		"Today",
 		null,
 	]);
+});
+
+Deno.test("toIncomingInvite: the note and the expiry travel; a blank note is no note", () => {
+	const raw = {
+		id: "i3",
+		entity_id: "t1",
+		entity_name: "Northwind Studio",
+		entity_handle: "northwind",
+		entity_avatar_file_id: null,
+		from_user_id: "u1",
+		role_name: "Lead",
+		note: "  Come build with us.  ",
+		created_at: daysAgo(1),
+		expires_at: "2026-10-08T12:00:00+00:00",
+	};
+	const from = { username: "noor", name: "Noor Haddad", avatar: null };
+	const inv = toIncomingInvite("team", raw, from, "", NOW);
+	assertEquals([inv.kind, inv.roleLabel, inv.fromHandle, inv.note, inv.expiresAt], [
+		"team",
+		"Lead",
+		"noor",
+		"Come build with us.",
+		"2026-10-08T12:00:00.000Z",
+	]);
+	const bare = toIncomingInvite(
+		"business",
+		{ ...raw, note: "   ", expires_at: null },
+		undefined,
+		"",
+		NOW,
+	);
+	assertEquals([bare.note, bare.expiresAt, bare.fromName], [null, null, "A member"]);
 });
 
 // #endregion

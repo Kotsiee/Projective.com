@@ -4,6 +4,8 @@ import {
 	ArchiveBlockerSchema,
 	BUSINESS_NOT_ACTIVE_REASON,
 	BusinessArchiveBlockerCode,
+	TEAM_FULL_REFUSAL,
+	TEAM_SEAT_CAP_REASON,
 } from "@projective/types/workspace";
 import { fail, type FieldErrors, type ServiceResult } from "../ServiceResult.ts";
 import { getUserClient } from "../../core/supabase.ts";
@@ -18,7 +20,7 @@ import { canReadLive, type ReadActor } from "../read-actor.ts";
  *
  * The workspace tables carry no client write policy; every door is a `SECURITY DEFINER` RPC in the
  * `org` or `finance` schema that resolves the caller from the JWT and re-checks every rule itself
- * (`00001020_functions_org_entities.sql` §6–§16, `00001210_functions_finance_kyc_wallet.sql` §13). So
+ * (`00001020_functions_org_entities.sql` §6–§17, `00001210_functions_finance_kyc_wallet.sql` §13). So
  * this layer never decides authority — it forwards the caller's session and translates the answer.
  *
  * The refusal convention those functions follow (and {@link refusalFrom} reads):
@@ -221,6 +223,22 @@ export function refusalFrom(
 	}
 }
 
+/**
+ * The invitee's answer (`org.respond_to_workspace_invitation`) mapped with its one door-specific code:
+ * on this door a `55000 plan:` refusal can only be `org.fn_assert_seat` (a business's manager cap is a
+ * `PK402` plan gate, and creating is not this door), so it becomes a 409 with `details.reason`
+ * `seat_cap` and the sentence the invitation strip shows. Everything else is {@link refusalFrom}'s.
+ */
+export function inviteAnswerRefusal(error: DbError | null | undefined): ServiceResult<never> {
+	if (error?.code === "55000" && splitRefusal(error.message ?? "")?.field === "plan") {
+		return fail(409, {
+			message: TEAM_FULL_REFUSAL,
+			details: { reason: TEAM_SEAT_CAP_REASON },
+		});
+	}
+	return refusalFrom(error, "respond_to_workspace_invitation");
+}
+
 // #endregion
 
 // #region Calls
@@ -237,16 +255,18 @@ export function clientFor(actor: LiveActor): SupabaseClient {
  * Call one RPC as the caller and hand back its data or its mapped refusal.
  *
  * Throws only when the transport itself fails (the fat service turns that into a 503); a raised
- * refusal is data, not an exception.
+ * refusal is data, not an exception. `refuse` replaces {@link refusalFrom} for a door that names one
+ * of its refusals more precisely ({@link inviteAnswerRefusal}).
  */
 export async function callRpc<T>(
 	actor: LiveActor,
 	schema: RpcSchema,
 	name: string,
 	args: Record<string, unknown> = {},
+	refuse: (error: DbError) => ServiceResult<never> = (error) => refusalFrom(error, name),
 ): Promise<RpcOutcome<T>> {
 	const { data, error } = await clientFor(actor).schema(schema).rpc(name, args);
-	if (error) return { ok: false, refusal: refusalFrom(error, name) };
+	if (error) return { ok: false, refusal: refuse(error) };
 	return { ok: true, data: data as T };
 }
 

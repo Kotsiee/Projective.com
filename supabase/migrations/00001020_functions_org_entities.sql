@@ -3116,3 +3116,137 @@ BEGIN
 END;
 $$;
 -- #endregion
+
+-- #region 17. The business bench — who a business has hired (Talent, BU5 — Decision #230 (i), #241)
+-- The Talent module's ONE read: every freelancer and team with at least one completed or live
+-- engagement on a project billed to this business (projects.client_business_id), from
+-- projects.stage_assignments — the source the console's Projects module names its providers
+-- from. An engagement is a PROJECT, counted once however many of its stages the party held.
+--   completed: the stage was approved or paid (projects.approve_stage pays it), or the project
+--              completed with work begun on the stage (in progress, submitted or in revisions) — a
+--              seat on a stage nobody started or funded is a cancelled booking, not a past
+--              engagement. No live door writes an assignment's own 'completed' status (only the
+--              seed does), so the stage is the evidence.
+--   live:      the assignment is in the live set (the uq_stage_assignment_active_assignee
+--              predicate), the project active or on hold, and the stage still open to work.
+-- A declined, cancelled or released (left) seat is no engagement; a draft project has hired nobody;
+-- an erased account (a completed account deletion) has left the platform and the bench.
+-- `last_worked_at` is the latest paid stage's completed_at (the one instant a delivery is dated
+-- by); the rating is the mean of the reviews the BUSINESS gave the party — written by one of its
+-- members, on one of its own projects.
+-- Per row, for the caller: `profile_visible` (org.fn_profile_visible — whether /@handle opens for
+-- them; a team starts invite-only, a person may go private) and `viewer_manages`
+-- (org.fn_profile_manages — their own profile or a team they administer, where the profile offers
+-- no Add to project).
+-- Answered only to an active member holding `hire` — the console's Talent gate asks the same
+-- capability; anybody else is told 'forbidden', a reference no business holds 'not_found'.
+-- Handles, names and public avatar objects only: no row id is a field of the answer (an avatar
+-- object path keeps the storage bucket's owner-id prefix, the platform's avatar layout). A team's
+-- Message reaches its OWNER (a DM is between two people — comms.get_or_create_dm_thread takes a
+-- user), so the owner's handle rides the row.
+CREATE OR REPLACE FUNCTION org.get_business_bench(p_handle text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_business uuid;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+    END IF;
+    SELECT b.id INTO v_business FROM org.business_profiles b
+     WHERE lower(b.slug) = lower(btrim(COALESCE(p_handle, '')))
+        OR b.id = CASE WHEN p_handle ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN p_handle::uuid END;
+    IF v_business IS NULL THEN
+        RETURN jsonb_build_object('status', 'not_found');
+    END IF;
+    IF NOT org.fn_member_can('business', v_business, 'hire') THEN
+        RETURN jsonb_build_object('status', 'forbidden');
+    END IF;
+
+    RETURN jsonb_build_object('status', 'ok', 'entries', COALESCE((
+        SELECT jsonb_agg(jsonb_build_object(
+                   'kind', x.kind,
+                   'handle', x.handle,
+                   'name', x.name,
+                   'avatar_bucket', x.avatar_bucket,
+                   'avatar_path', x.avatar_path,
+                   'contact_handle', x.contact_handle,
+                   'contact_name', x.contact_name,
+                   'engagements', x.engagements,
+                   'live_now', x.live_now,
+                   'last_worked_at', x.last_worked_at,
+                   'rating_average', x.rating_average,
+                   'rating_count', x.rating_count,
+                   'profile_visible', x.profile_visible,
+                   'viewer_manages', x.viewer_manages
+               ) ORDER BY x.live_now DESC, x.last_worked_at DESC NULLS LAST, lower(x.name), x.handle)
+          FROM (
+              SELECT g.kind, g.engagements, g.live_now, g.last_worked_at,
+                     org.fn_profile_visible(CASE WHEN g.kind = 'team' THEN 'team' ELSE 'user' END, g.party_id)
+                         AS profile_visible,
+                     org.fn_profile_manages(CASE WHEN g.kind = 'team' THEN 'team' ELSE 'user' END, g.party_id)
+                         AS viewer_manages,
+                     COALESCE(u.username, t.slug) AS handle,
+                     CASE WHEN g.kind = 'team' THEN t.name
+                          ELSE btrim(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')) END AS name,
+                     fa.bucket_id AS avatar_bucket, fa.storage_path AS avatar_path,
+                     COALESCE(u.username, o.username) AS contact_handle,
+                     CASE WHEN g.kind = 'team' THEN btrim(COALESCE(o.first_name, '') || ' ' || COALESCE(o.last_name, ''))
+                          ELSE btrim(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')) END AS contact_name,
+                     rv.average AS rating_average, COALESCE(rv.n, 0) AS rating_count
+                FROM (
+                    SELECT e.kind, e.party_id,
+                           count(DISTINCT e.project_id)::int AS engagements,
+                           bool_or(e.live) AS live_now,
+                           max(e.completed_at) FILTER (WHERE e.completed) AS last_worked_at
+                      FROM (
+                          SELECT sa.assignee_type::text AS kind,
+                                 CASE WHEN sa.assignee_type = 'team' THEN sa.team_id ELSE sa.freelancer_profile_id END AS party_id,
+                                 pr.id AS project_id,
+                                 (sa.status = 'completed' OR ps.status IN ('approved', 'paid')
+                                   OR (pr.status = 'completed' AND ps.status IN ('in_progress', 'submitted', 'revisions')))
+                                     AS completed,
+                                 ps.completed_at,
+                                 (sa.status NOT IN ('released', 'cancelled', 'declined', 'completed')
+                                   AND pr.status IN ('active', 'on_hold')
+                                   AND ps.status NOT IN ('approved', 'paid', 'cancelled')) AS live
+                            FROM projects.projects pr
+                            JOIN projects.project_stages ps ON ps.project_id = pr.id
+                            JOIN projects.stage_assignments sa ON sa.project_stage_id = ps.id
+                           WHERE pr.client_business_id = v_business
+                             AND pr.status <> 'draft'
+                             AND sa.status NOT IN ('declined', 'cancelled', 'released')
+                      ) e
+                     WHERE e.party_id IS NOT NULL AND (e.completed OR e.live)
+                     GROUP BY e.kind, e.party_id
+                ) g
+                LEFT JOIN org.users_public u ON g.kind = 'freelancer' AND u.user_id = g.party_id
+                LEFT JOIN org.teams t ON g.kind = 'team' AND t.id = g.party_id
+                LEFT JOIN org.users_public o ON o.user_id = t.owner_user_id
+                LEFT JOIN files.items fa ON fa.id = COALESCE(u.avatar_file_id, t.avatar_file_id)
+                                        AND fa.visibility = 'public' AND fa.deleted_at IS NULL
+                LEFT JOIN LATERAL (
+                    SELECT round(avg(r.rating), 2) AS average, count(*)::int AS n
+                      FROM reviews.entity_reviews r
+                      JOIN projects.projects rp ON rp.id = r.project_id
+                     WHERE rp.client_business_id = v_business
+                       AND r.target_entity_id = g.party_id
+                       AND r.target_entity_type::text = ANY (CASE WHEN g.kind = 'team' THEN ARRAY['team']
+                                                                ELSE ARRAY['freelancer', 'user'] END)
+                       AND EXISTS (SELECT 1 FROM org.business_members bm
+                                    WHERE bm.business_id = v_business AND bm.user_id = r.reviewer_user_id)
+                ) rv ON true
+               WHERE COALESCE(u.username, t.slug) IS NOT NULL
+                 AND NOT EXISTS (SELECT 1 FROM org.deletion_requests d
+                                  WHERE g.kind = 'freelancer' AND d.user_id = g.party_id
+                                    AND d.scope = 'account' AND d.status = 'completed')
+          ) x
+    ), '[]'::jsonb));
+END;
+$$;
+-- #endregion

@@ -401,6 +401,67 @@ export function handleAlternatives(handle: string): string[] {
 }
 // #endregion
 
+// #region The bench (Talent module, BU5 — Decision #230 (i), #241)
+/** Who sits on a business's bench: a freelancer (a person) or a team (an entity). */
+export const BenchPartyKind = z.enum(["freelancer", "team"]);
+export type BenchPartyKind = z.infer<typeof BenchPartyKind>;
+
+/**
+ * The person a bench row's Message reaches: the freelancer themself, or a team's OWNER — a direct
+ * conversation is between two people, so a team is reached through the person who runs it.
+ */
+export const BenchContactSchema = z.object({
+	handle: z.string().min(1).max(40),
+	name: z.string().max(120),
+});
+export type BenchContact = z.infer<typeof BenchContactSchema>;
+
+/**
+ * One freelancer or team a business has hired (`org.get_business_bench`): at least one live or
+ * completed engagement on a project billed to the business. Addressed by handle — no row id is a
+ * field (a public avatar URL keeps the storage bucket's owner-prefixed object path).
+ */
+export const BenchEntrySchema = z.object({
+	kind: BenchPartyKind,
+	/** The party's `@handle` without the `@` — its profile address. */
+	handle: z.string().min(1).max(40),
+	name: z.string().min(1).max(120),
+	/** A public avatar URL, or `""` (drawn as initials). */
+	avatar: z.string().max(400),
+	/** Whom Message reaches, or `null` when nobody can be messaged. */
+	contact: BenchContactSchema.nullable(),
+	/**
+	 * Whether the party's `/@handle` profile opens for the viewer (`org.fn_profile_visible`). A team
+	 * starts invite-only and a person may go private; such a row stays on the bench without a profile
+	 * link, View profile or Add to project.
+	 */
+	profileVisible: z.boolean(),
+	/**
+	 * Whether the viewer manages the party's profile (`org.fn_profile_manages`) — their own, or a team
+	 * they own or administer. The profile offers no Add to project to its manager, so neither does the row.
+	 */
+	viewerManages: z.boolean(),
+	/** How many of the business's projects the party was staffed on (each counted once). */
+	engagements: z.number().int().min(1),
+	/** Whether the party is working on one of the business's projects right now. */
+	liveNow: z.boolean(),
+	/** When the party last delivered a paid stage for the business (ISO), or `null`. */
+	lastWorkedAt: z.string().max(40).nullable(),
+	/** Server-formatted: `"Now"` while working, a date (`"2 Oct"`) after, `"–"` when undated. */
+	lastWorkedLabel: z.string().max(24),
+	/** The business's own reviews of the party: the mean (2 dp) and how many, `null` at zero. */
+	rating: z.object({
+		average: z.number().min(1).max(5).nullable(),
+		count: z.number().int().min(0),
+	}),
+});
+export type BenchEntry = z.infer<typeof BenchEntrySchema>;
+
+/** The Talent module's read: live first, then the most recent delivery, then by name. */
+export const BusinessBenchSchema = z.object({ entries: z.array(BenchEntrySchema) });
+export type BusinessBench = z.infer<typeof BusinessBenchSchema>;
+// #endregion
+
 // #region Mutations
 /**
  * Create — Draft-First: name + handle is the whole form (brief §5). The logo is added afterwards

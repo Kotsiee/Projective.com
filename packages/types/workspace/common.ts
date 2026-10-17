@@ -384,3 +384,29 @@ export function readTeamPersonaDetails(details: unknown): TeamPersonaDetails | n
 	return parsed.success ? parsed.data : null;
 }
 // #endregion
+
+// #region Seat cap
+/**
+ * A team's plan caps its seats (`team_seats`, counted as active members plus live pending
+ * invitations). `org.fn_assert_seat` refuses with `55000 plan:`; on the invitee's answer that refusal
+ * can only be the seat cap, so the API names it with this code instead of leaving a bare 409.
+ */
+
+/** The refusal code on the API envelope (`details.reason`). */
+export const TEAM_SEAT_CAP_REASON = "seat_cap";
+
+/** The sentence an invitee reads when the team has no seat left for them. */
+export const TEAM_FULL_REFUSAL = "This team is full.";
+
+/** `details` of a seat-cap refusal. */
+export const TeamSeatCapDetailsSchema = z.object({
+	reason: z.literal(TEAM_SEAT_CAP_REASON),
+});
+export type TeamSeatCapDetails = z.infer<typeof TeamSeatCapDetailsSchema>;
+
+/** Read a refusal's `details` as the seat cap's, or `null` when it is any other refusal. */
+export function readTeamSeatCapDetails(details: unknown): TeamSeatCapDetails | null {
+	const parsed = TeamSeatCapDetailsSchema.safeParse(details);
+	return parsed.success ? parsed.data : null;
+}
+// #endregion

@@ -4,6 +4,7 @@ import type { BusinessBillingView, UpdateBillingInput } from "@projective/types/
 import type {
 	ActingEnterprise,
 	ArchiveRoleInput,
+	BusinessBench,
 	CreateWorkspaceInput,
 	HandleCheck,
 	InviteActionInput,
@@ -50,6 +51,7 @@ import type { CreatedWorkspace, InviteAnswer, WorkspaceResult } from "../types/r
 export const WORKSPACE_ENDPOINTS = {
 	roster: "/api/workspace/roster",
 	detail: "/api/workspace/detail",
+	bench: "/api/workspace/bench",
 	handle: "/api/workspace/handle",
 	create: "/api/workspace/create",
 	update: "/api/workspace/update",
@@ -83,6 +85,14 @@ export const WorkspaceService = {
 	 */
 	detail(kind: WorkspaceKind, ref: string): Promise<WorkspaceResult<WorkspaceDetail>> {
 		return getWorkspace<WorkspaceDetail>(`${WORKSPACE_ENDPOINTS.detail}${queryOf({ kind, ref })}`);
+	},
+
+	/**
+	 * A business's bench — the freelancers and teams it has hired (the Talent module). `ref` is the
+	 * business's handle or row id. Members without `hire` are refused (`403`).
+	 */
+	bench(ref: string): Promise<WorkspaceResult<BusinessBench>> {
+		return getWorkspace<BusinessBench>(`${WORKSPACE_ENDPOINTS.bench}${queryOf({ ref })}`);
 	},
 
 	/**

@@ -448,3 +448,26 @@ Deno.test("global.css — the focus neutralisation exempts the form controls", (
 	);
 });
 // #endregion
+
+// #region The 16px touch floor (DESIGN_SYSTEM §A.7.2)
+/**
+ * The coarse-pointer floor and the raw input's `font: inherit` select the same element at the same
+ * specificity, so source order decides between them. Declared first, the floor is reset by the
+ * shorthand and every field on a phone stays at the 15px ramp — the size iOS Safari zooms on focus.
+ */
+Deno.test("field.css — the coarse-pointer 16px floor comes AFTER `.ui-field__input`'s `font: inherit`", async () => {
+	const css = rulesOf(await Deno.readTextFile(new URL("field.css", stylesDir)));
+	const reset = css.search(/\.ui-field__input\s*\{[^}]*font:\s*inherit/);
+	const floor = css.search(/@media[^{]*pointer:\s*coarse[^{]*\{\s*\.ui-field__input/);
+	assert(
+		reset > -1,
+		"`.ui-field__input` no longer declares `font: inherit` — re-check the floor's order.",
+	);
+	assert(floor > -1, "field.css has no coarse-pointer floor for `.ui-field__input`.");
+	assert(
+		floor > reset,
+		"the coarse-pointer floor precedes `.ui-field__input { font: inherit }`, which resets it: a phone's " +
+			"fields would render at 15px and iOS would zoom on focus.",
+	);
+});
+// #endregion
