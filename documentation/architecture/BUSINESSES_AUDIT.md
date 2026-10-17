@@ -73,7 +73,7 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | BF17 | Spend policy writer | `finance.save_spend_policy` (F1210:2106-2221): `manage_finances`, rank/self/owner/grant-what-you-hold checks, vault re-sync | ✅ |
 | BF18 | Request approval | `request_spend_approval` (F1210:2228-2294): needs vault `spend`, genuine need, 7-day expiry, notifies approvers | ✅ |
 | BF19 | Threshold fallback consistent | `request_spend_approval` and `place_wallet_order` use `COALESCE(threshold, 0)` — **ignore** the platform `vault_approval_threshold_cents` fallback that `fn_auto_fund_drain` honours (F1250:226-227) | ❌ |
-| BF20 | **Approved request is redeemable** | `decide_spend_approval` only drains auto-fund on approval (F1210:1958-1960). `place_wallet_order` refuses ≥ threshold **unconditionally** (F1210:1454) and never reads `spend_approvals`; the app files requests with `p_ref_table: null, p_ref_id: null` (`wallet-actions.ts:420-436`); checkout links "needs approval" to `/businesses/{slug}/spend` (`live-buyer.ts:526-532`) where nothing can be redeemed | ❌ |
+| BF20 | **Approved request is redeemable** | `decide_spend_approval` only drains auto-fund on approval (F1210:1958-1960). `place_wallet_order` refuses ≥ threshold **unconditionally** (F1210:1454) and never reads `spend_approvals`; the app files requests with `p_ref_table: null, p_ref_id: null` (`wallet-actions.ts:420-436`); checkout links "needs approval" to `/businesses/{slug}/spend` (`live-buyer.ts:526-532`) where nothing can be redeemed | ✅ DB + API (BB4: ref-bound, single-use, `finance.fn_redeem_spend_approval`; checkout refusal carries `approvalRef`) · 🧩 checkout request dialog is BP2 |
 | BF21 | Envelope + threshold + KYB on **every** spend door | Basket (`place_wallet_order`) ✅ all three. `transfer_funds` ✅ envelope + KYB, no threshold. **`fund_stage`, `fund_ticket`, `fund_paid_revision`, card `escrow_lock`, claim-lock holds** — envelope of the **project owner** (not the actor, F1200:432, :616), **no threshold, no KYB** (`finance/Functions.md:245-246` admits it) | ❌ |
 | BF22 | No double counting | A basket ticket line counts against the caller's envelope in `place_wallet_order` and again against the project owner's in `fn_hold_ticket_escrow` (`fn_check_spending_limit` increments `spent_cents`, F1200:262) | ❌ |
 | BF23 | Who can fund a business project | `has_project_access` admits a business only via a `project_participants` row whose business **owner** is the caller (`00001100:661-745`): a member holding `spend` cannot fund; yet every member passes `can_review_project` (BF14) — the authorities are inverted | ❌ |
@@ -107,7 +107,7 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | BF41 | `/businesses/x/overview` | Renders — a duplicate URL of `/businesses/x` (not canonicalised) | ❌ |
 | BF42 | Missing / forbidden | Silent 303 → `/businesses`; from `[module]` it is **two hops** (`/businesses/<ref>` → `/businesses`) | ❌ |
 | BF43 | Talent module | Registry entry (gate `hire`, "the bench — freelancers and teams this business works with") falls to `ModulePlaceholder` "Not built yet"; no doc defines Talent | ❌ 🧑 BX-i |
-| BF44 | Team wallets accept spend requests | `request_spend_approval` accepts team wallets, but teams never hold `approve_spend` — only the owner can decide | ⚠️ restrict to business |
+| BF44 | Team wallets accept spend requests | `request_spend_approval` accepts team wallets, but teams never hold `approve_spend` — only the owner can decide | ✅ business wallets only (BB4) |
 
 ### 1.6 Public `/:handle` (buyer profile)
 

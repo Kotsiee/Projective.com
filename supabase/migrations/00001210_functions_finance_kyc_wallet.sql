@@ -2103,7 +2103,10 @@ PF402 not enough · PD422 no split agreed.';
 -- Decide a queued over-cap spend request. The decider must hold `approve_spend` on the account (the
 -- workspace capability of the same name, projected onto the vault — manage_members implies it) and
 -- not be the person who asked: approving one's own over-cap spend would make the cap decorative. A
--- request past its expiry is marked expired rather than decided.
+-- request past its expiry is marked expired rather than decided; a decided request — approved (spent
+-- or not), rejected or expired — is never decided again. Approving does not move money: the spend is
+-- made by the door it was filed for, which redeems it (finance.fn_redeem_spend_approval). An approved
+-- ticket request is the one exception that is acted on at once — the auto-fund queue is retried.
 CREATE OR REPLACE FUNCTION finance.decide_spend_approval(p_approval uuid, p_decision text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -2133,6 +2136,12 @@ BEGIN
     IF NOT finance.fn_has_vault_capability (v_row.wallet_id, v_uid, 'approve_spend'::finance.vault_capability) THEN
         RAISE EXCEPTION 'Only a member who approves spend on this account can decide spend requests' USING ERRCODE = '42501';
     END IF;
+    IF v_row.consumed_at IS NOT NULL THEN
+        RAISE EXCEPTION 'That request has already been spent' USING ERRCODE = 'PC409';
+    END IF;
+    IF v_row.status = 'expired'::finance.approval_status THEN
+        RAISE EXCEPTION 'That request has expired' USING ERRCODE = 'PC409';
+    END IF;
     IF v_row.status <> 'pending'::finance.approval_status THEN
         RAISE EXCEPTION 'That request has already been decided' USING ERRCODE = 'PC409';
     END IF;
@@ -2153,7 +2162,7 @@ BEGIN
             'spend_approvals',
             v_row.id
         );
-        -- An approved auto-fund request (finance.fn_auto_fund_drain) is made now, not on the next credit.
+        -- A queued ticket is funded now, not on the next credit; the drain redeems this approval.
         IF v_status = 'approved' AND v_row.ref_table = 'tickets' THEN
             PERFORM finance.fn_auto_fund_drain(v_row.wallet_id);
         END IF;
@@ -2165,8 +2174,77 @@ $$;
 
 COMMENT ON FUNCTION finance.decide_spend_approval(uuid, text) IS
 'Approve or reject a pending over-cap spend request. The decider needs approve_spend on the account and
-may not be the requester; an expired request is marked expired. Notifies the requester. Refusals:
-42501 · 22023 · PB404 · PC409 already decided.';
+may not be the requester; an expired request is marked expired. Notifies the requester; an approved
+ticket request retries the auto-fund queue. Refusals: 42501 · 22023 · PB404 · PC409 already decided,
+spent or expired.';
+
+-- Spend an approval: the one way an approved request lets money move (BUSINESSES_AUDIT BF20 / §4.3).
+-- Called by the spend gate (finance.fn_assert_business_spend) on its over-cap and threshold paths,
+-- inside the transaction that moves the money. It takes an approved, unexpired, unspent request for
+-- this wallet and this exact ref whose amount covers the charge, filed by the actor — or by anyone for
+-- a ticket, which automatic holds fund as the project owner — locks it, and stamps it spent. Smallest
+-- covering approval first, so a larger one is kept for a larger charge. `p_consume = false` only
+-- checks (a card payment's pre-check before the charge; the settle re-runs the gate and spends it).
+-- Anything else is refused PA403 `needs_approval`, the ref in DETAIL (jsonb) so the app can offer
+-- "Request approval" bound to exactly this.
+CREATE OR REPLACE FUNCTION finance.fn_redeem_spend_approval(
+    p_wallet uuid, p_actor uuid, p_amount bigint, p_ref_table text, p_ref_id uuid, p_consume boolean DEFAULT true
+)
+RETURNS boolean
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_id uuid;
+BEGIN
+    IF p_wallet IS NOT NULL AND p_actor IS NOT NULL AND p_amount > 0
+       AND p_ref_table IS NOT NULL AND p_ref_id IS NOT NULL THEN
+        SELECT sa.id INTO v_id
+          FROM finance.spend_approvals sa
+          JOIN finance.wallets w ON w.id = sa.wallet_id
+         WHERE sa.wallet_id = p_wallet
+           AND sa.ref_table = p_ref_table
+           AND sa.ref_id = p_ref_id
+           AND sa.status = 'approved'::finance.approval_status
+           AND sa.consumed_at IS NULL
+           AND (sa.expires_at IS NULL OR sa.expires_at > pg_catalog.now())
+           AND sa.amount_cents >= p_amount
+           AND sa.currency = w.currency
+           AND (sa.requested_by = p_actor OR sa.ref_table = 'tickets')
+         ORDER BY sa.amount_cents, sa.decided_at, sa.id
+         LIMIT 1
+           FOR UPDATE OF sa;
+    END IF;
+
+    IF v_id IS NULL THEN
+        RAISE EXCEPTION USING
+            ERRCODE = 'PA403',
+            MESSAGE = 'needs_approval: this spend needs an approval before it can be made',
+            DETAIL = pg_catalog.jsonb_build_object(
+                'wallet_id', p_wallet,
+                'ref_table', p_ref_table,
+                'ref_id', p_ref_id,
+                'amount_minor', p_amount,
+                'threshold_minor', finance.fn_business_threshold(p_wallet)
+            )::text;
+    END IF;
+
+    IF p_consume THEN
+        UPDATE finance.spend_approvals
+           SET consumed_at = pg_catalog.now(), consumed_ref_table = p_ref_table, consumed_ref_id = p_ref_id
+         WHERE id = v_id;
+    END IF;
+    RETURN true;
+END;
+$$;
+
+COMMENT ON FUNCTION finance.fn_redeem_spend_approval(uuid, uuid, bigint, text, uuid, boolean) IS
+'Spend one approved, unexpired, unspent request for (wallet, ref) covering the amount, filed by the actor
+(any requester for tickets): locks it and stamps consumed_at + consumed_ref_* unless p_consume is false.
+Returns true, else raises PA403 needs_approval with DETAIL {wallet_id, ref_table, ref_id, amount_minor,
+threshold_minor}. Internal — called by the spend gate and the auto-fund drain; not executable by clients.';
 -- #endregion
 
 -- #region 13. Workspace money governance — the team split, the business spend policy, spend requests
@@ -2524,9 +2602,13 @@ $$;
 -- that let any member who could SEE a wallet file a request in any currency with any expiry: the
 -- requester must hold `spend` on the wallet, the request must genuinely need approval (the SQL twin of
 -- @projective/types/workspace `evaluateSpend` — over the per-transaction ceiling, over the remaining
--- cap, or at/above the threshold), and the currency and expiry are the server's.
+-- cap, or at/above the threshold), and the currency and expiry are the server's. A request binds to
+-- the one thing it approves (BUSINESSES_AUDIT §4.3): the ref is required, must name a row of the
+-- wallet's business, and holds at most one open request — a pending one past its expiry is closed
+-- first. Business wallets only: a team never holds `approve_spend` for anyone to decide with (BF44).
+-- The expiry (7 days from filing) bounds the whole request — deciding and spending.
 CREATE OR REPLACE FUNCTION finance.request_spend_approval(
-    p_wallet uuid, p_amount bigint, p_reason text, p_ref_table text DEFAULT NULL, p_ref_id uuid DEFAULT NULL
+    p_wallet uuid, p_amount bigint, p_reason text, p_ref_table text, p_ref_id uuid
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -2539,6 +2621,8 @@ DECLARE
     v_lim finance.spending_limits;
     v_reason text := btrim(COALESCE(p_reason, ''));
     v_needs boolean := false;
+    v_threshold bigint;
+    v_ref_ok boolean;
     v_id uuid;
     v_approver uuid;
 BEGIN
@@ -2546,7 +2630,7 @@ BEGIN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
     END IF;
     SELECT * INTO v_w FROM finance.wallets WHERE id = p_wallet;
-    IF NOT FOUND OR v_w.owner_type NOT IN ('business', 'team') THEN
+    IF NOT FOUND OR v_w.owner_type <> 'business' THEN
         RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'wallet: not found';
     END IF;
     IF NOT finance.fn_has_vault_capability(p_wallet, v_uid, 'spend'::finance.vault_capability) THEN
@@ -2558,8 +2642,35 @@ BEGIN
     IF length(v_reason) < 1 OR length(v_reason) > 400 THEN
         RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'reason: say what it is for, in up to 400 characters';
     END IF;
-    IF p_ref_table IS NOT NULL AND p_ref_table NOT IN ('projects', 'project_stages', 'tickets', 'basket_items', 'orders') THEN
-        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'refTable: not something a spend can be for';
+    IF p_ref_table IS NULL OR p_ref_id IS NULL
+       OR p_ref_table NOT IN ('baskets', 'tickets', 'project_stages', 'revisions', 'invoices', 'transfers') THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'refTable: say what the spend is for';
+    END IF;
+
+    -- The ref must be something this business could pay for from this wallet.
+    v_ref_ok := CASE p_ref_table
+        WHEN 'baskets' THEN EXISTS (
+            SELECT 1 FROM finance.baskets b
+             WHERE b.id = p_ref_id AND b.owner_type = 'business' AND b.owner_id = v_w.owner_id)
+        WHEN 'tickets' THEN EXISTS (
+            SELECT 1 FROM projects.tickets t JOIN projects.projects p ON p.id = t.project_id
+             WHERE t.id = p_ref_id AND p.client_business_id = v_w.owner_id)
+        WHEN 'project_stages' THEN EXISTS (
+            SELECT 1 FROM projects.project_stages ps JOIN projects.projects p ON p.id = ps.project_id
+             WHERE ps.id = p_ref_id AND p.client_business_id = v_w.owner_id)
+        WHEN 'revisions' THEN EXISTS (
+            SELECT 1 FROM projects.stage_revision_requests rv
+              JOIN projects.project_stages ps ON ps.id = rv.project_stage_id
+              JOIN projects.projects p ON p.id = ps.project_id
+             WHERE rv.id = p_ref_id AND p.client_business_id = v_w.owner_id)
+        WHEN 'invoices' THEN EXISTS (
+            SELECT 1 FROM finance.invoices i WHERE i.id = p_ref_id AND i.issue_to_business_id = v_w.owner_id)
+        WHEN 'transfers' THEN EXISTS (
+            SELECT 1 FROM finance.wallets d WHERE d.id = p_ref_id AND d.id <> p_wallet)
+        ELSE false
+    END;
+    IF NOT v_ref_ok THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'refId: that is not something this account pays for';
     END IF;
 
     SELECT * INTO v_lim FROM finance.spending_limits WHERE wallet_id = p_wallet AND member_user_id = v_uid;
@@ -2569,14 +2680,31 @@ BEGIN
                         WHEN v_lim.period_interval <> 'total' AND v_lim.resets_at IS NOT NULL AND v_lim.resets_at <= now() THEN 0
                         ELSE v_lim.spent_cents END);
     END IF;
-    v_needs := v_needs OR (COALESCE(v_w.approval_threshold_cents, 0) > 0 AND p_amount >= v_w.approval_threshold_cents);
+    v_threshold := finance.fn_business_threshold(p_wallet);
+    v_needs := v_needs OR (v_threshold > 0 AND p_amount >= v_threshold);
     IF NOT v_needs THEN
         RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'amountMinor: this spend is within your limits and needs no approval';
     END IF;
 
-    INSERT INTO finance.spend_approvals (wallet_id, requested_by, amount_cents, currency, reason, ref_table, ref_id, status, expires_at)
-    VALUES (p_wallet, v_uid, p_amount, v_w.currency, v_reason, p_ref_table, p_ref_id, 'pending', now() + interval '7 days')
-    RETURNING id INTO v_id;
+    UPDATE finance.spend_approvals
+       SET status = 'expired'::finance.approval_status
+     WHERE wallet_id = p_wallet AND ref_table = p_ref_table AND ref_id = p_ref_id
+       AND status = 'pending'::finance.approval_status AND expires_at <= now();
+    IF EXISTS (
+        SELECT 1 FROM finance.spend_approvals
+         WHERE wallet_id = p_wallet AND ref_table = p_ref_table AND ref_id = p_ref_id
+           AND status = 'pending'::finance.approval_status
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE = 'PC409', MESSAGE = 'refId: a request for this is already waiting for approval';
+    END IF;
+
+    BEGIN
+        INSERT INTO finance.spend_approvals (wallet_id, requested_by, amount_cents, currency, reason, ref_table, ref_id, status, expires_at)
+        VALUES (p_wallet, v_uid, p_amount, v_w.currency, v_reason, p_ref_table, p_ref_id, 'pending', now() + interval '7 days')
+        RETURNING id INTO v_id;
+    EXCEPTION WHEN unique_violation THEN
+        RAISE EXCEPTION USING ERRCODE = 'PC409', MESSAGE = 'refId: a request for this is already waiting for approval';
+    END;
 
     FOR v_approver IN
         SELECT vp.member_user_id FROM finance.vault_permissions vp

@@ -102,7 +102,34 @@ export type SplitRule = z.infer<typeof SplitRuleSchema>;
 export const ApprovalStatus = z.enum(["pending", "approved", "rejected", "expired"]);
 export type ApprovalStatus = z.infer<typeof ApprovalStatus>;
 
-/** A row of `finance.spend_approvals` — a queued over-cap/over-threshold spend awaiting a 2nd approver. */
+/**
+ * What a spend approval can be for — the `finance.spend_approvals.ref_table` CHECK. A request binds to
+ * one row of one of these (a basket at checkout, a ticket or stage to fund, a paid revision round, an
+ * invoice, or a transfer's destination wallet) and is spent only by a charge for that same ref.
+ */
+export const SpendRefTable = z.enum([
+	"baskets",
+	"tickets",
+	"project_stages",
+	"revisions",
+	"invoices",
+	"transfers",
+]);
+export type SpendRefTable = z.infer<typeof SpendRefTable>;
+
+/** The thing a spend approval is bound to: `ref_table` + `ref_id`. */
+export const SpendApprovalRefSchema = z.object({
+	refTable: SpendRefTable,
+	refId: uuid,
+});
+export type SpendApprovalRef = z.infer<typeof SpendApprovalRefSchema>;
+
+/**
+ * A row of `finance.spend_approvals` — an over-cap/over-threshold spend awaiting, or holding, a second
+ * approver's sign-off. Bound to its ref at the amount and currency it was filed for, and spent once:
+ * `consumedAt` + `consumedRef*` are stamped by `finance.fn_redeem_spend_approval` in the money
+ * movement's own transaction.
+ */
 export const SpendApprovalSchema = z.object({
 	id: uuid,
 	walletId: uuid,
@@ -110,12 +137,15 @@ export const SpendApprovalSchema = z.object({
 	amountCents: minorUnitsPositive,
 	currency,
 	reason: z.string().min(1).max(2000),
-	refTable: z.string().max(80).nullable(),
-	refId: uuid.nullable(),
+	refTable: SpendRefTable,
+	refId: uuid,
 	status: ApprovalStatus,
 	approverUserId: uuid.nullable(),
 	decidedAt: timestamp.nullable(),
 	expiresAt: timestamp.nullable(),
+	consumedAt: timestamp.nullable(),
+	consumedRefTable: SpendRefTable.nullable(),
+	consumedRefId: uuid.nullable(),
 	createdAt: timestamp,
 });
 export type SpendApproval = z.infer<typeof SpendApprovalSchema>;

@@ -9,7 +9,6 @@ import {
 	InputText,
 	Select,
 	SelectButton,
-	Textarea,
 } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { useIsMobile } from "@projective/ui/hooks";
@@ -723,27 +722,24 @@ function ConfigDialog(
 	const destination = useSignal(
 		props.destinations.find((d) => d.label === schedule?.destinationLabel)?.id ?? "",
 	);
-	const reason = useSignal("");
-	const problems = useSignal<Problems<"amount" | "reason">>({});
+	const problems = useSignal<Problems<"amount">>({});
 	const failure = useSignal<string | null>(null);
 	const outcome = useSignal<string | null>(null);
 	const formRef = useRef<HTMLDivElement>(null);
-	const errorFor = (field: "amount" | "reason") => problems.value[field];
+	const errorFor = (field: "amount") => problems.value[field];
 
 	const currency = heldIn(overview.available).currency;
 	const display = props.query.display ?? undefined;
 	const base = { scope: overview.ref.scope, contextId: overview.ref.id, display };
 	const smoother = overview.personal?.incomeSmoother ?? null;
-	const needsAmount = action === "new_recurring" || action === "request_spend" ||
-		action === "enrol_smoother" ||
+	const needsAmount = action === "new_recurring" || action === "enrol_smoother" ||
 		(action === "set_payout" && mode.value === "threshold");
 
 	const save = async () => {
 		const minor = toMinorUnits(amount.value, currency) ?? 0;
-		const found: Problems<"amount" | "reason"> = {};
+		const found: Problems<"amount"> = {};
 		if (needsAmount && minor <= 0) found.amount = "Enter an amount.";
 		if (action === "new_recurring" && !source.value) found.amount = found.amount ?? "Choose a saved card to charge.";
-		if (action === "request_spend" && !reason.value.trim()) found.reason = "Say what the money is for.";
 		problems.value = found;
 		if (refuse(found, formRef.current)) return;
 
@@ -764,13 +760,6 @@ function ConfigDialog(
 				thresholdMinor: mode.value === "threshold" ? minor : null,
 				destinationId: destination.value || null,
 				instant: schedule?.instant ?? false,
-			})
-			: action === "request_spend"
-			? await WalletService.requestSpend({
-				...base,
-				amountMinor: minor,
-				currency,
-				reason: reason.value.trim(),
 			})
 			: await WalletService.enrolSmoother({ targetMonthlyMinor: minor, currency, display });
 
@@ -797,7 +786,7 @@ function ConfigDialog(
 				/>
 				<Button
 					variant="filled"
-					label={action === "request_spend" ? "Send request" : "Save"}
+					label="Save"
 					loading={phase.value === "saving"}
 					disabled={phase.value === "saving"}
 					onClick={() => void save()}
@@ -924,29 +913,6 @@ function ConfigDialog(
 										fluid
 										onValueChange={(v) => {
 											amount.value = v;
-										}}
-									/>
-								)}
-							</FormControl>
-						)}
-
-						{action === "request_spend" && (
-							<FormControl
-								label="What it's for"
-								hint="An approver sees this with the amount."
-								error={errorFor("reason")}
-								status={errorFor("reason") ? "invalid" : "default"}
-							>
-								{({ id, describedBy, status }) => (
-									<Textarea
-										id={id}
-										aria-describedby={describedBy}
-										status={status}
-										value={reason.value}
-										rows={3}
-										fluid
-										onValueChange={(v) => {
-											reason.value = v;
 										}}
 									/>
 								)}

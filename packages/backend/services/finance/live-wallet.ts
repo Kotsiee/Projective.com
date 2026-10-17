@@ -374,7 +374,8 @@ function actionsFor(
 	if (personal || caps.includes("manage_billing")) offered.push("add_method");
 	if (caps.includes("withdraw")) offered.push("set_payout");
 	if (smoother?.status === "eligible") offered.push("enrol_smoother");
-	if (!personal && !caps.includes("spend")) offered.push("request_spend");
+	// No free-form "Request spend": a request binds to the one thing it approves (a basket at checkout,
+	// a ticket or stage to fund — BUSINESSES_AUDIT §4.3), so it is filed from that surface, never here.
 
 	const unavailable: { action: WalletAction; reason: string }[] = [];
 	for (const action of offered) {

@@ -332,6 +332,8 @@ function emptySession(display: string): CheckoutBootstrap["session"] {
 			remaining: zero(display),
 			periodLabel: null,
 			requestHref: null,
+			requestRef: null,
+			approved: false,
 		},
 	};
 }

@@ -5,6 +5,7 @@ import { FxSnapshotSchema } from "./ledger.ts";
 import { formatMoney, MoneyViewSchema } from "./wallet.ts";
 import { CardBrand } from "./card-art.ts";
 import { CardPaymentHandoffSchema } from "./payments.ts";
+import { SpendApprovalRefSchema } from "./vault.ts";
 import {
 	AppliedPromoSchema,
 	BasketGroupSchema,
@@ -589,6 +590,17 @@ export const SpendLimitBlockSchema = z.object({
 	periodLabel: z.string().max(60).nullable(),
 	/** Where a `needs_approval` request is raised; `null` otherwise. */
 	requestHref: z.string().max(200).nullable(),
+	/**
+	 * What a `needs_approval` request must be filed against — this basket — so the approval it earns
+	 * is the one this checkout's charge can spend (`finance.fn_redeem_spend_approval`). `null`
+	 * otherwise, or when there is no basket to bind to.
+	 */
+	requestRef: SpendApprovalRefSchema.nullable().default(null),
+	/**
+	 * Whether an approved, unspent request already covers this basket's total, which is why a
+	 * `needs_approval` verdict reads `allowed` here: the charge will spend it.
+	 */
+	approved: z.boolean().default(false),
 });
 export type SpendLimitBlock = z.infer<typeof SpendLimitBlockSchema>;
 // #endregion
@@ -661,6 +673,11 @@ export const CheckoutBlockerSchema = z.object({
 	message: z.string().max(200),
 	/** The offending basket line; `null` when the blocker is basket-wide. */
 	itemId: reference.nullable(),
+	/**
+	 * A `spend_limit` blocker that a second sign-off would clear: the ref a request must be filed
+	 * against (`POST /api/wallet/action` `request_spend`) so the approval is spendable by this charge.
+	 */
+	approvalRef: SpendApprovalRefSchema.optional(),
 });
 export type CheckoutBlocker = z.infer<typeof CheckoutBlockerSchema>;
 

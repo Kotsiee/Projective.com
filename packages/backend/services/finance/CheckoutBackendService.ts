@@ -28,6 +28,7 @@ import {
 	itemKindMeta,
 	missingBuyerFields,
 	PLATFORM_FEE_BP,
+	SpendApprovalRefSchema,
 } from "@projective/types/finance";
 import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
 import { businessAuthorityRefusal } from "../../core/business-authority.ts";
@@ -288,6 +289,7 @@ function blockersFor(
 					? "This purchase needs approval before it can be paid for."
 					: "This purchase is over your spending limit for this account."),
 			itemId: null,
+			...(gate.spendLimit.requestRef ? { approvalRef: gate.spendLimit.requestRef } : {}),
 		});
 	}
 
@@ -518,7 +520,7 @@ export class CheckoutBackendService {
 			const requirements = checkoutRequirements(items);
 			const [details, spendLimit, charge] = await Promise.all([
 				detailsFor(owner, query, actor),
-				spendLimitFor(owner, totals.total.minor, money, actor),
+				spendLimitFor(owner, totals.total.minor, money, actor, resolved.basketId),
 				chargeFor(
 					query,
 					actor,
@@ -709,7 +711,7 @@ export class CheckoutBackendService {
 			const providers = offerFor(priced, totals.total.minor);
 			const [details, spendLimit] = await Promise.all([
 				detailsFor(owner, query, actor),
-				spendLimitFor(owner, totals.total.minor, money, actor),
+				spendLimitFor(owner, totals.total.minor, money, actor, resolved.basketId),
 			]);
 			const blocking = blockersFor(priced, providers, { buyer: details.buyer, spendLimit });
 			if (blocking.length > 0) return refusal(blocking[0].message, blocking);
@@ -794,10 +796,8 @@ export class CheckoutBackendService {
 					}
 					const code = BLOCKER_FOR_SQLSTATE[error.code ?? ""] ?? (error.code === "22023" ? "no_provider" : undefined);
 					if (!code) throw new Error(`finance.place_on_account_order failed: ${error.message}`);
-					const message = isAgeRestricted(error)
-						? AGE_RESTRICTED.message
-						: error.message.slice(0, 200);
-					return refusal(message, [blocker(code, message)]);
+					const refused = orderRefusal(code, error, resolved.basketId);
+					return refusal(refused.message, [refused]);
 				}
 				const result = succeeded(data as PlacedOrder);
 				return ok({ result }, { message: `${result.message} It will be on the next monthly invoice.` });
@@ -895,10 +895,8 @@ export class CheckoutBackendService {
 				}
 				const code = BLOCKER_FOR_SQLSTATE[error.code ?? ""];
 				if (!code) throw new Error(`finance.place_wallet_order failed: ${error.message}`);
-				const message = isAgeRestricted(error)
-					? AGE_RESTRICTED.message
-					: error.message.slice(0, 200);
-				return refusal(message, [blocker(code, message)]);
+				const refused = orderRefusal(code, error, resolved.basketId);
+				return refusal(refused.message, [refused]);
 			}
 
 			const result = succeeded(data as PlacedOrder);
@@ -924,6 +922,41 @@ const BLOCKER_FOR_SQLSTATE: Record<string, CheckoutBlocker["code"]> = {
 	PA403: "spend_limit",
 	PM403: "not_authorised",
 };
+
+/**
+ * The blocker a wallet-order refusal becomes. The spend gate raises `<sub_code>: <sentence>`
+ * (`needs_approval:`, `over_limit:`, `kyb_required:` …); the reader sees the sentence. A
+ * `spend_limit` refusal carries the ref an approval must be filed against — the one the redeemer named
+ * in its DETAIL, else this basket — so the surface can offer "Request approval" bound to this charge.
+ */
+function orderRefusal(
+	code: CheckoutBlocker["code"],
+	error: { code?: string; message: string; details?: string | null },
+	basketId: string,
+): CheckoutBlocker {
+	if (isAgeRestricted(error)) return { code, message: AGE_RESTRICTED.message, itemId: null };
+	const sentence = error.message.replace(/^[a-z_]+:\s*/, "").replace(/\s+/g, " ").trim();
+	const message = sentence
+		? `${sentence[0].toUpperCase()}${sentence.slice(1)}`.slice(0, 200)
+		: "That didn't go through.";
+	if (code !== "spend_limit") return { code, message, itemId: null };
+	let detail: unknown = null;
+	try {
+		detail = error.details ? JSON.parse(error.details) : null;
+	} catch {
+		detail = null;
+	}
+	const named = SpendApprovalRefSchema.safeParse({
+		refTable: (detail as { ref_table?: unknown } | null)?.ref_table,
+		refId: (detail as { ref_id?: unknown } | null)?.ref_id,
+	});
+	return {
+		code,
+		message,
+		itemId: null,
+		approvalRef: named.success ? named.data : { refTable: "baskets", refId: basketId },
+	};
+}
 
 /** What `finance.place_wallet_order` answers with — and what a replayed key is re-read as. */
 interface PlacedOrder {

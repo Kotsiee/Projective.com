@@ -197,11 +197,14 @@ $$;
 -- Retry a business wallet's From-wallet queue, oldest ticket first, while the wallet covers the next
 -- one. Run on every credit to the wallet except an on-account credit (which is already spoken for),
 -- and when an auto-fund spend approval is approved. Each ticket is funded AS its project owner — the
--- spender whose envelope (fn_check_spending_limit, inside the hold) governs it: a ticket with a payee
--- is held (fn_hold_ticket_escrow; the escrow is marked auto_funded); one without (a refused claim was
--- rolled back) returns to Draft, back on the boards, and its next claim holds. A hold at or above the
--- wallet's approval threshold, by an owner who cannot approve spend themselves, raises one spend
--- approval instead and is made once it is approved. Returns how many tickets moved. Never raises.
+-- spender whose envelope governs it: a ticket with a payee is held (fn_hold_ticket_escrow; the escrow
+-- is marked auto_funded); one without (a refused claim was rolled back) returns to Draft, back on the
+-- boards, and its next claim holds. A hold at or above the wallet's approval threshold
+-- (finance.fn_business_threshold), or over the owner's envelope, needs an approved request for that
+-- ticket: the drain asks finance.fn_redeem_spend_approval whether one is there (without spending it —
+-- the hold's spend gate does), and where none is it files one request for the ticket and leaves it
+-- queued until the approval lands. The threshold binds everyone, the owner included — an approval is
+-- someone else's sign-off. Returns how many tickets moved. Never raises.
 CREATE OR REPLACE FUNCTION finance.fn_auto_fund_drain(p_wallet_id uuid)
 RETURNS integer
 LANGUAGE plpgsql
@@ -216,6 +219,9 @@ DECLARE
     v_escrow uuid;
     v_prev_sub text;
     v_moved integer := 0;
+    v_ask boolean;
+    v_detail text;
+    v_reason text;
     v_approval uuid;
     v_approver uuid;
     v_href text;
@@ -223,8 +229,7 @@ BEGIN
     SELECT * INTO w FROM finance.wallets WHERE id = p_wallet_id;
     IF NOT FOUND OR w.owner_type <> 'business' THEN RETURN 0; END IF;
     v_budget := w.balance_cents;
-    v_threshold := COALESCE(w.approval_threshold_cents,
-        (SELECT (pp.value #>> '{}')::bigint FROM security.platform_params pp WHERE pp.key = 'vault_approval_threshold_cents'), 0);
+    v_threshold := finance.fn_business_threshold(w.id);
 
     FOR t IN
         SELECT tk.id, tk.title, tk.slug, COALESCE(tk.unit_price_cents, ps.unit_price_cents) AS amount,
@@ -241,16 +246,72 @@ BEGIN
     LOOP
         CONTINUE WHEN t.amount IS NULL OR t.amount <= 0 OR t.amount > v_budget;
         v_href := '/projects/' || t.project_slug || '/board?tkv=' || t.slug;
+        v_ask := false;
 
-        IF v_threshold > 0 AND t.amount >= v_threshold
-           AND NOT finance.fn_has_vault_capability(w.id, t.owner_user_id, 'approve_spend'::finance.vault_capability)
-           -- shortcut: any approved request for this ticket at this amount counts; a stale one from an
-           -- earlier funding of a re-pooled ticket is reused. Upgrade if approvals gain an expiry of use.
-           AND NOT EXISTS (
-               SELECT 1 FROM finance.spend_approvals sa
-                WHERE sa.wallet_id = w.id AND sa.ref_table = 'tickets' AND sa.ref_id = t.id
-                  AND sa.status = 'approved'::finance.approval_status AND sa.amount_cents >= t.amount)
-        THEN
+        IF v_threshold > 0 AND t.amount >= v_threshold THEN
+            BEGIN
+                PERFORM finance.fn_redeem_spend_approval(w.id, t.owner_user_id, t.amount, 'tickets', t.id, false);
+            EXCEPTION WHEN SQLSTATE 'PA403' THEN
+                v_ask := true;
+            END;
+        END IF;
+
+        IF NOT v_ask THEN
+            -- As the project owner, so the hold's own "Escrow held" notice is not sent to them twice.
+            v_prev_sub := pg_catalog.current_setting('request.jwt.claim.sub', true);
+            PERFORM pg_catalog.set_config('request.jwt.claim.sub', t.owner_user_id::text, true);
+            BEGIN
+                v_escrow := finance.fn_hold_ticket_escrow(t.id);
+                UPDATE finance.escrows SET auto_funded = true WHERE id = v_escrow;
+                INSERT INTO projects.ticket_history (ticket_id, actor_id, action_type, changes)
+                VALUES (t.id, t.owner_user_id, 'auto_funded',
+                        pg_catalog.jsonb_build_object('escrow_id', v_escrow, 'amount_minor', t.amount, 'currency', w.currency));
+                PERFORM comms.fn_notify(
+                    t.owner_user_id, 'escrow.funded', 'Auto-funded from wallet',
+                    pg_catalog.format('"%s" was funded from the business wallet. Work can begin.', t.title),
+                    'projects.tickets', t.id,
+                    pg_catalog.jsonb_build_object('escrow_id', v_escrow, 'amount_minor', t.amount, 'currency', w.currency, 'auto_funded', true),
+                    NULL, 'project', t.project_id, NULL, v_href
+                );
+                v_budget := v_budget - t.amount;
+                v_moved := v_moved + 1;
+            EXCEPTION
+                WHEN check_violation THEN
+                    -- No payee: the claim that needed this money was rolled back. Back to Draft — the
+                    -- money is there now, and the next claim holds it.
+                    UPDATE projects.tickets SET payment_status = 'unpaid'::public.payment_status
+                     WHERE id = t.id AND payment_status = 'needs_funding'::public.payment_status;
+                    INSERT INTO projects.ticket_history (ticket_id, actor_id, action_type, changes)
+                    VALUES (t.id, t.owner_user_id, 'auto_fund_returned',
+                            pg_catalog.jsonb_build_object('amount_minor', t.amount, 'currency', w.currency));
+                    PERFORM comms.fn_notify(
+                        t.owner_user_id, 'escrow.needs_funding', 'Back on the board',
+                        pg_catalog.format('The business wallet now covers "%s", so it is open to claims again.', t.title),
+                        'projects.tickets', t.id, '{}'::jsonb, NULL, 'project', t.project_id, NULL, v_href
+                    );
+                    -- Not reserved (Decision #165 flag (b)); counted so one credit reopens only what it covers.
+                    v_budget := v_budget - t.amount;
+                    v_moved := v_moved + 1;
+                WHEN SQLSTATE 'PF402' THEN
+                    -- Still refused: it stays queued. Refused for want of an approval (over the owner's
+                    -- envelope, or the threshold) it also asks for one.
+                    GET STACKED DIAGNOSTICS v_detail = PG_EXCEPTION_DETAIL;
+                    BEGIN
+                        v_reason := NULLIF(v_detail, '')::jsonb ->> 'reason';
+                    EXCEPTION WHEN OTHERS THEN
+                        v_reason := NULL;
+                    END;
+                    v_ask := v_reason IN ('spending_limit', 'needs_approval');
+            END;
+            PERFORM pg_catalog.set_config('request.jwt.claim.sub', COALESCE(v_prev_sub, ''), true);
+        END IF;
+
+        -- One open request per ticket: a pending one past its expiry is closed and asked again.
+        IF v_ask THEN
+            UPDATE finance.spend_approvals sa
+               SET status = 'expired'::finance.approval_status
+             WHERE sa.wallet_id = w.id AND sa.ref_table = 'tickets' AND sa.ref_id = t.id
+               AND sa.status = 'pending'::finance.approval_status AND sa.expires_at <= pg_catalog.now();
             IF NOT EXISTS (
                 SELECT 1 FROM finance.spend_approvals sa
                  WHERE sa.wallet_id = w.id AND sa.ref_table = 'tickets' AND sa.ref_id = t.id
@@ -276,48 +337,7 @@ BEGIN
                 VALUES (t.id, t.owner_user_id, 'auto_fund_approval_requested',
                         pg_catalog.jsonb_build_object('approval_id', v_approval, 'amount_minor', t.amount, 'currency', w.currency));
             END IF;
-            CONTINUE;
         END IF;
-
-        -- As the project owner, so the hold's own "Escrow held" notice is not sent to them twice.
-        v_prev_sub := pg_catalog.current_setting('request.jwt.claim.sub', true);
-        PERFORM pg_catalog.set_config('request.jwt.claim.sub', t.owner_user_id::text, true);
-        BEGIN
-            v_escrow := finance.fn_hold_ticket_escrow(t.id);
-            UPDATE finance.escrows SET auto_funded = true WHERE id = v_escrow;
-            INSERT INTO projects.ticket_history (ticket_id, actor_id, action_type, changes)
-            VALUES (t.id, t.owner_user_id, 'auto_funded',
-                    pg_catalog.jsonb_build_object('escrow_id', v_escrow, 'amount_minor', t.amount, 'currency', w.currency));
-            PERFORM comms.fn_notify(
-                t.owner_user_id, 'escrow.funded', 'Auto-funded from wallet',
-                pg_catalog.format('"%s" was funded from the business wallet. Work can begin.', t.title),
-                'projects.tickets', t.id,
-                pg_catalog.jsonb_build_object('escrow_id', v_escrow, 'amount_minor', t.amount, 'currency', w.currency, 'auto_funded', true),
-                NULL, 'project', t.project_id, NULL, v_href
-            );
-            v_budget := v_budget - t.amount;
-            v_moved := v_moved + 1;
-        EXCEPTION
-            WHEN check_violation THEN
-                -- No payee: the claim that needed this money was rolled back. Back to Draft — the
-                -- money is there now, and the next claim holds it.
-                UPDATE projects.tickets SET payment_status = 'unpaid'::public.payment_status
-                 WHERE id = t.id AND payment_status = 'needs_funding'::public.payment_status;
-                INSERT INTO projects.ticket_history (ticket_id, actor_id, action_type, changes)
-                VALUES (t.id, t.owner_user_id, 'auto_fund_returned',
-                        pg_catalog.jsonb_build_object('amount_minor', t.amount, 'currency', w.currency));
-                PERFORM comms.fn_notify(
-                    t.owner_user_id, 'escrow.needs_funding', 'Back on the board',
-                    pg_catalog.format('The business wallet now covers "%s", so it is open to claims again.', t.title),
-                    'projects.tickets', t.id, '{}'::jsonb, NULL, 'project', t.project_id, NULL, v_href
-                );
-                -- Not reserved (Decision #165 flag (b)); counted so one credit reopens only what it covers.
-                v_budget := v_budget - t.amount;
-                v_moved := v_moved + 1;
-            WHEN SQLSTATE 'PF402' THEN
-                NULL; -- Still refused (the owner's spending limit): it stays queued.
-        END;
-        PERFORM pg_catalog.set_config('request.jwt.claim.sub', COALESCE(v_prev_sub, ''), true);
     END LOOP;
     RETURN v_moved;
 EXCEPTION WHEN OTHERS THEN

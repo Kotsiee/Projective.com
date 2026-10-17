@@ -1273,8 +1273,10 @@ To bridge the gap between "Marketplace Speed" and "Corporate Accounting," Busine
     Business wallet as soon as the wallet can cover it, oldest first: every credit to the wallet (a
     top-up, a refund, a recurring deposit) retries the queue. Funding means the hold when the ticket
     has a payee, or — for an unclaimed Pipeline ticket — returning it to the boards so its next claim
-    holds. An automatic hold stays inside the project owner's spending limit, and one at or above
-    the wallet's approval threshold raises a spend approval instead and is made once approved.
+    holds. An automatic hold that would go over the project owner's spending limit, or is at or
+    above the wallet's approval threshold, raises a spend approval for that ticket instead and is
+    made once approved — the approval funds that one ticket, once. The threshold binds the project
+    owner too: an approval is always someone else's sign-off.
 
   The Business sets the mode for all its projects (the `manage_billing` grant); a project may
   override it in its settings or inherit it. Every automatic action leaves an entry on the ticket's

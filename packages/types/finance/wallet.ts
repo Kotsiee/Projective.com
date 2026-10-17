@@ -16,6 +16,7 @@ import { DepositInterval, MethodRole, PayoutMode, PotPurpose } from "./methods.t
 import {
 	ApprovalStatus,
 	SpendingLimitInterval,
+	SpendRefTable,
 	SplitRuleType,
 	VaultAction,
 	VaultCapability,
@@ -1292,9 +1293,15 @@ export const PayoutScheduleInputSchema = z.object({
 });
 export type PayoutScheduleInput = z.infer<typeof PayoutScheduleInputSchema>;
 
-/** Request an over-cap spend (queues a second-approver approval). */
+/**
+ * Request an over-cap spend (queues a second-approver approval). The wallet is the target account's
+ * wallet in `currency`; the request binds to the one thing it is for (`refTable` + `refId` — a basket
+ * at checkout, a ticket or stage to fund, …) and only a charge for that same ref can spend it.
+ */
 export const SpendRequestInputSchema = z.object({
 	...targetShape,
+	refTable: SpendRefTable,
+	refId: uuid,
 	amountMinor: minorUnitsPositive,
 	currency,
 	reason: z.string().min(1).max(400),

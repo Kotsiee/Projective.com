@@ -878,6 +878,10 @@ EXECUTE ON FUNCTION finance.distribute_vault (uuid, bigint, text) TO authenticat
 GRANT
 EXECUTE ON FUNCTION finance.decide_spend_approval (uuid, text) TO authenticated;
 
+-- Spending an approval is the spend gate's step inside a money movement, never a door of its own.
+REVOKE ALL ON FUNCTION finance.fn_redeem_spend_approval (uuid, uuid, bigint, text, uuid, boolean)
+FROM PUBLIC, anon, authenticated;
+
 -- --- finance: no function is an API endpoint by default (the move off fixtures, 2026-09-23) ---
 -- `finance` now has schema usage (00002500), and Postgres grants EXECUTE on every function to PUBLIC
 -- by default. Until now nothing could reach them, because nobody had usage on the schema; from here

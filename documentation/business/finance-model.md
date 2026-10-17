@@ -414,7 +414,13 @@ Governs shared wallets (Business / Team / Enterprise).
   every reader. Team and personal spending are not governed by this gate.
 - **Approval thresholds** (`finance.spend_approvals`): a spend at/above
   the threshold above (or over a member's cap) queues for a **second approver** before
-  it executes.
+  it executes. A request is bound to the one thing it approves — a basket at checkout, a ticket,
+  stage or paid revision to fund, an invoice, a transfer's destination — at the amount it was filed
+  for, and is **spent exactly once**: the charge for that same thing, at or under that amount, by the
+  member who asked (any spender for a ticket's automatic hold), redeems it in the same transaction
+  as the money movement. A charge above the approved amount needs a new approval. A request lives
+  **7 days** from filing, deciding and spending included; there is one open request per thing.
+  **Business wallets only** — a team has nobody holding `approve_spend` to decide one.
 - **Audit** (`finance.ledger_audit`): immutable who/when/amount for every
   add/spend/distribute/withdraw.
 - **Team smart-splits** (`finance.split_rules` template → `finance.contribution_agreements`

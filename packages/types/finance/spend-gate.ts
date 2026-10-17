@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SpendRefTable } from "./vault.ts";
 
 /**
  * The business spend gate (BUSINESSES_AUDIT BF19, BF21, BF22): `finance.fn_assert_business_spend`
@@ -31,8 +32,11 @@ export const SPEND_GATE_REFUSAL: Record<SpendGateReason, string> = {
 		"This spend is at or above the account's approval threshold and needs an approver's sign-off.",
 };
 
-/** What an approval request for a refused spend must bind to (finance.spend_approvals `ref_table`). */
-export const SpendGateRefTable = z.enum(["baskets", "tickets", "project_stages", "revisions", "transfers"]);
+/**
+ * What an approval request for a refused spend must bind to: the spend-approval refs
+ * ({@link SpendRefTable}) a money door names — an invoice is paid through its own door, not the gate.
+ */
+export const SpendGateRefTable = SpendRefTable.exclude(["invoices"]);
 export type SpendGateRefTable = z.infer<typeof SpendGateRefTable>;
 
 /**

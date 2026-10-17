@@ -16,6 +16,7 @@ import type {
 } from "@projective/types/finance";
 import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
 import { businessAuthorityRefusal } from "../../core/business-authority.ts";
+import { spendGateRefusal } from "../../core/spend-gate.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
@@ -83,6 +84,16 @@ function refuse(status: number, message: string): Result {
 }
 
 /**
+ * A money RPC's refusal: the business spend gate's (`kyb_required` / `over_limit` / `needs_approval` —
+ * a 403 whose details name the spend an approval request would bind to) or the function's own.
+ */
+function moneyRefusal(error: { code?: string; message: string; details?: string | null }): Result {
+	const gate = spendGateRefusal(error);
+	if (gate) return fail(gate.status, { message: gate.message, details: gate.details }) as Result;
+	return refuse(statusFor(error.code), messageFor(error));
+}
+
+/**
  * A refusal from a governance RPC that raises `<field>: <reason>` (`finance.request_spend_approval`):
  * `22023` is a validation refusal keyed to its field, `42501` authority, `P0002` a missing wallet.
  * Anything else is not a sentence for a reader and is answered generically.
@@ -101,6 +112,11 @@ function governedRefusal(error: { code?: string; message: string }): Result {
 			return refuse(match?.[1] === "auth" ? 401 : 403, reason || "You can't request a spend here.");
 		case "P0002":
 			return refuse(404, "That wallet doesn't exist.");
+		case "PC409":
+			return fail(409, {
+				message: reason,
+				errors: match && match[1] !== "auth" ? { [match[1]]: reason } : undefined,
+			}) as Result;
 		default:
 			return refuse(statusFor(error.code), messageFor(error));
 	}
@@ -300,7 +316,7 @@ export async function transfer(input: TransferInput, query: WalletQuery, actor: 
 		p_note: input.note,
 		p_idempotency_key: input.idempotencyKey,
 	});
-	if (error) return refuse(statusFor(error.code), messageFor(error));
+	if (error) return moneyRefusal(error);
 	return after(query, actor, from.key, `Moved to ${to.owner.name}.`);
 }
 
@@ -382,7 +398,7 @@ export async function fundEscrow(input: FundEscrowInput, query: WalletQuery, act
 				details: authority.details,
 			}) as Result;
 		}
-		return refuse(statusFor(error.code), messageFor(error));
+		return moneyRefusal(error);
 	}
 	const waiting =
 		Number((data as { awaiting_claim_count?: number | string } | null)?.awaiting_claim_count) || 0;
@@ -433,15 +449,17 @@ export async function setPayout(input: PayoutScheduleInput, query: WalletQuery, 
 
 /**
  * Ask for approval of a spend the caller's envelope does not cover, through
- * `finance.request_spend_approval`: the database checks the caller may spend from the wallet at all and
- * that the spend genuinely needs approval (over the per-transaction ceiling, over the remaining cap, or
- * at/above the threshold), and sets the currency and the expiry itself.
+ * `finance.request_spend_approval`: the database checks the wallet is a business's (a team has nobody
+ * to approve), the caller may spend from it, the ref names something this business pays for and has no
+ * request already open, and that the spend genuinely needs approval (over the per-transaction ceiling,
+ * over the remaining cap, or at/above the threshold); it sets the currency and the expiry itself. The
+ * approval is bound to `refTable`/`refId` and is spent only by a charge for that same ref.
  */
 export async function requestSpend(input: SpendRequestInput, query: WalletQuery, actor: ReadActor): Promise<Result> {
 	const resolved = await contextFor(query, actor, keyOf(input.scope, input.contextId));
 	if (isResult(resolved)) return resolved;
 	const { ctx, account } = resolved;
-	if (account.scope === "personal") return refuse(422, "Spend requests are for shared accounts.");
+	if (account.scope !== "business") return refuse(422, "Spend requests are for business accounts.");
 	const row = rowIn(account, input.currency);
 	if (!row) return refuse(409, `This account holds no ${input.currency.toUpperCase()}.`);
 
@@ -449,8 +467,8 @@ export async function requestSpend(input: SpendRequestInput, query: WalletQuery,
 		p_wallet: row.id,
 		p_amount: input.amountMinor,
 		p_reason: input.reason,
-		p_ref_table: null,
-		p_ref_id: null,
+		p_ref_table: input.refTable,
+		p_ref_id: input.refId,
 	});
 	if (error) return governedRefusal(error);
 	return after(query, actor, account.key, "Request sent for approval.");

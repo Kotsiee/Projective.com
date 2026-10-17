@@ -812,9 +812,13 @@ Approves or rejects a pending over-cap `finance.spend_approvals` request. The de
 vault; `manage_members` still implies it — changed 2026-09-28 from `manage_members`, which is the
 owner-level grant that also carries `withdraw`, so making someone an approver that way would have
 let them empty the pool) and may not be the requester — approving one's own over-cap spend would make
-the cap decorative (`42501`). A request already decided is `PC409`; one past its `expires_at` is
-marked `expired` instead of decided (expiry is applied lazily, at the next decision attempt — no
-sweep marks it). A decision notifies the requester through `comms.fn_notify` (`spend.approved` /
+the cap decorative (`42501`). A request already decided is `PC409` — "already been spent" for a
+consumed one, "has expired" for an expired one, so neither can be re-decided; one past its
+`expires_at` is marked `expired` instead of decided (expiry is applied lazily, at the next decision
+attempt — no sweep marks it). Approving moves no money: the charge for the request's ref spends it
+through `finance.fn_redeem_spend_approval`. The one exception acted on at once is an approved
+`tickets` request, which retries the business's auto-fund queue (`finance.fn_auto_fund_drain`), whose
+hold redeems it. A decision notifies the requester through `comms.fn_notify` (`spend.approved` /
 `spend.rejected` — both now registered in the catalog, `00005010`). Returns `{ id, status }`.
 
 | SQLSTATE | Meaning                                                  |
@@ -827,7 +831,7 @@ sweep marks it). A decision notifies the requester through `comms.fn_notify` (`s
 | `PA403`  | over the member's spending limit, or (business) at/above the approval threshold with no approval |
 | `PF402`  | the wallet doesn't hold enough                           |
 | `PD422`  | the team has no agreed split                             |
-| `PC409`  | the spend request was already decided                    |
+| `PC409`  | the spend request was already decided, spent or expired  |
 
 > **Flagged, not decided.** A distribution follows the stakes as agreed, with no platform fee and no
 > vault retention taken at distribution time — the documented 5% fee → vault cut → stakes model
@@ -835,6 +839,32 @@ sweep marks it). A decision notifies the requester through `comms.fn_notify` (`s
 > `fn_split_team_payout` runs `fn_team_split_plan` (vault cut, finder's fee, stakes, dust to the
 > vault), and `preview_team_split` shows the same plan. What remains open is only whether a later
 > manual `distribute_vault` should re-apply a vault cut to money that already paid one on arrival.
+
+### `finance.fn_redeem_spend_approval(p_wallet, p_actor, p_amount, p_ref_table, p_ref_id, p_consume = true)` → boolean
+
+The only way an approval lets money move (BUSINESSES_AUDIT BF20 / §4.3). Called by the spend gate
+`finance.fn_assert_business_spend` on its over-cap and threshold paths, inside the transaction that
+moves the money, and by `finance.fn_auto_fund_drain` as a check (`p_consume = false`). It picks the
+smallest `approved`, unexpired, unconsumed request for this wallet and this exact
+`(ref_table, ref_id)` whose `amount_cents` covers `p_amount` (same currency as the wallet), filed by
+`p_actor` — or by anyone for a `tickets` ref, which automatic holds fund as the project owner — locks
+it `FOR UPDATE` and stamps `consumed_at` + `consumed_ref_table`/`consumed_ref_id`; returns `true`.
+`p_consume = false` only checks (a card payment's pre-check; the settle re-runs the gate and spends).
+Otherwise raises `PA403` `needs_approval: …` with `DETAIL` = jsonb `{wallet_id, ref_table, ref_id,
+amount_minor, threshold_minor}`, so the app can offer "Request approval" bound to exactly that ref.
+Definer, `search_path = ''`; revoked from `PUBLIC`, `anon` and `authenticated` (`00002510`). Probe:
+`supabase/probes/spend_approval_redemption.sql`.
+
+### `finance.fn_auto_fund_drain(p_wallet_id)` → integer (`00001250`)
+
+Retries a business wallet's From-wallet queue oldest first while the wallet covers the next ticket,
+holding each as its project owner. A ticket at/above `finance.fn_business_threshold` is checked
+against the redeemer (`p_consume = false`); a hold refused `PF402` whose `DETAIL.reason` is
+`spending_limit` or `needs_approval` also asks. Asking files one `tickets` request as the project
+owner (a stale `pending` one past its expiry is closed first) and notifies every other
+`approve_spend` holder; the ticket stays queued. The threshold binds the owner too — the former
+"owner holds `approve_spend`" shortcut and the reuse of any approved row for the ticket are gone: the
+hold's spend gate redeems the approval exactly once. Never raises.
 
 ---
 
@@ -910,15 +940,21 @@ never a capability the caller does not hold. Capability moves go through
 `org.fn_set_member_capability`, so "can spend" has one representation. Re-projects the whole vault;
 audits `business.spend_policy_changed`.
 
-### `finance.request_spend_approval(p_wallet, p_amount, p_reason, p_ref_table = NULL, p_ref_id = NULL)` → `{id, status}`
+### `finance.request_spend_approval(p_wallet, p_amount, p_reason, p_ref_table, p_ref_id)` → `{id, status}`
 
-Asks for approval of a spend the caller's envelope does not cover. The wallet must be a business or
-team wallet; the caller needs the `spend` vault capability; `p_amount > 0`; a reason of 1–400
-characters; `p_ref_table` ∈ `projects` · `project_stages` · `tickets` · `basket_items` · `orders`. The
-request must **genuinely need approval** — the SQL twin of `@projective/types/workspace`
-`evaluateSpend`: over the per-transaction ceiling, over the remaining cap (a lapsed period counts as
-nothing spent), or at/above the wallet's threshold — else `22023` ("within your limits and needs no
-approval"). The currency is the wallet's and `expires_at = now() + 7 days` — both the server's, never
+Asks for approval of a spend the caller's envelope does not cover. The wallet must be a **business**
+wallet (`P0002` otherwise — a team never holds `approve_spend` for anyone to decide with, BF44); the
+caller needs the `spend` vault capability; `p_amount > 0`; a reason of 1–400 characters. The ref is
+**required** (`22023 refTable:`): `p_ref_table` ∈ `baskets` · `tickets` · `project_stages` ·
+`revisions` · `invoices` · `transfers`, and `p_ref_id` must name a row this business pays for — its
+own basket; a ticket, stage or revision round on a project it is the client of; an invoice issued to
+it; or, for `transfers`, another wallet (`22023 refId:`). One open request per `(wallet, ref)`: a
+`pending` one past its expiry is marked `expired` first, and a live one refuses a second (`PC409
+refId:`, backed by `uq_spend_approvals_pending_ref`). The request must **genuinely need approval** —
+the SQL twin of `@projective/types/workspace` `evaluateSpend`: over the per-transaction ceiling, over
+the remaining cap (a lapsed period counts as nothing spent), or at/above
+`finance.fn_business_threshold` — else `22023` ("within your limits and needs no approval"). The
+`expires_at` bounds the whole request, deciding and spending included. The currency is the wallet's and `expires_at = now() + 7 days` — both the server's, never
 the caller's. Every other member holding `approve_spend` (or `manage_members`) on the wallet is
 notified with `spend_approval.requested`.
 

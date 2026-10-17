@@ -71,6 +71,12 @@ CREATE INDEX IF NOT EXISTS idx_vault_permissions_member ON finance.vault_permiss
 -- two active rows would make which one applies an accident of physical order.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_split_rules_team_active ON finance.split_rules (team_id) WHERE active;
 CREATE INDEX IF NOT EXISTS idx_spend_approvals_wallet ON finance.spend_approvals (wallet_id, status);
+-- The redeemer's lookup: an approved, not yet spent request for one (wallet, ref).
+CREATE INDEX IF NOT EXISTS idx_spend_approvals_redeemable ON finance.spend_approvals (wallet_id, ref_table, ref_id)
+    WHERE status = 'approved' AND consumed_at IS NULL;
+-- One open request per (wallet, ref): a second ask for the same thing would only split the approvers.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_spend_approvals_pending_ref ON finance.spend_approvals (wallet_id, ref_table, ref_id)
+    WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS idx_ledger_audit_wallet ON finance.ledger_audit (wallet_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_pending_releases_wallet ON finance.pending_releases (wallet_id, state);

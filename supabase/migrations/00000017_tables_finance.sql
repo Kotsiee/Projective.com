@@ -492,6 +492,10 @@ CREATE TABLE finance.split_rules (
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- A request binds to the one thing it approves (`ref_table`/`ref_id`, required) at the amount and
+-- currency it was filed for, and is spent exactly once: finance.fn_redeem_spend_approval stamps
+-- `consumed_at` and the redeeming door's ref in the same transaction as the money movement
+-- (BUSINESSES_AUDIT BF20 / §4.3).
 CREATE TABLE finance.spend_approvals (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
     wallet_id uuid NOT NULL REFERENCES finance.wallets (id) ON DELETE CASCADE,
@@ -499,13 +503,25 @@ CREATE TABLE finance.spend_approvals (
     amount_cents bigint NOT NULL CHECK (amount_cents > 0),
     currency char(3) NOT NULL,
     reason text NOT NULL,
-    ref_table text,
-    ref_id uuid,
+    ref_table text NOT NULL,
+    ref_id uuid NOT NULL,
     status finance.approval_status NOT NULL DEFAULT 'pending',
     approver_user_id uuid REFERENCES auth.users (id) ON DELETE SET NULL,
     decided_at timestamptz,
     expires_at timestamptz,
-    created_at timestamptz NOT NULL DEFAULT now()
+    consumed_at timestamptz,
+    consumed_ref_table text,
+    consumed_ref_id uuid,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT spend_approvals_ref_table_check CHECK (
+        ref_table IN ('baskets', 'tickets', 'project_stages', 'revisions', 'invoices', 'transfers')
+    ),
+    -- Only an approved request is ever spent, and a spend always records what spent it.
+    CONSTRAINT spend_approvals_consumed_check CHECK (
+        (consumed_at IS NULL AND consumed_ref_table IS NULL AND consumed_ref_id IS NULL)
+        OR (consumed_at IS NOT NULL AND status = 'approved'
+            AND consumed_ref_table IS NOT NULL AND consumed_ref_id IS NOT NULL)
+    )
 );
 
 CREATE TABLE finance.ledger_audit (
