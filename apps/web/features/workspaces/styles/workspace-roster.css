@@ -760,6 +760,15 @@ index, and it disappears at 100% — a completed checklist is noise. */
 	min-inline-size: 0;
 }
 
+/* The live line and, after an unanswered probe, its retry beside it. */
+.wsp-create__status {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-2);
+	min-inline-size: 0;
+}
+
 /*
  * The availability line — a polite live region that is empty until there is news. Its line is held
  * open at rest so an answer arriving never shoves the alternatives or the footer down.
@@ -782,8 +791,12 @@ index, and it disappears at 100% — a completed checklist is noise. */
 }
 
 /* A non-text mark, so it carries the hue; the sentence beside it stays in the meta ink. */
-.wsp-create__check-mark[data-tone="success"] {
+.wsp-create__check-mark[data-tone="available"] {
 	color: var(--success);
+}
+
+.wsp-create__check-mark[data-tone="refused"] {
+	color: var(--danger);
 }
 
 /* A taken handle's free alternatives: text buttons in a row, never chips (§B.11). */

@@ -13,6 +13,7 @@
 import { assert, assertEquals } from "@std/assert";
 import {
 	capabilitiesForKind,
+	kindCopy,
 	presetCapabilities,
 	roleRank,
 	WorkspaceCapability,
@@ -246,6 +247,17 @@ Deno.test("org.create_workspace bounds a name exactly as CreateWorkspaceInputSch
 		),
 		"create_workspace's name bounds moved away from WORKSPACE_NAME_MIN / WORKSPACE_NAME_MAX",
 	);
+});
+
+Deno.test("org.create_workspace words its plan cap in the kind's own noun and plural (kindCopy)", () => {
+	const body = functionBody(entities, "org.create_workspace");
+	for (const kind of WorkspaceKind.options) {
+		const { noun, plural } = kindCopy(kind);
+		assert(
+			body.includes(`WHEN v_limit = 1 THEN '${noun}' ELSE '${plural}' END`),
+			`create_workspace's plan refusal no longer says "1 ${noun}" / "N ${plural}"`,
+		);
+	}
 });
 
 Deno.test("handleAlternatives: well-formed, distinct, within the length cap, never the original", () => {

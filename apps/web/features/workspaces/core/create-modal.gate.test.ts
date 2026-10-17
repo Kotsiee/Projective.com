@@ -2,8 +2,8 @@
  * create-modal.gate — the create dialog's source-level merge gates (Teams work order R3), held as a
  * test because a type-checker cannot see them: no hand-rolled radio group, no native select or
  * button, no inline style, no timer in the island (the handle check debounces through
- * `@web/utils/debounce.ts`), one structural commit, and the claim rule imported from the SSOT rather
- * than copied.
+ * `@web/utils/debounce.ts`), every Button's tone taken from the tier model (`tierProps`), and the
+ * claim rule imported from the SSOT rather than copied.
  *
  * The island imports CSS, so it is read as text, never imported.
  */
@@ -37,10 +37,20 @@ Deno.test("create dialog: no timer anywhere in the island, its hook or its model
 	assert(ISLAND.includes("initialFocusRef={nameScope}"), "initial focus must land on the name");
 });
 
-Deno.test("create dialog: one structural commit; the fields are FormControls", () => {
-	// The prop on a line of its own — the JSX form; prose mentioning the tier does not count.
-	assertEquals((ISLAND.match(/^\s*structural\s*$/gm) ?? []).length, 1, "one tier-2 commit");
-	assert(!/variant="filled"/.test(ISLAND), "a second filled button");
+Deno.test("create dialog: every Button takes its tone from the tier model; the fields are FormControls", () => {
+	// The tier a create-model rule assigns is the tier on screen only if the island spells none itself
+	// — create-model.test.ts then holds the one-filled-control rule over what is rendered.
+	const buttons = ISLAND.split(/<Button\b/).slice(1).map((chunk) =>
+		chunk.slice(0, chunk.indexOf("/>"))
+	);
+	assert(buttons.length >= 4, "cancel, create, the retry and the alternatives");
+	for (const props of buttons) {
+		assert(props.includes("{...tierProps("), `a Button with a hand-spelled tone:${props}`);
+		assert(
+			!/\b(variant|severity)=|^\s*structural\b/m.test(props),
+			`a tone beside tierProps:${props}`,
+		);
+	}
 	assertEquals(
 		(ISLAND.match(/<FormControl\b/g) ?? []).length,
 		3,

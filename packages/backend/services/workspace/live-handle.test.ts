@@ -9,6 +9,7 @@ import { fail } from "../ServiceResult.ts";
 import type { RpcOutcome } from "./live-support.ts";
 import { checkHandleWith, type RawHandleVerdict } from "./live-handle.ts";
 import { createRefusal, HANDLE_RACE_REFUSAL } from "./live-writes.ts";
+import { createBlockedReason } from "./mappers.ts";
 
 // #region The probe
 
@@ -86,17 +87,45 @@ Deno.test("createRefusal: a 23505 is the handle race — a 409 keyed to handle",
 	assertEquals(res.errors, { handle: HANDLE_RACE_REFUSAL });
 });
 
+/**
+ * `org.create_workspace`'s plan refusals, verbatim — captured from the function itself (team limits 1
+ * and 3, business limits 1 and 2) in a rolled-back probe, so a regression in the database's sentence
+ * is caught here rather than painted into the dialog.
+ */
+const PLAN_REFUSALS = [
+	{
+		kind: "team",
+		limit: 1,
+		db: "plan: your plan includes 1 team — archive one or upgrade to create another",
+	},
+	{
+		kind: "team",
+		limit: 3,
+		db: "plan: your plan includes 3 teams — archive one or upgrade to create another",
+	},
+	{
+		kind: "business",
+		limit: 1,
+		db: "plan: your plan includes 1 business — archive one or upgrade to create another",
+	},
+	{
+		kind: "business",
+		limit: 2,
+		db: "plan: your plan includes 2 businesses — archive one or upgrade to create another",
+	},
+] as const;
+
 Deno.test("createRefusal: the ownership cap is a 402 naming the kind's entitlement", () => {
-	const message = "plan: your plan includes 3 teams — archive one or upgrade to create another";
-	const team = createRefusal({ code: "55000", message }, "team");
-	assertEquals(team.status, 402);
-	assertEquals(readPlanGateDetails(team.details), {
-		reason: "entitlement",
-		entitlement: "teams_owned",
-	});
-	assertEquals(team.message?.startsWith("Your plan includes 3"), true);
-	const business = createRefusal({ code: "55000", message }, "business");
-	assertEquals(readPlanGateDetails(business.details)?.entitlement, "businesses_owned");
+	for (const { kind, limit, db } of PLAN_REFUSALS) {
+		const res = createRefusal({ code: "55000", message: db }, kind);
+		assertEquals(res.status, 402);
+		assertEquals(readPlanGateDetails(res.details), {
+			reason: "entitlement",
+			entitlement: kind === "team" ? "teams_owned" : "businesses_owned",
+		});
+		// The door's sentence and the roster's own cap line (read from the same limit) are one sentence.
+		assertEquals(res.message, createBlockedReason(kind, limit, limit), `${kind}/${limit}`);
+	}
 });
 
 Deno.test("createRefusal: every other refusal is refusalFrom's", () => {

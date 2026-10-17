@@ -1,4 +1,4 @@
-import type { JSX } from "preact";
+import type { JSX, VNode } from "preact";
 import { batch, useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import "../styles/workspace.css";
@@ -25,7 +25,7 @@ import { settingsHref } from "@features/settings/core/settings-registry.ts";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import { closeCreate, createModalOpen, createSeedKind } from "../core/workspace-state.ts";
 import { CheckGlyph, cloneGlyph, DeclineGlyph } from "../core/workspace-glyphs.tsx";
-import { handleProblem, handleSuggestions } from "../core/handle-check.ts";
+import { handleProblem } from "../core/handle-check.ts";
 import {
 	classifyCreateRefusal,
 	CREATE_FAILED,
@@ -34,11 +34,18 @@ import {
 	createGateOpen,
 	createKindMode,
 	type CreateRefusal,
+	type HandleFieldPhase,
 	handleFromName,
+	handleLiveLine,
+	type HandleLiveTone,
+	isPlainEnter,
 	KIND_CHOICES,
 	nameProblem,
 	normalizeHandleInput,
+	recheckAction,
 	suggestionActions,
+	tierProps,
+	visibleSuggestions,
 } from "../core/create-model.ts";
 import { useHandleCheck } from "../hooks/useHandleCheck.ts";
 
@@ -56,13 +63,14 @@ import { useHandleCheck } from "../hooks/useHandleCheck.ts";
  * alternatives, offered as one-tap text buttons.
  *
  * **Validation paints at rest** (§A.7): each field is a `FormControl` driven by
- * `useFieldValidation`, so a problem shows after the reader leaves the field and its paint clears
- * while they are back in it. A handle mirrored from the name is revealed when the name is left, since
- * the reader may never visit the handle field at all.
+ * `useFieldValidation`, so a problem shows after the reader leaves THAT field and its paint clears
+ * while they are back in it. A handle mirrored from the name may never be visited, so once the name is
+ * left the polite live line says why it cannot be had — without marking the handle field invalid
+ * before the reader has had a turn in it.
  *
  * **One filled control** (§B.8.1): the tier-2 structural commit, enabled only for a valid name and a
- * handle the namespace has just called available. Every rule the dialog renders lives in
- * `core/create-model.ts`, where it is unit-tested.
+ * handle the namespace has just called available. Every button takes its tone from `tierProps` and
+ * every rule the dialog renders lives in `core/create-model.ts`, where it is unit-tested.
  *
  * Shared by `/teams` and `/businesses` (Decision #61): the kind is fixed by the route that mounts it,
  * and asked (a `SelectButton`) only when a neutral surface mounts it without one. `Dialog` portals to
@@ -104,7 +112,7 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 
 	/** Initial focus: the dialog resolves this scope to the name input inside it. */
 	const nameScope = useRef<HTMLDivElement>(null);
-	/** The handle field's scope, so applying a suggestion can return the caret to it. */
+	/** The handle field's scope, so Enter in the name, a suggestion or a retry can put the caret in it. */
 	const handleScope = useRef<HTMLDivElement>(null);
 
 	const check = checker.state.value;
@@ -114,7 +122,14 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 		handle: check,
 		submitting: submitting.value,
 	});
-	const suggestions = handleField.revealed.value ? handleSuggestions(check) : [];
+	const phase: HandleFieldPhase = {
+		nameLeft: nameField.touched.value,
+		handleEdited: handleEdited.value,
+		handleRevealed: handleField.revealed.value,
+	};
+	const live = handleLiveLine(check, phase);
+	const recheck = recheckAction(check);
+	const suggestions = visibleSuggestions(check, phase);
 
 	// #region Handlers
 	/** Clear every field and verdict, so a dismissed draft never reappears half-filled. */
@@ -146,10 +161,16 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 		checker.input(derived);
 	}
 
-	function onNameBlur(): void {
-		nameField.handlers.onBlur();
-		// A mirrored handle the reader never visits must still explain itself once they move on.
-		if (!handleEdited.peek() && handle.peek() !== "") handleField.touched.value = true;
+	/** Put the caret in the handle field. */
+	function focusHandle(): void {
+		handleScope.current?.querySelector<HTMLInputElement>("input")?.focus();
+	}
+
+	/** Enter in the name walks forward to the handle, as the keyboard's "next" label says. */
+	function onNameKeyDown(event: JSX.TargetedKeyboardEvent<HTMLInputElement>): void {
+		if (event.defaultPrevented || !isPlainEnter(event)) return;
+		event.preventDefault();
+		focusHandle();
 	}
 
 	function onHandleInput(value: string): void {
@@ -166,7 +187,16 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 		handleEdited.value = true;
 		refusal.value = null;
 		checker.input(next);
-		handleScope.current?.querySelector<HTMLInputElement>("input")?.focus();
+		focusHandle();
+	}
+
+	/**
+	 * Ask again after an unanswered probe. The retry leaves with the failure it answers, so the caret
+	 * goes back to the handle rather than falling to the page with the unmounted button.
+	 */
+	function onRecheck(): void {
+		checker.recheck();
+		focusHandle();
 	}
 
 	async function submit(): Promise<void> {
@@ -225,9 +255,14 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 			}}
 			footer={
 				<div class="wsp-create__actions">
-					<Button variant="text" label={cancelAction.label} onClick={close} />
 					<Button
-						structural
+						{...tierProps(cancelAction.tier)}
+						label={cancelAction.label}
+						disabled={cancelAction.disabled}
+						onClick={close}
+					/>
+					<Button
+						{...tierProps(createAction.tier)}
 						type="submit"
 						form={FORM_ID}
 						label={createAction.label}
@@ -283,7 +318,8 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 								onValueChange={onNameInput}
 								status={nameField.status.value}
 								onFocus={nameField.handlers.onFocus}
-								onBlur={onNameBlur}
+								onBlur={nameField.handlers.onBlur}
+								onKeyDown={onNameKeyDown}
 								placeholder={copy.namePlaceholder}
 								maxLength={WORKSPACE_NAME_MAX}
 								autoComplete="off"
@@ -324,42 +360,33 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 						)}
 					</FormControl>
 
-					{
-						/*
-						 * The live line. The answer arrives asynchronously, so it is announced rather than
-						 * left for a screen reader to go looking for; it stays mounted and empty between
-						 * answers so the region exists before the first one.
-						 */
-					}
-					<p class="wsp-create__check" role="status" aria-live="polite">
-						{check.status === "checking" && (
-							<>
-								<span class="wsp-create__check-mark" aria-hidden="true">
-									<ProgressSpinner size={14} strokeWidth={2} aria-label="Checking" />
-								</span>
-								<span>Checking @{check.handle}…</span>
-							</>
+					<div class="wsp-create__status">
+						{
+							/*
+							 * The live line. The answer arrives asynchronously, so it is announced rather
+							 * than left for a screen reader to go looking for; it stays mounted and empty
+							 * between answers so the region exists before the first one. The retry sits
+							 * beside it, outside the region, so its label is not read as part of the news.
+							 */
+						}
+						<p class="wsp-create__check" role="status" aria-live="polite">
+							{live && (
+								<>
+									<LiveMark tone={live.tone} />
+									<span>{live.text}</span>
+								</>
+							)}
+						</p>
+						{recheck && (
+							<Button
+								{...tierProps(recheck.tier)}
+								size="sm"
+								label={recheck.label}
+								disabled={recheck.disabled}
+								onClick={onRecheck}
+							/>
 						)}
-						{check.status === "available" && (
-							<>
-								<span class="wsp-create__check-mark" data-tone="success" aria-hidden="true">
-									{cloneGlyph(CheckGlyph)}
-								</span>
-								<span>@{check.handle} is available</span>
-							</>
-						)}
-						{check.failed && (
-							<>
-								<span>{check.reason}</span>
-								<Button
-									variant="text"
-									size="sm"
-									label="Check again"
-									onClick={() => checker.recheck()}
-								/>
-							</>
-						)}
-					</p>
+					</div>
 
 					{suggestions.length > 0 && (
 						<div class="wsp-create__suggest" role="group" aria-label="Free alternatives">
@@ -367,9 +394,10 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 							{suggestionActions(suggestions).map((action, i) => (
 								<Button
 									key={action.key}
-									variant="text"
+									{...tierProps(action.tier)}
 									size="sm"
 									label={action.label}
+									disabled={action.disabled}
 									onClick={() => applySuggestion(suggestions[i])}
 								/>
 							))}
@@ -384,6 +412,24 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 		</Dialog>
 	);
 }
+
+// #region Live line
+/**
+ * The live line's leading mark: a spinner while the namespace is asked, a tick for a free handle, a
+ * decline for one that cannot be had. Decorative — the sentence beside it carries the meaning — so a
+ * failed probe, whose retry already marks the line, draws none.
+ */
+function LiveMark({ tone }: { tone: HandleLiveTone }): VNode | null {
+	if (tone === "failed") return null;
+	return (
+		<span class="wsp-create__check-mark" data-tone={tone} aria-hidden="true">
+			{tone === "checking"
+				? <ProgressSpinner size={14} strokeWidth={2} aria-label="Checking" />
+				: cloneGlyph(tone === "available" ? CheckGlyph : DeclineGlyph)}
+		</span>
+	);
+}
+// #endregion
 
 // #region Refusal
 /**

@@ -1,11 +1,16 @@
 import { assert, assertEquals } from "@std/assert";
 import {
 	CreateWorkspaceInputSchema,
+	HANDLE_REFUSALS,
 	TEAM_PERSONA_REFUSAL,
 	type WorkspaceKind,
 } from "@projective/types/workspace";
 import { PAYOUT_NOT_READY_REFUSAL, PAYOUT_SETUP_HREF } from "@projective/types/finance";
-import { type HandleCheckState, INITIAL_HANDLE_CHECK } from "./handle-check.ts";
+import {
+	HANDLE_CHECK_FAILED,
+	type HandleCheckState,
+	INITIAL_HANDLE_CHECK,
+} from "./handle-check.ts";
 import {
 	classifyCreateRefusal,
 	CREATE_FAILED,
@@ -15,11 +20,19 @@ import {
 	type CreateGateInput,
 	createGateOpen,
 	createKindMode,
+	HANDLE_CHECKING,
+	type HandleFieldPhase,
 	handleFromName,
+	handleLiveLine,
 	isFilled,
+	isPlainEnter,
 	KIND_CHOICES,
+	liveLineExplains,
 	nameProblem,
 	normalizeHandleInput,
+	recheckAction,
+	tierProps,
+	visibleSuggestions,
 } from "./create-model.ts";
 
 // #region Fixtures
@@ -34,6 +47,27 @@ const gate = (over: Partial<CreateGateInput> = {}): CreateGateInput => ({
 	name: "Northern Grid",
 	handle: at("available"),
 	submitting: false,
+	...over,
+});
+
+/** A probe the namespace could not answer. */
+const failedProbe: HandleCheckState = {
+	...at("idle"),
+	reason: HANDLE_CHECK_FAILED,
+	failed: true,
+};
+
+/** A taken handle, with the free alternatives the namespace offered. */
+const takenWithAlternatives: HandleCheckState = {
+	...at("taken"),
+	reason: HANDLE_REFUSALS.taken,
+	suggestions: ["northern-grid-hq", "northern-grid-co", "northern-grid-2"],
+};
+
+const phase = (over: Partial<HandleFieldPhase> = {}): HandleFieldPhase => ({
+	nameLeft: false,
+	handleEdited: false,
+	handleRevealed: false,
 	...over,
 });
 // #endregion
@@ -101,6 +135,13 @@ Deno.test("gate: open only for a valid name + an AVAILABLE handle + nothing in f
 // #endregion
 
 // #region One filled control
+Deno.test("tiers: each renders the ui's tone for it — 2 structural, 4 neutral outlined, 5 text", () => {
+	assertEquals(tierProps(2), { structural: true });
+	assertEquals(tierProps(4), { severity: "neutral", variant: "outlined" });
+	assertEquals(tierProps(5), { variant: "text" });
+	assertEquals([isFilled(2), isFilled(4), isFilled(5)], [true, false, false]);
+});
+
 Deno.test("actions: exactly ONE filled control in every state, and it is the tier-2 create", () => {
 	const kinds: WorkspaceKind[] = ["team", "business"];
 	const states: CreateGateInput[] = [
@@ -108,6 +149,7 @@ Deno.test("actions: exactly ONE filled control in every state, and it is the tie
 		gate({ name: "" }),
 		gate({ handle: at("checking") }),
 		gate({ handle: at("taken") }),
+		gate({ handle: failedProbe }),
 		gate({ submitting: true }),
 	];
 	for (const kind of kinds) {
@@ -122,10 +164,26 @@ Deno.test("actions: exactly ONE filled control in every state, and it is the tie
 						actions.filter((a) => a.key.startsWith("suggest:")).every((a) => a.tier === 5),
 						"suggestions are text buttons",
 					);
+					assertEquals(
+						actions.filter((a) => a.key === "recheck").map((a) => a.tier),
+						state.handle.failed ? [4] : [],
+						"the retry is a tier-4 utility, present only after an unanswered probe",
+					);
 				}
 			}
 		}
 	}
+});
+
+Deno.test("retry: 'Check again' only after an unanswered probe, as a tier-4 utility", () => {
+	assertEquals(recheckAction(at("taken")), null);
+	assertEquals(recheckAction(INITIAL_HANDLE_CHECK), null);
+	assertEquals(recheckAction(failedProbe), {
+		key: "recheck",
+		label: "Check again",
+		tier: 4,
+		disabled: false,
+	});
 });
 
 Deno.test("footer: Cancel is tier 5 and always live; the commit is gated and says when it is working", () => {
@@ -134,6 +192,91 @@ Deno.test("footer: Cancel is tier 5 and always live; the commit is gated and say
 	assertEquals([create.label, create.tier, create.disabled], ["Create team", 2, true]);
 	const busy = createFooterActions("business", "fixed", gate({ submitting: true }))[1];
 	assertEquals([busy.label, busy.disabled], ["Creating…", true]);
+});
+// #endregion
+
+// #region The handle's live line
+Deno.test("live line: one fixed sentence while checking, whatever the handle — typing is not news", () => {
+	const lines = ["n", "no", "northern", "northern-grid"].map((h) =>
+		handleLiveLine(at("checking", h), phase())
+	);
+	for (const line of lines) assertEquals(line, { tone: "checking", text: HANDLE_CHECKING });
+	assert(!HANDLE_CHECKING.includes("@"), "the pending line never echoes the handle");
+});
+
+Deno.test("live line: a verdict names the handle; an unanswered probe says so", () => {
+	assertEquals(handleLiveLine(at("available"), phase()), {
+		tone: "available",
+		text: "@northern-grid is available",
+	});
+	assertEquals(handleLiveLine(failedProbe, phase()), { tone: "failed", text: HANDLE_CHECK_FAILED });
+	assertEquals(handleLiveLine(INITIAL_HANDLE_CHECK, phase()), null);
+});
+
+Deno.test("live line: a refused MIRRORED handle is explained there once the name is left — never earlier", () => {
+	const refused: HandleCheckState[] = [
+		takenWithAlternatives,
+		{ ...at("reserved", "settings"), reason: HANDLE_REFUSALS.reserved },
+		{ ...at("invalid", "ab"), reason: HANDLE_REFUSALS.short },
+	];
+	for (const state of refused) {
+		assertEquals(handleLiveLine(state, phase()), null, `${state.status}: still typing the name`);
+		assertEquals(
+			handleLiveLine(state, phase({ nameLeft: true })),
+			{ tone: "refused", text: state.reason },
+			`${state.status}: the name was left`,
+		);
+		assertEquals(
+			handleLiveLine(state, phase({ nameLeft: true, handleRevealed: true })),
+			null,
+			`${state.status}: the field's own error row has taken over`,
+		);
+		assertEquals(
+			handleLiveLine(state, phase({ nameLeft: true, handleEdited: true })),
+			null,
+			`${state.status}: the reader is typing their own handle`,
+		);
+	}
+	assert(liveLineExplains(phase({ nameLeft: true })));
+	assert(!liveLineExplains(phase({ nameLeft: true, handleRevealed: true })));
+});
+
+Deno.test("suggestions: shown once the live line or the field explains the taken handle", () => {
+	assertEquals(visibleSuggestions(takenWithAlternatives, phase()), []);
+	assertEquals(
+		visibleSuggestions(takenWithAlternatives, phase({ nameLeft: true })),
+		takenWithAlternatives.suggestions,
+	);
+	assertEquals(
+		visibleSuggestions(takenWithAlternatives, phase({ handleEdited: true, handleRevealed: true })),
+		takenWithAlternatives.suggestions,
+	);
+	assertEquals(
+		visibleSuggestions(takenWithAlternatives, phase({ nameLeft: true, handleEdited: true })),
+		[],
+		"a handle being typed waits for its own field's blur",
+	);
+	assertEquals(visibleSuggestions(at("available"), phase({ handleRevealed: true })), []);
+});
+// #endregion
+
+// #region Keys
+Deno.test("Enter: only a plain, settled Enter walks the name forward", () => {
+	const key = (over: Partial<Parameters<typeof isPlainEnter>[0]> = {}) => ({
+		key: "Enter",
+		isComposing: false,
+		altKey: false,
+		ctrlKey: false,
+		metaKey: false,
+		shiftKey: false,
+		...over,
+	});
+	assert(isPlainEnter(key()));
+	assert(!isPlainEnter(key({ key: "Tab" })));
+	assert(!isPlainEnter(key({ isComposing: true })), "an IME confirming a composition");
+	for (const mod of ["altKey", "ctrlKey", "metaKey", "shiftKey"] as const) {
+		assert(!isPlainEnter(key({ [mod]: true })), mod);
+	}
 });
 // #endregion
 
