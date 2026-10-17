@@ -4,7 +4,6 @@ import { useEffect } from "preact/hooks";
 import "../styles/workspace.css";
 import { Button, InputNumber, Select, SelectButton } from "@projective/ui/fields";
 import { Tag } from "@projective/ui/display";
-import { styleVars } from "@ui/core/style.ts";
 import {
 	type AutoFundMode,
 	type BillingInvoiceRow,
@@ -150,7 +149,7 @@ export default function BillingScreen(props: BillingScreenProps): JSX.Element {
 	return (
 		<div class="wsp" data-kind="business">
 			<div class="wsp__stack">
-				<section class="wsp-band wsp-band--head" style={styleVars({ "--wsp-i": 0 })}>
+				<section class="wsp-band wsp-band--head" data-i={0}>
 					<div class="wsp-band__inner">
 						<div class="wsp-pagehead">
 							<h1 class="wsp-pagehead__title">Billing</h1>
@@ -163,7 +162,7 @@ export default function BillingScreen(props: BillingScreenProps): JSX.Element {
 				</section>
 
 				{belowFloor && (
-					<section class="wsp-band wsp-band--plain" style={styleVars({ "--wsp-i": 1 })}>
+					<section class="wsp-band wsp-band--plain" data-i={1}>
 						<div class="wsp-band__inner">
 							<p class="wsp-billing__warning" role="status">
 								The {currency} wallet holds {v.balanceLabel}, below the floor you set.{" "}
@@ -173,7 +172,7 @@ export default function BillingScreen(props: BillingScreenProps): JSX.Element {
 					</section>
 				)}
 
-				<section class="wsp-band wsp-band--money" style={styleVars({ "--wsp-i": 2 })}>
+				<section class="wsp-band wsp-band--money" data-i={2}>
 					<div class="wsp-band__inner">
 						<div class="wsp-band__head">
 							<h2 class="wsp-band__title">Invoices</h2>
@@ -238,7 +237,7 @@ export default function BillingScreen(props: BillingScreenProps): JSX.Element {
 					</div>
 				</section>
 
-				<section class="wsp-band wsp-band--ledger" style={styleVars({ "--wsp-i": 3 })}>
+				<section class="wsp-band wsp-band--ledger" data-i={3}>
 					<div class="wsp-band__inner">
 						<div class="wsp-band__head">
 							<h2 class="wsp-band__title">Statements</h2>
@@ -268,7 +267,7 @@ export default function BillingScreen(props: BillingScreenProps): JSX.Element {
 					</div>
 				</section>
 
-				<section class="wsp-band wsp-band--money wsp-band--tail" style={styleVars({ "--wsp-i": 4 })}>
+				<section class="wsp-band wsp-band--money wsp-band--tail" data-i={4}>
 					<div class="wsp-band__inner">
 						<div class="wsp-band__head">
 							<h2 class="wsp-band__title">How billing works</h2>

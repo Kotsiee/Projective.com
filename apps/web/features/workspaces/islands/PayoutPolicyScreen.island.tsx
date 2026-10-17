@@ -3,7 +3,6 @@ import { useComputed, useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import "../styles/workspace.css";
 import { Tooltip } from "@projective/ui/feedback";
-import { styleVars } from "@ui/core/style.ts";
 import {
 	rebalanceSplit,
 	splitDriftBp,
@@ -151,7 +150,7 @@ export default function PayoutPolicyScreen(props: PayoutPolicyScreenProps): JSX.
 	return (
 		<div class="wsp" data-kind="team">
 			<div class="wsp__stack">
-				<section class="wsp-band wsp-band--head" style={styleVars({ "--wsp-i": 0 })}>
+				<section class="wsp-band wsp-band--head" data-i={0}>
 					<div class="wsp-band__inner">
 						<div class="wsp-pagehead">
 							<h1 class="wsp-pagehead__title">Payouts and splits</h1>
@@ -163,7 +162,7 @@ export default function PayoutPolicyScreen(props: PayoutPolicyScreenProps): JSX.
 					</div>
 				</section>
 
-				<section class="wsp-band wsp-band--money" style={styleVars({ "--wsp-i": 1 })}>
+				<section class="wsp-band wsp-band--money" data-i={1}>
 					<div class="wsp-band__inner">
 						<div class="wsp-split">
 							<div class="wsp-split__head">
@@ -250,7 +249,7 @@ export default function PayoutPolicyScreen(props: PayoutPolicyScreenProps): JSX.
 				{canEdit && policy.value.templates.length > 0 && (
 					<section
 						class="wsp-band wsp-band--plain wsp-band--tail"
-						style={styleVars({ "--wsp-i": 2 })}
+						data-i={2}
 					>
 						<div class="wsp-band__inner">
 							<div class="wsp-split__templates">

@@ -5,7 +5,6 @@ import "../styles/workspace.css";
 import { Grid } from "@projective/ui/layout";
 import { InputText } from "@projective/ui/fields";
 import { ConfirmDialog, Message } from "@projective/ui/feedback";
-import { styleVars } from "@ui/core/style.ts";
 import {
 	activeMembers,
 	isLastOwner,
@@ -227,7 +226,7 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	return (
 		<div class="wsp" data-kind={ws.kind}>
 			<div class="wsp__stack">
-				<section class="wsp-band wsp-band--head" style={styleVars({ "--wsp-i": 0 })}>
+				<section class="wsp-band wsp-band--head" data-i={0}>
 					<div class="wsp-band__inner">
 						<div class="wsp-pagehead">
 							<h1 class="wsp-pagehead__title">{showPending ? "Invitations" : "Members"}</h1>

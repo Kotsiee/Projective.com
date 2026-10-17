@@ -33,8 +33,8 @@
 .wsp-roster__title {
 	margin: 0;
 	font-size: var(--wsp-fs-display);
-	font-weight: 600;
-	letter-spacing: -0.01em;
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-tight);
 	color: var(--on-surface);
 }
 
@@ -58,8 +58,8 @@
 .wsp-roster__tabs {
 	display: inline-flex;
 	align-items: center;
-	gap: 2px;
-	padding: 2px;
+	gap: var(--space-px);
+	padding: var(--space-px);
 	border-radius: var(--radius-base);
 	background: var(--surface-2);
 }
@@ -84,15 +84,11 @@
 	color: var(--on-surface);
 }
 
-.wsp-roster__tab:focus-visible {
-	outline: none;
-}
-
 .wsp-roster__tab[aria-selected="true"],
 .wsp-roster__tab[data-active="true"] {
 	background: var(--surface);
 	color: var(--on-surface);
-	font-weight: 500;
+	font-weight: var(--fw-medium);
 }
 
 .wsp-roster__tab-count {
@@ -151,7 +147,7 @@
 	font-size: var(--wsp-fs-micro);
 	letter-spacing: var(--wsp-label-track);
 	text-transform: uppercase;
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	color: var(--wsp-kind);
 }
 
@@ -173,10 +169,6 @@
 .wsp-invitestrip__dismiss:hover {
 	background: var(--surface-2);
 	color: var(--on-surface);
-}
-
-.wsp-invitestrip__dismiss:focus-visible {
-	outline: none;
 }
 
 .wsp-invitestrip__list {
@@ -203,7 +195,7 @@
 .wsp-invitestrip__body {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-px);
 	min-inline-size: 0;
 }
 
@@ -217,7 +209,7 @@
 }
 
 .wsp-invitestrip__name {
-	font-weight: 600;
+	font-weight: var(--fw-medium);
 }
 
 .wsp-invitestrip__meta {
@@ -225,6 +217,7 @@
 	align-items: center;
 	gap: var(--space-2);
 	font-size: var(--wsp-fs-micro);
+	font-variant-numeric: tabular-nums;
 	color: var(--text-secondary);
 	min-inline-size: 0;
 }
@@ -243,7 +236,8 @@
 	gap: var(--space-1);
 	padding-inline: var(--space-3);
 	padding-block: var(--space-1);
-	border: 1px solid transparent;
+	border: var(--hairline-strong);
+	border-color: transparent;
 	border-radius: var(--radius-base);
 	font: inherit;
 	font-size: var(--wsp-fs-body);
@@ -262,7 +256,7 @@
 
 .wsp-invitestrip__decline {
 	background: none;
-	border-color: var(--border-subtle);
+	border-color: var(--hairline-strong-color);
 	color: var(--text-secondary);
 }
 
@@ -271,10 +265,6 @@
 	background: var(--surface-2);
 }
 
-.wsp-invitestrip__accept:focus-visible,
-.wsp-invitestrip__decline:focus-visible {
-	outline: none;
-}
 /* #endregion */
 
 /* #region The card grid */
@@ -309,6 +299,11 @@
 	inline-size: 100%;
 	min-inline-size: 0;
 	padding: var(--space-4);
+	/* The acting rule's edge, reserved transparent at rest so the state recolours an edge and moves no
+	box (§B.12.3). */
+	border-inline-start: var(--hairline-strong);
+	border-inline-start-width: var(--wsp-acting-line-h);
+	border-inline-start-color: transparent;
 	border-radius: var(--radius-container-lg);
 	background: var(--surface-1);
 	transition: background-color var(--dur-fast) var(--ease-standard);
@@ -318,18 +313,30 @@
 	background: var(--surface-2);
 }
 
+/* The quiet chip is a `--surface-2` step, the same tone the card hovers to, so it steps up one with
+the card or its container would vanish. */
+.wsp-card:hover .wsp-chip[data-tone="muted"] {
+	background: var(--surface-3);
+}
+
 /*
- * Acting: a hairline ring plus one tonal step. Both are quiet on purpose — the chip in `__flags` is
- * the loud channel, and two loud markers on one card cancel each other out.
+ * Acting: one leading `--hairline-strong` rule plus one tonal step — never a four-sided ring around a
+ * card (§B.4). Both are quiet on purpose — the chip in `__flags` is the loud channel, and two loud
+ * markers on one card cancel each other out.
  */
 .wsp-card[data-acting="true"] {
 	background: var(--wsp-acting-tint);
-	box-shadow: inset 0 0 0 1px var(--wsp-acting-ring);
+	border-inline-start-color: var(--wsp-acting-ring);
 }
 
-/* An archived entity is dimmed and desaturated, never struck through: it is restorable. */
-.wsp-card[data-status="archived"] {
-	opacity: 0.72;
+/*
+ * An archived entity is dimmed, never struck through: it is restorable. The dim is carried by the INK
+ * — the name and the figures step down to `--text-secondary` — never by `opacity`, which would drop
+ * every label on the card under 4.5:1 (§B.12).
+ */
+.wsp-card[data-status="archived"] .wsp-card__name,
+.wsp-card[data-status="archived"] .wsp-card__stat-value {
+	color: var(--text-secondary);
 }
 
 .wsp-card__link {
@@ -341,10 +348,6 @@
 	font-size: 0;
 	color: transparent;
 	text-decoration: none;
-}
-
-.wsp-card__link:focus-visible {
-	outline: none;
 }
 
 .wsp-card__top {
@@ -359,7 +362,7 @@
 .wsp-card__ident {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-px);
 	min-inline-size: 0;
 }
 
@@ -369,7 +372,7 @@
 	gap: var(--space-2);
 	margin: 0;
 	font-size: var(--wsp-fs-key);
-	font-weight: 600;
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 	min-inline-size: 0;
 }
@@ -440,10 +443,6 @@
 	color: var(--on-surface);
 }
 
-.wsp-card__kebab:focus-visible {
-	outline: none;
-}
-
 /* People are circular; the entity mark above is the square. */
 .wsp-card__faces {
 	display: flex;
@@ -454,7 +453,7 @@
 .wsp-card__face {
 	flex: none;
 	border-radius: 50%;
-	box-shadow: 0 0 0 2px var(--surface-1);
+	box-shadow: 0 0 0 var(--space-px) var(--surface-1);
 }
 
 .wsp-card__face + .wsp-card__face {
@@ -462,7 +461,7 @@
 }
 
 .wsp-card:hover .wsp-card__face {
-	box-shadow: 0 0 0 2px var(--surface-2);
+	box-shadow: 0 0 0 var(--space-px) var(--surface-2);
 }
 
 .wsp-card__more {
@@ -478,8 +477,8 @@
 	color: var(--text-secondary);
 	font-size: var(--wsp-fs-micro);
 	font-variant-numeric: tabular-nums;
-	font-weight: 600;
-	box-shadow: 0 0 0 2px var(--surface-1);
+	font-weight: var(--fw-semibold);
+	box-shadow: 0 0 0 var(--space-px) var(--surface-1);
 }
 
 .wsp-card__members {
@@ -503,14 +502,17 @@
 	gap: var(--space-3);
 	padding-block-start: var(--space-3);
 	border-block-start: var(--hairline);
+	/* Every figure in the row — value, delta, and any count in a label — keeps its column. */
+	font-variant-numeric: tabular-nums;
 	pointer-events: none;
 }
 
 .wsp-card__stat {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-px);
 	min-inline-size: 0;
+	font-variant-numeric: tabular-nums;
 }
 
 .wsp-card__stat-label {
@@ -525,7 +527,7 @@
 
 .wsp-card__stat-value {
 	font-size: var(--wsp-fs-body);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	font-variant-numeric: tabular-nums lining-nums;
 	letter-spacing: var(--wsp-num-track);
 	color: var(--on-surface);
@@ -564,7 +566,7 @@ index, and it disappears at 100% — a completed checklist is noise. */
 .wsp-card__setup-bar {
 	flex: 1 1 auto;
 	min-inline-size: 0;
-	block-size: 4px;
+	block-size: var(--wsp-meter-h);
 	border-radius: var(--radius-xs);
 	background: var(--wsp-track-bg);
 	overflow: hidden;
@@ -608,7 +610,7 @@ index, and it disappears at 100% — a completed checklist is noise. */
 }
 
 .wsp-rtable__name-text {
-	font-weight: 500;
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -655,7 +657,7 @@ index, and it disappears at 100% — a completed checklist is noise. */
 .wsp-empty__title {
 	margin: 0;
 	font-size: var(--wsp-fs-figure);
-	font-weight: 600;
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 }
 
@@ -690,7 +692,7 @@ index, and it disappears at 100% — a completed checklist is noise. */
 	flex: none;
 	color: var(--wsp-kind);
 	line-height: 0;
-	padding-block-start: 2px;
+	padding-block-start: var(--space-px);
 }
 
 .wsp-empty__actions {
@@ -791,9 +793,9 @@ index, and it disappears at 100% — a completed checklist is noise. */
 .wsp-create__kind {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-px);
 	padding: var(--space-3);
-	border: 1px solid var(--border-subtle);
+	border: var(--hairline-strong);
 	border-radius: var(--radius-container-lg);
 	background: none;
 	text-align: start;
@@ -808,27 +810,24 @@ index, and it disappears at 100% — a completed checklist is noise. */
 	background: var(--surface-1);
 }
 
-.wsp-create__kind:focus-visible {
-	outline: none;
-}
-
 /*
  * The selected kind is marked by its own tint, so the chooser previews the mark colour the entity
- * will carry rather than using one generic accent for both.
+ * will carry rather than using one generic accent for both. The tint is mixed against the dialog's
+ * own solid `--surface`, never `transparent` (§B.4.2).
  */
 .wsp-create__kind[data-on="true"][data-kind="team"] {
 	border-color: var(--primary);
-	background: color-mix(in oklab, var(--primary) 10%, transparent);
+	background: color-mix(in oklab, var(--primary) 10%, var(--surface));
 }
 
 .wsp-create__kind[data-on="true"][data-kind="business"] {
 	border-color: var(--secondary);
-	background: color-mix(in oklab, var(--secondary) 10%, transparent);
+	background: color-mix(in oklab, var(--secondary) 10%, var(--surface));
 }
 
 .wsp-create__kind-name {
 	font-size: var(--wsp-fs-body);
-	font-weight: 600;
+	font-weight: var(--fw-medium);
 }
 
 .wsp-create__kind-note {
@@ -840,6 +839,10 @@ index, and it disappears at 100% — a completed checklist is noise. */
 	.wsp-create__kind {
 		transition: none;
 	}
+}
+
+:root[data-motion="reduced"] .wsp-create__kind {
+	transition: none;
 }
 
 /* The handle probe's verdict — iconographic, with the words beside it because this one IS the
@@ -882,8 +885,8 @@ answer to a question the user just asked. */
 
 .wsp-create__suggestion {
 	padding-inline: var(--space-2);
-	padding-block: 2px;
-	border: 1px solid var(--border-subtle);
+	padding-block: var(--space-px);
+	border: var(--hairline-strong);
 	border-radius: var(--radius-xs);
 	background: none;
 	color: var(--on-surface);
@@ -894,10 +897,6 @@ answer to a question the user just asked. */
 
 .wsp-create__suggestion:hover {
 	background: var(--surface-2);
-}
-
-.wsp-create__suggestion:focus-visible {
-	outline: none;
 }
 
 /* A live preview of the mark, so the initial badge is never a surprise. */
@@ -911,13 +910,13 @@ answer to a question the user just asked. */
 .wsp-create__preview-body {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-px);
 	min-inline-size: 0;
 }
 
 .wsp-create__preview-name {
 	font-size: var(--wsp-fs-body);
-	font-weight: 600;
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -945,13 +944,13 @@ answer to a question the user just asked. */
 /* #endregion */
 
 /* #region Responsive */
-@media (max-width: 1100px) {
+@media (max-width: 79.9375rem) {
 	.wsp-grid {
 		--wsp-card-min: 17rem;
 	}
 }
 
-@media (max-width: 767px) {
+@media (max-width: 47.9375rem) {
 	/* One card per row — expressed as a full-width track FLOOR so the primitive's own formula
 	(`min(--grid-min, 100%)`) resolves it, rather than a competing template. */
 	.wsp-grid {

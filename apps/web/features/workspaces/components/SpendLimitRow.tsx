@@ -121,7 +121,7 @@ export function SpendLimitRow(props: SpendLimitRowProps): JSX.Element {
 
 			<span class="wsp-spend__limit-ident">
 				<span class="wsp-spend__limit-name">
-					<a href={`/@${limit.handle}`}>{limit.name}</a>
+					<a class="wsp-spend__limit-link" href={`/@${limit.handle}`}>{limit.name}</a>
 					{isSelf && <span class="ui-visually-hidden">(you)</span>}
 				</span>
 				<span class="wsp-spend__limit-sub">

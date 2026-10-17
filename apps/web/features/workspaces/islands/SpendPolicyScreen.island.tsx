@@ -4,7 +4,6 @@ import { useEffect } from "preact/hooks";
 import "../styles/workspace.css";
 import { Tooltip } from "@projective/ui/feedback";
 import { InputNumber } from "@projective/ui/fields";
-import { styleVars } from "@ui/core/style.ts";
 import { toMajorUnits, toMinorUnits } from "@projective/types/finance";
 import {
 	type BusinessSpendPolicy,
@@ -192,7 +191,7 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 	return (
 		<div class="wsp" data-kind="business">
 			<div class="wsp__stack">
-				<section class="wsp-band wsp-band--head" style={styleVars({ "--wsp-i": 0 })}>
+				<section class="wsp-band wsp-band--head" data-i={0}>
 					<div class="wsp-band__inner">
 						<div class="wsp-pagehead">
 							<h1 class="wsp-pagehead__title">Spending and approvals</h1>
@@ -221,7 +220,7 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 				/>
 
 				{pendingCount > 0 && (
-					<section class="wsp-band wsp-band--plain" style={styleVars({ "--wsp-i": 1 })}>
+					<section class="wsp-band wsp-band--plain" data-i={1}>
 						<div class="wsp-band__inner">
 							<div class="wsp-band__head">
 								<h2 class="wsp-band__title">
@@ -243,7 +242,7 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 					</section>
 				)}
 
-				<section class="wsp-band wsp-band--money" style={styleVars({ "--wsp-i": 2 })}>
+				<section class="wsp-band wsp-band--money" data-i={2}>
 					<div class="wsp-band__inner">
 						<div class="wsp-spend">
 							{/* #region Approval threshold */}
@@ -310,7 +309,7 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 
 				<section
 					class="wsp-band wsp-band--ledger wsp-band--tail"
-					style={styleVars({ "--wsp-i": 3 })}
+					data-i={3}
 				>
 					<div class="wsp-band__inner">
 						<div class="wsp-band__head">
