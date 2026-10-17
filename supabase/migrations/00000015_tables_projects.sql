@@ -531,8 +531,18 @@ CREATE TABLE projects.project_participants (
     created_at timestamp
     with
         time zone NOT NULL DEFAULT now(),
+
+-- The business client's explicit grant to a delegated project manager to compose and edit tickets on
+-- its behalf (Decision #294). A seat, not a capability of the person: it lives on the participant row
+-- of ONE project, and only an `admin` / `manager` person seat can hold it, so a role change off those
+-- seats must clear it in the same write (projects.set_member_role does). Written only through
+-- projects.set_ticket_manager, which records who granted it (trg_project_participants_derived refuses
+-- a client role's own write).
+    can_manage_tickets boolean NOT NULL DEFAULT false,
         CONSTRAINT project_participants_pkey PRIMARY KEY (id),
-        CONSTRAINT project_participants_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects (id)
+        CONSTRAINT project_participants_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects (id),
+        CONSTRAINT ck_project_participants_ticket_manager_seat
+            CHECK (NOT can_manage_tickets OR (profile_type = 'freelancer' AND role IN ('admin', 'manager')))
 );
 
 CREATE TABLE projects.stage_assignments (

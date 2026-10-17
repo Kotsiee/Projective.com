@@ -31,6 +31,14 @@ CREATE TRIGGER trg_project_stages_derived
     BEFORE INSERT OR UPDATE ON projects.project_stages
     FOR EACH ROW EXECUTE FUNCTION security.fn_guard_derived_columns('revisions_used');
 
+-- A delegate's ticket-management grant (Decision #294). The owner's "Owner manage participants" policy
+-- reaches the row; only projects.set_ticket_manager (definer: review authority + `hire`, audited) and
+-- projects.set_member_role (which clears it off an admin/manager seat) move this flag.
+DROP TRIGGER IF EXISTS trg_project_participants_derived ON projects.project_participants;
+CREATE TRIGGER trg_project_participants_derived
+    BEFORE INSERT OR UPDATE ON projects.project_participants
+    FOR EACH ROW EXECUTE FUNCTION security.fn_guard_derived_columns('can_manage_tickets');
+
 -- A quote request is between a buyer and the seller of one blueprint. Either may move its status;
 -- neither may re-address it or point it at another listing (`security.fn_guard_immutable_columns`).
 DROP TRIGGER IF EXISTS trg_quote_requests_parties ON marketplace.quote_requests;

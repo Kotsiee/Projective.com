@@ -135,3 +135,35 @@ Deno.test("the invite schema normalises case, drops repeats and refuses a non-ad
 		false,
 	);
 });
+
+Deno.test("a ticket-management grant needs an admin/manager seat, persists, and ends with the seat (Decision #294)", async () => {
+	reset();
+	const page = await roster();
+	const target = page.members.find((m) => !m.isViewer && m.role !== "owner" && m.role !== "client");
+	assert(target, "the fixture roster has a member to delegate to");
+
+	await ProjectBackendService.updateMemberRole(PROJECT, target.id, "freelancer", CLIENT);
+	const refused = await ProjectBackendService.updateTicketManager(PROJECT, target.id, true, CLIENT);
+	assertEquals(refused.ok, false);
+
+	await ProjectBackendService.updateMemberRole(PROJECT, target.id, "manager", CLIENT);
+	const granted = await ProjectBackendService.updateTicketManager(PROJECT, target.id, true, CLIENT);
+	assert(granted.ok && granted.data);
+	assertEquals(granted.data, { memberId: target.id, canManageTickets: true, changed: true });
+	assertEquals((await roster()).members.find((m) => m.id === target.id)?.canManageTickets, true);
+	const again = await ProjectBackendService.updateTicketManager(PROJECT, target.id, true, CLIENT);
+	assertEquals(again.data?.changed, false);
+
+	// Leaving the manager seat ends the grant, as projects.set_member_role does live.
+	await ProjectBackendService.updateMemberRole(PROJECT, target.id, "guest", CLIENT);
+	assertEquals(
+		(await roster()).members.find((m) => m.id === target.id)?.canManageTickets ?? false,
+		false,
+	);
+
+	const self = page.members.find((m) => m.isViewer);
+	if (self) {
+		const own = await ProjectBackendService.updateTicketManager(PROJECT, self.id, true, CLIENT);
+		assertEquals(own.ok, false);
+	}
+});

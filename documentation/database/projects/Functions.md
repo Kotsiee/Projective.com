@@ -72,6 +72,16 @@ dismissing invitations and managing a stage's invite link, and the SELECT arm on
 Unchanged by BB2 (it still answers the SELECT arms); on a business project the staffing WRITE doors
 additionally require `hire` or a delegate role through `fn_assert_business_actor(…, 'hire', true)`.
 
+### `projects.is_ticket_manager(_project_id uuid) → boolean`
+
+`00001100` §2 (Decision #294). TRUE when the caller is a **delegated ticket manager**: a
+person-participant row on the project with `role IN ('admin', 'manager')` and `can_manage_tickets`,
+on a project billed to a business (`client_business_id IS NOT NULL`). The predicate behind the
+_Ticket managers compose tickets_ / _edit tickets_ policies; what such a caller may change is narrowed
+again by `fn_ticket_immutability_guard`. It is not review authority: it approves, hires, funds and
+settles nothing. `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`; `EXECUTE`: `anon`, `authenticated`,
+`service_role` (a policy predicate).
+
 ### Business authority: one capability per act (BB2)
 
 `00001100` §2b (BUSINESSES_AUDIT BF13–BF15, BF23, §4.2). On a project billed to a business
@@ -724,6 +734,7 @@ what the freelancer agreed to deliver is not the client's.
 | A claimed ticket's `status` / `current_stage_id` move by `projects.fn_assert_ticket_move` (under [Tickets](#tickets), Decision #293). A change of assignee is not a move. | A statement run as `anon` / `authenticated`. `move_ticket` applies the same rule itself. | `42501`, the predicate's sentences |
 | An `INSERT` that names a `current_assignee_id` needs `projects.can_review_project` | Every signed-in caller | `42501` "A ticket is written by its client; a freelancer claims it." |
 | `payment_status` and `total_amount_paid` do not change; an `INSERT` starts them `unpaid` / `0` | A statement run as `anon` / `authenticated` | `42501` |
+| A ticket manager's statement changes only the composer's columns (`title`, `description`, `text_description`, `current_stage_id`, `owner_user_id`, `priority`, `workload_intensity`, `required_stages`, `tasks`, `due_date`, `unit_price_cents`, `sort_order`); its `INSERT` starts unclaimed in `backlog` | A statement run as `anon` / `authenticated` by neither the owner nor the ticket's assignee — admitted only by the _Ticket managers_ policies (Decision #294) | `42501` "You may edit a ticket's content for the client, not its assignee, status or payment." / "A ticket you write for the client starts unclaimed in the backlog…" |
 
 Why each is money: `finance.fn_hold_ticket_escrow` holds `COALESCE(unit_price_cents, current
 stage's price)`, and approving a stage holds the next required one at once (the Chain Reaction,
@@ -742,6 +753,16 @@ bookkeeping rule judges only a client role's own statement: **`SECURITY INVOKER`
 inside a definer door — the claim's hold, a release, the chain — `current_user` is the door's owner
 and the escrow functions that keep those columns pass. A statement that restates the current value
 (PostgREST patching a whole row back) passes, because nothing moved.
+
+**Delegated ticket managers (Decision #294).** A ticket's content is the client's; a freelancer
+writes it only as a project manager the business client explicitly let manage tickets
+([`projects.set_ticket_manager`](#projectsset_ticket_managerp_project_id-uuid-p_participant_id-uuid-p_allowed-boolean--jsonb)).
+Such a manager acts for the client and is bound like the client: once a ticket is claimed its terms
+are frozen (`P0001`) and its stage moves only with review authority. On an unclaimed ticket they
+change the composer's columns and nothing else — an assignee is a hire, a status a move, the claim
+and workload-report markers and the payment bookkeeping a settlement, each with its own door — and
+they delete nothing (no policy admits it). A manager who is also a ticket's assignee is held to that
+ticket as its payee. Regression probe: `supabase/probes/ticket_managers.sql`.
 
 The workload-report window turns the `workload_intensity` rule round (Decision #290): while
 `OLD.status = 'reported_hidden'` the assignee can change neither `status` nor `workload_intensity`
@@ -1451,9 +1472,26 @@ another project, an entity participant, and the caller's own row (`check_violati
 role verbatim. Idempotent (an unchanged role returns `changed: false` and writes nothing). Writes
 `security.audit_logs` (`project.member_role_changed`, `{project_id, member_user_id, from, to}`) and
 `project_activity` (`member_role_changed`) in the same transaction. **A role is a permission label
-only** — no seat, ticket or escrow moves (that is `remove_project_member`). Returns
-`{participant_id, role, changed}`. Refuses a NULL `auth.uid()` first; `EXECUTE`: `authenticated`,
-`service_role`.
+only** — no seat, ticket or escrow moves (that is `remove_project_member`). A seat leaving
+`admin` / `manager` loses its `can_manage_tickets` grant in the same write (Decision #294; the audit
+metadata carries `ticket_grant_ended`). Returns `{participant_id, role, changed}`. Refuses a NULL
+`auth.uid()` first; `EXECUTE`: `authenticated`, `service_role`.
+
+### `projects.set_ticket_manager(p_project_id uuid, p_participant_id uuid, p_allowed boolean) → jsonb`
+
+`00001135` §1b (Decision #294). The business client's explicit grant to a delegated project manager
+to compose and edit tickets on its behalf — the Members tab's "Let manage tickets" / "Stop managing
+tickets" (`PATCH /api/projects/[id]/members/[memberId]/tickets`). Gated like appointing the delegate:
+**review authority** (`insufficient_privilege`) and, on a business project, the `hire` capability
+(`fn_assert_business_actor`, `PK403`). Refuses (`check_violation`) a project with no client business
+("Only a business client delegates its tickets…"), a closed project, a row of another project, the
+caller's own row, and a grant to anything but a `freelancer` person seat holding `admin` / `manager`.
+Locks the participant row; idempotent (`changed: false`). Writes `security.audit_logs`
+(`project.ticket_manager_changed`, `{project_id, member_user_id, can_manage_tickets}`) and
+`project_activity` (`ticket_manager_changed`) in the same transaction. Returns
+`{participant_id, can_manage_tickets, changed}`. What the grant reaches is
+`fn_ticket_immutability_guard`'s rule. Refuses a NULL `auth.uid()` first; `EXECUTE`:
+`authenticated`, `service_role`.
 
 ### `projects.fn_apply_invitation_decision(p_invitation_id uuid, p_accept boolean, p_actor uuid) → jsonb`
 

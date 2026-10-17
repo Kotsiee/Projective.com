@@ -1,9 +1,10 @@
 import type { MenuItem } from "@ui/types/mod.ts";
-import type {
-	MemberStagePicture,
-	MemberStageRef,
-	MemberViewerCaps,
-	ProjectMemberRow,
+import {
+	type MemberStagePicture,
+	type MemberStageRef,
+	type MemberViewerCaps,
+	type ProjectMemberRow,
+	TICKET_MANAGER_ROLES,
 } from "../types/projects-types.ts";
 import { profileHref } from "./routing.ts";
 
@@ -17,7 +18,14 @@ export interface MemberMenuInput {
 	caps: MemberViewerCaps;
 	/** The row may be managed (a managing viewer, not their own row). */
 	manageable: boolean;
+	/**
+	 * The engagement is billed to a business, so its admin/manager seats can be let manage tickets
+	 * (Decision #294). Absent reads as `false`.
+	 */
+	businessClient?: boolean;
 	onEdit: (member: ProjectMemberRow) => void;
+	/** Let this admin/manager seat manage tickets for the business client, or stop them. */
+	onTicketManager?: (member: ProjectMemberRow, allowed: boolean) => void;
 	onInviteToStages: (member: ProjectMemberRow, stageIds: string[]) => void;
 	onRemove: (member: ProjectMemberRow, stage: MemberStageRef | null) => void;
 }
@@ -98,6 +106,21 @@ export function memberMenuModel(input: MemberMenuInput): MenuItem[] {
 			label: "Change role",
 			icon: "shield",
 			command: () => input.onEdit(member),
+		});
+	}
+	// Only a business client delegates its tickets, and only to an admin/manager seat (Decision #294).
+	const onTicketManager = input.onTicketManager;
+	if (
+		manageable && caps.canEditRoles && input.businessClient === true && onTicketManager &&
+		TICKET_MANAGER_ROLES.has(member.role)
+	) {
+		const granted = member.canManageTickets === true;
+		model.push({
+			key: "tickets",
+			label: granted ? "Stop managing tickets" : "Let manage tickets",
+			icon: "ticket",
+			hint: granted ? undefined : "Write and edit tickets for you",
+			command: () => onTicketManager(member, !granted),
 		});
 	}
 	if (manageable && picture) {

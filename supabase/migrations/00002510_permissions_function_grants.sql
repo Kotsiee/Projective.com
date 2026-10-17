@@ -51,6 +51,7 @@ GRANT EXECUTE ON FUNCTION projects.has_project_access (uuid) TO anon, authentica
 GRANT EXECUTE ON FUNCTION projects.has_stage_access (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.can_review_project (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.can_manage_project_members (uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.is_ticket_manager (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.is_cohort_member (uuid) TO anon, authenticated;
 
 -- Who may move a claimed ticket (Decision #293). trg_ticket_immutability_guard is INVOKER and calls
@@ -1263,11 +1264,14 @@ REVOKE ALL ON FUNCTION projects.fn_stage_revision_terms () FROM PUBLIC, anon, au
 
 -- SECURITY DEFINER writes into security.audit_logs / comms.fn_notify, which no client role reaches, so
 -- the grant is part of the access decision: signed-in callers only. Each body also refuses a NULL
--- auth.uid() itself and applies its own authority check (set_member_role: can_review_project;
--- invite_by_email, act_on_invitation and the stage invite-link doors: can_manage_project_members;
--- resolve/redeem_invite_link: any signed-in holder of the token).
+-- auth.uid() itself and applies its own authority check (set_member_role and set_ticket_manager:
+-- can_review_project + `hire`; invite_by_email, act_on_invitation and the stage invite-link doors:
+-- can_manage_project_members; resolve/redeem_invite_link: any signed-in holder of the token).
 REVOKE ALL ON FUNCTION projects.set_member_role (uuid, uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.set_member_role (uuid, uuid, text) TO authenticated;
+
+REVOKE ALL ON FUNCTION projects.set_ticket_manager (uuid, uuid, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.set_ticket_manager (uuid, uuid, boolean) TO authenticated;
 
 REVOKE ALL ON FUNCTION projects.invite_by_email (uuid, uuid, text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.invite_by_email (uuid, uuid, text, text) TO authenticated;

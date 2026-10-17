@@ -367,6 +367,22 @@ WITH
         )
     );
 
+-- A delegated project manager the business client let manage tickets (projects.set_ticket_manager,
+-- Decision #294) composes and edits them on its behalf. INSERT and UPDATE only — deleting a ticket can
+-- settle its escrow and stays the client's. projects.fn_ticket_immutability_guard narrows the write to
+-- the composer's columns on an unclaimed ticket: no assignee, status, payment bookkeeping or claimed
+-- terms.
+CREATE POLICY "Ticket managers compose tickets" ON projects.tickets FOR
+INSERT
+    TO authenticated
+WITH
+    CHECK (projects.is_ticket_manager (project_id));
+
+CREATE POLICY "Ticket managers edit tickets" ON projects.tickets FOR
+UPDATE TO authenticated USING (projects.is_ticket_manager (project_id))
+WITH
+    CHECK (projects.is_ticket_manager (project_id));
+
 -- No client UPDATE on projects.stage_submissions. Sending a draft is projects.send_submission_draft,
 -- which moves the ticket, resolves revision rounds and validates files in the same transaction; a bare
 -- status UPDATE did none of that. Verdicts belong to projects.review_submission.

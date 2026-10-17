@@ -201,7 +201,7 @@ export function RosterCard(props: RosterCardProps): JSX.Element {
 			presence={m.presence}
 			status={context.session && m.attendance ? <AttendanceTag attendance={m.attendance} /> : null}
 			actions={props.actions}
-			headline={<RoleText role={m.role} />}
+			headline={<RoleText role={m.role} managesTickets={m.canManageTickets === true} />}
 			meta={rosterFacts(m, context)}
 			pending={props.pending}
 			foot={foot}

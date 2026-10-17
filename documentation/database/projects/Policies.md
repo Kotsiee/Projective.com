@@ -164,6 +164,14 @@ every ticket still in the stage ([Functions.md](Functions.md#projectsfn_stage_de
 | :--------------- | :------- | :------------------------------------------------------------------------------------------- |
 | _View tickets_   | `SELECT` | Assignee · owner · project access or public-active — the latter two minus `reported_hidden`. |
 | _Manage tickets_ | `ALL`    | `current_assignee_id = auth.uid()` or project owner, on **both** arms.                       |
+| _Ticket managers compose tickets_ | `INSERT` (`authenticated`) | `projects.is_ticket_manager(project_id)` (Decision #294). |
+| _Ticket managers edit tickets_ | `UPDATE` (`authenticated`) | `projects.is_ticket_manager(project_id)`, on **both** arms. |
+
+The two _Ticket managers_ policies admit a delegated project manager the business client explicitly
+let manage tickets (`projects.set_ticket_manager`). There is no DELETE policy for them: a delete can
+settle a ticket's escrow and stays the client's. `fn_ticket_immutability_guard` narrows what such a
+statement may change — the composer's columns of an unclaimed ticket, an INSERT unclaimed in
+`backlog` — so the policy grants the row, not the act.
 
 A ticket suspended inside an active workload-report window (`status = 'reported_hidden'` and
 `hidden_until > now()`) stays visible to its assignee and the owner and is hidden from everyone

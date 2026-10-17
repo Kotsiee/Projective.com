@@ -2067,6 +2067,14 @@ A claim whose escrow cannot be held is refused and the ticket moves to **Needs f
   freelancer who claimed it cannot reword or reprice it, change the stages it requires, or move it
   to another stage either: those are the terms the client's escrow is held against, and every hold
   is priced from them. A freelancer never writes a ticket; they claim one (Decision #291).
+- **Delegated ticket managers:** A ticket's content is the client's. The one exception is a project
+  manager a **Business** client explicitly lets manage tickets on its behalf: a freelancer it made a
+  project Admin or Manager, then granted "manage tickets" from the Members tab (the grant takes the
+  hiring permission, is recorded, and ends if they leave that seat). Such a manager writes and edits
+  tickets as the client would — and only as the client could: never once a ticket is claimed, never
+  assigning, settling or deleting it, and never the ticket they are themselves paid for. An
+  individual client has no business to delegate for and manages their own tickets (product-owner
+  ruling, 2026-10-17; Decision #294).
 - **Stage Reordering Post-Claim:** Once a ticket is claimed, clients may only reorder the stages
   that have **not yet been started or claimed** — the claimed ticket's current and completed stages
   are frozen in sequence.

@@ -182,6 +182,14 @@ $$ LANGUAGE plpgsql STABLE SET search_path = public, projects, security, auth;
 -- that keep those columns pass and only a statement PostgREST runs as anon/authenticated is
 -- judged.
 --
+-- A delegated project manager the business client let manage tickets (projects.is_ticket_manager,
+-- Decision #294) reaches the table through its own policies, as neither the owner nor the assignee.
+-- Such a statement acts for the client and may change only what the client's composer writes
+-- (title, description, stages, price, W_i, tasks, priority, due date, accountable member, order). An
+-- assignee, a status, the claim and workload-report markers are a hire, a move or a settlement, which
+-- go through their own doors; a new ticket starts unclaimed in the backlog. Everything above still
+-- binds it: once claimed, the terms are frozen and only review authority moves the stage.
+--
 -- A workload report turns the W_i rule round for its window (Decision #290): the work is
 -- suspended until the client answers, so the reporting assignee may neither resume the ticket nor
 -- move the W_i it disputes, and raising W_i becomes the one edit the client may make
@@ -192,6 +200,13 @@ DECLARE
     v_uid uuid := auth.uid();
     v_payee boolean;
     v_reviewer boolean;
+    -- The columns the client's composer writes (ProjectBackendService.commitTicket), plus the stamp
+    -- trg_ticket_touch_updated_at keeps; a ticket manager's statement may move these and no others.
+    v_composer CONSTANT text[] := ARRAY[
+        'title', 'description', 'text_description', 'current_stage_id', 'owner_user_id', 'priority',
+        'workload_intensity', 'required_stages', 'tasks', 'due_date', 'unit_price_cents', 'sort_order',
+        'updated_at'
+    ];
 BEGIN
     IF current_user IN ('anon', 'authenticated') THEN
         IF TG_OP = 'INSERT' THEN
@@ -207,6 +222,33 @@ BEGIN
                 ERRCODE = '42501',
                 MESSAGE = 'A ticket''s payment state is kept by its escrow and cannot be written '
                     || 'directly.';
+        END IF;
+
+        -- Neither the owner nor the ticket's own assignee: admitted only as a ticket manager.
+        IF v_uid IS NOT NULL
+            AND NOT EXISTS (
+                SELECT 1 FROM projects.projects p
+                WHERE p.id = NEW.project_id AND p.owner_user_id = v_uid
+            )
+            AND (CASE WHEN TG_OP = 'INSERT' THEN NEW.current_assignee_id
+                      ELSE OLD.current_assignee_id END) IS DISTINCT FROM v_uid THEN
+            IF TG_OP = 'INSERT' THEN
+                IF NEW.status IS DISTINCT FROM 'backlog'::ticket_status
+                    OR NEW.current_assignee_id IS NOT NULL
+                    OR NEW.claimed_at IS NOT NULL
+                    OR NEW.hidden_until IS NOT NULL
+                    OR NEW.workload_report_id IS NOT NULL THEN
+                    RAISE EXCEPTION USING
+                        ERRCODE = '42501',
+                        MESSAGE = 'A ticket you write for the client starts unclaimed in the '
+                            || 'backlog; hiring and moving it go through the board.';
+                END IF;
+            ELSIF (to_jsonb(NEW) - v_composer) IS DISTINCT FROM (to_jsonb(OLD) - v_composer) THEN
+                RAISE EXCEPTION USING
+                    ERRCODE = '42501',
+                    MESSAGE = 'You may edit a ticket''s content for the client, not its assignee, '
+                        || 'status or payment.';
+            END IF;
         END IF;
     END IF;
 
