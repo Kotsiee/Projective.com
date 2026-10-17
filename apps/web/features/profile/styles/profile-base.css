@@ -354,10 +354,10 @@ a.pf-tag:focus-visible {
 /* #region Member notice */
 /*
  * A member's note above a team or business page outsiders cannot open (`ProfileMemberNotice`, BP1;
- * Teams P1): one InlineNotice line, and on a team page the tier-4 Settings link beside it. Unboxed —
- * no fill, no border; spacing is the only separation. It sits OUTSIDE `.pf`, so it cannot read
- * `--pf-gutter` and restates that gutter's three steps instead. The row wraps, so on a phone the
- * link drops beneath the line rather than squeezing it.
+ * Teams P1): one InlineNotice line, and — once that kind's Settings can publish it — the tier-4
+ * Settings link beside it. Unboxed — no fill, no border; spacing is the only separation. It sits
+ * OUTSIDE `.pf`, so it cannot read `--pf-gutter` and restates that gutter's three steps instead. The
+ * row wraps, so on a phone the link drops beneath the line rather than squeezing it.
  */
 .pf-notice {
     display: flex;
@@ -367,9 +367,17 @@ a.pf-tag:focus-visible {
     padding: var(--space-4) var(--space-6) 0;
 }
 
-/* The Settings link keeps its own width; the line takes the rest. */
-.pf-notice__action {
+/*
+ * The Settings link keeps its own width; the line takes the rest. An `<a>` dressed as a button: the
+ * rig's tier-4 pill treatment (`.pf-rig__cta`) — medium label, no link underline, never wrapping.
+ * Doubled class so it outranks `.ui-button` whatever the bundle order.
+ */
+.ui-button.pf-notice__action {
     flex: none;
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-normal);
+    text-decoration: none;
+    white-space: nowrap;
 }
 
 /*

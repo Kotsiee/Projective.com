@@ -20,6 +20,7 @@ import {
 	rigFills,
 	rigFor,
 	rosterMetaFacts,
+	SETTINGS_PUBLISHES,
 	standingFactorFacts,
 	teamHiddenNoticeText,
 } from "./profile-model.ts";
@@ -239,16 +240,27 @@ function entity(
 	return { kind, name: kind === "team" ? "North Loop" : "Atlas Labs", visibility, workspace };
 }
 
-Deno.test("memberNoticeFor: a hidden team tells its member why, with Settings for a settings holder", () => {
+Deno.test("memberNoticeFor: a hidden team tells its member why; Settings waits until it can publish", () => {
 	const doors = { consoleHref: "/teams/northloop", settingsHref: "/teams/northloop/settings" };
-	assertEquals(memberNoticeFor(entity("team", { hiddenReason: "draft", ...doors })), {
+	const draft = entity("team", { hiddenReason: "draft", ...doors });
+	// Today the console's Settings cannot publish a team or change its visibility, so the link is
+	// withheld from a settings holder too (root CLAUDE.md §3.11) — Teams C6 turns it on.
+	assertEquals(SETTINGS_PUBLISHES, { team: false, business: false });
+	assertEquals(memberNoticeFor(draft), {
+		text: "North Loop is a draft. Only members can see this until the team is published.",
+		settingsHref: null,
+	});
+	// Once a team's Settings can publish, its settings holder gets the link beside the line…
+	const c6 = { team: true, business: false };
+	assertEquals(memberNoticeFor(draft, c6), {
 		text: "North Loop is a draft. Only members can see this until the team is published.",
 		settingsHref: "/teams/northloop/settings",
 	});
-	// A member who may not open Settings reads the line alone.
+	// …and a member who may not open Settings still reads the line alone.
 	assertEquals(
 		memberNoticeFor(
 			entity("team", { hiddenReason: "archived", consoleHref: null, settingsHref: null }),
+			c6,
 		),
 		{ text: "North Loop is archived. Only members can see this page.", settingsHref: null },
 	);
@@ -259,14 +271,22 @@ Deno.test("memberNoticeFor: a hidden team tells its member why, with Settings fo
 });
 
 Deno.test("memberNoticeFor: a hidden business keeps BP1's line and withholds Settings (#244 (d))", () => {
-	assertEquals(
-		memberNoticeFor(entity("business", {
-			hiddenReason: "invite_only",
-			consoleHref: "/businesses/atlaslabs",
-			settingsHref: "/businesses/atlaslabs/settings",
-		}, "private")),
-		{ text: "Atlas Labs is invite-only. Only members can see this page.", settingsHref: null },
-	);
+	const hidden = entity("business", {
+		hiddenReason: "invite_only",
+		consoleHref: "/businesses/atlaslabs",
+		settingsHref: "/businesses/atlaslabs/settings",
+	}, "private");
+	const line = "Atlas Labs is invite-only. Only members can see this page.";
+	assertEquals(memberNoticeFor(hidden), { text: line, settingsHref: null });
+	// A team's Settings learning to publish does not open the business's link.
+	assertEquals(memberNoticeFor(hidden, { team: true, business: false }), {
+		text: line,
+		settingsHref: null,
+	});
+	assertEquals(memberNoticeFor(hidden, { team: false, business: true }), {
+		text: line,
+		settingsHref: "/businesses/atlaslabs/settings",
+	});
 });
 
 Deno.test("previewNoteFor: a workspace editor's preview says what visitors do not see", () => {
@@ -318,28 +338,21 @@ Deno.test("rosterMetaFacts: a team row is role · since · two skills, all text 
 		"Lead",
 		{ text: "Since 2025", tabular: true },
 	]);
-	// An enterprise keeps its plain role line.
+	// An enterprise keeps its plain role line. (That the facts render as one MetaLine and never as a
+	// chip is `components/work/WorkRoster.test.tsx`'s, on the rendered markup.)
 	assertEquals(rosterMetaFacts(member, "enterprise"), null);
-	// Every fact is plain text — nothing a chip could be drawn from (§B.11).
-	for (const fact of rosterMetaFacts(member, "team") ?? []) {
-		assertEquals(typeof fact === "string" || typeof fact.text === "string", true);
-	}
 });
 
-Deno.test("standingFactorFacts: on time · completion · disputes, and nothing before a first stage", () => {
-	assertEquals(
-		standingFactorFacts({
-			stagesCompleted: 4,
-			completionRate: 1,
-			onTimeRate: 0.957,
-			disputeRate: 0,
-		}),
-		[
-			{ text: "96% on time", tabular: true },
-			{ text: "100% completion", tabular: true },
-			"No disputes",
-		],
-	);
+Deno.test("standingFactorFacts: a team's on time · completion · disputes, never a person's", () => {
+	const record = { stagesCompleted: 6, completionRate: 1, onTimeRate: 0.957, disputeRate: 0 };
+	assertEquals(standingFactorFacts(record, "team"), [
+		{ text: "96% on time", tabular: true },
+		{ text: "100% completion", tabular: true },
+		"No disputes",
+	]);
+	// A person's rates are not published, whatever the read carries; a buyer has no Standing.
+	assertEquals(standingFactorFacts(record, "freelancer"), []);
+	assertEquals(standingFactorFacts(record, "business"), []);
 	// A tiny dispute rate never rounds to a claim of none.
 	assertEquals(
 		standingFactorFacts({
@@ -347,14 +360,18 @@ Deno.test("standingFactorFacts: on time · completion · disputes, and nothing b
 			completionRate: 0.99,
 			onTimeRate: 0.9,
 			disputeRate: 0.003,
-		})[2],
+		}, "team")[2],
 		{ text: "1% disputed", tabular: true },
 	);
+	// No factors in the read (below the volume floor, or no Standing row), or none counted: nothing.
 	assertEquals(
-		standingFactorFacts({ stagesCompleted: 0, completionRate: 0, onTimeRate: 0, disputeRate: 0 }),
+		standingFactorFacts(
+			{ stagesCompleted: 0, completionRate: 0, onTimeRate: 0, disputeRate: 0 },
+			"team",
+		),
 		[],
 	);
-	assertEquals(standingFactorFacts(undefined), []);
+	assertEquals(standingFactorFacts(undefined, "team"), []);
 });
 
 Deno.test("reviewSummaryFor: a team draws one aggregate with a count badge and no stance filter", () => {

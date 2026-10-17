@@ -285,6 +285,8 @@ export type RigFill = "hire" | "add" | "message";
  * the icon pair, the buyer's text pair and Manage team / Manage business, which is a link and never a
  * fill. One fill per decision region, with the profile seller rig's teal + monochrome pair the one
  * owner-directed exception (Decision #183 flag (a)) — so this never holds two tier-3 fills.
+ * `ProfileRig` gates every filled control it draws on this list, so the rule tested here is the one
+ * the page renders.
  */
 export function rigFills(rig: ProfileRig): RigFill[] {
 	const fills: RigFill[] = [];
@@ -429,30 +431,50 @@ export interface MemberNotice {
 	/** The one-line fact the InlineNotice states. */
 	text: string;
 	/**
-	 * The team console's Settings — the tier-4 link beside the line (Teams P1 SPEC 1) — for a member
-	 * holding `manage_settings`; `null` for everyone else, and for every business, whose link waits
-	 * for a Settings screen that can publish it or change its visibility (Decision #244 (d)).
+	 * The console's Settings — the tier-4 link beside the line (BP1 and Teams P1 SPEC 1) — for a
+	 * member holding `manage_settings`, once that kind's Settings can publish it and change its
+	 * visibility ({@link SETTINGS_PUBLISHES}); `null` for everyone else.
 	 */
 	settingsHref: string | null;
 }
 
+/** A workspace kind — the two whose member notice can carry a Settings link. */
+export type WorkspaceProfileKind = "team" | "business";
+
+/**
+ * Whether a workspace kind's console Settings can do what the member notice is about — publish the
+ * entity and change its visibility. The notice's tier-4 Settings link renders only where it can, so
+ * that it lands on a surface that can act (root CLAUDE.md §3.11). Neither kind's can yet: the
+ * Settings module is still a `ModulePlaceholder` whose copy sends visibility to a profile editor that
+ * offers a team or a business none. So both links are withheld — the business's by Decision #244
+ * (d), the team's (Teams P1 SPEC 1) until Teams C6 puts Publish and Visibility on its Settings screen,
+ * when the `team` entry turns on. The read keeps carrying `settingsHref` for a `manage_settings`
+ * holder, so the link returns with that one change.
+ */
+export const SETTINGS_PUBLISHES: Readonly<Record<WorkspaceProfileKind, boolean>> = {
+	team: false,
+	business: false,
+};
+
 /**
  * The member notice for a profile, or `null` when there is nothing to tell — a page anybody may
  * open, or a kind with no workspace facts. Only a member ever reaches a hidden page (the database
- * answers it as missing to everyone else), so the notice is never a stranger's to read.
+ * answers it as missing to everyone else), so the notice is never a stranger's to read. The Settings
+ * link rides along only for a kind whose Settings can publish (`publishes`, by default
+ * {@link SETTINGS_PUBLISHES}).
  */
 export function memberNoticeFor(
 	profile: Pick<ProfileView, "kind" | "name" | "visibility" | "workspace">,
+	publishes: Readonly<Record<WorkspaceProfileKind, boolean>> = SETTINGS_PUBLISHES,
 ): MemberNotice | null {
 	const facts = profile.workspace;
 	if (!facts?.hiddenReason) return null;
-	if (profile.kind === "team") {
-		return {
-			text: teamHiddenNoticeText(facts.hiddenReason, profile.name, profile.visibility),
-			settingsHref: facts.settingsHref,
-		};
-	}
-	return { text: hiddenNoticeText(facts.hiddenReason, profile.name), settingsHref: null };
+	const kind = profile.kind;
+	const text = kind === "team"
+		? teamHiddenNoticeText(facts.hiddenReason, profile.name, profile.visibility)
+		: hiddenNoticeText(facts.hiddenReason, profile.name);
+	const linked = (kind === "team" || kind === "business") && publishes[kind];
+	return { text, settingsHref: linked ? facts.settingsHref : null };
 }
 
 /**
@@ -522,16 +544,19 @@ function percent(rate: number): string {
 }
 
 /**
- * The factors beneath a seller's Standing rung, as MetaLine facts (Teams P1): on-time delivery,
- * completion and disputes — the client-valued inputs PRODUCT_SPEC §Standing "What moves a rung"
- * names. None at all before the first signed-off stage: a rate measured over nothing is not a fact
- * (a fresh row's rates default to 0). A dispute rate that rounds to nothing still reads 1%, so a
- * record with disputes never claims "No disputes".
+ * The factors beneath a TEAM's Standing rung, as MetaLine facts (Teams P1 SPEC 4): on-time
+ * delivery, completion and disputes — the client-valued inputs PRODUCT_SPEC §Standing "What moves a
+ * rung" names. A team's only: a person's rates are not published, so any other kind gets none. The
+ * database answers factors only from the volume floor of the ladder's first earned rung, so one
+ * flawless engagement never reads "100% on time · No disputes"; a read without any (or one that
+ * somehow counts no stage) gets none here either — a rate over nothing is not a fact. A dispute rate
+ * that rounds to nothing still reads 1%, so a record with disputes never claims "No disputes".
  */
 export function standingFactorFacts(
 	factors: ProfileStandingFactors | undefined,
+	kind: ProfileKind,
 ): ProfileMetaFact[] {
-	if (!factors || factors.stagesCompleted < 1) return [];
+	if (kind !== "team" || !factors || factors.stagesCompleted < 1) return [];
 	const disputed = Math.max(1, Math.round(factors.disputeRate * 100));
 	const disputes: ProfileMetaFact = factors.disputeRate === 0
 		? "No disputes"

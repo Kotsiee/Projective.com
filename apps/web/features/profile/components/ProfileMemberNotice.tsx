@@ -11,11 +11,12 @@ import type { ProfileView } from "../types/profile-types.ts";
  * `workspace`) — an outsider never reaches this page at all, so the notice is never a stranger's to
  * read. What it says, and whether a link sits beside it, is `memberNoticeFor`'s decision.
  *
- * One InlineNotice (the required-disclosure container, unboxed), stating the fact. On a TEAM page a
- * member holding `manage_settings` also gets a tier-4 link to the console's Settings beside it (the
- * neutral outlined pill, Button matrix §B.8.1) — the console is where the team is published. A
- * business's link waits for a Settings screen that can publish it or change its visibility
- * (Decision #244 (d)), so its line stands alone.
+ * One InlineNotice (the required-disclosure container, unboxed), stating the fact. A member holding
+ * `manage_settings` gets a tier-4 link to the console's Settings beside it (the neutral outlined
+ * pill, Button matrix §B.8.1) only once that kind's Settings can publish the entity and change its
+ * visibility (`SETTINGS_PUBLISHES`) — a link must land on a surface that can act (root CLAUDE.md
+ * §3.11). Neither kind's can yet: the business's link waits by Decision #244 (d), the team's for the
+ * Settings screen Teams C6 builds, so today every line stands alone.
  *
  * A server component: its sheet (`profile-base.css`) rides the profile islands' barrel import, and
  * the InlineNotice and Button sheets ride the hero's `@projective/ui/feedback` and `/fields` imports.
@@ -23,6 +24,7 @@ import type { ProfileView } from "../types/profile-types.ts";
 export function ProfileMemberNotice({ profile }: { profile: ProfileView }): JSX.Element | null {
 	const notice = memberNoticeFor(profile);
 	if (!notice) return null;
+	const noun = profile.kind === "business" ? "Business" : "Team";
 	return (
 		<div class="pf-notice">
 			<InlineNotice
@@ -36,7 +38,7 @@ export function ProfileMemberNotice({ profile }: { profile: ProfileView }): JSX.
 					class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm ui-button--rounded pf-notice__action"
 					href={notice.settingsHref}
 				>
-					<span class="ui-button__label">Team settings</span>
+					<span class="ui-button__label">{noun} settings</span>
 				</a>
 			)}
 		</div>

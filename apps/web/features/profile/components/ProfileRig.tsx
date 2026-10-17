@@ -8,7 +8,7 @@ import { Icon } from "@projective/ui/icons";
 import type { PublicCallOffer } from "@projective/types/scheduling";
 import { AddToProjectMenu } from "./hire/AddToProjectMenu.tsx";
 import { HireMenu } from "./hire/HireMenu.tsx";
-import { type HireProject, messageReachable, rigFor } from "../core/profile-model.ts";
+import { type HireProject, messageReachable, rigFills, rigFor } from "../core/profile-model.ts";
 import {
 	gate,
 	isFollowing as followsNow,
@@ -130,6 +130,12 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 		manages: !!profile.workspace?.consoleHref,
 		messageable: messageReachable(profile),
 	});
+	/**
+	 * The filled controls this rig draws — Hire, Add to project, a business's Message — and ONLY these:
+	 * every fill below is gated on this set, so the one-fill rule `rigFills` is tested against is the
+	 * one the page renders (Button matrix §B.8.1, Decision #183 flag (a)).
+	 */
+	const fills = new Set(rigFills(rig));
 	const isFollowing = followsNow(viewer);
 	const celebrating = followCelebrating.value;
 	const followLabel = isFollowing ? `Following ${profile.name}` : `Follow ${profile.name}`;
@@ -218,7 +224,7 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 	 */
 	const businessLead = rig.primary === "manage" && consoleHref
 		? manageLink("Manage business")
-		: rig.primary === "message" && recipient
+		: fills.has("message") && recipient
 		? (
 			<Button
 				rounded
@@ -272,7 +278,7 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 				? (
 					<>
 						{rig.primary === "manage" && manageLink("Manage team")}
-						{rig.hire && (
+						{fills.has("hire") && (
 							<Popover
 								open={hireOpen}
 								onOpenChange={forward(hireMenuOpen)}
@@ -308,7 +314,7 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 								/>
 							</Popover>
 						)}
-						{rig.addToProject && (
+						{fills.has("add") && (
 							<Popover
 								open={addOpen}
 								onOpenChange={forward(addMenuOpen)}

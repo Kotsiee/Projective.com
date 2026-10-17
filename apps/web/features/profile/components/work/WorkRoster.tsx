@@ -8,18 +8,17 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
 /**
  * WorkRoster — the people behind a multi-member entity. A business renders one flat auto-fill grid
  * of avatar · name · role entries and a team one list of rows, each a link to the member's own
- * `/@handle`. An
- * enterprise groups the same rows by department, a member sitting in several departments listed
- * under each (no chips — the group heading already says which department the row is in), with
- * members assigned to no department gathered last under "Unassigned". Departments with nobody in
- * them are omitted, and an enterprise with no department set falls back to the flat grid.
+ * `/@handle`. An enterprise groups the same rows by department, a member sitting in several
+ * departments listed under each (no chips — the group heading already says which department the row
+ * is in), with members assigned to no department gathered last under "Unassigned". Departments with
+ * nobody in them are omitted, and an enterprise with no department set falls back to the flat grid.
  *
  * A business row (BP1, Decision #244) reads its second line as a MetaLine — the member's title or
  * base role · "Since 2026" — never a chip: neither fact can be acted on. A TEAM's roster (Teams P1)
  * is a list of rows rather than a grid of cells, each row's MetaLine the member's public role (a
  * preset name; a custom role reads as its base preset) · "Since 2025" · their top two skills, all
- * as text (§B.11). No stake and no workload is ever shown here — those are console facts. Which facts
- * a row carries is `rosterMetaFacts`'s decision.
+ * as text (§B.11). No stake and no workload is ever shown here — those are console facts. Which
+ * facts a row carries is `rosterMetaFacts`'s decision.
  */
 export function WorkRoster(
 	{ members, departments, kind }: {

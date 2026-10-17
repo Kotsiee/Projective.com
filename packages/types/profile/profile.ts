@@ -148,9 +148,10 @@ export function showcaseSlides(showcase: ProfileShowcase): ProfileShowcaseItem[]
 }
 
 /**
- * The client-valued inputs that moved a seller's rung (PRODUCT_SPEC §Standing "What moves a rung"),
- * read from the subject's own `org.entity_standing` row — a team's for a team, the person's for a
- * freelancer (Teams P1). Rates are fractions `0..1`. Absent when the subject has no Standing row yet.
+ * The client-valued inputs that moved a TEAM's rung (PRODUCT_SPEC §Standing "What moves a rung"),
+ * read from the team's own `org.entity_standing` row (Teams P1). Rates are fractions `0..1`. Absent
+ * below the volume floor of the ladder's first earned rung, when the team has no Standing row yet,
+ * and always for a person, whose rates are not published.
  */
 export const ProfileStandingFactorsSchema = z.object({
 	/** Stages signed off — the evidence behind every rate below; `0` means there is none yet. */
@@ -177,7 +178,7 @@ export const ProfileStandingSchema = z.object({
 	level: z.number().int().min(1).max(5),
 	/** "New" · "Established" · "Trusted" · "Expert" · "Elite". */
 	label: z.string().max(40),
-	/** What the rung stands on — rendered as one MetaLine beneath it (Teams P1). */
+	/** What a team's rung stands on — rendered as one MetaLine beneath it (Teams P1). */
 	factors: ProfileStandingFactorsSchema.optional(),
 });
 export type ProfileStanding = z.infer<typeof ProfileStandingSchema>;

@@ -224,7 +224,7 @@ export interface DevOverrides {
 	businessPage: DevBusinessPage;
 	/**
 	 * Simulated state of a team's `/:handle` (Teams P1): a member's view of a draft, archived or
-	 * invite-only team (the member notice, with its Settings link for a `manage_settings` holder), or
+	 * invite-only team (the member notice; its Settings link waits for Teams C6's Settings screen), or
 	 * `missing` — the page as an outsider meets it (the "Profile not found" 404). Every seeded team is
 	 * active and public, so this is the only route to those states. Server-side, through the
 	 * `pj.dev.team-page` cookie the profile middleware honours in development only; the panel reloads

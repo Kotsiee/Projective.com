@@ -4141,11 +4141,12 @@ keeps one fill — Add to project's monochrome pill — and the team rig withhol
 when the read names no owner for it to reach (Teams P1; `rigFills` / `rigFor` in
 `features/profile/core/profile-model.ts`). The member notice above a business page outsiders cannot
 open (`ProfileMemberNotice`) carries no control: BP1's tier-4 link to Settings waits for a Settings
-screen that can publish a business or change its visibility (Decision #244 (d)). On a TEAM page the
-same notice carries a tier-4 "Team settings" link (`neutral` `outlined` `sm` pill, an `<a>`) to the
-console's Settings for a `manage_settings` holder, beside the line and wrapping beneath it on a
-phone (Teams P1). The markup per
-tier: Hire is the bare
+screen that can publish a business or change its visibility (Decision #244 (d)). A TEAM page's
+notice waits on the same ground (root CLAUDE.md §3.11): its tier-4 "Team settings" link (`neutral`
+`outlined` `sm` pill, an `<a>`) to the console's Settings, for a `manage_settings` holder, beside
+the line and wrapping beneath it on a phone (Teams P1 SPEC 1), renders once Teams C6 gives the
+team's Settings screen Publish and Visibility — `SETTINGS_PUBLISHES` in
+`features/profile/core/profile-model.ts` is the one switch. The markup per tier: Hire is the bare
 `ui-button--primary ui-button--filled ui-button--rounded` class set on a native `<button>` (its
 `Popover` needs the ref `Button` does not forward), with no rig-local colour override; Add to project is `ui-button--primary ui-button--filled` plus `.pf-rig__cta--mono`, the
 inverted override, wherever it renders; every tier-4 control is the shared

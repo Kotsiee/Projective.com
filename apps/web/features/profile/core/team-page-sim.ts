@@ -10,8 +10,8 @@ import { type BusinessPageSim, parseBusinessPageSim } from "./business-page-sim.
  * before a byte renders — and every seeded team is `active` + `public`, so no seeded viewer ever
  * meets a draft, archived or invite-only team page. The Dev Context Switcher writes this cookie
  * instead, and the profile middleware honours it only under `IS_DEV`: a hidden reason is laid over
- * the page a member reads (the notice renders, with the Settings link for a `manage_settings`
- * holder), and `missing` drops the page exactly as an outsider meets it (the 404). It grants
+ * the page a member reads (the notice renders, keeping the viewer's Settings door for the link Teams
+ * C6 turns on), and `missing` drops the page exactly as an outsider meets it (the 404). It grants
  * nothing — every read and write still meets the database's own rule.
  *
  * Pure, and free of `IS_DEV`/`import.meta.env`, so it loads under `deno test`.

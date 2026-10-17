@@ -450,22 +450,23 @@ BEGIN
             WHERE ps.owner_type = v_type AND ps.owner_id = v_id
         ),
         'completed_stages', v_completed,
-        -- A seller's earned rung, with the client-valued inputs that moved it (Teams P1): stages
-        -- signed off, completion, on-time delivery and disputes, read from the subject's own row —
-        -- the row the public rung and trust signals below are read from, so a reader learns what
-        -- the rung already summarises. A subject with no row yet stands on level 1 and has no
-        -- factor to cite.
+        -- A seller's earned rung. A TEAM's carries the client-valued inputs that moved it (Teams P1
+        -- SPEC 4): stages signed off, completion, on-time delivery and disputes, read from the team's
+        -- own row — the row its public rung and trust signals below are read from. Only from the
+        -- volume the ladder's first earned rung demands (`min_completed_stages` of level 2): a rate
+        -- over a stage or two is a claim one engagement could make, which the volume floor exists to
+        -- stop (PRODUCT_SPEC §Standing). A person's rates stay off their page — publishing them is
+        -- not ruled — and a subject with no row yet stands on level 1 with no factor to cite.
         'standing', CASE WHEN v_seller THEN COALESCE((
-            SELECT jsonb_build_object(
-                'level', sl.level,
-                'label', sl.label,
-                'factors', jsonb_build_object(
+            SELECT jsonb_build_object('level', sl.level, 'label', sl.label)
+                || CASE WHEN v_type = 'team' AND es.stages_completed >= (
+                    SELECT fl.min_completed_stages FROM org.standing_levels fl WHERE fl.level = 2
+                ) THEN jsonb_build_object('factors', jsonb_build_object(
                     'stages_completed', es.stages_completed,
                     'completion_rate', es.completion_rate,
                     'on_time_rate', es.on_time_rate,
                     'dispute_rate', es.dispute_rate
-                )
-            )
+                )) ELSE '{}'::jsonb END
             FROM org.entity_standing es
             JOIN org.standing_levels sl ON sl.level = es.level
             WHERE es.subject_id = v_id
@@ -650,7 +651,10 @@ BEGIN
         -- A team row is PUBLIC facts only (Teams P1): the role's preset name — a custom role reads as
         -- its base preset, because a custom role's name is member-only (org.team_roles RLS) and no
         -- role carries a "public" flag — never the member's title, plus since when they belong and
-        -- their top two skills by label. No stake, no workload.
+        -- their top two skills by label. The skills are the member's OWN profile's, so they are
+        -- answered only to a reader that member's profile admits (fn_profile_visible's user arm): a
+        -- private member's skills stay off the team page as they are off their own. No stake, no
+        -- workload.
         RETURN jsonb_build_object('departments', '[]'::jsonb, 'members', COALESCE((
             SELECT jsonb_agg(jsonb_build_object(
                 'handle', up.username,
@@ -658,12 +662,12 @@ BEGIN
                 'avatar', files.fn_public_media_ref (up.avatar_file_id),
                 'role', initcap(r.base_preset),
                 'since', tm.joined_at,
-                'skills', COALESCE((
+                'skills', CASE WHEN org.fn_profile_visible ('user', tm.user_id) THEN COALESCE((
                     SELECT jsonb_agg(COALESCE(sk.label, s.slug) ORDER BY s.ord)
                     FROM unnest(f.skills) WITH ORDINALITY AS s (slug, ord)
                     LEFT JOIN org.skills sk ON sk.slug = s.slug
                     WHERE s.ord <= 2
-                ), '[]'::jsonb),
+                ), '[]'::jsonb) ELSE '[]'::jsonb END,
                 'is_freelancer', up.is_freelancer,
                 'departments', '[]'::jsonb
             ) ORDER BY org.fn_preset_rank (tm.role) DESC, tm.joined_at)

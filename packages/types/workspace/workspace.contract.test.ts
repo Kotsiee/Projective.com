@@ -182,17 +182,22 @@ Deno.test("org.fn_is_reserved_handle reserves exactly RESERVED_HANDLES", () => {
 
 const ROUTES = new URL("apps/web/routes/", REPO);
 
+/** A file beside the routes that is not a route module: a test, a spec or a type declaration. */
+const NOT_A_ROUTE = /\.(test|spec|d)\.(tsx|ts|jsx|js)$/;
+
 /**
  * The URL segment one entry of a routes directory claims, or `null` for an entry that claims none:
- * a `_`-prefixed file (`_app`, `_layout`, `_middleware`), a `[param]`, an `index`, or a file that is
- * not a route module (a test, a declaration). A route group `(…)` is descended by the caller, since
- * it adds no segment of its own.
+ * a `_`-prefixed file (`_app`, `_layout`, `_middleware`), a `[param]`, an `index`, a file that is
+ * not a module at all, or one that is not a route module ({@link NOT_A_ROUTE}). A dotted route
+ * module claims its whole stem — `feed.xml.ts` serves `/feed.xml`, as `robots.txt` and `sitemap.xml`
+ * are reserved. A route group `(…)` is descended by the caller, since it adds no segment of its own.
  */
 function routeSegment(name: string, isDirectory: boolean): string | null {
 	if (name.startsWith("_") || name.startsWith(".") || name.startsWith("[")) return null;
 	if (isDirectory) return name;
+	if (NOT_A_ROUTE.test(name)) return null;
 	const match = /^(.+)\.(tsx|ts|jsx|js)$/.exec(name);
-	if (!match || match[1].includes(".")) return null;
+	if (!match) return null;
 	return match[1] === "index" ? null : match[1];
 }
 
@@ -209,6 +214,19 @@ function topLevelSegments(dir: URL): string[] {
 	}
 	return out;
 }
+
+Deno.test("a routes entry claims its segment: groups, params, _files, index and tests claim none", () => {
+	assertEquals(routeSegment("saved", true), "saved");
+	assertEquals(routeSegment("explore.tsx", false), "explore");
+	assertEquals(routeSegment("feed.xml.ts", false), "feed.xml");
+	assertEquals(routeSegment("robots.txt.tsx", false), "robots.txt");
+	for (const name of ["_app.tsx", "_layout.tsx", "[handle]", "index.tsx", "readme.md"]) {
+		assertEquals(routeSegment(name, name === "[handle]"), null, name);
+	}
+	for (const name of ["explore.test.ts", "explore.spec.tsx", "routes.d.ts"]) {
+		assertEquals(routeSegment(name, false), null, name);
+	}
+});
 
 Deno.test("every top-level route segment is a reserved handle, so no @handle can shadow a page", () => {
 	const segments = [...new Set(topLevelSegments(ROUTES))].sort();

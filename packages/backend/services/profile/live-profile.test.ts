@@ -180,7 +180,7 @@ Deno.test("mapProfileView — a team keeps its Standing, with the factors behind
 			level: 2,
 			label: "Established",
 			factors: {
-				stages_completed: 4,
+				stages_completed: 8,
 				completion_rate: "1.0000",
 				on_time_rate: "0.7500",
 				dispute_rate: "0.0000",
@@ -190,7 +190,7 @@ Deno.test("mapProfileView — a team keeps its Standing, with the factors behind
 	assertEquals(view.stats.standing, {
 		level: 2,
 		label: "Established",
-		factors: { stagesCompleted: 4, completionRate: 1, onTimeRate: 0.75, disputeRate: 0 },
+		factors: { stagesCompleted: 8, completionRate: 1, onTimeRate: 0.75, disputeRate: 0 },
 	});
 	assertStrictEquals(view.rating.asHelper?.count, 1);
 	assertStrictEquals(ProfileViewSchema.safeParse(view).success, true);
@@ -233,6 +233,25 @@ Deno.test("mapProfileView — a freelancer grows no workspace facts and no messa
 	}));
 	assertStrictEquals(freelancer.workspace, undefined);
 	assertStrictEquals(freelancer.messageTo, undefined);
+});
+
+Deno.test("mapProfileView — a freelancer's rung never carries the rates behind it", () => {
+	const freelancer = mapProfileView(raw({
+		owner_type: "user",
+		kind: "freelancer",
+		handle: "marisdelacroix",
+		standing: {
+			level: 2,
+			label: "Established",
+			factors: {
+				stages_completed: 12,
+				completion_rate: "1.0000",
+				on_time_rate: "1.0000",
+				dispute_rate: "0.0000",
+			},
+		},
+	}));
+	assertEquals(freelancer.stats.standing, { level: 2, label: "Established" });
 });
 // #endregion
 

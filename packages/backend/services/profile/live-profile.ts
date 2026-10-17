@@ -150,7 +150,10 @@ export interface RawProfile {
 	standing: {
 		level: number;
 		label: string;
-		/** The subject's own Standing inputs (Teams P1); absent before it has a Standing row. */
+		/**
+		 * A team's own Standing inputs (Teams P1) — absent below the ladder's first earned rung's
+		 * volume floor, before it has a Standing row, and for a person.
+		 */
 		factors?: {
 			stages_completed: number;
 			completion_rate: number | string;
@@ -304,9 +307,15 @@ export function standingFactorsOf(
 	};
 }
 
-/** A seller's earned rung, with its factors when the read carried them. */
-function standingOf(raw: NonNullable<RawProfile["standing"]>): ProfileStanding {
-	const factors = standingFactorsOf(raw.factors);
+/**
+ * A seller's earned rung — with its factors only for a team whose read carried them (Teams P1 SPEC
+ * 4). A person's rates are not published, so a person's rung never carries them even should a read.
+ */
+function standingOf(
+	raw: NonNullable<RawProfile["standing"]>,
+	ownerType: ProfileOwnerType,
+): ProfileStanding {
+	const factors = ownerType === "team" ? standingFactorsOf(raw.factors) : undefined;
 	return { level: raw.level, label: raw.label, ...(factors ? { factors } : {}) };
 }
 
@@ -423,7 +432,7 @@ export function mapProfileView(raw: RawProfile): ProfileView {
 			// Delivered volume is a financial fact with no disclosure setting behind it yet, so it is
 			// withheld rather than published by default; the strip renders its absence.
 			volumeLabel: null,
-			standing: seller && raw.standing ? standingOf(raw.standing) : null,
+			standing: seller && raw.standing ? standingOf(raw.standing, raw.owner_type) : null,
 		},
 		headline: raw.headline ?? "",
 		story: bioText(raw.bio),

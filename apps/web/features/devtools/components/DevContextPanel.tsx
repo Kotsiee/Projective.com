@@ -594,7 +594,7 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 				{
 					/* A team's /:handle (Teams P1) — the business axis's twin. Every seeded team is active and
 				    public, so this is the only route to a member's notice (draft · archived · invite-only,
-				    with the Settings link for a settings holder) or an outsider's 404 (Missing).
+				    its Settings link waiting for Teams C6) or an outsider's 404 (Missing).
 				    Server-side via `pj.dev.team-page`, so a change reloads a profile page. */
 				}
 				<Field label="Team page" hint="member notice · outsider 404 · reloads">

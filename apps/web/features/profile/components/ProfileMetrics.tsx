@@ -23,10 +23,11 @@ import type { ProfileView } from "../types/profile-types.ts";
  * chip, and a free consultation is a figure of its own — a container asserts interactivity (§B.11),
  * and neither of these is a control.
  *
- * A seller's Standing — a freelancer's or a TEAM's, read from the subject's own Standing row (Teams
- * P1) — carries the client-valued factors behind the rung beneath its caption as one MetaLine
- * ("96% on time · 100% completion · No disputes", `standingFactorFacts`), from the first signed-off
- * stage on. A business has no Standing at all (Decision #244).
+ * A TEAM's Standing, read from the team's own Standing row (Teams P1), carries the client-valued
+ * factors behind the rung beneath its caption as one MetaLine ("96% on time · 100% completion · No
+ * disputes", `standingFactorFacts`) once the team has the volume the ladder's first earned rung
+ * demands — the database withholds them below it. A freelancer's Standing is the rung alone (their
+ * rates are not published), and a business has no Standing at all (Decision #244).
  */
 export interface ProfileMetricsProps {
 	profile: ProfileView;
@@ -81,7 +82,7 @@ function metricsFor(profile: ProfileView, spend: EstimatedSpend | null): Metric[
 			value: standing.label,
 			label: "Standing",
 			sub: volumeLabel ?? undefined,
-			facts: standingFactorFacts(standing.factors),
+			facts: standingFactorFacts(standing.factors, profile.kind),
 		});
 	} else if (volumeLabel) {
 		items.push({ key: "volume", value: volumeLabel, label: null });

@@ -195,8 +195,10 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   unlisted Team by its link only, never listed). While it is a **draft**, **archived** or
   **invite-only** the page is missing to everyone outside it — worded exactly as an unknown handle —
   and its members see it with a note saying why ("Only members can see this until the team is
-  published", and for a Team created invite-only, "…and no longer invite-only"), with a link to the
-  Team's Settings for a member who may open them. A Team is created draft and invite-only (Teams P1).
+  published", and for a Team created invite-only, "…and no longer invite-only"); a member who may
+  open the Team's Settings also gets a link to them there once Settings can publish the Team and
+  change its visibility (Teams C6) — until then the note stands alone, as a business's does. A Team
+  is created draft and invite-only (Teams P1).
 
 ##### Role-Based Access Control (RBAC)
 
@@ -505,9 +507,10 @@ team, business or enterprise — the roster. On a business the completed project
 a roster row reads the member's title or role · "since" as plain text, never a chip
 (Decision #244). On a **team** the roster is a list of rows — avatar, name, and one line of plain
 text: the member's public role (a preset's name; a custom role reads as the preset it is based on,
-its own name being a members-only fact) · "since" the year they joined · their top two skills — each
-row linking to the member's own page; no payout stake and no workload is ever shown on the public
-page (Teams P1). A portfolio tile whose piece is a video carries the
+its own name being a members-only fact) · "since" the year they joined · their top two skills (only
+to a reader the member's own profile admits — a private member's skills stay off the team page as
+they are off their own) — each row linking to the member's own page; no payout stake and no
+workload is ever shown on the public page (Teams P1). A portfolio tile whose piece is a video carries the
 same control set's compact pair — play ⁄ pause and mute — in its top corner, revealed with the
 caption; it never starts on its own, and pressing a control never opens the piece. **Experience** shows a person's career history,
 education and verified certifications, and renders only for an individual (a company has no CV).
@@ -520,9 +523,11 @@ a fact that fits none of the four does not get a tab, it gets a line in the cont
 
 **The hero states identity, proof and one conversion.** Avatar · name · `@handle` and entity kind ·
 the action rig · three inline metrics — the rating, completed stages, and the earned Standing rung
-(with delivered volume, when disclosed; a seller's rung — a freelancer's or a team's own — carries
-the factors behind it beneath, as one line of text: on-time delivery · completion · disputes, from
-the first signed-off stage on, Teams P1) — beside the **showcase**: a raised 16:10 frame carrying
+(with delivered volume, when disclosed; a **team's** rung — its own — carries the factors behind it
+beneath, as one line of text: on-time delivery · completion · disputes, once the team has the volume
+the ladder's first earned rung demands (Established's floor of signed-off stages, §Standing), so a
+single flawless engagement never reads "100% on time · No disputes"; a freelancer's rung is shown
+alone, their rates unpublished, Teams P1) — beside the **showcase**: a raised 16:10 frame carrying
 ONE primary still (the thumbnail every card and preview of the profile leads with, so it is never a
 video) and up to five further slides — six slots in all — each a still or a full-length video. The showcase advances
 on its own — a still dwells, a video plays through and then holds its last frame for the same

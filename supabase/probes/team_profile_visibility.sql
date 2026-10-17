@@ -14,12 +14,15 @@
 --      whom a Message reaches (a DM is person-to-person, as for a business, #244 (C)).
 --   C. Roster. A row is the PUBLIC role — the preset's name, a custom role read as its base preset,
 --      never the member's private title or a custom role's name — plus `since` (joined_at) and the
---      member's top two skills by label; nothing else (no title, stake or workload key).
+--      member's top two skills by label; nothing else (no title, stake or workload key). The skills
+--      are the member's own profile's: a member whose profile is private shows none to a stranger,
+--      a guest or a teammate, and their own to themselves.
 --   D. Reviews. A team's list is the reviews whose subject is the team, and nothing a member
 --      received personally; the hero aggregate is those reviews' average and count.
---   E. Standing. The view's `standing` carries its factors (stages, completion, on-time, disputes)
---      from the subject's own `org.entity_standing` row — the team's for a team, the person's for a
---      freelancer — and none when the subject has no row (the rung falls back to level 1).
+--   E. Standing. A team's `standing` is its own `org.entity_standing` row's rung, and carries that
+--      row's factors (stages, completion, on-time, disputes) only from the volume floor of the
+--      ladder's first earned rung (level 2's `min_completed_stages`) — never below it, never for a
+--      person (whose rates are not published), and none when the subject has no row (level 1).
 --   F. Regression. A business still names its owner `contact`; a person carries no workspace facts.
 --   G. Namespace guard. Every top-level route segment is a reserved handle: `/saved` and `/invite`
 --      (the two the contract test found unreserved) are refused as handles, in any case.
@@ -257,6 +260,10 @@ DECLARE
     v_role uuid;
     v_skills jsonb;
     v_keys text;
+    v_private_stranger jsonb;
+    v_private_guest jsonb;
+    v_private_mate jsonb;
+    v_private_self jsonb;
 BEGIN
     PERFORM pg_temp.act(pg_temp.id('noor'));
     v_owner := pg_temp.row_of('northloop', 'kwamemensah');
@@ -300,6 +307,36 @@ BEGIN
     END;
     PERFORM pg_temp.check('C a custom role reads as its base preset, never its name',
         v_custom = 'Lead', v_custom);
+
+    -- The skills are the member's OWN profile's: a private member's reach nobody their profile does
+    -- not admit — a stranger, a guest, a teammate — while the row itself stays.
+    BEGIN
+        SET LOCAL session_replication_role = replica;
+        UPDATE org.users_public SET visibility = 'private' WHERE user_id = pg_temp.id('kwamemensah');
+        SET LOCAL session_replication_role = origin;
+        PERFORM pg_temp.act(pg_temp.id('noor'));
+        v_private_stranger := pg_temp.row_of('northloop', 'kwamemensah');
+        PERFORM pg_temp.act(NULL);
+        v_private_guest := pg_temp.row_of('northloop', 'kwamemensah');
+        PERFORM pg_temp.act(pg_temp.id('tomaszwojcik'));
+        v_private_mate := pg_temp.row_of('northloop', 'kwamemensah');
+        PERFORM pg_temp.act(pg_temp.id('kwamemensah'));
+        v_private_self := pg_temp.row_of('northloop', 'kwamemensah');
+        RAISE EXCEPTION USING ERRCODE = 'PX000', MESSAGE = 'probe_rollback';
+    EXCEPTION WHEN SQLSTATE 'PX000' THEN
+        NULL;
+    END;
+    PERFORM pg_temp.check('C a private member''s row stays, with no skills, for a stranger',
+        v_private_stranger ->> 'role' = 'Owner' AND v_private_stranger -> 'skills' = '[]'::jsonb,
+        v_private_stranger::text);
+    PERFORM pg_temp.check('C … and for a guest',
+        v_private_guest IS NOT NULL AND v_private_guest -> 'skills' = '[]'::jsonb,
+        v_private_guest::text);
+    PERFORM pg_temp.check('C … and for a teammate',
+        v_private_mate IS NOT NULL AND v_private_mate -> 'skills' = '[]'::jsonb,
+        v_private_mate::text);
+    PERFORM pg_temp.check('C a private member still reads their own skills',
+        v_private_self -> 'skills' = v_skills, v_private_self::text);
 END $$;
 -- #endregion
 
@@ -355,8 +392,15 @@ DO $$
 DECLARE
     v jsonb;
     v_row org.entity_standing;
+    v_floor int := (SELECT min_completed_stages FROM org.standing_levels WHERE level = 2);
+    v_below jsonb;
+    v_at jsonb;
+    v_person jsonb;
     v_bare jsonb;
 BEGIN
+    IF v_floor IS NULL OR v_floor < 1 THEN
+        RAISE EXCEPTION 'team_profile_visibility: the level-2 volume floor is missing (%)', v_floor;
+    END IF;
     SELECT * INTO v_row FROM org.entity_standing
     WHERE subject_type = 'team' AND subject_id = pg_temp.id('northloop');
 
@@ -364,20 +408,44 @@ BEGIN
     v := org.get_profile_view('northloop');
     PERFORM pg_temp.check('E the team''s rung is its own Standing row',
         (v -> 'standing' ->> 'level')::int = v_row.level, v ->> 'standing');
-    PERFORM pg_temp.check('E the team''s Standing carries its factors',
-        (v -> 'standing' -> 'factors' ->> 'stages_completed')::int = v_row.stages_completed
-        AND (v -> 'standing' -> 'factors' ->> 'completion_rate')::numeric = v_row.completion_rate
-        AND (v -> 'standing' -> 'factors' ->> 'on_time_rate')::numeric = v_row.on_time_rate
-        AND (v -> 'standing' -> 'factors' ->> 'dispute_rate')::numeric = v_row.dispute_rate,
-        v -> 'standing' ->> 'factors');
 
-    v := org.get_profile_view('kwamemensah');
-    PERFORM pg_temp.check('E a freelancer''s Standing carries the person''s own factors',
-        (v -> 'standing' -> 'factors' ->> 'stages_completed')::int = (
-            SELECT stages_completed FROM org.entity_standing
-            WHERE subject_type = 'freelancer' AND subject_id = pg_temp.id('kwamemensah')
-        ),
-        v -> 'standing' ->> 'factors');
+    -- One stage short of the floor, a flawless record cites nothing; at the floor it cites its
+    -- factors; a person at the floor never does.
+    BEGIN
+        SET LOCAL session_replication_role = replica;
+        UPDATE org.entity_standing
+        SET stages_completed = v_floor - 1, completion_rate = 1, on_time_rate = 1, dispute_rate = 0
+        WHERE subject_type = 'team' AND subject_id = pg_temp.id('northloop');
+        v_below := org.get_profile_view('northloop');
+        UPDATE org.entity_standing
+        SET stages_completed = v_floor, completion_rate = 0.9, on_time_rate = 0.8, dispute_rate = 0.05
+        WHERE subject_type = 'team' AND subject_id = pg_temp.id('northloop');
+        v_at := org.get_profile_view('northloop');
+        UPDATE org.entity_standing
+        SET stages_completed = v_floor + 10, completion_rate = 1, on_time_rate = 1, dispute_rate = 0
+        WHERE subject_type = 'freelancer' AND subject_id = pg_temp.id('kwamemensah');
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'team_profile_visibility: kwamemensah has no freelancer Standing row';
+        END IF;
+        v_person := org.get_profile_view('kwamemensah');
+        SET LOCAL session_replication_role = origin;
+        RAISE EXCEPTION USING ERRCODE = 'PX000', MESSAGE = 'probe_rollback';
+    EXCEPTION WHEN SQLSTATE 'PX000' THEN
+        NULL;
+    END;
+    PERFORM pg_temp.check(format('E below the %s-stage floor: the rung, no factors', v_floor),
+        (v_below -> 'standing' ->> 'level')::int = v_row.level
+        AND NOT (v_below -> 'standing' ? 'factors'),
+        v_below ->> 'standing');
+    PERFORM pg_temp.check(format('E at the %s-stage floor: the team''s own factors', v_floor),
+        (v_at -> 'standing' -> 'factors' ->> 'stages_completed')::int = v_floor
+        AND (v_at -> 'standing' -> 'factors' ->> 'completion_rate')::numeric = 0.9
+        AND (v_at -> 'standing' -> 'factors' ->> 'on_time_rate')::numeric = 0.8
+        AND (v_at -> 'standing' -> 'factors' ->> 'dispute_rate')::numeric = 0.05,
+        v_at -> 'standing' ->> 'factors');
+    PERFORM pg_temp.check('E a freelancer past the floor: the rung, no factors',
+        v_person -> 'standing' ? 'level' AND NOT (v_person -> 'standing' ? 'factors'),
+        v_person ->> 'standing');
 
     -- No Standing row yet: the rung falls back to level 1, and there is no factor to cite.
     BEGIN
