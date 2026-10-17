@@ -22,11 +22,9 @@ BEGIN
     SET status = 'dismissed_bad_faith'::projects.workload_report_status, resolved_at = now()
     WHERE id = p_report_id;
 
-    -- Filing the report evicted the assignee and released the escrow, so the ticket stays in the
-    -- backlog with its countdown lifted; resuming it to in_progress would be work with no hold (#165).
-    UPDATE projects.tickets
-    SET hidden_until = NULL
-    WHERE id = v_ticket;
+    -- The report only suspended the work — its assignee and held escrow never left (Decision #290) —
+    -- so a dismissed report resumes it at the W_i the client set.
+    PERFORM projects.fn_resume_reported_ticket(v_ticket, p_report_id);
 
     INSERT INTO security.penalties (
         subject_type, subject_id, penalty_type, source_type, source_id, severity, reason
@@ -41,8 +39,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, securit
 -- #region Ticket board wiring, Frozen rule & finance read RPCs
 -- Forward migration layered on top of 0007 (tickets + triggers), 0009 (finance engine) and 0115
 -- (lifecycle RPCs). Three things:
---   1. Frozen rule (spec §4): filing a workload report now drops the ticket back to "New" and clears
---      the assignee (unifying it with the eviction primitive), instead of freezing it in place.
+--   1. Frozen rule (spec §Workload Intensity Reporting): filing a workload report suspends the ticket
+--      in place — assignee and held escrow kept — until the client answers it (Decision #290).
 --   2. Read RPCs the ticket modal needs — a per-ticket escrow breakdown (Installment Monitor) and the
 --      ticket history timeline. `finance.*` stays unexposed; these SECURITY DEFINER wrappers in the
 --      exposed `projects` schema read it on the caller's behalf (guarded by projects.has_project_access).
@@ -51,38 +49,89 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, securit
 --      projects.complete_ticket (0115), which releases everything and terminates the ticket.
 
 -- ---------------------------------------------------------------------------------------------
--- 1a. Frozen rule — filing a workload report drops the ticket to "New" and clears the assignee.
--- Nulling current_assignee_id cascades through the existing BEFORE/AFTER ticket triggers:
---   • projects.fn_ticket_claim_before  -> status := 'backlog', claimed_at := NULL
---   • projects.fn_ticket_escrow_sync   -> releases the held escrow back out to the freelancer
--- We additionally stamp hidden_until (the 48h client-response window the card counts down against)
--- and the originating report id. The card renders the striped "Frozen" overlay in the New column
--- while hidden_until is in the future.
+-- 1a. Frozen rule — filing a workload report SUSPENDS the ticket; no money moves (Decision #290).
+-- The ticket enters `reported_hidden` for the report window with its assignee and its held escrow
+-- untouched, and waits for the client's answer. It used to clear the assignee instead, which cascaded
+-- through projects.fn_ticket_escrow_sync's removal branch and paid the held escrow to the reporter:
+-- the freelancer could release their own escrow, unapproved, with one INSERT under the
+-- "File workload report" policy. A report is filed against work under way (`claimed` / `in_progress`),
+-- which also keeps one report open per ticket. The window's end is stamped on the ticket (the card's
+-- countdown; the "View tickets" policy hides it from everyone but its owner and assignee meanwhile)
+-- and on the report (the clock projects.fn_resolve_expired_workload_reports reads).
 -- ---------------------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION projects.fn_open_workload_report()
 RETURNS TRIGGER AS $$
 DECLARE
     v_hours integer;
+    v_status ticket_status;
+    v_until timestamptz;
 BEGIN
+    SELECT status INTO v_status FROM projects.tickets WHERE id = NEW.ticket_id FOR UPDATE;
+    IF v_status IS NULL OR v_status NOT IN ('claimed'::ticket_status, 'in_progress'::ticket_status) THEN
+        RAISE EXCEPTION 'A workload report is filed against work under way; this ticket is %.',
+            COALESCE(v_status::text, 'missing')
+            USING ERRCODE = 'object_not_in_prerequisite_state';
+    END IF;
+
     SELECT (value #>> '{}')::integer INTO v_hours
     FROM security.platform_params
     WHERE key = 'workload_report_window_hours';
-    v_hours := COALESCE(v_hours, 48);
+    v_until := now() + make_interval(hours => COALESCE(v_hours, 48));
 
-    -- Clearing the assignee triggers the backlog reset + escrow release; we set the countdown window.
     UPDATE projects.tickets
-    SET current_assignee_id = NULL,
-        hidden_until = now() + make_interval(hours => v_hours),
+    SET status = 'reported_hidden'::ticket_status,
+        hidden_until = v_until,
         workload_report_id = NEW.id
     WHERE id = NEW.ticket_id;
+
+    UPDATE projects.ticket_workload_reports SET hidden_until = v_until WHERE id = NEW.id;
 
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, security, org, auth;
 
--- 1b. Expiry sweep — the ticket is already back in the backlog (assignee cleared on freeze), so on
--- expiry we simply lift the countdown, resolve the report and apply the client penalty. (Previously
--- this resumed the ticket to in_progress, which no longer applies now that freezing evicts.)
+-- Ends a report's suspension (Decision #290): a ticket still `reported_hidden` goes back to
+-- `in_progress` — the hold it entered work on is still there — and its countdown is lifted. A ticket the
+-- client settled meanwhile (approved, cancelled under Fair Exit, its freelancer removed) keeps the status
+-- that settlement gave it; without a held escrow there is no work to resume, so it is only unhidden.
+-- Keyed to the report, so resolving an old report never lifts a later report's suspension.
+CREATE OR REPLACE FUNCTION projects.fn_resume_reported_ticket(p_ticket_id uuid, p_report_id uuid)
+RETURNS void AS $$
+BEGIN
+    UPDATE projects.tickets t
+    SET status = CASE
+            WHEN t.status = 'reported_hidden'::ticket_status
+                AND EXISTS (SELECT 1 FROM finance.escrows e WHERE e.ticket_id = t.id AND e.status = 'held')
+            THEN 'in_progress'::ticket_status
+            ELSE t.status
+        END,
+        hidden_until = NULL
+    WHERE t.id = p_ticket_id AND t.workload_report_id = p_report_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance;
+
+-- The client's answer to a report (PRODUCT_SPEC §Workload Intensity Reporting, step 2): raising the
+-- suspended ticket's W_i resolves the report `adjusted` and the work resumes at the new W_i.
+-- projects.fn_ticket_immutability_guard lets the client make exactly that edit on a claimed ticket and
+-- refuses it to the reporting assignee, so a raise that lands here came from the client side.
+CREATE OR REPLACE FUNCTION projects.fn_adjust_workload_report()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF OLD.status = 'reported_hidden'::ticket_status
+        AND NEW.status = 'reported_hidden'::ticket_status
+        AND NEW.workload_intensity > OLD.workload_intensity THEN
+        UPDATE projects.ticket_workload_reports
+        SET status = 'adjusted'::projects.workload_report_status, resolved_at = now()
+        WHERE id = NEW.workload_report_id AND status = 'open'::projects.workload_report_status;
+
+        PERFORM projects.fn_resume_reported_ticket(NEW.id, NEW.workload_report_id);
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects;
+
+-- 1b. Expiry sweep — the client let the window lapse: the report is resolved, the client penalised,
+-- and the suspended work resumes at the W_i it was reported at.
 CREATE OR REPLACE FUNCTION projects.fn_resolve_expired_workload_reports()
 RETURNS integer AS $$
 DECLARE
@@ -109,10 +158,7 @@ BEGIN
         SET status = 'expired_penalized'::projects.workload_report_status, resolved_at = now()
         WHERE id = r.report_id;
 
-        -- Ticket already sits in the backlog with no assignee; just lift the countdown.
-        UPDATE projects.tickets
-        SET hidden_until = NULL
-        WHERE id = r.ticket_id;
+        PERFORM projects.fn_resume_reported_ticket(r.ticket_id, r.report_id);
 
         IF r.client_business_id IS NOT NULL THEN
             v_subject_type := 'business'; v_subject_id := r.client_business_id;
@@ -642,7 +688,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance
 -- Invoker rights: the INSERT is authorised by the "File workload report" RLS policy (0204), which
 -- restricts filing to the ticket's current assignee. Capturing claimed_intensity + binding the
 -- reporter here keeps the client from having to hand-assemble the row. The AFTER-INSERT trigger
--- (fn_open_workload_report, 0117) then evicts the ticket and opens the 48h hidden window.
+-- (fn_open_workload_report, 0117) then suspends the ticket for the 48h hidden window (Decision #290).
 CREATE OR REPLACE FUNCTION projects.file_workload_report(
     p_ticket_id uuid,
     p_reason text,

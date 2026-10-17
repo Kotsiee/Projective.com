@@ -167,7 +167,7 @@ every ticket still in the stage ([Functions.md](Functions.md#projectsfn_stage_de
 
 A ticket suspended inside an active workload-report window (`status = 'reported_hidden'` and
 `hidden_until > now()`) stays visible to its assignee and the owner and is hidden from everyone
-else. Column-level immutability once claimed is enforced by `projects.fn_ticket_immutability_guard`,
+else. Filing a report is what writes that status (Decision #290), so the arm is live. Column-level immutability once claimed is enforced by `projects.fn_ticket_immutability_guard`,
 not by a policy.
 
 🚨 **_Manage tickets_ admits the assignee to `UPDATE` and `DELETE`, and both are money-moving.**
@@ -179,7 +179,10 @@ column may not move to this value", so the rule lives in `trg_ticket_authority_g
 `completed`, or deleting, requires `projects.can_review_project`; a `NULL` `auth.uid()` (service role,
 cron) is not gated. The assignee cannot clear their own `current_assignee_id` either — the policy's
 `WITH CHECK` refuses the post-image (verified by execution) — so the unassign-release arm of
-`trg_ticket_escrow_sync` is reachable only through definer paths (owner removal, workload report).
+`trg_ticket_escrow_sync` is reachable only through definer paths: the owner's removal of a member
+pays through it, and the claim-TTL sweep refunds first so it finds nothing held. A workload report took it too until Decision #290: the assignee's own INSERT under
+_File workload report_ cleared the assignee and paid them the held escrow; filing now suspends the
+ticket instead (`supabase/probes/workload_report_suspension.sql`).
 
 The RPC doors that settle escrow (`complete_ticket`, `delete_ticket`, `force_complete_stage`,
 `approve_stage`, `cancel_stage_fair_exit`) are `SECURITY DEFINER` and bypass this policy entirely;

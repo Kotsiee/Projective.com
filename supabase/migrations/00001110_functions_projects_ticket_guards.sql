@@ -74,9 +74,21 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Once claimed, client-owned content is locked; only the assignee (or an admin) may edit it.
+-- A workload report turns that round for its window (Decision #290): the work is suspended until the
+-- client answers, so the reporting assignee may neither resume the ticket nor move the W_i it disputes,
+-- and raising W_i becomes the one edit the client may make (projects.fn_adjust_workload_report).
 CREATE OR REPLACE FUNCTION projects.fn_ticket_immutability_guard()
 RETURNS TRIGGER AS $$
 BEGIN
+    IF OLD.status = 'reported_hidden'::ticket_status
+        AND auth.uid() IS NOT NULL
+        AND auth.uid() = OLD.current_assignee_id
+        AND (NEW.status IS DISTINCT FROM OLD.status
+            OR NEW.workload_intensity IS DISTINCT FROM OLD.workload_intensity) THEN
+        RAISE EXCEPTION 'Work on this ticket is suspended until the client answers your workload report.'
+            USING ERRCODE = '42501';
+    END IF;
+
     IF OLD.current_assignee_id IS NOT NULL
         AND auth.uid() IS NOT NULL
         AND auth.uid() <> OLD.current_assignee_id
@@ -86,7 +98,9 @@ BEGIN
             OR NEW.text_description IS DISTINCT FROM OLD.text_description
             OR NEW.unit_price_cents IS DISTINCT FROM OLD.unit_price_cents
             OR NEW.required_stages IS DISTINCT FROM OLD.required_stages
-            OR NEW.workload_intensity IS DISTINCT FROM OLD.workload_intensity THEN
+            OR (NEW.workload_intensity IS DISTINCT FROM OLD.workload_intensity
+                AND NOT (OLD.status = 'reported_hidden'::ticket_status
+                    AND NEW.workload_intensity > OLD.workload_intensity)) THEN
             RAISE EXCEPTION 'This ticket has been claimed by a freelancer; its content is locked to the client.';
         END IF;
     END IF;

@@ -687,8 +687,13 @@ on any ticket whose `NEW.status` is not `backlog`. `SECURITY INVOKER`.
 
 `trg_ticket_immutability_guard` — `BEFORE UPDATE`. Once `OLD.current_assignee_id` is set, a caller
 who is not that assignee and not `security.is_admin()` cannot change `title`, `description`,
-`text_description`, `unit_price_cents`, `required_stages` or `workload_intensity` (`P0001`). A `NULL`
-`auth.uid()` is not gated. `SECURITY DEFINER`, `search_path = public, projects, security, auth`.
+`text_description`, `unit_price_cents`, `required_stages` or `workload_intensity` (`P0001`) — except
+that while the ticket is `reported_hidden` they may **raise** `workload_intensity`, the client's answer
+to a workload report (`fn_adjust_workload_report`). The window turns the lock round for the reporter:
+while `OLD.status = 'reported_hidden'` the assignee can change neither `status` nor
+`workload_intensity` (`42501`), so the suspension holds until the client, the sweep or an audit ends
+it (Decision #290). A `NULL` `auth.uid()` is not gated. `SECURITY DEFINER`, `search_path = public,
+projects, security, auth`.
 
 ### `projects.fn_ticket_claim_before() → trigger`
 
@@ -763,8 +768,9 @@ the tickets it will settle in id order, takes the same quote, runs the split, an
 `{ tier, cancelled_count, tickets_cancelled, freelancer_paid_cents, fee_cents,
 client_refunded_cents, currency, stage_status }` from that quote (the old figures summed
 `finance.transactions`, which has no row for a payout still in its pending window since #191). It
-then closes every ticket still standing on the stage (not `completed` / `cancelled` /
-`reported_hidden`) as `cancelled` with a `ticket_history` row (`reason: fair_exit`, `tier`),
+then closes every ticket still standing on the stage (not `completed` / `cancelled` — a ticket
+suspended by a workload report included, since it keeps its assignee and its hold, Decision #290) as
+`cancelled`, lifting any report countdown (`hidden_until`), with a `ticket_history` row (`reason: fair_exit`, `tier`),
 cancels any paid revision round still `awaiting_payment`, and notifies both sides with
 `stage_cancelled` (`stage.cancelled` in the catalog): every payee and team-split recipient the
 split paid plus the stage's assignees (`fn_notify_payees`), and the project owner plus the reviewer
@@ -993,25 +999,49 @@ cannot see, → `P0001`. The insert fires `trg_open_workload_report`.
 ### `projects.fn_open_workload_report() → trigger`
 
 `trg_open_workload_report` — `AFTER INSERT ON projects.ticket_workload_reports` (`00001850`). The
-Frozen rule: clears the ticket's assignee (cascading `fn_ticket_claim_before` → `backlog` and
-`fn_ticket_escrow_sync` → escrow **released** to the reporter), stamps `hidden_until = now() +
-workload_report_window_hours` (default 48) and `workload_report_id`. `search_path = public, projects,
-finance, security, org, auth`; `EXECUTE` moot (a trigger).
+Frozen rule (Decision #290): **suspends** the ticket and moves no money. It refuses
+(`object_not_in_prerequisite_state`) unless the ticket is under way (`claimed` / `in_progress`) —
+which also keeps one report open per ticket — then sets `status = 'reported_hidden'`,
+`hidden_until = now() + workload_report_window_hours` (default 48) and `workload_report_id`, and
+stamps the same `hidden_until` on the report (the clock the expiry sweep reads). The assignee and the
+held escrow are untouched. It used to clear the assignee instead, which cascaded through
+`fn_ticket_escrow_sync`'s removal branch and **released the held escrow to the reporter** — a payout
+the freelancer could trigger alone with one INSERT (probe: `supabase/probes/workload_report_suspension.sql`).
+`search_path = public, projects, finance, security, org, auth`; `EXECUTE` moot (a trigger).
+
+### `projects.fn_resume_reported_ticket(p_ticket_id uuid, p_report_id uuid) → void`
+
+`00001140`, internal (Decision #290). Ends one report's suspension: if the ticket is still
+`reported_hidden` on that report and holds escrow it returns to `in_progress` (through the work-start
+gate, which finds the hold it never lost); in every case its `hidden_until` is lifted. A ticket the
+client settled meanwhile keeps the status that settlement gave it; a ticket now suspended on a later
+report is not touched. `search_path = public, projects, finance`; `EXECUTE`: `service_role` only.
+
+### `projects.fn_adjust_workload_report() → trigger`
+
+`trg_adjust_workload_report` — `AFTER UPDATE OF workload_intensity ON projects.tickets` (`00001850`).
+The client's answer to a report (`PRODUCT_SPEC.md` §Workload Intensity Reporting, step 2): when a
+`reported_hidden` ticket's `workload_intensity` is raised, the open report becomes `adjusted`
+(`resolved_at = now()`) and `fn_resume_reported_ticket` puts the work back `in_progress` at the new
+W_i. Only the client side can make that raise — `fn_ticket_immutability_guard` refuses it to the
+reporter. `search_path = public, projects`; `EXECUTE` moot (a trigger).
 
 ### `projects.fn_resolve_expired_workload_reports() → integer`
 
 `00001140` §1b, the expiry sweep: every `open` report whose `hidden_until` has passed becomes
-`expired_penalized`, the ticket's `hidden_until` is lifted, and a `trust_score` `security.penalties`
-row (severity `client_no_adjust_penalty`) is written against the client business or owner. Returns
-the count. `search_path = public, projects, security`; `EXECUTE`: `service_role` only — no client
-grant. **No caller check** — moot for clients, because no client role holds `EXECUTE`. It takes no
-arguments and only acts on reports that are genuinely expired.
+`expired_penalized`, the suspended ticket resumes `in_progress` at its reported W_i
+(`fn_resume_reported_ticket`), and a `trust_score` `security.penalties` row (severity
+`client_no_adjust_penalty`) is written against the client business or owner. Returns the count.
+`search_path = public, projects, security`; `EXECUTE`: `service_role` only — no client grant. **No
+caller check** — moot for clients, because no client role holds `EXECUTE`. It takes no arguments and
+only acts on reports that are genuinely expired. **Not scheduled**: no `ops.scheduled_jobs` row runs
+it (Decision #290 (FLAG a)).
 
 ### `projects.fn_flag_bad_faith_report(p_report_id uuid) → void`
 
-`00001140` (from `0007`), the audit outcome: marks the report `dismissed_bad_faith`, lifts the ticket's
-`hidden_until` (it stays in the backlog: filing evicted the assignee and released the escrow, and
-resuming it to `in_progress` with no hold would break the work-start gate, Decision #165), and inserts a `discovery_rank` `security.penalties`
+`00001140` (from `0007`), the audit outcome: marks the report `dismissed_bad_faith`, resumes the
+suspended ticket `in_progress` at the W_i it was reported at (`fn_resume_reported_ticket`; its hold
+never left, Decision #290), and inserts a `discovery_rank` `security.penalties`
 row (severity `freelancer_bad_faith_penalty`) against the **reporter**. `search_path = public,
 projects, security`; `EXECUTE`: `service_role` only — no client grant.
 
@@ -1409,7 +1439,8 @@ which answers every invitation of one request together (Decision #128).
 The client removes a hired freelancer from ONE stage (`p_stage_id`) or from the whole project
 (`NULL`). Owner-only; refuses a non-freelancer participant (a business participant is the paying
 side). Applies `PRODUCT_SPEC.md` §Freelancer Removal Mid-Ticket: every ticket the person holds within
-the scope — `claimed`, `in_progress` or `in_review` — goes through `projects.release_ticket_to_backlog`
+the scope — `claimed`, `in_progress`, `in_review`, or `reported_hidden` (suspended by their workload
+report, still theirs and still held — Decision #290) — goes through `projects.release_ticket_to_backlog`
 (escrow released to them in full, ticket back to New), their held `stage_assignments` in scope become
 `released`, the accepted invitations the removal undoes gain `dismissed_at` (their acceptance kept as
 history), and a whole-project removal deletes the `project_participants` row — which the

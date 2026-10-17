@@ -2082,14 +2082,23 @@ A freelancer may report a ticket if they believe its assigned Workload Intensity
 "Resource Allocation & Ticketing" §2) does not reflect the actual effort required.
 
 1. **Report Filed:** The ticket enters a 48-hour **"Hidden"** status — it is removed from public
-   view and all work on it is suspended.
+   view and all work on it is suspended. **A report moves no money** (Decision #290): the
+   freelancer stays on the ticket and its escrow stays held — a report is never a way to be paid
+   without the client's approval. A report is filed against work under way (claimed or in
+   progress), one at a time, and while it is open the freelancer cannot resume the work or change
+   the disputed $W_i$ themselves.
 2. **Resolution Window:** If the client increases the ticket's Workload Intensity within the 48-hour
    window, the ticket is unhidden and work resumes at the new $W_i$.
 3. **Client Non-Response:** If the client does not adjust the $W_i$ within 48 hours, **both parties
-   incur a penalty** (see "Reputation & Discovery" §1 for how penalties feed the Reliability Index).
+   incur a penalty** (see "Reputation & Discovery" §1 for how penalties feed the Reliability Index),
+   and the ticket is unhidden with work resuming at the original $W_i$.
 4. **Unsubstantiated Report:** If the report is resolved with no $W_i$ change (i.e., a moderator or
    the client determines the original weighting was fair), the reporting freelancer receives a
-   **ranking reduction** on the Explore page.
+   **ranking reduction** on the Explore page, and work resumes at the original $W_i$.
+
+While a ticket is hidden the client keeps every other settlement: approving its stage pays it,
+ending the stage under Fair Exit splits and cancels it, and removing the freelancer applies
+§Freelancer Removal Mid-Ticket.
 
 ---
 

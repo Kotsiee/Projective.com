@@ -2403,13 +2403,14 @@ BEGIN
         AND sa.status NOT IN ('released', 'cancelled', 'declined', 'completed')
         AND s.status IN ('in_progress', 'submitted', 'revisions');
 
-    -- Held tickets within the scope: escrow to them in full, ticket back to New.
+    -- Held tickets within the scope: escrow to them in full, ticket back to New. A ticket suspended by
+    -- their workload report is still theirs and still held (Decision #290), so it goes the same way.
     FOR v_ticket IN
         SELECT t.id, t.status
         FROM projects.tickets t
         WHERE t.project_id = p_project_id
             AND t.current_assignee_id = v_user
-            AND t.status IN ('claimed', 'in_progress', 'in_review')
+            AND t.status IN ('claimed', 'in_progress', 'in_review', 'reported_hidden')
             AND (p_stage_id IS NULL OR t.current_stage_id = p_stage_id)
     LOOP
         IF v_ticket.status = 'in_review' THEN

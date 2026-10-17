@@ -695,7 +695,8 @@ created_at DESC`).
 ### `projects.ticket_workload_reports`
 
 A freelancer's report that a ticket's workload was mis-stated, filed by
-`projects.file_workload_report`. Inserting one hides the ticket for the response window.
+`projects.file_workload_report` or inserted by the assignee under the _File workload report_ policy.
+Inserting one suspends the ticket for the response window and moves no money.
 
 | Column               | Type                            | Notes                                                       |
 | :------------------- | :------------------------------ | :---------------------------------------------------------- |
@@ -706,15 +707,18 @@ A freelancer's report that a ticket's workload was mis-stated, filed by
 | `reported_intensity` | numeric(4,2)                    | What the reporter says it should be.                        |
 | `reason`             | text                            | NOT NULL.                                                   |
 | `status`             | projects.workload_report_status | NOT NULL `DEFAULT 'open'`. `open`, `acknowledged`, `adjusted`, `expired_penalized`, `dismissed_bad_faith`. |
-| `hidden_until`       | timestamptz                     |                                                             |
+| `hidden_until`       | timestamptz                     | End of the response window, stamped at filing; the expiry sweep's clock. |
 | `created_at`         | timestamptz                     | NOT NULL `DEFAULT now()`.                                   |
 | `resolved_at`        | timestamptz                     |                                                             |
 
 **Indexes:** `idx_workload_reports_ticket` (`ticket_id`) · `idx_workload_reports_sweep` (`status,
-hidden_until`). **Trigger:** `trg_open_workload_report` (AFTER INSERT) clears the ticket's
-assignee (which resets it to backlog and releases escrow via the ticket triggers), sets its
-`hidden_until` to now + `workload_report_window_hours` (default 48) and points
-`tickets.workload_report_id` at the report.
+hidden_until`). **Trigger:** `trg_open_workload_report` (AFTER INSERT) suspends the ticket —
+refused unless it is `claimed` / `in_progress`; it becomes `reported_hidden` with its assignee and
+held escrow kept, nothing paid (Decision #290) — sets its `hidden_until`, and this row's, to now +
+`workload_report_window_hours` (default 48), and points `tickets.workload_report_id` at the report.
+The report closes `adjusted` when the client raises the ticket's W_i (`trg_adjust_workload_report` on
+`tickets`), `expired_penalized` by the expiry sweep, or `dismissed_bad_faith` by an audit; each
+resumes the work.
 
 ---
 
