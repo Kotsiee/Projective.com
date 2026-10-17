@@ -21,6 +21,7 @@ import { Tooltip } from "@projective/ui/feedback";
 import { Button, SelectButton } from "@projective/ui/fields";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
+import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import {
 	type IncomingInvite,
 	kindCopy,
@@ -47,7 +48,8 @@ import {
 	laneEntityMeta,
 	type LaneFooterZone,
 	laneInviteMeta,
-	laneMoreStorageKey,
+	laneMorePartition,
+	lanePartition,
 	laneRosterList,
 	laneSignals,
 	type LaneZoneId,
@@ -57,6 +59,7 @@ import {
 	parseMoreOpen,
 	rosterFiltered,
 	signalLabel,
+	withMoreOpen,
 } from "../core/lane-model.ts";
 import {
 	liveDetail,
@@ -80,7 +83,7 @@ import {
 	isActingEntity,
 	resolveActingId,
 } from "../components/ContextSwitchControl.tsx";
-import { WorkspaceRail } from "../components/WorkspaceRail.tsx";
+import { type LaneCreateTarget, WorkspaceRail } from "../components/WorkspaceRail.tsx";
 
 /**
  * WorkspaceLane — the middle-nav lane for the whole workspace surface (`/teams`, `/businesses` and
@@ -112,9 +115,10 @@ import { WorkspaceRail } from "../components/WorkspaceRail.tsx";
  * ### Shared state, SSR-safe
  * The roster partition is ONE value across roots (`rosterTab` in `workspace-state`): the lane's
  * segmented control and the roster canvas both write it and both mirror it, and each falls back to its
- * server-resolved `?tab=` until something is picked. The Members reading is the existing
- * `membersChart` signal the Members screen already reads, so the lane's People · Org chart control
- * drives the body directly.
+ * server-resolved `?tab=` until something is picked. The lane reads it through {@link lanePartition},
+ * so the canvas-only Archived reads as All here and the lane never lists rows under a control with no
+ * segment selected. The Members reading is the existing `membersChart` signal the Members screen
+ * already reads, so the lane's People · Org chart control drives the body directly.
  *
  * ### Why it reads the live-detail relay
  * A role change rewrites `viewerCapabilities`, which decides this lane's visible modules and its
@@ -201,15 +205,16 @@ export default function WorkspaceLane(props: WorkspaceLaneProps): JSX.Element {
 }
 
 /**
- * Run zone 4's create action. New entity opens the create modal; Invite member opens the invite modal
- * where the Members screen mounts it, and elsewhere lands on Members with it open (`?invite=1`) rather
- * than pressing into nothing.
+ * Zone 4's create action, as the props of its one `LaneCreateButton`. New entity opens the create
+ * modal and Invite member opens the invite modal where the Members screen mounts it — both buttons.
+ * Anywhere else Invite member is a LINK to Members with the modal open (`?invite=1`): a destination is
+ * an `<a>`, never a button that assigns `location`, and it never presses into nothing.
  */
-function runCreate(kind: WorkspaceKind, create: LaneCreate | null): void {
-	if (!create) return;
-	if (create.action === "create") openCreate(kind);
-	else if (create.inPlace) openInvite();
-	else globalThis.location.assign(create.href);
+function createTarget(kind: WorkspaceKind, create: LaneCreate | null): LaneCreateTarget | null {
+	if (!create) return null;
+	if (create.action === "create") return { onClick: () => openCreate(kind) };
+	if (create.inPlace) return { onClick: () => openInvite() };
+	return { href: create.href };
 }
 // #endregion
 
@@ -232,14 +237,15 @@ function RosterLane(props: RosterLaneProps): JSX.Element {
 	const invitations = props.roster?.invitations ?? [];
 	const actingId = props.roster ? resolveActingId(props.roster) : null;
 
-	// This root's control, seeded from the URL and mirrored from the shared partition once it is set.
-	const tab = useSignal<string>(props.tab);
+	// This root's control, seeded from the URL and mirrored from the shared partition once it is set —
+	// both read through `lanePartition`, so the canvas-only Archived shows here as All.
+	const tab = useSignal<string>(lanePartition(props.tab));
 	useSignalEffect(() => {
 		const shared = rosterTab.value;
-		if (shared !== null) tab.value = shared;
+		if (shared !== null) tab.value = lanePartition(shared);
 	});
 	const search = useSignal("");
-	const current = toRosterTab(tab.value);
+	const current = lanePartition(toRosterTab(tab.value));
 
 	const zones = laneZones({
 		view: "roster",
@@ -249,7 +255,7 @@ function RosterLane(props: RosterLaneProps): JSX.Element {
 		canCreate: props.roster?.canCreate ?? true,
 	});
 	const list = laneRosterList(items, invitations, current, search.value);
-	const onCreate = () => runCreate(props.kind, zones.footer.create);
+	const create = createTarget(props.kind, zones.footer.create);
 
 	const zone = (id: LaneZoneId): JSX.Element | null => {
 		switch (id) {
@@ -323,7 +329,13 @@ function RosterLane(props: RosterLaneProps): JSX.Element {
 									size="sm"
 									label="Reset"
 									class="wsp-lane__reset"
-									onClick={() => {
+									onClick={(event) => {
+										// Nothing is left to clear once this runs, so the Reset unmounts: hand focus
+										// to the search field it just emptied first, so the keyboard path never
+										// drops to <body>.
+										event.currentTarget.closest(".wsp-lane__context")
+											?.querySelector<HTMLInputElement>("input")
+											?.focus();
 										search.value = "";
 										selectRosterTab("all");
 									}}
@@ -337,8 +349,8 @@ function RosterLane(props: RosterLaneProps): JSX.Element {
 					<LaneFooterRig
 						key={id}
 						footer={zones.footer}
+						target={create}
 						chrome={props.chrome}
-						onCreate={onCreate}
 					/>
 				);
 		}
@@ -350,9 +362,9 @@ function RosterLane(props: RosterLaneProps): JSX.Element {
 				kind={props.kind}
 				path={props.path}
 				zones={zones}
+				createTarget={create}
 				entities={items}
 				actingId={actingId}
-				onCreate={onCreate}
 				onExpand={() => props.chrome.onCollapse(false)}
 			/>
 			<div class="wsp-lane">{laneZoneOrder(zones).map(zone)}</div>
@@ -453,31 +465,29 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 	});
 	const views = zones.views;
 	const signals = laneSignals(detail);
-	const onCreate = () => runCreate(props.kind, zones.footer.create);
+	const create = createTarget(props.kind, zones.footer.create);
 
 	// "More": collapsed on the server (storage is unreadable there), then the viewer's remembered choice —
-	// and always open onto the module being rendered.
+	// and always open onto the module being rendered. The read runs once, after mount: no signal is read
+	// inside it, and a workspace page has no client navigation, so the island mounts afresh on every
+	// document load. Storage goes through the SSR-safe accessors, which own the try/catch.
 	const viewer = detail.members.find((m) => m.id === detail.viewerMemberId)?.handle ??
 		detail.viewerMemberId;
-	const moreKey = laneMoreStorageKey(props.kind, viewer);
+	const morePartition = laneMorePartition(props.kind, viewer);
 	const moreOpen = useSignal(initialMoreOpen(null, views.activeInMore));
-	useEffect(() => {
-		let stored: string | null = null;
-		try {
-			stored = globalThis.localStorage.getItem(moreKey);
-		} catch {
-			stored = null;
-		}
-		moreOpen.value = initialMoreOpen(parseMoreOpen(stored), views.activeInMore);
-	}, [moreKey, views.activeInMore]);
+	useSignalEffect(() => {
+		const stored = readStored("local", LocalKeys.WORKSPACE_LANE_MORE);
+		moreOpen.value = initialMoreOpen(parseMoreOpen(stored, morePartition), views.activeInMore);
+	});
 	const toggleMore = () => {
 		const next = !moreOpen.value;
 		moreOpen.value = next;
-		try {
-			globalThis.localStorage.setItem(moreKey, next ? "1" : "0");
-		} catch {
-			// Storage unavailable — the choice holds for this page only.
-		}
+		const stored = readStored("local", LocalKeys.WORKSPACE_LANE_MORE);
+		writeStored(
+			"local",
+			LocalKeys.WORKSPACE_LANE_MORE,
+			withMoreOpen(stored, morePartition, next),
+		);
 	};
 
 	// The Members reading mirrors the signal the Members screen reads, whichever root last wrote it.
@@ -594,8 +604,8 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 					<LaneFooterRig
 						key={id}
 						footer={zones.footer}
+						target={create}
 						chrome={props.chrome}
-						onCreate={onCreate}
 					/>
 				);
 		}
@@ -607,6 +617,7 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 				kind={props.kind}
 				path={props.path}
 				zones={zones}
+				createTarget={create}
 				entity={{
 					id: detail.id,
 					name: detail.name,
@@ -616,7 +627,6 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 					isActing: detail.isActing,
 				}}
 				signals={signals}
-				onCreate={onCreate}
 				onExpand={() => props.chrome.onCollapse(false)}
 			/>
 			<div class="wsp-lane">{laneZoneOrder(zones).map(zone)}</div>
@@ -686,9 +696,12 @@ function ContextZone(
 	);
 }
 
-/** Zone 4 — the collapse toggle (it docks to the lane's corner) and the one create action. */
+/**
+ * Zone 4 — the collapse toggle (it docks to the lane's corner) and the one create action: a button
+ * when it opens a modal here, a link when it lands on another page.
+ */
 function LaneFooterRig(
-	props: { footer: LaneFooterZone; chrome: LaneChrome; onCreate: () => void },
+	props: { footer: LaneFooterZone; target: LaneCreateTarget | null; chrome: LaneChrome },
 ): JSX.Element {
 	const create = props.footer.create;
 	return (
@@ -698,12 +711,12 @@ function LaneFooterRig(
 				icon={<SidebarToggleIcon />}
 				onToggle={() => props.chrome.onCollapse(!props.chrome.collapsed)}
 			/>
-			{create && (
+			{create && props.target && (
 				<LaneFooterActions>
 					<LaneCreateButton
 						label={create.label}
 						icon={cloneGlyph(create.action === "invite" ? InviteGlyph : PlusGlyph)}
-						onClick={props.onCreate}
+						{...props.target}
 					/>
 				</LaneFooterActions>
 			)}

@@ -67,7 +67,7 @@ type ConsoleInput = {
 interface LaneModelApi {
 	laneZones(input: RosterInput | ConsoleInput): Zones;
 	laneZoneOrder(zones: Zones): string[];
-	laneFilledControls(zones: Zones): number;
+	lanePartition(tab: string): string;
 	laneRosterList(
 		items: readonly WorkspaceSummary[],
 		invitations: readonly IncomingInvite[],
@@ -76,6 +76,7 @@ interface LaneModelApi {
 	):
 		| { mode: "entities"; rows: WorkspaceSummary[] }
 		| { mode: "invitations"; rows: IncomingInvite[] };
+	laneRailEntities(items: readonly WorkspaceSummary[]): WorkspaceSummary[];
 	laneEntityMeta(entity: WorkspaceSummary): Meta[];
 	laneInviteMeta(invite: IncomingInvite): Meta[];
 	rosterFiltered(tab: string, search: string): boolean;
@@ -95,8 +96,9 @@ interface LaneModelApi {
 		name: string,
 		acting: boolean,
 	): { action: string; label: string; ariaLabel: string; busyLabel: string };
-	laneMoreStorageKey(kind: WorkspaceKind, viewer: string): string;
-	parseMoreOpen(raw: string | null): boolean | null;
+	laneMorePartition(kind: WorkspaceKind, viewer: string): string;
+	parseMoreOpen(raw: string | null, partition: string): boolean | null;
+	withMoreOpen(raw: string | null, partition: string, open: boolean): string;
 	initialMoreOpen(stored: boolean | null, activeInMore: boolean): boolean;
 }
 
@@ -354,7 +356,6 @@ Deno.test("lane: no create button inside a console without invite_members", () =
 			for (const module of ["overview", "members", "invitations", "projects"]) {
 				const zones = lane.laneZones(inConsole({ kind, capabilities, module }));
 				assertEquals(zones.footer.create, null, `${kind} ${module} offered a create`);
-				assertEquals(lane.laneFilledControls(zones), 0);
 			}
 		}
 	}
@@ -380,14 +381,9 @@ Deno.test("lane: Invite member opens in place on Members and lands there from an
 	assertEquals(business.footer.create.href, "/businesses/acme/members?invite=1");
 });
 
-Deno.test("lane: never more than one filled control, in any composition", () => {
-	for (const zones of everyComposition()) {
-		assert(lane.laneFilledControls(zones) <= 1);
-		assertEquals(lane.laneFilledControls(zones), zones.footer.create ? 1 : 0);
-	}
-});
-
-Deno.test("lane: Tab order is Z1 → Z2 → Z3 → Z4 in every composition", () => {
+// Model-only: the zone ORDER the island renders. That the rendered lane follows it — each zone's
+// controls inside its own zone, the zones emitted in this order — is the source scan further down.
+Deno.test("lane (model): the zone order is Z1 → Z2 → Z3 → Z4 in every composition", () => {
 	const rank = { header: 1, views: 2, context: 3, footer: 4 } as Record<string, number>;
 	for (const zones of everyComposition()) {
 		const order = lane.laneZoneOrder(zones);
@@ -396,6 +392,21 @@ Deno.test("lane: Tab order is Z1 → Z2 → Z3 → Z4 in every composition", () 
 		assertEquals(order.includes("context"), zones.context !== null);
 		assertEquals(order.map((z) => rank[z]), order.map((z) => rank[z]).toSorted((a, b) => a - b));
 	}
+});
+// #endregion
+
+// #region The shared roster partition
+Deno.test("lane: the canvas-only Archived partition reads as All in the lane", () => {
+	assertEquals(lane.lanePartition("archived"), "all");
+	for (const tab of ["all", "owned", "member", "invitations"]) {
+		assertEquals(lane.lanePartition(tab), tab);
+	}
+	// Every partition the lane can read is one of its control's segments, so a segment is always selected.
+	const segments = lane.laneZones(roster()).context?.options.map((o) => o.value) ?? [];
+	for (const tab of ["all", "owned", "member", "invitations", "archived"]) {
+		assert(segments.includes(lane.lanePartition(tab)), `${tab} has no lane segment`);
+	}
+	assertEquals(lane.rosterFiltered(lane.lanePartition("archived"), ""), false);
 });
 // #endregion
 
@@ -419,6 +430,9 @@ Deno.test("lane: roster rows list owned entities first, keep server order, and h
 	const searched = lane.laneRosterList(items, [], "all", "char");
 	assert(searched.mode === "entities");
 	assertEquals(searched.rows.map((r) => r.id), ["c"]);
+
+	// The collapsed rail folds the same list: the expanded "All" order, archived left out.
+	assertEquals(lane.laneRailEntities(items).map((r) => r.id), all.rows.map((r) => r.id));
 });
 
 Deno.test("lane: the Invitations partition lists invitations, searchable by name or handle", () => {
@@ -504,16 +518,24 @@ Deno.test("lane: the acting switch keeps its visible label at the start of its a
 });
 
 Deno.test("lane: More is collapsed by default, remembered per viewer and kind, open onto the active module", () => {
-	const key = lane.laneMoreStorageKey("team", "ada");
-	assert(key.startsWith("pj.local."), key);
-	assert(key.endsWith(".team.ada"), key);
-	assert(lane.laneMoreStorageKey("business", "ada") !== key);
-	assert(lane.laneMoreStorageKey("team", "bo") !== key);
+	const ada = lane.laneMorePartition("team", "ada");
+	assert(lane.laneMorePartition("business", "ada") !== ada);
+	assert(lane.laneMorePartition("team", "bo") !== ada);
 
-	assertEquals(lane.parseMoreOpen("1"), true);
-	assertEquals(lane.parseMoreOpen("0"), false);
-	assertEquals(lane.parseMoreOpen(null), null);
-	assertEquals(lane.parseMoreOpen("yes"), null);
+	// One stored map, one entry per partition; writing one keeps the others.
+	const opened = lane.withMoreOpen(null, ada, true);
+	assertEquals(lane.parseMoreOpen(opened, ada), true);
+	assertEquals(lane.parseMoreOpen(opened, lane.laneMorePartition("team", "bo")), null);
+	const both = lane.withMoreOpen(opened, lane.laneMorePartition("business", "ada"), false);
+	assertEquals(lane.parseMoreOpen(both, ada), true);
+	assertEquals(lane.parseMoreOpen(both, lane.laneMorePartition("business", "ada")), false);
+
+	// Anything unset or unreadable is unknown, never an error.
+	assertEquals(lane.parseMoreOpen(null, ada), null);
+	assertEquals(lane.parseMoreOpen("not json", ada), null);
+	assertEquals(lane.parseMoreOpen("[true]", ada), null);
+	assertEquals(lane.parseMoreOpen(JSON.stringify({ [ada]: "1" }), ada), null);
+	assertEquals(lane.parseMoreOpen(lane.withMoreOpen("not json", ada, false), ada), false);
 
 	assertEquals(lane.initialMoreOpen(null, false), false);
 	assertEquals(lane.initialMoreOpen(false, false), false);
@@ -522,17 +544,146 @@ Deno.test("lane: More is collapsed by default, remembered per viewer and kind, o
 });
 // #endregion
 
-// #region No raw buttons
+// #region Rendered lane — source scans
+/*
+ * The island cannot be rendered under `deno test` (every `@projective/ui` component imports CSS), so
+ * these read the lane's source. They pin what the model cannot: which controls the lane actually
+ * draws, and where it draws them.
+ */
+const LANE = "../islands/WorkspaceLane.island.tsx";
+const RAIL = "../components/WorkspaceRail.tsx";
+const SWITCH = "../components/ContextSwitchControl.tsx";
+
+/**
+ * A file's code: CRLF folded, so the scans read the same text on every checkout, and comments removed,
+ * so a tag named in prose (`<Button severity="neutral">` in a JSDoc) is never read as one drawn.
+ */
+function source(file: string): string {
+	return Deno.readTextFileSync(new URL(file, import.meta.url))
+		.replaceAll("\r\n", "\n")
+		.replace(/\/\*[\s\S]*?\*\//g, "")
+		.replace(/(^|\s)\/\/.*$/gm, "$1");
+}
+
+/** How many times a JSX tag opens in a piece of source. */
+function opens(text: string, tag: string): number {
+	return text.match(new RegExp(`<${tag}\\b`, "g"))?.length ?? 0;
+}
+
+/**
+ * Each zone switch's case bodies, by zone id, in source order — and the source with them cut out. A case
+ * body runs to the next case or to the end of its switch (`\t\t}\n\t};`).
+ */
+function zoneCases(text: string): { cases: { id: string; body: string }[]; rest: string } {
+	const cases: { id: string; body: string }[] = [];
+	let rest = "";
+	let at = 0;
+	const re = /case "(header|views|context|footer)":/g;
+	for (let m = re.exec(text); m; m = re.exec(text)) {
+		const from = m.index + m[0].length;
+		const next = text.slice(from).search(/case "(header|views|context|footer)":|\n\t\t\}\n\t\};/);
+		const to = next < 0 ? text.length : from + next;
+		rest += text.slice(at, m.index);
+		cases.push({ id: m[1], body: text.slice(from, to) });
+		at = to;
+		re.lastIndex = to;
+	}
+	return { cases, rest: rest + text.slice(at) };
+}
+
 Deno.test("lane: no raw <button> in the lane island, the rail or the acting switch", () => {
+	for (const file of [LANE, RAIL, SWITCH]) {
+		assert(!/<button\b/.test(source(file)), `${file} renders a raw <button>`);
+	}
+});
+
+Deno.test("lane: the one LaneCreateButton is the only filled control the lane and the rail draw", () => {
+	for (const file of [LANE, RAIL, SWITCH]) {
+		const text = source(file);
+		// `Button` defaults to `variant="filled"`: every one here must say outlined (tier 4) or text
+		// (tier 5), and none may take the structural or amber fill.
+		for (const [element] of text.matchAll(/<Button\b[\s\S]*?\/>/g)) {
+			assert(!/<Button\b[\s\S]*<Button\b/.test(element), `${file}: unparsable <Button>`);
+			assert(
+				/\bvariant="(outlined|text)"/.test(element),
+				`${file} draws a filled <Button>: ${element}`,
+			);
+			assert(!/\bstructural\b|severity="accent"/.test(element), `${file}: ${element}`);
+		}
+	}
+	// One create per presentation — the expanded footer and its folded rail glyph.
+	assertEquals(opens(source(LANE), "LaneCreateButton"), 1);
+	assertEquals(opens(source(RAIL), "LaneCreateButton"), 1);
+	assertEquals(opens(source(SWITCH), "LaneCreateButton"), 0);
+});
+
+Deno.test("lane: each zone's controls render inside their own zone, emitted in laneZoneOrder", () => {
+	const text = source(LANE);
+	const { cases, rest } = zoneCases(text);
+	assertEquals(cases.map((c) => c.id), [
+		"header",
+		"views",
+		"context",
+		"footer",
+		"header",
+		"views",
+		"context",
+		"footer",
+	]);
+
+	// Where each zone-bearing tag may open — in its zone's case and nowhere else in the island.
+	const home: Record<string, string> = {
+		LaneHead: "header",
+		ContextSwitchControl: "header",
+		LaneIconButton: "header",
+		LaneList: "views",
+		LaneSection: "views",
+		NavItem: "views",
+		ContextZone: "context",
+		SelectButton: "context",
+		LaneSearch: "context",
+		Button: "context",
+		LaneFooterRig: "footer",
+	};
+	for (const [tag, zone] of Object.entries(home)) {
+		for (const c of cases) {
+			if (c.id !== zone) assertEquals(opens(c.body, tag), 0, `<${tag}> opens in the ${c.id} zone`);
+		}
+	}
+	// Outside the cases only the zone components' own definitions may draw (ModuleList's NavItem rows,
+	// the footer rig's collapse toggle and create): no zone control rides in the wrapper.
 	for (
-		const file of [
-			"../islands/WorkspaceLane.island.tsx",
-			"../components/WorkspaceRail.tsx",
-			"../components/ContextSwitchControl.tsx",
-		]
+		const tag of ["LaneHead", "ContextSwitchControl", "LaneList", "SelectButton", "LaneSearch"]
 	) {
-		const source = Deno.readTextFileSync(new URL(file, import.meta.url));
-		assert(!/<button\b/.test(source), `${file} renders a raw <button>`);
+		assertEquals(opens(rest, tag), 0, `<${tag}> opens outside its zone`);
+	}
+	for (const zone of ["header", "views", "footer"]) {
+		assert(cases.filter((c) => c.id === zone).every((c) => c.body.trim().length > 0));
+	}
+
+	// Both lanes render exactly the model's order as their children, and nothing reorders it: no
+	// positive tabindex, no CSS `order` or reversed flow.
+	assertEquals(
+		text.match(/<div class="wsp-lane">\{laneZoneOrder\(zones\)\.map\(zone\)\}<\/div>/g)?.length,
+		2,
+	);
+	for (const file of [LANE, RAIL, SWITCH]) {
+		assert(!/tab[iI]ndex=\{?"?[1-9]/.test(source(file)), `${file} sets a positive tabindex`);
+	}
+	const css = source("../styles/workspace-chrome.css");
+	assert(!/(?<![-\w])order\s*:|-reverse\b/.test(css), "workspace-chrome.css reorders a flow");
+});
+
+Deno.test("lane: More's memory goes through the SSR-safe accessors, and no control assigns location", () => {
+	const text = source(LANE);
+	assert(!/globalThis\.(localStorage|sessionStorage)/.test(text), "raw storage access");
+	assert(/readStored\("local", LocalKeys\.WORKSPACE_LANE_MORE\)/.test(text));
+	assert(/writeStored\(\s*"local",\s*LocalKeys\.WORKSPACE_LANE_MORE/.test(text));
+	for (const file of [LANE, RAIL]) {
+		assert(
+			!/location\.(assign|replace|href\s*=)/.test(source(file)),
+			`${file} navigates by script`,
+		);
 	}
 });
 // #endregion

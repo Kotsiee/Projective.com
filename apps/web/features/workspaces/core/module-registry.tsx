@@ -33,7 +33,7 @@ import {
  *
  * ONE array ({@link MODULES}) is the single source five separate mechanisms derive from:
  *
- *   1. **The entity lane's grouped nav** — the sections and their ordered items.
+ *   1. **The entity lane's views** — the primary views, then the "More" section (Teams L1).
  *   2. **The `[module]` route validator** — an unknown segment is not a module, so it 404s; a known one
  *      the viewer may not open redirects rather than refusing.
  *   3. **The permission gate** — what a given member is allowed to see at all.
@@ -110,20 +110,12 @@ export type ModuleKey =
 	| "settings";
 
 /**
- * The lane's section headings, in render order. A group is a reading aid, not a permission boundary —
- * it disappears entirely when the viewer may see none of its modules, so an empty heading never
- * advertises something withheld.
+ * The registry's reading groups — how {@link MODULES} is laid out (Workspace · People · Money ·
+ * Growth · Admin), so the lane's "More" section, which lists in registry order, keeps related modules
+ * together. A reading aid, never a permission boundary, and not rendered as headings: the lane leads
+ * with the primary views, then "More" (Teams L1).
  */
 export type ModuleGroup = "Workspace" | "People" | "Money" | "Growth" | "Admin";
-
-/** The lane's groups in display order. */
-export const MODULE_GROUPS: readonly ModuleGroup[] = [
-	"Workspace",
-	"People",
-	"Money",
-	"Growth",
-	"Admin",
-];
 
 /**
  * What guards a module for one kind: one capability, a predicate over the viewer's effective set (for
@@ -140,7 +132,7 @@ export interface WorkspaceModule {
 	key: ModuleKey;
 	/** Sentence-case label for the lane, the rail's tooltip, and the header band. */
 	label: string;
-	/** Which lane section it sits in. */
+	/** Its reading group in the registry's layout ({@link ModuleGroup}). */
 	group: ModuleGroup;
 	/** The 1em `currentColor` glyph. Clone it (`cloneGlyph`) when rendering in two places at once. */
 	glyph: VNode;
@@ -179,7 +171,7 @@ const BUSINESS: readonly WorkspaceKind[] = ["business"];
 const OPEN = (): null => null;
 
 /**
- * The registry. Order within a group is display order; groups follow {@link MODULE_GROUPS}.
+ * The registry, laid out by {@link ModuleGroup}. Array order is display order.
  *
  * To add a module: append an entry here and create its component. To retire one: remove the entry (the
  * route stops resolving, the lane and rail stop offering it, the gate stops considering it) — there is
@@ -490,26 +482,5 @@ export function firstModuleFor(
 	capabilities: readonly WorkspaceCapability[],
 ): ModuleKey {
 	return modulesForViewer(kind, capabilities)[0]?.key ?? "overview";
-}
-
-/** A lane section: a heading and the modules under it, already viewer-filtered. */
-export interface ModuleSection {
-	group: ModuleGroup;
-	modules: WorkspaceModule[];
-}
-
-/**
- * The lane's grouped nav for a viewer. Empty groups are dropped rather than rendered as bare headings —
- * a heading over nothing tells the reader something is being kept from them, which is both noise and a
- * small information leak.
- */
-export function moduleSectionsForViewer(
-	kind: WorkspaceKind,
-	capabilities: readonly WorkspaceCapability[],
-): ModuleSection[] {
-	const visible = modulesForViewer(kind, capabilities);
-	return MODULE_GROUPS
-		.map((group) => ({ group, modules: visible.filter((m) => m.group === group) }))
-		.filter((section) => section.modules.length > 0);
 }
 // #endregion

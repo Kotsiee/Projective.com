@@ -272,8 +272,9 @@ export const LocalKeys = {
 	 */
 	WORKSPACE_ZOOM: "pj.local.workspace.zoom",
 	/**
-	 * The PREFIX of the workspace lane's "More" section memory — `"1"` open | `"0"` closed, stored per
-	 * viewer and kind under `pj.local.workspace.laneMore.<kind>.<viewer>` (`laneMoreStorageKey` in
+	 * The workspace lane's "More" section memory — ONE JSON map from `<kind>.<viewer>` to `true` (open)
+	 * | `false` (closed), so the choice is kept per viewer and kind without minting a key per viewer
+	 * (`laneMorePartition` / `parseMoreOpen` / `withMoreOpen` in
 	 * `features/workspaces/core/lane-model.ts`). Collapsed by default; read after hydration only, so
 	 * it never diverges from the server-rendered closed section.
 	 */

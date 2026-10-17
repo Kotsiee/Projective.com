@@ -7,9 +7,19 @@
  * The shared `.ui-lane-*` chrome from `@projective/ui/navigation` is NOT restyled here. `/teams` and
  * `/businesses` must read as the same control set as `/projects`, `/messages` and `/wallet`, so the
  * lane's four zones (L1) compose `LaneHead` / `LaneList` / `LaneSection` / `LaneSearch` /
- * `LaneFooter` / `LaneCreateButton`, `NavItem`, `SelectButton` and `Button` verbatim, and only this
- * feature's own additions carry rules. Press feedback and both reduced-motion channels therefore come
- * from the package: no lane control here is hand-rolled.
+ * `LaneFooter` / `LaneCreateButton` / `LaneCollapseButton` / `LaneIconButton`, `NavItem`,
+ * `SelectButton` and `Button` verbatim, and only this feature's own additions carry rules.
+ *
+ * Press feedback (§B.12) is therefore split by owner:
+ *   - From the package: `Button` (the acting switch, the Reset) and `LaneCreateButton` compress and
+ *     drop the scale under both reduced-motion channels. `NavItem`, the "More" `LaneSection` toggle,
+ *     the Back `LaneIconButton`, the `SelectButton` segments and `LaneCollapseButton` carry NO press in
+ *     the package today; that gap is the package's to close (it is shared by every lane), never this
+ *     sheet's, because restyling `.ui-*` chrome here would fork the lane vocabulary.
+ *   - From this sheet: the feature's OWN links — the roster rows (`.wsp-lane__entity`, a feature row
+ *     like Catalogue's lane rows) and the collapsed rail's squares and mark (`.wsp-rail__item`,
+ *     `.wsp-rail__switch`, hand-built like the Projects and Catalogue rails) — each with its scale
+ *     press and both reduced-motion channels below.
  *
  * Both bands are mounted into shell slots, which means they EXPORT their intrinsic width to the page:
  * a band wider than the content region widens the region. Both therefore carry
@@ -183,6 +193,12 @@ row's accessible name. On the filled active row it takes the row's own ink. */
 	color: currentColor;
 }
 
+/* An attention dot on the filled active row takes the row's ink too: the kind hue is a team's
+`--primary`, the very fill it would sit on. */
+.wsp-lane__navlist .ui-nav-item--active .wsp-pulse {
+	background: currentColor;
+}
+
 /* The roster index's rows: mark · name over one MetaLine (`Owner · 4 members · Active`). */
 .wsp-lane__entity {
 	display: flex;
@@ -244,6 +260,11 @@ row's accessible name. On the filled active row it takes the row's own ink. */
 /*
  * Drawn only when the view has something to partition. A docked band between the views and the
  * footer rig: the lane's `--surface-1`, one block-start hairline, the lane's inline inset — no box.
+ *
+ * Its padding is the shared `.ui-lane-footer` band's (`--space-3` / `--space-4`), so the four zones
+ * keep the band rhythm `LaneHead`, `LaneList` and `LaneFooter` already set in every reference lane.
+ * The page-section rhythm (`--space-7` above a section) is not applied inside the lane: it would put
+ * a 48px gap above every zone of a ~280px column and restyle the shared bands from feature CSS.
  */
 .wsp-lane__context {
 	flex: none;
@@ -262,9 +283,12 @@ row's accessible name. On the filled active row it takes the row's own ink. */
 
 /* #region Collapsed rail */
 /*
- * The same four zones folded to glyphs. Every rail control mirrors the global sidebar's collapsed
- * `.ui-nav-item` exactly — a `--shell-nav-block` square, `--radius-base`, the same hover and active
- * tints — and carries a portal `Tooltip` plus an `aria-label`, never a native `title` (§B.6).
+ * The same four zones folded to glyphs. Every rail square takes the global sidebar's collapsed
+ * `.ui-nav-item` geometry — a `--shell-nav-block` square at `--radius-base` — and `NavItem`'s ACTIVE
+ * pair (`--primary` / `--on-primary`), so the expanded zone-2 row and its folded square mark the
+ * current module identically. Hover is the solid `--surface-3` step (a feature sheet carries no
+ * translucent wash). Every control carries a portal `Tooltip` plus an `aria-label`, never a native
+ * `title` (§B.6).
  */
 .wsp-rail {
 	flex-direction: column;
@@ -341,8 +365,8 @@ words — a ring colour on its own is not a channel. */
 }
 
 .wsp-rail__item[data-active="true"] {
-	background: var(--wsp-kind-tint);
-	color: var(--wsp-kind-ink);
+	background: var(--primary);
+	color: var(--on-primary);
 }
 
 /* The rail's squares and mark are icon-only links: the icon press step (§B.12). */
@@ -372,6 +396,11 @@ words — a ring colour on its own is not a channel. */
 	position: absolute;
 	inset-block-start: var(--space-2);
 	inset-inline-end: var(--space-2);
+}
+
+/* On the filled active square the dot takes the square's ink, as the expanded row's mark does. */
+.wsp-rail__item[data-active="true"] .wsp-rail__dot {
+	background: currentColor;
 }
 
 /* Zone 4: the create glyph over the expand toggle. */

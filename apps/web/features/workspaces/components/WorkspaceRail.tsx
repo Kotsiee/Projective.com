@@ -11,6 +11,7 @@ import {
 } from "@projective/types/workspace";
 import type { WorkspaceModule } from "../core/module-registry.tsx";
 import {
+	laneRailEntities,
 	type LaneZones,
 	type ModuleSignals,
 	signalLabel,
@@ -28,12 +29,13 @@ import { ContextSwitchControl, isActingEntity } from "./ContextSwitchControl.tsx
  *   1. **Header strip** → the entity's mark (its ring is the verification state) and the acting switch
  *      as an icon-only Button. The roster index has no identity to fold, so its rail starts at zone 2.
  *   2. **Primary views** → the primary modules' glyphs, a hairline, then every "More" module's glyph —
- *      or, on the roster index, the viewer's entities as marks, so a collapsed lane is still a
- *      switcher.
+ *      or, on the roster index, the viewer's live entities as marks in the expanded list's order
+ *      (owned first, {@link laneRailEntities}), so a collapsed lane is still a switcher.
  *   3. **Context controls** → none: a segmented control has no glyph form, and the expanded lane is one
- *      press away.
+ *      press away. For the same reason the roster rail ignores the partition and the search — a filter
+ *      the reader cannot see would hide entities for no visible reason.
  *   4. **Footer rig** → the same `LaneCreateButton` (its label folds away in a collapsed splitter, its
- *      `aria-label` stays) and the expand toggle.
+ *      `aria-label` stays; a link when the action lands on another page) and the expand toggle.
  *
  * It is rendered **alongside** the expanded lane at all times and CSS reveals exactly one, keyed off
  * `.ui-splitter[data-mode="collapsed"]` (`workspace-chrome.css`). No client width observer: an
@@ -44,15 +46,28 @@ import { ContextSwitchControl, isActingEntity } from "./ContextSwitchControl.tsx
  * Every control here is icon-only, so every control carries a portal {@link Tooltip} **and** an
  * `aria-label`, never a native `title` (§B.6). Module glyphs are shared with the expanded lane and the
  * header band, so each is {@link cloneGlyph}-copied at the point of use.
+ *
+ * The module and entity squares and the identity mark are this feature's own links
+ * (`workspace-chrome.css` owns their geometry, the NavItem active pair and their §B.12 press), like the
+ * Projects and Catalogue rails: `NavItem`'s square form exists only in the collapsed global sidebar,
+ * and in a collapsed splitter it is a label-less row with no press of its own.
  */
 
 // #region Props
+/**
+ * What zone 4's one create action does when pressed — the props its `LaneCreateButton` takes: a
+ * handler when it opens a modal on this page, an `href` when it lands on another page.
+ */
+export type LaneCreateTarget = { href: string } | { onClick: () => void };
+
 export interface WorkspaceRailProps {
 	kind: WorkspaceKind;
 	/** Live pathname — drives the active entity square on the roster index. */
 	path: string;
 	/** The lane's composition; the rail folds the same zones. */
 	zones: LaneZones;
+	/** Zone 4's create action — the same target the expanded lane's button takes. */
+	createTarget: LaneCreateTarget | null;
 
 	// --- Console ---
 	/** The entity's id, name, handle and mark. Present inside a console. */
@@ -73,8 +88,6 @@ export interface WorkspaceRailProps {
 	/** The single acting entity id, already resolved. */
 	actingId?: string | null;
 
-	/** Run zone 4's create action — the same handler the expanded lane's button calls. */
-	onCreate: () => void;
 	/** Expand the lane back out (dispatched to the splitter by the lane island). */
 	onExpand: () => void;
 }
@@ -85,6 +98,7 @@ export interface WorkspaceRailProps {
 export function WorkspaceRail(props: WorkspaceRailProps): JSX.Element {
 	const copy = kindCopy(props.kind);
 	const create = props.zones.footer.create;
+	const target = props.createTarget;
 
 	return (
 		<nav
@@ -99,12 +113,12 @@ export function WorkspaceRail(props: WorkspaceRailProps): JSX.Element {
 			</div>
 
 			<div class="wsp-rail__bottom">
-				{create && (
+				{create && target && (
 					<Tooltip content={create.label} placement="right">
 						<LaneCreateButton
 							label={create.label}
 							icon={cloneGlyph(create.action === "invite" ? InviteGlyph : PlusGlyph)}
-							onClick={props.onCreate}
+							{...target}
 						/>
 					</Tooltip>
 				)}
@@ -196,10 +210,13 @@ function RailModules(props: WorkspaceRailProps): JSX.Element | null {
 	);
 }
 
-/** The viewer's live entities as marks, so a collapsed roster lane is still a switcher. */
+/**
+ * The viewer's live entities as marks, so a collapsed roster lane is still a switcher — in the expanded
+ * list's order (owned first), unfiltered by the folded-away partition and search.
+ */
 function RailEntities(props: WorkspaceRailProps): JSX.Element {
 	const copy = kindCopy(props.kind);
-	const entities = (props.entities ?? []).filter((e) => e.status !== "archived");
+	const entities = laneRailEntities(props.entities ?? []);
 	const actingId = props.actingId ?? null;
 
 	return (

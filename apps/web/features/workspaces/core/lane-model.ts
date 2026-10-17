@@ -10,7 +10,6 @@ import {
 	type WorkspaceStatus,
 	type WorkspaceSummary,
 } from "@projective/types/workspace";
-import { LocalKeys } from "@web/utils/storage-keys.ts";
 import {
 	type ModuleKey,
 	primaryModules,
@@ -132,11 +131,12 @@ export type LaneCreate =
 		action: "invite";
 		label: string;
 		/**
-		 * Whether the invite modal is mounted on this page (the Members screen mounts it). Elsewhere the
-		 * action lands on Members with the modal open (`?invite=1`) instead of pressing into nothing.
+		 * Whether the invite modal is mounted on this page (the Members screen mounts it), so the action
+		 * is a button that opens it. Elsewhere the action is a LINK to Members with the modal open
+		 * (`?invite=1`) — a destination is an `<a>`, never a button that assigns `location`.
 		 */
 		inPlace: boolean;
-		/** Where the action goes when it is not in place. */
+		/** Where the action links when it is not in place. */
 		href: string;
 	};
 
@@ -197,6 +197,9 @@ export interface ConsoleLaneInput {
 // #endregion
 
 // #region Zone composition
+/** The partitions the lane's roster control offers — the canvas's tab set minus Archived. */
+export type LanePartition = Exclude<RosterTab, "archived">;
+
 /** The roster partition control's segments — the canvas's tab set minus Archived, which stays a canvas tab. */
 export const ROSTER_PARTITIONS: readonly LaneOption[] = [
 	{ value: "all", label: "All" },
@@ -204,6 +207,18 @@ export const ROSTER_PARTITIONS: readonly LaneOption[] = [
 	{ value: "member", label: "Member" },
 	{ value: "invitations", label: "Invitations" },
 ];
+
+/**
+ * The lane's reading of the shared roster partition. The partition is one value across the lane and
+ * the canvas (`rosterTab`), and the canvas also offers **Archived**, which the lane's segmented control
+ * does not: a lane that took Archived would list rows under a control with no segment selected and a
+ * Reset for a filter it cannot show. Archived therefore reads as **All** here — the lane is the live
+ * switcher, the canvas the place an archived entity is found — so the lane's list always matches a
+ * visible segment, whichever root picked the partition or whatever `?tab=` the page loaded with.
+ */
+export function lanePartition(tab: RosterTab): LanePartition {
+	return tab === "archived" ? "all" : tab;
+}
 
 /** The Members view's readings: the people (cards or table, by zoom) or the org chart. */
 export const MEMBERS_READINGS: readonly LaneOption[] = [
@@ -330,18 +345,13 @@ export function contextSwitchCopy(
 		};
 }
 
-/** The zones a composition draws, in render (and Tab) order — Z3 only when it exists. */
+/**
+ * The zones a composition draws, in render order — Z3 only when it exists. The island renders exactly
+ * this list as the lane's children, one zone per entry, so it is also the Tab order (the source scan in
+ * `lane-model.test.ts` pins that each zone's controls live in its own entry).
+ */
 export function laneZoneOrder(zones: LaneZones): LaneZoneId[] {
 	return zones.context ? ["header", "views", "context", "footer"] : ["header", "views", "footer"];
-}
-
-/**
- * How many FILLED controls the lane draws (§B.8 — one per decision region). The tier-2 create is the
- * only fill: the acting switch is tier-4 outlined, the reset tier-5 text, a selected segment a
- * selection state rather than a button.
- */
-export function laneFilledControls(zones: LaneZones): number {
-	return zones.footer.create ? 1 : 0;
 }
 // #endregion
 
@@ -402,8 +412,19 @@ export function laneInviteMeta(invite: IncomingInvite): MetaLineEntry[] {
 	return [`Invited as ${invite.roleLabel}`, invite.sentAt];
 }
 
+/**
+ * The collapsed rail's entity marks on the roster index: the expanded list's order (owned first, then
+ * the server's order) over the live entities, ignoring the partition and the search. Z3 folds away in
+ * the rail, so a filter applied there would hide entities for a reason the reader cannot see — the rail
+ * is the unfiltered switcher, in the same order as the expanded "All".
+ */
+export function laneRailEntities(items: readonly WorkspaceSummary[]): WorkspaceSummary[] {
+	const list = laneRosterList(items, [], "all");
+	return list.mode === "entities" ? list.rows : [];
+}
+
 /** Whether the roster's context controls hold anything the reset would clear. */
-export function rosterFiltered(tab: RosterTab, search: string): boolean {
+export function rosterFiltered(tab: LanePartition, search: string): boolean {
 	return tab !== "all" || search.trim().length > 0;
 }
 // #endregion
@@ -470,18 +491,46 @@ export function groupHasSignal(
 
 // #region "More" open state
 /**
- * The `localStorage` key that remembers whether one viewer keeps "More" open on one kind's consoles.
- * The viewer is their `@handle` when the roster carries it, else their member id.
+ * The "More" memory is ONE `localStorage` value (`LocalKeys.WORKSPACE_LANE_MORE`) holding a JSON map
+ * from a partition to `true` (open) or `false` (closed). The `StorageKey` union is closed, so a
+ * per-viewer key literal cannot be minted; the partition lives inside the value instead (the projects
+ * filter cache's pattern), and the island reads and writes it through the SSR-safe `readStored` /
+ * `writeStored` accessors.
  */
-export function laneMoreStorageKey(kind: WorkspaceKind, viewer: string): string {
-	return `${LocalKeys.WORKSPACE_LANE_MORE}.${kind}.${viewer}`;
+type MoreMemory = Record<string, boolean>;
+
+/**
+ * The partition that remembers whether one viewer keeps "More" open on one kind's consoles. The viewer
+ * is their `@handle` when the console carries it, else their member id.
+ */
+export function laneMorePartition(kind: WorkspaceKind, viewer: string): string {
+	return `${kind}.${viewer}`;
 }
 
-/** A stored "More" state: `"1"` open, `"0"` closed, anything else unknown. */
-export function parseMoreOpen(raw: string | null): boolean | null {
-	if (raw === "1") return true;
-	if (raw === "0") return false;
-	return null;
+/** The stored map, or an empty one for anything unset, unparsable or not a map of booleans. */
+function readMoreMemory(raw: string | null): MoreMemory {
+	if (!raw) return {};
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+		const out: MoreMemory = {};
+		for (const [key, value] of Object.entries(parsed)) {
+			if (typeof value === "boolean") out[key] = value;
+		}
+		return out;
+	} catch {
+		return {};
+	}
+}
+
+/** One partition's remembered "More" state from the stored value: open, closed, or unknown (`null`). */
+export function parseMoreOpen(raw: string | null, partition: string): boolean | null {
+	return readMoreMemory(raw)[partition] ?? null;
+}
+
+/** The stored value with one partition's "More" state set — every other partition kept as it was. */
+export function withMoreOpen(raw: string | null, partition: string, open: boolean): string {
+	return JSON.stringify({ ...readMoreMemory(raw), [partition]: open });
 }
 
 /**
