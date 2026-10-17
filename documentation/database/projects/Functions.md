@@ -613,6 +613,7 @@ The guarded column transition the board calls. Returns the updated ticket row as
 | → `completed`       | **additionally** `projects.can_review_project(project)` |
 | Cross-project stage | `p_to_stage_id` must belong to the ticket's project.    |
 | → `claimed` / `in_progress` / `in_review` from outside work | an escrow must be held — the no-hold-no-work gate in `trg_ticket_escrow_sync` raises `PF402` (Decision #165) |
+| Another stage, on a claimed ticket | **additionally** `projects.can_review_project(project)` — refused `42501` by `trg_ticket_immutability_guard`, because the hold is priced from the current stage (Decision #291) |
 
 ⚠️ **`status` is a money-moving column.** `trg_ticket_escrow_sync` releases escrow on entering
 `completed` and holds it on claim, which is why only the client/owner may drop a card into Done — a
@@ -685,15 +686,40 @@ on any ticket whose `NEW.status` is not `backlog`. `SECURITY INVOKER`.
 
 ### `projects.fn_ticket_immutability_guard() → trigger`
 
-`trg_ticket_immutability_guard` — `BEFORE UPDATE`. Once `OLD.current_assignee_id` is set, a caller
-who is not that assignee and not `security.is_admin()` cannot change `title`, `description`,
-`text_description`, `unit_price_cents`, `required_stages` or `workload_intensity` (`P0001`) — except
-that while the ticket is `reported_hidden` they may **raise** `workload_intensity`, the client's answer
-to a workload report (`fn_adjust_workload_report`). The window turns the lock round for the reporter:
-while `OLD.status = 'reported_hidden'` the assignee can change neither `status` nor
-`workload_intensity` (`42501`), so the suspension holds until the client, the sweep or an audit ends
-it (Decision #290). A `NULL` `auth.uid()` is not gated. `SECURITY DEFINER`, `search_path = public,
-projects, security, auth`.
+`trg_ticket_immutability_guard` — `BEFORE INSERT OR UPDATE`. A claimed ticket's terms bind both
+parties (Decision #291): what the client's wallet is held for is not the payee's to rewrite, and
+what the freelancer agreed to deliver is not the client's.
+
+| Rule | Who it binds | Refusal |
+| :--- | :----------- | :------ |
+| Once `OLD.current_assignee_id` is set, `title`, `description`, `text_description`, `unit_price_cents`, `required_stages` and `workload_intensity` do not change | Every signed-in caller, **the assignee included** | Client side `P0001` "…its content is locked to the client."; the assignee `42501` "You claimed this ticket on its client's terms…" |
+| Once claimed, `current_stage_id` moves only with `projects.can_review_project` | The assignee, and another freelancer on the project, on every path — `move_ticket` included (its own guard is `has_project_access`) | `42501` "Only the client moves a claimed ticket to another stage." |
+| An `INSERT` that names a `current_assignee_id` needs `projects.can_review_project` | Every signed-in caller | `42501` "A ticket is written by its client; a freelancer claims it." |
+| `payment_status` and `total_amount_paid` do not change; an `INSERT` starts them `unpaid` / `0` | A statement run as `anon` / `authenticated` | `42501` |
+
+Why each is money: `finance.fn_hold_ticket_escrow` holds `COALESCE(unit_price_cents, current
+stage's price)`, and approving a stage holds the next required one at once (the Chain Reaction,
+Decision #210), so an assignee who could edit the price chose the figure the client's wallet was
+held at next. Verified by execution: a tenfold edit, then the client's approval, held 8,000,000 for
+an 800,000 stage. The stage pointer decides which stage's price is held and where the chain counts
+the next installment from; `required_stages` decides how many installments there are. The
+`projects` schema is exposed and _Manage tickets_ admits a self-assigned `INSERT`, which let the
+payee write a ticket at its own price into the client's project. `finance.fn_auto_fund_drain` holds
+any `needs_funding` ticket on a from-wallet business project, so a client statement that flips
+`payment_status` started a hold nobody asked for.
+
+Exempt: one person on both sides (the assignee who also holds `can_review_project`, as on a personal
+project), `security.is_admin()`, and a `NULL` `auth.uid()` (the platform, cron, seed). The
+bookkeeping rule judges only a client role's own statement: **`SECURITY INVOKER` on purpose**, so
+inside a definer door — the claim's hold, a release, the chain — `current_user` is the door's owner
+and the escrow functions that keep those columns pass. A statement that restates the current value
+(PostgREST patching a whole row back) passes, because nothing moved.
+
+The workload-report window turns the `workload_intensity` rule round (Decision #290): while
+`OLD.status = 'reported_hidden'` the assignee can change neither `status` nor `workload_intensity`
+(`42501`, checked before the admin exemption), and the client may **raise** `workload_intensity` —
+the answer to the report (`fn_adjust_workload_report`). Regression probe:
+`supabase/probes/ticket_terms_payee_lock.sql`. `search_path = public, projects, security, auth`.
 
 ### `projects.fn_ticket_claim_before() → trigger`
 

@@ -73,40 +73,117 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Once claimed, client-owned content is locked; only the assignee (or an admin) may edit it.
--- A workload report turns that round for its window (Decision #290): the work is suspended until the
--- client answers, so the reporting assignee may neither resume the ticket nor move the W_i it disputes,
--- and raising W_i becomes the one edit the client may make (projects.fn_adjust_workload_report).
+-- Once claimed, a ticket's terms bind both parties and neither rewrites them alone (Decision #291;
+-- PRODUCT_SPEC §Editing & Reordering Restrictions, §Post-Onboarding Immutability). The terms are
+-- its title, description, price, stage sequence and W_i: the client may not change what the
+-- freelancer agreed to deliver, and the assignee — the payee — may not change what the client
+-- agreed to pay for. finance.fn_hold_ticket_escrow prices a hold from unit_price_cents (else the
+-- current stage's price) and the Chain Reaction holds the next required stage the moment the
+-- client approves one, so a payee who could edit either column chose the figure the client's
+-- wallet was next held at. For the same reason only review authority moves a claimed ticket's
+-- current_stage_id, on any path: the hold reads that stage's price and the Chain Reaction counts
+-- the next installment from it, and move_ticket admits anyone with project access — the
+-- assignee, or another freelancer on the project. One person on both sides (the owner working
+-- their own ticket, as on a personal project) has nobody to be held to; an admin and the platform
+-- (no auth.uid()) are not gated.
+--
+-- A ticket is written by its client: an INSERT naming an assignee needs review authority, or the
+-- payee could put a ticket of their own pricing into the client's project. payment_status and
+-- total_amount_paid are the escrow functions' bookkeeping, and the auto-fund drain holds any
+-- ticket marked needs_funding, so a client role's own statement may not move them. INVOKER on
+-- purpose: inside a SECURITY DEFINER door `current_user` is its owner, so the escrow functions
+-- that keep those columns pass and only a statement PostgREST runs as anon/authenticated is
+-- judged.
+--
+-- A workload report turns the W_i rule round for its window (Decision #290): the work is
+-- suspended until the client answers, so the reporting assignee may neither resume the ticket nor
+-- move the W_i it disputes, and raising W_i becomes the one edit the client may make
+-- (projects.fn_adjust_workload_report).
 CREATE OR REPLACE FUNCTION projects.fn_ticket_immutability_guard()
 RETURNS TRIGGER AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_payee boolean;
+    v_reviewer boolean;
 BEGIN
-    IF OLD.status = 'reported_hidden'::ticket_status
-        AND auth.uid() IS NOT NULL
-        AND auth.uid() = OLD.current_assignee_id
+    IF current_user IN ('anon', 'authenticated') THEN
+        IF TG_OP = 'INSERT' THEN
+            IF NEW.payment_status IS DISTINCT FROM 'unpaid'::payment_status
+                OR NEW.total_amount_paid IS DISTINCT FROM 0 THEN
+                RAISE EXCEPTION USING
+                    ERRCODE = '42501',
+                    MESSAGE = 'A new ticket starts unpaid; its payment state is kept by its escrow.';
+            END IF;
+        ELSIF NEW.payment_status IS DISTINCT FROM OLD.payment_status
+            OR NEW.total_amount_paid IS DISTINCT FROM OLD.total_amount_paid THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'A ticket''s payment state is kept by its escrow and cannot be written '
+                    || 'directly.';
+        END IF;
+    END IF;
+
+    IF v_uid IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    IF TG_OP = 'UPDATE'
+        AND OLD.status = 'reported_hidden'::ticket_status
+        AND v_uid = OLD.current_assignee_id
         AND (NEW.status IS DISTINCT FROM OLD.status
             OR NEW.workload_intensity IS DISTINCT FROM OLD.workload_intensity) THEN
         RAISE EXCEPTION 'Work on this ticket is suspended until the client answers your workload report.'
             USING ERRCODE = '42501';
     END IF;
 
-    IF OLD.current_assignee_id IS NOT NULL
-        AND auth.uid() IS NOT NULL
-        AND auth.uid() <> OLD.current_assignee_id
-        AND NOT security.is_admin() THEN
-        IF NEW.title IS DISTINCT FROM OLD.title
-            OR NEW.description IS DISTINCT FROM OLD.description
-            OR NEW.text_description IS DISTINCT FROM OLD.text_description
-            OR NEW.unit_price_cents IS DISTINCT FROM OLD.unit_price_cents
-            OR NEW.required_stages IS DISTINCT FROM OLD.required_stages
-            OR (NEW.workload_intensity IS DISTINCT FROM OLD.workload_intensity
-                AND NOT (OLD.status = 'reported_hidden'::ticket_status
-                    AND NEW.workload_intensity > OLD.workload_intensity)) THEN
-            RAISE EXCEPTION 'This ticket has been claimed by a freelancer; its content is locked to the client.';
+    IF security.is_admin() THEN
+        RETURN NEW;
+    END IF;
+
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.current_assignee_id IS NOT NULL
+            AND NOT projects.can_review_project(NEW.project_id) THEN
+            RAISE EXCEPTION 'A ticket is written by its client; a freelancer claims it.'
+                USING ERRCODE = '42501';
         END IF;
+        RETURN NEW;
+    END IF;
+
+    IF OLD.current_assignee_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+    v_payee := v_uid = OLD.current_assignee_id;
+    v_reviewer := projects.can_review_project(OLD.project_id);
+    IF v_payee AND v_reviewer THEN
+        RETURN NEW;
+    END IF;
+
+    IF NEW.current_stage_id IS DISTINCT FROM OLD.current_stage_id AND NOT v_reviewer THEN
+        RAISE EXCEPTION 'Only the client moves a claimed ticket to another stage.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    IF NEW.title IS DISTINCT FROM OLD.title
+        OR NEW.description IS DISTINCT FROM OLD.description
+        OR NEW.text_description IS DISTINCT FROM OLD.text_description
+        OR NEW.unit_price_cents IS DISTINCT FROM OLD.unit_price_cents
+        OR NEW.required_stages IS DISTINCT FROM OLD.required_stages
+        OR (NEW.workload_intensity IS DISTINCT FROM OLD.workload_intensity
+            AND NOT (NOT v_payee
+                AND OLD.status = 'reported_hidden'::ticket_status
+                AND NEW.workload_intensity > OLD.workload_intensity)) THEN
+        IF v_payee THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'You claimed this ticket on its client''s terms: its content, price, '
+                    || 'stages and workload stay as the client set them.';
+        END IF;
+        RAISE EXCEPTION
+            'This ticket has been claimed by a freelancer; its content is locked to the client.';
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, security, auth;
+$$ LANGUAGE plpgsql SET search_path = public, projects, security, auth;
 
 -- Stamp claim time on claim; on freelancer removal, reset to backlog (re-enter the "New" backlog).
 CREATE OR REPLACE FUNCTION projects.fn_ticket_claim_before()

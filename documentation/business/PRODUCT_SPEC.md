@@ -2054,7 +2054,10 @@ A claim whose escrow cannot be held is refused and the ticket moves to **Needs f
 ##### Editing & Reordering Restrictions
 
 - **Editing:** Clients may only edit a ticket that has **not yet been claimed** by a freelancer.
-  Once claimed, ticket details (title, description, budget) are locked.
+  Once claimed, ticket details (title, description, budget) are locked — for both parties. The
+  freelancer who claimed it cannot reword or reprice it, change the stages it requires, or move it
+  to another stage either: those are the terms the client's escrow is held against, and every hold
+  is priced from them. A freelancer never writes a ticket; they claim one (Decision #291).
 - **Stage Reordering Post-Claim:** Once a ticket is claimed, clients may only reorder the stages
   that have **not yet been started or claimed** — the claimed ticket's current and completed stages
   are frozen in sequence.

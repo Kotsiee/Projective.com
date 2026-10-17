@@ -343,7 +343,8 @@ SELECT TO public USING (
     );
 
 -- The assignee manages their claimed ticket; the project owner manages otherwise. Column-level
--- immutability once claimed is enforced by projects.fn_ticket_immutability_guard (0007).
+-- immutability once claimed — for the assignee as much as the owner — and the refusal of a
+-- self-assigned INSERT are enforced by projects.fn_ticket_immutability_guard (Decision #291).
 CREATE POLICY "Manage tickets" ON projects.tickets FOR ALL TO public USING (
     current_assignee_id = auth.uid ()
     OR EXISTS (

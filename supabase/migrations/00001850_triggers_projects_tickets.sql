@@ -22,7 +22,7 @@ CREATE OR REPLACE TRIGGER trg_ticket_ordering_guard
     EXECUTE FUNCTION projects.fn_ticket_ordering_guard();
 
 CREATE OR REPLACE TRIGGER trg_ticket_immutability_guard
-    BEFORE UPDATE ON projects.tickets
+    BEFORE INSERT OR UPDATE ON projects.tickets
     FOR EACH ROW
     EXECUTE FUNCTION projects.fn_ticket_immutability_guard();
 
