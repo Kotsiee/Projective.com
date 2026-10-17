@@ -47,6 +47,10 @@ export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
 	"blog",
 	"careers",
 	"status",
+	// The public editorial routes (`/changelog`, `/feedback`) and the landing track's `/features`.
+	"changelog",
+	"feedback",
+	"features",
 	// Dashboard / app surfaces
 	"dashboard",
 	"projects",

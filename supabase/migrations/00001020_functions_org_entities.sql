@@ -942,7 +942,8 @@ AS $$
     SELECT lower(btrim(COALESCE(p_handle, ''))) = ANY (ARRAY[
         'about', 'explore', 'help', 'view', 'join', 'login', 'register', 'signin', 'signup', 'logout',
         'forgot-password', 'reset-password', 'verify', 'index', 'home', 'pricing', 'terms', 'privacy',
-        'legal', 'contact', 'blog', 'careers', 'status', 'dashboard', 'projects', 'project', 'business',
+        'legal', 'contact', 'blog', 'careers', 'status', 'changelog', 'feedback', 'features',
+        'dashboard', 'projects', 'project', 'business',
         'businesses', 'teams', 'team', 'messages', 'inbox', 'files', 'file', 'inspect', 'share', 'exit', 'wallet', 'billing',
         'settings', 'services', 'service', 'products', 'portfolio', 'reviews', 'articles', 'members',
         'departments', 'education', 'experience', 'availability', 'become-partner', 'onboarding',

@@ -31,6 +31,9 @@
 	--guest-aside-cur-w: var(--guest-aside-w-expanded);
 	/* Clearance from the viewport inline-start edge to the body content (aside + both gaps). */
 	--guest-body-inset-inline: calc(var(--guest-inset) + var(--guest-aside-cur-w) + var(--guest-inset));
+	/* The package's pinned-chrome hook (packages/ui styles/index.css): in-page sticky parts — the
+	   editorial TOC rail, reading progress, heading scroll margins — clear the SCROLLED header pill. */
+	--chrome-pinned-h: var(--site-header-pinned-h, 0px);
 }
 
 /* Collapsed rail width — from the pre-painted root attribute (no flash). */
