@@ -257,6 +257,12 @@
     font-variant-numeric: tabular-nums;
 }
 
+/* The Standing rung's factors (Teams P1): one MetaLine beneath the caption, on the caption's leading;
+   scoped under the item so it outranks the MetaLine sheet's own line-height whatever the load order. */
+.pf-metric .pf-metric__facts {
+    line-height: var(--leading-snug, 1.35);
+}
+
 .pf-metric__from {
     font-size: var(--text-sm);
     font-weight: var(--fw-normal);

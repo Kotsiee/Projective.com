@@ -8,7 +8,7 @@ import { Icon } from "@projective/ui/icons";
 import type { PublicCallOffer } from "@projective/types/scheduling";
 import { AddToProjectMenu } from "./hire/AddToProjectMenu.tsx";
 import { HireMenu } from "./hire/HireMenu.tsx";
-import { type HireProject, rigFor } from "../core/profile-model.ts";
+import { type HireProject, messageReachable, rigFor } from "../core/profile-model.ts";
 import {
 	gate,
 	isFollowing as followsNow,
@@ -33,11 +33,13 @@ import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
  * are mounted once, by the hero, on the shared signals in `core/profile-state.ts`.
  *
  * Which controls render is `rigFor`'s decision (root CLAUDE.md §8 Decision #108): a SELLER leads
- * with **Hire** and **Add to project** with Message + Follow as icon-only secondaries; a client or
- * enterprise BUYER sees Message + Follow as text; a BUSINESS (Decision #244) leads with a filled
- * **Message** that reaches its owner, Follow icon-only beside it, and a member who may edit it sees
- * **Manage business** (a link to its console) where Message would be; the OWNER sees Settings +
- * Share. Fills follow the Button Interaction Matrix (DESIGN_SYSTEM §B.8.1 / §D.7.7, Decision #183):
+ * with **Hire** and **Add to project** with Message + Follow as icon-only secondaries — a team's
+ * Message reaching its owner, and a member who may edit a TEAM seeing **Manage team** (a tier-4 link
+ * to its console) in Hire's place (Teams P1); a client or enterprise BUYER sees Message + Follow as
+ * text; a BUSINESS (Decision #244) leads with a filled **Message** that reaches its owner, Follow
+ * icon-only beside it, and a member who may edit it sees **Manage business** (a link to its console)
+ * where Message would be; the OWNER sees Settings + Share. Fills follow the Button Interaction Matrix
+ * (DESIGN_SYSTEM §B.8.1 / §D.7.7, Decision #183):
  * Hire and a business's Message are the teal brand pill on its white ink, Add to project the
  * monochrome inverted pill wherever it renders, every other control neutral outlined. Hire renders
  * for a guest (a listing's preview is public) but its PRESS opens the sign-in prompt in place of the
@@ -126,7 +128,7 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 		authed,
 		restricted: props.restricted,
 		manages: !!profile.workspace?.consoleHref,
-		messageable: profile.kind !== "business" || !!profile.messageTo,
+		messageable: messageReachable(profile),
 	});
 	const isFollowing = followsNow(viewer);
 	const celebrating = followCelebrating.value;
@@ -148,8 +150,14 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 		)
 		: null;
 
-	/** The icon-only Message — the seller rig's compact secondary. */
-	const messageIcon = (
+	/** Who a Message reaches when it is not the profile itself — a team's or business's owner. */
+	const recipient = profile.messageTo;
+
+	/**
+	 * The icon-only Message — the seller rig's compact secondary. On a team it opens the DM with the
+	 * team's owner (`messageTo`), and it is withheld when the read names none (`rig.message`).
+	 */
+	const messageIcon = rig.message && (
 		<Tooltip content="Message" placement="bottom">
 			<Button
 				rounded
@@ -158,7 +166,9 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 				severity="neutral"
 				variant="outlined"
 				class="pf-rig__cta pf-rig__cta--neutral pf-rig__cta--icon"
-				aria-label={`Message ${profile.name}`}
+				aria-label={recipient
+					? `Message ${recipient.name} at ${profile.name}`
+					: `Message ${profile.name}`}
 				icon={<Icon name="message" size="sm" />}
 				onClick={() => openMessage(viewer)}
 			/>
@@ -187,19 +197,27 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 	);
 
 	/**
+	 * The console link for a workspace's editor — "Manage business" in a business's Message slot,
+	 * "Manage team" in a team's Hire slot (Teams P1). Tier 4: a utility link, never a fill.
+	 */
+	const consoleHref = profile.workspace?.consoleHref ?? null;
+	const manageLink = (label: string) =>
+		consoleHref
+			? (
+				<a class={`${outlined} pf-rig__cta pf-rig__cta--neutral`} href={consoleHref}>
+					<span class="ui-button__label">{label}</span>
+				</a>
+			)
+			: null;
+
+	/**
 	 * The business rig's lead (BP1): Message as the one filled control — Hire's tier-3 teal pill,
 	 * because it is the only way in — or, for a member who may edit the business, a tier-4 link to
 	 * its console in Message's place. Nothing at all when the read names no owner for Message to
 	 * reach (`primary: "none"`): Follow then stands alone.
 	 */
-	const consoleHref = profile.workspace?.consoleHref ?? null;
-	const recipient = profile.messageTo;
 	const businessLead = rig.primary === "manage" && consoleHref
-		? (
-			<a class={`${outlined} pf-rig__cta pf-rig__cta--neutral`} href={consoleHref}>
-				<span class="ui-button__label">Manage business</span>
-			</a>
-		)
+		? manageLink("Manage business")
 		: rig.primary === "message" && recipient
 		? (
 			<Button
@@ -253,6 +271,7 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 				: rig.layout === "seller"
 				? (
 					<>
+						{rig.primary === "manage" && manageLink("Manage team")}
 						{rig.hire && (
 							<Popover
 								open={hireOpen}

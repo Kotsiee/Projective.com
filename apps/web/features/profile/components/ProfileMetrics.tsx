@@ -1,10 +1,13 @@
 import type { ComponentChildren, JSX } from "preact";
+import { MetaLine } from "@projective/ui/display";
 import { MoneyView } from "@projective/ui/display/money";
 import {
 	type EstimatedSpend,
 	isFastResponder,
+	type ProfileMetaFact,
 	responseLabel,
 	reviewsHref,
+	standingFactorFacts,
 } from "../core/profile-model.ts";
 import type { ProfileView } from "../types/profile-types.ts";
 
@@ -19,6 +22,11 @@ import type { ProfileView } from "../types/profile-types.ts";
  * strip is one place to look. "Fast responder" rides as the response figure's caption rather than a
  * chip, and a free consultation is a figure of its own — a container asserts interactivity (§B.11),
  * and neither of these is a control.
+ *
+ * A seller's Standing — a freelancer's or a TEAM's, read from the subject's own Standing row (Teams
+ * P1) — carries the client-valued factors behind the rung beneath its caption as one MetaLine
+ * ("96% on time · 100% completion · No disputes", `standingFactorFacts`), from the first signed-off
+ * stage on. A business has no Standing at all (Decision #244).
  */
 export interface ProfileMetricsProps {
 	profile: ProfileView;
@@ -32,6 +40,8 @@ interface Metric {
 	label: string | null;
 	sub?: string;
 	href?: string;
+	/** Facts beneath the caption, as one MetaLine — the Standing rung's factors (Teams P1). */
+	facts?: ProfileMetaFact[];
 }
 
 /**
@@ -71,6 +81,7 @@ function metricsFor(profile: ProfileView, spend: EstimatedSpend | null): Metric[
 			value: standing.label,
 			label: "Standing",
 			sub: volumeLabel ?? undefined,
+			facts: standingFactorFacts(standing.factors),
 		});
 	} else if (volumeLabel) {
 		items.push({ key: "volume", value: volumeLabel, label: null });
@@ -113,6 +124,9 @@ function MetricBody({ metric }: { metric: Metric }): JSX.Element {
 					{metric.label && metric.sub && <span class="pf-metric__dot" aria-hidden="true">·</span>}
 					{metric.sub && <span class="pf-metric__sub">{metric.sub}</span>}
 				</span>
+			)}
+			{metric.facts && metric.facts.length > 0 && (
+				<MetaLine as="span" size="xs" class="pf-metric__facts" items={metric.facts} />
 			)}
 		</>
 	);

@@ -189,6 +189,14 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   based on predefined **Contribution Agreements**.
 - **Unified Identity:** Teams can create "Services" (Sessions) and bid on "Projects" as a single
   entity, building a collective reputation and portfolio.
+- **The public page:** a Team's storefront is its `/@handle` — showcase, services, the public
+  roster, its collective reviews and its own Standing — while `/teams/:teamHandle` is the members'
+  console. The page opens for anyone while the Team is **active** and **public** or **unlisted** (an
+  unlisted Team by its link only, never listed). While it is a **draft**, **archived** or
+  **invite-only** the page is missing to everyone outside it — worded exactly as an unknown handle —
+  and its members see it with a note saying why ("Only members can see this until the team is
+  published", and for a Team created invite-only, "…and no longer invite-only"), with a link to the
+  Team's Settings for a member who may open them. A Team is created draft and invite-only (Teams P1).
 
 ##### Role-Based Access Control (RBAC)
 
@@ -495,17 +503,26 @@ stranger's page is a discovery destination; the viewer's own profile lights noth
 team, business or enterprise — the roster. On a business the completed projects it commissioned
 (public ones whose client allows portfolio display) are its client proof and lead the section, and
 a roster row reads the member's title or role · "since" as plain text, never a chip
-(Decision #244). A portfolio tile whose piece is a video carries the
+(Decision #244). On a **team** the roster is a list of rows — avatar, name, and one line of plain
+text: the member's public role (a preset's name; a custom role reads as the preset it is based on,
+its own name being a members-only fact) · "since" the year they joined · their top two skills — each
+row linking to the member's own page; no payout stake and no workload is ever shown on the public
+page (Teams P1). A portfolio tile whose piece is a video carries the
 same control set's compact pair — play ⁄ pause and mute — in its top corner, revealed with the
 caption; it never starts on its own, and pressing a control never opens the piece. **Experience** shows a person's career history,
 education and verified certifications, and renders only for an individual (a company has no CV).
 **Reviews** is the dual-track reputation, filterable in place by the stance the profile held (all ·
-as freelancer · as client). **Posts** is what the entity has published. There is no fifth section;
+as freelancer · as client). A **team's** Reviews are its collective ones — the reviews whose subject
+is the team — under one aggregate star rating with the review count beside it, and no stance
+filter (a team is only ever the provider); a member's personal reviews stay on that member's own
+page and are never merged in (Teams P1). **Posts** is what the entity has published. There is no fifth section;
 a fact that fits none of the four does not get a tab, it gets a line in the context bar or nothing.
 
 **The hero states identity, proof and one conversion.** Avatar · name · `@handle` and entity kind ·
 the action rig · three inline metrics — the rating, completed stages, and the earned Standing rung
-(with delivered volume, when disclosed) — beside the **showcase**: a raised 16:10 frame carrying
+(with delivered volume, when disclosed; a seller's rung — a freelancer's or a team's own — carries
+the factors behind it beneath, as one line of text: on-time delivery · completion · disputes, from
+the first signed-off stage on, Teams P1) — beside the **showcase**: a raised 16:10 frame carrying
 ONE primary still (the thumbnail every card and preview of the profile leads with, so it is never a
 video) and up to five further slides — six slots in all — each a still or a full-length video. The showcase advances
 on its own — a still dwells, a video plays through and then holds its last frame for the same
@@ -529,7 +546,10 @@ Follow as its secondary. On a **business** Message is the one filled control (th
 takes on a seller) with Follow as an icon beside it, and it opens a direct message with the
 business's **owner** — a direct message is between people; a member who may edit the business sees
 **Manage business** (its console) in Message's place, and there is no Hire, no Add to project and no
-price anywhere on the page (Decision #244). Both conversion controls open a popover **at the button**, never a scroll
+price anywhere on the page (Decision #244). On a **team** the rig is the seller's, and its Message
+likewise opens a direct message with the team's **owner**; a member who may edit the team's profile
+sees **Manage team** (its console, a utility link) in Hire's place, with Add to project still beside
+it (Teams P1). Both conversion controls open a popover **at the button**, never a scroll
 to the Services row. **Hire** lists the seller's listings (thumbnail · title · starting price ·
 rating) and, when the seller takes discovery calls, a "Book consultation" row carrying its price or
 the word Free; it renders only when there is something to list. Picking a listing opens the
@@ -599,13 +619,16 @@ A fact that is unmeasured or absent is omitted whole; nothing on the bar is infe
 neighbouring signal.
 
 **The owner manages the profile from three views of it.** When the person looking at a profile is
-the one who manages it — the individual, a team's owner or lead, a business's owner or an admin
-(whoever holds its profile right, Decision #244), an
+the one who manages it — the individual, a team's owner or an admin (whoever holds its profile
+right; a team gives a lead that right through a custom role, Decision #250 (b)), a business's owner
+or an admin (whoever holds its profile right, Decision #244), an
 enterprise's owner or admin — an owner header sits above the page with three tabs, each its own
 address:
 
 - **Preview** (`/[handle]`) is the profile as a visitor sees it, and its conversion controls say
-  they are inert here rather than acting on the owner's own account. The one thing the owner can
+  they are inert here rather than acting on the owner's own account — except that a team's or a
+  business's editor sees its console link (**Manage team** in Hire's place, **Manage business** in
+  Message's), and the Preview tab's note says so (Decision #244; Teams P1). The one thing the owner can
   change from it is the photo: hovering it reveals an edit overlay that opens the File Picker to
   upload a picture, choose one from their library or bring in their sign-in account's picture, then
   frame it (Decision #158).

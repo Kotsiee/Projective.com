@@ -353,13 +353,23 @@ a.pf-tag:focus-visible {
 
 /* #region Member notice */
 /*
- * A member's note above a business page outsiders cannot open (`ProfileMemberNotice`, BP1): one
- * InlineNotice line. Unboxed — no fill, no border; spacing is the only separation. It sits OUTSIDE
- * `.pf`, so it cannot read `--pf-gutter` and restates that gutter's three steps instead.
+ * A member's note above a team or business page outsiders cannot open (`ProfileMemberNotice`, BP1;
+ * Teams P1): one InlineNotice line, and on a team page the tier-4 Settings link beside it. Unboxed —
+ * no fill, no border; spacing is the only separation. It sits OUTSIDE `.pf`, so it cannot read
+ * `--pf-gutter` and restates that gutter's three steps instead. The row wraps, so on a phone the
+ * link drops beneath the line rather than squeezing it.
  */
 .pf-notice {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-4);
     padding: var(--space-4) var(--space-6) 0;
+}
+
+/* The Settings link keeps its own width; the line takes the rest. */
+.pf-notice__action {
+    flex: none;
 }
 
 /*

@@ -20,6 +20,7 @@ import {
 	DEV_LOW_BALANCES,
 	DEV_BUSINESS_KYBS,
 	DEV_BUSINESS_PAGES,
+	DEV_TEAM_PAGES,
 	DEV_SESSION_STATES,
 	DEV_DISPUTE_STATES,
 	DEV_NOTIFICATIONS,
@@ -100,8 +101,8 @@ function reloadExplorePage(): void {
 }
 
 /**
- * Reload when the open page is a profile (`/@handle…`), so a server-side business-page simulation
- * applies at once. Elsewhere nothing reads it until the next profile request.
+ * Reload when the open page is a profile (`/@handle…`), so a server-side business- or team-page
+ * simulation applies at once. Elsewhere nothing reads it until the next profile request.
  */
 function reloadProfilePage(): void {
 	if (globalThis.location?.pathname.startsWith("/@")) globalThis.location.reload();
@@ -585,6 +586,25 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						disabled={!o.enabled}
 						onChange={(businessPage) => {
 							patchDevContext({ businessPage });
+							reloadProfilePage();
+						}}
+					/>
+				</Field>
+
+				{
+					/* A team's /:handle (Teams P1) — the business axis's twin. Every seeded team is active and
+				    public, so this is the only route to a member's notice (draft · archived · invite-only,
+				    with the Settings link for a settings holder) or an outsider's 404 (Missing).
+				    Server-side via `pj.dev.team-page`, so a change reloads a profile page. */
+				}
+				<Field label="Team page" hint="member notice · outsider 404 · reloads">
+					<Segment
+						name="Team page"
+						options={DEV_TEAM_PAGES}
+						value={o.teamPage}
+						disabled={!o.enabled}
+						onChange={(teamPage) => {
+							patchDevContext({ teamPage });
 							reloadProfilePage();
 						}}
 					/>

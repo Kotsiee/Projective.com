@@ -8,6 +8,9 @@
  * moves on one side alone makes the console offer an action the database refuses (or hide one it would
  * allow). The two cannot be compared by a type-checker; this test compares the FILE CONTENT (the
  * `hired-teams.contract.test.ts` technique), so it fails with no database.
+ *
+ * It is also the handle namespace guard (Teams P1): every top-level segment `apps/web/routes/` serves
+ * must be a reserved handle, so a person or a team can never claim `@saved` and shadow `/saved`.
  */
 import { assert, assertEquals } from "@std/assert";
 import {
@@ -174,6 +177,56 @@ Deno.test("org.fn_is_reserved_handle reserves exactly RESERVED_HANDLES", () => {
 	assertEquals(new Set(list), new Set(RESERVED_HANDLES));
 	assertEquals(list.length, new Set(list).size, "the SQL list repeats a handle");
 });
+
+// #region The handle namespace guard (Teams P1)
+
+const ROUTES = new URL("apps/web/routes/", REPO);
+
+/**
+ * The URL segment one entry of a routes directory claims, or `null` for an entry that claims none:
+ * a `_`-prefixed file (`_app`, `_layout`, `_middleware`), a `[param]`, an `index`, or a file that is
+ * not a route module (a test, a declaration). A route group `(…)` is descended by the caller, since
+ * it adds no segment of its own.
+ */
+function routeSegment(name: string, isDirectory: boolean): string | null {
+	if (name.startsWith("_") || name.startsWith(".") || name.startsWith("[")) return null;
+	if (isDirectory) return name;
+	const match = /^(.+)\.(tsx|ts|jsx|js)$/.exec(name);
+	if (!match || match[1].includes(".")) return null;
+	return match[1] === "index" ? null : match[1];
+}
+
+/** Every top-level URL segment the routes tree serves — route groups are URL-transparent. */
+function topLevelSegments(dir: URL): string[] {
+	const out: string[] = [];
+	for (const entry of Deno.readDirSync(dir)) {
+		if (entry.isDirectory && /^\(.+\)$/.test(entry.name)) {
+			out.push(...topLevelSegments(new URL(`${entry.name}/`, dir)));
+			continue;
+		}
+		const segment = routeSegment(entry.name, entry.isDirectory);
+		if (segment) out.push(segment);
+	}
+	return out;
+}
+
+Deno.test("every top-level route segment is a reserved handle, so no @handle can shadow a page", () => {
+	const segments = [...new Set(topLevelSegments(ROUTES))].sort();
+	assert(
+		segments.includes("teams") && segments.includes("explore") && segments.includes("api"),
+		"the routes tree was not read through its groups",
+	);
+	const missing = segments.filter((segment) => !RESERVED_HANDLES.has(segment));
+	assertEquals(
+		missing,
+		[],
+		`reserve ${
+			missing.join(", ")
+		} in RESERVED_HANDLES AND org.fn_is_reserved_handle in the same change`,
+	);
+});
+
+// #endregion
 
 Deno.test("finance.split_rule_type declares SplitRuleType.options, and the template input covers each", () => {
 	const sql = read(ENUMS_SQL);
