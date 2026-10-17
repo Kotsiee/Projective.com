@@ -5,6 +5,9 @@
  * by the app-frame styles. The Material You theming engine (`@projective/ui/system`) writes the
  * runtime color custom-properties; this file only wires the static token + frame layer.
  */
+// Must stay the FIRST import: puts Zod in jitless mode before any island builds a schema, so its
+// `new Function` eval probe never trips the CSP (see the module's header).
+import "@web/utils/zod-jitless.ts";
 import "@projective/ui/styles";
 import "@ui/layout/styles/index.css";
 import "@ui/navigation/styles/index.css";
