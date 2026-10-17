@@ -20,6 +20,10 @@ import { signal } from "@preact/signals";
 import type { ContextRole, ContextType, UserContext } from "@projective/types/auth";
 import type { ProjectAccess, ProjectStatus } from "@projective/types/projects";
 import { encodeLandingSim, LANDING_SIM_COOKIE } from "@features/projects/core/landing-sim.ts";
+import {
+	BUSINESS_PAGE_SIM_COOKIE,
+	type BusinessPageSim,
+} from "@features/profile/core/business-page-sim.ts";
 import { DISCOVERY_SIM_COOKIE, encodeDiscoverySim } from "@features/explore/core/discovery-sim.ts";
 import { EMBEDDINGS_OVERRIDE_COOKIE } from "@projective/types/explore";
 import { AGE_OVERRIDE_COOKIE, OPERATOR_MODE_OVERRIDE_COOKIE } from "@projective/types/auth";
@@ -91,6 +95,8 @@ export type DevRole = DevSeamRole;
 export type DevProjectAccess = "auto" | ProjectAccess;
 /** A simulated lifecycle status for the open engagement, or `auto` for the real one. */
 export type DevProjectStatus = "auto" | ProjectStatus;
+/** A simulated business `/:handle` state, or `auto` for the database's answer (Decision #244). */
+export type DevBusinessPage = "auto" | BusinessPageSim;
 /** The engagement delivery format a developer can impersonate (submissions ticket handling). */
 export type {
 	DevAccountLifecycle,
@@ -205,6 +211,14 @@ export interface DevOverrides {
 	 * it rides the same cookie as {@link projectAccess}.
 	 */
 	projectStatus: DevProjectStatus;
+	/**
+	 * Simulated state of a business's `/:handle` (BP1, Decision #244): a member's view of a draft,
+	 * archived or invite-only business (the member notice), or `missing` — the page as an outsider
+	 * meets it (the "Profile not found" 404). Both seeded businesses are active and public, so this is
+	 * the only route to those states. Server-side, through the `pj.dev.business-page` cookie the
+	 * profile middleware honours in development only; the panel reloads a profile page to apply it.
+	 */
+	businessPage: DevBusinessPage;
 	/**
 	 * Simulated acting-member view for the Members tab (task §4) — the four access conditions the roster
 	 * rules branch on (Owner/Admin · Manager · Freelancer assigned · Freelancer unassigned). Consumed by
@@ -441,6 +455,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	projectOnboarding: "auto",
 	projectAccess: "auto",
 	projectStatus: "auto",
+	businessPage: "auto",
 	memberRole: "owner_admin",
 	hasPendingInvites: true,
 	hasPendingRequests: true,
@@ -550,6 +565,18 @@ export const DEV_PROJECT_STATUSES: ReadonlyArray<DevOption<DevProjectStatus>> = 
 	{ value: "on_hold", label: "On hold" },
 	{ value: "completed", label: "Completed" },
 	{ value: "cancelled", label: "Cancelled" },
+];
+
+/**
+ * Simulated business-page states in display order (Decision #244). `Auto` defers to the database;
+ * the three reasons are a member's view, `Missing` an outsider's.
+ */
+export const DEV_BUSINESS_PAGES: ReadonlyArray<DevOption<DevBusinessPage>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "draft", label: "Draft" },
+	{ value: "archived", label: "Archived" },
+	{ value: "invite_only", label: "Invite-only" },
+	{ value: "missing", label: "Missing (outsider)" },
 ];
 
 /**
@@ -924,6 +951,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devProjectAccess;
 		if (next.projectStatus !== "auto") root.dataset.devProjectStatus = next.projectStatus;
 		else delete root.dataset.devProjectStatus;
+		if (next.businessPage !== "auto") root.dataset.devBusinessPage = next.businessPage;
+		else delete root.dataset.devBusinessPage;
 		root.dataset.devMemberRole = next.memberRole;
 		root.dataset.devPendingInvites = String(next.hasPendingInvites);
 		root.dataset.devPendingRequests = String(next.hasPendingRequests);
@@ -1023,6 +1052,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devProjectOnboarding;
 		delete root.dataset.devProjectAccess;
 		delete root.dataset.devProjectStatus;
+		delete root.dataset.devBusinessPage;
 		delete root.dataset.devMemberRole;
 		delete root.dataset.devPendingInvites;
 		delete root.dataset.devPendingRequests;
@@ -1064,6 +1094,7 @@ function reflect(next: DevOverrides): void {
 		root.removeAttribute("dir");
 	}
 	writeLandingCookie(next);
+	writeBusinessPageCookie(next);
 	writeDiscoveryCookie(next);
 	writeEmbeddingsCookie(next);
 	writeAgeCookie(next);
@@ -1147,6 +1178,17 @@ function writeLandingCookie(next: DevOverrides): void {
 	document.cookie = value
 		? `${LANDING_SIM_COOKIE}=${encodeURIComponent(value)}; path=/; samesite=lax`
 		: `${LANDING_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}
+
+/**
+ * Mirror the business-page axis into the `pj.dev.business-page` cookie — the only channel that reaches
+ * the `/[handle]` middleware, which decides a business page before it renders (Decision #244). Written
+ * while simulation is on and the axis is not `auto`; removed otherwise.
+ */
+function writeBusinessPageCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.businessPage !== "auto"
+		? `${BUSINESS_PAGE_SIM_COOKIE}=${next.businessPage}; path=/; samesite=lax`
+		: `${BUSINESS_PAGE_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 /** Patch a subset of the overrides. */

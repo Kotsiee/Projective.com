@@ -20,7 +20,14 @@ export interface OwnerNavProps {
 	active: OwnerNavTab;
 	/** Whether the Availability tab applies — never for an under-18 account (Decision #208). */
 	scheduling?: boolean;
+	/**
+	 * The Preview tab's note, when the preview is not quite the visitors' page — a business editor's
+	 * rig shows Manage business where visitors see Message (Decision #244).
+	 */
+	note?: string;
 }
+
+const PREVIEW_NOTE = "This is how your profile looks to visitors.";
 
 const TABS: ReadonlyArray<{ id: OwnerNavTab; label: string; icon: "eye" | "edit" | "calendar"; path: string }> = [
 	{ id: "preview", label: "Preview profile", icon: "eye", path: "" },
@@ -28,7 +35,9 @@ const TABS: ReadonlyArray<{ id: OwnerNavTab; label: string; icon: "eye" | "edit"
 	{ id: "availability", label: "Availability", icon: "calendar", path: "/edit/availability" },
 ];
 
-export function OwnerNav({ handle, active, scheduling = true }: OwnerNavProps): JSX.Element {
+export function OwnerNav(
+	{ handle, active, scheduling = true, note = PREVIEW_NOTE }: OwnerNavProps,
+): JSX.Element {
 	const tabs = scheduling ? TABS : TABS.filter((tab) => tab.id !== "availability");
 	const base = `/${handle.startsWith("@") ? handle : `@${handle}`}`;
 	return (
@@ -47,9 +56,7 @@ export function OwnerNav({ handle, active, scheduling = true }: OwnerNavProps): 
 					</li>
 				))}
 			</ul>
-			{active === "preview" && (
-				<p class="pf-ownernav__note">This is how your profile looks to visitors.</p>
-			)}
+			{active === "preview" && <p class="pf-ownernav__note">{note}</p>}
 		</nav>
 	);
 }

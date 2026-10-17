@@ -1,5 +1,7 @@
 import type { JSX } from "preact";
+import { MetaLine } from "@projective/ui/display";
 import { profileHref } from "@features/explore/core/routing.ts";
+import { memberSinceLabel } from "../../core/profile-model.ts";
 import type { DepartmentEntry, MemberEntry, ProfileKind } from "../../types/profile-types.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
@@ -10,6 +12,9 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  * under each (no chips — the group heading already says which department the row is in), with
  * members assigned to no department gathered last under "Unassigned". Departments with nobody in
  * them are omitted, and an enterprise with no department set falls back to the flat grid.
+ *
+ * A business row (BP1, Decision #244) reads its second line as a MetaLine — the member's title or
+ * base role · "Since 2026" — never a chip: neither fact can be acted on.
  */
 export function WorkRoster(
 	{ members, departments, kind }: {
@@ -19,7 +24,9 @@ export function WorkRoster(
 	},
 ): JSX.Element | null {
 	if (!members.length) return null;
-	if (kind !== "enterprise" || !departments.length) return <PersonList members={members} />;
+	if (kind !== "enterprise" || !departments.length) {
+		return <PersonList members={members} kind={kind} />;
+	}
 
 	const groups = departments
 		.map((dept) => ({
@@ -36,14 +43,25 @@ export function WorkRoster(
 	return (
 		<div class="pf-roster__groups">
 			{groups.map((group, i) => (
-				<Group key={group.id} name={group.name} members={group.members} first={i === 0} />
+				<Group
+					key={group.id}
+					name={group.name}
+					members={group.members}
+					first={i === 0}
+					kind={kind}
+				/>
 			))}
 		</div>
 	);
 }
 
 function Group(
-	{ name, members, first }: { name: string; members: readonly MemberEntry[]; first: boolean },
+	{ name, members, first, kind }: {
+		name: string;
+		members: readonly MemberEntry[];
+		first: boolean;
+		kind: ProfileKind;
+	},
 ): JSX.Element {
 	return (
 		<>
@@ -53,13 +71,15 @@ function Group(
 					{name}
 					<span class="pf-h__count">{members.length}</span>
 				</h3>
-				<PersonList members={members} />
+				<PersonList members={members} kind={kind} />
 			</section>
 		</>
 	);
 }
 
-function PersonList({ members }: { members: readonly MemberEntry[] }): JSX.Element {
+function PersonList(
+	{ members, kind }: { members: readonly MemberEntry[]; kind: ProfileKind },
+): JSX.Element {
 	return (
 		<ul class="pf-roster" role="list">
 			{members.map((member) => (
@@ -73,10 +93,25 @@ function PersonList({ members }: { members: readonly MemberEntry[] }): JSX.Eleme
 							class="pf-person__avatar"
 						/>
 						<span class="pf-person__name">{member.name}</span>
-						<span class="pf-person__role">{member.role}</span>
+						{kind === "business"
+							? <BusinessMemberMeta member={member} />
+							: <span class="pf-person__role">{member.role}</span>}
 					</a>
 				</li>
 			))}
 		</ul>
+	);
+}
+
+/** A business row's second line: role · since, as inline Meta-register text. */
+function BusinessMemberMeta({ member }: { member: MemberEntry }): JSX.Element | null {
+	const since = memberSinceLabel(member.since);
+	return (
+		<MetaLine
+			as="span"
+			size="xs"
+			class="pf-person__meta"
+			items={[member.role, since && { text: since, tabular: true }]}
+		/>
 	);
 }

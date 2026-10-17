@@ -492,7 +492,10 @@ history entry when it IS the target, so the page comes back as it was left. In t
 shell, another entity's profile lights **Explore** in the rail and the phone's bottom bar — a
 stranger's page is a discovery destination; the viewer's own profile lights nothing.
 **Work** (the index) shows the client proof, the completed projects, the portfolio, and — for a
-team, business or enterprise — the roster. A portfolio tile whose piece is a video carries the
+team, business or enterprise — the roster. On a business the completed projects it commissioned
+(public ones whose client allows portfolio display) are its client proof and lead the section, and
+a roster row reads the member's title or role · "since" as plain text, never a chip
+(Decision #244). A portfolio tile whose piece is a video carries the
 same control set's compact pair — play ⁄ pause and mute — in its top corner, revealed with the
 caption; it never starts on its own, and pressing a control never opens the piece. **Experience** shows a person's career history,
 education and verified certifications, and renders only for an individual (a company has no CV).
@@ -522,7 +525,11 @@ The rig depends on what the entity
 IS: a **seller** (freelancer · team) carries two conversion controls — **Hire** and **Add to
 project** — with Message and Follow folded into compact icon-only secondaries beside them; a
 **buyer** (client · business · enterprise) cannot be hired, so **Message** stays its primary with
-Follow as its secondary. Both conversion controls open a popover **at the button**, never a scroll
+Follow as its secondary. On a **business** Message is the one filled control (the teal pill Hire
+takes on a seller) with Follow as an icon beside it, and it opens a direct message with the
+business's **owner** — a direct message is between people; a member who may edit the business sees
+**Manage business** (its console) in Message's place, and there is no Hire, no Add to project and no
+price anywhere on the page (Decision #244). Both conversion controls open a popover **at the button**, never a scroll
 to the Services row. **Hire** lists the seller's listings (thumbnail · title · starting price ·
 rating) and, when the seller takes discovery calls, a "Book consultation" row carrying its price or
 the word Free; it renders only when there is something to list. Picking a listing opens the
@@ -592,7 +599,8 @@ A fact that is unmeasured or absent is omitted whole; nothing on the bar is infe
 neighbouring signal.
 
 **The owner manages the profile from three views of it.** When the person looking at a profile is
-the one who manages it — the individual, a team's owner or lead, a business's owner, an
+the one who manages it — the individual, a team's owner or lead, a business's owner or an admin
+(whoever holds its profile right, Decision #244), an
 enterprise's owner or admin — an owner header sits above the page with three tabs, each its own
 address:
 
@@ -671,7 +679,14 @@ team members.
   **Draft/Unverified** state; legal name, logo, billing details, member roles, and financial setup
   are completed afterwards on the Business settings page.
 - **Visibility:** a Business takes the same visibility a team does — **public**, **unlisted** or
-  **invite-only** — and only a public Business is listed in the directory (Decision #230 (h)).
+  **invite-only** — and only a public Business is listed in the directory (Decision #230 (h)). Its
+  public page (`/@handle`) opens for anyone while the Business is active and public or unlisted (an
+  unlisted one by its link only, as an unlisted person's or team's does — **pending the owner's
+  confirmation**: the BP1 work order worded an unlisted Business as missing to strangers, Decision
+  #244 (a)); while it is a draft, archived or invite-only the page is missing to everyone outside it
+  — worded exactly as an unknown handle — and its members see it with a note saying why. The note
+  gains a link to the Business's Settings once Settings can publish it or change its visibility
+  (Decision #244 (d)).
 - **Unified Management:** Instead of isolated projects, a Business can manage "Sets" of projects,
   allowing for cross-project visibility.
 - **Shared Capital (The Business Wallet):** Much like Freelancer Teams, Businesses utilise a shared
@@ -2439,7 +2454,9 @@ unconfirmed email.
 
 Clients, businesses and enterprises carry the **Client Trust Score** and verification badges, not a
 Standing rung. Buyers want efficiency and trust, not quests; over-gamifying that side makes serious
-clients leave.
+clients leave. Until the score's weighting is defined, a business profile shows the one input that
+is computed — its **client rating** from the freelancers it engaged, with how many reviews stand
+behind it — and no Standing block (Decision #244).
 
 (Rung thresholds, the score weighting, the listing/proposal/commission ladder and the interaction
 with subscriptions are all in `finance-model.md` §16.3.)

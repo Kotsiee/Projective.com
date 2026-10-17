@@ -3,7 +3,12 @@ import TabCreateButton from "../islands/TabCreateButton.island.tsx";
 import { type ReviewStance, TAB_LABEL } from "../core/profile-model.ts";
 import { tabIcon } from "./profile-glyphs.tsx";
 import { ExperienceTab, PostsTab, ReviewsTab, WorkTab } from "./tabs/mod.ts";
-import type { ProfileTab, ProfileTabPayload, ProfileView } from "../types/profile-types.ts";
+import type {
+	ProfileKind,
+	ProfileTab,
+	ProfileTabPayload,
+	ProfileView,
+} from "../types/profile-types.ts";
 
 /**
  * ProfileTabContent — the thin dispatcher for one profile section (root CLAUDE.md §8 Decision #96).
@@ -71,14 +76,28 @@ const EMPTY_NOTE: Record<ProfileTab, string> = {
 	posts: "Written pieces — process notes, case studies, guides.",
 };
 
+/**
+ * A business's own sentences where the generic one would mislead (Decision #244): it ships nothing
+ * itself — it commissions — and it is reviewed from one side only.
+ */
+const BUSINESS_EMPTY_NOTE: Partial<Record<ProfileTab, string>> = {
+	work: "Projects it commissioned and the people behind it.",
+	reviews: "Freelancers review a business once an engagement completes.",
+};
+
+/** The empty state's sentence for a section on a profile of `kind`. */
+function emptyNoteFor(tab: ProfileTab, kind: ProfileKind): string {
+	return (kind === "business" ? BUSINESS_EMPTY_NOTE[tab] : undefined) ?? EMPTY_NOTE[tab];
+}
+
 function EmptySection(
-	{ tab, action }: { tab: ProfileTab; action: JSX.Element | null },
+	{ tab, kind, action }: { tab: ProfileTab; kind: ProfileKind; action: JSX.Element | null },
 ): JSX.Element {
 	return (
 		<div class="pf-empty">
 			<span class="pf-empty__mark" aria-hidden="true">{tabIcon(tab)}</span>
 			<span class="pf-empty__title">No {TAB_LABEL[tab].toLowerCase()} yet</span>
-			<p class="pf-empty__note">{EMPTY_NOTE[tab]}</p>
+			<p class="pf-empty__note">{emptyNoteFor(tab, kind)}</p>
 			{action ? <div class="pf-empty__action">{action}</div> : null}
 		</div>
 	);
@@ -95,7 +114,13 @@ function sectionBody(
 		case "experience":
 			return <ExperienceTab payload={payload} />;
 		case "reviews":
-			return <ReviewsTab payload={payload} stance={reviewStance} />;
+			return (
+				<ReviewsTab
+					payload={payload}
+					stance={reviewStance}
+					stances={profile.kind !== "business"}
+				/>
+			);
 		case "posts":
 			return <PostsTab payload={payload} authed={authed} />;
 	}
@@ -103,7 +128,7 @@ function sectionBody(
 // #endregion
 
 export function ProfileTabContent(props: ProfileTabContentProps): JSX.Element {
-	const { tab, payload, canEdit } = props;
+	const { tab, payload, canEdit, profile } = props;
 	const create = createFor(tab);
 	const createButton = canEdit && create
 		? <TabCreateButton label={create.label} noun={create.noun} />
@@ -114,7 +139,9 @@ export function ProfileTabContent(props: ProfileTabContentProps): JSX.Element {
 			<h2 class="ui-visually-hidden">{TAB_LABEL[tab]}</h2>
 			{createButton && !empty ? <div class="pf-panel__head">{createButton}</div> : null}
 			<div class="pf-panel__body">
-				{empty ? <EmptySection tab={tab} action={createButton} /> : sectionBody(props)}
+				{empty
+					? <EmptySection tab={tab} kind={profile.kind} action={createButton} />
+					: sectionBody(props)}
 			</div>
 		</div>
 	);

@@ -682,7 +682,10 @@ and it is the rule a future "claim your handle" flow must validate against. The 
 on `ctx.state.profileStatus` — `200`, `404` for a reserved, unknown or hidden handle (the three are
 deliberately indistinguishable), or `503` when the database could not be asked — so the shared
 layout paints a calm not-found or an honest "try again", never a fabricated profile. (Profiles are
-live-only since 2026-09-23; there is no stub profile to fabricate.)
+live-only since 2026-09-23; there is no stub profile to fabricate.) In development only, the same
+middleware lays the Dev Context Switcher's business page state (`pj.dev.business-page`, Decision
+#244) over a business's read: a member's hidden reason (draft · archived · invite-only), or
+`missing` — the outsider's `404`.
 
 ### Messaging, hiring-handshake & link API (Decision #128)
 

@@ -19,6 +19,7 @@ import {
 	DEV_AUTO_FUND_MODES,
 	DEV_LOW_BALANCES,
 	DEV_BUSINESS_KYBS,
+	DEV_BUSINESS_PAGES,
 	DEV_SESSION_STATES,
 	DEV_DISPUTE_STATES,
 	DEV_NOTIFICATIONS,
@@ -96,6 +97,14 @@ function reloadProjectPage(): void {
  */
 function reloadExplorePage(): void {
 	if (globalThis.location?.pathname === "/explore") globalThis.location.reload();
+}
+
+/**
+ * Reload when the open page is a profile (`/@handle…`), so a server-side business-page simulation
+ * applies at once. Elsewhere nothing reads it until the next profile request.
+ */
+function reloadProfilePage(): void {
+	if (globalThis.location?.pathname.startsWith("/@")) globalThis.location.reload();
 }
 
 function reloadDiscoveryPage(): void {
@@ -559,6 +568,25 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.trustAdornments}
 						disabled={!o.enabled}
 						onChange={(trustAdornments) => patchDevContext({ trustAdornments })}
+					/>
+				</Field>
+
+				{
+					/* A business's /:handle (Decision #244). Its status and visibility are database states
+				    and both seeded businesses are active and public, so this is the only route to a
+				    member's notice (draft · archived · invite-only) or an outsider's 404 (Missing).
+				    Server-side via `pj.dev.business-page`, so a change reloads a profile page. */
+				}
+				<Field label="Business page" hint="member notice · outsider 404 · reloads">
+					<Segment
+						name="Business page"
+						options={DEV_BUSINESS_PAGES}
+						value={o.businessPage}
+						disabled={!o.enabled}
+						onChange={(businessPage) => {
+							patchDevContext({ businessPage });
+							reloadProfilePage();
+						}}
 					/>
 				</Field>
 

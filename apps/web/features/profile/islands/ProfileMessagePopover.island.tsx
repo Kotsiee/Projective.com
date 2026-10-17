@@ -29,13 +29,19 @@ import type { ProfileView } from "../types/profile-types.ts";
  *
  * Either way the conversation is the unified `dm-{handle}` thread (PRODUCT_SPEC §Unified Messaging),
  * so what is typed here IS the thread the inbox opens at `/messages/dm-{handle}` — sending posts in
- * place through the inbox's own send door and never navigates. A guest never reaches this surface:
- * the hero routes them to the sign-in prompt instead.
+ * place through the inbox's own send door and never navigates. A direct message is person-to-person,
+ * so a BUSINESS's Message reaches its owner (`profile.messageTo`, Decision #244): the thread is the
+ * owner's, titled "{Business} · {Owner}" so the window says which page it was opened from — and a
+ * business whose read names no owner opens nothing, because `dm-{business}` reaches nobody (the rig
+ * withholds its Message too). A guest never reaches this surface: the hero routes them to the
+ * sign-in prompt instead.
  */
 export default function ProfileMessagePopover(
 	{ profile }: { profile: ProfileView },
 ): JSX.Element | null {
-	const handle = profile.handle.replace(/^@/, "");
+	const recipient = profile.messageTo;
+	const reachable = profile.kind !== "business" || !!recipient;
+	const handle = (recipient?.handle ?? profile.handle).replace(/^@/, "");
 	const conversationId = dmConversationId(handle);
 	const mobile = useIsMobile();
 
@@ -44,7 +50,7 @@ export default function ProfileMessagePopover(
 		projectId: conversationId,
 		channelId: conversationId,
 		conversationId,
-		title: profile.name,
+		title: recipient ? `${profile.name} · ${recipient.name}` : profile.name,
 		href: conversationHref(conversationId),
 		source: "profile",
 		avatar: profile.avatar || null,
@@ -54,17 +60,19 @@ export default function ProfileMessagePopover(
 	// re-affirms) the window rather than finding a flag that is already true.
 	useEffect(() => {
 		if (mobile || !quickMessageOpen.value) return;
-		openPopout(state);
+		if (reachable) openPopout(state);
 		quickMessageOpen.value = false;
 	}, [quickMessageOpen.value, mobile]);
 
-	if (!mobile) return null;
+	if (!mobile || !reachable) return null;
 
 	return (
 		<Drawer
 			visible={quickMessageOpen}
 			position="bottom"
-			header={`Message ${profile.name}`}
+			header={recipient
+				? `Message ${recipient.name} at ${profile.name}`
+				: `Message ${profile.name}`}
 			size="auto"
 			class="pf-msgsheet"
 		>

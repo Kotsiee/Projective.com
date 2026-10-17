@@ -113,10 +113,10 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 
 | # | Rule | Status |
 | :-- | :-- | :-- |
-| BF45 | Buyer cannot be hired: Message primary, Follow secondary (PRODUCT_SPEC:517-521) | verify in BP1 |
-| BF46 | "Corporate verified" crest on KYB (PRODUCT_SPEC:2330-2334); Client Trust Score, **no Standing** (:2326-2328) | verify in BP1 |
-| BF47 | Editors = `edit_profile` (owner + admin) vs PRODUCT_SPEC:591 "a business's owner" | 📄 (twin of #226 b) |
-| BF48 | Unlisted businesses | Impossible today (BF9) | ❌ |
+| BF45 | Buyer cannot be hired: Message primary, Follow secondary (PRODUCT_SPEC:517-521) | ✅ business rig: tier-3 Message to the owner, icon-only Follow, Manage business for editors, no listings resolved (BP1, #244) |
+| BF46 | "Corporate verified" crest on KYB (PRODUCT_SPEC:2330-2334); Client Trust Score, **no Standing** (:2326-2328) | ✅ crest only on `kyb_status = 'verified'`, no Standing (probe-pinned); ⚠️ Client Trust Score undefined — the freelancer-given client rating is the readout (BP1, #244 FLAG c) |
+| BF47 | Editors = `edit_profile` (owner + admin) vs PRODUCT_SPEC:591 "a business's owner" | ✅ business clause aligned to owner or admin (BP1, #244); the team clause is #250 (b)'s, corrected by Teams P1 |
+| BF48 | Unlisted businesses | ✅ visibility built (BB5, #236 C) and honoured by `/@handle`: draft · archived · invite-only are missing to outsiders (BP1, #244); ⚠️ unlisted opens by link, as for people and teams — BP1's acceptance worded it a 404 to strangers, so it awaits the owner (#244 FLAG a) |
 
 ---
 

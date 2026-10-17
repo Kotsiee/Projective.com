@@ -6,6 +6,7 @@ import {
 	LEGACY_TAB_TARGET,
 	LegacyProfileTab,
 	normalizeHandle,
+	type ProfileHiddenReason,
 	type ProfileKind,
 	ProfileTab,
 	type ProfileView,
@@ -152,8 +153,14 @@ export function isSellerKind(kind: ProfileKind): boolean {
  *    through it ends at the sign-in prompt, so the control is withheld rather than offered and then
  *    refused (product owner, 2026-09-20).
  *
- * A BUYER entity (client · business · enterprise) cannot be hired or assigned, so Message stays
- * its text primary with Follow as a text secondary.
+ * A BUYER entity cannot be hired or assigned. A client or an enterprise keeps Message as its text
+ * primary with Follow as a text secondary. A **business** (BP1, Decision #244) leads with Message as
+ * the one filled control — the tier-3 teal pill Hire takes on a seller, because it is the only way
+ * in — with Follow as the icon-only secondary; and for a member who may edit it (`manages`), a
+ * "Manage business" link to its console takes Message's place, since they would be messaging their
+ * own business. A business's Message reaches its owner (a direct message is person-to-person), so
+ * when the read names no owner to reach (`messageable: false`) Message is withheld rather than
+ * opening a thread nobody reads, and Follow stands alone.
  *
  * Hire renders for a guest exactly as it does for a member — a listing's preview and a provider's
  * availability are public information, and a control that appears only after signing in is one a
@@ -161,14 +168,20 @@ export function isSellerKind(kind: ProfileKind): boolean {
  * popover (the hero owns that gate; `rigFor` only decides what renders).
  */
 export interface ProfileRig {
-	/** `seller` draws Hire ⁄ Add-to-project + the icon pair; `buyer` the Message + Follow text pair. */
-	layout: "seller" | "buyer";
+	/**
+	 * `seller` draws Hire ⁄ Add-to-project + the icon pair; `buyer` the Message + Follow text pair;
+	 * `business` the filled Message (or Manage business) + the icon-only Follow.
+	 */
+	layout: "seller" | "buyer" | "business";
 	/** Whether the Hire control renders. */
 	hire: boolean;
 	/** Whether the Add-to-project control renders. */
 	addToProject: boolean;
-	/** Which control carries the filled primary treatment. */
-	primary: "hire" | "add" | "message";
+	/**
+	 * Which control carries the primary slot (`manage` is a tier-4 link, never filled; `none` is a
+	 * business with nobody for Message to reach, whose slot stays empty).
+	 */
+	primary: "hire" | "add" | "message" | "manage" | "none";
 }
 
 /** The facts about the SELLER that {@link rigFor} branches on. */
@@ -184,9 +197,28 @@ export interface RigInput {
 	 * project (Decision #192). Absent reads as unrestricted.
 	 */
 	restricted?: boolean;
+	/**
+	 * Whether the viewer is a member who may edit this workspace's profile — they get its console
+	 * link in place of Message (a business today; kind-agnostic so a team can take it too).
+	 */
+	manages?: boolean;
+	/**
+	 * Whether the profile's Message reaches anybody — a business's reaches its owner, and a read that
+	 * names none has nobody to reach (Decision #244). Absent reads as reachable.
+	 */
+	messageable?: boolean;
 }
 
+/** The action rig a VISITOR sees for a profile kind — see {@link ProfileRig}. */
 export function rigFor(kind: ProfileKind, input: RigInput): ProfileRig {
+	if (kind === "business") {
+		return {
+			layout: "business",
+			hire: false,
+			addToProject: false,
+			primary: input.manages ? "manage" : input.messageable === false ? "none" : "message",
+		};
+	}
 	if (!isSellerKind(kind)) {
 		return { layout: "buyer", hire: false, addToProject: false, primary: "message" };
 	}
@@ -283,6 +315,43 @@ export function consultationPriceLabel(
 		return formatMoney(offer.feeAmountMinor, offer.feeCurrency);
 	}
 	return null;
+}
+// #endregion
+
+// #region Workspace profiles — the member's view of a business page
+/**
+ * The member notice above a business page outsiders cannot open (BP1, Decision #244): why they
+ * cannot. Stated for the member, who is the only reader ever told — as a fact, never as a promise of
+ * what one step would change: a business is created `draft` AND `invite_only`, so publishing alone
+ * leaves the page missing to outsiders.
+ */
+export function hiddenNoticeText(reason: ProfileHiddenReason, name: string): string {
+	switch (reason) {
+		case "draft":
+			return `${name} is a draft. Only members can see this page.`;
+		case "archived":
+			return `${name} is archived. Only members can see this page.`;
+		case "invite_only":
+			return `${name} is invite-only. Only members can see this page.`;
+	}
+}
+
+/**
+ * The owner header's Preview note on a business page for a member who may edit it: the rig they see
+ * is not quite the visitors' one (Decision #244 amends #119 (B) for business editors).
+ */
+export const BUSINESS_PREVIEW_NOTE =
+	"This is how your business looks to visitors. They see Message where you see Manage business.";
+
+/**
+ * "Since 2026" — a roster row's membership start, by its UTC year. `null` for an absent or
+ * unreadable date, so the row simply leaves the fact out.
+ */
+export function memberSinceLabel(iso: string | null | undefined): string | null {
+	if (!iso) return null;
+	const at = new Date(iso);
+	if (Number.isNaN(at.getTime())) return null;
+	return `Since ${at.getUTCFullYear()}`;
 }
 // #endregion
 
