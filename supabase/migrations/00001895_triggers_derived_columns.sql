@@ -61,7 +61,8 @@ CREATE TRIGGER trg_listings_derived
 -- `current_user` is the function's owner and the guards let it through:
 --   rating_average / rating_count      reviews.recalculate_entity_rating            (00001005)
 --   *_project_count                    projects.update_entity_project_counts         (00001100)
---   current_workload_intensity         projects.fn_sync_workload_intensity           (00001140)
+--   current_workload_intensity         none on org.teams (Decision #233 (a)); a team's load is
+--                                      re-summed into its search row instead (#235)
 --   owner · treasury · tier            org.create_workspace, org.transfer_workspace_ownership (00001020)
 --   avatar · banner · logo             org.set_profile_avatar — checks the file's owner (00001040)
 --   enterprise owner · status ·
@@ -106,6 +107,16 @@ DROP TRIGGER IF EXISTS trg_business_members_role_sync ON org.business_members;
 CREATE TRIGGER trg_business_members_role_sync
     BEFORE INSERT OR UPDATE ON org.business_members
     FOR EACH ROW EXECUTE FUNCTION org.fn_member_role_sync();
+-- #endregion
+
+-- #region search — a team's live W_i follows its membership (Decision #235)
+-- A team's search row carries its active members' live W_i (search.fn_refresh_team_workload,
+-- 00001400). Ticket moves re-sum it from projects.fn_sync_workload_intensity; this re-sums it when a
+-- member joins, leaves or is moved, since their tickets then enter or leave the team's figure.
+DROP TRIGGER IF EXISTS trg_team_members_search_workload ON org.team_members;
+CREATE TRIGGER trg_team_members_search_workload
+    AFTER INSERT OR DELETE OR UPDATE OF team_id, user_id, status ON org.team_members
+    FOR EACH ROW EXECUTE FUNCTION search.fn_team_members_workload_touch();
 -- #endregion
 
 -- #region org — the vault projection's backstop (Decision #226 (e))

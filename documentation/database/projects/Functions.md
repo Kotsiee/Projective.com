@@ -977,7 +977,9 @@ guards as `auto_assign_round_robin` (`can_review_project`, then `get_project_ros
 
 `trg_sync_workload_intensity` — `AFTER INSERT OR DELETE OR UPDATE OF current_assignee_id, status,
 workload_intensity ON projects.tickets` (`00001850`). Recomputes
-`org.freelancer_profiles.current_workload_intensity` (rounded live sum) for the old and new assignee.
+`org.freelancer_profiles.current_workload_intensity` (rounded live sum) for the old and new assignee,
+then re-sums the search row of every team either holder is an active member of
+(`search.fn_refresh_team_workload`, Decision #235 — [search/Functions.md](../search/Functions.md)).
 `search_path = public, projects, org`; `EXECUTE` moot (a trigger).
 
 ### `projects.file_workload_report(p_ticket_id uuid, p_reason text, p_reported_intensity numeric DEFAULT NULL) → uuid`

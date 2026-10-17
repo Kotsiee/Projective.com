@@ -116,6 +116,14 @@ severity of a subject's `security.penalties`). The discovery catalogue reads the
 `anon` (policy "Public can view profile search index", `is_active`) and subtracts the penalty from
 the owner's items — for a project, the worse of its poster's and its client business's.
 
+`current_workload_intensity` is the ranking's workload input (`1 − fn_norm(x, 100)`). For a
+`freelancer` row it is copied from `org.freelancer_profiles.current_workload_intensity` (kept by
+`projects.fn_sync_workload_intensity`). For a `team` row it is the team's active members' **live**
+W_i — their `claimed` / `in_progress` / `in_review` ticket intensity summed and rounded, as
+`org.profiles_index`'s team `workload` computes it — re-summed on every ticket assignee, status or
+intensity change and every membership change (Decision #235, closing #233 FLAG (a)); the dead
+`org.teams.current_workload_intensity` is not read. See [Functions.md](Functions.md#a-teams-live-w_i-decision-235-closing-233-flag-a).
+
 ## Embeddings on the discovery indexes (Decision #179)
 
 `search.profiles_index`, `search.projects_index`, `search.services_index` and `search.catalogue_index`

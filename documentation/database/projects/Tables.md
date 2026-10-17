@@ -648,7 +648,7 @@ sort_order`).
 | `trg_ticket_claim_before`                | BEFORE UPDATE OF `current_assignee_id`, `status`                | Stamps `claimed_at`; unassignment resets to `backlog`.                                                                       |
 | `trg_ticket_delete_protocol`             | BEFORE DELETE                                                   | Releases held escrow before the row goes.                                                                                    |
 | `trg_ticket_escrow_sync`                 | AFTER UPDATE OF `current_assignee_id`, `status`                 | Claim → `finance.fn_hold_ticket_escrow`; `completed` or unassignment → `finance.fn_release_ticket_escrow`.                     |
-| `trg_sync_workload_intensity`            | AFTER INSERT OR DELETE OR UPDATE OF `current_assignee_id`, `status`, `workload_intensity` | Recomputes the old/new assignee's `current_workload_intensity` over `claimed`/`in_progress`/`in_review` tickets. |
+| `trg_sync_workload_intensity`            | AFTER INSERT OR DELETE OR UPDATE OF `current_assignee_id`, `status`, `workload_intensity` | Recomputes the old/new assignee's `current_workload_intensity` over `claimed`/`in_progress`/`in_review` tickets, and re-sums the search row of every team either one actively sits on (Decision #235). |
 | `trg_ticket_review_submission` (`00001820`) | AFTER UPDATE OF `status`                                     | Entering `in_review` files a placeholder `stage_submissions` row unless a `pending_review` one already exists.                |
 
 **The slug is the deep link, not a path.** A ticket is opened by `?tkv=<slug>` on whichever page the

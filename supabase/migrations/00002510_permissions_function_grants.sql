@@ -131,6 +131,11 @@ EXECUTE ON ALL FUNCTIONS IN SCHEMA search TO anon,
 authenticated,
 service_role;
 
+-- A team's live W_i is maintained by triggers (Decision #235), never called by a client: the refresh
+-- writes the index as its definer, and the sum reads tickets and memberships.
+REVOKE ALL ON FUNCTION search.fn_refresh_team_workload (uuid[]) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION search.fn_team_live_workload (uuid) FROM PUBLIC, anon, authenticated;
+
 -- --- from 0219_search_engine_weights.sql ---
 
 GRANT

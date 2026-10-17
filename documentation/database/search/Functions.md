@@ -33,6 +33,27 @@ edit is searchable without a rebuild.
 Each is an upsert keyed on the source id, so re-running one is idempotent and a row can never be
 duplicated by a second write.
 
+### A team's live W_i (Decision #235, closing #233 FLAG (a))
+
+A team row's `current_workload_intensity` is its active members' **live** W_i — Σ
+`projects.tickets.workload_intensity` over the `claimed` / `in_progress` / `in_review` tickets whose
+`current_assignee_id` is an active `org.team_members` row, rounded — the same figure
+`org.profiles_index`'s team `workload` computes. The dead `org.teams.current_workload_intensity` is
+never read (#233 (a)); the ranking's workload term (`search.fn_search_entities`,
+`1 − fn_norm(current_workload_intensity, 100)`) reads this live figure for teams.
+
+| Function | Kind | What it does |
+| :-- | :-- | :-- |
+| `search.fn_team_live_workload(p_team_id uuid) → integer` | `STABLE` SQL, `INVOKER`, `search_path = ''` | The team's live W_i, `0` when nobody holds a live ticket. |
+| `search.fn_refresh_team_workload(p_team_ids uuid[]) → void` | `SECURITY DEFINER`, `search_path = ''` | Re-sums each listed team's search row; NULL ids skipped, an unchanged figure writes nothing, `updated_at` (the `recent` sort key) left alone — a load change is not a profile edit. |
+| `search.fn_team_members_workload_touch()` | trigger, `SECURITY DEFINER` | `trg_team_members_search_workload` (`00001895`), `AFTER INSERT OR DELETE OR UPDATE OF team_id, user_id, status ON org.team_members`: re-sums the old and new team. |
+
+`search.sync_team_to_index` writes `fn_team_live_workload(NEW.id)` on every team insert or update, and
+`projects.fn_sync_workload_intensity` (`00001140`, on a ticket's assignee, status or intensity change)
+re-sums every team the old or new holder actively sits on. Both helpers are revoked from `anon` and
+`authenticated` (`00002510`) — triggers maintain the figure, no client calls it. Probe:
+`supabase/probes/team_search_workload.sql`.
+
 ---
 
 ## ⚠️ An `INVOKER` sync trigger is a WRITE BLOCKER on its source table
