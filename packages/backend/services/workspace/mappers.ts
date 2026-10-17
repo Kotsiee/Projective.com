@@ -680,6 +680,8 @@ export function toIncomingInvite(
 		fromHandle: clamp(from?.username, 40),
 		roleLabel: clampOr(raw.role_name, 48, "Member"),
 		sentAt: clamp(relativeLabel(raw.created_at, nowMs), 40),
+		note: raw.note?.trim() ? clamp(raw.note.trim(), 400) : null,
+		expiresAt: raw.expires_at ? isoOf(raw.expires_at) || null : null,
 	};
 }
 

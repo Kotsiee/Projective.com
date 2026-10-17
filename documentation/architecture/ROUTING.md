@@ -664,7 +664,7 @@ themselves or left in a transfer), so an island adopts the server's state. RPC r
 | `/api/workspace/update`              | `POST`                | `org.update_workspace` (name, tagline) · `org.set_workspace_status` (publish / archive / restore) |
 | `/api/workspace/invite`              | `POST`                | `org.invite_workspace_member` (by handle **or** email)                                  |
 | `/api/workspace/invite-action`       | `POST`                | `org.revoke_workspace_invitation` · `org.resend_workspace_invitation` (the inviting side) |
-| `/api/workspace/invite-respond`      | `POST`                | `org.respond_to_workspace_invitation` (the invitee)                                     |
+| `/api/workspace/invite-respond`      | `POST`                | `org.respond_to_workspace_invitation` (the invitee). A refused accept is typed by `details.reason`: `persona` (403, Decision #228 (A)) · `payout_not_ready` (403, with `href` to `/settings/verification`, Decision #196) · `seat_cap` (409, the team's `team_seats` cap — `org.fn_assert_seat`'s `55000 plan:`, which on this door is never anything else). The roster's invitation strip words each one beside its row |
 | `/api/workspace/member`              | `POST`                | `org.update_workspace_member` (role, overrides, title, reports-to, spend envelope, remove / leave) |
 | `/api/workspace/transfer-ownership`  | `POST`                | `org.transfer_workspace_ownership`                                                      |
 | `/api/workspace/role`                | `POST`                | `org.upsert_workspace_role`                                                             |

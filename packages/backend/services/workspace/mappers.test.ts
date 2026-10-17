@@ -25,6 +25,7 @@ import {
 	spendRequestState,
 	spentInPeriod,
 	toEngagement,
+	toIncomingInvite,
 	toOutgoingInvite,
 	toRoleDef,
 	toSplitRule,
@@ -274,6 +275,38 @@ Deno.test("toOutgoingInvite: an email-only invite has no handle and is named by 
 		"Today",
 		null,
 	]);
+});
+
+Deno.test("toIncomingInvite: the note and the expiry travel; a blank note is no note", () => {
+	const raw = {
+		id: "i3",
+		entity_id: "t1",
+		entity_name: "Northwind Studio",
+		entity_handle: "northwind",
+		entity_avatar_file_id: null,
+		from_user_id: "u1",
+		role_name: "Lead",
+		note: "  Come build with us.  ",
+		created_at: daysAgo(1),
+		expires_at: "2026-10-08T12:00:00+00:00",
+	};
+	const from = { username: "noor", name: "Noor Haddad", avatar: null };
+	const inv = toIncomingInvite("team", raw, from, "", NOW);
+	assertEquals([inv.kind, inv.roleLabel, inv.fromHandle, inv.note, inv.expiresAt], [
+		"team",
+		"Lead",
+		"noor",
+		"Come build with us.",
+		"2026-10-08T12:00:00.000Z",
+	]);
+	const bare = toIncomingInvite(
+		"business",
+		{ ...raw, note: "   ", expires_at: null },
+		undefined,
+		"",
+		NOW,
+	);
+	assertEquals([bare.note, bare.expiresAt, bare.fromName], [null, null, "A member"]);
 });
 
 // #endregion

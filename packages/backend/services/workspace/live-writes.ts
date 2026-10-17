@@ -15,7 +15,7 @@ import type {
 	WorkspaceKind,
 } from "@projective/types/workspace";
 import { ok, type ServiceResult } from "../ServiceResult.ts";
-import { badId, callRpc, isUuid, type LiveActor } from "./live-support.ts";
+import { badId, callRpc, inviteAnswerRefusal, isUuid, type LiveActor } from "./live-support.ts";
 import { forgetDetails, readDetail } from "./live-detail.ts";
 
 /**
@@ -161,7 +161,10 @@ export async function actOnInvite(
 	return reread(input.kind, input.workspaceId, actor);
 }
 
-/** Accept or decline an invitation addressed to the caller. */
+/**
+ * Accept or decline an invitation addressed to the caller. A refused accept reaches the client typed:
+ * `details.reason` `persona` (403) · `payout_not_ready` (403, with its fix link) · `seat_cap` (409).
+ */
 export async function respondToInvite(
 	input: RespondInviteInput,
 	actor: LiveActor,
@@ -178,6 +181,7 @@ export async function respondToInvite(
 		"org",
 		"respond_to_workspace_invitation",
 		{ p_invitation: input.inviteId, p_accept: input.accept },
+		inviteAnswerRefusal,
 	);
 	if (!res.ok) return res.refusal;
 	forgetDetails(actor);
