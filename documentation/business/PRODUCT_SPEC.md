@@ -769,8 +769,18 @@ The Business Dashboard provides a "Bird's Eye View" of company-wide spend and pr
 
 ##### The Bench
 
-A Business's **Talent** view is its bench: every freelancer and team it has hired, each with
-**Re-hire** and **Message** (Decision #230 (i)).
+A Business's **Talent** view is its bench: every freelancer and team it has hired — at least one
+live or completed engagement on a project billed to the business (a stage they hold that is still
+being worked, one that was approved or paid, or one whose work had begun when the project
+completed; a seat they declined, left or had cancelled, or one on a stage nobody started, does not
+count, and an erased account leaves the bench). It shows how many of the business's projects each
+worked on, when they last delivered ("Now" while working), and the average rating the business gave
+them (reviews its own members wrote on its projects). Only members who may hire (`hire`) see it.
+Each row offers **View profile**, **Message** (a team's reaches its owner) and **Add to project** —
+the re-hire, which opens that freelancer's or team's own Add-to-project picker. A party whose profile
+the viewer cannot open (an invite-only or archived team, a private person) stays on the bench
+without a profile link or Add to project, and a viewer is not offered Add to project for a profile
+they manage — their own, or a team they own or administer (Decision #230 (i), #241).
 
 ##### Workflow Orchestration
 

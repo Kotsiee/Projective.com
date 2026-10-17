@@ -1,4 +1,9 @@
-import type { WorkspaceDetail, WorkspaceKind, WorkspaceRoster } from "@projective/types/workspace";
+import type {
+	BusinessBench,
+	WorkspaceDetail,
+	WorkspaceKind,
+	WorkspaceRoster,
+} from "@projective/types/workspace";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBackendService.ts";
 import {
@@ -143,5 +148,28 @@ export async function resolveWorkspaceConsole(
 		activeModule,
 		redirectedFrom: permitted ? null : requested,
 	};
+}
+// #endregion
+
+// #region The Talent module's bench
+/**
+ * The Talent module's first paint: the bench, or why it could not be read. A failed read is never
+ * drawn as an empty bench — "nobody hired yet" said to a business with providers at work is false.
+ */
+export interface BenchRead {
+	bench: BusinessBench | null;
+	error: string | null;
+}
+
+/** Read a business's bench as the viewer — only the Talent module asks. Memoized per request. */
+export function resolveBench(handle: string, actor: ReadActor, url: URL): Promise<BenchRead> {
+	return once(url, actor, `bench:${handle.toLowerCase()}`, async (): Promise<BenchRead> => {
+		const res = await WorkspaceBackendService.bench(handle, actor);
+		if (res.ok && res.data) return { bench: res.data, error: null };
+		return {
+			bench: null,
+			error: res.message ?? "The bench couldn't be read just now. Try again in a moment.",
+		};
+	});
 }
 // #endregion

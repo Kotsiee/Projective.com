@@ -60,7 +60,9 @@ and high-level metadata.
 (`(status = 'archived') = (archived_at IS NOT NULL)`). **Indexes:** `idx_projects_source_blueprint`
 (`source_blueprint_id, owner_user_id, status` WHERE `source_blueprint_id IS NOT NULL`) ·
 `idx_projects_stale_drafts` (`last_activity_at` WHERE `status = 'draft' AND source_blueprint_id IS NOT
-NULL`). **Triggers:** `trg_projects_slug` (`security.fn_slug_guard('prj')`) · `trg_sync_project_search`
+NULL`) · `idx_projects_client_business` (`client_business_id` WHERE NOT NULL — the business console
+detail, its archive blockers and the bench). **Triggers:** `trg_projects_slug`
+(`security.fn_slug_guard('prj')`) · `trg_sync_project_search`
 · `trg_update_project_counts` · `trg_project_handover_on_complete` · `trg_project_shape_lock` (freezes
 `format`/`structure_variation` once a seat is taken) · `trg_check_public_project_footprint` ·
 `trg_projects_touch_updated_at` (`projects.fn_touch_updated_at`, every `UPDATE` — `updated_at` is
@@ -366,10 +368,11 @@ Maps a specific freelancer or team to a project stage.
 | `status`                | text            | NOT NULL, no CHECK. Written values include `assigned`, `accepted`, `pending_funding`; `released`/`cancelled`/`declined`/`completed` are the inactive set. |
 | `created_at`            | timestamptz     | NOT NULL `DEFAULT now()`.                                                |
 
-**Index:** `uq_stage_assignment_active_assignee` — UNIQUE on (`project_stage_id`, `assignee_type`,
+**Indexes:** `uq_stage_assignment_active_assignee` — UNIQUE on (`project_stage_id`, `assignee_type`,
 `COALESCE(freelancer_profile_id, team_id)`) WHERE `status NOT IN ('released', 'cancelled',
-'declined', 'completed')`: one active seat per assignee per stage. In the `supabase_realtime`
-publication.
+'declined', 'completed')`: one active seat per assignee per stage · `idx_stage_assignments_stage`
+(`project_stage_id`, every status — the business bench reads completed seats too, Decision #241). In
+the `supabase_realtime` publication.
 
 ### `projects.project_participants`
 

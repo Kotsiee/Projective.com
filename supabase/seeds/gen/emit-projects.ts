@@ -22,7 +22,7 @@ import {
 	uuidFor,
 } from "./sql.ts";
 import { party, persona, type ResolvedProject, type World } from "./resolve.ts";
-import { STAGE_DEADLINES } from "./schedules.ts";
+import { STAGE_DEADLINES, STAGE_STARTS } from "./schedules.ts";
 
 /** Team assignees expand to their active members for participant/access rows. */
 function assigneeUsers(world: World, key: string): string[] {
@@ -151,6 +151,8 @@ export function emitProjects(world: World): string {
 				"milestone",
 				"completed_at::timestamptz",
 				"seat_limit",
+				"start_trigger_type::start_trigger_type",
+				"fixed_start_date::timestamptz",
 				"file_duration_mode",
 				"file_due_date::timestamptz",
 				"created_at::timestamptz",
@@ -158,6 +160,7 @@ export function emitProjects(world: World): string {
 			projects.flatMap((p) =>
 				p.stages.map((s, i) => {
 					const r = p.stagesByKey.get(s.key)!;
+					const start = STAGE_STARTS[`${p.key}:${s.key}`];
 					const deadline = STAGE_DEADLINES[`${p.key}:${s.key}`];
 					return [
 						id(r.id),
@@ -173,6 +176,11 @@ export function emitProjects(world: World): string {
 						q(s.status === "paid" ? "Accepted and paid" : ""),
 						s.completedDaysAgo !== undefined ? ago(s.completedDaysAgo) : "NULL",
 						"3",
+						// A stage that opens on a set day carries it; every other one starts with its project.
+						q(start ? "fixed_date" : "on_project_start"),
+						start
+							? localAt(start.tz, start.at.week, start.at.day, minutesOf(start.at.time))
+							: "NULL",
 						// A stage with a fixed deadline owes its work by that instant (the calendar draws it as
 						// a pin); every other stage carries none rather than an invented one.
 						deadline ? q("fixed_deadline") : "NULL",

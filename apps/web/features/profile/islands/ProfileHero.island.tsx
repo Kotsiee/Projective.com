@@ -181,6 +181,22 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 		addMenuOpen.value = false;
 	}, []);
 
+	// `?add=1` — a business bench's Add to project (the Talent module, Decision #241) lands here with
+	// this popover open: the re-hire is this page's own picker, not a second one. An instruction, not
+	// page state, so it is stripped on read and a reload or Back does not reopen it. Opened only where
+	// the rig renders Add to project for this viewer (`rigFor`), and never for the owner's preview.
+	useEffect(() => {
+		try {
+			const url = new URL(globalThis.location.href);
+			if (url.searchParams.get("add") !== "1") return;
+			url.searchParams.delete("add");
+			globalThis.history?.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+			if (isSellerKind(profile.kind) && authed && !props.restricted && !owner && !preview) {
+				addMenuOpen.value = true;
+			}
+		} catch { /* no `location` — non-fatal, the page simply opens without the popover */ }
+	}, []);
+
 	/**
 	 * A minted draft — leave for its Stage-2 workspace by **slug**, the only address that routes
 	 * (Decision #88). A full navigation rather than a client-side push: the destination is a different

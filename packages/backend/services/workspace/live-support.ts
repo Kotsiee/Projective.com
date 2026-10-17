@@ -18,7 +18,7 @@ import { canReadLive, type ReadActor } from "../read-actor.ts";
  *
  * The workspace tables carry no client write policy; every door is a `SECURITY DEFINER` RPC in the
  * `org` or `finance` schema that resolves the caller from the JWT and re-checks every rule itself
- * (`00001020_functions_org_entities.sql` §6–§16, `00001210_functions_finance_kyc_wallet.sql` §13). So
+ * (`00001020_functions_org_entities.sql` §6–§17, `00001210_functions_finance_kyc_wallet.sql` §13). So
  * this layer never decides authority — it forwards the caller's session and translates the answer.
  *
  * The refusal convention those functions follow (and {@link refusalFrom} reads):

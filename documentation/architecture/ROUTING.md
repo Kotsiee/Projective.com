@@ -132,6 +132,11 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   Hire control is a real anchor to it, so it works with JavaScript off), and the Reviews stance filter
   mirrors into `/[handle]/reviews?as=freelancer|client` (`parseReviewStance`; SSR honours it, the
   island keeps it in step with `replaceState`, and anything else reads as "all").
+- **`/[handle]?add=1` opens a seller's Add-to-project picker on arrival.** A signed-in visitor of a
+  freelancer or team profile lands with the hero's Add-to-project popover open — the business bench's
+  Add to project (the Talent module's re-hire, Decision #241) links here so there is one picker. The
+  marker is an instruction, not page state: `ProfileHero` strips it on read (`replaceState`), and it
+  opens nothing for a guest, a restricted account or the owner's preview.
 - **The Explore tree has one Back, and it is not `history.back()`.** `/explore` (with its query),
   `/view/[id]` and every page under a `/@handle` form one discovery tree, and the contextual Back
   control on a profile or a listing (`features/explore/islands/ExploreBackNav.island.tsx`) walks a
@@ -636,6 +641,7 @@ themselves or left in a transfer), so an island adopts the server's state. RPC r
 | :----------------------------------- | :-------------------- | :-------------------------------------------------------------------------------------- |
 | `/api/workspace/roster`              | `GET · HEAD · OPTIONS` (`?kind=`) | `org.get_workspace_roster(kind)`                                                        |
 | `/api/workspace/detail`              | `GET · HEAD · OPTIONS` (`?kind=&ref=`) | `org.get_workspace_detail(kind, handle_or_id)`                                          |
+| `/api/workspace/bench`               | `GET · HEAD · OPTIONS` (`?ref=`) | `org.get_business_bench(handle_or_id)` — the Talent module's bench (its retry; the page reads it server-side); `hire` holders only (403), Decision #241 |
 | `/api/workspace/handle`              | `GET`                 | `org.check_handle(handle)` — the create form's probe                                    |
 | `/api/workspace/create`              | `POST`                | `org.create_workspace(kind, name, handle)` → 201                                        |
 | `/api/workspace/update`              | `POST`                | `org.update_workspace` (name, tagline) · `org.set_workspace_status` (publish / archive / restore) |

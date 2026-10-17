@@ -526,4 +526,14 @@ export const STAGE_DEADLINES: Record<string, { tz: string; at: WeekSlot }> = {
 	"noor-site:s1": { tz: "Asia/Dubai", at: { week: 2, day: 2, time: "17:00" } },
 	"verdant-brand:s1": { tz: "Europe/London", at: { week: 1, day: 4, time: "12:00" } },
 };
+
+/**
+ * Stage starts — the `fixed_start_date` of a stage that opens on a set day (`start_trigger_type` =
+ * `fixed_date`), in the client's zone. Keyed `project:stage`. Meridian's documentation stage opens
+ * after Juno's Haddad Studio deadline, so her two live seats never overlap — the double-booking guard
+ * (`projects.fn_assignee_slot_conflict`, AC6) the accept door enforces.
+ */
+export const STAGE_STARTS: Record<string, { tz: string; at: WeekSlot }> = {
+	"meridian-ds:s3": { tz: "Europe/London", at: { week: 3, day: 0, time: "09:00" } },
+};
 // #endregion

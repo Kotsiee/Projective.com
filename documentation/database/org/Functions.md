@@ -575,7 +575,7 @@ a crafted request and the row.
 
 **Migration:**
 [`00001020_functions_org_entities.sql`](../../../supabase/migrations/00001020_functions_org_entities.sql)
-§6–§16 · **Grants:** [`00002510`](../../../supabase/migrations/00002510_permissions_function_grants.sql)
+§6–§17 · **Grants:** [`00002510`](../../../supabase/migrations/00002510_permissions_function_grants.sql)
 (the workspace region at the end) · **Decision:** root `CLAUDE.md` §8 #61 (Teams & Businesses goes
 live). Tables: [Tables.md § Workspace membership](Tables.md#-workspace-membership-teams--businesses).
 
@@ -975,3 +975,40 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
     `team_member_count`, `can_bind_seat` for the caller).
   A business answers `engagements = []`, `payout = null`, `allowance = null`. **VOLATILE**: the
   allowance read opens the week and pays out the lazy drip.
+
+### §17 — The business bench (Talent — Decision #230 (i), #241)
+
+- **`get_business_bench(handle_or_id) → jsonb`** — `authenticated`, `STABLE`. The Talent module's
+  ONE read: who this business has hired. Resolves the business by slug (any case) or row id, then
+  answers `{status: 'not_found'}` for a reference no business holds, `{status: 'forbidden'}` for
+  anybody who is not an active member holding `hire` (`fn_member_can`, the capability the console's
+  Talent gate asks — a non-member and a member without it alike), else `{status: 'ok', entries}`. A
+  signed-out caller is refused `42501`.
+  - **What counts.** Every freelancer and team holding a `projects.stage_assignments` seat that is
+    not `declined` / `cancelled` / `released`, on a non-draft project whose `client_business_id` is
+    this business, where the engagement is **completed** (the stage `approved` or `paid` — what
+    `projects.approve_stage` writes — the assignment `completed`, or the project `completed` with
+    work begun on the stage: `in_progress` / `submitted` / `revisions`; a seat on a stage nobody
+    started is a cancelled booking) or **live** (the assignment in the live set — not `released` /
+    `cancelled` / `declined` / `completed` — on an `active` or `on_hold` project, the stage not
+    `approved` / `paid` / `cancelled`). An engagement is a PROJECT: one per project, however many of
+    its stages the party held. A freelancer whose account was erased (a `completed` account
+    `org.deletion_requests` row) is left out.
+  - **Each entry:** `kind` (`freelancer` | `team`), `handle` (username or team slug), `name`,
+    `avatar_bucket` / `avatar_path` (the public avatar object, else `null`), `contact_handle` /
+    `contact_name` (the freelancer, or a team's OWNER — a DM is between two people), `engagements`,
+    `live_now`, `last_worked_at` (the latest paid stage's `completed_at`, else `null`),
+    `rating_average` (the mean of the `reviews.entity_reviews` the BUSINESS gave the party — written
+    by one of its members, any membership status, on one of its own projects — 2 dp, `null` at none),
+    `rating_count`, and two flags evaluated for the CALLER: `profile_visible`
+    (`org.fn_profile_visible` — whether `/@handle` opens for them: a team is created invite-only, a
+    person may go private, an archived team is hidden; such a row stays on the bench, its client
+    drops the profile link and Add to project) and `viewer_manages` (`org.fn_profile_manages` — their
+    own profile, or a team they own or administer, where the profile offers no Add-to-project picker).
+    Ordered live first, then the latest delivery, then by name.
+  - No row id is a field of the answer; an avatar object path keeps the storage bucket's owner-id
+    prefix (the platform's avatar layout, as every avatar URL does). Backs
+    `GET /api/workspace/bench` and the `/businesses/[businessHandle]/talent` first paint; indexes
+    `idx_projects_client_business` and `idx_stage_assignments_stage`
+    ([projects Tables.md](../projects/Tables.md)). Probe:
+    [`supabase/probes/business_bench.sql`](../../../supabase/probes/business_bench.sql).

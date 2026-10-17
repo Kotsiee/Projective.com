@@ -106,7 +106,7 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | BF40 | uuid → handle | 303 (should be 308, as Teams #228 B) | ❌ |
 | BF41 | `/businesses/x/overview` | Renders — a duplicate URL of `/businesses/x` (not canonicalised) | ❌ |
 | BF42 | Missing / forbidden | Silent 303 → `/businesses`; from `[module]` it is **two hops** (`/businesses/<ref>` → `/businesses`) | ❌ |
-| BF43 | Talent module | Registry entry (gate `hire`, "the bench — freelancers and teams this business works with") falls to `ModulePlaceholder` "Not built yet"; no doc defines Talent | ❌ 🧑 BX-i |
+| BF43 | Talent module | Registry entry (gate `hire`, "the bench — freelancers and teams this business works with") falls to `ModulePlaceholder` "Not built yet"; no doc defines Talent | ✅ the bench — `org.get_business_bench` + the Talent screen (BU5, Decision #241) |
 | BF44 | Team wallets accept spend requests | `request_spend_approval` accepts team wallets, but teams never hold `approve_spend` — only the owner can decide | ✅ business wallets only (BB4) |
 
 ### 1.6 Public `/:handle` (buyer profile)

@@ -1697,23 +1697,37 @@ export const PROJECTS: ProjectSpec[] = [
 				name: "Documentation site",
 				brief: "The documentation site with live examples.",
 				priceCents: 1_800_000,
-				status: "open",
+				status: "assigned",
 				skills: ["typescript", "a11y"],
 			},
 		],
 		assignments: [
 			{ assignee: "maris", stage: "s1", status: "completed", by: "hannah", daysAgo: 48 },
 			{ assignee: "maris", stage: "s2", status: "accepted", by: "hannah", daysAgo: 14 },
+			// Helia's second freelancer on its bench (the Talent module, Decision #241).
+			{ assignee: "juno", stage: "s3", status: "accepted", by: "hannah", daysAgo: 2 },
 		],
-		invitations: [{
-			to: "maris",
-			stage: "s1",
-			status: "accepted",
-			offerCents: 1_400_000,
-			message: "Priya recommended you for the token architecture. Would you take stage one?",
-			by: "hannah",
-			daysAgo: 49,
-		}],
+		invitations: [
+			{
+				to: "maris",
+				stage: "s1",
+				status: "accepted",
+				offerCents: 1_400_000,
+				message: "Priya recommended you for the token architecture. Would you take stage one?",
+				by: "hannah",
+				daysAgo: 49,
+			},
+			{
+				to: "juno",
+				stage: "s3",
+				status: "accepted",
+				offerCents: 1_800_000,
+				message:
+					"While you think about the wallet flows — would you take the Meridian documentation site? Maris says your Preact docs work is the best she has seen.",
+				by: "hannah",
+				daysAgo: 3,
+			},
+		],
 		applications: [],
 		tickets: [
 			{
