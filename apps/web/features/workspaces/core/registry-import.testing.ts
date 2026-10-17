@@ -58,7 +58,7 @@ export interface ConsoleRouteApi {
 	routeConsole(
 		kind: WorkspaceKind,
 		ref: string,
-		rawModule: string,
+		rawModule: string | null,
 		url: URL,
 		resolve: (module: string) => Promise<ConsoleResolutionShape | null>,
 	): Promise<ConsoleRedirectShape | { kind: "render"; resolved: ConsoleResolutionShape }>;

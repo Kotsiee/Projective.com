@@ -20,7 +20,7 @@ export const handler = define.handlers({
 		const outcome = await consoleOutcome(
 			"team",
 			ctx.params.teamHandle,
-			"overview",
+			null,
 			ctx.url,
 			readActor(ctx),
 		);

@@ -100,3 +100,18 @@ Deno.test("registry: a business's primary views are Decision #232's six, in orde
 	]);
 	assertEquals(keys(secondaryModules("business", OWNER)).includes("finance"), true);
 });
+
+Deno.test("registry: a business's secondary group is every other business module, in registry order", () => {
+	assertEquals(keys(secondaryModules("business", OWNER)), [
+		"calendar",
+		"messages",
+		"roles",
+		"invitations",
+		"finance",
+		"talent",
+		"analytics",
+		"standing",
+		"profile",
+		"verification",
+	]);
+});

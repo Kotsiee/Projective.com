@@ -17,7 +17,7 @@ export const handler = define.handlers({
 		const outcome = await consoleOutcome(
 			"business",
 			ctx.params.businessHandle,
-			"overview",
+			null,
 			ctx.url,
 			readActor(ctx),
 		);

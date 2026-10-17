@@ -75,11 +75,14 @@ export async function rosterBody(
 	);
 }
 
-/** Resolve a console route to data, a redirect, or a miss. Called from a route `handler`. */
+/**
+ * Resolve a console route to data, a redirect, or a miss. Called from a route `handler`; `rawModule` is
+ * the `[module]` segment, or `null` from the console root's own route.
+ */
 export async function consoleOutcome(
 	kind: WorkspaceKind,
 	ref: string,
-	rawModule: string,
+	rawModule: string | null,
 	url: URL,
 	actor: ReadActor,
 ): Promise<ConsoleOutcome> {
