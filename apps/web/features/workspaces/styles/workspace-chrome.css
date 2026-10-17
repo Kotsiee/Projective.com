@@ -76,22 +76,21 @@
 	color: inherit;
 	text-align: start;
 	background: none;
-	border: 1px solid transparent;
+	/* Reserved transparent at rest, so hover and acting recolour a border rather than adding one. */
+	border: var(--hairline-strong);
+	border-color: transparent;
 	border-radius: var(--radius-lg);
 	cursor: pointer;
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .wsp-lane__switch:hover {
-	border-color: var(--border-subtle);
+	border-color: var(--hairline-strong-color);
 	background: var(--surface-2);
 }
 
-.wsp-lane__switch:focus-visible {
-	outline: none;
-}
-
-/* Acting: hairline ring + one tonal step. The loud channel is the chip in the body, not here. */
+/* Acting: a contour + one tonal step. The switcher is a control, so the contour is legal here; the
+loud channel is still the chip in the body. */
 .wsp-lane__switch[data-acting="true"] {
 	background: var(--wsp-acting-tint);
 	border-color: var(--wsp-acting-ring);
@@ -100,14 +99,14 @@
 .wsp-lane__ident {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-px);
 	min-inline-size: 0;
 	flex: 1 1 auto;
 }
 
 .wsp-lane__name {
 	font-size: var(--wsp-fs-body);
-	font-weight: 600;
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -119,6 +118,7 @@
 	align-items: center;
 	gap: var(--space-2);
 	font-size: var(--wsp-fs-micro);
+	font-variant-numeric: tabular-nums;
 	color: var(--text-secondary);
 	min-inline-size: 0;
 }
@@ -150,6 +150,9 @@
 	font: inherit;
 	background: none;
 	border: none;
+	/* The acting rule's edge, reserved transparent at rest so marking a row moves no box (§B.12.3). */
+	border-inline-start: var(--hairline-strong);
+	border-inline-start-color: transparent;
 	cursor: pointer;
 	text-align: start;
 }
@@ -158,19 +161,16 @@
 	background: var(--surface-2);
 }
 
-.wsp-lane__entity:focus-visible {
-	outline: none;
-}
-
+/* Acting: one tonal step plus a leading rule — never a four-sided ring (§B.4). */
 .wsp-lane__entity[data-acting="true"] {
 	background: var(--wsp-acting-tint);
-	box-shadow: inset 0 0 0 1px var(--wsp-acting-ring);
+	border-inline-start-color: var(--hairline-strong-color);
 }
 
 .wsp-lane__entity-body {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-px);
 	min-inline-size: 0;
 	flex: 1 1 auto;
 }
@@ -189,8 +189,8 @@
 }
 
 .wsp-lane__sep {
-	block-size: 1px;
-	background: var(--hairline-color);
+	block-size: 0;
+	border-block-start: var(--hairline);
 	margin-block: var(--space-1);
 }
 
@@ -207,11 +207,12 @@
 	max-inline-size: 100%;
 }
 
+/* The facet's name is the section-header register (§A.4), so it reads the label tokens. */
 .wsp-lane__filter-label {
 	margin: 0;
-	font-size: 0.68rem;
-	font-weight: 600;
-	letter-spacing: 0.03em;
+	font-size: var(--wsp-fs-label);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--wsp-label-track);
 	text-transform: uppercase;
 	color: var(--text-secondary);
 }
@@ -223,13 +224,13 @@
 }
 
 .wsp-lane__filter-pill {
-	padding: 0.15rem var(--space-2);
-	border: 1px solid var(--border-subtle);
+	padding: var(--space-px) var(--space-2);
+	border: var(--hairline-strong);
 	border-radius: var(--radius-full);
 	background: transparent;
 	color: var(--text-secondary);
 	font: inherit;
-	font-size: 0.74rem;
+	font-size: var(--wsp-fs-label);
 	cursor: pointer;
 	transition:
 		background-color var(--dur-fast) var(--ease-standard),
@@ -248,21 +249,16 @@
 	color: var(--on-surface);
 }
 
-.wsp-lane__filter-pill:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
-
 .wsp-lane__filter-reset {
 	align-self: flex-start;
 	padding: 0;
 	border: none;
 	background: none;
 	font: inherit;
-	font-size: 0.75rem;
+	font-size: var(--wsp-fs-label);
 	color: var(--text-secondary);
 	text-decoration: underline;
-	text-underline-offset: 2px;
+	text-underline-offset: var(--space-px);
 	cursor: pointer;
 	transition: color var(--dur-fast) var(--ease-standard);
 }
@@ -278,41 +274,17 @@
 	}
 }
 
+:root[data-motion="reduced"] .wsp-lane__filter-pill,
+:root[data-motion="reduced"] .wsp-lane__filter-reset {
+	transition: none;
+}
+
 .wsp-lane__note {
 	display: block;
 	padding-inline: var(--space-2);
 	padding-block-start: var(--space-1);
 	font-size: var(--wsp-fs-micro);
 	color: var(--text-secondary);
-}
-
-.wsp-lane__new {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	inline-size: 100%;
-	padding: var(--space-2);
-	font: inherit;
-	font-size: var(--wsp-fs-body);
-	color: var(--wsp-kind);
-	background: none;
-	border: none;
-	border-radius: var(--radius-base);
-	cursor: pointer;
-	text-align: start;
-}
-
-.wsp-lane__new:hover {
-	background: var(--wsp-kind-tint);
-}
-
-.wsp-lane__new:focus-visible {
-	outline: none;
-}
-
-.wsp-lane__new[data-blocked="true"] {
-	color: var(--text-secondary);
-	cursor: not-allowed;
 }
 /* #endregion */
 
@@ -343,14 +315,10 @@
 	color: var(--on-surface);
 }
 
-.wsp-lane__row:focus-visible {
-	outline: none;
-}
-
 .wsp-lane__row[data-active="true"] {
 	background: var(--wsp-kind-tint);
 	color: var(--wsp-kind-ink);
-	font-weight: 500;
+	font-weight: var(--fw-medium);
 }
 
 .wsp-lane__row-icon {
@@ -424,10 +392,6 @@ sentence, and the explanation lives in the row's Tooltip (§B.6). */
 	text-decoration: underline;
 }
 
-.wsp-lane__verify-link:focus-visible {
-	outline: none;
-}
-
 .wsp-lane__acting {
 	display: flex;
 	align-items: center;
@@ -464,28 +428,24 @@ sentence, and the explanation lives in the row's Tooltip (§B.6). */
 words — a ring colour on its own is not a channel. */
 .wsp-rail__switch {
 	display: inline-flex;
-	padding: 2px;
+	padding: var(--space-px);
 	border-radius: var(--radius-lg);
 	background: none;
 	border: none;
 	cursor: pointer;
-	box-shadow: 0 0 0 2px var(--wsp-verified);
+	box-shadow: 0 0 0 var(--wsp-stroke) var(--wsp-verified);
 }
 
 .wsp-rail__switch[data-verify="pending"] {
-	box-shadow: 0 0 0 2px var(--wsp-pending);
+	box-shadow: 0 0 0 var(--wsp-stroke) var(--wsp-pending);
 }
 
 .wsp-rail__switch[data-verify="unverified"] {
-	box-shadow: 0 0 0 2px var(--wsp-unverified);
+	box-shadow: 0 0 0 var(--wsp-stroke) var(--wsp-unverified);
 }
 
 .wsp-rail__switch[data-acting="true"] {
-	box-shadow: 0 0 0 2px var(--wsp-acting);
-}
-
-.wsp-rail__switch:focus-visible {
-	outline: none;
+	box-shadow: 0 0 0 var(--wsp-stroke) var(--wsp-acting);
 }
 
 .wsp-rail__items {
@@ -525,15 +485,11 @@ words — a ring colour on its own is not a channel. */
 	color: var(--wsp-kind-ink);
 }
 
-.wsp-rail__item:focus-visible {
-	outline: none;
-}
-
 /* The module-group boundary, so a 12-icon rail still reads as five groups. */
 .wsp-rail__group-sep {
 	inline-size: 60%;
-	block-size: 1px;
-	background: var(--hairline-color);
+	block-size: 0;
+	border-block-start: var(--hairline);
 	margin-block: var(--space-1);
 }
 
@@ -586,14 +542,9 @@ words — a ring colour on its own is not a channel. */
 	text-decoration: none;
 }
 
-.wsp-headerband__identity:focus-visible {
-	outline: none;
-	border-radius: var(--radius-xs);
-}
-
 .wsp-headerband__name {
 	font-size: var(--wsp-fs-body);
-	font-weight: 600;
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -613,9 +564,9 @@ words — a ring colour on its own is not a channel. */
 /* The band's own hairline divider, between the identity and the tabs. One edge, one line. */
 .wsp-headerband__divider {
 	flex: none;
-	inline-size: 1px;
+	inline-size: 0;
 	block-size: 1.25rem;
-	background: var(--hairline-color);
+	border-inline-start: var(--hairline);
 }
 
 .wsp-headerband__controls {
@@ -647,10 +598,6 @@ words — a ring colour on its own is not a channel. */
 	color: var(--on-surface);
 }
 
-.wsp-headerband__icon:focus-visible {
-	outline: none;
-}
-
 .wsp-headerband__panel {
 	min-inline-size: 18rem;
 	padding: var(--space-2);
@@ -665,9 +612,9 @@ words — a ring colour on its own is not a channel. */
 
 /* #region Header band tabs — underlined text, never a pill */
 /*
- * A 2px `--primary` `::after` that scales on the inline axis, pinned `inset-block-end: -1px` so it
- * lands ON the band's divider hairline rather than floating above it. No box, no background, no
- * radius: the tab strip is text, and the underline is the only mark.
+ * A `--wsp-stroke` `--primary` `::after` that scales on the inline axis, pinned one hairline below
+ * the band so it lands ON the band's divider hairline rather than floating above it. No box, no
+ * background, no radius: the tab strip is text, and the underline is the only mark.
  */
 .wsp-headerband__tabs {
 	display: flex;
@@ -703,9 +650,9 @@ words — a ring colour on its own is not a channel. */
 .wsp-headerband__tab::after {
 	content: "";
 	position: absolute;
-	inset-block-end: -1px;
+	inset-block-end: calc(-1 * var(--wsp-hairline-w));
 	inset-inline: var(--space-2);
-	block-size: 2px;
+	block-size: var(--wsp-stroke);
 	border-radius: var(--radius-xs);
 	background: var(--primary);
 	transform: scaleX(0);
@@ -717,15 +664,10 @@ words — a ring colour on its own is not a channel. */
 	color: var(--on-surface);
 }
 
-.wsp-headerband__tab:focus-visible {
-	outline: none;
-	border-radius: var(--radius-xs);
-}
-
 .wsp-headerband__tab[aria-selected="true"],
 .wsp-headerband__tab[data-active="true"] {
 	color: var(--on-surface);
-	font-weight: 500;
+	font-weight: var(--fw-medium);
 }
 
 .wsp-headerband__tab[aria-selected="true"]::after,
@@ -784,7 +726,8 @@ words — a ring colour on its own is not a channel. */
 	block-size: var(--wsp-rig-row);
 	padding-inline: var(--space-3);
 	padding-block: 0;
-	border: 1px solid transparent;
+	border: var(--hairline-strong);
+	border-color: transparent;
 	border-radius: var(--radius-base);
 	background: none;
 	color: var(--on-surface);
@@ -800,33 +743,17 @@ words — a ring colour on its own is not a channel. */
 	background: var(--surface-3);
 }
 
-.wsp-footerrig__action:focus-visible {
-	outline: none;
-}
-
-.wsp-footerrig__action[data-variant="primary"] {
-	background: var(--wsp-kind);
-	color: var(--wsp-kind-on);
-}
-
-.wsp-footerrig__action[data-variant="primary"]:hover {
-	background: color-mix(in srgb, var(--wsp-kind) 86%, var(--on-surface));
-}
-
-.wsp-footerrig__action[data-variant="danger"] {
-	color: var(--danger);
-}
-
 /*
  * Locked, not removed. A verification gate keeps its control in place so the path stays discoverable;
- * the lock glyph and the reduced opacity say "not yet", and activating it explains how. A CAPABILITY
- * gate is the opposite — the control is absent entirely, because offering an action a member may never
- * take is a lie about the roster.
+ * the lock glyph and the faded ink say "not yet", and activating it explains how. The fade is the
+ * shared disabled mix on the INK, against the band's own `--surface-1` — never `opacity`, which would
+ * fade the whole control and its label contrast with it. A CAPABILITY gate is the opposite — the
+ * control is absent entirely, because offering an action a member may never take is a lie about the
+ * roster.
  */
 .wsp-footerrig__action[data-locked="true"] {
 	background: none;
-	color: var(--text-secondary);
-	opacity: 0.55;
+	color: color-mix(in srgb, var(--text-secondary) var(--fld-disabled-mix), var(--surface-1));
 }
 
 .wsp-footerrig__glyph {
@@ -862,7 +789,7 @@ words — a ring colour on its own is not a channel. */
 	block-size: var(--wsp-rig-row);
 	padding-inline: var(--space-3);
 	padding-block: 0;
-	border: 1px solid var(--border-subtle);
+	border: var(--hairline-strong);
 	border-radius: var(--radius-base);
 	background: none;
 	color: var(--on-surface);
@@ -873,10 +800,6 @@ words — a ring colour on its own is not a channel. */
 
 .wsp-footerrig__more:hover {
 	background: var(--surface-3);
-}
-
-.wsp-footerrig__more:focus-visible {
-	outline: none;
 }
 
 .wsp-footerrig__menu {
@@ -913,8 +836,9 @@ words — a ring colour on its own is not a channel. */
 /* #endregion */
 
 /* #region Responsive */
-/* Tablet: the header band drops its secondary identity text before it drops a tab. */
-@media (max-width: 1100px) {
+/* Laned tablet (below `--bp-xl`; see the breakpoint note in workspace-tokens.css): the header band
+drops its secondary identity text before it drops a tab. */
+@media (max-width: 79.9375rem) {
 	.wsp-headerband__handle,
 	.wsp-headerband__badge {
 		display: none;
@@ -925,7 +849,7 @@ words — a ring colour on its own is not a channel. */
 	}
 }
 
-@media (max-width: 767px) {
+@media (max-width: 47.9375rem) {
 	.wsp-headerband {
 		padding-inline: var(--space-3);
 		gap: var(--space-2);

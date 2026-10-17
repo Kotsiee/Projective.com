@@ -63,10 +63,6 @@
 	text-decoration: underline;
 }
 
-.wsp-moneyhead__link:focus-visible {
-	outline: none;
-	border-radius: var(--radius-xs);
-}
 /* #endregion */
 
 /* #region Team — the split bar */
@@ -118,7 +114,7 @@
 
 /* Room for the overhanging pip labels, reserved only when a sliver actually produced one. */
 .wsp-split__bar:has(.wsp-split__pip) {
-	padding-block-start: calc(var(--space-7) + 20px);
+	padding-block-start: calc(var(--space-7) + var(--wsp-pip-room));
 }
 
 /*
@@ -155,8 +151,9 @@
 .wsp-split__seg[data-held="true"] {
 	background-image: repeating-linear-gradient(
 		135deg,
-		transparent 0 5px,
-		var(--wsp-held-hatch) 5px 6px
+		transparent 0 calc(var(--wsp-hatch-pitch) - var(--wsp-hairline-w)),
+		var(--wsp-held-hatch) calc(var(--wsp-hatch-pitch) - var(--wsp-hairline-w))
+		var(--wsp-hatch-pitch)
 	);
 }
 
@@ -177,7 +174,8 @@
  * The drag handle, sitting ON the boundary between two stakes. Placed with `inset-inline-end` and a
  * negative half-width so it straddles the seam and mirrors under RtL without a transform. It is a real
  * focusable control (`role="slider"`), because a split editable only by pointer is a split a keyboard
- * user cannot audit — so the focus ring is not optional here, it is the only affordance they get.
+ * user cannot audit — so its focus state (the grip at full ink and width, below) is not optional here:
+ * with the product-wide ring off (Decision #217 flag (n)) it is the only affordance they get.
  */
 .wsp-split__handle {
 	position: absolute;
@@ -193,37 +191,37 @@
 	z-index: var(--z-raised);
 }
 
-/* The visible grip: a hairline-thin bar the handle's hit area is twice the width of. */
+/*
+ * The visible grip: a hairline-thin bar the handle's hit area is twice the width of. It sits on the
+ * stake it belongs to (the handle is that segment's child, so `--wsp-stake` is the tone under it), and
+ * its intensity is an OPAQUE mix of ink into that tone — never `opacity`, which would make the grip's
+ * reading depend on whatever composited beneath it (§B.4.2).
+ */
 .wsp-split__handle::before {
 	content: "";
 	position: absolute;
 	inset-block: 0;
 	inset-inline: 0;
 	margin-inline: auto;
-	inline-size: 2px;
+	inline-size: var(--wsp-stroke);
 	border-radius: var(--radius-xs);
-	background: var(--on-surface);
-	opacity: 0.35;
-	transition: opacity var(--dur-fast) var(--ease-standard), transform var(--dur-fast)
+	background: color-mix(in oklab, var(--on-surface) var(--tint-heavy), var(--wsp-stake));
+	transition: background-color var(--dur-fast) var(--ease-standard), transform var(--dur-fast)
 		var(--ease-standard);
 }
 
 .wsp-split__handle:hover::before {
-	opacity: 0.7;
+	background: var(--on-surface);
 	transform: scaleX(1.5);
 }
 
-.wsp-split__handle:focus-visible {
-	outline: none;
-}
-
 .wsp-split__handle:focus-visible::before {
-	opacity: 1;
+	background: var(--on-surface);
 	transform: scaleX(1.5);
 }
 
 .wsp-split__handle[data-dragging="true"]::before {
-	opacity: 1;
+	background: var(--on-surface);
 }
 
 /* A handle whose neighbours are all held cannot move; it says so rather than silently refusing. */
@@ -232,7 +230,7 @@
 }
 
 .wsp-split__handle[data-locked="true"]::before {
-	opacity: 0.2;
+	background: color-mix(in oklab, var(--on-surface) var(--tint-strong), var(--wsp-stake));
 }
 
 /*
@@ -253,7 +251,8 @@
 	padding-inline: var(--space-2);
 	padding-block: var(--space-1);
 	font-size: var(--wsp-fs-micro);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
+	font-variant-numeric: tabular-nums;
 	color: var(--text-secondary);
 	pointer-events: none;
 }
@@ -271,9 +270,9 @@
 	inset-block-start: 100%;
 	inset-inline: 0;
 	margin-inline: auto;
-	inline-size: 1px;
+	inline-size: 0;
 	block-size: calc(var(--space-2) + var(--wsp-pip-lift, 0px));
-	background: var(--hairline-color);
+	border-inline-start: var(--hairline);
 }
 /* #endregion */
 
@@ -308,8 +307,8 @@
 
 .wsp-split__key-mark {
 	flex: none;
-	inline-size: 10px;
-	block-size: 10px;
+	inline-size: var(--wsp-swatch);
+	block-size: var(--wsp-swatch);
 	border-radius: var(--radius-xs);
 	background: var(--wsp-stake);
 }
@@ -317,8 +316,9 @@
 .wsp-split__key[data-held="true"] .wsp-split__key-mark {
 	background-image: repeating-linear-gradient(
 		135deg,
-		transparent 0 3px,
-		var(--wsp-held-hatch) 3px 4px
+		transparent 0 calc(var(--wsp-hatch-pitch-xs) - var(--wsp-hairline-w)),
+		var(--wsp-held-hatch) calc(var(--wsp-hatch-pitch-xs) - var(--wsp-hairline-w))
+		var(--wsp-hatch-pitch-xs)
 	);
 }
 
@@ -339,7 +339,7 @@
 .wsp-split__key-share {
 	flex: none;
 	font-size: var(--wsp-fs-body);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	font-variant-numeric: tabular-nums lining-nums;
 	letter-spacing: var(--wsp-num-track);
 	color: var(--on-surface);
@@ -371,10 +371,6 @@
 .wsp-split__key-hold:hover {
 	background: var(--surface-3);
 	color: var(--on-surface);
-}
-
-.wsp-split__key-hold:focus-visible {
-	outline: none;
 }
 
 .wsp-split__key[data-held="true"] .wsp-split__key-hold {
@@ -430,7 +426,7 @@
 	gap: var(--space-1);
 	padding-inline: var(--space-3);
 	padding-block: var(--space-1);
-	border: 1px solid var(--border-subtle);
+	border: var(--hairline-strong);
 	border-radius: var(--radius-base);
 	background: none;
 	color: var(--on-surface);
@@ -442,10 +438,6 @@
 
 .wsp-split__template:hover {
 	background: var(--surface-2);
-}
-
-.wsp-split__template:focus-visible {
-	outline: none;
 }
 
 .wsp-split__template[data-default="true"] {
@@ -553,7 +545,7 @@
 
 .wsp-spend__limit-name {
 	font-size: var(--wsp-fs-body);
-	font-weight: 500;
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -579,7 +571,7 @@
 .wsp-spend__meter-track {
 	inline-size: 100%;
 	min-inline-size: 0;
-	block-size: 6px;
+	block-size: var(--wsp-meter-h-lg);
 	border-radius: var(--radius-xs);
 	background: var(--wsp-meter-bg);
 	overflow: hidden;
@@ -622,9 +614,10 @@
 	font-style: italic;
 }
 
-/* A member who may not spend at all keeps their row, dimmed — absence would hide the decision. */
-.wsp-spend__limit[data-can="false"] {
-	opacity: 0.68;
+/* A member who may not spend at all keeps their row, dimmed — absence would hide the decision. The
+dim is the name's INK stepping down to the secondary register, never `opacity` (§B.12). */
+.wsp-spend__limit[data-can="false"] .wsp-spend__limit-name {
+	color: var(--text-secondary);
 }
 
 .wsp-spend__limit-cap {
@@ -653,9 +646,6 @@
 	color: var(--on-surface);
 }
 
-.wsp-spend__limit-edit:focus-visible {
-	outline: none;
-}
 /* #endregion */
 
 /* #region Business — the attributable pool ledger */
@@ -777,8 +767,11 @@
 	background: color-mix(in srgb, var(--warning) var(--tint-soft), var(--surface-1));
 }
 
-.wsp-approvals__item[data-state="declined"] {
-	opacity: 0.7;
+/* A declined request stays on the record, dimmed through its INK — the requester and the amount step
+down to the secondary register — never through `opacity` (§B.12). */
+.wsp-approvals__item[data-state="declined"] .wsp-approvals__who,
+.wsp-approvals__item[data-state="declined"] .wsp-money {
+	color: var(--text-secondary);
 }
 
 .wsp-approvals__avatar {
@@ -789,7 +782,7 @@
 .wsp-approvals__body {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-px);
 	min-inline-size: 0;
 }
 
@@ -803,7 +796,7 @@
 
 .wsp-approvals__who {
 	font-size: var(--wsp-fs-body);
-	font-weight: 600;
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 }
 
@@ -823,6 +816,7 @@
 	gap: var(--space-2);
 	flex-wrap: wrap;
 	font-size: var(--wsp-fs-micro);
+	font-variant-numeric: tabular-nums;
 	color: var(--text-secondary);
 }
 
@@ -838,6 +832,7 @@
 
 .wsp-approvals__decided {
 	font-size: var(--wsp-fs-micro);
+	font-variant-numeric: tabular-nums;
 	color: var(--text-secondary);
 	white-space: nowrap;
 }
@@ -860,17 +855,17 @@
 }
 
 .wsp-verdict[data-outcome="allowed"] {
-	background: color-mix(in srgb, var(--success) var(--tint), transparent);
+	background: var(--success-tint);
 	color: var(--success);
 }
 
 .wsp-verdict[data-outcome="needs_approval"] {
-	background: color-mix(in srgb, var(--warning) var(--tint), transparent);
+	background: var(--warning-tint);
 	color: var(--warning);
 }
 
 .wsp-verdict[data-outcome="blocked"] {
-	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
+	background: var(--danger-tint);
 	color: var(--danger);
 }
 
@@ -935,7 +930,7 @@
 .wsp-lock__body {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-px);
 	flex: 1 1 18rem;
 	min-inline-size: 0;
 }
@@ -965,28 +960,25 @@
 	text-decoration: underline;
 }
 
-.wsp-lock__link:focus-visible {
-	outline: none;
-	border-radius: var(--radius-xs);
-}
-
 /*
- * A locked region keeps its content readable and its controls inert. `opacity` alone, never a blur or
- * an overlay: an admin must be able to read the policy they are about to be allowed to operate.
+ * A locked region keeps its content readable and its controls inert. Never a blur, an overlay or
+ * `opacity`: an admin must be able to read the policy they are about to be allowed to operate, so the
+ * region's ink steps down to the secondary register (children that set their own colour keep it, and
+ * stay legible) while `pointer-events` makes it inert.
  */
 .wsp-lock-region {
 	position: relative;
 }
 
 .wsp-lock-region[data-locked="true"] {
-	opacity: 0.62;
+	color: var(--text-secondary);
 	pointer-events: none;
 	user-select: none;
 }
 /* #endregion */
 
 /* #region Responsive */
-@media (max-width: 1100px) {
+@media (max-width: 79.9375rem) {
 	.wsp-split__key {
 		grid-template-columns: auto auto minmax(0, 1fr) auto auto;
 	}
@@ -1001,7 +993,7 @@
 	}
 }
 
-@media (max-width: 767px) {
+@media (max-width: 47.9375rem) {
 	/*
 	 * The bar stays a bar: it is the instrument, and a stacked list of percentages does not show that
 	 * the shares are one whole. Only the legend reflows.
@@ -1018,7 +1010,7 @@
 
 	/* The handle grows to a comfortable touch target without taking a pixel of rail width. */
 	.wsp-split {
-		--wsp-handle-w: 24px;
+		--wsp-handle-w: var(--fld-hit);
 		--wsp-track-h: 22px;
 		--wsp-track-h-hi: 28px;
 	}

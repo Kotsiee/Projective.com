@@ -33,10 +33,6 @@
 	border-radius: var(--radius-base);
 }
 
-.wsp-matrix:focus-visible {
-	outline: none;
-}
-
 /*
  * `max-content` lets each role column take its natural width and lets the whole grid overflow the
  * frame; `min-inline-size: 100%` keeps a narrow matrix flush with the region instead of shrink-wrapping
@@ -90,7 +86,7 @@
 	font-size: var(--wsp-fs-micro);
 	letter-spacing: var(--wsp-label-track);
 	text-transform: uppercase;
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	color: var(--text-secondary);
 	/*
 	 * The seam between the frozen column and the scrolling body — one hairline, on one edge. A LOGICAL
@@ -103,7 +99,7 @@
 .wsp-matrix__col {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-px);
 	align-items: flex-start;
 	justify-content: flex-end;
 	min-inline-size: 0;
@@ -119,7 +115,7 @@
 	gap: var(--space-1);
 	min-inline-size: 0;
 	font-size: var(--wsp-fs-body);
-	font-weight: 600;
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -168,9 +164,6 @@
 	color: var(--on-surface);
 }
 
-.wsp-matrix__colbtn:focus-visible {
-	outline: none;
-}
 /* #endregion */
 
 /* #region Rows and the frozen capability column */
@@ -196,7 +189,7 @@
 	font-size: var(--wsp-fs-micro);
 	letter-spacing: var(--wsp-label-track);
 	text-transform: uppercase;
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	color: var(--text-secondary);
 }
 
@@ -234,7 +227,7 @@
  * funds" among eighteen equal-weight ticks is how a permission matrix stops being read.
  */
 .wsp-matrix__row[data-consequential="true"] .wsp-matrix__rowlabel {
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 }
 
 .wsp-matrix__flag {
@@ -273,10 +266,6 @@
 	background: var(--surface-2);
 }
 
-.wsp-matrix__cell:focus-visible {
-	outline: none;
-}
-
 .wsp-matrix__cell[data-state="allowed"] {
 	background: var(--wsp-allowed-tint);
 	color: var(--wsp-allowed);
@@ -292,8 +281,8 @@
 	color: var(--wsp-conditional);
 	background-image: repeating-linear-gradient(
 		115deg,
-		transparent 0 5px,
-		var(--wsp-hatch) 5px 6px
+		transparent 0 calc(var(--wsp-hatch-pitch) - var(--wsp-hairline-w)),
+		var(--wsp-hatch) calc(var(--wsp-hatch-pitch) - var(--wsp-hairline-w)) var(--wsp-hatch-pitch)
 	);
 }
 
@@ -314,8 +303,9 @@
 	cursor: not-allowed;
 	background-image: repeating-linear-gradient(
 		135deg,
-		transparent 0 4px,
-		var(--wsp-locked-hatch) 4px 5px
+		transparent 0 calc(var(--wsp-hatch-pitch-sm) - var(--wsp-hairline-w)),
+		var(--wsp-locked-hatch) calc(var(--wsp-hatch-pitch-sm) - var(--wsp-hairline-w))
+		var(--wsp-hatch-pitch-sm)
 	);
 }
 
@@ -337,8 +327,8 @@
 
 /* A denied cell is a dash, not an empty square: emptiness reads as "not loaded". */
 .wsp-matrix__mark--denied {
-	inline-size: 10px;
-	block-size: 2px;
+	inline-size: var(--wsp-swatch);
+	block-size: var(--wsp-stroke);
 	border-radius: var(--radius-xs);
 	background: currentColor;
 }
@@ -346,10 +336,10 @@
 /* An override on a specific member surfaces in the cell as a corner marker. */
 .wsp-matrix__ovr {
 	position: absolute;
-	inset-block-start: 2px;
-	inset-inline-end: 2px;
+	inset-block-start: var(--space-px);
+	inset-inline-end: var(--space-px);
 	font-size: var(--wsp-fs-micro);
-	font-weight: 700;
+	font-weight: var(--fw-semibold);
 	line-height: 1;
 }
 
@@ -470,7 +460,7 @@
 
 .wsp-roleeditor__label {
 	font-size: var(--wsp-fs-label);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 }
 
@@ -500,7 +490,7 @@
 	font-size: var(--wsp-fs-micro);
 	letter-spacing: var(--wsp-label-track);
 	text-transform: uppercase;
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	color: var(--text-secondary);
 }
 
@@ -520,7 +510,7 @@
 }
 
 .wsp-roleeditor__cap[data-consequential="true"] .wsp-roleeditor__cap-label {
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 }
 
 /*
@@ -544,9 +534,11 @@
 }
 
 /* A capability the AUTHOR does not hold cannot be granted — otherwise the editor is an escalation
-ladder. It stays visible and disabled, with the reason in its Tooltip. */
-.wsp-roleeditor__cap[data-blocked="true"] {
-	opacity: 0.55;
+ladder. It stays visible and disabled, with the reason in its Tooltip. The fade is the shared disabled
+mix on the label's INK — never `opacity`, which would take the consequence note's contrast down with
+it (§B.12). */
+.wsp-roleeditor__cap[data-blocked="true"] .wsp-roleeditor__cap-label {
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
 }
 
 .wsp-roleeditor__count {
@@ -583,7 +575,7 @@ ladder. It stays visible and disabled, with the reason in its Tooltip. */
 	align-items: center;
 	gap: var(--space-1);
 	padding-inline: var(--space-2);
-	padding-block: 1px;
+	padding-block: calc(var(--space-px) / 2);
 	border-radius: var(--radius-xs);
 	background: var(--surface-3);
 	color: var(--text-secondary);
@@ -592,21 +584,21 @@ ladder. It stays visible and disabled, with the reason in its Tooltip. */
 }
 
 .wsp-capchip[data-level="consequential"] {
-	background: color-mix(in srgb, var(--warning) var(--tint), transparent);
+	background: var(--warning-tint);
 	color: var(--warning);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 }
 /* #endregion */
 
 /* #region Responsive */
-@media (max-width: 1100px) {
+@media (max-width: 79.9375rem) {
 	.wsp-matrix {
 		--wsp-matrix-first: 11rem;
 		--wsp-matrix-col: 6.5rem;
 	}
 }
 
-@media (max-width: 767px) {
+@media (max-width: 47.9375rem) {
 	/*
 	 * The matrix stays a matrix on a phone — it is the one component here that genuinely needs two
 	 * axes, and stacking it into per-role lists would destroy the comparison it exists for. The frozen

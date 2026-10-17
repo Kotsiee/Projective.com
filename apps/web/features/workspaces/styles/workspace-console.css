@@ -44,7 +44,7 @@
  * A matrix needs every pixel of horizontal room the region can give, so a page hosting one tightens
  * the band inset. NOTE for the mobile block below: a `:has()` rule that SETS a custom property
  * outranks a plain class rule even inside a media query, so this selector is REPEATED in the
- * `max-width: 767px` block — dropping it there would leave the desktop inset in force on a phone.
+ * below-`--bp-md` block — dropping it there would leave the desktop inset in force on a phone.
  */
 .wsp:has(.wsp-matrix) {
     --wsp-band-pad: var(--space-5);
@@ -120,7 +120,7 @@ here and there must never be one. */
     font-size: var(--wsp-fs-label);
     letter-spacing: var(--wsp-label-track);
     text-transform: uppercase;
-    font-weight: 600;
+    font-weight: var(--fw-semibold);
     color: var(--text-secondary);
 }
 
@@ -129,6 +129,7 @@ here and there must never be one. */
     align-items: baseline;
     gap: var(--space-4);
     font-size: var(--wsp-fs-body);
+    font-variant-numeric: tabular-nums;
     color: var(--text-secondary);
 }
 
@@ -144,11 +145,6 @@ here and there must never be one. */
 
 .wsp-band__action:hover {
     text-decoration: underline;
-}
-
-.wsp-band__action:focus-visible {
-    outline: none;
-    border-radius: var(--radius-xs);
 }
 
 .wsp-band__body {
@@ -174,8 +170,8 @@ here and there must never be one. */
 .wsp-pagehead__title {
     margin: 0;
     font-size: var(--wsp-fs-figure);
-    font-weight: 600;
-    letter-spacing: -0.01em;
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-tight);
     color: var(--on-surface);
 }
 
@@ -184,6 +180,7 @@ here and there must never be one. */
     align-items: baseline;
     gap: var(--space-4);
     font-size: var(--wsp-fs-body);
+    font-variant-numeric: tabular-nums;
     color: var(--text-secondary);
 }
 
@@ -251,8 +248,8 @@ here and there must never be one. */
     gap: var(--space-3);
     margin: 0;
     font-size: var(--wsp-fs-display);
-    font-weight: 600;
-    letter-spacing: -0.01em;
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-tight);
     color: var(--on-surface);
     min-inline-size: 0;
     flex-wrap: wrap;
@@ -266,11 +263,6 @@ here and there must never be one. */
 
 .wsp-idhead__handle:hover {
     text-decoration: underline;
-}
-
-.wsp-idhead__handle:focus-visible {
-    outline: none;
-    border-radius: var(--radius-xs);
 }
 
 .wsp-idhead__tagline {
@@ -294,6 +286,7 @@ here and there must never be one. */
     gap: var(--space-4);
     flex-wrap: wrap;
     font-size: var(--wsp-fs-micro);
+    font-variant-numeric: tabular-nums;
     color: var(--text-secondary);
 }
 
@@ -351,11 +344,6 @@ here and there must never be one. */
 
 .wsp-propose__link:hover {
     text-decoration: underline;
-}
-
-.wsp-propose__link:focus-visible {
-    outline: none;
-    border-radius: var(--radius-xs);
 }
 
 /* #endregion */
@@ -423,14 +411,14 @@ here and there must never be one. */
     justify-content: center;
     font-size: var(--wsp-fs-micro);
     font-variant-numeric: tabular-nums;
-    font-weight: 600;
+    font-weight: var(--fw-semibold);
     color: var(--on-surface);
 }
 
 .wsp-checklist__heading {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--space-px);
     min-inline-size: 0;
     flex: 1 1 auto;
 }
@@ -438,7 +426,7 @@ here and there must never be one. */
 .wsp-checklist__title {
     margin: 0;
     font-size: var(--wsp-fs-key);
-    font-weight: 600;
+    font-weight: var(--fw-medium);
     color: var(--on-surface);
 }
 
@@ -467,10 +455,6 @@ here and there must never be one. */
 .wsp-checklist__dismiss:hover {
     background: var(--surface-2);
     color: var(--on-surface);
-}
-
-.wsp-checklist__dismiss:focus-visible {
-    outline: none;
 }
 
 .wsp-checklist__items {
@@ -502,10 +486,6 @@ here and there must never be one. */
     background: var(--surface-2);
 }
 
-.wsp-checklist__link:focus-visible {
-    outline: none;
-}
-
 /* An unchecked step is a hollow square, a done step a filled tick. Shape first, colour fourth. */
 .wsp-checklist__check {
     display: inline-flex;
@@ -516,7 +496,7 @@ here and there must never be one. */
     block-size: 1.125rem;
     border-radius: var(--radius-xs);
     color: var(--text-secondary);
-    box-shadow: inset 0 0 0 1.5px currentColor;
+    box-shadow: inset 0 0 0 var(--wsp-stroke-thin) currentColor;
 }
 
 .wsp-checklist__item[data-done="true"] .wsp-checklist__check {
@@ -652,10 +632,6 @@ here and there must never be one. */
     background: var(--surface-2);
 }
 
-.wsp-projects__row:focus-visible {
-    outline: none;
-}
-
 /* State is a glyph, and the word lives in its Tooltip (§B.6). */
 .wsp-projects__glyph {
     display: inline-flex;
@@ -679,13 +655,13 @@ here and there must never be one. */
 .wsp-projects__body {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--space-px);
     min-inline-size: 0;
 }
 
 .wsp-projects__title {
     font-size: var(--wsp-fs-body);
-    font-weight: 500;
+    font-weight: var(--fw-medium);
     color: var(--on-surface);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -725,7 +701,7 @@ reserved for the entity whose console this is. */
 .wsp-projects__track {
     flex: 1 1 auto;
     min-inline-size: 3rem;
-    block-size: 4px;
+    block-size: var(--wsp-meter-h);
     border-radius: var(--radius-xs);
     background: var(--wsp-track-bg);
     overflow: hidden;
@@ -802,10 +778,6 @@ a.wsp-activity__row:hover {
     background: var(--surface-2);
 }
 
-.wsp-activity__row:focus-visible {
-    outline: none;
-}
-
 .wsp-activity__glyph {
     display: inline-flex;
     align-items: center;
@@ -852,10 +824,6 @@ a.wsp-activity__row:hover {
     text-decoration: underline;
 }
 
-.wsp-activity__link:focus-visible {
-    outline: none;
-}
-
 .wsp-activity__text {
     margin: 0;
     min-inline-size: 0;
@@ -867,7 +835,7 @@ a.wsp-activity__row:hover {
 }
 
 .wsp-activity__actor {
-    font-weight: 600;
+    font-weight: var(--fw-medium);
 }
 
 .wsp-activity__avatar {
@@ -922,118 +890,67 @@ a.wsp-activity__row:hover {
     text-decoration: underline;
 }
 
-.wsp-error__retry:focus-visible {
-    outline: none;
-    border-radius: var(--radius-xs);
-}
-
-/* #endregion */
-
-/* #region Skeletons — the real geometry, not generic rectangles */
-.wsp-skel {
-    inline-size: 100%;
-}
-
-.wsp-skel__block,
-.wsp-skel__line,
-.wsp-skel__row,
-.wsp-skel__card,
-.wsp-skel__mark {
-    position: relative;
-    display: block;
-    background: var(--surface-2);
-    border-radius: var(--radius-base);
-    overflow: hidden;
-}
-
-.wsp-skel__mark {
-    inline-size: var(--wsp-mark-lg);
-    block-size: var(--wsp-mark-lg);
-    border-radius: var(--radius-lg);
-}
-
-.wsp-skel__line {
-    block-size: 0.8rem;
-    inline-size: 8rem;
-}
-
-.wsp-skel__line--wide {
-    inline-size: 60%;
-}
-
-.wsp-skel__block--banner {
-    block-size: clamp(6rem, 14vw, 10rem);
-    border-radius: var(--radius-container-lg);
-}
-
-.wsp-skel__block--track {
-    block-size: var(--wsp-track-h);
-    border-radius: var(--radius-sm);
-}
-
-.wsp-skel__row {
-    block-size: var(--wsp-rowh);
-}
-
-.wsp-skel__rows {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-}
-
-.wsp-skel__cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(var(--wsp-card-min), 1fr));
-    gap: var(--space-4);
-}
-
-.wsp-skel__card {
-    block-size: 11rem;
-    border-radius: var(--radius-container-lg);
-}
-
-.wsp-skel__tiles {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(var(--wsp-tile-min), 1fr));
-    gap: var(--space-5);
-}
-
-.wsp-skel__block--tile {
-    block-size: 4.5rem;
-}
-
-/* The shimmer sweeps on the inline axis, so it travels with the reading direction. */
-@media (prefers-reduced-motion: no-preference) {
-
-    .wsp-skel__block::after,
-    .wsp-skel__line::after,
-    .wsp-skel__row::after,
-    .wsp-skel__card::after,
-    .wsp-skel__mark::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(90deg,
-                transparent,
-                color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent),
-                transparent);
-        animation: wsp-shimmer var(--dur-slow) linear infinite;
-    }
-}
-
-@keyframes wsp-shimmer {
-    from {
-        transform: translate3d(-100%, 0, 0);
-    }
-
-    to {
-        transform: translate3d(100%, 0, 0);
-    }
-}
-
 /* #endregion */
 
 /* #region Band entrance — first paint only, over-damped, staggered in band order */
+/*
+ * The stagger index arrives as a `data-i` ATTRIBUTE and this ladder turns it into `--wsp-i`, so no
+ * component writes an inline `style` for it (root CLAUDE.md §3). Capped at twelve steps: any index
+ * past 11 — the bare `[data-i]` rule, which the exact matches below override — enters with the last
+ * delay, so a long stack never makes its tail wait for a beat nobody can see.
+ */
+[data-i] {
+    --wsp-i: 11;
+}
+
+[data-i="0"] {
+    --wsp-i: 0;
+}
+
+[data-i="1"] {
+    --wsp-i: 1;
+}
+
+[data-i="2"] {
+    --wsp-i: 2;
+}
+
+[data-i="3"] {
+    --wsp-i: 3;
+}
+
+[data-i="4"] {
+    --wsp-i: 4;
+}
+
+[data-i="5"] {
+    --wsp-i: 5;
+}
+
+[data-i="6"] {
+    --wsp-i: 6;
+}
+
+[data-i="7"] {
+    --wsp-i: 7;
+}
+
+[data-i="8"] {
+    --wsp-i: 8;
+}
+
+[data-i="9"] {
+    --wsp-i: 9;
+}
+
+[data-i="10"] {
+    --wsp-i: 10;
+}
+
+[data-i="11"] {
+    --wsp-i: 11;
+}
+
 @media (prefers-reduced-motion: no-preference) {
     .wsp-band {
         animation: wsp-band-in var(--dur-medium) var(--ease-standard) both;
@@ -1044,7 +961,7 @@ a.wsp-activity__row:hover {
 @keyframes wsp-band-in {
     from {
         opacity: 0;
-        transform: translateY(8px);
+        transform: translateY(var(--space-2));
     }
 
     to {
@@ -1056,7 +973,7 @@ a.wsp-activity__row:hover {
 /* #endregion */
 
 /* #region Responsive */
-@media (max-width: 1100px) {
+@media (max-width: 79.9375rem) {
     .wsp {
         --wsp-band-pad: var(--space-5);
         --wsp-band-gap: var(--space-5);
@@ -1073,7 +990,7 @@ a.wsp-activity__row:hover {
     }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 47.9375rem) {
     .wsp {
         --wsp-band-pad: var(--space-4);
         --wsp-band-pad-b: var(--space-5);
@@ -1123,12 +1040,7 @@ a.wsp-activity__row:hover {
 /* #region Reduced motion */
 @media (prefers-reduced-motion: reduce) {
 
-    .wsp-band,
-    .wsp-skel__block::after,
-    .wsp-skel__line::after,
-    .wsp-skel__row::after,
-    .wsp-skel__card::after,
-    .wsp-skel__mark::after {
+    .wsp-band {
         animation: none;
     }
 
@@ -1139,12 +1051,7 @@ a.wsp-activity__row:hover {
     }
 }
 
-:root[data-motion="reduced"] .wsp-band,
-:root[data-motion="reduced"] .wsp-skel__block::after,
-:root[data-motion="reduced"] .wsp-skel__line::after,
-:root[data-motion="reduced"] .wsp-skel__row::after,
-:root[data-motion="reduced"] .wsp-skel__card::after,
-:root[data-motion="reduced"] .wsp-skel__mark::after {
+:root[data-motion="reduced"] .wsp-band {
     animation: none;
 }
 

@@ -19,9 +19,20 @@
  * resolves correctly in light AND dark, under `data-contrast="high"` and under every `data-cvd`
  * overlay.
  *
- * DATA-carrying custom properties (`--wsp-share`, `--wsp-fill`, `--wsp-progress`, `--wsp-i`) are
- * delivered by `styleVars()` from `@ui/core/style.ts`. That is a value channel, not a style
- * declaration — no component in this feature writes a CSS property inline.
+ * Every mix is OPAQUE (§B.4.2): it is mixed against the solid surface the colour actually lands on —
+ * `--surface` for the matrix and the dialogs, `--surface-1` for cards and bands, a stake's own tone for
+ * the hatch drawn over it — and never against `transparent`, so each tone is measurable and none of
+ * them compounds when nested. The quiet status fills are the U1 tokens (`--success-tint`,
+ * `--warning-tint`, `--danger-tint`), which already carry their own per-mode/contrast strength.
+ *
+ * The literal px values on this surface live in the Geometry region below and nowhere else: a rule
+ * reads a token, never a pixel. `styles.gate.test.ts` holds every sheet in this folder to that, and to
+ * the rest of the W1 merge gates.
+ *
+ * DATA-carrying custom properties (`--wsp-share`, `--wsp-fill`, `--wsp-progress`) are delivered by
+ * `styleVars()` from `@ui/core/style.ts`. That is a value channel, not a style declaration — no
+ * component in this feature writes a CSS property inline. The entrance stagger index `--wsp-i` is NOT
+ * one of them: it is a `data-i` attribute resolved by the selector ladder in `workspace-console.css`.
  */
 
 :root {
@@ -63,7 +74,9 @@
 	--wsp-team-on: var(--on-primary);
 	--wsp-team-tint: color-mix(in srgb, var(--primary) 10%, var(--surface-1));
 	--wsp-team-tint-hi: color-mix(in srgb, var(--primary) 18%, var(--surface-1));
-	--wsp-team-edge: color-mix(in srgb, var(--primary) 40%, transparent);
+	/* The edge strokes a control or a self row sitting on a card, so it is mixed against the card's
+	`--surface-1`: the same tone the old 40% alpha produced there, now measurable everywhere. */
+	--wsp-team-edge: color-mix(in oklab, var(--primary) 40%, var(--surface-1));
 	/*
 	 * `-ink` is the accent as TEXT on one of its own tints, and it exists because the accent itself
 	 * was not readable there. `.wsp-mark` — the entity identity badge, the single most repeated mark
@@ -84,7 +97,7 @@
 	--wsp-business-on: var(--surface);
 	--wsp-business-tint: color-mix(in srgb, var(--secondary) 10%, var(--surface-1));
 	--wsp-business-tint-hi: color-mix(in srgb, var(--secondary) 18%, var(--surface-1));
-	--wsp-business-edge: color-mix(in srgb, var(--secondary) 40%, transparent);
+	--wsp-business-edge: color-mix(in oklab, var(--secondary) 40%, var(--surface-1));
 	--wsp-business-ink: color-mix(in srgb, var(--secondary) 80%, var(--on-surface));
 
 	/* The resolved trio. Defaults to the seller side so a kind-less fragment still paints. */
@@ -100,14 +113,16 @@
 	/*
 	 * Acting as an entity is signalled on four surfaces at once (the roster card, the lane row, the
 	 * header band and a shell-wide line). Only the CHIP is allowed to be loud: it is a filled,
-	 * high-contrast pill. The ring is hairline weight and the tint is a single tonal step, so the
-	 * markers accumulate into one calm reading rather than four competing alarms.
+	 * high-contrast pill. Everywhere else acting is a single tonal step plus, on a row or a card, one
+	 * leading `--hairline-strong` rule — never a four-sided ring (§B.4) — so the markers accumulate
+	 * into one calm reading rather than four competing alarms. `-ring` survives only as the border
+	 * colour of the lane switcher, which is a control and so may carry a full contour.
 	 */
 	--wsp-acting: var(--wsp-kind);
 	--wsp-acting-on: var(--wsp-kind-on);
 	--wsp-acting-tint: color-mix(in srgb, var(--wsp-kind) 8%, var(--surface-1));
-	--wsp-acting-ring: color-mix(in srgb, var(--wsp-kind) 55%, transparent);
-	--wsp-acting-line-h: 2px;
+	--wsp-acting-ring: color-mix(in oklab, var(--wsp-kind) 55%, var(--surface-1));
+	--wsp-acting-line-h: var(--space-px);
 	/* #endregion */
 
 	/* #region Lifecycle + verification semantics */
@@ -131,11 +146,12 @@
 	 * permission is never drawn as a plain tick, which would over-promise.
 	 */
 	--wsp-allowed: var(--success);
-	--wsp-allowed-tint: color-mix(in srgb, var(--success) 12%, transparent);
+	--wsp-allowed-tint: var(--success-tint);
 	--wsp-conditional: var(--warning);
-	--wsp-conditional-tint: color-mix(in srgb, var(--warning) 12%, transparent);
+	--wsp-conditional-tint: var(--warning-tint);
 	--wsp-denied: var(--on-surface-variant);
-	--wsp-denied-tint: transparent;
+	/* "No fill" spelled as the matrix's own solid ground, so a denied cell is a measured tone too. */
+	--wsp-denied-tint: var(--surface);
 
 	/* Override markers. A grant reads as an addition to the role baseline, a revocation as a
 	subtraction — never as an error, because a deliberate revocation is correct configuration. */
@@ -144,17 +160,20 @@
 	--wsp-consequential: var(--warning);
 
 	/* A preset role is read-only by design. The locked look is a hatch plus a lock glyph, so it is
-	legible without colour. */
-	--wsp-locked-tint: color-mix(in srgb, var(--on-surface) 5%, transparent);
-	--wsp-locked-hatch: color-mix(in srgb, var(--on-surface) 12%, transparent);
+	legible without colour. Both are drawn on the matrix, whose ground is `--surface`. */
+	--wsp-locked-tint: color-mix(in oklab, var(--on-surface) 5%, var(--surface));
+	--wsp-locked-hatch: color-mix(in oklab, var(--on-surface) 12%, var(--surface));
 	/* #endregion */
 
 	/* #region Money — the split bar, the spend envelopes, the approval ladder */
-	/* The recessed track, the meter well and the hatch are global now — wallet-tokens.css had
-	independently arrived at the same three mixes, including the same high-contrast widening. */
+	/* The recessed track and the meter well are global now — wallet-tokens.css had independently
+	arrived at the same mixes, including the same high-contrast widening. */
 	--wsp-track-bg: var(--track-recessed);
 	--wsp-meter-bg: var(--track-meter);
-	--wsp-hatch: var(--hatch-color);
+	/* The conditional cell's hatch. It is only ever drawn over that cell's own fill, so it is mixed
+	against that fill — the opaque twin of the global translucent `--hatch-color` (16%, 30% under high
+	contrast), with the same strength. */
+	--wsp-hatch: color-mix(in oklab, var(--on-surface) 16%, var(--wsp-conditional-tint));
 
 	/*
 	 * Six stake tones for the split bar. Derived by walking the three accent roles at descending
@@ -172,8 +191,10 @@
 	--wsp-stake: var(--wsp-stake-1);
 
 	/* A held stake stays in the vault for a manual decision. It is hatched, not greyed out: the
-	share is still theirs. */
-	--wsp-held-hatch: color-mix(in srgb, var(--on-surface) 22%, transparent);
+	share is still theirs. The hatch is drawn over the stake's own tone, so it is mixed against that
+	tone — and re-declared on every `[data-stake]` element below, because a custom property resolves
+	where it is DECLARED and this `:root` copy only knows stake 1. */
+	--wsp-held-hatch: color-mix(in oklab, var(--on-surface) 22%, var(--wsp-stake));
 
 	--wsp-spent: var(--wsp-kind);
 	--wsp-remaining: var(--wsp-track-bg);
@@ -239,6 +260,43 @@
 	--wsp-ring-size: 2.75rem;
 	--wsp-ring-w: 4px;
 
+	/*
+	 * Marks drawn in CSS — the dots, swatches, strokes, meters and hatches. Pixels rather than `rem`
+	 * on purpose, for the reason the global `--space-px` gives: these are graphical marks, and a 2px
+	 * stroke that doubles at 200% type zoom stops reading as a stroke. `--wsp-hairline-w` mirrors the
+	 * width inside the global `--hairline` shorthand, for the stems and offsets that need the number on
+	 * its own (`@projective/ui` publishes the shorthand, not its width).
+	 */
+	--wsp-hairline-w: 1px;
+	--wsp-stroke: 2px;
+	--wsp-stroke-thin: 1.5px;
+	--wsp-dot: var(--space-2);
+	--wsp-dot-sm: 6px;
+	--wsp-dot-bar: 3px;
+	--wsp-swatch: 10px;
+	--wsp-meter-h: var(--space-1);
+	--wsp-meter-h-lg: 6px;
+	/* One hatch line every `pitch`, one hairline thick: wide for a cell or a stake, tight for a small
+	swatch, so the stripe count reads the same at every size. */
+	--wsp-hatch-pitch: 6px;
+	--wsp-hatch-pitch-sm: 5px;
+	--wsp-hatch-pitch-xs: 4px;
+	/* The headroom an overhanging split pip's label occupies above the rail. */
+	--wsp-pip-room: 20px;
+
+	/*
+	 * Breakpoints. A media query cannot read a custom property and no build step here expands
+	 * `@custom-media`, so the sheets spell the `@projective/ui` breakpoints (§C.3) in `rem` — never
+	 * `px` — at exactly the pixel the package's own sheets use:
+	 *
+	 *   `@media (max-width: 47.9375rem)`  below `--bp-md` (768px) — the phone layout (767px)
+	 *   `@media (max-width: 79.9375rem)`  below `--bp-xl` (1280px) — the laned-tablet layout (1279px)
+	 *
+	 * The tablet step used to be a bespoke 1100px. It snapped UP to `--bp-xl` rather than down to
+	 * `--bp-lg` because it adapts the content region under a 280px lane, and snapping up only widens
+	 * the range of windows that get that adaptation (now 1101–1279px too): no window loses one it had.
+	 */
+
 	/* The ONLY two max-widths permitted on this surface: running text and form fields. No card, no
 	table, no matrix, no money figure and no chart may be their descendant. */
 	--wsp-prose: var(--measure);
@@ -270,6 +328,27 @@
 	--wsp-kind-ink: var(--wsp-business-ink);
 }
 
+/*
+ * The tokens DERIVED from the kind, re-declared under the switch. A custom property's `var()` is
+ * substituted where the property is declared, so the `:root` copies above froze on the team's brand
+ * and every business subtree inherited them: the acting chip, the active state, a grant marker and the
+ * spend meter all painted teal on `/businesses`. Declared here, they re-resolve against whichever
+ * `--wsp-kind` the same element just set.
+ */
+[data-kind] {
+	--wsp-acting: var(--wsp-kind);
+	--wsp-acting-on: var(--wsp-kind-on);
+	--wsp-acting-tint: color-mix(in srgb, var(--wsp-kind) 8%, var(--surface-1));
+	--wsp-acting-ring: color-mix(in oklab, var(--wsp-kind) 55%, var(--surface-1));
+	--wsp-active: var(--wsp-kind);
+	--wsp-grant: var(--wsp-kind);
+	--wsp-spent: var(--wsp-kind);
+}
+
+:root[data-contrast="high"] [data-kind] {
+	--wsp-acting-ring: color-mix(in oklab, var(--wsp-kind) 85%, var(--surface-1));
+}
+
 /* Stake index → tone. Six rules, because a `nth-child` cycle cannot survive a reordered split. */
 [data-stake="1"] {
 	--wsp-stake: var(--wsp-stake-1);
@@ -295,23 +374,33 @@
 	--wsp-stake: var(--wsp-stake-6);
 }
 
+/* Re-resolved per stake, against the tone the same element just set (see `--wsp-held-hatch`). */
+[data-stake] {
+	--wsp-held-hatch: color-mix(in oklab, var(--on-surface) 22%, var(--wsp-stake));
+}
+
 /*
  * High contrast — the tonal mixes widen so every state clears AAA separation. The attribute is
  * written by `packages/ui/system` (`applyConfig`).
  */
 :root[data-contrast="high"] {
 	--wsp-team-tint: color-mix(in srgb, var(--primary) 20%, var(--surface-1));
-	--wsp-team-edge: color-mix(in srgb, var(--primary) 70%, transparent);
+	--wsp-team-edge: color-mix(in oklab, var(--primary) 70%, var(--surface-1));
 	--wsp-business-tint: color-mix(in srgb, var(--secondary) 20%, var(--surface-1));
-	--wsp-business-edge: color-mix(in srgb, var(--secondary) 70%, transparent);
-	--wsp-acting-ring: color-mix(in srgb, var(--wsp-kind) 85%, transparent);
-	--wsp-allowed-tint: color-mix(in srgb, var(--success) 24%, transparent);
-	--wsp-conditional-tint: color-mix(in srgb, var(--warning) 24%, transparent);
-	--wsp-locked-hatch: color-mix(in srgb, var(--on-surface) 26%, transparent);
-	/* The recessed track, the hatch and the minor-unit fade widened here too, by exactly the amounts
-	wallet-tokens.css used; all three moved to the global layer with their tokens, so re-declaring
-	them would pin the alias to a frozen copy and reintroduce the drift the promotion removed. They
-	widen through `--track-recessed` / `--hatch-color` / `--minor-fade` on their own. */
+	--wsp-business-edge: color-mix(in oklab, var(--secondary) 70%, var(--surface-1));
+	--wsp-acting-ring: color-mix(in oklab, var(--wsp-kind) 85%, var(--surface-1));
+	--wsp-locked-hatch: color-mix(in oklab, var(--on-surface) 26%, var(--surface));
+	--wsp-hatch: color-mix(in oklab, var(--on-surface) 30%, var(--wsp-conditional-tint));
+	/*
+	 * `--wsp-allowed-tint` / `--wsp-conditional-tint` are NOT widened here any more: they are the U1
+	 * `--success-tint` / `--warning-tint`, which step their own strength DOWN under high contrast — a
+	 * lighter fill pulls the cell toward its surface and widens the glyph ink drawn on it.
+	 *
+	 * The recessed track and the minor-unit fade widened here too, by exactly the amounts
+	 * wallet-tokens.css used; both moved to the global layer with their tokens, so re-declaring them
+	 * would pin the alias to a frozen copy and reintroduce the drift the promotion removed. They widen
+	 * through `--track-recessed` / `--minor-fade` on their own.
+	 */
 }
 
 /*
@@ -335,7 +424,7 @@
 	--wsp-business: var(--tertiary);
 	--wsp-business-tint: color-mix(in srgb, var(--tertiary) 12%, var(--surface-1));
 	--wsp-business-tint-hi: color-mix(in srgb, var(--tertiary) 20%, var(--surface-1));
-	--wsp-business-edge: color-mix(in srgb, var(--tertiary) 46%, transparent);
+	--wsp-business-edge: color-mix(in oklab, var(--tertiary) 46%, var(--surface-1));
 	--wsp-stake-2: color-mix(in srgb, var(--tertiary) 80%, var(--surface-2));
 	--wsp-stake-5: color-mix(in srgb, var(--primary) 40%, var(--surface-3));
 }
@@ -398,22 +487,22 @@ ordinary prose keeps proportional figures. */
 
 .wsp-money--figure {
 	font-size: var(--wsp-fs-figure);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 }
 
 .wsp-money--key {
 	font-size: var(--wsp-fs-key);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 }
 
 .wsp-money--body {
 	font-size: var(--wsp-fs-body);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 }
 
 .wsp-money--micro {
 	font-size: var(--wsp-fs-micro);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 }
 
 .wsp-money--muted {
@@ -457,7 +546,7 @@ ordinary prose keeps proportional figures. */
 	background: var(--wsp-kind-tint-hi);
 	color: var(--wsp-kind-ink);
 	font-size: var(--wsp-fs-body);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	line-height: 1;
 	text-transform: uppercase;
 	letter-spacing: 0.01em;
@@ -515,18 +604,19 @@ identity band, where the entity is the subject of the page. */
 	gap: var(--space-2);
 	flex: none;
 	padding-inline: var(--space-2);
-	padding-block: 2px;
+	padding-block: var(--space-px);
 	border-radius: var(--radius-xs);
 	background: var(--wsp-acting);
 	color: var(--wsp-acting-on);
 	font-size: var(--wsp-fs-micro);
 	letter-spacing: var(--wsp-label-track);
 	text-transform: uppercase;
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	white-space: nowrap;
 }
 
-/* The quiet variant, for a row that already carries the ring + tint and must not shout twice. */
+/* The quiet variant, for a row that already carries the leading rule + tint and must not shout
+twice. */
 .wsp-actingchip--quiet {
 	background: var(--wsp-kind-tint-hi);
 	color: var(--wsp-kind-ink);
@@ -534,8 +624,8 @@ identity band, where the entity is the subject of the page. */
 
 .wsp-actingchip__dot {
 	flex: none;
-	inline-size: 6px;
-	block-size: 6px;
+	inline-size: var(--wsp-dot-sm);
+	block-size: var(--wsp-dot-sm);
 	border-radius: 50%;
 	background: currentColor;
 }
@@ -582,12 +672,12 @@ frozen animation clock costs nothing. */
 	gap: var(--space-1);
 	flex: none;
 	padding-inline: var(--space-2);
-	padding-block: 2px;
+	padding-block: var(--space-px);
 	border-radius: var(--radius-xs);
 	background: var(--surface-3);
 	color: var(--text-secondary);
 	font-size: var(--wsp-fs-micro);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	white-space: nowrap;
 }
 
@@ -604,25 +694,26 @@ frozen animation clock costs nothing. */
 	color: var(--wsp-acting-on);
 }
 
+/* A permitted chip fills with a SOLID tonal step (§B.11.6): the U1 status tints, never an alpha wash. */
 .wsp-chip[data-tone="success"] {
-	background: color-mix(in srgb, var(--success) 14%, transparent);
+	background: var(--success-tint);
 	color: var(--success);
 }
 
 .wsp-chip[data-tone="warning"] {
-	background: color-mix(in srgb, var(--warning) 14%, transparent);
+	background: var(--warning-tint);
 	color: var(--warning);
 }
 
 .wsp-chip[data-tone="danger"] {
-	background: color-mix(in srgb, var(--danger) 14%, transparent);
+	background: var(--danger-tint);
 	color: var(--danger);
 }
 
+/* The quiet chip is one tonal step down from the default, not an outlined box (§B.4). */
 .wsp-chip[data-tone="muted"] {
-	background: transparent;
+	background: var(--surface-2);
 	color: var(--text-secondary);
-	box-shadow: inset 0 0 0 1px var(--hairline-color);
 }
 
 .wsp-chip__glyph {
@@ -638,8 +729,8 @@ frozen animation clock costs nothing. */
 .wsp-statedot {
 	display: inline-block;
 	flex: none;
-	inline-size: 8px;
-	block-size: 8px;
+	inline-size: var(--wsp-dot);
+	block-size: var(--wsp-dot);
 	border-radius: 50%;
 	background: var(--wsp-draft);
 }
@@ -651,13 +742,13 @@ frozen animation clock costs nothing. */
 /* A draft is a hollow ring — present, not yet filled in. */
 .wsp-statedot[data-state="draft"] {
 	background: transparent;
-	box-shadow: inset 0 0 0 2px var(--wsp-draft);
+	box-shadow: inset 0 0 0 var(--wsp-stroke) var(--wsp-draft);
 }
 
 /* Archived is a bar: closed, not deleted. */
 .wsp-statedot[data-state="archived"] {
-	inline-size: 8px;
-	block-size: 3px;
+	inline-size: var(--wsp-dot);
+	block-size: var(--wsp-dot-bar);
 	border-radius: var(--radius-xs);
 	background: var(--wsp-archived);
 }
@@ -668,7 +759,7 @@ frozen animation clock costs nothing. */
 
 .wsp-statedot[data-verify="pending"] {
 	background: transparent;
-	box-shadow: inset 0 0 0 2px var(--wsp-pending);
+	box-shadow: inset 0 0 0 var(--wsp-stroke) var(--wsp-pending);
 }
 
 .wsp-statedot[data-verify="unverified"] {
@@ -683,8 +774,8 @@ frozen animation clock costs nothing. */
 	position: relative;
 	display: inline-block;
 	flex: none;
-	inline-size: 7px;
-	block-size: 7px;
+	inline-size: var(--wsp-pip-dot);
+	block-size: var(--wsp-pip-dot);
 	border-radius: 50%;
 	background: var(--wsp-kind);
 }
@@ -719,8 +810,8 @@ frozen animation clock costs nothing. */
 	transform: scaleX(-1);
 }
 
-/* Announced, never seen - the table captions and the split bar's textual summary. 
-   Visually hidden via the shared `.ui-visually-hidden` utility in `@projective/ui/styles` 
+/* Announced, never seen - the table captions and the split bar's textual summary.
+   Visually hidden via the shared `.ui-visually-hidden` utility in `@projective/ui/styles`
    (this rule was a byte-for-byte reimplementation of it). */
 
 /* One truncating row cell. `min-inline-size: 0` is the half everyone forgets in a flex/grid child. */

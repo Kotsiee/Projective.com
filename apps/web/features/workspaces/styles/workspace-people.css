@@ -52,7 +52,7 @@
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-px);
-	padding: 2px;
+	padding: var(--space-px);
 	border-radius: var(--radius-base);
 	background: var(--surface-2);
 }
@@ -73,10 +73,6 @@
 
 .wsp-people__view:hover {
 	color: var(--on-surface);
-}
-
-.wsp-people__view:focus-visible {
-	outline: none;
 }
 
 .wsp-people__view[aria-pressed="true"],
@@ -109,13 +105,15 @@
 }
 
 .wsp-select:focus-visible {
-	outline: none;
 	border-color: var(--fld-focus-bd);
 	box-shadow: var(--fld-focus-glow);
 }
 
+/* Disabled fades the INK and the BORDER through the shared mix, never the whole box (§A.7): the same
+two declarations the package field draws its own disabled state with. */
 .wsp-select:disabled {
-	opacity: var(--fld-disabled-alpha);
+	color: color-mix(in srgb, var(--fld-rest-fg) var(--fld-disabled-mix), var(--fld-rest-bg));
+	border-color: color-mix(in srgb, var(--fld-rest-bd) var(--fld-disabled-mix), var(--fld-rest-bg));
 	cursor: not-allowed;
 }
 
@@ -151,7 +149,7 @@
 	font-size: var(--wsp-fs-micro);
 	letter-spacing: var(--wsp-label-track);
 	text-transform: uppercase;
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	color: var(--text-secondary);
 }
 
@@ -179,6 +177,10 @@
 	inline-size: 100%;
 	min-inline-size: 0;
 	padding: var(--space-4);
+	/* One leading edge, reserved transparent at rest: the self and pending states below recolour it
+	rather than adding a box (§B.4, §B.12.3). */
+	border-inline-start: var(--hairline-strong);
+	border-inline-start-color: transparent;
 	border-radius: var(--radius-container-lg);
 	background: var(--surface-1);
 	transition: background-color var(--dur-fast) var(--ease-standard);
@@ -188,20 +190,23 @@
 	background: var(--surface-2);
 }
 
-/* The viewer's own row gets a hairline ring — orientation, not emphasis. */
+/* The viewer's own card gets one leading `--hairline-strong` rule — orientation, not emphasis, and
+never a four-sided ring around static content. */
 .wsp-mcard[data-self="true"] {
-	box-shadow: inset 0 0 0 1px var(--wsp-kind-edge);
+	border-inline-start-color: var(--hairline-strong-color);
 }
 
-/* An invited or requested member is present but not yet counted. Dimmed, never hidden. */
+/* An invited or requested member is present but not yet counted: no tonal plate of their own, just
+the quiet leading hairline. Dimmed, never hidden. */
 .wsp-mcard[data-state="invited"],
 .wsp-mcard[data-state="requested"] {
 	background: transparent;
-	box-shadow: inset 0 0 0 1px var(--hairline-color);
+	border-inline-start-color: var(--hairline-color);
 }
 
-.wsp-mcard[data-state="left"] {
-	opacity: 0.6;
+/* A member who left keeps their card, dimmed through the INK rather than `opacity` (§B.12). */
+.wsp-mcard[data-state="left"] .wsp-mcard__name {
+	color: var(--text-secondary);
 }
 
 .wsp-mcard__top {
@@ -230,7 +235,7 @@
 	margin: 0;
 	min-inline-size: 0;
 	font-size: var(--wsp-fs-body);
-	font-weight: 600;
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 }
 
@@ -245,11 +250,6 @@
 
 .wsp-mcard__name-link:hover {
 	text-decoration: underline;
-}
-
-.wsp-mcard__name-link:focus-visible {
-	outline: none;
-	border-radius: var(--radius-xs);
 }
 
 .wsp-mcard__title {
@@ -294,20 +294,16 @@
 	color: var(--on-surface);
 }
 
-.wsp-mcard__kebab:focus-visible {
-	outline: none;
-}
-
 /* Availability is a dot on the avatar's corner, with the word in its Tooltip (§B.6). */
 .wsp-mcard__avail {
 	position: absolute;
 	inset-block-end: 0;
 	inset-inline-end: 0;
-	inline-size: 10px;
-	block-size: 10px;
+	inline-size: var(--wsp-swatch);
+	block-size: var(--wsp-swatch);
 	border-radius: 50%;
 	background: var(--wsp-unverified);
-	box-shadow: 0 0 0 2px var(--surface-1);
+	box-shadow: 0 0 0 var(--space-px) var(--surface-1);
 }
 
 .wsp-mcard__avatarwrap {
@@ -326,7 +322,7 @@
 
 .wsp-mcard__avail[data-avail="unavailable"] {
 	background: transparent;
-	box-shadow: 0 0 0 2px var(--surface-1), inset 0 0 0 2px var(--outline);
+	box-shadow: 0 0 0 var(--space-px) var(--surface-1), inset 0 0 0 var(--wsp-stroke) var(--outline);
 }
 
 /* Workload. The fill's inline-size encodes the commitment, so it is never animated. */
@@ -340,7 +336,7 @@
 .wsp-mcard__load-track {
 	flex: 1 1 auto;
 	min-inline-size: 0;
-	block-size: 4px;
+	block-size: var(--wsp-meter-h);
 	border-radius: var(--radius-xs);
 	background: var(--wsp-track-bg);
 	overflow: hidden;
@@ -384,20 +380,22 @@
 	align-items: center;
 	gap: var(--space-px);
 	padding-inline: var(--space-1);
-	padding-block: 1px;
+	padding-block: calc(var(--space-px) / 2);
 	border-radius: var(--radius-xs);
 	font-size: var(--wsp-fs-micro);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	white-space: nowrap;
 }
 
+/* Both markers fill with a SOLID tonal step (§B.11.6): the grant is the kind mixed against the card's
+own `--surface-1`, the revocation one ramp step up from it. */
 .wsp-override[data-override="grant"] {
-	background: color-mix(in srgb, var(--wsp-grant) var(--tint), transparent);
+	background: color-mix(in oklab, var(--wsp-grant) var(--tint), var(--surface-1));
 	color: var(--wsp-grant);
 }
 
 .wsp-override[data-override="revoke"] {
-	background: var(--wsp-locked-tint);
+	background: var(--surface-2);
 	color: var(--wsp-revoke);
 	text-decoration: line-through;
 }
@@ -436,7 +434,7 @@
 }
 
 .wsp-mtable__name-text {
-	font-weight: 500;
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -476,11 +474,6 @@
 	padding-block: var(--space-4);
 }
 
-.wsp-chart:focus-visible {
-	outline: none;
-	border-radius: var(--radius-base);
-}
-
 .wsp-chart__level {
 	list-style: none;
 	margin: 0;
@@ -503,9 +496,9 @@
 	inset-block-start: 0;
 	inset-inline: 0;
 	margin-inline: auto;
-	inline-size: 1px;
+	inline-size: 0;
 	block-size: var(--wsp-connector);
-	background: var(--hairline-color);
+	border-inline-start: var(--hairline);
 }
 
 .wsp-chart__node {
@@ -523,9 +516,9 @@
 	inset-block-end: 100%;
 	inset-inline: 0;
 	margin-inline: auto;
-	inline-size: 1px;
+	inline-size: 0;
 	block-size: var(--wsp-connector);
-	background: var(--hairline-color);
+	border-inline-start: var(--hairline);
 }
 
 /* The sibling bar. A first child spans from its own centre outward; a last child spans inward. */
@@ -534,8 +527,8 @@
 	position: absolute;
 	inset-block-end: calc(100% + var(--wsp-connector));
 	inset-inline: 0;
-	block-size: 1px;
-	background: var(--hairline-color);
+	block-size: 0;
+	border-block-start: var(--hairline);
 }
 
 .wsp-chart__level:not(.wsp-chart__level--root) > .wsp-chart__node:first-child::after {
@@ -558,7 +551,7 @@
 	inline-size: var(--wsp-node-w);
 	min-inline-size: 0;
 	padding: var(--space-2) var(--space-3);
-	border: 1px solid var(--border-subtle);
+	border: var(--hairline-strong);
 	border-radius: var(--radius-lg);
 	background: var(--surface-1);
 	color: inherit;
@@ -571,10 +564,6 @@
 
 .wsp-chart__card:hover {
 	background: var(--surface-2);
-}
-
-.wsp-chart__card:focus-visible {
-	outline: none;
 }
 
 .wsp-chart__card[data-self="true"] {
@@ -596,7 +585,7 @@
 
 .wsp-chart__name {
 	font-size: var(--wsp-fs-body);
-	font-weight: 500;
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -629,10 +618,6 @@
 
 .wsp-chart__toggle:hover {
 	color: var(--on-surface);
-}
-
-.wsp-chart__toggle:focus-visible {
-	outline: none;
 }
 
 /* The caret rotates on the BLOCK axis, so its meaning does not invert under RtL. */
@@ -692,7 +677,7 @@
 .wsp-mdrawer__name {
 	margin: 0;
 	font-size: var(--wsp-fs-key);
-	font-weight: 600;
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -709,17 +694,13 @@
 	text-decoration: underline;
 }
 
-.wsp-mdrawer__handle:focus-visible {
-	outline: none;
-	border-radius: var(--radius-xs);
-}
-
 .wsp-mdrawer__meta {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
 	flex-wrap: wrap;
 	font-size: var(--wsp-fs-micro);
+	font-variant-numeric: tabular-nums;
 	color: var(--text-secondary);
 }
 
@@ -740,7 +721,7 @@
 	font-size: var(--wsp-fs-micro);
 	letter-spacing: var(--wsp-label-track);
 	text-transform: uppercase;
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	color: var(--text-secondary);
 }
 
@@ -810,7 +791,7 @@ is never presented without its reason. */
 /* A consequential capability is flagged in the row itself — burying "may withdraw funds" in a list of
 eighteen ticks is how a permission system stops being read. */
 .wsp-mdrawer__perm[data-consequential="true"] .wsp-mdrawer__perm-label {
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 }
 
 .wsp-mdrawer__perm-flag {
@@ -890,10 +871,6 @@ does anything (§B.4 — the fill is the separator). */
 	text-decoration: underline;
 }
 
-.wsp-mdrawer__lastowner-link:focus-visible {
-	outline: none;
-	border-radius: var(--radius-xs);
-}
 /* #endregion */
 
 /* #region Invitations module */
@@ -954,7 +931,7 @@ does anything (§B.4 — the fill is the separator). */
 
 .wsp-invites__name {
 	font-size: var(--wsp-fs-body);
-	font-weight: 500;
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -1069,7 +1046,7 @@ does anything (§B.4 — the fill is the separator). */
 /* #endregion */
 
 /* #region Responsive */
-@media (max-width: 1100px) {
+@media (max-width: 79.9375rem) {
 	.wsp-mgrid {
 		grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
 	}
@@ -1080,7 +1057,7 @@ does anything (§B.4 — the fill is the separator). */
 	}
 }
 
-@media (max-width: 767px) {
+@media (max-width: 47.9375rem) {
 	.wsp-mgrid {
 		grid-template-columns: minmax(0, 1fr);
 	}
@@ -1100,7 +1077,7 @@ does anything (§B.4 — the fill is the separator). */
 	.wsp-chart__level:not(.wsp-chart__level--root) {
 		padding-block-start: var(--space-2);
 		padding-inline-start: var(--wsp-tree-indent);
-		border-inline-start: 1px solid var(--hairline-color);
+		border-inline-start: var(--hairline);
 	}
 
 	.wsp-chart__level:not(.wsp-chart__level--root)::before,

@@ -3,7 +3,6 @@ import { useComputed, useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import "../styles/workspace.css";
 import { Tooltip } from "@projective/ui/feedback";
-import { styleVars } from "@ui/core/style.ts";
 import {
 	activeMembers,
 	kindCopy,
@@ -76,9 +75,12 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 		held.has("withdraw_funds");
 	const canInvite = held.has("invite_members");
 
-	/** Band order, so the entrance stagger reads top-to-bottom regardless of which bands render. */
+	/**
+	 * Band order, written as each band's `data-i` (the stylesheet's ladder turns it into the entrance
+	 * delay), so the stagger reads top-to-bottom regardless of which bands render.
+	 */
 	let band = 0;
-	const next = () => styleVars({ "--wsp-i": band++ });
+	const next = () => band++;
 
 	return (
 		<div class="wsp" data-kind={detail.kind}>
@@ -86,7 +88,7 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 				{/* #region Identity */}
 				<section
 					class="wsp-band wsp-band--head"
-					style={next()}
+					data-i={next()}
 					aria-label={`${detail.name} header`}
 				>
 					<div class="wsp-band__inner">
@@ -172,7 +174,7 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 				{showChecklist && (
 					<section
 						class="wsp-band wsp-band--checklist"
-						style={next()}
+						data-i={next()}
 						aria-label="Finish setting up"
 					>
 						<div class="wsp-band__inner">
@@ -198,7 +200,7 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 					 */
 				}
 				{detail.kind === "team" && !detail.canPropose && (
-					<section class="wsp-band wsp-band--plain" style={next()}>
+					<section class="wsp-band wsp-band--plain" data-i={next()}>
 						<div class="wsp-band__inner">
 							<p class="wsp-propose">
 								<span class="wsp-propose__glyph" aria-hidden="true">{cloneGlyph(InviteGlyph)}</span>
@@ -220,7 +222,7 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 				)}
 
 				{/* #region At a glance */}
-				<section class="wsp-band wsp-band--stats" style={next()} aria-label="At a glance">
+				<section class="wsp-band wsp-band--stats" data-i={next()} aria-label="At a glance">
 					<div class="wsp-band__inner">
 						<StatTileRow label="Workspace figures" class="wsp-tiles">
 							<StatTile
@@ -251,7 +253,7 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 
 				{/* Money is ABSENT for a viewer without finance rights — see the module header. */}
 				{canSeeMoney && (
-					<section class="wsp-band wsp-band--money" style={next()} aria-label="Money">
+					<section class="wsp-band wsp-band--money" data-i={next()} aria-label="Money">
 						<div class="wsp-band__inner">
 							<div class="wsp-band__head">
 								<h2 class="wsp-band__title">Money</h2>
@@ -263,7 +265,7 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 					</section>
 				)}
 
-				<section class="wsp-band wsp-band--projects" style={next()} aria-label="Projects">
+				<section class="wsp-band wsp-band--projects" data-i={next()} aria-label="Projects">
 					<div class="wsp-band__inner">
 						<div class="wsp-band__head">
 							<h2 class="wsp-band__title">
@@ -284,7 +286,7 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 
 				<section
 					class="wsp-band wsp-band--activity wsp-band--tail"
-					style={next()}
+					data-i={next()}
 					aria-label="Recent activity"
 				>
 					<div class="wsp-band__inner">

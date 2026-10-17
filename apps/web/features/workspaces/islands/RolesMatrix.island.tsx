@@ -4,7 +4,6 @@ import { useRef } from "preact/hooks";
 import "../styles/workspace.css";
 import { Tooltip } from "@projective/ui/feedback";
 import { Button, InputText } from "@projective/ui/fields";
-import { styleVars } from "@ui/core/style.ts";
 import {
 	capabilitiesForKind,
 	CAPABILITY_LABEL,
@@ -252,7 +251,7 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 	return (
 		<div class="wsp" data-kind={ws.kind}>
 			<div class="wsp__stack">
-				<section class="wsp-band wsp-band--head" style={styleVars({ "--wsp-i": 0 })}>
+				<section class="wsp-band wsp-band--head" data-i={0}>
 					<div class="wsp-band__inner">
 						<div class="wsp-pagehead">
 							<h1 class="wsp-pagehead__title">Roles and permissions</h1>

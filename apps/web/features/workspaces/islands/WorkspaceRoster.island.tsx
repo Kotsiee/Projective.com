@@ -5,7 +5,6 @@ import "../styles/workspace.css";
 import { Grid } from "@projective/ui/layout";
 import { InputText } from "@projective/ui/fields";
 import { InlineNotice, Message } from "@projective/ui/feedback";
-import { styleVars } from "@ui/core/style.ts";
 import {
 	type IncomingInvite,
 	kindCopy,
@@ -276,7 +275,7 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 	return (
 		<div class="wsp" data-kind={props.kind}>
 			<div class="wsp__stack">
-				<section class="wsp-band wsp-band--head" style={styleVars({ "--wsp-i": 0 })}>
+				<section class="wsp-band wsp-band--head" data-i={0}>
 					<div class="wsp-band__inner">
 						<div class="wsp-roster">
 							<div class="wsp-roster__head">
@@ -324,7 +323,7 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 				</section>
 
 				{stripVisible.value && (
-					<section class="wsp-band wsp-band--plain" style={styleVars({ "--wsp-i": 1 })}>
+					<section class="wsp-band wsp-band--plain" data-i={1}>
 						<div class="wsp-band__inner">
 							<InvitationStrip
 								invitations={invites.value}
@@ -336,7 +335,7 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 					</section>
 				)}
 
-				<section class="wsp-band wsp-band--page" style={styleVars({ "--wsp-i": 2 })}>
+				<section class="wsp-band wsp-band--page" data-i={2}>
 					<div class="wsp-band__inner">
 						{
 							/*

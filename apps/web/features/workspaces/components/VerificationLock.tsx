@@ -180,10 +180,10 @@ export interface LockedRegionProps {
 /**
  * Wrap a region whose CONTROLS are gated but whose CONTENT must stay readable.
  *
- * The stylesheet dims it and makes it inert with `opacity` and `pointer-events` alone — never a blur and
- * never an overlay. An admin composing a split or a spend rule before their verification clears must be
- * able to read exactly what they are about to be allowed to operate; obscuring it would turn a temporary
- * gate into a permanent mystery.
+ * The stylesheet dims its ink to the secondary register and makes it inert with `pointer-events` —
+ * never `opacity`, a blur or an overlay. An admin composing a split or a spend rule before their
+ * verification clears must be able to read exactly what they are about to be allowed to operate;
+ * obscuring it would turn a temporary gate into a permanent mystery.
  *
  * `aria-disabled` rather than `inert`: the content is still worth reading and navigating with a screen
  * reader, it simply cannot be actioned yet.

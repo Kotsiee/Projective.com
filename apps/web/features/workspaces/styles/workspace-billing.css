@@ -98,7 +98,7 @@
 	color: var(--on-surface);
 }
 
-@media (max-width: 767px) {
+@media (max-width: 47.9375rem) {
 	.wsp-billing__row {
 		grid-template-columns: minmax(0, 1fr) auto;
 	}
