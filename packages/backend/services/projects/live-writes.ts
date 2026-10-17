@@ -2476,8 +2476,8 @@ export async function commitTicketRow(
 	let ticketId = input.clientId;
 	if (editing) {
 		const { error } = await db.from("tickets").update(columns).eq("id", input.clientId);
-		// `fn_ticket_immutability_guard` locks a claimed ticket's client-owned content to everybody but
-		// its assignee, so this is a real refusal a reviewer can act on rather than a fault.
+		// `fn_ticket_immutability_guard` locks a claimed ticket's content and money terms to both parties
+		// (Decision #291), so this is a real refusal a reviewer can act on rather than a fault.
 		if (error) return { refusal: refusalFrom(error.message, "title") };
 	} else {
 		const { data, error } = await db

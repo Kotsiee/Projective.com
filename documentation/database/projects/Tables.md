@@ -646,7 +646,7 @@ sort_order`).
 | `trg_ticket_touch_updated_at`            | BEFORE UPDATE                                                   | `updated_at := now()`.                                                                                                       |
 | `trg_enforce_ticket_checkout_desc`       | BEFORE UPDATE                                                   | Entering `escrow_funded` or `claimed`/`in_progress` requires a description.                                                  |
 | `trg_ticket_ordering_guard`              | BEFORE UPDATE OF `sort_order`                                   | Refuses a manual reorder outside `backlog`.                                                                                  |
-| `trg_ticket_immutability_guard`          | BEFORE UPDATE                                                   | Once claimed, `title`/`description`/`text_description`/`unit_price_cents`/`required_stages`/`workload_intensity` are locked to all but the assignee and admins. |
+| `trg_ticket_immutability_guard`          | BEFORE INSERT OR UPDATE                                         | Once claimed, `title`/`description`/`text_description`/`unit_price_cents`/`required_stages`/`workload_intensity` are locked to both parties, and `current_stage_id` to all but review authority; an assigned INSERT needs review authority; `payment_status`/`total_amount_paid` are written by the escrow functions only (Decision #291). |
 | `trg_ticket_authority_guard`             | BEFORE UPDATE OF `status` OR DELETE                             | `fn_ticket_settlement_guard`: only review authority (`can_review_project`) may complete or delete; service role ungated.      |
 | `trg_ticket_claim_before`                | BEFORE UPDATE OF `current_assignee_id`, `status`                | Stamps `claimed_at`; unassignment resets to `backlog`.                                                                       |
 | `trg_ticket_delete_protocol`             | BEFORE DELETE                                                   | Releases held escrow before the row goes.                                                                                    |
@@ -695,7 +695,8 @@ created_at DESC`).
 ### `projects.ticket_workload_reports`
 
 A freelancer's report that a ticket's workload was mis-stated, filed by
-`projects.file_workload_report`. Inserting one hides the ticket for the response window.
+`projects.file_workload_report` or inserted by the assignee under the _File workload report_ policy.
+Inserting one suspends the ticket for the response window and moves no money.
 
 | Column               | Type                            | Notes                                                       |
 | :------------------- | :------------------------------ | :---------------------------------------------------------- |
@@ -706,15 +707,18 @@ A freelancer's report that a ticket's workload was mis-stated, filed by
 | `reported_intensity` | numeric(4,2)                    | What the reporter says it should be.                        |
 | `reason`             | text                            | NOT NULL.                                                   |
 | `status`             | projects.workload_report_status | NOT NULL `DEFAULT 'open'`. `open`, `acknowledged`, `adjusted`, `expired_penalized`, `dismissed_bad_faith`. |
-| `hidden_until`       | timestamptz                     |                                                             |
+| `hidden_until`       | timestamptz                     | End of the response window, stamped at filing; the expiry sweep's clock. |
 | `created_at`         | timestamptz                     | NOT NULL `DEFAULT now()`.                                   |
 | `resolved_at`        | timestamptz                     |                                                             |
 
 **Indexes:** `idx_workload_reports_ticket` (`ticket_id`) · `idx_workload_reports_sweep` (`status,
-hidden_until`). **Trigger:** `trg_open_workload_report` (AFTER INSERT) clears the ticket's
-assignee (which resets it to backlog and releases escrow via the ticket triggers), sets its
-`hidden_until` to now + `workload_report_window_hours` (default 48) and points
-`tickets.workload_report_id` at the report.
+hidden_until`). **Trigger:** `trg_open_workload_report` (AFTER INSERT) suspends the ticket —
+refused unless it is `claimed` / `in_progress`; it becomes `reported_hidden` with its assignee and
+held escrow kept, nothing paid (Decision #290) — sets its `hidden_until`, and this row's, to now +
+`workload_report_window_hours` (default 48), and points `tickets.workload_report_id` at the report.
+The report closes `adjusted` when the client raises the ticket's W_i (`trg_adjust_workload_report` on
+`tickets`), `expired_penalized` by the expiry sweep, or `dismissed_bad_faith` by an audit; each
+resumes the work.
 
 ---
 
