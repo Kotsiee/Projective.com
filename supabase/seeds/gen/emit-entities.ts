@@ -198,6 +198,7 @@ export function emitEntities(world: World): string {
 				"kyb_status",
 				"kyb_verified_at",
 				"kyb_provider_ref",
+				"visibility",
 				"created_at",
 			],
 			businesses.map((b) => [
@@ -224,6 +225,8 @@ export function emitEntities(world: World): string {
 				q(b.kyb ?? "unverified"),
 				b.kyb === "verified" ? ago(b.createdDaysAgo - 5) : "NULL",
 				b.kyb && b.kyb !== "unverified" ? q(`acct_seed_${b.slug}`) : "NULL",
+				// Seeded businesses are published and listed, so the directory has buyers to show.
+				"'public'",
 				ago(b.createdDaysAgo),
 			]),
 		),

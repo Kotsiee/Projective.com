@@ -48,6 +48,8 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   `projects.fund_ticket`, `projects.fund_paid_revision`, the card escrow lock
   (`begin_card_payment`, as a check) and the two escrow holds. A wallet that is not a business's
   returns at once — team and personal spending keep their own rules. Otherwise:
+  (a) the business is `active` — `org.fn_assert_business_active`, else `55000`
+  `business_not_active: …` (BB5; asserted on every call, counted or not);
   (b) KYB — `fn_business_kyb_verified`, else `PK403` `kyb_required: …`;
   (c) the **actor's** envelope — `fn_check_spending_limit(wallet, actor, amount)`, never the project
   owner's; over the cap or the per-transaction ceiling, an approved request for this ref may still
@@ -673,8 +675,9 @@ because it depends on the basket, not the code.
 The one door that changes `org.business_profiles.invoicing_mode` / `billing_day` (the table has no
 client write policy). Business owners only; `p_mode` ∈ `per_transaction` · `intervaled_monthly`;
 `p_billing_day` 1–28 or `NULL` to keep the current day. Requires `manage_billing` via
-`fn_owner_capability`; the monthly mode additionally requires the business to be KYB-verified, the
-same gate the checkout's `invoice` provider applies. Returns `{ invoicing_mode, billing_day }`.
+`fn_owner_capability` and an `active` business (`55000 business_not_active`, BB5); the monthly mode
+additionally requires the business to be KYB-verified, the same gate the checkout's `invoice`
+provider applies. Returns `{ invoicing_mode, billing_day }`.
 
 ### `finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key)` → jsonb
 
@@ -689,9 +692,10 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
 2. **The basket** is locked `FOR UPDATE`; the caller needs `fn_can_manage_basket`; for a business
    basket the caller must also hold the workspace `purchase` capability (`org.fn_member_can`; `PK403`
    `missing_permission: purchase`, BB2 — `finance.place_on_account_order` asks the same right after its
-   own `fn_can_manage_basket`), since vault `spend` says whose money may move, not who may buy; a business or
+   own `fn_can_manage_basket`), since vault `spend` says whose money may move, not who may buy; a
+   business payer must be `active` (`55000 business_not_active`, BB5); a business or
    enterprise payer must be KYB-verified (`PK403`) — refused before re-pricing; the spend gate in
-   step 6 re-asserts it.
+   step 6 re-asserts both.
 3. **The lines are exactly the submitted ones** — live, selected, not parked, not purchased — or the
    call refuses (`PC409`). A basket changed in another tab cannot widen or narrow the charge.
 4. **Every line is re-priced from the catalogue.** Digital products, and **one-ticket project lines**

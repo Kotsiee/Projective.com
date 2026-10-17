@@ -154,6 +154,8 @@ BEGIN
                 USING ERRCODE = 'PK403',
                       HINT = 'Ask the business owner or an admin for the "manage_projects" permission.';
         END IF;
+        -- Only a published business commissions work (BUSINESSES_AUDIT BF7, BB5).
+        PERFORM org.fn_assert_business_active(v_business_id);
     END IF;
 
     IF v_team_id IS NOT NULL THEN
@@ -1022,7 +1024,8 @@ $$;
 -- (the door already demanded its owner) and for a session with no user (service role, cron, seeds).
 -- With `p_allow_delegate` a person-participant the project made `admin` / `manager` passes too: the
 -- staffing doors honour delegation (Decision #145), and only `hire` holders can appoint a delegate.
--- Refuses `PK403 missing_permission: <cap>`.
+-- Refuses `PK403 missing_permission: <cap>`, and for `hire` first `55000 business_not_active` when the
+-- paying business is not published (BB5).
 CREATE OR REPLACE FUNCTION projects.fn_assert_business_actor(
     p_project uuid,
     p_cap org.workspace_capability,
@@ -1042,6 +1045,12 @@ BEGIN
         SELECT 1 FROM projects.projects p WHERE p.id = p_project AND p.client_business_id IS NOT NULL
     ) THEN
         RETURN;
+    END IF;
+    -- Only a published business hires (BUSINESSES_AUDIT BF7, BB5): 55000 business_not_active, for
+    -- everyone, the project's owner included.
+    IF p_cap = 'hire'::org.workspace_capability THEN
+        PERFORM org.fn_assert_business_active(
+            (SELECT p.client_business_id FROM projects.projects p WHERE p.id = p_project));
     END IF;
     IF projects.fn_business_actor_can(p_project, p_cap) THEN
         RETURN;

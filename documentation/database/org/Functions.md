@@ -744,6 +744,22 @@ namespace under a `pg_advisory_xact_lock` on the handle.
 
 ### §11 — Lifecycle: draft → active → archived (nothing is hard-deleted)
 
+- **`fn_assert_business_active(business) → void`** — only a published business transacts
+  (BUSINESSES_AUDIT BF7, BB5). Refuses `55000 business_not_active: publish the business first` (or
+  `…: this business is archived — restore it first`) with DETAIL `{business_id, status}`; `P0002`
+  when the row does not exist; **NULL passes** (no business — a personal project, an individual
+  buyer), so a door may call it unconditionally. Called by `projects.create_project` (a business
+  project), `finance.fn_assert_business_spend` (so every money door and escrow hold that routes
+  through the spend gate inherits it), `finance.place_wallet_order` (a business basket),
+  `projects.fn_assert_business_actor` for `hire` (every hiring door), `finance.pay_invoice` and
+  `finance.set_invoicing_terms`. Internal. Probe: `supabase/probes/business_lifecycle.sql`.
+- **`fn_business_archive_blockers(business) → jsonb`** — `[{code, count}]`, in this order, one entry
+  per kind that applies (`[]` when none): `escrow_held` (held escrows it funded) · `live_projects`
+  (`client_business_id`, `active`/`on_hold`) · `pending_approvals` (pending, unlapsed spend requests
+  on its wallets) · `unpaid_invoices` (`issued`/`overdue`) · `on_account_owed` (currencies where
+  `finance.fn_on_account_owed > 0`) · `wallet_balance` (wallets with a positive balance) ·
+  `pending_payouts` (`pending` payouts from its wallets). Read by `set_workspace_status` and
+  `get_workspace_detail`. Internal.
 - **`set_workspace_status(kind, id, status) → {id, status}`** — `authenticated`. Publishing
   (`draft → active`) needs `manage_settings`; archiving or restoring (to or from `archived`) needs
   `archive_entity`. A published entity never goes back to `draft`. **Archive is refused (`55000`)**
@@ -755,10 +771,15 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   the same `55000` "money is held in escrow" refusal (TEAMS_AUDIT S3; probe
   `supabase/probes/team_archive_escrow_guard.sql`); a non-member's escrow on a shared stage does not
   block. It is also refused while a team holds a live `projects.stage_assignments` row on an
-  `active`/`on_hold` project. Audits `{kind}.status_changed`.
+  `active`/`on_hold` project. A **business** is refused on every `fn_business_archive_blockers`
+  entry: `55000` whose MESSAGE leads with the first blocker's code (`escrow_held: …`,
+  `live_projects: …`, …) and whose DETAIL is `{"blockers": [...]}` — the API answers `409` with
+  `details {reason, blockers}` (`packages/backend/services/workspace/live-support.ts`). Audits
+  `{kind}.status_changed`.
 - **`update_workspace(kind, id, patch) → {id}`** — `authenticated`, needs `edit_profile`. Patch keys
-  `name` (2–80) and `headline` (≤ 160, refused as `tagline:`). Pictures move through the media
-  pipeline (`org.set_profile_avatar`), status through `set_workspace_status`.
+  `name` (2–80), `headline` (≤ 160, refused as `tagline:`) and `visibility` (`public` · `unlisted` ·
+  `invite_only`, either kind; else `22023 visibility:`; Decision #230 (h)). Pictures move through the
+  media pipeline (`org.set_profile_avatar`), status through `set_workspace_status`.
 
 ### §12 — Invitations: named people only
 
@@ -894,6 +915,10 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
   `draft`/`archived`, each with `provider_user_ids` and `provider_teams` faces — faces are
   `org.profiles_index` name + avatar bucket/path), the 30 most recent activity events (joins and
   `finance.ledger_audit` money movements), and the setup facts (`logo` · `bio` · `invite` · `money`).
+  Both kinds carry `visibility`. A **business** also answers `archive_blockers` —
+  `fn_business_archive_blockers` **only when the viewer holds `archive_entity`**, else `[]` (always
+  `[]` for a team) — so Settings lists what to clear before the archive confirm (BB5; `archiveBlockers`
+  in `WorkspaceDetail`).
   For a **team** it also answers (Decision #233 — the console's ONE read; the service makes no other
   read of the entity):
   - `payout` — **only when the caller holds `manage_finances`**, else `null` (every member holds

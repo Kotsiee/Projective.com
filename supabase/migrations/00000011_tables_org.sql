@@ -281,10 +281,15 @@ CREATE TABLE org.business_profiles (
     kyb_status finance.kyc_status NOT NULL DEFAULT 'unverified',
     kyb_verified_at timestamptz,
     kyb_provider_ref text,         -- Stripe Connect account id (placeholder; no PII)
+    -- Whether the public directory lists it (Decision #230 (h)), on a team's values: `public` is listed,
+    -- `unlisted` is reachable by its handle but not listed, `invite_only` is not in the directory at
+    -- all. Only an `active` business is ever in the directory, whatever this says.
+    visibility text NOT NULL DEFAULT 'invite_only'::text,
 
     CONSTRAINT business_pkey PRIMARY KEY (id),
     CONSTRAINT business_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES auth.users(id),
-    CONSTRAINT business_profiles_status_check CHECK (status IN ('draft', 'active', 'archived'))
+    CONSTRAINT business_profiles_status_check CHECK (status IN ('draft', 'active', 'archived')),
+    CONSTRAINT business_profiles_visibility_check CHECK (visibility IN ('public', 'unlisted', 'invite_only'))
 );
 
 CREATE TABLE org.teams (

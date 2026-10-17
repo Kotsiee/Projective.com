@@ -200,6 +200,8 @@ export interface RawDetail {
 	banner_file_id: string | null;
 	headline: string | null;
 	entity_status: string;
+	/** Directory visibility (`public` · `unlisted` · `invite_only`). */
+	visibility?: string | null;
 	owner_user_id: string;
 	created_at: string;
 	verification: string;
@@ -217,6 +219,8 @@ export interface RawDetail {
 	payout?: RawTeamPayout | null;
 	/** A team's `finance.get_proposal_allowance` answer (`null` for a business). */
 	allowance?: unknown;
+	/** A business's `org.fn_business_archive_blockers` (`[]` without `archive_entity`, and for a team). */
+	archive_blockers?: unknown;
 }
 
 /** Every answer `org.get_workspace_detail` can give. */

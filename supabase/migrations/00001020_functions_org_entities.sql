@@ -1162,8 +1162,8 @@ BEGIN
         INSERT INTO finance.contribution_agreements (team_id, member_user_id, percent_bp, held)
         VALUES (v_id, v_uid, 10000, false);
     ELSE
-        INSERT INTO org.business_profiles (owner_user_id, name, slug, status, headline, default_currency)
-        VALUES (v_uid, v_name, v_handle, 'draft', '', v_currency)
+        INSERT INTO org.business_profiles (owner_user_id, name, slug, status, headline, default_currency, visibility)
+        VALUES (v_uid, v_name, v_handle, 'draft', '', v_currency, 'invite_only')
         RETURNING id INTO v_id;
         PERFORM org.fn_seed_preset_roles('business', v_id);
         SELECT r.id INTO v_owner_role FROM org.business_roles r WHERE r.business_id = v_id AND r.preset = 'owner';
@@ -1183,10 +1183,128 @@ $$;
 -- #endregion
 
 -- #region 11. Lifecycle — draft → active → archived (nothing is hard-deleted)
+-- Only a published business transacts (BUSINESSES_AUDIT BF7): a draft is still being set up and an
+-- archived one is gone, so neither creates projects, buys, funds, hires, pays an invoice or changes its
+-- invoicing terms. Every such door calls this with the business it acts for; NULL is "no business"
+-- (a personal project, an individual buyer) and passes, so a door can call it unconditionally.
+CREATE OR REPLACE FUNCTION org.fn_assert_business_active(p_business uuid)
+RETURNS void
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_status text;
+BEGIN
+    IF p_business IS NULL THEN
+        RETURN;
+    END IF;
+    SELECT b.status INTO v_status FROM org.business_profiles b WHERE b.id = p_business;
+    IF v_status IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'workspace: not found';
+    END IF;
+    IF v_status <> 'active' THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            MESSAGE = CASE v_status
+                WHEN 'archived' THEN 'business_not_active: this business is archived — restore it first'
+                ELSE 'business_not_active: publish the business first' END,
+            DETAIL = pg_catalog.jsonb_build_object('business_id', p_business, 'status', v_status)::text;
+    END IF;
+END;
+$$;
+
+COMMENT ON FUNCTION org.fn_assert_business_active(uuid) IS
+'Refuse 55000 business_not_active unless the business is active (DETAIL {business_id, status}); NULL
+passes, P0002 when the business does not exist. Called by every door that spends, hires or bills for a
+business. Internal — not executable by clients.';
+
+-- Everything that would be stranded if a business were archived now, one {code, count} per kind of
+-- blocker that applies, in a fixed order — `[]` when it may be archived. The archive door refuses on the
+-- first, and the console detail lists them all before the confirm (BUSINESSES_AUDIT BF8, BF9):
+--   escrow_held        held escrows the business funded
+--   live_projects      its projects that are active or on hold
+--   pending_approvals  spend requests on its wallets still awaiting a decision (and not lapsed)
+--   unpaid_invoices    invoices issued to it or overdue
+--   on_account_owed    currencies in which it owes on account (finance.fn_on_account_owed > 0)
+--   wallet_balance     its wallets holding a positive balance
+--   pending_payouts    withdrawals from its wallets still in flight
+CREATE OR REPLACE FUNCTION org.fn_business_archive_blockers(p_business uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_out jsonb := '[]'::jsonb;
+    v_count bigint;
+BEGIN
+    SELECT count(*) INTO v_count FROM finance.escrows e
+     WHERE e.payer_business_id = p_business AND e.status = 'held';
+    IF v_count > 0 THEN
+        v_out := v_out || jsonb_build_array(jsonb_build_object('code', 'escrow_held', 'count', v_count));
+    END IF;
+
+    SELECT count(*) INTO v_count FROM projects.projects p
+     WHERE p.client_business_id = p_business AND p.status::text IN ('active', 'on_hold');
+    IF v_count > 0 THEN
+        v_out := v_out || jsonb_build_array(jsonb_build_object('code', 'live_projects', 'count', v_count));
+    END IF;
+
+    SELECT count(*) INTO v_count FROM finance.spend_approvals sa
+      JOIN finance.wallets w ON w.id = sa.wallet_id
+     WHERE w.owner_type = 'business' AND w.owner_id = p_business
+       AND sa.status = 'pending'::finance.approval_status
+       AND (sa.expires_at IS NULL OR sa.expires_at > now());
+    IF v_count > 0 THEN
+        v_out := v_out || jsonb_build_array(jsonb_build_object('code', 'pending_approvals', 'count', v_count));
+    END IF;
+
+    SELECT count(*) INTO v_count FROM finance.invoices i
+     WHERE i.issue_to_business_id = p_business AND i.status IN ('issued', 'overdue');
+    IF v_count > 0 THEN
+        v_out := v_out || jsonb_build_array(jsonb_build_object('code', 'unpaid_invoices', 'count', v_count));
+    END IF;
+
+    SELECT count(*) INTO v_count FROM (
+        SELECT DISTINCT upper(w.currency) AS currency FROM finance.wallets w
+         WHERE w.owner_type = 'business' AND w.owner_id = p_business
+    ) c
+     WHERE finance.fn_on_account_owed(p_business, c.currency) > 0;
+    IF v_count > 0 THEN
+        v_out := v_out || jsonb_build_array(jsonb_build_object('code', 'on_account_owed', 'count', v_count));
+    END IF;
+
+    SELECT count(*) INTO v_count FROM finance.wallets w
+     WHERE w.owner_type = 'business' AND w.owner_id = p_business AND w.balance_cents > 0;
+    IF v_count > 0 THEN
+        v_out := v_out || jsonb_build_array(jsonb_build_object('code', 'wallet_balance', 'count', v_count));
+    END IF;
+
+    SELECT count(*) INTO v_count FROM finance.payouts po
+      JOIN finance.wallets w ON w.id = po.wallet_id
+     WHERE w.owner_type = 'business' AND w.owner_id = p_business
+       AND po.status = 'pending'::finance.payout_status;
+    IF v_count > 0 THEN
+        v_out := v_out || jsonb_build_array(jsonb_build_object('code', 'pending_payouts', 'count', v_count));
+    END IF;
+
+    RETURN v_out;
+END;
+$$;
+
+COMMENT ON FUNCTION org.fn_business_archive_blockers(uuid) IS
+'What stops a business being archived: [{code, count}] over escrow_held · live_projects ·
+pending_approvals · unpaid_invoices · on_account_owed · wallet_balance · pending_payouts, in that order;
+[] when nothing does. Read by org.set_workspace_status and org.get_workspace_detail. Internal.';
+
 -- Publishing needs `manage_settings`; archiving or restoring needs `archive_entity`. An entity with
 -- money in flight is not archived: a held escrow owed to (team) or funded by (business) the entity,
 -- a held escrow for a team's assigned stage that is unbound or bound to a member, or a live stage
--- assignment, would otherwise be stranded against something that says it is gone.
+-- assignment, would otherwise be stranded against something that says it is gone. A business is held
+-- to every blocker org.fn_business_archive_blockers lists, refused on the first with its code.
 CREATE OR REPLACE FUNCTION org.set_workspace_status(p_kind text, p_id uuid, p_status text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1196,6 +1314,7 @@ AS $$
 DECLARE
     v_uid uuid := auth.uid();
     v_current text;
+    v_blockers jsonb;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
@@ -1247,10 +1366,25 @@ BEGIN
                         SELECT 1 FROM projects.stage_assignments sa
                          WHERE sa.project_stage_id = e.project_stage_id
                            AND sa.team_id = p_id
-                           AND sa.status NOT IN ('declined', 'cancelled', 'released')))
-                 OR (p_kind = 'business' AND e.payer_business_id = p_id))
+                           AND sa.status NOT IN ('declined', 'cancelled', 'released'))))
         ) THEN
             RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'status: money is held in escrow for this ' || p_kind || ' — let it release first';
+        END IF;
+        IF p_kind = 'business' THEN
+            v_blockers := org.fn_business_archive_blockers(p_id);
+            IF jsonb_array_length(v_blockers) > 0 THEN
+                RAISE EXCEPTION USING
+                    ERRCODE = '55000',
+                    MESSAGE = (v_blockers->0->>'code') || ': ' || CASE v_blockers->0->>'code'
+                        WHEN 'escrow_held' THEN 'money is held in escrow for this business — let it release first'
+                        WHEN 'live_projects' THEN 'this business still has live projects — complete or archive them first'
+                        WHEN 'pending_approvals' THEN 'spend requests are still waiting for a decision — decide them first'
+                        WHEN 'unpaid_invoices' THEN 'this business has unpaid invoices — pay them first'
+                        WHEN 'on_account_owed' THEN 'this business still owes on account — settle it first'
+                        WHEN 'wallet_balance' THEN 'the business wallet still holds money — withdraw or move it first'
+                        ELSE 'a withdrawal from the business wallet is still in flight — let it settle first' END,
+                    DETAIL = jsonb_build_object('blockers', v_blockers)::text;
+            END IF;
         END IF;
         IF p_kind = 'team' AND EXISTS (
             SELECT 1 FROM projects.stage_assignments sa
@@ -1276,8 +1410,10 @@ BEGIN
 END;
 $$;
 
--- The identity patch: name and headline. Pictures move through the media pipeline
--- (org.set_profile_avatar / org.set_profile_banner), status through org.set_workspace_status.
+-- The identity patch: name, headline and directory visibility. Pictures move through the media pipeline
+-- (org.set_profile_avatar / org.set_profile_banner), status through org.set_workspace_status. Visibility
+-- is `public` · `unlisted` · `invite_only` for either kind (Decision #230 (h)); being in the directory at
+-- all still needs the entity to be active (org.profiles_index).
 CREATE OR REPLACE FUNCTION org.update_workspace(p_kind text, p_id uuid, p_patch jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1288,6 +1424,7 @@ DECLARE
     v_uid uuid := auth.uid();
     v_name text;
     v_headline text;
+    v_visibility text;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
@@ -1319,14 +1456,22 @@ BEGIN
             RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'tagline: keep the tagline to 160 characters';
         END IF;
     END IF;
+    IF p_patch ? 'visibility' THEN
+        v_visibility := p_patch->>'visibility';
+        IF v_visibility IS NULL OR v_visibility NOT IN ('public', 'unlisted', 'invite_only') THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'visibility: choose public, unlisted or invite only';
+        END IF;
+    END IF;
 
     IF p_kind = 'team' THEN
         UPDATE org.teams
-           SET name = COALESCE(v_name, name), headline = COALESCE(v_headline, headline), updated_at = now()
+           SET name = COALESCE(v_name, name), headline = COALESCE(v_headline, headline),
+               visibility = COALESCE(v_visibility, visibility), updated_at = now()
          WHERE id = p_id;
     ELSE
         UPDATE org.business_profiles
-           SET name = COALESCE(v_name, name), headline = COALESCE(v_headline, headline), updated_at = now()
+           SET name = COALESCE(v_name, name), headline = COALESCE(v_headline, headline),
+               visibility = COALESCE(v_visibility, visibility), updated_at = now()
          WHERE id = p_id;
     END IF;
     INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
@@ -2503,13 +2648,13 @@ BEGIN
     END IF;
     IF p_kind = 'team' THEN
         SELECT t.id, t.name, t.slug, t.avatar_file_id AS avatar, t.banner_file_id AS banner, t.headline,
-               t.status, t.owner_user_id, t.created_at, t.treasury_wallet_id
+               t.status, t.owner_user_id, t.created_at, t.treasury_wallet_id, t.visibility
           INTO v_e FROM org.teams t
          WHERE lower(t.slug) = lower(btrim(COALESCE(p_handle, '')))
             OR t.id = CASE WHEN p_handle ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN p_handle::uuid END;
     ELSIF p_kind = 'business' THEN
         SELECT b.id, b.name, b.slug, b.logo_file_id AS avatar, b.banner_file_id AS banner, b.headline,
-               b.status, b.owner_user_id, b.created_at, NULL::uuid AS treasury_wallet_id
+               b.status, b.owner_user_id, b.created_at, NULL::uuid AS treasury_wallet_id, b.visibility
           INTO v_e FROM org.business_profiles b
          WHERE lower(b.slug) = lower(btrim(COALESCE(p_handle, '')))
             OR b.id = CASE WHEN p_handle ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN p_handle::uuid END;
@@ -2539,6 +2684,7 @@ BEGIN
         'banner_file_id', v_e.banner,
         'headline', COALESCE(v_e.headline, ''),
         'entity_status', v_e.status,
+        'visibility', v_e.visibility,
         'owner_user_id', v_e.owner_user_id,
         'created_at', v_e.created_at,
         'verification', org.fn_workspace_verification(p_kind, v_e.id),
@@ -2716,6 +2862,10 @@ BEGIN
                 'preview', finance.preview_team_split(v_e.id)
             ) END,
         'allowance', CASE WHEN p_kind = 'team' THEN finance.get_proposal_allowance(v_e.id) END,
+        -- What would refuse an archive right now, for the people who may archive (Settings lists them
+        -- before the confirm); `[]` for everybody else and for a team.
+        'archive_blockers', CASE WHEN p_kind = 'business' AND 'archive_entity' = ANY (v_caps)
+            THEN org.fn_business_archive_blockers(v_e.id) ELSE '[]'::jsonb END,
         -- The 30 most recent events, joins and money movements interleaved by time.
         'activity', (SELECT COALESCE(jsonb_agg(q.a ORDER BY q.at DESC), '[]'::jsonb) FROM (
             SELECT u.a, u.at FROM (

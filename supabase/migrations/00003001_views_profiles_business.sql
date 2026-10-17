@@ -188,7 +188,7 @@ b.active_project_count,
     (SELECT COUNT(*)::int FROM org.business_members bm WHERE bm.business_id = b.id AND bm.status = 'active') as member_count,
 
 -- Public directory facts (appended)
-    true as listed,
+    b.visibility = 'public' as listed,
     b.address_city as city,
     fa.bucket_id as avatar_bucket,
     fa.storage_path as avatar_path,
@@ -220,7 +220,9 @@ FROM org.business_profiles b
     LEFT JOIN files.items fb ON fb.id = b.banner_file_id AND fb.visibility = 'public' AND fb.deleted_at IS NULL
     LEFT JOIN org.profile_showcase_items si ON si.owner_type = 'business' AND si.owner_id = b.id AND si.position = 1
     LEFT JOIN files.items fs ON fs.id = si.file_id AND fs.visibility = 'public' AND fs.deleted_at IS NULL
-WHERE b.status = 'active'
+-- A business is in the directory only once published, and only as its owner chose (Decision #230 (h)):
+-- `public` listed, `unlisted` by handle only, `invite_only` absent.
+WHERE b.status = 'active' AND b.visibility IN ('public', 'unlisted')
 
 UNION ALL
 

@@ -91,6 +91,8 @@ function statusForCode(code: string | undefined, reason: string): number {
 			return 404;
 		case "PX409":
 		case "PC409":
+		// `business_not_active:` — a draft or archived business moves no money (BB5).
+		case "55000":
 			return 409;
 		case "PR429":
 			return 429;

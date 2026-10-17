@@ -1157,6 +1157,7 @@ BEGIN
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Business not found' USING ERRCODE = 'P0002';
     END IF;
+    PERFORM org.fn_assert_business_active(p_owner_id);
     IF p_mode = 'intervaled_monthly' AND v_kyb IS DISTINCT FROM 'verified' THEN
         RAISE EXCEPTION 'Complete business verification (KYB) to settle on a monthly statement'
             USING ERRCODE = '42501';
@@ -1177,7 +1178,8 @@ $$;
 
 COMMENT ON FUNCTION finance.set_invoicing_terms(text, uuid, text, integer) IS
 'Set a business''s invoicing terms (per-transaction or a monthly statement on a day 1-28). Requires
-manage_billing on the business; the monthly mode additionally requires KYB verification.';
+manage_billing on the business and an active business (55000 business_not_active); the monthly mode
+additionally requires KYB verification.';
 -- #endregion
 
 -- #region 11. Wallet orders — paying for a basket from the Projective wallet (2026-09-23)
@@ -1305,6 +1307,10 @@ BEGIN
         RAISE EXCEPTION 'missing_permission: purchase'
             USING ERRCODE = 'PK403',
                   HINT = 'Ask the business owner or an admin for the "purchase" permission.';
+    END IF;
+    -- Only a published business buys (BB5); the spend gate asserts it again for every line it counts.
+    IF v_basket.owner_type = 'business' THEN
+        PERFORM org.fn_assert_business_active (v_basket.owner_id);
     END IF;
     IF v_basket.owner_type = 'business' AND NOT finance.fn_business_kyb_verified (v_basket.owner_id) THEN
         RAISE EXCEPTION 'Complete business verification (KYB) to pay from this account'

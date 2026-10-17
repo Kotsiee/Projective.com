@@ -182,6 +182,39 @@ export const TeamEngagementSchema = z.object({
 });
 export type TeamEngagement = z.infer<typeof TeamEngagementSchema>;
 
+/**
+ * Whether the public directory lists the entity (`org.teams.visibility` /
+ * `org.business_profiles.visibility`, Decision #230 (h)): `public` is listed, `unlisted` resolves by
+ * handle only, `invite_only` is absent. Only an `active` entity is ever in the directory.
+ */
+export const WorkspaceVisibility = z.enum(["public", "unlisted", "invite_only"]);
+export type WorkspaceVisibility = z.infer<typeof WorkspaceVisibility>;
+
+/**
+ * What stops a business being archived (`org.fn_business_archive_blockers`), in the order the database
+ * checks them; the archive refusal's 55000 MESSAGE leads with the first one's code.
+ */
+export const BusinessArchiveBlockerCode = z.enum([
+	"escrow_held",
+	"live_projects",
+	"pending_approvals",
+	"unpaid_invoices",
+	"on_account_owed",
+	"wallet_balance",
+	"pending_payouts",
+]);
+export type BusinessArchiveBlockerCode = z.infer<typeof BusinessArchiveBlockerCode>;
+
+/** One kind of blocker and how many of it there are (currencies, for `on_account_owed`; wallets, for `wallet_balance`). */
+export const ArchiveBlockerSchema = z.object({
+	code: BusinessArchiveBlockerCode,
+	count: z.number().int().positive(),
+});
+export type ArchiveBlocker = z.infer<typeof ArchiveBlockerSchema>;
+
+/** The 55000 sub-code a draft or archived business's spend, hire or billing door refuses with. */
+export const BUSINESS_NOT_ACTIVE_REASON = "business_not_active";
+
 /** One line of the overview's recent-activity feed. */
 export const ActivityEntrySchema = z.object({
 	id: z.string().max(64),
@@ -207,6 +240,8 @@ export const WorkspaceDetailSchema = z.object({
 	banner: z.string().max(400),
 	tagline: z.string().max(160),
 	status: WorkspaceStatus,
+	/** Whether the public directory lists it — read only while {@link status} is `active`. */
+	visibility: WorkspaceVisibility.default("invite_only"),
 	verification: VerificationState,
 	/** What clears the verification lock; `null` once verified. */
 	verificationPrompt: z.string().max(200).nullable(),
@@ -242,6 +277,11 @@ export const WorkspaceDetailSchema = z.object({
 	 * head-count and the viewer's `bind_seat` included). `null` for a business.
 	 */
 	allowance: ProposalAllowanceStatusSchema.nullable().default(null),
+	/**
+	 * What would refuse archiving this business right now, so Settings can list it before the confirm.
+	 * Answered only to a viewer holding `archive_entity`; `[]` for everybody else and for a team.
+	 */
+	archiveBlockers: z.array(ArchiveBlockerSchema).default([]),
 	activity: z.array(ActivityEntrySchema),
 	setup: z.array(SetupStepSchema),
 
@@ -281,6 +321,8 @@ export const UpdateWorkspaceInputSchema = z.object({
 	id: z.string().max(64),
 	name: z.string().min(2).max(80).optional(),
 	tagline: z.string().max(160).optional(),
+	/** Directory visibility (`org.update_workspace`); the entity still has to be active to be listed. */
+	visibility: WorkspaceVisibility.optional(),
 	status: WorkspaceStatus.optional(),
 });
 export type UpdateWorkspaceInput = z.infer<typeof UpdateWorkspaceInputSchema>;

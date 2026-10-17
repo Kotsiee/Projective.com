@@ -1,4 +1,10 @@
 import type { SupabaseClient } from "supabaseClient";
+import {
+	type ArchiveBlocker,
+	ArchiveBlockerSchema,
+	BUSINESS_NOT_ACTIVE_REASON,
+	BusinessArchiveBlockerCode,
+} from "@projective/types/workspace";
 import { fail, type FieldErrors, type ServiceResult } from "../ServiceResult.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { isPayoutNotReady, payoutNotReadyRefusal } from "../../core/payout-gate.ts";
@@ -110,13 +116,41 @@ export function splitRefusal(message: string): { field: string; reason: string }
 }
 
 /**
+ * The business lifecycle's 55000 sub-codes (BB5): `business_not_active` from a spend, hire or billing
+ * door, or an archive blocker's code from `org.set_workspace_status`. `null` for any other prefix.
+ */
+export function lifecycleReason(prefix: string | undefined): string | null {
+	if (!prefix) return null;
+	if (prefix === BUSINESS_NOT_ACTIVE_REASON) return prefix;
+	return BusinessArchiveBlockerCode.safeParse(prefix).success ? prefix : null;
+}
+
+/** The archive blockers a refusal's DETAIL carries (`{ blockers: [...] }`), or `[]`. */
+export function blockersFromDetail(detail: string | null | undefined): ArchiveBlocker[] {
+	if (!detail) return [];
+	try {
+		const parsed: unknown = JSON.parse(detail);
+		const rows = (parsed as { blockers?: unknown })?.blockers;
+		if (!Array.isArray(rows)) return [];
+		return rows.flatMap((row) => {
+			const one = ArchiveBlockerSchema.safeParse(row);
+			return one.success ? [one.data] : [];
+		});
+	} catch {
+		return [];
+	}
+}
+
+/**
  * Map a database refusal onto the result a route returns.
  *
  * The Teams persona gate's `PK403 persona_not_freelancer` → 403 with `details.reason` `persona`
  * (`core/team-persona-gate.ts`) · the earning gate's `PK403 payout_not_ready` → 403 with its fix link
  * (`core/payout-gate.ts`) ·
  * `22023`/`23514`/`22P02` → 422 (field-keyed when the message names a field) · `42501` → 403 (401 when
- * the message is the "sign in" refusal) · `P0002` → 404 · `23505` → 409 (field-keyed) · `55000` → 409 ·
+ * the message is the "sign in" refusal) · `P0002` → 404 · `23505` → 409 (field-keyed) · `55000` → 409
+ * (with `details` `{ reason, blockers? }` for a {@link lifecycleReason} sub-code; `blockers` is the
+ * archive blockers' codes, comma-joined) ·
  * a plan gate's `PK402 entitlement:` → 402 with `details` `{ reason: "entitlement", entitlement }` (the
  * entitlement key the plan lacks, from HINT).
  * A JWT failure is a 401. Anything else is an error this layer cannot explain to a reader: it is logged
@@ -164,8 +198,18 @@ export function refusalFrom(
 		case "23505":
 			return keyed(409);
 		case "55000":
-		case "PC409":
+		case "PC409": {
+			const lifecycle = code === "55000" ? lifecycleReason(parts?.field) : null;
+			if (lifecycle) {
+				// Details are scalars: every blocker's code, comma-joined, in the database's order.
+				const blockers = blockersFromDetail(error?.details).map((b) => b.code).join(",");
+				return fail(409, {
+					message: reason,
+					details: blockers ? { reason: lifecycle, blockers } : { reason: lifecycle },
+				});
+			}
 			return fail(409, { message: reason });
+		}
 		case "PK402":
 			return fail(402, {
 				message: reason,

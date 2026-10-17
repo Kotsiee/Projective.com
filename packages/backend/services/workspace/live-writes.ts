@@ -85,7 +85,11 @@ export async function createWorkspace(
 	});
 }
 
-/** Patch identity (name · tagline) and/or lifecycle status, then answer with the fresh detail. */
+/**
+ * Patch identity (name · tagline · directory visibility) and/or lifecycle status, then answer with the
+ * fresh detail. A refused archive is a 409 whose `details` name the blocker (`{ reason, blockers }`, see
+ * `refusalFrom`), so Settings can say what to clear.
+ */
 export async function updateWorkspace(
 	input: UpdateWorkspaceInput,
 	actor: LiveActor,
@@ -94,6 +98,7 @@ export async function updateWorkspace(
 	const patch: Record<string, unknown> = {};
 	if (input.name !== undefined) patch.name = input.name;
 	if (input.tagline !== undefined) patch.headline = input.tagline;
+	if (input.visibility !== undefined) patch.visibility = input.visibility;
 	if (Object.keys(patch).length > 0) {
 		const res = await callRpc(actor, "org", "update_workspace", {
 			p_kind: input.kind,

@@ -576,7 +576,8 @@ $$;
 
 -- #region 5. Paying an invoice
 -- A billing member settles an invoice's amount due from the business wallet in its currency
--- (`invoice_payment`). Paying by card is a top-up of that wallet first (Decision #125).
+-- (`invoice_payment`). Paying by card is a top-up of that wallet first (Decision #125). Only an active
+-- business pays (55000 business_not_active, BB5) — archiving waits for its invoices to be paid.
 CREATE OR REPLACE FUNCTION finance.pay_invoice(p_invoice_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -598,6 +599,7 @@ BEGIN
     IF NOT finance.fn_owner_capability('business', v_inv.issue_to_business_id, 'manage_billing'::finance.vault_capability) THEN
         RAISE EXCEPTION 'Only a member who manages this account''s billing can pay its invoices' USING ERRCODE = '42501';
     END IF;
+    PERFORM org.fn_assert_business_active(v_inv.issue_to_business_id);
     IF v_inv.status NOT IN ('issued', 'overdue') OR v_inv.amount_due_cents <= 0 THEN
         RAISE EXCEPTION 'This invoice has nothing to pay' USING ERRCODE = 'PC409';
     END IF;

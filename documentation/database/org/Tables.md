@@ -84,7 +84,8 @@ projects).
 | `kyb_verified_at`  | timestamptz          | **Additive.** When KYB was granted.                                                                                       |
 | `kyb_provider_ref` | text                 | **Additive.** Stripe Connect account id (placeholder; **no PII**).                                                        |
 | `slug`             | text                 | The business's `@handle` — one namespace with people, teams and enterprises (see `org.fn_handle_refusal`, [Functions.md](Functions.md#-the-workspace-console-00001020)). The console is addressed by it (`/businesses/[businessHandle]`). |
-| `status`           | text                 | `CHECK IN ('draft','active','archived')` (`business_profiles_status_check`). Created `draft` by `org.create_workspace`; moved only by `org.set_workspace_status`. |
+| `status`           | text                 | `CHECK IN ('draft','active','archived')` (`business_profiles_status_check`). Created `draft` by `org.create_workspace`; moved only by `org.set_workspace_status`. Only `active` transacts (`org.fn_assert_business_active`, BB5). |
+| `visibility`       | text                 | `CHECK IN ('public','unlisted','invite_only')` (`business_profiles_visibility_check`), default `invite_only` — a team's values (Decision #230 (h)). `org.profiles_index` lists an `active` business only when `public`, resolves it by handle when `unlisted`, and omits it when `invite_only` (or not active). Created `invite_only` by `org.create_workspace`; set by `org.update_workspace`. Seeded businesses are `public`. |
 
 > A business is created by **`org.create_workspace`** (Decision #61) — never a client INSERT, and
 > the retired `org.create_business` no longer exists. Its members, roles and invitations are the

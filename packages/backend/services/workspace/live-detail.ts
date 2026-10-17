@@ -5,12 +5,15 @@ import {
 } from "@projective/types/finance";
 import type { MediaRef } from "@projective/types/files";
 import {
+	type ArchiveBlocker,
+	ArchiveBlockerSchema,
 	effectivePermissions,
 	type WorkspaceDetail,
 	type WorkspaceFinance,
 	type WorkspaceKind,
 	type WorkspaceMember,
 	type WorkspaceRoleDef,
+	WorkspaceVisibility,
 } from "@projective/types/workspace";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { fetchPartyCards, type PartyCard } from "../profile/party-cards.ts";
@@ -230,6 +233,18 @@ function allowanceOf(raw: unknown): ProposalAllowanceStatus | null {
 	return resolveProposalAllowance(parsed.data);
 }
 
+/**
+ * A business's archive blockers from the read, dropping any row whose shape drifted rather than
+ * inventing a blocker the database did not name.
+ */
+function archiveBlockersOf(raw: unknown): ArchiveBlocker[] {
+	if (!Array.isArray(raw)) return [];
+	return raw.flatMap((row) => {
+		const parsed = ArchiveBlockerSchema.safeParse(row);
+		return parsed.success ? [parsed.data] : [];
+	});
+}
+
 /** The raw detail, resolved and mapped onto the SSOT projection. */
 async function assemble(
 	kind: WorkspaceKind,
@@ -345,6 +360,7 @@ async function assemble(
 		banner: avatarOf(mediaUrl(bannerRef, "lg")),
 		tagline: clamp(raw.headline, 160),
 		status: parseStatus(raw.entity_status),
+		visibility: WorkspaceVisibility.catch("invite_only").parse(raw.visibility),
 		verification,
 		verificationPrompt: verificationPrompt(kind, verification),
 		createdAt: isoOf(raw.created_at),
@@ -365,6 +381,7 @@ async function assemble(
 		projects: projects.map((p) => toProject(p, counterpartyOf(p), nowMs)),
 		engagements: engagements.map((e) => toEngagement(e, people, byUser)),
 		allowance: kind === "team" ? allowanceOf(raw.allowance) : null,
+		archiveBlockers: kind === "business" ? archiveBlockersOf(raw.archive_blockers) : [],
 		activity: (raw.activity ?? []).map((a, i) =>
 			toActivity(a, i, a.actor_user_id ? people.get(a.actor_user_id) : undefined, nowMs)
 		),
