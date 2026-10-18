@@ -130,6 +130,14 @@ ON CONFLICT (key) DO NOTHING;
 -- each key to KNOWN_NOTIFICATION_TYPES in packages/types/comms/catalog.ts, in the same-named region.
 
 -- #region [contact] Contact requests (P3)
+-- Operators only (Decision #276): sent by ops.submit_contact_request to every ops.admin_users row. Not
+-- mandatory and digestible — a burst of requests may arrive as a digest; the body names the intent and
+-- the reference, never the sender's words. No action URL: there is no operator contact desk yet.
+INSERT INTO comms.notification_types
+    (key, aliases, category, urgency, default_channels, mandatory, overrides_quiet_hours, digestible, audit, group_window, action_url_template, default_lead_time, description)
+VALUES
+('contact.received',         '{}',                'system',    'medium',   ARRAY['in_app','email']::comms.notification_channel[],        false, false, true,  false, NULL,              NULL,                                        NULL, 'Operators only: a request arrived through /contact.')
+ON CONFLICT (key) DO NOTHING;
 -- #endregion
 
 

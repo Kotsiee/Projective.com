@@ -389,7 +389,10 @@ CREATE TYPE files.download_via AS ENUM ('hub', 'share', 'picker', 'preview', 'ap
 -- cropped, re-encoded and written into a public bucket with its WebP tiers. A rendition is never
 -- listed as a library asset: it is the answer to "what does the profile show", not a file anyone
 -- chose to keep, and listing it would put a second copy of every avatar in the picker.
-CREATE TYPE files.asset_purpose AS ENUM ('library', 'avatar', 'showcase');
+-- `contact` (Decision #276) is neither: a file attached to a /contact request, promoted by the upload
+-- pipeline into the private `contact` bucket for operators and, like a rendition, never listed in its
+-- uploader's library.
+CREATE TYPE files.asset_purpose AS ENUM ('library', 'avatar', 'showcase', 'contact');
 
 -- `variant_tier` — the derived WebP sizes the pipeline writes beside an image (or beside a video, as
 -- its poster stills). Three tiers rather than a width list so a reader asks for a ROLE — a card

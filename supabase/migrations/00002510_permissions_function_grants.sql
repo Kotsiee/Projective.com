@@ -1939,6 +1939,25 @@ REVOKE ALL ON FUNCTION ops.run_job (text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION ops.run_job (text) TO service_role;
 -- #endregion
 
+-- #region [contact] Contact requests (00001655, Decision #276)
+-- The intake door is the one public RPC: a guest (`anon`) and a signed-in sender (`authenticated`)
+-- both reach it, and it re-checks everything they send. The operator's status move is reachable by
+-- a signed-in caller and refuses anyone but security.is_admin(). The reference generator and the
+-- record guard run only inside them (as their owner), so no role holds them.
+REVOKE ALL ON FUNCTION ops.fn_contact_reference () FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION ops.fn_guard_contact_request () FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION ops.submit_contact_request (text, text, boolean, jsonb, uuid[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION ops.submit_contact_request (text, text, boolean, jsonb, uuid[]) TO anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION ops.set_contact_request_status (text, text) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION ops.set_contact_request_status (text, text) TO authenticated;
+-- Remove on an unsent attachment: a signed-in sender, for their own files only (checked inside).
+REVOKE ALL ON FUNCTION ops.discard_contact_attachment (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION ops.discard_contact_attachment (uuid) TO authenticated, service_role;
+-- The sweep's claim: the app's cron route only, as the service role.
+REVOKE ALL ON FUNCTION ops.fn_claim_stale_contact_attachments (interval, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION ops.fn_claim_stale_contact_attachments (interval, integer) TO service_role;
+-- #endregion
+
 -- #region Service instantiation (00001175, Decision #209)
 -- `marketplace` has no deny-by-default sweep, so each function is stated. The three doors authorise the
 -- caller with auth.uid() inside; the projection runs only inside them, as their owner.

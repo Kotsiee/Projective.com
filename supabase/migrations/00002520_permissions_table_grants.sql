@@ -104,6 +104,16 @@ GRANT SELECT, UPDATE ON ops.scheduled_jobs TO service_role;
 GRANT SELECT ON ops.http_job_dispatches TO authenticated, service_role;
 
 
+-- #region [contact] ops.contact_requests / ops.contact_request_attachments (Decision #276)
+-- SELECT only, and only operators pass the policy (00002019). No client role holds INSERT, UPDATE or
+-- DELETE: requests arrive through ops.submit_contact_request and move through
+-- ops.set_contact_request_status, both definers; nothing is ever deleted.
+GRANT SELECT ON ops.contact_requests TO authenticated, service_role;
+
+GRANT SELECT ON ops.contact_request_attachments TO authenticated, service_role;
+-- #endregion
+
+
 -- --- from 0219_search_engine_weights.sql ---
 
 GRANT SELECT ON search.search_weights TO authenticated;

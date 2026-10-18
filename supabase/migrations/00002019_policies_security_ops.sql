@@ -50,3 +50,15 @@ SELECT TO authenticated USING (security.is_admin ());
 
 CREATE POLICY "Admins read http job dispatches" ON ops.http_job_dispatches FOR
 SELECT TO authenticated USING (security.is_admin ());
+
+
+-- #region [contact] ops.contact_requests / ops.contact_request_attachments (Decision #276)
+-- Operators read every request and its attachment links; nobody else reads any (a sender keeps the
+-- reference they were shown, not a read path). No write policy at all: the one writer is the definer
+-- door ops.submit_contact_request, and the one status move is ops.set_contact_request_status.
+CREATE POLICY "Admins read contact requests" ON ops.contact_requests FOR
+SELECT TO authenticated USING (security.is_admin ());
+
+CREATE POLICY "Admins read contact request attachments" ON ops.contact_request_attachments FOR
+SELECT TO authenticated USING (security.is_admin ());
+-- #endregion

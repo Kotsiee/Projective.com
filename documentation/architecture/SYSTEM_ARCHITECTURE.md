@@ -2214,6 +2214,7 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `finance-sweep-stale-payouts`     | every 10 min        | `POST /api/finance/cron/payouts?limit=50` · `FINANCE_CRON_SECRET`      | Finance — `PaymentBackendService.sweepStalePayouts`      | Each payout is leased once per window (`finance.fn_claim_stale_payouts`, `SKIP LOCKED`); every transfer carries its payout's Stripe idempotency key. Seeded only where the claim function exists (Decision #202). |
 | `finance-recurring-deposits`      | hourly :15          | `POST /api/finance/cron/deposits?limit=50` · `FINANCE_CRON_SECRET`     | Finance — `PaymentBackendService.processDueDeposits`     | A period is claimed once (`finance.claim_due_deposit_rules`) and each charge carries a Stripe idempotency key; a run left unbound by a transient failure is re-sent by the next sweep under the same key (≤ 23 h). |
 | `scheduling-availability-horizon` | daily 03:05         | `POST /api/scheduling/cron/horizon?limit=200` · `SCHEDULING_CRON_SECRET` | Scheduling — `ScheduleBackendService.extendHorizons` (#217) | Recompiles each live preset not compiled, or compiled through an earlier date than today + 90 d, over today → today + 120 d; a recompile replaces the window it covers (`replace_preset_occurrences`), so a re-run rewrites the same spans. A failed preset is logged and retried next run. |
+| `contact-attachment-sweep`        | hourly :25          | `POST /api/contact/cron/attachments?limit=100` · `CONTACT_CRON_SECRET` | Contact — `ContactBackendService.sweepAttachments` (#276) | Each unsent contact upload older than 6 h is claimed once (`ops.fn_claim_stale_contact_attachments` soft-deletes it, `SKIP LOCKED`, so a file a submission or a Remove holds is skipped) and its object deleted through the Storage API; an object that fails to delete is logged — its row is already gone from every reader. |
 | `account-erasures`                | daily 04:10         | `POST /api/user/cron/erasures?limit=100` · `ACCOUNT_CRON_SECRET`       | Account — `AccountLifecycleBackendService.sweepDue` (#156) | A request completes once; one whose blockers came back is deferred, not forced.                                     |
 | `ops-watch-jobs`                  | every 10 min        | `ops.fn_watch_jobs()`                                                  | Ops — the registry itself                                | `SKIP LOCKED`; a dispatch is settled (and reported) once, a failed run is reported once (keyed by run id).          |
 
@@ -3366,6 +3367,9 @@ ACCOUNT_CRON_SECRET=XXXX-XXXX
 # Bearer token (≥ 32 characters) the scheduler presents to POST /api/scheduling/cron/horizon, which
 # recompiles availability presets running short of their occurrence horizon (Decision #217); 404 otherwise.
 SCHEDULING_CRON_SECRET=XXXX-XXXX
+# Bearer token (≥ 32 characters) the scheduler presents to POST /api/contact/cron/attachments, which
+# deletes /contact attachments nobody sent (Decision #276); 404 otherwise.
+CONTACT_CRON_SECRET=XXXX-XXXX
 # Scheduled jobs (§Scheduled jobs, Decision #203) — these are SUPABASE VAULT secrets, not app env keys.
 # pg_net reads them inside the database to call the routes above; set them per environment with
 #   SELECT vault.create_secret('<value>', '<NAME>');   -- vault.update_secret(id, '<value>') to rotate
@@ -3375,6 +3379,7 @@ SCHEDULING_CRON_SECRET=XXXX-XXXX
 #   FINANCE_CRON_SECRET  the same value as the env key above
 #   ACCOUNT_CRON_SECRET  the same value as the env key above
 #   SCHEDULING_CRON_SECRET  the same value as the env key above
+#   CONTACT_CRON_SECRET  the same value as the env key above
 # Optional, development only: stripe-mock origin; ignored for live keys and under DENO_ENV=production
 # STRIPE_API_BASE=http://localhost:12111
 
@@ -3413,6 +3418,11 @@ EDITORIAL_BACKEND_LIVE=false
 # supabase/config.toml [api].schemas (then `supabase stop && supabase start`) or a hosted project's
 # Exposed schemas before either gate, or the newsletter's live path, can reach them.
 COMMUNITY_BACKEND_LIVE=false
+# The /contact intake (Decision #276): ops.contact_requests through ops.submit_contact_request, and
+# attachments through the quarantine pipeline into the private `contact` bucket. Off, development
+# answers a receipt and stores nothing; PRODUCTION REFUSES (503) rather than acknowledge a message
+# nobody will read — set it in every deployed environment.
+CONTACT_BACKEND_LIVE=false
 ```
 
 ---

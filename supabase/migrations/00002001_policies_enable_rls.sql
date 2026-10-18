@@ -69,6 +69,12 @@ ALTER TABLE ops.scheduled_jobs ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE ops.http_job_dispatches ENABLE ROW LEVEL SECURITY;
 
+-- #region [contact] Contact requests (Decision #276)
+ALTER TABLE ops.contact_requests ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE ops.contact_request_attachments ENABLE ROW LEVEL SECURITY;
+-- #endregion
+
 ALTER TABLE org.business_profiles ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE org.freelancer_profiles ENABLE ROW LEVEL SECURITY;

@@ -9,7 +9,7 @@
 --   - catalogue/{seller_id}/...           - messages/{thread_id}/...
 --   - invoices/{owner_id}/...             - verification/{subject_id}/...
 --   - personal/{user_id}/...              - workspace/{entity_id}/...
---   - showcase/{entity_id}/...
+--   - showcase/{entity_id}/...            - contact/{user_id}/...
 --
 -- Additive per root CLAUDE.md §1: buckets are inserted ON CONFLICT DO NOTHING and never dropped.
 -- Byte sizes: 5 MiB = 5242880 · 10 MiB = 10485760 · 20 MiB = 20971520 · 50 MiB = 52428800.
@@ -99,6 +99,21 @@ VALUES (
         20971520,
         ARRAY['image/png', 'image/jpeg', 'image/webp', 'application/pdf']
     ) ON CONFLICT (id) DO NOTHING;
+
+-- #region [contact] /contact attachments (Decision #276)
+-- What a /contact request carries: pictures, PDFs and plain text, 10 MiB each. Operator read; written
+-- only by the contact upload pipeline after the quarantine sniff (00002017). Mirrored by
+-- `BUCKETS.contact` (@projective/types/files), which the dropzone reads its limits from.
+INSERT INTO
+    storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+        'contact',
+        'contact',
+        false,
+        10485760,
+        ARRAY['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf', 'text/plain']
+    ) ON CONFLICT (id) DO NOTHING;
+-- #endregion
 
 -- #endregion
 

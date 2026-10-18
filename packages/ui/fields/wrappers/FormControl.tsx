@@ -15,6 +15,11 @@ export interface FormControlRenderArgs {
 	status: FieldStatus;
 	/** Pass through so the control reflects the required flag. */
 	required: boolean | undefined;
+	/**
+	 * The visible label's id (when there is a label). A control that is not labelable by `<label for>` —
+	 * a `role="radiogroup"`, a listbox — names itself with `aria-labelledby={labelId}` instead.
+	 */
+	labelId: string | undefined;
 }
 
 export interface FormControlProps {
@@ -83,6 +88,7 @@ export function FormControl(props: FormControlProps): JSX.Element {
 			describedBy: describedBy(descId),
 			status,
 			required,
+			labelId: label ? ids.label : undefined,
 		})
 		: children;
 
