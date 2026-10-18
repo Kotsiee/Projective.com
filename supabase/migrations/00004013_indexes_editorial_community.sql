@@ -14,6 +14,11 @@
 
 
 -- #region [editorial.articles]
+-- The author foreign key: an author row's slug is checked against its articles whenever the row is
+-- touched, and "everything this author wrote" reads by author. The reader itself loads the (small)
+-- table whole and orders in TypeScript, so no publication-order index is needed yet.
+CREATE INDEX IF NOT EXISTS idx_editorial_articles_author
+    ON editorial.articles (author_slug);
 -- #endregion
 
 

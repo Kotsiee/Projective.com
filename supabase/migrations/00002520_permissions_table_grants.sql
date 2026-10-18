@@ -742,6 +742,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA editorial, community TO service_r
 
 
 -- #region [editorial.articles]
+GRANT SELECT ON editorial.article_authors, editorial.articles TO anon, authenticated;
 -- #endregion
 
 

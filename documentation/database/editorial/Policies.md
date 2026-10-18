@@ -34,4 +34,16 @@ _Not yet documented._ (P5.)
 
 ## Articles
 
-_Not yet documented._ (P6.)
+RLS enabled on both tables (`00002001`, `[editorial.articles]`); policies in `00002021`; grants in
+`00002520` — `SELECT` on both tables to `anon` and `authenticated`, nothing else.
+
+| Table                       | Policy                          | Command | Roles                   | Rule                                             |
+| :-------------------------- | :------------------------------ | :------ | :---------------------- | :----------------------------------------------- |
+| `editorial.article_authors` | `article_authors_select_public` | SELECT  | `anon`, `authenticated` | `true` — a byline is never hidden                |
+| `editorial.articles`        | `articles_select_published`     | SELECT  | `anon`, `authenticated` | `status = 'published' AND published_at <= now()` |
+
+The article rule is exactly the content source's `visible` predicate (`isEditorialArticleVisible`),
+so a draft, a future-dated article and a retracted one are hidden from a direct PostgREST read as
+from both reader roads. No client role writes either table. Pinned by
+`supabase/probes/editorial_articles.sql` (the anon and authenticated reads, the refused writes, the
+slug guard, every CHECK) and `services/editorial/articles-sql.test.ts`.

@@ -2806,6 +2806,37 @@ field), `currencyStatus` / `amountStatus` and optional `currencyError` / `amount
 the hint as an error line. Presentational only — the modal owns state and submits the minor amount.
 Styles: the modal's `pjc__row` / `pjc__label` / `pjc__hint` (`projects/styles/project-create-modal.css`), token-only.
 
+**Articles — `ArticleTile` · `ArticleTopicFilter` · `ArticlePagination` · `ArticleByline` · `ArticleCta` · `ArticleMediaFade` (`features/articles/`, Decision #271).**
+Projective's own articles on `/articles` and `/articles/[slug]`. Every component is server-rendered;
+the `ArticleMediaFade` island renders nothing and carries `articles.css` (block `artl-`; `art-` is the
+member-article view's) plus the Button sheet onto every state of both routes, and fades lazy images in
+at `--dur-medium` — only under no-preference motion in both channels, never the eagerly loaded lead or
+cover, and nothing is hidden without JavaScript. **`ArticleTile`** is an interactive media card
+(§B.9.5): solid `--surface-1`, `--card-radius-media`, resting `--elevation-low`, no border, the §A.3
+card rhythm tokens, media at `--card-media-ratio` on a `--surface-2` ground with intrinsic
+`width`/`height`; one stretched title link is its only control (hover raises `--elevation-medium` and
+zooms the media by `--card-media-zoom`; a press compresses by `--btn-press-scale`; both reduced-motion
+channels set `transform: none`; keyboard focus underlines the title in `--primary` — no ring). Variants
+`lead` (beside its picture from 768px of the `artl-index` container), `feature`, `grid` and `compact`
+(the reader's related rows). Its eyebrow is the primary topic in the section register and its facts —
+byline · reading time · date — one Meta-register line with `aria-hidden` middots (§B.11.2), never
+chips. **`ArticleTopicFilter`** is a control group of real links (`?topic=`, any-of, back to page 1):
+pill chips with a full `--hairline-strong` border, the chosen ones `aria-current="true"` on a solid
+`--surface-2` step with an `--on-surface` border and a check glyph, so the state never rides on hue;
+counts in `tabular-nums`. **`ArticlePagination`** is Previous · "Page n of m" · Next as tier-4 neutral
+outlined links that keep the filter; an unusable neighbour is omitted, not disabled. The reader is
+P0's `DocumentPage` with the `ui-doc--article` frame: **`ArticleByline`** is the article's unboxed
+`<address>` (picture, name — a link only when the author has a page — and role); **`ArticleCta`** is
+the article's one call to action, an `<aside>` on a solid `--surface-1` step after ~60% of the body
+holding the region's only filled button (tier 3 brand primary; a guest is sent to `/join`, a signed-in
+reader into the product). The index frame (`artl-index`) is a named inline-size container — features
+two-up from 768px, the grid two-up from 480px and three-up from 1024px — and static content on it
+(the header, the summary, section labels, the empty state) is never boxed. The `ui-doc--article` variant also sets a
+quotation as a pull quote in the display register (sans, `--text-xl`, `--fw-light` so it never reads
+as a same-size section heading, on the prose's one `--hairline`). Same change: P0's
+`DocumentHeader` facts are no longer flex containers (`.ui-doc-header__meta-item` is `display: block`),
+which had dropped the space between a date's prefix and the date.
+
 **`PromoSlot` (`features/explore/components/promos/`, Decision #175).** The Explore Home's one promo
 surface; it replaces `SponsoredFrame`, `CtaBanner` (both "Become a Freelancer" and "Launch a Team")
 and `HelpArticlesStrip`, which are deleted. One prop, `slot` (the `PromoSlot` union from

@@ -1,0 +1,670 @@
+/*
+ * Articles — the `/articles` index and the pieces `/articles/[slug]` adds to the shared editorial
+ * reader (P6, Decision #271). Block prefix `artl-` (`art-` is the member-article view's, Decision #43).
+ *
+ * DELIVERY. Every component here is server-rendered, so this sheet reaches a page only through the
+ * `ArticleMediaFade` island, which both routes mount on every state they render (DESIGN_SYSTEM §B.9.6;
+ * a server component's own `import` of a sheet reaches no page).
+ *
+ * GEOMETRY FOLLOWS THE FRAME. The index is a named inline-size container (`artl-index`) and its steps
+ * are container queries on the breakpoint tokens' values (custom properties cannot appear in a
+ * query), because the same page renders full-bleed for a guest and beside the signed-in rail.
+ *
+ * SEPARATION (§B.4, §B.9). Tiles are interactive — the whole tile is one link — so they are cards:
+ * a solid `--surface-1`, the media radius, a resting `--elevation-low`, no border, never nested and
+ * never inside a container card. Everything static (the header, the byline, the author block, a
+ * section's heading) is unboxed and separated by spacing and type. The topic filter's chips are
+ * controls, so they carry a full border; non-actionable metadata is inline Meta-register text with
+ * `aria-hidden` middots (§B.11.2).
+ *
+ * MOTION. Hover lifts the elevation and zooms the media; a press compresses with `transform` only
+ * (§B.12). Both reduced-motion channels remove every transform (`transform: none`), and the token
+ * layer already zeroes the durations. Lazy images fade in at `--dur-medium` only under
+ * `prefers-reduced-motion: no-preference` with no `[data-motion="reduced"]` override.
+ */
+
+/* #region Index frame */
+.artl-index {
+	container: artl-index / inline-size;
+	inline-size: 100%;
+	color: var(--on-surface);
+}
+
+/* The frame's measure and gutters live one level in: a container query styles descendants only. */
+.artl-index__inner {
+	max-inline-size: var(--container-xl);
+	margin-inline: auto;
+	padding-inline: var(--space-4);
+	padding-block: var(--space-6) var(--space-8);
+}
+
+.artl-index__header {
+	max-inline-size: var(--measure-wide);
+}
+
+/* Display register (§A.4): the page's one h1, fluid against the frame, never bold. */
+.artl-index__title {
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: clamp(var(--text-2xl), 1rem + 3cqi, var(--text-3xl));
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+	text-wrap: balance;
+}
+
+.artl-index__lead {
+	max-inline-size: var(--measure);
+	margin: var(--space-3) 0 0;
+	font-family: var(--font-reading);
+	font-size: var(--text-lg);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+	text-wrap: pretty;
+}
+
+/* Section-header register: the label above a group of tiles (§B.4.1 asymmetric spacing). */
+.artl-index__section-title {
+	margin: var(--space-7) 0 var(--space-3);
+	font-family: var(--font-sans);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-snug);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.artl-index__summary {
+	margin: var(--space-4) 0 0;
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.artl-index__stories {
+	display: grid;
+	gap: var(--space-5);
+	margin-block-start: var(--space-5);
+}
+
+.artl-index__features,
+.artl-index__grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--space-5);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/* A tile fills its row's height, so tiles side by side end on one line whatever their copy. */
+.artl-index__features > li,
+.artl-index__grid > li {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.artl-index__features > li > .artl-tile,
+.artl-index__grid > li > .artl-tile {
+	flex: 1 1 auto;
+}
+
+@container artl-index (min-width: 480px) {
+	.artl-index__grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@container artl-index (min-width: 768px) {
+	.artl-index__inner {
+		padding-inline: var(--space-6);
+	}
+
+	.artl-index__features {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@container artl-index (min-width: 1024px) {
+	.artl-index__grid {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+}
+/* #endregion */
+
+/* #region Topic filter — a control group (§B.11.3: a chip is a control) */
+.artl-topics {
+	margin-block-start: var(--space-5);
+}
+
+.artl-topics__label {
+	margin: 0 0 var(--space-2);
+	font-family: var(--font-sans);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.artl-topics__list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.artl-topic {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: calc(var(--fld-hit) + var(--space-3));
+	padding-inline: var(--space-3);
+	border: var(--hairline-strong);
+	border-radius: var(--radius-full);
+	background: transparent;
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+	text-decoration: none;
+	transition: var(--btn-transition-press);
+}
+
+.artl-topic:hover {
+	background: var(--surface-1);
+}
+
+/* The chosen state is a SOLID tonal step plus a check glyph — shape, not hue (§B.11.6, §B.4.2). */
+.artl-topic[aria-current="true"] {
+	border-color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.artl-topic:active {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+.artl-topic__check {
+	inline-size: var(--icon-xs);
+	block-size: var(--icon-xs);
+	flex: none;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: var(--icon-stroke);
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.artl-topic__check path {
+	vector-effect: non-scaling-stroke;
+}
+
+.artl-topic__count {
+	font-weight: var(--fw-normal);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Tile — an interactive media card (§B.9.5) */
+.artl-tile {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+	overflow: clip;
+	border-radius: var(--card-radius-media);
+	background: var(--surface-1);
+	box-shadow: var(--elevation-low);
+	transition:
+		box-shadow var(--dur-fast) var(--ease-standard),
+		transform var(--dur-medium) var(--ease-standard);
+}
+
+.artl-tile__media {
+	position: relative;
+	aspect-ratio: var(--card-media-ratio);
+	overflow: hidden;
+	/* The picture's resting ground until it decodes: a solid tone, never a shifting box. */
+	background: var(--surface-2);
+}
+
+.artl-tile__img {
+	display: block;
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+	transition:
+		transform var(--dur-medium) var(--ease-standard),
+		opacity var(--dur-medium) var(--ease-standard);
+}
+
+.artl-tile__body {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: var(--card-gap);
+	min-inline-size: 0;
+	padding: var(--card-pad-media);
+}
+
+.artl-tile__eyebrow {
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-snug);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.artl-tile__title {
+	display: -webkit-box;
+	margin: 0;
+	overflow: hidden;
+	font-family: var(--font-sans);
+	font-size: var(--text-lg);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	letter-spacing: var(--tracking-tight);
+	color: var(--on-surface);
+	text-wrap: balance;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 3;
+	line-clamp: 3;
+}
+
+/* The one link: its overlay makes the whole tile its target, so the tile reads as one control. */
+.artl-tile__link {
+	color: inherit;
+	text-decoration: none;
+}
+
+.artl-tile__link::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	border-radius: inherit;
+}
+
+.artl-tile__standfirst {
+	display: -webkit-box;
+	margin: 0;
+	overflow: hidden;
+	font-family: var(--font-reading);
+	font-size: var(--text-md);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 3;
+	line-clamp: 3;
+}
+
+/* Meta register (§B.11.2): non-actionable facts as one inline line, middot-separated. */
+.artl-meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-normal);
+	line-height: var(--leading-normal);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+/* Inline text, not flex items, so a fact's own spaces survive (as in the document header's line). */
+.artl-meta__item {
+	display: block;
+}
+
+.artl-meta__sep {
+	margin-inline: var(--space-2);
+	color: var(--on-surface-variant);
+}
+
+.artl-tile .artl-meta {
+	margin-block-start: auto;
+	padding-block-start: var(--space-1);
+}
+
+/* Hover: the surface rises and the picture leans in — colour and shadow only, plus a transform. */
+@media (hover: hover) {
+	.artl-tile:hover,
+	.artl-tile:has(.artl-tile__link:focus-visible) {
+		box-shadow: var(--elevation-medium);
+	}
+
+	.artl-tile:hover .artl-tile__img {
+		transform: scale(var(--card-media-zoom));
+	}
+}
+
+/* Keyboard focus marks the title (focus rings are off product-wide; this is ink, not a ring). */
+.artl-tile__link:focus-visible {
+	outline: none;
+	text-decoration: underline;
+	text-decoration-color: var(--primary);
+	text-decoration-thickness: 2px;
+	text-underline-offset: 0.2em;
+}
+
+.artl-tile:has(.artl-tile__link:active) {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-fast), var(--dur-press);
+}
+
+/* The lead story: the newest article, larger, beside its picture once the frame allows. */
+.artl-tile--lead .artl-tile__title {
+	font-size: clamp(var(--text-xl), 0.75rem + 2cqi, var(--text-2xl));
+	line-height: var(--leading-tight);
+}
+
+.artl-tile--lead .artl-tile__standfirst {
+	font-size: var(--text-base);
+	-webkit-line-clamp: 4;
+	line-clamp: 4;
+}
+
+@container artl-index (min-width: 768px) {
+	.artl-tile--lead {
+		display: grid;
+		grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+	}
+
+	.artl-tile--lead .artl-tile__media {
+		aspect-ratio: auto;
+		min-block-size: 100%;
+	}
+
+	.artl-tile--lead .artl-tile__img {
+		position: absolute;
+		inset: 0;
+	}
+
+	.artl-tile--lead .artl-tile__body {
+		justify-content: center;
+		padding: var(--space-6);
+	}
+
+	.artl-tile--feature .artl-tile__title {
+		font-size: var(--text-xl);
+	}
+}
+
+/* Related reading in the reader's footer: a picture beside the title, one row per article. */
+.artl-tile--compact {
+	display: grid;
+	grid-template-columns: minmax(0, 2fr) minmax(0, 5fr);
+	border-radius: var(--card-radius);
+}
+
+.artl-tile--compact .artl-tile__media {
+	aspect-ratio: auto;
+	min-block-size: 100%;
+}
+
+.artl-tile--compact .artl-tile__img {
+	position: absolute;
+	inset: 0;
+}
+
+.artl-tile--compact .artl-tile__body {
+	gap: var(--card-gap-tight);
+	padding: var(--card-pad-tight) var(--card-pad);
+}
+
+.artl-tile--compact .artl-tile__title {
+	font-size: var(--text-md);
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+}
+/* #endregion */
+
+/* #region Pagination and the empty state */
+.artl-pager {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	margin-block-start: var(--space-7);
+}
+
+.artl-pager__status {
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+/* A missing neighbour keeps its slot, so "Page 2 of 2" stays centred and Next never jumps. */
+.artl-pager__slot {
+	display: flex;
+	flex: 1 1 0;
+}
+
+.artl-pager__slot--next {
+	justify-content: flex-end;
+}
+
+.artl-empty {
+	max-inline-size: var(--measure);
+	margin-block-start: var(--space-6);
+}
+
+.artl-empty__title {
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: var(--text-lg);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+}
+
+.artl-empty__body {
+	margin: var(--space-2) 0 var(--space-4);
+	font-family: var(--font-reading);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Reader — cover, byline, call to action, footer */
+.artl-cover {
+	margin: 0;
+}
+
+/* width/height on the <img> + `block-size: auto` reserve the box at the cover's own ratio (no CLS). */
+.artl-cover__img {
+	display: block;
+	inline-size: 100%;
+	block-size: auto;
+	border-radius: var(--card-radius-media);
+	background: var(--surface-2);
+}
+
+.artl-byline {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	font-family: var(--font-sans);
+	font-style: normal;
+}
+
+.artl-byline__avatar {
+	inline-size: calc(var(--space-6) + var(--space-2));
+	block-size: calc(var(--space-6) + var(--space-2));
+	flex: none;
+}
+
+.artl-byline__avatar--lg {
+	inline-size: var(--space-8);
+	block-size: var(--space-8);
+}
+
+.artl-byline__text {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.artl-byline__name {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+}
+
+.artl-byline__name a {
+	color: inherit;
+	text-decoration-color: var(--primary);
+	text-underline-offset: 0.2em;
+}
+
+.artl-byline__role {
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+}
+
+/*
+ * The call to action: one per article, after ~60% of the body. A solid `--surface-1` step (never a
+ * wash, §B.4.2) holding the region's only filled button. It sits inside the prose, so it re-asserts
+ * its own spacing and the button's ink against the prose link rule.
+ */
+.ui-doc-section > .artl-cta {
+	margin-block: var(--space-6);
+}
+
+.artl-cta {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-3);
+	padding: var(--space-5);
+	border-radius: var(--radius-lg);
+	background: var(--surface-1);
+	font-family: var(--font-sans);
+}
+
+.artl-cta__title {
+	margin: 0;
+	font-size: var(--text-lg);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+}
+
+.artl-cta__body {
+	margin: 0;
+	font-family: var(--font-reading);
+	font-size: var(--text-base);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.ui-prose .artl-cta a.artl-cta__action {
+	color: var(--btn-on);
+	text-decoration: none;
+}
+
+.artl-footer {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-7);
+}
+
+.artl-footer__title {
+	margin: 0 0 var(--space-3);
+	font-family: var(--font-sans);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-snug);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.artl-footer__topics {
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.artl-footer__topics a,
+.artl-footer__back {
+	color: var(--on-surface);
+	text-decoration-color: var(--primary);
+	text-underline-offset: 0.2em;
+}
+
+.artl-author__bio {
+	margin: var(--space-3) 0 0;
+	font-family: var(--font-reading);
+	font-size: var(--text-base);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.artl-related {
+	display: grid;
+	gap: var(--space-3);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.artl-footer__back {
+	align-self: flex-start;
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+}
+/* #endregion */
+
+/* #region Image fade-in — no-preference motion only */
+@media (prefers-reduced-motion: no-preference) {
+	:root:not([data-motion="reduced"]) [data-artl-fade="pending"] {
+		opacity: 0;
+	}
+
+	/* Keeps the tile picture's hover zoom in the list: this rule outranks `.artl-tile__img`'s own. */
+	:root:not([data-motion="reduced"]) [data-artl-fade] {
+		transition:
+			opacity var(--dur-medium) var(--ease-standard),
+			transform var(--dur-medium) var(--ease-standard);
+	}
+}
+/* #endregion */
+
+/* #region Reduced motion — both channels remove every transform (§B.12) */
+@media (prefers-reduced-motion: reduce) {
+	.artl-tile,
+	.artl-tile:hover .artl-tile__img,
+	.artl-tile:has(.artl-tile__link:active),
+	.artl-topic:active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] :is(.artl-tile, .artl-tile:hover .artl-tile__img, .artl-tile:has(.artl-tile__link:active), .artl-topic:active) {
+	transform: none;
+}
+/* #endregion */
