@@ -3169,7 +3169,6 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               | `/forgot-password`        |                          | Password recovery                                                                              |
 | **Dashboard** | `/home`                   |                          | Persona-adaptive engagement feed (recommended work, reels, activity, profile-setup tracker)    |
 |               | `/become-partner`         |                          | Freelancer conversion funnel (Client/Operator → unlock freelancer suite)                       |
-|               | `/articles/[slug]`        |                          | Editorial reader for freelancer stories linked from `/become-partner`                          |
 |               | `/businesses`             | `index`                  | Show all businesses (any adult account — Decision #230 (a))                                   |
 |               | `/businesses/create`      |                          | Create a new business                                                                          |
 |               | `/businesses/[businessHandle]` | `index`             | The console's **Overview** — addressed by the business's `@handle` ([ROUTING.md](../architecture/ROUTING.md) business rows) |
@@ -3267,6 +3266,8 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               | `/help/[...article path]` | `index`                  | The help centre (P2): the hub (search · Start here by role · the eight Topics · the FAQ · Still stuck?), `/help/<category>` and `/help/<category>/<article>` — readable, permanent slugs (Decision #274 (k)); a guessed or moved address redirects to the canonical one. Articles are platform-authored `editorial` rows; "Was this helpful?" votes are `community.help_feedback`. Search at `?q=` (an overlay; a server-rendered results list without JavaScript) |
 |               | `/view/[entity]`          | `index`                  | Public entity viewer — the evaluation & purchase surface. One page, six bodies (Pipeline · One-Off · Session · Cohort · Digital Product · Project) resolved from the listing's delivery model. The transaction lives in the contextual lane, never a third column (§The Entity View; DESIGN_SYSTEM §D.7–§D.8) |
 |               |                           | `schedule`               | Bookable availability leaf for Session / Group-Session archetypes — fills the content region itself (no lane) |
+|               | `/articles`               | `index`                  | Projective's own articles (Decision #271): a lead story, two features and the rest, filtered by topic (`?topic=`, repeatable, any of) and paged (`?page=`) |
+|               | `/articles/[slug]`        |                          | One Projective article on the shared document reader — its one canonical address, a readable slug that never changes. Member posts stay at `/view` and `/[handle]/posts` (Decision #271) |
 |               | `/[handle]/view/[item]`   | `index` / `schedule`     | Profile-scoped twin of the above; identical body, back-links scoped to the profile              |
 
 ---

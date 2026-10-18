@@ -639,6 +639,8 @@ ALTER TABLE editorial.changelog_releases ENABLE ROW LEVEL SECURITY;
 
 
 -- #region [editorial.articles]
+ALTER TABLE editorial.article_authors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE editorial.articles ENABLE ROW LEVEL SECURITY;
 -- #endregion
 
 

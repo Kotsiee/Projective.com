@@ -50,6 +50,18 @@ CREATE POLICY changelog_releases_select_public ON editorial.changelog_releases
 
 
 -- #region [editorial.articles]
+-- Bylines are never hidden: an author row is shown wherever an article names it.
+CREATE POLICY article_authors_select_public ON editorial.article_authors
+    FOR SELECT TO anon, authenticated
+    USING (true);
+
+-- A reader sees a published article once its publication time has passed — the same rule as the
+-- table's `visible` predicate in services/editorial/content/articles.ts, which both reader roads
+-- apply (Decision #274). A draft, a future-dated article and an archived (retracted) one stay
+-- hidden; no client role writes here at all.
+CREATE POLICY articles_select_published ON editorial.articles
+    FOR SELECT TO anon, authenticated
+    USING (status = 'published' AND published_at <= now());
 -- #endregion
 
 

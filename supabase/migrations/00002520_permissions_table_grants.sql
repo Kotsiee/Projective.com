@@ -756,6 +756,7 @@ GRANT SELECT ON editorial.changelog_releases TO anon, authenticated;
 
 
 -- #region [editorial.articles]
+GRANT SELECT ON editorial.article_authors, editorial.articles TO anon, authenticated;
 -- #endregion
 
 

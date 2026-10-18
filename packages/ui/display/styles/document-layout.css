@@ -226,6 +226,21 @@
 			var(--space-6)));
 	}
 }
+
+/*
+ * Article: a quotation is a pull quote in the display register (§A.4) — the sans face, one step above
+ * the prose, light weight so it never reads as a section heading of the same size, tight tracking —
+ * still on the one inline-start --hairline the prose gives every quote. Its attribution keeps the meta
+ * register.
+ */
+.ui-doc--article .ui-prose__quote {
+	font-family: var(--font-sans);
+	font-size: var(--text-xl);
+	font-weight: var(--fw-light);
+	line-height: var(--leading-snug);
+	letter-spacing: var(--tracking-tight);
+	text-wrap: balance;
+}
 /* #endregion */
 
 /* #region Header — display · lead · meta (§A.4's registers) */

@@ -258,9 +258,10 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		label: "Help centre, changelog & articles",
 		gate: "EDITORIAL_BACKEND_LIVE",
 		// The shared reader (`services/editorial/editorial-source.ts` readEditorialTable) has a real
-		// anon-client path: the help centre reads editorial.help_* through it (HelpBackendService, P2)
-		// and `ChangelogBackendService` reads `editorial.changelog_releases` (P5); the articles source
-		// joins them as its work order lands.
+		// anon-client path: the help centre reads editorial.help_* through it (HelpBackendService, P2),
+		// `ChangelogBackendService` reads `editorial.changelog_releases` (P5) and
+		// EditorialArticlesBackendService (P6, Decision #271) reads `editorial.articles` /
+		// `editorial.article_authors`.
 		liveImplemented: true,
 		modules: [
 			"services/editorial/content/help.ts",
@@ -269,7 +270,7 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		],
 		schemas: ["editorial"],
 		description:
-			"Platform-authored content (Decision #274). The content sources are NOT demo data: they are the authored rows `deno task db:editorial:generate` emits into 00005071–00005073, and with the gate off they are served through the same Zod row parse and mapping the live read uses, so fixtures cannot drift from the database. The help source is filled (P2: 8 categories, 33 articles); the changelog and articles sources stay empty until their surfaces land.",
+			"Platform-authored content (Decision #274). The content sources are NOT demo data: they are the authored rows `deno task db:editorial:generate` emits into 00005071–00005073, and with the gate off they are served through the same Zod row parse and mapping the live read uses, so fixtures cannot drift from the database. All three sources are filled: help (P2: 8 categories, 33 articles), the changelog's releases (P5) and Projective's articles with their authors (P6).",
 	},
 	community: {
 		domain: "community",

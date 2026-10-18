@@ -39,4 +39,13 @@ changelog is read straight from its table.
 
 ## Articles
 
-_Not yet documented._ (P6.)
+No function of its own: the articles are read straight from their tables under their SELECT
+policies. Both tables attach the shared guard in `00001898` (`[editorial.articles]`):
+
+| Trigger                              | Table                       | When                    | Function                              |
+| :----------------------------------- | :-------------------------- | :---------------------- | :------------------------------------ |
+| `trg_article_authors_slug_immutable` | `editorial.article_authors` | `BEFORE UPDATE OF slug` | `editorial.fn_guard_slug_immutable()` |
+| `trg_articles_slug_immutable`        | `editorial.articles`        | `BEFORE UPDATE OF slug` | `editorial.fn_guard_slug_immutable()` |
+
+The generated seed upserts on `slug` and never names it in its `UPDATE SET`, so re-running it never
+trips the guard.

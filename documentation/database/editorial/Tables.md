@@ -146,4 +146,52 @@ keyed read — a release by version — is the primary key.
 
 ## Articles
 
-_Not yet documented._ (P6: Projective articles and their authors.)
+Projective's own articles and the bylines they are written under (P6, Decision #271), canonical at
+`/articles/[slug]`. Region `[articles]` of `00000024`; rows generated into
+`00005073_seed_editorial_articles.sql` from `services/editorial/content/articles.ts` (one module per
+article under `content/articles/`). Zod SSOT: `@projective/types/editorial` (`articles.ts`). Read by
+`EditorialArticlesBackendService` through `readEditorialTable`.
+
+### `editorial.article_authors`
+
+A byline. Its own row, never a foreign key onto a seeded profile, because this migration runs where
+the development personas do not exist. Nothing here is ever hidden.
+
+| Column                  | Type      | Notes                                                                                           |
+| :---------------------- | :-------- | :---------------------------------------------------------------------------------------------- |
+| `slug`                  | `text` PK | Readable kebab-case, ≤ 96; permanent once the row exists (`trg_article_authors_slug_immutable`) |
+| `name`                  | `text`    | 1–80 characters                                                                                 |
+| `role`                  | `text`    | 1–80 characters (`Editorial team`)                                                              |
+| `kind`                  | `text`    | `person` · `team` — a team byline is the JSON-LD `Organization`, a person a `Person`            |
+| `bio`                   | `text`    | 1–320 characters, under the end-of-article byline                                               |
+| `avatar_path`           | `text`    | A static asset path (`/logo.svg`) or `https://`; never `//host`                                 |
+| `avatar_alt`            | `text`    | Non-empty                                                                                       |
+| `avatar_w` / `avatar_h` | `integer` | Intrinsic pixels, > 0, so every reader reserves the box                                         |
+| `profile_href`          | `text?`   | The author's public page (`/@handle`), same-origin; `NULL` for a team byline                    |
+
+Seeded: one row, `projective-editorial` — "Projective Editorial", `Editorial team`, `kind = team`,
+the brandmark, no profile link (no named staff were given; Decision #271 flag (a)).
+
+### `editorial.articles`
+
+| Column                | Type          | Notes                                                                                                                                                                                                                                                                                                                                                                                    |
+| :-------------------- | :------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `slug`                | `text` PK     | Readable kebab-case, ≤ 96, authored on its own; permanent once the row exists (`trg_articles_slug_immutable`, Decision #274 (k))                                                                                                                                                                                                                                                         |
+| `title`               | `text`        | 1–140 characters                                                                                                                                                                                                                                                                                                                                                                         |
+| `standfirst`          | `text`        | 1–320 characters — the lead paragraph and the meta description                                                                                                                                                                                                                                                                                                                           |
+| `topics`              | `text[]`      | One to three of `async-collaboration` · `agile-delivery` · `team-structure` · `value-pricing` · `escrow-and-trust`, none `NULL`; the first is the primary topic. A repeat is refused by the Zod row schema                                                                                                                                                                               |
+| `body`                | `jsonb`       | A non-empty array of P0 `DocSection`s (`id`, `heading`, optional `tldr`, `body` of ContentNodes); anchor ids unique per article                                                                                                                                                                                                                                                          |
+| `cover_path`          | `text`        | A static asset path or `https://`; never `//host`                                                                                                                                                                                                                                                                                                                                        |
+| `cover_alt`           | `text`        | Non-empty                                                                                                                                                                                                                                                                                                                                                                                |
+| `cover_w` / `cover_h` | `integer`     | Intrinsic pixels, > 0                                                                                                                                                                                                                                                                                                                                                                    |
+| `author_slug`         | `text` FK     | → `editorial.article_authors (slug)`; indexed (`idx_editorial_articles_author`, `00004013`)                                                                                                                                                                                                                                                                                              |
+| `status`              | `text`        | `draft` · `published` · `archived` (default `draft`) — PRODUCT_MANAGEMENT §3.5 "Editorial article"                                                                                                                                                                                                                                                                                       |
+| `published_at`        | `timestamptz` | When it goes public; a `published` row dated ahead is scheduled                                                                                                                                                                                                                                                                                                                          |
+| `updated_at`          | `timestamptz` | Authored (fixtures have no `now()`); never before `published_at` (`articles_dates_check`)                                                                                                                                                                                                                                                                                                |
+| `former_slugs`        | `text[]`      | Earlier slugs of a renamed article (default `{}`): each the slug of the ARCHIVED row that held it, at most 16, slug-shaped, ≤ 96, never the row's own (`articles_former_slugs_check`). `/articles/<former>` answers 308 here. That each names an archived row and has one claimant is checked in `content/articles.test.ts` (`formerSlugProblems`) — a cross-row rule no CHECK can state |
+
+**Visible** = `status = 'published' AND published_at <= now()` — `isEditorialArticleVisible` on both
+reader roads and the `articles_select_published` policy alike. A retraction is `archived`, never a
+deleted record; a rename is a new row under a new slug listing the old one in `former_slugs`, with
+the old row archived, so the old address redirects (Decision #274 (k)). Seeded: six published
+articles, at least one leading each topic.
