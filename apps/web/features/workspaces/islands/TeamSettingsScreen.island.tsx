@@ -23,7 +23,7 @@ import {
 } from "@projective/types/workspace";
 import { readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
-import { publishDetail, saveState } from "../core/workspace-state.ts";
+import { archiveRefusal, publishDetail, saveState } from "../core/workspace-state.ts";
 import { usePolicyBridge } from "../hooks/usePolicyBridge.ts";
 import { useModuleCommit } from "../hooks/useModuleCommit.ts";
 import {
@@ -54,7 +54,10 @@ import {
  *     live work, by those blockers, each with the link that clears it, never a button that would fail;
  *     on an archived team, Restore (tier 3) named for where the server says it lands (Decision #250
  *     (c)). A refusal that raced the read is said in the same words, in the button's place: its codes
- *     replace Archive at once, and the re-read that follows brings their counts to every root.
+ *     replace Archive at once — here and in the header band's kebab (`archiveRefusal`) — and the
+ *     re-read that follows brings their counts to every root. A refusal that names no blocker is said
+ *     under the control and takes focus, scrolled into view: the pressed control was disabled while
+ *     the write ran, and a refused Publish rides the band, far above the Lifecycle section.
  *
  * Every rule above is `settings-model.ts`, pinned by its test; this island renders it. The one
  * filled control per region (§B.8.1) is split across three roots: Publish, while the team is a draft,
@@ -74,6 +77,13 @@ export interface TeamSettingsScreenProps {
 
 /** The lifecycle write in flight, if any. */
 type LifecycleMove = "publish" | "archive" | "restore";
+
+/** No refusal since the read. */
+const NO_CODES: readonly ArchiveBlockerCode[] = [];
+
+/** How long focus waits for a closing overlay to let the page go: 40 × 50 ms — two seconds at most. */
+const FOCUS_WAITS = 40;
+const FOCUS_WAIT_MS = 50;
 
 /**
  * The settings input the model reads, straight off the detail, plus the blocker codes a refused
@@ -99,8 +109,14 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 	// #region State
 	/** The server's projection — replaced wholesale by every write's re-read, never patched here. */
 	const detail = useSignal(props.workspace);
-	/** What a refused archive named since the read — it stands in for Archive until the re-read lands. */
-	const raced = useSignal<readonly ArchiveBlockerCode[]>([]);
+	/**
+	 * What a refused archive named since the read — it stands in for Archive until the re-read lands.
+	 * Held in `workspace-state` (`archiveRefusal`), so the header band withholds its Archive… too.
+	 */
+	const raced = useComputed(() => {
+		const refusal = archiveRefusal.value;
+		return refusal && refusal.id === detail.value.id ? refusal.codes : NO_CODES;
+	});
 	const forced = useSignal<SettingsSimulation | undefined>(undefined);
 	const model = useComputed(() =>
 		settingsModel(simulateSettings(inputOf(detail.value, raced.value), forced.value))
@@ -136,6 +152,8 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 	const statusRef = useRef<HTMLDivElement>(null);
 	/** The blockers' list, where focus lands when a refusal has replaced the Archive button with it. */
 	const blockersRef = useRef<HTMLUListElement>(null);
+	/** A refusal that named no blocker, where focus lands once the pressed control has let it go. */
+	const failureRef = useRef<HTMLDivElement>(null);
 
 	// The dev seam is a DOM attribute set, so it is read after mount and on every switcher change.
 	useEffect(() => {
@@ -143,6 +161,10 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 		return subscribeDevSeam((s) => {
 			forced.value = s?.teamSettings;
 		});
+	}, []);
+	// A refusal this screen had never outlives it.
+	useEffect(() => () => {
+		archiveRefusal.value = null;
 	}, []);
 	// #endregion
 
@@ -155,7 +177,7 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 	function adopt(next: WorkspaceDetail, keepDraft = false): void {
 		batch(() => {
 			detail.value = next;
-			raced.value = [];
+			archiveRefusal.value = null;
 			saved.value = { name: next.name, visibility: next.visibility };
 			if (keepDraft) return;
 			name.value = next.name;
@@ -204,15 +226,34 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 	// #endregion
 
 	// #region Lifecycle — Publish (header band), Archive and Restore (here)
-	/** Put focus where the pressed control was, once it has been replaced (after the next render). */
-	function focusLater(target: { current: HTMLElement | null }): void {
-		setTimeout(() => target.current?.focus({ preventScroll: true }), 0);
+	/**
+	 * Put focus where the pressed control was, once it has been replaced (after the next render).
+	 * `reveal` scrolls the target into view as it takes focus — a refused Publish is said in the
+	 * Lifecycle section, which can sit below the fold.
+	 *
+	 * An answer can land while the archive confirm is still closing: its focus trap holds the page
+	 * `inert`, so a focus call then is dropped, and the trap hands focus back to its trigger as it
+	 * lets go — a control that is disabled, or already gone. So focus waits for the page to be live
+	 * again (a bounded wait), and lands last.
+	 */
+	function focusLater(target: { current: HTMLElement | null }, reveal = false): void {
+		let waits = 0;
+		const land = () => {
+			const el = target.current;
+			if (!el) return;
+			if (el.closest("[inert]") && waits++ < FOCUS_WAITS) {
+				setTimeout(land, FOCUS_WAIT_MS);
+				return;
+			}
+			el.focus({ preventScroll: !reveal });
+		};
+		setTimeout(land, 0);
 	}
 
 	/**
 	 * Re-read the detail after a refusal that raced the read, and adopt it here and on every other
-	 * root — so the blockers arrive counted and the header band withholds its Archive… too. A failed
-	 * re-read leaves the refusal's codes standing in.
+	 * root — so the blockers arrive counted everywhere. A failed re-read leaves the refusal's codes
+	 * standing in, here and in the header band's kebab.
 	 */
 	async function reread(ws: WorkspaceDetail): Promise<void> {
 		const res = await WorkspaceService.detail(ws.kind, ws.handle);
@@ -221,10 +262,12 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 
 	/**
 	 * Move the team through `org.set_workspace_status`. A refusal that names blockers replaces the
-	 * archive control with them at once (`raced`) — never leaving a button that would fail again —
-	 * and re-reads the detail, and focus moves onto that list; any other refusal is said beside the
-	 * control. A landed move replaces the detail, and focus moves to the status line — the control
-	 * that was pressed is gone.
+	 * archive control with them at once (`archiveRefusal`, which the header band's kebab honours too)
+	 * — never leaving a button that would fail again — and re-reads the detail, and focus moves onto
+	 * that list. Any other refusal is said under the control, and focus moves onto it: the pressed
+	 * control was disabled while the write ran, so the browser had already let go of it. A landed
+	 * move replaces the detail, and focus moves to the status line — the control that was pressed is
+	 * gone.
 	 */
 	async function move(kind: LifecycleMove, status: WorkspaceStatusChange): Promise<void> {
 		moving.value = kind;
@@ -235,12 +278,13 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 		if (!res.ok || !res.data) {
 			const codes = refusedBlockers(res.details?.blockers);
 			if (codes.length > 0) {
-				raced.value = codes;
+				archiveRefusal.value = { id: ws.id, codes };
 				focusLater(blockersRef);
 				void reread(ws);
 				return;
 			}
 			failure.value = res.message ?? "That couldn't be completed. Nothing was changed.";
+			focusLater(failureRef, true);
 			return;
 		}
 		adopt(res.data, true);
@@ -440,12 +484,14 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 								)}
 
 								{failed && (
-									<InlineNotice
-										class="wsp-settings__failure"
-										assertive
-										align="start"
-										text={failed}
-									/>
+									<div class="wsp-settings__refusal" ref={failureRef} tabIndex={-1}>
+										<InlineNotice
+											class="wsp-settings__failure"
+											assertive
+											align="start"
+											text={failed}
+										/>
+									</div>
 								)}
 							</div>
 						</section>

@@ -169,6 +169,13 @@ Deno.test("header: a team with a held escrow or live work is not offered Archive
 		assert(headerMenu(clear, NOOP).some((r) => r.key === "archive"), status);
 	}
 	assert(/archiveBlocked: ws\.archiveBlockers\.length > 0/.test(BAND), "the band reads the list");
+	// …and a refusal Settings has had since the read, for this entity, so a failed re-read never
+	// leaves the kebab offering an Archive… the server has just refused.
+	assert(
+		/archiveBlocked: ws\.archiveBlockers\.length > 0 \|\| archiveRefusal\.value\?\.id === ws\.id/
+			.test(BAND),
+		"the band honours a raced refusal",
+	);
 });
 
 Deno.test("header: the kebab carries the public profile, Copy handle, the way out, then Archive…", () => {

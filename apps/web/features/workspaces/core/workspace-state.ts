@@ -1,5 +1,9 @@
 import { computed, signal } from "@preact/signals";
-import type { WorkspaceDetail, WorkspaceKind } from "@projective/types/workspace";
+import type {
+	ArchiveBlockerCode,
+	WorkspaceDetail,
+	WorkspaceKind,
+} from "@projective/types/workspace";
 import { viewMode } from "./view-state.ts";
 import type { RosterTab } from "./workspace-model.ts";
 import type { ModuleCommit } from "./header-model.ts";
@@ -54,6 +58,26 @@ export function clearDetail(): void {
 
 /** The published detail's viewer capabilities, or an empty set before anything is published. */
 export const liveCapabilities = computed(() => liveDetail.value?.viewerCapabilities ?? []);
+// #endregion
+
+// #region Archive refusal relay (Settings body → header band)
+/** What a refused archive named, and the entity it refused. */
+export interface ArchiveRefusal {
+	/** The entity the server refused to archive (`WorkspaceDetail.id`). */
+	id: string;
+	/** The blocker codes the refusal named, in the server's order — never empty. */
+	codes: readonly ArchiveBlockerCode[];
+}
+
+/**
+ * The blockers a refused archive named since the last read, or `null` — the server's own answer, not
+ * a local guess. Settings (Teams C6) publishes it the moment the archive door refuses: Settings shows
+ * the codes in the button's place, and the header band withholds its Archive… for that entity, so no
+ * root keeps offering a control the server has just refused, even when the re-read that would bring
+ * the counted blockers fails. Settings clears it when it adopts a re-read detail (which carries the
+ * blockers itself) and when it unmounts.
+ */
+export const archiveRefusal = signal<ArchiveRefusal | null>(null);
 // #endregion
 
 // #region Create modal (roster empty state · lane `＋` · header action)

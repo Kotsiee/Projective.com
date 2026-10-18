@@ -463,18 +463,48 @@ Deno.test("settings island: Publish rides the band, Save the rig, Archive confir
 	assert(/\{failed && \(/.test(ISLAND), "a refusal naming no blocker renders inline");
 });
 
+Deno.test("settings island: focus never falls to <body> after a lifecycle write", () => {
+	// The pressed control is disabled while the write runs, so the browser lets go of it: every
+	// outcome hands focus to what now stands in its place.
+	assert(/adopt\(res\.data, true\);\s*focusLater\(statusRef\);/.test(ISLAND), "landed → status");
+	assert(/archiveRefusal\.value = \{[^}]*\};\s*focusLater\(blockersRef\);/.test(ISLAND), "blocked");
+	// A refusal that names no blocker takes focus itself, scrolled into view (Publish rides the band).
+	assert(
+		/failure\.value = [^;]+;\s*focusLater\(failureRef, true\);/.test(ISLAND),
+		"refused → the refusal",
+	);
+	assert(
+		/<div class="wsp-settings__refusal" ref=\{failureRef\} tabIndex=\{-1\}>\s*<InlineNotice/.test(
+			ISLAND,
+		),
+		"the refusal is focusable from script only",
+	);
+	assert(/focus\(\{ preventScroll: !reveal \}\)/.test(ISLAND));
+	// An answer that lands while the confirm is still closing waits for the page to be live again.
+	assert(/el\.closest\("\[inert\]"\) && waits\+\+ < FOCUS_WAITS/.test(ISLAND), "outlasts the trap");
+});
+
 Deno.test("settings island: a raced refusal's codes replace Archive at once, then the detail is re-read", () => {
 	// The codes feed the model (so `lifecycleControl` answers `blocked` and the button is gone)…
 	assert(/inputOf\(detail\.value, raced\.value\)/.test(ISLAND), "raced codes reach the model");
 	assert(
-		/const codes = refusedBlockers\(res\.details\?\.blockers\);[\s\S]*?raced\.value = codes;/.test(
-			ISLAND,
-		),
-		"a refusal naming blockers sets them",
+		/const codes = refusedBlockers\(res\.details\?\.blockers\);[\s\S]*?archiveRefusal\.value = \{ id: ws\.id, codes \};/
+			.test(ISLAND),
+		"a refusal naming blockers publishes them",
 	);
-	// …and the re-read is adopted on every root, so the band's Archive… is withheld too.
+	// …through the cross-root relay, so the band's Archive… is withheld at once — even when the
+	// re-read fails — and only for the entity that was refused.
+	assert(
+		/const raced = useComputed\([\s\S]*?archiveRefusal\.value;[\s\S]*?refusal\.id === detail\.value\.id/
+			.test(ISLAND),
+		"the screen reads the relay for its own entity",
+	);
+	assert(/archiveRefusal\.value = null;\s*\}, \[\]\);/.test(ISLAND), "cleared on unmount");
+	// The re-read is adopted on every root, which retires the refusal (the read counts the blockers).
 	assert(/WorkspaceService\.detail\(ws\.kind, ws\.handle\)/.test(ISLAND), "re-reads the detail");
-	assert(/function adopt[\s\S]*?raced\.value = \[\];[\s\S]*?publishDetail\(next\)/.test(ISLAND));
+	assert(
+		/function adopt[\s\S]*?archiveRefusal\.value = null;[\s\S]*?publishDetail\(next\)/.test(ISLAND),
+	);
 	// The visibility radiogroup is named by its visible label (WCAG 2.5.3).
 	assert(/label=\{whoCanSee\}[\s\S]*?aria-label=\{whoCanSee\}/.test(ISLAND), "label in name");
 	assert(!/aria-label="Visibility"/.test(ISLAND));

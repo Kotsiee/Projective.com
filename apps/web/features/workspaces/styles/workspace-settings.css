@@ -129,4 +129,29 @@
 	max-inline-size: var(--wsp-prose);
 	font-variant-numeric: tabular-nums;
 }
+
+/*
+ * A blocker's lock stays beside its sentence at every width. InlineNotice's row wraps and its text
+ * sizes to its content, so under the prose cap a sentence wider than what the lock leaves would drop
+ * whole beneath it and leave the glyph alone on a line: the row holds, the sentence takes what the
+ * lock leaves (a zero basis) and wraps inside it, and the lock rides the FIRST line, centred on it.
+ */
+.ui-inline-notice.wsp-settings__blocker {
+	flex-wrap: nowrap;
+	align-items: flex-start;
+}
+
+.wsp-settings__blocker .ui-inline-notice__text {
+	flex: 1 1 0;
+}
+
+.wsp-settings__blocker .ui-inline-notice__icon {
+	margin-block-start: calc((1lh - var(--icon-xs)) / 2);
+}
+
+/* A refusal that named no blocker. Focus lands here once the pressed control has let it go. */
+.wsp-settings__refusal {
+	min-inline-size: 0;
+	max-inline-size: var(--wsp-prose);
+}
 /* #endregion */
