@@ -2976,6 +2976,37 @@ follower / following counts (`tabular-nums` text controls) that open `Connection
 (`features/profile/components/`, hairline rows of avatar · name · `@handle · kind`, Load more); the
 account menu gains **Saved** (`NavIcon` `saved`, a bookmark glyph).
 
+**Legal (`features/legal/`, Decision #270).** The public legal hub and documents compose the
+editorial layer above and add no `@projective/ui` export. `LegalHubView` (`/legal`): the display
+title, a reading-face lead, the library's `LegalDraftNotice`, then the documents in two groups
+(section-header labels) as a plain hairline-free list — each row its title as a `--text-lg` /
+`--fw-medium` heading whose link is stretched over the row, a one-line summary and ONE Meta-register
+facts line (version · effective · updated · Draft — each fact opens with its middot inside a clipping
+wrapper, so a line that wraps never starts with a separator), a `--surface-1` tint on hover and on the link's
+`:focus-visible`, **never cards or chips** — and a "Questions" side note beside the list from
+`--bp-lg` of its own width. `LegalDocumentViewComponent` (`/legal/:slug`): `DocumentLayout` with
+`ui-doc--clauses`, the "Legal documents" rail (every document as an `href` entry, the open one
+expanded into its numbered clauses), each clause opening with its "Plain-English summary".
+`LegalDraftNotice`: the "Draft — pending legal review" required disclosure (§B.11.3) — `role="note"`
+named by its title, one solid `--warning`-tinted step, no border, printed. `LegalDate`: a dated fact
+(`Effective 17 October 2026`) wrapping `DocumentDate` so its prefix keeps its space inside an
+inline-flex facts item. `LegalCompareBody` (`?compare=`): each changed, added or removed clause in
+full with a 2px `--info` gutter bar and a "Changed in version X" Meta line that describes its diff
+group (`aria-describedby`); `<ins>` / `<del>` words on a solid tint of `--success` / `--danger`
+over the page AND an underline / strike, with visually hidden "Added:" / "Removed:" (a small gap before
+an insertion only where it starts a new word); a table drawn as the document's own `ui-prose__table`
+(caption, column and row headers), diffed cell by cell; a unit that did not change word by word in
+its authored form, links kept; every run of unchanged clauses folded behind a native `<details>`
+("Show n unchanged clauses" / "Hide …"; a fold still closed at print time is left off the paper). The
+island `LegalVersionControls` (the meta rail, `data-print="hide"`): a `<form method="get">` of two
+native `RadioGroup`s (Version · Compare with — the latter only versions older than the one picked)
+with a tier-4 submit, so it works without JavaScript; Download PDF (a tier-4 `ui-button` link with no
+link underline, `lgl-controls__download`) and
+Print (tier 4, offered once hydrated; it opens every fold before printing). The hub's sheet rides the
+zero-UI `LegalStyleAnchor` island. Below the frame's meta-rail width the controls render after the
+body, so each version's "What changed" notice under the header also links "Compare with version X".
+Classes `lgl-*`, token-only (`styles/legal.css`).
+
 **`FundStageDialog` (`features/payments/components/`, Decision #197).** The client funds a whole
 stage — every ticket in it nobody has paid for, claimed or not — from the stage board's money sentence
 ("{n} tickets need {total} to start." → **Fund stage**; the project board keeps **Fund all**, the

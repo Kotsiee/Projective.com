@@ -2863,8 +2863,9 @@ never accepted from a request body, never stored as a flag — and lifts on the 
    create **personal projects** (below).
 6. **Hidden, not refused.** Anything it cannot use is left out of the interface rather than shown and
    refused: Wallet, Businesses, the basket and checkout, the Catalogue (and creating services or
-   products), Teams, Analytics, Become a Freelancer, and Settings → Billing, Verification & payouts and
-   Scheduling & calls. A typed or stale link to one of these goes to Home. Where a listing or project
+   products), Teams, Analytics, Become a Freelancer, Settings → Billing, Verification & payouts and
+   Scheduling & calls, and the IP workspace (`/legal/workspace`, Decision #270). A typed or stale link
+   to one of these goes to Home. Where a listing or project
    page would offer Buy, Book, Hire or Apply, one line explains that buying services and selling work
    unlock on the 18th birthday; Settings → Account names it a "Limited account". Choosing "I want to
    work" at sign-up starts the account as a client.
@@ -3236,9 +3237,9 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               | `/disputes`               | `index`                  |                                                                                                |
 |               |                           | `[dispute id]`           |                                                                                                |
 |               | `/admin/disputes`         |                          | **Operator dispute desk** (Decision #212) — platform operators only (`ops.admin_users`); 404 for anyone else. The live queue by status (Under review · Awaiting response · Open), oldest-due first with overdue reviews flagged; a case opens in a dialog (never its own URL) to read the Evidence Vault and rule release · refund · split, with reasons both parties read |
-|               | `/legal`                  | `index`                  |                                                                                                |
-|               |                           | `audit-packs`            |                                                                                                |
-|               |                           | `transfers`              |                                                                                                |
+|               | `/legal/workspace`        | `index`                  | The IP chain-of-title workspace (signed in; moved from the bare `/legal`, which is now the public document hub — Decision #270). Not built yet |
+|               |                           | `audit-packs`            | A project's agreements, invoices and IP deeds in one verified bundle (§Identity, Taxes & Compliance 4) |
+|               |                           | `transfers`              | The deeds of transfer issued on escrow release (§Identity, Taxes & Compliance 4)               |
 |               | `/services`               | `index`                  |                                                                                                |
 |               |                           | `create`                 |                                                                                                |
 |               |                           | `availability`           |                                                                                                |
@@ -3255,6 +3256,9 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `edit/availability`      | **Owner only.** Working hours, time zone, publishing and discovery-call terms                  |
 |               |                           | _retired_                | `services` · `products` · `projects` · `portfolio` · `teams` · `businesses` · `members` · `departments` · `about` · `education` · `articles` — each 308s into its consolidated section |
 |               | `/share/[slug]`           |                          | Share-link resolution. Renders the asset for a holder of the opaque slug; every dead state (missing / expired / revoked / exhausted) returns an identical 404 |
+|               | `/legal`                  | `index`                  | The legal hub — every legal document, in two groups, with its version in effect, its effective date and a plain-English line (Decision #270) |
+|               | `/legal/[slug]`           | `index`                  | One legal document: `terms` · `privacy` · `cookies` · `acceptable-use` · `escrow-terms` · `ip-transfer-deed`. Numbered clauses, each with a plain-English summary; `?v=` reads an earlier version, `?compare=` shows what changed clause by clause. A draft until a lawyer signs it off: a visible "Draft — pending legal review" disclosure and never indexed (Decision #270) |
+|               |                           | `pdf`                    | The same version as a PDF download                                                             |
 |               | `/inspect/[file]`         |                          | The File Inspector — one stored file full-window with no app chrome, the canvas that suits its type and a details panel (§Assets & Attachments → The File Inspector). Readable by exactly who can read the file, or with `?share=` by a share-link holder; every refusal is one identical not-found page; never indexed |
 |               | `/help/[...article path]` | `index`                  | Documentation / Help center                                                                    |
 |               | `/view/[entity]`          | `index`                  | Public entity viewer — the evaluation & purchase surface. One page, six bodies (Pipeline · One-Off · Session · Cohort · Digital Product · Project) resolved from the listing's delivery model. The transaction lives in the contextual lane, never a third column (§The Entity View; DESIGN_SYSTEM §D.7–§D.8) |

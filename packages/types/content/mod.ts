@@ -91,6 +91,7 @@ export {
 	slugify,
 	type TocEntry,
 } from "./anchors.ts";
+export * from "./legal.ts";
 export {
 	docText,
 	formatContentDate,
