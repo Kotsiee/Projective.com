@@ -326,31 +326,37 @@ export default function HelpSearch(props: HelpSearchProps): JSX.Element {
 		}
 
 		if (recent.value.length > 0) {
+			// The Clear control sits above the listbox, not inside it: a listbox holds options only.
 			return (
-				<div id={ids.list} role="listbox" aria-label="Recent searches" ref={listRef}>
-					<div role="group" aria-labelledby={`${ids.list}-recent`}>
-						<div class="hc-palette__group-head">
-							<p id={`${ids.list}-recent`} class="hc-results__label">Recent searches</p>
-							<Button
-								variant="text"
-								size="sm"
-								label="Clear"
-								aria-label="Clear recent searches"
-								onClick={() => {
-									clearRecentSearches(browserStorage());
-									recent.value = [];
-									active.value = -1;
-									inputRef.current?.focus();
-								}}
-							/>
-						</div>
+				<>
+					<div class="hc-palette__group-head">
+						<p id={`${ids.list}-recent`} class="hc-results__label">Recent searches</p>
+						<Button
+							variant="text"
+							size="sm"
+							label="Clear"
+							aria-label="Clear recent searches"
+							onClick={() => {
+								clearRecentSearches(browserStorage());
+								recent.value = [];
+								active.value = -1;
+								inputRef.current?.focus();
+							}}
+						/>
+					</div>
+					<div
+						id={ids.list}
+						role="listbox"
+						aria-labelledby={`${ids.list}-recent`}
+						ref={listRef}
+					>
 						{recent.value.map((q, i) => (
 							<div
 								key={q}
 								id={ids.option(i)}
 								role="option"
 								class="hc-hit"
-								aria-selected={active.value === i}
+								aria-selected={active.value === i ? "true" : "false"}
 								onPointerMove={() => (active.value = i)}
 								onClick={() => choose(i)}
 							>
@@ -358,7 +364,7 @@ export default function HelpSearch(props: HelpSearchProps): JSX.Element {
 							</div>
 						))}
 					</div>
-				</div>
+				</>
 			);
 		}
 
@@ -375,7 +381,7 @@ export default function HelpSearch(props: HelpSearchProps): JSX.Element {
 								class="hc-hit"
 								href={s.href}
 								tabIndex={-1}
-								aria-selected={active.value === i}
+								aria-selected={active.value === i ? "true" : "false"}
 								onPointerMove={() => (active.value = i)}
 							>
 								<span class="hc-hit__title">{s.title}</span>

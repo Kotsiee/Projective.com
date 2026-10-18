@@ -31,7 +31,7 @@ import { slug } from "./common.ts";
 // #region Categories
 /**
  * The registry glyph each category row draws (`@projective/ui/icons`). Closed so a category can never
- * name a glyph that does not exist; `help-content.test.ts` (apps/web) checks every value against the
+ * name a glyph that does not exist; `features/help/core/help-core.test.ts` checks every value against the
  * registry, and the table's CHECK holds the same set.
  */
 export const HELP_CENTRE_CATEGORY_ICONS = [

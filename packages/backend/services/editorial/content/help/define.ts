@@ -13,7 +13,7 @@ import type { HelpCentreArticle, HelpCentreFaq } from "@projective/types/editori
  *  - `faq` / `startHere` / `related` / `archivedOn` default to none.
  *
  * Validation is not done here: every record is pushed through the table's `toRow` and its Zod row
- * schema by the generator, the fixture road and `help-content.test.ts`, which also checks every
+ * schema by the generator, the fixture road and `content/help.test.ts`, which also checks every
  * related slug and category resolves.
  */
 

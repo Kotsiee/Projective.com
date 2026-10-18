@@ -41,7 +41,7 @@ export function HelpHit(props: HelpHitProps): JSX.Element {
 			class="hc-hit"
 			href={result.href}
 			role={props.role}
-			aria-selected={props.role ? props.active === true : undefined}
+			aria-selected={props.role ? (props.active === true ? "true" : "false") : undefined}
 			tabIndex={props.role ? -1 : undefined}
 			onPointerMove={props.onPointerMove}
 			onClick={props.onClick}

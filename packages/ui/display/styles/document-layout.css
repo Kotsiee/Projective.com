@@ -267,9 +267,13 @@
 	color: var(--text-secondary);
 }
 
+/*
+ * Flow content, not a flex row: as flex items, a fact's text runs lost their edge spaces, so
+ * "Updated <time>" read "Updated17 October 2026". In flow the words, the <time> and the middot
+ * share one line box and the baseline for free.
+ */
 .ui-doc-header__meta-item {
-	display: inline-flex;
-	align-items: baseline;
+	display: inline-block;
 }
 
 .ui-doc-header__sep {
