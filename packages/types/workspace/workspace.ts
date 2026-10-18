@@ -81,6 +81,13 @@ export const WorkspaceSummarySchema = z.object({
 	 */
 	faces: z.array(MemberFaceSchema),
 	stats: z.array(WorkspaceStatSchema),
+	/**
+	 * The kind's 30-day money, one figure per currency — what a team earned, what a business spent —
+	 * each server-formatted in its OWN currency, largest first (compared in major units), never summed
+	 * or converted; `[]` when nothing moved. The business roster table's Spent (30d) column draws it
+	 * (BU1); the card keeps the pre-formatted `stats[2]`.
+	 */
+	money30d: z.array(MoneyViewSchema).default([]),
 	/** When the entity's row last changed (ISO), or `null` when it is not known — the table's Updated. */
 	updatedAt: z.string().max(40).nullable().default(null),
 	/** Unseen activity — a pulsing dot, never a count (§D.1). */

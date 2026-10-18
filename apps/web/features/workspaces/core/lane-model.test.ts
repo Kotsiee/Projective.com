@@ -187,6 +187,7 @@ function summary(overrides: Partial<WorkspaceSummary>): WorkspaceSummary {
 		activeProjects: 0,
 		faces: [],
 		stats: [],
+		money30d: [],
 		updatedAt: null,
 		hasUpdate: false,
 		isActing: false,

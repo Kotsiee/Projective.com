@@ -321,9 +321,9 @@ const COPY: Record<WorkspaceKind, KindCopy> = {
 		Noun: "Business",
 		Plural: "Businesses",
 		base: "/businesses",
-		pitch:
-			"A business hires as one company — pooled funds several people contribute to and spend " +
-			"from, under limits you set.",
+		// No "limits you set": per-member caps and an approval threshold are Business Pro (#230 (e)).
+		pitch: "A business hires as one company — a pooled wallet several people add money to and " +
+			"spend from, and you decide who may spend.",
 		verification: "KYB",
 		moneyNoun: "pooled wallet",
 	},

@@ -17,6 +17,12 @@ export interface EmptyStateProps {
 	heading?: 1 | 2 | 3;
 	/** Secondary explanatory copy. */
 	description?: string;
+	/**
+	 * Optional body content between the description and the actions — a short list of what the empty
+	 * thing would do, for a first-run screen. Body text, never a control; capped at the description's
+	 * measure. Omitted, nothing renders.
+	 */
+	children?: ComponentChildren;
 	/** Action slot (typically one or two buttons) rendered below the copy. */
 	actions?: ComponentChildren;
 	/** Vertical density ramp (default `md`). */
@@ -27,12 +33,13 @@ export interface EmptyStateProps {
 
 /**
  * EmptyState — a zero-JS placeholder for empty collections, zero-result searches, and first-run
- * screens. Centres an optional icon, a title, supporting copy and an actions slot on a tonal surface
- * tint with no four-sided border (separation via spacing + tint, §B.4). Announced as a `status`
- * region so assistive tech reads the reason a view is empty.
+ * screens. Centres an optional icon, a title, supporting copy, an optional body (`children`) and an
+ * actions slot on a tonal surface tint with no four-sided border (separation via spacing + tint, §B.4).
+ * Announced as a `status` region so assistive tech reads the reason a view is empty.
  */
 export function EmptyState(props: EmptyStateProps): JSX.Element {
-	const { icon, title, heading, description, actions, size = "md", class: className } = props;
+	const { icon, title, heading, description, children, actions, size = "md", class: className } =
+		props;
 	const Title = heading ? (`h${heading}` as const) : "p";
 
 	return (
@@ -40,6 +47,7 @@ export function EmptyState(props: EmptyStateProps): JSX.Element {
 			{icon && <div class="ui-empty__icon" aria-hidden="true">{icon}</div>}
 			<Title class="ui-empty__title">{title}</Title>
 			{description && <p class="ui-empty__description">{description}</p>}
+			{children && <div class="ui-empty__body">{children}</div>}
 			{actions && <div class="ui-empty__actions">{actions}</div>}
 		</div>
 	);

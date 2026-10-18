@@ -22,6 +22,7 @@ import {
 	type RawActivity,
 	relativeLabel,
 	rosterActivity,
+	rosterMoney,
 	rosterStats,
 	setupCompletion,
 	type SetupFacts,
@@ -101,6 +102,28 @@ Deno.test("largestAmount compares in major units and never sums currencies", () 
 	);
 	assertEquals(largestAmount([{ currency: "GBP", minor: 0 }]), null);
 	assertEquals(largestAmount(null), null);
+});
+
+Deno.test("rosterMoney: one figure per currency that moved, largest first in major units, never summed", () => {
+	const money = rosterMoney([
+		{ currency: "gbp", minor: 40_000 },
+		{ currency: "USD", minor: 0 },
+		{ currency: "", minor: 9_000 },
+		{ currency: "JPY", minor: 500_000 },
+		{ currency: "USD", minor: 600_000 },
+	]);
+	// ¥500,000 (500,000 major) · US$6,000.00 (6,000) · £400.00 (400): the zero and the code-less drop.
+	assertEquals(money.map((m) => [m.currency, m.minor]), [
+		["JPY", 500_000],
+		["USD", 600_000],
+		["GBP", 40_000],
+	]);
+	// Each figure is formatted in its OWN currency and carries no origin — nothing was converted.
+	assertEquals(money[2].display, "£400.00");
+	assertEquals(money.every((m) => m.origin === null), true);
+	assertEquals(rosterMoney([]), []);
+	assertEquals(rosterMoney(null), []);
+	assertEquals(rosterMoney(undefined), []);
 });
 
 Deno.test("createBlockedReason: unlimited or under the cap → null; at the cap → the plan's own number, kind-worded", () => {

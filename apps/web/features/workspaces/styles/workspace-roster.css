@@ -126,6 +126,44 @@
 }
 /* #endregion */
 
+/* #region The first run's points (BU1) */
+/*
+ * What a business does for the viewer, as a short BODY list inside the first-run `EmptyState`'s body
+ * slot — plain text, never a MetaLine and never chips (§B.11). The list is centred as a block but its
+ * lines read from the start edge, so a wrapped sentence never centres raggedly. Each line leads with a
+ * tick in the kind's ink (`--wsp-kind-ink`, the mark's own text tone, so it clears 4.5:1 on the
+ * `EmptyState`'s `--surface-1`), centred on the first line of its sentence.
+ */
+.wsp-roster__points {
+	display: grid;
+	gap: var(--space-2);
+	inline-size: fit-content;
+	max-inline-size: var(--wsp-prose);
+	margin: 0;
+	margin-inline: auto;
+	padding: 0;
+	list-style: none;
+	text-align: start;
+	font-size: var(--wsp-fs-body);
+	line-height: var(--leading-normal);
+	color: var(--on-surface);
+}
+
+.wsp-roster__point {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+}
+
+.wsp-roster__point-mark {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	block-size: 1lh;
+	color: var(--wsp-kind-ink);
+}
+/* #endregion */
+
 /* #region The invitation strip */
 /*
  * Somebody is waiting on the viewer, so this sits above the roster. It is a SECTION, not a plate: the
@@ -470,9 +508,9 @@ a pointer. */
 
 /*
  * The fill is the card's kind token, not a ProgressBar severity: `--wsp-kind` resolves under the card's
- * `[data-kind]`, so the meter keeps the team / business tone under every colour-vision overlay, where
- * the business side re-anchors to `--tertiary` (Decision #251). Doubled class, so the override never
- * depends on bundle order against the ProgressBar's own severity rule.
+ * `[data-kind]`, so the meter keeps the team / business tone under every colour-vision overlay
+ * (Decision #251) — the business side is `--tertiary` in every mode (Decision #230 (j)). Doubled class,
+ * so the override never depends on bundle order against the ProgressBar's own severity rule.
  */
 .ui-progressbar.wsp-card__setup-bar {
 	--pb-accent: var(--wsp-kind);
@@ -736,7 +774,8 @@ a pointer. */
 
 /*
  * The selected option is marked by its kind's own tint, mixed against the dialog's solid `--surface`,
- * never `transparent` (§B.4.2).
+ * never `transparent` (§B.4.2). The option carries `data-kind`, so the business rule reads the kind
+ * token it re-resolves there — `--tertiary`, never the ring's `--secondary` (Decision #230 (j)).
  */
 .wsp-create__kind[data-on="true"][data-kind="team"] {
 	border-color: var(--primary);
@@ -744,8 +783,8 @@ a pointer. */
 }
 
 .wsp-create__kind[data-on="true"][data-kind="business"] {
-	border-color: var(--secondary);
-	background: color-mix(in oklab, var(--secondary) 10%, var(--surface));
+	border-color: var(--wsp-kind);
+	background: color-mix(in oklab, var(--wsp-kind) 10%, var(--surface));
 }
 
 .wsp-create__kind-name {

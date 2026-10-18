@@ -15,8 +15,9 @@ import { initialsOf } from "../core/workspace-model.ts";
  *
  * The mark is **kind-tinted through the cascade, not through a branch**: passing {@link kind} stamps
  * `data-kind`, which re-resolves the `--wsp-kind*` trio for this subtree (`workspace-tokens.css`), so
- * a team takes the brand tint and a business the accent tint without this component knowing either
- * colour. That is also why a mark nested inside an already-`data-kind`-stamped region can omit
+ * a team takes the brand tint (`--primary`) and a business the tertiary tint (`--tertiary`, Decision
+ * #230 (j)) without this component knowing either colour. That is also why a mark nested inside an
+ * already-`data-kind`-stamped region can omit
  * {@link kind} and inherit correctly.
  *
  * ## Labelling
