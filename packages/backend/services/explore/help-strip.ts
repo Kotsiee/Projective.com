@@ -1,6 +1,6 @@
 import type { EditorialPromo } from "@projective/types/explore";
 import { readingMinutes } from "@projective/types/content/text";
-import { HELP_ROOT, type HelpCentreLibrary, helpArticlePath } from "../editorial/help-library.ts";
+import { HELP_ROOT, helpArticlePath, type HelpCentreLibrary } from "../editorial/help-library.ts";
 
 /**
  * help-strip.ts — Explore Home's editorial break ("New here? Start with these", Decision #175), built

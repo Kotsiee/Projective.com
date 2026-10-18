@@ -81,7 +81,9 @@ Deno.test("page-canvas.css: the slot is positioned, and below --bp-md it takes t
 		"the body gives its reservation up when a footer follows it",
 	);
 	assert(
-		/\.ui-page-canvas__footer \{\s*padding-block-end: calc\(\s*var\(--shell-bottomnav-h\)/.test(mobile),
+		/\.ui-page-canvas__footer \{\s*padding-block-end: calc\(\s*var\(--shell-bottomnav-h\)/.test(
+			mobile,
+		),
 		"the footer slot reserves the bar's height",
 	);
 });
