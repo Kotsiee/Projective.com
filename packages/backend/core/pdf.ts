@@ -28,6 +28,11 @@ export interface PdfLine {
 export interface PdfDocument {
 	title: string;
 	blocks: PdfBlock[];
+	/**
+	 * A running head: one line drawn in the top margin of EVERY page, above the flowing blocks (a
+	 * draft mark, so no single printed page reads as final). Takes no room from the blocks.
+	 */
+	running?: PdfLine;
 }
 
 /** A block flows down the page: a row of up to two text runs, a rule, or vertical space. */
@@ -95,15 +100,22 @@ function literal(bytes: Uint8Array): string {
 // #endregion
 
 // #region Layout
-/** Lay blocks out into page content streams. */
-function layout(blocks: readonly PdfBlock[]): string[] {
+/** Lay blocks out into page content streams, each page opening with the running head (if any). */
+function layout(blocks: readonly PdfBlock[], running?: PdfLine): string[] {
 	const pages: string[] = [];
 	let ops: string[] = [];
 	let y = PAGE_H - MARGIN;
-	const flush = () => {
-		pages.push(ops.join("\n"));
+	// Whether the page holds any of the document's own blocks (the running head does not count).
+	let used = false;
+	const open = () => {
 		ops = [];
 		y = PAGE_H - MARGIN;
+		used = false;
+		if (running) draw(running, PAGE_H - MARGIN / 2);
+	};
+	const flush = () => {
+		pages.push(ops.join("\n"));
+		open();
 	};
 	const draw = (line: PdfLine, baseline: number) => {
 		const bytes = winAnsi(line.text);
@@ -113,6 +125,7 @@ function layout(blocks: readonly PdfBlock[]): string[] {
 			: MARGIN + (line.x ?? 0);
 		ops.push(`BT /${bold ? "F2" : "F1"} ${line.size} Tf ${x.toFixed(2)} ${baseline.toFixed(2)} Td ${literal(bytes)} Tj ET`);
 	};
+	open();
 	for (const block of blocks) {
 		if (block.kind === "space") {
 			y -= block.points;
@@ -122,6 +135,7 @@ function layout(blocks: readonly PdfBlock[]): string[] {
 			if (y - 8 < MARGIN) flush();
 			y -= 6;
 			ops.push(`0.8 G 0.5 w ${MARGIN} ${y.toFixed(2)} m ${(PAGE_W - MARGIN).toFixed(2)} ${y.toFixed(2)} l S 0 G`);
+			used = true;
 			y -= 8;
 			continue;
 		}
@@ -130,8 +144,9 @@ function layout(blocks: readonly PdfBlock[]): string[] {
 		y -= height;
 		draw(block.left, y);
 		if (block.right) draw({ ...block.right, align: "right" }, y);
+		used = true;
 	}
-	if (ops.length > 0 || pages.length === 0) flush();
+	if (used || pages.length === 0) pages.push(ops.join("\n"));
 	return pages;
 }
 // #endregion
@@ -139,7 +154,7 @@ function layout(blocks: readonly PdfBlock[]): string[] {
 // #region Writer
 /** Render a document to the bytes of a PDF 1.4 file. */
 export function renderPdf(doc: PdfDocument): Uint8Array<ArrayBuffer> {
-	const pages = layout(doc.blocks);
+	const pages = layout(doc.blocks, doc.running);
 	const encoder = new TextEncoder();
 	const chunks: Uint8Array[] = [];
 	const offsets: number[] = [];

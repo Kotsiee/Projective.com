@@ -1577,6 +1577,36 @@ escrow, evidence access and immutability, the workspace fields, grants) and
 CHECK, the operator queue's gate / order / filter / counts, the overdue alert that never rules and
 repeats at most daily, grants).
 
+## 📊 Public metrics (`00001265`, Decision #277)
+
+### `finance.public_metrics()` → jsonb (service role)
+
+The public site's live platform figures (`/about`, the landing page; read by `PublicMetricsService`,
+cached an hour). `SECURITY DEFINER`, `STABLE`, `search_path = ''`; EXECUTE revoked from `PUBLIC`,
+`anon` and `authenticated` and granted to `service_role` only (`00002510` `[about_metrics]`).
+**Aggregates only** — no row of any table is returned — and the publication threshold is applied
+HERE, each figure by its OWN count: a figure resting on fewer than
+`security.platform_params.public_metrics_min_n` rows comes back `NULL` together with its count. The
+per-currency parts of the protected total are gated by the total's count only — they reach the
+service role alone, and the public payload carries only one converted total, floored to two
+significant figures (`coarsenPublishedTotal`).
+
+| Key | Meaning |
+| :-- | :-- |
+| `as_of` | `now()` of the read. |
+| `min_n` · `min_n_configured` | The threshold: the param when it is a number ≥ 1 (floored, capped at int4), else the literal 10 with `min_n_configured = false`. |
+| `platform_fee_bp` | The `platform_fee_bp` param (the public rate, never a negotiated one); `NULL` when missing or not an integer 0–10,000. |
+| `base_currency` | The `base_currency` param, upper case; `NULL` when not a three-letter code. |
+| `protected_count` · `protected_by_currency` | Escrows whose status is `funded` · `held` · `disputed` · `released`, and `[{currency, amount_minor}]` of their `amount_cents` per upper-cased currency. `refunded` is left out (refunded money can be escrowed again). Never summed across currencies. |
+| `stages_delivered` | `projects.project_stages` with status `approved` or `paid`, all time (archived included), in a non-personal project, with at least one escrow `released` to a payee — money evidence, because the project owner may write a stage's own `status` / `completed_at`. |
+| `approval_count` · `median_funding_to_approval_hours` | Over the same delivered stages: hours from the stage's first released escrow's `created_at` to its last release (`max(released_at)`, stamped by the release doors; the stage's `completed_at` only when no released escrow carries one); the count of such stages and their `percentile_cont(0.5)`. |
+
+Zod: `PublicMetricsAggregateSchema` (`@projective/types/marketing`). The service converts a
+multi-currency total into `base_currency` through `FxService` and withholds it if any currency has no
+rate. Probe: `supabase/probes/public_metrics.sql` (grants and definition, every threshold fallback,
+an independent recomputation of each figure, a refund lowering the protected figure by exactly its
+amount, a self-declared paid stage not counted, nothing below the threshold, malformed params).
+
 ## Under-18 accounts (Decision #208)
 
 `finance.record_payout_account` asserts an adult (`org.fn_assert_adult`, `PM403`): a Stripe connected

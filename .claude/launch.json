@@ -212,6 +212,26 @@
 			"port": 13217
 		},
 		{
+			"name": "web-contact-e2e",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:CONTACT_BACKEND_LIVE = 'false'; $env:PORT = '13330'; deno task dev --port 13330 --strictPort"
+			],
+			"port": 13330
+		},
+		{
+			"name": "web-public-e2e",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:EDITORIAL_BACKEND_LIVE = 'false'; $env:COMMUNITY_BACKEND_LIVE = 'false'; $env:CONTACT_BACKEND_LIVE = 'false'; $env:FINANCE_BACKEND_LIVE = 'false'; $env:NEWSLETTER_BACKEND_LIVE = 'false'; $env:PORT = '13380'; deno task dev --port 13380 --strictPort"
+			],
+			"port": 13380
+		},
+		{
 			"name": "web-disputes",
 			"runtimeExecutable": "powershell",
 			"runtimeArgs": [

@@ -34,51 +34,63 @@
 	 * last child of `.ui-page-canvas__body`, which is `display: flex; flex-direction: column` — so
 	 * without this it would default to `flex: 0 1 auto` and sit immediately under a short page's
 	 * content with the canvas's remaining height empty beneath it. `auto` resolves to 0 wherever the
-	 * parent is a plain block container (the guest `.site__main`) or already fills its track, so the
+	 * parent is a plain block container (the guest `.site`) or already fills its track, so the
 	 * declaration is inert everywhere it is not needed rather than conditional on the shell.
 	 */
 	margin-block-start: auto;
 }
 
 /* #region Masthead grid
-   Three tracks, two rows. Row 1 is the masthead (brand · quick-link stacks · newsletter); row 2 is
-   `.lp-footer__aux`, which spans them and re-uses the SAME track sizes so the onboarding stack
-   continues the brand lane and the recently-viewed rail continues the newsletter lane. Widening to
-   five tracks was the alternative and does not fit: at `--container-xl` (80rem) four gutters of
-   `clamp(2.5rem, 5vw, 5.5rem)` take ~22rem before a single word is set, which leaves each stack too
-   narrow to hold its links on one line. Rows cost vertical space, which a footer has; columns cost
-   measure, which it does not. */
+   Three lanes, two rows, and the six link stacks own the middle lane across BOTH rows. Row 1 holds
+   the brand and the newsletter; row 2 continues them — "get set up" directly under the brand,
+   "recently viewed" under the newsletter — so neither outer lane leaves a hole beside the two rows of
+   stacks, and the middle lane is the wide one (3fr) so a stack holds each label on one line at the
+   desktop widths. A separate full-width secondary row was the earlier shape: under six stacks it was
+   pushed below both rows of them and left the outer lanes empty for their whole height. Widening to
+   five tracks does not fit either: at `--container-xl` (80rem) four gutters of
+   `clamp(2.5rem, 5vw, 5.5rem)` take ~22rem before a single word is set. Rows cost vertical space,
+   which a footer has; columns cost measure, which it does not. */
 .lp-footer__inner {
 	display: grid;
-	grid-template-columns: 1.5fr 2.4fr 1.5fr;
+	grid-template-columns: 1fr 3fr 1.25fr;
 	gap: clamp(2.5rem, 5vw, 5.5rem);
 	max-inline-size: var(--container-xl);
 	margin-inline: auto;
 }
 
-/* Row 2. Separated from the masthead by the grid's own row gap and nothing else — §B.4's ladder
-   starts at spacing, and this footer already spends its one hairline above the utility bar.
-   The tracks are RESTATED rather than inherited via `subgrid`: subgrid would follow the masthead's
-   responsive changes for free, but only where it is supported, so the two breakpoint tables below
-   would each need a `@supports` twin. Three literal tracks and one table is the smaller thing to keep
-   in step, and the ratios are trivially the parent's. */
-.lp-footer__aux {
-	grid-column: 1 / -1;
-	display: grid;
-	grid-template-columns: 1.5fr 2.4fr 1.5fr;
-	gap: clamp(2.5rem, 5vw, 5.5rem);
+/* Explicit placement, never implicit flow. The recently-viewed rail is absent entirely on a device
+   with no history (it cannot SSR), so an implicit placement would silently move the onboarding stack
+   the moment the reader had opened something. */
+.lp-footer__brand-col {
+	grid-column: 1;
+	grid-row: 1;
 }
 
-/* Explicit placement, never implicit flow: "get set up" continues the brand lane, "recently viewed"
-   continues the newsletter lane, and the middle lane stays clear beneath the three link stacks. The
-   recently-viewed rail is absent entirely on a device with no history (it cannot SSR), so an implicit
-   placement would silently move the onboarding stack the moment the reader had opened something. */
+.lp-footer__nav {
+	grid-column: 2;
+	grid-row: 1 / span 2;
+}
+
+.lp-footer__news {
+	grid-column: 3;
+	grid-row: 1;
+}
+
+/* Row 2's wrapper takes no box on desktop: its two blocks are cells of the masthead grid itself.
+   Separated from row 1 by the grid's own row gap and nothing else — §B.4's ladder starts at spacing,
+   and this footer already spends its one hairline above the utility bar. */
+.lp-footer__aux {
+	display: contents;
+}
+
 .lp-footer__setup {
 	grid-column: 1;
+	grid-row: 2;
 }
 
 .lp-footer__recent {
 	grid-column: 3;
+	grid-row: 2;
 }
 /* #endregion */
 
@@ -156,10 +168,14 @@
 }
 /* #endregion */
 
-/* #region Columns 2–4 — navigation stacks */
+/* #region Column 2 — navigation stacks
+   Six stacks in three tracks: the audience stacks on the first row, Company · Help · Legal on the
+   second, each row as tall as its longest stack. `align-content: start` keeps the two rows together
+   when the outer lanes make the masthead taller than the stacks. */
 .lp-footer__nav {
 	display: grid;
 	grid-template-columns: repeat(3, 1fr);
+	align-content: start;
 	gap: var(--space-6);
 }
 
@@ -224,7 +240,7 @@
 }
 /* #endregion */
 
-/* #region Column 5 — newsletter */
+/* #region Column 3 — newsletter */
 .lp-footer__news-title {
 	display: block;
 	font-size: 0.8rem;
@@ -458,35 +474,6 @@
 	opacity: 1;
 	transform: translateY(0);
 }
-
-.lp-footer__status {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	font-size: 0.85rem;
-	color: var(--on-surface-variant);
-}
-
-.lp-footer__status-dot {
-	inline-size: 0.5rem;
-	block-size: 0.5rem;
-	border-radius: 50%;
-	background: var(--success);
-	box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 55%, transparent);
-	animation: lp-footer-breathe 2.6s var(--ease-standard) infinite;
-}
-
-@keyframes lp-footer-breathe {
-	0% {
-		box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 55%, transparent);
-	}
-	70% {
-		box-shadow: 0 0 0 0.4rem color-mix(in srgb, var(--success) 0%, transparent);
-	}
-	100% {
-		box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 0%, transparent);
-	}
-}
 /* #endregion */
 
 /* #region Responsive — collapse to a single stack with accordions */
@@ -497,22 +484,32 @@
 	}
 	.lp-footer__brand-col {
 		grid-column: 1 / -1;
+		grid-row: auto;
 	}
 	.lp-footer__nav {
 		grid-column: 1 / -1;
+		grid-row: auto;
 	}
-	/* Two tracks now, so the secondary row's blocks sit side by side and each states its own column
-	   — the recently-viewed rail is absent on a device with no history, and implicit flow would let
-	   the onboarding stack drift into whichever cell happened to be free. */
+	.lp-footer__news {
+		grid-column: auto;
+		grid-row: auto;
+	}
+	/* Two tracks now, and the secondary blocks become their own full-width row again, side by side,
+	   each stating its own column — the recently-viewed rail is absent on a device with no history,
+	   and implicit flow would let the onboarding stack drift into whichever cell happened to be free. */
 	.lp-footer__aux {
+		grid-column: 1 / -1;
+		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: clamp(2rem, 5vw, 3rem);
 	}
 	.lp-footer__setup {
 		grid-column: 1;
+		grid-row: auto;
 	}
 	.lp-footer__recent {
 		grid-column: 2;
+		grid-row: auto;
 	}
 }
 
@@ -582,11 +579,8 @@
 	}
 }
 
-/* Honour reduced-motion — the status indicator rests instead of breathing (§B.2 jump-to-final). */
+/* Honour reduced-motion — every transition jumps to its final state (§B.2). */
 @media (prefers-reduced-motion: reduce) {
-	.lp-footer__status-dot {
-		animation: none;
-	}
 	.lp-footer__social-link,
 	.lp-footer__news-submit,
 	.lp-footer__group-chevron,

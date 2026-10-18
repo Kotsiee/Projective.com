@@ -881,18 +881,97 @@ package.
   add `ops` to **Settings → API → Exposed schemas** too, or every live log insert fails with
   `PGRST106` and is echoed to the console instead.
 
+### Public metrics service (Decision #277)
+
+The public site's live figures — money protected in escrow, stages delivered, the median time from
+funding to approval and the platform fee, printed by `/about` and the landing page's live numbers —
+come from one fat read: `services/marketing/PublicMetricsService.ts` → `ServiceResult<PublicMetrics>`
+(Zod SSOT **`@projective/types/marketing`**), served raw to SSR and as `GET /api/public/metrics`
+(thin, `defineReadRoute`, `public-metadata`). It calls ONE aggregate, `finance.public_metrics()`
+(SECURITY DEFINER, service role only), which returns counts, per-currency sums and a median and
+applies the publication threshold itself — `security.platform_params.public_metrics_min_n`, 10 when
+the row is absent (the service logs the fallback) — each figure by its own count; the per-currency
+parts reach only the service role; the service holds every figure to the same threshold again.
+Escrow in several currencies is converted into the base currency through `FxService` (read-time,
+finance-model.md §11) and withheld if any currency has no rate or a code is malformed; the published
+total is floored to two significant figures, so two hourly reads never difference to one escrow.
+Cached one hour in its own `ArcCache` (`core/cache.ts`) under the anonymous tenant — the answer is
+the same for everyone; concurrent misses share one read; a failure is held 30 s, never cached for the
+hour. Behind
+**`FINANCE_BACKEND_LIVE`**; off, the same fold runs over an aggregate frozen from the seeded database
+(`public-metrics-fixtures.ts`).
+
 ### Newsletter services
 
 The public footer's "stay updated" capture is the third implementation of the contract, and the
 smallest write: `NewsletterService` (client) → `POST /api/newsletter/subscribe` (thin) →
 `services/newsletter/NewsletterBackendService.ts` (fat) → `ServiceResult<T>`. The subscribe shape is
-the Zod SSOT at **`@projective/types/newsletter`** (`NewsletterSubscribeSchema`), validated in three
-places without drift: the client service (before the round-trip), the thin route (the request body),
-and the fat service (defence in depth). Stub-first behind **`NEWSLETTER_BACKEND_LIVE`** (default
-off), gated by `isNewsletterBackendLive()`; every well-formed address gets a friendly confirmation
-while the live path (an upsert into `newsletter.subscriptions` + email-provider sync) waits behind
-that guard. The footer's `NewsletterForm` island is the only client touchpoint — it `fetch`es the
-route and never reaches the service.
+the Zod SSOT at **`@projective/types/community`** (`NewsletterSubscribeSchema`; the old
+`@projective/types/newsletter` path re-exports it), validated in three places without drift: the
+client service (before the round-trip), the thin route (the request body), and the fat service
+(defence in depth). A submission carries an optional **topic** (`general` by default, `changelog`
+for the changelog's capture). Behind **`NEWSLETTER_BACKEND_LIVE`** (default off, gated by
+`isNewsletterBackendLive()`) the service calls `community.subscribe_newsletter` with the service
+role — the table's one writer, which adds a topic idempotently and, for an unsubscribed address,
+only records a pending re-subscribe: the opt-out stays on record and in force until the confirm link
+applies it (Decision #274); off, it stores nothing — in development it answers the same plan, and in
+production it answers **503** ("Subscriptions can't be saved right now"), never a "you're on the list"
+for a write it skipped (the contact intake's rule; Decision #279). An address is at most
+254 characters at every layer, and a 429 carries `details.retryAt` and `Retry-After`. The
+email-provider sync and the confirmation mail are still to come. The `NewsletterForm` island (with
+optional `topic` / `source` props) is the only client touchpoint — it `fetch`es the route and never
+reaches the service.
+
+### Editorial & community services
+
+Two schemas carry the public surfaces (Decision #274). **`editorial`** holds platform-authored
+content — the help centre, the changelog, Projective's articles — authored as Zod-validated
+TypeScript in `services/editorial/content/<surface>.ts` and emitted by
+`deno task db:editorial:generate` into one category-5 migration per surface, so it exists in every
+environment. `services/editorial/editorial-source.ts` is the one shared module: the
+**`EDITORIAL_BACKEND_LIVE`** gate (`isEditorialBackendLive()`), `defineEditorialTable` (a table's
+row schema, natural key and both mapping directions, `core/row-mapper.ts`) and `readEditorialTable`,
+which reads the table through the anon client when live and otherwise pushes the same authored
+records through the same row parse and mapping — so a fixture cannot drift from the database. A
+table's `visible` predicate (drafts, future-dated releases, retractions) is applied to the mapped
+records on both roads, and its SELECT policy states the same rule; the generator seeds every record
+and never prunes, so content is retracted by hiding it, never by deleting its record. The sitemap
+(`/sitemap.xml`) lists the three surfaces through the same services
+(`HelpBackendService.snapshot`, `ChangelogBackendService.releases`,
+`EditorialArticlesBackendService.listed`), so it names exactly the pages a reader can open, on
+either road (Decision #279).
+**`community`** holds what people do: the newsletter, helpfulness votes and the feedback board.
+`services/community/community-source.ts` is its shared module: the **`COMMUNITY_BACKEND_LIVE`**
+gate, `defineCommunityTable`, `readCommunityTable` (the caller's client live, declared fixtures
+otherwise, both through one row parse) and `communityRpc` for the schema's definer doors. Surface
+services are built on these by their own work orders; the newsletter keeps its own gate.
+The feedback board's `services/community/FeedbackBackendService.ts` (Decision #272) is the first:
+it reads as the caller (RLS decides who sees an idea under review), writes only through
+the board's definer doors, and with the gate off runs the same code over a per-process fixture
+store (`feedback-store.ts`) that mirrors every door — the seed's own sixteen ideas.
+
+**The help centre (P2)** is the first surface on both. `services/editorial/HelpBackendService.ts`
+reads `editorial.help_categories` / `help_articles` through `readEditorialTable`, organises them
+into a library (`help-library.ts`: topics, reading order, neighbours, related reads, role columns,
+the FAQ) and builds an in-memory search index (`help-search.ts`: folded terms, title > headings >
+summary > category > body weighting, prefix matching and a one- or two-edit typo fallback, AND with
+an OR fallback, sentence snippets and `[start, end)` highlight runs — pure, no search dependency),
+cached five minutes and never cached on failure. `services/community/HelpFeedbackBackendService.ts`
+writes "Was this helpful?" through the definer door `community.submit_help_feedback` as the caller
+(their JWT when signed in, anon otherwise), behind per-process `SlidingWindowLimiter`s (10 per signed-in voter
+per 10 minutes, 20 per guest address a minute) in front of the door's durable limits; with `COMMUNITY_BACKEND_LIVE` off it validates
+and answers without storing. Routes: `/help/[...path]`, `GET /api/help/search`,
+`POST /api/help/feedback` (ROUTING.md).
+
+**Changelog (P5, Decision #278).** `services/editorial/ChangelogBackendService.ts` reads
+`editorial.changelog_releases` through `readEditorialTable` (the table's `visible` predicate has
+already dropped withdrawn and future-dated releases on either road) and orders, filters and pages
+the whole table in TypeScript with the pure `changelog-feed.ts` (newest first by day then semver
+precedence; a category filter matching ANY selected category; ten to a page; a release's
+neighbours): `releases()`, `feed({ categories, page })` (404 past the last page) and
+`release(version)` (one 404 for unknown, withdrawn or future). The routes `/changelog`,
+`/changelog/[version]` and `/changelog/rss.xml` are thin controllers in `features/changelog/routes/`;
+the RSS document is the pure `features/changelog/core/rss.ts`, every URL absolute on `siteOrigin`.
 
 ### Messaging services
 
@@ -2175,6 +2254,7 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `finance-sweep-stale-payouts`     | every 10 min        | `POST /api/finance/cron/payouts?limit=50` · `FINANCE_CRON_SECRET`      | Finance — `PaymentBackendService.sweepStalePayouts`      | Each payout is leased once per window (`finance.fn_claim_stale_payouts`, `SKIP LOCKED`); every transfer carries its payout's Stripe idempotency key. Seeded only where the claim function exists (Decision #202). |
 | `finance-recurring-deposits`      | hourly :15          | `POST /api/finance/cron/deposits?limit=50` · `FINANCE_CRON_SECRET`     | Finance — `PaymentBackendService.processDueDeposits`     | A period is claimed once (`finance.claim_due_deposit_rules`) and each charge carries a Stripe idempotency key; a run left unbound by a transient failure is re-sent by the next sweep under the same key (≤ 23 h). |
 | `scheduling-availability-horizon` | daily 03:05         | `POST /api/scheduling/cron/horizon?limit=200` · `SCHEDULING_CRON_SECRET` | Scheduling — `ScheduleBackendService.extendHorizons` (#217) | Recompiles each live preset not compiled, or compiled through an earlier date than today + 90 d, over today → today + 120 d; a recompile replaces the window it covers (`replace_preset_occurrences`), so a re-run rewrites the same spans. A failed preset is logged and retried next run. |
+| `contact-attachment-sweep`        | hourly :25          | `POST /api/contact/cron/attachments?limit=100` · `CONTACT_CRON_SECRET` | Contact — `ContactBackendService.sweepAttachments` (#276) | Each unsent contact upload older than 6 h is claimed once (`ops.fn_claim_stale_contact_attachments` soft-deletes it, `SKIP LOCKED`, so a file a submission or a Remove holds is skipped) and its object deleted through the Storage API; an object that fails to delete is logged — its row is already gone from every reader. |
 | `account-erasures`                | daily 04:10         | `POST /api/user/cron/erasures?limit=100` · `ACCOUNT_CRON_SECRET`       | Account — `AccountLifecycleBackendService.sweepDue` (#156) | A request completes once; one whose blockers came back is deferred, not forced.                                     |
 | `ops-watch-jobs`                  | every 10 min        | `ops.fn_watch_jobs()`                                                  | Ops — the registry itself                                | `SKIP LOCKED`; a dispatch is settled (and reported) once, a failed run is reported once (keyed by run id).          |
 
@@ -2321,9 +2401,10 @@ included.
 - **Deny by default.** `00002510_permissions_function_grants.sql` revokes `EXECUTE` schema-wide at
   the top of the file, before any per-function statement: `org` (from `PUBLIC`, `anon`,
   `authenticated`), `projects` (from `PUBLIC`, `anon`), `public` (from `PUBLIC`, `anon`,
-  `authenticated` on every function that is not an extension member), and `finance` later in the
-  file. `service_role` keeps them all. A client role then reaches a function only where it is
-  **granted by name**.
+  `authenticated` on every function that is not an extension member), `finance` later in the file,
+  and `editorial` and `community` (from `PUBLIC`, `anon`, `authenticated` — the mid-file
+  "editorial + community — deny by default" block, Decision #274). `service_role` keeps them all. A
+  client role then reaches a function only where it is **granted by name**.
 - **What gets a grant.** `authenticated`: a door the app calls with the user's JWT, which resolves
   the caller from `auth.uid()` and checks its own authority. `anon`: a guest read the public site
   needs (e.g. `projects.get_cohort_offer`). Both client roles: a predicate an RLS policy calls,
@@ -3326,6 +3407,9 @@ ACCOUNT_CRON_SECRET=XXXX-XXXX
 # Bearer token (≥ 32 characters) the scheduler presents to POST /api/scheduling/cron/horizon, which
 # recompiles availability presets running short of their occurrence horizon (Decision #217); 404 otherwise.
 SCHEDULING_CRON_SECRET=XXXX-XXXX
+# Bearer token (≥ 32 characters) the scheduler presents to POST /api/contact/cron/attachments, which
+# deletes /contact attachments nobody sent (Decision #276); 404 otherwise.
+CONTACT_CRON_SECRET=XXXX-XXXX
 # Scheduled jobs (§Scheduled jobs, Decision #203) — these are SUPABASE VAULT secrets, not app env keys.
 # pg_net reads them inside the database to call the routes above; set them per environment with
 #   SELECT vault.create_secret('<value>', '<NAME>');   -- vault.update_secret(id, '<value>') to rotate
@@ -3335,6 +3419,7 @@ SCHEDULING_CRON_SECRET=XXXX-XXXX
 #   FINANCE_CRON_SECRET  the same value as the env key above
 #   ACCOUNT_CRON_SECRET  the same value as the env key above
 #   SCHEDULING_CRON_SECRET  the same value as the env key above
+#   CONTACT_CRON_SECRET  the same value as the env key above
 # Optional, development only: stripe-mock origin; ignored for live keys and under DENO_ENV=production
 # STRIPE_API_BASE=http://localhost:12111
 
@@ -3362,6 +3447,22 @@ FINANCE_BACKEND_LIVE=false
 # profile — there is no fixture branch left for a gate to choose.)
 FILES_BACKEND_LIVE=false
 INTEGRATIONS_BACKEND_LIVE=false
+# Platform-authored content — the help centre, the changelog, Projective's articles (Decision #274).
+# Off, each answers from its Zod-validated content source through the same row parse and mapping the
+# live read uses (the source is also what `deno task db:editorial:generate` writes into the seed
+# migrations), so turning it on changes where the rows are read from, not what they say.
+EDITORIAL_BACKEND_LIVE=false
+# User-generated community activity — helpfulness votes and the feedback board (Decision #274). A
+# write surface open to signed-out visitors; off, it answers fixtures and writes nothing. The
+# newsletter, also in `community`, keeps NEWSLETTER_BACKEND_LIVE. Both schemas must be in
+# supabase/config.toml [api].schemas (then `supabase stop && supabase start`) or a hosted project's
+# Exposed schemas before either gate, or the newsletter's live path, can reach them.
+COMMUNITY_BACKEND_LIVE=false
+# The /contact intake (Decision #276): ops.contact_requests through ops.submit_contact_request, and
+# attachments through the quarantine pipeline into the private `contact` bucket. Off, development
+# answers a receipt and stores nothing; PRODUCTION REFUSES (503) rather than acknowledge a message
+# nobody will read — set it in every deployed environment.
+CONTACT_BACKEND_LIVE=false
 ```
 
 ---

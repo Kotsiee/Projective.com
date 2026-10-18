@@ -11,5 +11,6 @@ export * from "./org/mod.ts";
 export * from "./finance/mod.ts";
 export * from "./explore/mod.ts";
 export * from "./files/mod.ts";
-export * from "./newsletter/mod.ts";
+export * from "./community/mod.ts";
+export * from "./editorial/mod.ts";
 export * from "./projects/mod.ts";

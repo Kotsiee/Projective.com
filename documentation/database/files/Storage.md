@@ -29,6 +29,7 @@ build storage paths through it rather than hardcoding bucket ids or path strings
 | `avatars`       | Public      | 5 MiB · img      | `{entity_id}`      | Profile photos (user / team / business / enterprise) and group-conversation photos (under the uploader's id). **Service-role write only.** |
 | `showcase`      | Public      | 50 MiB · img,vid | `{entity_id}`      | A profile's six-slot showcase — stills and full-length videos. **Service-role write.** |
 | `catalogue`     | Public      | 10 MiB · img     | `{seller_id}`      | Marketplace storefront media (products, service showcase).                            |
+| `contact`       | Private     | 10 MiB · img,pdf,txt | `{user_id}`    | Files attached to a `/contact` request (Decision #276). **Operator read; service-role write.** |
 
 ---
 
@@ -211,6 +212,26 @@ by a `SECURITY DEFINER` / service-role move, so no user JWT ever reads or writes
 verification/
 └── [subject_id]/         -- user_id (KYC) or business/enterprise id (KYB)
     └── [document_type]/file.xyz
+```
+
+### `contact` (Operator read, service-role write — Decision #276)
+
+What a `/contact` request carries: PNG, JPEG, WebP, GIF, PDF or plain text, 10 MiB each, at most five
+per request. A signed-in sender's file lands in `quarantine` like every upload (`target_bucket =
+'contact'` marks it for the contact pipeline, `services/contact/live-attachments.ts`); the complete
+step claims it (`scanning`), sniffs the bytes (`classifyContactBytes`: a program or a web page is
+refused and parked `quarantined`; an unknown or unaccepted type is refused as `error`; neither is kept)
+and promotes the original here with `files.items.purpose = 'contact'`, so the sender's library never
+lists it (and the library's own complete steps refuse a row with a `target_bucket`). The bucket's one
+storage policy is operator `SELECT` of objects a request links (`security.is_admin()` + the link);
+nobody writes it with a JWT. A guest cannot attach: a `files.items` row belongs to an account. A file
+that is never sent is taken back — by Remove (`ops.discard_contact_attachment`), or by the hourly
+`contact-attachment-sweep` after six hours — its row soft-deleted and its object deleted.
+
+```text
+contact/
+└── [user_id]/            -- the sender
+    └── [asset_id]/original_file.xyz
 ```
 
 ### `quarantine` (Restricted)

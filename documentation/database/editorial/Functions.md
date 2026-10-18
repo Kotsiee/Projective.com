@@ -1,0 +1,51 @@
+# editorial: Functions
+
+Migration
+[`00001320_functions_editorial_community.sql`](../../../supabase/migrations/00001320_functions_editorial_community.sql)
+(regions `[editorial.*]`); triggers in `00001898` under the same region names. EXECUTE is revoked
+from `PUBLIC`, `anon` and `authenticated` on the whole schema (`00002510`, "editorial + community —
+deny by default") and granted back by name in the surface's region there. Editorial content is read
+straight from its tables under their SELECT policies, so editorial functions should be rare — a
+derived read, never a write door. Tables: [Tables.md](Tables.md) · Policies:
+[Policies.md](Policies.md).
+
+## Shared guards
+
+| Function                              | Returns   | Purpose                                                                                                                                                                                                                             |
+| :------------------------------------ | :-------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `editorial.fn_guard_slug_immutable()` | `trigger` | `BEFORE UPDATE OF slug` guard: a readable editorial slug is permanent once the row exists, so any change raises `23514` (Decision #274 (k), the scoped amendment of #88). Each surface attaches it to its own tables in `00001898`. |
+
+## Help
+
+No help function: the help service reads both tables whole under their SELECT policies. Triggers
+(`00001898`, `[editorial.help]`):
+
+| Trigger                              | Table                       | Fires                   | Function                              |
+| :----------------------------------- | :-------------------------- | :---------------------- | :------------------------------------ |
+| `trg_help_categories_slug_immutable` | `editorial.help_categories` | BEFORE UPDATE OF `slug` | `editorial.fn_guard_slug_immutable()` |
+| `trg_help_articles_slug_immutable`   | `editorial.help_articles`   | BEFORE UPDATE OF `slug` | `editorial.fn_guard_slug_immutable()` |
+
+The generated seed upserts on `slug` without setting it, so a regenerated file never fires them; a
+hand-written slug change is refused `23514` (`help_centre.sql` §4).
+
+## Changelog
+
+| Function                                         | Returns   | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| :----------------------------------------------- | :-------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `editorial.fn_guard_release_version_immutable()` | `trigger` | `BEFORE UPDATE OF version` on `editorial.changelog_releases` (`trg_changelog_releases_version_immutable`, `00001898`): a release's version is its permanent public address, so any change raises `23514` — the changelog's twin of `fn_guard_slug_immutable` (Decisions #274 (k) / #278). A mis-versioned release is withdrawn and authored again. The generated seed's upsert never sets the key, so re-running it never trips the guard. |
+
+No client EXECUTE grant (`00002510`, `[editorial.changelog]`): a trigger function needs none, and
+the changelog is read straight from its table.
+
+## Articles
+
+No function of its own: the articles are read straight from their tables under their SELECT
+policies. Both tables attach the shared guard in `00001898` (`[editorial.articles]`):
+
+| Trigger                              | Table                       | When                    | Function                              |
+| :----------------------------------- | :-------------------------- | :---------------------- | :------------------------------------ |
+| `trg_article_authors_slug_immutable` | `editorial.article_authors` | `BEFORE UPDATE OF slug` | `editorial.fn_guard_slug_immutable()` |
+| `trg_articles_slug_immutable`        | `editorial.articles`        | `BEFORE UPDATE OF slug` | `editorial.fn_guard_slug_immutable()` |
+
+The generated seed upserts on `slug` and never names it in its `UPDATE SET`, so re-running it never
+trips the guard.

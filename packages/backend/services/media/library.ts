@@ -125,6 +125,8 @@ interface ItemRow {
 	storage_path: string;
 	status?: string;
 	purpose?: string;
+	/** Set when another pipeline declared the row (`contact`, Decision #276) — never finished here. */
+	target_bucket?: string | null;
 	deleted_at?: string | null;
 }
 
@@ -544,13 +546,16 @@ export async function completeLibraryUpload(
 	try {
 		// The caller's own session proves the row is theirs before anything runs as the service role.
 		const mine = await getUserClient(actor.accessToken).schema("files").from("items")
-			.select(`${ITEM_COLUMNS}, status, purpose`)
+			.select(`${ITEM_COLUMNS}, status, purpose, target_bucket`)
 			.eq("id", input.assetId)
 			.eq("owner_user_id", actor.userId)
 			.maybeSingle();
 		if (mine.error) return fail(503, { message: UNAVAILABLE });
 		const row = mine.data as ItemRow | null;
-		if (!row || row.purpose !== "library") return fail(404, { message: "That upload could not be found." });
+		// A row another pipeline declared (`target_bucket`, e.g. a /contact attachment) is that pipeline's to finish.
+		if (!row || row.purpose !== "library" || row.target_bucket) {
+			return fail(404, { message: "That upload could not be found." });
+		}
 		if (row.status === "uploaded") {
 			const done = await readLibraryAsset(actor, row.id);
 			return done ? ok(done) : fail(404, { message: "That upload could not be found." });

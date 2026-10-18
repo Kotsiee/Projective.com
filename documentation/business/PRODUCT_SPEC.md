@@ -295,6 +295,10 @@ engine for continuous work. Sessions (below) are a provider-side work flow, not 
 type. The three types are the Zod SSOT's `ProjectTypeChoice` (`task | one_off | pipeline`), stored
 as the `format` + `structure_variation` pair.
 
+**A seller offers one of exactly four service types** (owner ruling, Decision #275 (c)):
+**Deliverable**, **One-Off**, **Pipeline** and **Session** — a Session is either one-to-one or a
+group cohort, which is a kind of Session rather than a fifth type.
+
 #### The Three Work Flows
 
 ##### 1. One-Off Projects (The "Sprint")
@@ -2186,7 +2190,7 @@ more:
 | Field            | Notes                                                                                      |
 | :--------------- | :------------------------------------------------------------------------------------------ |
 | **Title**        | Required, at least 3 characters. Long enough to be a name, short enough not to be a brief. |
-| **Project type** | `pipeline` or `one_off`. Two options, not three — see below.                               |
+| **Project type** | **Task**, **One-Off** or **Pipeline** — three types, stored as two formats (see below).   |
 | **Currency**     | Seeded from the viewer's display preference, then **fixed to the project**.                |
 | **Baseline**     | ONE price: a pipeline's default ticket rate, or a one-off's escrow budget. Optional.       |
 
@@ -2199,13 +2203,16 @@ configuration workspace at the project's `prj-` address (Decision #195).
 before the client can look anything up, and a half-filled one loses everything on dismiss. A draft
 row loses nothing. So the modal's only job is to reach a URL, and the URL is where the work happens.
 
-**Why two project types.** `session` is excluded because a session is a **service a freelancer
-sells**, not a project a client posts — it is created provider-side from the catalogue composer, and
-a project only ever receives one by instantiation. Offering it here would let a buyer mint an
-engagement with no seller and no schedule. A **Direct Deliverable** can no longer be BORN here
-either: it was a third word a client had to choose between before writing a sentence, and it is a
-staffing distinction rather than a workflow one. It survives intact one level down as the project's
-structure, so an existing Direct Deliverable stays fully editable.
+**Why three project types, stored as two formats (owner ruling, Decision #275 (c)).** A client
+creates exactly three project types: **Task**, **One-Off** and **Pipeline**. A Task is the
+stage-less One-Off (Decision #86): the modal sends `format: one_off` with `hasStages: false`, which
+`createFormatToColumns` stores as the `single_task` structure, so the `format` column keeps two
+values and no third vocabulary exists. `session` is excluded because a session is a **service a
+freelancer sells**, not a project a client posts — it is created provider-side from the catalogue
+composer, and a project only ever receives one by instantiation. Offering it here would let a buyer
+mint an engagement with no seller and no schedule. The retired word **Direct Deliverable** is not
+offered either: the stage-less structure it named is what a Task now is, so an existing Direct
+Deliverable stays fully editable as a Task.
 
 **Currency is a stored origin, not a presentation choice** — it prices escrow. A viewer later
 switching how they prefer to READ money must never move what a project is priced in.
@@ -2873,8 +2880,9 @@ never accepted from a request body, never stored as a flag — and lifts on the 
    create **personal projects** (below).
 6. **Hidden, not refused.** Anything it cannot use is left out of the interface rather than shown and
    refused: Wallet, Businesses, the basket and checkout, the Catalogue (and creating services or
-   products), Teams, Analytics, Become a Freelancer, and Settings → Billing, Verification & payouts and
-   Scheduling & calls. A typed or stale link to one of these goes to Home. Where a listing or project
+   products), Teams, Analytics, Become a Freelancer, Settings → Billing, Verification & payouts and
+   Scheduling & calls, and the IP workspace (`/legal/workspace`, Decision #270). A typed or stale link
+   to one of these goes to Home. Where a listing or project
    page would offer Buy, Book, Hire or Apply, one line explains that buying services and selling work
    unlock on the 18th birthday; Settings → Account names it a "Limited account". Choosing "I want to
    work" at sign-up starts the account as a client.
@@ -3178,7 +3186,6 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               | `/forgot-password`        |                          | Password recovery                                                                              |
 | **Dashboard** | `/home`                   |                          | Persona-adaptive engagement feed (recommended work, reels, activity, profile-setup tracker)    |
 |               | `/become-partner`         |                          | Freelancer conversion funnel (Client/Operator → unlock freelancer suite)                       |
-|               | `/articles/[slug]`        |                          | Editorial reader for freelancer stories linked from `/become-partner`                          |
 |               | `/businesses`             | `index`                  | Show all businesses (any adult account — Decision #230 (a))                                   |
 |               | `/businesses/create`      |                          | Create a new business                                                                          |
 |               | `/businesses/[businessHandle]` | `index`             | The console's **Overview** — addressed by the business's `@handle` ([ROUTING.md](../architecture/ROUTING.md) business rows) |
@@ -3246,16 +3253,17 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               | `/disputes`               | `index`                  |                                                                                                |
 |               |                           | `[dispute id]`           |                                                                                                |
 |               | `/admin/disputes`         |                          | **Operator dispute desk** (Decision #212) — platform operators only (`ops.admin_users`); 404 for anyone else. The live queue by status (Under review · Awaiting response · Open), oldest-due first with overdue reviews flagged; a case opens in a dialog (never its own URL) to read the Evidence Vault and rule release · refund · split, with reasons both parties read |
-|               | `/legal`                  | `index`                  |                                                                                                |
-|               |                           | `audit-packs`            |                                                                                                |
-|               |                           | `transfers`              |                                                                                                |
+|               | `/legal/workspace`        | `index`                  | The IP chain-of-title workspace (signed in; moved from the bare `/legal`, which is now the public document hub — Decision #270). Not built yet |
+|               |                           | `audit-packs`            | A project's agreements, invoices and IP deeds in one verified bundle (§Identity, Taxes & Compliance 4) |
+|               |                           | `transfers`              | The deeds of transfer issued on escrow release (§Identity, Taxes & Compliance 4)               |
 |               | `/services`               | `index`                  |                                                                                                |
 |               |                           | `create`                 |                                                                                                |
 |               |                           | `availability`           |                                                                                                |
 | **Public**    | `/index`                  |                          | Landing Page                                                                                   |
-|               | `/about`                  |                          | Company information                                                                            |
+|               | `/about`                  |                          | The mission page (Decision #277): the shift from working alone to protected teamwork, the friction set against the model, live platform figures (money protected in escrow, stages delivered, median funding → approval, the platform fee — real aggregates only, each hidden below `public_metrics_min_n`, updated hourly), an interactive walkthrough of one stage's money (Fund → Prepaid escrow → Claim → In progress → Submit → Accept & release → 7-day clearing → Withdraw), the founders (once real ones are supplied; until then the band is not drawn), how it's built (no certification claims), and Start a project / Talk to sales |
 |               | `/explore`                |                          | Discovery/Search                                                                               |
 |               | `/pricing`                |                          | **Planned** (Decision #252) — every plan by audience (Individual · Team / Agency · Business / Enterprise) over the two payment planes, in the viewer's currency, with what no plan changes (§Escrow, Wallets & Finance 7 "Public pricing") |
+|               | `/contact`                |                          | **Contact intake** (Decision #276) — `?intent=` `sales` · `support` (default) · `dispute` · `security`, each a shareable link and its own form; every request gets a `CT-XXXX-XXXX` reference and reaches operators (`ops.contact_requests`, unified machine). Attachments for signed-in senders only; a signed-in dispute picks the reader's open engagement (a session goes to its Report no-show); an anonymous security report keeps no name, address or account. Works without JavaScript (`POST /api/contact`) |
 |               | `/[handle]`               | `index`                  | Public profile — the **Work** section (client proof · services · completed projects · portfolio · roster) under the split hero + context bar (§The Public Profile) |
 |               |                           | `experience`             | Career history · education · verified certifications (individuals only)                        |
 |               |                           | `reviews`                | Verified client and peer reviews                                                               |
@@ -3265,10 +3273,21 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `edit/availability`      | **Owner only.** Working hours, time zone, publishing and discovery-call terms                  |
 |               |                           | _retired_                | `services` · `products` · `projects` · `portfolio` · `teams` · `businesses` · `members` · `departments` · `about` · `education` · `articles` — each 308s into its consolidated section |
 |               | `/share/[slug]`           |                          | Share-link resolution. Renders the asset for a holder of the opaque slug; every dead state (missing / expired / revoked / exhausted) returns an identical 404 |
+|               | `/legal`                  | `index`                  | The legal hub — every legal document, in two groups, with its version in effect, its effective date and a plain-English line (Decision #270) |
+|               | `/legal/[slug]`           | `index`                  | One legal document: `terms` · `privacy` · `cookies` · `acceptable-use` · `escrow-terms` · `ip-transfer-deed`. Numbered clauses, each with a plain-English summary; `?v=` reads an earlier version, `?compare=` shows what changed clause by clause. A draft until a lawyer signs it off: a visible "Draft — pending legal review" disclosure and never indexed (Decision #270) |
+|               |                           | `pdf`                    | The same version as a PDF download                                                             |
+|               | `/changelog`              | `index`                  | The changelog (Decision #278): every published release, newest first, ten to a page (`?page=`), filterable by category (`?category=`, repeatable — a release in ANY selected category); a dated timeline with each release's pictures in a lightbox (`?image=`); an RSS link and the changelog newsletter list |
+|               |                           | `[version]`              | One release's canonical page (`/changelog/0.12.0`; `v0.12.0` redirects there) with the previous and next releases. A version that is unknown, withdrawn or dated in the future is a 404 |
+|               |                           | `rss.xml`                | The changelog as RSS 2.0 (`application/rss+xml`), one item per release with its canonical URL |
+|               | `/feedback`               | `index`                  | The feedback board & roadmap — suggest an idea, vote, follow it from Planned to Shipped. Ideas store unified-machine states (Under review = Backlog, visible to its author and operators until accepted; Planned · In progress · Shipped public), Decision #272. The same board opens over any page as a drawer with `?feedback=open` (`idea=` · `compose=1` · `status=` · `sort=`) |
 |               | `/inspect/[file]`         |                          | The File Inspector — one stored file full-window with no app chrome, the canvas that suits its type and a details panel (§Assets & Attachments → The File Inspector). Readable by exactly who can read the file, or with `?share=` by a share-link holder; every refusal is one identical not-found page; never indexed |
-|               | `/help/[...article path]` | `index`                  | Documentation / Help center                                                                    |
+|               | `/help/[...article path]` | `index`                  | The help centre (P2): the hub (search · Start here by role · the eight Topics · the FAQ · Still stuck?), `/help/<category>` and `/help/<category>/<article>` — readable, permanent slugs (Decision #274 (k)); a guessed or moved address redirects to the canonical one. Articles are platform-authored `editorial` rows; "Was this helpful?" votes are `community.help_feedback`. Search at `?q=` (an overlay; a server-rendered results list without JavaScript) |
 |               | `/view/[entity]`          | `index`                  | Public entity viewer — the evaluation & purchase surface. One page, six bodies (Pipeline · One-Off · Session · Cohort · Digital Product · Project) resolved from the listing's delivery model. The transaction lives in the contextual lane, never a third column (§The Entity View; DESIGN_SYSTEM §D.7–§D.8) |
 |               |                           | `schedule`               | Bookable availability leaf for Session / Group-Session archetypes — fills the content region itself (no lane) |
+|               | `/articles`               | `index`                  | Projective's own articles (Decision #271): a lead story, two features and the rest, filtered by topic (`?topic=`, repeatable, any of) and paged (`?page=`) |
+|               | `/articles/[slug]`        |                          | One Projective article on the shared document reader — its one canonical address, a readable slug that never changes. Member posts stay at `/view` and `/[handle]/posts` (Decision #271) |
+|               | `/sitemap.xml`            |                          | Every public page a search engine should index (Decision #279): the home page, Explore, About, Contact, Feedback, the help centre (hub, categories, articles), the changelog and its releases, Projective's articles, and a legal document only once a lawyer has reviewed it |
+|               | `/robots.txt`             |                          | What crawlers may fetch (Decision #279): never the signed-in app, the API or a page's `?feedback=open` drawer; names the sitemap |
 |               | `/[handle]/view/[item]`   | `index` / `schedule`     | Profile-scoped twin of the above; identical body, back-links scoped to the profile              |
 
 ---

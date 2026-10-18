@@ -190,7 +190,7 @@ SELECT TO authenticated USING (user_id = auth.uid () OR security.is_admin ());
 --
 -- The five interaction / auto-response / newsletter tables that 00002001 once
 -- missed are covered further down this file; their own section explains what the
--- gap cost and why newsletter_subscriptions deliberately still has no policy.
+-- gap cost. (newsletter_subscriptions has since moved to `community`, #274.)
 -- =============================================================================
 
 CREATE POLICY "view_own_dm_participation" ON comms.dm_participants FOR
@@ -399,22 +399,9 @@ WITH
 CREATE POLICY "delete_own_auto_responses" ON comms.auto_responses FOR
 DELETE TO authenticated USING (user_id = auth.uid ());
 
--- --- newsletter subscriptions: NO POLICY, ON PURPOSE ---
+-- --- newsletter subscriptions: moved ---
 --
--- Read this before adding one. RLS is enabled in 00002001 and no policy follows,
--- so the table is default-deny for `anon` and `authenticated` alike and reachable
--- only through the service-role key, which bypasses RLS.
---
--- That is the correct shape here and NOT the bug this same pass fixed on the DM
--- stack. There the app genuinely needed to read those tables as the signed-in
--- user, so default-deny silently returned an empty inbox. Here nothing should
--- ever read this table as a user: every row is somebody's email address paired
--- with a `token` that is the unsubscribe capability, so a SELECT policy wide
--- enough to be useful is a subscriber-list dump, and a per-row one would still
--- confirm whether a given address is subscribed.
---
--- The public subscribe form therefore posts to /api/newsletter/subscribe, and
--- NewsletterBackendService performs the upsert with the service-role client. A
--- direct PostgREST INSERT from the browser is not a capability this table wants:
--- it would let anyone enumerate addresses by observing unique-violation errors.
+-- The opt-in table is community.newsletter_subscriptions now (Decision #274). It
+-- still has NO POLICY, ON PURPOSE — the reasoning moved with it, to its region in
+-- 00002021_policies_editorial_community.sql. Read it there before adding one.
 
