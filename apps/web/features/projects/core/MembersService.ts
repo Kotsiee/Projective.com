@@ -16,6 +16,7 @@ import type {
 	RemoveMemberResult,
 	SentInvitesPage,
 	StageInviteInput,
+	TicketManagerChanged,
 } from "../types/projects-types.ts";
 import type { ProjectsResult } from "../types/results.ts";
 
@@ -57,6 +58,9 @@ export const MembersService = {
 		}
 		if (params.simPendingRequests !== undefined) {
 			qs.set("simPendingRequests", params.simPendingRequests ? "true" : "false");
+		}
+		if (params.simBusinessClient !== undefined) {
+			qs.set("simBusinessClient", params.simBusinessClient ? "true" : "false");
 		}
 		return getProjects<{ page: MemberRosterPage }>(`/api/projects/members?${qs.toString()}`);
 	},
@@ -136,6 +140,23 @@ export const MembersService = {
 		return patchProjects<MemberRoleChanged>(
 			`/api/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(memberId)}/role`,
 			{ role },
+		);
+	},
+
+	/**
+	 * Let a delegated project manager compose and edit tickets for the business client, or stop them
+	 * (Decision #294). `memberId` is the roster row id.
+	 */
+	setTicketManager(
+		projectId: string,
+		memberId: string,
+		allowed: boolean,
+	): Promise<ProjectsResult<TicketManagerChanged>> {
+		return patchProjects<TicketManagerChanged>(
+			`/api/projects/${encodeURIComponent(projectId)}/members/${
+				encodeURIComponent(memberId)
+			}/tickets`,
+			{ allowed },
 		);
 	},
 

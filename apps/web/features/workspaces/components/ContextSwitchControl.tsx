@@ -1,12 +1,13 @@
 import type { JSX } from "preact";
 import { Tooltip } from "@projective/ui/feedback";
+import { Button } from "@projective/ui/fields";
 import {
-	kindCopy,
 	workspaceHref,
 	type WorkspaceKind,
 	type WorkspaceRoster,
 } from "@projective/types/workspace";
 import { useContextSwitch } from "../core/useContextSwitch.ts";
+import { contextSwitchCopy } from "../core/lane-model.ts";
 import { cloneGlyph, ExitGlyph, SwitchGlyph } from "../core/workspace-glyphs.tsx";
 
 /**
@@ -18,18 +19,22 @@ import { cloneGlyph, ExitGlyph, SwitchGlyph } from "../core/workspace-glyphs.tsx
  * how a shared account ends up publishing a listing under the wrong identity, so the switch is an
  * explicit, deliberate control rather than a side-effect of navigation.
  *
+ * It is a **tier-4 utility** of the Button matrix (§B.8.1): `<Button severity="neutral"
+ * variant="outlined">` reading "Act as team" or "Stop acting" — never a fill, because the lane's one
+ * filled control is its create action, and acting is a mode rather than a commitment. Its words come
+ * from {@link contextSwitchCopy}, so the lane model, the rail and this control say the same thing.
+ *
  * The multi-step sequence (switch → re-mint the token → hard navigation) belongs to
  * {@link useContextSwitch}; this component's whole job is to state the current truth and to stay
  * honest while that sequence is in flight.
  *
- * ## Why the transition state replaces the control instead of covering it
- * A switch is a full document load and takes real time. A spinner *over* a control that still reads
- * "Switch to this team" would be a UI insisting on the old context while the session has already
- * moved — and on a surface where the acting identity decides who gets paid, that is the most
- * expensive kind of lie available. So while `switching` is true the control renders **the destination
- * instead of the origin** ("Switching to Northwind…"), disabled and `aria-busy`, inside an
- * `aria-live` region. There is no interactive affordance during the switch, so a second click cannot
- * race the navigation (the hook refuses re-entry too — belt and braces).
+ * ## Why the transition state replaces the label instead of covering it
+ * A switch is a full document load and takes real time. A spinner beside a label that still reads
+ * "Act as team" would be a UI insisting on the old context while the session has already moved — and
+ * on a surface where the acting identity decides who gets paid, that is the most expensive kind of lie
+ * available. So while `switching` is true the button carries **the destination instead of the origin**
+ * ("Switching to Northwind…") in its `loading` state (disabled, `aria-busy`), inside an `aria-live`
+ * region. A second press cannot race the navigation (the hook refuses re-entry too — belt and braces).
  *
  * ## Failure is shown, never navigated past
  * If the token could not be re-minted the hook deliberately does not navigate, and the message it
@@ -96,8 +101,8 @@ export interface ContextSwitchControlProps {
 	/** Where to land after switching in. Defaults to this entity's console. */
 	destination?: string;
 	/**
-	 * `block` — the expanded lane's prominent control. `icon` — the collapsed rail's square, which
-	 * carries the same two states as a portal-tooltipped glyph.
+	 * `block` — the expanded lane's labelled Button. `icon` — the collapsed rail's icon-only Button,
+	 * named by its `aria-label` and a portal Tooltip (§B.6).
 	 */
 	variant?: "block" | "icon";
 }
@@ -107,9 +112,8 @@ export interface ContextSwitchControlProps {
 /** The acting-context switch. See the module header for the transition and failure contracts. */
 export function ContextSwitchControl(props: ContextSwitchControlProps): JSX.Element {
 	const { switching, error, switchTo, exitToPersonal } = useContextSwitch();
-	const copy = kindCopy(props.kind);
+	const copy = contextSwitchCopy(props.kind, props.name, props.acting);
 	const busy = switching.value;
-	const icon = props.variant === "icon";
 
 	const enter = () =>
 		switchTo(props.kind, props.id, {
@@ -120,29 +124,24 @@ export function ContextSwitchControl(props: ContextSwitchControlProps): JSX.Elem
 	// No destination: exiting leaves the viewer exactly where they are — they are still a member, only
 	// their attribution changed, so relocating them would be a non-sequitur.
 	const exit = () => exitToPersonal();
+	const onClick = copy.action === "exit" ? exit : enter;
+	const glyph = cloneGlyph(copy.action === "exit" ? ExitGlyph : SwitchGlyph);
+	const name = busy ? copy.busyLabel : copy.ariaLabel;
 
-	const busyLabel = `Switching to ${props.name}…`;
-	const enterLabel = `Switch to this ${copy.noun}`;
-	const actingLabel = `You're acting as this ${copy.noun}`;
-
-	if (icon) {
-		const label = busy ? busyLabel : props.acting ? `${actingLabel} · Exit` : enterLabel;
+	if (props.variant === "icon") {
 		return (
 			<span class="wsp-ctxswitch wsp-ctxswitch--icon" data-kind={props.kind} aria-live="polite">
-				<Tooltip content={label} placement="right">
-					<button
-						type="button"
-						class="wsp-ctxswitch__btn"
-						data-acting={props.acting ? "true" : undefined}
-						aria-label={label}
-						aria-busy={busy ? "true" : undefined}
-						disabled={busy}
-						onClick={props.acting ? exit : enter}
-					>
-						<span class="wsp-ctxswitch__glyph" aria-hidden="true">
-							{cloneGlyph(props.acting ? ExitGlyph : SwitchGlyph)}
-						</span>
-					</button>
+				<Tooltip content={name} placement="right">
+					<Button
+						severity="neutral"
+						variant="outlined"
+						size="sm"
+						iconOnly
+						icon={glyph}
+						loading={busy}
+						aria-label={name}
+						onClick={onClick}
+					/>
 				</Tooltip>
 				{error.value && <span class="ui-visually-hidden" role="alert">{error.value}</span>}
 			</span>
@@ -151,39 +150,16 @@ export function ContextSwitchControl(props: ContextSwitchControlProps): JSX.Elem
 
 	return (
 		<div class="wsp-ctxswitch" data-kind={props.kind} aria-live="polite">
-			{busy
-				? (
-					// The destination, not the origin: the label must never still claim the old context.
-					<button type="button" class="wsp-ctxswitch__btn" aria-busy="true" disabled>
-						<span class="wsp-ctxswitch__glyph" aria-hidden="true">{cloneGlyph(SwitchGlyph)}</span>
-						<span class="wsp-ctxswitch__label">{busyLabel}</span>
-					</button>
-				)
-				: props.acting
-				? (
-					<div class="wsp-ctxswitch__state">
-						<span class="wsp-actingchip">
-							<span class="wsp-actingchip__dot" aria-hidden="true" />
-							Acting
-						</span>
-						<span class="wsp-ctxswitch__state-text wsp-trunc">{actingLabel}</span>
-						<button
-							type="button"
-							class="wsp-ctxswitch__exit"
-							aria-label={`Stop acting as ${props.name}`}
-							onClick={exit}
-						>
-							<span class="wsp-ctxswitch__glyph" aria-hidden="true">{cloneGlyph(ExitGlyph)}</span>
-							Exit
-						</button>
-					</div>
-				)
-				: (
-					<button type="button" class="wsp-ctxswitch__btn" onClick={enter}>
-						<span class="wsp-ctxswitch__glyph" aria-hidden="true">{cloneGlyph(SwitchGlyph)}</span>
-						<span class="wsp-ctxswitch__label">{enterLabel}</span>
-					</button>
-				)}
+			<Button
+				severity="neutral"
+				variant="outlined"
+				size="sm"
+				icon={glyph}
+				loading={busy}
+				label={busy ? copy.busyLabel : copy.label}
+				aria-label={name}
+				onClick={onClick}
+			/>
 			{error.value && <p class="wsp-ctxswitch__error" role="alert">{error.value}</p>}
 		</div>
 	);

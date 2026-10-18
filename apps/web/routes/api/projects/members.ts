@@ -39,6 +39,7 @@ export const handler = define.handlers(
 			const simTypeRaw = sp.get("simProjectType");
 			const simInvitesRaw = sp.get("simPendingInvites");
 			const simRequestsRaw = sp.get("simPendingRequests");
+			const simBusinessRaw = sp.get("simBusinessClient");
 
 			const simViewer = MemberRosterParamsSchema.shape.simViewer.safeParse(simViewerRaw).data;
 			const simProjectType = ProjectFormat.safeParse(simTypeRaw).data;
@@ -48,6 +49,9 @@ export const handler = define.handlers(
 			const simPendingRequests = simRequestsRaw === null
 				? undefined
 				: simRequestsRaw === "true" || simRequestsRaw === "1";
+			const simBusinessClient = simBusinessRaw === null
+				? undefined
+				: simBusinessRaw === "true" || simBusinessRaw === "1";
 
 			return ProjectBackendService.members({
 				projectId,
@@ -56,6 +60,7 @@ export const handler = define.handlers(
 				simProjectType,
 				simPendingInvites,
 				simPendingRequests,
+				simBusinessClient,
 			}, readActor(ctx));
 		},
 		toBody: toProjectsBody,

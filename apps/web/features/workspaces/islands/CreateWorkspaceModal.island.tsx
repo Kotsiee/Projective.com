@@ -1,393 +1,476 @@
-import type { JSX } from "preact";
-import { useComputed, useSignal } from "@preact/signals";
-import { useEffect, useRef } from "preact/hooks";
+import type { JSX, VNode } from "preact";
+import { batch, useSignal } from "@preact/signals";
+import { useRef } from "preact/hooks";
 import "../styles/workspace.css";
-import { Dialog } from "@projective/ui/feedback";
-import { Button, InputText } from "@projective/ui/fields";
+import { Dialog, InlineNotice, ProgressSpinner } from "@projective/ui/feedback";
+import {
+	Button,
+	FieldLegend,
+	FormControl,
+	InputText,
+	SelectButton,
+	useFieldValidation,
+} from "@projective/ui/fields";
+import { Link } from "@projective/ui/navigation";
 import {
 	CreateWorkspaceInputSchema,
-	type HandleCheck,
-	kindCopy,
+	WORKSPACE_HANDLE_MAX,
+	WORKSPACE_NAME_MAX,
 	workspaceHref,
 	type WorkspaceKind,
 } from "@projective/types/workspace";
+import { PayoutGateLink } from "@features/settings/components/PayoutGateLink.tsx";
+import { openSettings } from "@features/settings/core/settings-bridge.ts";
+import { settingsHref } from "@features/settings/core/settings-registry.ts";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import { closeCreate, createModalOpen, createSeedKind } from "../core/workspace-state.ts";
-import { initialsOf } from "../core/workspace-model.ts";
 import { CheckGlyph, cloneGlyph, DeclineGlyph } from "../core/workspace-glyphs.tsx";
-import { PayoutGateLink } from "@features/settings/components/PayoutGateLink.tsx";
+import { handleProblem } from "../core/handle-check.ts";
+import {
+	classifyCreateRefusal,
+	CREATE_FAILED,
+	createCopy,
+	createFooterActions,
+	createGateOpen,
+	createKindMode,
+	type CreateRefusal,
+	type HandleFieldPhase,
+	handleFromName,
+	handleLiveLine,
+	type HandleLiveTone,
+	isPlainEnter,
+	KIND_CHOICES,
+	nameProblem,
+	normalizeHandleInput,
+	recheckAction,
+	suggestionActions,
+	tierProps,
+	visibleSuggestions,
+} from "../core/create-model.ts";
+import { useHandleCheck } from "../hooks/useHandleCheck.ts";
 
 /**
  * CreateWorkspaceModal — the Draft-First creation dialog for a team or a business.
  *
- * **Deliberately tiny.** Name plus a unique `@handle` is the entire form; the entity is created
- * immediately as a draft and the user lands INSIDE it, where a checklist invites the rest. That is a
- * product decision, not an unfinished one — a nine-field wizard in front of a first team is how people
- * decide not to have a team. Everything a wizard would have collected (logo, bio, members, payout
- * method, verification) becomes a checklist row on the overview: reachable, never blocking.
+ * **Name plus `@handle` is the whole form.** The entity is created at once as a draft and the reader
+ * lands INSIDE it, where a checklist invites the rest (logo, bio, members, payouts, verification) —
+ * reachable, never blocking. A wizard in front of a first team is how people decide not to have one.
  *
- * **The handle verdict is server-authoritative.** The client renders an answer it was given and never
- * decides availability itself — the handle namespace is shared across users, teams, businesses and
- * enterprises, and only the server can see all four. The probe is debounced, because an availability
- * check that fires per keystroke is a scraper rather than a form.
+ * **The handle check is live and server-authoritative** (`hooks/useHandleCheck.ts`): the claim rule
+ * the database applies (length, charset, reserved words) is settled locally from the SSOT, and only
+ * the question the client cannot answer — is it free across people, teams, businesses and
+ * enterprises — is asked, debounced and sequenced. A taken handle comes back with up to three free
+ * alternatives, offered as one-tap text buttons.
  *
- * The dialog is `@projective/ui` `Dialog`, which portals to `document.body`: the shell's glass chrome
- * re-bases `position: fixed`, so an in-tree overlay would be clipped by the very lane it opened from.
+ * **Validation paints at rest** (§A.7): each field is a `FormControl` driven by
+ * `useFieldValidation`, so a problem shows after the reader leaves THAT field and its paint clears
+ * while they are back in it. A handle mirrored from the name may never be visited, so once the name is
+ * left the polite live line says why it cannot be had — without marking the handle field invalid
+ * before the reader has had a turn in it.
+ *
+ * **One filled control** (§B.8.1): the tier-2 structural commit, enabled only for a valid name and a
+ * handle the namespace has just called available. Every button takes its tone from `tierProps` and
+ * every rule the dialog renders lives in `core/create-model.ts`, where it is unit-tested.
+ *
+ * Shared by `/teams` and `/businesses` (Decision #61): the kind is fixed by the route that mounts it,
+ * and asked (a `SelectButton`) only when a neutral surface mounts it without one. `Dialog` portals to
+ * `document.body`, so the lane's glass chrome cannot clip it.
  */
 
-/** How long to wait after the last keystroke before probing the handle. */
-const PROBE_DELAY_MS = 400;
+/** The form's id — the footer's commit sits outside the body and submits it by reference. */
+const FORM_ID = "wsp-create-form";
 
-/** DOM id of the name field — focus is moved by id because `InputText` exposes no ref. */
-const NAME_FIELD_ID = "wsp-create-name";
-
-/** The states the handle field can be in. `idle` also covers "too short to be worth asking about". */
-type HandleState = "idle" | "checking" | "available" | "taken" | "invalid";
+/** Where a plan's limits are raised: Settings → Billing, at the plan. */
+const PLAN_HREF = settingsHref("billing", "plan");
 
 export interface CreateWorkspaceModalProps {
 	/**
-	 * The kind to create. When the modal opens from a route that already commits to one (`/teams`,
-	 * `/businesses`) the kind chooser is hidden — re-asking a question the URL already answered is
-	 * noise. It appears only when opened from a neutral surface such as the header Create menu.
+	 * The kind to create. A route that already commits to one (`/teams`, `/businesses`) passes it and
+	 * the dialog never asks; a neutral surface omits it and the dialog offers both.
 	 */
 	kind?: WorkspaceKind;
-	/** Force the kind chooser on even inside a committed route. */
+	/** Ask for the kind even inside a committed route. */
 	allowKindChoice?: boolean;
 }
 
-/**
- * Derive a legal handle from a display name — lowercased, hyphen-joined, and stripped of the
- * leading/trailing hyphens the SSOT's pattern rejects.
- */
-function slugify(name: string): string {
-	return name
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "")
-		.slice(0, 40);
-}
-
 export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): JSX.Element {
-	const kind = useSignal<WorkspaceKind>(props.kind ?? createSeedKind.value);
+	const mode = createKindMode(props.kind, props.allowKindChoice);
+	const kind: WorkspaceKind = mode === "fixed"
+		? props.kind ?? createSeedKind.value
+		: createSeedKind.value;
+
 	const name = useSignal("");
 	const handle = useSignal("");
-	/** Set once the user edits the handle directly, so the name stops being mirrored into it. */
-	const handleTouched = useSignal(false);
-	const handleState = useSignal<HandleState>("idle");
-	const handleReason = useSignal<string | null>(null);
-	const suggestions = useSignal<readonly string[]>([]);
+	/** The reader has typed into the handle, so the name stops being mirrored into it. */
+	const handleEdited = useSignal(false);
 	const submitting = useSignal(false);
-	const formError = useSignal<string | null>(null);
-	const formErrorDetails = useSignal<unknown>(null);
+	const refusal = useSignal<CreateRefusal | null>(null);
 
-	/** The debounce timer, so a fresh keystroke supersedes an in-flight wait. */
-	const probeTimer = useRef<number | null>(null);
-	/** Monotonic probe id — a slow answer for an older handle must not overwrite a newer verdict. */
-	const probeSeq = useRef(0);
+	const checker = useHandleCheck();
+	const nameField = useFieldValidation({ problem: () => nameProblem(name.value) });
+	const handleField = useFieldValidation({ problem: () => handleProblem(checker.state.value) });
 
-	const copy = useComputed(() => kindCopy(kind.value));
-	const showKindChoice = props.allowKindChoice ?? props.kind === undefined;
+	/** Initial focus: the dialog resolves this scope to the name input inside it. */
+	const nameScope = useRef<HTMLDivElement>(null);
+	/** The handle field's scope, so Enter in the name, a suggestion or a retry can put the caret in it. */
+	const handleScope = useRef<HTMLDivElement>(null);
 
-	// The seed kind can differ between openings (the roster's ＋ New vs a neutral Create menu), so track
-	// it while the dialog is closed rather than only at mount.
-	useEffect(() => {
-		if (!createModalOpen.value && props.kind === undefined) kind.value = createSeedKind.value;
-	}, [createModalOpen.value, props.kind]);
+	const check = checker.state.value;
+	const copy = createCopy(kind, mode);
+	const [cancelAction, createAction] = createFooterActions(kind, mode, {
+		name: name.value,
+		handle: check,
+		submitting: submitting.value,
+	});
+	const phase: HandleFieldPhase = {
+		nameLeft: nameField.touched.value,
+		handleEdited: handleEdited.value,
+		handleRevealed: handleField.revealed.value,
+	};
+	const live = handleLiveLine(check, phase);
+	const recheck = recheckAction(check);
+	const suggestions = visibleSuggestions(check, phase);
 
-	// Move the caret to Name on open. `Dialog` owns the focus TRAP and its restoration; this only
-	// chooses where inside the trap to start, which the dialog cannot guess.
-	useEffect(() => {
-		if (!createModalOpen.value) return;
-		const id = setTimeout(() => {
-			document.getElementById(NAME_FIELD_ID)?.focus();
-		}, 60);
-		return () => clearTimeout(id);
-	}, [createModalOpen.value]);
-
-	/** Clear every field, so a dismissed draft never reappears half-filled. */
+	// #region Handlers
+	/** Clear every field and verdict, so a dismissed draft never reappears half-filled. */
 	function reset(): void {
-		name.value = "";
-		handle.value = "";
-		handleTouched.value = false;
-		handleState.value = "idle";
-		handleReason.value = null;
-		suggestions.value = [];
-		formError.value = null;
-		submitting.value = false;
-		if (probeTimer.current !== null) clearTimeout(probeTimer.current);
-		probeTimer.current = null;
+		batch(() => {
+			name.value = "";
+			handle.value = "";
+			handleEdited.value = false;
+			submitting.value = false;
+			refusal.value = null;
+			nameField.reset();
+			handleField.reset();
+		});
+		checker.reset();
 	}
 
-	/** Debounced availability probe. A short handle stays `idle` rather than being called invalid. */
-	function probe(next: string): void {
-		if (probeTimer.current !== null) clearTimeout(probeTimer.current);
-		suggestions.value = [];
-
-		if (next.length < 3) {
-			handleState.value = "idle";
-			handleReason.value = null;
-			return;
-		}
-		if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(next)) {
-			handleState.value = "invalid";
-			handleReason.value = "Lowercase letters, numbers and hyphens only.";
-			return;
-		}
-
-		handleState.value = "checking";
-		handleReason.value = null;
-		const seq = ++probeSeq.current;
-		probeTimer.current = setTimeout(async () => {
-			const res = await WorkspaceService.checkHandle(next);
-			// A verdict for a handle the user has already moved past is stale — drop it.
-			if (seq !== probeSeq.current) return;
-			const check = res.data as HandleCheck | undefined;
-			if (!res.ok || !check) {
-				handleState.value = "idle";
-				handleReason.value = null;
-				return;
-			}
-			handleState.value = check.available ? "available" : "taken";
-			handleReason.value = check.reason;
-			suggestions.value = check.suggestions;
-		}, PROBE_DELAY_MS) as unknown as number;
+	function close(): void {
+		closeCreate();
+		reset();
 	}
 
 	function onNameInput(value: string): void {
 		name.value = value;
-		formError.value = null;
-		// Mirror the name into the handle until the user takes it over, so the common case is no typing.
-		if (!handleTouched.value) {
-			const slug = slugify(value);
-			handle.value = slug;
-			probe(slug);
-		}
+		refusal.value = null;
+		if (handleEdited.peek()) return;
+		// Mirror the name into the handle until the reader takes it over — the common case is no typing.
+		const derived = handleFromName(value);
+		handle.value = derived;
+		checker.input(derived);
+	}
+
+	/** Put the caret in the handle field. */
+	function focusHandle(): void {
+		handleScope.current?.querySelector<HTMLInputElement>("input")?.focus();
+	}
+
+	/** Enter in the name walks forward to the handle, as the keyboard's "next" label says. */
+	function onNameKeyDown(event: JSX.TargetedKeyboardEvent<HTMLInputElement>): void {
+		if (event.defaultPrevented || !isPlainEnter(event)) return;
+		event.preventDefault();
+		focusHandle();
 	}
 
 	function onHandleInput(value: string): void {
-		handleTouched.value = true;
-		const cleaned = value.toLowerCase().replace(/[^a-z0-9-]/g, "");
-		handle.value = cleaned;
-		formError.value = null;
-		probe(cleaned);
+		const next = normalizeHandleInput(value);
+		handle.value = next;
+		// Clearing the field hands it back to the name.
+		handleEdited.value = next !== "";
+		refusal.value = null;
+		checker.input(next);
 	}
 
 	function applySuggestion(next: string): void {
-		handleTouched.value = true;
 		handle.value = next;
-		probe(next);
+		handleEdited.value = true;
+		refusal.value = null;
+		checker.input(next);
+		focusHandle();
 	}
 
-	const canSubmit = useComputed(() =>
-		!submitting.value &&
-		name.value.trim().length >= 2 &&
-		handle.value.length >= 3 &&
-		handleState.value === "available"
-	);
+	/**
+	 * Ask again after an unanswered probe. The retry leaves with the failure it answers, so the caret
+	 * goes back to the handle rather than falling to the page with the unmounted button.
+	 */
+	function onRecheck(): void {
+		checker.recheck();
+		focusHandle();
+	}
 
 	async function submit(): Promise<void> {
-		if (!canSubmit.value) return;
+		const state = checker.state.peek();
+		if (!createGateOpen({ name: name.peek(), handle: state, submitting: submitting.peek() })) {
+			return;
+		}
 		const parsed = CreateWorkspaceInputSchema.safeParse({
-			kind: kind.value,
-			name: name.value.trim(),
-			handle: handle.value,
+			kind,
+			name: name.peek().trim(),
+			handle: state.handle,
 		});
 		if (!parsed.success) {
-			formError.value = parsed.error.issues[0]?.message ?? "Check the highlighted fields.";
-			formErrorDetails.value = null;
+			refusal.value = {
+				reason: "other",
+				message: parsed.error.issues[0]?.message ?? CREATE_FAILED,
+			};
 			return;
 		}
 
-		submitting.value = true;
-		formError.value = null;
-		formErrorDetails.value = null;
+		batch(() => {
+			submitting.value = true;
+			refusal.value = null;
+		});
 		const res = await WorkspaceService.create(parsed.data);
 		if (!res.ok || !res.data) {
-			submitting.value = false;
-			formErrorDetails.value = res.details ?? null;
-			// A handle taken between the probe and the submit is the one race worth naming precisely.
-			formError.value = res.errors?.handle ?? res.message ??
-				"Could not create it — please try again.";
-			if (res.errors?.handle) {
-				handleState.value = "taken";
-				handleReason.value = res.errors.handle;
-			}
+			const why = classifyCreateRefusal(res);
+			batch(() => {
+				submitting.value = false;
+				refusal.value = why;
+				if (why.reason === "handle") handleField.touched.value = true;
+			});
+			// The handle went between the check and the create: ask the namespace again, which also
+			// brings back the free alternatives.
+			if (why.reason === "handle") checker.recheck();
 			return;
 		}
 
 		const created = res.data;
-		closeCreate();
-		reset();
-		// Land INSIDE the new entity, at its handle — the console's one address. Deliberately NO automatic
-		// context switch: creating a team is not the same act as beginning to work as it, and the overview
-		// offers that as one explicit tap.
+		close();
+		// Land INSIDE the new draft, at its handle — the console's one address. Deliberately no context
+		// switch: creating a team is not the same act as beginning to work as it.
 		globalThis.location.assign(workspaceHref(created.kind, created.handle));
 	}
-
-	const verdict = handleState.value;
-	/** `data-available` is tri-state: `undefined` while we have no answer to report. */
-	const available = verdict === "available"
-		? "true"
-		: verdict === "idle" || verdict === "checking"
-		? undefined
-		: "false";
+	// #endregion
 
 	return (
 		<Dialog
 			visible={createModalOpen}
-			header={showKindChoice ? "Create a workspace" : `Create a ${copy.value.noun}`}
+			header={copy.header}
 			modal
 			width="27rem"
-			class="wsp-create"
+			initialFocusRef={nameScope}
 			onVisibleChange={(open) => {
-				if (!open) {
-					closeCreate();
-					reset();
-				}
+				if (!open) close();
 			}}
 			footer={
 				<div class="wsp-create__actions">
 					<Button
-						variant="text"
-						label="Cancel"
-						onClick={() => {
-							closeCreate();
-							reset();
-						}}
+						{...tierProps(cancelAction.tier)}
+						label={cancelAction.label}
+						disabled={cancelAction.disabled}
+						onClick={close}
 					/>
 					<Button
-						variant="filled"
-						label={submitting.value ? "Creating…" : `Create ${copy.value.noun}`}
-						disabled={!canSubmit.value}
-						onClick={submit}
+						{...tierProps(createAction.tier)}
+						type="submit"
+						form={FORM_ID}
+						label={createAction.label}
+						disabled={createAction.disabled}
+						loading={submitting.value}
 					/>
 				</div>
 			}
 		>
-			<p class="wsp-create__intro">
-				{copy.value.pitch}
-			</p>
+			<form
+				id={FORM_ID}
+				class="wsp-create"
+				noValidate
+				onSubmit={(event) => {
+					event.preventDefault();
+					void submit();
+				}}
+			>
+				<p class="wsp-create__intro">{copy.intro}</p>
 
-			{showKindChoice && (
-				<div class="wsp-create__field">
-					<span class="wsp-create__label" id="wsp-create-kind-label">What are you making?</span>
-					<div class="wsp-create__kinds" role="radiogroup" aria-labelledby="wsp-create-kind-label">
-						{(["team", "business"] as const).map((k) => {
-							const c = kindCopy(k);
-							const on = kind.value === k;
-							return (
-								<button
-									key={k}
-									type="button"
-									role="radio"
-									aria-checked={on}
-									class="wsp-create__kind"
-									data-kind={k}
-									data-on={on ? "true" : undefined}
-									onClick={() => {
-										kind.value = k;
-										formError.value = null;
-									}}
-								>
-									<span class="wsp-create__kind-name">{c.Noun}</span>
-									<span class="wsp-create__kind-note">
-										{k === "team" ? "Deliver work as one unit" : "Hire as one company"}
-									</span>
-								</button>
-							);
-						})}
-					</div>
-				</div>
-			)}
-
-			<div class="wsp-create__field">
-				<label class="wsp-create__label" for={NAME_FIELD_ID}>Name</label>
-				<InputText
-					id={NAME_FIELD_ID}
-					value={name}
-					onValueChange={onNameInput}
-					placeholder={kind.value === "team" ? "Northern grid collective" : "Halliwell Estates"}
-					block
-					maxLength={120}
-				/>
-				<span class="wsp-create__hint">You can change this later.</span>
-			</div>
-
-			<div class="wsp-create__field">
-				<label class="wsp-create__label" for="wsp-create-handle">Handle</label>
-				<InputText
-					id="wsp-create-handle"
-					value={handle}
-					onValueChange={onHandleInput}
-					placeholder="northern-grid"
-					block
-					maxLength={40}
-					start="@"
-					status={verdict === "taken" || verdict === "invalid" ? "invalid" : "default"}
-				/>
-				{
-					/*
-					 * A live region: the verdict arrives asynchronously, so a screen reader must be told
-					 * rather than having to go looking for it.
-					 */
-				}
-				<span
-					class="wsp-create__handle-state"
-					data-available={available}
-					role="status"
-					aria-live="polite"
-				>
-					{verdict === "checking" && "Checking…"}
-					{verdict === "available" && (
-						<>
-							{cloneGlyph(CheckGlyph)}
-							{`@${handle.value} is available`}
-						</>
-					)}
-					{(verdict === "taken" || verdict === "invalid") && (
-						<>
-							{cloneGlyph(DeclineGlyph)}
-							{handleReason.value ?? "That handle is not available."}
-						</>
-					)}
-					{verdict === "idle" && `Your public address — /@${handle.value || "handle"}`}
-				</span>
-				{suggestions.value.length > 0 && (
-					<div class="wsp-create__suggest">
-						<span class="wsp-create__hint">Try:</span>
-						{suggestions.value.map((s) => (
-							<button
-								key={s}
-								type="button"
-								class="wsp-create__suggestion"
-								onClick={() => applySuggestion(s)}
-							>
-								@{s}
-							</button>
-						))}
-					</div>
+				{mode === "choice" && (
+					<FormControl
+						label="Kind"
+						hint={KIND_CHOICES.find((c) => c.value === kind)?.note}
+					>
+						{({ id, describedBy }) => (
+							<SelectButton
+								id={id}
+								aria-label="Kind"
+								aria-describedby={describedBy}
+								options={KIND_CHOICES.map(({ value, label }) => ({ value, label }))}
+								value={createSeedKind}
+								onValueChange={() => (refusal.value = null)}
+							/>
+						)}
+					</FormControl>
 				)}
-			</div>
 
-			<div class="wsp-create__preview">
-				<span class="wsp-mark wsp-mark--md" data-kind={kind.value} aria-hidden="true">
-					{initialsOf(name.value || copy.value.Noun, handle.value)}
-				</span>
-				<span class="wsp-create__preview-body">
-					<span class="wsp-create__preview-name">
-						{name.value || `Your ${copy.value.noun}`}
-					</span>
-					<span class="wsp-create__preview-handle">
-						Created as a draft — finish setting it up inside.
-					</span>
-				</span>
-			</div>
+				<div ref={nameScope}>
+					<FormControl
+						label="Display name"
+						required
+						hint="You can change this later."
+						status={nameField.hintStatus.value}
+						error={nameField.message.value ?? undefined}
+					>
+						{({ id, describedBy, required }) => (
+							<InputText
+								id={id}
+								aria-describedby={describedBy}
+								required={required}
+								value={name}
+								onValueChange={onNameInput}
+								status={nameField.status.value}
+								onFocus={nameField.handlers.onFocus}
+								onBlur={nameField.handlers.onBlur}
+								onKeyDown={onNameKeyDown}
+								placeholder={copy.namePlaceholder}
+								maxLength={WORKSPACE_NAME_MAX}
+								autoComplete="off"
+								enterKeyHint="next"
+								block
+							/>
+						)}
+					</FormControl>
+				</div>
 
-			{formError.value && (
-				<p class="wsp-create__error" role="alert">
-					{formError.value} <PayoutGateLink details={formErrorDetails.value} />
-				</p>
-			)}
+				<div ref={handleScope} class="wsp-create__handle">
+					<FormControl
+						label="Handle"
+						required
+						hint="Lowercase letters, numbers and hyphens. It is also your public address."
+						status={handleField.hintStatus.value}
+						error={handleField.message.value ?? undefined}
+					>
+						{({ id, describedBy, required }) => (
+							<InputText
+								id={id}
+								aria-describedby={describedBy}
+								required={required}
+								value={handle}
+								onValueChange={onHandleInput}
+								status={handleField.status.value}
+								onFocus={handleField.handlers.onFocus}
+								onBlur={handleField.handlers.onBlur}
+								start="@"
+								placeholder="northern-grid"
+								maxLength={WORKSPACE_HANDLE_MAX}
+								autoCapitalize="none"
+								spellcheck={false}
+								autoComplete="off"
+								enterKeyHint="go"
+								block
+							/>
+						)}
+					</FormControl>
+
+					<div class="wsp-create__status">
+						{
+							/*
+							 * The live line. The answer arrives asynchronously, so it is announced rather
+							 * than left for a screen reader to go looking for; it stays mounted and empty
+							 * between answers so the region exists before the first one. The retry sits
+							 * beside it, outside the region, so its label is not read as part of the news.
+							 */
+						}
+						<p class="wsp-create__check" role="status" aria-live="polite">
+							{live && (
+								<>
+									<LiveMark tone={live.tone} />
+									<span>{live.text}</span>
+								</>
+							)}
+						</p>
+						{recheck && (
+							<Button
+								{...tierProps(recheck.tier)}
+								size="sm"
+								label={recheck.label}
+								disabled={recheck.disabled}
+								onClick={onRecheck}
+							/>
+						)}
+					</div>
+
+					{suggestions.length > 0 && (
+						<div class="wsp-create__suggest" role="group" aria-label="Free alternatives">
+							<span class="wsp-create__suggest-label" aria-hidden="true">Try</span>
+							<div class="wsp-create__suggest-list">
+								{suggestionActions(suggestions).map((action, i) => (
+									<Button
+										key={action.key}
+										{...tierProps(action.tier)}
+										size="sm"
+										label={action.label}
+										disabled={action.disabled}
+										onClick={() => applySuggestion(suggestions[i])}
+									/>
+								))}
+							</div>
+						</div>
+					)}
+				</div>
+
+				<FieldLegend text="Required to create the draft" />
+
+				{refusal.value && <RefusalNotice refusal={refusal.value} />}
+			</form>
 		</Dialog>
 	);
 }
+
+// #region Live line
+/**
+ * The live line's leading mark: a spinner while the namespace is asked, a tick for a free handle, a
+ * decline for one that cannot be had. Decorative — the sentence beside it carries the meaning — so a
+ * failed probe, whose retry already marks the line, draws none.
+ */
+function LiveMark({ tone }: { tone: HandleLiveTone }): VNode | null {
+	if (tone === "failed") return null;
+	return (
+		<span class="wsp-create__check-mark" data-tone={tone} aria-hidden="true">
+			{tone === "checking"
+				? <ProgressSpinner size={14} strokeWidth={2} aria-label="Checking" />
+				: cloneGlyph(tone === "available" ? CheckGlyph : DeclineGlyph)}
+		</span>
+	);
+}
+// #endregion
+
+// #region Refusal
+/**
+ * A refused create, inside the dialog where the reader can act on it — never a toast that is gone
+ * before it is read. Each refusal carries its own fix: the earning gate links to Settings →
+ * Verification, the plan cap to the plan; the persona gate has no fix here, and a lost handle is
+ * already being re-checked above.
+ */
+function RefusalNotice({ refusal }: { refusal: CreateRefusal }): JSX.Element {
+	return (
+		<InlineNotice
+			assertive
+			align="start"
+			class="wsp-create__refusal"
+			icon={<span class="wsp-create__refusal-mark">{cloneGlyph(DeclineGlyph)}</span>}
+		>
+			<span>{refusal.message}</span>
+			{
+				/* A word space, not a margin, before the fix: when it wraps to its own line it starts
+				 * flush with the sentence, and its label never breaks (workspace-roster.css). */
+			}
+			{(refusal.reason === "payout" || refusal.reason === "entitlement") && " "}
+			{refusal.reason === "payout" && <PayoutGateLink details={refusal.details} />}
+			{refusal.reason === "entitlement" && (
+				<Link
+					href={PLAN_HREF}
+					onClick={(event: JSX.TargetedMouseEvent<HTMLAnchorElement>) => {
+						if (
+							event.metaKey || event.ctrlKey || event.shiftKey || event.altKey ||
+							event.button !== 0
+						) return;
+						event.preventDefault();
+						openSettings("billing", "plan");
+					}}
+				>
+					See plans
+				</Link>
+			)}
+		</InlineNotice>
+	);
+}
+// #endregion

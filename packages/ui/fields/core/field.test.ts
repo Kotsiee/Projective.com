@@ -312,6 +312,37 @@ Deno.test("field.css — the focus state still declares a ring of its own", () =
 });
 // #endregion
 
+// #region The 16px touch floor
+/**
+ * The floor and the base rule it overrides weigh the same (`.ui-field__input`, one class), so the
+ * cascade decides by ORDER: a floor declared before the base rule's `font: inherit` is reset by it.
+ * That shipped — the editable text stayed 15px on a phone, only the placeholder (which sets no font)
+ * reached 16px — and nothing but a computed style in a touch browser could show it.
+ */
+Deno.test("field.css — the 16px touch floor is declared after the base rule it overrides", async () => {
+	const css = rulesOf(await Deno.readTextFile(new URL("field.css", stylesDir)));
+	const floor = css.search(/@media[^{]*pointer:\s*coarse[^{]*\{\s*\.ui-field__input\b/);
+	assert(floor >= 0, "the coarse-pointer floor on `.ui-field__input` is gone.");
+	assert(
+		/max\(var\(--field-font\),\s*var\(--text-base\)\)/.test(css.slice(floor)),
+		"the floor no longer resolves to `max(var(--field-font), var(--text-base))`.",
+	);
+	let lastBase = -1;
+	for (const match of css.matchAll(/(^|\})\s*\.ui-field__input\s*\{([^{}]*)\}/g)) {
+		if (/\bfont(-size)?\s*:/.test(match[2])) lastBase = match.index!;
+	}
+	assert(
+		lastBase >= 0,
+		"no base `.ui-field__input` rule sets the font any more — re-read this test.",
+	);
+	assert(
+		floor > lastBase,
+		"the touch floor is declared BEFORE the base `.ui-field__input` font rule, which therefore " +
+			"resets it: a phone gets the 15px desktop ramp and Safari zooms on focus.",
+	);
+});
+// #endregion
+
 // #region The keyboard focus indicator
 /**
  * Every form control spends the SAME focus token, and it is not `none`.

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ProposalAllowanceStatusSchema } from "../finance/allowance.ts";
 import { MoneyViewSchema } from "../finance/wallet.ts";
+import { isReservedHandle } from "../profile/reserved.ts";
 import { canOpenVerification } from "./access.ts";
 import {
 	VerificationState,
@@ -342,6 +343,92 @@ export const WorkspaceDetailSchema = z.object({
 export type WorkspaceDetail = z.infer<typeof WorkspaceDetailSchema>;
 // #endregion
 
+// #region Handles — the claim rule of the one shared namespace
+/** The shortest `@handle` an entity may claim (`org.fn_handle_refusal`). */
+export const WORKSPACE_HANDLE_MIN = 3;
+
+/** The longest `@handle` an entity may claim (`org.fn_handle_refusal`). */
+export const WORKSPACE_HANDLE_MAX = 40;
+
+/**
+ * The handle charset: lowercase letters, digits and inner hyphens, never a hyphen at either end. The
+ * TypeScript twin of `org.fn_handle_refusal`'s `!~` pattern, pinned to it by
+ * `workspace.contract.test.ts` — a create form that judged a handle by a different rule would offer a
+ * handle the database then refuses.
+ */
+export const WORKSPACE_HANDLE_PATTERN = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/;
+
+/** The shortest display name `org.create_workspace` accepts. */
+export const WORKSPACE_NAME_MIN = 2;
+
+/** The longest display name `org.create_workspace` accepts. */
+export const WORKSPACE_NAME_MAX = 80;
+
+/**
+ * Why a handle cannot be claimed — one code per `WHEN` branch of `org.fn_handle_refusal`, in its order.
+ * `taken` is the one only the database can answer: it needs the whole namespace (people, teams,
+ * businesses, enterprises and the 90-day holds on renamed handles).
+ */
+export const HandleRefusalCode = z.enum(["short", "long", "format", "reserved", "taken"]);
+export type HandleRefusalCode = z.infer<typeof HandleRefusalCode>;
+
+/** The sentence `org.fn_handle_refusal` answers for each refusal, verbatim (pinned by the contract test). */
+export const HANDLE_REFUSALS: Readonly<Record<HandleRefusalCode, string>> = {
+	short: "Handles are at least 3 characters.",
+	long: "Handles are 40 characters or fewer.",
+	format: "Lowercase letters, numbers and hyphens only.",
+	reserved: "That handle is reserved.",
+	taken: "That handle is taken.",
+};
+
+/**
+ * The refusal a handle earns WITHOUT asking the namespace — length, then charset, then a reserved
+ * route word — or `null` when only the database can still say no. The same branches, in the same
+ * order, as `org.fn_handle_refusal`, so a form can settle these locally and spend a probe only on
+ * the question it cannot answer itself.
+ */
+export function localHandleRefusal(handle: string): Exclude<HandleRefusalCode, "taken"> | null {
+	if (handle.length < WORKSPACE_HANDLE_MIN) return "short";
+	if (handle.length > WORKSPACE_HANDLE_MAX) return "long";
+	if (!WORKSPACE_HANDLE_PATTERN.test(handle)) return "format";
+	if (isReservedHandle(handle)) return "reserved";
+	return null;
+}
+
+/**
+ * Read a probe's `reason` back to its refusal code: `null` for no reason, the matching code for one of
+ * {@link HANDLE_REFUSALS}' sentences, and `taken` for any other sentence — a refusal the client does
+ * not recognise is still a handle it cannot have.
+ */
+export function handleRefusalOf(reason: string | null | undefined): HandleRefusalCode | null {
+	if (!reason) return null;
+	const code = HandleRefusalCode.options.find((c) => HANDLE_REFUSALS[c] === reason);
+	return code ?? "taken";
+}
+
+/** Suffixes tried, in order, when a handle is taken — short, neutral to the kind, never a word. */
+const ALTERNATIVE_SUFFIXES: readonly string[] = ["hq", "co", "2", "3", "4", "5"];
+
+/**
+ * Candidate alternatives to a taken handle, in the order they should be offered: each one passes
+ * {@link localHandleRefusal}, differs from the original, and fits {@link WORKSPACE_HANDLE_MAX} (the
+ * stem is shortened, never the suffix). Candidates only — whether one is free is the namespace's
+ * answer, so a caller probes them before offering any.
+ */
+export function handleAlternatives(handle: string): string[] {
+	const out: string[] = [];
+	for (const suffix of ALTERNATIVE_SUFFIXES) {
+		const room = WORKSPACE_HANDLE_MAX - suffix.length - 1;
+		const stem = handle.slice(0, room).replace(/-+$/, "");
+		if (!stem) continue;
+		const candidate = `${stem}-${suffix}`;
+		if (candidate === handle || out.includes(candidate)) continue;
+		if (localHandleRefusal(candidate) === null) out.push(candidate);
+	}
+	return out;
+}
+// #endregion
+
 // #region The bench (Talent module, BU5 — Decision #230 (i), #241)
 /** Who sits on a business's bench: a freelancer (a person) or a team (an entity). */
 export const BenchPartyKind = z.enum(["freelancer", "team"]);
@@ -410,11 +497,11 @@ export type BusinessBench = z.infer<typeof BusinessBenchSchema>;
  */
 export const CreateWorkspaceInputSchema = z.object({
 	kind: WorkspaceKind,
-	name: z.string().min(2, "Give it a name.").max(80),
+	name: z.string().min(WORKSPACE_NAME_MIN, "Give it a name.").max(WORKSPACE_NAME_MAX),
 	handle: z.string()
-		.min(3, "Handles are at least 3 characters.")
-		.max(40)
-		.regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/, "Lowercase letters, numbers and hyphens only."),
+		.min(WORKSPACE_HANDLE_MIN, HANDLE_REFUSALS.short)
+		.max(WORKSPACE_HANDLE_MAX, HANDLE_REFUSALS.long)
+		.regex(WORKSPACE_HANDLE_PATTERN, HANDLE_REFUSALS.format),
 });
 export type CreateWorkspaceInput = z.infer<typeof CreateWorkspaceInputSchema>;
 

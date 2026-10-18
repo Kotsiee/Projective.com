@@ -232,7 +232,7 @@ export function MembersTable(props: MembersTableProps): JSX.Element {
 						/>
 					</td>
 					<td>
-						<RoleText role={m.role} />
+						<RoleText role={m.role} managesTickets={m.canManageTickets === true} />
 					</td>
 					{part && (
 						<td>

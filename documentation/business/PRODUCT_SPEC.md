@@ -181,19 +181,21 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   step DERIVED from stored data, and a step the platform cannot check is left out rather than
   counted (Decision #149).
 - **Draft-First Creation:** Creating a Team is deliberately low-friction — a member supplies only a
-  display **Name** and a unique alphanumeric **`@handle`**. The Team is created instantly in a
-  **Draft/Unverified** state; the rest is completed afterwards from the console. Its Overview leads
-  with a setup band of five steps, each DERIVED from stored facts: invite a second member (two
-  ACTIVE members are required to apply — an invitation still out does not count, Decision #228 (E)),
-  set the split, complete the public profile (mark and one-liner), verify the owner (the payout-ready
-  gate, Decision #196), and publish. A step's action is offered only to a member who holds its right
-  (the same right that opens its module), so a plain member sees where the team stands and no
-  control they cannot use. Verifying the owner is the owner's own identity check, so only the owner
-  is offered it — in their personal settings, never to an admin — and once it is with the reviewers
-  the step says so and offers nobody anything. The next open step carries the band's one filled
-  action; Publish is offered only once every step before it is done. The band is dismissible per
-  member, and the two-member rule and the verification lock still show once it is hidden. The
-  `/teams` roster card's "% set up" (and its needs-setup filter) counts the same five steps.
+  display **Name** (2–80 characters) and a unique **`@handle`** (3–40 lowercase letters, numbers
+  and inner hyphens, never a reserved route word — the database's rule, TEAMS_AUDIT F2). The Team
+  is created instantly in a **Draft/Unverified** state; the rest is completed afterwards from the
+  console. Its Overview leads with a setup band of five steps, each DERIVED from stored facts:
+  invite a second member (two ACTIVE members are required to apply — an invitation still out does
+  not count, Decision #228 (E)), set the split, complete the public profile (mark and one-liner),
+  verify the owner (the payout-ready gate, Decision #196), and publish. A step's action is offered
+  only to a member who holds its right (the same right that opens its module), so a plain member
+  sees where the team stands and no control they cannot use. Verifying the owner is the owner's own
+  identity check, so only the owner is offered it — in their personal settings, never to an admin —
+  and once it is with the reviewers the step says so and offers nobody anything. The next open step
+  carries the band's one filled action; Publish is offered only once every step before it is done.
+  The band is dismissible per member, and the two-member rule and the verification lock still show
+  once it is hidden. The `/teams` roster card's "% set up" (and its needs-setup filter) counts the
+  same five steps.
 - **Automated Payment Splitting:** Payments are distributed at the moment of Escrow release. If a
   Stage payout is $1,000, Projective automatically routes percentages to individual member wallets
   based on predefined **Contribution Agreements**.
@@ -2038,6 +2040,15 @@ A claim whose escrow cannot be held is refused and the ticket moves to **Needs f
   applies to the Admin/Owner seat whether or not freelancers have been onboarded to the project:
   before a claim the client moves freely, and payment state is a badge for the client, never a
   barrier to a move. (Product-owner ruling, 2026-09-07 — root CLAUDE.md §8 Decision #94.)
+- **Who Moves a Claimed Ticket:** only its client and the freelancer who claimed it. Another
+  freelancer on the project never moves someone else's ticket. The freelancer moves their own ticket
+  between To do, In progress and In review. The New backlog, Done, another stage and every other move
+  are the client's, and the client's are subject to the lock above. No move puts a claimed ticket
+  into Claimed, Cancelled or Hidden. A claim enters Claimed, the stage's cancellation enters
+  Cancelled and a workload report enters Hidden, and each settles or keeps the escrow on its own
+  terms. Moving delivered work back to Claimed would restart the claim's time-to-live, and an expired
+  claim is refunded to the client in full. All of this holds in the database on every path, not only
+  on the board (Decision #293).
 - **Funding Scope & Freelancer Visibility:** A ticket is paid for either **in full** (every stage it
   requires) or **per stage** (a designated set of stages). Freelancers **never** see an unpaid
   ticket: a ticket appears on a freelancer's board only when it is paid for the stage it currently
@@ -2064,7 +2075,18 @@ A claim whose escrow cannot be held is refused and the ticket moves to **Needs f
 ##### Editing & Reordering Restrictions
 
 - **Editing:** Clients may only edit a ticket that has **not yet been claimed** by a freelancer.
-  Once claimed, ticket details (title, description, budget) are locked.
+  Once claimed, ticket details (title, description, budget) are locked — for both parties. The
+  freelancer who claimed it cannot reword or reprice it, change the stages it requires, or move it
+  to another stage either: those are the terms the client's escrow is held against, and every hold
+  is priced from them. A freelancer never writes a ticket; they claim one (Decision #291).
+- **Delegated ticket managers:** A ticket's content is the client's. The one exception is a project
+  manager a **Business** client explicitly lets manage tickets on its behalf: a freelancer it made a
+  project Admin or Manager, then granted "manage tickets" from the Members tab (the grant takes the
+  hiring permission, is recorded, and ends if they leave that seat). Such a manager writes and edits
+  tickets as the client would — and only as the client could: never once a ticket is claimed, never
+  assigning, settling or deleting it, and never the ticket they are themselves paid for. An
+  individual client has no business to delegate for and manages their own tickets (product-owner
+  ruling, 2026-10-17; Decision #294).
 - **Stage Reordering Post-Claim:** Once a ticket is claimed, clients may only reorder the stages
   that have **not yet been started or claimed** — the claimed ticket's current and completed stages
   are frozen in sequence.
@@ -2092,14 +2114,23 @@ A freelancer may report a ticket if they believe its assigned Workload Intensity
 "Resource Allocation & Ticketing" §2) does not reflect the actual effort required.
 
 1. **Report Filed:** The ticket enters a 48-hour **"Hidden"** status — it is removed from public
-   view and all work on it is suspended.
+   view and all work on it is suspended. **A report moves no money** (Decision #290): the
+   freelancer stays on the ticket and its escrow stays held — a report is never a way to be paid
+   without the client's approval. A report is filed against work under way (claimed or in
+   progress), one at a time, and while it is open the freelancer cannot resume the work or change
+   the disputed $W_i$ themselves.
 2. **Resolution Window:** If the client increases the ticket's Workload Intensity within the 48-hour
    window, the ticket is unhidden and work resumes at the new $W_i$.
 3. **Client Non-Response:** If the client does not adjust the $W_i$ within 48 hours, **both parties
-   incur a penalty** (see "Reputation & Discovery" §1 for how penalties feed the Reliability Index).
+   incur a penalty** (see "Reputation & Discovery" §1 for how penalties feed the Reliability Index),
+   and the ticket is unhidden with work resuming at the original $W_i$.
 4. **Unsubstantiated Report:** If the report is resolved with no $W_i$ change (i.e., a moderator or
    the client determines the original weighting was fair), the reporting freelancer receives a
-   **ranking reduction** on the Explore page.
+   **ranking reduction** on the Explore page, and work resumes at the original $W_i$.
+
+While a ticket is hidden the client keeps every other settlement: approving its stage pays it,
+ending the stage under Fair Exit splits and cancels it, and removing the freelancer applies
+§Freelancer Removal Mid-Ticket.
 
 ---
 

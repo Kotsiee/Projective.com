@@ -6,6 +6,7 @@ import {
 	applyDevContext,
 	DEV_ACCOUNT_LIFECYCLES,
 	DEV_LAYOUT_DIRECTIONS,
+	DEV_MEMBER_CLIENTS,
 	DEV_MEMBER_ROLES,
 	DEV_MESSAGING_ROLES,
 	DEV_MIC_PERMISSIONS,
@@ -409,6 +410,21 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.memberRole}
 						disabled={!o.enabled}
 						onChange={(memberRole) => patchDevContext({ memberRole })}
+					/>
+				</Field>
+
+				{
+					/* Only a business client delegates its tickets to a project admin/manager (Decision
+				    #294), and no fixture is billed to one: `Business` is the only runtime route to the row
+				    action that grants it. */
+				}
+				<Field label="Paying client" hint="ticket delegation">
+					<Segment
+						name="Paying client"
+						options={DEV_MEMBER_CLIENTS}
+						value={o.memberClient}
+						disabled={!o.enabled}
+						onChange={(memberClient) => patchDevContext({ memberClient })}
 					/>
 				</Field>
 

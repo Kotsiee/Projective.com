@@ -72,6 +72,16 @@ dismissing invitations and managing a stage's invite link, and the SELECT arm on
 Unchanged by BB2 (it still answers the SELECT arms); on a business project the staffing WRITE doors
 additionally require `hire` or a delegate role through `fn_assert_business_actor(…, 'hire', true)`.
 
+### `projects.is_ticket_manager(_project_id uuid) → boolean`
+
+`00001100` §2 (Decision #294). TRUE when the caller is a **delegated ticket manager**: a
+person-participant row on the project with `role IN ('admin', 'manager')` and `can_manage_tickets`,
+on a project billed to a business (`client_business_id IS NOT NULL`). The predicate behind the
+_Ticket managers compose tickets_ / _edit tickets_ policies; what such a caller may change is narrowed
+again by `fn_ticket_immutability_guard`. It is not review authority: it approves, hires, funds and
+settles nothing. `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`; `EXECUTE`: `anon`, `authenticated`,
+`service_role` (a policy predicate).
+
 ### Business authority: one capability per act (BB2)
 
 `00001100` §2b (BUSINESSES_AUDIT BF13–BF15, BF23, §4.2). On a project billed to a business
@@ -613,6 +623,8 @@ The guarded column transition the board calls. Returns the updated ticket row as
 | → `completed`       | **additionally** `projects.can_review_project(project)` |
 | Cross-project stage | `p_to_stage_id` must belong to the ticket's project.    |
 | → `claimed` / `in_progress` / `in_review` from outside work | an escrow must be held — the no-hold-no-work gate in `trg_ticket_escrow_sync` raises `PF402` (Decision #165) |
+| Another stage, on a claimed ticket | **additionally** `projects.can_review_project(project)` — refused `42501` by `trg_ticket_immutability_guard`, because the hold is priced from the current stage (Decision #291) |
+| Any move of a claimed ticket | `projects.fn_assert_ticket_move` (below, Decision #293): only its assignee or review authority; the assignee only between `todo` / `in_progress` / `in_review` (and out of `claimed`); review authority not while it is `claimed` / `in_progress` (#94); nobody into `claimed`, `cancelled` or `reported_hidden` |
 
 ⚠️ **`status` is a money-moving column.** `trg_ticket_escrow_sync` releases escrow on entering
 `completed` and holds it on claim, which is why only the client/owner may drop a card into Done — a
@@ -629,9 +641,35 @@ Every move writes a `projects.ticket_history` row, which is why that table has n
 policy (see [Policies.md](Policies.md)).
 
 `SECURITY DEFINER`, `search_path = public, projects, finance, org, auth`; `EXECUTE`: `authenticated`,
-`service_role`. Refusals: unknown ticket `no_data_found` (`P0002`); the two authority guards
-`insufficient_privilege` (`42501`); a foreign stage `check_violation` (`23514`); entering work with no
-held escrow `PF402` ("Needs funding — …", from the trigger).
+`service_role`. The ticket row is read `FOR UPDATE`, so the move is judged on the row it writes.
+Refusals: unknown ticket `no_data_found` (`P0002`); the authority guards `insufficient_privilege`
+(`42501`); a foreign stage `check_violation` (`23514`); entering work with no held escrow `PF402`
+("Needs funding — …", from the trigger).
+
+### `projects.fn_assert_ticket_move(p_project_id uuid, p_assignee_id uuid, p_from_status ticket_status, p_to_status ticket_status, p_from_stage uuid, p_to_stage uuid) → void`
+
+`00001110`. Who may move a **claimed** ticket (`p_assignee_id` set), Decision #293. Returns when the
+move is allowed and raises `42501` otherwise. Called by `move_ticket`, which is a definer that RLS
+never sees, and by `fn_ticket_immutability_guard` for a statement PostgREST runs directly.
+
+| Caller | Allowed | Refusal |
+| :----- | :------ | :------ |
+| Neither the assignee nor review authority (another freelancer, a member or a delegate without `can_review_project`) | nothing | "Only the client or the freelancer working this ticket may move it." |
+| Anyone gated | never **into** `claimed`, `cancelled` or `reported_hidden`. A claim enters `claimed`, the stage's cancellation (`cancel_stage_fair_exit`) enters `cancelled` and a workload report enters `reported_hidden`. | "A ticket enters that state by a claim, its stage's cancellation or a workload report, never by a move." |
+| The assignee | from `todo` / `claimed` / `in_progress` / `in_review` to `todo` / `in_progress` / `in_review`. A stage change is then the stage rule's to refuse (#291). | "You move your ticket between To do, In progress and In review; any other move is the client's." |
+| Review authority | any move except from `claimed` / `in_progress`: status or stage (#94) | "A freelancer is working this ticket — it can be moved once the work is handed back." |
+
+Why `claimed` is closed: a move into it restamps `claimed_at` (`fn_ticket_claim_before`), and
+`fn_release_expired_claims` refunds an expired claim to the client in full. Verified by execution
+against the earlier definitions: the client moved a ticket handed back for review to `claimed`, and the
+sweep refunded the whole 800,000 hold to the client, so the freelancer was paid nothing for delivered work.
+
+Not gated: an unclaimed ticket, an unchanged status and stage, one person on both sides (the assignee
+who also holds `can_review_project`), `security.is_admin()`, a `NULL` `auth.uid()`. The reporting
+assignee moving a `reported_hidden` ticket is left to the suspension guard, which refuses it (#290).
+`SECURITY INVOKER`, `STABLE`, `search_path = public, projects, security, auth`; `EXECUTE`:
+`authenticated`, because the INVOKER trigger calls it as that role. It writes nothing. Regression
+probe: `supabase/probes/ticket_move_authority.sql`.
 
 ### `projects.claim_ticket(p_ticket_id uuid, p_assignee_id uuid) → uuid`
 
@@ -685,10 +723,52 @@ on any ticket whose `NEW.status` is not `backlog`. `SECURITY INVOKER`.
 
 ### `projects.fn_ticket_immutability_guard() → trigger`
 
-`trg_ticket_immutability_guard` — `BEFORE UPDATE`. Once `OLD.current_assignee_id` is set, a caller
-who is not that assignee and not `security.is_admin()` cannot change `title`, `description`,
-`text_description`, `unit_price_cents`, `required_stages` or `workload_intensity` (`P0001`). A `NULL`
-`auth.uid()` is not gated. `SECURITY DEFINER`, `search_path = public, projects, security, auth`.
+`trg_ticket_immutability_guard` — `BEFORE INSERT OR UPDATE`. A claimed ticket's terms bind both
+parties (Decision #291): what the client's wallet is held for is not the payee's to rewrite, and
+what the freelancer agreed to deliver is not the client's.
+
+| Rule | Who it binds | Refusal |
+| :--- | :----------- | :------ |
+| Once `OLD.current_assignee_id` is set, `title`, `description`, `text_description`, `unit_price_cents`, `required_stages` and `workload_intensity` do not change | Every signed-in caller, **the assignee included** | Client side `P0001` "…its content is locked to the client."; the assignee `42501` "You claimed this ticket on its client's terms…" |
+| Once claimed, `current_stage_id` moves only with `projects.can_review_project` | The assignee, and another freelancer on the project, on every path — `move_ticket` included | `42501` "Only the client moves a claimed ticket to another stage." |
+| A claimed ticket's `status` / `current_stage_id` move by `projects.fn_assert_ticket_move` (under [Tickets](#tickets), Decision #293). A change of assignee is not a move. | A statement run as `anon` / `authenticated`. `move_ticket` applies the same rule itself. | `42501`, the predicate's sentences |
+| An `INSERT` that names a `current_assignee_id` needs `projects.can_review_project` | Every signed-in caller | `42501` "A ticket is written by its client; a freelancer claims it." |
+| `payment_status` and `total_amount_paid` do not change; an `INSERT` starts them `unpaid` / `0` | A statement run as `anon` / `authenticated` | `42501` |
+| A ticket manager's statement changes only the composer's columns (`title`, `description`, `text_description`, `current_stage_id`, `owner_user_id`, `priority`, `workload_intensity`, `required_stages`, `tasks`, `due_date`, `unit_price_cents`, `sort_order`); its `INSERT` starts unclaimed in `backlog` | A statement run as `anon` / `authenticated` by neither the owner nor the ticket's assignee — admitted only by the _Ticket managers_ policies (Decision #294) | `42501` "You may edit a ticket's content for the client, not its assignee, status or payment." / "A ticket you write for the client starts unclaimed in the backlog…" |
+
+Why each is money: `finance.fn_hold_ticket_escrow` holds `COALESCE(unit_price_cents, current
+stage's price)`, and approving a stage holds the next required one at once (the Chain Reaction,
+Decision #210), so an assignee who could edit the price chose the figure the client's wallet was
+held at next. Verified by execution: a tenfold edit, then the client's approval, held 8,000,000 for
+an 800,000 stage. The stage pointer decides which stage's price is held and where the chain counts
+the next installment from; `required_stages` decides how many installments there are. The
+`projects` schema is exposed and _Manage tickets_ admits a self-assigned `INSERT`, which let the
+payee write a ticket at its own price into the client's project. `finance.fn_auto_fund_drain` holds
+any `needs_funding` ticket on a from-wallet business project, so a client statement that flips
+`payment_status` started a hold nobody asked for.
+
+Exempt: one person on both sides (the assignee who also holds `can_review_project`, as on a personal
+project), `security.is_admin()`, and a `NULL` `auth.uid()` (the platform, cron, seed). The
+bookkeeping rule judges only a client role's own statement: **`SECURITY INVOKER` on purpose**, so
+inside a definer door — the claim's hold, a release, the chain — `current_user` is the door's owner
+and the escrow functions that keep those columns pass. A statement that restates the current value
+(PostgREST patching a whole row back) passes, because nothing moved.
+
+**Delegated ticket managers (Decision #294).** A ticket's content is the client's; a freelancer
+writes it only as a project manager the business client explicitly let manage tickets
+([`projects.set_ticket_manager`](#projectsset_ticket_managerp_project_id-uuid-p_participant_id-uuid-p_allowed-boolean--jsonb)).
+Such a manager acts for the client and is bound like the client: once a ticket is claimed its terms
+are frozen (`P0001`) and its stage moves only with review authority. On an unclaimed ticket they
+change the composer's columns and nothing else — an assignee is a hire, a status a move, the claim
+and workload-report markers and the payment bookkeeping a settlement, each with its own door — and
+they delete nothing (no policy admits it). A manager who is also a ticket's assignee is held to that
+ticket as its payee. Regression probe: `supabase/probes/ticket_managers.sql`.
+
+The workload-report window turns the `workload_intensity` rule round (Decision #290): while
+`OLD.status = 'reported_hidden'` the assignee can change neither `status` nor `workload_intensity`
+(`42501`, checked before the admin exemption), and the client may **raise** `workload_intensity` —
+the answer to the report (`fn_adjust_workload_report`). Regression probe:
+`supabase/probes/ticket_terms_payee_lock.sql`. `search_path = public, projects, security, auth`.
 
 ### `projects.fn_ticket_claim_before() → trigger`
 
@@ -740,7 +820,7 @@ Grants are in `00002510` ("escrow settlement doors").
 | `projects.force_complete_stage(p_ticket_id uuid) → uuid`                         | `00001130` | Releases the current installment, advances to the next and holds it (the Chain Reaction, when the next stage's `chain_reaction` is on) | `authenticated`                  | signed in + `can_review_project`                             |
 | `projects.approve_stage(p_project_id uuid, p_stage_id uuid) → jsonb`             | `00001150` | Completes every hired ticket still holding escrow on the stage (via `fn_settle_ticket_stage`), releasing it; refunds a still-unclaimed prepaid ticket without completing it; stage → `paid` (#194, #213). Returns `released_count` / `refunded_count` (tickets), `total_paid_cents`, `fee_cents`, `refunded_cents`, `splits` | `authenticated`                  | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
 | `projects.cancel_stage_fair_exit(p_project_id uuid, p_stage_id uuid, p_tier integer) → jsonb` | `00001150` | Pays the tier (25/50/75 %) out, refunds the rest; stage → `cancelled`; the tickets left on it → `cancelled`; both sides notified (#198) | `authenticated`        | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
-| `projects.move_ticket(…)` (→ `completed`)                                        | `00001120` | Via `trg_ticket_escrow_sync`                                   | `authenticated`, `service_role`  | `has_project_access`, plus `can_review_project` for Done     |
+| `projects.move_ticket(…)` (→ `completed`)                                        | `00001120` | Via `trg_ticket_escrow_sync`                                   | `authenticated`, `service_role`  | `has_project_access`, plus `can_review_project` for Done; a claimed ticket from `claimed` / `in_progress` not even then (#94, `fn_assert_ticket_move`, #293) |
 | `projects.delete_stage(p_project_id uuid, p_stage_id uuid) → void`               | `00001130` | Releases claimed tickets' escrow in the stage                  | `authenticated`, `service_role`  | signed in + `can_review_project` (Decision #163)             |
 | `projects.remove_project_member(…)`                                              | `00001130` | Via `release_ticket_to_backlog`                                | `authenticated`, `service_role`  | project owner                                                |
 | `projects.release_ticket_to_backlog(p_ticket_id uuid) → void`                    | `00001120` | Releases a ticket's escrow, resets it to New                   | **none** (owner-only, internal)  | none — reachable only through `remove_project_member`        |
@@ -763,8 +843,9 @@ the tickets it will settle in id order, takes the same quote, runs the split, an
 `{ tier, cancelled_count, tickets_cancelled, freelancer_paid_cents, fee_cents,
 client_refunded_cents, currency, stage_status }` from that quote (the old figures summed
 `finance.transactions`, which has no row for a payout still in its pending window since #191). It
-then closes every ticket still standing on the stage (not `completed` / `cancelled` /
-`reported_hidden`) as `cancelled` with a `ticket_history` row (`reason: fair_exit`, `tier`),
+then closes every ticket still standing on the stage (not `completed` / `cancelled` — a ticket
+suspended by a workload report included, since it keeps its assignee and its hold, Decision #290) as
+`cancelled`, lifting any report countdown (`hidden_until`), with a `ticket_history` row (`reason: fair_exit`, `tier`),
 cancels any paid revision round still `awaiting_payment`, and notifies both sides with
 `stage_cancelled` (`stage.cancelled` in the catalog): every payee and team-split recipient the
 split paid plus the stage's assignees (`fn_notify_payees`), and the project owner plus the reviewer
@@ -993,25 +1074,49 @@ cannot see, → `P0001`. The insert fires `trg_open_workload_report`.
 ### `projects.fn_open_workload_report() → trigger`
 
 `trg_open_workload_report` — `AFTER INSERT ON projects.ticket_workload_reports` (`00001850`). The
-Frozen rule: clears the ticket's assignee (cascading `fn_ticket_claim_before` → `backlog` and
-`fn_ticket_escrow_sync` → escrow **released** to the reporter), stamps `hidden_until = now() +
-workload_report_window_hours` (default 48) and `workload_report_id`. `search_path = public, projects,
-finance, security, org, auth`; `EXECUTE` moot (a trigger).
+Frozen rule (Decision #290): **suspends** the ticket and moves no money. It refuses
+(`object_not_in_prerequisite_state`) unless the ticket is under way (`claimed` / `in_progress`) —
+which also keeps one report open per ticket — then sets `status = 'reported_hidden'`,
+`hidden_until = now() + workload_report_window_hours` (default 48) and `workload_report_id`, and
+stamps the same `hidden_until` on the report (the clock the expiry sweep reads). The assignee and the
+held escrow are untouched. It used to clear the assignee instead, which cascaded through
+`fn_ticket_escrow_sync`'s removal branch and **released the held escrow to the reporter** — a payout
+the freelancer could trigger alone with one INSERT (probe: `supabase/probes/workload_report_suspension.sql`).
+`search_path = public, projects, finance, security, org, auth`; `EXECUTE` moot (a trigger).
+
+### `projects.fn_resume_reported_ticket(p_ticket_id uuid, p_report_id uuid) → void`
+
+`00001140`, internal (Decision #290). Ends one report's suspension: if the ticket is still
+`reported_hidden` on that report and holds escrow it returns to `in_progress` (through the work-start
+gate, which finds the hold it never lost); in every case its `hidden_until` is lifted. A ticket the
+client settled meanwhile keeps the status that settlement gave it; a ticket now suspended on a later
+report is not touched. `search_path = public, projects, finance`; `EXECUTE`: `service_role` only.
+
+### `projects.fn_adjust_workload_report() → trigger`
+
+`trg_adjust_workload_report` — `AFTER UPDATE OF workload_intensity ON projects.tickets` (`00001850`).
+The client's answer to a report (`PRODUCT_SPEC.md` §Workload Intensity Reporting, step 2): when a
+`reported_hidden` ticket's `workload_intensity` is raised, the open report becomes `adjusted`
+(`resolved_at = now()`) and `fn_resume_reported_ticket` puts the work back `in_progress` at the new
+W_i. Only the client side can make that raise — `fn_ticket_immutability_guard` refuses it to the
+reporter. `search_path = public, projects`; `EXECUTE` moot (a trigger).
 
 ### `projects.fn_resolve_expired_workload_reports() → integer`
 
 `00001140` §1b, the expiry sweep: every `open` report whose `hidden_until` has passed becomes
-`expired_penalized`, the ticket's `hidden_until` is lifted, and a `trust_score` `security.penalties`
-row (severity `client_no_adjust_penalty`) is written against the client business or owner. Returns
-the count. `search_path = public, projects, security`; `EXECUTE`: `service_role` only — no client
-grant. **No caller check** — moot for clients, because no client role holds `EXECUTE`. It takes no
-arguments and only acts on reports that are genuinely expired.
+`expired_penalized`, the suspended ticket resumes `in_progress` at its reported W_i
+(`fn_resume_reported_ticket`), and a `trust_score` `security.penalties` row (severity
+`client_no_adjust_penalty`) is written against the client business or owner. Returns the count.
+`search_path = public, projects, security`; `EXECUTE`: `service_role` only — no client grant. **No
+caller check** — moot for clients, because no client role holds `EXECUTE`. It takes no arguments and
+only acts on reports that are genuinely expired. **Not scheduled**: no `ops.scheduled_jobs` row runs
+it (Decision #290 (FLAG a)).
 
 ### `projects.fn_flag_bad_faith_report(p_report_id uuid) → void`
 
-`00001140` (from `0007`), the audit outcome: marks the report `dismissed_bad_faith`, lifts the ticket's
-`hidden_until` (it stays in the backlog: filing evicted the assignee and released the escrow, and
-resuming it to `in_progress` with no hold would break the work-start gate, Decision #165), and inserts a `discovery_rank` `security.penalties`
+`00001140` (from `0007`), the audit outcome: marks the report `dismissed_bad_faith`, resumes the
+suspended ticket `in_progress` at the W_i it was reported at (`fn_resume_reported_ticket`; its hold
+never left, Decision #290), and inserts a `discovery_rank` `security.penalties`
 row (severity `freelancer_bad_faith_penalty`) against the **reporter**. `search_path = public,
 projects, security`; `EXECUTE`: `service_role` only — no client grant.
 
@@ -1367,9 +1472,26 @@ another project, an entity participant, and the caller's own row (`check_violati
 role verbatim. Idempotent (an unchanged role returns `changed: false` and writes nothing). Writes
 `security.audit_logs` (`project.member_role_changed`, `{project_id, member_user_id, from, to}`) and
 `project_activity` (`member_role_changed`) in the same transaction. **A role is a permission label
-only** — no seat, ticket or escrow moves (that is `remove_project_member`). Returns
-`{participant_id, role, changed}`. Refuses a NULL `auth.uid()` first; `EXECUTE`: `authenticated`,
-`service_role`.
+only** — no seat, ticket or escrow moves (that is `remove_project_member`). A seat leaving
+`admin` / `manager` loses its `can_manage_tickets` grant in the same write (Decision #294; the audit
+metadata carries `ticket_grant_ended`). Returns `{participant_id, role, changed}`. Refuses a NULL
+`auth.uid()` first; `EXECUTE`: `authenticated`, `service_role`.
+
+### `projects.set_ticket_manager(p_project_id uuid, p_participant_id uuid, p_allowed boolean) → jsonb`
+
+`00001135` §1b (Decision #294). The business client's explicit grant to a delegated project manager
+to compose and edit tickets on its behalf — the Members tab's "Let manage tickets" / "Stop managing
+tickets" (`PATCH /api/projects/[id]/members/[memberId]/tickets`). Gated like appointing the delegate:
+**review authority** (`insufficient_privilege`) and, on a business project, the `hire` capability
+(`fn_assert_business_actor`, `PK403`). Refuses (`check_violation`) a project with no client business
+("Only a business client delegates its tickets…"), a closed project, a row of another project, the
+caller's own row, and a grant to anything but a `freelancer` person seat holding `admin` / `manager`.
+Locks the participant row; idempotent (`changed: false`). Writes `security.audit_logs`
+(`project.ticket_manager_changed`, `{project_id, member_user_id, can_manage_tickets}`) and
+`project_activity` (`ticket_manager_changed`) in the same transaction. Returns
+`{participant_id, can_manage_tickets, changed}`. What the grant reaches is
+`fn_ticket_immutability_guard`'s rule. Refuses a NULL `auth.uid()` first; `EXECUTE`:
+`authenticated`, `service_role`.
 
 ### `projects.fn_apply_invitation_decision(p_invitation_id uuid, p_accept boolean, p_actor uuid) → jsonb`
 
@@ -1409,7 +1531,8 @@ which answers every invitation of one request together (Decision #128).
 The client removes a hired freelancer from ONE stage (`p_stage_id`) or from the whole project
 (`NULL`). Owner-only; refuses a non-freelancer participant (a business participant is the paying
 side). Applies `PRODUCT_SPEC.md` §Freelancer Removal Mid-Ticket: every ticket the person holds within
-the scope — `claimed`, `in_progress` or `in_review` — goes through `projects.release_ticket_to_backlog`
+the scope — `claimed`, `in_progress`, `in_review`, or `reported_hidden` (suspended by their workload
+report, still theirs and still held — Decision #290) — goes through `projects.release_ticket_to_backlog`
 (escrow released to them in full, ticket back to New), their held `stage_assignments` in scope become
 `released`, the accepted invitations the removal undoes gain `dismissed_at` (their acceptance kept as
 history), and a whole-project removal deletes the `project_participants` row — which the

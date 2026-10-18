@@ -64,6 +64,12 @@ export type DevMemberRole =
 	| "freelancer_assigned"
 	| "freelancer_unassigned";
 /**
+ * Whether the Members tab's engagement is billed to a business client (Decision #294): only a business
+ * lets an admin/manager seat manage tickets, so `business` surfaces the grant on every such row and
+ * `individual` hides it. `auto` defers to the server (the fixtures carry no business client).
+ */
+export type DevMemberClient = "auto" | "business" | "individual";
+/**
  * The acting inbox view the Context Switcher can simulate for `/messages` (task §4) — selects which
  * advanced-filter SET the sidebar shows and whether auto-responses are offered: a `freelancer` sees
  * provider-side filters (Service · Product · Client · Co-Freelancers · Teams · Team Members) and
@@ -445,6 +451,8 @@ export interface DevSeamState {
 	pendingInvites: boolean;
 	/** Whether the Members tab's Requests section should carry open applications. */
 	pendingRequests: boolean;
+	/** Whether the Members tab's engagement is billed to a business (ticket delegation, #294). */
+	memberClient: DevMemberClient;
 	/** The simulated `/messages` inbox view (selects the advanced-filter set + auto-response offer). */
 	messagingRole: DevMessagingRole;
 	/** The simulated microphone permission for the chat composer's voice memo. */
@@ -582,6 +590,7 @@ const MEMBER_ROLES: readonly DevMemberRole[] = [
 	"freelancer_assigned",
 	"freelancer_unassigned",
 ];
+const MEMBER_CLIENTS: readonly DevMemberClient[] = ["auto", "business", "individual"];
 const STAGE_ASSIGNMENTS: readonly DevStageAssignment[] = ["assigned", "unassigned"];
 const MESSAGING_ROLES: readonly DevMessagingRole[] = ["freelancer", "client", "business"];
 const MIC_PERMISSIONS: readonly DevMicPermission[] = [
@@ -739,6 +748,8 @@ export function readDevSeam(): DevSeamState | null {
 		memberRole: coerce(ds.devMemberRole, MEMBER_ROLES, "owner_admin"),
 		pendingInvites: ds.devPendingInvites !== "false",
 		pendingRequests: ds.devPendingRequests !== "false",
+		// Absent = `auto`, the same "no second spelling for no override" rule as `projectOnboarding`.
+		memberClient: coerce(ds.devMemberClient, MEMBER_CLIENTS, "auto"),
 		messagingRole: coerce(ds.devMessagingRole, MESSAGING_ROLES, "freelancer"),
 		micPermission: coerce(ds.devMicPermission, MIC_PERMISSIONS, "auto"),
 		layoutDirection: coerce(ds.devDirection, LAYOUT_DIRECTIONS, "ltr"),

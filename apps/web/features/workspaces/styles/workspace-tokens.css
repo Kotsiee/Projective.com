@@ -138,6 +138,7 @@
 	--wsp-draft: var(--on-surface-variant);
 	--wsp-active: var(--wsp-kind);
 	--wsp-archived: var(--outline);
+	--wsp-alert: var(--danger);
 	/* #endregion */
 
 	/* #region Permission semantics — the matrix's tri-state and the override markers */
@@ -703,11 +704,6 @@ frozen animation clock costs nothing. */
 	font-size: var(--wsp-fs-micro);
 	font-weight: var(--fw-semibold);
 	white-space: nowrap;
-}
-
-.wsp-chip--kind {
-	background: var(--wsp-kind-tint-hi);
-	color: var(--wsp-kind-ink);
 }
 
 /* The role chip carrying the acting state, so the two facts occupy one mark instead of two chips of

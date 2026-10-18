@@ -272,6 +272,14 @@ export const LocalKeys = {
 	 */
 	WORKSPACE_ZOOM: "pj.local.workspace.zoom",
 	/**
+	 * The workspace lane's "More" section memory — ONE JSON map from `<kind>.<viewer>` to `true` (open)
+	 * | `false` (closed), so the choice is kept per viewer and kind without minting a key per viewer
+	 * (`laneMorePartition` / `parseMoreOpen` / `withMoreOpen` in
+	 * `features/workspaces/core/lane-model.ts`). Collapsed by default; read after hydration only, so
+	 * it never diverges from the server-rendered closed section.
+	 */
+	WORKSPACE_LANE_MORE: "pj.local.workspace.laneMore",
+	/**
 	 * The project Members tab's zoom-driven view density (a `0`–`1` float) — the same list⇄grid model
 	 * as the File Explorer, shared cross-island (the footer rig ↔ the roster body). One key across the
 	 * project, stage and conversation rosters: they are one surface over three scopes.
