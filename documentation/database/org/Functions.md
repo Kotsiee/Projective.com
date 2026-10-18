@@ -923,7 +923,9 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
   `wi` — the LIVE Workload Intensity, Σ `workload_intensity` of the member's `claimed` / `in_progress`
   / `in_review` tickets, summed exactly as `projects.check_ticket_capacity` sums it — and `wi_cap`,
   their `max_workload_intensity` else `security.platform_params.global_workload_cap_default` else 10;
-  a team member also carries `share_bp` / `share_held` from `finance.contribution_agreements`), the
+  a team member also carries `share_bp` / `share_held` from `finance.contribution_agreements` —
+  **only when the viewer holds `manage_finances`**, the `payout` block's gate (Decision #233), else
+  `null` for every member, their own included; probe `supabase/probes/workspace_member_stakes.sql`), the
   live roles with RESOLVED capabilities and holder counts, the outgoing pending invitations **only
   when the viewer holds `invite_members`**, a team's Standing label, the projects (team: via its stage
   assignments, each with its client business's `client` face; business: as client, excluding

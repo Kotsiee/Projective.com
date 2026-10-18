@@ -81,7 +81,7 @@ export interface MemberDrawerProps {
 	/** Open the ownership transfer — the owner's way to step back. */
 	onTransfer: (member: WorkspaceMember) => void;
 	/** Ask to leave — the viewer's own row. */
-	onLeave: () => void;
+	onLeave: (member: WorkspaceMember) => void;
 	/** Ask to remove this member. */
 	onRemove: (member: WorkspaceMember) => void;
 }
@@ -178,10 +178,14 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 		close();
 	}
 
+	/**
+	 * Close, then ask the screen for the act's dialog. The screen opens it only once this panel has left
+	 * (`core/overlay-handoff.ts`), so the dialog never records a button that is about to vanish.
+	 */
 	function terminalAct(key: "transfer" | "leave" | "remove"): void {
 		close();
 		if (key === "transfer") props.onTransfer(member);
-		else if (key === "leave") props.onLeave();
+		else if (key === "leave") props.onLeave(member);
 		else props.onRemove(member);
 	}
 	// #endregion

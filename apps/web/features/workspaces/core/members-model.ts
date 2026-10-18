@@ -17,6 +17,7 @@ import {
 	roleRank,
 	TEAM_FULL_REFUSAL,
 	type WorkspaceCapability,
+	type WorkspaceInvite,
 	type WorkspaceKind,
 	type WorkspaceMember,
 	type WorkspaceRoleDef,
@@ -231,6 +232,24 @@ export function roleText(
 	return role ? roleDefText(role) : roleLabel(member.rolePreset);
 }
 
+/**
+ * A role as ONE item of a MetaLine: a custom role reads "Designer (based on Lead)". The table's Role
+ * cell keeps "Designer · based on Lead"; inside a MetaLine that middot would read as the line's own
+ * separator and split one fact into two.
+ */
+export function roleMetaDefText(role: WorkspaceRoleDef): string {
+	return role.preset ? role.name : `${role.name} (based on ${roleLabel(role.basePreset)})`;
+}
+
+/** The role a member holds, as one MetaLine item (see {@link roleMetaDefText}). */
+export function roleMetaText(
+	member: Pick<WorkspaceMember, "roleId" | "rolePreset">,
+	roles: readonly WorkspaceRoleDef[],
+): string {
+	const role = roleOf(member, roles);
+	return role ? roleMetaDefText(role) : roleLabel(member.rolePreset);
+}
+
 /** The role's own name, without its base — for a sentence ("From the Designer role"). */
 export function roleName(
 	member: Pick<WorkspaceMember, "roleId" | "rolePreset">,
@@ -362,16 +381,49 @@ export function seatsFull(seats: WorkspaceSeats | null): boolean {
 }
 
 /**
- * The seat fact: "5 of 15 seats" against a cap (its title says what holds them), else the head-count.
- * `used` counts open invitations as well as members — the count the cap is checked against.
+ * Whether an invitation's window has closed at `now` (epoch ms). A lapsed invitation stays in the
+ * queue — it can be resent — but it holds no seat: `org.fn_team_seats_used` counts only unexpired ones.
  */
-export function seatsItem(seats: WorkspaceSeats | null, activeCount: number): MetaLineEntry {
+export function inviteLapsed(invite: Pick<WorkspaceInvite, "expiresAt">, now: number): boolean {
+	if (!invite.expiresAt) return false;
+	const at = new Date(invite.expiresAt).getTime();
+	return Number.isFinite(at) && at <= now;
+}
+
+/** The outgoing queue split the way the seat count splits it: still open, and lapsed. */
+export interface InviteCounts {
+	/** Pending and unexpired — each holds a seat. */
+	live: number;
+	/** Pending but past their window — resendable, holding no seat. */
+	lapsed: number;
+}
+
+/** Count the queue the viewer can see at `now` (epoch ms). */
+export function inviteCounts(
+	invites: readonly Pick<WorkspaceInvite, "expiresAt">[],
+	now: number,
+): InviteCounts {
+	const lapsed = invites.filter((i) => inviteLapsed(i, now)).length;
+	return { live: invites.length - lapsed, lapsed };
+}
+
+/**
+ * The seat fact: "5 of 15 seats" against a cap, else the head-count. `used` counts open invitations as
+ * well as members — the count the cap is checked against. Its title breaks that down into members and
+ * open invitations only for a viewer who may see the invitation queue (`invite_members`): the console
+ * read hides the queue from everybody else, and the title must not tell them its size.
+ */
+export function seatsItem(
+	seats: WorkspaceSeats | null,
+	activeCount: number,
+	seesQueue = false,
+): MetaLineEntry {
 	if (seats && seats.limit !== null) {
 		const offered = Math.max(0, seats.used - activeCount);
 		return {
 			text: `${seats.used} of ${seats.limit} seats`,
 			tabular: true,
-			title: offered > 0
+			title: seesQueue && offered > 0
 				? `${activeCount} ${activeCount === 1 ? "member" : "members"} and ${offered} open ${
 					offered === 1 ? "invitation" : "invitations"
 				}`
@@ -390,16 +442,33 @@ export function pendingItem(pending: number): MetaLineEntry | null {
 	};
 }
 
-/** The Members header's MetaLine: seats, then the pending invitations. */
+/**
+ * The lapsed invitations, or nothing: "1 lapsed" after a pending count, "1 lapsed invitation" on its
+ * own — so a queue of only lapsed rows is still mentioned, never counted as pending.
+ */
+export function lapsedItem(counts: InviteCounts): MetaLineEntry | null {
+	const n = counts.lapsed;
+	if (n <= 0) return null;
+	return {
+		text: counts.live > 0 ? `${n} lapsed` : `${n} lapsed ${n === 1 ? "invitation" : "invitations"}`,
+		tabular: true,
+	};
+}
+
+/** The Members header's MetaLine: seats, then the pending invitations, then any lapsed ones. */
 export function membersHeaderItems(input: {
 	seats: WorkspaceSeats | null;
 	activeCount: number;
-	pending: number;
+	invites: InviteCounts;
+	/** The viewer holds `invite_members` — the only viewer the console read shows the queue to. */
+	seesQueue: boolean;
 }): MetaLineEntry[] {
-	const pending = pendingItem(input.pending);
-	return pending
-		? [seatsItem(input.seats, input.activeCount), pending]
-		: [seatsItem(input.seats, input.activeCount)];
+	const items: MetaLineEntry[] = [seatsItem(input.seats, input.activeCount, input.seesQueue)];
+	const pending = pendingItem(input.invites.live);
+	if (pending) items.push(pending);
+	const lapsed = lapsedItem(input.invites);
+	if (lapsed) items.push(lapsed);
+	return items;
 }
 // #endregion
 
@@ -432,31 +501,45 @@ export function inviteRoleSeed(
 
 /** The live line under the handle field. */
 export interface InviteHandleLine {
-	tone: "checking" | "found" | "unchecked" | "failed";
+	tone: "checking" | "unchecked" | "failed";
 	text: string;
 }
 
 /**
- * What the live lookup says about a typed handle, reading R3's availability check the other way round:
- * a handle the namespace calls TAKEN belongs to somebody — the person to invite — and one it calls
- * AVAILABLE belongs to nobody. A handle outside the entity claim rule's charset may still be a
- * person's (usernames may hold `.` and `_`), so it is left for the server to look up on send.
+ * What the live lookup says about a typed handle. R3's check asks the ONE shared handle namespace,
+ * which holds people, teams, businesses, enterprises and the 90-day holds on renamed handles — so its
+ * answers read only one way round for an invitation:
+ *
+ *   - AVAILABLE means nobody at all holds it, so nobody can be invited by it (a problem, below).
+ *   - TAKEN means SOMETHING holds it, not that a person does: it may be a team's or a business's
+ *     handle, or a renamed person's old one. `org.invite_workspace_member` resolves a handle from people
+ *     only, so a taken handle is left for the server to look up on send — the line never claims a
+ *     person was found.
+ *
+ * A handle outside the entity claim rule's charset may still be a person's (usernames may hold `.` and
+ * `_`), so it too is left for the server. The entity's own handle and a current member's are problems,
+ * not lines.
  */
 export function inviteHandleLine(
 	state: HandleCheckState,
 	memberHandles: ReadonlySet<string>,
+	ownHandle = "",
 ): InviteHandleLine | null {
 	if (state.failed) return { tone: "failed", text: HANDLE_CHECK_FAILED };
 	if (state.status === "checking") {
 		return { tone: "checking", text: `Looking up @${state.handle}…` };
 	}
-	if (state.status === "taken" && !memberHandles.has(state.handle)) {
-		return { tone: "found", text: `@${state.handle} is on Projective.` };
-	}
-	if (state.status === "invalid" && handleRefusalOf(state.reason) === "format") {
-		return { tone: "unchecked", text: `We'll look @${state.handle} up when you send.` };
-	}
-	return null;
+	if (memberHandles.has(state.handle) || isOwnHandle(state.handle, ownHandle)) return null;
+	const unchecked = state.status === "taken" ||
+		(state.status === "invalid" && handleRefusalOf(state.reason) === "format");
+	return unchecked
+		? { tone: "unchecked", text: `We'll look @${state.handle} up when you send.` }
+		: null;
+}
+
+/** Whether a typed handle is the entity's own — a team or business is never anyone to invite. */
+function isOwnHandle(handle: string, ownHandle: string): boolean {
+	return ownHandle !== "" && handle === ownHandle.toLowerCase();
 }
 
 /**
@@ -467,11 +550,14 @@ export function inviteHandleProblem(
 	state: HandleCheckState,
 	memberHandles: ReadonlySet<string>,
 	kind: WorkspaceKind,
+	ownHandle = "",
 ): string | null {
 	if (state.failed) return null;
 	if (state.status === "idle") return "Enter their handle.";
-	if (memberHandles.has(state.handle)) {
-		return `@${state.handle} is already in this ${kindCopy(kind).noun}.`;
+	const noun = kindCopy(kind).noun;
+	if (memberHandles.has(state.handle)) return `@${state.handle} is already in this ${noun}.`;
+	if (isOwnHandle(state.handle, ownHandle)) {
+		return `@${state.handle} is this ${noun}'s own handle, not a person's.`;
 	}
 	if (state.status === "available") return `Nobody on Projective goes by @${state.handle}.`;
 	if (state.status === "reserved") {
@@ -507,18 +593,23 @@ export interface InviteGateInput {
 	seats: WorkspaceSeats | null;
 	memberHandles: ReadonlySet<string>;
 	kind: WorkspaceKind;
+	/** The entity's own handle — never an invitee. */
+	ownHandle?: string;
 }
 
 /**
  * Whether Send opens: a role, a seat to offer, and an addressee the dialog has no reason to refuse —
- * a handle that is found, or that only the server can look up; a well-formed email.
+ * a handle somebody holds or that only the server can judge (the server decides whether it is a
+ * person's); a well-formed email.
  */
 export function inviteGateOpen(input: InviteGateInput): boolean {
 	if (input.sending || input.roleId === "" || seatsFull(input.seats)) return false;
 	if (input.mode === "email") return inviteEmailProblem(input.email) === null;
 	const state = input.handle;
 	if (state.status === "checking") return false;
-	if (inviteHandleProblem(state, input.memberHandles, input.kind) !== null) return false;
+	if (inviteHandleProblem(state, input.memberHandles, input.kind, input.ownHandle) !== null) {
+		return false;
+	}
 	return state.status === "taken" || state.status === "invalid" || state.failed;
 }
 
@@ -592,7 +683,9 @@ export function transferConsequences(
 	successor: string | null,
 	leave: boolean,
 ): string[] {
-	const who = successor ?? "The new owner";
+	/** The successor mid-sentence, and at the start of one. */
+	const who = successor ?? "the new owner";
+	const subject = successor ?? "The new owner";
 	const you = leave
 		? `You leave the ${kindCopy(kind).noun}; your work stays on record.`
 		: "You stay on as an Admin.";
@@ -600,7 +693,7 @@ export function transferConsequences(
 		return [
 			you,
 			`Withdrawals from the vault move to ${who}.`,
-			`${who} must have a verified identity and payout account.`,
+			`${subject} must have a verified identity and payout account.`,
 		];
 	}
 	return [
@@ -610,8 +703,18 @@ export function transferConsequences(
 	];
 }
 
-/** The transfer dialog's footer: Cancel (tier 5), then the destructive confirm (tier 3, danger). */
-export function transferFooter(input: { working: boolean; successorId: string }): MembersAction[] {
+/**
+ * The transfer dialog's footer: Cancel (tier 5), then the destructive confirm (tier 3, danger). With
+ * nobody to hand over to, the confirm could never become live (§3.11), so the dialog is an explanation
+ * and its one button is Close.
+ */
+export function transferFooter(input: {
+	working: boolean;
+	successorId: string;
+	/** How many members could take the owner seat. */
+	candidates: number;
+}): MembersAction[] {
+	if (input.candidates === 0) return [{ key: "cancel", label: "Close", tier: 5 }];
 	return [
 		{ key: "cancel", label: "Cancel", tier: 5 },
 		{

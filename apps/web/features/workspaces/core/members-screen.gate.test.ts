@@ -1,7 +1,7 @@
 /**
  * members-screen.gate — the Members module's source-level merge gates (Teams work order C2), held as a
  * test because a type-checker cannot see them: no native `<select>` or checkbox, no `wsp-select`, no
- * hand-rolled radio or label, no capability or override chip, no inline style; every field a
+ * hand-rolled radio, label or button, no capability or override chip, no inline style; every field a
  * `FormControl`; every dialog and drawer button's tone taken from the tier model (`membersTierProps`);
  * the invite dialog's handle lookup the shared `useHandleCheck`, never a copy.
  *
@@ -41,6 +41,15 @@ Deno.test("members: no native select, checkbox or radio, no wsp-select, no hand-
 		"a hand-rolled radio — use SelectButton / RadioGroup",
 	);
 	assertEquals(offenders(/<label\b/), [], "a hand-rolled label — FormControl owns the label");
+	assertEquals(
+		offenders(/<button\b/),
+		[],
+		"a raw <button> — use the ui Button (it owns the press)",
+	);
+	assert(
+		!/\.wsp-select\b/.test(read("styles/workspace-people.css")),
+		"the Members stylesheet styles a wsp-select — its last user's rules belong to its own sheet",
+	);
 });
 
 Deno.test("members: facts are MetaLines — no capability or override chips, no inline style", () => {

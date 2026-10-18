@@ -4,7 +4,7 @@ import { Button } from "@projective/ui/fields";
 import { Tooltip } from "@projective/ui/feedback";
 import type { WorkspaceInvite, WorkspaceRoleDef } from "@projective/types/workspace";
 import { shortDate } from "../core/workspace-model.ts";
-import { roleDefText } from "../core/members-model.ts";
+import { inviteLapsed, roleMetaDefText } from "../core/members-model.ts";
 import { CrossIcon, InviteOutIcon, ResendIcon } from "./MemberCard.tsx";
 
 /**
@@ -40,17 +40,13 @@ export interface InviteQueueProps {
 // #endregion
 
 // #region Helpers
-/** The role a pending person will hold on acceptance ("Designer · based on Lead"). */
+/**
+ * The role a pending person will hold on acceptance, as one MetaLine item ("as Designer (based on
+ * Lead)") — the table's "Name · based on Lead" would split into two items on the line's middots.
+ */
 function offeredRole(invite: WorkspaceInvite, roles: readonly WorkspaceRoleDef[]): string {
 	const role = roles.find((r) => r.id === invite.roleId);
-	return role ? `as ${roleDefText(role)}` : "a role that has since been archived";
-}
-
-/** Whether an invitation's window has closed. A lapsed invite is resendable, not broken. */
-function hasLapsed(invite: WorkspaceInvite): boolean {
-	if (!invite.expiresAt) return false;
-	const at = new Date(invite.expiresAt).getTime();
-	return Number.isFinite(at) && at < Date.now();
+	return role ? `as ${roleMetaDefText(role)}` : "a role that has since been archived";
 }
 
 /** Who the row is addressed to, as a reader would say it. */
@@ -71,7 +67,7 @@ function InviteRow(props: {
 }): JSX.Element {
 	const { invite, roles, canManage, busy, onAction, referenceYear } = props;
 	const who = addresseeOf(invite);
-	const lapsed = hasLapsed(invite);
+	const lapsed = inviteLapsed(invite, Date.now());
 
 	return (
 		<li class="wsp-invites__item" data-direction="invite">

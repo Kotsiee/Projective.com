@@ -2830,8 +2830,10 @@ BEGIN
                           AND t.status::text IN ('claimed', 'in_progress', 'in_review')),
                 'wi_cap', COALESCE(fp.max_workload_intensity, v_cap_default),
                 'availability', fp.availability_status,
-                'share_bp', ca.percent_bp,
-                'share_held', ca.held
+                -- Payout stakes are for the people who run payouts (Decision #233), as the `payout`
+                -- block is: everybody else reads none, not merely a hidden column.
+                'share_bp', CASE WHEN 'manage_finances' = ANY (v_caps) THEN ca.percent_bp END,
+                'share_held', CASE WHEN 'manage_finances' = ANY (v_caps) THEN ca.held END
             ) ORDER BY org.fn_preset_rank(m.role) DESC, m.joined_at), '[]'::jsonb)
             FROM (
                 SELECT x.id, x.user_id, x.role_id, x.role, x.status, x.granted_capabilities AS granted,

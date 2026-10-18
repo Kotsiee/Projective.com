@@ -16,11 +16,11 @@ import {
 import { CAPABILITY_LABEL, kindCopy, type WorkspaceDetail } from "@projective/types/workspace";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import { closeInvite, inviteModalOpen, inviteSeedRoleId } from "../core/workspace-state.ts";
-import { CheckGlyph, cloneGlyph } from "../core/workspace-glyphs.tsx";
 import {
 	grantableRoles,
 	INVITE_EMAIL_MAX,
 	INVITE_MODES,
+	inviteCounts,
 	inviteEmailProblem,
 	inviteFooter,
 	type InviteGateInput,
@@ -47,10 +47,12 @@ import { useHandleCheck } from "../hooks/useHandleCheck.ts";
  * that invitee can accept it; there are no shareable join links.
  *
  * **The handle is looked up live** with R3's `useHandleCheck` (the one handle binding every form
- * shares), read the other way round: a handle the shared namespace calls taken belongs to somebody —
- * the person to invite — and one it calls available belongs to nobody (`inviteHandleLine` /
- * `inviteHandleProblem`). A username the entity claim rule cannot judge (it may hold `.` or `_`) is
- * left for the server to look up on send.
+ * shares). That check asks the shared handle namespace — people, teams, businesses, enterprises and
+ * the 90-day holds — so it can say for certain only that NOBODY holds a handle (a problem on the
+ * field). A taken handle may be an entity's, so the line never claims a person was found: it says the
+ * server looks the handle up on send, which resolves people only (`inviteHandleLine` /
+ * `inviteHandleProblem`). The entity's own handle and a current member's are refused outright. A
+ * username the entity claim rule cannot judge (it may hold `.` or `_`) is likewise left for the server.
  *
  * **The role list holds only roles the inviter may grant** — never the owner seat, never one carrying
  * a capability they lack (`grantableRoles`, the mirror of `org.invite_workspace_member`) — and what the
@@ -58,8 +60,8 @@ import { useHandleCheck } from "../hooks/useHandleCheck.ts";
  * count are a MetaLine; a full plan closes Send and says why.
  *
  * Every field is a `FormControl` (§A.7 rest-only validation paint); "Send invitation" is the dialog's
- * one filled control (tier 3), Cancel tier 5. When the lane footer opened it, the lane's button was the
- * tier-2 trigger. Shared by teams and businesses (Decision #61).
+ * one filled control (tier 3), Cancel tier 5. Its trigger in the lane footer rig, "Invite members", is
+ * a tier-4 utility (`core/rig-model.ts`). Shared by teams and businesses (Decision #61).
  */
 
 /** The form's id — the footer's commit sits outside the body and submits it by reference. */
@@ -75,6 +77,8 @@ export default function InviteModal(props: InviteModalProps): JSX.Element {
 	const copy = kindCopy(ws.kind);
 	const grantable = grantableRoles(ws.roles, ws.viewerCapabilities);
 	const memberHandles = new Set(ws.members.map((m) => m.handle.toLowerCase()));
+	/** Only unexpired invitations hold a seat, so only they are "pending" beside the seat count. */
+	const live = inviteCounts(ws.invites, Date.now()).live;
 
 	const mode = useSignal<InviteMode>("handle");
 	const handle = useSignal("");
@@ -86,7 +90,7 @@ export default function InviteModal(props: InviteModalProps): JSX.Element {
 
 	const checker = useHandleCheck();
 	const handleField = useFieldValidation({
-		problem: () => inviteHandleProblem(checker.state.value, memberHandles, ws.kind),
+		problem: () => inviteHandleProblem(checker.state.value, memberHandles, ws.kind, ws.handle),
 	});
 	const emailField = useFieldValidation({ problem: () => inviteEmailProblem(email.value) });
 
@@ -111,10 +115,11 @@ export default function InviteModal(props: InviteModalProps): JSX.Element {
 		seats: ws.seats,
 		memberHandles,
 		kind: ws.kind,
+		ownHandle: ws.handle,
 	};
 	const [cancel, send] = inviteFooter(gate);
 	const line = mode.value === "handle"
-		? inviteHandleLine(checker.state.value, memberHandles)
+		? inviteHandleLine(checker.state.value, memberHandles, ws.handle)
 		: null;
 	const role = grantable.find((r) => r.id === roleId.value) ?? null;
 	const full = seatsFull(ws.seats);
@@ -220,7 +225,7 @@ export default function InviteModal(props: InviteModalProps): JSX.Element {
 					void submit();
 				}}
 			>
-				<MetaLine class="wsp-dialog__meta" items={inviteSeatItems(ws.seats, ws.invites.length)} />
+				<MetaLine class="wsp-dialog__meta" items={inviteSeatItems(ws.seats, live)} />
 
 				<FormControl
 					label="How to reach them"
@@ -387,22 +392,15 @@ export default function InviteModal(props: InviteModalProps): JSX.Element {
 
 // #region Live line
 /**
- * The live line's leading mark: a spinner while the namespace is asked, a tick for a handle that
- * belongs to somebody. Decorative — the sentence beside it carries the meaning — so the neutral lines
- * draw none.
+ * The live line's leading mark: a spinner while the namespace is asked, and nothing otherwise — the
+ * lookup never confirms a person (only the server can), so no line earns a success tick. Decorative:
+ * the sentence beside it carries the meaning.
  */
 function LiveMark({ tone }: { tone: InviteHandleLine["tone"] }): VNode | null {
-	if (tone === "checking") {
-		return (
-			<span class="wsp-dialog__check-mark" aria-hidden="true">
-				<ProgressSpinner size={14} strokeWidth={2} aria-label="Looking up" />
-			</span>
-		);
-	}
-	if (tone !== "found") return null;
+	if (tone !== "checking") return null;
 	return (
-		<span class="wsp-dialog__check-mark" data-tone="found" aria-hidden="true">
-			{cloneGlyph(CheckGlyph)}
+		<span class="wsp-dialog__check-mark" aria-hidden="true">
+			<ProgressSpinner size={14} strokeWidth={2} aria-label="Looking up" />
 		</span>
 	);
 }

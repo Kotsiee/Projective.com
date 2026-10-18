@@ -20,12 +20,14 @@ import {
 	drawerTerminal,
 	filledCount,
 	grantableRoles,
+	inviteCounts,
 	inviteEmailProblem,
 	inviteFooter,
 	type InviteGateInput,
 	inviteGateOpen,
 	inviteHandleLine,
 	inviteHandleProblem,
+	inviteLapsed,
 	inviteRefusalText,
 	inviteRoleSeed,
 	inviteSeatItems,
@@ -43,6 +45,8 @@ import {
 	overrideItems,
 	overrideSummary,
 	permissionGroups,
+	roleMetaDefText,
+	roleMetaText,
 	roleOptions,
 	roleText,
 	seatsFull,
@@ -363,17 +367,35 @@ Deno.test("roles: a custom role reads 'Name · based on Lead'; options carry the
 		description: "Designer summary",
 	}]);
 });
+
+Deno.test("roles: inside a MetaLine a custom role is ONE item — 'Name (based on Lead)', no middot", () => {
+	const designer = roleMetaText(member("bo", "lead", { roleId: "r-designer" }), ROLES);
+	assertEquals(designer, "Designer (based on Lead)");
+	assert(!designer.includes("·"), "its own middot would read as the MetaLine's separator");
+	assertEquals(roleMetaText(member("cy", "admin"), ROLES), "Admin");
+	assertEquals(roleMetaText(member("dee", "member", { roleId: "gone" }), ROLES), "Member");
+	assertEquals(roleMetaDefText(ROLES[5]), "Treasurer (based on Admin)");
+});
 // #endregion
 
 // #region Invite handle lookup
 const NOBODY_HERE = new Set<string>(["ana"]);
 
-Deno.test("invite: a TAKEN handle is a person to invite; an AVAILABLE one is nobody", () => {
-	assertEquals(inviteHandleLine(check("taken", "ravi"), NOBODY_HERE), {
-		tone: "found",
-		text: "@ravi is on Projective.",
-	});
-	assertStrictEquals(inviteHandleProblem(check("taken", "ravi"), NOBODY_HERE, "team"), null);
+Deno.test("invite: TAKEN is not 'a person' — the server looks it up; AVAILABLE is nobody", () => {
+	// The namespace counts teams, businesses, enterprises and 90-day holds as taken too, so a taken
+	// handle is never announced as a person found — and no line is a success.
+	for (const held of ["ravi", "northloop", "acme-ltd", "renamed-person"]) {
+		assertEquals(inviteHandleLine(check("taken", held), NOBODY_HERE), {
+			tone: "unchecked",
+			text: `We'll look @${held} up when you send.`,
+		});
+		assertStrictEquals(inviteHandleProblem(check("taken", held), NOBODY_HERE, "team"), null);
+	}
+	assert(
+		[check("taken", "x"), check("checking", "x"), check("available", "x")]
+			.every((s) => inviteHandleLine(s, NOBODY_HERE)?.tone !== ("found" as string)),
+		"no state reads as a person found",
+	);
 	assertEquals(
 		inviteHandleProblem(check("available", "ghost"), NOBODY_HERE, "team"),
 		"Nobody on Projective goes by @ghost.",
@@ -391,6 +413,29 @@ Deno.test("invite: a TAKEN handle is a person to invite; an AVAILABLE one is nob
 		inviteHandleProblem(check("reserved", "teams", "That handle is reserved."), NOBODY_HERE, "team")
 			?.includes("reserved"),
 	);
+});
+
+Deno.test("invite: the entity's own handle is refused, with no line and no Send", () => {
+	const own = check("taken", "northloop");
+	assertEquals(
+		inviteHandleProblem(own, NOBODY_HERE, "team", "Northloop"),
+		"@northloop is this team's own handle, not a person's.",
+	);
+	assertStrictEquals(inviteHandleLine(own, NOBODY_HERE, "northloop"), null);
+	assertStrictEquals(inviteHandleLine(check("taken", "ana"), NOBODY_HERE, "northloop"), null);
+	const gate: InviteGateInput = {
+		mode: "handle",
+		handle: own,
+		email: "",
+		roleId: "r-member",
+		sending: false,
+		seats: null,
+		memberHandles: NOBODY_HERE,
+		kind: "team",
+		ownHandle: "northloop",
+	};
+	assert(!inviteGateOpen(gate), "the team's own handle never opens Send");
+	assert(inviteGateOpen({ ...gate, handle: check("taken", "other-team") }), "the server decides");
 });
 
 Deno.test("invite: a handle outside the entity charset is left for the server; a short one is refused", () => {
@@ -497,21 +542,81 @@ Deno.test("invite: seat and pending facts; refusals by typed details", () => {
 
 // #region Header & row facts
 Deno.test("header: '5 of 15 seats' and '2 pending invitations', tabular; head-count when uncapped", () => {
-	assertEquals(membersHeaderItems({ seats: { used: 5, limit: 15 }, activeCount: 3, pending: 2 }), [
-		{ text: "5 of 15 seats", tabular: true, title: "3 members and 2 open invitations" },
-		{ text: "2 pending invitations", tabular: true },
-	]);
-	assertEquals(membersHeaderItems({ seats: null, activeCount: 1, pending: 0 }), [
-		{ text: "1 member", tabular: true },
-	]);
+	const none = { live: 0, lapsed: 0 };
 	assertEquals(
-		membersHeaderItems({ seats: { used: 4, limit: null }, activeCount: 4, pending: 0 }),
+		membersHeaderItems({
+			seats: { used: 5, limit: 15 },
+			activeCount: 3,
+			invites: { live: 2, lapsed: 0 },
+			seesQueue: true,
+		}),
 		[
-			{ text: "4 members", tabular: true },
+			{ text: "5 of 15 seats", tabular: true, title: "3 members and 2 open invitations" },
+			{ text: "2 pending invitations", tabular: true },
 		],
+	);
+	assertEquals(
+		membersHeaderItems({ seats: null, activeCount: 1, invites: none, seesQueue: true }),
+		[
+			{ text: "1 member", tabular: true },
+		],
+	);
+	assertEquals(
+		membersHeaderItems({
+			seats: { used: 4, limit: null },
+			activeCount: 4,
+			invites: none,
+			seesQueue: false,
+		}),
+		[{ text: "4 members", tabular: true }],
 	);
 	assert(
 		seatsFull({ used: 4, limit: 4 }) && !seatsFull({ used: 4, limit: null }) && !seatsFull(null),
+	);
+});
+
+Deno.test("header: the seat title never tells a viewer who cannot see invitations how many are open", () => {
+	// The console read hides the queue from anyone without invite_members, but answers `seats` to all.
+	assertEquals(
+		membersHeaderItems({
+			seats: { used: 5, limit: 15 },
+			activeCount: 3,
+			invites: { live: 0, lapsed: 0 },
+			seesQueue: false,
+		}),
+		[{ text: "5 of 15 seats", tabular: true, title: undefined }],
+	);
+});
+
+Deno.test("header: a lapsed invitation holds no seat, so it is never counted as pending", () => {
+	const now = Date.parse("2026-10-18T12:00:00Z");
+	const invites = [
+		{ expiresAt: "2026-10-30T00:00:00Z" },
+		{ expiresAt: "2026-10-01T00:00:00Z" },
+		{ expiresAt: null },
+		{ expiresAt: "2026-10-18T12:00:00Z" },
+	];
+	assertEquals(inviteCounts(invites, now), { live: 2, lapsed: 2 });
+	assert(inviteLapsed({ expiresAt: "2026-10-18T12:00:00Z" }, now), "lapses AT its expiry");
+	assert(!inviteLapsed({ expiresAt: "not a date" }, now));
+	// seats.used = 3 members + 2 live invitations; the lapsed two are named, never "pending".
+	assertEquals(
+		membersHeaderItems({
+			seats: { used: 5, limit: 15 },
+			activeCount: 3,
+			invites: inviteCounts(invites, now),
+			seesQueue: true,
+		}).map((i) => typeof i === "string" ? i : i.text),
+		["5 of 15 seats", "2 pending invitations", "2 lapsed"],
+	);
+	assertEquals(
+		membersHeaderItems({
+			seats: { used: 3, limit: 15 },
+			activeCount: 3,
+			invites: { live: 0, lapsed: 1 },
+			seesQueue: true,
+		}).map((i) => typeof i === "string" ? i : i.text),
+		["3 of 15 seats", "1 lapsed invitation"],
 	);
 });
 
@@ -567,6 +672,16 @@ Deno.test("transfer: the disclosure names the successor; refusals name them too"
 	]);
 	assert(transferConsequences("team", null, true)[0].startsWith("You leave the team"));
 	assert(transferConsequences("business", "Ana", false)[1].includes("Billing"));
+	// Before a successor is picked: lower case mid-sentence, capitalised only where a sentence starts.
+	assertEquals(transferConsequences("team", null, false), [
+		"You stay on as an Admin.",
+		"Withdrawals from the vault move to the new owner.",
+		"The new owner must have a verified identity and payout account.",
+	]);
+	assertEquals(
+		transferConsequences("business", null, false)[1],
+		"Billing, withdrawals and archiving move to the new owner.",
+	);
 	const payout = transferRefusal(
 		{
 			message: "x",
@@ -588,14 +703,19 @@ Deno.test("transfer: the disclosure names the successor; refusals name them too"
 });
 
 Deno.test("transfer: one filled control — the danger confirm — beside Cancel", () => {
-	const footer = transferFooter({ working: false, successorId: "" });
+	const footer = transferFooter({ working: false, successorId: "", candidates: 2 });
 	assertEquals(footer.map((a) => [a.key, a.tier, a.danger ?? false]), [["cancel", 5, false], [
 		"transfer",
 		3,
 		true,
 	]]);
-	assert(footer[1].disabled, "no successor, no transfer");
+	assert(footer[1].disabled, "no successor picked yet, no transfer");
 	assertEquals(filledCount(footer), 1);
+	// Nobody to hand over to: a confirm that could never become live is absent, not disabled (§3.11).
+	assertEquals(
+		transferFooter({ working: false, successorId: "", candidates: 0 }).map((a) => [a.key, a.label]),
+		[["cancel", "Close"]],
+	);
 	assertEquals(membersTierProps(3, true), { variant: "filled", severity: "danger" });
 	assertEquals(membersTierProps(5), { variant: "text" });
 	assertEquals(membersTierProps("link"), { variant: "link" });

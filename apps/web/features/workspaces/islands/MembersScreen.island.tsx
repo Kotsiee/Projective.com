@@ -31,6 +31,7 @@ import { peopleZoom } from "../core/view-state.ts";
 import { filterMembers, sortMembers } from "../core/workspace-model.ts";
 import {
 	actionInputFor,
+	inviteCounts,
 	memberAbilities,
 	type MemberAction,
 	memberMenu,
@@ -38,6 +39,7 @@ import {
 	membersHeaderItems,
 	showsStake,
 } from "../core/members-model.ts";
+import { afterPanelLeaves } from "../core/overlay-handoff.ts";
 import { MemberCard, SearchIcon } from "../components/MemberCard.tsx";
 import { MemberTable } from "../components/MemberTable.tsx";
 import { OrgChart } from "../components/OrgChart.tsx";
@@ -60,7 +62,10 @@ import InviteModal from "./InviteModal.island.tsx";
  *
  * **The rank rule decides every action** (`core/members-model.ts`): a row's menu and the drawer offer
  * only what the viewer may do — an action they cannot perform is absent, not disabled. Removing and
- * leaving are confirmed; the owner steps back only through the ownership transfer.
+ * leaving are confirmed; the owner steps back only through the ownership transfer. When the drawer
+ * asks for one of those dialogs, the screen waits for the drawer to leave and puts focus back on the
+ * row (or card) that opened it before the dialog opens (`core/overlay-handoff.ts`), so closing the
+ * dialog returns the keyboard reader to their place rather than to the page's top.
  *
  * Every mutation resolves to the re-read `WorkspaceDetail` and replaces the whole projection, so a
  * change the server clamped or refused cannot survive on screen as something the reader believes.
@@ -96,9 +101,16 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	const confirmRemove = useSignal(false);
 	const removing = useSignal<WorkspaceMember | null>(null);
 	const peopleRef = useRef<HTMLDivElement>(null);
+	/** What had focus when the drawer opened — where a drawer → dialog hand-off parks focus. */
+	const opener = useRef<HTMLElement | null>(null);
+	/** Cancels a hand-off still waiting for the drawer to leave. */
+	const handoff = useRef<(() => void) | null>(null);
 
 	// `Ctrl`+wheel / pinch over the people scales them on People's own zoom; it also restores it.
 	useCtrlWheelZoom(peopleRef, peopleZoom);
+
+	// A hand-off still waiting when the screen goes away must not open anything.
+	useEffect(() => () => handoff.current?.(), []);
 
 	// `?invite=1` — the bands on modules that do not mount the invite dialog link here with it, so their
 	// Invite lands on the dialog rather than on a page the reader must search.
@@ -123,6 +135,8 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 
 	const view = viewOr(props.view ?? null);
 	const showPending = view === MEMBERS_QUEUE || props.module === "invitations";
+	/** The queue the viewer sees, split as the seat count splits it (lapsed ones hold no seat). */
+	const queue = inviteCounts(ws.invites, Date.now());
 	const presentation = membersViewFor(view);
 	/** The header band's tabs over this body — present on the Members module only. */
 	const subViews = props.module === "invitations" ? [] : subViewsFor("members", ws.kind, caps);
@@ -156,6 +170,10 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	}
 
 	function openDrawer(member: WorkspaceMember): void {
+		const active = globalThis.document?.activeElement;
+		opener.current = active instanceof HTMLElement && active !== globalThis.document.body
+			? active
+			: null;
 		batch(() => {
 			openMember.value = member;
 			drawerSeq.value = drawerSeq.peek() + 1;
@@ -215,6 +233,38 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 				});
 				return;
 		}
+	}
+
+	/**
+	 * Focus what opened the drawer — the element focused when it opened, else the member's table row (a
+	 * menu item that opened it is gone by now).
+	 */
+	function refocusOpener(member: WorkspaceMember): void {
+		const before = opener.current;
+		if (before?.isConnected) {
+			before.focus();
+			return;
+		}
+		peopleRef.current?.querySelector<HTMLElement>(
+			`.ui-dt__row[data-key="${CSS.escape(member.id)}"]`,
+		)?.focus();
+	}
+
+	/**
+	 * Open a dialog the drawer asked for once the drawer has left (Decision #123's hand-off): the drawer
+	 * closed itself on the press, so wait for its panel to leave the DOM, park focus on its opener, then
+	 * open — the dialog then hands focus back to that opener when it closes.
+	 */
+	function fromDrawer(member: WorkspaceMember, open: () => void): void {
+		handoff.current?.();
+		handoff.current = afterPanelLeaves({
+			gone: () => !globalThis.document.querySelector(".wsp-mdrawer"),
+			refocus: () => refocusOpener(member),
+			then: () => {
+				handoff.current = null;
+				open();
+			},
+		});
 	}
 
 	/** A row's menu — only what the viewer may do on it. */
@@ -278,7 +328,8 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 									items={membersHeaderItems({
 										seats: ws.seats,
 										activeCount: active.length,
-										pending: ws.invites.length,
+										invites: queue,
+										seesQueue: canInvite,
 									})}
 								/>
 							</div>
@@ -396,9 +447,9 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 					actor={actor}
 					visible={drawerOpen}
 					onUpdated={adopt}
-					onTransfer={(m) => (transferFor.value = m)}
-					onLeave={() => (confirmLeave.value = true)}
-					onRemove={(m) => onAction("remove", m)}
+					onTransfer={(m) => fromDrawer(m, () => (transferFor.value = m))}
+					onLeave={(m) => fromDrawer(m, () => (confirmLeave.value = true))}
+					onRemove={(m) => fromDrawer(m, () => onAction("remove", m))}
 				/>
 			)}
 

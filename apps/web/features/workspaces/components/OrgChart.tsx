@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { Tooltip } from "@projective/ui/feedback";
+import { Button } from "@projective/ui/fields";
 import type { WorkspaceMember, WorkspaceRoleDef } from "@projective/types/workspace";
 import { sortMembers } from "../core/workspace-model.ts";
 import { type MemberAction, roleText } from "../core/members-model.ts";
@@ -142,6 +143,8 @@ function ChartBranch(props: {
 				data-self={member.isSelf ? "true" : undefined}
 				onClick={() => onAction("open", member)}
 				onKeyDown={(event) => {
+					// The disclosure Button answers its own keys; only the node itself opens the member.
+					if (event.target !== event.currentTarget) return;
 					if (event.key === "Enter" || event.key === " ") {
 						event.preventDefault();
 						onAction("open", member);
@@ -166,21 +169,25 @@ function ChartBranch(props: {
 				{hasChildren && (
 					<>
 						<Tooltip content={open ? "Hide reports" : `Show ${node.descendants} reporting below`}>
-							<button
-								type="button"
+							<Button
 								class="wsp-chart__toggle"
+								variant="text"
+								severity="secondary"
+								size="sm"
+								iconOnly
+								icon={
+									<span class="wsp-chart__toggle-glyph">
+										<ChevronDownIcon />
+									</span>
+								}
 								aria-label={open
 									? `Hide the people reporting to ${member.name}`
 									: `Show the ${node.descendants} people reporting to ${member.name}`}
-								onClick={(event) => {
+								onClick={(event: MouseEvent) => {
 									event.stopPropagation();
 									onToggle(member.id);
 								}}
-							>
-								<span class="wsp-chart__toggle-glyph">
-									<ChevronDownIcon />
-								</span>
-							</button>
+							/>
 						</Tooltip>
 						<span class="wsp-chart__count wsp-num" aria-hidden="true">{node.descendants}</span>
 					</>

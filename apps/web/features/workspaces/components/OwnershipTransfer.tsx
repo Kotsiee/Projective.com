@@ -6,7 +6,7 @@ import { kindCopy, type WorkspaceDetail, type WorkspaceMember } from "@projectiv
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import {
 	membersTierProps,
-	roleText,
+	roleMetaText,
 	transferCandidates,
 	transferConsequences,
 	transferFooter,
@@ -26,8 +26,10 @@ import {
  * in the same act is a `Checkbox`. What the transfer does is a required disclosure, so it is an
  * `InlineNotice` naming the successor — on a team the vault's withdrawals follow the owner and the
  * successor must be payout-ready (Decision #196). The confirm keeps the destructive ramp; Cancel is
- * tier 5. A refusal — the successor not payout-ready, not a freelancer account — is an `InlineNotice`
- * that names them. Every rule here is `core/members-model.ts`'s.
+ * tier 5. With nobody to hand over to, the dialog says why and its one button is Close — never a
+ * confirm that could not become live (§3.11). A refusal — the successor not payout-ready, not a
+ * freelancer account — is an `InlineNotice` that names them. Every rule here is
+ * `core/members-model.ts`'s.
  */
 
 export interface OwnershipTransferProps {
@@ -50,9 +52,10 @@ export function OwnershipTransfer(props: OwnershipTransferProps): JSX.Element {
 
 	const candidates = transferCandidates(ws.members, props.leaving.id);
 	const successor = useComputed(() => candidates.find((m) => m.id === successorId.value) ?? null);
-	const [cancel, confirm] = transferFooter({
+	const footer = transferFooter({
 		working: working.value,
 		successorId: successorId.value,
+		candidates: candidates.length,
 	});
 
 	async function transfer(): Promise<void> {
@@ -88,18 +91,16 @@ export function OwnershipTransfer(props: OwnershipTransferProps): JSX.Element {
 			}}
 			footer={
 				<div class="wsp-dialog__actions">
-					<Button
-						{...membersTierProps(cancel.tier)}
-						label={cancel.label}
-						onClick={props.onClose}
-					/>
-					<Button
-						{...membersTierProps(confirm.tier, confirm.danger)}
-						label={confirm.label}
-						disabled={confirm.disabled}
-						loading={confirm.busy}
-						onClick={() => void transfer()}
-					/>
+					{footer.map((action) => (
+						<Button
+							key={action.key}
+							{...membersTierProps(action.tier, action.danger)}
+							label={action.label}
+							disabled={action.disabled}
+							loading={action.busy}
+							onClick={action.key === "transfer" ? () => void transfer() : props.onClose}
+						/>
+					))}
 				</div>
 			}
 		>
@@ -127,7 +128,7 @@ export function OwnershipTransfer(props: OwnershipTransferProps): JSX.Element {
 										options={candidates.map((m) => ({
 											value: m.id,
 											label: m.name,
-											description: `@${m.handle} · ${roleText(m, ws.roles)}`,
+											description: `@${m.handle} · ${roleMetaText(m, ws.roles)}`,
 										}))}
 										value={successorId}
 										onValueChange={() => (refusal.value = null)}

@@ -17,6 +17,7 @@ import {
 	overrideItems,
 	overrideSummary,
 	overrideTitle,
+	roleMetaText,
 	roleText,
 	sensitiveLabel,
 	stakePercent,
@@ -366,6 +367,8 @@ export interface MemberCardProps {
 export function MemberCard(props: MemberCardProps): JSX.Element {
 	const { member, kind, roles, facets, menu, showStake, onOpen, referenceYear } = props;
 	const role = roleText(member, roles);
+	/** The role as ONE MetaLine item — its own middot would read as the line's separator. */
+	const roleMeta = roleMetaText(member, roles);
 	const cardRef = useRef<HTMLElement>(null);
 	const load = workloadText(member);
 
@@ -391,7 +394,7 @@ export function MemberCard(props: MemberCardProps): JSX.Element {
 						</a>
 					</h3>
 					<MetaLine size="xs" items={[`@${member.handle}`, member.isSelf && "You"]} />
-					<MetaLine size="xs" items={[role, member.title]} />
+					<MetaLine size="xs" items={[roleMeta, member.title]} />
 				</div>
 
 				<div class="wsp-mcard__flags">

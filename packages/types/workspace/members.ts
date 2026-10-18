@@ -129,9 +129,15 @@ export const WorkspaceMemberSchema = z.object({
 	spendLimitMinor: z.number().int().min(0).nullable().default(null),
 	/** Lifetime contribution to the pooled wallet, minor units (business only). */
 	contributedMinor: z.number().int().min(0).default(0),
-	/** This member's share of a released payout, in basis points (team only). */
+	/**
+	 * This member's share of a released payout, in basis points (team only). The console read answers
+	 * it only to a `manage_finances` holder (Decision #233); everybody else reads `0` for every member.
+	 */
 	shareBp: z.number().int().min(0).max(10_000).default(0),
-	/** Whether this member's share is currently held back from automatic distribution (team only). */
+	/**
+	 * Whether this member's share is currently held back from automatic distribution (team only;
+	 * `false` unless the viewer holds `manage_finances`).
+	 */
 	shareHeld: z.boolean().default(false),
 	/** Who they report to — the org-chart edge. `null` for the root. */
 	reportsTo: z.string().max(64).nullable().default(null),

@@ -489,6 +489,42 @@
 	color: var(--text-secondary);
 }
 
+/*
+ * The editor's "Ranks as" picker — the last native select on the surface. It takes the field contract's
+ * geometry and state tokens, and goes with its one user when the editor moves onto the ui Select
+ * (Teams C3).
+ */
+.wsp-select {
+	inline-size: 100%;
+	max-inline-size: var(--wsp-field);
+	block-size: var(--fld-h-md);
+	padding-inline: var(--fld-px-md);
+	border: var(--fld-bw) solid var(--fld-rest-bd);
+	border-radius: var(--fld-r-md);
+	background: var(--fld-rest-bg);
+	color: var(--fld-rest-fg);
+	font: inherit;
+	font-size: var(--fld-fs-md);
+	cursor: pointer;
+}
+
+.wsp-select:hover:not(:disabled) {
+	border-color: var(--fld-hover-bd);
+}
+
+.wsp-select:focus-visible {
+	border-color: var(--fld-focus-bd);
+	box-shadow: var(--fld-focus-glow);
+}
+
+/* Disabled fades the INK and the BORDER through the shared mix, never the whole box (§A.7): the same
+two declarations the package field draws its own disabled state with. */
+.wsp-select:disabled {
+	color: color-mix(in srgb, var(--fld-rest-fg) var(--fld-disabled-mix), var(--fld-rest-bg));
+	border-color: color-mix(in srgb, var(--fld-rest-bd) var(--fld-disabled-mix), var(--fld-rest-bg));
+	cursor: not-allowed;
+}
+
 /* Capabilities grouped exactly as the matrix groups them, so the two views teach one mental model. */
 .wsp-roleeditor__groups {
 	display: grid;
