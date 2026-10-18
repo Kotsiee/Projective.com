@@ -100,6 +100,17 @@
 }
 
 /*
+ * One option withheld inside a live group (a plan-locked template, an unavailable preset). Without a
+ * state of its own it wore the unselected option's `--text-secondary` exactly, so a control that does
+ * nothing read as one a press would choose. Its ink steps down the shared `--fld-disabled-mix` toward
+ * the track, the channel every field's disabled state uses, never `opacity`. A disabled GROUP already
+ * dims through its root, so this does not stack on it, and a selected option keeps its selected ink.
+ */
+.ui-select-button:not(.ui-select-button--disabled) > .ui-select-button__option:disabled:not([aria-pressed="true"]):not([aria-checked="true"]) {
+	color: color-mix(in srgb, var(--text-secondary) var(--fld-disabled-mix), var(--surface-1));
+}
+
+/*
  * Selected (both the single-mode `aria-checked` and the multi-mode `aria-pressed`).
  *
  * Ink first — that is the channel a contrast checker and a colour-blind viewer both read. `--primary`

@@ -172,6 +172,19 @@
 	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
+
+/*
+ * A toggle's hold mark keeps its slot whether or not the stake is held: pressing one toggle never
+ * widens it or moves the toggles after it. Only a held stake paints the mark.
+ */
+.wsp-stakes__hold-mark {
+	display: inline-flex;
+	line-height: 0;
+}
+
+.wsp-stakes__hold-mark[data-held="false"] {
+	visibility: hidden;
+}
 /* #endregion */
 
 /* #region Team — the preview ledger */
@@ -180,22 +193,28 @@
  * label leads, the rate is meta, and the figure is right-aligned in tabular digits so a column of
  * amounts can be compared down the page. The total is the server's sum and reads at the medium weight —
  * a row, not a heading, so weight is the only step it takes.
+ *
+ * The columns belong to the LIST, not the row: each row is a subgrid of the ledger's one track set, so
+ * the widest amount sizes the figure column for every row and the rates line up down the page. A row
+ * that sized its own `auto` tracks set each rate against its own amount's width, and the rate column
+ * drifted with the figures.
  */
 .wsp-ledger {
 	list-style: none;
 	margin: 0;
 	padding: 0;
-	display: flex;
-	flex-direction: column;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	column-gap: var(--space-4);
 	max-inline-size: 40rem;
 	min-inline-size: 0;
 }
 
 .wsp-ledger__row {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto auto;
+	grid-column: 1 / -1;
+	grid-template-columns: subgrid;
 	align-items: baseline;
-	gap: var(--space-4);
 	padding-block: var(--space-2);
 }
 
@@ -758,9 +777,15 @@ down to the secondary register — never through `opacity` (§B.12). */
 }
 
 @media (max-width: 47.9375rem) {
-	/* The ledger's rate moves under its label; the access list stacks name over capabilities. */
-	.wsp-ledger__row {
+	/*
+	 * The ledger's rate moves under its label (the list keeps two shared tracks, so the figures still
+	 * align); the access list stacks name over capabilities.
+	 */
+	.wsp-ledger {
 		grid-template-columns: minmax(0, 1fr) auto;
+	}
+
+	.wsp-ledger__row {
 		row-gap: var(--space-1);
 	}
 

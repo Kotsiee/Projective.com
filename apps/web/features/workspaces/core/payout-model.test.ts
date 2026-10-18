@@ -16,6 +16,7 @@ import {
 	driftSentence,
 	evenStakes,
 	formatBp,
+	formatBpIn,
 	isEvenSplit,
 	ledgerRows,
 	legendItems,
@@ -624,6 +625,70 @@ Deno.test("ledgerRows: the plan's order and words — fee, finder, vault, member
 		ledgerRows(toSplitPreview(rawPreview(100_000, 500, DICTATOR, []), PREVIEW_PEOPLE, "GBP"))
 			.map((r) => r.kind),
 		["fee", "vault", "total"],
+	);
+});
+
+Deno.test("ledgerRows: the member rows take the stakes' order, everything else stays where the plan put it", () => {
+	const preview = toSplitPreview(
+		rawPreview(100_000, 500, FINDERS, [5000, 3000, 2000]),
+		PREVIEW_PEOPLE,
+		"GBP",
+	);
+	const plan = ledgerRows(preview);
+	// The SplitBar reads u-2, u-0, u-1; the plan listed u-0, u-1, u-2.
+	const rows = ledgerRows(preview, ["u-2", "u-0", "u-1"]);
+	assertEquals(rows.map((r) => r.key), [
+		"fee",
+		"finder",
+		"vault",
+		"member:u-2",
+		"member:u-0",
+		"member:u-1",
+		"dust",
+		"total",
+	]);
+	// A row keeps its own rate and amount — only its position changes — and the total is untouched.
+	const byKey = new Map(plan.map((r) => [r.key, r]));
+	for (const row of rows) {
+		assertEquals(row.rate, byKey.get(row.key)!.rate, row.key);
+		assertStrictEquals(row.amount.minor, byKey.get(row.key)!.amount.minor, row.key);
+	}
+	assertStrictEquals(rows.at(-1)!.amount.minor, 100_000);
+	// A member the order does not name keeps its plan order, after the named ones; no order is the plan's.
+	assertEquals(
+		ledgerRows(preview, ["u-1"]).filter((r) => r.kind === "member").map((r) => r.key),
+		["member:u-1", "member:u-0", "member:u-2"],
+	);
+	assertEquals(ledgerRows(preview).map((r) => r.key), plan.map((r) => r.key));
+});
+
+Deno.test("formatBpIn: the locale's percentage, two decimals, the fixed text in English for every bp", () => {
+	for (let bp = 0; bp <= SPLIT_TOTAL_BP; bp++) {
+		assertStrictEquals(formatBpIn(bp, "en-GB"), formatBp(bp), `${bp} bp`);
+	}
+	assertStrictEquals(formatBpIn(4250, "pt-PT"), "42,50%");
+	assertStrictEquals(formatBpIn(10_000, "pt-PT"), "100,00%");
+	assertStrictEquals(formatBpIn(1, "de-DE").replace(/\s/g, " "), "0,01 %");
+});
+
+Deno.test("ledgerRows: with a locale, every rate reads in it — the figures' own number format", () => {
+	const preview = toSplitPreview(
+		rawPreview(100_000, 500, FINDERS, [6000, 4000]),
+		PREVIEW_PEOPLE,
+		"GBP",
+	);
+	assertEquals(ledgerRows(preview, [], "pt-PT").map((r) => r.rate), [
+		"5,00%",
+		"10,00%",
+		"5,00%",
+		"60,00%",
+		"40,00%",
+		null,
+		null,
+	]);
+	assertEquals(
+		ledgerRows(preview, [], "en-GB").map((r) => r.rate),
+		ledgerRows(preview).map((r) => r.rate),
 	);
 });
 

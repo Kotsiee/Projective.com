@@ -367,6 +367,7 @@ export default function PayoutPolicyScreen(props: PayoutPolicyScreenProps): JSX.
 												pricing={pricing.value}
 												error={previewError.value}
 												stale={dirty.value}
+												memberOrder={d.stakes.map((s) => s.userId)}
 												onRetry={() => {
 													previewRev.value++;
 												}}

@@ -20,6 +20,9 @@ import { HoldGlyph } from "./policy-glyphs.tsx";
  * (the footer rig's Org chart toggle): engaged, it takes the solid `--surface-2` step with
  * `--on-surface` ink and shows the hold mark. A repeated action is never filled (§B.8.2), so holding a
  * stake never adds a filled control beside the rig's Save.
+ *
+ * The hold mark's slot is always laid out and only painted while the stake is held, so a press changes
+ * no toggle's width and never moves the toggles after it.
  */
 
 // #region Props
@@ -40,7 +43,10 @@ interface HoldToggleProps {
 	onToggle: (held: boolean) => void;
 }
 
-/** One member's hold toggle: pressed while the stake is held, the hold mark drawn only then. */
+/**
+ * One member's hold toggle: pressed while the stake is held, the hold mark painted only then — in a slot
+ * that is there either way, so the toggle keeps its width.
+ */
 function HoldToggle(props: HoldToggleProps): JSX.Element {
 	const { stake } = props;
 	const glyph = useMemo(() => cloneGlyph(HoldGlyph), []);
@@ -49,7 +55,11 @@ function HoldToggle(props: HoldToggleProps): JSX.Element {
 			variant="text"
 			severity="secondary"
 			size="sm"
-			icon={stake.held ? glyph : undefined}
+			icon={
+				<span class="wsp-stakes__hold-mark" data-held={stake.held ? "true" : "false"}>
+					{glyph}
+				</span>
+			}
 			label={stake.name}
 			aria-pressed={stake.held}
 			aria-label={`Hold ${stake.name}'s stake`}

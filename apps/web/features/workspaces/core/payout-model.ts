@@ -55,6 +55,29 @@ export { bpToPercent };
 export function formatBp(bp: number): string {
 	return formatSplitPercent(bp);
 }
+
+/** One percentage formatter per locale — {@link formatBpIn} runs once per ledger row. */
+const PERCENT_FORMATS = new Map<string, Intl.NumberFormat>();
+
+/**
+ * Basis points as `locale` writes a percentage, with exactly two decimals (`4250` → `"42,50 %"` in
+ * de-DE, `"42.50%"` in en-GB — {@link formatBp}'s own text there, for every basis point). The value
+ * handed to `Intl` is `bp / 100`, a number with two decimals at most, so nothing rounds.
+ */
+export function formatBpIn(bp: number, locale: string): string {
+	let format = PERCENT_FORMATS.get(locale);
+	if (!format) {
+		format = new Intl.NumberFormat(locale, {
+			style: "unit",
+			unit: "percent",
+			minimumFractionDigits: 2,
+			maximumFractionDigits: 2,
+			useGrouping: false,
+		});
+		PERCENT_FORMATS.set(locale, format);
+	}
+	return format.format(bp / BP_PER_PERCENT);
+}
 // #endregion
 
 // #region Templates
@@ -565,17 +588,49 @@ export function lineLabel(line: SplitPreviewLine): string {
 	}
 }
 
+/** The user id a member line pays, read from its key (`member:<user id>`, the line's contract). */
+function memberLineUserId(line: SplitPreviewLine): string | null {
+	return line.kind === "member" && line.key.startsWith("member:")
+		? line.key.slice("member:".length)
+		: null;
+}
+
 /**
  * The ledger as rendered: every server line, in the plan's order, then the total row — the server's
  * own sum, which equals the amount priced. Nothing is added up here.
+ *
+ * The plan orders its members its own way; the page reads them in the stakes' order everywhere else
+ * (the SplitBar, its legend, Who can move money). So the member rows take `memberOrder` (user ids, the
+ * stakes' order) within the places the plan gave its members — the fee, finder and vault rows before
+ * them and the dust after them never move. A member the order does not name keeps its plan order,
+ * after the named ones.
+ *
+ * With a `locale`, each rate is written the way that locale writes a percentage — the Preview passes
+ * the one its amount box and figures use, so a row never sets "5.00%" beside "50,00 US$".
  */
-export function ledgerRows(preview: TeamSplitPreview): LedgerRow[] {
+export function ledgerRows(
+	preview: TeamSplitPreview,
+	memberOrder: readonly string[] = [],
+	locale?: string,
+): LedgerRow[] {
+	const rateOf = (bp: number | null) =>
+		bp === null ? null : locale ? formatBpIn(bp, locale) : formatBp(bp);
+	const rank = new Map(memberOrder.map((userId, i) => [userId, i]));
+	const rankOf = (line: SplitPreviewLine) =>
+		rank.get(memberLineUserId(line) ?? "") ?? memberOrder.length;
+	const members = preview.lines
+		.map((line, i) => ({ line, i }))
+		.filter(({ line }) => line.kind === "member")
+		.sort((a, b) => rankOf(a.line) - rankOf(b.line) || a.i - b.i)
+		.map(({ line }) => line);
+	let next = 0;
+	const lines = preview.lines.map((line) => (line.kind === "member" ? members[next++] : line));
 	return [
-		...preview.lines.map((line) => ({
+		...lines.map((line) => ({
 			key: line.key,
 			kind: line.kind,
 			label: lineLabel(line),
-			rate: line.bp === null ? null : formatBp(line.bp),
+			rate: rateOf(line.bp),
 			amount: line.amount,
 		})),
 		{ key: "total", kind: "total", label: "Total", rate: null, amount: preview.total },
