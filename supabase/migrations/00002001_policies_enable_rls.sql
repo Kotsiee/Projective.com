@@ -643,6 +643,9 @@ ALTER TABLE community.newsletter_subscriptions ENABLE ROW LEVEL SECURITY;
 
 
 -- #region [community.feedback]
+ALTER TABLE community.feedback_ideas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE community.feedback_votes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE community.feedback_status_events ENABLE ROW LEVEL SECURITY;
 -- #endregion
 
 

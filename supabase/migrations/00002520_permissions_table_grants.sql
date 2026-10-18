@@ -757,6 +757,16 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA editorial, community TO service_r
 
 
 -- #region [community.feedback]
+-- Reads only, column by column; no client role holds INSERT, UPDATE or DELETE on any board table —
+-- every write is a definer door. Withheld from clients: an idea's `pii_categories` (screening
+-- evidence) and `team_response_by`, and a history row's `actor_id` and `note` (operator-side).
+GRANT SELECT (
+    id, slug, title, impact, body, category, status, author_id, vote_count, team_response,
+    team_response_at, created_at, updated_at, status_changed_at, archived_at
+) ON community.feedback_ideas TO anon, authenticated;
+GRANT SELECT (idea_id, user_id, created_at) ON community.feedback_votes TO authenticated;
+GRANT SELECT (id, idea_id, from_status, to_status, created_at)
+    ON community.feedback_status_events TO anon, authenticated;
 -- #endregion
 
 

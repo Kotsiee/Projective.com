@@ -162,6 +162,21 @@ GRANT EXECUTE ON FUNCTION community.subscribe_newsletter (text, text, text) TO s
 
 
 -- #region [community.feedback]
+-- The board's doors (00001320): each stamps auth.uid() itself, so a guest is refused by the grant and
+-- a signed-in caller by the body. The trigger functions and internal helpers stay revoked (above).
+REVOKE ALL ON FUNCTION community.submit_feedback_idea (text, text, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION community.submit_feedback_idea (text, text, text, text) TO authenticated;
+REVOKE ALL ON FUNCTION community.vote_feedback_idea (text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION community.vote_feedback_idea (text) TO authenticated;
+REVOKE ALL ON FUNCTION community.unvote_feedback_idea (text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION community.unvote_feedback_idea (text) TO authenticated;
+REVOKE ALL ON FUNCTION community.set_feedback_idea_status (text, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION community.set_feedback_idea_status (text, text, text) TO authenticated;
+REVOKE ALL ON FUNCTION community.respond_to_feedback_idea (text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION community.respond_to_feedback_idea (text, text) TO authenticated;
+-- The tab counts are an INVOKER read under the caller's own policies, so guests may run it too.
+REVOKE ALL ON FUNCTION community.feedback_status_counts () FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION community.feedback_status_counts () TO anon, authenticated;
 -- #endregion
 
 -- --- from 0200_permissions.sql ---

@@ -576,6 +576,42 @@ cannot open a no-show claim: an attendee who does not come is paid out to the pr
 (PRODUCT_SPEC §Session-Based C, Time Protection), so the provider's side of the lifecycle is the
 response.
 
+### 3.9 Feedback idea lifecycle (per idea)
+
+A public feedback-board idea (`/feedback` and the `?feedback=open` drawer, Decision #272) moves on
+the **§3.1 state-machine itself** — owner ruling (d), 2026-10-17 — not on a domain lifecycle of its
+own, so no new status exists: the board stores the unified state and only its **label** differs.
+Stored as `community.feedback_ideas.status` (a CHECK over the five values), with every move appended
+to `community.feedback_status_events`. Canonical rules: `documentation/database/community/`.
+
+| Stored state (§3.1) | Board label | Who sees it | Votes |
+| :-- | :-- | :-- | :-- |
+| **Backlog** | Under review | Its author and platform operators only | Open (the author's own vote is cast with it) |
+| **Ready / Refined** | Planned | Everyone, guests included | Open |
+| **In Progress** | In progress | Everyone | Open |
+| **Complete** | Shipped | Everyone | Closed |
+| **Archived** | — (never listed) | Platform operators only | Closed |
+
+```text
+(a signed-in person suggests an idea) ───────────────────────────────────────► Backlog
+Backlog ──(an operator accepts it onto the roadmap — it becomes public)──────► Ready
+Backlog ──(declined, a duplicate, or withdrawn)──────────────────────────────► Archived
+Ready ──(work starts)────────────────────────────────────────────────────────► In Progress
+Ready ──(sent back for review)───────────────────────────────────────────────► Backlog
+In Progress ──(it ships)─────────────────────────────────────────────────────► Complete
+In Progress ──(paused before shipping)───────────────────────────────────────► Ready
+Ready | In Progress | Complete ──(retired)────────────────────────────────────► Archived
+```
+
+**Rules.** Draft, Claimed, Review and Disputed are not used — an idea has no owner to claim it and no
+deliverable to review. Only an operator (`ops.admin_users`) moves an idea, through
+`community.set_feedback_idea_status`, and only along the moves above (`fn_feedback_move_legal`);
+**Archived is terminal and non-reopenable**, and a shipped idea that regresses is a new idea. Nothing
+is hard-deleted (§5.4): an idea refuses `DELETE`, and its history is append-only. Every move
+notifies the author and everyone who voted (`feedback.status_changed`), never the operator who made
+it. Content screening (Decision #148) is not built, so Backlog is the publication gate: a new idea is
+public only once an operator moves it to Ready.
+
 ---
 
 ## 4. Estimation & Capacity (Workload Intensity)

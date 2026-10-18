@@ -4,6 +4,7 @@ import { GuestShell } from "@web/features/shell/components/GuestShell.tsx";
 import { UserShell } from "@web/features/shell/components/UserShell.tsx";
 import TicketDeepLinkHost from "@web/features/projects/islands/TicketDeepLinkHost.island.tsx";
 import ChatPopoutHost from "@web/features/messaging/islands/ChatPopoutHost.island.tsx";
+import FeedbackHost from "@web/features/feedback/islands/FeedbackHost.island.tsx";
 import { exploreFilterLaneFor } from "@features/explore/core/explore-lane-slot.tsx";
 import { viewLaneFor, viewLaneOptionsFor } from "@features/view/core/view-lane-slot.tsx";
 import { viewHeaderFor } from "@features/view/core/view-header-slot.tsx";
@@ -57,6 +58,8 @@ export default define.page(function PublicLayout(ctx) {
 				    opened on a profile is still open on Explore and the landing page. */
 				}
 				<ChatPopoutHost path={ctx.url.pathname} />
+				{/* The feedback board's `?feedback=open` drawer and its `g` `f` shortcut (Decision #272). */}
+				<FeedbackHost signedIn />
 				<ctx.Component />
 			</UserShell>
 		);
@@ -68,6 +71,7 @@ export default define.page(function PublicLayout(ctx) {
 			    pasted link does not sit in the address bar promising something it cannot show. */
 			}
 			<TicketDeepLinkHost authed={false} />
+			<FeedbackHost signedIn={false} />
 			<ctx.Component />
 		</GuestShell>
 	);

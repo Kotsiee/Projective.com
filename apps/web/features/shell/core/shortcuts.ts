@@ -71,3 +71,53 @@ export function isFocusHeaderSearchShortcut(event: ShortcutKey): boolean {
 	if (event.ctrlKey === event.metaKey) return false;
 	return event.key === "/";
 }
+
+// #region The feedback sequence — "g" then "f" (Decision #272)
+/** How long after `g` an `f` still completes the sequence. */
+export const FEEDBACK_SEQUENCE_WINDOW_MS = 1000;
+
+/** The previous keystroke of a two-key sequence, as the caller remembered it. */
+export interface ShortcutPress {
+	/** The letter it produced, lowercased (by key position on a non-Latin layout). */
+	key: string;
+	/** When it was pressed (`performance.now()` or `Date.now()` — the same clock as `now`). */
+	at: number;
+	/**
+	 * Whether any handler took that keystroke — read from the event AFTER it finished dispatching
+	 * (`event.defaultPrevented` persists), so a key a chat composer typed into its field never arms
+	 * the sequence.
+	 */
+	taken: boolean;
+}
+
+/**
+ * The letter a bare keystroke produces — no Ctrl, Cmd, Alt or Shift, not held, not already handled —
+ * lowercased, matched by key position (`KeyG`) on a non-Latin layout; `null` for anything else. The
+ * caller must still skip {@link isEditableTarget} targets: a letter typed into a field is text.
+ */
+export function bareLetterOf(event: ShortcutKey): string | null {
+	if (event.defaultPrevented || event.repeat) return null;
+	if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return null;
+	if (/^[a-z]$/.test(event.key)) return event.key;
+	const position = /^Key([A-Z])$/.exec(event.code);
+	return position && !/^[a-zA-Z]$/.test(event.key) ? position[1].toLowerCase() : null;
+}
+
+/**
+ * `g` then `f` within {@link FEEDBACK_SEQUENCE_WINDOW_MS} — open the feedback board's drawer from
+ * anywhere. True on the `f` that completes the sequence; the caller remembers each bare letter as the
+ * `previous` press (a non-letter keystroke resets it). Both keys are bare, so the sequence cannot
+ * collide with `/`, Ctrl/Cmd+/, Ctrl/Cmd+B or the reserved Cmd+K, and a `g` that another handler
+ * took never arms it.
+ */
+export function isOpenFeedbackShortcut(
+	event: ShortcutKey,
+	previous: ShortcutPress | null,
+	now: number,
+): boolean {
+	if (bareLetterOf(event) !== "f" || !previous) return false;
+	if (previous.key !== "g" || previous.taken) return false;
+	const elapsed = now - previous.at;
+	return elapsed >= 0 && elapsed <= FEEDBACK_SEQUENCE_WINDOW_MS;
+}
+// #endregion

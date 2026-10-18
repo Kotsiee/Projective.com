@@ -272,15 +272,18 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		domain: "community",
 		label: "Helpfulness votes & feedback board",
 		gate: "COMMUNITY_BACKEND_LIVE",
-		// Scaffold only (Decision #274): the shared module (`services/community/community-source.ts`)
-		// resolves the gate and maps rows, but the help-feedback and feedback-board services that would
-		// read or write through it do not exist yet. The newsletter, also in `community`, keeps its own
-		// NEWSLETTER_BACKEND_LIVE gate.
-		liveImplemented: false,
-		modules: [],
+		// The feedback board (`FeedbackBackendService`, Decision #272) reads and writes through the
+		// shared module (`services/community/community-source.ts`); the fixture road is the
+		// per-process `feedback-store.ts` over the seed-identical demo board. The newsletter, also in
+		// `community`, keeps its own NEWSLETTER_BACKEND_LIVE gate.
+		liveImplemented: true,
+		modules: [
+			"services/community/feedback-fixtures.ts",
+			"services/community/feedback-store.ts",
+		],
 		schemas: ["community"],
 		description:
-			"User-generated activity around the platform: the help centre's helpfulness votes and the feedback board's ideas, votes and status history. No surface service exists yet.",
+			"User-generated activity around the platform: the help centre's helpfulness votes and the feedback board's ideas, votes and status history. The feedback board is live behind the gate; with it off, the same sixteen ideas the seed loads are served from a per-process store that mirrors every door (suggest, vote, retract), so nothing is persisted.",
 	},
 });
 

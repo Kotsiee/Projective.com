@@ -1,0 +1,690 @@
+/*
+ * Feedback board (fb-) — the one body /feedback and the ?feedback=open drawer share (Decision #272).
+ *
+ * Geometry follows the board's own frame, never the viewport: the same body renders full-bleed for a
+ * guest, beside the signed-in shell's rail, and inside the drawer's --drawer-w, so `.fb-board` is a
+ * named inline-size container and every step below is a container query on the breakpoint tokens'
+ * pixel values (768px = --bp-md, 1024px = --bp-lg).
+ *
+ * Separation (§B.4): rows are unboxed — one hairline between them, no fill — because the drawer is
+ * an elevated panel and a card may not sit inside one (§B.9.2); the page's roadmap columns are solid
+ * --surface-1 regions with no border. Metadata is inline --text-secondary middot text (§B.11.2); the
+ * only containers are controls, the lifecycle tag and the tab counts. Token-only.
+ */
+
+/* #region Page frame */
+/*
+ * The frame is the container, so the gutter lives on the inner column: a container query never
+ * styles its own container.
+ */
+.fb-page {
+	container: fb-page / inline-size;
+	padding-block: var(--space-6) var(--space-8);
+}
+
+.fb-page__inner {
+	max-inline-size: var(--container-xl);
+	margin-inline: auto;
+	padding-inline: var(--space-4);
+}
+
+@container fb-page (min-width: 768px) {
+	.fb-page__inner {
+		padding-inline: var(--space-6);
+	}
+}
+/* #endregion */
+
+/* #region Board */
+.fb-board {
+	container: fb-board / inline-size;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	min-inline-size: 0;
+	color: var(--on-surface);
+}
+
+.fb-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: var(--space-4) var(--space-5);
+}
+
+.fb-head__text {
+	display: grid;
+	gap: var(--space-3);
+	min-inline-size: 0;
+	max-inline-size: var(--measure);
+}
+
+.fb-head__title {
+	margin: 0;
+	font-size: var(--text-3xl);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+}
+
+.fb-head__lede {
+	margin: 0;
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	color: var(--text-secondary);
+}
+
+.fb-head__action {
+	flex: none;
+}
+
+/* A link drawn as a button (a guest's "Sign in to suggest an idea", the idea's "All ideas"). */
+.fb-link-button {
+	text-decoration: none;
+}
+
+.fb-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-3) var(--space-4);
+	min-inline-size: 0;
+}
+
+.fb-toolbar__tabs {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+.fb-toolbar__sort {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-inline-start: auto;
+}
+
+.fb-toolbar__sort-label {
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+/* A tab's count — a count that must not wrap (§B.11.3), on a solid tonal step (§B.11.6). */
+.fb-tabcount {
+	display: inline-block;
+	min-inline-size: 2.5ch;
+	margin-inline-start: var(--space-2);
+	padding-inline: var(--space-1);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-snug);
+	font-variant-numeric: tabular-nums;
+	text-align: center;
+	color: var(--on-surface-variant);
+	background: var(--surface-2);
+	border-radius: var(--radius-full);
+}
+
+.fb-notice {
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.fb-panel[aria-busy="true"] {
+	opacity: 0.6;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+/* #endregion */
+
+/* #region Rows */
+.fb-list {
+	display: grid;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.fb-row {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: start;
+	gap: var(--space-4);
+	padding-block: var(--space-4);
+}
+
+.fb-row + .fb-row {
+	border-block-start: var(--hairline);
+}
+
+.fb-row__body {
+	display: grid;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.fb-row__title {
+	justify-self: start;
+	max-inline-size: 100%;
+	font-size: var(--text-base);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+	text-decoration: none;
+	overflow-wrap: anywhere;
+}
+
+.fb-row__title:hover {
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+}
+
+.fb-row__summary {
+	margin: 0;
+	overflow: hidden;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--on-surface-variant);
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.fb-meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1) var(--space-2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.fb-meta__item {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.fb-meta__sep {
+	color: var(--on-surface-variant);
+}
+
+.fb-row__error {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--danger);
+}
+/* #endregion */
+
+/* #region The vote control */
+.fb-vote {
+	display: inline-flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-px);
+	min-inline-size: calc(var(--space-7) + var(--space-1));
+	min-block-size: calc(var(--space-7) + var(--space-2));
+	padding: var(--space-1) var(--space-2);
+	font: inherit;
+	color: var(--on-surface);
+	text-decoration: none;
+	background: transparent;
+	border: var(--hairline-strong);
+	border-radius: var(--radius-md);
+	cursor: pointer;
+	transform: translateZ(0) scale(1);
+	transition:
+		transform var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.fb-vote__icon {
+	display: inline-flex;
+	font-size: var(--icon-sm);
+	line-height: 0;
+}
+
+/* The count changes; it reserves its width so a 9 → 10 never moves the row (§B.12.3). */
+.fb-vote__count {
+	min-inline-size: 3ch;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-tight);
+	font-variant-numeric: tabular-nums;
+	text-align: center;
+}
+
+.fb-vote:hover:not([aria-pressed="true"]):not(.fb-vote--closed):not([aria-disabled="true"]) {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+
+/*
+ * Voted: the brand pair — mode-invariant, 5.13:1 in all four mode/contrast states (§A.1.1). It has no
+ * contrast headroom for a tonal hover, so its hover is drawn on the border instead (§B.12.4).
+ */
+.fb-vote[aria-pressed="true"] {
+	color: var(--on-primary);
+	background: var(--primary);
+	border-color: var(--primary);
+}
+
+.fb-vote[aria-pressed="true"]:hover {
+	border-color: var(--on-surface);
+}
+
+.fb-vote:active:not(.fb-vote--closed):not([aria-disabled="true"]) {
+	transform: translateZ(0) scale(var(--btn-press-scale-icon));
+	transition-duration: var(--dur-press);
+}
+
+.fb-vote[aria-disabled="true"] {
+	cursor: progress;
+}
+
+/* Voting has closed (Shipped): a count, not a control — so no border, no hover, no press. */
+.fb-vote--closed {
+	color: var(--text-secondary);
+	border-color: transparent;
+	cursor: default;
+}
+
+.fb-vote--lg {
+	min-inline-size: calc(var(--space-7) + var(--space-3));
+	min-block-size: calc(var(--space-7) + var(--space-4));
+}
+
+.fb-vote--lg .fb-vote__count {
+	font-size: var(--text-base);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.fb-vote,
+	.fb-vote:active {
+		transform: none !important;
+	}
+}
+
+:root[data-motion="reduced"] .fb-vote,
+:root[data-motion="reduced"] .fb-vote:active {
+	transform: none !important;
+}
+/* #endregion */
+
+/* #region The roadmap — the page's "All" tab */
+.fb-roadmap-frame {
+	display: grid;
+	gap: var(--space-6);
+}
+
+.fb-roadmap {
+	display: grid;
+	gap: var(--space-5);
+}
+
+.fb-column {
+	display: grid;
+	align-content: start;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	padding: var(--space-4) var(--space-4) var(--space-2);
+	background: var(--surface-1);
+	border-radius: var(--radius-lg);
+}
+
+.fb-column__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-3);
+}
+
+/* Section-header register (§A.4): small caps-tracked label, not a heavier heading. */
+.fb-section-title {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-snug);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--on-surface-variant);
+}
+
+.fb-column__count {
+	font-size: var(--text-sm);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.fb-column__empty {
+	margin: 0;
+	padding-block: var(--space-3) var(--space-4);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.fb-review {
+	display: grid;
+	gap: var(--space-2);
+}
+
+@container fb-board (min-width: 1024px) {
+	.fb-roadmap {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		align-items: start;
+	}
+}
+/* #endregion */
+
+/* #region One idea */
+.fb-idea {
+	display: grid;
+	gap: var(--space-5);
+	max-inline-size: var(--container-md);
+}
+
+.fb-back {
+	justify-self: start;
+}
+
+.fb-idea__head {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: start;
+	gap: var(--space-4);
+}
+
+.fb-idea__heading {
+	display: grid;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.fb-idea__title {
+	margin: 0;
+	font-size: var(--text-2xl);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+	overflow-wrap: anywhere;
+}
+
+.fb-idea__byline {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	font-style: normal;
+}
+
+.fb-idea__byline a {
+	color: var(--on-surface);
+}
+
+.fb-idea__lead {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-lg);
+	line-height: var(--leading-relaxed);
+	white-space: pre-line;
+}
+
+.fb-idea__body {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface-variant);
+	white-space: pre-line;
+}
+
+.fb-section {
+	display: grid;
+	gap: var(--space-3);
+	margin-block-start: var(--space-4);
+}
+
+/* The team's voice: one inline-start hairline, the quote treatment — never a box (§B.9.7). */
+.fb-response {
+	display: grid;
+	gap: var(--space-2);
+	margin: 0;
+	padding-inline-start: var(--space-4);
+	border-inline-start: var(--hairline-strong);
+}
+
+.fb-response__text {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	white-space: pre-line;
+}
+
+.fb-history {
+	display: grid;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.fb-history__item {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: baseline;
+	gap: var(--space-3);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+}
+
+.fb-history__date {
+	font-family: var(--font-mono);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Suggesting an idea */
+.fb-compose {
+	display: grid;
+	gap: var(--space-4);
+}
+
+.fb-compose__heading {
+	margin: 0;
+	font-size: var(--text-xl);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+}
+
+.fb-compose__note {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.fb-compose__counter {
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+	text-align: end;
+}
+
+.fb-compose__error {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--danger);
+}
+
+.fb-compose__actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: var(--space-3);
+}
+
+.fb-dupes {
+	display: grid;
+	gap: var(--space-2);
+	margin-block-start: calc(var(--space-2) * -1);
+}
+
+.fb-dupes__list {
+	display: grid;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.fb-dupes__item {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2) var(--space-3);
+	padding-block: var(--space-2);
+	border-block-start: var(--hairline);
+}
+
+.fb-dupes__text {
+	display: grid;
+	gap: var(--space-px);
+	min-inline-size: 0;
+}
+
+.fb-dupes__title {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	text-decoration: none;
+}
+
+.fb-dupes__title:hover {
+	text-decoration: underline;
+}
+
+.fb-dupes__meta {
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Sent — the success state and its flourish */
+.fb-sent {
+	position: relative;
+	display: grid;
+	justify-items: start;
+	gap: var(--space-3);
+	padding-block: var(--space-5);
+}
+
+.fb-sent__mark {
+	display: inline-flex;
+	font-size: var(--icon-xl);
+	line-height: 0;
+	color: var(--primary);
+}
+
+.fb-sent__title {
+	margin: 0;
+	font-size: var(--text-xl);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+}
+
+.fb-sent__text {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface-variant);
+}
+
+.fb-sent__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+}
+
+/*
+ * The owner's "whoosh" (Decision #272 (flair)): a paper aeroplane leaves the mark and flies off once.
+ * Decoration only — it encodes nothing (the form's live region announces the success on its own), it
+ * moves only transform and opacity, it never overshoots (--ease-emphasized), and it is never even
+ * rendered under either reduced-motion channel (the component checks both; these rules are the
+ * second lock).
+ */
+.fb-flight {
+	--fb-flight-x: calc(var(--space-8) * 3.5);
+
+	position: absolute;
+	inset-block-start: var(--space-5);
+	inset-inline-start: 0;
+	display: inline-flex;
+	font-size: var(--icon-xl);
+	line-height: 0;
+	color: var(--primary);
+	pointer-events: none;
+	opacity: 0;
+	animation: fb-flight calc(var(--dur-slow) * 3) var(--ease-emphasized) both;
+}
+
+[dir="rtl"] .fb-flight {
+	--fb-flight-x: calc(var(--space-8) * -3.5);
+}
+
+@keyframes fb-flight {
+	0% {
+		opacity: 0;
+		transform: translate3d(0, 0, 0) rotate(0deg) scale(0.9);
+	}
+
+	15% {
+		opacity: 1;
+	}
+
+	100% {
+		opacity: 0;
+		transform: translate3d(var(--fb-flight-x), calc(var(--space-8) * -1.5), 0) rotate(-14deg)
+			scale(0.5);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.fb-flight {
+		display: none;
+	}
+}
+
+:root[data-motion="reduced"] .fb-flight {
+	display: none;
+}
+/* #endregion */
+
+/* #region The drawer */
+.fb-drawer.ui-drawer {
+	transition: transform var(--dur-fast) var(--ease-exit);
+}
+
+.fb-drawer.ui-drawer[data-state="open"] {
+	transition: transform var(--dur-medium) var(--ease-emphasized);
+}
+
+.fb-drawer__loading {
+	display: grid;
+	gap: var(--space-4);
+}
+/* #endregion */

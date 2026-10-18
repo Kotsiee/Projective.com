@@ -67,6 +67,67 @@ _Not yet documented._ (P2: the help centre's "Was this helpful?" votes.)
 
 ## Feedback board
 
-_Not yet documented._ (P7: ideas, votes and status events. An idea stores a unified-machine state —
-`Backlog` shown "Under review" and visible only to its author and operators, `Ready` "Planned",
-`In Progress`, `Complete` "Shipped", `Archived` — per owner ruling (d), 2026-10-17.)
+The public board at `/feedback` and the `?feedback=open` drawer (Decision #272). Three tables in
+region `[feedback]` of `00000025`; every write is a SECURITY DEFINER door ([Functions](Functions.md#feedback-board)),
+and no client role holds INSERT, UPDATE or DELETE on any of them. Zod SSOT:
+`@projective/types/community` (`FeedbackIdeaRowSchema`, `FeedbackVoteRowSchema`,
+`FeedbackStatusEventRowSchema`, `FEEDBACK_STATES`, `FEEDBACK_CATEGORIES`); `feedback.contract.test.ts`
+reads this schema to pin each shared rule. Lifecycle: [PRODUCT_MANAGEMENT §3.9](../../PRODUCT_MANAGEMENT.md).
+
+### `community.feedback_ideas`
+
+| Column | Type | Notes |
+| :-- | :-- | :-- |
+| `id` | uuid PK | `gen_random_uuid()`. Never leaves the server — an idea is addressed by its slug. |
+| `slug` | text | NOT NULL, UNIQUE, CHECK `^fbk-[23456789abcdefghjkmnopqrstuvwxyz]{10}$` — the opaque, permanent address (Decision #88; `SLUG_PREFIXES.idea`). Minted on insert and frozen on update by `security.fn_slug_guard('fbk')` (`trg_feedback_ideas_slug`, `00001898`). |
+| `title` | text | NOT NULL. Authored 6–90 characters (the door's bound); the CHECK allows 120 for the screen's mask placeholders. |
+| `impact` | text | NOT NULL, 10–900 stored (600 authored) — "What problem does this solve?". |
+| `body` | text | Optional details, ≤ 6,000 stored (4,000 authored). |
+| `category` | text | NOT NULL, CHECK `IN ('projects', 'escrow_payments', 'messaging', 'profiles', 'teams', 'explore', 'other')` = `FEEDBACK_CATEGORIES`. |
+| `status` | text | NOT NULL, default `'backlog'`, CHECK over the unified-machine values `backlog` · `ready` · `in_progress` · `complete` · `archived` (labels Under review · Planned · In progress · Shipped · Archived). |
+| `author_id` | uuid | FK → `org.users_public(user_id)` ON DELETE SET NULL. Always stamped by the door; nullable so an erased account's ideas survive unattributed. |
+| `vote_count` | integer | NOT NULL, ≥ 0, default 0 — kept equal to the vote rows by `trg_feedback_votes_count`. |
+| `team_response` · `team_response_at` · `team_response_by` | text · timestamptz · uuid | The official response (≤ 2,000), when, and which operator (FK ON DELETE SET NULL). CHECK: response and its instant are set together. |
+| `pii_categories` | text[] | NOT NULL, default `{}`, ⊆ `{email, payment_link, handle, phone}` — what the Decision #147 screen masked. Operator evidence: no client role may read it. |
+| `created_at` · `updated_at` · `status_changed_at` | timestamptz | `now()`. `updated_at` moves on a content, status or response change (never on a vote). |
+| `archived_at` | timestamptz | CHECK `(status = 'archived') = (archived_at IS NOT NULL)`. |
+
+**Triggers** (`00001898` [community.feedback]): `trg_feedback_ideas_slug` (above);
+`trg_feedback_ideas_screen` — BEFORE INSERT OR UPDATE OF `title`, `impact`, `body`: runs each through
+`comms.mask_pii` and records the categories (Tier 2 of Decision #147, on every path including an edit);
+`trg_feedback_ideas_no_delete` — an idea is never deleted (`55000`; archive it).
+
+### `community.feedback_votes`
+
+| Column | Type | Notes |
+| :-- | :-- | :-- |
+| `idea_id` | uuid | FK → `feedback_ideas(id)` ON DELETE RESTRICT. |
+| `user_id` | uuid | FK → `org.users_public(user_id)` ON DELETE CASCADE — closing an account retracts its votes. |
+| `created_at` | timestamptz | `now()`; the hourly vote limit counts it. |
+
+PK `(idea_id, user_id)` is the one-vote-per-person rule; a retraction deletes the row.
+`trg_feedback_votes_count` (AFTER INSERT OR DELETE, SECURITY DEFINER) keeps `vote_count`.
+
+### `community.feedback_status_events`
+
+| Column | Type | Notes |
+| :-- | :-- | :-- |
+| `id` | uuid PK | `gen_random_uuid()`. |
+| `idea_id` | uuid | FK → `feedback_ideas(id)` ON DELETE RESTRICT. |
+| `from_status` · `to_status` | text | The move; `from_status` NULL for the submission (→ `backlog`). CHECK both over the five states and `from_status IS DISTINCT FROM to_status`. |
+| `actor_id` | uuid | Who moved it — an audit column with NO foreign key, so the history outlives an erased account. Withheld from clients. |
+| `note` | text | An operator's note (≤ 1,000). Withheld from clients. |
+| `created_at` | timestamptz | `now()`. |
+
+Append-only for every role (`trg_feedback_status_events_append_only`: UPDATE and DELETE raise `55000`).
+
+**Indexes** (`00004013` [community.feedback]): `idx_feedback_ideas_status_top` (status, vote_count
+DESC, created_at DESC — "Top"), `idx_feedback_ideas_status_new` (status, created_at DESC — "New"),
+`idx_feedback_ideas_author_recent` (author_id, created_at DESC — the author's ideas under review and
+the daily limit), `idx_feedback_votes_user_recent` (user_id, created_at DESC — the reader's votes and
+the hourly limit), `idx_feedback_status_events_idea` (idea_id, created_at — one idea's history).
+
+**Seed** (`supabase/seeds/12_community_feedback.sql`, generated from `gen/world.ts` `FEEDBACK_IDEAS`):
+sixteen ideas by the seed personas — four Shipped, three In progress, five Planned, three under review
+(each its author's only), one Archived — with their history and votes. The fixture road
+(`COMMUNITY_BACKEND_LIVE` off) serves the same sixteen.

@@ -615,6 +615,39 @@ expired live session), and answering the flat `serviceResponse` envelope. Live b
 | `/api/notifications/seen`         | `POST`  | `comms.mark_notifications_seen` — clears the badge, reads nothing → `{ updated }`. |
 | `/api/notifications/archive`      | `POST` `{ ids }` | `NotificationIdsSchema` → `comms.archive_notifications` (dismiss; never a hard delete) → `{ updated }`. |
 
+### Feedback board (Decision #272)
+
+`/feedback` (`routes/(public)/feedback.tsx` → `features/feedback/routes/FeedbackPage.tsx`) is the
+board's own page — public, indexable, and the canonical address of every idea's section of it. The
+same board opens over ANY public or dashboard page as a drawer, owned by ONE host,
+`features/feedback/islands/FeedbackHost.island.tsx`, mounted in both layouts (the drawer's code is
+imported the first time it is asked for). `features/feedback/core/feedback-url.ts` is the contract:
+
+- **`?feedback=open`** on any page but `/feedback` opens the drawer; the URL is the source of truth
+  (arriving with it opens it). Opening from the account menu's **Feedback & roadmap** or the `g` `f`
+  shortcut PUSHES an entry, so Back closes the drawer; moving inside it and closing it
+  (`replaceState`) never add one. On `/feedback` the parameter is dropped — the page is the board.
+- **`idea=<fbk-slug>`** opens one idea (in either mode); **`compose=1`** opens the suggestion form.
+- **`status=under_review|planned|in_progress|shipped`** and **`sort=top|new`** filter the board. On
+  `/feedback` they are written back as the reader changes tabs; in the drawer they are read on
+  arrival and never written, because a host page owns those names (`/projects?status=`, Explore, the
+  wallet). The drawer's own parameters are removed on close and every other parameter is kept
+  byte for byte.
+- Every entry is stamped `fClientNav: false` and the page's own entry is re-stamped before a push
+  (the `?tkv=` recipe, Decision #95). An idea under review answers `/feedback?idea=…` with a "not on the
+  board" notice and a way back to anyone but its author and operators.
+
+| Path | Method / body | Delegates to |
+| :-- | :-- | :-- |
+| `/api/feedback/ideas` | `GET` `?status=&sort=&q=&limit=` | `FeedbackBackendService.board` — the board as the reader may see it (RLS: the public states; the reader's own ideas under review; everything for an operator) with every tab's count (`community.feedback_status_counts`); `q` is the composer's title search. `private, no-store`. |
+| `/api/feedback/ideas` | `POST` `{ title, category, impact, body? }` | `.submit` → `community.submit_feedback_idea` — 201 with the idea (Under review); 401 guest; 422 field errors (a contact detail in any field is refused here, Decision #147); 429 + `Retry-After` past five a day. |
+| `/api/feedback/ideas/[id]` | `GET` | `.idea` — the idea (by `fbk-` slug), its status history and up to three related ideas. 404 for a non-slug, and for an idea the reader may not see. |
+| `/api/feedback/ideas/[id]/vote` | `POST` · `DELETE` | `.vote` → `community.vote_feedback_idea` / `unvote_feedback_idea` — idempotent `{ voted, voteCount }`; 401 guest; 404 unseen; 409 voting closed (Shipped); 429 past 120 an hour. |
+| `/api/feedback/ideas/[id]/status` | `POST` `{ status?, note?, response? }` | `.moderate` → `community.set_feedback_idea_status` / `respond_to_feedback_idea` — operators only (403 otherwise; there is no operator UI yet, #272 flag (a)); 409 for an illegal move. A move notifies the author and every voter. |
+
+Live behind `COMMUNITY_BACKEND_LIVE`; with it off every route answers from the per-process fixture
+store (the seed's sixteen ideas), which mirrors each door's rules.
+
 ### Saved API (Decision #180)
 
 Thin routes over `SavedBackendService` (`@server/services/saved/`), Zod-parsing with the
