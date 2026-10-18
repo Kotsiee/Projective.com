@@ -12,11 +12,13 @@ import {
 	type WorkspaceCapability,
 	type WorkspaceDetail,
 	WorkspaceDetailSchema,
+	type WorkspaceKind,
 } from "@projective/types/workspace";
 import {
 	activityRows,
 	businessMoney,
 	filledControls,
+	HERO_ACTION_LABEL,
 	heroDismissGuard,
 	heroDismissKey,
 	liveProjectCount,
@@ -137,7 +139,7 @@ Deno.test("hero: exactly one filled control in every setup state the owner can a
 	for (const [kind, ids] of [["team", TEAM_STEPS], ["business", BUSINESS_STEPS]] as const) {
 		for (let mask = 0; mask < 1 << ids.length; mask++) {
 			const steps = stepsOf(ids, mask);
-			const hero = setupHero({ name: "Northloop", steps, dismissed: false });
+			const hero = setupHero({ kind, name: "Northloop", steps, dismissed: false });
 			const allDone = mask === (1 << ids.length) - 1;
 			if (allDone) {
 				assertStrictEquals(hero, null, `${kind} ${mask}: a finished setup draws no hero`);
@@ -164,7 +166,12 @@ Deno.test("hero: the overview carries exactly the hero's fill — every zone, ev
 });
 
 Deno.test("hero: invite is tier 2, publish tier 3, the rest tier-4 links; publish only as the step at hand", () => {
-	const fresh = setupHero({ name: "Northloop", steps: stepsOf(TEAM_STEPS, 0), dismissed: false })!;
+	const fresh = setupHero({
+		kind: "team",
+		name: "Northloop",
+		steps: stepsOf(TEAM_STEPS, 0),
+		dismissed: false,
+	})!;
 	assertEquals(controls(fresh.steps), [
 		"invite:2*",
 		"money:4",
@@ -177,6 +184,7 @@ Deno.test("hero: invite is tier 2, publish tier 3, the rest tier-4 links; publis
 	assertEquals(fresh.steps[1].action!.href, "/teams/northloop/payouts");
 	// Everything but publishing done → Publish is the fill.
 	const last = setupHero({
+		kind: "team",
 		name: "Northloop",
 		steps: stepsOf(TEAM_STEPS, 0b01111),
 		dismissed: false,
@@ -195,7 +203,12 @@ Deno.test("hero: invite is tier 2, publish tier 3, the rest tier-4 links; publis
 		80,
 	]);
 	// A split step at hand is a filled link to its page.
-	const split = setupHero({ name: "N", steps: stepsOf(TEAM_STEPS, 0b00001), dismissed: false })!;
+	const split = setupHero({
+		kind: "team",
+		name: "N",
+		steps: stepsOf(TEAM_STEPS, 0b00001),
+		dismissed: false,
+	})!;
 	assertEquals(split.steps[1].action, {
 		kind: "link",
 		tier: 3,
@@ -206,7 +219,12 @@ Deno.test("hero: invite is tier 2, publish tier 3, the rest tier-4 links; publis
 });
 
 Deno.test("hero: a done step reads Done; an open one its note", () => {
-	const hero = setupHero({ name: "N", steps: stepsOf(TEAM_STEPS, 0b00011), dismissed: false })!;
+	const hero = setupHero({
+		kind: "team",
+		name: "N",
+		steps: stepsOf(TEAM_STEPS, 0b00011),
+		dismissed: false,
+	})!;
 	assertEquals(hero.steps.map((s) => s.note), [
 		"Done",
 		"Done",
@@ -214,6 +232,48 @@ Deno.test("hero: a done step reads Done; an open one its note", () => {
 		"Why verification",
 		"Why publish",
 	]);
+});
+
+Deno.test("hero: a control names the act in a word or two, never the step's long label", () => {
+	// The labels `setupSteps` sends (packages/backend/services/workspace/mappers.ts).
+	const sent: Record<WorkspaceKind, Partial<Record<SetupStepId, string>>> = {
+		team: {
+			invite: "Invite a second member",
+			money: "Set the split",
+			profile: "Complete the public profile",
+			verification: "Verify the owner",
+			publish: "Publish",
+		},
+		business: {
+			logo: "Add a mark",
+			bio: "Say what you do",
+			invite: "Invite someone",
+			money: "Set an approval threshold",
+			verification: "Finish KYB",
+		},
+	};
+	const expected: Record<WorkspaceKind, string[]> = {
+		team: ["Invite member", "Set the split", "Edit profile", "Verify identity", "Publish"],
+		business: ["Add a mark", "Edit profile", "Invite member", "Set threshold", "Finish KYB"],
+	};
+	for (const [kind, ids] of [["team", TEAM_STEPS], ["business", BUSINESS_STEPS]] as const) {
+		// Each step in turn as the step at hand (every step before it done), so each one's control —
+		// Publish included — is drawn.
+		const labels = ids.map((_, i) => {
+			const steps = stepsOf(ids, (1 << i) - 1).map((s) => ({ ...s, label: sent[kind][s.id]! }));
+			return setupHero({ kind, name: "N", steps, dismissed: false })!.steps[i].action!.label;
+		});
+		assertEquals(labels, expected[kind]);
+		// Short enough for one line of a small Button in a fifth of the band.
+		for (const label of labels) assert(label.length <= 15, `${kind}: "${label}" is too long`);
+	}
+	// The table only ever shortens: no entry is longer than the label it replaces.
+	for (const kind of ["team", "business"] as const) {
+		for (const [id, label] of Object.entries(HERO_ACTION_LABEL[kind])) {
+			const own = sent[kind][id as SetupStepId];
+			if (own) assert(label.length <= own.length, `${kind}:${id} grew to "${label}"`);
+		}
+	}
 });
 // #endregion
 
@@ -240,6 +300,7 @@ Deno.test("plain member: no money tile and no money — the read answered none",
 
 Deno.test("partial rights: the fill goes to the first step the viewer can act on", () => {
 	const onlyProfile = setupHero({
+		kind: "team",
 		name: "N",
 		steps: stepsOf(TEAM_STEPS, 0, (id) => id === "profile"),
 		dismissed: false,
@@ -255,6 +316,7 @@ Deno.test("partial rights: the fill goes to the first step the viewer can act on
 	assertEquals(onlyProfile.steps.find((s) => s.current)?.id, "invite");
 	// An admin without the money right: invite filled, split silent, publish not yet.
 	const admin = setupHero({
+		kind: "team",
 		name: "N",
 		steps: stepsOf(TEAM_STEPS, 0, (id) => id !== "money"),
 		dismissed: false,
@@ -278,7 +340,7 @@ Deno.test("partial rights: Publish is never the fill while the steps before it a
 		0b01000,
 		(id) => canActOnSetupStep("team", id, settingsOnly),
 	);
-	const hero = setupHero({ name: "N", steps, dismissed: false })!;
+	const hero = setupHero({ kind: "team", name: "N", steps, dismissed: false })!;
 	assertEquals(controls(hero.steps), [
 		"invite:-",
 		"money:-",
@@ -291,20 +353,23 @@ Deno.test("partial rights: Publish is never the fill while the steps before it a
 	assertEquals(filledControls(overviewModel(detail, { dismissed: false })), 0);
 	// Once Publish IS the step at hand, the same viewer gets it as the band's fill.
 	const last = stepsOf(TEAM_STEPS, 0b01111, (id) => canActOnSetupStep("team", id, settingsOnly));
-	assertEquals(controls(setupHero({ name: "N", steps: last, dismissed: false })!.steps), [
-		"invite:-",
-		"money:-",
-		"profile:-",
-		"verification:-",
-		"publish:3*",
-	]);
+	assertEquals(
+		controls(setupHero({ kind: "team", name: "N", steps: last, dismissed: false })!.steps),
+		[
+			"invite:-",
+			"money:-",
+			"profile:-",
+			"verification:-",
+			"publish:3*",
+		],
+	);
 });
 
 Deno.test("partial rights: an admin is never offered the owner's identity check", () => {
 	const admin = presetCapabilities("admin", "team");
 	// Invite, split and profile done: the owner's check is the step at hand.
 	const steps = stepsOf(TEAM_STEPS, 0b00111, (id) => canActOnSetupStep("team", id, admin));
-	const hero = setupHero({ name: "N", steps, dismissed: false })!;
+	const hero = setupHero({ kind: "team", name: "N", steps, dismissed: false })!;
 	assertEquals(controls(hero.steps), [
 		"invite:-",
 		"money:-",
@@ -314,19 +379,19 @@ Deno.test("partial rights: an admin is never offered the owner's identity check"
 	]);
 	// The owner is, as the band's fill — a link to their own settings.
 	const own = stepsOf(TEAM_STEPS, 0b00111, (id) => canActOnSetupStep("team", id, OWNER, true));
-	const ownHero = setupHero({ name: "N", steps: own, dismissed: false })!;
+	const ownHero = setupHero({ kind: "team", name: "N", steps: own, dismissed: false })!;
 	assertEquals(ownHero.steps[3].action, {
 		kind: "link",
 		tier: 3,
 		filled: true,
-		label: "Step verification",
+		label: "Verify identity",
 		href: "/settings/verification#identity-check",
 	});
 });
 
 Deno.test("hero: a link step with no page offers no control", () => {
 	const steps = stepsOf(TEAM_STEPS, 0b00001).map((s) => s.id === "money" ? { ...s, href: "" } : s);
-	const hero = setupHero({ name: "N", steps, dismissed: false })!;
+	const hero = setupHero({ kind: "team", name: "N", steps, dismissed: false })!;
 	assertEquals(controls(hero.steps), [
 		"invite:-",
 		"money:-",

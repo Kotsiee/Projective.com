@@ -125,6 +125,11 @@ here and there must never be one. */
     margin-block-end: var(--space-4);
 }
 
+/* A band head's "See all" is an anchor wearing a tier-5 Button: no Button draws the link underline. */
+.wsp-band__more {
+    text-decoration: none;
+}
+
 .wsp-band__title {
     margin: 0;
     font-size: var(--wsp-fs-label);
@@ -326,10 +331,19 @@ here and there must never be one. */
  * "Get <entity> ready" — a band of steps, not a checklist box: the ring, the heading and its count on
  * the leading side, the steps as ONE ordered line on the other, joined by hairline connectors. A step's
  * state is its mark (a tick, or its number) AND its words ("Done", or what doing it gets them), never
- * colour alone. Below --bp-xl the head sits above the line; below --bp-md the line becomes a column and
- * the connectors fall away. Every control inside is a ui Button (or an anchor wearing one), so the press
- * scale and both reduced-motion channels come from the ui package.
+ * colour alone. Every control inside is a ui Button (or an anchor wearing one), so the press scale and
+ * both reduced-motion channels come from the ui package.
+ *
+ * The layout answers to the BAND's width, not the viewport's: the lane takes its share of the screen,
+ * so a viewport says little about the room the steps actually have. A step never gets narrower than
+ * its control, whose label must not wrap inside a small Button's fixed height (the container queries
+ * at the end of this region): beside the head while five steps still fit there, below the head while
+ * they fit on one line, and a column, the connectors fallen away, once they do not.
  */
+.wsp-band--hero > .wsp-band__inner {
+    container: wsp-hero / inline-size;
+}
+
 .wsp-hero {
     display: grid;
     grid-template-columns: minmax(0, 17rem) minmax(0, 1fr);
@@ -340,9 +354,10 @@ here and there must never be one. */
 }
 
 /*
- * A remembered dismissal, found by the Overview's pre-paint guard (`heroDismissGuard`) before the
- * island hydrates: the hero is hidden from first paint and the notices it carries stand in for it.
- * Without the mark the stand-ins stay hidden, because the hero on screen is already saying them.
+ * A dismissal — remembered, found by the Overview's pre-paint guard (`heroDismissGuard`) before the
+ * island revives and kept by the island's own first render, or made in place: the hero is hidden and
+ * the notices it carries stand in for it, from first paint. This mark is the ONLY switch between the
+ * two. Without it the stand-ins stay hidden, because the hero on screen is already saying them.
  */
 .wsp__stack[data-hero-dismissed] > .wsp-band--hero,
 .wsp__stack:not([data-hero-dismissed]) > [data-hero-standin] {
@@ -452,13 +467,65 @@ here and there must never be one. */
     color: var(--text-secondary);
 }
 
+/* A small Button has a fixed height, so its label stays on one line; the step is sized to hold it. */
 .wsp-hero__action {
     display: inline-flex;
+    max-inline-size: 100%;
     margin-block-start: var(--space-2);
+    white-space: nowrap;
+}
+
+/* A step's page is an anchor wearing a Button: no Button draws the link underline. */
+.wsp-hero__link {
+    text-decoration: none;
 }
 
 .wsp-hero__error {
     grid-column: 1 / -1;
+}
+
+/*
+ * The breakpoints are the steps' own arithmetic: a step needs 9rem for its longest control ("Verify
+ * identity", "Invite member" — `HERO_ACTION_LABEL`) with room to spare, so five steps and their four
+ * --space-3 gaps need 48rem, and beside the head's 17rem column and its --space-7 gap, 68rem.
+ */
+@container wsp-hero (inline-size < 68rem) {
+    .wsp-hero {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* The steps become a column: the mark leads each one, and a connector would point nowhere. */
+@container wsp-hero (inline-size < 48rem) {
+    .wsp-hero__steps {
+        grid-auto-flow: row;
+        grid-auto-columns: auto;
+        gap: var(--space-4);
+    }
+
+    .wsp-hero__step {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: start;
+        column-gap: var(--space-3);
+        row-gap: var(--space-1);
+    }
+
+    .wsp-hero__track {
+        grid-row: 1 / span 3;
+        inline-size: auto;
+        margin-block-end: 0;
+    }
+
+    .wsp-hero__rule {
+        display: none;
+    }
+
+    .wsp-hero__label,
+    .wsp-hero__note,
+    .wsp-hero__action {
+        grid-column: 2;
+    }
 }
 
 /* #endregion */
@@ -479,6 +546,11 @@ here and there must never be one. */
     --ui-stat-label-size: var(--wsp-fs-micro);
     --ui-stat-meta-size: var(--wsp-fs-micro);
     --ui-chart-accent: var(--wsp-kind);
+}
+
+/* A caption here carries counts ("of 50 this week", "1 invitation out"), so its figures are tabular. */
+.wsp-tiles .ui-stat__caption {
+    font-variant-numeric: tabular-nums;
 }
 
 /* #endregion */
@@ -782,11 +854,6 @@ here and there must never be one. */
         justify-self: start;
         justify-content: flex-start;
     }
-
-    /* The hero's head sits above its line of steps. */
-    .wsp-hero {
-        grid-template-columns: minmax(0, 1fr);
-    }
 }
 
 @media (max-width: 47.9375rem) {
@@ -821,37 +888,6 @@ here and there must never be one. */
     .wsp-tiles.ui-stats {
         grid-template-columns: minmax(0, 1fr);
         gap: var(--space-4);
-    }
-
-    /* The steps become a column: the mark leads each one, and a connector would point nowhere. */
-    .wsp-hero__steps {
-        grid-auto-flow: row;
-        grid-auto-columns: auto;
-        gap: var(--space-4);
-    }
-
-    .wsp-hero__step {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr);
-        align-items: start;
-        column-gap: var(--space-3);
-        row-gap: var(--space-1);
-    }
-
-    .wsp-hero__track {
-        grid-row: 1 / span 3;
-        inline-size: auto;
-        margin-block-end: 0;
-    }
-
-    .wsp-hero__rule {
-        display: none;
-    }
-
-    .wsp-hero__label,
-    .wsp-hero__note,
-    .wsp-hero__action {
-        grid-column: 2;
     }
 
     .wsp-projects__row {

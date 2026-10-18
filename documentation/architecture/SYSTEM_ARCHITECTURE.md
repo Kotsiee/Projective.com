@@ -1797,7 +1797,10 @@ Every write returns the RE-READ console so an island adopts the server's state. 
   (`features/workspaces/core/overview-model.ts`, Teams C1) never draws a control its viewer cannot
   use. The Overview's setup-hero dismissal lives in localStorage, so an inline pre-paint guard
   (`heroDismissGuard`, allowed by the `'unsafe-inline'` `script-src` in `utils/csp.ts`; a
-  nonce-based policy must carry it) hides the band before first paint.
+  nonce-based policy must carry it) hides the band before first paint, and the island's first
+  client render reads the same key and carries the same `data-hero-dismissed` mark: Fresh's revive
+  renders over the server's DOM and removes every attribute its tree lacks, so a mark set only by a
+  pre-paint script is dropped at revive and the band flashes back.
 - **The acting context is written only by the switch RPCs.** (Its enterprise targets are listed by
   `GET /api/context/enterprises` → `ContextBackendService.enterprises`: owned or ACTIVE-member
   enterprises, archived excluded, filtered explicitly because the `org.enterprises` SELECT

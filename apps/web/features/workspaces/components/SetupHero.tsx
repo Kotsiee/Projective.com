@@ -65,12 +65,13 @@ function StepAction(
 			/>
 		);
 	}
-	// A destination is an anchor, wearing the Button tier it was given.
+	// A destination is an anchor, wearing the Button tier it was given (`wsp-hero__link` drops the
+	// link underline no Button draws).
 	const tone = action.filled
 		? "ui-button--primary ui-button--filled"
 		: "ui-button--neutral ui-button--outlined";
 	return (
-		<a class={`ui-button ${tone} ui-button--size-sm`} href={action.href}>
+		<a class={`ui-button ${tone} ui-button--size-sm wsp-hero__link`} href={action.href}>
 			<span class="ui-button__label">{action.label}</span>
 		</a>
 	);

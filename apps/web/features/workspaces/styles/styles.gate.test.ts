@@ -403,6 +403,8 @@ Deno.test("workspace styles: figure classes are tabular", () => {
 		".wsp-matrix__rownote",
 		".wsp-band__title",
 		".wsp-activity__text",
+		// A metric tile's caption: "of 50 this week", "1 invitation out".
+		".wsp-tiles .ui-stat__caption",
 	]
 		.filter((selector) => {
 			const at = all.search(new RegExp(`(^|\\n)${selector.replace(/[.-]/g, "\\$&")}\\s*\\{`));

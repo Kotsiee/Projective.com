@@ -5,6 +5,7 @@ import {
 	type WorkspaceDetail,
 	type WorkspaceFinance,
 	workspaceHref,
+	type WorkspaceKind,
 } from "@projective/types/workspace";
 
 /**
@@ -76,19 +77,33 @@ function actionKind(id: SetupStepId): HeroActionKind {
 }
 
 /**
+ * The words on a step's control, where they differ from the step's own label. The label says what the
+ * step IS ("Complete the public profile") and sits right above its control, in a column a fifth of
+ * the band wide, so the control names the act in a word or two instead of repeating it: a small
+ * Button has a fixed height, and a label that wraps inside it spills past its border. A step not
+ * listed keeps its own label, which is already that short ("Set the split", "Add a mark", "Publish").
+ */
+export const HERO_ACTION_LABEL: Readonly<
+	Record<WorkspaceKind, Readonly<Partial<Record<SetupStepId, string>>>>
+> = {
+	team: { invite: "Invite member", profile: "Edit profile", verification: "Verify identity" },
+	business: { invite: "Invite member", bio: "Edit profile", money: "Set threshold" },
+};
+
+/**
  * A step's control.
  *
  * The first unfinished step the viewer may act on carries the band's one fill: the tier-2 structural
  * Invite member, else the tier-3 primary (Publish, or the step's page). Every other step they may act on
  * gets a tier-4 utility — except Publish, a one-way commit offered only as the step at hand, never
  * beside the steps that come before it ({@link setupHero} never makes it primary before then). A step
- * whose page is unknown (`href: ""`) offers nothing.
+ * whose page is unknown (`href: ""`) offers nothing. Its words are {@link HERO_ACTION_LABEL}'s.
  */
-function actionFor(step: SetupStep, primary: boolean): HeroAction | null {
+function actionFor(step: SetupStep, primary: boolean, entity: WorkspaceKind): HeroAction | null {
 	if (step.done || !step.actionable) return null;
 	const kind = actionKind(step.id);
 	if (kind === "link" && !step.href) return null;
-	const label = kind === "invite" ? "Invite member" : step.label;
+	const label = HERO_ACTION_LABEL[entity][step.id] ?? step.label;
 	const href = kind === "link" ? step.href : "";
 	if (primary) return { kind, tier: kind === "invite" ? 2 : 3, filled: true, label, href };
 	if (kind === "publish") return null;
@@ -100,9 +115,9 @@ function actionFor(step: SetupStep, primary: boolean): HeroAction | null {
  * Publish, so a draft team always has one open), no steps, or the viewer dismissed it.
  */
 export function setupHero(
-	input: { name: string; steps: readonly SetupStep[]; dismissed: boolean },
+	input: { kind: WorkspaceKind; name: string; steps: readonly SetupStep[]; dismissed: boolean },
 ): SetupHeroModel | null {
-	const { steps } = input;
+	const { kind, steps } = input;
 	if (input.dismissed || steps.length === 0 || steps.every((s) => s.done)) return null;
 	const current = steps.findIndex((s) => !s.done);
 	// The first unfinished step the viewer can actually act on (done, unactionable and page-less
@@ -110,7 +125,7 @@ export function setupHero(
 	// but not invite, split or edit the profile is never handed the one-way commit while the steps
 	// before it are still open — the band then simply carries no fill for them.
 	const primary = steps.findIndex((s, i) =>
-		(s.id !== "publish" || i === current) && actionFor(s, true) !== null
+		(s.id !== "publish" || i === current) && actionFor(s, true, kind) !== null
 	);
 	const done = steps.filter((s) => s.done).length;
 	return {
@@ -125,7 +140,7 @@ export function setupHero(
 			note: step.done ? "Done" : step.note,
 			done: step.done,
 			current: i === current,
-			action: actionFor(step, i === primary),
+			action: actionFor(step, i === primary, kind),
 		})),
 	};
 }
@@ -351,9 +366,10 @@ export interface OverviewModel {
 	propose: ProposeNotice | null;
 	/**
 	 * The notices the hero is carrying right now — what {@link lock} and {@link propose} become once
-	 * it is dismissed. The island draws them hidden behind the pre-paint guard
-	 * ({@link heroDismissGuard}), so a viewer who dismissed the hero earlier sees them in place from
-	 * first paint instead of popping in once the island has read their choice.
+	 * it is dismissed. The island draws them beside the hero, hidden until the stack carries the
+	 * dismissal mark (set by the pre-paint guard, {@link heroDismissGuard}, and by the island itself),
+	 * so a viewer who dismissed the hero earlier sees them in place from first paint instead of
+	 * popping in once the island has read their choice.
 	 */
 	standIn: { lock: boolean; propose: ProposeNotice | null };
 	metrics: OverviewMetric[];
@@ -388,7 +404,12 @@ export function overviewModel(
 	detail: WorkspaceDetail,
 	opts: { dismissed: boolean },
 ): OverviewModel {
-	const hero = setupHero({ name: detail.name, steps: detail.setup, dismissed: opts.dismissed });
+	const hero = setupHero({
+		kind: detail.kind,
+		name: detail.name,
+		steps: detail.setup,
+		dismissed: opts.dismissed,
+	});
 	const shown = notices(detail, hero);
 	const away = hero ? notices(detail, null) : shown;
 	return {
@@ -433,9 +454,12 @@ export function heroDismissKey(
  * The pre-paint guard for a remembered dismissal: an inline script the island renders just inside the
  * stack, ahead of the hero band. On a server-rendered page it runs before the band is parsed, so a
  * viewer who hid the hero never sees it painted and then pulled away — it marks its parent with
- * `data-hero-dismissed`, which the stylesheet reads to hide the band until the island has read the
- * same key and stopped rendering it. The key is JSON-encoded with `<` escaped, so no value can close
- * the script element; storage failures are swallowed, and the hero then simply shows.
+ * `data-hero-dismissed`, which the stylesheet reads to hide the band and show its stand-ins. The
+ * island's first client render reads the same key ({@link readHeroDismissed}) and renders the same
+ * mark, so the revive — which diffs attributes against the server's DOM and drops any its tree does
+ * not carry — keeps it rather than flashing the band back. The key is JSON-encoded with `<` escaped,
+ * so no value can close the script element; storage failures are swallowed, and the hero then simply
+ * shows.
  */
 export function heroDismissGuard(key: string): string {
 	const literal = JSON.stringify(key).replace(/</g, "\\u003c");

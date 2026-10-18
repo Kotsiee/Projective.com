@@ -10,7 +10,8 @@ import type { PreviewRow } from "../core/overview-model.ts";
  * One row per engagement, the whole row a link to `/projects/prj-…` (slugs only, Decision #88): the
  * title in the body register, its facts as one MetaLine (counterparty · stage · state · date — never
  * chips, §B.11), and completion as the ui `ProgressBar`, which owns its own fill so no row writes an
- * inline style. Rows part by ONE hairline and are never boxed (§B.4).
+ * inline style, with its tabular percentage beside the track (`showValue`) so the bar's length is never
+ * the figure's only channel. Rows part by ONE hairline and are never boxed (§B.4).
  */
 
 export interface ProjectListProps {
@@ -37,6 +38,7 @@ function ProjectRow({ row }: { row: PreviewRow }): JSX.Element {
 					<ProgressBar
 						class="wsp-projects__progress"
 						value={pct}
+						showValue
 						aria-label={`${pct}% of stages done`}
 					/>
 				)}
