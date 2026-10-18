@@ -6,8 +6,10 @@
  * `@projective/ui/hooks/useVirtualScroll` and scroll within their own container OR the window;
  * hierarchical + temporal views (OrgChart, Timeline); media (Image, Galleria, Carousel, GMap,
  * AudioVisualizer, VideoPlayer, ProgressiveImage, ShowcaseGrid); charts (AreaChart, FunnelChart,
- * HeatmapGrid, Sparkline, StatTile — SVG escalating to Canvas2D by density); and
- * content atoms (Card, Badge, Tag, Avatar, AvatarGroup, Chip, List, ListItem, Accordion).
+ * HeatmapGrid, Sparkline, StatTile — SVG escalating to Canvas2D by density);
+ * content atoms (Card, Badge, Tag, Avatar, AvatarGroup, Chip, List, ListItem, Accordion); and the
+ * editorial reading family (DocumentLayout, DocumentHeader, DocumentBody, Prose, ContentRenderer,
+ * AnchorHeading, TableOfContents, ReadingProgress — `./display/editorial` + `./editorial-islands`).
  *
  * Styling contract: Pure CSS + strict BEM, token-only. Interactive pieces are islands; atoms are
  * zero-JS server components.
@@ -304,4 +306,9 @@ export { ListItem } from "./components/ListItem.tsx";
 export type { ListItemProps } from "./components/ListItem.tsx";
 export { Accordion, AccordionTab } from "./islands/Accordion.tsx";
 export type { AccordionProps, AccordionTabModel, AccordionTabProps } from "./islands/Accordion.tsx";
+// #endregion
+
+// #region Editorial (DocumentLayout · Prose · ContentRenderer · TOC · ReadingProgress)
+export * from "./editorial.ts";
+export * from "./editorial-islands.ts";
 // #endregion

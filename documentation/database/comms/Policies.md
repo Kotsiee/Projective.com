@@ -184,7 +184,6 @@ Added by Decisions #82/#83; summarised here so this file is not read as the whol
 | `comms.message_pins`             | `comms.can_read_message(...)`        | `INSERT` as self; `DELETE` by anyone who can read it.     |
 | `comms.message_favorites`        | Own row only.                        | `INSERT` as self on a readable message; `DELETE` own row. |
 | `comms.auto_responses`           | Own row only.                        | Four separate policies so `UPDATE` carries both arms.     |
-| `comms.newsletter_subscriptions` | —                                    | — **No policy, deliberately.**                            |
 
 `comms.dm_participants` is own-row-only on purpose: RLS is row-level, and every private per-viewer
 field (`last_read_at`, `is_starred`, `is_archived`, `is_muted`, `deleted_at`) lives on that row, so
@@ -203,7 +202,6 @@ Joining, marking read, starring and archiving remain policy-less on purpose — 
 no `user_id`, so a pin is channel-wide, and in a two-person DM the counterparty must be able to
 clear one.
 
-`comms.newsletter_subscriptions` is default-deny and reachable only through the service-role key.
-That is **not** the same shape as the DM-stack bug: nothing should read this table as a user,
-because every row is an email address paired with a `token` that is the unsubscribe capability. Read
-the note above the absent policy in `00002012` before adding one.
+The newsletter opt-in, once `comms.newsletter_subscriptions`, moved to
+`community.newsletter_subscriptions` (Decision #274). It still has no policy, deliberately, and now no
+client privilege either — see [community/Policies.md](../community/Policies.md#newsletter).

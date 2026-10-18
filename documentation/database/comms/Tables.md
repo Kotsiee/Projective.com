@@ -32,6 +32,12 @@ are seeded (money · work · messages · schedule · discovery · account · sys
 or an `rpc("fn_notify")` in a backend service, emits a key (or alias) the seed does not carry, and
 when `KNOWN_NOTIFICATION_TYPES` drifts from the seed.
 
+**Added 2026-10-17 (Decision #276):** `contact.received` (system · medium · in_app + email, not
+mandatory, digestible; no action URL — there is no operator contact desk yet) — sent by
+`ops.submit_contact_request` to every `ops.admin_users` row when a `/contact` request arrives; the body
+names the intent and the `CT-…` reference, never the sender's words. Seeded in its own `[contact]`
+region of `00005010`.
+
 **Added 2026-10-13 (Decision #202):** `payout.paid` (money · medium · in_app, digestible) — a
 connected account's bank payout landed; `payout.reversed` (money · high · in_app + email, mandatory) —
 a sent payout was reversed back to the wallet. `payout.failed`, seeded long before, now has senders

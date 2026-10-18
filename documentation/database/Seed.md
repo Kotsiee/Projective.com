@@ -41,6 +41,15 @@ deno task embeddings:backfill             # needs VOYAGE_API_KEY in .env.local; 
 On the seed world that is 49 public entities and about 1.6K tokens (≈ $0.0001); a second run embeds
 nothing.
 
+**Editorial content is not seed data** (Decision #274). The help centre, the changelog and
+Projective's articles must exist in every environment, and this seed runs only on a local reset, so
+their rows are category-5 MIGRATIONS instead — `supabase/migrations/0000507x_seed_editorial_*.sql`,
+one per surface, generated from the Zod-validated content sources in
+`packages/backend/services/editorial/content/` by `deno task db:editorial:generate` (see
+[editorial/Tables.md](editorial/Tables.md)). They therefore never reference a persona, a team or a
+storage object this seed creates. Community activity (helpfulness votes, feedback ideas) IS
+world-shaped demo data and belongs here, in `gen/world.ts`, authored by existing personas.
+
 ## Sign-in
 
 Every account uses the password **`password123`** at `<username>@projective.dev`. The access-token
@@ -83,6 +92,7 @@ every persona lands on the authenticated shell directly.
 | `09_search.sql`        | Hand-written projection of everything above into the `search.*` indexes — products and articles into `search.catalogue_index` (Decision #179). No vectors: see the backfill above |
 | `10_profiles.sql`      | The public profile's presentation layer (`gen/profiles.ts`): 30 showcase slots across seven freelancers and three teams (slot 1 always a still), 12 "Selected work" pieces with covers, 4 certifications (two platform-verified), and 4 privacy rows — Maris and Juno allow their photo to be opened full size, Ren hides the local clock, Theo hides the location line |
 | `11_standing.sql`      | Hand-written: every seller's Standing inputs **derived from the seeded record**, then the rung computed by the platform's own `org.fn_recompute_standing` (see [§ Standing](#standing)) |
+| `12_community_feedback.sql` | The feedback board (`gen/world.ts` `FEEDBACK_IDEAS`, Decision #272): sixteen ideas by the personas — four Shipped, three In progress, five Planned, three under review (each visible only to its author), one Archived — each with its submission and every move in `community.feedback_status_events`, the author's own vote plus its voters (`vote_count` kept by the trigger), and team responses on nine. Stable `fbk-…` slugs from the idea's key. The fixture road serves the same sixteen (`feedback-fixtures.contract.test.ts`). |
 
 ## Standing
 

@@ -15,4 +15,9 @@ export interface LightboxMedia {
 	kind?: "image" | "video";
 	/** A video's poster frame. */
 	poster?: string;
+	/**
+	 * A caption shown under the stage and read as the dialog's description (the changelog's release
+	 * pictures carry one); nothing renders without it.
+	 */
+	caption?: string;
 }

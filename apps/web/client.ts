@@ -11,6 +11,13 @@ import "@web/utils/zod-jitless.ts";
 import "@projective/ui/styles";
 import "@ui/layout/styles/index.css";
 import "@ui/navigation/styles/index.css";
+/*
+ * The editorial reading family (DocumentLayout, Prose, ContentRenderer, the TOC, reading progress and
+ * the print layer). Most of it is SERVER-rendered, so its sheet cannot ride a component import; its
+ * two islands carry it too, but a document page that mounts neither (a short changelog entry, a hub
+ * without a table of contents) must still be styled.
+ */
+import "@ui/display/styles/editorial.css";
 import "@web/styles/global.css";
 /*
  * The authenticated shell's own chrome sheet.

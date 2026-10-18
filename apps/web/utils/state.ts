@@ -4,6 +4,7 @@ import type { FxRateTable } from "@projective/types/finance";
 import type { ProfileView } from "@projective/types/profile";
 import type { DiscoveryRanking } from "@projective/types/explore";
 import type { A11yOverlays } from "@web/utils/a11y-context.ts";
+import type { PageMeta } from "@features/marketing/core/seo.ts";
 import type {
 	ProjectAccess,
 	ProjectNavActivity,
@@ -22,6 +23,12 @@ export interface State {
 	title?: string;
 	/** Meta description for public/SEO routes. */
 	description?: string;
+	/**
+	 * The full `<head>` facts of a public page — canonical URL, robots, Open Graph — built by
+	 * `pageMeta()` and set with `applyPageMeta()` (`@features/marketing/core/seo.ts`), which also sets
+	 * `title` / `description`. The root `_app` renders it; absent, only the title and description render.
+	 */
+	meta?: PageMeta;
 	/** Whether the current request is authenticated (set by the dashboard guard). */
 	isAuthenticated?: boolean;
 	/**
