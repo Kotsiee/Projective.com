@@ -83,7 +83,8 @@ export function TourFigure(props: TourFigureProps): JSX.Element {
 			class={`abt-tour__fig abt-tour__fig--${layout}`}
 			viewBox={`0 0 ${geo.width} ${geo.height}`}
 			role="img"
-			aria-labelledby={`${titleId} ${descId}`}
+			aria-labelledby={titleId}
+			aria-describedby={descId}
 			data-step={String(active)}
 			focusable="false"
 		>

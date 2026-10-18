@@ -890,11 +890,14 @@ come from one fat read: `services/marketing/PublicMetricsService.ts` → `Servic
 (thin, `defineReadRoute`, `public-metadata`). It calls ONE aggregate, `finance.public_metrics()`
 (SECURITY DEFINER, service role only), which returns counts, per-currency sums and a median and
 applies the publication threshold itself — `security.platform_params.public_metrics_min_n`, 10 when
-the row is absent (the service logs the fallback) — so a figure resting on fewer rows never leaves
-Postgres; the service holds every figure to the same threshold again. Escrow in several currencies
-is converted into the base currency through `FxService` (read-time, finance-model.md §11) and
-withheld if any currency has no rate. Cached one hour in its own `ArcCache` (`core/cache.ts`) under
-the anonymous tenant — the answer is the same for everyone; a failure is never cached. Behind
+the row is absent (the service logs the fallback) — each figure by its own count; the per-currency
+parts reach only the service role; the service holds every figure to the same threshold again.
+Escrow in several currencies is converted into the base currency through `FxService` (read-time,
+finance-model.md §11) and withheld if any currency has no rate or a code is malformed; the published
+total is floored to two significant figures, so two hourly reads never difference to one escrow.
+Cached one hour in its own `ArcCache` (`core/cache.ts`) under the anonymous tenant — the answer is
+the same for everyone; concurrent misses share one read; a failure is held 30 s, never cached for the
+hour. Behind
 **`FINANCE_BACKEND_LIVE`**; off, the same fold runs over an aggregate frozen from the seeded database
 (`public-metrics-fixtures.ts`).
 

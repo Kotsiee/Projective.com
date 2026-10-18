@@ -44,7 +44,6 @@ Deno.test("AboutView: one h1, no second <main>, every band named by its heading"
 	assertFalse(html.includes("<main"));
 	for (
 		const id of [
-			"abt-friction",
 			"abt-metrics-heading",
 			"abt-tour-heading",
 			"abt-founders-heading",
@@ -55,6 +54,9 @@ Deno.test("AboutView: one h1, no second <main>, every band named by its heading"
 		assert(html.includes(`aria-labelledby="${id}"`), id);
 		assert(html.includes(`id="${id}"`), id);
 	}
+	// The contrast band holds both sides, so both headings name it.
+	assert(html.includes('aria-labelledby="abt-friction abt-model"'));
+	assert(html.includes('id="abt-friction"') && html.includes('id="abt-model"'));
 	assert(html.includes('id="tour-slot"'));
 });
 
@@ -133,7 +135,9 @@ Deno.test("TourFigure: eight nodes, the active one marked, a title and a descrip
 		assertEquals(count(svg, "abt-tour__seg--done"), 2);
 		assert(svg.includes(`data-step="2"`));
 		assert(svg.includes('role="img"'));
-		assert(svg.includes(`aria-labelledby="t-${layout}-title t-${layout}-desc"`));
+		// The title names the image; the long description describes it (not folded into the name).
+		assert(svg.includes(`aria-labelledby="t-${layout}-title"`));
+		assert(svg.includes(`aria-describedby="t-${layout}-desc"`));
 		assert(svg.includes("Step 3, Claim, is selected."));
 		assertFalse(/fill="#|stroke="#|style=/.test(svg), "no literal colour or inline style");
 	}

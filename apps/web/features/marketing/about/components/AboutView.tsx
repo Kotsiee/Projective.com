@@ -62,7 +62,7 @@ export function AboutView({ metrics, tour, isAuthenticated }: AboutViewProps): J
 				</div>
 			</header>
 
-			<Band tint labelledBy={`abt-${ABOUT_CONTRAST[0].id}`}>
+			<Band tint labelledBy={ABOUT_CONTRAST.map((side) => `abt-${side.id}`).join(" ")}>
 				<div class="abt-contrast">
 					{ABOUT_CONTRAST.map((side) => (
 						<div class="abt-contrast__side" key={side.id}>
@@ -112,7 +112,7 @@ export function AboutView({ metrics, tour, isAuthenticated }: AboutViewProps): J
 								loading="lazy"
 								decoding="async"
 							/>
-							<div>
+							<div class="abt-founder__text">
 								<h3 class="abt-founder__name">{founder.name}</h3>
 								<p class="abt-founder__role">{founder.role}</p>
 								<p class="abt-founder__bio">{founder.bio}</p>

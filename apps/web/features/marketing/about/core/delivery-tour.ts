@@ -67,7 +67,7 @@ export function tourSteps(feePercent: string): TourStep[] {
 			zone: "escrow",
 			lines: [
 				"A Freelancer or a Team claims the work, and the held money is bound to them.",
-				"If nobody claims it, the money goes back to the Client.",
+				"If nobody has claimed it when the stage closes, that money goes back to the Client.",
 			],
 		},
 		{

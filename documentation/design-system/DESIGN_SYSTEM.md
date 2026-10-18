@@ -2911,15 +2911,20 @@ and one sentence names what is withheld; a failed read says so and shows none. F
 than `StatTile` because it needs the timestamp slot and must render under `deno test` (`StatTile`
 imports its sheet). **`TourFigure`** —
 the walkthrough diagram: inline SVG in tokens only (`fill` / `stroke` set by class, `--icon-stroke`
-with `vector-effect: non-scaling-stroke`, labels in `--text-md` / `--text-2xs`), eight numbered
-nodes on a rail, the money's place bracketed and named beneath, a token moved by `transform` alone
-(`--dur-medium` / `--ease-standard`; colour on the theme clock, `--dur-slow`); two layouts of one
-drawing — a row of eight from 720px of frame, two rows of four with a U-turn below — exactly one
-displayed; `role="img"` with `<title>` / `<desc>`. **`DeliveryTour`** (island, the page's only one
+with `vector-effect: non-scaling-stroke`; labels a step up the scale, `--text-base` places and
+`--text-md` numerals, because the viewBox is drawn smaller than itself, so they render at 11px or
+more), eight numbered nodes on a rail, the money's place bracketed (in the muted ink, ≥ 3:1) and
+named beneath, a token moved by `transform` alone (`--dur-medium` / `--ease-standard`; colour on the
+theme clock, `--dur-slow`); two layouts of one drawing — a row of eight from 768px of frame
+(`--bp-md`), two rows of four with a U-turn below, capped at `--measure-narrow` — exactly one
+displayed; `role="img"` named by its `<title>` and described by its `<desc>`
+(`aria-describedby`). **`DeliveryTour`** (island, the page's only one
 and its stylesheet carrier) — the WAI-ARIA tabs pattern over that diagram: eight real buttons
 (roving tabindex, arrows wrap, Home / End, automatic activation; a reserved transparent 2px
-block-end bar recoloured `--primary` when selected; press `scale()` removed under both
-reduced-motion channels) controlling one explanation panel ("Where the money is" + two lines), a
+block-end bar recoloured `--primary` when selected, each label set twice in one cell, the copy at the
+selected weight, so selection re-wraps nothing; press `scale()` removed under both reduced-motion
+channels) controlling one explanation panel ("Where the money is" + two lines; all eight stacked in
+one grid cell, only the selected one visible, so the panel never changes height under autoplay), a
 visually hidden ordered list as the text equivalent, and a ghost Play / Pause / Replay control.
 Autoplay is one pass, only under no-preference motion on BOTH channels, only once 35% of it is on
 screen, never in a hidden tab; a pointer resting on it holds it, keyboard focus or a picked step

@@ -2,9 +2,12 @@
  * The "How delivery works" walkthrough (`DeliveryTour.island.tsx`, Decision #277). Token-only BEM.
  *
  * THE DIAGRAM is inline SVG drawn entirely in tokens through `fill` / `stroke` here — the markup
- * names no colour. Two layouts of the same eight nodes: one row (`--wide`) from 720px of frame, two
- * rows of four with a U-turn (`--narrow`) below it, so the labels inside the drawing stay legible at
- * every width; exactly one is displayed, so assistive technology meets one.
+ * names no colour. Two layouts of the same eight nodes: one row (`--wide`) from 768px of frame
+ * (`--bp-md`, the page's one tablet step), two rows of four with a U-turn (`--narrow`) below it, so
+ * the labels inside the drawing stay legible at every width; exactly one is displayed, so assistive
+ * technology meets one. Its labels are sized in user units of a viewBox drawn SMALLER than itself,
+ * so they sit a step up the type scale (`--text-md` numerals, `--text-base` places) to render at
+ * 11px or more from the narrowest frame each layout is drawn in.
  *
  * STATES. Upcoming nodes and rail in `--text-secondary`, passed ones in `--on-surface`, the active
  * node in `--primary` with a ring. The money token moves between nodes by `transform` only, on
@@ -14,8 +17,13 @@
  * and the island never autoplays.
  *
  * THE STEPPER is a tablist of eight real buttons: a reserved transparent block-end bar recoloured
- * `--primary` on the selected step, so selection moves no box (§B.12.3); press feedback is
- * `transform: scale()` only, removed under both reduced-motion channels.
+ * `--primary` on the selected step, and each label set twice in one grid cell (the ink, and an
+ * invisible copy at the selected weight), so selection moves no box and re-wraps no label
+ * (§B.12.3); press feedback is `transform: scale()` only, removed under both reduced-motion channels.
+ *
+ * THE PANEL holds all eight explanations stacked in one grid cell, only the selected one visible
+ * (the others `visibility: hidden` and `aria-hidden`), so it is always as tall as the tallest step
+ * and autoplay never shifts the page beneath it.
  */
 
 /* #region Frame */
@@ -23,7 +31,6 @@
 	--abt-tour-muted: var(--text-secondary);
 	--abt-tour-ink: var(--on-surface);
 	--abt-tour-active: var(--primary);
-	--abt-tour-hair: var(--hairline-color);
 	display: grid;
 	gap: var(--space-5);
 	min-inline-size: 0;
@@ -49,11 +56,11 @@
 }
 
 .abt-tour__fig--narrow {
-	max-inline-size: 30rem;
+	max-inline-size: var(--measure-narrow);
 	margin-inline: auto;
 }
 
-@container abt (min-width: 720px) {
+@container abt (min-width: 768px) {
 	.abt-tour__fig--wide {
 		display: block;
 	}
@@ -112,7 +119,7 @@
 
 .abt-tour__num {
 	font-family: var(--font-mono);
-	font-size: var(--text-2xs);
+	font-size: var(--text-md);
 	font-variant-numeric: tabular-nums;
 	text-anchor: middle;
 	dominant-baseline: central;
@@ -129,9 +136,11 @@
 	fill: var(--on-primary);
 }
 
+/* A resting bracket is the only mark of which nodes make up a place: it is drawn in the muted ink
+ * (≥ 3:1 against the band, as the upcoming rail is), never a hairline tone. */
 .abt-tour__bracket {
 	fill: none;
-	stroke: var(--abt-tour-hair);
+	stroke: var(--abt-tour-muted);
 	stroke-width: var(--icon-stroke);
 	vector-effect: non-scaling-stroke;
 }
@@ -142,7 +151,7 @@
 
 .abt-tour__zone {
 	font-family: var(--font-sans);
-	font-size: var(--text-md);
+	font-size: var(--text-base);
 	text-anchor: middle;
 	fill: var(--abt-tour-muted);
 }
@@ -217,7 +226,7 @@
 	padding: 0;
 }
 
-@container abt (min-width: 720px) {
+@container abt (min-width: 768px) {
 	.abt-tour__steps {
 		grid-template-columns: repeat(8, minmax(0, 1fr));
 	}
@@ -274,8 +283,28 @@
 	color: var(--text-secondary);
 }
 
+/*
+ * The label and an invisible copy at the SELECTED weight share one grid cell (the TocList device):
+ * the cell is always as tall as `--fw-medium` needs, so selecting a step never re-wraps its label
+ * into an extra line in a narrow column.
+ */
 .abt-tour__tab-label {
+	display: grid;
+	min-inline-size: 0;
 	overflow-wrap: anywhere;
+}
+
+.abt-tour__tab-ink,
+.abt-tour__tab-reserve {
+	grid-area: 1 / 1;
+	min-inline-size: 0;
+}
+
+.abt-tour__tab-reserve {
+	visibility: hidden;
+	font-weight: var(--fw-medium);
+	pointer-events: none;
+	user-select: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -303,9 +332,20 @@
 /* #region Panel + control row */
 .abt-tour__panel {
 	display: grid;
-	gap: var(--space-2);
 	max-inline-size: var(--measure);
-	min-block-size: calc(var(--space-8) + var(--space-6));
+}
+
+.abt-tour__entry {
+	display: grid;
+	grid-area: 1 / 1;
+	align-content: start;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	visibility: hidden;
+}
+
+.abt-tour__entry--shown {
+	visibility: visible;
 }
 
 .abt-tour__where {

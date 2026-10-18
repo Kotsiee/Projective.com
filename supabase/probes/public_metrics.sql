@@ -9,8 +9,10 @@
 -- Asserts: only the service role may execute it; it is a SECURITY DEFINER with an empty
 -- search_path; the threshold param and its fallbacks (missing, malformed, zero, fractional); every
 -- figure equals an independent recomputation when the threshold is lifted; NO figure leaves the
--- database when its count is below the threshold; refunded escrows are not "protected"; the fee and
--- base-currency params pass through. A clean run prints only PASS notices; any FAIL aborts it.
+-- database when its count is below the threshold; refunding one counted escrow lowers the protected
+-- count by one and its currency's total by exactly its amount; a stage whose own status says paid,
+-- with no escrow released to a payee, is not delivered; the fee and base-currency params pass
+-- through. A clean run prints only PASS notices; any FAIL aborts it.
 -- Fixtures are whatever the seed holds (deno task db:reset) — the comparisons hold for any data.
 -- =============================================================================================
 
@@ -112,7 +114,6 @@ DECLARE
     v_delivered integer;
     v_obs integer;
     v_median double precision;
-    v_refunded integer;
     v_all integer;
 BEGIN
     SET LOCAL ROLE service_role;
@@ -120,20 +121,30 @@ BEGIN
     RESET ROLE;
 
     SELECT count(*) INTO v_count FROM finance.escrows WHERE status IN ('funded', 'held', 'disputed', 'released');
-    SELECT count(*) INTO v_refunded FROM finance.escrows WHERE status = 'refunded';
     SELECT count(*) INTO v_all FROM finance.escrows;
     SELECT jsonb_agg(jsonb_build_object('currency', cur, 'amount_minor', amt) ORDER BY cur) INTO v_by
       FROM (SELECT upper(currency) AS cur, sum(amount_cents)::bigint AS amt
               FROM finance.escrows WHERE status IN ('funded', 'held', 'disputed', 'released')
              GROUP BY upper(currency)) s;
-    SELECT count(*) INTO v_delivered FROM projects.project_stages WHERE status IN ('approved', 'paid');
+    -- Delivered = approved/paid, not personal, with an escrow released to a payee (money evidence).
+    SELECT count(*) INTO v_delivered
+      FROM projects.project_stages s
+      JOIN projects.projects p ON p.id = s.project_id AND NOT p.is_personal
+     WHERE s.status IN ('approved', 'paid')
+       AND s.id IN (SELECT project_stage_id FROM finance.escrows
+                     WHERE status = 'released' AND payee_id IS NOT NULL);
+    -- Funding -> approval = first released escrow's creation to its last release (released_at,
+    -- else the stage's completed_at), per delivered stage.
     SELECT count(*), percentile_cont(0.5) WITHIN GROUP (ORDER BY h) INTO v_obs, v_median
-      FROM (SELECT extract(epoch FROM (s.completed_at - min(e.created_at))) / 3600.0 AS h
+      FROM (SELECT extract(epoch FROM (coalesce(max(e.released_at), s.completed_at)
+                                       - min(e.created_at))) / 3600.0 AS h
               FROM projects.project_stages s
+              JOIN projects.projects p ON p.id = s.project_id AND NOT p.is_personal
               JOIN finance.escrows e ON e.project_stage_id = s.id AND e.status = 'released'
-             WHERE s.status IN ('approved', 'paid') AND s.completed_at IS NOT NULL
+                                    AND e.payee_id IS NOT NULL
+             WHERE s.status IN ('approved', 'paid')
              GROUP BY s.id, s.completed_at
-            HAVING s.completed_at >= min(e.created_at)) d;
+            HAVING coalesce(max(e.released_at), s.completed_at) >= min(e.created_at)) d;
 
     IF v_count > 0 THEN
         IF (v->>'protected_count')::integer <> v_count THEN
@@ -146,11 +157,6 @@ BEGIN
     ELSE
         RAISE NOTICE 'PASS value protected: no escrows to count (% rows answered %)', v_all, v->'protected_count';
     END IF;
-    IF v_count + v_refunded > v_all THEN
-        RAISE EXCEPTION 'FAIL a refunded escrow was counted as protected';
-    END IF;
-    RAISE NOTICE 'PASS % refunded escrow(s) left out of the protected figure', v_refunded;
-
     IF v_delivered > 0 AND (v->>'stages_delivered')::integer <> v_delivered THEN
         RAISE EXCEPTION 'FAIL stages_delivered % <> %', v->>'stages_delivered', v_delivered;
     END IF;
@@ -179,6 +185,90 @@ BEGIN
         RAISE EXCEPTION 'FAIL as_of is not a timestamp';
     END IF;
     RAISE NOTICE 'PASS fee %, base %, as_of %', v->>'platform_fee_bp', v->>'base_currency', v->>'as_of';
+END $$;
+-- #endregion
+
+-- #region 3b. A refunded escrow leaves the protected figure (threshold still lifted to 1)
+DO $$
+DECLARE
+    v_before jsonb;
+    v_after jsonb;
+    v_id uuid;
+    v_amount bigint;
+    v_cur text;
+    v_was numeric;
+    v_now numeric;
+BEGIN
+    -- A HELD escrow, so the delivered figures are untouched by the move.
+    SELECT e.id, e.amount_cents, upper(e.currency) INTO v_id, v_amount, v_cur
+      FROM finance.escrows e WHERE e.status = 'held' ORDER BY e.id LIMIT 1;
+    IF v_id IS NULL THEN
+        RAISE NOTICE 'PASS refunded: no held escrow on this seed to move (nothing to check)';
+        RETURN;
+    END IF;
+
+    SET LOCAL ROLE service_role;
+    v_before := finance.public_metrics();
+    RESET ROLE;
+    UPDATE finance.escrows SET status = 'refunded' WHERE id = v_id;
+    SET LOCAL ROLE service_role;
+    v_after := finance.public_metrics();
+    RESET ROLE;
+
+    IF (v_after->>'protected_count')::integer IS DISTINCT FROM (v_before->>'protected_count')::integer - 1 THEN
+        RAISE EXCEPTION 'FAIL refunding one escrow moved protected_count % -> %',
+            v_before->>'protected_count', v_after->>'protected_count';
+    END IF;
+    SELECT (x->>'amount_minor')::numeric INTO v_was
+      FROM jsonb_array_elements(v_before->'protected_by_currency') x WHERE x->>'currency' = v_cur;
+    SELECT coalesce((SELECT (x->>'amount_minor')::numeric
+                       FROM jsonb_array_elements(coalesce(v_after->'protected_by_currency', '[]'::jsonb)) x
+                      WHERE x->>'currency' = v_cur), 0) INTO v_now;
+    IF v_was - v_now <> v_amount THEN
+        RAISE EXCEPTION 'FAIL refunding % % moved the % total by %', v_amount, v_cur, v_cur, v_was - v_now;
+    END IF;
+    RAISE NOTICE 'PASS a refunded escrow leaves the figure: count % -> %, % % -> %',
+        v_before->>'protected_count', v_after->>'protected_count', v_cur, v_was, v_now;
+END $$;
+-- #endregion
+
+-- #region 3c. A stage's own status is not delivery evidence
+-- The project owner may write a stage's status and completed_at ("Users can manage stages of own
+-- projects"); a stage marked paid with no escrow released to a payee must not be counted.
+DO $$
+DECLARE
+    v_before jsonb;
+    v_after jsonb;
+    v_stage uuid;
+BEGIN
+    SELECT s.id INTO v_stage
+      FROM projects.project_stages s
+      JOIN projects.projects p ON p.id = s.project_id AND NOT p.is_personal
+     WHERE s.status NOT IN ('approved', 'paid')
+       AND NOT EXISTS (SELECT 1 FROM finance.escrows e
+                        WHERE e.project_stage_id = s.id AND e.status = 'released')
+     ORDER BY s.id LIMIT 1;
+    IF v_stage IS NULL THEN
+        RAISE NOTICE 'PASS self-declared: no undelivered stage on this seed (nothing to check)';
+        RETURN;
+    END IF;
+
+    SET LOCAL ROLE service_role;
+    v_before := finance.public_metrics();
+    RESET ROLE;
+    UPDATE projects.project_stages SET status = 'paid', completed_at = now() WHERE id = v_stage;
+    SET LOCAL ROLE service_role;
+    v_after := finance.public_metrics();
+    RESET ROLE;
+
+    IF (v_after->'stages_delivered') IS DISTINCT FROM (v_before->'stages_delivered')
+        OR (v_after->'approval_count') IS DISTINCT FROM (v_before->'approval_count') THEN
+        RAISE EXCEPTION 'FAIL a stage marked paid without released escrow counted: delivered % -> %, approvals % -> %',
+            v_before->'stages_delivered', v_after->'stages_delivered',
+            v_before->'approval_count', v_after->'approval_count';
+    END IF;
+    RAISE NOTICE 'PASS a stage marked paid with no released escrow is not delivered (still %)',
+        v_after->'stages_delivered';
 END $$;
 -- #endregion
 

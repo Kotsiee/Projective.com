@@ -78,8 +78,12 @@
 	color: var(--text-secondary);
 }
 
+/*
+ * The gutter steps on `.abt__inner`, which both declares and reads it: `.abt` is the `abt` container
+ * itself, and an element can never match a query on its own container.
+ */
 @container abt (min-width: 768px) {
-	.abt {
+	.abt__inner {
 		--abt-gutter: var(--space-6);
 	}
 
@@ -353,6 +357,10 @@
 	color: var(--text-secondary);
 }
 
+.abt-founder__text {
+	min-inline-size: 0;
+}
+
 .abt-founder__bio {
 	margin: var(--space-2) 0 0;
 	font-family: var(--font-reading);
@@ -361,10 +369,18 @@
 	color: var(--on-surface);
 }
 
+/* Two a row from 768px of frame, three from 1024px, so a name and its role keep one line beside
+ * the avatar rather than a three-up track of a few dozen characters. */
 @container abt (min-width: 768px) {
 	.abt-founders {
-		grid-template-columns: repeat(3, minmax(0, 1fr));
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: var(--space-6);
+	}
+}
+
+@container abt (min-width: 1024px) {
+	.abt-founders {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 	}
 }
 /* #endregion */
@@ -397,8 +413,11 @@
 	color: var(--on-surface);
 }
 
+/* A block on its own line beneath the statement, at every width: never an inline box whose margin
+ * inflates the sentence's last line. */
 .abt-cred__link {
-	display: inline-block;
+	display: block;
+	inline-size: fit-content;
 	margin-block-start: var(--space-2);
 	font-size: var(--text-sm);
 	line-height: var(--leading-normal);

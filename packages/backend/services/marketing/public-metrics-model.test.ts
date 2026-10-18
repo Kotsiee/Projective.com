@@ -8,6 +8,7 @@ import {
 import { PLATFORM_FEE_BP } from "@projective/types/finance";
 import {
 	aggregateWarnings,
+	coarsenPublishedTotal,
 	foldPublicMetrics,
 	meetsThreshold,
 	normaliseAsOf,
@@ -77,7 +78,6 @@ Deno.test("planProtectedTotal: several currencies convert into the base, case-fo
 			{ currency: "usd", amount_minor: 100 },
 			{ currency: "GBP", amount_minor: 50 },
 			{ currency: "USD", amount_minor: 25 },
-			{ currency: "", amount_minor: 999 },
 		],
 	}));
 	assertEquals(plan, {
@@ -85,6 +85,16 @@ Deno.test("planProtectedTotal: several currencies convert into the base, case-fo
 		target: "EUR",
 		parts: [{ currency: "GBP", minor: 50 }, { currency: "USD", minor: 125 }],
 	});
+});
+
+Deno.test("planProtectedTotal: a row with a malformed currency withholds the total, never drops the row", () => {
+	const plan = planProtectedTotal(rich({
+		protected_by_currency: [
+			{ currency: "GBP", amount_minor: 50 },
+			{ currency: "US$", amount_minor: 999 },
+		],
+	}));
+	assertEquals(plan, { kind: "hidden", malformed: ["US$"] });
 });
 
 Deno.test("totalCurrencyOf: the base_currency param, else the platform base", () => {
@@ -109,6 +119,41 @@ Deno.test("sumConvertedParts: sums only when every part reached the target", () 
 	);
 	assertEquals(sumConvertedParts("GBP", []), null);
 });
+
+Deno.test("coarsenPublishedTotal: whole units floored to two significant figures, back in minor units", () => {
+	assertEquals(coarsenPublishedTotal({ amountMinor: 15_100_000, currency: "USD" }), {
+		amountMinor: 15_000_000,
+		currency: "USD",
+	});
+	assertEquals(coarsenPublishedTotal({ amountMinor: 1_234_567, currency: "GBP" }), {
+		amountMinor: 1_200_000,
+		currency: "GBP",
+	});
+	// Floored, never rounded up: £9,999.99 → £9,900.
+	assertEquals(
+		coarsenPublishedTotal({ amountMinor: 999_999, currency: "GBP" })?.amountMinor,
+		990_000,
+	);
+	// An exact power of ten keeps its value.
+	assertEquals(
+		coarsenPublishedTotal({ amountMinor: 100_000, currency: "GBP" })?.amountMinor,
+		100_000,
+	);
+	// A zero-exponent currency is coarsened in its own whole units.
+	assertEquals(coarsenPublishedTotal({ amountMinor: 98_765, currency: "JPY" }), {
+		amountMinor: 98_000,
+		currency: "JPY",
+	});
+	assertEquals(coarsenPublishedTotal({ amountMinor: 900, currency: "GBP" })?.amountMinor, 900);
+	// Less than one whole unit is too small to publish.
+	assertEquals(coarsenPublishedTotal({ amountMinor: 99, currency: "GBP" }), null);
+});
+
+Deno.test("coarsenPublishedTotal: one escrow moving between two reads is seen only in whole steps", () => {
+	const before = coarsenPublishedTotal({ amountMinor: 15_100_000, currency: "USD" });
+	const after = coarsenPublishedTotal({ amountMinor: 15_100_000 + 235_000, currency: "USD" });
+	assertEquals(before, after);
+});
 // #endregion
 
 // #region Fold
@@ -119,7 +164,7 @@ Deno.test("foldPublicMetrics: every figure that clears the threshold is publishe
 		asOf: "2026-10-17T12:00:00.500Z",
 		minN: 10,
 		platformFeeBp: 500,
-		totalValueProtected: { amountMinor: 1_234_567, currency: "GBP" },
+		totalValueProtected: { amountMinor: 1_200_000, currency: "GBP" },
 		stagesDelivered: 25,
 		medianFundingToApprovalHours: 51.3,
 	});
@@ -128,12 +173,12 @@ Deno.test("foldPublicMetrics: every figure that clears the threshold is publishe
 
 Deno.test("foldPublicMetrics: re-holds each figure to the threshold even if the database did not", () => {
 	const aggregate = rich({ min_n: 30 });
-	const out = foldPublicMetrics(aggregate, { amountMinor: 1, currency: "GBP" }, NOW);
-	assertEquals(out.totalValueProtected, { amountMinor: 1, currency: "GBP" });
+	const out = foldPublicMetrics(aggregate, { amountMinor: 5_000_000, currency: "GBP" }, NOW);
+	assertEquals(out.totalValueProtected, { amountMinor: 5_000_000, currency: "GBP" });
 	assertEquals(out.stagesDelivered, null);
 	assertEquals(out.medianFundingToApprovalHours, null);
 	const thin = foldPublicMetrics(rich({ protected_count: 3 }), {
-		amountMinor: 1,
+		amountMinor: 5_000_000,
 		currency: "GBP",
 	}, NOW);
 	assertEquals(thin.totalValueProtected, null);
@@ -165,7 +210,8 @@ Deno.test("the frozen fixture parses and, at the default threshold, publishes on
 		}),
 		NOW,
 	);
-	assertEquals(lifted.totalValueProtected, { amountMinor: 15_100_000, currency: "USD" });
+	// $151,000 raw, published coarsened to two significant figures.
+	assertEquals(lifted.totalValueProtected, { amountMinor: 15_000_000, currency: "USD" });
 	assertEquals(lifted.stagesDelivered, 2);
 	assertEquals(lifted.medianFundingToApprovalHours, 396);
 });

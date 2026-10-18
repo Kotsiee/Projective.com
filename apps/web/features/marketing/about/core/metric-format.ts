@@ -132,8 +132,9 @@ export function aboutMetricTiles(metrics: PublicMetrics): MetricTile[] {
 				metrics.totalValueProtected.amountMinor,
 				metrics.totalValueProtected.currency,
 			),
+			// The service publishes this total floored to two significant figures (Decision #277 (C)).
 			caption:
-				"Paid into escrow for a stage — held now, or released to the people who did the work.",
+				"Paid into escrow for a stage — held now, or released to the people who did the work. Rounded down.",
 		});
 	}
 	if (metrics.stagesDelivered !== null) {

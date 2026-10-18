@@ -28,7 +28,10 @@ export const PUBLIC_METRICS_TTL_MS = 60 * 60 * 1000;
  */
 export const PROTECTED_ESCROW_STATUSES = ["funded", "held", "disputed", "released"] as const;
 
-/** The stage statuses that count as "delivered". Mirrored by `finance.public_metrics()`. */
+/**
+ * The stage statuses that count as "delivered" — with money evidence (at least one escrow released to
+ * a payee) and never in a personal project. Mirrored by `finance.public_metrics()`.
+ */
 export const DELIVERED_STAGE_STATUSES = ["approved", "paid"] as const;
 // #endregion
 
@@ -52,11 +55,14 @@ export const PublicMetricsSchema = z.object({
 	minN: z.number().int().positive(),
 	/** The platform service fee in basis points (`platform_fee_bp`; 500 = 5%). Always present. */
 	platformFeeBp: z.number().int().min(0).max(10_000),
-	/** Escrowed principal (held + released, all time), in one currency — see Decision #277. */
+	/**
+	 * Escrowed principal (held + released, all time), in one currency, floored to two significant
+	 * figures of whole units before it is published (Decision #277 (C)) — never exact to the minor unit.
+	 */
 	totalValueProtected: PublicMoneyTotalSchema.nullable(),
-	/** Stages approved and paid out, all time. */
+	/** Stages approved and paid out (an escrow released to a payee; never personal), all time. */
 	stagesDelivered: z.number().int().nonnegative().nullable(),
-	/** Median hours from a delivered stage's first funding to its approval. */
+	/** Median hours from a delivered stage's first funding to its last release. */
 	medianFundingToApprovalHours: z.number().nonnegative().nullable(),
 });
 export type PublicMetrics = z.infer<typeof PublicMetricsSchema>;
@@ -72,8 +78,9 @@ export type PublicMetricsCurrencyRow = z.infer<typeof PublicMetricsCurrencyRowSc
 
 /**
  * The jsonb `finance.public_metrics()` returns (00001265). The database applies the threshold
- * itself, so a count below `min_n` arrives as `null` together with the figure it would have
- * produced — no figure resting on fewer than `min_n` rows ever leaves Postgres. `min_n_configured`
+ * itself, each figure by its OWN count, so a count below `min_n` arrives as `null` together with the
+ * figure it would have produced. `protected_by_currency` is gated by the total's count only: its
+ * parts reach the service role alone, never the public payload. `min_n_configured`
  * is `false` when the param row was missing or malformed and the literal default was used.
  * `platform_fee_bp` and `base_currency` are `null` when their param rows are missing or malformed.
  */

@@ -29,7 +29,8 @@ import {
  *
  * One SECURITY DEFINER aggregate, `finance.public_metrics()` (00001265), called with the service
  * role — the only role granted it. It returns aggregates only and applies the publication threshold
- * itself, so a figure resting on fewer than `public_metrics_min_n` rows never leaves Postgres; the
+ * itself, each figure gated by its OWN count (`public_metrics_min_n`); the per-currency parts of the
+ * protected total are gated by the total's count and reach only this service, never the public. The
  * fold here holds every figure to the same threshold again. No row of any table is read here.
  * With `FINANCE_BACKEND_LIVE` off the same fold runs over {@link PUBLIC_METRICS_FIXTURE}, an
  * aggregate frozen from the seeded database.
@@ -40,13 +41,20 @@ import {
  * converted. Several → each converted into the platform base (the `base_currency` param) at the
  * newest reference rate in `finance.fx_rates`, through {@link FxService} — the product's read-time
  * display rule (finance-model.md §11) — and summed; if any currency cannot be converted the total
- * is withheld rather than understated.
+ * is withheld rather than understated. The published total is then COARSENED — floored to two
+ * significant figures of whole units (`coarsenPublishedTotal`) — so comparing two hourly reads never
+ * gives one escrow's exact amount.
  *
  * ## Caching
  *
  * One hour, through an {@link ArcCache} of its own, keyed to the ANONYMOUS tenant: the answer is
- * the same for every visitor, so there is no per-caller scope to leak. A failure is never cached.
+ * the same for every visitor, so there is no per-caller scope to leak. Concurrent misses share one
+ * read (single flight). A failure is never cached for the hour; it is held for
+ * {@link PUBLIC_METRICS_FAILURE_HOLD_MS} so a failing database is not re-scanned on every request.
  */
+
+/** How long a failed read is answered from memory before the aggregate is tried again (30 s). */
+export const PUBLIC_METRICS_FAILURE_HOLD_MS = 30_000;
 
 // #region Dependencies
 /** What the service reaches for — injectable so the rules are tested without a database. */
@@ -106,7 +114,16 @@ async function protectedTotal(
 	deps: PublicMetricsDeps,
 ): Promise<PublicMoneyTotal | null> {
 	const plan = planProtectedTotal(aggregate);
-	if (plan.kind === "hidden") return null;
+	if (plan.kind === "hidden") {
+		if (plan.malformed?.length) {
+			deps.warn(
+				`finance.escrows holds currency codes that are not ISO-4217 (${
+					plan.malformed.map((c) => JSON.stringify(c)).join(", ")
+				}); the value-protected total is withheld`,
+			);
+		}
+		return null;
+	}
 	if (plan.kind === "single") return plan.total;
 	const converted = await deps.convert(plan.parts, plan.target);
 	const total = sumConvertedParts(plan.target, converted);
@@ -132,50 +149,82 @@ export function createPublicMetricsService(
 	const keyFor = (source: "live" | "fixture") =>
 		cacheKey(PUBLIC_METRICS_TENANT, NAMESPACE, { source });
 
+	/** The read in progress per key: concurrent callers on a miss share it (single flight). */
+	const inFlight = new Map<string, Promise<ServiceResult<PublicMetrics>>>();
+	/** The last failure per key and when it may be retried (a short back-off, never the TTL). */
+	const heldFailure = new Map<string, { result: ServiceResult<PublicMetrics>; until: number }>();
+
+	/** One full read: aggregate → validate → protected total → fold. Caches a success only. */
+	async function compute(key: string, live: boolean): Promise<ServiceResult<PublicMetrics>> {
+		let raw: unknown;
+		if (live) {
+			try {
+				raw = await deps.readAggregate();
+			} catch (error) {
+				deps.warn(error instanceof Error ? error.message : String(error));
+				return fail(503, { message: "Live figures are unavailable right now." });
+			}
+		} else {
+			raw = deps.fixture();
+		}
+
+		const parsed = PublicMetricsAggregateSchema.safeParse(raw);
+		if (!parsed.success) {
+			deps.warn(
+				`finance.public_metrics answered an unexpected shape: ${
+					parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"} ${i.message}`).join("; ")
+				}`,
+			);
+			return fail(502, { message: "Live figures are unavailable right now." });
+		}
+		const aggregate = parsed.data;
+		if (live) { for (const warning of aggregateWarnings(aggregate)) deps.warn(warning); }
+
+		const total = await protectedTotal(aggregate, deps);
+		const folded = PublicMetricsSchema.safeParse(foldPublicMetrics(aggregate, total, deps.now()));
+		if (!folded.success) {
+			deps.warn(`the folded figures failed their schema: ${folded.error.message}`);
+			return fail(500, { message: "Live figures are unavailable right now." });
+		}
+		deps.cache.set(key, folded.data);
+		return ok(folded.data);
+	}
+
 	return {
-		async get(): Promise<ServiceResult<PublicMetrics>> {
+		get(): Promise<ServiceResult<PublicMetrics>> {
 			const live = deps.live();
 			const key = keyFor(live ? "live" : "fixture");
 			const hit = deps.cache.get(key) as PublicMetrics | undefined;
-			if (hit) return ok(hit);
+			if (hit) return Promise.resolve(ok(hit));
 
-			let raw: unknown;
-			if (live) {
-				try {
-					raw = await deps.readAggregate();
-				} catch (error) {
+			const held = heldFailure.get(key);
+			if (held && deps.now().getTime() < held.until) return Promise.resolve(held.result);
+			heldFailure.delete(key);
+
+			const pending = inFlight.get(key);
+			if (pending) return pending;
+
+			const read = compute(key, live)
+				.catch((error): ServiceResult<PublicMetrics> => {
 					deps.warn(error instanceof Error ? error.message : String(error));
 					return fail(503, { message: "Live figures are unavailable right now." });
-				}
-			} else {
-				raw = deps.fixture();
-			}
-
-			const parsed = PublicMetricsAggregateSchema.safeParse(raw);
-			if (!parsed.success) {
-				deps.warn(
-					`finance.public_metrics answered an unexpected shape: ${
-						parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"} ${i.message}`).join(
-							"; ",
-						)
-					}`,
-				);
-				return fail(502, { message: "Live figures are unavailable right now." });
-			}
-			const aggregate = parsed.data;
-			if (live) { for (const warning of aggregateWarnings(aggregate)) deps.warn(warning); }
-
-			const total = await protectedTotal(aggregate, deps);
-			const folded = PublicMetricsSchema.safeParse(foldPublicMetrics(aggregate, total, deps.now()));
-			if (!folded.success) {
-				deps.warn(`the folded figures failed their schema: ${folded.error.message}`);
-				return fail(500, { message: "Live figures are unavailable right now." });
-			}
-			deps.cache.set(key, folded.data);
-			return ok(folded.data);
+				})
+				.then((result) => {
+					if (!result.ok) {
+						heldFailure.set(key, {
+							result,
+							until: deps.now().getTime() + PUBLIC_METRICS_FAILURE_HOLD_MS,
+						});
+					}
+					return result;
+				})
+				.finally(() => inFlight.delete(key));
+			inFlight.set(key, read);
+			return read;
 		},
 		invalidate(): void {
 			deps.cache.clear();
+			heldFailure.clear();
 		},
 	};
 }

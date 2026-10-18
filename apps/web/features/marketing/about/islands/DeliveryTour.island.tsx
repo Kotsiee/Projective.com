@@ -144,6 +144,9 @@ export default function DeliveryTour({ feePercent }: DeliveryTourProps): JSX.Ele
 	};
 	// #endregion
 
+	// The panel renders every step's explanation stacked in one grid cell, only the selected one seen
+	// or read (the rest `aria-hidden` and `visibility: hidden`): it is always as tall as the longest,
+	// so autoplay never moves what sits below it.
 	const current = steps[active.value];
 	const control = tourControl(mode.value, active.value === total - 1);
 
@@ -190,7 +193,10 @@ export default function DeliveryTour({ feePercent }: DeliveryTourProps): JSX.Ele
 							<span class="abt-tour__tab-num" aria-hidden="true">
 								{String(i + 1).padStart(2, "0")}
 							</span>
-							<span class="abt-tour__tab-label">{step.label}</span>
+							<span class="abt-tour__tab-label">
+								<span class="abt-tour__tab-ink">{step.label}</span>
+								<span class="abt-tour__tab-reserve" aria-hidden="true">{step.label}</span>
+							</span>
 						</button>
 					);
 				})}
@@ -203,12 +209,23 @@ export default function DeliveryTour({ feePercent }: DeliveryTourProps): JSX.Ele
 				aria-labelledby={`${ID}-tab-${current.id}`}
 				tabIndex={0}
 			>
-				<p class="abt-tour__where">
-					<span class="abt-tour__where-label">Where the money is</span>
-					{TOUR_ZONES[current.zone].where}
-				</p>
-				<p class="abt-tour__line">{current.lines[0]}</p>
-				<p class="abt-tour__line">{current.lines[1]}</p>
+				{steps.map((step, i) => {
+					const shown = i === active.value;
+					return (
+						<div
+							key={step.id}
+							class={`abt-tour__entry${shown ? " abt-tour__entry--shown" : ""}`}
+							aria-hidden={shown ? undefined : "true"}
+						>
+							<p class="abt-tour__where">
+								<span class="abt-tour__where-label">Where the money is</span>
+								{TOUR_ZONES[step.zone].where}
+							</p>
+							<p class="abt-tour__line">{step.lines[0]}</p>
+							<p class="abt-tour__line">{step.lines[1]}</p>
+						</div>
+					);
+				})}
 			</div>
 
 			<div class="abt-tour__controls" ref={controlRef}>

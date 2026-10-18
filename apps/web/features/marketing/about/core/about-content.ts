@@ -82,8 +82,7 @@ export const ABOUT_METRICS_COPY = {
 
 export const ABOUT_TOUR_COPY = {
 	label: "How delivery works",
-	lead:
-		"Follow one stage's money from the Client's wallet to the Freelancer's bank. Pick a step, or let it play.",
+	lead: "Follow one stage's money from the Client's wallet to the Freelancer's bank. Pick a step.",
 } as const;
 // #endregion
 
@@ -150,7 +149,7 @@ export const ABOUT_CREDENTIALS: readonly Credential[] = [
 		id: "escrow",
 		title: "Payment protection is escrow",
 		body:
-			"Every stage is paid into escrow before work starts, and the money only moves on an approval, a completed session, a dispute ruling or an agreed exit.",
+			"Every stage is paid into escrow before work starts, and the money only moves on an approval, a completed session, a dispute ruling, or a Fair Exit when the Client ends a stage early.",
 		link: { href: "/legal/escrow-terms", label: "Read the escrow terms" },
 	},
 	{

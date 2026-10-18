@@ -4,7 +4,11 @@ import {
 	type PublicMetricsAggregate,
 	type PublicMoneyTotal,
 } from "@projective/types/marketing";
-import { PLATFORM_BASE_CURRENCY, PLATFORM_FEE_BP } from "@projective/types/finance";
+import {
+	currencyExponent,
+	PLATFORM_BASE_CURRENCY,
+	PLATFORM_FEE_BP,
+} from "@projective/types/finance";
 
 /**
  * public-metrics-model — the pure rules between `finance.public_metrics()`'s aggregate and the
@@ -42,14 +46,16 @@ export interface MoneyPart {
 
 /**
  * How the protected total is to be produced:
- *  - `hidden` — below the threshold, or nothing to sum;
+ *  - `hidden` — below the threshold, nothing to sum, or a row whose currency is not a three-letter
+ *    code (`malformed` names them, for the service to log): dropping that row would understate the
+ *    total, and a public total is withheld rather than understated;
  *  - `single` — every protected escrow is in one currency, so the total is exact and unconverted;
  *  - `convert` — several currencies, each to be converted into `target` (the platform base) at the
  *    read-time reference rate and summed. Stored amounts are never summed across currencies as if
  *    they were one (finance-model.md §11).
  */
 export type ProtectedTotalPlan =
-	| { kind: "hidden" }
+	| { kind: "hidden"; malformed?: readonly string[] }
 	| { kind: "single"; total: PublicMoneyTotal }
 	| { kind: "convert"; target: string; parts: MoneyPart[] };
 
@@ -67,11 +73,17 @@ export function planProtectedTotal(aggregate: PublicMetricsAggregate): Protected
 	const minN = thresholdOf(aggregate);
 	if (!meetsThreshold(aggregate.protected_count, minN)) return { kind: "hidden" };
 	const merged = new Map<string, number>();
+	const malformed: string[] = [];
 	for (const row of aggregate.protected_by_currency ?? []) {
+		if (row.amount_minor <= 0) continue;
 		const code = row.currency.trim().toUpperCase();
-		if (!/^[A-Z]{3}$/.test(code) || row.amount_minor <= 0) continue;
+		if (!/^[A-Z]{3}$/.test(code)) {
+			malformed.push(row.currency);
+			continue;
+		}
 		merged.set(code, (merged.get(code) ?? 0) + row.amount_minor);
 	}
+	if (malformed.length > 0) return { kind: "hidden", malformed };
 	const parts = [...merged.entries()]
 		.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
 		.map(([currency, minor]) => ({ currency, minor }));
@@ -110,6 +122,30 @@ export function sumConvertedParts(
 	}
 	return { amountMinor: sum, currency: target };
 }
+
+/** How many significant figures of whole major units a published total keeps. */
+export const PUBLISHED_TOTAL_SIGNIFICANT_FIGURES = 2;
+
+/**
+ * Coarsen a total before it is published: whole major units floored to
+ * {@link PUBLISHED_TOTAL_SIGNIFICANT_FIGURES} significant figures (`$151,000.00` → `$150,000`,
+ * `£12,345.67` → `£12,000`), then back to minor units, so the shape stays `amountMinor: int`.
+ *
+ * The threshold keeps one escrow's amount out of a single read; this keeps it out of the
+ * DIFFERENCE of two hourly reads, which would otherwise give an escrow funded or refunded between
+ * them to the minor unit. The step is 1–10% of the total, so a change is seen only in whole steps
+ * and grows coarser as the platform grows. Floored, never rounded: a public total may understate,
+ * never overstate. `null` when less than one whole unit is left — too small to mean anything.
+ */
+export function coarsenPublishedTotal(total: PublicMoneyTotal): PublicMoneyTotal | null {
+	const unit = 10 ** currencyExponent(total.currency);
+	const major = Math.floor(Math.max(0, total.amountMinor) / unit);
+	if (major < 1) return null;
+	// The digit count from the integer's own text: `Math.log10` is not exact at every power of ten.
+	const digits = String(major).length;
+	const step = 10 ** Math.max(0, digits - PUBLISHED_TOTAL_SIGNIFICANT_FIGURES);
+	return { amountMinor: Math.floor(major / step) * step * unit, currency: total.currency };
+}
 // #endregion
 
 // #region Fold
@@ -127,7 +163,8 @@ export function normaliseAsOf(raw: string, fallback: Date): string {
 /**
  * Fold the database aggregate and the already-resolved protected total into the public payload.
  * Every nullable figure is re-held to the threshold here even though the database applied it too,
- * so a fixture or a drifted function cannot publish a figure the rule forbids.
+ * so a fixture or a drifted function cannot publish a figure the rule forbids, and the total is
+ * coarsened ({@link coarsenPublishedTotal}) — the only form in which it is ever published.
  */
 export function foldPublicMetrics(
 	aggregate: PublicMetricsAggregate,
@@ -140,8 +177,8 @@ export function foldPublicMetrics(
 		asOf: normaliseAsOf(aggregate.as_of, now),
 		minN,
 		platformFeeBp: aggregate.platform_fee_bp ?? PLATFORM_FEE_BP,
-		totalValueProtected: meetsThreshold(aggregate.protected_count, minN)
-			? totalValueProtected
+		totalValueProtected: meetsThreshold(aggregate.protected_count, minN) && totalValueProtected
+			? coarsenPublishedTotal(totalValueProtected)
 			: null,
 		stagesDelivered: meetsThreshold(aggregate.stages_delivered, minN)
 			? aggregate.stages_delivered
