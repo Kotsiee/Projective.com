@@ -124,6 +124,46 @@ REVOKE ALL ON FUNCTION public.handle_new_user () FROM PUBLIC, anon, authenticate
 REVOKE ALL ON FUNCTION public.handle_email_confirmed () FROM PUBLIC, anon, authenticated;
 -- #endregion
 
+-- #region editorial + community — deny by default (Decision #274)
+-- Both schemas are exposed to PostgREST with USAGE for `anon` (00002500), so the PUBLIC EXECUTE every
+-- new function receives would make each one an RPC a signed-out caller could reach. EXECUTE is
+-- revoked from PUBLIC and both client roles on the whole of both schemas here, after every function
+-- exists, so the per-surface regions below are the complete list of client doors: a new editorial
+-- or community function is unreachable until its surface grants it by name. A predicate an RLS
+-- policy calls runs as the invoking role and must be granted back to the roles that policy names.
+REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA editorial, community FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA editorial, community TO service_role;
+-- #endregion
+
+
+-- #region [editorial.help]
+-- #endregion
+
+
+-- #region [editorial.changelog]
+-- #endregion
+
+
+-- #region [editorial.articles]
+-- #endregion
+
+
+-- #region [community.newsletter]
+-- The opt-in's one writer. Service role only: the public form reaches it through
+-- /api/newsletter/subscribe → NewsletterBackendService, never as a browser RPC (00002021).
+REVOKE ALL ON FUNCTION community.subscribe_newsletter (text, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION community.subscribe_newsletter (text, text, text) TO service_role;
+-- #endregion
+
+
+-- #region [community.help_feedback]
+-- #endregion
+
+
+-- #region [community.feedback]
+-- #endregion
+
 -- --- from 0200_permissions.sql ---
 
 GRANT
@@ -993,6 +1033,14 @@ REVOKE ALL ON FUNCTION finance.fn_business_threshold (uuid) FROM PUBLIC, anon, a
 REVOKE ALL ON FUNCTION finance.fn_assert_business_spend (uuid, uuid, bigint, text, uuid, boolean)
 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_close_spend_cover (uuid) FROM PUBLIC, anon, authenticated;
+
+-- #region [about_metrics] The public site's live aggregates (00001265, Decision #277)
+-- Service role only: PublicMetricsService reads it and serves the cached answer to everyone. A
+-- browser never calls it, so the thresholded figures and their freshness stay the service's to
+-- decide; no client role may reach it even though the answer is public.
+REVOKE ALL ON FUNCTION finance.public_metrics () FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.public_metrics () TO service_role;
+-- #endregion
 
 
 -- --- finance: the Stripe fiat rails (00001230, Decision #125) ---

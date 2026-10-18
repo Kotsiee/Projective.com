@@ -1,0 +1,467 @@
+/*
+ * /about — the editorial manifesto page (PUBLIC_ROUTES P4, Decision #277). Token-only BEM.
+ *
+ * DELIVERY. The page is server-rendered; this sheet reaches the browser through the one island the
+ * page always mounts (`DeliveryTour.island.tsx` imports it), so every state — including a metrics
+ * read that failed — is styled.
+ *
+ * COMPOSITION (§B.4, §B.9.7). Nothing is boxed. Sections are full-bleed bands of SOLID ramp tones,
+ * alternating `--bg` / `--surface-1`, each band's ground published as `--abt-ground` so the delivery
+ * diagram's hollow nodes are cut from the tone they sit on. Inside a band: a section-caps heading
+ * pulled to its content (`--space-3` below, the band's padding above), spacing between items, and
+ * at most one hairline per boundary.
+ *
+ * GEOMETRY FOLLOWS THE FRAME. `.abt` is a named inline-size container: the page renders full-bleed
+ * for a guest and beside the rail when signed in, so every step is a container query on the
+ * breakpoint tokens' values (768px = --bp-md, 1024px = --bp-lg).
+ *
+ * REGISTERS (§A.4). Display (`--text-3xl`, `--fw-medium`, `--tracking-tight`) for the title, the
+ * pull quote and the closing band; section caps (`--text-xs`, uppercase, `--tracking-wide`,
+ * `--fw-semibold`) for every section heading and metric label; body in `--font-reading`; meta in
+ * `--text-sm` `--text-secondary`, timestamps in `--font-mono` `--text-2xs`.
+ */
+
+/* #region Frame */
+.abt {
+	container: abt / inline-size;
+	--abt-ground: var(--bg);
+	--abt-gutter: var(--space-4);
+	inline-size: 100%;
+	min-inline-size: 0;
+	background: var(--bg);
+	color: var(--on-surface);
+}
+
+.abt__band {
+	padding-block: var(--space-7);
+	background: var(--abt-ground);
+}
+
+.abt__band--tint {
+	--abt-ground: var(--surface-1);
+}
+
+.abt__inner {
+	box-sizing: border-box;
+	inline-size: 100%;
+	max-inline-size: calc(var(--measure-wide) + 2 * var(--abt-gutter));
+	margin-inline: auto;
+	padding-inline: var(--abt-gutter);
+	/* `--measure-wide` is in `ch`: resolve it against the reading size, not a dense ancestor's. */
+	font-size: var(--text-base);
+}
+
+.abt__label {
+	margin: 0 0 var(--space-3);
+	font-family: var(--font-sans);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-snug);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.abt__lead {
+	max-inline-size: var(--measure);
+	margin: 0 0 var(--space-6);
+	font-family: var(--font-reading);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface);
+}
+
+.abt__meta {
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+/*
+ * The gutter steps on `.abt__inner`, which both declares and reads it: `.abt` is the `abt` container
+ * itself, and an element can never match a query on its own container.
+ */
+@container abt (min-width: 768px) {
+	.abt__inner {
+		--abt-gutter: var(--space-6);
+	}
+
+	.abt__band {
+		padding-block: var(--space-8);
+	}
+}
+/* #endregion */
+
+/* #region Opening */
+.abt-hero {
+	padding-block: var(--space-7) var(--space-7);
+}
+
+.abt-hero__title {
+	max-inline-size: 30ch;
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: var(--text-3xl);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+	text-wrap: balance;
+	color: var(--on-surface);
+}
+
+.abt-hero__standfirst {
+	max-inline-size: var(--measure);
+	margin: var(--space-5) 0 0;
+	font-family: var(--font-reading);
+	font-size: var(--text-lg);
+	line-height: var(--leading-relaxed);
+	color: var(--text-secondary);
+}
+
+@container abt (min-width: 768px) {
+	.abt-hero {
+		padding-block: var(--space-8) var(--space-8);
+	}
+}
+/* #endregion */
+
+/* #region The friction · the model */
+.abt-contrast {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--space-6);
+}
+
+.abt-contrast__side + .abt-contrast__side {
+	padding-block-start: var(--space-6);
+	border-block-start: var(--hairline);
+}
+
+.abt-contrast__list {
+	display: grid;
+	gap: var(--space-4);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.abt-contrast__item {
+	max-inline-size: var(--measure);
+	font-family: var(--font-reading);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface);
+}
+
+@container abt (min-width: 768px) {
+	.abt-contrast {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0;
+	}
+
+	.abt-contrast__side {
+		padding-inline-end: var(--space-6);
+	}
+
+	/* The one boundary between the two sides: a single vertical hairline, no boxes (§B.4). */
+	.abt-contrast__side + .abt-contrast__side {
+		padding-block-start: 0;
+		padding-inline: var(--space-6) 0;
+		border-block-start: none;
+		border-inline-start: var(--hairline);
+	}
+}
+/* #endregion */
+
+/* #region Pull quote */
+.abt-quote {
+	margin: 0;
+}
+
+.abt-quote__body {
+	margin: 0;
+}
+
+/* The measure is set on the display text itself, so `ch` resolves at the display size. */
+.abt-quote__text {
+	max-inline-size: 28ch;
+	margin: 0;
+	font-family: var(--font-reading);
+	font-size: var(--text-3xl);
+	font-weight: var(--fw-light);
+	line-height: var(--leading-snug);
+	letter-spacing: var(--tracking-tight);
+	text-wrap: balance;
+	color: var(--on-surface);
+}
+
+.abt-quote__cite {
+	margin-block-start: var(--space-4);
+	font-size: var(--text-sm);
+	font-style: normal;
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Live metrics */
+.abt-metrics__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-2) var(--space-5);
+	margin-block-end: var(--space-5);
+}
+
+.abt-metrics__head .abt__label {
+	margin: 0;
+}
+
+.abt-metrics__row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--space-5);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.abt-metrics__row > .abt-metric + .abt-metric {
+	padding-block-start: var(--space-5);
+	border-block-start: var(--hairline);
+}
+
+.abt-metric {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.abt-metric__label {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-snug);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.abt-metric__value {
+	margin: 0;
+	font-size: var(--text-3xl);
+	font-weight: var(--fw-medium);
+	font-variant-numeric: tabular-nums lining-nums;
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+	white-space: nowrap;
+	color: var(--on-surface);
+}
+
+.abt-metric__caption {
+	max-inline-size: 32ch;
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.abt-metric__asof {
+	margin: 0;
+	font-family: var(--font-mono);
+	font-size: var(--text-2xs);
+	font-variant-numeric: tabular-nums;
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.abt-metrics__note {
+	max-inline-size: var(--measure);
+	margin: var(--space-5) 0 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+/*
+ * From 768px of frame: two tiles a row, so a display-size money figure never breaks mid-number in a
+ * quarter of the column. The boundary between the two in a row is the one hairline; the rows are
+ * separated by spacing alone (one device per boundary, §B.9.3).
+ */
+@container abt (min-width: 768px) {
+	.abt-metrics__row {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--space-6) 0;
+	}
+
+	.abt-metrics__row > .abt-metric {
+		padding-inline: 0 var(--space-5);
+	}
+
+	.abt-metrics__row > .abt-metric + .abt-metric {
+		padding-block-start: 0;
+		border-block-start: none;
+	}
+
+	.abt-metrics__row > .abt-metric:nth-child(even) {
+		padding-inline: var(--space-5) 0;
+		border-inline-start: var(--hairline);
+	}
+}
+/* #endregion */
+
+/* #region Founders */
+.abt-founders {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--space-5);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.abt-founder {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: start;
+	column-gap: var(--space-4);
+}
+
+.abt-founder__avatar {
+	display: block;
+	inline-size: var(--space-8);
+	block-size: var(--space-8);
+	aspect-ratio: 1;
+	object-fit: cover;
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+}
+
+/* A name or a fact's title is a step of the display register: set apart from the body by SIZE as
+ * well as weight (§A.4 — never weight alone), as the editorial prose's h3 is. */
+.abt-founder__name {
+	margin: 0;
+	font-size: var(--text-lg);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+}
+
+.abt-founder__role {
+	margin: var(--space-1) 0 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.abt-founder__text {
+	min-inline-size: 0;
+}
+
+.abt-founder__bio {
+	margin: var(--space-2) 0 0;
+	font-family: var(--font-reading);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface);
+}
+
+/* Two a row from 768px of frame, three from 1024px, so a name and its role keep one line beside
+ * the avatar rather than a three-up track of a few dozen characters. */
+@container abt (min-width: 768px) {
+	.abt-founders {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--space-6);
+	}
+}
+
+@container abt (min-width: 1024px) {
+	.abt-founders {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+}
+/* #endregion */
+
+/* #region Security & architecture */
+.abt-creds {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--space-5) var(--space-6);
+	margin: 0;
+}
+
+.abt-cred {
+	min-inline-size: 0;
+}
+
+.abt-cred__title {
+	margin: 0;
+	font-size: var(--text-lg);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+}
+
+.abt-cred__body {
+	margin: var(--space-2) 0 0;
+	font-family: var(--font-reading);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface);
+}
+
+/* A block on its own line beneath the statement, at every width: never an inline box whose margin
+ * inflates the sentence's last line. */
+.abt-cred__link {
+	display: block;
+	inline-size: fit-content;
+	margin-block-start: var(--space-2);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--on-surface);
+	text-decoration-color: var(--primary);
+	text-underline-offset: 0.2em;
+}
+
+@container abt (min-width: 768px) {
+	.abt-creds {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+/* #endregion */
+
+/* #region Closing band */
+.abt-cta__title {
+	max-inline-size: 24ch;
+	margin: 0;
+	font-size: var(--text-3xl);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+	text-wrap: balance;
+	color: var(--on-surface);
+}
+
+.abt-cta__body {
+	max-inline-size: var(--measure);
+	margin: var(--space-4) 0 0;
+	font-family: var(--font-reading);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	color: var(--text-secondary);
+}
+
+.abt-cta__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+	margin-block-start: var(--space-6);
+}
+
+.abt-cta__actions > .ui-button {
+	text-decoration: none;
+}
+/* #endregion */

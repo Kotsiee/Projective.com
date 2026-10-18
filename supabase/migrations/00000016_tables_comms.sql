@@ -17,7 +17,8 @@
 --   * comms.dm_messages       += body_delta (+ object CHECK), reply_to_id (+ self-FK)
 --   * comms.project_messages  += body_delta (+ object CHECK), reply_to_id (+ self-FK)
 -- New tables (audit gap-close): comms.auto_responses, comms.message_reactions, comms.message_pins,
---   comms.message_favorites, comms.newsletter_subscriptions.
+--   comms.message_favorites. The newsletter opt-in moved to community.newsletter_subscriptions
+--   (00000025, Decision #274).
 -- =============================================================================================
 
 CREATE TABLE comms.notification_prefs (
@@ -641,51 +642,5 @@ CREATE TABLE comms.auto_responses (
     CONSTRAINT auto_responses_holiday_window_check CHECK (
         status_condition IS DISTINCT FROM 'holiday' OR (starts_at IS NOT NULL AND ends_at IS NOT NULL)
     )
-);
--- #endregion
-
--- #region Newsletter opt-in
--- The audit proposed a dedicated newsletter schema for this single table. It lives in comms instead:
--- comms already owns every outbound-email concern on the platform (notification channels, delivery
--- attempts, bounce/complaint suppressions in comms.channel_suppressions), and the seeded
--- marketing.newsletter notification type in 00005010 routes through exactly that machinery. A
--- fifteenth schema holding one table would put the subscriber list on the far side of a boundary
--- from the suppression list that has to gate every send to it.
--- FLAGGED for a human: this deviates from the audit proposal, and the Zod SSOT docblock in
--- packages/types/newsletter/subscribe.ts still names newsletter.subscriptions as the target.
-CREATE TABLE comms.newsletter_subscriptions (
-    id uuid NOT NULL DEFAULT gen_random_uuid (),
-    -- Stored lowercase, and enforced, because the capture is public and anonymous: the address is
-    -- the only identity this row has, so two casings would mean two sends and two unsubscribe links
-    -- that each only work half the time.
-    email text NOT NULL,
-    -- Where the capture happened, matching NewsletterSource in packages/types/newsletter.
-    source text NOT NULL DEFAULT 'footer',
-    -- Nullable by design: the footer capture never requires an account, and linking one later must
-    -- not be a precondition for subscribing. ON DELETE SET NULL because closing an account is not
-    -- the same act as unsubscribing — the opt-in survives and stays honoured.
-    user_id uuid,
-    locale text,
-    -- Double opt-in. NULL means captured but unconfirmed, so a send-eligible row is exactly
-    -- (confirmed_at IS NOT NULL AND unsubscribed_at IS NULL) and neither state needs a boolean that
-    -- could end up contradicting its own timestamp.
-    confirmed_at timestamptz,
-    unsubscribed_at timestamptz,
-    unsubscribed_reason text,
-    -- The opaque handle carried in the confirm / unsubscribe link. One-click unsubscribe cannot ask
-    -- the reader to sign in first, so the link itself has to be the credential.
-    token uuid NOT NULL DEFAULT gen_random_uuid (),
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT newsletter_subscriptions_pkey PRIMARY KEY (id),
-    CONSTRAINT newsletter_subscriptions_user_id_fkey
-        FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE SET NULL,
-    -- One row per address. A re-subscribe updates this row (clearing unsubscribed_at) rather than
-    -- inserting a second one, which is what lets the service answer alreadySubscribed truthfully
-    -- without leaking list membership through a differently shaped response.
-    CONSTRAINT newsletter_subscriptions_email_key UNIQUE (email),
-    CONSTRAINT newsletter_subscriptions_token_key UNIQUE (token),
-    CONSTRAINT newsletter_subscriptions_email_lowercase CHECK (email = lower(email)),
-    CONSTRAINT newsletter_subscriptions_source_check CHECK (source IN ('footer', 'landing', 'explore'))
 );
 -- #endregion

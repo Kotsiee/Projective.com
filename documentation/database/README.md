@@ -15,6 +15,13 @@ every custom enum type with its literal values.
 > (Decision #56(e)) — is live: the discovery surfaces read it, so it now has a folder here, as does
 > `catalogue` (the seller publication layer, `00000023`). Both are listed in [Schemas.md](Schemas.md).
 
+> **Two schemas for the public surfaces (2026-10-17, Decision #274).** `editorial` (`00000024`) holds
+> what the platform authors — the help centre, the changelog, Projective's articles — and
+> `community` (`00000025`) what people do around it — the newsletter (moved from `comms`), helpfulness
+> votes, the feedback board. Every shared SQL file those surfaces add to carries one named region per
+> surface (`-- #region [community.feedback]` …) so their work orders merge without touching each
+> other's lines; each folder's files have one heading per surface for the same reason.
+
 ## Development seed
 
 [Seed.md](Seed.md) documents the generated development world that `supabase db reset` loads —
@@ -32,6 +39,8 @@ Each domain below gets its own folder with up to four files: `Tables.md`, `Polic
 | `analytics`    |   ✅   |    ✅    |    ✅     | Event substrate + daily rollups (`fn_emit`), 2026-07-24                                            |
 | `catalogue`    |   ✅   |    ✅    |    ✅     | Seller publication layer (products, articles, listings); read live by discovery and the seller console, written through the console doors (`00001170`), 2026-09-23 |
 | `comms`        |   ✅   |    ✅    |    ✅     | Messaging + the 2026-07-24 Notification Engine                                                     |
+| `community`    |   ◐    |    ◐     |    ◐      | What people do around the platform (Decision #274, 2026-10-17): the newsletter opt-in (moved from `comms`, with topics) is documented; helpfulness votes (P2) and the feedback board (P7) are per-surface stubs |
+| `editorial`    |   —    |    —     |    —      | Platform-authored content (Decision #274, 2026-10-17): the help centre (P2), the changelog (P5) and Projective's articles (P6), seeded by generated category-5 migrations; schema, gate and generator in place, every surface a stub |
 | `files`        |   ✅   |    ✅    |    ✅     | Asset management, 2026-08-04; the media pipeline, renditions + WebP tiers (`item_variants`), 2026-09-23. Plus [Storage.md](files/Storage.md) |
 | `finance`      |   ✅   |    ✅    |    ✅     | Wallets/escrow/ledger + the 2026-07-23 Wallet & Finance foundation                                 |
 | `integrations` |   ✅   |    ✅    |    ✅     | Connector + plugin substrate (token vault, sync/webhooks, plugin ecosystem), redesigned 2026-07-25 |

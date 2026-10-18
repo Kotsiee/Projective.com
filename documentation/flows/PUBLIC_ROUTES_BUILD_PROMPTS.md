@@ -111,6 +111,14 @@
   modules (`features/<x>/core/content/*.ts`) whose schema lives in `@projective/types`.
   User-generated content (feedback, contact requests, helpfulness votes) goes in Postgres. Editorial
   articles stay in `catalogue.articles`.
+  > **Superseded for help, changelog, articles, helpfulness votes and feedback (owner, 2026-10-17;
+  > Decision #274).** Help, changelog and Projective's articles are rows in the `editorial` schema,
+  > authored as Zod-validated content sources in `packages/backend/services/editorial/content/` and
+  > emitted into seed migrations by `deno task db:editorial:generate`; Projective's articles are
+  > canonical at `/articles/[slug]` and `catalogue.articles` keeps member posts only. Helpfulness
+  > votes and the feedback board live in the `community` schema (not `ops` / `comms`), as does the
+  > newsletter. Legal stays TypeScript modules; contact requests stay in `ops`. Every shared SQL
+  > file carries a named region per surface — fill only yours.
 
 ---
 
@@ -401,6 +409,16 @@ if you think the brief's "Contributor"/"Squad" should be introduced; that would 
 - Motion: overlay enter --dur-medium --ease-emphasized, exit --dur-fast --ease-exit.
 
 4. DATA CONTRACT & ASSET MOCKING
+- SUPERSEDED BY DECISION #274 (owner, 2026-10-17) — it overrides the Content and Helpfulness
+  bullets below; see documentation/database/{editorial,community}/Tables.md:
+  * Content is rows in the `editorial` schema, not features/help/core/content/. Row schemas go in
+    @projective/types/editorial/help.ts (name the record HelpCentreArticle…: HelpArticle is taken),
+    records in packages/backend/services/editorial/content/help.ts (split into content/help/*.ts
+    if long), tables in the [help] region of 00000024; run `deno task db:editorial:generate`
+    (writes 00005071) and read through readEditorialTable (EDITORIAL_BACKEND_LIVE).
+  * Helpfulness votes are a `community` table in the [help_feedback] region of 00000025, written
+    through a definer door in [community.help_feedback] of 00001320 and read through
+    readCommunityTable (COMMUNITY_BACKEND_LIVE) — not ops.help_feedback.
 - Content: features/help/core/content/ — categories.ts and one module per category exporting
   HelpArticle (the Doc schema from P0 plus category, roles[], related[], faq?: boolean).
   Write ~30 real articles grounded in actual behaviour. Each article's JSDoc cites the
@@ -421,6 +439,7 @@ if you think the brief's "Contributor"/"Squad" should be introduced; that would 
   weighting, prefix match, small typo tolerance). It is pure and unit-tested. Do not add a search
   dependency. GET /api/help/search returns {results:[{slug, title, category, snippet,
   highlights}]} via Zod.
+- (Superseded by #274, above: the table lives in `community`, not `ops`.)
 - Helpfulness: a new table ops.help_feedback (article_slug, helpful bool, comment text null,
   user_id null, created_at; no update/delete for clients; rate-limited insert). Put RLS in the
   policies file and grants in 00002520, with Zod + documentation/database/ops. Run comments
@@ -639,6 +658,7 @@ TASK: Build the public changelog with RSS and deep-linkable releases.
   * subscribe row: an RSS link (outline) and the existing NewsletterForm island with a "changelog"
     topic if the newsletter API supports topics (check api/newsletter/subscribe.ts; if not, add an
     optional topic field end to end, with Zod + docs);
+    (Done by work order F, Decision #274: use <NewsletterForm topic="changelog" />.)
   * category filters as a filter control group — these are controls, so containers are allowed.
 - Release spine: a vertical timeline.
   * Left gutter (≥ --bp-md, sticky per entry): date (mono), version tag (mono, in a small
@@ -661,6 +681,12 @@ TASK: Build the public changelog with RSS and deep-linkable releases.
 - Lightbox open/close --dur-medium --ease-emphasized; under reduced motion, instant.
 
 4. DATA CONTRACT & ASSET MOCKING
+- SUPERSEDED BY DECISION #274 (owner, 2026-10-17) — it overrides the Content bullet below:
+  releases are rows in the `editorial` schema ([changelog] region of 00000024), with the row
+  schema in @projective/types/editorial/changelog.ts and the records in
+  packages/backend/services/editorial/content/changelog.ts; run `deno task db:editorial:generate`
+  (writes 00005072) and read through readEditorialTable. A future-dated release is hidden by the
+  table's `visible` predicate and its SELECT policy. See documentation/database/editorial/.
 - Content: features/changelog/core/content/releases.ts exporting Release[] (version semver,
   date, title, categories[], summary, body: ContentNode[], images[{src, alt, w, h}]), with Zod in
   @projective/types/content.
@@ -697,6 +723,11 @@ TASK: Build the public changelog with RSS and deep-linkable releases.
 ```text
 TASK: Build the editorial index and reader.
 
+DECISION (b) IS RULED — owner, 2026-10-17, revised (Decision #274). Do not stop for it, and
+read every catalogue.articles mention below through it: Projective's articles are rows in the
+`editorial` schema, canonical at /articles/[slug]; catalogue.articles keeps member posts only —
+no is_editorial flag, no /view redirect. The original STEP 0, kept for the record:
+
 STEP 0 — STOP AND ASK ME about decision (b) in §0.1. /articles/[slug] is listed under Dashboard
 in PRODUCT_SPEC, and catalogue.articles already renders as the `article` archetype at
 /view/[entity] (Decision #43; features/view/core/entity-archetype.ts:88). Propose: /articles is
@@ -711,6 +742,10 @@ ROUTING.md.
   * apps/web/routes/(public)/articles/index.tsx — the index.
   * apps/web/routes/(public)/articles/[slug].tsx — the reader.
 - Controllers in apps/web/features/articles/{index,reader}/.
+- SUPERSEDED BY DECISION #274: data comes from the `editorial` schema ([articles] region of
+  00000024; records in packages/backend/services/editorial/content/articles.ts, row schemas in
+  @projective/types/editorial/articles.ts, generated into 00005073), read through
+  readEditorialTable by an EditorialArticles…BackendService — not from catalogue.articles.
 - Data from catalogue.articles via a new ArticlesBackendService (anon-readable published rows
   only; reuse the existing explore/live-view readers where possible).
 - Search params: ?topic=<slug> (repeatable), ?page=n.
@@ -746,6 +781,10 @@ ROUTING.md.
 - Images fade in at --dur-medium only with no-preference motion.
 
 4. DATA CONTRACT & ASSET MOCKING
+- SUPERSEDED BY DECISION #274 — it overrides this bullet and the corpus.ts one below: the
+  editorial seed migrations run in every environment, so an author is an `editorial` row (never
+  an FK onto a seeded profile) and a cover is a static asset; author the articles in
+  services/editorial/content/articles.ts, not supabase/seeds/gen/corpus.ts.
 - Covers and author avatars come from the seeded catalogue.articles rows and seeded profiles
   (their stored URLs originate from /test_images via the seed pipeline). Do NOT hard-code
   /test_images for these. If a seeded article lacks a cover, fall back to
@@ -775,6 +814,11 @@ ROUTING.md.
 
 ```text
 TASK: Build the feedback board as a standalone route AND a global overlay.
+
+DECISION (d) IS RULED — owner, 2026-10-17 (Decision #274). Do not stop for it: ideas store
+unified-machine states — Backlog (shown "Under review", visible only to its author and
+operators), Ready ("Planned"), In Progress, Complete ("Shipped"), Archived. Still add the
+"Feedback idea" lifecycle to PRODUCT_MANAGEMENT.md. The original STEP 0, kept for the record:
 
 STEP 0 — STOP AND ASK ME about decision (d) in §0.1: map the brief's Planned / In Progress /
 Shipped onto the unified status machine in PRODUCT_MANAGEMENT.md §3 (proposal: Backlog shows as
@@ -842,6 +886,11 @@ decision and add the "Feedback idea" lifecycle to PRODUCT_MANAGEMENT.md.
   instant.
 
 4. DATA CONTRACT & ASSET MOCKING
+- SUPERSEDED BY DECISION #274: the tables go in the `community` schema — the [feedback] region
+  of 00000025 and the [community.feedback] regions of the shared files (functions, triggers, RLS,
+  policies, grants, indexes; keep vote_count with a trigger), documented in
+  documentation/database/community/, read through readCommunityTable (COMMUNITY_BACKEND_LIVE).
+  Notification types go in the [feedback] regions of 00005010 and packages/types/comms/catalog.ts.
 - New tables, in a new comms or ops domain — pick the one the database docs say owns
   community/UGC, and ask if unclear:
   * feedback_ideas (id, slug, title, body, impact, category, status from the unified enum,

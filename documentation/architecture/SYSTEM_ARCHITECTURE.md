@@ -881,18 +881,64 @@ package.
   add `ops` to **Settings → API → Exposed schemas** too, or every live log insert fails with
   `PGRST106` and is echoed to the console instead.
 
+### Public metrics service (Decision #277)
+
+The public site's live figures — money protected in escrow, stages delivered, the median time from
+funding to approval and the platform fee, printed by `/about` and the landing page's live numbers —
+come from one fat read: `services/marketing/PublicMetricsService.ts` → `ServiceResult<PublicMetrics>`
+(Zod SSOT **`@projective/types/marketing`**), served raw to SSR and as `GET /api/public/metrics`
+(thin, `defineReadRoute`, `public-metadata`). It calls ONE aggregate, `finance.public_metrics()`
+(SECURITY DEFINER, service role only), which returns counts, per-currency sums and a median and
+applies the publication threshold itself — `security.platform_params.public_metrics_min_n`, 10 when
+the row is absent (the service logs the fallback) — each figure by its own count; the per-currency
+parts reach only the service role; the service holds every figure to the same threshold again.
+Escrow in several currencies is converted into the base currency through `FxService` (read-time,
+finance-model.md §11) and withheld if any currency has no rate or a code is malformed; the published
+total is floored to two significant figures, so two hourly reads never difference to one escrow.
+Cached one hour in its own `ArcCache` (`core/cache.ts`) under the anonymous tenant — the answer is
+the same for everyone; concurrent misses share one read; a failure is held 30 s, never cached for the
+hour. Behind
+**`FINANCE_BACKEND_LIVE`**; off, the same fold runs over an aggregate frozen from the seeded database
+(`public-metrics-fixtures.ts`).
+
 ### Newsletter services
 
 The public footer's "stay updated" capture is the third implementation of the contract, and the
 smallest write: `NewsletterService` (client) → `POST /api/newsletter/subscribe` (thin) →
 `services/newsletter/NewsletterBackendService.ts` (fat) → `ServiceResult<T>`. The subscribe shape is
-the Zod SSOT at **`@projective/types/newsletter`** (`NewsletterSubscribeSchema`), validated in three
-places without drift: the client service (before the round-trip), the thin route (the request body),
-and the fat service (defence in depth). Stub-first behind **`NEWSLETTER_BACKEND_LIVE`** (default
-off), gated by `isNewsletterBackendLive()`; every well-formed address gets a friendly confirmation
-while the live path (an upsert into `newsletter.subscriptions` + email-provider sync) waits behind
-that guard. The footer's `NewsletterForm` island is the only client touchpoint — it `fetch`es the
-route and never reaches the service.
+the Zod SSOT at **`@projective/types/community`** (`NewsletterSubscribeSchema`; the old
+`@projective/types/newsletter` path re-exports it), validated in three places without drift: the
+client service (before the round-trip), the thin route (the request body), and the fat service
+(defence in depth). A submission carries an optional **topic** (`general` by default, `changelog`
+for the changelog's capture). Behind **`NEWSLETTER_BACKEND_LIVE`** (default off, gated by
+`isNewsletterBackendLive()`) the service calls `community.subscribe_newsletter` with the service
+role — the table's one writer, which adds a topic idempotently and, for an unsubscribed address,
+only records a pending re-subscribe: the opt-out stays on record and in force until the confirm link
+applies it (Decision #274); off, it answers the same plan and stores nothing. An address is at most
+254 characters at every layer, and a 429 carries `details.retryAt` and `Retry-After`. The
+email-provider sync and the confirmation mail are still to come. The `NewsletterForm` island (with
+optional `topic` / `source` props) is the only client touchpoint — it `fetch`es the route and never
+reaches the service.
+
+### Editorial & community services
+
+Two schemas carry the public surfaces (Decision #274). **`editorial`** holds platform-authored
+content — the help centre, the changelog, Projective's articles — authored as Zod-validated
+TypeScript in `services/editorial/content/<surface>.ts` and emitted by
+`deno task db:editorial:generate` into one category-5 migration per surface, so it exists in every
+environment. `services/editorial/editorial-source.ts` is the one shared module: the
+**`EDITORIAL_BACKEND_LIVE`** gate (`isEditorialBackendLive()`), `defineEditorialTable` (a table's
+row schema, natural key and both mapping directions, `core/row-mapper.ts`) and `readEditorialTable`,
+which reads the table through the anon client when live and otherwise pushes the same authored
+records through the same row parse and mapping — so a fixture cannot drift from the database. A
+table's `visible` predicate (drafts, future-dated releases, retractions) is applied to the mapped
+records on both roads, and its SELECT policy states the same rule; the generator seeds every record
+and never prunes, so content is retracted by hiding it, never by deleting its record.
+**`community`** holds what people do: the newsletter, helpfulness votes and the feedback board.
+`services/community/community-source.ts` is its shared module: the **`COMMUNITY_BACKEND_LIVE`**
+gate, `defineCommunityTable`, `readCommunityTable` (the caller's client live, declared fixtures
+otherwise, both through one row parse) and `communityRpc` for the schema's definer doors. Surface
+services are built on these by their own work orders; the newsletter keeps its own gate.
 
 ### Messaging services
 
@@ -2296,9 +2342,10 @@ included.
 - **Deny by default.** `00002510_permissions_function_grants.sql` revokes `EXECUTE` schema-wide at
   the top of the file, before any per-function statement: `org` (from `PUBLIC`, `anon`,
   `authenticated`), `projects` (from `PUBLIC`, `anon`), `public` (from `PUBLIC`, `anon`,
-  `authenticated` on every function that is not an extension member), and `finance` later in the
-  file. `service_role` keeps them all. A client role then reaches a function only where it is
-  **granted by name**.
+  `authenticated` on every function that is not an extension member), `finance` later in the file,
+  and `editorial` and `community` (from `PUBLIC`, `anon`, `authenticated` — the mid-file
+  "editorial + community — deny by default" block, Decision #274). `service_role` keeps them all. A
+  client role then reaches a function only where it is **granted by name**.
 - **What gets a grant.** `authenticated`: a door the app calls with the user's JWT, which resolves
   the caller from `auth.uid()` and checks its own authority. `anon`: a guest read the public site
   needs (e.g. `projects.get_cohort_offer`). Both client roles: a predicate an RLS policy calls,
@@ -3337,6 +3384,17 @@ FINANCE_BACKEND_LIVE=false
 # profile — there is no fixture branch left for a gate to choose.)
 FILES_BACKEND_LIVE=false
 INTEGRATIONS_BACKEND_LIVE=false
+# Platform-authored content — the help centre, the changelog, Projective's articles (Decision #274).
+# Off, each answers from its Zod-validated content source through the same row parse and mapping the
+# live read uses (the source is also what `deno task db:editorial:generate` writes into the seed
+# migrations), so turning it on changes where the rows are read from, not what they say.
+EDITORIAL_BACKEND_LIVE=false
+# User-generated community activity — helpfulness votes and the feedback board (Decision #274). A
+# write surface open to signed-out visitors; off, it answers fixtures and writes nothing. The
+# newsletter, also in `community`, keeps NEWSLETTER_BACKEND_LIVE. Both schemas must be in
+# supabase/config.toml [api].schemas (then `supabase stop && supabase start`) or a hosted project's
+# Exposed schemas before either gate, or the newsletter's live path, can reach them.
+COMMUNITY_BACKEND_LIVE=false
 ```
 
 ---

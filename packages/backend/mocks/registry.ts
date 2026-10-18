@@ -38,7 +38,9 @@ export type BackendGate =
 	| "FINANCE_BACKEND_LIVE"
 	| "FILES_BACKEND_LIVE"
 	| "INTEGRATIONS_BACKEND_LIVE"
-	| "LOGGING_BACKEND_LIVE";
+	| "LOGGING_BACKEND_LIVE"
+	| "EDITORIAL_BACKEND_LIVE"
+	| "COMMUNITY_BACKEND_LIVE";
 
 /** The mock domains, one per fat-service area. */
 export type MockDomain =
@@ -54,7 +56,9 @@ export type MockDomain =
 	| "integrations"
 	| "scheduling"
 	| "shell"
-	| "marketing";
+	| "marketing"
+	| "editorial"
+	| "community";
 
 /** One row of the mock inventory. */
 export interface MockDomainInfo {
@@ -181,21 +185,21 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		domain: "newsletter",
 		label: "Newsletter opt-in",
 		gate: "NEWSLETTER_BACKEND_LIVE",
-		liveImplemented: false,
+		liveImplemented: true,
 		modules: [],
-		schemas: ["comms"],
+		schemas: ["community"],
 		description:
-			"Footer and landing newsletter capture. Accepts an opt-in into a no-op stub; no subscriptions table exists.",
+			"LIVE. The footer, landing and changelog captures (optional topic: general · changelog) write community.newsletter_subscriptions through community.subscribe_newsletter with the service role (Decision #274); with the gate off the same subscribe plan is answered and nothing is stored. No email-provider sync or confirmation send exists yet, so a stored subscription receives nothing.",
 	},
 	finance: {
 		domain: "finance",
 		label: "Wallet, basket & checkout",
 		gate: "FINANCE_BACKEND_LIVE",
 		liveImplemented: true,
-		modules: [],
+		modules: ["packages/backend/services/marketing/public-metrics-fixtures.ts"],
 		schemas: ["finance", "projects", "org"],
 		description:
-			"LIVE. The basket, saved cards, buyer details, the checkout session and orders read and write finance.* as the signed-in caller (live-basket, live-cards, live-buyer, live-orders, commerce-owner); a checkout is paid from the Projective wallet (finance.place_wallet_order). The /wallet surface reads balances, ledger, escrow, payouts, methods, invoices and vault governance live (wallet-scope, wallet-ledger, live-wallet, wallet-standing) and moves money through finance.transfer_funds / distribute_vault and projects.fund_stage (wallet-actions). The Stripe fiat rails (PaymentBackendService, Decision #125: card PaymentIntents into finance.inbound_payments, Connect payout accounts, Identity sessions and the signed /api/finance/webhooks/stripe endpoint) are live behind this gate AND a well-formed STRIPE_SECRET_KEY, answering 503 without one. The wallet reaches them through its own actions (top-up, withdrawal, recurring deposits, saved cards) and checkout through its card and express routes; without a connected processor each is offered locked with the processor reason. Currency conversion reads finance.fx_rates (FxService.ts).",
+			"LIVE. The basket, saved cards, buyer details, the checkout session and orders read and write finance.* as the signed-in caller (live-basket, live-cards, live-buyer, live-orders, commerce-owner); a checkout is paid from the Projective wallet (finance.place_wallet_order). The /wallet surface reads balances, ledger, escrow, payouts, methods, invoices and vault governance live (wallet-scope, wallet-ledger, live-wallet, wallet-standing) and moves money through finance.transfer_funds / distribute_vault and projects.fund_stage (wallet-actions). The Stripe fiat rails (PaymentBackendService, Decision #125: card PaymentIntents into finance.inbound_payments, Connect payout accounts, Identity sessions and the signed /api/finance/webhooks/stripe endpoint) are live behind this gate AND a well-formed STRIPE_SECRET_KEY, answering 503 without one. The wallet reaches them through its own actions (top-up, withdrawal, recurring deposits, saved cards) and checkout through its card and express routes; without a connected processor each is offered locked with the processor reason. Currency conversion reads finance.fx_rates (FxService.ts). The public site's live figures (/about, the landing page, GET /api/public/metrics) read the thresholded aggregate finance.public_metrics() with the service role (PublicMetricsService, Decision #277); with the gate off they answer an aggregate frozen from the seeded database (public-metrics-fixtures.ts).",
 	},
 	files: {
 		domain: "files",
@@ -246,6 +250,37 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		schemas: ["search", "marketplace", "catalogue", "reviews"],
 		description:
 			"The public landing: showcase sections from the live home feed, real reviews as testimonials, and the hero's running totals from search.platform_stats (ExploreBackendService.landing()).",
+	},
+	editorial: {
+		domain: "editorial",
+		label: "Help centre, changelog & articles",
+		gate: "EDITORIAL_BACKEND_LIVE",
+		// The shared reader (`services/editorial/editorial-source.ts` readEditorialTable) has a real
+		// anon-client path, but no surface service calls it until the help centre, changelog and
+		// articles work orders add their tables — so nothing reads the database through this gate yet.
+		liveImplemented: false,
+		modules: [
+			"services/editorial/content/help.ts",
+			"services/editorial/content/changelog.ts",
+			"services/editorial/content/articles.ts",
+		],
+		schemas: ["editorial"],
+		description:
+			"Platform-authored content (Decision #274). The content sources are NOT demo data: they are the authored rows `deno task db:editorial:generate` emits into 00005071–00005073, and with the gate off they are served through the same Zod row parse and mapping the live read uses, so fixtures cannot drift from the database. Every source is empty until its surface lands.",
+	},
+	community: {
+		domain: "community",
+		label: "Helpfulness votes & feedback board",
+		gate: "COMMUNITY_BACKEND_LIVE",
+		// Scaffold only (Decision #274): the shared module (`services/community/community-source.ts`)
+		// resolves the gate and maps rows, but the help-feedback and feedback-board services that would
+		// read or write through it do not exist yet. The newsletter, also in `community`, keeps its own
+		// NEWSLETTER_BACKEND_LIVE gate.
+		liveImplemented: false,
+		modules: [],
+		schemas: ["community"],
+		description:
+			"User-generated activity around the platform: the help centre's helpfulness votes and the feedback board's ideas, votes and status history. No surface service exists yet.",
 	},
 });
 

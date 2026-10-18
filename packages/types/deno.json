@@ -18,6 +18,8 @@
 		"./content/fixtures": "./content/fixtures.ts",
 		"./content/text": "./content/text.ts",
 		"./newsletter": "./newsletter/mod.ts",
+		"./community": "./community/mod.ts",
+		"./editorial": "./editorial/mod.ts",
 		"./projects": "./projects/mod.ts",
 		"./messaging": "./messaging/mod.ts",
 		"./profile": "./profile/mod.ts",
@@ -27,6 +29,7 @@
 		"./settings": "./settings/mod.ts",
 		"./slugs": "./slugs/mod.ts",
 		"./logging": "./logging/mod.ts",
+		"./marketing": "./marketing/mod.ts",
 		"./ops": "./ops/mod.ts",
 		"./user": "./user/mod.ts",
 		"./workspace": "./workspace/mod.ts"
