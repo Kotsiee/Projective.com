@@ -129,19 +129,19 @@ Severity: **G** gate · **M** matrix/parity · **T** tidy · **B** functional bu
 
 | ID | Sev | Defect | Fix |
 | :-- | :-- | :-- | :-- |
-| BD1 | B | Header promises "Who may put money in" but there is **no approver or contributor editor**; `approverIds`/`contributorIds` are posted back unchanged (:133-134); `.wsp-spend__approvers` is dead CSS | Build both editors (member multi-select with rank rules) — the RPC already accepts them |
-| BD2 | B | Draft ceilings render against server figures: `PolicyAmount value={limit.limit ?? limit.spent}` (`SpendLimitRow:319`) shows **spent as the ceiling** for a previously unlimited member, and ":306 of  used" blanks | Server preview of the draft envelope, or the payout split's `stale` marker; never show spent as a ceiling |
-| BD3 | B | Meters not refreshed after an approval (`decide()` only updates `policy`, :187); comment claims decisions don't touch envelopes | Re-read limits from the decision response |
-| BD4 | B | Approval history hidden unless something is pending (:223); `ApprovalQueue` empty state unreachable | Always render the section; empty state + "Decided" sub-view |
-| BD5 | B | Unverified approver sees requester copy "Waiting for a decision" (`canApprove && verified`, :234) | Separate `canApprove` from `verified`; show the KYB notice to the approver |
-| BD6 | G | "Unlimited" chip renders beside "Spending is off" (:312, :318); "Per purchase" chip **hides the amount** (:325) | MetaLine: `Spending off` · or `€500 / month · €100 per purchase` (tabular) |
-| BD7 | G | Tooltips on non-focusable spans (:318-326; SpendPolicyScreen :318-323) | Put the text in Meta, or make the trigger a focusable control |
-| BD8 | M | N filled Approve buttons once D30 is fixed literally | One tier-3 Approve on the first pending row, others tier 4; Decline tier 5 |
-| BD9 | T | `<div class="wsp-spend__limits">` contains `<li>` (:282) | `<ul>` |
-| BD10 | T | Threshold `min={0}` while 0 is invalid (:261, :70); double label (`<label>` + `aria-label`) | `min={1}` (or minor-unit min), FormControl only |
-| BD11 | B | "Give a member approve-spend" warning has no link (:272-277) | Tier-4 link to Roles / the approver editor (BD1) |
-| BD12 | B | `accessHref="/wallet/access"` lands in the **personal** wallet (308 drops the business `?w=`) | `walletHrefFor("business", id, "access")` |
-| BD13 | T | `.wsp-approvals__who` 600, `gap: 2px`, `block-size: 6px` meter, `opacity: .68` dimming, literal `500` | W1 token sweep covers; ensure money.css business sections included |
+| BD1 | B | Header promises "Who may put money in" but there is **no approver or contributor editor**; `approverIds`/`contributorIds` are posted back unchanged (:133-134); `.wsp-spend__approvers` is dead CSS | ✅ BU2 (#246): two `Listbox` pickers — Who can approve · Who can add money — over the server's `editableMemberIds` (never the owner, never oneself, only somebody outranked), the fixed holders named under each; `.wsp-spend__approvers` is their grid. Also found and fixed: every save posted EVERY limits row (the owner's and the editor's own included), which `save_spend_policy` refuses, so a save carrying limits could never succeed — now only the rows the server offers, each with only the keys that moved |
+| BD2 | B | Draft ceilings render against server figures: `PolicyAmount value={limit.limit ?? limit.spent}` (`SpendLimitRow:319`) shows **spent as the ceiling** for a previously unlimited member, and ":306 of  used" blanks | ✅ BU2 (#246): a drafted row draws the server's preview of THAT draft (matched by its signature) marked "Not saved yet", or "Pricing the change…" until it arrives — never a stored figure with a field patched in; reproduced first in `spend-model.test.ts` |
+| BD3 | B | Meters not refreshed after an approval (`decide()` only updates `policy`, :187); comment claims decisions don't touch envelopes | ✅ BU2 (#246): a decision or a withdrawal adopts the re-read spend block; rows the reader had not touched follow it, their own edits stay (`rebaseDraft`) |
+| BD4 | B | Approval history hidden unless something is pending (:223); `ApprovalQueue` empty state unreachable | ✅ BU2 (#246): Requests always render — `TabMenu` Pending · Decided, each with its empty state |
+| BD5 | B | Unverified approver sees requester copy "Waiting for a decision" (`canApprove && verified`, :234) | ✅ BU2 (#246): an approver whom `viewerCan.decide` refuses (KYB) reads the refusal map's `kyb_required` notice, linked to Verification (BU4) when it admits them, and gets no Approve |
+| BD6 | G | "Unlimited" chip renders beside "Spending is off" (:312, :318); "Per purchase" chip **hides the amount** (:325) | ✅ BU2 (#246): one MetaLine — `Spending off` · `US$500.00 / month · US$100.00 per purchase` · `No ceiling` (tabular); the chips are gone |
+| BD7 | G | Tooltips on non-focusable spans (:318-326; SpendPolicyScreen :318-323) | ✅ BU2 (#246): a Tooltip only on the focusable Edit button; the ledger's note is a MetaLine; the pool ledger (`ContributionLedger`) names its direction glyph by its `aria-label` alone and shows "Approved by …" as MetaLine text under the line's reason (its two span Tooltips removed in the review pass) |
+| BD8 | M | N filled Approve buttons once D30 is fixed literally | ✅ BU2 (#246): the first decidable row's Approve tier 3, every other tier 4, Decline and Withdraw tier 5 |
+| BD9 | T | `<div class="wsp-spend__limits">` contains `<li>` (:282) | ✅ BU2 (#246): `<ul class="wsp-spend__limits">` |
+| BD10 | T | Threshold `min={0}` while 0 is invalid (:261, :70); double label (`<label>` + `aria-label`) | ✅ BU2 (#246): `MoneyInput min={1}` inside `FormControl` — one label |
+| BD11 | B | "Give a member approve-spend" warning has no link (:272-277) | ✅ BU2 (#246): the server's `approver_gap` (nobody besides the owner approves, #239 (e)) → an InlineNotice with a tier-4 "Choose approvers" that focuses the picker, for the policy's editors |
+| BD12 | B | `accessHref="/wallet/access"` lands in the **personal** wallet (308 drops the business `?w=`) | ✅ BU2 (#246): `walletHrefFor("business", id, "access")` → `/wallet?w=business:<id>#upcoming` |
+| BD13 | T | `.wsp-approvals__who` 600, `gap: 2px`, `block-size: 6px` meter, `opacity: .68` dimming, literal `500` | ✅ BU2 (#246): the spend and approvals rules rewritten token-only — the hand-made meter, chips and tinted rows deleted; the styles gate is green |
 
 ### 2.2 Billing (`BillingScreen.island.tsx`)
 
@@ -175,9 +175,9 @@ The shared migration plan is `TEAMS_AUDIT.md` §3.1 and its prompts (U1–U4, W1
 
 | File | Migrate / add | Pri |
 | :-- | :-- | :-- |
-| `islands/SpendPolicyScreen.island.tsx` | `FormControl` + `MoneyInput` (threshold) · approver/contributor editor with `Listbox` or a `DataTable` with selection (BD1) · `InlineNotice` · tier-3/4/5 matrix · `useSignalEffect` | P0 |
-| `components/SpendLimitRow.tsx` | `ProgressBar` (meter) · `MetaLine` (BD6) · `MoneyInput` for ceilings inside `FormControl` · `ToggleSwitch` for can-spend · `<ul>` (BD9) | P0 |
-| `components/ApprovalQueue.tsx` | `Button` tiers (BD8) · rows on hairlines (no tinted boxes) · Pending · Decided via `TabMenu` | P0 |
+| `islands/SpendPolicyScreen.island.tsx` | `FormControl` + `MoneyInput` (threshold) · approver/contributor editor with `Listbox` or a `DataTable` with selection (BD1) · `InlineNotice` · tier-3/4/5 matrix · `useSignalEffect` — ✅ BU2 (#246) | P0 |
+| `components/SpendLimitRow.tsx` | `ProgressBar` (meter) · `MetaLine` (BD6) · `MoneyInput` for ceilings inside `FormControl` · `ToggleSwitch` for can-spend · `<ul>` (BD9) — ✅ BU2 (#246) | P0 |
+| `components/ApprovalQueue.tsx` | `Button` tiers (BD8) · rows on hairlines (no tinted boxes) · Pending · Decided via `TabMenu` — ✅ BU2 (#246) | P0 |
 | `islands/BillingScreen.island.tsx` | One tier-1 Pay + review dialog (BD14) · `InlineNotice` (BD16) · `FormControl` | P0 |
 | `components/ContributionLedger.tsx` | `DataTable` (date · member · method · amount tabular); include card top-ups (BF25) | P1 |
 | `components/ModuleScreen.tsx` | `verification` → new `BusinessVerificationScreen` island; `talent` per BX-i | P0 |

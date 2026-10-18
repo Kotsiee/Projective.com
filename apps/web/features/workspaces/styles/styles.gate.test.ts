@@ -430,7 +430,7 @@ Deno.test("workspace styles: the body and micro money steps keep the minor run w
 Deno.test("workspace styles: the dead rules stay deleted", () => {
 	assertNone(
 		offences(
-			/\.wsp-skel\b|\.wsp-lane__new\b|\.wsp-footerrig__action\[data-variant|\.wsp-lane__(filter|switch|row|verify|foot|note)\b|\.wsp-rail__verify\b/,
+			/\.wsp-skel\b|\.wsp-lane__new\b|\.wsp-footerrig__action\[data-variant|\.wsp-lane__(filter|switch|row|verify|foot|note)\b|\.wsp-rail__verify\b|\.wsp-verdict\b/,
 		),
 		"a deleted dead selector is back:",
 	);

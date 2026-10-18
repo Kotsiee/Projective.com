@@ -10,6 +10,7 @@ import type {
 	InviteActionInput,
 	InviteMemberInput,
 	RespondInviteInput,
+	SpendEnvelopePreview,
 	SwitchContextInput,
 	TransferOwnershipInput,
 	UpdateMemberInput,
@@ -64,7 +65,9 @@ export const WORKSPACE_ENDPOINTS = {
 	roleArchive: "/api/workspace/role-archive",
 	payout: "/api/workspace/payout",
 	spend: "/api/workspace/spend",
+	spendPreview: "/api/workspace/spend/preview",
 	spendDecide: "/api/workspace/spend-decide",
+	spendWithdraw: "/api/workspace/spend-withdraw",
 	contextSwitch: "/api/context/switch",
 	contextEnterprises: "/api/context/enterprises",
 } as const;
@@ -192,11 +195,26 @@ export const WorkspaceService = {
 		);
 	},
 
+	/**
+	 * Price a DRAFT spend-policy patch — the envelopes it would produce, read-only — so the editor never
+	 * renders a draft ceiling against the stored figures it is about to replace.
+	 */
+	previewSpend(input: UpdateSpendInput): Promise<WorkspaceResult<SpendEnvelopePreview>> {
+		return postWorkspace<SpendEnvelopePreview>(WORKSPACE_ENDPOINTS.spendPreview, input);
+	},
+
 	/** Approve or decline an outstanding spend request on a business's pooled wallet. */
 	decideSpend(
 		input: { workspaceId: string; requestId: string; approve: boolean },
 	): Promise<WorkspaceResult<WorkspaceDetail>> {
 		return postWorkspace<WorkspaceDetail>(WORKSPACE_ENDPOINTS.spendDecide, input);
+	},
+
+	/** Withdraw the viewer's own pending spend request; resolves to the re-read detail. */
+	withdrawSpend(
+		input: { workspaceId: string; requestId: string },
+	): Promise<WorkspaceResult<WorkspaceDetail>> {
+		return postWorkspace<WorkspaceDetail>(WORKSPACE_ENDPOINTS.spendWithdraw, input);
 	},
 
 	// --- Session context --------------------------------------------------------------------------

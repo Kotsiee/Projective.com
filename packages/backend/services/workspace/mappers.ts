@@ -12,6 +12,7 @@ import {
 	kindCopy,
 	type MemberFace,
 	type SetupStep,
+	type SpendRequestState,
 	type SplitModel,
 	type TeamEngagement,
 	type TeamSplitRule,
@@ -984,13 +985,13 @@ export function toSplitRule(raw: RawSplitRule | null | undefined): TeamSplitRule
 /**
  * A spend request's state. The database's `rejected` is the SSOT's `declined`; a `pending` request
  * whose expiry has passed IS expired (the row is only re-stamped when somebody next decides it), so it
- * is never offered as decidable.
+ * is never offered as decidable. `withdrawn` is its requester taking it back (Decision #246).
  */
 export function spendRequestState(
 	status: string | null | undefined,
 	expiresAt: string | null | undefined,
 	nowMs: number,
-): "pending" | "approved" | "declined" | "expired" {
+): SpendRequestState {
 	switch (status) {
 		case "approved":
 			return "approved";
@@ -998,6 +999,8 @@ export function spendRequestState(
 			return "declined";
 		case "expired":
 			return "expired";
+		case "withdrawn":
+			return "withdrawn";
 		default: {
 			const expiry = expiresAt ? Date.parse(expiresAt) : NaN;
 			return Number.isFinite(expiry) && expiry <= nowMs ? "expired" : "pending";

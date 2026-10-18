@@ -733,7 +733,12 @@ team members.
   wallet. Funds can be pre-loaded into the vault, allowing individual managers to initiate "Escrow
   Locks" without needing access to a primary corporate credit card for every transaction.
   Per-member spending caps and an approval threshold are **Business Pro** features; a free Business
-  has the shared wallet without caps (`finance-model.md` §16.1, Decision #230 (e)).
+  has the shared wallet without caps (`finance-model.md` §16.1, Decision #230 (e)). Whoever runs the
+  wallet's policy sets, in the Business's Spend module, the threshold, who may approve spending and
+  who may add money, and each member's limit — whether they may spend, a ceiling per week, per month
+  or in total, and a per-purchase cap — for the members they outrank; the owner always may do
+  everything. Changing a member's period keeps what they have already spent in the current one
+  (Decision #246).
 - **Legal Simplicity:** The Business entity handles the administrative side of hiring, ensuring all
   contracts and invoices are issued to the Business entity rather than individual employees.
 
@@ -1395,7 +1400,9 @@ Money enters and leaves the platform through two deliberately asymmetric paths:
   the member asks in place, saying what it is for; nobody is sent elsewhere to ask. The order then
   waits ("Waiting for approval", until the request expires 7 days after it was filed). Once
   approved, the next payment for that basket uses the approval, once — a second order needs a fresh
-  one; an order that has since dropped under every limit is not held by a request left waiting. If
+  one; an order that has since dropped under every limit is not held by a request left waiting. The
+  member can take a waiting request back from the business's Spend module (**Withdraw**); the
+  checkout then offers Request approval again (Decision #246). If
   nobody else in the business can approve, the member is told to ask the owner to add an approver
   (the owner, to give a member approval rights). An unverified business cannot buy: members with its
   billing right are sent to its verification, everyone else is told to ask the owner

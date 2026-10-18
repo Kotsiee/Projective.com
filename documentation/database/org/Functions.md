@@ -942,7 +942,15 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
     member's all-time `add_funds` on the policy wallet), the 40 latest `contributions` and `debits`
     (`transfer_out` excluded), and `approvals {pending, decided}` — the requests the caller may read
     (their own unless `fn_reads_wallet_envelopes`): every open one, and the 30 latest approved /
-    rejected / expired.
+    rejected / expired / withdrawn — each with `ref_table`, `ref_id`, `ref` (what it is for and whether
+    the caller may open it, `finance.fn_spend_ref`, resolved only for the rows answered) and `consumed`.
+    For the Spend editor (BU2, Decision #246) the block also answers `editable_member_ids` — the active
+    members whose limits and grants the caller may change by `finance.save_spend_policy`'s own rules
+    (a `manage_finances` holder only; never the owner, never themselves, only somebody they outrank by
+    preset rank; `[]` otherwise) — `approver_gap` (no active member besides the owner holds
+    `approve_spend`, so the owner's own over-threshold or over-limit spend has nobody to decide it,
+    #239 (e)) and `limits_plan_gated` (`fn_business_plan_gates_enforced()` and no
+    `pooled_wallet_full` — setting a threshold or a ceiling would be refused `PK402` now).
   - `money_tiles` — **only when the viewer may open Finance** (`contribute_funds` · `spend_funds` ·
     `manage_finances`), else `[]`: one row per business wallet, the policy currency first —
     `available_minor` (balance), `pending_minor` (`pending_releases` still clearing), `committed_minor`

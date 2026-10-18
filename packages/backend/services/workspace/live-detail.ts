@@ -383,7 +383,12 @@ async function assemble(
 			toOutgoingInvite(i, i.target_user_id ? people.get(i.target_user_id) : undefined, nowMs)
 		),
 		payout: teamMoney ? buildPayoutPolicy(moneyMembers, teamMoney) : null,
-		spend: spend ? buildSpendPolicy(spend, moneyMembers, people, verification, nowMs) : null,
+		spend: spend
+			? buildSpendPolicy(spend, moneyMembers, people, verification, nowMs, {
+				businessId: raw.id,
+				handle: clamp(raw.handle, 40),
+			})
+			: null,
 		finance,
 		moneyTiles: kind === "business" ? (raw.money_tiles ?? []).map(toMoneyTile) : [],
 		viewerCan: kind === "business" ? viewerCan : null,

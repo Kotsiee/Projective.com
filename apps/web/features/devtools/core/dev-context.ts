@@ -57,6 +57,7 @@ import {
 	type DevDisputeState,
 	type DevBasketScenario,
 	type DevCheckoutGate,
+	type DevSpendRequests,
 	type DevSaved,
 	type DevPromoDismissal,
 	type DevDiscoveryViewer,
@@ -121,6 +122,7 @@ export type {
 	DevDisputeState,
 	DevBasketScenario,
 	DevCheckoutGate,
+	DevSpendRequests,
 	DevSaved,
 	DevServiceType,
 	DevSessionBookingStatus,
@@ -364,6 +366,13 @@ export interface DevOverrides {
 	 */
 	checkoutGate: DevCheckoutGate;
 	/**
+	 * A business Spend module's request queue (Decision #246): none, two waiting on the viewer, the
+	 * viewer's own (Withdraw), the decided history in every terminal state (withdrawn included), or the
+	 * viewer as an approver of a business still in KYB. Its own axis because each takes another member's
+	 * request, a decision or a KYB update to reach; every decision and withdrawal still reaches the server.
+	 */
+	spendRequests: DevSpendRequests;
+	/**
 	 * The saved set behind `/saved` and every star / save control: the real one, nothing saved, or
 	 * saved items of every kind in two collections (Decision #180). Its own axis because filling every
 	 * kind by hand takes a project, a conversation, a file and a listing.
@@ -501,6 +510,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	notifications: "auto",
 	basketScenario: "auto",
 	checkoutGate: "auto",
+	spendRequests: "auto",
 	saved: "auto",
 	promoDismissal: "auto",
 	discoveryViewer: "auto",
@@ -808,6 +818,16 @@ export const DEV_CHECKOUT_GATES: ReadonlyArray<DevOption<DevCheckoutGate>> = [
 	{ value: "kyb_required", label: "KYB" },
 ];
 
+/** Business Spend request queues (Decision #246). */
+export const DEV_SPEND_REQUESTS: ReadonlyArray<DevOption<DevSpendRequests>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "empty", label: "None" },
+	{ value: "others_pending", label: "Waiting on me" },
+	{ value: "own_pending", label: "My request" },
+	{ value: "history", label: "Decided" },
+	{ value: "kyb_approver", label: "KYB approver" },
+];
+
 /** Saved-set scenarios (Decision #180). */
 export const DEV_SAVED: ReadonlyArray<DevOption<DevSaved>> = [
 	{ value: "auto", label: "Auto" },
@@ -1044,6 +1064,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devBasketScenario;
 		if (next.checkoutGate !== "auto") root.dataset.devCheckoutGate = next.checkoutGate;
 		else delete root.dataset.devCheckoutGate;
+		if (next.spendRequests !== "auto") root.dataset.devSpendRequests = next.spendRequests;
+		else delete root.dataset.devSpendRequests;
 		if (next.saved !== "auto") root.dataset.devSaved = next.saved;
 		else delete root.dataset.devSaved;
 		if (next.promoDismissal !== "auto") root.dataset.devPromoDismissal = next.promoDismissal;
@@ -1123,6 +1145,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devNotifications;
 		delete root.dataset.devBasketScenario;
 		delete root.dataset.devCheckoutGate;
+		delete root.dataset.devSpendRequests;
 		delete root.dataset.devSaved;
 		delete root.dataset.devPromoDismissal;
 		delete root.dataset.devDiscoveryViewer;

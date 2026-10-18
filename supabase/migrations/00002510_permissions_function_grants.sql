@@ -1675,6 +1675,11 @@ GRANT EXECUTE ON FUNCTION finance.preview_spend_envelope (uuid, jsonb) TO authen
 -- business; only those definers call it.
 REVOKE ALL ON FUNCTION finance.fn_business_envelopes (uuid, uuid, jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION finance.request_spend_approval (uuid, bigint, text, text, uuid) TO authenticated;
+-- The requester's own door back out of a pending request (BU2, Decision #246).
+REVOKE ALL ON FUNCTION finance.withdraw_spend_approval (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.withdraw_spend_approval (uuid) TO authenticated;
+-- What a request is for: it reads any business's rows, so only the detail read (a definer) calls it.
+REVOKE ALL ON FUNCTION finance.fn_spend_ref (text, uuid) FROM PUBLIC, anon, authenticated;
 
 -- The wallet ledger reads (00001210 §14). SECURITY INVOKER: each answers under the caller's own RLS, so
 -- granting them reaches no row the caller could not already select. A signed-out caller has nothing to

@@ -632,6 +632,8 @@ Deno.test("spendRequestState: rejected → declined, a lapsed pending request is
 	assertEquals(spendRequestState("pending", daysAgo(-3), NOW), "pending");
 	assertEquals(spendRequestState("pending", daysAgo(1), NOW), "expired");
 	assertEquals(spendRequestState("pending", null, NOW), "pending");
+	// Withdrawn is its requester's terminal state, whatever the expiry says (Decision #246).
+	assertEquals(spendRequestState("withdrawn", daysAgo(1), NOW), "withdrawn");
 });
 
 Deno.test("spentInPeriod: a reset period has spent nothing; a total limit never resets", () => {
