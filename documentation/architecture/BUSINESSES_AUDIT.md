@@ -156,14 +156,14 @@ Severity: **G** gate · **M** matrix/parity · **T** tidy · **B** functional bu
 
 | ID | Sev | Defect | Fix |
 | :-- | :-- | :-- | :-- |
-| BD18 | B | Overview money band requires `manage_finances \|\| spend_funds \|\| withdraw_funds` (:75-76) while Finance opens on `contribute_funds` → a member can open Finance but sees no money on Overview | One `canSeeMoney(kind, caps)` helper in `workspace-model.ts` shared by registry and Overview |
-| BD19 | B | `FinanceSummary` `canOpen` never passed (:260) → link always shows; Available figure duplicated (:69-80 vs first tile) | Pass `canOpen`; drop the duplicate |
+| BD18 | B | Overview money band requires `manage_finances \|\| spend_funds \|\| withdraw_funds` (:75-76) while Finance opens on `contribute_funds` → a member can open Finance but sees no money on Overview | One `canSeeMoney(kind, caps)` helper in `workspace-model.ts` shared by registry and Overview — ✅ BU6 (#248): the band is `businessMoney` (`overview-model.ts`) on `canOpenFinance` — the predicate the registry opens Finance on and the read answers `money_tiles` on, so no helper was added to `workspace-model.ts`; a plain member (contribute only) sees it, a withdraw-only role does not (pinned over every preset and single-right role in `module-registry-gates.test.ts`) |
+| BD19 | B | `FinanceSummary` `canOpen` never passed (:260) → link always shows; Available figure duplicated (:69-80 vs first tile) | Pass `canOpen`; drop the duplicate — ✅ BU6 (#248): `FinanceSummary` draws BB9's tiles per currency (Available · Committed · Awaiting approval · Spent 30d), each pinned to its row's own currency, and only the hand-off link; the repeated Available and `PolicyAmount` are gone. `canOpen` was dropped rather than passed: the band itself renders only on `canOpenFinance`, and the wallet opens a business's `?w=business:<id>` view for every member (`resolveWalletContext` — membership is `view`), so the link's gate IS the band's and a second prop could only ever be `true` |
 | BD20 | B | MemberCard "Ceiling set" without amount or link (:778); MemberDrawer "edited on the spend policy" with no link (:359-366) | Show the envelope MetaLine + tier-5 link to Spend |
 | BD21 | T | Create modal kind radio is **unreachable** (`showKindChoice` always false; single mount `WorkspaceRoster:419`) and paints `--secondary` with a translucent mix (`roster.css:824-826`) | Delete the radio and its CSS |
 | BD22 | G | Business kind tint: `--wsp-business-edge` translucent (`tokens.css:83-88`); high-contrast widens `tint`/`edge` but **not `tint-hi`/`ink`** (:305-306); comments call it "the ACCENT tint" (amber is accent) | Opaque edge; HC values for all four; fix comments |
 | BD23 | G | `--wsp-business` = `--secondary`, which is also the **focus-ring colour** (`theme-engine.ts:203-213`): a ring on a business-tinted mark is invisible against it | Business marks use `--tertiary` (the CVD anchor already used at :334-338) or the ring gets the inverse-surface halo on business surfaces — 🧑 BX-j |
 | BD24 | M | Roster table money column header is the stats label "Spent (30d)" from the first card; only the largest currency is shown; `delta` always null | Explicit column def; multi-currency MetaLine; drop the delta slot until it has data |
-| BD25 | T | `PolicyAmount` literal 600 at every size (`tokens.css:401-416`) | `--fw-medium` (figures are not headings; weight is the money register's) |
+| BD25 | T | `PolicyAmount` literal 600 at every size (`tokens.css:401-416`) | `--fw-medium` (figures are not headings; weight is the money register's) — ✅ BU6 (#248): the four `.wsp-money--*` steps are `--fw-medium` (W1 had already replaced the literal with `--fw-semibold`); `MoneyView` amounts stay `--fw-semibold` (flag (f)) |
 | BD26 | B | Talent and Verification render "Not built yet"; Verification shows "is verified" **and** "Not built yet" when verified; `ModulePlaceholder.tsx:15` still lists Billing as next; `VerificationLock` hard-codes "two working days" | Build Verification (BU4); Talent per BX-i; correct stale copy — a business's Verification built and its stale copy corrected (BU4, Decision #242); a team's Verification is still the placeholder (Teams series, #242 flag (d)); Talent per BU5 |
 
 ---
@@ -182,7 +182,7 @@ The shared migration plan is `TEAMS_AUDIT.md` §3.1 and its prompts (U1–U4, W1
 | `components/ContributionLedger.tsx` | `DataTable` (date · member · method · amount tabular); include card top-ups (BF25) | P1 |
 | `components/ModuleScreen.tsx` | `verification` → new `BusinessVerificationScreen` island; `talent` per BX-i | P0 |
 | `components/VerificationLock.tsx` | Link to the real Verification module; drop hard-coded SLA copy | P1 |
-| `components/FinanceSummary.tsx`, `islands/WorkspaceOverview.island.tsx` | shared `canSeeMoney` (BD18-19) | P1 |
+| `components/FinanceSummary.tsx`, `islands/WorkspaceOverview.island.tsx` | shared `canSeeMoney` (BD18-19) — ✅ BU6 (#248): `canOpenFinance` band on BB9's tiles; business setup hero (Add money tier 1, Publish not gated); draft notice; Finance module `BusinessFinanceHead` | P1 |
 | `components/MemberCard.tsx`, `islands/MemberDrawer.island.tsx` | envelope MetaLine + link (BD20) | P1 |
 | `islands/CreateWorkspaceModal.island.tsx` | delete kind radio (BD21) | P2 |
 | `styles/workspace-tokens.css` | business tint opaque + HC (BD22); hue per BX-j (BD23) | P0 |

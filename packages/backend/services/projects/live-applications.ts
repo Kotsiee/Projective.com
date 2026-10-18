@@ -171,15 +171,20 @@ export async function withdrawApplicationLive(
 }
 
 /**
- * The proposals the caller has sent (and those filed for their teams), newest first. Throws on any
- * failure — a list that silently came back empty would read as "you have sent nothing".
+ * The proposals the caller has sent (and those filed for their teams), newest first; `team` narrows to
+ * the ones filed for that team. Throws on any failure — a list that silently came back empty would read
+ * as "you have sent nothing".
  */
 export async function listMyApplicationsLive(
 	actor: ReadActor & { accessToken: string },
 	project: string | null,
+	team: string | null = null,
 ): Promise<SentApplication[]> {
+	// `p_team` is sent only when narrowing, so the unfiltered read names exactly the arguments it
+	// always has.
 	const { data, error } = await projectsDb(actor).rpc("list_my_applications", {
 		p_project: project,
+		...(team ? { p_team: team } : {}),
 	});
 	if (error) {
 		throw new Error(

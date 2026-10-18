@@ -64,10 +64,18 @@ export const AllowanceService = {
 		}
 	},
 
-	/** The proposals the viewer has sent, newest first; narrowed to one project when given. */
-	sent(project?: string): Promise<ProjectsResult<SentApplication[]>> {
-		const qs = project ? `?project=${encodeURIComponent(project)}` : "";
-		return getProjects<SentApplication[]>(`/api/projects/applications/mine${qs}`);
+	/**
+	 * The proposals the viewer has sent (and those filed for their teams), newest first; narrowed to one
+	 * project, and to the ones filed for one team (`team` — the team's id), when given.
+	 */
+	sent(
+		filter: { project?: string; team?: string } = {},
+	): Promise<ProjectsResult<SentApplication[]>> {
+		const params = new URLSearchParams();
+		if (filter.project) params.set("project", filter.project);
+		if (filter.team) params.set("team", filter.team);
+		const qs = params.toString();
+		return getProjects<SentApplication[]>(`/api/projects/applications/mine${qs ? `?${qs}` : ""}`);
 	},
 
 	/** Apply to a stage — as yourself, or for a team you may bind (`teamId`). */

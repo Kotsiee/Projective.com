@@ -401,6 +401,7 @@ async function assemble(
 			toActivity(a, i, a.actor_user_id ? people.get(a.actor_user_id) : undefined, nowMs)
 		),
 		setup: setupSteps(kind, raw.handle, {
+			entityId: raw.id,
 			logo: !!raw.setup?.logo,
 			bio: !!raw.setup?.bio,
 			activeMembers: active,
@@ -408,6 +409,8 @@ async function assemble(
 			// below two members it can only be true for a pending invitation.
 			invitePending: active < 2 && !!raw.setup?.invite,
 			money: !!raw.setup?.money,
+			funded: !!raw.setup?.funded,
+			limitsOffered: !!raw.setup?.limits_offered,
 			verification,
 			published: status !== "draft",
 			viewer: viewerCaps,

@@ -966,7 +966,14 @@ function rawTeamDetail(withPayout: boolean): RawDetail {
 			client: { name: "Atlas Labs", avatar_bucket: null, avatar_path: null },
 		}],
 		activity: [],
-		setup: { logo: false, bio: false, invite: true, money: true },
+		setup: {
+			logo: false,
+			bio: false,
+			invite: true,
+			money: true,
+			funded: false,
+			limits_offered: false,
+		},
 		engagements: [{
 			project_slug: "prj-abc123",
 			title: "Atlas",
@@ -1310,7 +1317,15 @@ function rawBusinessDetail(viewer: BusinessViewer): RawDetail {
 		standing: null,
 		projects: [],
 		activity: [],
-		setup: { logo: false, bio: false, invite: true, money: true },
+		// Funded by an add_funds row; on Business Free, so no spending-rules step (BU6).
+		setup: {
+			logo: false,
+			bio: false,
+			invite: true,
+			money: true,
+			funded: true,
+			limits_offered: false,
+		},
 		engagements: [],
 		payout: null,
 		allowance: null,
@@ -1360,6 +1375,36 @@ Deno.test("readDetail (business): the owner reads every envelope, the tiles in e
 	assert(detail.viewerCan?.payInvoice && detail.viewerCan.startKyb && !detail.viewerCan.archive);
 	assertEquals(detail.archiveBlockers, [{ code: "wallet_balance", count: 2 }]);
 	assert(detail.kyb?.connectOnboardingUrl?.startsWith("/api/finance/connect/refresh?"));
+});
+
+Deno.test("readDetail (business): the setup steps ride the read's funded and limits_offered facts (BU6)", async () => {
+	const free = await readStubbed(rawBusinessDetail("owner"), "business");
+	assert(free.detail);
+	// Business Free: no spending-rules step; funded, verified, two members and active — all done.
+	assertEquals(free.detail.setup.map((s) => [s.id, s.done]), [
+		["invite", true],
+		["verification", true],
+		["fund", true],
+		["publish", true],
+	]);
+	assertEquals(
+		free.detail.setup.find((s) => s.id === "fund")?.href,
+		"/wallet?w=business:biz-1",
+	);
+	const raw = rawBusinessDetail("owner");
+	const pro = await readStubbed({
+		...raw,
+		entity_status: "draft",
+		setup: { ...raw.setup, funded: false, limits_offered: true },
+	}, "business");
+	assert(pro.detail);
+	assertEquals(pro.detail.setup.map((s) => [s.id, s.done]), [
+		["invite", true],
+		["verification", true],
+		["fund", false],
+		["money", true],
+		["publish", false],
+	]);
 });
 
 Deno.test("readDetail (business): an admin decides and edits but cannot pay or start KYB", async () => {

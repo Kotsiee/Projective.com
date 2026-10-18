@@ -4,6 +4,7 @@ import { useRef } from "preact/hooks";
 import "../styles/workspace.css";
 import { compactCount, MetaLine, MoneyView, StatTile, StatTileRow } from "@projective/ui/display";
 import { InlineNotice, Tooltip } from "@projective/ui/feedback";
+import { Button } from "@projective/ui/fields";
 import {
 	canOpenVerification,
 	kindCopy,
@@ -20,6 +21,7 @@ import {
 	readHeroDismissed,
 	writeHeroDismissed,
 } from "../core/overview-model.ts";
+import { BUSINESS_REFUSAL_COPY } from "../core/refusal-copy.ts";
 import { EntityMark } from "../components/EntityMark.tsx";
 import { FinanceSummary } from "../components/FinanceSummary.tsx";
 import { SetupHero } from "../components/SetupHero.tsx";
@@ -39,12 +41,15 @@ import InviteModal from "./InviteModal.island.tsx";
  * rules the surface is judged by hold by construction:
  *
  *   - **One filled control.** The hero's next step the viewer can act on carries the only fill: the
- *     tier-2 structural Invite member, else the tier-3 Publish or the step's page.
+ *     tier-2 structural Invite member, a business's tier-1 amber Add money, else the tier-3 Publish
+ *     or the step's page. With the hero hidden, a draft business's notice carries the tier-3 Publish
+ *     instead — never both on screen.
  *   - **No dead controls.** A step the viewer cannot act on (the read's `actionable`) shows none, and
  *     a plain member sees where the entity is without a button they cannot use.
  *   - **No money they were not answered.** The vault tile exists only when the read carried the payout
- *     block (`manage_finances`, Decision #233); a business's money band only for a viewer holding a
- *     money right; the money movements in the stream were already withheld by the read.
+ *     block (`manage_finances`, Decision #233); a business's money band exactly when the viewer may
+ *     open Finance (BB9's tiles, answered on the same predicate); the money movements in the stream
+ *     were already withheld by the read.
  *   - **A dismissed hero stays dismissed from first paint.** The choice lives in localStorage, which
  *     the server cannot read, so an inline guard ahead of the band marks the stack
  *     (`data-hero-dismissed`) before the band paints, and the stylesheet hides it and reveals the
@@ -56,7 +61,7 @@ import InviteModal from "./InviteModal.island.tsx";
  *
  * There is no `kind === "team" ? <TeamOverview/> : <BusinessOverview/>` here: the differences are the
  * server's data (the steps, the payout block) and the SSOT's per-kind copy. A business's money band
- * is the one kind-specific zone, kept as it was until BU6 rebuilds it.
+ * and its draft notice are the kind-specific zones (BU6, Decision #248).
  */
 
 export interface WorkspaceOverviewProps {
@@ -82,20 +87,32 @@ function MetricTile({ metric }: { metric: OverviewMetric }): JSX.Element {
 	);
 }
 
-/**
- * Where focus goes once the hero is hidden: the first band after it that is on screen — the notice
- * standing in for it, else the metrics — so a keyboard or screen-reader user is not dropped to the top
- * of the document when the control they pressed disappears. A band is a landmark, not a control, so it
- * takes focus programmatically only (`tabindex="-1"`), never a stop in the tab order.
- */
-function focusPastHero(stack: HTMLElement): void {
-	let next = stack.querySelector(":scope > .wsp-band--hero")?.nextElementSibling ?? null;
+/** The first band after `from` that is on screen, or `null`. */
+function nextShownBand(from: Element | null): HTMLElement | null {
+	let next = from?.nextElementSibling ?? null;
 	while (next && (!(next instanceof HTMLElement) || next.getClientRects().length === 0)) {
 		next = next.nextElementSibling;
 	}
-	if (!(next instanceof HTMLElement)) return;
-	if (!next.hasAttribute("tabindex")) next.setAttribute("tabindex", "-1");
-	next.focus();
+	return next instanceof HTMLElement ? next : null;
+}
+
+/**
+ * Focus a band. A band is a landmark, not a control, so it takes focus programmatically only
+ * (`tabindex="-1"`), never a stop in the tab order.
+ */
+function focusBand(band: HTMLElement | null): void {
+	if (!band?.isConnected) return;
+	if (!band.hasAttribute("tabindex")) band.setAttribute("tabindex", "-1");
+	band.focus();
+}
+
+/**
+ * Where focus goes once the hero is hidden: the first band after it that is on screen — the notice
+ * standing in for it, else the metrics — so a keyboard or screen-reader user is not dropped to the top
+ * of the document when the control they pressed disappears.
+ */
+function focusPastHero(stack: HTMLElement): void {
+	focusBand(nextShownBand(stack.querySelector(":scope > .wsp-band--hero")));
 }
 
 export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.Element {
@@ -112,6 +129,8 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 	const publishing = useSignal(false);
 	const publishError = useSignal<string | null>(null);
 	const stackRef = useRef<HTMLDivElement>(null);
+	/** A draft business's not-active band, whose Publish removes it. */
+	const draftRef = useRef<HTMLElement>(null);
 
 	// The lane, the header band and the footer rig read the same projection through the relay, so a
 	// write made here (an invitation, a publish) reaches them without a second fetch.
@@ -127,6 +146,21 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 	const view = model.value;
 	/** The two-member notice — shown, or standing in behind the pre-paint guard. */
 	const propose = view.propose ?? view.standIn.propose;
+	/** A draft business's not-active notice — shown, or standing in behind the pre-paint guard. */
+	const draft = view.draft ?? view.standIn.draft;
+	const notActive = BUSINESS_REFUSAL_COPY.business_not_active;
+	/**
+	 * The draft notice's words: the fact, then — beside a Publish — that it is one-way, or for anyone
+	 * else the ask for the one act a draft needs.
+	 */
+	const draftText = draft
+		? [
+			notActive.sentence({ business: ws.name }),
+			draft.canPublish
+				? "Publishing can't be undone."
+				: notActive.ask({ business: ws.name, businessStatus: ws.status }),
+		].join(" ")
+		: "";
 	const copy = kindCopy(ws.kind);
 	const canInvite = ws.viewerCapabilities.includes("invite_members");
 
@@ -134,16 +168,41 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 		detail.value = next;
 	}
 
-	async function publish(): Promise<void> {
+	/** Publish the entity (draft → active); whether it was published. */
+	async function publish(): Promise<boolean> {
 		publishing.value = true;
 		publishError.value = null;
 		const res = await WorkspaceService.update({ kind: ws.kind, id: ws.id, status: "active" });
 		publishing.value = false;
 		if (!res.ok || !res.data) {
 			publishError.value = res.message ?? `Could not publish the ${copy.noun} just now.`;
-			return;
+			return false;
 		}
 		adopt(res.data);
+		return true;
+	}
+
+	/**
+	 * Publish from the draft notice. A published business has no notice, so the control just pressed
+	 * disappears with it: focus moves on to the band after it, found while the notice is still on
+	 * screen and focused once the re-read has rendered.
+	 */
+	async function publishFromNotice(): Promise<void> {
+		const after = nextShownBand(draftRef.current);
+		if (await publish()) setTimeout(() => focusBand(after), 0);
+	}
+
+	/**
+	 * Publish from the hero. The step is done once the re-read lands, so its control — the one just
+	 * pressed — unmounts, and a business's Publish can sit mid-hero (Decision #248): focus moves to the
+	 * hero band while it is still on screen with steps left, else to the band after it, found while the
+	 * hero is still there.
+	 */
+	async function publishFromHero(): Promise<void> {
+		const hero = stackRef.current?.querySelector<HTMLElement>(":scope > .wsp-band--hero") ?? null;
+		const after = nextShownBand(hero);
+		if (!(await publish())) return;
+		setTimeout(() => focusBand(hero?.isConnected ? hero : after), 0);
 	}
 
 	function dismiss(): void {
@@ -244,7 +303,7 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 								hero={view.hero}
 								titleId="wsp-overview-setup"
 								onInvite={() => openInvite()}
-								onPublish={publish}
+								onPublish={publishFromHero}
 								publishing={publishing.value}
 								publishError={publishError.value}
 								onDismiss={dismiss}
@@ -284,6 +343,38 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 						</div>
 					</section>
 				)}
+				{draft && (
+					// A draft business can't buy, hire or pay. The hero's Publish says so while it is up;
+					// off the hero this band does — with Publish for the viewer who may publish, a tier-3
+					// primary like every Publish and the band's one fill (the hero is hidden whenever this
+					// shows), and the one-way consequence stated beside it; for anyone else, who to ask
+					// (Decision #248).
+					<section
+						ref={draftRef}
+						class="wsp-band wsp-band--plain wsp-band--notice"
+						data-i={next()}
+						data-hero-standin={view.draft ? undefined : ""}
+						aria-label={`${ws.name} status`}
+					>
+						<div class="wsp-band__inner">
+							<div class="wsp-draft">
+								<InlineNotice class="wsp-draft__notice" align="start" text={draftText} />
+								{draft.canPublish && (
+									<Button
+										class="wsp-draft__publish"
+										size="sm"
+										label={publishing.value ? "Publishing…" : "Publish"}
+										loading={publishing.value}
+										onClick={publishFromNotice}
+									/>
+								)}
+							</div>
+							{publishError.value && (
+								<InlineNotice align="start" assertive text={publishError.value} />
+							)}
+						</div>
+					</section>
+				)}
 				{/* #endregion */}
 
 				{/* #region Metrics */}
@@ -296,7 +387,7 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 				</section>
 				{/* #endregion */}
 
-				{/* #region Money — a business's band, as it was until BU6 rebuilds it */}
+				{/* #region Money — a business's band, for a viewer who may open Finance (BU6) */}
 				{view.money && (
 					<section class="wsp-band wsp-band--money" data-i={next()} aria-label="Money">
 						<div class="wsp-band__inner">
@@ -304,7 +395,11 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 								<h2 class="wsp-band__title">Money</h2>
 							</div>
 							<div class="wsp-band__body">
-								<FinanceSummary kind={ws.kind} finance={view.money} />
+								<FinanceSummary
+									tiles={view.money.tiles}
+									walletHref={view.money.walletHref}
+									name={ws.name}
+								/>
 							</div>
 						</div>
 					</section>
