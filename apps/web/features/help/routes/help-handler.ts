@@ -1,4 +1,4 @@
-import { HttpError, page } from "fresh";
+import { page } from "fresh";
 import {
 	type HelpCentreArticle,
 	type HelpCentreCategory,
@@ -20,6 +20,7 @@ import {
 	categorySeo,
 	HELP_HUB_DESCRIPTION,
 	HELP_HUB_TITLE,
+	HELP_NOT_FOUND_TITLE,
 	hubSeo,
 } from "../core/help-seo.ts";
 import { FEEDBACK_RESULT_PARAM } from "../core/feedback-form.ts";
@@ -28,7 +29,8 @@ import { FEEDBACK_RESULT_PARAM } from "../core/feedback-form.ts";
  * `/help` and `/help/*`'s handler (P2 §1) — kept apart from the page so it loads without an island.
  *
  * Reads the help centre once (`HelpBackendService.snapshot`, cached), resolves the path
- * (`resolveHelpPath`: hub · category · article · a 308 to a canonical path · 404), and sets each
+ * (`resolveHelpPath`: hub · category · article · a 308 to a canonical path · a 404 rendered in the
+ * help centre's own frame, `noindex`, with its own h1 and a way back), and sets each
  * page's `<head>` (`pageMeta` on `siteOrigin`) and schema.org graph. `?q=` is honoured on every help
  * page — it opens the search overlay — and on the hub it is also searched here, so a search works
  * with no JavaScript (`<form method="get" action="/help">`); any page carrying `?q=` is `noindex`.
@@ -47,6 +49,7 @@ export type HelpView =
 		category: HelpCentreCategory;
 		outcome?: "thanks" | "error";
 	}
+	| { kind: "not-found" }
 	| { kind: "unavailable" };
 
 /** The help page's data. */
@@ -109,7 +112,22 @@ export const handler = define.handlers({
 			case "redirect":
 				return new Response(null, { status: 308, headers: { location: target.location } });
 			case "not-found":
-				throw new HttpError(404);
+				// Answered inside the help centre's own frame (and so inside the public shell), with its
+				// own h1 and a way back — never the bare root error page.
+				applyPageMeta(
+					ctx.state,
+					pageMeta({
+						title: HELP_NOT_FOUND_TITLE,
+						description: HELP_HUB_DESCRIPTION,
+						path: HELP_ROOT,
+						origin,
+						noindex: true,
+					}),
+				);
+				return page<HelpPageData>(
+					{ view: { kind: "not-found" }, graph: null, query, signedIn },
+					{ status: 404 },
+				);
 			case "hub": {
 				const seo = hubSeo(library, origin, searching);
 				applyPageMeta(ctx.state, seo.meta);

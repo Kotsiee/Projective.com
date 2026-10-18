@@ -37,7 +37,7 @@ import {
 export const handler = define.handlers({
 	async POST(ctx) {
 		const actor = readActor(ctx);
-		const meta = { clientKey: clientKey(ctx.info.remoteAddr) };
+		const meta = { clientKey: clientKey(ctx.info.remoteAddr, ctx.req.headers) };
 
 		if (isFormPost(ctx.req)) {
 			const form = await ctx.req.formData().catch(() => null);

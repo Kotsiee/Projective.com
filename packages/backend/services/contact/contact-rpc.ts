@@ -9,6 +9,7 @@ import {
 	toStoredPayload,
 } from "@projective/types/contact";
 import { fail, type FieldErrors, ok, type ServiceResult } from "../ServiceResult.ts";
+import { isUnstorableInputError } from "../../core/text.ts";
 
 /**
  * contact-rpc — the pure half of the `/contact` intake: what `ops.submit_contact_request` is handed,
@@ -45,15 +46,21 @@ export function submitRpcArgs(
 // #endregion
 
 // #region Answers
-/** The receipt the writer's answer reads as; `null` when it does not parse (a drifted writer). */
+/**
+ * The receipt the writer's answer reads as; `null` when it does not parse (a drifted writer).
+ * `receivedAt` is normalised to `Date#toISOString()`, the shape {@link localReceipt} mints, so a
+ * honeypot receipt cannot be told from a real one by its timestamp (Decision #276).
+ */
 export function receiptFromRpc(data: unknown): ContactReceipt | null {
 	const parsed = ContactSubmitRpcResultSchema.safeParse(data);
 	if (!parsed.success) return null;
+	const receivedAt = new Date(parsed.data.created_at);
+	if (Number.isNaN(receivedAt.getTime())) return null;
 	return {
 		reference: parsed.data.reference,
 		intent: parsed.data.intent,
 		status: parsed.data.status,
-		receivedAt: parsed.data.created_at,
+		receivedAt: receivedAt.toISOString(),
 	};
 }
 
@@ -102,6 +109,7 @@ const FIELD_WORDS: Readonly<Record<string, string>> = {
  *  - `PR429` (a durable ceiling) → 429;
  *  - `22023` (a malformed field) → 422 naming the field when the writer's sentence does;
  *  - `42501` (attachments without a session) → 401;
+ *  - `22P05` / `PGRST102` (text Postgres or PostgREST cannot store) → 422;
  *  - anything else → 503 with the code, never a false success.
  */
 export function submitRefusal(error: { code?: string; message: string }): ServiceResult<never> {
@@ -124,6 +132,11 @@ export function submitRefusal(error: { code?: string; message: string }): Servic
 				errors: { attachmentIds: "Sign in to attach files." },
 			});
 		default:
+			// Text no layer can store (a NUL, a lone surrogate) is malformed input, not an outage; the
+			// schema refuses it first, so this only catches a field that slipped past it.
+			if (isUnstorableInputError(error.code)) {
+				return fail(422, { message: "Some of this request couldn't be read." });
+			}
 			return fail(503, {
 				message: "We couldn't send your request just now. Please try again shortly.",
 				details: { code: error.code ?? null },

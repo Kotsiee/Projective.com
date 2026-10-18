@@ -502,6 +502,15 @@
 }
 /* #endregion */
 
+/* #region Not found — an unknown document or version (`LegalMissingView`): the ways back, one row */
+.lgl-notice__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+	margin: 0;
+}
+/* #endregion */
+
 /* #region Reduced motion — the row tint is a colour change, not motion; nothing here moves. */
 @media (prefers-reduced-motion: reduce) {
 	.lgl-hub__row {

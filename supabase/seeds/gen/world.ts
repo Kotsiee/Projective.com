@@ -80,6 +80,14 @@ export interface Persona {
 	displayCurrency?: string;
 	/** Days since the account was created. */
 	joinedDaysAgo: number;
+	/**
+	 * A Projective platform operator: the persona gets an `ops.admin_users` row, so
+	 * `security.is_admin()` holds for it — it receives `contact.received`, reads the contact intake and
+	 * the dispute desk under the operator RLS arms, and moves feedback ideas. Only a dedicated persona
+	 * carries it: an operator reads past every RLS boundary, so granting it to a working persona would
+	 * change what that persona demonstrates everywhere else.
+	 */
+	platformOperator?: boolean;
 }
 
 export const PERSONAS: Persona[] = [
@@ -515,6 +523,29 @@ export const PERSONAS: Persona[] = [
 		payoutReady: false,
 		displayCurrency: "GBP",
 		joinedDaysAgo: 12,
+	},
+	{
+		// The one platform operator (ops.admin_users). A plain account otherwise: no listings, no
+		// memberships, no money, so nothing it reads elsewhere is explained by anything but the role.
+		key: "rosa",
+		handle: "rosalindqvist",
+		name: "Rosa Lindqvist",
+		headline:
+			"Platform operations at Projective — contact requests, disputes and the feedback board",
+		bio:
+			"I work on Projective's operations team: I read what comes in through the contact page, rule on disputes that reach the desk and keep the public feedback board moving.",
+		city: "Stockholm",
+		country: "Sweden",
+		timezone: "Europe/Stockholm",
+		languages: ["Swedish", "English"],
+		languageLevels: [["sv", "native"], ["en", "fluent"]],
+		dob: "1988-05-21",
+		role: "client",
+		interests: ["trust and safety", "dispute resolution"],
+		skills: [],
+		displayCurrency: "EUR",
+		joinedDaysAgo: 540,
+		platformOperator: true,
 	},
 ];
 

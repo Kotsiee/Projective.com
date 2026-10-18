@@ -115,6 +115,21 @@ export function articleMeta(page: EditorialArticlePage, origin: string): PageMet
 }
 
 /**
+ * The `<head>` facts of an `/articles/<slug>` that names no visible article (a 404 rendered in the
+ * reading frame): `noindex`, canonical to the index, and the same words for every reason — never
+ * written, a draft, future-dated or retracted — so a hidden article is never confirmed to exist.
+ */
+export function articleMissingMeta(origin: string): PageMeta {
+	return pageMeta({
+		title: "Article not found · Articles",
+		description: ARTICLES_INDEX_DESCRIPTION,
+		path: articlesIndexHref(),
+		origin,
+		noindex: true,
+	});
+}
+
+/**
  * An article's structured data: the organisation and site, the page (linked to its breadcrumb
  * trail), the `Article` itself — headline, cover as an ImageObject, author, dates, section, word
  * count — and the trail Home › Articles › the article.

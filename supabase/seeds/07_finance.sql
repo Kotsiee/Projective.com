@@ -30,6 +30,7 @@ VALUES
   ('d57b8eab-0afd-4656-abd8-a91933a9a33c', 'user', '35ce4987-15b3-4c38-a438-2bb9c35df15a', 'USD', 0, NULL, now() - interval '5520 hours'),
   ('a3fdf8df-ee21-408e-aa7d-2f4d03c642e4', 'user', 'b30145ef-f693-439c-a2c4-8b3db32a54a2', 'USD', 0, NULL, now() - interval '4560 hours'),
   ('30eed7c0-2d2d-4655-a10a-47d2e9955427', 'freelancer', '950d68d1-8777-4bbe-ae59-3343e3e7f858', 'USD', 5000, NULL, now() - interval '288 hours'),
+  ('7367c78a-223e-4f93-a339-c90c49549bcd', 'user', 'd568b6e7-1194-445a-a50e-f3a594be7688', 'USD', 0, NULL, now() - interval '12960 hours'),
   ('ed74da48-3ae7-44c1-a174-5b3a4ccfe0eb', 'team', '213dc9f8-3ad7-4f35-ac4b-baa674bf48b3', 'USD', 0, NULL, now() - interval '9600 hours'),
   ('78297a62-19ca-4e6b-afcb-a91cbaa3504d', 'team', 'edc2d943-8062-426a-a6f2-29fdc6b4363c', 'USD', 285618, NULL, now() - interval '8760 hours'),
   ('ac5e5bb6-036a-4c37-a9d9-8764836875d5', 'team', 'a4c25501-0fdd-4abe-a575-ff478daad4fc', 'USD', 3125, NULL, now() - interval '7920 hours'),

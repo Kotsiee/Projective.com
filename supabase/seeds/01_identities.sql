@@ -4,7 +4,7 @@
 -- GENERATED FILE — do not edit by hand. Regenerate with:
 --   deno run --allow-read --allow-write --allow-env supabase/seeds/generate.ts
 --
--- Seventeen development personas (see gen/world.ts). Every account signs in with the password 'password123' at <username>@projective.dev. Triggers stay ENABLED: public.handle_new_user is a no-op without username/dob metadata, and the users_public triggers are what seed each person's preference rows and search index.
+-- Eighteen development personas (see gen/world.ts), one of them the platform operator. Every account signs in with the password 'password123' at <username>@projective.dev. Triggers stay ENABLED: public.handle_new_user is a no-op without username/dob metadata, and the users_public triggers are what seed each person's preference rows and search index.
 --
 -- Every insert is ON CONFLICT DO NOTHING and every id is derived deterministically from a natural
 -- key, so this file is idempotent: running it twice, or against a partially-seeded database, is safe.
@@ -69,7 +69,8 @@ VALUES
   ('00000000-0000-0000-0000-000000000000', '5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', 'authenticated', 'authenticated', 'samuelnkemelu@projective.dev', crypt('password123', gen_salt('bf')), now() - interval '5280 hours', now() - interval '24 hours', now() - interval '5280 hours', now() - interval '5280 hours', '{"provider":"email","providers":["email"]}', '{"full_name":"Samuel Nkemelu","name":"Samuel Nkemelu"}'::jsonb, '', '', '', '', '', '', '', ''),
   ('00000000-0000-0000-0000-000000000000', '35ce4987-15b3-4c38-a438-2bb9c35df15a', 'authenticated', 'authenticated', 'hannahcole@projective.dev', crypt('password123', gen_salt('bf')), now() - interval '5520 hours', now() - interval '24 hours', now() - interval '5520 hours', now() - interval '5520 hours', '{"provider":"email","providers":["email"]}', '{"full_name":"Hannah Cole","name":"Hannah Cole"}'::jsonb, '', '', '', '', '', '', '', ''),
   ('00000000-0000-0000-0000-000000000000', 'b30145ef-f693-439c-a2c4-8b3db32a54a2', 'authenticated', 'authenticated', 'miguelsantos@projective.dev', crypt('password123', gen_salt('bf')), now() - interval '4560 hours', now() - interval '24 hours', now() - interval '4560 hours', now() - interval '4560 hours', '{"provider":"email","providers":["email"]}', '{"full_name":"Miguel Santos","name":"Miguel Santos"}'::jsonb, '', '', '', '', '', '', '', ''),
-  ('00000000-0000-0000-0000-000000000000', '950d68d1-8777-4bbe-ae59-3343e3e7f858', 'authenticated', 'authenticated', 'chloewinters@projective.dev', crypt('password123', gen_salt('bf')), now() - interval '288 hours', now() - interval '24 hours', now() - interval '288 hours', now() - interval '288 hours', '{"provider":"email","providers":["email"]}', '{"full_name":"Chloe Winters","name":"Chloe Winters"}'::jsonb, '', '', '', '', '', '', '', '')
+  ('00000000-0000-0000-0000-000000000000', '950d68d1-8777-4bbe-ae59-3343e3e7f858', 'authenticated', 'authenticated', 'chloewinters@projective.dev', crypt('password123', gen_salt('bf')), now() - interval '288 hours', now() - interval '24 hours', now() - interval '288 hours', now() - interval '288 hours', '{"provider":"email","providers":["email"]}', '{"full_name":"Chloe Winters","name":"Chloe Winters"}'::jsonb, '', '', '', '', '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', 'd568b6e7-1194-445a-a50e-f3a594be7688', 'authenticated', 'authenticated', 'rosalindqvist@projective.dev', crypt('password123', gen_salt('bf')), now() - interval '12960 hours', now() - interval '24 hours', now() - interval '12960 hours', now() - interval '12960 hours', '{"provider":"email","providers":["email"]}', '{"full_name":"Rosa Lindqvist","name":"Rosa Lindqvist"}'::jsonb, '', '', '', '', '', '', '', '')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO auth.identities (id, user_id, provider_id, provider, identity_data, last_sign_in_at, created_at, updated_at)
@@ -90,7 +91,8 @@ VALUES
   ('3ea994af-abcd-497a-ad6c-ba8520955158', '5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', '5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', 'email', '{"sub":"5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd","email":"samuelnkemelu@projective.dev","email_verified":true}'::jsonb, now() - interval '5280 hours', now() - interval '5280 hours', now() - interval '5280 hours'),
   ('6ac0e084-8f7f-4d1b-ae2b-1d62db5e89a1', '35ce4987-15b3-4c38-a438-2bb9c35df15a', '35ce4987-15b3-4c38-a438-2bb9c35df15a', 'email', '{"sub":"35ce4987-15b3-4c38-a438-2bb9c35df15a","email":"hannahcole@projective.dev","email_verified":true}'::jsonb, now() - interval '5520 hours', now() - interval '5520 hours', now() - interval '5520 hours'),
   ('27fd3e40-a64d-4b1b-a6d5-4b7aa8c657b5', 'b30145ef-f693-439c-a2c4-8b3db32a54a2', 'b30145ef-f693-439c-a2c4-8b3db32a54a2', 'email', '{"sub":"b30145ef-f693-439c-a2c4-8b3db32a54a2","email":"miguelsantos@projective.dev","email_verified":true}'::jsonb, now() - interval '4560 hours', now() - interval '4560 hours', now() - interval '4560 hours'),
-  ('5b70018a-7b43-4755-a4ae-47b061ffe15b', '950d68d1-8777-4bbe-ae59-3343e3e7f858', '950d68d1-8777-4bbe-ae59-3343e3e7f858', 'email', '{"sub":"950d68d1-8777-4bbe-ae59-3343e3e7f858","email":"chloewinters@projective.dev","email_verified":true}'::jsonb, now() - interval '288 hours', now() - interval '288 hours', now() - interval '288 hours')
+  ('5b70018a-7b43-4755-a4ae-47b061ffe15b', '950d68d1-8777-4bbe-ae59-3343e3e7f858', '950d68d1-8777-4bbe-ae59-3343e3e7f858', 'email', '{"sub":"950d68d1-8777-4bbe-ae59-3343e3e7f858","email":"chloewinters@projective.dev","email_verified":true}'::jsonb, now() - interval '288 hours', now() - interval '288 hours', now() - interval '288 hours'),
+  ('509b9706-3558-406b-a72f-61f02bb666ed', 'd568b6e7-1194-445a-a50e-f3a594be7688', 'd568b6e7-1194-445a-a50e-f3a594be7688', 'email', '{"sub":"d568b6e7-1194-445a-a50e-f3a594be7688","email":"rosalindqvist@projective.dev","email_verified":true}'::jsonb, now() - interval '12960 hours', now() - interval '12960 hours', now() - interval '12960 hours')
 ON CONFLICT (provider_id, provider) DO NOTHING;
 
 INSERT INTO org.users_public (user_id, username, first_name, last_name, headline, city, country, timezone, languages, dob, visibility, bio, interests, is_freelancer, is_operator, has_team, has_business, created_at, updated_at)
@@ -111,7 +113,13 @@ VALUES
   ('5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', 'samuelnkemelu', 'Samuel', 'Nkemelu', 'Mobile engineer (iOS and Android) — North Loop mobile lead', 'Lagos', 'Nigeria', 'Africa/Lagos', ARRAY['English', 'Igbo']::text[], '1990-11-15', 'public', '{"text":"Native mobile for products that need to feel native. I lead mobile at North Loop and still write most of the Swift myself."}'::jsonb, ARRAY['mobile', 'swift', 'kotlin']::text[], true, false, true, false, now() - interval '5280 hours', now() - interval '48 hours'),
   ('35ce4987-15b3-4c38-a438-2bb9c35df15a', 'hannahcole', 'Hannah', 'Cole', 'Product manager at Helia Finance', 'London', 'United Kingdom', 'Europe/London', ARRAY['English']::text[], '1991-01-25', 'public', '{"text":"I run the wallet and design-system workstreams at Helia and manage the external talent we bring in on them."}'::jsonb, ARRAY['fintech', 'design systems']::text[], false, true, false, true, now() - interval '5520 hours', now() - interval '48 hours'),
   ('b30145ef-f693-439c-a2c4-8b3db32a54a2', 'miguelsantos', 'Miguel', 'Santos', 'Design ops at Atlas Labs', 'Toronto', 'Canada', 'America/Toronto', ARRAY['English', 'Portuguese']::text[], '1989-06-30', 'public', '{"text":"Design operations at Atlas: tooling, hiring and keeping the design system honest."}'::jsonb, ARRAY['design ops', 'mobile']::text[], false, true, false, true, now() - interval '4560 hours', now() - interval '48 hours'),
-  ('950d68d1-8777-4bbe-ae59-3343e3e7f858', 'chloewinters', 'Chloe', 'Winters', 'Freelance copywriter — brand voice and UX writing', 'Edinburgh', 'United Kingdom', 'Europe/London', ARRAY['English']::text[], '1994-12-12', 'public', '{"text":"Words for products and brands: naming, voice guidelines, onboarding copy and the microcopy nobody notices until it is wrong. New here — say hello."}'::jsonb, ARRAY['copywriting', 'ux writing']::text[], true, false, false, false, now() - interval '288 hours', now() - interval '48 hours')
+  ('950d68d1-8777-4bbe-ae59-3343e3e7f858', 'chloewinters', 'Chloe', 'Winters', 'Freelance copywriter — brand voice and UX writing', 'Edinburgh', 'United Kingdom', 'Europe/London', ARRAY['English']::text[], '1994-12-12', 'public', '{"text":"Words for products and brands: naming, voice guidelines, onboarding copy and the microcopy nobody notices until it is wrong. New here — say hello."}'::jsonb, ARRAY['copywriting', 'ux writing']::text[], true, false, false, false, now() - interval '288 hours', now() - interval '48 hours'),
+  ('d568b6e7-1194-445a-a50e-f3a594be7688', 'rosalindqvist', 'Rosa', 'Lindqvist', 'Platform operations at Projective — contact requests, disputes and the feedback board', 'Stockholm', 'Sweden', 'Europe/Stockholm', ARRAY['Swedish', 'English']::text[], '1988-05-21', 'public', '{"text":"I work on Projective''s operations team: I read what comes in through the contact page, rule on disputes that reach the desk and keep the public feedback board moving."}'::jsonb, ARRAY['trust and safety', 'dispute resolution']::text[], false, false, false, false, now() - interval '12960 hours', now() - interval '48 hours')
+ON CONFLICT (user_id) DO NOTHING;
+
+INSERT INTO ops.admin_users (user_id, role, created_at)
+VALUES
+  ('d568b6e7-1194-445a-a50e-f3a594be7688', 'admin', now() - interval '12960 hours')
 ON CONFLICT (user_id) DO NOTHING;
 
 INSERT INTO org.user_emails (id, user_id, email, is_primary, verified_at, created_at)
@@ -132,7 +140,8 @@ VALUES
   ('a4e4fdcb-159f-4cd0-a1f9-f271eeafa1de', '5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', 'samuelnkemelu@projective.dev', true, now() - interval '5280 hours', now() - interval '5280 hours'),
   ('4bcd14a0-713d-4569-ab21-6a5e9af8edcf', '35ce4987-15b3-4c38-a438-2bb9c35df15a', 'hannahcole@projective.dev', true, now() - interval '5520 hours', now() - interval '5520 hours'),
   ('a8ba3954-0533-496d-aa75-ce7eea5f4d27', 'b30145ef-f693-439c-a2c4-8b3db32a54a2', 'miguelsantos@projective.dev', true, now() - interval '4560 hours', now() - interval '4560 hours'),
-  ('b5cc7996-4400-4db3-ae56-d01c5ea68529', '950d68d1-8777-4bbe-ae59-3343e3e7f858', 'chloewinters@projective.dev', true, now() - interval '288 hours', now() - interval '288 hours')
+  ('b5cc7996-4400-4db3-ae56-d01c5ea68529', '950d68d1-8777-4bbe-ae59-3343e3e7f858', 'chloewinters@projective.dev', true, now() - interval '288 hours', now() - interval '288 hours'),
+  ('68f2d822-6ee5-4175-ad75-722c668a4aaf', 'd568b6e7-1194-445a-a50e-f3a594be7688', 'rosalindqvist@projective.dev', true, now() - interval '12960 hours', now() - interval '12960 hours')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO org.user_preferences (user_id, preferred_display_currency, locale, theme)
@@ -153,7 +162,8 @@ VALUES
   ('5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', 'USD', 'en-GB', 'system'),
   ('35ce4987-15b3-4c38-a438-2bb9c35df15a', 'GBP', 'en-GB', 'system'),
   ('b30145ef-f693-439c-a2c4-8b3db32a54a2', 'CAD', 'en-CA', 'system'),
-  ('950d68d1-8777-4bbe-ae59-3343e3e7f858', 'GBP', 'en-GB', 'system')
+  ('950d68d1-8777-4bbe-ae59-3343e3e7f858', 'GBP', 'en-GB', 'system'),
+  ('d568b6e7-1194-445a-a50e-f3a594be7688', 'EUR', 'en-GB', 'system')
 ON CONFLICT (user_id) DO UPDATE SET preferred_display_currency = EXCLUDED.preferred_display_currency, locale = EXCLUDED.locale;
 
 INSERT INTO org.freelancer_profiles (user_id, skills, availability_status, current_workload_intensity, max_workload_intensity, available_since, kyc_status, kyc_tier, kyc_verified_at, payout_ready, identity_provider_ref, created_at)
@@ -249,7 +259,9 @@ VALUES
   ('35ce4987-15b3-4c38-a438-2bb9c35df15a', 'en', 'native'),
   ('b30145ef-f693-439c-a2c4-8b3db32a54a2', 'pt', 'native'),
   ('b30145ef-f693-439c-a2c4-8b3db32a54a2', 'en', 'fluent'),
-  ('950d68d1-8777-4bbe-ae59-3343e3e7f858', 'en', 'native')
+  ('950d68d1-8777-4bbe-ae59-3343e3e7f858', 'en', 'native'),
+  ('d568b6e7-1194-445a-a50e-f3a594be7688', 'sv', 'native'),
+  ('d568b6e7-1194-445a-a50e-f3a594be7688', 'en', 'fluent')
 ON CONFLICT (user_id, code) DO NOTHING;
 
 INSERT INTO org.profile_links (id, profile_type, profile_id, kind, url, is_public)
