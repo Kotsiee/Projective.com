@@ -1,104 +1,241 @@
 import type { JSX } from "preact";
-import { useComputed, useSignal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
+import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
+import { useRef } from "preact/hooks";
 import "../styles/workspace.css";
-import { Tooltip } from "@projective/ui/feedback";
+import { compactCount, MetaLine, MoneyView, StatTile, StatTileRow } from "@projective/ui/display";
+import { InlineNotice, Tooltip } from "@projective/ui/feedback";
+import { Button } from "@projective/ui/fields";
 import {
-	activeMembers,
 	canOpenVerification,
 	kindCopy,
-	setupProgress,
 	type WorkspaceDetail,
 	workspaceHref,
 } from "@projective/types/workspace";
-import { publishDetail } from "../core/workspace-state.ts";
-import { countLabel } from "../core/workspace-model.ts";
+import { WorkspaceService } from "../core/WorkspaceService.ts";
+import { openInvite, publishDetail } from "../core/workspace-state.ts";
+import {
+	heroDismissGuard,
+	heroDismissKey,
+	type OverviewMetric,
+	overviewModel,
+	readHeroDismissed,
+	writeHeroDismissed,
+} from "../core/overview-model.ts";
+import { BUSINESS_REFUSAL_COPY } from "../core/refusal-copy.ts";
 import { EntityMark } from "../components/EntityMark.tsx";
-import { SetupChecklist } from "../components/SetupChecklist.tsx";
-import { StatTile, StatTileRow } from "@projective/ui/display";
+import { FinanceSummary } from "../components/FinanceSummary.tsx";
+import { SetupHero } from "../components/SetupHero.tsx";
 import { ProjectList } from "../components/ProjectList.tsx";
 import { ActivityFeed } from "../components/ActivityFeed.tsx";
-import { FinanceSummary } from "../components/FinanceSummary.tsx";
 import { VerificationLock } from "../components/VerificationLock.tsx";
-import {
-	cloneGlyph,
-	InviteGlyph,
-	MembersGlyph,
-	ProjectsGlyph,
-	StandingGlyph,
-} from "../core/workspace-glyphs.tsx";
+import InviteModal from "./InviteModal.island.tsx";
 
 /**
- * WorkspaceOverview — the entity's home, for both kinds.
+ * WorkspaceOverview — the console's home, for both kinds, and permissionless (Decision #61 (A)): every
+ * active member lands here, whatever they hold.
  *
- * It answers, top to bottom: who is this, is anything blocking me, what needs me, and how are we
- * doing. Everything that differs between a team and a business is a lookup in the SSOT's per-kind copy
- * table or a capability check — there is no `kind === "team" ? <TeamOverview/> : <BusinessOverview/>`
- * anywhere, because that fork is exactly how the two sides drift into different products.
+ * Top to bottom it answers: who is this (the identity band), what is left to set up (the setup hero,
+ * only while a step is open), what is true right now (the metric tiles), what is being delivered (the
+ * projects preview) and what has happened (the activity stream). Which of those render, and which
+ * controls they carry, is `overviewModel` (`core/overview-model.ts`) — pure and unit-tested — so the
+ * rules the surface is judged by hold by construction:
  *
- * **Two gates behave differently, on purpose.** A capability the viewer lacks makes its band ABSENT —
- * a member with no finance rights is not shown a greyed-out vault teasing them. Verification is the
- * opposite: the band RENDERS AND LOCKS, because hiding the path to getting paid means nobody ever
- * finds it, whereas locking it teaches that it exists and what clears it.
+ *   - **One filled control.** The hero's next step the viewer can act on carries the only fill: the
+ *     tier-2 structural Invite member, a business's tier-1 amber Add money, else the tier-3 Publish
+ *     or the step's page. With the hero hidden, a draft business's notice carries the tier-3 Publish
+ *     instead — never both on screen.
+ *   - **No dead controls.** A step the viewer cannot act on (the read's `actionable`) shows none, and
+ *     a plain member sees where the entity is without a button they cannot use.
+ *   - **No money they were not answered.** The vault tile exists only when the read carried the payout
+ *     block (`manage_finances`, Decision #233); a business's money band exactly when the viewer may
+ *     open Finance (BB9's tiles, answered on the same predicate); the money movements in the stream
+ *     were already withheld by the read.
+ *   - **A dismissed hero stays dismissed from first paint.** The choice lives in localStorage, which
+ *     the server cannot read, so an inline guard ahead of the band marks the stack
+ *     (`data-hero-dismissed`) before the band paints, and the stylesheet hides it and reveals the
+ *     notices it was carrying. The island never takes that over with a second mechanism: its first
+ *     client render reads the same key and carries the same mark (Fresh's revive diffs attributes
+ *     against the server's DOM, so a mark the tree lacked would be dropped and the band flash back),
+ *     and a dismissal in place sets the mark too. The band and its stand-ins stay rendered; the mark
+ *     alone decides which of them shows, from the server's first paint to a click.
  *
- * **A one-person team gets an honest pre-state, not a scold.** It is a legal entity that simply cannot
- * bid yet (`canPropose === false`), so the band names the gap and offers the fix rather than treating a
- * solo team as a mistake.
+ * There is no `kind === "team" ? <TeamOverview/> : <BusinessOverview/>` here: the differences are the
+ * server's data (the steps, the payout block) and the SSOT's per-kind copy. A business's money band
+ * and its draft notice are the kind-specific zones (BU6, Decision #248).
  */
 
 export interface WorkspaceOverviewProps {
 	workspace: WorkspaceDetail;
-	/** Server-resolved reference year, so an SSR date and its hydration agree across a New Year. */
-	referenceYear?: number;
+}
+
+/** One metric as a StatTile; money always through MoneyView, in the viewer's currency. */
+function MetricTile({ metric }: { metric: OverviewMetric }): JSX.Element {
+	return (
+		<StatTile
+			label={metric.label}
+			value={metric.type === "money"
+				? (
+					<MoneyView
+						minor={metric.money.minor}
+						currency={metric.money.currency}
+						size="body"
+					/>
+				)
+				: compactCount(metric.value)}
+			caption={metric.caption ?? undefined}
+		/>
+	);
+}
+
+/** The first band after `from` that is on screen, or `null`. */
+function nextShownBand(from: Element | null): HTMLElement | null {
+	let next = from?.nextElementSibling ?? null;
+	while (next && (!(next instanceof HTMLElement) || next.getClientRects().length === 0)) {
+		next = next.nextElementSibling;
+	}
+	return next instanceof HTMLElement ? next : null;
+}
+
+/**
+ * Focus a band. A band is a landmark, not a control, so it takes focus programmatically only
+ * (`tabindex="-1"`), never a stop in the tab order.
+ */
+function focusBand(band: HTMLElement | null): void {
+	if (!band?.isConnected) return;
+	if (!band.hasAttribute("tabindex")) band.setAttribute("tabindex", "-1");
+	band.focus();
+}
+
+/**
+ * Where focus goes once the hero is hidden: the first band after it that is on screen — the notice
+ * standing in for it, else the metrics — so a keyboard or screen-reader user is not dropped to the top
+ * of the document when the control they pressed disappears.
+ */
+function focusPastHero(stack: HTMLElement): void {
+	focusBand(nextShownBand(stack.querySelector(":scope > .wsp-band--hero")));
 }
 
 export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.Element {
-	const detail = props.workspace;
-	const copy = kindCopy(detail.kind);
-	const held = new Set(detail.viewerCapabilities);
+	/** The server's projection — replaced wholesale by every write's re-read, never patched here. */
+	const detail = useSignal(props.workspace);
+	/**
+	 * This viewer's remembered choice to hide the setup hero — read on the client's FIRST render, the
+	 * same read the pre-paint guard made, so the revive keeps the guard's mark instead of dropping it.
+	 * The server cannot see the browser's storage and renders the hero.
+	 */
+	const dismissed = useSignal(
+		typeof document === "undefined" ? false : readHeroDismissed(heroDismissKey(props.workspace)),
+	);
+	const publishing = useSignal(false);
+	const publishError = useSignal<string | null>(null);
+	const stackRef = useRef<HTMLDivElement>(null);
+	/** A draft business's not-active band, whose Publish removes it. */
+	const draftRef = useRef<HTMLElement>(null);
 
-	/** Session-local dismissal — the checklist should not nag once waved off in this sitting. */
-	const checklistDismissed = useSignal(false);
+	// The lane, the header band and the footer rig read the same projection through the relay, so a
+	// write made here (an invitation, a publish) reaches them without a second fetch.
+	useSignalEffect(() => {
+		publishDetail(detail.value);
+	});
 
-	// Publish the SSR detail so the lane, header band and footer rig read ONE projection rather than
-	// each fetching their own and disagreeing about, say, how many members there are.
-	useEffect(() => {
-		publishDetail(detail);
-	}, [detail.id, detail.members.length, detail.viewerCapabilities.length]);
+	// Always the composition WITH the hero: a dismissal is the stack's mark (see the header), which
+	// hides the band and shows the `standIn` notices without re-rendering either.
+	const model = useComputed(() => overviewModel(detail.value, { dismissed: false }));
 
-	const members = useComputed(() => activeMembers(detail.members));
-	const progress = setupProgress(detail.setup);
-	const showChecklist = progress < 1 && !checklistDismissed.value;
+	const ws = detail.value;
+	const view = model.value;
+	/** The two-member notice — shown, or standing in behind the pre-paint guard. */
+	const propose = view.propose ?? view.standIn.propose;
+	/** A draft business's not-active notice — shown, or standing in behind the pre-paint guard. */
+	const draft = view.draft ?? view.standIn.draft;
+	const notActive = BUSINESS_REFUSAL_COPY.business_not_active;
+	/**
+	 * The draft notice's words: the fact, then — beside a Publish — that it is one-way, or for anyone
+	 * else the ask for the one act a draft needs.
+	 */
+	const draftText = draft
+		? [
+			notActive.sentence({ business: ws.name }),
+			draft.canPublish
+				? "Publishing can't be undone."
+				: notActive.ask({ business: ws.name, businessStatus: ws.status }),
+		].join(" ")
+		: "";
+	const copy = kindCopy(ws.kind);
+	const canInvite = ws.viewerCapabilities.includes("invite_members");
 
-	const openProjects = detail.projects.filter((p) => p.state === "active");
-	const proposals = detail.projects.filter((p) => p.state === "proposal");
-	const canSeeMoney = held.has("manage_finances") || held.has("spend_funds") ||
-		held.has("withdraw_funds");
-	const canInvite = held.has("invite_members");
+	function adopt(next: WorkspaceDetail): void {
+		detail.value = next;
+	}
+
+	/** Publish the entity (draft → active); whether it was published. */
+	async function publish(): Promise<boolean> {
+		publishing.value = true;
+		publishError.value = null;
+		const res = await WorkspaceService.update({ kind: ws.kind, id: ws.id, status: "active" });
+		publishing.value = false;
+		if (!res.ok || !res.data) {
+			publishError.value = res.message ?? `Could not publish the ${copy.noun} just now.`;
+			return false;
+		}
+		adopt(res.data);
+		return true;
+	}
 
 	/**
-	 * Band order, written as each band's `data-i` (the stylesheet's ladder turns it into the entrance
-	 * delay), so the stagger reads top-to-bottom regardless of which bands render.
+	 * Publish from the draft notice. A published business has no notice, so the control just pressed
+	 * disappears with it: focus moves on to the band after it, found while the notice is still on
+	 * screen and focused once the re-read has rendered.
 	 */
+	async function publishFromNotice(): Promise<void> {
+		const after = nextShownBand(draftRef.current);
+		if (await publish()) setTimeout(() => focusBand(after), 0);
+	}
+
+	/**
+	 * Publish from the hero. The step is done once the re-read lands, so its control — the one just
+	 * pressed — unmounts, and a business's Publish can sit mid-hero (Decision #248): focus moves to the
+	 * hero band while it is still on screen with steps left, else to the band after it, found while the
+	 * hero is still there.
+	 */
+	async function publishFromHero(): Promise<void> {
+		const hero = stackRef.current?.querySelector<HTMLElement>(":scope > .wsp-band--hero") ?? null;
+		const after = nextShownBand(hero);
+		if (!(await publish())) return;
+		setTimeout(() => focusBand(hero?.isConnected ? hero : after), 0);
+	}
+
+	function dismiss(): void {
+		writeHeroDismissed(heroDismissKey(ws));
+		dismissed.value = true;
+		// The mark the next render writes, written now: the band is hidden and its stand-ins shown at
+		// once, so focus can move to what replaced the button that was just pressed.
+		const stack = stackRef.current;
+		if (!stack) return;
+		stack.setAttribute("data-hero-dismissed", "");
+		focusPastHero(stack);
+	}
+
+	/** Band order as each band's `data-i`, so the entrance stagger reads top to bottom. */
 	let band = 0;
 	const next = () => band++;
 
 	return (
-		<div class="wsp" data-kind={detail.kind}>
-			<div class="wsp__stack">
+		<div class="wsp" data-kind={ws.kind}>
+			<div
+				class="wsp__stack"
+				ref={stackRef}
+				data-hero-dismissed={view.hero && dismissed.value ? "" : undefined}
+			>
 				{/* #region Identity */}
-				<section
-					class="wsp-band wsp-band--head"
-					data-i={next()}
-					aria-label={`${detail.name} header`}
-				>
+				<section class="wsp-band wsp-band--head" data-i={next()} aria-label={`${ws.name} header`}>
 					<div class="wsp-band__inner">
 						<div class="wsp-idhead">
-							{detail.banner && (
+							{ws.banner && (
 								<div class="wsp-idhead__banner">
 									<img
 										class="wsp-idhead__banner-img"
-										src={detail.banner}
+										src={ws.banner}
 										alt=""
 										loading="lazy"
 										decoding="async"
@@ -108,22 +245,32 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 							<div class="wsp-idhead__row">
 								<EntityMark
 									class="wsp-idhead__mark"
-									kind={detail.kind}
-									name={detail.name}
-									handle={detail.handle}
-									image={detail.avatar}
+									kind={ws.kind}
+									name={ws.name}
+									handle={ws.handle}
+									image={ws.avatar}
 									size="lg"
 								/>
 								<div class="wsp-idhead__ident">
-									<h1 class="wsp-idhead__name">{detail.name}</h1>
+									<h1 class="wsp-idhead__name">{ws.name}</h1>
 									{/* The handle resolves to the canonical public profile, never a console page. */}
-									<a class="wsp-idhead__handle" href={`/@${detail.handle}`}>@{detail.handle}</a>
-									{detail.tagline && <p class="wsp-idhead__tagline">{detail.tagline}</p>}
+									<a class="wsp-idhead__handle" href={`/@${ws.handle}`}>@{ws.handle}</a>
+									{ws.tagline && <p class="wsp-idhead__tagline">{ws.tagline}</p>}
+									<MetaLine
+										items={[
+											ws.standing
+												? {
+													text: `${ws.standing} standing`,
+													title: "Earned standing — it cannot be bought",
+												}
+												: null,
+										]}
+									/>
 								</div>
 								<div class="wsp-idhead__badges">
-									{detail.isActing && (
+									{ws.isActing && (
 										<Tooltip
-											content={`Everything you do right now is on behalf of ${detail.name}`}
+											content={`Everything you do right now is on behalf of ${ws.name}`}
 											placement="bottom"
 										>
 											<span class="wsp-actingchip">
@@ -132,174 +279,172 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 											</span>
 										</Tooltip>
 									)}
-									{detail.standing && (
-										<Tooltip content="Earned standing — it cannot be bought" placement="bottom">
-											<span class="wsp-capchip">
-												<span aria-hidden="true">{cloneGlyph(StandingGlyph)}</span>
-												{detail.standing}
-											</span>
-										</Tooltip>
-									)}
 								</div>
-							</div>
-							<div class="wsp-idhead__meta">
-								<span class="wsp-idhead__metaitem">
-									<span aria-hidden="true">{cloneGlyph(MembersGlyph)}</span>
-									{countLabel(detail.kind, members.value.length)}
-								</span>
-								<span class="wsp-idhead__metaitem">
-									<span aria-hidden="true">{cloneGlyph(ProjectsGlyph)}</span>
-									{openProjects.length} active
-								</span>
 							</div>
 						</div>
 					</div>
 				</section>
 				{/* #endregion */}
 
-				{
-					/*
-					 * Verification LOCKS rather than hides — see the module header. `VerificationLock` returns
-					 * null once verified, so this costs nothing in the settled state.
-					 */
-				}
-				<VerificationLock
-					kind={detail.kind}
-					verification={detail.verification}
-					prompt={detail.verificationPrompt}
-					href={workspaceHref(detail.kind, detail.handle, "verification")}
-					canManage={canOpenVerification(detail.kind, detail.viewerCapabilities)}
-					tone="band"
-				/>
-
-				{showChecklist && (
+				{/* #region Setup hero */}
+				{view.hero && (
+					// Hides the band before it paints when this viewer dismissed it earlier — see
+					// `heroDismissGuard`. It must stay ahead of the band so it runs first.
+					<script dangerouslySetInnerHTML={{ __html: heroDismissGuard(heroDismissKey(ws)) }} />
+				)}
+				{view.hero && (
 					<section
-						class="wsp-band wsp-band--checklist"
+						class="wsp-band wsp-band--hero"
 						data-i={next()}
-						aria-label="Finish setting up"
+						aria-labelledby="wsp-overview-setup"
 					>
 						<div class="wsp-band__inner">
-							<SetupChecklist
-								kind={detail.kind}
-								workspaceId={detail.id}
-								name={detail.name}
-								handle={detail.handle}
-								steps={detail.setup}
-								isActing={detail.isActing}
-								onDismiss={() => {
-									checklistDismissed.value = true;
-								}}
+							<SetupHero
+								hero={view.hero}
+								titleId="wsp-overview-setup"
+								onInvite={() => openInvite()}
+								onPublish={publishFromHero}
+								publishing={publishing.value}
+								publishError={publishError.value}
+								onDismiss={dismiss}
 							/>
 						</div>
 					</section>
 				)}
+				{/* #endregion */}
 
-				{
-					/*
-					 * The >=2-members proposal rule, stated as a pre-state. A one-person team is legal; it just
-					 * cannot bid. Naming the gap and offering the fix beats blocking creation (brief §12B (d)).
-					 */
-				}
-				{detail.kind === "team" && !detail.canPropose && (
-					<section class="wsp-band wsp-band--plain" data-i={next()}>
+				{/* #region Notices — what the hero would say, when it is not on screen to say it */}
+				{(view.lock || view.standIn.lock) && (
+					<VerificationLock
+						kind={ws.kind}
+						verification={ws.verification}
+						prompt={ws.verificationPrompt}
+						href={workspaceHref(ws.kind, ws.handle, "verification")}
+						canManage={canOpenVerification(ws.kind, ws.viewerCapabilities)}
+						tone="band"
+						i={next()}
+						heroStandIn={!view.lock}
+					/>
+				)}
+				{propose && (
+					<section
+						class="wsp-band wsp-band--plain wsp-band--notice"
+						data-i={next()}
+						data-hero-standin={view.propose ? undefined : ""}
+						aria-label="Proposals"
+					>
 						<div class="wsp-band__inner">
-							<p class="wsp-propose">
-								<span class="wsp-propose__glyph" aria-hidden="true">{cloneGlyph(InviteGlyph)}</span>
-								<span class="wsp-propose__text">
-									A team needs at least two members before it can send proposals. Everything else
-									here works now — this only gates bidding as a team.
-								</span>
-								{canInvite && (
-									<a
-										class="wsp-propose__link"
-										href={workspaceHref(detail.kind, detail.handle, "members")}
-									>
-										Invite someone
-									</a>
-								)}
-							</p>
+							<InlineNotice
+								align="start"
+								text="Teams need two members to send proposals."
+								actionLabel={propose.canInvite ? "Invite member" : undefined}
+								onAction={propose.canInvite ? () => openInvite() : undefined}
+							/>
 						</div>
 					</section>
 				)}
-
-				{/* #region At a glance */}
-				<section class="wsp-band wsp-band--stats" data-i={next()} aria-label="At a glance">
-					<div class="wsp-band__inner">
-						<StatTileRow label="Workspace figures" class="wsp-tiles">
-							<StatTile
-								label="Members"
-								value={String(members.value.length)}
-								caption={detail.invites.length > 0
-									? `${detail.invites.length} awaiting a decision`
-									: "Everyone is settled"}
-								icon={cloneGlyph(MembersGlyph)}
-							/>
-							<StatTile
-								label="Active projects"
-								value={String(openProjects.length)}
-								caption={detail.kind === "team" ? "In delivery" : "Commissioned"}
-								icon={cloneGlyph(ProjectsGlyph)}
-							/>
-							{proposals.length > 0 && (
-								<StatTile
-									label="Proposals out"
-									value={String(proposals.length)}
-									caption="Awaiting a reply"
-								/>
+				{draft && (
+					// A draft business can't buy, hire or pay. The hero's Publish says so while it is up;
+					// off the hero this band does — with Publish for the viewer who may publish, a tier-3
+					// primary like every Publish and the band's one fill (the hero is hidden whenever this
+					// shows), and the one-way consequence stated beside it; for anyone else, who to ask
+					// (Decision #248).
+					<section
+						ref={draftRef}
+						class="wsp-band wsp-band--plain wsp-band--notice"
+						data-i={next()}
+						data-hero-standin={view.draft ? undefined : ""}
+						aria-label={`${ws.name} status`}
+					>
+						<div class="wsp-band__inner">
+							<div class="wsp-draft">
+								<InlineNotice class="wsp-draft__notice" align="start" text={draftText} />
+								{draft.canPublish && (
+									<Button
+										class="wsp-draft__publish"
+										size="sm"
+										label={publishing.value ? "Publishing…" : "Publish"}
+										loading={publishing.value}
+										onClick={publishFromNotice}
+									/>
+								)}
+							</div>
+							{publishError.value && (
+								<InlineNotice align="start" assertive text={publishError.value} />
 							)}
+						</div>
+					</section>
+				)}
+				{/* #endregion */}
+
+				{/* #region Metrics */}
+				<section class="wsp-band" data-i={next()} aria-label="At a glance">
+					<div class="wsp-band__inner">
+						<StatTileRow label={`${ws.name} at a glance`} class="wsp-tiles">
+							{view.metrics.map((metric) => <MetricTile key={metric.key} metric={metric} />)}
 						</StatTileRow>
 					</div>
 				</section>
 				{/* #endregion */}
 
-				{/* Money is ABSENT for a viewer without finance rights — see the module header. */}
-				{canSeeMoney && (
+				{/* #region Money — a business's band, for a viewer who may open Finance (BU6) */}
+				{view.money && (
 					<section class="wsp-band wsp-band--money" data-i={next()} aria-label="Money">
 						<div class="wsp-band__inner">
 							<div class="wsp-band__head">
 								<h2 class="wsp-band__title">Money</h2>
 							</div>
 							<div class="wsp-band__body">
-								<FinanceSummary kind={detail.kind} finance={detail.finance} />
+								<FinanceSummary
+									tiles={view.money.tiles}
+									walletHref={view.money.walletHref}
+									name={ws.name}
+								/>
 							</div>
 						</div>
 					</section>
 				)}
+				{/* #endregion */}
 
-				<section class="wsp-band wsp-band--projects" data-i={next()} aria-label="Projects">
+				{/* #region Projects preview */}
+				<section class="wsp-band" data-i={next()} aria-labelledby="wsp-overview-projects">
 					<div class="wsp-band__inner">
 						<div class="wsp-band__head">
-							<h2 class="wsp-band__title">
-								{detail.kind === "team" ? "Delivering" : "Commissioned"}
-							</h2>
+							<h2 class="wsp-band__title" id="wsp-overview-projects">Projects</h2>
 							<a
-								class="wsp-band__action"
-								href={workspaceHref(detail.kind, detail.handle, "projects")}
+								class="ui-button ui-button--primary ui-button--text ui-button--size-sm wsp-band__more"
+								href={view.projectsHref}
 							>
-								All projects
+								<span class="ui-button__label">See all</span>
 							</a>
 						</div>
-						<div class="wsp-band__body">
-							<ProjectList projects={detail.projects} kind={detail.kind} limit={5} />
-						</div>
+						<ProjectList
+							rows={view.projects}
+							empty={ws.kind === "team"
+								? "No live engagements yet."
+								: "Nothing commissioned is in delivery yet."}
+						/>
 					</div>
 				</section>
+				{/* #endregion */}
 
+				{/* #region Activity */}
 				<section
-					class="wsp-band wsp-band--activity wsp-band--tail"
+					class="wsp-band wsp-band--tail"
 					data-i={next()}
-					aria-label="Recent activity"
+					aria-labelledby="wsp-overview-activity"
 				>
 					<div class="wsp-band__inner">
 						<div class="wsp-band__head">
-							<h2 class="wsp-band__title">Recent activity</h2>
+							<h2 class="wsp-band__title" id="wsp-overview-activity">Activity</h2>
 						</div>
-						<div class="wsp-band__body">
-							<ActivityFeed entries={detail.activity} limit={8} />
-						</div>
+						<ActivityFeed rows={view.activity} />
 					</div>
 				</section>
+				{/* #endregion */}
 			</div>
+
+			{canInvite && <InviteModal workspace={ws} onUpdated={adopt} />}
 		</div>
 	);
 }

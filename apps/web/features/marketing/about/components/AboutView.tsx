@@ -10,6 +10,7 @@ import {
 	ABOUT_HERO,
 	ABOUT_QUOTE,
 	ABOUT_TOUR_COPY,
+	type Founder,
 } from "../core/about-content.ts";
 import { AboutMetrics } from "./AboutMetrics.tsx";
 
@@ -24,6 +25,11 @@ export interface AboutViewProps {
 	tour: ComponentChildren;
 	/** Whether the viewer is signed in (the closing band's primary action differs). */
 	isAuthenticated: boolean;
+	/**
+	 * The founders to list — {@link ABOUT_FOUNDERS} unless given (a render test passes its own).
+	 * Empty draws no founders band at all, never a band of placeholders.
+	 */
+	founders?: readonly Founder[];
 }
 
 /** One full-bleed band of the page, on `--bg` or (tinted) `--surface-1`, named by its heading. */
@@ -45,13 +51,18 @@ function Band(
 /**
  * AboutView — the `/about` manifesto page (PUBLIC_ROUTES P4, Decision #277): the opening, the
  * friction set against the model, a pull quote, the live metrics row, the delivery walkthrough,
- * the founders, the security and architecture facts, and a closing call to action. One editorial
- * column (`--measure-wide` for display, `--measure` for prose) on full-bleed bands of solid
- * alternating tones; no cards. Renders no `<main>` (the shell's) and no SEO (the route's).
- * Server-safe — imports no stylesheet and no island — so the whole page renders under `deno test`.
+ * the founders (only once real ones exist), the security and architecture facts, and a closing call
+ * to action. One editorial column (`--measure-wide` for display, `--measure` for prose) on
+ * full-bleed bands of solid alternating tones — the bands after the walkthrough re-pair their tones
+ * when the founders band is absent, so two bands of one tone never meet; no cards. Renders no
+ * `<main>` (the shell's) and no SEO (the route's). Server-safe — imports no stylesheet and no island —
+ * so the whole page renders under `deno test`.
  */
-export function AboutView({ metrics, tour, isAuthenticated }: AboutViewProps): JSX.Element {
+export function AboutView(
+	{ metrics, tour, isAuthenticated, founders = ABOUT_FOUNDERS }: AboutViewProps,
+): JSX.Element {
 	const ctaHref = isAuthenticated ? ABOUT_CTA.primary.memberHref : ABOUT_CTA.primary.guestHref;
+	const hasFounders = founders.length > 0;
 	return (
 		<div class="abt">
 			<header class="abt__band abt-hero">
@@ -98,31 +109,33 @@ export function AboutView({ metrics, tour, isAuthenticated }: AboutViewProps): J
 				{tour}
 			</Band>
 
-			<Band tint labelledBy="abt-founders-heading">
-				<h2 class="abt__label" id="abt-founders-heading">{ABOUT_FOUNDERS_LABEL}</h2>
-				<ul class="abt-founders">
-					{ABOUT_FOUNDERS.map((founder) => (
-						<li class="abt-founder" key={founder.id}>
-							<img
-								class="abt-founder__avatar"
-								src={founder.avatar.src}
-								width={founder.avatar.w}
-								height={founder.avatar.h}
-								alt=""
-								loading="lazy"
-								decoding="async"
-							/>
-							<div class="abt-founder__text">
-								<h3 class="abt-founder__name">{founder.name}</h3>
-								<p class="abt-founder__role">{founder.role}</p>
-								<p class="abt-founder__bio">{founder.bio}</p>
-							</div>
-						</li>
-					))}
-				</ul>
-			</Band>
+			{hasFounders && (
+				<Band tint labelledBy="abt-founders-heading">
+					<h2 class="abt__label" id="abt-founders-heading">{ABOUT_FOUNDERS_LABEL}</h2>
+					<ul class="abt-founders">
+						{founders.map((founder) => (
+							<li class="abt-founder" key={founder.id}>
+								<img
+									class="abt-founder__avatar"
+									src={founder.avatar.src}
+									width={founder.avatar.w}
+									height={founder.avatar.h}
+									alt=""
+									loading="lazy"
+									decoding="async"
+								/>
+								<div class="abt-founder__text">
+									<h3 class="abt-founder__name">{founder.name}</h3>
+									<p class="abt-founder__role">{founder.role}</p>
+									<p class="abt-founder__bio">{founder.bio}</p>
+								</div>
+							</li>
+						))}
+					</ul>
+				</Band>
+			)}
 
-			<Band labelledBy="abt-creds-heading">
+			<Band tint={!hasFounders} labelledBy="abt-creds-heading">
 				<h2 class="abt__label" id="abt-creds-heading">{ABOUT_CREDENTIALS_LABEL}</h2>
 				<dl class="abt-creds">
 					{ABOUT_CREDENTIALS.map((cred) => (
@@ -142,7 +155,7 @@ export function AboutView({ metrics, tour, isAuthenticated }: AboutViewProps): J
 				</dl>
 			</Band>
 
-			<Band tint labelledBy="abt-cta-heading">
+			<Band tint={hasFounders} labelledBy="abt-cta-heading">
 				<h2 class="abt-cta__title" id="abt-cta-heading">{ABOUT_CTA.title}</h2>
 				<p class="abt-cta__body">{ABOUT_CTA.body}</p>
 				<div class="abt-cta__actions">

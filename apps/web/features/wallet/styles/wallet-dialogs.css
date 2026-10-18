@@ -16,6 +16,11 @@
 	margin-inline-end: auto;
 }
 
+/* A finished movement's way back to the flow that linked into it — an anchor in the Button's dress. */
+.wlt-dlg__back {
+	text-decoration: none;
+}
+
 .wlt-form,
 .wlt-review {
 	display: flex;
@@ -85,13 +90,6 @@
 
 .wlt-dlg .ui-money--figure .ui-money__amount {
 	font-weight: var(--fw-medium);
-}
-
-.wlt-dlg__warn {
-	margin: 0;
-	font-size: var(--text-sm);
-	line-height: var(--leading-normal);
-	color: var(--text-secondary);
 }
 
 .wlt-dlg__lead {

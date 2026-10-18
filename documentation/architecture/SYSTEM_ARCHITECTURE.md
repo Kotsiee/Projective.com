@@ -914,7 +914,9 @@ for the changelog's capture). Behind **`NEWSLETTER_BACKEND_LIVE`** (default off,
 `isNewsletterBackendLive()`) the service calls `community.subscribe_newsletter` with the service
 role — the table's one writer, which adds a topic idempotently and, for an unsubscribed address,
 only records a pending re-subscribe: the opt-out stays on record and in force until the confirm link
-applies it (Decision #274); off, it answers the same plan and stores nothing. An address is at most
+applies it (Decision #274); off, it stores nothing — in development it answers the same plan, and in
+production it answers **503** ("Subscriptions can't be saved right now"), never a "you're on the list"
+for a write it skipped (the contact intake's rule; Decision #279). An address is at most
 254 characters at every layer, and a 429 carries `details.retryAt` and `Retry-After`. The
 email-provider sync and the confirmation mail are still to come. The `NewsletterForm` island (with
 optional `topic` / `source` props) is the only client touchpoint — it `fetch`es the route and never
@@ -933,12 +935,43 @@ which reads the table through the anon client when live and otherwise pushes the
 records through the same row parse and mapping — so a fixture cannot drift from the database. A
 table's `visible` predicate (drafts, future-dated releases, retractions) is applied to the mapped
 records on both roads, and its SELECT policy states the same rule; the generator seeds every record
-and never prunes, so content is retracted by hiding it, never by deleting its record.
+and never prunes, so content is retracted by hiding it, never by deleting its record. The sitemap
+(`/sitemap.xml`) lists the three surfaces through the same services
+(`HelpBackendService.snapshot`, `ChangelogBackendService.releases`,
+`EditorialArticlesBackendService.listed`), so it names exactly the pages a reader can open, on
+either road (Decision #279).
 **`community`** holds what people do: the newsletter, helpfulness votes and the feedback board.
 `services/community/community-source.ts` is its shared module: the **`COMMUNITY_BACKEND_LIVE`**
 gate, `defineCommunityTable`, `readCommunityTable` (the caller's client live, declared fixtures
 otherwise, both through one row parse) and `communityRpc` for the schema's definer doors. Surface
 services are built on these by their own work orders; the newsletter keeps its own gate.
+The feedback board's `services/community/FeedbackBackendService.ts` (Decision #272) is the first:
+it reads as the caller (RLS decides who sees an idea under review), writes only through
+the board's definer doors, and with the gate off runs the same code over a per-process fixture
+store (`feedback-store.ts`) that mirrors every door — the seed's own sixteen ideas.
+
+**The help centre (P2)** is the first surface on both. `services/editorial/HelpBackendService.ts`
+reads `editorial.help_categories` / `help_articles` through `readEditorialTable`, organises them
+into a library (`help-library.ts`: topics, reading order, neighbours, related reads, role columns,
+the FAQ) and builds an in-memory search index (`help-search.ts`: folded terms, title > headings >
+summary > category > body weighting, prefix matching and a one- or two-edit typo fallback, AND with
+an OR fallback, sentence snippets and `[start, end)` highlight runs — pure, no search dependency),
+cached five minutes and never cached on failure. `services/community/HelpFeedbackBackendService.ts`
+writes "Was this helpful?" through the definer door `community.submit_help_feedback` as the caller
+(their JWT when signed in, anon otherwise), behind per-process `SlidingWindowLimiter`s (10 per signed-in voter
+per 10 minutes, 20 per guest address a minute) in front of the door's durable limits; with `COMMUNITY_BACKEND_LIVE` off it validates
+and answers without storing. Routes: `/help/[...path]`, `GET /api/help/search`,
+`POST /api/help/feedback` (ROUTING.md).
+
+**Changelog (P5, Decision #278).** `services/editorial/ChangelogBackendService.ts` reads
+`editorial.changelog_releases` through `readEditorialTable` (the table's `visible` predicate has
+already dropped withdrawn and future-dated releases on either road) and orders, filters and pages
+the whole table in TypeScript with the pure `changelog-feed.ts` (newest first by day then semver
+precedence; a category filter matching ANY selected category; ten to a page; a release's
+neighbours): `releases()`, `feed({ categories, page })` (404 past the last page) and
+`release(version)` (one 404 for unknown, withdrawn or future). The routes `/changelog`,
+`/changelog/[version]` and `/changelog/rss.xml` are thin controllers in `features/changelog/routes/`;
+the RSS document is the pure `features/changelog/core/rss.ts`, every URL absolute on `siteOrigin`.
 
 ### Messaging services
 
@@ -1615,8 +1648,19 @@ deferred live path behind the same gate with zero shape churn.
 | Half        | Client (thin)      | Routes (thin)                                                        | Service (fat)                |
 | :---------- | :----------------- | :-------------------------------------------------------------------- | :--------------------------- |
 | The basket  | `BasketService`    | `/api/basket/{index,item,move,promo,lists,owners}`                   | `BasketBackendService`       |
-| The flow    | `CheckoutService`  | `/api/checkout/{session,create,details,order,calendar/[orderId]/[lineId]}` | `CheckoutBackendService` |
+| The flow    | `CheckoutService`  | `/api/checkout/{session,create,details,approval,order,calendar/[orderId]/[lineId]}` | `CheckoutBackendService` |
 | The wallet of cards | `CardsService` | `/api/cards/{index,[id],default}`                                  | `CardsBackendService`        |
+
+`approval` is a business checkout's "Request approval" (Decision #243): it files a spend request
+bound to the basket through `wallet-actions.fileSpendRequest` → `finance.request_spend_approval` —
+the one door `/wallet` files through too — with the amount computed server-side from the named
+lines, and answers the fresh session in the page's deep-link scope (`preselect`) with a sentence. A
+PC409 that the session does not show as the member's own is another member's request on the shared
+basket and answers 409 saying so; a "needs no approval" the session disagrees with answers 409 too.
+The spend pre-flight (`live-buyer.spendPositionFor`) reads what the database's gate reads: the
+envelope rolled at `resets_at` and the platform threshold behind a wallet's NULL one. Database
+refusals at Pay map to blockers in `checkout-refusal.ts`; a business refusal carries its `gate` so
+the surface words it from the business refusal map.
 
 Cross-boundary shapes are the Zod SSOT at **`@projective/types/finance`** — `basket.ts` (items,
 lists, the `BasketLists` projection), `checkout.ts` (the session context, `CheckoutTotals`,
@@ -1821,7 +1865,40 @@ Every write returns the RE-READ console so an island adopts the server's state. 
   file ids, codes and instants; the fat service maps them onto the Zod SSOT once, resolving people
   through `org.get_party_cards` (`profile/party-cards.ts`) and pictures through
   `files.get_public_media` + `core/storage-url.ts`. Balances and ledgers are read under the caller's
-  RLS with the wallet surface's own entity projection, never re-derived.
+  RLS with the wallet surface's own entity projection, never re-derived. The mapping also answers
+  each viewer only what is theirs to act on: an activity line that moves money reaches only a
+  viewer who may open Finance (`visibleActivity`), and every Draft-First setup step carries
+  `actionable` from `canActOnSetupStep` (`@projective/types/workspace`) — the same right that opens
+  the step's module, pinned by `module-registry-gates.test.ts`; a team's owner-verification step is
+  the exception, actionable only for the owner (the read marks the viewer's own row against
+  `owner_user_id`) and linked to their `/settings/verification`, and a `pending` verification is
+  actionable for nobody — so the Overview's pure model
+  (`features/workspaces/core/overview-model.ts`, Teams C1) never draws a control its viewer cannot
+  use. The Overview's setup-hero dismissal lives in localStorage, so an inline pre-paint guard
+  (`heroDismissGuard`, allowed by the `'unsafe-inline'` `script-src` in `utils/csp.ts`; a
+  nonce-based policy must carry it) hides the band before first paint, and the island's first
+  client render reads the same key and carries the same `data-hero-dismissed` mark: Fresh's revive
+  renders over the server's DOM and removes every attribute its tree lacks, so a mark set only by a
+  pre-paint script is dropped at revive and the band flashes back.
+- **A business's Overview and Finance (BU6, Decision #248).** The money band shows exactly when
+  `canOpenFinance("business", caps)` holds (`contribute_funds` · `spend_funds` · `manage_finances`) —
+  the same predicate the read answers `money_tiles` on (`v_sees_money`) and the Finance module opens
+  on — and draws BB9's tiles per wallet currency (Available · Committed · Awaiting approval · Spent
+  30d) with one wallet hand-off link; `WorkspaceDetail.finance` has no reader left in the app. The
+  business setup steps come from the read's `setup` facts, which for a business add `funded` (any
+  `add_funds` ledger row on its wallets — so the step stays done once the wallet is spent) and
+  `limits_offered` (NOT `limits_plan_gated`: Business Pro's `pooled_wallet_full`, or the gates off);
+  `setupSteps` leaves Set spending rules out without it, so a Business Free business walks invite ·
+  KYB · Add money · publish. Add money (`fund`) is actionable for `contribute_funds` (the vault's
+  `add_funds`), and the Overview points it at the wallet intent
+  (`/wallet?w=business:<id>&do=top_up&back=/businesses/<handle>`). A business's Publish is not
+  gated by its earlier steps — `setupHero` lets it carry the band's one fill whenever it is the
+  viewer's first open step and draws it tier 3 `outlined` otherwise (a team keeps C1's at-hand rule) — and it
+  publishes through the existing door (`POST /api/workspace/update` → `org.set_workspace_status`,
+  `manage_settings`). A dismissed hero on a draft business hands its Publish to a not-active notice
+  worded from `BUSINESS_REFUSAL_COPY.business_not_active`. The Finance module of a business is
+  `BusinessFinanceHead` (a server component): the page head, a balance MetaLine from the same tiles
+  (`walletBalanceFacts`) and a tier-4 "Open the business wallet".
 - **The acting context is written only by the switch RPCs.** (Its enterprise targets are listed by
   `GET /api/context/enterprises` → `ContextBackendService.enterprises`: owned or ACTIVE-member
   enterprises, archived excluded, filtered explicitly because the `org.enterprises` SELECT
@@ -2196,6 +2273,7 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `finance-sweep-stale-payouts`     | every 10 min        | `POST /api/finance/cron/payouts?limit=50` · `FINANCE_CRON_SECRET`      | Finance — `PaymentBackendService.sweepStalePayouts`      | Each payout is leased once per window (`finance.fn_claim_stale_payouts`, `SKIP LOCKED`); every transfer carries its payout's Stripe idempotency key. Seeded only where the claim function exists (Decision #202). |
 | `finance-recurring-deposits`      | hourly :15          | `POST /api/finance/cron/deposits?limit=50` · `FINANCE_CRON_SECRET`     | Finance — `PaymentBackendService.processDueDeposits`     | A period is claimed once (`finance.claim_due_deposit_rules`) and each charge carries a Stripe idempotency key; a run left unbound by a transient failure is re-sent by the next sweep under the same key (≤ 23 h). |
 | `scheduling-availability-horizon` | daily 03:05         | `POST /api/scheduling/cron/horizon?limit=200` · `SCHEDULING_CRON_SECRET` | Scheduling — `ScheduleBackendService.extendHorizons` (#217) | Recompiles each live preset not compiled, or compiled through an earlier date than today + 90 d, over today → today + 120 d; a recompile replaces the window it covers (`replace_preset_occurrences`), so a re-run rewrites the same spans. A failed preset is logged and retried next run. |
+| `contact-attachment-sweep`        | hourly :25          | `POST /api/contact/cron/attachments?limit=100` · `CONTACT_CRON_SECRET` | Contact — `ContactBackendService.sweepAttachments` (#276) | Each unsent contact upload older than 6 h is claimed once (`ops.fn_claim_stale_contact_attachments` soft-deletes it, `SKIP LOCKED`, so a file a submission or a Remove holds is skipped) and its object deleted through the Storage API; an object that fails to delete is logged — its row is already gone from every reader. |
 | `account-erasures`                | daily 04:10         | `POST /api/user/cron/erasures?limit=100` · `ACCOUNT_CRON_SECRET`       | Account — `AccountLifecycleBackendService.sweepDue` (#156) | A request completes once; one whose blockers came back is deferred, not forced.                                     |
 | `ops-watch-jobs`                  | every 10 min        | `ops.fn_watch_jobs()`                                                  | Ops — the registry itself                                | `SKIP LOCKED`; a dispatch is settled (and reported) once, a failed run is reported once (keyed by run id).          |
 
@@ -3348,6 +3426,9 @@ ACCOUNT_CRON_SECRET=XXXX-XXXX
 # Bearer token (≥ 32 characters) the scheduler presents to POST /api/scheduling/cron/horizon, which
 # recompiles availability presets running short of their occurrence horizon (Decision #217); 404 otherwise.
 SCHEDULING_CRON_SECRET=XXXX-XXXX
+# Bearer token (≥ 32 characters) the scheduler presents to POST /api/contact/cron/attachments, which
+# deletes /contact attachments nobody sent (Decision #276); 404 otherwise.
+CONTACT_CRON_SECRET=XXXX-XXXX
 # Scheduled jobs (§Scheduled jobs, Decision #203) — these are SUPABASE VAULT secrets, not app env keys.
 # pg_net reads them inside the database to call the routes above; set them per environment with
 #   SELECT vault.create_secret('<value>', '<NAME>');   -- vault.update_secret(id, '<value>') to rotate
@@ -3357,6 +3438,7 @@ SCHEDULING_CRON_SECRET=XXXX-XXXX
 #   FINANCE_CRON_SECRET  the same value as the env key above
 #   ACCOUNT_CRON_SECRET  the same value as the env key above
 #   SCHEDULING_CRON_SECRET  the same value as the env key above
+#   CONTACT_CRON_SECRET  the same value as the env key above
 # Optional, development only: stripe-mock origin; ignored for live keys and under DENO_ENV=production
 # STRIPE_API_BASE=http://localhost:12111
 
@@ -3395,6 +3477,11 @@ EDITORIAL_BACKEND_LIVE=false
 # supabase/config.toml [api].schemas (then `supabase stop && supabase start`) or a hosted project's
 # Exposed schemas before either gate, or the newsletter's live path, can reach them.
 COMMUNITY_BACKEND_LIVE=false
+# The /contact intake (Decision #276): ops.contact_requests through ops.submit_contact_request, and
+# attachments through the quarantine pipeline into the private `contact` bucket. Off, development
+# answers a receipt and stores nothing; PRODUCTION REFUSES (503) rather than acknowledge a message
+# nobody will read — set it in every deployed environment.
+CONTACT_BACKEND_LIVE=false
 ```
 
 ---

@@ -1,6 +1,10 @@
 import { computed, signal } from "@preact/signals";
 import type { WorkspaceDetail, WorkspaceKind } from "@projective/types/workspace";
 import { viewMode } from "./view-state.ts";
+import type { RosterTab } from "./workspace-model.ts";
+import type { ModuleCommit } from "./header-model.ts";
+import type { SaveState } from "./rig-model.ts";
+import { MEMBERS_CHART, type SubView, subViewSearch } from "./sub-views.ts";
 
 /**
  * workspace-state — the cross-island signal bridge for the `/teams` and `/businesses` surface.
@@ -99,39 +103,87 @@ export function closeInvite(): void {
 }
 // #endregion
 
+// #region Module sub-view (header band tabs · lane context · footer rig → body)
+/**
+ * The console module's sub-view (`sub-views.ts`) — ONE value for every root that offers or honours it:
+ * the header band's TabMenu, the lane's context control, the footer rig's Org chart toggle and the
+ * body. Each control writes it through {@link selectModuleView}; none keeps a copy of its own.
+ *
+ * `null` until a control picks one. Each root renders its server-resolved `?view=` prop until then
+ * ({@link viewOr}), so the first painted byte and the first hydrated frame agree, and a value written
+ * during one request's SSR can never leak into the next request's render (nothing writes it on the
+ * server). A workspace page has no client navigation, so the value always belongs to the module the
+ * document was rendered for.
+ */
+export const moduleView = signal<string | null>(null);
+
+/** The sub-view a root renders: the one a control picked, else its own server-resolved value. */
+export function viewOr(resolved: string | null): string | null {
+	return moduleView.value ?? resolved;
+}
+
+/**
+ * Pick the module's sub-view on every root, and keep the address in step — `?view=` set, or dropped
+ * for the default — with `replaceState`, so a reload or a copied link lands on the same view. Replaced
+ * rather than pushed: the surface does not answer `popstate`, and a Back that rewrote the address
+ * without the view would be an address that lies.
+ */
+export function selectModuleView(value: string, views: readonly SubView[]): void {
+	moduleView.value = value;
+	const location = globalThis.location;
+	const history = globalThis.history;
+	if (!location || !history) return;
+	try {
+		history.replaceState(
+			history.state,
+			"",
+			`${location.pathname}${subViewSearch(location.search, views, value)}${location.hash}`,
+		);
+	} catch { /* an address that cannot be rewritten still leaves every root on the picked view */ }
+}
+// #endregion
+
 // #region View modes (footer band density control → body)
 /**
  * How the Members module presents its roster.
  *
  * `chart` is the org chart — a genuinely different READING of the same people, not a third density,
- * which is why it alone survives as an explicit mode while `cards`/`table` became two halves of the
- * shared zoom (see {@link membersChart}).
+ * which is why it is a sub-view of its own while `cards`/`table` are two halves of the shared zoom.
  */
 export type MembersView = "cards" | "table" | "chart";
 
 /**
- * The org-chart override.
+ * The Members module's presentation for a sub-view — DERIVED, never stored.
  *
  * The zoom axis runs table → cards; an org chart is not a denser or looser version of either, so it
- * cannot live on that axis. It stays a plain toggle in the footer band, and while it is engaged it
- * wins over whatever the zoom currently selects — releasing it drops the reader back exactly where
- * their density was, rather than to a remembered default they never chose.
+ * is the `chart` sub-view, and while it is selected it wins over whatever the zoom selects —
+ * releasing it drops the reader back exactly where their density was. One value (`zoom`) and one
+ * sub-view mean no code path can set a presentation the controls do not show. Reads the zoom signal,
+ * so a component calling it during render re-renders with the zoom.
  */
-export const membersChart = signal<boolean>(false);
-
-/**
- * The Members module's current presentation — DERIVED, never written.
- *
- * Deriving it is what keeps the footer's slider and the body's grid from disagreeing: there is one
- * value (`zoom`) and one override (`membersChart`), so no code path can set a presentation the
- * control does not show.
- */
-export const membersView = computed<MembersView>(() =>
-	membersChart.value ? "chart" : viewMode.value === "grid" ? "cards" : "table"
-);
+export function membersViewFor(view: string | null): MembersView {
+	if (view === MEMBERS_CHART) return "chart";
+	return viewMode.value === "grid" ? "cards" : "table";
+}
 
 /** How the roster index presents its entities. */
 export type RosterView = "grid" | "table";
+
+/**
+ * The roster index's PARTITION (All · Owned · Member · Invitations · Archived) — one value for every
+ * root that offers it: the lane's context controls and the roster canvas.
+ *
+ * `null` until a control on either root picks one. Each root renders its server-resolved `?tab=` prop
+ * until then, so the first painted byte and the first hydrated frame agree, and a module-level value
+ * written during one request's SSR can never leak into the next request's render. A root that offers
+ * the partition mirrors this value into its own control once it is set (`useSignalEffect`).
+ */
+export const rosterTab = signal<RosterTab | null>(null);
+
+/** Pick the roster partition on every root that shows it. */
+export function selectRosterTab(tab: RosterTab): void {
+	rosterTab.value = tab;
+}
 
 /**
  * The roster index's current presentation — DERIVED from the shared zoom, never written.
@@ -143,10 +195,19 @@ export type RosterView = "grid" | "table";
 export const rosterView = computed<RosterView>(() => viewMode.value === "grid" ? "grid" : "table");
 // #endregion
 
+// #region Module commit (body → header band)
+/**
+ * The open module's commit — the header band's ONE filled action ("Publish team" on a draft's
+ * Settings) — or `null` when the module has none (Members has none). The module's island publishes it
+ * through `useModuleCommit`, which also clears it when the module unmounts; the band only renders it.
+ */
+export const moduleCommit = signal<ModuleCommit | null>(null);
+// #endregion
+
 // #region Policy editor save bridge (footer band → body)
 /**
  * A **pulse**, not a flag: the footer's Save button increments this and the body's policy editor reacts
- * to the change.
+ * to the change (`usePolicyBridge`).
  *
  * It is a counter rather than a boolean because a boolean can only fire once — a second Save while the
  * flag was still `true` would produce no signal change and silently do nothing, which on a money-policy
@@ -161,13 +222,24 @@ export function requestSave(): void {
 }
 
 /**
- * Whether the mounted policy editor holds unsaved changes, published so the FOOTER's Save button can be
- * honestly enabled or disabled — the button lives in a different root from the form it saves.
+ * The footer's Discard, as a pulse for the same reason as {@link saveRequested}: the editor answers it
+ * by returning every field to its last saved value.
+ */
+export const discardRequested = signal<number>(0);
+
+/** Ask the mounted policy editor to drop its unsaved changes. A no-op when nothing is listening. */
+export function requestDiscard(): void {
+	discardRequested.value = discardRequested.value + 1;
+}
+
+/**
+ * Whether the mounted policy editor holds unsaved changes, published so the FOOTER can offer Save and
+ * Discard only while there is something to save — the buttons live in a different root from the form.
  */
 export const policyDirty = signal<boolean>(false);
 
 /** The lifecycle of a policy save, so the footer renders progress instead of an instant, unproven tick. */
-export type SaveState = "idle" | "saving" | "saved" | "error";
+export type { SaveState };
 
 /** The current save lifecycle state. */
 export const saveState = signal<SaveState>("idle");

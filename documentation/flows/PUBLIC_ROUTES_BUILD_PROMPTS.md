@@ -70,8 +70,8 @@
 - **Reserved handles.** `/legal`, `/contact`, `/about`, `/help` and `/articles` are already in
   `RESERVED_HANDLES`. **P0 reserved `changelog`, `feedback` and `features`** (2026-10-17) in
   `packages/types/profile/reserved.ts` **and** `org.fn_is_reserved_handle` (SQL twin), keeping
-  `workspace.contract.test.ts` green (ROUTING.md §Reserved-handle precedence). No later prompt
-  adds them again.
+  `workspace.contract.test.ts` green (ROUTING.md §Reserved-handle precedence). No later prompt adds
+  them again.
 - **Tokens** (`packages/ui/styles/index.css`) — use these names, never raw values:
 
   | Family          | Tokens                                                                                                                                                                     |
@@ -263,6 +263,12 @@ prompts compose instead of duplicating.
 
 ```text
 TASK: Build the public legal hub and its child documents.
+
+DECISION (a) IS RULED — owner, 2026-10-17 (Decision #270). Do not stop for it: public documents at
+/legal + /legal/[slug]; the IP workspace at /legal/workspace/{audit-packs,transfers} (reserved,
+auth-guarded by the (dashboard) group). Built: the sitemap, ROUTING.md and the decision row are
+updated, and the workspace routes render the PagePlaceholder until the workspace is built.
+The original STEP 0, kept for the record:
 
 STEP 0 — STOP AND ASK ME about decision (a) in PUBLIC_ROUTES_BUILD_PROMPTS.md §0.1. PRODUCT_SPEC's
 sitemap lists /legal as a Dashboard route (index, audit-packs, transfers). Propose: public docs at

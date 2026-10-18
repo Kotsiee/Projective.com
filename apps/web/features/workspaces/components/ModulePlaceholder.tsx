@@ -12,8 +12,8 @@ import type { WorkspaceModule } from "../core/module-registry.tsx";
  *     surfaces elsewhere; this entity's version of them is those surfaces scoped to the entity. The
  *     placeholder's job is to say so and hand off, because duplicating `/projects` inside `/teams`
  *     would mean two feeds to keep in step.
- *   - **A module that is NEXT.** Analytics, Standing, Billing and Talent are near-term. Saying so
- *     plainly is better than an empty panel that reads as a bug, and far better than fabricating
+ *   - **A module that is NEXT.** Analytics, Standing and a team's Verification are near-term. Saying
+ *     so plainly is better than an empty panel that reads as a bug, and far better than fabricating
  *     numbers to fill the space.
  *
  * What it must never be is a shrug. It names what belongs here and, where a real destination exists,

@@ -3,17 +3,21 @@ import {
 	formatMoney,
 	type MoneyView,
 	SplitRuleType,
+	TEAM_PROPOSAL_MIN_MEMBERS,
 } from "@projective/types/finance";
 import {
 	type ActivityEntry,
+	canActOnSetupStep,
 	type IncomingInvite,
 	kindCopy,
 	type MemberFace,
 	type SetupStep,
+	type SpendRequestState,
 	type SplitModel,
 	type TeamEngagement,
 	type TeamSplitRule,
 	type VerificationState,
+	walletHrefFor,
 	type WorkspaceCapability,
 	WorkspaceCapability as WorkspaceCapabilityEnum,
 	workspaceHref,
@@ -65,7 +69,14 @@ export interface RawRosterItem {
 	pending_invites: number;
 	active_projects: number;
 	money_30d: { currency: string; minor: number }[];
-	setup: { logo: boolean; bio: boolean; money: boolean };
+	/** The Draft-First facts; `funded` and `limits_offered` are a business's (BU6), `false` for a team. */
+	setup: {
+		logo: boolean;
+		bio: boolean;
+		money: boolean;
+		funded?: boolean;
+		limits_offered?: boolean;
+	};
 	has_update: boolean;
 }
 
@@ -218,7 +229,15 @@ export interface RawDetail {
 	standing: string | null;
 	projects: RawProject[];
 	activity: RawActivity[];
-	setup: { logo: boolean; bio: boolean; invite: boolean; money: boolean };
+	/** The Draft-First facts; `funded` and `limits_offered` are a business's (BU6), `false` for a team. */
+	setup: {
+		logo: boolean;
+		bio: boolean;
+		invite: boolean;
+		money: boolean;
+		funded?: boolean;
+		limits_offered?: boolean;
+	};
 	/** A team's live stage assignments (`[]` for a business). */
 	engagements?: RawEngagement[] | null;
 	/** A team's payout block — present ONLY for a caller holding `manage_finances`. */
@@ -519,66 +538,175 @@ export function avatarOf(url: string | null | undefined): string {
 
 // #region Setup checklist
 
-/** The facts the Draft-First checklist is decided on. */
+/** The facts the Draft-First steps are decided on. */
 export interface SetupFacts {
+	/** The entity's id — a business's Add money step goes to its own pooled wallet. */
+	entityId: string;
 	logo: boolean;
 	bio: boolean;
-	invite: boolean;
+	/** Active members, the owner included. */
+	activeMembers: number;
+	/** Whether an invitation is still waiting for an answer. */
+	invitePending: boolean;
+	/** A team's split is set; a business's approval threshold is set. */
 	money: boolean;
-	verified: boolean;
+	/** A business: money was ever added to its pooled wallet (any `add_funds` ledger row). */
+	funded: boolean;
+	/**
+	 * A business: its plan lets it set a threshold or member limits (Business Pro's
+	 * `pooled_wallet_full`, or the plan gates off). Without it the spending-rules step is left out —
+	 * on Business Free it could never be finished.
+	 */
+	limitsOffered: boolean;
+	/**
+	 * The entity's verification — a team's is its owner's identity check, a business's its KYB.
+	 * `pending` is not done, and asks nothing of anyone: the check is with the reviewers.
+	 */
+	verification: VerificationState;
+	/** Whether the entity has left `draft` (it is `active`, or `archived` after being live). */
+	published: boolean;
+	/**
+	 * The viewer's effective capabilities, which stamp each step's `actionable`. Absent where nobody is
+	 * shown the steps (the roster, which reads only their completion).
+	 */
+	viewer?: readonly WorkspaceCapability[];
+	/**
+	 * Whether the viewer is the entity's owner. A team's verification is the owner's own identity
+	 * check, so only they may act on that step ({@link canActOnSetupStep}).
+	 */
+	viewerIsOwner?: boolean;
 }
 
 /**
- * The "Finish setting up" checklist, worded by kind. Identity steps (mark, one-liner) are edited in the
- * entity's public profile editor — the media pipeline is the only door a picture may use — so they link
- * to `/@handle/edit`; the rest link to their console module.
+ * The Draft-First setup steps, worded by kind, each stamped with whether the viewer may act on it
+ * ({@link canActOnSetupStep}).
+ *
+ * A **team** walks five steps (TEAMS_BUILD_PROMPTS C1): a second ACTIVE member — the apply doors
+ * refuse a team under two (Decision #228 (E)), so an invitation still out does not finish it — the
+ * split, the public profile (mark AND one-liner), the owner's identity (the payout-ready gate,
+ * Decision #196) and publishing. A **business** walks four or five (BU6, Decision #248): a colleague
+ * (an invitation sent or accepted), KYB, money added to its pooled wallet, its spending rules — the
+ * approval threshold, left out on a plan that cannot set one (Business Free), where it could never be
+ * finished — and publishing. The profile is edited in the entity's public profile editor — the media
+ * pipeline is the only door a picture may use — so it links to `/@handle/edit`; a team's owner
+ * verifies in their own settings (`/settings/verification`, the personal flow the team's state is read
+ * from); a business's Add money goes to its pooled wallet; the rest link to their console module.
+ *
+ * A verification already with the reviewers (`pending`) says so and is actionable for nobody — there
+ * is nothing left to do, so no control is offered beside it.
  */
 export function setupSteps(kind: WorkspaceKind, handle: string, facts: SetupFacts): SetupStep[] {
-	const copy = kindCopy(kind);
-	const edit = `/@${handle}/edit`;
+	const caps = facts.viewer ?? [];
+	const inReview = facts.verification === "pending";
+	const stamp = (step: Omit<SetupStep, "actionable">): SetupStep => ({
+		...step,
+		actionable: !(step.id === "verification" && inReview) &&
+			canActOnSetupStep(kind, step.id, caps, facts.viewerIsOwner === true),
+	});
+	return (kind === "team" ? teamSteps(handle, facts) : businessSteps(handle, facts)).map(stamp);
+}
+
+/**
+ * Where a team's owner finishes the identity check the team's verification is read from — their own
+ * settings, the same door the apply refusals' `payout_not_ready` link uses.
+ */
+export const OWNER_VERIFICATION_HREF = "/settings/verification#identity-check";
+
+/** A team's five steps, in the order the setup hero walks them. */
+function teamSteps(handle: string, facts: SetupFacts): Omit<SetupStep, "actionable">[] {
+	const twoActive = facts.activeMembers >= TEAM_PROPOSAL_MIN_MEMBERS;
 	return [
 		{
-			id: "logo",
-			label: "Add a mark",
-			note: `A logo makes the ${copy.noun} recognisable everywhere it appears.`,
-			done: facts.logo,
-			href: edit,
-		},
-		{
-			id: "bio",
-			label: "Say what you do",
-			note: "One line clients can scan before they decide to talk to you.",
-			done: facts.bio,
-			href: edit,
-		},
-		{
 			id: "invite",
-			label: "Invite someone",
-			note: kind === "team"
-				? "Two active members unlocks proposals — a solo team cannot bid."
-				: "Bring in the people who will approve and spend alongside you.",
-			done: facts.invite,
-			href: workspaceHref(kind, handle, "invitations"),
+			label: "Invite a second member",
+			note: !twoActive && facts.invitePending
+				? "An invitation is out — it counts once accepted. A team needs two members to apply."
+				: "A team needs two active members before it can apply for work.",
+			done: twoActive,
+			href: workspaceHref("team", handle, "invitations"),
 		},
 		{
 			id: "money",
-			label: kind === "team" ? "Set the split" : "Set an approval threshold",
-			note: kind === "team"
-				? "Decide how a release divides before the first one lands."
-				: "A threshold and per-person limits keep the pooled wallet predictable.",
+			label: "Set the split",
+			note: "Decide how a release divides before the first one lands.",
 			done: facts.money,
-			href: workspaceHref(kind, handle, kind === "team" ? "payouts" : "spend"),
+			href: workspaceHref("team", handle, "payouts"),
+		},
+		{
+			id: "profile",
+			label: "Complete the public profile",
+			note: "A mark and a one-line pitch are what clients scan first.",
+			done: facts.logo && facts.bio,
+			href: `/@${handle}/edit`,
 		},
 		{
 			id: "verification",
-			label: `Finish ${copy.verification}`,
-			note: kind === "team"
-				? "The owner's verified identity unlocks withdrawals from the vault."
-				: "Verification unlocks the pooled wallet so you can hire.",
-			done: facts.verified,
-			href: workspaceHref(kind, handle, "verification"),
+			label: "Verify the owner",
+			note: facts.verification === "pending"
+				? "The owner's identity check is with our reviewers — nothing is needed meanwhile."
+				: "Payouts and new seats wait on the owner's identity check.",
+			done: facts.verification === "verified",
+			href: OWNER_VERIFICATION_HREF,
+		},
+		{
+			id: "publish",
+			label: "Publish",
+			note: "Lists the team and lets it apply. A published team never returns to draft.",
+			done: facts.published,
+			href: workspaceHref("team", handle, "settings"),
 		},
 	];
+}
+
+/**
+ * A business's steps, in the order the setup hero walks them: four on a plan that cannot set spending
+ * rules, five where it can.
+ */
+function businessSteps(handle: string, facts: SetupFacts): Omit<SetupStep, "actionable">[] {
+	const copy = kindCopy("business");
+	const steps: Omit<SetupStep, "actionable">[] = [
+		{
+			id: "invite",
+			label: "Invite a colleague",
+			note: "Bring in the people who will approve and spend alongside you.",
+			done: facts.activeMembers > 1 || facts.invitePending,
+			href: workspaceHref("business", handle, "invitations"),
+		},
+		{
+			id: "verification",
+			label: "Verify the business",
+			note: facts.verification === "pending"
+				? `${copy.verification} is with our reviewers.`
+				: "Verification unlocks the pooled wallet so you can hire.",
+			done: facts.verification === "verified",
+			href: workspaceHref("business", handle, "verification"),
+		},
+		{
+			id: "fund",
+			label: "Add money",
+			note: "Load the pooled wallet so members can fund work without a card each time.",
+			done: facts.funded,
+			href: walletHrefFor("business", facts.entityId),
+		},
+	];
+	if (facts.limitsOffered) {
+		steps.push({
+			id: "money",
+			label: "Set spending rules",
+			note: "A threshold and per-person limits keep the pooled wallet predictable.",
+			done: facts.money,
+			href: workspaceHref("business", handle, "spend"),
+		});
+	}
+	steps.push({
+		id: "publish",
+		label: "Publish",
+		note:
+			"Lets the business start projects, hire and buy. A published business never returns to draft.",
+		done: facts.published,
+		href: workspaceHref("business", handle, "settings"),
+	});
+	return steps;
 }
 
 /** Completion 0–1 over the checklist (the same arithmetic as the SSOT's `setupProgress`). */
@@ -674,6 +802,8 @@ export function toIncomingInvite(
 		fromHandle: clamp(from?.username, 40),
 		roleLabel: clampOr(raw.role_name, 48, "Member"),
 		sentAt: clamp(relativeLabel(raw.created_at, nowMs), 40),
+		note: raw.note?.trim() ? clamp(raw.note.trim(), 400) : null,
+		expiresAt: raw.expires_at ? isoOf(raw.expires_at) || null : null,
 	};
 }
 
@@ -762,6 +892,19 @@ const MONEY_VERB: Readonly<Record<string, string>> = {
 	withdraw: "withdrew",
 	transfer: "moved",
 };
+
+/**
+ * The events a viewer may read. A money movement's line carries its amount, so it reaches only a
+ * viewer who may open the entity's Finance (`canOpenFinance`: a team's `manage_finances`, the same
+ * holders the payout block is answered to — Decision #233; a business's contributors, spenders and
+ * runners). A join is a membership fact every member already sees on the roster.
+ */
+export function visibleActivity(
+	raw: readonly RawActivity[],
+	moneyVisible: boolean,
+): RawActivity[] {
+	return raw.filter((event) => moneyVisible || event.kind !== "money");
+}
 
 /** The one-line text of an activity event, e.g. "Priya Raman added $60,000.00". */
 export function activityText(raw: RawActivity, actorName: string): string {
@@ -877,13 +1020,13 @@ export function toSplitRule(raw: RawSplitRule | null | undefined): TeamSplitRule
 /**
  * A spend request's state. The database's `rejected` is the SSOT's `declined`; a `pending` request
  * whose expiry has passed IS expired (the row is only re-stamped when somebody next decides it), so it
- * is never offered as decidable.
+ * is never offered as decidable. `withdrawn` is its requester taking it back (Decision #246).
  */
 export function spendRequestState(
 	status: string | null | undefined,
 	expiresAt: string | null | undefined,
 	nowMs: number,
-): "pending" | "approved" | "declined" | "expired" {
+): SpendRequestState {
 	switch (status) {
 		case "approved":
 			return "approved";
@@ -891,6 +1034,8 @@ export function spendRequestState(
 			return "declined";
 		case "expired":
 			return "expired";
+		case "withdrawn":
+			return "withdrawn";
 		default: {
 			const expiry = expiresAt ? Date.parse(expiresAt) : NaN;
 			return Number.isFinite(expiry) && expiry <= nowMs ? "expired" : "pending";

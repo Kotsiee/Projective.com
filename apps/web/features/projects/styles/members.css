@@ -295,6 +295,11 @@
 	color: var(--on-surface);
 }
 
+/* A seat's delegated ticket management (Decision #294): metadata, so secondary inline text. */
+.mem-role-note {
+	color: var(--text-secondary);
+}
+
 .mem-crown {
 	display: inline-flex;
 	flex: none;

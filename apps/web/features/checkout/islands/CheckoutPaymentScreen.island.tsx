@@ -3,6 +3,7 @@ import { useSignal } from "@preact/signals";
 import { useCallback, useEffect, useRef } from "preact/hooks";
 import "../styles/checkout.css";
 import "../styles/checkout-payment.css";
+import "../styles/checkout-gate.css";
 import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { StripeElementPanel } from "@features/payments/components/StripeElementPanel.tsx";
@@ -42,13 +43,24 @@ import {
 	routeGatesFor,
 } from "../core/checkout-model.ts";
 import { useCheckoutContext } from "../core/checkout-context.ts";
+import {
+	businessGateOf,
+	gatedSentence,
+	gateTakesCommit,
+	ownedByGate,
+	refusalLines,
+} from "../core/business-gate.ts";
+import { devGateSession } from "../core/dev-gate.ts";
+import { type DevCheckoutGate, readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
 import { Amount } from "../components/Amount.tsx";
+import { BusinessSpendGate } from "../components/BusinessSpendGate.tsx";
 import { CheckoutBlockers } from "../components/CheckoutBlockers.tsx";
 import { CheckoutContractBanner } from "../components/CheckoutContractBanner.tsx";
 import { ConfirmPayDialog } from "../components/ConfirmPayDialog.tsx";
 import { OrderSummaryRail } from "../components/OrderSummaryRail.tsx";
 import { PaymentMethodChooser } from "../components/PaymentChoice.tsx";
 import { type ExpressStart, ExpressCheckoutElement } from "../components/ExpressCheckoutElement.tsx";
+import { RequestApprovalDialog } from "../components/RequestApprovalDialog.tsx";
 import { SpendLimitNotice } from "../components/SpendLimitNotice.tsx";
 import AddPaymentMethodModal from "./AddPaymentMethodModal.island.tsx";
 import { LINE_ID_PREFIX } from "../components/CheckoutLine.tsx";
@@ -137,6 +149,20 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 	const addMethodOpen = useSignal(false);
 	const reading = useSignal(false);
 	/**
+	 * The business "Request approval" dialog (Decision #243): open, in flight, its refusal of the reason
+	 * (the field's) or of the request (the form's), and what the last filing said once it closed.
+	 */
+	const approvalOpen = useSignal(false);
+	const approvalBusy = useSignal(false);
+	const approvalFieldError = useSignal<string | null>(null);
+	const approvalFormError = useSignal<string | null>(null);
+	const approvalNote = useSignal<string | null>(null);
+	/** Set by a filing that closed the dialog: focus then goes to what the gate says now (below). */
+	const approvalFiled = useSignal(false);
+	const gateRef = useRef<HTMLElement | null>(null);
+	/** The Dev Context Switcher's checkout gate state; read after hydration, so first paint is the server's. */
+	const devGate = useSignal<DevCheckoutGate | undefined>(undefined);
+	/**
 	 * The attempt key a processor charge (card or express) was started under.
 	 *
 	 * The wallet order that follows the charge is placed under THIS key, never a fresh one, so a
@@ -190,9 +216,16 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 		globalThis.addEventListener?.(BASKET_REFRESH_EVENT, refresh);
 		return () => globalThis.removeEventListener?.(BASKET_REFRESH_EVENT, refresh);
 	}, [reload]);
+
+	useEffect(() => {
+		devGate.value = readDevSeam()?.checkoutGate;
+		return subscribeDevSeam((seam) => {
+			devGate.value = seam?.checkoutGate;
+		});
+	}, []);
 	// #endregion
 
-	const view = sessionSignal.value ?? initial.session;
+	const view = devGateSession(sessionSignal.value ?? initial.session, devGate.value);
 	const result = lastResult.value;
 
 	// #region Derivations (all read signals, so a change re-renders)
@@ -203,6 +236,22 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 	const blocked = blockers.length > 0;
 	/** Blockers that an express sheet cannot clear either — everything except "pick an instrument". */
 	const hardBlocked = view.blockers.length > 0;
+
+	/*
+	 * A business checkout's refusal and its one way forward (Decision #243). Every business refusal is
+	 * worded from the one refusal map — in the list, beside Buy Now and in a refused attempt's reasons —
+	 * and the ones the gate already says leave the list, so one refusal is never said twice.
+	 */
+	const businessGate = businessGateOf({
+		session: view,
+		provider: chosenProvider.value,
+		lastResult: result,
+		returnHref: checkoutStepHref("payment", view.basketId || null, initial.owner, view.preselect),
+	});
+	const worded = blockers.map((blocker) =>
+		blocker.gate ? { ...blocker, message: gatedSentence(blocker, view) } : blocker
+	);
+	const listed = worded.filter((blocker) => !ownedByGate(businessGate, blocker));
 
 	const fingerprint = attemptFingerprint(
 		view,
@@ -286,6 +335,37 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 		}, 50);
 		return () => clearInterval(id);
 	}, [result, confirmOpen.value]);
+
+	/*
+	 * A filing hands focus to the gate. It closes the request dialog and as a rule removes the control
+	 * that opened it — Request approval gives way to "Waiting for approval…", or the gate leaves when
+	 * the order no longer needs one — so the dialog's restore has nothing to return to and focus falls
+	 * to `<body>` (measured). Claimed once the dialog has left the DOM (its trap holds focus until
+	 * then), only while focus is on `<body>`, and on the gate's region — or Buy Now when no gate is left.
+	 */
+	useEffect(() => {
+		if (!approvalFiled.value || approvalOpen.value) return;
+		let tries = 0;
+		const claim = () => {
+			if (document.querySelector(".cko-approve")) return false;
+			const active = document.activeElement;
+			if (active !== null && active !== document.body) return true;
+			(gateRef.current ?? document.querySelector<HTMLElement>(".cko-rail__buy:not(:disabled)"))
+				?.focus();
+			return false;
+		};
+		const done = () => {
+			approvalFiled.value = false;
+		};
+		if (claim()) return done();
+		const id = setInterval(() => {
+			if (claim() || ++tries > 30) {
+				clearInterval(id);
+				done();
+			}
+		}, 50);
+		return () => clearInterval(id);
+	}, [approvalFiled.value, approvalOpen.value]);
 	// #endregion
 
 	// #region Writes
@@ -311,6 +391,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 		}
 
 		submitting.value = true;
+		approvalNote.value = null;
 		const key = override?.key ?? newAttemptKey();
 		const res = await CheckoutService.create({
 			basketId: current.basketId,
@@ -488,6 +569,53 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 		if (submitting.value) return;
 		confirmOpen.value = true;
 	}, []);
+
+	/**
+	 * File a business order's approval request, bound to this basket (Decision #243). The lines are the
+	 * ones Buy Now would send, in the page's deep-link scope; the amount is the server's. The answer is
+	 * the fresh session, whose gate then reads "Waiting for approval…", and a sentence the page keeps
+	 * when the gate does not already say it ("This order no longer needs approval…"). A refused reason
+	 * stays beside the field; any other refusal is said for the whole form, and the dialog stays open.
+	 */
+	const requestApproval = useCallback(async (reason: string) => {
+		const current = sessionSignal.value;
+		if (!current || approvalBusy.value) return;
+		const itemIds = current.items
+			.filter((item) => includedNow(item, item.isSelectedForCheckout))
+			.map((item) => item.id);
+		if (itemIds.length === 0) {
+			approvalFormError.value = "Nothing is selected for this order.";
+			return;
+		}
+		approvalBusy.value = true;
+		approvalFieldError.value = null;
+		approvalFormError.value = null;
+		const res = await CheckoutService.requestApproval({
+			basketId: current.basketId,
+			itemIds,
+			reason,
+			preselect: current.preselect,
+		}, {
+			...currentCheckoutContext(),
+			provider: chosenProvider.peek(),
+			contribute: contributionOptedIn.peek(),
+		});
+		approvalBusy.value = false;
+		if (res.ok && res.data) {
+			applySession(res.data);
+			// The refusal that prompted the request has been answered by it.
+			if (lastResult.peek()?.status === "failed") lastResult.value = null;
+			approvalNote.value = res.message ?? null;
+			approvalFiled.value = true;
+			approvalOpen.value = false;
+			return;
+		}
+		const fieldError = res.errors?.reason ?? null;
+		approvalFieldError.value = fieldError;
+		approvalFormError.value = fieldError
+			? null
+			: res.message ?? "The request couldn't be sent. Try again.";
+	}, []);
 	// #endregion
 
 	// #region Render
@@ -495,6 +623,12 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 	const card = savedCards.find((entry) => entry.id === chosenCardId.value) ?? null;
 	const done = result?.status === "succeeded";
 	const cardStep = cardStepPending(result);
+	/** A refused attempt says a business refusal once: the map's headline, the other reasons below. */
+	const outcomeLines = result ? refusalLines(result, view) : null;
+	/** The gate's fill is the region's commit while it offers one (§B.8.2); Buy Now then leaves the DOM. */
+	const gateCommits = gateTakesCommit(businessGate);
+	/** What the last filing said, kept only where the gate does not already say it. */
+	const filingNote = businessGate?.kind === "pending" ? null : approvalNote.value;
 	const showsInvoicing = view.buyer.contextKind === "business" ||
 		view.owner.ownerType === "business" || view.owner.ownerType === "enterprise";
 	const detailsHref = editDetailsHref(initial.owner);
@@ -538,13 +672,13 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 								<Amount value={result.charged} size="hero" />
 							</p>
 						)}
-						<p class="cko-result__text">{result.message}</p>
+						<p class="cko-result__text">{outcomeLines?.headline ?? result.message}</p>
 
-						{result.blockers.length > 0 && (
+						{outcomeLines && outcomeLines.reasons.length > 0 && (
 							<ul class="cko-result__reasons">
-								{result.blockers.map((blocker, index) => (
+								{outcomeLines.reasons.map(({ blocker, sentence }, index) => (
 									<li key={`${blocker.code}-${index}`} data-code={blocker.code}>
-										{blocker.message}
+										{sentence}
 										{blocker.code === "price_changed" && (
 											<a class="cko-result__jump" href="#cko-summary">See the new total</a>
 										)}
@@ -616,14 +750,32 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 			{!done && (
 				<>
 					<CheckoutBlockers
-						blockers={blockers}
-						title={blockers.length === 1
+						blockers={listed}
+						title={listed.length === 1
 							? "One thing to sort out first"
-							: `${blockers.length} things to sort out first`}
+							: `${listed.length} things to sort out first`}
 						lineIdPrefix={LINE_ID_PREFIX}
 					/>
 
-					<SpendLimitNotice limit={view.spendLimit} />
+					{businessGate && (
+						<BusinessSpendGate
+							view={businessGate}
+							regionRef={gateRef}
+							onRequest={() => {
+								approvalFieldError.value = null;
+								approvalFormError.value = null;
+								approvalNote.value = null;
+								approvalOpen.value = true;
+							}}
+							onCheckAgain={() => void reload()}
+							reading={reading.value}
+						/>
+					)}
+
+					{filingNote && <p class="cko-gate__note" aria-hidden="true">{filingNote}</p>}
+					<span class="ui-visually-hidden" role="status">{approvalNote.value ?? ""}</span>
+
+					<SpendLimitNotice limit={view.spendLimit} business={view.businessAccount !== null} />
 
 					<div class="cko-pstep__cols">
 						<div class="cko-pstep__main">
@@ -730,14 +882,14 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 									 * lives elsewhere on the page is indistinguishable from a broken one.
 									 */
 								}
-								{blocked && blockers[0] && (
+								{blocked && worded[0] && (
 									<p class="cko__gate" id="cko-buy-gate" role="status">
 										<Icon name="lock" />
-										<span>Pay is off until this is sorted: {blockers[0].message}</span>
+										<span>Pay is off until this is sorted: {worded[0].message}</span>
 									</p>
 								)}
 
-								{!cardStep && (
+								{!cardStep && !gateCommits && (
 									<div class="cko-rail__commit">
 										<Button
 											class="cko-rail__buy"
@@ -772,6 +924,20 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 				busy={submitting.value}
 				onConfirm={() => void submit()}
 			/>
+
+			{view.businessAccount && (
+				<RequestApprovalDialog
+					open={approvalOpen}
+					amount={view.charge ?? view.totals.total}
+					lineCount={paying.length}
+					business={view.owner.name}
+					approvers={view.businessAccount.approvers}
+					busy={approvalBusy.value}
+					fieldError={approvalFieldError.value}
+					formError={approvalFormError.value}
+					onSubmit={(reason) => void requestApproval(reason)}
+				/>
+			)}
 
 			<AddPaymentMethodModal
 				open={addMethodOpen}

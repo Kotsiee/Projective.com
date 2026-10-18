@@ -2,16 +2,21 @@
  * The contract between the workspace permission engine's two implementations — the TypeScript SSOT
  * (`common.ts`: `capabilitiesForKind`, `presetCapabilities`, `roleRank`) and its SQL twin in
  * `00001020_functions_org_entities.sql` §6/§9 (`org.fn_kind_capabilities`, `org.fn_preset_capabilities`,
- * `org.fn_preset_rank`, `org.fn_is_reserved_handle`), plus the `org.workspace_capability` enum itself.
+ * `org.fn_preset_rank`, `org.fn_is_reserved_handle`), plus the `org.workspace_capability` enum itself,
+ * and the handle claim rule (`workspace.ts` `localHandleRefusal` ↔ `org.fn_handle_refusal`).
  *
  * Every write RPC gates on the SQL twin while every screen renders from the TypeScript, so a list that
  * moves on one side alone makes the console offer an action the database refuses (or hide one it would
  * allow). The two cannot be compared by a type-checker; this test compares the FILE CONTENT (the
  * `hired-teams.contract.test.ts` technique), so it fails with no database.
+ *
+ * It is also the handle namespace guard (Teams P1): every top-level segment `apps/web/routes/` serves
+ * must be a reserved handle, so a person or a team can never claim `@saved` and shadow `/saved`.
  */
 import { assert, assertEquals } from "@std/assert";
 import {
 	capabilitiesForKind,
+	kindCopy,
 	presetCapabilities,
 	roleRank,
 	WorkspaceCapability,
@@ -28,8 +33,21 @@ import {
 	SplitRuleInputSchema,
 } from "./policy.ts";
 import {
+	CreateWorkspaceInputSchema,
+	HANDLE_REFUSALS,
+	handleAlternatives,
+	HandleRefusalCode,
+	handleRefusalOf,
+	localHandleRefusal,
 	TeamEngagementSchema,
 	UpdatePayoutInputSchema,
+	UpdateSpendInputSchema,
+	walletHrefFor,
+	WORKSPACE_HANDLE_MAX,
+	WORKSPACE_HANDLE_MIN,
+	WORKSPACE_HANDLE_PATTERN,
+	WORKSPACE_NAME_MAX,
+	WORKSPACE_NAME_MIN,
 	WorkspaceDetailSchema,
 } from "./workspace.ts";
 
@@ -174,6 +192,164 @@ Deno.test("org.fn_is_reserved_handle reserves exactly RESERVED_HANDLES", () => {
 	assertEquals(new Set(list), new Set(RESERVED_HANDLES));
 	assertEquals(list.length, new Set(list).size, "the SQL list repeats a handle");
 });
+
+Deno.test("org.fn_handle_refusal judges a handle by the TS claim rule, branch for branch, in order", () => {
+	const body = functionBody(entities, "org.fn_handle_refusal");
+	const branches: Array<[HandleRefusalCode, string]> = [
+		["short", `length(p_handle) < ${WORKSPACE_HANDLE_MIN} THEN '${HANDLE_REFUSALS.short}'`],
+		["long", `length(p_handle) > ${WORKSPACE_HANDLE_MAX} THEN '${HANDLE_REFUSALS.long}'`],
+		[
+			"format",
+			`p_handle !~ '${WORKSPACE_HANDLE_PATTERN.source}' THEN '${HANDLE_REFUSALS.format}'`,
+		],
+		["reserved", `org.fn_is_reserved_handle(p_handle) THEN '${HANDLE_REFUSALS.reserved}'`],
+		["taken", `org.fn_handle_taken(p_handle) THEN '${HANDLE_REFUSALS.taken}'`],
+	];
+	let from = 0;
+	for (const [code, branch] of branches) {
+		const at = body.indexOf(branch, from);
+		assert(at >= 0, `fn_handle_refusal's ${code} branch no longer reads: ${branch}`);
+		from = at + branch.length;
+	}
+	assertEquals(
+		branches.map(([code]) => code),
+		[...HandleRefusalCode.options],
+		"HandleRefusalCode must list the branches in the database's order",
+	);
+});
+
+Deno.test("localHandleRefusal answers the local branches; CreateWorkspaceInputSchema agrees", () => {
+	const cases: Array<[string, HandleRefusalCode | null]> = [
+		["ab", "short"],
+		["a".repeat(WORKSPACE_HANDLE_MAX + 1), "long"],
+		["-studio", "format"],
+		["studio-", "format"],
+		["Studio", "format"],
+		["stu_dio", "format"],
+		["teams", "reserved"],
+		["create", "reserved"],
+		["northern-grid", null],
+		["a".repeat(WORKSPACE_HANDLE_MAX), null],
+	];
+	for (const [handle, code] of cases) {
+		assertEquals(localHandleRefusal(handle), code, handle);
+		const parsed = CreateWorkspaceInputSchema.safeParse({ kind: "team", name: "Grid", handle });
+		// A reserved word is well-formed: only the database (and the probe) refuses it.
+		assertEquals(parsed.success, code === null || code === "reserved", `schema on ${handle}`);
+	}
+	for (const code of HandleRefusalCode.options) {
+		assertEquals(handleRefusalOf(HANDLE_REFUSALS[code]), code);
+	}
+	assertEquals(handleRefusalOf(null), null);
+	assertEquals(handleRefusalOf("Something the client never heard of."), "taken");
+});
+
+Deno.test("org.create_workspace bounds a name exactly as CreateWorkspaceInputSchema does", () => {
+	const body = functionBody(entities, "org.create_workspace");
+	assert(
+		body.includes(
+			`length(v_name) < ${WORKSPACE_NAME_MIN} OR length(v_name) > ${WORKSPACE_NAME_MAX}`,
+		),
+		"create_workspace's name bounds moved away from WORKSPACE_NAME_MIN / WORKSPACE_NAME_MAX",
+	);
+});
+
+Deno.test("org.create_workspace words its plan cap in the kind's own noun and plural (kindCopy)", () => {
+	const body = functionBody(entities, "org.create_workspace");
+	for (const kind of WorkspaceKind.options) {
+		const { noun, plural } = kindCopy(kind);
+		assert(
+			body.includes(`WHEN v_limit = 1 THEN '${noun}' ELSE '${plural}' END`),
+			`create_workspace's plan refusal no longer says "1 ${noun}" / "N ${plural}"`,
+		);
+	}
+});
+
+Deno.test("handleAlternatives: well-formed, distinct, within the length cap, never the original", () => {
+	const long = "a".repeat(WORKSPACE_HANDLE_MAX);
+	for (const handle of ["northern-grid", "abc", long, `${"b".repeat(37)}-cd`]) {
+		const out = handleAlternatives(handle);
+		assert(out.length >= 3, `${handle} offers too few candidates`);
+		assertEquals(out.length, new Set(out).size, `${handle} repeats a candidate`);
+		for (const candidate of out) {
+			assertEquals(localHandleRefusal(candidate), null, candidate);
+			assert(candidate !== handle, `${handle} offered itself`);
+		}
+	}
+	assertEquals(handleAlternatives("northern-grid").slice(0, 3), [
+		"northern-grid-hq",
+		"northern-grid-co",
+		"northern-grid-2",
+	]);
+});
+
+// #region The handle namespace guard (Teams P1)
+
+const ROUTES = new URL("apps/web/routes/", REPO);
+
+/** A file beside the routes that is not a route module: a test, a spec or a type declaration. */
+const NOT_A_ROUTE = /\.(test|spec|d)\.(tsx|ts|jsx|js)$/;
+
+/**
+ * The URL segment one entry of a routes directory claims, or `null` for an entry that claims none:
+ * a `_`-prefixed file (`_app`, `_layout`, `_middleware`), a `[param]`, an `index`, a file that is
+ * not a module at all, or one that is not a route module ({@link NOT_A_ROUTE}). A dotted route
+ * module claims its whole stem — `feed.xml.ts` serves `/feed.xml`, as `robots.txt` and `sitemap.xml`
+ * are reserved. A route group `(…)` is descended by the caller, since it adds no segment of its own.
+ */
+function routeSegment(name: string, isDirectory: boolean): string | null {
+	if (name.startsWith("_") || name.startsWith(".") || name.startsWith("[")) return null;
+	if (isDirectory) return name;
+	if (NOT_A_ROUTE.test(name)) return null;
+	const match = /^(.+)\.(tsx|ts|jsx|js)$/.exec(name);
+	if (!match) return null;
+	return match[1] === "index" ? null : match[1];
+}
+
+/** Every top-level URL segment the routes tree serves — route groups are URL-transparent. */
+function topLevelSegments(dir: URL): string[] {
+	const out: string[] = [];
+	for (const entry of Deno.readDirSync(dir)) {
+		if (entry.isDirectory && /^\(.+\)$/.test(entry.name)) {
+			out.push(...topLevelSegments(new URL(`${entry.name}/`, dir)));
+			continue;
+		}
+		const segment = routeSegment(entry.name, entry.isDirectory);
+		if (segment) out.push(segment);
+	}
+	return out;
+}
+
+Deno.test("a routes entry claims its segment: groups, params, _files, index and tests claim none", () => {
+	assertEquals(routeSegment("saved", true), "saved");
+	assertEquals(routeSegment("explore.tsx", false), "explore");
+	assertEquals(routeSegment("feed.xml.ts", false), "feed.xml");
+	assertEquals(routeSegment("robots.txt.tsx", false), "robots.txt");
+	for (const name of ["_app.tsx", "_layout.tsx", "[handle]", "index.tsx", "readme.md"]) {
+		assertEquals(routeSegment(name, name === "[handle]"), null, name);
+	}
+	for (const name of ["explore.test.ts", "explore.spec.tsx", "routes.d.ts"]) {
+		assertEquals(routeSegment(name, false), null, name);
+	}
+});
+
+Deno.test("every top-level route segment is a reserved handle, so no @handle can shadow a page", () => {
+	const segments = [...new Set(topLevelSegments(ROUTES))].sort();
+	assert(
+		segments.includes("teams") && segments.includes("explore") && segments.includes("api"),
+		"the routes tree was not read through its groups",
+	);
+	const missing = segments.filter((segment) => !RESERVED_HANDLES.has(segment));
+	assertEquals(
+		missing,
+		[],
+		`reserve ${
+			missing.join(", ")
+		} in RESERVED_HANDLES AND org.fn_is_reserved_handle in the same change`,
+	);
+});
+
+// #endregion
 
 Deno.test("finance.split_rule_type declares SplitRuleType.options, and the template input covers each", () => {
 	const sql = read(ENUMS_SQL);
@@ -363,7 +539,10 @@ Deno.test("the detail's envelopes and the preview's come from ONE helper, so a d
 	const helper = functionBody(wallet, "finance.fn_business_envelopes");
 	for (const key of Object.keys(SpendLimitSchema.shape)) {
 		// Faces and server-formatted MoneyViews are resolved by the service, not the definer.
-		if (["handle", "name", "avatar", "limit", "spent", "memberId"].includes(key)) continue;
+		if (
+			["handle", "name", "avatar", "limit", "spent", "remaining", "perTransaction", "memberId"]
+				.includes(key)
+		) continue;
 		assert(
 			helper.includes(`'${snake(key)}'`),
 			`fn_business_envelopes no longer answers '${snake(key)}'`,
@@ -391,6 +570,13 @@ Deno.test("org.get_workspace_detail answers the business blocks the console maps
 			"'kyb'",
 			"'requirements_due'",
 			"'archive_blockers'",
+			// The Spend editor's flags and each request's ref (BU2, Decision #246).
+			"'editable_member_ids'",
+			"'approver_gap'",
+			"'limits_plan_gated'",
+			"'ref_table'",
+			"'consumed'",
+			"finance.fn_spend_ref(",
 		]
 	) {
 		assert(detailBody.includes(key), `get_workspace_detail no longer answers ${key}`);
@@ -401,6 +587,79 @@ Deno.test("org.get_workspace_detail answers the business blocks the console maps
 			`get_workspace_detail never answers KYB requirement '${code}'`,
 		);
 	}
+});
+
+Deno.test("a draft period is read by the save, the preview and the envelope helper alike", () => {
+	// The expression each one reads the DRAFT's period with — not the output key `'period'`, which
+	// the envelope helper answered before it read any draft.
+	for (
+		const [name, reads] of [
+			["finance.save_spend_policy", "l ? 'period'"],
+			["finance.preview_spend_envelope", "l ? 'period'"],
+			["finance.fn_business_envelopes", "p.l->>'period'"],
+		]
+	) {
+		assert(functionBody(wallet, name).includes(reads), `${name} no longer reads a draft period`);
+	}
+});
+
+Deno.test("the Spend editor's disabled states mirror rules save_spend_policy still states (#246 (h))", () => {
+	const save = functionBody(wallet, "finance.save_spend_policy");
+	// `grantView` and the can-spend toggle read `viewer.capabilities` — the detail's
+	// org.fn_member_capabilities, the very set the save checks a grant against (`v_actor`).
+	assert(save.includes("v_actor := org.fn_member_capabilities('business', p_business_id, v_uid)"));
+	assert(save.includes("IF v_want AND NOT (v_cap = ANY (v_actor))"), "grant-what-you-hold (sets)");
+	assert(save.includes("IF v_want AND NOT ('spend_funds' = ANY (v_actor))"), "can-spend toggle");
+	assert(
+		functionBody(entities, "org.get_workspace_detail").includes("'capabilities', to_jsonb(v_caps)"),
+	);
+	// SpendLimitRow's plan locks: typing a ceiling where none is stored SETS one (Business Pro), and so
+	// does moving the window of a row that keeps one; clearing either never is.
+	assert(save.includes("(l ? 'limit_minor' AND v_limit IS NOT NULL)"), "cap lock");
+	assert(
+		save.includes("(l ? 'per_transaction_minor' AND v_per_tx IS NOT NULL)"),
+		"per-purchase lock",
+	);
+	assert(
+		save.includes("v_period IS DISTINCT FROM COALESCE(v_stored_period, 'monthly')"),
+		"period lock",
+	);
+});
+
+Deno.test("UpdateSpendInputSchema: a limits entry is a patch — any one key, never none", () => {
+	const entry = (extra: Record<string, unknown>) =>
+		UpdateSpendInputSchema.safeParse({ workspaceId: "b", limits: [{ memberId: "m", ...extra }] });
+	assert(entry({ canSpend: true }).success);
+	assert(entry({ period: "weekly" }).success);
+	assert(entry({ limitMinor: null }).success);
+	assert(!entry({}).success, "an entry that changes nothing is refused");
+	assert(!entry({ period: "daily" }).success);
+	const parsed = UpdateSpendInputSchema.parse({
+		workspaceId: "b",
+		limits: [{ memberId: "m", canSpend: false }],
+	});
+	assertEquals(parsed.limits, [{ memberId: "m", canSpend: false }], "no key is defaulted in");
+});
+
+Deno.test("UpdateSpendInputSchema: a figure past what JSON carries exactly is a field error, not a 500", () => {
+	// Zod 4's `.int()` admits safe integers only, so nothing the database's bigint cast could overflow
+	// (or that JSON would round) reaches `save_spend_policy`: it is a field-keyed 422 at the route.
+	const over = Number.MAX_SAFE_INTEGER + 1;
+	const keyOf = (input: Record<string, unknown>) => {
+		const parsed = UpdateSpendInputSchema.safeParse({ workspaceId: "b", ...input });
+		return parsed.success ? null : [...new Set(parsed.error.issues.map((i) => i.path.join(".")))];
+	};
+	assertEquals(keyOf({ approvalThresholdMinor: over }), ["approvalThresholdMinor"]);
+	assertEquals(keyOf({ limits: [{ memberId: "m", limitMinor: over }] }), ["limits.0.limitMinor"]);
+	assertEquals(keyOf({ limits: [{ memberId: "m", perTransactionMinor: 1e19 }] }), [
+		"limits.0.perTransactionMinor",
+	]);
+	assertEquals(keyOf({ approvalThresholdMinor: Number.MAX_SAFE_INTEGER }), null);
+});
+
+Deno.test("walletHrefFor: the access section lands on the entity wallet's approvals", () => {
+	assertEquals(walletHrefFor("business", "b-1"), "/wallet?w=business:b-1");
+	assertEquals(walletHrefFor("business", "b-1", "access"), "/wallet?w=business:b-1#upcoming");
 });
 
 Deno.test("WorkspaceDetailSchema: the business blocks default to absent for a team", () => {

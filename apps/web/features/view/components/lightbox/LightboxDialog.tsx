@@ -2,7 +2,7 @@ import type { JSX } from "preact";
 import type { Signal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { BodyPortal, type PresenceState } from "@projective/ui/overlay";
-import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
+import { useDismiss, useFocusTrap, useId, useOverlayStack } from "@projective/ui/hooks";
 import { ZOOM_STEP } from "@features/inspector/core/viewport.ts";
 import type { LightboxMedia } from "../../types/lightbox-types.ts";
 import { clampIndex, stepIndex } from "../../core/lightbox-model.ts";
@@ -28,6 +28,7 @@ export function LightboxDialog(
 	{ state, active, gallery, title, onClose }: LightboxDialogProps,
 ): JSX.Element {
 	const panelRef = useRef<HTMLDivElement>(null);
+	const captionBase = useId(undefined, "vw-lightbox");
 	const stack = useOverlayStack({ active: true, lockScroll: true, layer: "modal" });
 	useFocusTrap({ active: true, containerRef: panelRef });
 	useDismiss({
@@ -70,6 +71,8 @@ export function LightboxDialog(
 		return () => globalThis.removeEventListener("keydown", onKey);
 	}, []);
 
+	const captionId = current.caption ? `${captionBase}-caption` : undefined;
+
 	return (
 		<BodyPortal>
 			<div class="vw-lightbox" data-state={state} style={`z-index:${stack.zIndex}`}>
@@ -80,10 +83,14 @@ export function LightboxDialog(
 					role="dialog"
 					aria-modal="true"
 					aria-label={`${title} — ${idx + 1} of ${gallery.length}`}
+					aria-describedby={captionId}
 					aria-roledescription="lightbox"
 					tabIndex={-1}
 				>
 					<LightboxStage media={current} title={title} viewport={viewport} onClose={onClose} />
+					{current.caption
+						? <p id={captionId} class="vw-lightbox__caption">{current.caption}</p>
+						: null}
 					{multi
 						? (
 							<LightboxTray

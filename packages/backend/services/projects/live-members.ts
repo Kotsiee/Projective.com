@@ -109,7 +109,7 @@ import { resolveChannelRef } from "./live-support.ts";
 const PROJECT_COLUMNS = "id, slug, title, format, owner_user_id, client_business_id, created_at";
 
 /** The `projects.project_participants` columns one roster row needs. */
-const PARTICIPANT_COLUMNS = "id, profile_type, profile_id, role, created_at";
+const PARTICIPANT_COLUMNS = "id, profile_type, profile_id, role, created_at, can_manage_tickets";
 
 /**
  * The `projects.project_invitations` columns the pending queue needs.
@@ -227,6 +227,8 @@ interface ParticipantRow {
 	profile_id: string;
 	role: string;
 	created_at: string;
+	/** The business client's ticket-management grant on this seat (Decision #294). */
+	can_manage_tickets: boolean | null;
 }
 
 /** One `projects.project_stages` row, reduced to what the stage filter, the picker and the removal impact need. */
@@ -314,6 +316,7 @@ interface Seat {
 	userId: string;
 	role: MemberRole;
 	joinedAt: string;
+	canManageTickets: boolean;
 }
 
 // #endregion
@@ -987,6 +990,7 @@ function mergeParticipants(
 		userId: project.owner_user_id,
 		role: "owner",
 		joinedAt: toIso(project.created_at),
+		canManageTickets: false,
 	});
 
 	for (const row of participants) {
@@ -1000,6 +1004,7 @@ function mergeParticipants(
 			userId: row.profile_id,
 			role: toMemberRole(row.role),
 			joinedAt: toIso(row.created_at),
+			canManageTickets: row.can_manage_tickets === true,
 		});
 	}
 
@@ -1036,7 +1041,7 @@ function buildRows(
 	channelStageId: string | null,
 	startedStageIds: ReadonlySet<string>,
 ): RosterEntry[] {
-	const entries: RosterEntry[] = seats.map(({ id, userId, role, joinedAt }) => {
+	const entries: RosterEntry[] = seats.map(({ id, userId, role, joinedAt, canManageTickets }) => {
 		const held = assignments.get(userId);
 		const assignedStages = held
 			? [...held]
@@ -1074,6 +1079,7 @@ function buildRows(
 			joinedLabel: clamp(dateLabel(joinedAt), 28),
 			isViewer,
 			impact,
+			canManageTickets,
 		};
 		return { userId, row };
 	});
@@ -1296,6 +1302,7 @@ export async function fetchMemberRoster(
 		viewerId: self ? clamp(self.row.id, 120) : "",
 		viewerRole,
 		viewerCaps,
+		businessClient: project.client_business_id !== null,
 		// Deliberately the count before `visibleTo` narrows it, and after a stage scopes it.
 		total: rostered.length,
 	};

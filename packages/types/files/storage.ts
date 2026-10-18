@@ -35,6 +35,7 @@ export const StorageBucket = z.enum([
 	"catalogue",
 	"workspace",
 	"showcase",
+	"contact",
 ]);
 export type StorageBucket = z.infer<typeof StorageBucket>;
 
@@ -152,6 +153,14 @@ export const BUCKETS: Readonly<Record<StorageBucket, BucketMeta>> = {
 		allowedMime: [...IMAGE_MIME, "video/mp4", "video/webm", "video/quicktime"],
 		anchor: "entity_id",
 		purpose: "Profile showcase stills and videos — written only by the media pipeline.",
+	},
+	contact: {
+		access: "private",
+		maxBytes: 10 * MiB,
+		allowedMime: [...IMAGE_MIME, "application/pdf", "text/plain"],
+		anchor: "user_id",
+		purpose:
+			"Files attached to a /contact request (Decision #276) — written only by the upload pipeline, read by operators.",
 	},
 };
 
@@ -377,6 +386,20 @@ export function libraryLocation(
 	filename: string,
 ): StorageLocation {
 	return personalLocation(userId, "library", assetId, filename);
+}
+
+/**
+ * Where a `/contact` request's attachment lives once it has left quarantine (Decision #276):
+ * `contact/{userId}/{assetId}/{filename}`. Anchored on the uploader, written only by the upload
+ * pipeline (service role) and read by operators (`security.is_admin()`, 00002017) — the uploader's
+ * own library never lists it (`files.items.purpose = 'contact'`).
+ */
+export function contactLocation(
+	userId: string,
+	assetId: string,
+	filename: string,
+): StorageLocation {
+	return { bucket: "contact", path: join(userId, assetId, filename) };
 }
 
 /**

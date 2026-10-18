@@ -22,7 +22,7 @@ CREATE OR REPLACE TRIGGER trg_ticket_ordering_guard
     EXECUTE FUNCTION projects.fn_ticket_ordering_guard();
 
 CREATE OR REPLACE TRIGGER trg_ticket_immutability_guard
-    BEFORE UPDATE ON projects.tickets
+    BEFORE INSERT OR UPDATE ON projects.tickets
     FOR EACH ROW
     EXECUTE FUNCTION projects.fn_ticket_immutability_guard();
 
@@ -77,6 +77,12 @@ CREATE OR REPLACE TRIGGER trg_open_workload_report
     AFTER INSERT ON projects.ticket_workload_reports
     FOR EACH ROW
     EXECUTE FUNCTION projects.fn_open_workload_report();
+
+-- The client raising a suspended ticket's W_i answers its workload report and resumes the work.
+CREATE OR REPLACE TRIGGER trg_adjust_workload_report
+    AFTER UPDATE OF workload_intensity ON projects.tickets
+    FOR EACH ROW
+    EXECUTE FUNCTION projects.fn_adjust_workload_report();
 
 CREATE OR REPLACE TRIGGER trg_sync_workload_intensity
     AFTER INSERT OR DELETE OR UPDATE OF current_assignee_id, status, workload_intensity ON projects.tickets

@@ -65,9 +65,15 @@ const FOOTER_NAMES: ReadonlySet<string> = new Set([
 	"lp-footer-breathe",
 ]);
 
-/** Token reads #285 (B) keeps in place although their file does not declare them. */
+/**
+ * Token uses #285 (B) keeps in place outside the footer family: `hero-search.css` reads one, and
+ * the changelog's subscribe row (PUBLIC_ROUTES P5) sets the two hooks `NewsletterForm` reads, so the
+ * reused footer field resolves to page tones there. Both go with the footer rename (#285 flag (a)).
+ */
 const NAMED_EXCEPTIONS: ReadonlyArray<{ path: string; token: string }> = [
 	{ path: "apps/web/features/marketing/styles/hero-search.css", token: "--lp-hair-strong" },
+	{ path: "apps/web/features/changelog/styles/changelog.css", token: "--lp-field" },
+	{ path: "apps/web/features/changelog/styles/changelog.css", token: "--lp-hair-strong" },
 ];
 // #endregion
 

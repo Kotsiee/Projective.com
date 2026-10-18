@@ -1131,24 +1131,21 @@ function contributorsOf(history: readonly TicketHistoryEntry[]): ProjectParty[] 
  * **This is the one genuinely time-dependent value on the board**, and it is derived rather than
  * filtered, for two reasons that only the migrations make visible.
  *
- * First, the freeze is recorded by `hidden_until`, not by a status.
- * `projects.fn_open_workload_report` stamps `hidden_until = now() + window` and clears the
- * assignee; clearing the assignee then cascades through `projects.fn_ticket_claim_before`, which
- * resets the status to `backlog`. Nothing in any migration ever writes `'reported_hidden'`. The
- * stage-table comment states the rendering rule directly — the card shows the striped Frozen
- * overlay in the New column *while `hidden_until` is in the future* — so the timestamp is the
- * signal and the enum member is vestigial. Both are honoured here so that a future writer of the
- * status is not silently ignored.
+ * First, the freeze is recorded by a status AND a timestamp. `projects.fn_open_workload_report`
+ * suspends the ticket as `'reported_hidden'` with its assignee and held escrow kept, and stamps
+ * `hidden_until = now() + window` (Decision #290). The stage-table comment states the rendering
+ * rule — the card shows the striped Frozen overlay in the New column *while `hidden_until` is in
+ * the future* — and the status is honoured too, so a suspension whose window has lapsed but which
+ * nothing has resumed yet still reads as Frozen.
  *
  * Second, the row SET is time-dependent too, and not because of anything this function does: the
  * `"View tickets"` policy hides a ticket from a non-owner, non-assignee viewer while
- * `status = 'reported_hidden' AND hidden_until > now()`. Two consequences follow. Because nothing
- * writes that status, the policy's hide branch is currently unreachable, so frozen tickets stay
- * visible to everyone who can see the project — which matches the product's intent that the client
- * SEES the frozen card and responds to it inside the window. And the clock in that predicate is
- * Postgres's, while the clock below is this process's, so on a skewed server the overlay can flip a
- * second or two before or after the row set would have changed. One `now` is captured for the whole
- * page ({@link fetchBoardPage}) so that at least every card on one board agrees with every other.
+ * `status = 'reported_hidden' AND hidden_until > now()`. So the owner and the assignee see the
+ * frozen card — the owner responds to it inside the window — and other project viewers do not. And
+ * the clock in that predicate is Postgres's, while the clock below is this process's, so on a skewed
+ * server the overlay can flip a second or two before or after the row set would have changed. One
+ * `now` is captured for the whole page ({@link fetchBoardPage}) so that at least every card on one
+ * board agrees with every other.
  *
  * No WHERE clause excludes these rows. Dropping a card the product deliberately renders would make
  * the board quietly disagree with the workload report that produced it.

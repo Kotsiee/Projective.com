@@ -8,15 +8,14 @@ import {
 	type WorkspaceKind,
 	type WorkspaceMember,
 	type WorkspaceProject,
-	type WorkspaceRole,
 	type WorkspaceSummary,
 } from "@projective/types/workspace";
 import { isModuleKey, type ModuleKey } from "./module-registry.tsx";
 
 /**
  * workspace-model — the pure, presentation-agnostic helpers the `/teams` and `/businesses` islands
- * share: URL parsing, roster and roster-tab filtering, member filtering and sorting, the per-module
- * header tab sets, entity-badge initials, and the small formatters the surface needs.
+ * share: URL parsing, roster and roster-tab filtering, member filtering and sorting, entity-badge
+ * initials, and the small formatters the surface needs. A module's sub-views are `sub-views.ts`.
  *
  * Everything here is a **total function of its arguments**: no state, no signals, no DOM, no fetch. That
  * is what lets a server-side slot resolver and a client island call the same helper and agree, which is
@@ -135,48 +134,6 @@ export function filterRoster(
 	});
 }
 
-// #region Lane quick filters
-/**
- * The roster lane's icon-only quick filters — the same permanent tag row `/projects` carries.
- *
- * They are ADDITIVE narrowings of whatever tab is selected, OR-combined within the row exactly as the
- * projects feed's are, so engaging two shows the union rather than the (usually empty) intersection.
- */
-export type RosterQuickFilter = "acting" | "updates" | "draft";
-
-/** Whether one summary satisfies a single quick filter. Pure. */
-function matchesQuick(item: WorkspaceSummary, key: RosterQuickFilter): boolean {
-	switch (key) {
-		case "acting":
-			return item.isActing;
-		case "updates":
-			return item.hasUpdate;
-		case "draft":
-			return item.status === "draft" || item.setupProgress < 1;
-	}
-}
-
-/**
- * Narrow a roster by the engaged quick filters and an optional role facet.
- *
- * An empty `quick` is the identity, so the row costs nothing until a reader presses something; the
- * role facet is intersected with the row (it answers a different question — "which of my ranks" — so
- * OR-ing it into the same union would make the two controls fight).
- */
-export function applyRosterFilters(
-	items: readonly WorkspaceSummary[],
-	quick: readonly RosterQuickFilter[],
-	roles: readonly WorkspaceRole[] = [],
-): WorkspaceSummary[] {
-	const roleSet = new Set(roles);
-	return items.filter((item) => {
-		if (roleSet.size > 0 && !roleSet.has(item.role)) return false;
-		if (quick.length === 0) return true;
-		return quick.some((k) => matchesQuick(item, k));
-	});
-}
-// #endregion
-
 /** How many rows each roster tab would show — the strip's counts, computed once from one pass. */
 export function rosterTabCounts(
 	items: readonly WorkspaceSummary[],
@@ -193,52 +150,15 @@ export function rosterTabCounts(
 }
 // #endregion
 
-// #region Header tab sets
-/** A header band tab — an underlined text link, never a pill (§B.4 / the visual contract). */
+// #region Options
+/**
+ * One value/label option of a small in-body choice (the member sort). A module's sub-views are not
+ * these: they are data in `sub-views.ts`, shared by the header band, the lane, the rig and the body.
+ */
 export interface ModuleTab {
-	/** URL-safe value; the module reads it from `?view=`. */
+	/** URL-safe value. */
 	value: string;
 	label: string;
-}
-
-/**
- * The header band's tabs for a module, or an empty array when the module has a single view.
- *
- * Sub-views live in the HEADER, not the body: the body's remit is viewing and selecting data, so a
- * module that partitions its content advertises those partitions in the chrome where every other
- * navigation on the surface already lives.
- *
- * **A module is listed here only when its body actually reads `?view=`.** A tab is a control, and a tab
- * whose body renders the same thing under every value reaches nothing (root CLAUDE.md §3 gate 11). The
- * Members module is the one screen that partitions today — the roster and its outgoing invitations —
- * so it is the only one with tabs; every other module is one view, and an empty array says so.
- */
-export function moduleTabsFor(module: ModuleKey, _kind: WorkspaceKind): ModuleTab[] {
-	switch (module) {
-		case "members":
-			return [
-				{ value: "all", label: "Members" },
-				{ value: "pending", label: "Invited" },
-			];
-		default:
-			return [];
-	}
-}
-
-/** The first tab of a module's set — the view a bare module URL resolves to. */
-export function defaultModuleTab(module: ModuleKey, kind: WorkspaceKind): string | null {
-	return moduleTabsFor(module, kind)[0]?.value ?? null;
-}
-
-/** Coerce a raw `?view=` value against a module's tab set, falling back to its default. */
-export function toModuleTab(
-	module: ModuleKey,
-	kind: WorkspaceKind,
-	raw: string | null,
-): string | null {
-	const tabs = moduleTabsFor(module, kind);
-	if (tabs.length === 0) return null;
-	return tabs.some((t) => t.value === raw) ? raw : tabs[0].value;
 }
 // #endregion
 
@@ -331,7 +251,7 @@ export function splitModelOf(stakes: readonly { shareBp: number; held: boolean }
 // #endregion
 
 // #region Projects
-/** Filter the console's project list to a header tab (`active` · `proposals` · `completed`). */
+/** Filter the console's project list to a sub-view (`active` · `proposals` · `completed`). */
 export function filterProjects(
 	projects: readonly WorkspaceProject[],
 	view: string,
@@ -399,4 +319,26 @@ export function countLabel(kind: WorkspaceKind, count: number): string {
 	const copy = kindCopy(kind);
 	return `${count} ${count === 1 ? copy.noun : copy.plural}`;
 }
+// #endregion
+
+// #region Refusal copy
+/**
+ * The business refusal map (BU6 step 4, Decision #243) — one sentence, way forward and ask per
+ * business refusal code. The business screens import it from here; it LIVES in the `refusal-copy.ts`
+ * leaf so a checkout island can import it without this module's registry and glyphs.
+ */
+export {
+	approverList,
+	BUSINESS_REFUSAL_CODES,
+	BUSINESS_REFUSAL_COPY,
+	type BusinessRefusalCode,
+	type BusinessRefusalContext,
+	CHECK_AGAIN_LABEL,
+	isBusinessRefusalCode,
+	possessive,
+	type RefusalCopy,
+	SPEND_REQUEST_COPY,
+	type SpendRequestCopyContext,
+	type SpendRequestCopyState,
+} from "./refusal-copy.ts";
 // #endregion

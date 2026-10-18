@@ -76,6 +76,15 @@
 	box-shadow: none;
 }
 /*
+ * The anchor form (`<a class="ui-button" href>`) is a control, not a link in running text, so it never
+ * carries a link underline — not the browser's own, and not one a surrounding block draws for its links
+ * (`.ui-prose a:not(…)` is (0,2,1); this is (0,3,0)). The `link` variant is the one button that IS
+ * underlined, and keeps its own rule below.
+ */
+.ui-button:any-link:not(.ui-button--link) {
+	text-decoration: none;
+}
+/*
  * Tonal blending, not `filter: brightness()` (§B.12.4).
  *
  * `brightness()` is applied to the rendered element, so it darkens the LABEL and the icon by exactly
@@ -279,6 +288,21 @@
 }
 .ui-button--text:hover:not(:disabled) {
 	background: color-mix(in srgb, var(--btn-accent) var(--tint), transparent);
+}
+/*
+ * Engaged — a `text` Button that toggles a mode on (`aria-pressed="true"`, e.g. a footer rig's Org
+ * chart). An engaged control is an active state, so it is the solid tonal step §B.4.2 names for
+ * one — `--surface-2` with `--on-surface` ink, as `LaneIconButton[data-on]` — never a brand wash, and
+ * a hover does not lift it off, so a pointer resting on it never reads as a release. Text only: an
+ * outlined toggle is `ToggleButton`, and a filled one would be a second filled control in its region
+ * (§B.8.1). The press is the shared scale; nothing here moves the box. The hover selector carries the
+ * text hover's own weight and follows it, so it wins by order and adds no weight a consumer's own
+ * engaged rule would have to outbid.
+ */
+.ui-button--text[aria-pressed="true"],
+.ui-button--text[aria-pressed="true"]:hover {
+	background: var(--surface-2);
+	color: var(--on-surface);
 }
 .ui-button--link {
 	background: transparent;

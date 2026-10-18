@@ -14,8 +14,20 @@ import type {
 	WorkspaceDetail,
 	WorkspaceKind,
 } from "@projective/types/workspace";
-import { ok, type ServiceResult } from "../ServiceResult.ts";
-import { badId, callRpc, isUuid, type LiveActor } from "./live-support.ts";
+import { type EntitlementKey, PLAN_GATE_REASON } from "@projective/types/finance";
+import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
+import {
+	badId,
+	callRpc,
+	clientFor,
+	type DbError,
+	inviteAnswerRefusal,
+	isUuid,
+	type LiveActor,
+	refusalFrom,
+	sentence,
+	splitRefusal,
+} from "./live-support.ts";
 import { forgetDetails, readDetail } from "./live-detail.ts";
 
 /**
@@ -63,23 +75,49 @@ function textOrNull(value: string | null | undefined): string | null {
 
 // #region Lifecycle
 
+/** The sentence a create gets when its handle was claimed between the probe and the insert. */
+export const HANDLE_RACE_REFUSAL = "That handle was claimed a moment ago — pick another.";
+
+/**
+ * Map `org.create_workspace`'s refusal onto the result the create form reads. Two refusals are named
+ * more precisely than {@link refusalFrom} can, because only this door knows what they mean:
+ *
+ *   - `23505` — the handle's UNIQUE index fired: somebody claimed it between the form's probe and
+ *     this insert. A 409 keyed to `handle`, so the form re-runs its availability check.
+ *   - `55000 plan: …` — the caller already owns as many of this kind as their plan includes. A 402
+ *     whose `details` name the entitlement (`teams_owned` · `businesses_owned`), the plan gates'
+ *     envelope (Decision #230 (e)), so the form can link to the plan rather than parse a sentence.
+ *
+ * Everything else — the persona and earning gates, a malformed field — is {@link refusalFrom}'s.
+ */
+export function createRefusal(error: DbError, kind: WorkspaceKind): ServiceResult<never> {
+	if (error.code === "23505") {
+		return fail(409, { message: HANDLE_RACE_REFUSAL, errors: { handle: HANDLE_RACE_REFUSAL } });
+	}
+	const parts = splitRefusal(error.message ?? "");
+	if (error.code === "55000" && parts?.field === "plan") {
+		const entitlement: EntitlementKey = kind === "team" ? "teams_owned" : "businesses_owned";
+		return fail(402, {
+			message: sentence(parts.reason),
+			details: { reason: PLAN_GATE_REASON, entitlement },
+		});
+	}
+	return refusalFrom(error, "create_workspace");
+}
+
 /** Create a Draft-First entity; the caller becomes its owner. */
 export async function createWorkspace(
 	input: CreateWorkspaceInput,
 	actor: LiveActor,
 ): Promise<ServiceResult<{ id: string; kind: WorkspaceKind; handle: string }>> {
-	const res = await callRpc<{ id: string; kind: WorkspaceKind; handle: string }>(
-		actor,
-		"org",
-		"create_workspace",
-		{
-			p_kind: input.kind,
-			p_name: input.name,
-			p_handle: input.handle,
-		},
-	);
-	if (!res.ok) return res.refusal;
-	return ok({ id: res.data.id, kind: res.data.kind, handle: res.data.handle }, {
+	const { data, error } = await clientFor(actor).schema("org").rpc("create_workspace", {
+		p_kind: input.kind,
+		p_name: input.name,
+		p_handle: input.handle,
+	});
+	if (error) return createRefusal(error, input.kind);
+	const created = data as { id: string; kind: WorkspaceKind; handle: string };
+	return ok({ id: created.id, kind: created.kind, handle: created.handle }, {
 		status: 201,
 		message: `${input.kind === "team" ? "Team" : "Business"} created.`,
 	});
@@ -161,7 +199,10 @@ export async function actOnInvite(
 	return reread(input.kind, input.workspaceId, actor);
 }
 
-/** Accept or decline an invitation addressed to the caller. */
+/**
+ * Accept or decline an invitation addressed to the caller. A refused accept reaches the client typed:
+ * `details.reason` `persona` (403) · `payout_not_ready` (403, with its fix link) · `seat_cap` (409).
+ */
 export async function respondToInvite(
 	input: RespondInviteInput,
 	actor: LiveActor,
@@ -178,6 +219,7 @@ export async function respondToInvite(
 		"org",
 		"respond_to_workspace_invitation",
 		{ p_invitation: input.inviteId, p_accept: input.accept },
+		inviteAnswerRefusal,
 	);
 	if (!res.ok) return res.refusal;
 	forgetDetails(actor);
@@ -350,7 +392,11 @@ export async function saveSplit(
 	return reread("team", input.workspaceId, actor);
 }
 
-/** The snake_case patch `finance.save_spend_policy` reads. Only the keys the input sets travel. */
+/**
+ * The snake_case patch `finance.save_spend_policy` reads. Only the keys the input sets travel — at
+ * the top level and inside each limits entry, which is itself a patch: a key that did not move must
+ * not travel, because restating a stored ceiling is a ceiling being set (Decision #246).
+ */
 export function spendPatch(input: UpdateSpendInput): Record<string, unknown> {
 	const patch: Record<string, unknown> = {};
 	if (input.currency !== undefined) patch.currency = input.currency;
@@ -360,12 +406,14 @@ export function spendPatch(input: UpdateSpendInput): Record<string, unknown> {
 	if (input.approverIds !== undefined) patch.approver_ids = input.approverIds;
 	if (input.contributorIds !== undefined) patch.contributor_ids = input.contributorIds;
 	if (input.limits !== undefined) {
-		patch.limits = input.limits.map((l) => ({
-			member_id: l.memberId,
-			can_spend: l.canSpend,
-			limit_minor: l.limitMinor,
-			per_transaction_minor: l.perTransactionMinor,
-		}));
+		patch.limits = input.limits.map((l) => {
+			const entry: Record<string, unknown> = { member_id: l.memberId };
+			if (l.canSpend !== undefined) entry.can_spend = l.canSpend;
+			if (l.limitMinor !== undefined) entry.limit_minor = l.limitMinor;
+			if (l.perTransactionMinor !== undefined) entry.per_transaction_minor = l.perTransactionMinor;
+			if (l.period !== undefined) entry.period = l.period;
+			return entry;
+		});
 	}
 	return patch;
 }
@@ -400,6 +448,24 @@ export async function decideSpend(
 	const res = await callRpc(actor, "finance", "decide_spend_approval", {
 		p_approval: input.requestId,
 		p_decision: input.approve ? "approve" : "reject",
+	});
+	if (!res.ok) return res.refusal;
+	return reread("business", input.workspaceId, actor);
+}
+
+/**
+ * Take back one's own pending spend request (`finance.withdraw_spend_approval`, Decision #246): the
+ * requester only, while it waits. It becomes `withdrawn` — no money moves — and the re-read detail
+ * carries it into the decided history.
+ */
+export async function withdrawSpend(
+	input: { workspaceId: string; requestId: string },
+	actor: LiveActor,
+): Promise<ServiceResult<WorkspaceDetail>> {
+	if (!isUuid(input.workspaceId)) return badId("workspaceId", "business");
+	if (!isUuid(input.requestId)) return badId("requestId", "request");
+	const res = await callRpc(actor, "finance", "withdraw_spend_approval", {
+		p_approval: input.requestId,
 	});
 	if (!res.ok) return res.refusal;
 	return reread("business", input.workspaceId, actor);

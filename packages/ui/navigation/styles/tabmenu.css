@@ -51,11 +51,25 @@
 	border: none;
 	text-decoration: none;
 	cursor: pointer;
-	transition: color var(--dur-fast) var(--ease-standard);
+	-webkit-tap-highlight-color: transparent;
+	touch-action: manipulation;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
 }
 
 .ui-tabmenu__tab:hover {
 	color: var(--on-surface);
+}
+
+/*
+ * Press (§B.12): a tab is an interactive control, so it compresses like every Button — a scale on
+ * `--dur-press` that moves no padding, margin or size and lands back on `--dur-fast`. Removed under
+ * both reduced-motion channels below.
+ */
+.ui-tabmenu__tab:active:not(.ui-tabmenu__tab--disabled) {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-fast), var(--dur-press);
 }
 
 .ui-tabmenu__tab--active {
@@ -136,4 +150,14 @@
 	.ui-tabmenu__scroll {
 		scroll-behavior: auto;
 	}
+
+	.ui-tabmenu__tab,
+	.ui-tabmenu__tab:active:not(.ui-tabmenu__tab--disabled) {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .ui-tabmenu__tab,
+:root[data-motion="reduced"] .ui-tabmenu__tab:active:not(.ui-tabmenu__tab--disabled) {
+	transform: none;
 }

@@ -358,6 +358,25 @@
     white-space: nowrap;
 }
 
+/*
+ * A team's roster is a list of rows, not a grid of cells (Teams P1): one person per line, so the row's
+ * MetaLine — role · since · two skills — has the column's width rather than a 14rem cell's.
+ */
+.pf-roster--rows {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+}
+
+/* A business or team row's MetaLine (BP1; Teams P1): one line, ellipsised like the role it replaces;
+   scoped under the link so it outranks the MetaLine sheet's own line-height whatever the load order. */
+.pf-person__link .pf-person__meta {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: var(--leading-snug, 1.35);
+}
+
 /* #endregion */
 
 /* #region Reused explore cards, monochrome */

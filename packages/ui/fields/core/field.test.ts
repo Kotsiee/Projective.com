@@ -312,6 +312,37 @@ Deno.test("field.css — the focus state still declares a ring of its own", () =
 });
 // #endregion
 
+// #region The 16px touch floor
+/**
+ * The floor and the base rule it overrides weigh the same (`.ui-field__input`, one class), so the
+ * cascade decides by ORDER: a floor declared before the base rule's `font: inherit` is reset by it.
+ * That shipped — the editable text stayed 15px on a phone, only the placeholder (which sets no font)
+ * reached 16px — and nothing but a computed style in a touch browser could show it.
+ */
+Deno.test("field.css — the 16px touch floor is declared after the base rule it overrides", async () => {
+	const css = rulesOf(await Deno.readTextFile(new URL("field.css", stylesDir)));
+	const floor = css.search(/@media[^{]*pointer:\s*coarse[^{]*\{\s*\.ui-field__input\b/);
+	assert(floor >= 0, "the coarse-pointer floor on `.ui-field__input` is gone.");
+	assert(
+		/max\(var\(--field-font\),\s*var\(--text-base\)\)/.test(css.slice(floor)),
+		"the floor no longer resolves to `max(var(--field-font), var(--text-base))`.",
+	);
+	let lastBase = -1;
+	for (const match of css.matchAll(/(^|\})\s*\.ui-field__input\s*\{([^{}]*)\}/g)) {
+		if (/\bfont(-size)?\s*:/.test(match[2])) lastBase = match.index!;
+	}
+	assert(
+		lastBase >= 0,
+		"no base `.ui-field__input` rule sets the font any more — re-read this test.",
+	);
+	assert(
+		floor > lastBase,
+		"the touch floor is declared BEFORE the base `.ui-field__input` font rule, which therefore " +
+			"resets it: a phone gets the 15px desktop ramp and Safari zooms on focus.",
+	);
+});
+// #endregion
+
 // #region The keyboard focus indicator
 /**
  * Every form control spends the SAME focus token, and it is not `none`.
@@ -414,6 +445,48 @@ Deno.test("global.css — the focus neutralisation exempts the form controls", (
 	assert(
 		restoring.every((r) => r.body.includes("!important")),
 		"the restore does not carry \`!important\`, so it loses to the neutralisation it is answering.",
+	);
+});
+// #endregion
+
+// #region The 16px touch floor (DESIGN_SYSTEM §A.7.2)
+/**
+ * The coarse-pointer floor and the raw input's `font: inherit` select the same element at the same
+ * specificity, so source order decides between them. Declared first, the floor is reset by the
+ * shorthand and every field on a phone stays at the 15px ramp — the size iOS Safari zooms on focus.
+ */
+Deno.test("field.css — the coarse-pointer 16px floor comes AFTER `.ui-field__input`'s `font: inherit`", async () => {
+	const css = rulesOf(await Deno.readTextFile(new URL("field.css", stylesDir)));
+	const reset = css.search(/\.ui-field__input\s*\{[^}]*font:\s*inherit/);
+	const floor = css.search(/@media[^{]*pointer:\s*coarse[^{]*\{\s*\.ui-field__input/);
+	assert(
+		reset > -1,
+		"`.ui-field__input` no longer declares `font: inherit` — re-check the floor's order.",
+	);
+	assert(floor > -1, "field.css has no coarse-pointer floor for `.ui-field__input`.");
+	assert(
+		floor > reset,
+		"the coarse-pointer floor precedes `.ui-field__input { font: inherit }`, which resets it: a phone's " +
+			"fields would render at 15px and iOS would zoom on focus.",
+	);
+});
+
+/**
+ * A Select-family trigger is a button that inherits the field's font, not an input, so the floor must
+ * raise the FIELD as well: otherwise a Billing day Select sits at 15px beside a 16px MoneyInput.
+ */
+Deno.test("field.css — the coarse-pointer floor raises `.ui-field`, which every trigger inherits", async () => {
+	const css = rulesOf(await Deno.readTextFile(new URL("field.css", stylesDir)));
+	const block = /@media[^{]*pointer:\s*coarse[^{]*\{([^}]*)\{/.exec(css);
+	assert(block, "field.css has no coarse-pointer floor.");
+	assert(
+		/(^|,)\s*\.ui-field\s*(,|$)/.test(block[1]),
+		"the coarse-pointer floor no longer selects `.ui-field`: Select-family triggers stay at 15px on a phone.",
+	);
+	const select = rulesOf(await Deno.readTextFile(new URL("select.css", stylesDir)));
+	assert(
+		/\.ui-select__trigger\s*\{[^}]*font:\s*inherit/.test(select),
+		"`.ui-select__trigger` no longer inherits the field's font — re-check how it meets the floor.",
 	);
 });
 // #endregion

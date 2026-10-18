@@ -64,6 +64,12 @@ export type DevMemberRole =
 	| "freelancer_assigned"
 	| "freelancer_unassigned";
 /**
+ * Whether the Members tab's engagement is billed to a business client (Decision #294): only a business
+ * lets an admin/manager seat manage tickets, so `business` surfaces the grant on every such row and
+ * `individual` hides it. `auto` defers to the server (the fixtures carry no business client).
+ */
+export type DevMemberClient = "auto" | "business" | "individual";
+/**
  * The acting inbox view the Context Switcher can simulate for `/messages` (task §4) — selects which
  * advanced-filter SET the sidebar shows and whether auto-responses are offered: a `freelancer` sees
  * provider-side filters (Service · Product · Client · Co-Freelancers · Teams · Team Members) and
@@ -203,6 +209,14 @@ export type DevAutoFundMode = "auto" | AutoFundMode;
 export type DevLowBalance = "auto" | "below" | "above";
 
 /**
+ * The simulated KYB picture on a business's Verification module: `auto` shows the server's read;
+ * `unverified` nothing started or finished, `in_review` with Stripe, `action_needed` restricted,
+ * rejected or lapsed, `verified` cleared. Its own axis because a business's KYB is written only by
+ * Stripe's account updates. Client-side: the database, every lock and every money door are unchanged.
+ */
+export type DevBusinessKyb = "auto" | "unverified" | "in_review" | "action_needed" | "verified";
+
+/**
  * The simulated notification inbox (DESIGN_SYSTEM §D.9): `empty` answers no notifications at all;
  * `many` answers a large unread set spread over every inbox category (tab counts, paging, bulk
  * select); `burst` keeps the real inbox and lands a run of new arrivals a second apart (the live
@@ -218,6 +232,38 @@ export type DevNotifications = "auto" | "empty" | "many" | "burst";
  * only: the drawer substitutes its read; every write still goes to the server.
  */
 export type DevBasketScenario = "auto" | "empty" | "multi_owner" | "unavailable";
+
+/**
+ * The simulated business checkout gate (Decision #243): `needs_approval` / `over_limit` a refusal
+ * offering Request approval, `pending` a request waiting, `approved` one the next Pay spends,
+ * `no_approver` nobody else able to decide, `pool_short` the business wallet short (Add money),
+ * `kyb_required` an unverified business. `auto` shows the server's read. Client-side only: the payment
+ * step substitutes its view of a REAL business session; Pay and every request still go to the server.
+ */
+export type DevCheckoutGate =
+	| "auto"
+	| "needs_approval"
+	| "over_limit"
+	| "pending"
+	| "approved"
+	| "no_approver"
+	| "pool_short"
+	| "kyb_required";
+
+/**
+ * The simulated spend-request queue on a business's Spend module (Decision #246): `empty` no requests,
+ * `others_pending` two waiting on the viewer, `own_pending` the viewer's own (Withdraw),
+ * `history` the decided tab in every terminal state (withdrawn included), `kyb_approver` the viewer as
+ * an approver of a business still in KYB. `auto` shows the server's queue. Client-side only: made-up
+ * rows offer no control, and every decision and withdrawal still goes to the server.
+ */
+export type DevSpendRequests =
+	| "auto"
+	| "empty"
+	| "others_pending"
+	| "own_pending"
+	| "history"
+	| "kyb_approver";
 
 /**
  * The simulated saved set (`/saved` and every star / save control, Decision #180): `empty` answers
@@ -440,6 +486,8 @@ export interface DevSeamState {
 	pendingInvites: boolean;
 	/** Whether the Members tab's Requests section should carry open applications. */
 	pendingRequests: boolean;
+	/** Whether the Members tab's engagement is billed to a business (ticket delegation, #294). */
+	memberClient: DevMemberClient;
 	/** The simulated `/messages` inbox view (selects the advanced-filter set + auto-response offer). */
 	messagingRole: DevMessagingRole;
 	/** The simulated microphone permission for the chat composer's voice memo. */
@@ -474,6 +522,8 @@ export interface DevSeamState {
 	autoFundMode?: DevAutoFundMode;
 	/** The simulated low-balance state. Optional like `walletAurora`; absent reads as `auto`. */
 	lowBalance?: DevLowBalance;
+	/** The simulated business KYB picture. Optional like `walletAurora`; absent reads as `auto`. */
+	businessKyb?: DevBusinessKyb;
 	/** The simulated session state. Optional like `walletAurora`; absent reads as `auto`. */
 	sessionState?: DevSessionState;
 	/** The simulated no-show dispute. Optional like `walletAurora`; absent reads as `auto`. */
@@ -482,6 +532,10 @@ export interface DevSeamState {
 	notifications?: DevNotifications;
 	/** The simulated basket. Optional like `walletAurora`; absent reads as `auto`. */
 	basketScenario?: DevBasketScenario;
+	/** The simulated business checkout gate. Optional like `walletAurora`; absent reads as `auto`. */
+	checkoutGate?: DevCheckoutGate;
+	/** The simulated Spend request queue. Optional like `walletAurora`; absent reads as `auto`. */
+	spendRequests?: DevSpendRequests;
 	/** The simulated saved set. Optional like `walletAurora`; absent reads as `auto`. */
 	saved?: DevSaved;
 	/** The simulated promo dismissals. Optional like `walletAurora`; absent reads as `auto`. */
@@ -575,6 +629,7 @@ const MEMBER_ROLES: readonly DevMemberRole[] = [
 	"freelancer_assigned",
 	"freelancer_unassigned",
 ];
+const MEMBER_CLIENTS: readonly DevMemberClient[] = ["auto", "business", "individual"];
 const STAGE_ASSIGNMENTS: readonly DevStageAssignment[] = ["assigned", "unassigned"];
 const MESSAGING_ROLES: readonly DevMessagingRole[] = ["freelancer", "client", "business"];
 const MIC_PERMISSIONS: readonly DevMicPermission[] = [
@@ -660,12 +715,37 @@ const DISPUTE_STATES: readonly DevDisputeState[] = [
 ];
 const AUTO_FUND_MODES: readonly DevAutoFundMode[] = ["auto", "off", "add_to_basket", "from_wallet"];
 const LOW_BALANCES: readonly DevLowBalance[] = ["auto", "below", "above"];
+const BUSINESS_KYBS: readonly DevBusinessKyb[] = [
+	"auto",
+	"unverified",
+	"in_review",
+	"action_needed",
+	"verified",
+];
 const NOTIFICATION_SIMS: readonly DevNotifications[] = ["auto", "empty", "many", "burst"];
 const BASKET_SCENARIOS: readonly DevBasketScenario[] = [
 	"auto",
 	"empty",
 	"multi_owner",
 	"unavailable",
+];
+const CHECKOUT_GATES: readonly DevCheckoutGate[] = [
+	"auto",
+	"needs_approval",
+	"over_limit",
+	"pending",
+	"approved",
+	"no_approver",
+	"pool_short",
+	"kyb_required",
+];
+const SPEND_REQUEST_SIMS: readonly DevSpendRequests[] = [
+	"auto",
+	"empty",
+	"others_pending",
+	"own_pending",
+	"history",
+	"kyb_approver",
 ];
 const SAVED_SIMS: readonly DevSaved[] = ["auto", "empty", "many"];
 const PROMO_DISMISSALS: readonly DevPromoDismissal[] = ["auto", "visible", "dismissed"];
@@ -727,6 +807,8 @@ export function readDevSeam(): DevSeamState | null {
 		memberRole: coerce(ds.devMemberRole, MEMBER_ROLES, "owner_admin"),
 		pendingInvites: ds.devPendingInvites !== "false",
 		pendingRequests: ds.devPendingRequests !== "false",
+		// Absent = `auto`, the same "no second spelling for no override" rule as `projectOnboarding`.
+		memberClient: coerce(ds.devMemberClient, MEMBER_CLIENTS, "auto"),
 		messagingRole: coerce(ds.devMessagingRole, MESSAGING_ROLES, "freelancer"),
 		micPermission: coerce(ds.devMicPermission, MIC_PERMISSIONS, "auto"),
 		layoutDirection: coerce(ds.devDirection, LAYOUT_DIRECTIONS, "ltr"),
@@ -744,10 +826,13 @@ export function readDevSeam(): DevSeamState | null {
 		revisionAllotment: coerce(ds.devRevisionAllotment, REVISION_ALLOTMENTS, "auto"),
 		autoFundMode: coerce(ds.devAutoFundMode, AUTO_FUND_MODES, "auto"),
 		lowBalance: coerce(ds.devLowBalance, LOW_BALANCES, "auto"),
+		businessKyb: coerce(ds.devBusinessKyb, BUSINESS_KYBS, "auto"),
 		sessionState: coerce(ds.devSessionState, SESSION_STATES, "auto"),
 		disputeState: coerce(ds.devDisputeState, DISPUTE_STATES, "auto"),
 		notifications: coerce(ds.devNotifications, NOTIFICATION_SIMS, "auto"),
 		basketScenario: coerce(ds.devBasketScenario, BASKET_SCENARIOS, "auto"),
+		checkoutGate: coerce(ds.devCheckoutGate, CHECKOUT_GATES, "auto"),
+		spendRequests: coerce(ds.devSpendRequests, SPEND_REQUEST_SIMS, "auto"),
 		saved: coerce(ds.devSaved, SAVED_SIMS, "auto"),
 		promoDismissal: coerce(ds.devPromoDismissal, PROMO_DISMISSALS, "auto"),
 		discoveryViewer: coerce(ds.devDiscoveryViewer, DISCOVERY_VIEWERS, "auto"),

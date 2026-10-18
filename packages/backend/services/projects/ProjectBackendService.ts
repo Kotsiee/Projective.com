@@ -36,6 +36,7 @@ import {
 	readIssuedInvitations,
 	resolveInviteTarget,
 	setMemberRoleRow,
+	setTicketManagerRow,
 } from "./live-membership.ts";
 import { fetchProjectOverview } from "./live-overview.ts";
 import { rollupFundingState } from "../finance/funding-state.ts";
@@ -94,6 +95,7 @@ import {
 	recordMemberRemoval,
 	recordProjectArchive,
 	recordRoleChange,
+	recordTicketManager,
 	sentMessageCount,
 	setupPatchFrom,
 	storedCreatedProject,
@@ -151,6 +153,7 @@ import {
 	type ClaimTicket,
 	composeWorkspace,
 	type ProjectWorkspace,
+	TICKET_MANAGER_ROLES,
 	type WorkspaceViewer,
 } from "@projective/types/projects";
 
@@ -285,6 +288,7 @@ import type {
 	SubmissionListPage,
 	SubmissionListParams,
 	SubmissionUnit,
+	TicketManagerChanged,
 	TimelineListParams,
 	TimelinePage,
 	UpdateProject,
@@ -2291,6 +2295,72 @@ export class ProjectBackendService {
 			invalidateProjects(actor);
 		}
 		return ok({ memberId, role, changed }, { message: "Role updated." });
+	}
+
+	/**
+	 * Let a delegated project manager compose and edit tickets for the business client, or stop them —
+	 * `PATCH /api/projects/[id]/members/[memberId]/tickets`, the Members tab's row action (Decision #294).
+	 *
+	 * Live: `projects.set_ticket_manager` — review authority and the `hire` capability, a business
+	 * client's engagement only, an `admin` / `manager` person seat only, never the caller's own, never on
+	 * a closed project; audited in the same transaction. What the grant reaches is the database's rule
+	 * (`fn_ticket_immutability_guard`): unclaimed tickets' content, never a hire, a move or a payment.
+	 */
+	static async updateTicketManager(
+		slug: string,
+		memberId: string,
+		allowed: boolean,
+		actor: ReadActor,
+	): Promise<ServiceResult<TicketManagerChanged>> {
+		const denied = requireIdentity<TicketManagerChanged>(actor, "change who manages tickets");
+		if (denied) return denied;
+
+		const message = allowed ? "They can now manage tickets." : "They no longer manage tickets.";
+		const live = await liveWrite<TicketManagerChanged>(
+			"updateTicketManager",
+			actor,
+			memberId,
+			message,
+			async (a) => {
+				const outcome = await setTicketManagerRow(a, slug, memberId, allowed);
+				if (outcome === null || "refusal" in outcome) return outcome;
+				return {
+					data: {
+						memberId,
+						canManageTickets: outcome.data.can_manage_tickets,
+						changed: outcome.data.changed,
+					},
+				};
+			},
+			"member",
+		);
+		if (live !== undefined) return live;
+
+		// The stub cannot tell a business client from an individual one (no fixture is billed to a
+		// business — the Dev Context Switcher's "Paying client" axis is a read-side simulation), so it
+		// enforces the seat rules and leaves the business rule to the database.
+		const page = this.stubRoster(slug, actor);
+		if (!page) return noSuchProject(slug);
+		const row = page.members.find((m) => m.id === memberId);
+		if (!row) return notFound("member", memberId);
+		if (row.isViewer) {
+			return fail(422, {
+				message: "You cannot change your own ticket permission.",
+				errors: { allowed: "not_allowed" },
+			});
+		}
+		if (allowed && !TICKET_MANAGER_ROLES.has(row.role)) {
+			return fail(422, {
+				message: "Make this member a project admin or manager before letting them manage tickets.",
+				errors: { allowed: "not_allowed" },
+			});
+		}
+		const changed = (row.canManageTickets ?? false) !== allowed;
+		if (changed) {
+			recordTicketManager(writeOwnerOf(actor), page.projectId, memberId, allowed);
+			invalidateProjects(actor);
+		}
+		return ok({ memberId, canManageTickets: allowed, changed }, { message });
 	}
 	// #endregion
 

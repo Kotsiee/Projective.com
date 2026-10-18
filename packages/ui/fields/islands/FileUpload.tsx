@@ -82,6 +82,11 @@ export interface FileUploadProps {
 	emptyTemplate?: () => VNode;
 	id?: string;
 	"aria-label"?: string;
+	/**
+	 * Id(s) of visible text describing the control — limits, what the files are for — wired onto the
+	 * drop zone (or the basic picker) as `aria-describedby`, so they are heard, not only seen.
+	 */
+	"aria-describedby"?: string;
 	class?: string;
 }
 // #endregion
@@ -132,6 +137,7 @@ export function FileUpload(props: FileUploadProps): JSX.Element {
 		emptyTemplate,
 		id,
 		"aria-label": ariaLabel = "File upload",
+		"aria-describedby": ariaDescribedBy,
 		class: className,
 	} = props;
 
@@ -271,6 +277,7 @@ export function FileUpload(props: FileUploadProps): JSX.Element {
 					class="ui-file-upload__choose"
 					disabled={disabled}
 					aria-label={ariaLabel}
+					aria-describedby={ariaDescribedBy}
 					onClick={choose}
 				>
 					<Icon name="upload" class="ui-file-upload__choose-icon" />
@@ -333,6 +340,7 @@ export function FileUpload(props: FileUploadProps): JSX.Element {
 				class={cx("ui-file-upload__zone", dragging.value && "ui-file-upload__zone--drag")}
 				disabled={disabled}
 				aria-label={`${ariaLabel}. Drop files here or activate to browse.`}
+				aria-describedby={ariaDescribedBy}
 				onClick={choose}
 				onDrop={onDrop}
 				onDragOver={onDragOver}

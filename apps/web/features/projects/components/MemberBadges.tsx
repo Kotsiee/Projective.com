@@ -29,13 +29,27 @@ import { CrownIcon } from "./member-glyphs.tsx";
  */
 
 // #region Role
-/** The role as text, its access summary in the Tooltip. */
-export function RoleText({ role }: { role: MemberRole }): JSX.Element {
+/**
+ * The role as text, its access summary in the Tooltip. A delegated project manager the business client
+ * let manage tickets (Decision #294) carries that as inline secondary text after the role — a fact
+ * about the seat, not a control, so never a chip.
+ */
+export function RoleText(
+	{ role, managesTickets = false }: { role: MemberRole; managesTickets?: boolean },
+): JSX.Element {
 	const meta = roleMeta(role);
 	return (
-		<Tooltip content={meta.blurb} placement="top">
-			<span class="mem-hint mem-role">{meta.label}</span>
-		</Tooltip>
+		<>
+			<Tooltip content={meta.blurb} placement="top">
+				<span class="mem-hint mem-role">{meta.label}</span>
+			</Tooltip>
+			{managesTickets && (
+				<>
+					<span class="mem-dot" aria-hidden="true">·</span>
+					<span class="mem-role-note">Manages tickets</span>
+				</>
+			)}
+		</>
 	);
 }
 

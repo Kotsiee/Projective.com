@@ -3,6 +3,7 @@ import type { ReadActor } from "@server/services/read-actor.ts";
 import WorkspaceHeaderBand from "../islands/WorkspaceHeaderBand.island.tsx";
 import { resolveWorkspaceConsole } from "./workspace-ssr.ts";
 import { activeModuleOf, kindFromPath, workspaceHandleOf } from "./workspace-model.ts";
+import { resolveSubView } from "./sub-views.ts";
 
 /**
  * workspace-header-slot — the SSR-idiomatic resolver for the middle-nav HEADER band inside a workspace
@@ -31,7 +32,12 @@ export async function workspaceHeaderFor(url: URL, actor: ReadActor): Promise<Co
 			kind={kind}
 			workspace={bootstrap.workspace}
 			module={bootstrap.activeModule}
-			view={url.searchParams.get("view")}
+			view={resolveSubView(
+				bootstrap.activeModule,
+				kind,
+				bootstrap.workspace.viewerCapabilities,
+				url.searchParams.get("view"),
+			)}
 			path={url.pathname}
 		/>
 	);

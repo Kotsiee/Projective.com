@@ -32,6 +32,7 @@ import {
 	withLedgerFilters,
 } from "../core/wallet-model.ts";
 import { openWalletDialog, walletFlowLive, walletOverviewLive } from "../core/wallet-state.ts";
+import { backLabelFor, WALLET_INTENT_PARAM, walletIntentOf } from "../core/wallet-intent.ts";
 import type {
 	ActivityView,
 	FundingView,
@@ -160,6 +161,8 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 	const invoicesBusy = useSignal(false);
 
 	const mounted = useSignal(false);
+	/** Where a movement opened by a link (`?back=`) returns when it is done; `null` without one. */
+	const returnTo = useSignal<{ href: string; label: string } | null>(null);
 	const heroRef = useRef<HTMLElement>(null);
 	const sheetRef = useRef<HTMLDivElement>(null);
 
@@ -334,6 +337,27 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 	useEffect(() => {
 		walletOverviewLive.value = overview.value;
 	}, [overview.value]);
+
+	/*
+	 * A link INTO an action (`?do=top_up&back=/checkout/…` — the checkout's "Add money", Decision #243)
+	 * opens that action's dialog once. Only an action this wallet draws for the viewer opens — offered,
+	 * or locked with its reason — and `do` leaves the address at once so a reload does not reopen it;
+	 * `back` stays, so a card step's bank redirect still knows where the viewer came from.
+	 */
+	useEffect(() => {
+		const url = new URL(location.href);
+		const intent = walletIntentOf(url.searchParams);
+		if (intent.back) returnTo.value = { href: intent.back, label: backLabelFor(intent.back) };
+		if (!url.searchParams.has(WALLET_INTENT_PARAM)) return;
+		url.searchParams.delete(WALLET_INTENT_PARAM);
+		history.replaceState(history.state, "", url);
+		const o = overview.peek();
+		const drawn = intent.action !== null && (
+			o.quickActions.includes(intent.action) ||
+			o.unavailable.some((u) => u.action === intent.action)
+		);
+		if (intent.action && drawn) openWalletDialog({ kind: "action", action: intent.action });
+	}, []);
 
 	useEffect(() => {
 		const hero = heroRef.current;
@@ -588,6 +612,7 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 				approvals={approvals.value?.data ?? []}
 				query={query()}
 				resolve={resolve}
+				returnTo={returnTo.value}
 				onChanged={(fresh) => void refresh(fresh)}
 			/>
 		</section>

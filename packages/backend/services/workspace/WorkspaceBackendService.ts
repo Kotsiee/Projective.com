@@ -1,5 +1,6 @@
 import type {
 	ArchiveRoleInput,
+	BusinessBench,
 	CreateWorkspaceInput,
 	HandleCheck,
 	InviteActionInput,
@@ -18,9 +19,11 @@ import type {
 } from "@projective/types/workspace";
 import { ok, type ServiceResult } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
-import { callRpc, isLive, type LiveActor, signedOut, unavailable } from "./live-support.ts";
+import { isLive, type LiveActor, signedOut, unavailable } from "./live-support.ts";
 import { readRoster } from "./live-roster.ts";
+import { checkHandle } from "./live-handle.ts";
 import { readDetail } from "./live-detail.ts";
+import { readBench } from "./live-bench.ts";
 import { previewSpendEnvelope } from "./live-money.ts";
 import * as writes from "./live-writes.ts";
 import { reembedInBackground } from "../search/embedding-sync.ts";
@@ -34,7 +37,7 @@ import { reembedInBackground } from "../search/embedding-sync.ts";
  * pages call it directly for SSR. Islands never reach it.
  *
  * **Live-only.** Like the profile (Decision #119) there is no fixture branch: every read and write is
- * one of the definer RPCs in `00001020_functions_org_entities.sql` §6–§16 and
+ * one of the definer RPCs in `00001020_functions_org_entities.sql` §6–§17 and
  * `00001210_functions_finance_kyc_wallet.sql` §13, made under the CALLER's session, so the database
  * decides membership and authority and this layer only forwards and maps. A guest is `401`; a database
  * that cannot be reached is `503` — never a stand-in console that looks real and is not.
@@ -71,23 +74,21 @@ export class WorkspaceBackendService {
 		return guarded("detail", actor, (live) => readDetail(kind, handleOrId, live));
 	}
 
-	/** Probe a handle's availability across the one namespace people and entities share. */
+	/**
+	 * A business's bench — the freelancers and teams it has hired (the Talent module, Decision
+	 * #230 (i)), addressed by handle or row id. ONE RPC. `404` when no business holds the reference,
+	 * `403` when the caller is not a member holding `hire`.
+	 */
+	static bench(handleOrId: string, actor: ReadActor): Promise<ServiceResult<BusinessBench>> {
+		return guarded("bench", actor, (live) => readBench(handleOrId, live));
+	}
+
+	/**
+	 * Probe a handle's availability across the one namespace people and entities share. A TAKEN handle
+	 * is answered with up to three alternatives the namespace says are free (`live-handle.ts`).
+	 */
 	static checkHandle(handle: string, actor: ReadActor): Promise<ServiceResult<HandleCheck>> {
-		return guarded("check-handle", actor, async (live) => {
-			const res = await callRpc<{ handle: string; available: boolean; reason: string | null }>(
-				live,
-				"org",
-				"check_handle",
-				{ p_handle: handle },
-			);
-			if (!res.ok) return res.refusal;
-			return ok({
-				handle: res.data.handle.slice(0, 40),
-				available: res.data.available,
-				reason: res.data.reason ? res.data.reason.slice(0, 160) : null,
-				suggestions: [],
-			});
-		});
+		return guarded("check-handle", actor, (live) => checkHandle(handle, live));
 	}
 
 	// #endregion
@@ -227,6 +228,17 @@ export class WorkspaceBackendService {
 		actor: ReadActor,
 	): Promise<ServiceResult<WorkspaceDetail>> {
 		return guarded("spend-decide", actor, (live) => writes.decideSpend(input, live));
+	}
+
+	/**
+	 * Withdraw the caller's own pending spend request (`finance.withdraw_spend_approval` — the requester
+	 * only, while it waits), and answer with the re-read detail.
+	 */
+	static withdrawSpend(
+		input: { workspaceId: string; requestId: string },
+		actor: ReadActor,
+	): Promise<ServiceResult<WorkspaceDetail>> {
+		return guarded("spend-withdraw", actor, (live) => writes.withdrawSpend(input, live));
 	}
 
 	// #endregion

@@ -1380,26 +1380,6 @@
 .cko-limit__val {
 	margin: 0;
 }
-
-.cko-limit__request {
-	display: inline-flex;
-	gap: var(--space-2);
-	align-items: center;
-	color: var(--primary);
-	font-size: var(--text-sm);
-	font-weight: var(--fw-medium);
-	text-decoration: none;
-}
-
-.cko-limit__request:hover {
-	text-decoration: underline;
-}
-
-.cko-limit__request:focus-visible {
-	outline: none;
-	border-radius: var(--radius-xs);
-	box-shadow: none;
-}
 /* #endregion */
 
 /* #region Add a payment method */

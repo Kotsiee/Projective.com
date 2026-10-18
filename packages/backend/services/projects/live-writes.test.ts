@@ -23,6 +23,7 @@ import {
 	onboardingLockRefusal,
 	planAttachments,
 	planStageRoles,
+	refusalFrom,
 	stageTermsPatch,
 	submissionRefusalFrom,
 	touchesLockableFields,
@@ -484,5 +485,22 @@ Deno.test("submissionRefusalFrom: the funding gate and stale sessions keep refus
 		402,
 	);
 	assertEquals(submissionRefusalFrom("JWT expired").status, 401);
+});
+// #endregion
+
+// #region Ticket move refusals (Decision #293)
+Deno.test("refusalFrom: who may move a claimed ticket is a 403 in the database's words", () => {
+	const sentences = [
+		"Only the client or the freelancer working this ticket may move it.",
+		"A freelancer is working this ticket — it can be moved once the work is handed back.",
+		"A ticket enters that state by a claim, its stage's cancellation or a workload report, never by a move.",
+		"You move your ticket between To do, In progress and In review; any other move is the client's.",
+	];
+	for (const message of sentences) {
+		const refusal = refusalFrom(message, "status");
+		assertEquals(refusal.status, 403);
+		assertEquals(refusal.message, message);
+		assertEquals(refusal.errors, { status: "not_permitted" });
+	}
 });
 // #endregion

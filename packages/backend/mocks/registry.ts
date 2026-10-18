@@ -40,7 +40,8 @@ export type BackendGate =
 	| "INTEGRATIONS_BACKEND_LIVE"
 	| "LOGGING_BACKEND_LIVE"
 	| "EDITORIAL_BACKEND_LIVE"
-	| "COMMUNITY_BACKEND_LIVE";
+	| "COMMUNITY_BACKEND_LIVE"
+	| "CONTACT_BACKEND_LIVE";
 
 /** The mock domains, one per fat-service area. */
 export type MockDomain =
@@ -58,7 +59,8 @@ export type MockDomain =
 	| "shell"
 	| "marketing"
 	| "editorial"
-	| "community";
+	| "community"
+	| "contact";
 
 /** One row of the mock inventory. */
 export interface MockDomainInfo {
@@ -256,9 +258,11 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		label: "Help centre, changelog & articles",
 		gate: "EDITORIAL_BACKEND_LIVE",
 		// The shared reader (`services/editorial/editorial-source.ts` readEditorialTable) has a real
-		// anon-client path, but no surface service calls it until the help centre, changelog and
-		// articles work orders add their tables — so nothing reads the database through this gate yet.
-		liveImplemented: false,
+		// anon-client path: the help centre reads editorial.help_* through it (HelpBackendService, P2),
+		// `ChangelogBackendService` reads `editorial.changelog_releases` (P5) and
+		// EditorialArticlesBackendService (P6, Decision #271) reads `editorial.articles` /
+		// `editorial.article_authors`.
+		liveImplemented: true,
 		modules: [
 			"services/editorial/content/help.ts",
 			"services/editorial/content/changelog.ts",
@@ -266,21 +270,36 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		],
 		schemas: ["editorial"],
 		description:
-			"Platform-authored content (Decision #274). The content sources are NOT demo data: they are the authored rows `deno task db:editorial:generate` emits into 00005071–00005073, and with the gate off they are served through the same Zod row parse and mapping the live read uses, so fixtures cannot drift from the database. Every source is empty until its surface lands.",
+			"Platform-authored content (Decision #274). The content sources are NOT demo data: they are the authored rows `deno task db:editorial:generate` emits into 00005071–00005073, and with the gate off they are served through the same Zod row parse and mapping the live read uses, so fixtures cannot drift from the database. All three sources are filled: help (P2: 8 categories, 33 articles), the changelog's releases (P5) and Projective's articles with their authors (P6).",
 	},
 	community: {
 		domain: "community",
 		label: "Helpfulness votes & feedback board",
 		gate: "COMMUNITY_BACKEND_LIVE",
-		// Scaffold only (Decision #274): the shared module (`services/community/community-source.ts`)
-		// resolves the gate and maps rows, but the help-feedback and feedback-board services that would
-		// read or write through it do not exist yet. The newsletter, also in `community`, keeps its own
-		// NEWSLETTER_BACKEND_LIVE gate.
-		liveImplemented: false,
-		modules: [],
+		// Live for the help centre's helpfulness votes (HelpFeedbackBackendService → the definer door
+		// community.submit_help_feedback, P2) and the feedback board (`FeedbackBackendService`, P7,
+		// Decision #272), which reads and writes through the shared module
+		// (`services/community/community-source.ts`); the board's fixture road is the per-process
+		// `feedback-store.ts` over the seed-identical demo board. The newsletter, also in `community`,
+		// keeps its own NEWSLETTER_BACKEND_LIVE gate.
+		liveImplemented: true,
+		modules: [
+			"services/community/feedback-fixtures.ts",
+			"services/community/feedback-store.ts",
+		],
 		schemas: ["community"],
 		description:
-			"User-generated activity around the platform: the help centre's helpfulness votes and the feedback board's ideas, votes and status history. No surface service exists yet.",
+			"User-generated activity around the platform: the help centre's helpfulness votes (written through community.submit_help_feedback; with the gate off they are validated and answered, nothing stored) and the feedback board's ideas, votes and status history. The feedback board is live behind the gate; with it off, the same sixteen ideas the seed loads are served from a per-process store that mirrors every door (suggest, vote, retract), so nothing is persisted.",
+	},
+	contact: {
+		domain: "contact",
+		label: "Contact intake",
+		gate: "CONTACT_BACKEND_LIVE",
+		liveImplemented: true,
+		modules: [],
+		schemas: ["ops", "files"],
+		description:
+			"LIVE (Decision #276). /contact writes ops.contact_requests through ops.submit_contact_request as the caller (anon or signed in) and its attachments go through the quarantine pipeline into the private `contact` bucket (ContactBackendService, live-attachments.ts). With the gate off, development answers a receipt and stores nothing (an attachment is checked against its declaration, never uploaded); production refuses with a 503.",
 	},
 });
 

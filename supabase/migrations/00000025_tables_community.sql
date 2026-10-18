@@ -77,7 +77,7 @@ CREATE TABLE community.newsletter_subscriptions (
     CONSTRAINT newsletter_subscriptions_token_key UNIQUE (token),
     CONSTRAINT newsletter_subscriptions_email_lowercase CHECK (email = lower(email)),
     CONSTRAINT newsletter_subscriptions_email_length CHECK (char_length(email) <= 254),
-    CONSTRAINT newsletter_subscriptions_source_check CHECK (source IN ('footer', 'landing', 'explore')),
+    CONSTRAINT newsletter_subscriptions_source_check CHECK (source IN ('footer', 'landing', 'explore', 'changelog')),
     CONSTRAINT newsletter_subscriptions_topics_check CHECK (
         cardinality(topics) >= 1
         AND array_position(topics, NULL) IS NULL
@@ -101,8 +101,161 @@ CREATE TABLE community.newsletter_subscriptions (
 
 
 -- #region [help_feedback] Help-article helpfulness votes (P2)
+-- One row per "Was this helpful?" answer on a help article (/help/<category>/<article>). Insert-only
+-- and written by ONE door, community.submit_help_feedback (00001320): it stamps the voter from
+-- auth.uid() (never from an argument), refuses an article that is not published, rate-limits, and
+-- stores a comment only after comms.mask_pii (Decision #147). No client role holds any privilege on
+-- the table and it has no policy (00002520 / 00002021), so nobody reads, edits or deletes a vote
+-- through PostgREST; operators read it as the service role. The Zod SSOT is
+-- packages/types/community/help-feedback.ts.
+CREATE TABLE community.help_feedback (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    -- The article voted on. RESTRICT: an editorial article is retracted by visibility, never
+    -- deleted, so a delete that would orphan its votes is refused.
+    article_slug text NOT NULL,
+    helpful boolean NOT NULL,
+    -- What was missing, only after a "No". Stored MASKED. The reader may type at most 280 characters
+    -- (the writer refuses more before masking); a placeholder can be longer than what it replaced
+    -- (`$ab` → `[handle hidden]`), so the stored text may run to five times that.
+    comment text,
+    -- The categories comms.mask_pii hid in the comment (`email` · `payment_link` · `handle` ·
+    -- `phone`), empty when it hid nothing — the same evidence a masked message keeps.
+    comment_pii_categories text[] NOT NULL DEFAULT '{}'::text[],
+    -- The signed-in voter, or NULL for a guest (and for a session with no profile row). SET NULL:
+    -- an erased account's votes stay counted, unattributed.
+    user_id uuid,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT help_feedback_pkey PRIMARY KEY (id),
+    CONSTRAINT help_feedback_article_slug_fkey
+        FOREIGN KEY (article_slug) REFERENCES editorial.help_articles (slug) ON DELETE RESTRICT,
+    CONSTRAINT help_feedback_user_id_fkey
+        FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE SET NULL,
+    CONSTRAINT help_feedback_comment_length CHECK (
+        comment IS NULL OR char_length(comment) BETWEEN 1 AND 1400
+    ),
+    CONSTRAINT help_feedback_comment_on_no CHECK (comment IS NULL OR NOT helpful),
+    CONSTRAINT help_feedback_pii_categories_check CHECK (
+        array_position(comment_pii_categories, NULL) IS NULL
+        AND (comment IS NOT NULL OR cardinality(comment_pii_categories) = 0)
+    )
+);
 -- #endregion
 
 
 -- #region [feedback] Feedback board — ideas, votes, status events (P7)
+-- The public board at /feedback and the global `?feedback=open` drawer (Decision #272). Three tables:
+-- the ideas, one vote per person per idea, and the append-only history of every status an idea held.
+-- Every write goes through a SECURITY DEFINER door in 00001320 [community.feedback] — no client role
+-- holds INSERT, UPDATE or DELETE on any of them (00002520). The Zod SSOT is
+-- packages/types/community/feedback.ts.
+
+-- One idea. Its `status` is a state of the UNIFIED machine (PRODUCT_MANAGEMENT.md §3.1, owner ruling
+-- (d), Decision #272), never a bespoke one; only the label the board shows differs:
+--   backlog      "Under review" — the intake state; visible only to its author and operators
+--   ready        "Planned"      — accepted onto the roadmap; public from here on
+--   in_progress  "In progress"
+--   complete     "Shipped"
+--   archived     terminal: declined, duplicate or withdrawn; hidden from everyone but operators
+-- Stored as text under a CHECK rather than a new enum so the whole surface lives in this region.
+-- An idea is never deleted (trg_feedback_ideas_no_delete): retiring one is `archived`.
+CREATE TABLE community.feedback_ideas (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    -- The opaque, prefixed, permanent address (`fbk-…`, Decision #88 — member content keeps opaque
+    -- slugs). Filled by security.fn_slug_guard('fbk') on insert and frozen on update (00001898).
+    slug text NOT NULL,
+    -- Authored at most 90 characters (the door refuses more). The CHECK allows 120 because the
+    -- screen trigger runs first and a masked placeholder ("[email hidden]") can be longer than what it
+    -- replaced.
+    title text NOT NULL,
+    -- "What problem does this solve?" — required, so every idea states its reason.
+    impact text NOT NULL,
+    -- Optional details.
+    body text,
+    -- FEEDBACK_CATEGORIES, value for value.
+    category text NOT NULL,
+    status text NOT NULL DEFAULT 'backlog',
+    -- Nullable only so closing an account does not take the community's ideas with it: the door
+    -- always stamps auth.uid(), and an erased author's ideas survive unattributed.
+    author_id uuid,
+    -- Maintained by trg_feedback_votes_count (00001898) on every vote insert and delete.
+    vote_count integer NOT NULL DEFAULT 0,
+    -- The official response, written by an operator through community.respond_to_feedback_idea.
+    team_response text,
+    team_response_at timestamptz,
+    team_response_by uuid,
+    -- Which comms.mask_pii categories fired on this idea's text (Decision #147 Tier 2). Operator
+    -- evidence only: no client role may read the column (00002520).
+    pii_categories text[] NOT NULL DEFAULT '{}'::text[],
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    status_changed_at timestamptz NOT NULL DEFAULT now(),
+    archived_at timestamptz,
+    CONSTRAINT feedback_ideas_pkey PRIMARY KEY (id),
+    CONSTRAINT feedback_ideas_slug_key UNIQUE (slug),
+    CONSTRAINT ck_feedback_ideas_slug_shape CHECK (slug ~ '^fbk-[23456789abcdefghjkmnopqrstuvwxyz]{10}$'),
+    CONSTRAINT feedback_ideas_author_id_fkey
+        FOREIGN KEY (author_id) REFERENCES org.users_public (user_id) ON DELETE SET NULL,
+    CONSTRAINT feedback_ideas_team_response_by_fkey
+        FOREIGN KEY (team_response_by) REFERENCES org.users_public (user_id) ON DELETE SET NULL,
+    CONSTRAINT feedback_ideas_status_check CHECK (
+        status IN ('backlog', 'ready', 'in_progress', 'complete', 'archived')
+    ),
+    CONSTRAINT feedback_ideas_category_check CHECK (
+        category IN ('projects', 'escrow_payments', 'messaging', 'profiles', 'teams', 'explore', 'other')
+    ),
+    CONSTRAINT feedback_ideas_title_length CHECK (char_length(btrim(title)) BETWEEN 6 AND 120),
+    CONSTRAINT feedback_ideas_impact_length CHECK (char_length(btrim(impact)) BETWEEN 10 AND 900),
+    CONSTRAINT feedback_ideas_body_length CHECK (body IS NULL OR char_length(body) BETWEEN 1 AND 6000),
+    CONSTRAINT feedback_ideas_vote_count_check CHECK (vote_count >= 0),
+    -- `archived_at` is set exactly while the idea is archived, so neither can contradict the other.
+    CONSTRAINT feedback_ideas_archived_check CHECK ((status = 'archived') = (archived_at IS NOT NULL)),
+    CONSTRAINT feedback_ideas_response_check CHECK (
+        (team_response IS NULL) = (team_response_at IS NULL)
+        AND (team_response IS NULL OR char_length(btrim(team_response)) BETWEEN 1 AND 2000)
+    ),
+    CONSTRAINT feedback_ideas_pii_categories_check CHECK (
+        pii_categories <@ ARRAY['email', 'payment_link', 'handle', 'phone']::text[]
+    )
+);
+
+-- One vote per person per idea — the primary key IS the uniqueness rule, so a second vote is a no-op
+-- (the door inserts ON CONFLICT DO NOTHING) and never a second row. Retracting a vote deletes it;
+-- closing an account retracts that person's votes (CASCADE), and the count trigger follows both.
+CREATE TABLE community.feedback_votes (
+    idea_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT feedback_votes_pkey PRIMARY KEY (idea_id, user_id),
+    CONSTRAINT feedback_votes_idea_id_fkey
+        FOREIGN KEY (idea_id) REFERENCES community.feedback_ideas (id) ON DELETE RESTRICT,
+    CONSTRAINT feedback_votes_user_id_fkey
+        FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE CASCADE
+);
+
+-- Every status an idea has held, append-only (trg_feedback_status_events_append_only): the
+-- submission (from NULL → backlog) and each operator move after it. The board's status history reads
+-- this; `actor_id` and `note` are operator-side and withheld from client roles (00002520).
+CREATE TABLE community.feedback_status_events (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    idea_id uuid NOT NULL,
+    from_status text,
+    to_status text NOT NULL,
+    -- Who moved it. An audit column with no FK on purpose: the history outlives an erased account
+    -- as an opaque id, and an append-only row cannot take an ON DELETE SET NULL.
+    actor_id uuid,
+    note text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT feedback_status_events_pkey PRIMARY KEY (id),
+    CONSTRAINT feedback_status_events_idea_id_fkey
+        FOREIGN KEY (idea_id) REFERENCES community.feedback_ideas (id) ON DELETE RESTRICT,
+    CONSTRAINT feedback_status_events_from_check CHECK (
+        from_status IS NULL
+        OR from_status IN ('backlog', 'ready', 'in_progress', 'complete', 'archived')
+    ),
+    CONSTRAINT feedback_status_events_to_check CHECK (
+        to_status IN ('backlog', 'ready', 'in_progress', 'complete', 'archived')
+    ),
+    CONSTRAINT feedback_status_events_moves_check CHECK (from_status IS DISTINCT FROM to_status),
+    CONSTRAINT feedback_status_events_note_length CHECK (note IS NULL OR char_length(note) <= 1000)
+);
 -- #endregion

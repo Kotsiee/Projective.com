@@ -20,6 +20,11 @@ import { signal } from "@preact/signals";
 import type { ContextRole, ContextType, UserContext } from "@projective/types/auth";
 import type { ProjectAccess, ProjectStatus } from "@projective/types/projects";
 import { encodeLandingSim, LANDING_SIM_COOKIE } from "@features/projects/core/landing-sim.ts";
+import {
+	BUSINESS_PAGE_SIM_COOKIE,
+	type BusinessPageSim,
+} from "@features/profile/core/business-page-sim.ts";
+import { TEAM_PAGE_SIM_COOKIE, type TeamPageSim } from "@features/profile/core/team-page-sim.ts";
 import { DISCOVERY_SIM_COOKIE, encodeDiscoverySim } from "@features/explore/core/discovery-sim.ts";
 import { EMBEDDINGS_OVERRIDE_COOKIE } from "@projective/types/explore";
 import { AGE_OVERRIDE_COOKIE, OPERATOR_MODE_OVERRIDE_COOKIE } from "@projective/types/auth";
@@ -37,8 +42,10 @@ import {
 	type DevAutoFundMode,
 	type DevAvailabilityConflict,
 	type DevBasketScenario,
+	type DevBusinessKyb,
 	type DevBusinessPlanGates,
 	type DevCatalogueAnalytics,
+	type DevCheckoutGate,
 	type DevClientPipeline,
 	type DevDiscoveryActivity,
 	type DevDiscoveryViewer,
@@ -49,6 +56,7 @@ import {
 	type DevLandingBackground,
 	type DevLayoutDirection,
 	type DevLowBalance,
+	type DevMemberClient,
 	type DevMemberRole,
 	type DevMessagingRole,
 	type DevMicPermission,
@@ -69,6 +77,7 @@ import {
 	type DevSessionBookingStatus,
 	type DevSessionState,
 	type DevSettingsAttention,
+	type DevSpendRequests,
 	type DevStageAssignment,
 	type DevSubmissionState,
 	type DevTrustAdornments,
@@ -90,6 +99,10 @@ export type DevRole = DevSeamRole;
 export type DevProjectAccess = "auto" | ProjectAccess;
 /** A simulated lifecycle status for the open engagement, or `auto` for the real one. */
 export type DevProjectStatus = "auto" | ProjectStatus;
+/** A simulated business `/:handle` state, or `auto` for the database's answer (Decision #244). */
+export type DevBusinessPage = "auto" | BusinessPageSim;
+/** A simulated team `/:handle` state, or `auto` for the database's answer (Teams P1). */
+export type DevTeamPage = "auto" | TeamPageSim;
 /** The engagement delivery format a developer can impersonate (submissions ticket handling). */
 export type {
 	DevAccountLifecycle,
@@ -97,8 +110,10 @@ export type {
 	DevAutoFundMode,
 	DevAvailabilityConflict,
 	DevBasketScenario,
+	DevBusinessKyb,
 	DevBusinessPlanGates,
 	DevCatalogueAnalytics,
+	DevCheckoutGate,
 	DevClientPipeline,
 	DevDiscoveryActivity,
 	DevDiscoveryViewer,
@@ -109,6 +124,7 @@ export type {
 	DevLandingBackground,
 	DevLayoutDirection,
 	DevLowBalance,
+	DevMemberClient,
 	DevMemberRole,
 	DevMessagingRole,
 	DevMicPermission,
@@ -125,6 +141,7 @@ export type {
 	DevSessionBookingStatus,
 	DevSessionState,
 	DevSettingsAttention,
+	DevSpendRequests,
 	DevStageAssignment,
 	DevSubmissionState,
 	DevTrustAdornments,
@@ -204,6 +221,23 @@ export interface DevOverrides {
 	 */
 	projectStatus: DevProjectStatus;
 	/**
+	 * Simulated state of a business's `/:handle` (BP1, Decision #244): a member's view of a draft,
+	 * archived or invite-only business (the member notice), or `missing` — the page as an outsider
+	 * meets it (the "Profile not found" 404). Both seeded businesses are active and public, so this is
+	 * the only route to those states. Server-side, through the `pj.dev.business-page` cookie the
+	 * profile middleware honours in development only; the panel reloads a profile page to apply it.
+	 */
+	businessPage: DevBusinessPage;
+	/**
+	 * Simulated state of a team's `/:handle` (Teams P1): a member's view of a draft, archived or
+	 * invite-only team (the member notice; its Settings link waits for Teams C6's Settings screen), or
+	 * `missing` — the page as an outsider meets it (the "Profile not found" 404). Every seeded team is
+	 * active and public, so this is the only route to those states. Server-side, through the
+	 * `pj.dev.team-page` cookie the profile middleware honours in development only; the panel reloads
+	 * a profile page to apply it.
+	 */
+	teamPage: DevTeamPage;
+	/**
 	 * Simulated acting-member view for the Members tab (task §4) — the four access conditions the roster
 	 * rules branch on (Owner/Admin · Manager · Freelancer assigned · Freelancer unassigned). Consumed by
 	 * the roster island to re-simulate the viewer's capabilities + visible member set.
@@ -213,6 +247,12 @@ export interface DevOverrides {
 	hasPendingInvites: boolean;
 	/** Whether the Members tab's Requests section should carry open applications. */
 	hasPendingRequests: boolean;
+	/**
+	 * Whether the Members tab's engagement is billed to a business client (Decision #294). Only a
+	 * business lets an admin/manager seat manage tickets, and the fixtures carry none, so `business` is
+	 * the only runtime route to the row action that grants it. `auto` defers to the server.
+	 */
+	memberClient: DevMemberClient;
 	/**
 	 * Simulated `/messages` inbox view (task §4) — a NEW axis selecting which advanced-filter set the
 	 * inbox sidebar shows (provider-side vs buyer-side) and whether auto-responses are offered. Consumed
@@ -299,6 +339,12 @@ export interface DevOverrides {
 	/** The Billing module's low-balance warning: `below` shows it, `above` hides it, `auto` reads the floor. */
 	lowBalance: DevLowBalance;
 	/**
+	 * The KYB picture a business's Verification module shows (BU4): unverified, in review, action
+	 * needed or verified. Its own axis because a business's KYB is written only by Stripe's account
+	 * updates; the locks and every money door still read the stored status.
+	 */
+	businessKyb: DevBusinessKyb;
+	/**
 	 * A session's server-only facts (Decision #171): a full cohort, a sitting in progress, every sitting
 	 * over, and a seat escrow waiting out the 24-hour window. Each takes a real booking, a real clock or
 	 * the auto-release sweep to reach, so the listing lane and the session sidebar preview them here.
@@ -322,6 +368,20 @@ export interface DevOverrides {
 	 * account and a delisted item both take other people's actions to reach.
 	 */
 	basketScenario: DevBasketScenario;
+	/**
+	 * A business checkout's gate on the payment step (Decision #243): a refusal offering Request
+	 * approval, a request waiting or approved, nobody else able to approve, the business wallet short,
+	 * or KYB. Its own axis because each takes a threshold, an envelope, a second member's decision or a
+	 * Stripe KYB update to reach; the server still decides every Pay and every request.
+	 */
+	checkoutGate: DevCheckoutGate;
+	/**
+	 * A business Spend module's request queue (Decision #246): none, two waiting on the viewer, the
+	 * viewer's own (Withdraw), the decided history in every terminal state (withdrawn included), or the
+	 * viewer as an approver of a business still in KYB. Its own axis because each takes another member's
+	 * request, a decision or a KYB update to reach; every decision and withdrawal still reaches the server.
+	 */
+	spendRequests: DevSpendRequests;
 	/**
 	 * The saved set behind `/saved` and every star / save control: the real one, nothing saved, or
 	 * saved items of every kind in two collections (Decision #180). Its own axis because filling every
@@ -434,9 +494,12 @@ export const DEV_DEFAULTS: DevOverrides = {
 	projectOnboarding: "auto",
 	projectAccess: "auto",
 	projectStatus: "auto",
+	businessPage: "auto",
+	teamPage: "auto",
 	memberRole: "owner_admin",
 	hasPendingInvites: true,
 	hasPendingRequests: true,
+	memberClient: "auto",
 	messagingRole: "freelancer",
 	micPermission: "auto",
 	layoutDirection: "ltr",
@@ -452,10 +515,13 @@ export const DEV_DEFAULTS: DevOverrides = {
 	revisionAllotment: "auto",
 	autoFundMode: "auto",
 	lowBalance: "auto",
+	businessKyb: "auto",
 	sessionState: "auto",
 	disputeState: "auto",
 	notifications: "auto",
 	basketScenario: "auto",
+	checkoutGate: "auto",
+	spendRequests: "auto",
 	saved: "auto",
 	promoDismissal: "auto",
 	discoveryViewer: "auto",
@@ -545,6 +611,30 @@ export const DEV_PROJECT_STATUSES: ReadonlyArray<DevOption<DevProjectStatus>> = 
 ];
 
 /**
+ * Simulated business-page states in display order (Decision #244). `Auto` defers to the database;
+ * the three reasons are a member's view, `Missing` an outsider's.
+ */
+export const DEV_BUSINESS_PAGES: ReadonlyArray<DevOption<DevBusinessPage>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "draft", label: "Draft" },
+	{ value: "archived", label: "Archived" },
+	{ value: "invite_only", label: "Invite-only" },
+	{ value: "missing", label: "Missing (outsider)" },
+];
+
+/**
+ * Simulated team-page states in display order (Teams P1). `Auto` defers to the database; the three
+ * reasons are a member's view, `Missing` an outsider's.
+ */
+export const DEV_TEAM_PAGES: ReadonlyArray<DevOption<DevTeamPage>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "draft", label: "Draft" },
+	{ value: "archived", label: "Archived" },
+	{ value: "invite_only", label: "Invite-only" },
+	{ value: "missing", label: "Missing (outsider)" },
+];
+
+/**
  * Onboarded-provider options in display order (the project setup surface's immutability locks).
  * `Auto` defers to the server's real count; `First stage` is the per-stage proof case.
  */
@@ -553,6 +643,13 @@ export const DEV_PROJECT_ONBOARDINGS: ReadonlyArray<DevOption<DevProjectOnboardi
 	{ value: "none", label: "Nobody" },
 	{ value: "first_stage", label: "First stage" },
 	{ value: "all_stages", label: "All stages" },
+];
+
+/** Members-tab client options (Decision #294): whether a business is paying, so tickets can be delegated. */
+export const DEV_MEMBER_CLIENTS: ReadonlyArray<DevOption<DevMemberClient>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "business", label: "Business" },
+	{ value: "individual", label: "Individual" },
 ];
 
 /** Members-tab acting-role options in display order (task §4). */
@@ -705,6 +802,15 @@ export const DEV_LOW_BALANCES: ReadonlyArray<DevOption<DevLowBalance>> = [
 	{ value: "above", label: "Above floor" },
 ];
 
+/** Business KYB picture options (the Verification module, BU4). */
+export const DEV_BUSINESS_KYBS: ReadonlyArray<DevOption<DevBusinessKyb>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "unverified", label: "Unverified" },
+	{ value: "in_review", label: "In review" },
+	{ value: "action_needed", label: "Action needed" },
+	{ value: "verified", label: "Verified" },
+];
+
 /** Notification inbox options (DESIGN_SYSTEM §D.9). */
 export const DEV_NOTIFICATIONS: ReadonlyArray<DevOption<DevNotifications>> = [
 	{ value: "auto", label: "Auto" },
@@ -719,6 +825,28 @@ export const DEV_BASKET_SCENARIOS: ReadonlyArray<DevOption<DevBasketScenario>> =
 	{ value: "empty", label: "Empty" },
 	{ value: "multi_owner", label: "Personal + team + business" },
 	{ value: "unavailable", label: "Unavailable item" },
+];
+
+/** Business checkout gate states (the payment step, Decision #243). */
+export const DEV_CHECKOUT_GATES: ReadonlyArray<DevOption<DevCheckoutGate>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "needs_approval", label: "Approval" },
+	{ value: "over_limit", label: "Over limit" },
+	{ value: "pending", label: "Pending" },
+	{ value: "approved", label: "Approved" },
+	{ value: "no_approver", label: "No approver" },
+	{ value: "pool_short", label: "Pool short" },
+	{ value: "kyb_required", label: "KYB" },
+];
+
+/** Business Spend request queues (Decision #246). */
+export const DEV_SPEND_REQUESTS: ReadonlyArray<DevOption<DevSpendRequests>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "empty", label: "None" },
+	{ value: "others_pending", label: "Waiting on me" },
+	{ value: "own_pending", label: "My request" },
+	{ value: "history", label: "Decided" },
+	{ value: "kyb_approver", label: "KYB approver" },
 ];
 
 /** Saved-set scenarios (Decision #180). */
@@ -905,9 +1033,16 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devProjectAccess;
 		if (next.projectStatus !== "auto") root.dataset.devProjectStatus = next.projectStatus;
 		else delete root.dataset.devProjectStatus;
+		if (next.businessPage !== "auto") root.dataset.devBusinessPage = next.businessPage;
+		else delete root.dataset.devBusinessPage;
+		if (next.teamPage !== "auto") root.dataset.devTeamPage = next.teamPage;
+		else delete root.dataset.devTeamPage;
 		root.dataset.devMemberRole = next.memberRole;
 		root.dataset.devPendingInvites = String(next.hasPendingInvites);
 		root.dataset.devPendingRequests = String(next.hasPendingRequests);
+		// Absent = `auto` on the seam, like `projectOnboarding` above.
+		if (next.memberClient !== "auto") root.dataset.devMemberClient = next.memberClient;
+		else delete root.dataset.devMemberClient;
 		root.dataset.devMessagingRole = next.messagingRole;
 		root.dataset.devMicPermission = next.micPermission;
 		// Absent = `auto` on the seam, like `projectOnboarding` above.
@@ -941,6 +1076,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devAutoFundMode;
 		if (next.lowBalance !== "auto") root.dataset.devLowBalance = next.lowBalance;
 		else delete root.dataset.devLowBalance;
+		if (next.businessKyb !== "auto") root.dataset.devBusinessKyb = next.businessKyb;
+		else delete root.dataset.devBusinessKyb;
 		if (next.sessionState !== "auto") root.dataset.devSessionState = next.sessionState;
 		else delete root.dataset.devSessionState;
 		if (next.disputeState !== "auto") root.dataset.devDisputeState = next.disputeState;
@@ -949,6 +1086,10 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devNotifications;
 		if (next.basketScenario !== "auto") root.dataset.devBasketScenario = next.basketScenario;
 		else delete root.dataset.devBasketScenario;
+		if (next.checkoutGate !== "auto") root.dataset.devCheckoutGate = next.checkoutGate;
+		else delete root.dataset.devCheckoutGate;
+		if (next.spendRequests !== "auto") root.dataset.devSpendRequests = next.spendRequests;
+		else delete root.dataset.devSpendRequests;
 		if (next.saved !== "auto") root.dataset.devSaved = next.saved;
 		else delete root.dataset.devSaved;
 		if (next.promoDismissal !== "auto") root.dataset.devPromoDismissal = next.promoDismissal;
@@ -1003,9 +1144,12 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devProjectOnboarding;
 		delete root.dataset.devProjectAccess;
 		delete root.dataset.devProjectStatus;
+		delete root.dataset.devBusinessPage;
+		delete root.dataset.devTeamPage;
 		delete root.dataset.devMemberRole;
 		delete root.dataset.devPendingInvites;
 		delete root.dataset.devPendingRequests;
+		delete root.dataset.devMemberClient;
 		delete root.dataset.devMessagingRole;
 		delete root.dataset.devMicPermission;
 		delete root.dataset.devProfileSetup;
@@ -1020,10 +1164,13 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devRevisionAllotment;
 		delete root.dataset.devAutoFundMode;
 		delete root.dataset.devLowBalance;
+		delete root.dataset.devBusinessKyb;
 		delete root.dataset.devSessionState;
 		delete root.dataset.devDisputeState;
 		delete root.dataset.devNotifications;
 		delete root.dataset.devBasketScenario;
+		delete root.dataset.devCheckoutGate;
+		delete root.dataset.devSpendRequests;
 		delete root.dataset.devSaved;
 		delete root.dataset.devPromoDismissal;
 		delete root.dataset.devDiscoveryViewer;
@@ -1043,6 +1190,8 @@ function reflect(next: DevOverrides): void {
 		root.removeAttribute("dir");
 	}
 	writeLandingCookie(next);
+	writeBusinessPageCookie(next);
+	writeTeamPageCookie(next);
 	writeDiscoveryCookie(next);
 	writeEmbeddingsCookie(next);
 	writeAgeCookie(next);
@@ -1126,6 +1275,28 @@ function writeLandingCookie(next: DevOverrides): void {
 	document.cookie = value
 		? `${LANDING_SIM_COOKIE}=${encodeURIComponent(value)}; path=/; samesite=lax`
 		: `${LANDING_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}
+
+/**
+ * Mirror the business-page axis into the `pj.dev.business-page` cookie — the only channel that reaches
+ * the `/[handle]` middleware, which decides a business page before it renders (Decision #244). Written
+ * while simulation is on and the axis is not `auto`; removed otherwise.
+ */
+function writeBusinessPageCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.businessPage !== "auto"
+		? `${BUSINESS_PAGE_SIM_COOKIE}=${next.businessPage}; path=/; samesite=lax`
+		: `${BUSINESS_PAGE_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}
+
+/**
+ * Mirror the team-page axis into the `pj.dev.team-page` cookie — the only channel that reaches the
+ * `/[handle]` middleware, which decides a team page before it renders (Teams P1). Written while
+ * simulation is on and the axis is not `auto`; removed otherwise.
+ */
+function writeTeamPageCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.teamPage !== "auto"
+		? `${TEAM_PAGE_SIM_COOKIE}=${next.teamPage}; path=/; samesite=lax`
+		: `${TEAM_PAGE_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 /** Patch a subset of the overrides. */

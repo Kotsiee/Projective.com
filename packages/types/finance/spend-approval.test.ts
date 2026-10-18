@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "@std/assert";
-import { SpendApprovalSchema, SpendRefTable } from "./vault.ts";
+import { ApprovalStatus, SpendApprovalSchema, SpendRefTable } from "./vault.ts";
 import { SpendRequestInputSchema, WalletActionRequestSchema } from "./wallet.ts";
 import { CheckoutBlockerSchema, SpendLimitBlockSchema } from "./checkout.ts";
 
@@ -43,6 +43,17 @@ Deno.test("SpendRequestInputSchema: a ref outside the allowed set is refused", (
 	) {
 		assert(!SpendRequestInputSchema.safeParse({ ...request, refTable }).success, refTable);
 	}
+});
+
+Deno.test("ApprovalStatus mirrors finance.approval_status, withdrawn included (Decision #246)", () => {
+	const sql = Deno.readTextFileSync(
+		new URL("../../../supabase/migrations/00000004_enums_domains.sql", import.meta.url),
+	);
+	const match = /CREATE TYPE finance\.approval_status AS ENUM \(([^)]*)\)/.exec(sql);
+	assert(match, "finance.approval_status is no longer declared");
+	const declared = [...match[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+	assertEquals(ApprovalStatus.options, declared);
+	assert(ApprovalStatus.options.includes("withdrawn"));
 });
 
 Deno.test("SpendRefTable mirrors the spend_approvals ref_table CHECK", () => {
@@ -108,7 +119,6 @@ Deno.test("SpendLimitBlockSchema: the request binding defaults to none", () => {
 		spent: zero,
 		remaining: null,
 		periodLabel: null,
-		requestHref: null,
 	});
 	assertEquals(parsed.requestRef, null);
 	assertEquals(parsed.approved, false);

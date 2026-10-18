@@ -104,6 +104,16 @@ GRANT SELECT, UPDATE ON ops.scheduled_jobs TO service_role;
 GRANT SELECT ON ops.http_job_dispatches TO authenticated, service_role;
 
 
+-- #region [contact] ops.contact_requests / ops.contact_request_attachments (Decision #276)
+-- SELECT only, and only operators pass the policy (00002019). No client role holds INSERT, UPDATE or
+-- DELETE: requests arrive through ops.submit_contact_request and move through
+-- ops.set_contact_request_status, both definers; nothing is ever deleted.
+GRANT SELECT ON ops.contact_requests TO authenticated, service_role;
+
+GRANT SELECT ON ops.contact_request_attachments TO authenticated, service_role;
+-- #endregion
+
+
 -- --- from 0219_search_engine_weights.sql ---
 
 GRANT SELECT ON search.search_weights TO authenticated;
@@ -734,14 +744,19 @@ GRANT ALL ON ALL TABLES IN SCHEMA editorial, community TO service_role;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA editorial, community TO service_role;
 
 -- #region [editorial.help]
+-- Read-only for both client roles; the help_articles_select_published policy decides which rows.
+GRANT SELECT ON editorial.help_categories, editorial.help_articles TO anon, authenticated;
 -- #endregion
 
 
 -- #region [editorial.changelog]
+-- Read-only for the client roles; the SELECT policy (00002021) decides which releases they see.
+GRANT SELECT ON editorial.changelog_releases TO anon, authenticated;
 -- #endregion
 
 
 -- #region [editorial.articles]
+GRANT SELECT ON editorial.article_authors, editorial.articles TO anon, authenticated;
 -- #endregion
 
 
@@ -753,10 +768,22 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA editorial, community TO service_r
 
 
 -- #region [community.help_feedback]
+-- community.help_feedback gets NO anon or authenticated grant: votes are written only through
+-- community.submit_help_feedback (00002510) and read only by the service role.
 -- #endregion
 
 
 -- #region [community.feedback]
+-- Reads only, column by column; no client role holds INSERT, UPDATE or DELETE on any board table —
+-- every write is a definer door. Withheld from clients: an idea's `pii_categories` (screening
+-- evidence) and `team_response_by`, and a history row's `actor_id` and `note` (operator-side).
+GRANT SELECT (
+    id, slug, title, impact, body, category, status, author_id, vote_count, team_response,
+    team_response_at, created_at, updated_at, status_changed_at, archived_at
+) ON community.feedback_ideas TO anon, authenticated;
+GRANT SELECT (idea_id, user_id, created_at) ON community.feedback_votes TO authenticated;
+GRANT SELECT (id, idea_id, from_status, to_status, created_at)
+    ON community.feedback_status_events TO anon, authenticated;
 -- #endregion
 
 

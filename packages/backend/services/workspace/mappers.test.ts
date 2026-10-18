@@ -4,6 +4,7 @@
  * parsers — each pinned against the behaviour the console depends on, with an injected clock.
  */
 import { assertEquals, assertStrictEquals } from "@std/assert";
+import { presetCapabilities, type WorkspaceCapability } from "@projective/types/workspace";
 import {
 	activityText,
 	availabilityOf,
@@ -18,18 +19,22 @@ import {
 	projectedShare,
 	projectState,
 	projectStatusLabel,
+	type RawActivity,
 	relativeLabel,
 	rosterStats,
 	setupCompletion,
+	type SetupFacts,
 	setupSteps,
 	spendRequestState,
 	spentInPeriod,
 	toEngagement,
+	toIncomingInvite,
 	toOutgoingInvite,
 	toRoleDef,
 	toSplitRule,
 	usedFraction,
 	verificationPrompt,
+	visibleActivity,
 	wiCapOf,
 	wiOf,
 	workloadPercent,
@@ -95,35 +100,208 @@ Deno.test("createBlockedReason: unlimited or under the cap → null; at the cap 
 
 // #region Setup checklist
 
-Deno.test("setupSteps: five steps, identity to the profile editor, the rest to their modules, by handle", () => {
-	const steps = setupSteps("team", "northloop", {
-		logo: true,
-		bio: false,
-		invite: true,
-		money: false,
-		verified: false,
-	});
-	assertEquals(steps.map((s) => s.id), ["logo", "bio", "invite", "money", "verification"]);
+/** Facts for a brand-new entity, overridden per case. */
+const facts = (over: Partial<SetupFacts> = {}): SetupFacts => ({
+	entityId: "b-1",
+	logo: false,
+	bio: false,
+	activeMembers: 1,
+	invitePending: false,
+	money: false,
+	funded: false,
+	// A plan that lets the business set spending rules (Business Pro, or the gates off).
+	limitsOffered: true,
+	verification: "unverified",
+	published: false,
+	...over,
+});
+
+Deno.test("setupSteps: a team walks invite · split · profile · owner · publish, by handle", () => {
+	const steps = setupSteps("team", "northloop", facts({ logo: true, money: true }));
+	assertEquals(steps.map((s) => s.id), ["invite", "money", "profile", "verification", "publish"]);
 	assertEquals(steps.map((s) => s.href), [
-		"/@northloop/edit",
-		"/@northloop/edit",
 		"/teams/northloop/invitations",
 		"/teams/northloop/payouts",
-		"/teams/northloop/verification",
+		"/@northloop/edit",
+		// The team's verification is the owner's own identity check, finished in their settings.
+		"/settings/verification#identity-check",
+		"/teams/northloop/settings",
 	]);
-	assertEquals(steps.map((s) => s.done), [true, false, true, false, false]);
-	assertEquals(setupCompletion(steps), 0.4);
-	const biz = setupSteps("business", "helia", {
-		logo: true,
-		bio: true,
-		invite: true,
-		money: true,
-		verified: true,
+	// The profile needs BOTH the mark and the one-liner.
+	assertEquals(steps.map((s) => s.done), [false, true, false, false, false]);
+	assertEquals(setupCompletion(steps), 0.2);
+	assertEquals(
+		setupSteps("team", "northloop", facts({ logo: true, bio: true })).map((s) => s.done),
+		[false, false, true, false, false],
+	);
+	const ready = setupSteps("team", "northloop", {
+		...facts({ logo: true, bio: true, money: true, verification: "verified", published: true }),
+		activeMembers: 2,
 	});
-	assertEquals(biz[3].href, "/businesses/helia/spend");
-	assertEquals(biz[4].label, "Finish KYB");
+	assertEquals(setupCompletion(ready), 1);
+});
+
+Deno.test("setupSteps: a team's invite step needs two ACTIVE members — an invitation out is not enough", () => {
+	const pending = setupSteps("team", "northloop", facts({ invitePending: true }))[0];
+	assertEquals(pending.done, false);
+	assertEquals(pending.note.startsWith("An invitation is out"), true);
+	assertEquals(setupSteps("team", "northloop", facts())[0].note.startsWith("A team needs"), true);
+	assertEquals(setupSteps("team", "northloop", facts({ activeMembers: 2 }))[0].done, true);
+	// Published means it has left draft — an archived team was published once.
+	assertEquals(setupSteps("team", "northloop", facts({ published: true }))[4].done, true);
+});
+
+Deno.test("setupSteps: a business walks invite · KYB · Add money · spending rules · publish (BU6)", () => {
+	const biz = setupSteps("business", "helia", {
+		...facts({ money: true, funded: true, verification: "verified", published: true }),
+		invitePending: true,
+	});
+	assertEquals(biz.map((s) => s.id), ["invite", "verification", "fund", "money", "publish"]);
+	assertEquals(biz.map((s) => s.label), [
+		"Invite a colleague",
+		"Verify the business",
+		"Add money",
+		"Set spending rules",
+		"Publish",
+	]);
+	assertEquals(biz.map((s) => s.href), [
+		"/businesses/helia/invitations",
+		"/businesses/helia/verification",
+		// The pooled wallet; the Overview turns it into the wallet's top-up intent.
+		"/wallet?w=business:b-1",
+		"/businesses/helia/spend",
+		"/businesses/helia/settings",
+	]);
+	// A business's invite step is finished by an invitation sent, or a second member.
+	assertEquals(biz[0].done, true);
+	assertEquals(setupSteps("business", "helia", facts({ activeMembers: 2 }))[0].done, true);
+	assertEquals(setupSteps("business", "helia", facts())[0].done, false);
 	assertEquals(setupCompletion(biz), 1);
 	assertEquals(setupCompletion([]), 1);
+	// Add money is done once money was ever added — the read's `funded` — not by a balance.
+	assertEquals(setupSteps("business", "helia", facts())[2].done, false);
+	assertEquals(setupSteps("business", "helia", facts({ funded: true }))[2].done, true);
+	// Published means it has left draft.
+	assertEquals(setupSteps("business", "helia", facts())[4].done, false);
+	// A team never walks Add money, whatever the facts say.
+	assertEquals(
+		setupSteps("team", "northloop", facts({ funded: true })).some((s) => s.id === "fund"),
+		false,
+	);
+});
+
+Deno.test("setupSteps: on a plan that cannot set spending rules (Business Free) the step is left out", () => {
+	const free = setupSteps("business", "helia", facts({ limitsOffered: false }));
+	assertEquals(free.map((s) => s.id), ["invite", "verification", "fund", "publish"]);
+	// Four steps: a Free business is not held at 80% by a step it could never finish.
+	const done = setupSteps("business", "helia", {
+		...facts({ limitsOffered: false, funded: true, verification: "verified", published: true }),
+		activeMembers: 2,
+	});
+	assertEquals(setupCompletion(done), 1);
+	// On Business Pro it is the fourth of five.
+	assertEquals(
+		setupSteps("business", "helia", facts({ limitsOffered: true })).map((s) => s.id),
+		["invite", "verification", "fund", "money", "publish"],
+	);
+});
+
+Deno.test("setupSteps: each step is actionable only for a viewer holding its right", () => {
+	const actionable = (
+		kind: "team" | "business",
+		viewer?: WorkspaceCapability[],
+		viewerIsOwner?: boolean,
+	) =>
+		setupSteps(kind, "northloop", facts({ viewer, viewerIsOwner })).map((s) =>
+			`${s.id}:${s.actionable}`
+		);
+	// No viewer (the roster) — nothing is offered.
+	assertEquals(actionable("team"), [
+		"invite:false",
+		"money:false",
+		"profile:false",
+		"verification:false",
+		"publish:false",
+	]);
+	// A plain member (`view_analytics` only) can act on none of them.
+	assertEquals(actionable("team", ["view_analytics"]).every((s) => s.endsWith(":false")), true);
+	// The owner can act on all five.
+	assertEquals(
+		actionable("team", [...presetCapabilities("owner", "team")], true).every((s) =>
+			s.endsWith(":true")
+		),
+		true,
+	);
+	// One right each.
+	assertEquals(actionable("team", ["invite_members"])[0], "invite:true");
+	assertEquals(actionable("team", ["manage_finances"])[1], "money:true");
+	assertEquals(actionable("team", ["edit_profile"])[2], "profile:true");
+	// Settings publishes, but the owner's identity check is the owner's alone — an admin holding
+	// every right they can be given still cannot finish it for them.
+	assertEquals(actionable("team", ["manage_settings"]).slice(3), [
+		"verification:false",
+		"publish:true",
+	]);
+	assertEquals(
+		actionable("team", [...presetCapabilities("admin", "team")])[3],
+		"verification:false",
+	);
+	assertEquals(actionable("team", [], true)[3], "verification:true");
+	// A business's KYB follows the billing right, not settings or ownership (Decision #230 (d)).
+	assertEquals(actionable("business", ["manage_settings"], true)[1], "verification:false");
+	assertEquals(actionable("business", ["manage_billing"])[1], "verification:true");
+	// Add money is the contribute right's (the vault's `add_funds`); publishing is settings'.
+	assertEquals(actionable("business", ["contribute_funds"]), [
+		"invite:false",
+		"verification:false",
+		"fund:true",
+		"money:false",
+		"publish:false",
+	]);
+	assertEquals(actionable("business", ["manage_settings"])[4], "publish:true");
+	assertEquals(actionable("business", ["manage_finances"])[3], "money:true");
+});
+
+Deno.test("setupSteps: a viewer who may not open Verification gets no control on its step, never a dead end", () => {
+	const unlinked = setupSteps("business", "atlaslabs", {
+		...facts({ money: true, funded: true, published: true, viewer: ["manage_settings"] }),
+		invitePending: true,
+	});
+	assertEquals(unlinked[1].id, "verification");
+	assertEquals(unlinked[1].actionable, false);
+	// The step keeps its page — it is the viewer's right, not the address, that is missing.
+	assertEquals(unlinked.map((s) => s.href), [
+		"/businesses/atlaslabs/invitations",
+		"/businesses/atlaslabs/verification",
+		"/wallet?w=business:b-1",
+		"/businesses/atlaslabs/spend",
+		"/businesses/atlaslabs/settings",
+	]);
+	// The step still counts toward completion whether or not the viewer may act on it.
+	assertEquals(setupCompletion(unlinked), 0.8);
+});
+
+Deno.test("setupSteps: a verification with the reviewers says so and offers nobody a control", () => {
+	for (const kind of ["team", "business"] as const) {
+		const owner = [...presetCapabilities("owner", kind)];
+		const open = setupSteps(kind, "northloop", facts({ viewer: owner, viewerIsOwner: true }));
+		const review = setupSteps(kind, "northloop", {
+			...facts({ viewer: owner, viewerIsOwner: true }),
+			verification: "pending",
+		});
+		const step = (steps: ReturnType<typeof setupSteps>) =>
+			steps.find((s) => s.id === "verification")!;
+		assertEquals(step(open).actionable, true, kind);
+		assertEquals([step(review).done, step(review).actionable], [false, false], kind);
+		assertEquals(step(review).note.includes("with our reviewers"), true, kind);
+		assertEquals(step(open).note.includes("reviewers"), false, kind);
+		// Only the verification step changes: the rest stay the viewer's to act on.
+		assertEquals(
+			review.filter((s) => s.id !== "verification").every((s) => s.actionable),
+			true,
+			kind,
+		);
+	}
 });
 
 Deno.test("verificationPrompt: null once verified, worded by kind and state otherwise", () => {
@@ -257,6 +435,38 @@ Deno.test("toOutgoingInvite: an email-only invite has no handle and is named by 
 	]);
 });
 
+Deno.test("toIncomingInvite: the note and the expiry travel; a blank note is no note", () => {
+	const raw = {
+		id: "i3",
+		entity_id: "t1",
+		entity_name: "Northwind Studio",
+		entity_handle: "northwind",
+		entity_avatar_file_id: null,
+		from_user_id: "u1",
+		role_name: "Lead",
+		note: "  Come build with us.  ",
+		created_at: daysAgo(1),
+		expires_at: "2026-10-08T12:00:00+00:00",
+	};
+	const from = { username: "noor", name: "Noor Haddad", avatar: null };
+	const inv = toIncomingInvite("team", raw, from, "", NOW);
+	assertEquals([inv.kind, inv.roleLabel, inv.fromHandle, inv.note, inv.expiresAt], [
+		"team",
+		"Lead",
+		"noor",
+		"Come build with us.",
+		"2026-10-08T12:00:00.000Z",
+	]);
+	const bare = toIncomingInvite(
+		"business",
+		{ ...raw, note: "   ", expires_at: null },
+		undefined,
+		"",
+		NOW,
+	);
+	assertEquals([bare.note, bare.expiresAt, bare.fromName], [null, null, "A member"]);
+});
+
 // #endregion
 
 // #region Projects & activity
@@ -277,6 +487,24 @@ Deno.test("projectState / projectStatusLabel / progressOf", () => {
 	assertEquals(progressOf(1, 3), 1 / 3);
 	assertEquals(progressOf(4, 3), 1);
 	assertEquals(progressOf(0, 0), 0);
+});
+
+Deno.test("visibleActivity: money movements only for a viewer who may open Finance", () => {
+	const events: RawActivity[] = [
+		{ kind: "member", event: "joined", actor_user_id: "u1", at: daysAgo(1) },
+		{
+			kind: "money",
+			event: "add_funds",
+			actor_user_id: "u2",
+			amount_minor: 1_000,
+			currency: "USD",
+			at: daysAgo(2),
+		},
+		{ kind: "member", event: "joined", actor_user_id: "u3", at: daysAgo(3) },
+	];
+	assertEquals(visibleActivity(events, true), events);
+	assertEquals(visibleActivity(events, false).map((e) => e.actor_user_id), ["u1", "u3"]);
+	assertEquals(visibleActivity([], false), []);
 });
 
 Deno.test("activityText: one line per event, money in its own currency", () => {
@@ -457,6 +685,8 @@ Deno.test("spendRequestState: rejected → declined, a lapsed pending request is
 	assertEquals(spendRequestState("pending", daysAgo(-3), NOW), "pending");
 	assertEquals(spendRequestState("pending", daysAgo(1), NOW), "expired");
 	assertEquals(spendRequestState("pending", null, NOW), "pending");
+	// Withdrawn is its requester's terminal state, whatever the expiry says (Decision #246).
+	assertEquals(spendRequestState("withdrawn", daysAgo(1), NOW), "withdrawn");
 });
 
 Deno.test("spentInPeriod: a reset period has spent nothing; a total limit never resets", () => {

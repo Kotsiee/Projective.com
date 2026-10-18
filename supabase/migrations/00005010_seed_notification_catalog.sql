@@ -130,8 +130,24 @@ ON CONFLICT (key) DO NOTHING;
 -- each key to KNOWN_NOTIFICATION_TYPES in packages/types/comms/catalog.ts, in the same-named region.
 
 -- #region [contact] Contact requests (P3)
+-- Operators only (Decision #276): sent by ops.submit_contact_request to every ops.admin_users row. Not
+-- mandatory and digestible — a burst of requests may arrive as a digest; the body names the intent and
+-- the reference, never the sender's words. No action URL: there is no operator contact desk yet.
+INSERT INTO comms.notification_types
+    (key, aliases, category, urgency, default_channels, mandatory, overrides_quiet_hours, digestible, audit, group_window, action_url_template, default_lead_time, description)
+VALUES
+('contact.received',         '{}',                'system',    'medium',   ARRAY['in_app','email']::comms.notification_channel[],        false, false, true,  false, NULL,              NULL,                                        NULL, 'Operators only: a request arrived through /contact.')
+ON CONFLICT (key) DO NOTHING;
 -- #endregion
 
 
 -- #region [feedback] Feedback board status changes (P7)
+-- Sent by community.set_feedback_idea_status to an idea's author and everyone who voted for it (never
+-- the operator who moved it), linking `/feedback?idea=<slug>`. Opt-out-able and digestible; a second
+-- move of the same idea within a day collapses into the first (`group_key` = `feedback:<slug>`).
+INSERT INTO comms.notification_types
+    (key, aliases, category, urgency, default_channels, mandatory, overrides_quiet_hours, digestible, audit, group_window, action_url_template, default_lead_time, description)
+VALUES
+('feedback.status_changed',  '{}',                'discovery', 'low',      ARRAY['in_app','email']::comms.notification_channel[],        false, false, true,  false, '1 day',           NULL,                                        NULL, 'An idea you suggested or voted for on the feedback board moved to Planned, In progress, Shipped or Archived.')
+ON CONFLICT (key) DO NOTHING;
 -- #endregion

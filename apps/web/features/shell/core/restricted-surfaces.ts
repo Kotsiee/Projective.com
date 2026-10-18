@@ -2,10 +2,11 @@ import type { UserContext } from "@projective/types/auth";
 
 /**
  * The surfaces a restricted (13–17) account never sees (PRODUCT_SPEC §Age guardrails, Decision #192):
- * money, selling and the workspaces that exist to buy or sell. One list, read by the dashboard guard
- * (a direct visit is sent home) and by the chrome (the entry is left out), so a hidden link and a
- * guarded page can never disagree. The database refuses every action behind them on its own
- * (`org.fn_assert_adult`); this decides only what is drawn.
+ * money, selling, the workspaces that exist to buy or sell, and the IP workspace where sold work
+ * changes hands. One list, read by the dashboard guard (a direct visit is sent home) and by the chrome
+ * (the entry is left out), so a hidden link and a guarded page can never disagree. The database
+ * refuses every action behind them on its own (`org.fn_assert_adult`); this decides only what is
+ * drawn.
  */
 export const RESTRICTED_PATH_PREFIXES: readonly string[] = [
 	"/wallet",
@@ -21,6 +22,9 @@ export const RESTRICTED_PATH_PREFIXES: readonly string[] = [
 	"/settings/verification",
 	"/settings/billing",
 	"/settings/scheduling",
+	// The IP chain-of-title workspace (Decision #270): a restricted account never sells or transfers
+	// work, so it has nothing there.
+	"/legal/workspace",
 ];
 
 /** Whether `path` is, or sits under, one of {@link RESTRICTED_PATH_PREFIXES}. */

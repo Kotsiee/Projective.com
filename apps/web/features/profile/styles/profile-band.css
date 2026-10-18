@@ -156,6 +156,11 @@
     flex: none;
 }
 
+/* A team editor's Manage team carries its glyph for the phone fold only; above it, words alone. */
+.pf-band .pf-rig__cta--manage .ui-button__icon {
+    display: none;
+}
+
 /* #endregion */
 
 /* #region Density */
@@ -163,7 +168,9 @@
  * The name and the rig are the two facts that identify what is on screen and what can be done; the
  * kind line and the facts are the first to go as the row runs out of width. Below the tablet cusp
  * the kind goes; below the phone cusp the facts go with it and Add to project folds to its glyph —
- * its accessible name is the label it just lost, so nothing is lost to a screen reader.
+ * its accessible name is the label it just lost, so nothing is lost to a screen reader. A team
+ * editor's Manage team (Teams P1) folds with it, to a circle of the icon pair's size: it is twice
+ * Hire's width, and in words it would starve the name to its first letters.
  */
 @media (max-width: 1100px) {
     .pf-band__meta {
@@ -180,8 +187,18 @@
         --btn-px: var(--space-2);
     }
 
-    .pf-band .pf-rig__cta--add .ui-button__label {
+    .pf-band .pf-rig__cta--add .ui-button__label,
+    .pf-band .pf-rig__cta--manage .ui-button__label {
         display: none;
+    }
+
+    .pf-band .pf-rig__cta--manage {
+        --btn-px: 0;
+        inline-size: var(--btn-height);
+    }
+
+    .pf-band .pf-rig__cta--manage .ui-button__icon {
+        display: inline-flex;
     }
 }
 

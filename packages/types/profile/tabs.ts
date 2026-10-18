@@ -131,6 +131,16 @@ export const MemberEntrySchema = z.object({
 	/** Entity kind of the member (drives which reputation applies). */
 	kind: z.enum(["user", "freelancer"]),
 	/**
+	 * ISO join date — a team or business roster row's "since" (BP1, Decision #244; Teams P1); absent
+	 * for an enterprise.
+	 */
+	since: z.string().max(40).optional(),
+	/**
+	 * The member's top two skills, by label — a team roster row's trailing facts (Teams P1), rendered
+	 * as MetaLine text, never chips (§B.11). Absent for the other kinds.
+	 */
+	skills: z.array(z.string().max(80)).max(2).optional(),
+	/**
 	 * Department ids this member belongs to (Enterprise only). A member may sit in MORE than one
 	 * department — the grouped roster renders their row under every listed department. Empty for
 	 * team/business members (a flat roster). Ids reference {@link DepartmentEntry.id}.

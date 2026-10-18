@@ -396,13 +396,15 @@ Deno.test("workspace styles: figure classes are tabular", () => {
 		".wsp-card__stat-delta",
 		".wsp-split__pip",
 		".wsp-split__drift-text",
-		// Text that carries a count or an amount: the lane's entity count, a role's member count, a
-		// band's live queue count ("2 requests waiting"), a counterparty's "+N" and a feed line's sum.
-		".wsp-lane__note",
+		// Text that carries a count or an amount: the lane's queue count, a role's member count, a
+		// band's live queue count ("2 requests waiting") and a feed line's sum. (A projects-preview
+		// row's facts are a MetaLine, whose figures set their own `tabular-nums`.)
+		".wsp-lane__navcount",
 		".wsp-matrix__rownote",
 		".wsp-band__title",
-		".wsp-projects__party",
 		".wsp-activity__text",
+		// A metric tile's caption: "of 50 this week", "1 invitation out".
+		".wsp-tiles .ui-stat__caption",
 	]
 		.filter((selector) => {
 			const at = all.search(new RegExp(`(^|\\n)${selector.replace(/[.-]/g, "\\$&")}\\s*\\{`));
@@ -427,8 +429,26 @@ Deno.test("workspace styles: the body and micro money steps keep the minor run w
 
 Deno.test("workspace styles: the dead rules stay deleted", () => {
 	assertNone(
-		offences(/\.wsp-skel\b|\.wsp-lane__new\b|\.wsp-footerrig__action\[data-variant/),
+		offences(
+			/\.wsp-skel\b|\.wsp-lane__new\b|\.wsp-footerrig__action\[data-(variant|locked)|\.wsp-lane__(filter|switch|row|verify|foot|note)\b|\.wsp-rail__verify\b|\.wsp-verdict\b/,
+		),
 		"a deleted dead selector is back:",
+	);
+	// The header band and footer rig before Teams L2: the hand-rolled tab strip, the Popover menu and
+	// the rig's ghost-button extras — and the L2 review's folded-label and painted-toggle overrides of
+	// the shared Button, replaced by two presentations and Button's own engaged state.
+	assertNone(
+		offences(
+			/\.wsp-headerband__(tab|identity|name|handle|badge|divider|controls|icon|panel)\b|\.wsp-footerrig__(more|menu|note|nudge|fold|toggle)\b/,
+		),
+		"a deleted dead selector is back:",
+	);
+});
+
+Deno.test("workspace styles: the bands never reach inside a shared Button", () => {
+	assertNone(
+		offences(/\.ui-button__(label|icon)\b|--btn-[a-z-]+\s*:/),
+		"a workspace sheet restyles the inside of ui Button:",
 	);
 });
 

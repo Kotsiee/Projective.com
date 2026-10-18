@@ -51,7 +51,13 @@ GRANT EXECUTE ON FUNCTION projects.has_project_access (uuid) TO anon, authentica
 GRANT EXECUTE ON FUNCTION projects.has_stage_access (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.can_review_project (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.can_manage_project_members (uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.is_ticket_manager (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.is_cohort_member (uuid) TO anon, authenticated;
+
+-- Who may move a claimed ticket (Decision #293). trg_ticket_immutability_guard is INVOKER and calls
+-- it for a statement PostgREST runs as `authenticated`, so that role must be able to execute it. It
+-- writes nothing and answers only about auth.uid(); called directly it raises or returns, no more.
+GRANT EXECUTE ON FUNCTION projects.fn_assert_ticket_move (uuid, uuid, public.ticket_status, public.ticket_status, uuid, uuid) TO authenticated;
 
 -- The business-authority predicates (BB2): each answers only about auth.uid(), so a signed-in caller
 -- may ask them of a project (the app reads them to decide which commit to offer). Not `anon`: a
@@ -142,6 +148,8 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA editorial, community TO service_role;
 
 
 -- #region [editorial.changelog]
+-- Nothing to grant back: editorial.fn_guard_release_version_immutable() is a trigger function, which
+-- needs no EXECUTE for the writer that fires it, and the changelog is read straight from its table.
 -- #endregion
 
 
@@ -158,10 +166,31 @@ GRANT EXECUTE ON FUNCTION community.subscribe_newsletter (text, text, text) TO s
 
 
 -- #region [community.help_feedback]
+-- The vote's one writer, open to guests and members alike: it stamps the voter from auth.uid() itself
+-- and rate-limits, so reaching it as a browser RPC grants nothing the help route does not.
+REVOKE ALL ON FUNCTION community.submit_help_feedback (text, boolean, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION community.submit_help_feedback (text, boolean, text) TO anon, authenticated, service_role;
 -- #endregion
 
 
 -- #region [community.feedback]
+-- The board's doors (00001320): each stamps auth.uid() itself, so a guest is refused by the grant and
+-- a signed-in caller by the body. The trigger functions and internal helpers stay revoked (above).
+REVOKE ALL ON FUNCTION community.submit_feedback_idea (text, text, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION community.submit_feedback_idea (text, text, text, text) TO authenticated;
+REVOKE ALL ON FUNCTION community.vote_feedback_idea (text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION community.vote_feedback_idea (text) TO authenticated;
+REVOKE ALL ON FUNCTION community.unvote_feedback_idea (text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION community.unvote_feedback_idea (text) TO authenticated;
+REVOKE ALL ON FUNCTION community.set_feedback_idea_status (text, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION community.set_feedback_idea_status (text, text, text) TO authenticated;
+REVOKE ALL ON FUNCTION community.respond_to_feedback_idea (text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION community.respond_to_feedback_idea (text, text) TO authenticated;
+REVOKE ALL ON FUNCTION community.moderate_feedback_idea (text, text, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION community.moderate_feedback_idea (text, text, text, text) TO authenticated;
+-- The tab counts are an INVOKER read under the caller's own policies, so guests may run it too.
+REVOKE ALL ON FUNCTION community.feedback_status_counts () FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION community.feedback_status_counts () TO anon, authenticated;
 -- #endregion
 
 -- --- from 0200_permissions.sql ---
@@ -1306,11 +1335,14 @@ REVOKE ALL ON FUNCTION projects.fn_stage_revision_terms () FROM PUBLIC, anon, au
 
 -- SECURITY DEFINER writes into security.audit_logs / comms.fn_notify, which no client role reaches, so
 -- the grant is part of the access decision: signed-in callers only. Each body also refuses a NULL
--- auth.uid() itself and applies its own authority check (set_member_role: can_review_project;
--- invite_by_email, act_on_invitation and the stage invite-link doors: can_manage_project_members;
--- resolve/redeem_invite_link: any signed-in holder of the token).
+-- auth.uid() itself and applies its own authority check (set_member_role and set_ticket_manager:
+-- can_review_project + `hire`; invite_by_email, act_on_invitation and the stage invite-link doors:
+-- can_manage_project_members; resolve/redeem_invite_link: any signed-in holder of the token).
 REVOKE ALL ON FUNCTION projects.set_member_role (uuid, uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.set_member_role (uuid, uuid, text) TO authenticated;
+
+REVOKE ALL ON FUNCTION projects.set_ticket_manager (uuid, uuid, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.set_ticket_manager (uuid, uuid, boolean) TO authenticated;
 
 REVOKE ALL ON FUNCTION projects.invite_by_email (uuid, uuid, text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.invite_by_email (uuid, uuid, text, text) TO authenticated;
@@ -1701,6 +1733,8 @@ GRANT EXECUTE ON FUNCTION org.upsert_workspace_role (text, uuid, uuid, text, tex
 GRANT EXECUTE ON FUNCTION org.archive_workspace_role (text, uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION org.get_workspace_roster (text) TO authenticated;
 GRANT EXECUTE ON FUNCTION org.get_workspace_detail (text, text) TO authenticated;
+-- The Talent module's bench (00001020 §17, BU5): answers `forbidden` to anybody without `hire`.
+GRANT EXECUTE ON FUNCTION org.get_business_bench (text) TO authenticated;
 
 -- Money governance (00001210 §13). The finance schema is deny-by-default (above), so each is granted.
 GRANT EXECUTE ON FUNCTION finance.save_team_split (uuid, jsonb) TO authenticated;
@@ -1712,6 +1746,11 @@ GRANT EXECUTE ON FUNCTION finance.preview_spend_envelope (uuid, jsonb) TO authen
 -- business; only those definers call it.
 REVOKE ALL ON FUNCTION finance.fn_business_envelopes (uuid, uuid, jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION finance.request_spend_approval (uuid, bigint, text, text, uuid) TO authenticated;
+-- The requester's own door back out of a pending request (BU2, Decision #246).
+REVOKE ALL ON FUNCTION finance.withdraw_spend_approval (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.withdraw_spend_approval (uuid) TO authenticated;
+-- What a request is for: it reads any business's rows, so only the detail read (a definer) calls it.
+REVOKE ALL ON FUNCTION finance.fn_spend_ref (text, uuid) FROM PUBLIC, anon, authenticated;
 
 -- The wallet ledger reads (00001210 §14). SECURITY INVOKER: each answers under the caller's own RLS, so
 -- granting them reaches no row the caller could not already select. A signed-out caller has nothing to
@@ -1930,6 +1969,25 @@ REVOKE ALL ON FUNCTION ops.fn_report_failed_runs () FROM PUBLIC, anon, authentic
 REVOKE ALL ON FUNCTION ops.fn_watch_jobs () FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION ops.run_job (text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION ops.run_job (text) TO service_role;
+-- #endregion
+
+-- #region [contact] Contact requests (00001655, Decision #276)
+-- The intake door is the one public RPC: a guest (`anon`) and a signed-in sender (`authenticated`)
+-- both reach it, and it re-checks everything they send. The operator's status move is reachable by
+-- a signed-in caller and refuses anyone but security.is_admin(). The reference generator and the
+-- record guard run only inside them (as their owner), so no role holds them.
+REVOKE ALL ON FUNCTION ops.fn_contact_reference () FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION ops.fn_guard_contact_request () FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION ops.submit_contact_request (text, text, boolean, jsonb, uuid[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION ops.submit_contact_request (text, text, boolean, jsonb, uuid[]) TO anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION ops.set_contact_request_status (text, text) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION ops.set_contact_request_status (text, text) TO authenticated;
+-- Remove on an unsent attachment: a signed-in sender, for their own files only (checked inside).
+REVOKE ALL ON FUNCTION ops.discard_contact_attachment (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION ops.discard_contact_attachment (uuid) TO authenticated, service_role;
+-- The sweep's claim: the app's cron route only, as the service role.
+REVOKE ALL ON FUNCTION ops.fn_claim_stale_contact_attachments (interval, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION ops.fn_claim_stale_contact_attachments (interval, integer) TO service_role;
 -- #endregion
 
 -- #region Service instantiation (00001175, Decision #209)

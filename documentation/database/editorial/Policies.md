@@ -26,12 +26,42 @@ and `USING (true)`.
 
 ## Help
 
-_Not yet documented._ (P2.)
+RLS on both tables (`00002001`, `[editorial.help]`); `GRANT SELECT` to `anon` and `authenticated`
+(`00002520`) and nothing else.
+
+| Policy                           | Table                       | Command | Roles               | Rule                                                                                                                                                                             |
+| :------------------------------- | :-------------------------- | :------ | :------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `help_categories_select_public`  | `editorial.help_categories` | SELECT  | anon, authenticated | `true` — categories are never hidden.                                                                                                                                            |
+| `help_articles_select_published` | `editorial.help_articles`   | SELECT  | anon, authenticated | `published_on <= (now() AT TIME ZONE 'UTC')::date AND (archived_on IS NULL OR archived_on > (now() AT TIME ZONE 'UTC')::date)` — the content source's `visible`, never narrower. |
+
+Verified by `supabase/probes/help_centre.sql`: anon reads every published article and no future or
+archived one, and neither client role may INSERT, UPDATE or DELETE either table (`42501`).
 
 ## Changelog
 
-_Not yet documented._ (P5.)
+| Table                          | RLS | Policy                             | Command | Roles                   | Rule                                                                |
+| :----------------------------- | :-- | :--------------------------------- | :------ | :---------------------- | :------------------------------------------------------------------ |
+| `editorial.changelog_releases` | on  | `changelog_releases_select_public` | SELECT  | `anon`, `authenticated` | `NOT withdrawn AND released_on <= (now() AT TIME ZONE 'UTC')::date` |
+
+The rule is the content source's `visible` predicate (`!withdrawn && releasedOn <= UTC today`),
+pinned to UTC so it is never narrower than it whatever the session's TimeZone. Privileges
+(`00002520`, `[editorial.changelog]`): `GRANT SELECT … TO anon, authenticated` only — no client
+INSERT, UPDATE, DELETE or TRUNCATE; the service role holds the writes through the schema-wide grant.
+Pinned by `supabase/probes/editorial_changelog.sql` (one SELECT policy, read-only client roles, a
+scheduled and a withdrawn release invisible to both roles, every client write refused `42501`).
 
 ## Articles
 
-_Not yet documented._ (P6.)
+RLS enabled on both tables (`00002001`, `[editorial.articles]`); policies in `00002021`; grants in
+`00002520` — `SELECT` on both tables to `anon` and `authenticated`, nothing else.
+
+| Table                       | Policy                          | Command | Roles                   | Rule                                             |
+| :-------------------------- | :------------------------------ | :------ | :---------------------- | :----------------------------------------------- |
+| `editorial.article_authors` | `article_authors_select_public` | SELECT  | `anon`, `authenticated` | `true` — a byline is never hidden                |
+| `editorial.articles`        | `articles_select_published`     | SELECT  | `anon`, `authenticated` | `status = 'published' AND published_at <= now()` |
+
+The article rule is exactly the content source's `visible` predicate (`isEditorialArticleVisible`),
+so a draft, a future-dated article and a retracted one are hidden from a direct PostgREST read as
+from both reader roads. No client role writes either table. Pinned by
+`supabase/probes/editorial_articles.sql` (the anon and authenticated reads, the refused writes, the
+slug guard, every CHECK) and `services/editorial/articles-sql.test.ts`.

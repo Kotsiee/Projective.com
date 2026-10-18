@@ -85,7 +85,7 @@ CREATE TYPE finance.pot_purpose      AS ENUM ('tax', 'savings', 'goal', 'general
 -- org.workspace_capability (org.fn_sync_vault_permissions), never hand-maintained.
 CREATE TYPE finance.vault_capability AS ENUM ('view', 'add_funds', 'spend', 'distribute', 'withdraw', 'manage_members', 'manage_billing', 'approve_spend');
 CREATE TYPE finance.split_rule_type  AS ENUM ('co_op', 'finders_fee', 'benevolent_dictator');
-CREATE TYPE finance.approval_status  AS ENUM ('pending', 'approved', 'rejected', 'expired');
+CREATE TYPE finance.approval_status  AS ENUM ('pending', 'approved', 'rejected', 'expired', 'withdrawn'); -- withdrawn: Decision #246
 CREATE TYPE finance.vault_action     AS ENUM ('add_funds', 'spend', 'distribute', 'withdraw', 'transfer');
 -- Fund states & settlement
 CREATE TYPE finance.fund_state       AS ENUM ('locked', 'pending', 'available', 'on_hold');

@@ -1,13 +1,21 @@
 import type { JSX } from "preact";
-import { kindCopy, walletHrefFor, type WorkspaceDetail } from "@projective/types/workspace";
+import {
+	type BusinessBench,
+	kindCopy,
+	walletHrefFor,
+	type WorkspaceDetail,
+} from "@projective/types/workspace";
 import { moduleFor, type ModuleKey } from "../core/module-registry.tsx";
 import { ModulePlaceholder } from "./ModulePlaceholder.tsx";
+import { BusinessFinanceHead } from "./BusinessFinanceHead.tsx";
 import WorkspaceOverview from "../islands/WorkspaceOverview.island.tsx";
+import TalentScreen from "../islands/TalentScreen.island.tsx";
 import MembersScreen from "../islands/MembersScreen.island.tsx";
 import RolesMatrix from "../islands/RolesMatrix.island.tsx";
 import PayoutPolicyScreen from "../islands/PayoutPolicyScreen.island.tsx";
 import SpendPolicyScreen from "../islands/SpendPolicyScreen.island.tsx";
 import BillingScreen from "../islands/BillingScreen.island.tsx";
+import BusinessVerificationScreen from "../islands/BusinessVerificationScreen.island.tsx";
 import type { BusinessBillingView } from "@projective/types/finance";
 
 /**
@@ -31,6 +39,10 @@ export interface ModuleScreenProps {
 	view?: string | null;
 	/** The Billing module's projection, read server-side for a business's `billing` module. */
 	billing?: BusinessBillingView | null;
+	/** The Talent module's bench, read server-side for a business's `talent` module. */
+	bench?: BusinessBench | null;
+	/** Why the bench could not be read, when it could not. */
+	benchError?: string | null;
 }
 
 /** Render the body for one module. */
@@ -82,8 +94,27 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 				/>
 			);
 
+		case "talent":
+			// The bench (Decision #230 (i)) is a business's; a team never reaches this module.
+			return ws.kind === "business"
+				? (
+					<TalentScreen
+						businessName={ws.name}
+						businessHandle={ws.handle}
+						canHire={ws.viewerCan?.hire ?? false}
+						viewerHandle={ws.members.find((m) => m.isSelf)?.handle ?? null}
+						initial={props.bench ?? null}
+						initialError={props.bench
+							? null
+							: (props.benchError ?? "The bench couldn't be read just now. Try again in a moment.")}
+					/>
+				)
+				: <ModulePlaceholder kind={ws.kind} module={mod!} />;
+
 		// --- Modules that DELEGATE to a surface that already exists -----------------------------------
 		case "finance":
+			// A business's Finance is a real head on its pooled wallet (BU6); a team's still hands off.
+			if (ws.kind === "business") return <BusinessFinanceHead workspace={ws} module={mod!} />;
 			return (
 				<ModulePlaceholder
 					kind={ws.kind}
@@ -158,12 +189,29 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 				/>
 			);
 		case "verification":
+			// A business's KYB is a real screen on BB9's read; a team's verification is still next.
+			if (ws.kind === "business") {
+				return (
+					<BusinessVerificationScreen
+						businessId={ws.id}
+						name={ws.name}
+						kyb={ws.kyb ?? {
+							status: ws.verification,
+							verifiedAt: null,
+							connectOnboardingUrl: null,
+							requirementsDue: [],
+							processorConnected: false,
+						}}
+						canStart={ws.viewerCan?.startKyb === true}
+					/>
+				);
+			}
 			return (
 				<ModulePlaceholder
 					kind={ws.kind}
 					module={mod!}
 					note={ws.verificationPrompt ??
-						`${ws.name} is verified — payouts and pooled spending are unlocked.`}
+						`${ws.name}'s owner is verified, so the team can withdraw what it earns.`}
 				/>
 			);
 

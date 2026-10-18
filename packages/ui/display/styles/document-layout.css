@@ -210,6 +210,37 @@
 		font-size: var(--text-lg);
 	}
 }
+
+/*
+ * Feed (the changelog): from --bp-md of frame each entry sets a dated gutter beside its body, so the
+ * column widens by that gutter and its gap — the body still reads at --measure. The surface's own
+ * timeline reads --doc-feed-gutter for the gutter itself.
+ */
+.ui-doc--feed {
+	--doc-feed-gutter: 8.5rem;
+}
+
+@container ui-doc (min-width: 768px) {
+	.ui-doc--feed .ui-doc__article {
+		grid-template-columns: minmax(0, calc(var(--measure) + var(--doc-feed-gutter) +
+			var(--space-6)));
+	}
+}
+
+/*
+ * Article: a quotation is a pull quote in the display register (§A.4) — the sans face, one step above
+ * the prose, light weight so it never reads as a section heading of the same size, tight tracking —
+ * still on the one inline-start --hairline the prose gives every quote. Its attribution keeps the meta
+ * register.
+ */
+.ui-doc--article .ui-prose__quote {
+	font-family: var(--font-sans);
+	font-size: var(--text-xl);
+	font-weight: var(--fw-light);
+	line-height: var(--leading-snug);
+	letter-spacing: var(--tracking-tight);
+	text-wrap: balance;
+}
 /* #endregion */
 
 /* #region Header — display · lead · meta (§A.4's registers) */
@@ -251,11 +282,19 @@
 	text-wrap: pretty;
 }
 
-/* Non-actionable facts (§B.11.2): one Meta-register line, middot-separated, never chips. */
+/*
+ * Non-actionable facts (§B.11.2): one Meta-register line, middot-separated, never chips. The facts
+ * wrap as whole units, and a fact that starts a line never shows its separator: each separator hangs
+ * in the column gap before its fact (below), and the gap before a line's first fact lies outside the
+ * list's own box, which clips it.
+ */
 .ui-doc-header__meta {
+	--doc-meta-gap: var(--space-5);
 	display: flex;
 	flex-wrap: wrap;
 	align-items: baseline;
+	column-gap: var(--doc-meta-gap);
+	overflow: clip;
 	margin: var(--space-4) 0 0;
 	padding: 0;
 	list-style: none;
@@ -267,13 +306,23 @@
 	color: var(--text-secondary);
 }
 
+/*
+ * Each fact is still a flex item of the list, but its own content is in flow, not a nested flex row:
+ * as flex items of an inline-flex fact, the text runs lost their edge spaces, so "Updated <time>"
+ * read "Updated17 October 2026". In flow the words and the <time> share one line box and baseline.
+ */
 .ui-doc-header__meta-item {
-	display: inline-flex;
-	align-items: baseline;
+	display: inline-block;
+	position: relative;
 }
 
+/* Out of flow, centred in the gap before its fact, on the fact's first line. */
 .ui-doc-header__sep {
-	margin-inline: var(--space-2);
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-end: 100%;
+	inline-size: var(--doc-meta-gap);
+	text-align: center;
 	color: var(--on-surface-variant);
 }
 

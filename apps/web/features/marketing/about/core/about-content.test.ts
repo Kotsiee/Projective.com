@@ -61,15 +61,15 @@ Deno.test("about-content: no certification, compliance badge or invented vocabul
 	}
 });
 
-Deno.test("about-content: founders are the three flagged placeholders with web-served avatars", async () => {
-	assertEquals(ABOUT_FOUNDERS.length, 3);
-	assertEquals(
-		ABOUT_FOUNDERS.map((f) => f.avatar.src),
-		["/test_images/profile_4.jpg", "/test_images/profile_5.jpg", "/test_images/profile_6.jpg"],
-	);
+Deno.test("about-content: no placeholder founder is published — the list waits for the real ones", async () => {
+	// Empty today (the band is not drawn); any founder added later is a real person with a real,
+	// web-served portrait — never "XXXX" copy, never a stock image from /test_images.
+	assertEquals(ABOUT_FOUNDERS.length, 0);
 	for (const founder of ABOUT_FOUNDERS) {
-		assertEquals(founder.name.includes("XXXX"), true);
-		assertEquals(founder.links.length, 0);
+		for (const text of [founder.name, founder.role, founder.bio]) {
+			assertEquals(text.includes("XXXX"), false, text);
+		}
+		assertEquals(founder.avatar.src.startsWith("/test_images/"), false, founder.avatar.src);
 		const file = new URL(`../../../../static${founder.avatar.src}`, import.meta.url);
 		const info = await Deno.stat(file);
 		assertEquals(info.isFile, true, founder.avatar.src);

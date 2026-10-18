@@ -161,6 +161,13 @@ export interface LaneCreateButtonProps {
 	ariaControls?: string;
 	class?: string;
 	onClick?: () => void;
+	/**
+	 * Render a LINK instead of a button — for a create action that lands on another page (a lane whose
+	 * create opens a modal only on the page that mounts it). A destination is a link, not a button that
+	 * assigns `location`, exactly as {@link LaneIconButtonProps.href}; the popup props are ignored,
+	 * since a link opens no overlay.
+	 */
+	href?: string;
 }
 
 /**
@@ -169,9 +176,28 @@ export interface LaneCreateButtonProps {
  * Decision #228 (D)). The fill is the §D.7.7 inverted pair `--on-surface` · `--surface`, the same tone
  * as `<Button structural>`; it takes the §B.12 zero tonal step (its hover is the border channel) and
  * a press compresses by scale only; in the collapsed rail the label folds away and the glyph stays,
- * named by `aria-label`.
+ * named by `aria-label`. With `href` it is the same control as a link.
  */
 export function LaneCreateButton(props: LaneCreateButtonProps): JSX.Element {
+	const content = (
+		<>
+			<span class="ui-lane-create__icon" aria-hidden="true">{props.icon}</span>
+			<span class="ui-lane-create__label" aria-hidden="true">{props.label}</span>
+		</>
+	);
+	if (props.href !== undefined) {
+		return (
+			<a
+				href={props.href}
+				ref={props.triggerRef as RefObject<HTMLAnchorElement> | undefined}
+				class={cx("ui-lane-create", props.class)}
+				aria-label={props.label}
+				onClick={props.onClick}
+			>
+				{content}
+			</a>
+		);
+	}
 	return (
 		<button
 			type="button"
@@ -183,8 +209,7 @@ export function LaneCreateButton(props: LaneCreateButtonProps): JSX.Element {
 			aria-controls={props.ariaControls}
 			onClick={props.onClick}
 		>
-			<span class="ui-lane-create__icon" aria-hidden="true">{props.icon}</span>
-			<span class="ui-lane-create__label" aria-hidden="true">{props.label}</span>
+			{content}
 		</button>
 	);
 }

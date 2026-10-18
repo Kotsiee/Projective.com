@@ -69,6 +69,12 @@ ALTER TABLE ops.scheduled_jobs ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE ops.http_job_dispatches ENABLE ROW LEVEL SECURITY;
 
+-- #region [contact] Contact requests (Decision #276)
+ALTER TABLE ops.contact_requests ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE ops.contact_request_attachments ENABLE ROW LEVEL SECURITY;
+-- #endregion
+
 ALTER TABLE org.business_profiles ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE org.freelancer_profiles ENABLE ROW LEVEL SECURITY;
@@ -622,14 +628,19 @@ ALTER TABLE catalogue.collection_listings ENABLE ROW LEVEL SECURITY;
 -- created in 00000024 / 00000025 without its line here is unprotected the moment a grant reaches it.
 
 -- #region [editorial.help]
+ALTER TABLE editorial.help_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE editorial.help_articles ENABLE ROW LEVEL SECURITY;
 -- #endregion
 
 
 -- #region [editorial.changelog]
+ALTER TABLE editorial.changelog_releases ENABLE ROW LEVEL SECURITY;
 -- #endregion
 
 
 -- #region [editorial.articles]
+ALTER TABLE editorial.article_authors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE editorial.articles ENABLE ROW LEVEL SECURITY;
 -- #endregion
 
 
@@ -639,10 +650,14 @@ ALTER TABLE community.newsletter_subscriptions ENABLE ROW LEVEL SECURITY;
 
 
 -- #region [community.help_feedback]
+ALTER TABLE community.help_feedback ENABLE ROW LEVEL SECURITY;
 -- #endregion
 
 
 -- #region [community.feedback]
+ALTER TABLE community.feedback_ideas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE community.feedback_votes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE community.feedback_status_events ENABLE ROW LEVEL SECURITY;
 -- #endregion
 
 

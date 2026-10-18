@@ -64,9 +64,12 @@ AS $$
 $$;
 
 -- May the caller SEE this profile at all? The same visibility rule as org.profiles_index — a public
--- or unlisted individual, an ACTIVE business, an active public/unlisted team, an active enterprise
--- — plus two arms the directory has no reason for: whoever manages the profile always sees it (the
--- owner of a private profile must be able to look at it), and a member sees their own entity.
+-- or unlisted individual, an active public/unlisted team or business (BP1, Decision #244: a draft,
+-- archived or invite-only business is missing to anyone outside it, as a team already was; Teams
+-- P1 pins the team arm with supabase/probes/team_profile_visibility.sql), an active enterprise —
+-- plus two arms the directory has no reason for: whoever manages the profile always sees it (the
+-- owner of a private profile must be able to look at it), and a member sees their own entity,
+-- whatever its status.
 CREATE OR REPLACE FUNCTION org.fn_profile_visible(p_owner_type text, p_owner_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -87,7 +90,10 @@ AS $$
             )
             OR org.is_active_team_member (p_owner_id)
         WHEN p_owner_type = 'business' THEN
-            EXISTS (SELECT 1 FROM org.business_profiles b WHERE b.id = p_owner_id AND b.status = 'active')
+            EXISTS (
+                SELECT 1 FROM org.business_profiles b
+                WHERE b.id = p_owner_id AND b.status = 'active' AND b.visibility IN ('public', 'unlisted')
+            )
             OR org.is_active_business_member (p_owner_id)
         WHEN p_owner_type = 'enterprise' THEN
             EXISTS (
@@ -277,10 +283,32 @@ BEGIN
             'verified', false,
             'verification_stamp', 'none',
             'hire_intake', COALESCE(t.hire_intake, '[]'::jsonb),
-            'response_minutes', NULL
+            'response_minutes', NULL,
+            -- Teams P1 (the business arm's BP1 shape, Decision #244). Why an outsider gets NULL here —
+            -- fn_profile_visible's team arm, inverted (status first, then reach); NULL while anybody
+            -- may open it, so only a member is ever told. And the console doors as the viewer's OWN
+            -- seat answers them: "Manage team" on edit_profile (the owner and admin presets, or a
+            -- custom role that grants it — #250 (b)), the Settings link on manage_settings.
+            'workspace', jsonb_build_object(
+                'hidden_reason', CASE
+                    WHEN t.status = 'archived' THEN 'archived'
+                    WHEN t.status = 'draft' THEN 'draft'
+                    WHEN t.visibility = 'invite_only' THEN 'invite_only'
+                END,
+                'viewer_edits', org.fn_member_can ('team', t.id, 'edit_profile'),
+                'viewer_settings', org.fn_member_can ('team', t.id, 'manage_settings')
+            ),
+            -- A DM is person-to-person (comms.get_or_create_dm_thread), so a Message to a team reaches
+            -- its owner, as a business's does (#244 (C)) — already public on the roster.
+            'contact', jsonb_build_object(
+                'handle', up.username,
+                'name', NULLIF(btrim(concat_ws(' ', up.first_name, up.last_name)), '')
+            )
         )
         INTO v_base
-        FROM org.teams t WHERE t.id = v_id;
+        FROM org.teams t
+        LEFT JOIN org.users_public up ON up.user_id = t.owner_user_id
+        WHERE t.id = v_id;
         v_seller := true;
         v_sched_type := 'team';
 
@@ -296,7 +324,7 @@ BEGIN
             'name', b.name,
             'headline', COALESCE(b.headline, ''),
             'bio', b.bio,
-            'visibility', 'public',
+            'visibility', b.visibility,
             'city', b.address_city,
             'country', b.country,
             'timezone', b.timezone,
@@ -316,10 +344,31 @@ BEGIN
             'verification_stamp', CASE WHEN b.kyb_status = 'verified'::finance.kyc_status
                 THEN 'corporate_verified' ELSE 'none' END,
             'hire_intake', '[]'::jsonb,
-            'response_minutes', NULL
+            'response_minutes', NULL,
+            -- BP1 (Decision #244). Why an outsider gets NULL here — fn_profile_visible's business arm,
+            -- inverted (status first, then reach); NULL while anybody may open it, so only a member is
+            -- ever told. And the console doors as the viewer's OWN seat answers them — never
+            -- fn_profile_manages' platform-admin arm, which opens the profile but no console.
+            'workspace', jsonb_build_object(
+                'hidden_reason', CASE
+                    WHEN b.status = 'archived' THEN 'archived'
+                    WHEN b.status = 'draft' THEN 'draft'
+                    WHEN b.visibility = 'invite_only' THEN 'invite_only'
+                END,
+                'viewer_edits', org.fn_member_can ('business', b.id, 'edit_profile'),
+                'viewer_settings', org.fn_member_can ('business', b.id, 'manage_settings')
+            ),
+            -- A DM is person-to-person (comms.get_or_create_dm_thread), so a Message to a business
+            -- reaches its owner — already public on the roster.
+            'contact', jsonb_build_object(
+                'handle', up.username,
+                'name', NULLIF(btrim(concat_ws(' ', up.first_name, up.last_name)), '')
+            )
         )
         INTO v_base
-        FROM org.business_profiles b WHERE b.id = v_id;
+        FROM org.business_profiles b
+        LEFT JOIN org.users_public up ON up.user_id = b.owner_user_id
+        WHERE b.id = v_id;
         v_sched_type := 'business';
 
         SELECT count(*)::int INTO v_completed
@@ -401,8 +450,23 @@ BEGIN
             WHERE ps.owner_type = v_type AND ps.owner_id = v_id
         ),
         'completed_stages', v_completed,
+        -- A seller's earned rung. A TEAM's carries the client-valued inputs that moved it (Teams P1
+        -- SPEC 4): stages signed off, completion, on-time delivery and disputes, read from the team's
+        -- own row — the row its public rung and trust signals below are read from. Only from the
+        -- volume the ladder's first earned rung demands (`min_completed_stages` of level 2): a rate
+        -- over a stage or two is a claim one engagement could make, which the volume floor exists to
+        -- stop (PRODUCT_SPEC §Standing). A person's rates stay off their page — publishing them is
+        -- not ruled — and a subject with no row yet stands on level 1 with no factor to cite.
         'standing', CASE WHEN v_seller THEN COALESCE((
             SELECT jsonb_build_object('level', sl.level, 'label', sl.label)
+                || CASE WHEN v_type = 'team' AND es.stages_completed >= (
+                    SELECT fl.min_completed_stages FROM org.standing_levels fl WHERE fl.level = 2
+                ) THEN jsonb_build_object('factors', jsonb_build_object(
+                    'stages_completed', es.stages_completed,
+                    'completion_rate', es.completion_rate,
+                    'on_time_rate', es.on_time_rate,
+                    'dispute_rate', es.dispute_rate
+                )) ELSE '{}'::jsonb END
             FROM org.entity_standing es
             JOIN org.standing_levels sl ON sl.level = es.level
             WHERE es.subject_id = v_id
@@ -584,27 +648,46 @@ BEGIN
     END IF;
 
     IF v_type = 'team' THEN
+        -- A team row is PUBLIC facts only (Teams P1): the role's preset name — a custom role reads as
+        -- its base preset, because a custom role's name is member-only (org.team_roles RLS) and no
+        -- role carries a "public" flag — never the member's title, plus since when they belong and
+        -- their top two skills by label. The skills are the member's OWN profile's, so they are
+        -- answered only to a reader that member's profile admits (fn_profile_visible's user arm): a
+        -- private member's skills stay off the team page as they are off their own. No stake, no
+        -- workload.
         RETURN jsonb_build_object('departments', '[]'::jsonb, 'members', COALESCE((
             SELECT jsonb_agg(jsonb_build_object(
                 'handle', up.username,
                 'name', NULLIF(btrim(concat_ws(' ', up.first_name, up.last_name)), ''),
                 'avatar', files.fn_public_media_ref (up.avatar_file_id),
-                'role', COALESCE(NULLIF(btrim(tm.title), ''), r.name),
+                'role', initcap(r.base_preset),
+                'since', tm.joined_at,
+                'skills', CASE WHEN org.fn_profile_visible ('user', tm.user_id) THEN COALESCE((
+                    SELECT jsonb_agg(COALESCE(sk.label, s.slug) ORDER BY s.ord)
+                    FROM unnest(f.skills) WITH ORDINALITY AS s (slug, ord)
+                    LEFT JOIN org.skills sk ON sk.slug = s.slug
+                    WHERE s.ord <= 2
+                ), '[]'::jsonb) ELSE '[]'::jsonb END,
                 'is_freelancer', up.is_freelancer,
                 'departments', '[]'::jsonb
             ) ORDER BY org.fn_preset_rank (tm.role) DESC, tm.joined_at)
             FROM org.team_members tm
             JOIN org.team_roles r ON r.id = tm.role_id
             JOIN org.users_public up ON up.user_id = tm.user_id
+            LEFT JOIN org.freelancer_profiles f ON f.user_id = tm.user_id
             WHERE tm.team_id = v_id AND tm.status = 'active'
         ), '[]'::jsonb));
     ELSIF v_type = 'business' THEN
+        -- A business row reads the member's title, else the base preset's label — never a custom
+        -- role's name, which RLS keeps to members (org.business_roles) — and since when they belong
+        -- (BP1, Decision #244).
         RETURN jsonb_build_object('departments', '[]'::jsonb, 'members', COALESCE((
             SELECT jsonb_agg(jsonb_build_object(
                 'handle', up.username,
                 'name', NULLIF(btrim(concat_ws(' ', up.first_name, up.last_name)), ''),
                 'avatar', files.fn_public_media_ref (up.avatar_file_id),
-                'role', COALESCE(NULLIF(btrim(bm.title), ''), r.name),
+                'role', COALESCE(NULLIF(btrim(bm.title), ''), initcap(r.base_preset)),
+                'since', bm.joined_at,
                 'is_freelancer', up.is_freelancer,
                 'departments', '[]'::jsonb
             ) ORDER BY org.fn_preset_rank (bm.role) DESC, bm.joined_at)

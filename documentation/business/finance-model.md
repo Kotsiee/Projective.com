@@ -299,7 +299,7 @@ gate**. Schema: `finance.verification_cases` + the `org.freelancer_profiles.kyc_
 | :----------------------------------------- | :------------------------------------------------------------------------------------------------ | :-------------------------------------------------------------- |
 | **Freelancer (earner)**                    | Government-ID verification (Stripe Identity) **AND** a payout-ready wallet (Connect account set). | Applying, being seated or assigned, claiming, creating or joining a team (`fn_assert_payout_ready`, Decision #196). A team payee: every shareholder. Withdrawing earnings from a `user`/`team` wallet. |
 | **Client (individual buyer)**              | **None.** Tap-and-pay via Stripe (optional save-card for reuse). No ID, no wallet required.       | —                                                               |
-| **Business owner (incl. client-who-owns)** | KYB (corporate registration + UBO). `fn_business_kyb_verified`.                                   | Operating the pooled Business Wallet (fund/spend).              |
+| **Business owner (incl. client-who-owns)** | KYB (corporate registration + UBO). `fn_business_kyb_verified`.                                   | Operating the pooled Business Wallet (fund/spend — paying an invoice from it included, `finance.pay_invoice`, Decision #247 (h)).              |
 
 - **Why the freelancer gate is at _onboarding_, not payout-time:** it guarantees no funds ever land
   in a **permanent-escrow / unpayable** state — a freelancer cannot accept work they can't be paid
@@ -402,7 +402,11 @@ Governs shared wallets (Business / Team / Enterprise).
   `monthly` / `total` period and an optional per-transaction ceiling; `spent_cents` tracked,
   `fn_check_spending_limit` enforced in the transaction that moves the money. A cap row, and a spend
   request, is read by the member it binds and by holders of `distribute` or `approve_spend` (the owner
-  included) — `finance.fn_reads_wallet_envelopes`, Decision #238.
+  included) — `finance.fn_reads_wallet_envelopes`, Decision #238. **Changing a member's period**
+  (Decision #246) carries over what the current window counted — `spent_cents` is never reset by a
+  period change, unless that window had already lapsed, when there is nothing to carry — and the new
+  window ends at the next weekly or monthly boundary (`total` never resets). Setting it on a row with
+  a ceiling is Business Pro's, like the ceiling itself (§16.1).
 - **One spend gate for business money** (`finance.fn_assert_business_spend`, BUSINESSES_AUDIT BF19 /
   BF21 / BF22): every door that moves a business's pooled money — the basket, paying on account, a
   transfer out, funding a stage, ticket or paid revision, the card escrow lock, and the escrow holds —
@@ -421,6 +425,9 @@ Governs shared wallets (Business / Team / Enterprise).
   member who asked (any spender for a ticket's automatic hold), redeems it in the same transaction
   as the money movement. A charge above the approved amount needs a new approval. A request lives
   **7 days** from filing, deciding and spending included; there is one open request per thing.
+  The member who asked may **withdraw** it while it waits (`finance.withdraw_spend_approval`,
+  Decision #246): it becomes `withdrawn` — never decided, never spent, nothing moves — and the thing
+  it named is free for a new request.
   **Business wallets only** — a team has nobody holding `approve_spend` to decide one.
 - **Audit** (`finance.ledger_audit`): immutable who/when/amount for every
   add/spend/distribute/withdraw.

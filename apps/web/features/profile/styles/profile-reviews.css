@@ -56,6 +56,11 @@
 	color: var(--text-secondary);
 }
 
+/* A team's review count beside its aggregate stars (Teams P1): a count Badge, its figure tabular. */
+.pf-reviews__count {
+	font-variant-numeric: tabular-nums;
+}
+
 /* #endregion */
 
 /* #region Rows */

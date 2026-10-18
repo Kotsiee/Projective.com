@@ -1,73 +1,85 @@
-import type { JSX, RefObject } from "preact";
-import { useSignal } from "@preact/signals";
-import { useEffect, useRef } from "preact/hooks";
+import type { ComponentChildren, JSX } from "preact";
+import { useSignal, useSignalEffect } from "@preact/signals";
+import { useEffect } from "preact/hooks";
 import "../styles/workspace.css";
 import {
-	LaneBar,
 	LaneCollapseButton,
+	LaneCreateButton,
 	LaneEmpty,
 	LaneFooter,
+	LaneFooterActions,
 	LaneHead,
 	LaneIconButton,
 	LaneList,
+	type LaneMode,
 	LaneSearch,
 	LaneSection,
 	LaneSections,
-	type LaneToggleOption,
-	LaneToggleRow,
+	NavItem,
 } from "@projective/ui/navigation";
-import { Popover, Tooltip } from "@projective/ui/feedback";
+import { MetaLine, Tag } from "@projective/ui/display";
+import { Tooltip } from "@projective/ui/feedback";
+import { Button, SelectButton } from "@projective/ui/fields";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
+import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import {
-	canOpenVerification,
 	type IncomingInvite,
-	type KindCopy,
 	kindCopy,
-	roleLabel,
-	type VerificationState,
 	type WorkspaceDetail,
 	workspaceHref,
 	type WorkspaceKind,
-	type WorkspaceRole,
 	type WorkspaceRoster,
 	type WorkspaceSummary,
 } from "@projective/types/workspace";
-import {
-	type ModuleGroup,
-	type ModuleKey,
-	moduleSectionsForViewer,
-	modulesForViewer,
-} from "../core/module-registry.tsx";
+import type { ModuleKey, WorkspaceModule } from "../core/module-registry.tsx";
 import {
 	activeModuleOf,
-	applyRosterFilters,
-	countLabel,
-	filterRoster,
 	isWithinPath,
-	type RosterQuickFilter,
 	type RosterTab,
 	rosterTabCounts,
+	toRosterTab,
 } from "../core/workspace-model.ts";
-import { liveDetail, openCreate, openInvite } from "../core/workspace-state.ts";
+import {
+	type ConsoleLaneZones,
+	groupHasSignal,
+	initialMoreOpen,
+	type LaneContextZone,
+	type LaneCreate,
+	laneEntityMeta,
+	type LaneFooterZone,
+	laneInviteMeta,
+	laneMorePartition,
+	lanePartition,
+	laneRosterList,
+	laneSignals,
+	type LaneZoneId,
+	laneZoneOrder,
+	laneZones,
+	type ModuleSignals,
+	parseMoreOpen,
+	rosterFiltered,
+	signalLabel,
+	verificationWords,
+	withMoreOpen,
+} from "../core/lane-model.ts";
+import {
+	liveDetail,
+	openCreate,
+	openInvite,
+	rosterTab,
+	selectModuleView,
+	selectRosterTab,
+	viewOr,
+} from "../core/workspace-state.ts";
+import { MEMBERS_CHART, MEMBERS_PEOPLE, subViewsFor } from "../core/sub-views.ts";
 import {
 	BackGlyph,
-	BellGlyph,
-	ChartGlyph,
 	cloneGlyph,
-	DraftGlyph,
-	FinanceGlyph,
 	InviteGlyph,
-	KebabGlyph,
-	MembersGlyph,
-	OverviewGlyph,
+	MoreGlyph,
 	PlusGlyph,
 	SearchGlyph,
-	SettingsGlyph,
-	ShieldGlyph,
-	SlidersGlyph,
-	SwitchGlyph,
-	WalletGlyph,
 } from "../core/workspace-glyphs.tsx";
 import { EntityMark } from "../components/EntityMark.tsx";
 import {
@@ -75,61 +87,52 @@ import {
 	isActingEntity,
 	resolveActingId,
 } from "../components/ContextSwitchControl.tsx";
-import { type ModuleSignals, WorkspaceRail } from "../components/WorkspaceRail.tsx";
+import { type LaneCreateTarget, WorkspaceRail } from "../components/WorkspaceRail.tsx";
 
 /**
- * WorkspaceLane — the middle-nav lane for the whole workspace surface: **two lanes in one island**,
- * each with two presentations.
+ * WorkspaceLane — the middle-nav lane for the whole workspace surface (`/teams`, `/businesses` and
+ * every console beneath them), built as **four zones** on `--surface-1` (Teams work order L1):
  *
- * ### The two lanes
- *  - **Index** (`/teams`, `/businesses`) — the viewer's entities as a navigable list, partitioned by
- *    the roster tabs, with the invitations awaiting them.
- *  - **Entity** (`/teams/[teamHandle]…`) — one entity's identity, its acting switch, and its module nav.
+ *   1. **Header strip** (`LaneHead`) — on the roster index the kind's title and a count line; inside
+ *      a console Back, the entity's mark, name, `@handle` and lifecycle `Tag`, then the acting switch
+ *      beside the verification state (dot + words — the rail's ring, said in the expanded lane).
+ *   2. **Primary views** — the viewer's entities (owned first) on the index; inside a console the
+ *      registry's primary modules as `NavItem` rows, then "More" (collapsed until the viewer opens it,
+ *      remembered per viewer) with every other module they may open.
+ *   3. **Context controls** — a `SelectButton` (and on the index a `LaneSearch`) over the current view,
+ *      only where the view has something to partition; otherwise the zone is not drawn.
+ *   4. **Docked footer rig** (`LaneFooter`) — the collapse toggle and at most ONE tier-2
+ *      `LaneCreateButton`: New team / New business on the index, Invite member inside a console for an
+ *      `invite_members` holder, nothing for anybody else. A roster at its plan's limit says so there.
  *
- * They are one island rather than two because they occupy the same shell slot with the same chrome,
- * the same collapse behaviour and the same acting-marker rules. Splitting them would duplicate all
- * three and let them drift.
+ * Which zones exist and what they hold is {@link laneZones} — a pure function of the kind, the view
+ * and the server-resolved capabilities, shared with the collapsed {@link WorkspaceRail} and pinned by
+ * `lane-model.test.ts`. This island only renders it, in {@link laneZoneOrder}, which is also the Tab
+ * order. Separation is the shared lane chrome's own: spacing and one hairline per boundary, no boxes.
  *
  * ### Both presentations are always in the DOM
- * The expanded stack and {@link WorkspaceRail} render together and CSS reveals exactly one, keyed off
+ * The expanded zones and {@link WorkspaceRail} render together and CSS reveals exactly one, keyed off
  * `.ui-splitter[data-mode="collapsed"]`. There is deliberately **no client width observer**: an
  * observer cannot know the density until after hydration, so it paints the wrong shape for at least
- * one frame on every single load. Letting CSS decide means SSR and the hydrated island agree on the
- * first frame, and the toggle is deterministic — the expanded footer button only collapses, the rail
- * button only expands, and each exists solely in its own state.
+ * one frame on every load. Letting CSS decide means SSR and the hydrated island agree on the first
+ * frame, and the toggle is deterministic.
  *
- * ### The nav is derived, never written down
- * Every module row, every group heading and every rail square comes from
- * {@link modulesForViewer} / {@link moduleSectionsForViewer} over the **server-resolved**
- * `viewerCapabilities`. There is no hand-written list here to fall out of step with the routes, and a
- * capability the viewer lacks produces an absent row rather than a disabled one — offering an action
- * a member may never take is a lie about the roster.
+ * ### Shared state, SSR-safe
+ * The roster partition is ONE value across roots (`rosterTab` in `workspace-state`): the lane's
+ * segmented control and the roster canvas both write it and both mirror it, and each falls back to its
+ * server-resolved `?tab=` until something is picked. The lane reads it through {@link lanePartition},
+ * so the canvas-only Archived reads as All here and the lane never lists rows under a control with no
+ * segment selected. The Members reading is the module's ONE sub-view state (`moduleView`, Teams L2),
+ * which the header band's tabs and the footer rig's Org chart toggle also write and the Members screen
+ * reads, so the lane's People · Org chart control drives the body directly.
  *
  * ### Why it reads the live-detail relay
- * A role change rewrites `viewerCapabilities`, which decides this lane's visible modules — and the
- * lane is not in the body's tree, so it cannot be re-rendered by props. It therefore consumes
- * {@link liveDetail}, but only when the published detail is **this** entity: a stale projection from
- * the previous workspace would briefly paint one entity's permissions under another's name.
+ * A role change rewrites `viewerCapabilities`, which decides this lane's visible modules and its
+ * create action — and the lane is not in the body's tree, so it cannot be re-rendered by props. It
+ * therefore consumes {@link liveDetail}, but only when the published detail is **this** entity: a
+ * stale projection from the previous workspace would briefly paint one entity's permissions under
+ * another's name.
  */
-
-// #region Lane filter vocabulary
-/**
- * The roster lane's icon-ONLY quick filters — the same permanent tag row `/projects` carries, in the
- * same position, built from the same shared {@link LaneToggleRow}. Each toggle is described by a
- * portal Tooltip and an `aria-label`; none carries a text label (§B.6 icon-first).
- */
-const ROSTER_QUICK_TOGGLES: readonly LaneToggleOption<RosterQuickFilter>[] = [
-	{ key: "acting", label: "Acting as", icon: cloneGlyph(SwitchGlyph) },
-	{ key: "updates", label: "Unseen activity", icon: cloneGlyph(BellGlyph) },
-	{ key: "draft", label: "Unfinished setup", icon: cloneGlyph(DraftGlyph) },
-];
-
-/**
- * The Filter popover's one facet. `lead` is omitted deliberately: it is a Team rank a Business never
- * issues, and a facet that is empty on half the surface teaches nothing.
- */
-const ROLE_FACETS: readonly WorkspaceRole[] = ["owner", "admin", "member"];
-// #endregion
 
 // #region Props
 export interface WorkspaceLaneProps {
@@ -137,35 +140,64 @@ export interface WorkspaceLaneProps {
 	/** Live pathname — drives the active module row and the active entity row. */
 	path: string;
 
-	// --- Index mode ---
+	// --- Roster index ---
 	/** The roster. Supplied on `/teams` and `/businesses`; omitted inside an entity. */
 	roster?: WorkspaceRoster;
-	/** The selected roster tab, resolved from `?tab=` server-side so SSR and hydration agree. */
+	/** The selected roster partition, resolved from `?tab=` server-side so SSR and hydration agree. */
 	tab?: RosterTab;
 
-	// --- Entity mode ---
-	/** The console projection. Supplied on `/teams/[id]…`; its presence selects the entity lane. */
+	// --- Console ---
+	/** The console projection. Supplied on `/teams/[teamHandle]…`; its presence selects the console lane. */
 	workspace?: WorkspaceDetail;
 	/** The module being rendered, already corrected server-side. Falls back to the path. */
 	activeModule?: ModuleKey | null;
+	/** The module's resolved `?view=` sub-view (Members: `people` · `pending` · `chart`), when it has one. */
+	view?: string | null;
+}
+
+/** The collapse state both presentations share. */
+interface LaneChrome {
+	collapsed: boolean;
+	onCollapse: (next: boolean) => void;
+	/**
+	 * The splitter's density, mirrored after hydration (`null` on the server and the first frame). CSS
+	 * alone decides what the lane LOOKS like at each density; this only adds what CSS cannot — the
+	 * Tooltip a create action needs once the compact lane has folded its words away (§B.6).
+	 */
+	mode: LaneMode | null;
 }
 // #endregion
 
 // #region Island
 export default function WorkspaceLane(props: WorkspaceLaneProps): JSX.Element {
 	const collapsed = useSignal(false);
+	const mode = useSignal<LaneMode | null>(null);
 
 	useEffect(() => {
-		// The splitter owns the width; the lane mirrors its state only so the toggle glyph is correct.
+		// The splitter owns the width; the lane mirrors its state only so the toggle glyph is correct and
+		// the compact create can name itself. A drag changes the density without any lane event, so the
+		// attribute is watched rather than read once.
 		const el = document.querySelector(".ui-splitter") as HTMLElement | null;
-		if (el) collapsed.value = el.dataset.mode === "collapsed";
+		if (!el) return;
+		const read = () => {
+			mode.value = (el.dataset.mode as LaneMode | undefined) ?? null;
+		};
+		read();
+		collapsed.value = mode.value === "collapsed";
+		const watch = new MutationObserver(read);
+		watch.observe(el, { attributes: true, attributeFilter: ["data-mode"] });
+		return () => watch.disconnect();
 	}, []);
 
-	const setCollapsed = (next: boolean) => {
-		collapsed.value = next;
-		globalThis.dispatchEvent(
-			new CustomEvent(MIDDLE_LANE_TOGGLE_EVENT, { detail: { collapsed: next } }),
-		);
+	const chrome: LaneChrome = {
+		collapsed: collapsed.value,
+		mode: mode.value,
+		onCollapse: (next) => {
+			collapsed.value = next;
+			globalThis.dispatchEvent(
+				new CustomEvent(MIDDLE_LANE_TOGGLE_EVENT, { detail: { collapsed: next } }),
+			);
+		},
 	};
 
 	// Trust the relay only for THIS entity — see the module header.
@@ -174,279 +206,206 @@ export default function WorkspaceLane(props: WorkspaceLaneProps): JSX.Element {
 		? (published && published.id === props.workspace.id ? published : props.workspace)
 		: null;
 
-	return (
-		<div class="wsp-lanewrap" data-kind={props.kind}>
-			{detail
-				? (
-					<>
-						<WorkspaceRail
-							kind={props.kind}
-							path={props.path}
-							entity={{
-								id: detail.id,
-								name: detail.name,
-								handle: detail.handle,
-								avatar: detail.avatar,
-								verification: detail.verification,
-								verificationPrompt: detail.verificationPrompt,
-								isActing: detail.isActing,
-							}}
-							modules={modulesForViewer(props.kind, detail.viewerCapabilities)}
-							activeModule={props.activeModule ?? activeModuleOf(props.path)}
-							signals={moduleSignals(detail)}
-							onExpand={() => setCollapsed(false)}
-						/>
-						<EntityLane
-							kind={props.kind}
-							detail={detail}
-							path={props.path}
-							activeModule={props.activeModule ?? activeModuleOf(props.path)}
-							collapsed={collapsed.value}
-							onToggle={() => setCollapsed(!collapsed.value)}
-						/>
-					</>
-				)
-				: (
-					<>
-						<WorkspaceRail
-							kind={props.kind}
-							path={props.path}
-							entities={props.roster?.items ?? []}
-							actingId={props.roster ? resolveActingId(props.roster) : null}
-							canCreate={props.roster?.canCreate ?? true}
-							onCreate={() => openCreate(props.kind)}
-							onExpand={() => setCollapsed(false)}
-						/>
-						<IndexLane
-							kind={props.kind}
-							roster={props.roster}
-							tab={props.tab ?? "all"}
-							path={props.path}
-							collapsed={collapsed.value}
-							onToggle={() => setCollapsed(!collapsed.value)}
-						/>
-					</>
-				)}
-		</div>
-	);
+	return detail
+		? (
+			<ConsoleLane
+				kind={props.kind}
+				detail={detail}
+				path={props.path}
+				activeModule={props.activeModule ?? activeModuleOf(props.path)}
+				view={props.view ?? null}
+				chrome={chrome}
+			/>
+		)
+		: (
+			<RosterLane
+				kind={props.kind}
+				roster={props.roster}
+				tab={props.tab ?? "all"}
+				path={props.path}
+				chrome={chrome}
+			/>
+		);
+}
+
+/**
+ * Zone 4's create action, as the props of its one `LaneCreateButton`. New entity opens the create
+ * modal and Invite member opens the invite modal where the Members screen mounts it — both buttons.
+ * Anywhere else Invite member is a LINK to Members with the modal open (`?invite=1`): a destination is
+ * an `<a>`, never a button that assigns `location`, and it never presses into nothing.
+ */
+function createTarget(kind: WorkspaceKind, create: LaneCreate | null): LaneCreateTarget | null {
+	if (!create) return null;
+	if (create.action === "create") return { onClick: () => openCreate(kind) };
+	if (create.inPlace) return { onClick: () => openInvite() };
+	return { href: create.href };
 }
 // #endregion
 
-// #region Index lane
-interface IndexLaneProps {
+// #region Roster index lane
+interface RosterLaneProps {
 	kind: WorkspaceKind;
 	roster?: WorkspaceRoster;
 	tab: RosterTab;
 	path: string;
-	collapsed: boolean;
-	onToggle: () => void;
+	chrome: LaneChrome;
 }
 
 /**
- * The roster index lane — a switcher across the viewer's entities.
- *
- * The tab strip **writes the URL and navigates**, while search filters the lane's own list in place.
- * That split is deliberate: the tab is a partition the body's card grid must agree with, and the only
- * thing both roots can agree on without a client router is the address (`?tab=`, read back by
- * `toRosterTab`). Search is a find-in-lane affordance that changes nothing about the page, so paying
- * for a navigation would be gratuitous. The selected tab is held locally too, so the underline moves
- * on the click rather than after the load.
+ * The roster index lane — the viewer's entities, partitioned by the same value the canvas shows, with a
+ * find-in-lane search. The search filters this lane's own list in place; the partition is shared.
  */
-function IndexLane(props: IndexLaneProps): JSX.Element {
+function RosterLane(props: RosterLaneProps): JSX.Element {
 	const copy = kindCopy(props.kind);
-	const search = useSignal("");
-	// Optimistic: the strip must respond to the press, not to the round-trip that follows it.
-	const tab = useSignal<RosterTab>(props.tab);
-	const quick = useSignal<RosterQuickFilter[]>([]);
-	const roles = useSignal<WorkspaceRole[]>([]);
-	const filterOpen = useSignal(false);
-
 	const items = props.roster?.items ?? [];
 	const invitations = props.roster?.invitations ?? [];
 	const actingId = props.roster ? resolveActingId(props.roster) : null;
-	const counts = rosterTabCounts(items, invitations);
-	// Tab → search → quick/role, in that order: the tab is the partition, the search is find-in-lane and
-	// the row narrows what is left, so a reader never sees a filter act on rows the tab excluded.
-	const rows = applyRosterFilters(
-		filterRoster(items, tab.value, search.value),
-		quick.value,
-		roles.value,
-	);
-	const canCreate = props.roster?.canCreate ?? true;
-	const filterCount = roles.value.length;
 
-	const onQuick = (key: RosterQuickFilter) => {
-		quick.value = quick.value.includes(key)
-			? quick.value.filter((k) => k !== key)
-			: [...quick.value, key];
-	};
+	// This root's control, seeded from the URL and mirrored from the shared partition once it is set —
+	// both read through `lanePartition`, so the canvas-only Archived shows here as All.
+	const tab = useSignal<string>(lanePartition(props.tab));
+	useSignalEffect(() => {
+		const shared = rosterTab.value;
+		if (shared !== null) tab.value = lanePartition(shared);
+	});
+	const search = useSignal("");
+	const current = lanePartition(toRosterTab(tab.value));
 
-	const onRole = (role: WorkspaceRole) => {
-		roles.value = roles.value.includes(role)
-			? roles.value.filter((r) => r !== role)
-			: [...roles.value, role];
+	const zones = laneZones({
+		view: "roster",
+		kind: props.kind,
+		liveCount: rosterTabCounts(items, invitations).all,
+		invitationCount: invitations.length,
+		canCreate: props.roster?.canCreate ?? true,
+		createBlockedReason: props.roster?.createBlockedReason,
+	});
+	const list = laneRosterList(items, invitations, current, search.value);
+	const create = createTarget(props.kind, zones.footer.create);
+
+	const zone = (id: LaneZoneId): JSX.Element | null => {
+		switch (id) {
+			case "header":
+				return (
+					<LaneHead key={id}>
+						<div class="wsp-lane__titleblock">
+							<p class="wsp-lane__title">{zones.header.title}</p>
+							<MetaLine items={zones.header.meta} size="xs" />
+						</div>
+					</LaneHead>
+				);
+			case "views":
+				return (
+					<LaneList key={id} label={`Your ${copy.plural}`}>
+						{list.mode === "invitations"
+							? (list.rows.length === 0
+								? (
+									<LaneEmpty
+										title={search.value ? "No matches" : "No invitations"}
+										note={search.value
+											? "Try a different name or handle."
+											: `Nobody has invited you to a ${copy.noun}.`}
+									/>
+								)
+								: list.rows.map((invite) => <InviteRow key={invite.id} invite={invite} />))
+							: list.rows.length === 0
+							? (
+								<LaneEmpty
+									title={search.value ? "No matches" : `No ${copy.plural} here`}
+									note={search.value
+										? "Try a different name or handle."
+										: "Nothing in this partition yet."}
+								/>
+							)
+							: list.rows.map((entity) => (
+								<EntityRow
+									key={entity.id}
+									entity={entity}
+									kind={props.kind}
+									acting={isActingEntity(entity.id, actingId)}
+									active={isWithinPath(props.path, workspaceHref(props.kind, entity.handle))}
+								/>
+							))}
+					</LaneList>
+				);
+			case "context":
+				return zones.context
+					? (
+						<ContextZone key={id} context={zones.context}>
+							<SelectButton
+								options={zones.context.options}
+								value={tab}
+								onValueChange={(value) => selectRosterTab(toRosterTab(value as string))}
+								size="sm"
+								fluid
+								aria-label={zones.context.label}
+							/>
+							<LaneSearch
+								value={search.value}
+								placeholder={`Find a ${copy.noun}…`}
+								label={`Search ${copy.plural}`}
+								icon={cloneGlyph(SearchGlyph)}
+								onInput={(value) => {
+									search.value = value;
+								}}
+							/>
+							{rosterFiltered(current, search.value) && (
+								<Button
+									variant="text"
+									size="sm"
+									label="Reset"
+									class="wsp-lane__reset"
+									onClick={(event) => {
+										// Nothing is left to clear once this runs, so the Reset unmounts: hand focus
+										// to the search field it just emptied first, so the keyboard path never
+										// drops to <body>.
+										event.currentTarget.closest(".wsp-lane__context")
+											?.querySelector<HTMLInputElement>("input")
+											?.focus();
+										search.value = "";
+										selectRosterTab("all");
+									}}
+								/>
+							)}
+						</ContextZone>
+					)
+					: null;
+			case "footer":
+				return (
+					<LaneFooterRig
+						key={id}
+						footer={zones.footer}
+						target={create}
+						chrome={props.chrome}
+					/>
+				);
+		}
 	};
 
 	return (
-		<div class="wsp-lane">
-			<LaneHead class="wsp-lane__head">
-				<div class="wsp-lane__headrow">
-					<p class="wsp-label wsp-lane__title">{copy.Plural}</p>
-					{invitations.length > 0 && (
-						<Tooltip
-							content={`${invitations.length} invitation${
-								invitations.length === 1 ? "" : "s"
-							} waiting`}
-							placement="bottom"
-						>
-							<span
-								class="wsp-pulse"
-								role="status"
-								aria-label={`${invitations.length} invitations waiting`}
-							/>
-						</Tooltip>
-					)}
-					<LaneIconButton
-						icon={cloneGlyph(PlusGlyph)}
-						label={`New ${copy.noun}`}
-						tooltip={canCreate
-							? `New ${copy.noun}`
-							: (props.roster?.createBlockedReason ?? `${copy.Noun} limit reached`)}
-						accent={canCreate}
-						onClick={() => openCreate(props.kind)}
-					/>
-				</div>
-
-				<LaneBar>
-					<LaneSearch
-						value={search.value}
-						placeholder={`Find a ${copy.noun}…`}
-						label={`Search ${copy.plural}`}
-						icon={cloneGlyph(SearchGlyph)}
-						onInput={(v) => {
-							search.value = v;
-						}}
-					/>
-
-					<Popover
-						open={filterOpen}
-						placement="bottom-end"
-						avoid={[".ui-app-shell__sidebar"]}
-						allowOverflow={["bottom"]}
-						trigger={(api) => (
-							<LaneIconButton
-								triggerRef={api.ref as RefObject<HTMLElement>}
-								icon={cloneGlyph(SlidersGlyph)}
-								label={filterCount > 0 ? `Filters (${filterCount} active)` : "Filters"}
-								tooltip="Filters"
-								active={filterCount > 0}
-								dot={filterCount > 0}
-								ariaHasPopup="dialog"
-								ariaExpanded={api.expanded}
-								ariaControls={api.panelId}
-								onClick={api.toggle}
-							/>
-						)}
-					>
-						<div class="wsp-lane__filter">
-							<p class="wsp-lane__filter-label">Your rank</p>
-							<div class="wsp-lane__filter-pills">
-								{ROLE_FACETS.map((r) => (
-									<button
-										key={r}
-										type="button"
-										class="wsp-lane__filter-pill"
-										data-on={roles.value.includes(r) ? "true" : undefined}
-										aria-pressed={roles.value.includes(r)}
-										onClick={() => onRole(r)}
-									>
-										{roleLabel(r)}
-									</button>
-								))}
-							</div>
-							{filterCount > 0 && (
-								<button
-									type="button"
-									class="wsp-lane__filter-reset"
-									onClick={() => {
-										roles.value = [];
-									}}
-								>
-									Clear
-								</button>
-							)}
-						</div>
-					</Popover>
-				</LaneBar>
-
-				<LaneToggleRow
-					label="Quick filters"
-					options={ROSTER_QUICK_TOGGLES}
-					active={quick.value}
-					onToggle={onQuick}
-				/>
-			</LaneHead>
-
-			<LaneList label={`Your ${copy.plural}`} class="wsp-lane__nav">
-				{tab.value === "invitations"
-					? (invitations.length === 0
-						? (
-							<LaneEmpty
-								title="No invitations"
-								note={`Nobody has invited you to a ${copy.noun}.`}
-							/>
-						)
-						: invitations.map((invite) => (
-							<InviteRow
-								key={invite.id}
-								invite={invite}
-								copy={copy}
-							/>
-						)))
-					: rows.length === 0
-					? (
-						<LaneEmpty
-							title={search.value ? "No matches" : `No ${copy.plural} here`}
-							note={search.value
-								? "Try a different name or handle."
-								: `Nothing in this partition yet.`}
-						/>
-					)
-					: rows.map((entity) => (
-						<EntityRow
-							key={entity.id}
-							entity={entity}
-							kind={props.kind}
-							copy={copy}
-							acting={isActingEntity(entity.id, actingId)}
-							active={isWithinPath(props.path, workspaceHref(props.kind, entity.handle))}
-						/>
-					))}
-			</LaneList>
-
-			<LaneFooter>
-				<LaneCollapseButton
-					collapsed={props.collapsed}
-					icon={<SidebarToggleIcon />}
-					onToggle={props.onToggle}
-				/>
-				<span class="wsp-lane__note">{countLabel(props.kind, counts.all)}</span>
-			</LaneFooter>
+		<div class="wsp-lanewrap" data-kind={props.kind}>
+			<WorkspaceRail
+				kind={props.kind}
+				path={props.path}
+				zones={zones}
+				createTarget={create}
+				entities={items}
+				actingId={actingId}
+				onExpand={() => props.chrome.onCollapse(false)}
+			/>
+			<div class="wsp-lane">{laneZoneOrder(zones).map(zone)}</div>
 		</div>
 	);
 }
 
-/** One entity row. The acting marker is decided ONLY by {@link isActingEntity}, never by a raw flag. */
+/**
+ * One entity row: mark, name and its facts as one MetaLine (`Owner · 4 members · Active`) — no chips
+ * (§B.11). Acting is the reserved leading rule, decided ONLY by {@link isActingEntity}.
+ */
 function EntityRow(
-	props: {
-		entity: WorkspaceSummary;
-		kind: WorkspaceKind;
-		copy: KindCopy;
-		acting: boolean;
-		active: boolean;
-	},
+	props: { entity: WorkspaceSummary; kind: WorkspaceKind; acting: boolean; active: boolean },
 ): JSX.Element {
-	const { entity, copy } = props;
+	const { entity } = props;
+	const noun = kindCopy(props.kind).noun;
 	return (
 		<a
 			class="wsp-lane__entity"
@@ -463,41 +422,14 @@ function EntityRow(
 			/>
 			<span class="wsp-lane__entity-body">
 				<span class="wsp-lane__entity-name">{entity.name}</span>
-				<span class="wsp-lane__entity-role wsp-trunc">@{entity.handle}</span>
+				<MetaLine as="span" size="xs" class="wsp-trunc" items={laneEntityMeta(entity)} />
 			</span>
-
-			{entity.status !== "active" && (
-				<Tooltip content={entity.status === "draft" ? "Draft — finish setting up" : "Archived"}>
-					<span
-						class="wsp-statedot"
-						data-state={entity.status}
-						role="img"
-						aria-label={entity.status === "draft" ? "Draft" : "Archived"}
-					/>
-				</Tooltip>
-			)}
-
 			{entity.hasUpdate && (
 				<Tooltip content="Unseen activity">
-					<span class="wsp-pulse" role="status" aria-label="Unseen activity" />
+					<span class="wsp-pulse" role="img" aria-label="Unseen activity" />
 				</Tooltip>
 			)}
-
-			{
-				/*
-				 * Acting supersedes the role chip: which identity the session is wearing outranks what rank
-				 * the viewer holds, and two trailing chips in a lane row is one too many.
-				 */
-			}
-			{props.acting
-				? (
-					<span class="wsp-actingchip wsp-actingchip--quiet">
-						<span class="wsp-actingchip__dot" aria-hidden="true" />
-						Acting
-					</span>
-				)
-				: <span class="wsp-chip">{roleLabel(entity.role)}</span>}
-			<span class="ui-visually-hidden">{copy.Noun}</span>
+			{props.acting && <span class="ui-visually-hidden">, acting as this {noun}</span>}
 		</a>
 	);
 }
@@ -507,7 +439,7 @@ function EntityRow(
  * answering happens in the roster body's invitation strip, and a lane row that looked like a decision
  * point would put the same choice in two places. Looking before answering is the useful move here.
  */
-function InviteRow(props: { invite: IncomingInvite; copy: KindCopy }): JSX.Element {
+function InviteRow(props: { invite: IncomingInvite }): JSX.Element {
 	const { invite } = props;
 	return (
 		<a
@@ -525,311 +457,332 @@ function InviteRow(props: { invite: IncomingInvite; copy: KindCopy }): JSX.Eleme
 			/>
 			<span class="wsp-lane__entity-body">
 				<span class="wsp-lane__entity-name">{invite.workspaceName}</span>
-				<span class="wsp-lane__entity-role wsp-trunc">
-					{invite.roleLabel} · {invite.sentAt}
-				</span>
+				<MetaLine as="span" size="xs" class="wsp-trunc" items={laneInviteMeta(invite)} />
 			</span>
-			<span class="wsp-chip" data-tone="muted">Invited</span>
 		</a>
 	);
 }
 // #endregion
 
-// #region Entity lane
-interface EntityLaneProps {
+// #region Console lane
+interface ConsoleLaneProps {
 	kind: WorkspaceKind;
 	detail: WorkspaceDetail;
 	path: string;
 	activeModule: ModuleKey | null;
-	collapsed: boolean;
-	onToggle: () => void;
+	view: string | null;
+	chrome: LaneChrome;
 }
 
-/** One entity's lane — identity, the acting switch, and the registry-derived module nav. */
-function EntityLane(props: EntityLaneProps): JSX.Element {
+/** One entity's lane — identity and the acting switch, its views, their controls, its one action. */
+function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 	const { detail } = props;
-	const copy = kindCopy(props.kind);
-	const menuOpen = useSignal(false);
-	const menuRef = useRef<HTMLButtonElement>(null);
-	// All five groups open by default: they are short, and a member hunting for Members should not have
-	// to guess which heading hides it. Collapse is available for a long custom-role list.
-	const closed = useSignal<Record<string, true>>({});
+	const subView = viewOr(props.view);
+	const zones: ConsoleLaneZones = laneZones({
+		view: "console",
+		kind: props.kind,
+		name: detail.name,
+		handle: detail.handle,
+		status: detail.status,
+		acting: detail.isActing,
+		capabilities: detail.viewerCapabilities,
+		module: props.activeModule,
+		subView,
+	});
+	const views = zones.views;
+	const signals = laneSignals(detail);
+	const create = createTarget(props.kind, zones.footer.create);
 
-	const sections = moduleSectionsForViewer(props.kind, detail.viewerCapabilities);
-	const signals = moduleSignals(detail);
-	const canInvite = detail.viewerCapabilities.includes("invite_members");
-	const verify = verifyLine(detail.verification, copy);
+	// "More": collapsed on the server (storage is unreadable there), then the viewer's remembered choice —
+	// and always open onto the module being rendered. The read runs once, after mount: no signal is read
+	// inside it, and a workspace page has no client navigation, so the island mounts afresh on every
+	// document load. Storage goes through the SSR-safe accessors, which own the try/catch.
+	const viewer = detail.members.find((m) => m.id === detail.viewerMemberId)?.handle ??
+		detail.viewerMemberId;
+	const morePartition = laneMorePartition(props.kind, viewer);
+	const moreOpen = useSignal(initialMoreOpen(null, views.activeInMore));
+	useSignalEffect(() => {
+		const stored = readStored("local", LocalKeys.WORKSPACE_LANE_MORE);
+		moreOpen.value = initialMoreOpen(parseMoreOpen(stored, morePartition), views.activeInMore);
+	});
+	const toggleMore = () => {
+		const next = !moreOpen.value;
+		moreOpen.value = next;
+		const stored = readStored("local", LocalKeys.WORKSPACE_LANE_MORE);
+		writeStored(
+			"local",
+			LocalKeys.WORKSPACE_LANE_MORE,
+			withMoreOpen(stored, morePartition, next),
+		);
+	};
 
-	const toggleGroup = (group: ModuleGroup) => {
-		const next = { ...closed.value };
-		if (next[group]) delete next[group];
-		else next[group] = true;
-		closed.value = next;
+	// The Members reading mirrors the module's one sub-view state, whichever root last picked it.
+	const subViews = subViewsFor(props.activeModule, props.kind, detail.viewerCapabilities);
+	const readingOf = (view: string | null) =>
+		view === MEMBERS_CHART ? MEMBERS_CHART : MEMBERS_PEOPLE;
+	const reading = useSignal<string>(readingOf(subView));
+	useSignalEffect(() => {
+		reading.value = readingOf(viewOr(props.view));
+	});
+
+	const zone = (id: LaneZoneId): JSX.Element | null => {
+		switch (id) {
+			case "header":
+				return (
+					<LaneHead key={id}>
+						<div class="wsp-lane__identrow">
+							<LaneIconButton
+								href={zones.header.back.href}
+								icon={<span class="wsp-icon--dir">{cloneGlyph(BackGlyph)}</span>}
+								label={zones.header.back.label}
+							/>
+							<div class="wsp-lane__ident" data-acting={detail.isActing ? "true" : undefined}>
+								<EntityMark
+									name={detail.name}
+									handle={detail.handle}
+									kind={props.kind}
+									image={detail.avatar}
+									size="md"
+								/>
+								<div class="wsp-lane__identbody">
+									<p class="wsp-lane__name">{detail.name}</p>
+									<div class="wsp-lane__identmeta">
+										<MetaLine
+											as="span"
+											size="xs"
+											class="wsp-trunc"
+											items={[`@${detail.handle}`]}
+										/>
+										<Tag
+											value={zones.header.status.label}
+											severity={zones.header.status.severity}
+											variant="subtle"
+											rounded
+										/>
+									</div>
+								</div>
+							</div>
+						</div>
+						<div class="wsp-lane__actrow">
+							<ContextSwitchControl
+								kind={props.kind}
+								id={detail.id}
+								name={detail.name}
+								handle={detail.handle}
+								acting={detail.isActing}
+								destination={workspaceHref(
+									props.kind,
+									detail.handle,
+									props.activeModule ?? "overview",
+								)}
+							/>
+							<VerificationLine kind={props.kind} state={detail.verification} />
+						</div>
+					</LaneHead>
+				);
+			case "views":
+				return (
+					<LaneList key={id}>
+						<nav class="wsp-lane__nav" aria-label={`${detail.name} views`}>
+							<ModuleList
+								modules={views.primary}
+								kind={props.kind}
+								handle={detail.handle}
+								active={views.active}
+								signals={signals}
+							/>
+							{views.more.length > 0 && (
+								<LaneSections>
+									<LaneSection
+										id={`wsp-more-${props.kind}`}
+										icon={cloneGlyph(MoreGlyph)}
+										label="More"
+										open={moreOpen.value}
+										onToggle={toggleMore}
+										hasUnread={!moreOpen.value && groupHasSignal(views.more, signals)}
+									>
+										<ModuleList
+											modules={views.more}
+											kind={props.kind}
+											handle={detail.handle}
+											active={views.active}
+											signals={signals}
+										/>
+									</LaneSection>
+								</LaneSections>
+							)}
+						</nav>
+					</LaneList>
+				);
+			case "context":
+				return zones.context
+					? (
+						<ContextZone key={id} context={zones.context}>
+							<SelectButton
+								options={zones.context.options}
+								value={reading}
+								onValueChange={(value) => {
+									if (typeof value === "string") selectModuleView(value, subViews);
+								}}
+								size="sm"
+								fluid
+								aria-label={zones.context.label}
+							/>
+						</ContextZone>
+					)
+					: null;
+			case "footer":
+				return (
+					<LaneFooterRig
+						key={id}
+						footer={zones.footer}
+						target={create}
+						chrome={props.chrome}
+					/>
+				);
+		}
 	};
 
 	return (
-		<div class="wsp-lane">
-			<LaneHead class="wsp-lane__head">
-				<div class="wsp-lane__headrow">
-					<Tooltip content={`All ${copy.plural}`}>
-						<a class="wsp-lane__back" href={copy.base} aria-label={`Back to all ${copy.plural}`}>
-							<span class="wsp-icon--dir">{cloneGlyph(BackGlyph)}</span>
-						</a>
-					</Tooltip>
-
-					{
-						/* The identity block links OUT to the public page — the console edits it, `/@handle`
-					presents it, and the console never forks that presentation. */
-					}
-					<a
-						class="wsp-lane__switch"
-						href={`/@${detail.handle}`}
-						data-acting={detail.isActing ? "true" : undefined}
-					>
-						<EntityMark
-							name={detail.name}
-							handle={detail.handle}
-							kind={props.kind}
-							image={detail.avatar}
-							size="md"
-						/>
-						<span class="wsp-lane__ident">
-							<span class="wsp-lane__name">{detail.name}</span>
-							<span class="wsp-lane__meta">
-								<span class="wsp-trunc">@{detail.handle}</span>
-								{detail.status !== "active" && (
-									<span
-										class="wsp-statedot"
-										data-state={detail.status}
-										role="img"
-										aria-label={detail.status === "draft" ? "Draft" : "Archived"}
-									/>
-								)}
-							</span>
-						</span>
-					</a>
-
-					<LaneIconButton
-						icon={cloneGlyph(KebabGlyph)}
-						label={`${copy.Noun} options`}
-						triggerRef={menuRef}
-						ariaHasPopup="menu"
-						ariaExpanded={menuOpen.value}
-						onClick={() => {
-							menuOpen.value = !menuOpen.value;
-						}}
-					/>
-					<Popover
-						open={menuOpen}
-						targetRef={menuRef}
-						placement="bottom-end"
-						avoid={[".ui-app-shell__sidebar"]}
-					>
-						<div class="wsp-lane__entities" role="menu" data-kind={props.kind}>
-							<a class="wsp-lane__entity" href={`/@${detail.handle}`} role="menuitem">
-								<span class="wsp-lane__row-icon">{cloneGlyph(OverviewGlyph)}</span>
-								<span class="wsp-lane__entity-body">
-									<span class="wsp-lane__entity-name">View public page</span>
-									<span class="wsp-lane__entity-role">@{detail.handle}</span>
-								</span>
-							</a>
-							<a class="wsp-lane__entity" href={detail.finance.walletHref} role="menuitem">
-								<span class="wsp-lane__row-icon">{cloneGlyph(WalletGlyph)}</span>
-								<span class="wsp-lane__entity-body">
-									<span class="wsp-lane__entity-name">Open {copy.moneyNoun}</span>
-									<span class="wsp-lane__entity-role">In the wallet</span>
-								</span>
-							</a>
-							{detail.viewerCapabilities.includes("manage_settings") && (
-								<>
-									<div class="wsp-lane__sep" role="separator" />
-									<a
-										class="wsp-lane__entity"
-										href={workspaceHref(props.kind, detail.handle, "settings")}
-										role="menuitem"
-									>
-										<span class="wsp-lane__row-icon">{cloneGlyph(SettingsGlyph)}</span>
-										<span class="wsp-lane__entity-body">
-											<span class="wsp-lane__entity-name">{copy.Noun} settings</span>
-											<span class="wsp-lane__entity-role">Profile, pictures, visibility</span>
-										</span>
-									</a>
-								</>
-							)}
-						</div>
-					</Popover>
-				</div>
-
-				{/* The prominent control: entering a console is not the same as acting as the entity. */}
-				<ContextSwitchControl
-					kind={props.kind}
-					id={detail.id}
-					name={detail.name}
-					handle={detail.handle}
-					acting={detail.isActing}
-					destination={workspaceHref(props.kind, detail.handle, props.activeModule ?? "overview")}
-				/>
-			</LaneHead>
-
-			<LaneSections class="wsp-lane__nav">
-				{sections.map((section) => (
-					<LaneSection
-						key={section.group}
-						id={`wsp-${section.group.toLowerCase()}`}
-						icon={cloneGlyph(GROUP_GLYPH[section.group])}
-						label={section.group}
-						open={!closed.value[section.group]}
-						onToggle={() => toggleGroup(section.group)}
-						action={section.group === "People" && canInvite
-							? (
-								<LaneIconButton
-									icon={cloneGlyph(InviteGlyph)}
-									label="Invite members"
-									onClick={() => {
-										// The invite modal lives on the Members screen; from any other module the control
-										// lands there with the modal open instead of pressing into nothing.
-										if (props.activeModule === "members" || props.activeModule === "invitations") {
-											openInvite();
-										} else {
-											globalThis.location.assign(
-												`${workspaceHref(props.kind, detail.handle, "members")}?invite=1`,
-											);
-										}
-									}}
-								/>
-							)
-							: undefined}
-					>
-						{
-							/*
-							 * No tooltip on an expanded row: the label is already visible, and the module's blurb
-							 * belongs to the COLLAPSED rail, where the label is not (the registry's own contract).
-							 * Wrapping every nav row in a hover popup would also add a layer between the section
-							 * body's flex column and the row it sizes.
-							 */
-						}
-						{section.modules.map((module) => {
-							const signal = signals[module.key];
-							const active = module.key === props.activeModule;
-							return (
-								<a
-									key={module.key}
-									class="wsp-lane__row"
-									href={workspaceHref(props.kind, detail.handle, module.key)}
-									data-active={active ? "true" : undefined}
-									aria-current={active ? "page" : undefined}
-								>
-									<span class="wsp-lane__row-icon" aria-hidden="true">
-										{cloneGlyph(module.glyph)}
-									</span>
-									<span class="wsp-lane__row-label">{module.label}</span>
-									{signal?.count
-										? (
-											<span class="wsp-lane__row-count wsp-num">
-												{signal.count}
-												<span class="ui-visually-hidden">waiting</span>
-											</span>
-										)
-										: signal?.dot
-										? (
-											<span
-												class="wsp-lane__row-dot wsp-pulse"
-												role="status"
-												aria-label="Needs attention"
-											/>
-										)
-										: null}
-								</a>
-							);
-						})}
-					</LaneSection>
-				))}
-			</LaneSections>
-
-			{
-				/*
-				 * Ambient, never an alarm. The state is ALWAYS present so the path to getting verified stays
-				 * discoverable; only the CTA is conditional. Hiding it once verified would make the surface
-				 * silent about the single thing that decides whether this entity can be paid.
-				 */
-			}
-			<div class="wsp-lane__foot">
-				<div class="wsp-lane__verify" data-tone={verify.tone}>
-					<span
-						class="wsp-lane__verify-dot wsp-statedot"
-						data-verify={detail.verification}
-						aria-hidden="true"
-					/>
-					<span class="wsp-lane__verify-text">{verify.text}</span>
-					{detail.verificationPrompt &&
-						canOpenVerification(props.kind, detail.viewerCapabilities) && (
-						<Tooltip content={detail.verificationPrompt}>
-							<a
-								class="wsp-lane__verify-link"
-								href={workspaceHref(props.kind, detail.handle, "verification")}
-							>
-								Finish
-							</a>
-						</Tooltip>
-					)}
-				</div>
-			</div>
-
-			<LaneFooter>
-				<LaneCollapseButton
-					collapsed={props.collapsed}
-					icon={<SidebarToggleIcon />}
-					onToggle={props.onToggle}
-				/>
-				{detail.standing && <span class="wsp-lane__note">{detail.standing}</span>}
-			</LaneFooter>
+		<div class="wsp-lanewrap" data-kind={props.kind}>
+			<WorkspaceRail
+				kind={props.kind}
+				path={props.path}
+				zones={zones}
+				createTarget={create}
+				entity={{
+					id: detail.id,
+					name: detail.name,
+					handle: detail.handle,
+					avatar: detail.avatar,
+					verification: detail.verification,
+					isActing: detail.isActing,
+				}}
+				signals={signals}
+				onExpand={() => props.chrome.onCollapse(false)}
+			/>
+			<div class="wsp-lane">{laneZoneOrder(zones).map(zone)}</div>
 		</div>
+	);
+}
+
+/**
+ * The entity's verification state in the header strip, beside the acting switch: a state dot (each
+ * state its own silhouette) and its words in the meta register. It is ambient, never an alarm, and it
+ * is always present — the collapsed rail rings the mark with the same state, and the expanded lane
+ * must not go silent about the one fact that decides whether this entity can be paid.
+ */
+function VerificationLine(
+	props: { kind: WorkspaceKind; state: WorkspaceDetail["verification"] },
+): JSX.Element {
+	return (
+		<p class="wsp-lane__verification">
+			<span class="wsp-statedot" data-verify={props.state} aria-hidden="true" />
+			<span class="wsp-lane__verification-text">{verificationWords(props.kind, props.state)}</span>
+		</p>
+	);
+}
+
+/**
+ * A module list — the registry's modules as `NavItem` rows (glyph + label), the rendered one marked
+ * `aria-current="page"`. A queue's size sits at the row's end as plain tabular text; an attention mark
+ * as a dot; both are folded into the row's accessible name (§B.6).
+ */
+function ModuleList(
+	props: {
+		modules: readonly WorkspaceModule[];
+		kind: WorkspaceKind;
+		handle: string;
+		active: ModuleKey | null;
+		signals: ModuleSignals;
+	},
+): JSX.Element {
+	return (
+		<ul class="wsp-lane__navlist" role="list">
+			{props.modules.map((module) => {
+				const signal = props.signals[module.key];
+				const mark = signalLabel(signal);
+				return (
+					<li key={module.key}>
+						<NavItem
+							href={workspaceHref(props.kind, props.handle, module.key)}
+							label={module.label}
+							icon={cloneGlyph(module.glyph)}
+							active={module.key === props.active}
+							dot={mark !== null}
+							dotLabel={mark ?? undefined}
+							trailing={signal?.count
+								? <span class="wsp-lane__navcount">{signal.count}</span>
+								: signal?.dot
+								? <span class="wsp-pulse" />
+								: undefined}
+						/>
+					</li>
+				);
+			})}
+		</ul>
 	);
 }
 // #endregion
 
-// #region Derived signals
-/** The group headings' glyphs. Cloned at the point of use — three of the five are module glyphs too. */
-const GROUP_GLYPH: Record<ModuleGroup, JSX.Element> = {
-	Workspace: OverviewGlyph,
-	People: MembersGlyph,
-	Money: FinanceGlyph,
-	Growth: ChartGlyph,
-	Admin: ShieldGlyph,
-};
-
+// #region Shared zones
 /**
- * What needs attention, per module — computed once and shared with the collapsed rail so the two
- * presentations can never disagree.
- *
- * A **count** is a queue whose size is the useful fact (invitations to answer, spend requests to
- * decide). A **dot** is "something here wants you" where the number would mislead: a `3` beside
- * Members reads as a roster of three, not as three pending people, so pending membership is a dot and
- * its meaning lives in the row's tooltip (§B.6 · §D.1).
- *
- * Nothing merely large gets a marker. A module is not "attention" because it has a lot of content in
- * it, and a nav that decorates everything signals nothing.
+ * Zone 3 — the context controls over the current view, set off by one hairline. The group is named for
+ * what it holds; the segmented control inside it carries the zone's own label.
  */
-function moduleSignals(detail: WorkspaceDetail): ModuleSignals {
-	const out: ModuleSignals = {};
-
-	if (detail.invites.length > 0) out.invitations = { count: detail.invites.length };
-
-	const awaitingDecision = detail.spend?.approvals.pending.length ?? 0;
-	if (awaitingDecision > 0) out.spend = { count: awaitingDecision };
-
-	if (detail.verification !== "verified") out.verification = { dot: true };
-
-	return out;
+function ContextZone(
+	props: { context: LaneContextZone; children: ComponentChildren },
+): JSX.Element {
+	return (
+		<div
+			class="wsp-lane__context"
+			role="group"
+			aria-label="View controls"
+			data-control={props.context.control}
+		>
+			{props.children}
+		</div>
+	);
 }
 
 /**
- * The verification line. Each state carries its own WORDS as well as its tone, so the meaning survives
- * a colour-blind palette and a greyscale print — a dot colour on its own is not a channel.
+ * Zone 4 — the collapse toggle (it docks to the lane's corner) and the one create action: a button
+ * when it opens a modal here, a link when it lands on another page. A roster that withholds its create
+ * says why in the same place, as one line of meta text — never a dead control.
+ *
+ * A compact splitter folds the action's words away (`workspace-chrome.css`, the same fold the collapsed
+ * rail takes), so there the glyph carries a Tooltip naming it; at full density the words are on screen
+ * and a Tooltip would only repeat them.
  */
-function verifyLine(state: VerificationState, copy: KindCopy): { tone: string; text: string } {
-	if (state === "verified") return { tone: "ok", text: `${copy.verification} verified` };
-	if (state === "pending") return { tone: "warn", text: `${copy.verification} in review` };
-	return { tone: "warn", text: `${copy.verification} needed` };
+function LaneFooterRig(
+	props: { footer: LaneFooterZone; target: LaneCreateTarget | null; chrome: LaneChrome },
+): JSX.Element {
+	const create = props.footer.create;
+	const button = create && props.target
+		? (
+			<LaneCreateButton
+				label={create.label}
+				icon={cloneGlyph(create.action === "invite" ? InviteGlyph : PlusGlyph)}
+				{...props.target}
+			/>
+		)
+		: null;
+	return (
+		<LaneFooter>
+			<LaneCollapseButton
+				collapsed={props.chrome.collapsed}
+				icon={<SidebarToggleIcon />}
+				onToggle={() => props.chrome.onCollapse(!props.chrome.collapsed)}
+			/>
+			{create && button && (
+				<LaneFooterActions>
+					{props.chrome.mode === "compact"
+						? <Tooltip content={create.label} placement="top">{button}</Tooltip>
+						: button}
+				</LaneFooterActions>
+			)}
+			{props.footer.note && <p class="wsp-lane__createnote">{props.footer.note}</p>}
+		</LaneFooter>
+	);
 }
 // #endregion

@@ -5,6 +5,7 @@ import { GuestShell } from "@web/features/shell/components/GuestShell.tsx";
 import { UserShell } from "@web/features/shell/components/UserShell.tsx";
 import TicketDeepLinkHost from "@web/features/projects/islands/TicketDeepLinkHost.island.tsx";
 import ChatPopoutHost from "@web/features/messaging/islands/ChatPopoutHost.island.tsx";
+import FeedbackHost from "@web/features/feedback/islands/FeedbackHost.island.tsx";
 import ProfileHero from "@features/profile/islands/ProfileHero.island.tsx";
 import ProfileStickyHeader from "@features/profile/islands/ProfileStickyHeader.island.tsx";
 import ProfileTabs from "@features/profile/islands/ProfileTabs.island.tsx";
@@ -14,6 +15,8 @@ import { ProfileServicesSection } from "@features/profile/components/ProfileServ
 import { ProfileProductsSection } from "@features/profile/components/ProfileProductsSection.tsx";
 import { ProfileCalendarHead } from "@features/profile/components/ProfileCalendarHead.tsx";
 import { OwnerNav, type OwnerNavTab } from "@features/profile/components/OwnerNav.tsx";
+import { ProfileMemberNotice } from "@features/profile/components/ProfileMemberNotice.tsx";
+import type { ProductItem, ServiceItem } from "@features/profile/types/profile-types.ts";
 import {
 	viewLaneFor,
 	viewLaneOptionsFor,
@@ -35,6 +38,7 @@ import {
 	defaultTabFor,
 	estimatedSpendFor,
 	isSellerKind,
+	previewNoteFor,
 	TABS_ANCHOR,
 } from "@features/profile/core/profile-model.ts";
 
@@ -72,6 +76,23 @@ import {
  * itself rather than acting), **Edit profile & settings** (`/[handle]/edit`) and **Availability**
  * (`/[handle]/edit/availability`). The two edit routes render only the owner nav and their own body;
  * their pages refuse anyone who is not the owner.
+ *
+ * # A business's page (Decision #244)
+ *
+ * A business is a buyer: it resolves no listings (so no price or purchase surface can render), and
+ * its rig leads with Message. Outsiders cannot open a draft, archived or invite-only business at
+ * all — the database answers it as missing — so the only reader of such a page is a member, who is
+ * told why by the {@link ProfileMemberNotice} above it. A member who may edit it previews the page
+ * with "Manage business" in Message's place, and the owner nav's note says so.
+ *
+ * # A team's page (Teams P1)
+ *
+ * A team is a seller: its listings resolve as a freelancer's do, and its rig is the seller rig —
+ * Hire, Add to project, and the Message (to its owner) and Follow icons. The same database rule hides
+ * a draft, archived or invite-only team from everyone outside it, and the member who reaches it reads
+ * the notice, with a link to the console's Settings when they may open it. A member holding
+ * `edit_profile` (the owner and admin presets, or a custom role that grants it, Decision #250 (b))
+ * previews the page with "Manage team" in Hire's place, and the owner nav's note says so.
  */
 export default define.page(async function ProfileLayout(ctx) {
 	const profile = ctx.state.profile;
@@ -112,6 +133,8 @@ export default define.page(async function ProfileLayout(ctx) {
 					    layout mounts this same host. */
 					}
 					<ChatPopoutHost path={path} />
+					{/* The feedback board's `?feedback=open` drawer and its `g` `f` shortcut (Decision #272). */}
+					<FeedbackHost signedIn />
 					{children}
 				</UserShell>
 			);
@@ -125,6 +148,8 @@ export default define.page(async function ProfileLayout(ctx) {
 			>
 				{/* A guest only ever loses the parameter; the host opens nothing for them. */}
 				<TicketDeepLinkHost authed={false} />
+				{/* The board opens for a guest too: they read it and are offered sign-in to take part. */}
+				<FeedbackHost signedIn={false} />
 				{children}
 			</GuestShell>
 		);
@@ -216,11 +241,16 @@ export default define.page(async function ProfileLayout(ctx) {
 
 	// The active section highlighted in the tab bar — the URL segment, or Work on the bare index.
 	const active = activeTabOf(path) ?? defaultTabFor(profile.kind);
+	// A business sells nothing and is hired by nobody (Decision #244): it takes no listings at all, so
+	// no price or purchase surface can render on its page whatever a stale catalogue row says.
+	const business = profile.kind === "business";
 	// The listings render on every section, so they are resolved here, together.
-	const [services, products] = await Promise.all([
-		resolveProfileServices(profile.handle),
-		resolveProfileProducts(profile.handle),
-	]);
+	const [services, products]: [ServiceItem[], ProductItem[]] = business
+		? [[], []]
+		: await Promise.all([
+			resolveProfileServices(profile.handle),
+			resolveProfileProducts(profile.handle),
+		]);
 	const seller = isSellerKind(profile.kind);
 	const actor = readActor(ctx);
 	// A seller's call offer feeds the Hire popover's consultation row (and the owner's preview shows
@@ -247,7 +277,15 @@ export default define.page(async function ProfileLayout(ctx) {
 	);
 	return shell(
 		<div class="pf-scope">
-			{owner && <OwnerNav handle={profile.handle} active="preview" scheduling={!restricted} />}
+			{owner && (
+				<OwnerNav
+					handle={profile.handle}
+					active="preview"
+					scheduling={!restricted}
+					note={previewNoteFor(profile)}
+				/>
+			)}
+			<ProfileMemberNotice profile={profile} />
 			<div class="pf">
 				<ProfileHero
 					profile={profile}

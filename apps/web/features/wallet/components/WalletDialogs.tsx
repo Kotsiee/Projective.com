@@ -1,7 +1,8 @@
 import type { ComponentChildren, JSX, VNode } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { Alert, Dialog } from "@projective/ui/feedback";
+import { Alert, CommitReviewBody, Dialog } from "@projective/ui/feedback";
+import "@ui/feedback/styles/commit-review.css";
 import {
 	Button,
 	FormControl,
@@ -76,11 +77,22 @@ export interface WalletDialogData {
 	query: WalletContext;
 }
 
+/** Where a finished movement offers to go back to — the flow that linked into it (`?back=`). */
+export interface WalletReturn {
+	href: string;
+	label: string;
+}
+
 /** Props for {@link WalletDialogs}. */
 export interface WalletDialogsProps extends WalletDialogData {
 	resolve: (action: WalletAction) => ResolvedAction;
 	/** A write succeeded; the refreshed overview, when the server returned one. */
 	onChanged: (overview: WalletOverview | null) => void;
+	/**
+	 * Set when the page was opened by a wallet intent link carrying a way back (`wallet-intent.ts`,
+	 * Decision #243): a movement's done step then offers it in place of "Done".
+	 */
+	returnTo?: WalletReturn | null;
 }
 
 type Position = "center" | "bottom";
@@ -219,6 +231,7 @@ function MoveDialog(
 		stageId?: string;
 		position: Position;
 		onChanged: (overview: WalletOverview | null) => void;
+		returnTo?: WalletReturn | null;
 	},
 ): JSX.Element {
 	const { overview, switcher, action } = props;
@@ -414,7 +427,18 @@ function MoveDialog(
 			</>
 		)
 		: step.value === "done"
-		? <Button variant="filled" label="Done" onClick={closing.close} />
+		? (props.returnTo
+			// A navigation, so an anchor dressed as the step's one filled control — never a button that
+			// assigns `location`.
+			? (
+				<a
+					class="ui-button ui-button--primary ui-button--filled ui-button--size-md wlt-dlg__back"
+					href={props.returnTo.href}
+				>
+					<span class="ui-button__label">{props.returnTo.label}</span>
+				</a>
+			)
+			: <Button variant="filled" label="Done" onClick={closing.close} />)
 		: step.value === "card" || step.value === "settling"
 		? (
 			<Button
@@ -628,27 +652,18 @@ function MoveDialog(
 			)}
 
 			{(step.value === "review" || step.value === "sending" || step.value === "error") && (
-				<div class="wlt-review">
-					<p class="wlt-dlg__amount">{figure}</p>
-					<dl class="wlt-dlg__facts">
-						<div class="wlt-dlg__fact">
-							<dt>From</dt>
-							<dd>{fromLabel}</dd>
-						</div>
-						<div class="wlt-dlg__fact">
-							<dt>To</dt>
-							<dd>{toLabel}</dd>
-						</div>
-						{action === "transfer" && note.value.trim() && (
-							<div class="wlt-dlg__fact">
-								<dt>Note</dt>
-								<dd>{note.value.trim()}</dd>
-							</div>
-						)}
-					</dl>
-					<p class="wlt-dlg__warn">{CONSEQUENCE[action]}</p>
-					{step.value === "error" && <Alert severity="danger">{outcome.value}</Alert>}
-				</div>
+				<CommitReviewBody
+					total={figure}
+					rows={[
+						{ label: "From", value: fromLabel },
+						{ label: "To", value: toLabel },
+						...(action === "transfer" && note.value.trim()
+							? [{ label: "Note", value: note.value.trim() }]
+							: []),
+					]}
+					consequence={CONSEQUENCE[action]}
+					notice={step.value === "error" && <Alert severity="danger">{outcome.value}</Alert>}
+				/>
 			)}
 
 			{step.value === "card" && handoff.value && (

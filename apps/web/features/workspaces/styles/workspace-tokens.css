@@ -261,10 +261,6 @@
 	--wsp-node-w: 13rem;
 	--wsp-tree-indent: var(--space-5);
 
-	/* Progress ring */
-	--wsp-ring-size: 2.75rem;
-	--wsp-ring-w: 4px;
-
 	/*
 	 * Marks drawn in CSS — the dots, swatches, strokes, meters and hatches. Pixels rather than `rem`
 	 * on purpose, for the reason the global `--space-px` gives: these are graphical marks, and a 2px
@@ -502,24 +498,28 @@ ordinary prose keeps proportional figures. */
 	color: var(--on-surface);
 }
 
+/*
+ * A policy figure is read, not shouted: `--fw-medium` at every step (BUSINESSES_AUDIT BD25), so a
+ * threshold or a limit sits at the weight of the headings around it instead of out-weighing them.
+ */
 .wsp-money--figure {
 	font-size: var(--wsp-fs-figure);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 }
 
 .wsp-money--key {
 	font-size: var(--wsp-fs-key);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 }
 
 .wsp-money--body {
 	font-size: var(--wsp-fs-body);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 }
 
 .wsp-money--micro {
 	font-size: var(--wsp-fs-micro);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 }
 
 /*
@@ -708,11 +708,6 @@ frozen animation clock costs nothing. */
 	font-size: var(--wsp-fs-micro);
 	font-weight: var(--fw-semibold);
 	white-space: nowrap;
-}
-
-.wsp-chip--kind {
-	background: var(--wsp-kind-tint-hi);
-	color: var(--wsp-kind-ink);
 }
 
 /* The role chip carrying the acting state, so the two facts occupy one mark instead of two chips of

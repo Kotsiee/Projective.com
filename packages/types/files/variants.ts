@@ -20,12 +20,14 @@ import type { CropShape } from "./crop.ts";
 
 /**
  * What an asset is FOR. `library` is an upload a person can pick again; `avatar` and `showcase` are
- * renditions the pipeline cut for one public surface. Mirrors `files.asset_purpose`.
+ * renditions the pipeline cut for one public surface; `contact` is a file attached to a `/contact`
+ * request (Decision #276), kept as uploaded in the `contact` bucket for operators and never listed in
+ * its uploader's library. Mirrors `files.asset_purpose`.
  */
-export const AssetPurpose = z.enum(["library", "avatar", "showcase"]);
+export const AssetPurpose = z.enum(["library", "avatar", "showcase", "contact"]);
 export type AssetPurpose = z.infer<typeof AssetPurpose>;
 
-/** The purposes that are renditions — everything but a library upload. */
+/** The purposes that are renditions — the pipeline's cropped copies for one public surface. */
 export const RenditionPurpose = z.enum(["avatar", "showcase"]);
 export type RenditionPurpose = z.infer<typeof RenditionPurpose>;
 
@@ -49,11 +51,14 @@ export const VARIANT_TIERS: readonly VariantTier[] = VariantTier.options;
  * - `avatar` — chrome at 24–48px @2x (`sm`), the 72–128px hero disc @2x (`md`), the full-size
  *   expansion modal (`lg`). Avatars are square, so the edge is both sides.
  * - `showcase` — a card thumbnail (`sm`), the hero frame at 1x–2x (`md`/`lg`).
+ * - `contact` — never processed (an attachment is kept exactly as uploaded); the library's plan is
+ *   listed so the table stays total over {@link AssetPurpose}.
  */
 export const TIER_LONG_EDGE: Readonly<Record<AssetPurpose, Readonly<Record<VariantTier, number>>>> = {
 	library: { sm: 320, md: 1280, lg: 2560 },
 	avatar: { sm: 96, md: 256, lg: 1024 },
 	showcase: { sm: 480, md: 1280, lg: 2400 },
+	contact: { sm: 320, md: 1280, lg: 2560 },
 };
 
 /**

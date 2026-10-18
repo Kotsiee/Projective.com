@@ -158,7 +158,12 @@ export default function SiteHeader(
 			}`}
 		>
 			<div class="site-header__bar" data-authed={authenticated ? "true" : "false"}>
-				<a class="site-header__brand" href="/">
+				{/* Named on the link itself: below 900px the wordmark is hidden and the mark is aria-hidden. */}
+				<a
+					class="site-header__brand"
+					href="/"
+					aria-label="Projective"
+				>
 					<Logo class="site-header__mark" />
 					<span class="site-header__brand-text">Projective</span>
 				</a>

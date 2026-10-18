@@ -56,9 +56,18 @@ Deno.test("an unknown topic or source is refused, naming the field", () => {
 	assertFalse(topic.success);
 	assertEquals(topic.error.issues[0].path, ["topic"]);
 
-	const source = NewsletterSubscribeSchema.safeParse({ email: "a@b.co", source: "changelog" });
+	const source = NewsletterSubscribeSchema.safeParse({ email: "a@b.co", source: "sidebar" });
 	assertFalse(source.success);
 	assertEquals(source.error.issues[0].path, ["source"]);
+});
+
+Deno.test("the changelog's capture is its own source", () => {
+	const parsed = NewsletterSubscribeSchema.parse({
+		email: "reader@example.com",
+		source: "changelog",
+		topic: "changelog",
+	});
+	assertEquals([parsed.source, parsed.topic], ["changelog", "changelog"]);
 });
 
 Deno.test("a malformed address is still refused on the email field", () => {

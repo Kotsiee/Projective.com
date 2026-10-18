@@ -9,8 +9,11 @@ import {
 	DEV_AUTO_FUND_MODES,
 	DEV_AVAILABILITY_CONFLICTS,
 	DEV_BASKET_SCENARIOS,
+	DEV_BUSINESS_KYBS,
+	DEV_BUSINESS_PAGES,
 	DEV_BUSINESS_PLAN_GATES,
 	DEV_CATALOGUE_ANALYTICS,
+	DEV_CHECKOUT_GATES,
 	DEV_CLIENT_PIPELINES,
 	DEV_DISCOVERY_ACTIVITIES,
 	DEV_DISCOVERY_VIEWERS,
@@ -21,6 +24,7 @@ import {
 	DEV_LANDING_BACKGROUNDS,
 	DEV_LAYOUT_DIRECTIONS,
 	DEV_LOW_BALANCES,
+	DEV_MEMBER_CLIENTS,
 	DEV_MEMBER_ROLES,
 	DEV_MESSAGING_ROLES,
 	DEV_MIC_PERMISSIONS,
@@ -42,8 +46,10 @@ import {
 	DEV_SESSION_BOOKINGS,
 	DEV_SESSION_STATES,
 	DEV_SETTINGS_ATTENTIONS,
+	DEV_SPEND_REQUESTS,
 	DEV_STAGE_ASSIGNMENTS,
 	DEV_SUBMISSION_STATES,
+	DEV_TEAM_PAGES,
 	DEV_TRUST_ADORNMENTS,
 	DEV_VERIFICATION_STAMPS,
 	DEV_WALLET_AURORAS,
@@ -95,6 +101,14 @@ function reloadProjectPage(): void {
  */
 function reloadExplorePage(): void {
 	if (globalThis.location?.pathname === "/explore") globalThis.location.reload();
+}
+
+/**
+ * Reload when the open page is a profile (`/@handle…`), so a server-side business- or team-page
+ * simulation applies at once. Elsewhere nothing reads it until the next profile request.
+ */
+function reloadProfilePage(): void {
+	if (globalThis.location?.pathname.startsWith("/@")) globalThis.location.reload();
 }
 
 function reloadDiscoveryPage(): void {
@@ -402,6 +416,21 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 					/>
 				</Field>
 
+				{
+					/* Only a business client delegates its tickets to a project admin/manager (Decision
+				    #294), and no fixture is billed to one: `Business` is the only runtime route to the row
+				    action that grants it. */
+				}
+				<Field label="Paying client" hint="ticket delegation">
+					<Segment
+						name="Paying client"
+						options={DEV_MEMBER_CLIENTS}
+						value={o.memberClient}
+						disabled={!o.enabled}
+						onChange={(memberClient) => patchDevContext({ memberClient })}
+					/>
+				</Field>
+
 				<Field label="Pending invitations" hint="hasPendingInvites">
 					<div class="dev-ctx__segment" role="radiogroup" aria-label="Pending invitations">
 						<button
@@ -562,6 +591,44 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 				</Field>
 
 				{
+					/* A business's /:handle (Decision #244). Its status and visibility are database states
+				    and both seeded businesses are active and public, so this is the only route to a
+				    member's notice (draft · archived · invite-only) or an outsider's 404 (Missing).
+				    Server-side via `pj.dev.business-page`, so a change reloads a profile page. */
+				}
+				<Field label="Business page" hint="member notice · outsider 404 · reloads">
+					<Segment
+						name="Business page"
+						options={DEV_BUSINESS_PAGES}
+						value={o.businessPage}
+						disabled={!o.enabled}
+						onChange={(businessPage) => {
+							patchDevContext({ businessPage });
+							reloadProfilePage();
+						}}
+					/>
+				</Field>
+
+				{
+					/* A team's /:handle (Teams P1) — the business axis's twin. Every seeded team is active and
+				    public, so this is the only route to a member's notice (draft · archived · invite-only,
+				    its Settings link waiting for Teams C6) or an outsider's 404 (Missing).
+				    Server-side via `pj.dev.team-page`, so a change reloads a profile page. */
+				}
+				<Field label="Team page" hint="member notice · outsider 404 · reloads">
+					<Segment
+						name="Team page"
+						options={DEV_TEAM_PAGES}
+						value={o.teamPage}
+						disabled={!o.enabled}
+						onChange={(teamPage) => {
+							patchDevContext({ teamPage });
+							reloadProfilePage();
+						}}
+					/>
+				</Field>
+
+				{
 					/* The ticket funding line (Decision #165). Holds, refused holds and card payments are
 				    server facts, so this substitutes the STATE; the card's real amount still shows. It also
 				    drives the board's column lock (Decision #210): a claimed card forced off Funded reads its
@@ -613,6 +680,17 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.lowBalance}
 						disabled={!o.enabled}
 						onChange={(lowBalance) => patchDevContext({ lowBalance })}
+					/>
+				</Field>
+
+				{/* A business's KYB is written only by Stripe; this substitutes the Verification module's picture. */}
+				<Field label="Business KYB" hint="verification module">
+					<Segment
+						name="Business KYB"
+						options={DEV_BUSINESS_KYBS}
+						value={o.businessKyb}
+						disabled={!o.enabled}
+						onChange={(businessKyb) => patchDevContext({ businessKyb })}
 					/>
 				</Field>
 
@@ -673,6 +751,36 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.basketScenario}
 						disabled={!o.enabled}
 						onChange={(basketScenario) => patchDevContext({ basketScenario })}
+					/>
+				</Field>
+
+				{
+					/* A business checkout's gate (Decision #243). Each state waits on a threshold, an envelope,
+				    another member's decision or Stripe, so the payment step substitutes its view of a real
+				    business session here; Pay and Request approval still reach the server. */
+				}
+				<Field label="Checkout gate" hint="business payment step">
+					<Segment
+						name="Checkout gate"
+						options={DEV_CHECKOUT_GATES}
+						value={o.checkoutGate}
+						disabled={!o.enabled}
+						onChange={(checkoutGate) => patchDevContext({ checkoutGate })}
+					/>
+				</Field>
+
+				{
+					/* A business Spend module's request queue (Decision #246). Somebody else's request, one's
+				    own, the decided history and a KYB-locked approver each wait on other people or Stripe,
+				    so the queue substitutes made-up rows (no controls) here; decisions still reach the server. */
+				}
+				<Field label="Spend requests" hint="business spend queue">
+					<Segment
+						name="Spend requests"
+						options={DEV_SPEND_REQUESTS}
+						value={o.spendRequests}
+						disabled={!o.enabled}
+						onChange={(spendRequests) => patchDevContext({ spendRequests })}
 					/>
 				</Field>
 

@@ -10,6 +10,7 @@ import { AboutView } from "./AboutView.tsx";
 import { TourFigure } from "./TourFigure.tsx";
 import { tourSteps } from "../core/delivery-tour.ts";
 import { aboutJsonLd } from "../core/about-seo.ts";
+import type { Founder } from "../core/about-content.ts";
 
 const FULL: PublicMetrics = {
 	asOf: "2026-10-17T21:07:08.982Z",
@@ -27,9 +28,35 @@ const FEE_ONLY: PublicMetrics = {
 	medianFundingToApprovalHours: null,
 };
 
-function render(metrics: PublicMetrics | null, isAuthenticated = false): string {
+/** A stand-in founder for the band's own tests — the page's list stays empty until real ones exist. */
+const FOUNDER: Founder = {
+	id: "ada",
+	name: "Ada Example",
+	role: "Co-founder · Engineering",
+	bio: "Builds the escrow ledger.",
+	avatar: { src: "/images/founders/ada.jpg", w: 480, h: 600 },
+	links: [],
+};
+
+function render(
+	metrics: PublicMetrics | null,
+	isAuthenticated = false,
+	founders?: readonly Founder[],
+): string {
 	return renderToString(
-		<AboutView metrics={metrics} isAuthenticated={isAuthenticated} tour={<div id="tour-slot" />} />,
+		<AboutView
+			metrics={metrics}
+			isAuthenticated={isAuthenticated}
+			tour={<div id="tour-slot" />}
+			founders={founders}
+		/>,
+	);
+}
+
+/** Each full-bleed band's tone in page order: `true` for a tinted (`--surface-1`) band. */
+function bandTones(html: string): boolean[] {
+	return [...html.matchAll(/class="(abt__band(?: [^"]*)?)"/g)].map((m) =>
+		m[1].split(" ").includes("abt__band--tint")
 	);
 }
 
@@ -46,7 +73,6 @@ Deno.test("AboutView: one h1, no second <main>, every band named by its heading"
 		const id of [
 			"abt-metrics-heading",
 			"abt-tour-heading",
-			"abt-founders-heading",
 			"abt-creds-heading",
 			"abt-cta-heading",
 		]
@@ -54,17 +80,24 @@ Deno.test("AboutView: one h1, no second <main>, every band named by its heading"
 		assert(html.includes(`aria-labelledby="${id}"`), id);
 		assert(html.includes(`id="${id}"`), id);
 	}
+	const withFounders = render(FULL, false, [FOUNDER]);
+	assert(withFounders.includes('aria-labelledby="abt-founders-heading"'));
+	assert(withFounders.includes('id="abt-founders-heading"'));
 	// The contrast band holds both sides, so both headings name it.
 	assert(html.includes('aria-labelledby="abt-friction abt-model"'));
 	assert(html.includes('id="abt-friction"') && html.includes('id="abt-model"'));
 	assert(html.includes('id="tour-slot"'));
 });
 
-Deno.test("AboutView: bands alternate solid tones and nothing is a card", () => {
-	const html = render(FULL);
-	assertEquals(count(html, "abt__band--tint"), 4);
-	assertFalse(html.includes("ui-card"));
-	assertFalse(html.includes("style="));
+Deno.test("AboutView: bands alternate solid tones, with or without founders, and nothing is a card", () => {
+	for (const founders of [undefined, [FOUNDER]]) {
+		const html = render(FULL, false, founders);
+		const tones = bandTones(html);
+		assertEquals(tones.length, founders ? 8 : 7);
+		tones.forEach((tint, i) => assertEquals(tint, i % 2 === 1, `band ${i + 1}`));
+		assertFalse(html.includes("ui-card"));
+		assertFalse(html.includes("style="));
+	}
 });
 
 Deno.test("AboutView: every published figure prints with its label and an as-of time", () => {
@@ -111,15 +144,23 @@ Deno.test("AboutView: the closing band — the escape first, the one filled acti
 	assert(render(FULL, true).includes('href="/projects?create=1"'));
 });
 
-Deno.test("AboutView: founder avatars are sized, decorative and lazy", () => {
+Deno.test("AboutView: no founders band — and no portrait — until real founders exist", () => {
 	const html = render(FULL);
+	assertFalse(html.includes("abt-founder"));
+	assertFalse(html.includes("The people building it"));
+	assertEquals(html.match(/<img [^>]+>/g) ?? [], []);
+});
+
+Deno.test("AboutView: founder avatars are sized, decorative and lazy", () => {
+	const html = render(FULL, false, [FOUNDER, { ...FOUNDER, id: "bo", name: "Bo Example" }]);
 	const imgs = html.match(/<img [^>]+>/g) ?? [];
-	assertEquals(imgs.length, 3);
+	assertEquals(imgs.length, 2);
 	for (const img of imgs) {
 		assert(/width="\d+"/.test(img) && /height="\d+"/.test(img), img);
 		assert(img.includes('alt=""'), img);
 		assert(img.includes('loading="lazy"'), img);
 	}
+	assert(html.includes("Ada Example") && html.includes("Bo Example"));
 });
 // #endregion
 

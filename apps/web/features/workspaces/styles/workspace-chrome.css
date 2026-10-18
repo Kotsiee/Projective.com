@@ -6,13 +6,38 @@
  *
  * The shared `.ui-lane-*` chrome from `@projective/ui/navigation` is NOT restyled here. `/teams` and
  * `/businesses` must read as the same control set as `/projects`, `/messages` and `/wallet`, so the
- * lane composes `LaneHead` / `LaneSearch` / `LaneSections` / `LaneList` / `LaneFooter` verbatim and
- * only this feature's own additions carry rules.
+ * lane's four zones (L1) compose `LaneHead` / `LaneList` / `LaneSection` / `LaneSearch` /
+ * `LaneFooter` / `LaneCreateButton` / `LaneCollapseButton` / `LaneIconButton`, `NavItem`,
+ * `SelectButton` and `Button` verbatim, and only this feature's own additions carry rules.
+ *
+ * One narrow exception, LAYOUT only: a reader can drag the splitter down to 96px, and this lane puts
+ * more into its context and footer zones than any other (four segments; a two-word create). Under
+ * `.wsp-lane` the segmented control re-flows into rows by its zone's own width (an `@container`
+ * query, so the lane's width is asked, never the viewport's), and the create action folds its words
+ * away in a compact splitter exactly as the package already folds them in the collapsed one. The
+ * header band (L2) takes the same licence for one treatment: its `TabMenu` gets Decision #220's
+ * in-band underline (the catalogue's `.cat-band` treatment). Nothing else of a shared control is
+ * touched. Where a band needs a control in two forms — Share profile, and wherever their words do not
+ * fit the footer rig's utilities and Org chart toggle — it renders BOTH `Button`s (words, and
+ * `iconOnly`) and this sheet only chooses which one paints; the Org chart toggle's engaged state is
+ * `Button`'s own (`aria-pressed`).
+ *
+ * Press feedback (§B.12) is therefore split by owner:
+ *   - From the package: `Button` (the acting switch, the Reset, every band and rig control), the
+ *     `TabMenu` tabs and `LaneCreateButton` compress and drop the scale under both reduced-motion
+ *     channels. `NavItem`, the "More" `LaneSection` toggle, the Back `LaneIconButton`, the
+ *     `SelectButton` segments and `LaneCollapseButton` carry NO press in the package today; that gap
+ *     is the package's to close (it is shared by every lane), never this sheet's, because restyling
+ *     `.ui-*` chrome here would fork the lane vocabulary.
+ *   - From this sheet: the feature's OWN links — the roster rows (`.wsp-lane__entity`, a feature row
+ *     like Catalogue's lane rows), the collapsed rail's squares and mark (`.wsp-rail__item`,
+ *     `.wsp-rail__switch`, hand-built like the Projects and Catalogue rails) and the rig's `Link`s
+ *     (`.wsp-footerrig__link`) — each with its scale press and both reduced-motion channels below.
  *
  * Both bands are mounted into shell slots, which means they EXPORT their intrinsic width to the page:
  * a band wider than the content region widens the region. Both therefore carry
- * `max-inline-size: 100%` + `overflow: hidden`, and every band label is wrapped in its own `<span>` so
- * the mobile rules can drop the words and keep the glyph — a bare text node cannot be targeted.
+ * `max-inline-size: 100%` + `overflow: hidden`, and every label the mobile rules drop sits in an
+ * element of its own — a bare text node cannot be targeted.
  */
 
 /* #region The dual presentation */
@@ -44,6 +69,16 @@
 }
 
 /*
+ * The lane is ONE solid `--surface-1` column, top to bottom. The shared bands (`LaneHead`,
+ * `LaneFooter`) and zone 3 paint it already; the scroll body between them paints nothing, and the
+ * shell ground beneath it is `--surface-2` — so zone 2 read as a second tone, and every `--surface-2`
+ * hover and current fill drawn on it (the roster rows) matched the ground and vanished.
+ */
+.wsp-lane {
+	background: var(--surface-1);
+}
+
+/*
  * This lane's collapsed rail width.
  *
  * Set on the FRAME, not on the splitter: `--shell-lane-rail-w` is the one number both the
@@ -57,88 +92,169 @@
 }
 /* #endregion */
 
-/* #region Lane head — the entity switcher */
-.wsp-lane__head {
-	padding: var(--space-3);
-}
-
+/* #region Zone 1 — header strip */
 /*
- * The switcher is a control, so it earns a full contour on hover (§B.4). At rest it is borderless: the
- * lane head is not a place to spend a box.
+ * The strip is the shared `LaneHead` band (its padding, its `--surface-1` and its one block-end
+ * hairline are the package's), so this only lays out what sits inside it. On the roster index: the
+ * kind's title in the title register over a MetaLine count. Inside a console: Back, then the
+ * identity (mark · name · `@handle` · lifecycle Tag), then the acting switch on its own line.
  */
-.wsp-lane__switch {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	inline-size: 100%;
-	padding: var(--space-2);
-	font: inherit;
-	color: inherit;
-	text-align: start;
-	background: none;
-	/* Reserved transparent at rest, so hover and acting recolour a border rather than adding one. */
-	border: var(--hairline-strong);
-	border-color: transparent;
-	border-radius: var(--radius-lg);
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.wsp-lane__switch:hover {
-	border-color: var(--hairline-strong-color);
-	background: var(--surface-2);
-}
-
-/* Acting: a contour + one tonal step. The switcher is a control, so the contour is legal here; the
-loud channel is still the chip in the body. */
-.wsp-lane__switch[data-acting="true"] {
-	background: var(--wsp-acting-tint);
-	border-color: var(--wsp-acting-ring);
-}
-
-.wsp-lane__ident {
+.wsp-lane__titleblock {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-px);
+	gap: var(--space-1);
 	min-inline-size: 0;
-	flex: 1 1 auto;
 }
 
+/* The title register: one size step over the body, medium weight — never heavier (§A.4). */
+.wsp-lane__title,
 .wsp-lane__name {
-	font-size: var(--wsp-fs-body);
+	margin: 0;
+	font-size: var(--wsp-fs-key);
 	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.wsp-lane__meta {
+.wsp-lane__identrow {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	font-size: var(--wsp-fs-micro);
-	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
 	min-inline-size: 0;
 }
 
-.wsp-lane__caret {
-	display: inline-flex;
-	flex: none;
-	color: var(--text-secondary);
-	line-height: 0;
+/*
+ * Acting is the reserved leading rule (`--wsp-acting-ring`), held transparent at rest so marking the
+ * identity moves no box (§B.12.3) — never a contour around static content (§B.4).
+ */
+.wsp-lane__ident {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	padding-inline-start: var(--space-2);
+	border-inline-start: var(--hairline-strong);
+	border-inline-start-width: var(--wsp-acting-line-h);
+	border-inline-start-color: transparent;
 }
 
-/* The switcher popover's list of entities. */
-.wsp-lane__entities {
+.wsp-lane__ident[data-acting="true"] {
+	border-inline-start-color: var(--wsp-acting-ring);
+}
+
+.wsp-lane__identbody {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-1);
-	min-inline-size: 17rem;
-	padding: var(--space-1);
+	gap: var(--space-px);
+	flex: 1 1 auto;
+	min-inline-size: 0;
 }
 
+/* `@handle` then the lifecycle Tag — the strip's one container (§B.11). The handle yields first. */
+.wsp-lane__identmeta {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+/*
+ * The acting switch, then the verification state at the row's end. The state wraps beneath the switch
+ * when the lane is too narrow to hold both, rather than squeezing the control.
+ */
+.wsp-lane__actrow {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2) var(--space-3);
+	min-inline-size: 0;
+}
+
+/* Dot + words in the meta register — the same size as the identity's MetaLine above it. */
+.wsp-lane__verification {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	margin: 0;
+	font-size: var(--wsp-fs-label);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.wsp-lane__verification-text {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-ctxswitch {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.wsp-ctxswitch--icon {
+	display: inline-flex;
+}
+
+.wsp-ctxswitch__error {
+	margin: 0;
+	font-size: var(--wsp-fs-micro);
+	color: var(--wsp-alert);
+}
+/* #endregion */
+
+/* #region Zone 2 — primary views */
+/*
+ * The views fill the `LaneList` scroll body. Inside a console they are the registry's primary modules
+ * as `NavItem` rows, then the "More" `LaneSection`; the rows share the lane's inline axis, so the list
+ * cancels the row's own inline margin (the Project Details lane's top tier does the same).
+ */
+.wsp-lane__nav {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.wsp-lane__navlist {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	margin-block: 0;
+	margin-inline: calc(-1 * var(--space-2));
+	padding: 0;
+	list-style: none;
+}
+
+/* A queue's size at the row's end — plain tabular text, never a pill (§B.6); its words are in the
+row's accessible name. On the filled active row it takes the row's own ink. */
+.wsp-lane__navcount {
+	font-size: var(--wsp-fs-micro);
+	font-weight: var(--fw-semibold);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.wsp-lane__navlist .ui-nav-item--active .wsp-lane__navcount {
+	color: currentColor;
+}
+
+/* An attention dot on the filled active row takes the row's ink too: the kind hue is a team's
+`--primary`, the very fill it would sit on. */
+.wsp-lane__navlist .ui-nav-item--active .wsp-pulse {
+	background: currentColor;
+}
+
+/* The roster index's rows: mark · name over one MetaLine (`Owner · 4 members · Active`). */
 .wsp-lane__entity {
 	display: flex;
 	align-items: center;
@@ -156,16 +272,20 @@ loud channel is still the chip in the body. */
 	border-inline-start-color: transparent;
 	cursor: pointer;
 	text-align: start;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
 }
 
-.wsp-lane__entity:hover {
+.wsp-lane__entity:hover,
+.wsp-lane__entity[aria-current="page"] {
 	background: var(--surface-2);
 }
 
-/* The quiet chip ("Invited") is a `--surface-2` step, the tone the row hovers to, so it steps up one
-with the row or its container would vanish. */
-.wsp-lane__entity:hover .wsp-chip[data-tone="muted"] {
-	background: var(--surface-3);
+/* A row is a link the reader presses, so it compresses like the package controls around it (§B.12). */
+.wsp-lane__entity:active {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-press);
 }
 
 /* Acting: one tonal step plus a leading rule — never a four-sided ring (§B.4). */
@@ -189,233 +309,142 @@ with the row or its container would vanish. */
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+/* #endregion */
 
-.wsp-lane__entity-role {
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
-}
-
-.wsp-lane__sep {
-	block-size: 0;
-	border-block-start: var(--hairline);
-	margin-block: var(--space-1);
-}
-
+/* #region Zone 3 — context controls */
 /*
- * Lane Filter popover — the panel behind the `ui-lane-bar` Filter button, matching the `/projects` and
- * `/catalogue` lane filter panels. The popover itself supplies the surface, hairline, radius and
- * shadow; this only lays out the one facet inside it.
+ * Drawn only when the view has something to partition. A docked band between the views and the
+ * footer rig: the lane's `--surface-1`, one block-start hairline, the lane's inline inset — no box.
+ *
+ * Its padding is the shared `.ui-lane-footer` band's (`--space-3` / `--space-4`), so the four zones
+ * keep the band rhythm `LaneHead`, `LaneList` and `LaneFooter` already set in every reference lane.
+ * The page-section rhythm (`--space-7` above a section) is not applied inside the lane: it would put
+ * a 48px gap above every zone of a ~280px column and restyle the shared bands from feature CSS.
  */
-.wsp-lane__filter {
+.wsp-lane__context {
+	flex: none;
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-2);
-	inline-size: 13rem;
-	max-inline-size: 100%;
+	padding: var(--space-3) var(--space-4);
+	background: var(--surface-1);
+	border-block-start: var(--hairline);
+	/* The zone is the width the segmented control re-flows by (the narrow-lane rules below). Nothing in
+	it is positioned against an ancestor, so the containment moves nothing. */
+	container: wsp-lane-context / inline-size;
 }
 
-/* The facet's name is the section-header register (§A.4), so it reads the label tokens. */
-.wsp-lane__filter-label {
-	margin: 0;
-	font-size: var(--wsp-fs-label);
-	font-weight: var(--fw-semibold);
-	letter-spacing: var(--wsp-label-track);
-	text-transform: uppercase;
-	color: var(--text-secondary);
-}
-
-.wsp-lane__filter-pills {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-1);
-}
-
-.wsp-lane__filter-pill {
-	padding: var(--space-px) var(--space-2);
-	border: var(--hairline-strong);
-	border-radius: var(--radius-full);
-	background: transparent;
-	color: var(--text-secondary);
-	font: inherit;
-	font-size: var(--wsp-fs-label);
-	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
-}
-
-.wsp-lane__filter-pill:hover {
-	color: var(--on-surface);
-	border-color: var(--on-surface-variant);
-}
-
-.wsp-lane__filter-pill[data-on="true"] {
-	background: var(--surface-2);
-	border-color: var(--on-surface);
-	color: var(--on-surface);
-}
-
-.wsp-lane__filter-reset {
+.wsp-lane__reset {
 	align-self: flex-start;
-	padding: 0;
-	border: none;
-	background: none;
-	font: inherit;
-	font-size: var(--wsp-fs-label);
-	color: var(--text-secondary);
-	text-decoration: underline;
-	text-underline-offset: var(--space-px);
-	cursor: pointer;
-	transition: color var(--dur-fast) var(--ease-standard);
-}
-
-.wsp-lane__filter-reset:hover {
-	color: var(--on-surface);
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.wsp-lane__filter-pill,
-	.wsp-lane__filter-reset {
-		transition: none;
-	}
-}
-
-:root[data-motion="reduced"] .wsp-lane__filter-pill,
-:root[data-motion="reduced"] .wsp-lane__filter-reset {
-	transition: none;
-}
-
-.wsp-lane__note {
-	display: block;
-	padding-inline: var(--space-2);
-	padding-block-start: var(--space-1);
-	font-size: var(--wsp-fs-micro);
-	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
-}
-/* #endregion */
-
-/* #region Lane nav — the module registry's grouped rows */
-.wsp-lane__nav {
-	flex: 1 1 auto;
-	min-block-size: 0;
-	overflow-y: auto;
-}
-
-.wsp-lane__row {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	inline-size: 100%;
-	min-inline-size: 0;
-	padding-inline: var(--space-2);
-	padding-block: var(--space-2);
-	border-radius: var(--radius-base);
-	color: var(--text-secondary);
-	text-decoration: none;
-	font-size: var(--wsp-fs-body);
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.wsp-lane__row:hover {
-	background: var(--surface-2);
-	color: var(--on-surface);
-}
-
-.wsp-lane__row[data-active="true"] {
-	background: var(--wsp-kind-tint);
-	color: var(--wsp-kind-ink);
-	font-weight: var(--fw-medium);
-}
-
-.wsp-lane__row-icon {
-	display: inline-flex;
-	flex: none;
-	line-height: 0;
-}
-
-.wsp-lane__row-label {
-	min-inline-size: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-/* A module that needs attention shows a dot; a module with a queue shows a bare count. Neither is a
-sentence, and the explanation lives in the row's Tooltip (§B.6). */
-.wsp-lane__row-dot {
-	margin-inline-start: auto;
-	flex: none;
-}
-
-.wsp-lane__row-count {
-	margin-inline-start: auto;
-	flex: none;
-	font-size: var(--wsp-fs-micro);
-	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
-}
-/* #endregion */
-
-/* #region Lane foot — the ambient verification chip */
-.wsp-lane__foot {
-	flex: none;
 }
 
 /*
- * Ambient, never an alarm. The state is always present so the path to getting verified stays
- * discoverable; the CTA appears only when there is something to do.
+ * A narrow lane re-flows the segmented control; it never runs it past the lane's edge. The control
+ * wraps rather than overflows whatever the type (a wider face, a larger text step), and each segment
+ * keeps the control's own row height when it lands on a row of its own. A label clips to an ellipsis
+ * only in the last resort — a single segment wider than the whole zone.
+ *
+ * The track's inline inset goes: its ground is this zone's own `--surface-1`, so the track draws
+ * nothing there, and without the inset the first segment's pill lands on the search field's edge.
  */
-.wsp-lane__verify {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding: var(--space-3);
-	border-block-start: var(--hairline);
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
+.wsp-lane__context .ui-select-button {
+	flex-wrap: wrap;
+	block-size: auto;
+	min-block-size: var(--sb-height);
+	padding-inline: 0;
 }
 
-.wsp-lane__verify-dot {
-	flex: none;
+.wsp-lane__context .ui-select-button__option {
+	min-inline-size: 0;
+	min-block-size: calc(var(--sb-height) - 2 * var(--space-1));
 }
 
-.wsp-lane__verify-text {
+.wsp-lane__context .ui-select-button__label {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	line-height: var(--leading-tight);
+}
+
+/*
+ * The roster's four segments need about 14.75rem of zone for one row; the lane's default width gives
+ * 15.25rem. Below 15rem they sit two by two, so the partition reads as an even grid rather than ragged
+ * rows; below 9.75rem — a compact lane — one per row, where "Invitations" still fits whole. The
+ * Members pair needs no step of its own: it wraps to one per row only when the zone cannot hold both.
+ */
+@container wsp-lane-context (max-width: 14.9375rem) {
+	.wsp-lane__context[data-control="roster"] .ui-select-button {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@container wsp-lane-context (max-width: 9.6875rem) {
+	.wsp-lane__context[data-control="roster"] .ui-select-button {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+/* #endregion */
+
+/* #region Zone 4 — docked footer rig */
+/*
+ * The create action may shrink before it runs past the lane: its glyph holds and its words take an
+ * ellipsis, which only ever happens in the few pixels between the compact fold and the width the full
+ * words need. The leading keeps a descender whole inside the clipped label.
+ */
+.wsp-lane .ui-lane-footer__actions,
+.wsp-lane .ui-lane-create {
+	flex: 0 1 auto;
+}
+
+.wsp-lane .ui-lane-create__label {
 	min-inline-size: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	line-height: var(--leading-tight);
 }
 
-.wsp-lane__verify-link {
-	margin-inline-start: auto;
-	flex: none;
-	color: var(--primary);
-	text-decoration: none;
-	white-space: nowrap;
+/*
+ * A compact splitter folds the words away and keeps the glyph — the fold the package already gives the
+ * collapsed rail — and the lane island hands the glyph a Tooltip naming it (§B.6); its `aria-label`
+ * names it throughout.
+ */
+.ui-splitter[data-mode="compact"] .wsp-lane .ui-lane-create {
+	padding: var(--space-2);
 }
 
-.wsp-lane__verify-link:hover {
-	text-decoration: underline;
+.ui-splitter[data-mode="compact"] .wsp-lane .ui-lane-create__label {
+	display: none;
 }
 
-.wsp-lane__acting {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding-inline: var(--space-3);
-	padding-block: var(--space-2);
-	border-block-start: var(--hairline);
-	background: var(--wsp-acting-tint);
+/*
+ * Why a roster offers no create — the plan's words, in the meta register where the action would be.
+ * Capped at four lines so a dragged-narrow lane keeps a footer, not a paragraph; the reason leads with
+ * the fact ("Your plan includes 1 business"), so a capped line still says why.
+ */
+.wsp-lane__createnote {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	margin: 0;
+	font-size: var(--wsp-fs-label);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+	display: -webkit-box;
+	-webkit-line-clamp: 4;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
 }
 /* #endregion */
 
 /* #region Collapsed rail */
 /*
- * Every rail control mirrors the global sidebar's collapsed `.ui-nav-item` exactly — a
- * `--shell-nav-block` square, `--radius-base`, the same hover and active tints — and carries a portal
- * `Tooltip` plus an `aria-label`, never a native `title` (§B.6).
+ * The same four zones folded to glyphs. Every rail square takes the global sidebar's collapsed
+ * `.ui-nav-item` geometry — a `--shell-nav-block` square at `--radius-base` — and `NavItem`'s ACTIVE
+ * pair (`--primary` / `--on-primary`), so the expanded zone-2 row and its folded square mark the
+ * current module identically. Hover is the solid `--surface-3` step (a feature sheet carries no
+ * translucent wash). Every control carries a portal `Tooltip` plus an `aria-label`, never a native
+ * `title` (§B.6).
  */
 .wsp-rail {
 	flex-direction: column;
@@ -426,9 +455,12 @@ sentence, and the explanation lives in the row's Tooltip (§B.6). */
 	padding-block: var(--space-3);
 }
 
+/* Zone 1: the mark over the acting switch. */
 .wsp-rail__brand {
 	display: flex;
-	justify-content: center;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
 	padding-block-end: var(--space-2);
 }
 
@@ -489,11 +521,25 @@ words — a ring colour on its own is not a channel. */
 }
 
 .wsp-rail__item[data-active="true"] {
-	background: var(--wsp-kind-tint);
-	color: var(--wsp-kind-ink);
+	background: var(--primary);
+	color: var(--on-primary);
 }
 
-/* The module-group boundary, so a 12-icon rail still reads as five groups. */
+/* The rail's squares and mark are icon-only links: the icon press step (§B.12). */
+.wsp-rail__item,
+.wsp-rail__switch {
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.wsp-rail__item:active,
+.wsp-rail__switch:active {
+	transform: scale(var(--btn-press-scale-icon));
+	transition-duration: var(--dur-press);
+}
+
+/* Zone 2's boundary between the primary views and "More". */
 .wsp-rail__group-sep {
 	inline-size: 60%;
 	block-size: 0;
@@ -508,6 +554,12 @@ words — a ring colour on its own is not a channel. */
 	inset-inline-end: var(--space-2);
 }
 
+/* On the filled active square the dot takes the square's ink, as the expanded row's mark does. */
+.wsp-rail__item[data-active="true"] .wsp-rail__dot {
+	background: currentColor;
+}
+
+/* Zone 4: the create glyph over the expand toggle. */
 .wsp-rail__bottom {
 	display: flex;
 	flex-direction: column;
@@ -515,22 +567,20 @@ words — a ring colour on its own is not a channel. */
 	gap: var(--space-2);
 	margin-block-start: auto;
 }
-
-.wsp-rail__verify {
-	flex: none;
-}
 /* #endregion */
 
-/* #region Header band */
+/* #region Header band — Decision #220's three-region band */
 /*
- * The band contract, shared verbatim with the reference `.chan-header`: exactly
- * `--shell-midnav-header-h` tall, `--space-4` inline padding, and TRANSPARENT. The tonal surface is
- * the shell band's own flush `--surface-1` underlay and the seam beneath it is the canvas frame's
- * single hairline — painting an opaque plate and a second hairline here doubles both.
+ * The band contract, shared with the catalogue's `.cat-band` (Decision #220) and the reference
+ * `.chan-header`: exactly `--shell-midnav-header-h` tall, `--space-4` inline padding, and TRANSPARENT —
+ * the tonal surface is the shell band's own flush `--surface-1` underlay and the seam beneath it is
+ * the canvas frame's single hairline. Identity at the start, the sub-view `TabMenu` centred between
+ * two `flex: 1 1 0` regions, actions at the end.
  */
 .wsp-headerband {
+	container: wsp-headerband / inline-size;
 	display: flex;
-	align-items: center;
+	align-items: stretch;
 	gap: var(--space-3);
 	block-size: var(--shell-midnav-header-h);
 	padding-inline: var(--space-4);
@@ -540,159 +590,161 @@ words — a ring colour on its own is not a channel. */
 	overflow: hidden;
 }
 
-.wsp-headerband__identity {
+.wsp-headerband__start,
+.wsp-headerband__end {
 	display: flex;
+	flex: 1 1 0;
 	align-items: center;
 	gap: var(--space-2);
 	min-inline-size: 0;
-	flex: none;
-	color: inherit;
-	text-decoration: none;
 }
 
-/* The identity name and the selected tab share `--fw-medium` and `--on-surface`, so the name is told
-apart by SIZE: one step up the ramp, the title register above the tab strip's body register. */
-.wsp-headerband__name {
-	font-size: var(--wsp-fs-key);
-	font-weight: var(--fw-medium);
-	color: var(--on-surface);
+.wsp-headerband__end {
+	justify-content: flex-end;
+}
+
+.wsp-headerband__id {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: var(--space-px);
+	min-inline-size: 0;
+}
+
+/* The title register over the meta line: told apart by size and ink, never by weight (§A.4). */
+.wsp-headerband__title {
+	margin: 0;
 	overflow: hidden;
+	color: var(--on-surface);
+	font-size: var(--text-base);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.wsp-headerband__handle {
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
+.wsp-headerband__meta {
+	min-inline-size: 0;
+	overflow: hidden;
+	line-height: var(--leading-tight);
+	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.wsp-headerband__badge {
-	flex: none;
-}
-
-/* The band's own hairline divider, between the identity and the tabs. One edge, one line. */
-.wsp-headerband__divider {
-	flex: none;
-	inline-size: 0;
-	block-size: 1.25rem;
-	border-inline-start: var(--hairline);
-}
-
-.wsp-headerband__controls {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	margin-inline-start: auto;
-	flex: none;
-	min-inline-size: 0;
-}
-
-.wsp-headerband__icon {
+/*
+ * Share profile in two presentations — the words, or the glyph under a Tooltip — and the band's own
+ * width (an `@container` query below) decides which paints, so SSR and hydration agree on the first
+ * frame. The wrapper has no gap, so the hidden one leaves no space behind.
+ */
+.wsp-headerband__utility {
 	display: inline-flex;
-	align-items: center;
-	justify-content: center;
 	flex: none;
-	inline-size: 2rem;
-	block-size: 2rem;
-	padding: 0;
-	border: none;
-	border-radius: var(--radius-base);
-	background: none;
-	color: var(--text-secondary);
-	cursor: pointer;
+	align-items: center;
 }
 
-.wsp-headerband__icon:hover {
-	background: var(--surface-3);
-	color: var(--on-surface);
-}
-
-.wsp-headerband__panel {
-	min-inline-size: 18rem;
-	padding: var(--space-2);
-}
-
-.wsp-headerband__panel-note {
-	margin: 0;
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
+.wsp-headerband .wsp-headerband__utility-narrow {
+	display: none;
 }
 /* #endregion */
 
-/* #region Header band tabs — underlined text, never a pill */
+/* #region Header band tabs — the in-band underline (Decision #220 (A)) */
 /*
- * A `--wsp-stroke` `--primary` `::after` that scales on the inline axis, pinned one hairline below
- * the band so it lands ON the band's divider hairline rather than floating above it. No box, no
- * background, no radius: the tab strip is text, and the underline is the only mark.
+ * Inside the band the TabMenu loses its own border and sliding ink; each tab draws a `--wsp-stroke`
+ * underline that scales on the inline axis, one hairline below the band so it lands ON the canvas
+ * frame's seam. The scroll box gets one hairline of padding and the matching negative margin so it
+ * does not clip that line. No box, no background, no radius: the tab strip is text.
  */
-.wsp-headerband__tabs {
-	display: flex;
-	align-items: stretch;
-	gap: var(--space-1);
-	block-size: 100%;
+.wsp-headerband__tabs.ui-tabmenu {
+	flex: 0 1 auto;
+	align-self: stretch;
 	min-inline-size: 0;
-	overflow-x: auto;
-	scrollbar-width: none;
+	border-block-end: none;
 }
 
-.wsp-headerband__tabs::-webkit-scrollbar {
+.wsp-headerband__tabs .ui-tabmenu__scroll {
+	margin-block-end: calc(-1 * var(--wsp-hairline-w));
+	padding-block-end: var(--wsp-hairline-w);
+}
+
+.wsp-headerband__tabs .ui-tabmenu__list {
+	block-size: 100%;
+	gap: var(--space-4);
+}
+
+.wsp-headerband__tabs .ui-tabmenu__ink {
 	display: none;
 }
 
-.wsp-headerband__tab {
+.wsp-headerband__tabs .ui-tabmenu__tab {
 	position: relative;
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	flex: none;
-	padding-inline: var(--space-3);
-	border: none;
-	background: none;
-	color: var(--text-secondary);
-	font: inherit;
-	font-size: var(--wsp-fs-body);
-	text-decoration: none;
-	white-space: nowrap;
-	cursor: pointer;
+	block-size: 100%;
+	padding: 0 var(--space-1);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	letter-spacing: 0;
 }
 
-.wsp-headerband__tab::after {
+.wsp-headerband__tabs .ui-tabmenu__tab--active {
+	color: var(--primary);
+}
+
+.wsp-headerband__tabs .ui-tabmenu__tab::after {
 	content: "";
 	position: absolute;
+	inset-inline: 0;
 	inset-block-end: calc(-1 * var(--wsp-hairline-w));
-	inset-inline: var(--space-2);
 	block-size: var(--wsp-stroke);
-	border-radius: var(--radius-xs);
-	background: var(--primary);
+	border-start-start-radius: var(--radius-xs);
+	border-start-end-radius: var(--radius-xs);
+	background: var(--outline);
 	transform: scaleX(0);
 	transform-origin: center;
 	transition: transform var(--dur-fast) var(--ease-standard);
 }
 
-.wsp-headerband__tab:hover {
-	color: var(--on-surface);
-}
-
-.wsp-headerband__tab[aria-selected="true"],
-.wsp-headerband__tab[data-active="true"] {
-	color: var(--on-surface);
-	font-weight: var(--fw-medium);
-}
-
-.wsp-headerband__tab[aria-selected="true"]::after,
-.wsp-headerband__tab[data-active="true"]::after {
+.wsp-headerband__tabs .ui-tabmenu__tab:hover::after {
 	transform: scaleX(1);
 }
 
-.wsp-headerband__tab-glyph {
-	display: inline-flex;
-	flex: none;
-	line-height: 0;
+.wsp-headerband__tabs .ui-tabmenu__tab--active::after,
+.wsp-headerband__tabs .ui-tabmenu__tab--active:hover::after {
+	background: var(--primary);
+	transform: scaleX(1);
 }
 
-.wsp-headerband__tab-dot {
-	flex: none;
+.wsp-headerband__tabs .ui-tabmenu__chevron {
+	background: transparent;
+}
+
+/* A narrow band keeps every tab reachable: the regions yield first, then the meta line goes. */
+@container wsp-headerband (max-width: 48rem) {
+	.wsp-headerband__start,
+	.wsp-headerband__end {
+		flex: 0 1 auto;
+	}
+
+	.wsp-headerband__tabs.ui-tabmenu {
+		flex: 1 1 auto;
+		min-inline-size: 7rem;
+	}
+
+	.wsp-headerband .wsp-headerband__utility-wide {
+		display: none;
+	}
+
+	.wsp-headerband .wsp-headerband__utility-narrow {
+		display: inline-flex;
+	}
+}
+
+@container wsp-headerband (max-width: 36rem) {
+	.wsp-headerband__meta {
+		display: none;
+	}
+
+	.wsp-headerband__tabs .ui-tabmenu__list {
+		gap: var(--space-3);
+	}
 }
 /* #endregion */
 
@@ -700,9 +752,15 @@ apart by SIZE: one step up the ramp, the title register above the tab strip's bo
 /*
  * The band contract, shared verbatim with the reference `.fx-rig`: a `--space-2`/`--space-4` inset
  * around a `--wsp-rig-row` control row, transparent, and NO hairline of its own — the seam is the
- * canvas frame's, which grows a block-end hairline whenever a footer band is registered.
+ * canvas frame's, which grows a block-end hairline whenever a footer band is registered. Every control
+ * in it is a `@projective/ui` `Button` at its matrix tier or a ui `Link`.
+ *
+ * The rig is a size container, and so is its trailing side: whether a control draws its words is asked
+ * of the room it actually has, never of the viewport — a docked lane at 768px leaves the rig 424px, far
+ * narrower than a 767px phone's (see the folds under Responsive).
  */
 .wsp-footerrig {
+	container: wsp-footerrig / inline-size;
 	display: flex;
 	align-items: center;
 	gap: var(--space-3);
@@ -722,17 +780,124 @@ apart by SIZE: one step up the ramp, the title register above the tab strip's bo
 	overflow: hidden;
 }
 
-.wsp-footerrig__spacer {
-	flex: 1 1 auto;
-	min-inline-size: 0;
+/* With no zoom and no toggle the leading side is empty, and takes neither room nor the rig's gap. */
+.wsp-footerrig__group:empty {
+	display: none;
 }
 
-/* A full contour is correct here: these are interactive controls (§B.4). */
-.wsp-footerrig__action {
+/*
+ * The trailing side takes every pixel the leading side leaves and lays its controls against the end,
+ * so its own width is the room its words have — the container its folds ask (Responsive).
+ */
+.wsp-footerrig__actions {
+	container: wsp-footerrig-actions / inline-size;
+	flex: 1 1 0;
+	justify-content: flex-end;
+}
+
+/* Discard and Save never shrink, so a commit never wraps its label: the status line yields first. */
+.wsp-footerrig__commit {
+	flex: none;
+}
+
+/*
+ * The policy editor's save state, said before the Discard and Save it explains: meta text, never a
+ * box. Unsaved changes take the ink, a failed save the danger ink.
+ */
+.wsp-footerrig__status {
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	color: var(--text-secondary);
+	font-size: var(--wsp-fs-body);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-footerrig__status[data-tone="unsaved"] {
+	color: var(--on-surface);
+}
+
+.wsp-footerrig__status[data-tone="error"] {
+	color: var(--danger);
+}
+
+/*
+ * A navigation in the rig: the ui `Link`'s ink and hover, laid on the rig's row beside its glyph. Its
+ * press adds `transform` to the global theme crossfade rather than replacing it, so the link's ink
+ * changes theme on the same clock as the band around it (§B.5).
+ */
+.wsp-footerrig__link {
 	display: inline-flex;
+	flex: none;
 	align-items: center;
 	gap: var(--space-2);
+	block-size: var(--wsp-rig-row);
+	padding-inline: var(--space-2);
+	font-size: var(--wsp-fs-body);
+	white-space: nowrap;
+	transition:
+		color var(--dur-slow) var(--ease-standard),
+		background-color var(--dur-slow) var(--ease-standard),
+		border-color var(--dur-slow) var(--ease-standard),
+		fill var(--dur-slow) var(--ease-standard),
+		transform var(--dur-press) var(--ease-standard);
+}
+
+.wsp-footerrig__link:active {
+	transform: scale(var(--btn-press-scale));
+}
+
+/*
+ * A utility or the Org chart toggle in two presentations — the words, or the `iconOnly` Button under
+ * a Tooltip — and the rig's own width decides which paints (Responsive), so SSR and hydration agree
+ * on the first frame. The wrapper has no gap, so the one not drawn leaves no space behind.
+ */
+.wsp-footerrig__utility {
+	display: inline-flex;
 	flex: none;
+	align-items: center;
+}
+
+.wsp-footerrig .wsp-footerrig__narrow {
+	display: none;
+}
+
+.wsp-footerrig__glyph {
+	display: inline-flex;
+	flex: none;
+	line-height: 0;
+}
+
+/* Its own element, so the mobile rule can drop the words and keep the glyph. */
+.wsp-footerrig__label {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/*
+ * The view control is the SHARED `.ui-viewrig` (layout, mode glyph and slider cap live in
+ * `features/shell/styles/view-zoom-rig.css`), so this only strips the padding it would otherwise add
+ * inside a band that already pads itself, and holds a floor so the track never collapses. The Org
+ * chart toggle is its sibling, so it keeps its place when the zoom is not drawn.
+ */
+.wsp-footerrig .wsp-footerrig__density {
+	flex: none;
+	padding: 0;
+	min-inline-size: 9rem;
+}
+
+/*
+ * Held for the spend approval queue's Approve / Decline (`ApprovalQueue`, Teams audit D30), which
+ * still borrow the rig's former ghost action; it goes when that queue moves onto `Button`. A full
+ * contour is correct here: these are interactive controls (§B.4).
+ */
+.wsp-footerrig__action {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	gap: var(--space-2);
 	block-size: var(--wsp-rig-row);
 	padding-inline: var(--space-3);
 	padding-block: 0;
@@ -746,137 +911,102 @@ apart by SIZE: one step up the ramp, the title register above the tab strip's bo
 	white-space: nowrap;
 	cursor: pointer;
 	text-decoration: none;
-	transition: background-color var(--dur-fast) var(--ease-standard);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-press) var(--ease-standard);
 }
 
 .wsp-footerrig__action:hover {
 	background: var(--surface-3);
 }
 
-/*
- * Locked, not removed. A verification gate keeps its control in place so the path stays discoverable;
- * the lock glyph and the faded ink say "not yet", and activating it explains how. The fade is the
- * shared disabled mix on the INK, against the band's own `--surface-1` — never `opacity`, which would
- * fade the whole control and its label contrast with it. A CAPABILITY gate is the opposite — the
- * control is absent entirely, because offering an action a member may never take is a lie about the
- * roster.
- */
-.wsp-footerrig__action[data-locked="true"] {
-	background: none;
-	color: color-mix(in srgb, var(--text-secondary) var(--fld-disabled-mix), var(--surface-1));
-}
-
-.wsp-footerrig__glyph {
-	display: inline-flex;
-	flex: none;
-	line-height: 0;
-}
-
-/* Wrapped so the mobile rule can drop the words and keep the glyph. */
-.wsp-footerrig__label {
-	min-inline-size: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
-/*
- * The view control is the SHARED `.ui-viewrig` (layout, mode glyph and slider cap live in
- * `features/shell/styles/view-zoom-rig.css`), so this only strips the padding it would otherwise add
- * inside a band that already pads itself, and holds a floor so the track never collapses. The Org
- * chart toggle rides along inside it as a trailing child.
- */
-.wsp-footerrig .wsp-footerrig__density {
-	flex: none;
-	padding: 0;
-	min-inline-size: 9rem;
-}
-
-.wsp-footerrig__more {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	flex: none;
-	block-size: var(--wsp-rig-row);
-	padding-inline: var(--space-3);
-	padding-block: 0;
-	border: var(--hairline-strong);
-	border-radius: var(--radius-base);
-	background: none;
-	color: var(--on-surface);
-	font: inherit;
-	font-size: var(--wsp-fs-body);
-	cursor: pointer;
-}
-
-.wsp-footerrig__more:hover {
-	background: var(--surface-3);
-}
-
-.wsp-footerrig__menu {
-	display: flex;
-	flex-direction: column;
-	align-items: stretch;
-	gap: var(--space-1);
-	min-inline-size: 13rem;
-	padding: var(--space-1);
-}
-
-.wsp-footerrig__note {
-	flex: none;
-	font-size: var(--wsp-fs-micro);
-	letter-spacing: var(--wsp-label-track);
-	text-transform: uppercase;
-	color: var(--text-secondary);
-	white-space: nowrap;
-}
-
-.wsp-footerrig__nudge {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	max-inline-size: 20rem;
-	padding: var(--space-3);
-}
-
-.wsp-footerrig__nudge-text {
-	margin: 0;
-	font-size: var(--wsp-fs-body);
-	color: var(--on-surface);
+.wsp-footerrig__action:active:not(:disabled) {
+	transform: scale(var(--btn-press-scale));
 }
 /* #endregion */
 
 /* #region Responsive */
-/* Laned tablet (below `--bp-xl`; see the breakpoint note in workspace-tokens.css): the header band
-drops its secondary identity text before it drops a tab. */
-@media (max-width: 79.9375rem) {
-	.wsp-headerband__handle,
-	.wsp-headerband__badge {
+/*
+ * The rig's folds: a utility or the toggle swaps to its icon-only Button and a link drops its words
+ * (the name stays on its Tooltip and `aria-label`); Save and Discard keep their words at every width.
+ *
+ * Asked of the room each side actually has, never of the viewport — the trailing side by its own box,
+ * at the width its words need for what it holds (`data-holds`, from `rig-model.ts`), so the zoom and
+ * toggle beside it are already accounted for. THE BUDGETS, measured inner widths (default face, then
+ * the dyslexic overlay's) against each trigger:
+ *   - `create` — "New business", the longer noun: 8rem / 8.2rem; folds under 9rem.
+ *   - `utilities` — Invite members · Settings: 14.7rem / 15.7rem; folds under 16.5rem, so a 768px
+ *     viewport with the lane docked (24.5rem of rig) keeps the words beside the Org chart toggle.
+ *   - `editor` — the status line, then the utilities; "Saved" after a save: 17.1rem / 19.1rem; folds
+ *     under 18rem, where the overlay's "Saved" takes its ellipsis for a rem or so.
+ *   - `commit` — "Unsaved changes" · Invite members · Settings · Discard · Save: 30.3rem / 33.1rem;
+ *     folds under 32rem. Folded it needs 20.2rem / 21.3rem, inside the 22.9rem a 390px phone leaves.
+ * The controls never shrink and the status line does, so wherever the words run out early — a wider
+ * face, a larger text step — what yields is the status line's ellipsis, never a control.
+ */
+@container wsp-footerrig-actions (max-width: 8.9375rem) {
+	.wsp-footerrig__actions[data-holds="create"] .wsp-footerrig__wide {
 		display: none;
 	}
 
-	.wsp-footerrig__note {
-		display: none;
+	.wsp-footerrig__actions[data-holds="create"] .wsp-footerrig__narrow {
+		display: inline-flex;
 	}
 }
 
+@container wsp-footerrig-actions (max-width: 16.4375rem) {
+	.wsp-footerrig__actions[data-holds="utilities"] .wsp-footerrig__label,
+	.wsp-footerrig__actions[data-holds="utilities"] .wsp-footerrig__wide {
+		display: none;
+	}
+
+	.wsp-footerrig__actions[data-holds="utilities"] .wsp-footerrig__narrow {
+		display: inline-flex;
+	}
+}
+
+@container wsp-footerrig-actions (max-width: 17.9375rem) {
+	.wsp-footerrig__actions[data-holds="editor"] .wsp-footerrig__label,
+	.wsp-footerrig__actions[data-holds="editor"] .wsp-footerrig__wide {
+		display: none;
+	}
+
+	.wsp-footerrig__actions[data-holds="editor"] .wsp-footerrig__narrow {
+		display: inline-flex;
+	}
+}
+
+@container wsp-footerrig-actions (max-width: 31.9375rem) {
+	.wsp-footerrig__actions[data-holds="commit"] .wsp-footerrig__label,
+	.wsp-footerrig__actions[data-holds="commit"] .wsp-footerrig__wide {
+		display: none;
+	}
+
+	.wsp-footerrig__actions[data-holds="commit"] .wsp-footerrig__narrow {
+		display: inline-flex;
+	}
+}
+
+/*
+ * The Org chart toggle beside the zoom: the zoom (14rem) + the toggle's words + the trailing glyphs
+ * need 26.1rem of rig (26.6rem in the overlay), so under 27rem the toggle folds too. Alone on the
+ * chart it keeps its words.
+ */
+@container wsp-footerrig (max-width: 26.9375rem) {
+	.wsp-footerrig__density + .wsp-footerrig__utility .wsp-footerrig__wide {
+		display: none;
+	}
+
+	.wsp-footerrig__density + .wsp-footerrig__utility .wsp-footerrig__narrow {
+		display: inline-flex;
+	}
+}
+
+/* Below `--bp-md` every fold applies whatever the room: the phone rig is glyphs, Save and Discard. */
 @media (max-width: 47.9375rem) {
 	.wsp-headerband {
-		padding-inline: var(--space-3);
 		gap: var(--space-2);
-	}
-
-	.wsp-headerband__divider {
-		display: none;
-	}
-
-	/* Tabs collapse to their leading glyph — the labels are the first thing a narrow band can lose
-	without losing a destination. */
-	.wsp-headerband__tab-label {
-		display: none;
-	}
-
-	.wsp-headerband__tab {
-		padding-inline: var(--space-2);
+		padding-inline: var(--space-3);
 	}
 
 	.wsp-footerrig {
@@ -885,8 +1015,12 @@ drops its secondary identity text before it drops a tab. */
 	}
 
 	.wsp-footerrig__label,
-	.wsp-footerrig__more-label {
+	.wsp-footerrig .wsp-footerrig__wide {
 		display: none;
+	}
+
+	.wsp-footerrig .wsp-footerrig__narrow {
+		display: inline-flex;
 	}
 
 	.wsp-footerrig__density {
@@ -897,18 +1031,46 @@ drops its secondary identity text before it drops a tab. */
 
 /* #region Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-	.wsp-headerband__tab::after,
-	.wsp-lane__row,
-	.wsp-lane__switch,
-	.wsp-footerrig__action {
+	.wsp-headerband__tabs .ui-tabmenu__tab::after,
+	.wsp-footerrig__action,
+	.wsp-footerrig__link {
 		transition: none;
+	}
+
+	.wsp-footerrig__action:active:not(:disabled),
+	.wsp-footerrig__link:active {
+		transform: none;
+	}
+
+	.wsp-lane__entity,
+	.wsp-lane__entity:active,
+	.wsp-rail__item,
+	.wsp-rail__item:active,
+	.wsp-rail__switch,
+	.wsp-rail__switch:active {
+		transition: none;
+		transform: none;
 	}
 }
 
-:root[data-motion="reduced"] .wsp-headerband__tab::after,
-:root[data-motion="reduced"] .wsp-lane__row,
-:root[data-motion="reduced"] .wsp-lane__switch,
-:root[data-motion="reduced"] .wsp-footerrig__action {
+:root[data-motion="reduced"] .wsp-headerband__tabs .ui-tabmenu__tab::after,
+:root[data-motion="reduced"] .wsp-footerrig__action,
+:root[data-motion="reduced"] .wsp-footerrig__link {
 	transition: none;
+}
+
+:root[data-motion="reduced"] .wsp-footerrig__action:active:not(:disabled),
+:root[data-motion="reduced"] .wsp-footerrig__link:active {
+	transform: none;
+}
+
+:root[data-motion="reduced"] .wsp-lane__entity,
+:root[data-motion="reduced"] .wsp-lane__entity:active,
+:root[data-motion="reduced"] .wsp-rail__item,
+:root[data-motion="reduced"] .wsp-rail__item:active,
+:root[data-motion="reduced"] .wsp-rail__switch,
+:root[data-motion="reduced"] .wsp-rail__switch:active {
+	transition: none;
+	transform: none;
 }
 /* #endregion */

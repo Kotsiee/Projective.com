@@ -54,6 +54,7 @@ VALUES
   ('34387697-2f4b-4102-a926-b519b5ff95e4', '01614cc7-3612-47a0-a03a-dbddc112cac6', 'business', '4cfa4f66-9aa2-496b-a93d-994caac019c1', 'owner'),
   ('37ccfc53-bad5-4e66-a582-50d1997e41dc', 'e0adf9af-6ff2-46a8-a22f-e909cbc6b5da', 'business', 'edb582e0-25d2-48a3-a0db-4a96f1d1a8d1', 'owner'),
   ('2b5f4d44-5621-48e1-abd4-091a18ec9297', 'e0adf9af-6ff2-46a8-a22f-e909cbc6b5da', 'freelancer', '6ce1906f-caab-4708-a19e-df3d8960666e', 'participant'),
+  ('a4c7f731-c6c6-41f8-aafa-3f2faf29fdbe', 'e0adf9af-6ff2-46a8-a22f-e909cbc6b5da', 'freelancer', '45a4c6ae-d818-45fd-a62b-db44f1f69eab', 'participant'),
   ('84dcbcd6-963a-463b-a436-d86c663fe3e1', '8ed2ca3a-da90-408d-a05f-0a3cdfa87baf', 'freelancer', '45a4c6ae-d818-45fd-a62b-db44f1f69eab', 'participant')
 ON CONFLICT (id) DO NOTHING;
 

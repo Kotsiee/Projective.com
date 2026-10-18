@@ -1,6 +1,8 @@
 import type { ComponentChildren, JSX, VNode } from "preact";
 import { cx } from "@ui/core/cx.ts";
+import { InlineNotice } from "@projective/ui/feedback";
 import { kindCopy, type VerificationState, type WorkspaceKind } from "@projective/types/workspace";
+import { lockLinkLabel, lockNextStep } from "../core/verification-lock-copy.ts";
 
 /**
  * VerificationLock — the shared KYC/KYB gate for the `/teams` and `/businesses` console.
@@ -84,35 +86,8 @@ function pendingText(kind: WorkspaceKind): string {
 	return `${copy.verification} is with our reviewers.`;
 }
 
-/**
- * The next step, always named.
- *
- * Three cases, and none of them is a dead end:
- *   - **Pending** — nothing to do, so the step is "wait", stated as a duration rather than as silence.
- *   - **Actionable** — the viewer can finish it, so the step is the link beside this text.
- *   - **Somebody else's** — the viewer cannot open Verification, so the step names WHO can. A member
- *     staring at a locked payout needs to know who to ask, not merely that they personally cannot.
- */
-function promptFor(kind: WorkspaceKind, state: VerificationState, canManage: boolean): string {
-	const copy = kindCopy(kind);
-	if (state === "pending") {
-		return `Most ${copy.verification} reviews finish within two working days. ` +
-			"Nothing else is needed from you meanwhile.";
-	}
-	if (canManage) {
-		return kind === "team"
-			? "Everything else keeps working — only the payout itself waits on this."
-			: "You can set limits and compose spend rules now; only moving money waits on this.";
-	}
-	return `An owner or admin can finish ${copy.verification} from the ${copy.noun}'s Verification page.`;
-}
-
-/** The link's label — an instruction, never a bare "Continue". */
-function linkLabel(kind: WorkspaceKind, state: VerificationState): string {
-	const copy = kindCopy(kind);
-	if (state === "pending") return "See what's outstanding";
-	return `Finish ${copy.verification}`;
-}
+// The next step and the link's label are pure (`core/verification-lock-copy.ts`), so every
+// kind × state × right is pinned by a unit test.
 // #endregion
 
 // #region Component
@@ -129,42 +104,71 @@ export interface VerificationLockProps {
 	/** Where the verification module lives for this entity — the actionable next step. */
 	href: string;
 	/**
-	 * Whether the viewer may open that module (`manage_settings`). When `false` the lock still renders —
-	 * the fact is theirs to know — but the link is replaced by the name of who can act.
+	 * Whether the viewer may open that module — its own gate, `canOpenVerification` (a business's
+	 * billing right, a team's `manage_settings`), so the link never lands on a page that turns them
+	 * away. When `false` the lock still renders — the fact is theirs to know — but the link is replaced
+	 * by the name of who can act.
 	 */
 	canManage?: boolean;
 	/** `band` is the full-width strip in a band; `inline` is the compact variant inside another block. */
 	tone?: "band" | "inline";
+	/**
+	 * The band's place in its stack's entrance stagger (`data-i`), so it enters in the stack's
+	 * top-to-bottom order rather than with the first band. `band` tone only.
+	 */
+	i?: number;
+	/**
+	 * Drawn only for a viewer whose remembered hero dismissal the Overview's pre-paint guard found
+	 * (`data-hero-standin`, hidden by the stylesheet otherwise), so the lock a dismissed hero hands back
+	 * is in place from first paint. `band` tone only.
+	 */
+	heroStandIn?: boolean;
 }
 
 /**
  * The lock. See the module header for the capability-versus-verification distinction it encodes.
  *
- * `role="status"`: the lock explains why something nearby is unavailable, so it is announced when it
- * appears without stealing focus. It is deliberately not an `alert` — nothing has gone wrong, and an
- * assertive announcement would frame a normal onboarding step as a failure.
+ * A required disclosure, so it is the ui `InlineNotice` — unboxed (no fill, no border: TEAMS_AUDIT
+ * D12), the lock glyph leading, the headline, the next step and the link on one meta-register line —
+ * and `role="status"`: it explains why something nearby is unavailable, so it is announced when it
+ * appears without stealing focus. Deliberately not an `alert` — nothing has gone wrong, and an
+ * assertive announcement would frame a normal onboarding step as a failure. `band` sets it in its
+ * own band so it aligns with the stack's content; `inline` is the bare line inside another block.
  */
 export function VerificationLock(props: VerificationLockProps): JSX.Element | null {
-	const { kind, verification, prompt, href, canManage = true, tone = "band" } = props;
+	const { kind, verification, prompt, href, canManage = true, tone = "band", i, heroStandIn } =
+		props;
 	if (verification === "verified") return null;
 
 	const headline = prompt ??
 		(verification === "pending" ? pendingText(kind) : fallbackText(kind));
 
-	return (
-		<div
-			class={cx("wsp-lock", tone === "inline" && "wsp-lock--inline")}
-			data-state={verification}
-			data-kind={kind}
-			role="status"
+	const notice = (
+		<InlineNotice
+			class={cx("wsp-lock", verification === "pending" && "wsp-lock--pending")}
+			align="start"
+			icon={LockGlyph}
 		>
-			<span class="wsp-lock__glyph">{LockGlyph}</span>
-			<div class="wsp-lock__body">
-				<p class="wsp-lock__text">{headline}</p>
-				<p class="wsp-lock__prompt">{promptFor(kind, verification, canManage)}</p>
-			</div>
-			{canManage && <a class="wsp-lock__link" href={href}>{linkLabel(kind, verification)}</a>}
-		</div>
+			<span class="wsp-lock__text">{headline}</span>{" "}
+			<span class="wsp-lock__prompt">{lockNextStep(kind, verification, canManage)}</span>
+			{canManage && (
+				<>
+					{" "}
+					<a class="wsp-lock__link" href={href}>{lockLinkLabel(kind, verification)}</a>
+				</>
+			)}
+		</InlineNotice>
+	);
+	if (tone === "inline") return notice;
+	return (
+		<section
+			class="wsp-band wsp-band--plain wsp-band--notice"
+			data-i={i}
+			data-hero-standin={heroStandIn ? "" : undefined}
+			aria-label={`${kindCopy(kind).verification} status`}
+		>
+			<div class="wsp-band__inner">{notice}</div>
+		</section>
 	);
 }
 // #endregion

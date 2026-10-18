@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { InlineNotice } from "@projective/ui/feedback";
 import type { SettingsSectionDataOf } from "@projective/types/settings";
 import { type DateFormat, formatDateValue } from "@projective/types/org";
+import { contactHref } from "@features/contact/core/contact-url.ts";
 import { OutLink, SettingsBlock } from "../../SettingsParts.tsx";
 
 /** Props for {@link IdentityBlock}. */
@@ -45,7 +46,7 @@ export function IdentityBlock(props: IdentityBlockProps): JSX.Element {
 							<dd>
 								<span class="stg-tabular">{dob || "Not available"}</span>
 								<span class="stg-facts__note">
-									To correct it, <a href="/help/account">contact support</a>.
+									To correct it, <a href={contactHref("support")}>contact support</a>.
 								</span>
 							</dd>
 						</div>
