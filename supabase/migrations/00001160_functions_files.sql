@@ -210,6 +210,12 @@ BEGIN
         RETURN true;
     END IF;
 
+    -- A /contact attachment (Decision #276) is read by the platform's operators, who answer the
+    -- request it came with; its uploader already passed the ownership arm above, and nobody else may.
+    IF v_item.purpose = 'contact'::files.asset_purpose AND security.is_admin () THEN
+        RETURN true;
+    END IF;
+
     RETURN false;
 END;
 $$;

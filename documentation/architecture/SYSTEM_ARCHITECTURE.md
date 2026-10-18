@@ -3375,6 +3375,11 @@ EDITORIAL_BACKEND_LIVE=false
 # supabase/config.toml [api].schemas (then `supabase stop && supabase start`) or a hosted project's
 # Exposed schemas before either gate, or the newsletter's live path, can reach them.
 COMMUNITY_BACKEND_LIVE=false
+# The /contact intake (Decision #276): ops.contact_requests through ops.submit_contact_request, and
+# attachments through the quarantine pipeline into the private `contact` bucket. Off, development
+# answers a receipt and stores nothing; PRODUCTION REFUSES (503) rather than acknowledge a message
+# nobody will read — set it in every deployed environment.
+CONTACT_BACKEND_LIVE=false
 ```
 
 ---

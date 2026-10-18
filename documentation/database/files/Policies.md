@@ -288,4 +288,16 @@ Full predicate, path convention and the metering consequence:
 > on public buckets, so an owner can still place an unscanned file there directly. Closing them needs
 > their upload paths moved onto the pipeline first.
 
+## `storage.objects` — the `contact` bucket (Decision #276)
+
+- **One policy, operator `SELECT`**: "Operators read contact attachments" (`00002017`, region
+  `[contact]`) — `bucket_id = 'contact' AND security.is_admin()`. It is the bucket's sole policy, so
+  no broader read can be OR-combined in by accident.
+- **No client write policy at all.** A `/contact` attachment is declared like any upload (a
+  `pending_upload` row in `quarantine`, marked `target_bucket = 'contact'`); the contact pipeline
+  (service role, `services/contact/live-attachments.ts`) sniffs the bytes and promotes the original
+  to `contact/{user_id}/{asset_id}/…` with `files.items.purpose = 'contact'`. The sender keeps no read
+  path to the promoted object (they hold their own copy); the `files.items` row stays readable by its
+  owner, and by operators through `files.fn_can_read`'s contact arm ([Functions.md](Functions.md)).
+
 See also [Tables.md](Tables.md) · [Functions.md](Functions.md) · [Storage.md](Storage.md).

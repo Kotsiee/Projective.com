@@ -126,3 +126,65 @@ CREATE TABLE ops.http_job_dispatches (
   CONSTRAINT http_job_dispatches_job_name_fkey FOREIGN KEY (job_name) REFERENCES ops.scheduled_jobs (name) ON UPDATE CASCADE ON DELETE RESTRICT
 );
 -- #endregion
+
+-- #region [contact] Contact requests (P3, Decision #276)
+-- What /contact files: one row per request, on the unified status machine (PRODUCT_MANAGEMENT §3.1 —
+-- `backlog` on arrival → `in_progress` → `complete` | `archived`). Written only by the definer door
+-- `ops.submit_contact_request` (00001655), which stamps auth.uid(), validates the per-intent payload
+-- keys, links the sender's own attachments and tells every operator; read by operators only
+-- (00002019). Never deleted, and nothing but `status` / `updated_at` ever changes after insert
+-- (`ops.fn_guard_contact_request`, 00001897). Zod SSOT: @projective/types/contact.
+CREATE TABLE ops.contact_requests (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  -- The human reference the sender is shown and quotes back (`CT-7K4Q-2M9X`, Crockford base32 —
+  -- ops.fn_contact_reference). A second key beside `id`, never a route: uuids and references do not
+  -- address anything (Decision #88), they correlate a reply to its request.
+  reference text NOT NULL,
+  intent text NOT NULL,
+  status text NOT NULL DEFAULT 'backlog'::text,
+  -- The reply address, lower-cased. NULL only on an anonymous security report.
+  email text,
+  -- The signed-in sender, when there was one and the report is not anonymous. SET NULL on account
+  -- erasure, so a request outlives the account that sent it.
+  user_id uuid,
+  anonymous boolean NOT NULL DEFAULT false,
+  -- The intent's own fields (name, message, the sales/support/dispute/security specifics), stored as
+  -- the sender wrote them. NOT masked through comms.mask_pii: no copy is shown to anyone but
+  -- operators today; a copy ever shown to a non-operator must be masked first (Decision #147).
+  payload jsonb NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT contact_requests_pkey PRIMARY KEY (id),
+  CONSTRAINT contact_requests_reference_key UNIQUE (reference),
+  CONSTRAINT contact_requests_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE SET NULL,
+  CONSTRAINT contact_requests_reference_check CHECK (reference ~ '^CT-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$'),
+  CONSTRAINT contact_requests_intent_check CHECK (intent = ANY (ARRAY['sales'::text, 'support'::text, 'dispute'::text, 'security'::text])),
+  CONSTRAINT contact_requests_status_check CHECK (status = ANY (ARRAY['backlog'::text, 'in_progress'::text, 'complete'::text, 'archived'::text])),
+  CONSTRAINT contact_requests_email_check CHECK (email IS NULL OR (length(email) <= 254 AND email ~ '^[^\s@]+@[^\s@]+\.[^\s@]+$' AND email = lower(email))),
+  -- An anonymous report is a security report with no address and no account; anything else has an
+  -- address to reply to.
+  CONSTRAINT contact_requests_anonymous_check CHECK (
+    CASE WHEN anonymous THEN intent = 'security' AND email IS NULL AND user_id IS NULL
+         ELSE email IS NOT NULL END
+  ),
+  CONSTRAINT contact_requests_payload_check CHECK (
+    jsonb_typeof(payload) = 'object'
+    AND jsonb_typeof(payload -> 'message') = 'string'
+    AND length(payload ->> 'message') BETWEEN 1 AND 5000
+    AND pg_column_size(payload) <= 16384
+  )
+);
+
+-- A request's attachments: files the SENDER uploaded through the contact pipeline (`files.items`,
+-- `purpose = 'contact'`, in the private `contact` bucket). A file is attached to one request at most;
+-- RESTRICT on both sides, because the request is a record and the file is part of it.
+CREATE TABLE ops.contact_request_attachments (
+  request_id uuid NOT NULL,
+  file_id uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT contact_request_attachments_pkey PRIMARY KEY (request_id, file_id),
+  CONSTRAINT contact_request_attachments_file_key UNIQUE (file_id),
+  CONSTRAINT contact_request_attachments_request_fkey FOREIGN KEY (request_id) REFERENCES ops.contact_requests (id) ON DELETE RESTRICT,
+  CONSTRAINT contact_request_attachments_file_fkey FOREIGN KEY (file_id) REFERENCES files.items (id) ON DELETE RESTRICT
+);
+-- #endregion

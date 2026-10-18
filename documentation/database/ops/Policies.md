@@ -34,3 +34,21 @@ RLS enabled in `00002001`; policies in `00002019`; grants in `00002520`: `SELECT
 No client write policy. A cadence changes through the service role or SQL (the registry trigger
 reschedules pg_cron in the same transaction); new jobs arrive with a migration. Dispatch rows are
 written only by the definer dispatcher.
+
+## `ops.contact_requests` · `ops.contact_request_attachments` (Decision #276)
+
+RLS enabled in `00002001`; policies in `00002019`; grants in `00002520`: `SELECT` to `authenticated`
+and `service_role` on both, and **no** `INSERT`, `UPDATE`, `DELETE` or `TRUNCATE` for any role.
+
+| Policy                                  | Table                         | Command | Role            | Rule                  |
+| :-------------------------------------- | :---------------------------- | :------ | :-------------- | :-------------------- |
+| Admins read contact requests            | `contact_requests`            | SELECT  | `authenticated` | `security.is_admin()` |
+| Admins read contact request attachments | `contact_request_attachments` | SELECT  | `authenticated` | `security.is_admin()` |
+
+No write policy at all. Requests arrive only through the definer door `ops.submit_contact_request`
+(callable by `anon` and `authenticated`), and their status moves only through
+`ops.set_contact_request_status` (operators). A sender never reads a request back — they keep the
+reference they were shown. The attachments' bytes sit in the private `contact` bucket, whose one
+storage policy is operator read ([files Policies.md](../files/Policies.md), `00002017`), and their
+`files.items` rows are readable by their uploader and, through `files.fn_can_read`'s contact arm, by
+operators. Probe: [`supabase/probes/contact_requests.sql`](../../../supabase/probes/contact_requests.sql).

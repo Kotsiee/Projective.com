@@ -1,0 +1,537 @@
+/*
+ * /contact (Decision #276) — the page header, the split canvas (intake 3 : rail 2 from 64rem of
+ * page), the intake column (intent switcher, the four stacked fieldsets, the dropzone, the
+ * confirmation) and the operational-transparency rail.
+ *
+ * Delivered through the `ContactIntake` island's import graph — the page's one island, rendered on
+ * every state (form, confirmation, refusal), so the server-rendered header and rail are styled on
+ * every state too. Token-only. Separation is spacing and type first: the rail is the page's one
+ * tonal region (a solid `--surface-1`, not a card — no border, no shadow), and inside it one hairline
+ * divides who we are from how fast we answer. Breakpoints are container queries on the page and on
+ * the intake column, never the viewport, so the page lays out the same inside the guest shell and
+ * the signed-in canvas.
+ */
+
+/* #region Page */
+.ctc {
+	container: ctc / inline-size;
+	box-sizing: border-box;
+	inline-size: 100%;
+	max-inline-size: var(--container-xl);
+	margin-inline: auto;
+	padding-block: var(--space-6) var(--space-8);
+	padding-inline: var(--space-4);
+}
+
+@container ctc (min-width: 48rem) {
+	.ctc__head,
+	.ctc__canvas {
+		padding-inline: var(--space-4);
+	}
+}
+
+.ctc__head {
+	display: grid;
+	gap: var(--space-3);
+	margin-block-end: var(--space-7);
+}
+
+/* Section-header register: the eyebrow. */
+.ctc__eyebrow {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+/* Display register. */
+.ctc__title {
+	margin: 0;
+	font-size: var(--text-3xl);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+	color: var(--on-surface);
+	text-wrap: balance;
+}
+
+/* Body register, at the measure. */
+.ctc__lede {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	color: var(--text-secondary);
+}
+
+.ctc__canvas {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--space-7);
+	align-items: start;
+}
+
+@container ctc (min-width: 64rem) {
+	.ctc__canvas {
+		grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+		gap: var(--space-8);
+	}
+}
+/* #endregion */
+
+/* #region Intake column */
+.ctc-intake {
+	container: ctc-intake / inline-size;
+	display: grid;
+	gap: var(--space-6);
+	min-inline-size: 0;
+}
+
+.ctc-intake__switch {
+	display: grid;
+	gap: var(--space-3);
+	/* Two segments a row on a narrow column, all four once there is room for them. */
+	--sb-described-columns: repeat(2, minmax(0, 1fr));
+}
+
+@container ctc-intake (min-width: 40rem) {
+	.ctc-intake__switch {
+		--sb-described-columns: repeat(4, minmax(0, 1fr));
+	}
+}
+
+.ctc-intake__label {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.ctc-intake__switch .ui-select-button {
+	inline-size: 100%;
+}
+
+.ctc-form {
+	display: grid;
+	gap: var(--space-5);
+	margin: 0;
+}
+
+/*
+ * The four intents' fieldsets share ONE grid cell, so the column is always as tall as the tallest
+ * and switching intent moves nothing below it (no height jump). The inactive ones are `disabled`
+ * (unsubmitted, unfocusable), `inert` and hidden from the accessibility tree. The two cross-fade on
+ * `--dur-fast` — opacity only: the outgoing set keeps `visibility` until its fade ends (the delayed
+ * `visibility` step), the incoming one is visible at once. The token layer zeroes `--dur-*` under
+ * both reduced-motion channels, so the switch is then a cut.
+ */
+.ctc-form__stack {
+	display: grid;
+}
+.ctc-form__stack > .ctc-fields {
+	grid-area: 1 / 1;
+}
+
+.ctc-fields {
+	display: grid;
+	align-content: start;
+	gap: var(--space-4);
+	min-inline-size: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	opacity: 1;
+	visibility: visible;
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		visibility 0s linear 0s;
+}
+.ctc-fields[data-active="false"] {
+	visibility: hidden;
+	opacity: 0;
+	pointer-events: none;
+	transition:
+		opacity var(--dur-fast) var(--ease-exit),
+		visibility 0s linear var(--dur-fast);
+}
+
+/* Section-header register — the fieldset's legend. */
+.ctc-fields__legend {
+	float: inline-start;
+	inline-size: 100%;
+	margin: 0 0 var(--space-1);
+	padding: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-snug);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+.ctc-fields__legend + * {
+	clear: both;
+}
+
+.ctc-group {
+	display: grid;
+	gap: var(--space-3);
+}
+
+.ctc-fields__row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--space-4);
+}
+
+@container ctc-intake (min-width: 36rem) {
+	.ctc-fields__row {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+/* Meta register: notes under a group of fields. */
+.ctc-note {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+.ctc-note a {
+	color: var(--primary);
+}
+
+/*
+ * A routing note: one glyph and one or two sentences, unboxed (§B.4). Used where the form hands a
+ * reader to the place a thing is actually done — the dispute flow's session claim, sign-in.
+ */
+.ctc-route {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	gap: var(--space-3);
+	align-items: start;
+	margin: 0;
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface);
+}
+.ctc-route__icon {
+	display: inline-flex;
+	padding-block-start: 0.2em;
+	color: var(--primary);
+	font-size: var(--icon-sm);
+}
+.ctc-route__body {
+	display: grid;
+	gap: var(--space-2);
+	justify-items: start;
+}
+.ctc-route__body p {
+	margin: 0;
+}
+
+/* The message counter: figures change, so they do not jitter. */
+.ctc-counter {
+	font-variant-numeric: tabular-nums;
+}
+
+/* The anonymous box and the sentence under it. */
+.ctc-anon {
+	display: grid;
+	gap: var(--space-2);
+}
+/*
+ * Without JavaScript the anonymous box is a plain checkbox and the name and email fields are still in
+ * the form: ticking it hides them here (the server ignores what they post). Hydrated, the island
+ * removes them instead, so this rule never has anything to hide.
+ */
+.ctc-fields[data-intent="security"]:has(input[name="anonymous"]:checked) .ctc-sender {
+	display: none;
+}
+
+/* The honeypot: off-screen, out of the tab order, out of the accessibility tree. Not
+   `display: none`, which form-filling scripts recognise and skip. */
+.ctc-honeypot {
+	position: absolute;
+	inset-inline-start: -10000px;
+	inline-size: 1px;
+	block-size: 1px;
+	overflow: hidden;
+}
+
+.ctc-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-3);
+	padding-block-start: var(--space-2);
+}
+.ctc-actions__aside {
+	display: grid;
+	gap: var(--space-1);
+	margin-inline-end: auto;
+	max-inline-size: 26rem;
+}
+.ctc-actions__reason {
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+/* A refusal of the whole request (rate limit, unavailable) — sits just above the actions. */
+.ctc-form__alert {
+	margin: 0;
+}
+/* #endregion */
+
+/* #region Dropzone */
+.ctc-drop {
+	display: grid;
+	gap: var(--space-2);
+}
+.ctc-drop__label {
+	margin: 0;
+	font-size: var(--fld-fs-sm, var(--text-sm));
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+.ctc-drop__limits {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+.ctc-drop__item {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: var(--space-1) var(--space-3);
+	align-items: center;
+}
+.ctc-drop__name {
+	overflow: hidden;
+	font-size: var(--text-base);
+	color: var(--on-surface);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.ctc-drop__meta {
+	grid-column: 1;
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-2);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+.ctc-drop__sep {
+	color: var(--text-secondary);
+}
+.ctc-drop__state {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+}
+.ctc-drop__state[data-phase="ready"] {
+	color: var(--success);
+}
+.ctc-drop__state[data-phase="refused"] {
+	color: var(--danger);
+}
+.ctc-drop__remove {
+	grid-column: 2;
+	grid-row: 1 / span 2;
+}
+.ctc-drop__bar {
+	grid-column: 1 / -1;
+}
+.ctc-drop__why {
+	grid-column: 1 / -1;
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--danger);
+}
+.ctc-drop .ui-file-upload__zone {
+	inline-size: 100%;
+}
+/* #endregion */
+
+/* #region Confirmation */
+.ctc-receipt {
+	display: grid;
+	gap: var(--space-5);
+	justify-items: start;
+}
+.ctc-receipt__mark {
+	display: inline-flex;
+	color: var(--success);
+	font-size: var(--icon-xl);
+}
+/* Section-header register: the confirmation's heading; the reference below is its anchor. */
+.ctc-receipt__title {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-snug);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+.ctc-receipt__ref {
+	display: grid;
+	gap: var(--space-1);
+	margin: 0;
+}
+.ctc-receipt__ref dt {
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+.ctc-receipt__ref dd {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-3);
+	margin: 0;
+}
+.ctc-receipt__code {
+	font-family: var(--font-mono);
+	font-size: var(--text-xl);
+	letter-spacing: var(--tracking-wide);
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
+}
+.ctc-receipt__steps-title {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+.ctc-receipt__steps {
+	display: grid;
+	gap: var(--space-3);
+	max-inline-size: var(--measure);
+	margin: 0;
+	padding-inline-start: var(--space-5);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface);
+}
+.ctc-receipt__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+}
+/* #endregion */
+
+/* #region Rail */
+.ctc-rail {
+	display: grid;
+	gap: var(--space-6);
+	padding: var(--space-6) var(--space-5);
+	border-radius: var(--radius-xl);
+	background: var(--surface-1);
+	color: var(--on-surface);
+}
+
+@container ctc (min-width: 64rem) {
+	.ctc-rail {
+		padding: var(--space-7) var(--space-6);
+	}
+}
+
+.ctc-rail__brand {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+}
+.ctc-rail__mark {
+	inline-size: var(--icon-xl);
+	block-size: var(--icon-xl);
+	color: var(--primary);
+}
+/* Section-header register: the rail's heading, beside the brand mark. */
+.ctc-rail__title {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-snug);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.ctc-rail__section {
+	display: grid;
+	gap: var(--space-3);
+}
+.ctc-rail__section + .ctc-rail__section--ruled {
+	padding-block-start: var(--space-6);
+	border-block-start: var(--hairline);
+}
+.ctc-rail__heading {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.ctc-rail__facts {
+	display: grid;
+	gap: var(--space-3);
+	margin: 0;
+}
+.ctc-rail__fact {
+	display: grid;
+	gap: var(--space-1);
+}
+.ctc-rail__fact dt {
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+.ctc-rail__fact dd {
+	margin: 0;
+	font-size: var(--text-base);
+	color: var(--on-surface);
+}
+.ctc-rail__placeholder {
+	font-family: var(--font-mono);
+	font-size: var(--text-sm);
+	letter-spacing: var(--tracking-wide);
+	color: var(--text-secondary);
+}
+
+.ctc-rail__links {
+	display: grid;
+	gap: var(--space-3);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.ctc-rail__link {
+	display: grid;
+	gap: var(--space-1);
+	color: var(--primary);
+	font-size: var(--text-base);
+	font-weight: var(--fw-medium);
+	text-decoration: none;
+}
+.ctc-rail__link:hover .ctc-rail__link-text {
+	text-decoration: underline;
+}
+.ctc-rail__link-meta {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-normal);
+	color: var(--text-secondary);
+}
+/* #endregion */

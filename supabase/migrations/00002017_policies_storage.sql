@@ -16,6 +16,7 @@
 --   public_assets - public read; per-owner write on {owner_id}
 --   avatars       - public read; per-owner write on {entity_id}
 --   catalogue     - public read; per-seller write on {seller_id}
+--   contact       - operator read (security.is_admin()); NO client write (the upload pipeline promotes)
 --
 -- NOTE: multiple permissive SELECT policies on one bucket are OR-combined, so the project/messages
 -- scoping below is written as the SOLE read policy for those buckets — do not re-add a broad
@@ -263,6 +264,19 @@ SELECT TO authenticated USING (
 -- service_role (which bypasses RLS in Edge Functions) can read/write. Client uploads land in
 -- `quarantine` and are promoted into `verification` by a SECURITY DEFINER / service-role move, so a
 -- user's JWT never touches this bucket directly. Do NOT add an `authenticated` policy.
+-- #endregion
+
+
+-- #region [contact] contact — /contact attachments (Decision #276): operator read; SERVICE-ROLE write
+-- A sender's file lands in `quarantine` like every upload; the contact pipeline (service role) sniffs
+-- it and promotes the original to `contact/{user_id}/{asset_id}/{name}`. Operators read objects to
+-- answer the request; nobody else reads or writes this bucket, the sender included (they keep their
+-- own copy). The sole policy, so no broader read can be OR-combined in by accident.
+CREATE POLICY "Operators read contact attachments" ON storage.objects FOR
+SELECT TO authenticated USING (
+        bucket_id = 'contact'
+        AND security.is_admin ()
+    );
 -- #endregion
 
 

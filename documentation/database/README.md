@@ -45,7 +45,7 @@ Each domain below gets its own folder with up to four files: `Tables.md`, `Polic
 | `finance`      |   ✅   |    ✅    |    ✅     | Wallets/escrow/ledger + the 2026-07-23 Wallet & Finance foundation                                 |
 | `integrations` |   ✅   |    ✅    |    ✅     | Connector + plugin substrate (token vault, sync/webhooks, plugin ecosystem), redesigned 2026-07-25 |
 | `marketplace`  |   ◐    |    ◐     |    ◐     | Blueprints (address, intake, stage template), paid placements, quote requests — partial; Functions: service instantiation (`00001175`, Decision #209), 2026-10-13 |
-| `ops`          |   ◐    |    ◐     |     ◐     | Log ingestion (`log_entries`) and the job registry (`scheduled_jobs`, `http_job_dispatches`, Decision #203); `admin_users` not yet documented |
+| `ops`          |   ◐    |    ◐     |     ◐     | Log ingestion (`log_entries`), the job registry (`scheduled_jobs`, `http_job_dispatches`, Decision #203) and the `/contact` intake (`contact_requests`, `contact_request_attachments`, Decision #276); `admin_users` not yet documented |
 | `org`          |   ✅   |    ✅    |    ✅     | Identity/teams/enterprises, the 2026-07-24 Standing ladder, the live public profile (showcase, settings, certifications, definer read/write door), 2026-09-23, and the Teams & Businesses console (roles, members, invitations, the permission twin + vault projection), 2026-09-28 |
 | `projects`     |   ✅   |    —     |     —     |                                                                                                    |
 | `reviews`      |   ✅   |    ✅    |    ✅     | One table, two reputation tracks; no client write path yet, 2026-09-23                             |

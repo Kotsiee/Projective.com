@@ -70,6 +70,11 @@ export function isCommunityBackendLive(): boolean {
 	return !useMocks() && serverEnv().communityBackendLive && isSupabaseConfigured();
 }
 
+/** True when LIVE `/contact` intake is enabled AND Supabase is configured (Decision #276). */
+export function isContactBackendLive(): boolean {
+	return !useMocks() && serverEnv().contactBackendLive && isSupabaseConfigured();
+}
+
 /** True when LIVE projects-backend behaviour is enabled AND Supabase is configured. */
 export function isProjectsBackendLive(): boolean {
 	return !useMocks() && serverEnv().projectsBackendLive && isSupabaseConfigured();

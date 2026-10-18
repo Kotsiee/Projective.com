@@ -223,7 +223,14 @@ export function RadioGroup(props: RadioGroupProps): JSX.Element {
 						<span class="ui-radio__box" aria-hidden="true">
 							<span class="ui-radio__dot" />
 						</span>
-						<span class="ui-radio__label">{opt.label}</span>
+						{opt.description
+							? (
+								<span class="ui-radio__text">
+									<span class="ui-radio__label">{opt.label}</span>
+									<span class="ui-radio__description">{opt.description}</span>
+								</span>
+							)
+							: <span class="ui-radio__label">{opt.label}</span>}
 					</label>
 				);
 			})}

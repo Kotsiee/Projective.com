@@ -114,6 +114,7 @@ left open in the other (the `scheduling` refusal-function precedent).
 | `bucket_id = 'project'` and `projects.has_project_access({project_id} path anchor)` |
 | attached (`comms.message_attachments`) to a message `comms.can_read_message()` admits |
 | filed as dispute evidence (`finance.dispute_evidence`) and the reader is a party (`finance.fn_dispute_party`) or `security.is_admin()` |
+| `purpose = 'contact'` (a `/contact` attachment, Decision #276) and the reader is `security.is_admin()` |
 
 The message arm (Decision #132) is what lets the person a chat file was SENT to read it: a chat
 upload lands in the sender's own `personal` library, private, so no other arm admits the recipient
