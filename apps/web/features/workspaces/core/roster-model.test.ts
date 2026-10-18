@@ -8,7 +8,6 @@ import {
 	filterRoster,
 	isFiltered,
 	isFirstRun,
-	KIND_SEVERITY,
 	lifecycleTag,
 	ROSTER_COLUMNS,
 	ROSTER_TABS,
@@ -23,6 +22,7 @@ import {
 	rosterHref,
 	rosterSearch,
 	type RosterTab,
+	rosterTabBadge,
 	rosterTabCounts,
 	rosterTabFromSearch,
 	rosterTabIndex,
@@ -150,6 +150,14 @@ Deno.test("roster: archived entities appear only under Archived; Invitations lis
 	});
 });
 
+Deno.test("roster: every partition carries its count Badge, an empty one none", () => {
+	const counts = { all: 3, owned: 1, member: 2, invitations: 1, archived: 0 };
+	assertEquals(
+		TABS.map((tab) => rosterTabBadge(tab, counts)),
+		[3, 1, 2, 1, undefined],
+	);
+});
+
 Deno.test("roster: only a partition or a search term counts as filtered", () => {
 	assertEquals(isFiltered("all", ""), false);
 	assertEquals(isFiltered("all", "   "), false);
@@ -267,7 +275,7 @@ Deno.test("roster: each state's canvas controls, at their tiers", () => {
 	);
 });
 
-Deno.test("roster: exactly one filled control on the page in first run, populated, empty and error", () => {
+Deno.test("roster: exactly one filled control on the page in every state, one create in first run", () => {
 	type Scene = {
 		state: RosterCanvasState;
 		/** What the lane's SSR roster would hold; `null` when the read failed and the lane got none. */
@@ -324,24 +332,41 @@ Deno.test("roster: exactly one filled control on the page in first run, populate
 					firstRun,
 				}).footer.create;
 				const laneFills = laneCreate ? 1 : 0; // LaneCreateButton is tier 2 — filled
-				const rigFills = rigFilledCount(rigModel({
+				// The footer band's rig reads the same first-run rule (the slot's SSR read, then the
+				// canvas's published reading).
+				const rig = rigModel({
 					kind,
 					handle: null,
 					module: null,
 					view: null,
 					canCreate: chromeCanCreate,
+					firstRun,
 					canInvite: false,
 					canManageMoney: false,
 					canManageSettings: false,
 					dirty: false,
 					saveState: "idle",
-				}));
+				});
+				const rigFills = rigFilledCount(rig);
 				const total = canvasFills + laneFills + rigFills;
 				const where = `${kind} ${scene.state} canCreate=${canCreate} readError=${scene.readError}`;
 				// A plan that admits no entity draws no create anywhere; otherwise exactly one fills.
 				assertEquals(total, chromeCanCreate ? 1 : 0, where);
-				// In first run the one fill is the canvas's, never the lane's.
-				if (scene.state === "first-run") assertEquals(laneFills, 0, where);
+				// In first run the one fill is the canvas's, never the lane's — and it is the page's ONLY
+				// create at any tier: the rig's tier-4 New is withheld too.
+				if (scene.state === "first-run") {
+					assertEquals(laneFills, 0, where);
+					const creates = rosterCanvasControls({
+						kind,
+						state: scene.state,
+						canCreate,
+						filtered: scene.filtered,
+						readError: scene.readError,
+					}).filter((c) => c.key === "create").length +
+						(laneCreate ? 1 : 0) +
+						rig.actions.filter((a) => a.key === "create").length;
+					assertEquals(creates, canCreate ? 1 : 0, where);
+				}
 			}
 		}
 	}
@@ -368,7 +393,7 @@ Deno.test("roster: first run sells in one sentence from PRODUCT_SPEC, per kind",
 
 Deno.test("roster: an empty partition explains itself, offers Clear only when filtered, never a create", () => {
 	const copy = (tab: RosterTab, search = "", archivedCount = 0, kind: WorkspaceKind = "team") =>
-		rosterEmptyCopy(kind, { tab, search, archivedCount });
+		rosterEmptyCopy(kind, { tab, search, archivedCount, stripShown: true });
 	assertEquals(copy("all", "zz").title, "Nothing matches that");
 	assertEquals(copy("all", "zz").clear, true);
 	assertEquals(copy("owned").clear, true);
@@ -386,6 +411,30 @@ Deno.test("roster: an empty partition explains itself, offers Clear only when fi
 	for (const tab of TABS) {
 		assert(!/\bcreate\b/i.test(copy(tab).title), `${tab} sells a create`);
 	}
+});
+
+Deno.test("roster: an empty All points up at the strip only while the strip is there", () => {
+	// No entity, an invitation waiting (so not first run), nothing archived.
+	const all = (stripShown: boolean, kind: WorkspaceKind = "team") =>
+		rosterEmptyCopy(kind, { tab: "all", search: "", archivedCount: 0, stripShown });
+	assertEquals(all(true), {
+		title: "You're not in a team yet",
+		description: "Answer an invitation above to join one.",
+		clear: false,
+	});
+	// Dismissed off the Invitations tab: nothing is above, so it names where the invitations are.
+	assertEquals(all(false), {
+		title: "You're not in a team yet",
+		description: "Your invitations are under Invitations.",
+		clear: false,
+	});
+	assert(!/\babove\b/.test(all(false, "business").description));
+	// Archived entities keep their own pointer, whether or not the strip is up.
+	assertEquals(
+		rosterEmptyCopy("team", { tab: "all", search: "", archivedCount: 1, stripShown: false })
+			.description,
+		"Your archived teams are under Archived.",
+	);
 });
 // #endregion
 
@@ -466,7 +515,6 @@ Deno.test("roster: the setup meter shows a whole percentage and leaves at 100%",
 	assertEquals(setupPercent(-1), 0);
 	assertEquals(setupUnfinished(0.995), false);
 	assertEquals(setupUnfinished(0.6), true);
-	assertEquals(KIND_SEVERITY, { team: "primary", business: "secondary" });
 });
 
 Deno.test("roster: a grid track is the zoom's width while two fit, and the whole row once they do not", () => {
@@ -496,6 +544,17 @@ Deno.test("roster: the table is Name · Your role · Members · Live projects ·
 		ROSTER_COLUMNS.filter((c) => c.align === "end").map((c) => c.id),
 		["members", "projects"],
 	);
+});
+
+Deno.test("roster: a narrowing table hides Updated first, the counts last, Name and Status never", () => {
+	// The DataTable hides the LOWEST priority first; an unset priority never hides.
+	const hideOrder = ROSTER_COLUMNS.filter((c) => c.priority !== undefined)
+		.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0))
+		.map((c) => c.id);
+	assertEquals(hideOrder, ["updated", "role", "projects", "members"]);
+	const never = ROSTER_COLUMNS.filter((c) => c.priority === undefined).map((c) => c.id);
+	// The lifecycle Tag stays on screen at every width.
+	assertEquals(never, ["name", "status"]);
 });
 
 Deno.test("roster: status sorts in lifecycle order, not the alphabet", () => {

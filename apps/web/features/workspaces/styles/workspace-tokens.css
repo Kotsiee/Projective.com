@@ -643,13 +643,6 @@ identity band, where the entity is the subject of the page. */
 	white-space: nowrap;
 }
 
-/* The quiet variant, for a row that already carries the leading rule + tint and must not shout
-twice. */
-.wsp-actingchip--quiet {
-	background: var(--wsp-kind-tint-hi);
-	color: var(--wsp-kind-ink);
-}
-
 .wsp-actingchip__dot {
 	flex: none;
 	inline-size: var(--wsp-dot-sm);
@@ -707,14 +700,6 @@ frozen animation clock costs nothing. */
 	font-size: var(--wsp-fs-micro);
 	font-weight: var(--fw-semibold);
 	white-space: nowrap;
-}
-
-/* The role chip carrying the acting state, so the two facts occupy one mark instead of two chips of
-   identical shape sitting side by side. Same tones as `.wsp-actingchip`, which still serves the
-   surfaces that show acting WITHOUT a role beside it. */
-.wsp-chip--acting {
-	background: var(--wsp-acting);
-	color: var(--wsp-acting-on);
 }
 
 /* A permitted chip fills with a SOLID tonal step (§B.11.6): the U1 status tints, never an alpha wash. */

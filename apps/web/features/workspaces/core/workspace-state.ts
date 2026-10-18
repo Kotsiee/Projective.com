@@ -172,7 +172,8 @@ export type RosterView = "grid" | "table";
 /**
  * The roster index's PARTITION (All · Owned · Member · Invitations · Archived) — ONE value for every
  * root that offers it: the lane's segmented control and the canvas's TabMenu both write it through
- * {@link selectRosterTab}, and neither keeps a copy of its own.
+ * {@link selectRosterTab}, and each mirrors it into its own control's binding (the lane's segmented
+ * value, the TabMenu's active index), so the two controls always show the same partition.
  *
  * `null` until a control on either root picks one. Each root renders its server-resolved `?view=`
  * prop until then ({@link rosterTabOr}), so the first painted byte and the first hydrated frame agree,

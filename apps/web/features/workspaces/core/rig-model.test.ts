@@ -191,6 +191,16 @@ Deno.test("rig: the roster index holds the zoom and New (tier 4) — or nothing 
 	assertEquals(roster.actions, [{ key: "create", control: "button", tier: 4, label: "New team" }]);
 	assertEquals(rigModel(inConsole({ handle: null, module: null, canCreate: false })).actions, []);
 });
+
+Deno.test("rig: the roster's first run offers no New — the canvas's empty state carries the create", () => {
+	for (const kind of ["team", "business"] as WorkspaceKind[]) {
+		const first = rigModel(inConsole({ kind, handle: null, module: null, firstRun: true }));
+		assertEquals(first.actions, [], kind);
+		assertEquals(rigFilledCount(first), 0, kind);
+	}
+	// Inside a console the roster's first run means nothing.
+	assertEquals(keys(inConsole({ module: "members", firstRun: true })), ["invite", "settings"]);
+});
 // #endregion
 
 // #region View switching

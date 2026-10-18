@@ -93,6 +93,19 @@ export function filterRoster(
 	});
 }
 
+/**
+ * A partition's count `Badge` in the TabMenu — every partition carries its size, so Owned, Member and
+ * Archived are counted somewhere (the head counts only the live total and the invitations waiting). A
+ * count is one of the containers §B.11 allows; an empty partition carries none rather than a `0`.
+ */
+export function rosterTabBadge(
+	tab: RosterTab,
+	counts: Readonly<Record<RosterTab, number>>,
+): number | undefined {
+	const count = counts[tab];
+	return count > 0 ? count : undefined;
+}
+
 /** How many rows each partition would show — computed once from one pass. */
 export function rosterTabCounts(
 	items: readonly WorkspaceSummary[],
@@ -300,15 +313,25 @@ export interface RosterEmptyCopy {
 	clear: boolean;
 }
 
+/** What an empty partition's words are decided on. */
+export interface RosterEmptyInput {
+	tab: RosterTab;
+	search: string;
+	/** Archived entities of this kind — All points at them when it is otherwise empty. */
+	archivedCount: number;
+	/**
+	 * Whether the invitation strip is on screen above the body (`invitationStripShown`). Once the reader
+	 * dismisses it, nothing is above, so an empty All points at the Invitations partition instead.
+	 */
+	stripShown: boolean;
+}
+
 /**
  * The words for an empty partition. Never the first-run pitch: somebody who has just filtered does
  * not need to be told what a team is, and never a create — the lane's footer carries it outside
  * first run.
  */
-export function rosterEmptyCopy(
-	kind: WorkspaceKind,
-	input: { tab: RosterTab; search: string; archivedCount: number },
-): RosterEmptyCopy {
+export function rosterEmptyCopy(kind: WorkspaceKind, input: RosterEmptyInput): RosterEmptyCopy {
 	const { noun, plural } = kindCopy(kind);
 	const clear = isFiltered(input.tab, input.search);
 	if (input.search.trim()) {
@@ -353,7 +376,9 @@ export function rosterEmptyCopy(
 				}
 				: {
 					title: `You're not in a ${noun} yet`,
-					description: `Answer an invitation above to join one.`,
+					description: input.stripShown
+						? "Answer an invitation above to join one."
+						: "Your invitations are under Invitations.",
 					clear,
 				};
 	}
@@ -390,8 +415,9 @@ export interface RosterControlsInput {
 
 /**
  * The canvas's buttons, in render order. The head holds none (the lane footer's create is the
- * index's one structural commit — the canvas never duplicates it); first run moves that commit here
- * and the lane withholds its own (`lane-model.ts`), so every region still has exactly one.
+ * index's one structural commit — the canvas never duplicates it); first run moves that commit here,
+ * and the lane (`lane-model.ts`) and the footer band's rig (`rig-model.ts`) both withhold theirs, so
+ * the page offers exactly one create.
  */
 export function rosterCanvasControls(input: RosterControlsInput): RosterControl[] {
 	const out: RosterControl[] = [];
@@ -500,19 +526,15 @@ export function setupPercent(progress: number): number {
 	return Math.round(Math.min(1, Math.max(0, progress)) * 100);
 }
 
-/** Whether the card still shows the setup meter — it leaves at 100%, a finished checklist is noise. */
+/**
+ * Whether the card still shows the setup meter — it leaves at 100%, a finished checklist is noise. The
+ * meter's fill is the kind token (`--wsp-kind`, set on the ProgressBar's accent by the roster sheet), so
+ * it follows the team / business tone under every colour-vision overlay (Decision #251), never a fixed
+ * ProgressBar severity.
+ */
 export function setupUnfinished(progress: number): boolean {
 	return setupPercent(progress) < 100;
 }
-
-/**
- * The ProgressBar severity that paints a kind's own tone — the brand teal for a team, the secondary
- * hue for a business — so a business card never fills with the team's colour (Decision #251).
- */
-export const KIND_SEVERITY: Readonly<Record<WorkspaceKind, "primary" | "secondary">> = {
-	team: "primary",
-	business: "secondary",
-};
 // #endregion
 
 // #region The grid
@@ -541,20 +563,29 @@ export interface RosterColumn {
 	header: string;
 	/** Counts sit right-aligned, in tabular figures. */
 	align: "start" | "end";
+	/**
+	 * Importance when the table is too narrow — the `DataTable` hides the LOWEST first; unset never
+	 * hides.
+	 */
+	priority?: number;
 }
 
 /**
  * The table's columns, in order: Name · Your role · Members · Live projects · Status · Updated. Every
  * one sorts; Status shows a `Tag` only for a non-active entity ({@link lifecycleTag}); selection is
  * none — a row opens its console.
+ *
+ * A narrowing table gives up the least essential column first: Updated, then Your role (the acting
+ * row keeps its tint), then Live projects, then Members. Name and Status never hide, so a Draft or
+ * Archived `Tag` is on screen at every width.
  */
 export const ROSTER_COLUMNS: readonly RosterColumn[] = [
 	{ id: "name", header: "Name", align: "start" },
-	{ id: "role", header: "Your role", align: "start" },
-	{ id: "members", header: "Members", align: "end" },
-	{ id: "projects", header: "Live projects", align: "end" },
+	{ id: "role", header: "Your role", align: "start", priority: 2 },
+	{ id: "members", header: "Members", align: "end", priority: 4 },
+	{ id: "projects", header: "Live projects", align: "end", priority: 3 },
 	{ id: "status", header: "Status", align: "start" },
-	{ id: "updated", header: "Updated", align: "start" },
+	{ id: "updated", header: "Updated", align: "start", priority: 1 },
 ];
 
 /**

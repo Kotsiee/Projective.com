@@ -39,6 +39,11 @@ export interface RigInput {
 	view: string | null;
 	/** Whether the viewer may create another entity of this kind (the roster). */
 	canCreate: boolean;
+	/**
+	 * The roster's first run (`roster-model.ts` `isFirstRun`): no entity of this kind and nothing to
+	 * answer. The canvas's empty state then carries the page's one create, so the rig offers no New.
+	 */
+	firstRun?: boolean;
 	canInvite: boolean;
 	canManageMoney: boolean;
 	canManageSettings: boolean;
@@ -64,7 +69,7 @@ export interface RigStatus {
 
 /**
  * What the trailing side holds, which is how much room its words need: `create` (the roster's one
- * New), `utilities` (Invite and Settings), `editor` (a policy editor at rest: its status line — empty,
+ * New, absent in first run and when the plan admits none), `utilities` (Invite and Settings), `editor` (a policy editor at rest: its status line — empty,
  * or "Saved" — then the utilities) or `commit` (the editor with unsaved changes: the status line, the
  * utilities, Discard and Save). The stylesheet folds the utilities to their glyphs below each one's
  * own width, asked of the trailing side's own box, so a docked lane that leaves the rig narrow folds
@@ -111,7 +116,8 @@ export function rigModel(input: RigInput): RigModel {
 			chart: null,
 			statusLine: false,
 			status: null,
-			actions: input.canCreate
+			// In first run the canvas's tier-2 create is the page's one; a New here would be a second.
+			actions: input.canCreate && !input.firstRun
 				? [{ key: "create", control: "button", tier: 4, label: `New ${copy.noun}` }]
 				: [],
 			holds: "create",

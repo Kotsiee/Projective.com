@@ -13,9 +13,9 @@ import { cloneGlyph, MembersGlyph, PlusGlyph, SearchGlyph } from "../core/worksp
  *
  *   - {@link RosterFirstRun} — the viewer has no entity of this kind and nothing to answer. It says
  *     what one IS in one sentence from PRODUCT_SPEC and holds the page's ONE structural commit, the
- *     tier-2 create; the lane's footer withholds its own create meanwhile (`lane-model.ts`), so the
- *     page never offers two. When the plan admits none, the sentence carries the plan's reason and no
- *     button is drawn — never a dead control.
+ *     tier-2 create; the lane's footer (`lane-model.ts`) and the footer band's rig (`rig-model.ts`)
+ *     withhold theirs meanwhile, so the page never offers two. When the plan admits none, the
+ *     sentence carries the plan's reason and no button is drawn — never a dead control.
  *   - {@link RosterFiltered} — a partition or a search left nothing. Somebody who has just filtered
  *     does not need to be told what a team is; they need to know the filter matched nothing and how to
  *     get back — a tier-5 Clear filters, and no create.
@@ -25,6 +25,7 @@ import { cloneGlyph, MembersGlyph, PlusGlyph, SearchGlyph } from "../core/worksp
  */
 
 // #region First run
+/** Props for {@link RosterFirstRun}. */
 export interface RosterFirstRunProps {
 	/** The words (`rosterFirstRunCopy`) — the plan's reason already folded into the description. */
 	copy: RosterFirstRunCopy;
@@ -58,6 +59,7 @@ export function RosterFirstRun(props: RosterFirstRunProps): JSX.Element {
 // #endregion
 
 // #region Filtered to nothing
+/** Props for {@link RosterFiltered}. */
 export interface RosterFilteredProps {
 	/** The words (`rosterEmptyCopy`). */
 	copy: RosterEmptyCopy;

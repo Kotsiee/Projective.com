@@ -878,21 +878,6 @@ a.wsp-activity__row:hover {
     min-inline-size: 0;
 }
 
-.wsp-error__retry {
-    flex: none;
-    font-size: var(--wsp-fs-body);
-    color: var(--primary);
-    background: none;
-    border: none;
-    font: inherit;
-    cursor: pointer;
-    text-decoration: none;
-}
-
-.wsp-error__retry:hover {
-    text-decoration: underline;
-}
-
 /* #endregion */
 
 /* #region Band entrance — first paint only, over-damped, staggered in band order */

@@ -14,7 +14,6 @@ import { kindCopy, type WorkspaceSummary } from "@projective/types/workspace";
 import {
 	cardFigure,
 	cardMeta,
-	KIND_SEVERITY,
 	lifecycleTag,
 	setupPercent,
 	setupUnfinished,
@@ -60,6 +59,7 @@ export type WorkspaceCardAction =
 	| "archive"
 	| "restore";
 
+/** Props for {@link WorkspaceCard}. */
 export interface WorkspaceCardProps {
 	/** The roster projection this card renders. */
 	summary: WorkspaceSummary;
@@ -73,6 +73,7 @@ export interface WorkspaceCardProps {
 // #endregion
 
 // #region Card
+/** One entity on the roster index: a single link to its console, with its kebab menu above it. */
 export function WorkspaceCard(props: WorkspaceCardProps): JSX.Element {
 	const { summary, href, busy, onAction } = props;
 	const copy = kindCopy(summary.kind);
@@ -138,10 +139,10 @@ export function WorkspaceCard(props: WorkspaceCardProps): JSX.Element {
 
 			{setupUnfinished(summary.setupProgress) && (
 				<div class="wsp-card__setup">
+					{/* The fill is the kind token, set on the bar's accent by the roster sheet. */}
 					<ProgressBar
 						class="wsp-card__setup-bar"
 						value={percent}
-						severity={KIND_SEVERITY[summary.kind]}
 						aria-label={`Setup ${percent}% complete`}
 					/>
 					<span class="wsp-card__setup-text" aria-hidden="true">{percent}% set up</span>
@@ -195,6 +196,7 @@ export function EntityStateMarks({ summary }: { summary: WorkspaceSummary }): JS
 // #endregion
 
 // #region The kebab menu
+/** Props for {@link WorkspaceKebab} — a card's own, plus where its panel opens and what it hangs on. */
 export interface WorkspaceKebabProps extends WorkspaceCardProps {
 	/** Anchor the panel to the block-end edge on a row rather than a card. */
 	placement?: "bottom-end" | "bottom-start";

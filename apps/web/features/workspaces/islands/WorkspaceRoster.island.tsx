@@ -47,6 +47,7 @@ import {
 	rosterHeadMeta,
 	rosterSearch,
 	type RosterTab,
+	rosterTabBadge,
 	rosterTabCounts,
 	rosterTabIndex,
 	rosterToolsShown,
@@ -73,10 +74,11 @@ import CreateWorkspaceModal from "./CreateWorkspaceModal.island.tsx";
  *
  *   - **Head** — the kind's title in the display register over ONE `MetaLine` (`3 teams · 1
  *     invitation waiting · Acting as North Loop`), the search field, and the partition `TabMenu`
- *     (All · Owned · Member · Invitations · Archived). No filled button: the index's one structural
- *     create is the lane footer's, and the canvas never duplicates it.
+ *     (All · Owned · Member · Invitations · Archived, each with its count `Badge`). No filled button:
+ *     the index's one structural create is the lane footer's, and the canvas never duplicates it.
  *   - **Body** — the invitation strip, then the cards or the `DataTable`, whichever the shared zoom
- *     selects; a ui `EmptyState` in first run (with the create, which the lane then withholds) and
+ *     selects; a ui `EmptyState` in first run (with the create, which the lane and the footer band's
+ *     rig then withhold) and
  *     when a filter leaves nothing (with a tier-5 Clear filters); a danger `InlineNotice` with a
  *     tier-4 Try again when the roster could not be read.
  *
@@ -93,6 +95,7 @@ import CreateWorkspaceModal from "./CreateWorkspaceModal.island.tsx";
  */
 
 // #region Props
+/** Props for {@link WorkspaceRoster}. */
 export interface WorkspaceRosterProps {
 	/** The entity kind this index addresses — the route base it was reached through. */
 	kind: WorkspaceKind;
@@ -219,8 +222,8 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 		roster.value.items.find((item) => item.isActing)?.name ?? null
 	);
 
-	// The lane's footer withholds its create while this canvas's first-run state carries it; the lane
-	// is another hydration root, so the reading travels through the shared signal.
+	// The lane's footer and the footer band's rig withhold their creates while this canvas's first-run
+	// state carries it; both are other hydration roots, so the reading travels through the shared signal.
 	useSignalEffect(() => {
 		publishRosterFirstRun(firstRun.value);
 	});
@@ -414,10 +417,7 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 									model={ROSTER_TABS.map((option) => ({
 										key: option.value,
 										label: option.label,
-										// A queue's size is the useful fact; a partition's size is the head's.
-										badge: option.value === "invitations" && counts.value.invitations > 0
-											? counts.value.invitations
-											: undefined,
+										badge: rosterTabBadge(option.value, counts.value),
 									}))}
 									activeIndex={tabIndex}
 									onActiveIndexChange={(index) => {
@@ -533,6 +533,7 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 										tab: tab.value,
 										search: search.value,
 										archivedCount: counts.value.archived,
+										stripShown: stripVisible.value,
 									})}
 									clear={clearControl}
 									onClear={clearFilters}

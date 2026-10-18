@@ -58,7 +58,8 @@
 /* The status line of a context switch, and the live count over a narrowed roster. */
 .wsp-roster__status,
 .wsp-roster__count {
-	margin: 0 0 var(--space-3);
+	margin: 0;
+	margin-block-end: var(--space-3);
 	font-size: var(--wsp-fs-body);
 	font-variant-numeric: tabular-nums;
 	color: var(--text-secondary);
@@ -66,7 +67,7 @@
 
 /* The count is a live region, so it stays mounted; it takes room only while it speaks. */
 .wsp-roster__count:empty {
-	margin: 0;
+	margin-block-end: 0;
 }
 
 /*
@@ -432,6 +433,16 @@ a pointer. */
 .wsp-card__setup-bar {
 	flex: 1 1 auto;
 	min-inline-size: 0;
+}
+
+/*
+ * The fill is the card's kind token, not a ProgressBar severity: `--wsp-kind` resolves under the card's
+ * `[data-kind]`, so the meter keeps the team / business tone under every colour-vision overlay, where
+ * the business side re-anchors to `--tertiary` (Decision #251). Doubled class, so the override never
+ * depends on bundle order against the ProgressBar's own severity rule.
+ */
+.ui-progressbar.wsp-card__setup-bar {
+	--pb-accent: var(--wsp-kind);
 }
 
 /*

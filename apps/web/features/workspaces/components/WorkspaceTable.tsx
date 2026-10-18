@@ -25,6 +25,7 @@ import { EntityMark } from "./EntityMark.tsx";
  */
 
 // #region Props
+/** Props for {@link WorkspaceTable}. */
 export interface WorkspaceTableProps {
 	/** The filtered, ordered rows to show. */
 	items: WorkspaceSummary[];
@@ -40,9 +41,18 @@ export interface WorkspaceTableProps {
 // #endregion
 
 // #region Columns
-/** The `DataTable` descriptor for one of the roster's columns. */
+/**
+ * The `DataTable` descriptor for one of the roster's columns. Its hide priority is the contract's
+ * (`ROSTER_COLUMNS`): the least essential column leaves a narrowing table first, and Name and Status
+ * never do.
+ */
 function columnFor(column: RosterColumn): DataColumn<WorkspaceSummary> {
-	const base = { id: column.id, header: column.header, align: column.align };
+	const base = {
+		id: column.id,
+		header: column.header,
+		align: column.align,
+		priority: column.priority,
+	};
 	switch (column.id) {
 		case "name":
 			return {
@@ -60,7 +70,6 @@ function columnFor(column: RosterColumn): DataColumn<WorkspaceSummary> {
 				...base,
 				type: "custom",
 				width: 168,
-				priority: 3,
 				// Authority order — owner first on the first press — never the alphabet, which would
 				// present admin · lead · member · owner as a ranking.
 				firstSortDir: "desc",
@@ -79,7 +88,6 @@ function columnFor(column: RosterColumn): DataColumn<WorkspaceSummary> {
 				type: "number",
 				format: "integer",
 				width: 112,
-				priority: 1,
 				value: (row) => row.memberCount,
 			};
 		case "projects":
@@ -88,7 +96,6 @@ function columnFor(column: RosterColumn): DataColumn<WorkspaceSummary> {
 				type: "number",
 				format: "integer",
 				width: 128,
-				priority: 2,
 				value: (row) => row.activeProjects,
 			};
 		case "status":
@@ -96,7 +103,6 @@ function columnFor(column: RosterColumn): DataColumn<WorkspaceSummary> {
 				...base,
 				type: "custom",
 				width: 120,
-				priority: 4,
 				render: (row) => <StatusCell summary={row} />,
 				sortValue: (row) => statusSortValue(row.status),
 			};
@@ -106,7 +112,6 @@ function columnFor(column: RosterColumn): DataColumn<WorkspaceSummary> {
 				type: "date",
 				format: "date",
 				width: 128,
-				priority: 5,
 				firstSortDir: "desc",
 				value: (row) => row.updatedAt,
 			};
@@ -115,6 +120,7 @@ function columnFor(column: RosterColumn): DataColumn<WorkspaceSummary> {
 // #endregion
 
 // #region Table
+/** The roster's list presentation — a `DataTable` over {@link ROSTER_COLUMNS}. */
 export function WorkspaceTable(props: WorkspaceTableProps): JSX.Element {
 	const { items, hrefFor, busy = false, label, onAction } = props;
 	const columns = useMemo(() => ROSTER_COLUMNS.map(columnFor), []);

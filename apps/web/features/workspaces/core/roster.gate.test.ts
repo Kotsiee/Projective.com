@@ -93,3 +93,17 @@ Deno.test("roster gate: the canvas is built on the ui primitives R1 names", () =
 	);
 	assertEquals((EMPTY.match(/<EmptyState\b/g) ?? []).length, 2, "both empty states are EmptyState");
 });
+
+Deno.test("roster gate: the setup meter fills with the kind token, never a fixed severity", () => {
+	const meter = CARD.slice(
+		CARD.indexOf("<ProgressBar"),
+		CARD.indexOf("/>", CARD.indexOf("<ProgressBar")),
+	);
+	assert(meter.length > 0, "the setup meter was not found");
+	// A fixed severity paints a business card's meter in a hue the colour-vision overlays never move.
+	assert(!/\bseverity=/.test(meter), `the meter picks a severity:${meter}`);
+	assert(
+		/\.ui-progressbar\.wsp-card__setup-bar\s*\{[^}]*--pb-accent:\s*var\(--wsp-kind\)/.test(SHEET),
+		"the meter's accent is not the kind token",
+	);
+});
