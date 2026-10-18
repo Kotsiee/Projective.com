@@ -345,6 +345,7 @@ Deno.test("roster: exactly one filled control on the page in every state, one cr
 					canInvite: false,
 					canManageMoney: false,
 					canManageSettings: false,
+					canEditProfile: false,
 					dirty: false,
 					saveState: "idle",
 				});

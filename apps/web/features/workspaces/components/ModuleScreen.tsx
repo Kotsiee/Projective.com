@@ -17,6 +17,7 @@ import PayoutPolicyScreen from "../islands/PayoutPolicyScreen.island.tsx";
 import SpendPolicyScreen from "../islands/SpendPolicyScreen.island.tsx";
 import BillingScreen from "../islands/BillingScreen.island.tsx";
 import BusinessVerificationScreen from "../islands/BusinessVerificationScreen.island.tsx";
+import TeamSettingsScreen from "../islands/TeamSettingsScreen.island.tsx";
 import type { BusinessBillingView } from "@projective/types/finance";
 
 /**
@@ -181,6 +182,8 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 				/>
 			);
 		case "settings":
+			// A team's Settings is a real screen (Teams C6); a business's still hands off (Decision #244 (d)).
+			if (ws.kind === "team") return <TeamSettingsScreen workspace={ws} />;
 			return (
 				<ModulePlaceholder
 					kind={ws.kind}

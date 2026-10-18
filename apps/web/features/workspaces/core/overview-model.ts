@@ -174,6 +174,20 @@ export function setupHero(
 	};
 }
 
+/**
+ * The steps the hero may act on for an entity in `status`. Publishing is a draft's commit: leaving
+ * `archived` is a restore, which `org.set_workspace_status` holds to `archive_entity` and lands where
+ * it decides — a never-published entity's `active` is refused (`restore_target`). So on an entity that
+ * is not a draft the Publish step offers nothing, whatever its `done` says, and an archived entity
+ * goes back through Settings' Restore. Every other step is the server's answer unchanged.
+ */
+export function heroSteps(
+	detail: Pick<WorkspaceDetail, "status" | "setup">,
+): readonly SetupStep[] {
+	if (detail.status === "draft") return detail.setup;
+	return detail.setup.map((s) => s.id === "publish" ? { ...s, actionable: false } : s);
+}
+
 /** Whether the hero is showing `id` as an unfinished step. */
 function heroHasOpen(hero: SetupHeroModel | null, id: SetupStepId): boolean {
 	return !!hero?.steps.some((s) => s.id === id && !s.done);
@@ -489,10 +503,10 @@ export function addMoneyHrefFor(businessId: string, handle: string): string {
 }
 
 /**
- * The steps as the hero draws them: the server's, with a business's Add money pointed at the wallet's
- * top-up intent rather than the bare wallet the read addresses it to.
+ * The steps' pages as the hero draws them: the server's, with a business's Add money pointed at the
+ * wallet's top-up intent rather than the bare wallet the read addresses it to.
  */
-function heroSteps(detail: WorkspaceDetail): SetupStep[] {
+function heroStepLinks(detail: WorkspaceDetail): SetupStep[] {
 	if (detail.kind !== "business") return detail.setup;
 	return detail.setup.map((step) =>
 		step.id === "fund" && step.href
@@ -518,7 +532,7 @@ export function overviewModel(
 	const hero = archivedBusiness ? null : setupHero({
 		kind: detail.kind,
 		name: detail.name,
-		steps: heroSteps(detail),
+		steps: heroSteps({ status: detail.status, setup: heroStepLinks(detail) }),
 		dismissed: opts.dismissed,
 	});
 	const shown = notices(detail, hero);

@@ -15,8 +15,8 @@ import type { ProfileView } from "../types/profile-types.ts";
  * `manage_settings` gets a tier-4 link to the console's Settings beside it (the neutral outlined
  * pill, Button matrix §B.8.1) only once that kind's Settings can publish the entity and change its
  * visibility (`SETTINGS_PUBLISHES`) — a link must land on a surface that can act (root CLAUDE.md
- * §3.11). Neither kind's can yet: the business's link waits by Decision #244 (d), the team's for the
- * Settings screen Teams C6 builds, so today every line stands alone.
+ * §3.11). A team's can (Teams C6), so its line carries the link; a business's still waits by Decision
+ * #244 (d), so its line stands alone.
  *
  * A server component: its sheet (`profile-base.css`) rides the profile islands' barrel import, and
  * the InlineNotice and Button sheets ride the hero's `@projective/ui/feedback` and `/fields` imports.

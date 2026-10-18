@@ -249,12 +249,52 @@ export const BusinessArchiveBlockerCode = z.enum([
 ]);
 export type BusinessArchiveBlockerCode = z.infer<typeof BusinessArchiveBlockerCode>;
 
-/** One kind of blocker and how many of it there are (currencies, for `on_account_owed`; wallets, for `wallet_balance`). */
+/**
+ * What stops a team being archived (`org.fn_team_archive_blockers`), in the order the database checks
+ * them: money held in escrow for the team's work, then a live stage assignment. The archive refusal
+ * keeps its `status:` sentence and carries every blocker in DETAIL (Teams C6).
+ */
+export const TeamArchiveBlockerCode = z.enum(["escrow_held", "live_assignments"]);
+export type TeamArchiveBlockerCode = z.infer<typeof TeamArchiveBlockerCode>;
+
+/** Every archive blocker code either kind can be refused with. */
+export const ArchiveBlockerCode = z.enum([
+	...BusinessArchiveBlockerCode.options,
+	"live_assignments",
+]);
+export type ArchiveBlockerCode = z.infer<typeof ArchiveBlockerCode>;
+
+/**
+ * One kind of blocker and how many of it there are (escrows; stage assignments, for
+ * `live_assignments`; currencies, for `on_account_owed`; wallets, for `wallet_balance`).
+ */
 export const ArchiveBlockerSchema = z.object({
-	code: BusinessArchiveBlockerCode,
+	code: ArchiveBlockerCode,
 	count: z.number().int().positive(),
 });
 export type ArchiveBlocker = z.infer<typeof ArchiveBlockerSchema>;
+
+/**
+ * Where restoring an archived entity lands (`org.fn_workspace_restore_target`, Decision #250 (c); a
+ * business's by #236 (d)): `active` when it was ever published — a published entity never returns to
+ * draft — else `draft`, so one that never was cannot skip the publish step.
+ */
+export const RestoreTarget = z.enum(["draft", "active"]);
+export type RestoreTarget = z.infer<typeof RestoreTarget>;
+
+/**
+ * The lifecycle move a client asks for (`UpdateWorkspaceInput.status`): a {@link WorkspaceStatus}, or
+ * `restore` — leave `archived` for wherever the server's {@link RestoreTarget} says. Naming the other
+ * target outright is refused ({@link RESTORE_TARGET_REASON}), so a client never needs to know it.
+ */
+export const WorkspaceStatusChange = z.enum([...WorkspaceStatus.options, "restore"]);
+export type WorkspaceStatusChange = z.infer<typeof WorkspaceStatusChange>;
+
+/**
+ * The refusal reason (`details.reason`) for a restore that names the target the server did not
+ * decide; `details.target` carries the one it did.
+ */
+export const RESTORE_TARGET_REASON = "restore_target";
 
 /** The 55000 sub-code a draft or archived business's spend, hire or billing door refuses with. */
 export const BUSINESS_NOT_ACTIVE_REASON = "business_not_active";
@@ -336,10 +376,13 @@ export const WorkspaceDetailSchema = z.object({
 	 */
 	allowance: ProposalAllowanceStatusSchema.nullable().default(null),
 	/**
-	 * What would refuse archiving this business right now, so Settings can list it before the confirm.
-	 * Answered only to a viewer holding `archive_entity`; `[]` for everybody else and for a team.
+	 * What would refuse archiving the entity right now (`org.fn_team_archive_blockers` /
+	 * `org.fn_business_archive_blockers`), so Settings can list it before the confirm. Answered only to
+	 * a viewer holding `archive_entity`; `[]` for everybody else.
 	 */
 	archiveBlockers: z.array(ArchiveBlockerSchema).default([]),
+	/** Where a restore would land while the entity is `archived`; `null` otherwise. */
+	restoreTarget: RestoreTarget.nullable().default(null),
 	activity: z.array(ActivityEntrySchema),
 	setup: z.array(SetupStepSchema),
 
@@ -528,7 +571,11 @@ export const UpdateWorkspaceInputSchema = z.object({
 	tagline: z.string().max(160).optional(),
 	/** Directory visibility (`org.update_workspace`); the entity still has to be active to be listed. */
 	visibility: WorkspaceVisibility.optional(),
-	status: WorkspaceStatus.optional(),
+	/**
+	 * The lifecycle move (`org.set_workspace_status`): publish (`active`), archive, or `restore` — which
+	 * lands on the server's {@link RestoreTarget}.
+	 */
+	status: WorkspaceStatusChange.optional(),
 });
 export type UpdateWorkspaceInput = z.infer<typeof UpdateWorkspaceInputSchema>;
 
