@@ -125,7 +125,12 @@ export type DevProfileSetup = "auto" | "new" | "live" | "complete";
  * profile hero, and the milestone celebration a raise fires. `auto` shows the stored stamp. Its own
  * axis because KYC, payout and KYB outcomes are written only by provider webhooks.
  */
-export type DevVerificationStamp = "auto" | "none" | "id_verified" | "vault_verified" | "corporate_verified";
+export type DevVerificationStamp =
+	| "auto"
+	| "none"
+	| "id_verified"
+	| "vault_verified"
+	| "corporate_verified";
 
 /**
  * The simulated earned trust signals on the profile hero (Decision #155): `auto` shows the stored
@@ -341,6 +346,21 @@ export type DevAvailabilityConflict = "auto" | "call_outside_work" | "empty_hori
 export type DevWalletAurora = "auto" | "static" | "animated";
 
 /**
+ * How the landing hero's background (`features/landing`, `flows/LANDING.md` §3.6, §6) is chosen.
+ * `auto` runs the shipping gate (both reduced-motion channels, forced colours, Save-Data, device
+ * memory, core count, a fine pointer, WebGL2 support, the hero on screen, a visible tab); `static`
+ * never mounts the WebGL2 constellation or moves the spotlight, so the SSR paint is what shows;
+ * `webgl` mounts the constellation past the Save-Data, memory, core-count and pointer gates (a
+ * software renderer included) and clears a latched failure, while still honouring reduced motion and
+ * forced colours, falling back when no WebGL2 context can be created, and pausing offscreen and on a
+ * hidden tab. The outcome is reflected as `data-lp-bg` / `data-lp-bg-reason` on `.lp-root`.
+ *
+ * Its own axis because every non-`auto` value is a DEVICE fact (memory, cores, GPU, pointer) a
+ * developer cannot change from the page. The values are the landing gate's `BackgroundForce`.
+ */
+export type DevLandingBackground = "auto" | "static" | "webgl";
+
+/**
  * The `/settings` attention dashboard and the lane's marks (Decision #150). `auto` shows the real
  * facts; `clear` substitutes a fully set-up freelancer; `all` trips every attention rule once (an
  * unverified identity, no payout account, an unverified business, an expired connector, an unconfirmed
@@ -434,6 +454,8 @@ export interface DevSeamState {
 	 * reads as `auto`.
 	 */
 	walletAurora?: DevWalletAurora;
+	/** How the landing hero's background is chosen. Optional like `walletAurora`; absent reads as `auto`. */
+	landingBackground?: DevLandingBackground;
 	/** The simulated settings attention facts. Optional like `walletAurora`; absent reads as `auto`. */
 	settingsAttention?: DevSettingsAttention;
 	/** The simulated account lifecycle. Optional like `walletAurora`; absent reads as `auto`. */
@@ -577,6 +599,7 @@ const PROJECT_ONBOARDINGS: readonly DevProjectOnboarding[] = [
 const LAYOUT_DIRECTIONS: readonly DevLayoutDirection[] = ["ltr", "rtl", "auto"];
 const PROFILE_SETUPS: readonly DevProfileSetup[] = ["auto", "new", "live", "complete"];
 const WALLET_AURORAS: readonly DevWalletAurora[] = ["auto", "static", "animated"];
+const LANDING_BACKGROUNDS: readonly DevLandingBackground[] = ["auto", "static", "webgl"];
 const SETTINGS_ATTENTIONS: readonly DevSettingsAttention[] = ["auto", "clear", "all"];
 const ACCOUNT_LIFECYCLES: readonly DevAccountLifecycle[] = [
 	"auto",
@@ -617,7 +640,13 @@ const FUNDING_STATES: readonly DevFundingState[] = [
 ];
 
 const REVISION_ALLOTMENTS: readonly DevRevisionAllotment[] = ["auto", "exhausted", "paid"];
-const SESSION_STATES: readonly DevSessionState[] = ["auto", "seat_full", "live", "ended", "release_pending"];
+const SESSION_STATES: readonly DevSessionState[] = [
+	"auto",
+	"seat_full",
+	"live",
+	"ended",
+	"release_pending",
+];
 const DISPUTE_STATES: readonly DevDisputeState[] = [
 	"auto",
 	"none",
@@ -632,7 +661,12 @@ const DISPUTE_STATES: readonly DevDisputeState[] = [
 const AUTO_FUND_MODES: readonly DevAutoFundMode[] = ["auto", "off", "add_to_basket", "from_wallet"];
 const LOW_BALANCES: readonly DevLowBalance[] = ["auto", "below", "above"];
 const NOTIFICATION_SIMS: readonly DevNotifications[] = ["auto", "empty", "many", "burst"];
-const BASKET_SCENARIOS: readonly DevBasketScenario[] = ["auto", "empty", "multi_owner", "unavailable"];
+const BASKET_SCENARIOS: readonly DevBasketScenario[] = [
+	"auto",
+	"empty",
+	"multi_owner",
+	"unavailable",
+];
 const SAVED_SIMS: readonly DevSaved[] = ["auto", "empty", "many"];
 const PROMO_DISMISSALS: readonly DevPromoDismissal[] = ["auto", "visible", "dismissed"];
 const DISCOVERY_VIEWERS: readonly DevDiscoveryViewer[] = ["auto", "no_history", "no_signals"];
@@ -700,6 +734,7 @@ export function readDevSeam(): DevSeamState | null {
 		profileSetup: coerce(ds.devProfileSetup, PROFILE_SETUPS, "auto"),
 		// Absent = `auto` here too.
 		walletAurora: coerce(ds.devWalletAurora, WALLET_AURORAS, "auto"),
+		landingBackground: coerce(ds.devLandingBackground, LANDING_BACKGROUNDS, "auto"),
 		settingsAttention: coerce(ds.devSettingsAttention, SETTINGS_ATTENTIONS, "auto"),
 		accountLifecycle: coerce(ds.devAccountLifecycle, ACCOUNT_LIFECYCLES, "auto"),
 		proposalAllowance: coerce(ds.devProposalAllowance, PROPOSAL_ALLOWANCES, "auto"),

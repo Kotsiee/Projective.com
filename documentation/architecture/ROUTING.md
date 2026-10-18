@@ -61,6 +61,27 @@ Parenthesized folders group routes **without** adding a URL segment:
   pass, and the page's own read decides what they see.
 - `_layout.tsx` per group — shell chrome; `(dashboard)` mounts the dual-nav + Splitter. `(standalone)`
   deliberately has none — the only route group that renders no shell at all (Decision #161(C)).
+- `(public)/_layout.tsx` resolves the public shell by auth state — `GuestShell` for a guest,
+  `UserShell` for a signed-in visitor — with two path exemptions, checked in order:
+  - `AUTH_PATHS` (`/join`, `/login`, `/forgot-password`, `/verify`) render bare; the auth screens
+    own their full-window chrome.
+  - `LANDING_PATHS` (`/`, `/features`) render in **`LandingShell`**
+    (`features/landing/components/LandingShell.tsx`) for guests **and** signed-in visitors alike —
+    never a redirect; `/home` is untouched (Decision #284 (8)). The shell is the landing's
+    off-system canvas (`.lp-root`, Decision #280): a skip link to `#main-content`
+    (`PAGE_CANVAS_MAIN_ID`, Decision #285 (C)), its own floating header pill (Explore, the theme
+    control, then "Sign in" + "Get started" for a guest or "Open app" → `/home` for a signed-in
+    visitor; below 768px a menu sheet), the `<main id="main-content">`, and the unchanged
+    `PublicFooter` (Decision #13) rendered after `.lp-root`, outside it (#285 (B)). Also mounted for
+    these paths, outside `.lp-root`: `TicketDeepLinkHost authed={false}` for everyone (`/` opens no
+    ticket and strips a `?tkv=`, below) and, for a signed-in visitor only, `ChatPopoutHost`, so a
+    floating chat opened elsewhere stays open on the landing. **Not mounted** there, against the
+    shell a path would otherwise get: `SiteHeader` and its search, `ShareHost` and the guest aside
+    (GuestShell); the sidebar, middle nav, `NavSearchBar`, bottom nav, `ShareHost`,
+    `SettingsModalHost` (so `?settings=` opens nothing on `/`) and `MilestoneCelebration`
+    (UserShell). The pill's links are the ones whose destination exists: "How it works"
+    (`/#how-it-works`) and "Pricing" (`/#pricing`) join when those sections render on `/`, and
+    "Features" when `/features` ships.
 
 ## Dynamic segments (examples in the skeleton)
 

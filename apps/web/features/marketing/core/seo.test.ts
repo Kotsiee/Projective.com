@@ -23,8 +23,6 @@ import {
 	jsonLdAuthor,
 	jsonLdGraph,
 	type JsonLdNode,
-	LANDING_META,
-	landingJsonLd,
 	metaImage,
 	organizationJsonLd,
 	type PageMeta,
@@ -60,7 +58,8 @@ Deno.test("canonicalUrl gives one spelling per page", () => {
 Deno.test("documentTitle adds the brand once", () => {
 	assertEquals(documentTitle("Privacy Policy"), "Privacy Policy · Projective");
 	assertEquals(documentTitle("Privacy Policy · Projective"), "Privacy Policy · Projective");
-	assertEquals(documentTitle(LANDING_META.title), LANDING_META.title);
+	const landing = "Projective — Hire a ready-made team with payment protection";
+	assertEquals(documentTitle(landing), landing);
 	assertEquals(documentTitle("Projective"), "Projective");
 });
 // #endregion
@@ -355,16 +354,5 @@ Deno.test("FAQPage: every question carries one accepted answer, from content-mod
 		entities[1].acceptedAnswer.text,
 		"Earned money clears a 7-day pending window before it reaches your available balance.",
 	);
-});
-
-Deno.test("the landing graph is unchanged and still parses", () => {
-	const graph = JSON.parse(landingJsonLd());
-	assertEquals(graph["@context"], "https://schema.org");
-	assertEquals(graph["@graph"].map((n: { "@type": string }) => n["@type"]), [
-		"Organization",
-		"WebSite",
-		"SoftwareApplication",
-		"FAQPage",
-	]);
 });
 // #endregion

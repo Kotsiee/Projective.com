@@ -8,9 +8,16 @@ import { exploreFilterLaneFor } from "@features/explore/core/explore-lane-slot.t
 import { viewLaneFor, viewLaneOptionsFor } from "@features/view/core/view-lane-slot.tsx";
 import { viewHeaderFor } from "@features/view/core/view-header-slot.tsx";
 import { publicFooterFor } from "@features/marketing/core/footer-slot.tsx";
+import { LandingShell } from "@features/landing/components/LandingShell.tsx";
 
 /** Auth surfaces render their own full-window chrome (AuthShell) — no marketing header/footer. */
 const AUTH_PATHS = new Set(["/join", "/login", "/forgot-password", "/verify"]);
+
+/**
+ * The off-system marketing pages (Decision #280) render in their own LandingShell for guests AND
+ * signed-in visitors — never a redirect (Decision #284 (8)).
+ */
+const LANDING_PATHS = new Set(["/", "/features"]);
 
 /**
  * Public surface shell — resolves to one of two navigation profiles by auth state (DESIGN_SYSTEM.md
@@ -20,11 +27,29 @@ const AUTH_PATHS = new Set(["/join", "/login", "/forgot-password", "/verify"]);
  * (site-wide auth is resolved in the global middleware).
  *
  * The `(auth)` group (join/login/forgot-password/verify) is exempted: those pages own a full-window
- * split-screen shell, so both shells are suppressed for them.
+ * split-screen shell, so both shells are suppressed for them. The landing pages (`/`, `/features`)
+ * are exempted too: they render in {@link LandingShell} whatever the auth state.
  */
 export default define.page(function PublicLayout(ctx) {
 	if (AUTH_PATHS.has(ctx.url.pathname)) {
 		return <ctx.Component />;
+	}
+	if (LANDING_PATHS.has(ctx.url.pathname)) {
+		const authed = !!ctx.state.isAuthenticated;
+		return (
+			<>
+				<LandingShell authenticated={authed} returnTo={ctx.url.pathname + ctx.url.search}>
+					<ctx.Component />
+				</LandingShell>
+				{
+					/* Both hosts sit outside `.lp-root`. `/` opens no ticket for anyone: the host only strips
+				    a `?tkv=` that reached it. The floating chat a signed-in visitor opened elsewhere stays
+				    open here too. */
+				}
+				<TicketDeepLinkHost authed={false} />
+				{authed ? <ChatPopoutHost path={ctx.url.pathname} /> : null}
+			</>
+		);
 	}
 	// The Search Results filters mount in the AUTHENTICATED frame's middle-nav lane, resolved per URL
 	// (State B on `/explore` only). A guest gets no shell aside here: the dashboard renders its filter

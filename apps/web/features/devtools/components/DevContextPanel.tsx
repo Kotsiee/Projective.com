@@ -5,45 +5,46 @@ import {
 	ACCOUNT_TYPES,
 	applyDevContext,
 	DEV_ACCOUNT_LIFECYCLES,
+	DEV_AGE_RESTRICTIONS,
+	DEV_AUTO_FUND_MODES,
+	DEV_AVAILABILITY_CONFLICTS,
+	DEV_BASKET_SCENARIOS,
+	DEV_BUSINESS_PLAN_GATES,
+	DEV_CATALOGUE_ANALYTICS,
+	DEV_CLIENT_PIPELINES,
+	DEV_DISCOVERY_ACTIVITIES,
+	DEV_DISCOVERY_VIEWERS,
+	DEV_DISPUTE_STATES,
+	DEV_EMAIL_CONFIRMATIONS,
+	DEV_EMBEDDINGS,
+	DEV_FUNDING_STATES,
+	DEV_LANDING_BACKGROUNDS,
 	DEV_LAYOUT_DIRECTIONS,
+	DEV_LOW_BALANCES,
 	DEV_MEMBER_ROLES,
 	DEV_MESSAGING_ROLES,
 	DEV_MIC_PERMISSIONS,
+	DEV_NOTIFICATIONS,
+	DEV_OPERATOR_DESKS,
+	DEV_OPERATOR_MODES,
+	DEV_PAYOUT_READINESS,
 	DEV_PROFILE_SETUPS,
 	DEV_PROJECT_ACCESSES,
 	DEV_PROJECT_ONBOARDINGS,
 	DEV_PROJECT_STATUSES,
 	DEV_PROJECT_TYPES,
+	DEV_PROMO_DISMISSALS,
 	DEV_PROPOSAL_ALLOWANCES,
 	DEV_REVISION_ALLOTMENTS,
-	DEV_AUTO_FUND_MODES,
-	DEV_LOW_BALANCES,
-	DEV_SESSION_STATES,
-	DEV_DISPUTE_STATES,
-	DEV_NOTIFICATIONS,
-	DEV_BASKET_SCENARIOS,
-	DEV_PROMO_DISMISSALS,
-	DEV_DISCOVERY_VIEWERS,
-	DEV_DISCOVERY_ACTIVITIES,
-	DEV_EMAIL_CONFIRMATIONS,
-	DEV_AGE_RESTRICTIONS,
-	DEV_PAYOUT_READINESS,
-	DEV_BUSINESS_PLAN_GATES,
-	DEV_OPERATOR_MODES,
-	DEV_OPERATOR_DESKS,
-	DEV_CATALOGUE_ANALYTICS,
-	DEV_CLIENT_PIPELINES,
-	DEV_AVAILABILITY_CONFLICTS,
-	DEV_EMBEDDINGS,
 	DEV_ROLES,
 	DEV_SAVED,
 	DEV_SERVICE_TYPES,
 	DEV_SESSION_BOOKINGS,
+	DEV_SESSION_STATES,
 	DEV_SETTINGS_ATTENTIONS,
 	DEV_STAGE_ASSIGNMENTS,
 	DEV_SUBMISSION_STATES,
 	DEV_TRUST_ADORNMENTS,
-	DEV_FUNDING_STATES,
 	DEV_VERIFICATION_STAMPS,
 	DEV_WALLET_AURORAS,
 	type DevOption,
@@ -822,6 +823,23 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.walletAurora}
 						disabled={!o.enabled}
 						onChange={(walletAurora) => patchDevContext({ walletAurora })}
+					/>
+				</Field>
+
+				{
+					/* The landing hero's background (`flows/LANDING.md` §3.6). Its gates read device facts
+				    (memory, cores, Save-Data, the pointer, a GPU) no page control can change, so this is
+				    the only runtime route to the WebGL2 constellation on a machine that `auto` refuses, and
+				    to the static paint on one it allows. Reduced motion and forced colours still win.
+				    Applies live; `.lp-root` reflects the outcome on `data-lp-bg` / `data-lp-bg-reason`. */
+				}
+				<Field label="Landing background" hint="hero constellation · applies live">
+					<Segment
+						name="Landing background"
+						options={DEV_LANDING_BACKGROUNDS}
+						value={o.landingBackground}
+						disabled={!o.enabled}
+						onChange={(landingBackground) => patchDevContext({ landingBackground })}
 					/>
 				</Field>
 

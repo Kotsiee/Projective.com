@@ -33,43 +33,44 @@ import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/s
 import {
 	DEV_SEAM_EVENT,
 	type DevAccountLifecycle,
+	type DevAgeRestriction,
+	type DevAutoFundMode,
+	type DevAvailabilityConflict,
+	type DevBasketScenario,
+	type DevBusinessPlanGates,
+	type DevCatalogueAnalytics,
+	type DevClientPipeline,
+	type DevDiscoveryActivity,
+	type DevDiscoveryViewer,
+	type DevDisputeState,
+	type DevEmailConfirmation,
+	type DevEmbeddings,
+	type DevFundingState,
+	type DevLandingBackground,
 	type DevLayoutDirection,
+	type DevLowBalance,
 	type DevMemberRole,
 	type DevMessagingRole,
 	type DevMicPermission,
+	type DevNotifications,
+	type DevOperatorDesk,
+	type DevOperatorMode,
+	type DevPayoutReadiness,
 	type DevPersona,
 	type DevProfileSetup,
 	type DevProjectOnboarding,
 	type DevProjectType,
+	type DevPromoDismissal,
 	type DevProposalAllowance,
 	type DevRevisionAllotment,
-	type DevAutoFundMode,
-	type DevLowBalance,
-	type DevNotifications,
-	type DevSessionState,
-	type DevDisputeState,
-	type DevBasketScenario,
 	type DevSaved,
-	type DevPromoDismissal,
-	type DevDiscoveryViewer,
-	type DevDiscoveryActivity,
-	type DevEmbeddings,
-	type DevEmailConfirmation,
-	type DevAgeRestriction,
-	type DevPayoutReadiness,
-	type DevBusinessPlanGates,
-	type DevOperatorMode,
-	type DevOperatorDesk,
-	type DevCatalogueAnalytics,
-	type DevClientPipeline,
-	type DevAvailabilityConflict,
 	type DevSeamRole,
 	type DevServiceType,
 	type DevSessionBookingStatus,
+	type DevSessionState,
 	type DevSettingsAttention,
 	type DevStageAssignment,
 	type DevSubmissionState,
-	type DevFundingState,
 	type DevTrustAdornments,
 	type DevVerificationStamp,
 	type DevWalletAurora,
@@ -92,42 +93,43 @@ export type DevProjectStatus = "auto" | ProjectStatus;
 /** The engagement delivery format a developer can impersonate (submissions ticket handling). */
 export type {
 	DevAccountLifecycle,
+	DevAgeRestriction,
+	DevAutoFundMode,
+	DevAvailabilityConflict,
+	DevBasketScenario,
+	DevBusinessPlanGates,
+	DevCatalogueAnalytics,
+	DevClientPipeline,
+	DevDiscoveryActivity,
+	DevDiscoveryViewer,
+	DevDisputeState,
+	DevEmailConfirmation,
+	DevEmbeddings,
+	DevFundingState,
+	DevLandingBackground,
 	DevLayoutDirection,
+	DevLowBalance,
 	DevMemberRole,
 	DevMessagingRole,
 	DevMicPermission,
+	DevNotifications,
+	DevOperatorDesk,
+	DevOperatorMode,
+	DevPayoutReadiness,
 	DevProfileSetup,
 	DevProjectType,
 	DevProposalAllowance,
 	DevRevisionAllotment,
-	DevAutoFundMode,
-	DevLowBalance,
-	DevNotifications,
-	DevSessionState,
-	DevDisputeState,
-	DevBasketScenario,
 	DevSaved,
 	DevServiceType,
 	DevSessionBookingStatus,
+	DevSessionState,
 	DevSettingsAttention,
 	DevStageAssignment,
 	DevSubmissionState,
-	DevFundingState,
 	DevTrustAdornments,
 	DevVerificationStamp,
 	DevWalletAurora,
-	DevDiscoveryViewer,
-	DevDiscoveryActivity,
-	DevEmbeddings,
-	DevEmailConfirmation,
-	DevAgeRestriction,
-	DevPayoutReadiness,
-	DevBusinessPlanGates,
-	DevOperatorMode,
-	DevOperatorDesk,
-	DevCatalogueAnalytics,
-	DevClientPipeline,
-	DevAvailabilityConflict,
 };
 
 /** The full override set. `enabled` is the master switch — when off, {@link applyDevContext} is a pass-through. */
@@ -239,6 +241,14 @@ export interface DevOverrides {
 	 * device memory and frame times are device facts no page control can change.
 	 */
 	walletAurora: DevWalletAurora;
+	/**
+	 * How the landing hero's background is chosen (`flows/LANDING.md` §3.6, §6): `auto` runs the
+	 * shipping gate, `static` keeps the SSR paint (no WebGL2 constellation, no moving spotlight),
+	 * `webgl` forces the constellation past the Save-Data, memory, core-count and pointer gates (still
+	 * honouring reduced motion and forced colours, and pausing offscreen or on a hidden tab). Its own
+	 * axis because those are device facts no page control can change. Applies live.
+	 */
+	landingBackground: DevLandingBackground;
 	/**
 	 * The `/settings` attention dashboard and lane marks: the real facts, a fully set-up account, or
 	 * every rule tripped once. Its own axis because KYC, payout and connector states are server facts
@@ -432,6 +442,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	layoutDirection: "ltr",
 	profileSetup: "auto",
 	walletAurora: "auto",
+	landingBackground: "auto",
 	settingsAttention: "auto",
 	accountLifecycle: "auto",
 	proposalAllowance: "auto",
@@ -595,6 +606,16 @@ export const DEV_WALLET_AURORAS: ReadonlyArray<DevOption<DevWalletAurora>> = [
 	{ value: "auto", label: "Auto" },
 	{ value: "static", label: "Static" },
 	{ value: "animated", label: "Animated" },
+];
+
+/**
+ * Landing-background options in display order (the hero's constellation and spotlight). `Force WebGL`
+ * is the value worth having: it runs the constellation on a machine the device gates would refuse.
+ */
+export const DEV_LANDING_BACKGROUNDS: ReadonlyArray<DevOption<DevLandingBackground>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "static", label: "Static only" },
+	{ value: "webgl", label: "Force WebGL" },
 ];
 
 /** Settings-attention options in display order (the `/settings` dashboard and the lane's marks). */
@@ -894,6 +915,9 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devProfileSetup;
 		if (next.walletAurora !== "auto") root.dataset.devWalletAurora = next.walletAurora;
 		else delete root.dataset.devWalletAurora;
+		if (next.landingBackground !== "auto") {
+			root.dataset.devLandingBackground = next.landingBackground;
+		} else delete root.dataset.devLandingBackground;
 		if (next.settingsAttention !== "auto") {
 			root.dataset.devSettingsAttention = next.settingsAttention;
 		} else delete root.dataset.devSettingsAttention;
@@ -986,6 +1010,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devMicPermission;
 		delete root.dataset.devProfileSetup;
 		delete root.dataset.devWalletAurora;
+		delete root.dataset.devLandingBackground;
 		delete root.dataset.devSettingsAttention;
 		delete root.dataset.devAccountLifecycle;
 		delete root.dataset.devProposalAllowance;

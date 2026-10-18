@@ -1,0 +1,226 @@
+/*
+ * lp-background.css — the hero background stack (flows/LANDING.md §3.6, B7 + B10 + B1).
+ *
+ * Layers, bottom to top, all under the hero's content (.lp-hero isolates, .lp-bg sits at z -1):
+ *   .lp-bg            canvas paint
+ *   .lp-bg::before    B7 base grid, faded to the edges
+ *   .lp-bg__spot      B7 spotlight: a host-sized origin moved by translate (compositor only, so a
+ *                     percentage resolves against the background box), carrying a 2r disc centred
+ *                     on that origin
+ *   .lp-bg__lit       B7 lit grid under the spotlight; lighten / darken, so a line never passes the
+ *                     audited --lp-grid-line-lit where it overlaps the base grid
+ *   .lp-constellation B1 static SVG fallback (the SSR paint)
+ *   .lp-bg__gl        B1 WebGL2 canvas slot, crossfaded in once its first frame is drawn
+ *   .lp-bg::after     B10 grain, static under every motion setting
+ *
+ * --lp-spot-x / --lp-spot-y resolve against the background box: the SSR values (50% / 0%) centre
+ * the spotlight at the top; the island writes px on fine pointers only. The quiet zones under copy
+ * come from the island's measurement (an SVG mask, or the shader's zone uniforms); until it has
+ * measured (no JS, or before hydration) [data-lp-zones] is absent and a conservative centre column
+ * is cleared instead. Every mask stop and mask geometry is a token of `lp-theme.css`
+ * (`--lp-mask-*`, `--lp-fade-mask`, `--lp-calm-*`).
+ */
+
+/* #region Base */
+.lp-bg {
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	overflow: clip;
+	contain: strict;
+	pointer-events: none;
+	background: var(--lp-canvas-paint);
+}
+
+.lp-bg::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background-image:
+		linear-gradient(to right, var(--lp-grid-line) 1px, transparent 1px),
+		linear-gradient(to bottom, var(--lp-grid-line) 1px, transparent 1px);
+	background-size: var(--lp-grid-size) var(--lp-grid-size);
+	background-position: center top;
+	-webkit-mask-image: radial-gradient(
+		ellipse 70% 60% at 50% 30%,
+		var(--lp-mask-ink) 30%,
+		transparent 75%
+	);
+	mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, var(--lp-mask-ink) 30%, transparent 75%);
+}
+
+.lp-bg::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	opacity: var(--lp-grain-opacity);
+	background-size: var(--lp-grain-size);
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.lp-bg__layer {
+	position: absolute;
+	inset: 0;
+	inline-size: 100%;
+	block-size: 100%;
+}
+/* #endregion */
+
+/* #region Spotlight (B7) */
+.lp-bg__spot {
+	position: absolute;
+	inset: 0;
+	translate: var(--lp-spot-x) var(--lp-spot-y);
+}
+
+.lp-bg__spot::before {
+	content: "";
+	position: absolute;
+	left: calc(var(--lp-spot-r) * -1);
+	top: calc(var(--lp-spot-r) * -1);
+	inline-size: calc(var(--lp-spot-r) * 2);
+	aspect-ratio: 1;
+	background: radial-gradient(closest-side, var(--lp-spot), transparent);
+}
+
+.lp-bg[data-lp-spot="on"] .lp-bg__spot {
+	will-change: translate;
+}
+
+.lp-bg__lit {
+	position: absolute;
+	inset: 0;
+	background-image:
+		linear-gradient(to right, var(--lp-grid-line-lit) 1px, transparent 1px),
+		linear-gradient(to bottom, var(--lp-grid-line-lit) 1px, transparent 1px);
+	background-size: var(--lp-grid-size) var(--lp-grid-size);
+	background-position: center top;
+	-webkit-mask-image: radial-gradient(
+		circle var(--lp-spot-r) at var(--lp-spot-x) var(--lp-spot-y),
+		var(--lp-mask-ink),
+		transparent
+	);
+	mask-image: radial-gradient(
+		circle var(--lp-spot-r) at var(--lp-spot-x) var(--lp-spot-y),
+		var(--lp-mask-ink),
+		transparent
+	);
+	mix-blend-mode: darken;
+}
+
+:root[data-theme="dark"] .lp-bg__lit {
+	mix-blend-mode: lighten;
+}
+/* #endregion */
+
+/* #region Constellation (B1) */
+.lp-constellation {
+	overflow: visible;
+	opacity: var(--lp-node-alpha);
+	-webkit-mask-image: var(--lp-fade-mask);
+	mask-image: var(--lp-fade-mask);
+	transition: opacity var(--lp-dur-reveal) var(--lp-ease-out);
+}
+
+.lp-bg:not([data-lp-zones]) .lp-constellation {
+	-webkit-mask-image: var(--lp-calm-mask), var(--lp-fade-mask);
+	-webkit-mask-composite: source-in;
+	mask-image: var(--lp-calm-mask), var(--lp-fade-mask);
+	mask-composite: intersect;
+}
+
+.lp-constellation__node {
+	fill: var(--lp-node);
+}
+
+.lp-constellation__link {
+	stroke: var(--lp-node);
+	stroke-width: 1;
+	vector-effect: non-scaling-stroke;
+}
+
+.lp-constellation__keep {
+	fill: var(--lp-mask-keep);
+}
+
+.lp-constellation__zone {
+	fill: var(--lp-mask-clear);
+}
+
+.lp-constellation__zone--copy {
+	fill-opacity: calc(1 - var(--lp-node-alpha-quiet) / var(--lp-node-alpha));
+}
+
+.lp-constellation__zone--halo {
+	fill-opacity: calc(1 - var(--lp-node-alpha-halo) / var(--lp-node-alpha));
+}
+
+.lp-bg__gl {
+	position: absolute;
+	inset: 0;
+}
+
+.lp-bg__canvas {
+	display: block;
+	inline-size: 100%;
+	block-size: 100%;
+	opacity: 0;
+	-webkit-mask-image: var(--lp-fade-mask);
+	mask-image: var(--lp-fade-mask);
+	transition: opacity var(--lp-dur-reveal) var(--lp-ease-out);
+}
+
+.lp-bg[data-lp-gl="live"] .lp-bg__canvas {
+	opacity: 1;
+}
+
+.lp-bg[data-lp-gl="live"] .lp-constellation {
+	opacity: 0;
+}
+/* #endregion */
+
+/* #region Reduced motion — both channels */
+@media (prefers-reduced-motion: reduce) {
+	.lp-bg .lp-bg__spot,
+	.lp-bg .lp-bg__canvas,
+	.lp-bg .lp-constellation {
+		transition: none;
+		will-change: auto;
+	}
+	.lp-bg .lp-bg__gl {
+		display: none;
+	}
+	.lp-bg[data-lp-gl] .lp-constellation {
+		opacity: var(--lp-node-alpha);
+	}
+}
+
+:root[data-motion="reduced"] .lp-bg .lp-bg__spot,
+:root[data-motion="reduced"] .lp-bg .lp-bg__canvas,
+:root[data-motion="reduced"] .lp-bg .lp-constellation {
+	transition: none;
+	will-change: auto;
+}
+
+:root[data-motion="reduced"] .lp-bg .lp-bg__gl {
+	display: none;
+}
+
+:root[data-motion="reduced"] .lp-bg[data-lp-gl] .lp-constellation {
+	opacity: var(--lp-node-alpha);
+}
+/* #endregion */
+
+/* #region Forced colours and print */
+@media (forced-colors: active) {
+	.lp-bg {
+		display: none;
+	}
+}
+
+@media print {
+	.lp-bg {
+		display: none;
+	}
+}
+/* #endregion */

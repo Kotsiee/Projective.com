@@ -2240,6 +2240,13 @@ verbatim because every component depends only on the token contract (Part A) —
 > `SYSTEM_ARCHITECTURE.md` Restructure Change Log). Migration note: the former Fields/Data/Charts
 > package docs describe existing implementations now re-homed under these sub-paths.
 
+> **Off-system app components — deliberately not on this roster.** `LandingShell`,
+> `LandingHeader` and `LandingBackground` (with its server paint `BackgroundFallback`) live in
+> `apps/web/features/landing/**` under the #280 exemption, outside `@projective/ui`; Part E,
+> "Off-system surfaces", documents them, and gate 5 is answered there (Decision #286 (B)). The
+> retired marketing landing components (`Hero`, `HowItWorks`, the landing-only cards…) were app
+> components too and were never roster entries.
+
 > **Field validation statuses — two-tier creation gate.** Beyond the generic `invalid`/`success`/
 > `warning` `FieldStatus`es, `fields` (and `editor`) expose the platform's "quick to onboard, slow
 > to set up" gate as two explicit severities: **`required` (RED)** — needed _now_ to create the base
@@ -3166,7 +3173,9 @@ Preserve the functional shell architecture; modernize its execution.
 
 **Four navigation profiles (form-factor × auth).** The shell resolves to one of four configurations,
 selected by viewport and auth state (auth is resolved **site-wide** in the global middleware so
-Home/Explore render the user shell when signed in):
+Home/Explore render the user shell when signed in). The landing pages `/` and `/features` take none
+of the four: they render in `LandingShell` whatever the auth state (Part E, "Off-system surfaces";
+`ROUTING.md`):
 
 1. **Desktop Guest** (every guest-reachable route) — the unified floating `GuestShell`: the same
    full-width, scroll-adaptive glass `SiteHeader` (the four discovery megamenus — Helpers · Services
@@ -3759,8 +3768,10 @@ For **guests** the shell is not the nested L-frame — it is one floating compos
 (`apps/web/features/shell/`), used verbatim on every guest-reachable route (the `(public)` surfaces
 and `/[handle]`). It layers floating, glassmorphic panels over a **full-bleed body**, reusing the
 marketing `.site` / `.site__main` base (the fixed → pill-on-scroll `SiteHeader`, the reserved header
-band, and `overflow-x: clip`), so lane-less routes (`/`, both Explore states) are structurally
-unchanged:
+band, and `overflow-x: clip`), so lane-less routes (both Explore states, `/about`, `/help`) are
+structurally unchanged. `/` and `/features` are the exception: they render in `LandingShell`, the
+landing's off-system chrome, for guests and signed-in visitors alike (Part E, "Off-system surfaces";
+`ROUTING.md`, `(public)/_layout.tsx`).
 
 - **Floating pill header.** The unchanged `SiteHeader` (full-width, morphing to a glass pill on
   scroll, discovery megamenus intact) is the top chrome on **all** guest routes — replacing both the
@@ -4560,16 +4571,54 @@ A PR touching `@projective/ui` must satisfy (enforced via root `CLAUDE.md`):
 sanctioned exception to items 1, 3 and 9, and to §B.9 (cards) within item 7 — never to items 2, 4,
 5, 6 or 8: `apps/web/features/landing/**`, the `/` route and the `/features` route may carry their
 own palette, type, radii, shadows, glass, glows, cards and motion — but only as `lp-` BEM classes
-and `--lp-*` tokens scoped to `.lp-root` (and `.lp-portal` on a portalled panel),
-with the token values declared once in `features/landing/styles/lp-theme.css`. What stays enforced
-there: accessibility (AA contrast on every text-over-effect, keyboard paths, ARIA, and visible focus,
-which is OPEN against the no-focus-ring directive, #280 flag (b)), both reduced-motion channels,
-islands never touching Supabase, thin routes over fat services, security, SEO and the landing's
-performance budget ([`flows/LANDING.md`](../flows/LANDING.md) §7). L1 adds a `deno task test:unit`
-leak test that fails on any `lp-` class or `--lp-*` token outside those paths (after the existing
-`lp-footer*` block is renamed or allowlisted, #280 flag (a)). Every gate in this document still
-applies everywhere else, including to app components rendered inside the landing (the board mock
-keeps the app's own tokens), and the exemption widens only by a new decision row.
+and `--lp-*` tokens scoped to `.lp-root` (and `.lp-portal` on a portalled panel), with the token
+values declared once in `features/landing/styles/lp-theme.css`. What stays enforced there:
+accessibility (AA contrast on every text-over-effect, keyboard paths, ARIA; focus follows the
+app-wide no-focus-ring directive, so the landing draws no ring either — #285 (A)), both
+reduced-motion channels, islands never touching Supabase, thin routes over fat services, security,
+SEO and the landing's performance budget ([`flows/LANDING.md`](../flows/LANDING.md) §7).
+`apps/web/features/landing/core/lp-leak.test.ts` (part of `deno task test:unit`) fails, naming
+`file:line`, on any `lp-` name or `--lp-*` token outside those paths; its allowlist reaches only the
+seven footer files #285 (B) names — there, the `lp-footer` BEM family exactly (plus the block's three
+ids and one keyframes name), footer-local `--lp-*` tokens declared in the file that reads them, and
+`marketing/styles/hero-search.css`'s one `--lp-hair-strong` read — until that block is renamed
+after P8. `core/lp-theme.contrast.test.ts` recomputes every §3.3 contrast pairing of
+`flows/LANDING.md` from `lp-theme.css` and fails a cell below its floor or a published cell that
+no longer matches. Every gate in this document still applies everywhere else,
+including to app components rendered inside the landing (the board mock keeps the app's own tokens),
+and the exemption widens only by a new decision row.
+
+- **`LandingShell`** (`features/landing/components/LandingShell.tsx`) is the chrome of `/` and
+  `/features`, in place of GuestShell / UserShell (`ROUTING.md`, `(public)/_layout.tsx`): the
+  `.lp-root` canvas; a skip link to `PAGE_CANVAS_MAIN_ID` (#285 (C)); the floating header pill
+  (`LandingHeader` island — the brand, the "Main" links, the app's `ThemeToggle`, then "Sign in" +
+  the amber "Get started" for a guest or a tonal "Open app" for a signed-in visitor; below `--bp-md`
+  a menu button, rendered once hydrated (until then "Get started" stays in the pill), opens a top
+  sheet built on the overlay family's `Drawer`, re-skinned `lp-menu` and marked `lp-portal`, its
+  elevation on `::after` because the no-focus-ring layer strips a focused panel's `box-shadow`),
+  whose glass is a `::before` underlay with a solid fallback (no `backdrop-filter` support, either
+  high-contrast channel, reduced transparency, forced colours). The glass is the default; from
+  `--bp-lg` the hydrated pill sheds it at the top of the page only once `LandingBackground` has
+  measured its quiet zones, which include the pill's band;
+  the `<main>`; and the unchanged `PublicFooter` rendered after `.lp-root`, outside it, so neither
+  namespace's tokens reach the other (#285 (B)). The pill sets the package's `--chrome-pinned-h`
+  hook to its own bottom edge. `LandingHeader` also carries `lp-theme.css` and `lp-shell.css`, since
+  a stylesheet imported by a server component never reaches the page.
+- **`LandingBackground`** (`features/landing/islands/`) is the hero's background: the server paints
+  `BackgroundFallback` (grid, grain, still spotlight, static SVG constellation), and the client
+  upgrades it behind the §3.6 gate (`core/background-gate.ts`) to the pointer spotlight or the lazily
+  imported raw-WebGL2 constellation (`core/constellation-gl.ts`), which starts from and rests on the
+  SVG's own picture (`core/constellation.ts`).
+- **The old marketing landing is retired.** `features/marketing/components/` `LandingPage`, `Hero`,
+  `HowItWorks`, `Testimonials`, `OpenProjectsGrid`, `ProductsMasonry`, `SectionHeading` and the
+  landing-only `ProfileCard` / `ProjectCard` / `ServiceCard` / `ProductCard` (the Explore cards of
+  the same names are separate files and stay), the `HeroParticles`, `MagneticField`,
+  `ProfilesCarousel` and `ServicesCarousel` islands, and `styles/landing.css` are deleted;
+  `core/landing-data.ts` keeps only the search-scope vocabulary, and the old landing's head copy and
+  graph (`seo.ts` `LANDING_META`, `landingJsonLd`), its `freelancerFloor` price string and the
+  `data-magnetic` hooks it read are gone. `SiteHeader`, `PublicFooter`, `SearchBar` (Explore Home's
+  hero search), `NewsletterForm`, `RecentlyViewed`, `SchemaInjector` (now always given its graph by
+  `JsonLd`) and the carousel helpers stay.
 
 ---
 

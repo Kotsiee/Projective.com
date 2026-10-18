@@ -158,7 +158,7 @@ export default function SiteHeader(
 			}`}
 		>
 			<div class="site-header__bar" data-authed={authenticated ? "true" : "false"}>
-				<a class="site-header__brand" href="/" data-magnetic data-magnetic-strength="0.2">
+				<a class="site-header__brand" href="/">
 					<Logo class="site-header__mark" />
 					<span class="site-header__brand-text">Projective</span>
 				</a>
@@ -307,14 +307,14 @@ export default function SiteHeader(
 									<span aria-hidden="true">◈</span>
 								</a>
 								<ThemeToggle />
-								<a class="site-header__cta" href="/projects" data-magnetic>Dashboard</a>
+								<a class="site-header__cta" href="/projects">Dashboard</a>
 							</>
 						)
 						: (
 							<>
 								<ThemeToggle />
 								<a class="site-header__signin" href={signInHref}>Sign in</a>
-								<a class="site-header__cta" href={joinHref} data-magnetic>Get started</a>
+								<a class="site-header__cta" href={joinHref}>Get started</a>
 							</>
 						)}
 				</div>

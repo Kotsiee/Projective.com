@@ -18,9 +18,9 @@
  * The `--ex-*` layer lives on `:root`, not on `.ex`.
  *
  * These tokens are read by the discovery CARDS, and the cards travel: they render inside `.ex` on
- * `/explore`, inside `.vw-related` on `/view`, inside the profile layout's `.ex` wrapper on
- * `/@handle`, and — since the marketing fork was retired — inside `.lp` on the landing page, which has
- * no `.ex` ancestor at all. A token scoped to a wrapper silently falls back to nothing everywhere the
+ * `/explore`, inside `.vw-related` on `/view`, and inside the profile layout's `.ex` wrapper on
+ * `/@handle` — and any surface may render one with no `.ex` ancestor at all. A token scoped to a
+ * wrapper silently falls back to nothing everywhere the
  * component renders outside it, and the fallback is invisible: the card still lays out, just with the
  * wrong radius and no chip surface. Hosting them at the root is the same correction the `--wlt-*` and
  * `--fld-*` layers already took for the same reason.

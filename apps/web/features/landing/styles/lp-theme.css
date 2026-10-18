@@ -1,0 +1,581 @@
+/*
+ * lp-theme — the landing's scoped token sheet (Decision #280; `documentation/flows/LANDING.md` §3).
+ *
+ * Every `--lp-*` token the landing (`/`, `/features`) reads is declared here, ONCE, on
+ * `:is(.lp-root, .lp-portal)`: `.lp-root` is the LandingShell canvas and `.lp-portal` goes on the
+ * root of any panel the overlay layer moves to `<body>` (a portal leaves `.lp-root`, #280 (g)).
+ * Nothing outside `features/landing/**` and the two exempt routes may name an `lp-` class or an
+ * `--lp-*` token (`core/lp-leak.test.ts`).
+ *
+ * Layering, mirroring the app's own selectors (`apps/web/routes/_app.tsx:34-56`) exactly:
+ *   - Base: type, radii, layout and motion — mode-invariant, declared only here.
+ *   - Light (#8 light-airy): the app's `:root` default, so it applies with no theme attribute.
+ *   - Dark (#1 dark precision): `:root[data-theme="dark"]`.
+ *   - High contrast: the OS channel (`prefers-contrast: more`, unless the app wrote
+ *     `data-contrast="normal"`) and the in-app channel (`data-contrast="high"`), each
+ *     mode-qualified so a light block can never override a dark one.
+ *   - Dyslexic: every `--lp-font-*` remaps to the app's `--font-*`; tracking and leading follow.
+ *   - Reduced motion: every duration, the reveal distance and the press scale collapse under BOTH
+ *     `prefers-reduced-motion: reduce` and `:root[data-motion="reduced"]`.
+ *
+ * Colour tokens are declared only in the mode and high-contrast blocks; the base block's mask stops
+ * are alpha and luminance values a mask reads, never paint. Weights alias `--fw-*`, so
+ * the dyslexic overlay collapses them with the rest of the app. `--lp-focus` is declared because
+ * the sheet defines it, and is not used: the landing draws no focus ring (Decision #285 (A)).
+ */
+
+/* #region Registered properties */
+@property --lp-ring-angle {
+	syntax: "<angle>";
+	inherits: false;
+	initial-value: 0deg;
+}
+/* #endregion */
+
+/* #region Base — type, radii, layout, effects geometry, motion */
+:is(.lp-root, .lp-portal) {
+	/* Type families (§3.1): system stacks only — no webfont, no swap, no CSP change. */
+	--lp-font-display: "Segoe UI Variable Display", "Segoe UI Variable", var(--font-sans);
+	--lp-font-serif:
+		ui-serif, "Iowan Old Style", "Sitka Display", "Sitka", "Sitka Text", Charter,
+		"Bitstream Charter", Cambria, Georgia, "Noto Serif", serif;
+	--lp-font-body: var(--font-sans);
+	--lp-font-mono: ui-monospace, "SF Mono", "Cascadia Mono", var(--font-mono);
+
+	/* Type scale (§3.4): every clamp keeps max ≤ 2.5 × min, so 200% zoom holds. */
+	--lp-fs-hero: clamp(2.5rem, 1.5rem + 4vw, 4.75rem);
+	--lp-fs-section: clamp(2rem, 1.4rem + 2.5vw, 3.5rem);
+	--lp-fs-figure: clamp(2.25rem, 1.6rem + 2.8vw, 4rem);
+	--lp-fs-h3: clamp(1.125rem, 1.02rem + 0.45vw, 1.375rem);
+	--lp-fs-eyebrow: 0.75rem;
+	--lp-fs-body-lg: clamp(1.0625rem, 0.98rem + 0.3vw, 1.25rem);
+	--lp-fs-body: 1rem;
+	--lp-fs-body-sm: 0.875rem;
+	--lp-fs-search: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+	--lp-fs-btn: 0.9375rem;
+	--lp-fs-btn-lg: 1rem;
+	--lp-fs-meta: clamp(0.75rem, 0.72rem + 0.12vw, 0.8125rem);
+
+	/* Tracking and leading — named so the dyslexic overlay can remap them (§3.6). The serif
+	   section voice tracks tighter than the precision voice, so it carries its own token. */
+	--lp-track-hero: -0.03em;
+	--lp-track-section: -0.022em;
+	--lp-track-serif: -0.012em;
+	--lp-track-figure: -0.03em;
+	--lp-track-h3: -0.01em;
+	--lp-track-body: -0.005em;
+	--lp-track-meta: 0em;
+	--lp-track-eyebrow: 0.1em;
+	--lp-lead-hero: 1.04;
+	--lp-lead-section: 1.08;
+	--lp-lead-h3: 1.3;
+	--lp-lead-body-lg: 1.55;
+	--lp-lead-body: 1.65;
+
+	/* Radii (§3.5): the scale knob still flows through; a pill is a shape, never scaled. */
+	--lp-r-xs: calc(4px * var(--radius-scale));
+	--lp-r-sm: calc(8px * var(--radius-scale));
+	--lp-r-md: calc(12px * var(--radius-scale));
+	--lp-r-lg: calc(16px * var(--radius-scale));
+	--lp-r-xl: calc(24px * var(--radius-scale));
+	--lp-r-2xl: calc(32px * var(--radius-scale));
+	--lp-r-pill: 999px;
+	--lp-r-search: var(--lp-r-xl);
+	--lp-r-btn: var(--lp-r-pill);
+
+	/* Layout */
+	--lp-stage-tilt: perspective(2000px) rotateX(14deg) rotateZ(-1.5deg) scale(0.94);
+	--lp-gutter: clamp(1rem, 0.25rem + 3.5vw, 3rem);
+	--lp-section-pad: clamp(4rem, 2.5rem + 6.5vw, 9rem);
+	--lp-header-h: 3.5rem;
+	--lp-header-inset: 0.75rem;
+	--lp-hero-pad: calc(
+		var(--lp-header-h) + var(--lp-header-inset) + clamp(2.5rem, 0.5rem + 8vw, 8rem)
+	);
+	--lp-gap: clamp(0.75rem, 0.5rem + 1vw, 1.5rem);
+	--lp-heading-gap: clamp(0.75rem, 0.55rem + 0.8vw, 1.25rem);
+	--lp-stack-2xs: var(--space-1);
+	--lp-stack-xs: var(--space-2);
+	--lp-stack-sm: var(--space-3);
+	--lp-stack-md: var(--space-4);
+	--lp-stack-lg: var(--space-5);
+	--lp-stack-xl: var(--space-6);
+	--lp-stack-2xl: var(--space-7);
+	--lp-stack-3xl: var(--space-8);
+	--lp-maxw: 76rem;
+	--lp-maxw-wide: 90rem;
+	--lp-maxw-text: 44rem;
+	--lp-measure: var(--measure);
+	--lp-measure-lead: 56ch;
+	--lp-measure-display: 18ch;
+
+	/* Effects geometry (mode-invariant; the colours live in the mode blocks) */
+	--lp-spot-r: clamp(18rem, 36vw, 36rem);
+	--lp-spot-x: 50%;
+	--lp-spot-y: 0%;
+	--lp-grid-size: clamp(2.5rem, 1.6rem + 2.4vw, 4rem);
+	--lp-grain-size: 160px;
+	--lp-ring-w: 1px;
+	--lp-glass-veil: 82%;
+	--lp-glass-blur: 16px;
+	--lp-glass-saturate: 1.4;
+	--lp-focus-w: 2px;
+	--lp-focus-offset: 2px;
+
+	/* Mask stops and geometry (§3.6). A mask reads only alpha (CSS) or luminance (the SVG quiet-zone
+	   mask), so these colours are never painted. */
+	--lp-mask-ink: #000;
+	--lp-mask-keep: #fff;
+	--lp-mask-clear: #000;
+	--lp-fade-mask: linear-gradient(to bottom, var(--lp-mask-ink) 50%, transparent 92%);
+	--lp-calm-half: min(50%, 30rem);
+	--lp-calm-feather: 4rem;
+	--lp-calm-mask: linear-gradient(
+		to right,
+		var(--lp-mask-ink) calc(50% - var(--lp-calm-half) - var(--lp-calm-feather)),
+		transparent calc(50% - var(--lp-calm-half)),
+		transparent calc(50% + var(--lp-calm-half)),
+		var(--lp-mask-ink) calc(50% + var(--lp-calm-half) + var(--lp-calm-feather))
+	);
+
+	/* Motion (§3.5): no overshoot anywhere. */
+	--lp-dur-press: 50ms;
+	--lp-dur-fast: 140ms;
+	--lp-dur-base: 220ms;
+	--lp-dur-slow: 360ms;
+	--lp-dur-reveal: 600ms;
+	--lp-dur-demo: 900ms;
+	--lp-dur-demo-hold: 1600ms;
+	--lp-dur-ring: 6000ms;
+	--lp-stagger: 50ms;
+	--lp-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+	--lp-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+	--lp-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+	--lp-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+	--lp-ease-linear: linear;
+	--lp-reveal-distance: 12px;
+	--lp-press-scale: 0.96;
+}
+/* #endregion */
+
+/* #region Light — #8 light-airy (the app's :root default) */
+:is(.lp-root, .lp-portal) {
+	color-scheme: light;
+
+	/* Canvas and surfaces (all solid) */
+	--lp-bg: #f6f8f8;
+	--lp-bg-end: #ffffff;
+	--lp-surface-1: #ffffff;
+	--lp-surface-2: #f2f5f6;
+	--lp-surface-3: #e9edef;
+	--lp-wash-teal: rgb(40 134 144 / 0.06);
+	--lp-wash-amber: rgb(217 130 22 / 0.06);
+	--lp-canvas-paint:
+		radial-gradient(60% 50% at 12% 0%, var(--lp-wash-teal), transparent 70%),
+		radial-gradient(50% 45% at 88% 4%, var(--lp-wash-amber), transparent 70%),
+		linear-gradient(var(--lp-bg), var(--lp-bg-end) 60%);
+
+	/* Text */
+	--lp-text: #101417;
+	--lp-text-2: #3e484d;
+	--lp-text-3: #475156;
+
+	/* Warm editorial voice */
+	--lp-warm-bg: #f6f1e9;
+	--lp-warm-surface: #fffcf7;
+	--lp-warm-text: #1d1913;
+	--lp-warm-text-2: #52483d;
+	--lp-warm-text-3: #61574b;
+	--lp-warm-hair: rgb(29 25 19 / 0.1);
+
+	/* Amber — the one filled primary per region */
+	--lp-amber: #d98216;
+	--lp-amber-hover: #e39433;
+	--lp-amber-active: #eaa453;
+	--lp-on-amber: #101417;
+	--lp-amber-edge: #a35f0c;
+	--lp-amber-ink: #7d4303;
+
+	/* Teal — glow and structure; never text */
+	--lp-teal: #288690;
+	--lp-teal-ink: #0a5a62;
+	--lp-teal-fill: #1f747d;
+	--lp-teal-fill-hover: #1b6870;
+	--lp-teal-fill-active: #175c63;
+	--lp-on-teal: #ffffff;
+
+	/* Monochrome — the second legal fill */
+	--lp-mono: #161b1e;
+	--lp-mono-hover: #0b0e10;
+	--lp-mono-active: #0b0e10;
+	--lp-on-mono: #ffffff;
+
+	/* Lines and focus */
+	--lp-hair: rgb(16 20 23 / 0.08);
+	--lp-hair-strong: rgb(16 20 23 / 0.12);
+	--lp-edge: #646f75;
+	--lp-focus: #0b5d65;
+
+	/* Demo-stage status */
+	--lp-refuse-ink: #9c2228;
+	--lp-refuse-fill: #fcedec;
+	--lp-refuse-edge: #c24a44;
+	--lp-ok-ink: #126645;
+	--lp-ok-fill: #e7f4ee;
+	--lp-held-ink: #0a5a62;
+	--lp-held-fill: #e5f2f3;
+
+	/* Effects */
+	--lp-spot: rgb(40 134 144 / 0.05);
+	--lp-grid-line: rgb(16 20 23 / 0.05);
+	--lp-grid-line-lit: rgb(16 20 23 / 0.08);
+	--lp-glow-amber: rgb(217 130 22 / 0.22);
+	--lp-glow-teal: rgb(40 134 144 / 0.24);
+	--lp-halo-blur: 28px;
+	--lp-glow-stop-a: #a35f0c;
+	--lp-glow-stop-b: #1f747d;
+	--lp-grain-opacity: 0.035;
+	--lp-node: #288690;
+	--lp-node-alpha: 0.5;
+	--lp-node-alpha-quiet: 0.1;
+	--lp-node-alpha-halo: 0;
+	--lp-bg-lum-max: 0.57;
+
+	/* Shadows (`--shadow-intensity` is the app's global depth knob) */
+	--lp-shadow-1:
+		0 1px 2px rgb(16 20 23 / calc(0.05 * var(--shadow-intensity))),
+		0 2px 6px -2px rgb(16 20 23 / calc(0.06 * var(--shadow-intensity)));
+	--lp-shadow-pop:
+		0 0 0 1px var(--lp-hair), 0 12px 32px -6px rgb(16 20 23 / calc(0.14 * var(--shadow-intensity)));
+	--lp-shadow-stage:
+		0 0 0 1px var(--lp-hair), 0 2px 4px rgb(16 20 23 / calc(0.04 * var(--shadow-intensity))),
+		0 12px 32px -8px rgb(16 20 23 / calc(0.1 * var(--shadow-intensity))),
+		0 48px 96px -24px rgb(40 134 144 / calc(0.2 * var(--shadow-intensity)));
+	--lp-shadow-header: 0 8px 24px -10px rgb(16 20 23 / calc(0.12 * var(--shadow-intensity)));
+}
+/* #endregion */
+
+/* #region Dark — #1 dark precision */
+:root[data-theme="dark"] :is(.lp-root, .lp-portal) {
+	color-scheme: dark;
+
+	--lp-bg: #07090a;
+	--lp-bg-end: #07090a;
+	--lp-surface-1: #0d1012;
+	--lp-surface-2: #13171a;
+	--lp-surface-3: #1a1f23;
+	--lp-wash-teal: transparent;
+	--lp-wash-amber: transparent;
+	--lp-canvas-paint: var(--lp-bg);
+
+	--lp-text: #eef1f2;
+	--lp-text-2: #c6ced2;
+	--lp-text-3: #a1abaf;
+
+	--lp-warm-bg: #12100e;
+	--lp-warm-surface: #1a1714;
+	--lp-warm-text: #f3eee6;
+	--lp-warm-text-2: #c5bbae;
+	--lp-warm-text-3: #a39a8d;
+	--lp-warm-hair: rgb(243 238 230 / 0.08);
+
+	--lp-amber: #d98216;
+	--lp-amber-hover: #e5953a;
+	--lp-amber-active: #eca457;
+	--lp-on-amber: #0a0c0d;
+	--lp-amber-edge: #d98216;
+	--lp-amber-ink: #f5ad5e;
+
+	--lp-teal: #288690;
+	--lp-teal-ink: #6ccdd5;
+	--lp-teal-fill: #6ccdd5;
+	--lp-teal-fill-hover: #8adde3;
+	--lp-teal-fill-active: #9fe5ea;
+	--lp-on-teal: #031214;
+
+	--lp-mono: #eef1f2;
+	--lp-mono-hover: #ffffff;
+	--lp-mono-active: #ffffff;
+	--lp-on-mono: #07090a;
+
+	--lp-hair: rgb(255 255 255 / 0.07);
+	--lp-hair-strong: rgb(255 255 255 / 0.12);
+	--lp-edge: #7a858a;
+	--lp-focus: #8adde3;
+
+	--lp-refuse-ink: #ffa39b;
+	--lp-refuse-fill: #2a1517;
+	--lp-refuse-edge: #b24e46;
+	--lp-ok-ink: #6ad9a7;
+	--lp-ok-fill: #0f2a21;
+	--lp-held-ink: #6ccdd5;
+	--lp-held-fill: #0e2528;
+
+	--lp-spot: rgb(108 205 213 / 0.07);
+	--lp-grid-line: rgb(255 255 255 / 0.04);
+	--lp-grid-line-lit: rgb(255 255 255 / 0.07);
+	--lp-glow-amber: rgb(217 130 22 / 0.28);
+	--lp-glow-teal: rgb(40 134 144 / 0.36);
+	--lp-halo-blur: 32px;
+	--lp-glow-stop-a: #f5ad5e;
+	--lp-glow-stop-b: #6ccdd5;
+	--lp-grain-opacity: 0.04;
+	--lp-node: #6ccdd5;
+	--lp-node-alpha: 0.6;
+	--lp-node-alpha-quiet: 0.08;
+	--lp-node-alpha-halo: 0;
+	--lp-bg-lum-max: 0.04;
+
+	--lp-shadow-1:
+		inset 0 1px 0 rgb(255 255 255 / 0.04),
+		0 1px 2px rgb(0 0 0 / calc(0.5 * var(--shadow-intensity)));
+	--lp-shadow-pop:
+		0 0 0 1px var(--lp-hair-strong), 0 16px 40px -8px rgb(0 0 0 / calc(0.65 * var(--shadow-intensity)));
+	--lp-shadow-stage:
+		inset 0 1px 0 rgb(255 255 255 / 0.06), 0 0 0 1px var(--lp-hair-strong),
+		0 24px 48px -12px rgb(0 0 0 / calc(0.7 * var(--shadow-intensity))),
+		0 64px 128px -32px rgb(40 134 144 / calc(0.28 * var(--shadow-intensity)));
+	--lp-shadow-header: 0 8px 24px -8px rgb(0 0 0 / calc(0.6 * var(--shadow-intensity)));
+}
+/* #endregion */
+
+/* #region High contrast — the OS channel (mirrors _app.tsx:38-47) */
+/* Surfaces are deliberately not widened, as in the app engine; HC hairlines are decorative. */
+@media (prefers-contrast: more) {
+	:root:not([data-theme="dark"]):not([data-contrast="normal"]) :is(.lp-root, .lp-portal) {
+		--lp-text: #000000;
+		--lp-text-2: #252d32;
+		--lp-text-3: #30393e;
+		--lp-warm-text: #000000;
+		--lp-warm-text-2: #372e25;
+		--lp-warm-text-3: #433a30;
+		--lp-amber-ink: #663800;
+		--lp-amber-edge: #6e3e03;
+		--lp-on-amber: #000000;
+		--lp-teal-ink: #06444a;
+		--lp-teal-fill: #134f55;
+		--lp-teal-fill-hover: #0f4247;
+		--lp-teal-fill-active: #0f4247;
+		--lp-on-teal: #ffffff;
+		--lp-mono: #000000;
+		--lp-mono-hover: #000000;
+		--lp-mono-active: #000000;
+		--lp-on-mono: #ffffff;
+		--lp-bg-lum-max: 0.7;
+		--lp-edge: #4a555b;
+		--lp-focus: #053f45;
+		--lp-focus-w: 3px;
+		--lp-glow-stop-a: #6e3e03;
+		--lp-glow-stop-b: #06444a;
+		--lp-refuse-ink: #781117;
+		--lp-refuse-edge: #9a2a2a;
+		--lp-ok-ink: #0a4c33;
+		--lp-held-ink: #06444a;
+		--lp-spot: transparent;
+		--lp-grid-line: rgb(16 20 23 / 0.08);
+		--lp-grid-line-lit: rgb(16 20 23 / 0.08);
+		--lp-glow-amber: rgb(217 130 22 / 0.12);
+		--lp-glow-teal: rgb(40 134 144 / 0.12);
+		--lp-wash-teal: rgb(40 134 144 / 0.04);
+		--lp-wash-amber: rgb(217 130 22 / 0.03);
+		--lp-grain-opacity: 0;
+		--lp-node-alpha: 0.3;
+		--lp-node-alpha-quiet: 0.05;
+		--lp-glass-veil: 88%;
+		--lp-hair: rgb(0 0 0 / 0.18);
+		--lp-hair-strong: rgb(0 0 0 / 0.28);
+	}
+
+	:root[data-theme="dark"]:not([data-contrast="normal"]) :is(.lp-root, .lp-portal) {
+		--lp-text: #ffffff;
+		--lp-text-2: #d9e0e3;
+		--lp-text-3: #bec7cb;
+		--lp-warm-text: #ffffff;
+		--lp-warm-text-2: #e4dcd2;
+		--lp-warm-text-3: #cdc3b6;
+		--lp-amber-ink: #ffbc70;
+		--lp-amber-edge: #d98216;
+		--lp-on-amber: #000000;
+		--lp-teal-ink: #93e3ea;
+		--lp-teal-fill: #93e3ea;
+		--lp-teal-fill-hover: #aeebf0;
+		--lp-teal-fill-active: #aeebf0;
+		--lp-on-teal: #031214;
+		--lp-mono: #eef1f2;
+		--lp-mono-hover: #ffffff;
+		--lp-mono-active: #ffffff;
+		--lp-on-mono: #000000;
+		--lp-bg-lum-max: 0.037;
+		--lp-edge: #97a2a7;
+		--lp-focus: #b0f1f5;
+		--lp-focus-w: 3px;
+		--lp-glow-stop-a: #ffbc70;
+		--lp-glow-stop-b: #93e3ea;
+		--lp-refuse-ink: #ffc1bb;
+		--lp-refuse-edge: #e0766c;
+		--lp-ok-ink: #8feac1;
+		--lp-held-ink: #93e3ea;
+		--lp-spot: transparent;
+		--lp-grid-line: rgb(255 255 255 / 0.06);
+		--lp-grid-line-lit: rgb(255 255 255 / 0.06);
+		--lp-glow-amber: rgb(217 130 22 / 0.16);
+		--lp-glow-teal: rgb(40 134 144 / 0.2);
+		--lp-wash-teal: transparent;
+		--lp-wash-amber: transparent;
+		--lp-grain-opacity: 0;
+		--lp-node-alpha: 0.35;
+		--lp-node-alpha-quiet: 0.06;
+		--lp-glass-veil: 88%;
+		--lp-hair: rgb(255 255 255 / 0.16);
+		--lp-hair-strong: rgb(255 255 255 / 0.24);
+	}
+}
+/* #endregion */
+
+/* #region High contrast — the in-app channel (mirrors _app.tsx:49-56) */
+:root:not([data-theme="dark"])[data-contrast="high"] :is(.lp-root, .lp-portal) {
+	--lp-text: #000000;
+	--lp-text-2: #252d32;
+	--lp-text-3: #30393e;
+	--lp-warm-text: #000000;
+	--lp-warm-text-2: #372e25;
+	--lp-warm-text-3: #433a30;
+	--lp-amber-ink: #663800;
+	--lp-amber-edge: #6e3e03;
+	--lp-on-amber: #000000;
+	--lp-teal-ink: #06444a;
+	--lp-teal-fill: #134f55;
+	--lp-teal-fill-hover: #0f4247;
+	--lp-teal-fill-active: #0f4247;
+	--lp-on-teal: #ffffff;
+	--lp-mono: #000000;
+	--lp-mono-hover: #000000;
+	--lp-mono-active: #000000;
+	--lp-on-mono: #ffffff;
+	--lp-bg-lum-max: 0.7;
+	--lp-edge: #4a555b;
+	--lp-focus: #053f45;
+	--lp-focus-w: 3px;
+	--lp-glow-stop-a: #6e3e03;
+	--lp-glow-stop-b: #06444a;
+	--lp-refuse-ink: #781117;
+	--lp-refuse-edge: #9a2a2a;
+	--lp-ok-ink: #0a4c33;
+	--lp-held-ink: #06444a;
+	--lp-spot: transparent;
+	--lp-grid-line: rgb(16 20 23 / 0.08);
+	--lp-grid-line-lit: rgb(16 20 23 / 0.08);
+	--lp-glow-amber: rgb(217 130 22 / 0.12);
+	--lp-glow-teal: rgb(40 134 144 / 0.12);
+	--lp-wash-teal: rgb(40 134 144 / 0.04);
+	--lp-wash-amber: rgb(217 130 22 / 0.03);
+	--lp-grain-opacity: 0;
+	--lp-node-alpha: 0.3;
+	--lp-node-alpha-quiet: 0.05;
+	--lp-glass-veil: 88%;
+	--lp-hair: rgb(0 0 0 / 0.18);
+	--lp-hair-strong: rgb(0 0 0 / 0.28);
+}
+
+:root[data-theme="dark"][data-contrast="high"] :is(.lp-root, .lp-portal) {
+	--lp-text: #ffffff;
+	--lp-text-2: #d9e0e3;
+	--lp-text-3: #bec7cb;
+	--lp-warm-text: #ffffff;
+	--lp-warm-text-2: #e4dcd2;
+	--lp-warm-text-3: #cdc3b6;
+	--lp-amber-ink: #ffbc70;
+	--lp-amber-edge: #d98216;
+	--lp-on-amber: #000000;
+	--lp-teal-ink: #93e3ea;
+	--lp-teal-fill: #93e3ea;
+	--lp-teal-fill-hover: #aeebf0;
+	--lp-teal-fill-active: #aeebf0;
+	--lp-on-teal: #031214;
+	--lp-mono: #eef1f2;
+	--lp-mono-hover: #ffffff;
+	--lp-mono-active: #ffffff;
+	--lp-on-mono: #000000;
+	--lp-bg-lum-max: 0.037;
+	--lp-edge: #97a2a7;
+	--lp-focus: #b0f1f5;
+	--lp-focus-w: 3px;
+	--lp-glow-stop-a: #ffbc70;
+	--lp-glow-stop-b: #93e3ea;
+	--lp-refuse-ink: #ffc1bb;
+	--lp-refuse-edge: #e0766c;
+	--lp-ok-ink: #8feac1;
+	--lp-held-ink: #93e3ea;
+	--lp-spot: transparent;
+	--lp-grid-line: rgb(255 255 255 / 0.06);
+	--lp-grid-line-lit: rgb(255 255 255 / 0.06);
+	--lp-glow-amber: rgb(217 130 22 / 0.16);
+	--lp-glow-teal: rgb(40 134 144 / 0.2);
+	--lp-wash-teal: transparent;
+	--lp-wash-amber: transparent;
+	--lp-grain-opacity: 0;
+	--lp-node-alpha: 0.35;
+	--lp-node-alpha-quiet: 0.06;
+	--lp-glass-veil: 88%;
+	--lp-hair: rgb(255 255 255 / 0.16);
+	--lp-hair-strong: rgb(255 255 255 / 0.24);
+}
+/* #endregion */
+
+/* #region Dyslexic overlay — every family remaps to the app's, so OpenDyslexic carries through */
+:root[data-font="dyslexic"] :is(.lp-root, .lp-portal) {
+	--lp-font-display: var(--font-sans);
+	--lp-font-serif: var(--font-sans);
+	--lp-font-body: var(--font-sans);
+	--lp-font-mono: var(--font-mono);
+	/* The face runs wide. */
+	--lp-fs-hero: clamp(2.25rem, 1.35rem + 3.6vw, 4.25rem);
+	--lp-track-hero: 0em;
+	--lp-track-section: 0em;
+	--lp-track-serif: 0em;
+	--lp-track-figure: 0em;
+	--lp-track-h3: 0.01em;
+	--lp-track-body: var(--tracking-normal);
+	--lp-track-meta: var(--tracking-normal);
+	--lp-track-eyebrow: var(--tracking-wide);
+	--lp-lead-hero: 1.2;
+	--lp-lead-section: 1.25;
+	--lp-lead-h3: 1.45;
+	--lp-lead-body-lg: 1.75;
+	--lp-lead-body: var(--leading-normal);
+	--lp-measure: var(--measure);
+	--lp-measure-lead: var(--measure-narrow);
+}
+/* #endregion */
+
+/* #region Reduced motion — both channels collapse every landing duration */
+@media (prefers-reduced-motion: reduce) {
+	:root :is(.lp-root, .lp-portal) {
+		--lp-dur-press: 0ms;
+		--lp-dur-fast: 0ms;
+		--lp-dur-base: 0ms;
+		--lp-dur-slow: 0ms;
+		--lp-dur-reveal: 0ms;
+		--lp-dur-demo: 0ms;
+		--lp-dur-demo-hold: 0ms;
+		--lp-dur-ring: 0ms;
+		--lp-stagger: 0ms;
+		--lp-reveal-distance: 0px;
+		--lp-press-scale: 1;
+	}
+}
+
+:root[data-motion="reduced"] :is(.lp-root, .lp-portal) {
+	--lp-dur-press: 0ms;
+	--lp-dur-fast: 0ms;
+	--lp-dur-base: 0ms;
+	--lp-dur-slow: 0ms;
+	--lp-dur-reveal: 0ms;
+	--lp-dur-demo: 0ms;
+	--lp-dur-demo-hold: 0ms;
+	--lp-dur-ring: 0ms;
+	--lp-stagger: 0ms;
+	--lp-reveal-distance: 0px;
+	--lp-press-scale: 1;
+}
+/* #endregion */

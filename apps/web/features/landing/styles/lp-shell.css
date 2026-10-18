@@ -1,0 +1,680 @@
+/*
+ * lp-shell — the LandingShell chrome and the hero's layout skeleton (Decision #280;
+ * `documentation/flows/LANDING.md` §2, §3.4, §3.6).
+ *
+ *   - `.lp-root`: the full-bleed canvas `/` and `/features` render in. It also sets the package's
+ *     pinned-chrome hook (`--chrome-pinned-h`, packages/ui styles/index.css) to the floating pill's
+ *     bottom edge, so in-page sticky parts clear it.
+ *   - `.lp-skip`: the skip link, off-screen until it takes focus.
+ *   - `.lp-header`: the floating header pill. Its glass is a `::before` underlay (a filter on the
+ *     element itself would re-base fixed descendants), solid where backdrop-filter is unsupported,
+ *     under either high-contrast channel, under reduced transparency and in forced colours. The glass
+ *     is the default — without JavaScript, before hydration and once scrolled; going transparent at
+ *     the top is the enhancement.
+ *   - `.lp-btn`: the pill's buttons (amber primary, tonal, ghost). Press feedback is `scale()` only.
+ *   - `.lp-menu`: the mobile menu sheet — the app's Drawer docked to the top, re-skinned here.
+ *   - `.lp-hero`: the hero region's positioning context and copy column; the background layer
+ *     fills it from beneath (`lp-background.css`).
+ *   - The four typographic registers (§3.4): display, heading, body, meta.
+ *
+ * No focus ring anywhere (Decision #285 (A), the app-wide directive in `apps/web/styles/global.css`).
+ * Every colour is a `--lp-*` token from `lp-theme.css`. Colour transitions keep the app's theme
+ * crossfade clock (`--dur-slow`), so a theme switch repaints the landing in step with the page.
+ */
+
+/* #region Root canvas */
+.lp-root {
+	--chrome-pinned-h: calc(var(--lp-header-inset) + var(--lp-header-h));
+
+	position: relative;
+	min-block-size: 100dvh;
+	overflow-x: clip;
+	/* The airy wash is painted by the hero's background layer; the canvas below it continues the
+	   wash's end stop, so the fade has no seam where the hero ends. */
+	background-color: var(--lp-bg-end);
+	color: var(--lp-text);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body);
+	line-height: var(--lp-lead-body);
+}
+
+.lp-main {
+	display: block;
+}
+
+/* In-page anchors land below the floating pill. */
+.lp-main :where(section[id]) {
+	scroll-margin-block-start: calc(var(--lp-header-h) + 2 * var(--lp-header-inset));
+}
+/* #endregion */
+
+/* #region Skip link */
+.lp-skip {
+	position: fixed;
+	inset-block-start: var(--lp-header-inset);
+	inset-inline-start: var(--lp-gutter);
+	z-index: 20;
+	display: inline-flex;
+	align-items: center;
+	min-block-size: 2.5rem;
+	padding-inline: var(--lp-stack-md);
+	border-radius: var(--lp-r-pill);
+	background: var(--lp-mono);
+	color: var(--lp-on-mono);
+	font-size: var(--lp-fs-btn);
+	font-weight: var(--fw-semibold);
+	text-decoration: none;
+	transform: translateY(calc(-100% - 2 * var(--lp-header-inset)));
+}
+
+.lp-skip:focus,
+.lp-skip:focus-visible {
+	transform: none;
+}
+/* #endregion */
+
+/* #region Header pill */
+.lp-header {
+	position: sticky;
+	inset-block-start: var(--lp-header-inset);
+	z-index: 10;
+	isolation: isolate;
+	display: grid;
+	/* Below --bp-md the nav is hidden: the brand takes the room the actions leave. */
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--lp-stack-sm);
+	inline-size: min(100% - 2 * var(--lp-gutter), var(--lp-maxw));
+	block-size: var(--lp-header-h);
+	/* The pill floats over the hero rather than pushing it down: the hero's top padding already
+	   reserves the pill's height and inset (`--lp-hero-pad`). */
+	margin-block: var(--lp-header-inset) calc(-1 * (var(--lp-header-h) + var(--lp-header-inset)));
+	margin-inline: auto;
+	padding-inline: var(--lp-stack-md) var(--lp-stack-xs);
+	border-radius: var(--lp-r-pill);
+	color: var(--lp-text);
+}
+
+.lp-header::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	border-radius: inherit;
+	background: color-mix(in srgb, var(--lp-surface-1) var(--lp-glass-veil), transparent);
+	-webkit-backdrop-filter: blur(var(--lp-glass-blur)) saturate(var(--lp-glass-saturate));
+	backdrop-filter: blur(var(--lp-glass-blur)) saturate(var(--lp-glass-saturate));
+	box-shadow: inset 0 0 0 1px var(--lp-hair-strong), var(--lp-shadow-header);
+	transition:
+		opacity var(--lp-dur-fast) var(--lp-ease-standard),
+		background-color var(--dur-slow) var(--ease-standard);
+}
+
+/* From --bp-lg the pill sheds its glass at the top of the page — only once the island has marked it
+   `--top` and the background has measured its quiet zones, which include the pill's band, so its
+   text sits on the quiet constellation (§3.3). Without either, or without `:has()`, it keeps it. */
+@media (min-width: 1024px) {
+	.lp-root:has(.lp-bg[data-lp-zones]) .lp-header--top::before {
+		opacity: 0;
+	}
+}
+
+.lp-header__brand {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--lp-stack-xs);
+	justify-self: start;
+	min-inline-size: 0;
+	color: var(--lp-text);
+	font-family: var(--lp-font-display);
+	font-size: var(--lp-fs-h3);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--lp-track-h3);
+	line-height: 1;
+	text-decoration: none;
+}
+
+.lp-header__mark {
+	flex: none;
+	block-size: 1.5rem;
+	inline-size: auto;
+	color: var(--lp-teal-ink);
+}
+
+.lp-header__wordmark {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.lp-header__nav {
+	display: none;
+	justify-self: center;
+}
+
+.lp-header__links {
+	display: flex;
+	align-items: center;
+	gap: var(--lp-stack-2xs);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/* A `wide` link joins the pill at --bp-lg (§2.2: below that the hero search stands in for Explore). */
+.lp-header__item--wide {
+	display: none;
+}
+
+.lp-header__link {
+	display: inline-flex;
+	align-items: center;
+	min-block-size: 2.5rem;
+	padding-inline: var(--lp-stack-sm);
+	border-radius: var(--lp-r-pill);
+	color: var(--lp-text-2);
+	font-size: var(--lp-fs-btn);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--lp-track-body);
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.lp-header__link:hover {
+	color: var(--lp-text);
+}
+
+.lp-header__actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	justify-self: end;
+	gap: var(--lp-stack-xs);
+	min-inline-size: 0;
+}
+
+/* Below --bp-md the theme control, and once hydrated "Get started", live in the menu sheet. The
+   compound selector outranks `.lp-btn`'s display, declared later in this sheet. */
+.lp-header__theme,
+.lp-header__actions .lp-header__start {
+	display: none;
+}
+
+.lp-header__theme .theme-toggle.theme-toggle--icon,
+.lp-menu__theme .theme-toggle.theme-toggle--icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.5rem;
+	block-size: 2.5rem;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: var(--lp-r-pill);
+	background: transparent;
+	color: var(--lp-text-2);
+	cursor: pointer;
+	transition:
+		transform var(--lp-dur-press) var(--lp-ease-out),
+		color var(--dur-slow) var(--ease-standard),
+		background-color var(--dur-slow) var(--ease-standard),
+		border-color var(--dur-slow) var(--ease-standard);
+}
+
+.lp-header__theme .theme-toggle.theme-toggle--icon:hover,
+.lp-menu__theme .theme-toggle.theme-toggle--icon:hover {
+	background: var(--lp-surface-3);
+	color: var(--lp-text);
+}
+
+.lp-header__theme .theme-toggle.theme-toggle--icon:active,
+.lp-menu__theme .theme-toggle.theme-toggle--icon:active {
+	transform: scale(var(--lp-press-scale));
+}
+
+.lp-header__theme .theme-toggle.theme-toggle--icon svg,
+.lp-menu__theme .theme-toggle.theme-toggle--icon svg {
+	display: block;
+}
+
+.lp-header__menu-btn {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.5rem;
+	block-size: 2.5rem;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: var(--lp-r-pill);
+	background: var(--lp-surface-3);
+	color: var(--lp-text);
+	cursor: pointer;
+	transition:
+		transform var(--lp-dur-press) var(--lp-ease-out),
+		color var(--dur-slow) var(--ease-standard),
+		background-color var(--dur-slow) var(--ease-standard),
+		border-color var(--dur-slow) var(--ease-standard);
+}
+
+.lp-header__menu-btn:hover {
+	border-color: var(--lp-edge);
+}
+
+.lp-header__menu-btn:active {
+	transform: scale(var(--lp-press-scale));
+}
+
+@media (min-width: 768px) {
+	.lp-header {
+		/* Equal outer tracks, so the nav sits truly centred on the pill whatever the two sides hold. */
+		grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+		padding-inline: var(--lp-stack-lg) var(--lp-stack-xs);
+	}
+
+	.lp-header__nav {
+		display: block;
+	}
+
+	.lp-header__theme {
+		display: contents;
+	}
+
+	.lp-header__actions .lp-header__start {
+		display: inline-flex;
+	}
+
+	.lp-header__menu-btn {
+		display: none;
+	}
+}
+
+@media (min-width: 1024px) {
+	.lp-header__item--wide {
+		display: list-item;
+	}
+}
+/* #endregion */
+
+/* #region Buttons */
+.lp-btn {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	gap: var(--lp-stack-xs);
+	min-block-size: 2.5rem;
+	padding-inline: var(--lp-stack-md);
+	/* A constant border: the primary's contour sits here, so hover never moves the box. */
+	border: 1px solid transparent;
+	border-radius: var(--lp-r-btn);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-btn);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--lp-track-body);
+	line-height: 1;
+	text-decoration: none;
+	white-space: nowrap;
+	cursor: pointer;
+	transition:
+		transform var(--lp-dur-press) var(--lp-ease-out),
+		color var(--dur-slow) var(--ease-standard),
+		background-color var(--dur-slow) var(--ease-standard),
+		border-color var(--dur-slow) var(--ease-standard);
+}
+
+.lp-btn:active {
+	transform: scale(var(--lp-press-scale));
+}
+
+/* The region's one filled primary. The light fill sits at 2.61:1 off the canvas, so its contour
+   (`--lp-amber-edge`, ≥ 3.24:1) carries the boundary in every state (#157 flag (b)). */
+.lp-btn--primary {
+	border-color: var(--lp-amber-edge);
+	background: var(--lp-amber);
+	color: var(--lp-on-amber);
+}
+
+.lp-btn--primary:hover {
+	background: var(--lp-amber-hover);
+}
+
+.lp-btn--primary:active {
+	background: var(--lp-amber-active);
+}
+
+.lp-btn--tonal {
+	background: var(--lp-surface-3);
+	color: var(--lp-text);
+}
+
+.lp-btn--tonal:hover {
+	border-color: var(--lp-edge);
+}
+
+.lp-btn--ghost {
+	background: transparent;
+	color: var(--lp-text-2);
+}
+
+.lp-btn--ghost:hover {
+	background: var(--lp-surface-3);
+	color: var(--lp-text);
+}
+
+.lp-btn--block {
+	inline-size: 100%;
+}
+/* #endregion */
+
+/* #region Menu sheet (below --bp-md) — the app Drawer, docked to the top */
+/* The sheet's elevation is drawn on `::after`: the panel holds focus (`tabindex="-1"`, focus trap)
+   the whole time it is open, and the app-wide no-focus-ring layer strips `box-shadow` from any
+   `[tabindex]:focus-within` element (`apps/web/styles/global.css`, Decision #285 (A)). */
+.lp-menu.ui-drawer {
+	border-block-end: 1px solid var(--lp-hair);
+	border-end-start-radius: var(--lp-r-xl);
+	border-end-end-radius: var(--lp-r-xl);
+	background: var(--lp-surface-1);
+	box-shadow: none;
+	color: var(--lp-text);
+	font-family: var(--lp-font-body);
+}
+
+.lp-menu.ui-drawer::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	box-shadow: var(--lp-shadow-pop);
+	pointer-events: none;
+}
+
+.lp-menu .ui-drawer__title {
+	color: var(--lp-text);
+}
+
+.lp-menu .ui-drawer__close {
+	color: var(--lp-text-2);
+}
+
+.lp-menu .ui-drawer__close:hover {
+	color: var(--lp-text);
+}
+
+.lp-menu .ui-drawer__footer {
+	border-color: var(--lp-hair);
+}
+
+.lp-menu__brand {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--lp-stack-xs);
+	font-family: var(--lp-font-display);
+	font-size: var(--lp-fs-h3);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--lp-track-h3);
+}
+
+.lp-menu__mark {
+	flex: none;
+	block-size: 1.5rem;
+	inline-size: auto;
+	color: var(--lp-teal-ink);
+}
+
+.lp-menu__links {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.lp-menu__link {
+	display: flex;
+	align-items: center;
+	min-block-size: 3rem;
+	color: var(--lp-text);
+	font-family: var(--lp-font-display);
+	font-size: var(--lp-fs-body-lg);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--lp-track-body);
+	text-decoration: none;
+}
+
+.lp-menu__link:hover {
+	color: var(--lp-teal-ink);
+}
+
+/* One hairline separates the links from the settings row (§B.4: spacing first, then one line). */
+.lp-menu__theme {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--lp-stack-sm);
+	margin-block-start: var(--lp-stack-sm);
+	padding-block-start: var(--lp-stack-sm);
+	border-block-start: 1px solid var(--lp-hair);
+	color: var(--lp-text-2);
+	font-size: var(--lp-fs-body);
+}
+
+.lp-menu__actions {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+	gap: var(--lp-stack-xs);
+}
+/* #endregion */
+
+/* #region Hero skeleton */
+.lp-hero {
+	position: relative;
+	isolation: isolate;
+	padding-block: var(--lp-hero-pad) var(--lp-section-pad);
+	padding-inline: var(--lp-gutter);
+}
+
+/* The copy sits above the background layer (`.lp-bg`, z-index -1 inside this isolated region). */
+.lp-hero__inner {
+	position: relative;
+	z-index: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--lp-stack-xl);
+	max-inline-size: var(--lp-maxw);
+	margin-inline: auto;
+	text-align: center;
+}
+
+.lp-hero__copy {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--lp-heading-gap);
+	max-inline-size: 100%;
+}
+
+.lp-hero__title {
+	max-inline-size: var(--lp-measure-display);
+	margin: 0;
+	text-wrap: balance;
+}
+
+.lp-hero__lead {
+	max-inline-size: var(--lp-measure-lead);
+	margin: 0;
+	text-wrap: pretty;
+}
+
+/* From --bp-md the headline sets as its two sentences, one per line. */
+@media (min-width: 768px) {
+	.lp-hero__title {
+		max-inline-size: none;
+	}
+
+	.lp-hero__line {
+		display: block;
+	}
+}
+/* #endregion */
+
+/* #region Typographic registers (§3.4) — size, family, case and tracking; never weight alone */
+.lp-display {
+	margin: 0;
+	color: var(--lp-text);
+	font-family: var(--lp-font-display);
+	font-weight: var(--fw-semibold);
+}
+
+.lp-display--hero {
+	font-size: var(--lp-fs-hero);
+	letter-spacing: var(--lp-track-hero);
+	line-height: var(--lp-lead-hero);
+}
+
+.lp-display--section {
+	font-size: var(--lp-fs-section);
+	letter-spacing: var(--lp-track-section);
+	line-height: var(--lp-lead-section);
+}
+
+/* The warm editorial voice: serif display at its one real weight. */
+.lp-display--editorial {
+	color: var(--lp-warm-text);
+	font-family: var(--lp-font-serif);
+	font-weight: var(--fw-normal);
+	letter-spacing: var(--lp-track-serif);
+}
+
+.lp-display--figure {
+	font-size: var(--lp-fs-figure);
+	font-weight: var(--fw-medium);
+	font-variant-numeric: tabular-nums lining-nums;
+	letter-spacing: var(--lp-track-figure);
+	line-height: 1;
+}
+
+.lp-heading {
+	margin: 0;
+	color: var(--lp-text);
+	font-family: var(--lp-font-display);
+	font-size: var(--lp-fs-h3);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--lp-track-h3);
+	line-height: var(--lp-lead-h3);
+}
+
+.lp-eyebrow {
+	margin: 0;
+	color: var(--lp-teal-ink);
+	font-family: var(--lp-font-mono);
+	font-size: var(--lp-fs-eyebrow);
+	font-variant-ligatures: none;
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--lp-track-eyebrow);
+	line-height: 1.2;
+	text-transform: uppercase;
+}
+
+.lp-eyebrow--editorial {
+	color: var(--lp-amber-ink);
+}
+
+.lp-lead {
+	color: var(--lp-text-2);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body-lg);
+	font-weight: var(--fw-normal);
+	letter-spacing: var(--lp-track-body);
+	line-height: var(--lp-lead-body-lg);
+}
+
+.lp-body {
+	color: var(--lp-text-2);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body);
+	font-weight: var(--fw-normal);
+	line-height: var(--lp-lead-body);
+}
+
+.lp-body--sm {
+	font-size: var(--lp-fs-body-sm);
+	line-height: 1.55;
+}
+
+.lp-meta {
+	color: var(--lp-text-3);
+	font-family: var(--lp-font-mono);
+	font-size: var(--lp-fs-meta);
+	font-variant-ligatures: none;
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--fw-normal);
+	letter-spacing: var(--lp-track-meta);
+	line-height: 1.45;
+}
+/* #endregion */
+
+/* #region Motion contract — both reduced-motion channels (§3.6) */
+/* End-state transforms go to none (the #174 (D) / gate-12 precedent); a hidden start state applies
+   only while BOTH channels allow motion. */
+@media (prefers-reduced-motion: reduce) {
+	.lp-theatre,
+	.lp-reveal,
+	:is(.lp-btn, .lp-search__submit, .lp-chip, .lp-tab, .lp-header__menu-btn):active,
+	:is(.lp-header__theme, .lp-menu__theme) .theme-toggle.theme-toggle--icon:active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] :is(.lp-theatre, .lp-reveal),
+:root[data-motion="reduced"] :is(.lp-btn, .lp-search__submit, .lp-chip, .lp-tab, .lp-header__menu-btn):active,
+:root[data-motion="reduced"] :is(.lp-header__theme, .lp-menu__theme) .theme-toggle.theme-toggle--icon:active {
+	transform: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	:root:not([data-motion="reduced"]) .lp-reveal:not(.is-in) {
+		opacity: 0;
+		translate: 0 var(--lp-reveal-distance);
+	}
+}
+/* #endregion */
+
+/* #region Solid fallbacks for the glass */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	.lp-header::before {
+		background: var(--lp-surface-1);
+	}
+}
+
+@media (prefers-reduced-transparency: reduce) {
+	.lp-header::before {
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+		background: var(--lp-surface-1);
+	}
+}
+
+@media (prefers-contrast: more) {
+	:root:not([data-contrast="normal"]) .lp-header::before {
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+		background: var(--lp-surface-1);
+	}
+}
+
+:root[data-contrast="high"] .lp-header::before {
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
+	background: var(--lp-surface-1);
+}
+
+@media (forced-colors: active) {
+	.lp-header::before {
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+		background: Canvas;
+	}
+}
+/* #endregion */

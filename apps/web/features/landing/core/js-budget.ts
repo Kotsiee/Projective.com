@@ -1,0 +1,555 @@
+/**
+ * js-budget — the landing's JavaScript budget (`flows/LANDING.md` §7) as data and pure functions
+ * over Vite's client manifest. `scripts/landing-budget.ts` (`deno task budget:landing`) is the I/O
+ * around it: it reads a production build, gzips each chunk and prints the verdict.
+ *
+ * What "initial" means. A built page loads one module script, `import { boot } from "<client
+ * entry>"` followed by an `import` of every island the server render met (Fresh's
+ * `FreshRuntimeScript`, mirrored by its `Link: rel=modulepreload` header). The browser then fetches
+ * the static-import closure of those modules. So a page's initial JS is the client entry
+ * (`fresh:client-entry`, which carries `apps/web/client.ts`), each rendered island, and every chunk
+ * they import statically, each file counted once. A `dynamicImports` edge is lazy: its chunk loads
+ * only when the code calls `import()`, so it is reported apart and sits outside the initial budget.
+ *
+ * Which islands render is declared here, by where they mount: {@link APP_ISLANDS} (`_app.tsx`, every
+ * page), {@link LANDING_LAYOUT_ISLANDS} (the `(public)/_layout.tsx` landing branch),
+ * {@link LANDING_SHELL_ISLANDS} (`LandingShell`, its footer included) and each page of
+ * {@link LANDING_PAGES}. A work order that adds an island to a landing page adds it to its list;
+ * `island-graph.test.ts` walks the source and fails while a list and the code disagree.
+ */
+
+// #region Budgets
+/** One kilobyte as Vite reports it (`kB`): 1,000 bytes. */
+export const KB = 1000;
+
+/** The landing's JavaScript budgets in gzip bytes (`flows/LANDING.md` §7, build prompts §2.0, L2, L3). */
+export const LANDING_JS_BUDGET = {
+	/** Initial JS of each landing page, lazily loaded chunks excluded. */
+	initial: 60 * KB,
+	/** The hero search island's own weight (L2), set as that island's {@link BudgetIsland.ownMax}. */
+	heroIsland: 20 * KB,
+	/**
+	 * Each lazily loaded chunk the landing owns (its source under `features/landing/`): the L3 demo
+	 * cap, applied to every landing chunk loaded by `import()`, the WebGL constellation included.
+	 */
+	lazyChunk: 35 * KB,
+} as const;
+
+/** Manifest-key prefix of the landing's own modules, whose lazy chunks {@link LANDING_JS_BUDGET.lazyChunk} caps. */
+const LANDING_KEY_PREFIX = "features/landing/";
+// #endregion
+
+// #region Island lists
+/** Who an island renders for. */
+export type Audience = "everyone" | "signed-in";
+
+/** Where an island mounts: `_app.tsx`, the public layout's landing branch, `LandingShell`, or the page. */
+export type Mount = "app" | "layout" | "shell" | "page";
+
+/** One island a landing page renders. */
+export interface BudgetIsland {
+	/** The module, repository-relative. */
+	path: string;
+	/** `"signed-in"` when it renders only for a signed-in visitor. */
+	audience: Audience;
+	/** A cap on its own weight in gzip bytes: its closure minus the client entry's (see {@link planPage}). */
+	ownMax?: number;
+}
+
+/** The islands of one mount. */
+export interface MountedIslands {
+	mount: Mount;
+	islands: readonly BudgetIsland[];
+}
+
+/** One landing page and the islands its controller renders. */
+export interface BudgetPage {
+	/** The URL path. */
+	path: string;
+	/** The page controller (`features/landing/routes/*.tsx`), repository-relative. */
+	controller: string;
+	/** The islands the controller's render meets. */
+	islands: readonly BudgetIsland[];
+}
+
+/** The modules each shared list is checked against (`island-graph.test.ts`). */
+export const ISLAND_SOURCES = {
+	app: "apps/web/routes/_app.tsx",
+	layout: "apps/web/routes/(public)/_layout.tsx",
+	shell: "apps/web/features/landing/components/LandingShell.tsx",
+} as const;
+
+/** The islands `_app.tsx` renders on every page (the developer tools are stripped in production). */
+export const APP_ISLANDS: readonly BudgetIsland[] = [
+	{ path: "apps/web/features/theme/islands/DesignSystemRoot.island.tsx", audience: "everyone" },
+	{ path: "apps/web/features/shell/islands/CurrencyBridge.island.tsx", audience: "everyone" },
+	{ path: "apps/web/features/shell/islands/ServiceWorkerBridge.island.tsx", audience: "everyone" },
+	{ path: "apps/web/features/shell/islands/ImageFallbackBridge.island.tsx", audience: "everyone" },
+	{ path: "apps/web/features/shell/islands/OfflineBridge.island.tsx", audience: "everyone" },
+	{ path: "apps/web/features/shell/islands/WebVitalsBridge.island.tsx", audience: "everyone" },
+	{
+		path: "apps/web/features/explore/islands/ExploreHistoryTracker.island.tsx",
+		audience: "everyone",
+	},
+];
+
+/** The islands the `(public)/_layout.tsx` landing branch mounts beside `LandingShell`. */
+export const LANDING_LAYOUT_ISLANDS: readonly BudgetIsland[] = [
+	{
+		path: "apps/web/features/projects/islands/TicketDeepLinkHost.island.tsx",
+		audience: "everyone",
+	},
+	{ path: "apps/web/features/messaging/islands/ChatPopoutHost.island.tsx", audience: "signed-in" },
+];
+
+/** The islands `LandingShell` renders: the header pill and the `PublicFooter` islands. */
+export const LANDING_SHELL_ISLANDS: readonly BudgetIsland[] = [
+	{ path: "apps/web/features/landing/islands/LandingHeader.island.tsx", audience: "everyone" },
+	{ path: "apps/web/features/marketing/islands/FooterLinkGroups.island.tsx", audience: "everyone" },
+	{ path: "apps/web/features/marketing/islands/NewsletterForm.island.tsx", audience: "everyone" },
+	{ path: "apps/web/features/marketing/islands/RecentlyViewed.island.tsx", audience: "everyone" },
+];
+
+/** Every landing page with its controller's islands. */
+export const LANDING_PAGES: readonly BudgetPage[] = [
+	{
+		path: "/",
+		controller: "apps/web/features/landing/routes/LandingPage.tsx",
+		islands: [
+			{
+				path: "apps/web/features/landing/islands/LandingBackground.island.tsx",
+				audience: "everyone",
+			},
+			{
+				path: "apps/web/features/marketing/islands/SchemaInjector.island.tsx",
+				audience: "everyone",
+			},
+		],
+	},
+];
+
+/** Every island `page` renders, by mount, in mount order: app, layout, shell, page. */
+export function pageMounts(page: BudgetPage): MountedIslands[] {
+	return [
+		{ mount: "app", islands: APP_ISLANDS },
+		{ mount: "layout", islands: LANDING_LAYOUT_ISLANDS },
+		{ mount: "shell", islands: LANDING_SHELL_ISLANDS },
+		{ mount: "page", islands: page.islands },
+	];
+}
+
+/** Every island `page` renders, flattened in mount order. */
+export function pageIslands(page: BudgetPage): BudgetIsland[] {
+	return pageMounts(page).flatMap((mounted) => mounted.islands);
+}
+// #endregion
+
+// #region Manifest
+/** One entry of Vite's client manifest (`_fresh/client/.vite/manifest.json`). */
+export interface ManifestChunk {
+	file: string;
+	src?: string;
+	name?: string;
+	isEntry?: boolean;
+	isDynamicEntry?: boolean;
+	imports?: string[];
+	dynamicImports?: string[];
+	css?: string[];
+}
+
+/** Vite's client manifest: chunks by key (a module path relative to the Vite root, or `_<chunk>`). */
+export type ClientManifest = Readonly<Record<string, ManifestChunk>>;
+
+/** The suffix of the key (and `src`) of Fresh's virtual client entry. */
+const CLIENT_ENTRY_SUFFIX = "fresh:client-entry";
+
+/**
+ * The manifest key of a repository-relative module: Vite keys a module by its path relative to its
+ * `root` (`apps/web`, `vite.config.ts`), so a workspace package reads `../../packages/…`.
+ */
+export function manifestKeyOf(path: string, viteRoot = "apps/web"): string {
+	const prefix = `${viteRoot}/`;
+	if (path.startsWith(prefix)) return path.slice(prefix.length);
+	const depth = viteRoot.split("/").filter(Boolean).length;
+	return `${"../".repeat(depth)}${path}`;
+}
+
+/**
+ * The key of Fresh's client entry.
+ *
+ * @throws When the manifest has none (not a Fresh client build).
+ */
+export function clientEntryKey(manifest: ClientManifest): string {
+	for (const [key, chunk] of Object.entries(manifest)) {
+		if (chunk.isEntry && (chunk.src ?? key).endsWith(CLIENT_ENTRY_SUFFIX)) return key;
+	}
+	throw new Error(`js-budget: the manifest has no ${CLIENT_ENTRY_SUFFIX} entry`);
+}
+
+/** True for a JavaScript chunk (manifest keys also name stylesheets and assets). */
+function isJsChunk(chunk: ManifestChunk): boolean {
+	return /\.m?js$/.test(chunk.file);
+}
+
+/**
+ * The static-import closure of `roots`: each JavaScript chunk once, in first-reach order
+ * (depth-first, a root before its imports), mapped to the root that reached it first.
+ *
+ * @throws When a key is missing from the manifest.
+ */
+export function staticClosure(
+	manifest: ClientManifest,
+	roots: readonly string[],
+): Map<string, string> {
+	const reached = new Map<string, string>();
+	const visit = (key: string, root: string): void => {
+		if (reached.has(key)) return;
+		const chunk = manifest[key];
+		if (chunk === undefined) throw new Error(`js-budget: "${key}" is not in the manifest`);
+		if (!isJsChunk(chunk)) return;
+		reached.set(key, root);
+		for (const imported of chunk.imports ?? []) visit(imported, root);
+	};
+	for (const root of roots) visit(root, root);
+	return reached;
+}
+// #endregion
+
+// #region Plan
+/** One module the page script imports: the client entry or a rendered island. */
+export interface PlanRoot {
+	key: string;
+	mount: Mount | "entry";
+	audience: Audience;
+}
+
+/** Lazily loaded chunks behind one `import()` target, beyond what the page already loaded. */
+export interface LazyGroup {
+	/** The dynamic entry's key. */
+	root: string;
+	/** The lazy entry whose chunks import this one, or `null` when an initial chunk does. */
+	parent: string | null;
+	/** Its closure minus the page's initial chunks. */
+	chunks: string[];
+	/** Its gzip cap, or `null` for a chunk the landing does not own. */
+	max: number | null;
+}
+
+/** An island's own weight under an {@link BudgetIsland.ownMax} cap. */
+export interface OwnWeight {
+	/** The island's key. */
+	island: string;
+	/** Its closure minus the client entry's. */
+	chunks: string[];
+	max: number;
+}
+
+/** What one landing page loads for one audience. */
+export interface PagePlan {
+	page: string;
+	audience: Audience;
+	/** The client entry, then each island rendered for the audience, in mount order. */
+	roots: PlanRoot[];
+	/** Initial chunks, each mapped to the root that reached it first. */
+	initial: Map<string, string>;
+	/** Lazy groups reachable from the initial chunks, transitively. */
+	lazy: LazyGroup[];
+	/** Islands with an own-weight cap. */
+	owned: OwnWeight[];
+}
+
+/** Raised when a declared island has no manifest entry: the build is stale or the list is wrong. */
+export class MissingIslandsError extends Error {
+	constructor(readonly keys: readonly string[]) {
+		super(`js-budget: islands missing from the client manifest: ${keys.join(", ")}`);
+		this.name = "MissingIslandsError";
+	}
+}
+
+/**
+ * What `page` loads for `audience`: the initial closure of the client entry plus every island that
+ * renders for that audience, the lazy groups behind it, and the islands with their own cap.
+ *
+ * @param mounts The page's islands by mount ({@link pageMounts} for a real page).
+ * @throws {MissingIslandsError} When a declared island is not in the manifest.
+ */
+export function planPage(
+	manifest: ClientManifest,
+	page: string,
+	mounts: readonly MountedIslands[],
+	audience: Audience,
+): PagePlan {
+	const entry = clientEntryKey(manifest);
+	const rendered = mounts.flatMap(({ mount, islands }) =>
+		islands
+			.filter((island) => audience === "signed-in" || island.audience === "everyone")
+			.map((island) => ({
+				island,
+				root: { key: manifestKeyOf(island.path), mount, audience: island.audience },
+			}))
+	);
+	const missing = rendered.map(({ root }) => root.key).filter((key) => manifest[key] === undefined);
+	if (missing.length > 0) throw new MissingIslandsError(missing);
+
+	const roots: PlanRoot[] = [
+		{ key: entry, mount: "entry", audience: "everyone" },
+		...rendered.map(({ root }) => root),
+	];
+	const initial = staticClosure(manifest, roots.map((root) => root.key));
+
+	const lazy: LazyGroup[] = [];
+	const queue: Array<{ key: string; parent: string | null }> = [...initial.keys()].flatMap((key) =>
+		(manifest[key].dynamicImports ?? []).map((target) => ({ key: target, parent: null }))
+	);
+	for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+		const { key, parent } = next;
+		if (initial.has(key) || lazy.some((group) => group.root === key)) continue;
+		const chunks = [...staticClosure(manifest, [key]).keys()].filter((chunk) =>
+			!initial.has(chunk)
+		);
+		if (chunks.length === 0) continue;
+		const max = key.startsWith(LANDING_KEY_PREFIX) ? LANDING_JS_BUDGET.lazyChunk : null;
+		lazy.push({ root: key, parent, chunks, max });
+		for (const chunk of chunks) {
+			for (const target of manifest[chunk].dynamicImports ?? []) {
+				queue.push({ key: target, parent: key });
+			}
+		}
+	}
+
+	const runtime = staticClosure(manifest, [entry]);
+	const owned: OwnWeight[] = rendered.flatMap(({ island, root }) =>
+		island.ownMax === undefined ? [] : [{
+			island: root.key,
+			chunks: [...staticClosure(manifest, [root.key]).keys()].filter((key) => !runtime.has(key)),
+			max: island.ownMax,
+		}]
+	);
+
+	return { page, audience, roots, initial, lazy, owned };
+}
+
+/** Every chunk file a set of plans names, for the sizes the report needs. */
+export function planFiles(manifest: ClientManifest, plans: readonly PagePlan[]): string[] {
+	const files = new Set<string>();
+	for (const plan of plans) {
+		for (const key of plan.initial.keys()) files.add(manifest[key].file);
+		for (const group of plan.lazy) for (const key of group.chunks) files.add(manifest[key].file);
+	}
+	return [...files].sort();
+}
+// #endregion
+
+// #region Report
+/** A chunk's size on disk and gzipped. */
+export interface ChunkSize {
+	raw: number;
+	gzip: number;
+}
+
+/** How a chunk loads on the page. */
+export type ChunkLoad = "initial" | "signed-in" | "lazy";
+
+/** One chunk-table row. */
+export interface ChunkRow {
+	file: string;
+	raw: number;
+	gzip: number;
+	load: ChunkLoad;
+	/** The root (island, client entry or lazy entry) that pulled the chunk in. */
+	via: string;
+}
+
+/** What one root (the client entry or an island) costs the page, gzip bytes. */
+export interface RootWeight {
+	label: string;
+	mount: Mount | "entry";
+	audience: Audience;
+	/** The chunks it reached first, in mount order (its share of the total). */
+	added: number;
+	/** The chunks no other root reaches (what dropping it would save). */
+	exclusive: number;
+}
+
+/** One budget line. */
+export interface Verdict {
+	label: string;
+	gzip: number;
+	/** `null` for a figure that is reported but not capped. */
+	max: number | null;
+	ok: boolean;
+}
+
+/** One page's rows, root weights and verdicts. */
+export interface PageReport {
+	page: string;
+	rows: ChunkRow[];
+	roots: RootWeight[];
+	verdicts: Verdict[];
+	ok: boolean;
+}
+
+/** A root's short name: the module's file name, or `client-entry`. */
+export function rootLabel(manifest: ClientManifest, key: string): string {
+	if (key.endsWith(CLIENT_ENTRY_SUFFIX)) return "client-entry";
+	const source = manifest[key]?.src ?? key;
+	return source.slice(source.lastIndexOf("/") + 1);
+}
+
+/** The lazy groups behind `root`, transitively. */
+function lazyBehind(groups: readonly LazyGroup[], root: string): number {
+	const children = groups.filter((group) => group.parent === root);
+	return children.reduce((count, child) => count + 1 + lazyBehind(groups, child.root), 0);
+}
+
+/**
+ * The report for one page from its plan for everyone and for a signed-in visitor; both are gated,
+ * since the landing renders for both. The chunk table runs initial, then signed-in only, then the
+ * chunks of capped (landing-owned) lazy groups, each by gzip size descending; an uncapped lazy group
+ * appears once, as a reported line counting the lazy groups behind it.
+ *
+ * @param sizes Each chunk file's raw and gzip size.
+ * @throws When a chunk file has no size.
+ */
+export function reportPage(
+	manifest: ClientManifest,
+	everyone: PagePlan,
+	signedIn: PagePlan,
+	sizes: ReadonlyMap<string, ChunkSize>,
+): PageReport {
+	const sizeOf = (key: string): ChunkSize => {
+		const size = sizes.get(manifest[key].file);
+		if (size === undefined) throw new Error(`js-budget: no size for ${manifest[key].file}`);
+		return size;
+	};
+	const sum = (keys: Iterable<string>): number => {
+		let total = 0;
+		for (const key of keys) total += sizeOf(key).gzip;
+		return total;
+	};
+	const row = (key: string, load: ChunkLoad, via: string): ChunkRow => ({
+		file: manifest[key].file,
+		...sizeOf(key),
+		load,
+		via: rootLabel(manifest, via),
+	});
+	const byGzip = (a: ChunkRow, b: ChunkRow) => b.gzip - a.gzip || a.file.localeCompare(b.file);
+
+	const signedInOnly = [...signedIn.initial].filter(([key]) => !everyone.initial.has(key));
+	const capped = everyone.lazy.filter((group) => group.max !== null);
+	const rows = [
+		...[...everyone.initial].map(([key, via]) => row(key, "initial", via)).sort(byGzip),
+		...signedInOnly.map(([key, via]) => row(key, "signed-in", via)).sort(byGzip),
+		...capped.flatMap((group) => group.chunks.map((key) => row(key, "lazy", group.root))).sort(
+			byGzip,
+		),
+	];
+
+	const exclusiveOf = (plan: PagePlan, key: string): number => {
+		const others = staticClosure(
+			manifest,
+			plan.roots.map((root) => root.key).filter((other) => other !== key),
+		);
+		return sum([...plan.initial.keys()].filter((chunk) => !others.has(chunk)));
+	};
+	const roots: RootWeight[] = signedIn.roots.map((root) => {
+		const plan = root.audience === "everyone" ? everyone : signedIn;
+		const reached = root.audience === "everyone"
+			? [...everyone.initial].filter(([, via]) => via === root.key)
+			: signedInOnly.filter(([, via]) => via === root.key);
+		return {
+			label: rootLabel(manifest, root.key),
+			mount: root.mount,
+			audience: root.audience,
+			added: sum(reached.map(([key]) => key)),
+			exclusive: exclusiveOf(plan, root.key),
+		};
+	});
+
+	const verdict = (label: string, gzip: number, max: number | null): Verdict => ({
+		label,
+		gzip,
+		max,
+		ok: max === null || gzip <= max,
+	});
+	const verdicts: Verdict[] = [
+		verdict("initial JS, everyone", sum(everyone.initial.keys()), LANDING_JS_BUDGET.initial),
+		verdict("initial JS, signed in", sum(signedIn.initial.keys()), LANDING_JS_BUDGET.initial),
+		...everyone.owned.map((own) =>
+			verdict(`own weight, ${rootLabel(manifest, own.island)}`, sum(own.chunks), own.max)
+		),
+		...capped.map((group) =>
+			verdict(`lazy, ${rootLabel(manifest, group.root)}`, sum(group.chunks), group.max)
+		),
+		...everyone.lazy
+			.filter((group) => group.max === null && group.parent === null)
+			.map((group) => {
+				const behind = lazyBehind(everyone.lazy, group.root);
+				const more = behind === 0 ? "" : ` (+${behind} lazy behind it)`;
+				return verdict(`lazy, ${rootLabel(manifest, group.root)}${more}`, sum(group.chunks), null);
+			}),
+	];
+
+	return {
+		page: everyone.page,
+		rows,
+		roots,
+		verdicts,
+		ok: verdicts.every((line) => line.ok),
+	};
+}
+
+/** Bytes as `12.3 kB`. */
+export function formatKb(bytes: number): string {
+	return `${(bytes / KB).toFixed(1)} kB`;
+}
+
+/** A plain-text table with a header row; the numeric columns (by index) are right-aligned. */
+function table(head: string[], body: string[][], numeric: ReadonlySet<number>): string {
+	const widths = head.map((cell, column) =>
+		Math.max(cell.length, ...body.map((cells) => cells[column].length))
+	);
+	const line = (cells: string[]) =>
+		cells.map((cell, column) =>
+			numeric.has(column) ? cell.padStart(widths[column]) : cell.padEnd(widths[column])
+		).join("  ").trimEnd();
+	return [line(head), line(widths.map((width) => "-".repeat(width))), ...body.map(line)].join("\n");
+}
+
+/** One page's report as text: the chunk table, the weight of each root, then the budget lines. */
+export function formatPageReport(report: PageReport): string {
+	const chunks = table(
+		["chunk", "raw", "gzip", "load", "via"],
+		report.rows.map((row) => [row.file, formatKb(row.raw), formatKb(row.gzip), row.load, row.via]),
+		new Set([1, 2]),
+	);
+	const roots = table(
+		["island", "mount", "renders for", "added", "exclusive"],
+		report.roots.map((root) => [
+			root.label,
+			root.mount,
+			root.audience,
+			formatKb(root.added),
+			formatKb(root.exclusive),
+		]),
+		new Set([3, 4]),
+	);
+	const verdicts = table(
+		["budget", "gzip", "max", "result"],
+		report.verdicts.map((line) => [
+			line.label,
+			formatKb(line.gzip),
+			line.max === null ? "-" : formatKb(line.max),
+			line.max === null ? "reported" : line.ok ? "ok" : "OVER",
+		]),
+		new Set([1, 2]),
+	);
+	return [
+		`${report.page}`,
+		chunks,
+		"Weight by island (added: chunks it reached first, in mount order; exclusive: chunks only it reaches)",
+		roots,
+		verdicts,
+	].join("\n\n");
+}
+// #endregion
