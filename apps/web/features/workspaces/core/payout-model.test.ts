@@ -1,33 +1,33 @@
 import { assert, assertEquals, assertStrictEquals } from "@std/assert";
-import type { MoneyView } from "@projective/types/finance";
-import type {
-	SplitStake,
-	TeamSplitPreview,
-	TeamSplitRule,
-	VaultAccess,
+import {
+	splitDriftBp,
+	type SplitStake,
+	type TeamSplitRule,
+	type VaultAccess,
 } from "@projective/types/workspace";
 import { handleValueText, keyToSplit, SPLIT_TOTAL_BP } from "@ui/fields/core/split-bar-model.ts";
+import { type RawSplitPreview, toSplitPreview } from "@server/services/workspace/live-money.ts";
 import {
 	blockNotice,
-	bodyControls,
 	bpToPercent,
+	canRestoreWhole,
 	defaultPreviewMinor,
 	draftFrom,
-	driftBp,
 	driftSentence,
 	evenStakes,
-	filledButtons,
 	formatBp,
 	isEvenSplit,
 	ledgerRows,
 	legendItems,
 	lockedNotice,
+	offersRebalance,
 	payoutDirty,
 	type PayoutDraft,
 	payoutEditable,
 	type PayoutSaved,
 	payoutSections,
 	percentToBp,
+	refusalMayHaveSaved,
 	refusalNotice,
 	restoreWhole,
 	ruleChanged,
@@ -50,9 +50,10 @@ import { rigFilledCount, type RigInput, rigModel } from "./rig-model.ts";
 
 /**
  * The team Payouts module (Teams work order C4) as pure rules: the one bp ⇄ % conversion, the
- * templates and their plan locks, the draft and what a Save sends, drift and the even split, the
- * SplitBar's keyboard over the stakes, the Preview ledger's total against the amount typed, the
- * vault readout, and the page's filled-control count with the footer rig.
+ * templates and their plan locks, the draft, what a Save sends and what a refused one re-reads, drift
+ * and the even split, the SplitBar's keyboard over the stakes, the Preview ledger's total against the
+ * amount typed (raw `preview_team_split` payloads through the backend mapper), the vault readout, and
+ * the page's filled controls — read off the components' own source — with the footer rig.
  */
 
 // #region Fixtures
@@ -101,10 +102,6 @@ function prng(seed: number): () => number {
 		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
 		return ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
 	};
-}
-
-function money(minor: number, currency = "GBP"): MoneyView {
-	return { minor, currency, display: `£${(minor / 100).toFixed(2)}`, origin: null };
 }
 // #endregion
 
@@ -306,12 +303,45 @@ Deno.test("saveBlock: a locked template, a rule problem, then drift — each bef
 	assertEquals(saveBlock({ ...base, stakes: short }, SAVED, [...ALL]), {
 		reason: "drift",
 		driftBp: -1000,
+		restorable: true,
+	});
+	const allHeld = short.map((s) => ({ ...s, held: true }));
+	assertEquals(saveBlock({ ...base, stakes: allHeld }, SAVED, [...ALL]), {
+		reason: "drift",
+		driftBp: -1000,
+		restorable: false,
 	});
 	assertEquals(blockNotice({ reason: "locked", ruleType: "benevolent_dictator" }), {
 		text: "Benevolent dictator is part of Pro Team.",
 		plans: true,
 	});
-	assert(!blockNotice({ reason: "drift", driftBp: -10 }).plans);
+	assert(!blockNotice({ reason: "drift", driftBp: -10, restorable: true }).plans);
+	assert(
+		blockNotice({ reason: "drift", driftBp: -10, restorable: false }).text.startsWith(
+			"Release a held stake",
+		),
+	);
+});
+
+Deno.test("a refused Save that carried the rule and the stakes re-reads, and the saved rule stops reading as unsaved", () => {
+	const moved = [stake("ana", 4000), stake("ben", 4000), stake("cy", 2000)];
+	const draft: PayoutDraft = { ...draftFrom(SAVED), vaultBp: 1500, stakes: moved };
+	const body = saveBody("t1", draft, SAVED)!;
+	assert(refusalMayHaveSaved(body), "a rule written before refused stakes may have landed");
+	assert(!refusalMayHaveSaved({ workspaceId: "t1", rule: body.rule }), "a lone rule saved nothing");
+	assert(
+		!refusalMayHaveSaved({ workspaceId: "t1", stakes: body.stakes }),
+		"lone stakes saved nothing",
+	);
+
+	// The rule saved, the stakes refused: the re-read detail carries the new rule beside the old stakes.
+	const reread: PayoutSaved = { rule: { ...CO_OP, vaultBp: 1500 }, stakes: STAKES };
+	assert(!ruleChanged(draft, reread.rule), "the stored rule is no longer a change");
+	assert(payoutDirty(draft, reread), "the refused stakes still are");
+	assertEquals(saveBody("t1", draft, reread), {
+		workspaceId: "t1",
+		stakes: moved.map((s) => ({ memberId: s.memberId, shareBp: s.shareBp, held: false })),
+	});
 });
 
 Deno.test("selectTemplate: returning to a saved template the plan no longer unlocks restores its cuts", () => {
@@ -356,11 +386,13 @@ Deno.test("restoreWhole: back to exactly 100%, held stakes untouched, the remain
 		);
 		const held = stakes.reduce((sum, s) => sum + (s.held ? s.shareBp : 0), 0);
 		const restored = restoreWhole(stakes);
-		if (held > SPLIT_TOTAL_BP || stakes.every((s) => s.held)) {
+		const blocked = held > SPLIT_TOTAL_BP || stakes.every((s) => s.held);
+		assertStrictEquals(canRestoreWhole(stakes), !blocked, `round ${round}`);
+		if (blocked) {
 			assertEquals(restored, stakes);
 			continue;
 		}
-		assertStrictEquals(driftBp(restored), 0, `round ${round}`);
+		assertStrictEquals(splitDriftBp(restored), 0, `round ${round}`);
 		restored.forEach((s, i) => {
 			assert(Number.isInteger(s.shareBp) && s.shareBp >= 0);
 			if (stakes[i].held) assertStrictEquals(s.shareBp, stakes[i].shareBp);
@@ -385,6 +417,31 @@ Deno.test("evenStakes: equal unheld stakes, the remainder on the owner", () => {
 	assert(!isEvenSplit(STAKES, "ben"));
 	const held = evenStakes(withHeld(STAKES, "ana", true), null);
 	assertEquals(held.map((s) => s.shareBp), [5000, 2500, 2500]);
+});
+
+Deno.test("the drift notice offers Rebalance only when it would change the split", () => {
+	const short = [stake("ana", 5000), stake("ben", 3000), stake("cy", 1000)];
+	assert(offersRebalance(short, true));
+	assert(!offersRebalance(short, false), "a reader who may not edit gets no action");
+	assert(!offersRebalance(STAKES, true), "a whole split has nothing to rebalance");
+	// Every stake held: restoreWhole cannot move one, so the action would do nothing.
+	const allHeld = short.map((s) => ({ ...s, held: true }));
+	assert(!canRestoreWhole(allHeld));
+	assert(!offersRebalance(allHeld, true));
+	assertEquals(restoreWhole(allHeld), allHeld);
+	// The held stakes alone pass 100%: only releasing one can fix it.
+	const over = [stake("ana", 7000, true), stake("ben", 4000, true), stake("cy", 500)];
+	assert(!offersRebalance(over, true));
+	assertEquals(restoreWhole(over), over);
+	// Whenever the action is offered, pressing it lands on exactly 100%.
+	assert(offersRebalance(withHeld(short, "ana", true), true));
+	assertStrictEquals(splitDriftBp(restoreWhole(withHeld(short, "ana", true))), 0);
+	assert(
+		driftSentence(-1000, false).endsWith(
+			"Release a held stake, then rebalance them before you save.",
+		),
+	);
+	assert(driftSentence(-1000).endsWith(" Rebalance them before you save."));
 });
 
 Deno.test("driftSentence and the legend's tabular facts", () => {
@@ -423,61 +480,84 @@ Deno.test("SplitBar keyboard over the stakes: arrows 1%, Shift 0.1%, PageUp 10%,
 	const locked = segmentsOf(withHeld(STAKES, "ben", true));
 	assertStrictEquals(keyToSplit(locked, 0, { key: "ArrowRight" }), locked);
 	// And the change maps back onto the stakes by member id, totalling 100%.
-	assertStrictEquals(driftBp(withSegments(STAKES, page)), 0);
+	assertStrictEquals(splitDriftBp(withSegments(STAKES, page)), 0);
 	assertEquals(withSegments(STAKES, page).map((s) => s.shareBp), [6000, 2000, 2000]);
 });
 // #endregion
 
 // #region Preview
+/** The people the preview names, as the party-card batch answers them. */
+const PREVIEW_PEOPLE: Parameters<typeof toSplitPreview>[1] = new Map([
+	["u-ben", { username: "ben", name: "Ben", avatar: null }],
+	["u-0", { username: "m0", name: "M0", avatar: null }],
+	["u-1", { username: "m1", name: "M1", avatar: null }],
+]);
+
 /**
- * A preview payload exactly as `finance.preview_team_split(team, gross)` + the backend mapper would
- * answer it: the platform fee truncated, then the plan's floors — finder, vault, each stake — with the
- * dust as its own line, and the total as the lines' sum.
+ * A raw `finance.preview_team_split(team, gross)` answer, computed the way the SQL computes it: the
+ * platform fee truncated at `fee_bp`, then `finance.fn_team_split_plan` — the finder's floor, the
+ * vault's floor of the rest, each stake's floor of the pool, and the dust the floors left. It goes
+ * through the backend mapper (`toSplitPreview`) and then `ledgerRows`, so a line either one drops
+ * breaks the total.
  */
-function mockPreview(
+function rawPreview(
 	gross: number,
 	feeBp: number,
 	rule: TeamSplitRule,
 	stakes: readonly number[],
-): TeamSplitPreview {
+): RawSplitPreview {
 	const fee = Math.floor((gross * feeBp) / 10_000);
 	const payout = Math.max(gross - fee, 0);
-	const lines: TeamSplitPreview["lines"] = [
-		{ key: "fee", kind: "fee", name: null, bp: feeBp, amount: money(fee) },
-	];
+	const base = {
+		escrow_id: null,
+		gross_minor: gross,
+		currency: null,
+		fee_minor: fee,
+		fee_bp: feeBp,
+	};
 	if (rule.ruleType === "benevolent_dictator") {
-		lines.push({ key: "vault", kind: "vault", name: null, bp: 10_000, amount: money(payout) });
-	} else {
-		let rest = payout;
-		if (rule.ruleType === "finders_fee") {
-			const finder = Math.floor((payout * (rule.finderBp ?? 0)) / 10_000);
-			rest = payout - finder;
-			lines.push({
-				key: "finder",
-				kind: "finder",
-				name: "Ben",
-				bp: rule.finderBp,
-				amount: money(finder),
-			});
-		}
-		const vault = Math.floor((rest * rule.vaultBp) / 10_000);
-		const pool = rest - vault;
-		lines.push({ key: "vault", kind: "vault", name: null, bp: rule.vaultBp, amount: money(vault) });
-		let paid = 0;
-		stakes.forEach((bp, i) => {
-			const share = Math.floor((pool * bp) / 10_000);
-			paid += share;
-			lines.push({ key: `member:${i}`, kind: "member", name: `M${i}`, bp, amount: money(share) });
-		});
-		lines.push({ key: "dust", kind: "dust", name: null, bp: null, amount: money(pool - paid) });
+		return {
+			...base,
+			finder_bp: null,
+			plan: {
+				payout_minor: payout,
+				rule_type: rule.ruleType,
+				vault_bp: 10_000,
+				finder_user_id: null,
+				finder_minor: 0,
+				vault_minor: payout,
+				members: [],
+				dust_minor: 0,
+				vault_total_minor: payout,
+			},
+		};
 	}
-	const total = lines.reduce((sum, line) => sum + line.amount.minor, 0);
+	const finder = rule.ruleType === "finders_fee"
+		? Math.floor((payout * (rule.finderBp ?? 0)) / 10_000)
+		: 0;
+	const rest = payout - finder;
+	const vault = Math.floor((rest * rule.vaultBp) / 10_000);
+	const pool = rest - vault;
+	let paid = 0;
+	const members = stakes.map((bp, i) => {
+		const amount = Math.floor((pool * bp) / 10_000);
+		paid += amount;
+		return { member_user_id: `u-${i}`, percent_bp: bp, amount_minor: amount };
+	});
 	return {
-		currency: "GBP",
-		gross: money(gross),
-		ruleType: rule.ruleType,
-		lines,
-		total: money(total),
+		...base,
+		finder_bp: rule.ruleType === "finders_fee" ? rule.finderBp : null,
+		plan: {
+			payout_minor: payout,
+			rule_type: rule.ruleType,
+			vault_bp: rule.vaultBp,
+			finder_user_id: rule.ruleType === "finders_fee" ? rule.finderUserId : null,
+			finder_minor: finder,
+			vault_minor: vault,
+			members,
+			dust_minor: pool - paid,
+			vault_total_minor: vault + pool - paid,
+		},
 	};
 }
 
@@ -496,7 +576,7 @@ Deno.test("ledgerRows: the total row equals the amount priced — 50 random amou
 			{ ...FINDERS, vaultBp, finderBp: 1 + Math.floor(rand() * 2000) },
 			DICTATOR,
 		][round % 3];
-		const preview = mockPreview(gross, 500, rule, stakes);
+		const preview = toSplitPreview(rawPreview(gross, 500, rule, stakes), PREVIEW_PEOPLE, "GBP");
 		const rows = ledgerRows(preview);
 		const total = rows.at(-1)!;
 		assertEquals(total.kind, "total");
@@ -506,11 +586,22 @@ Deno.test("ledgerRows: the total row equals the amount priced — 50 random amou
 			gross,
 			`round ${round}: the rows sum to the amount`,
 		);
+		// One row per cut the plan makes: fee, finder (finders_fee), vault, each stake, dust (not under
+		// benevolent_dictator), then the total.
+		const expected = rule.ruleType === "benevolent_dictator"
+			? 3
+			: 1 + (rule.ruleType === "finders_fee" ? 1 : 0) + 1 + n + 1 + 1;
+		assertStrictEquals(rows.length, expected, `round ${round}: every cut is a row`);
 	}
 });
 
 Deno.test("ledgerRows: the plan's order and words — fee, finder, vault, members, dust, total", () => {
-	const rows = ledgerRows(mockPreview(100_000, 500, FINDERS, [6000, 4000]));
+	const preview = toSplitPreview(
+		rawPreview(100_000, 500, FINDERS, [6000, 4000]),
+		PREVIEW_PEOPLE,
+		"GBP",
+	);
+	const rows = ledgerRows(preview);
 	assertEquals(rows.map((r) => r.label), [
 		"Platform fee",
 		"Finder · Ben",
@@ -530,7 +621,8 @@ Deno.test("ledgerRows: the plan's order and words — fee, finder, vault, member
 		null,
 	]);
 	assertEquals(
-		ledgerRows(mockPreview(100_000, 500, DICTATOR, [])).map((r) => r.kind),
+		ledgerRows(toSplitPreview(rawPreview(100_000, 500, DICTATOR, []), PREVIEW_PEOPLE, "GBP"))
+			.map((r) => r.kind),
 		["fee", "vault", "total"],
 	);
 });
@@ -561,6 +653,76 @@ Deno.test("vaultAccessItems: the projection in words, or plainly none", () => {
 // #endregion
 
 // #region One filled control
+/*
+ * The body's controls are read off the components' own source — the island and every workspace
+ * component it reaches — rather than a list kept beside them. (They cannot be rendered under
+ * `deno test`: every `@projective/ui` component imports its stylesheet, which Deno refuses to load.)
+ * A ui Button is filled unless it names the `text`, `link` or `outlined` variant; a pressed
+ * ToggleButton is a `--primary` fill; an anchor drawn as a Button is filled unless it wears the
+ * outlined class.
+ */
+const COMPONENTS_DIR = new URL("../components/", import.meta.url);
+const PAGE_ISLAND = new URL("../islands/PayoutPolicyScreen.island.tsx", import.meta.url);
+
+/** The page's sources: the island, then every workspace component reached by a relative import. */
+function pageSources(): Map<string, string> {
+	const out = new Map<string, string>();
+	const visit = (url: URL): void => {
+		if (out.has(url.href)) return;
+		const src = Deno.readTextFileSync(url);
+		out.set(url.href, src);
+		for (const m of src.matchAll(/from\s+"(\.{1,2}\/[^"]+\.tsx)"/g)) {
+			const next = new URL(m[1], url);
+			if (next.href.startsWith(COMPONENTS_DIR.href)) visit(next);
+		}
+	};
+	visit(PAGE_ISLAND);
+	return out;
+}
+
+/** Every JSX opening tag `<name …>` in a source, whole — braces, strings and arrows inside skipped. */
+function openingTags(src: string, name: string): string[] {
+	const tags: string[] = [];
+	for (const m of src.matchAll(new RegExp(`<${name}(?=[\\s/>])`, "g"))) {
+		let depth = 0;
+		let quote: string | null = null;
+		let i = m.index + m[0].length;
+		for (; i < src.length; i++) {
+			const ch = src[i];
+			if (quote) {
+				if (ch === quote) quote = null;
+			} else if (ch === '"' || ch === "'" || ch === "`") quote = ch;
+			else if (ch === "{") depth++;
+			else if (ch === "}") depth--;
+			else if (ch === ">" && depth === 0) break;
+		}
+		tags.push(src.slice(m.index, i + 1));
+	}
+	return tags;
+}
+
+/** Whether a `<Button …>` tag draws a filled button (its variant is not text, link or outlined). */
+function filledButton(tag: string): boolean {
+	return !/\svariant="(text|link|outlined)"/.test(tag);
+}
+
+/** Whether an `<a …>` tag is an anchor drawn as a filled Button. */
+function filledAnchor(tag: string): boolean {
+	return /ui-button\b/.test(tag) && !/ui-button--(outlined|text|link)\b/.test(tag);
+}
+
+/** The filled controls the page body draws, by file. */
+function bodyFills(sources: Map<string, string>): string[] {
+	return [...sources].flatMap(([href, src]) => {
+		const file = href.slice(href.lastIndexOf("/") + 1);
+		return [
+			...openingTags(src, "Button").filter(filledButton).map((tag) => `${file}: ${tag}`),
+			...openingTags(src, "ToggleButton").map((tag) => `${file}: ${tag}`),
+			...openingTags(src, "a").filter(filledAnchor).map((tag) => `${file}: ${tag}`),
+		];
+	});
+}
+
 function rigFor(dirty: boolean): RigInput {
 	return {
 		kind: "team",
@@ -576,59 +738,56 @@ function rigFor(dirty: boolean): RigInput {
 	};
 }
 
-Deno.test("the page draws exactly one filled control — the rig's tier-3 Save, and only when dirty", () => {
-	for (const ruleType of ALL) {
-		for (const editable of [true, false]) {
-			for (const drift of [true, false]) {
-				for (const uneven of [true, false]) {
-					const body = bodyControls({
-						ruleType,
-						editable,
-						locked: true,
-						drift,
-						uneven,
-						members: 4,
-					});
-					assertStrictEquals(filledButtons(body), 0, `${ruleType}: the body fills nothing`);
-					assert(body.every((c) => c.tier === undefined || c.tier > 3));
-					for (const dirty of [true, false]) {
-						const rig = rigModel(rigFor(dirty));
-						assertStrictEquals(filledButtons(body) + rigFilledCount(rig), dirty ? 1 : 0);
-						const save = rig.actions.find((a) => a.key === "save");
-						assertEquals(save ? save.control === "button" && save.tier : null, dirty ? 3 : null);
-						const tiers: number[] = rig.actions.flatMap((a) =>
-							a.control === "button" ? [a.tier] : []
-						);
-						assert(!tiers.includes(1), "no amber tier-1 control");
-					}
-				}
-			}
-		}
+Deno.test("the page body's source: every section, and not one filled control in it", () => {
+	const sources = pageSources();
+	const files = [...sources.keys()].map((href) => href.slice(href.lastIndexOf("/") + 1));
+	for (
+		const file of [
+			"PayoutRuleSection.tsx",
+			"MemberStakesSection.tsx",
+			"SplitLegend.tsx",
+			"PayoutPreview.tsx",
+			"VaultAccessList.tsx",
+		]
+	) {
+		assert(files.includes(file), `the island reaches ${file}`);
 	}
+	assertEquals(bodyFills(sources), [], "a filled control in the Payouts body");
+	const all = [...sources.values()].join("\n");
+	assert(!/severity="accent"/.test(all), "no amber tier-1 control on the page");
+
+	// The hold toggles are the unfilled two-state toggle: a text Button carrying aria-pressed.
+	const legend = [...sources].find(([href]) => href.endsWith("/SplitLegend.tsx"))![1];
+	const holds = openingTags(legend, "Button").filter((tag) => tag.includes("aria-pressed"));
+	assertStrictEquals(holds.length, 1, "one hold toggle, rendered per stake");
+	assert(/\svariant="text"/.test(holds[0]), "the hold toggle is a text Button");
+
+	// "See plans" is tier 4: an anchor wearing the neutral outlined Button classes.
+	const rule = [...sources].find(([href]) => href.endsWith("/PayoutRuleSection.tsx"))![1];
+	const plans = openingTags(rule, "a").filter((tag) => tag.includes("PLAN_HREF"));
+	assertStrictEquals(plans.length, 1);
+	assert(/ui-button ui-button--neutral ui-button--outlined ui-button--size-sm/.test(plans[0]));
 });
 
-Deno.test("bodyControls: the composition follows the template", () => {
-	const keys = (ruleType: (typeof ALL)[number]) =>
-		bodyControls({
-			ruleType,
-			editable: true,
-			locked: false,
-			drift: false,
-			uneven: true,
-			members: 2,
-		})
-			.map((c) => c.key);
-	assertEquals(keys("co_op"), [
-		"template",
-		"vault-cut",
-		"stakes",
-		"hold-0",
-		"hold-1",
-		"split-evenly",
-		"preview-amount",
-		"roles",
+Deno.test("the scanner catches a filled control the body might add", () => {
+	const fake = new Map([
+		["x/A.tsx", `<Button label="Go" onClick={() => go(a > b)} />`],
+		["x/B.tsx", `<ToggleButton value={v} />`],
+		["x/C.tsx", `<a class="ui-button ui-button--primary ui-button--filled" href="/x">Go</a>`],
+		["x/D.tsx", `<Button variant="text" label="Fine" /><a class="wsp-x" href="/y">fine</a>`],
 	]);
-	assertEquals(keys("finders_fee").slice(0, 4), ["template", "vault-cut", "finder", "finder-cut"]);
-	assertEquals(keys("benevolent_dictator"), ["template", "finance", "preview-amount", "roles"]);
+	assertEquals(bodyFills(fake).map((hit) => hit.split(":")[0]), ["A.tsx", "B.tsx", "C.tsx"]);
+});
+
+Deno.test("with the rig, the page draws exactly one filled control — tier-3 Save, only when dirty", () => {
+	const body = bodyFills(pageSources()).length;
+	for (const dirty of [true, false]) {
+		const rig = rigModel(rigFor(dirty));
+		assertStrictEquals(body + rigFilledCount(rig), dirty ? 1 : 0);
+		const save = rig.actions.find((a) => a.key === "save");
+		assertEquals(save ? save.control === "button" && save.tier : null, dirty ? 3 : null);
+		const tiers: number[] = rig.actions.flatMap((a) => a.control === "button" ? [a.tier] : []);
+		assert(!tiers.includes(1), "no amber tier-1 control");
+	}
 });
 // #endregion

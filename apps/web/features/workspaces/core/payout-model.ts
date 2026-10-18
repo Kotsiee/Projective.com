@@ -1,13 +1,14 @@
 import { currencyExponent, SplitRuleType, type VaultCapability } from "@projective/types/finance";
-import type {
-	SplitPreviewLine,
-	SplitRuleInput,
-	SplitStake,
-	TeamSplitPreview,
-	TeamSplitRule,
-	UpdatePayoutInput,
-	VaultAccess,
-	WorkspaceStatus,
+import {
+	splitDriftBp,
+	type SplitPreviewLine,
+	type SplitRuleInput,
+	type SplitStake,
+	type TeamSplitPreview,
+	type TeamSplitRule,
+	type UpdatePayoutInput,
+	type VaultAccess,
+	type WorkspaceStatus,
 } from "@projective/types/workspace";
 import {
 	bpToPercent,
@@ -15,7 +16,6 @@ import {
 	SPLIT_TOTAL_BP,
 	type SplitSegment,
 } from "@ui/fields/core/split-bar-model.ts";
-import type { ButtonTier } from "./header-model.ts";
 
 /**
  * payout-model — the team Payouts module (`/teams/:teamHandle/payouts`, Teams work order C4) as pure
@@ -24,9 +24,9 @@ import type { ButtonTier } from "./header-model.ts";
  * The screen edits two stored facts in one Save: the split RULE (`finance.save_split_rule` — co_op ·
  * finders_fee · benevolent_dictator, with its vault and finder cuts) and the members' STAKES
  * (`finance.save_team_split`). Everything the screen decides — what the draft is, whether it differs
- * from what is saved, what a Save sends, which sections render, which templates the team's plan
- * unlocks, what the drift notice offers, how the Preview ledger reads, how many filled controls the page
- * draws — is decided here, so `deno test` pins it without a DOM.
+ * from what is saved, what a Save sends, what a refused Save re-reads, which sections render, which
+ * templates the team's plan unlocks, what the drift notice offers and how the Preview ledger reads — is
+ * decided here, so `deno test` pins it without a DOM.
  *
  * Percentages are basis points everywhere they are stored (1 bp = 0.01%); the one conversion between
  * the two is {@link percentToBp} / {@link bpToPercent}. Money is never computed here: the Preview's
@@ -68,7 +68,12 @@ export const TEMPLATE_LABEL: Readonly<Record<SplitRuleType, string>> = {
 	benevolent_dictator: "Benevolent dictator",
 };
 
-/** One sentence per template — finance-model.md §5 "Default ruleset templates". */
+/**
+ * One sentence per template, after finance-model.md §5 "Default ruleset templates". Co-op is worded as
+ * the release plan runs it (`finance.fn_team_split_plan`: the vault's cut, then each member's stake of
+ * the rest), which the stakes editor below it can make uneven; finance-model §5 words Co-op as an equal
+ * split, `(100% − Vault%) / N members`. Which of the two Co-op means is open for an owner ruling.
+ */
 export const TEMPLATE_SENTENCE: Readonly<Record<SplitRuleType, string>> = {
 	co_op: "The Team Vault takes its cut, then the rest is split across the members by their stakes.",
 	finders_fee:
@@ -283,7 +288,7 @@ export function ruleInputOf(draft: PayoutDraft): SplitRuleInput | null {
 export type SaveBlock =
 	| { reason: "rule"; problems: RuleProblems }
 	| { reason: "locked"; ruleType: SplitRuleType }
-	| { reason: "drift"; driftBp: number }
+	| { reason: "drift"; driftBp: number; restorable: boolean }
 	| null;
 
 /**
@@ -301,8 +306,10 @@ export function saveBlock(
 		if (hasProblems(problems)) return { reason: "rule", problems };
 	}
 	if (stakesMode(draft.ruleType) === "split" && stakesChanged(draft.stakes, saved.stakes)) {
-		const drift = driftBp(draft.stakes);
-		if (drift !== 0) return { reason: "drift", driftBp: drift };
+		const drift = splitDriftBp(draft.stakes);
+		if (drift !== 0) {
+			return { reason: "drift", driftBp: drift, restorable: canRestoreWhole(draft.stakes) };
+		}
 	}
 	return null;
 }
@@ -322,7 +329,12 @@ export function blockNotice(block: NonNullable<SaveBlock>): SaveNotice {
 		case "rule":
 			return { text: "Choose the finder and their cut before you save.", plans: false };
 		case "drift":
-			return { text: "Rebalance the stakes to 100% before you save.", plans: false };
+			return {
+				text: block.restorable
+					? "Rebalance the stakes to 100% before you save."
+					: "Release a held stake and rebalance the stakes to 100% before you save.",
+				plans: false,
+			};
 	}
 }
 
@@ -377,6 +389,17 @@ export function saveBody(
 }
 
 /**
+ * Whether a REFUSED Save may still have changed what is stored, so the island must re-read the detail
+ * and measure the draft against it. The route writes the rule, then the stakes, each RPC its own
+ * transaction (Decision #234), so a body carrying both can come back refused with its rule already
+ * saved. Re-basing on the re-read keeps the draft as typed while the saved rule stops reading as
+ * unsaved — and is never sent again.
+ */
+export function refusalMayHaveSaved(body: UpdatePayoutInput): boolean {
+	return body.rule !== undefined && body.stakes !== undefined;
+}
+
+/**
  * Whether the screen may edit: the reader holds `manage_finances` (the module's gate, so normally
  * yes) and the team is not archived (`finance.save_split_rule` refuses an archived team).
  */
@@ -412,22 +435,35 @@ export function withHeld(
 	return stakes.map((s) => (s.memberId === memberId && s.held !== held ? { ...s, held } : s));
 }
 
-/** The signed distance from a whole split, in bp — 0 when the stakes total exactly 100%. */
-export function driftBp(stakes: readonly SplitStake[]): number {
-	return stakes.reduce((sum, s) => sum + s.shareBp, 0) - SPLIT_TOTAL_BP;
+/**
+ * Whether {@link restoreWhole} can bring the split back to 100% as it stands: at least one stake is
+ * unheld and the held stakes alone do not pass 100%. When it cannot, only releasing a hold can — so
+ * the drift notice offers no Rebalance action that would do nothing (§3.11).
+ */
+export function canRestoreWhole(stakes: readonly SplitStake[]): boolean {
+	const heldBp = stakes.reduce((sum, s) => sum + (s.held ? s.shareBp : 0), 0);
+	return stakes.some((s) => !s.held) && heldBp <= SPLIT_TOTAL_BP;
+}
+
+/**
+ * Whether the drift notice offers its "Rebalance to 100%" action: the split drifted, the reader may
+ * edit, and {@link restoreWhole} would actually change it.
+ */
+export function offersRebalance(stakes: readonly SplitStake[], editable: boolean): boolean {
+	return editable && splitDriftBp(stakes) !== 0 && canRestoreWhole(stakes);
 }
 
 /**
  * Bring a drifted split back to exactly 100% without touching a held stake: the unheld stakes are
  * scaled in proportion to what they hold (evenly when they hold nothing), floored, and the rounding
  * remainder goes to the largest of them — the rule the departure rebalance uses. Returned unchanged
- * when no unheld stake exists or the held stakes alone pass 100%, which only releasing a hold can fix.
+ * when {@link canRestoreWhole} says it cannot, which only releasing a hold can fix.
  */
 export function restoreWhole(stakes: readonly SplitStake[]): SplitStake[] {
+	if (!canRestoreWhole(stakes)) return [...stakes];
 	const heldBp = stakes.reduce((sum, s) => sum + (s.held ? s.shareBp : 0), 0);
 	const target = SPLIT_TOTAL_BP - heldBp;
 	const open = stakes.filter((s) => !s.held);
-	if (open.length === 0 || target < 0) return [...stakes];
 	const current = open.reduce((sum, s) => sum + s.shareBp, 0);
 	const scaled = new Map<string, number>();
 	for (const s of open) {
@@ -471,12 +507,18 @@ export function isEvenSplit(stakes: readonly SplitStake[], ownerMemberId: string
 	return !stakesChanged(stakes, evenStakes(stakes, ownerMemberId));
 }
 
-/** The drift notice's sentence for a split that does not total 100%. */
-export function driftSentence(drift: number): string {
+/**
+ * The drift notice's sentence for a split that does not total 100%. When the held stakes block a
+ * rebalance (`restorable` false), it says what will: releasing a hold.
+ */
+export function driftSentence(drift: number, restorable = true): string {
 	const total = formatBp(SPLIT_TOTAL_BP + drift);
+	const fix = restorable
+		? "Rebalance them before you save."
+		: "Release a held stake, then rebalance them before you save.";
 	return drift < 0
-		? `The stakes add up to ${total}, not 100% — a member left and their share was not spread. Rebalance them before you save.`
-		: `The stakes add up to ${total}, more than 100%. Rebalance them before you save.`;
+		? `The stakes add up to ${total}, not 100% — a member left and their share was not spread. ${fix}`
+		: `The stakes add up to ${total}, more than 100%. ${fix}`;
 }
 
 /** The legend's facts: each member and their share, a held stake marked so. */
@@ -559,53 +601,5 @@ export function vaultAccessItems(row: VaultAccess): string[] {
 	return row.capabilities.length === 0
 		? ["no access"]
 		: row.capabilities.map((cap) => VAULT_CAPABILITY_LABEL[cap]);
-}
-// #endregion
-
-// #region Controls on the page
-/** One control the Payouts body renders, and its Button tier when it is a Button. */
-export interface PayoutControl {
-	key: string;
-	control: "select-button" | "input" | "select" | "split-bar" | "toggle" | "button" | "link";
-	/** The Interaction Matrix tier (§B.8.1) of a Button; links and fields carry none. */
-	tier?: ButtonTier;
-}
-
-/** What the body renders, given its state — the rig's Save and Discard are the footer band's. */
-export function bodyControls(input: {
-	ruleType: SplitRuleType;
-	editable: boolean;
-	locked: boolean;
-	drift: boolean;
-	uneven: boolean;
-	members: number;
-}): PayoutControl[] {
-	const fields = ruleFields(input.ruleType);
-	const controls: PayoutControl[] = [{ key: "template", control: "select-button" }];
-	if (fields.vault) controls.push({ key: "vault-cut", control: "input" });
-	if (fields.finder) {
-		controls.push({ key: "finder", control: "select" }, { key: "finder-cut", control: "input" });
-	}
-	if (input.locked) controls.push({ key: "see-plans", control: "link" });
-	if (stakesMode(input.ruleType) === "split") {
-		if (input.drift && input.editable) {
-			controls.push({ key: "rebalance", control: "button", tier: 5 });
-		}
-		controls.push({ key: "stakes", control: "split-bar" });
-		for (let i = 0; i < input.members; i++) controls.push({ key: `hold-${i}`, control: "toggle" });
-		if (input.uneven && input.editable) {
-			controls.push({ key: "split-evenly", control: "button", tier: 5 });
-		}
-	} else {
-		controls.push({ key: "finance", control: "link" });
-	}
-	controls.push({ key: "preview-amount", control: "input" }, { key: "roles", control: "link" });
-	return controls;
-}
-
-/** How many of a set of controls are filled Buttons (tiers 1–3). */
-export function filledButtons(controls: readonly PayoutControl[]): number {
-	return controls.filter((c) => c.control === "button" && c.tier !== undefined && c.tier <= 3)
-		.length;
 }
 // #endregion

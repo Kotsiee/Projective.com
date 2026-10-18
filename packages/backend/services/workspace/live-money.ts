@@ -389,8 +389,9 @@ export function toSplitPreview(
 
 /**
  * What a release of the reader's chosen size would pay under the team's SAVED split
- * (`finance.preview_team_split(team, gross)` — read-only, any member), with the finder and members
- * named in one party-card batch. The amount is priced in the vault's currency the editor sends.
+ * (`finance.preview_team_split(team, gross)` — read-only, `manage_finances` holders only, Decision
+ * #233 (b)), with the finder and members named in one party-card batch. The amount is priced in the
+ * vault's currency the editor sends.
  */
 export async function previewTeamSplit(
 	query: PayoutPreviewQuery,

@@ -2461,6 +2461,10 @@ $$;
 -- module's Preview: the platform's standard fee rate (no payer, so no negotiated rate), truncated the
 -- same way, then the team's stored rule and stakes through the same plan. Either answer carries the
 -- active rule's `finder_bp` beside the plan, so every cut can be labelled with its rate.
+--
+-- Either answer exposes the split rule (the vault and finder cuts, the finder) and every stake, which
+-- Decision #233 (b) answers only to a `manage_finances` holder — the detail's payout block, which calls
+-- this, is built for nobody else — so a member without it is refused (`42501 payout:`).
 CREATE OR REPLACE FUNCTION finance.preview_team_split(p_team_id uuid, p_gross_minor bigint DEFAULT NULL)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -2479,6 +2483,10 @@ BEGIN
         SELECT 1 FROM org.fn_member_seat('team', p_team_id, auth.uid())
     ) THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'workspace: you are not a member of this team';
+    END IF;
+    IF NOT org.fn_member_can('team', p_team_id, 'manage_finances') THEN
+        RAISE EXCEPTION USING ERRCODE = '42501',
+            MESSAGE = 'payout: only members who manage the team''s finances can preview its split';
     END IF;
     SELECT r.finder_bp INTO v_finder_bp
       FROM finance.split_rules r

@@ -6,7 +6,9 @@
 -- team's stored rule and stakes. Whatever the amount and the template, the ledger must conserve the
 -- input exactly — fee + finder + vault cut + Σ members + dust = gross — and carry the active rule's
 -- `finder_bp`. Without an amount the function still prices the team's oldest held escrow (or nothing).
--- An amount outside 1 … 10^12 minor units and a caller who is not a member are refused.
+-- An amount outside 1 … 10^12 minor units, a caller who is not a member and a member without
+-- `manage_finances` are refused — either answer carries the split rule and every stake, which
+-- Decision #233 (b) answers to `manage_finances` holders only.
 --
 -- `org.get_workspace_detail`'s payout block also answers the templates the team's plan unlocks (one
 -- `split_template_<type>` flag each) and every active member's vault capabilities
@@ -18,9 +20,10 @@
 --     < supabase/probes/payout_preview_amount.sql
 --
 -- Fixture (seeded data): a Pro Team team T (every split_template_* flag) whose owner O holds
--- manage_finances and which has a second active member F; a Team Free team FR (co_op only) with owner
--- FO; and a freelancer X who is not a member of T. On a database whose preview takes no amount, the
--- first priced call fails with 42883. A clean run prints only PASS notices.
+-- manage_finances and which has a second active member F and an active member P without
+-- manage_finances; a Team Free team FR (co_op only) with owner FO; and a freelancer X who is not a
+-- member of T. On a database whose preview takes no amount, the first priced call fails with 42883. A
+-- clean run prints only PASS notices.
 -- =============================================================================================
 
 BEGIN;
@@ -111,13 +114,25 @@ DECLARE
     v_free_team uuid;
     v_free_owner uuid;
     v_stranger uuid;
+    v_plain uuid;
 BEGIN
     SELECT t.id, t.owner_user_id, m.user_id INTO v_team, v_owner, v_finder
       FROM org.teams t
       JOIN org.team_members m ON m.team_id = t.id AND m.status = 'active' AND m.user_id <> t.owner_user_id
      WHERE t.status = 'active' AND finance.fn_has_entitlement('team', t.id, 'split_template_finders_fee')
        AND finance.fn_has_entitlement('team', t.id, 'split_template_benevolent_dictator')
+       AND EXISTS (
+           SELECT 1 FROM org.team_members p
+            WHERE p.team_id = t.id AND p.status = 'active'
+              AND NOT ('manage_finances' = ANY (org.fn_member_capabilities('team', t.id, p.user_id))))
      ORDER BY t.slug, m.user_id
+     LIMIT 1;
+
+    SELECT p.user_id INTO v_plain
+      FROM org.team_members p
+     WHERE p.team_id = v_team AND p.status = 'active'
+       AND NOT ('manage_finances' = ANY (org.fn_member_capabilities('team', v_team, p.user_id)))
+     ORDER BY p.user_id
      LIMIT 1;
 
     SELECT t.id, t.owner_user_id INTO v_free_team, v_free_owner
@@ -134,16 +149,16 @@ BEGIN
      ORDER BY fp.user_id
      LIMIT 1;
 
-    IF v_finder IS NULL OR v_free_owner IS NULL OR v_stranger IS NULL THEN
-        RAISE EXCEPTION 'FAIL no fixture (pro team %, free team %, stranger %) — deno task db:reset',
-            v_team, v_free_team, v_stranger;
+    IF v_finder IS NULL OR v_plain IS NULL OR v_free_owner IS NULL OR v_stranger IS NULL THEN
+        RAISE EXCEPTION 'FAIL no fixture (pro team %, plain member %, free team %, stranger %) — deno task db:reset',
+            v_team, v_plain, v_free_team, v_stranger;
     END IF;
 
     INSERT INTO probe_ids (k, id) VALUES
-        ('T', v_team), ('O', v_owner), ('F', v_finder), ('FR', v_free_team), ('FO', v_free_owner),
-        ('X', v_stranger);
-    RAISE NOTICE 'fixture: pro team % (owner %, member %), free team % (owner %), stranger %',
-        v_team, v_owner, v_finder, v_free_team, v_free_owner, v_stranger;
+        ('T', v_team), ('O', v_owner), ('F', v_finder), ('P', v_plain), ('FR', v_free_team),
+        ('FO', v_free_owner), ('X', v_stranger);
+    RAISE NOTICE 'fixture: pro team % (owner %, member %, plain member %), free team % (owner %), stranger %',
+        v_team, v_owner, v_finder, v_plain, v_free_team, v_free_owner, v_stranger;
 END $$;
 -- #endregion
 
@@ -218,6 +233,10 @@ SELECT pg_temp.expect_refused('3d a non-member is refused', pg_temp.id('X'),
     format($q$SELECT finance.preview_team_split(%L, 100000)$q$, pg_temp.id('T')), '42501', 'workspace:');
 SELECT pg_temp.expect_refused('3e signed out is refused', NULL,
     format($q$SELECT finance.preview_team_split(%L, 100000)$q$, pg_temp.id('T')), '42501', 'workspace:');
+SELECT pg_temp.expect_refused('3f a member without manage_finances is refused an amount', pg_temp.id('P'),
+    format($q$SELECT finance.preview_team_split(%L, 100000)$q$, pg_temp.id('T')), '42501', 'payout:');
+SELECT pg_temp.expect_refused('3g a member without manage_finances is refused the held release', pg_temp.id('P'),
+    format($q$SELECT finance.preview_team_split(%L)$q$, pg_temp.id('T')), '42501', 'payout:');
 -- #endregion
 
 -- #region 4. Without an amount the held escrow (or nothing) is still what is priced
@@ -281,6 +300,14 @@ BEGIN
         RAISE EXCEPTION 'FAIL 5e a member''s row is not the projection: %', v_pro -> 'vault_capabilities';
     END IF;
     RAISE NOTICE 'PASS 5c-e one row per active member, each the projection (owner %)', v_caps;
+
+    -- A member without manage_finances still reads the detail — with no payout block, so the gated
+    -- preview is never called on their behalf.
+    PERFORM pg_temp.act(pg_temp.id('P'));
+    IF (org.get_workspace_detail('team', pg_temp.id('T')::text) -> 'payout') IS DISTINCT FROM 'null'::jsonb THEN
+        RAISE EXCEPTION 'FAIL 5f a member without manage_finances is answered a payout block';
+    END IF;
+    RAISE NOTICE 'PASS 5f a member without manage_finances reads the detail without a payout block';
 END $$;
 -- #endregion
 

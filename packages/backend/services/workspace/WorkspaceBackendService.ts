@@ -208,7 +208,8 @@ export class WorkspaceBackendService {
 	 * What a release of the reader's chosen size would pay under the team's SAVED split
 	 * (`finance.preview_team_split(team, gross)` — read-only, the plan the release runs), so the Payouts
 	 * module's Preview lists every cut from the server and never splits money on the client. Nothing is
-	 * written.
+	 * written. The database answers only a `manage_finances` holder (Decision #233 (b)); anyone else is
+	 * refused `403`.
 	 */
 	static previewPayout(
 		query: PayoutPreviewQuery,

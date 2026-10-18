@@ -1,9 +1,14 @@
 import type { JSX } from "preact";
 import { InlineNotice } from "@projective/ui/feedback";
 import { Button, SplitBar } from "@projective/ui/fields";
-import type { SplitStake } from "@projective/types/workspace";
+import { splitDriftBp, type SplitStake } from "@projective/types/workspace";
 import type { SplitSegment } from "@ui/fields/core/split-bar-model.ts";
-import { driftBp, driftSentence, segmentsOf } from "../core/payout-model.ts";
+import {
+	canRestoreWhole,
+	driftSentence,
+	offersRebalance,
+	segmentsOf,
+} from "../core/payout-model.ts";
 import { SplitLegend } from "./SplitLegend.tsx";
 
 /**
@@ -13,7 +18,8 @@ import { SplitLegend } from "./SplitLegend.tsx";
  *
  * The bar cannot make a split that misses 100%, but the server can hand one over (a member left and
  * their share was not spread). That drift is stated in an InlineNotice whose one action rebalances
- * the unheld stakes in proportion — never a tinted box, and never a Save that can only fail.
+ * the unheld stakes in proportion — never a tinted box, and never a Save that can only fail. When the
+ * holds leave nothing to rebalance, the notice offers no action and says to release a hold instead.
  */
 
 // #region Props
@@ -33,7 +39,9 @@ export interface MemberStakesSectionProps {
 
 // #region Component
 export function MemberStakesSection(props: MemberStakesSectionProps): JSX.Element {
-	const drift = driftBp(props.stakes);
+	const drift = splitDriftBp(props.stakes);
+	const restorable = canRestoreWhole(props.stakes);
+	const rebalance = offersRebalance(props.stakes, props.editable);
 	return (
 		<section class="wsp-payout__section" aria-labelledby="wsp-payout-stakes">
 			<div class="wsp-payout__head">
@@ -48,10 +56,10 @@ export function MemberStakesSection(props: MemberStakesSectionProps): JSX.Elemen
 				<InlineNotice
 					align="start"
 					class="wsp-payout__notice"
-					actionLabel={props.editable ? "Rebalance to 100%" : undefined}
-					onAction={props.editable ? props.onRebalance : undefined}
+					actionLabel={rebalance ? "Rebalance to 100%" : undefined}
+					onAction={rebalance ? props.onRebalance : undefined}
 				>
-					{driftSentence(drift)}
+					{driftSentence(drift, restorable)}
 				</InlineNotice>
 			)}
 

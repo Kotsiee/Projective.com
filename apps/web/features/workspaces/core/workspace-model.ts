@@ -4,7 +4,6 @@ import {
 	kindCopy,
 	kindFromPath,
 	roleRank,
-	type SplitModel,
 	type WorkspaceKind,
 	type WorkspaceMember,
 	type WorkspaceProject,
@@ -236,17 +235,6 @@ export function sortMembers(
 		}
 	});
 	return out;
-}
-
-/**
- * How the current split reads — `equal` when every unheld stake is within one basis point of the others,
- * `custom` otherwise. The same rule the server derives the policy's `model` by, applied to the stakes on
- * screen so the label follows an edit before it is saved. Basis-point comparison only; no money.
- */
-export function splitModelOf(stakes: readonly { shareBp: number; held: boolean }[]): SplitModel {
-	const moving = stakes.filter((s) => !s.held).map((s) => s.shareBp);
-	if (moving.length < 2) return "equal";
-	return Math.max(...moving) - Math.min(...moving) <= 1 ? "equal" : "custom";
 }
 // #endregion
 

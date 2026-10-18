@@ -220,7 +220,7 @@ Order: P0 = gate violations, P1 = matrix/parity, P2 = tidy. All paths under `wsp
 | `islands/CreateWorkspaceModal.island.tsx` | `RadioGroup`/`SelectButton` (:274) · `Button text` (suggestion :359) · `FormControl` · tier-2 Create | replace `setTimeout(60)` focus with Dialog `initialFocus` | P1 |
 | `islands/RolesMatrix.island.tsx` | `Select` (:509) · `Button text` (col buttons :358-385) · `FormControl` | matrix cell keeps custom control + press scale (D1); opaque tints (D9) | P0 |
 | `islands/PayoutPolicyScreen.island.tsx` | `SelectButton` (templates :259) | wire templates to the new `save_split_rule` RPC (§4.4) ✅ C4 | P0 (functional) |
-| `components/SplitLegend.tsx`, `SplitBar.tsx` | `ToggleButton` (hold :149); SplitBar handle stays custom | remove `${lift}px` inline style ✅ C4: the legend is a `MetaLine` + `ToggleButton`s; the feature's `SplitBar.tsx` is replaced by the ui `SplitBar` | P1 |
+| `components/SplitLegend.tsx`, `SplitBar.tsx` | `ToggleButton` (hold :149); SplitBar handle stays custom | remove `${lift}px` inline style ✅ C4: the legend is a `MetaLine` + one hold toggle per member — a tier-5 text `Button` with `aria-pressed` (the unfilled two-state toggle, as the rig's Org chart toggle; a pressed `ToggleButton` is a `--primary` fill, so C4 review replaced it); the feature's `SplitBar.tsx` is replaced by the ui `SplitBar` | P1 |
 | `components/ApprovalQueue.tsx` (business) | `Button` tier 3 / 5 | | P1 |
 | `styles/*.css` | — | D2-D16, D38, D41; replace literal weights/durations/breakpoints with tokens | P0/P2 |
 | `apps/web/features/shell/core/actions-model.ts:43-45` | — | gate "Create Team" on `isFreelancer` (P2) | P0 |

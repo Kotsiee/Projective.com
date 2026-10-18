@@ -17,7 +17,8 @@ import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBac
  * SAVED split through `finance.preview_team_split` (the plan the release runs). Read-only.
  *
  * The amount is integer minor units of `currency` (1 … 10^12); the database refuses anything outside
- * that range and a caller who is not a member of the team, with the message the Preview renders.
+ * that range, a caller who is not a member of the team, and a member without `manage_finances` (the
+ * split rule and stakes are theirs alone, Decision #233 (b)), with the message the Preview renders.
  */
 export const handler = define.handlers(
 	defineReadRoute<TeamSplitPreview>({

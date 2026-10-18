@@ -1,8 +1,7 @@
 import type { JSX } from "preact";
 import { useMemo } from "preact/hooks";
-import { signal } from "@preact/signals";
 import { MetaLine } from "@projective/ui/display";
-import { ToggleButton } from "@projective/ui/fields";
+import { Button } from "@projective/ui/fields";
 import type { SplitStake } from "@projective/types/workspace";
 import { legendItems } from "../core/payout-model.ts";
 import { cloneGlyph } from "../core/workspace-glyphs.tsx";
@@ -13,12 +12,14 @@ import { HoldGlyph } from "./policy-glyphs.tsx";
  *
  * The bar is the overview; this is what a reader who cannot compare widths reads. Each member's share
  * is a MetaLine fact in tabular figures (two decimals, the stored basis points exactly), a held stake
- * marked "held" in words rather than by a hatch alone. Under it, one ToggleButton per member holds or
- * releases their stake: a held stake's dividers lock, so moving the others can never change it, and a
- * departure rebalance never redistributes it (`finance.contribution_agreements.held`).
+ * marked "held" in words rather than by a hatch alone. Under it, one two-state toggle per member holds
+ * or releases their stake: a held stake's dividers lock, so moving the others can never change it, and
+ * a departure rebalance never redistributes it (`finance.contribution_agreements.held`).
  *
- * The toggles' pressed state is bound to the stakes it is handed — a Discard or a save that changes
- * `held` re-seeds the bound signal rather than remounting the control, so focus stays where it was.
+ * Each toggle is a tier-5 text Button with `aria-pressed` — the unfilled two-state toggle §C.1 sanctions
+ * (the footer rig's Org chart toggle): engaged, it takes the solid `--surface-2` step with
+ * `--on-surface` ink and shows the hold mark. A repeated action is never filled (§B.8.2), so holding a
+ * stake never adds a filled control beside the rig's Save.
  */
 
 // #region Props
@@ -39,21 +40,21 @@ interface HoldToggleProps {
 	onToggle: (held: boolean) => void;
 }
 
-/** One member's hold toggle, bound to a signal re-seeded whenever the stake's `held` changes. */
+/** One member's hold toggle: pressed while the stake is held, the hold mark drawn only then. */
 function HoldToggle(props: HoldToggleProps): JSX.Element {
 	const { stake } = props;
-	const bound = useMemo(() => signal(stake.held), [stake.held]);
 	const glyph = useMemo(() => cloneGlyph(HoldGlyph), []);
 	return (
-		<ToggleButton
-			value={bound}
-			onValueChange={props.onToggle}
-			onLabel={stake.name}
-			offLabel={stake.name}
-			onIcon={glyph}
+		<Button
+			variant="text"
+			severity="secondary"
 			size="sm"
-			disabled={props.disabled}
+			icon={stake.held ? glyph : undefined}
+			label={stake.name}
+			aria-pressed={stake.held}
 			aria-label={`Hold ${stake.name}'s stake`}
+			disabled={props.disabled}
+			onClick={() => props.onToggle(!stake.held)}
 		/>
 	);
 }

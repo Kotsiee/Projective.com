@@ -28,8 +28,8 @@ import { LockGlyph } from "./policy-glyphs.tsx";
  * says where the money goes and links to Finance, where it is distributed by hand. Percentages are typed
  * with two decimals and stored as basis points by the island (`payout-model.ts`).
  *
- * A template the team's plan does not unlock is offered DISABLED, with the plan notice and its "See
- * plans" link beside it — never hidden, and never a 402 after the reader pressed Save. The saved
+ * A template the team's plan does not unlock is offered DISABLED, with the plan notice and its tier-4
+ * "See plans" beside it — never hidden, and never a 402 after the reader pressed Save. The saved
  * template stays selectable even when locked (a downgraded team keeps applying it), but its parameters
  * are read-only: changing them is a write the plan gate refuses.
  */
@@ -80,9 +80,21 @@ function openPlans(event: JSX.TargetedMouseEvent<HTMLAnchorElement>): void {
 	openSettings("billing", "plan");
 }
 
-/** The "See plans" link a plan gate offers — a navigation, so a link, never a button. */
+/**
+ * The "See plans" a plan gate offers — the tier-4 utility (§B.8.1). It navigates, so it is an anchor,
+ * wearing the neutral outlined Button classes the way a native element takes tier 4; a plain click
+ * opens the plans in the settings modal.
+ */
 export function PlansLink(): JSX.Element {
-	return <Link href={PLAN_HREF} onClick={openPlans}>See plans</Link>;
+	return (
+		<a
+			class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm wsp-payout__plans"
+			href={PLAN_HREF}
+			onClick={openPlans}
+		>
+			<span class="ui-button__label">See plans</span>
+		</a>
+	);
 }
 // #endregion
 
@@ -124,9 +136,15 @@ export function PayoutRuleSection(props: PayoutRuleSectionProps): JSX.Element {
 				: <p class="wsp-payout__meta">{TEMPLATE_SENTENCE[props.current]}</p>}
 
 			{props.notice && (
-				<InlineNotice align="start" class="wsp-payout__notice" icon={lockGlyph}>
-					<span>{props.notice}</span> <PlansLink />
-				</InlineNotice>
+				<div class="wsp-payout__gate">
+					<InlineNotice
+						align="start"
+						class="wsp-payout__notice"
+						icon={lockGlyph}
+						text={props.notice}
+					/>
+					<PlansLink />
+				</div>
 			)}
 
 			{(fields.vault || fields.finder) && (

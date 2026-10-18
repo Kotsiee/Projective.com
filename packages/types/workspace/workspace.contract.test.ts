@@ -548,6 +548,14 @@ Deno.test("finance.preview_team_split prices a chosen amount, and only that sign
 		"one plan, the release's",
 	);
 	assert(body.includes("'finder_bp'"), "the finder's rate travels with the preview");
+	assert(
+		body.includes("org.fn_member_can('team', p_team_id, 'manage_finances')"),
+		"the split rule and stakes are answered to manage_finances holders only (Decision #233 (b))",
+	);
+	assert(
+		body.indexOf("'manage_finances'") < body.indexOf("finance.fn_team_split_plan"),
+		"the gate runs before any plan is priced",
+	);
 	const grants = read(GRANTS_SQL);
 	assert(
 		grants.includes(

@@ -30,6 +30,7 @@ import {
 	payoutSections,
 	percentToBp,
 	PREVIEW_MAX_MINOR,
+	refusalMayHaveSaved,
 	refusalNotice,
 	restoreWhole,
 	ruleProblems,
@@ -64,7 +65,9 @@ import { VaultAccessList } from "../components/VaultAccessList.tsx";
  * money tier) and Discard answer through `usePolicyBridge`, which mirrors `dirty` into the rig with a
  * signal effect. A Save sends the changed rule and the changed stakes in ONE request, adopts the
  * re-read detail the route answers with, and re-prices the Preview; a refusal is an InlineNotice under
- * the page head. Every rule the page follows is a pure function in `core/payout-model.ts`.
+ * the page head, and a refusal that may have saved the rule before the stakes failed re-reads the
+ * detail so the stored rule stops reading as unsaved. Every rule the page follows is a pure function in
+ * `core/payout-model.ts`.
  */
 
 export interface PayoutPolicyScreenProps {
@@ -216,6 +219,7 @@ export default function PayoutPolicyScreen(props: PayoutPolicyScreenProps): JSX.
 				saveState.value = "error";
 				notice.value = refusalNotice(res, current.ruleType, ws.name);
 			});
+			if (refusalMayHaveSaved(body)) await rebase();
 			return;
 		}
 		publishDetail(res.data);
@@ -227,6 +231,22 @@ export default function PayoutPolicyScreen(props: PayoutPolicyScreenProps): JSX.
 			}
 			attempted.value = false;
 			saveState.value = "saved";
+			previewRev.value++;
+		});
+	}
+
+	/**
+	 * After a refusal that may have landed part of the Save (the rule saved, the stakes refused), measure
+	 * the draft against what is stored now: the re-read detail becomes the saved baseline, the draft
+	 * stays as typed, and the Preview re-prices the stored split. A failed re-read leaves both alone.
+	 */
+	async function rebase(): Promise<void> {
+		const reread = await WorkspaceService.detail(ws.kind, ws.id);
+		const next = reread.ok ? reread.data?.payout : null;
+		if (!reread.ok || !reread.data || !next) return;
+		publishDetail(reread.data);
+		batch(() => {
+			policy.value = next;
 			previewRev.value++;
 		});
 	}
@@ -270,15 +290,15 @@ export default function PayoutPolicyScreen(props: PayoutPolicyScreenProps): JSX.
 							</p>
 						)}
 						{notice.value && (
-							<InlineNotice assertive align="start" class="wsp-payout__notice">
-								<span>{notice.value.text}</span>
-								{notice.value.plans && (
-									<>
-										{" "}
-										<PlansLink />
-									</>
-								)}
-							</InlineNotice>
+							<div class="wsp-payout__gate">
+								<InlineNotice
+									assertive
+									align="start"
+									class="wsp-payout__notice"
+									text={notice.value.text}
+								/>
+								{notice.value.plans && <PlansLink />}
+							</div>
 						)}
 					</div>
 				</section>

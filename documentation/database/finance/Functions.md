@@ -962,8 +962,11 @@ before `save_team_split` when the request carries a `rule`. Probe: `supabase/pro
 
 ### `finance.preview_team_split(p_team_id, p_gross_minor = NULL)` → jsonb
 
-What a team's release will pay, by `fn_team_split_plan` — the plan the release itself runs. Any
-active member may read it (`42501 workspace:` otherwise). Returns
+What a team's release will pay, by `fn_team_split_plan` — the plan the release itself runs. Either
+answer carries the split rule (vault and finder cuts, the finder) and every stake, which Decision
+#233 (b) answers only to a `manage_finances` holder: a caller who is not an active member is refused
+`42501 workspace:`, a member without `manage_finances` `42501 payout:`. The detail's payout block,
+its other caller, is built for `manage_finances` holders alone. Returns
 `{escrow_id, gross_minor, currency, fee_minor, fee_bp, finder_bp, plan}`; `finder_bp` is the active
 `finders_fee` rule's cut (`NULL` under any other rule), carried so every cut can be labelled with its
 rate.

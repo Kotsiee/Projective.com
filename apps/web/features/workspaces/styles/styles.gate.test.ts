@@ -394,9 +394,10 @@ Deno.test("workspace styles: figure classes are tabular", () => {
 		".wsp-card__stats",
 		".wsp-card__stat",
 		".wsp-card__stat-delta",
-		// The payout preview's rate and figure columns.
+		// The payout preview's rate and figure columns, and the payout notices' percentages.
 		".wsp-ledger__rate",
 		".wsp-ledger__amount",
+		".wsp-payout__notice.ui-inline-notice",
 		// Text that carries a count or an amount: the lane's queue count, a role's member count, a
 		// band's live queue count ("2 requests waiting"), a counterparty's "+N" and a feed line's sum.
 		".wsp-lane__navcount",
