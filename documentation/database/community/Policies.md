@@ -46,18 +46,18 @@ INSERT, UPDATE and DELETE.
 ## Feedback board
 
 RLS is on for all three tables (`00002001` [community.feedback]); policies in `00002021`
-[community.feedback]; column grants in `00002520` [community.feedback]. Reads only — every write is a
-definer door. Visibility is ONE rule, stated three times and pinned by
+[community.feedback]; column grants in `00002520` [community.feedback]. Reads only — every write is
+a definer door. Visibility is ONE rule, stated three times and pinned by
 `supabase/probes/feedback_board.sql`: these policies, `community.fn_feedback_idea_visible` (the
 doors') and `canSeeFeedbackIdea` (`@projective/types/community`, the fixture road).
 
-| Table | Policy | Roles | Rule |
-| :-- | :-- | :-- | :-- |
-| `feedback_ideas` | `feedback_ideas_public_read` | `anon`, `authenticated` | `status IN ('ready', 'in_progress', 'complete')` — Planned, In progress and Shipped are public. |
-| `feedback_ideas` | `feedback_ideas_author_read` | `authenticated` | `status = 'backlog' AND author_id = auth.uid()` — an idea under review is its author's alone. |
-| `feedback_ideas` | `feedback_ideas_operator_read` | `authenticated` | `security.is_admin()` — operators (`ops.admin_users`) read everything, Archived included. |
-| `feedback_votes` | `feedback_votes_own_read` | `authenticated` | `user_id = auth.uid()` — a vote is its owner's. |
-| `feedback_status_events` | `feedback_status_events_read` | `anon`, `authenticated` | `EXISTS` the idea under the caller's own idea policies — a history is exactly as visible as its idea. |
+| Table                    | Policy                         | Roles                   | Rule                                                                                                  |
+| :----------------------- | :----------------------------- | :---------------------- | :---------------------------------------------------------------------------------------------------- |
+| `feedback_ideas`         | `feedback_ideas_public_read`   | `anon`, `authenticated` | `status IN ('ready', 'in_progress', 'complete')` — Planned, In progress and Shipped are public.       |
+| `feedback_ideas`         | `feedback_ideas_author_read`   | `authenticated`         | `status = 'backlog' AND author_id = auth.uid()` — an idea under review is its author's alone.         |
+| `feedback_ideas`         | `feedback_ideas_operator_read` | `authenticated`         | `security.is_admin()` — operators (`ops.admin_users`) read everything, Archived included.             |
+| `feedback_votes`         | `feedback_votes_own_read`      | `authenticated`         | `user_id = auth.uid()` — a vote is its owner's.                                                       |
+| `feedback_status_events` | `feedback_status_events_read`  | `anon`, `authenticated` | `EXISTS` the idea under the caller's own idea policies — a history is exactly as visible as its idea. |
 
 The idea policies are split by role rather than OR-ed into one, because `anon` holds no USAGE on
 `security`: a policy naming `security.is_admin()` for `anon` would error rather than deny.

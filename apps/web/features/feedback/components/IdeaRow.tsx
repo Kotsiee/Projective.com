@@ -32,19 +32,22 @@ export interface IdeaRowProps {
 }
 
 /**
- * One inline middot-separated fact list (§B.11.2). Each separator closes the item BEFORE it, so when
- * the line wraps the dot stays at the end of the line it belongs to and the next line starts clean.
+ * IdeaFacts — an idea's one line of facts (§B.11.2): the lifecycle tag (the one container a fact may
+ * have, §B.11.3), then category · age · flags as inline text. `@projective/ui`'s `MetaLine` takes text
+ * only, and this line leads with a `Tag` and a `<time>`, so it is drawn here — with `DocumentHeader`'s
+ * separator: each item after the first hangs its `aria-hidden` middot in the column gap before it,
+ * and the list clips its own overflow, so a wrapped line never starts or ends on a dot.
  */
-export function MetaLine(
+export function IdeaFacts(
 	props: { items: Array<JSX.Element | string | null | false> },
 ): JSX.Element {
 	const items = props.items.filter((item): item is JSX.Element | string => Boolean(item));
 	return (
-		<ul class="fb-meta">
+		<ul class="fb-meta" role="list">
 			{items.map((item, i) => (
 				<li class="fb-meta__item" key={i}>
+					{i > 0 && <span class="fb-meta__sep" aria-hidden="true">·</span>}
 					{item}
-					{i < items.length - 1 && <span class="fb-meta__sep" aria-hidden="true">·</span>}
 				</li>
 			))}
 		</ul>
@@ -90,7 +93,7 @@ export function IdeaRow(props: IdeaRowProps): JSX.Element {
 					{idea.title}
 				</a>
 				<p class="fb-row__summary">{idea.impact}</p>
-				<MetaLine
+				<IdeaFacts
 					items={[
 						showStatus && (
 							<Tag

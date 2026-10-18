@@ -41,44 +41,56 @@
 }
 
 /* #region Masthead grid
-   Three tracks, two rows. Row 1 is the masthead (brand · quick-link stacks · newsletter); row 2 is
-   `.lp-footer__aux`, which spans them and re-uses the SAME track sizes so the onboarding stack
-   continues the brand lane and the recently-viewed rail continues the newsletter lane. Widening to
-   five tracks was the alternative and does not fit: at `--container-xl` (80rem) four gutters of
-   `clamp(2.5rem, 5vw, 5.5rem)` take ~22rem before a single word is set, which leaves each stack too
-   narrow to hold its links on one line. Rows cost vertical space, which a footer has; columns cost
-   measure, which it does not. */
+   Three lanes, two rows, and the six link stacks own the middle lane across BOTH rows. Row 1 holds
+   the brand and the newsletter; row 2 continues them — "get set up" directly under the brand,
+   "recently viewed" under the newsletter — so neither outer lane leaves a hole beside the two rows of
+   stacks, and the middle lane is the wide one (3fr) so a stack holds each label on one line at the
+   desktop widths. A separate full-width secondary row was the earlier shape: under six stacks it was
+   pushed below both rows of them and left the outer lanes empty for their whole height. Widening to
+   five tracks does not fit either: at `--container-xl` (80rem) four gutters of
+   `clamp(2.5rem, 5vw, 5.5rem)` take ~22rem before a single word is set. Rows cost vertical space,
+   which a footer has; columns cost measure, which it does not. */
 .lp-footer__inner {
 	display: grid;
-	grid-template-columns: 1.5fr 2.4fr 1.5fr;
+	grid-template-columns: 1fr 3fr 1.25fr;
 	gap: clamp(2.5rem, 5vw, 5.5rem);
 	max-inline-size: var(--container-xl);
 	margin-inline: auto;
 }
 
-/* Row 2. Separated from the masthead by the grid's own row gap and nothing else — §B.4's ladder
-   starts at spacing, and this footer already spends its one hairline above the utility bar.
-   The tracks are RESTATED rather than inherited via `subgrid`: subgrid would follow the masthead's
-   responsive changes for free, but only where it is supported, so the two breakpoint tables below
-   would each need a `@supports` twin. Three literal tracks and one table is the smaller thing to keep
-   in step, and the ratios are trivially the parent's. */
-.lp-footer__aux {
-	grid-column: 1 / -1;
-	display: grid;
-	grid-template-columns: 1.5fr 2.4fr 1.5fr;
-	gap: clamp(2.5rem, 5vw, 5.5rem);
+/* Explicit placement, never implicit flow. The recently-viewed rail is absent entirely on a device
+   with no history (it cannot SSR), so an implicit placement would silently move the onboarding stack
+   the moment the reader had opened something. */
+.lp-footer__brand-col {
+	grid-column: 1;
+	grid-row: 1;
 }
 
-/* Explicit placement, never implicit flow: "get set up" continues the brand lane, "recently viewed"
-   continues the newsletter lane, and the middle lane stays clear beneath the three link stacks. The
-   recently-viewed rail is absent entirely on a device with no history (it cannot SSR), so an implicit
-   placement would silently move the onboarding stack the moment the reader had opened something. */
+.lp-footer__nav {
+	grid-column: 2;
+	grid-row: 1 / span 2;
+}
+
+.lp-footer__news {
+	grid-column: 3;
+	grid-row: 1;
+}
+
+/* Row 2's wrapper takes no box on desktop: its two blocks are cells of the masthead grid itself.
+   Separated from row 1 by the grid's own row gap and nothing else — §B.4's ladder starts at spacing,
+   and this footer already spends its one hairline above the utility bar. */
+.lp-footer__aux {
+	display: contents;
+}
+
 .lp-footer__setup {
 	grid-column: 1;
+	grid-row: 2;
 }
 
 .lp-footer__recent {
 	grid-column: 3;
+	grid-row: 2;
 }
 /* #endregion */
 
@@ -158,10 +170,12 @@
 
 /* #region Column 2 — navigation stacks
    Six stacks in three tracks: the audience stacks on the first row, Company · Help · Legal on the
-   second, each row as tall as its longest stack. */
+   second, each row as tall as its longest stack. `align-content: start` keeps the two rows together
+   when the outer lanes make the masthead taller than the stacks. */
 .lp-footer__nav {
 	display: grid;
 	grid-template-columns: repeat(3, 1fr);
+	align-content: start;
 	gap: var(--space-6);
 }
 
@@ -470,22 +484,32 @@
 	}
 	.lp-footer__brand-col {
 		grid-column: 1 / -1;
+		grid-row: auto;
 	}
 	.lp-footer__nav {
 		grid-column: 1 / -1;
+		grid-row: auto;
 	}
-	/* Two tracks now, so the secondary row's blocks sit side by side and each states its own column
-	   — the recently-viewed rail is absent on a device with no history, and implicit flow would let
-	   the onboarding stack drift into whichever cell happened to be free. */
+	.lp-footer__news {
+		grid-column: auto;
+		grid-row: auto;
+	}
+	/* Two tracks now, and the secondary blocks become their own full-width row again, side by side,
+	   each stating its own column — the recently-viewed rail is absent on a device with no history,
+	   and implicit flow would let the onboarding stack drift into whichever cell happened to be free. */
 	.lp-footer__aux {
+		grid-column: 1 / -1;
+		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: clamp(2rem, 5vw, 3rem);
 	}
 	.lp-footer__setup {
 		grid-column: 1;
+		grid-row: auto;
 	}
 	.lp-footer__recent {
 		grid-column: 2;
+		grid-row: auto;
 	}
 }
 

@@ -8,7 +8,9 @@
  * included, so a renamed document renames its link), the help articles are named by their canonical
  * `/help/<category>/<article>` paths, and `footer-links.test.ts` resolves each one against the route
  * tree, the help content source and the legal slugs. A link that would point at a page that does not
- * exist yet is left out, never pointed somewhere else under the same words.
+ * exist yet is left out, never pointed somewhere else under the same words — and a label that names
+ * an action ("Sell your products", "Post a new project") leads to where that action is taken, never
+ * to a browse page or to sign-up, which a signed-in reader (who gets this same footer) is bounced off.
  *
  * @module
  */
@@ -48,6 +50,18 @@ export const HELP_WHAT_IS_ESCROW = "/help/escrow-and-payments/what-is-escrow";
 export const HELP_FEES = "/help/escrow-and-payments/fees";
 // #endregion
 
+// #region Actions the footer names
+/**
+ * Where a project is posted: the portfolio with its create dialog open — the same deep link the
+ * header's Create menu and `/about`'s member CTA use. A guest is sent to `/login` and returned here.
+ */
+export const POST_PROJECT_HREF = "/projects?create=1";
+/** Where a service is listed: the seller console with its create flow open on a service. */
+export const LIST_SERVICE_HREF = "/catalogue?create=service";
+/** Where a product is listed: the seller console with its create flow open on a product. */
+export const LIST_PRODUCT_HREF = "/catalogue?create=product";
+// #endregion
+
 // #region Onboarding
 /**
  * Onboarding entry points — the "what do I do first" stack.
@@ -56,20 +70,21 @@ export const HELP_FEES = "/help/escrow-and-payments/fees";
  * no `UserContext` to read, so a persona branch here would mean threading one in — and under root
  * CLAUDE.md §5 a new persona-observed branch drags a matching Dev Context Switcher axis along with it,
  * for a footer list. So this is ONE stack that is honest for a signed-out and a signed-in reader alike:
- * every destination past the first is a `(dashboard)` route, and the dashboard guard bounces a guest to
- * `/login?redirectTo=…` and returns them here afterwards — so the same link is a sign-in prompt for one
- * reader and the surface itself for the other, with no branch. Personalising it (hiding "Create an
- * account" from someone who has one, marking finished steps) is worth doing the day the footer has a
- * context to read; it is deferred, not overlooked.
+ * every destination between the first and the last is a `(dashboard)` route, and the dashboard guard
+ * bounces a guest to `/login?redirectTo=…` and returns them there afterwards — so the same link is a
+ * sign-in prompt for one reader and the surface itself for the other, with no branch. Personalising it
+ * (hiding "Create an account" from someone who has one, marking finished steps) is worth doing the
+ * day the footer has a context to read; it is deferred, not overlooked.
  */
 export const FOOTER_SETUP_LINKS: readonly FooterLink[] = [
 	{ label: "Create an account", href: "/join" },
 	{ label: "Complete your profile", href: "/settings" },
-	{ label: "Post your first project", href: "/projects" },
+	{ label: "Post your first project", href: POST_PROJECT_HREF },
 	// The payout account lives in Verification & payouts; `/wallet/payouts` only 308s to the wallet's
 	// upcoming-money section, which sets nothing up.
 	{ label: "Set up payouts", href: "/settings/verification" },
-	{ label: "See how it all works", href: "/help" },
+	// The walkthrough itself, not the help hub ("Help centre" already names that).
+	{ label: "See how it all works", href: HELP_WHAT_IS_PROJECTIVE },
 ];
 // #endregion
 
@@ -95,8 +110,8 @@ export function footerGroups(today: string = legalToday()): FooterLinkGroup[] {
 			title: "For helpers",
 			links: [
 				{ label: "Find helper gigs", href: "/explore?category=projects" },
-				{ label: "Showcase your services", href: "/explore?category=services" },
-				{ label: "Sell your products", href: "/explore?category=products" },
+				{ label: "Showcase your services", href: LIST_SERVICE_HREF },
+				{ label: "Sell your products", href: LIST_PRODUCT_HREF },
 				{ label: "How it works", href: HELP_WHAT_IS_PROJECTIVE },
 			],
 		},
@@ -104,7 +119,7 @@ export function footerGroups(today: string = legalToday()): FooterLinkGroup[] {
 			title: "For clients",
 			links: [
 				{ label: "Hire helper teams", href: "/explore?category=teams" },
-				{ label: "Post a new project", href: "/join" },
+				{ label: "Post a new project", href: POST_PROJECT_HREF },
 				{ label: "Safe & easy payments", href: HELP_WHAT_IS_ESCROW },
 				{ label: "Fees", href: HELP_FEES },
 			],

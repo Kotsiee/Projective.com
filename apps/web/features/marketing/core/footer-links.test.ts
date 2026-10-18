@@ -3,6 +3,7 @@ import { ExploreCategory } from "@projective/types/explore";
 import { isLegalSlug, LEGAL_DOCUMENT_SLUGS } from "@projective/types/content";
 import { HELP_ARTICLES, HELP_CATEGORIES } from "@server/services/editorial/content/help.ts";
 import { parseContactIntent } from "@projective/types/contact";
+import { parseConsoleUrl } from "@projective/types/catalogue";
 import {
 	FOOTER_SETUP_LINKS,
 	footerGroups,
@@ -11,6 +12,9 @@ import {
 	HELP_FEES,
 	HELP_WHAT_IS_ESCROW,
 	HELP_WHAT_IS_PROJECTIVE,
+	LIST_PRODUCT_HREF,
+	LIST_SERVICE_HREF,
+	POST_PROJECT_HREF,
 } from "./footer-links.ts";
 import { MEGA_MENUS, SECONDARY_LINKS } from "./megamenu-data.ts";
 
@@ -99,6 +103,11 @@ function deadLinkReason(href: string): string | null {
 		const intent = url.searchParams.get("intent");
 		if (intent !== null && parseContactIntent(intent) !== intent) return `unknown intent ${intent}`;
 	}
+	if (url.pathname === "/catalogue" && url.searchParams.has("create")) {
+		if (!parseConsoleUrl(url).createOpen) {
+			return `the console opens no create flow on ${url.searchParams.get("create")}`;
+		}
+	}
 	return null;
 }
 
@@ -173,6 +182,33 @@ Deno.test("the footer's groups: three audience stacks, then Company, Help and Le
 
 Deno.test("no footer label points at the help hub in place of a page it names", () => {
 	const hub = ALL_FOOTER_LINKS.filter((l) => l.href === "/help").map((l) => l.label);
-	assertEquals(hub.sort(), ["Help centre", "See how it all works"]);
+	assertEquals(hub, ["Help centre"]);
 	assertEquals(ALL_FOOTER_LINKS.some((l) => /status|operational/i.test(l.label)), false);
+});
+
+Deno.test("an action's words lead to where it is taken — never a browse page, never sign-up", () => {
+	const named = (label: string) => ALL_FOOTER_LINKS.find((l) => l.label === label)?.href;
+	assertEquals(named("Showcase your services"), LIST_SERVICE_HREF);
+	assertEquals(named("Sell your products"), LIST_PRODUCT_HREF);
+	assertEquals(named("Post a new project"), POST_PROJECT_HREF);
+	assertEquals(named("Post your first project"), POST_PROJECT_HREF);
+	assertEquals(named("See how it all works"), HELP_WHAT_IS_PROJECTIVE);
+	assertEquals(
+		parseConsoleUrl(new URL(LIST_SERVICE_HREF, "https://projective.test")).createKind,
+		"service",
+	);
+	assertEquals(
+		parseConsoleUrl(new URL(LIST_PRODUCT_HREF, "https://projective.test")).createKind,
+		"product",
+	);
+	// A seller's or a poster's action never lands on a buyer's browse page, and never on `/join`, which
+	// bounces the signed-in reader who gets this same footer (`publicFooterFor`) to their home.
+	const actions = ALL_FOOTER_LINKS.filter((l) =>
+		/^(showcase|sell|post|set up|complete)\b/i.test(l.label)
+	);
+	assertEquals(actions.length, 6);
+	for (const link of actions) {
+		assert(!link.href.startsWith("/explore"), `${link.label} → ${link.href}`);
+		assert(!link.href.startsWith("/join"), `${link.label} → ${link.href}`);
+	}
 });

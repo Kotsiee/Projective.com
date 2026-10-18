@@ -16,7 +16,7 @@ import {
 	feedbackStatusTag,
 } from "../core/feedback-view.ts";
 import { VoteButton } from "./VoteButton.tsx";
-import { IdeaRow, isPlainClick, MetaLine } from "./IdeaRow.tsx";
+import { IdeaFacts, IdeaRow, isPlainClick } from "./IdeaRow.tsx";
 
 /** Props for {@link IdeaDetail}. */
 export interface IdeaDetailProps {
@@ -79,7 +79,7 @@ export function IdeaDetail(props: IdeaDetailProps): JSX.Element {
 					size="lg"
 				/>
 				<div class="fb-idea__heading">
-					<MetaLine
+					<IdeaFacts
 						items={[
 							<Tag
 								key="status"

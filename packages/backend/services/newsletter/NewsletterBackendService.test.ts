@@ -2,14 +2,16 @@ import { assert, assertEquals } from "@std/assert";
 import { SlidingWindowLimiter } from "../../core/rate-limit.ts";
 import {
 	NEWSLETTER_SUBSCRIBE_RULE,
+	NEWSLETTER_UNAVAILABLE_MESSAGE,
 	NewsletterBackendService,
 	type NewsletterSubscribeRpc,
 } from "./NewsletterBackendService.ts";
 
 /**
  * The fat newsletter service around its writer: what it sends `community.subscribe_newsletter`, how it
- * maps each answer, and that the stub path answers the live writer's first-subscribe outcome. The
- * writer itself is pinned by `supabase/probes/community_editorial_schemas.sql`.
+ * maps each answer, that the stub path answers the live writer's first-subscribe outcome in
+ * development, and that production refuses rather than confirm a write it skipped. The writer itself
+ * is pinned by `supabase/probes/community_editorial_schemas.sql`.
  */
 
 /** A fresh limiter per test, so one test's attempts never refuse another's. */
@@ -48,7 +50,7 @@ function fakeWriter(): { rpc: NewsletterSubscribeRpc; calls: Record<string, stri
 Deno.test("stub path: accepts, echoes the normalised address and the default topic, writes nothing", async () => {
 	const result = await NewsletterBackendService.subscribe(
 		{ email: "  Reader@Example.com " },
-		{ live: false, limiter: limiter() },
+		{ live: false, production: false, limiter: limiter() },
 	);
 	assert(result.ok);
 	assertEquals(result.status, 200);
@@ -57,6 +59,32 @@ Deno.test("stub path: accepts, echoes the normalised address and the default top
 		topic: "general",
 		alreadySubscribed: false,
 	});
+});
+
+Deno.test("stub path (production): refuses with 503 rather than confirm a subscription it never stored", async () => {
+	const { rpc, calls } = fakeWriter();
+	for (const topic of ["general", "changelog"]) {
+		const result = await NewsletterBackendService.subscribe(
+			{ email: "reader@example.com", topic },
+			{ live: false, production: true, rpc, limiter: limiter() },
+		);
+		assertEquals(result.ok, false);
+		assertEquals(result.status, 503);
+		assertEquals(result.message, NEWSLETTER_UNAVAILABLE_MESSAGE);
+		assertEquals(result.data, undefined);
+	}
+	// Nothing reached the writer, and nothing claimed it did.
+	assertEquals(calls, []);
+});
+
+Deno.test("live path (production): the gate on, production writes as usual", async () => {
+	const { rpc, calls } = fakeWriter();
+	const result = await NewsletterBackendService.subscribe(
+		{ email: "reader@example.com" },
+		{ live: true, production: true, rpc, limiter: limiter() },
+	);
+	assert(result.ok);
+	assertEquals(calls.length, 1);
 });
 
 Deno.test("live path: sends the normalised address, source and topic to the writer", async () => {

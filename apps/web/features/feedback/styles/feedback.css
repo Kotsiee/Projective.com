@@ -188,11 +188,19 @@
 	text-overflow: ellipsis;
 }
 
+/*
+ * The facts line, separated the way `DocumentHeader`'s facts are: each item after the first hangs its
+ * middot out of flow, centred in the column gap before it, and the list clips its own overflow — so a
+ * dot belonging to an item that starts a wrapped line falls outside the box and is never drawn, and
+ * no line ends on one either.
+ */
 .fb-meta {
+	--fb-meta-gap: var(--space-4);
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: var(--space-1) var(--space-2);
+	gap: var(--space-1) var(--fb-meta-gap);
+	overflow: clip;
 	margin: 0;
 	padding: 0;
 	list-style: none;
@@ -202,12 +210,19 @@
 }
 
 .fb-meta__item {
+	position: relative;
 	display: inline-flex;
 	align-items: center;
-	gap: var(--space-2);
 }
 
 .fb-meta__sep {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-end: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--fb-meta-gap);
 	color: var(--on-surface-variant);
 }
 

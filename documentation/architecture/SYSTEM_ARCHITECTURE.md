@@ -914,7 +914,9 @@ for the changelog's capture). Behind **`NEWSLETTER_BACKEND_LIVE`** (default off,
 `isNewsletterBackendLive()`) the service calls `community.subscribe_newsletter` with the service
 role — the table's one writer, which adds a topic idempotently and, for an unsubscribed address,
 only records a pending re-subscribe: the opt-out stays on record and in force until the confirm link
-applies it (Decision #274); off, it answers the same plan and stores nothing. An address is at most
+applies it (Decision #274); off, it stores nothing — in development it answers the same plan, and in
+production it answers **503** ("Subscriptions can't be saved right now"), never a "you're on the list"
+for a write it skipped (the contact intake's rule; Decision #279). An address is at most
 254 characters at every layer, and a 429 carries `details.retryAt` and `Retry-After`. The
 email-provider sync and the confirmation mail are still to come. The `NewsletterForm` island (with
 optional `topic` / `source` props) is the only client touchpoint — it `fetch`es the route and never

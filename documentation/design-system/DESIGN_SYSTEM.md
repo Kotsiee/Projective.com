@@ -2884,12 +2884,17 @@ SEO: a route sets `applyPageMeta(...)`, which `_app` writes into `<head>` throug
 `SchemaInjector` island's live copy). No visual surface of their own.
 
 **`PublicFooter` + `FooterLinkGroups` (`features/marketing/`, Decisions #13 / #279).** The public
-footer: a masthead (brand · six quick-link stacks · the newsletter capture) over a secondary row
-(Get set up · Recently viewed) and a utility bar (copyright · Terms, Privacy and Cookie Policy ·
-Contact Help). The stacks are the three audience stacks, then **Company** (About · Changelog ·
-Articles · Contact), **Help** (Help centre · Feedback & roadmap) and **Legal** (the six documents,
-titled from the legal library, and All legal documents) — three tracks, so two rows on desktop, and
-`FooterLinkGroups`' `<details>` accordions below `--bp-md`. Every destination is
+footer: three lanes over a utility bar (copyright · Terms, Privacy and Cookie Policy · Contact
+Help). Above 900px the outer lanes are two rows each — the brand, then Get set up; the newsletter
+capture, then Recently viewed — and the six quick-link stacks hold the wide middle lane
+(`1fr 3fr 1.25fr`) across both rows, so no stack label wraps at 1280 and neither outer lane is left
+empty beside them (`.lp-footer__aux` is `display: contents` there and a full-width row of its own
+below). The stacks are the three audience stacks, then **Company** (About · Changelog · Articles ·
+Contact), **Help** (Help centre · Feedback & roadmap) and **Legal** (the six documents, titled from
+the legal library, and All legal documents) — three tracks, so two rows of stacks on desktop, and
+`FooterLinkGroups`' `<details>` accordions below `--bp-md`. An action's label leads to where it is
+taken (Showcase / Sell → the seller console's create flow, Post a project → `/projects?create=1`),
+never to a browse page or to `/join`. Every destination is
 `core/footer-links.ts`, whose test resolves each href against the route tree, the help content and
 the legal slugs (a label never points at a hub in place of the page it names). The Feedback entry is
 `/feedback` as an href and, on a plain click, opens the board's drawer over the current page
@@ -3130,8 +3135,10 @@ Classes `lgl-*`, token-only (`styles/legal.css`).
 **The `/about` page (`features/marketing/about/`, PUBLIC_ROUTES P4, Decision #277).** `AboutView`
 composes the page — its bands, in order — from three app-level pieces, on one editorial column (`--measure-wide` display, `--measure` prose) of
 full-bleed bands in SOLID alternating tones (`--bg` / `--surface-1`, each band publishing its
-ground as `--abt-ground`), no cards, a named inline-size container (`abt`) answering every
-breakpoint. **`AboutMetrics`** — the live metrics row: one unboxed tile per published figure
+ground as `--abt-ground`; the founders band is drawn only once real founders exist — an empty
+`ABOUT_FOUNDERS` draws none, never stock portraits, and the bands after it re-pair their tones so
+two of one tone never meet, Decision #279), no cards, a named inline-size container (`abt`)
+answering every breakpoint. **`AboutMetrics`** — the live metrics row: one unboxed tile per published figure
 (section-caps label · the figure at `--text-3xl` / `--fw-medium` / `tabular-nums`, an abbreviated
 money figure carrying its exact words for assistive technology · one `--text-sm` meta sentence ·
 `As of <time>` in `--font-mono` `--text-2xs`), one column below 768px of frame (a block hairline

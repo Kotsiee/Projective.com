@@ -66,9 +66,9 @@ Region `[community.feedback]` of `00001320`; granted by name in `00002510` (the 
 `authenticated`, the counts to `anon` too — every other function stays revoked). Each door stamps
 `auth.uid()` itself and refuses with a typed SQLSTATE `FeedbackBackendService` maps to a status:
 `28000` not signed in (401) · `42501` not an operator (403) · `22023` a field out of bounds, message
-`field: …` (422) · `P0002` no idea the caller can see (404 — an idea under review is never
-confirmed to exist) · `55000` voting closed or an illegal move (409) · `PR429` over a rate limit,
-DETAIL = the ISO instant to retry (429).
+`field: …` (422) · `P0002` no idea the caller can see (404 — an idea under review is never confirmed
+to exist) · `55000` voting closed or an illegal move (409) · `PR429` over a rate limit, DETAIL = the
+ISO instant to retry (429).
 
 ### `community.submit_feedback_idea(p_title text, p_category text, p_impact text, p_body text DEFAULT NULL) → jsonb`
 
@@ -119,8 +119,9 @@ the board's tab counts.
 ### Internal (revoked from every client role)
 
 `fn_feedback_idea_visible(status, author)` (the visibility rule, for the definer doors) ·
-`fn_feedback_idea_for_caller(slug)` (the idea, row-locked, or `P0002`) · `fn_feedback_move_legal(from,
-to)` · `fn_feedback_state_label(status)` (the label a notification uses) ·
-`fn_feedback_idea_json(idea)` (the client-readable columns + `viewer_voted`) and the trigger functions
-`fn_feedback_idea_screen`, `fn_feedback_vote_count`, `fn_feedback_idea_no_delete`,
+`fn_feedback_idea_for_caller(slug)` (the idea, row-locked, or `P0002`) ·
+`fn_feedback_move_legal(from,
+to)` · `fn_feedback_state_label(status)` (the label a notification
+uses) · `fn_feedback_idea_json(idea)` (the client-readable columns + `viewer_voted`) and the trigger
+functions `fn_feedback_idea_screen`, `fn_feedback_vote_count`, `fn_feedback_idea_no_delete`,
 `fn_feedback_status_events_append_only`.

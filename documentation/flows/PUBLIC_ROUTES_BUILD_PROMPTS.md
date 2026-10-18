@@ -70,8 +70,8 @@
 - **Reserved handles.** `/legal`, `/contact`, `/about`, `/help` and `/articles` are already in
   `RESERVED_HANDLES`. **P0 reserved `changelog`, `feedback` and `features`** (2026-10-17) in
   `packages/types/profile/reserved.ts` **and** `org.fn_is_reserved_handle` (SQL twin), keeping
-  `workspace.contract.test.ts` green (ROUTING.md §Reserved-handle precedence). No later prompt
-  adds them again.
+  `workspace.contract.test.ts` green (ROUTING.md §Reserved-handle precedence). No later prompt adds
+  them again.
 - **Tokens** (`packages/ui/styles/index.css`) — use these names, never raw values:
 
   | Family          | Tokens                                                                                                                                                                     |

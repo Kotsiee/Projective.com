@@ -18,9 +18,10 @@ import "../styles/footer.css";
  * composition — no runtime path checks here.
  *
  * A high-density masthead (brand, six quick-link stacks — three ELI5 audience stacks, then Company,
- * Help and Legal — and a newsletter capture) over a secondary row (onboarding entry points + a
- * recently-viewed rail) and a thin utility bar (copyright, the three legal documents people look for,
- * Contact Help). Every destination comes from `../core/footer-links.ts`, whose test resolves each one
+ * Help and Legal — and a newsletter capture) with a secondary row (onboarding entry points under the
+ * brand, a recently-viewed rail under the newsletter, beside the stacks on desktop) over a thin
+ * utility bar (copyright, the three legal documents people look for, Contact Help). Every
+ * destination comes from `../core/footer-links.ts`, whose test resolves each one
  * against the route tree. There is no status indicator: nothing measures the platform's health, and
  * a footer line saying "all systems operational" with nothing behind it would be a claim the page
  * cannot back (Decision #279). Copy avoids enterprise jargon ("safe & easy payments", never
@@ -58,12 +59,16 @@ const SOCIAL_PROFILES: ReadonlyArray<{ network: keyof typeof SOCIAL_NETWORKS; hr
 export function PublicFooter(): JSX.Element {
 	const today = legalToday();
 	const { legal, contactHelp } = footerUtilityLinks(today);
+	// Rendered on the server for every request, so the year turns over without a deploy.
+	const year = new Date().getUTCFullYear();
 	return (
-		<footer class="lp-footer" aria-labelledby="lp-footer-brand">
+		// The page's one `contentinfo` landmark needs no name of its own — borrowing the brand link's
+		// ("Projective — home") would announce the footer as a link to the home page.
+		<footer class="lp-footer">
 			<div class="lp-footer__inner">
 				{/* #region Column 1 — brand + social */}
 				<div class="lp-footer__brand-col">
-					<a class="lp-footer__brand" id="lp-footer-brand" href="/" aria-label="Projective — home">
+					<a class="lp-footer__brand" href="/" aria-label="Projective — home">
 						<Logo class="lp-footer__brand-mark" />
 						<span class="lp-footer__brand-text">Projective</span>
 					</a>
@@ -114,14 +119,15 @@ export function PublicFooter(): JSX.Element {
 
 				{
 					/* #region Secondary row — onboarding + recently viewed
-					   A second ROW rather than two more columns, and the choice is arithmetic rather than
-					   taste: the masthead's gap is `clamp(2.5rem, 5vw, 5.5rem)` inside a `--container-xl`
-					   (80rem) measure, so a five-track row would spend ~22rem of that 80 on gutters alone
-					   and leave every stack too narrow to hold a link on one line. Two rows keep the
-					   existing three tracks at full width and let these two blocks inherit the same
-					   vertical lanes — "get set up" continues the brand column, "recently viewed"
-					   continues the newsletter column — so the footer reads as three themed lanes rather
-					   than eight competing stacks. */
+					   A second ROW of the outer lanes rather than two more columns, and the choice is
+					   arithmetic rather than taste: the masthead's gap is `clamp(2.5rem, 5vw, 5.5rem)`
+					   inside a `--container-xl` (80rem) measure, so a five-track row would spend ~22rem
+					   of that 80 on gutters alone and leave every stack too narrow to hold a link on one
+					   line. On desktop this wrapper takes no box (`display: contents`): "get set up"
+					   continues the brand lane directly and "recently viewed" the newsletter lane, beside
+					   the six stacks that hold the middle lane across both rows — so the footer reads as
+					   three themed lanes rather than eight competing stacks. Below 900px it is a full-width
+					   row of its own again. */
 				}
 				<div class="lp-footer__aux">
 					<div class="lp-footer__setup">
@@ -146,7 +152,7 @@ export function PublicFooter(): JSX.Element {
 
 			{/* #region Utility bar */}
 			<div class="lp-footer__base">
-				<span class="lp-footer__copy">© 2026 Projective. All rights reserved.</span>
+				<span class="lp-footer__copy">© {year} Projective. All rights reserved.</span>
 				<div class="lp-footer__utility">
 					<nav class="lp-footer__legal" aria-label="Legal">
 						{legal.map((l) => (

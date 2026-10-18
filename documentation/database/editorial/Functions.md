@@ -11,31 +11,31 @@ derived read, never a write door. Tables: [Tables.md](Tables.md) · Policies:
 
 ## Shared guards
 
-| Function                               | Returns   | Purpose                                                                                                                                                                                                                         |
-| :------------------------------------- | :-------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `editorial.fn_guard_slug_immutable()`  | `trigger` | `BEFORE UPDATE OF slug` guard: a readable editorial slug is permanent once the row exists, so any change raises `23514` (Decision #274 (k), the scoped amendment of #88). Each surface attaches it to its own tables in `00001898`. |
+| Function                              | Returns   | Purpose                                                                                                                                                                                                                             |
+| :------------------------------------ | :-------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `editorial.fn_guard_slug_immutable()` | `trigger` | `BEFORE UPDATE OF slug` guard: a readable editorial slug is permanent once the row exists, so any change raises `23514` (Decision #274 (k), the scoped amendment of #88). Each surface attaches it to its own tables in `00001898`. |
 
 ## Help
 
 No help function: the help service reads both tables whole under their SELECT policies. Triggers
 (`00001898`, `[editorial.help]`):
 
-| Trigger                              | Table                       | Fires                    | Function                                 |
-| :----------------------------------- | :-------------------------- | :----------------------- | :--------------------------------------- |
-| `trg_help_categories_slug_immutable` | `editorial.help_categories` | BEFORE UPDATE OF `slug` | `editorial.fn_guard_slug_immutable()`   |
-| `trg_help_articles_slug_immutable`   | `editorial.help_articles`   | BEFORE UPDATE OF `slug` | `editorial.fn_guard_slug_immutable()`   |
+| Trigger                              | Table                       | Fires                   | Function                              |
+| :----------------------------------- | :-------------------------- | :---------------------- | :------------------------------------ |
+| `trg_help_categories_slug_immutable` | `editorial.help_categories` | BEFORE UPDATE OF `slug` | `editorial.fn_guard_slug_immutable()` |
+| `trg_help_articles_slug_immutable`   | `editorial.help_articles`   | BEFORE UPDATE OF `slug` | `editorial.fn_guard_slug_immutable()` |
 
 The generated seed upserts on `slug` without setting it, so a regenerated file never fires them; a
 hand-written slug change is refused `23514` (`help_centre.sql` §4).
 
 ## Changelog
 
-| Function                                          | Returns   | Purpose                                                                                                                                                                                                                                                            |
-| :------------------------------------------------ | :-------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `editorial.fn_guard_release_version_immutable()`  | `trigger` | `BEFORE UPDATE OF version` on `editorial.changelog_releases` (`trg_changelog_releases_version_immutable`, `00001898`): a release's version is its permanent public address, so any change raises `23514` — the changelog's twin of `fn_guard_slug_immutable` (Decisions #274 (k) / #278). A mis-versioned release is withdrawn and authored again. The generated seed's upsert never sets the key, so re-running it never trips the guard. |
+| Function                                         | Returns   | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| :----------------------------------------------- | :-------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `editorial.fn_guard_release_version_immutable()` | `trigger` | `BEFORE UPDATE OF version` on `editorial.changelog_releases` (`trg_changelog_releases_version_immutable`, `00001898`): a release's version is its permanent public address, so any change raises `23514` — the changelog's twin of `fn_guard_slug_immutable` (Decisions #274 (k) / #278). A mis-versioned release is withdrawn and authored again. The generated seed's upsert never sets the key, so re-running it never trips the guard. |
 
-No client EXECUTE grant (`00002510`, `[editorial.changelog]`): a trigger function needs none, and the
-changelog is read straight from its table.
+No client EXECUTE grant (`00002510`, `[editorial.changelog]`): a trigger function needs none, and
+the changelog is read straight from its table.
 
 ## Articles
 

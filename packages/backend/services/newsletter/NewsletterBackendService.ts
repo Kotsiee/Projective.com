@@ -1,5 +1,6 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { getServiceClient, isNewsletterBackendLive } from "../../core/supabase.ts";
+import { serverEnv } from "../../core/env.ts";
 import { type RateLimitRule, SlidingWindowLimiter } from "../../core/rate-limit.ts";
 import { communityRpc } from "../community/community-source.ts";
 import {
@@ -28,8 +29,10 @@ import { planNewsletterSubscription } from "./subscription-plan.ts";
  * rule is stated once, in SQL, with a tested TypeScript twin (`subscription-plan.ts`).
  *
  * **Stub mode (default).** With `NEWSLETTER_BACKEND_LIVE` off (see {@link isNewsletterBackendLive})
- * nothing is stored: the service validates and answers what the live writer answers for a new
- * address. Live, the write uses the service role, because no client role holds any privilege on the
+ * nothing is stored: in development the service validates and answers what the live writer answers
+ * for a new address; in production it answers 503 instead, because telling a visitor "you're on the
+ * list" when nothing was stored is a false confirmation (the contact intake's rule, Decision #276).
+ * Live, the write uses the service role, because no client role holds any privilege on the
  * subscriber list (00002021). No email-provider sync or confirmation mail exists yet, so a stored
  * subscription is not sent anything until one lands.
  */
@@ -45,6 +48,10 @@ const subscribeLimiter = new SlidingWindowLimiter(NEWSLETTER_SUBSCRIBE_RULE);
 
 /** The success line every accepted subscribe answers, whatever it changed. */
 const SUBSCRIBED_MESSAGE = "You're on the list — thanks for subscribing.";
+
+/** What production answers while the gate is off: nothing would be stored, so nothing is confirmed. */
+export const NEWSLETTER_UNAVAILABLE_MESSAGE =
+	"Subscriptions can't be saved right now. Please try again later.";
 // #endregion
 
 // #region Seams
@@ -63,6 +70,13 @@ export interface NewsletterSubscribeDeps {
 	rpc?: NewsletterSubscribeRpc;
 	/** The rate limiter; defaults to the process-wide one. */
 	limiter?: SlidingWindowLimiter;
+	/** Force production behaviour of the stub path instead of reading `DENO_ENV`. */
+	production?: boolean;
+}
+
+/** Whether this is production — where the stub path refuses rather than confirm a write it skipped. */
+function isProduction(deps: NewsletterSubscribeDeps): boolean {
+	return deps.production ?? serverEnv().appEnv === "production";
 }
 
 /** The default writer: `community.subscribe_newsletter` with the service-role client. */
@@ -101,6 +115,7 @@ export class NewsletterBackendService {
 		}
 
 		if (!(deps.live ?? isNewsletterBackendLive())) {
+			if (isProduction(deps)) return fail(503, { message: NEWSLETTER_UNAVAILABLE_MESSAGE });
 			const plan = planNewsletterSubscription(null, topic);
 			return ok(
 				{ email, topic, alreadySubscribed: plan.alreadySubscribed },

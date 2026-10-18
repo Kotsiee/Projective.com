@@ -224,6 +224,40 @@ async function settle(page: Page): Promise<void> {
 	await page.waitForTimeout(1_000);
 }
 
+/**
+ * Load every image on the page, below the fold included, and return the ones that did not decode. A
+ * `loading="lazy"` image the viewport never reaches is never requested, so without this a broken
+ * `/test_images` path, a blocked third-party host or a stock picture below the fold would pass the
+ * run unseen — and the full-page screenshot would show an empty box where the image goes. Each lazy
+ * image is switched to eager, the network settles, then every `<img>` must decode (bounded, so a
+ * request that never answers is a finding rather than a hang). A failing request also reaches
+ * {@link observe}'s subresource check.
+ */
+async function loadAllImages(page: Page): Promise<string[]> {
+	await page.evaluate(() => {
+		for (const img of document.querySelectorAll<HTMLImageElement>('img[loading="lazy"]')) {
+			img.loading = "eager";
+		}
+	});
+	await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
+	return await page.evaluate(async () => {
+		const broken: string[] = [];
+		for (const img of document.querySelectorAll("img")) {
+			const src = img.currentSrc || img.getAttribute("src") || img.getAttribute("srcset") || "";
+			if (!src) {
+				broken.push(`an <img> with no source (${img.className || img.alt || "unnamed"})`);
+				continue;
+			}
+			const decoded = await Promise.race([
+				img.decode().then(() => true, () => false),
+				new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 10_000)),
+			]);
+			if (!decoded) broken.push(src);
+		}
+		return broken;
+	});
+}
+
 /** The page's structure, read in the page. */
 interface Structure {
 	h1: number;
@@ -473,6 +507,9 @@ Deno.test({
 								const status = response?.status() ?? 0;
 								if (status !== 200) add(spec.path, v, "status", `answered ${status}`);
 								await settle(page);
+								for (const src of await loadAllImages(page)) {
+									add(spec.path, v, "asset", `image did not load or decode: ${src}`);
+								}
 
 								if (spec.dialog) {
 									const dialog = page.getByRole("dialog", { name: spec.dialog });
@@ -639,8 +676,16 @@ Deno.test({
 				assertEquals(res.status(), 200);
 				assert(res.headers()["content-type"]?.startsWith("text/plain"));
 				const text = await res.text();
-				for (const rule of ["Disallow: /api/", "Disallow: /legal/workspace/", "feedback=open"]) {
-					assert(text.includes(rule), `robots.txt lacks "${rule}"`);
+				// The rule lines themselves, anchored — a comment that merely mentions a path must not pass.
+				for (
+					const rule of [
+						/^Disallow: \/api\/$/m,
+						/^Disallow: \/legal\/workspace\/$/m,
+						/^Disallow: \/\*\?feedback=open$/m,
+						/^Disallow: \/\*&feedback=open$/m,
+					]
+				) {
+					assert(rule.test(text), `robots.txt lacks the rule ${rule}`);
 				}
 				assert(
 					/^Sitemap: https?:\/\/\S+\/sitemap\.xml$/m.test(text),

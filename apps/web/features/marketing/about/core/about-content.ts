@@ -7,8 +7,9 @@
  * #212 — and nothing claims a certification the company does not hold. The product's words are
  * Client, Freelancer, Team and Business (owner ruling (c)); "escrow" stays in explanatory copy.
  *
- * PLACEHOLDERS, flagged for the owner: the founders' names, roles and bios, and the pull quote's
- * attribution, until the real ones are supplied.
+ * PLACEHOLDERS, flagged for the owner: the pull quote's attribution, until the real one is supplied.
+ * The founders are not placeholders but ABSENT — the list is empty and the page draws no founders
+ * band — until the real names, roles, bios and portraits exist (Decisions #277 (a), #279).
  */
 
 // #region Page meta
@@ -93,39 +94,21 @@ export interface Founder {
 	name: string;
 	role: string;
 	bio: string;
-	/** A web-served image (`/test_images/…`, copied in P0) with its intrinsic size. */
+	/** The founder's own portrait, web-served, with its intrinsic size. */
 	avatar: { src: string; w: number; h: number };
 	links: ReadonlyArray<{ href: string; label: string }>;
 }
 
 export const ABOUT_FOUNDERS_LABEL = "The people building it";
 
-export const ABOUT_FOUNDERS: readonly Founder[] = [
-	{
-		id: "founder-1",
-		name: "Founder name — XXXX",
-		role: "Co-founder · Role — XXXX",
-		bio: "One-line bio — XXXX",
-		avatar: { src: "/test_images/profile_4.jpg", w: 495, h: 619 },
-		links: [],
-	},
-	{
-		id: "founder-2",
-		name: "Founder name — XXXX",
-		role: "Co-founder · Role — XXXX",
-		bio: "One-line bio — XXXX",
-		avatar: { src: "/test_images/profile_5.jpg", w: 712, h: 430 },
-		links: [],
-	},
-	{
-		id: "founder-3",
-		name: "Founder name — XXXX",
-		role: "Co-founder · Role — XXXX",
-		bio: "One-line bio — XXXX",
-		avatar: { src: "/test_images/profile_6.jpg", w: 387, h: 516 },
-		links: [],
-	},
-];
+/**
+ * The founders, EMPTY until the owner supplies the real ones. A band of stock portraits captioned
+ * "Co-founder" would present strangers as Projective's founders — a claim the page cannot back — so
+ * with nothing here `AboutView` renders no founders band at all. Each entry added must be a real
+ * person with their own portrait: `about-content.test.ts` refuses a placeholder (`XXXX`) or a
+ * `/test_images` avatar.
+ */
+export const ABOUT_FOUNDERS: readonly Founder[] = [];
 // #endregion
 
 // #region Security & architecture
