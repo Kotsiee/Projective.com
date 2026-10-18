@@ -56,6 +56,23 @@ Deno.test("legal content: every version is a draft until a lawyer signs it off (
 	}
 });
 
+Deno.test("legal content: a reconstructed, never-published baseline can never be signed off as reviewed", () => {
+	// Terms 1.0 and Escrow Terms 1.0 exist only so Compare has a baseline (#270 flag (b)). Before a
+	// lawyer reviews a family, its unpublished baseline must be removed, not reviewed into history.
+	for (const family of LEGAL_LIBRARY) {
+		const baselines = family.versions.filter((doc) => /never published/i.test(doc.changeSummary));
+		for (const doc of baselines) {
+			assertEquals(doc.reviewedAt, null, `${doc.slug} ${doc.version} is a reconstructed baseline`);
+			assert(
+				family.versions.every((v) => v.reviewedAt === null),
+				`${family.slug}: remove the never-published ${doc.version} before any version is reviewed`,
+			);
+		}
+	}
+	const terms = LEGAL_LIBRARY.find((f) => f.slug === "terms")!;
+	assert(/never published/.test(terms.versions.at(-1)!.changeSummary), "Terms 1.0 says what it is");
+});
+
 Deno.test("legal content: every clause has a plain-English summary and a non-empty body", () => {
 	for (const family of LEGAL_LIBRARY) {
 		for (const doc of family.versions) {

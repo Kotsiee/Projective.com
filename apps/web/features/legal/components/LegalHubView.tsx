@@ -27,17 +27,23 @@ export interface LegalHubViewProps {
 }
 // #endregion
 
-/** A Meta-register facts line: items as siblings, `aria-hidden` middots between them (§B.11.2). */
+/**
+ * A Meta-register facts line: items as siblings, `aria-hidden` middots between them (§B.11.2). Every
+ * item opens with its separator and the wrapper clips the one that would start a line, so a line
+ * that wraps on a phone never begins with a middot (legal.css, "Non-actionable facts").
+ */
 function Facts({ items }: { items: ComponentChildren[] }): JSX.Element {
 	return (
-		<ul class="lgl-facts">
-			{items.map((item, i) => (
-				<li key={i} class="lgl-facts__item">
-					{i > 0 ? <span class="lgl-facts__sep" aria-hidden="true">·</span> : null}
-					{item}
-				</li>
-			))}
-		</ul>
+		<div class="lgl-facts">
+			<ul class="lgl-facts__list">
+				{items.map((item, i) => (
+					<li key={i} class="lgl-facts__item">
+						<span class="lgl-facts__sep" aria-hidden="true">·</span>
+						{item}
+					</li>
+				))}
+			</ul>
+		</div>
 	);
 }
 

@@ -15,13 +15,32 @@
  * | `pj.currency`                       | `features/shell/core/currency-state.ts` (1 year)                     |
  * | `pj.dev.*`                          | the Dev Context Switcher (`features/devtools/`), development only    |
  *
+ * Browser storage (the "Storage in your browser" clause): `utils/storage-keys.ts` `LocalKeys` /
+ * `SessionKeys`; the IndexedDB database `pj-offline` (`CacheKeys.OFFLINE_DB`, written by
+ * `features/projects/core/offline-queue.ts` and flushed to the server on reconnect); the service
+ * worker's `pj-shell-v1` bucket (`CacheKeys.SHELL_CACHE`, `static/sw.js`). `pj-cache-assets` and
+ * `pj-cache-onboarding-stage` are declared in `CacheKeys` but never opened, so they are not listed.
+ *
  * Declared but never set, so not listed: `pj_auth_refresh`, `pj_csrf`, `pj_active_context`
  * (`utils/storage-keys.ts` `CookieKeys`) and `pj.locale` (read by `utils/currency-context.ts`, written
  * nowhere). Stripe's own cookies appear only where Stripe.js loads (the payment steps).
  *
  * @module
  */
+import type { DefinitionItem } from "@projective/types/content";
 import { defineLegalVersions, type LegalClause } from "./define.ts";
+
+/**
+ * One cookie as a definition — its name, what it does, how long it lasts. A definition list rather
+ * than a table: unbreakable cookie names would force a table column wider than a phone's reading
+ * column and push "how long it lasts" behind a horizontal scroll; a definition reflows at any width.
+ */
+function cookie(name: string, purpose: string, lasts: string): DefinitionItem {
+	return {
+		term: name,
+		definition: [`${purpose} `, { type: "strong", text: "Lasts:" }, ` ${lasts}.`],
+	};
+}
 
 // #region Clauses
 /** The ePrivacy definition of cookies and similar technologies — scope of the policy. */
@@ -34,7 +53,7 @@ const WHAT_COOKIES_ARE: LegalClause = {
 		{
 			type: "p",
 			content:
-				"A cookie is a small piece of text a website asks your browser to keep and send back on later visits. Browsers also offer local storage, which works in a similar way but is never sent to the server. This policy lists every cookie Projective sets, and explains what it keeps in local storage.",
+				"A cookie is a small piece of text a website asks your browser to keep and send back on later visits. Browsers also offer local storage, which works in a similar way but is never sent to the server. This policy lists every cookie Projective sets, and explains what it keeps in your browser's other storage.",
 		},
 	],
 };
@@ -47,41 +66,38 @@ const ESSENTIAL: LegalClause = {
 		"These are strictly necessary. Without them you cannot sign in. Page scripts cannot read any of them.",
 	body: [
 		{
-			type: "table",
-			caption: "Strictly necessary cookies",
-			head: ["Cookie", "What it does", "How long it lasts"],
-			rowHeaders: true,
-			rows: [
-				[
-					[{ type: "code", text: "sb-access-token" }],
-					"Proves you are signed in on each request",
-					"About an hour, then renewed",
-				],
-				[
-					[{ type: "code", text: "sb-refresh-token" }],
-					"Renews your session when the access token expires",
+			type: "dl",
+			items: [
+				cookie(
+					"sb-access-token",
+					"Proves you are signed in on each request.",
+					"about an hour, then renewed",
+				),
+				cookie(
+					"sb-refresh-token",
+					"Renews your session when the access token expires.",
 					"30 days with “Keep me signed in”; otherwise until you close the browser",
-				],
-				[
-					[{ type: "code", text: "pj_session_transient" }],
-					"Remembers that you chose not to stay signed in",
-					"Until you close the browser",
-				],
-				[
-					[{ type: "code", text: "pj_pending_verification" }],
-					"Lets the email-confirmation screen check your confirmation from the browser you signed up in; sent only to the sign-in service",
-					"Until the confirmation window ends",
-				],
-				[
-					[{ type: "code", text: "sb-…-code-verifier" }],
-					"Completes a sign-in or account link through Google or single sign-on securely",
+				),
+				cookie(
+					"pj_session_transient",
+					"Remembers that you chose not to stay signed in.",
+					"until you close the browser",
+				),
+				cookie(
+					"pj_pending_verification",
+					"Lets the email-confirmation screen check your confirmation from the browser you signed up in; sent only to the sign-in service.",
+					"until the confirmation window ends",
+				),
+				cookie(
+					"sb-…-code-verifier",
+					"Completes a sign-in or account link through Google or single sign-on securely.",
 					"10 minutes",
-				],
-				[
-					[{ type: "code", text: "pj_join_age_lock" }],
-					"After an under-13 date of birth, stops that browser from trying to sign up again; it holds no personal data",
-					"Until you close the browser",
-				],
+				),
+				cookie(
+					"pj_join_age_lock",
+					"After an under-13 date of birth, stops that browser from trying to sign up again; it holds no personal data.",
+					"until you close the browser",
+				),
 			],
 		},
 	],
@@ -95,21 +111,14 @@ const PREFERENCES: LegalClause = {
 		"Two cookies remember your accessibility settings and display currency, so the very first screen of your next visit is right.",
 	body: [
 		{
-			type: "table",
-			caption: "Preference cookies",
-			head: ["Cookie", "What it does", "How long it lasts"],
-			rowHeaders: true,
-			rows: [
-				[
-					[{ type: "code", text: "pj.a11y" }],
-					"Your high contrast, dyslexia-friendly font, colour-vision, reduced motion and text direction settings",
+			type: "dl",
+			items: [
+				cookie(
+					"pj.a11y",
+					"Your high contrast, dyslexia-friendly font, colour-vision, reduced motion and text direction settings.",
 					"1 year",
-				],
-				[
-					[{ type: "code", text: "pj.currency" }],
-					"The currency prices are displayed in",
-					"1 year",
-				],
+				),
+				cookie("pj.currency", "The currency prices are displayed in.", "1 year"),
 			],
 		},
 		{
@@ -157,24 +166,31 @@ const DEVELOPMENT: LegalClause = {
 	],
 };
 
-/** `apps/web/utils/storage-keys.ts` (`pj.local.*` localStorage and `pj.session.*` sessionStorage keys). */
+/**
+ * `apps/web/utils/storage-keys.ts` (`pj.local.*` localStorage and `pj.session.*` sessionStorage keys;
+ * `CacheKeys.OFFLINE_DB` `pj-offline` and `CacheKeys.SHELL_CACHE` `pj-shell-v1`) ·
+ * `features/projects/core/offline-queue.ts` (offline setup writes, flushed on reconnect) ·
+ * `static/sw.js` (registered by `features/shell/islands/ServiceWorkerBridge.island.tsx`, production only).
+ */
 const LOCAL_STORAGE: LegalClause = {
 	id: "local-storage",
 	heading: "Storage in your browser",
 	tldr:
-		"Some settings and drafts are kept in your browser's own storage. They never leave your device by themselves.",
+		"Some settings, drafts and an offline copy of pages are kept in your browser's own storage. Only changes you make while offline are sent to Projective, when you reconnect.",
 	body: [
 		{
 			type: "list",
 			items: [
 				"Local storage remembers layout and display choices on this device — your theme, the sidebar and panel sizes, zoom levels, filters — and a copy of your accessibility settings.",
 				"Session storage keeps work in progress for one browser tab — a form you have not sent yet, where you were in a list — and is cleared when the tab closes.",
+				"An offline database (IndexedDB) holds changes you make to a project while you are offline. They wait there and are sent to Projective automatically when you reconnect, then removed.",
+				"On the live site, an offline cache keeps a copy of the pages you open and the files they load — scripts, styles and images — so a page you were working on still opens if your connection drops. Responses from Projective's API are never stored in it.",
 			],
 		},
 		{
 			type: "p",
 			content:
-				"These entries are read by the page in your browser and are not sent to Projective with your requests. Clearing your browser's site data removes them.",
+				"Apart from the offline changes, which are sent as described above, these entries are read only by the page in your browser and are not sent to Projective with your requests. Clearing your browser's site data removes all of them, including any offline changes not yet sent.",
 		},
 	],
 };

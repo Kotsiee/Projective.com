@@ -1,7 +1,7 @@
 import type { LegalDoc } from "@projective/types/content";
 import { renderPdf } from "../../core/pdf.ts";
 import { ok, type ServiceResult } from "../ServiceResult.ts";
-import { legalPdfBlocks, type LegalPdfOptions } from "./legal-pdf.ts";
+import { legalPdfDocument, type LegalPdfOptions } from "./legal-pdf.ts";
 
 // #region Types
 /** A rendered legal PDF and the facts its response is cached by. */
@@ -61,10 +61,7 @@ export const LegalBackendService = {
 		const draft = doc.reviewedAt === null;
 		const rendered: LegalPdf = {
 			filename: `projective-${doc.slug}-v${doc.version}${draft ? "-draft" : ""}.pdf`,
-			bytes: renderPdf({
-				title: `${doc.title} · Version ${doc.version}${draft ? " (draft)" : ""}`,
-				blocks: legalPdfBlocks(doc, opts),
-			}),
+			bytes: renderPdf(legalPdfDocument(doc, opts)),
 			etag,
 			draft,
 		};

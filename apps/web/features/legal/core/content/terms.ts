@@ -6,7 +6,9 @@
  * so a reviewer checks facts rather than invents them. A clause that reads the same in two versions
  * is one constant both versions list.
  *
- * Version 1.0 is the baseline the rules stood at on 1 August 2026; 2.0 folds in the October 2026
+ * Version 1.0 is a reconstructed, never-published baseline — the rules as they stood on 1 August
+ * 2026, so Compare has something to compare with (its `changeSummary` says so on the page); 2.0 folds
+ * in the October 2026
  * rulings (the under-18 rule set, the payout-ready gate before earning, the invitation cooldown,
  * account deletion) and drops the business opening credit, which no longer exists.
  *
@@ -51,19 +53,19 @@ const ABOUT: LegalClause = {
 	],
 };
 
-/** PRODUCT_SPEC.md §Settings (handle changes, email addresses) · §Authentication surfaces. */
+/** PRODUCT_SPEC.md §Settings (handle changes, email addresses) · §Authentication surfaces · §Identity, Taxes & Compliance 3 (Round-Tripping — hiring yourself through a second account). */
 const ACCOUNTS: LegalClause = {
 	id: "accounts",
 	heading: "Your account",
 	tldr:
-		"One account per person, with true details. Keep your sign-in safe; you are responsible for what happens under your account.",
+		"Give true details, keep your sign-in safe, and never use a second account to hire yourself. You are responsible for what happens under your account.",
 	body: [
 		{
 			type: "list",
 			ordered: true,
 			marker: "lower-alpha",
 			items: [
-				"You may hold one personal account. The details you give us — your name, date of birth and email address — must be true and kept up to date.",
+				"The details you give us — your name, date of birth and email address — must be true and kept up to date. You may not use a second account to hire yourself or to move money to yourself.",
 				"You can sign in with an email address and password, or with a connected account (such as Google) where that provider is switched on. You may disconnect a sign-in method only while another remains.",
 				"You may hold up to five email addresses. An added address counts only once you confirm it through the link we send to it, which works once, for your account, within 24 hours.",
 				"You may change your @handle twice within three days; after the second change it is locked for 90 days. A handle you give up is held for you for 90 days, and nobody else can take it in that time.",
@@ -133,7 +135,7 @@ const PAYMENTS: LegalClause = {
 			items: [
 				"Projective's service fee is 5% of each escrow release, deducted from the payee when the release happens. Card processing costs are passed through at cost.",
 				"No fee is charged on a refund.",
-				"A price is set in the seller's currency, and that exact amount is what the seller is paid. You may see prices converted into your own currency; the conversion is for display and never changes what is charged or paid.",
+				"A price is set in the seller's currency, and that is the currency it is charged and paid in; the seller receives it less the service fee above. You may see prices converted into your own currency; the conversion is for display and never changes what is charged or paid.",
 			],
 		},
 	],
@@ -444,7 +446,8 @@ export const TERMS_VERSIONS = defineLegalVersions([
 		updatedAt: "2026-07-28",
 		effectiveDate: "2026-08-01",
 		reviewedAt: null,
-		changeSummary: "First published.",
+		changeSummary:
+			"A reconstructed baseline, never published: the rules as they stood on 1 August 2026, kept so later versions can be compared with it.",
 		sections: [
 			ABOUT,
 			ACCOUNTS,

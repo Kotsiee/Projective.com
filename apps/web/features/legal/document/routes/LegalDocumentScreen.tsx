@@ -72,7 +72,8 @@ export const handler = define.handlers({
 				path: legalDocumentHref(view.family.slug),
 				origin,
 				noindex: view.noindex,
-				modifiedAt: view.doc.updatedAt,
+				// The canonical (bare) address's version, as the JSON-LD below.
+				modifiedAt: view.current.updatedAt,
 			}),
 		);
 		return page({ view, today, origin });
@@ -82,23 +83,26 @@ export const handler = define.handlers({
 export default define.page<typeof handler>(function LegalDocumentScreen({ data }) {
 	const { view, origin } = data;
 	const path = legalDocumentHref(view.family.slug);
+	// The graph names the canonical bare address, so it describes the version that address shows —
+	// the one in effect today — even on a pinned or compared view of another.
+	const canonical = view.current;
 	const graph = jsonLdGraph(
 		organizationJsonLd(origin),
 		webSiteJsonLd(origin),
 		webPageJsonLd({
 			origin,
 			path,
-			name: view.doc.title,
-			description: view.doc.summary,
-			dateModified: view.doc.updatedAt,
-			version: view.doc.version,
+			name: canonical.title,
+			description: canonical.summary,
+			dateModified: canonical.updatedAt,
+			version: canonical.version,
 			inLanguage: "en",
 			breadcrumb: true,
 		}),
 		breadcrumbListJsonLd(origin, [
 			{ name: "Projective", path: "/" },
 			{ name: "Legal", path: LEGAL_HUB_HREF },
-			{ name: view.doc.title, path },
+			{ name: canonical.title, path },
 		]),
 	);
 	return (

@@ -59,6 +59,11 @@ Deno.test("legal document: one h1, the draft disclosure, the version and dates, 
 	);
 	assert(html.includes("Plain-English summary"));
 	assert(html.includes("What changed in version 2.0:"));
+	// Compare is one tap from the top at every width, not only in the meta rail.
+	assertMatch(
+		html,
+		/<a class="lgl-link" href="\/legal\/escrow-terms\?compare=1\.0">Compare with version 1\.0<\/a>/,
+	);
 });
 
 Deno.test("legal document: the rail is a 'Legal documents' nav of every document, this one current", () => {
@@ -94,6 +99,10 @@ Deno.test("legal document: an old version says what replaced it and links the cu
 	assert(html.includes("Read the current version"));
 	assert(html.includes("Opening platform credit"));
 	assertFalse(html.includes("What changed in version"), "the first version has nothing it changed");
+	assert(
+		html.includes("About version 1.0: A reconstructed baseline, never published"),
+		"the reconstructed baseline says what it is",
+	);
 });
 
 Deno.test("legal document: comparing marks changed clauses, ins/del with spoken labels, folds the rest", () => {
@@ -119,6 +128,28 @@ Deno.test("legal document: comparing marks changed clauses, ins/del with spoken 
 	assert(rail.includes('href="#opening-credit"'));
 	assertFalse(rail.includes('href="#about"'), "an unchanged clause is not in the rail");
 	assert(html.includes('<a class="ui-anchor-heading__link" href="#about">'));
+	// A removed clause keeps the rail's text column: a dash where its number would be.
+	assertMatch(
+		rail,
+		/<span class="ui-toc__num">–<\/span><span class="ui-toc__text"><span class="ui-toc__text-ink">Opening platform credit/,
+	);
+	// An added paragraph keeps its authored link inside the insertion.
+	const age = html.slice(html.indexOf('aria-labelledby="age"'), html.indexOf('id="roles"'));
+	assertMatch(
+		age,
+		/<ins class="lgl-diff__ins"><span class="ui-visually-hidden">Added: <\/span>[^]*?href="#verification-and-payouts"/,
+	);
+});
+
+Deno.test("legal document: a compared table is drawn as a table — caption, column and row headers", () => {
+	const html = renderDoc("escrow-terms", "compare=1.0");
+	const release = html.slice(html.indexOf('id="release-change"'), html.indexOf('id="fees"'));
+	assertMatch(
+		release,
+		/<div class="ui-prose__table" role="region" aria-label="When escrow is released" tabindex="0"><table><caption>When escrow is released<\/caption><thead><tr ?><th scope="col">Kind of work<\/th><th scope="col">Escrow is released<\/th><\/tr><\/thead><tbody><tr ?><th scope="row">One-off project or Task<\/th>/,
+	);
+	assertFalse(html.includes("lgl-diff__row"), "no row flattened into a paragraph");
+	assertMatch(release, /<td ?>[^]*?<ins class="lgl-diff__ins/);
 });
 
 Deno.test("legal document: a single-version document offers no compare and says why", () => {
@@ -176,7 +207,12 @@ Deno.test("legal hub: one h1, the library draft disclosure, every document as a 
 	assertMatch(html, /<a class="lgl-hub__link" href="\/legal\/terms">Terms of Service<\/a>/);
 	assert(html.includes("For everyone"));
 	assert(html.includes("For work and payments"));
-	assertMatch(html, /<span class="lgl-facts__sep" aria-hidden="true">·<\/span>/);
+	// Every fact opens with its separator inside a clipping wrapper, so no wrapped line starts with one.
+	assertMatch(
+		html,
+		/<div class="lgl-facts"><ul class="lgl-facts__list"><li class="lgl-facts__item"><span class="lgl-facts__sep" aria-hidden="true">·<\/span>Version 2\.0/,
+	);
+	assertEquals(count(html, '<span class="lgl-facts__sep" aria-hidden="true">·</span>'), 6 * 4);
 	assertMatch(html, /<span class="lgl-date">Updated <time datetime="2026-10-17">/);
 	assert(html.includes('href="/contact?intent=support"'));
 });

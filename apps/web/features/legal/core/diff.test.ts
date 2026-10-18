@@ -27,15 +27,24 @@ Deno.test("diffWords: a replaced word reads as delete then insert", () => {
 	assertEquals(diffWords("a 5% fee", "a 6% fee"), [
 		{ op: "equal", text: "a " },
 		{ op: "delete", text: "5" },
-		{ op: "insert", text: "6" },
+		{ op: "insert", text: "6", gap: true },
 		{ op: "equal", text: "% fee" },
 	]);
+});
+
+Deno.test("diffWords: an insertion opening with punctuation, or after a deleted space, takes no gap", () => {
+	const punctuation = diffWords("under 13, and an adult", "under 13. An adult");
+	const inserted = punctuation.find((s) => s.op === "insert")!;
+	assert(/^[.]/.test(inserted.text), inserted.text);
+	assertEquals(inserted.gap, undefined, "a full stop sits tight against the deletion");
+	assertEquals(diffWords("never held", "held").some((s) => s.gap), false);
+	assertEquals(diffWords("held", "held for 7 days").some((s) => s.gap), false);
 });
 
 Deno.test("diffWords: a space alone between two changes joins them into one phrase", () => {
 	assertEquals(diffWords("pay the client now", "refund a payer now"), [
 		{ op: "delete", text: "pay the client" },
-		{ op: "insert", text: "refund a payer" },
+		{ op: "insert", text: "refund a payer", gap: true },
 		{ op: "equal", text: " now" },
 	]);
 });
@@ -75,6 +84,7 @@ Deno.test("diffWords: every diff spells both sides back exactly", () => {
 // #endregion
 
 // #region Units
+const p = (content: string) => ({ type: "p" as const, content });
 const section = (
 	id: string,
 	heading: string,
@@ -120,13 +130,88 @@ Deno.test("diffUnits: identical units anchor; the gap between pairs in order; le
 		p("three"),
 	]);
 	assertEquals(blocks.map((b) => b.status), ["equal", "changed", "added", "equal"]);
-	assertEquals(blocks[1].spans, [{ op: "delete", text: "two" }, { op: "insert", text: "2" }]);
+	assertEquals(blocks[1].spans, [
+		{ op: "delete", text: "two" },
+		{ op: "insert", text: "2", gap: true },
+	]);
 	assertEquals(blocks[2].spans, [{ op: "insert", text: "new" }]);
+});
+
+Deno.test("clauseUnits: a table's caption, header row and body rows are tagged with their part and cells", () => {
+	const units = clauseUnits(section("tiers", "Tiers", [
+		{
+			type: "table",
+			caption: "Fair Exit tiers",
+			head: ["Tier", "Paid"],
+			rows: [["25%", [{ type: "link", href: "#fees", text: "a quarter" }]]],
+			rowHeaders: true,
+		},
+	]));
+	assertEquals(units.map((u) => [u.table?.part, u.table?.cells, u.table?.rowHeaders]), [
+		["caption", ["Fair Exit tiers"], true],
+		["head", ["Tier", "Paid"], true],
+		["body", ["25%", "a quarter"], true],
+	]);
+	assertEquals(units[2].table?.cellContent[1], [{
+		type: "link",
+		href: "#fees",
+		text: "a quarter",
+	}]);
+});
+
+Deno.test("diffUnits: a changed table row is diffed cell by cell; an unchanged cell keeps its authored content", () => {
+	const tableOf = (paid: string, refunded: string) =>
+		clauseUnits(section("t", "T", [
+			{
+				type: "table",
+				head: ["Tier", "Paid", "Refunded"],
+				rows: [[[{ type: "code", text: "25%" }], paid, refunded]],
+				rowHeaders: true,
+			},
+		]));
+	const blocks = diffUnits(tableOf("a quarter", "the rest"), tableOf("one quarter", "the rest"));
+	assertEquals(blocks.map((b) => [b.status, b.table?.part]), [["equal", "head"], [
+		"changed",
+		"body",
+	]]);
+	const row = blocks[1].table!;
+	assert(row.rowHeaders);
+	assertEquals(
+		row.cells[0].content,
+		[{ type: "code", text: "25%" }],
+		"an unchanged cell keeps its code",
+	);
+	assertEquals(row.cells[1].content, undefined, "a changed cell is a word diff");
+	assertEquals(spell(row.cells[1].spans, "before"), "a quarter");
+	assertEquals(spell(row.cells[1].spans, "after"), "one quarter");
+	assertEquals(row.cells[2].content, "the rest");
+});
+
+Deno.test("diffUnits: a row whose cell count changed is a removal and an addition, never a word diff", () => {
+	const two = clauseUnits(section("t", "T", [{ type: "table", head: ["A", "B"], rows: [] }]));
+	const three = clauseUnits(
+		section("t", "T", [{ type: "table", head: ["A", "B", "C"], rows: [] }]),
+	);
+	assertEquals(diffUnits(two, three).map((b) => b.status), ["removed", "added"]);
+});
+
+Deno.test("diffUnits: an unchanged, added or removed unit keeps its authored content (links survive)", () => {
+	const link = [{ type: "link" as const, href: "#age", text: "the age rule" }];
+	const before = clauseUnits(section("s", "S", [p("Same."), p("Gone.")]));
+	const after = clauseUnits(
+		section("s", "S", [p("Same."), { type: "p", content: ["See ", ...link] }]),
+	);
+	const blocks = diffUnits(before, after);
+	assertEquals(blocks.map((b) => b.status), ["equal", "changed"]);
+	assertEquals(blocks[0].content, "Same.");
+	assertEquals(blocks[1].content, undefined);
+	const added = diffUnits([], after);
+	assertEquals(added[1].content, ["See ", ...link]);
+	assertEquals(added[1].status, "added");
 });
 // #endregion
 
 // #region Documents
-const p = (content: string) => ({ type: "p" as const, content });
 const BEFORE = {
 	version: "1.0",
 	sections: [

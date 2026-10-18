@@ -136,7 +136,7 @@ export default function LegalVersionControls(props: LegalVersionControlsProps): 
 				<p class="lgl-controls__label" aria-hidden="true">Download</p>
 				<div class="lgl-controls__actions">
 					<a
-						class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm"
+						class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm lgl-controls__download"
 						href={pdfHref}
 						download
 					>

@@ -2713,8 +2713,9 @@ never accepted from a request body, never stored as a flag — and lifts on the 
    create **personal projects** (below).
 6. **Hidden, not refused.** Anything it cannot use is left out of the interface rather than shown and
    refused: Wallet, Businesses, the basket and checkout, the Catalogue (and creating services or
-   products), Teams, Analytics, Become a Freelancer, and Settings → Billing, Verification & payouts and
-   Scheduling & calls. A typed or stale link to one of these goes to Home. Where a listing or project
+   products), Teams, Analytics, Become a Freelancer, Settings → Billing, Verification & payouts and
+   Scheduling & calls, and the IP workspace (`/legal/workspace`, Decision #270). A typed or stale link
+   to one of these goes to Home. Where a listing or project
    page would offer Buy, Book, Hire or Apply, one line explains that buying services and selling work
    unlock on the 18th birthday; Settings → Account names it a "Limited account". Choosing "I want to
    work" at sign-up starts the account as a client.

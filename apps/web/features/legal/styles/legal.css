@@ -162,14 +162,15 @@
 	color: var(--on-surface);
 }
 
-/* Non-actionable facts (§B.11.2): one Meta-register line, middot-separated. */
+/*
+ * Non-actionable facts (§B.11.2): one Meta-register line, middot-separated. Every item opens with a
+ * fixed-width separator and the list is pulled back by that width inside a clipping wrapper, so the
+ * separator that would begin a line — the first item's, and any item's that wraps to a new line —
+ * falls into the clipped gutter. A wrapped line never starts with a middot.
+ */
 .lgl-facts {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: baseline;
 	margin: var(--space-1) 0 0;
-	padding: 0;
-	list-style: none;
+	overflow-x: clip;
 	font-family: var(--font-sans);
 	font-size: var(--text-sm);
 	line-height: var(--leading-normal);
@@ -177,13 +178,27 @@
 	color: var(--text-secondary);
 }
 
+.lgl-facts__list {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	margin: 0;
+	margin-inline-start: calc(-1 * var(--space-5));
+	padding: 0;
+	list-style: none;
+}
+
 .lgl-facts__item {
 	display: inline-flex;
 	align-items: baseline;
+	white-space: nowrap;
 }
 
 .lgl-facts__sep {
-	margin-inline: var(--space-2);
+	display: inline-block;
+	flex: none;
+	inline-size: var(--space-5);
+	text-align: center;
 	color: var(--on-surface-variant);
 }
 
@@ -318,6 +333,15 @@
 	gap: var(--space-2);
 	align-items: center;
 }
+
+/*
+ * Download PDF is an anchor drawn as a tier-4 button: no link underline (the browser's default, and
+ * the meta rail's `--primary` underline colour), so it reads as the neutral outlined control beside
+ * Print.
+ */
+.lgl-controls .lgl-controls__download {
+	text-decoration-line: none;
+}
 /* #endregion */
 
 /* #region Compare — changed clauses in full, unchanged ones folded */
@@ -396,10 +420,6 @@
 	line-height: var(--leading-snug);
 }
 
-.lgl-diff__row {
-	font-size: var(--text-md);
-}
-
 .lgl-diff__code {
 	white-space: pre-wrap;
 	font-family: var(--font-mono);
@@ -429,8 +449,12 @@
 	text-decoration-thickness: 2px;
 }
 
-/* A replaced phrase reads as its deletion, a gap, then its insertion — never one run-on word. */
-.lgl-diff__del + .lgl-diff__ins {
+/*
+ * A replaced word reads as its deletion, a gap, then its insertion — never one run-on word. Only
+ * where the diff asks for it (`DiffSpan.gap`): an insertion that opens with punctuation sits tight
+ * against the deletion, so a full stop never floats.
+ */
+.lgl-diff__ins--gap {
 	margin-inline-start: var(--space-1);
 }
 
@@ -503,12 +527,21 @@
 /*
  * The draft disclosure prints; the controls never do. A folded run of unchanged clauses is opened for
  * the print by the controls island (`beforeprint`), since paper cannot be clicked; its "Show / Hide"
- * control is not printed.
+ * control is not printed, and a fold still closed (no JavaScript) is left out.
  */
 @media print {
 	.lgl-controls,
 	.lgl-unchanged__summary {
 		display: none !important;
+	}
+
+	/*
+	 * Without the island's `beforeprint` (no JavaScript, or before hydration) a closed fold would print
+	 * as an empty band between two hairlines; it drops out instead. With it, the folds are opened
+	 * first and print in full.
+	 */
+	.lgl-unchanged:not([open]) {
+		display: none;
 	}
 
 	.lgl-draft {

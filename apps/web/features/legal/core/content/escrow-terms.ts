@@ -8,7 +8,9 @@
  * `pending_release_days` 7, `session_payout_hours` 24, `session_cancel_notice_hours` 24,
  * `dispute_response_hours` 48.
  *
- * Version 1.0 is the baseline the engine stood at on 1 August 2026; 2.0 folds in the October 2026
+ * Version 1.0 is a reconstructed, never-published baseline — the engine as it stood on 1 August
+ * 2026, so Compare has something to compare with (its `changeSummary` says so on the page); 2.0 folds
+ * in the October 2026
  * rulings: the 7-day pending window (#191), the pipeline Chain Reaction (#210), per-sitting session
  * settlement (#211), the dispute timetable (#212) and the Fair Exit tier choice (#198).
  *
@@ -108,7 +110,7 @@ const REMOVAL: LegalClause = {
 	id: "removal-and-deletion",
 	heading: "Removing a Freelancer or deleting a ticket",
 	tldr:
-		"If a Freelancer is removed, or a ticket they claimed is deleted, the escrow already held for that work is paid to them in full.",
+		"Removing a Freelancer from a ticket they hold, or deleting a ticket they claimed, pays them the escrow already held for it in full. A claim that simply lapses is different: see Refunds.",
 	body: [
 		{
 			type: "list",
@@ -121,12 +123,12 @@ const REMOVAL: LegalClause = {
 	],
 };
 
-/** PRODUCT_SPEC.md §Escrow, Wallets & Finance #5 (card payments kept, Decision #200; chargebacks, Decision #126). */
+/** PRODUCT_SPEC.md §Escrow, Wallets & Finance #5 (card payments kept, Decision #200; chargebacks, Decision #126) · §The Claim-and-Commit Protocol (Pipelines) — Claim Expiry (TTL) (`claim_ttl_minutes` 1440, `projects.fn_release_expired_claims`). */
 const REFUNDS: LegalClause = {
 	id: "refunds-and-chargebacks",
 	heading: "Refunds and card disputes",
 	tldr:
-		"Refunds go back to the payer's wallet. A card payment that arrives is always kept, even if what it was for can no longer happen.",
+		"Refunds go back to the payer's wallet. A claim left unstarted for 24 hours lapses and is refunded. A card payment that arrives is always kept.",
 	body: [
 		{
 			type: "list",
@@ -134,6 +136,7 @@ const REFUNDS: LegalClause = {
 			marker: "lower-alpha",
 			items: [
 				"A refund returns held escrow to the payer's wallet. No platform fee is charged on a refund.",
+				"If a Freelancer claims a ticket but does not start it within 24 hours, the claim lapses: the ticket goes back to the backlog, its escrow is refunded to the payer in full, and the Freelancer is paid nothing.",
 				"A card payment that arrives is always kept. If what it was for can no longer be completed — a price changed, or the stage moved on — the money stays in the payer's wallet and the payer is told so.",
 				"If a payer's bank wins a card dispute, the escrow that card payment funded (if still held) is refunded to the payer's wallet, and the disputed amount is then taken back from that wallet.",
 			],
@@ -306,7 +309,13 @@ const FAIR_EXIT_V2: LegalClause = {
 	],
 };
 
-/** PRODUCT_SPEC.md §Dispute Resolution (the Evidence Vault, the resolution lifecycle, no-show claims) · Decision #212 · `dispute_response_hours` (48). */
+/**
+ * PRODUCT_SPEC.md §Dispute Resolution (the Evidence Vault, the resolution lifecycle, no-show claims) ·
+ * Decision #212 · `dispute_response_hours` (48). The no-show item follows the attendance audit the
+ * code runs (`finance.fn_dispute_attendance_audit`): a refund when `projects.fn_session_presence` finds
+ * a provider no-show inside `session_presence_minutes` (15), a dismissal at `>=`
+ * `dispute_dismiss_presence_pct` (80) — not §Dispute Resolution 3's "never joined" / "> 80%".
+ */
 const DISPUTES_V2: LegalClause = {
 	id: "disputes",
 	heading: "Disputes and no-show claims",
@@ -326,7 +335,7 @@ const DISPUTES_V2: LegalClause = {
 				"The two sides first try to settle it between them, for example by agreeing a partial refund. If they agree, the split is carried out at once.",
 				"The other side has 48 hours to respond. If they do not, or the two cannot agree, the case goes to a Projective auditor.",
 				"The auditor reviews the snapshot against the stage's requirements and may release the escrow, refund it, or split it.",
-				"For a session, a no-show claim is checked against the attendance records first: if the Freelancer never joined, the sitting is refunded; if both joined for more than 80% of the time, the claim is dismissed; anything else goes to an auditor.",
+				"For a session, a no-show claim is checked against the attendance records first: if the Client joined within 15 minutes of the start and the Freelancer did not, the sitting is refunded; if both were present for at least 80% of it, the claim is dismissed; anything else goes to an auditor.",
 			],
 		},
 		{
@@ -471,7 +480,8 @@ export const ESCROW_TERMS_VERSIONS = defineLegalVersions([
 		updatedAt: "2026-07-28",
 		effectiveDate: "2026-08-01",
 		reviewedAt: null,
-		changeSummary: "First published.",
+		changeSummary:
+			"A reconstructed baseline, never published: the rules as they stood on 1 August 2026, kept so later versions can be compared with it.",
 		sections: [
 			WHAT_ESCROW_IS,
 			NO_HOLD_NO_WORK,

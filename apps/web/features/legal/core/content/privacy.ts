@@ -140,7 +140,7 @@ const YOUNG_PEOPLE: LegalClause = {
 	],
 };
 
-/** `.env.example` processors (Supabase, Stripe, Google Safe Browsing, Voyage AI, connected sign-in and storage providers, Zoom) · PRODUCT_SPEC.md §Settings (Connected accounts). */
+/** `.env.example` processors (Supabase, Stripe, Google Safe Browsing, Voyage AI, connected sign-in, storage — S3-compatible included — and calendar providers (`GOOGLE_/MICROSOFT_INTEGRATION_*`), Zoom) · `integrations.provider_kind` `calendar` / `freebusy` (seed `00005050`) · PRODUCT_SPEC.md §Settings (Connected accounts). */
 const SHARING: LegalClause = {
 	id: "sharing",
 	heading: "Who we share it with",
@@ -180,7 +180,12 @@ const SHARING: LegalClause = {
 				],
 				[
 					"Storage you connect",
-					"Google Drive, Dropbox, Frame.io or Microsoft storage you link",
+					"Google Drive, Dropbox, Frame.io, Microsoft or S3-compatible storage you link",
+					"Only if you connect one",
+				],
+				[
+					"Calendars you connect",
+					"A Google or Microsoft (Outlook) calendar you link: read for your busy times, and written with the bookings you make",
 					"Only if you connect one",
 				],
 				[

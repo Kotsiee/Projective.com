@@ -1,5 +1,8 @@
 import type { ComponentChildren, JSX } from "preact";
-import type { AnchoredSection } from "@projective/types/content";
+import type {
+	AnchoredSection,
+	InlineContent as InlineContentValue,
+} from "@projective/types/content";
 import {
 	AnchorHeading,
 	ContentRenderer,
@@ -8,10 +11,12 @@ import {
 } from "@projective/ui/display/editorial";
 import {
 	type BlockDiff,
+	type CellDiff,
 	type ClauseDiff,
 	clauseRuns,
 	type DiffSpan,
 	type DocumentDiff,
+	spell,
 } from "../core/diff.ts";
 
 // #region Props
@@ -31,30 +36,121 @@ export interface LegalCompareBodyProps {
 const ADDED_LABEL = "Added: ";
 const REMOVED_LABEL = "Removed: ";
 
+/** Inserted text: underlined and tinted, announced as "Added:". */
+function Ins({ gap, children }: { gap?: boolean; children: ComponentChildren }): JSX.Element {
+	return (
+		<ins class={gap ? "lgl-diff__ins lgl-diff__ins--gap" : "lgl-diff__ins"}>
+			<span class="ui-visually-hidden">{ADDED_LABEL}</span>
+			{children}
+		</ins>
+	);
+}
+
+/** Deleted text: struck through and tinted, announced as "Removed:". */
+function Del({ children }: { children: ComponentChildren }): JSX.Element {
+	return (
+		<del class="lgl-diff__del">
+			<span class="ui-visually-hidden">{REMOVED_LABEL}</span>
+			{children}
+		</del>
+	);
+}
+
 /** A word diff as text runs: inserted words in `<ins>`, deleted ones in `<del>`, each announced. */
 function Spans({ spans }: { spans: readonly DiffSpan[] }): JSX.Element {
 	return (
 		<>
 			{spans.map((span, i) => {
-				if (span.op === "insert") {
-					return (
-						<ins key={i} class="lgl-diff__ins">
-							<span class="ui-visually-hidden">{ADDED_LABEL}</span>
-							{span.text}
-						</ins>
-					);
-				}
-				if (span.op === "delete") {
-					return (
-						<del key={i} class="lgl-diff__del">
-							<span class="ui-visually-hidden">{REMOVED_LABEL}</span>
-							{span.text}
-						</del>
-					);
-				}
+				if (span.op === "insert") return <Ins key={i} gap={span.gap}>{span.text}</Ins>;
+				if (span.op === "delete") return <Del key={i}>{span.text}</Del>;
 				return span.text;
 			})}
 		</>
+	);
+}
+
+/**
+ * A unit's text: its authored content (links and code kept) when it did not change word by word —
+ * plain when unchanged, wrapped whole in `<ins>` / `<del>` when added or removed — otherwise its
+ * word diff.
+ */
+function Text(
+	{ spans, content }: { spans: readonly DiffSpan[]; content?: InlineContentValue },
+): JSX.Element {
+	if (content === undefined || spans.length > 1) return <Spans spans={spans} />;
+	const authored = <InlineContent content={content} />;
+	const op = spans[0]?.op ?? "equal";
+	if (op === "insert") return <Ins>{authored}</Ins>;
+	if (op === "delete") return <Del>{authored}</Del>;
+	return authored;
+}
+// #endregion
+
+// #region Tables
+/** One cell of a compared row. */
+function Cell({ cell }: { cell: CellDiff }): JSX.Element {
+	return <Text spans={cell.spans} content={cell.content} />;
+}
+
+/**
+ * A run of compared table units drawn as the table it is — the document's own `ui-prose__table`:
+ * the caption as `<caption>`, the header row as `<th scope="col">` cells, each body row's first cell
+ * a `<th scope="row">` when the table has row headers. Every cell carries its own word diff.
+ */
+function DiffTable({ units }: { units: readonly BlockDiff[] }): JSX.Element {
+	const caption = units.find((u) => u.table?.part === "caption");
+	const head = units.filter((u) => u.table?.part === "head");
+	const body = units.filter((u) => u.table?.part === "body");
+	const label = caption
+		? spell(caption.spans, caption.status === "removed" ? "before" : "after")
+		: undefined;
+	return (
+		<div
+			class="ui-prose__table"
+			role={label ? "region" : undefined}
+			aria-label={label}
+			tabIndex={0}
+		>
+			<table>
+				{caption?.table
+					? <caption>{caption.table.cells.map((c, i) => <Cell key={i} cell={c} />)}</caption>
+					: null}
+				{head.length > 0
+					? (
+						<thead>
+							{head.map((row, r) => (
+								<tr key={r}>
+									{row.table!.cells.map((cell, i) => (
+										<th key={i} scope="col">
+											<Cell cell={cell} />
+										</th>
+									))}
+								</tr>
+							))}
+						</thead>
+					)
+					: null}
+				<tbody>
+					{body.map((row, r) => (
+						<tr key={r}>
+							{row.table!.cells.map((cell, i) =>
+								i === 0 && row.table!.rowHeaders
+									? (
+										<th key={i} scope="row">
+											<Cell cell={cell} />
+										</th>
+									)
+									: (
+										<td key={i}>
+											<Cell cell={cell} />
+										</td>
+									)
+							)}
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</div>
 	);
 }
 // #endregion
@@ -62,7 +158,7 @@ function Spans({ spans }: { spans: readonly DiffSpan[] }): JSX.Element {
 // #region Blocks
 /** One aligned unit in the element its kind is drawn as. */
 function Block({ block, tldrLabel }: { block: BlockDiff; tldrLabel: string }): JSX.Element {
-	const text = <Spans spans={block.spans} />;
+	const text = <Text spans={block.spans} content={block.content} />;
 	switch (block.kind) {
 		case "summary":
 			return (
@@ -81,19 +177,21 @@ function Block({ block, tldrLabel }: { block: BlockDiff; tldrLabel: string }): J
 			);
 		case "code":
 			return <pre class="lgl-diff__code">{text}</pre>;
-		case "row":
-			return <p class="lgl-diff__row">{text}</p>;
 		default:
 			return <p>{text}</p>;
 	}
 }
 
-/** A clause's blocks, consecutive list items gathered into one list. */
+/**
+ * A clause's blocks: consecutive list items gathered into one list, consecutive table units into one
+ * table (a caption, or a header row after body rows, starts the next table).
+ */
 function Blocks(
 	{ blocks, tldrLabel }: { blocks: readonly BlockDiff[]; tldrLabel: string },
 ): JSX.Element {
 	const out: ComponentChildren[] = [];
 	let items: BlockDiff[] = [];
+	let rows: BlockDiff[] = [];
 	const flushItems = () => {
 		if (items.length === 0) return;
 		out.push(
@@ -103,14 +201,29 @@ function Blocks(
 						key={i}
 						class={item.depth > 0 ? `lgl-diff__item--depth-${Math.min(item.depth, 2)}` : undefined}
 					>
-						<Spans spans={item.spans} />
+						<Text spans={item.spans} content={item.content} />
 					</li>
 				))}
 			</ul>,
 		);
 		items = [];
 	};
+	const flushRows = () => {
+		if (rows.length === 0) return;
+		out.push(<DiffTable key={`table-${out.length}`} units={rows} />);
+		rows = [];
+	};
 	blocks.forEach((block, i) => {
+		if (block.table) {
+			flushItems();
+			const part = block.table.part;
+			const startsNext = part === "caption" ||
+				(part === "head" && rows.some((r) => r.table?.part === "body"));
+			if (startsNext) flushRows();
+			rows.push(block);
+			return;
+		}
+		flushRows();
 		if (block.kind === "item") {
 			items.push(block);
 			return;
@@ -119,6 +232,7 @@ function Blocks(
 		out.push(<Block key={i} block={block} tldrLabel={tldrLabel} />);
 	});
 	flushItems();
+	flushRows();
 	return <>{out}</>;
 }
 // #endregion
@@ -185,9 +299,11 @@ function UnchangedClause(
  * LegalCompareBody — the body of `/legal/<slug>?compare=<older>` (Decision #270): every clause that
  * changed, was added or was removed, in full with its word diff — a 2px bar in the gutter and a
  * "Changed in version 2.0" line that describes the clause's diff region (`aria-describedby`); added
- * words in `<ins>`, removed in `<del>`, each with visually hidden "Added" / "Removed" text — and
- * every run of unchanged clauses folded behind one native `<details>` ("Show 3 unchanged clauses"),
- * rendered exactly as the document renders them. Server-rendered, zero-JS.
+ * words in `<ins>`, removed in `<del>`, each with visually hidden "Added" / "Removed" text; a table
+ * drawn as the table it is, cell by cell; a unit that did not change word by word in its authored
+ * form, links kept — and every run of unchanged clauses folded behind one native `<details>`
+ * ("Show 3 unchanged clauses"), rendered exactly as the document renders them. Server-rendered,
+ * zero-JS.
  */
 export function LegalCompareBody(
 	{ diff, sections, tldrLabel }: LegalCompareBodyProps,

@@ -73,7 +73,9 @@ function Notices({ view }: { view: LegalDocumentView }): JSX.Element {
 	const { doc, current, shown, diff, compare, family } = view;
 	const slug = family.slug;
 	const currentHref = legalDocumentHref(slug);
-	const oldest = family.versions[family.versions.length - 1];
+	const at = family.versions.findIndex((v) => v.version === doc.version);
+	// The version this one replaced — the next older one — which Compare reads against by default.
+	const previous = family.versions[at + 1];
 	return (
 		<div class="lgl-notices">
 			{view.draft ? <LegalDraftNotice /> : null}
@@ -112,12 +114,24 @@ function Notices({ view }: { view: LegalDocumentView }): JSX.Element {
 					</p>
 				)
 				: null}
-			{!diff && doc.version !== oldest.version
+			{!diff && previous
 				? (
 					<p class="lgl-notice">
-						What changed in version {doc.version}: {doc.changeSummary}
+						What changed in version {doc.version}: {doc.changeSummary}{" "}
+						<a
+							class="lgl-link"
+							href={legalDocumentHref(slug, {
+								v: view.pinned ? doc.version : null,
+								compare: previous.version,
+							})}
+						>
+							Compare with version {previous.version}
+						</a>
 					</p>
 				)
+				: null}
+			{!diff && !previous && family.versions.length > 1
+				? <p class="lgl-notice">About version {doc.version}: {doc.changeSummary}</p>
 				: null}
 		</div>
 	);

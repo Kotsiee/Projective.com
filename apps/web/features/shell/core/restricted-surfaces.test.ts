@@ -24,6 +24,9 @@ Deno.test("isRestrictedPath — money, selling and workspace surfaces, at any de
 			"/become-partner",
 			"/settings/verification",
 			"/settings/billing",
+			"/legal/workspace",
+			"/legal/workspace/audit-packs",
+			"/legal/workspace/transfers",
 		]
 	) assert(isRestrictedPath(path), path);
 });
@@ -40,6 +43,9 @@ Deno.test("isRestrictedPath — a shared prefix is not a match, and personal sur
 			"/calendar",
 			"/files",
 			"/settings/account",
+			"/legal",
+			"/legal/terms",
+			"/legal/workspaces",
 		]
 	) assertEquals(isRestrictedPath(path), false, path);
 });

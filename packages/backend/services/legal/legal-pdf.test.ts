@@ -1,11 +1,14 @@
 /** The legal PDF: line breaking, the layout of a version, and the service's file + cache facts. */
 import { assert, assertEquals, assertFalse, assertNotEquals } from "@std/assert";
 import type { LegalDoc } from "@projective/types/content";
+import { renderPdf } from "../../core/pdf.ts";
 import {
 	blockText,
 	DRAFT_PDF_LINE,
 	isPdfEncodable,
 	legalPdfBlocks,
+	legalPdfDocument,
+	legalPdfRunningHead,
 	measure,
 	PDF_TEXT_WIDTH,
 	pdfSafe,
@@ -78,9 +81,9 @@ Deno.test("isPdfEncodable: WinAnsi text yes, anything else no", () => {
 // #endregion
 
 // #region Layout
-Deno.test("legalPdfBlocks: the draft mark heads and closes the file; version and dates are stated", () => {
+Deno.test("legalPdfBlocks: the draft mark closes the file; version and dates are stated", () => {
 	const text = blockText(legalPdfBlocks(DOC, OPTS));
-	assertEquals(text[1], DRAFT_PDF_LINE, "the brand row carries the draft mark");
+	assertEquals(text[0], "Projective · Legal");
 	assertEquals(text[text.length - 1], DRAFT_PDF_LINE);
 	assert(text.some((line) => line.includes("Version 2.0 · Effective 17 October 2026")));
 	assert(text.some((line) => line.startsWith("Draft — pending legal review.")));
@@ -99,8 +102,45 @@ Deno.test("legalPdfBlocks: clauses are numbered, summaries labelled, lists and t
 	assert(text.includes("Payee"));
 });
 
+/** How many times a line of WinAnsi text is drawn in a rendered PDF (`—` is written as octal 227). */
+function drawn(bytes: Uint8Array, line: string): number {
+	const literal = `(${line.replace("—", "\\227")}) Tj`;
+	return new TextDecoder("latin1").decode(bytes).split(literal).length - 1;
+}
+
+/** The page count of a rendered PDF. */
+function pages(bytes: Uint8Array): number {
+	return (new TextDecoder("latin1").decode(bytes).match(/\/Type \/Page\b(?!s)/g) ?? []).length;
+}
+
+Deno.test("legalPdfDocument: a draft's mark runs at the top of EVERY page, plus once at the foot", () => {
+	const long: LegalDoc = {
+		...DOC,
+		sections: Array.from({ length: 30 }, (_, i) => ({
+			id: `clause-${i + 1}`,
+			heading: `Clause ${i + 1}`,
+			tldr: "A summary.",
+			body: [{
+				type: "p" as const,
+				content: "Projective holds escrow on its own ledger. ".repeat(20),
+			}],
+		})),
+	};
+	const document = legalPdfDocument(long, OPTS);
+	assertEquals(document.running?.text, DRAFT_PDF_LINE);
+	const bytes = renderPdf(document);
+	const count = pages(bytes);
+	assert(count >= 3, `a long draft spans pages (got ${count})`);
+	assertEquals(drawn(bytes, DRAFT_PDF_LINE), count + 1);
+	assertEquals(document.title, "Escrow Terms · Version 2.0 (draft)");
+});
+
 Deno.test("legalPdfBlocks: a reviewed version carries no draft mark; an old one points at the current", () => {
-	const reviewed = blockText(legalPdfBlocks({ ...DOC, reviewedAt: "2026-10-20" }, OPTS));
+	const reviewedDoc = { ...DOC, reviewedAt: "2026-10-20" };
+	assertEquals(legalPdfRunningHead(reviewedDoc), undefined);
+	assertEquals(legalPdfDocument(reviewedDoc, OPTS).running, undefined);
+	assertEquals(drawn(renderPdf(legalPdfDocument(reviewedDoc, OPTS)), DRAFT_PDF_LINE), 0);
+	const reviewed = blockText(legalPdfBlocks(reviewedDoc, OPTS));
 	assertFalse(reviewed.includes(DRAFT_PDF_LINE));
 	assert(reviewed.some((line) => line.includes("Reviewed 20 October 2026")));
 	const old = blockText(legalPdfBlocks(DOC, { ...OPTS, current: false }));

@@ -171,6 +171,13 @@ export function legalRailEntries(
 	});
 }
 
+/**
+ * The number column of a removed clause in the compare rail: it has no number in the version shown,
+ * and its old number would collide with the clause that now holds it, so it shows a dash — which keeps
+ * its title on the same text column as the numbered entries around it.
+ */
+export const REMOVED_CLAUSE_NUMBER = "–";
+
 /** The rail children of a compared document: each clause that changed, was added or was removed. */
 export function changedClauseEntries(diff: DocumentDiff): TocEntry[] {
 	return diff.clauses
@@ -179,8 +186,7 @@ export function changedClauseEntries(diff: DocumentDiff): TocEntry[] {
 			id: clause.id,
 			text: clause.heading,
 			level: 2,
-			// A removed clause has no number in the version shown.
-			...(clause.numberAfter ? { number: clause.numberAfter } : {}),
+			number: clause.numberAfter ?? REMOVED_CLAUSE_NUMBER,
 			children: [],
 		}));
 }

@@ -4,7 +4,8 @@
  * The shared writer (`core/pdf.ts`) draws rows, rules and space and leaves line breaking to its
  * caller, because a financial document never wraps. A legal document is nothing but wrapped prose, so
  * this module breaks every paragraph into lines that fit the page, hangs list markers and clause
- * numbers, and keeps the draft disclosure (owner ruling (e)) at the head and the foot of the file.
+ * numbers, and keeps the draft disclosure (owner ruling (e)) on every page: a running head in the top
+ * margin of each page, the full disclosure under the title, and the mark again at the foot.
  *
  * Widths are estimated from Helvetica's advance widths by character class, rounded UP, so a line can
  * come out a little shorter than the page allows but never runs past the margin.
@@ -23,7 +24,7 @@ import {
 	type ListNode,
 	nodeText,
 } from "@projective/types/content";
-import type { PdfBlock, PdfLine } from "../../core/pdf.ts";
+import type { PdfBlock, PdfDocument, PdfLine } from "../../core/pdf.ts";
 
 // #region Measure
 /** The printable width of the shared writer's A4 page (595.28pt less two 56pt margins). */
@@ -207,8 +208,18 @@ function node(n: AnchoredNode | ContentNode): PdfBlock[] {
 	}
 }
 
-/** The disclosure every unreviewed version carries, at the head and the foot of the file. */
+/** The mark every unreviewed version carries — at the top of every page, and at the foot of the file. */
 export const DRAFT_PDF_LINE = "DRAFT — PENDING LEGAL REVIEW";
+
+/**
+ * The running head of an unreviewed version: the draft mark, right-aligned in the top margin of every
+ * page, so no single printed page of a draft reads as final. A reviewed version has none.
+ */
+export function legalPdfRunningHead(doc: LegalDoc): PdfLine | undefined {
+	return doc.reviewedAt === null
+		? { text: DRAFT_PDF_LINE, size: SMALL, bold: true, align: "right" }
+		: undefined;
+}
 
 /** What {@link legalPdfDocument} needs beyond the document. */
 export interface LegalPdfOptions {
@@ -219,9 +230,10 @@ export interface LegalPdfOptions {
 }
 
 /**
- * Lay a legal document version out for the PDF writer: the brand line (and the draft mark), the
- * title, the version and its dates, the draft disclosure, the summary, then every clause — its number
- * and heading, its plain-English summary, its body — and the foot.
+ * Lay a legal document version out for the PDF writer: the brand line, the title, the version and its
+ * dates, the draft disclosure, the summary, then every clause — its number and heading, its
+ * plain-English summary, its body — and the foot. The draft mark at the top of each page is the
+ * running head ({@link legalPdfDocument}).
  */
 export function legalPdfBlocks(doc: LegalDoc, opts: LegalPdfOptions): PdfBlock[] {
 	const draft = doc.reviewedAt === null;
@@ -234,11 +246,7 @@ export function legalPdfBlocks(doc: LegalDoc, opts: LegalPdfOptions): PdfBlock[]
 	].join(" · ");
 
 	const blocks: PdfBlock[] = [
-		{
-			kind: "row",
-			left: { text: "Projective · Legal", size: SMALL, bold: true },
-			...(draft ? { right: { text: DRAFT_PDF_LINE, size: SMALL, bold: true } } : {}),
-		},
+		{ kind: "row", left: { text: "Projective · Legal", size: SMALL, bold: true } },
 		{ kind: "space", points: 12 },
 		...paragraph(doc.title, { size: 20, bold: true }),
 		{ kind: "space", points: 2 },
@@ -291,6 +299,17 @@ export function legalPdfBlocks(doc: LegalDoc, opts: LegalPdfOptions): PdfBlock[]
 		...(draft ? paragraph(DRAFT_PDF_LINE, { size: 8, bold: true }) : []),
 	);
 	return blocks;
+}
+
+/** A legal document version as the writer's document: its title, its blocks and, while it is a draft, the running head. */
+export function legalPdfDocument(doc: LegalDoc, opts: LegalPdfOptions): PdfDocument {
+	const draft = doc.reviewedAt === null;
+	const running = legalPdfRunningHead(doc);
+	return {
+		title: `${doc.title} · Version ${doc.version}${draft ? " (draft)" : ""}`,
+		blocks: legalPdfBlocks(doc, opts),
+		...(running ? { running } : {}),
+	};
 }
 
 /** Every line of text in `blocks`, in order — what a test reads instead of the PDF bytes. */

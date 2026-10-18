@@ -11,14 +11,18 @@
  *     sub-heading and the plain-English summary is one text unit; identical units anchor the
  *     alignment (longest common subsequence), and the units between two anchors are paired in order.
  *  3. **A paired unit is diffed word by word**, and the result is tidied so a replaced phrase reads
- *     as one deletion followed by one insertion rather than interleaved single words.
+ *     as one deletion followed by one insertion rather than interleaved single words. A table row is
+ *     diffed cell by cell, so the compare view can draw it as the table row it is.
+ *  4. **A unit that did not change word by word keeps its authored inline content** (an unchanged,
+ *     added or removed paragraph, list item, summary or table cell), so its links and code survive in
+ *     the compare view; only a word-diffed unit is reduced to text.
  *
  * Pure and dependency-free (type imports and the schema-free text projection only), so the route,
  * the page controller and a unit test share it.
  *
  * @module
  */
-import type { ContentNode, DocSection, ListNode } from "@projective/types/content";
+import type { ContentNode, DocSection, InlineContent, ListNode } from "@projective/types/content";
 import { inlineText, nodeText } from "@projective/types/content/text";
 
 // #region Words
@@ -29,6 +33,12 @@ export type DiffOp = "equal" | "insert" | "delete";
 export interface DiffSpan {
 	op: DiffOp;
 	text: string;
+	/**
+	 * On an insertion that directly follows a deletion: the two read as separate words, so the view
+	 * sets a small gap between them. Left off when the insertion opens with punctuation (`, and an` →
+	 * `. An` — a gap would float the full stop) or the deletion already ends in a space.
+	 */
+	gap?: true;
 }
 
 /**
@@ -131,7 +141,11 @@ function tidy(script: readonly DiffSpan[]): DiffSpan[] {
 	let deleted = "";
 	let inserted = "";
 	const flush = () => {
-		out.push({ op: "delete", text: deleted }, { op: "insert", text: inserted });
+		const gap = deleted !== "" && !/\s$/.test(deleted) && /^[\p{L}\p{N}]/u.test(inserted);
+		out.push(
+			{ op: "delete", text: deleted },
+			gap ? { op: "insert", text: inserted, gap: true } : { op: "insert", text: inserted },
+		);
 		deleted = "";
 		inserted = "";
 	};
@@ -177,30 +191,69 @@ export type ClauseUnitKind =
 	| "row"
 	| "term";
 
+/** Which part of its table a `row` unit is: the caption, the header row or a body row. */
+export type TablePart = "caption" | "head" | "body";
+
+/** A `row` unit's place in its table. */
+export interface TableUnit {
+	part: TablePart;
+	/** The cells as text (the caption is one cell). */
+	cells: string[];
+	/** The cells as authored, links and code kept. */
+	cellContent: InlineContent[];
+	/** Whether a body row's first cell is a row header (`<th scope="row">`). */
+	rowHeaders: boolean;
+}
+
 /** One diffable text unit of a clause. */
 export interface ClauseUnit {
 	kind: ClauseUnitKind;
+	/** The unit as text — what is aligned and diffed (a row's cells joined by ` · `). */
 	text: string;
 	/** A list item's nesting depth (0 for a top-level item, and for every other kind). */
 	depth: number;
+	/** The unit as authored, for a summary, paragraph or list item — rendered when it did not change. */
+	content?: InlineContent;
+	/** A table unit's part and cells (`kind: "row"` only). */
+	table?: TableUnit;
 }
 
 /** A list's items as units, nested items one level deeper. */
 function listUnits(list: ListNode, depth: number): ClauseUnit[] {
 	return list.items.flatMap((item): ClauseUnit[] => {
-		if (typeof item === "string") return [{ kind: "item", text: item, depth }];
+		if (typeof item === "string") return [{ kind: "item", text: item, depth, content: item }];
 		return [
-			{ kind: "item", text: inlineText(item.content), depth },
+			{ kind: "item", text: inlineText(item.content), depth, content: item.content },
 			...(item.list ? listUnits(item.list, depth + 1) : []),
 		];
 	});
+}
+
+/** One table unit. */
+function tableUnit(
+	part: TablePart,
+	cells: readonly InlineContent[],
+	rowHeaders: boolean,
+): ClauseUnit {
+	const texts = cells.map(inlineText);
+	return {
+		kind: "row",
+		text: texts.join(" · "),
+		depth: 0,
+		table: { part, cells: texts, cellContent: [...cells], rowHeaders },
+	};
 }
 
 /** One body node as units. */
 function nodeUnits(node: ContentNode): ClauseUnit[] {
 	switch (node.type) {
 		case "p":
-			return [{ kind: "paragraph", text: inlineText(node.content), depth: 0 }];
+			return [{
+				kind: "paragraph",
+				text: inlineText(node.content),
+				depth: 0,
+				content: node.content,
+			}];
 		case "h3":
 			return [{ kind: "subheading", text: node.text, depth: 0 }];
 		case "list":
@@ -215,15 +268,14 @@ function nodeUnits(node: ContentNode): ClauseUnit[] {
 			const title = node.title ? `${node.title}: ` : "";
 			return [{ kind: "note", text: `${title}${nodeText(node).replace(/\n+/g, " ")}`, depth: 0 }];
 		}
-		case "table":
+		case "table": {
+			const rowHeaders = node.rowHeaders === true;
 			return [
-				...(node.caption ? [{ kind: "row" as const, text: node.caption, depth: 0 }] : []),
-				...[node.head, ...node.rows].map((row): ClauseUnit => ({
-					kind: "row",
-					text: row.map(inlineText).join(" · "),
-					depth: 0,
-				})),
+				...(node.caption ? [tableUnit("caption", [node.caption], rowHeaders)] : []),
+				tableUnit("head", node.head, rowHeaders),
+				...node.rows.map((row) => tableUnit("body", row, rowHeaders)),
 			];
+		}
 		case "dl":
 			return node.items.map((item): ClauseUnit => ({
 				kind: "term",
@@ -237,7 +289,12 @@ function nodeUnits(node: ContentNode): ClauseUnit[] {
 export function clauseUnits(section: DocSection): ClauseUnit[] {
 	return [
 		...(section.tldr
-			? [{ kind: "summary" as const, text: inlineText(section.tldr), depth: 0 }]
+			? [{
+				kind: "summary" as const,
+				text: inlineText(section.tldr),
+				depth: 0,
+				content: section.tldr,
+			}]
 			: []),
 		...section.body.flatMap(nodeUnits),
 	];
@@ -248,12 +305,30 @@ export function clauseUnits(section: DocSection): ClauseUnit[] {
 /** What happened to one unit between the versions. */
 export type BlockStatus = "equal" | "changed" | "added" | "removed";
 
+/** One cell of a compared table row: its word diff, and its authored content when it did not change. */
+export interface CellDiff {
+	spans: DiffSpan[];
+	/** The cell as authored — set when the cell is unchanged, or its whole row was added or removed. */
+	content?: InlineContent;
+}
+
+/** A compared table unit: its part and its cells. */
+export interface TableDiff {
+	part: TablePart;
+	rowHeaders: boolean;
+	cells: CellDiff[];
+}
+
 /** One unit of a compared clause and its word diff. */
 export interface BlockDiff {
 	kind: ClauseUnitKind;
 	depth: number;
 	status: BlockStatus;
 	spans: DiffSpan[];
+	/** The unit as authored — set when it did not change word by word (`equal`, `added`, `removed`). */
+	content?: InlineContent;
+	/** A table unit's part and its cells, each diffed on its own. */
+	table?: TableDiff;
 }
 
 /** What happened to one clause between the versions. */
@@ -291,15 +366,67 @@ export interface DocumentDiff {
 	counts: ClauseCounts;
 }
 
-/** The units only one side has, as whole-unit additions or removals. */
-function whole(units: readonly ClauseUnit[], status: "added" | "removed"): BlockDiff[] {
-	const op: DiffOp = status === "added" ? "insert" : "delete";
-	return units.map((u) => ({
+/** A unit that did not change word by word, as one run of `op` — authored content and cells kept. */
+function asWhole(u: ClauseUnit, status: Exclude<BlockStatus, "changed">, op: DiffOp): BlockDiff {
+	const table = u.table;
+	return {
 		kind: u.kind,
 		depth: u.depth,
 		status,
 		spans: [{ op, text: u.text }],
-	}));
+		...(u.content !== undefined ? { content: u.content } : {}),
+		...(table
+			? {
+				table: {
+					part: table.part,
+					rowHeaders: table.rowHeaders,
+					cells: table.cells.map((cell, i): CellDiff => ({
+						spans: cell === "" ? [] : [{ op, text: cell }],
+						content: table.cellContent[i],
+					})),
+				},
+			}
+			: {}),
+	};
+}
+
+/** The units only one side has, as whole-unit additions or removals. */
+function whole(units: readonly ClauseUnit[], status: "added" | "removed"): BlockDiff[] {
+	const op: DiffOp = status === "added" ? "insert" : "delete";
+	return units.map((u) => asWhole(u, status, op));
+}
+
+/**
+ * Whether two units of a gap may be diffed word by word: the same kind and, for table units, the
+ * same part and the same number of cells (a row that gained a column is a removal and an addition).
+ */
+function pairable(b: ClauseUnit, a: ClauseUnit): boolean {
+	if (b.kind !== a.kind) return false;
+	if (!b.table || !a.table) return !b.table && !a.table;
+	return b.table.part === a.table.part && b.table.cells.length === a.table.cells.length;
+}
+
+/** A paired unit's word diff — a table unit cell by cell, an unchanged cell keeping its content. */
+function changed(b: ClauseUnit, a: ClauseUnit): BlockDiff {
+	const block: BlockDiff = {
+		kind: a.kind,
+		depth: a.depth,
+		status: "changed",
+		spans: diffWords(b.text, a.text),
+	};
+	const before = b.table;
+	const after = a.table;
+	if (before && after) {
+		block.table = {
+			part: after.part,
+			rowHeaders: after.rowHeaders,
+			cells: after.cells.map((cell, i): CellDiff => {
+				const spans = diffWords(before.cells[i], cell);
+				return cell === before.cells[i] ? { spans, content: after.cellContent[i] } : { spans };
+			}),
+		};
+	}
+	return block;
 }
 
 /** Align two unit lists: identical units anchor, the gaps between anchors pair up in order. */
@@ -307,7 +434,8 @@ export function diffUnits(
 	before: readonly ClauseUnit[],
 	after: readonly ClauseUnit[],
 ): BlockDiff[] {
-	const same = (x: ClauseUnit, y: ClauseUnit) => x.kind === y.kind && x.text === y.text;
+	const same = (x: ClauseUnit, y: ClauseUnit) =>
+		x.kind === y.kind && x.text === y.text && x.table?.part === y.table?.part;
 	const n = before.length;
 	const m = after.length;
 	const width = m + 1;
@@ -327,13 +455,8 @@ export function diffUnits(
 		for (let k = 0; k < pairs; k++) {
 			const b = gapBefore[k];
 			const a = gapAfter[k];
-			if (b.kind === a.kind) {
-				out.push({
-					kind: a.kind,
-					depth: a.depth,
-					status: "changed",
-					spans: diffWords(b.text, a.text),
-				});
+			if (pairable(b, a)) {
+				out.push(changed(b, a));
 			} else {
 				out.push(...whole([b], "removed"), ...whole([a], "added"));
 			}
@@ -347,12 +470,7 @@ export function diffUnits(
 	while (i < n || j < m) {
 		if (i < n && j < m && same(before[i], after[j])) {
 			closeGap();
-			out.push({
-				kind: after[j].kind,
-				depth: after[j].depth,
-				status: "equal",
-				spans: [{ op: "equal", text: after[j].text }],
-			});
+			out.push(asWhole(after[j], "equal", "equal"));
 			i++;
 			j++;
 		} else if (j >= m || (i < n && table[(i + 1) * width + j] >= table[i * width + j + 1])) {
