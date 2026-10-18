@@ -92,6 +92,9 @@ export interface ProfileRigProps {
 
 const BURST_DOTS = 6;
 
+/** The modifier a team's Manage team link carries, so the band can fold it to its glyph. */
+const FOLD_CLASS = " pf-rig__cta--manage";
+
 export function ProfileRig(props: ProfileRigProps): JSX.Element {
 	const { profile, canEdit, authed, services, consultation, hireProjects, variant } = props;
 	const viewer: RigViewer = {
@@ -205,12 +208,28 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 	/**
 	 * The console link for a workspace's editor — "Manage business" in a business's Message slot,
 	 * "Manage team" in a team's Hire slot (Teams P1). Tier 4: a utility link, never a fill.
+	 *
+	 * A team's link (`fold`) shares its row with Add to project and the icon pair, and is twice Hire's
+	 * width, so below the phone cusp one control in each rig gives up its words: the band folds Manage
+	 * team to its glyph (profile-band.css), the hero folds Add to project (profile-hero.css, keyed on
+	 * the root's `data-lead`) and keeps "Manage team" — the words the owner header's preview note
+	 * names. The glyph is drawn in the band only, and the label it may lose is restated as the
+	 * accessible name.
 	 */
 	const consoleHref = profile.workspace?.consoleHref ?? null;
-	const manageLink = (label: string) =>
+	const manageLink = (label: string, fold = false) =>
 		consoleHref
 			? (
-				<a class={`${outlined} pf-rig__cta pf-rig__cta--neutral`} href={consoleHref}>
+				<a
+					class={`${outlined} pf-rig__cta pf-rig__cta--neutral${fold ? FOLD_CLASS : ""}`}
+					href={consoleHref}
+					aria-label={fold && compact ? label : undefined}
+				>
+					{fold && compact && (
+						<span class="ui-button__icon">
+							<Icon name="settings" size="sm" aria-hidden />
+						</span>
+					)}
 					<span class="ui-button__label">{label}</span>
 				</a>
 			)
@@ -255,6 +274,7 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 		<div
 			class={`pf-rig pf-rig--${variant}${props.class ? ` ${props.class}` : ""}`}
 			data-rig={canEdit ? "owner" : rig.layout}
+			data-lead={canEdit ? undefined : rig.primary}
 		>
 			{canEdit
 				? (
@@ -277,7 +297,7 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 				: rig.layout === "seller"
 				? (
 					<>
-						{rig.primary === "manage" && manageLink("Manage team")}
+						{rig.primary === "manage" && manageLink("Manage team", true)}
 						{fills.has("hire") && (
 							<Popover
 								open={hireOpen}

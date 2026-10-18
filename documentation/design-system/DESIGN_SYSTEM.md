@@ -4139,7 +4139,11 @@ the business rig's Message is the `Button` `severity="primary" variant="filled"`
 class set as Hire). A team's editor sees the tier-4 Manage team link in Hire's place, so their rig
 keeps one fill — Add to project's monochrome pill — and the team rig withholds its Message icon
 when the read names no owner for it to reach (Teams P1; `rigFills` / `rigFor` in
-`features/profile/core/profile-model.ts`). The member notice above a business page outsiders cannot
+`features/profile/core/profile-model.ts`). Manage team is twice Hire's width, so below the phone cusp
+one control per rig gives up its words: the band folds Manage team to a `settings` glyph circle, and
+the hero folds Add to project to its `plus` circle (as the band already does) so Manage team keeps
+the words the owner header's preview note names; a folded control's label is its accessible name.
+The member notice above a business page outsiders cannot
 open (`ProfileMemberNotice`) carries no control: BP1's tier-4 link to Settings waits for a Settings
 screen that can publish a business or change its visibility (Decision #244 (d)). A TEAM page's
 notice waits on the same ground (root CLAUDE.md §3.11): its tier-4 "Team settings" link (`neutral`

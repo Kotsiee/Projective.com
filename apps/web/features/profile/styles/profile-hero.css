@@ -192,6 +192,25 @@
     margin-block-start: var(--space-5);
 }
 
+/*
+ * A team's editor (Teams P1) sees Manage team in Hire's slot, twice Hire's width, and a phone's row
+ * cannot hold it beside Add to project and the icon pair without stranding Follow on a line of its
+ * own. Below the phone cusp Add to project folds to its glyph here, as it already does in the band —
+ * a circle of the icon pair's size, its accessible name the label it lost — and Manage team keeps
+ * its words, which the owner header's preview note names. A visitor's rig, whose Hire is short, is
+ * untouched.
+ */
+@media (max-width: 767px) {
+    .pf-hero__actions[data-lead="manage"] .pf-rig__cta--add {
+        --btn-px: 0;
+        inline-size: var(--btn-height);
+    }
+
+    .pf-hero__actions[data-lead="manage"] .pf-rig__cta--add .ui-button__label {
+        display: none;
+    }
+}
+
 /* #endregion */
 
 /* #region Metrics strip */

@@ -388,7 +388,22 @@ a.pf-tag:focus-visible {
 .ui-inline-notice.pf-notice__line {
     flex: 1 1 auto;
     min-inline-size: 0;
+    align-items: flex-start;
     padding-inline: 0;
+}
+
+/*
+ * The sentence takes the width the lock leaves and wraps inside it. InlineNotice's row wraps and its
+ * text sizes to its content, so a sentence longer than a phone's line — a team's is — would drop
+ * whole beneath the lock and leave the glyph alone on the first line; a zero basis keeps them side
+ * by side. The glyph rides the FIRST line, centred on it, rather than the middle of a two-line block.
+ */
+.pf-notice__line .ui-inline-notice__text {
+    flex: 1 1 0;
+}
+
+.pf-notice__line .ui-inline-notice__icon {
+    margin-block-start: calc((1lh - var(--icon-xs)) / 2);
 }
 
 @container pf (max-width: 44rem) {
