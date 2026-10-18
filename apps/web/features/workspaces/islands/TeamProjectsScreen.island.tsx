@@ -5,7 +5,6 @@ import "../styles/workspace.css";
 import { MetaLine } from "@projective/ui/display";
 import { ConfirmDialog, InlineNotice, ProgressBar } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
-import { EmptyState } from "@projective/ui/utils";
 import type { ProposalAllowanceStatus } from "@projective/types/finance";
 import type { SentApplication } from "@projective/types/projects";
 import { type WorkspaceDetail, workspaceHref } from "@projective/types/workspace";
@@ -306,7 +305,11 @@ function AllowanceBand(
 					{meter
 						? (
 							<>
-								<ProgressBar value={meter.percent} aria-label={meter.label} />
+								<ProgressBar
+									class="wsp-allowance__bar"
+									value={meter.percent}
+									aria-label={meter.label}
+								/>
 								<MetaLine
 									as="p"
 									size="xs"
@@ -314,14 +317,20 @@ function AllowanceBand(
 								/>
 							</>
 						)
-						: <InlineNotice align="start" text={band.unavailable ?? ""} />}
+						: (
+							<InlineNotice
+								class="wsp-allowance__notice"
+								align="start"
+								text={band.unavailable ?? ""}
+							/>
+						)}
 				</div>
 
 				{gated && (
 					<div class="wsp-allowance__gate">
 						{gate.items.map((item) => (
 							<div key={item.reason} class="wsp-allowance__item">
-								<InlineNotice align="start" text={item.notice} />
+								<InlineNotice class="wsp-allowance__notice" align="start" text={item.notice} />
 								{item.action?.key === "settings" && (
 									<a
 										class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm wsp-allowance__link"
@@ -360,17 +369,8 @@ function ActiveView({ workspace }: { workspace: WorkspaceDetail }): JSX.Element 
 			<div class="wsp-band__body">
 				{rows.length === 0
 					? (
-						<EmptyState
-							size="sm"
-							title={`${workspace.name} isn't seated on a stage yet — accepted work appears here, with who holds its tickets.`}
-							actions={
-								<a
-									class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm wsp-engagements__explore"
-									href={FIND_PROJECTS_HREF}
-								>
-									<span class="ui-button__label">Find projects</span>
-								</a>
-							}
+						<EmptyView
+							text={`${workspace.name} isn't seated on a stage yet — accepted work appears here, with who holds its tickets.`}
 						/>
 					)
 					: (
@@ -413,6 +413,7 @@ function ProposalsView(props: ProposalsViewProps): JSX.Element {
 				{props.error
 					? (
 						<InlineNotice
+							class="wsp-proposals__notice"
 							align="start"
 							text={props.error}
 							actionLabel="Try again"
@@ -421,21 +422,17 @@ function ProposalsView(props: ProposalsViewProps): JSX.Element {
 						/>
 					)
 					: rows === null
-					? <InlineNotice align="start" text="Reading the team's proposals…" busy />
+					? (
+						<InlineNotice
+							class="wsp-proposals__notice"
+							align="start"
+							text="Reading the team's proposals…"
+							busy
+						/>
+					)
 					: rows.length === 0
 					? (
-						<EmptyState
-							size="sm"
-							title="No proposals are waiting on a client — the team's applications appear here until they're answered."
-							actions={
-								<a
-									class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm wsp-proposals__explore"
-									href={FIND_PROJECTS_HREF}
-								>
-									<span class="ui-button__label">Find projects</span>
-								</a>
-							}
-						/>
+						<EmptyView text="No proposals are waiting on a client — the team's applications appear here until they're answered." />
 					)
 					: (
 						<ul class="wsp-proposals" aria-labelledby={PROPOSALS_TITLE_ID}>
@@ -466,10 +463,37 @@ function ProposalsView(props: ProposalsViewProps): JSX.Element {
 						</ul>
 					)}
 				{props.notice && (
-					<InlineNotice align="start" assertive={!props.notice.ok} text={props.notice.text} />
+					<InlineNotice
+						class="wsp-proposals__notice wsp-proposals__notice--result"
+						align="start"
+						assertive={!props.notice.ok}
+						text={props.notice.text}
+					/>
 				)}
 			</div>
 		</>
+	);
+}
+// #endregion
+
+// #region An empty view
+/**
+ * A view with nothing in it: one Meta sentence and, under it, the way to find work — the tier-4
+ * outlined link. Unboxed on the band's own ground (§B.4): the ui `EmptyState` draws a `--surface-1`
+ * tile, which inside a band is a card around static content, and titles its sentence at a heading's
+ * weight.
+ */
+function EmptyView({ text }: { text: string }): JSX.Element {
+	return (
+		<div class="wsp-projects-empty" role="status">
+			<p class="wsp-projects-empty__text">{text}</p>
+			<a
+				class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm wsp-projects-empty__action"
+				href={FIND_PROJECTS_HREF}
+			>
+				<span class="ui-button__label">Find projects</span>
+			</a>
+		</div>
 	);
 }
 // #endregion

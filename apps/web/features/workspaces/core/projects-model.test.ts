@@ -18,6 +18,7 @@ import {
 	bandGate,
 	bandGated,
 	ENGAGEMENT_IDLE,
+	ENGAGEMENT_NO_STAGE_CAP,
 	engagementRow,
 	engagementsSummary,
 	engagementStatus,
@@ -405,12 +406,33 @@ Deno.test("engagement: each assignee reads '3 / 10' with a bar sized to the stag
 	assertStrictEquals(ana.readout, "3 / 10");
 	assertStrictEquals(ana.percent, 30);
 	assertStrictEquals(ana.barLabel, "Ana Reyes: 3 of 10 workload on this stage");
+	assertStrictEquals(ana.capSource, "stage");
 	assertStrictEquals(ana.softCap, null);
-	// A stage with no per-person cap has nothing to size a bar to.
-	const uncapped = assigneeReadout(assignee({ stageWi: 2.5 }), null);
-	assertStrictEquals(uncapped.readout, "2.5");
-	assertStrictEquals(uncapped.percent, null);
-	assertEquals(engagementRow(engagement({ stageCap: null })).meta[1], "no stage cap");
+	// The stage cap wins over the member's own, even when it is the larger.
+	assertStrictEquals(assigneeReadout(assignee({ wiCap: 8 }), 12).readout, "3 / 12");
+});
+
+Deno.test("engagement: a stage with no cap sizes each bar to the member's own workload cap", () => {
+	// Every seeded stage leaves `max_concurrent_intensity` NULL; a bare figure beside an empty bar
+	// column is not a readout. The member's own cap is the only ceiling a claim there meets.
+	const uncapped = assigneeReadout(assignee({ stageWi: 2.5, wiCap: 10 }), null);
+	assertStrictEquals(uncapped.readout, "2.5 / 10");
+	assertStrictEquals(uncapped.percent, 25);
+	assertStrictEquals(uncapped.capSource, "own");
+	assertStrictEquals(uncapped.barLabel, "Ana Reyes: 2.5 of their 10 workload cap on this stage");
+	// A non-positive stage cap is no cap.
+	assertStrictEquals(assigneeReadout(assignee({ wiCap: 5 }), 0).capSource, "own");
+	assertStrictEquals(assigneeReadout(assignee({ wiCap: 5 }), 0).percent, 60);
+	// The row says which cap the bars show, so `2.5 / 10` never reads as a stage cap.
+	const row = engagementRow(engagement({ stageCap: null }));
+	assertEquals(row.meta, ["team Wᵢ 4.5", ENGAGEMENT_NO_STAGE_CAP]);
+	assert(row.assignees.every((a) => a.percent !== null && a.capSource === "own"));
+	// Neither cap answered — no bar is sized to a guess.
+	const none = assigneeReadout(assignee({ stageWi: 2, wiCap: 0 }), null);
+	assertStrictEquals(none.readout, "2");
+	assertStrictEquals(none.percent, null);
+	assertStrictEquals(none.capSource, null);
+	assertStrictEquals(none.barLabel, "Ana Reyes: 2 workload on this stage");
 });
 
 Deno.test("engagement: a member at or over the global soft cap is warned in words", () => {

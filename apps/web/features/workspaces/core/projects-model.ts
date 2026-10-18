@@ -344,16 +344,24 @@ export function engagementStatus(
 	}
 }
 
+/**
+ * What an assignee's bar is sized to: the stage's per-person cap, or — on a stage that sets none —
+ * the member's own workload cap.
+ */
+export type WiCapSource = "stage" | "own";
+
 /** One assignee's Wᵢ on the stage. */
 export interface AssigneeReadout {
 	handle: string;
 	name: string;
 	avatar: string | null;
-	/** `3 / 10` against the stage's per-person cap, or `3` when the stage sets none. */
+	/** `3 / 10` — the Wᵢ on the stage over the cap the bar is sized to; `3` with no cap at all. */
 	readout: string;
-	/** The ProgressBar's fill against the stage cap, 0–100; `null` when there is no cap to size it to. */
+	/** The ProgressBar's fill, 0–100, against {@link capSource}'s cap; `null` with no cap to size it to. */
 	percent: number | null;
-	/** The bar's accessible name — words, not the `Wᵢ` glyph. */
+	/** Which cap sizes the bar; `null` when neither the stage nor the member answered a positive one. */
+	capSource: WiCapSource | null;
+	/** The bar's accessible name — words, not the `Wᵢ` glyph — naming which cap it is measured against. */
 	barLabel: string;
 	/**
 	 * The warning for a member at or over their GLOBAL cap (the soft cap a claim is measured against),
@@ -363,9 +371,13 @@ export interface AssigneeReadout {
 }
 
 /**
- * One assignee's readout. The bar is sized to the stage's per-person hard cap; a stage cannot be over
- * it (the database refuses the claim), so no over-cap state is drawn — the fill is clamped all the
- * same. The soft-cap warning reads the member's global load (`wi` over `wiCap`).
+ * One assignee's readout. The bar is sized to the stage's per-person hard cap when the stage sets one;
+ * a stage cannot be over it (the database refuses the claim), so no over-cap state is drawn — the fill
+ * is clamped all the same. A stage with NO cap is measured against the member's own workload cap
+ * (`wiCap`): it is then the only ceiling a claim on that stage meets (`projects.check_ticket_capacity`
+ * checks the global cap first and the stage cap only when one is set), so every assignee has a bar
+ * with a real whole to fill — and the bar's name says which cap it is. The soft-cap warning reads the
+ * member's global load (`wi` over `wiCap`).
  */
 export function assigneeReadout(
 	assignee: EngagementAssignee,
@@ -373,16 +385,27 @@ export function assigneeReadout(
 ): AssigneeReadout {
 	const name = assignee.displayName || `@${assignee.handle}`;
 	const stage = formatWi(assignee.stageWi);
-	const cap = stageCap !== null && stageCap > 0 ? stageCap : null;
+	const stageLimit = stageCap !== null && stageCap > 0 ? stageCap : null;
+	const ownLimit = assignee.wiCap > 0 ? assignee.wiCap : null;
+	const cap = stageLimit ?? ownLimit;
+	const capSource: WiCapSource | null = stageLimit !== null
+		? "stage"
+		: ownLimit !== null
+		? "own"
+		: null;
+	const of = cap !== null ? formatWi(cap) : "";
 	const global = `${formatWi(assignee.wi)} / ${formatWi(assignee.wiCap)}`;
 	return {
 		handle: assignee.handle,
 		name,
 		avatar: assignee.avatarUrl || null,
-		readout: cap !== null ? `${stage} / ${formatWi(cap)}` : stage,
+		readout: cap !== null ? `${stage} / ${of}` : stage,
 		percent: cap !== null ? Math.min(100, (Math.max(0, assignee.stageWi) / cap) * 100) : null,
-		barLabel: cap !== null
-			? `${name}: ${stage} of ${formatWi(cap)} workload on this stage`
+		capSource,
+		barLabel: capSource === "stage"
+			? `${name}: ${stage} of ${of} workload on this stage`
+			: capSource === "own"
+			? `${name}: ${stage} of their ${of} workload cap on this stage`
 			: `${name}: ${stage} workload on this stage`,
 		softCap: assignee.wi > assignee.wiCap
 			? `Over their workload cap — ${global} across all work`
@@ -403,7 +426,7 @@ export interface EngagementRowModel {
 	status: EngagementStatus;
 	/** The AvatarStack's people, heaviest first (the read's order). */
 	faces: { name: string; avatar: string | null }[];
-	/** The stage's facts: the team's Wᵢ on it and the per-person cap. */
+	/** The stage's facts: the team's Wᵢ on it and the per-person cap (or what stands in for one). */
 	meta: string[];
 	assignees: AssigneeReadout[];
 	/** Said instead of readouts when nobody on the team holds a live ticket on the stage. */
@@ -412,6 +435,9 @@ export interface EngagementRowModel {
 
 /** What a row with no live tickets says. */
 export const ENGAGEMENT_IDLE = "Nobody on the team holds a live ticket on this stage yet.";
+
+/** The fact a stage with no per-person cap states — so a `2 / 10` there reads as the member's cap. */
+export const ENGAGEMENT_NO_STAGE_CAP = "no stage cap — bars show each member's own cap";
 
 /** One live stage assignment as its row. */
 export function engagementRow(engagement: TeamEngagement): EngagementRowModel {
@@ -427,7 +453,7 @@ export function engagementRow(engagement: TeamEngagement): EngagementRowModel {
 		faces: assignees.map((a) => ({ name: a.name, avatar: a.avatar })),
 		meta: [
 			`team Wᵢ ${formatWi(engagement.stageWi)}`,
-			cap !== null ? `cap ${formatWi(cap)} per person` : "no stage cap",
+			cap !== null ? `cap ${formatWi(cap)} per person` : ENGAGEMENT_NO_STAGE_CAP,
 		],
 		assignees,
 		idle: assignees.length === 0 ? ENGAGEMENT_IDLE : null,

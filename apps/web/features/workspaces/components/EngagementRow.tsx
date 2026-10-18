@@ -7,8 +7,9 @@ import type { AssigneeReadout, EngagementRowModel } from "../core/projects-model
  * EngagementRow — one of a team's live stage assignments on the console's Projects → Active view
  * (Teams work order C5): the project and the stage (each a link — `prj-` / `stg-` slugs, Decision #88),
  * the seat's lifecycle status as a `Tag`, the people holding live tickets on it as an `AvatarStack`,
- * and each one's Wᵢ on the stage — `3 / 10`, tabular, over a ui `ProgressBar` sized to the stage's
- * per-person cap.
+ * and each one's Wᵢ on the stage — `3 / 10`, tabular, beside a ui `ProgressBar` sized to the stage's
+ * per-person cap, or, on a stage that sets none, to the member's own workload cap (the row's facts say
+ * which).
  *
  * A row is never boxed: rows sit on the band's ground and are divided by one `--hairline` (§B.4). The
  * stage's facts are a `MetaLine`, not chips (§B.11); the status is the one container, because it is a
@@ -83,9 +84,10 @@ export function EngagementRow({ row }: EngagementRowProps): JSX.Element {
 
 // #region One assignee
 /**
- * One person's line: the name, the readout and — when the stage sets a cap — the bar. The readout is
- * hidden from assistive tech, which hears the bar's name (or, with no bar, the same sentence as hidden
- * text), so the figure is announced once, in words.
+ * One person's line: the name, the readout and the bar — sized to the stage cap, else to the member's
+ * own cap; only a read that answered neither draws no bar. The readout is hidden from assistive tech,
+ * which hears the bar's name (or, with no bar, the same sentence as hidden text), so the figure is
+ * announced once, in words.
  */
 function AssigneeLine({ assignee }: { assignee: AssigneeReadout }): JSX.Element {
 	return (
