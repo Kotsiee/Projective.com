@@ -80,7 +80,7 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | A4 | Team status checked on apply | Neither path checks `org.teams.status` — a **draft or archived** team can apply | ✅ fixed by B2: `team_not_active` on both doors and in the pre-flight (#228 (E)) |
 | A5 | `team_too_small` / `missing_permission` refuse even meter-only | `SYSTEM_ARCHITECTURE.md:1985-1986`; pre-flight in `ProjectBackendService.apply` | ✅ |
 | A6 | Team pool vs members' pool | `finance-model.md:480` vs `database/finance/Tables.md:311` vs `PRODUCT_SPEC.md:1376` | 📄 (#154 flag b, still open) |
-| A7 | Apply modal defaults to "Yourself" in team context | #154 flag (c) | ⚠️ open |
+| A7 | Apply modal defaults to "Yourself" in team context | #154 flag (c) | ✅ fixed by C5: acting as a team the viewer may bind (`bind_seat`, read from the team's allowance), "Apply as" opens on the team; otherwise "Yourself" (`features/view/core/apply-as.ts`) |
 
 ### 1.5 Workload Intensity (W_i)
 
@@ -127,7 +127,7 @@ Severity: **G** = merge-gate violation (root `CLAUDE.md` §3) · **M** = matrix 
 | D5 | G | Title-register headings at `600`: `.wsp-pagehead__title` (console:177), `.wsp-headerband__name` (chrome:596), `.wsp-empty__title` (roster:658), `.wsp-checklist__title` (console:441), `.wsp-invitestrip__title` (roster:154), `.wsp-people__group-title` (people:154), `.wsp-mdrawer__name` / `__section-title` (people:695/743), `.wsp-roleeditor__group-title` (matrix:503) | `--fw-medium`; where a level must differ, change size/case/colour, never weight alone (§3.8). Section-header ones (uppercase label) keep `--fw-semibold` as a **token**. |
 | D6 | G | `700` on `.wsp-matrix__ovr` (matrix:352) | `--fw-semibold` at most. |
 | D7 | M | ~25 further literal `600`s (names, values, chips) | Replace with `var(--fw-*)`; names at `--fw-medium`. |
-| D8 | M | `tabular-nums` missing on `.wsp-card__stats / __stat / __stat-delta` (roster.css:500-549) | Add `.wsp-num` or `font-variant-numeric: tabular-nums`. |
+| D8 | M | `tabular-nums` missing on `.wsp-card__stats / __stat / __stat-delta` (roster.css:500-549) | Add `.wsp-num` or `font-variant-numeric: tabular-nums`. ✅ fixed by R1: the stat grid is gone — the card's counts are tabular `MetaLine` entries and its one money figure (`.wsp-card__figure` / `__figure-value`) is tabular, both held by `styles.gate.test.ts` |
 
 ### 2.3 Separation, anti-card & solid tones (§3.1, §3.6)
 
@@ -146,7 +146,7 @@ Severity: **G** = merge-gate violation (root `CLAUDE.md` §3) · **M** = matrix 
 
 | ID | Sev | Defect | Fix |
 | :-- | :-- | :-- | :-- |
-| D17 | G | Role label as `wsp-chip`: `WorkspaceCard.tsx:114,121`, `WorkspaceTable.tsx:157`, `WorkspaceLane.island.tsx:498` | Inline Meta: `Owner · 4 members · Active 2d ago`. |
+| D17 | G | Role label as `wsp-chip`: `WorkspaceCard.tsx:114,121`, `WorkspaceTable.tsx:157`, `WorkspaceLane.island.tsx:498` | Inline Meta: `Owner · 4 members · Active 2d ago`. ✅ fixed by R1 (the lane row by L1): the card's facts are one `MetaLine` (`cardMeta`, `core/roster-model.ts`: role · N members · N live projects · Acting), the table's role cell a `MetaLine`; `roster.gate.test.ts` fails on any `wsp-chip` in the roster |
 | D18 | G | Kind chip "Team" in `InvitationStrip.tsx:111` | Meta text. ✅ fixed by R2: the row's facts are one `MetaLine` (kind · as role · from @inviter · expires in N days, tabular); `.wsp-chip--kind` deleted. |
 | D19 | G | "Unlimited" / "Per purchase" chips (`SpendLimitRow.tsx:161,168`) | Meta text. |
 | D20 | G | `wsp-capchip` capability labels (`MemberCard.tsx:492`, `MemberTable.tsx:89`, `WorkspaceOverview:134` standing) | Meta text list; the sensitive count may stay a **count** badge. |
@@ -157,11 +157,11 @@ Severity: **G** = merge-gate violation (root `CLAUDE.md` §3) · **M** = matrix 
 
 | ID | Sev | Region · control | Current | Required |
 | :-- | :-- | :-- | :-- | :-- |
-| D22 | M | Roster empty · "Create a team" (`RosterEmpty.tsx:86`) | Tier 3 filled primary | **Tier 2** monochrome inverted (primary creation trigger) |
+| D22 | M | Roster empty · "Create a team" (`RosterEmpty.tsx:86`) | Tier 3 filled primary | **Tier 2** monochrome inverted (primary creation trigger) ✅ fixed by R1: the first run is the ui `EmptyState` with one tier-2 structural Create (`rosterCanvasControls`), and the lane footer withholds its own create in first run (`lane-model.ts` `firstRun`), so the page holds exactly one filled control (`roster-model.test.ts`) |
 | D23 | M | Roster lane · New (`WorkspaceLane.island.tsx:~308`), rail New (`WorkspaceRail.tsx:249`) | `LaneIconButton accent` / raw button | `LaneCreateButton` (tier 2) — parity with ProjectsLane:567, CatalogueLane:151 |
 | D24 | M | Create modal · "Create team" (`CreateWorkspaceModal.island.tsx:258`); Roles · "Create role" (`RolesMatrix.island.tsx:538`) | Tier 3 | Tier 2 (structural creation) |
 | D25 | G | Invitation strip · Accept ×N (`InvitationStrip.tsx:119`, `roster.css:254` `background: var(--wsp-kind)`) | Raw filled button **per row** → N filled in one region | `Button` tier 3 on the *first/focused* invite only, or all rows `variant="outlined"` with one filled "Accept" inside an expanded row; Decline `variant="text"` ✅ fixed by R2: `planInviteActions` (`core/invitation-strip-model.ts`, unit-tested) gives the first row's Accept tier 3 and every other tier 4 neutral outlined, Decline tier 5 on every row; the `.wsp-invitestrip__accept` fill is deleted |
-| D26 | M | Error · "Try again" (`WorkspaceRoster.island.tsx:355`) | Raw ghost | Tier 4 `severity="neutral" variant="outlined"` (B.8.1 names it) |
+| D26 | M | Error · "Try again" (`WorkspaceRoster.island.tsx:355`) | Raw ghost | Tier 4 `severity="neutral" variant="outlined"` (B.8.1 names it) ✅ fixed by R1: a failed read is an assertive `InlineNotice` with a danger mark and a tier-4 Try again (a failed act says so with no retry — the menu repeats it) |
 | D27 | M | Footer rig · Save (`WorkspaceFooterRig.island.tsx:183`) | Ghost with `data-active` tint | Tier 3 `Button` filled when dirty — the console's one workflow commit ✅ fixed by L2: `rigModel` (`core/rig-model.ts`, unit-tested) renders Save as a tier-3 `Button` ONLY while `policyDirty`, with a tier-5 Discard beside it and the save state said before them; the rig's one filled control |
 | D28 | M | Footer rig · Invite, Settings, Org chart; header band icon (`HeaderBand:197`) | Raw ghost `wsp-footerrig__action` | Tier 4 neutral outlined (Invite, Settings are named utilities); Org chart tier 5 ✅ fixed by L2: New and Invite (in place) are tier-4 neutral outlined `Button`s, Invite elsewhere and Settings are ui `Link`s (navigation), the Org chart toggle is a tier-5 text `Button` with `aria-pressed`, and the band's kebab is a tier-5 `Button iconOnly` (ui `Button` gained `triggerRef`) |
 | D29 | M | Header band actions (`HeaderBand.island.tsx:162,175`) | Popover + raw buttons | `ActionMenu` (as `WorkspaceCard` / `MemberCard` already do; Decision #222) ✅ fixed by L2: `headerMenu` (`core/header-model.ts`, unit-tested) builds the rows with `linkActionItems` / `composeMenu`; the band is the menu's `surface`, so right-click, the ContextMenu key and Shift+F10 open the kebab's rows; Archive… only with `archive_entity`, confirmed as a danger |

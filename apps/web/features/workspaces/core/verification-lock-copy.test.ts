@@ -30,10 +30,12 @@ Deno.test("lock: an unverified entity names who acts, or what still works for th
 		lockNextStep("team", "unverified", false),
 		"An owner or admin can finish KYC from the team's Verification page.",
 	);
+	// Plan-neutral: a Business Free owner, who cannot set limits, reads the same lock (Decision #248).
 	assertEquals(
 		lockNextStep("business", "unverified", true),
-		"You can set limits and compose spend rules now; only moving money waits on this.",
+		"Everything else keeps working — only spending from the wallet waits on this.",
 	);
+	assertEquals(/limit|rule/i.test(lockNextStep("business", "unverified", true)), false);
 	assertEquals(
 		lockNextStep("team", "unverified", true),
 		"Everything else keeps working — only the payout itself waits on this.",

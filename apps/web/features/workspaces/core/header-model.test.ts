@@ -245,7 +245,12 @@ Deno.test("header: the centred TabMenu appears only when the module partitions i
 	const members = headerBand(input({ view: MEMBERS_CHART }));
 	assertEquals(members.tabs?.views.map((v) => v.value), ["people", "pending", "chart"]);
 	assertEquals(members.tabs?.active, 2);
-	for (const module of MODULES.filter((m) => m !== "members")) {
+	// A team's Projects partitions its body too (Teams C5); a business's hands off and draws none.
+	const projects = headerBand(input({ module: "projects", view: "proposals" }));
+	assertEquals(projects.tabs?.views.map((v) => v.value), ["active", "proposals"]);
+	assertEquals(projects.tabs?.active, 1);
+	assertEquals(headerBand(input({ module: "projects", kind: "business" })).tabs, null);
+	for (const module of MODULES.filter((m) => m !== "members" && m !== "projects")) {
 		assertEquals(headerBand(input({ module })).tabs, null, `${module} drew tabs`);
 	}
 	// Without the invite right the queue is not a tab.

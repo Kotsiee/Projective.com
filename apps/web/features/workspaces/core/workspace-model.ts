@@ -1,21 +1,18 @@
-import type { LaneTabOption } from "@projective/ui/navigation";
 import { isReservedHandle } from "@projective/types/profile";
 import {
-	kindCopy,
 	kindFromPath,
 	roleRank,
 	type SplitModel,
-	type WorkspaceKind,
 	type WorkspaceMember,
 	type WorkspaceProject,
-	type WorkspaceSummary,
 } from "@projective/types/workspace";
 import { isModuleKey, type ModuleKey } from "./module-registry.tsx";
 
 /**
  * workspace-model — the pure, presentation-agnostic helpers the `/teams` and `/businesses` islands
- * share: URL parsing, roster and roster-tab filtering, member filtering and sorting, entity-badge
- * initials, and the small formatters the surface needs. A module's sub-views are `sub-views.ts`.
+ * share: URL parsing, member filtering and sorting, entity-badge initials, and the small formatters
+ * the surface needs. A module's sub-views are `sub-views.ts`; the roster index's partitions and canvas
+ * rules are `roster-model.ts` (re-exported below where callers already read them from here).
  *
  * Everything here is a **total function of its arguments**: no state, no signals, no DOM, no fetch. That
  * is what lets a server-side slot resolver and a client island call the same helper and agree, which is
@@ -83,71 +80,22 @@ export function isWithinPath(path: string, base: string): boolean {
 export { kindFromPath };
 // #endregion
 
-// #region Roster tabs
+// #region Roster partitions
 /**
- * The roster index's partitions. `invitations` is a genuinely different list (invitations addressed to
- * the VIEWER, not entities they belong to), which is why it is a tab rather than a filter — collapsing
- * it into `all` would put rows the viewer must answer beside rows they merely own.
+ * The roster index's partition vocabulary, its filter, its counts and the count noun live in the pure
+ * `roster-model.ts` (Teams R1), which `deno test` loads without this module's registry; they are
+ * re-exported here for the callers that already read them from this file.
  */
-export type RosterTab = "all" | "owned" | "member" | "invitations" | "archived";
-
-/** The roster tab strip. Counts are appended by the caller so this stays a pure vocabulary. */
-export const ROSTER_TABS: readonly LaneTabOption<RosterTab>[] = [
-	{ value: "all", label: "All" },
-	{ value: "owned", label: "Owned" },
-	{ value: "member", label: "Member of" },
-	{ value: "invitations", label: "Invitations" },
-	{ value: "archived", label: "Archived" },
-];
-
-/** Coerce a raw query value to a roster tab, else `all`. */
-export function toRosterTab(raw: string | null): RosterTab {
-	const tabs: RosterTab[] = ["all", "owned", "member", "invitations", "archived"];
-	return tabs.includes(raw as RosterTab) ? (raw as RosterTab) : "all";
-}
-
-/**
- * Filter the roster for a tab and an optional search term.
- *
- * Archived entities are excluded from every tab except `archived`: nothing is ever hard-deleted, so an
- * archived entity must remain reachable — but leaving it in the default list would make a tidied roster
- * look untidied. The `invitations` tab shows no entities at all (its rows are the incoming invites the
- * caller renders separately), so it returns empty rather than the full list.
- */
-export function filterRoster(
-	items: readonly WorkspaceSummary[],
-	tab: RosterTab,
-	search = "",
-): WorkspaceSummary[] {
-	const needle = search.trim().toLowerCase();
-	return items.filter((item) => {
-		if (tab === "invitations") return false;
-		if (tab === "archived") {
-			if (item.status !== "archived") return false;
-		} else if (item.status === "archived") return false;
-		if (tab === "owned" && !item.isOwner) return false;
-		if (tab === "member" && item.isOwner) return false;
-		if (!needle) return true;
-		return item.name.toLowerCase().includes(needle) ||
-			item.handle.toLowerCase().includes(needle) ||
-			item.tagline.toLowerCase().includes(needle);
-	});
-}
-
-/** How many rows each roster tab would show — the strip's counts, computed once from one pass. */
-export function rosterTabCounts(
-	items: readonly WorkspaceSummary[],
-	invitations: readonly { id: string }[],
-): Record<RosterTab, number> {
-	const live = items.filter((i) => i.status !== "archived");
-	return {
-		all: live.length,
-		owned: live.filter((i) => i.isOwner).length,
-		member: live.filter((i) => !i.isOwner).length,
-		invitations: invitations.length,
-		archived: items.filter((i) => i.status === "archived").length,
-	};
-}
+export {
+	countLabel,
+	filterRoster,
+	ROSTER_TABS,
+	type RosterTab,
+	rosterTabCounts,
+	rosterTabFromSearch,
+	type RosterTabOption,
+	toRosterTab,
+} from "./roster-model.ts";
 // #endregion
 
 // #region Options
@@ -309,15 +257,6 @@ export function availabilityTone(
 /** Sentence-case label for a membership state, for a status chip's tooltip. */
 export function membershipLabel(state: WorkspaceMember["state"]): string {
 	return state === "active" ? "Active member" : "No longer a member";
-}
-
-/**
- * The plural noun for a count, kind-aware — `1 team` / `3 teams`. Uses the SSOT's per-kind copy table
- * so a screen never inlines the word "team" and then has to be found again when a kind is renamed.
- */
-export function countLabel(kind: WorkspaceKind, count: number): string {
-	const copy = kindCopy(kind);
-	return `${count} ${count === 1 ? copy.noun : copy.plural}`;
 }
 // #endregion
 

@@ -15,6 +15,7 @@ import {
 	publishedFact,
 	type RawRoster,
 	type RawRosterItem,
+	rosterActivity,
 	rosterStats,
 	setupCompletion,
 	setupSteps,
@@ -77,11 +78,14 @@ function toSummary(
 	const memberCount = Math.max(0, Number(item.member_count) || 0);
 	const status = parseStatus(item.status);
 	const steps = setupSteps(kind, item.handle, {
+		entityId: item.id,
 		logo: !!item.setup?.logo,
 		bio: !!item.setup?.bio,
 		activeMembers: memberCount,
 		invitePending: (Number(item.pending_invites) || 0) > 0,
 		money: !!item.setup?.money,
+		funded: !!item.setup?.funded,
+		limitsOffered: !!item.setup?.limits_offered,
 		verification,
 		published: publishedFact(status),
 	});
@@ -99,6 +103,7 @@ function toSummary(
 		role: parseRole(item.role) ?? "member",
 		isOwner: !!item.is_owner,
 		memberCount,
+		...rosterActivity(item),
 		faces,
 		stats: rosterStats(kind, item),
 		hasUpdate: !!item.has_update,

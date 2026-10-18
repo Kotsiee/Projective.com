@@ -232,7 +232,6 @@
 	--wsp-rowh-dense: var(--row-h-dense);
 	--wsp-rig-row: var(--rig-row-h);
 
-	--wsp-card-min: 20rem;
 	--wsp-tile-min: 11rem;
 	/* Orphan: nothing in this feature reads it yet (it predates the promotion). Aliased rather than
 	deleted so the first chart that lands here is already on the shared height; flagged for the
@@ -498,24 +497,28 @@ ordinary prose keeps proportional figures. */
 	color: var(--on-surface);
 }
 
+/*
+ * A policy figure is read, not shouted: `--fw-medium` at every step (BUSINESSES_AUDIT BD25), so a
+ * threshold or a limit sits at the weight of the headings around it instead of out-weighing them.
+ */
 .wsp-money--figure {
 	font-size: var(--wsp-fs-figure);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 }
 
 .wsp-money--key {
 	font-size: var(--wsp-fs-key);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 }
 
 .wsp-money--body {
 	font-size: var(--wsp-fs-body);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 }
 
 .wsp-money--micro {
 	font-size: var(--wsp-fs-micro);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 }
 
 /*
@@ -640,13 +643,6 @@ identity band, where the entity is the subject of the page. */
 	white-space: nowrap;
 }
 
-/* The quiet variant, for a row that already carries the leading rule + tint and must not shout
-twice. */
-.wsp-actingchip--quiet {
-	background: var(--wsp-kind-tint-hi);
-	color: var(--wsp-kind-ink);
-}
-
 .wsp-actingchip__dot {
 	flex: none;
 	inline-size: var(--wsp-dot-sm);
@@ -704,14 +700,6 @@ frozen animation clock costs nothing. */
 	font-size: var(--wsp-fs-micro);
 	font-weight: var(--fw-semibold);
 	white-space: nowrap;
-}
-
-/* The role chip carrying the acting state, so the two facts occupy one mark instead of two chips of
-   identical shape sitting side by side. Same tones as `.wsp-actingchip`, which still serves the
-   surfaces that show acting WITHOUT a role beside it. */
-.wsp-chip--acting {
-	background: var(--wsp-acting);
-	color: var(--wsp-acting-on);
 }
 
 /* A permitted chip fills with a SOLID tonal step (§B.11.6): the U1 status tints, never an alpha wash. */

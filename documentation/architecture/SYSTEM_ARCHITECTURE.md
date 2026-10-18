@@ -1880,6 +1880,25 @@ Every write returns the RE-READ console so an island adopts the server's state. 
   client render reads the same key and carries the same `data-hero-dismissed` mark: Fresh's revive
   renders over the server's DOM and removes every attribute its tree lacks, so a mark set only by a
   pre-paint script is dropped at revive and the band flashes back.
+- **A business's Overview and Finance (BU6, Decision #248).** The money band shows exactly when
+  `canOpenFinance("business", caps)` holds (`contribute_funds` · `spend_funds` · `manage_finances`) —
+  the same predicate the read answers `money_tiles` on (`v_sees_money`) and the Finance module opens
+  on — and draws BB9's tiles per wallet currency (Available · Committed · Awaiting approval · Spent
+  30d) with one wallet hand-off link; `WorkspaceDetail.finance` has no reader left in the app. The
+  business setup steps come from the read's `setup` facts, which for a business add `funded` (any
+  `add_funds` ledger row on its wallets — so the step stays done once the wallet is spent) and
+  `limits_offered` (NOT `limits_plan_gated`: Business Pro's `pooled_wallet_full`, or the gates off);
+  `setupSteps` leaves Set spending rules out without it, so a Business Free business walks invite ·
+  KYB · Add money · publish. Add money (`fund`) is actionable for `contribute_funds` (the vault's
+  `add_funds`), and the Overview points it at the wallet intent
+  (`/wallet?w=business:<id>&do=top_up&back=/businesses/<handle>`). A business's Publish is not
+  gated by its earlier steps — `setupHero` lets it carry the band's one fill whenever it is the
+  viewer's first open step and draws it tier 3 `outlined` otherwise (a team keeps C1's at-hand rule) — and it
+  publishes through the existing door (`POST /api/workspace/update` → `org.set_workspace_status`,
+  `manage_settings`). A dismissed hero on a draft business hands its Publish to a not-active notice
+  worded from `BUSINESS_REFUSAL_COPY.business_not_active`. The Finance module of a business is
+  `BusinessFinanceHead` (a server component): the page head, a balance MetaLine from the same tiles
+  (`walletBalanceFacts`) and a tier-4 "Open the business wallet".
 - **The acting context is written only by the switch RPCs.** (Its enterprise targets are listed by
   `GET /api/context/enterprises` → `ContextBackendService.enterprises`: owned or ACTIVE-member
   enterprises, archived excluded, filtered explicitly because the `org.enterprises` SELECT

@@ -67,6 +67,12 @@ export interface BusinessRefusalContext {
 	/** The business's KYB state (`pending`, `rejected`, …). */
 	kybStatus?: string | null;
 	/**
+	 * The business's own lifecycle status (`draft`, `active`, `archived`), where the reader knows it —
+	 * `business_not_active` then asks for the one act that clears it: publishing a draft, restoring
+	 * an archived business.
+	 */
+	businessStatus?: string | null;
+	/**
 	 * Whether the reader manages the business's members (the owner): the one who adds an approver, so
 	 * "ask the owner" would send them to themselves.
 	 */
@@ -220,7 +226,14 @@ export const BUSINESS_REFUSAL_COPY: Readonly<Record<BusinessRefusalCode, Refusal
 		sentence: (ctx) =>
 			`${nameOf(ctx) ?? "This business"} isn't active, so it can't buy, hire or pay yet.`,
 		action: null,
-		ask: () => "Ask the owner to publish or restore it in the business settings.",
+		// The business's Overview publishes a draft and the roster's archived tab restores one; Settings
+		// does neither, so the ask names the act, not a surface — the one act its status needs where the
+		// reader knows it, both where it does not (the checkout) (Decision #248).
+		ask: (ctx) => {
+			if (ctx.businessStatus === "draft") return "Ask the owner to publish it.";
+			if (ctx.businessStatus === "archived") return "Ask the owner to restore it.";
+			return "Ask the owner to publish or restore it.";
+		},
 	},
 	entitlement: {
 		sentence: (ctx) =>

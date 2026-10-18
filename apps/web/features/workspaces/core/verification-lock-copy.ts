@@ -1,4 +1,5 @@
 import { kindCopy, type VerificationState, type WorkspaceKind } from "@projective/types/workspace";
+import { BUSINESS_REFUSAL_COPY } from "./refusal-copy.ts";
 
 /**
  * verification-lock-copy — the pure wording of `VerificationLock`'s next step and link, kept apart
@@ -15,7 +16,9 @@ import { kindCopy, type VerificationState, type WorkspaceKind } from "@projectiv
  *   - **Somebody else's** — the viewer cannot open Verification, so the step names WHO can. A
  *     business's KYB is the billing right's (Decision #230 (d)), which only the owner holds or grants,
  *     so the owner is who to ask.
- *   - **Actionable** — the viewer can finish it, so the step is the link beside this text.
+ *   - **Actionable** — the viewer can finish it, so the step is the link beside this text, and the
+ *     sentence says what still works meanwhile. For a business it names no feature: spending limits
+ *     are Business Pro's, and a Business Free owner reads this lock too (Decision #248).
  */
 export function lockNextStep(
 	kind: WorkspaceKind,
@@ -30,12 +33,12 @@ export function lockNextStep(
 	}
 	if (!canManage) {
 		return kind === "business"
-			? "Ask the owner to verify the business."
+			? BUSINESS_REFUSAL_COPY.kyb_required.ask({})
 			: `An owner or admin can finish ${copy.verification} from the ${copy.noun}'s Verification page.`;
 	}
 	return kind === "team"
 		? "Everything else keeps working — only the payout itself waits on this."
-		: "You can set limits and compose spend rules now; only moving money waits on this.";
+		: "Everything else keeps working — only spending from the wallet waits on this.";
 }
 // #endregion
 

@@ -2483,9 +2483,9 @@ export class ProjectBackendService {
 
 	/**
 	 * The proposals the viewer has sent — and those filed for a team they belong to — newest first
-	 * (`GET /api/projects/applications/mine`), optionally narrowed to one project: the listing page asks
-	 * it "have I applied here?" and `/projects` lists them all. Never cached: a withdrawal must show on
-	 * the next read.
+	 * (`GET /api/projects/applications/mine`), optionally narrowed to one project and to one team: the
+	 * listing page asks it "have I applied here?", `/projects` lists them all, and a team console's
+	 * Proposals view lists the team's. Never cached: a withdrawal must show on the next read.
 	 */
 	static async sentApplications(
 		query: SentApplicationsQuery,
@@ -2501,14 +2501,17 @@ export class ProjectBackendService {
 				});
 			}
 			try {
-				return ok(await listMyApplicationsLive(actor, query.project ?? null));
+				return ok(
+					await listMyApplicationsLive(actor, query.project ?? null, query.team ?? null),
+				);
 			} catch (error) {
 				console.error("[ProjectBackendService.sentApplications]", error);
 				return fail(502, { message: "We couldn't load your proposals just now." });
 			}
 		}
 
-		return ok(listStubApplications(actor, query.project).map((row): SentApplication => {
+		const stubRows = listStubApplications(actor, query.project, query.team);
+		return ok(stubRows.map((row): SentApplication => {
 			const status = stubApplicationStatus(row.id);
 			return {
 				id: row.id,
