@@ -11,9 +11,11 @@ import {
 	type MenuItem,
 } from "@projective/ui/navigation";
 import { kindCopy, type WorkspaceSummary } from "@projective/types/workspace";
+import { UserAvatarStack } from "@web/components/UserAvatar.tsx";
 import {
 	cardFigure,
 	cardMeta,
+	cardPeople,
 	lifecycleTag,
 	setupPercent,
 	setupUnfinished,
@@ -34,9 +36,10 @@ import { EntityMark } from "./EntityMark.tsx";
  * **What it says**, top to bottom: the `EntityMark` (squares are entities), the name in the title
  * register at `--fw-medium` and the `@handle` beneath it; the lifecycle `Tag` — ONLY for a Draft or
  * Archived entity — then ONE `MetaLine` of facts (`Owner · 4 members · 2 live projects`, `Acting`
- * while the session acts as it), never chips (§B.11); the one-line tagline; the kind's 30-day figure;
- * and, until setup is done, the ui `ProgressBar`. Unseen activity and outstanding verification stay
- * iconographic beside the kebab, their words in the Tooltip (§B.6).
+ * while the session acts as it), never chips (§B.11); the one-line tagline; the member faces as the
+ * ui `AvatarStack` with a `+N` for the rest (circles are people — the count itself is the MetaLine's);
+ * the kind's 30-day figure; and, until setup is done, the ui `ProgressBar`. Unseen activity and
+ * outstanding verification stay iconographic beside the kebab, their words in the Tooltip (§B.6).
  *
  * **Separation** is the card's own: it is the interactive container, so it sits on `--surface-1`
  * with no border, lifts one tonal step on hover and compresses on press (§B.12). Acting is the
@@ -79,6 +82,7 @@ export function WorkspaceCard(props: WorkspaceCardProps): JSX.Element {
 	const copy = kindCopy(summary.kind);
 	const tag = lifecycleTag(summary.status);
 	const figure = cardFigure(summary);
+	const people = cardPeople(summary);
 	const percent = setupPercent(summary.setupProgress);
 	const cardRef = useRef<HTMLElement>(null);
 
@@ -129,6 +133,17 @@ export function WorkspaceCard(props: WorkspaceCardProps): JSX.Element {
 			</div>
 
 			{summary.tagline && <p class="wsp-card__tagline">{summary.tagline}</p>}
+
+			{people && (
+				<UserAvatarStack
+					class="wsp-card__people"
+					people={people.people}
+					total={people.total}
+					max={people.people.length}
+					size="sm"
+					aria-label={people.label}
+				/>
+			)}
 
 			{figure && (
 				<p class="wsp-card__figure">

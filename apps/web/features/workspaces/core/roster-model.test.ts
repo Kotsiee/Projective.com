@@ -3,6 +3,7 @@ import type { WorkspaceKind, WorkspaceSummary } from "@projective/types/workspac
 import {
 	cardFigure,
 	cardMeta,
+	cardPeople,
 	countLabel,
 	filledCount,
 	filterRoster,
@@ -507,6 +508,38 @@ Deno.test("roster: the card's figure is the kind's money stat, verbatim", () => 
 		delta: null,
 	});
 	assertEquals(cardFigure(summary({ stats: [] })), null);
+});
+
+Deno.test("roster: the card's faces are the server's sample, its +N the rest of the membership", () => {
+	const face = (name: string, avatar = "") => ({ handle: name.toLowerCase(), name, avatar });
+	assertEquals(cardPeople(summary({ faces: [] })), null);
+	assertEquals(
+		cardPeople(summary({
+			memberCount: 3,
+			faces: [face("Ada", "https://cdn.test/ada.webp"), face("Ben"), face("Cy")],
+		})),
+		{
+			people: [
+				{ name: "Ada", avatar: "https://cdn.test/ada.webp" },
+				{ name: "Ben", avatar: null },
+				{ name: "Cy", avatar: null },
+			],
+			total: 3,
+			label: "3 members: Ada, Ben, Cy",
+		},
+	);
+	const sample = cardPeople(summary({
+		memberCount: 12,
+		faces: ["Ada", "Ben", "Cy", "Dee", "Eve"].map((n) => face(n)),
+	}));
+	assertEquals(sample?.total, 12);
+	assertEquals(sample?.people.length, 5);
+	assertEquals(sample?.label, "5 of 12 members: Ada, Ben, Cy, Dee, Eve");
+	// A stale count never draws fewer than the faces in hand.
+	assertEquals(
+		cardPeople(summary({ memberCount: 0, faces: [face("Ada")] }))?.label,
+		"1 member: Ada",
+	);
 });
 
 Deno.test("roster: the setup meter shows a whole percentage and leaves at 100%", () => {

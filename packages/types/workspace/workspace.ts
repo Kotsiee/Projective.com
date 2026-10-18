@@ -74,8 +74,8 @@ export const WorkspaceSummarySchema = z.object({
 	 */
 	activeProjects: z.number().int().min(0).default(0),
 	/**
-	 * Up to five member faces. No roster surface draws them since Teams R1 — the card states the head
-	 * count in its MetaLine (`4 members`) — so the server's face resolution is flagged for removal.
+	 * Up to five member faces — a SAMPLE of the membership. The roster card draws them as the ui
+	 * `AvatarStack` with a `+N` for the rest (`memberCount − faces`); its MetaLine states the count.
 	 */
 	faces: z.array(MemberFaceSchema),
 	stats: z.array(WorkspaceStatSchema),

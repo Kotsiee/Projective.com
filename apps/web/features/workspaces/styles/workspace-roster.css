@@ -94,6 +94,26 @@
 	margin-block-end: 0;
 }
 
+/*
+ * InlineNotice is shaped for one SHORT line: it wraps its parts, so a failure sentence wider than the
+ * room beside its mark drops whole under it and leaves the mark alone on a line (a phone, or the longer
+ * server fallback). Here the mark stays beside the sentence and sits on its first line — the text
+ * column shrinks and its words wrap instead — as the create dialog's refusal does (R3). Doubled class
+ * so the override never depends on bundle order.
+ */
+.ui-inline-notice.wsp-roster__alert {
+	flex-wrap: nowrap;
+	align-items: flex-start;
+}
+
+.ui-inline-notice.wsp-roster__alert .ui-inline-notice__text {
+	flex: 1 1 auto;
+}
+
+.ui-inline-notice.wsp-roster__alert .ui-inline-notice__icon {
+	margin-block-start: var(--space-px);
+}
+
 /* A non-text mark, so it carries the danger hue; the sentence beside it stays in the meta ink. */
 .wsp-roster__alert-mark {
 	display: inline-flex;
@@ -327,15 +347,13 @@
 }
 
 /*
- * The name in the title register. It wraps to a second line before it is clipped, so a name is read
- * whole at the default zoom rather than cut to its first word.
+ * The name in the title register, read WHOLE: it wraps (an unbroken word breaks anywhere) and is never
+ * clipped. Beside the mark and the kebab its column is about 150px at the default zoom, where a valid
+ * name — up to WORKSPACE_NAME_MAX characters — runs past any fixed line count, so a clamp would cut
+ * the one thing that identifies the card.
  */
 .wsp-card__name {
-	display: -webkit-box;
-	-webkit-line-clamp: 2;
-	-webkit-box-orient: vertical;
 	margin: 0;
-	overflow: hidden;
 	overflow-wrap: anywhere;
 	font-size: var(--wsp-fs-key);
 	font-weight: var(--fw-medium);
@@ -386,6 +404,21 @@ a pointer. */
 	line-height: var(--leading-normal);
 	color: var(--text-secondary);
 	pointer-events: none;
+}
+
+/*
+ * Who is on it: the member faces as the ui AvatarStack, a `+N` for the rest. The stack's separating
+ * ring is drawn in the card's own tone — at rest and on the hover lift — so it reads as a gap between
+ * faces, never as a halo; and the faces take no pointer, so a press on them is the card's link.
+ */
+.wsp-card__people {
+	--avatar-ring: var(--surface-1);
+	align-self: flex-start;
+	pointer-events: none;
+}
+
+.wsp-card:hover .wsp-card__people {
+	--avatar-ring: var(--surface-2);
 }
 
 /*

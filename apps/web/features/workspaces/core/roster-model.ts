@@ -521,6 +521,39 @@ export function cardFigure(summary: WorkspaceSummary): WorkspaceStat | null {
 	return summary.stats[2] ?? null;
 }
 
+/** The card's member faces, in the shape the ui `AvatarStack` draws. */
+export interface CardPeople {
+	/** The faces the server sent (up to five), in its order — every one drawn. */
+	people: { name: string; avatar: string | null }[];
+	/** The whole membership, so the stack's `+N` counts everyone not drawn. */
+	total: number;
+	/** The stack's one composed name: `3 members: Ada, Ben, Cy` or `5 of 12 members: …`. */
+	label: string;
+}
+
+/**
+ * Who is on the entity: the server's sample of member faces and a `+N` for the rest of the
+ * membership. The MetaLine states the head count; the faces say WHO — circles, because those are
+ * people, beside the entity's square mark. `null` when the projection carries no faces, so a card never
+ * draws an empty stack.
+ */
+export function cardPeople(
+	summary: Pick<WorkspaceSummary, "faces" | "memberCount">,
+): CardPeople | null {
+	const faces = summary.faces;
+	if (faces.length === 0) return null;
+	const total = Math.max(summary.memberCount, faces.length);
+	const names = faces.map((face) => face.name).join(", ");
+	const count = faces.length === total
+		? plural(total, "member")
+		: `${faces.length} of ${plural(total, "member")}`;
+	return {
+		people: faces.map((face) => ({ name: face.name, avatar: face.avatar || null })),
+		total,
+		label: `${count}: ${names}`,
+	};
+}
+
 /** Draft-First setup as a whole percentage, for the ProgressBar and the words beside it. */
 export function setupPercent(progress: number): number {
 	return Math.round(Math.min(1, Math.max(0, progress)) * 100);

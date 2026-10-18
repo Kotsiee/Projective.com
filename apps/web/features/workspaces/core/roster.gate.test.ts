@@ -85,6 +85,10 @@ Deno.test("roster gate: the canvas is built on the ui primitives R1 names", () =
 	assert(/<MetaLine\b/.test(ISLAND) && /<MetaLine\b/.test(CARD), "facts are MetaLines");
 	assert(/<InlineNotice\b/.test(ISLAND), "notices and failures are InlineNotices");
 	assert(/<ProgressBar\b/.test(CARD), "the setup meter is the ui ProgressBar");
+	assert(
+		/<UserAvatarStack\b/.test(CARD) && /total=\{people\.total\}/.test(CARD),
+		"the member faces are the ui AvatarStack, its +N counting the whole membership",
+	);
 	assert(/<Tag\b/.test(CARD) && /<Tag\b/.test(TABLE), "lifecycle is a Tag");
 	assert(/lifecycleTag\(/.test(CARD) && /lifecycleTag\(/.test(TABLE), "…and only when not active");
 	assert(
