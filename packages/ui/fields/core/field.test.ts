@@ -470,4 +470,23 @@ Deno.test("field.css — the coarse-pointer 16px floor comes AFTER `.ui-field__i
 			"fields would render at 15px and iOS would zoom on focus.",
 	);
 });
+
+/**
+ * A Select-family trigger is a button that inherits the field's font, not an input, so the floor must
+ * raise the FIELD as well: otherwise a Billing day Select sits at 15px beside a 16px MoneyInput.
+ */
+Deno.test("field.css — the coarse-pointer floor raises `.ui-field`, which every trigger inherits", async () => {
+	const css = rulesOf(await Deno.readTextFile(new URL("field.css", stylesDir)));
+	const block = /@media[^{]*pointer:\s*coarse[^{]*\{([^}]*)\{/.exec(css);
+	assert(block, "field.css has no coarse-pointer floor.");
+	assert(
+		/(^|,)\s*\.ui-field\s*(,|$)/.test(block[1]),
+		"the coarse-pointer floor no longer selects `.ui-field`: Select-family triggers stay at 15px on a phone.",
+	);
+	const select = rulesOf(await Deno.readTextFile(new URL("select.css", stylesDir)));
+	assert(
+		/\.ui-select__trigger\s*\{[^}]*font:\s*inherit/.test(select),
+		"`.ui-select__trigger` no longer inherits the field's font — re-check how it meets the floor.",
+	);
+});
 // #endregion

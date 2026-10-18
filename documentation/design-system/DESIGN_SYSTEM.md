@@ -584,7 +584,9 @@ pixel-identical: **32 / 40 / 48px** tall, **8 / 12 / 16px** inline padding, **6 
 **13 / 15 / 17px** type. `--fld-fs-md`/`-lg` sit a half-step above their neighbours on the §A.4 ramp
 **deliberately** — a value the user _typed_ is read under different conditions than a table cell
 they scan. A **16px floor applies on coarse-pointer viewports** because iOS Safari zooms a sub-16px
-field on focus and does not zoom back out.
+field on focus and does not zoom back out. It raises `.ui-field` as well as the input, so a Select-family
+trigger or a picker value, which inherits the field's font, reads at the same 16px as a typed value
+beside it (Decision #247 (x), ruled by the owner 2026-10-18).
 
 **A.7.3 The canonical state matrix.** Every state declares the same **four channels — border ·
 surface · ink · ring — plus a mark.** A control that cannot compose `.ui-field` (Checkbox, Slider,
