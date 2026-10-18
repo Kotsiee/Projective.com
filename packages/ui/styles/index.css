@@ -496,6 +496,11 @@
 
     --shell-gutter: var(--space-2);
     /* parent-track thickness revealed between nested frames */
+    --chrome-pinned-h: 0px;
+    /* host hook: the bottom edge of the viewport-pinned chrome a host shell draws OUTSIDE this
+	package's L-shell (a floating site header). In-page sticky parts (the editorial TOC rail, reading
+	progress, heading scroll margins) clear it. The host sets it on its shell root; inside the
+	L-shell the shell's own frame inset is read instead. */
     --shell-topbar-h: 48px;
     --shell-midnav-header-h: 3rem;
     /* configurable middle-nav content-pane header (PageCanvas header slot) */

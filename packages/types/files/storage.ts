@@ -17,7 +17,7 @@ import { z } from "zod";
  * first, so a path produced here is guaranteed to satisfy the matching policy's `WITH CHECK`.
  *
  * Only enum/primitive Zod is used so the module is stable across Zod majors (matching
- * `newsletter/subscribe.ts`, `explore/items.ts`).
+ * `community/newsletter.ts`, `explore/items.ts`).
  */
 
 // #region Buckets

@@ -18,7 +18,12 @@ Parenthesized folders group routes **without** adding a URL segment:
 
 ## Special files
 
-- `routes/_app.tsx` — root `<html>` shell + pre-paint theme + corner-curve app frame.
+- `routes/_app.tsx` — root `<html>` shell + pre-paint theme + corner-curve app frame. It writes the
+  `<head>` from request state: `state.title`, `state.description`, and — for a public page whose
+  handler called `applyPageMeta(ctx.state, pageMeta({…, origin: ctx.url.origin}))`
+  (`features/marketing/core/seo.ts`) — `state.meta`'s canonical link, robots, Open Graph block and
+  Twitter card. Structured data is not head state: a page renders `<JsonLd graph={…} />`
+  (`features/marketing/components/JsonLd.tsx`).
 - `routes/_middleware.ts` — global security headers (no auth).
 - `routes/_error.tsx` — the root error route for every uncaught `HttpError` or exception. A 404
   renders "This page doesn’t exist", a 5xx renders "Something went wrong" and is recorded through
@@ -513,6 +518,14 @@ why the denylist is not merely a duplicate of the route table:
   into a 404. It is listed in `RESERVED_HANDLES`, `org.fn_is_reserved_handle` and the auth form's
   username list (`features/auth/core/options.ts`, which still lacks `file`, `files` and `share` —
   pre-existing drift).
+- **`changelog`**, **`feedback`** and **`features`** (the public-routes build, 2026-10-17) are
+  denied ahead of their routes. `/changelog` and `/feedback` are public editorial surfaces that
+  speak for the platform — an `@changelog` or `@feedback` profile would borrow that voice the way
+  `@share` would borrow the share route's — and `/features` is the landing track's feature
+  catalogue. Until each route exists, a bare request meets no static route and falls through to
+  `/:handle`, which the denylist turns into a 404 rather than a fabricated profile. All three are in
+  `RESERVED_HANDLES`, `org.fn_is_reserved_handle` (pinned by `supabase/probes/reserved_handles.sql`
+  as well as the contract test) and the auth form's username list.
 
 All are enforced through the one SSOT guard (`isReservedHandle`) and its SQL twin
 `org.fn_is_reserved_handle` (pinned by `workspace.contract.test.ts`), so a future "claim your handle"

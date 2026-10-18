@@ -141,6 +141,14 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	// marketing (opt-in only — a marketing type can never be mandatory)
 	"marketing.newsletter",
 	"marketing.product_update",
+	// Public & community surfaces (Decision #274): one region per surface, mirroring the same-named
+	// region of 00005010_seed_notification_catalog.sql key for key.
+
+	// #region [contact] Contact requests (P3)
+	// #endregion
+
+	// #region [feedback] Feedback board status changes (P7)
+	// #endregion
 ] as const;
 
 /** The seeded event keys as a union type. Runtime values are NOT limited to these. */
