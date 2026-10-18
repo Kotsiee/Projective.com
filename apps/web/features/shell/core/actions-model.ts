@@ -1,4 +1,5 @@
 import type { UserContext } from "@projective/types/auth";
+import { consoleHref } from "@projective/types/catalogue";
 import type { IconName } from "./nav-icon-names.ts";
 import { canUseTeams, isRestrictedPath } from "./restricted-surfaces.ts";
 import { canCreateBusiness } from "./account-facts.ts";
@@ -26,7 +27,7 @@ export interface CreateOption {
 /**
  * The quick-create options for the acting {@link UserContext}, mirroring the sidebar's capability
  * gating (see {@link globalNav}) so the two never disagree:
- *  - **Project** and **Article** — available to everyone (clients post projects; anyone can write).
+ *  - **Project** — available to everyone (clients post projects).
  *  - **Team** — only where {@link canUseTeams} holds: a freelancer outside operator mode, or a member
  *    acting as a team (Decision #228 (A)), and never inside an `enterprise` context.
  *  - **Business** — a buyer surface (Decision #230 (a)) → {@link canCreateBusiness}: any adult outside
@@ -34,8 +35,14 @@ export interface CreateOption {
  *    allowance has room for one more.
  *  - **Service**, **Product** — seller surfaces → shown only when `isFreelancer`, so a buyer-only
  *    context (a business, an enterprise, a client) never sees "Create Product".
- *  - A **restricted** (13–17) account keeps only Project and Article: every other target is a
- *    surface it cannot see (Decision #192).
+ *  - A **restricted** (13–17) account keeps only Project: every other target is a surface it cannot
+ *    see (Decision #192). The check reads each target's PATH, so a query-string deep link into a
+ *    restricted surface is withheld like any other.
+ *
+ * Every option leads to a create flow that exists (Decision #295, gate 11). There is no "Create
+ * Article": a member post (`catalogue.articles`) has no create flow yet — the profile's "Write post" is
+ * a coming-soon dialog — and `/articles/new` is the editorial reader's 404 (Decision #271). Add it back
+ * with the flow, never before.
  */
 export function createMenuOptions(context: UserContext): CreateOption[] {
 	const { isFreelancer, contextType } = context;
@@ -51,17 +58,33 @@ export function createMenuOptions(context: UserContext): CreateOption[] {
 		canCreateBusiness(context)
 			? { key: "business", label: "Create Business", href: "/businesses/create", icon: "business" }
 			: null,
+		// The seller console with its Quick-Init modal open on the kind — the same deep link the
+		// catalogue lane's New listing menu builds. There is no `/services/new` or `/products/new`.
 		isFreelancer
-			? { key: "service", label: "Create Service", href: "/services/new", icon: "services" }
+			? {
+				key: "service",
+				label: "Create Service",
+				href: consoleHref({ createOpen: true, createKind: "service" }),
+				icon: "services",
+			}
 			: null,
 		isFreelancer
-			? { key: "product", label: "Create Product", href: "/products/new", icon: "product" }
+			? {
+				key: "product",
+				label: "Create Product",
+				href: consoleHref({ createOpen: true, createKind: "product" }),
+				icon: "product",
+			}
 			: null,
-		{ key: "article", label: "Create Article", href: "/articles/new", icon: "article" },
 	];
 	return options.filter((o): o is CreateOption =>
-		o !== null && !(context.restricted && isRestrictedPath(o.href))
+		o !== null && !(context.restricted && isRestrictedPath(pathOf(o.href)))
 	);
+}
+
+/** The path of an in-app href, without its query or fragment. */
+function pathOf(href: string): string {
+	return href.split(/[?#]/, 1)[0];
 }
 // #endregion
 

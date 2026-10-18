@@ -38,10 +38,10 @@ export default define.page(function PublicLayout(ctx) {
 	// every other route resolves to `null` (no band).
 	const viewHeader = viewHeaderFor(ctx.url, !!ctx.state.isAuthenticated, ctx.state.userContext);
 	if (ctx.state.isAuthenticated) {
-		// The marketing footer is resolved per-URL and mounted INSIDE the canvas body (see
-		// `UserShell.bodyFooter` for why that is the only mount point that survives the shell’s three
-		// viewport-fixed surface fills). Only the authed branch passes it: `GuestShell` still renders its
-		// own, so no route can produce two.
+		// The marketing footer is resolved per-URL and mounted in the canvas's footer slot, after its
+		// `<main>` (see `UserShell.pageFooter` for why that is the one mount point that is both the page's
+		// `contentinfo` and visible over the shell’s viewport-fixed surface fills). Only the authed branch
+		// passes it: `GuestShell` still renders its own, so no route can produce two.
 		return (
 			<UserShell
 				path={ctx.url.pathname}
@@ -49,7 +49,7 @@ export default define.page(function PublicLayout(ctx) {
 				lane={filterLane}
 				laneOptions={viewLaneOptionsFor(ctx.url)}
 				middleNavHeader={viewHeader}
-				bodyFooter={publicFooterFor(ctx.url)}
+				pageFooter={publicFooterFor(ctx.url)}
 			>
 				{/* The `?tkv=` ticket deep link — honoured on the authed public surfaces (Explore, View). */}
 				<TicketDeepLinkHost authed />

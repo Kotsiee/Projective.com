@@ -10,6 +10,15 @@ export interface PageCanvasProps {
 	flushBottom?: boolean;
 	/** The main landmark's `id`, which a "Skip to content" link targets. Defaults to `main-content`. */
 	mainId?: string;
+	/**
+	 * The page's site footer — rendered AFTER `</main>`, still inside the canvas frame, so a `<footer>`
+	 * passed here is the page's `contentinfo` landmark rather than a footer of the main content
+	 * (Decision #295). The slot is positioned like the body, which is what keeps it visible: the
+	 * shell's viewport-fixed surface fills paint over any in-flow, unpositioned sibling. Below
+	 * `--bp-md` it takes over the body's BottomNav clearance, so the reservation stays at the canvas's
+	 * foot. Omitted → no slot is rendered.
+	 */
+	footer?: ComponentChildren;
 	/** The actual page — feeds, boards, master-detail views. */
 	children?: ComponentChildren;
 }
@@ -23,18 +32,21 @@ export interface PageCanvasProps {
  * The inner body is the page's `<main>` landmark (Decision #144): the one region assistive technology
  * should be able to jump to, and the target of the shell's Skip to content link. `tabIndex={-1}` makes
  * it focusable by script and by that link without adding a Tab stop, so activating the skip link moves
- * the keyboard's starting point into the page rather than only scrolling to it.
+ * the keyboard's starting point into the page rather than only scrolling to it. The optional
+ * {@link PageCanvasProps.footer} follows it as a sibling, the same arrangement the guest shell uses.
  *
- * A route-configured header/footer is NOT a PageCanvas concern: they mount one level up, as the
- * MiddleNav frame's `header`/`footer` bands (DESIGN_SYSTEM.md §D.4), so they span flush against the lane
- * and read as connected strips across the whole middle-nav frame rather than floating inside this pane.
+ * A route-configured sticky header/footer BAND is NOT a PageCanvas concern: they mount one level up, as
+ * the MiddleNav frame's `header`/`footer` bands (DESIGN_SYSTEM.md §D.4), so they span flush against the
+ * lane and read as connected strips across the whole middle-nav frame rather than floating inside this
+ * pane.
  */
 export function PageCanvas(
-	{ flushBottom = true, mainId = PAGE_CANVAS_MAIN_ID, children }: PageCanvasProps,
+	{ flushBottom = true, mainId = PAGE_CANVAS_MAIN_ID, footer, children }: PageCanvasProps,
 ): JSX.Element {
 	return (
 		<ShellFrame surface={0} flushBottom={flushBottom} class="ui-page-canvas">
 			<main id={mainId} class="ui-page-canvas__body" tabIndex={-1}>{children}</main>
+			{footer ? <div class="ui-page-canvas__footer">{footer}</div> : null}
 		</ShellFrame>
 	);
 }

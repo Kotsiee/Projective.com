@@ -31,6 +31,9 @@ import { similarityCache, similarityCacheKey, similarityDeps } from "./similarit
 import { suggestFrom } from "./suggest.ts";
 import { NO_PERSONAL_RAILS, personalRails, topicsOf, trendingRail } from "./personalise.ts";
 import { ownHandlesOf, readViewerSignals } from "./viewer-signals.ts";
+import { helpStripFrom } from "./help-strip.ts";
+import { HelpBackendService } from "../editorial/HelpBackendService.ts";
+import type { HelpCentreLibrary } from "../editorial/help-library.ts";
 import { type DiscoveryRanking, type DiscoverySim, NO_DISCOVERY_SIM } from "@projective/types/explore";
 import type {
 	ArticleItem,
@@ -39,7 +42,6 @@ import type {
 	EntityView,
 	ExploreItem,
 	ExploreParams,
-	HelpArticle,
 	HomeFeed,
 	LandingPayload,
 	PlatformStats,
@@ -203,34 +205,24 @@ function sponsoredPromos(catalog: Catalog, surface: PlacementSurface): Sponsored
 	return out;
 }
 
-/** The editorial break — the published articles, newest first; absent when there are none. */
-function helpPromo(catalog: Catalog): EditorialPromo | null {
-	const articles: HelpArticle[] = ofType(catalog, "articles")
-		.slice()
-		.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-		.slice(0, 3)
-		.map((a: ArticleItem) => ({
-			id: a.id,
-			title: a.title,
-			minutes: a.readMinutes,
-			href: `/view/${a.id}`,
-		}));
-	if (articles.length === 0) return null;
-	return {
-		variant: "editorial",
-		id: "ed-help",
-		after: "products",
-		lead: "New here?",
-		tail: "Start with these",
-		href: "/help",
-		hrefLabel: "All help articles",
-		articles,
-	};
+/**
+ * The help centre's library for the editorial break, or `null` when it cannot be read: a help outage
+ * drops the strip (`helpStripFrom`), never the Home feed. The read is `HelpBackendService`'s cached
+ * snapshot, so it costs one table read per five minutes.
+ */
+async function readHelpLibrary(): Promise<HelpCentreLibrary | null> {
+	try {
+		const help = await HelpBackendService.snapshot();
+		if (help.ok && help.data) return help.data.library;
+		console.error("[explore] the help centre could not be read; Home has no editorial break", help);
+	} catch (error) {
+		console.error("[explore] the help centre could not be read; Home has no editorial break", error);
+	}
+	return null;
 }
 
-/** Every Home promo slot, in feed order. */
-function homePromos(catalog: Catalog): PromoSlot[] {
-	const help = helpPromo(catalog);
+/** Every Home promo slot, in feed order. `help` is the editorial break (`helpStripFrom`), if any. */
+function homePromos(catalog: Catalog, help: EditorialPromo | null): PromoSlot[] {
 	return [
 		...sponsoredPromos(catalog, HOME_SURFACE),
 		CTA_FREELANCER,
@@ -250,9 +242,14 @@ function effectiveDiscoverySim(sim: DiscoverySim | undefined): DiscoverySim {
 
 /**
  * The SHARED Home feed, from one catalogue load: the same for every viewer, so it is computed from the
- * anon-cached catalogue alone. The personal rails start empty; the viewer pass fills them.
+ * anon-cached catalogue alone (and the help centre's cached library, for the editorial break). The
+ * personal rails start empty; the viewer pass fills them.
  */
-function homeFeedFrom(catalog: Catalog, sim: DiscoverySim): HomeFeed {
+function homeFeedFrom(
+	catalog: Catalog,
+	sim: DiscoverySim,
+	help: HelpCentreLibrary | null,
+): HomeFeed {
 	const services = ofType(catalog, "services") as ServiceItem[];
 	const products = ofType(catalog, "products") as ProductItem[];
 	const projects = ofType(catalog, "projects") as ProjectItem[];
@@ -267,7 +264,7 @@ function homeFeedFrom(catalog: Catalog, sim: DiscoverySim): HomeFeed {
 		projects,
 		products,
 		articles: ofType(catalog, "articles") as ArticleItem[],
-		promos: homePromos(catalog),
+		promos: homePromos(catalog, helpStripFrom(help)),
 		recommended: {
 			services: rankRecommended(services, catalog.scoreById),
 			products: rankRecommended(products, catalog.scoreById),
@@ -372,20 +369,21 @@ export class ExploreBackendService {
 	 * gets the shared feed with empty personal rails.
 	 *
 	 * A failed viewer pass is logged and the shared feed is served: personalisation is never worth
-	 * taking discovery down for. `sim` is the Dev Context Switcher's cold-start simulation, honoured in
-	 * development only.
+	 * taking discovery down for — and likewise an unreadable help centre only drops the editorial
+	 * break. `sim` is the Dev Context Switcher's cold-start simulation, honoured in development only.
 	 */
 	static async home(
 		input: { actor: ReadActor; sim?: DiscoverySim },
 	): Promise<ServiceResult<HomeFeed>> {
 		const sim = effectiveDiscoverySim(input.sim);
+		const help = readHelpLibrary();
 		let catalog: Catalog;
 		try {
 			catalog = await loadCatalog();
 		} catch (error) {
 			return unavailable(error);
 		}
-		const feed = homeFeedFrom(catalog, sim);
+		const feed = homeFeedFrom(catalog, sim, await help);
 		if (!canReadLive(input.actor)) return ok(feed);
 		try {
 			const signals = await readViewerSignals(input.actor, catalog, sim.viewer, Date.now());

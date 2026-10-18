@@ -105,8 +105,9 @@ export default define.page(async function ProfileLayout(ctx) {
 	 * Wrap body content in the auth-appropriate shell. `lane` is only ever set by the item viewer
 	 * branch; `header` by the item viewer AND the profile itself (its migrated sticky header).
 	 *
-	 * `footer` renders the marketing footer at the body's end — off for the full-page calendars, which
-	 * fill the content region and own their own scrolling. The authed branch composes it with the
+	 * `footer` renders the marketing footer after the page's `<main>`, as its `contentinfo` — off for
+	 * the full-page calendars, which fill the content region and own their own scrolling. The authed
+	 * branch composes it with the
 	 * URL-keyed `publicFooterFor` resolver (the same one the sibling `(public)` layout uses), NARROWING
 	 * only — the flag can withhold a footer the resolver agreed to, never add one it refused.
 	 */
@@ -123,7 +124,7 @@ export default define.page(async function ProfileLayout(ctx) {
 					lane={options.lane}
 					laneOptions={options.lane ? viewLaneOptionsFor(ctx.url) : undefined}
 					middleNavHeader={options.header}
-					bodyFooter={footer ? publicFooterFor(ctx.url) : null}
+					pageFooter={footer ? publicFooterFor(ctx.url) : null}
 				>
 					{/* The `?tkv=` ticket deep link — same host as the dashboard, same rules. */}
 					<TicketDeepLinkHost authed />

@@ -2983,7 +2983,11 @@ persona) or who is a restricted (13–17) account and so cannot become a seller 
 the switcher's Age axis — Decision #192), and renders an icon-only ghost dismiss `Button` that stores the slot id in
 `LocalKeys.EXPLORE_DISMISSED_PROMOS` (applied after hydration; the Dev Context Switcher's
 `promoDismissal` axis forces every dismissible slot shown or dismissed). **`editorial`** — the shared
-`RailHeading` (lead · tail) with a "view all" link over a list of help reads. Every variant is a solid
+`RailHeading` (lead · tail) with a "view all" link over a list of help reads — the help hub's opening
+topic in reading order ("New here? Start with these" → `/help/getting-started/…`, "All help articles"
+→ `/help`), built by the pure `helpStripFrom` from `HelpBackendService`'s cached library and absent
+when the help centre cannot be read; never member posts, which keep their own rail (Decision #295,
+closing #279 (h)). Every variant is a solid
 `--surface-1` region (no translucent `--primary` wash, §3 gate 6) on the rails' measure inside
 `.ex-home__section` (no `--container-xl` cap); titles take `--ex-rail-title-size`, the rail-heading
 register and its ceiling (§3 gate 8); the stacked ⇄ two-column reflow is a container query on the
