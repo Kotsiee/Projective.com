@@ -24,6 +24,7 @@ import {
 	BUSINESS_PAGE_SIM_COOKIE,
 	type BusinessPageSim,
 } from "@features/profile/core/business-page-sim.ts";
+import { TEAM_PAGE_SIM_COOKIE, type TeamPageSim } from "@features/profile/core/team-page-sim.ts";
 import { DISCOVERY_SIM_COOKIE, encodeDiscoverySim } from "@features/explore/core/discovery-sim.ts";
 import { EMBEDDINGS_OVERRIDE_COOKIE } from "@projective/types/explore";
 import { AGE_OVERRIDE_COOKIE, OPERATOR_MODE_OVERRIDE_COOKIE } from "@projective/types/auth";
@@ -56,6 +57,7 @@ import {
 	type DevDisputeState,
 	type DevBasketScenario,
 	type DevCheckoutGate,
+	type DevSpendRequests,
 	type DevSaved,
 	type DevPromoDismissal,
 	type DevDiscoveryViewer,
@@ -98,6 +100,8 @@ export type DevProjectAccess = "auto" | ProjectAccess;
 export type DevProjectStatus = "auto" | ProjectStatus;
 /** A simulated business `/:handle` state, or `auto` for the database's answer (Decision #244). */
 export type DevBusinessPage = "auto" | BusinessPageSim;
+/** A simulated team `/:handle` state, or `auto` for the database's answer (Teams P1). */
+export type DevTeamPage = "auto" | TeamPageSim;
 /** The engagement delivery format a developer can impersonate (submissions ticket handling). */
 export type {
 	DevAccountLifecycle,
@@ -118,6 +122,7 @@ export type {
 	DevDisputeState,
 	DevBasketScenario,
 	DevCheckoutGate,
+	DevSpendRequests,
 	DevSaved,
 	DevServiceType,
 	DevSessionBookingStatus,
@@ -221,6 +226,15 @@ export interface DevOverrides {
 	 * profile middleware honours in development only; the panel reloads a profile page to apply it.
 	 */
 	businessPage: DevBusinessPage;
+	/**
+	 * Simulated state of a team's `/:handle` (Teams P1): a member's view of a draft, archived or
+	 * invite-only team (the member notice; its Settings link waits for Teams C6's Settings screen), or
+	 * `missing` — the page as an outsider meets it (the "Profile not found" 404). Every seeded team is
+	 * active and public, so this is the only route to those states. Server-side, through the
+	 * `pj.dev.team-page` cookie the profile middleware honours in development only; the panel reloads
+	 * a profile page to apply it.
+	 */
+	teamPage: DevTeamPage;
 	/**
 	 * Simulated acting-member view for the Members tab (task §4) — the four access conditions the roster
 	 * rules branch on (Owner/Admin · Manager · Freelancer assigned · Freelancer unassigned). Consumed by
@@ -352,6 +366,13 @@ export interface DevOverrides {
 	 */
 	checkoutGate: DevCheckoutGate;
 	/**
+	 * A business Spend module's request queue (Decision #246): none, two waiting on the viewer, the
+	 * viewer's own (Withdraw), the decided history in every terminal state (withdrawn included), or the
+	 * viewer as an approver of a business still in KYB. Its own axis because each takes another member's
+	 * request, a decision or a KYB update to reach; every decision and withdrawal still reaches the server.
+	 */
+	spendRequests: DevSpendRequests;
+	/**
 	 * The saved set behind `/saved` and every star / save control: the real one, nothing saved, or
 	 * saved items of every kind in two collections (Decision #180). Its own axis because filling every
 	 * kind by hand takes a project, a conversation, a file and a listing.
@@ -464,6 +485,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	projectAccess: "auto",
 	projectStatus: "auto",
 	businessPage: "auto",
+	teamPage: "auto",
 	memberRole: "owner_admin",
 	hasPendingInvites: true,
 	hasPendingRequests: true,
@@ -488,6 +510,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	notifications: "auto",
 	basketScenario: "auto",
 	checkoutGate: "auto",
+	spendRequests: "auto",
 	saved: "auto",
 	promoDismissal: "auto",
 	discoveryViewer: "auto",
@@ -581,6 +604,18 @@ export const DEV_PROJECT_STATUSES: ReadonlyArray<DevOption<DevProjectStatus>> = 
  * the three reasons are a member's view, `Missing` an outsider's.
  */
 export const DEV_BUSINESS_PAGES: ReadonlyArray<DevOption<DevBusinessPage>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "draft", label: "Draft" },
+	{ value: "archived", label: "Archived" },
+	{ value: "invite_only", label: "Invite-only" },
+	{ value: "missing", label: "Missing (outsider)" },
+];
+
+/**
+ * Simulated team-page states in display order (Teams P1). `Auto` defers to the database; the three
+ * reasons are a member's view, `Missing` an outsider's.
+ */
+export const DEV_TEAM_PAGES: ReadonlyArray<DevOption<DevTeamPage>> = [
 	{ value: "auto", label: "Auto" },
 	{ value: "draft", label: "Draft" },
 	{ value: "archived", label: "Archived" },
@@ -783,6 +818,16 @@ export const DEV_CHECKOUT_GATES: ReadonlyArray<DevOption<DevCheckoutGate>> = [
 	{ value: "kyb_required", label: "KYB" },
 ];
 
+/** Business Spend request queues (Decision #246). */
+export const DEV_SPEND_REQUESTS: ReadonlyArray<DevOption<DevSpendRequests>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "empty", label: "None" },
+	{ value: "others_pending", label: "Waiting on me" },
+	{ value: "own_pending", label: "My request" },
+	{ value: "history", label: "Decided" },
+	{ value: "kyb_approver", label: "KYB approver" },
+];
+
 /** Saved-set scenarios (Decision #180). */
 export const DEV_SAVED: ReadonlyArray<DevOption<DevSaved>> = [
 	{ value: "auto", label: "Auto" },
@@ -969,6 +1014,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devProjectStatus;
 		if (next.businessPage !== "auto") root.dataset.devBusinessPage = next.businessPage;
 		else delete root.dataset.devBusinessPage;
+		if (next.teamPage !== "auto") root.dataset.devTeamPage = next.teamPage;
+		else delete root.dataset.devTeamPage;
 		root.dataset.devMemberRole = next.memberRole;
 		root.dataset.devPendingInvites = String(next.hasPendingInvites);
 		root.dataset.devPendingRequests = String(next.hasPendingRequests);
@@ -1017,6 +1064,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devBasketScenario;
 		if (next.checkoutGate !== "auto") root.dataset.devCheckoutGate = next.checkoutGate;
 		else delete root.dataset.devCheckoutGate;
+		if (next.spendRequests !== "auto") root.dataset.devSpendRequests = next.spendRequests;
+		else delete root.dataset.devSpendRequests;
 		if (next.saved !== "auto") root.dataset.devSaved = next.saved;
 		else delete root.dataset.devSaved;
 		if (next.promoDismissal !== "auto") root.dataset.devPromoDismissal = next.promoDismissal;
@@ -1072,6 +1121,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devProjectAccess;
 		delete root.dataset.devProjectStatus;
 		delete root.dataset.devBusinessPage;
+		delete root.dataset.devTeamPage;
 		delete root.dataset.devMemberRole;
 		delete root.dataset.devPendingInvites;
 		delete root.dataset.devPendingRequests;
@@ -1095,6 +1145,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devNotifications;
 		delete root.dataset.devBasketScenario;
 		delete root.dataset.devCheckoutGate;
+		delete root.dataset.devSpendRequests;
 		delete root.dataset.devSaved;
 		delete root.dataset.devPromoDismissal;
 		delete root.dataset.devDiscoveryViewer;
@@ -1115,6 +1166,7 @@ function reflect(next: DevOverrides): void {
 	}
 	writeLandingCookie(next);
 	writeBusinessPageCookie(next);
+	writeTeamPageCookie(next);
 	writeDiscoveryCookie(next);
 	writeEmbeddingsCookie(next);
 	writeAgeCookie(next);
@@ -1209,6 +1261,17 @@ function writeBusinessPageCookie(next: DevOverrides): void {
 	document.cookie = next.enabled && next.businessPage !== "auto"
 		? `${BUSINESS_PAGE_SIM_COOKIE}=${next.businessPage}; path=/; samesite=lax`
 		: `${BUSINESS_PAGE_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}
+
+/**
+ * Mirror the team-page axis into the `pj.dev.team-page` cookie — the only channel that reaches the
+ * `/[handle]` middleware, which decides a team page before it renders (Teams P1). Written while
+ * simulation is on and the axis is not `auto`; removed otherwise.
+ */
+function writeTeamPageCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.teamPage !== "auto"
+		? `${TEAM_PAGE_SIM_COOKIE}=${next.teamPage}; path=/; samesite=lax`
+		: `${TEAM_PAGE_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 /** Patch a subset of the overrides. */

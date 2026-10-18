@@ -932,7 +932,9 @@ $$;
 -- be unreachable at /@handle forever. Every create path now asks the whole namespace, under an
 -- advisory lock on the handle so two creates racing for it cannot both see it free.
 
--- The SQL twin of @projective/types/profile RESERVED_HANDLES (pinned by workspace.contract.test.ts).
+-- The SQL twin of @projective/types/profile RESERVED_HANDLES (pinned by workspace.contract.test.ts,
+-- which also fails when a top-level segment under apps/web/routes/ is missing from the list — a new
+-- top-level route is reserved here AND in RESERVED_HANDLES in the same change, pr-checklist.md).
 CREATE OR REPLACE FUNCTION org.fn_is_reserved_handle(p_handle text)
 RETURNS boolean
 LANGUAGE sql
@@ -948,8 +950,8 @@ AS $$
         'departments', 'education', 'experience', 'availability', 'become-partner', 'onboarding',
         'notifications', 'basket', 'cart', 'checkout', 'catalogue', 'orders', 'order', 'pay', 'payment',
         'payments', 'invoice', 'invoices', 'create', 'new', 'search', 'submissions', 'attachments',
-        'board', 'tasks', 'calendar', 'api', 'assets', 'static', 'public', '_app', '_middleware',
-        '_layout', 'favicon.ico', 'robots.txt', 'sitemap.xml', 'admin', 'internal'
+        'board', 'tasks', 'calendar', 'invite', 'saved', 'api', 'assets', 'static', 'public', '_app',
+        '_middleware', '_layout', 'favicon.ico', 'robots.txt', 'sitemap.xml', 'admin', 'internal'
     ]);
 $$;
 
@@ -2702,7 +2704,10 @@ $$;
 --     policy wallet's threshold and the platform default, the approvers and contributors, the members'
 --     envelopes (finance.fn_business_envelopes — their own unless they read the wallet's), what each
 --     member contributed, the attributable ledger, and the spend requests they may read (their own
---     unless finance.fn_reads_wallet_envelopes) as `approvals {pending, decided (last 30)}`;
+--     unless finance.fn_reads_wallet_envelopes) as `approvals {pending, decided (last 30)}`, each with
+--     its `ref` (what it is for and whether the viewer may open it — finance.fn_spend_ref) and
+--     `consumed`; plus, for the editor (BU2), `editable_member_ids` (whose limits and grants the viewer
+--     may change), `approver_gap` (nobody besides the owner approves) and `limits_plan_gated`;
 --     `money_tiles` — for a viewer who may open Finance (contribute_funds · spend_funds ·
 --     manage_finances): per wallet currency, available · pending · committed · awaiting approval ·
 --     spent in 30 days; `viewer_can` — what the viewer may do, as the write doors decide it; and `kyb` —
@@ -2720,6 +2725,7 @@ DECLARE
     v_e record;
     v_caps org.workspace_capability[];
     v_member uuid;
+    v_rank integer;
     v_member_role_id uuid;
     v_cap_default numeric;
     -- Business only (BB9).
@@ -2755,7 +2761,7 @@ BEGIN
     IF v_e.id IS NULL THEN
         RETURN jsonb_build_object('status', 'not_found');
     END IF;
-    SELECT s.member_id INTO v_member FROM org.fn_member_seat(p_kind, v_e.id, v_uid) s;
+    SELECT s.member_id, s.rank INTO v_member, v_rank FROM org.fn_member_seat(p_kind, v_e.id, v_uid) s;
     IF v_member IS NULL THEN
         RETURN jsonb_build_object('status', 'forbidden', 'id', v_e.id);
     END IF;
@@ -2988,6 +2994,24 @@ BEGIN
                     FROM org.business_members m
                    WHERE m.business_id = v_e.id AND m.status = 'active'
                      AND 'contribute_funds' = ANY (org.fn_member_capabilities('business', v_e.id, m.user_id))),
+                -- The members whose limits and grants the viewer may change, by finance.save_spend_policy's
+                -- own rules — never the owner, never oneself, only somebody one outranks (BU2, #246).
+                'editable_member_ids', CASE WHEN 'manage_finances' = ANY (v_caps) THEN (
+                    SELECT COALESCE(jsonb_agg(m.id ORDER BY org.fn_preset_rank(m.role) DESC, m.joined_at), '[]'::jsonb)
+                      FROM org.business_members m
+                     WHERE m.business_id = v_e.id AND m.status = 'active'
+                       AND m.user_id <> v_e.owner_user_id AND m.user_id <> v_uid
+                       AND org.fn_preset_rank(m.role) < v_rank) ELSE '[]'::jsonb END,
+                -- Nobody besides the owner approves spending, so the owner's own spend over the threshold
+                -- or a limit has nobody to decide it (nobody decides their own request — #239 (e)).
+                'approver_gap', NOT EXISTS (
+                    SELECT 1 FROM org.business_members m
+                     WHERE m.business_id = v_e.id AND m.status = 'active' AND m.user_id <> v_e.owner_user_id
+                       AND 'approve_spend' = ANY (org.fn_member_capabilities('business', v_e.id, m.user_id))),
+                -- Setting a threshold, a ceiling or a capped period is Business Pro's (`pooled_wallet_full`)
+                -- and would be refused right now; clearing one never is.
+                'limits_plan_gated', finance.fn_business_plan_gates_enforced()
+                    AND NOT finance.fn_business_gate_flag(v_e.id, 'pooled_wallet_full'::finance.entitlement_key),
                 'limits', finance.fn_business_envelopes(v_e.id, v_wallet, NULL),
                 'contributed', (SELECT COALESCE(jsonb_agg(jsonb_build_object('user_id', c.actor_user_id, 'minor', c.total)), '[]'::jsonb)
                     FROM (SELECT la.actor_user_id, sum(la.amount_cents) AS total FROM finance.ledger_audit la
@@ -3008,18 +3032,23 @@ BEGIN
                              AND tx.reason <> 'transfer_out'
                            ORDER BY tx.created_at DESC LIMIT 40) d),
                 -- The requests the viewer may read, as the spend_approvals SELECT policy narrows them (BB6).
+                -- Each row names what it is for (`ref`, finance.fn_spend_ref) — resolved only for the rows
+                -- answered, never for the whole history.
                 'approvals', (SELECT jsonb_build_object(
-                        'pending', COALESCE(jsonb_agg(q.row ORDER BY q.created_at DESC) FILTER (WHERE q.open), '[]'::jsonb),
-                        'decided', COALESCE((jsonb_agg(q.row ORDER BY q.settled_at DESC) FILTER (WHERE NOT q.open)), '[]'::jsonb))
+                        'pending', COALESCE(jsonb_agg(q.row || jsonb_build_object('ref', finance.fn_spend_ref(q.ref_table, q.ref_id)) ORDER BY q.created_at DESC) FILTER (WHERE q.open), '[]'::jsonb),
+                        'decided', COALESCE((jsonb_agg(q.row || jsonb_build_object('ref', finance.fn_spend_ref(q.ref_table, q.ref_id)) ORDER BY q.settled_at DESC) FILTER (WHERE NOT q.open)), '[]'::jsonb))
                     FROM (
-                        SELECT r.row, r.created_at, r.open, r.settled_at,
+                        SELECT r.row, r.ref_table, r.ref_id, r.created_at, r.open, r.settled_at,
                                row_number() OVER (PARTITION BY r.open ORDER BY r.settled_at DESC) AS n
                           FROM (
                             SELECT jsonb_build_object(
                                        'id', sa.id, 'requested_by', sa.requested_by, 'amount_minor', sa.amount_cents,
                                        'currency', upper(sa.currency), 'reason', sa.reason, 'status', sa.status,
                                        'approver_user_id', sa.approver_user_id, 'decided_at', sa.decided_at,
-                                       'expires_at', sa.expires_at, 'created_at', sa.created_at) AS row,
+                                       'expires_at', sa.expires_at, 'created_at', sa.created_at,
+                                       'ref_table', sa.ref_table, 'ref_id', sa.ref_id,
+                                       'consumed', sa.consumed_at IS NOT NULL) AS row,
+                                   sa.ref_table, sa.ref_id,
                                    sa.created_at,
                                    sa.status = 'pending'::finance.approval_status
                                        AND (sa.expires_at IS NULL OR sa.expires_at > now()) AS open,

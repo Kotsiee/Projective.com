@@ -85,9 +85,22 @@ const BUSINESS_EMPTY_NOTE: Partial<Record<ProfileTab, string>> = {
 	reviews: "Freelancers review a business once an engagement completes.",
 };
 
+/**
+ * A team's own sentence for its Reviews (Teams P1): it is reviewed as a whole, by its clients, and
+ * its members' personal reviews live on their own pages.
+ */
+const TEAM_EMPTY_NOTE: Partial<Record<ProfileTab, string>> = {
+	reviews: "Clients review the team as a whole once an engagement completes.",
+};
+
 /** The empty state's sentence for a section on a profile of `kind`. */
 function emptyNoteFor(tab: ProfileTab, kind: ProfileKind): string {
-	return (kind === "business" ? BUSINESS_EMPTY_NOTE[tab] : undefined) ?? EMPTY_NOTE[tab];
+	const own = kind === "business"
+		? BUSINESS_EMPTY_NOTE[tab]
+		: kind === "team"
+		? TEAM_EMPTY_NOTE[tab]
+		: undefined;
+	return own ?? EMPTY_NOTE[tab];
 }
 
 function EmptySection(
@@ -114,13 +127,7 @@ function sectionBody(
 		case "experience":
 			return <ExperienceTab payload={payload} />;
 		case "reviews":
-			return (
-				<ReviewsTab
-					payload={payload}
-					stance={reviewStance}
-					stances={profile.kind !== "business"}
-				/>
-			);
+			return <ReviewsTab payload={payload} stance={reviewStance} kind={profile.kind} />;
 		case "posts":
 			return <PostsTab payload={payload} authed={authed} />;
 	}

@@ -1,8 +1,10 @@
 /*
  * workspace-billing.css — the business console's Billing module (`.wsp-billing`): monthly invoices
- * with Pay, statement PDFs, invoicing terms, auto-funding and the balance floor (PRODUCT_SPEC §Escrow,
- * Wallets & Finance #4). Token-only, strict BEM, logical properties only. Rows are separated by one
- * hairline, never boxed (§B.4 anti-card); figures are tabular.
+ * with one Pay through a review, statement PDFs, invoicing terms, auto-funding and the balance floor
+ * (PRODUCT_SPEC §Escrow, Wallets & Finance #4; BU3, Decision #247). Token-only, strict BEM, logical
+ * properties only. The invoice and statement lists are `DataTable`s and the terms are `FormControl`s,
+ * so this sheet only lays out the rows around them: a gate is a notice and at most one control on one
+ * line, never boxed (§B.4 anti-card).
  */
 
 .wsp-billing {
@@ -13,63 +15,81 @@
 	min-inline-size: 0;
 }
 
-.wsp-billing__list {
-	list-style: none;
-	margin: 0;
-	padding: 0;
+/* #region Rows — a notice (or a fact) and at most one control */
+/* Why Pay is not offered, or the wallet is under its floor: the statement, then its way forward. */
+.wsp-billing__gate {
 	display: flex;
-	flex-direction: column;
-	inline-size: 100%;
-	min-inline-size: 0;
-}
-
-.wsp-billing__row {
-	display: grid;
-	grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--space-3);
-	min-block-size: var(--wsp-rowh);
-	padding-block: var(--space-2);
-	padding-inline: var(--space-2);
-	border-block-start: var(--hairline);
-}
-
-.wsp-billing__row:first-child {
-	border-block-start: none;
-}
-
-.wsp-billing__ident {
-	display: flex;
-	flex-direction: column;
 	min-inline-size: 0;
 }
 
-.wsp-billing__name {
-	font-size: var(--wsp-fs-body);
-	font-weight: var(--fw-medium);
+/*
+ * A notice is the region's statement, so it sits flush with the column and in the page's ink. None
+ * carries an action, so its icon stays on the sentence's row: a sentence longer than the row (a phone)
+ * wraps inside itself rather than leaving the icon alone on a line above it.
+ */
+.wsp-billing .wsp-billing__notice {
+	flex-wrap: nowrap;
+	padding: 0;
 	color: var(--on-surface);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
-.wsp-billing__meta {
+/* In a row, the statement takes the room and its control keeps its size. */
+.wsp-billing__gate > .wsp-billing__notice {
+	flex: 1 1 var(--wsp-field);
+	min-inline-size: 0;
+}
+
+/* A row's one control, when it navigates: an anchor in the Button's dress. */
+.wsp-billing__action {
+	flex: none;
+	text-decoration: none;
+}
+
+/*
+ * A money figure — inside a sentence (the balance under the floor) or a table cell (amount due, closing
+ * balance): tabular, and isolated left-to-right so its symbol and digits keep their order in either
+ * direction (DESIGN_SYSTEM §A Figures).
+ */
+.wsp-billing__num {
+	font-variant-numeric: tabular-nums;
+	direction: ltr;
+	unicode-bidi: isolate;
+}
+
+/* Who to ask, when the viewer holds no control that clears it. */
+.wsp-billing__ask {
+	margin: 0;
 	font-size: var(--wsp-fs-micro);
 	color: var(--text-secondary);
 }
 
-.wsp-billing__figure {
-	font-size: var(--wsp-fs-body);
-	color: var(--on-surface);
-	font-variant-numeric: tabular-nums;
+/* The oldest payable invoice and its Pay — the band's one commit, above the table. */
+.wsp-billing__next {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	min-inline-size: 0;
 }
 
-.wsp-billing__acts {
+.wsp-billing__next-facts {
 	display: flex;
-	align-items: center;
-	justify-content: flex-end;
-	gap: var(--space-2);
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
 }
+
+.wsp-billing__next-title {
+	margin: 0;
+	font-size: var(--wsp-fs-body);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+/* #endregion */
 
 .wsp-billing__settings {
 	display: grid;
@@ -78,32 +98,14 @@
 	min-inline-size: 0;
 }
 
-.wsp-billing__field {
+/*
+ * A control and the notice that qualifies it (the Business Pro gate under the invoicing switch),
+ * stacked inside one FormControl: FormControl's control slot is a row, so side by side the notice
+ * squeezed into a sliver beside the switch.
+ */
+.wsp-billing__stack {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-2);
 	min-inline-size: 0;
-}
-
-.wsp-billing__note {
-	margin: 0;
-	max-inline-size: var(--wsp-prose);
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
-}
-
-.wsp-billing__warning {
-	margin: 0;
-	font-size: var(--wsp-fs-body);
-	color: var(--on-surface);
-}
-
-@media (max-width: 47.9375rem) {
-	.wsp-billing__row {
-		grid-template-columns: minmax(0, 1fr) auto;
-	}
-
-	.wsp-billing__row > .wsp-billing__figure {
-		grid-column: 1;
-	}
 }

@@ -92,13 +92,6 @@
 	font-weight: var(--fw-medium);
 }
 
-.wlt-dlg__warn {
-	margin: 0;
-	font-size: var(--text-sm);
-	line-height: var(--leading-normal);
-	color: var(--text-secondary);
-}
-
 .wlt-dlg__lead {
 	margin: 0;
 	max-inline-size: var(--measure-narrow);

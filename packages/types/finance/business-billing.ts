@@ -23,10 +23,32 @@ export function billingPeriod(billingDay: number | null, at: Date): { start: Dat
 		: thisMonth;
 	return { start, end: new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, day)) };
 }
+
+/**
+ * A billing day as the reader says it: "1st", "2nd", "3rd", "4th" … "11th"–"13th" … "21st"–"23rd" …
+ * "28th". Shared so the invoice copy ("Issued on the 28th") and the day picker read one way.
+ */
+export function billingDayOrdinal(day: number): string {
+	const n = Math.trunc(day);
+	const teen = n % 100 >= 11 && n % 100 <= 13;
+	const suffix = teen
+		? "th"
+		: n % 10 === 1
+		? "st"
+		: n % 10 === 2
+		? "nd"
+		: n % 10 === 3
+		? "rd"
+		: "th";
+	return `${n}${suffix}`;
+}
 // #endregion
 
 // #region View
-/** One consolidated invoice in the Billing module. */
+/**
+ * One consolidated invoice in the Billing module. Rows arrive newest period first, so the OLDEST
+ * payable invoice is the last payable row.
+ */
 export const BillingInvoiceRowSchema = z.object({
 	id: uuid,
 	/** "Sep 15 – Oct 15, 2026". */
@@ -41,6 +63,20 @@ export const BillingInvoiceRowSchema = z.object({
 	dueLabel: z.string().max(40),
 	overdue: z.boolean(),
 	pdfHref: z.string().max(120),
+	/** ISO instant the invoice was issued, or `null`. */
+	issuedAt: z.string().max(40).nullable(),
+	/** "Oct 28", or "—" when unknown. */
+	issuedLabel: z.string().max(20),
+	/** The due date alone — "Oct 29", or "—" when there is none. */
+	dueDateLabel: z.string().max(20),
+	/** The business wallet in the invoice's currency, which Pay debits — "$8,873.00". */
+	walletBalanceLabel: z.string().max(32),
+	/** That wallet after paying what is due; `null` when nothing is due or the wallet does not cover it. */
+	balanceAfterLabel: z.string().max(32).nullable(),
+	/** The wallet holds at least what is due; `false` when nothing is due. */
+	covered: z.boolean(),
+	/** How much the wallet falls short of what is due; `null` when it covers it or nothing is due. */
+	shortfallLabel: z.string().max(32).nullable(),
 });
 export type BillingInvoiceRow = z.infer<typeof BillingInvoiceRowSchema>;
 
@@ -84,6 +120,13 @@ export const BusinessBillingViewSchema = z.object({
 	 * right, a KYB-verified business, and an active one. Pay renders only then.
 	 */
 	canPay: z.boolean().default(false),
+	/**
+	 * Whether monthly invoicing is open to the business under the Business Pro gate
+	 * (`intervaled_invoicing`, Decision #230 (e)) — `finance.get_billing_settings`'s
+	 * `plan_allows_monthly`, read with the Dev Context Switcher's plan-gates override. `set_invoicing_terms`
+	 * still refuses with PK402 on its own; this only lets the form say so before the Save.
+	 */
+	planAllowsMonthly: z.boolean(),
 });
 export type BusinessBillingView = z.infer<typeof BusinessBillingViewSchema>;
 // #endregion

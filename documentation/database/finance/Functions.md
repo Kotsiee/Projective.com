@@ -862,7 +862,8 @@ vault; `manage_members` still implies it — changed 2026-09-28 from `manage_mem
 owner-level grant that also carries `withdraw`, so making someone an approver that way would have
 let them empty the pool) and may not be the requester — approving one's own over-cap spend would make
 the cap decorative (`42501`). A request already decided is `PC409` — "already been spent" for a
-consumed one, "has expired" for an expired one, so neither can be re-decided; one past its
+consumed one, "has expired" for an expired one, "was withdrawn" for one its requester took back
+(`finance.withdraw_spend_approval`, Decision #246), so none can be re-decided; one past its
 `expires_at` is marked `expired` instead of decided (expiry is applied lazily, at the next decision
 attempt — no sweep marks it). Approving moves no money: the charge for the request's ref spends it
 through `finance.fn_redeem_spend_approval`. The one exception acted on at once is an approved
@@ -880,7 +881,7 @@ hold redeems it. A decision notifies the requester through `comms.fn_notify` (`s
 | `PA403`  | over the member's spending limit, or (business) at/above the approval threshold with no approval |
 | `PF402`  | the wallet doesn't hold enough                           |
 | `PD422`  | the team has no agreed split                             |
-| `PC409`  | the spend request was already decided, spent or expired  |
+| `PC409`  | the spend request was already decided, spent, expired or withdrawn |
 
 > **Flagged, not decided.** A distribution follows the stakes as agreed, with no platform fee and no
 > vault retention taken at distribution time — the documented 5% fee → vault cut → stakes model
@@ -981,7 +982,7 @@ A business's spend policy as a PATCH (a key present is a change, so absent ≠ n
 | `approval_threshold_minor` | `finance.wallets.approval_threshold_cents`. `NULL` disables it; `0` is refused ("every spend needs a second approver" is a per-transaction ceiling of 0 instead). |
 | `approver_ids`             | The member ids who hold `approve_spend` — everyone else does not.                                                                                                     |
 | `contributor_ids`          | The member ids who hold `contribute_funds` — everyone else does not.                                                                                                  |
-| `limits`                   | `[{member_id, can_spend, limit_minor, per_transaction_minor}]` — `can_spend` moves the `spend_funds` override; the two limits upsert `finance.spending_limits`.    |
+| `limits`                   | `[{member_id, can_spend?, limit_minor?, per_transaction_minor?, period?}]` — each entry is itself a patch (a key present is a change, so an editor sends only what moved; restating a stored ceiling is a ceiling being SET). `can_spend` moves the `spend_funds` override; the limits and `period` upsert `finance.spending_limits`. |
 
 Every per-member change obeys the member drawer's rules: never the caller's own row, never the
 owner's (both are fixed points, not members of the lists), only someone the caller **outranks**, and
@@ -989,12 +990,24 @@ never a capability the caller does not hold. Capability moves go through
 `org.fn_set_member_capability`, so "can spend" has one representation. Re-projects the whole vault;
 audits `business.spend_policy_changed`.
 
+**`period`** (BU2, Decision #246) is `weekly` · `monthly` · `total` (`22023 limits: a period is weekly,
+monthly or total`). Changing it **carries over** what the current window counted — never a reset of
+what has been spent — unless that window has already lapsed (then nothing carries), and restarts the
+window at the new period's next boundary (`date_trunc('week'|'month', now())` + one period; `NULL` for
+`total`), the boundary `fn_check_spending_limit` itself uses. A new row takes the period given (default
+`monthly`).
+
+**Business Pro** (`pooled_wallet_full`, `PK402`) is asserted only for what SETS a ceiling: a non-null
+`approval_threshold_minor`, `limit_minor` or `per_transaction_minor`, or a period change on a row that
+keeps a non-null cap. `can_spend`, a cleared ceiling and a period on a member with no cap never are.
+
 ### `finance.preview_spend_envelope(p_business_id, p_patch)` → `{currency, limits}`
 
 Read-only (`STABLE`): the envelopes a `save_spend_policy` patch WOULD produce, so the Spend editor
 never renders a draft ceiling against the stored figures it is about to replace (BUSINESSES_AUDIT
 BD2). Same authority (`manage_finances`, else `42501 policy:`) and the same limit validation (`22023
-limits:` — an inactive member, a negative limit); the rank rules stay the save's to refuse. The
+limits:` — an inactive member, a negative limit, a period other than weekly · monthly · total); the
+rank rules stay the save's to refuse. The
 wallet is looked up, never created — a currency with no wallet yet has spent nothing. `limits` is
 `fn_business_envelopes` with the patch applied. Backs `POST /api/workspace/spend/preview`.
 
@@ -1006,16 +1019,27 @@ Every active member's envelope on one business wallet, highest rank first: `memb
 `remaining_minor` (cap − spent, never below 0; `NULL` without a cap) and `used_fraction` (0–1, 4 dp; 0
 without a cap). Narrowed to the caller's own unless `fn_reads_wallet_envelopes(p_wallet)` (with no
 wallet yet: `manage_finances` or `approve_spend`). A patch's `limits` entries replace the keys they
-carry. The ONE envelope reader behind `org.get_workspace_detail` and `preview_spend_envelope`, so the
+carry — `period` included, priced against the current window's spend, which a period change carries
+over (Decision #246). The ONE envelope reader behind `org.get_workspace_detail` and `preview_spend_envelope`, so the
 console and the draft cannot disagree. Not executable by clients.
 
 ### `finance.get_billing_settings(p_business_id)` → `jsonb | NULL`
 
 The Billing module's settings for whoever may see the business's finances (`fn_owner_visible`; `NULL`
 for anyone else): `currency`, `invoicing_mode`, `billing_day`, `kyb_verified`, `auto_fund_mode`,
-`low_balance_floor_cents`, `can_manage` (vault `manage_billing`) and `can_pay` — `pay_invoice`'s own
-conditions (`manage_billing`, KYB verified, an `active` business), so Pay is offered only when it
-would be accepted (BUSINESSES_AUDIT BD15).
+`low_balance_floor_cents`, `can_manage` (vault `manage_billing`), `can_pay` — `manage_billing`, KYB
+verified and an `active` business, the same conditions as `org.get_workspace_detail`'s
+`viewer_can.pay_invoice` (BUSINESSES_AUDIT BD15) — and `plan_allows_monthly`: whether monthly
+invoicing is open to the business under the Business Pro gate, by `fn_assert_business_entitlement`'s
+own rule (`NOT fn_business_plan_gates_enforced() OR fn_business_gate_flag(business,
+'intervaled_invoicing')`, Decision #230 (e)); the `x-pj-dev-plan-gates` header can only make it
+stricter. The Billing module reads it to say "That's part of Business Pro" before a Save that
+`set_invoicing_terms` would refuse with `PK402` (BU3, Decision #247). `finance.pay_invoice` checks
+the same three, in this order — `manage_billing` (`42501`), an `active` business (`55000
+business_not_active`) and KYB (`PK403 kyb_required:`, DETAIL `{invoice_id, business_id}`) — then that
+something is due (`PC409`) and that the wallet in the invoice's currency covers it (`PF402`). Settling
+an invoice is not a spend: no envelope or approval threshold is read (Decision #240 leaves invoices
+out of the gate). Decision #247 (h); probe `supabase/probes/business_billing_screen.sql`.
 
 ### `finance.request_spend_approval(p_wallet, p_amount, p_reason, p_ref_table, p_ref_id)` → `{id, status}`
 
@@ -1039,6 +1063,42 @@ It is the ONLY way a request is filed: the client INSERT policy (`"Request a spe
 `00002013`) and the `INSERT` table grant to `authenticated` (`00002520`) were removed with it, so a
 direct PostgREST insert is refused and cannot skip the needs-approval check or choose its own
 `currency` and `expires_at`.
+
+### `finance.withdraw_spend_approval(p_approval)` → `{id, status}`
+
+The requester takes back their own **pending** request (BU2, Decision #246 — closes #243 flag (k)).
+`VOLATILE SECURITY DEFINER`, `search_path = ''`; the row is locked `FOR UPDATE`. It becomes
+`withdrawn`: terminal, `decided_at` stamped as the moment it left `pending`, `approver_user_id` left
+`NULL` (CHECK `spend_approvals_withdrawn_check`) — so it is never decided (`decide_spend_approval`
+refuses `PC409`) or redeemed (`fn_redeem_spend_approval` takes only `approved`), and its ref holds no
+open request any more: the checkout offers Request approval again (`live-buyer.latestRequest` — a
+withdrawn NEWEST request leaves no history to show, so an older declined or expired request is not read
+back as the answer; an approval that still covers the charge is still spent first).
+A request already past its expiry is marked `expired` instead, as a decision would, and answers
+`{status: 'expired'}`. Audited as `business.spend_request_withdrawn` (`{wallet_id, ref_table, ref_id,
+amount_minor}`). Moves no money; the approvers' earlier `spend_approval.requested` notifications are
+not retracted (Decision #246 flag). Granted to `authenticated` only. Backs `POST
+/api/workspace/spend-withdraw`.
+
+| SQLSTATE | Meaning                                                              |
+| :------- | :------------------------------------------------------------------- |
+| `42501`  | not signed in (`auth:`), or not the member who filed it (`request:`) |
+| `PB404`  | no such request (`request: not found`)                               |
+| `PC409`  | already withdrawn, or already decided / expired                      |
+
+### `finance.fn_spend_ref(p_ref_table, p_ref_id)` → `jsonb` (internal)
+
+What a spend request is for, read for `org.get_workspace_detail`'s request rows (BU2, Decision #246):
+`baskets` → `title` (the basket's name), `item` (its first live line), `items`; `tickets` → `title`,
+`project_title`, `project_slug`, `ticket_slug`; `project_stages` → `title` (the stage), `project_title`,
+`project_slug`, `stage_slug`; `revisions` → `title` (the round's ticket), `stage_title`, `project_title`,
+`project_slug`, `stage_slug`, `ticket_slug`; `invoices` → `invoice_type`, `period_start`, `due_at`,
+`stage_title`; `transfers` → the destination wallet's `owner_type`. Every answer carries `opens`:
+whether the CALLER may open that thing — a project by `projects.can_review_project` or
+`projects.has_project_access` (the projects SELECT policies), a basket by `fn_owner_visible`, an
+invoice by `manage_billing` — so the Spend module links only what lands. `{}` when the row is gone.
+`STABLE SECURITY DEFINER`, revoked from every client role: it reads any business's rows, so only the
+detail read calls it, for requests its caller may already read.
 
 ---
 

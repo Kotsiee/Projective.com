@@ -23,7 +23,7 @@
 --      and `get_profile_reviews` returns rows unaggregated (Decision #244 (e)). The read names the
 --      author's side as `freelancer`.
 --   G. Regression. A draft team stays hidden; a public person stays visible to a guest; a team's
---      view carries no `workspace` / `contact` key.
+--      view carries its own `workspace` facts and owner `contact` (Teams P1).
 --
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated, seeded DB:
 --   docker exec -i supabase_db_Projective psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
@@ -447,9 +447,11 @@ BEGIN
     END;
     PERFORM pg_temp.check('G a draft team is hidden from a stranger', v_draft IS NULL, v_draft::text);
 
+    -- A team carries its own workspace facts and owner contact since Teams P1
+    -- (supabase/probes/team_profile_visibility.sql).
     v := org.get_profile_view('northloop');
-    PERFORM pg_temp.check('G a team''s view carries no workspace / contact facts',
-        v IS NOT NULL AND NOT (v ? 'workspace') AND NOT (v ? 'contact'), left(v::text, 80));
+    PERFORM pg_temp.check('G a team''s view carries its own workspace facts and owner contact',
+        v IS NOT NULL AND v ? 'workspace' AND v -> 'contact' ->> 'handle' = 'kwamemensah', left(v::text, 80));
 
     PERFORM pg_temp.act(NULL);
     v := org.get_profile_view('noor');

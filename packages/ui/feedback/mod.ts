@@ -3,7 +3,7 @@
  *
  * Inline status (Message, Messages, Alert/Banner, InlineNotice, ErrorBoundary), the session-wide Ribbon, transient
  * overlays (Toast, Dialog, DynamicDialog,
- * ConfirmDialog, ConfirmPopup, Drawer/Sidebar, Tooltip, Popover/OverlayPanel), and progress
+ * ConfirmDialog, ConfirmPopup, CommitReview, Drawer/Sidebar, Tooltip, Popover/OverlayPanel), and progress
  * indicators (ProgressBar, ProgressSpinner, ProgressRing, Spinner/Loader, Skeleton). Modal overlays
  * coordinate z-index + scroll-lock via `@projective/ui/hooks/useOverlayStack`, trap focus, and defer
  * to a bottom sheet under `--bp-md`. Token-only BEM; ARIA + reduced-motion are merge gates.
@@ -43,6 +43,24 @@ export { ConfirmDialog } from "./islands/ConfirmDialog.tsx";
 export type { ConfirmDialogProps } from "./islands/ConfirmDialog.tsx";
 export { ConfirmPopup } from "./islands/ConfirmPopup.tsx";
 export type { ConfirmPopupProps, ConfirmPopupTriggerApi } from "./islands/ConfirmPopup.tsx";
+/**
+ * {@link CommitReview} — the review step before money moves: the figure, the facts that bind it, the
+ * consequence, then ONE tier-1 commit after a text Cancel (`alertdialog`, Cancel first, a bottom sheet
+ * under `--bp-md`). {@link CommitReviewBody} is its stylesheet-free body, for a dialog that keeps its
+ * own frame (the wallet's movement dialog).
+ */
+export { CommitReview } from "./islands/CommitReview.tsx";
+export type { CommitReviewProps } from "./islands/CommitReview.tsx";
+export { CommitLabel, CommitReviewBody } from "./components/CommitReviewBody.tsx";
+export type { CommitReviewBodyProps } from "./components/CommitReviewBody.tsx";
+export { commitLinkClass, commitReviewActions, commitReviewDialog } from "./core/commit-review.ts";
+export type {
+	CommitReviewAction,
+	CommitReviewActionsInput,
+	CommitReviewDialog,
+	CommitReviewMode,
+	CommitReviewRow,
+} from "./core/commit-review.ts";
 export { Drawer, Sidebar } from "./islands/Drawer.tsx";
 export type { DrawerProps } from "./islands/Drawer.tsx";
 export { Tooltip } from "./islands/Tooltip.tsx";

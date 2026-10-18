@@ -467,6 +467,11 @@
 /* #endregion */
 
 /* #region Business — spend envelopes */
+/*
+ * The Spend module (BU2, Decision #246): four sections — threshold, approvers and contributors, member
+ * limits, requests — separated by space and ONE hairline, never boxed (§B.4). The heading sits
+ * --space-3 above its content; the next section begins --space-7 below.
+ */
 .wsp-spend {
 	display: flex;
 	flex-direction: column;
@@ -475,37 +480,101 @@
 	min-inline-size: 0;
 }
 
-/* The approval threshold. One number that changes who may act alone, so it gets its own block. */
-.wsp-spend__threshold {
+.wsp-spend__section {
 	display: flex;
-	align-items: flex-end;
-	gap: var(--space-4);
-	flex-wrap: wrap;
+	flex-direction: column;
+	gap: var(--space-3);
 	min-inline-size: 0;
 }
 
-.wsp-spend__threshold-field {
+.wsp-spend__section + .wsp-spend__section {
+	margin-block-start: var(--space-2);
+	padding-block-start: var(--space-7);
+	border-block-start: var(--hairline);
+}
+
+.wsp-spend__lede {
+	margin: 0;
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-body);
+	color: var(--text-secondary);
+}
+
+/*
+ * The approval threshold: one field, as wide as a money field reads well, with the MetaLine under it
+ * saying what an empty field means.
+ */
+.wsp-spend__threshold {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-2);
+	gap: var(--space-1);
 	inline-size: 100%;
 	max-inline-size: var(--wsp-field);
 	min-inline-size: 0;
 }
 
-.wsp-spend__threshold-note {
+.wsp-spend__threshold-default {
 	margin: 0;
-	max-inline-size: var(--wsp-prose);
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
 }
 
-.wsp-spend__approvers {
+/* A notice and its way forward: the sentence, its fact, then one tier-4 link or what to ask for. */
+.wsp-spend__notice {
 	display: flex;
-	align-items: center;
+	flex-direction: column;
+	align-items: flex-start;
 	gap: var(--space-2);
-	flex-wrap: wrap;
 	min-inline-size: 0;
+}
+
+/*
+ * Every InlineNotice in the module — a notice, a refused save, a refused decision — sits on the
+ * section's own column, flush with the lede, the field and the link under it: InlineNotice pads itself
+ * for a list's foot, and here the section already spaces it. The glyph stays beside the sentence on a
+ * phone (the text column shrinks instead of the sentence dropping under a lone glyph). Doubled class so
+ * the override never depends on bundle order.
+ */
+.wsp-spend .ui-inline-notice {
+	flex-wrap: nowrap;
+	align-items: flex-start;
+	padding: 0;
+}
+
+.wsp-spend .ui-inline-notice__text {
+	flex: 1 1 auto;
+}
+
+/* Sit the glyph on the first line's x-height rather than the block's top edge. */
+.wsp-spend .ui-inline-notice__icon {
+	margin-block-start: var(--space-px);
+}
+
+/* The notice's tier-4 link is drawn as a button, so it drops the anchor's underline. */
+.wsp-spend__notice-link {
+	text-decoration: none;
+}
+
+/* The two grant pickers side by side; one column below --bp-md. */
+.wsp-spend__approvers {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	align-items: start;
+	gap: var(--space-5);
+	min-inline-size: 0;
+}
+
+.wsp-spend__picker {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.wsp-spend__picker-label {
+	margin: 0;
+	font-size: var(--wsp-fs-body);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
 }
 
 .wsp-spend__limits {
@@ -520,7 +589,7 @@
 
 .wsp-spend__limit {
 	display: grid;
-	grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1fr) auto auto;
+	grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1fr) auto;
 	align-items: center;
 	gap: var(--space-3);
 	min-block-size: var(--wsp-rowh);
@@ -565,66 +634,28 @@ colour, so the row's no-spend dim below reaches it. */
 	text-decoration: underline;
 }
 
+/* The envelope in one line — every figure the server's, tabular. */
 .wsp-spend__limit-sub {
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+	min-inline-size: 0;
 }
 
-/* The envelope meter. Its fill encodes how much of the ceiling is gone, so it is never animated. */
-.wsp-spend__meter {
+/*
+ * The envelope meter: a ProgressBar of the server's `usedFraction`, with what is spent and what is left
+ * under it. A re-read (a save, a decision) eases the fill to the new figure through ProgressBar's own
+ * width transition, which both reduced-motion channels remove; the figures under it change at once.
+ */
+.wsp-spend__limit-meter {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-1);
 	min-inline-size: 0;
-}
-
-.wsp-spend__meter-track {
-	inline-size: 100%;
-	min-inline-size: 0;
-	block-size: var(--wsp-meter-h-lg);
-	border-radius: var(--radius-xs);
-	background: var(--wsp-meter-bg);
-	overflow: hidden;
-}
-
-.wsp-spend__meter-fill {
-	display: block;
-	block-size: 100%;
-	inline-size: calc(var(--wsp-fill, 0) * 100%);
-	border-radius: inherit;
-	background: var(--wsp-spent);
-}
-
-/*
- * Near the ceiling the meter warms; at the ceiling it goes amber. It never goes red: spending your
- * whole allowance is using the tool correctly, and red would frame a member's own budget as a failure.
- */
-.wsp-spend__meter[data-tone="near"] .wsp-spend__meter-fill {
-	background: color-mix(in srgb, var(--warning) 60%, var(--wsp-spent));
-}
-
-.wsp-spend__meter[data-tone="full"] .wsp-spend__meter-fill {
-	background: var(--wsp-overspend);
-}
-
-.wsp-spend__meter-text {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: var(--space-2);
-	font-size: var(--wsp-fs-micro);
 	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
 }
 
-/* Unlimited is a state, not a very large number — an owner's row says so in words. */
-.wsp-spend__unlimited {
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
-	font-style: italic;
+/* A narrow lane breaks a row's line between its facts, never inside one ("US$500.00 / month"). */
+.wsp-spend__limit .ui-meta-line__item {
+	white-space: nowrap;
 }
 
 /* A member who may not spend at all keeps their row, dimmed — absence would hide the decision. The
@@ -633,30 +664,54 @@ dim is the name's INK stepping down to the secondary register, never `opacity` (
 	color: var(--text-secondary);
 }
 
-.wsp-spend__limit-cap {
-	justify-self: end;
+.wsp-spend__limit-edit {
 	flex: none;
+	justify-self: end;
+}
+
+/* The inline editor: a second row under the record, its four fields two by two. */
+.wsp-spend__limit-form {
+	grid-column: 1 / -1;
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	align-items: start;
+	gap: var(--space-3) var(--space-5);
+	padding-block: var(--space-3) var(--space-2);
 	min-inline-size: 0;
 }
 
-.wsp-spend__limit-edit {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	flex: none;
-	inline-size: 1.75rem;
-	block-size: 1.75rem;
-	padding: 0;
-	border: none;
-	border-radius: var(--radius-base);
-	background: none;
-	color: var(--text-secondary);
-	cursor: pointer;
+.wsp-spend__limit-form > :first-child,
+.wsp-spend__limit-formnote {
+	grid-column: 1 / -1;
 }
 
-.wsp-spend__limit-edit:hover {
-	background: var(--surface-3);
-	color: var(--on-surface);
+/* The period field: its visible label names the group around the SelectButton (one name source). */
+.wsp-spend__limit-field {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	min-inline-size: 0;
+}
+
+/* That label, set in the field-label tokens so it reads as the FormControl labels beside it. */
+.wsp-spend__limit-label {
+	display: inline-block;
+	margin-block-end: var(--space-1);
+	font-family: var(--font-sans);
+	font-size: var(--fld-label-fs);
+	font-weight: var(--fld-label-fw);
+	color: var(--fld-label-fg);
+}
+
+.wsp-spend__limit-formnote {
+	margin: 0;
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wsp-spend__foot {
+	margin: 0;
 }
 
 /* #endregion */
@@ -721,6 +776,15 @@ dim is the name's INK stepping down to the secondary register, never `opacity` (
 	white-space: nowrap;
 }
 
+.wsp-pool__who a {
+	color: inherit;
+	text-decoration: none;
+}
+
+.wsp-pool__who a:hover {
+	text-decoration: underline;
+}
+
 .wsp-pool__reason {
 	font-size: var(--wsp-fs-micro);
 	color: var(--text-secondary);
@@ -743,17 +807,19 @@ dim is the name's INK stepping down to the secondary register, never `opacity` (
 	white-space: nowrap;
 }
 
+/* "Approved by …" — visible meta under the reason (a MetaLine), never a hover-only tooltip. */
 .wsp-pool__approved {
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 /* #endregion */
 
 /* #region Business — the approval queue */
 /*
  * A blocked purchase always offers the request path, so `needs_approval` is a first-class outcome
- * rather than a refusal. That is why this queue is a work surface, not a warning list: it is tonal, it
- * shows the amount at figure weight, and both verdict buttons are equally reachable.
+ * rather than a refusal. The queue is a list of records on hairlines — never tinted boxes — with the
+ * amount at body weight and ONE filled Approve per region (BU2; DESIGN_SYSTEM §B.8).
  */
 .wsp-approvals {
 	list-style: none;
@@ -761,29 +827,31 @@ dim is the name's INK stepping down to the secondary register, never `opacity` (
 	padding: 0;
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-2);
 	inline-size: 100%;
 	min-inline-size: 0;
 }
 
 .wsp-approvals__item {
 	display: grid;
-	grid-template-columns: auto minmax(0, 1fr) auto;
+	grid-template-columns: auto minmax(0, 1fr) auto auto;
 	align-items: center;
 	gap: var(--space-3);
-	padding: var(--space-3);
-	border-radius: var(--radius-container-lg);
-	background: var(--surface-1);
+	padding-block: var(--space-3);
+	border-block-start: var(--hairline);
 }
 
-.wsp-approvals__item[data-state="pending"] {
-	background: color-mix(in srgb, var(--warning) var(--tint-soft), var(--surface-1));
+.wsp-approvals__item:first-child {
+	border-block-start: none;
 }
 
-/* A declined request stays on the record, dimmed through its INK — the requester and the amount step
-down to the secondary register — never through `opacity` (§B.12). */
+/* A request that left the queue without being spent stays on the record, dimmed through its INK —
+the requester and the amount step down to the secondary register — never through `opacity` (§B.12). */
 .wsp-approvals__item[data-state="declined"] .wsp-approvals__who,
-.wsp-approvals__item[data-state="declined"] .wsp-money {
+.wsp-approvals__item[data-state="declined"] .wsp-money,
+.wsp-approvals__item[data-state="expired"] .wsp-approvals__who,
+.wsp-approvals__item[data-state="expired"] .wsp-money,
+.wsp-approvals__item[data-state="withdrawn"] .wsp-approvals__who,
+.wsp-approvals__item[data-state="withdrawn"] .wsp-money {
 	color: var(--text-secondary);
 }
 
@@ -799,38 +867,67 @@ down to the secondary register — never through `opacity` (§B.12). */
 	min-inline-size: 0;
 }
 
-.wsp-approvals__row {
-	display: flex;
-	align-items: baseline;
-	gap: var(--space-3);
-	flex-wrap: wrap;
-	min-inline-size: 0;
-}
-
 .wsp-approvals__who {
 	font-size: var(--wsp-fs-body);
 	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 }
 
+/* A requester's name is a record link: it keeps the row's ink, never the user agent's link blue. */
+.wsp-approvals__who a {
+	color: inherit;
+	text-decoration: none;
+}
+
+.wsp-approvals__who a:hover {
+	text-decoration: underline;
+}
+
+/*
+ * The requester's reason is what an approver decides on, so it wraps rather than truncating: on a
+ * tablet or a phone an ellipsis cut it mid-sentence with no way to read the rest (it is at most 160
+ * characters — `SpendRequest.reason`).
+ */
 .wsp-approvals__reason {
 	margin: 0;
 	min-inline-size: 0;
 	font-size: var(--wsp-fs-body);
 	color: var(--text-secondary);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+	overflow-wrap: anywhere;
+}
+
+/* What the money is for — the stage, ticket, basket or invoice — linked where the viewer can open it. */
+.wsp-approvals__ref {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	font-size: var(--wsp-fs-micro);
+	color: var(--on-surface);
+}
+
+.wsp-approvals__ref-link {
+	color: var(--primary);
+	text-decoration: none;
+}
+
+.wsp-approvals__ref-link:hover {
+	text-decoration: underline;
+}
+
+.wsp-approvals__ref-detail {
+	color: var(--text-secondary);
 }
 
 .wsp-approvals__meta {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	flex-wrap: wrap;
-	font-size: var(--wsp-fs-micro);
 	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
+}
+
+.wsp-approvals__amount {
+	justify-self: end;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
 }
 
 .wsp-approvals__actions {
@@ -843,52 +940,15 @@ down to the secondary register — never through `opacity` (§B.12). */
 	justify-content: flex-end;
 }
 
-.wsp-approvals__decided {
-	font-size: var(--wsp-fs-micro);
-	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
-	white-space: nowrap;
-}
-
-/*
- * The pre-flight verdict, shown while a spend is being composed. Three outcomes, three tones — and
- * `blocked` is the only one that reaches `--danger`, because it is the only one that is genuinely a
- * dead end for this amount.
- */
-.wsp-verdict {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding-inline: var(--space-3);
-	padding-block: var(--space-1);
-	border-radius: var(--radius-base);
+.wsp-approvals__empty {
+	margin: 0;
+	max-inline-size: var(--wsp-prose);
 	font-size: var(--wsp-fs-body);
-	background: var(--surface-2);
-	color: var(--on-surface);
+	color: var(--text-secondary);
 }
 
-.wsp-verdict[data-outcome="allowed"] {
-	background: var(--success-tint);
-	color: var(--success);
-}
-
-.wsp-verdict[data-outcome="needs_approval"] {
-	background: var(--warning-tint);
-	color: var(--warning);
-}
-
-.wsp-verdict[data-outcome="blocked"] {
-	background: var(--danger-tint);
-	color: var(--danger);
-}
-
-.wsp-verdict__glyph {
-	display: inline-flex;
-	flex: none;
-	line-height: 0;
-}
-
-.wsp-verdict__reason {
+/* The Requests tab panel, focusable by script so a decision hands focus here, not to <body>. */
+.wsp-requests__panel {
 	min-inline-size: 0;
 }
 /* #endregion */
@@ -905,65 +965,43 @@ down to the secondary register — never through `opacity` (§B.12). */
  * So this block is the only place on the surface that draws a lock, and the policy editor above it
  * stays fully usable while the gate is closed — a business can compose its spend rules before KYB
  * clears, and a team can compose its split before its members' KYC does.
+ *
+ * The lock is the ui `InlineNotice` — unboxed, no fill and no border (TEAMS_AUDIT D12): a required
+ * disclosure on one meta-register line. Its glyph leads in the warning ink while the check is
+ * outstanding and steps back to the meta ink once it is with the reviewers (pending is not a warning);
+ * the headline keeps the body ink so it reads as the line's subject. Its inline inset is the band's,
+ * so it aligns with the stack's content. On a phone the glyph stays beside the sentence — the text
+ * column shrinks — instead of the sentence dropping under a lone glyph.
  */
-.wsp-lock {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	flex-wrap: wrap;
-	inline-size: 100%;
-	min-inline-size: 0;
-	padding: var(--space-3) var(--space-4);
-	border-radius: var(--radius-container-lg);
-	background: color-mix(in srgb, var(--warning) var(--tint-soft), var(--surface-1));
+.wsp-lock.ui-inline-notice {
+	flex-wrap: nowrap;
+	align-items: flex-start;
+	padding-inline: 0;
+	padding-block: var(--space-2);
 }
 
-.wsp-lock--inline {
-	margin-block-start: var(--space-3);
-	padding: var(--space-2) var(--space-3);
-	border-radius: var(--radius-lg);
+.wsp-lock .ui-inline-notice__text {
+	flex: 1 1 auto;
 }
 
-/* Pending is not a warning — the work is already with us, so it goes achromatic. */
-.wsp-lock[data-state="pending"] {
-	background: var(--surface-2);
+/* Sit the glyph on the first line's x-height rather than the block's top edge. */
+.wsp-lock .ui-inline-notice__icon {
+	margin-block-start: var(--space-px);
 }
 
-.wsp-lock__glyph {
-	display: inline-flex;
-	flex: none;
+.wsp-lock .ui-inline-notice__icon {
 	color: var(--warning);
-	line-height: 0;
 }
 
-.wsp-lock[data-state="pending"] .wsp-lock__glyph {
+.wsp-lock--pending .ui-inline-notice__icon {
 	color: var(--text-secondary);
-}
-
-.wsp-lock__body {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-px);
-	flex: 1 1 18rem;
-	min-inline-size: 0;
 }
 
 .wsp-lock__text {
-	margin: 0;
-	font-size: var(--wsp-fs-body);
 	color: var(--on-surface);
 }
 
-.wsp-lock__prompt {
-	margin: 0;
-	max-inline-size: var(--wsp-prose);
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
-}
-
 .wsp-lock__link {
-	flex: none;
-	font-size: var(--wsp-fs-body);
 	color: var(--primary);
 	text-decoration: none;
 	white-space: nowrap;
@@ -1033,8 +1071,20 @@ down to the secondary register — never through `opacity` (§B.12). */
 		row-gap: var(--space-2);
 	}
 
-	.wsp-spend__meter {
+	/* The meter takes the row under the name; the edit control stays beside it. */
+	.wsp-spend__limit-edit {
+		grid-row: 1;
+		grid-column: 3;
+	}
+
+	.wsp-spend__limit-meter {
+		grid-row: 2;
 		grid-column: 2 / -1;
+	}
+
+	.wsp-spend__approvers,
+	.wsp-spend__limit-form {
+		grid-template-columns: minmax(0, 1fr);
 	}
 
 	.wsp-pool__item {
@@ -1046,7 +1096,7 @@ down to the secondary register — never through `opacity` (§B.12). */
 	}
 
 	.wsp-approvals__item {
-		grid-template-columns: auto minmax(0, 1fr);
+		grid-template-columns: auto minmax(0, 1fr) auto;
 		row-gap: var(--space-3);
 	}
 

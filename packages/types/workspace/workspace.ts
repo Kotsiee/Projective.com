@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ProposalAllowanceStatusSchema } from "../finance/allowance.ts";
 import { MoneyViewSchema } from "../finance/wallet.ts";
 import { isReservedHandle } from "../profile/reserved.ts";
+import { canOpenVerification } from "./access.ts";
 import {
 	VerificationState,
 	WorkspaceCapability,
@@ -20,6 +21,7 @@ import {
 	BusinessMoneyTileSchema,
 	BusinessSpendPolicySchema,
 	BusinessViewerCanSchema,
+	SpendPeriod,
 	SplitRuleInputSchema,
 	TeamPayoutPolicySchema,
 } from "./policy.ts";
@@ -99,15 +101,42 @@ export type WorkspaceRoster = z.infer<typeof WorkspaceRosterSchema>;
 // #endregion
 
 // #region Setup checklist
-/** One row of the Draft-First "Finish setting up" checklist. */
+/**
+ * Which Draft-First step a row is. A team walks `invite` (a second active member — two are needed to
+ * apply) · `money` (the split) · `profile` (mark and one-liner) · `verification` (the owner's identity,
+ * Decision #196) · `publish`; a business walks `logo` · `bio` · `invite` · `money` (its approval
+ * threshold) · `verification` (KYB).
+ */
+export const SetupStepId = z.enum([
+	"invite",
+	"money",
+	"profile",
+	"logo",
+	"bio",
+	"verification",
+	"publish",
+]);
+export type SetupStepId = z.infer<typeof SetupStepId>;
+
+/** One row of the Draft-First setup list — the Overview's setup hero. */
 export const SetupStepSchema = z.object({
-	id: z.enum(["logo", "bio", "invite", "money", "verification"]),
+	id: SetupStepId,
 	label: z.string().max(80),
 	/** What doing it gets them — never a bare instruction. */
 	note: z.string().max(160),
 	done: z.boolean(),
-	/** Where the step's action goes (a module route, or `""` for an in-place action). */
+	/**
+	 * Where the step's action goes: a console module, the public profile editor, or — for a team's
+	 * owner verification — the owner's own `/settings/verification`.
+	 */
 	href: z.string().max(200),
+	/**
+	 * Whether the VIEWER may act on the step — decided by the read from their effective capabilities
+	 * (and, for a team's verification, whether they are its owner) through {@link canActOnSetupStep},
+	 * so a step they cannot finish never offers them a control. A verification already with the
+	 * reviewers (`pending`) is actionable for nobody: nothing is left to do.
+	 */
+	actionable: z.boolean().default(false),
 });
 export type SetupStep = z.infer<typeof SetupStepSchema>;
 // #endregion
@@ -610,6 +639,33 @@ export const UpdatePayoutInputSchema = z.object({
 export type UpdatePayoutInput = z.infer<typeof UpdatePayoutInputSchema>;
 
 /**
+ * One member's entry in a spend-policy patch — itself a patch: a key present is a change, so an editor
+ * sends only what moved (restating a stored ceiling is a ceiling being SET, which Business Free refuses).
+ * At least one key besides the member. No key carries a default: a defaulted key would travel as a
+ * change nobody made (Decision #246).
+ */
+export const SpendLimitPatchSchema = z.object({
+	memberId: z.string().max(64),
+	/** Whether they may spend at all (`spend_funds`). */
+	canSpend: z.boolean().optional(),
+	/** The rolling ceiling in minor units; `null` clears it. */
+	limitMinor: z.number().int().min(0).nullable().optional(),
+	/** The per-purchase ceiling in minor units; `null` clears it. */
+	perTransactionMinor: z.number().int().min(0).nullable().optional(),
+	/**
+	 * The window the ceiling rolls over. Changing it carries what the current window counted over and
+	 * restarts the window at the new period's next boundary — never a reset of what has been spent.
+	 */
+	period: SpendPeriod.optional(),
+}).refine(
+	(entry) =>
+		entry.canSpend !== undefined || entry.limitMinor !== undefined ||
+		entry.perTransactionMinor !== undefined || entry.period !== undefined,
+	{ message: "Change something about this member's limit.", path: ["memberId"] },
+);
+export type SpendLimitPatch = z.infer<typeof SpendLimitPatchSchema>;
+
+/**
  * Write a business's spend policy — a patch; a key present is a change. The threshold is at least one
  * minor unit or `null` (off): `0` would read as "every spend needs approval" to one reader and as
  * "disabled" to another, so it is not a value this schema admits.
@@ -621,12 +677,7 @@ export const UpdateSpendInputSchema = z.object({
 	approvalThresholdMinor: z.number().int().min(1).nullable().optional(),
 	approverIds: z.array(z.string().max(64)).optional(),
 	contributorIds: z.array(z.string().max(64)).optional(),
-	limits: z.array(z.object({
-		memberId: z.string().max(64),
-		canSpend: z.boolean(),
-		limitMinor: z.number().int().min(0).nullable(),
-		perTransactionMinor: z.number().int().min(0).nullable(),
-	})).optional(),
+	limits: z.array(SpendLimitPatchSchema).optional(),
 });
 export type UpdateSpendInput = z.infer<typeof UpdateSpendInputSchema>;
 
@@ -673,6 +724,38 @@ export function setupProgress(steps: readonly SetupStep[]): number {
 	return steps.filter((s) => s.done).length / steps.length;
 }
 
+/**
+ * Whether a viewer holding `caps` may act on a setup step — the same right that opens the step's
+ * module (`module-registry-gates.test.ts` pins the agreement), or the right its in-place write checks:
+ * inviting needs `invite_members`; the split (a team's Payouts) and a business's threshold need
+ * `manage_finances`; the profile needs `edit_profile`; publishing needs `manage_settings`
+ * (`org.set_workspace_status`). Verification differs by kind: a business's KYB follows
+ * {@link canOpenVerification} (the billing right), while a team's is its OWNER's own identity check
+ * (`org.fn_workspace_verification` reads the owner's `kyc_status`, Decision #196), finished in their
+ * personal settings — so only `viewerIsOwner` may act on it, whatever rights an admin holds.
+ */
+export function canActOnSetupStep(
+	kind: WorkspaceKind,
+	step: SetupStepId,
+	caps: readonly WorkspaceCapability[],
+	viewerIsOwner = false,
+): boolean {
+	switch (step) {
+		case "invite":
+			return caps.includes("invite_members");
+		case "money":
+			return caps.includes("manage_finances");
+		case "profile":
+		case "logo":
+		case "bio":
+			return caps.includes("edit_profile");
+		case "verification":
+			return kind === "team" ? viewerIsOwner : canOpenVerification(kind, caps);
+		case "publish":
+			return caps.includes("manage_settings");
+	}
+}
+
 /** The route base for an entity kind (`/teams` · `/businesses`). */
 export function workspaceBase(kind: WorkspaceKind): string {
 	return kind === "team" ? "/teams" : "/businesses";
@@ -696,8 +779,14 @@ export function workspaceHref(
  * The wallet deep link for an entity — the finance page hands off here rather than rendering a second
  * finance UI. Note the `?w=` scope param is a **page-local view filter** on `/wallet`, NOT a session
  * context switch (brief §6.1) — the two switchers stay distinct on purpose.
+ *
+ * `section` lands on one part of that wallet's overview: `"access"` is its spend approvals — the
+ * overview's Upcoming list, where pending requests sit with Review — which is where the retired
+ * `/wallet/access` page now answers (`TARGET_OF.access`), scoped to the entity rather than the
+ * personal wallet (Decision #246).
  */
-export function walletHrefFor(kind: WorkspaceKind, id: string): string {
-	return `/wallet?w=${kind}:${id}`;
+export function walletHrefFor(kind: WorkspaceKind, id: string, section?: "access"): string {
+	const href = `/wallet?w=${kind}:${id}`;
+	return section === "access" ? `${href}#upcoming` : href;
 }
 // #endregion

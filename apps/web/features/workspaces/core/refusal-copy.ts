@@ -71,6 +71,12 @@ export interface BusinessRefusalContext {
 	 * "ask the owner" would send them to themselves.
 	 */
 	managesMembers?: boolean;
+	/**
+	 * Whether the reader is an approver deciding spend requests rather than a member paying — the
+	 * Spend module's queue (Decision #246). `kyb_required` then says what waits on verification for
+	 * THEM: deciding requests, not paying.
+	 */
+	deciding?: boolean;
 }
 
 /** One refusal's words. */
@@ -164,19 +170,19 @@ export const BUSINESS_REFUSAL_COPY: Readonly<Record<BusinessRefusalCode, Refusal
 	kyb_required: {
 		sentence: (ctx) => {
 			const name = nameOf(ctx);
+			const whose = name ? possessive(name) : "This business's";
 			if (ctx.kybStatus === "pending") {
-				return `${
-					name ? possessive(name) : "This business's"
-				} verification is still in review. You can pay once it clears.`;
+				return ctx.deciding
+					? `${whose} verification is still in review. You can decide spend requests once it clears.`
+					: `${whose} verification is still in review. You can pay once it clears.`;
 			}
+			const waits = ctx.deciding
+				? "spend requests can be decided"
+				: "its wallet can pay for anything";
 			if (ctx.kybStatus === "rejected" || ctx.kybStatus === "expired") {
-				return `${
-					name ? possessive(name) : "This business's"
-				} verification needs attention before its wallet can pay for anything.`;
+				return `${whose} verification needs attention before ${waits}.`;
 			}
-			return `${
-				name ?? "This business"
-			} needs to be verified before its wallet can pay for anything.`;
+			return `${name ?? "This business"} needs to be verified before ${waits}.`;
 		},
 		action: (ctx) => {
 			if (ctx.kybStatus === "pending") return "See verification";

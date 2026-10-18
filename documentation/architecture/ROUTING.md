@@ -13,7 +13,7 @@ Parenthesized folders group routes **without** adding a URL segment:
 | `routes/(public)/`        | Marketing + auth (landing, about, explore, help, view, login/join/…)                         | none        |
 | `routes/(public)/(auth)/` | Auth sub-group (own chrome later)                                                            | none        |
 | `routes/(dashboard)/`     | Authenticated app (home, projects, businesses, teams, messages, wallet, settings, services, …) | **guarded** |
-| `routes/[handle]/`        | Public profile namespace — users, teams, corporations by `@handle`                           | none        |
+| `routes/[handle]/`        | Public profile namespace — users, teams, corporations by `@handle`. Every top-level segment the other groups serve is a reserved handle (the namespace guard, §Reserved-handle precedence) | none        |
 | `routes/(standalone)/`    | Shell-free pages — today only the file inspector (`/inspect/:fileId`). **No `_layout.tsx`**: only `_app.tsx` wraps them (tokens, a11y, DevMount), so no `UserShell`/`GuestShell` renders (Decision #161(C)) | none (session renewed) |
 
 ## Special files
@@ -102,7 +102,7 @@ Parenthesized folders group routes **without** adding a URL segment:
 | team console module     | `(dashboard)/teams/[teamHandle]/[module].tsx`                | `/teams/:teamHandle/:module` — one module of the console (the `ModuleKey` vocabulary of `features/workspaces/core/module-registry.tsx`). Resolved by `consoleOutcome` (`features/workspaces/core/workspace-route.tsx`) in `define.handlers`, through the pure `routeConsole` / `consoleResponse` (`features/workspaces/core/console-route.ts`) every console handler of both kinds answers with (Decision #228 (B)): a uuid or a non-canonical-case handle in `:teamHandle` answers **308** (`canonical`) to the canonical handle with the query kept — the mapping is permanent, the slug being immutable; a real module the viewer may not open **303s** (`redirect`) to the one they can, dropping `?view=` (viewer-dependent, so never cacheable); both at once answer ONE **308** straight to the module the viewer may open; `/overview` spelled out answers **308** to the console root, query kept (combined with a uuid, still ONE 308); an unregistered segment 303s to the CANONICAL console root (`missing`); a missing team or a non-member 303s once to `/teams?notice=unavailable` (`unavailable`). Every case is ONE hop: the entity is read before any redirect is chosen, so no answer bounces through `/teams/<ref>`. The console's primary views — Overview · Members · Projects · Payouts · Roles · Settings for a team, Roles only with `manage_roles` — lead the registry (`primaryModules` / `secondaryModules`, Decision #228 (C)). A module's sub-views are `?view=`, read from one data table (`features/workspaces/core/sub-views.ts`, Teams L2): Members takes `?view=pending` (Invitations — offered only with `invite_members`) and `?view=chart` (Org chart), absent = People, on both kinds; a value the viewer is not offered reads as the default. The header band's tabs, the lane's context control and the footer rig's Org chart toggle switch it in place and keep the address in step with `replaceState`. Membership is the DATABASE's answer — `org.get_workspace_detail` returns `forbidden` for a non-member and discloses nothing else. |
 | business roster / create / console | `(dashboard)/businesses/{index,create}.tsx` · `businesses/[businessHandle]/{index,[module]}.tsx` | `/businesses` · `/businesses/create` · `/businesses/:businessHandle` · `/businesses/:businessHandle/:module` — the buyer-side twin of the four team routes above, addressed by `org.business_profiles.slug`, answering through the same `routeConsole` (BUSINESSES_AUDIT BF40–BF42, §4.5): a uuid or non-canonical-case handle **308s** to the handle, query kept; `/businesses/:businessHandle/overview` **308s** to `/businesses/:businessHandle`; a module the viewer may not open **303s**, dropping `?view=` (both at once: ONE 308); an unregistered segment 303s to the canonical root; a missing business or a non-member — from the root AND from `[module]` — answers ONE **303** to `/businesses?notice=unavailable`, never via `/businesses/<ref>`. Primary views (lane order, Decision #232): Overview · Members · Projects · Spend · Billing · Settings; the rest (Calendar · Messages · Roles · Invitations · Finance · Talent (#230 (i)) · Analytics · Standing · Profile · Verification) form the secondary group — each capability-filtered by the same registry predicates. |
 | `[...path]`             | `(public)/help/[...path].tsx`                                | `/help/*` (catch-all)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| top-level dynamic       | `[handle]/index.tsx`                                         | `/:handle` (the profile **Work** section — the index IS the default tab; `/:handle/work` 308s here)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| top-level dynamic       | `[handle]/index.tsx`                                         | `/:handle` (the profile **Work** section — the index IS the default tab; `/:handle/work` 308s here). For a **team** or a **business** this is the entity's public storefront, the console being `/teams/:teamHandle` · `/businesses/:businessHandle`: while the entity is `draft`, `archived` or `invite_only` every `/:handle…` read answers **404** "Profile not found" to anyone outside it — worded exactly as an unknown handle — and a member reads the page under a notice naming the state (its tier-4 link to the console's Settings, for a `manage_settings` holder, waits until Settings can publish the entity and change its visibility — Teams C6 for a team, Decision #244 (d) for a business). Decided in SQL by `org.fn_profile_visible` (BP1, Decision #244; Teams P1). A team's Work roster is public facts only (preset role · since · two skills — no stake, no W_i), its Reviews its collective ones, its Standing its own                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | profile tabs            | `[handle]/[tab].tsx`                                         | `/:handle/:tab` (the three non-index sections — `experience` · `reviews` · `posts`; Experience is gated to individuals. Every RETIRED segment answers **308** into its consolidated section: `services` · `products` · `projects` · `portfolio` · `teams` · `businesses` · `members` · `departments` · `about` → `/:handle`; `education` → `/:handle/experience`; `articles` → `/:handle/posts` — root CLAUDE.md §8 Decision #96)                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | profile static          | `[handle]/availability.tsx`                                  | `/:handle/availability` (FULL-PAGE Availability calendar — its OWN layout, NOT the profile chrome; `_layout` special-cases the `availability` segment to a one-line identity strip + the calendar. **No profile chrome links here since Decision #96** (the availability toggle, clock and presence pip were stripped); the route stays resolvable for anyone holding its address. A static sibling wins over `[tab]`)                                                                                                                                                                                                                                                                                                                                                                                               |
 | profile owner editor    | `[handle]/edit/index.tsx`                                    | `/:handle/edit` (**owner-only** — Edit Profile & Settings: collapsible inline sections mirroring the preview, the six-slot showcase grid + avatar through the File Picker’s media mode, privacy switches. The guard is in `define.handlers`: a guest → 303 `/login?redirectTo=…`, a non-owner → 303 to the profile; ownership is the DATABASE's answer (`viewer.isOwner` from `org.get_profile_view`), never the unverified chrome token) |
@@ -222,7 +222,10 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
 - **A team or business console is addressed by its `@handle`.** `:teamHandle` / `:businessHandle`
   is `org.teams.slug` / `org.business_profiles.slug` — the entity's handle in the ONE namespace it
   shares with people and enterprises (`org.fn_handle_refusal`), so `/teams/north-loop` and
-  `/@north-loop` name the same entity. Builder: `workspaceHref(kind, handle, module?)`
+  `/@north-loop` name the same entity — the console and the public storefront: members only and
+  capability-gated there; anyone (while it is active and public or unlisted) here, with the
+  storefront's "Manage team" / "Manage business" link the one door between them, rendered for an
+  `edit_profile` holder (Teams P1, BP1). Builder: `workspaceHref(kind, handle, module?)`
   (`@projective/types/workspace`; the `overview` module is the bare console URL). The row's uuid does
   not route; `org.get_workspace_detail` accepts a uuid only so a WRITE (which knows the id) can re-read
   the console it changed. The plural `/businesses` is canonical (Decision #61). The wallet deep link
@@ -244,9 +247,13 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   action's dialog once — only an action the wallet draws for the viewer, offered or locked with its
   reason — and is stripped from the address at once (`replaceState`), so a reload does not reopen it;
   `?back=<path>` is where the movement's done step offers to return, allowlisted by `safeBack` to a
-  same-origin `/checkout` path (no scheme, no `//`, no backslash or control character) because it is
-  an open-redirect surface — the checkout's tier-1 Add money is
-  `/wallet?w=business:<id>&do=top_up&back=<this checkout step>`. `/wallet/transactions` also carries its filter bar
+  same-origin `/checkout` path or exactly a business console's Billing module
+  `/businesses/<handle>/billing` (optionally with a query or fragment; Decision #247) — no scheme, no
+  `//`, no backslash or control character — because it is an open-redirect surface; the done step
+  names where it returns (`backLabelFor`: "Back to checkout" · "Back to billing"). The checkout's
+  tier-1 Add money is `/wallet?w=business:<id>&do=top_up&back=<this checkout step>`; Billing's Top
+  up (and an invoice review's _Top up the wallet_) is
+  `/wallet?w=business:<id>&do=top_up&back=/businesses/<handle>/billing`. `/wallet/transactions` also carries its filter bar
   (Decision #152): `?q=` the search, `?dir=in|out` the direction, `?kind=a,b` the line families
   (`LEDGER_KIND_CHOICES`), each dropped at its default (`withLedgerFilters`), so a filtered ledger links
   and reloads as it was. The island adds `?tz=<IANA zone>` to its own `/api/wallet/*` reads (never to a
@@ -515,6 +522,17 @@ All are enforced through the one SSOT guard (`isReservedHandle`) and its SQL twi
 `org.fn_is_reserved_handle` (pinned by `workspace.contract.test.ts`), so a future "claim your handle"
 flow validating against it inherits every entry without knowing why any is listed.
 
+**The namespace guard (Teams P1).** Every top-level URL segment `apps/web/routes/` serves — route
+groups `(…)` descended (they add no segment), `[params]`, `_`-prefixed files and `index` skipped, as
+are files that are no route module (`*.test.*`, `*.spec.*`, `*.d.ts`); a dotted route module claims
+its whole stem (`feed.xml.ts` → `feed.xml`, as `robots.txt` and `sitemap.xml` are reserved) — must
+be a reserved handle. `workspace.contract.test.ts` enumerates the routes tree and fails, naming the
+segment, when one is missing from `RESERVED_HANDLES`; the same test pins `RESERVED_HANDLES` to
+`org.fn_is_reserved_handle`, so **a new top-level route is reserved in both in the same change**
+(`reference/pr-checklist.md`). Its first run found `invite` (`/invite/:token`, Decision #145) and
+`saved` (`/saved`, Decision #180) unreserved — both are now in the two lists — so nobody can claim
+`@saved` and shadow the page by name.
+
 ### The owner's three views of their own profile
 
 A profile's owner sees an owner header above the page with three tabs, each a real address rather
@@ -670,9 +688,10 @@ themselves or left in a transfer), so an island adopts the server's state. RPC r
 | `/api/workspace/role`                | `POST`                | `org.upsert_workspace_role`                                                             |
 | `/api/workspace/role-archive`        | `POST`                | `org.archive_workspace_role` — replaces the retired `role-delete` (nothing is hard-deleted) |
 | `/api/workspace/payout`              | `POST`                | `{ rule?, stakes? }`, at least one: `finance.save_split_rule` (the template, written first; 402 when the team's plan lacks its `split_template_<type>` flag) then `finance.save_team_split` (the stakes) |
-| `/api/workspace/spend`               | `POST`                | `finance.save_spend_policy`                                                             |
+| `/api/workspace/spend`               | `POST`                | `finance.save_spend_policy` — a patch; each `limits` entry carries only the keys that moved (`canSpend` · `limitMinor` · `perTransactionMinor` · `period`, Decision #246) |
 | `/api/workspace/spend/preview`       | `POST`                | `finance.preview_spend_envelope` — the envelopes a draft patch (the `/spend` body) would produce; writes nothing |
 | `/api/workspace/spend-decide`        | `POST`                | `finance.decide_spend_approval`                                                         |
+| `/api/workspace/spend-withdraw`      | `POST`                | `finance.withdraw_spend_approval` — the requester takes back their own pending spend request (Decision #246) |
 | `/api/context/switch`                | `POST`                | `security.switch_session_context` · `switch_team_context` · `switch_enterprise_context` · `clear_session_context` |
 | `/api/context/enterprises`         | `GET`                 | RLS reads of `org.enterprise_members` (own active rows) + `org.enterprises` — the enterprises the caller owns or actively belongs to, archived excluded (the account switcher's third list; Decision #149) |
 
@@ -694,8 +713,8 @@ deliberately indistinguishable), or `503` when the database could not be asked �
 layout paints a calm not-found or an honest "try again", never a fabricated profile. (Profiles are
 live-only since 2026-09-23; there is no stub profile to fabricate.) In development only, the same
 middleware lays the Dev Context Switcher's business page state (`pj.dev.business-page`, Decision
-#244) over a business's read: a member's hidden reason (draft · archived · invite-only), or
-`missing` — the outsider's `404`.
+#244) over a business's read, and its team page state (`pj.dev.team-page`, Teams P1) over a team's:
+a member's hidden reason (draft · archived · invite-only), or `missing` — the outsider's `404`.
 
 ### Messaging, hiring-handshake & link API (Decision #128)
 

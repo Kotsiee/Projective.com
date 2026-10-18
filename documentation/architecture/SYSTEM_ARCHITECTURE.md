@@ -1786,7 +1786,21 @@ Every write returns the RE-READ console so an island adopts the server's state. 
   file ids, codes and instants; the fat service maps them onto the Zod SSOT once, resolving people
   through `org.get_party_cards` (`profile/party-cards.ts`) and pictures through
   `files.get_public_media` + `core/storage-url.ts`. Balances and ledgers are read under the caller's
-  RLS with the wallet surface's own entity projection, never re-derived.
+  RLS with the wallet surface's own entity projection, never re-derived. The mapping also answers
+  each viewer only what is theirs to act on: an activity line that moves money reaches only a
+  viewer who may open Finance (`visibleActivity`), and every Draft-First setup step carries
+  `actionable` from `canActOnSetupStep` (`@projective/types/workspace`) — the same right that opens
+  the step's module, pinned by `module-registry-gates.test.ts`; a team's owner-verification step is
+  the exception, actionable only for the owner (the read marks the viewer's own row against
+  `owner_user_id`) and linked to their `/settings/verification`, and a `pending` verification is
+  actionable for nobody — so the Overview's pure model
+  (`features/workspaces/core/overview-model.ts`, Teams C1) never draws a control its viewer cannot
+  use. The Overview's setup-hero dismissal lives in localStorage, so an inline pre-paint guard
+  (`heroDismissGuard`, allowed by the `'unsafe-inline'` `script-src` in `utils/csp.ts`; a
+  nonce-based policy must carry it) hides the band before first paint, and the island's first
+  client render reads the same key and carries the same `data-hero-dismissed` mark: Fresh's revive
+  renders over the server's DOM and removes every attribute its tree lacks, so a mark set only by a
+  pre-paint script is dropped at revive and the band flashes back.
 - **The acting context is written only by the switch RPCs.** (Its enterprise targets are listed by
   `GET /api/context/enterprises` → `ContextBackendService.enterprises`: owned or ACTIVE-member
   enterprises, archived excluded, filtered explicitly because the `org.enterprises` SELECT
