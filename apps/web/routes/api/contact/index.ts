@@ -4,8 +4,10 @@ import { isSecureRequest } from "@web/utils/auth-cookies.ts";
 import { ContactBackendService } from "@server/services/contact/ContactBackendService.ts";
 import {
 	clientKey,
+	isJsonRequest,
 	toContactResponse,
 	unreadableBody,
+	unsupportedBody,
 } from "@features/contact/core/contact-respond.ts";
 import {
 	formFailureHref,
@@ -23,7 +25,8 @@ import {
  *
  *  - **JSON** (the `ContactIntake` island): the body goes to the fat {@link ContactBackendService}
  *    and its result comes back as the contact envelope (`toContactResponse`): 201 with the receipt,
- *    or 422 / 401 / 429 / 503 with field errors and a sentence.
+ *    or 422 / 401 / 429 / 503 with field errors and a sentence. Only a body declared
+ *    `application/json` is read (415 otherwise), which another site cannot send without a preflight.
  *  - **A form post** (no JavaScript): the body is read field by field (`submissionFromForm`), a
  *    cross-site post is refused outright, and the answer is a 303 back to `/contact` — `?sent=1`
  *    with the receipt in a short-lived HttpOnly cookie, or `?error=` naming the fields to mark.
@@ -63,6 +66,7 @@ export const handler = define.handlers({
 			return new Response(null, { status: 303, headers });
 		}
 
+		if (!isJsonRequest(ctx.req)) return unsupportedBody();
 		const raw = await ctx.req.json().catch(() => undefined);
 		if (raw === undefined) return unreadableBody();
 		return toContactResponse(await ContactBackendService.submit(raw, actor, meta));

@@ -57,10 +57,13 @@ const message = z.string().trim()
 		`Keep it under ${CONTACT_LIMITS.messageMax.toLocaleString("en-GB")} characters.`,
 	);
 /**
- * The honeypot. A real visitor never sees or fills it (it sits off-screen, out of the tab order);
- * a form-filling script does. Accepted here so a filled one parses — the service, not the schema,
- * decides what to do about it, and it answers exactly as it would a real request (see
- * `ContactBackendService.submit`), so a bot learns nothing from the response.
+ * The honeypot, `ctc_hp`. A real visitor never sees or fills it (it sits off-screen, out of the tab
+ * order, `autocomplete="off"`); a form-filling script does. Named so no autofill or identity-fill
+ * tool recognises it (a `website` field is one they fill, which would silently drop a real
+ * person's request). Accepted here so a filled one parses — the service, not the schema, decides
+ * what to do about it: it answers exactly as it would a real request (see
+ * `ContactBackendService.submit`), so a bot learns nothing, and logs the hit (a count, never the
+ * body) so a false positive is visible to operators.
  */
 const honeypot = z.string().max(500).optional().default("");
 const attachmentIds = z.array(uuid).max(
@@ -187,7 +190,7 @@ const SalesSubmission = z.object({
 	companySize: ContactCompanySize,
 	budget: ContactBudget,
 	message,
-	website: honeypot,
+	ctc_hp: honeypot,
 });
 
 const SupportSubmission = z.object({
@@ -199,7 +202,7 @@ const SupportSubmission = z.object({
 	topic: ContactSupportTopic,
 	message,
 	attachmentIds,
-	website: honeypot,
+	ctc_hp: honeypot,
 });
 
 const DisputeSubmission = z.object({
@@ -216,7 +219,7 @@ const DisputeSubmission = z.object({
 	referenceId: z.string().trim().max(CONTACT_LIMITS.referenceId).optional().default(""),
 	message,
 	attachmentIds,
-	website: honeypot,
+	ctc_hp: honeypot,
 });
 
 const SecuritySubmission = z.object({
@@ -233,7 +236,7 @@ const SecuritySubmission = z.object({
 	reportType: ContactSecurityReport,
 	message,
 	attachmentIds,
-	website: honeypot,
+	ctc_hp: honeypot,
 }).superRefine((v, ctx) => {
 	if (v.anonymous) {
 		if (v.attachmentIds.length > 0) {
@@ -421,14 +424,16 @@ export function canMoveContactRequest(
 // #region Durable ceilings
 /**
  * What `ops.submit_contact_request` refuses with `PR429`, per rolling hour: requests from one reply
- * address, requests from one signed-in account, and anonymous security reports platform-wide (an
- * anonymous report has no address or account to count against, and the writer cannot see an IP).
- * The service's per-process limiter (per IP, per address) answers first; these hold when it is
- * bypassed by calling the writer directly.
+ * address, requests from one signed-in account, named requests from guests platform-wide, and
+ * anonymous security reports platform-wide (a guest can rotate addresses and an anonymous report has
+ * none, and the writer cannot see an IP). The service's per-process limiter (per IP, per address)
+ * answers first; these hold when it is bypassed by calling the writer directly — at the cost that a
+ * flood shuts guests (never signed-in senders) out for up to an hour (Decision #276 (j)).
  */
 export const CONTACT_DB_CEILINGS = {
 	perEmailPerHour: 5,
 	perUserPerHour: 10,
+	guestPerHour: 60,
 	anonymousPerHour: 30,
 } as const;
 // #endregion

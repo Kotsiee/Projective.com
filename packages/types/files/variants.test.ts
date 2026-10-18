@@ -6,8 +6,8 @@ import {
 	MediaRefSchema,
 	planTiers,
 	refFor,
-	variantObjectPath,
 	VariantTier,
+	variantObjectPath,
 } from "./variants.ts";
 
 Deno.test("fitWithin: scales the long edge down, keeps the aspect, never upscales", () => {
@@ -51,11 +51,6 @@ Deno.test("refFor: the tier when present, else the nearest LARGER tier, else the
 	assertEquals(refFor(REF, "md").path, "u/avatar/r/md.webp");
 	assertEquals(refFor(REF, "sm").path, "u/avatar/r/md.webp");
 	assertEquals(refFor(REF, null).path, "u/avatar/r/full.webp");
-	const bare = MediaRefSchema.parse({
-		id: "b",
-		bucket: "avatars",
-		path: "u/avatar.jpg",
-		mime: "image/jpeg",
-	});
+	const bare = MediaRefSchema.parse({ id: "b", bucket: "avatars", path: "u/avatar.jpg", mime: "image/jpeg" });
 	assertEquals(refFor(bare, "sm").path, "u/avatar.jpg");
 });

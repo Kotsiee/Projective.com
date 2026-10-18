@@ -29,7 +29,7 @@ export interface ContactFormState {
 	anonymous: boolean;
 	message: string;
 	/** The honeypot — never shown, never filled by a person. */
-	website: string;
+	ctc_hp: string;
 }
 
 /**
@@ -49,7 +49,7 @@ export const EMPTY_CONTACT_FORM: Readonly<ContactFormState> = {
 	reportType: "",
 	anonymous: false,
 	message: "",
-	website: "",
+	ctc_hp: "",
 };
 
 /**
@@ -64,7 +64,7 @@ export function submissionInput(
 ): Record<string, unknown> {
 	const anonymous = intent === "security" && form.anonymous;
 	const files = intentTakesAttachments(intent) && !anonymous ? [...attachmentIds] : [];
-	const shared = { intent, message: form.message, website: form.website };
+	const shared = { intent, message: form.message, ctc_hp: form.ctc_hp };
 	const sender = anonymous ? {} : { name: form.name, email: form.email };
 	switch (intent) {
 		case "sales":
@@ -149,7 +149,10 @@ export function firstErrorField(
 /** One file's progress through the attachment pipeline, keyed by the upload queue's id. */
 export interface AttachmentEntry {
 	phase: ContactAttachmentPhase;
-	/** The admitted attachment's id, once `ready`. */
+	/**
+	 * The server's id for the file, from the moment it is declared — what Remove takes back. A
+	 * submission sends it only once the file is `ready` ({@link readyAttachmentIds}).
+	 */
 	attachmentId?: string;
 	/** Why it was refused. */
 	message?: string;

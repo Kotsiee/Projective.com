@@ -95,6 +95,11 @@ export interface RadioGroupProps extends BaseFieldProps {
 	orientation?: "horizontal" | "vertical";
 	/** Custom {@link RadioButton} children (used when `options` is omitted). */
 	children?: ComponentChildren;
+	/**
+	 * Id of the visible text that names the group (a `FormControl`'s `labelId`). A `<label for>` cannot
+	 * name a `role="radiogroup"`, so a labelled group uses this instead of a duplicate `aria-label`.
+	 */
+	"aria-labelledby"?: string;
 	class?: string;
 }
 
@@ -120,6 +125,7 @@ export function RadioGroup(props: RadioGroupProps): JSX.Element {
 		class: className,
 		children,
 		"aria-label": ariaLabel,
+		"aria-labelledby": labelledBy,
 		"aria-describedby": describedBy,
 	} = props;
 
@@ -185,7 +191,8 @@ export function RadioGroup(props: RadioGroupProps): JSX.Element {
 				fluid && "ui-radio-group--fluid",
 				className,
 			)}
-			aria-label={ariaLabel}
+			aria-label={labelledBy ? undefined : ariaLabel}
+			aria-labelledby={labelledBy}
 			aria-describedby={describedBy}
 			aria-invalid={ariaInvalid(status)}
 			aria-required={required || undefined}
@@ -195,6 +202,9 @@ export function RadioGroup(props: RadioGroupProps): JSX.Element {
 				const selected = current === opt.value;
 				const optDisabled = disabled || opt.disabled;
 				const tabbable = selected || (!anySelected && i === firstEnabled);
+				// A described option is NAMED by its label alone and DESCRIBED by its second line, not
+				// named by the whole <label>'s text with the two run together.
+				const optId = `${id ?? groupName}-opt-${i}`;
 				return (
 					<label
 						key={opt.value}
@@ -217,6 +227,8 @@ export function RadioGroup(props: RadioGroupProps): JSX.Element {
 							disabled={optDisabled}
 							tabIndex={tabbable ? 0 : -1}
 							aria-invalid={ariaInvalid(status)}
+							aria-labelledby={opt.description ? `${optId}-label` : undefined}
+							aria-describedby={opt.description ? `${optId}-description` : undefined}
 							onChange={() => select(i)}
 							onKeyDown={(e) => onKeyDown(e, i)}
 						/>
@@ -226,8 +238,10 @@ export function RadioGroup(props: RadioGroupProps): JSX.Element {
 						{opt.description
 							? (
 								<span class="ui-radio__text">
-									<span class="ui-radio__label">{opt.label}</span>
-									<span class="ui-radio__description">{opt.description}</span>
+									<span class="ui-radio__label" id={`${optId}-label`}>{opt.label}</span>
+									<span class="ui-radio__description" id={`${optId}-description`}>
+										{opt.description}
+									</span>
 								</span>
 							)
 							: <span class="ui-radio__label">{opt.label}</span>}

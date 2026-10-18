@@ -49,6 +49,7 @@ No write policy at all. Requests arrive only through the definer door `ops.submi
 (callable by `anon` and `authenticated`), and their status moves only through
 `ops.set_contact_request_status` (operators). A sender never reads a request back — they keep the
 reference they were shown. The attachments' bytes sit in the private `contact` bucket, whose one
-storage policy is operator read ([files Policies.md](../files/Policies.md), `00002017`), and their
-`files.items` rows are readable by their uploader and, through `files.fn_can_read`'s contact arm, by
-operators. Probe: [`supabase/probes/contact_requests.sql`](../../../supabase/probes/contact_requests.sql).
+storage policy is operator read of SENT attachments ([files Policies.md](../files/Policies.md),
+`00002017`), and their `files.items` rows are readable by their uploader and, through
+`files.fn_can_read`'s contact arm, by operators once a request links them — a file removed or never
+sent is nobody's but its uploader's. Probe: [`supabase/probes/contact_requests.sql`](../../../supabase/probes/contact_requests.sql).

@@ -282,6 +282,13 @@ export interface ServerEnv {
 	 */
 	schedulingCronSecret: string | undefined;
 	/**
+	 * The bearer token the scheduler presents to `POST /api/contact/cron/attachments`, from
+	 * `CONTACT_CRON_SECRET` (Decision #276). The route deletes `/contact` attachments nobody sent, and
+	 * like the other cron routes answers 404 to anything else — including every request while this is
+	 * unset or shorter than 32 characters.
+	 */
+	contactCronSecret: string | undefined;
+	/**
 	 * The Google Safe Browsing (v4 Lookup) API key a link's reputation is checked against, from
 	 * `LINK_SAFETY_API_KEY`. Server-only. The `XXXX-XXXX` placeholder counts as absent
 	 * (`files/link-reputation.ts`), and an absent key skips the reputation check rather than failing it.
@@ -335,6 +342,7 @@ export function serverEnv(): ServerEnv {
 		financeCronSecret: firstEnv("FINANCE_CRON_SECRET"),
 		accountCronSecret: firstEnv("ACCOUNT_CRON_SECRET"),
 		schedulingCronSecret: firstEnv("SCHEDULING_CRON_SECRET"),
+		contactCronSecret: firstEnv("CONTACT_CRON_SECRET"),
 		linkSafetyApiKey: firstEnv("LINK_SAFETY_API_KEY"),
 		zoomWebhookSecret: firstEnv("ZOOM_WEBHOOK_SECRET"),
 	};

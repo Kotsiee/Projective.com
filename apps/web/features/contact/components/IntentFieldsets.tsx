@@ -10,6 +10,7 @@ import {
 	Select,
 	Textarea,
 } from "@projective/ui/fields";
+import { Message } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import {
 	CONTACT_BUDGETS,
@@ -46,6 +47,13 @@ export type FieldSignals = { [K in keyof ContactFormState]: Signal<ContactFormSt
 export interface IntakeModel {
 	fields: FieldSignals;
 	errors: Signal<Record<string, string>>;
+	/**
+	 * A refusal of the whole request (a rate limit, the intake unavailable, files still checking),
+	 * shown beside the active form's Send button — where the sender is looking when it arrives.
+	 */
+	alert: Signal<string | null>;
+	/** The intent whose fieldset is active — the one that shows the alert. */
+	activeIntent: ContactIntent;
 	busy: Signal<boolean>;
 	signedIn: boolean;
 	/**
@@ -183,6 +191,7 @@ function MessageField(props: { model: IntakeModel; label: string; hint: string }
 						rows={6}
 						autoResize
 						maxRows={16}
+						minLength={CONTACT_LIMITS.messageMin}
 						maxLength={CONTACT_LIMITS.messageMax}
 						aria-describedby={describedBy}
 						status={status}
@@ -288,6 +297,13 @@ function Actions(
 				We use what you send only to answer this request.{" "}
 				<a href="/legal/privacy">How we handle your data</a>.
 			</p>
+			{
+				/* Announced by the package Message itself (danger is role="alert", assertive), so it is
+				   not also sent to the polite live region. */
+			}
+			{model.alert.value && model.activeIntent === intent && (
+				<Message severity="danger" class="ctc-form__alert">{model.alert.value}</Message>
+			)}
 			<div class="ctc-actions">
 				{aside && <div class="ctc-actions__aside">{aside}</div>}
 				<Button
@@ -418,11 +434,11 @@ function DisputeFields({ model }: { model: IntakeModel }): JSX.Element {
 								error={error}
 								collapseHint
 							>
-								{({ describedBy, status }) => (
+								{({ describedBy, status, labelId }) => (
 									<RadioGroup
 										name="engagementSlug"
 										orientation="vertical"
-										aria-label="Which engagement is it about?"
+										aria-labelledby={labelId}
 										aria-describedby={describedBy}
 										status={status}
 										options={model.engagements.map((e) => ({
@@ -513,11 +529,11 @@ function SecurityFields({ model }: { model: IntakeModel }): JSX.Element {
 					status={reportError ? "invalid" : "default"}
 					error={reportError}
 				>
-					{({ describedBy, status, required }) => (
+					{({ describedBy, status, required, labelId }) => (
 						<RadioGroup
 							name="reportType"
 							orientation="vertical"
-							aria-label="What are you reporting?"
+							aria-labelledby={labelId}
 							aria-describedby={describedBy}
 							status={status}
 							required={required}

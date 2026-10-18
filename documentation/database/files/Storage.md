@@ -222,8 +222,11 @@ per request. A signed-in sender's file lands in `quarantine` like every upload (
 step claims it (`scanning`), sniffs the bytes (`classifyContactBytes`: a program or a web page is
 refused and parked `quarantined`; an unknown or unaccepted type is refused as `error`; neither is kept)
 and promotes the original here with `files.items.purpose = 'contact'`, so the sender's library never
-lists it. The bucket's one storage policy is operator `SELECT` (`security.is_admin()`); nobody writes
-it with a JWT. A guest cannot attach: a `files.items` row belongs to an account.
+lists it (and the library's own complete steps refuse a row with a `target_bucket`). The bucket's one
+storage policy is operator `SELECT` of objects a request links (`security.is_admin()` + the link);
+nobody writes it with a JWT. A guest cannot attach: a `files.items` row belongs to an account. A file
+that is never sent is taken back — by Remove (`ops.discard_contact_attachment`), or by the hourly
+`contact-attachment-sweep` after six hours — its row soft-deleted and its object deleted.
 
 ```text
 contact/

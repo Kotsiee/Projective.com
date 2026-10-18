@@ -16,7 +16,7 @@
 --   public_assets - public read; per-owner write on {owner_id}
 --   avatars       - public read; per-owner write on {entity_id}
 --   catalogue     - public read; per-seller write on {seller_id}
---   contact       - operator read (security.is_admin()); NO client write (the upload pipeline promotes)
+--   contact       - operator read of sent attachments; NO client write (the upload pipeline promotes)
 --
 -- NOTE: multiple permissive SELECT policies on one bucket are OR-combined, so the project/messages
 -- scoping below is written as the SOLE read policy for those buckets — do not re-add a broad
@@ -269,13 +269,24 @@ SELECT TO authenticated USING (
 
 -- #region [contact] contact — /contact attachments (Decision #276): operator read; SERVICE-ROLE write
 -- A sender's file lands in `quarantine` like every upload; the contact pipeline (service role) sniffs
--- it and promotes the original to `contact/{user_id}/{asset_id}/{name}`. Operators read objects to
--- answer the request; nobody else reads or writes this bucket, the sender included (they keep their
--- own copy). The sole policy, so no broader read can be OR-combined in by accident.
+-- it and promotes the original to `contact/{user_id}/{asset_id}/{name}`. Operators read an object to
+-- answer the request it was SENT with — its `files.items` row linked to one in
+-- ops.contact_request_attachments, the same rule as files.fn_can_read's operator arm; a file its
+-- sender removed or never sent is nobody's to read. Nobody else reads or writes this bucket, the
+-- sender included (they keep their own copy). The sole policy, so no broader read can be
+-- OR-combined in by accident.
 CREATE POLICY "Operators read contact attachments" ON storage.objects FOR
 SELECT TO authenticated USING (
         bucket_id = 'contact'
         AND security.is_admin ()
+        AND EXISTS (
+            SELECT 1
+            FROM files.items i
+            JOIN ops.contact_request_attachments a ON a.file_id = i.id
+            WHERE i.bucket_id = 'contact'
+              AND i.storage_path = objects.name
+              AND i.deleted_at IS NULL
+        )
     );
 -- #endregion
 

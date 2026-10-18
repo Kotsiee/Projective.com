@@ -1935,6 +1935,12 @@ REVOKE ALL ON FUNCTION ops.submit_contact_request (text, text, boolean, jsonb, u
 GRANT EXECUTE ON FUNCTION ops.submit_contact_request (text, text, boolean, jsonb, uuid[]) TO anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION ops.set_contact_request_status (text, text) FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION ops.set_contact_request_status (text, text) TO authenticated;
+-- Remove on an unsent attachment: a signed-in sender, for their own files only (checked inside).
+REVOKE ALL ON FUNCTION ops.discard_contact_attachment (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION ops.discard_contact_attachment (uuid) TO authenticated, service_role;
+-- The sweep's claim: the app's cron route only, as the service role.
+REVOKE ALL ON FUNCTION ops.fn_claim_stale_contact_attachments (interval, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION ops.fn_claim_stale_contact_attachments (interval, integer) TO service_role;
 -- #endregion
 
 -- #region Service instantiation (00001175, Decision #209)

@@ -42,6 +42,24 @@ export function unreadableBody(): Response {
 	);
 }
 
+/**
+ * Whether a request declares a JSON body. The JSON road takes nothing else: another site can post a
+ * JSON-shaped `text/plain` form without a preflight, but not `application/json`, so this is what
+ * keeps other pages from spending a visitor's per-IP and per-address allowances.
+ */
+export function isJsonRequest(req: Request): boolean {
+	const type = (req.headers.get("content-type") ?? "").toLowerCase().split(";")[0].trim();
+	return type === "application/json";
+}
+
+/** A 415 for a body on the JSON road that is not declared as JSON. */
+export function unsupportedBody(): Response {
+	return Response.json(
+		{ ok: false, message: "Send this request as JSON." } satisfies ContactEnvelope<never>,
+		{ status: 415, headers: { "cache-control": "no-store" } },
+	);
+}
+
 /** The caller's transport address — the per-IP rate-limit key (the platform's own convention). */
 export function clientKey(remote: Deno.Addr): string {
 	return "hostname" in remote ? remote.hostname : remote.transport;

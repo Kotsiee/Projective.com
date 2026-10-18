@@ -54,13 +54,12 @@ export const VARIANT_TIERS: readonly VariantTier[] = VariantTier.options;
  * - `contact` — never processed (an attachment is kept exactly as uploaded); the library's plan is
  *   listed so the table stays total over {@link AssetPurpose}.
  */
-export const TIER_LONG_EDGE: Readonly<Record<AssetPurpose, Readonly<Record<VariantTier, number>>>> =
-	{
-		library: { sm: 320, md: 1280, lg: 2560 },
-		avatar: { sm: 96, md: 256, lg: 1024 },
-		showcase: { sm: 480, md: 1280, lg: 2400 },
-		contact: { sm: 320, md: 1280, lg: 2560 },
-	};
+export const TIER_LONG_EDGE: Readonly<Record<AssetPurpose, Readonly<Record<VariantTier, number>>>> = {
+	library: { sm: 320, md: 1280, lg: 2560 },
+	avatar: { sm: 96, md: 256, lg: 1024 },
+	showcase: { sm: 480, md: 1280, lg: 2400 },
+	contact: { sm: 320, md: 1280, lg: 2560 },
+};
 
 /**
  * The longest edge of a rendition's own stored object (the "full" crop) — the largest picture the
@@ -202,12 +201,7 @@ export function refFor(
 			if (v) return { bucket: v.bucket, path: v.path, width: v.width, height: v.height };
 		}
 	}
-	return {
-		bucket: ref.bucket,
-		path: ref.path,
-		width: ref.width ?? null,
-		height: ref.height ?? null,
-	};
+	return { bucket: ref.bucket, path: ref.path, width: ref.width ?? null, height: ref.height ?? null };
 }
 
 // #endregion

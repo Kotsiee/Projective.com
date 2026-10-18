@@ -40,10 +40,13 @@ import {
  * the `ContactIntake` island and the {@link ContactRail}. Never cached: the page differs per reader.
  */
 
-/** The page's meta description. */
+/**
+ * The page's meta description. True of every intent — an anonymous report is read but not answered,
+ * so nothing here promises a reply.
+ */
 const DESCRIPTION =
 	"Contact Projective about sales, support, a dispute or a security concern. Every request gets a reference " +
-	"number and a reply from a person.";
+	"number and is read by a person on our team.";
 
 interface ContactPageData {
 	intent: ContactIntent;
@@ -113,8 +116,8 @@ export default define.page<typeof handler>(function ContactPage({ data }) {
 				<p class="ctc__eyebrow">Contact</p>
 				<h1 class="ctc__title">How can we help?</h1>
 				<p class="ctc__lede">
-					Choose what it's about and tell us what you need. Every request gets a reference number,
-					and a person on our team replies.
+					Choose what it's about and tell us what you need. Every request gets a reference number
+					and is read by a person on our team.
 				</p>
 			</header>
 			<div class="ctc__canvas">

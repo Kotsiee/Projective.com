@@ -144,8 +144,10 @@ CREATE TABLE ops.contact_requests (
   status text NOT NULL DEFAULT 'backlog'::text,
   -- The reply address, lower-cased. NULL only on an anonymous security report.
   email text,
-  -- The signed-in sender, when there was one and the report is not anonymous. SET NULL on account
-  -- erasure, so a request outlives the account that sent it.
+  -- The signed-in sender, when there was one and the report is not anonymous. Keyed on the
+  -- IDENTITY (auth.users), not the profile: /contact is public, and an account that has not finished
+  -- /join has no org.users_public row yet — it is still a signed-in sender, and the one most likely
+  -- to need support. SET NULL on account erasure, so a request outlives the account that sent it.
   user_id uuid,
   anonymous boolean NOT NULL DEFAULT false,
   -- The intent's own fields (name, message, the sales/support/dispute/security specifics), stored as
@@ -156,7 +158,7 @@ CREATE TABLE ops.contact_requests (
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT contact_requests_pkey PRIMARY KEY (id),
   CONSTRAINT contact_requests_reference_key UNIQUE (reference),
-  CONSTRAINT contact_requests_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE SET NULL,
+  CONSTRAINT contact_requests_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE SET NULL,
   CONSTRAINT contact_requests_reference_check CHECK (reference ~ '^CT-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$'),
   CONSTRAINT contact_requests_intent_check CHECK (intent = ANY (ARRAY['sales'::text, 'support'::text, 'dispute'::text, 'security'::text])),
   CONSTRAINT contact_requests_status_check CHECK (status = ANY (ARRAY['backlog'::text, 'in_progress'::text, 'complete'::text, 'archived'::text])),

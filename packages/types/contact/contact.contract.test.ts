@@ -8,6 +8,8 @@ import { assert, assertEquals } from "@std/assert";
 import { BUCKETS } from "../files/storage.ts";
 import { AssetPurpose } from "../files/variants.ts";
 import {
+	CONTACT_BUDGETS,
+	CONTACT_COMPANY_SIZES,
 	CONTACT_DB_CEILINGS,
 	CONTACT_INTENTS,
 	CONTACT_LIMITS,
@@ -15,8 +17,15 @@ import {
 	CONTACT_REFERENCE_ALPHABET,
 	CONTACT_REFERENCE_PATTERN,
 	CONTACT_REQUEST_STATUSES,
+	CONTACT_SECURITY_REPORTS,
 	CONTACT_STATUS_TRANSITIONS,
+	CONTACT_SUPPORT_TOPICS,
+	ContactBudget,
+	ContactCompanySize,
+	ContactEngagementRefSchema,
 	type ContactRequestStatus,
+	ContactSecurityReport,
+	ContactSupportTopic,
 } from "./intake.ts";
 
 const MIGRATIONS = new URL("../../../supabase/migrations/", import.meta.url);
@@ -105,8 +114,66 @@ Deno.test("ceilings: the writer's hourly PR429 limits are CONTACT_DB_CEILINGS", 
 		"per address",
 	);
 	assert(DOOR.includes(`IF v_recent >= ${CONTACT_DB_CEILINGS.perUserPerHour} THEN`), "per account");
+	assert(DOOR.includes(`IF v_recent >= ${CONTACT_DB_CEILINGS.guestPerHour} THEN`), "guests");
 	assert(DOOR.includes(`IF v_recent >= ${CONTACT_DB_CEILINGS.anonymousPerHour} THEN`), "anonymous");
-	assertEquals((DOOR.match(/ERRCODE = 'PR429'/g) ?? []).length, 3);
+	assertEquals((DOOR.match(/ERRCODE = 'PR429'/g) ?? []).length, 4);
+	assert(
+		/WHERE r\.user_id IS NULL AND NOT r\.anonymous AND r\.created_at > v_now - interval '1 hour'/
+			.test(DOOR),
+		"the guest ceiling counts named requests without an account",
+	);
+});
+
+/** The quoted literals of `<name> constant text[] := ARRAY[…];` in the writer's declarations. */
+function declaredList(name: string): string[] {
+	const m = new RegExp(`${name} constant text\\[\\] := ARRAY\\[([^\\]]*)\\];`).exec(DOOR);
+	assert(m, `${name} not declared`);
+	return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+}
+
+Deno.test("closed choices: the writer's lists are the SSOT's, value for value", () => {
+	assertEquals(declaredList("v_company_sizes"), CONTACT_COMPANY_SIZES.map((o) => o.value));
+	assertEquals(declaredList("v_company_sizes"), [...ContactCompanySize.options]);
+	assertEquals(declaredList("v_budgets"), CONTACT_BUDGETS.map((o) => o.value));
+	assertEquals(declaredList("v_budgets"), [...ContactBudget.options]);
+	assertEquals(declaredList("v_topics"), CONTACT_SUPPORT_TOPICS.map((o) => o.value));
+	assertEquals(declaredList("v_topics"), [...ContactSupportTopic.options]);
+	assertEquals(declaredList("v_reports"), CONTACT_SECURITY_REPORTS.map((o) => o.value));
+	assertEquals(declaredList("v_reports"), [...ContactSecurityReport.options]);
+	assertEquals(declaredList("v_formats"), [
+		...ContactEngagementRefSchema.shape.format.options,
+	]);
+});
+
+Deno.test("field values: the writer caps each free-text key at the SSOT's limit", () => {
+	assert(
+		DOOR.includes(
+			`pg_catalog.btrim(p_payload ->> 'company')) NOT BETWEEN 1 AND ${CONTACT_LIMITS.company}`,
+		),
+		"company",
+	);
+	assert(
+		DOOR.includes(
+			`pg_catalog.btrim(p_payload ->> 'referenceId')) NOT BETWEEN 1 AND ${CONTACT_LIMITS.referenceId}`,
+		),
+		"referenceId",
+	);
+	assert(
+		DOOR.includes(`pg_catalog.length(p_payload ->> 'accountEmail') > ${CONTACT_LIMITS.email}`),
+		"accountEmail",
+	);
+	const ref = ContactEngagementRefSchema.shape;
+	assert(DOOR.includes(`NOT BETWEEN 1 AND ${ref.slug.maxLength}`), "engagement slug");
+	assert(DOOR.includes(`NOT BETWEEN 1 AND ${ref.title.maxLength}`), "engagement title");
+	assert(DOOR.includes("WHERE k NOT IN ('slug', 'title', 'format')"), "engagement keys");
+});
+
+Deno.test("sender: a request is keyed on the identity, so an account mid-/join can send one", () => {
+	assert(
+		/contact_requests_user_id_fkey FOREIGN KEY \(user_id\) REFERENCES auth\.users \(id\) ON DELETE SET NULL/
+			.test(TABLES),
+		"user_id references auth.users, not org.users_public",
+	);
 });
 
 Deno.test("bucket: the seed row is BUCKETS.contact", () => {

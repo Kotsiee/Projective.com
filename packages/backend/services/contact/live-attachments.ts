@@ -2,7 +2,9 @@ import {
 	classifyContactBytes,
 	CONTACT_ATTACHMENT_MAX_BYTES,
 	type ContactAttachment,
+	type ContactAttachmentDiscarded,
 	type ContactAttachmentInit,
+	type ContactAttachmentSweep,
 	type ContactAttachmentTicket,
 	formatBytes,
 } from "@projective/types/contact";
@@ -30,8 +32,9 @@ import { objectName } from "../media/library.ts";
  *
  *  1. {@link initContactUpload} records a `pending_upload` row in `quarantine` under the caller's OWN
  *     session — the items policy and `files.fn_guard_pipeline_columns` hold exactly as for a library
- *     upload — marked `target_bucket = 'contact'` so only this pipeline will finish it, and mints a
- *     signed, single-object upload URL. The bytes never pass through an application request.
+ *     upload — marked `target_bucket = 'contact'` so only this pipeline will finish it (the library's
+ *     `completeUpload` refuses a row with a target bucket), and mints a signed, single-object upload
+ *     URL. The bytes never pass through an application request.
  *  2. The browser PUTs the file straight to storage, reporting byte progress.
  *  3. {@link completeContactUpload} claims the row (`pending_upload → scanning`, so two completes
  *     cannot both run), reads the stored bytes, decides what they really are
@@ -45,6 +48,12 @@ import { objectName } from "../media/library.ts";
  * client) and is reached only after the caller's session has proved the row is theirs. There is no
  * malware scanner in this deployment: "checking" is the byte sniff and the type rule above, as for
  * every upload on the platform.
+ *
+ * A file that is never sent does not linger. {@link discardContactUpload} is Remove: the caller's
+ * session soft-deletes their own unsent row (`ops.discard_contact_attachment`) and the service role
+ * deletes its bytes. {@link sweepContactUploads} is the hourly job for the rest (a form closed with
+ * files on it): `ops.fn_claim_stale_contact_attachments` soft-deletes the batch and the bytes are
+ * deleted the same way — through the Storage API, because storage objects cannot be deleted from SQL.
  */
 
 type Actor = { userId: string; accessToken: string };
@@ -258,5 +267,92 @@ export async function completeContactUpload(
 		console.error("[contact:attachment-complete]", error instanceof Error ? error.message : error);
 		return fail(503, { message: UNAVAILABLE });
 	}
+}
+// #endregion
+
+// #region Remove + sweep
+/** Delete objects through the Storage API, reporting how many could not be deleted. */
+async function deleteObjects(
+	objects: ReadonlyArray<{ bucket: string; path: string }>,
+): Promise<number> {
+	const byBucket = new Map<string, string[]>();
+	for (const o of objects) {
+		if (!o.bucket || !o.path) continue;
+		byBucket.set(o.bucket, [...(byBucket.get(o.bucket) ?? []), o.path]);
+	}
+	let failed = 0;
+	for (const [bucket, paths] of byBucket) {
+		try {
+			const { error } = await getServiceClient().storage.from(bucket).remove(paths);
+			if (error) {
+				failed += paths.length;
+				console.error("[contact:attachment-delete]", bucket, error.message);
+			}
+		} catch (error) {
+			failed += paths.length;
+			console.error(
+				"[contact:attachment-delete]",
+				bucket,
+				error instanceof Error ? error.message : error,
+			);
+		}
+	}
+	return failed;
+}
+
+/**
+ * Remove: take back the caller's own unsent attachment. Their session soft-deletes the row (the
+ * function refuses anything that is not theirs, already sent, or mid-check), then its bytes are
+ * deleted. A file still uploading is removed the same way (its quarantine object, if any landed).
+ */
+export async function discardContactUpload(
+	actor: Actor,
+	attachmentId: string,
+): Promise<ServiceResult<ContactAttachmentDiscarded>> {
+	const { data, error } = await getUserClient(actor.accessToken).schema("ops").rpc(
+		"discard_contact_attachment",
+		{ p_file_id: attachmentId },
+	);
+	if (error) {
+		if (error.code === "P0002" || error.code === "22P02") {
+			return fail(404, { message: "That attachment is already gone, or was sent with a request." });
+		}
+		if (error.code === "55006") {
+			return fail(409, { message: "This file is being checked. Remove it in a moment." });
+		}
+		if (error.code === "42501") return fail(401, { message: "Sign in to remove an attachment." });
+		console.error("[contact:attachment-discard]", error.message);
+		return fail(503, { message: UNAVAILABLE });
+	}
+	const row = data as { id?: string; bucket_id?: string; storage_path?: string } | null;
+	if (row?.bucket_id && row.storage_path) {
+		await deleteObjects([{ bucket: row.bucket_id, path: row.storage_path }]);
+	}
+	return ok({ id: attachmentId }, { message: "Attachment removed." });
+}
+
+/** The sweep's window: an unsent attachment older than this is abandoned. */
+export const CONTACT_SWEEP_AFTER = "6 hours";
+
+/**
+ * The hourly sweep (`contact-attachment-sweep`): claim up to `limit` abandoned contact uploads (the
+ * claim soft-deletes them, skipping any a submission or a Remove holds) and delete their bytes.
+ * Answers how many were claimed and how many objects could not be deleted (logged; their rows are
+ * already gone from every reader).
+ */
+export async function sweepContactUploads(
+	limit: number,
+): Promise<ServiceResult<ContactAttachmentSweep>> {
+	const { data, error } = await getServiceClient().schema("ops").rpc(
+		"fn_claim_stale_contact_attachments",
+		{ p_older_than: CONTACT_SWEEP_AFTER, p_limit: limit },
+	);
+	if (error) {
+		console.error("[contact:attachment-sweep]", error.message);
+		return fail(503, { message: "The attachment sweep could not run." });
+	}
+	const rows = (data ?? []) as Array<{ file_id: string; bucket: string; object_path: string }>;
+	const failed = await deleteObjects(rows.map((r) => ({ bucket: r.bucket, path: r.object_path })));
+	return ok({ claimed: rows.length, failed });
 }
 // #endregion

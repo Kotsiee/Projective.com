@@ -10,7 +10,10 @@ import { INTENT_COPY, nextSteps, type ReceiptReply } from "../core/contact-copy.
  * reference in the mono face (with a Copy control that really copies it), what happens next for this
  * intent, and a way to send another. Unboxed — spacing and type separate it (§B.4). The heading is
  * the focus target when it appears, so a keyboard or screen-reader user lands on the outcome; the
- * same outcome is announced through the intake's live region independently of any motion.
+ * same outcome is announced through the intake's live region independently of any motion. A plain
+ * `div`: the intake's own region already takes this heading as its name, so a second region would
+ * list the outcome twice in landmark navigation. A successful Copy is announced through the same
+ * live region (a name change on the focused button is not re-read by every screen reader).
  */
 
 /** Props for {@link ContactReceiptPanel}. */
@@ -23,23 +26,26 @@ export interface ContactReceiptPanelProps {
 	headingRef: RefObject<HTMLHeadingElement>;
 	/** Clear the form and start a new request. */
 	onAnother: () => void;
+	/** Say something through the intake's polite live region. */
+	announce: (text: string) => void;
 }
 
 export function ContactReceiptPanel(props: ContactReceiptPanelProps): JSX.Element {
-	const { reference, intent, reply, headingRef, onAnother } = props;
+	const { reference, intent, reply, headingRef, onAnother, announce } = props;
 	const copied = useSignal<"idle" | "copied" | "failed">("idle");
 
 	async function copy(): Promise<void> {
 		try {
 			await navigator.clipboard.writeText(reference);
 			copied.value = "copied";
+			announce(`Reference ${reference} copied.`);
 		} catch {
 			copied.value = "failed";
 		}
 	}
 
 	return (
-		<section class="ctc-receipt" aria-labelledby="ctc-receipt-title">
+		<div class="ctc-receipt">
 			<span class="ctc-receipt__mark" aria-hidden="true">
 				<Icon name="success" size="xl" />
 			</span>
@@ -85,6 +91,6 @@ export function ContactReceiptPanel(props: ContactReceiptPanelProps): JSX.Elemen
 					<span class="ui-button__label">Browse the help centre</span>
 				</a>
 			</div>
-		</section>
+		</div>
 	);
 }

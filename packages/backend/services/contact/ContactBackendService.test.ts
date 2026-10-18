@@ -100,17 +100,59 @@ Deno.test("a malformed request is a 422 keyed by field", async () => {
 	assert(res.errors?.message);
 });
 
-Deno.test("the honeypot answers a receipt like any other and never reaches the writer", async () => {
+Deno.test("the honeypot answers a receipt like any other, never reaches the writer, and is logged", async () => {
 	let called = false;
+	const logged: string[] = [];
 	const res = await ContactBackendService.submit(
-		{ ...SUPPORT, website: "https://spam.example" },
+		{ ...SUPPORT, ctc_hp: "https://spam.example" },
 		GUEST,
 		META,
-		deps({ live: true, rpc: () => (called = true, Promise.resolve({ data: null, error: null })) }),
+		deps({
+			live: true,
+			rpc: () => (called = true, Promise.resolve({ data: null, error: null })),
+			logHoneypot: (intent) => void logged.push(intent),
+		}),
 	);
 	assert(res.ok);
 	assertEquals(res.status, 201);
 	assertFalse(called);
+	assertEquals(logged, ["support"], "a hit is counted (by intent), so a false positive is visible");
+});
+
+Deno.test("an anonymous report is written as anon — signed in, or with a lapsed token", async () => {
+	const writers: ReadActor[] = [];
+	const live = deps({
+		live: true,
+		rpc: (_args, actor) => {
+			writers.push(actor);
+			return Promise.resolve({
+				data: {
+					id: "00000000-0000-4000-8000-000000000002",
+					reference: "CT-7K4Q-2M9Y",
+					intent: "security",
+					status: "backlog",
+					created_at: "2026-10-17T20:00:00Z",
+				},
+				error: null,
+			});
+		},
+	});
+	const report = {
+		intent: "security",
+		anonymous: true,
+		reportType: "whistleblower",
+		message: "Something is wrong in a business I work with.",
+	};
+	assert((await ContactBackendService.submit(report, ADA, META, live)).ok);
+	assert(
+		(await ContactBackendService.submit(report, LAPSED, META, live)).ok,
+		"a lapsed token cannot refuse an anonymous report",
+	);
+	assertEquals(writers.map((w) => [w.userId, w.accessToken ?? null]), [["", null], ["", null]]);
+
+	const named = { ...report, anonymous: false, name: "Ada", email: "ada@example.com" };
+	assert((await ContactBackendService.submit(named, ADA, META, live)).ok);
+	assertEquals(writers[2].userId, ADA.userId, "a named report is the sender's own");
 });
 
 Deno.test("attachments and engagements need a session; a lapsed one is told to sign in again", async () => {
@@ -274,6 +316,56 @@ Deno.test("stub attachments: declared, checked, then sendable once by their owne
 		d,
 	);
 	assertEquals(refused.status, 422);
+});
+
+Deno.test("stub Remove: the owner takes back an unsent file; nobody else can, and it is gone", async () => {
+	ContactBackendService.resetStub();
+	const d = deps();
+	const ticket = await ContactBackendService.initAttachment(
+		{ name: "wrong.pdf", mimeType: "application/pdf", sizeBytes: 512 },
+		ADA,
+		d,
+	);
+	assert(ticket.ok);
+	const id = ticket.data!.attachmentId;
+	assertEquals((await ContactBackendService.discardAttachment(id, GUEST, d)).status, 401);
+	assertEquals((await ContactBackendService.discardAttachment(id, LAPSED, d)).status, 401);
+	assertEquals(
+		(await ContactBackendService.discardAttachment(
+			id,
+			{ ...ADA, userId: "someone-else" } as ReadActor,
+			d,
+		)).status,
+		404,
+	);
+	const removed = await ContactBackendService.discardAttachment(id, ADA, d);
+	assert(removed.ok);
+	assertEquals(removed.data, { id });
+	assertEquals((await ContactBackendService.discardAttachment(id, ADA, d)).status, 404);
+	assertEquals((await ContactBackendService.completeAttachment(id, ADA, d)).status, 404);
+	assertEquals(
+		(await ContactBackendService.discardAttachment(id, ADA, deps({ production: true }))).status,
+		503,
+	);
+});
+
+Deno.test("sweep: the stub forgets only expired declarations; the cron door is shut without a secret", async () => {
+	ContactBackendService.resetStub();
+	const d = deps();
+	await ContactBackendService.initAttachment(
+		{ name: "fresh.png", mimeType: "image/png", sizeBytes: 9 },
+		ADA,
+		d,
+	);
+	const now = await ContactBackendService.sweepAttachments(100, d);
+	assertEquals(now.data, { claimed: 0, failed: 0 });
+	const later = await ContactBackendService.sweepAttachments(
+		100,
+		deps({ now: () => new Date(Date.now() + 2 * 60 * 60_000) }),
+	);
+	assertEquals(later.data, { claimed: 1, failed: 0 });
+	assertFalse(ContactBackendService.isCronAuthorised(null));
+	assertFalse(ContactBackendService.isCronAuthorised("Bearer XXXX-XXXX"));
 });
 
 Deno.test("disputeEngagements: none for a guest; a failing feed is an empty list, not an error", async () => {

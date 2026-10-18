@@ -71,7 +71,7 @@ Deno.test("sales: company, size and budget are required choices", () => {
 	assertEquals(s.intent, "sales");
 	if (s.intent !== "sales") return;
 	assertEquals(s.name, "Ada");
-	assertEquals(s.website, "");
+	assertEquals(s.ctc_hp, "");
 	assertEquals(
 		issues({
 			intent: "sales",
@@ -205,9 +205,9 @@ Deno.test("the honeypot parses (the service, not the schema, decides what a fill
 		email: "ada@example.com",
 		topic: "other",
 		message: MESSAGE,
-		website: "spam.example",
+		ctc_hp: "spam.example",
 	});
-	assertEquals(s.website, "spam.example");
+	assertEquals(s.ctc_hp, "spam.example");
 });
 // #endregion
 
@@ -248,7 +248,7 @@ Deno.test("toStoredPayload: only the intent's keys, no address, no files, no emp
 		}
 		assertFalse("email" in payload);
 		assertFalse("attachmentIds" in payload);
-		assertFalse("website" in payload);
+		assertFalse("ctc_hp" in payload);
 		assertEquals(payload.message, MESSAGE);
 	}
 	assertEquals(toStoredPayload(cases[1]).accountEmail, "old@b.co");

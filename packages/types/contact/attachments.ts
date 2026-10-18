@@ -197,6 +197,25 @@ export type ContactAttachmentTicket = z.infer<typeof ContactAttachmentTicketSche
 export const ContactAttachmentCompleteSchema = z.object({ attachmentId: uuid });
 export type ContactAttachmentComplete = z.infer<typeof ContactAttachmentCompleteSchema>;
 
+/**
+ * Remove — take back a file that has not been sent (still uploading, or checked and ready). The row
+ * is soft-deleted and its bytes deleted (`ops.discard_contact_attachment`); a file mid-check is
+ * refused for a moment, a sent one for good.
+ */
+export const ContactAttachmentDiscardSchema = z.object({ attachmentId: uuid });
+export type ContactAttachmentDiscard = z.infer<typeof ContactAttachmentDiscardSchema>;
+
+/** What a discard answers: the id that is gone. */
+export const ContactAttachmentDiscardedSchema = z.object({ id: uuid });
+export type ContactAttachmentDiscarded = z.infer<typeof ContactAttachmentDiscardedSchema>;
+
+/** The hourly sweep's answer: how many unsent attachments it took, and how many objects it could not delete. */
+export const ContactAttachmentSweepSchema = z.object({
+	claimed: z.number().int().min(0),
+	failed: z.number().int().min(0),
+});
+export type ContactAttachmentSweep = z.infer<typeof ContactAttachmentSweepSchema>;
+
 /** An admitted attachment — ready to be linked by a submission. */
 export const ContactAttachmentSchema = z.object({
 	id: uuid,

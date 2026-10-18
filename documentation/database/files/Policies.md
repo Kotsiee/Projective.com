@@ -290,14 +290,24 @@ Full predicate, path convention and the metering consequence:
 
 ## `storage.objects` — the `contact` bucket (Decision #276)
 
-- **One policy, operator `SELECT`**: "Operators read contact attachments" (`00002017`, region
-  `[contact]`) — `bucket_id = 'contact' AND security.is_admin()`. It is the bucket's sole policy, so
-  no broader read can be OR-combined in by accident.
+- **One policy, operator `SELECT` of SENT attachments**: "Operators read contact attachments"
+  (`00002017`, region `[contact]`) — `bucket_id = 'contact' AND security.is_admin()` AND the object's
+  `files.items` row (`bucket_id = 'contact'`, `storage_path = name`, not deleted) is linked in
+  `ops.contact_request_attachments`, the same rule as `files.fn_can_read`'s contact arm. A file its
+  sender removed or left on an unsent form is not readable. It is the bucket's sole policy, so no
+  broader read can be OR-combined in by accident.
 - **No client write policy at all.** A `/contact` attachment is declared like any upload (a
   `pending_upload` row in `quarantine`, marked `target_bucket = 'contact'`); the contact pipeline
   (service role, `services/contact/live-attachments.ts`) sniffs the bytes and promotes the original
   to `contact/{user_id}/{asset_id}/…` with `files.items.purpose = 'contact'`. The sender keeps no read
   path to the promoted object (they hold their own copy); the `files.items` row stays readable by its
-  owner, and by operators through `files.fn_can_read`'s contact arm ([Functions.md](Functions.md)).
+  owner, and by operators through `files.fn_can_read`'s contact arm once it is sent
+  ([Functions.md](Functions.md)).
+- **Unsent files do not linger.** Remove soft-deletes the sender's own unsent row
+  (`ops.discard_contact_attachment`) and the service role deletes its object; the hourly
+  `contact-attachment-sweep` does the same for every contact upload older than six hours that no
+  request links (`ops.fn_claim_stale_contact_attachments`, then the Storage API — `storage.objects`
+  rows cannot be deleted from SQL). The library's own upload-complete steps refuse a row with a
+  `target_bucket`, so only the contact pipeline finishes a contact declaration.
 
 See also [Tables.md](Tables.md) · [Functions.md](Functions.md) · [Storage.md](Storage.md).

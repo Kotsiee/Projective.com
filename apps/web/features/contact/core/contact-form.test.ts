@@ -23,7 +23,7 @@ Deno.test("submissionFromForm: the form's fields as the schema's submission", ()
 		reportType: "abuse",
 		anonymous: "on",
 		message: "Somebody is running a fake account under our name.",
-		website: "",
+		ctc_hp: "",
 		unknown: "ignored",
 	});
 	const body = submissionFromForm(form);

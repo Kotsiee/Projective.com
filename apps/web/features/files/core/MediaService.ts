@@ -38,21 +38,24 @@ export const MediaService = {
 
 /**
  * PUT the file to the ticket's signed URL, reporting progress (0–1) when the environment can. Resolves
- * `true` when storage accepted the bytes.
+ * `true` when storage accepted the bytes. An aborted `signal` cancels the PUT (it resolves `false`).
  */
 export function putToTicket(
 	ticket: LibraryUploadTicket,
 	file: Blob,
 	onProgress?: (fraction: number) => void,
+	signal?: AbortSignal,
 ): Promise<boolean> {
+	if (signal?.aborted) return Promise.resolve(false);
 	const XHR = (globalThis as { XMLHttpRequest?: typeof XMLHttpRequest }).XMLHttpRequest;
 	if (!XHR) {
-		return fetch(ticket.signedUrl, { method: "PUT", headers: ticket.headers, body: file })
+		return fetch(ticket.signedUrl, { method: "PUT", headers: ticket.headers, body: file, signal })
 			.then((res) => res.ok)
 			.catch(() => false);
 	}
 	return new Promise((resolve) => {
 		const request = new XHR();
+		signal?.addEventListener("abort", () => request.abort(), { once: true });
 		request.open("PUT", ticket.signedUrl, true);
 		for (const [name, value] of Object.entries(ticket.headers)) {
 			request.setRequestHeader(name, value);

@@ -1,6 +1,6 @@
 /*
- * /contact (Decision #276) — the page header, the split canvas (intake 3 : rail 2 from 64rem of
- * page), the intake column (intent switcher, the four stacked fieldsets, the dropzone, the
+ * /contact (Decision #276) — the page header, the split canvas (intake 3 : rail 2 from 60rem of
+ * page, which the guest shell reaches at about --bp-lg), the intake column (intent switcher, the four stacked fieldsets, the dropzone, the
  * confirmation) and the operational-transparency rail.
  *
  * Delivered through the `ContactIntake` island's import graph — the page's one island, rendered on
@@ -73,7 +73,9 @@
 	align-items: start;
 }
 
-@container ctc (min-width: 64rem) {
+/* 60rem of the page's content box: the guest shell's gutters and scrollbar put that at about a
+   1024px (--bp-lg) viewport, where the work order splits the canvas. */
+@container ctc (min-width: 60rem) {
 	.ctc__canvas {
 		grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
 		gap: var(--space-8);
@@ -122,18 +124,36 @@
 }
 
 /*
- * The four intents' fieldsets share ONE grid cell, so the column is always as tall as the tallest
- * and switching intent moves nothing below it (no height jump). The inactive ones are `disabled`
- * (unsubmitted, unfocusable), `inert` and hidden from the accessibility tree. The two cross-fade on
- * `--dur-fast` — opacity only: the outgoing set keeps `visibility` until its fade ends (the delayed
+ * The four intents' fieldsets, one of them active. The inactive ones are `disabled` (unsubmitted,
+ * unfocusable), `inert` and hidden from the accessibility tree. The two cross-fade on `--dur-fast`
+ * — opacity only: the outgoing set keeps `visibility` until its fade ends (the delayed
  * `visibility` step), the incoming one is visible at once. The token layer zeroes `--dur-*` under
  * both reduced-motion channels, so the switch is then a cut.
+ *
+ * Height (Decision #276 (F)). On the split canvas the four share ONE grid cell, so the column is as
+ * tall as the tallest and switching intent moves nothing (no height jump) — nothing sits under the
+ * stack there but the page foot. Stacked (below 60rem of page), the rail and the foot sit right under
+ * it, and the tallest form's reserve would leave a blank band under a shorter one's Send button; so
+ * there the inactive sets leave the flow (absolute, clipped to the active one's box) and the column
+ * takes the active form's height. That resize follows the reader's own switch, so it is not layout
+ * shift.
  */
 .ctc-form__stack {
+	position: relative;
 	display: grid;
 }
-.ctc-form__stack > .ctc-fields {
-	grid-area: 1 / 1;
+.ctc-form__stack > .ctc-fields[data-active="false"] {
+	position: absolute;
+	inset: 0;
+	overflow: clip;
+}
+@container ctc (min-width: 60rem) {
+	.ctc-form__stack > .ctc-fields,
+	.ctc-form__stack > .ctc-fields[data-active="false"] {
+		position: static;
+		grid-area: 1 / 1;
+		overflow: visible;
+	}
 }
 
 .ctc-fields {
@@ -236,6 +256,10 @@
 .ctc-route__body a:not(.ui-button) {
 	color: var(--primary);
 }
+/* A link-variant action lines up with the sentences above it, not the button padding's inset. */
+.ctc-route__body .ui-button--link {
+	padding-inline: 0;
+}
 
 /* The message counter: figures change, so they do not jitter. */
 .ctc-counter {
@@ -266,16 +290,18 @@
 	overflow: hidden;
 }
 
+/* Top-aligned: the booking aside is a button over its reason line, and Send shares the button's edge. */
 .ctc-actions {
 	display: flex;
 	flex-wrap: wrap;
-	align-items: center;
+	align-items: flex-start;
 	justify-content: flex-end;
 	gap: var(--space-3);
 	padding-block-start: var(--space-2);
 }
 .ctc-actions__aside {
 	display: grid;
+	justify-items: start;
 	gap: var(--space-1);
 	margin-inline-end: auto;
 	max-inline-size: 26rem;
@@ -287,7 +313,11 @@
 	color: var(--text-secondary);
 }
 
-/* A refusal of the whole request (rate limit, unavailable) — sits just above the actions. */
+/*
+ * A refusal of the whole request (rate limit, unavailable, files still checking) — rendered just above
+ * the active form's actions, where the sender is looking; a no-JS refusal (from the URL) opens the
+ * form instead.
+ */
 .ctc-form__alert {
 	margin: 0;
 }
@@ -308,6 +338,10 @@
 	margin: 0;
 	font-size: var(--text-sm);
 	color: var(--text-secondary);
+}
+/* Rows are spaced, not boxed: the package item's padding and hairline are replaced by a gap. */
+.ctc-drop .ui-file-upload__list {
+	gap: var(--space-3);
 }
 .ctc-drop__item {
 	display: grid;
@@ -374,15 +408,19 @@
 	color: var(--success);
 	font-size: var(--icon-xl);
 }
-/* Section-header register: the confirmation's heading; the reference below is its anchor. */
+/*
+ * The outcome's headline — a display-register heading, distinct in size, case and colour from the two
+ * section-header eyebrows under it ("Your reference", "What happens next").
+ */
 .ctc-receipt__title {
 	margin: 0;
-	font-size: var(--text-xs);
-	font-weight: var(--fw-semibold);
-	line-height: var(--leading-snug);
-	letter-spacing: var(--tracking-wide);
-	text-transform: uppercase;
-	color: var(--text-secondary);
+	font-size: var(--text-2xl);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+	text-transform: none;
+	color: var(--on-surface);
+	text-wrap: balance;
 }
 .ctc-receipt__ref {
 	display: grid;
@@ -427,6 +465,8 @@
 	font-size: var(--text-base);
 	line-height: var(--leading-relaxed);
 	color: var(--on-surface);
+	/* The steps quote the reply address, unbroken text up to 254 characters. */
+	overflow-wrap: anywhere;
 }
 .ctc-receipt__actions {
 	display: flex;
@@ -445,7 +485,7 @@
 	color: var(--on-surface);
 }
 
-@container ctc (min-width: 64rem) {
+@container ctc (min-width: 60rem) {
 	.ctc-rail {
 		padding: var(--space-7) var(--space-6);
 	}
@@ -506,6 +546,7 @@
 	margin: 0;
 	font-size: var(--text-base);
 	color: var(--on-surface);
+	overflow-wrap: anywhere;
 }
 .ctc-rail__placeholder {
 	font-family: var(--font-mono);

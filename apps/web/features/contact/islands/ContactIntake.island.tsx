@@ -46,12 +46,15 @@ import { ContactReceiptPanel } from "../components/ContactReceiptPanel.tsx";
  *
  * **Without JavaScript** the same markup is a plain `POST /api/contact` form; the route answers with a
  * 303 back here — `?sent=1` with the receipt in a short-lived cookie (passed in as `receipt`), or
- * `?error=` with the fields to mark (`formError`).
+ * `?error=` with the fields to mark (`formError`, shown at the top of the form: it is what the page
+ * opens on). The browser's own checks (`required`, `minlength`, `maxlength`, `type=email`) run
+ * before that post, so the common refusals never leave the page.
  *
  * **With it**, a submission is pre-checked against the shared Zod schema (the first invalid field is
  * focused and every message is wired by `aria-describedby`), sent as JSON, and answered by the
  * confirmation panel: focus moves to its heading and the polite live region says the same thing, so
- * the outcome never depends on seeing it.
+ * the outcome never depends on seeing it. A refusal of the whole request appears beside the Send
+ * button the sender just pressed (`IntakeModel.alert`), announcing itself.
  */
 
 /** Props for {@link ContactIntake}. */
@@ -118,9 +121,12 @@ export default function ContactIntake(props: ContactIntakeProps): JSX.Element {
 			? Object.fromEntries(props.formError.fields.map((f) => [f, NO_JS_FIELD_TEXT]))
 			: {},
 	);
-	const alert = useSignal<string | null>(
+	/** A no-JS refusal, from the URL — what the page opens on, so it sits at the top of the form. */
+	const pageError = useSignal<string | null>(
 		props.formError ? FORM_ERROR_TEXT[props.formError.error] : null,
 	);
+	/** A refusal of a hydrated submission — beside the Send button that was just pressed. */
+	const alert = useSignal<string | null>(null);
 	const busy = useSignal(false);
 	const announcement = useSignal("");
 	const receipt = useSignal<
@@ -156,6 +162,8 @@ export default function ContactIntake(props: ContactIntakeProps): JSX.Element {
 	const model: IntakeModel = {
 		fields,
 		errors,
+		alert,
+		activeIntent: intent.value,
 		busy,
 		signedIn: props.signedIn,
 		hydrated: hydrated.value,
@@ -170,6 +178,7 @@ export default function ContactIntake(props: ContactIntakeProps): JSX.Element {
 		intent.value = next;
 		errors.value = {};
 		alert.value = null;
+		pageError.value = null;
 		try {
 			globalThis.history?.replaceState(globalThis.history.state, "", contactHref(next));
 		} catch { /* a sandboxed frame without history: the in-place switch still stands */ }
@@ -189,11 +198,12 @@ export default function ContactIntake(props: ContactIntakeProps): JSX.Element {
 		e.preventDefault();
 		if (busy.value) return;
 		alert.value = null;
+		pageError.value = null;
 		const current = intent.value;
 		const files = attachments[current].value;
 		if (attachmentsInFlight(files) > 0) {
+			// The danger Message announces itself (role="alert"); the live region stays for outcomes.
 			alert.value = "Wait for your attachments to finish checking, then send.";
-			announce(alert.value);
 			return;
 		}
 		const form = readFields(fields);
@@ -224,7 +234,6 @@ export default function ContactIntake(props: ContactIntakeProps): JSX.Element {
 		}
 		errors.value = res.errors ?? {};
 		alert.value = res.message ?? FORM_ERROR_TEXT.unavailable;
-		announce(alert.value);
 		const first = firstErrorField(current, errors.value);
 		if (first) focusField(first);
 	}
@@ -239,6 +248,7 @@ export default function ContactIntake(props: ContactIntakeProps): JSX.Element {
 		for (const i of CONTACT_INTENTS) attachments[i].value = {};
 		errors.value = {};
 		alert.value = null;
+		pageError.value = null;
 		receipt.value = null;
 		try {
 			globalThis.history?.replaceState(globalThis.history.state, "", contactHref(intent.value));
@@ -258,6 +268,7 @@ export default function ContactIntake(props: ContactIntakeProps): JSX.Element {
 						reply={done.reply}
 						headingRef={receiptHeading}
 						onAnother={startAnother}
+						announce={announce}
 					/>
 				)
 				: (
@@ -289,16 +300,18 @@ export default function ContactIntake(props: ContactIntakeProps): JSX.Element {
 									Leave this field empty
 									<input
 										type="text"
-										name="website"
+										name="ctc_hp"
 										tabIndex={-1}
 										autoComplete="off"
-										value={fields.website.value}
-										onInput={(e) => (fields.website.value = e.currentTarget.value)}
+										data-1p-ignore=""
+										data-lpignore="true"
+										value={fields.ctc_hp.value}
+										onInput={(e) => (fields.ctc_hp.value = e.currentTarget.value)}
 									/>
 								</label>
 							</div>
-							{alert.value && (
-								<Message severity="danger" class="ctc-form__alert">{alert.value}</Message>
+							{pageError.value && (
+								<Message severity="danger" class="ctc-form__alert">{pageError.value}</Message>
 							)}
 							<div class="ctc-form__stack">
 								{CONTACT_INTENTS.map((i) => (

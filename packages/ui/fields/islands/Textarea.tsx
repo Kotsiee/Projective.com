@@ -24,6 +24,11 @@ export interface TextareaProps extends BaseFieldProps {
 	maxRows?: number;
 	/** Maximum character length. */
 	maxLength?: number;
+	/**
+	 * Minimum character length, checked by the browser before a plain (pre-hydration) form post — so a
+	 * too-short entry is caught while what was typed is still on the page.
+	 */
+	minLength?: number;
 	/** Surface treatment (§ FieldVariant). */
 	variant?: FieldVariant;
 	class?: string;
@@ -46,6 +51,7 @@ export function Textarea(props: TextareaProps): JSX.Element {
 		autoResize,
 		maxRows,
 		maxLength,
+		minLength,
 		variant = "outlined",
 		fluid,
 		size = "md",
@@ -116,6 +122,7 @@ export function Textarea(props: TextareaProps): JSX.Element {
 				placeholder={placeholder}
 				rows={rows}
 				maxLength={maxLength}
+				minLength={minLength}
 				disabled={disabled}
 				readOnly={readOnly}
 				required={required}

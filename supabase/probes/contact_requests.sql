@@ -1,7 +1,8 @@
 -- =============================================================================================
 -- Probe: /contact intake (Decision #276) — ops.contact_requests, ops.contact_request_attachments,
--- ops.submit_contact_request, ops.set_contact_request_status, ops.fn_guard_contact_request, the
--- `contact` bucket, its storage policy, the files.fn_can_read operator arm and contact.received.
+-- ops.submit_contact_request, ops.set_contact_request_status, ops.fn_guard_contact_request,
+-- ops.discard_contact_attachment, ops.fn_claim_stale_contact_attachments, the `contact` bucket, its
+-- storage policy, the files.fn_can_read operator arm, contact.received and the sweep's job row.
 --
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated local DB:
 --   docker exec -i supabase_db_Projective psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
@@ -9,7 +10,8 @@
 --
 -- Every expected refusal is asserted: a call that SUCCEEDS where it must be refused raises `FAIL …`
 -- and aborts the run (non-zero exit under ON_ERROR_STOP). A clean run prints only PASS notices.
--- Fixtures come from the seed (two non-operator people); the operator is made inside the transaction.
+-- Fixtures come from the seed (two non-operator people); the operator, an identity that has not
+-- finished /join (no org.users_public row) and every file row are made inside the transaction.
 -- =============================================================================================
 
 BEGIN;
@@ -21,6 +23,7 @@ DECLARE
     v_a uuid;
     v_b uuid;
     v_op uuid;
+    v_n uuid := gen_random_uuid();
 BEGIN
     SELECT u.user_id INTO v_a FROM org.users_public u
      WHERE NOT EXISTS (SELECT 1 FROM ops.admin_users au WHERE au.user_id = u.user_id)
@@ -46,11 +49,42 @@ BEGIN
         ('00000000-0000-4000-8000-0000000000a3', v_a, 'quarantine', v_a || '/a3/pending.pdf', 'pending.pdf', 'pending.pdf',
          'application/pdf', 512, 'scanning', 'library', 'user'),
         ('00000000-0000-4000-8000-0000000000b1', v_b, 'contact', v_b || '/b1/other.png', 'other.png', 'other.png',
-         'image/png', 2048, 'uploaded', 'contact', 'user');
+         'image/png', 2048, 'uploaded', 'contact', 'user'),
+        -- a4: scanned and never sent (A removes it); a7: never sent, long ago (the sweep takes it);
+        -- a8: never sent, two hours ago (too young for the sweep); a9: an ordinary library file.
+        ('00000000-0000-4000-8000-0000000000a4', v_a, 'contact', v_a || '/a4/wrong.pdf', 'wrong.pdf', 'wrong.pdf',
+         'application/pdf', 512, 'uploaded', 'contact', 'user'),
+        ('00000000-0000-4000-8000-0000000000a7', v_a, 'contact', v_a || '/a7/old.png', 'old.png', 'old.png',
+         'image/png', 512, 'uploaded', 'contact', 'user'),
+        ('00000000-0000-4000-8000-0000000000a8', v_a, 'contact', v_a || '/a8/recent.png', 'recent.png', 'recent.png',
+         'image/png', 512, 'uploaded', 'contact', 'user'),
+        ('00000000-0000-4000-8000-0000000000a9', v_a, 'personal', v_a || '/a9/notes.txt', 'notes.txt', 'notes.txt',
+         'text/plain', 512, 'uploaded', 'library', 'user');
+    -- Declared for the contact pipeline and not yet promoted: a5 mid-check, a6 still uploading.
+    INSERT INTO files.items (id, owner_user_id, bucket_id, storage_path, target_bucket, display_name,
+        original_name, mime_type, size_bytes, status, purpose, owner_type)
+    VALUES
+        ('00000000-0000-4000-8000-0000000000a5', v_a, 'quarantine', v_a || '/a5/checking.png', 'contact',
+         'checking.png', 'checking.png', 'image/png', 512, 'scanning', 'library', 'user'),
+        ('00000000-0000-4000-8000-0000000000a6', v_a, 'quarantine', v_a || '/a6/uploading.png', 'contact',
+         'uploading.png', 'uploading.png', 'image/png', 512, 'pending_upload', 'library', 'user');
+    UPDATE files.items SET created_at = '2000-01-01T00:00:00Z'
+     WHERE id IN ('00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000a7',
+                  '00000000-0000-4000-8000-0000000000a9');
+    UPDATE files.items SET created_at = now() - interval '2 hours'
+     WHERE id = '00000000-0000-4000-8000-0000000000a8';
+    -- The stored objects of a sent (a1) and an unsent (a4) attachment, for the bucket policy.
+    INSERT INTO storage.objects (bucket_id, name, owner)
+    VALUES ('contact', v_a || '/a1/screen.png', v_a), ('contact', v_a || '/a4/wrong.pdf', v_a);
+
+    -- An identity with no profile, as an OAuth sign-up leaves it until /join is finished.
+    INSERT INTO auth.users (id, email, aud, role, raw_user_meta_data, email_confirmed_at)
+    VALUES (v_n, 'contact-probe-' || v_n || '@projective.invalid', 'authenticated', 'authenticated', '{}'::jsonb, now());
 
     PERFORM set_config('probe.a', v_a::text, true);
     PERFORM set_config('probe.b', v_b::text, true);
     PERFORM set_config('probe.op', v_op::text, true);
+    PERFORM set_config('probe.n', v_n::text, true);
     RAISE NOTICE 'fixture a=% b=% operator=%', v_a, v_b, v_op;
 END $$;
 -- #endregion
@@ -102,10 +136,21 @@ BEGIN
        OR has_function_privilege('anon', 'ops.set_contact_request_status(text, text)', 'EXECUTE')
        OR has_function_privilege('anon', 'ops.fn_contact_reference()', 'EXECUTE')
        OR has_function_privilege('authenticated', 'ops.fn_contact_reference()', 'EXECUTE')
-       OR has_function_privilege('authenticated', 'ops.fn_guard_contact_request()', 'EXECUTE') THEN
+       OR has_function_privilege('authenticated', 'ops.fn_guard_contact_request()', 'EXECUTE')
+       OR has_function_privilege('anon', 'ops.discard_contact_attachment(uuid)', 'EXECUTE')
+       OR NOT has_function_privilege('authenticated', 'ops.discard_contact_attachment(uuid)', 'EXECUTE')
+       OR has_function_privilege('anon', 'ops.fn_claim_stale_contact_attachments(interval, integer)', 'EXECUTE')
+       OR has_function_privilege('authenticated', 'ops.fn_claim_stale_contact_attachments(interval, integer)', 'EXECUTE')
+       OR NOT has_function_privilege('service_role', 'ops.fn_claim_stale_contact_attachments(interval, integer)', 'EXECUTE') THEN
         RAISE EXCEPTION 'FAIL function grants are not as declared';
     END IF;
-    RAISE NOTICE 'PASS no client write privilege; only the intake door is public';
+    RAISE NOTICE 'PASS no client write privilege; only the intake door is public; Remove is a session''s, the sweep the service''s';
+
+    IF NOT EXISTS (SELECT 1 FROM ops.scheduled_jobs WHERE name = 'contact-attachment-sweep' AND kind = 'http'
+                    AND path = '/api/contact/cron/attachments?limit=100' AND secret_name = 'CONTACT_CRON_SECRET') THEN
+        RAISE EXCEPTION 'FAIL the contact-attachment-sweep job is not registered';
+    END IF;
+    RAISE NOTICE 'PASS the hourly attachment sweep is registered';
 END $$;
 
 DO $$
@@ -176,6 +221,33 @@ BEGIN
 END $$;
 -- #endregion
 
+-- #region 2b. A signed-in sender who has not finished /join (no org.users_public row) gets a receipt
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims',
+    json_build_object('sub', current_setting('probe.n'), 'role', 'authenticated')::text, true);
+DO $$
+DECLARE
+    v_out jsonb;
+BEGIN
+    v_out := ops.submit_contact_request('support', 'NewPerson@Example.com', false,
+        '{"name":"New Person","topic":"account","message":"I signed up with Google and cannot finish joining."}'::jsonb);
+    PERFORM set_config('probe.n_ref', v_out ->> 'reference', true);
+    RAISE NOTICE 'PASS an identity with no profile files a support request %', v_out ->> 'reference';
+END $$;
+RESET ROLE;
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM ops.contact_requests WHERE reference = current_setting('probe.n_ref')
+                    AND user_id = current_setting('probe.n')::uuid) THEN
+        RAISE EXCEPTION 'FAIL the un-onboarded sender''s request lost its account';
+    END IF;
+    IF EXISTS (SELECT 1 FROM org.users_public WHERE user_id = current_setting('probe.n')::uuid) THEN
+        RAISE EXCEPTION 'FAIL the fixture identity has a profile';
+    END IF;
+    RAISE NOTICE 'PASS the request is stamped with the identity (auth.users), not a profile';
+END $$;
+-- #endregion
+
 -- #region 3. Shape refusals (anon) — every one a 22023 naming the field
 SET LOCAL ROLE anon;
 SELECT set_config('request.jwt.claims', '{"role":"anon"}', true);
@@ -191,11 +263,30 @@ BEGIN
             ('short message', 'support', 'a@example.com', false, '{"name":"A","message":"Too short"}'),
             ('message not a string', 'support', 'a@example.com', false, '{"name":"A","message":42}'),
             ('blank name', 'support', 'a@example.com', false, '{"name":"   ","message":"Twenty characters or more here."}'),
-            ('no reply address', 'support', '', false, '{"name":"A","message":"Twenty characters or more here."}'),
-            ('malformed address', 'support', 'not-an-address', false, '{"name":"A","message":"Twenty characters or more here."}'),
-            ('anonymous sales', 'sales', '', true, '{"message":"Twenty characters or more here."}'),
+            ('no reply address', 'support', '', false, '{"name":"A","topic":"other","message":"Twenty characters or more here."}'),
+            ('malformed address', 'support', 'not-an-address', false, '{"name":"A","topic":"other","message":"Twenty characters or more here."}'),
+            ('anonymous sales', 'sales', '', true, '{"company":"A Ltd","companySize":"1-10","budget":"not-sure","message":"Twenty characters or more here."}'),
             ('anonymous with an address', 'security', 'a@example.com', true, '{"reportType":"abuse","message":"Twenty characters or more here."}'),
-            ('anonymous with a name', 'security', '', true, '{"name":"A","reportType":"abuse","message":"Twenty characters or more here."}')
+            ('anonymous with a name', 'security', '', true, '{"name":"A","reportType":"abuse","message":"Twenty characters or more here."}'),
+            ('company as an object', 'sales', 'a@example.com', false, '{"name":"A","company":{"x":1},"companySize":"1-10","budget":"not-sure","message":"Twenty characters or more here."}'),
+            ('company too long', 'sales', 'a@example.com', false, '{"name":"A","company":"ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","companySize":"1-10","budget":"not-sure","message":"Twenty characters or more here."}'),
+            ('companySize as a number', 'sales', 'a@example.com', false, '{"name":"A","company":"A Ltd","companySize":42,"budget":"not-sure","message":"Twenty characters or more here."}'),
+            ('companySize off the list', 'sales', 'a@example.com', false, '{"name":"A","company":"A Ltd","companySize":"huge","budget":"not-sure","message":"Twenty characters or more here."}'),
+            ('budget as an array', 'sales', 'a@example.com', false, '{"name":"A","company":"A Ltd","companySize":"1-10","budget":["5k-25k"],"message":"Twenty characters or more here."}'),
+            ('sales without a budget', 'sales', 'a@example.com', false, '{"name":"A","company":"A Ltd","companySize":"1-10","message":"Twenty characters or more here."}'),
+            ('topic off the list', 'support', 'a@example.com', false, '{"name":"A","topic":"refunds","message":"Twenty characters or more here."}'),
+            ('support without a topic', 'support', 'a@example.com', false, '{"name":"A","message":"Twenty characters or more here."}'),
+            ('named request without a name', 'support', 'a@example.com', false, '{"topic":"other","message":"Twenty characters or more here."}'),
+            ('accountEmail malformed', 'support', 'a@example.com', false, '{"name":"A","topic":"account","accountEmail":"nobody","message":"Twenty characters or more here."}'),
+            ('accountEmail as a number', 'support', 'a@example.com', false, '{"name":"A","topic":"account","accountEmail":7,"message":"Twenty characters or more here."}'),
+            ('referenceId as an object', 'dispute', 'a@example.com', false, '{"name":"A","referenceId":{"id":1},"message":"Twenty characters or more here."}'),
+            ('referenceId too long', 'dispute', 'a@example.com', false, '{"name":"A","referenceId":"rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr","message":"Twenty characters or more here."}'),
+            ('engagement as a string', 'dispute', 'a@example.com', false, '{"name":"A","engagement":"prj-abc","message":"Twenty characters or more here."}'),
+            ('engagement with an extra key', 'dispute', 'a@example.com', false, '{"name":"A","engagement":{"slug":"prj-abc","title":"T","format":"pipeline","amount":9},"message":"Twenty characters or more here."}'),
+            ('engagement without a format', 'dispute', 'a@example.com', false, '{"name":"A","engagement":{"slug":"prj-abc","title":"T"},"message":"Twenty characters or more here."}'),
+            ('engagement format off the list', 'dispute', 'a@example.com', false, '{"name":"A","engagement":{"slug":"prj-abc","title":"T","format":"retainer"},"message":"Twenty characters or more here."}'),
+            ('reportType off the list', 'security', 'a@example.com', false, '{"name":"A","reportType":"gossip","message":"Twenty characters or more here."}'),
+            ('security without a reportType', 'security', '', true, '{"message":"Twenty characters or more here."}')
         ) AS t(label, intent, email, anon, payload)
     LOOP
         BEGIN
@@ -351,6 +442,19 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS the operator reads requests, links and attachment rows';
 
+    IF files.fn_can_read('00000000-0000-4000-8000-0000000000a4') THEN
+        RAISE EXCEPTION 'FAIL the operator can read a contact attachment nobody sent';
+    END IF;
+    IF (SELECT count(*) FROM storage.objects o WHERE o.bucket_id = 'contact'
+          AND o.name = current_setting('probe.a') || '/a1/screen.png') <> 1 THEN
+        RAISE EXCEPTION 'FAIL the operator cannot read a sent attachment''s object';
+    END IF;
+    IF EXISTS (SELECT 1 FROM storage.objects o WHERE o.bucket_id = 'contact'
+                AND o.name = current_setting('probe.a') || '/a4/wrong.pdf') THEN
+        RAISE EXCEPTION 'FAIL the operator can read an unsent attachment''s object';
+    END IF;
+    RAISE NOTICE 'PASS operators read only SENT attachments — rows and objects';
+
     v_out := ops.set_contact_request_status(current_setting('probe.a_ref'), 'in_progress');
     IF v_out ->> 'status' <> 'in_progress' THEN RAISE EXCEPTION 'FAIL move answered %', v_out; END IF;
     v_out := ops.set_contact_request_status(current_setting('probe.a_ref'), 'complete');
@@ -389,7 +493,10 @@ BEGIN
     IF files.fn_can_read('00000000-0000-4000-8000-0000000000a1') THEN
         RAISE EXCEPTION 'FAIL a non-operator stranger can read A''s contact attachment';
     END IF;
-    RAISE NOTICE 'PASS a stranger cannot read a contact attachment';
+    IF EXISTS (SELECT 1 FROM storage.objects o WHERE o.bucket_id = 'contact') THEN
+        RAISE EXCEPTION 'FAIL a non-operator stranger can read a contact object';
+    END IF;
+    RAISE NOTICE 'PASS a stranger cannot read a contact attachment or object';
 END $$;
 RESET ROLE;
 -- #endregion
@@ -432,6 +539,162 @@ BEGIN
     EXCEPTION WHEN SQLSTATE 'PR429' THEN
         RAISE NOTICE 'PASS the sixth request from one address is PR429 [%]', SQLERRM;
     END;
+END $$;
+RESET ROLE;
+-- #endregion
+
+-- #region 9. Remove: a sender takes back an unsent attachment — only their own, only unsent
+SET LOCAL ROLE anon;
+SELECT set_config('request.jwt.claims', '{"role":"anon"}', true);
+DO $$
+BEGIN
+    BEGIN
+        PERFORM ops.discard_contact_attachment('00000000-0000-4000-8000-0000000000a4');
+        RAISE EXCEPTION 'FAIL anon removed an attachment';
+    EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'PASS anon cannot remove an attachment';
+    END;
+END $$;
+RESET ROLE;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims',
+    json_build_object('sub', current_setting('probe.a'), 'role', 'authenticated')::text, true);
+DO $$
+DECLARE
+    v_out jsonb;
+    v_case record;
+BEGIN
+    v_out := ops.discard_contact_attachment('00000000-0000-4000-8000-0000000000a4');
+    IF v_out ->> 'bucket_id' <> 'contact' OR v_out ->> 'storage_path' <> current_setting('probe.a') || '/a4/wrong.pdf' THEN
+        RAISE EXCEPTION 'FAIL Remove answered %', v_out;
+    END IF;
+    v_out := ops.discard_contact_attachment('00000000-0000-4000-8000-0000000000a6');
+    IF v_out ->> 'bucket_id' <> 'quarantine' THEN
+        RAISE EXCEPTION 'FAIL Remove of a file still uploading answered %', v_out;
+    END IF;
+    RAISE NOTICE 'PASS Remove takes back a checked file and one still uploading, naming each object';
+
+    FOR v_case IN
+        SELECT * FROM (VALUES
+            ('00000000-0000-4000-8000-0000000000a1'::uuid, 'a file already sent'),
+            ('00000000-0000-4000-8000-0000000000a4'::uuid, 'a file already removed'),
+            ('00000000-0000-4000-8000-0000000000b1'::uuid, 'somebody else''s file'),
+            ('00000000-0000-4000-8000-0000000000a9'::uuid, 'a library file')
+        ) AS t(id, label)
+    LOOP
+        BEGIN
+            PERFORM ops.discard_contact_attachment(v_case.id);
+            RAISE EXCEPTION 'FAIL removed %', v_case.label;
+        EXCEPTION WHEN no_data_found THEN
+            RAISE NOTICE 'PASS refused to remove % [%]', v_case.label, SQLERRM;
+        END;
+    END LOOP;
+
+    BEGIN
+        PERFORM ops.discard_contact_attachment('00000000-0000-4000-8000-0000000000a5');
+        RAISE EXCEPTION 'FAIL removed a file mid-check';
+    EXCEPTION WHEN object_in_use THEN
+        RAISE NOTICE 'PASS a file mid-check is 55006 [%]', SQLERRM;
+    END;
+
+    BEGIN
+        PERFORM ops.submit_contact_request('support', 'a@example.com', false,
+            '{"name":"A","topic":"other","message":"Sending the file I removed a moment ago."}'::jsonb,
+            ARRAY['00000000-0000-4000-8000-0000000000a4']::uuid[]);
+        RAISE EXCEPTION 'FAIL a removed file was sent';
+    EXCEPTION WHEN invalid_parameter_value THEN
+        RAISE NOTICE 'PASS a removed file cannot be sent';
+    END;
+END $$;
+RESET ROLE;
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM files.items WHERE deleted_at IS NOT NULL
+          AND id IN ('00000000-0000-4000-8000-0000000000a4', '00000000-0000-4000-8000-0000000000a6')) <> 2
+       OR EXISTS (SELECT 1 FROM files.items WHERE deleted_at IS NOT NULL
+          AND id IN ('00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000a5',
+                     '00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000a9')) THEN
+        RAISE EXCEPTION 'FAIL Remove soft-deleted the wrong rows';
+    END IF;
+    RAISE NOTICE 'PASS exactly the two removed rows are soft-deleted (never hard-deleted)';
+END $$;
+-- #endregion
+
+-- #region 10. The sweep: only unsent contact uploads, only once they are old enough
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims',
+    json_build_object('sub', current_setting('probe.op'), 'role', 'authenticated')::text, true);
+DO $$
+BEGIN
+    BEGIN
+        PERFORM 1 FROM ops.fn_claim_stale_contact_attachments();
+        RAISE EXCEPTION 'FAIL a signed-in caller (even an operator) ran the sweep';
+    EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'PASS the sweep is the service role''s alone';
+    END;
+END $$;
+RESET ROLE;
+
+SET LOCAL ROLE service_role;
+DO $$
+DECLARE
+    v_claimed uuid[];
+BEGIN
+    SELECT array_agg(file_id) INTO v_claimed FROM ops.fn_claim_stale_contact_attachments(interval '6 hours', 1000);
+    IF NOT ('00000000-0000-4000-8000-0000000000a7'::uuid = ANY (v_claimed)) THEN
+        RAISE EXCEPTION 'FAIL the sweep missed an old unsent attachment';
+    END IF;
+    IF v_claimed && ARRAY['00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000a8',
+                          '00000000-0000-4000-8000-0000000000a9', '00000000-0000-4000-8000-0000000000a4']::uuid[] THEN
+        RAISE EXCEPTION 'FAIL the sweep claimed a sent, recent, library or already-removed file: %', v_claimed;
+    END IF;
+    IF EXISTS (SELECT 1 FROM ops.fn_claim_stale_contact_attachments(interval '6 hours', 1000)
+                WHERE file_id = '00000000-0000-4000-8000-0000000000a7') THEN
+        RAISE EXCEPTION 'FAIL the sweep claimed the same file twice';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM ops.fn_claim_stale_contact_attachments(interval '1 minute', 1000)
+                    WHERE file_id = '00000000-0000-4000-8000-0000000000a8') THEN
+        RAISE EXCEPTION 'FAIL the sweep''s one-hour floor did not let a two-hour-old file through';
+    END IF;
+    RAISE NOTICE 'PASS the sweep takes unsent contact uploads past the window, once, and nothing else';
+END $$;
+RESET ROLE;
+-- #endregion
+
+-- #region 11. The guest ceiling: 60 named requests without an account per hour, platform-wide
+DO $$
+DECLARE
+    v_have integer;
+BEGIN
+    SELECT count(*) INTO v_have FROM ops.contact_requests
+     WHERE user_id IS NULL AND NOT anonymous AND created_at > now() - interval '1 hour';
+    INSERT INTO ops.contact_requests (reference, intent, email, user_id, anonymous, payload)
+    SELECT ops.fn_contact_reference(), 'support', 'flood' || g || '@example.com', NULL, false,
+           '{"name":"F","topic":"other","message":"A scripted request through the door."}'::jsonb
+      FROM generate_series(1, GREATEST(60 - v_have, 0)) AS g;
+END $$;
+SET LOCAL ROLE anon;
+SELECT set_config('request.jwt.claims', '{"role":"anon"}', true);
+DO $$
+BEGIN
+    BEGIN
+        PERFORM ops.submit_contact_request('support', 'fresh-address@example.com', false,
+            '{"name":"G","topic":"other","message":"A real guest behind the flood of requests."}'::jsonb);
+        RAISE EXCEPTION 'FAIL a guest request past the platform-wide ceiling was accepted';
+    EXCEPTION WHEN SQLSTATE 'PR429' THEN
+        RAISE NOTICE 'PASS the 61st guest request in an hour is PR429 [%]', SQLERRM;
+    END;
+END $$;
+RESET ROLE;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims',
+    json_build_object('sub', current_setting('probe.b'), 'role', 'authenticated')::text, true);
+DO $$
+BEGIN
+    PERFORM ops.submit_contact_request('support', 'b@example.com', false,
+        '{"name":"B","topic":"payments","message":"Signed in, so the guest ceiling does not stop me."}'::jsonb);
+    RAISE NOTICE 'PASS a signed-in sender is not held by the guest ceiling';
 END $$;
 RESET ROLE;
 -- #endregion

@@ -13,14 +13,15 @@ import { ENTITY_FACTS, ENTITY_PLACEHOLDER, INTENT_COPY } from "../core/contact-c
  * It is the page's one tonal region — a solid `--surface-1`, not a card (no border, no shadow, no
  * card inside it) — with its content separated by spacing and one hairline. There is no platform
  * status line: no health endpoint exists to read one from, and a status that is not read from
- * anything is a fabricated one. Below 64rem of page it stacks under the intake, moved, not copied.
+ * anything is a fabricated one. Below 60rem of page it stacks under the intake, moved, not copied.
  */
 export function ContactRail(): JSX.Element {
 	return (
 		<aside class="ctc-rail" aria-labelledby="ctc-rail-title">
 			<div class="ctc-rail__section">
 				<div class="ctc-rail__brand">
-					<Logo class="ctc-rail__mark" />
+					{/* Intrinsic size (the mark's 520:485) so it never paints rail-wide before its CSS lands. */}
+					<Logo class="ctc-rail__mark" width={32} height={30} />
 					<h2 class="ctc-rail__title" id="ctc-rail-title">Who you're contacting</h2>
 				</div>
 				<dl class="ctc-rail__facts">

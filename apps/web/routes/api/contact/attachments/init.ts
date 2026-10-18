@@ -1,7 +1,12 @@
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { ContactBackendService } from "@server/services/contact/ContactBackendService.ts";
-import { toContactResponse, unreadableBody } from "@features/contact/core/contact-respond.ts";
+import {
+	isJsonRequest,
+	toContactResponse,
+	unreadableBody,
+	unsupportedBody,
+} from "@features/contact/core/contact-respond.ts";
 
 /**
  * `POST /api/contact/attachments/init` — step 1 of a `/contact` attachment (Decision #276):
@@ -13,6 +18,7 @@ import { toContactResponse, unreadableBody } from "@features/contact/core/contac
  */
 export const handler = define.handlers({
 	async POST(ctx) {
+		if (!isJsonRequest(ctx.req)) return unsupportedBody();
 		const raw = await ctx.req.json().catch(() => undefined);
 		if (raw === undefined) return unreadableBody();
 		return toContactResponse(await ContactBackendService.initAttachment(raw, readActor(ctx)));

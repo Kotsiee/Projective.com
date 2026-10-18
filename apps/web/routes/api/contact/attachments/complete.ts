@@ -2,7 +2,12 @@ import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { ContactAttachmentCompleteSchema } from "@projective/types/contact";
 import { ContactBackendService } from "@server/services/contact/ContactBackendService.ts";
-import { toContactResponse, unreadableBody } from "@features/contact/core/contact-respond.ts";
+import {
+	isJsonRequest,
+	toContactResponse,
+	unreadableBody,
+	unsupportedBody,
+} from "@features/contact/core/contact-respond.ts";
 
 /**
  * `POST /api/contact/attachments/complete` — step 3 of a `/contact` attachment (Decision #276):
@@ -13,6 +18,7 @@ import { toContactResponse, unreadableBody } from "@features/contact/core/contac
  */
 export const handler = define.handlers({
 	async POST(ctx) {
+		if (!isJsonRequest(ctx.req)) return unsupportedBody();
 		const raw = await ctx.req.json().catch(() => undefined);
 		const parsed = ContactAttachmentCompleteSchema.safeParse(raw);
 		if (!parsed.success) return unreadableBody();

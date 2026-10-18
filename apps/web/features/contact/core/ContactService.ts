@@ -1,5 +1,6 @@
 import type {
 	ContactAttachment,
+	ContactAttachmentDiscarded,
 	ContactAttachmentInit,
 	ContactAttachmentTicket,
 	ContactReceipt,
@@ -55,5 +56,14 @@ export const ContactService = {
 	/** Step 3 of an attachment: ask the server to check and admit the landed bytes. */
 	completeAttachment(attachmentId: string): Promise<ContactResult<ContactAttachment>> {
 		return post<ContactAttachment>("/api/contact/attachments/complete", { attachmentId }, true);
+	},
+
+	/** Remove: take back an attachment that has not been sent (its row and its bytes go). */
+	discardAttachment(attachmentId: string): Promise<ContactResult<ContactAttachmentDiscarded>> {
+		return post<ContactAttachmentDiscarded>(
+			"/api/contact/attachments/discard",
+			{ attachmentId },
+			true,
+		);
 	},
 };

@@ -114,14 +114,15 @@ is the unified machine ([PRODUCT_MANAGEMENT.md](../../PRODUCT_MANAGEMENT.md) §3
 | `intent`     | CHECK `sales` · `support` · `dispute` · `security` (`CONTACT_INTENTS`).                                                                                                                                                                                            |
 | `status`     | CHECK `backlog` · `in_progress` · `complete` · `archived`, `DEFAULT 'backlog'`. Moves only along the guard's transitions (`CONTACT_STATUS_TRANSITIONS`).                                                                                                           |
 | `email`      | The reply address, lower-cased (CHECK: ≤ 254, address-shaped, lower case). `NULL` only on an anonymous report.                                                                                                                                                      |
-| `user_id`    | The signed-in sender (`auth.uid()` at write time), when not anonymous. FK `org.users_public(user_id)` `ON DELETE SET NULL`.                                                                                                                                       |
+| `user_id`    | The signed-in sender (`auth.uid()` at write time), when not anonymous. FK `auth.users(id)` `ON DELETE SET NULL` — the identity, not the profile: an account that has not finished `/join` has no `org.users_public` row and is still a signed-in sender. |
 | `anonymous`  | `true` only for a security report with no address and no account (CHECK `contact_requests_anonymous_check`); otherwise `email` is required.                                                                                                                       |
 | `payload`    | The intent's own fields, as written: `name`, `message`, and per intent `company` · `companySize` · `budget` (sales), `accountEmail` · `topic` (support), `referenceId` · `engagement {slug,title,format}` (dispute), `reportType` (security). CHECK: an object with a 1–5,000-character `message`, ≤ 16 KB. Not masked through `comms.mask_pii` — only operators read it (Decision #147). |
 | `created_at` · `updated_at` | `updated_at` is stamped by the guard on every (status) change.                                                                                                                                                                                       |
 
-Indexes (`00004002`): `idx_contact_requests_status_created` (the operator queue) and three partial
+Indexes (`00004002`): `idx_contact_requests_status_created` (the operator queue) and four partial
 indexes behind the writer's hourly ceilings — `idx_contact_requests_email_created` (WHERE `email`
-IS NOT NULL), `idx_contact_requests_user_created` (WHERE `user_id` IS NOT NULL) and
+IS NOT NULL), `idx_contact_requests_user_created` (WHERE `user_id` IS NOT NULL),
+`idx_contact_requests_guest_created` (WHERE `user_id` IS NULL AND NOT `anonymous`) and
 `idx_contact_requests_anonymous_created` (WHERE `anonymous`).
 
 ## `ops.contact_request_attachments` — a request's files (Decision #276)
@@ -132,4 +133,6 @@ Same migration and region. One row per attached file: PK `(request_id, file_id)`
 `ops.submit_contact_request`, and only for the caller's own `files.items` rows with
 `purpose = 'contact'`, `status = 'uploaded'` and no `deleted_at` (the contact upload pipeline's
 output, in the private `contact` bucket — [files Storage.md](../files/Storage.md)). Never updated or
-deleted.
+deleted. A link is what lets operators read a file (`files.fn_can_read`, the `contact` bucket
+policy): an unsent contact upload has none, and is taken back by Remove
+(`ops.discard_contact_attachment`) or the hourly sweep (`ops.fn_claim_stale_contact_attachments`).
