@@ -1062,8 +1062,9 @@ export class PaymentBackendService {
 	 * retries, and the claim row keeps it for reconciliation. The one exception is a card settlement,
 	 * acknowledged only once its ledger row exists (Decision #200): one that cannot be credited yet
 	 * released its claim, so it answers 500 and Stripe's retry settles it — except a settlement whose
-	 * amount / currency can never match its payment, which is acknowledged into reconciliation (one ops
-	 * row, claim kept, listed by `finance.v_ops_unledgered_payments`) because no retry can change it.
+	 * amount / currency can never match its payment, or one for a business that is now archived (which
+	 * takes no money in, Decision #248 (k)), each acknowledged into reconciliation (one ops row, claim
+	 * kept, listed by `finance.v_ops_unledgered_payments`) because no retry may credit it.
 	 */
 	static async handleStripeWebhook(
 		payload: string,

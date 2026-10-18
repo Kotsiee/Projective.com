@@ -1225,6 +1225,45 @@ COMMENT ON FUNCTION org.fn_assert_business_active(uuid) IS
 passes, P0002 when the business does not exist. Called by every door that spends, hires or bills for a
 business. Internal — not executable by clients.';
 
+-- Money INTO a business wallet (Decision #248 (k)): a draft may be funded before it publishes — its
+-- setup asks for money before Publish (#236 (f)) — but an archived business takes nothing in, since
+-- nothing can spend from it until it is restored. Every door that credits a business wallet calls this
+-- with the wallet's business; NULL passes. The row is locked FOR SHARE until the caller's transaction
+-- ends: org.set_workspace_status locks it FOR UPDATE before it counts the archive blockers, so an
+-- archive racing a credit either waits and then sees the money (`wallet_balance`), or wins and the
+-- credit sees `archived`.
+CREATE OR REPLACE FUNCTION org.fn_assert_business_not_archived(p_business uuid)
+RETURNS void
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_status text;
+BEGIN
+    IF p_business IS NULL THEN
+        RETURN;
+    END IF;
+    SELECT b.status INTO v_status FROM org.business_profiles b WHERE b.id = p_business FOR SHARE;
+    IF v_status IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'workspace: not found';
+    END IF;
+    IF v_status = 'archived' THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            MESSAGE = 'business_not_active: this business is archived — restore it first',
+            DETAIL = pg_catalog.jsonb_build_object('business_id', p_business, 'status', v_status)::text;
+    END IF;
+END;
+$$;
+
+COMMENT ON FUNCTION org.fn_assert_business_not_archived(uuid) IS
+'Refuse 55000 business_not_active (org.fn_assert_business_active''s archived wording, DETAIL
+{business_id, status}) when the business is archived; a draft or active business passes, NULL passes,
+P0002 when it does not exist. Locks the business row FOR SHARE. Called by every door that moves money
+into a business wallet. Internal — not executable by clients.';
+
 -- Everything that would be stranded if a team were archived now, in a business's {code, count} shape
 -- and a fixed order — `[]` when it may be archived. The archive door refuses on the first, and the
 -- console detail lists them all before the confirm (Teams C6; TEAMS_AUDIT S3, S4):

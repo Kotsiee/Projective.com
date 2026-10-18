@@ -685,6 +685,12 @@ BEGIN
         IF NOT finance.fn_can_move_wallet_funds(v_to.id) THEN
             RAISE EXCEPTION 'Not authorised to move funds into this wallet.' USING ERRCODE = '42501';
         END IF;
+
+        -- A simulation never reaches a state the real doors refuse: an archived business takes no
+        -- money in (Decision #248 (k)).
+        IF v_to.owner_type = 'business' THEN
+            PERFORM org.fn_assert_business_not_archived(v_to.owner_id);
+        END IF;
     END IF;
 
     v_reason := 'simulated_' || p_type;
@@ -770,7 +776,8 @@ $$;
 COMMENT ON FUNCTION finance.simulate_wallet_transaction(uuid, uuid, bigint, text, text) IS
 'DEVELOPER SIMULATOR — moves REAL money. Refuses unless security.platform_params
 finance_simulation_enabled is true (seeded false; flipping it needs human sign-off), refuses an
-unauthenticated caller, and requires finance.fn_can_move_wallet_funds on every wallet touched.
+unauthenticated caller, and requires finance.fn_can_move_wallet_funds on every wallet touched; never
+credits an archived business (55000 business_not_active).
 Writes genuine finance.transactions lines tagged reason = simulated_<type>, ref_table = simulation.
 Never converts currency. EXECUTE is granted to authenticated only.';
 -- #endregion
@@ -1954,6 +1961,11 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'You can only transfer between your own wallets' USING ERRCODE = '42501';
     END IF;
+    -- Money landing in a business wallet is a contribution: a draft takes it, an archived business
+    -- takes nothing in (Decision #248 (k)).
+    IF v_to.owner_type = 'business' THEN
+        PERFORM org.fn_assert_business_not_archived (v_to.owner_id);
+    END IF;
     IF v_from.currency <> v_to.currency THEN
         RAISE EXCEPTION 'Both wallets must hold % — a transfer is not a currency conversion', v_from.currency
             USING ERRCODE = 'PX409';
@@ -2002,9 +2014,10 @@ COMMENT ON FUNCTION finance.transfer_funds(uuid, uuid, bigint, text, text) IS
 'Move money between two of the caller''s own wallets (their personal wallet and the vaults they belong
 to), same currency only. Leaving a vault needs the withdraw capability and the member''s spending limit;
 leaving a business wallet passes finance.fn_assert_business_spend (KYB, the envelope, the approval
-threshold). Landing needs membership. Idempotent on the attempt key. Refusals: 42501 not allowed ·
-22023 bad input or key · PB404 wallet gone · PX409 different currencies · PK403 KYB · PA403 spending
-limit or approval · PF402 not enough.';
+threshold). Landing needs membership, and never lands in an archived business''s wallet. Idempotent on
+the attempt key. Refusals: 42501 not allowed · 22023 bad input or key · PB404 wallet gone · PX409
+different currencies · 55000 business_not_active (an archived destination, or a source the spend gate
+refuses) · PK403 KYB · PA403 spending limit or approval · PF402 not enough.';
 
 -- Distribute part of a TEAM vault to its members by their agreed stakes
 -- (`finance.contribution_agreements.percent_bp`, active members only). Each share is floored to the

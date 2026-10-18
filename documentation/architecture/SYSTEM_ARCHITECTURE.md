@@ -2984,10 +2984,13 @@ incorrect API flows.
   call raised and rolled its claim back). A success whose amount / currency can NEVER match its
   payment is deterministic, so it is not retried: the claim is completed with
   `reconciliation = 'settlement_mismatch'`, the webhook answers 2xx, ONE `ops.log_entries` error row
-  and a WARNING are written, nothing is credited, and redeliveries replay that outcome. A
-  `payment_intent.succeeded` without `metadata.projective_payment_id` was not created by Projective
+  and a WARNING are written, nothing is credited, and redeliveries replay that outcome. A card
+  captured for a business that is now archived is handled the same way under
+  `reconciliation = 'business_archived'` — an archived business takes no money in (Decision #248 (k)).
+  A `payment_intent.succeeded` without `metadata.projective_payment_id` was not created by Projective
   and is acknowledged as ignored. `finance.v_ops_unledgered_payments` (service role) lists any settled
-  payment without its ledger credit, and every `settlement_mismatch` still awaiting a human.
+  payment without its ledger credit, and every `settlement_mismatch` / `business_archived` still
+  awaiting a human.
 - **Every processor door is idempotent on the Stripe event id** (`stripe:<evt>` in
   `finance.idempotency_keys`, claimed in the same transaction as the effects). Handled events:
   the four above plus `payment_intent.payment_failed`/`.canceled` and

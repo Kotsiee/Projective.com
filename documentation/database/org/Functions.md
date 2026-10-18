@@ -756,6 +756,18 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   through the spend gate inherits it), `finance.place_wallet_order` (a business basket),
   `projects.fn_assert_business_actor` for `hire` (every hiring door), `finance.pay_invoice` and
   `finance.set_invoicing_terms`. Internal. Probe: `supabase/probes/business_lifecycle.sql`.
+- **`fn_assert_business_not_archived(business) → void`** — money INTO a business wallet (Decision
+  #248 (k)): an archived business takes nothing in, a draft or active one does (a draft's setup asks
+  for money before Publish, #236 (f)). Refuses `55000 business_not_active: this business is archived —
+  restore it first` (`fn_assert_business_active`'s archived wording) with DETAIL `{business_id,
+  status}`; `P0002` when the row does not exist; NULL passes. `VOLATILE`: it locks the business row
+  `FOR SHARE` until the caller's transaction ends, so an archive racing a credit
+  (`set_workspace_status` locks `FOR UPDATE` before counting blockers) either waits and then sees the
+  money (`wallet_balance`) or wins and the credit sees `archived`. Called by
+  `finance.begin_card_payment` (`wallet_topup`), `finance.transfer_funds` (a business destination),
+  `finance.create_deposit_rule` and `finance.simulate_wallet_transaction` (a business destination);
+  `finance.settle_card_payment` and `finance.fn_deposit_charge_target` read the same status inline
+  (`../finance/Functions.md`). Internal. Probe: `supabase/probes/business_archived_topup.sql`.
 - **`fn_business_archive_blockers(business) → jsonb`** — `[{code, count}]`, in this order, one entry
   per kind that applies (`[]` when none): `escrow_held` (held escrows it funded) · `live_projects`
   (`client_business_id`, `active`/`on_hold`) · `pending_approvals` (pending, unlapsed spend requests

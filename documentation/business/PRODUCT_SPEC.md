@@ -746,7 +746,11 @@ team members.
   whose setup band the viewer has hidden states that it can't buy, hire or pay yet, with **Publish**
   and the fact that publishing can't be undone (or, for anyone else, to ask the owner to publish
   it). An **archived** Business shows no setup steps — nothing in its wallet can be spent until it
-  is restored, so it is never asked for money. The roster's "% set up" counts the same steps.
+  is restored, so it is never asked for money — and it **takes no money in**: a top-up, a recurring
+  deposit or a member's transfer into its wallet is refused until it is restored, and a card payment
+  that completes after it was archived is not added to the wallet but held for the platform to
+  refund (or to settle once the Business is restored). A **draft** Business still takes money in — Add money is one of its setup steps (Decision
+  #248 (k)). The roster's "% set up" counts the same steps.
 - **Visibility:** a Business takes the same visibility a team does — **public**, **unlisted** or
   **invite-only** — and only a public Business is listed in the directory (Decision #230 (h)). Its
   public page (`/@handle`) opens for anyone while the Business is active and public or unlisted (an

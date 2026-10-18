@@ -73,6 +73,11 @@ export interface BusinessRefusalContext {
 	 */
 	businessStatus?: string | null;
 	/**
+	 * Whether the reader is the business's owner, who publishes and restores it — `business_not_active`
+	 * then names the act for them rather than sending them to themselves ("ask the owner").
+	 */
+	ownsBusiness?: boolean;
+	/**
 	 * Whether the reader manages the business's members (the owner): the one who adds an approver, so
 	 * "ask the owner" would send them to themselves.
 	 */
@@ -228,8 +233,14 @@ export const BUSINESS_REFUSAL_COPY: Readonly<Record<BusinessRefusalCode, Refusal
 		action: null,
 		// The business's Overview publishes a draft and the roster's archived tab restores one; Settings
 		// does neither, so the ask names the act, not a surface — the one act its status needs where the
-		// reader knows it, both where it does not (the checkout) (Decision #248).
+		// reader knows it, both where it does not (the checkout) (Decision #248). The owner is told the
+		// act itself, not to ask the owner (#248 (k): the wallet's refusal reaches the owner too).
 		ask: (ctx) => {
+			if (ctx.ownsBusiness) {
+				if (ctx.businessStatus === "draft") return "Publish it first.";
+				if (ctx.businessStatus === "archived") return "Restore it first.";
+				return "Publish or restore it first.";
+			}
 			if (ctx.businessStatus === "draft") return "Ask the owner to publish it.";
 			if (ctx.businessStatus === "archived") return "Ask the owner to restore it.";
 			return "Ask the owner to publish or restore it.";

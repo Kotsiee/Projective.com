@@ -121,6 +121,10 @@ $$;
 --
 --   wallet_topup — money into a wallet: the payer's own (self-only), or a shared vault the caller
 --                  holds `add_funds` on. The amount is the caller's; the currency must be the wallet's.
+--                  An archived business's wallet takes nothing in (55000 `business_not_active:`,
+--                  org.fn_assert_business_not_archived — Decision #248 (k)); a draft's still does. A
+--                  replay of an attempt a card can still pay (`requires_payment` / `failed`, either
+--                  purpose) into an archived business's wallet is refused the same way.
 --   escrow_lock  — fund a stage's escrow by card (the One-Off "upfront" lock, the Pipeline "Buy Now"):
 --                  the SAME gates projects.fund_stage applies, evaluated now so nobody is charged for
 --                  a lock they could not have made — and again at settlement. The AMOUNT is the sum
@@ -204,6 +208,15 @@ BEGIN
         IF NOT FOUND THEN
             RAISE EXCEPTION 'idempotencyKey: that attempt key is already in use' USING ERRCODE = 'PX409';
         END IF;
+        -- A replay hands back an attempt a card can still pay (`requires_payment`, or `failed`, which a
+        -- retry may still pay); into the wallet of a business archived since it began, it is refused
+        -- as a new attempt is (Decision #248 (k)), so the replay charges nobody.
+        IF v_existing.status IN ('requires_payment', 'failed') THEN
+            SELECT * INTO v_wallet FROM finance.wallets WHERE id = v_existing.wallet_id;
+            IF v_wallet.owner_type = 'business' THEN
+                PERFORM org.fn_assert_business_not_archived(v_wallet.owner_id);
+            END IF;
+        END IF;
         RETURN pg_catalog.to_jsonb(v_existing) || pg_catalog.jsonb_build_object('replayed', true);
     END IF;
 
@@ -232,6 +245,11 @@ BEGIN
             )
         ) THEN
             RAISE EXCEPTION 'auth: you can''t add funds to this wallet' USING ERRCODE = '42501';
+        END IF;
+        -- Nobody is charged for money an archived business could not take in (Decision #248 (k)); a
+        -- draft is funded before it publishes (#236 (f)). Settlement checks again.
+        IF v_wallet.owner_type = 'business' THEN
+            PERFORM org.fn_assert_business_not_archived(v_wallet.owner_id);
         END IF;
         IF pg_catalog.upper(v_wallet.currency) <> v_currency THEN
             RAISE EXCEPTION 'currency: this wallet holds %', pg_catalog.upper(v_wallet.currency)
@@ -620,6 +638,14 @@ $$;
 -- row is written for the event (redeliveries replay the claim and write nothing), the payment stays
 -- unsettled, and finance.v_ops_unledgered_payments lists it until a human resolves it. Every other
 -- acknowledged outcome carries `transaction_id`.
+--
+-- A card captured for a BUSINESS wallet whose business is now archived (archived between the start of
+-- the payment and its settlement — Decision #248 (k)) is the same kind of case: an archived business
+-- takes no money in, so nothing is credited and the money is never silently parked in a wallet nothing
+-- can spend from. Its claim is completed with `reconciliation = 'business_archived'`, one ops error row
+-- is written, the payment stays unsettled, and the ops view lists it until a human refunds it, or
+-- settles it by hand once the business is restored. The business row is locked FOR SHARE before the
+-- credit, so an archive cannot slip in between the check and the credit.
 CREATE OR REPLACE FUNCTION finance.settle_card_payment(
     p_event_id text,
     p_provider_ref text,
@@ -647,6 +673,8 @@ DECLARE
     v_order_id uuid;
     v_order_error text;
     v_unapplied text;
+    v_reconciliation text;
+    v_business_status text;
 BEGIN
     IF NOT finance.fn_claim_stripe_event(p_event_id, 'payment_intent.succeeded') THEN
         -- A completed claim. It is answered with the ledger row it produced; one without (an earlier
@@ -659,16 +687,17 @@ BEGIN
             RETURN finance.fn_stripe_event_replay(p_event_id)
                 || pg_catalog.jsonb_build_object('transaction_id', v_tx);
         END IF;
-        -- A mismatch already handed to reconciliation stays there: replayed and acknowledged, never
-        -- re-processed (which would log it again on every delivery and change nothing).
-        IF EXISTS (
-            SELECT 1 FROM finance.idempotency_keys k
-             WHERE k.key = 'stripe:' || p_event_id
-               AND k.status = 'succeeded'
-               AND k.response ->> 'reconciliation' = 'settlement_mismatch'
-        ) THEN
+        -- A mismatch (or an archived business's payment) already handed to reconciliation stays there:
+        -- replayed and acknowledged, never re-processed (which would log it again on every delivery and
+        -- change nothing).
+        SELECT k.response ->> 'reconciliation' INTO v_reconciliation
+          FROM finance.idempotency_keys k
+         WHERE k.key = 'stripe:' || p_event_id
+           AND k.status = 'succeeded'
+           AND k.response ->> 'reconciliation' IN ('settlement_mismatch', 'business_archived');
+        IF v_reconciliation IS NOT NULL THEN
             RETURN finance.fn_stripe_event_replay(p_event_id)
-                || pg_catalog.jsonb_build_object('reconciliation', 'settlement_mismatch', 'transaction_id', NULL);
+                || pg_catalog.jsonb_build_object('reconciliation', v_reconciliation, 'transaction_id', NULL);
         END IF;
         PERFORM finance.fn_release_stripe_event(p_event_id);
         IF NOT finance.fn_claim_stripe_event(p_event_id, 'payment_intent.succeeded') THEN
@@ -737,6 +766,44 @@ BEGIN
     IF finance.fn_ensure_wallet(v_wallet.owner_type, v_wallet.owner_id, v_payment.currency) IS DISTINCT FROM v_wallet.id THEN
         RAISE EXCEPTION 'wallet: payment % is in % but its wallet is not', v_payment.id, v_payment.currency
             USING ERRCODE = 'PW404';
+    END IF;
+    -- An archived business takes no money in (Decision #248 (k)): a reconciliation case, as a mismatch
+    -- is — nothing credited, the claim completed, one ops row for a human, the payment left unsettled.
+    IF v_wallet.owner_type = 'business' THEN
+        SELECT b.status INTO v_business_status
+          FROM org.business_profiles b WHERE b.id = v_wallet.owner_id FOR SHARE;
+    END IF;
+    IF v_business_status = 'archived' THEN
+        INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+        SELECT
+            'stripe:' || p_event_id,
+            'error',
+            pg_catalog.format('Card payment %s settled %s %s for business %s, which is archived; nothing was credited — refund it, or settle it by hand once the business is restored',
+                v_payment.id, p_amount_received, v_currency, v_wallet.owner_id),
+            pg_catalog.now(),
+            'server',
+            'finance.settle_card_payment',
+            pg_catalog.jsonb_build_object(
+                'event_id', p_event_id,
+                'payment_id', v_payment.id,
+                'provider_ref', p_provider_ref,
+                'purpose', v_payment.purpose,
+                'wallet_id', v_wallet.id,
+                'business_id', v_wallet.owner_id,
+                'amount_received_cents', p_amount_received,
+                'currency_received', v_currency,
+                'reconciliation', 'business_archived'
+            )
+        WHERE NOT EXISTS (
+            SELECT 1 FROM ops.log_entries l
+             WHERE l.scope = 'finance.settle_card_payment' AND l.client_id = 'stripe:' || p_event_id
+        );
+        RAISE WARNING 'finance.settle_card_payment: payment % is for archived business % — acknowledged for reconciliation', v_payment.id, v_wallet.owner_id;
+        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+            'outcome', 'unmatched', 'detail', 'the business this payment is for is archived; held for reconciliation',
+            'reconciliation', 'business_archived',
+            'payment_id', v_payment.id, 'transaction_id', NULL,
+            'amount_received_cents', p_amount_received, 'currency_received', v_currency));
     END IF;
     PERFORM finance.fn_wallet_credit(
         v_wallet.owner_id, v_wallet.owner_type, v_wallet.currency, p_amount_received,
