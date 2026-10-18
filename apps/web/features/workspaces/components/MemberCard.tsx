@@ -423,6 +423,7 @@ export function MemberCard(props: MemberCardProps): JSX.Element {
 				<MetaLine
 					as="span"
 					size="xs"
+					class="wsp-mcard__figure"
 					items={["Workload", { text: load, tabular: true }]}
 				/>
 			</div>

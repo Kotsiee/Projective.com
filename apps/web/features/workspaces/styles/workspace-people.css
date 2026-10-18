@@ -178,6 +178,12 @@ MetaLine says — orientation, not emphasis, and never a four-sided ring around 
 	min-inline-size: 0;
 }
 
+/* The figure keeps its own width on one line: the bar is what gives way, never "Workload · 2 / 5". */
+.wsp-mcard__figure {
+	flex: none;
+	white-space: nowrap;
+}
+
 /* The override counts close the card behind one hairline — present only when the person departs from
 their role. */
 .wsp-mcard__overrides {
@@ -471,6 +477,13 @@ their role. */
 	color: var(--text-secondary);
 }
 
+/* Role, Title and Reports to: fluid inside the field measure, never stretched across a wide panel. */
+.wsp-mdrawer__field {
+	inline-size: 100%;
+	max-inline-size: var(--wsp-field);
+	min-inline-size: 0;
+}
+
 .wsp-mdrawer__section-note {
 	margin: 0;
 	max-inline-size: var(--wsp-prose);
@@ -734,8 +747,10 @@ their role. */
 
 /* #region Responsive */
 @media (max-width: 79.9375rem) {
+	/* Narrower nodes so more siblings sit side by side, still leaving a short name its room beside the
+	32px disclosure Button and its count. */
 	.wsp-chart {
-		--wsp-node-w: 11rem;
+		--wsp-node-w: 11.75rem;
 		--wsp-connector: var(--space-4);
 	}
 }

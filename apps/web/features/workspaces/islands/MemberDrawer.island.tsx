@@ -245,6 +245,7 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 					? (
 						<>
 							<FormControl
+								class="wsp-mdrawer__field"
 								label="Role"
 								hint="Changing it moves every permission that came from it — the overrides below stay."
 							>
@@ -259,7 +260,11 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 									/>
 								)}
 							</FormControl>
-							<FormControl label="Title" hint="What they do here — shown on the org chart.">
+							<FormControl
+								class="wsp-mdrawer__field"
+								label="Title"
+								hint="What they do here — shown on the org chart."
+							>
 								{({ id, describedBy }) => (
 									<InputText
 										id={id}
@@ -273,6 +278,7 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 								)}
 							</FormControl>
 							<FormControl
+								class="wsp-mdrawer__field"
 								label="Reports to"
 								hint="The edge the org chart draws. A loop is refused."
 							>

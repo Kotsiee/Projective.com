@@ -23,6 +23,11 @@ import { OverrideLine, PersonAvatar } from "./MemberCard.tsx";
  *
  * Sorting is the table's own header sort; a row opens the member drawer on click or Enter, and the
  * drawer hands focus back to the row when it closes. Every value comes from `core/members-model.ts`.
+ *
+ * On a narrow table the DataTable hides the LOWEST priority first, so the numbers rank what a reader
+ * keeps longest: Joined goes first, then Stake, then Overrides, and Workload — the one live figure —
+ * last. Member and Role carry no priority and never hide. The declared widths sum to fit the 1440
+ * People reading with the lane open, so every column shows there for every viewer.
  */
 
 // #region Props
@@ -92,7 +97,7 @@ export function MemberTable(props: MemberTableProps): JSX.Element {
 				header: "Overrides",
 				type: "custom",
 				width: 196,
-				priority: 2,
+				priority: 3,
 				firstSortDir: "desc",
 				render: (member) => (
 					<OverrideLine
@@ -114,7 +119,7 @@ export function MemberTable(props: MemberTableProps): JSX.Element {
 				type: "custom",
 				width: 112,
 				align: "end",
-				priority: 3,
+				priority: 2,
 				firstSortDir: "desc",
 				render: (member) => (
 					<Figure text={stakePercent(member.shareBp)} meta={member.shareHeld && "held"} />
@@ -129,7 +134,7 @@ export function MemberTable(props: MemberTableProps): JSX.Element {
 				type: "custom",
 				width: 112,
 				align: "end",
-				priority: 1,
+				priority: 4,
 				firstSortDir: "desc",
 				render: (member) => <Figure text={workloadText(member)} />,
 				sortValue: (member) => member.wiCap > 0 ? member.wi / member.wiCap : member.wi,
@@ -139,8 +144,8 @@ export function MemberTable(props: MemberTableProps): JSX.Element {
 				header: "Joined",
 				type: "date",
 				format: "relative",
-				width: 128,
-				priority: 4,
+				width: 112,
+				priority: 1,
 				value: (member) => member.joinedAt,
 			},
 		);

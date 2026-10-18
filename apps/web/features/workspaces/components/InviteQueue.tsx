@@ -91,7 +91,7 @@ function InviteRow(props: {
 						invite.handle && invite.name && `@${invite.handle}`,
 						invite.email && invite.email !== who && invite.email,
 						offeredRole(invite, roles),
-						invite.sentAt,
+						invite.sentAt && { text: invite.sentAt, tabular: true },
 					]}
 				/>
 				{invite.note && <p class="wsp-invites__note">{invite.note}</p>}

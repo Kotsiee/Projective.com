@@ -258,7 +258,9 @@
 	/* Org chart connectors. There is no `--wsp-connector-color`: it was an exact re-export of
 	`--hairline-color`, so the call sites read that directly. */
 	--wsp-connector: var(--space-5);
-	--wsp-node-w: 13rem;
+	/* A node holds an avatar, a name, the ui icon Button disclosure (32px at `sm`) and its count; at
+	14.5rem a fifteen-character name reads whole beside all three. */
+	--wsp-node-w: 14.5rem;
 	--wsp-tree-indent: var(--space-5);
 
 	/* Progress ring */
