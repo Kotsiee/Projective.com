@@ -2,13 +2,8 @@ import type { ComponentChildren } from "preact";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import WorkspaceLane from "../islands/WorkspaceLane.island.tsx";
 import { resolveRoster, resolveWorkspaceConsole } from "./workspace-ssr.ts";
-import {
-	activeModuleOf,
-	kindFromPath,
-	toModuleTab,
-	toRosterTab,
-	workspaceHandleOf,
-} from "./workspace-model.ts";
+import { activeModuleOf, kindFromPath, toRosterTab, workspaceHandleOf } from "./workspace-model.ts";
+import { resolveSubView } from "./sub-views.ts";
 
 /**
  * workspace-lane-slot — the SSR-idiomatic resolver for the middle-nav lane on any `/teams*` or
@@ -67,7 +62,12 @@ export async function workspaceLaneFor(url: URL, actor: ReadActor): Promise<Comp
 			path={url.pathname}
 			workspace={bootstrap.workspace}
 			activeModule={bootstrap.activeModule}
-			view={toModuleTab(bootstrap.activeModule, kind, url.searchParams.get("view"))}
+			view={resolveSubView(
+				bootstrap.activeModule,
+				kind,
+				bootstrap.workspace.viewerCapabilities,
+				url.searchParams.get("view"),
+			)}
 		/>
 	);
 }

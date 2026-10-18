@@ -5,7 +5,7 @@
  * graph that reaches CSS cannot be loaded by `deno test`: the tone rules below are type errors by
  * design, and only a CSS-free home lets a test assert that they stay errors.
  */
-import type { ComponentChildren, JSX, VNode } from "preact";
+import type { ComponentChildren, JSX, RefObject, VNode } from "preact";
 import type { FieldSize, Severity } from "./mod.ts";
 
 export type ButtonVariant = "filled" | "outlined" | "text" | "link";
@@ -41,6 +41,13 @@ export interface ButtonBaseProps
 	badge?: string | number;
 	/** Stretch to fill the parent's inline size. */
 	fluid?: boolean;
+	/**
+	 * The rendered `<button>`, for a Button that triggers an overlay (`ActionMenu` / `Popover`'s
+	 * `api.ref`). `Button` is a function component, so a plain `ref` stops at the component and never
+	 * reaches the node the overlay anchors to and returns focus to — the `LaneIconButton.triggerRef`
+	 * seam.
+	 */
+	triggerRef?: RefObject<HTMLElement>;
 	children?: ComponentChildren;
 }
 

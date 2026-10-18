@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SplitRuleType } from "../finance/vault.ts";
+import { SpendRefTable, SplitRuleType } from "../finance/vault.ts";
 import { MoneyViewSchema } from "../finance/wallet.ts";
 import { VerificationState } from "./common.ts";
 
@@ -226,6 +226,38 @@ export const PoolEntrySchema = z.object({
 });
 export type PoolEntry = z.infer<typeof PoolEntrySchema>;
 
+/**
+ * What a spend request is for, as the Spend module names it (`finance.fn_spend_ref`, Decision #246):
+ * the basket, stage, ticket, paid revision round, invoice or transfer it was filed against. `href` is
+ * set only when the viewer may open that thing, so the link always lands (root CLAUDE.md §3.11); the
+ * label stands alone otherwise.
+ */
+export const SpendRequestRefSchema = z.object({
+	/** Which kind of thing it is (`finance.spend_approvals.ref_table`). */
+	table: SpendRefTable,
+	/** What it is — the stage, the ticket, the basket's name ("UX and flows"). */
+	label: z.string().max(160),
+	/** A supporting line — the project, or the basket's first line and how many more — or `null`. */
+	detail: z.string().max(160).nullable().default(null),
+	/** Where it opens for this viewer, or `null` when it does not. */
+	href: z.string().max(300).nullable().default(null),
+});
+export type SpendRequestRef = z.infer<typeof SpendRequestRefSchema>;
+
+/**
+ * A spend request's lifecycle as the Spend module shows it (`finance.approval_status`, with `rejected`
+ * read as `declined` and a lapsed pending request as `expired`): `withdrawn` is the requester taking it
+ * back while it waited (Decision #246).
+ */
+export const SpendRequestState = z.enum([
+	"pending",
+	"approved",
+	"declined",
+	"expired",
+	"withdrawn",
+]);
+export type SpendRequestState = z.infer<typeof SpendRequestState>;
+
 /** A spend request raised because a purchase exceeded the requester's limit. */
 export const SpendRequestSchema = z.object({
 	id: z.string().max(64),
@@ -235,13 +267,20 @@ export const SpendRequestSchema = z.object({
 	avatar: z.string().max(400),
 	amount: MoneyViewSchema,
 	reason: z.string().max(160),
-	state: z.enum(["pending", "approved", "declined", "expired"]),
+	state: SpendRequestState,
 	raisedAt: z.string().max(40),
 	/** Who must decide — resolved names, so the requester sees a person not an id. */
 	approvers: z.array(z.string().max(120)),
 	/** Set once decided. */
 	decidedBy: z.string().max(120).nullable().default(null),
+	/** When it was decided — or, for a withdrawn request, when its requester took it back. */
 	decidedAt: z.string().max(40).nullable().default(null),
+	/** When a pending request lapses ("Expires 24 Oct", UTC); `null` once it has left pending. */
+	expiresLabel: z.string().max(60).nullable().default(null),
+	/** What it is for; `null` when the thing it named no longer exists. */
+	ref: SpendRequestRefSchema.nullable().default(null),
+	/** Whether an approved request has been spent (`consumed_at`). */
+	consumed: z.boolean().default(false),
 });
 export type SpendRequest = z.infer<typeof SpendRequestSchema>;
 
@@ -278,17 +317,21 @@ export const SpendLimitSchema = z.object({
 	spent: MoneyViewSchema,
 	/** What is left of the ceiling this period (never below 0); `null` with no ceiling. */
 	remainingMinor: z.number().int().min(0).nullable().default(null),
+	/** What is left of the ceiling this period (server-formatted); `null` with no ceiling. */
+	remaining: MoneyViewSchema.nullable().default(null),
 	/** Fraction of the ceiling consumed, 0–1 — drives the envelope meter without client division. */
 	usedFraction: z.number().min(0).max(1),
 	/** Per-transaction ceiling, or `null`. */
 	perTransactionMinor: z.number().int().min(0).nullable(),
+	/** Per-transaction ceiling (server-formatted); `null` with none. */
+	perTransaction: MoneyViewSchema.nullable().default(null),
 });
 export type SpendLimit = z.infer<typeof SpendLimitSchema>;
 
 /**
  * The spend requests a viewer may see (their own; every request for an approver or a policy manager),
  * split so the queue and its history render without client filtering. `decided` is the 30 most
- * recent approved, declined or expired requests.
+ * recent approved, declined, expired or withdrawn requests.
  */
 export const SpendApprovalsSchema = z.object({
 	pending: z.array(SpendRequestSchema),
@@ -311,6 +354,24 @@ export const BusinessSpendPolicySchema = z.object({
 	 * {@link approvalThresholdMinor} is `null`; `null` when the platform sets none either.
 	 */
 	platformThresholdMinor: z.number().int().min(1).nullable().default(null),
+	/** The platform default, server-formatted in the policy currency; `null` when there is none. */
+	platformThreshold: MoneyViewSchema.nullable().default(null),
+	/**
+	 * The members whose limits and grants the viewer may change — `finance.save_spend_policy`'s own
+	 * rules (never the owner, never oneself, only somebody one outranks), decided in SQL. Empty for a
+	 * viewer who may not edit the policy.
+	 */
+	editableMemberIds: z.array(z.string().max(64)).default([]),
+	/**
+	 * Nobody besides the owner may approve spending, so the owner's own spend over the threshold or a
+	 * limit has nobody to decide it (nobody decides their own request — Decision #239 (e)).
+	 */
+	approverGap: z.boolean().default(false),
+	/**
+	 * Setting a threshold, a ceiling or a capped period would be refused right now by the Business Pro
+	 * plan gate (`pooled_wallet_full`, Decision #230 (e)); clearing one never is.
+	 */
+	limitsPlanGated: z.boolean().default(false),
 	/** Member ids who may approve (`approve_spend`). */
 	approverIds: z.array(z.string().max(64)),
 	/** The same approvers by `@handle`, in the same order. */

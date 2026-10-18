@@ -341,11 +341,14 @@
  * focus, and it does not zoom back out — the user is left on a page they now have to pan. The
  * desktop ramp is a density decision and stays; on a touch viewport the editable text steps up to
  * the document base instead. The CONTROL keeps its height, so nothing reflows around it. It sits
- * after `.ui-field__input`'s `font: inherit`, which would reset it at equal specificity.
+ * after `.ui-field__input`'s `font: inherit`, which would reset it at equal specificity. `.ui-field`
+ * itself steps up too: a Select, MultiSelect or TreeSelect trigger and a picker's value are buttons
+ * that `font: inherit` from the field, so they read at the same 16px as a typed value beside them.
  */
 @media (max-width: 767px) and (pointer: coarse) {
 	.ui-field__input,
-	.ui-field__input::placeholder {
+	.ui-field__input::placeholder,
+	.ui-field {
 		font-size: max(var(--field-font), var(--text-base));
 	}
 }

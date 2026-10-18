@@ -9,8 +9,10 @@ import type { WalletAction } from "@projective/types/finance";
  * only the actions the viewer holds, and a locked one opens with its reason. Pure, so the checkout
  * builds the link and the wallet reads it with the same rules.
  *
- * `back` is an open-redirect surface, so it is allowlisted: a same-origin path under `/checkout` only.
- * Widen {@link BACK_PREFIXES} deliberately when another flow needs a way back.
+ * `back` is an open-redirect surface, so it is allowlisted: a same-origin path under `/checkout`, or a
+ * business console's Billing module (`/businesses/:handle/billing` — its Top up, Decision #247), and
+ * nothing else. Widen {@link BACK_PREFIXES} / {@link BACK_PATTERNS} deliberately when another flow
+ * needs a way back, and give it a label in {@link backLabelFor}.
  */
 
 // #region Params
@@ -19,8 +21,16 @@ export const WALLET_INTENT_PARAM = "do";
 /** The query param naming where "done" returns to. */
 export const WALLET_BACK_PARAM = "back";
 
-/** The paths a wallet intent may return to. */
+/** The path prefixes a wallet intent may return to. */
 const BACK_PREFIXES: readonly string[] = ["/checkout"];
+
+/**
+ * Exact pages a wallet intent may return to: a business's Billing module, its handle spelled as a
+ * handle is (`CreateWorkspaceInputSchema`: 3–40 lowercase letters, digits and inner hyphens), followed
+ * by nothing, a query or a fragment.
+ */
+const BILLING_BACK = /^\/businesses\/[a-z0-9][a-z0-9-]{1,38}[a-z0-9]\/billing(?=$|[?#])/;
+const BACK_PATTERNS: readonly RegExp[] = [BILLING_BACK];
 
 /** The actions a link may open — the wallet's own movement and configuration dialogs. */
 const INTENT_ACTIONS: ReadonlySet<WalletAction> = new Set<WalletAction>([
@@ -49,8 +59,13 @@ export function safeBack(raw: string | null | undefined): string | null {
 	const allowed = BACK_PREFIXES.some((prefix) =>
 		path === prefix ||
 		["/", "?", "#"].includes(path.charAt(prefix.length)) && path.startsWith(prefix)
-	);
+	) || BACK_PATTERNS.some((pattern) => pattern.test(path));
 	return allowed && path.length <= 600 ? path : null;
+}
+
+/** The label of a finished movement's way back to `back` (an allowlisted path): where it returns to. */
+export function backLabelFor(back: string): string {
+	return BILLING_BACK.test(back) ? "Back to billing" : "Back to checkout";
 }
 
 /** The wallet link that opens `action` on `wallet` (`business:<id>`), returning to `back` when done. */

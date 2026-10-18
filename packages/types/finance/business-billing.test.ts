@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { billingPeriod } from "./business-billing.ts";
+import { billingDayOrdinal, billingPeriod } from "./business-billing.ts";
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -18,4 +18,27 @@ Deno.test("billingPeriod: no billing day is the 1st, and January wraps to Decemb
 	assertEquals([iso(p.start), iso(p.end)], ["2027-01-01", "2027-02-01"]);
 	const q = billingPeriod(28, new Date("2027-01-03T00:00:00Z"));
 	assertEquals([iso(q.start), iso(q.end)], ["2026-12-28", "2027-01-28"]);
+});
+
+Deno.test("billingDayOrdinal: every billing day reads as the reader says it", () => {
+	assertEquals(
+		[1, 2, 3, 4, 10, 11, 12, 13, 14, 20, 21, 22, 23, 24, 28].map(billingDayOrdinal),
+		[
+			"1st",
+			"2nd",
+			"3rd",
+			"4th",
+			"10th",
+			"11th",
+			"12th",
+			"13th",
+			"14th",
+			"20th",
+			"21st",
+			"22nd",
+			"23rd",
+			"24th",
+			"28th",
+		],
+	);
 });

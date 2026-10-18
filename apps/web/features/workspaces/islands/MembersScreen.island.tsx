@@ -18,7 +18,14 @@ import {
 	type WorkspaceMember,
 } from "@projective/types/workspace";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
-import { membersView, openInvite, publishDetail } from "../core/workspace-state.ts";
+import { membersViewFor, openInvite, publishDetail, viewOr } from "../core/workspace-state.ts";
+import {
+	MEMBERS_QUEUE,
+	SUB_VIEW_PANEL_ID,
+	subViewIndex,
+	subViewsFor,
+	subViewTabId,
+} from "../core/sub-views.ts";
 import { gridColWidth, workspaceZoom, displayZoom } from "../core/view-state.ts";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 import {
@@ -45,8 +52,10 @@ import { cloneGlyph, MembersGlyph } from "../core/workspace-glyphs.tsx";
  * MembersScreen — the roster, its three presentations, and the outgoing invitation queue.
  *
  * **The three views are one dataset seen three ways**, not three features: cards for scanning people,
- * a table for comparing them, an org chart for reading reporting lines. The switch lives in the footer
- * band (via the `membersView` signal) because it is chrome, so this island only reads it.
+ * a table for comparing them, an org chart for reading reporting lines. The switches are chrome — the
+ * header band's People · Invitations · Org chart tabs, the lane's reading control, the footer rig's
+ * zoom and Org chart toggle — and all of them write ONE sub-view state (`moduleView`), so this island
+ * only reads it, and is the tabs' `tabpanel`.
  *
  * **Permissions are presented, never recomputed.** `permissionFacets()` and `mayManageMember()` come
  * from the SSOT and the server's `viewerCapabilities` is the input — the roster row, the drawer, the
@@ -61,7 +70,7 @@ import { cloneGlyph, MembersGlyph } from "../core/workspace-glyphs.tsx";
 
 export interface MembersScreenProps {
 	workspace: WorkspaceDetail;
-	/** The resolved `?view=` sub-view — `all` (the roster) or `pending` (the invitation queue). */
+	/** The resolved `?view=` sub-view — `people`, `pending` (the invitation queue) or `chart`. */
 	view?: string | null;
 	/** Which module routed here: `members` or the dedicated `invitations` module. */
 	module?: "members" | "invitations";
@@ -108,7 +117,20 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 		ws.members.find((m) => m.id === ws.viewerMemberId) ?? ws.members.find((m) => m.isSelf) ?? null
 	);
 
-	const showPending = (props.view ?? "all") === "pending" || props.module === "invitations";
+	const view = viewOr(props.view ?? null);
+	const showPending = view === MEMBERS_QUEUE || props.module === "invitations";
+	const presentation = membersViewFor(view);
+	/** The header band's tabs over this body — present on the Members module only. */
+	const subViews = props.module === "invitations"
+		? []
+		: subViewsFor("members", ws.kind, ws.viewerCapabilities);
+	const panel = subViews.length > 0
+		? {
+			id: SUB_VIEW_PANEL_ID,
+			role: "tabpanel" as const,
+			"aria-labelledby": subViewTabId(subViewIndex(subViews, view)),
+		}
+		: {};
 
 	const visible = useComputed(() => {
 		const active = activeMembers(ws.members);
@@ -225,7 +247,7 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 
 	return (
 		<div class="wsp" data-kind={ws.kind}>
-			<div class="wsp__stack">
+			<div class="wsp__stack" {...panel}>
 				<section class="wsp-band wsp-band--head" data-i={0}>
 					<div class="wsp-band__inner">
 						<div class="wsp-pagehead">
@@ -331,7 +353,7 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 													)}
 												</p>
 											)
-											: membersView.value === "cards"
+											: presentation === "cards"
 											? (
 												<Grid
 													minChildWidth={`${gridColWidth(displayZoom.value)}px`}
@@ -353,7 +375,7 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 													))}
 												</Grid>
 											)
-											: membersView.value === "table"
+											: presentation === "table"
 											? (
 												<MemberTable
 													members={visible.value}

@@ -230,6 +230,17 @@ export class WorkspaceBackendService {
 		return guarded("spend-decide", actor, (live) => writes.decideSpend(input, live));
 	}
 
+	/**
+	 * Withdraw the caller's own pending spend request (`finance.withdraw_spend_approval` — the requester
+	 * only, while it waits), and answer with the re-read detail.
+	 */
+	static withdrawSpend(
+		input: { workspaceId: string; requestId: string },
+		actor: ReadActor,
+	): Promise<ServiceResult<WorkspaceDetail>> {
+		return guarded("spend-withdraw", actor, (live) => writes.withdrawSpend(input, live));
+	}
+
 	// #endregion
 }
 

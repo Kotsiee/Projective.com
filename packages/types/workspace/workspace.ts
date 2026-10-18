@@ -21,6 +21,7 @@ import {
 	BusinessMoneyTileSchema,
 	BusinessSpendPolicySchema,
 	BusinessViewerCanSchema,
+	SpendPeriod,
 	SplitRuleInputSchema,
 	TeamPayoutPolicySchema,
 } from "./policy.ts";
@@ -638,6 +639,33 @@ export const UpdatePayoutInputSchema = z.object({
 export type UpdatePayoutInput = z.infer<typeof UpdatePayoutInputSchema>;
 
 /**
+ * One member's entry in a spend-policy patch — itself a patch: a key present is a change, so an editor
+ * sends only what moved (restating a stored ceiling is a ceiling being SET, which Business Free refuses).
+ * At least one key besides the member. No key carries a default: a defaulted key would travel as a
+ * change nobody made (Decision #246).
+ */
+export const SpendLimitPatchSchema = z.object({
+	memberId: z.string().max(64),
+	/** Whether they may spend at all (`spend_funds`). */
+	canSpend: z.boolean().optional(),
+	/** The rolling ceiling in minor units; `null` clears it. */
+	limitMinor: z.number().int().min(0).nullable().optional(),
+	/** The per-purchase ceiling in minor units; `null` clears it. */
+	perTransactionMinor: z.number().int().min(0).nullable().optional(),
+	/**
+	 * The window the ceiling rolls over. Changing it carries what the current window counted over and
+	 * restarts the window at the new period's next boundary — never a reset of what has been spent.
+	 */
+	period: SpendPeriod.optional(),
+}).refine(
+	(entry) =>
+		entry.canSpend !== undefined || entry.limitMinor !== undefined ||
+		entry.perTransactionMinor !== undefined || entry.period !== undefined,
+	{ message: "Change something about this member's limit.", path: ["memberId"] },
+);
+export type SpendLimitPatch = z.infer<typeof SpendLimitPatchSchema>;
+
+/**
  * Write a business's spend policy — a patch; a key present is a change. The threshold is at least one
  * minor unit or `null` (off): `0` would read as "every spend needs approval" to one reader and as
  * "disabled" to another, so it is not a value this schema admits.
@@ -649,12 +677,7 @@ export const UpdateSpendInputSchema = z.object({
 	approvalThresholdMinor: z.number().int().min(1).nullable().optional(),
 	approverIds: z.array(z.string().max(64)).optional(),
 	contributorIds: z.array(z.string().max(64)).optional(),
-	limits: z.array(z.object({
-		memberId: z.string().max(64),
-		canSpend: z.boolean(),
-		limitMinor: z.number().int().min(0).nullable(),
-		perTransactionMinor: z.number().int().min(0).nullable(),
-	})).optional(),
+	limits: z.array(SpendLimitPatchSchema).optional(),
 });
 export type UpdateSpendInput = z.infer<typeof UpdateSpendInputSchema>;
 
@@ -756,8 +779,14 @@ export function workspaceHref(
  * The wallet deep link for an entity — the finance page hands off here rather than rendering a second
  * finance UI. Note the `?w=` scope param is a **page-local view filter** on `/wallet`, NOT a session
  * context switch (brief §6.1) — the two switchers stay distinct on purpose.
+ *
+ * `section` lands on one part of that wallet's overview: `"access"` is its spend approvals — the
+ * overview's Upcoming list, where pending requests sit with Review — which is where the retired
+ * `/wallet/access` page now answers (`TARGET_OF.access`), scoped to the entity rather than the
+ * personal wallet (Decision #246).
  */
-export function walletHrefFor(kind: WorkspaceKind, id: string): string {
-	return `/wallet?w=${kind}:${id}`;
+export function walletHrefFor(kind: WorkspaceKind, id: string, section?: "access"): string {
+	const href = `/wallet?w=${kind}:${id}`;
+	return section === "access" ? `${href}#upcoming` : href;
 }
 // #endregion

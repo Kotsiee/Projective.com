@@ -10,15 +10,17 @@ import { detailIo, readDetail } from "./live-detail.ts";
 import type { LiveActor } from "./live-support.ts";
 import type { RawDetail } from "./mappers.ts";
 import { inviteAnswerRefusal, refusalFrom, sentence, splitRefusal } from "./live-support.ts";
-import { memberPatch, spendPatch, splitRuleArgs } from "./live-writes.ts";
+import { memberPatch, spendPatch, splitRuleArgs, withdrawSpend } from "./live-writes.ts";
 import {
 	buildPayoutPolicy,
 	buildSpendPolicy,
+	expiryLabel,
 	type MoneyMember,
 	type RawApproval,
 	type RawBusinessSpend,
 	type RawEnvelope,
 	type SpendMember,
+	spendRefOf,
 	type TeamMoneyFacts,
 	toKyb,
 	toMoneyTile,
@@ -114,6 +116,39 @@ Deno.test("refusalFrom: the status map", () => {
 		409,
 	);
 	assertEquals(refusalFrom({ code: "PGRST301", message: "JWT expired" }).status, 401);
+});
+
+Deno.test("refusalFrom: the withdraw door's refusals (finance.withdraw_spend_approval, #246)", () => {
+	const of = (code: string, message: string) => {
+		const res = refusalFrom({ code, message }, "withdraw_spend_approval");
+		return [res.status, res.message];
+	};
+	assertEquals(of("42501", "request: only the member who asked can withdraw it"), [
+		403,
+		"Only the member who asked can withdraw it.",
+	]);
+	assertEquals(of("PC409", "request: it has already been withdrawn"), [
+		409,
+		"It has already been withdrawn.",
+	]);
+	assertEquals(of("PC409", "request: it has already been decided"), [
+		409,
+		"It has already been decided.",
+	]);
+	assertEquals(of("PB404", "request: not found"), [404, "That request doesn't exist."]);
+	assertEquals(of("42501", "auth: sign in first")[0], 401);
+});
+
+Deno.test("withdrawSpend: a malformed id is refused before any call, keyed to its field", async () => {
+	// No database behind this actor: a call would throw, so passing proves nothing was called.
+	const actor = { userId: "u", accessToken: "test" } as unknown as LiveActor;
+	const id = "5f0c2a8e-1d3b-4c6e-9a7f-2b4d6e8f0a1c";
+	const badBusiness = await withdrawSpend({ workspaceId: "helia", requestId: id }, actor);
+	assertEquals([badBusiness.ok, badBusiness.status], [false, 404]);
+	assert(badBusiness.errors?.workspaceId);
+	const badRequest = await withdrawSpend({ workspaceId: id, requestId: "r-1" }, actor);
+	assertEquals([badRequest.ok, badRequest.status], [false, 404]);
+	assert(badRequest.errors?.requestId);
 });
 
 Deno.test("refusalFrom: anything unexplained is a generic 500 that never echoes the database", () => {
@@ -233,6 +268,49 @@ Deno.test("spendPatch maps the spend policy onto save_spend_policy's keys", () =
 			limits: [{ member_id: "m2", can_spend: true, limit_minor: 500, per_transaction_minor: null }],
 		},
 	);
+});
+
+Deno.test("spendPatch: a limits entry carries only the keys that moved (a restated ceiling is a ceiling set)", () => {
+	assertEquals(
+		spendPatch({
+			workspaceId: "b",
+			limits: [
+				{ memberId: "m1", canSpend: true },
+				{ memberId: "m2", period: "weekly" },
+				{ memberId: "m3", limitMinor: null },
+			],
+		}).limits,
+		[
+			{ member_id: "m1", can_spend: true },
+			{ member_id: "m2", period: "weekly" },
+			{ member_id: "m3", limit_minor: null },
+		],
+	);
+});
+
+Deno.test("spendPatch's limit keys are the ones finance.save_spend_policy reads", () => {
+	const sql = Deno.readTextFileSync(
+		new URL(
+			"../../../../supabase/migrations/00001210_functions_finance_kyc_wallet.sql",
+			import.meta.url,
+		),
+	);
+	const start = sql.indexOf("CREATE OR REPLACE FUNCTION finance.save_spend_policy(");
+	assert(start >= 0, "finance.save_spend_policy is no longer defined");
+	const body = sql.slice(start, sql.indexOf("$$;", start));
+	const sent = spendPatch({
+		workspaceId: "b",
+		limits: [{
+			memberId: "m",
+			canSpend: true,
+			limitMinor: 1,
+			perTransactionMinor: 1,
+			period: "total",
+		}],
+	}).limits as Record<string, unknown>[];
+	for (const key of Object.keys(sent[0])) {
+		assert(body.includes(`l ? '${key}'`) || body.includes(`l->>'${key}'`), key);
+	}
 });
 
 // #endregion
@@ -540,10 +618,16 @@ Deno.test("buildSpendPolicy: the SQL's envelopes, approvers and queue — mapped
 		people,
 		"verified",
 		NOW,
+		{ businessId: "b-1", handle: "heliafinance" },
 	);
 	assertEquals(policy.currency, "USD");
 	assertStrictEquals(policy.approvalThresholdMinor, null);
 	assertStrictEquals(policy.platformThresholdMinor, 50_000);
+	assertEquals(policy.platformThreshold?.minor, 50_000);
+	assertEquals(
+		[policy.editableMemberIds, policy.approverGap, policy.limitsPlanGated],
+		[[], false, false],
+	);
 	assertEquals([policy.approverIds, policy.approverHandles], [["m-owner"], ["kwame"]]);
 	assertEquals([policy.contributorIds, policy.contributorHandles], [["m-owner", "m-lead"], [
 		"kwame",
@@ -573,10 +657,164 @@ Deno.test("buildSpendPolicy: the SQL's envelopes, approvers and queue — mapped
 	assertEquals(policy.approvals.pending.map((r) => [r.id, r.state, r.memberId, r.approvers]), [
 		["s2", "pending", "m-lead", ["Kwame"]],
 	]);
+	assertEquals(
+		policy.limits.map((l) => [l.perTransaction?.minor ?? null, l.remaining?.minor ?? null]),
+		[[null, null], [1000, 1700]],
+	);
 	assertEquals(policy.approvals.decided.map((r) => [r.id, r.state, r.decidedBy]), [
 		["s1", "declined", "Kwame"],
 	]);
 	assertStrictEquals(policy.verificationPrompt, null);
+});
+
+Deno.test("buildSpendPolicy: the editor's flags and each request's ref are the SQL's", () => {
+	const people = new Map([["u-lead", { username: "sam", name: "Sam", avatar: null }]]);
+	const row: RawApproval = {
+		id: "s9",
+		requested_by: "u-lead",
+		amount_minor: 1_200_000,
+		currency: "USD",
+		reason: "Stage",
+		status: "pending",
+		approver_user_id: null,
+		decided_at: null,
+		expires_at: "2026-10-04T09:00:00Z",
+		created_at: "2026-09-27T09:00:00Z",
+		ref_table: "project_stages",
+		ref_id: "ps-1",
+		ref: {
+			title: "UX and flows",
+			project_title: "Brand sprint",
+			project_slug: "prj-abc",
+			stage_slug: "stg-def",
+			opens: true,
+		},
+		consumed: false,
+	};
+	const withdrawn: RawApproval = {
+		...row,
+		id: "s8",
+		status: "withdrawn",
+		decided_at: "2026-09-27T10:00:00Z",
+		ref: {},
+	};
+	const policy = buildSpendPolicy(
+		{
+			currency: "USD",
+			approval_threshold_minor: null,
+			platform_threshold_minor: null,
+			approver_user_ids: [],
+			contributor_user_ids: [],
+			limits: [],
+			contributed: [],
+			contributions: [],
+			debits: [],
+			approvals: { pending: [row], decided: [withdrawn] },
+			editable_member_ids: ["m-lead", "m-stranger"],
+			approver_gap: true,
+			limits_plan_gated: true,
+		},
+		spendMembers,
+		people,
+		"verified",
+		NOW,
+		{ businessId: "b-1", handle: "heliafinance" },
+	);
+	assertEquals(policy.editableMemberIds, ["m-lead"]);
+	assertEquals([policy.approverGap, policy.limitsPlanGated], [true, true]);
+	assertStrictEquals(policy.platformThreshold, null);
+	const [pending] = policy.approvals.pending;
+	assertEquals(pending.expiresLabel, "Expires 4 Oct");
+	assertEquals(pending.ref, {
+		table: "project_stages",
+		label: "UX and flows",
+		detail: "Brand sprint",
+		href: "/projects/prj-abc/stg-def",
+	});
+	const [gone] = policy.approvals.decided;
+	assertEquals([gone.state, gone.expiresLabel, gone.ref], ["withdrawn", null, null]);
+});
+
+Deno.test("spendRefOf: each ref table is named, and linked only where the viewer may open it", () => {
+	const ctx = { businessId: "b-1", handle: "heliafinance" };
+	const project = { project_title: "Brand sprint", project_slug: "prj-abc", opens: true };
+	assertEquals(
+		spendRefOf(
+			"baskets",
+			"bk-1",
+			{ title: "Main Basket", item: "Logo kit", items: 3, opens: true },
+			ctx,
+			NOW,
+		),
+		{
+			table: "baskets",
+			label: "Main Basket",
+			detail: "Logo kit and 2 more",
+			href: "/checkout?basket=bk-1&owner=business%3Ab-1",
+		},
+	);
+	assertEquals(
+		spendRefOf("tickets", "t-1", { ...project, title: "Hero", ticket_slug: "tkt-x" }, ctx, NOW)
+			?.href,
+		"/projects/prj-abc?tkv=tkt-x",
+	);
+	assertEquals(
+		spendRefOf(
+			"revisions",
+			"r-1",
+			{
+				...project,
+				title: "Hero",
+				stage_title: "Visual",
+				stage_slug: "stg-y",
+				ticket_slug: "tkt-x",
+			},
+			ctx,
+			NOW,
+		),
+		{
+			table: "revisions",
+			label: "Revision of Hero",
+			detail: "Visual · Brand sprint",
+			href: "/projects/prj-abc?tkv=tkt-x",
+		},
+	);
+	assertEquals(
+		spendRefOf(
+			"project_stages",
+			"s-1",
+			{ ...project, title: "UX", stage_slug: "stg-y", opens: false },
+			ctx,
+			NOW,
+		)?.href,
+		null,
+	);
+	const invoice = {
+		invoice_type: "consolidated_monthly",
+		period_start: "2026-09-01T00:00:00Z",
+		due_at: "2026-10-15T00:00:00Z",
+	};
+	assertEquals(spendRefOf("invoices", "i-1", { ...invoice, opens: true }, ctx, NOW), {
+		table: "invoices",
+		label: "Invoice for September 2026",
+		detail: "Due 15 Oct",
+		href: "/businesses/heliafinance/billing",
+	});
+	assertEquals(spendRefOf("invoices", "i-1", { ...invoice, opens: false }, ctx, NOW)?.href, null);
+	assertEquals(spendRefOf("transfers", "w-2", { owner_type: "team", opens: true }, ctx, NOW), {
+		table: "transfers",
+		label: "Transfer",
+		detail: "To a team wallet",
+		href: "/wallet?w=business:b-1",
+	});
+	assertStrictEquals(spendRefOf("transfers", "w-2", {}, ctx, NOW), null);
+	assertStrictEquals(spendRefOf("orders", "o-1", { title: "x", opens: true }, ctx, NOW), null);
+});
+
+Deno.test("expiryLabel: a future expiry in UTC; none once past", () => {
+	assertEquals(expiryLabel("2026-10-04T23:30:00Z", NOW), "Expires 4 Oct");
+	assertStrictEquals(expiryLabel("2026-09-01T00:00:00Z", NOW), null);
+	assertStrictEquals(expiryLabel(null, NOW), null);
 });
 
 Deno.test("toSpendLimit: no ceiling has no remainder; a drifted period reads monthly; the fraction is clamped", () => {

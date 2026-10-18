@@ -32,7 +32,10 @@ CREATE TYPE finance.vault_capability AS ENUM (
 
 CREATE TYPE finance.split_rule_type AS ENUM ('co_op', 'finders_fee', 'benevolent_dictator');
 
-CREATE TYPE finance.approval_status AS ENUM ('pending', 'approved', 'rejected', 'expired');
+-- A spend request's lifecycle (finance.spend_approvals): `pending` until an approver decides it
+-- (`approved` / `rejected`), it lapses (`expired`), or its requester takes it back (`withdrawn`,
+-- finance.withdraw_spend_approval — BU2, Decision #246). Every state but `pending` is terminal.
+CREATE TYPE finance.approval_status AS ENUM ('pending', 'approved', 'rejected', 'expired', 'withdrawn');
 
 CREATE TYPE finance.vault_action AS ENUM ('add_funds', 'spend', 'distribute', 'withdraw', 'transfer');
 

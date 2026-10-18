@@ -1,7 +1,8 @@
 import type { ComponentChildren, JSX, VNode } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { Alert, Dialog } from "@projective/ui/feedback";
+import { Alert, CommitReviewBody, Dialog } from "@projective/ui/feedback";
+import "@ui/feedback/styles/commit-review.css";
 import {
 	Button,
 	FormControl,
@@ -651,27 +652,18 @@ function MoveDialog(
 			)}
 
 			{(step.value === "review" || step.value === "sending" || step.value === "error") && (
-				<div class="wlt-review">
-					<p class="wlt-dlg__amount">{figure}</p>
-					<dl class="wlt-dlg__facts">
-						<div class="wlt-dlg__fact">
-							<dt>From</dt>
-							<dd>{fromLabel}</dd>
-						</div>
-						<div class="wlt-dlg__fact">
-							<dt>To</dt>
-							<dd>{toLabel}</dd>
-						</div>
-						{action === "transfer" && note.value.trim() && (
-							<div class="wlt-dlg__fact">
-								<dt>Note</dt>
-								<dd>{note.value.trim()}</dd>
-							</div>
-						)}
-					</dl>
-					<p class="wlt-dlg__warn">{CONSEQUENCE[action]}</p>
-					{step.value === "error" && <Alert severity="danger">{outcome.value}</Alert>}
-				</div>
+				<CommitReviewBody
+					total={figure}
+					rows={[
+						{ label: "From", value: fromLabel },
+						{ label: "To", value: toLabel },
+						...(action === "transfer" && note.value.trim()
+							? [{ label: "Note", value: note.value.trim() }]
+							: []),
+					]}
+					consequence={CONSEQUENCE[action]}
+					notice={step.value === "error" && <Alert severity="danger">{outcome.value}</Alert>}
+				/>
 			)}
 
 			{step.value === "card" && handoff.value && (

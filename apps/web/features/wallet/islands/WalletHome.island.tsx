@@ -32,7 +32,7 @@ import {
 	withLedgerFilters,
 } from "../core/wallet-model.ts";
 import { openWalletDialog, walletFlowLive, walletOverviewLive } from "../core/wallet-state.ts";
-import { WALLET_INTENT_PARAM, walletIntentOf } from "../core/wallet-intent.ts";
+import { backLabelFor, WALLET_INTENT_PARAM, walletIntentOf } from "../core/wallet-intent.ts";
 import type {
 	ActivityView,
 	FundingView,
@@ -347,7 +347,7 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 	useEffect(() => {
 		const url = new URL(location.href);
 		const intent = walletIntentOf(url.searchParams);
-		if (intent.back) returnTo.value = { href: intent.back, label: "Back to checkout" };
+		if (intent.back) returnTo.value = { href: intent.back, label: backLabelFor(intent.back) };
 		if (!url.searchParams.has(WALLET_INTENT_PARAM)) return;
 		url.searchParams.delete(WALLET_INTENT_PARAM);
 		history.replaceState(history.state, "", url);

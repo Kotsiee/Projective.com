@@ -91,6 +91,23 @@ Deno.test("the sentences name what the caller knows", () => {
 		BUSINESS_REFUSAL_COPY.kyb_required.sentence({ business: "Atlas Labs", kybStatus: "pending" }),
 		"Atlas Labs' verification is still in review. You can pay once it clears.",
 	);
+	// An approver is told what waits for THEM — deciding, not paying (Decision #246).
+	assertEquals(
+		BUSINESS_REFUSAL_COPY.kyb_required.sentence({
+			business: "Atlas Labs",
+			kybStatus: "pending",
+			deciding: true,
+		}),
+		"Atlas Labs' verification is still in review. You can decide spend requests once it clears.",
+	);
+	assertEquals(
+		BUSINESS_REFUSAL_COPY.kyb_required.sentence({ business: "Atlas Labs", deciding: true }),
+		"Atlas Labs needs to be verified before spend requests can be decided.",
+	);
+	assertEquals(
+		BUSINESS_REFUSAL_COPY.kyb_required.sentence({ kybStatus: "rejected" }),
+		"This business's verification needs attention before its wallet can pay for anything.",
+	);
 	assertEquals(
 		BUSINESS_REFUSAL_COPY.kyb_required.action?.({ kybStatus: "pending" }),
 		"See verification",

@@ -3,14 +3,15 @@ import type { ReadActor } from "@server/services/read-actor.ts";
 import WorkspaceFooterRig from "../islands/WorkspaceFooterRig.island.tsx";
 import { resolveRoster, resolveWorkspaceConsole } from "./workspace-ssr.ts";
 import { activeModuleOf, kindFromPath, workspaceHandleOf } from "./workspace-model.ts";
+import { resolveSubView } from "./sub-views.ts";
 
 /**
  * workspace-footer-slot — the SSR-idiomatic resolver for the middle-nav FOOTER band across the
  * workspace surface (mirrors `catalogueFooterFor` / `walletFooterFor`).
  *
  * The band is resolved on BOTH the index (density + New) and inside a console (view switching +
- * Invite / Save / Settings), because in each case the controls belong to the chrome rather than the
- * body. `/teams/create` is the index — its create modal opens over the roster — so it gets the index rig.
+ * Invite / Settings / Discard + Save), because in each case the controls belong to the chrome rather
+ * than the body. `/teams/create` is the index — its create modal opens over the roster — so it gets the index rig.
  *
  * The capability flags are resolved HERE, server-side, and passed in: the rig decides an action's
  * PRESENCE from them, and a capability check that ran on the client would flash controls the viewer
@@ -35,12 +36,20 @@ export async function workspaceFooterFor(url: URL, actor: ReadActor): Promise<Co
 	const bootstrap = await resolveWorkspaceConsole(kind, handle, requested, actor, url);
 	if (!bootstrap) return null;
 
-	const held = new Set(bootstrap.workspace.viewerCapabilities);
+	const capabilities = bootstrap.workspace.viewerCapabilities;
+	const held = new Set(capabilities);
 	return (
 		<WorkspaceFooterRig
 			kind={kind}
 			workspaceHandle={bootstrap.workspace.handle}
 			module={bootstrap.activeModule}
+			view={resolveSubView(
+				bootstrap.activeModule,
+				kind,
+				capabilities,
+				url.searchParams.get("view"),
+			)}
+			capabilities={capabilities}
 			canInvite={held.has("invite_members")}
 			canManageMoney={held.has("manage_finances")}
 			canManageSettings={held.has("manage_settings")}

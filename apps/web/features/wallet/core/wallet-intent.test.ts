@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { safeBack, walletIntentHref, walletIntentOf } from "./wallet-intent.ts";
+import { backLabelFor, safeBack, walletIntentHref, walletIntentOf } from "./wallet-intent.ts";
 
 /**
  * A wallet intent link opens one action on one wallet and returns to the checkout that sent it
@@ -45,4 +45,43 @@ Deno.test("an unsafe back is dropped from the link, and an unknown action is no 
 	assertEquals(walletIntentOf(new URLSearchParams("do=drain_everything")).action, null);
 	assertEquals(walletIntentOf(new URLSearchParams("do=request_spend")).action, null);
 	assertEquals(walletIntentOf(new URLSearchParams("")), { action: null, back: null });
+});
+
+Deno.test("a business's Billing module is a way back — exactly that page, nothing beside it (BU3, #247)", () => {
+	assertEquals(safeBack("/businesses/heliafinance/billing"), "/businesses/heliafinance/billing");
+	assertEquals(
+		safeBack("/businesses/helia-finance/billing?x=1"),
+		"/businesses/helia-finance/billing?x=1",
+	);
+	assertEquals(safeBack("/businesses/abc/billing#pay"), "/businesses/abc/billing#pay");
+	for (
+		const raw of [
+			"/businesses/heliafinance/spend",
+			"/businesses/heliafinance/billing/more",
+			"/businesses/heliafinance/billingx",
+			"/businesses//billing",
+			"/businesses/ab/billing",
+			"/businesses/Helia/billing",
+			"/businesses/helia finance/billing",
+			"/businesses/-helia/billing",
+			"/businesses/heliafinance",
+			"https://evil.com/businesses/heliafinance/billing",
+			"//evil.com/businesses/heliafinance/billing",
+			"/teams/heliafinance/billing",
+		]
+	) {
+		assertEquals(safeBack(raw), null, raw);
+	}
+});
+
+Deno.test("the way back is named for where it returns", () => {
+	assertEquals(backLabelFor("/checkout/payment?basket=x"), "Back to checkout");
+	assertEquals(backLabelFor("/businesses/heliafinance/billing"), "Back to billing");
+});
+
+Deno.test("the Billing module's Top up round-trips the business wallet, top_up and its way back", () => {
+	const back = "/businesses/heliafinance/billing";
+	const url = new URL(walletIntentHref(BUSINESS, "top_up", back), "https://projective.test");
+	assertEquals(url.searchParams.get("w"), BUSINESS);
+	assertEquals(walletIntentOf(url.searchParams), { action: "top_up", back });
 });

@@ -27,6 +27,7 @@ import {
 	DEV_NOTIFICATIONS,
 	DEV_BASKET_SCENARIOS,
 	DEV_CHECKOUT_GATES,
+	DEV_SPEND_REQUESTS,
 	DEV_PROMO_DISMISSALS,
 	DEV_DISCOVERY_VIEWERS,
 	DEV_DISCOVERY_ACTIVITIES,
@@ -764,6 +765,21 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.checkoutGate}
 						disabled={!o.enabled}
 						onChange={(checkoutGate) => patchDevContext({ checkoutGate })}
+					/>
+				</Field>
+
+				{
+					/* A business Spend module's request queue (Decision #246). Somebody else's request, one's
+				    own, the decided history and a KYB-locked approver each wait on other people or Stripe,
+				    so the queue substitutes made-up rows (no controls) here; decisions still reach the server. */
+				}
+				<Field label="Spend requests" hint="business spend queue">
+					<Segment
+						name="Spend requests"
+						options={DEV_SPEND_REQUESTS}
+						value={o.spendRequests}
+						disabled={!o.enabled}
+						onChange={(spendRequests) => patchDevContext({ spendRequests })}
 					/>
 				</Field>
 

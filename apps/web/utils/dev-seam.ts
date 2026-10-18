@@ -246,6 +246,21 @@ export type DevCheckoutGate =
 	| "kyb_required";
 
 /**
+ * The simulated spend-request queue on a business's Spend module (Decision #246): `empty` no requests,
+ * `others_pending` two waiting on the viewer, `own_pending` the viewer's own (Withdraw),
+ * `history` the decided tab in every terminal state (withdrawn included), `kyb_approver` the viewer as
+ * an approver of a business still in KYB. `auto` shows the server's queue. Client-side only: made-up
+ * rows offer no control, and every decision and withdrawal still goes to the server.
+ */
+export type DevSpendRequests =
+	| "auto"
+	| "empty"
+	| "others_pending"
+	| "own_pending"
+	| "history"
+	| "kyb_approver";
+
+/**
  * The simulated saved set (`/saved` and every star / save control, Decision #180): `empty` answers
  * nothing saved; `many` answers saved items of every kind, in two collections, with follows. `auto`
  * uses the real saved set. Client-side only: the thin `SavedService` substitutes its answers, and
@@ -497,6 +512,8 @@ export interface DevSeamState {
 	basketScenario?: DevBasketScenario;
 	/** The simulated business checkout gate. Optional like `walletAurora`; absent reads as `auto`. */
 	checkoutGate?: DevCheckoutGate;
+	/** The simulated Spend request queue. Optional like `walletAurora`; absent reads as `auto`. */
+	spendRequests?: DevSpendRequests;
 	/** The simulated saved set. Optional like `walletAurora`; absent reads as `auto`. */
 	saved?: DevSaved;
 	/** The simulated promo dismissals. Optional like `walletAurora`; absent reads as `auto`. */
@@ -688,6 +705,14 @@ const CHECKOUT_GATES: readonly DevCheckoutGate[] = [
 	"pool_short",
 	"kyb_required",
 ];
+const SPEND_REQUEST_SIMS: readonly DevSpendRequests[] = [
+	"auto",
+	"empty",
+	"others_pending",
+	"own_pending",
+	"history",
+	"kyb_approver",
+];
 const SAVED_SIMS: readonly DevSaved[] = ["auto", "empty", "many"];
 const PROMO_DISMISSALS: readonly DevPromoDismissal[] = ["auto", "visible", "dismissed"];
 const DISCOVERY_VIEWERS: readonly DevDiscoveryViewer[] = ["auto", "no_history", "no_signals"];
@@ -772,6 +797,7 @@ export function readDevSeam(): DevSeamState | null {
 		notifications: coerce(ds.devNotifications, NOTIFICATION_SIMS, "auto"),
 		basketScenario: coerce(ds.devBasketScenario, BASKET_SCENARIOS, "auto"),
 		checkoutGate: coerce(ds.devCheckoutGate, CHECKOUT_GATES, "auto"),
+		spendRequests: coerce(ds.devSpendRequests, SPEND_REQUEST_SIMS, "auto"),
 		saved: coerce(ds.devSaved, SAVED_SIMS, "auto"),
 		promoDismissal: coerce(ds.devPromoDismissal, PROMO_DISMISSALS, "auto"),
 		discoveryViewer: coerce(ds.devDiscoveryViewer, DISCOVERY_VIEWERS, "auto"),

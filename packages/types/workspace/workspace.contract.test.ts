@@ -41,6 +41,8 @@ import {
 	localHandleRefusal,
 	TeamEngagementSchema,
 	UpdatePayoutInputSchema,
+	UpdateSpendInputSchema,
+	walletHrefFor,
 	WORKSPACE_HANDLE_MAX,
 	WORKSPACE_HANDLE_MIN,
 	WORKSPACE_HANDLE_PATTERN,
@@ -537,7 +539,10 @@ Deno.test("the detail's envelopes and the preview's come from ONE helper, so a d
 	const helper = functionBody(wallet, "finance.fn_business_envelopes");
 	for (const key of Object.keys(SpendLimitSchema.shape)) {
 		// Faces and server-formatted MoneyViews are resolved by the service, not the definer.
-		if (["handle", "name", "avatar", "limit", "spent", "memberId"].includes(key)) continue;
+		if (
+			["handle", "name", "avatar", "limit", "spent", "remaining", "perTransaction", "memberId"]
+				.includes(key)
+		) continue;
 		assert(
 			helper.includes(`'${snake(key)}'`),
 			`fn_business_envelopes no longer answers '${snake(key)}'`,
@@ -565,6 +570,13 @@ Deno.test("org.get_workspace_detail answers the business blocks the console maps
 			"'kyb'",
 			"'requirements_due'",
 			"'archive_blockers'",
+			// The Spend editor's flags and each request's ref (BU2, Decision #246).
+			"'editable_member_ids'",
+			"'approver_gap'",
+			"'limits_plan_gated'",
+			"'ref_table'",
+			"'consumed'",
+			"finance.fn_spend_ref(",
 		]
 	) {
 		assert(detailBody.includes(key), `get_workspace_detail no longer answers ${key}`);
@@ -575,6 +587,79 @@ Deno.test("org.get_workspace_detail answers the business blocks the console maps
 			`get_workspace_detail never answers KYB requirement '${code}'`,
 		);
 	}
+});
+
+Deno.test("a draft period is read by the save, the preview and the envelope helper alike", () => {
+	// The expression each one reads the DRAFT's period with — not the output key `'period'`, which
+	// the envelope helper answered before it read any draft.
+	for (
+		const [name, reads] of [
+			["finance.save_spend_policy", "l ? 'period'"],
+			["finance.preview_spend_envelope", "l ? 'period'"],
+			["finance.fn_business_envelopes", "p.l->>'period'"],
+		]
+	) {
+		assert(functionBody(wallet, name).includes(reads), `${name} no longer reads a draft period`);
+	}
+});
+
+Deno.test("the Spend editor's disabled states mirror rules save_spend_policy still states (#246 (h))", () => {
+	const save = functionBody(wallet, "finance.save_spend_policy");
+	// `grantView` and the can-spend toggle read `viewer.capabilities` — the detail's
+	// org.fn_member_capabilities, the very set the save checks a grant against (`v_actor`).
+	assert(save.includes("v_actor := org.fn_member_capabilities('business', p_business_id, v_uid)"));
+	assert(save.includes("IF v_want AND NOT (v_cap = ANY (v_actor))"), "grant-what-you-hold (sets)");
+	assert(save.includes("IF v_want AND NOT ('spend_funds' = ANY (v_actor))"), "can-spend toggle");
+	assert(
+		functionBody(entities, "org.get_workspace_detail").includes("'capabilities', to_jsonb(v_caps)"),
+	);
+	// SpendLimitRow's plan locks: typing a ceiling where none is stored SETS one (Business Pro), and so
+	// does moving the window of a row that keeps one; clearing either never is.
+	assert(save.includes("(l ? 'limit_minor' AND v_limit IS NOT NULL)"), "cap lock");
+	assert(
+		save.includes("(l ? 'per_transaction_minor' AND v_per_tx IS NOT NULL)"),
+		"per-purchase lock",
+	);
+	assert(
+		save.includes("v_period IS DISTINCT FROM COALESCE(v_stored_period, 'monthly')"),
+		"period lock",
+	);
+});
+
+Deno.test("UpdateSpendInputSchema: a limits entry is a patch — any one key, never none", () => {
+	const entry = (extra: Record<string, unknown>) =>
+		UpdateSpendInputSchema.safeParse({ workspaceId: "b", limits: [{ memberId: "m", ...extra }] });
+	assert(entry({ canSpend: true }).success);
+	assert(entry({ period: "weekly" }).success);
+	assert(entry({ limitMinor: null }).success);
+	assert(!entry({}).success, "an entry that changes nothing is refused");
+	assert(!entry({ period: "daily" }).success);
+	const parsed = UpdateSpendInputSchema.parse({
+		workspaceId: "b",
+		limits: [{ memberId: "m", canSpend: false }],
+	});
+	assertEquals(parsed.limits, [{ memberId: "m", canSpend: false }], "no key is defaulted in");
+});
+
+Deno.test("UpdateSpendInputSchema: a figure past what JSON carries exactly is a field error, not a 500", () => {
+	// Zod 4's `.int()` admits safe integers only, so nothing the database's bigint cast could overflow
+	// (or that JSON would round) reaches `save_spend_policy`: it is a field-keyed 422 at the route.
+	const over = Number.MAX_SAFE_INTEGER + 1;
+	const keyOf = (input: Record<string, unknown>) => {
+		const parsed = UpdateSpendInputSchema.safeParse({ workspaceId: "b", ...input });
+		return parsed.success ? null : [...new Set(parsed.error.issues.map((i) => i.path.join(".")))];
+	};
+	assertEquals(keyOf({ approvalThresholdMinor: over }), ["approvalThresholdMinor"]);
+	assertEquals(keyOf({ limits: [{ memberId: "m", limitMinor: over }] }), ["limits.0.limitMinor"]);
+	assertEquals(keyOf({ limits: [{ memberId: "m", perTransactionMinor: 1e19 }] }), [
+		"limits.0.perTransactionMinor",
+	]);
+	assertEquals(keyOf({ approvalThresholdMinor: Number.MAX_SAFE_INTEGER }), null);
+});
+
+Deno.test("walletHrefFor: the access section lands on the entity wallet's approvals", () => {
+	assertEquals(walletHrefFor("business", "b-1"), "/wallet?w=business:b-1");
+	assertEquals(walletHrefFor("business", "b-1", "access"), "/wallet?w=business:b-1#upcoming");
 });
 
 Deno.test("WorkspaceDetailSchema: the business blocks default to absent for a team", () => {

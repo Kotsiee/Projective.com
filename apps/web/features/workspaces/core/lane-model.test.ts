@@ -7,6 +7,7 @@ import type {
 	WorkspaceSummary,
 } from "@projective/types/workspace";
 import { importWithoutGlyphs, type RegistryApi } from "./registry-import.testing.ts";
+import { MEMBERS_READINGS } from "./sub-views.ts";
 
 /**
  * The workspace lane's four zones (Teams work order L1), pinned at the pure model the expanded lane
@@ -40,7 +41,12 @@ interface Zones {
 			active: string | null;
 			activeInMore: boolean;
 		};
-	context: { control: string; label: string; options: { value: string }[]; search: boolean } | null;
+	context: {
+		control: string;
+		label: string;
+		options: { value: string; label: string }[];
+		search: boolean;
+	} | null;
 	footer: { create: Create | null; note: string | null };
 }
 
@@ -214,7 +220,7 @@ function everyComposition(): Zones[] {
 		}
 		for (const capabilities of [OWNER, NO_INVITE, MEMBER]) {
 			for (const module of ["overview", "members", "invitations", "projects", "settings", null]) {
-				for (const subView of [null, "all", "pending"]) {
+				for (const subView of [null, "people", "pending", "chart"]) {
 					for (const acting of [true, false]) {
 						out.push(
 							lane.laneZones(inConsole({ kind, capabilities, module, subView, acting })),
@@ -360,12 +366,25 @@ Deno.test("lane: the console header carries Back, the lifecycle Tag and the acti
 	assertEquals(acting.header.switchControl.label, "Stop acting");
 });
 
-Deno.test("lane: Members offers People · Org chart, and only on its roster sub-view", () => {
-	const members = lane.laneZones(inConsole({ module: "members", subView: "all" }));
-	assertEquals(members.context?.control, "members");
-	assertEquals(members.context?.options.map((o) => o.value), ["people", "chart"]);
-	assertEquals(members.context?.search, false);
+Deno.test("lane: Members offers People · Org chart, and only on a people reading", () => {
+	for (const subView of [null, "people", "chart"]) {
+		const members = lane.laneZones(inConsole({ module: "members", subView }));
+		assertEquals(members.context?.control, "members");
+		assertEquals(members.context?.options, [
+			{ value: "people", label: "People" },
+			{ value: "chart", label: "Org chart" },
+		]);
+		assertEquals(members.context?.search, false);
+	}
 	assertEquals(lane.laneZones(inConsole({ module: "members", subView: "pending" })).context, null);
+});
+
+Deno.test("lane: the Members control's values ARE the module's sub-views (one state)", () => {
+	const members = lane.laneZones(inConsole({ module: "members", subView: "people" }));
+	assertEquals(
+		members.context?.options.map((o) => o.value),
+		MEMBERS_READINGS.map((v) => v.value),
+	);
 });
 
 Deno.test("lane: a view with nothing to partition draws no context band", () => {
