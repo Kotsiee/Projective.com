@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "@std/assert";
 import type { WorkspaceKind } from "@projective/types/workspace";
 import {
+	inviteOpensInPlace,
 	POLICY_MODULES,
 	rigFilledCount,
 	type RigInput,
@@ -166,14 +167,41 @@ Deno.test("rig: the status line stays mounted for the whole life of a policy edi
 
 // #region Utilities and links
 Deno.test("rig: Invite opens in place where the modal is mounted, links to Members elsewhere", () => {
-	for (const module of ["members", "invitations"]) {
-		const invite = rigModel(inConsole({ module })).actions.find((a) => a.key === "invite");
-		assert(invite?.control === "button" && invite.tier === 4, module);
+	for (const kind of ["team", "business"] as WorkspaceKind[]) {
+		for (const module of ["members", "invitations"]) {
+			const invite = rigModel(inConsole({ kind, module })).actions.find((a) => a.key === "invite");
+			assert(invite?.control === "button" && invite.tier === 4, `${kind} ${module}`);
+		}
 	}
+	// A team's Projects mounts the modal (its allowance band invites a team short of members), so the
+	// rig's Invite there opens it too rather than leaving the page.
+	const projects = rigModel(inConsole({ module: "projects" })).actions.find((a) =>
+		a.key === "invite"
+	);
+	assert(projects?.control === "button" && projects.tier === 4);
 	const invite = rigModel(inConsole({ module: "payouts" })).actions.find((a) => a.key === "invite");
 	assert(invite?.control === "link");
 	assertEquals(invite.href, "/teams/north-loop/members?invite=1");
+	// A business's Projects hands off and mounts no modal.
+	const business = rigModel(inConsole({ kind: "business", handle: "acme", module: "projects" }))
+		.actions.find((a) => a.key === "invite");
+	assert(business?.control === "link");
+	assertEquals(business.href, "/businesses/acme/members?invite=1");
 	assert(!keys(inConsole({ canInvite: false })).includes("invite"));
+});
+
+Deno.test("rig: inviteOpensInPlace names exactly the screens that mount the invite modal", () => {
+	for (const kind of ["team", "business"] as WorkspaceKind[]) {
+		for (const module of [...MODULES, null]) {
+			const expected = module === "members" || module === "invitations" ||
+				(kind === "team" && module === "projects");
+			assertEquals(inviteOpensInPlace(kind, module), expected, `${kind} ${module}`);
+		}
+	}
+	// The screens that answer `true` really mount it.
+	const projects = source("../islands/TeamProjectsScreen.island.tsx");
+	assert(/<InviteModal\b/.test(projects), "TeamProjectsScreen mounts no InviteModal");
+	assert(/<InviteModal\b/.test(source("../islands/MembersScreen.island.tsx")));
 });
 
 Deno.test("rig: Settings is a link, never offered on Settings itself", () => {

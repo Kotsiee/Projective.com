@@ -98,8 +98,12 @@ export type SplitRule = z.infer<typeof SplitRuleSchema>;
 // #endregion
 
 // #region Spend approvals (over-cap second sign-off)
-/** `finance.approval_status`. */
-export const ApprovalStatus = z.enum(["pending", "approved", "rejected", "expired"]);
+/**
+ * `finance.approval_status`. Every state but `pending` is terminal: an approver decides it
+ * (`approved` / `rejected`), it lapses (`expired`), or its requester takes it back (`withdrawn` —
+ * `finance.withdraw_spend_approval`, Decision #246), which stamps `decidedAt` and names no approver.
+ */
+export const ApprovalStatus = z.enum(["pending", "approved", "rejected", "expired", "withdrawn"]);
 export type ApprovalStatus = z.infer<typeof ApprovalStatus>;
 
 /**

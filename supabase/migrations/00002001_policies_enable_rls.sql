@@ -46,8 +46,10 @@ ALTER TABLE comms.project_messages ENABLE ROW LEVEL SECURITY;
 -- favourites and auto-reply rules, and read the entire newsletter subscriber list
 -- together with each row's unsubscribe token.
 --
--- Their policies are in 00002012. newsletter_subscriptions DELIBERATELY receives
--- none: see the note there before "fixing" it.
+-- Their policies are in 00002012. newsletter_subscriptions has since moved to
+-- the community schema (Decision #274); its RLS is enabled in this file's
+-- editorial + community section and it still DELIBERATELY receives no policy
+-- (00002021).
 
 ALTER TABLE comms.message_reactions ENABLE ROW LEVEL SECURITY;
 
@@ -56,8 +58,6 @@ ALTER TABLE comms.message_pins ENABLE ROW LEVEL SECURITY;
 ALTER TABLE comms.message_favorites ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE comms.auto_responses ENABLE ROW LEVEL SECURITY;
-
-ALTER TABLE comms.newsletter_subscriptions ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE marketplace.service_blueprints ENABLE ROW LEVEL SECURITY;
 
@@ -68,6 +68,12 @@ ALTER TABLE ops.log_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ops.scheduled_jobs ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE ops.http_job_dispatches ENABLE ROW LEVEL SECURITY;
+
+-- #region [contact] Contact requests (Decision #276)
+ALTER TABLE ops.contact_requests ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE ops.contact_request_attachments ENABLE ROW LEVEL SECURITY;
+-- #endregion
 
 ALTER TABLE org.business_profiles ENABLE ROW LEVEL SECURITY;
 
@@ -614,6 +620,45 @@ ALTER TABLE catalogue.listing_tags ENABLE ROW LEVEL SECURITY;
 ALTER TABLE catalogue.collections ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE catalogue.collection_listings ENABLE ROW LEVEL SECURITY;
+
+
+-- --- editorial + community (Decision #274) ---
+-- RLS is enabled on every table of both schemas, in the region of the surface that owns it. Their
+-- policies are in 00002021_policies_editorial_community.sql, under the same region names. A table
+-- created in 00000024 / 00000025 without its line here is unprotected the moment a grant reaches it.
+
+-- #region [editorial.help]
+ALTER TABLE editorial.help_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE editorial.help_articles ENABLE ROW LEVEL SECURITY;
+-- #endregion
+
+
+-- #region [editorial.changelog]
+ALTER TABLE editorial.changelog_releases ENABLE ROW LEVEL SECURITY;
+-- #endregion
+
+
+-- #region [editorial.articles]
+ALTER TABLE editorial.article_authors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE editorial.articles ENABLE ROW LEVEL SECURITY;
+-- #endregion
+
+
+-- #region [community.newsletter]
+ALTER TABLE community.newsletter_subscriptions ENABLE ROW LEVEL SECURITY;
+-- #endregion
+
+
+-- #region [community.help_feedback]
+ALTER TABLE community.help_feedback ENABLE ROW LEVEL SECURITY;
+-- #endregion
+
+
+-- #region [community.feedback]
+ALTER TABLE community.feedback_ideas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE community.feedback_votes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE community.feedback_status_events ENABLE ROW LEVEL SECURITY;
+-- #endregion
 
 
 -- --- org: the three profile tables that shipped without RLS ---

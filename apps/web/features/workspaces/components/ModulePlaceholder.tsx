@@ -8,10 +8,11 @@ import type { WorkspaceModule } from "../core/module-registry.tsx";
  *
  * Two genuinely different situations wear the same shape here, and the distinction is the whole point:
  *
- *   - **A module that DELEGATES.** Projects, Catalogue, Calendar and Messages are already whole
- *     surfaces elsewhere; this entity's version of them is those surfaces scoped to the entity. The
- *     placeholder's job is to say so and hand off, because duplicating `/projects` inside `/teams`
- *     would mean two feeds to keep in step.
+ *   - **A module that DELEGATES.** Catalogue, Calendar, Messages and a business's Projects are already
+ *     whole surfaces elsewhere; this entity's version of them is those surfaces scoped to the entity.
+ *     The placeholder's job is to say so and hand off, because duplicating `/projects` inside
+ *     `/businesses` would mean two feeds to keep in step. (A team's Projects is its own screen — its
+ *     engagements' Wᵢ and its proposal allowance exist nowhere else.)
  *   - **A module that is NEXT.** Analytics, Standing and a team's Verification are near-term. Saying
  *     so plainly is better than an empty panel that reads as a bug, and far better than fabricating
  *     numbers to fill the space.

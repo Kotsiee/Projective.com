@@ -106,6 +106,18 @@ export interface RigModel {
 // #endregion
 
 // #region Composition
+/**
+ * Whether a console module's screen mounts the invite modal, so an Invite there opens in place: the
+ * Members screen (and its invitation queue), and a team's Projects, whose allowance band offers Invite
+ * member to a team short of members (Teams C5). A business's Projects hands off and mounts none.
+ * Everywhere else an Invite is a link that lands on Members with the modal open. The footer rig and the
+ * lane's create action both ask this, so the controls on one page never disagree.
+ */
+export function inviteOpensInPlace(kind: WorkspaceKind, module: string | null): boolean {
+	return module === "members" || module === "invitations" ||
+		(kind === "team" && module === "projects");
+}
+
 /** The footer rig for what the viewer is looking at. Total: every input yields a model. */
 export function rigModel(input: RigInput): RigModel {
 	const copy = kindCopy(input.kind);
@@ -131,10 +143,8 @@ export function rigModel(input: RigInput): RigModel {
 	const actions: RigAction[] = [];
 
 	if (input.canInvite) {
-		// The invite modal is mounted by the Members screen, so there it opens in place; everywhere else
-		// the action is a link that lands on Members with the modal open.
 		actions.push(
-			input.module === "members" || input.module === "invitations"
+			inviteOpensInPlace(input.kind, input.module)
 				? { key: "invite", control: "button", tier: 4, label: "Invite members" }
 				: {
 					key: "invite",

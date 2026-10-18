@@ -75,12 +75,18 @@ function toSummary(
 ): WorkspaceSummary {
 	const verification = parseVerification(item.verification);
 	const memberCount = Math.max(0, Number(item.member_count) || 0);
+	const status = parseStatus(item.status);
 	const steps = setupSteps(kind, item.handle, {
+		entityId: item.id,
 		logo: !!item.setup?.logo,
 		bio: !!item.setup?.bio,
-		invite: memberCount > 1 || (Number(item.pending_invites) || 0) > 0,
+		activeMembers: memberCount,
+		invitePending: (Number(item.pending_invites) || 0) > 0,
 		money: !!item.setup?.money,
-		verified: verification === "verified",
+		funded: !!item.setup?.funded,
+		limitsOffered: !!item.setup?.limits_offered,
+		verification,
+		published: status !== "draft",
 	});
 	const faces = (item.face_user_ids ?? []).slice(0, 5)
 		.map((id) => faceOf(people.get(id)))
@@ -91,7 +97,7 @@ function toSummary(
 		name: clampOr(item.name, 120, kind === "team" ? "Team" : "Business"),
 		handle: clamp(item.handle, 40),
 		avatar: avatarOf(item.avatar_file_id ? marks.get(item.avatar_file_id) : ""),
-		status: parseStatus(item.status),
+		status,
 		verification,
 		role: parseRole(item.role) ?? "member",
 		isOwner: !!item.is_owner,

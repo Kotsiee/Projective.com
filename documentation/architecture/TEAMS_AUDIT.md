@@ -80,7 +80,7 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | A4 | Team status checked on apply | Neither path checks `org.teams.status` — a **draft or archived** team can apply | ✅ fixed by B2: `team_not_active` on both doors and in the pre-flight (#228 (E)) |
 | A5 | `team_too_small` / `missing_permission` refuse even meter-only | `SYSTEM_ARCHITECTURE.md:1985-1986`; pre-flight in `ProjectBackendService.apply` | ✅ |
 | A6 | Team pool vs members' pool | `finance-model.md:480` vs `database/finance/Tables.md:311` vs `PRODUCT_SPEC.md:1376` | 📄 (#154 flag b, still open) |
-| A7 | Apply modal defaults to "Yourself" in team context | #154 flag (c) | ⚠️ open |
+| A7 | Apply modal defaults to "Yourself" in team context | #154 flag (c) | ✅ fixed by C5: acting as a team the viewer may bind (`bind_seat`, read from the team's allowance), "Apply as" opens on the team; otherwise "Yourself" (`features/view/core/apply-as.ts`) |
 
 ### 1.5 Workload Intensity (W_i)
 

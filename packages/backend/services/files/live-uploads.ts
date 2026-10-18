@@ -197,6 +197,8 @@ interface PendingRow {
 	owner_entity_id: string | null;
 	bucket_id: string;
 	storage_path: string;
+	/** Set when another pipeline declared the row (`contact`, Decision #276) — never finished here. */
+	target_bucket: string | null;
 	display_name: string;
 	mime_type: string;
 	size_bytes: number | string;
@@ -229,11 +231,14 @@ async function refuse(row: PendingRow, hostile: boolean, message: string): Promi
  */
 export async function completeUpload(actor: Actor, input: UploadComplete): Promise<Result<AssetItem>> {
 	const mine = await getUserClient(actor.accessToken).schema("files").from("items")
-		.select("id, owner_type, owner_user_id, owner_entity_id, bucket_id, storage_path, display_name, mime_type, size_bytes, status, purpose")
+		.select("id, owner_type, owner_user_id, owner_entity_id, bucket_id, storage_path, target_bucket, display_name, mime_type, size_bytes, status, purpose")
 		.eq("id", input.assetId).eq("owner_user_id", actor.userId).maybeSingle();
 	if (mine.error && mine.error.code !== "22P02") throw new Error(`files.items read failed: ${mine.error.message}`);
 	const row = mine.data as PendingRow | null;
-	if (!row || row.purpose !== "library") return { ok: false, status: 404, message: "That upload could not be found." };
+	// A row another pipeline declared (`target_bucket`, e.g. a /contact attachment) is that pipeline's to finish.
+	if (!row || row.purpose !== "library" || row.target_bucket) {
+		return { ok: false, status: 404, message: "That upload could not be found." };
+	}
 	if (row.status === "uploaded") {
 		const done = await readAsset(actor, row.id);
 		return done ? { ok: true, data: done } : { ok: false, status: 404, message: "That upload could not be found." };

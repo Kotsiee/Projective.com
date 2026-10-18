@@ -1,7 +1,7 @@
 /*
  * workspace-console — the shared body chrome (the surface root, the band, the page head) and the
- * Overview module: the identity band, the Draft-First checklist, the stat tiles, the projects list and
- * the activity feed.
+ * Overview module: the identity band, the setup hero, the stat tiles, the projects preview and the
+ * activity stream.
  *
  * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY.
  *
@@ -106,6 +106,16 @@ here and there must never be one. */
     background: transparent;
 }
 
+/* The setup hero's band — the Overview's one solid tonal step (§B.4), full-bleed, never a card. */
+.wsp-band--hero {
+    background: var(--surface-1);
+}
+
+/* A one-line notice (InlineNotice) keeps the band's inset but not its block rhythm. */
+.wsp-band--notice {
+    padding-block: var(--space-2);
+}
+
 .wsp-band__head {
     display: flex;
     align-items: baseline;
@@ -113,6 +123,11 @@ here and there must never be one. */
     gap: var(--space-4);
     flex-wrap: wrap;
     margin-block-end: var(--space-4);
+}
+
+/* A band head's "See all" is an anchor wearing a tier-5 Button: no Button draws the link underline. */
+.wsp-band__more {
+    text-decoration: none;
 }
 
 .wsp-band__title {
@@ -281,16 +296,6 @@ here and there must never be one. */
     flex-wrap: wrap;
 }
 
-.wsp-idhead__meta {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-    flex-wrap: wrap;
-    font-size: var(--wsp-fs-micro);
-    font-variant-numeric: tabular-nums;
-    color: var(--text-secondary);
-}
-
 .wsp-idhead__metaitem {
     display: inline-flex;
     align-items: center;
@@ -306,35 +311,7 @@ here and there must never be one. */
     justify-content: flex-end;
 }
 
-/*
- * A one-person team is LEGAL — it simply cannot bid yet. So this is an honest pre-state note, not a
- * warning: tonal, achromatic-leaning and phrased as a next step.
- */
-.wsp-propose {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    flex-wrap: wrap;
-    padding: var(--space-3) var(--space-4);
-    border-radius: var(--radius-container-lg);
-    background: var(--surface-2);
-}
-
-.wsp-propose__glyph {
-    display: inline-flex;
-    flex: none;
-    color: var(--text-secondary);
-    line-height: 0;
-}
-
-.wsp-propose__text {
-    margin: 0;
-    flex: 1 1 16rem;
-    min-inline-size: 0;
-    font-size: var(--wsp-fs-body);
-    color: var(--on-surface);
-}
-
+/* The Members screen's inline "invite someone" link, set in the body register. */
 .wsp-propose__link {
     flex: none;
     font-size: var(--wsp-fs-body);
@@ -349,226 +326,206 @@ here and there must never be one. */
 
 /* #endregion */
 
-/* #region The Draft-First checklist */
+/* #region The setup hero */
 /*
- * Every row states what DOING it gets them, never a bare instruction — the whole point of Draft-First
- * is that the entity already works, so the checklist has to earn each step rather than demand it. The
- * block removes itself entirely at 100%.
+ * "Get <entity> ready" — a band of steps, not a checklist box: the ring, the heading and its count on
+ * the leading side, the steps as ONE ordered line on the other, joined by hairline connectors. A step's
+ * state is its mark (a tick, or its number) AND its words ("Done", or what doing it gets them), never
+ * colour alone. Every control inside is a ui Button (or an anchor wearing one), so the press scale and
+ * both reduced-motion channels come from the ui package.
+ *
+ * The layout answers to the BAND's width, not the viewport's: the lane takes its share of the screen,
+ * so a viewport says little about the room the steps actually have. A step never gets narrower than
+ * its control, whose label must not wrap inside a small Button's fixed height (the container queries
+ * at the end of this region): beside the head while five steps still fit there, below the head while
+ * they fit on one line, and a column, the connectors fallen away, once they do not.
  */
-.wsp-checklist {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
+.wsp-band--hero > .wsp-band__inner {
+    container: wsp-hero / inline-size;
+}
+
+.wsp-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 17rem) minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-4) var(--space-7);
     inline-size: 100%;
     min-inline-size: 0;
 }
 
-.wsp-checklist__head {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-    min-inline-size: 0;
-}
-
 /*
- * A conic ring, masked to an annulus. The mask's paint is `currentColor` rather than a literal colour
- * so nothing in this feature hardcodes a hex; only the alpha matters to a mask. The ring is NOT
- * transitioned: the sweep encodes how much is done.
+ * A dismissal — remembered, found by the Overview's pre-paint guard (`heroDismissGuard`) before the
+ * island revives and kept by the island's own first render, or made in place: the hero is hidden and
+ * the notices it carries stand in for it, from first paint. This mark is the ONLY switch between the
+ * two. Without it the stand-ins stay hidden, because the hero on screen is already saying them.
  */
-.wsp-checklist__ring {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: none;
-    inline-size: var(--wsp-ring-size);
-    block-size: var(--wsp-ring-size);
-    border-radius: 50%;
-    color: var(--wsp-kind);
-    background:
-        conic-gradient(var(--wsp-kind) calc(var(--wsp-progress, 0) * 1turn),
-            var(--wsp-track-bg) 0);
-    mask: radial-gradient(farthest-side,
-            transparent calc(100% - var(--wsp-ring-w)),
-            currentColor 0);
+.wsp__stack[data-hero-dismissed] > .wsp-band--hero,
+.wsp__stack:not([data-hero-dismissed]) > [data-hero-standin] {
+    display: none;
 }
 
-.wsp-checklist__ringwrap {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: none;
-    inline-size: var(--wsp-ring-size);
-    block-size: var(--wsp-ring-size);
-}
-
-/* The count sits in the ring's hole, so it is a sibling of the masked ring, not a child. */
-.wsp-checklist__ring-text {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: var(--wsp-fs-micro);
-    font-variant-numeric: tabular-nums;
-    font-weight: var(--fw-semibold);
-    color: var(--on-surface);
-}
-
-.wsp-checklist__heading {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-px);
-    min-inline-size: 0;
-    flex: 1 1 auto;
-}
-
-.wsp-checklist__title {
-    margin: 0;
-    font-size: var(--wsp-fs-key);
-    font-weight: var(--fw-medium);
-    color: var(--on-surface);
-}
-
-.wsp-checklist__note {
-    margin: 0;
-    max-inline-size: var(--wsp-prose);
-    font-size: var(--wsp-fs-body);
-    color: var(--text-secondary);
-}
-
-.wsp-checklist__dismiss {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: none;
-    inline-size: 1.75rem;
-    block-size: 1.75rem;
-    padding: 0;
-    border: none;
-    border-radius: var(--radius-base);
-    background: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-}
-
-.wsp-checklist__dismiss:hover {
-    background: var(--surface-2);
-    color: var(--on-surface);
-}
-
-.wsp-checklist__items {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-    gap: var(--space-1);
-}
-
-.wsp-checklist__item {
-    min-inline-size: 0;
-}
-
-.wsp-checklist__link {
+.wsp-hero__head {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: var(--space-3);
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-base);
-    color: inherit;
-    text-decoration: none;
-    transition: background-color var(--dur-fast) var(--ease-standard);
+    min-inline-size: 0;
 }
 
-.wsp-checklist__link:hover {
-    background: var(--surface-2);
+.wsp-hero__heading {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-inline-size: 0;
 }
 
-/* An unchecked step is a hollow square, a done step a filled tick. Shape first, colour fourth. */
-.wsp-checklist__check {
+.wsp-hero__title {
+    margin: 0;
+    font-size: var(--wsp-fs-key);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-tight);
+    color: var(--on-surface);
+}
+
+.wsp-hero__dismiss {
+    align-self: start;
+}
+
+.wsp-hero__steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: var(--space-3);
+    min-inline-size: 0;
+}
+
+.wsp-hero__step {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+    min-inline-size: 0;
+}
+
+/* The step's mark and the connector running to the next step's mark, on one line. */
+.wsp-hero__track {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    inline-size: 100%;
+    margin-block-end: var(--space-1);
+}
+
+/* An open step is a ring around its number; a done step a filled disc with a tick. Shape first. */
+.wsp-hero__mark {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     flex: none;
-    inline-size: 1.125rem;
-    block-size: 1.125rem;
-    border-radius: var(--radius-xs);
+    inline-size: var(--icon-lg);
+    block-size: var(--icon-lg);
+    border-radius: var(--radius-full);
+    font-size: var(--wsp-fs-micro);
+    font-weight: var(--fw-semibold);
+    font-variant-numeric: tabular-nums;
     color: var(--text-secondary);
     box-shadow: inset 0 0 0 var(--wsp-stroke-thin) currentColor;
 }
 
-.wsp-checklist__item[data-done="true"] .wsp-checklist__check {
+.wsp-hero__step[data-current="true"] .wsp-hero__mark {
+    color: var(--wsp-kind);
+}
+
+.wsp-hero__step[data-done="true"] .wsp-hero__mark {
     background: var(--wsp-verified);
     color: var(--on-success);
     box-shadow: none;
 }
 
-.wsp-checklist__body {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    min-inline-size: 0;
-}
-
-.wsp-checklist__label {
-    font-size: var(--wsp-fs-body);
-    color: var(--on-surface);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.wsp-checklist__item[data-done="true"] .wsp-checklist__label {
-    color: var(--text-secondary);
-}
-
-.wsp-checklist__itemnote {
-    font-size: var(--wsp-fs-micro);
-    color: var(--text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.wsp-checklist__go {
-    display: inline-flex;
-    flex: none;
-    color: var(--text-secondary);
-    line-height: 0;
-}
-
-/*
- * The checklist's closing action — start acting as the entity.
- *
- * It belongs to the checklist rather than to the identity band because it is the step the list is
- * actually building towards: the other rows configure the entity, and this one is the moment the
- * session starts speaking as it. Separated from the rows by the hairline above it, since it is an
- * action rather than another item.
- */
-.wsp-checklist__act {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    flex-wrap: wrap;
-    padding-block-start: var(--space-4);
+.wsp-hero__rule {
+    flex: 1 1 auto;
+    min-inline-size: var(--space-3);
     border-block-start: var(--hairline);
 }
 
-.wsp-checklist__acthint {
-    margin: 0;
-    flex: 1 1 16rem;
-    min-inline-size: 0;
-    max-inline-size: var(--wsp-prose);
-    font-size: var(--wsp-fs-micro);
+.wsp-hero__label {
+    font-size: var(--wsp-fs-body);
+    line-height: var(--leading-snug);
+    color: var(--on-surface);
+}
+
+.wsp-hero__step[data-done="true"] .wsp-hero__label {
     color: var(--text-secondary);
 }
 
-/* A failed switch is reported in place — the caller must never navigate past one. */
-.wsp-checklist__acthint[data-tone="alert"] {
-    color: var(--wsp-alert);
+.wsp-hero__note {
+    font-size: var(--wsp-fs-micro);
+    line-height: var(--leading-snug);
+    color: var(--text-secondary);
+}
+
+/* A small Button has a fixed height, so its label stays on one line; the step is sized to hold it. */
+.wsp-hero__action {
+    display: inline-flex;
+    max-inline-size: 100%;
+    margin-block-start: var(--space-2);
+    white-space: nowrap;
+}
+
+/* A step's page is an anchor wearing a Button: no Button draws the link underline. */
+.wsp-hero__link {
+    text-decoration: none;
+}
+
+.wsp-hero__error {
+    grid-column: 1 / -1;
+}
+
+/*
+ * The breakpoints are the steps' own arithmetic: a step needs 9rem for its longest control ("Verify
+ * identity", "Invite member" — `HERO_ACTION_LABEL`) with room to spare, so five steps and their four
+ * --space-3 gaps need 48rem, and beside the head's 17rem column and its --space-7 gap, 68rem.
+ */
+@container wsp-hero (inline-size < 68rem) {
+    .wsp-hero {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* The steps become a column: the mark leads each one, and a connector would point nowhere. */
+@container wsp-hero (inline-size < 48rem) {
+    .wsp-hero__steps {
+        grid-auto-flow: row;
+        grid-auto-columns: auto;
+        gap: var(--space-4);
+    }
+
+    .wsp-hero__step {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: start;
+        column-gap: var(--space-3);
+        row-gap: var(--space-1);
+    }
+
+    .wsp-hero__track {
+        grid-row: 1 / span 3;
+        inline-size: auto;
+        margin-block-end: 0;
+    }
+
+    .wsp-hero__rule {
+        display: none;
+    }
+
+    .wsp-hero__label,
+    .wsp-hero__note,
+    .wsp-hero__action {
+        grid-column: 2;
+    }
 }
 
 /* #endregion */
@@ -591,13 +548,19 @@ here and there must never be one. */
     --ui-chart-accent: var(--wsp-kind);
 }
 
+/* A caption here carries counts ("of 50 this week", "1 invitation out"), so its figures are tabular. */
+.wsp-tiles .ui-stat__caption {
+    font-variant-numeric: tabular-nums;
+}
+
 /* #endregion */
 
-/* #region The projects list */
+/* #region The projects preview */
 /*
- * A team's deliveries and a business's commissions render through the same list — the only difference
- * is which side of the row the counterparty sits on, and that is a data question, not a layout one.
- * Rows are divided by one hairline, never boxed.
+ * The first live engagements, one link per row: the title in the body register, its facts as ONE
+ * MetaLine (never chips, §B.11) and completion as the ui ProgressBar, which owns its fill — no row
+ * writes an inline style. Rows part by one hairline and are never boxed; the hover is a solid tonal
+ * step and the press a scale, never a box-model move (§B.12).
  */
 .wsp-projects {
     list-style: none;
@@ -607,140 +570,61 @@ here and there must never be one. */
     min-inline-size: 0;
 }
 
-.wsp-projects__item {
+.wsp-projects__item + .wsp-projects__item {
     border-block-start: var(--hairline);
-}
-
-.wsp-projects__item:first-child {
-    border-block-start: none;
 }
 
 .wsp-projects__row {
     display: grid;
-    grid-template-columns: auto minmax(0, 2fr) minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(6rem, 12rem);
     align-items: center;
     gap: var(--space-4);
     min-block-size: var(--wsp-rowh);
-    padding-inline: var(--space-2);
-    padding-block: var(--space-2);
+    padding: var(--space-2);
     border-radius: var(--radius-base);
     color: inherit;
     text-decoration: none;
-    transition: background-color var(--dur-fast) var(--ease-standard);
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        transform var(--dur-fast) var(--ease-standard);
 }
 
 .wsp-projects__row:hover {
     background: var(--surface-2);
 }
 
-/* State is a glyph, and the word lives in its Tooltip (§B.6). */
-.wsp-projects__glyph {
-    display: inline-flex;
-    flex: none;
-    color: var(--text-secondary);
-    line-height: 0;
-}
-
-.wsp-projects__row[data-state="active"] .wsp-projects__glyph {
-    color: var(--wsp-kind);
-}
-
-.wsp-projects__row[data-state="proposal"] .wsp-projects__glyph {
-    color: var(--wsp-pending);
-}
-
-.wsp-projects__row[data-state="completed"] .wsp-projects__glyph {
-    color: var(--success);
+.wsp-projects__row:active {
+    transform: scale(var(--btn-press-scale));
+    transition-duration: var(--dur-press);
 }
 
 .wsp-projects__body {
     display: flex;
     flex-direction: column;
-    gap: var(--space-px);
+    gap: var(--space-1);
     min-inline-size: 0;
 }
 
 .wsp-projects__title {
+    overflow: hidden;
     font-size: var(--wsp-fs-body);
     font-weight: var(--fw-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--on-surface);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.wsp-projects__party {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-inline-size: 0;
-    font-size: var(--wsp-fs-micro);
-    font-variant-numeric: tabular-nums;
-    color: var(--text-secondary);
-}
-
-/* The counterparty is a PERSON or an enterprise acting as one, so it stays circular — squares are
-reserved for the entity whose console this is. */
-.wsp-projects__party-avatar {
-    flex: none;
-    border-radius: 50%;
-}
-
-.wsp-projects__party-name {
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 .wsp-projects__progress {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
     min-inline-size: 0;
-}
-
-.wsp-projects__track {
-    flex: 1 1 auto;
-    min-inline-size: 3rem;
-    block-size: var(--wsp-meter-h);
-    border-radius: var(--radius-xs);
-    background: var(--wsp-track-bg);
-    overflow: hidden;
-}
-
-/* The fill encodes completion, so it is never transitioned or animated. */
-.wsp-projects__fill {
-    display: block;
-    block-size: 100%;
-    inline-size: calc(var(--wsp-progress, 0) * 100%);
-    border-radius: inherit;
-    background: var(--wsp-kind);
-}
-
-.wsp-projects__pct {
-    flex: none;
-    font-size: var(--wsp-fs-micro);
-    font-variant-numeric: tabular-nums;
-    color: var(--text-secondary);
-}
-
-.wsp-projects__due {
-    justify-self: end;
-    flex: none;
-    font-size: var(--wsp-fs-micro);
-    font-variant-numeric: tabular-nums;
-    color: var(--text-secondary);
-    white-space: nowrap;
 }
 
 /* #endregion */
 
-/* #region The activity feed */
+/* #region The activity stream */
 /*
- * One line per entry, with a leading glyph that carries the kind. Money entries are the only ones
- * allowed to reach the kind accent; the rest are achromatic, so the feed never looks like six
- * competing alerts.
+ * One event per row: the person (round — people are round, entities square), one sentence in the body
+ * register and a MetaLine of when and in which module. Rows part by ONE hairline — no boxes, no chips
+ * (§B.4, §B.11). An event with a destination is a link, with the projects preview's hover and press.
  */
 .wsp-activity {
     list-style: none;
@@ -756,30 +640,71 @@ reserved for the entity whose console this is. */
     min-inline-size: 0;
 }
 
-/*
- * `__row` is the grid, and it renders as an `<a>` when the entry has a target and a `<div>` when it
- * does not — the same split the projects list uses, so a linked and an unlinked entry are the same
- * shape. (Deliberately not `subgrid`: the row must lay out identically in both cases, and a
- * grid-template inherited through an optional wrapper would not.)
- */
+.wsp-activity__item + .wsp-activity__item {
+    border-block-start: var(--hairline);
+}
+
 .wsp-activity__row {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
     gap: var(--space-3);
     min-block-size: var(--wsp-rowh-dense);
-    padding-inline: var(--space-2);
-    padding-block: var(--space-2);
+    padding: var(--space-2);
     border-radius: var(--radius-base);
     color: inherit;
     text-decoration: none;
-    transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
-a.wsp-activity__row:hover {
+.wsp-activity__row--link {
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        transform var(--dur-fast) var(--ease-standard);
+}
+
+.wsp-activity__row--link:hover {
     background: var(--surface-2);
 }
 
+.wsp-activity__row--link:active {
+    transform: scale(var(--btn-press-scale));
+    transition-duration: var(--dur-press);
+}
+
+.wsp-activity__avatar {
+    flex: none;
+    border-radius: var(--radius-full);
+}
+
+/* An event nobody performed keeps the avatar's slot (the ui `sm` avatar), with its kind's glyph. */
+.wsp-activity__mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    inline-size: 1.75rem;
+    block-size: 1.75rem;
+    color: var(--text-secondary);
+    line-height: 0;
+}
+
+.wsp-activity__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-px);
+    min-inline-size: 0;
+}
+
+.wsp-activity__text {
+    margin: 0;
+    min-inline-size: 0;
+    font-size: var(--wsp-fs-body);
+    line-height: var(--leading-snug);
+    font-variant-numeric: tabular-nums;
+    color: var(--on-surface);
+}
+
+/* A module placeholder's leading glyph (`ModulePlaceholder`): a tonal tile beside the page title. */
 .wsp-activity__glyph {
     display: inline-flex;
     align-items: center;
@@ -791,68 +716,6 @@ a.wsp-activity__row:hover {
     background: var(--surface-2);
     color: var(--text-secondary);
     line-height: 0;
-}
-
-.wsp-activity__item[data-kind="money"] .wsp-activity__glyph {
-    background: var(--wsp-kind-tint-hi);
-    color: var(--wsp-kind-ink);
-}
-
-.wsp-activity__item[data-kind="system"] .wsp-activity__glyph {
-    color: var(--on-surface-variant);
-}
-
-.wsp-activity__body {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-inline-size: 0;
-}
-
-/*
- * A row that has somewhere to go is a real anchor, so it opens in a new tab and reports its
- * destination on hover. It inherits colour rather than turning blue: forty tinted links in a feed
- * would read as forty warnings.
- */
-.wsp-activity__link {
-    display: flex;
-    min-inline-size: 0;
-    color: inherit;
-    text-decoration: none;
-    border-radius: var(--radius-xs);
-}
-
-.wsp-activity__link:hover .wsp-activity__text {
-    text-decoration: underline;
-}
-
-.wsp-activity__text {
-    margin: 0;
-    min-inline-size: 0;
-    font-size: var(--wsp-fs-body);
-    font-variant-numeric: tabular-nums;
-    color: var(--on-surface);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.wsp-activity__actor {
-    font-weight: var(--fw-medium);
-}
-
-.wsp-activity__avatar {
-    flex: none;
-    border-radius: 50%;
-}
-
-.wsp-activity__at {
-    justify-self: end;
-    flex: none;
-    font-size: var(--wsp-fs-micro);
-    font-variant-numeric: tabular-nums;
-    color: var(--text-secondary);
-    white-space: nowrap;
 }
 
 /* #endregion */
@@ -1012,14 +875,9 @@ a.wsp-activity__row:hover {
         gap: var(--space-4);
     }
 
-    .wsp-projects__progress,
-    .wsp-projects__due {
-        grid-column: 2;
-        justify-self: start;
-    }
-
-    .wsp-checklist__items {
+    .wsp-projects__row {
         grid-template-columns: minmax(0, 1fr);
+        row-gap: var(--space-2);
     }
 }
 
@@ -1033,9 +891,13 @@ a.wsp-activity__row:hover {
     }
 
     .wsp-projects__row,
-    .wsp-activity__row,
-    .wsp-checklist__link {
+    .wsp-activity__row--link {
         transition: none;
+    }
+
+    .wsp-projects__row:active,
+    .wsp-activity__row--link:active {
+        transform: none;
     }
 }
 
@@ -1044,9 +906,13 @@ a.wsp-activity__row:hover {
 }
 
 :root[data-motion="reduced"] .wsp-projects__row,
-:root[data-motion="reduced"] .wsp-activity__row,
-:root[data-motion="reduced"] .wsp-checklist__link {
+:root[data-motion="reduced"] .wsp-activity__row--link {
     transition: none;
+}
+
+:root[data-motion="reduced"] .wsp-projects__row:active,
+:root[data-motion="reduced"] .wsp-activity__row--link:active {
+    transform: none;
 }
 
 /* #endregion */

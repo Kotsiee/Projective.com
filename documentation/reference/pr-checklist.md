@@ -43,6 +43,10 @@
       `DevOverrides` field, `DevOption` list, panel control, and `reflect()` `data-dev-*` write
       (§5).
 - [ ] `XXXX-XXXX` placeholders; RLS-aware queries.
+- [ ] A new top-level route segment is added to `org.fn_is_reserved_handle` AND
+      `packages/types` `RESERVED_HANDLES` in the same change (the handle namespace guard —
+      `packages/types/workspace/workspace.contract.test.ts` fails otherwise; ROUTING.md
+      §Reserved-handle precedence, Teams P1).
 - [ ] JSDoc + regions present; no meta-comments.
 - [ ] Consistent with the §8 Resolved Decisions; any **new** cross-doc conflict is flagged + logged,
       not silently resolved.

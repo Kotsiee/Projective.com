@@ -456,6 +456,19 @@ Deno.test("lane: Invite member opens in place on Members and lands there from an
 		inPlace: false,
 		href: "/teams/north-loop/members?invite=1",
 	});
+	// A team's Projects mounts the modal too (its allowance band's Invite member), so the lane's
+	// Invite member opens it there instead of leaving the page; a business's Projects mounts none.
+	assertEquals(lane.laneZones(inConsole({ module: "projects" })).footer.create, {
+		action: "invite",
+		label: "Invite member",
+		inPlace: true,
+		href: "/teams/north-loop/members?invite=1",
+	});
+	const businessProjects = lane.laneZones(
+		inConsole({ kind: "business", handle: "acme", module: "projects" }),
+	);
+	assert(businessProjects.footer.create?.action === "invite");
+	assertEquals(businessProjects.footer.create.inPlace, false);
 	const business = lane.laneZones(inConsole({ kind: "business", handle: "acme", module: null }));
 	assert(business.footer.create?.action === "invite");
 	assertEquals(business.footer.create.href, "/businesses/acme/members?invite=1");

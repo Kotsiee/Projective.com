@@ -41,6 +41,12 @@ export interface DrawerProps {
 	 */
 	initialFocusRef?: RefObject<HTMLElement>;
 	/**
+	 * Where focus goes when the drawer closes, instead of back to the element that opened it — read
+	 * at close, so set `.current` just before closing (a table-of-contents sheet points it at the
+	 * heading the reader chose). Empty, focus returns to the opener as usual.
+	 */
+	returnFocusRef?: RefObject<HTMLElement | null>;
+	/**
 	 * Id of the element that names the dialog when the name lives in the body rather than in
 	 * `header` — a detail panel whose own title is the one heading. Wins over `header`.
 	 */
@@ -89,6 +95,7 @@ export function Drawer(props: DrawerProps): JSX.Element | null {
 		actions,
 		tools,
 		initialFocusRef,
+		returnFocusRef,
 		labelledBy,
 		modal = true,
 		dismissable = true,
@@ -122,6 +129,7 @@ export function Drawer(props: DrawerProps): JSX.Element | null {
 		containerRef: panelRef,
 		initialFocusRef,
 		initialFocusSelf: true,
+		returnFocusRef,
 		inertBackground: modal,
 	});
 	useDismiss({

@@ -691,7 +691,7 @@ interface ApprovalRow {
 	id: string;
 	amount_cents: number | string;
 	currency: string;
-	status: "pending" | "approved" | "rejected" | "expired";
+	status: "pending" | "approved" | "rejected" | "expired" | "withdrawn";
 	approver_user_id: string | null;
 	expires_at: string | null;
 	created_at: string;
@@ -712,6 +712,7 @@ const EXPIRY = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
  * The member's own unspent requests for this basket on this wallet, newest first, read through RLS
  * ("View wallet spend approvals" — a member sees their own). A spent request is history: the next
  * order on the basket needs a fresh approval, so `consumed_at IS NULL` is part of the question.
+ * Withdrawn requests are read too: {@link latestRequest} needs to know the newest one was taken back.
  */
 async function readRequests(
 	db: FinanceDb,
@@ -771,8 +772,15 @@ async function readVault(db: FinanceDb, walletId: string): Promise<VaultRow[]> {
 	return (data ?? []) as VaultRow[];
 }
 
+/** A request its member has not withdrawn — one the checkout can show. */
+type ShownApprovalRow = ApprovalRow & { status: Exclude<ApprovalRow["status"], "withdrawn"> };
+
+function notWithdrawn(row: ApprovalRow): row is ShownApprovalRow {
+	return row.status !== "withdrawn";
+}
+
 /** A request's state as the checkout shows it: `rejected` reads `declined`, a lapsed one `expired`. */
-function stateOf(row: ApprovalRow, now: number): CheckoutSpendRequest["state"] {
+function stateOf(row: ShownApprovalRow, now: number): CheckoutSpendRequest["state"] {
 	const lapsed = row.expires_at !== null && Date.parse(row.expires_at) <= now;
 	if (row.status === "rejected") return "declined";
 	if (row.status === "expired" || lapsed) return "expired";
@@ -781,15 +789,21 @@ function stateOf(row: ApprovalRow, now: number): CheckoutSpendRequest["state"] {
 
 /**
  * The request the checkout shows: an approved, unexpired one covering the charge first — the one the
- * redeemer would spend — else the newest, whatever its state.
+ * redeemer would spend — else the newest, whatever its state. When the newest was WITHDRAWN by its
+ * member (Decision #246) there is nothing to show: an older declined or expired request is history
+ * they had already moved past, so the checkout offers Request approval afresh rather than reading it
+ * back as the answer.
  */
-function latestRequest(
+export function latestRequest(
 	rows: readonly ApprovalRow[],
 	now: number,
 	covers: (row: ApprovalRow) => boolean,
 ): { row: ApprovalRow; state: CheckoutSpendRequest["state"]; covers: boolean } | null {
-	const read = rows.map((row) => ({ row, state: stateOf(row, now), covers: covers(row) }));
-	return read.find((r) => r.state === "approved" && r.covers) ?? read[0] ?? null;
+	const read = rows.filter(notWithdrawn)
+		.map((row) => ({ row, state: stateOf(row, now), covers: covers(row) }));
+	const usable = read.find((r) => r.state === "approved" && r.covers);
+	if (usable) return usable;
+	return rows[0]?.status === "withdrawn" ? null : read[0] ?? null;
 }
 
 function requestView(

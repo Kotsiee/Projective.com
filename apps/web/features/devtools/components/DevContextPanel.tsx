@@ -21,11 +21,13 @@ import {
 	DEV_LOW_BALANCES,
 	DEV_BUSINESS_KYBS,
 	DEV_BUSINESS_PAGES,
+	DEV_TEAM_PAGES,
 	DEV_SESSION_STATES,
 	DEV_DISPUTE_STATES,
 	DEV_NOTIFICATIONS,
 	DEV_BASKET_SCENARIOS,
 	DEV_CHECKOUT_GATES,
+	DEV_SPEND_REQUESTS,
 	DEV_PROMO_DISMISSALS,
 	DEV_DISCOVERY_VIEWERS,
 	DEV_DISCOVERY_ACTIVITIES,
@@ -101,8 +103,8 @@ function reloadExplorePage(): void {
 }
 
 /**
- * Reload when the open page is a profile (`/@handle…`), so a server-side business-page simulation
- * applies at once. Elsewhere nothing reads it until the next profile request.
+ * Reload when the open page is a profile (`/@handle…`), so a server-side business- or team-page
+ * simulation applies at once. Elsewhere nothing reads it until the next profile request.
  */
 function reloadProfilePage(): void {
 	if (globalThis.location?.pathname.startsWith("/@")) globalThis.location.reload();
@@ -607,6 +609,25 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 				</Field>
 
 				{
+					/* A team's /:handle (Teams P1) — the business axis's twin. Every seeded team is active and
+				    public, so this is the only route to a member's notice (draft · archived · invite-only,
+				    its Settings link waiting for Teams C6) or an outsider's 404 (Missing).
+				    Server-side via `pj.dev.team-page`, so a change reloads a profile page. */
+				}
+				<Field label="Team page" hint="member notice · outsider 404 · reloads">
+					<Segment
+						name="Team page"
+						options={DEV_TEAM_PAGES}
+						value={o.teamPage}
+						disabled={!o.enabled}
+						onChange={(teamPage) => {
+							patchDevContext({ teamPage });
+							reloadProfilePage();
+						}}
+					/>
+				</Field>
+
+				{
 					/* The ticket funding line (Decision #165). Holds, refused holds and card payments are
 				    server facts, so this substitutes the STATE; the card's real amount still shows. It also
 				    drives the board's column lock (Decision #210): a claimed card forced off Funded reads its
@@ -744,6 +765,21 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.checkoutGate}
 						disabled={!o.enabled}
 						onChange={(checkoutGate) => patchDevContext({ checkoutGate })}
+					/>
+				</Field>
+
+				{
+					/* A business Spend module's request queue (Decision #246). Somebody else's request, one's
+				    own, the decided history and a KYB-locked approver each wait on other people or Stripe,
+				    so the queue substitutes made-up rows (no controls) here; decisions still reach the server. */
+				}
+				<Field label="Spend requests" hint="business spend queue">
+					<Segment
+						name="Spend requests"
+						options={DEV_SPEND_REQUESTS}
+						value={o.spendRequests}
+						disabled={!o.enabled}
+						onChange={(spendRequests) => patchDevContext({ spendRequests })}
 					/>
 				</Field>
 

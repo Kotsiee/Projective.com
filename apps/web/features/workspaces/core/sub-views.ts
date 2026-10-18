@@ -60,12 +60,17 @@ export const MEMBERS_QUEUE = "pending";
 /** The org chart — a different reading of the same people. */
 export const MEMBERS_CHART = "chart";
 
+/** A team's Projects module: its live engagements (the default). */
+export const PROJECTS_ACTIVE = "active";
+/** A team's Projects module: the applications filed for it that await a client's answer. */
+export const PROJECTS_PROPOSALS = "proposals";
+
 const BOTH: readonly WorkspaceKind[] = ["team", "business"];
 const TEAM: readonly WorkspaceKind[] = ["team"];
 
 /**
- * Every module's sub-views. Members is live on both kinds; Payouts (Split · Ledger, Teams C4) and
- * Projects (Active · Proposals, Teams C5) are recorded for the prompts that build their bodies.
+ * Every module's sub-views. Members is live on both kinds and a team's Projects (Active · Proposals,
+ * Teams C5) is live; Payouts (Split · Ledger, Teams C4) is recorded for the prompt that builds its body.
  */
 export const SUB_VIEWS: readonly ModuleSubViews[] = [
 	{
@@ -90,10 +95,10 @@ export const SUB_VIEWS: readonly ModuleSubViews[] = [
 	{
 		module: "projects",
 		kinds: TEAM,
-		live: false,
+		live: true,
 		views: [
-			{ value: "active", label: "Active" },
-			{ value: "proposals", label: "Proposals" },
+			{ value: PROJECTS_ACTIVE, label: "Active" },
+			{ value: PROJECTS_PROPOSALS, label: "Proposals" },
 		],
 	},
 ];

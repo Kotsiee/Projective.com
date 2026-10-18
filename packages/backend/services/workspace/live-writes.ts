@@ -392,7 +392,11 @@ export async function saveSplit(
 	return reread("team", input.workspaceId, actor);
 }
 
-/** The snake_case patch `finance.save_spend_policy` reads. Only the keys the input sets travel. */
+/**
+ * The snake_case patch `finance.save_spend_policy` reads. Only the keys the input sets travel — at
+ * the top level and inside each limits entry, which is itself a patch: a key that did not move must
+ * not travel, because restating a stored ceiling is a ceiling being set (Decision #246).
+ */
 export function spendPatch(input: UpdateSpendInput): Record<string, unknown> {
 	const patch: Record<string, unknown> = {};
 	if (input.currency !== undefined) patch.currency = input.currency;
@@ -402,12 +406,14 @@ export function spendPatch(input: UpdateSpendInput): Record<string, unknown> {
 	if (input.approverIds !== undefined) patch.approver_ids = input.approverIds;
 	if (input.contributorIds !== undefined) patch.contributor_ids = input.contributorIds;
 	if (input.limits !== undefined) {
-		patch.limits = input.limits.map((l) => ({
-			member_id: l.memberId,
-			can_spend: l.canSpend,
-			limit_minor: l.limitMinor,
-			per_transaction_minor: l.perTransactionMinor,
-		}));
+		patch.limits = input.limits.map((l) => {
+			const entry: Record<string, unknown> = { member_id: l.memberId };
+			if (l.canSpend !== undefined) entry.can_spend = l.canSpend;
+			if (l.limitMinor !== undefined) entry.limit_minor = l.limitMinor;
+			if (l.perTransactionMinor !== undefined) entry.per_transaction_minor = l.perTransactionMinor;
+			if (l.period !== undefined) entry.period = l.period;
+			return entry;
+		});
 	}
 	return patch;
 }
@@ -442,6 +448,24 @@ export async function decideSpend(
 	const res = await callRpc(actor, "finance", "decide_spend_approval", {
 		p_approval: input.requestId,
 		p_decision: input.approve ? "approve" : "reject",
+	});
+	if (!res.ok) return res.refusal;
+	return reread("business", input.workspaceId, actor);
+}
+
+/**
+ * Take back one's own pending spend request (`finance.withdraw_spend_approval`, Decision #246): the
+ * requester only, while it waits. It becomes `withdrawn` — no money moves — and the re-read detail
+ * carries it into the decided history.
+ */
+export async function withdrawSpend(
+	input: { workspaceId: string; requestId: string },
+	actor: LiveActor,
+): Promise<ServiceResult<WorkspaceDetail>> {
+	if (!isUuid(input.workspaceId)) return badId("workspaceId", "business");
+	if (!isUuid(input.requestId)) return badId("requestId", "request");
+	const res = await callRpc(actor, "finance", "withdraw_spend_approval", {
+		p_approval: input.requestId,
 	});
 	if (!res.ok) return res.refusal;
 	return reread("business", input.workspaceId, actor);

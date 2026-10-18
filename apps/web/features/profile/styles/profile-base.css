@@ -353,13 +353,31 @@ a.pf-tag:focus-visible {
 
 /* #region Member notice */
 /*
- * A member's note above a business page outsiders cannot open (`ProfileMemberNotice`, BP1): one
- * InlineNotice line. Unboxed — no fill, no border; spacing is the only separation. It sits OUTSIDE
- * `.pf`, so it cannot read `--pf-gutter` and restates that gutter's three steps instead.
+ * A member's note above a team or business page outsiders cannot open (`ProfileMemberNotice`, BP1;
+ * Teams P1): one InlineNotice line, and — once that kind's Settings can publish it — the tier-4
+ * Settings link beside it. Unboxed — no fill, no border; spacing is the only separation. It sits
+ * OUTSIDE `.pf`, so it cannot read `--pf-gutter` and restates that gutter's three steps instead. The
+ * row wraps, so on a phone the link drops beneath the line rather than squeezing it.
  */
 .pf-notice {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-4);
     padding: var(--space-4) var(--space-6) 0;
+}
+
+/*
+ * The Settings link keeps its own width; the line takes the rest. An `<a>` dressed as a button: the
+ * rig's tier-4 pill treatment (`.pf-rig__cta`) — medium label, no link underline, never wrapping.
+ * Doubled class so it outranks `.ui-button` whatever the bundle order.
+ */
+.ui-button.pf-notice__action {
+    flex: none;
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-normal);
+    text-decoration: none;
+    white-space: nowrap;
 }
 
 /*
@@ -370,7 +388,22 @@ a.pf-tag:focus-visible {
 .ui-inline-notice.pf-notice__line {
     flex: 1 1 auto;
     min-inline-size: 0;
+    align-items: flex-start;
     padding-inline: 0;
+}
+
+/*
+ * The sentence takes the width the lock leaves and wraps inside it. InlineNotice's row wraps and its
+ * text sizes to its content, so a sentence longer than a phone's line — a team's is — would drop
+ * whole beneath the lock and leave the glyph alone on the first line; a zero basis keeps them side
+ * by side. The glyph rides the FIRST line, centred on it, rather than the middle of a two-line block.
+ */
+.pf-notice__line .ui-inline-notice__text {
+    flex: 1 1 0;
+}
+
+.pf-notice__line .ui-inline-notice__icon {
+    margin-block-start: calc((1lh - var(--icon-xs)) / 2);
 }
 
 @container pf (max-width: 44rem) {
