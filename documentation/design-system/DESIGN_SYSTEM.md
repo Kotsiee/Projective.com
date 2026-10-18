@@ -2241,9 +2241,12 @@ verbatim because every component depends only on the token contract (Part A) —
 > package docs describe existing implementations now re-homed under these sub-paths.
 
 > **Off-system app components — deliberately not on this roster.** `LandingShell`,
-> `LandingHeader` and `LandingBackground` (with its server paint `BackgroundFallback`) live in
+> `LandingHeader`, `LandingBackground` (with its server paint `BackgroundFallback`), `LandingHero`
+> (with `HeroCtas` / `HeroChips`), the `HeroSearch` island (with its markup `HeroSearchForm` and
+> its lazily loaded `CategorySheet`), `HeroTheatre` (the server figure, its `HeroTheatre` island and
+> the lazily loaded `theatre-player`) and the `LazyChatHost` island live in
 > `apps/web/features/landing/**` under the #280 exemption, outside `@projective/ui`; Part E,
-> "Off-system surfaces", documents them, and gate 5 is answered there (Decision #286 (B)). The
+> "Off-system surfaces", documents them, and gate 5 is answered there (Decisions #286 (B), #287). The
 > retired marketing landing components (`Hero`, `HowItWorks`, the landing-only cards…) were app
 > components too and were never roster entries.
 
@@ -4644,6 +4647,46 @@ and the exemption widens only by a new decision row.
   upgrades it behind the §3.6 gate (`core/background-gate.ts`) to the pointer spotlight or the lazily
   imported raw-WebGL2 constellation (`core/constellation-gl.ts`), which starts from and rests on the
   SVG's own picture (`core/constellation.ts`).
+- **`LandingHero`** (`features/landing/components/`) is `#hero` (L2): the copy block
+  (`data-lp-quiet="copy"`; the page's one h1), then its islands as slots from the page controller —
+  the search, the "Try:" chips (`HeroChips`, server-derived, a reserved-height row), the two calls
+  to action (`HeroCtas`, per viewer; reused by the final call to action) and the product theatre.
+  **`HeroSearch`** (`islands/`) renders **`HeroSearchForm`**, the search's markup as a pure function
+  of its state: a real `GET /explore` form with `q` and a native `category` select (Explore's
+  categories minus Products), the input an ARIA combobox whose suggestions are the headless
+  `createSuggestController` over `ExploreService.suggest` grouped People & teams · Services ·
+  Projects (the active row kept in sight; each recent row's remove button, named for its term, sits
+  beside its option, since an option's content is presentational), recent searches from
+  `search-history`, `/` through `useSearchShortcut` (its "/ to search" hint and
+  `aria-keyshortcuts` shown only once bound), and an `aria-hidden` typewriter that runs only on the
+  hero timeline's typewriter turns (`core/hero-motion.ts`), its characters bound to one text node.
+  The field (`.lp-search`) wears the §3.6 B9 ring and one halo layer, which paints beneath the
+  field's surface; the ring rests while the suggestions are open, and the timeline holds while the
+  field is hovered or focused, so the ring never turns beside the hero's own motion. In forced
+  colours the panel gets an edge and the active row the system's selection colours. Below
+  `--bp-md`, once hydrated, an icon button the select's width opens **`CategorySheet`** — the
+  overlay family's `Drawer` docked to the bottom, re-skinned `lp-sheet`, marked `lp-portal`, its
+  arrow keys moving the choice inside the sheet until a tap, Enter or Space takes it — loaded on
+  first open (the native select comes back should it fail to load); the client service and the
+  history module also load on first focus, so the island's own weight stays inside its 20 kB cap.
+  The model behind all of it (categories, `explorePath` URLs, the typewriter and its turn length,
+  the calls to action, the suggestion groups) is `core/hero-search.ts`; the typewriter's terms and
+  the chips are derived on the server (`ExploreBackendService.landingHero`).
+- **`HeroTheatre`** (`features/landing/components/`) is the hero's product theatre: a
+  `<figure role="img">` named for its one claim whose board subtree is `inert`, rendering the real
+  `@projective/ui` `KanbanColumn`s (under a still `DndCtx` from the package-internal
+  `@ui/dnd/core/context.ts` and `store.ts`, since nothing is dragged) over the work-board model
+  (`core/demos/board-model.ts`, which reads funding tags the way the product's card does) at its
+  first frame — the still a visitor sees without JavaScript, below `--bp-md` and under either
+  reduced-motion channel or Save-Data. Its **`HeroTheatre`** island renders only "Pause the example"
+  (from `--bp-md`, while the hero timeline has something to play) and, once the theatre is in view
+  with motion allowed and Save-Data off, loads **`theatre-player`** (`core/`, a lazy chunk), which
+  writes the scripted loop's frames onto the server's board with `transform`-only moves. "Try it
+  yourself" renders only once the page renders the demo stage (`demo`; L3), so no link points at a
+  section that is not there. The island also carries `lp-theatre.css` and the kanban sheet.
+- **`LazyChatHost`** (`features/landing/islands/`) is the landing paths' stand-in for the global
+  `ChatPopoutHost` for a signed-in visitor (#286 (A)): it renders and loads nothing until the tab has
+  a floating chat open, then imports the real host once and renders it with the same `path`.
 - **The old marketing landing is retired.** `features/marketing/components/` `LandingPage`, `Hero`,
   `HowItWorks`, `Testimonials`, `OpenProjectsGrid`, `ProductsMasonry`, `SectionHeading` and the
   landing-only `ProfileCard` / `ProjectCard` / `ServiceCard` / `ProductCard` (the Explore cards of

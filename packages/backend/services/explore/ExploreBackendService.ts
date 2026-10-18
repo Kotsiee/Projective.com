@@ -29,9 +29,14 @@ import {
 } from "./semantic.ts";
 import { similarityCache, similarityCacheKey, similarityDeps } from "./similarity-cache.ts";
 import { suggestFrom } from "./suggest.ts";
+import { landingHeroFrom } from "./landing-hero.ts";
 import { NO_PERSONAL_RAILS, personalRails, topicsOf, trendingRail } from "./personalise.ts";
 import { ownHandlesOf, readViewerSignals } from "./viewer-signals.ts";
-import { type DiscoveryRanking, type DiscoverySim, NO_DISCOVERY_SIM } from "@projective/types/explore";
+import {
+	type DiscoveryRanking,
+	type DiscoverySim,
+	NO_DISCOVERY_SIM,
+} from "@projective/types/explore";
 import type {
 	ArticleItem,
 	CtaPromo,
@@ -41,6 +46,7 @@ import type {
 	ExploreParams,
 	HelpArticle,
 	HomeFeed,
+	LandingHero,
 	LandingPayload,
 	PlatformStats,
 	ProductItem,
@@ -50,8 +56,8 @@ import type {
 	SearchPayload,
 	ServiceItem,
 	SponsoredPromo,
-	SuggestQuery,
 	Suggestions,
+	SuggestQuery,
 	Testimonial,
 } from "@projective/types/explore";
 
@@ -86,7 +92,8 @@ const CTA_FREELANCER: CtaPromo = {
 	after: "freelancers",
 	eyebrow: "Offer your skills",
 	title: "Become a Freelancer",
-	body: "Turn your craft into income. Set up services, get hired, and get paid safely at each step.",
+	body:
+		"Turn your craft into income. Set up services, get hired, and get paid safely at each step.",
 	href: "/join?intent=freelancer",
 	cta: "Start freelancing",
 	audience: "non_freelancers",
@@ -149,7 +156,10 @@ async function querySimilarity(
 			[],
 			SEMANTIC_POOL,
 		);
-		const similarity = similarityFrom(rows, (kind, id) => catalog.itemIdByEntity.get(entityKey(kind, id)));
+		const similarity = similarityFrom(
+			rows,
+			(kind, id) => catalog.itemIdByEntity.get(entityKey(kind, id)),
+		);
 		if (similarity.size === 0) return null;
 		const found = { similarity, vector: embedded.data };
 		similarityCache.set(cacheKey, found);
@@ -508,8 +518,10 @@ export class ExploreBackendService {
 		try {
 			const catalog = await loadCatalog();
 			const item = catalog.byId.get(id);
-			if (!item || item.type === "users" || item.type === "freelancers" ||
-				item.type === "teams" || item.type === "businesses") {
+			if (
+				!item || item.type === "users" || item.type === "freelancers" ||
+				item.type === "teams" || item.type === "businesses"
+			) {
 				return ranked(fail(404, { message: `No item found for id "${id}".` }), "heuristic");
 			}
 			const [view, similar] = await Promise.all([
@@ -581,14 +593,16 @@ export class ExploreBackendService {
 			if (error) throw new Error(`reading reviews failed — ${error.message}`);
 			const seen = new Set<string>();
 			const out: Testimonial[] = [];
-			for (const r of (data ?? []) as Array<{
-				id: string;
-				reviewer_user_id: string;
-				target_entity_type: string;
-				rating: number | string;
-				title: string | null;
-				comment: string;
-			}>) {
+			for (
+				const r of (data ?? []) as Array<{
+					id: string;
+					reviewer_user_id: string;
+					target_entity_type: string;
+					rating: number | string;
+					title: string | null;
+					comment: string;
+				}>
+			) {
 				if (out.length >= limit) break;
 				if (seen.has(r.reviewer_user_id)) continue;
 				const author = catalog.profileById.get(r.reviewer_user_id);
@@ -669,6 +683,34 @@ export class ExploreBackendService {
 			stats: stats.ok && stats.data ? stats.data : null,
 			heroImage: publicObjectUrl("public_assets", "platform/marketing/hero.webp"),
 		});
+	}
+
+	/**
+	 * The landing hero search's data from one catalogue load (`flows/LANDING.md` §4.1 `[U2]` `[U3]`):
+	 * the trending terms for every category, the typewriter's example searches — a generic phrase read
+	 * off each recommended service and project title, names and acronyms cut out, kept only when the
+	 * typeahead hits it and topped up from the §4.1 fallbacks the same way (`./landing-hero.ts`) — and
+	 * the "Try:" chips. Every check is the in-memory typeahead over the cached catalogue, so the page
+	 * pays one catalogue read for all of it. The recommended order is the shared Home feed's.
+	 */
+	static async landingHero(): Promise<ServiceResult<LandingHero>> {
+		try {
+			const catalog = await loadCatalog();
+			const now = Date.now();
+			const recommended = {
+				services: rankRecommended(ofType(catalog, "services"), catalog.scoreById),
+				projects: rankRecommended(ofType(catalog, "projects"), catalog.scoreById),
+			};
+			return ok(
+				landingHeroFrom(
+					catalog.items,
+					recommended,
+					(query) => suggestFrom(catalog.items, query, now, catalog.trending),
+				),
+			);
+		} catch (error) {
+			return unavailable(error);
+		}
 	}
 
 	/**

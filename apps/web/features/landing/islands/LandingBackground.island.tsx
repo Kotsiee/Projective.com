@@ -376,10 +376,12 @@ function startBackground(host: HTMLElement, publishZones: (zones: readonly Zone[
 		queueZones();
 		evaluate();
 	};
+	// Text changing inside a halo box (the search's typewriter, one character at a time) never moves a
+	// zone: the halo is the box's own rect, and the box keeps its size while its text changes.
 	const onHeroMutation = (records: MutationRecord[]) => {
 		const relevant = records.some((r) => {
 			const el = r.target instanceof Element ? r.target : r.target.parentElement;
-			return !el?.closest(SKIP_SELECTOR);
+			return !el?.closest(`${SKIP_SELECTOR}, ${HALO_SELECTOR}`);
 		});
 		if (relevant) queueZones();
 	};

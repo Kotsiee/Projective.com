@@ -9,6 +9,11 @@
  * weight of each island, and the budget lines. No server is started. Development builds are
  * meaningless here: the dev server serves modules unbundled.
  *
+ * The lines follow Decision #286 (A): the landing-owned initial JS fails past 60 kB, the app
+ * baseline (client entry + `_app.tsx` islands) fails only past its growth cap, the hero's own weight
+ * and each landing lazy chunk keep their caps; the layout hosts, the footer and the page totals for
+ * a guest and a signed-in visitor are reported and never fail.
+ *
  * It warns when a landing source or a declared island changed after the build, and refuses a build
  * that lacks a declared island.
  *

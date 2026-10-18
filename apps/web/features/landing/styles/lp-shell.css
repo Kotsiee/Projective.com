@@ -184,7 +184,9 @@
 	color: var(--lp-text);
 }
 
+/* Always the last track, so a hidden nav never pulls the actions into the middle. */
 .lp-header__actions {
+	grid-column: -2 / -1;
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;
@@ -275,6 +277,12 @@
 		display: block;
 	}
 
+	/* A nav whose every link waits for --bp-lg is not drawn before it, so no empty "Main" landmark
+	   is exposed between 768 and 1023. */
+	.lp-header__nav--wide {
+		display: none;
+	}
+
 	.lp-header__theme {
 		display: contents;
 	}
@@ -289,6 +297,10 @@
 }
 
 @media (min-width: 1024px) {
+	.lp-header__nav--wide {
+		display: block;
+	}
+
 	.lp-header__item--wide {
 		display: list-item;
 	}

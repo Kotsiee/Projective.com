@@ -1,7 +1,9 @@
 /**
  * js-budget.test — the manifest walk behind `deno task budget:landing`, over a fixture manifest:
  * client-entry lookup, static closures counted once, lazy groups beyond the initial chunks, the
- * per-audience island filter, own-weight caps, the weight of each island and the verdicts.
+ * per-audience island filter, the budget groups of Decision #286 (A) (the baseline's growth cap,
+ * the landing-owned 60 kB, the reported layout hosts, footer and totals), own-weight caps, the
+ * weight of each island and the verdicts.
  */
 import { assert, assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
 import {
@@ -9,15 +11,18 @@ import {
 	clientEntryKey,
 	type ClientManifest,
 	formatPageReport,
+	groupChunks,
 	KB,
 	LANDING_JS_BUDGET,
 	manifestKeyOf,
 	MissingIslandsError,
+	MOUNT_GROUPS,
 	type MountedIslands,
 	planFiles,
 	planPage,
 	reportPage,
 	staticClosure,
+	type Verdict,
 } from "./js-budget.ts";
 
 // #region Fixture
@@ -96,23 +101,30 @@ const MANIFEST: ClientManifest = {
 	[CODEC]: { file: "assets/codec.js", src: CODEC, isDynamicEntry: true },
 };
 
-/** The fixture page's islands by mount: Chat renders for a signed-in visitor only. */
+/**
+ * The fixture page's islands by mount: Header is the app baseline, Chat a layout host that renders
+ * for a signed-in visitor only, Background the landing's own, Toast the footer's.
+ */
 const MOUNTS: MountedIslands[] = [
 	{
 		mount: "app",
 		islands: [{ path: "apps/web/features/site/islands/Header.island.tsx", audience: "everyone" }],
 	},
 	{
+		mount: "layout",
+		islands: [{ path: "apps/web/features/chat/islands/Chat.island.tsx", audience: "signed-in" }],
+	},
+	{
 		mount: "page",
-		islands: [
-			{
-				path: "apps/web/features/landing/islands/Background.island.tsx",
-				audience: "everyone",
-				ownMax: 2 * KB,
-			},
-			{ path: "apps/web/features/chat/islands/Chat.island.tsx", audience: "signed-in" },
-			{ path: "packages/ui/feedback/islands/Toast.tsx", audience: "everyone" },
-		],
+		islands: [{
+			path: "apps/web/features/landing/islands/Background.island.tsx",
+			audience: "everyone",
+			ownMax: 2 * KB,
+		}],
+	},
+	{
+		mount: "footer",
+		islands: [{ path: "packages/ui/feedback/islands/Toast.tsx", audience: "everyone" }],
 	},
 ];
 
@@ -178,11 +190,11 @@ Deno.test("staticClosure names a key the manifest lacks", () => {
 // #region Plan
 Deno.test("planPage for everyone leaves signed-in islands out and groups lazy chunks beyond the initial set", () => {
 	const plan = everyonePlan();
-	assertEquals(plan.roots.map((root) => [root.key, root.mount]), [
-		[ENTRY, "entry"],
-		[HEADER, "app"],
-		[BACKGROUND, "page"],
-		[TOAST, "page"],
+	assertEquals(plan.roots.map((root) => [root.key, root.mount, root.group]), [
+		[ENTRY, "entry", "baseline"],
+		[HEADER, "app", "baseline"],
+		[BACKGROUND, "page", "landing"],
+		[TOAST, "footer", "footer"],
 	]);
 	assertEquals([...plan.initial.keys()], [
 		ENTRY,
@@ -223,6 +235,16 @@ Deno.test("planPage for a signed-in visitor adds their islands, and their lazy c
 	});
 });
 
+Deno.test("planPage caps a lazy chunk a landing island imports, wherever its source lives", () => {
+	const manifest: ClientManifest = {
+		...MANIFEST,
+		[BACKGROUND]: { ...MANIFEST[BACKGROUND], dynamicImports: [GL, EMOJI] },
+	};
+	const plan = planPage(manifest, "/", MOUNTS, "everyone");
+	assertEquals(plan.lazy.find((group) => group.root === EMOJI)?.max, LANDING_JS_BUDGET.lazyChunk);
+	assertEquals(plan.lazy.find((group) => group.root === SOUND)?.max, null);
+});
+
 Deno.test("planPage refuses an island the build does not have", () => {
 	const error = assertThrows(
 		() =>
@@ -245,31 +267,129 @@ Deno.test("planFiles lists each chunk file once across plans", () => {
 });
 // #endregion
 
+// #region Groups
+Deno.test("the ruled caps: landing-owned 60 kB, the baseline held at its measured bytes, the hero 20 kB, lazy 35 kB", () => {
+	assertEquals(LANDING_JS_BUDGET, {
+		landingOwned: 60 * KB,
+		appBaseline: 109_799,
+		heroIsland: 20 * KB,
+		lazyChunk: 35 * KB,
+	});
+});
+
+Deno.test("MOUNT_GROUPS counts the entry and _app as baseline, the shell and page as landing", () => {
+	assertEquals(MOUNT_GROUPS, {
+		entry: "baseline",
+		app: "baseline",
+		layout: "layout",
+		shell: "landing",
+		page: "landing",
+		footer: "footer",
+	});
+});
+
+Deno.test("groupChunks splits the initial chunks: baseline, landing beyond it, the rest beyond both", () => {
+	const grouped = groupChunks(MANIFEST, signedInPlan());
+	assertEquals([...grouped.baseline], [ENTRY, "_preact.js", "_signals.js", HEADER, "_shared.js"]);
+	assertEquals([...grouped.landing], [BACKGROUND]);
+	assertEquals([...grouped.layout], [CHAT, "_chat-core.js"]);
+	assertEquals([...grouped.footer], [TOAST]);
+});
+
+Deno.test("groupChunks counts a chunk a landing island shares with the footer as landing-owned", () => {
+	const mounts: MountedIslands[] = [
+		{
+			mount: "page",
+			islands: [{
+				path: "apps/web/features/landing/islands/Background.island.tsx",
+				audience: "everyone",
+			}],
+		},
+		{
+			mount: "footer",
+			islands: [{ path: "apps/web/features/site/islands/Header.island.tsx", audience: "everyone" }],
+		},
+	];
+	const grouped = groupChunks(MANIFEST, planPage(MANIFEST, "/", mounts, "signed-in"));
+	assertEquals([...grouped.baseline], [ENTRY, "_preact.js", "_signals.js"]);
+	assertEquals([...grouped.landing], [BACKGROUND, "_shared.js"]);
+	assertEquals([...grouped.footer], [HEADER]);
+});
+// #endregion
+
 // #region Report
-Deno.test("reportPage gates both audiences, caps own weight and landing lazy chunks, reports app lazy chunks", () => {
+/** The fixture report's verdicts by label. */
+function verdictsOf(sizes: ReadonlyMap<string, ChunkSize> = SIZES): Record<string, Verdict> {
+	const report = reportPage(MANIFEST, everyonePlan(), signedInPlan(), sizes);
+	return Object.fromEntries(report.verdicts.map((verdict) => [verdict.label, verdict]));
+}
+
+/** {@link SIZES} with one file's gzip size replaced. */
+function resized(file: string, gzip: number): ReadonlyMap<string, ChunkSize> {
+	return new Map([...SIZES, [file, { raw: gzip * 2, gzip }]]);
+}
+
+const BASELINE = "app baseline (client entry + _app islands)";
+const LANDING = "landing-owned (landing islands beyond the baseline)";
+
+Deno.test("reportPage fails the baseline cap, the landing-owned 60 kB, own weight and landing lazy chunks", () => {
 	const report = fixtureReport();
-	const verdicts = Object.fromEntries(report.verdicts.map((verdict) => [verdict.label, verdict]));
-	assertEquals(verdicts["initial JS, everyone"], {
-		label: "initial JS, everyone",
-		gzip: 20_800,
-		max: LANDING_JS_BUDGET.initial,
+	const verdicts = verdictsOf();
+	assertEquals(verdicts[BASELINE], {
+		label: BASELINE,
+		gzip: 20_000,
+		max: LANDING_JS_BUDGET.appBaseline,
 		ok: true,
 	});
-	assertEquals(verdicts["initial JS, signed in"].gzip, 65_800);
-	assertEquals(verdicts["initial JS, signed in"].ok, false);
+	assertEquals(verdicts[LANDING], {
+		label: LANDING,
+		gzip: 500,
+		max: LANDING_JS_BUDGET.landingOwned,
+		ok: true,
+	});
 	assertEquals(verdicts["own weight, Background.island.tsx"].gzip, 1_500);
 	assertEquals(verdicts["own weight, Background.island.tsx"].ok, true);
 	assertEquals(verdicts["lazy, gl.ts"].gzip, 37_000);
 	assertEquals(verdicts["lazy, gl.ts"].ok, false);
 	assertEquals(verdicts["lazy, gl-extra.ts"].ok, true);
-	assertEquals(verdicts["lazy, sound.ts (+1 lazy behind it)"], {
-		label: "lazy, sound.ts (+1 lazy behind it)",
-		gzip: 50_000,
-		max: null,
-		ok: true,
-	});
-	assert(!report.verdicts.some((verdict) => verdict.label.startsWith("lazy, codec.ts")));
 	assertEquals(report.ok, false);
+});
+
+Deno.test("reportPage reports the layout hosts, the footer, both totals and the lazy chunks it does not own", () => {
+	const verdicts = verdictsOf();
+	const reported = (label: string, gzip: number) => ({ label, gzip, max: null, ok: true });
+	assertEquals(
+		verdicts["layout hosts beyond the two above, signed in"],
+		reported("layout hosts beyond the two above, signed in", 45_000),
+	);
+	assertEquals(
+		verdicts["footer islands beyond the two above"],
+		reported("footer islands beyond the two above", 300),
+	);
+	assertEquals(verdicts["page total, everyone"], reported("page total, everyone", 20_800));
+	assertEquals(verdicts["page total, signed in"], reported("page total, signed in", 65_800));
+	assertEquals(
+		verdicts["lazy, sound.ts (+1 lazy behind it)"],
+		reported("lazy, sound.ts (+1 lazy behind it)", 50_000),
+	);
+	assertEquals(verdicts["lazy, signed in, emoji.ts"], reported("lazy, signed in, emoji.ts", 9_000));
+	assert(!Object.keys(verdicts).some((label) => label.includes("codec.ts")));
+});
+
+Deno.test("reportPage holds the baseline at its cap and the landing to 60 kB, inclusive", () => {
+	// The fixture's baseline is the 10 kB client entry plus 10 kB more: the entry may take the rest.
+	const room = LANDING_JS_BUDGET.appBaseline - 10_000;
+	assertEquals(verdictsOf(resized("assets/client-entry.js", room))[BASELINE].ok, true);
+	assertEquals(verdictsOf(resized("assets/client-entry.js", room + 1))[BASELINE].ok, false);
+	assertEquals(verdictsOf(resized("assets/background.js", 60_000))[LANDING].ok, true);
+	assertEquals(verdictsOf(resized("assets/background.js", 60_001))[LANDING].ok, false);
+});
+
+Deno.test("reportPage never fails a signed-in visitor's total, however heavy", () => {
+	const heavy = verdictsOf(resized("assets/chat.js", 500_000));
+	assertEquals(heavy["page total, signed in"].gzip, 535_800);
+	assertEquals(heavy["page total, signed in"].ok, true);
+	assertEquals(heavy[LANDING].ok, true);
 });
 
 Deno.test("reportPage rows run initial, signed-in, then landing lazy chunks, each heaviest first", () => {
@@ -288,8 +408,15 @@ Deno.test("reportPage rows run initial, signed-in, then landing lazy chunks, eac
 		raw: 20_000,
 		gzip: 10_000,
 		load: "initial",
+		group: "baseline",
 		via: "client-entry",
 	});
+	const groupOf = (file: string) => report.rows.find((row) => row.file === file)?.group;
+	assertEquals(groupOf("assets/shared.js"), "baseline");
+	assertEquals(groupOf("assets/background.js"), "landing");
+	assertEquals(groupOf("assets/chat-core.js"), "layout");
+	assertEquals(groupOf("assets/toast.js"), "footer");
+	assertEquals(groupOf("assets/gl.js"), null);
 	assertEquals(
 		report.rows.find((row) => row.file === "assets/shared.js")?.via,
 		"Header.island.tsx",
@@ -298,22 +425,32 @@ Deno.test("reportPage rows run initial, signed-in, then landing lazy chunks, eac
 });
 
 Deno.test("reportPage weighs each island: first-reach share and what only it pulls in", () => {
-	const weights = fixtureReport().roots.map((root) => [root.label, root.added, root.exclusive]);
+	const weights = fixtureReport().roots.map((root) => [
+		root.label,
+		root.group,
+		root.added,
+		root.exclusive,
+	]);
 	assertEquals(weights, [
-		["client-entry", 17_000, 10_000],
-		["Header.island.tsx", 3_000, 2_000],
-		["Background.island.tsx", 500, 500],
-		["Chat.island.tsx", 45_000, 45_000],
-		["Toast.tsx", 300, 300],
+		["client-entry", "baseline", 17_000, 10_000],
+		["Header.island.tsx", "baseline", 3_000, 2_000],
+		["Chat.island.tsx", "layout", 45_000, 45_000],
+		["Background.island.tsx", "landing", 500, 500],
+		["Toast.tsx", "footer", 300, 300],
 	]);
 });
 
-Deno.test("formatPageReport prints the tables and marks a broken cap OVER", () => {
+Deno.test("formatPageReport prints the tables, marks a broken cap OVER and the reported lines", () => {
 	const text = formatPageReport(fixtureReport());
 	assertStringIncludes(text, "assets/client-entry.js");
 	assertStringIncludes(text, "Weight by island");
-	assert(/initial JS, signed in\s+65\.8 kB\s+60\.0 kB\s+OVER/.test(text));
-	assert(/initial JS, everyone\s+20\.8 kB\s+60\.0 kB\s+ok/.test(text));
+	assertStringIncludes(text, "counts toward");
+	assert(/app baseline \(client entry \+ _app islands\)\s+20\.0 kB\s+109\.8 kB\s+ok/.test(text));
+	assert(
+		/landing-owned \(landing islands beyond the baseline\)\s+0\.5 kB\s+60\.0 kB\s+ok/.test(text),
+	);
+	assert(/lazy, gl\.ts\s+37\.0 kB\s+35\.0 kB\s+OVER/.test(text));
+	assert(/page total, signed in\s+65\.8 kB\s+-\s+reported/.test(text));
 	assert(/lazy, sound\.ts \(\+1 lazy behind it\)\s+50\.0 kB\s+-\s+reported/.test(text));
 });
 // #endregion

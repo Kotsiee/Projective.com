@@ -9,6 +9,7 @@ import { viewLaneFor, viewLaneOptionsFor } from "@features/view/core/view-lane-s
 import { viewHeaderFor } from "@features/view/core/view-header-slot.tsx";
 import { publicFooterFor } from "@features/marketing/core/footer-slot.tsx";
 import { LandingShell } from "@features/landing/components/LandingShell.tsx";
+import LazyChatHost from "@features/landing/islands/LazyChatHost.island.tsx";
 
 /** Auth surfaces render their own full-window chrome (AuthShell) — no marketing header/footer. */
 const AUTH_PATHS = new Set(["/join", "/login", "/forgot-password", "/verify"]);
@@ -42,12 +43,11 @@ export default define.page(function PublicLayout(ctx) {
 					<ctx.Component />
 				</LandingShell>
 				{
-					/* Both hosts sit outside `.lp-root`. `/` opens no ticket for anyone: the host only strips
-				    a `?tkv=` that reached it. The floating chat a signed-in visitor opened elsewhere stays
-				    open here too. */
+					/* No ticket host: a landing route answers a `?tkv=` with a 303 before it renders
+				    (`tkvRedirect`, Decision #286 (A)). The floating chat a signed-in visitor opened
+				    elsewhere stays open here too, its host loaded only once a chat window is open. */
 				}
-				<TicketDeepLinkHost authed={false} />
-				{authed ? <ChatPopoutHost path={ctx.url.pathname} /> : null}
+				{authed ? <LazyChatHost path={ctx.url.pathname} /> : null}
 			</>
 		);
 	}

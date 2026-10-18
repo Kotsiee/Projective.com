@@ -1,6 +1,11 @@
 import type { JSX } from "preact";
 import type { LandingPayload } from "@projective/types/explore";
+import { DEFAULT_AVATAR_URL } from "@projective/types/user";
 import LandingBackground from "@features/landing/islands/LandingBackground.island.tsx";
+import HeroSearch from "@features/landing/islands/HeroSearch.island.tsx";
+import { LandingHero } from "@features/landing/components/LandingHero.tsx";
+import HeroTheatre from "@features/landing/components/HeroTheatre.tsx";
+import type { HeroViewer } from "@features/landing/core/hero-search.ts";
 import { JsonLd } from "@features/marketing/components/JsonLd.tsx";
 import {
 	absoluteUrl,
@@ -13,14 +18,6 @@ import {
 } from "@features/marketing/core/seo.ts";
 
 // #region Copy
-/** The hero's server-rendered text (`flows/LANDING.md` §4.1, headline option 1). */
-const HERO = {
-	eyebrow: "Ready-made teams · Payment protection",
-	lines: ["Hire a ready-made team.", "Pay one stage at a time."],
-	lead:
-		"Search for a team that's already formed. Work starts only once it's paid for. They're paid when you approve.",
-} as const;
-
 /**
  * The page's head copy (`flows/LANDING.md` §4.0). "Escrow" appears in the meta description only
  * (Decision #283 (C)); the Open Graph pair is the shorter social-card copy.
@@ -79,36 +76,52 @@ export interface LandingPageProps {
 	landing: LandingPayload | null;
 	/** The site's public origin, for the structured data's absolute ids and URLs. */
 	origin: string;
+	/** The hero search's server-derived data (`routes/(public)/index.tsx`). */
+	hero: LandingHeroData;
+}
+
+/**
+ * What the route reads for the hero search (`ExploreBackendService.landingHero`, with the viewer
+ * facts), already sliced to what the page shows.
+ */
+export interface LandingHeroData {
+	/** The typewriter's examples, each confirmed by a suggest hit (`landingHero`); may be empty. */
+	terms: string[];
+	/** The trending terms for every category: the empty field's Trending rows. */
+	trending: string[];
+	/** The "Try:" chips (`landingHero`); empty omits the row. */
+	chips: string[];
+	/** The few viewer facts the calls to action read (`heroViewerOf`). */
+	viewer: HeroViewer;
 }
 
 /**
  * LandingPage — the page controller of `/` (`flows/LANDING.md`), rendered inside LandingShell's
- * `<main>`.
- *
- * The hero (`#hero`) is a positioned, isolated region: {@link LandingBackground} fills it from
- * beneath with the static paint first and the WebGL upgrade only where allowed, and the copy column
- * sits above it — the eyebrow, the page's only `<h1>` (the LCP element at every width) and the
- * subline, all server-rendered text that needs no JavaScript. The copy block is marked
- * `data-lp-quiet="copy"`, the box the constellation keeps quiet behind. `.lp-hero__inner` is a
- * centred column whose first child is the copy block, so the hero's controls stack beneath it.
+ * `<main>`: the structured data, then the hero ({@link LandingHero}) with its islands slotted in —
+ * {@link LandingBackground} beneath it, the {@link HeroSearch} instance that owns `/` and the
+ * typewriter (`idSuffix` empty; the final call to action, L4, mounts a second, quiet one), and
+ * the {@link HeroTheatre}, which shows no fee and so is not handed one, and is handed `demo` (its
+ * "Try it yourself" link) only once the page renders the demo stage (L3).
  */
-export function LandingPage({ origin }: LandingPageProps): JSX.Element {
+export function LandingPage({ origin, hero }: LandingPageProps): JSX.Element {
 	return (
 		<>
 			<JsonLd graph={landingGraph(origin)} id="landing-jsonld" />
-			<section id="hero" class="lp-hero">
-				<LandingBackground variant="hero" />
-				<div class="lp-hero__inner">
-					<div class="lp-hero__copy" data-lp-quiet="copy">
-						<p class="lp-eyebrow">{HERO.eyebrow}</p>
-						<h1 class="lp-display lp-display--hero lp-hero__title">
-							<span class="lp-hero__line">{HERO.lines[0]}</span>{" "}
-							<span class="lp-hero__line">{HERO.lines[1]}</span>
-						</h1>
-						<p class="lp-lead lp-hero__lead">{HERO.lead}</p>
-					</div>
-				</div>
-			</section>
+			<LandingHero
+				background={<LandingBackground variant="hero" />}
+				search={
+					<HeroSearch
+						slashFocus
+						typewriter
+						terms={hero.terms}
+						trending={hero.trending}
+						avatarFallback={DEFAULT_AVATAR_URL}
+					/>
+				}
+				chips={hero.chips}
+				viewer={hero.viewer}
+				theatre={<HeroTheatre />}
+			/>
 		</>
 	);
 }

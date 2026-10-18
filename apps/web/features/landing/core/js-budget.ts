@@ -11,31 +11,56 @@
  * they import statically, each file counted once. A `dynamicImports` edge is lazy: its chunk loads
  * only when the code calls `import()`, so it is reported apart and sits outside the initial budget.
  *
+ * What the budget counts (Decision #286 (A), owner ruling 2026-10-18: "strip + defer + rescope").
+ * Each initial chunk belongs to one {@link BudgetGroup}, by the mount of the islands that reach it:
+ *  - the app baseline — the client entry and the `_app.tsx` islands, loaded by every page of the
+ *    app. It fails past {@link LANDING_JS_BUDGET.appBaseline}, its measured size in bytes, so it
+ *    cannot grow by a byte; trimming it is app-wide work, outside the landing.
+ *  - landing-owned — every chunk a landing island reaches beyond the baseline: `LandingShell`'s
+ *    header and the page's own islands (hero, demos, background), whether or not a footer island
+ *    or a layout host shares the chunk. The 60 kB ({@link LANDING_JS_BUDGET.landingOwned}) fails here.
+ *  - the layout hosts (the `(public)/_layout.tsx` landing branch) and the footer islands — reported,
+ *    each as what it adds beyond the two groups above.
+ * The page totals for a guest and for a signed-in visitor are reported and never fail. Each island
+ * with an {@link BudgetIsland.ownMax} (the hero's 20 kB) fails past its cap, and so does each lazy
+ * chunk the landing owns past 35 kB; a lazy chunk the landing does not own is reported.
+ *
  * Which islands render is declared here, by where they mount: {@link APP_ISLANDS} (`_app.tsx`, every
  * page), {@link LANDING_LAYOUT_ISLANDS} (the `(public)/_layout.tsx` landing branch),
- * {@link LANDING_SHELL_ISLANDS} (`LandingShell`, its footer included) and each page of
- * {@link LANDING_PAGES}. A work order that adds an island to a landing page adds it to its list;
- * `island-graph.test.ts` walks the source and fails while a list and the code disagree.
+ * {@link LANDING_SHELL_ISLANDS} (`LandingShell`'s own), {@link LANDING_FOOTER_ISLANDS} (the
+ * `PublicFooter` that `LandingShell` renders) and each page of {@link LANDING_PAGES}. A work order
+ * that adds an island to a landing page adds it to its list; `island-graph.test.ts` walks the source
+ * and fails while a list and the code disagree.
  */
 
 // #region Budgets
 /** One kilobyte as Vite reports it (`kB`): 1,000 bytes. */
 export const KB = 1000;
 
-/** The landing's JavaScript budgets in gzip bytes (`flows/LANDING.md` §7, build prompts §2.0, L2, L3). */
+/**
+ * The landing's JavaScript budgets in gzip bytes (`flows/LANDING.md` §7, build prompts §2.0, L2,
+ * L3, as ruled by Decision #286 (A)).
+ */
 export const LANDING_JS_BUDGET = {
-	/** Initial JS of each landing page, lazily loaded chunks excluded. */
-	initial: 60 * KB,
+	/** Landing-owned initial JS of each landing page (see {@link BudgetGroup}), lazy chunks excluded. */
+	landingOwned: 60 * KB,
+	/**
+	 * The app baseline (the client entry and the `_app.tsx` islands) at its measured size, in bytes:
+	 * 109,799 on the production build of 2026-10-18 (Decisions #286 (A), #287 (A)(12)). A cap on
+	 * growth, not a target: one more byte fails, and a change that trims the baseline lowers it.
+	 */
+	appBaseline: 109_799,
 	/** The hero search island's own weight (L2), set as that island's {@link BudgetIsland.ownMax}. */
 	heroIsland: 20 * KB,
 	/**
-	 * Each lazily loaded chunk the landing owns (its source under `features/landing/`): the L3 demo
-	 * cap, applied to every landing chunk loaded by `import()`, the WebGL constellation included.
+	 * Each lazily loaded chunk the landing owns — its source under `features/landing/`, or loaded by
+	 * `import()` from a landing-owned chunk (the hero's lazily loaded Explore client too): the L3 demo
+	 * cap, applied to every such chunk, the WebGL constellation included.
 	 */
 	lazyChunk: 35 * KB,
 } as const;
 
-/** Manifest-key prefix of the landing's own modules, whose lazy chunks {@link LANDING_JS_BUDGET.lazyChunk} caps. */
+/** Manifest-key prefix of the landing's own modules, whose lazy chunks {@link LANDING_JS_BUDGET.lazyChunk} always caps. */
 const LANDING_KEY_PREFIX = "features/landing/";
 // #endregion
 
@@ -43,8 +68,27 @@ const LANDING_KEY_PREFIX = "features/landing/";
 /** Who an island renders for. */
 export type Audience = "everyone" | "signed-in";
 
-/** Where an island mounts: `_app.tsx`, the public layout's landing branch, `LandingShell`, or the page. */
-export type Mount = "app" | "layout" | "shell" | "page";
+/**
+ * Where an island mounts: `_app.tsx`, the public layout's landing branch, `LandingShell` itself, the
+ * page, or the `PublicFooter` that `LandingShell` renders.
+ */
+export type Mount = "app" | "layout" | "shell" | "page" | "footer";
+
+/**
+ * What a budget line counts a chunk toward: the app baseline (capped against growth), the landing's
+ * own JS (the 60 kB), a layout host or the footer (both reported).
+ */
+export type BudgetGroup = "baseline" | "landing" | "layout" | "footer";
+
+/** The group each mount's islands (and the client entry) count toward. */
+export const MOUNT_GROUPS: Readonly<Record<Mount | "entry", BudgetGroup>> = {
+	entry: "baseline",
+	app: "baseline",
+	layout: "layout",
+	shell: "landing",
+	page: "landing",
+	footer: "footer",
+};
 
 /** One island a landing page renders. */
 export interface BudgetIsland {
@@ -77,6 +121,7 @@ export const ISLAND_SOURCES = {
 	app: "apps/web/routes/_app.tsx",
 	layout: "apps/web/routes/(public)/_layout.tsx",
 	shell: "apps/web/features/landing/components/LandingShell.tsx",
+	footer: "apps/web/features/marketing/components/PublicFooter.tsx",
 } as const;
 
 /** The islands `_app.tsx` renders on every page (the developer tools are stripped in production). */
@@ -93,18 +138,22 @@ export const APP_ISLANDS: readonly BudgetIsland[] = [
 	},
 ];
 
-/** The islands the `(public)/_layout.tsx` landing branch mounts beside `LandingShell`. */
+/**
+ * The islands the `(public)/_layout.tsx` landing branch mounts beside `LandingShell`. No ticket host
+ * (the landing routes strip `?tkv=` with a 303, `strip-tkv.ts`), and the chat host's lazy stand-in
+ * for a signed-in visitor: the real `ChatPopoutHost` is a lazy chunk behind it (Decision #286 (A)).
+ */
 export const LANDING_LAYOUT_ISLANDS: readonly BudgetIsland[] = [
-	{
-		path: "apps/web/features/projects/islands/TicketDeepLinkHost.island.tsx",
-		audience: "everyone",
-	},
-	{ path: "apps/web/features/messaging/islands/ChatPopoutHost.island.tsx", audience: "signed-in" },
+	{ path: "apps/web/features/landing/islands/LazyChatHost.island.tsx", audience: "signed-in" },
 ];
 
-/** The islands `LandingShell` renders: the header pill and the `PublicFooter` islands. */
+/** The islands `LandingShell` renders itself: the header pill. */
 export const LANDING_SHELL_ISLANDS: readonly BudgetIsland[] = [
 	{ path: "apps/web/features/landing/islands/LandingHeader.island.tsx", audience: "everyone" },
+];
+
+/** The islands of the `PublicFooter` that `LandingShell` renders after `.lp-root`. */
+export const LANDING_FOOTER_ISLANDS: readonly BudgetIsland[] = [
 	{ path: "apps/web/features/marketing/islands/FooterLinkGroups.island.tsx", audience: "everyone" },
 	{ path: "apps/web/features/marketing/islands/NewsletterForm.island.tsx", audience: "everyone" },
 	{ path: "apps/web/features/marketing/islands/RecentlyViewed.island.tsx", audience: "everyone" },
@@ -124,17 +173,29 @@ export const LANDING_PAGES: readonly BudgetPage[] = [
 				path: "apps/web/features/marketing/islands/SchemaInjector.island.tsx",
 				audience: "everyone",
 			},
+			{
+				path: "apps/web/features/landing/islands/HeroSearch.island.tsx",
+				audience: "everyone",
+				ownMax: LANDING_JS_BUDGET.heroIsland,
+			},
+			{
+				// The theatre's toggle and timeline wiring; its player is a lazy chunk (L2 target 12 kB).
+				path: "apps/web/features/landing/islands/HeroTheatre.island.tsx",
+				audience: "everyone",
+				ownMax: 12 * KB,
+			},
 		],
 	},
 ];
 
-/** Every island `page` renders, by mount, in mount order: app, layout, shell, page. */
+/** Every island `page` renders, by mount, in mount order: app, layout, shell, page, footer. */
 export function pageMounts(page: BudgetPage): MountedIslands[] {
 	return [
 		{ mount: "app", islands: APP_ISLANDS },
 		{ mount: "layout", islands: LANDING_LAYOUT_ISLANDS },
 		{ mount: "shell", islands: LANDING_SHELL_ISLANDS },
 		{ mount: "page", islands: page.islands },
+		{ mount: "footer", islands: LANDING_FOOTER_ISLANDS },
 	];
 }
 
@@ -221,6 +282,8 @@ export interface PlanRoot {
 	key: string;
 	mount: Mount | "entry";
 	audience: Audience;
+	/** The group its chunks count toward ({@link MOUNT_GROUPS}). */
+	group: BudgetGroup;
 }
 
 /** Lazily loaded chunks behind one `import()` target, beyond what the page already loaded. */
@@ -231,7 +294,10 @@ export interface LazyGroup {
 	parent: string | null;
 	/** Its closure minus the page's initial chunks. */
 	chunks: string[];
-	/** Its gzip cap, or `null` for a chunk the landing does not own. */
+	/**
+	 * Its gzip cap, or `null` for a chunk the landing does not own. The landing owns it when its
+	 * source is under `features/landing/`, or when a landing-owned chunk (initial or lazy) imports it.
+	 */
 	max: number | null;
 }
 
@@ -256,6 +322,26 @@ export interface PagePlan {
 	lazy: LazyGroup[];
 	/** Islands with an own-weight cap. */
 	owned: OwnWeight[];
+}
+
+/** The static closure of the roots of one {@link BudgetGroup}, in first-reach order. */
+function groupClosure(
+	manifest: ClientManifest,
+	roots: readonly PlanRoot[],
+	group: BudgetGroup,
+): string[] {
+	return [
+		...staticClosure(
+			manifest,
+			roots.filter((root) => root.group === group).map((root) => root.key),
+		).keys(),
+	];
+}
+
+/** The landing-owned initial chunks of `roots`: the landing roots' closure minus the baseline's. */
+function landingOwnedChunks(manifest: ClientManifest, roots: readonly PlanRoot[]): Set<string> {
+	const baseline = new Set(groupClosure(manifest, roots, "baseline"));
+	return new Set(groupClosure(manifest, roots, "landing").filter((key) => !baseline.has(key)));
 }
 
 /** Raised when a declared island has no manifest entry: the build is stale or the list is wrong. */
@@ -285,34 +371,47 @@ export function planPage(
 			.filter((island) => audience === "signed-in" || island.audience === "everyone")
 			.map((island) => ({
 				island,
-				root: { key: manifestKeyOf(island.path), mount, audience: island.audience },
+				root: {
+					key: manifestKeyOf(island.path),
+					mount,
+					audience: island.audience,
+					group: MOUNT_GROUPS[mount],
+				},
 			}))
 	);
 	const missing = rendered.map(({ root }) => root.key).filter((key) => manifest[key] === undefined);
 	if (missing.length > 0) throw new MissingIslandsError(missing);
 
 	const roots: PlanRoot[] = [
-		{ key: entry, mount: "entry", audience: "everyone" },
+		{ key: entry, mount: "entry", audience: "everyone", group: MOUNT_GROUPS.entry },
 		...rendered.map(({ root }) => root),
 	];
 	const initial = staticClosure(manifest, roots.map((root) => root.key));
+	const landing = landingOwnedChunks(manifest, roots);
 
 	const lazy: LazyGroup[] = [];
-	const queue: Array<{ key: string; parent: string | null }> = [...initial.keys()].flatMap((key) =>
-		(manifest[key].dynamicImports ?? []).map((target) => ({ key: target, parent: null }))
+	const queue: Array<{ key: string; parent: string | null; capped: boolean }> = [
+		...initial.keys(),
+	].flatMap((key) =>
+		(manifest[key].dynamicImports ?? []).map((target) => ({
+			key: target,
+			parent: null,
+			capped: landing.has(key),
+		}))
 	);
 	for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-		const { key, parent } = next;
+		const { key, parent, capped } = next;
 		if (initial.has(key) || lazy.some((group) => group.root === key)) continue;
 		const chunks = [...staticClosure(manifest, [key]).keys()].filter((chunk) =>
 			!initial.has(chunk)
 		);
 		if (chunks.length === 0) continue;
-		const max = key.startsWith(LANDING_KEY_PREFIX) ? LANDING_JS_BUDGET.lazyChunk : null;
+		const owned = capped || key.startsWith(LANDING_KEY_PREFIX);
+		const max = owned ? LANDING_JS_BUDGET.lazyChunk : null;
 		lazy.push({ root: key, parent, chunks, max });
 		for (const chunk of chunks) {
 			for (const target of manifest[chunk].dynamicImports ?? []) {
-				queue.push({ key: target, parent: key });
+				queue.push({ key: target, parent: key, capped: owned });
 			}
 		}
 	}
@@ -356,6 +455,8 @@ export interface ChunkRow {
 	raw: number;
 	gzip: number;
 	load: ChunkLoad;
+	/** The group an initial chunk counts toward ({@link groupChunks}); `null` for a lazy chunk. */
+	group: BudgetGroup | null;
 	/** The root (island, client entry or lazy entry) that pulled the chunk in. */
 	via: string;
 }
@@ -365,6 +466,7 @@ export interface RootWeight {
 	label: string;
 	mount: Mount | "entry";
 	audience: Audience;
+	group: BudgetGroup;
 	/** The chunks it reached first, in mount order (its share of the total). */
 	added: number;
 	/** The chunks no other root reaches (what dropping it would save). */
@@ -402,11 +504,44 @@ function lazyBehind(groups: readonly LazyGroup[], root: string): number {
 	return children.reduce((count, child) => count + 1 + lazyBehind(groups, child.root), 0);
 }
 
+/** The groups in report order; a chunk a layout host and the footer share is labelled `layout`. */
+const GROUP_ORDER: readonly BudgetGroup[] = ["baseline", "landing", "layout", "footer"];
+
+/** A plan's initial chunks by {@link BudgetGroup}. */
+export type GroupedChunks = Readonly<Record<BudgetGroup, ReadonlySet<string>>>;
+
 /**
- * The report for one page from its plan for everyone and for a signed-in visitor; both are gated,
- * since the landing renders for both. The chunk table runs initial, then signed-in only, then the
- * chunks of capped (landing-owned) lazy groups, each by gzip size descending; an uncapped lazy group
- * appears once, as a reported line counting the lazy groups behind it.
+ * Splits a plan's initial chunks by {@link BudgetGroup}. The baseline is the static closure of the
+ * client entry and the `_app.tsx` islands; landing-owned is the closure of the landing islands minus
+ * the baseline, so a chunk a landing island shares with a footer island or a layout host counts
+ * here; a layout host's and the footer's are each their closure minus both (a chunk those two share
+ * appears in each).
+ *
+ * @param plan A plan whose roots carry every island (the signed-in plan, for a real page).
+ */
+export function groupChunks(manifest: ClientManifest, plan: PagePlan): GroupedChunks {
+	const baseline = new Set(groupClosure(manifest, plan.roots, "baseline"));
+	const landing = landingOwnedChunks(manifest, plan.roots);
+	const beyond = (group: BudgetGroup): Set<string> =>
+		new Set(
+			groupClosure(manifest, plan.roots, group).filter((key) =>
+				!baseline.has(key) && !landing.has(key)
+			),
+		);
+	return { baseline, landing, layout: beyond("layout"), footer: beyond("footer") };
+}
+
+/**
+ * The report for one page from its plan for everyone and for a signed-in visitor (Decision #286 (A)).
+ *
+ * Failing lines: the app baseline against its growth cap, the landing-owned initial JS against the
+ * 60 kB (every landing island counted, whoever it renders for), each island's own-weight cap and
+ * each lazy chunk the landing owns. Reported lines: what the layout hosts and the footer add beyond
+ * those two groups, the page totals for both audiences, and each lazy group the landing does not
+ * own (once, counting the lazy groups behind it; the signed-in visitor's own lazy groups apart).
+ *
+ * The chunk table runs initial, then signed-in only, then the chunks of capped lazy groups, each by
+ * gzip size descending.
  *
  * @param sizes Each chunk file's raw and gzip size.
  * @throws When a chunk file has no size.
@@ -427,16 +562,27 @@ export function reportPage(
 		for (const key of keys) total += sizeOf(key).gzip;
 		return total;
 	};
+
+	const grouped = groupChunks(manifest, signedIn);
+	const groupOf = (key: string): BudgetGroup => {
+		const group = GROUP_ORDER.find((name) => grouped[name].has(key));
+		if (group === undefined) throw new Error(`js-budget: "${key}" is in no budget group`);
+		return group;
+	};
 	const row = (key: string, load: ChunkLoad, via: string): ChunkRow => ({
 		file: manifest[key].file,
 		...sizeOf(key),
 		load,
+		group: load === "lazy" ? null : groupOf(key),
 		via: rootLabel(manifest, via),
 	});
 	const byGzip = (a: ChunkRow, b: ChunkRow) => b.gzip - a.gzip || a.file.localeCompare(b.file);
 
 	const signedInOnly = [...signedIn.initial].filter(([key]) => !everyone.initial.has(key));
-	const capped = everyone.lazy.filter((group) => group.max !== null);
+	const signedInLazy = signedIn.lazy.filter((group) =>
+		!everyone.lazy.some((other) => other.root === group.root)
+	);
+	const capped = [...everyone.lazy, ...signedInLazy].filter((group) => group.max !== null);
 	const rows = [
 		...[...everyone.initial].map(([key, via]) => row(key, "initial", via)).sort(byGzip),
 		...signedInOnly.map(([key, via]) => row(key, "signed-in", via)).sort(byGzip),
@@ -461,6 +607,7 @@ export function reportPage(
 			label: rootLabel(manifest, root.key),
 			mount: root.mount,
 			audience: root.audience,
+			group: root.group,
 			added: sum(reached.map(([key]) => key)),
 			exclusive: exclusiveOf(plan, root.key),
 		};
@@ -472,22 +619,38 @@ export function reportPage(
 		max,
 		ok: max === null || gzip <= max,
 	});
+	const reportedLazy = (plan: PagePlan, groups: readonly LazyGroup[], prefix: string) =>
+		groups
+			.filter((group) => group.max === null && group.parent === null)
+			.map((group) => {
+				const behind = lazyBehind(plan.lazy, group.root);
+				const more = behind === 0 ? "" : ` (+${behind} lazy behind it)`;
+				const label = `${prefix}${rootLabel(manifest, group.root)}${more}`;
+				return verdict(label, sum(group.chunks), null);
+			});
 	const verdicts: Verdict[] = [
-		verdict("initial JS, everyone", sum(everyone.initial.keys()), LANDING_JS_BUDGET.initial),
-		verdict("initial JS, signed in", sum(signedIn.initial.keys()), LANDING_JS_BUDGET.initial),
-		...everyone.owned.map((own) =>
+		verdict(
+			"app baseline (client entry + _app islands)",
+			sum(grouped.baseline),
+			LANDING_JS_BUDGET.appBaseline,
+		),
+		verdict(
+			"landing-owned (landing islands beyond the baseline)",
+			sum(grouped.landing),
+			LANDING_JS_BUDGET.landingOwned,
+		),
+		...signedIn.owned.map((own) =>
 			verdict(`own weight, ${rootLabel(manifest, own.island)}`, sum(own.chunks), own.max)
 		),
 		...capped.map((group) =>
 			verdict(`lazy, ${rootLabel(manifest, group.root)}`, sum(group.chunks), group.max)
 		),
-		...everyone.lazy
-			.filter((group) => group.max === null && group.parent === null)
-			.map((group) => {
-				const behind = lazyBehind(everyone.lazy, group.root);
-				const more = behind === 0 ? "" : ` (+${behind} lazy behind it)`;
-				return verdict(`lazy, ${rootLabel(manifest, group.root)}${more}`, sum(group.chunks), null);
-			}),
+		verdict("layout hosts beyond the two above, signed in", sum(grouped.layout), null),
+		verdict("footer islands beyond the two above", sum(grouped.footer), null),
+		verdict("page total, everyone", sum(everyone.initial.keys()), null),
+		verdict("page total, signed in", sum(signedIn.initial.keys()), null),
+		...reportedLazy(everyone, everyone.lazy, "lazy, "),
+		...reportedLazy(signedIn, signedInLazy, "lazy, signed in, "),
 	];
 
 	return {
@@ -519,20 +682,28 @@ function table(head: string[], body: string[][], numeric: ReadonlySet<number>): 
 /** One page's report as text: the chunk table, the weight of each root, then the budget lines. */
 export function formatPageReport(report: PageReport): string {
 	const chunks = table(
-		["chunk", "raw", "gzip", "load", "via"],
-		report.rows.map((row) => [row.file, formatKb(row.raw), formatKb(row.gzip), row.load, row.via]),
+		["chunk", "raw", "gzip", "load", "counts toward", "via"],
+		report.rows.map((row) => [
+			row.file,
+			formatKb(row.raw),
+			formatKb(row.gzip),
+			row.load,
+			row.group ?? "-",
+			row.via,
+		]),
 		new Set([1, 2]),
 	);
 	const roots = table(
-		["island", "mount", "renders for", "added", "exclusive"],
+		["island", "mount", "counts toward", "renders for", "added", "exclusive"],
 		report.roots.map((root) => [
 			root.label,
 			root.mount,
+			root.group,
 			root.audience,
 			formatKb(root.added),
 			formatKb(root.exclusive),
 		]),
-		new Set([3, 4]),
+		new Set([4, 5]),
 	);
 	const verdicts = table(
 		["budget", "gzip", "max", "result"],

@@ -4,11 +4,14 @@
  * The first half proves the walk on a fixture tree (barrels, `export *`, type-only and commented
  * imports, dynamic imports, the developer tools, islands inside islands). The second half runs it on
  * the real tree: every island `_app.tsx`, the landing branch of `(public)/_layout.tsx`,
- * `LandingShell` and each page controller renders must be in `js-budget.ts`, and nothing else may
- * be. A work order that adds an island to a landing page and forgets the list fails here.
+ * `LandingShell` (its `PublicFooter` apart) and each page controller renders must be in
+ * `js-budget.ts`, and nothing else may be. A work order that adds an island to a landing page and
+ * forgets the list fails here, and so does a landing branch that mounts the ticket host or the
+ * eager chat host again (Decision #286 (A)).
  */
 import { assert, assertEquals } from "@std/assert";
 import {
+	blankComments,
 	createResolver,
 	type DenoJson,
 	isIslandPath,
@@ -24,6 +27,7 @@ import {
 	APP_ISLANDS,
 	type BudgetIsland,
 	ISLAND_SOURCES,
+	LANDING_FOOTER_ISLANDS,
 	LANDING_LAYOUT_ISLANDS,
 	LANDING_PAGES,
 	LANDING_SHELL_ISLANDS,
@@ -185,8 +189,46 @@ Deno.test("LANDING_LAYOUT_ISLANDS are islands the public layout mounts", () => {
 	}
 });
 
-Deno.test("LANDING_SHELL_ISLANDS is exactly what LandingShell renders", () => {
-	assertEquals(paths(LANDING_SHELL_ISLANDS), islandsRenderedBy([ISLAND_SOURCES.shell], repoWalk()));
+/**
+ * The landing branch of the public layout, comments blanked: from its `LANDING_PATHS` test to the
+ * branch's closing brace (the first line that is one tab and `}`).
+ */
+function landingBranch(): string {
+	const src = blankComments(readRepo(ISLAND_SOURCES.layout) ?? "").replace(/\r\n/g, "\n");
+	const start = src.indexOf("if (LANDING_PATHS.has(ctx.url.pathname)) {");
+	assert(start !== -1, `${ISLAND_SOURCES.layout} has no LANDING_PATHS branch`);
+	const end = src.indexOf("\n\t}\n", start);
+	assert(end !== -1, `${ISLAND_SOURCES.layout}: the LANDING_PATHS branch does not close`);
+	return src.slice(start, end);
+}
+
+/** An island's component name as the layout imports it: its file name without `.island.tsx`. */
+const componentOf = (path: string) => path.slice(path.lastIndexOf("/") + 1).replace(/\..*$/, "");
+
+Deno.test("the landing branch mounts exactly LANDING_LAYOUT_ISLANDS: no ticket host, no eager chat host", () => {
+	const branch = landingBranch();
+	const declared = new Set(LANDING_LAYOUT_ISLANDS.map((island) => island.path));
+	for (const path of islandsImportedBy(ISLAND_SOURCES.layout, repoWalk())) {
+		const mounted = new RegExp(`<${componentOf(path)}\\b`).test(branch);
+		assertEquals(
+			mounted,
+			declared.has(path),
+			`the landing branch and the list disagree on ${path}`,
+		);
+	}
+	assert(
+		/authed\s*\?\s*<LazyChatHost\b/.test(branch),
+		"LazyChatHost must mount for a signed-in visitor only",
+	);
+});
+
+Deno.test("LANDING_SHELL_ISLANDS and LANDING_FOOTER_ISLANDS are together exactly what LandingShell renders", () => {
+	const walk = repoWalk();
+	assertEquals(paths(LANDING_FOOTER_ISLANDS), islandsRenderedBy([ISLAND_SOURCES.footer], walk));
+	assertEquals(
+		paths([...LANDING_SHELL_ISLANDS, ...LANDING_FOOTER_ISLANDS]),
+		islandsRenderedBy([ISLAND_SOURCES.shell], walk),
+	);
 });
 
 Deno.test("every landing page controller has a budget page", () => {

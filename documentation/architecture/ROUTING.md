@@ -73,9 +73,12 @@ Parenthesized folders group routes **without** adding a URL segment:
     control, then "Sign in" + "Get started" for a guest or "Open app" → `/home` for a signed-in
     visitor; below 768px a menu sheet), the `<main id="main-content">`, and the unchanged
     `PublicFooter` (Decision #13) rendered after `.lp-root`, outside it (#285 (B)). Also mounted for
-    these paths, outside `.lp-root`: `TicketDeepLinkHost authed={false}` for everyone (`/` opens no
-    ticket and strips a `?tkv=`, below) and, for a signed-in visitor only, `ChatPopoutHost`, so a
-    floating chat opened elsewhere stays open on the landing. **Not mounted** there, against the
+    these paths, outside `.lp-root`, for a signed-in visitor only: `LazyChatHost`
+    (`features/landing/islands/`), which renders nothing and loads the global `ChatPopoutHost` only
+    once the tab has a floating chat open (its `sessionStorage` state, or `openPopout` on the page),
+    so a chat opened elsewhere stays open on the landing without the host's weight on every landing
+    view (Decision #286 (A)). No ticket host is mounted: the landing routes strip a `?tkv=` on the
+    server with a `303` before they render (below). **Not mounted** there, against the
     shell a path would otherwise get: `SiteHeader` and its search, `ShareHost` and the guest aside
     (GuestShell); the sidebar, middle nav, `NavSearchBar`, bottom nav, `ShareHost`,
     `SettingsModalHost` (so `?settings=` opens nothing on `/`) and `MilestoneCelebration`
@@ -284,6 +287,14 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   (`/login`, `/join`, `/forgot-password`, `/verify`), exactly `/checkout/details` and
   `/checkout/payment`, for a guest, for a malformed value, and for a ticket the read refuses — which
   answers "not found" and "not yours" with the same words, because the link is pasted from anywhere.
+
+  The two landing pages, `/` and `/features`, mount no `TicketDeepLinkHost` (Decision #286 (A)), so
+  they strip the parameter on the SERVER: each landing route's `GET` calls `tkvRedirect(ctx.url)`
+  (`apps/web/features/landing/core/strip-tkv.ts`) before it renders, and answers a URL carrying
+  `tkv` (empty, repeated or percent-encoded too) with a bodiless `303 See Other` to the same path and
+  query without it: every other parameter kept byte for byte and in order, the `Location` path and
+  query only (the browser carries the fragment over) and pinned to one leading slash. Every other
+  route keeps the in-browser strip.
 
 - **Conversations are addressed by their _entry surface_.** A thread keeps its stable `chatId` (so
   it stays **one continuous record** — `PRODUCT_SPEC.md` §Unified Messaging, Decision #21); only the

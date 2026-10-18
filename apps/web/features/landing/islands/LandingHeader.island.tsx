@@ -23,13 +23,15 @@ interface LandingNavLink {
  * The pill's links (`flows/LANDING.md` §4.0). An entry is listed only once its destination exists:
  * "How it works" (`/#how-it-works`) and "Pricing" (`/#pricing`) join when those sections render on
  * `/`, and "Features" (`/features`) when that page ships — a link to an anchor the page does not
- * have would render and do nothing (root CLAUDE.md §3 gate 11). Explore is the pill's only link
- * until then, so it shows from `--bp-md`: §2.2 holds it back to `--bp-lg` because the hero is the
- * search below that width, and it takes `wide` once the hero search (L2) renders.
+ * have would render and do nothing (root CLAUDE.md §3 gate 11). Explore joins the pill at
+ * `--bp-lg` (§2.2 note 1): below that the hero's own search stands in for it.
  */
 const NAV_LINKS: readonly LandingNavLink[] = [
-	{ label: "Explore", href: "/explore" },
+	{ label: "Explore", href: "/explore", wide: true },
 ];
+
+/** Every pill link waits for `--bp-lg`, so the pill's nav itself does too (no empty landmark). */
+const NAV_WIDE_ONLY = NAV_LINKS.every((link) => link.wide === true);
 
 /** The menu sheet's body: the element the menu button controls. */
 const MENU_ID = "lp-site-menu";
@@ -91,7 +93,10 @@ export default function LandingHeader(
 				<span class="lp-header__wordmark" aria-hidden="true">Projective</span>
 			</a>
 
-			<nav class="lp-header__nav" aria-label="Main">
+			<nav
+				class={`lp-header__nav${NAV_WIDE_ONLY ? " lp-header__nav--wide" : ""}`}
+				aria-label="Main"
+			>
 				<ul class="lp-header__links">
 					{NAV_LINKS.map((link) => (
 						<li key={link.href} class={link.wide ? "lp-header__item--wide" : undefined}>
