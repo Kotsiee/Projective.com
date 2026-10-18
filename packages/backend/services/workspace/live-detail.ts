@@ -7,7 +7,7 @@ import type { MediaRef } from "@projective/types/files";
 import {
 	type ArchiveBlocker,
 	ArchiveBlockerSchema,
-	canOpenVerification,
+	canOpenFinance,
 	effectivePermissions,
 	type WorkspaceDetail,
 	type WorkspaceFinance,
@@ -57,6 +57,7 @@ import {
 	toProject,
 	toRoleDef,
 	verificationPrompt,
+	visibleActivity,
 	wiCapOf,
 	wiOf,
 	workloadPercent,
@@ -288,6 +289,8 @@ async function assemble(
 	const mapped: WorkspaceMember[] = [];
 	const moneyMembers: MoneyMember[] = [];
 	const byUser = new Map<string, RawMember>();
+	/** Whether the viewer's own row is the owner's — a team's verification step is theirs alone. */
+	let viewerIsOwner = false;
 	for (const m of members) {
 		byUser.set(m.user_id, m);
 		const person = people.get(m.user_id);
@@ -303,6 +306,7 @@ async function assemble(
 			m.role_id,
 		);
 		const isOwner = m.user_id === raw.owner_user_id;
+		if (isOwner && m.is_self) viewerIsOwner = true;
 		moneyMembers.push({ memberId: m.id, userId: m.user_id, isOwner, person, capabilities });
 		// Only an envelope the viewer may read (their own, unless they read the wallet's) is shown.
 		const envelope = envelopeFor(spend, m.user_id);
@@ -352,6 +356,7 @@ async function assemble(
 	const viewerCaps = parseCapabilities(raw.viewer?.capabilities);
 	const viewerCan = toViewerCan(raw.viewer_can);
 	const active = mapped.length;
+	const status = parseStatus(raw.entity_status);
 	const avatarRef = raw.avatar_file_id ? media.get(raw.avatar_file_id) : undefined;
 	const bannerRef = raw.banner_file_id ? media.get(raw.banner_file_id) : undefined;
 
@@ -363,7 +368,7 @@ async function assemble(
 		avatar: avatarOf(mediaUrl(avatarRef, "md")),
 		banner: avatarOf(mediaUrl(bannerRef, "lg")),
 		tagline: clamp(raw.headline, 160),
-		status: parseStatus(raw.entity_status),
+		status,
 		visibility: WorkspaceVisibility.catch("invite_only").parse(raw.visibility),
 		verification,
 		verificationPrompt: verificationPrompt(kind, verification),
@@ -387,16 +392,21 @@ async function assemble(
 		engagements: engagements.map((e) => toEngagement(e, people, byUser)),
 		allowance: kind === "team" ? allowanceOf(raw.allowance) : null,
 		archiveBlockers: kind === "business" ? archiveBlockersOf(raw.archive_blockers) : [],
-		activity: (raw.activity ?? []).map((a, i) =>
+		activity: visibleActivity(raw.activity ?? [], canOpenFinance(kind, viewerCaps)).map((a, i) =>
 			toActivity(a, i, a.actor_user_id ? people.get(a.actor_user_id) : undefined, nowMs)
 		),
 		setup: setupSteps(kind, raw.handle, {
 			logo: !!raw.setup?.logo,
 			bio: !!raw.setup?.bio,
-			invite: !!raw.setup?.invite,
+			activeMembers: active,
+			// The read's `invite` fact is "more than one active member OR an invitation pending", so
+			// below two members it can only be true for a pending invitation.
+			invitePending: active < 2 && !!raw.setup?.invite,
 			money: !!raw.setup?.money,
-			verified: verification === "verified",
-			canVerify: canOpenVerification(kind, viewerCaps),
+			verification,
+			published: status !== "draft",
+			viewer: viewerCaps,
+			viewerIsOwner,
 		}),
 		standing: raw.standing ? clamp(raw.standing, 40) : null,
 		canPropose: kind === "business" || active >= 2,

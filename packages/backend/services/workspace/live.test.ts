@@ -859,6 +859,78 @@ Deno.test("readDetail: engagements carry slugs and faces, never a user id", asyn
 	assertStrictEquals(detail.allowance, null);
 });
 
+/**
+ * A draft team's read with a join and a money movement, for the given viewer capabilities — seen by
+ * the owner, or by the second member (`u-lead`) holding them.
+ */
+function rawDraftTeam(capabilities: string[], self: "u-owner" | "u-lead" = "u-lead"): RawDetail {
+	const raw = rawTeamDetail(capabilities.includes("manage_finances"));
+	const selfMember = self === "u-owner" ? "m-owner" : "m-lead";
+	return {
+		...raw,
+		entity_status: "draft",
+		viewer: { ...raw.viewer, member_id: selfMember, capabilities },
+		members: raw.members.map((m) => ({ ...m, is_self: m.user_id === self })),
+		activity: [
+			{ kind: "member", event: "joined", actor_user_id: "u-lead", at: "2026-09-27T00:00:00Z" },
+			{
+				kind: "money",
+				event: "add_funds",
+				actor_user_id: "u-owner",
+				amount_minor: 50_000,
+				currency: "USD",
+				at: "2026-09-26T00:00:00Z",
+			},
+		],
+	};
+}
+
+Deno.test("readDetail: a plain member reads no money movement and no step they cannot act on", async () => {
+	const { detail } = await readStubbed(rawDraftTeam(["view_analytics"]));
+	assert(detail);
+	assertEquals(detail.activity.map((a) => a.kind), ["member"]);
+	assertStrictEquals(detail.payout, null);
+	assertEquals(detail.setup.map((s) => s.id), [
+		"invite",
+		"money",
+		"profile",
+		"verification",
+		"publish",
+	]);
+	assertEquals(detail.setup.filter((s) => s.actionable), []);
+});
+
+Deno.test("readDetail: a finance holder reads the money movements; steps follow the viewer's rights", async () => {
+	const { detail } = await readStubbed(rawDraftTeam(["manage_finances", "manage_settings"]));
+	assert(detail);
+	assertEquals(detail.activity.map((a) => a.kind), ["member", "money"]);
+	// Two active members → the invite step is done; a draft → publish is open. The owner's identity
+	// check is not an admin's to finish, whatever they hold.
+	assertEquals(detail.setup.map((s) => [s.id, s.done, s.actionable]), [
+		["invite", true, false],
+		["money", true, true],
+		["profile", false, false],
+		["verification", false, false],
+		["publish", false, true],
+	]);
+});
+
+Deno.test("readDetail: only the owner is offered the owner's identity check, in their own settings", async () => {
+	const owner = await readStubbed(rawDraftTeam(["manage_finances", "manage_settings"], "u-owner"));
+	assert(owner.detail);
+	const step = owner.detail.setup.find((s) => s.id === "verification")!;
+	assertEquals([step.actionable, step.href], [true, "/settings/verification#identity-check"]);
+	// With the reviewers, nobody is offered anything — not even the owner.
+	const review = await readStubbed({
+		...rawDraftTeam(["manage_finances", "manage_settings"], "u-owner"),
+		verification: "pending",
+	});
+	assert(review.detail);
+	const pending = review.detail.setup.find((s) => s.id === "verification")!;
+	assertEquals([pending.done, pending.actionable], [false, false]);
+	assertEquals(pending.note.includes("with our reviewers"), true);
+});
+
 // #endregion
 
 // #region The business console read (BB9)

@@ -28,8 +28,12 @@ export function StatTileRow(props: StatTileRowProps): JSX.Element {
 export interface StatTileProps {
 	/** The tracked micro-label. Sentence case; the stylesheet upper-cases it. */
 	label: string;
-	/** The figure, already final: a server-formatted money string or a `compactCount` of a count. */
-	value: string;
+	/**
+	 * The figure, already final: a `compactCount` of a count, a server-formatted string, or a
+	 * `MoneyView` element — money reaches the screen only through MoneyView, which then converts to
+	 * the viewer's currency and takes the tile's register (size and weight) rather than its own.
+	 */
+	value: string | VNode;
 	/** A pre-formatted signed delta (`"+12%"`). Direction is read from its sign, never recomputed. */
 	delta?: string | null;
 	/** A short qualifier under the figure, shown when there is no sparkline. */

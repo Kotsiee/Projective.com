@@ -3,9 +3,11 @@ import {
 	formatMoney,
 	type MoneyView,
 	SplitRuleType,
+	TEAM_PROPOSAL_MIN_MEMBERS,
 } from "@projective/types/finance";
 import {
 	type ActivityEntry,
+	canActOnSetupStep,
 	type IncomingInvite,
 	kindCopy,
 	type MemberFace,
@@ -519,28 +521,116 @@ export function avatarOf(url: string | null | undefined): string {
 
 // #region Setup checklist
 
-/** The facts the Draft-First checklist is decided on. */
+/** The facts the Draft-First steps are decided on. */
 export interface SetupFacts {
 	logo: boolean;
 	bio: boolean;
-	invite: boolean;
+	/** Active members, the owner included. */
+	activeMembers: number;
+	/** Whether an invitation is still waiting for an answer. */
+	invitePending: boolean;
 	money: boolean;
-	verified: boolean;
 	/**
-	 * Whether the viewer may open the Verification module (`canOpenVerification`); `false` leaves its
-	 * step unlinked, so the checklist never sends someone to a page that turns them away. Absent reads
-	 * as linked — the roster's cards only count the steps.
+	 * The entity's verification — a team's is its owner's identity check, a business's its KYB.
+	 * `pending` is not done, and asks nothing of anyone: the check is with the reviewers.
 	 */
-	canVerify?: boolean;
+	verification: VerificationState;
+	/** Whether the entity has left `draft` (it is `active`, or `archived` after being live). */
+	published: boolean;
+	/**
+	 * The viewer's effective capabilities, which stamp each step's `actionable`. Absent where nobody is
+	 * shown the steps (the roster, which reads only their completion).
+	 */
+	viewer?: readonly WorkspaceCapability[];
+	/**
+	 * Whether the viewer is the entity's owner. A team's verification is the owner's own identity
+	 * check, so only they may act on that step ({@link canActOnSetupStep}).
+	 */
+	viewerIsOwner?: boolean;
 }
 
 /**
- * The "Finish setting up" checklist, worded by kind. Identity steps (mark, one-liner) are edited in the
- * entity's public profile editor — the media pipeline is the only door a picture may use — so they link
- * to `/@handle/edit`; the rest link to their console module.
+ * The Draft-First setup steps, worded by kind, each stamped with whether the viewer may act on it
+ * ({@link canActOnSetupStep}).
+ *
+ * A **team** walks five steps (TEAMS_BUILD_PROMPTS C1): a second ACTIVE member — the apply doors
+ * refuse a team under two (Decision #228 (E)), so an invitation still out does not finish it — the
+ * split, the public profile (mark AND one-liner), the owner's identity (the payout-ready gate,
+ * Decision #196) and publishing. A **business** keeps its five: mark, one-liner, an invitation (sent
+ * or accepted), the approval threshold and KYB. Identity steps are edited in the entity's public
+ * profile editor — the media pipeline is the only door a picture may use — so they link to
+ * `/@handle/edit`; a team's owner verifies in their own settings (`/settings/verification`, the
+ * personal flow the team's state is read from); the rest link to their console module.
+ *
+ * A verification already with the reviewers (`pending`) says so and is actionable for nobody — there
+ * is nothing left to do, so no control is offered beside it.
  */
 export function setupSteps(kind: WorkspaceKind, handle: string, facts: SetupFacts): SetupStep[] {
-	const copy = kindCopy(kind);
+	const caps = facts.viewer ?? [];
+	const inReview = facts.verification === "pending";
+	const stamp = (step: Omit<SetupStep, "actionable">): SetupStep => ({
+		...step,
+		actionable: !(step.id === "verification" && inReview) &&
+			canActOnSetupStep(kind, step.id, caps, facts.viewerIsOwner === true),
+	});
+	return (kind === "team" ? teamSteps(handle, facts) : businessSteps(handle, facts)).map(stamp);
+}
+
+/**
+ * Where a team's owner finishes the identity check the team's verification is read from — their own
+ * settings, the same door the apply refusals' `payout_not_ready` link uses.
+ */
+export const OWNER_VERIFICATION_HREF = "/settings/verification#identity-check";
+
+/** A team's five steps, in the order the setup hero walks them. */
+function teamSteps(handle: string, facts: SetupFacts): Omit<SetupStep, "actionable">[] {
+	const twoActive = facts.activeMembers >= TEAM_PROPOSAL_MIN_MEMBERS;
+	return [
+		{
+			id: "invite",
+			label: "Invite a second member",
+			note: !twoActive && facts.invitePending
+				? "An invitation is out — it counts once accepted. A team needs two members to apply."
+				: "A team needs two active members before it can apply for work.",
+			done: twoActive,
+			href: workspaceHref("team", handle, "invitations"),
+		},
+		{
+			id: "money",
+			label: "Set the split",
+			note: "Decide how a release divides before the first one lands.",
+			done: facts.money,
+			href: workspaceHref("team", handle, "payouts"),
+		},
+		{
+			id: "profile",
+			label: "Complete the public profile",
+			note: "A mark and a one-line pitch are what clients scan first.",
+			done: facts.logo && facts.bio,
+			href: `/@${handle}/edit`,
+		},
+		{
+			id: "verification",
+			label: "Verify the owner",
+			note: facts.verification === "pending"
+				? "The owner's identity check is with our reviewers — nothing is needed meanwhile."
+				: "Payouts and new seats wait on the owner's identity check.",
+			done: facts.verification === "verified",
+			href: OWNER_VERIFICATION_HREF,
+		},
+		{
+			id: "publish",
+			label: "Publish",
+			note: "Lists the team and lets it apply. A published team never returns to draft.",
+			done: facts.published,
+			href: workspaceHref("team", handle, "settings"),
+		},
+	];
+}
+
+/** A business's five steps. */
+function businessSteps(handle: string, facts: SetupFacts): Omit<SetupStep, "actionable">[] {
+	const copy = kindCopy("business");
 	const edit = `/@${handle}/edit`;
 	return [
 		{
@@ -560,29 +650,25 @@ export function setupSteps(kind: WorkspaceKind, handle: string, facts: SetupFact
 		{
 			id: "invite",
 			label: "Invite someone",
-			note: kind === "team"
-				? "Two active members unlocks proposals — a solo team cannot bid."
-				: "Bring in the people who will approve and spend alongside you.",
-			done: facts.invite,
-			href: workspaceHref(kind, handle, "invitations"),
+			note: "Bring in the people who will approve and spend alongside you.",
+			done: facts.activeMembers > 1 || facts.invitePending,
+			href: workspaceHref("business", handle, "invitations"),
 		},
 		{
 			id: "money",
-			label: kind === "team" ? "Set the split" : "Set an approval threshold",
-			note: kind === "team"
-				? "Decide how a release divides before the first one lands."
-				: "A threshold and per-person limits keep the pooled wallet predictable.",
+			label: "Set an approval threshold",
+			note: "A threshold and per-person limits keep the pooled wallet predictable.",
 			done: facts.money,
-			href: workspaceHref(kind, handle, kind === "team" ? "payouts" : "spend"),
+			href: workspaceHref("business", handle, "spend"),
 		},
 		{
 			id: "verification",
 			label: `Finish ${copy.verification}`,
-			note: kind === "team"
-				? "The owner's verified identity unlocks withdrawals from the vault."
+			note: facts.verification === "pending"
+				? `${copy.verification} is with our reviewers.`
 				: "Verification unlocks the pooled wallet so you can hire.",
-			done: facts.verified,
-			href: facts.canVerify === false ? "" : workspaceHref(kind, handle, "verification"),
+			done: facts.verification === "verified",
+			href: workspaceHref("business", handle, "verification"),
 		},
 	];
 }
@@ -770,6 +856,19 @@ const MONEY_VERB: Readonly<Record<string, string>> = {
 	withdraw: "withdrew",
 	transfer: "moved",
 };
+
+/**
+ * The events a viewer may read. A money movement's line carries its amount, so it reaches only a
+ * viewer who may open the entity's Finance (`canOpenFinance`: a team's `manage_finances`, the same
+ * holders the payout block is answered to — Decision #233; a business's contributors, spenders and
+ * runners). A join is a membership fact every member already sees on the roster.
+ */
+export function visibleActivity(
+	raw: readonly RawActivity[],
+	moneyVisible: boolean,
+): RawActivity[] {
+	return raw.filter((event) => moneyVisible || event.kind !== "money");
+}
 
 /** The one-line text of an activity event, e.g. "Priya Raman added $60,000.00". */
 export function activityText(raw: RawActivity, actorName: string): string {

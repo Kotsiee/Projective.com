@@ -397,12 +397,14 @@ Deno.test("workspace styles: figure classes are tabular", () => {
 		".wsp-split__pip",
 		".wsp-split__drift-text",
 		// Text that carries a count or an amount: the lane's queue count, a role's member count, a
-		// band's live queue count ("2 requests waiting"), a counterparty's "+N" and a feed line's sum.
+		// band's live queue count ("2 requests waiting") and a feed line's sum. (A projects-preview
+		// row's facts are a MetaLine, whose figures set their own `tabular-nums`.)
 		".wsp-lane__navcount",
 		".wsp-matrix__rownote",
 		".wsp-band__title",
-		".wsp-projects__party",
 		".wsp-activity__text",
+		// A metric tile's caption: "of 50 this week", "1 invitation out".
+		".wsp-tiles .ui-stat__caption",
 	]
 		.filter((selector) => {
 			const at = all.search(new RegExp(`(^|\\n)${selector.replace(/[.-]/g, "\\$&")}\\s*\\{`));
