@@ -394,8 +394,9 @@ Deno.test("workspace styles: figure classes are tabular", () => {
 		".wsp-card__stats",
 		".wsp-card__stat",
 		".wsp-card__stat-delta",
-		".wsp-split__pip",
-		".wsp-split__drift-text",
+		// The payout preview's rate and figure columns.
+		".wsp-ledger__rate",
+		".wsp-ledger__amount",
 		// Text that carries a count or an amount: the lane's queue count, a role's member count, a
 		// band's live queue count ("2 requests waiting"), a counterparty's "+N" and a feed line's sum.
 		".wsp-lane__navcount",
@@ -429,6 +430,15 @@ Deno.test("workspace styles: the dead rules stay deleted", () => {
 	assertNone(
 		offences(
 			/\.wsp-skel\b|\.wsp-lane__new\b|\.wsp-footerrig__action\[data-(variant|locked)|\.wsp-lane__(filter|switch|row|verify|foot|note)\b|\.wsp-rail__verify\b/,
+		),
+		"a deleted dead selector is back:",
+	);
+	// The team split bar before Teams C4 — the feature's own bar, legend, drift box and quick-split
+	// chips, replaced by the ui SplitBar, a MetaLine legend and an InlineNotice — and the spend verdict
+	// box (TEAMS_AUDIT D12).
+	assertNone(
+		offences(
+			/\.wsp-split\b|\.wsp-split__|\.wsp-verdict\b|\[data-stake\b|--wsp-stake\b|--wsp-held-hatch\b/,
 		),
 		"a deleted dead selector is back:",
 	);

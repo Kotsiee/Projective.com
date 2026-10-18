@@ -1,17 +1,20 @@
-import type { FlowPoint } from "@projective/types/finance";
+import { type FlowPoint, SplitRuleType, VaultCapability } from "@projective/types/finance";
 import {
 	type BusinessKyb,
 	type BusinessMoneyTile,
 	type BusinessSpendPolicy,
 	type BusinessViewerCan,
 	KybRequirement,
+	type PayoutPreviewQuery,
 	type PoolEntry,
 	type SpendEnvelopePreview,
 	type SpendLimit,
 	type SpendRequest,
+	type SplitPreviewLine,
 	type SplitStake,
 	type SplitTemplate,
 	type TeamPayoutPolicy,
+	type TeamSplitPreview,
 	type UpdateSpendInput,
 	type VerificationState,
 	walletHrefFor,
@@ -25,7 +28,7 @@ import { overviewOf } from "../finance/live-wallet.ts";
 import { reasonMeta } from "../finance/wallet-ledger.ts";
 import { resolveWalletContext } from "../finance/wallet-scope.ts";
 import { fetchPartyCards, type PartyCard } from "../profile/party-cards.ts";
-import { badId, callRpc, clientFor, isUuid, type LiveActor } from "./live-support.ts";
+import { badId, callRpc, clientFor, isUuid, type LiveActor, unavailable } from "./live-support.ts";
 import { spendPatch } from "./live-writes.ts";
 import {
 	avatarOf,
@@ -97,7 +100,9 @@ export interface RawSplitPreview {
 	currency: string | null;
 	fee_minor: number | null;
 	fee_bp?: number | null;
-	escrow_id?: string;
+	/** The active finders_fee rule's cut, in basis points; `null` under any other rule. */
+	finder_bp?: number | null;
+	escrow_id?: string | null;
 	plan: {
 		payout_minor: number;
 		rule_type: string | null;
@@ -120,6 +125,10 @@ export interface TeamMoneyFacts {
 	rule: RawSplitRule | null;
 	/** The vault wallet the policy reports balances from; absent or `null` when the team has none. */
 	wallet?: RawVaultWallet | null;
+	/** The templates the team's plan unlocks, in template order; absent reads as co_op only. */
+	unlocked?: readonly SplitRuleType[];
+	/** Each active member's vault capabilities by user id; absent when the read did not answer them. */
+	vaultCaps?: ReadonlyMap<string, readonly VaultCapability[]> | null;
 }
 
 /** The vault wallet on the detail's payout block — the treasury wallet, else the fullest. */
@@ -132,12 +141,28 @@ export interface RawVaultWallet {
 
 /**
  * The payout block `org.get_workspace_detail` answers to a `manage_finances` holder (and to nobody
- * else): the active split rule, the vault wallet and `finance.preview_team_split`'s projection.
+ * else): the active split rule, the vault wallet, `finance.preview_team_split`'s projection, the
+ * templates the team's plan unlocks and each active member's vault capabilities.
  */
 export interface RawTeamPayout {
 	rule: RawSplitRule | null;
 	wallet: RawVaultWallet | null;
 	preview: RawSplitPreview | null;
+	unlocked_templates?: string[] | null;
+	vault_capabilities?: { user_id: string; capabilities: string[] | null }[] | null;
+}
+
+/** Template types the plan unlocks, in template order; an unknown type is dropped, an absent answer is co_op only. */
+export function unlockedTemplatesOf(raw: readonly string[] | null | undefined): SplitRuleType[] {
+	if (!Array.isArray(raw)) return ["co_op"];
+	const named = new Set(raw);
+	return SplitRuleType.options.filter((type) => named.has(type));
+}
+
+/** A member's vault capabilities in the enum's order, unknown values dropped. */
+export function vaultCapabilitiesOf(raw: readonly string[] | null | undefined): VaultCapability[] {
+	const held = new Set(raw ?? []);
+	return VaultCapability.options.filter((cap) => held.has(cap));
 }
 
 /**
@@ -153,12 +178,19 @@ export function teamMoneyFacts(
 		if (m.share_bp === null || m.share_bp === undefined) continue;
 		agreements.set(m.user_id, { bp: Number(m.share_bp) || 0, held: !!m.share_held });
 	}
+	const vaultCaps = Array.isArray(payout.vault_capabilities)
+		? new Map(
+			payout.vault_capabilities.map((row) => [row.user_id, vaultCapabilitiesOf(row.capabilities)]),
+		)
+		: null;
 	return {
 		agreements,
 		preview: payout.preview ?? null,
 		walletCurrency: (payout.wallet?.currency ?? "USD").toUpperCase(),
 		rule: payout.rule ?? null,
 		wallet: payout.wallet ?? null,
+		unlocked: unlockedTemplatesOf(payout.unlocked_templates),
+		vaultCaps,
 	};
 }
 
@@ -189,6 +221,7 @@ export function buildPayoutPolicy(
 		const agreement = facts.agreements.get(member.userId);
 		return {
 			memberId: member.memberId,
+			userId: member.userId,
 			...faceOf(member),
 			shareBp: Math.max(0, Math.min(10_000, agreement?.bp ?? 0)),
 			held: agreement?.held ?? false,
@@ -229,6 +262,7 @@ export function buildPayoutPolicy(
 				const member = members.find((m) => m.memberId === e.memberId)!;
 				return {
 					memberId: e.memberId,
+					userId: member.userId,
 					...faceOf(member),
 					shareBp: e.shareBp,
 					held: false,
@@ -260,7 +294,130 @@ export function buildPayoutPolicy(
 		withdrawApprovers: members.filter((m) => m.capabilities.includes("withdraw_funds")).map((m) =>
 			m.memberId
 		),
+		unlockedTemplates: [...(facts.unlocked ?? ["co_op"])],
+		vaultAccess: facts.vaultCaps
+			? members.map((member) => ({
+				memberId: member.memberId,
+				name: faceOf(member).name,
+				capabilities: [...(facts.vaultCaps?.get(member.userId) ?? [])],
+			}))
+			: [],
 	};
+}
+
+// #endregion
+
+// #region Team — the preview
+
+/**
+ * The ledger of a previewed release, in the order the plan cuts it: the platform fee, the finder's fee
+ * (under finders_fee), the vault's cut, each member's stake, and the dust the floors left (which the
+ * vault keeps; not drawn under benevolent_dictator, which floors nothing). `total` is the lines' sum,
+ * so a reader can check it against the amount they typed — the plan conserves the gross exactly
+ * (`supabase/probes/payout_preview_amount.sql`). Pure.
+ */
+export function toSplitPreview(
+	raw: RawSplitPreview,
+	people: ReadonlyMap<string, Person>,
+	currency: string,
+): TeamSplitPreview {
+	const code = (currency || "USD").toUpperCase();
+	const plan = raw.plan;
+	const parsedRule = SplitRuleType.safeParse(plan?.rule_type);
+	const ruleType = parsedRule.success ? parsedRule.data : "co_op";
+	const minor = (value: number | string | null | undefined) =>
+		Math.max(0, Math.trunc(Number(value) || 0));
+	const bpOrNull = (value: number | string | null | undefined) =>
+		value === null || value === undefined
+			? null
+			: Math.max(0, Math.min(10_000, Math.trunc(Number(value) || 0)));
+	const nameOf = (userId: string | null | undefined) =>
+		userId ? clampOr(people.get(userId)?.name, 120, "Member") : null;
+
+	const lines: SplitPreviewLine[] = [
+		{
+			key: "fee",
+			kind: "fee",
+			name: null,
+			bp: bpOrNull(raw.fee_bp),
+			amount: moneyOf(minor(raw.fee_minor), code),
+		},
+	];
+	if (ruleType === "finders_fee") {
+		lines.push({
+			key: "finder",
+			kind: "finder",
+			name: nameOf(plan?.finder_user_id),
+			bp: bpOrNull(raw.finder_bp),
+			amount: moneyOf(minor(plan?.finder_minor), code),
+		});
+	}
+	lines.push({
+		key: "vault",
+		kind: "vault",
+		name: null,
+		bp: bpOrNull(plan?.vault_bp),
+		amount: moneyOf(minor(plan?.vault_minor), code),
+	});
+	for (const m of plan?.members ?? []) {
+		lines.push({
+			key: `member:${m.member_user_id}`,
+			kind: "member",
+			name: nameOf(m.member_user_id),
+			bp: bpOrNull(m.percent_bp),
+			amount: moneyOf(minor(m.amount_minor), code),
+		});
+	}
+	if (ruleType !== "benevolent_dictator") {
+		lines.push({
+			key: "dust",
+			kind: "dust",
+			name: null,
+			bp: null,
+			amount: moneyOf(minor(plan?.dust_minor), code),
+		});
+	}
+	const total = lines.reduce((sum, line) => sum + line.amount.minor, 0);
+	return {
+		currency: code,
+		gross: moneyOf(minor(raw.gross_minor), code),
+		ruleType,
+		lines,
+		total: moneyOf(total, code),
+	};
+}
+
+/**
+ * What a release of the reader's chosen size would pay under the team's SAVED split
+ * (`finance.preview_team_split(team, gross)` — read-only, any member), with the finder and members
+ * named in one party-card batch. The amount is priced in the vault's currency the editor sends.
+ */
+export async function previewTeamSplit(
+	query: PayoutPreviewQuery,
+	actor: LiveActor,
+	io: {
+		rpc: typeof callRpc;
+		partyCards: (actor: LiveActor, ids: readonly string[]) => Promise<Map<string, PartyCard>>;
+	} = { rpc: callRpc, partyCards: (a, ids) => fetchPartyCards(clientFor(a), ids) },
+): Promise<ServiceResult<TeamSplitPreview>> {
+	if (!isUuid(query.workspaceId)) return badId("workspaceId", "team");
+	const res = await io.rpc<RawSplitPreview>(actor, "finance", "preview_team_split", {
+		p_team_id: query.workspaceId,
+		p_gross_minor: query.amountMinor,
+	});
+	if (!res.ok) return res.refusal;
+	const raw = res.data;
+	if (!raw || raw.gross_minor === null || raw.gross_minor === undefined) return unavailable();
+	const ids = [
+		raw.plan?.finder_user_id ?? "",
+		...(raw.plan?.members ?? []).map((m) => m.member_user_id),
+	].filter((id) => id.length > 0);
+	const cards = await io.partyCards(actor, ids);
+	const people = new Map<string, Person>();
+	for (const [id, card] of cards) {
+		people.set(id, { username: card.username, name: card.name, avatar: card.avatar });
+	}
+	return ok(toSplitPreview(raw, people, query.currency));
 }
 
 // #endregion

@@ -2952,12 +2952,25 @@ BEGIN
                 ) w ON true)
             ELSE '[]'::jsonb END,
         -- The split rule, the vault wallet (the treasury wallet, else the fullest) and the projected release
-        -- — the Payouts module's facts, for the people who run the team's money and nobody else.
+        -- — the Payouts module's facts, for the people who run the team's money and nobody else — plus the
+        -- templates the team's plan unlocks (one `split_template_<type>` flag each, the gate
+        -- finance.save_split_rule applies, Decision #234) and every active member's vault capabilities
+        -- (org.fn_vault_capabilities_for, the projection finance.vault_permissions holds).
         'payout', CASE WHEN p_kind = 'team' AND 'manage_finances' = ANY (v_caps) THEN jsonb_build_object(
                 'rule', (SELECT jsonb_build_object('rule_type', r.rule_type, 'vault_bp', r.vault_bp,
                                                    'finder_user_id', r.finder_user_id, 'finder_bp', r.finder_bp)
                            FROM finance.split_rules r WHERE r.team_id = v_e.id AND r.active
                           ORDER BY r.created_at DESC LIMIT 1),
+                'unlocked_templates', (SELECT COALESCE(jsonb_agg(t.rule_type ORDER BY t.rule_type), '[]'::jsonb)
+                    FROM unnest(enum_range(NULL::finance.split_rule_type)) AS t(rule_type)
+                   WHERE finance.fn_has_entitlement('team', v_e.id,
+                             ('split_template_' || t.rule_type::text)::finance.entitlement_key)),
+                'vault_capabilities', (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                        'user_id', m.user_id,
+                        'capabilities', to_jsonb(org.fn_vault_capabilities_for('team', v_e.id, m.user_id)))
+                        ORDER BY org.fn_preset_rank(m.role) DESC, m.joined_at, m.user_id), '[]'::jsonb)
+                    FROM org.team_members m
+                   WHERE m.team_id = v_e.id AND m.status = 'active'),
                 'wallet', (SELECT jsonb_build_object('id', w.id, 'currency', upper(w.currency),
                                 'available_minor', w.balance_cents,
                                 'pending_minor', COALESCE((

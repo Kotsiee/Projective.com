@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SplitRuleType } from "../finance/vault.ts";
+import { SplitRuleType, VaultCapability } from "../finance/vault.ts";
 import { MoneyViewSchema } from "../finance/wallet.ts";
 import { VerificationState } from "./common.ts";
 
@@ -29,14 +29,20 @@ export type SplitModel = z.infer<typeof SplitModel>;
 /** One member's slice of the split bar. */
 export const SplitStakeSchema = z.object({
 	memberId: z.string().max(64),
+	/**
+	 * The member's user id — what a finder's fee names (`finance.save_split_rule`'s
+	 * `p_finder_user_id`), so the Finder picker can offer the active members by it.
+	 */
+	userId: z.string().max(64),
 	handle: z.string().max(40),
 	name: z.string().max(120),
 	avatar: z.string().max(400),
 	/** Share in basis points. The stakes of a valid split sum to exactly 10 000. */
 	shareBp: z.number().int().min(0).max(10_000),
 	/**
-	 * Held back from automatic distribution — the amount stays in the vault for a manual decision
-	 * rather than being reassigned, so holding somebody's share never silently pays it to someone else.
+	 * An immovable stake (`finance.contribution_agreements.held`): the editor's dividers never move it,
+	 * and when a member leaves their basis points are redistributed across the UNHELD stakes only
+	 * (`org.fn_rebalance_departed_stake`). The release plan still pays it like any other stake.
 	 */
 	held: z.boolean().default(false),
 	/** What this stake would receive from the projected release (server-computed). */
@@ -137,8 +143,75 @@ export const TeamPayoutPolicySchema = z.object({
 	vaultCut: MoneyViewSchema.nullable(),
 	/** Who may withdraw from the vault — member ids. */
 	withdrawApprovers: z.array(z.string().max(64)),
+	/**
+	 * The templates the team's plan unlocks — one `split_template_<type>` entitlement flag each, the
+	 * gate `finance.save_split_rule` applies (Decision #234: co_op free; finders_fee and
+	 * benevolent_dictator Pro Team), in template order. The editor offers a locked template disabled
+	 * BEFORE a save, never as a 402 after one. The gate binds the write alone: a team keeps applying a
+	 * stored template its plan no longer unlocks.
+	 */
+	unlockedTemplates: z.array(SplitRuleType).default(["co_op"]),
+	/**
+	 * Who can move the vault's money: every active member's vault capabilities as
+	 * `org.fn_vault_capabilities_for` projects them from the workspace capabilities (the projection
+	 * `finance.vault_permissions` holds and every money door enforces), in roster order.
+	 */
+	vaultAccess: z.array(z.object({
+		memberId: z.string().max(64),
+		name: z.string().max(120),
+		capabilities: z.array(VaultCapability),
+	})).default([]),
 });
 export type TeamPayoutPolicy = z.infer<typeof TeamPayoutPolicySchema>;
+
+/** One member's row of {@link TeamPayoutPolicy.vaultAccess}. */
+export type VaultAccess = TeamPayoutPolicy["vaultAccess"][number];
+
+/**
+ * One cut of a previewed release, in the order the plan takes it (`finance.fn_team_split_plan`): the
+ * platform fee, the finder's fee, the vault's cut, each member's stake, then the dust the floors left,
+ * which also goes to the vault.
+ */
+export const SplitPreviewLineSchema = z.object({
+	/** Stable row key: `fee` · `finder` · `vault` · `member:<user id>` · `dust`. */
+	key: z.string().max(80),
+	kind: z.enum(["fee", "finder", "vault", "member", "dust"]),
+	/** The person a finder or member line pays; `null` for the platform's and the vault's lines. */
+	name: z.string().max(120).nullable(),
+	/** The rate the cut was taken at, in basis points — of the release, the payout or the pool; `null` for dust. */
+	bp: z.number().int().min(0).max(10_000).nullable(),
+	amount: MoneyViewSchema,
+});
+export type SplitPreviewLine = z.infer<typeof SplitPreviewLineSchema>;
+
+/**
+ * `finance.preview_team_split(team, gross)`'s answer for an amount the reader chose — what a release
+ * of that size would pay under the team's SAVED rule and stakes, by the plan the release itself runs.
+ * `total` is the lines' sum, which equals `gross` exactly (every floor's dust is a line).
+ */
+export const TeamSplitPreviewSchema = z.object({
+	currency: z.string().regex(/^[A-Z]{3}$/),
+	/** The amount priced, echoed by the server. */
+	gross: MoneyViewSchema,
+	/** The rule the plan applied (the team's stored one). */
+	ruleType: SplitRuleType,
+	lines: z.array(SplitPreviewLineSchema),
+	/** Σ lines — equal to {@link gross}. */
+	total: MoneyViewSchema,
+});
+export type TeamSplitPreview = z.infer<typeof TeamSplitPreviewSchema>;
+
+/**
+ * `GET /api/workspace/payout/preview` — price a release of `amountMinor` (integer minor units of
+ * `currency`, 1 … 10^12) for the team `workspaceId`. Query parameters arrive as text, so the amount is
+ * coerced.
+ */
+export const PayoutPreviewQuerySchema = z.object({
+	workspaceId: z.string().max(64),
+	amountMinor: z.coerce.number().int().min(1).max(1_000_000_000_000),
+	currency: z.string().regex(/^[A-Z]{3}$/),
+});
+export type PayoutPreviewQuery = z.infer<typeof PayoutPreviewQuerySchema>;
 
 /** Whether a set of stakes forms a valid split (sums to exactly 100%). */
 export function splitIsBalanced(stakes: readonly { shareBp: number }[]): boolean {

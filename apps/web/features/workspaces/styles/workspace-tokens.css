@@ -20,8 +20,8 @@
  * overlay.
  *
  * Every mix is OPAQUE (§B.4.2): it is mixed against the solid surface the colour actually lands on —
- * `--surface` for the matrix and the dialogs, `--surface-1` for cards and bands, a stake's own tone or
- * a matrix cell's own fill for the hatch drawn over it — and never against `transparent`, so each tone
+ * `--surface` for the matrix and the dialogs, `--surface-1` for cards and bands, a matrix cell's own
+ * fill for the hatch drawn over it — and never against `transparent`, so each tone
  * is measurable and none of them compounds when nested. The quiet status fills are the U1 tokens
  * (`--success-tint`, `--warning-tint`, `--danger-tint`), which already carry their own
  * per-mode/contrast strength.
@@ -170,7 +170,7 @@
 	--wsp-locked-hatch-mix: 12%;
 	/* #endregion */
 
-	/* #region Money — the split bar, the spend envelopes, the approval ladder */
+	/* #region Money — the spend envelopes, the approval ladder */
 	/* The recessed track and the meter well are global now — wallet-tokens.css had independently
 	arrived at the same mixes, including the same high-contrast widening. */
 	--wsp-track-bg: var(--track-recessed);
@@ -179,27 +179,6 @@
 	against that fill — the opaque twin of the global translucent `--hatch-color` (16%, 30% under high
 	contrast), with the same strength. */
 	--wsp-hatch: color-mix(in oklab, var(--on-surface) 16%, var(--wsp-conditional-tint));
-
-	/*
-	 * Six stake tones for the split bar. Derived by walking the three accent roles at descending
-	 * mixes rather than inventing hues, so a split recolours with the theme and no stake can land on
-	 * a colour the palette does not own. Beyond six, `--wsp-stake-n` cycles (the island applies the
-	 * index modulo six) — and every stake carries its member's name and share in the legend, so the
-	 * colour is a locator, never the identity.
-	 */
-	--wsp-stake-1: var(--primary);
-	--wsp-stake-2: var(--secondary);
-	--wsp-stake-3: var(--tertiary);
-	--wsp-stake-4: color-mix(in srgb, var(--primary) 55%, var(--surface-2));
-	--wsp-stake-5: color-mix(in srgb, var(--secondary) 55%, var(--surface-2));
-	--wsp-stake-6: color-mix(in srgb, var(--tertiary) 55%, var(--surface-2));
-	--wsp-stake: var(--wsp-stake-1);
-
-	/* A held stake stays in the vault for a manual decision. It is hatched, not greyed out: the
-	share is still theirs. The hatch is drawn over the stake's own tone, so it is mixed against that
-	tone — and re-declared on every `[data-stake]` element below, because a custom property resolves
-	where it is DECLARED and this `:root` copy only knows stake 1. */
-	--wsp-held-hatch: color-mix(in oklab, var(--on-surface) 22%, var(--wsp-stake));
 
 	--wsp-spent: var(--wsp-kind);
 	--wsp-remaining: var(--wsp-track-bg);
@@ -210,12 +189,10 @@
 	 * #region Geometry
 	 *
 	 * The shared rhythm aliases the global structure block rather than restating it: band gap and
-	 * block-end padding, both row heights, the rig row, the track heights, the seam, the pip, the
-	 * chart height and the drawer width were all values this file and wallet-tokens.css reached
-	 * independently. The split bar's 18/24px geometry is the one that won the promotion, so it is
-	 * unchanged here. What stays local
-	 * is what only this surface has: the entity marks, the matrix columns, the org-chart connectors,
-	 * the ring, and the sliver threshold tuned for N stakes rather than four.
+	 * block-end padding, both row heights, the rig row, the pip, the chart height and the drawer width
+	 * were all values this file and wallet-tokens.css reached independently. What stays local is what
+	 * only this surface has: the entity marks, the matrix columns, the org-chart connectors and the
+	 * ring. (The team split bar is the ui `SplitBar`, which carries its own geometry.)
 	 */
 	--wsp-band-pad: clamp(var(--space-5), 2.6vw, var(--space-7));
 	--wsp-band-pad-b: var(--band-pad-block-end);
@@ -239,16 +216,7 @@
 	orphan sweep. No `-sm` companion is declared, because an unread token does not need two. */
 	--wsp-chart-h: var(--chart-h);
 
-	/* Split bar */
-	--wsp-track-h: var(--track-h);
-	--wsp-track-h-hi: var(--track-h-hi);
-	--wsp-seg-gap: var(--space-px);
-	/* Share (percent) below which a stake gains an overhanging pip instead of a dishonest minimum
-	width. The bar never fabricates room for a small share. Deliberately NOT promoted: the wallet
-	uses 1.75 for a four-segment meter, a genuinely different data density. */
-	--wsp-sliver: 3;
 	--wsp-pip-dot: var(--pip-dot);
-	--wsp-handle-w: 12px;
 
 	/* Permission matrix */
 	--wsp-matrix-first: 14rem;
@@ -281,13 +249,10 @@
 	--wsp-swatch: 10px;
 	--wsp-meter-h: var(--space-1);
 	--wsp-meter-h-lg: 6px;
-	/* One hatch line every `pitch`, one hairline thick: wide for a cell or a stake, tight for a small
-	swatch, so the stripe count reads the same at every size. */
+	/* One hatch line every `pitch`, one hairline thick: wide for a cell, tighter for a small mark, so
+	the stripe count reads the same at every size. */
 	--wsp-hatch-pitch: 6px;
 	--wsp-hatch-pitch-sm: 5px;
-	--wsp-hatch-pitch-xs: 4px;
-	/* The headroom an overhanging split pip's label occupies above the rail. */
-	--wsp-pip-room: 20px;
 
 	/*
 	 * Breakpoints. A media query cannot read a custom property and no build step here expands
@@ -303,7 +268,7 @@
 	 *
 	 * The tablet step used to be a bespoke 1100px and snapped UP to `--bp-xl`, not down to `--bp-lg`, so
 	 * windows of 1101–1279px now take the tablet adaptation too: they hide the header band's handle and
-	 * badge, the footer rig's note and the split legend's avatars, and narrow the card, member grid and
+	 * badge and the footer rig's note, and narrow the card, member grid and
 	 * matrix columns. Snapping down instead would hand windows of 1024–1100px a desktop layout the old
 	 * step kept from them.
 	 */
@@ -360,36 +325,6 @@
 	--wsp-acting-ring: color-mix(in oklab, var(--wsp-kind) 85%, var(--surface-1));
 }
 
-/* Stake index → tone. Six rules, because a `nth-child` cycle cannot survive a reordered split. */
-[data-stake="1"] {
-	--wsp-stake: var(--wsp-stake-1);
-}
-
-[data-stake="2"] {
-	--wsp-stake: var(--wsp-stake-2);
-}
-
-[data-stake="3"] {
-	--wsp-stake: var(--wsp-stake-3);
-}
-
-[data-stake="4"] {
-	--wsp-stake: var(--wsp-stake-4);
-}
-
-[data-stake="5"] {
-	--wsp-stake: var(--wsp-stake-5);
-}
-
-[data-stake="6"] {
-	--wsp-stake: var(--wsp-stake-6);
-}
-
-/* Re-resolved per stake, against the tone the same element just set (see `--wsp-held-hatch`). */
-[data-stake] {
-	--wsp-held-hatch: color-mix(in oklab, var(--on-surface) 22%, var(--wsp-stake));
-}
-
 /*
  * High contrast. The attribute is written by `packages/ui/system` (`applyConfig`). Two rules apply,
  * in opposite directions:
@@ -423,9 +358,9 @@
 /*
  * Colour-vision deficiency. Two adjacent-hue risks exist on this surface: business accent against
  * brand (the two entity kinds side by side on a mixed roster) and `allowed` against `conditional` in
- * the matrix. Under any CVD overlay the business side re-anchors to `--tertiary`, and both the matrix
- * tri-state and the split bar keep their static GLYPH and HATCH-ANGLE channels — so separation
- * survives on non-colour channels even when hue collapses entirely.
+ * the matrix. Under any CVD overlay the business side re-anchors to `--tertiary`, and the matrix
+ * tri-state keeps its static GLYPH and HATCH-ANGLE channels — so separation survives on non-colour
+ * channels even when hue collapses entirely.
  *
  * VALUE-scoped, never `:root[data-cvd]`. `CvdMode` is `none | protan | deutan | tritan` and
  * `applyConfig` writes the attribute UNCONDITIONALLY, so every hydrated page carries
@@ -442,8 +377,6 @@
 	--wsp-business-tint: color-mix(in srgb, var(--tertiary) 12%, var(--surface-1));
 	--wsp-business-tint-hi: color-mix(in srgb, var(--tertiary) 20%, var(--surface-1));
 	--wsp-business-edge: color-mix(in oklab, var(--tertiary) 46%, var(--surface-1));
-	--wsp-stake-2: color-mix(in srgb, var(--tertiary) 80%, var(--surface-2));
-	--wsp-stake-5: color-mix(in srgb, var(--primary) 40%, var(--surface-3));
 }
 
 /* #region Shared primitives */
@@ -834,7 +767,7 @@ frozen animation clock costs nothing. */
 	transform: scaleX(-1);
 }
 
-/* Announced, never seen - the table captions and the split bar's textual summary.
+/* Announced, never seen - the table captions.
    Visually hidden via the shared `.ui-visually-hidden` utility in `@projective/ui/styles`
    (this rule was a byte-for-byte reimplementation of it). */
 

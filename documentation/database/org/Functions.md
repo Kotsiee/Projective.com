@@ -964,7 +964,13 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
     `vault_bp`, `finder_user_id`, `finder_bp`, or `null`), `wallet` (the treasury wallet, else the
     fullest: `id`, `currency`, `available_minor` = `balance_cents`, `pending_minor` = Σ
     `amount_cents − recovered_cents` of its `pending` `finance.pending_releases`, both integer minor
-    units) and `preview` (`finance.preview_team_split`'s answer).
+    units), `preview` (`finance.preview_team_split`'s answer), `unlocked_templates` (the
+    `finance.split_rule_type`s whose `split_template_<type>` flag `finance.fn_has_entitlement` grants
+    the team, in enum order — the gate `finance.save_split_rule` applies, Decision #234, so the
+    Payouts module offers a locked template disabled before a save) and `vault_capabilities` (one
+    `{user_id, capabilities}` per ACTIVE member, `capabilities` = `fn_vault_capabilities_for('team',
+    team, user)` — the §7 projection `finance.vault_permissions` holds; the Payouts module's "Who can
+    move money", Teams C4).
   - `engagements` — the team's live `projects.stage_assignments` (status not `declined` /
     `cancelled` / `released` / `completed`; project `active` or `on_hold`), one per stage:
     `project_slug` (`prj-…`), `title`, `stage_slug` (`stg-…`), `stage_title`, `assignment_status`,

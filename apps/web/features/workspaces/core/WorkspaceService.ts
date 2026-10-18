@@ -9,8 +9,10 @@ import type {
 	HandleCheck,
 	InviteActionInput,
 	InviteMemberInput,
+	PayoutPreviewQuery,
 	RespondInviteInput,
 	SwitchContextInput,
+	TeamSplitPreview,
 	TransferOwnershipInput,
 	UpdateMemberInput,
 	UpdatePayoutInput,
@@ -63,6 +65,7 @@ export const WORKSPACE_ENDPOINTS = {
 	role: "/api/workspace/role",
 	roleArchive: "/api/workspace/role-archive",
 	payout: "/api/workspace/payout",
+	payoutPreview: "/api/workspace/payout/preview",
 	spend: "/api/workspace/spend",
 	spendDecide: "/api/workspace/spend-decide",
 	contextSwitch: "/api/context/switch",
@@ -172,6 +175,16 @@ export const WorkspaceService = {
 	 */
 	updatePayout(input: UpdatePayoutInput): Promise<WorkspaceResult<WorkspaceDetail>> {
 		return postWorkspace<WorkspaceDetail>(WORKSPACE_ENDPOINTS.payout, input);
+	},
+
+	/**
+	 * Price a release of `amountMinor` (minor units of `currency`) under the team's SAVED split — every
+	 * cut from the server's plan, in the order it is taken. Read-only.
+	 */
+	previewPayout(query: PayoutPreviewQuery): Promise<WorkspaceResult<TeamSplitPreview>> {
+		return getWorkspace<TeamSplitPreview>(
+			`${WORKSPACE_ENDPOINTS.payoutPreview}${queryOf({ ...query })}`,
+		);
 	},
 
 	/** Write a business's spend policy — approval threshold, approvers, contributors, per-member limits. */

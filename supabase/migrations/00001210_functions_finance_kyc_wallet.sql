@@ -2456,7 +2456,12 @@ $$;
 -- honest gross is the team's oldest escrow still held; a team with none has no projection (`gross`
 -- NULL) rather than an invented one. The fee is that escrow's payer's rate (fn_escrow_fee_bp), the one
 -- the release will charge, truncated as the release truncates (Decision #187).
-CREATE OR REPLACE FUNCTION finance.preview_team_split(p_team_id uuid)
+--
+-- With `p_gross_minor` (1 … 10^12 minor units) it prices a release of THAT size instead — the Payouts
+-- module's Preview: the platform's standard fee rate (no payer, so no negotiated rate), truncated the
+-- same way, then the team's stored rule and stakes through the same plan. Either answer carries the
+-- active rule's `finder_bp` beside the plan, so every cut can be labelled with its rate.
+CREATE OR REPLACE FUNCTION finance.preview_team_split(p_team_id uuid, p_gross_minor bigint DEFAULT NULL)
 RETURNS jsonb
 LANGUAGE plpgsql
 STABLE
@@ -2468,11 +2473,33 @@ DECLARE
     v_fee_bp integer;
     v_fee bigint;
     v_payout bigint;
+    v_finder_bp integer;
 BEGIN
     IF auth.uid() IS NULL OR NOT EXISTS (
         SELECT 1 FROM org.fn_member_seat('team', p_team_id, auth.uid())
     ) THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'workspace: you are not a member of this team';
+    END IF;
+    SELECT r.finder_bp INTO v_finder_bp
+      FROM finance.split_rules r
+     WHERE r.team_id = p_team_id AND r.active AND r.rule_type = 'finders_fee';
+    IF p_gross_minor IS NOT NULL THEN
+        IF p_gross_minor < 1 OR p_gross_minor > 1000000000000 THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = 'gross_minor: preview an amount from 1 to 1000000000000 minor units';
+        END IF;
+        v_fee_bp := finance.fn_escrow_fee_bp(NULL, NULL);
+        v_fee := (p_gross_minor * v_fee_bp) / 10000;
+        v_payout := GREATEST(p_gross_minor - v_fee, 0);
+        RETURN jsonb_build_object(
+            'escrow_id', NULL,
+            'gross_minor', p_gross_minor,
+            'currency', NULL,
+            'fee_minor', v_fee,
+            'fee_bp', v_fee_bp,
+            'finder_bp', v_finder_bp,
+            'plan', finance.fn_team_split_plan(p_team_id, v_payout)
+        );
     END IF;
     SELECT e.id, e.amount_cents, COALESCE(e.deadline_bonus_cents, 0) AS bonus, e.currency,
            e.payer_business_id, e.payer_user_id
@@ -2483,7 +2510,7 @@ BEGIN
      LIMIT 1;
     IF v_escrow.id IS NULL THEN
         RETURN jsonb_build_object('gross_minor', NULL, 'currency', NULL, 'fee_minor', NULL, 'fee_bp', NULL,
-            'plan', finance.fn_team_split_plan(p_team_id, 0));
+            'finder_bp', v_finder_bp, 'plan', finance.fn_team_split_plan(p_team_id, 0));
     END IF;
     v_fee_bp := finance.fn_escrow_fee_bp(v_escrow.payer_business_id, v_escrow.payer_user_id);
     v_fee := (v_escrow.amount_cents * v_fee_bp) / 10000;
@@ -2494,6 +2521,7 @@ BEGIN
         'currency', v_escrow.currency,
         'fee_minor', v_fee,
         'fee_bp', v_fee_bp,
+        'finder_bp', v_finder_bp,
         'plan', finance.fn_team_split_plan(p_team_id, v_payout)
     );
 END;
