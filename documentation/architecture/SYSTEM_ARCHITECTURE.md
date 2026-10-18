@@ -881,6 +881,26 @@ package.
   add `ops` to **Settings → API → Exposed schemas** too, or every live log insert fails with
   `PGRST106` and is echoed to the console instead.
 
+### Public metrics service (Decision #277)
+
+The public site's live figures — money protected in escrow, stages delivered, the median time from
+funding to approval and the platform fee, printed by `/about` and the landing page's live numbers —
+come from one fat read: `services/marketing/PublicMetricsService.ts` → `ServiceResult<PublicMetrics>`
+(Zod SSOT **`@projective/types/marketing`**), served raw to SSR and as `GET /api/public/metrics`
+(thin, `defineReadRoute`, `public-metadata`). It calls ONE aggregate, `finance.public_metrics()`
+(SECURITY DEFINER, service role only), which returns counts, per-currency sums and a median and
+applies the publication threshold itself — `security.platform_params.public_metrics_min_n`, 10 when
+the row is absent (the service logs the fallback) — each figure by its own count; the per-currency
+parts reach only the service role; the service holds every figure to the same threshold again.
+Escrow in several currencies is converted into the base currency through `FxService` (read-time,
+finance-model.md §11) and withheld if any currency has no rate or a code is malformed; the published
+total is floored to two significant figures, so two hourly reads never difference to one escrow.
+Cached one hour in its own `ArcCache` (`core/cache.ts`) under the anonymous tenant — the answer is
+the same for everyone; concurrent misses share one read; a failure is held 30 s, never cached for the
+hour. Behind
+**`FINANCE_BACKEND_LIVE`**; off, the same fold runs over an aggregate frozen from the seeded database
+(`public-metrics-fixtures.ts`).
+
 ### Newsletter services
 
 The public footer's "stay updated" capture is the third implementation of the contract, and the

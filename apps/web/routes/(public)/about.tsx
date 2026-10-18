@@ -1,6 +1,5 @@
-import { define } from "@web/utils/state.ts";
-import { PagePlaceholder } from "@web/components/PagePlaceholder.tsx";
-
-export default define.page(function AboutPage() {
-	return <PagePlaceholder title="About" path="/about" />;
-});
+/**
+ * `/about` — the editorial manifesto page. A thin route: the handler and page live in the marketing
+ * feature's `about` controller (PUBLIC_ROUTES P4, Decision #277).
+ */
+export { default, handler } from "@features/marketing/about/routes/AboutPage.tsx";

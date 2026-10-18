@@ -46,6 +46,10 @@ ON CONFLICT (key) DO NOTHING;
 -- NOTHING;` statement, so parallel work orders never edit another statement in this file.
 
 -- #region [about_metrics] /about live-metrics thresholds (P4)
+INSERT INTO security.platform_params (key, value, description) VALUES
+    ('public_metrics_min_n', '10'::jsonb,
+        'Smallest underlying count at which a public live metric (/about, the landing page) is published (finance.public_metrics, Decision #277): below it the figure is withheld, never padded or estimated. Counted per metric: protected escrows, delivered stages, and delivered stages with a funding-to-approval interval. Missing or not a number >= 1, the default 10 applies.')
+ON CONFLICT (key) DO NOTHING;
 -- #endregion
 
 -- from 20260723090000
