@@ -904,6 +904,7 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
   owner is the person accountable for the team. `unverified | pending | verified`.
 - **`get_workspace_roster(kind) → {items, invitations, create_limit, create_used}`** — the caller's
   ACTIVE memberships of that kind (owned first, then by name), each with its role, owner flag,
+  `created_at` and `updated_at` (the row's own; the roster table's Updated column, Teams R1),
   verification, member count, up to five face user ids (by rank, then join date), pending-invite
   count, active projects, 30-day money by currency (team: payout splits + vault retention credited;
   business: debits other than `transfer_out`), the setup facts (`logo` · `bio` · `money`) and an

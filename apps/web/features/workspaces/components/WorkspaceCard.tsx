@@ -1,6 +1,8 @@
-import type { JSX, RefObject } from "preact";
+import type { JSX } from "preact";
 import { useRef } from "preact/hooks";
-import { Tooltip } from "@projective/ui/feedback";
+import { MetaLine, Tag } from "@projective/ui/display";
+import { ProgressBar, Tooltip } from "@projective/ui/feedback";
+import { Button } from "@projective/ui/fields";
 import {
 	ActionMenu,
 	composeMenu,
@@ -8,33 +10,47 @@ import {
 	linkActionItems,
 	type MenuItem,
 } from "@projective/ui/navigation";
-import { styleVars } from "@ui/core/style.ts";
-import { kindCopy, roleLabel, type WorkspaceSummary } from "@projective/types/workspace";
-import { initialsOf } from "../core/workspace-model.ts";
+import { kindCopy, type WorkspaceSummary } from "@projective/types/workspace";
+import {
+	cardFigure,
+	cardMeta,
+	KIND_SEVERITY,
+	lifecycleTag,
+	setupPercent,
+	setupUnfinished,
+} from "../core/roster-model.ts";
 import { cloneGlyph, KebabGlyph } from "../core/workspace-glyphs.tsx";
-import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import { EntityMark } from "./EntityMark.tsx";
 
 /**
  * WorkspaceCard — one entity on the `/teams` · `/businesses` index, and the surface's most-repeated
- * element.
+ * element (Teams work order R1).
  *
- * The whole card is a single stretched anchor to the console, so a middle-click opens a tab and a
- * Cmd-click opens a background tab exactly as a link should — the behaviour an `onClick` handler on a
- * `<div>` silently takes away. The kebab and the flag stack sit ABOVE that anchor in the stacking order
- * (`position: relative` + `z-index`), so opening the menu never navigates.
+ * **The whole card is ONE link to the console**: a single stretched anchor, so a middle-click opens a
+ * tab and a Cmd-click a background tab exactly as a link should — the behaviour an `onClick` handler
+ * on a `<div>` silently takes away. The kebab sits ABOVE that anchor in the stacking order and stops
+ * its own press from travelling further, so opening the menu never navigates; right-click, the
+ * ContextMenu key and Shift+F10 anywhere on the card open the same rows (Decision #222's `surface`).
  *
- * **Dumb by construction.** Every action is dispatched to the island through {@link onAction}; the card
- * fetches nothing, decides no permissions, and formats no money — `summary.stats` values arrive
- * pre-formatted from the server and are rendered verbatim (root CLAUDE.md §12).
+ * **What it says**, top to bottom: the `EntityMark` (squares are entities), the name in the title
+ * register at `--fw-medium` and the `@handle` beneath it; the lifecycle `Tag` — ONLY for a Draft or
+ * Archived entity — then ONE `MetaLine` of facts (`Owner · 4 members · 2 live projects`, `Acting`
+ * while the session acts as it), never chips (§B.11); the one-line tagline; the kind's 30-day figure;
+ * and, until setup is done, the ui `ProgressBar`. Unseen activity and outstanding verification stay
+ * iconographic beside the kebab, their words in the Tooltip (§B.6).
  *
- * Presentation follows the surface's two hard rules. The mark is a **rounded square** because an entity
- * is an enterprise; the member stack is **circular** because those are people. In-row state is
- * **iconographic** — a state dot, a verification dot, a pulsing update dot — and the words live only in
- * the portal `Tooltip` (§B.6), never as inline prose beside the name.
+ * **Separation** is the card's own: it is the interactive container, so it sits on `--surface-1`
+ * with no border, lifts one tonal step on hover and compresses on press (§B.12). Acting is the
+ * reserved leading rule (W1), never a ring.
+ *
+ * **Dumb by construction.** Every action is dispatched to the island through {@link onAction}; the
+ * card fetches nothing, decides no permissions, and formats no money — the figure arrives
+ * pre-formatted from the server and is rendered verbatim (Decision #55). Every rule it renders is
+ * `roster-model.ts`.
  */
 
 // #region Props
-/** An action a card (or a compact-view row) dispatches to its island. */
+/** An action a card (or a table row) dispatches to its island. */
 export type WorkspaceCardAction =
 	| "act"
 	| "exit"
@@ -60,9 +76,9 @@ export interface WorkspaceCardProps {
 export function WorkspaceCard(props: WorkspaceCardProps): JSX.Element {
 	const { summary, href, busy, onAction } = props;
 	const copy = kindCopy(summary.kind);
-	const stats = summary.stats.slice(0, 3);
-	const hidden = Math.max(0, summary.memberCount - summary.faces.length);
-	const unfinished = summary.setupProgress < 1;
+	const tag = lifecycleTag(summary.status);
+	const figure = cardFigure(summary);
+	const percent = setupPercent(summary.setupProgress);
 	const cardRef = useRef<HTMLElement>(null);
 
 	return (
@@ -77,52 +93,25 @@ export function WorkspaceCard(props: WorkspaceCardProps): JSX.Element {
 			{
 				/*
 				 * The stretched link carries the accessible name for the whole card and is visually erased by
-				 * `font-size: 0` — the name the reader sees is the `__name-text` below, which is not itself a
-				 * link so a text selection inside the card does not start a drag on an anchor.
+				 * `font-size: 0` — the name the reader sees is the heading below, which is not itself a link,
+				 * so a text selection inside the card does not start a drag on an anchor.
 				 */
 			}
 			<a class="wsp-card__link" href={href}>{summary.name}</a>
 
 			<div class="wsp-card__top">
-				<EntityMark summary={summary} />
-
+				<EntityMark
+					name={summary.name}
+					handle={summary.handle}
+					image={summary.avatar}
+					size="md"
+				/>
 				<div class="wsp-card__ident">
-					<h3 class="wsp-card__name">
-						<span class="wsp-card__name-text">{summary.name}</span>
-						{summary.hasUpdate && (
-							<Tooltip content="New activity since you last looked" placement="top">
-								<span class="wsp-pulse wsp-card__dot" role="status" aria-label="New activity" />
-							</Tooltip>
-						)}
-					</h3>
+					<h3 class="wsp-card__name">{summary.name}</h3>
 					<span class="wsp-card__handle">@{summary.handle}</span>
 				</div>
-
-				{
-					/*
-					 * Acting is folded INTO the role chip rather than sitting beside it. The two were
-					 * separate chips of identical shape, differing only in fill, and both answered the same
-					 * question — what is my relationship to this workspace — so they read as two competing
-					 * marks where there is one fact. As a dot on the role chip the state is iconographic
-					 * with its words in the tooltip, which is what §B.6 asks of an in-row status.
-					 */
-				}
-				<div class="wsp-card__flags">
-					{summary.isActing
-						? (
-							<Tooltip content="You are acting as this workspace" placement="top">
-								<span class="wsp-chip wsp-chip--acting">
-									<span class="wsp-actingchip__dot" aria-hidden="true" />
-									{roleLabel(summary.role)}
-								</span>
-							</Tooltip>
-						)
-						: (
-							<span class="wsp-chip" data-tone={summary.isOwner ? undefined : "muted"}>
-								{roleLabel(summary.role)}
-							</span>
-						)}
-					<StateDots summary={summary} />
+				<div class="wsp-card__marks">
+					<EntityStateMarks summary={summary} />
 					<WorkspaceKebab
 						summary={summary}
 						href={href}
@@ -133,107 +122,58 @@ export function WorkspaceCard(props: WorkspaceCardProps): JSX.Element {
 				</div>
 			</div>
 
-			{summary.tagline && <p class="wsp-card__tagline">{summary.tagline}</p>}
-
-			<div class="wsp-card__members">
-				<MemberStack summary={summary} hidden={hidden} />
-				<span class="wsp-card__membercount">
-					{summary.memberCount} {summary.memberCount === 1 ? "member" : "members"}
-				</span>
+			<div class="wsp-card__facts">
+				{tag && <Tag value={tag.label} severity={tag.severity} variant="subtle" rounded />}
+				<MetaLine class="wsp-card__meta" items={cardMeta(summary)} />
 			</div>
 
-			{stats.length > 0 && (
-				<div class="wsp-card__stats">
-					{stats.map((stat) => (
-						<div class="wsp-card__stat" key={stat.label}>
-							<span class="wsp-card__stat-label">{stat.label}</span>
-							<span class="wsp-card__stat-value">{stat.value}</span>
-							{stat.delta && (
-								<span class="wsp-card__stat-delta" data-dir={deltaDirection(stat.delta)}>
-									{stat.delta}
-								</span>
-							)}
-						</div>
-					))}
-				</div>
+			{summary.tagline && <p class="wsp-card__tagline">{summary.tagline}</p>}
+
+			{figure && (
+				<p class="wsp-card__figure">
+					<span class="wsp-card__figure-label">{figure.label}</span>
+					<span class="wsp-card__figure-value">{figure.value}</span>
+				</p>
 			)}
 
-			{unfinished && (
+			{setupUnfinished(summary.setupProgress) && (
 				<div class="wsp-card__setup">
-					{
-						/*
-						 * The fill's inline-size ENCODES the progress, so it is a value channel (`--wsp-progress`)
-						 * and never a transition: a frozen animation clock must not be able to draw a finished
-						 * checklist as empty. The printed percentage carries the same fact in text.
-						 */
-					}
-					<span class="wsp-card__setup-bar" aria-hidden="true">
-						<span
-							class="wsp-card__setup-fill"
-							style={styleVars({ "--wsp-progress": summary.setupProgress })}
-						/>
-					</span>
-					<span class="wsp-card__setup-text">
-						{Math.round(summary.setupProgress * 100)}% set up
-					</span>
+					<ProgressBar
+						class="wsp-card__setup-bar"
+						value={percent}
+						severity={KIND_SEVERITY[summary.kind]}
+						aria-label={`Setup ${percent}% complete`}
+					/>
+					<span class="wsp-card__setup-text" aria-hidden="true">{percent}% set up</span>
 				</div>
 			)}
 
 			{
-				/* A draft entity is fully usable, so the state is stated once, quietly, and never as a
-			warning — see `StateDots` for the tooltip that explains it. */
+				/* The stretched link names the entity; this says its kind and lifecycle, which an active
+				   card shows the eye only by the absence of a Tag. Acting is the MetaLine's own word. */
 			}
-			<span class="ui-visually-hidden">
-				{copy.Noun}, {summary.status}
-				{summary.isActing ? ", currently acting as this " + copy.noun : ""}
-			</span>
+			<span class="ui-visually-hidden">{copy.Noun}, {summary.status}</span>
 		</article>
-	);
-}
-// #endregion
-
-// #region The entity mark
-/** The rounded-square badge: a logo when there is one, the derived initials when there is not. */
-function EntityMark({ summary }: { summary: WorkspaceSummary }): JSX.Element {
-	return (
-		<span class="wsp-mark wsp-mark--lg" aria-hidden="true">
-			{summary.avatar
-				? <img class="wsp-mark__img" src={summary.avatar} alt="" loading="lazy" />
-				: (
-					<span class="wsp-mark__initial">
-						{initialsOf(summary.name, summary.handle)}
-					</span>
-				)}
-		</span>
 	);
 }
 // #endregion
 
 // #region Iconographic state
 /**
- * The lifecycle dot, plus a verification dot only while verification is outstanding.
- *
- * A verified entity gets no mark at all: a badge that appears on every healthy row teaches the reader
- * to ignore it, and then it cannot do its job on the row that is actually blocked.
+ * The unseen-activity pulse, and the verification dot only while verification is outstanding — each a
+ * mark with its words in the Tooltip (§B.6). A verified entity gets no mark at all: a badge on every
+ * healthy card or row teaches the reader to ignore it, and then it cannot do its job on the one that
+ * is actually blocked. Shared by the card and the table's identity cell.
  */
-function StateDots({ summary }: { summary: WorkspaceSummary }): JSX.Element {
+export function EntityStateMarks({ summary }: { summary: WorkspaceSummary }): JSX.Element {
 	const copy = kindCopy(summary.kind);
-	const lifecycle = summary.status === "draft"
-		? `Draft — usable now, setup unfinished`
-		: summary.status === "archived"
-		? `Archived — restorable at any time`
-		: `Active ${copy.noun}`;
-
 	return (
 		<>
-			<Tooltip content={lifecycle} placement="top">
-				<span
-					class="wsp-statedot wsp-card__dot"
-					data-state={summary.status}
-					role="img"
-					aria-label={lifecycle}
-				/>
-			</Tooltip>
+			{summary.hasUpdate && (
+				<Tooltip content="New activity since you last looked" placement="top">
+					<span class="wsp-pulse" role="img" aria-label="New activity" />
+				</Tooltip>
+			)}
 			{summary.verification !== "verified" && (
 				<Tooltip
 					content={summary.verification === "pending"
@@ -242,7 +182,7 @@ function StateDots({ summary }: { summary: WorkspaceSummary }): JSX.Element {
 					placement="top"
 				>
 					<span
-						class="wsp-statedot wsp-card__dot"
+						class="wsp-statedot"
 						data-verify={summary.verification}
 						role="img"
 						aria-label={`${copy.verification} ${summary.verification}`}
@@ -250,40 +190,6 @@ function StateDots({ summary }: { summary: WorkspaceSummary }): JSX.Element {
 				</Tooltip>
 			)}
 		</>
-	);
-}
-// #endregion
-
-// #region The member stack
-/**
- * Up to five circular faces plus a `+N` for the remainder.
- *
- * The images are decorative (`alt=""`) and the names are announced once from the container, so a
- * screen reader hears "5 of 12 members: …" rather than five consecutive unlabelled graphics.
- */
-function MemberStack(
-	{ summary, hidden }: { summary: WorkspaceSummary; hidden: number },
-): JSX.Element | null {
-	if (summary.faces.length === 0) return null;
-	const names = summary.faces.map((f) => f.name).join(", ");
-	return (
-		<div
-			class="wsp-card__faces"
-			role="img"
-			aria-label={`${summary.faces.length} of ${summary.memberCount} members: ${names}`}
-		>
-			{summary.faces.map((face) => (
-				<UserAvatar
-					key={face.handle}
-					class="wsp-card__face"
-					image={face.avatar || undefined}
-					label={face.name}
-					alt=""
-					size={24}
-				/>
-			))}
-			{hidden > 0 && <span class="wsp-card__more" aria-hidden="true">+{hidden}</span>}
-		</div>
 	);
 }
 // #endregion
@@ -356,7 +262,7 @@ function ownerRows(
 
 /**
  * An entity's menu rows: the console link rows, acting as it, its public profile and money, and the
- * owner's archive or restore. The card's kebab and the compact table's row actions both render this.
+ * owner's archive or restore. The card's kebab and the table's row actions both render this.
  */
 export function workspaceMenu(
 	summary: WorkspaceSummary,
@@ -383,9 +289,10 @@ export function workspaceMenu(
 }
 
 /**
- * The per-entity action menu, shared verbatim by the card and the compact view so the two presentations
- * can never drift into offering different actions for the same entity. Right-clicking the `surface`
- * opens the same rows at the pointer.
+ * The per-entity action menu, shared verbatim by the card and the table so the two presentations can
+ * never drift into offering different actions for the same entity. Its trigger is the ui `Button`
+ * (tier 5, icon-only, named by `aria-label`), which stops its press at itself so nothing under the
+ * card's link answers it. Right-clicking the `surface` opens the same rows at the pointer.
  *
  * Archiving is offered only to an owner, and only ever as "archive" — nothing on this surface
  * hard-deletes (root CLAUDE.md §5). `avoid` keeps the panel clear of the middle-nav lane the roster
@@ -394,6 +301,7 @@ export function workspaceMenu(
 export function WorkspaceKebab(props: WorkspaceKebabProps): JSX.Element {
 	const { summary, href, busy = false, onAction, surface, placement = "bottom-end" } = props;
 	const model = workspaceMenu(summary, href, busy, onAction);
+	const label = `Actions for ${summary.name}`;
 
 	return (
 		<ActionMenu
@@ -401,37 +309,26 @@ export function WorkspaceKebab(props: WorkspaceKebabProps): JSX.Element {
 			surface={surface}
 			placement={placement}
 			avoid={MENU_AVOID}
-			aria-label={`Actions for ${summary.name}`}
+			aria-label={label}
 			trigger={(api) => (
-				<button
-					type="button"
-					ref={api.ref as RefObject<HTMLButtonElement>}
-					class="wsp-card__kebab"
+				<Button
+					triggerRef={api.ref}
+					variant="text"
+					severity="secondary"
+					size="sm"
+					iconOnly
+					icon={cloneGlyph(KebabGlyph)}
+					aria-label={label}
 					aria-haspopup="menu"
 					aria-expanded={api.expanded}
 					aria-controls={api.panelId}
-					aria-label={`Actions for ${summary.name}`}
-					onClick={api.toggle}
-				>
-					{cloneGlyph(KebabGlyph)}
-				</button>
+					onClick={(event) => {
+						event.stopPropagation();
+						api.toggle();
+					}}
+				/>
 			)}
 		/>
 	);
-}
-// #endregion
-
-// #region Helpers
-/**
- * The tonal direction of a pre-formatted delta string.
- *
- * Reads the SIGN the server already printed rather than comparing numbers — the client never parses a
- * money figure, and a compacted value ("+£1.2k") is not arithmetic it should be attempting.
- */
-export function deltaDirection(delta: string): "up" | "down" | "flat" {
-	const first = delta.trim().charAt(0);
-	if (first === "+") return "up";
-	if (first === "-" || first === "−") return "down";
-	return "flat";
 }
 // #endregion

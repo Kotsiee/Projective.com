@@ -1,20 +1,27 @@
 import type { JSX } from "preact";
 import { useMemo } from "preact/hooks";
-import { type DataColumn, DataTable } from "@projective/ui/display";
-import { Tooltip } from "@projective/ui/feedback";
-import { kindCopy, roleLabel, type WorkspaceSummary } from "@projective/types/workspace";
-import { initialsOf } from "../core/workspace-model.ts";
-import { type WorkspaceCardAction, workspaceMenu } from "./WorkspaceCard.tsx";
+import { type DataColumn, DataTable, MetaLine, Tag } from "@projective/ui/display";
+import { roleLabel, roleRank, type WorkspaceSummary } from "@projective/types/workspace";
+import {
+	lifecycleTag,
+	ROSTER_COLUMNS,
+	type RosterColumn,
+	statusSortValue,
+} from "../core/roster-model.ts";
+import { EntityStateMarks, type WorkspaceCardAction, workspaceMenu } from "./WorkspaceCard.tsx";
+import { EntityMark } from "./EntityMark.tsx";
 
 /**
- * WorkspaceTable — the roster's compact view, for somebody who belongs to a dozen entities and wants to
- * scan them rather than look at them, as a `DataTable` preset: identity · your role · members · the
- * kind's headline figure · state. Each row opens the entity's console, and carries the card's own menu
- * (`workspaceMenu`) on a kebab and on right-click, so the two presentations can never offer different
- * actions for the same entity.
+ * WorkspaceTable — the roster's list presentation, for somebody who belongs to a dozen entities and
+ * wants to scan them rather than look at them: a `DataTable` preset (Decision #224 — the Table,
+ * #228 (G)) over the columns `roster-model.ts` names — Name · Your role · Members · Live projects ·
+ * Status · Updated. Counts sit right-aligned in tabular figures; every column sorts (the role by
+ * authority, the status by lifecycle order, not the alphabet); the Status cell holds a `Tag` only for
+ * a Draft or Archived entity; selection is none — a row opens its console, and carries the card's own
+ * menu (`workspaceMenu`) on a kebab and on right-click, so the two presentations can never offer
+ * different actions for the same entity. The row the session acts as says "Acting" in its role cell.
  *
- * Dumb: no fetching, no permission decisions, no arithmetic. `stats[0]` is a server-formatted string
- * (root CLAUDE.md §12) and is rendered verbatim.
+ * Dumb: no fetching, no permission decisions, no arithmetic.
  */
 
 // #region Props
@@ -33,79 +40,84 @@ export interface WorkspaceTableProps {
 // #endregion
 
 // #region Columns
-/**
- * The money column's header, taken from the rows themselves rather than hard-coded per kind.
- *
- * The server chose the stat labels for this kind ("Earned 30d" · "Spent 30d"), so reading one back is
- * the only way the column heading cannot disagree with the figures under it.
- */
-function headerFor(items: readonly WorkspaceSummary[]): string {
-	for (const item of items) {
-		const label = item.stats[2]?.label ?? item.stats[0]?.label;
-		if (label) return label;
+/** The `DataTable` descriptor for one of the roster's columns. */
+function columnFor(column: RosterColumn): DataColumn<WorkspaceSummary> {
+	const base = { id: column.id, header: column.header, align: column.align };
+	switch (column.id) {
+		case "name":
+			return {
+				...base,
+				type: "custom",
+				fill: true,
+				minWidth: 224,
+				pinned: true,
+				render: (row) => <IdentityCell summary={row} />,
+				sortValue: (row) => row.name.toLocaleLowerCase("en-GB"),
+				searchText: (row) => `${row.name} @${row.handle}`,
+			};
+		case "role":
+			return {
+				...base,
+				type: "custom",
+				width: 168,
+				priority: 3,
+				// Authority order — owner first on the first press — never the alphabet, which would
+				// present admin · lead · member · owner as a ranking.
+				firstSortDir: "desc",
+				render: (row) => (
+					<MetaLine
+						as="span"
+						class="wsp-rtable__role"
+						items={[roleLabel(row.role), row.isActing && "Acting"]}
+					/>
+				),
+				sortValue: (row) => roleRank(row.role),
+			};
+		case "members":
+			return {
+				...base,
+				type: "number",
+				format: "integer",
+				width: 112,
+				priority: 1,
+				value: (row) => row.memberCount,
+			};
+		case "projects":
+			return {
+				...base,
+				type: "number",
+				format: "integer",
+				width: 128,
+				priority: 2,
+				value: (row) => row.activeProjects,
+			};
+		case "status":
+			return {
+				...base,
+				type: "custom",
+				width: 120,
+				priority: 4,
+				render: (row) => <StatusCell summary={row} />,
+				sortValue: (row) => statusSortValue(row.status),
+			};
+		case "updated":
+			return {
+				...base,
+				type: "date",
+				format: "date",
+				width: 128,
+				priority: 5,
+				firstSortDir: "desc",
+				value: (row) => row.updatedAt,
+			};
 	}
-	return "Activity";
-}
-
-function columnsFor(moneyHeader: string): DataColumn<WorkspaceSummary>[] {
-	return [
-		{
-			id: "name",
-			header: "Name",
-			type: "custom",
-			fill: true,
-			minWidth: 224,
-			pinned: true,
-			render: (row) => <IdentityCell summary={row} />,
-			sortValue: (row) => row.name,
-			searchText: (row) => `${row.name} @${row.handle}`,
-		},
-		{
-			// Not sortable: a role is a word, and ordering admin · lead · member · owner alphabetically
-			// would present a wrong order as authority.
-			id: "role",
-			header: "Your role",
-			type: "custom",
-			width: 168,
-			priority: 2,
-			render: (row) => <RoleCell summary={row} />,
-		},
-		{
-			id: "members",
-			header: "Members",
-			type: "number",
-			width: 112,
-			priority: 1,
-			value: (row) => row.memberCount,
-		},
-		{
-			// The kind's headline figure — earnings for a team, spend for a business — already formatted.
-			id: "stats",
-			header: moneyHeader,
-			type: "text",
-			sortKey: null,
-			align: "end",
-			width: 136,
-			priority: 3,
-			value: (row) => row.stats[2]?.value ?? row.stats[0]?.value ?? null,
-		},
-		{
-			id: "status",
-			header: "State",
-			type: "custom",
-			width: 104,
-			render: (row) => <StateCell summary={row} />,
-			sortValue: (row) => row.status,
-		},
-	];
 }
 // #endregion
 
 // #region Table
 export function WorkspaceTable(props: WorkspaceTableProps): JSX.Element {
 	const { items, hrefFor, busy = false, label, onAction } = props;
-	const moneyHeader = headerFor(items);
-	const columns = useMemo(() => columnsFor(moneyHeader), [moneyHeader]);
+	const columns = useMemo(() => ROSTER_COLUMNS.map(columnFor), []);
 
 	return (
 		<DataTable
@@ -115,6 +127,7 @@ export function WorkspaceTable(props: WorkspaceTableProps): JSX.Element {
 			rowLabel={(row) => row.name}
 			columns={columns}
 			aria-label={label}
+			selectionMode="none"
 			multiSort={false}
 			rowHref={hrefFor}
 			rowActions={(row) => workspaceMenu(row, hrefFor(row), busy, onAction)}
@@ -128,83 +141,31 @@ export function WorkspaceTable(props: WorkspaceTableProps): JSX.Element {
 // #endregion
 
 // #region Cells
-/** Mark, name, the handle beneath it, and the new-activity pulse. */
+/**
+ * Mark, name and the `@handle` beneath it, then the unseen-activity pulse and — while verification is
+ * outstanding — its state dot, each with its words in a Tooltip (§B.6).
+ */
 function IdentityCell({ summary }: { summary: WorkspaceSummary }): JSX.Element {
 	return (
 		<span class="wsp-rtable__ident" data-kind={summary.kind}>
-			<span class="wsp-mark wsp-mark--sm" aria-hidden="true">
-				{summary.avatar
-					? <img class="wsp-mark__img" src={summary.avatar} alt="" loading="lazy" />
-					: <span class="wsp-mark__initial">{initialsOf(summary.name, summary.handle)}</span>}
-			</span>
+			<EntityMark
+				name={summary.name}
+				handle={summary.handle}
+				image={summary.avatar}
+				size="sm"
+			/>
 			<span class="wsp-rtable__name">
 				<span class="wsp-rtable__name-text">{summary.name}</span>
 				<span class="wsp-rtable__sub">@{summary.handle}</span>
 			</span>
-			{summary.hasUpdate && (
-				<Tooltip content="New activity since you last looked" placement="top">
-					<span class="wsp-pulse" role="status" aria-label="New activity" />
-				</Tooltip>
-			)}
+			<EntityStateMarks summary={summary} />
 		</span>
 	);
 }
 
-/** The viewer's role, and the quiet acting chip (the row already carries the acting tonal step). */
-function RoleCell({ summary }: { summary: WorkspaceSummary }): JSX.Element {
-	return (
-		<>
-			<span class="wsp-chip" data-tone={summary.isOwner ? undefined : "muted"}>
-				{roleLabel(summary.role)}
-			</span>
-			{summary.isActing && (
-				<span class="wsp-actingchip wsp-actingchip--quiet">
-					<span class="wsp-actingchip__dot" aria-hidden="true" />
-					Acting
-				</span>
-			)}
-		</>
-	);
-}
-
-/**
- * Lifecycle and verification as dots. Verified draws nothing — a badge on every healthy row trains the
- * reader to ignore it, and then it cannot work on the row that is genuinely blocked (§B.6).
- */
-function StateCell({ summary }: { summary: WorkspaceSummary }): JSX.Element {
-	const copy = kindCopy(summary.kind);
-	const lifecycle = summary.status === "draft"
-		? "Draft — usable now, setup unfinished"
-		: summary.status === "archived"
-		? "Archived — restorable at any time"
-		: `Active ${copy.noun}`;
-
-	return (
-		<>
-			<Tooltip content={lifecycle} placement="top">
-				<span
-					class="wsp-statedot"
-					data-state={summary.status}
-					role="img"
-					aria-label={lifecycle}
-				/>
-			</Tooltip>
-			{summary.verification !== "verified" && (
-				<Tooltip
-					content={summary.verification === "pending"
-						? `${copy.verification} in review`
-						: `${copy.verification} not started — needed before money moves`}
-					placement="top"
-				>
-					<span
-						class="wsp-statedot"
-						data-verify={summary.verification}
-						role="img"
-						aria-label={`${copy.verification} ${summary.verification}`}
-					/>
-				</Tooltip>
-			)}
-		</>
-	);
+/** The lifecycle `Tag` — only for a Draft or Archived entity; an active row's cell stays empty. */
+function StatusCell({ summary }: { summary: WorkspaceSummary }): JSX.Element | null {
+	const tag = lifecycleTag(summary.status);
+	return tag ? <Tag value={tag.label} severity={tag.severity} variant="subtle" rounded /> : null;
 }
 // #endregion

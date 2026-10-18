@@ -1,7 +1,7 @@
 import { computed, signal } from "@preact/signals";
 import type { WorkspaceDetail, WorkspaceKind } from "@projective/types/workspace";
 import { viewMode } from "./view-state.ts";
-import type { RosterTab } from "./workspace-model.ts";
+import type { RosterTab } from "./roster-model.ts";
 import type { ModuleCommit } from "./header-model.ts";
 import type { SaveState } from "./rig-model.ts";
 import { MEMBERS_CHART, type SubView, subViewSearch } from "./sub-views.ts";
@@ -170,19 +170,38 @@ export function membersViewFor(view: string | null): MembersView {
 export type RosterView = "grid" | "table";
 
 /**
- * The roster index's PARTITION (All · Owned · Member · Invitations · Archived) — one value for every
- * root that offers it: the lane's context controls and the roster canvas.
+ * The roster index's PARTITION (All · Owned · Member · Invitations · Archived) — ONE value for every
+ * root that offers it: the lane's segmented control and the canvas's TabMenu both write it through
+ * {@link selectRosterTab}, and neither keeps a copy of its own.
  *
- * `null` until a control on either root picks one. Each root renders its server-resolved `?tab=` prop
- * until then, so the first painted byte and the first hydrated frame agree, and a module-level value
- * written during one request's SSR can never leak into the next request's render. A root that offers
- * the partition mirrors this value into its own control once it is set (`useSignalEffect`).
+ * `null` until a control on either root picks one. Each root renders its server-resolved `?view=`
+ * prop until then ({@link rosterTabOr}), so the first painted byte and the first hydrated frame agree,
+ * and a module-level value written during one request's SSR can never leak into the next request's
+ * render. The canvas keeps the address in step (`replaceState`, from a `useSignalEffect`).
  */
 export const rosterTab = signal<RosterTab | null>(null);
 
 /** Pick the roster partition on every root that shows it. */
 export function selectRosterTab(tab: RosterTab): void {
 	rosterTab.value = tab;
+}
+
+/** The partition a root renders: the one a control picked, else its own server-resolved value. */
+export function rosterTabOr(resolved: RosterTab): RosterTab {
+	return rosterTab.value ?? resolved;
+}
+
+/**
+ * Whether the roster index is in its FIRST RUN (`roster-model.ts` `isFirstRun`) — published by the
+ * canvas, which alone sees a retried read or an answered invitation change it, and read by the lane,
+ * whose footer withholds its create while the canvas's empty state carries it. `null` until the
+ * canvas publishes; the lane then reads the same rule over its own SSR roster.
+ */
+export const rosterFirstRun = signal<boolean | null>(null);
+
+/** Publish the canvas's first-run reading to the other roots. */
+export function publishRosterFirstRun(firstRun: boolean): void {
+	rosterFirstRun.value = firstRun;
 }
 
 /**

@@ -2571,11 +2571,11 @@ BEGIN
     END IF;
 
     WITH mine AS (
-        SELECT t.id, t.name, t.slug, t.avatar_file_id AS avatar, t.headline, t.status, t.owner_user_id, t.created_at, m.role
+        SELECT t.id, t.name, t.slug, t.avatar_file_id AS avatar, t.headline, t.status, t.owner_user_id, t.created_at, t.updated_at, m.role
           FROM org.team_members m JOIN org.teams t ON t.id = m.team_id
          WHERE p_kind = 'team' AND m.user_id = v_uid AND m.status = 'active'
         UNION ALL
-        SELECT b.id, b.name, b.slug, b.logo_file_id, b.headline, b.status, b.owner_user_id, b.created_at, m.role
+        SELECT b.id, b.name, b.slug, b.logo_file_id, b.headline, b.status, b.owner_user_id, b.created_at, b.updated_at, m.role
           FROM org.business_members m JOIN org.business_profiles b ON b.id = m.business_id
          WHERE p_kind = 'business' AND m.user_id = v_uid AND m.status = 'active'
     )
@@ -2589,6 +2589,7 @@ BEGIN
         'role', e.role,
         'is_owner', e.owner_user_id = v_uid,
         'created_at', e.created_at,
+        'updated_at', e.updated_at,
         'verification', org.fn_workspace_verification(p_kind, e.id),
         'member_count', (SELECT count(*) FROM (
             SELECT 1 FROM org.team_members x WHERE p_kind = 'team' AND x.team_id = e.id AND x.status = 'active'

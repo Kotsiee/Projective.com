@@ -19,6 +19,7 @@ import {
 	projectState,
 	projectStatusLabel,
 	relativeLabel,
+	rosterActivity,
 	rosterStats,
 	setupCompletion,
 	setupSteps,
@@ -64,6 +65,25 @@ Deno.test("rosterStats: team earns, business spends, members and projects are pl
 		],
 	});
 	assertEquals(multi[2].value, "US$28,500.00 +2");
+});
+
+Deno.test("rosterActivity: live projects as a count, the row's last change as ISO or null", () => {
+	assertEquals(
+		// jsonb renders a timestamptz as ISO 8601 with its offset.
+		rosterActivity({ active_projects: 2, updated_at: "2026-09-27T10:30:00.123456+01:00" }),
+		{ activeProjects: 2, updatedAt: "2026-09-27T09:30:00.123Z" },
+	);
+	// A read from a database that has not yet been given the column, or a garbled figure, says
+	// nothing rather than inventing one.
+	const missing = { active_projects: Number.NaN } as unknown as Parameters<
+		typeof rosterActivity
+	>[0];
+	assertEquals(rosterActivity(missing), { activeProjects: 0, updatedAt: null });
+	assertEquals(rosterActivity({ active_projects: -3, updated_at: "not a date" }), {
+		activeProjects: 0,
+		updatedAt: null,
+	});
+	assertEquals(rosterActivity({ active_projects: 4.7, updated_at: "" }).activeProjects, 4);
 });
 
 Deno.test("largestAmount compares in major units and never sums currencies", () => {

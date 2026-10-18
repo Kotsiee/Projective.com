@@ -232,7 +232,6 @@
 	--wsp-rowh-dense: var(--row-h-dense);
 	--wsp-rig-row: var(--rig-row-h);
 
-	--wsp-card-min: 20rem;
 	--wsp-tile-min: 11rem;
 	/* Orphan: nothing in this feature reads it yet (it predates the promotion). Aliased rather than
 	deleted so the first chart that lands here is already on the shared height; flagged for the
