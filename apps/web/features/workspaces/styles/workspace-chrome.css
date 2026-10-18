@@ -14,24 +14,28 @@
  * more into its context and footer zones than any other (four segments; a two-word create). Under
  * `.wsp-lane` the segmented control re-flows into rows by its zone's own width (an `@container`
  * query, so the lane's width is asked, never the viewport's), and the create action folds its words
- * away in a compact splitter exactly as the package already folds them in the collapsed one. No
- * colour, shape, type or motion of a shared control is touched.
+ * away in a compact splitter exactly as the package already folds them in the collapsed one. The
+ * bands (L2) take the same licence: the header band's `TabMenu` gets Decision #220's in-band underline
+ * (the catalogue's `.cat-band` treatment), and below `--bp-md` the footer rig's utilities fold their
+ * `Button` words away to the glyph. No colour, shape, type or motion of a shared control is touched,
+ * except the Org chart toggle's engaged state, which `Button` has no prop for.
  *
  * Press feedback (§B.12) is therefore split by owner:
- *   - From the package: `Button` (the acting switch, the Reset) and `LaneCreateButton` compress and
- *     drop the scale under both reduced-motion channels. `NavItem`, the "More" `LaneSection` toggle,
- *     the Back `LaneIconButton`, the `SelectButton` segments and `LaneCollapseButton` carry NO press in
- *     the package today; that gap is the package's to close (it is shared by every lane), never this
- *     sheet's, because restyling `.ui-*` chrome here would fork the lane vocabulary.
+ *   - From the package: `Button` (the acting switch, the Reset, every band and rig control) and
+ *     `LaneCreateButton` compress and drop the scale under both reduced-motion channels. `NavItem`,
+ *     the "More" `LaneSection` toggle, the Back `LaneIconButton`, the `SelectButton` segments, the
+ *     `TabMenu` tabs and `LaneCollapseButton` carry NO press in the package today; that gap is the
+ *     package's to close (it is shared by every lane), never this sheet's, because restyling `.ui-*`
+ *     chrome here would fork the lane vocabulary.
  *   - From this sheet: the feature's OWN links — the roster rows (`.wsp-lane__entity`, a feature row
- *     like Catalogue's lane rows) and the collapsed rail's squares and mark (`.wsp-rail__item`,
- *     `.wsp-rail__switch`, hand-built like the Projects and Catalogue rails) — each with its scale
- *     press and both reduced-motion channels below.
+ *     like Catalogue's lane rows), the collapsed rail's squares and mark (`.wsp-rail__item`,
+ *     `.wsp-rail__switch`, hand-built like the Projects and Catalogue rails) and the rig's `Link`s
+ *     (`.wsp-footerrig__link`) — each with its scale press and both reduced-motion channels below.
  *
  * Both bands are mounted into shell slots, which means they EXPORT their intrinsic width to the page:
  * a band wider than the content region widens the region. Both therefore carry
- * `max-inline-size: 100%` + `overflow: hidden`, and every band label is wrapped in its own `<span>` so
- * the mobile rules can drop the words and keep the glyph — a bare text node cannot be targeted.
+ * `max-inline-size: 100%` + `overflow: hidden`, and every label the mobile rules drop sits in an
+ * element of its own — a bare text node cannot be targeted.
  */
 
 /* #region The dual presentation */
@@ -563,16 +567,18 @@ words — a ring colour on its own is not a channel. */
 }
 /* #endregion */
 
-/* #region Header band */
+/* #region Header band — Decision #220's three-region band */
 /*
- * The band contract, shared verbatim with the reference `.chan-header`: exactly
- * `--shell-midnav-header-h` tall, `--space-4` inline padding, and TRANSPARENT. The tonal surface is
- * the shell band's own flush `--surface-1` underlay and the seam beneath it is the canvas frame's
- * single hairline — painting an opaque plate and a second hairline here doubles both.
+ * The band contract, shared with the catalogue's `.cat-band` (Decision #220) and the reference
+ * `.chan-header`: exactly `--shell-midnav-header-h` tall, `--space-4` inline padding, and TRANSPARENT —
+ * the tonal surface is the shell band's own flush `--surface-1` underlay and the seam beneath it is
+ * the canvas frame's single hairline. Identity at the start, the sub-view `TabMenu` centred between
+ * two `flex: 1 1 0` regions, actions at the end.
  */
 .wsp-headerband {
+	container: wsp-headerband / inline-size;
 	display: flex;
-	align-items: center;
+	align-items: stretch;
 	gap: var(--space-3);
 	block-size: var(--shell-midnav-header-h);
 	padding-inline: var(--space-4);
@@ -582,159 +588,161 @@ words — a ring colour on its own is not a channel. */
 	overflow: hidden;
 }
 
-.wsp-headerband__identity {
+.wsp-headerband__start,
+.wsp-headerband__end {
 	display: flex;
+	flex: 1 1 0;
 	align-items: center;
 	gap: var(--space-2);
 	min-inline-size: 0;
-	flex: none;
-	color: inherit;
-	text-decoration: none;
 }
 
-/* The identity name and the selected tab share `--fw-medium` and `--on-surface`, so the name is told
-apart by SIZE: one step up the ramp, the title register above the tab strip's body register. */
-.wsp-headerband__name {
-	font-size: var(--wsp-fs-key);
-	font-weight: var(--fw-medium);
-	color: var(--on-surface);
+.wsp-headerband__end {
+	justify-content: flex-end;
+}
+
+.wsp-headerband__id {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: var(--space-px);
+	min-inline-size: 0;
+}
+
+/* The title register over the meta line: told apart by size and ink, never by weight (§A.4). */
+.wsp-headerband__title {
+	margin: 0;
 	overflow: hidden;
+	color: var(--on-surface);
+	font-size: var(--text-base);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.wsp-headerband__handle {
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
+.wsp-headerband__meta {
+	min-inline-size: 0;
+	overflow: hidden;
+	line-height: var(--leading-tight);
+	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.wsp-headerband__badge {
-	flex: none;
-}
-
-/* The band's own hairline divider, between the identity and the tabs. One edge, one line. */
-.wsp-headerband__divider {
-	flex: none;
-	inline-size: 0;
-	block-size: 1.25rem;
-	border-inline-start: var(--hairline);
-}
-
-.wsp-headerband__controls {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	margin-inline-start: auto;
-	flex: none;
-	min-inline-size: 0;
-}
-
-.wsp-headerband__icon {
+/*
+ * Share profile in two presentations — the words, or the glyph under a Tooltip — and the band's own
+ * width (an `@container` query below) decides which paints, so SSR and hydration agree on the first
+ * frame. The wrapper has no gap, so the hidden one leaves no space behind.
+ */
+.wsp-headerband__utility {
 	display: inline-flex;
-	align-items: center;
-	justify-content: center;
 	flex: none;
-	inline-size: 2rem;
-	block-size: 2rem;
-	padding: 0;
-	border: none;
-	border-radius: var(--radius-base);
-	background: none;
-	color: var(--text-secondary);
-	cursor: pointer;
+	align-items: center;
 }
 
-.wsp-headerband__icon:hover {
-	background: var(--surface-3);
-	color: var(--on-surface);
-}
-
-.wsp-headerband__panel {
-	min-inline-size: 18rem;
-	padding: var(--space-2);
-}
-
-.wsp-headerband__panel-note {
-	margin: 0;
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
+.wsp-headerband .wsp-headerband__utility-narrow {
+	display: none;
 }
 /* #endregion */
 
-/* #region Header band tabs — underlined text, never a pill */
+/* #region Header band tabs — the in-band underline (Decision #220 (A)) */
 /*
- * A `--wsp-stroke` `--primary` `::after` that scales on the inline axis, pinned one hairline below
- * the band so it lands ON the band's divider hairline rather than floating above it. No box, no
- * background, no radius: the tab strip is text, and the underline is the only mark.
+ * Inside the band the TabMenu loses its own border and sliding ink; each tab draws a `--wsp-stroke`
+ * underline that scales on the inline axis, one hairline below the band so it lands ON the canvas
+ * frame's seam. The scroll box gets one hairline of padding and the matching negative margin so it
+ * does not clip that line. No box, no background, no radius: the tab strip is text.
  */
-.wsp-headerband__tabs {
-	display: flex;
-	align-items: stretch;
-	gap: var(--space-1);
-	block-size: 100%;
+.wsp-headerband__tabs.ui-tabmenu {
+	flex: 0 1 auto;
+	align-self: stretch;
 	min-inline-size: 0;
-	overflow-x: auto;
-	scrollbar-width: none;
+	border-block-end: none;
 }
 
-.wsp-headerband__tabs::-webkit-scrollbar {
+.wsp-headerband__tabs .ui-tabmenu__scroll {
+	margin-block-end: calc(-1 * var(--wsp-hairline-w));
+	padding-block-end: var(--wsp-hairline-w);
+}
+
+.wsp-headerband__tabs .ui-tabmenu__list {
+	block-size: 100%;
+	gap: var(--space-4);
+}
+
+.wsp-headerband__tabs .ui-tabmenu__ink {
 	display: none;
 }
 
-.wsp-headerband__tab {
+.wsp-headerband__tabs .ui-tabmenu__tab {
 	position: relative;
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	flex: none;
-	padding-inline: var(--space-3);
-	border: none;
-	background: none;
-	color: var(--text-secondary);
-	font: inherit;
-	font-size: var(--wsp-fs-body);
-	text-decoration: none;
-	white-space: nowrap;
-	cursor: pointer;
+	block-size: 100%;
+	padding: 0 var(--space-1);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	letter-spacing: 0;
 }
 
-.wsp-headerband__tab::after {
+.wsp-headerband__tabs .ui-tabmenu__tab--active {
+	color: var(--primary);
+}
+
+.wsp-headerband__tabs .ui-tabmenu__tab::after {
 	content: "";
 	position: absolute;
+	inset-inline: 0;
 	inset-block-end: calc(-1 * var(--wsp-hairline-w));
-	inset-inline: var(--space-2);
 	block-size: var(--wsp-stroke);
-	border-radius: var(--radius-xs);
-	background: var(--primary);
+	border-start-start-radius: var(--radius-xs);
+	border-start-end-radius: var(--radius-xs);
+	background: var(--outline);
 	transform: scaleX(0);
 	transform-origin: center;
 	transition: transform var(--dur-fast) var(--ease-standard);
 }
 
-.wsp-headerband__tab:hover {
-	color: var(--on-surface);
-}
-
-.wsp-headerband__tab[aria-selected="true"],
-.wsp-headerband__tab[data-active="true"] {
-	color: var(--on-surface);
-	font-weight: var(--fw-medium);
-}
-
-.wsp-headerband__tab[aria-selected="true"]::after,
-.wsp-headerband__tab[data-active="true"]::after {
+.wsp-headerband__tabs .ui-tabmenu__tab:hover::after {
 	transform: scaleX(1);
 }
 
-.wsp-headerband__tab-glyph {
-	display: inline-flex;
-	flex: none;
-	line-height: 0;
+.wsp-headerband__tabs .ui-tabmenu__tab--active::after,
+.wsp-headerband__tabs .ui-tabmenu__tab--active:hover::after {
+	background: var(--primary);
+	transform: scaleX(1);
 }
 
-.wsp-headerband__tab-dot {
-	flex: none;
+.wsp-headerband__tabs .ui-tabmenu__chevron {
+	background: transparent;
+}
+
+/* A narrow band keeps every tab reachable: the regions yield first, then the meta line goes. */
+@container wsp-headerband (max-width: 48rem) {
+	.wsp-headerband__start,
+	.wsp-headerband__end {
+		flex: 0 1 auto;
+	}
+
+	.wsp-headerband__tabs.ui-tabmenu {
+		flex: 1 1 auto;
+		min-inline-size: 7rem;
+	}
+
+	.wsp-headerband .wsp-headerband__utility-wide {
+		display: none;
+	}
+
+	.wsp-headerband .wsp-headerband__utility-narrow {
+		display: inline-flex;
+	}
+}
+
+@container wsp-headerband (max-width: 36rem) {
+	.wsp-headerband__meta {
+		display: none;
+	}
+
+	.wsp-headerband__tabs .ui-tabmenu__list {
+		gap: var(--space-3);
+	}
 }
 /* #endregion */
 
@@ -742,7 +750,8 @@ apart by SIZE: one step up the ramp, the title register above the tab strip's bo
 /*
  * The band contract, shared verbatim with the reference `.fx-rig`: a `--space-2`/`--space-4` inset
  * around a `--wsp-rig-row` control row, transparent, and NO hairline of its own — the seam is the
- * canvas frame's, which grows a block-end hairline whenever a footer band is registered.
+ * canvas frame's, which grows a block-end hairline whenever a footer band is registered. Every control
+ * in it is a `@projective/ui` `Button` at its matrix tier or a ui `Link`.
  */
 .wsp-footerrig {
 	display: flex;
@@ -769,43 +778,50 @@ apart by SIZE: one step up the ramp, the title register above the tab strip's bo
 	min-inline-size: 0;
 }
 
-/* A full contour is correct here: these are interactive controls (§B.4). */
-.wsp-footerrig__action {
+/*
+ * The policy editor's save state, said before the Discard and Save it explains: meta text, never a
+ * box. Unsaved changes take the ink, a failed save the danger ink.
+ */
+.wsp-footerrig__status {
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	color: var(--text-secondary);
+	font-size: var(--wsp-fs-body);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-footerrig__status[data-tone="unsaved"] {
+	color: var(--on-surface);
+}
+
+.wsp-footerrig__status[data-tone="error"] {
+	color: var(--danger);
+}
+
+/* A navigation in the rig: the ui `Link`'s ink and hover, laid on the rig's row beside its glyph. */
+.wsp-footerrig__link {
 	display: inline-flex;
+	flex: none;
 	align-items: center;
 	gap: var(--space-2);
-	flex: none;
 	block-size: var(--wsp-rig-row);
-	padding-inline: var(--space-3);
-	padding-block: 0;
-	border: var(--hairline-strong);
-	border-color: transparent;
-	border-radius: var(--radius-base);
-	background: none;
-	color: var(--on-surface);
-	font: inherit;
+	padding-inline: var(--space-2);
 	font-size: var(--wsp-fs-body);
 	white-space: nowrap;
-	cursor: pointer;
-	text-decoration: none;
-	transition: background-color var(--dur-fast) var(--ease-standard);
+	transition: transform var(--dur-press) var(--ease-standard);
 }
 
-.wsp-footerrig__action:hover {
-	background: var(--surface-3);
+.wsp-footerrig__link:active {
+	transform: scale(var(--btn-press-scale));
 }
 
-/*
- * Locked, not removed. A verification gate keeps its control in place so the path stays discoverable;
- * the lock glyph and the faded ink say "not yet", and activating it explains how. The fade is the
- * shared disabled mix on the INK, against the band's own `--surface-1` — never `opacity`, which would
- * fade the whole control and its label contrast with it. A CAPABILITY gate is the opposite — the
- * control is absent entirely, because offering an action a member may never take is a lie about the
- * roster.
- */
-.wsp-footerrig__action[data-locked="true"] {
-	background: none;
-	color: color-mix(in srgb, var(--text-secondary) var(--fld-disabled-mix), var(--surface-1));
+/* The engaged Org chart toggle: one solid tonal step with `--on-surface` ink, never a wash (§B.4.2). */
+.wsp-footerrig .wsp-footerrig__toggle[aria-pressed="true"],
+.wsp-footerrig .wsp-footerrig__toggle[aria-pressed="true"]:hover {
+	background: var(--surface-2);
+	color: var(--on-surface);
 }
 
 .wsp-footerrig__glyph {
@@ -814,7 +830,7 @@ apart by SIZE: one step up the ramp, the title register above the tab strip's bo
 	line-height: 0;
 }
 
-/* Wrapped so the mobile rule can drop the words and keep the glyph. */
+/* Its own element, so the mobile rule can drop the words and keep the glyph. */
 .wsp-footerrig__label {
 	min-inline-size: 0;
 	overflow: hidden;
@@ -833,92 +849,49 @@ apart by SIZE: one step up the ramp, the title register above the tab strip's bo
 	min-inline-size: 9rem;
 }
 
-.wsp-footerrig__more {
+/*
+ * Held for the spend approval queue's Approve / Decline (`ApprovalQueue`, Teams audit D30), which
+ * still borrow the rig's former ghost action; it goes when that queue moves onto `Button`. A full
+ * contour is correct here: these are interactive controls (§B.4).
+ */
+.wsp-footerrig__action {
 	display: inline-flex;
+	flex: none;
 	align-items: center;
 	gap: var(--space-2);
-	flex: none;
 	block-size: var(--wsp-rig-row);
 	padding-inline: var(--space-3);
 	padding-block: 0;
 	border: var(--hairline-strong);
+	border-color: transparent;
 	border-radius: var(--radius-base);
 	background: none;
 	color: var(--on-surface);
 	font: inherit;
 	font-size: var(--wsp-fs-body);
+	white-space: nowrap;
 	cursor: pointer;
+	text-decoration: none;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-press) var(--ease-standard);
 }
 
-.wsp-footerrig__more:hover {
+.wsp-footerrig__action:hover {
 	background: var(--surface-3);
 }
 
-.wsp-footerrig__menu {
-	display: flex;
-	flex-direction: column;
-	align-items: stretch;
-	gap: var(--space-1);
-	min-inline-size: 13rem;
-	padding: var(--space-1);
-}
-
-.wsp-footerrig__note {
-	flex: none;
-	font-size: var(--wsp-fs-micro);
-	letter-spacing: var(--wsp-label-track);
-	text-transform: uppercase;
-	color: var(--text-secondary);
-	white-space: nowrap;
-}
-
-.wsp-footerrig__nudge {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	max-inline-size: 20rem;
-	padding: var(--space-3);
-}
-
-.wsp-footerrig__nudge-text {
-	margin: 0;
-	font-size: var(--wsp-fs-body);
-	color: var(--on-surface);
+.wsp-footerrig__action:active:not(:disabled) {
+	transform: scale(var(--btn-press-scale));
 }
 /* #endregion */
 
 /* #region Responsive */
-/* Laned tablet (below `--bp-xl`; see the breakpoint note in workspace-tokens.css): the header band
-drops its secondary identity text before it drops a tab. */
-@media (max-width: 79.9375rem) {
-	.wsp-headerband__handle,
-	.wsp-headerband__badge {
-		display: none;
-	}
-
-	.wsp-footerrig__note {
-		display: none;
-	}
-}
-
+/* Below `--bp-md` the rig's utilities and links fold to their glyphs; Save and Discard keep words. */
 @media (max-width: 47.9375rem) {
 	.wsp-headerband {
-		padding-inline: var(--space-3);
 		gap: var(--space-2);
-	}
-
-	.wsp-headerband__divider {
-		display: none;
-	}
-
-	/* Tabs collapse to their leading glyph — the labels are the first thing a narrow band can lose
-	without losing a destination. */
-	.wsp-headerband__tab-label {
-		display: none;
-	}
-
-	.wsp-headerband__tab {
-		padding-inline: var(--space-2);
+		padding-inline: var(--space-3);
 	}
 
 	.wsp-footerrig {
@@ -927,8 +900,12 @@ drops its secondary identity text before it drops a tab. */
 	}
 
 	.wsp-footerrig__label,
-	.wsp-footerrig__more-label {
+	.wsp-footerrig__fold .ui-button__label {
 		display: none;
+	}
+
+	.wsp-footerrig .wsp-footerrig__fold {
+		--btn-px: var(--space-2);
 	}
 
 	.wsp-footerrig__density {
@@ -939,9 +916,15 @@ drops its secondary identity text before it drops a tab. */
 
 /* #region Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-	.wsp-headerband__tab::after,
-	.wsp-footerrig__action {
+	.wsp-headerband__tabs .ui-tabmenu__tab::after,
+	.wsp-footerrig__action,
+	.wsp-footerrig__link {
 		transition: none;
+	}
+
+	.wsp-footerrig__action:active:not(:disabled),
+	.wsp-footerrig__link:active {
+		transform: none;
 	}
 
 	.wsp-lane__entity,
@@ -955,9 +938,15 @@ drops its secondary identity text before it drops a tab. */
 	}
 }
 
-:root[data-motion="reduced"] .wsp-headerband__tab::after,
-:root[data-motion="reduced"] .wsp-footerrig__action {
+:root[data-motion="reduced"] .wsp-headerband__tabs .ui-tabmenu__tab::after,
+:root[data-motion="reduced"] .wsp-footerrig__action,
+:root[data-motion="reduced"] .wsp-footerrig__link {
 	transition: none;
+}
+
+:root[data-motion="reduced"] .wsp-footerrig__action:active:not(:disabled),
+:root[data-motion="reduced"] .wsp-footerrig__link:active {
+	transform: none;
 }
 
 :root[data-motion="reduced"] .wsp-lane__entity,

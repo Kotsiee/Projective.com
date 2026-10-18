@@ -15,7 +15,8 @@ import {
 import { walletHrefFor, type WorkspaceDetail, workspaceHref } from "@projective/types/workspace";
 import { readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
-import { policyDirty, saveRequested, saveState } from "../core/workspace-state.ts";
+import { saveState } from "../core/workspace-state.ts";
+import { usePolicyBridge } from "../hooks/usePolicyBridge.ts";
 
 /**
  * BillingScreen — the business console's Billing module (PRODUCT_SPEC §Escrow, Wallets & Finance #4).
@@ -23,7 +24,8 @@ import { policyDirty, saveRequested, saveState } from "../core/workspace-state.t
  * In the order the questions arrive: is anything owed (the invoices, each with Pay when an amount is
  * due), what happened to the money (statement PDFs), and how billing should behave (invoicing terms,
  * auto-funding, the balance floor). It renders the server's projection and never computes money;
- * Save is the footer band's, watched here as a pulse, so there is one Save on the surface.
+ * Save and Discard are the footer band's, answered here through `usePolicyBridge`, so there is one
+ * Save on the surface.
  *
  * The Dev Context Switcher's `autoFundMode` previews the mode sentence and `lowBalance` the floor
  * warning; neither changes what is stored.
@@ -85,13 +87,6 @@ export default function BillingScreen(props: BillingScreenProps): JSX.Element {
 		autoFund.value !== view.value.autoFundMode ||
 		floor.value !== view.value.lowBalanceFloorMinor
 	);
-	useEffect(() => {
-		policyDirty.value = dirty.value;
-		return () => {
-			policyDirty.value = false;
-		};
-	}, [dirty.value]);
-
 	function adopt(next: BusinessBillingView): void {
 		view.value = next;
 		mode.value = next.invoicingMode;
@@ -122,9 +117,15 @@ export default function BillingScreen(props: BillingScreenProps): JSX.Element {
 		adopt(res.data);
 	}
 
-	useEffect(() => {
-		if (saveRequested.value > 0) void save();
-	}, [saveRequested.value]);
+	// The footer band's Save and Discard are pulses, not callbacks; Discard re-adopts the saved view.
+	usePolicyBridge({
+		dirty,
+		save,
+		discard: () => {
+			adopt(view.value);
+			error.value = null;
+		},
+	});
 
 	async function pay(row: BillingInvoiceRow): Promise<void> {
 		payingId.value = row.id;

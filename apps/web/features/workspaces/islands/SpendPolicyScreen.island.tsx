@@ -1,6 +1,5 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
 import "../styles/workspace.css";
 import { Tooltip } from "@projective/ui/feedback";
 import { InputNumber } from "@projective/ui/fields";
@@ -14,7 +13,8 @@ import {
 	workspaceHref,
 } from "@projective/types/workspace";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
-import { policyDirty, publishDetail, saveRequested, saveState } from "../core/workspace-state.ts";
+import { publishDetail, saveState } from "../core/workspace-state.ts";
+import { usePolicyBridge } from "../hooks/usePolicyBridge.ts";
 import { type SpendLimitPatch, SpendLimitRow } from "../components/SpendLimitRow.tsx";
 import { ApprovalQueue } from "../components/ApprovalQueue.tsx";
 import { ContributionLedger } from "../components/ContributionLedger.tsx";
@@ -37,7 +37,8 @@ import { VerificationLock } from "../components/VerificationLock.tsx";
  * editable and the wallet cannot move money — so the work of setting it up is not blocked on paperwork,
  * and the paperwork is visibly the thing standing between the two.
  *
- * Save is the footer band's, watched here as a pulse, so there is one Save on the surface.
+ * Save and Discard are the footer band's, answered here through `usePolicyBridge`, so there is one
+ * Save on the surface.
  */
 
 export interface SpendPolicyScreenProps {
@@ -93,14 +94,6 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 					l.perTransactionMinor !== was.perTransactionMinor;
 			});
 	});
-
-	// Publish dirtiness so the footer band can offer Save — it cannot see this island's state.
-	useEffect(() => {
-		policyDirty.value = dirty.value;
-		return () => {
-			policyDirty.value = false;
-		};
-	}, [dirty.value]);
 
 	function patchLimit(patch: SpendLimitPatch): void {
 		limits.value = limits.value.map((l) =>
@@ -168,9 +161,21 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 		};
 	}
 
-	useEffect(() => {
-		if (saveRequested.value > 0) void save();
-	}, [saveRequested.value]);
+	/** Return the threshold and every envelope to the last saved policy. */
+	function discard(): void {
+		const base = baseline.value;
+		const saved = new Map(base.limits.map((l) => [l.memberId, l]));
+		threshold.value = base.threshold;
+		limits.value = limits.value.map((l) => {
+			const was = saved.get(l.memberId);
+			return was ? { ...l, ...was } : l;
+		});
+		editingId.value = null;
+		error.value = null;
+	}
+
+	// The footer band's Save and Discard are pulses, not callbacks.
+	usePolicyBridge({ dirty, save, discard });
 
 	async function decide(requestId: string, approve: boolean): Promise<void> {
 		busyId.value = requestId;

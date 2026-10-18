@@ -17,6 +17,7 @@ import {
 	type WorkspaceModule,
 } from "./module-registry.tsx";
 import { countLabel, filterRoster, type RosterTab } from "./workspace-model.ts";
+import { isPeopleReading, MEMBERS_READINGS } from "./sub-views.ts";
 
 /**
  * lane-model — the workspace lane's composition as a pure function of what the viewer is looking at
@@ -200,7 +201,10 @@ export interface ConsoleLaneInput {
 	capabilities: readonly WorkspaceCapability[];
 	/** The module being rendered. */
 	module: ModuleKey | null;
-	/** The module's resolved `?view=` sub-view, when it has one (Members: `all` · `pending`). */
+	/**
+	 * The module's current sub-view (`sub-views.ts`), when it has one (Members: `people` · `pending` ·
+	 * `chart`).
+	 */
 	subView: string | null;
 }
 // #endregion
@@ -228,12 +232,6 @@ export const ROSTER_PARTITIONS: readonly LaneOption[] = [
 export function lanePartition(tab: RosterTab): LanePartition {
 	return tab === "archived" ? "all" : tab;
 }
-
-/** The Members view's readings: the people (cards or table, by zoom) or the org chart. */
-export const MEMBERS_READINGS: readonly LaneOption[] = [
-	{ value: "people", label: "People" },
-	{ value: "chart", label: "Org chart" },
-];
 
 /**
  * The four zones for what the viewer is looking at. Total: every input yields a composition, and Z3 is
@@ -303,20 +301,22 @@ function rosterCreateNote(kind: WorkspaceKind, reason: string | null | undefined
 }
 
 /**
- * The context controls a console view offers. Members partitions its people into two readings, so it
- * gets a segmented control — but only on the roster sub-view: the invitation queue (`?view=pending`)
- * has no org chart to switch to.
+ * The context controls a console view offers. Members reads its people two ways — People and Org
+ * chart, the Members sub-views (`sub-views.ts`) that are not the invitation queue — so it gets a
+ * segmented control over that ONE sub-view state, which the header band's tabs and the footer rig's
+ * Org chart toggle also write. Only on a people reading: the queue (`?view=pending`) has no org chart
+ * to switch to.
  *
  * Projects gets none yet: its body hands off to `/projects` and has no Active · Proposals partition of
- * its own, and a segmented control over a body that ignores it would reach nothing (§3.11). The entry
- * belongs here the day that body grows one.
+ * its own, and a segmented control over a body that ignores it would reach nothing (§3.11). Its
+ * sub-views wait in `sub-views.ts` (not live) for the day that body grows one.
  */
 function consoleContext(input: ConsoleLaneInput): LaneContextZone | null {
-	if (input.module === "members" && input.subView !== "pending") {
+	if (input.module === "members" && isPeopleReading(input.subView)) {
 		return {
 			control: "members",
 			label: "Show members as",
-			options: [...MEMBERS_READINGS],
+			options: MEMBERS_READINGS.map(({ value, label }) => ({ value, label })),
 			search: false,
 		};
 	}

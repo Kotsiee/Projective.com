@@ -428,7 +428,15 @@ Deno.test("workspace styles: the body and micro money steps keep the minor run w
 Deno.test("workspace styles: the dead rules stay deleted", () => {
 	assertNone(
 		offences(
-			/\.wsp-skel\b|\.wsp-lane__new\b|\.wsp-footerrig__action\[data-variant|\.wsp-lane__(filter|switch|row|verify|foot|note)\b|\.wsp-rail__verify\b/,
+			/\.wsp-skel\b|\.wsp-lane__new\b|\.wsp-footerrig__action\[data-(variant|locked)|\.wsp-lane__(filter|switch|row|verify|foot|note)\b|\.wsp-rail__verify\b/,
+		),
+		"a deleted dead selector is back:",
+	);
+	// The header band and footer rig before Teams L2: the hand-rolled tab strip, the Popover menu and
+	// the rig's ghost-button extras.
+	assertNone(
+		offences(
+			/\.wsp-headerband__(tab|identity|name|handle|badge|divider|controls|icon|panel)\b|\.wsp-footerrig__(more|menu|note|nudge)\b/,
 		),
 		"a deleted dead selector is back:",
 	);

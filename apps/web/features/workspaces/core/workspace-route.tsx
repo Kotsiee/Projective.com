@@ -10,7 +10,8 @@ import { BillingBackendService } from "@server/services/finance/BillingBackendSe
 import type { ModuleKey } from "./module-registry.tsx";
 import { type ConsoleRedirect, routeConsole, toRosterNotice } from "./console-route.ts";
 import { resolveRoster, resolveWorkspaceConsole } from "./workspace-ssr.ts";
-import { toModuleTab, toRosterTab } from "./workspace-model.ts";
+import { toRosterTab } from "./workspace-model.ts";
+import { resolveSubView } from "./sub-views.ts";
 import WorkspaceRoster from "../islands/WorkspaceRoster.island.tsx";
 
 /**
@@ -107,7 +108,12 @@ export async function consoleOutcome(
 		data: {
 			workspace,
 			module: bootstrap.activeModule,
-			view: toModuleTab(bootstrap.activeModule, kind, url.searchParams.get("view")),
+			view: resolveSubView(
+				bootstrap.activeModule,
+				kind,
+				workspace.viewerCapabilities,
+				url.searchParams.get("view"),
+			),
 			billing,
 		},
 	};

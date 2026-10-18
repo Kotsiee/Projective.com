@@ -1,43 +1,53 @@
 import type { JSX } from "preact";
 import { useRef } from "preact/hooks";
-import { useComputed, useSignal } from "@preact/signals";
+import { useSignal, useSignalEffect } from "@preact/signals";
 import "../styles/workspace.css";
-import { ConfirmDialog, Popover, Tooltip } from "@projective/ui/feedback";
+import { MetaLine } from "@projective/ui/display";
+import { ConfirmDialog, Toast, Tooltip, useToast } from "@projective/ui/feedback";
+import { Button } from "@projective/ui/fields";
+import { absoluteHref, ActionMenu, copyLink, TabMenu } from "@projective/ui/navigation";
+import { BodyPortal } from "@projective/ui/overlay";
 import {
 	kindCopy,
 	workspaceBase,
 	type WorkspaceDetail,
-	workspaceHref,
 	type WorkspaceKind,
 } from "@projective/types/workspace";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import { moduleFor, type ModuleKey } from "../core/module-registry.tsx";
-import { type ModuleTab, moduleTabsFor, toModuleTab } from "../core/workspace-model.ts";
-import { EntityMark } from "../components/EntityMark.tsx";
+import { headerBand, headerMenu, type ModuleCommit } from "../core/header-model.ts";
 import {
-	ArchiveGlyph,
-	cloneGlyph,
-	ExitGlyph,
-	KebabGlyph,
-	LinkGlyph,
-	ShareGlyph,
-} from "../core/workspace-glyphs.tsx";
+	SUB_VIEW_PANEL_ID,
+	SUB_VIEW_TABS_ID,
+	subViewIndex,
+	subViewsFor,
+} from "../core/sub-views.ts";
+import { liveDetail, moduleCommit, selectModuleView, viewOr } from "../core/workspace-state.ts";
+import { cloneGlyph, KebabGlyph, ShareGlyph } from "../core/workspace-glyphs.tsx";
 
 /**
- * WorkspaceHeaderBand — the middle-nav frame's header strip on a `/teams/[id]` or `/businesses/[id]`
- * route.
+ * WorkspaceHeaderBand — the middle-nav frame's header band on a `/teams/[handle]` or
+ * `/businesses/[handle]` console, laid out as Decision #220's three-region band (the catalogue's
+ * `.cat-band`):
  *
- * It carries three things and refuses a fourth: the section title, a compact entity identity so the
- * acting context is never ambiguous, and the module's sub-view tabs. Primary actions live in the
- * FOOTER band — putting a Save or an Invite up here as well is how a surface ends up with two places
- * to do the same thing and users learning neither.
+ *   - **Identity, start** — the module's title in the title register over one `MetaLine` (the entity's
+ *     name and `@handle`, and the acting state), so whose console this is is never a guess.
+ *   - **Sub-views, centred** — the module's `TabMenu`, only when the module partitions its body
+ *     (`sub-views.ts`). The tabs write the ONE sub-view state (`selectModuleView`) the lane's context
+ *     control and the footer rig's Org chart toggle also write, and the body reads; the address keeps
+ *     `?view=` in step.
+ *   - **Actions, end** — at most ONE filled control (the module's commit, published through
+ *     `workspace-state`), the tier-4 Share profile, then the kebab (`ActionMenu`) carrying the rest:
+ *     View public profile, Open in new tab, Copy handle, the way to leave, and Archive… for an
+ *     `archive_entity` holder, confirmed as a danger before anything changes.
  *
- * **Tabs are real anchors, underlined text, never pills** (§D.4): the URL owns active state, so a tab
- * survives a reload and can be opened in a new tab. Each label sits in its own `<span>` because the
- * mobile rule hides the words and keeps the row — a bare text node cannot be targeted by CSS.
+ * Right-click, the ContextMenu key and Shift+F10 anywhere on the band open the kebab's rows (Decision
+ * #222's `surface`). Every rule above — which regions exist, which actions, how many fill — is
+ * `header-model.ts`, pinned by its unit test; this island only renders it.
  *
- * The band is mounted into a shell slot, so it must not export its intrinsic width to the page; the
- * `overflow: hidden` + `max-inline-size: 100%` that prevents that lives in `workspace-chrome.css`.
+ * The band reads the live-detail relay when the published detail is this entity, so an archive or a
+ * role change elsewhere on the page re-renders it from the same truth as the lane. It is mounted into
+ * a shell slot, so it must not export its intrinsic width; `workspace-chrome.css` clamps it.
  */
 
 export interface WorkspaceHeaderBandProps {
@@ -45,38 +55,86 @@ export interface WorkspaceHeaderBandProps {
 	workspace: WorkspaceDetail;
 	/** The module being rendered, already corrected server-side by `resolveWorkspaceConsole`. */
 	module: ModuleKey;
-	/** The raw `?view=` value, resolved against the module's tab set. */
+	/** The module's sub-view, resolved server-side against what the viewer is offered (`resolveSubView`). */
 	view?: string | null;
 	/** Live pathname — reserved for future within-module wayfinding. */
 	path: string;
 }
 
 export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JSX.Element {
-	const { workspace, kind, module } = props;
+	const { kind, module } = props;
+	const published = liveDetail.value;
+	const ws = published && published.id === props.workspace.id ? published : props.workspace;
 	const copy = kindCopy(kind);
-	const mod = moduleFor(module);
-	const menuOpen = useSignal(false);
-	const menuRef = useRef<HTMLButtonElement | null>(null);
+	const bandRef = useRef<HTMLDivElement>(null);
 	const confirmArchive = useSignal(false);
 	const archiving = useSignal(false);
-	const archiveError = useSignal<string | null>(null);
-	const self = workspace.members.find((m) => m.id === workspace.viewerMemberId);
-	const isOwner = self?.rolePreset === "owner";
-	const canArchive = workspace.viewerCapabilities.includes("archive_entity") &&
-		workspace.status !== "archived";
+	/**
+	 * The toast stack, mounted on first use and only when no other island has put one up — and through
+	 * a body portal, because the band is a size container and would re-base a fixed stack onto itself.
+	 */
+	const toastMounted = useSignal(false);
+	const toast = useToast();
 
-	const tabs = useComputed<ModuleTab[]>(() => moduleTabsFor(module, kind));
-	const activeView = useComputed(() => toModuleTab(module, kind, props.view ?? null));
-	const base = workspaceHref(kind, workspace.handle, module);
+	const views = subViewsFor(module, kind, ws.viewerCapabilities);
+	const view = viewOr(props.view ?? null);
+	const self = ws.members.find((m) => m.id === ws.viewerMemberId);
+	const model = headerBand({
+		kind,
+		title: moduleFor(module)?.label ?? copy.Noun,
+		module,
+		name: ws.name,
+		handle: ws.handle,
+		status: ws.status,
+		acting: ws.isActing,
+		owner: self?.rolePreset === "owner",
+		capabilities: ws.viewerCapabilities,
+		subViews: views,
+		view,
+		commit: moduleCommit.value,
+	});
 
-	/** Copy the entity's public address. Fails silently — a clipboard refusal is not worth a dialog. */
-	async function copyLink(): Promise<void> {
+	// The TabMenu binds a writable index; it follows the shared sub-view whichever root picked it.
+	const activeTab = useSignal(model.tabs?.active ?? 0);
+	useSignalEffect(() => {
+		activeTab.value = subViewIndex(views, viewOr(props.view ?? null));
+	});
+
+	/**
+	 * Say what an action did — a silent press reads as a dead control. A failure is a danger toast,
+	 * which the stack announces as an alert.
+	 */
+	function notify(detail: string, ok: boolean): void {
+		if (!toastMounted.value && !document.querySelector(".ui-toast")) toastMounted.value = true;
+		toast.show({ severity: ok ? "success" : "danger", summary: detail });
+	}
+
+	/**
+	 * Share the public profile: the device's share sheet where there is one, otherwise the link is
+	 * copied — so the press always does something.
+	 */
+	async function shareProfile(href: string): Promise<void> {
+		const share = globalThis.navigator?.share;
+		if (typeof share === "function") {
+			try {
+				await share.call(globalThis.navigator, { title: ws.name, url: absoluteHref(href) });
+				return;
+			} catch (error) {
+				if (error instanceof Error && error.name === "AbortError") return;
+			}
+		}
+		const ok = await copyLink(href);
+		notify(ok ? "Profile link copied" : "Couldn't copy the profile link", ok);
+	}
+
+	/** Write `@handle` to the clipboard. */
+	async function copyHandle(text: string): Promise<void> {
+		let ok = false;
 		try {
-			await navigator.clipboard.writeText(
-				`${globalThis.location?.origin ?? ""}/@${workspace.handle}`,
-			);
-		} catch { /* clipboard unavailable — nothing useful to say about it */ }
-		menuOpen.value = false;
+			await globalThis.navigator.clipboard.writeText(text);
+			ok = true;
+		} catch { /* reported below */ }
+		notify(ok ? `${text} copied` : "Couldn't copy the handle", ok);
 	}
 
 	/**
@@ -85,144 +143,133 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 	 */
 	async function archive(): Promise<void> {
 		archiving.value = true;
-		archiveError.value = null;
-		const res = await WorkspaceService.update({ kind, id: workspace.id, status: "archived" });
+		const res = await WorkspaceService.update({ kind, id: ws.id, status: "archived" });
 		archiving.value = false;
 		if (!res.ok) {
-			archiveError.value = res.message ??
-				`Couldn't archive ${workspace.name}. Nothing was changed.`;
+			notify(res.message ?? `Couldn't archive ${ws.name}. Nothing was changed.`, false);
 			return;
 		}
 		globalThis.location.assign(`${workspaceBase(kind)}?tab=archived`);
 	}
 
+	const menu = headerMenu(model, {
+		copyHandle: () => void copyHandle(model.menu.handleText),
+		archive: () => {
+			confirmArchive.value = true;
+		},
+	});
+
 	return (
-		<div class="wsp-headerband" data-kind={kind}>
-			<h2 class="wsp-headerband__name">{mod?.label ?? copy.Noun}</h2>
-
-			<span class="wsp-headerband__divider" aria-hidden="true" />
-
-			{/* The compact identity: whose workspace this is, always visible, never a guess. */}
-			<a class="wsp-headerband__identity" href={workspaceHref(kind, workspace.handle)}>
-				<EntityMark
-					kind={kind}
-					name={workspace.name}
-					handle={workspace.handle}
-					image={workspace.avatar}
-					size="sm"
-				/>
-				<span class="wsp-headerband__handle">{workspace.name}</span>
-			</a>
-
-			{workspace.isActing && (
-				<Tooltip content={`You are acting as ${workspace.name}`} placement="bottom">
-					<span class="wsp-headerband__badge">
-						<span class="wsp-actingchip__dot" aria-hidden="true" />
-						<span class="wsp-headerband__tab-label">Acting</span>
-					</span>
-				</Tooltip>
-			)}
-
-			{tabs.value.length > 1 && (
-				<nav class="wsp-headerband__tabs" aria-label={`${mod?.label ?? "Section"} views`}>
-					{tabs.value.map((t, i) => {
-						const on = activeView.value === t.value;
-						// The default view addresses the bare module URL, so the canonical address of a
-						// module's landing view has no redundant query string on it.
-						const href = i === 0 ? base : `${base}?view=${t.value}`;
-						return (
-							<a
-								key={t.value}
-								class="wsp-headerband__tab"
-								href={href}
-								data-active={on ? "true" : undefined}
-								aria-current={on ? "page" : undefined}
-							>
-								<span class="wsp-headerband__tab-label">{t.label}</span>
-							</a>
-						);
-					})}
-				</nav>
-			)}
-
-			<span class="wsp-footerrig__spacer" />
-
-			<div class="wsp-headerband__controls">
-				<Popover
-					open={menuOpen}
-					targetRef={menuRef}
-					placement="bottom-end"
-					avoid={[".ui-app-shell__sidebar"]}
-					class="wsp-headerband__panel"
-				>
-					<a class="wsp-footerrig__action" href={`/@${workspace.handle}`}>
-						<span class="wsp-footerrig__glyph" aria-hidden="true">{cloneGlyph(ShareGlyph)}</span>
-						Share public profile
-					</a>
-					<button type="button" class="wsp-footerrig__action" onClick={copyLink}>
-						<span class="wsp-footerrig__glyph" aria-hidden="true">{cloneGlyph(LinkGlyph)}</span>
-						Copy link
-					</button>
-					{
-						/* Leaving is offered on the viewer's own row in Members; the owner hands the seat over there
-						   first, so the one entry reads as what it will actually do. */
-					}
-					<a class="wsp-footerrig__action" href={workspaceHref(kind, workspace.handle, "members")}>
-						<span class="wsp-footerrig__glyph" aria-hidden="true">{cloneGlyph(ExitGlyph)}</span>
-						{isOwner ? "Hand over ownership…" : `Leave ${copy.noun}…`}
-					</a>
-					{canArchive && (
-						<button
-							type="button"
-							class="wsp-footerrig__action"
-							onClick={() => {
-								menuOpen.value = false;
-								confirmArchive.value = true;
-							}}
-						>
-							<span class="wsp-footerrig__glyph" aria-hidden="true">
-								{cloneGlyph(ArchiveGlyph)}
-							</span>
-							Archive…
-						</button>
-					)}
-					{canArchive && (
-						<p class="wsp-headerband__panel-note">
-							Nothing is ever deleted — archiving hides it and keeps the record.
-						</p>
-					)}
-				</Popover>
-
-				<Tooltip content={`${copy.Noun} actions`} placement="bottom">
-					<button
-						type="button"
-						ref={menuRef}
-						class="wsp-headerband__icon"
-						aria-label={`${copy.Noun} actions`}
-						aria-haspopup="menu"
-						aria-expanded={menuOpen.value}
-						onClick={() => {
-							menuOpen.value = !menuOpen.value;
-						}}
-					>
-						{cloneGlyph(KebabGlyph)}
-					</button>
-				</Tooltip>
+		<div ref={bandRef} class="wsp-headerband" data-kind={kind}>
+			<div class="wsp-headerband__start">
+				<div class="wsp-headerband__id">
+					<h2 class="wsp-headerband__title">{model.title}</h2>
+					<MetaLine as="p" size="xs" class="wsp-headerband__meta" items={model.meta} />
+				</div>
 			</div>
 
-			{archiveError.value && (
-				<p class="wsp-headerband__panel-note" role="alert">{archiveError.value}</p>
+			{model.tabs && (
+				<TabMenu
+					id={SUB_VIEW_TABS_ID}
+					class="wsp-headerband__tabs"
+					model={model.tabs.views.map((v) => ({ key: v.value, label: v.label }))}
+					activeIndex={activeTab}
+					onActiveIndexChange={(i) => {
+						const next = views[i];
+						if (next) selectModuleView(next.value, views);
+					}}
+					panelId={SUB_VIEW_PANEL_ID}
+					aria-label={`${model.title} views`}
+				/>
 			)}
+
+			<div class="wsp-headerband__end">
+				{model.commit && <CommitButton commit={model.commit} />}
+
+				{model.utilities.map((utility) => (
+					<span key={utility.key} class="wsp-headerband__utility">
+						<Button
+							class="wsp-headerband__utility-wide"
+							severity="neutral"
+							variant="outlined"
+							size="sm"
+							icon={cloneGlyph(ShareGlyph)}
+							label={utility.label}
+							onClick={() => void shareProfile(utility.href)}
+						/>
+						<Tooltip content={utility.label} placement="bottom">
+							<Button
+								class="wsp-headerband__utility-narrow"
+								severity="neutral"
+								variant="outlined"
+								size="sm"
+								iconOnly
+								icon={cloneGlyph(ShareGlyph)}
+								aria-label={utility.label}
+								onClick={() => void shareProfile(utility.href)}
+							/>
+						</Tooltip>
+					</span>
+				))}
+
+				<ActionMenu
+					model={menu}
+					surface={bandRef}
+					placement="bottom-end"
+					avoid={[".ui-app-shell__sidebar"]}
+					aria-label={model.menuLabel}
+					trigger={(api) => (
+						<Tooltip content={model.menuLabel} placement="bottom">
+							<Button
+								triggerRef={api.ref}
+								variant="text"
+								severity="secondary"
+								size="sm"
+								iconOnly
+								icon={cloneGlyph(KebabGlyph)}
+								aria-label={model.menuLabel}
+								aria-haspopup="menu"
+								aria-expanded={api.expanded}
+								aria-controls={api.panelId}
+								onClick={api.toggle}
+							/>
+						</Tooltip>
+					)}
+				/>
+			</div>
 
 			<ConfirmDialog
 				visible={confirmArchive}
-				header={`Archive ${workspace.name}?`}
+				header={`Archive ${ws.name}?`}
 				message={`It leaves your active ${copy.plural} and stops taking new work. Nothing is deleted — you can restore it from the Archived tab.`}
 				acceptLabel={archiving.value ? "Archiving…" : "Archive"}
 				rejectLabel="Keep it"
 				acceptSeverity="danger"
 				onAccept={() => void archive()}
 			/>
+
+			{toastMounted.value && (
+				<BodyPortal>
+					<Toast position="bottom-center" />
+				</BodyPortal>
+			)}
 		</div>
 	);
+}
+
+/**
+ * The module's commit at its own filled tier (§B.8.1): 1 amber money movement, 2 the monochrome
+ * structural tone, 3 the primary workflow commit.
+ */
+function CommitButton({ commit }: { commit: ModuleCommit }): JSX.Element {
+	const shared = {
+		size: "sm" as const,
+		label: commit.label,
+		loading: commit.busy,
+		disabled: commit.disabled,
+		onClick: commit.run,
+	};
+	if (commit.tier === 1) return <Button {...shared} severity="accent" rounded />;
+	if (commit.tier === 2) return <Button {...shared} structural />;
+	return <Button {...shared} />;
 }

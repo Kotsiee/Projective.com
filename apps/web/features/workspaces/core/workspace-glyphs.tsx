@@ -9,10 +9,11 @@ import { IconShell } from "@projective/ui/icons";
  * and never `<MembersGlyph />`.
  *
  * **The reuse hazard, and the one thing you must remember:** a single VNode object may not be mounted
- * in two places in the same tree at once. This surface renders the SAME module glyph in up to three
- * places simultaneously (the expanded lane nav, the collapsed 48px rail, and the header tab strip), so
- * pass every reused glyph through {@link cloneGlyph} at the point of use. That is cheap, explicit, and
- * keeps the registry able to carry a glyph as data rather than as a factory.
+ * in two places in the same tree at once. This surface renders the SAME glyph in several places
+ * simultaneously (a module's in the expanded lane nav and the collapsed 48px rail; Share in the header
+ * band's wide and narrow forms), so pass every reused glyph through {@link cloneGlyph} at the point of
+ * use. That is cheap, explicit, and keeps the registry able to carry a glyph as data rather than as a
+ * factory.
  *
  * Every glyph is a `0 0 24 24` box drawn at **`1em`** in `currentColor` with `stroke-width: 1.8`,
  * byte-consistent with the projects / messaging / wallet sets so a workspace lane reads as one icon
@@ -227,14 +228,6 @@ export const ApproveGlyph: VNode = (
 	</Svg>
 );
 
-/** Archive — the terminal, reversible state. Nothing is ever hard-deleted. */
-export const ArchiveGlyph: VNode = (
-	<Svg>
-		<path d="M4 7.5h16V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19z" />
-		<path d="M3 4h18v3.5H3zM10 11.5h4" />
-	</Svg>
-);
-
 /**
  * A draft — a page still being written, for the lane quick-filter that surfaces entities whose
  * Draft-First setup is unfinished. Deliberately NOT a warning triangle: an unfinished entity is a task
@@ -344,14 +337,6 @@ export const ShareGlyph: VNode = (
 		<circle cx="17.5" cy="6.5" r="2.4" />
 		<circle cx="17.5" cy="17.5" r="2.4" />
 		<path d="M8.2 10.9l7.1-3.3M8.2 13.1l7.1 3.3" />
-	</Svg>
-);
-
-/** A link — two joined segments, for copying an address. */
-export const LinkGlyph: VNode = (
-	<Svg>
-		<path d="M10.5 13.5a3.4 3.4 0 0 1 0-4.8l2.6-2.6a3.4 3.4 0 0 1 4.8 4.8l-1.3 1.3" />
-		<path d="M13.5 10.5a3.4 3.4 0 0 1 0 4.8l-2.6 2.6a3.4 3.4 0 0 1-4.8-4.8l1.3-1.3" />
 	</Svg>
 );
 // #endregion
