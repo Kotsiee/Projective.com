@@ -28,21 +28,15 @@ function Svg(props: JSX.SVGAttributes<SVGSVGElement>): VNode {
 }
 // #endregion
 
-// #region Split — holding and releasing a stake
+// #region Split — holding a stake
 /**
- * Hold — a pause mark. A held share is not *taken away*, it simply stops distributing automatically, so
- * the mark is a pause rather than a block or a strike-through.
+ * Hold — a pause mark, drawn inside a pressed hold toggle. A held stake is not *taken away*, it simply
+ * stays put while the other dividers move, so the mark is a pause rather than a block or a
+ * strike-through.
  */
 export const HoldGlyph: VNode = (
 	<Svg>
 		<path d="M9.5 5.5v13M14.5 5.5v13" />
-	</Svg>
-);
-
-/** Release — resume automatic distribution of a held share. */
-export const ReleaseGlyph: VNode = (
-	<Svg>
-		<path d="M8 5.5l11 6.5-11 6.5z" />
 	</Svg>
 );
 // #endregion
@@ -77,20 +71,13 @@ export const DeclineGlyph: VNode = (
 		<path d="M9.2 9.2l5.6 5.6M14.8 9.2l-5.6 5.6" />
 	</Svg>
 );
-
-/** Awaiting a decision — a clock. A request in flight is a queue position, not a warning. */
-export const ClockGlyph: VNode = (
-	<Svg>
-		<circle cx="12" cy="12" r="8.4" />
-		<path d="M12 7.5V12l3.2 2" />
-	</Svg>
-);
 // #endregion
 
 // #region Gates
 /**
- * The padlock. The **only** lock mark this surface draws, and only ever for the verification gate — a
- * capability the viewer lacks is expressed by ABSENCE, so nothing missing is ever drawn as locked.
+ * The padlock — drawn for a gate the reader cannot open from here: a split template the team's plan
+ * does not unlock (the Payouts module's plan notice). A capability the viewer lacks is expressed by
+ * ABSENCE, so nothing missing is ever drawn as locked.
  */
 export const LockGlyph: VNode = (
 	<Svg>
