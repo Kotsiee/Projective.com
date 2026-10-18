@@ -1332,7 +1332,10 @@ To bridge the gap between "Marketplace Speed" and "Corporate Accounting," Busine
   those lines are already settled. The amount **due** is only what the Business bought **on
   account** in the period (below). An invoice with nothing on account is issued **Paid** — it is the
   month's tax document. A billing member pays an amount due from the Business wallet or by card
-  (**Pay**).
+  (**Pay**), always after a review of the amount, the wallet it leaves and the balance after; a
+  wallet that holds less than is due is topped up first (a card top-up of that wallet, Decision
+  #125), and the review hands off to it (Decision #247). Paying from the wallet is operating it, so
+  only a verified (KYB) Business pays (Decision #247 (h)).
 - **Paying on account:** a KYB-verified Business in intervaled invoicing mode may choose **Invoice**
   at checkout. The platform credits the Business wallet with the order's amount as an on-account
   credit and the order is paid from the wallet as usual — so every hold still comes from a wallet

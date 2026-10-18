@@ -90,8 +90,8 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | # | Capability | Implementation | Status |
 | :-- | :-- | :-- | :-- |
 | BF31 | Monthly consolidated invoice | `fn_generate_consolidated_invoice`, daily `fn_run_billing_cycle`, `pay_invoice` from the wallet; tax stubbed 0 (#172 a) | ✅ (flags #172 a–h open) |
-| BF32 | Pay invoice | Wallet debit only (#172 e); no confirm step in UI | ⚠️ |
-| BF33 | Intervaled invoicing Pro-gated | `intervaled_invoicing` entitlement seeded, **never read**; `set_invoicing_terms` checks KYB + `manage_billing` only | 📄 🧑 BX-e |
+| BF32 | Pay invoice | Wallet debit only (#172 e); no confirm step in UI | ✅ every Pay passes through a review — `CommitReview` (the amount, the wallet it leaves, the balance now and after; a wallet short of the invoice hands off to its top-up) — and only `viewerCan.payInvoice` sees Pay (BU3, Decision #247); `pay_invoice` itself refuses a business that is not KYB-verified (`PK403 kyb_required`, #247 (h)), as the reads do |
+| BF33 | Intervaled invoicing Pro-gated | `intervaled_invoicing` entitlement seeded, **never read**; `set_invoicing_terms` checks KYB + `manage_billing` only | 📄 🧑 BX-e — ✅ the door refuses (BB7); Billing reads the gate too (`get_billing_settings.plan_allows_monthly`, the dev plan-gates override honoured) and says "part of Business Pro" before the Save (BU3, #247); the "See plans" link waits for a plans surface (#247 flag (d)) |
 | BF34 | Spending caps Pro-gated (`pooled_wallet_full`) | Seeded, never read | 📄 🧑 BX-e |
 | BF35 | `business_managers` cap | Seeded 2/15, never enforced | ❌ 🧑 BX-b |
 | BF36 | `businesses_owned` | Enforced (1 free / 3 pro); finance-model:57 says Pro spins up 5 | 📄 BX-f |
@@ -147,10 +147,10 @@ Severity: **G** gate · **M** matrix/parity · **T** tidy · **B** functional bu
 
 | ID | Sev | Defect | Fix |
 | :-- | :-- | :-- | :-- |
-| BD14 | G | Tier-1 Pay renders **per invoice** → N amber fills in one region; no confirmation before moving money | One "Pay €X" for the oldest due invoice (or "Pay all due"), others tier 5 "Pay" opening the same confirm; a review step (ConfirmDialog is blocked for accent per #157 o — use the wallet `MoveDialog` review pattern) |
-| BD15 | B | Pay gated on `canEdit` only (ignores KYB and `manage_billing`) | Gate on server capabilities from the detail |
-| BD16 | M | Below-floor warning is a bare `<p>` | `InlineNotice severity="warning"` with a tier-1 "Top up" that starts the wallet MoveDialog (the act that starts a financial flow = tier 1) |
-| BD17 | T | Hand-rolled labels (:279,305,322,338); hard-coded "Issued on the 1st" (:245) though `billing_day` is 1–28; empty `<span />` spacer (:259); band meta not tabular | FormControl; derive copy from `billing_day`; layout via grid; tabular |
+| BD14 | G | Tier-1 Pay renders **per invoice** → N amber fills in one region; no confirmation before moving money | One "Pay €X" for the oldest due invoice (or "Pay all due"), others tier 5 "Pay" opening the same confirm; a review step (ConfirmDialog is blocked for accent per #157 o — use the wallet `MoveDialog` review pattern) — ✅ BU3 (#247): one tier-1 Pay for the oldest payable invoice, row Pay tier 5, both into `CommitReview` (promoted to `@projective/ui/feedback`; `MoveDialog` renders its body) |
+| BD15 | B | Pay gated on `canEdit` only (ignores KYB and `manage_billing`) | Gate on server capabilities from the detail — ✅ BU3 (#247): Pay renders only for `viewerCan.payInvoice`; a draft, archived or KYB-pending business reads the refusal map's notice instead |
+| BD16 | M | Below-floor warning is a bare `<p>` | `InlineNotice severity="warning"` with a tier-1 "Top up" that starts the wallet MoveDialog (the act that starts a financial flow = tier 1) — ✅ BU3 (#247): an `InlineNotice` with the warning glyph (it has no severity) and ONE Top up into the business wallet's top-up and back; tier 4 while a Pay renders, so the page keeps one amber control |
+| BD17 | T | Hand-rolled labels (:279,305,322,338); hard-coded "Issued on the 1st" (:245) though `billing_day` is 1–28; empty `<span />` spacer (:259); band meta not tabular | FormControl; derive copy from `billing_day`; layout via grid; tabular — ✅ BU3 (#247): FormControl terms (SelectButton · Select 1st–28th · SelectButton · MoneyInput), "Issued on the {billing day}" on the Invoices band from data, DataTables in place of the spacer-padded lists, MetaLine band meta with tabular figures; the Statements band's "Issued on the 1st" is KEPT — statements stay on the 1st (#168) |
 
 ### 2.3 Console branches, roster, create
 
@@ -178,7 +178,7 @@ The shared migration plan is `TEAMS_AUDIT.md` §3.1 and its prompts (U1–U4, W1
 | `islands/SpendPolicyScreen.island.tsx` | `FormControl` + `MoneyInput` (threshold) · approver/contributor editor with `Listbox` or a `DataTable` with selection (BD1) · `InlineNotice` · tier-3/4/5 matrix · `useSignalEffect` — ✅ BU2 (#246) | P0 |
 | `components/SpendLimitRow.tsx` | `ProgressBar` (meter) · `MetaLine` (BD6) · `MoneyInput` for ceilings inside `FormControl` · `ToggleSwitch` for can-spend · `<ul>` (BD9) — ✅ BU2 (#246) | P0 |
 | `components/ApprovalQueue.tsx` | `Button` tiers (BD8) · rows on hairlines (no tinted boxes) · Pending · Decided via `TabMenu` — ✅ BU2 (#246) | P0 |
-| `islands/BillingScreen.island.tsx` | One tier-1 Pay + review dialog (BD14) · `InlineNotice` (BD16) · `FormControl` | P0 |
+| `islands/BillingScreen.island.tsx` | One tier-1 Pay + review dialog (BD14) · `InlineNotice` (BD16) · `FormControl` — ✅ BU3 (#247) | P0 |
 | `components/ContributionLedger.tsx` | `DataTable` (date · member · method · amount tabular); include card top-ups (BF25) | P1 |
 | `components/ModuleScreen.tsx` | `verification` → new `BusinessVerificationScreen` island; `talent` per BX-i | P0 |
 | `components/VerificationLock.tsx` | Link to the real Verification module; drop hard-coded SLA copy | P1 |

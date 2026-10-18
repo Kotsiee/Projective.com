@@ -299,7 +299,7 @@ gate**. Schema: `finance.verification_cases` + the `org.freelancer_profiles.kyc_
 | :----------------------------------------- | :------------------------------------------------------------------------------------------------ | :-------------------------------------------------------------- |
 | **Freelancer (earner)**                    | Government-ID verification (Stripe Identity) **AND** a payout-ready wallet (Connect account set). | Applying, being seated or assigned, claiming, creating or joining a team (`fn_assert_payout_ready`, Decision #196). A team payee: every shareholder. Withdrawing earnings from a `user`/`team` wallet. |
 | **Client (individual buyer)**              | **None.** Tap-and-pay via Stripe (optional save-card for reuse). No ID, no wallet required.       | —                                                               |
-| **Business owner (incl. client-who-owns)** | KYB (corporate registration + UBO). `fn_business_kyb_verified`.                                   | Operating the pooled Business Wallet (fund/spend).              |
+| **Business owner (incl. client-who-owns)** | KYB (corporate registration + UBO). `fn_business_kyb_verified`.                                   | Operating the pooled Business Wallet (fund/spend — paying an invoice from it included, `finance.pay_invoice`, Decision #247 (h)).              |
 
 - **Why the freelancer gate is at _onboarding_, not payout-time:** it guarantees no funds ever land
   in a **permanent-escrow / unpayable** state — a freelancer cannot accept work they can't be paid

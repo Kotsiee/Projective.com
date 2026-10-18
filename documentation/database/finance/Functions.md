@@ -1027,9 +1027,19 @@ console and the draft cannot disagree. Not executable by clients.
 
 The Billing module's settings for whoever may see the business's finances (`fn_owner_visible`; `NULL`
 for anyone else): `currency`, `invoicing_mode`, `billing_day`, `kyb_verified`, `auto_fund_mode`,
-`low_balance_floor_cents`, `can_manage` (vault `manage_billing`) and `can_pay` — `pay_invoice`'s own
-conditions (`manage_billing`, KYB verified, an `active` business), so Pay is offered only when it
-would be accepted (BUSINESSES_AUDIT BD15).
+`low_balance_floor_cents`, `can_manage` (vault `manage_billing`), `can_pay` — `manage_billing`, KYB
+verified and an `active` business, the same conditions as `org.get_workspace_detail`'s
+`viewer_can.pay_invoice` (BUSINESSES_AUDIT BD15) — and `plan_allows_monthly`: whether monthly
+invoicing is open to the business under the Business Pro gate, by `fn_assert_business_entitlement`'s
+own rule (`NOT fn_business_plan_gates_enforced() OR fn_business_gate_flag(business,
+'intervaled_invoicing')`, Decision #230 (e)); the `x-pj-dev-plan-gates` header can only make it
+stricter. The Billing module reads it to say "That's part of Business Pro" before a Save that
+`set_invoicing_terms` would refuse with `PK402` (BU3, Decision #247). `finance.pay_invoice` checks
+the same three, in this order — `manage_billing` (`42501`), an `active` business (`55000
+business_not_active`) and KYB (`PK403 kyb_required:`, DETAIL `{invoice_id, business_id}`) — then that
+something is due (`PC409`) and that the wallet in the invoice's currency covers it (`PF402`). Settling
+an invoice is not a spend: no envelope or approval threshold is read (Decision #240 leaves invoices
+out of the gate). Decision #247 (h); probe `supabase/probes/business_billing_screen.sql`.
 
 ### `finance.request_spend_approval(p_wallet, p_amount, p_reason, p_ref_table, p_ref_id)` → `{id, status}`
 
