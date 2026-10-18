@@ -20,6 +20,7 @@
  * rather than a snapshot that ages out of the "last 30 days" views.
  */
 
+import type { FeedbackCategory, FeedbackIdeaState } from "@projective/types/community";
 import { FERN_REVIEW_SLOT, type WeekSlot } from "./schedules.ts";
 
 // #region Personas
@@ -2831,6 +2832,283 @@ export const NOTIFICATIONS: NotificationSpec[] = [
 		read: true,
 		actor: "ines",
 		context: ["team", "nova"],
+	},
+];
+// #endregion
+
+// #region Feedback board (community.feedback_*, Decision #272)
+/** A move an operator made on an idea after it was submitted. */
+export interface FeedbackMoveSpec {
+	to: FeedbackIdeaState;
+	daysAgo: number;
+}
+
+/**
+ * One idea on the public feedback board. The submission is implied (`daysAgo`, into Under review)
+ * and so is the author's own vote, exactly as `community.submit_feedback_idea` records them; `moves`
+ * are the operator moves after it, oldest first, and the last is where the idea stands. The id and
+ * the `fbk-` slug derive from `key`, so a seeded idea keeps its address across resets.
+ *
+ * These ideas are also the fixture board (`packages/backend/services/community/feedback-fixtures.ts`)
+ * that `COMMUNITY_BACKEND_LIVE=false` serves; `feedback-fixtures.contract.test.ts` holds the two to
+ * the same content.
+ */
+export interface FeedbackIdeaSpec {
+	key: string;
+	/** Persona key. */
+	author: string;
+	title: string;
+	impact: string;
+	body?: string;
+	category: FeedbackCategory;
+	daysAgo: number;
+	moves: FeedbackMoveSpec[];
+	/** Persona keys who voted, besides the author. */
+	voters: string[];
+	/** The team's official response. */
+	response?: { text: string; daysAgo: number };
+}
+
+export const FEEDBACK_IDEAS: FeedbackIdeaSpec[] = [
+	// ── Shipped ──────────────────────────────────────────────────────────────────────────────────
+	{
+		key: "named-saved-lists",
+		author: "juno",
+		title: "Save listings into named lists",
+		impact:
+			"I bookmark services for different clients and they all land in one long pile. A list per client would let me send a shortlist without rebuilding it every time.",
+		category: "explore",
+		daysAgo: 120,
+		moves: [{ to: "ready", daysAgo: 105 }, { to: "in_progress", daysAgo: 80 }, {
+			to: "complete",
+			daysAgo: 60,
+		}],
+		voters: ["noor", "theo", "ren", "chloe", "aiko"],
+		response: {
+			text:
+				"Shipped. Save anything to a named collection from its page, then find every list under Saved.",
+			daysAgo: 60,
+		},
+	},
+	{
+		key: "pin-messages",
+		author: "hannah",
+		title: "Pin the important message in a busy conversation",
+		impact:
+			"Scope decisions get buried under fifty messages of back-and-forth. Pinning the agreed brief would save everyone scrolling up to find it.",
+		category: "messaging",
+		daysAgo: 95,
+		moves: [{ to: "ready", daysAgo: 85 }, { to: "in_progress", daysAgo: 70 }, {
+			to: "complete",
+			daysAgo: 48,
+		}],
+		voters: ["priya", "maris", "samuel", "kwame"],
+		response: {
+			text: "Shipped. Pin a message from its menu and everyone in the room sees it at the top.",
+			daysAgo: 48,
+		},
+	},
+	{
+		key: "card-stage-funding",
+		author: "priya",
+		title: "Fund a stage by card, not only from the wallet",
+		impact:
+			"Topping up the wallet and then funding the stage is two steps and two receipts for one payment. Our finance team asked for one.",
+		category: "escrow_payments",
+		daysAgo: 150,
+		moves: [{ to: "ready", daysAgo: 140 }, { to: "in_progress", daysAgo: 110 }, {
+			to: "complete",
+			daysAgo: 90,
+		}],
+		voters: ["hannah", "miguel", "daniel", "noor", "theo", "ines"],
+		response: {
+			text:
+				"Shipped. Choose “Continue to payment” when you fund a stage to pay its escrow by card in one step.",
+			daysAgo: 90,
+		},
+	},
+	{
+		key: "reading-comfort",
+		author: "lena",
+		title: "A dyslexia-friendly font and a reduced-motion setting",
+		impact:
+			"Long briefs are tiring for me to read, and some of the sliding panels make me feel queasy. I'd like both settings to follow me across devices.",
+		category: "other",
+		daysAgo: 70,
+		moves: [{ to: "ready", daysAgo: 64 }, { to: "in_progress", daysAgo: 50 }, {
+			to: "complete",
+			daysAgo: 30,
+		}],
+		voters: ["aiko", "chloe", "tomasz"],
+		response: {
+			text:
+				"Shipped. Appearance settings now include a dyslexia-friendly font, high contrast and reduced motion, saved to your account.",
+			daysAgo: 30,
+		},
+	},
+	// ── In progress ──────────────────────────────────────────────────────────────────────────────
+	{
+		key: "command-palette",
+		author: "maris",
+		title: "Jump anywhere from the keyboard",
+		impact:
+			"I move between five projects, my wallet and the inbox all day. A command palette would save me a dozen clicks an hour.",
+		body:
+			"Something like Cmd+K: type a project, a person or a setting, press Enter, and you are there.",
+		category: "other",
+		daysAgo: 45,
+		moves: [{ to: "ready", daysAgo: 38 }, { to: "in_progress", daysAgo: 12 }],
+		voters: ["juno", "ren", "samuel", "tomasz", "saoirse", "kwame", "lena", "aiko"],
+		response: {
+			text:
+				"In progress. The first version searches your projects, people and settings from one shortcut.",
+			daysAgo: 12,
+		},
+	},
+	{
+		key: "calendar-sync",
+		author: "saoirse",
+		title: "Sync booked sessions to my Google Calendar",
+		impact:
+			"Clients book review sessions here, but my day lives in Google Calendar. I have double-booked twice because I forgot to copy one across.",
+		category: "projects",
+		daysAgo: 60,
+		moves: [{ to: "ready", daysAgo: 50 }, { to: "in_progress", daysAgo: 9 }],
+		voters: ["chloe", "aiko", "juno", "maris", "noor"],
+		response: {
+			text:
+				"In progress, starting with a one-way sync of booked sessions to a calendar you connect.",
+			daysAgo: 9,
+		},
+	},
+	{
+		key: "stage-payment-split",
+		author: "kwame",
+		title: "Split one stage's payment between two freelancers",
+		impact:
+			"When two of us share a stage we settle the split ourselves afterwards, which defeats the point of escrow.",
+		category: "escrow_payments",
+		daysAgo: 33,
+		moves: [{ to: "ready", daysAgo: 25 }, { to: "in_progress", daysAgo: 6 }],
+		voters: ["tomasz", "samuel", "ines", "aiko", "lena"],
+	},
+	// ── Planned ──────────────────────────────────────────────────────────────────────────────────
+	{
+		key: "pause-stage",
+		author: "priya",
+		title: "Pause a stage without cancelling it",
+		impact:
+			"Sometimes our side is the blocker — a legal review, a holiday. Today we either keep the clock running or end the stage under Fair Exit, and neither is fair to the freelancer.",
+		body:
+			"A pause would freeze the deadline and keep the escrow held, with a reason the freelancer can see.",
+		category: "projects",
+		daysAgo: 28,
+		moves: [{ to: "ready", daysAgo: 20 }],
+		voters: ["hannah", "daniel", "miguel", "noor", "kwame", "ines", "maris", "theo", "samuel"],
+		response: {
+			text:
+				"Planned. A paused stage will freeze its deadline and keep its escrow held, and the freelancer will be told why and for how long.",
+			daysAgo: 19,
+		},
+	},
+	{
+		key: "client-review-reminders",
+		author: "noor",
+		title: "Remind me before a stage is due for my review",
+		impact:
+			"I only notice a stage is ready when the freelancer chases me. A heads-up the day before would let me block time to give proper feedback.",
+		category: "projects",
+		daysAgo: 22,
+		moves: [{ to: "ready", daysAgo: 15 }],
+		voters: ["theo", "hannah", "miguel"],
+	},
+	{
+		key: "saved-replies",
+		author: "ines",
+		title: "Saved replies for the questions I answer every week",
+		impact:
+			"Half my first messages explain the same three things: how I scope, my revision policy and what I need to start. I retype them every time.",
+		category: "messaging",
+		daysAgo: 18,
+		moves: [{ to: "ready", daysAgo: 10 }],
+		voters: ["saoirse", "kwame", "juno", "ren"],
+	},
+	{
+		key: "working-hours-overlap",
+		author: "daniel",
+		title: "Filter freelancers by working-hours overlap",
+		impact:
+			"Our team is in Lagos and we need at least three shared hours a day. I end up opening every profile to check the time zone.",
+		category: "explore",
+		daysAgo: 26,
+		moves: [{ to: "ready", daysAgo: 17 }],
+		voters: ["miguel", "priya", "hannah", "noor", "theo", "chloe"],
+		response: {
+			text:
+				"Planned. Explore will use each freelancer's published working hours to show how many overlap with yours.",
+			daysAgo: 16,
+		},
+	},
+	{
+		key: "portfolio-case-studies",
+		author: "ren",
+		title: "Case studies on my profile, not just images",
+		impact:
+			"A single render doesn't show the brief, the constraints or what changed. Clients ask me to walk them through it on a call every time.",
+		category: "profiles",
+		daysAgo: 14,
+		moves: [{ to: "ready", daysAgo: 7 }],
+		voters: ["maris", "juno", "saoirse"],
+	},
+	// ── Under review — each visible only to its author until an operator accepts it ──────────────
+	{
+		key: "tip-after-approval",
+		author: "theo",
+		title: "Add a tip when I approve a stage",
+		impact:
+			"When someone goes well beyond the brief I'd like to say thank you with more than a review, without opening a new stage for it.",
+		category: "escrow_payments",
+		daysAgo: 3,
+		moves: [],
+		voters: [],
+	},
+	{
+		key: "hide-rate-in-search",
+		author: "lena",
+		title: "Hide my hourly rate from search results",
+		impact:
+			"I price per project, and a rate shown out of context puts off the clients I want before we have even talked.",
+		category: "profiles",
+		daysAgo: 2,
+		moves: [],
+		voters: [],
+	},
+	{
+		key: "reply-to-review",
+		author: "samuel",
+		title: "Let me reply to a review on my profile",
+		impact:
+			"A client misread a delay that was on their side. I'd like to add one calm, public reply beneath their review.",
+		category: "profiles",
+		daysAgo: 1,
+		moves: [],
+		voters: [],
+	},
+	// ── Archived — hidden from everyone but operators ────────────────────────────────────────────
+	{
+		key: "pay-outside-escrow",
+		author: "miguel",
+		title: "Let me pay a freelancer directly to skip the fee",
+		impact: "For small fixes the fee feels like a lot, and we already know each other well.",
+		category: "escrow_payments",
+		daysAgo: 50,
+		moves: [{ to: "archived", daysAgo: 44 }],
+		voters: [],
+		response: {
+			text:
+				"Closed. Payments stay inside escrow so both sides keep their protection and the work keeps its record. A small fix can be a single-ticket purchase instead.",
+			daysAgo: 44,
+		},
 	},
 ];
 // #endregion

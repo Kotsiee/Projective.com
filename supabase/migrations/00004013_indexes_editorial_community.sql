@@ -53,4 +53,19 @@ CREATE INDEX IF NOT EXISTS idx_help_feedback_article_recent
 
 
 -- #region [community.feedback]
+-- The board, sorted "Top" within a status (vote_count, then newest) and "New" (newest first).
+CREATE INDEX IF NOT EXISTS idx_feedback_ideas_status_top
+    ON community.feedback_ideas (status, vote_count DESC, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_feedback_ideas_status_new
+    ON community.feedback_ideas (status, created_at DESC);
+-- An author's own ideas: the "under review" tab and submit_feedback_idea's 24-hour rate limit.
+CREATE INDEX IF NOT EXISTS idx_feedback_ideas_author_recent
+    ON community.feedback_ideas (author_id, created_at DESC);
+-- The viewer's own votes across the page shown, and vote_feedback_idea's hourly rate limit. The
+-- per-idea fan-out (an idea's voters, for its status notification) is the primary key's prefix.
+CREATE INDEX IF NOT EXISTS idx_feedback_votes_user_recent
+    ON community.feedback_votes (user_id, created_at DESC);
+-- One idea's status history, oldest first.
+CREATE INDEX IF NOT EXISTS idx_feedback_status_events_idea
+    ON community.feedback_status_events (idea_id, created_at);
 -- #endregion

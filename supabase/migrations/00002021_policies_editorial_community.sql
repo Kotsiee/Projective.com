@@ -94,4 +94,38 @@ CREATE POLICY articles_select_published ON editorial.articles
 
 
 -- #region [community.feedback]
+-- Reads only; every write is a definer door (00001320). Visibility is one rule in three places — these
+-- policies, community.fn_feedback_idea_visible (the doors') and canSeeFeedbackIdea (the fixture
+-- road) — and supabase/probes/feedback_board.sql pins it:
+--   * Planned, In progress and Shipped ideas are public — guests included.
+--   * An idea under review (Backlog) is its author's alone, until an operator accepts it.
+--   * Operators (ops.admin_users) read everything, Archived included; nobody else reads Archived.
+-- Policies are split by role rather than OR-ed into one expression because `anon` holds no USAGE on
+-- `security`, so a policy that named security.is_admin() for anon would fail rather than deny.
+DROP POLICY IF EXISTS feedback_ideas_public_read ON community.feedback_ideas;
+CREATE POLICY feedback_ideas_public_read ON community.feedback_ideas
+    FOR SELECT TO anon, authenticated
+    USING (status IN ('ready', 'in_progress', 'complete'));
+
+DROP POLICY IF EXISTS feedback_ideas_author_read ON community.feedback_ideas;
+CREATE POLICY feedback_ideas_author_read ON community.feedback_ideas
+    FOR SELECT TO authenticated
+    USING (status = 'backlog' AND author_id = auth.uid());
+
+DROP POLICY IF EXISTS feedback_ideas_operator_read ON community.feedback_ideas;
+CREATE POLICY feedback_ideas_operator_read ON community.feedback_ideas
+    FOR SELECT TO authenticated
+    USING (security.is_admin());
+
+-- A vote is its owner's: the board learns "you voted for this" and nothing about anyone else's.
+DROP POLICY IF EXISTS feedback_votes_own_read ON community.feedback_votes;
+CREATE POLICY feedback_votes_own_read ON community.feedback_votes
+    FOR SELECT TO authenticated
+    USING (user_id = auth.uid());
+
+-- An idea's history is as visible as the idea: the subquery runs under the caller's own idea policies.
+DROP POLICY IF EXISTS feedback_status_events_read ON community.feedback_status_events;
+CREATE POLICY feedback_status_events_read ON community.feedback_status_events
+    FOR SELECT TO anon, authenticated
+    USING (EXISTS (SELECT 1 FROM community.feedback_ideas i WHERE i.id = idea_id));
 -- #endregion

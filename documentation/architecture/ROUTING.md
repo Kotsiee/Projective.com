@@ -676,6 +676,46 @@ flat `serviceResponse` envelope. The page itself is the `[...path]` row above.
 | `/api/help/search`   | `GET` `?q=` | `HelpCentreSearchQuerySchema` (trimmed, ≤ 120 characters, empty allowed) → `HelpBackendService.search` → `{ query, results: [{ slug, title, category, categoryTitle, href, snippet, highlights: { title, snippet } }] }` (≤ 20, best first; highlights are `[start, end)` runs). The in-memory index is built from the `editorial.help_*` rows (or the content source with `EDITORIAL_BACKEND_LIVE` off) and cached 5 minutes. `cache-control: public, max-age=60`. 503 when the help tables cannot be read. |
 | `/api/help/feedback` | `POST` `{ slug, helpful, comment? }` · or the form `slug, helpful=yes\|no, comment, back` | `HelpFeedbackInputSchema` (a comment only with `helpful: false`, ≤ 280) → `HelpFeedbackBackendService.submit` → `community.submit_help_feedback` as the caller (their JWT when signed in, anon otherwise). JSON: `{ slug, helpful }` · 422 · 404 (an article nobody can read) · 429 (per process: 10 per signed-in voter per 10 minutes, 20 per guest address a minute; or the writer's `PH429`; `Retry-After` set) · 503. A form post answers **303** to `back` — only ever a `/help` path — with `?helpful=thanks\|error#was-this-helpful`. |
 
+### Feedback board (Decision #272)
+
+`/feedback` (`routes/(public)/feedback.tsx` → `features/feedback/routes/FeedbackPage.tsx`) is the
+board's own page — public, indexable, and the canonical address of every idea's section of it. The
+same board opens over ANY public, profile or dashboard page as a drawer, owned by ONE host,
+`features/feedback/islands/FeedbackHost.island.tsx`, mounted in the `(public)`, `[handle]` and
+`(dashboard)` layouts (the drawer's code is imported the first time it is asked for).
+`features/feedback/core/feedback-url.ts` is the contract:
+
+- **`?feedback=open`** on any page but `/feedback` opens the drawer; the URL is the source of truth
+  (arriving with it opens it). Opening from the account menu's **Feedback & roadmap** or the `g` `f`
+  shortcut PUSHES an entry, so Back closes the drawer; moving inside it and closing it
+  (`replaceState`) never add one. On `/feedback` the parameter is dropped — the page is the board.
+- **`idea=<fbk-slug>`** opens one idea (in either mode); **`compose=1`** opens the suggestion form.
+- **`status=under_review|planned|in_progress|shipped`** and **`sort=top|new`** filter the board. On
+  `/feedback` they are written back as the reader changes tabs; in the drawer they are read on
+  arrival and never written, because a host page owns those names (`/projects?status=`, Explore, the
+  wallet). The drawer's own parameters are removed on close and every other parameter is kept
+  byte for byte.
+- Every entry is stamped `fClientNav: false` and the page's own entry is re-stamped before a push
+  (the `?tkv=` recipe, Decision #95). An idea under review answers `/feedback?idea=…` with a "not on the
+  board" notice and a way back to anyone but its author and operators.
+- On `/feedback` only a move OFF the board pushes (board → idea); an idea opened from another idea
+  or from the suggestion dialog replaces the entry it is on, so Back — and **All ideas**, which steps
+  back over the one pushed entry — always returns to the board.
+- Every view's canonical is `/feedback` (`noindex` on an idea under review, a refused idea and a
+  board that could not be read); the JSON-LD `ItemList` names each public idea by its row's anchor,
+  `/feedback#<fbk-slug>` (Decision #272 (H)).
+
+| Path | Method / body | Delegates to |
+| :-- | :-- | :-- |
+| `/api/feedback/ideas` | `GET` `?status=&sort=&q=&limit=` | `FeedbackBackendService.board` — the board as the reader may see it (RLS: the public states; the reader's own ideas under review; everything for an operator) with every tab's count (`community.feedback_status_counts`); `q` is the composer's title search. `private, no-store`. |
+| `/api/feedback/ideas` | `POST` `{ title, category, impact, body? }` | `.submit` → `community.submit_feedback_idea` — 201 with the idea (Under review); 401 guest; 422 field errors (a contact detail in any field is refused here, Decision #147); 429 + `Retry-After` past five a day. |
+| `/api/feedback/ideas/[id]` | `GET` | `.idea` — the idea (by `fbk-` slug), its status history and up to three related ideas. 404 for a non-slug, and for an idea the reader may not see. |
+| `/api/feedback/ideas/[id]/vote` | `POST` · `DELETE` | `.vote` → `community.vote_feedback_idea` / `unvote_feedback_idea` — idempotent `{ voted, voteCount }`; 401 guest; 404 unseen; 409 voting closed (Shipped); 429 past 120 an hour. |
+| `/api/feedback/ideas/[id]/status` | `POST` `{ status?, note?, response? }` | `.moderate` → `community.moderate_feedback_idea` (the status move, then the response, in one transaction) — operators only (403 otherwise; there is no operator UI yet, #272 flag (a)); 409 for an illegal move. A move notifies the author and every voter. |
+
+Live behind `COMMUNITY_BACKEND_LIVE`; with it off every route answers from the per-process fixture
+store (the seed's sixteen ideas), which mirrors each door's rules.
+
 ### Saved API (Decision #180)
 
 Thin routes over `SavedBackendService` (`@server/services/saved/`), Zod-parsing with the

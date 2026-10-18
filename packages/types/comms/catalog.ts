@@ -149,6 +149,7 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	// #endregion
 
 	// #region [feedback] Feedback board status changes (P7)
+	"feedback.status_changed",
 	// #endregion
 ] as const;
 

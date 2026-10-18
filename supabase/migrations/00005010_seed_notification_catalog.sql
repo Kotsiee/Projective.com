@@ -142,4 +142,12 @@ ON CONFLICT (key) DO NOTHING;
 
 
 -- #region [feedback] Feedback board status changes (P7)
+-- Sent by community.set_feedback_idea_status to an idea's author and everyone who voted for it (never
+-- the operator who moved it), linking `/feedback?idea=<slug>`. Opt-out-able and digestible; a second
+-- move of the same idea within a day collapses into the first (`group_key` = `feedback:<slug>`).
+INSERT INTO comms.notification_types
+    (key, aliases, category, urgency, default_channels, mandatory, overrides_quiet_hours, digestible, audit, group_window, action_url_template, default_lead_time, description)
+VALUES
+('feedback.status_changed',  '{}',                'discovery', 'low',      ARRAY['in_app','email']::comms.notification_channel[],        false, false, true,  false, '1 day',           NULL,                                        NULL, 'An idea you suggested or voted for on the feedback board moved to Planned, In progress, Shipped or Archived.')
+ON CONFLICT (key) DO NOTHING;
 -- #endregion

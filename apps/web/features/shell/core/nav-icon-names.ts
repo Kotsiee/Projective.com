@@ -38,5 +38,6 @@ export type IconName =
 	| "moon"
 	| "monitor"
 	| "clock"
-	| "saved";
+	| "saved"
+	| "feedback";
 // #endregion

@@ -37,6 +37,7 @@ import { AccountSetupNudge } from "@web/features/shell/components/AccountSetupNu
 import { useEffectiveContext } from "@web/features/shell/core/effective-context.ts";
 import { AuthService } from "@web/features/auth/core/AuthService.ts";
 import { onAvatarChanged } from "@web/utils/avatar-sync.ts";
+import { openFeedback } from "@web/features/feedback/core/feedback-bridge.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 import { ProfileProgressAvatar } from "@web/features/shell/components/ProfileProgressAvatar.tsx";
 import { AllowanceMeter } from "@features/proposals/components/AllowanceMeter.tsx";
@@ -512,6 +513,22 @@ export default function UserActions(
 					<NavIcon name="settings" />
 				</span>
 				<span class="shell-menu__label">Settings</span>
+			</a>
+			{/* The feedback board opens over the page in its drawer; a modified click opens /feedback. */}
+			<a
+				class="shell-menu__item"
+				href="/feedback"
+				onClick={(event) => {
+					if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
+					event.preventDefault();
+					onNavigate();
+					openFeedback();
+				}}
+			>
+				<span class="shell-menu__icon">
+					<NavIcon name="feedback" />
+				</span>
+				<span class="shell-menu__label">Feedback &amp; roadmap</span>
 			</a>
 
 			<div class="shell-menu__sep" role="separator" />

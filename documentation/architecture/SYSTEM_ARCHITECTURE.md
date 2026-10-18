@@ -939,6 +939,10 @@ and never prunes, so content is retracted by hiding it, never by deleting its re
 gate, `defineCommunityTable`, `readCommunityTable` (the caller's client live, declared fixtures
 otherwise, both through one row parse) and `communityRpc` for the schema's definer doors. Surface
 services are built on these by their own work orders; the newsletter keeps its own gate.
+The feedback board's `services/community/FeedbackBackendService.ts` (Decision #272) is the first:
+it reads as the caller (RLS decides who sees an idea under review), writes only through
+the board's definer doors, and with the gate off runs the same code over a per-process fixture
+store (`feedback-store.ts`) that mirrors every door — the seed's own sixteen ideas.
 
 **The help centre (P2)** is the first surface on both. `services/editorial/HelpBackendService.ts`
 reads `editorial.help_categories` / `help_articles` through `readEditorialTable`, organises them

@@ -277,13 +277,19 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		label: "Helpfulness votes & feedback board",
 		gate: "COMMUNITY_BACKEND_LIVE",
 		// Live for the help centre's helpfulness votes (HelpFeedbackBackendService → the definer door
-		// community.submit_help_feedback, P2); the feedback board joins as P7 lands. The newsletter, also
-		// in `community`, keeps its own NEWSLETTER_BACKEND_LIVE gate.
+		// community.submit_help_feedback, P2) and the feedback board (`FeedbackBackendService`, P7,
+		// Decision #272), which reads and writes through the shared module
+		// (`services/community/community-source.ts`); the board's fixture road is the per-process
+		// `feedback-store.ts` over the seed-identical demo board. The newsletter, also in `community`,
+		// keeps its own NEWSLETTER_BACKEND_LIVE gate.
 		liveImplemented: true,
-		modules: [],
+		modules: [
+			"services/community/feedback-fixtures.ts",
+			"services/community/feedback-store.ts",
+		],
 		schemas: ["community"],
 		description:
-			"User-generated activity around the platform: the help centre's helpfulness votes (written through community.submit_help_feedback; with the gate off they are validated and answered, nothing stored) and the feedback board's ideas, votes and status history (no service yet).",
+			"User-generated activity around the platform: the help centre's helpfulness votes (written through community.submit_help_feedback; with the gate off they are validated and answered, nothing stored) and the feedback board's ideas, votes and status history. The feedback board is live behind the gate; with it off, the same sixteen ideas the seed loads are served from a per-process store that mirrors every door (suggest, vote, retract), so nothing is persisted.",
 	},
 	contact: {
 		domain: "contact",

@@ -22,7 +22,14 @@ const REPO = new URL("../../../", import.meta.url);
 const read = (rel: string) => Deno.readTextFileSync(new URL(rel, REPO));
 
 const FUNCTIONS_SQL = "supabase/migrations/00001001_functions_security_context.sql";
-const TRIGGERS_SQL = "supabase/migrations/00001890_triggers_slugs.sql";
+/**
+ * The files that declare slug guards: the shared slug file, and the `community` triggers file, whose
+ * feedback-board guard stays in that surface's own region (Decision #272). Read as one text.
+ */
+const TRIGGER_FILES = [
+	"supabase/migrations/00001890_triggers_slugs.sql",
+	"supabase/migrations/00001898_triggers_editorial_community.sql",
+];
 
 /** Every table that carries a slug, with the migration and prefix that own it. */
 const SLUGGED_TABLES = [
@@ -74,6 +81,13 @@ const SLUGGED_TABLES = [
 		constraint: "ck_articles_slug_shape",
 		unique: "articles_slug_key",
 		file: "supabase/migrations/00000023_tables_catalogue.sql",
+	},
+	{
+		entity: "idea" as const,
+		table: "community.feedback_ideas",
+		constraint: "ck_feedback_ideas_slug_shape",
+		unique: "feedback_ideas_slug_key",
+		file: "supabase/migrations/00000025_tables_community.sql",
 	},
 ];
 
@@ -185,7 +199,7 @@ Deno.test("every slugged column is NOT NULL with no DEFAULT, and UNIQUE", () => 
 });
 
 Deno.test("every slugged table has a fill-and-pin trigger, with the RIGHT prefix", () => {
-	const sql = read(TRIGGERS_SQL);
+	const sql = TRIGGER_FILES.map(read).join("\n");
 	for (const t of SLUGGED_TABLES) {
 		assertStringIncludes(
 			sql,
@@ -202,7 +216,7 @@ Deno.test("every slugged table has a fill-and-pin trigger, with the RIGHT prefix
 	assertEquals(
 		[...sql.matchAll(/security\.fn_slug_guard\('([a-z]{3})'\)/g)].map((m) => m[1]).sort(),
 		SLUGGED_ENTITIES.map((e) => SLUG_PREFIXES[e]).sort(),
-		"the trigger file must declare exactly one guard per slugged entity, with no prefix repeated",
+		"the trigger files must declare exactly one guard per slugged entity, with no prefix repeated",
 	);
 });
 // #endregion
