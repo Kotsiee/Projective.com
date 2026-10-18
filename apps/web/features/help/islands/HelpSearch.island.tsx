@@ -62,7 +62,9 @@ interface SearchBody {
  * HelpSearch — the help centre's search (P2 §2). Two halves:
  *
  * - **The trigger**: a real `<form role="search" method="get" action="/help">`, so with no JavaScript
- *   a search is a page load of `/help?q=…` and the hub renders the results itself.
+ *   a search is a page load of `/help?q=…` and the hub renders the results itself. Its field says
+ *   ahead that it opens a dialog (`aria-haspopup="dialog"`) and names the `/` shortcut
+ *   (`aria-keyshortcuts`); the visible `/` chip is hidden from assistive tech.
  * - **The overlay**: typing in the field, pressing Enter, clicking it, or pressing `/` anywhere on a
  *   help page (`isFocusSearchShortcut`, never inside a field) opens a `Dialog` (Decision #171) with a
  *   combobox and a listbox of hits grouped by category, matched words in `<mark>`. ↑ / ↓ move the
@@ -81,7 +83,8 @@ export default function HelpSearch(props: HelpSearchProps): JSX.Element {
 	const status = useSignal<"idle" | "loading" | "error">("idle");
 	const active = useSignal(-1);
 	const recent = useSignal<string[]>([]);
-	const hydrated = useSignal(false);
+	/** The no-JavaScript results are kept until the overlay first closes (see `showFallback`). */
+	const keepFallback = useSignal(true);
 	const formRef = useRef<HTMLFormElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const listRef = useRef<HTMLDivElement>(null);
@@ -101,10 +104,14 @@ export default function HelpSearch(props: HelpSearchProps): JSX.Element {
 	// #region Derived
 	const trimmed = useComputed(() => query.value.trim());
 	const groups = useComputed(() => groupResults(results.value));
-	/** What the listbox offers right now: hits for a query, else recent searches or suggestions. */
+	/**
+	 * What the listbox offers right now: hits for a query, else recent searches or suggestions. A
+	 * failed search offers nothing — its body is the Try again control, not a listbox.
+	 */
 	const options = useComputed(
 		(): Array<{ kind: "hit" | "recent" | "suggestion"; value: string }> => {
 			if (trimmed.value) {
+				if (status.value === "error") return [];
 				return groups.value.flatMap((g) =>
 					g.items.map((i) => ({ kind: "hit" as const, value: i.result.href }))
 				);
@@ -147,6 +154,9 @@ export default function HelpSearch(props: HelpSearchProps): JSX.Element {
 				status.value = "idle";
 			} catch (err) {
 				if (controller.signal.aborted || (err as Error)?.name === "AbortError") return;
+				// The previous query's hits are not this query's: no listbox, no active option.
+				results.value = [];
+				active.value = -1;
 				status.value = "error";
 			}
 		}, DEBOUNCE_MS);
@@ -185,6 +195,7 @@ export default function HelpSearch(props: HelpSearchProps): JSX.Element {
 		abortRef.current?.abort();
 		writeAddress(null);
 		status.value = "idle";
+		keepFallback.value = false;
 	}
 
 	function go(href: string): void {
@@ -206,7 +217,6 @@ export default function HelpSearch(props: HelpSearchProps): JSX.Element {
 
 	// #region Effects
 	useEffect(() => {
-		hydrated.value = true;
 		recent.value = readRecentSearches(browserStorage());
 		if (initialQuery !== undefined) openOverlay(initialQuery);
 		return () => {
@@ -274,15 +284,18 @@ export default function HelpSearch(props: HelpSearchProps): JSX.Element {
 	function body(): JSX.Element {
 		if (trimmed.value) {
 			if (status.value === "error") {
+				// The status line above says what happened (and announces it); this is only the way out.
 				return (
-					<div class="hc-results__empty">
-						Search isn't available right now.{" "}
+					<div class="hc-results__retry">
 						<Button
-							variant="link"
+							severity="neutral"
+							variant="outlined"
+							size="sm"
 							label="Try again"
 							onClick={() => {
 								answeredFor.value = null;
 								search(query.value);
+								inputRef.current?.focus();
 							}}
 						/>
 					</div>
@@ -396,7 +409,9 @@ export default function HelpSearch(props: HelpSearchProps): JSX.Element {
 	}
 	// #endregion
 
-	const showFallback = !hydrated.value && initialResults !== undefined &&
+	// The server's results stay on the page under the overlay that opens on their query, and leave
+	// only when it closes — so waking up never removes content (no layout shift under the scrim).
+	const showFallback = keepFallback.value && initialResults !== undefined &&
 		(initialQuery ?? "").trim().length > 0;
 	const activeId = active.value >= 0 && options.value[active.value]
 		? ids.option(active.value)
@@ -425,15 +440,18 @@ export default function HelpSearch(props: HelpSearchProps): JSX.Element {
 						type="search"
 						name="q"
 						value={query.value}
-						placeholder={variant === "hero"
-							? "Search for answers, like “fund a stage”"
-							: "Search help"}
+						placeholder={variant === "hero" ? "Search help articles" : "Search help"}
 						autocomplete="off"
 						enterKeyHint="search"
+						aria-haspopup="dialog"
+						aria-keyshortcuts="/"
 						onInput={onTriggerInput}
 						onClick={() => openOverlay()}
 					/>
-					<Kbd class="hc-omni__kbd" size="sm">/</Kbd>
+					{/* The shortcut is exposed by `aria-keyshortcuts`; the chip is for the eye only. */}
+					<span class="hc-omni__kbd" aria-hidden="true">
+						<Kbd size="sm">/</Kbd>
+					</span>
 					<Tooltip content="Search">
 						<Button
 							class="hc-omni__submit"

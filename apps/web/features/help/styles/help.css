@@ -108,11 +108,31 @@
 	justify-content: space-between;
 	gap: var(--space-3) var(--space-5);
 	inline-size: 100%;
-	/* The category frame's width, so the trail and the search keep their place on its articles. */
 	max-inline-size: var(--container-lg);
 	margin-inline: auto;
 	padding-inline: var(--space-4);
 	padding-block-start: var(--space-5);
+}
+
+/*
+ * On an article the bar takes the document frame's geometry (document-layout.css), so the trail
+ * starts where the article does and the search ends with the reading column: the column is
+ * `--measure` resolved at the reading size (hence the font size here; the bar's children set their
+ * own), centred, inside the frame's `--doc-pad-inline` (`--space-4`). From 1024px of frame, when the
+ * article has a table of contents, the 14rem rail and its `--space-7` gap join on the start side —
+ * the values `--doc-rail-w` and `--doc-gap` hold. `.hc--article` is as wide as `.ui-doc`, so its
+ * `hc` container steps with the frame's own `ui-doc` queries.
+ */
+.hc--article .hc-bar {
+	--hc-doc-tracks: var(--measure);
+	max-inline-size: calc(var(--hc-doc-tracks) + 2 * var(--space-4));
+	font-size: var(--text-base);
+}
+
+@container hc (min-width: 1024px) {
+	.hc--article:has(.ui-doc__article--toc) .hc-bar {
+		--hc-doc-tracks: calc(14rem + var(--space-7) + var(--measure));
+	}
 }
 
 /* Inside the page frame (a category), the bar takes the frame's own width and padding. */
@@ -199,6 +219,18 @@
 	font-size: var(--text-md);
 }
 
+/*
+ * The 16px mobile floor (field.css): Safari on iOS zooms the viewport when a field under 16px takes
+ * focus and never zooms back. On a touch phone the compact bar's text steps up to the document base;
+ * the bar's height is fixed, so nothing reflows.
+ */
+@media (max-width: 767px) and (pointer: coarse) {
+	.hc-omni--compact .hc-omni__input,
+	.hc-omni--compact .hc-omni__input::placeholder {
+		font-size: max(var(--text-md), var(--text-base));
+	}
+}
+
 .hc-omni__input::placeholder {
 	color: var(--fld-placeholder-fg);
 	opacity: 1;
@@ -210,6 +242,7 @@
 
 /* The "/" hint is a keyboard affordance: a touch screen has no key to press. */
 .hc-omni__kbd {
+	display: inline-flex;
 	flex: none;
 }
 
@@ -315,6 +348,11 @@
 	font-size: var(--text-md);
 	line-height: var(--leading-normal);
 	color: var(--text-secondary);
+}
+
+/* A failed search: the status line says what happened; this holds the one way out under it. */
+.hc-results__retry {
+	padding: var(--space-1) var(--space-3) var(--space-4);
 }
 /* #endregion */
 
@@ -447,14 +485,29 @@
 	max-inline-size: var(--container-md);
 }
 
-/* Start here by role: four text lists, never cards. */
+/*
+ * Start here by role: four text lists, never cards — one column, then two by two, then four across,
+ * stepped on the page frame (`hc`), so it never reads as three plus an orphan.
+ */
 .hc-roles {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+	grid-template-columns: minmax(0, 1fr);
 	gap: var(--space-6) var(--space-5);
 	margin: 0;
 	padding: 0;
 	list-style: none;
+}
+
+@container hc (min-width: 30rem) {
+	.hc-roles {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@container hc (min-width: 56rem) {
+	.hc-roles {
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+	}
 }
 
 .hc-roles__label {
@@ -657,6 +710,10 @@
 	color: var(--on-surface);
 }
 
+/*
+ * The read time is §A.4's Meta register in the sans face, not the work order's "mono": the same
+ * ruling P0's DocumentHeader meta follows (Decision #273 (a)), recorded for P2 in Decision #275.
+ */
 .hc-articles__meta {
 	margin: var(--space-1) 0 0;
 	font-size: var(--text-sm);

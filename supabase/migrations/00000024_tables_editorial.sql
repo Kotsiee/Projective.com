@@ -45,8 +45,12 @@ CREATE TABLE editorial.help_categories (
     description text NOT NULL,
     icon text NOT NULL,
     CONSTRAINT help_categories_pkey PRIMARY KEY (slug),
-    CONSTRAINT help_categories_position_key UNIQUE (position),
+    -- Deferred to COMMIT: a regenerated 00005071 that reorders the Topics list swaps positions in one
+    -- upsert. Not an ON CONFLICT arbiter (slug is), so the generated upsert is unchanged.
+    CONSTRAINT help_categories_position_key UNIQUE (position) DEFERRABLE INITIALLY DEFERRED,
     CONSTRAINT help_categories_slug_format CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+    -- At most 80 characters, the help slug bound (HELP_CENTRE_SLUG_MAX) the articles share.
+    CONSTRAINT help_categories_slug_length CHECK (char_length(slug) <= 80),
     CONSTRAINT help_categories_position_check CHECK (position >= 0),
     CONSTRAINT help_categories_title_length CHECK (char_length(title) BETWEEN 1 AND 60),
     CONSTRAINT help_categories_description_length CHECK (char_length(description) BETWEEN 1 AND 200),
@@ -83,11 +87,17 @@ CREATE TABLE editorial.help_articles (
     -- delete that would orphan its articles is refused rather than cascaded.
     CONSTRAINT help_articles_category_slug_fkey
         FOREIGN KEY (category_slug) REFERENCES editorial.help_categories (slug) ON DELETE RESTRICT,
-    -- One article per place in a category, so a category reads in one authored order.
-    CONSTRAINT help_articles_category_position_key UNIQUE (category_slug, position),
+    -- One article per place in a category, so a category reads in one authored order. Both keys
+    -- below are deferred to COMMIT, so a regenerated 00005071 that reorders a category, moves an
+    -- article or re-ranks the FAQ (a swap inside one upsert) applies; neither is an ON CONFLICT
+    -- arbiter (slug is), so the generated upsert is unchanged.
+    CONSTRAINT help_articles_category_position_key UNIQUE (category_slug, position)
+        DEFERRABLE INITIALLY DEFERRED,
     -- One article per FAQ rank (NULLs — articles not in the FAQ — never collide).
-    CONSTRAINT help_articles_faq_rank_key UNIQUE (faq_rank),
+    CONSTRAINT help_articles_faq_rank_key UNIQUE (faq_rank) DEFERRABLE INITIALLY DEFERRED,
     CONSTRAINT help_articles_slug_format CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+    -- The bound a vote's article slug is held to (HELP_CENTRE_SLUG_MAX, help-feedback.ts).
+    CONSTRAINT help_articles_slug_length CHECK (char_length(slug) <= 80),
     CONSTRAINT help_articles_position_check CHECK (position >= 0),
     CONSTRAINT help_articles_title_length CHECK (char_length(title) BETWEEN 1 AND 120),
     CONSTRAINT help_articles_summary_length CHECK (char_length(summary) BETWEEN 1 AND 320),

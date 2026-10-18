@@ -69,35 +69,42 @@ answers the old address with a `308` to the new one.
 
 ### `editorial.help_categories`
 
-| Column        | Type     | Notes                                                                                                   |
-| :------------ | :------- | :------------------------------------------------------------------------------------------------------ |
-| `slug`        | text PK  | Readable and permanent (`help_categories_slug_format`: lower-case kebab).                               |
-| `position`    | smallint | NOT NULL, UNIQUE, ≥ 0 — the hub's Topics order.                                                         |
-| `title`       | text     | NOT NULL, 1–60 characters.                                                                              |
-| `description` | text     | NOT NULL, 1–200 characters — the topic row's one line and the category page's lead.                     |
-| `icon`        | text     | NOT NULL, one of the registry glyphs `HELP_CENTRE_CATEGORY_ICONS` names (`help_categories_icon_check`). |
+| Column        | Type     | Notes                                                                                                                                                    |
+| :------------ | :------- | :------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `slug`        | text PK  | Readable and permanent (`help_categories_slug_format`: lower-case kebab), at most 80 characters (`help_categories_slug_length`, `HELP_CENTRE_SLUG_MAX`). |
+| `position`    | smallint | NOT NULL, UNIQUE (`help_categories_position_key`, deferred — see **Order keys** below), ≥ 0 — the hub's Topics order.                                    |
+| `title`       | text     | NOT NULL, 1–60 characters.                                                                                                                               |
+| `description` | text     | NOT NULL, 1–200 characters — the topic row's one line and the category page's lead.                                                                      |
+| `icon`        | text     | NOT NULL, one of the registry glyphs `HELP_CENTRE_CATEGORY_ICONS` names (`help_categories_icon_check`).                                                  |
 
 Never hidden: no visibility column; a category with no visible article is left out of the hub by the
 service.
 
 ### `editorial.help_articles`
 
-| Column          | Type     | Notes                                                                                                                                                                                  |
-| :-------------- | :------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `slug`          | text PK  | Readable and permanent; globally unique (never equal to a category slug — `help.test.ts`).                                                                                             |
-| `category_slug` | text     | NOT NULL, FK → `help_categories(slug)` ON DELETE RESTRICT.                                                                                                                             |
-| `position`      | smallint | NOT NULL, ≥ 0; UNIQUE with `category_slug` (`help_articles_category_position_key`) — the order inside a category, and the previous / next pager.                                       |
-| `title`         | text     | NOT NULL, 1–120 characters.                                                                                                                                                            |
-| `summary`       | text     | NOT NULL, 1–320 characters — the lead, the meta description and the FAQ answer.                                                                                                        |
-| `roles`         | text[]   | NOT NULL, ≥ 1, ⊆ `{client, freelancer, team, business}` (`ContentAudience`, owner ruling (c)) — who it is written for; the meta line's "For …".                                        |
-| `start_here`    | text[]   | NOT NULL, default `{}`, ⊆ `roles` (`help_articles_start_here_check`) — the roles whose "Start here by role" column on the hub lists it (4–6 per role, `help.test.ts`).                 |
-| `related`       | text[]   | NOT NULL, default `{}`, ≤ 4, never itself (`help_articles_related_size`) — other article slugs in reading order. An array carries no FK, so `help.test.ts` checks every slug resolves. |
-| `faq_rank`      | smallint | Nullable, 1–8, UNIQUE — the article's place in the hub's FAQ (its FAQ flag). Set together with `faq_question` (`help_articles_faq_pair`).                                              |
-| `faq_question`  | text     | Nullable, 1–160 characters — the question as a reader asks it; the answer is `summary` plus a link to the article.                                                                     |
-| `sections`      | jsonb    | NOT NULL, a non-empty array (`help_articles_sections_shape`) of P0 `DocSection`s — ContentNode bodies, validated by `DocSectionSchema` and the anchor rule before generation.          |
-| `updated_on`    | date     | NOT NULL, ≥ `published_on` — when its facts were last checked against the product; the meta line's "Updated".                                                                          |
-| `published_on`  | date     | NOT NULL — shown from this UTC date.                                                                                                                                                   |
-| `archived_on`   | date     | Nullable, ≥ `published_on` — hidden from this UTC date (`help_articles_dates_order`). Content is retracted this way, never deleted.                                                    |
+| Column          | Type     | Notes                                                                                                                                                                                                                        |
+| :-------------- | :------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `slug`          | text PK  | Readable and permanent; globally unique (never equal to a category slug — `help.test.ts`); at most 80 characters (`help_articles_slug_length`), the bound a vote's article slug is held to as well (`HELP_CENTRE_SLUG_MAX`). |
+| `category_slug` | text     | NOT NULL, FK → `help_categories(slug)` ON DELETE RESTRICT.                                                                                                                                                                   |
+| `position`      | smallint | NOT NULL, ≥ 0; UNIQUE with `category_slug` (`help_articles_category_position_key`, deferred) — the order inside a category, and the previous / next pager.                                                                   |
+| `title`         | text     | NOT NULL, 1–120 characters.                                                                                                                                                                                                  |
+| `summary`       | text     | NOT NULL, 1–320 characters — the lead, the meta description and the FAQ answer.                                                                                                                                              |
+| `roles`         | text[]   | NOT NULL, ≥ 1, ⊆ `{client, freelancer, team, business}` (`ContentAudience`, owner ruling (c)) — who it is written for; the meta line's "For …".                                                                              |
+| `start_here`    | text[]   | NOT NULL, default `{}`, ⊆ `roles` (`help_articles_start_here_check`) — the roles whose "Start here by role" column on the hub lists it (4–6 per role, `help.test.ts`).                                                       |
+| `related`       | text[]   | NOT NULL, default `{}`, ≤ 4, never itself (`help_articles_related_size`) — other article slugs in reading order. An array carries no FK, so `help.test.ts` checks every slug resolves.                                       |
+| `faq_rank`      | smallint | Nullable, 1–8, UNIQUE (`help_articles_faq_rank_key`, deferred) — the article's place in the hub's FAQ (its FAQ flag). Set together with `faq_question` (`help_articles_faq_pair`).                                           |
+| `faq_question`  | text     | Nullable, 1–160 characters — the question as a reader asks it; the answer is `summary` plus a link to the article.                                                                                                           |
+| `sections`      | jsonb    | NOT NULL, a non-empty array (`help_articles_sections_shape`) of P0 `DocSection`s — ContentNode bodies, validated by `DocSectionSchema` and the anchor rule before generation.                                                |
+| `updated_on`    | date     | NOT NULL, ≥ `published_on` — when its facts were last checked against the product; the meta line's "Updated".                                                                                                                |
+| `published_on`  | date     | NOT NULL — shown from this UTC date.                                                                                                                                                                                         |
+| `archived_on`   | date     | Nullable, ≥ `published_on` — hidden from this UTC date (`help_articles_dates_order`). Content is retracted this way, never deleted.                                                                                          |
+
+**Order keys** — `help_categories_position_key`, `help_articles_category_position_key` and
+`help_articles_faq_rank_key` are `DEFERRABLE INITIALLY DEFERRED`: checked at COMMIT, so a
+regenerated `00005071` that reorders the Topics, a category or the FAQ — or moves an article — swaps
+places inside one by-slug upsert and applies on a database that is not rebuilt. None is an
+`ON CONFLICT` arbiter (`slug` is), so the generated upsert is unchanged; a real duplicate still
+fails at COMMIT (`supabase/probes/help_centre.sql` §4b).
 
 **Visibility** is `published_on <= today (UTC) AND (archived_on IS NULL OR archived_on > today)`,
 the table's `visible` predicate (`isHelpCentreArticleVisible`) and `help_articles_select_published`

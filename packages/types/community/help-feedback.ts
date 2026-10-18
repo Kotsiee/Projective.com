@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { timestamp, uuid } from "./common.ts";
+import { HELP_CENTRE_SLUG_MAX } from "../editorial/help.ts";
 
 /**
  * community.help_feedback — the Zod SSOT for the help centre's "Was this helpful?" votes (P2,
@@ -23,8 +24,11 @@ export const HELP_FEEDBACK_COMMENT_MAX = 280;
  */
 export const HELP_FEEDBACK_STORED_COMMENT_MAX = HELP_FEEDBACK_COMMENT_MAX * 5;
 
-/** An article slug as the request names it (the editorial slug rule). */
-const articleSlug = z.string().trim().toLowerCase().max(80).regex(
+/**
+ * An article slug as the request names it: the editorial slug rule, within the help articles' own
+ * bound ({@link HELP_CENTRE_SLUG_MAX}), so no published article is one a vote cannot name.
+ */
+const articleSlug = z.string().trim().toLowerCase().max(HELP_CENTRE_SLUG_MAX).regex(
 	/^[a-z0-9]+(?:-[a-z0-9]+)*$/,
 	"Name the article this is about.",
 );

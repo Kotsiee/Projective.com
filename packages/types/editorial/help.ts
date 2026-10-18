@@ -6,7 +6,7 @@ import {
 	DocSectionSchema,
 	IsoDateSchema,
 } from "../content/mod.ts";
-import { slug } from "./common.ts";
+import { slug as editorialSlug } from "./common.ts";
 
 /**
  * editorial.help — the Zod SSOT for the help centre's content (P2, Decision #274): the rows of
@@ -27,6 +27,18 @@ import { slug } from "./common.ts";
  * `HelpArticle` / `HelpArticleSchema` already name the Explore home's editorial promo link
  * (`explore/items.ts`).
  */
+
+// #region Slugs
+/**
+ * The longest help slug — a category's or an article's (`help_categories_slug_length`,
+ * `help_articles_slug_length`). A "Was this helpful?" vote names its article within the same bound
+ * (`@projective/types/community` help-feedback), so every published article can be voted on.
+ */
+export const HELP_CENTRE_SLUG_MAX = 80;
+
+/** A help category or article slug: the editorial slug rule, at most {@link HELP_CENTRE_SLUG_MAX}. */
+const slug = editorialSlug.max(HELP_CENTRE_SLUG_MAX);
+// #endregion
 
 // #region Categories
 /**

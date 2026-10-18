@@ -1,7 +1,12 @@
 import { assert, assertEquals, assertFalse } from "@std/assert";
 import { renderToString } from "npm:preact-render-to-string@^6.7.0";
 import type { HelpCentreSearchResult } from "@projective/types/editorial";
-import { HELP_CONTACT_HREF, HELP_DISPUTE_HREF, HelpStillStuck } from "./HelpStillStuck.tsx";
+import {
+	HELP_CONTACT_HREF,
+	HELP_DISPUTE_HREF,
+	HELP_DISPUTE_LABEL,
+	HelpStillStuck,
+} from "./HelpStillStuck.tsx";
 import { HelpHit } from "./HelpHit.tsx";
 
 /** The help centre's two island-free components, rendered to markup. */
@@ -21,12 +26,16 @@ const hit: HelpCentreSearchResult = {
 	highlights: { title: [[4, 9]], snippet: [[14, 19]] },
 };
 
-Deno.test("Still stuck? — Contact support always, Raise a dispute only when signed in, the fill last", () => {
+Deno.test("Still stuck? — Contact support always, the disputes link only when signed in, the fill last", () => {
 	const guest = render(<HelpStillStuck signedIn={false} />);
 	const member = render(<HelpStillStuck signedIn />);
 	assert(guest.includes(`href="${HELP_CONTACT_HREF.replace("&", "&amp;")}"`));
 	assertFalse(guest.includes(HELP_DISPUTE_HREF));
 	assert(member.includes(HELP_DISPUTE_HREF));
+	// It opens an article, so it is labelled for that, not as an action it does not perform.
+	assert(HELP_DISPUTE_HREF.startsWith("/help/"));
+	assert(member.includes(`<span class="ui-button__label">${HELP_DISPUTE_LABEL}</span>`));
+	assertFalse(member.includes("Raise a dispute"));
 	assert(
 		member.indexOf("ui-button--outlined") < member.indexOf("ui-button--filled"),
 		"the filled commit is last in the inline order",

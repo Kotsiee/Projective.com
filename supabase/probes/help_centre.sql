@@ -9,6 +9,9 @@
 --   2. The generated seed (00005071): eight categories, at least thirty articles, FAQ ranks 1–8.
 --   3. Visibility: anon reads every published article and none dated in the future or archived.
 --   4. Permanent slugs: a slug UPDATE is refused (23514); a title edit and a by-slug upsert keep it.
+--      4b. The order keys are DEFERRABLE INITIALLY DEFERRED: a regenerated seed's upsert that swaps
+--      two FAQ ranks, two places in a category or two Topics places applies; a real duplicate is
+--      still refused (23505) once checked; a slug over 80 characters is refused on both tables.
 --   5. The writer as a guest: a vote lands with no voter; a "No" comment is masked through
 --      comms.mask_pii with its categories; a comment with "Yes", an over-long comment and a NULL
 --      answer are refused (22023); an unpublished or unknown article is refused (PH404).
@@ -165,6 +168,91 @@ BEGIN
         RAISE NOTICE 'PASS a category slug change is refused [%]', SQLSTATE;
     END;
     RAISE NOTICE 'PASS a title edit and a by-slug upsert leave the slug alone';
+END $$;
+-- #endregion
+
+-- #region 4b. A regenerated seed that reorders applies (as postgres)
+-- The order keys are deferred to COMMIT, so the generator's by-slug upsert can swap two places in one
+-- statement — a re-ranked FAQ, a reordered category, a reordered Topics list. SET CONSTRAINTS …
+-- IMMEDIATE then checks them here, before the ROLLBACK, and a real duplicate is still refused.
+DO $$
+DECLARE
+    v_fail text[] := '{}';
+    v_a text;
+    v_b text;
+    v_first text;
+BEGIN
+    SELECT array_agg(conname::text ORDER BY conname) FILTER (WHERE NOT (condeferrable AND condeferred))
+    INTO v_fail
+    FROM pg_constraint
+    WHERE conname IN ('help_categories_position_key', 'help_articles_category_position_key', 'help_articles_faq_rank_key')
+        AND connamespace = 'editorial'::regnamespace;
+    IF v_fail IS NOT NULL OR (SELECT count(*) FROM pg_constraint
+        WHERE conname IN ('help_categories_position_key', 'help_articles_category_position_key', 'help_articles_faq_rank_key')
+            AND connamespace = 'editorial'::regnamespace) <> 3 THEN
+        RAISE EXCEPTION 'FAIL an order key is missing or not DEFERRABLE INITIALLY DEFERRED: %', v_fail;
+    END IF;
+
+    -- The FAQ's first two questions swap ranks, through the generated upsert's own shape.
+    SELECT slug INTO v_a FROM editorial.help_articles WHERE faq_rank = 1;
+    SELECT slug INTO v_b FROM editorial.help_articles WHERE faq_rank = 2;
+    INSERT INTO editorial.help_articles (slug, category_slug, position, title, summary, roles, sections, updated_on, published_on, faq_rank, faq_question)
+    SELECT s.slug, s.category_slug, s.position, s.title, s.summary, s.roles, s.sections, s.updated_on, s.published_on,
+        CASE WHEN s.slug = v_a THEN 2 ELSE 1 END, s.faq_question
+    FROM editorial.help_articles s
+    WHERE s.slug IN (v_a, v_b)
+    ON CONFLICT ("slug") DO UPDATE SET "faq_rank" = EXCLUDED."faq_rank", "faq_question" = EXCLUDED."faq_question";
+
+    -- A category's first two articles swap places.
+    INSERT INTO editorial.help_articles (slug, category_slug, position, title, summary, roles, sections, updated_on, published_on)
+    SELECT s.slug, s.category_slug, 1 - s.position, s.title, s.summary, s.roles, s.sections, s.updated_on, s.published_on
+    FROM editorial.help_articles s
+    WHERE s.category_slug = 'escrow-and-payments' AND s.position IN (0, 1)
+    ON CONFLICT ("slug") DO UPDATE SET "position" = EXCLUDED."position";
+
+    -- The Topics list's first two categories swap places.
+    INSERT INTO editorial.help_categories (slug, position, title, description, icon)
+    SELECT c.slug, 1 - c.position, c.title, c.description, c.icon
+    FROM editorial.help_categories c
+    WHERE c.position IN (0, 1)
+    ON CONFLICT ("slug") DO UPDATE SET "position" = EXCLUDED."position";
+
+    SET CONSTRAINTS editorial.help_categories_position_key, editorial.help_articles_category_position_key,
+        editorial.help_articles_faq_rank_key IMMEDIATE;
+
+    SELECT slug INTO v_first FROM editorial.help_articles WHERE faq_rank = 1;
+    IF v_first IS DISTINCT FROM v_b OR (SELECT slug FROM editorial.help_articles WHERE faq_rank = 2) IS DISTINCT FROM v_a THEN
+        RAISE EXCEPTION 'FAIL the FAQ swap did not land: rank 1 is %', v_first;
+    END IF;
+    RAISE NOTICE 'PASS a reordered upsert applies: FAQ ranks swapped (% ↔ %), a category reordered, the Topics reordered', v_a, v_b;
+
+    BEGIN
+        UPDATE editorial.help_articles SET faq_rank = 1 WHERE slug = v_a;
+        RAISE EXCEPTION 'FAIL two articles share FAQ rank 1';
+    EXCEPTION WHEN unique_violation THEN
+        RAISE NOTICE 'PASS a real duplicate rank is still refused [%]', SQLSTATE;
+    END;
+
+    SET CONSTRAINTS editorial.help_categories_position_key, editorial.help_articles_category_position_key,
+        editorial.help_articles_faq_rank_key DEFERRED;
+
+    -- One slug bound for both tables and a vote (HELP_CENTRE_SLUG_MAX = 80).
+    BEGIN
+        INSERT INTO editorial.help_categories (slug, position, title, description, icon)
+        VALUES (repeat('a', 81), 99, 'X', 'X.', 'flag');
+        RAISE EXCEPTION 'FAIL an 81-character category slug was accepted';
+    EXCEPTION WHEN check_violation THEN
+        RAISE NOTICE 'PASS an 81-character category slug is refused [%]', SQLSTATE;
+    END;
+    BEGIN
+        INSERT INTO editorial.help_articles (slug, category_slug, position, title, summary, roles, sections, updated_on, published_on)
+        VALUES (repeat('a', 81), 'getting-started', 950, 'X', 'X.', ARRAY['client']::text[],
+            '[{"id":"a","heading":"A","body":[{"type":"p","content":"x"}]}]'::jsonb,
+            (now() AT TIME ZONE 'UTC')::date, (now() AT TIME ZONE 'UTC')::date);
+        RAISE EXCEPTION 'FAIL an 81-character article slug was accepted';
+    EXCEPTION WHEN check_violation THEN
+        RAISE NOTICE 'PASS an 81-character article slug is refused [%]', SQLSTATE;
+    END;
 END $$;
 -- #endregion
 

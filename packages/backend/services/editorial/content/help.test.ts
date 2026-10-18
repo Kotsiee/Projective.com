@@ -5,7 +5,13 @@ import {
 	type ContentAudience,
 	RESERVED_ANCHOR_IDS,
 } from "@projective/types/content";
-import { HELP_CENTRE_FAQ_SIZE, HELP_CENTRE_RELATED_MAX } from "@projective/types/editorial";
+import { HelpFeedbackInputSchema } from "@projective/types/community";
+import {
+	HELP_CENTRE_FAQ_SIZE,
+	HELP_CENTRE_RELATED_MAX,
+	HELP_CENTRE_SLUG_MAX,
+	HelpCentreCategoryRowSchema,
+} from "@projective/types/editorial";
 import { recordsFromRows } from "../../../core/row-mapper.ts";
 import {
 	HELP_ARTICLE_CONTENT,
@@ -13,6 +19,7 @@ import {
 	HELP_ARTICLES,
 	HELP_CATEGORIES,
 	HELP_CATEGORY_CONTENT,
+	HELP_CATEGORY_TABLE,
 	HELP_CONTENT,
 } from "./help.ts";
 
@@ -191,4 +198,14 @@ Deno.test("every article's source cites the spec section or decision it explains
 		cited += calls;
 	}
 	assertEquals(cited, HELP_ARTICLES.length);
+});
+
+Deno.test("help slugs stay within the one bound the tables and a vote share", () => {
+	for (const slug of [...HELP_CATEGORIES.map((c) => c.slug), ...HELP_ARTICLES.map((a) => a.slug)]) {
+		assert(slug.length <= HELP_CENTRE_SLUG_MAX, slug);
+	}
+	const long = "a".repeat(HELP_CENTRE_SLUG_MAX);
+	assert(HelpFeedbackInputSchema.safeParse({ slug: long, helpful: true }).success);
+	const row = { ...HELP_CATEGORY_TABLE.toRow(HELP_CATEGORIES[0]), slug: `${long}a` };
+	assert(!HelpCentreCategoryRowSchema.safeParse(row).success, "an over-long slug is refused");
 });

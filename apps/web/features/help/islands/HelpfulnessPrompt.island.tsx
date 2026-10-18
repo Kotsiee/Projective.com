@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { useEffect, useRef } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import "../styles/help.css";
 import { HELP_FEEDBACK_COMMENT_MAX } from "@projective/types/community";
@@ -23,12 +24,21 @@ export interface HelpfulnessPromptProps {
 // #endregion
 
 /** What the block shows. */
-type Phase = "ask" | "comment" | "sending" | "thanks" | "thanks-yes" | "thanks-no" | "error";
+type Phase = "ask" | "comment" | "thanks" | "thanks-yes" | "thanks-no" | "error";
+
+/** Which control's answer is on its way: the "Yes", the note's "Send", or its "Skip". */
+type Sending = "yes" | "send" | "skip";
 
 /**
  * HelpfulnessPrompt — "Was this helpful?" under a help article (P2 §2–§3): plain text and two
  * outlined buttons; a "No" opens an optional 280-character note before it is sent; a sent answer
  * becomes one quiet thank-you line, announced through a polite live region — no toast.
+ *
+ * While an answer is on its way, the form that sent it stays mounted: the pressed control is marked
+ * busy and every control `aria-disabled` (never `disabled`, which would drop the focus to `<body>`),
+ * and a second press is ignored. A note that fails to send keeps its text and shows the error inside
+ * its own form. Once the answer lands, focus moves to the block's heading, so a keyboard or
+ * screen-reader user stays in the block while the live region reads the thank-you.
  *
  * Without JavaScript it is a real form (`POST /api/help/feedback`, `helpful=yes|no`), and the route
  * answers with a 303 back to this block with `?helpful=thanks`, which the page passes as `outcome`.
@@ -44,12 +54,22 @@ export default function HelpfulnessPrompt(props: HelpfulnessPromptProps): JSX.El
 	const failure = useSignal<string | null>(
 		outcome === "error" ? "That didn't go through. Please try again." : null,
 	);
+	const sending = useSignal<Sending | null>(null);
+	const headingRef = useRef<HTMLHeadingElement>(null);
+	/** Set when an answer this island sent has landed: the next render moves focus to the heading. */
+	const focusHeading = useRef(false);
 	const noteId = `${FEEDBACK_ANCHOR}-note`;
 	const countId = `${FEEDBACK_ANCHOR}-count`;
 
-	async function send(helpful: boolean, note?: string): Promise<void> {
-		phase.value = "sending";
+	/**
+	 * Sends one answer from `from`. On a refusal the reader stays where they were — the Yes/No
+	 * buttons, or the note with its text — and the error shows there.
+	 */
+	async function send(from: Sending, helpful: boolean, note?: string): Promise<void> {
+		if (sending.value !== null) return;
+		sending.value = from;
 		failure.value = null;
+		const stay: Phase = from === "yes" ? "error" : "comment";
 		try {
 			const res = await fetch("/api/help/feedback", {
 				method: "POST",
@@ -61,32 +81,56 @@ export default function HelpfulnessPrompt(props: HelpfulnessPromptProps): JSX.El
 				failure.value = res.status === 429
 					? "You've answered a lot in a short time. Please try again later."
 					: body.message ?? "That didn't go through. Please try again.";
-				phase.value = "error";
+				phase.value = stay;
 				return;
 			}
+			focusHeading.current = true;
 			phase.value = helpful ? "thanks-yes" : "thanks-no";
 		} catch {
 			failure.value = "That didn't go through. Check your connection and try again.";
-			phase.value = "error";
+			phase.value = stay;
+		} finally {
+			sending.value = null;
 		}
 	}
 
 	const onChoose = (e: JSX.TargetedMouseEvent<HTMLButtonElement>, helpful: boolean) => {
 		e.preventDefault();
+		if (sending.value !== null) return;
 		if (helpful) {
-			void send(true);
+			void send("yes", true);
 			return;
 		}
+		failure.value = null;
 		phase.value = "comment";
 		globalThis.setTimeout(() => document.getElementById(noteId)?.focus(), 0);
 	};
 
 	const remaining = HELP_FEEDBACK_COMMENT_MAX - comment.value.length;
 	const p = phase.value;
+	const busy = sending.value;
+
+	// The answer landed and the form that held the focus is gone: keep the reader in the block.
+	useEffect(() => {
+		if (!focusHeading.current || !p.startsWith("thanks")) return;
+		focusHeading.current = false;
+		headingRef.current?.focus();
+	}, [p]);
+
+	/**
+	 * The marks a control carries while an answer is on its way: inert, and busy if it sent it
+	 * (`own` is the answer it sends; `null` for "No", which only opens the note).
+	 */
+	const pending = (own: Sending | null) => ({
+		"aria-disabled": busy !== null ? "true" as const : undefined,
+		"aria-busy": busy !== null && busy === own ? "true" as const : undefined,
+	});
 
 	return (
 		<section class="hc-helpful" aria-labelledby={FEEDBACK_ANCHOR}>
-			<h2 id={FEEDBACK_ANCHOR} class="hc-after__title">Was this helpful?</h2>
+			<h2 id={FEEDBACK_ANCHOR} class="hc-after__title" tabIndex={-1} ref={headingRef}>
+				Was this helpful?
+			</h2>
 
 			<div role="status" aria-live="polite">
 				{p === "thanks" && <p class="hc-helpful__thanks">Thanks for telling us.</p>}
@@ -101,7 +145,7 @@ export default function HelpfulnessPrompt(props: HelpfulnessPromptProps): JSX.El
 				)}
 			</div>
 
-			{(p === "ask" || p === "error" || p === "sending") && (
+			{(p === "ask" || p === "error") && (
 				<form class="hc-helpful__form" method="post" action="/api/help/feedback">
 					<input type="hidden" name={FEEDBACK_FIELD.slug} value={slug} />
 					<input type="hidden" name={FEEDBACK_FIELD.back} value={path} />
@@ -113,7 +157,7 @@ export default function HelpfulnessPrompt(props: HelpfulnessPromptProps): JSX.El
 							severity="neutral"
 							variant="outlined"
 							label="Yes"
-							disabled={p === "sending"}
+							{...pending("yes")}
 							onClick={(e: JSX.TargetedMouseEvent<HTMLButtonElement>) =>
 								onChoose(e, true)}
 						/>
@@ -124,7 +168,7 @@ export default function HelpfulnessPrompt(props: HelpfulnessPromptProps): JSX.El
 							severity="neutral"
 							variant="outlined"
 							label="No"
-							disabled={p === "sending"}
+							{...pending(null)}
 							onClick={(e: JSX.TargetedMouseEvent<HTMLButtonElement>) =>
 								onChoose(e, false)}
 						/>
@@ -140,7 +184,7 @@ export default function HelpfulnessPrompt(props: HelpfulnessPromptProps): JSX.El
 					class="hc-helpful__form"
 					onSubmit={(e) => {
 						e.preventDefault();
-						void send(false, comment.value);
+						void send("send", false, comment.value);
 					}}
 				>
 					<div class="hc-helpful__field">
@@ -166,10 +210,12 @@ export default function HelpfulnessPrompt(props: HelpfulnessPromptProps): JSX.El
 							variant="text"
 							severity="secondary"
 							label="Skip"
-							onClick={() => void send(false)}
+							{...pending("skip")}
+							onClick={() => void send("skip", false)}
 						/>
-						<Button type="submit" label="Send" />
+						<Button type="submit" label="Send" {...pending("send")} />
 					</div>
+					{failure.value && <p class="hc-helpful__error" role="alert">{failure.value}</p>}
 				</form>
 			)}
 		</section>
