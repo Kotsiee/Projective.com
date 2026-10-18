@@ -38,6 +38,11 @@ function copyFor(status: number): ErrorCopy {
  * route lands here. A 5xx is recorded through the fat {@link LogBackendService} (console with its
  * stack, plus an `ops.log_entries` row when logging is live); 4xx are expected traffic and are not.
  * `/api/*` callers get the JSON failure envelope instead of a page.
+ *
+ * The page is the root fallback — it renders outside every group layout (no shell), so its one `<h1>`
+ * is the empty state's title, and `EmptyState`'s sheet is global (`client.ts`) because no island on
+ * this page carries it. The public editorial routes answer their own 404s in their frames instead
+ * (help, articles, legal, changelog).
  */
 export const handler = define.handlers(async (ctx) => {
 	const status = ctx.error instanceof HttpError ? ctx.error.status : 500;
@@ -63,6 +68,7 @@ export default define.page<typeof handler>(function ErrorPage({ data }) {
 		<Container as="main" size="md" class="page">
 			<EmptyState
 				size="lg"
+				heading={1}
 				title={title}
 				description={description}
 				actions={

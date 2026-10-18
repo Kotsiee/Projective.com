@@ -96,10 +96,12 @@ export {
 	docText,
 	formatContentDate,
 	inlineText,
+	isStorableText,
 	nodesText,
 	nodeText,
 	readingMinutes,
 	runText,
+	UNSTORABLE_TEXT_MESSAGE,
 	wordCount,
 } from "./text.ts";
 // The sample document is NOT re-exported here: it parses at import time, and a barrel import from an

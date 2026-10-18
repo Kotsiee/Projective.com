@@ -146,6 +146,33 @@ Deno.test("live path: the writer's address guard maps to the email field", async
 	assert(result.errors?.email);
 });
 
+Deno.test("an address with a NUL or a lone surrogate is a 422 before the writer, and after it", async () => {
+	let calls = 0;
+	const reached: NewsletterSubscribeRpc = () => {
+		calls++;
+		return Promise.resolve({ data: null, error: null });
+	};
+	for (const bad of ["\u0000", "\ud800"]) {
+		const result = await NewsletterBackendService.subscribe(
+			{ email: `r${bad}.1@example.com` },
+			{ live: true, rpc: reached, limiter: limiter() },
+		);
+		assertEquals(result.status, 422);
+		assertEquals(result.errors?.email, "Enter a valid email address.");
+	}
+	assertEquals(calls, 0, "the schema refuses it; the writer is never called");
+	for (const code of ["22P05", "PGRST102"]) {
+		const rpc: NewsletterSubscribeRpc = () =>
+			Promise.resolve({ data: null, error: { code, message: "unreadable" } });
+		const result = await NewsletterBackendService.subscribe(
+			{ email: "r@example.com" },
+			{ live: true, rpc, limiter: limiter() },
+		);
+		assertEquals(result.status, 422, `${code} is malformed input, not an outage`);
+		assert(result.errors?.email);
+	}
+});
+
 Deno.test("live path: a drifted writer answer is refused (502)", async () => {
 	const rpc: NewsletterSubscribeRpc = () =>
 		Promise.resolve({ data: { email: "r@example.com", outcome: "added" }, error: null });

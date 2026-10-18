@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { HELP_CENTRE_CATEGORY_SLUGS } from "../editorial/help-categories.ts";
+import { isStorableText, UNSTORABLE_TEXT_MESSAGE } from "../content/text.ts";
 
 /**
  * contact.intake — the Zod SSOT for `/contact` (Decision #276): the four intents, what each one
@@ -13,8 +14,8 @@ import { HELP_CENTRE_CATEGORY_SLUGS } from "../editorial/help-categories.ts";
  * payload keys, the intents, the statuses and the reference format are mirrored by the table's
  * CHECKs and the writer's guards value for value (`contact.contract.test.ts` reads the migrations).
  *
- * CSS-free and dependency-light (zod, and the help centre's Zod-free category slugs), so an island
- * may import it.
+ * CSS-free and dependency-light (zod, the help centre's Zod-free category slugs and the schema-free
+ * storable-text rule), so an island may import it.
  */
 
 // #region Primitives
@@ -40,24 +41,37 @@ export const CONTACT_LIMITS = {
 } as const;
 
 const EMAIL_MESSAGE = "Enter a valid email address.";
+/**
+ * Every free-text field the writer stores holds only storable text ({@link isStorableText}): a NUL
+ * or a lone surrogate is a 422 naming the field, never a 503 from Postgres (22P05) or PostgREST.
+ */
+const storable = <S extends z.ZodString>(schema: S, message = UNSTORABLE_TEXT_MESSAGE) =>
+	schema.refine(isStorableText, message);
 /** The permissive structure check the auth feature and the newsletter use (`EMAIL_RE`). */
-const email = z.string().trim().max(CONTACT_LIMITS.email, EMAIL_MESSAGE).regex(
-	/^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+const email = storable(
+	z.string().trim().max(CONTACT_LIMITS.email, EMAIL_MESSAGE).regex(
+		/^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+		EMAIL_MESSAGE,
+	),
 	EMAIL_MESSAGE,
 );
-const name = z.string().trim().min(1, "Tell us your name.").max(
-	CONTACT_LIMITS.name,
-	`Keep your name under ${CONTACT_LIMITS.name} characters.`,
+const name = storable(
+	z.string().trim().min(1, "Tell us your name.").max(
+		CONTACT_LIMITS.name,
+		`Keep your name under ${CONTACT_LIMITS.name} characters.`,
+	),
 );
-const message = z.string().trim()
-	.min(
-		CONTACT_LIMITS.messageMin,
-		`Tell us a little more — at least ${CONTACT_LIMITS.messageMin} characters.`,
-	)
-	.max(
-		CONTACT_LIMITS.messageMax,
-		`Keep it under ${CONTACT_LIMITS.messageMax.toLocaleString("en-GB")} characters.`,
-	);
+const message = storable(
+	z.string().trim()
+		.min(
+			CONTACT_LIMITS.messageMin,
+			`Tell us a little more — at least ${CONTACT_LIMITS.messageMin} characters.`,
+		)
+		.max(
+			CONTACT_LIMITS.messageMax,
+			`Keep it under ${CONTACT_LIMITS.messageMax.toLocaleString("en-GB")} characters.`,
+		),
+);
 /**
  * The honeypot, `ctc_hp`. A real visitor never sees or fills it (it sits off-screen, out of the tab
  * order, `autocomplete="off"`); a form-filling script does. Named so no autofill or identity-fill
@@ -202,7 +216,9 @@ const SalesSubmission = z.object({
 	intent: z.literal("sales"),
 	name,
 	email,
-	company: z.string().trim().min(1, "Tell us your company's name.").max(CONTACT_LIMITS.company),
+	company: storable(
+		z.string().trim().min(1, "Tell us your company's name.").max(CONTACT_LIMITS.company),
+	),
 	companySize: ContactCompanySize,
 	budget: ContactBudget,
 	message,
@@ -230,9 +246,9 @@ const DisputeSubmission = z.object({
 	 * re-resolves it against the caller's engagements and stores what it found, never this string
 	 * alone, so a request cannot name an engagement its sender is not on.
 	 */
-	engagementSlug: z.string().trim().max(120).optional().default(""),
+	engagementSlug: storable(z.string().trim().max(120)).optional().default(""),
 	/** A guest's free-text pointer: a project link, an invoice or payment reference. */
-	referenceId: z.string().trim().max(CONTACT_LIMITS.referenceId).optional().default(""),
+	referenceId: storable(z.string().trim().max(CONTACT_LIMITS.referenceId)).optional().default(""),
 	message,
 	attachmentIds,
 	ctc_hp: honeypot,

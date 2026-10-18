@@ -2454,7 +2454,20 @@ Deno 2.x provides a hardened environment that we strictly configure through perm
   `--allow-net`, `--allow-env`). We never use `--allow-all` in production.
 - **Input Validation:** Every API route handler uses Zod schemas from `@projective/types` to parse
   and validate request bodies before calling any Service. This prevents SQL injection and malformed
-  data from reaching the logic layer.
+  data from reaching the logic layer. Every free-text field of a public write (contact, newsletter,
+  help feedback, feedback ideas) also refines with `isStorableText`
+  (`@projective/types/content/text`): a NUL, another C0 control or an unpaired UTF-16 surrogate is a
+  422 field error, never a 503 from Postgres (`22P05`) or PostgREST (`PGRST102`); a service that
+  still meets either code answers 422 (`isUnstorableInputError`, `packages/backend/core/text.ts`) —
+  Decision #296 (A).
+- **Per-IP rate-limit keys:** one helper, `apps/web/utils/client-key.ts` `clientKey(remoteAddr,
+  headers)`. The key is the socket's peer. Under the Vite dev server Fresh passes no connection info
+  (its placeholder `localhost:1234` for every caller), so the serve-only
+  `projective:dev-client-address` plugin overwrites `x-projective-dev-remote` with the TCP peer and
+  the helper reads it only for that placeholder — never in production, where `deno serve` passes the
+  real peer. **No forwarded header is trusted:** behind a reverse proxy every caller is the proxy
+  and a per-IP limit becomes one bucket per proxy, so such a deployment must wire the proxy's own
+  client-address header into this one function (Decision #296 (F)).
 - **Content Security Policy (CSP):** every response gets one policy, built by the pure
   `apps/web/utils/csp.ts` and set by the global `routes/_middleware.ts` (only when the response has
   none of its own). Third-party origins are exactly the ones a page talks to: **Stripe** —

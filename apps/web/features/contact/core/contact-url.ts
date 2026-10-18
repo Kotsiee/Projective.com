@@ -91,7 +91,10 @@ export function contactSentHref(intent: ContactIntent): string {
 	return contactHref(intent, { sent: "1" });
 }
 
-/** The sign-in link the dispute intent offers a guest, returning them to the dispute form. */
+/**
+ * The sign-in link offered to a guest, returning them to the intent's form: the dispute form's "Sign
+ * in to continue", and each form's "Sign in to attach files" (its own intent).
+ */
 export function contactLoginHref(intent: ContactIntent = "dispute"): string {
 	return `/login?redirectTo=${encodeURIComponent(contactHref(intent))}`;
 }

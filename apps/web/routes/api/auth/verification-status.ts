@@ -3,11 +3,7 @@ import { safeRedirect } from "@features/auth/core/redirect.ts";
 import { toAuthResponse } from "@features/auth/core/respond.ts";
 import { PENDING_VERIFICATION_COOKIE, readCookies } from "@web/utils/auth-cookies.ts";
 import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
-
-/** The caller's transport address, the rate-limit key for a poll no valid cookie names. */
-function clientKey(remote: Deno.Addr): string {
-	return "hostname" in remote ? remote.hostname : remote.transport;
-}
+import { clientKey } from "@web/utils/client-key.ts";
 
 /**
  * `GET /api/auth/verification-status?redirectTo=` — the `/verify` page's confirmation poll (Decision
@@ -27,7 +23,8 @@ export const handler = define.handlers({
 	async GET(ctx) {
 		const result = await AuthBackendService.getVerificationStatus({
 			pendingToken: readCookies(ctx.req)[PENDING_VERIFICATION_COOKIE],
-			clientKey: clientKey(ctx.info.remoteAddr),
+			// The caller's transport address — the rate-limit key for a poll no valid cookie names.
+			clientKey: clientKey(ctx.info.remoteAddr, ctx.req.headers),
 			hasSession: ctx.state.isAuthenticated === true,
 			redirectTo: safeRedirect(ctx.url.searchParams.get("redirectTo")),
 		});

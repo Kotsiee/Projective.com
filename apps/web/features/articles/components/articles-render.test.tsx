@@ -9,6 +9,7 @@ import {
 } from "@features/marketing/components/DocumentPageView.tsx";
 import { ArticlesIndexView, indexSummary } from "./ArticlesIndexView.tsx";
 import { ArticleReaderView } from "./ArticleReaderView.tsx";
+import { ArticleMissingView } from "./ArticleMissingView.tsx";
 
 /**
  * The article surfaces as the server renders them (P6): exactly one `<h1>`, the landmarks and roles a
@@ -215,5 +216,14 @@ Deno.test("reader: the footer holds the author, the topics as filter links and r
 	assertEquals(count(html, "artl-tile--compact"), 3);
 	assertMatch(html, /Related reading/);
 	assertMatch(html, /href="\/articles"[^>]*>.*All articles/s);
+});
+
+Deno.test("reader: an address with no visible article is a notice in the reading frame, one h1", () => {
+	const html = renderToString(<ArticleMissingView carrier={<i class="probe-carrier" />} />);
+	assertEquals(count(html, /<h1[\s>]/), 1);
+	assertMatch(html, /class="ui-doc artl-notice"/);
+	assertMatch(html, /That article doesn(&#39;|')t exist/);
+	assertMatch(html, /<p class="artl-notice__actions"><a [^>]*href="\/articles"/);
+	assertMatch(html, /<i class="probe-carrier"><\/i>/, "the surface's island carries the sheet");
 });
 // #endregion

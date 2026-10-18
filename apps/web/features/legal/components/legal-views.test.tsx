@@ -14,6 +14,7 @@ import {
 	versionOptionLabel,
 } from "./LegalDocumentView.tsx";
 import { LegalHubView } from "./LegalHubView.tsx";
+import { LegalMissingView } from "./LegalMissingView.tsx";
 
 const TODAY = "2026-10-17";
 
@@ -219,5 +220,26 @@ Deno.test("legal hub: one h1, the library draft disclosure, every document as a 
 		/<span class="lgl-facts__sep" aria-hidden="true">·<\/span>Updated <time datetime="2026-10-17">/,
 	);
 	assert(html.includes('href="/contact?intent=support"'));
+});
+// #endregion
+
+// #region Not found
+Deno.test("not found: an unknown document names the hub; an unknown version names today's too", () => {
+	const doc = tidy(renderToString(<LegalMissingView document={null} />));
+	assertEquals(count(doc, /<h1[\s>]/), 1);
+	assertMatch(doc, /class="ui-doc lgl-notice"/);
+	assertMatch(doc, /That legal document doesn(&#39;|')t exist/);
+	assertEquals(count(doc, 'href="/legal"'), 1);
+
+	const version = tidy(renderToString(
+		<LegalMissingView document={{ title: "Terms of Service", href: "/legal/terms" }} />,
+	));
+	assertEquals(count(version, /<h1[\s>]/), 1);
+	assertMatch(version, /The Terms of Service has no version by that number/);
+	assert(
+		version.indexOf('href="/legal/terms"') < version.indexOf('href="/legal"'),
+		"today's version first, then the hub",
+	);
+	assertEquals(count(version, "ui-button--outlined"), 1);
 });
 // #endregion

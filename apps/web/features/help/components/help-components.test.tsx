@@ -8,8 +8,9 @@ import {
 	HelpStillStuck,
 } from "./HelpStillStuck.tsx";
 import { HelpHit } from "./HelpHit.tsx";
+import { HelpNotFound } from "./HelpNotFound.tsx";
 
-/** The help centre's two island-free components, rendered to markup. */
+/** The help centre's island-free components, rendered to markup. */
 
 /** Rendered markup with the whitespace the precompiled JSX leaves inside a tag removed. */
 function render(node: Parameters<typeof renderToString>[0]): string {
@@ -52,4 +53,15 @@ Deno.test("a hit marks its matched runs, as a plain link or as a listbox option"
 	assert(option.includes('role="option"'));
 	assert(option.includes('aria-selected="true"'));
 	assert(option.includes('tabindex="-1"'));
+});
+
+Deno.test("not found: one h1 in the help frame, the search slot, a way back to /help and Still stuck?", () => {
+	const html = render(
+		<HelpNotFound search={<div class="probe-search" />} signedIn={false} />,
+	);
+	assertEquals(html.match(/<h1[\s>]/g)?.length, 1);
+	assert(html.startsWith('<div class="hc hc--missing">'));
+	assert(html.includes('<div class="probe-search"></div>'), "the search island is slotted in");
+	assert(html.includes('href="/help"'));
+	assert(html.includes('id="hc-stuck-title"'));
 });

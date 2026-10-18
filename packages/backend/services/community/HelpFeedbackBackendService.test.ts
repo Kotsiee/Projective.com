@@ -88,6 +88,8 @@ Deno.test("live: the writer's refusals map to statuses", async () => {
 		["PH404", 404],
 		["PH429", 429],
 		["22023", 422],
+		["22P05", 422],
+		["PGRST102", 422],
 		["PGRST106", 503],
 		[undefined, 503],
 	];

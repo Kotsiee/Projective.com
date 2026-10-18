@@ -52,6 +52,9 @@ Deno.test("hrefs: every intent spelled out; refusals and sign-in round-trip", ()
 		["email"],
 	);
 	assertEquals(contactLoginHref(), "/login?redirectTo=%2Fcontact%3Fintent%3Ddispute");
+	// The attachments block signs a guest in back to the form they were filling in.
+	assertEquals(contactLoginHref("support"), "/login?redirectTo=%2Fcontact%3Fintent%3Dsupport");
+	assertEquals(contactLoginHref("security"), "/login?redirectTo=%2Fcontact%3Fintent%3Dsecurity");
 	assertEquals(contactIntentHrefs().map((h) => h.intent), [
 		"sales",
 		"support",

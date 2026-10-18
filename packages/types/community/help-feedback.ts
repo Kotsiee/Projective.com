@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { timestamp, uuid } from "./common.ts";
 import { HELP_CENTRE_SLUG_MAX } from "../editorial/help.ts";
+import { isStorableText, UNSTORABLE_TEXT_MESSAGE } from "../content/text.ts";
 
 /**
  * community.help_feedback — the Zod SSOT for the help centre's "Was this helpful?" votes (P2,
@@ -42,10 +43,11 @@ const articleSlug = z.string().trim().toLowerCase().max(HELP_CENTRE_SLUG_MAX).re
 export const HelpFeedbackInputSchema = z.object({
 	slug: articleSlug,
 	helpful: z.boolean(),
-	comment: z.string().max(4_000).optional().transform((value) => {
-		const trimmed = value?.trim() ?? "";
-		return trimmed.length > 0 ? trimmed : undefined;
-	}),
+	comment: z.string().max(4_000).refine(isStorableText, UNSTORABLE_TEXT_MESSAGE).optional()
+		.transform((value) => {
+			const trimmed = value?.trim() ?? "";
+			return trimmed.length > 0 ? trimmed : undefined;
+		}),
 }).superRefine((input, ctx) => {
 	if (input.comment === undefined) return;
 	if (input.helpful) {

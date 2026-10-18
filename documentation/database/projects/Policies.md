@@ -345,7 +345,7 @@ none, and a direct `INSERT` is refused.
 | `projects.stage_open_seat_skills`         | Project access, or any `active` project.                 | Definer RPCs only.                          |
 | `projects.stage_staffing_roles`           | Owner, or public-active project.                         | `can_review_project` (`FOR ALL`, Decision #163). |
 | `projects.stage_budget_rules`             | Owner, or public-active project.                         | Owner (`FOR ALL`).                          |
-| `projects.project_participants`           | Owner, or public-active project.                         | Owner (`FOR ALL`).                          |
+| `projects.project_participants`           | Self (own `profile_id`, Decision #296 (D)), owner, or public-active project. | Owner (`FOR ALL`).                          |
 | `projects.project_applications`           | The applicant, or `can_manage_project_members`.          | Definer RPCs only.                          |
 | `projects.project_application_targets`    | Follows the parent application.                          | Definer RPCs only.                          |
 | `projects.stage_revision_requests`        | Requester, review authority (`can_review_project`), the ticket's assignee, or the submitter of the work it was raised on (Decision #167). | Definer RPCs only (`review_submission`, `request_paid_revision`, `fund_paid_revision`, `submit_deliverable`). |
