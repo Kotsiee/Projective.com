@@ -46,10 +46,11 @@ Deno.test("legal document: one h1, the draft disclosure, the version and dates, 
 	assertMatch(html, /role="note"[^>]*aria-labelledby="lgl-draft-title"/);
 	assert(html.includes("Draft — pending legal review"));
 	assert(html.includes("Version 2.0"));
-	// Prefix and date share one wrapper: a bare prefix in the inline-flex facts item loses its space.
+	// P0's DocumentDate straight into the facts line: its items keep their content in flow, so the
+	// prefix keeps its space without a wrapper.
 	assertMatch(
 		html,
-		/<span class="lgl-date">Effective <time datetime="2026-10-17">17 October 2026<\/time><\/span>/,
+		/<li class="ui-doc-header__meta-item"><span class="ui-doc-header__sep" aria-hidden="true">·<\/span>Effective <time datetime="2026-10-17">17 October 2026<\/time><\/li>/,
 	);
 	assert(html.includes("ui-doc--clauses"));
 	assert(html.includes("ui-doc-body--numbered"));
@@ -213,7 +214,10 @@ Deno.test("legal hub: one h1, the library draft disclosure, every document as a 
 		/<div class="lgl-facts"><ul class="lgl-facts__list"><li class="lgl-facts__item"><span class="lgl-facts__sep" aria-hidden="true">·<\/span>Version 2\.0/,
 	);
 	assertEquals(count(html, '<span class="lgl-facts__sep" aria-hidden="true">·</span>'), 6 * 4);
-	assertMatch(html, /<span class="lgl-date">Updated <time datetime="2026-10-17">/);
+	assertMatch(
+		html,
+		/<span class="lgl-facts__sep" aria-hidden="true">·<\/span>Updated <time datetime="2026-10-17">/,
+	);
 	assert(html.includes('href="/contact?intent=support"'));
 });
 // #endregion

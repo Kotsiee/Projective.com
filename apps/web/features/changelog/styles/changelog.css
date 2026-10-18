@@ -472,10 +472,6 @@
 	border-block-start: var(--hairline);
 }
 
-.chl-pager > a {
-	text-decoration: none;
-}
-
 .chl-pager__position {
 	margin: 0;
 	font-family: var(--font-sans);
@@ -597,10 +593,6 @@
 
 .chl-notice__actions {
 	margin: 0;
-}
-
-.chl-notice__actions > a {
-	text-decoration: none;
 }
 /* #endregion */
 

@@ -2,6 +2,7 @@ import type { ComponentType, JSX } from "preact";
 import { anchorDoc, docToc, formatContentDate, readingMinutes } from "@projective/types/content";
 import {
 	DocumentBody,
+	DocumentDate,
 	DocumentHeader,
 	DocumentLayout,
 	type DocumentMetaFact,
@@ -16,7 +17,6 @@ import type { DocumentDiff } from "../core/diff.ts";
 import { changedClauseEntries, type LegalDocumentView, legalRailEntries } from "../core/view.ts";
 import { LEGAL_HUB_HREF, legalDocumentHref, type LegalVersionSummary } from "../core/versions.ts";
 import { LegalCompareBody } from "./LegalCompareBody.tsx";
-import { LegalDate } from "./LegalDate.tsx";
 import { LegalDraftNotice } from "./LegalDraftNotice.tsx";
 
 // #region Islands
@@ -168,9 +168,9 @@ export function LegalDocumentViewComponent(
 	const children = diff ? changedClauseEntries(diff) : docToc(anchored, { depth: 2 });
 	const facts: DocumentMetaFact[] = [
 		`Version ${doc.version}`,
-		<LegalDate key="effective" prefix="Effective" iso={doc.effectiveDate} />,
-		<LegalDate key="updated" prefix="Updated" iso={doc.updatedAt} />,
-		doc.reviewedAt ? <LegalDate key="reviewed" prefix="Reviewed" iso={doc.reviewedAt} /> : null,
+		<DocumentDate key="effective" prefix="Effective" iso={doc.effectiveDate} />,
+		<DocumentDate key="updated" prefix="Updated" iso={doc.updatedAt} />,
+		doc.reviewedAt ? <DocumentDate key="reviewed" prefix="Reviewed" iso={doc.reviewedAt} /> : null,
 		`${readingMinutes(doc)} min read`,
 	];
 	const only = view.statuses.length === 1 ? view.statuses[0] : null;

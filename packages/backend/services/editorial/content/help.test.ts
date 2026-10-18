@@ -7,6 +7,7 @@ import {
 } from "@projective/types/content";
 import { HelpFeedbackInputSchema } from "@projective/types/community";
 import {
+	HELP_CENTRE_CATEGORY_SLUGS,
 	HELP_CENTRE_FAQ_SIZE,
 	HELP_CENTRE_RELATED_MAX,
 	HELP_CENTRE_SLUG_MAX,
@@ -208,4 +209,11 @@ Deno.test("help slugs stay within the one bound the tables and a vote share", ()
 	assert(HelpFeedbackInputSchema.safeParse({ slug: long, helpful: true }).success);
 	const row = { ...HELP_CATEGORY_TABLE.toRow(HELP_CATEGORIES[0]), slug: `${long}a` };
 	assert(!HelpCentreCategoryRowSchema.safeParse(row).success, "an over-long slug is refused");
+});
+
+Deno.test("the categories are the one slug list, in hub order (the contact form's topics read it)", () => {
+	assertEquals(
+		[...HELP_CATEGORIES].sort((a, b) => a.position - b.position).map((c) => c.slug),
+		[...HELP_CENTRE_CATEGORY_SLUGS],
+	);
 });

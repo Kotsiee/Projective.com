@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { HELP_CENTRE_CATEGORY_SLUGS } from "../editorial/help-categories.ts";
 
 /**
  * contact.intake — the Zod SSOT for `/contact` (Decision #276): the four intents, what each one
@@ -12,7 +13,8 @@ import { z } from "zod";
  * payload keys, the intents, the statuses and the reference format are mirrored by the table's
  * CHECKs and the writer's guards value for value (`contact.contract.test.ts` reads the migrations).
  *
- * CSS-free and dependency-light (zod only), so an island may import it.
+ * CSS-free and dependency-light (zod, and the help centre's Zod-free category slugs), so an island
+ * may import it.
  */
 
 // #region Primitives
@@ -134,27 +136,41 @@ export const ContactBudget = z.enum(["not-sure", "under-5k", "5k-25k", "25k-100k
 export type ContactBudget = z.infer<typeof ContactBudget>;
 
 /**
- * Support topics. These are the help centre's subject areas as this surface knows them; when the
- * help centre's own categories land (`editorial.help_categories`, P2) this list is to be read from
- * them instead, one value per category slug (Decision #276 flag).
+ * Support topics: the help centre's categories, one value per category slug, then "Something else"
+ * (Decision #279, closing Decision #276 flag (h)). The slugs come from the one list the help centre's
+ * categories are pinned to (`HELP_CENTRE_CATEGORY_SLUGS`) and are permanent (Decision #274 (k)), so a
+ * stored topic always names a help category; the labels are the categories' own titles, read with
+ * them ({@link contactSupportTopics}). The writer's `v_topics` mirrors this enum value for value.
  */
-export const CONTACT_SUPPORT_TOPICS = [
-	{ value: "account", label: "Account and sign-in" },
-	{ value: "payments", label: "Payments, escrow and payouts" },
-	{ value: "projects", label: "Projects, stages and tickets" },
-	{ value: "services", label: "Services, sessions and bookings" },
-	{ value: "workspaces", label: "Teams and businesses" },
-	{ value: "other", label: "Something else" },
-] as const satisfies readonly ContactChoice[];
-export const ContactSupportTopic = z.enum([
-	"account",
-	"payments",
-	"projects",
-	"services",
-	"workspaces",
-	"other",
-]);
+export const ContactSupportTopic = z.enum([...HELP_CENTRE_CATEGORY_SLUGS, "other"]);
 export type ContactSupportTopic = z.infer<typeof ContactSupportTopic>;
+
+/** The topic that needs no category — the select opens on it, so the no-JS form posts a real value. */
+export const CONTACT_OTHER_TOPIC = {
+	value: "other",
+	label: "Something else",
+} as const satisfies ContactChoice<ContactSupportTopic>;
+
+/**
+ * The Topic select's options: each help category given (in the order given — the help centre's hub
+ * order) titled as the help centre titles it, then {@link CONTACT_OTHER_TOPIC}. A category that is not
+ * a support topic (one added to the help centre before this list) is left out rather than offered and
+ * refused.
+ */
+export function contactSupportTopics(
+	categories: ReadonlyArray<{ slug: string; title: string }>,
+): ContactChoice<ContactSupportTopic>[] {
+	const topics = new Set<string>(HELP_CENTRE_CATEGORY_SLUGS);
+	return [
+		...categories
+			.filter((category) => topics.has(category.slug))
+			.map((category) => ({
+				value: category.slug as ContactSupportTopic,
+				label: category.title,
+			})),
+		CONTACT_OTHER_TOPIC,
+	];
+}
 
 /**
  * Security report kinds — drawn as radios (real inputs), so the no-JS form can choose one and the

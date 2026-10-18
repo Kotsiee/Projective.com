@@ -79,11 +79,6 @@
 	flex: none;
 }
 
-/* A link drawn as a button (a guest's "Sign in to suggest an idea", the idea's "All ideas"). */
-.fb-link-button {
-	text-decoration: none;
-}
-
 .fb-toolbar {
 	display: flex;
 	flex-wrap: wrap;

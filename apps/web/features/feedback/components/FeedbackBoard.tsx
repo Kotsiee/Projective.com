@@ -258,7 +258,7 @@ export function FeedbackBoard(props: FeedbackBoardProps): JSX.Element {
 		)
 		: (
 			<a
-				class="ui-button ui-button--primary ui-button--filled ui-button--size-md fb-link-button"
+				class="ui-button ui-button--primary ui-button--filled ui-button--size-md"
 				href={signInToSuggestHref}
 			>
 				<span class="ui-button__label">Sign in to suggest an idea</span>
@@ -318,7 +318,7 @@ export function FeedbackBoard(props: FeedbackBoardProps): JSX.Element {
 					actions={!signedIn && location.status === "under_review"
 						? (
 							<a
-								class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm fb-link-button"
+								class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm"
 								href={signInHref}
 							>
 								<span class="ui-button__label">Sign in</span>

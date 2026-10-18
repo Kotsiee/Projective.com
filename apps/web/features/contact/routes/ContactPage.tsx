@@ -4,8 +4,14 @@ import { readActor } from "@web/utils/api-session.ts";
 import { isSecureRequest, readCookies } from "@web/utils/auth-cookies.ts";
 import { ensureSession } from "@web/utils/session.ts";
 import { decodeAccessClaims, resolveTokenContext } from "@web/utils/user-context.ts";
-import type { ContactEngagementOption, ContactIntent } from "@projective/types/contact";
+import {
+	type ContactChoice,
+	type ContactEngagementOption,
+	type ContactIntent,
+	contactSupportTopics,
+} from "@projective/types/contact";
 import { ContactBackendService } from "@server/services/contact/ContactBackendService.ts";
+import { HelpBackendService } from "@server/services/editorial/HelpBackendService.ts";
 import { applyPageMeta, type JsonLdGraph, pageMeta } from "@features/marketing/core/seo.ts";
 import { siteOrigin } from "@features/marketing/core/site-origin.ts";
 import { JsonLd } from "@features/marketing/components/JsonLd.tsx";
@@ -35,9 +41,12 @@ import {
  *
  * Thin: read the URL contract (`?intent=`, and the no-JS road's `?sent=1` / `?error=`), renew a lapsed
  * session in place (the `[handle]` model — a signed-in reader's engagements are personal), ask the fat
- * {@link ContactBackendService} for a signed-in reader's open engagements, pick up a no-JS receipt from
- * its short-lived cookie (and clear it), set the page meta and structured data, and render the header,
- * the `ContactIntake` island and the {@link ContactRail}. Never cached: the page differs per reader.
+ * {@link ContactBackendService} for a signed-in reader's open engagements and the fat
+ * {@link HelpBackendService} for the help centre's categories (the support form's topics — one source,
+ * Decision #279; a help centre that cannot be read leaves "Something else", which always sends), pick
+ * up a no-JS receipt from its short-lived cookie (and clear it), set the page meta and structured
+ * data, and render the header, the `ContactIntake` island and the {@link ContactRail}. Never cached:
+ * the page differs per reader.
  */
 
 /**
@@ -52,6 +61,7 @@ interface ContactPageData {
 	intent: ContactIntent;
 	signedIn: boolean;
 	engagements: ContactEngagementOption[];
+	topics: ContactChoice[];
 	prefill: ContactPrefill;
 	receipt: FormReceipt | null;
 	formError: { error: ContactFormError; fields: string[] } | null;
@@ -79,7 +89,13 @@ export const handler = define.handlers({
 		const url = parseContactUrl(ctx.url);
 		const signedIn = ctx.state.isAuthenticated === true;
 		const actor = readActor(ctx);
-		const engagements = signedIn ? await ContactBackendService.disputeEngagements(actor) : [];
+		const [engagements, help] = await Promise.all([
+			signedIn ? ContactBackendService.disputeEngagements(actor) : Promise.resolve([]),
+			HelpBackendService.snapshot(),
+		]);
+		const topics = contactSupportTopics(
+			help.ok && help.data ? help.data.library.topics.map((topic) => topic.category) : [],
+		);
 		const prefill = signedIn
 			? contactPrefillFromClaims(decodeAccessClaims(actor.accessToken))
 			: { ...NO_PREFILL };
@@ -100,6 +116,7 @@ export const handler = define.handlers({
 			intent: receipt?.intent ?? url.intent,
 			signedIn,
 			engagements,
+			topics,
 			prefill,
 			receipt,
 			formError: url.error ? { error: url.error, fields: url.fields } : null,
@@ -125,6 +142,7 @@ export default define.page<typeof handler>(function ContactPage({ data }) {
 					intent={data.intent}
 					signedIn={data.signedIn}
 					engagements={data.engagements}
+					topics={data.topics}
 					prefill={data.prefill}
 					loginHref={data.loginHref}
 					receipt={data.receipt}

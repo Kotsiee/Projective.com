@@ -17,7 +17,7 @@ import {
 	CONTACT_COMPANY_SIZES,
 	CONTACT_LIMITS,
 	CONTACT_SECURITY_REPORTS,
-	CONTACT_SUPPORT_TOPICS,
+	type ContactChoice,
 	type ContactEngagementOption,
 	type ContactIntent,
 	engagementHref,
@@ -63,6 +63,11 @@ export interface IntakeModel {
 	 */
 	hydrated: boolean;
 	engagements: readonly ContactEngagementOption[];
+	/**
+	 * The support form's Topic options: the help centre's categories as the page read them, then
+	 * "Something else" (`contactSupportTopics`, Decision #279).
+	 */
+	topics: readonly ContactChoice[];
 	/** Each intent's own files — a file belongs to the form it was added to. */
 	attachments: Readonly<Record<ContactIntent, Signal<Record<string, AttachmentEntry>>>>;
 	loginHref: string;
@@ -391,7 +396,7 @@ function SupportFields({ model }: { model: IntakeModel }): JSX.Element {
 					maxLength={CONTACT_LIMITS.email}
 					hint="Only if your account uses a different address."
 				/>
-				<SelectField model={model} name="topic" label="Topic" options={CONTACT_SUPPORT_TOPICS} />
+				<SelectField model={model} name="topic" label="Topic" options={model.topics} />
 			</div>
 			<MessageField
 				model={model}

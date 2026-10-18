@@ -188,15 +188,15 @@
 	list-style: none;
 }
 
+/* In flow, not a flex row: a fact's prefix and its `<time>` share one line box, so "Effective 17
+   October 2026" keeps its space (a bare text run as a flex item drops its edge spaces). */
 .lgl-facts__item {
-	display: inline-flex;
-	align-items: baseline;
+	display: inline-block;
 	white-space: nowrap;
 }
 
 .lgl-facts__sep {
 	display: inline-block;
-	flex: none;
 	inline-size: var(--space-5);
 	text-align: center;
 	color: var(--on-surface-variant);
@@ -332,15 +332,6 @@
 	flex-wrap: wrap;
 	gap: var(--space-2);
 	align-items: center;
-}
-
-/*
- * Download PDF is an anchor drawn as a tier-4 button: no link underline (the browser's default, and
- * the meta rail's `--primary` underline colour), so it reads as the neutral outlined control beside
- * Print.
- */
-.lgl-controls .lgl-controls__download {
-	text-decoration-line: none;
 }
 /* #endregion */
 

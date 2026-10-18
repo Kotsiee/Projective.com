@@ -40,6 +40,15 @@ export interface EditorialArticleIndexQuery {
 	page: number;
 }
 
+/** One visible article's address and dates — what the sitemap lists (Decision #279). */
+export interface EditorialArticleListing {
+	slug: string;
+	/** ISO date-time. */
+	publishedAt: string;
+	/** ISO date-time, never before {@link publishedAt}. */
+	updatedAt: string;
+}
+
 /** What both reads return before they are shaped: every visible article, newest first, by author. */
 interface ArticleCorpus {
 	articles: EditorialArticleRecord[];
@@ -144,6 +153,25 @@ export const EditorialArticlesBackendService = {
 				toArticleCard(other, authorName(data, other))
 			),
 		});
+	},
+
+	/**
+	 * Every visible article's slug and dates, newest first — the sitemap's list (Decision #279). The
+	 * same visibility as every other read, so a draft, a future-dated or a retracted article is never
+	 * listed; former slugs are not listed either (they 308 to the article).
+	 */
+	async listed(
+		options: EditorialReadOptions = {},
+	): Promise<ServiceResult<EditorialArticleListing[]>> {
+		const corpus = await readCorpus(options);
+		if (!corpus.ok || !corpus.data) {
+			return fail(corpus.status, { message: corpus.message, details: corpus.details });
+		}
+		return ok(corpus.data.articles.map((article) => ({
+			slug: article.slug,
+			publishedAt: article.publishedAt,
+			updatedAt: article.updatedAt,
+		})));
 	},
 
 	/**

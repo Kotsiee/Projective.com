@@ -17,7 +17,7 @@ export interface GuestShellProps {
 	 *
 	 * When a lane is present the shell switches to a flex-column layout: the aside + body sit in a
 	 * `.guest-shell__region` above a **full-width** `PublicFooter`, and the aside terminates cleanly above
-	 * that footer (see guest-shell.css). Lane-less routes keep the original header + body + in-body footer.
+	 * that footer (see guest-shell.css). Lane-less routes render header + body + footer in block flow.
 	 */
 	lane?: ComponentChildren;
 	/**
@@ -26,7 +26,11 @@ export interface GuestShellProps {
 	 * → no sub-header band.
 	 */
 	header?: ComponentChildren;
-	/** Render the marketing {@link PublicFooter} at the body's end (default true; off for full-page surfaces). */
+	/**
+	 * Render the marketing {@link PublicFooter} after the body (default true; off for full-page
+	 * surfaces). It is always a SIBLING of `<main>`, never inside it, so it is the page's `contentinfo`
+	 * landmark — a `<footer>` inside `<main>` is just a footer of the main content.
+	 */
 	footer?: boolean;
 	/**
 	 * The page the visitor is currently on, threaded into the header's Sign in / Get started links as
@@ -85,11 +89,13 @@ export function GuestShell(
 					</>
 				)
 				: (
-					// Lane-less routes: unchanged — the footer stays at the body's end (already full-width).
-					<main class="site__main guest-shell__body" id={PAGE_CANVAS_MAIN_ID} tabIndex={-1}>
-						{children}
+					// Lane-less routes: the footer follows `<main>` in the `.site` block flow (full-width).
+					<>
+						<main class="site__main guest-shell__body" id={PAGE_CANVAS_MAIN_ID} tabIndex={-1}>
+							{children}
+						</main>
 						{footer ? <PublicFooter /> : null}
-					</main>
+					</>
 				)}
 		</div>
 	);

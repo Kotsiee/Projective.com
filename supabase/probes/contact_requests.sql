@@ -175,7 +175,7 @@ DECLARE
     v_out jsonb;
 BEGIN
     v_out := ops.submit_contact_request('support', '  Guest@Example.COM ', false,
-        '{"name":"Guest","topic":"payments","message":"My payout has not arrived after seven days."}'::jsonb);
+        '{"name":"Guest","topic":"escrow-and-payments","message":"My payout has not arrived after seven days."}'::jsonb);
     IF v_out ->> 'status' <> 'backlog' OR v_out ->> 'intent' <> 'support'
        OR (v_out ->> 'reference') !~ '^CT-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$' THEN
         RAISE EXCEPTION 'FAIL guest submit answered %', v_out;
@@ -192,7 +192,7 @@ BEGIN
 
     BEGIN
         PERFORM ops.submit_contact_request('support', 'guest@example.com', false,
-            '{"name":"Guest","topic":"payments","message":"With somebody else''s file attached here."}'::jsonb,
+            '{"name":"Guest","topic":"escrow-and-payments","message":"With somebody else''s file attached here."}'::jsonb,
             ARRAY['00000000-0000-4000-8000-0000000000a1']::uuid[]);
         RAISE EXCEPTION 'FAIL a guest attached a file';
     EXCEPTION WHEN insufficient_privilege THEN
@@ -214,7 +214,7 @@ DECLARE
 BEGIN
     SELECT * INTO v_row FROM ops.contact_requests WHERE reference = current_setting('probe.guest_ref');
     IF v_row.user_id IS NOT NULL OR v_row.email <> 'guest@example.com' OR v_row.anonymous
-       OR v_row.payload ->> 'topic' <> 'payments' THEN
+       OR v_row.payload ->> 'topic' <> 'escrow-and-payments' THEN
         RAISE EXCEPTION 'FAIL guest row stored as %', row_to_json(v_row);
     END IF;
     RAISE NOTICE 'PASS guest row: no account, address lower-cased and trimmed, payload as sent';
@@ -230,7 +230,7 @@ DECLARE
     v_out jsonb;
 BEGIN
     v_out := ops.submit_contact_request('support', 'NewPerson@Example.com', false,
-        '{"name":"New Person","topic":"account","message":"I signed up with Google and cannot finish joining."}'::jsonb);
+        '{"name":"New Person","topic":"account-and-security","message":"I signed up with Google and cannot finish joining."}'::jsonb);
     PERFORM set_config('probe.n_ref', v_out ->> 'reference', true);
     RAISE NOTICE 'PASS an identity with no profile files a support request %', v_out ->> 'reference';
 END $$;
@@ -259,7 +259,7 @@ BEGIN
         SELECT * FROM (VALUES
             ('unknown intent', 'press', 'a@example.com', false, '{"message":"Twenty characters or more here."}'),
             ('payload not an object', 'support', 'a@example.com', false, '["message"]'),
-            ('key outside the intent', 'sales', 'a@example.com', false, '{"name":"A","topic":"payments","message":"Twenty characters or more here."}'),
+            ('key outside the intent', 'sales', 'a@example.com', false, '{"name":"A","topic":"escrow-and-payments","message":"Twenty characters or more here."}'),
             ('short message', 'support', 'a@example.com', false, '{"name":"A","message":"Too short"}'),
             ('message not a string', 'support', 'a@example.com', false, '{"name":"A","message":42}'),
             ('blank name', 'support', 'a@example.com', false, '{"name":"   ","message":"Twenty characters or more here."}'),
@@ -277,8 +277,8 @@ BEGIN
             ('topic off the list', 'support', 'a@example.com', false, '{"name":"A","topic":"refunds","message":"Twenty characters or more here."}'),
             ('support without a topic', 'support', 'a@example.com', false, '{"name":"A","message":"Twenty characters or more here."}'),
             ('named request without a name', 'support', 'a@example.com', false, '{"topic":"other","message":"Twenty characters or more here."}'),
-            ('accountEmail malformed', 'support', 'a@example.com', false, '{"name":"A","topic":"account","accountEmail":"nobody","message":"Twenty characters or more here."}'),
-            ('accountEmail as a number', 'support', 'a@example.com', false, '{"name":"A","topic":"account","accountEmail":7,"message":"Twenty characters or more here."}'),
+            ('accountEmail malformed', 'support', 'a@example.com', false, '{"name":"A","topic":"account-and-security","accountEmail":"nobody","message":"Twenty characters or more here."}'),
+            ('accountEmail as a number', 'support', 'a@example.com', false, '{"name":"A","topic":"account-and-security","accountEmail":7,"message":"Twenty characters or more here."}'),
             ('referenceId as an object', 'dispute', 'a@example.com', false, '{"name":"A","referenceId":{"id":1},"message":"Twenty characters or more here."}'),
             ('referenceId too long', 'dispute', 'a@example.com', false, '{"name":"A","referenceId":"rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr","message":"Twenty characters or more here."}'),
             ('engagement as a string', 'dispute', 'a@example.com', false, '{"name":"A","engagement":"prj-abc","message":"Twenty characters or more here."}'),
@@ -693,7 +693,7 @@ SELECT set_config('request.jwt.claims',
 DO $$
 BEGIN
     PERFORM ops.submit_contact_request('support', 'b@example.com', false,
-        '{"name":"B","topic":"payments","message":"Signed in, so the guest ceiling does not stop me."}'::jsonb);
+        '{"name":"B","topic":"escrow-and-payments","message":"Signed in, so the guest ceiling does not stop me."}'::jsonb);
     RAISE NOTICE 'PASS a signed-in sender is not held by the guest ceiling';
 END $$;
 RESET ROLE;

@@ -6,6 +6,7 @@
  */
 import { assert, assertEquals } from "@std/assert";
 import { BUCKETS } from "../files/storage.ts";
+import { HELP_CENTRE_CATEGORY_SLUGS } from "../editorial/help-categories.ts";
 import { AssetPurpose } from "../files/variants.ts";
 import {
 	CONTACT_BUDGETS,
@@ -19,7 +20,6 @@ import {
 	CONTACT_REQUEST_STATUSES,
 	CONTACT_SECURITY_REPORTS,
 	CONTACT_STATUS_TRANSITIONS,
-	CONTACT_SUPPORT_TOPICS,
 	ContactBudget,
 	ContactCompanySize,
 	ContactEngagementRefSchema,
@@ -136,7 +136,8 @@ Deno.test("closed choices: the writer's lists are the SSOT's, value for value", 
 	assertEquals(declaredList("v_company_sizes"), [...ContactCompanySize.options]);
 	assertEquals(declaredList("v_budgets"), CONTACT_BUDGETS.map((o) => o.value));
 	assertEquals(declaredList("v_budgets"), [...ContactBudget.options]);
-	assertEquals(declaredList("v_topics"), CONTACT_SUPPORT_TOPICS.map((o) => o.value));
+	// One support topic per help-centre category, then "other" (Decision #279).
+	assertEquals(declaredList("v_topics"), [...HELP_CENTRE_CATEGORY_SLUGS, "other"]);
 	assertEquals(declaredList("v_topics"), [...ContactSupportTopic.options]);
 	assertEquals(declaredList("v_reports"), CONTACT_SECURITY_REPORTS.map((o) => o.value));
 	assertEquals(declaredList("v_reports"), [...ContactSecurityReport.options]);

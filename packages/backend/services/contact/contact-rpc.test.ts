@@ -21,7 +21,7 @@ Deno.test("submitRpcArgs: the reply address lower-cased, payload without address
 		intent: "support",
 		name: "Ada",
 		email: "Ada@Example.COM",
-		topic: "payments",
+		topic: "escrow-and-payments",
 		message: MESSAGE,
 		attachmentIds: [FILE],
 	}));
@@ -29,7 +29,7 @@ Deno.test("submitRpcArgs: the reply address lower-cased, payload without address
 	assertEquals(args.p_email, "ada@example.com");
 	assertEquals(args.p_anonymous, false);
 	assertEquals(args.p_attachment_ids, [FILE]);
-	assertEquals(args.p_payload, { name: "Ada", topic: "payments", message: MESSAGE });
+	assertEquals(args.p_payload, { name: "Ada", topic: "escrow-and-payments", message: MESSAGE });
 });
 
 Deno.test("submitRpcArgs: an anonymous report sends no address and no files", () => {

@@ -460,8 +460,4 @@
 	gap: var(--space-3);
 	margin-block-start: var(--space-6);
 }
-
-.abt-cta__actions > .ui-button {
-	text-decoration: none;
-}
 /* #endregion */

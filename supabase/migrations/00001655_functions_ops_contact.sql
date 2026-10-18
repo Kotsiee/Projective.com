@@ -49,7 +49,7 @@ COMMENT ON FUNCTION ops.fn_contact_reference () IS
 --     (CONTACT_PAYLOAD_KEYS) with a message of 20–5,000 characters and a name of at most 120;
 --   * every key holds what the Zod SSOT parses it to — strings within their caps, the closed choices
 --     from their lists (mirrored value for value from CONTACT_COMPANY_SIZES, CONTACT_BUDGETS,
---     CONTACT_SUPPORT_TOPICS, CONTACT_SECURITY_REPORTS), a dispute's engagement exactly as the
+--     ContactSupportTopic, CONTACT_SECURITY_REPORTS), a dispute's engagement exactly as the
 --     service resolves it — and the keys every request of an intent stores are present, so no
 --     reader of a stored payload is ever handed a shape it does not expect;
 --   * an anonymous report is a security report with no address, no name, no attachments and no
@@ -103,7 +103,8 @@ DECLARE
     -- The closed lists, value for value (contact.contract.test.ts reads them).
     v_company_sizes constant text[] := ARRAY['not-say', '1-10', '11-50', '51-200', '201-1000', '1000-plus'];
     v_budgets constant text[] := ARRAY['not-sure', 'under-5k', '5k-25k', '25k-100k', '100k-plus'];
-    v_topics constant text[] := ARRAY['account', 'payments', 'projects', 'services', 'workspaces', 'other'];
+    -- One support topic per help-centre category (editorial.help_categories, permanent slugs), then 'other'.
+    v_topics constant text[] := ARRAY['getting-started', 'projects-and-stages', 'escrow-and-payments', 'revisions-and-approvals', 'disputes-and-fair-exit', 'payouts-and-verification', 'teams-and-businesses', 'account-and-security', 'other'];
     v_reports constant text[] := ARRAY['vulnerability', 'abuse', 'whistleblower'];
     v_formats constant text[] := ARRAY['one_off', 'pipeline', 'session'];
     v_engagement jsonb;

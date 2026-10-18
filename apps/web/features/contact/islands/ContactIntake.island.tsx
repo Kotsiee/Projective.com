@@ -6,6 +6,7 @@ import { SelectButton } from "@projective/ui/fields";
 import { Message } from "@projective/ui/feedback";
 import {
 	CONTACT_INTENTS,
+	type ContactChoice,
 	type ContactEngagementOption,
 	type ContactIntent,
 	parseContactIntent,
@@ -65,6 +66,8 @@ export interface ContactIntakeProps {
 	signedIn: boolean;
 	/** A signed-in reader's open engagements, for the dispute intent. */
 	engagements: ContactEngagementOption[];
+	/** The support form's Topic options — the help centre's categories, then "Something else". */
+	topics: ContactChoice[];
 	/** A signed-in reader's own name and address, which the sender fields open with (editable). */
 	prefill: ContactPrefill;
 	/** Where a guest signs in and comes back to the dispute form. */
@@ -168,6 +171,7 @@ export default function ContactIntake(props: ContactIntakeProps): JSX.Element {
 		signedIn: props.signedIn,
 		hydrated: hydrated.value,
 		engagements: props.engagements,
+		topics: props.topics,
 		attachments,
 		loginHref: props.loginHref,
 		announce,

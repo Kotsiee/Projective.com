@@ -80,6 +80,13 @@ answers the old address with a `308` to the new one.
 Never hidden: no visibility column; a category with no visible article is left out of the hub by the
 service.
 
+The slugs are also the `/contact` support form's topics (Decision #279): one topic per category,
+then `other`. They are listed once in `@projective/types/editorial` (`HELP_CENTRE_CATEGORY_SLUGS`,
+which the content source's categories are pinned to) and mirrored value for value by
+`ops.submit_contact_request`'s `v_topics` (`contact.contract.test.ts`), so adding a category means
+adding its slug in those three places; re-slugging one is refused
+(`trg_help_categories_slug_immutable`).
+
 ### `editorial.help_articles`
 
 | Column          | Type     | Notes                                                                                                                                                                                                                        |

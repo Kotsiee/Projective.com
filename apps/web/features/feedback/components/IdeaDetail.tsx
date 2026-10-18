@@ -54,7 +54,7 @@ export function IdeaDetail(props: IdeaDetailProps): JSX.Element {
 	return (
 		<article class="fb-idea" aria-labelledby="fb-idea-title">
 			<a
-				class="fb-back fb-link-button ui-button ui-button--secondary ui-button--text ui-button--size-sm"
+				class="fb-back ui-button ui-button--secondary ui-button--text ui-button--size-sm"
 				href={props.boardHref}
 				onClick={(event) => {
 					if (!isPlainClick(event)) return;

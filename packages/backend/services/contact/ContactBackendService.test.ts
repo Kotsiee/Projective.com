@@ -29,7 +29,7 @@ const SUPPORT = {
 	intent: "support",
 	name: "Ada",
 	email: "ada@example.com",
-	topic: "payments",
+	topic: "escrow-and-payments",
 	message: MESSAGE,
 };
 

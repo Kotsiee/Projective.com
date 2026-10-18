@@ -6,12 +6,15 @@
 import { assert, assertEquals, assertFalse, assertMatch, assertThrows } from "@std/assert";
 import {
 	canMoveContactRequest,
+	CONTACT_OTHER_TOPIC,
 	CONTACT_PAYLOAD_KEYS,
 	CONTACT_REFERENCE_ALPHABET,
 	CONTACT_STATUS_TRANSITIONS,
 	ContactReceiptSchema,
 	type ContactSubmission,
 	ContactSubmissionSchema,
+	ContactSupportTopic,
+	contactSupportTopics,
 	DEFAULT_CONTACT_INTENT,
 	engagementHref,
 	formatContactReference,
@@ -22,6 +25,7 @@ import {
 	replyAddressOf,
 	toStoredPayload,
 } from "./intake.ts";
+import { HELP_CENTRE_CATEGORY_SLUGS } from "../editorial/help-categories.ts";
 
 const MESSAGE = "My payout has not arrived seven days after the stage was approved.";
 const FILE = "00000000-0000-4000-8000-0000000000a1";
@@ -91,7 +95,7 @@ Deno.test("support: account email optional but well formed; topic required; atta
 		intent: "support",
 		name: "Ada",
 		email: "ada@example.com",
-		topic: "payments",
+		topic: "escrow-and-payments",
 		message: MESSAGE,
 	});
 	if (s.intent !== "support") throw new Error("intent");
@@ -103,7 +107,7 @@ Deno.test("support: account email optional but well formed; topic required; atta
 			name: "Ada",
 			email: "ada@example.com",
 			accountEmail: "nope",
-			topic: "payments",
+			topic: "escrow-and-payments",
 			message: MESSAGE,
 		}),
 		["accountEmail"],
@@ -228,7 +232,7 @@ Deno.test("toStoredPayload: only the intent's keys, no address, no files, no emp
 			name: "Ada",
 			email: "a@b.co",
 			accountEmail: "Old@B.co",
-			topic: "account",
+			topic: "account-and-security",
 			message: MESSAGE,
 			attachmentIds: [FILE],
 		}),
@@ -325,5 +329,29 @@ Deno.test("the machine: backlog → in_progress | archived → complete → arch
 	assertFalse(canMoveContactRequest("in_progress", "backlog"));
 	assertFalse(canMoveContactRequest("complete", "in_progress"));
 	assertEquals(CONTACT_STATUS_TRANSITIONS.archived, []);
+});
+// #endregion
+
+// #region Support topics
+Deno.test("support topics: one per help-centre category, then Something else (Decision #279)", () => {
+	assertEquals([...ContactSupportTopic.options], [...HELP_CENTRE_CATEGORY_SLUGS, "other"]);
+	assertFalse(ContactSupportTopic.safeParse("payments").success, "the old local list is gone");
+	assertEquals(
+		contactSupportTopics([
+			{ slug: "escrow-and-payments", title: "Escrow & payments" },
+			{ slug: "a-category-added-later", title: "Not a topic yet" },
+			{ slug: "getting-started", title: "Getting started" },
+		]),
+		[
+			{ value: "escrow-and-payments", label: "Escrow & payments" },
+			{ value: "getting-started", label: "Getting started" },
+			CONTACT_OTHER_TOPIC,
+		],
+	);
+	assertEquals(
+		contactSupportTopics([]),
+		[CONTACT_OTHER_TOPIC],
+		"an unreadable help centre still sends",
+	);
 });
 // #endregion

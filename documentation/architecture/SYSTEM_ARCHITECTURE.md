@@ -933,7 +933,11 @@ which reads the table through the anon client when live and otherwise pushes the
 records through the same row parse and mapping — so a fixture cannot drift from the database. A
 table's `visible` predicate (drafts, future-dated releases, retractions) is applied to the mapped
 records on both roads, and its SELECT policy states the same rule; the generator seeds every record
-and never prunes, so content is retracted by hiding it, never by deleting its record.
+and never prunes, so content is retracted by hiding it, never by deleting its record. The sitemap
+(`/sitemap.xml`) lists the three surfaces through the same services
+(`HelpBackendService.snapshot`, `ChangelogBackendService.releases`,
+`EditorialArticlesBackendService.listed`), so it names exactly the pages a reader can open, on
+either road (Decision #279).
 **`community`** holds what people do: the newsletter, helpfulness votes and the feedback board.
 `services/community/community-source.ts` is its shared module: the **`COMMUNITY_BACKEND_LIVE`**
 gate, `defineCommunityTable`, `readCommunityTable` (the caller's client live, declared fixtures

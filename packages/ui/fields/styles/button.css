@@ -76,6 +76,15 @@
 	box-shadow: none;
 }
 /*
+ * The anchor form (`<a class="ui-button" href>`) is a control, not a link in running text, so it never
+ * carries a link underline — not the browser's own, and not one a surrounding block draws for its links
+ * (`.ui-prose a:not(…)` is (0,2,1); this is (0,3,0)). The `link` variant is the one button that IS
+ * underlined, and keeps its own rule below.
+ */
+.ui-button:any-link:not(.ui-button--link) {
+	text-decoration: none;
+}
+/*
  * Tonal blending, not `filter: brightness()` (§B.12.4).
  *
  * `brightness()` is applied to the rendered element, so it darkens the LABEL and the icon by exactly

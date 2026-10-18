@@ -125,3 +125,15 @@ Deno.test("movedTo: a renamed article's old slug resolves to the new one; nothin
 	assertEquals((await Articles.movedTo("nothing-here", fixture)).data, null);
 	assertEquals((await Articles.movedTo(first.slug, fixture)).data, null);
 });
+
+Deno.test("listed: every visible article's slug and dates, newest first — never a hidden one", async () => {
+	const result = await Articles.listed(fixture);
+	assert(result.ok && result.data);
+	const index = await Articles.index({ topics: [], page: 1 }, fixture);
+	assert(index.ok && index.data);
+	assertEquals(result.data.map((a) => a.slug), index.data.items.map((item) => item.slug));
+	assert(result.data.every((a) => a.updatedAt >= a.publishedAt));
+	const early = await Articles.listed({ source: "fixture", now: new Date("2026-09-01T00:00:00Z") });
+	assert(early.ok && early.data);
+	assertEquals(early.data.length, 1, "a future-dated article is not listed before its day");
+});

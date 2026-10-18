@@ -1,7 +1,7 @@
 import type { ComponentChildren, JSX } from "preact";
 import type { LegalDoc } from "@projective/types/content";
+import { DocumentDate } from "@projective/ui/display/editorial";
 import { legalDocumentHref } from "../core/versions.ts";
-import { LegalDate } from "./LegalDate.tsx";
 import { LegalDraftNotice } from "./LegalDraftNotice.tsx";
 
 // #region Props
@@ -83,8 +83,8 @@ export function LegalHubView({ groups, draft, styleAnchor }: LegalHubViewProps):
 										<Facts
 											items={[
 												`Version ${doc.version}`,
-												<LegalDate key="effective" prefix="Effective" iso={doc.effectiveDate} />,
-												<LegalDate key="updated" prefix="Updated" iso={doc.updatedAt} />,
+												<DocumentDate key="effective" prefix="Effective" iso={doc.effectiveDate} />,
+												<DocumentDate key="updated" prefix="Updated" iso={doc.updatedAt} />,
 												doc.reviewedAt ? "Reviewed" : "Draft",
 											]}
 										/>

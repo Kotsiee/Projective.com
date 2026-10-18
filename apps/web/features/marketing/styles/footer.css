@@ -34,7 +34,7 @@
 	 * last child of `.ui-page-canvas__body`, which is `display: flex; flex-direction: column` — so
 	 * without this it would default to `flex: 0 1 auto` and sit immediately under a short page's
 	 * content with the canvas's remaining height empty beneath it. `auto` resolves to 0 wherever the
-	 * parent is a plain block container (the guest `.site__main`) or already fills its track, so the
+	 * parent is a plain block container (the guest `.site`) or already fills its track, so the
 	 * declaration is inert everywhere it is not needed rather than conditional on the shell.
 	 */
 	margin-block-start: auto;
@@ -156,7 +156,9 @@
 }
 /* #endregion */
 
-/* #region Columns 2–4 — navigation stacks */
+/* #region Column 2 — navigation stacks
+   Six stacks in three tracks: the audience stacks on the first row, Company · Help · Legal on the
+   second, each row as tall as its longest stack. */
 .lp-footer__nav {
 	display: grid;
 	grid-template-columns: repeat(3, 1fr);
@@ -224,7 +226,7 @@
 }
 /* #endregion */
 
-/* #region Column 5 — newsletter */
+/* #region Column 3 — newsletter */
 .lp-footer__news-title {
 	display: block;
 	font-size: 0.8rem;
@@ -458,35 +460,6 @@
 	opacity: 1;
 	transform: translateY(0);
 }
-
-.lp-footer__status {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	font-size: 0.85rem;
-	color: var(--on-surface-variant);
-}
-
-.lp-footer__status-dot {
-	inline-size: 0.5rem;
-	block-size: 0.5rem;
-	border-radius: 50%;
-	background: var(--success);
-	box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 55%, transparent);
-	animation: lp-footer-breathe 2.6s var(--ease-standard) infinite;
-}
-
-@keyframes lp-footer-breathe {
-	0% {
-		box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 55%, transparent);
-	}
-	70% {
-		box-shadow: 0 0 0 0.4rem color-mix(in srgb, var(--success) 0%, transparent);
-	}
-	100% {
-		box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 0%, transparent);
-	}
-}
 /* #endregion */
 
 /* #region Responsive — collapse to a single stack with accordions */
@@ -582,11 +555,8 @@
 	}
 }
 
-/* Honour reduced-motion — the status indicator rests instead of breathing (§B.2 jump-to-final). */
+/* Honour reduced-motion — every transition jumps to its final state (§B.2). */
 @media (prefers-reduced-motion: reduce) {
-	.lp-footer__status-dot {
-		animation: none;
-	}
 	.lp-footer__social-link,
 	.lp-footer__news-submit,
 	.lp-footer__group-chevron,

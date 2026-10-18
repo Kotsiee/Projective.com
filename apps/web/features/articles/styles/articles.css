@@ -593,7 +593,6 @@
 
 .ui-prose .artl-cta a.artl-cta__action {
 	color: var(--btn-on);
-	text-decoration: none;
 	/* The prose link rule (0,2,1) swaps the button's press transition for an underline fade; restore
 	   it. `.ui-button:active…` (0,4,0) still out-ranks this and shortens the press-in. */
 	transition: var(--btn-transition-press);
