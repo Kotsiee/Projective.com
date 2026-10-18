@@ -2900,7 +2900,8 @@ account menu gains **Saved** (`NavIcon` `saved`, a bookmark glyph).
 **Feedback board (`features/feedback/`, Decision #272).** One body, `FeedbackBoard`, renders both
 `/feedback` (the `FeedbackPage` island) and the `?feedback=open` drawer (`FeedbackDrawer`, the
 overlay family's right `Drawer` at `--drawer-w`, imported on first use by the `FeedbackHost` island
-both layouts mount; entering at `--dur-medium` / `--ease-emphasized`, leaving at `--dur-fast` /
+the public, profile and dashboard layouts mount; entering at `--dur-medium` / `--ease-emphasized`,
+leaving at `--dur-fast` /
 `--ease-exit`). The board's header is the display title (page only) with its lede and **Suggest an
 idea** — the region's one filled primary (tier 3), a sign-in link for a guest; then a `TabMenu`
 tablist (All · Under review · Planned · In progress · Shipped, roving tabindex) whose counts are
@@ -2914,17 +2915,26 @@ under both reduced-motion channels; a guest gets the same face as a sign-in link
 gets a borderless count, not a control), **`IdeaRow`** (unboxed — one hairline between rows, never a
 card, since the drawer is an elevated panel, §B.9.2: the vote control, the title as the link that
 opens the idea, a one-line reason, and one meta line — the lifecycle `Tag` (subtle, rounded:
-Under review `secondary` · Planned `info` · In progress `primary` · Shipped `success`), then
-category · age as inline middot text), **`IdeaDetail`** (the idea with a large `VoteButton`, an
+Under review `secondary` · Planned `info` · In progress `primary` · Shipped `success`; only on a
+mixed list — a roadmap column or a single-status tab already names it), then category · age as
+inline middot text, each dot closing the item before it so a wrapped line never starts with one; a
+refused vote's reason inline as an alert; on the page the row's `id` is its slug, the
+`/feedback#<slug>` anchor the JSON-LD lists), **`IdeaDetail`** (the idea with a large `VoteButton`
+and its inline refusal, an
 `<address>` byline with `UserAvatar`, the team's response behind one inline-start hairline, the
 status history with `--font-mono` dates, related ideas), **`IdeaComposeForm`** + **`ComposeActions`**
-(title ≤ 90 with a live count, category `Select`, "What problem does this solve?", optional details,
-an "Already suggested?" list with **Vote for this instead**, the contact-detail hint as you type;
+(title ≤ 90 with a live `tabular-nums` count, category `Select`, "What problem does this solve?",
+optional details, an "Already suggested?" list whose action button reads **Vote for this instead**
+/ **Remove my vote** — an action, not a toggle, so no `aria-pressed`; `aria-disabled` while in
+flight — with each refusal inline, and votes announced by the FORM's own live region, since on the
+page the form's Dialog makes the board inert; the contact-detail hint as you type;
 the commit pinned in the drawer's or dialog's footer) and **`SentFlourish`** (the owner's "whoosh":
 the `send` glyph flies off the success mark once — transform and opacity only, never overshooting,
 not rendered under either reduced-motion channel; the success itself is announced by the form's own
 polite live region, present before the send, and focus moves to the success heading).
-Votes are optimistic through `core/vote-store.ts` and announced in a polite region.
+Votes are optimistic through `core/vote-store.ts`; a vote that lands is announced in a polite
+region, a refusal once, by its inline alert. Loading placeholders are `role="status"` regions with a
+visually hidden "Loading…" (the `Skeleton`s stay `aria-hidden`).
 
 **`FundStageDialog` (`features/payments/components/`, Decision #197).** The client funds a whole
 stage — every ticket in it nobody has paid for, claimed or not — from the stage board's money sentence

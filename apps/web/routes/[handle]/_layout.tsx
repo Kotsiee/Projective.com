@@ -5,6 +5,7 @@ import { GuestShell } from "@web/features/shell/components/GuestShell.tsx";
 import { UserShell } from "@web/features/shell/components/UserShell.tsx";
 import TicketDeepLinkHost from "@web/features/projects/islands/TicketDeepLinkHost.island.tsx";
 import ChatPopoutHost from "@web/features/messaging/islands/ChatPopoutHost.island.tsx";
+import FeedbackHost from "@web/features/feedback/islands/FeedbackHost.island.tsx";
 import ProfileHero from "@features/profile/islands/ProfileHero.island.tsx";
 import ProfileStickyHeader from "@features/profile/islands/ProfileStickyHeader.island.tsx";
 import ProfileTabs from "@features/profile/islands/ProfileTabs.island.tsx";
@@ -112,6 +113,8 @@ export default define.page(async function ProfileLayout(ctx) {
 					    layout mounts this same host. */
 					}
 					<ChatPopoutHost path={path} />
+					{/* The feedback board's `?feedback=open` drawer and its `g` `f` shortcut (Decision #272). */}
+					<FeedbackHost signedIn />
 					{children}
 				</UserShell>
 			);
@@ -125,6 +128,8 @@ export default define.page(async function ProfileLayout(ctx) {
 			>
 				{/* A guest only ever loses the parameter; the host opens nothing for them. */}
 				<TicketDeepLinkHost authed={false} />
+				{/* The board opens for a guest too: they read it and are offered sign-in to take part. */}
+				<FeedbackHost signedIn={false} />
 				{children}
 			</GuestShell>
 		);

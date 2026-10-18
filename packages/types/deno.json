@@ -19,6 +19,7 @@
 		"./content/text": "./content/text.ts",
 		"./newsletter": "./newsletter/mod.ts",
 		"./community": "./community/mod.ts",
+		"./community/feedback-constants": "./community/feedback-constants.ts",
 		"./editorial": "./editorial/mod.ts",
 		"./projects": "./projects/mod.ts",
 		"./messaging": "./messaging/mod.ts",

@@ -54,27 +54,41 @@ DETAIL = the ISO instant to retry (429).
 SECURITY DEFINER. Trims and bounds the fields (title 6–90, impact 10–600, details ≤ 4,000, a known
 category), allows five ideas per person per rolling 24 hours, inserts the idea in `backlog`, appends
 the submission history row (NULL → backlog) and casts the author's own vote. Answers the idea as
-`fn_feedback_idea_json` shapes it.
+`fn_feedback_idea_json` shapes it. The limit is counted under a per-person transaction advisory lock
+(`pg_advisory_xact_lock(hashtext('community.feedback:' || uid))`, the key the vote door shares), so
+two concurrent submits cannot both read four and both insert.
 
 ### `community.vote_feedback_idea(p_slug text) → jsonb` · `community.unvote_feedback_idea(p_slug text) → jsonb`
 
 SECURITY DEFINER. Idempotent both ways — a repeat answers the same `{ voted, vote_count }`. The idea
-must be visible to the caller (else `P0002`) and open for votes — `backlog`, `ready` or `in_progress`
-(else `55000`). 120 new votes per person per rolling hour.
+must be visible to the caller (else `P0002`) and open for votes — `backlog`, `ready` or
+`in_progress` (else `55000`). 120 new votes per person per rolling hour, counted under the same
+per-person advisory lock as the submit door (taken before the idea's row lock, so the locks have one
+order).
 
 ### `community.set_feedback_idea_status(p_slug text, p_status text, p_note text DEFAULT NULL) → jsonb`
 
 SECURITY DEFINER; operators only (`security.is_admin()`). Moves along `fn_feedback_move_legal`
-(Backlog → Ready / Archived; Ready → Backlog / In progress / Archived; In progress → Ready / Complete
-/ Archived; Complete → Archived; Archived terminal); a move to the state already held answers the
-idea unchanged. Stamps `status_changed_at` (and `archived_at`), appends the history row with the
-operator and note, and sends `feedback.status_changed` through `comms.fn_notify` to the author and
-every voter — never the operator — linking `/feedback?idea=<slug>`.
+(Backlog → Ready / Archived; Ready → Backlog / In progress / Archived; In progress → Ready /
+Complete / Archived; Complete → Archived; Archived terminal — the unified machine's states, not all
+its §3.2 edges: Ready → In progress, In progress → Complete and Ready → Backlog are flagged in
+Decision #272 (l)); a move to the state already held answers the idea unchanged. Stamps
+`status_changed_at` (and `archived_at`), appends the history row with the operator and note, and
+sends `feedback.status_changed` through `comms.fn_notify` to the author and every voter — never the
+operator — linking `/feedback?idea=<slug>`.
 
 ### `community.respond_to_feedback_idea(p_slug text, p_response text) → jsonb`
 
 SECURITY DEFINER; operators only. Writes the team's response (≤ 2,000) with its instant and author,
 or clears all three for an empty response.
+
+### `community.moderate_feedback_idea(p_slug text, p_status text DEFAULT NULL, p_note text DEFAULT NULL, p_response text DEFAULT NULL) → jsonb`
+
+SECURITY DEFINER; what `FeedbackBackendService.moderate` (`POST /api/feedback/ideas/:id/status`)
+calls. One statement, so one transaction: `set_feedback_idea_status` when `p_status` is given, then
+`respond_to_feedback_idea` when `p_response` is given (an empty string clears it) — a refused
+response rolls the move and its notifications back with it. Every check is the two doors' own; it
+adds only `22023` when neither is given.
 
 ### `community.feedback_status_counts() → jsonb`
 

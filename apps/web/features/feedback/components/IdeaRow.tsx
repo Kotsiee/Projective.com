@@ -19,11 +19,22 @@ export interface IdeaRowProps {
 	/** Open the idea in place (a plain click); modified clicks keep the browser's behaviour. */
 	onOpen: (slug: string) => void;
 	onVote: (idea: FeedbackIdea) => void;
-	/** Show the lifecycle tag — off inside a roadmap column, whose heading already says it. */
+	/**
+	 * Show the lifecycle tag — off inside a roadmap column or a single-status tab, whose heading
+	 * already says it.
+	 */
 	showStatus?: boolean;
+	/**
+	 * Give the row its slug as an `id`, so `/feedback#<slug>` (the address the page's JSON-LD lists)
+	 * lands on it. The page's board only — a drawer row must not claim ids on a host page.
+	 */
+	anchor?: boolean;
 }
 
-/** One inline middot-separated fact list (§B.11.2). */
+/**
+ * One inline middot-separated fact list (§B.11.2). Each separator closes the item BEFORE it, so when
+ * the line wraps the dot stays at the end of the line it belongs to and the next line starts clean.
+ */
 export function MetaLine(
 	props: { items: Array<JSX.Element | string | null | false> },
 ): JSX.Element {
@@ -32,8 +43,8 @@ export function MetaLine(
 		<ul class="fb-meta">
 			{items.map((item, i) => (
 				<li class="fb-meta__item" key={i}>
-					{i > 0 && <span class="fb-meta__sep" aria-hidden="true">·</span>}
 					{item}
+					{i < items.length - 1 && <span class="fb-meta__sep" aria-hidden="true">·</span>}
 				</li>
 			))}
 		</ul>
@@ -57,7 +68,7 @@ export function IdeaRow(props: IdeaRowProps): JSX.Element {
 		{ voted: idea.viewerVoted, count: idea.voteCount, pending: false, error: null };
 	const tag = feedbackStatusTag(idea.status);
 	return (
-		<li class="fb-row" data-slug={idea.slug}>
+		<li class="fb-row" data-slug={idea.slug} id={props.anchor ? idea.slug : undefined}>
 			<VoteButton
 				title={idea.title}
 				status={idea.status}

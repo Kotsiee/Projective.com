@@ -41,7 +41,13 @@ export const handler = define.handlers({
 			: null;
 		applyPageMeta(
 			ctx.state,
-			pageMeta(feedbackPageMeta(origin, idea, { ideaMissing: detailError !== null })),
+			pageMeta(
+				feedbackPageMeta(origin, idea, {
+					ideaMissing: detailError !== null,
+					// A failed read still renders (the island retries), but its outage state is never indexed.
+					boardFailed: !board.ok,
+				}),
+			),
 		);
 		return page({
 			board: board.ok && board.data ? board.data : null,

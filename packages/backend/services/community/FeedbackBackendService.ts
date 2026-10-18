@@ -32,6 +32,7 @@ import {
 	FEEDBACK_EVENTS_TABLE,
 	FEEDBACK_IDEAS_TABLE,
 	FEEDBACK_RELATED_MAX,
+	FEEDBACK_SEARCH_POOL,
 	feedbackCountsFromRpc,
 	feedbackCountsOf,
 	feedbackHistoryOf,
@@ -78,6 +79,8 @@ export interface FeedbackServiceOptions {
 	source?: CommunitySource;
 	/** "Now", for the fixture road's clock and every "3 days ago". */
 	now?: Date;
+	/** The client a live read runs as, instead of the actor's own (tests stub the database here). */
+	client?: () => SupabaseClient;
 }
 
 const IDEA_COLUMNS = FEEDBACK_IDEA_COLUMNS.join(",");
@@ -232,7 +235,7 @@ export class FeedbackBackendService {
 	): Promise<ServiceResult<FeedbackBoard>> {
 		const source = opts.source ?? communitySource();
 		const now = opts.now ?? new Date();
-		const client = () => readerClient(actor);
+		const client = opts.client ?? (() => readerClient(actor));
 		const viewer = viewerOf(actor, source);
 		const states = feedbackStatesFor(query.status);
 		const tokens = feedbackSearchTokens(query.q);
@@ -249,7 +252,10 @@ export class FeedbackBackendService {
 						let q = db.from("feedback_ideas").select(IDEA_COLUMNS).in("status", states);
 						if (tokens.length) q = q.or(tokens.map((t) => `title.ilike.*${t}*`).join(","));
 						if (query.sort === "top") q = q.order("vote_count", { ascending: false });
-						return q.order("created_at", { ascending: false }).limit(query.limit);
+						// A search ranks by words in common, which the database cannot order by: read a
+						// bounded pool, rank it below, and only then take the asked limit.
+						return q.order("created_at", { ascending: false })
+							.limit(tokens.length ? Math.max(query.limit, FEEDBACK_SEARCH_POOL) : query.limit);
 					},
 					fixtures,
 					filter: (r) =>
@@ -299,7 +305,7 @@ export class FeedbackBackendService {
 	): Promise<ServiceResult<FeedbackIdeaDetail>> {
 		const source = opts.source ?? communitySource();
 		const now = opts.now ?? new Date();
-		const client = () => readerClient(actor);
+		const client = opts.client ?? (() => readerClient(actor));
 		const viewer = viewerOf(actor, source);
 		const fixtures = source === "fixture" ? feedbackStoreIdeas(now.getTime()) : [];
 
@@ -458,9 +464,11 @@ export class FeedbackBackendService {
 	}
 
 	/**
-	 * An operator's move and/or the team's response (`community.set_feedback_idea_status`,
-	 * `respond_to_feedback_idea`). 403 for anyone else — the doors check `security.is_admin()`; the
-	 * fixture road has no operator, so it refuses everyone the same way.
+	 * An operator's move and/or the team's response, in ONE transaction
+	 * (`community.moderate_feedback_idea`, which runs `set_feedback_idea_status` then
+	 * `respond_to_feedback_idea`): a refused response never leaves a status move — and its
+	 * notifications — committed behind an error. 403 for anyone else — the doors check
+	 * `security.is_admin()`; the fixture road has no operator, so it refuses everyone the same way.
 	 */
 	static async moderate(
 		slug: string,
@@ -476,25 +484,15 @@ export class FeedbackBackendService {
 			return fail(403, { message: "Only a Projective operator can change an idea's status." });
 		}
 		const client = getUserClient(actor.accessToken!);
-		let answer: unknown = null;
-		if (input.status !== undefined) {
-			const { data, error } = await communityRpc(client, "set_feedback_idea_status", {
-				p_slug: slug,
-				p_status: input.status,
-				p_note: input.note ?? null,
-			});
-			if (error) return doorRefusal(error as DoorError);
-			answer = data;
-		}
-		if (input.response !== undefined) {
-			const { data, error } = await communityRpc(client, "respond_to_feedback_idea", {
-				p_slug: slug,
-				p_response: input.response,
-			});
-			if (error) return doorRefusal(error as DoorError);
-			answer = data;
-		}
-		const parsed = FeedbackIdeaDoorRowSchema.safeParse(answer);
+		const { data, error } = await communityRpc(client, "moderate_feedback_idea", {
+			p_slug: slug,
+			p_status: input.status ?? null,
+			p_note: input.note ?? null,
+			// `null` leaves the response as it is; an empty string clears it.
+			p_response: input.response ?? null,
+		});
+		if (error) return doorRefusal(error as DoorError);
+		const parsed = FeedbackIdeaDoorRowSchema.safeParse(data);
 		if (!parsed.success) {
 			return fail(502, { message: "The change was saved but couldn't be read back." });
 		}

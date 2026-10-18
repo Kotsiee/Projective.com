@@ -59,7 +59,19 @@ Deno.test("an idea the reader may not open answers with the board's head, never 
 	assertEquals([meta.path, meta.title, meta.noindex], ["/feedback", "Feedback & roadmap", true]);
 });
 
-Deno.test("JSON-LD: a CollectionPage listing the public ideas at their own addresses, and a breadcrumb", () => {
+Deno.test("a board that could not be read is never indexed, on the board or an idea's section", () => {
+	assertEquals(feedbackPageMeta(ORIGIN, null, { boardFailed: true }).noindex, true);
+	const detail = {
+		idea: idea("fbk-kbyrph7gdt", "ready", "Pause a stage"),
+		history: [],
+		related: [],
+		now: NOW,
+	};
+	assertEquals(feedbackPageMeta(ORIGIN, detail, { boardFailed: true }).noindex, true);
+	assertEquals(feedbackPageMeta(ORIGIN, detail, { boardFailed: false }).noindex, false);
+});
+
+Deno.test("JSON-LD: a CollectionPage listing the public ideas at their rows' anchors, and a breadcrumb", () => {
 	const graph = feedbackJsonLd(
 		ORIGIN,
 		board([
@@ -76,9 +88,10 @@ Deno.test("JSON-LD: a CollectionPage listing the public ideas at their own addre
 	]);
 	assertEquals(list.itemListElement.map((i) => i.position), [1, 2]);
 	assert(graph["@graph"].some((n) => n["@type"] === "BreadcrumbList"));
+	// The row's anchor on the canonical page — never a `?idea=` address, which canonicalises away.
 	assertEquals(
 		feedbackIdeaUrl(ORIGIN, "fbk-kbyrph7gdt"),
-		"https://projective.app/feedback?idea=fbk-kbyrph7gdt",
+		"https://projective.app/feedback#fbk-kbyrph7gdt",
 	);
 	// It survives the script-safe serialiser as JSON.
 	JSON.parse(JSON.stringify(graph));

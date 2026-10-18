@@ -34,6 +34,7 @@ import {
 	feedbackTabCount,
 	feedbackTabLabel,
 	type FeedbackUnavailableCopy,
+	ideaCountText,
 	voteAnnouncement,
 } from "../core/feedback-view.ts";
 import { IdeaRow } from "./IdeaRow.tsx";
@@ -91,8 +92,10 @@ function boardKey(location: Pick<FeedbackLocation, "status" | "sort">): string {
  * - **Idea**: one idea with its history and related ideas.
  * - **Suggest**: the form — a second view in the drawer, a dialog over the board on the page.
  *
- * Votes are optimistic through one store, rolled back with an inline error on any refusal, and every
- * vote is announced politely.
+ * Votes are optimistic through one store and rolled back with an inline error (an alert) on any
+ * refusal; a vote that lands is announced politely — by the board's live region, or by the
+ * suggestion form's own when the vote is cast from its duplicate list (on the page that form sits in
+ * a Dialog, which makes the board inert).
  */
 export function FeedbackBoard(props: FeedbackBoardProps): JSX.Element {
 	const { mode, location, navigate, currentHref, compose } = props;
@@ -195,9 +198,17 @@ export function FeedbackBoard(props: FeedbackBoardProps): JSX.Element {
 		navigate({ ...location, ...next }, how);
 	}
 
+	/**
+	 * Open an idea. On the page only a move OFF the board pushes, so Back (and "All ideas", which steps
+	 * back over that one entry) returns to the board: an idea opened from another idea, or from the
+	 * suggestion dialog, replaces the entry it is on rather than stacking a second one.
+	 */
 	function openIdea(slug: string): void {
 		returnTo.current = slug;
-		go({ view: "idea", idea: slug }, mode === "page" ? "push" : "replace");
+		go(
+			{ view: "idea", idea: slug },
+			mode === "page" && location.view === "board" ? "push" : "replace",
+		);
 	}
 
 	function backToBoard(): void {
@@ -219,10 +230,9 @@ export function FeedbackBoard(props: FeedbackBoardProps): JSX.Element {
 
 	async function vote(idea: FeedbackIdea): Promise<void> {
 		const outcome = await votes.toggle(idea.slug, FeedbackService.vote);
-		if (!outcome.sent || !outcome.state) return;
-		announcement.value = outcome.ok
-			? voteAnnouncement(idea.title, outcome.state.voted, outcome.state.count)
-			: outcome.message ?? "Your vote didn't go through.";
+		// A refusal is said once, by the control's own inline alert; only a vote that landed is announced.
+		if (!outcome.sent || !outcome.ok || !outcome.state) return;
+		announcement.value = voteAnnouncement(idea.title, outcome.state.voted, outcome.state.count);
 	}
 
 	const hrefOf = (slug: string) => feedbackIdeaHref(slug, mode, currentHref);
@@ -268,6 +278,7 @@ export function FeedbackBoard(props: FeedbackBoardProps): JSX.Element {
 				onOpen={openIdea}
 				onVote={(target) => void vote(target)}
 				showStatus={showStatus}
+				anchor={mode === "page"}
 			/>
 		);
 	}
@@ -289,7 +300,8 @@ export function FeedbackBoard(props: FeedbackBoardProps): JSX.Element {
 					</Message>
 				)
 				: (
-					<div class="fb-drawer__loading" aria-label="Loading ideas">
+					<div class="fb-drawer__loading" role="status">
+						<span class="ui-visually-hidden">Loading ideas…</span>
 						{[0, 1, 2, 3].map((i) => <Skeleton key={i} lines={2} />)}
 					</div>
 				);
@@ -303,6 +315,16 @@ export function FeedbackBoard(props: FeedbackBoardProps): JSX.Element {
 					icon={<Icon name="send" />}
 					title={copy.title}
 					description={copy.description}
+					actions={!signedIn && location.status === "under_review"
+						? (
+							<a
+								class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm fb-link-button"
+								href={signInHref}
+							>
+								<span class="ui-button__label">Sign in</span>
+							</a>
+						)
+						: undefined}
 				/>
 			);
 		}
@@ -317,7 +339,7 @@ export function FeedbackBoard(props: FeedbackBoardProps): JSX.Element {
 								Only you can see these until the team reviews them. New ideas appear on the board
 								after review.
 							</p>
-							<ul class="fb-list">{underReview.map((idea) => row(idea))}</ul>
+							<ul class="fb-list">{underReview.map((idea) => row(idea, false))}</ul>
 						</section>
 					)}
 					<div class="fb-roadmap">
@@ -326,9 +348,10 @@ export function FeedbackBoard(props: FeedbackBoardProps): JSX.Element {
 				</div>
 			);
 		}
+		// Only the mixed All list wears the lifecycle tag; under a status tab the tab already says it.
 		return (
 			<ul class="fb-list" aria-label={`${feedbackTabLabel(location.status)} ideas`}>
-				{ideas.map((idea) => row(idea))}
+				{ideas.map((idea) => row(idea, location.status === null))}
 			</ul>
 		);
 	}
@@ -381,11 +404,18 @@ export function FeedbackBoard(props: FeedbackBoardProps): JSX.Element {
 								return (
 									<>
 										<span class="ui-tabmenu__label">{item.label}</span>
+										{
+											/*
+											 * One hidden text node carries ", 12 ideas" — spaces and all — so the tab's
+											 * name reads "Planned, 12 ideas"; the visible figure is decoration beside it.
+											 */
+										}
 										{counts && (
 											<span class="fb-tabcount">
-												<span class="ui-visually-hidden">,</span>
-												{feedbackTabCount(tab, counts)}
-												<span class="ui-visually-hidden">ideas</span>
+												<span class="ui-visually-hidden">
+													{`, ${ideaCountText(feedbackTabCount(tab, counts))}`}
+												</span>
+												<span aria-hidden="true">{feedbackTabCount(tab, counts)}</span>
 											</span>
 										)}
 									</>
@@ -444,7 +474,8 @@ export function FeedbackBoard(props: FeedbackBoardProps): JSX.Element {
 					</div>
 				)
 				: (
-					<div class="fb-drawer__loading" aria-label="Loading the idea">
+					<div class="fb-drawer__loading" role="status">
+						<span class="ui-visually-hidden">Loading the idea…</span>
 						<Skeleton lines={1} width="40%" />
 						<Skeleton lines={4} />
 					</div>
@@ -494,7 +525,6 @@ export function FeedbackBoard(props: FeedbackBoardProps): JSX.Element {
 				}}
 				onDone={closeCompose}
 				onAnother={() => resetCompose(compose)}
-				announce={(text) => (announcement.value = text)}
 			/>
 		);
 	}

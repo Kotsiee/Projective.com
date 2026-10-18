@@ -207,6 +207,15 @@ const STOPWORDS = new Set([
 export const FEEDBACK_SEARCH_TOKENS_MAX = 6;
 
 /**
+ * How many candidates a live title search reads before ranking. The database can only order by votes,
+ * not by words in common, so the live road reads this bounded pool, ranks it with
+ * {@link rankFeedbackSearch} and only then takes the asked `limit` — the fixture road's order, so both
+ * roads agree. (Past this many matching ideas a best match with very few votes could still fall
+ * outside the pool; Decision #272 (i) — no trigram index yet.)
+ */
+export const FEEDBACK_SEARCH_POOL = 100;
+
+/**
  * The words of a title search worth matching on: letters and digits only (so a token can never
  * carry PostgREST filter syntax), three characters or more, lowercased, de-duplicated, stopwords
  * dropped, at most {@link FEEDBACK_SEARCH_TOKENS_MAX}.

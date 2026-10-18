@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { slugPattern } from "../slugs/slug.ts";
 import { timestamp, uuid } from "./common.ts";
+import {
+	FEEDBACK_SORTS,
+	FEEDBACK_STATUS_FILTERS,
+	type FeedbackSort,
+	type FeedbackStatusFilter,
+} from "./feedback-constants.ts";
 
 /**
  * community.feedback — the Zod SSOT for the public feedback board (P7, Decision #272): the three
@@ -51,9 +57,11 @@ export const FEEDBACK_VOTABLE_STATES: readonly FeedbackIdeaState[] = [
 ];
 
 /**
- * The legal moves of the idea lifecycle (`community.fn_feedback_move_legal`), a subset of the unified
- * machine's §3.2: Archived is terminal and non-reopenable, and a shipped idea can only be archived —
- * a regression is a new idea.
+ * The legal moves of the idea lifecycle (`community.fn_feedback_move_legal`). They use the unified
+ * machine's states but not all of its §3.2 edges: an idea has no claimant and no deliverable, so
+ * Ready → In progress skips Claimed, In progress → Shipped skips Review, and Ready → Backlog ("sent
+ * back for review") has no §3.2 edge at all — flagged for the owner in Decision #272 (l). Archived
+ * is terminal and non-reopenable, and a shipped idea can only be archived — a regression is a new idea.
  */
 export const FEEDBACK_MOVES: Readonly<Record<FeedbackIdeaState, readonly FeedbackIdeaState[]>> = {
 	backlog: ["ready", "archived"],
@@ -75,17 +83,11 @@ export function isFeedbackVotable(state: FeedbackIdeaState): boolean {
 // #endregion
 
 // #region Board filters
-/** The status tabs' URL values (`?status=`), one per state the board shows. */
-export const FEEDBACK_STATUS_FILTERS = [
-	"under_review",
-	"planned",
-	"in_progress",
-	"shipped",
-] as const;
+// The lists themselves live in the Zod-free `./feedback-constants.ts` (the drawer host reads them).
+export { FEEDBACK_SORTS, FEEDBACK_STATUS_FILTERS, type FeedbackSort, type FeedbackStatusFilter };
 
 /** One status tab. */
 export const FeedbackStatusFilterSchema = z.enum(FEEDBACK_STATUS_FILTERS);
-export type FeedbackStatusFilter = z.infer<typeof FeedbackStatusFilterSchema>;
 
 /** The stored state each status tab shows. */
 export const FEEDBACK_FILTER_STATE: Readonly<Record<FeedbackStatusFilter, FeedbackIdeaState>> = {
@@ -102,9 +104,7 @@ export function feedbackFilterOf(state: FeedbackIdeaState): FeedbackStatusFilter
 }
 
 /** The board's orders: most votes first, or newest first. */
-export const FEEDBACK_SORTS = ["top", "new"] as const;
 export const FeedbackSortSchema = z.enum(FEEDBACK_SORTS);
-export type FeedbackSort = z.infer<typeof FeedbackSortSchema>;
 // #endregion
 
 // #region Categories

@@ -1,7 +1,9 @@
 import { assert, assertEquals, assertFalse } from "@std/assert";
-import { FeedbackBoardQuerySchema } from "@projective/types/community";
+import type { SupabaseClient } from "supabaseClient";
+import { FeedbackBoardQuerySchema, type FeedbackIdeaRow } from "@projective/types/community";
 import { ANONYMOUS_READER, type ReadActor } from "../read-actor.ts";
 import { FeedbackBackendService } from "./FeedbackBackendService.ts";
+import { FEEDBACK_SEARCH_POOL } from "./feedback-model.ts";
 import { FEEDBACK_DEMO_IDEAS, FEEDBACK_DEMO_PEOPLE } from "./feedback-fixtures.ts";
 import { fixtureUserId, resetFeedbackStore } from "./feedback-store.ts";
 
@@ -256,5 +258,114 @@ Deno.test("a development stub session's id folds onto a stable uuid, so its idea
 	assert(res.data?.idea.isOwn);
 	const mine = await FeedbackBackendService.board(q({ status: "under_review" }), stub, FIXTURE);
 	assertEquals(mine.data?.ideas.length, 1);
+});
+// #endregion
+
+// #region The live road's title search
+/**
+ * A stand-in for the `community` schema over PostgREST that honours the board's one query shape —
+ * `in` · `or(title.ilike…)` · `order` · `limit` — and the counts RPC, recording each `limit` asked.
+ */
+function stubLiveClient(
+	rows: FeedbackIdeaRow[],
+): { client: () => SupabaseClient; limits: number[] } {
+	const limits: number[] = [];
+	function query() {
+		let result = [...rows];
+		const orders: Array<{ column: keyof FeedbackIdeaRow; ascending: boolean }> = [];
+		const builder = {
+			select: () => builder,
+			in(column: keyof FeedbackIdeaRow, values: readonly unknown[]) {
+				result = result.filter((row) => values.includes(row[column]));
+				return builder;
+			},
+			or(expression: string) {
+				const words = expression.split(",").map((part) =>
+					part.replace(/^title\.ilike\.\*|\*$/g, "")
+				);
+				result = result.filter((row) => words.some((w) => row.title.toLowerCase().includes(w)));
+				return builder;
+			},
+			order(column: keyof FeedbackIdeaRow, options: { ascending: boolean }) {
+				orders.push({ column, ascending: options.ascending });
+				return builder;
+			},
+			limit(n: number) {
+				limits.push(n);
+				const sorted = [...result].sort((a, b) => {
+					for (const { column, ascending } of orders) {
+						const x = a[column] as number | string;
+						const y = b[column] as number | string;
+						if (x !== y) return (x < y ? -1 : 1) * (ascending ? 1 : -1);
+					}
+					return 0;
+				});
+				return Promise.resolve({ data: sorted.slice(0, n), error: null });
+			},
+		};
+		return builder;
+	}
+	const db = {
+		from: () => query(),
+		rpc: () => Promise.resolve({ data: { ready: rows.length }, error: null }),
+	};
+	return { client: () => ({ schema: () => db }) as unknown as SupabaseClient, limits };
+}
+
+function liveRow(n: number, title: string, votes: number): FeedbackIdeaRow {
+	const at = new Date(NOW.getTime() - n * 86_400_000).toISOString();
+	return {
+		id: `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`,
+		slug: `fbk-${"abcdefghjk"[n]}${"23456789a"}`,
+		title,
+		impact: "Why this matters to the people who asked for it.",
+		body: null,
+		category: "projects",
+		status: "ready",
+		author_id: null,
+		vote_count: votes,
+		team_response: null,
+		team_response_at: null,
+		created_at: at,
+		updated_at: at,
+		status_changed_at: at,
+		archived_at: null,
+	};
+}
+
+Deno.test("live: a title search ranks a bounded pool before the limit, so the best match is never cut", async () => {
+	// Five popular ideas share one word with the search; the one that matches it whole has one vote.
+	const rows = [
+		liveRow(1, "Stage templates for repeat projects", 50),
+		liveRow(2, "Stage deadlines on the calendar", 40),
+		liveRow(3, "Stage comments for the whole team", 30),
+		liveRow(4, "Stage budgets in my own currency", 20),
+		liveRow(5, "Stage files in one place", 10),
+		liveRow(6, "Pause a stage without cancelling it", 1),
+	];
+	const live = stubLiveClient(rows);
+	const res = await FeedbackBackendService.board(
+		q({ q: "Pause a stage without cancelling", limit: 4 }),
+		ANONYMOUS_READER,
+		{ source: "live", now: NOW, client: live.client },
+	);
+	assert(res.ok && res.data);
+	assertEquals(live.limits, [FEEDBACK_SEARCH_POOL]);
+	assertEquals(res.data.ideas.length, 4);
+	assertEquals(res.data.ideas[0].title, "Pause a stage without cancelling it");
+	// The rest follow by votes, exactly as the fixture road ranks them.
+	assertEquals(res.data.ideas.slice(1).map((i) => i.voteCount), [50, 40, 30]);
+});
+
+Deno.test("live: a board read without a search still asks for exactly its limit", async () => {
+	const live = stubLiveClient([liveRow(1, "Stage templates for repeat projects", 5)]);
+	const res = await FeedbackBackendService.board(
+		q({ status: "planned", limit: 7 }),
+		ANONYMOUS_READER,
+		{ source: "live", now: NOW, client: live.client },
+	);
+	assert(res.ok && res.data);
+	assertEquals(live.limits, [7]);
+	assertEquals(res.data.ideas.length, 1);
 });
 // #endregion

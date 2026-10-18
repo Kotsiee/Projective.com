@@ -12,7 +12,9 @@
 --   * one vote per person per idea — a repeat vote and a repeat retraction change nothing, and
 --     vote_count always equals the vote rows;
 --   * only an operator (ops.admin_users) changes an idea's status or writes the team response, and only
---     along the legal moves; a move notifies the author;
+--     along the legal moves; a move notifies the author and every voter, never the operator;
+--   * community.moderate_feedback_idea carries a move and a response as one call — both land, or a
+--     refusal keeps neither;
 --   * an idea under review (Backlog) is visible to its author and operators only; an Archived idea to
 --     operators only; neither can be voted on by anyone else;
 --   * comms.mask_pii screens an idea's text on insert and on update (Decision #147), and the evidence
@@ -75,6 +77,7 @@ BEGIN
         'SELECT community.unvote_feedback_idea(''fbk-2222222222'')',
         'SELECT community.set_feedback_idea_status(''fbk-2222222222'', ''ready'')',
         'SELECT community.respond_to_feedback_idea(''fbk-2222222222'', ''Hello'')',
+        'SELECT community.moderate_feedback_idea(''fbk-2222222222'', ''ready'')',
         'INSERT INTO community.feedback_votes (idea_id, user_id) VALUES (gen_random_uuid(), gen_random_uuid())',
         'INSERT INTO community.feedback_ideas (title, impact, category) VALUES (''Direct insert'', ''Straight into the table.'', ''other'')'
     ] LOOP
@@ -102,7 +105,8 @@ BEGIN
     FOREACH v_sql IN ARRAY ARRAY[
         'SELECT community.submit_feedback_idea(''A subjectless idea'', ''other'', ''Nobody is signed in here.'')',
         'SELECT community.vote_feedback_idea(''fbk-2222222222'')',
-        'SELECT community.set_feedback_idea_status(''fbk-2222222222'', ''ready'')'
+        'SELECT community.set_feedback_idea_status(''fbk-2222222222'', ''ready'')',
+        'SELECT community.moderate_feedback_idea(''fbk-2222222222'', ''ready'')'
     ] LOOP
         BEGIN
             EXECUTE v_sql;
@@ -236,6 +240,12 @@ BEGIN
         EXCEPTION WHEN insufficient_privilege THEN
             RAISE NOTICE 'PASS non-operator response refused [%]', SQLERRM;
         END;
+        BEGIN
+            PERFORM community.moderate_feedback_idea(current_setting('probe.idea'), 'ready', NULL, 'Not mine');
+            RAISE EXCEPTION 'FAIL a non-operator moderated an idea (%)', v_who;
+        EXCEPTION WHEN insufficient_privilege THEN
+            RAISE NOTICE 'PASS non-operator moderation refused [%]', SQLERRM;
+        END;
     END LOOP;
 END $$;
 
@@ -347,6 +357,71 @@ BEGIN
         RAISE EXCEPTION 'FAIL a vote_count disagrees with its vote rows';
     END IF;
     RAISE NOTICE 'PASS every vote_count equals its vote rows';
+END $$;
+-- #endregion
+
+-- #region 6b. One call moves and responds together; the move tells every voter, not the operator
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims',
+    json_build_object('sub', current_setting('probe.operator'), 'role', 'authenticated')::text, true);
+DO $$
+DECLARE
+    v jsonb;
+BEGIN
+    BEGIN
+        PERFORM community.moderate_feedback_idea(current_setting('probe.idea'));
+        RAISE EXCEPTION 'FAIL a moderation that changes nothing was accepted';
+    EXCEPTION WHEN invalid_parameter_value THEN
+        RAISE NOTICE 'PASS a moderation must change something [%]', SQLERRM;
+    END;
+    -- A move with a response the response door refuses: the call is refused whole. (One call is one
+    -- statement, so nothing of it outlives the refusal — the service's single RPC is one transaction.)
+    BEGIN
+        PERFORM community.moderate_feedback_idea(
+            current_setting('probe.idea'), 'in_progress', 'Work started', repeat('x', 2001));
+        RAISE EXCEPTION 'FAIL an over-long response was accepted';
+    EXCEPTION WHEN invalid_parameter_value THEN
+        IF SQLERRM NOT LIKE 'response:%' THEN RAISE EXCEPTION 'FAIL the refusal names no field: %', SQLERRM; END IF;
+        RAISE NOTICE 'PASS a refused response is refused whole [%]', SQLERRM;
+    END;
+    IF (SELECT i.status FROM community.feedback_ideas i WHERE i.slug = current_setting('probe.idea')) <> 'ready' THEN
+        RAISE EXCEPTION 'FAIL a refused response left its status move behind';
+    END IF;
+    v := community.moderate_feedback_idea(
+        current_setting('probe.idea'), 'in_progress', 'Work started', 'Building it now.');
+    IF v->>'status' <> 'in_progress' OR v->>'team_response' IS DISTINCT FROM 'Building it now.' THEN
+        RAISE EXCEPTION 'FAIL the move and the response did not both land: %', v;
+    END IF;
+    v := community.moderate_feedback_idea(current_setting('probe.idea'), p_response => '');
+    IF v->>'status' <> 'in_progress' OR v->>'team_response' IS NOT NULL THEN
+        RAISE EXCEPTION 'FAIL an empty response did not clear it (or moved the idea): %', v;
+    END IF;
+    RAISE NOTICE 'PASS one call moves and responds; an empty response clears it';
+END $$;
+RESET ROLE;
+
+DO $$
+DECLARE
+    v_n int;
+    v_url text;
+    v_body text;
+BEGIN
+    SELECT count(*), max(n.action_url), max(n.body) INTO v_n, v_url, v_body
+    FROM comms.notifications n
+    WHERE n.user_id = current_setting('probe.voter')::uuid AND n.type = 'feedback.status_changed';
+    IF v_n <> 1 OR v_url IS DISTINCT FROM '/feedback?idea=' || current_setting('probe.idea') THEN
+        RAISE EXCEPTION 'FAIL the voter was not notified once with a link to the idea (% rows, %)', v_n, v_url;
+    END IF;
+    IF v_body NOT LIKE 'An idea you voted for moved from Planned to In progress%' THEN
+        RAISE EXCEPTION 'FAIL the voter''s notification reads %', v_body;
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM comms.notifications n
+        WHERE n.user_id = current_setting('probe.operator')::uuid AND n.type = 'feedback.status_changed'
+    ) THEN
+        RAISE EXCEPTION 'FAIL the operator was notified of their own move';
+    END IF;
+    RAISE NOTICE 'PASS a voter is notified of a move (%), the operator is not', v_url;
 END $$;
 -- #endregion
 

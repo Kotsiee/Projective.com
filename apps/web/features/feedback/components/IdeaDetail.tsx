@@ -102,12 +102,16 @@ export function IdeaDetail(props: IdeaDetailProps): JSX.Element {
 									<UserAvatar image={idea.author.avatar} label={idea.author.name} size="sm" />
 									<span>
 										Suggested by{" "}
-										<a href={`/${idea.author.handle}`}>{idea.isOwn ? "you" : idea.author.name}</a>
+										<a class="fb-idea__author" href={`/${idea.author.handle}`}>
+											{idea.isOwn ? "you" : idea.author.name}
+										</a>
 									</span>
 								</>
 							)
 							: <span>{idea.isOwn ? "Suggested by you" : "Suggested by a member"}</span>}
 					</address>
+					{/* A refused vote rolls back with its reason inline, as the board's rows do. */}
+					{vote.error && <p class="fb-idea__error" role="alert">{vote.error}</p>}
 				</div>
 			</header>
 

@@ -24,7 +24,7 @@ import {
 import { FeedbackService } from "../core/FeedbackService.ts";
 import type { VoteStore } from "../core/vote-store.ts";
 import { checkCompose, type ComposeState, piiHintFor } from "../core/compose-state.ts";
-import { voteCountText } from "../core/feedback-view.ts";
+import { voteAnnouncement, voteCountText } from "../core/feedback-view.ts";
 import { isPlainClick } from "./IdeaRow.tsx";
 import { SentFlourish } from "./SentFlourish.tsx";
 
@@ -55,8 +55,6 @@ export interface IdeaComposeFormProps {
 	onShowSent: (idea: FeedbackIdea) => void;
 	onDone: () => void;
 	onAnother: () => void;
-	/** The live region's voice, for the duplicate list's votes. */
-	announce: (text: string) => void;
 }
 
 /**
@@ -95,12 +93,18 @@ export async function submitCompose(state: ComposeState): Promise<FeedbackIdea |
  * flourish where motion is allowed. The success is announced by the form's own polite live region —
  * present before the send, so a screen reader hears the change whatever the motion setting — and
  * focus moves to the success heading, because the submit button it was on has gone.
+ *
+ * The same live region speaks for the duplicate list's votes. It is the FORM's own, never the
+ * board's: on `/feedback` the form sits in a Dialog whose focus trap makes everything outside it —
+ * the board's live region included — inert, so a board announcement would never be heard.
  */
 export function IdeaComposeForm(props: IdeaComposeFormProps): JSX.Element {
 	const { state, votes, formId } = props;
 	const values = state.values.value;
 	const errors = state.errors.value;
 	const dupes = useSignal<FeedbackIdea[]>([]);
+	/** What the live region last said about a duplicate's vote. */
+	const said = useSignal("");
 	const sentHeadingRef = useRef<HTMLHeadingElement>(null);
 
 	function set<K extends keyof typeof values>(key: K, value: (typeof values)[K]): void {
@@ -137,7 +141,9 @@ export function IdeaComposeForm(props: IdeaComposeFormProps): JSX.Element {
 	}, [sent]);
 
 	const live = (
-		<p class="ui-visually-hidden" aria-live="polite">{sent ? FEEDBACK_SENT_ANNOUNCEMENT : ""}</p>
+		<p class="ui-visually-hidden" aria-live="polite">
+			{sent ? FEEDBACK_SENT_ANNOUNCEMENT : said.value}
+		</p>
 	);
 
 	if (sent) {
@@ -184,12 +190,9 @@ export function IdeaComposeForm(props: IdeaComposeFormProps): JSX.Element {
 
 	async function voteInstead(idea: FeedbackIdea): Promise<void> {
 		const outcome = await votes.toggle(idea.slug, FeedbackService.vote);
-		if (!outcome.sent || !outcome.state) return;
-		props.announce(
-			outcome.ok
-				? `${outcome.state.voted ? "Voted for" : "Vote removed from"} ${idea.title}.`
-				: outcome.message ?? "Your vote didn't go through.",
-		);
+		// A refusal is said once, by the item's own inline alert; only a vote that landed is announced.
+		if (!outcome.sent || !outcome.ok || !outcome.state) return;
+		said.value = voteAnnouncement(idea.title, outcome.state.voted, outcome.state.count);
 	}
 
 	return (
@@ -214,6 +217,7 @@ export function IdeaComposeForm(props: IdeaComposeFormProps): JSX.Element {
 				<FormControl
 					label="Title"
 					required
+					class="fb-compose__title"
 					status={errors.title ? "invalid" : "default"}
 					error={errors.title}
 					hint={piiHintFor(values.title) ??
@@ -242,6 +246,7 @@ export function IdeaComposeForm(props: IdeaComposeFormProps): JSX.Element {
 							{dupes.value.map((idea) => {
 								const vote = votes.get(idea.slug);
 								const count = vote?.count ?? idea.voteCount;
+								const voted = vote?.voted ?? idea.viewerVoted;
 								return (
 									<li class="fb-dupes__item" key={idea.slug}>
 										<div class="fb-dupes__text">
@@ -260,19 +265,27 @@ export function IdeaComposeForm(props: IdeaComposeFormProps): JSX.Element {
 												{FEEDBACK_STATE_LABEL[idea.status]} · {voteCountText(count)}
 											</span>
 										</div>
+										{
+											/*
+											 * An action button, not a toggle: its label says what pressing it does next,
+											 * so it changes with the vote and carries no aria-pressed (a toggle's name
+											 * must not change with its state). While a vote is in flight it stays in the
+											 * focus order — aria-disabled, the press ignored — as VoteButton does.
+											 */
+										}
 										{isFeedbackVotable(idea.status) && (
 											<Button
 												size="sm"
 												severity="neutral"
 												variant="outlined"
-												aria-pressed={vote?.voted ?? idea.viewerVoted}
-												disabled={vote?.pending}
-												label={(vote?.voted ?? idea.viewerVoted)
-													? "You voted for this"
-													: "Vote for this instead"}
-												onClick={() => void voteInstead(idea)}
+												aria-disabled={vote?.pending || undefined}
+												label={voted ? "Remove my vote" : "Vote for this instead"}
+												onClick={() => {
+													if (!vote?.pending) void voteInstead(idea);
+												}}
 											/>
 										)}
+										{vote?.error && <p class="fb-dupes__error" role="alert">{vote.error}</p>}
 									</li>
 								);
 							})}

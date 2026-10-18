@@ -174,6 +174,8 @@ REVOKE ALL ON FUNCTION community.set_feedback_idea_status (text, text, text) FRO
 GRANT EXECUTE ON FUNCTION community.set_feedback_idea_status (text, text, text) TO authenticated;
 REVOKE ALL ON FUNCTION community.respond_to_feedback_idea (text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION community.respond_to_feedback_idea (text, text) TO authenticated;
+REVOKE ALL ON FUNCTION community.moderate_feedback_idea (text, text, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION community.moderate_feedback_idea (text, text, text, text) TO authenticated;
 -- The tab counts are an INVOKER read under the caller's own policies, so guests may run it too.
 REVOKE ALL ON FUNCTION community.feedback_status_counts () FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION community.feedback_status_counts () TO anon, authenticated;

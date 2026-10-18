@@ -134,6 +134,26 @@ Deno.test("the rate limits are FEEDBACK_IDEAS_PER_DAY and FEEDBACK_VOTES_PER_HOU
 	assertStringIncludes(vote, `IF v_recent >= ${FEEDBACK_VOTES_PER_HOUR} THEN`);
 	assertStringIncludes(vote, "created_at > now() - interval '1 hour'");
 });
+
+Deno.test("both rate limits count under one per-person lock, taken before the count", () => {
+	const lock = "PERFORM pg_advisory_xact_lock(hashtext('community.feedback:' || v_uid::text));";
+	for (const door of ["submit_feedback_idea", "vote_feedback_idea"]) {
+		const body = fn(door);
+		const at = body.indexOf(lock);
+		assert(at !== -1, `${door} takes no per-person lock`);
+		assert(at < body.indexOf("SELECT count(*), min(created_at)"), `${door} counts before locking`);
+	}
+	// The vote door locks the person before the idea's row, so the two locks have one order.
+	const vote = fn("vote_feedback_idea");
+	assert(vote.indexOf(lock) < vote.indexOf("community.fn_feedback_idea_for_caller(p_slug)"));
+});
+
+Deno.test("one moderation call runs the move, then the response, in one statement", () => {
+	const body = fn("moderate_feedback_idea");
+	const move = body.indexOf("community.set_feedback_idea_status(p_slug, p_status, p_note)");
+	const respond = body.indexOf("community.respond_to_feedback_idea(p_slug, p_response)");
+	assert(move !== -1 && respond > move, "moderate_feedback_idea must call both doors, move first");
+});
 // #endregion
 
 // #region What a client may read

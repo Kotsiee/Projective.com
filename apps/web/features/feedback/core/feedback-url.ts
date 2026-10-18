@@ -1,8 +1,10 @@
+// The Zod-free sub-path, not the `community` barrel: this module rides in `FeedbackHost` and the
+// account menu's bridge, which every public and dashboard page loads.
 import {
 	FEEDBACK_STATUS_FILTERS,
 	type FeedbackSort,
 	type FeedbackStatusFilter,
-} from "@projective/types/community";
+} from "@projective/types/community/feedback-constants";
 import { isSlug } from "@projective/types/slugs";
 
 /**

@@ -192,8 +192,11 @@ AS $$
         OR security.is_admin();
 $$;
 
--- The legal moves of the idea lifecycle, a subset of the unified machine's (§3.2). Archived is
--- terminal and non-reopenable; Complete may only be archived (a regression is a new idea).
+-- The legal moves of the idea lifecycle. They use the unified machine's STATES but not all of its
+-- §3.2 edges: an idea has no claimant and no deliverable, so Ready → In Progress skips Claimed,
+-- In Progress → Complete skips Review, and Ready → Backlog ("sent back for review") has no §3.2 edge
+-- at all — see Decision #272 (l), flagged for the owner. Archived is terminal and non-reopenable;
+-- Complete may only be archived (a regression is a new idea).
 CREATE OR REPLACE FUNCTION community.fn_feedback_move_legal(p_from text, p_to text)
 RETURNS boolean
 LANGUAGE sql
@@ -341,7 +344,8 @@ $$;
 -- review"), so nobody but its author and the operators sees it until an operator moves it to Ready:
 -- Decision #148's screening is not built, so review IS the publication gate. The author's own vote
 -- is cast with it, and the submission is the first history row (NULL → backlog). Five ideas per
--- person per rolling 24 hours.
+-- person per rolling 24 hours — counted under a per-person advisory lock (the same key the vote door
+-- takes), so two concurrent submits cannot both read four and both insert.
 CREATE OR REPLACE FUNCTION community.submit_feedback_idea(
     p_title text,
     p_category text,
@@ -382,6 +386,7 @@ BEGIN
         RAISE EXCEPTION 'body: Keep the details under 4,000 characters.' USING ERRCODE = '22023';
     END IF;
 
+    PERFORM pg_advisory_xact_lock(hashtext('community.feedback:' || v_uid::text));
     SELECT count(*), min(created_at) INTO v_recent, v_oldest
     FROM community.feedback_ideas
     WHERE author_id = v_uid AND created_at > now() - interval '24 hours';
@@ -428,7 +433,8 @@ $$;
 -- community.vote_feedback_idea / unvote_feedback_idea — idempotent: a repeat vote, or retracting a
 -- vote never cast, changes nothing and answers the same `{ voted, vote_count }`. Voting is open while
 -- an idea is under review, planned or in progress, and closed once it ships or is archived. 120 new
--- votes per person per rolling hour.
+-- votes per person per rolling hour, counted under the per-person advisory lock the submit door takes
+-- (taken before the idea's row lock, so the two locks are always acquired in one order).
 CREATE OR REPLACE FUNCTION community.vote_feedback_idea(p_slug text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -445,6 +451,7 @@ BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Sign in to vote.' USING ERRCODE = '28000';
     END IF;
+    PERFORM pg_advisory_xact_lock(hashtext('community.feedback:' || v_uid::text));
     v_idea := community.fn_feedback_idea_for_caller(p_slug);
     IF v_idea.status NOT IN ('backlog', 'ready', 'in_progress') THEN
         RAISE EXCEPTION 'Voting has closed on this idea.' USING ERRCODE = '55000';
@@ -631,6 +638,39 @@ BEGIN
     RETURNING * INTO v_idea;
 
     RETURN community.fn_feedback_idea_json(v_idea);
+END;
+$$;
+
+-- community.moderate_feedback_idea — an operator's move and/or the team's response in ONE
+-- transaction: it runs set_feedback_idea_status (when p_status is given) and then
+-- respond_to_feedback_idea (when p_response is given — an empty string clears it), so a refused
+-- response rolls the move and its notifications back with it. Every check is the two doors' own;
+-- this adds only "change something". What FeedbackBackendService.moderate calls.
+CREATE OR REPLACE FUNCTION community.moderate_feedback_idea(
+    p_slug text,
+    p_status text DEFAULT NULL,
+    p_note text DEFAULT NULL,
+    p_response text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_answer jsonb;
+BEGIN
+    IF p_status IS NULL AND p_response IS NULL THEN
+        RAISE EXCEPTION 'status: Change the status, the response, or both.' USING ERRCODE = '22023';
+    END IF;
+    IF p_status IS NOT NULL THEN
+        v_answer := community.set_feedback_idea_status(p_slug, p_status, p_note);
+    END IF;
+    IF p_response IS NOT NULL THEN
+        v_answer := community.respond_to_feedback_idea(p_slug, p_response);
+    END IF;
+    RETURN v_answer;
 END;
 $$;
 

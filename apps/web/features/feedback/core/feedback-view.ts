@@ -40,6 +40,11 @@ export function feedbackTabLabel(tab: FeedbackTab): string {
 export function feedbackTabCount(tab: FeedbackTab, counts: FeedbackStatusCounts): number {
 	return tab === null ? counts.all : counts[tab];
 }
+
+/** `1 idea` / `12 ideas` — a tab count as its accessible name says it. */
+export function ideaCountText(count: number): string {
+	return `${count} ${count === 1 ? "idea" : "ideas"}`;
+}
 // #endregion
 
 // #region The lifecycle tag

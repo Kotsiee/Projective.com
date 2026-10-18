@@ -10,6 +10,7 @@ import {
 	feedbackStatusTag,
 	feedbackTabCount,
 	feedbackTabLabel,
+	ideaCountText,
 	signInToVoteLabel,
 	voteAnnouncement,
 	voteCountText,
@@ -47,6 +48,12 @@ Deno.test("tabs: All first, then the lifecycle, each with the owner's label and 
 	]);
 	const counts = { all: 9, under_review: 1, planned: 4, in_progress: 2, shipped: 2 };
 	assertEquals(FEEDBACK_TABS.map((t) => feedbackTabCount(t, counts)), [9, 1, 4, 2, 2]);
+	// The tab's accessible name appends ", n ideas" — the words, spaced, singular for one.
+	assertEquals([ideaCountText(1), ideaCountText(12), ideaCountText(0)], [
+		"1 idea",
+		"12 ideas",
+		"0 ideas",
+	]);
 });
 
 Deno.test("each state wears its lifecycle tag", () => {

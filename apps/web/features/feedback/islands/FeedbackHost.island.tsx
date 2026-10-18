@@ -45,10 +45,11 @@ function insideOverlay(target: EventTarget | null): boolean {
 }
 
 /**
- * FeedbackHost — the ONE owner of `?feedback=open` (Decision #272), mounted in the public and the
- * dashboard layouts so the board opens over any page. It is small on purpose: the drawer and the
- * board are imported the first time they are asked for, so a page that never opens them pays for
- * neither.
+ * FeedbackHost — the ONE owner of `?feedback=open` (Decision #272), mounted in the public, profile
+ * (`[handle]`) and dashboard layouts so the board opens over any page. It is small on purpose: its
+ * imports are Zod-free (`feedback-url.ts` reads the `feedback-constants` sub-path), and the drawer
+ * and the board are imported the first time they are asked for, so a page that never opens them
+ * pays for neither.
  *
  * - **URL → drawer.** On load and on every `popstate` it reads the URL; `feedback=open` opens the
  *   drawer at `idea` / `compose` (and an arrival's `status` / `sort`), its absence closes it. The
