@@ -54,6 +54,7 @@ import ProjectsLane from "@web/features/projects/islands/ProjectsLane.island.tsx
 import ProjectSidebar from "@web/features/projects/islands/ProjectSidebar.island.tsx";
 import ChatPopoutHost from "@web/features/messaging/islands/ChatPopoutHost.island.tsx";
 import TicketDeepLinkHost from "@web/features/projects/islands/TicketDeepLinkHost.island.tsx";
+import FeedbackHost from "@web/features/feedback/islands/FeedbackHost.island.tsx";
 import { MoneyFlowMount } from "@web/features/checkout/components/MoneyFlowMount.tsx";
 import { settingsLaneFor } from "@web/features/settings/core/settings-slots.tsx";
 import type { ReadActor } from "@server/services/read-actor.ts";
@@ -333,6 +334,8 @@ export default define.page(async function DashboardLayout(ctx) {
 					    every dashboard page (the two committing checkout steps opt out by policy, inside it). */
 					}
 					<TicketDeepLinkHost authed />
+					{/* The feedback board's `?feedback=open` drawer and its `g` `f` shortcut (Decision #272). */}
+					<FeedbackHost signedIn />
 					{
 						/* DEV-ONLY money-flow debugger — `MoneyFlowMount` returns null in production, so the host,
 					    the popover and its store are tree-shaken out of the shipped bundle. */

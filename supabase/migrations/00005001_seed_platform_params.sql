@@ -41,6 +41,17 @@ INSERT INTO security.platform_params (key, value, description) VALUES
         'Default global cap on a freelancer''s summed active-ticket Workload Intensity (W_i) when the profile has no per-user override.')
 ON CONFLICT (key) DO NOTHING;
 
+-- Public surfaces (Decision #274): one region per surface, each holding its OWN complete
+-- `INSERT INTO security.platform_params (key, value, description) VALUES … ON CONFLICT (key) DO
+-- NOTHING;` statement, so parallel work orders never edit another statement in this file.
+
+-- #region [about_metrics] /about live-metrics thresholds (P4)
+INSERT INTO security.platform_params (key, value, description) VALUES
+    ('public_metrics_min_n', '10'::jsonb,
+        'Smallest underlying count at which a public live metric (/about, the landing page) is published (finance.public_metrics, Decision #277): below it the figure is withheld, never padded or estimated. Counted per metric: protected escrows, delivered stages, and delivered stages with a funding-to-approval interval. Missing or not a number >= 1, the default 10 applies.')
+ON CONFLICT (key) DO NOTHING;
+-- #endregion
+
 -- from 20260723090000
 INSERT INTO security.platform_params (key, value, description) VALUES
     ('base_currency', '"GBP"'::jsonb,

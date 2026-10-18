@@ -1,5 +1,6 @@
 import type { ComponentChildren, JSX, VNode } from "preact";
 import { cx } from "@ui/core/cx.ts";
+import { InlineNotice } from "@projective/ui/feedback";
 import { kindCopy, type VerificationState, type WorkspaceKind } from "@projective/types/workspace";
 import { lockLinkLabel, lockNextStep } from "../core/verification-lock-copy.ts";
 
@@ -111,36 +112,63 @@ export interface VerificationLockProps {
 	canManage?: boolean;
 	/** `band` is the full-width strip in a band; `inline` is the compact variant inside another block. */
 	tone?: "band" | "inline";
+	/**
+	 * The band's place in its stack's entrance stagger (`data-i`), so it enters in the stack's
+	 * top-to-bottom order rather than with the first band. `band` tone only.
+	 */
+	i?: number;
+	/**
+	 * Drawn only for a viewer whose remembered hero dismissal the Overview's pre-paint guard found
+	 * (`data-hero-standin`, hidden by the stylesheet otherwise), so the lock a dismissed hero hands back
+	 * is in place from first paint. `band` tone only.
+	 */
+	heroStandIn?: boolean;
 }
 
 /**
  * The lock. See the module header for the capability-versus-verification distinction it encodes.
  *
- * `role="status"`: the lock explains why something nearby is unavailable, so it is announced when it
- * appears without stealing focus. It is deliberately not an `alert` — nothing has gone wrong, and an
- * assertive announcement would frame a normal onboarding step as a failure.
+ * A required disclosure, so it is the ui `InlineNotice` — unboxed (no fill, no border: TEAMS_AUDIT
+ * D12), the lock glyph leading, the headline, the next step and the link on one meta-register line —
+ * and `role="status"`: it explains why something nearby is unavailable, so it is announced when it
+ * appears without stealing focus. Deliberately not an `alert` — nothing has gone wrong, and an
+ * assertive announcement would frame a normal onboarding step as a failure. `band` sets it in its
+ * own band so it aligns with the stack's content; `inline` is the bare line inside another block.
  */
 export function VerificationLock(props: VerificationLockProps): JSX.Element | null {
-	const { kind, verification, prompt, href, canManage = true, tone = "band" } = props;
+	const { kind, verification, prompt, href, canManage = true, tone = "band", i, heroStandIn } =
+		props;
 	if (verification === "verified") return null;
 
 	const headline = prompt ??
 		(verification === "pending" ? pendingText(kind) : fallbackText(kind));
 
-	return (
-		<div
-			class={cx("wsp-lock", tone === "inline" && "wsp-lock--inline")}
-			data-state={verification}
-			data-kind={kind}
-			role="status"
+	const notice = (
+		<InlineNotice
+			class={cx("wsp-lock", verification === "pending" && "wsp-lock--pending")}
+			align="start"
+			icon={LockGlyph}
 		>
-			<span class="wsp-lock__glyph">{LockGlyph}</span>
-			<div class="wsp-lock__body">
-				<p class="wsp-lock__text">{headline}</p>
-				<p class="wsp-lock__prompt">{lockNextStep(kind, verification, canManage)}</p>
-			</div>
-			{canManage && <a class="wsp-lock__link" href={href}>{lockLinkLabel(kind, verification)}</a>}
-		</div>
+			<span class="wsp-lock__text">{headline}</span>{" "}
+			<span class="wsp-lock__prompt">{lockNextStep(kind, verification, canManage)}</span>
+			{canManage && (
+				<>
+					{" "}
+					<a class="wsp-lock__link" href={href}>{lockLinkLabel(kind, verification)}</a>
+				</>
+			)}
+		</InlineNotice>
+	);
+	if (tone === "inline") return notice;
+	return (
+		<section
+			class="wsp-band wsp-band--plain wsp-band--notice"
+			data-i={i}
+			data-hero-standin={heroStandIn ? "" : undefined}
+			aria-label={`${kindCopy(kind).verification} status`}
+		>
+			<div class="wsp-band__inner">{notice}</div>
+		</section>
 	);
 }
 // #endregion

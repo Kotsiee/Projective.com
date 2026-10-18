@@ -90,10 +90,36 @@ export interface ServerEnv {
 	exploreBackendLive: boolean;
 	/**
 	 * Master switch for LIVE newsletter-backend behaviour. Defaults **off**: {@link NewsletterBackendService}
-	 * accepts opt-ins into a no-op stub until the `newsletter.subscriptions` table + provider sync land,
-	 * then flip per environment.
+	 * validates opt-ins and answers the subscribe plan without writing; on, it calls
+	 * `community.subscribe_newsletter` with the service role (Decision #274). The email-provider sync
+	 * is still to come, so a live subscription is stored but not yet sent anything.
 	 */
 	newsletterBackendLive: boolean;
+	/**
+	 * Master switch for LIVE editorial-backend behaviour, from `EDITORIAL_BACKEND_LIVE` (Decision #274).
+	 * Defaults **off**: the help centre, the changelog and Projective's articles answer from their
+	 * Zod-validated content sources (`services/editorial/content/*`) through the same row parse and
+	 * mapping the live read uses; on, they read the `editorial.*` tables through the anon client. Read
+	 * it through `isEditorialBackendLive()` (`core/supabase.ts`).
+	 */
+	editorialBackendLive: boolean;
+	/**
+	 * Master switch for LIVE community-backend behaviour, from `COMMUNITY_BACKEND_LIVE` (Decision #274).
+	 * Defaults **off**: the help centre's helpfulness votes and the feedback board answer from fixtures
+	 * and write nothing; on, they read and write `community.*` through its definer doors. A write
+	 * surface open to signed-out visitors, so like the catalogue gate it protects a half-wired mutation
+	 * from firing against a real project. The newsletter keeps its own `NEWSLETTER_BACKEND_LIVE`.
+	 */
+	communityBackendLive: boolean;
+	/**
+	 * Master switch for LIVE `/contact` intake, from `CONTACT_BACKEND_LIVE` (Decision #276). Defaults
+	 * **off**: in development the intake validates, rate-limits and answers a receipt without storing
+	 * anything (attachments are checked against their declaration, not uploaded); in production it
+	 * refuses with a 503 rather than acknowledge a message nobody will read. On, requests are written
+	 * through `ops.submit_contact_request` and attachments go through the quarantine pipeline into the
+	 * `contact` bucket.
+	 */
+	contactBackendLive: boolean;
 	/**
 	 * Master switch for LIVE projects-backend behaviour. Defaults **off**: {@link ProjectBackendService}
 	 * answers the `/projects` feed from in-memory fixtures until the RLS-scoped `projects.*` + `org.*`
@@ -256,6 +282,13 @@ export interface ServerEnv {
 	 */
 	schedulingCronSecret: string | undefined;
 	/**
+	 * The bearer token the scheduler presents to `POST /api/contact/cron/attachments`, from
+	 * `CONTACT_CRON_SECRET` (Decision #276). The route deletes `/contact` attachments nobody sent, and
+	 * like the other cron routes answers 404 to anything else — including every request while this is
+	 * unset or shorter than 32 characters.
+	 */
+	contactCronSecret: string | undefined;
+	/**
 	 * The Google Safe Browsing (v4 Lookup) API key a link's reputation is checked against, from
 	 * `LINK_SAFETY_API_KEY`. Server-only. The `XXXX-XXXX` placeholder counts as absent
 	 * (`files/link-reputation.ts`), and an absent key skips the reputation check rather than failing it.
@@ -285,6 +318,9 @@ export function serverEnv(): ServerEnv {
 		exploreBackendLive: (firstEnv("EXPLORE_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		newsletterBackendLive: (firstEnv("NEWSLETTER_BACKEND_LIVE") ?? "false").toLowerCase() ===
 			"true",
+		editorialBackendLive: (firstEnv("EDITORIAL_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
+		communityBackendLive: (firstEnv("COMMUNITY_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
+		contactBackendLive: (firstEnv("CONTACT_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		projectsBackendLive: (firstEnv("PROJECTS_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		profileBackendLive: (firstEnv("PROFILE_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		messagingBackendLive: (firstEnv("MESSAGING_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
@@ -306,6 +342,7 @@ export function serverEnv(): ServerEnv {
 		financeCronSecret: firstEnv("FINANCE_CRON_SECRET"),
 		accountCronSecret: firstEnv("ACCOUNT_CRON_SECRET"),
 		schedulingCronSecret: firstEnv("SCHEDULING_CRON_SECRET"),
+		contactCronSecret: firstEnv("CONTACT_CRON_SECRET"),
 		linkSafetyApiKey: firstEnv("LINK_SAFETY_API_KEY"),
 		zoomWebhookSecret: firstEnv("ZOOM_WEBHOOK_SECRET"),
 	};

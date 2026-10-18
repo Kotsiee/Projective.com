@@ -16,8 +16,17 @@ import {
 	secondaryModules,
 	type WorkspaceModule,
 } from "./module-registry.tsx";
-import { countLabel, filterRoster, type RosterTab } from "./workspace-model.ts";
+import {
+	countLabel,
+	filterRoster,
+	isFiltered,
+	type LifecycleTag,
+	ROSTER_TABS,
+	type RosterTab,
+	statusTag,
+} from "./roster-model.ts";
 import { isPeopleReading, MEMBERS_READINGS } from "./sub-views.ts";
+import { inviteOpensInPlace } from "./rig-model.ts";
 
 /**
  * lane-model — the workspace lane's composition as a pure function of what the viewer is looking at
@@ -35,7 +44,9 @@ import { isPeopleReading, MEMBERS_READINGS } from "./sub-views.ts";
  *   4. **Docked footer rig** — at most ONE create action (the tier-2 `LaneCreateButton`): "New team"
  *      on the index, "Invite member" inside a console for an `invite_members` holder, and nothing at
  *      all for anybody else — never a control that cannot act. A roster the viewer may not add to says
- *      why in its place, as one line of meta text.
+ *      why in its place, as one line of meta text. In the roster's FIRST RUN the rig holds neither:
+ *      the canvas's empty state carries the one structural create (and the plan's reason when there
+ *      is none), so the page still has exactly one (Teams R1).
  *
  * Everything that decides those zones lives here and nowhere in the island, so the expanded lane, the
  * collapsed rail and the tests all read one answer. The capabilities are always the server-resolved
@@ -65,11 +76,12 @@ export interface RosterHeaderZone {
 	meta: MetaLineEntry[];
 }
 
-/** The lifecycle `Tag` in a console's header strip — the strip's one container (§B.11). */
-export interface LaneStatusTag {
-	label: string;
-	severity: "warning" | "success" | "secondary";
-}
+/**
+ * The lifecycle `Tag` in a console's header strip — the strip's one container (§B.11). The roster's
+ * own lifecycle vocabulary (`roster-model.ts`), so a card, a table row and the strip word a status
+ * alike.
+ */
+export type LaneStatusTag = LifecycleTag;
 
 /** What the acting switch says, in every state it can be in. */
 export interface ContextSwitchCopy {
@@ -133,9 +145,10 @@ export type LaneCreate =
 		action: "invite";
 		label: string;
 		/**
-		 * Whether the invite modal is mounted on this page (the Members screen mounts it), so the action
-		 * is a button that opens it. Elsewhere the action is a LINK to Members with the modal open
-		 * (`?invite=1`) — a destination is an `<a>`, never a button that assigns `location`.
+		 * Whether the invite modal is mounted on this page (`inviteOpensInPlace`: Members, and a team's
+		 * Projects), so the action is a button that opens it. Elsewhere the action is a LINK to Members
+		 * with the modal open (`?invite=1`) — a destination is an `<a>`, never a button that assigns
+		 * `location`.
 		 */
 		inPlace: boolean;
 		/** Where the action links when it is not in place. */
@@ -186,6 +199,11 @@ export interface RosterLaneInput {
 	canCreate: boolean;
 	/** The roster's `createBlockedReason` — the plan's words for why `canCreate` is false. */
 	createBlockedReason?: string | null;
+	/**
+	 * The roster's first run (`roster-model.ts` `isFirstRun`): no entity of this kind and nothing to
+	 * answer. The canvas's empty state then holds the create, so the rig holds none.
+	 */
+	firstRun?: boolean;
 }
 
 /** A console's lane inputs. */
@@ -213,13 +231,13 @@ export interface ConsoleLaneInput {
 /** The partitions the lane's roster control offers — the canvas's tab set minus Archived. */
 export type LanePartition = Exclude<RosterTab, "archived">;
 
-/** The roster partition control's segments — the canvas's tab set minus Archived, which stays a canvas tab. */
-export const ROSTER_PARTITIONS: readonly LaneOption[] = [
-	{ value: "all", label: "All" },
-	{ value: "owned", label: "Owned" },
-	{ value: "member", label: "Member" },
-	{ value: "invitations", label: "Invitations" },
-];
+/**
+ * The roster partition control's segments — the canvas's own tab set (`ROSTER_TABS`) minus Archived,
+ * which stays a canvas tab, so the two controls over the one partition use the same words.
+ */
+export const ROSTER_PARTITIONS: readonly LaneOption[] = ROSTER_TABS
+	.filter((tab) => tab.value !== "archived")
+	.map(({ value, label }) => ({ value, label }));
 
 /**
  * The lane's reading of the shared roster partition. The partition is one value across the lane and
@@ -263,9 +281,7 @@ export function laneZones(input: RosterLaneInput | ConsoleLaneInput): LaneZones 
 				options: [...ROSTER_PARTITIONS],
 				search: true,
 			},
-			footer: input.canCreate
-				? { create: { action: "create", label: `New ${copy.noun}` }, note: null }
-				: { create: null, note: rosterCreateNote(input.kind, input.createBlockedReason) },
+			footer: rosterFooter(input),
 		};
 	}
 
@@ -291,6 +307,18 @@ export function laneZones(input: RosterLaneInput | ConsoleLaneInput): LaneZones 
 }
 
 /**
+ * Z4 on the roster index: New entity while the plan admits one, else the plan's reason — and in first
+ * run neither, because the canvas's empty state carries the one structural create (and that reason)
+ * then; a second create beside it would put two structural commits on one page.
+ */
+function rosterFooter(input: RosterLaneInput): LaneFooterZone {
+	if (input.firstRun) return { create: null, note: null };
+	return input.canCreate
+		? { create: { action: "create", label: `New ${kindCopy(input.kind).noun}` }, note: null }
+		: { create: null, note: rosterCreateNote(input.kind, input.createBlockedReason) };
+}
+
+/**
  * Z4's line when the roster may not grow: the server's reason (it carries the plan's number), or the
  * kind's own words when the projection sent none — the reader is never left with a footer that is
  * silently missing its action.
@@ -307,9 +335,9 @@ function rosterCreateNote(kind: WorkspaceKind, reason: string | null | undefined
  * Org chart toggle also write. Only on a people reading: the queue (`?view=pending`) has no org chart
  * to switch to.
  *
- * Projects gets none yet: its body hands off to `/projects` and has no Active · Proposals partition of
- * its own, and a segmented control over a body that ignores it would reach nothing (§3.11). Its
- * sub-views wait in `sub-views.ts` (not live) for the day that body grows one.
+ * A team's Projects gets none: Active and Proposals are two different lists, not two readings of one
+ * (Teams C5), so the header band's tabs are their one switch — a second control here would only repeat
+ * them.
  */
 function consoleContext(input: ConsoleLaneInput): LaneContextZone | null {
 	if (input.module === "members" && isPeopleReading(input.subView)) {
@@ -329,17 +357,13 @@ function consoleCreate(input: ConsoleLaneInput): LaneCreate | null {
 	return {
 		action: "invite",
 		label: "Invite member",
-		inPlace: input.module === "members" || input.module === "invitations",
+		inPlace: inviteOpensInPlace(input.kind, input.module),
 		href: `${workspaceHref(input.kind, input.handle, "members")}?invite=1`,
 	};
 }
 
-/** The lifecycle status as a `Tag`'s words and tone. */
-export function statusTag(status: WorkspaceStatus): LaneStatusTag {
-	if (status === "draft") return { label: "Draft", severity: "warning" };
-	if (status === "archived") return { label: "Archived", severity: "secondary" };
-	return { label: "Active", severity: "success" };
-}
+/** The lifecycle status as a `Tag`'s words and tone (`roster-model.ts`). */
+export { statusTag };
 
 /**
  * The acting switch's copy. Entering a console is not acting as the entity, so the switch says which
@@ -444,9 +468,12 @@ export function laneRailEntities(items: readonly WorkspaceSummary[]): WorkspaceS
 	return list.mode === "entities" ? list.rows : [];
 }
 
-/** Whether the roster's context controls hold anything the reset would clear. */
+/**
+ * Whether the roster's context controls hold anything the reset would clear — the canvas's own rule
+ * (`isFiltered`), so the lane's Reset and the canvas's Clear filters appear over the same states.
+ */
 export function rosterFiltered(tab: LanePartition, search: string): boolean {
-	return tab !== "all" || search.trim().length > 0;
+	return isFiltered(tab, search);
 }
 // #endregion
 

@@ -1,10 +1,12 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
-import { useEffect, useRef } from "preact/hooks";
+import { useRef } from "preact/hooks";
 import "../styles/workspace.css";
 import { Grid } from "@projective/ui/layout";
-import { InputText } from "@projective/ui/fields";
-import { InlineNotice, Message } from "@projective/ui/feedback";
+import { MetaLine } from "@projective/ui/display";
+import { Button, InputText } from "@projective/ui/fields";
+import { InlineNotice } from "@projective/ui/feedback";
+import { TabMenu } from "@projective/ui/navigation";
 import {
 	type IncomingInvite,
 	kindCopy,
@@ -23,48 +25,77 @@ import {
 	invitationStripIsTheList,
 	invitationStripShown,
 } from "../core/invitation-strip-model.ts";
-import { openCreate, rosterTab, rosterView, selectRosterTab } from "../core/workspace-state.ts";
+import {
+	openCreate,
+	publishRosterFirstRun,
+	rosterTabOr,
+	rosterView,
+	selectRosterTab,
+} from "../core/workspace-state.ts";
 import { displayZoom, gridColWidth, workspaceZoom } from "../core/view-state.ts";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 import {
-	countLabel,
 	filterRoster,
+	isFiltered,
+	isFirstRun,
 	ROSTER_TABS,
+	rosterCanvasControls,
+	rosterCanvasState,
+	rosterCountLine,
+	rosterEmptyCopy,
+	rosterFirstRunCopy,
+	rosterHeadMeta,
+	rosterSearch,
 	type RosterTab,
+	rosterTabBadge,
 	rosterTabCounts,
+	rosterTabIndex,
+	rosterToolsShown,
+	rosterTrackWidth,
 	toRosterTab,
-} from "../core/workspace-model.ts";
-import { cloneGlyph, SearchGlyph } from "../core/workspace-glyphs.tsx";
+} from "../core/roster-model.ts";
+import { tierProps } from "../core/create-model.ts";
+import { cloneGlyph, DeclineGlyph, SearchGlyph } from "../core/workspace-glyphs.tsx";
 import { WorkspaceCard, type WorkspaceCardAction } from "../components/WorkspaceCard.tsx";
 import { WorkspaceTable } from "../components/WorkspaceTable.tsx";
 import { InvitationStrip } from "../components/InvitationStrip.tsx";
-import { RosterBlank, RosterEmpty } from "../components/RosterEmpty.tsx";
+import { RosterFiltered, RosterFirstRun } from "../components/RosterEmpty.tsx";
 import CreateWorkspaceModal from "./CreateWorkspaceModal.island.tsx";
 
 /**
- * WorkspaceRoster — the body of the `/teams` and `/businesses` INDEX.
+ * WorkspaceRoster — the body of the `/teams` and `/businesses` INDEX, built on `@projective/ui`
+ * primitives (Teams work order R1).
  *
  * One island serves both kinds; everything that differs is a lookup in the SSOT's per-kind copy table
- * ({@link kindCopy}), never a branch on kind in markup. It answers three questions at a glance: which of
- * these am I acting as, which one needs me, and how do I make another.
+ * ({@link kindCopy}) or in `roster-model.ts`, never a branch on kind in markup. Every rule it renders
+ * — the five canvas states, the controls each state draws and their Button-matrix tiers, the head's
+ * facts, the address — is a pure function there, pinned by `roster-model.test.ts`; this island only
+ * binds them.
  *
- * **Thin by construction.** The first paint comes from the SSR-resolved roster passed in as `initial`, so
- * the cards are in the first byte; filtering and tab partitioning are PURE (`filterRoster`) and run
- * locally with no round-trip, because the roster is a handful of rows the server already sent. Only the
- * three things that genuinely change server state — answering an invitation, archiving, switching the
- * acting context — go over the wire, each through the thin {@link WorkspaceService} (root CLAUDE.md §2:
- * islands `fetch` internal API routes and nothing else).
+ *   - **Head** — the kind's title in the display register over ONE `MetaLine` (`3 teams · 1
+ *     invitation waiting · Acting as North Loop`), the search field, and the partition `TabMenu`
+ *     (All · Owned · Member · Invitations · Archived, each with its count `Badge`). No filled button:
+ *     the index's one structural create is the lane footer's, and the canvas never duplicates it.
+ *   - **Body** — the invitation strip, then the cards or the `DataTable`, whichever the shared zoom
+ *     selects; a ui `EmptyState` in first run (with the create, which the lane and the footer band's
+ *     rig then withhold) and
+ *     when a filter leaves nothing (with a tier-5 Clear filters); a danger `InlineNotice` with a
+ *     tier-4 Try again when the roster could not be read.
  *
- * **The grid⇄table control is not here.** It lives in the middle-nav footer band and writes the shared
- * `rosterView` signal, which this island only reads — the footer band is a separate hydration root, so a
- * module-level signal is the sanctioned channel between them (`workspace-state.ts`).
+ * **One partition across roots.** The TabMenu and the lane's segmented control write the ONE
+ * `rosterTab` signal (`workspace-state`); each renders its server-resolved `?view=` until a control
+ * picks one, so the first painted byte and the hydrated frame agree. The address follows from a
+ * `useSignalEffect` here — `?view=` and `?q=` through `replaceState`, the one-shot `?notice=` and the
+ * pre-R1 `?tab=` dropped — so it tracks the lane's picks too.
  *
- * **A mutation is reconciled from the server, never patched locally.** Answering an invitation resolves to
- * a fully refreshed roster and that replaces the whole page state, so a membership the server clamped or
- * refused cannot survive on screen as a row the reader believes in.
+ * **Thin by construction.** The first paint comes from the SSR-resolved roster passed in as
+ * `initial`; filtering is pure and local. Only answering an invitation, archiving, and switching the
+ * acting context go over the wire, each through the thin {@link WorkspaceService} (root CLAUDE.md §2),
+ * and a mutation is reconciled by re-reading the roster, never patched locally.
  */
 
 // #region Props
+/** Props for {@link WorkspaceRoster}. */
 export interface WorkspaceRosterProps {
 	/** The entity kind this index addresses — the route base it was reached through. */
 	kind: WorkspaceKind;
@@ -76,14 +107,13 @@ export interface WorkspaceRosterProps {
 	 * whose teams merely failed to load.
 	 */
 	initialError?: string | null;
-	/** The partition the URL asked for (`?tab=`). */
+	/** The partition the URL asked for (`?view=`, or the pre-R1 `?tab=`). */
 	initialTab?: string | null;
 	/** The free-text filter the URL carried (`?q=`). */
 	initialSearch?: string;
 	/**
 	 * Open the creation modal on mount — set by the `/teams/create` and `/businesses/create` addresses,
-	 * so a deep link or a shared URL lands on the same modal the ＋ New control opens rather than a
-	 * separate page that would have to be kept in step with it.
+	 * so a deep link lands on the same modal the lane's New opens rather than a separate page.
 	 */
 	autoCreate?: boolean;
 	/**
@@ -94,49 +124,55 @@ export interface WorkspaceRosterProps {
 }
 // #endregion
 
+const BODY_ID = "wsp-roster-body";
+const TABS_ID = "wsp-roster-tabs";
+const SEARCH_ID = "wsp-roster-search";
+
 export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Element {
 	const copy = kindCopy(props.kind);
+	const resolvedTab = toRosterTab(props.initialTab);
 
 	// #region State
 	const roster = useSignal<RosterPage>(props.initial);
-	const tab = useSignal<RosterTab>(toRosterTab(props.initialTab ?? null));
-	// The partition is shared with the lane's context controls: mirror it once either root picks one.
-	useSignalEffect(() => {
-		const shared = rosterTab.value;
-		if (shared !== null) tab.value = shared;
-	});
 	const search = useSignal(props.initialSearch ?? "");
 	const stripDismissed = useSignal(false);
-	/** A failure the reader can act on — rendered as an alert with a retry. */
-	const notice = useSignal<string | null>(props.initialError ?? null);
-	/** A confirmation of something that worked — rendered as a quiet status, never as an alert. */
+	const noticeDismissed = useSignal(false);
+	/** Why the last roster READ failed — the danger notice with Try again. */
+	const readError = useSignal<string | null>(props.initialError ?? null);
+	/** Why the last ACT failed (archive, restore, copy) — said, with no retry: the menu repeats it. */
+	const actionError = useSignal<string | null>(null);
+	/** A confirmation of something that worked — a quiet status line, never an alert. */
 	const info = useSignal<string | null>(null);
-	/** Whether the roster on screen is a real read; `false` until a failed first read is retried. */
+	/** Whether a roster read has succeeded since the page loaded. */
 	const loaded = useSignal(!props.initialError);
 	const refreshing = useSignal(false);
 
 	const { switching, error: switchError, switchTo, exitToPersonal } = useContextSwitch();
 
-	// The `/create` deep link opens the modal once on arrival. Keyed on the flag rather than run bare, so
-	// a re-render cannot reopen a modal the user has just dismissed.
-	useEffect(() => {
+	// The `/create` deep link opens the modal once on arrival; it reads no signal, so it never re-runs
+	// and cannot reopen a modal the reader has just dismissed.
+	useSignalEffect(() => {
 		if (props.autoCreate) openCreate(props.kind);
-	}, [props.autoCreate, props.kind]);
+	});
 	// #endregion
 
 	// #region Derived
+	/** The ONE shared partition, or this page's server-resolved one until a control picks one. */
+	const tab = useComputed<RosterTab>(() => rosterTabOr(resolvedTab));
+	/** The TabMenu binds a writable index; it follows the shared partition whichever root picked it. */
+	const tabIndex = useSignal(rosterTabIndex(resolvedTab));
+	useSignalEffect(() => {
+		tabIndex.value = rosterTabIndex(tab.value);
+	});
+
 	const invitations = useComputed(() => roster.value.invitations);
 	/** The strip's answers: optimistic, restored with their refusal; a landed one re-reads the roster. */
 	const answers = useInvitationAnswers(invitations, () => refresh());
 	const invites = answers.visible;
 	const counts = useComputed(() => rosterTabCounts(roster.value.items, invites.value));
 	const rows = useComputed(() => filterRoster(roster.value.items, tab.value, search.value));
-	const searching = useComputed(() => search.value.trim().length > 0);
-	/** Nothing at all yet — the only condition that earns the selling empty state. */
-	const firstRun = useComputed(() =>
-		loaded.value && roster.value.items.length === 0 && invites.value.length === 0 &&
-		!searching.value
-	);
+	const filtered = useComputed(() => isFiltered(tab.value, search.value));
+
 	const stripVisible = useComputed(() =>
 		invitationStripShown({
 			waiting: invites.value.length,
@@ -145,37 +181,70 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 			onInvitationsTab: tab.value === "invitations",
 		})
 	);
-	/** On the Invitations tab the strip is the one list and its one empty line; the body defers to it. */
+	/** On the Invitations partition the strip is the one list and its one empty line. */
 	const stripIsTheList = useComputed(() =>
 		invitationStripIsTheList({
 			shown: stripVisible.value,
 			onInvitationsTab: tab.value === "invitations",
 		})
 	);
+
+	const firstRun = useComputed(() =>
+		isFirstRun({
+			loaded: loaded.value,
+			entityCount: roster.value.items.length,
+			invitationCount: invites.value.length,
+		})
+	);
+	const state = useComputed(() =>
+		rosterCanvasState({
+			loaded: loaded.value,
+			entityCount: roster.value.items.length,
+			invitationCount: invites.value.length,
+			rowCount: rows.value.length,
+			stripIsTheList: stripIsTheList.value,
+		})
+	);
+	const controls = useComputed(() =>
+		rosterCanvasControls({
+			kind: props.kind,
+			state: state.value,
+			canCreate: roster.value.canCreate,
+			filtered: filtered.value,
+			readError: readError.value !== null,
+		})
+	);
+	const control = (key: "create" | "clear" | "retry") =>
+		controls.value.find((c) => c.key === key) ?? null;
+	const tools = useComputed(() => rosterToolsShown(state.value));
+
+	const actingName = useComputed(() =>
+		roster.value.items.find((item) => item.isActing)?.name ?? null
+	);
+
+	// The lane's footer and the footer band's rig withhold their creates while this canvas's first-run
+	// state carries it; both are other hydration roots, so the reading travels through the shared signal.
+	useSignalEffect(() => {
+		publishRosterFirstRun(firstRun.value);
+	});
 	// #endregion
 
 	// #region URL memory
 	/**
 	 * Keep the partition and the search term in the address bar so a filtered roster is a shareable link
-	 * and a reload lands where the reader was.
-	 *
-	 * `replaceState`, not `pushState`: flicking between five partitions is not five navigations, and
-	 * making Back undo a tab click would strand the reader inside the page instead of returning them to
-	 * wherever they came from.
+	 * and a reload lands where the reader was — whichever root picked the partition. `replaceState`, not
+	 * `pushState`: flicking between partitions is not a navigation, and making Back undo a tab click
+	 * would strand the reader inside the page instead of returning them to wherever they came from.
 	 */
-	useEffect(() => {
-		const url = new URL(globalThis.location.href);
-		const nextTab = tab.value;
-		const nextSearch = search.value.trim();
-		if (nextTab === "all") url.searchParams.delete("tab");
-		else url.searchParams.set("tab", nextTab);
-		if (nextSearch) url.searchParams.set("q", nextSearch);
-		else url.searchParams.delete("q");
-		const next = `${url.pathname}${url.search}`;
-		if (next !== globalThis.location.pathname + globalThis.location.search) {
-			globalThis.history.replaceState(null, "", next);
-		}
-	}, [tab.value, search.value]);
+	useSignalEffect(() => {
+		const location = globalThis.location;
+		const history = globalThis.history;
+		const next = rosterSearch(location.search, tab.value, search.value);
+		if (next === location.search) return;
+		try {
+			history.replaceState(history.state, "", `${location.pathname}${next}${location.hash}`);
+		} catch { /* an address that cannot be rewritten still leaves the page on the picked view */ }
+	});
 	// #endregion
 
 	// #region Server reads
@@ -187,11 +256,20 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 		if (res.ok && res.data) {
 			roster.value = res.data;
 			loaded.value = true;
-			notice.value = null;
+			readError.value = null;
 			return true;
 		}
-		notice.value = res.message ?? `Couldn't refresh your ${copy.plural}.`;
+		readError.value = res.message ?? `We couldn't load your ${copy.plural} just now.`;
 		return false;
+	}
+
+	/**
+	 * Try again. The notice and its button leave once the read lands, so focus — if it rode on the
+	 * button — moves to the body that now holds the answer instead of dropping to the page.
+	 */
+	async function retry(event: Event): Promise<void> {
+		const held = event.currentTarget === globalThis.document.activeElement;
+		if (await refresh() && held) bodyRef.current?.focus();
 	}
 	// #endregion
 
@@ -201,7 +279,7 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 	 * on; the answer's own outcome, or its refusal, is the strip's to show beside the row.
 	 */
 	function respond(invite: IncomingInvite, accept: boolean): void {
-		notice.value = null;
+		actionError.value = null;
 		info.value = null;
 		void answers.respond(invite, accept);
 	}
@@ -209,7 +287,7 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 
 	// #region Card + row actions
 	async function onAction(action: WorkspaceCardAction, summary: WorkspaceSummary): Promise<void> {
-		notice.value = null;
+		actionError.value = null;
 		info.value = null;
 		switch (action) {
 			case "act":
@@ -236,13 +314,13 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 				const status = action === "archive" ? "archived" : "active";
 				const res = await WorkspaceService.update({ kind: summary.kind, id: summary.id, status });
 				if (!res.ok) {
-					notice.value = res.message ??
+					actionError.value = res.message ??
 						`Couldn't ${action} ${summary.name}. Nothing was changed.`;
 					return;
 				}
 				if (await refresh()) {
 					info.value = action === "archive"
-						? `${summary.name} is archived. It is still restorable from the Archived tab.`
+						? `${summary.name} is archived. It is still restorable from Archived.`
 						: `${summary.name} is active again.`;
 				}
 				return;
@@ -256,7 +334,8 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 			await globalThis.navigator.clipboard.writeText(url);
 			info.value = `Link to ${name} copied.`;
 		} catch {
-			notice.value = "Couldn't reach the clipboard — copy the address from the URL bar instead.";
+			actionError.value =
+				"Couldn't reach the clipboard — copy the address from the URL bar instead.";
 		}
 	}
 
@@ -267,27 +346,60 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 	}
 	// #endregion
 
-	const bodyId = "wsp-roster-body";
+	// #region Focus continuity
+	/**
+	 * Land focus on the search field — the head's first control — or, without one, on the body. Called
+	 * when the control that held it (Clear filters, the notice's Dismiss) is about to unmount.
+	 */
+	function landFocus(): void {
+		const field = globalThis.document.getElementById(SEARCH_ID);
+		if (field) field.focus();
+		else bodyRef.current?.focus();
+	}
+
+	/** Clear filters: every entity again — the All partition on every root, and no search term. */
+	function clearFilters(): void {
+		landFocus();
+		search.value = "";
+		selectRosterTab("all");
+	}
+	// #endregion
+
 	const bodyRef = useRef<HTMLDivElement>(null);
 
 	// `Ctrl`+wheel / pinch over the collection scales it, the same gesture the File Explorer answers —
 	// so the reader reaches the density without travelling to the footer band at all.
 	useCtrlWheelZoom(bodyRef, workspaceZoom);
 
+	const failure = actionError.value ?? switchError.value;
+	const retryControl = control("retry");
+	const createControl = control("create");
+	const clearControl = control("clear");
+
 	return (
 		<div class="wsp" data-kind={props.kind}>
 			<div class="wsp__stack">
+				{/* #region Head */}
 				<section class="wsp-band wsp-band--head" data-i={0}>
 					<div class="wsp-band__inner">
 						<div class="wsp-roster">
 							<div class="wsp-roster__head">
-								<div>
+								<div class="wsp-roster__heading">
 									<h1 class="wsp-roster__title">{copy.Plural}</h1>
-									<p class="wsp-roster__pitch">{copy.pitch}</p>
+									<MetaLine
+										class="wsp-roster__meta"
+										items={rosterHeadMeta(props.kind, {
+											state: state.value,
+											liveCount: counts.value.all,
+											invitationCount: invites.value.length,
+											actingName: actingName.value,
+										})}
+									/>
 								</div>
-
-								<div class="wsp-roster__tools">
+								{tools.value && (
 									<InputText
+										id={SEARCH_ID}
+										class="wsp-roster__search"
 										value={search}
 										type="search"
 										variant="bare"
@@ -296,33 +408,30 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 										aria-label={`Search your ${copy.plural}`}
 										start={<span aria-hidden="true">{cloneGlyph(SearchGlyph)}</span>}
 									/>
-									<div
-										class="wsp-roster__tabs"
-										role="tablist"
-										aria-label={`Filter ${copy.plural}`}
-									>
-										{ROSTER_TABS.map((option) => (
-											<button
-												key={option.value}
-												type="button"
-												role="tab"
-												class="wsp-roster__tab"
-												aria-selected={tab.value === option.value}
-												aria-controls={bodyId}
-												onClick={() => selectRosterTab(option.value)}
-											>
-												{option.label}
-												<span class="wsp-roster__tab-count wsp-num">
-													{counts.value[option.value]}
-												</span>
-											</button>
-										))}
-									</div>
-								</div>
+								)}
 							</div>
+							{tools.value && (
+								<TabMenu
+									id={TABS_ID}
+									class="wsp-roster__tabs"
+									model={ROSTER_TABS.map((option) => ({
+										key: option.value,
+										label: option.label,
+										badge: rosterTabBadge(option.value, counts.value),
+									}))}
+									activeIndex={tabIndex}
+									onActiveIndexChange={(index) => {
+										const next = ROSTER_TABS[index];
+										if (next) selectRosterTab(next.value);
+									}}
+									panelId={BODY_ID}
+									aria-label={`Show ${copy.plural}`}
+								/>
+							)}
 						</div>
 					</div>
 				</section>
+				{/* #endregion */}
 
 				{stripVisible.value && (
 					<section class="wsp-band wsp-band--plain" data-i={1}>
@@ -342,87 +451,106 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 					</section>
 				)}
 
+				{/* #region Body */}
 				<section class="wsp-band wsp-band--page" data-i={2}>
 					<div class="wsp-band__inner">
+						{props.initialNotice === "unavailable" && !noticeDismissed.value && (
+							<InlineNotice
+								class="wsp-roster__notice"
+								align="start"
+								text={`That ${copy.noun} isn't available to you`}
+								actionLabel="Dismiss"
+								onAction={() => {
+									landFocus();
+									noticeDismissed.value = true;
+								}}
+							/>
+						)}
+
 						{
 							/*
-							 * A context switch is a full page load, so it must be announced rather than left to
-							 * look like an unresponsive click (the hook's stated obligation on its callers).
+							 * A context switch is a full page load, so it is announced rather than left to look
+							 * like an unresponsive click (the hook's stated obligation on its callers).
 							 */
 						}
 						{switching.value && (
-							<p class="wsp-roster__count" role="status" aria-live="polite" aria-busy="true">
+							<p class="wsp-roster__status" role="status" aria-live="polite" aria-busy="true">
 								Switching context…
 							</p>
 						)}
 
-						{props.initialNotice === "unavailable" && (
-							<InlineNotice align="start" text={`That ${copy.noun} isn't available to you`} />
-						)}
-
-						{(notice.value ?? switchError.value) && (
-							<div class="wsp-error">
-								<Message
-									class="wsp-error__alert"
-									severity="danger"
-									variant="subtle"
-									text={notice.value ?? switchError.value ?? ""}
-								/>
-								<button
-									type="button"
-									class="wsp-error__retry"
-									onClick={() => void refresh()}
-								>
-									Try again
-								</button>
+						{readError.value && (
+							<div class="wsp-roster__error">
+								<RosterAlert text={readError.value} />
+								{retryControl && (
+									<Button
+										{...tierProps(retryControl.tier)}
+										size="sm"
+										label={retryControl.label}
+										loading={refreshing.value}
+										onClick={(event) => void retry(event)}
+									/>
+								)}
 							</div>
 						)}
-						{info.value && !notice.value && (
-							<Message
-								class="wsp-error__alert"
-								severity="success"
-								variant="subtle"
-								text={info.value}
-							/>
+						{failure && <RosterAlert text={failure} />}
+						{info.value && !failure && (
+							<InlineNotice class="wsp-roster__notice" align="start" text={info.value} />
 						)}
 
 						<div
 							ref={bodyRef}
-							id={bodyId}
+							id={BODY_ID}
 							class="wsp-roster__body"
-							role="tabpanel"
+							role={tools.value ? "tabpanel" : undefined}
+							aria-labelledby={tools.value ? `${TABS_ID}-tab-${tabIndex.value}` : undefined}
 							aria-busy={refreshing.value ? "true" : undefined}
+							tabIndex={-1}
 						>
-							{firstRun.value
-								? (
-									<RosterEmpty
-										kind={props.kind}
-										canCreate={roster.value.canCreate}
-										blockedReason={roster.value.createBlockedReason}
-										onCreate={() => openCreate(props.kind)}
-									/>
-								)
-								: !stripIsTheList.value && (
-									<>
-										<p class="wsp-roster__count" aria-live="polite">
-											{countLabel(props.kind, rows.value.length)}
-											{searching.value ? " matching" : ""}
-										</p>
-										<RosterBody
-											kind={props.kind}
-											tab={tab.value}
-											rows={rows.value}
-											busy={switching.value}
-											searching={searching.value}
-											onAction={onAction}
-											onClearSearch={() => (search.value = "")}
-											onCreate={() => openCreate(props.kind)}
-										/>
-									</>
-								)}
+							{tools.value && (
+								<p class="wsp-roster__count" aria-live="polite">
+									{rosterCountLine(props.kind, {
+										state: state.value,
+										tab: tab.value,
+										search: search.value,
+										rowCount: rows.value.length,
+									})}
+								</p>
+							)}
+							{state.value === "first-run" && (
+								<RosterFirstRun
+									copy={rosterFirstRunCopy(
+										props.kind,
+										roster.value.canCreate ? null : roster.value.createBlockedReason,
+									)}
+									create={createControl}
+									onCreate={() => openCreate(props.kind)}
+								/>
+							)}
+							{state.value === "empty" && (
+								<RosterFiltered
+									copy={rosterEmptyCopy(props.kind, {
+										tab: tab.value,
+										search: search.value,
+										archivedCount: counts.value.archived,
+										stripShown: stripVisible.value,
+									})}
+									clear={clearControl}
+									onClear={clearFilters}
+								/>
+							)}
+							{state.value === "populated" && (
+								<RosterBody
+									kind={props.kind}
+									rows={rows.value}
+									busy={switching.value}
+									onAction={onAction}
+								/>
+							)}
 						</div>
 					</div>
 				</section>
+				{/* #endregion */}
 			</div>
 
 			{
@@ -437,64 +565,40 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 	);
 }
 
+// #region Alerts
+/**
+ * A failure the reader must hear: an assertive `InlineNotice` whose leading mark carries the danger
+ * hue (the sentence stays in the meta ink, as the create dialog's refusals do).
+ */
+function RosterAlert(props: { text: string }): JSX.Element {
+	return (
+		<InlineNotice
+			assertive
+			align="start"
+			class="wsp-roster__alert"
+			icon={<span class="wsp-roster__alert-mark">{cloneGlyph(DeclineGlyph)}</span>}
+			text={props.text}
+		/>
+	);
+}
+// #endregion
+
 // #region The collection
 /**
- * The rows themselves, in whichever presentation the footer band has selected.
+ * The rows themselves, in whichever presentation the shared zoom selects.
  *
- * Split out of the root so a grid⇄table flip re-renders only the collection and not the page head, the
+ * Split out of the root so a grid⇄table flip re-renders only the collection and not the head, the
  * search field or the invitation strip — the `rosterView` signal is read here and nowhere above.
  */
 function RosterBody(
 	props: {
 		kind: WorkspaceKind;
-		tab: RosterTab;
 		rows: WorkspaceSummary[];
 		busy: boolean;
-		searching: boolean;
 		onAction: (action: WorkspaceCardAction, summary: WorkspaceSummary) => void;
-		onClearSearch: () => void;
-		onCreate: () => void;
 	},
 ): JSX.Element {
-	const copy = kindCopy(props.kind);
-	const label = `Your ${copy.plural}`;
-
-	if (props.rows.length === 0) {
-		if (props.tab === "invitations") {
-			return (
-				<RosterBlank
-					text="No invitations waiting."
-					hint={`Anyone can invite you to a ${copy.noun}; when they do, it appears here and at the top of this page.`}
-				/>
-			);
-		}
-		if (props.searching) {
-			return (
-				<RosterBlank
-					text={`Nothing matches that.`}
-					hint="Try a shorter term, or clear the search to see everything again."
-				/>
-			);
-		}
-		if (props.tab === "archived") {
-			return (
-				<RosterBlank
-					text="Nothing archived."
-					hint={`A ${copy.noun} you are finished with is archived rather than deleted, and shows up here.`}
-				/>
-			);
-		}
-		return (
-			<RosterBlank
-				text={props.tab === "owned"
-					? `You do not own a ${copy.noun} yet.`
-					: `You are not a member of anyone else's ${copy.noun}.`}
-				hint={props.tab === "owned"
-					? `Creating one takes a name — everything else you finish inside.`
-					: `You will appear here once you accept an invitation.`}
-			/>
-		);
-	}
+	const label = `Your ${kindCopy(props.kind).plural}`;
 
 	if (rosterView.value === "table") {
 		return (
@@ -509,15 +613,14 @@ function RosterBody(
 	}
 
 	return (
-		/* The card size is the zoom's grid half, so the slider scales the cards themselves rather than
-		   merely choosing between two fixed presentations. */
+		/* The card size is the zoom's grid half, so the slider scales the cards themselves; a single
+		   column takes the whole row (`rosterTrackWidth`). */
 		<Grid
 			class="wsp-grid"
 			role="list"
 			aria-label={label}
-			minChildWidth={`${gridColWidth(displayZoom.value)}px`}
+			minChildWidth={rosterTrackWidth(gridColWidth(displayZoom.value))}
 			fit="exact"
-			maxCols={4}
 			gap={4}
 		>
 			{props.rows.map((summary) => (

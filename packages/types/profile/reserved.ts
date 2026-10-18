@@ -21,6 +21,10 @@ export function normalizeHandle(handle: string): string {
  * Every top-level path segment reserved against handle registration. Covers the real static/group
  * routes (public + dashboard), the API + framework paths, and the task's explicit safeguards
  * (`explore`, `projects`, `files`, `settings`, `about`, `login`, `availability`).
+ *
+ * The namespace guard (Teams P1): every top-level segment under `apps/web/routes/` (route groups
+ * descended, `[params]` and `_`-files skipped) must be listed here AND in its SQL twin
+ * `org.fn_is_reserved_handle` — `workspace.contract.test.ts` fails the build otherwise.
  */
 export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
 	// Public / marketing / auth
@@ -47,6 +51,10 @@ export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
 	"blog",
 	"careers",
 	"status",
+	// The public editorial routes (`/changelog`, `/feedback`) and the landing track's `/features`.
+	"changelog",
+	"feedback",
+	"features",
 	// Dashboard / app surfaces
 	"dashboard",
 	"projects",
@@ -102,6 +110,10 @@ export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
 	"board",
 	"tasks",
 	"calendar",
+	// The stage invite-link landing (`/invite/[token]`, Decision #145) and the saved page (`/saved`,
+	// Decision #180) — real top-level routes, held by the namespace guard (Teams P1).
+	"invite",
+	"saved",
 	// Framework / infra
 	"api",
 	"assets",

@@ -1,0 +1,115 @@
+/*
+ * CommitReview (ui-commit-review) — the review step between "I want to move this money" and the move:
+ * the figure, the facts that bind it (from where, to where, what is left after), the consequence, then
+ * the commit. Nothing is boxed (§B.4): the figure leads on size and weight, the facts are one meta
+ * column against an ink column with a single hairline between rows, and the consequence is a meta
+ * sentence. Every figure is tabular (§A.4) and isolated left-to-right, so a symbol and its digits keep
+ * their order in either direction (§A Figures). Token-only, strict BEM, logical properties only.
+ */
+
+.ui-commit-review {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+/* The amount being committed — the one figure the step exists to confirm. */
+.ui-commit-review__total {
+	margin: 0;
+	font-size: var(--text-2xl);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-tight);
+	font-variant-numeric: tabular-nums;
+	text-align: center;
+	color: var(--on-surface);
+	direction: ltr;
+	unicode-bidi: isolate;
+}
+
+/* #region Facts */
+.ui-commit-review__rows {
+	margin: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.ui-commit-review__row {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-4);
+	padding-block: var(--space-2);
+	border-block-end: var(--hairline);
+}
+
+.ui-commit-review__row:last-child {
+	border-block-end: 0;
+}
+
+.ui-commit-review__label {
+	flex: none;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.ui-commit-review__value {
+	margin: 0;
+	min-inline-size: 0;
+	text-align: end;
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+	overflow-wrap: anywhere;
+}
+
+.ui-commit-review__value--tabular {
+	font-variant-numeric: tabular-nums;
+}
+
+/* A figure's run inside its value: isolated left-to-right, while the value keeps the end alignment. */
+.ui-commit-review__figure {
+	direction: ltr;
+	unicode-bidi: isolate;
+}
+/* #endregion */
+
+/* What committing does, said before it is done. */
+.ui-commit-review__note {
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+/*
+ * A refusal sits flush with the column, in the page's ink: it is the step's news, not a footnote. Its
+ * icon stays on the sentence's row (the notice carries no action to wrap): a sentence longer than the
+ * row wraps inside itself rather than leaving the icon alone on a line above it.
+ */
+.ui-commit-review .ui-commit-review__notice {
+	flex-wrap: nowrap;
+	padding: 0;
+	color: var(--on-surface);
+}
+
+/* #region Actions — Cancel first, the one commit last */
+.ui-commit-review__actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-3);
+}
+
+/* A navigation commit is an anchor in the Button's dress. */
+.ui-commit-review__link {
+	text-decoration: none;
+}
+
+/* The amount inside a commit's label ("Pay US$640.00"): tabular, isolated left-to-right. */
+.ui-commit-review__commit-figure {
+	font-variant-numeric: tabular-nums;
+	direction: ltr;
+	unicode-bidi: isolate;
+}
+/* #endregion */

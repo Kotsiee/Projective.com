@@ -1,0 +1,390 @@
+/*
+ * The "How delivery works" walkthrough (`DeliveryTour.island.tsx`, Decision #277). Token-only BEM.
+ *
+ * THE DIAGRAM is inline SVG drawn entirely in tokens through `fill` / `stroke` here — the markup
+ * names no colour. Two layouts of the same eight nodes: one row (`--wide`) from 768px of frame
+ * (`--bp-md`, the page's one tablet step), two rows of four with a U-turn (`--narrow`) below it, so
+ * the labels inside the drawing stay legible at every width; exactly one is displayed, so assistive
+ * technology meets one. Its labels are sized in user units of a viewBox drawn SMALLER than itself,
+ * so they sit a step up the type scale (`--text-md` numerals, `--text-base` places) to render at
+ * 11px or more from the narrowest frame each layout is drawn in.
+ *
+ * STATES. Upcoming nodes and rail in `--text-secondary`, passed ones in `--on-surface`, the active
+ * node in `--primary` with a ring. The money token moves between nodes by `transform` only, on
+ * `--dur-medium` / `--ease-standard`; colour follows the global theme clock (`--dur-slow`) so a
+ * theme switch still crossfades the whole tree at once (§B.5). Under either reduced-motion channel
+ * the token jumps (the token layer zeroes the durations, and `transition: none` is stated here too)
+ * and the island never autoplays.
+ *
+ * THE STEPPER is a tablist of eight real buttons: a reserved transparent block-end bar recoloured
+ * `--primary` on the selected step, and each label set twice in one grid cell (the ink, and an
+ * invisible copy at the selected weight), so selection moves no box and re-wraps no label
+ * (§B.12.3); press feedback is `transform: scale()` only, removed under both reduced-motion channels.
+ *
+ * THE PANEL holds all eight explanations stacked in one grid cell, only the selected one visible
+ * (the others `visibility: hidden` and `aria-hidden`), so it is always as tall as the tallest step
+ * and autoplay never shifts the page beneath it.
+ */
+
+/* #region Frame */
+.abt-tour {
+	--abt-tour-muted: var(--text-secondary);
+	--abt-tour-ink: var(--on-surface);
+	--abt-tour-active: var(--primary);
+	display: grid;
+	gap: var(--space-5);
+	min-inline-size: 0;
+}
+/* #endregion */
+
+/* #region Diagram */
+.abt-tour__figure {
+	margin: 0;
+	min-inline-size: 0;
+}
+
+.abt-tour__fig {
+	display: block;
+	inline-size: 100%;
+	block-size: auto;
+	overflow: visible;
+	color: var(--abt-tour-muted);
+}
+
+.abt-tour__fig--wide {
+	display: none;
+}
+
+.abt-tour__fig--narrow {
+	max-inline-size: var(--measure-narrow);
+	margin-inline: auto;
+}
+
+@container abt (min-width: 768px) {
+	.abt-tour__fig--wide {
+		display: block;
+	}
+
+	.abt-tour__fig--narrow {
+		display: none;
+	}
+}
+
+.abt-tour__fig :is(.abt-tour__seg, .abt-tour__node, .abt-tour__halo, .abt-tour__bracket, .abt-tour__zone, .abt-tour__token) {
+	transition:
+		transform var(--dur-medium) var(--ease-standard),
+		fill var(--dur-slow) var(--ease-standard),
+		stroke var(--dur-slow) var(--ease-standard);
+}
+
+.abt-tour__seg {
+	fill: none;
+	stroke: var(--abt-tour-muted);
+	stroke-width: var(--icon-stroke);
+	stroke-linecap: round;
+	vector-effect: non-scaling-stroke;
+}
+
+.abt-tour__seg--done {
+	stroke: var(--abt-tour-ink);
+}
+
+.abt-tour__node {
+	fill: var(--abt-ground, var(--bg));
+	stroke: var(--abt-tour-muted);
+	stroke-width: var(--icon-stroke);
+	vector-effect: non-scaling-stroke;
+}
+
+.abt-tour__node--done {
+	fill: var(--abt-tour-ink);
+	stroke: var(--abt-tour-ink);
+}
+
+.abt-tour__node--active {
+	fill: var(--abt-tour-active);
+	stroke: var(--abt-tour-active);
+}
+
+.abt-tour__halo {
+	fill: none;
+	stroke: transparent;
+	stroke-width: var(--icon-stroke);
+	vector-effect: non-scaling-stroke;
+}
+
+.abt-tour__halo--active {
+	stroke: var(--abt-tour-active);
+}
+
+.abt-tour__num {
+	font-family: var(--font-mono);
+	font-size: var(--text-md);
+	font-variant-numeric: tabular-nums;
+	text-anchor: middle;
+	dominant-baseline: central;
+	fill: var(--abt-tour-muted);
+	pointer-events: none;
+}
+
+.abt-tour__num--done {
+	fill: var(--abt-ground, var(--bg));
+}
+
+/* The selected node is a filled `--primary` disc: its numeral takes the role's own ink pair. */
+.abt-tour__num--active {
+	fill: var(--on-primary);
+}
+
+/* A resting bracket is the only mark of which nodes make up a place: it is drawn in the muted ink
+ * (≥ 3:1 against the band, as the upcoming rail is), never a hairline tone. */
+.abt-tour__bracket {
+	fill: none;
+	stroke: var(--abt-tour-muted);
+	stroke-width: var(--icon-stroke);
+	vector-effect: non-scaling-stroke;
+}
+
+.abt-tour__bracket--active {
+	stroke: var(--abt-tour-ink);
+}
+
+.abt-tour__zone {
+	font-family: var(--font-sans);
+	font-size: var(--text-base);
+	text-anchor: middle;
+	fill: var(--abt-tour-muted);
+}
+
+.abt-tour__zone--active {
+	font-weight: var(--fw-medium);
+	fill: var(--abt-tour-ink);
+}
+
+.abt-tour__token-coin {
+	fill: var(--abt-tour-ink);
+}
+
+.abt-tour__token-core {
+	fill: none;
+	stroke: var(--abt-ground, var(--bg));
+	stroke-width: var(--icon-stroke);
+	vector-effect: non-scaling-stroke;
+}
+
+/* The token's place per step: node(i) − node(0) on each layout (core/delivery-tour.ts geometry). */
+.abt-tour__fig--wide[data-step="1"] .abt-tour__token {
+	transform: translate(110px, 0);
+}
+.abt-tour__fig--wide[data-step="2"] .abt-tour__token {
+	transform: translate(220px, 0);
+}
+.abt-tour__fig--wide[data-step="3"] .abt-tour__token {
+	transform: translate(330px, 0);
+}
+.abt-tour__fig--wide[data-step="4"] .abt-tour__token {
+	transform: translate(440px, 0);
+}
+.abt-tour__fig--wide[data-step="5"] .abt-tour__token {
+	transform: translate(550px, 0);
+}
+.abt-tour__fig--wide[data-step="6"] .abt-tour__token {
+	transform: translate(660px, 0);
+}
+.abt-tour__fig--wide[data-step="7"] .abt-tour__token {
+	transform: translate(770px, 0);
+}
+.abt-tour__fig--narrow[data-step="1"] .abt-tour__token {
+	transform: translate(100px, 0);
+}
+.abt-tour__fig--narrow[data-step="2"] .abt-tour__token {
+	transform: translate(200px, 0);
+}
+.abt-tour__fig--narrow[data-step="3"] .abt-tour__token {
+	transform: translate(300px, 0);
+}
+.abt-tour__fig--narrow[data-step="4"] .abt-tour__token {
+	transform: translate(300px, 110px);
+}
+.abt-tour__fig--narrow[data-step="5"] .abt-tour__token {
+	transform: translate(200px, 110px);
+}
+.abt-tour__fig--narrow[data-step="6"] .abt-tour__token {
+	transform: translate(100px, 110px);
+}
+.abt-tour__fig--narrow[data-step="7"] .abt-tour__token {
+	transform: translate(0, 110px);
+}
+/* #endregion */
+
+/* #region Stepper */
+.abt-tour__steps {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+}
+
+@container abt (min-width: 768px) {
+	.abt-tour__steps {
+		grid-template-columns: repeat(8, minmax(0, 1fr));
+	}
+}
+
+.abt-tour__tab {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-1);
+	min-inline-size: 0;
+	min-block-size: var(--space-8);
+	margin: 0;
+	padding: var(--space-2) var(--space-2) var(--space-3);
+	border: none;
+	border-block-end: 2px solid transparent;
+	border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+	background: transparent;
+	color: var(--text-secondary);
+	font: inherit;
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	text-align: start;
+	cursor: pointer;
+	transform: scale(1);
+	transition:
+		transform var(--dur-fast) var(--ease-standard),
+		color var(--dur-slow) var(--ease-standard),
+		background-color var(--dur-slow) var(--ease-standard),
+		border-color var(--dur-slow) var(--ease-standard);
+}
+
+.abt-tour__tab:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.abt-tour__tab:active {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+.abt-tour__tab[aria-selected="true"] {
+	color: var(--on-surface);
+	font-weight: var(--fw-medium);
+	border-block-end-color: var(--primary);
+}
+
+.abt-tour__tab-num {
+	font-family: var(--font-mono);
+	font-size: var(--text-2xs);
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--fw-normal);
+	color: var(--text-secondary);
+}
+
+/*
+ * The label and an invisible copy at the SELECTED weight share one grid cell (the TocList device):
+ * the cell is always as tall as `--fw-medium` needs, so selecting a step never re-wraps its label
+ * into an extra line in a narrow column.
+ */
+.abt-tour__tab-label {
+	display: grid;
+	min-inline-size: 0;
+	overflow-wrap: anywhere;
+}
+
+.abt-tour__tab-ink,
+.abt-tour__tab-reserve {
+	grid-area: 1 / 1;
+	min-inline-size: 0;
+}
+
+.abt-tour__tab-reserve {
+	visibility: hidden;
+	font-weight: var(--fw-medium);
+	pointer-events: none;
+	user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.abt-tour__tab,
+	.abt-tour__tab:active,
+	.abt-tour__fig :is(.abt-tour__seg, .abt-tour__node, .abt-tour__halo, .abt-tour__bracket, .abt-tour__zone, .abt-tour__token) {
+		transition: none;
+	}
+
+	.abt-tour__tab:active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .abt-tour__tab,
+:root[data-motion="reduced"] .abt-tour__fig :is(.abt-tour__seg, .abt-tour__node, .abt-tour__halo, .abt-tour__bracket, .abt-tour__zone, .abt-tour__token) {
+	transition: none;
+}
+
+:root[data-motion="reduced"] .abt-tour__tab:active {
+	transform: none;
+}
+/* #endregion */
+
+/* #region Panel + control row */
+.abt-tour__panel {
+	display: grid;
+	max-inline-size: var(--measure);
+}
+
+.abt-tour__entry {
+	display: grid;
+	grid-area: 1 / 1;
+	align-content: start;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	visibility: hidden;
+}
+
+.abt-tour__entry--shown {
+	visibility: visible;
+}
+
+.abt-tour__where {
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.abt-tour__where-label {
+	margin-inline-end: var(--space-2);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+}
+
+.abt-tour__line {
+	margin: 0;
+	font-family: var(--font-reading);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface);
+}
+
+.abt-tour__controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2) var(--space-4);
+	min-block-size: var(--space-7);
+}
+
+.abt-tour__count {
+	margin: 0;
+	font-family: var(--font-mono);
+	font-size: var(--text-2xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+/* #endregion */

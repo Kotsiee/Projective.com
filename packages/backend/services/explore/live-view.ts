@@ -48,6 +48,7 @@ import {
 import { IntakeFieldSchema } from "@projective/types/services";
 import type { VerificationTier as ProfileTier } from "@projective/types/profile";
 import { toMajorUnits, toMinorUnits } from "@projective/types/finance";
+import { createAnchorRegistry, slugify as anchorSlug } from "@projective/types/content";
 
 /**
  * live-view — the composed `/view/[id]` page, built from Postgres.
@@ -744,11 +745,19 @@ function articleViewFor(
 	const stored = parseStoredList(StoredArticleBlockSchema, row.body);
 	const toc: ArticleTocEntry[] = [];
 	const assets: ArticleAsset[] = [];
+	// Heading anchors follow the editorial content rules (`@projective/types/content` anchors), so an
+	// article's `#fragment` is the same here and on its canonical `/articles/<slug>` page: explicit
+	// ids kept as written and reserved first, the rest slugified (accents folded, `&` read as "and")
+	// and de-duplicated `-2`, `-3`.
+	const anchors = createAnchorRegistry();
+	for (const b of stored) {
+		if ((b.type === "heading" || b.type === "subheading") && b.id) anchors.reserve(b.id);
+	}
 	const blocks: ArticleBlock[] = stored.flatMap((b): ArticleBlock[] => {
 		switch (b.type) {
 			case "heading":
 			case "subheading": {
-				const id = b.id ?? slugify(b.text);
+				const id = b.id ?? anchors.claim(anchorSlug(b.text));
 				toc.push({ id, text: b.text, level: b.type === "heading" ? 2 : 3 });
 				return [{ type: b.type, id, text: b.text }];
 			}

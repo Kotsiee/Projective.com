@@ -89,3 +89,14 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
         NULL, '/api/scheduling/cron/horizon?limit=200', 'SCHEDULING_CRON_SECRET',
         'Recompiles every live availability preset not compiled, or compiled through an earlier date than today + 90 days, over today to today + 120 days (ScheduleBackendService.extendHorizons).')
 ON CONFLICT (name) DO NOTHING;
+
+-- #region [contact] /contact attachments (Decision #276)
+-- Unsent attachments do not linger: hourly, every contact upload older than six hours that no request
+-- links is soft-deleted and its bytes deleted (ops.fn_claim_stale_contact_attachments, then the
+-- Storage API — objects cannot be deleted from SQL), so an http job on its own secret.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('contact-attachment-sweep', 'http', '25 * * * *',
+        NULL, '/api/contact/cron/attachments?limit=100', 'CONTACT_CRON_SECRET',
+        'Deletes /contact attachments nobody sent — older than 6 hours and linked to no request: soft-deletes each files.items row and removes its object (ContactBackendService.sweepAttachments).')
+ON CONFLICT (name) DO NOTHING;
+-- #endregion

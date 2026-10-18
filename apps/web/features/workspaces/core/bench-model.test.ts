@@ -98,7 +98,7 @@ Deno.test("bench: a business that cannot hire refuses Add to project, with the r
 	const add = row(benchMenu(MARIS, ctx({ canHire: false })), "add");
 	assertEquals(add.disabled, true);
 	assertEquals(add.url, undefined);
-	assertEquals(add.disabledReason, "Helia Finance isn't active, so it can't hire yet.");
+	assertEquals(add.disabledReason, "Helia Finance isn't active, so it can't buy, hire or pay yet.");
 });
 
 Deno.test("bench: the viewer's own row, or their own team's, is not offered to them", () => {
@@ -145,7 +145,7 @@ Deno.test("bench: a profile that does not open for the viewer is no link, and on
 	// The business's own gate speaks first.
 	assertEquals(
 		row(benchMenu(hidden, ctx({ canHire: false })), "add").disabledReason,
-		"Helia Finance isn't active, so it can't hire yet.",
+		"Helia Finance isn't active, so it can't buy, hire or pay yet.",
 	);
 });
 

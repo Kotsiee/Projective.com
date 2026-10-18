@@ -16,6 +16,8 @@ import {
 	type ProfileSettings,
 	type ProfileShowcase,
 	type ProfileShowcaseItem,
+	type ProfileStanding,
+	type ProfileStandingFactors,
 	type ProfileView,
 	ProfileVisibility,
 	type ProfileWorkspaceFacts,
@@ -145,7 +147,20 @@ export interface RawProfile {
 	showcase: RawShowcaseSlot[];
 	settings: { allow_avatar_expand: boolean; show_location: boolean; show_local_time: boolean } | null;
 	completed_stages: number;
-	standing: { level: number; label: string } | null;
+	standing: {
+		level: number;
+		label: string;
+		/**
+		 * A team's own Standing inputs (Teams P1) — absent below the ladder's first earned rung's
+		 * volume floor, before it has a Standing row, and for a person.
+		 */
+		factors?: {
+			stages_completed: number;
+			completion_rate: number | string;
+			on_time_rate: number | string;
+			dispute_rate: number | string;
+		} | null;
+	} | null;
 	architect: boolean;
 	adornments?: unknown;
 	hours: {
@@ -154,11 +169,11 @@ export interface RawProfile {
 		rules: Array<{ weekday: number; start_minute: number; end_minute: number; kind: string }>;
 	} | null;
 	free_consultation: boolean;
-	/** A business only (BP1): why outsiders cannot open it, and the viewer's own console doors. */
+	/** A team or business only (BP1; Teams P1): why outsiders cannot open it, and the viewer's doors. */
 	workspace?:
 		| { hidden_reason: string | null; viewer_edits: boolean; viewer_settings: boolean }
 		| null;
-	/** A business only: its owner, whom a Message reaches. */
+	/** A team or business only (BP1; Teams P1): its owner, whom a Message reaches. */
 	contact?: { handle: string | null; name: string | null } | null;
 }
 
@@ -236,38 +251,83 @@ function settingsOf(raw: RawProfile["settings"]): ProfileSettings {
 }
 
 /**
- * The profile's reach. A business's `invite_only` is members-only — the person scale's `private`
- * (Decision #244). Every other kind reads exactly as it did: a team's value is Teams P1's to map.
+ * The profile's reach. A team's or business's `invite_only` is members-only — the person scale's
+ * `private` (Decision #244; Teams P1). A person's three states read as stored.
  */
-function visibilityOf(raw: string, ownerType: ProfileOwnerType): ProfileView["visibility"] {
-	if (ownerType === "business" && raw === "invite_only") return "private";
+export function visibilityOf(raw: string, ownerType: ProfileOwnerType): ProfileView["visibility"] {
+	const entity = ownerType === "business" || ownerType === "team";
+	if (entity && raw === "invite_only") return "private";
 	const parsed = ProfileVisibility.safeParse(raw);
 	return parsed.success ? parsed.data : "public";
 }
 
 /**
- * A business's member-facing facts (BP1, Decision #244): why outsiders cannot open it, and the
- * console doors the viewer's own seat holds — "Manage business" on `edit_profile`, the Settings link
- * on `manage_settings`. `undefined` for every other kind, and when the read carried no facts.
+ * A team's or business's member-facing facts (BP1, Decision #244; Teams P1): why outsiders cannot
+ * open it, and the console doors the viewer's own seat holds — "Manage business" / "Manage team" on
+ * `edit_profile`, the Settings link on `manage_settings`. `undefined` for every other kind, and when
+ * the read carried no facts.
  */
 export function workspaceFactsOf(raw: RawProfile): ProfileWorkspaceFacts | undefined {
-	if (raw.owner_type !== "business" || !raw.workspace) return undefined;
+	const kind = raw.owner_type;
+	if ((kind !== "business" && kind !== "team") || !raw.workspace) return undefined;
 	const reason = ProfileHiddenReason.safeParse(raw.workspace.hidden_reason);
 	return {
 		hiddenReason: reason.success ? reason.data : null,
-		consoleHref: raw.workspace.viewer_edits ? workspaceHref("business", raw.handle) : null,
+		consoleHref: raw.workspace.viewer_edits ? workspaceHref(kind, raw.handle) : null,
 		settingsHref: raw.workspace.viewer_settings
-			? workspaceHref("business", raw.handle, "settings")
+			? workspaceHref(kind, raw.handle, "settings")
 			: null,
 	};
 }
 
 /**
- * Who a business profile's Message reaches — its owner, because a DM is person-to-person.
- * `undefined` for every other kind, and for a business whose owner has no public handle.
+ * The rung's factors, as fractions — `undefined` when the read carried none (a subject with no
+ * Standing row yet). Postgres `numeric` arrives as a string; anything unreadable is dropped whole
+ * rather than shown as a made-up zero.
+ */
+export function standingFactorsOf(
+	raw: NonNullable<RawProfile["standing"]>["factors"],
+): ProfileStandingFactors | undefined {
+	if (!raw) return undefined;
+	const rate = (value: number | string): number | null => {
+		const n = typeof value === "number" ? value : Number(value);
+		return Number.isFinite(n) && n >= 0 && n <= 1 ? n : null;
+	};
+	const stages = Number(raw.stages_completed);
+	const completion = rate(raw.completion_rate);
+	const onTime = rate(raw.on_time_rate);
+	const dispute = rate(raw.dispute_rate);
+	if (!Number.isInteger(stages) || stages < 0) return undefined;
+	if (completion === null || onTime === null || dispute === null) return undefined;
+	return {
+		stagesCompleted: stages,
+		completionRate: completion,
+		onTimeRate: onTime,
+		disputeRate: dispute,
+	};
+}
+
+/**
+ * A seller's earned rung — with its factors only for a team whose read carried them (Teams P1 SPEC
+ * 4). A person's rates are not published, so a person's rung never carries them even should a read.
+ */
+function standingOf(
+	raw: NonNullable<RawProfile["standing"]>,
+	ownerType: ProfileOwnerType,
+): ProfileStanding {
+	const factors = ownerType === "team" ? standingFactorsOf(raw.factors) : undefined;
+	return { level: raw.level, label: raw.label, ...(factors ? { factors } : {}) };
+}
+
+/**
+ * Who a team's or a business's Message reaches — its owner, because a DM is person-to-person and
+ * `dm-{slug}` resolves nobody (BP1, Decision #244 (C); Teams P1, as the Talent bench already does for
+ * a team). `undefined` for a person, who is their own recipient, and for an entity whose owner has
+ * no public handle.
  */
 export function messageTargetOf(raw: RawProfile): ProfileMessageTarget | undefined {
-	const handle = raw.owner_type === "business" ? raw.contact?.handle?.trim() : undefined;
+	const entity = raw.owner_type === "business" || raw.owner_type === "team";
+	const handle = entity ? raw.contact?.handle?.trim() : undefined;
 	if (!handle) return undefined;
 	return { handle: `@${handle}`, name: raw.contact?.name?.trim() || handle };
 }
@@ -372,7 +432,7 @@ export function mapProfileView(raw: RawProfile): ProfileView {
 			// Delivered volume is a financial fact with no disclosure setting behind it yet, so it is
 			// withheld rather than published by default; the strip renders its absence.
 			volumeLabel: null,
-			standing: seller && raw.standing ? { level: raw.standing.level, label: raw.standing.label } : null,
+			standing: seller && raw.standing ? standingOf(raw.standing, raw.owner_type) : null,
 		},
 		headline: raw.headline ?? "",
 		story: bioText(raw.bio),
@@ -544,11 +604,22 @@ export interface RawRoster {
 		name: string | null;
 		avatar: unknown;
 		role: string | null;
-		/** A business row's membership start (BP1); absent for the other kinds. */
+		/** A team or business row's membership start (BP1; Teams P1); absent for an enterprise. */
 		since?: string | null;
+		/** A team row's top two skill labels (Teams P1); absent for the other kinds. */
+		skills?: unknown;
 		is_freelancer: boolean;
 		departments: string[];
 	}>;
+}
+
+/** A roster row's skill labels: the first two non-empty strings, or nothing at all. */
+function rosterSkillsOf(raw: unknown): string[] {
+	if (!Array.isArray(raw)) return [];
+	return raw
+		.filter((s): s is string => typeof s === "string" && s.trim() !== "")
+		.map((s) => s.trim())
+		.slice(0, 2);
 }
 
 /** Department ids are derived from their names — the catalogue is a name list, not a table. */
@@ -571,15 +642,19 @@ export async function fetchRoster(
 export function rosterOf(
 	raw: RawRoster,
 ): { members: MemberEntry[]; departments: DepartmentEntry[] } {
-	const members: MemberEntry[] = (raw.members ?? []).map((m) => ({
-		handle: `@${m.handle}`,
-		name: m.name?.trim() || m.handle,
-		avatar: mediaUrl(parseMediaRef(m.avatar), "sm") ?? "",
-		role: m.role?.trim() || "Member",
-		kind: m.is_freelancer ? "freelancer" : "user",
-		...(m.since ? { since: m.since } : {}),
-		departments: (m.departments ?? []).map(departmentId),
-	}));
+	const members: MemberEntry[] = (raw.members ?? []).map((m) => {
+		const skills = rosterSkillsOf(m.skills);
+		return {
+			handle: `@${m.handle}`,
+			name: m.name?.trim() || m.handle,
+			avatar: mediaUrl(parseMediaRef(m.avatar), "sm") ?? "",
+			role: m.role?.trim() || "Member",
+			kind: m.is_freelancer ? "freelancer" : "user",
+			...(m.since ? { since: m.since } : {}),
+			...(skills.length ? { skills } : {}),
+			departments: (m.departments ?? []).map(departmentId),
+		};
+	});
 	const departments: DepartmentEntry[] = (raw.departments ?? []).map((d) => {
 		const id = departmentId(d.name);
 		const lead = members.find((m) => m.departments.includes(id) && /lead|head|director/i.test(m.role));

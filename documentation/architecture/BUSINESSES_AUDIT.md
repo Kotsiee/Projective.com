@@ -90,8 +90,8 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | # | Capability | Implementation | Status |
 | :-- | :-- | :-- | :-- |
 | BF31 | Monthly consolidated invoice | `fn_generate_consolidated_invoice`, daily `fn_run_billing_cycle`, `pay_invoice` from the wallet; tax stubbed 0 (#172 a) | ✅ (flags #172 a–h open) |
-| BF32 | Pay invoice | Wallet debit only (#172 e); no confirm step in UI | ⚠️ |
-| BF33 | Intervaled invoicing Pro-gated | `intervaled_invoicing` entitlement seeded, **never read**; `set_invoicing_terms` checks KYB + `manage_billing` only | 📄 🧑 BX-e |
+| BF32 | Pay invoice | Wallet debit only (#172 e); no confirm step in UI | ✅ every Pay passes through a review — `CommitReview` (the amount, the wallet it leaves, the balance now and after; a wallet short of the invoice hands off to its top-up) — and only `viewerCan.payInvoice` sees Pay (BU3, Decision #247); `pay_invoice` itself refuses a business that is not KYB-verified (`PK403 kyb_required`, #247 (h)), as the reads do |
+| BF33 | Intervaled invoicing Pro-gated | `intervaled_invoicing` entitlement seeded, **never read**; `set_invoicing_terms` checks KYB + `manage_billing` only | 📄 🧑 BX-e — ✅ the door refuses (BB7); Billing reads the gate too (`get_billing_settings.plan_allows_monthly`, the dev plan-gates override honoured) and says "part of Business Pro" before the Save (BU3, #247); the "See plans" link waits for a plans surface (#247 flag (d)) |
 | BF34 | Spending caps Pro-gated (`pooled_wallet_full`) | Seeded, never read | 📄 🧑 BX-e |
 | BF35 | `business_managers` cap | Seeded 2/15, never enforced | ❌ 🧑 BX-b |
 | BF36 | `businesses_owned` | Enforced (1 free / 3 pro); finance-model:57 says Pro spins up 5 | 📄 BX-f |
@@ -129,41 +129,41 @@ Severity: **G** gate · **M** matrix/parity · **T** tidy · **B** functional bu
 
 | ID | Sev | Defect | Fix |
 | :-- | :-- | :-- | :-- |
-| BD1 | B | Header promises "Who may put money in" but there is **no approver or contributor editor**; `approverIds`/`contributorIds` are posted back unchanged (:133-134); `.wsp-spend__approvers` is dead CSS | Build both editors (member multi-select with rank rules) — the RPC already accepts them |
-| BD2 | B | Draft ceilings render against server figures: `PolicyAmount value={limit.limit ?? limit.spent}` (`SpendLimitRow:319`) shows **spent as the ceiling** for a previously unlimited member, and ":306 of  used" blanks | Server preview of the draft envelope, or the payout split's `stale` marker; never show spent as a ceiling |
-| BD3 | B | Meters not refreshed after an approval (`decide()` only updates `policy`, :187); comment claims decisions don't touch envelopes | Re-read limits from the decision response |
-| BD4 | B | Approval history hidden unless something is pending (:223); `ApprovalQueue` empty state unreachable | Always render the section; empty state + "Decided" sub-view |
-| BD5 | B | Unverified approver sees requester copy "Waiting for a decision" (`canApprove && verified`, :234) | Separate `canApprove` from `verified`; show the KYB notice to the approver |
-| BD6 | G | "Unlimited" chip renders beside "Spending is off" (:312, :318); "Per purchase" chip **hides the amount** (:325) | MetaLine: `Spending off` · or `€500 / month · €100 per purchase` (tabular) |
-| BD7 | G | Tooltips on non-focusable spans (:318-326; SpendPolicyScreen :318-323) | Put the text in Meta, or make the trigger a focusable control |
-| BD8 | M | N filled Approve buttons once D30 is fixed literally | One tier-3 Approve on the first pending row, others tier 4; Decline tier 5 |
-| BD9 | T | `<div class="wsp-spend__limits">` contains `<li>` (:282) | `<ul>` |
-| BD10 | T | Threshold `min={0}` while 0 is invalid (:261, :70); double label (`<label>` + `aria-label`) | `min={1}` (or minor-unit min), FormControl only |
-| BD11 | B | "Give a member approve-spend" warning has no link (:272-277) | Tier-4 link to Roles / the approver editor (BD1) |
-| BD12 | B | `accessHref="/wallet/access"` lands in the **personal** wallet (308 drops the business `?w=`) | `walletHrefFor("business", id, "access")` |
-| BD13 | T | `.wsp-approvals__who` 600, `gap: 2px`, `block-size: 6px` meter, `opacity: .68` dimming, literal `500` | W1 token sweep covers; ensure money.css business sections included |
+| BD1 | B | Header promises "Who may put money in" but there is **no approver or contributor editor**; `approverIds`/`contributorIds` are posted back unchanged (:133-134); `.wsp-spend__approvers` is dead CSS | ✅ BU2 (#246): two `Listbox` pickers — Who can approve · Who can add money — over the server's `editableMemberIds` (never the owner, never oneself, only somebody outranked), the fixed holders named under each; `.wsp-spend__approvers` is their grid. Also found and fixed: every save posted EVERY limits row (the owner's and the editor's own included), which `save_spend_policy` refuses, so a save carrying limits could never succeed — now only the rows the server offers, each with only the keys that moved |
+| BD2 | B | Draft ceilings render against server figures: `PolicyAmount value={limit.limit ?? limit.spent}` (`SpendLimitRow:319`) shows **spent as the ceiling** for a previously unlimited member, and ":306 of  used" blanks | ✅ BU2 (#246): a drafted row draws the server's preview of THAT draft (matched by its signature) marked "Not saved yet", or "Pricing the change…" until it arrives — never a stored figure with a field patched in; reproduced first in `spend-model.test.ts` |
+| BD3 | B | Meters not refreshed after an approval (`decide()` only updates `policy`, :187); comment claims decisions don't touch envelopes | ✅ BU2 (#246): a decision or a withdrawal adopts the re-read spend block; rows the reader had not touched follow it, their own edits stay (`rebaseDraft`) |
+| BD4 | B | Approval history hidden unless something is pending (:223); `ApprovalQueue` empty state unreachable | ✅ BU2 (#246): Requests always render — `TabMenu` Pending · Decided, each with its empty state |
+| BD5 | B | Unverified approver sees requester copy "Waiting for a decision" (`canApprove && verified`, :234) | ✅ BU2 (#246): an approver whom `viewerCan.decide` refuses (KYB) reads the refusal map's `kyb_required` notice, linked to Verification (BU4) when it admits them, and gets no Approve |
+| BD6 | G | "Unlimited" chip renders beside "Spending is off" (:312, :318); "Per purchase" chip **hides the amount** (:325) | ✅ BU2 (#246): one MetaLine — `Spending off` · `US$500.00 / month · US$100.00 per purchase` · `No ceiling` (tabular); the chips are gone |
+| BD7 | G | Tooltips on non-focusable spans (:318-326; SpendPolicyScreen :318-323) | ✅ BU2 (#246): a Tooltip only on the focusable Edit button; the ledger's note is a MetaLine; the pool ledger (`ContributionLedger`) names its direction glyph by its `aria-label` alone and shows "Approved by …" as MetaLine text under the line's reason (its two span Tooltips removed in the review pass) |
+| BD8 | M | N filled Approve buttons once D30 is fixed literally | ✅ BU2 (#246): the first decidable row's Approve tier 3, every other tier 4, Decline and Withdraw tier 5 |
+| BD9 | T | `<div class="wsp-spend__limits">` contains `<li>` (:282) | ✅ BU2 (#246): `<ul class="wsp-spend__limits">` |
+| BD10 | T | Threshold `min={0}` while 0 is invalid (:261, :70); double label (`<label>` + `aria-label`) | ✅ BU2 (#246): `MoneyInput min={1}` inside `FormControl` — one label |
+| BD11 | B | "Give a member approve-spend" warning has no link (:272-277) | ✅ BU2 (#246): the server's `approver_gap` (nobody besides the owner approves, #239 (e)) → an InlineNotice with a tier-4 "Choose approvers" that focuses the picker, for the policy's editors |
+| BD12 | B | `accessHref="/wallet/access"` lands in the **personal** wallet (308 drops the business `?w=`) | ✅ BU2 (#246): `walletHrefFor("business", id, "access")` → `/wallet?w=business:<id>#upcoming` |
+| BD13 | T | `.wsp-approvals__who` 600, `gap: 2px`, `block-size: 6px` meter, `opacity: .68` dimming, literal `500` | ✅ BU2 (#246): the spend and approvals rules rewritten token-only — the hand-made meter, chips and tinted rows deleted; the styles gate is green |
 
 ### 2.2 Billing (`BillingScreen.island.tsx`)
 
 | ID | Sev | Defect | Fix |
 | :-- | :-- | :-- | :-- |
-| BD14 | G | Tier-1 Pay renders **per invoice** → N amber fills in one region; no confirmation before moving money | One "Pay €X" for the oldest due invoice (or "Pay all due"), others tier 5 "Pay" opening the same confirm; a review step (ConfirmDialog is blocked for accent per #157 o — use the wallet `MoveDialog` review pattern) |
-| BD15 | B | Pay gated on `canEdit` only (ignores KYB and `manage_billing`) | Gate on server capabilities from the detail |
-| BD16 | M | Below-floor warning is a bare `<p>` | `InlineNotice severity="warning"` with a tier-1 "Top up" that starts the wallet MoveDialog (the act that starts a financial flow = tier 1) |
-| BD17 | T | Hand-rolled labels (:279,305,322,338); hard-coded "Issued on the 1st" (:245) though `billing_day` is 1–28; empty `<span />` spacer (:259); band meta not tabular | FormControl; derive copy from `billing_day`; layout via grid; tabular |
+| BD14 | G | Tier-1 Pay renders **per invoice** → N amber fills in one region; no confirmation before moving money | One "Pay €X" for the oldest due invoice (or "Pay all due"), others tier 5 "Pay" opening the same confirm; a review step (ConfirmDialog is blocked for accent per #157 o — use the wallet `MoveDialog` review pattern) — ✅ BU3 (#247): one tier-1 Pay for the oldest payable invoice, row Pay tier 5, both into `CommitReview` (promoted to `@projective/ui/feedback`; `MoveDialog` renders its body) |
+| BD15 | B | Pay gated on `canEdit` only (ignores KYB and `manage_billing`) | Gate on server capabilities from the detail — ✅ BU3 (#247): Pay renders only for `viewerCan.payInvoice`; a draft, archived or KYB-pending business reads the refusal map's notice instead |
+| BD16 | M | Below-floor warning is a bare `<p>` | `InlineNotice severity="warning"` with a tier-1 "Top up" that starts the wallet MoveDialog (the act that starts a financial flow = tier 1) — ✅ BU3 (#247): an `InlineNotice` with the warning glyph (it has no severity) and ONE Top up into the business wallet's top-up and back; tier 4 while a Pay renders, so the page keeps one amber control |
+| BD17 | T | Hand-rolled labels (:279,305,322,338); hard-coded "Issued on the 1st" (:245) though `billing_day` is 1–28; empty `<span />` spacer (:259); band meta not tabular | FormControl; derive copy from `billing_day`; layout via grid; tabular — ✅ BU3 (#247): FormControl terms (SelectButton · Select 1st–28th · SelectButton · MoneyInput), "Issued on the {billing day}" on the Invoices band from data, DataTables in place of the spacer-padded lists, MetaLine band meta with tabular figures; the Statements band's "Issued on the 1st" is KEPT — statements stay on the 1st (#168) |
 
 ### 2.3 Console branches, roster, create
 
 | ID | Sev | Defect | Fix |
 | :-- | :-- | :-- | :-- |
-| BD18 | B | Overview money band requires `manage_finances \|\| spend_funds \|\| withdraw_funds` (:75-76) while Finance opens on `contribute_funds` → a member can open Finance but sees no money on Overview | One `canSeeMoney(kind, caps)` helper in `workspace-model.ts` shared by registry and Overview |
-| BD19 | B | `FinanceSummary` `canOpen` never passed (:260) → link always shows; Available figure duplicated (:69-80 vs first tile) | Pass `canOpen`; drop the duplicate |
+| BD18 | B | Overview money band requires `manage_finances \|\| spend_funds \|\| withdraw_funds` (:75-76) while Finance opens on `contribute_funds` → a member can open Finance but sees no money on Overview | One `canSeeMoney(kind, caps)` helper in `workspace-model.ts` shared by registry and Overview — ✅ BU6 (#248): the band is `businessMoney` (`overview-model.ts`) on `canOpenFinance` — the predicate the registry opens Finance on and the read answers `money_tiles` on, so no helper was added to `workspace-model.ts`; a plain member (contribute only) sees it, a withdraw-only role does not (pinned over every preset and single-right role in `module-registry-gates.test.ts`) |
+| BD19 | B | `FinanceSummary` `canOpen` never passed (:260) → link always shows; Available figure duplicated (:69-80 vs first tile) | Pass `canOpen`; drop the duplicate — ✅ BU6 (#248): `FinanceSummary` draws BB9's tiles per currency (Available · Committed · Awaiting approval · Spent 30d), each pinned to its row's own currency, and only the hand-off link; the repeated Available and `PolicyAmount` are gone. `canOpen` was dropped rather than passed: the band itself renders only on `canOpenFinance`, and the wallet opens a business's `?w=business:<id>` view for every member (`resolveWalletContext` — membership is `view`), so the link's gate IS the band's and a second prop could only ever be `true` |
 | BD20 | B | MemberCard "Ceiling set" without amount or link (:778); MemberDrawer "edited on the spend policy" with no link (:359-366) | Show the envelope MetaLine + tier-5 link to Spend |
 | BD21 | T | Create modal kind radio is **unreachable** (`showKindChoice` always false; single mount `WorkspaceRoster:419`) and paints `--secondary` with a translucent mix (`roster.css:824-826`) | Delete the radio and its CSS |
 | BD22 | G | Business kind tint: `--wsp-business-edge` translucent (`tokens.css:83-88`); high-contrast widens `tint`/`edge` but **not `tint-hi`/`ink`** (:305-306); comments call it "the ACCENT tint" (amber is accent) | Opaque edge; HC values for all four; fix comments |
 | BD23 | G | `--wsp-business` = `--secondary`, which is also the **focus-ring colour** (`theme-engine.ts:203-213`): a ring on a business-tinted mark is invisible against it | Business marks use `--tertiary` (the CVD anchor already used at :334-338) or the ring gets the inverse-surface halo on business surfaces — 🧑 BX-j |
 | BD24 | M | Roster table money column header is the stats label "Spent (30d)" from the first card; only the largest currency is shown; `delta` always null | Explicit column def; multi-currency MetaLine; drop the delta slot until it has data |
-| BD25 | T | `PolicyAmount` literal 600 at every size (`tokens.css:401-416`) | `--fw-medium` (figures are not headings; weight is the money register's) |
+| BD25 | T | `PolicyAmount` literal 600 at every size (`tokens.css:401-416`) | `--fw-medium` (figures are not headings; weight is the money register's) — ✅ BU6 (#248): the four `.wsp-money--*` steps are `--fw-medium` (W1 had already replaced the literal with `--fw-semibold`); `MoneyView` amounts stay `--fw-semibold` (flag (f)) |
 | BD26 | B | Talent and Verification render "Not built yet"; Verification shows "is verified" **and** "Not built yet" when verified; `ModulePlaceholder.tsx:15` still lists Billing as next; `VerificationLock` hard-codes "two working days" | Build Verification (BU4); Talent per BX-i; correct stale copy — a business's Verification built and its stale copy corrected (BU4, Decision #242); a team's Verification is still the placeholder (Teams series, #242 flag (d)); Talent per BU5 |
 
 ---
@@ -175,14 +175,14 @@ The shared migration plan is `TEAMS_AUDIT.md` §3.1 and its prompts (U1–U4, W1
 
 | File | Migrate / add | Pri |
 | :-- | :-- | :-- |
-| `islands/SpendPolicyScreen.island.tsx` | `FormControl` + `MoneyInput` (threshold) · approver/contributor editor with `Listbox` or a `DataTable` with selection (BD1) · `InlineNotice` · tier-3/4/5 matrix · `useSignalEffect` | P0 |
-| `components/SpendLimitRow.tsx` | `ProgressBar` (meter) · `MetaLine` (BD6) · `MoneyInput` for ceilings inside `FormControl` · `ToggleSwitch` for can-spend · `<ul>` (BD9) | P0 |
-| `components/ApprovalQueue.tsx` | `Button` tiers (BD8) · rows on hairlines (no tinted boxes) · Pending · Decided via `TabMenu` | P0 |
-| `islands/BillingScreen.island.tsx` | One tier-1 Pay + review dialog (BD14) · `InlineNotice` (BD16) · `FormControl` | P0 |
+| `islands/SpendPolicyScreen.island.tsx` | `FormControl` + `MoneyInput` (threshold) · approver/contributor editor with `Listbox` or a `DataTable` with selection (BD1) · `InlineNotice` · tier-3/4/5 matrix · `useSignalEffect` — ✅ BU2 (#246) | P0 |
+| `components/SpendLimitRow.tsx` | `ProgressBar` (meter) · `MetaLine` (BD6) · `MoneyInput` for ceilings inside `FormControl` · `ToggleSwitch` for can-spend · `<ul>` (BD9) — ✅ BU2 (#246) | P0 |
+| `components/ApprovalQueue.tsx` | `Button` tiers (BD8) · rows on hairlines (no tinted boxes) · Pending · Decided via `TabMenu` — ✅ BU2 (#246) | P0 |
+| `islands/BillingScreen.island.tsx` | One tier-1 Pay + review dialog (BD14) · `InlineNotice` (BD16) · `FormControl` — ✅ BU3 (#247) | P0 |
 | `components/ContributionLedger.tsx` | `DataTable` (date · member · method · amount tabular); include card top-ups (BF25) | P1 |
 | `components/ModuleScreen.tsx` | `verification` → new `BusinessVerificationScreen` island; `talent` per BX-i | P0 |
 | `components/VerificationLock.tsx` | Link to the real Verification module; drop hard-coded SLA copy | P1 |
-| `components/FinanceSummary.tsx`, `islands/WorkspaceOverview.island.tsx` | shared `canSeeMoney` (BD18-19) | P1 |
+| `components/FinanceSummary.tsx`, `islands/WorkspaceOverview.island.tsx` | shared `canSeeMoney` (BD18-19) — ✅ BU6 (#248): `canOpenFinance` band on BB9's tiles; business setup hero (Add money tier 1, Publish not gated); draft notice; Finance module `BusinessFinanceHead` | P1 |
 | `components/MemberCard.tsx`, `islands/MemberDrawer.island.tsx` | envelope MetaLine + link (BD20) | P1 |
 | `islands/CreateWorkspaceModal.island.tsx` | delete kind radio (BD21) | P2 |
 | `styles/workspace-tokens.css` | business tint opaque + HC (BD22); hue per BX-j (BD23) | P0 |

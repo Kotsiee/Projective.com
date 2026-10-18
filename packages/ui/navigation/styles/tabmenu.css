@@ -96,11 +96,17 @@
 	justify-content: center;
 }
 
+/*
+ * A tab's count. It changes under the reader — an item archived, an invitation answered — so its
+ * digits are tabular and the badge never reflows the strip (§A.4). Micro size, the workhorse weight:
+ * a count is a value, not a title.
+ */
 .ui-tabmenu__badge {
 	min-inline-size: 1.25rem;
 	padding-inline: var(--space-1);
-	font-size: 0.6875rem;
-	font-weight: 700;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+	font-variant-numeric: tabular-nums;
 	line-height: 1.25rem;
 	text-align: center;
 	color: var(--on-primary);

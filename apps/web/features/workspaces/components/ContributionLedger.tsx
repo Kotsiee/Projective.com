@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { Tooltip } from "@projective/ui/feedback";
+import { MetaLine } from "@projective/ui/display";
 import type { PoolEntry } from "@projective/types/workspace";
 import { PolicyAmount } from "./PolicyAmount.tsx";
 import { cloneGlyph, SpendGlyph, WalletGlyph } from "../core/workspace-glyphs.tsx";
@@ -14,7 +14,9 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  * an approval was needed — who granted it.
  *
  * Direction is carried by a GLYPH and the sign, not by colour alone: a red/green ledger is unreadable
- * to a large minority of people and says nothing at all in print.
+ * to a large minority of people and says nothing at all in print. The glyph is named by its own label;
+ * who approved a spend is visible meta under its reason. Neither hides behind a hover tooltip, which a
+ * keyboard or touch reader could never open on a non-focusable element (BUSINESSES_AUDIT BD7).
  *
  * A spend the money path recorded no actor for is attributed to the business itself rather than to a
  * guessed person — an honest "the business paid" beats a confident wrong name.
@@ -48,18 +50,13 @@ export function ContributionLedger(props: ContributionLedgerProps): JSX.Element 
 				const who = entry.name ?? props.owner;
 				return (
 					<li class="wsp-pool__item" key={entry.id} data-kind={entry.kind}>
-						<Tooltip
-							content={inbound ? "Contribution into the pool" : "Spent from the pool"}
-							placement="right"
+						<span
+							class="wsp-pool__glyph"
+							role="img"
+							aria-label={inbound ? "Contribution into the pool" : "Spent from the pool"}
 						>
-							<span
-								class="wsp-pool__glyph"
-								role="img"
-								aria-label={inbound ? "Contribution" : "Spend"}
-							>
-								{cloneGlyph(inbound ? WalletGlyph : SpendGlyph)}
-							</span>
-						</Tooltip>
+							{cloneGlyph(inbound ? WalletGlyph : SpendGlyph)}
+						</span>
 
 						<UserAvatar
 							class="wsp-pool__avatar"
@@ -75,6 +72,14 @@ export function ContributionLedger(props: ContributionLedgerProps): JSX.Element 
 								{entry.handle ? <a href={`/@${entry.handle}`}>{who}</a> : who}
 							</span>
 							<span class="wsp-pool__reason">{entry.reason}</span>
+							{entry.approvedBy && (
+								<MetaLine
+									as="span"
+									size="xs"
+									class="wsp-pool__approved"
+									items={[`Approved by ${entry.approvedBy}`]}
+								/>
+							)}
 						</span>
 
 						<span class="wsp-pool__amount" data-direction={inbound ? "in" : "out"}>
@@ -86,12 +91,6 @@ export function ContributionLedger(props: ContributionLedgerProps): JSX.Element 
 						</span>
 
 						<span class="wsp-pool__at">{entry.at}</span>
-
-						{entry.approvedBy && (
-							<Tooltip content={`Approved by ${entry.approvedBy}`} placement="left">
-								<span class="wsp-pool__approved">Approved</span>
-							</Tooltip>
-						)}
 					</li>
 				);
 			})}

@@ -1,6 +1,7 @@
 import type { MenuItem } from "@ui/types/mod.ts";
 import type { BenchEntry, BenchPartyKind } from "@projective/types/workspace";
 import { profileHref } from "@features/projects/core/routing.ts";
+import { BUSINESS_REFUSAL_COPY } from "./refusal-copy.ts";
 
 /**
  * bench-model — the pure rules of the Talent module's bench (Decision #230 (i), #241): where a row's
@@ -118,7 +119,7 @@ export function benchMenu(entry: BenchEntry, ctx: BenchMenuContext): MenuItem[] 
 		};
 
 	const addRefusal = !ctx.canHire
-		? `${ctx.businessName} isn't active, so it can't hire yet.`
+		? BUSINESS_REFUSAL_COPY.business_not_active.sentence({ business: ctx.businessName })
 		: benchManagedReason(entry, ctx.viewerHandle) ?? closed;
 	const add: MenuItem = addRefusal
 		? {

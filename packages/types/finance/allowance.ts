@@ -40,12 +40,40 @@ export const METERED_BLOCK_REASONS: readonly AllowanceBlockReason[] = [
 	"buffer_exhausted",
 ];
 
+/**
+ * The reasons that are RULES, not meters — they always refuse, whatever the enforcement switch — in
+ * `projects.fn_assert_team_can_apply`'s order: permission, a published team, two members.
+ */
+export const ELIGIBILITY_BLOCK_REASONS = [
+	"missing_permission",
+	"team_not_active",
+	"team_too_small",
+] as const satisfies readonly AllowanceBlockReason[];
+export type EligibilityBlockReason = (typeof ELIGIBILITY_BLOCK_REASONS)[number];
+
+/** Whether a reason is one of the {@link ELIGIBILITY_BLOCK_REASONS}. */
+export function isEligibilityReason(reason: unknown): reason is EligibilityBlockReason {
+	return (ELIGIBILITY_BLOCK_REASONS as readonly unknown[]).includes(reason);
+}
+
 /** The minimum active members a team needs before it may send proposals (PRODUCT_SPEC). */
 export const TEAM_PROPOSAL_MIN_MEMBERS = 2;
 
 /** What an unpublished (draft or archived) team is told — the notice and the server's `422` alike. */
 export const TEAM_NOT_ACTIVE_NOTICE =
 	"Publish the team before applying. Only a published team can send proposals.";
+
+/**
+ * The one sentence each eligibility refusal is told in — the apply modal's notice, the pre-flight's
+ * `422` and (for `team_too_small` and `missing_permission`) the apply door's own message in
+ * `projects.fn_assert_team_can_apply`, word for word, so a refusal reads the same from every side.
+ */
+export const ELIGIBILITY_NOTICES: Readonly<Record<EligibilityBlockReason, string>> = {
+	missing_permission: "Only a team member who can commit the team to work may apply on its behalf.",
+	team_not_active: TEAM_NOT_ACTIVE_NOTICE,
+	team_too_small:
+		`Teams must have at least ${TEAM_PROPOSAL_MIN_MEMBERS} members before applying to client projects.`,
+};
 // #endregion
 
 // #region Status
@@ -303,27 +331,12 @@ export function allowanceNotice(status: ProposalAllowanceStatus): AllowanceNotic
 			};
 		}
 		case "team_not_active":
-			return {
-				reason,
-				blocking,
-				lead: TEAM_NOT_ACTIVE_NOTICE,
-				countdownTo: null,
-				tail: "",
-			};
 		case "team_too_small":
-			return {
-				reason,
-				blocking,
-				lead:
-					`Teams must have at least ${TEAM_PROPOSAL_MIN_MEMBERS} members before applying to client projects.`,
-				countdownTo: null,
-				tail: "",
-			};
 		case "missing_permission":
 			return {
 				reason,
 				blocking,
-				lead: "Only a team member who can commit the team to work may apply on its behalf.",
+				lead: ELIGIBILITY_NOTICES[reason],
 				countdownTo: null,
 				tail: "",
 			};

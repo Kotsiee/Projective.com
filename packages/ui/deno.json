@@ -13,6 +13,8 @@
 		"./display/image": "./display/image.ts",
 		"./display/blurhash": "./display/blurhash.ts",
 		"./display/video": "./display/video.ts",
+		"./display/editorial": "./display/editorial.ts",
+		"./display/editorial-islands": "./display/editorial-islands.ts",
 		"./icons": "./icons/mod.ts",
 		"./feedback": "./feedback/mod.ts",
 		"./overlay": "./overlay/mod.ts",

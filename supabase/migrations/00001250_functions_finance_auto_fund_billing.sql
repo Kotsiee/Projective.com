@@ -412,9 +412,14 @@ AS $$
         'auto_fund_mode', b.auto_fund_mode,
         'low_balance_floor_cents', b.low_balance_floor_cents,
         'can_manage', finance.fn_owner_capability('business', b.id, 'manage_billing'::finance.vault_capability),
-        -- Whether Pay may be offered: pay_invoice's own conditions (the billing right, KYB, an active business).
+        -- Whether Pay may be offered: the billing right, KYB and an active business — viewer_can.pay_invoice's
+        -- conditions (org.get_workspace_detail), and pay_invoice's own (#247 (h)).
         'can_pay', finance.fn_owner_capability('business', b.id, 'manage_billing'::finance.vault_capability)
-            AND finance.fn_business_kyb_verified(b.id) AND b.status = 'active'
+            AND finance.fn_business_kyb_verified(b.id) AND b.status = 'active',
+        -- Whether monthly invoicing is open under the Business Pro gate, by fn_assert_business_entitlement's
+        -- own rule (Decision #230 (e)); the development header can only make it stricter.
+        'plan_allows_monthly', NOT finance.fn_business_plan_gates_enforced()
+            OR finance.fn_business_gate_flag(b.id, 'intervaled_invoicing'::finance.entitlement_key)
     ) END
       FROM org.business_profiles b
      WHERE b.id = p_business_id;
@@ -580,7 +585,9 @@ $$;
 -- #region 5. Paying an invoice
 -- A billing member settles an invoice's amount due from the business wallet in its currency
 -- (`invoice_payment`). Paying by card is a top-up of that wallet first (Decision #125). Only an active
--- business pays (55000 business_not_active, BB5) — archiving waits for its invoices to be paid.
+-- business pays (55000 business_not_active, BB5) — archiving waits for its invoices to be paid — and only
+-- a KYB-verified one (PK403 kyb_required, Decision #247 (h)). Settling debt is not a spend: no envelope
+-- or approval threshold is read (Decision #240's gate leaves invoices out).
 CREATE OR REPLACE FUNCTION finance.pay_invoice(p_invoice_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -603,6 +610,15 @@ BEGIN
         RAISE EXCEPTION 'Only a member who manages this account''s billing can pay its invoices' USING ERRCODE = '42501';
     END IF;
     PERFORM org.fn_assert_business_active(v_inv.issue_to_business_id);
+    -- Paying from the pooled wallet is operating it, which KYB gates (PRODUCT_SPEC §Identity
+    -- Verification) — the condition get_billing_settings.can_pay and viewer_can.pay_invoice read (#247 (h)).
+    IF NOT finance.fn_business_kyb_verified(v_inv.issue_to_business_id) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = 'PK403',
+            MESSAGE = 'kyb_required: complete business verification (KYB) before paying from this account',
+            DETAIL = pg_catalog.jsonb_build_object('invoice_id', v_inv.id,
+                'business_id', v_inv.issue_to_business_id)::text;
+    END IF;
     IF v_inv.status NOT IN ('issued', 'overdue') OR v_inv.amount_due_cents <= 0 THEN
         RAISE EXCEPTION 'This invoice has nothing to pay' USING ERRCODE = 'PC409';
     END IF;
