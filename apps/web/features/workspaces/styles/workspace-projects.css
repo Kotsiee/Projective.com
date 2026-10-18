@@ -1,0 +1,347 @@
+/*
+ * workspace-projects.css — a team console's Projects module (Teams work order C5): the allowance band
+ * (`.wsp-allowance`), the Active view's engagement rows (`.wsp-engagements`, `.wsp-engagement`), the
+ * Proposals view (`.wsp-proposals`) and either view's empty line (`.wsp-projects-empty`).
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY. Separation is spacing → the band's SOLID tonal
+ * step (`--surface-1` on the canvas's `--surface`) → type → ONE hairline between rows (§B.4): nothing
+ * here is boxed, and no row is a card. Both lists lay out by their OWN width (`@container`), because the
+ * console's body narrows with the docked lane whatever the viewport.
+ *
+ * The figures — the weekly meter, each Wᵢ readout, the stage's facts — are tabular. The bars are the ui
+ * `ProgressBar`, which owns its fill; nothing here sizes a fill. Only their empty track is re-toned
+ * (see "The bars' track").
+ */
+
+/* #region The bars' track */
+/*
+ * The ui ProgressBar lays its track on `--surface-2`, a step meant for the `--surface` ground. On the
+ * band's `--surface-1` that step measured 1.06:1 in light, dark and both high-contrast states, so an
+ * unspent week — every seeded team sits at 0 — drew no meter at all, and on the body ground the Wᵢ
+ * tracks measured 1.17:1. Both bars take the console's recessed track, the tone every workspace meter
+ * is drawn on, which the global layer widens under `data-contrast="high"`. (0,2,0) against the
+ * package's (0,1,0), so the override never depends on bundle order.
+ */
+.wsp-allowance__bar .ui-progressbar__track,
+.wsp-engagement__bar .ui-progressbar__track {
+	background: var(--wsp-track-bg);
+}
+/* #endregion */
+
+/* #region The allowance band */
+/*
+ * The band is the module's one tonal step: a solid `--surface-1` ramp tone, full-bleed like every band,
+ * never a card. With no gate the meter takes the full width; a gated band (`--gated`) sets the meter and
+ * the gate side by side, stacked when the band is narrow.
+ */
+.wsp-band--allowance {
+	container: wsp-allowance / inline-size;
+	background: var(--surface-1);
+}
+
+.wsp-allowance {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	align-items: start;
+	gap: var(--space-4) var(--space-7);
+}
+
+/*
+ * Side by side, the two columns share their FIRST baseline: the gate's first sentence sits on the line
+ * of the band title and the weekly figure, rather than wherever its own box happens to start.
+ */
+.wsp-allowance--gated {
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	align-items: baseline;
+}
+
+.wsp-allowance__meter {
+	display: grid;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.wsp-allowance__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: var(--space-2) var(--space-4);
+}
+
+/* The head's title is `.wsp-band__title` (the section-header register); the figure is the key number. */
+.wsp-allowance__figure {
+	margin: 0;
+	font-size: var(--wsp-fs-key);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--wsp-num-track);
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
+}
+
+/* Every gate that applies, one under the next, then the viewer's note. */
+.wsp-allowance__gate {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+/* One gate: its sentence, and under it the fix the viewer may make. */
+.wsp-allowance__item {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+/*
+ * A gate's sentence — and the meter's "couldn't be read" — is an InlineNotice, which pads itself for the
+ * foot of a list. Here it stands on the band's own column, so it drops that padding: the sentence starts
+ * on the same edge as the fix under it. Doubled class so the override never depends on bundle order.
+ */
+.ui-inline-notice.wsp-allowance__notice {
+	padding: 0;
+}
+
+/* The tier-4 Settings link is an anchor drawn as an outlined Button: a button carries no underline. */
+.wsp-allowance__link {
+	text-decoration: none;
+}
+
+@container wsp-allowance (max-width: 39.9375rem) {
+	.wsp-allowance--gated {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+/* #endregion */
+
+/* #region Engagements */
+.wsp-engagements {
+	container: wsp-engagements / inline-size;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+/* A row: what and where on the leading half, who and how loaded on the trailing half. */
+.wsp-engagement {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	align-items: start;
+	gap: var(--space-4) var(--space-7);
+	padding-block: var(--space-5);
+}
+
+.wsp-engagement:first-child {
+	padding-block-start: 0;
+}
+
+.wsp-engagement + .wsp-engagement {
+	border-block-start: var(--hairline);
+}
+
+.wsp-engagement__main {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--space-4);
+	min-inline-size: 0;
+}
+
+.wsp-engagement__titles {
+	display: grid;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.wsp-engagement__project {
+	font-size: var(--wsp-fs-body);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	text-decoration: none;
+	overflow-wrap: anywhere;
+}
+
+/* The stage steps down a register and takes the kind's ink, so the second link reads as one. */
+.wsp-engagement__stage {
+	font-size: var(--text-sm);
+	color: var(--wsp-kind-ink);
+	text-decoration: none;
+	overflow-wrap: anywhere;
+}
+
+.wsp-engagement__project:hover,
+.wsp-engagement__stage:hover {
+	text-decoration: underline;
+}
+
+.wsp-engagement__meta {
+	margin: 0;
+}
+
+.wsp-engagement__status {
+	flex: none;
+}
+
+.wsp-engagement__people {
+	display: grid;
+	align-content: start;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.wsp-engagement__load {
+	display: grid;
+	gap: var(--space-3);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/* Name · readout · bar on one line; the soft-cap sentence, when there is one, on the line under it. */
+.wsp-engagement__assignee {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto minmax(0, 10rem);
+	grid-template-areas:
+		"who wi bar"
+		"warn warn warn";
+	align-items: center;
+	gap: var(--space-1) var(--space-3);
+}
+
+.wsp-engagement__who {
+	grid-area: who;
+	min-inline-size: 0;
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+	overflow-wrap: anywhere;
+}
+
+.wsp-engagement__wi {
+	grid-area: wi;
+	font-size: var(--text-sm);
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
+	white-space: nowrap;
+}
+
+.wsp-engagement__bar {
+	grid-area: bar;
+	min-inline-size: 0;
+}
+
+.wsp-engagement__warn {
+	grid-area: warn;
+	margin: 0;
+}
+
+.wsp-engagement__idle {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+@container wsp-engagements (max-width: 47.9375rem) {
+	.wsp-engagement {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+/* #endregion */
+
+/* #region Proposals */
+.wsp-proposals {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wsp-proposals__row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-4);
+	padding-block: var(--space-4);
+}
+
+.wsp-proposals__row:first-child {
+	padding-block-start: 0;
+}
+
+.wsp-proposals__row + .wsp-proposals__row {
+	border-block-start: var(--hairline);
+}
+
+.wsp-proposals__text {
+	display: grid;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.wsp-proposals__title {
+	font-size: var(--wsp-fs-body);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	text-decoration: none;
+	overflow-wrap: anywhere;
+}
+
+.wsp-proposals__title:hover {
+	text-decoration: underline;
+}
+
+.wsp-proposals__meta {
+	margin: 0;
+}
+
+.wsp-proposals__action {
+	flex: none;
+}
+
+/*
+ * The read's busy line, its refusal and a withdrawal's result are InlineNotices on the rows' own edge:
+ * the notice's self-padding is dropped so the sentence starts where the row titles do. A result under
+ * the list keeps one row-gap of air. Doubled class so the override never depends on bundle order.
+ */
+.ui-inline-notice.wsp-proposals__notice {
+	padding: 0;
+}
+
+.ui-inline-notice.wsp-proposals__notice--result {
+	margin-block-start: var(--space-4);
+}
+/* #endregion */
+
+/* #region An empty view */
+/*
+ * A view with nothing in it says so in one Meta sentence with its way out under it — unboxed, on the
+ * band's own ground (§B.4: static content is never boxed; the ui EmptyState's `--surface-1` tile would
+ * be a card inside the band, and its title a heading's weight).
+ */
+.wsp-projects-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.wsp-projects-empty__text {
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+	overflow-wrap: anywhere;
+}
+
+/* The way out is an anchor drawn as an outlined Button: no underline. */
+.wsp-projects-empty__action {
+	text-decoration: none;
+}
+/* #endregion */

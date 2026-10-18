@@ -3,8 +3,11 @@ import {
 	allowanceBlockReason,
 	allowanceNotice,
 	allowanceNoticeText,
+	ELIGIBILITY_BLOCK_REASONS,
+	ELIGIBILITY_NOTICES,
 	formatCountdown,
 	formatCountdownShort,
+	isEligibilityReason,
 	nextBufferRefillAt,
 	type ProposalAllowanceRow,
 	refusesApplication,
@@ -101,6 +104,29 @@ Deno.test("a draft or archived team is refused as team_not_active, even unenforc
 		assertStrictEquals(team.canApply, false);
 		assertStrictEquals(allowanceNotice(team)?.lead, TEAM_NOT_ACTIVE_NOTICE);
 	}
+});
+
+Deno.test("each eligibility reason is told in the apply door's own sentence", () => {
+	const doors = Deno.readTextFileSync(
+		new URL("../../../supabase/migrations/00001130_functions_projects_stages.sql", import.meta.url),
+	);
+	for (const reason of ["missing_permission", "team_too_small"] as const) {
+		const sentence = ELIGIBILITY_NOTICES[reason];
+		assertStrictEquals(doors.includes(`'${sentence}'`), true, `${reason} drifted from the door`);
+	}
+	for (const reason of ELIGIBILITY_BLOCK_REASONS) {
+		assertStrictEquals(isEligibilityReason(reason), true);
+		const team = resolveProposalAllowance(row({
+			subject_type: "team",
+			team_status: reason === "team_not_active" ? "draft" : "active",
+			team_member_count: reason === "team_too_small" ? 1 : 2,
+			can_bind_seat: reason !== "missing_permission",
+		}));
+		assertStrictEquals(team.blockReason, reason);
+		assertStrictEquals(allowanceNotice(team)?.lead, ELIGIBILITY_NOTICES[reason]);
+	}
+	assertStrictEquals(isEligibilityReason("weekly_exhausted"), false);
+	assertStrictEquals(isEligibilityReason(undefined), false);
 });
 
 Deno.test("the most fundamental reason wins in the database's order, then the week, then the buffer", () => {

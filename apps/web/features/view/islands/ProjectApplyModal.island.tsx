@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import { Dialog } from "@projective/ui/feedback";
+import { Dialog, InlineNotice } from "@projective/ui/feedback";
 import { Select, Textarea } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import "../styles/project-apply.css";
@@ -28,16 +28,24 @@ import { PayoutGateLink } from "@features/settings/components/PayoutGateLink.tsx
 import { CtaButton } from "../components/CtaButton.tsx";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
 import { applyOpen, applyProjectSlug } from "../core/view-state.ts";
-
-/** The applicant picker's value for "apply as yourself"; anything else is a team id. */
-const SELF = "self";
+import {
+	APPLY_AS_SELF as SELF,
+	applyAsDefault,
+	type ApplyRefusal,
+	eligibilityRefusal,
+	showsRefusal,
+} from "../core/apply-as.ts";
 
 export interface ProjectApplyModalProps {
 	/** The listing's project slug (`prj-…`). */
 	projectSlug: string;
 	title: string;
 	stages: readonly ProjectStage[];
-	/** The acting team, when the viewer is acting as one — preselected as the applicant. */
+	/**
+	 * The team the session is acting as, when the route knows it; otherwise the modal reads it from the
+	 * team roster. Either way it becomes the default applicant only when the viewer may bind it
+	 * (`applyAsDefault`, Decision #154 (c)).
+	 */
 	actingTeamId?: string | null;
 }
 
@@ -59,6 +67,13 @@ export interface ProjectApplyModalProps {
  * enforcement is off (Decision #58's switch) the same notice says it will still go through, and submit
  * stays enabled. The server's `422` is the backstop for everything this cannot know.
  *
+ * # Apply as
+ *
+ * While the shell is acting as a team the viewer may bind (`bind_seat`), "Apply as" opens on that team;
+ * otherwise on "Yourself" (Decision #154 (c), `apply-as.ts`). A pick the reader makes is never
+ * overridden. A refusal the server gives for the team itself — unpublished, under two members, or a
+ * viewer who may not bind it (B2) — is stated as this modal's `InlineNotice`, not as an error line.
+ *
  * # Already applied
  *
  * The viewer's pending proposals on this project are listed first, each with **Withdraw proposal
@@ -71,7 +86,11 @@ export default function ProjectApplyModal(
 	const open = applyOpen;
 	const accepting = stages.filter((s) => s.acceptingApplications);
 
-	const applicant = useSignal<string>(actingTeamId ?? SELF);
+	const applicant = useSignal<string>(SELF);
+	/** Whether the reader chose an applicant on this page — the default never overrides a choice. */
+	const picked = useSignal(false);
+	/** The team the session is acting as: the route's, else the team roster's `actingId`. */
+	const actingTeam = useSignal<string | null>(actingTeamId);
 	const teams = useSignal<readonly WorkspaceSummary[] | null>(null);
 	const stage = useSignal<string>(accepting[0]?.id ?? "");
 	const role = useSignal<string>("");
@@ -81,6 +100,8 @@ export default function ProjectApplyModal(
 	const reading = useSignal(false);
 	const error = useSignal<string | null>(null);
 	const errorDetails = useSignal<unknown>(null);
+	/** A refusal for the team itself (B2), stated as the modal's notice. */
+	const refusal = useSignal<ApplyRefusal | null>(null);
 	const confirming = useSignal<string | null>(null);
 	const withdrawing = useSignal<string | null>(null);
 	const announcement = useSignal("");
@@ -108,17 +129,42 @@ export default function ProjectApplyModal(
 			: null;
 	}
 
-	// On open: the applicant's allowance, and (once) the teams the viewer could apply for.
+	/**
+	 * On open: (once) the teams the viewer could apply for, then the default applicant — the acting team
+	 * when the viewer may bind it, read from that team's allowance — and the applicant's allowance.
+	 */
+	async function prepare(): Promise<void> {
+		reading.value = true;
+		if (teams.peek() === null) {
+			const res = await WorkspaceService.roster("team");
+			teams.value = res.ok && res.data ? res.data.items.filter((t) => t.status !== "archived") : [];
+			if (!actingTeam.peek() && res.ok && res.data?.actingId) actingTeam.value = res.data.actingId;
+		}
+		const acting = actingTeam.peek();
+		const offered = (teams.peek() ?? []).map((t) => t.id);
+		if (!picked.peek() && acting && offered.includes(acting)) {
+			const res = await AllowanceService.status({ teamId: acting });
+			if (!picked.peek()) {
+				const choice = applyAsDefault({
+					actingTeamId: acting,
+					offeredTeamIds: offered,
+					canBindSeat: res.status?.canBindSeat ?? null,
+				});
+				applicant.value = choice;
+				if (choice === acting && res.status) {
+					read.value = { status: res.status, receivedAt: Date.now() };
+					readError.value = null;
+					reading.value = false;
+					return;
+				}
+			}
+		}
+		await readApplicant();
+	}
+
 	useSignalEffect(() => {
 		if (!open.value) return;
-		void readApplicant();
-		if (teams.peek() === null) {
-			void WorkspaceService.roster("team").then((res) => {
-				teams.value = res.ok && res.data
-					? res.data.items.filter((t) => t.status !== "archived")
-					: [];
-			});
-		}
+		void prepare();
 	});
 
 	// Reset the form (not the stores) whenever the dialog closes.
@@ -127,6 +173,7 @@ export default function ProjectApplyModal(
 		note.value = "";
 		error.value = null;
 		errorDetails.value = null;
+		refusal.value = null;
 		confirming.value = null;
 		cta.reset();
 	});
@@ -140,10 +187,11 @@ export default function ProjectApplyModal(
 	const roleOptions = (chosenStage?.roles ?? []).filter((r) => r.id);
 	const blocked = status ? !status.canApply : !!readError.value;
 	const canSubmit = !!chosenStage && !blocked && !reading.value;
-	const unpublishedTeamId = applicant.value === SELF ? actingTeamId : applicant.value;
-	const unpublishedTeam = status?.blockReason === "team_not_active"
-		? (teams.value ?? []).find((t) => t.id === unpublishedTeamId) ?? null
-		: null;
+	const unpublishedTeamId = applicant.value === SELF ? actingTeam.value : applicant.value;
+	const unpublishedTeam =
+		status?.blockReason === "team_not_active" || refusal.value?.reason === "team_not_active"
+			? (teams.value ?? []).find((t) => t.id === unpublishedTeamId) ?? null
+			: null;
 
 	const applicantOptions = [
 		{ label: "Yourself", value: SELF },
@@ -154,6 +202,7 @@ export default function ProjectApplyModal(
 		if (!chosenStage) return false;
 		error.value = null;
 		errorDetails.value = null;
+		refusal.value = null;
 		const res = await AllowanceService.apply({
 			projectId: projectSlug,
 			stageId: chosenStage.id,
@@ -162,6 +211,13 @@ export default function ProjectApplyModal(
 			teamId: applicant.value === SELF ? null : applicant.value,
 		});
 		if (!res.ok) {
+			// A refusal for the team itself is the modal's notice; the re-read shows the current facts.
+			const eligibility = eligibilityRefusal(res);
+			if (eligibility) {
+				refusal.value = eligibility;
+				void readApplicant();
+				return false;
+			}
 			error.value = res.message ?? "That application couldn't be sent.";
 			errorDetails.value = res.details ?? null;
 			// A refusal from the gate means the meter moved under us — show the current figures.
@@ -319,7 +375,9 @@ export default function ProjectApplyModal(
 										loading={teams.value === null && open.value}
 										options={applicantOptions}
 										onValueChange={(v) => {
+											picked.value = true;
 											applicant.value = v ?? SELF;
+											refusal.value = null;
 											void readApplicant();
 										}}
 									/>
@@ -345,6 +403,17 @@ export default function ProjectApplyModal(
 						)}
 
 					{snapshot.value ? <AllowanceNotice snapshot={snapshot.value} /> : null}
+					{showsRefusal(refusal.value, status?.blockReason)
+						? (
+							<InlineNotice
+								align="start"
+								class="prop-notice"
+								assertive
+								icon={<Icon name="info" size="sm" />}
+								text={refusal.value.text}
+							/>
+						)
+						: null}
 					{unpublishedTeam
 						? (
 							<a

@@ -10,6 +10,7 @@ import { ModulePlaceholder } from "./ModulePlaceholder.tsx";
 import { BusinessFinanceHead } from "./BusinessFinanceHead.tsx";
 import WorkspaceOverview from "../islands/WorkspaceOverview.island.tsx";
 import TalentScreen from "../islands/TalentScreen.island.tsx";
+import TeamProjectsScreen from "../islands/TeamProjectsScreen.island.tsx";
 import MembersScreen from "../islands/MembersScreen.island.tsx";
 import RolesMatrix from "../islands/RolesMatrix.island.tsx";
 import PayoutPolicyScreen from "../islands/PayoutPolicyScreen.island.tsx";
@@ -125,15 +126,18 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 				/>
 			);
 		case "projects":
+			// A team's engagements, Wᵢ and proposal allowance are its own screen (Teams C5); a business's
+			// commissions still live in the projects surface.
+			if (ws.kind === "team") {
+				return <TeamProjectsScreen workspace={ws} view={props.view ?? null} />;
+			}
 			return (
 				<ModulePlaceholder
 					kind={ws.kind}
 					module={mod!}
 					href="/projects"
 					linkLabel="Open projects"
-					note={ws.kind === "team"
-						? `Engagements ${ws.name} is delivering, in the projects surface.`
-						: `Engagements ${ws.name} has commissioned, in the projects surface.`}
+					note={`Engagements ${ws.name} has commissioned, in the projects surface.`}
 				/>
 			);
 		case "catalogue":

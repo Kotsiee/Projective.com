@@ -3,7 +3,7 @@ import { CreateProjectSchema, INVITE_COOLDOWN_DAYS } from "@projective/types/pro
 import type { HireInvitation } from "@projective/types/projects";
 import { hireLimiter, ProjectBackendService } from "./ProjectBackendService.ts";
 import { resetWriteStore } from "./write-store.ts";
-import { clearRequestStore } from "./request-store.ts";
+import { clearRequestStore, listStubApplications, recordStubApplication } from "./request-store.ts";
 import type { ReadActor } from "../read-actor.ts";
 import { JUNO_HIRE_INTAKE, stubProfileOverview } from "../profile/test-doubles.ts";
 import { MessagingBackendService } from "../messaging/MessagingBackendService.ts";
@@ -175,6 +175,29 @@ Deno.test("an invitee answers every invitation of a request together; a guest ca
 		actorOf(""),
 	);
 	assertEquals(guest.status, 401);
+});
+
+Deno.test("the sent list narrows to one team's applications, and to one project within it", () => {
+	clearRequestStore();
+	const lead = actorOf("u-handshake-lead");
+	const team = "00000000-0000-4000-8000-0000000000c5";
+	const at = Date.parse("2026-10-18T09:00:00Z");
+	const row = (projectId: string, teamId: string | null, offset: number) =>
+		recordStubApplication(
+			lead,
+			{ projectId, stageId: "stg-any", roleId: null, teamId, message: null },
+			at + offset,
+		).id;
+	const forTeam = row("prj-one", team, 0);
+	const personal = row("prj-two", null, 1);
+	const forTeamLater = row("prj-two", team, 2);
+	row("prj-one", "00000000-0000-4000-8000-0000000000ff", 3);
+
+	const ids = (rows: { id: string }[]) => rows.map((r) => r.id);
+	assertEquals(ids(listStubApplications(lead, undefined, team)), [forTeamLater, forTeam]);
+	assertEquals(ids(listStubApplications(lead, "prj-two", team)), [forTeamLater]);
+	assert(ids(listStubApplications(lead)).includes(personal), "unfiltered keeps the personal one");
+	assertEquals(listStubApplications(actorOf("u-someone-else"), undefined, team), []);
 });
 
 Deno.test("confirming an applicant's seat answers with where the seat is funded", async () => {
