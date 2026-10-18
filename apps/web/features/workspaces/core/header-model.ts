@@ -25,7 +25,8 @@ import { type SubView, subViewIndex } from "./sub-views.ts";
  *
  * The Button Interaction Matrix (§B.8.1) is enforced here, not in the island: the commit is the only
  * action that can take a filled tier, so {@link headerFilledCount} can never exceed one. Archive is
- * offered only to an `archive_entity` holder and never on an archived entity; nothing here deletes.
+ * offered only to an `archive_entity` holder and never on an archived entity — on a business, only
+ * when the server says the archive would go through; nothing here deletes.
  *
  * Pure: no signals, no DOM, and no import of the module registry (the island passes the module's
  * label in), so `deno test` loads it directly. Teams and Businesses share it (Decision #61).
@@ -110,6 +111,12 @@ export interface HeaderBandInput {
 	owner: boolean;
 	/** The server-resolved effective capabilities (`WorkspaceDetail.viewerCapabilities`). */
 	capabilities: readonly WorkspaceCapability[];
+	/**
+	 * A business's server answer to "may the viewer archive it now" (`WorkspaceDetail.viewerCan.archive`:
+	 * `archive_entity`, not archived, and no archive blocker). `null`/absent for a team, whose rule is
+	 * the capability and the status alone.
+	 */
+	viewerCanArchive?: boolean | null;
 	/** The module's sub-views for this viewer (`subViewsFor`). */
 	subViews: readonly SubView[];
 	/** The current sub-view, or `null` when the module has none. */
@@ -161,10 +168,20 @@ export function headerBand(input: HeaderBandInput): HeaderBandModel {
 				href: workspaceHref(input.kind, input.handle, "members"),
 				label: input.owner ? "Hand over ownership…" : `Leave ${copy.noun}…`,
 			},
-			archive: input.capabilities.includes("archive_entity") && input.status !== "archived",
+			archive: canArchive(input),
 		},
 		menuLabel: `${copy.Noun} actions`,
 	};
+}
+
+/**
+ * Whether Archive… is offered. A business asks the server, which already weighs the archive blockers
+ * (a wallet balance, a held escrow) — offering a confirm the write door will refuse would promise
+ * something that cannot happen. A team's rule is `archive_entity` on an entity not yet archived.
+ */
+function canArchive(input: HeaderBandInput): boolean {
+	if (input.kind === "business") return input.viewerCanArchive === true;
+	return input.capabilities.includes("archive_entity") && input.status !== "archived";
 }
 
 /**

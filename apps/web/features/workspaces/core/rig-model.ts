@@ -7,8 +7,9 @@ import { isPeopleReading, MEMBERS_CHART, MEMBERS_PEOPLE } from "./sub-views.ts";
  * work order L2).
  *
  * The rig's division of labour: **view switching on the leading side, actions on the trailing side.**
- * The leading side is the shared zoom (the roster, and the Members people readings) with the Org chart
- * toggle riding beside it. The trailing side is the Button Interaction Matrix (§B.8.1) in one row:
+ * The leading side is the shared zoom (the roster, and the Members People reading) with the Org chart
+ * toggle riding beside it — and the toggle alone on the chart, which has no density to zoom. The
+ * trailing side is the Button Interaction Matrix (§B.8.1) in one row:
  * tier-4 utilities (New, Invite, Settings), then the policy editor's Discard (tier 5) and Save
  * (tier 3) — both present ONLY while the open editor holds unsaved changes, so the rig never shows a
  * Save that has nothing to save, and Save is the rig's one filled control.
@@ -63,11 +64,24 @@ export interface RigStatus {
 
 /** The rig. */
 export interface RigModel {
-	/** The shared zoom rig and its accessible name, or `null` where nothing is zoomable. */
+	/**
+	 * The shared zoom rig and its accessible name, or `null` where nothing is zoomable — the roster and
+	 * the Members People reading. Never on the org chart: the chart ignores the table⇄cards axis, so a
+	 * zoom there would be a control that does nothing (root CLAUDE.md §3.11).
+	 */
 	zoom: { label: string } | null;
-	/** The Org chart toggle (tier 5) beside the zoom, or `null`. `next` is the view a press selects. */
+	/**
+	 * The Org chart toggle (tier 5), or `null`: beside the zoom on People, alone on the chart (where it
+	 * is pressed, and a press returns to People). `next` is the view a press selects.
+	 */
 	chart: { label: string; pressed: boolean; next: string } | null;
-	/** The policy editor's save status, or `null`. */
+	/**
+	 * Whether the save status line is mounted — while a policy editor is open, even with nothing to say,
+	 * so it is a live region before it first speaks and the place focus lands when the Save or Discard
+	 * the reader pressed goes inert or leaves.
+	 */
+	statusLine: boolean;
+	/** The policy editor's save status, or `null` when there is nothing to say. */
 	status: RigStatus | null;
 	/** The trailing controls, in order. */
 	actions: RigAction[];
@@ -83,6 +97,7 @@ export function rigModel(input: RigInput): RigModel {
 		return {
 			zoom: { label: `${copy.Plural} view zoom` },
 			chart: null,
+			statusLine: false,
 			status: null,
 			actions: input.canCreate
 				? [{ key: "create", control: "button", tier: 4, label: `New ${copy.noun}` }]
@@ -91,6 +106,7 @@ export function rigModel(input: RigInput): RigModel {
 	}
 
 	const people = input.module === "members" && isPeopleReading(input.view);
+	const charted = people && input.view === MEMBERS_CHART;
 	const editing = input.canManageMoney && POLICY_MODULES.includes(input.module ?? "");
 	const pending = editing && input.dirty;
 	const actions: RigAction[] = [];
@@ -126,14 +142,15 @@ export function rigModel(input: RigInput): RigModel {
 	}
 
 	return {
-		zoom: people ? { label: "People view zoom" } : null,
+		zoom: people && !charted ? { label: "People view zoom" } : null,
 		chart: people
 			? {
 				label: "Org chart",
-				pressed: input.view === MEMBERS_CHART,
-				next: input.view === MEMBERS_CHART ? MEMBERS_PEOPLE : MEMBERS_CHART,
+				pressed: charted,
+				next: charted ? MEMBERS_PEOPLE : MEMBERS_CHART,
 			}
 			: null,
+		statusLine: editing,
 		status: editing ? saveStatus(input.dirty, input.saveState) : null,
 		actions,
 	};

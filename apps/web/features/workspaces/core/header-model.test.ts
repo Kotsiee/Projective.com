@@ -125,7 +125,7 @@ Deno.test("header: Archive… only with archive_entity, never on an archived ent
 	for (const module of MODULES) {
 		for (const status of ["draft", "active", "archived"] as WorkspaceStatus[]) {
 			for (const capabilities of [OWNER, NO_ARCHIVE, MEMBER]) {
-				const model = headerBand(input({ module, status, capabilities }));
+				const model = headerBand(input({ module, status, capabilities, viewerCanArchive: null }));
 				const rows = headerMenu(model, NOOP);
 				const offered = rows.some((r) => r.key === "archive");
 				const expected = capabilities.includes("archive_entity") && status !== "archived";
@@ -134,6 +134,30 @@ Deno.test("header: Archive… only with archive_entity, never on an archived ent
 			}
 		}
 	}
+});
+
+Deno.test("header: a business offers Archive… only when the server says it would go through", () => {
+	// The server's `viewerCan.archive` already folds in archive_entity, the status and the blockers —
+	// an owner with a wallet balance holds archive_entity yet must not be offered a confirm that fails.
+	for (const status of ["draft", "active", "archived"] as WorkspaceStatus[]) {
+		for (const viewerCanArchive of [true, false, null]) {
+			const model = headerBand(
+				input({
+					kind: "business",
+					module: "overview",
+					status,
+					capabilities: OWNER,
+					viewerCanArchive,
+				}),
+			);
+			const offered = headerMenu(model, NOOP).some((r) => r.key === "archive");
+			assertEquals(offered, viewerCanArchive === true, `${status}/${viewerCanArchive}`);
+			assertEquals(model.menu.archive, viewerCanArchive === true);
+		}
+	}
+	// A team ignores the business-only flag: its rule is the capability and the status.
+	const team = headerBand(input({ module: "overview", viewerCanArchive: false }));
+	assert(headerMenu(team, NOOP).some((r) => r.key === "archive"));
 });
 
 Deno.test("header: the kebab carries the public profile, Copy handle, the way out, then Archive…", () => {
@@ -282,5 +306,15 @@ Deno.test("header band: only the commit can fill — every other Button is outli
 Deno.test("header band: Archive confirms as a danger before anything changes", () => {
 	assert(/<ConfirmDialog\b[\s\S]*?acceptSeverity="danger"/.test(BAND));
 	assert(/archive: \(\) => \{\s*confirmArchive\.value = true;/.test(BAND));
+	assert(/viewerCanArchive: ws\.viewerCan\?\.archive/.test(BAND), "a business asks the server");
+});
+
+Deno.test("header band: its state, actions, kebab and render regions are grouped (§7)", () => {
+	const raw = Deno.readTextFileSync(
+		new URL("../islands/WorkspaceHeaderBand.island.tsx", import.meta.url),
+	);
+	const opened = raw.match(/#region\b/g)?.length ?? 0;
+	assert(opened >= 6, `only ${opened} regions`);
+	assertEquals(opened, raw.match(/#endregion\b/g)?.length);
 });
 // #endregion

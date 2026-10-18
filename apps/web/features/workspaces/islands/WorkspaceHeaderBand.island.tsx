@@ -39,7 +39,8 @@ import { cloneGlyph, KebabGlyph, ShareGlyph } from "../core/workspace-glyphs.tsx
  *   - **Actions, end** — at most ONE filled control (the module's commit, published through
  *     `workspace-state`), the tier-4 Share profile, then the kebab (`ActionMenu`) carrying the rest:
  *     View public profile, Open in new tab, Copy handle, the way to leave, and Archive… for an
- *     `archive_entity` holder, confirmed as a danger before anything changes.
+ *     `archive_entity` holder (on a business, only when the server's `viewerCan.archive` says no
+ *     blocker stands in the way), confirmed as a danger before anything changes.
  *
  * Right-click, the ContextMenu key and Shift+F10 anywhere on the band open the kebab's rows (Decision
  * #222's `surface`). Every rule above — which regions exist, which actions, how many fill — is
@@ -62,6 +63,7 @@ export interface WorkspaceHeaderBandProps {
 }
 
 export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JSX.Element {
+	// #region State
 	const { kind, module } = props;
 	const published = liveDetail.value;
 	const ws = published && published.id === props.workspace.id ? published : props.workspace;
@@ -75,7 +77,9 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 	 */
 	const toastMounted = useSignal(false);
 	const toast = useToast();
+	// #endregion
 
+	// #region The model
 	const views = subViewsFor(module, kind, ws.viewerCapabilities);
 	const view = viewOr(props.view ?? null);
 	const self = ws.members.find((m) => m.id === ws.viewerMemberId);
@@ -89,6 +93,7 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 		acting: ws.isActing,
 		owner: self?.rolePreset === "owner",
 		capabilities: ws.viewerCapabilities,
+		viewerCanArchive: ws.viewerCan?.archive ?? null,
 		subViews: views,
 		view,
 		commit: moduleCommit.value,
@@ -99,7 +104,9 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 	useSignalEffect(() => {
 		activeTab.value = subViewIndex(views, viewOr(props.view ?? null));
 	});
+	// #endregion
 
+	// #region Actions
 	/**
 	 * Say what an action did — a silent press reads as a dead control. A failure is a danger toast,
 	 * which the stack announces as an alert.
@@ -151,23 +158,29 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 		}
 		globalThis.location.assign(`${workspaceBase(kind)}?tab=archived`);
 	}
+	// #endregion
 
+	// #region The kebab
 	const menu = headerMenu(model, {
 		copyHandle: () => void copyHandle(model.menu.handleText),
 		archive: () => {
 			confirmArchive.value = true;
 		},
 	});
+	// #endregion
 
 	return (
 		<div ref={bandRef} class="wsp-headerband" data-kind={kind}>
+			{/* #region Start — identity */}
 			<div class="wsp-headerband__start">
 				<div class="wsp-headerband__id">
 					<h2 class="wsp-headerband__title">{model.title}</h2>
 					<MetaLine as="p" size="xs" class="wsp-headerband__meta" items={model.meta} />
 				</div>
 			</div>
+			{/* #endregion */}
 
+			{/* #region Centre — sub-view tabs */}
 			{model.tabs && (
 				<TabMenu
 					id={SUB_VIEW_TABS_ID}
@@ -182,7 +195,9 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 					aria-label={`${model.title} views`}
 				/>
 			)}
+			{/* #endregion */}
 
+			{/* #region End — actions */}
 			<div class="wsp-headerband__end">
 				{model.commit && <CommitButton commit={model.commit} />}
 
@@ -237,7 +252,9 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 					)}
 				/>
 			</div>
+			{/* #endregion */}
 
+			{/* #region Overlays */}
 			<ConfirmDialog
 				visible={confirmArchive}
 				header={`Archive ${ws.name}?`}
@@ -253,10 +270,12 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 					<Toast position="bottom-center" />
 				</BodyPortal>
 			)}
+			{/* #endregion */}
 		</div>
 	);
 }
 
+// #region The commit
 /**
  * The module's commit at its own filled tier (§B.8.1): 1 amber money movement, 2 the monochrome
  * structural tone, 3 the primary workflow commit.
@@ -273,3 +292,4 @@ function CommitButton({ commit }: { commit: ModuleCommit }): JSX.Element {
 	if (commit.tier === 2) return <Button {...shared} structural />;
 	return <Button {...shared} />;
 }
+// #endregion

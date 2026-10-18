@@ -115,6 +115,21 @@ Deno.test("rig: the save status says what the buttons are for, then that it land
 	assertEquals(rigModel(inConsole({ module: "members", dirty: true })).status, null);
 	assertEquals(rigModel(inConsole({ canManageMoney: false, dirty: true })).status, null);
 });
+
+Deno.test("rig: the status line stays mounted for the whole life of a policy editor", () => {
+	// A live region that exists before it speaks, and somewhere for focus to land when the Save or
+	// Discard the reader pressed goes inert or leaves.
+	for (const module of POLICY_MODULES) {
+		for (const dirty of [true, false]) {
+			assert(rigModel(inConsole({ module, dirty })).statusLine, `${module}/${dirty}`);
+		}
+	}
+	assert(!rigModel(inConsole({ canManageMoney: false })).statusLine);
+	for (const module of ["overview", "members", "settings"]) {
+		assert(!rigModel(inConsole({ module })).statusLine, module);
+	}
+	assert(!rigModel(inConsole({ handle: null, module: null })).statusLine);
+});
 // #endregion
 
 // #region Utilities and links
@@ -151,7 +166,9 @@ Deno.test("rig: the zoom and the Org chart toggle ride the Members people readin
 	const people = rigModel(inConsole({ module: "members", view: MEMBERS_PEOPLE }));
 	assertEquals(people.zoom, { label: "People view zoom" });
 	assertEquals(people.chart, { label: "Org chart", pressed: false, next: MEMBERS_CHART });
+	// The chart ignores the table⇄cards axis, so it carries no zoom — only the toggle back to People.
 	const chart = rigModel(inConsole({ module: "members", view: MEMBERS_CHART }));
+	assertEquals(chart.zoom, null);
 	assertEquals(chart.chart, { label: "Org chart", pressed: true, next: MEMBERS_PEOPLE });
 	// The invitation queue has no density and no chart; nor does any other module.
 	const queue = rigModel(inConsole({ module: "members", view: MEMBERS_QUEUE }));
@@ -208,12 +225,35 @@ Deno.test("footer rig: Save is the only filled Button; Discard and the toggle ar
 	const buttons = buttonElements(RIG);
 	const filled = buttons.filter((b) => !/\bvariant="(outlined|text)"/.test(b));
 	assertEquals(filled.length, 1, `filled: ${filled.join(" | ")}`);
-	assert(/onClick=\{requestSave\}/.test(filled[0]), "the one filled Button is Save");
-	assert(buttons.some((b) => /variant="text"[\s\S]*onClick=\{requestDiscard\}/.test(b)));
+	assert(/onClick=\{props\.onSave\}/.test(filled[0]), "the one filled Button is Save");
+	assert(/onSave=\{\(event\) => pressPending\(event, requestSave\)\}/.test(RIG));
+	assert(buttons.some((b) => /variant="text"[\s\S]*onClick=\{props\.onDiscard\}/.test(b)));
+	assert(/onDiscard=\{\(event\) => pressPending\(event, requestDiscard\)\}/.test(RIG));
 	assert(buttons.some((b) => /severity="neutral"\s+variant="outlined"/.test(b)));
+	const toggles = buttons.filter((b) => /aria-pressed=\{chart\.pressed\}/.test(b));
+	assertEquals(toggles.length, 2, "the toggle's two presentations");
+	assert(toggles.every((b) => /variant="text"/.test(b)));
+});
+
+Deno.test("footer rig: below --bp-md a control swaps to its icon-only Button, never a restyled one", () => {
+	// Two presentations per utility and per toggle; the stylesheet picks one by viewport and never
+	// reaches inside the shared Button (no `.ui-button__label`, no `--btn-*` override).
+	const buttons = buttonElements(RIG);
+	const narrow = buttons.filter((b) => /class="wsp-footerrig__narrow"/.test(b));
+	const wide = buttons.filter((b) => /class="wsp-footerrig__wide"/.test(b));
+	assertEquals([narrow.length, wide.length], [2, 2]);
+	assert(narrow.every((b) => /\biconOnly\b/.test(b) && /aria-label=/.test(b)));
+	assert(!/wsp-footerrig__(fold|toggle)\b/.test(RIG), "the folded-label hack is back");
+});
+
+Deno.test("footer rig: a Save or Discard that held focus hands it on, signal-driven", () => {
+	assert(!/\buseEffect\b/.test(RIG), "the rig keys an effect on a signal's value");
 	assert(
-		buttons.some((b) => /aria-pressed=\{chart\.pressed\}/.test(b) && /variant="text"/.test(b)),
+		/useSignalEffect\(\(\) => \{[\s\S]*?policyDirty\.value;[\s\S]*?saveState\.value;/.test(RIG),
 	);
+	assert(/landFocus\(actionsRef\.current, statusRef\.current\)/.test(RIG));
+	assert(/role="status"\s+tabIndex=\{-1\}/.test(RIG), "the status line can take focus");
+	assert(/\{rig\.statusLine && \(/.test(RIG), "the status line follows the model's statusLine");
 });
 
 Deno.test("policy editors answer Save and Discard through usePolicyBridge, never a useEffect", () => {

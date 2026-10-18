@@ -15,18 +15,20 @@
  * `.wsp-lane` the segmented control re-flows into rows by its zone's own width (an `@container`
  * query, so the lane's width is asked, never the viewport's), and the create action folds its words
  * away in a compact splitter exactly as the package already folds them in the collapsed one. The
- * bands (L2) take the same licence: the header band's `TabMenu` gets Decision #220's in-band underline
- * (the catalogue's `.cat-band` treatment), and below `--bp-md` the footer rig's utilities fold their
- * `Button` words away to the glyph. No colour, shape, type or motion of a shared control is touched,
- * except the Org chart toggle's engaged state, which `Button` has no prop for.
+ * header band (L2) takes the same licence for one treatment: its `TabMenu` gets Decision #220's
+ * in-band underline (the catalogue's `.cat-band` treatment). Nothing else of a shared control is
+ * touched. Where a band needs a control in two forms — Share profile, and below `--bp-md` the footer
+ * rig's utilities and Org chart toggle — it renders BOTH `Button`s (words, and `iconOnly`) and this
+ * sheet only chooses which one paints; the Org chart toggle's engaged state is `Button`'s own
+ * (`aria-pressed`).
  *
  * Press feedback (§B.12) is therefore split by owner:
- *   - From the package: `Button` (the acting switch, the Reset, every band and rig control) and
- *     `LaneCreateButton` compress and drop the scale under both reduced-motion channels. `NavItem`,
- *     the "More" `LaneSection` toggle, the Back `LaneIconButton`, the `SelectButton` segments, the
- *     `TabMenu` tabs and `LaneCollapseButton` carry NO press in the package today; that gap is the
- *     package's to close (it is shared by every lane), never this sheet's, because restyling `.ui-*`
- *     chrome here would fork the lane vocabulary.
+ *   - From the package: `Button` (the acting switch, the Reset, every band and rig control), the
+ *     `TabMenu` tabs and `LaneCreateButton` compress and drop the scale under both reduced-motion
+ *     channels. `NavItem`, the "More" `LaneSection` toggle, the Back `LaneIconButton`, the
+ *     `SelectButton` segments and `LaneCollapseButton` carry NO press in the package today; that gap
+ *     is the package's to close (it is shared by every lane), never this sheet's, because restyling
+ *     `.ui-*` chrome here would fork the lane vocabulary.
  *   - From this sheet: the feature's OWN links — the roster rows (`.wsp-lane__entity`, a feature row
  *     like Catalogue's lane rows), the collapsed rail's squares and mark (`.wsp-rail__item`,
  *     `.wsp-rail__switch`, hand-built like the Projects and Catalogue rails) and the rig's `Link`s
@@ -817,11 +819,19 @@ words — a ring colour on its own is not a channel. */
 	transform: scale(var(--btn-press-scale));
 }
 
-/* The engaged Org chart toggle: one solid tonal step with `--on-surface` ink, never a wash (§B.4.2). */
-.wsp-footerrig .wsp-footerrig__toggle[aria-pressed="true"],
-.wsp-footerrig .wsp-footerrig__toggle[aria-pressed="true"]:hover {
-	background: var(--surface-2);
-	color: var(--on-surface);
+/*
+ * A utility or the Org chart toggle in two presentations — the words, or the `iconOnly` Button under
+ * a Tooltip — and the viewport decides which paints (below), so SSR and hydration agree on the first
+ * frame. The wrapper has no gap, so the one not drawn leaves no space behind.
+ */
+.wsp-footerrig__utility {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+}
+
+.wsp-footerrig .wsp-footerrig__narrow {
+	display: none;
 }
 
 .wsp-footerrig__glyph {
@@ -841,7 +851,7 @@ words — a ring colour on its own is not a channel. */
  * The view control is the SHARED `.ui-viewrig` (layout, mode glyph and slider cap live in
  * `features/shell/styles/view-zoom-rig.css`), so this only strips the padding it would otherwise add
  * inside a band that already pads itself, and holds a floor so the track never collapses. The Org
- * chart toggle rides along inside it as a trailing child.
+ * chart toggle is its sibling, so it keeps its place when the zoom is not drawn.
  */
 .wsp-footerrig .wsp-footerrig__density {
 	flex: none;
@@ -887,7 +897,10 @@ words — a ring colour on its own is not a channel. */
 /* #endregion */
 
 /* #region Responsive */
-/* Below `--bp-md` the rig's utilities and links fold to their glyphs; Save and Discard keep words. */
+/*
+ * Below `--bp-md` the rig's utilities and toggle swap to their icon-only Buttons and its links drop
+ * their words; Save and Discard keep words.
+ */
 @media (max-width: 47.9375rem) {
 	.wsp-headerband {
 		gap: var(--space-2);
@@ -900,12 +913,12 @@ words — a ring colour on its own is not a channel. */
 	}
 
 	.wsp-footerrig__label,
-	.wsp-footerrig__fold .ui-button__label {
+	.wsp-footerrig .wsp-footerrig__wide {
 		display: none;
 	}
 
-	.wsp-footerrig .wsp-footerrig__fold {
-		--btn-px: var(--space-2);
+	.wsp-footerrig .wsp-footerrig__narrow {
+		display: inline-flex;
 	}
 
 	.wsp-footerrig__density {

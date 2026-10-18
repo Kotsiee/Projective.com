@@ -163,7 +163,10 @@ export const MEMBERS_READINGS: readonly SubView[] =
 	SUB_VIEWS.find((e) => e.module === "members")?.views.filter((v) => v.value !== MEMBERS_QUEUE) ??
 		[];
 
-/** Whether a Members view is a reading of the people (and so carries the zoom and the chart toggle). */
+/**
+ * Whether a Members view is a reading of the people, and so carries the Org chart toggle (the People
+ * reading also carries the zoom; the chart has no density to zoom).
+ */
 export function isPeopleReading(view: string | null): boolean {
 	return view !== MEMBERS_QUEUE;
 }
