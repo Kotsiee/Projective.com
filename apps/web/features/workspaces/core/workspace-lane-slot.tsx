@@ -2,7 +2,8 @@ import type { ComponentChildren } from "preact";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import WorkspaceLane from "../islands/WorkspaceLane.island.tsx";
 import { resolveRoster, resolveWorkspaceConsole } from "./workspace-ssr.ts";
-import { activeModuleOf, kindFromPath, toRosterTab, workspaceHandleOf } from "./workspace-model.ts";
+import { activeModuleOf, kindFromPath, workspaceHandleOf } from "./workspace-model.ts";
+import { rosterTabFromSearch } from "./roster-model.ts";
 import { resolveSubView } from "./sub-views.ts";
 
 /**
@@ -34,7 +35,7 @@ export async function workspaceLaneFor(url: URL, actor: ReadActor): Promise<Comp
 				kind={kind}
 				path={url.pathname}
 				roster={read.ok ? read.roster : undefined}
-				tab={toRosterTab(url.searchParams.get("tab"))}
+				tab={rosterTabFromSearch(url.searchParams)}
 			/>
 		);
 	}

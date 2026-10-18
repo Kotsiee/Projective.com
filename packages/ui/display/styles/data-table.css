@@ -1,7 +1,19 @@
+/*
+ * A clickable row's press scale (§B.12). Registered so the press eases in and out by itself: the row's
+ * `transform` also carries its virtual position, and that must never animate.
+ */
+@property --dt-press {
+	syntax: "<number>";
+	inherits: false;
+	initial-value: 1;
+}
+
 .ui-dt {
 	--dt-lead-w: 2.5rem;
 	--dt-tail-w: 3rem;
 	--dt-lead-offset: 0px;
+	/* The depth a row press compresses to; 1 under both reduced-motion channels (below). */
+	--dt-press-scale: var(--btn-press-scale);
 	--dt-row-bg: var(--surface);
 	--dt-hover: color-mix(in srgb, var(--on-surface) var(--tint-subtle), var(--dt-row-bg));
 	--dt-selected: color-mix(in srgb, var(--primary) var(--tint-soft), var(--dt-row-bg));
@@ -66,18 +78,31 @@
 	inset-inline: 0;
 	inset-block-start: 0;
 	block-size: var(--dt-row-h);
-	transform: translateY(calc(var(--dt-i, 0) * var(--dt-row-h)));
+	transform: translateY(calc(var(--dt-i, 0) * var(--dt-row-h))) scale(var(--dt-press, 1));
 	contain: layout style;
 	border-block-end: 1px solid var(--hairline-color);
 	background: var(--dt-row-bg);
 	cursor: default;
-	transition: background-color var(--dur-fast) var(--ease-standard);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		--dt-press var(--dur-fast) var(--ease-standard);
 }
 
 .ui-dt[data-measured="true"] .ui-dt__sizer > .ui-dt__row {
 	block-size: auto;
 	min-block-size: var(--dt-row-h);
-	transform: translateY(var(--dt-y, 0px));
+	transform: translateY(var(--dt-y, 0px)) scale(var(--dt-press, 1));
+}
+
+/*
+ * Press (§B.12): a clickable row is one pressable control. A press that activates it — on its stretched
+ * link or on the row itself — compresses the whole row about its own centre, after its virtual
+ * position; a press on a control inside it (the check, the kebab's cell, a link or field in a cell) is
+ * that control's own. Scale only: nothing moves a box.
+ */
+.ui-dt[data-clickable="true"] .ui-dt__sizer > .ui-dt__row:not(.ui-dt__row--skeleton):active:not(:has(:is(a:not(.ui-dt__rowlink), button, input, select, textarea, label, [contenteditable], [role="button"], [role="checkbox"]):active, .ui-dt__tail:active)) {
+	--dt-press: var(--dt-press-scale);
+	transition-duration: var(--dur-fast), var(--dur-press);
 }
 
 .ui-dt__sizer > .ui-dt__row:not(.ui-dt__row--skeleton):hover,
@@ -192,11 +217,24 @@
 	letter-spacing: var(--tracking-wide);
 	text-transform: uppercase;
 	cursor: pointer;
-	transition: color var(--dur-fast) var(--ease-standard);
+	transform: scale(1);
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
 }
 
 .ui-dt__sort--static {
 	cursor: default;
+}
+
+/*
+ * Press (§B.12): a sortable header is a text control, so it compresses like a Button — a scale on
+ * `--dur-press` that lands back on `--dur-fast`. A static header is not pressable. Removed under both
+ * reduced-motion channels below.
+ */
+.ui-dt__sort:not(.ui-dt__sort--static):active {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-fast), var(--dur-press);
 }
 
 .ui-dt__sort:not(.ui-dt__sort--static):hover,
@@ -622,6 +660,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+	/* A row's transform is its position, so the press is removed at its depth, never by `none`. */
+	.ui-dt {
+		--dt-press-scale: 1;
+	}
+
 	.ui-dt__sizer > .ui-dt__row,
 	.ui-dt__sort,
 	.ui-dt__sortmark,
@@ -634,6 +677,8 @@
 		transition: none;
 	}
 
+	.ui-dt__sort,
+	.ui-dt__sort:not(.ui-dt__sort--static):active,
 	.ui-dt__filter:active,
 	.ui-dt__grip:active,
 	.ui-dt__action:active,
@@ -641,6 +686,10 @@
 	.ui-dt-filter__option:active {
 		transform: none;
 	}
+}
+
+:root[data-motion="reduced"] .ui-dt {
+	--dt-press-scale: 1;
 }
 
 :root[data-motion="reduced"] :is(.ui-dt__sizer > .ui-dt__row, .ui-dt__sort, .ui-dt__sortmark, .ui-dt__filter, .ui-dt__grip, .ui-dt__action, .ui-dt__check, .ui-dt-filter__option) {
@@ -651,6 +700,7 @@
 	transition: none;
 }
 
-:root[data-motion="reduced"] :is(.ui-dt__filter, .ui-dt__grip, .ui-dt__action, .ui-dt__check, .ui-dt-filter__option):active {
+:root[data-motion="reduced"] :is(.ui-dt__filter, .ui-dt__grip, .ui-dt__action, .ui-dt__check, .ui-dt-filter__option):active,
+:root[data-motion="reduced"] :is(.ui-dt__sort, .ui-dt__sort:not(.ui-dt__sort--static):active) {
 	transform: none;
 }

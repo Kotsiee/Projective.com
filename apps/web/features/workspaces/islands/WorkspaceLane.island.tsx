@@ -67,11 +67,13 @@ import {
 	liveDetail,
 	openCreate,
 	openInvite,
+	rosterFirstRun,
 	rosterTab,
 	selectModuleView,
 	selectRosterTab,
 	viewOr,
 } from "../core/workspace-state.ts";
+import { isFirstRun } from "../core/roster-model.ts";
 import { MEMBERS_CHART, MEMBERS_PEOPLE, subViewsFor } from "../core/sub-views.ts";
 import {
 	BackGlyph,
@@ -119,10 +121,12 @@ import { type LaneCreateTarget, WorkspaceRail } from "../components/WorkspaceRai
  *
  * ### Shared state, SSR-safe
  * The roster partition is ONE value across roots (`rosterTab` in `workspace-state`): the lane's
- * segmented control and the roster canvas both write it and both mirror it, and each falls back to its
- * server-resolved `?tab=` until something is picked. The lane reads it through {@link lanePartition},
- * so the canvas-only Archived reads as All here and the lane never lists rows under a control with no
- * segment selected. The Members reading is the module's ONE sub-view state (`moduleView`, Teams L2),
+ * segmented control and the roster canvas's TabMenu both write it and both mirror it, and each falls
+ * back to its server-resolved `?view=` until something is picked. The lane reads it through
+ * {@link lanePartition}, so the canvas-only Archived reads as All here and the lane never lists rows
+ * under a control with no segment selected. The roster's first run is shared the same way
+ * (`rosterFirstRun`): while the canvas's empty state carries the create, the footer rig holds none.
+ * The Members reading is the module's ONE sub-view state (`moduleView`, Teams L2),
  * which the header band's tabs and the footer rig's Org chart toggle also write and the Members screen
  * reads, so the lane's People · Org chart control drives the body directly.
  *
@@ -143,7 +147,7 @@ export interface WorkspaceLaneProps {
 	// --- Roster index ---
 	/** The roster. Supplied on `/teams` and `/businesses`; omitted inside an entity. */
 	roster?: WorkspaceRoster;
-	/** The selected roster partition, resolved from `?tab=` server-side so SSR and hydration agree. */
+	/** The selected roster partition, resolved from `?view=` server-side so SSR and hydration agree. */
 	tab?: RosterTab;
 
 	// --- Console ---
@@ -271,6 +275,17 @@ function RosterLane(props: RosterLaneProps): JSX.Element {
 	const search = useSignal("");
 	const current = lanePartition(toRosterTab(tab.value));
 
+	// First run moves the one structural create into the canvas's empty state. The canvas publishes
+	// its reading once it has one (a retried read or an answered invitation can change it); until then
+	// the same rule runs over this lane's SSR roster — and a roster that failed to load is never first
+	// run, so the create stays where the reader can reach it.
+	const firstRun = rosterFirstRun.value ?? (props.roster
+		? isFirstRun({
+			loaded: true,
+			entityCount: items.length,
+			invitationCount: invitations.length,
+		})
+		: false);
 	const zones = laneZones({
 		view: "roster",
 		kind: props.kind,
@@ -278,6 +293,7 @@ function RosterLane(props: RosterLaneProps): JSX.Element {
 		invitationCount: invitations.length,
 		canCreate: props.roster?.canCreate ?? true,
 		createBlockedReason: props.roster?.createBlockedReason,
+		firstRun,
 	});
 	const list = laneRosterList(items, invitations, current, search.value);
 	const create = createTarget(props.kind, zones.footer.create);

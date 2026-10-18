@@ -67,12 +67,22 @@ export const WorkspaceSummarySchema = z.object({
 	verification: VerificationState,
 	/** The viewer's role in this entity. */
 	role: WorkspaceRole,
-	/** Whether the viewer owns it — drives the `Owned` / `Member of` roster tabs. */
+	/** Whether the viewer owns it — drives the `Owned` / `Member` roster partitions. */
 	isOwner: z.boolean(),
 	memberCount: z.number().int().min(0),
-	/** Up to five faces for the stack; the card renders a `+N` for the remainder. */
+	/**
+	 * Live projects — a team's projects with a live stage assignment, a business's projects as client —
+	 * that are `active` or `on_hold`. The roster card's MetaLine and table count it.
+	 */
+	activeProjects: z.number().int().min(0).default(0),
+	/**
+	 * Up to five member faces — a SAMPLE of the membership. The roster card draws them as the ui
+	 * `AvatarStack` with a `+N` for the rest (`memberCount − faces`); its MetaLine states the count.
+	 */
 	faces: z.array(MemberFaceSchema),
 	stats: z.array(WorkspaceStatSchema),
+	/** When the entity's row last changed (ISO), or `null` when it is not known — the table's Updated. */
+	updatedAt: z.string().max(40).nullable().default(null),
 	/** Unseen activity — a pulsing dot, never a count (§D.1). */
 	hasUpdate: z.boolean().default(false),
 	/** Whether the session is currently ACTING as this entity. At most one summary may carry it. */

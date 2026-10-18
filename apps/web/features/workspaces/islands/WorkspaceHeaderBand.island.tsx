@@ -7,13 +7,9 @@ import { ConfirmDialog, Toast, Tooltip, useToast } from "@projective/ui/feedback
 import { Button } from "@projective/ui/fields";
 import { absoluteHref, ActionMenu, copyLink, TabMenu } from "@projective/ui/navigation";
 import { BodyPortal } from "@projective/ui/overlay";
-import {
-	kindCopy,
-	workspaceBase,
-	type WorkspaceDetail,
-	type WorkspaceKind,
-} from "@projective/types/workspace";
+import { kindCopy, type WorkspaceDetail, type WorkspaceKind } from "@projective/types/workspace";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
+import { rosterHref } from "../core/roster-model.ts";
 import { moduleFor, type ModuleKey } from "../core/module-registry.tsx";
 import { headerBand, headerMenu, type ModuleCommit } from "../core/header-model.ts";
 import {
@@ -156,7 +152,7 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 			notify(res.message ?? `Couldn't archive ${ws.name}. Nothing was changed.`, false);
 			return;
 		}
-		globalThis.location.assign(`${workspaceBase(kind)}?tab=archived`);
+		globalThis.location.assign(rosterHref(kind, "archived"));
 	}
 	// #endregion
 

@@ -1,127 +1,88 @@
 import type { JSX } from "preact";
 import { Button } from "@projective/ui/fields";
-import { kindCopy, type WorkspaceKind } from "@projective/types/workspace";
-import { CheckGlyph, cloneGlyph, MembersGlyph, PlusGlyph } from "../core/workspace-glyphs.tsx";
+import { EmptyState } from "@projective/ui/utils";
+import type { RosterControl, RosterEmptyCopy, RosterFirstRunCopy } from "../core/roster-model.ts";
+import { tierProps } from "../core/create-model.ts";
+import { cloneGlyph, MembersGlyph, PlusGlyph, SearchGlyph } from "../core/workspace-glyphs.tsx";
 
 /**
- * RosterEmpty — the first-run state of `/teams` and `/businesses`.
+ * RosterEmpty — the two empty states of `/teams` and `/businesses`, both the ui `EmptyState` (the
+ * `/projects` portfolio's own), never a hand-built block (Teams work order R1).
  *
- * Every other block on this surface reports. This one has to **sell**, because a person with no team has
- * no idea what one would do for them, and "No teams yet." answers a question they never asked. So the
- * pitch comes from the SSOT's own per-kind copy ({@link kindCopy}) — the same words the marketing surface
- * uses, never a second paraphrase that can drift — followed by three concrete consequences and exactly
- * ONE primary action.
+ * They are different things and must not borrow from each other:
  *
- * It is left-aligned, in the band's rhythm, with no centred illustration: the layout the reader is about
- * to live in is what teaches them the shape of the surface, and a cartoon in the middle of the screen
- * teaches them nothing.
+ *   - {@link RosterFirstRun} — the viewer has no entity of this kind and nothing to answer. It says
+ *     what one IS in one sentence from PRODUCT_SPEC and holds the page's ONE structural commit, the
+ *     tier-2 create; the lane's footer (`lane-model.ts`) and the footer band's rig (`rig-model.ts`)
+ *     withhold theirs meanwhile, so the page never offers two. When the plan admits none, the
+ *     sentence carries the plan's reason and no button is drawn — never a dead control.
+ *   - {@link RosterFiltered} — a partition or a search left nothing. Somebody who has just filtered
+ *     does not need to be told what a team is; they need to know the filter matched nothing and how to
+ *     get back — a tier-5 Clear filters, and no create.
  *
- * When creation is metered off, the button is still rendered — disabled, with the server's own reason
- * beneath it. Hiding the only action on an otherwise empty screen strands the reader with no explanation
- * and nothing to do.
+ * Both are presentational: the words and the controls (with their tiers) come from `roster-model.ts`,
+ * and every Button spreads `tierProps(tier)`, so the tier the model assigns is the tier on screen.
  */
 
-// #region Selling points
-/**
- * The three consequences per kind.
- *
- * Deliberately phrased as what the entity DOES for the reader, and deliberately jargon-free: "money is
- * held safely until work is approved", never "escrow" (the ELI5 rule the public surfaces already follow).
- */
-const POINTS: Record<WorkspaceKind, readonly string[]> = {
-	team: [
-		"One shared profile, one reputation — your work counts for all of you.",
-		"Listings and projects belong to the team, not to whoever happened to post them.",
-		"When a payout lands it splits automatically, by shares you agree up front.",
-	],
-	business: [
-		"One company identity your whole staff hires under.",
-		"Several people can add money to a shared pot and spend from it.",
-		"You set who may spend, how much, and what needs a second pair of eyes.",
-	],
-};
-// #endregion
-
-// #region Props
-export interface RosterEmptyProps {
-	kind: WorkspaceKind;
-	/** Whether the viewer may create another entity of this kind (plan metering, resolved server-side). */
-	canCreate: boolean;
-	/** The server's reason when they may not — rendered verbatim. */
-	blockedReason: string | null;
+// #region First run
+/** Props for {@link RosterFirstRun}. */
+export interface RosterFirstRunProps {
+	/** The words (`rosterFirstRunCopy`) — the plan's reason already folded into the description. */
+	copy: RosterFirstRunCopy;
+	/** The structural create, or `null` when the plan admits no entity of this kind. */
+	create: RosterControl | null;
 	/** Open the Draft-First create modal. */
 	onCreate: () => void;
 }
-// #endregion
 
-export function RosterEmpty(props: RosterEmptyProps): JSX.Element {
-	const { kind, canCreate, blockedReason, onCreate } = props;
-	const copy = kindCopy(kind);
-
+/** The first-run state: what the entity is, and the one way to make one. */
+export function RosterFirstRun(props: RosterFirstRunProps): JSX.Element {
+	const { copy, create } = props;
 	return (
-		<div class="wsp-empty" data-kind={kind}>
-			<span class="wsp-empty__glyph" aria-hidden="true">
-				{cloneGlyph(MembersGlyph)}
-			</span>
-
-			<div>
-				<h2 class="wsp-empty__title">
-					{kind === "team" ? "Work as a team" : "Hire as a company"}
-				</h2>
-				<p class="wsp-empty__pitch">{copy.pitch}</p>
-			</div>
-
-			<ul class="wsp-empty__points">
-				{POINTS[kind].map((point) => (
-					<li class="wsp-empty__point" key={point}>
-						<span class="wsp-empty__point-glyph" aria-hidden="true">
-							{cloneGlyph(CheckGlyph)}
-						</span>
-						{point}
-					</li>
-				))}
-			</ul>
-
-			<div class="wsp-empty__actions">
+		<EmptyState
+			class="wsp-roster__empty"
+			size="lg"
+			icon={cloneGlyph(MembersGlyph)}
+			title={copy.title}
+			description={copy.description}
+			actions={create && (
 				<Button
-					variant="filled"
-					severity="primary"
-					label={`Create a ${copy.noun}`}
+					{...tierProps(create.tier)}
+					label={create.label}
 					icon={cloneGlyph(PlusGlyph)}
-					disabled={!canCreate}
-					onClick={onCreate}
+					onClick={props.onCreate}
 				/>
-			</div>
-
-			<p class="wsp-empty__hint">
-				{!canCreate && blockedReason
-					? blockedReason
-					: `A name is all it takes to start. Nothing is public until you publish it, and a ${copy.noun} you are done with is archived rather than deleted.`}
-			</p>
-		</div>
+			)}
+		/>
 	);
 }
+// #endregion
 
-// #region In-band blank
-/**
- * RosterBlank — the *filtered-to-nothing* state, which is a completely different thing from the first-run
- * state above and must not borrow its pitch.
- *
- * Somebody who has just typed a search term does not need to be told what a team is; they need to know
- * their filter matched nothing and how to get back. Selling to them would read as the interface failing to
- * understand what it was asked.
- */
-export interface RosterBlankProps {
-	text: string;
-	hint?: string;
+// #region Filtered to nothing
+/** Props for {@link RosterFiltered}. */
+export interface RosterFilteredProps {
+	/** The words (`rosterEmptyCopy`). */
+	copy: RosterEmptyCopy;
+	/** The tier-5 Clear filters, or `null` when nothing is filtered. */
+	clear: RosterControl | null;
+	/** Return to every entity: the All partition and no search term. */
+	onClear: () => void;
 }
 
-export function RosterBlank({ text, hint }: RosterBlankProps): JSX.Element {
+/** A partition or a search that left nothing — what happened, and the way back. */
+export function RosterFiltered(props: RosterFilteredProps): JSX.Element {
+	const { copy, clear } = props;
 	return (
-		<div class="wsp-blank" role="status">
-			<p class="wsp-blank__text">{text}</p>
-			{hint && <p class="wsp-blank__hint">{hint}</p>}
-		</div>
+		<EmptyState
+			class="wsp-roster__empty"
+			size="sm"
+			icon={cloneGlyph(SearchGlyph)}
+			title={copy.title}
+			description={copy.description}
+			actions={clear && (
+				<Button {...tierProps(clear.tier)} label={clear.label} onClick={props.onClear} />
+			)}
+		/>
 	);
 }
 // #endregion

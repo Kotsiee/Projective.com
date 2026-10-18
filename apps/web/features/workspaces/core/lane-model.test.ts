@@ -57,6 +57,7 @@ type RosterInput = {
 	invitationCount: number;
 	canCreate: boolean;
 	createBlockedReason?: string | null;
+	firstRun?: boolean;
 };
 
 type ConsoleInput = {
@@ -183,8 +184,10 @@ function summary(overrides: Partial<WorkspaceSummary>): WorkspaceSummary {
 		role: "member",
 		isOwner: false,
 		memberCount: 4,
+		activeProjects: 0,
 		faces: [],
 		stats: [],
+		updatedAt: null,
 		hasUpdate: false,
 		isActing: false,
 		tagline: "",
@@ -216,7 +219,9 @@ function everyComposition(): Zones[] {
 	const out: Zones[] = [];
 	for (const kind of ["team", "business"] as const) {
 		for (const canCreate of [true, false]) {
-			out.push(lane.laneZones(roster({ kind, canCreate })));
+			for (const firstRun of [true, false]) {
+				out.push(lane.laneZones(roster({ kind, canCreate, firstRun })));
+			}
 		}
 		for (const capabilities of [OWNER, NO_INVITE, MEMBER]) {
 			for (const module of ["overview", "members", "invitations", "projects", "settings", null]) {
@@ -266,6 +271,34 @@ Deno.test("lane: the business roster speaks its own nouns", () => {
 
 Deno.test("lane: a roster the viewer may not add to has no create action at all", () => {
 	assertEquals(lane.laneZones(roster({ canCreate: false })).footer.create, null);
+});
+
+Deno.test("lane (R1): in the roster's first run the footer holds no create and no note", () => {
+	// The canvas's empty state carries the one structural create — and the plan's reason when there
+	// is none — so the rig holds neither, for either kind and whatever the plan says.
+	for (const kind of ["team", "business"] as const) {
+		for (const canCreate of [true, false]) {
+			const zones = lane.laneZones(
+				roster({
+					kind,
+					canCreate,
+					firstRun: true,
+					liveCount: 0,
+					invitationCount: 0,
+					createBlockedReason: "Your plan includes 0 teams.",
+				}),
+			);
+			assertEquals(zones.footer, { create: null, note: null });
+			// The rest of the lane is the roster's as ever: title, partition, search.
+			assertEquals(zones.context?.control, "roster");
+			assertEquals(lane.laneZoneOrder(zones), ["header", "views", "context", "footer"]);
+		}
+	}
+	// Outside first run the create is back, exactly as before.
+	assertEquals(
+		lane.laneZones(roster({ firstRun: false })).footer.create,
+		{ action: "create", label: "New team" },
+	);
 });
 
 Deno.test("lane: a withheld create leaves the plan's reason in its place, and only then", () => {

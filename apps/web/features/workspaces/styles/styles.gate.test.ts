@@ -391,9 +391,11 @@ Deno.test("workspace styles: no four-sided inset ring on a card or row", () => {
 Deno.test("workspace styles: figure classes are tabular", () => {
 	const all = SHEETS.map((sheet) => sheet.css).join("\n");
 	const untabular = [
-		".wsp-card__stats",
-		".wsp-card__stat",
-		".wsp-card__stat-delta",
+		// The roster card's figure row and its setup percentage, and the roster's live count (R1).
+		".wsp-card__figure",
+		".wsp-card__figure-value",
+		".wsp-card__setup-text",
+		".wsp-roster__count",
 		".wsp-split__pip",
 		".wsp-split__drift-text",
 		// Text that carries a count or an amount: the lane's queue count, a role's member count, a
@@ -440,6 +442,16 @@ Deno.test("workspace styles: the dead rules stay deleted", () => {
 	assertNone(
 		offences(
 			/\.wsp-headerband__(tab|identity|name|handle|badge|divider|controls|icon|panel)\b|\.wsp-footerrig__(more|menu|note|nudge|fold|toggle)\b/,
+		),
+		"a deleted dead selector is back:",
+	);
+	// The roster before Teams R1: the hand-rolled tab strip, the role chip's flag stack, the three-stat
+	// grid, the face stack, the hand-drawn meter fill and kebab, and the hand-built empty state — each
+	// replaced by a ui primitive (TabMenu, MetaLine, ProgressBar, Button, EmptyState) — and the acting
+	// role chip, the table's quiet acting chip and the raw Try again, whose last consumers R1 removed.
+	assertNone(
+		offences(
+			/\.wsp-roster__(tab|tab-count|pitch|tools|section)\b|\.wsp-card__(flags|dot|kebab|stats?|stat-label|stat-value|stat-delta|faces?|more|members|membercount|setup-fill|name-text)\b|\.wsp-empty\b|--wsp-card-min\b|\.wsp-chip--acting\b|\.wsp-actingchip--quiet\b|\.wsp-error__retry\b/,
 		),
 		"a deleted dead selector is back:",
 	);

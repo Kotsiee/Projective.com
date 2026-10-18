@@ -63,6 +63,8 @@ export interface RawRosterItem {
 	role: string;
 	is_owner: boolean;
 	created_at: string;
+	/** The entity row's `updated_at` — the roster table's Updated column. */
+	updated_at: string;
 	verification: string;
 	member_count: number;
 	face_user_ids: string[];
@@ -496,6 +498,20 @@ export function rosterStats(
 			delta: null,
 		},
 	];
+}
+
+/**
+ * A roster entity's activity facts as plain values: its live projects as a count (never negative,
+ * `0` for a missing or garbled figure) and when its row last changed as ISO, or `null` when the read
+ * carries no instant that parses — the table then shows a blank rather than an invented date.
+ */
+export function rosterActivity(
+	item: Pick<RawRosterItem, "active_projects" | "updated_at">,
+): { activeProjects: number; updatedAt: string | null } {
+	return {
+		activeProjects: Math.max(0, Math.trunc(Number(item.active_projects) || 0)),
+		updatedAt: isoOf(item.updated_at) || null,
+	};
 }
 
 /** Whether the viewer's plan admits another entity of this kind (`null` limit = unlimited). */
