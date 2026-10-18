@@ -1310,7 +1310,7 @@ non-fill weights above, named for the jobs the matrix reserves them for.
 | :------------------------------------- | :---------------------------------------------------------------------------------------------------------- | :------------------------------------------------- | :------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------- |
 | **1. Terminal financial / conversion** | `severity="accent"` (Button-only, `filled` only): solid `--accent` · `--on-accent` (§A.1.2)                 | pill — `rounded` (`--radius-full`)                 | A commit inside a financial / conversion flow, or the act that starts one | Checkout Pay / Place Order and every checkout commit · the entity-view lane's money verb (Buy now · Book session · Reserve seat) · Fund Escrow |
 | **2. Primary structural commitment**   | `structural` (`filled` only): monochrome inverted, solid `--on-surface` · `--surface` ink (§D.7.7)          | per surface (§D.7.7: pill)                         | Commits to structure, not money                                           | Add to project · the entity-view lane's Add to basket · primary creation triggers (Create project, `LaneCreateButton`) |
-| **3. Brand primary**                   | `severity="primary"`: solid `--primary` · mode-invariant `--on-primary`                                     | the radius ramp (B.8.4)                            | Major navigation active states (§B.4.2), core workflow commits            | Save photo · Attach Selected · profile hero Hire (Decision #183)                                                 |
+| **3. Brand primary**                   | `severity="primary"`: solid `--primary` · mode-invariant `--on-primary`                                     | the radius ramp (B.8.4)                            | Major navigation active states (§B.4.2), core workflow commits            | Save photo · Attach Selected · profile hero Hire (Decision #183) · a business profile's Message (Decision #244)   |
 | **4. Neutral outlined**                | `severity="neutral" variant="outlined"` (Button-only): border `var(--hairline-strong)` · `--on-surface` ink | the radius ramp; icon-only may be a circle (B.8.4) | Utility actions — **mandatory** for them                                  | Asset-picker Upload · Show more · Try again · profile media upload · profile Message · Follow · Settings · Share |
 | **5. Ghost / bare**                    | `text`: transparent · a subtle tonal hover lift                                                             | the radius ramp                                    | Secondary toolbar tools, escape hatches                                   | Toolbar verbs · Cancel · the basket footer's Checkout pill (B.8.4) · a drawer header's icon-only Save / Share beside Close (Decision #182)                                               |
 
@@ -1355,6 +1355,14 @@ other commits in tier 2 — is open as Decision #157 flag (j); the docs follow t
   `confirm_seat` Button;
 - the project board footer's **Checkout N** pill (`.brd-rig__action--accent`, a feature-local
   control whose hover and press blend toward `--on-scrim` by `--tint-soft` / `--tint`, B.12.4);
+- a business checkout's short-pool **Add money** (`.cko-gate__add`, an anchor in the accent pill's
+  classes) — it starts the business wallet's top-up and returns to the checkout (Decision #243). The
+  same gate's **Request approval** and its dialog's **Send request** are tier 3: they file a request
+  and move no money (Decision #243 (h), ruled by the owner 2026-10-17: the one stated exception to
+  "every commit of the checkout" above). Either
+  fill is the payment step's commit while it renders: the rail's Buy Now is then not rendered at all
+  (`gateTakesCommit`), as for a pending card step (B.8.2), and the rail keeps its "Pay is off
+  until…" line;
 - Settings → Verification & payouts' **Set up payouts** / **Continue setup** — the start of the
   personal Connect account money is transferred to, and only while it is the page's one next step
   (`nextVerificationStep`); otherwise, and as **Update payout details** on a verified account, it
@@ -4108,7 +4116,10 @@ Button Interaction Matrix (§B.8.1, Decision #157) is stated per control:
 | Profile hero + band (`ProfileRig`) | **Hire**                                                                | 3 · brand (Decision #183)             | teal `--primary` pill, white ink    |
 | Profile hero + band (`ProfileRig`) | **Add to project** — beside Hire or alone                               | 2 · structural commitment             | monochrome inverted pill            |
 | Profile hero + band (`ProfileRig`) | Seller rig: Message · Follow                                            | 4 · neutral outlined, icon-only       | `neutral` `outlined` circle         |
-| Profile hero + band (`ProfileRig`) | Buyer rig: Message · Follow                                             | 4 · neutral outlined                  | `neutral` `outlined` text pill      |
+| Profile hero + band (`ProfileRig`) | Buyer rig (client · enterprise): Message · Follow                       | 4 · neutral outlined                  | `neutral` `outlined` text pill      |
+| Profile hero + band (`ProfileRig`) | Business rig: **Message** (reaches the owner)                           | 3 · brand (Decision #244)             | teal `--primary` pill, white ink    |
+| Profile hero + band (`ProfileRig`) | Business rig: Follow                                                    | 4 · neutral outlined, icon-only       | `neutral` `outlined` circle         |
+| Profile hero + band (`ProfileRig`) | Business rig, a member who may edit it: Manage business (an `<a>`)      | 4 · neutral outlined                  | `neutral` `outlined` pill           |
 | Profile hero + band (`ProfileRig`) | Owner rig: Settings (an `<a>`) · Share                                  | 4 · neutral outlined                  | `neutral` `outlined` pill           |
 | Entity-view lane (§D.7.2 item 3)   | Primary CTA, non-financial verb (_Apply to project_)                    | 3 · brand (Decision #183 flag (c))    | teal `--primary` pill               |
 | Entity-view lane (§D.7.2 item 3)   | Primary CTA, money verb (_Buy now_ · _Book session_ · _Fund Stage 1_ …) | 1 · terminal conversion               | amber `--accent` pill (`accent`)    |
@@ -4118,8 +4129,15 @@ Button Interaction Matrix (§B.8.1, Decision #157) is stated per control:
 The entity-view commerce lane is the matrix's canonical two-fill case: the amber money verb beside
 the monochrome Add to basket, ranked by hue (§B.8.2). The profile seller rig's teal Hire beside
 monochrome Add to project is an owner-directed exception scoped to `ProfileRig` (Decision #183
-flag (a)); the buyer and owner rigs have no filled control at all — §B.8.2 caps fills at one and
-sets no minimum. The markup per tier: Hire is the bare
+flag (a)); the client / enterprise buyer rig and the owner rig have no filled control at all —
+§B.8.2 caps fills at one and sets no minimum — and the business rig has at most one, its Message,
+which a member who may edit the business sees as the tier-4 Manage business link instead, and which
+is withheld (Follow then stands alone) when the read names no owner for it to reach (Decision #244;
+the business rig's Message is the `Button` `severity="primary" variant="filled"` preset, the same
+class set as Hire). The member notice above a business page outsiders cannot open
+(`ProfileMemberNotice`) carries no control: BP1's tier-4 link to Settings waits for a Settings
+screen that can publish a business or change its visibility (Decision #244 (d)). The markup per
+tier: Hire is the bare
 `ui-button--primary ui-button--filled ui-button--rounded` class set on a native `<button>` (its
 `Popover` needs the ref `Button` does not forward), with no rig-local colour override; Add to project is `ui-button--primary ui-button--filled` plus `.pf-rig__cta--mono`, the
 inverted override, wherever it renders; every tier-4 control is the shared

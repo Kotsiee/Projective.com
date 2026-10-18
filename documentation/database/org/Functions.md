@@ -479,7 +479,7 @@ labels, tiers and URLs are decided once, in TypeScript
 | :----------------------------------------- | :------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `fn_profile_manages(owner_type, owner_id)` | revoked from every client | May the caller EDIT this profile? A user their own; a team or a business whoever holds the `edit_profile` workspace capability there (`org.fn_member_can` — the owner and admin presets, or a custom role or override that grants it; since 2026-09-28); an enterprise its owner or an admin member; a platform admin any. Deliberately narrower than membership.                                                                                                   |
 | `can_manage_profile(owner_type, owner_id)` | `authenticated`           | The same predicate as an RPC, so the fat service can refuse an unauthorised media upload **before** it spends a decode on it.                                                                                                                                                                                         |
-| `fn_profile_visible(owner_type, owner_id)` | `anon` · `authenticated`  | May the caller SEE it? Whoever manages it, plus: a `public`/`unlisted` individual; an `active` team that is `public`/`unlisted`, or its active member; an `active` business or its member; an `active` enterprise or its member. It is also the SELECT predicate on the profile ledgers (education, experience, languages, certifications, showcase, settings), and — through `scheduling.fn_schedule_is_public` (since 2026-09-28) — the reason a hidden profile's published schedule is not visitor-readable. |
+| `fn_profile_visible(owner_type, owner_id)` | `anon` · `authenticated`  | May the caller SEE it? Whoever manages it, plus: a `public`/`unlisted` individual; an `active` team that is `public`/`unlisted`, or its active member; an `active` business that is `public`/`unlisted`, or its active member (BP1, Decision #244 — a draft, archived or `invite_only` business is missing to everyone outside it, on its profile, every section read, `get_profile_cards` and its public schedule); an `active` enterprise or its member. It is also the SELECT predicate on the profile ledgers (education, experience, languages, certifications, showcase, settings), and — through `scheduling.fn_schedule_is_public` (since 2026-09-28) — the reason a hidden profile's published schedule is not visitor-readable. |
 | `fn_resolve_profile(handle)`               | revoked from every client | `@handle` → `(owner_type, owner_id)`. Leading `@`s and case are ignored. The four namespaces are separate `UNIQUE` columns, so the tie-break is fixed: a person, then a team, a business, an enterprise. It ignores visibility, which is why it is internal.                                                         |
 
 ### Reads (`anon` · `authenticated`)
@@ -491,10 +491,10 @@ so a private profile's existence is never disclosed by a different answer. The f
 | Function                             | Returns                                                                                                                                                                                                                                                                                                                  |
 | :----------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `get_profile_owner(handle)`          | `{owner_type, owner_id}` — the cheap resolution the scheduling readers use to find an owner's schedule without the whole document.                                                                                                                                                                                       |
-| `get_profile_view(handle)`           | The whole profile chrome in one call: identity, avatar and banner references, the showcase (slot order, alt, references), the context-bar facts, the metrics strip and earned Standing, the `verification_stamp` (a person's stored stamp; a business's or enterprise's `corporate_verified` derived from its own KYB; a team `none`) and a seller's unranked `adornments` (always `[]` for a buyer, business or enterprise — the service ranks and caps them), the owner's presentation switches, the seller's hire intake, and the **viewer's** relationship to the profile (owner, follows). |
+| `get_profile_view(handle)`           | The whole profile chrome in one call: identity, avatar and banner references, the showcase (slot order, alt, references), the context-bar facts, the metrics strip and earned Standing, the `verification_stamp` (a person's stored stamp; a business's or enterprise's `corporate_verified` derived from its own KYB; a team `none`) and a seller's unranked `adornments` (always `[]` for a buyer, business or enterprise — the service ranks and caps them), the owner's presentation switches, the seller's hire intake, and the **viewer's** relationship to the profile (owner, follows). A business also answers its real `visibility`, a `workspace` object — `hidden_reason` (`archived` · `draft` · `invite_only`, in that precedence; `NULL` while anybody may open it, so only a member is ever told) and `viewer_edits` / `viewer_settings` (the viewer's OWN seat's `edit_profile` / `manage_settings` through `fn_member_can`, never the platform-admin arm) — and `contact` (`handle`, `name`): its owner, whom a Message reaches because a DM is person-to-person (BP1, Decision #244). Other kinds carry neither key. |
 | `get_profile_experience(handle)`     | Career, education and certifications (individuals only).                                                                                                                                                                                                                                                                 |
 | `get_profile_reviews(handle, limit)` | The latest reviews of the profile (default 60), each with its author's card.                                                                                                                                                                                                                                              |
-| `get_profile_roster(handle)`         | A team's, business's or enterprise's members. A team/business member's `role` label is their `title`, else the NAME of the role row they hold (was `initcap(role)`), ordered by preset rank then join date.                                                                                                                  |
+| `get_profile_roster(handle)`         | A team's, business's or enterprise's members. A team member's `role` label is their `title`, else the NAME of the role row they hold (was `initcap(role)`); a business member's is their `title`, else the base preset's label (`Owner` · `Admin` · `Member`) — never a custom role's name, which `org.business_roles` RLS keeps to members — and a business row carries `since` (the membership's `joined_at`) (BP1, Decision #244). Ordered by preset rank then join date.                                                                                                                  |
 | `get_profile_portfolio(handle)`      | The "Selected work" pieces with their cover references; a piece with no picture is omitted, never drawn empty.                                                                                                                                                                                                          |
 | `get_profile_past_projects(handle)`  | Up to 24 **completed** projects the profile posted or delivered on (a delivery assignment that was not declined, cancelled or never funded), only where the project is `public` **and** its `portfolio_display_rights = 'allowed'`, newest first.                                                                        |
 
@@ -575,7 +575,7 @@ a crafted request and the row.
 
 **Migration:**
 [`00001020_functions_org_entities.sql`](../../../supabase/migrations/00001020_functions_org_entities.sql)
-§6–§16 · **Grants:** [`00002510`](../../../supabase/migrations/00002510_permissions_function_grants.sql)
+§6–§17 · **Grants:** [`00002510`](../../../supabase/migrations/00002510_permissions_function_grants.sql)
 (the workspace region at the end) · **Decision:** root `CLAUDE.md` §8 #61 (Teams & Businesses goes
 live). Tables: [Tables.md § Workspace membership](Tables.md#-workspace-membership-teams--businesses).
 
@@ -975,3 +975,40 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
     `team_member_count`, `can_bind_seat` for the caller).
   A business answers `engagements = []`, `payout = null`, `allowance = null`. **VOLATILE**: the
   allowance read opens the week and pays out the lazy drip.
+
+### §17 — The business bench (Talent — Decision #230 (i), #241)
+
+- **`get_business_bench(handle_or_id) → jsonb`** — `authenticated`, `STABLE`. The Talent module's
+  ONE read: who this business has hired. Resolves the business by slug (any case) or row id, then
+  answers `{status: 'not_found'}` for a reference no business holds, `{status: 'forbidden'}` for
+  anybody who is not an active member holding `hire` (`fn_member_can`, the capability the console's
+  Talent gate asks — a non-member and a member without it alike), else `{status: 'ok', entries}`. A
+  signed-out caller is refused `42501`.
+  - **What counts.** Every freelancer and team holding a `projects.stage_assignments` seat that is
+    not `declined` / `cancelled` / `released`, on a non-draft project whose `client_business_id` is
+    this business, where the engagement is **completed** (the stage `approved` or `paid` — what
+    `projects.approve_stage` writes — the assignment `completed`, or the project `completed` with
+    work begun on the stage: `in_progress` / `submitted` / `revisions`; a seat on a stage nobody
+    started is a cancelled booking) or **live** (the assignment in the live set — not `released` /
+    `cancelled` / `declined` / `completed` — on an `active` or `on_hold` project, the stage not
+    `approved` / `paid` / `cancelled`). An engagement is a PROJECT: one per project, however many of
+    its stages the party held. A freelancer whose account was erased (a `completed` account
+    `org.deletion_requests` row) is left out.
+  - **Each entry:** `kind` (`freelancer` | `team`), `handle` (username or team slug), `name`,
+    `avatar_bucket` / `avatar_path` (the public avatar object, else `null`), `contact_handle` /
+    `contact_name` (the freelancer, or a team's OWNER — a DM is between two people), `engagements`,
+    `live_now`, `last_worked_at` (the latest paid stage's `completed_at`, else `null`),
+    `rating_average` (the mean of the `reviews.entity_reviews` the BUSINESS gave the party — written
+    by one of its members, any membership status, on one of its own projects — 2 dp, `null` at none),
+    `rating_count`, and two flags evaluated for the CALLER: `profile_visible`
+    (`org.fn_profile_visible` — whether `/@handle` opens for them: a team is created invite-only, a
+    person may go private, an archived team is hidden; such a row stays on the bench, its client
+    drops the profile link and Add to project) and `viewer_manages` (`org.fn_profile_manages` — their
+    own profile, or a team they own or administer, where the profile offers no Add-to-project picker).
+    Ordered live first, then the latest delivery, then by name.
+  - No row id is a field of the answer; an avatar object path keeps the storage bucket's owner-id
+    prefix (the platform's avatar layout, as every avatar URL does). Backs
+    `GET /api/workspace/bench` and the `/businesses/[businessHandle]/talent` first paint; indexes
+    `idx_projects_client_business` and `idx_stage_assignments_stage`
+    ([projects Tables.md](../projects/Tables.md)). Probe:
+    [`supabase/probes/business_bench.sql`](../../../supabase/probes/business_bench.sql).

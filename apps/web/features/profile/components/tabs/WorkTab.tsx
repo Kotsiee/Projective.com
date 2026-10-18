@@ -9,7 +9,8 @@ import type { ProfileTabPayload, ProfileView } from "../../types/profile-types.t
  * WorkTab — the profile's index section, as a stack of sections each omitted when its data is
  * empty: the client-proof strip · Selected work (the portfolio masonry, first because it is the
  * thing a visitor came to look at) · Hiring now (a buyer's open briefs) · Completed projects ·
- * People (the roster of a team / business / enterprise). The seller's Services are NOT here: the
+ * People (the roster of a team / business / enterprise). On a business the completed projects are
+ * its client proof and come before Hiring now (Decision #244). The seller's Services are NOT here: the
  * layout renders them as their own region above the section tabs (`ProfileServicesSection`), so
  * they stay on screen whichever section is routed. Every collection is a server component; the
  * sheet is `profile-work.css`, which reaches the page through the profile islands' barrel import.
@@ -24,6 +25,19 @@ export function WorkTab(
 ): JSX.Element {
 	const multiMember = profile.kind === "team" || profile.kind === "business" ||
 		profile.kind === "enterprise";
+	// A business's completed projects ARE its client proof (BP1, Decision #244): the work it
+	// commissioned and saw through leads, ahead of what it is hiring for now.
+	const proofFirst = profile.kind === "business";
+	const hiring = payload.openProjects.length > 0 && (
+		<WorkSection title="Hiring now">
+			<ProjectsList items={payload.openProjects} authed={authed} />
+		</WorkSection>
+	);
+	const completed = payload.pastProjects.length > 0 && (
+		<WorkSection title="Completed projects">
+			<ProjectsList items={payload.pastProjects} authed={authed} />
+		</WorkSection>
+	);
 	return (
 		<div class="pf-work">
 			<ClientProofStrip clients={profile.notableClients} />
@@ -32,16 +46,8 @@ export function WorkTab(
 					<WorkMasonry pieces={payload.pieces} />
 				</WorkSection>
 			)}
-			{payload.openProjects.length > 0 && (
-				<WorkSection title="Hiring now">
-					<ProjectsList items={payload.openProjects} authed={authed} />
-				</WorkSection>
-			)}
-			{payload.pastProjects.length > 0 && (
-				<WorkSection title="Completed projects">
-					<ProjectsList items={payload.pastProjects} authed={authed} />
-				</WorkSection>
-			)}
+			{proofFirst ? completed : hiring}
+			{proofFirst ? hiring : completed}
 			{multiMember && payload.members.length > 0 && (
 				<WorkSection title="People">
 					<WorkRoster

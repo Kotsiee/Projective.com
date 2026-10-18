@@ -71,6 +71,7 @@ function seam(over: Partial<DevSeamState> = {}): DevSeamState {
 		memberRole: "owner_admin",
 		pendingInvites: false,
 		pendingRequests: false,
+		memberClient: "auto",
 		messagingRole: "client",
 		micPermission: "auto",
 		layoutDirection: "auto",

@@ -29,12 +29,21 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  * stance with nothing in it; each row names the AUTHOR's side of the engagement ("as their
  * client") so a row under "As freelancer" reads as a client's review of a freelancer.
  *
+ * A profile reviewed from one side only — a business, which is always the client — renders the rows
+ * with no filter (`stances={false}`).
+ *
  * An island because the filter is interactive; the summary tracks above it stay a server component.
  */
 export interface ReviewsListProps {
 	reviews: ReviewEntry[];
 	/** The stance the URL asked for on first paint (`?as=`), so SSR renders the filtered list. */
 	initialStance?: ReviewStance;
+	/**
+	 * Whether the stance filter renders. `false` for a profile reviewed from one side only — a
+	 * business, which only ever holds the client stance (Decision #244) — where a filter would
+	 * offer a segment that can never hold anything. Defaults to `true`.
+	 */
+	stances?: boolean;
 }
 
 const STANCE_LABEL: Record<ReviewStance, string> = {
@@ -87,7 +96,7 @@ function Review({ review }: { review: ReviewEntry }): JSX.Element {
 // #endregion
 
 export default function ReviewsList(
-	{ reviews, initialStance = "all" }: ReviewsListProps,
+	{ reviews, initialStance = "all", stances = true }: ReviewsListProps,
 ): JSX.Element {
 	// The segmented control OWNS this signal (signal-first, one state); the stance is read off it.
 	const selection = useSignal<string | string[]>(initialStance);
@@ -118,14 +127,16 @@ export default function ReviewsList(
 	const current = stance.value;
 	return (
 		<div class="pf-reviews__filtered">
-			<div class="pf-reviews__filter">
-				<SelectButton
-					options={options}
-					value={selection}
-					size="sm"
-					aria-label="Filter reviews by the role this profile held"
-				/>
-			</div>
+			{stances && (
+				<div class="pf-reviews__filter">
+					<SelectButton
+						options={options}
+						value={selection}
+						size="sm"
+						aria-label="Filter reviews by the role this profile held"
+					/>
+				</div>
+			)}
 			<p class="ui-visually-hidden" role="status">
 				{current === "all"
 					? `Showing all ${counts.all} reviews`

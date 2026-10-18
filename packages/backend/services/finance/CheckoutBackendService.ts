@@ -4,6 +4,7 @@ import type {
 	BasketItem,
 	BillingContext,
 	BuyerDetails,
+	CheckoutApprovalRequest,
 	CheckoutBlocker,
 	CheckoutResult,
 	CheckoutSessionContext,
@@ -28,14 +29,13 @@ import {
 	itemKindMeta,
 	missingBuyerFields,
 	PLATFORM_FEE_BP,
-	SpendApprovalRefSchema,
 } from "@projective/types/finance";
-import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
 import { businessAuthorityRefusal } from "../../core/business-authority.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import type { BasketQuery } from "./basket-query.ts";
+import { authorityBlocker, refusalBlocker } from "./checkout-refusal.ts";
 import type { MoneyProjector } from "./commerce-money.ts";
 import { listOwners, type ResolvedOwner, walletAvailableMinor } from "./commerce-owner.ts";
 import { type BasketView, promoMinorFor, readBasket } from "./live-basket.ts";
@@ -47,7 +47,9 @@ import {
 	processingOfferFor,
 	saveBuyerDetails,
 	spendLimitFor,
+	spendPositionFor,
 } from "./live-buyer.ts";
+import { fileSpendRequest } from "./wallet-actions.ts";
 
 /**
  * CheckoutBackendService — the FAT half of the payment surface: the whole server projection the
@@ -281,15 +283,20 @@ function blockersFor(
 		});
 	}
 
-	if (gate.spendLimit?.applies && gate.spendLimit.verdict !== "allowed") {
+	// A business's KYB refusal is ONE refusal: the verification blocker below says it, so the spend gate's
+	// `kyb_required` verdict adds no second wording of it (Decision #243).
+	const limit = gate.spendLimit;
+	const kybSaysIt = limit?.gate === "kyb_required" && owner.kybStatus !== null;
+	if (limit?.applies && limit.verdict !== "allowed" && !kybSaysIt) {
 		blockers.push({
 			code: "spend_limit",
-			message: gate.spendLimit.reason ??
-				(gate.spendLimit.verdict === "needs_approval"
+			message: limit.reason ??
+				(limit.verdict === "needs_approval"
 					? "This purchase needs approval before it can be paid for."
 					: "This purchase is over your spending limit for this account."),
 			itemId: null,
-			...(gate.spendLimit.requestRef ? { approvalRef: gate.spendLimit.requestRef } : {}),
+			...(limit.requestRef ? { approvalRef: limit.requestRef } : {}),
+			...(limit.gate ? { gate: limit.gate } : {}),
 		});
 	}
 
@@ -302,6 +309,7 @@ function blockersFor(
 				? "Business verification (KYB) is still in review — you can pay once it clears."
 				: "Complete business verification (KYB) to pay from this account.",
 			itemId: null,
+			...(owner.ownerType === "business" ? { gate: "kyb_required" as const } : {}),
 		});
 	}
 
@@ -518,17 +526,23 @@ export class CheckoutBackendService {
 			const providers = offerFor(resolved, totals.total.minor);
 			const shortfall = Math.max(totals.total.minor - resolved.walletMinor, 0);
 			const requirements = checkoutRequirements(items);
-			const [details, spendLimit, charge] = await Promise.all([
+			// The charge first: it names the wallet the order is paid from, whose limit, threshold and
+			// approvals the spend read then answers for.
+			const charge = await chargeFor(
+				query,
+				actor,
+				resolved,
+				items,
+				() => toTotals(items, promoMinorFor(promo), money, feeBpOf(owner), 0).total,
+			);
+			const [details, position] = await Promise.all([
 				detailsFor(owner, query, actor),
-				spendLimitFor(owner, totals.total.minor, money, actor, resolved.basketId),
-				chargeFor(
-					query,
-					actor,
-					resolved,
-					items,
-					() => toTotals(items, promoMinorFor(promo), money, feeBpOf(owner), 0).total,
-				),
+				spendPositionFor(owner, totals.total.minor, money, actor, {
+					basketId: resolved.basketId,
+					charge,
+				}),
 			]);
+			const { spendLimit, businessAccount } = position;
 
 			return ok({
 				session: {
@@ -573,6 +587,7 @@ export class CheckoutBackendService {
 					invoicing: details.invoicing,
 					processingOffer,
 					spendLimit,
+					businessAccount,
 				},
 			});
 		});
@@ -709,9 +724,17 @@ export class CheckoutBackendService {
 			const totals = toTotals(eligible, promoMinorFor(promo), money, feeBpOf(owner), 0);
 			const priced: Resolved = { ...resolved, items: eligible };
 			const providers = offerFor(priced, totals.total.minor);
+			// A business's approval is matched against the charge in its own currency, exactly as the
+			// redeemer will match it; nobody else's pre-flight needs the charge.
+			const spendCharge = owner.ownerType === "business"
+				? await chargeFor(query, actor, resolved, eligible, () => totals.total)
+				: null;
 			const [details, spendLimit] = await Promise.all([
 				detailsFor(owner, query, actor),
-				spendLimitFor(owner, totals.total.minor, money, actor, resolved.basketId),
+				spendLimitFor(owner, totals.total.minor, money, actor, {
+					basketId: resolved.basketId,
+					charge: spendCharge,
+				}),
 			]);
 			const blocking = blockersFor(priced, providers, { buyer: details.buyer, spendLimit });
 			if (blocking.length > 0) return refusal(blocking[0].message, blocking);
@@ -792,11 +815,17 @@ export class CheckoutBackendService {
 					// Buying as the business needs `purchase` as well as vault `spend` (BB2).
 					const authority = businessAuthorityRefusal(error);
 					if (authority) {
-						return refusal(authority.message, [blocker("not_authorised", authority.message)]);
+						return refusal(authority.message, [
+							authorityBlocker(authority.details.reason, authority.message),
+						]);
 					}
-					const code = BLOCKER_FOR_SQLSTATE[error.code ?? ""] ?? (error.code === "22023" ? "no_provider" : undefined);
-					if (!code) throw new Error(`finance.place_on_account_order failed: ${error.message}`);
-					const refused = orderRefusal(code, error, resolved.basketId);
+					const refused = refusalBlocker(
+						error,
+						resolved.basketId,
+						owner.ownerType,
+						error.code === "22023" ? "no_provider" : undefined,
+					);
+					if (!refused) throw new Error(`finance.place_on_account_order failed: ${error.message}`);
 					return refusal(refused.message, [refused]);
 				}
 				const result = succeeded(data as PlacedOrder);
@@ -891,11 +920,12 @@ export class CheckoutBackendService {
 			if (error) {
 				const authority = businessAuthorityRefusal(error);
 				if (authority) {
-					return refusal(authority.message, [blocker("not_authorised", authority.message)]);
+					return refusal(authority.message, [
+						authorityBlocker(authority.details.reason, authority.message),
+					]);
 				}
-				const code = BLOCKER_FOR_SQLSTATE[error.code ?? ""];
-				if (!code) throw new Error(`finance.place_wallet_order failed: ${error.message}`);
-				const refused = orderRefusal(code, error, resolved.basketId);
+				const refused = refusalBlocker(error, resolved.basketId, owner.ownerType);
+				if (!refused) throw new Error(`finance.place_wallet_order failed: ${error.message}`);
 				return refusal(refused.message, [refused]);
 			}
 
@@ -903,61 +933,145 @@ export class CheckoutBackendService {
 			return ok({ result }, { message: result.message });
 		});
 	}
+
+	/**
+	 * Ask for approval of a business checkout, bound to its basket (Decision #243) — the checkout's
+	 * "Request approval", never a link to `/spend`.
+	 *
+	 * The lines are narrowed exactly as {@link create} narrows them and the amount is the charge
+	 * {@link create} would make — the order total in the listings' own currency, which is the business
+	 * wallet's currency the database compares an approval with — so the approval covers this order and
+	 * a client can never ask for more. The request is filed through the one spend-request door
+	 * (`fileSpendRequest` → `finance.request_spend_approval`), which checks the member may spend, that
+	 * the spend genuinely needs approval and that none is already waiting for this basket. Answers the
+	 * fresh session — read in the page's own deep-link scope (`preselect`) — whose spend position now
+	 * shows the request as pending, with a sentence the surface shows.
+	 *
+	 * The two refusals that are not the member's mistake are answered by what the fresh session shows:
+	 * a request already waiting (PC409) is the member's own when the session shows it pending, else it
+	 * is another member's on this shared basket, and a 409 says so — the member cannot see it, and
+	 * cannot file their own until it is decided; "needs no approval" (22023) answers the session when
+	 * the session agrees, else a 409 asking for a reload, so the dialog never closes on nothing.
+	 */
+	static requestApproval(
+		input: CheckoutApprovalRequest,
+		basketQuery: BasketQuery,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ session: CheckoutSessionContext }>> {
+		type Out = { session: CheckoutSessionContext };
+		const query: BasketQuery = input.preselect
+			? {
+				...basketQuery,
+				projectId: input.preselect.projectId,
+				serviceId: input.preselect.serviceId,
+			}
+			: basketQuery;
+		return guarded("approval", async () => {
+			if (!canReadLive(actor)) return SIGNED_OUT as ServiceResult<Out>;
+			const resolved = await resolve({ ...query, basketId: input.basketId }, actor);
+			if (!resolved) return SIGNED_OUT as ServiceResult<Out>;
+			const { owner, money, view } = resolved;
+			if (owner.ownerType !== "business" || !owner.actingIsMember) {
+				return fail(422, {
+					message: "Approvals are for purchases made for a business.",
+				}) as ServiceResult<Out>;
+			}
+
+			const wanted = new Set(input.itemIds);
+			const eligible = resolved.items.filter((item) =>
+				wanted.has(item.id) && isCheckoutEligible(item)
+			);
+			if (eligible.length === 0 || eligible.length !== wanted.size) {
+				return fail(409, {
+					message: "Your basket changed. Review it and try again.",
+				}) as ServiceResult<Out>;
+			}
+			const promo = await view.resolvePromo(view.promoCode, eligible);
+			const totals = toTotals(eligible, promoMinorFor(promo), money, feeBpOf(owner), 0);
+			const charge = await chargeFor(query, actor, resolved, eligible, () => totals.total);
+			if (!charge) {
+				return fail(422, {
+					message: "This basket mixes currencies. Ask for approval of each currency separately.",
+				}) as ServiceResult<Out>;
+			}
+			const walletId = await businessWalletIn(owner, charge.currency, actor.accessToken);
+			if (!walletId) {
+				return fail(409, {
+					message: `${owner.name} has no ${charge.currency} wallet to pay this from.`,
+				}) as ServiceResult<Out>;
+			}
+
+			const filed = await fileSpendRequest(actor.accessToken, {
+				walletId,
+				amountMinor: charge.minor,
+				reason: input.reason,
+				refTable: "baskets",
+				refId: resolved.basketId,
+			});
+			const outcome = filed.ok
+				? "filed"
+				: filed.status === 409 && filed.errors?.refId
+				? "already"
+				: filed.status === 422 && filed.errors?.amountMinor
+				? "unneeded"
+				: null;
+			if (outcome === null) {
+				return fail(filed.status, {
+					message: filed.message,
+					errors: filed.errors,
+				}) as ServiceResult<Out>;
+			}
+			const message = APPROVAL_FILED[outcome];
+			const fresh = await CheckoutBackendService.session(
+				{ ...query, basketId: resolved.basketId },
+				actor,
+			);
+			if (!fresh.ok || !fresh.data) {
+				// The request DID land (or was already there); a caller told otherwise would file it again.
+				return fail(500, {
+					message: `${message} Reload to see where it stands.`,
+				}) as ServiceResult<Out>;
+			}
+			const limit = fresh.data.session.spendLimit;
+			if (outcome === "already" && limit.request?.state !== "pending") {
+				return fail(409, { message: APPROVAL_FILED.othersWaiting }) as ServiceResult<Out>;
+			}
+			if (outcome === "unneeded" && limit.verdict !== "allowed") {
+				return fail(409, { message: APPROVAL_FILED.disagrees }) as ServiceResult<Out>;
+			}
+			return ok({ session: fresh.data.session }, { message });
+		});
+	}
+}
+
+/** What filing a checkout's approval request answers with, by what the database said and the session shows. */
+const APPROVAL_FILED = {
+	filed: "Request sent for approval.",
+	already: "A request for this order is already waiting for approval.",
+	unneeded: "This order no longer needs approval. You can place it now.",
+	othersWaiting:
+		"Another member's request for this basket is already waiting for approval. You can ask once it's decided.",
+	disagrees: "This order doesn't need approval right now. Reload the checkout, then pay.",
+} as const;
+
+/** The business's wallet in a currency, read as the caller; `null` when it holds none. */
+async function businessWalletIn(
+	owner: ResolvedOwner,
+	currency: string,
+	accessToken: string,
+): Promise<string | null> {
+	const { data, error } = await getUserClient(accessToken).schema("finance").from("wallets")
+		.select("id")
+		.eq("owner_type", "business")
+		.eq("owner_id", owner.ownerId)
+		.eq("currency", currency.toUpperCase())
+		.limit(1)
+		.maybeSingle();
+	if (error) throw new Error(`finance.wallets read failed: ${error.message}`);
+	return (data as { id: string } | null)?.id ?? null;
 }
 
 // #region Charging
-/**
- * The blocker a wallet-order refusal maps to, by the SQLSTATE `finance.place_wallet_order` raises —
- * so the surface explains a refusal the same way whether the app or the database caught it.
- */
-const BLOCKER_FOR_SQLSTATE: Record<string, CheckoutBlocker["code"]> = {
-	"42501": "not_authorised",
-	PK403: "verification_required",
-	PC409: "price_changed",
-	PB404: "price_changed",
-	PD422: "missing_email",
-	PU422: "unavailable_item",
-	PS501: "no_provider",
-	PF402: "insufficient_funds",
-	PA403: "spend_limit",
-	PM403: "not_authorised",
-};
-
-/**
- * The blocker a wallet-order refusal becomes. The spend gate raises `<sub_code>: <sentence>`
- * (`needs_approval:`, `over_limit:`, `kyb_required:` …); the reader sees the sentence. A
- * `spend_limit` refusal carries the ref an approval must be filed against — the one the redeemer named
- * in its DETAIL, else this basket — so the surface can offer "Request approval" bound to this charge.
- */
-function orderRefusal(
-	code: CheckoutBlocker["code"],
-	error: { code?: string; message: string; details?: string | null },
-	basketId: string,
-): CheckoutBlocker {
-	if (isAgeRestricted(error)) return { code, message: AGE_RESTRICTED.message, itemId: null };
-	const sentence = error.message.replace(/^[a-z_]+:\s*/, "").replace(/\s+/g, " ").trim();
-	const message = sentence
-		? `${sentence[0].toUpperCase()}${sentence.slice(1)}`.slice(0, 200)
-		: "That didn't go through.";
-	if (code !== "spend_limit") return { code, message, itemId: null };
-	let detail: unknown = null;
-	try {
-		detail = error.details ? JSON.parse(error.details) : null;
-	} catch {
-		detail = null;
-	}
-	const named = SpendApprovalRefSchema.safeParse({
-		refTable: (detail as { ref_table?: unknown } | null)?.ref_table,
-		refId: (detail as { ref_id?: unknown } | null)?.ref_id,
-	});
-	return {
-		code,
-		message,
-		itemId: null,
-		approvalRef: named.success ? named.data : { refTable: "baskets", refId: basketId },
-	};
-}
-
 /** What `finance.place_wallet_order` answers with — and what a replayed key is re-read as. */
 interface PlacedOrder {
 	order_id: string;

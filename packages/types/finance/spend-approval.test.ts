@@ -108,7 +108,6 @@ Deno.test("SpendLimitBlockSchema: the request binding defaults to none", () => {
 		spent: zero,
 		remaining: null,
 		periodLabel: null,
-		requestHref: null,
 	});
 	assertEquals(parsed.requestRef, null);
 	assertEquals(parsed.approved, false);

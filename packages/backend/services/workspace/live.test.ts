@@ -9,7 +9,7 @@ import type { WorkspaceFinance } from "@projective/types/workspace";
 import { detailIo, readDetail } from "./live-detail.ts";
 import type { LiveActor } from "./live-support.ts";
 import type { RawDetail } from "./mappers.ts";
-import { refusalFrom, sentence, splitRefusal } from "./live-support.ts";
+import { inviteAnswerRefusal, refusalFrom, sentence, splitRefusal } from "./live-support.ts";
 import { memberPatch, spendPatch, splitRuleArgs } from "./live-writes.ts";
 import {
 	buildPayoutPolicy,
@@ -130,6 +130,42 @@ Deno.test("refusalFrom: anything unexplained is a generic 500 that never echoes 
 	} finally {
 		console.error = original;
 	}
+});
+
+Deno.test("inviteAnswerRefusal: the seat cap is a typed 409; every other refusal maps as refusalFrom does", () => {
+	const full = inviteAnswerRefusal({
+		code: "55000",
+		message: "plan: this team's plan has 5 seats, and they are all taken or offered",
+	});
+	assertEquals([full.status, full.message, full.details], [409, "This team is full.", {
+		reason: "seat_cap",
+	}]);
+	const persona = inviteAnswerRefusal({
+		code: "PK403",
+		message: "persona_not_freelancer: Teams are for freelancer accounts",
+		hint: "self",
+		details: "client",
+	});
+	assertEquals([persona.status, persona.details?.reason], [403, "persona"]);
+	const payout = inviteAnswerRefusal({
+		code: "PK403",
+		message: "payout_not_ready: verify your identity and add a payout account first",
+		hint: "self",
+	});
+	assertEquals([payout.status, payout.details?.reason, payout.details?.href], [
+		403,
+		"payout_not_ready",
+		"/settings/verification",
+	]);
+	const lapsed = inviteAnswerRefusal({
+		code: "55000",
+		message: "invitation: this invitation has expired — ask for a new one",
+	});
+	assertEquals([lapsed.status, lapsed.message, lapsed.details], [
+		409,
+		"This invitation has expired — ask for a new one.",
+		undefined,
+	]);
 });
 
 Deno.test("sentence / splitRefusal", () => {
@@ -580,16 +616,21 @@ Deno.test("toKyb: the resume link only for a startKyb holder whose business has 
 		has_account: true,
 		requirements_due: ["finish_onboarding", "something_new"],
 	};
-	const kyb = toKyb(raw, "b-1", true);
+	const kyb = toKyb(raw, "b-1", true, true);
 	assertEquals(kyb.status, "pending");
 	assertEquals(kyb.requirementsDue, ["finish_onboarding"]);
 	assertEquals(
 		kyb.connectOnboardingUrl,
 		"/api/finance/connect/refresh?scope=business&businessId=b-1&back=settings",
 	);
-	assertStrictEquals(toKyb(raw, "b-1", false).connectOnboardingUrl, null);
-	assertStrictEquals(toKyb({ ...raw, has_account: false }, "b-1", true).connectOnboardingUrl, null);
-	assertEquals(toKyb({ ...raw, status: "rejected" }, "b-1", true).status, "unverified");
+	assertStrictEquals(kyb.processorConnected, true);
+	assertStrictEquals(toKyb(raw, "b-1", false, true).connectOnboardingUrl, null);
+	assertStrictEquals(
+		toKyb({ ...raw, has_account: false }, "b-1", true, true).connectOnboardingUrl,
+		null,
+	);
+	assertEquals(toKyb({ ...raw, status: "rejected" }, "b-1", true, true).status, "unverified");
+	assertStrictEquals(toKyb(raw, "b-1", true, false).processorConnected, false);
 });
 
 Deno.test("toMoneyTile: every figure in its own currency, never a negative", () => {

@@ -1,0 +1,97 @@
+/*
+ * workspace-verification.css — the business console's Verification module (`.wsp-kyb`): the KYB
+ * status line, what is still due, the one start of Stripe Connect onboarding and what verification
+ * unlocks (PRODUCT_SPEC §Identity Verification, Level 3). Token-only, strict BEM, logical properties
+ * only. Rows are separated by one hairline, never boxed (§B.4 anti-card); the band headings are the
+ * shared `.wsp-band__title`. The press feedback is the Button's own.
+ */
+
+/* The block sits on each band's inner wrapper, so every element below has its block in the tree. */
+.wsp-kyb {
+	min-inline-size: 0;
+}
+
+/* #region Status line */
+/*
+ * The lifecycle Tag, the corporate crest once earned, and the MetaLine fact beside them. The crest's
+ * check is knocked out to the frame's ground (`PageCanvas` paints `--surface` behind the stack).
+ */
+.wsp-kyb__status {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2) var(--space-3);
+	margin-block-start: var(--space-2);
+	--icon-knockout: var(--surface);
+}
+
+.wsp-kyb__badges {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+/* #endregion */
+
+/* #region Rows */
+.wsp-kyb__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wsp-kyb__row {
+	padding-block: var(--space-3);
+	border-block-start: var(--hairline);
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-body);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface);
+}
+
+.wsp-kyb__row:first-child {
+	border-block-start: none;
+	padding-block-start: 0;
+}
+/* #endregion */
+
+/* #region The next step */
+.wsp-kyb__action {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: var(--space-4);
+	min-inline-size: 0;
+}
+
+/* Under the rows the step takes a section's distance; alone in its band it starts at the heading. */
+.wsp-kyb__list + .wsp-kyb__action {
+	margin-block-start: var(--space-5);
+}
+
+.wsp-kyb__field {
+	flex: 1 1 auto;
+	inline-size: 100%;
+	max-inline-size: var(--wsp-field);
+	min-inline-size: 0;
+}
+
+.wsp-kyb__foot {
+	margin-block-start: var(--space-3);
+	max-inline-size: var(--wsp-prose);
+}
+
+/*
+ * InlineNotice pads itself for a list's foot; here it sits in the step's own column, so it drops that
+ * padding and starts on the column edge under the MetaLine. Doubled class so the override never
+ * depends on bundle order.
+ */
+.ui-inline-notice.wsp-kyb__failure {
+	margin-block-start: var(--space-3);
+	padding: 0;
+	max-inline-size: var(--wsp-prose);
+}
+/* #endregion */

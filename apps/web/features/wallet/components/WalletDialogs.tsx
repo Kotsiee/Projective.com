@@ -76,11 +76,22 @@ export interface WalletDialogData {
 	query: WalletContext;
 }
 
+/** Where a finished movement offers to go back to — the flow that linked into it (`?back=`). */
+export interface WalletReturn {
+	href: string;
+	label: string;
+}
+
 /** Props for {@link WalletDialogs}. */
 export interface WalletDialogsProps extends WalletDialogData {
 	resolve: (action: WalletAction) => ResolvedAction;
 	/** A write succeeded; the refreshed overview, when the server returned one. */
 	onChanged: (overview: WalletOverview | null) => void;
+	/**
+	 * Set when the page was opened by a wallet intent link carrying a way back (`wallet-intent.ts`,
+	 * Decision #243): a movement's done step then offers it in place of "Done".
+	 */
+	returnTo?: WalletReturn | null;
 }
 
 type Position = "center" | "bottom";
@@ -219,6 +230,7 @@ function MoveDialog(
 		stageId?: string;
 		position: Position;
 		onChanged: (overview: WalletOverview | null) => void;
+		returnTo?: WalletReturn | null;
 	},
 ): JSX.Element {
 	const { overview, switcher, action } = props;
@@ -414,7 +426,18 @@ function MoveDialog(
 			</>
 		)
 		: step.value === "done"
-		? <Button variant="filled" label="Done" onClick={closing.close} />
+		? (props.returnTo
+			// A navigation, so an anchor dressed as the step's one filled control — never a button that
+			// assigns `location`.
+			? (
+				<a
+					class="ui-button ui-button--primary ui-button--filled ui-button--size-md wlt-dlg__back"
+					href={props.returnTo.href}
+				>
+					<span class="ui-button__label">{props.returnTo.label}</span>
+				</a>
+			)
+			: <Button variant="filled" label="Done" onClick={closing.close} />)
 		: step.value === "card" || step.value === "settling"
 		? (
 			<Button

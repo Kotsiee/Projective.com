@@ -358,6 +358,16 @@
     white-space: nowrap;
 }
 
+/* A business row's role · since, as a MetaLine (BP1): one line, ellipsised like the role it replaces;
+   scoped under the link so it outranks the MetaLine sheet's own line-height whatever the load order. */
+.pf-person__link .pf-person__meta {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: var(--leading-snug, 1.35);
+}
+
 /* #endregion */
 
 /* #region Reused explore cards, monochrome */

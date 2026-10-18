@@ -289,6 +289,12 @@ export const ProjectMemberRowSchema = z.object({
 	 * absent when the engagement has no client business or they are not a member of it.
 	 */
 	business: MemberBusinessSchema.nullable().optional(),
+	/**
+	 * Whether the business client has let this delegated project manager (an `admin` / `manager` seat)
+	 * compose and edit tickets on its behalf — `project_participants.can_manage_tickets`, granted only
+	 * through `projects.set_ticket_manager` (Decision #294). Absent reads as `false`.
+	 */
+	canManageTickets: z.boolean().optional(),
 });
 export type ProjectMemberRow = z.infer<typeof ProjectMemberRowSchema>;
 // #endregion
@@ -546,6 +552,8 @@ export const MemberRosterParamsSchema = z.object({
 	simPendingInvites: z.boolean().optional(),
 	/** DEV-ONLY. Force the inbound-request (application) queue on/off. */
 	simPendingRequests: z.boolean().optional(),
+	/** DEV-ONLY. Simulate whether the engagement is billed to a business (ticket delegation, #294). */
+	simBusinessClient: z.boolean().optional(),
 });
 export type MemberRosterParams = z.infer<typeof MemberRosterParamsSchema>;
 // #endregion
@@ -586,6 +594,12 @@ export const MemberRosterPageSchema = z.object({
 	viewerId: z.string().max(120),
 	viewerRole: MemberRole,
 	viewerCaps: MemberViewerCapsSchema,
+	/**
+	 * Whether the engagement is billed to a business client. Only a business delegates its tickets, so
+	 * only here can an `admin` / `manager` seat be let manage them (Decision #294). Absent reads as
+	 * `false`.
+	 */
+	businessClient: z.boolean().optional(),
 	/**
 	 * Total people on this roster — the project's participants, or on a stage page that stage's
 	 * members (Decision #145). Drives the "N members" caption; independent of any visibility filter.
@@ -744,4 +758,25 @@ export const MemberRoleChangedSchema = z.object({
 	changed: z.boolean(),
 });
 export type MemberRoleChanged = z.infer<typeof MemberRoleChangedSchema>;
+
+/** The seats a business client may let manage tickets on its behalf (Decision #294). */
+export const TICKET_MANAGER_ROLES: ReadonlySet<MemberRole> = new Set<MemberRole>([
+	"admin",
+	"manager",
+]);
+
+/**
+ * `PATCH /api/projects/[id]/members/[memberId]/tickets` — let a delegated project manager compose and
+ * edit tickets for the business client, or stop them (`projects.set_ticket_manager`, Decision #294).
+ */
+export const SetTicketManagerInputSchema = z.object({ allowed: z.boolean() });
+export type SetTicketManagerInput = z.infer<typeof SetTicketManagerInputSchema>;
+
+/** What a ticket-management change answers with. `changed` is false when nothing moved. */
+export const TicketManagerChangedSchema = z.object({
+	memberId: z.string().min(1).max(120),
+	canManageTickets: z.boolean(),
+	changed: z.boolean(),
+});
+export type TicketManagerChanged = z.infer<typeof TicketManagerChangedSchema>;
 // #endregion

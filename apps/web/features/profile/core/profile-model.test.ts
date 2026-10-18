@@ -3,8 +3,10 @@ import type { ServiceItem } from "../types/profile-types.ts";
 import {
 	consultationPriceLabel,
 	estimatedSpendFor,
+	hiddenNoticeText,
 	hireProjectsFrom,
 	isFastResponder,
+	memberSinceLabel,
 	parseReviewStance,
 	responseLabel,
 	reviewsForStance,
@@ -57,8 +59,8 @@ Deno.test("rigFor: a seller with something to hire for leads with Hire; Add-to-p
 			primary: "hire",
 		},
 	);
-	// A buyer entity cannot be hired or assigned, whatever it offers.
-	for (const kind of ["client", "business", "enterprise"] as const) {
+	// A client or an enterprise cannot be hired or assigned, whatever it offers.
+	for (const kind of ["client", "enterprise"] as const) {
 		assertEquals(rigFor(kind, { hasServices: true, offersConsultation: true, authed: true }), {
 			layout: "buyer",
 			hire: false,
@@ -66,6 +68,77 @@ Deno.test("rigFor: a seller with something to hire for leads with Hire; Add-to-p
 			primary: "message",
 		});
 	}
+});
+
+Deno.test("rigFor: a business leads with Message, and its editors get Manage business instead (BP1)", () => {
+	// Never Hire or Add-to-project, whatever it offers and whoever looks.
+	assertEquals(rigFor("business", { hasServices: true, offersConsultation: true, authed: true }), {
+		layout: "business",
+		hire: false,
+		addToProject: false,
+		primary: "message",
+	});
+	assertEquals(
+		rigFor("business", { hasServices: false, offersConsultation: false, authed: false }),
+		{
+			layout: "business",
+			hire: false,
+			addToProject: false,
+			primary: "message",
+		},
+	);
+	assertEquals(
+		rigFor("business", {
+			hasServices: false,
+			offersConsultation: false,
+			authed: true,
+			manages: true,
+		}),
+		{ layout: "business", hire: false, addToProject: false, primary: "manage" },
+	);
+	// `manages` changes nothing for a client or an enterprise.
+	assertEquals(
+		rigFor("client", { hasServices: false, offersConsultation: false, authed: true, manages: true })
+			.layout,
+		"buyer",
+	);
+});
+
+Deno.test("rigFor: a business with nobody for Message to reach offers no Message (BP1)", () => {
+	const input = { hasServices: false, offersConsultation: false, authed: true };
+	assertEquals(rigFor("business", { ...input, messageable: false }).primary, "none");
+	// An editor's console link does not depend on a contact.
+	assertEquals(
+		rigFor("business", { ...input, messageable: false, manages: true }).primary,
+		"manage",
+	);
+	// `messageable` is a business fact: a client keeps its Message.
+	assertEquals(rigFor("client", { ...input, messageable: false }).primary, "message");
+});
+
+Deno.test("hiddenNoticeText tells a member why outsiders cannot open the page", () => {
+	// A fact, not a promise: publishing a draft alone leaves an invite-only business missing.
+	assertEquals(
+		hiddenNoticeText("draft", "Atlas Labs"),
+		"Atlas Labs is a draft. Only members can see this page.",
+	);
+	assertEquals(
+		hiddenNoticeText("archived", "Atlas Labs"),
+		"Atlas Labs is archived. Only members can see this page.",
+	);
+	assertEquals(
+		hiddenNoticeText("invite_only", "Atlas Labs"),
+		"Atlas Labs is invite-only. Only members can see this page.",
+	);
+});
+
+Deno.test("memberSinceLabel is the join year, and nothing for an unreadable date", () => {
+	assertEquals(memberSinceLabel("2026-02-19T14:14:10.589473+00:00"), "Since 2026");
+	// The UTC year: a New Year's Eve join late in the evening west of UTC is next year's.
+	assertEquals(memberSinceLabel("2025-12-31T23:30:00-05:00"), "Since 2026");
+	assertEquals(memberSinceLabel(undefined), null);
+	assertEquals(memberSinceLabel(""), null);
+	assertEquals(memberSinceLabel("not a date"), null);
 });
 
 Deno.test("consultationPriceLabel: Free whenever a courtesy call exists, else the paid fee", () => {

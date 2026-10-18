@@ -64,9 +64,11 @@ AS $$
 $$;
 
 -- May the caller SEE this profile at all? The same visibility rule as org.profiles_index — a public
--- or unlisted individual, an ACTIVE business, an active public/unlisted team, an active enterprise
--- — plus two arms the directory has no reason for: whoever manages the profile always sees it (the
--- owner of a private profile must be able to look at it), and a member sees their own entity.
+-- or unlisted individual, an active public/unlisted team or business (BP1, Decision #244: a draft,
+-- archived or invite-only business is missing to anyone outside it, as a team already was), an
+-- active enterprise — plus two arms the directory has no reason for: whoever manages the profile
+-- always sees it (the owner of a private profile must be able to look at it), and a member sees
+-- their own entity.
 CREATE OR REPLACE FUNCTION org.fn_profile_visible(p_owner_type text, p_owner_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -87,7 +89,10 @@ AS $$
             )
             OR org.is_active_team_member (p_owner_id)
         WHEN p_owner_type = 'business' THEN
-            EXISTS (SELECT 1 FROM org.business_profiles b WHERE b.id = p_owner_id AND b.status = 'active')
+            EXISTS (
+                SELECT 1 FROM org.business_profiles b
+                WHERE b.id = p_owner_id AND b.status = 'active' AND b.visibility IN ('public', 'unlisted')
+            )
             OR org.is_active_business_member (p_owner_id)
         WHEN p_owner_type = 'enterprise' THEN
             EXISTS (
@@ -296,7 +301,7 @@ BEGIN
             'name', b.name,
             'headline', COALESCE(b.headline, ''),
             'bio', b.bio,
-            'visibility', 'public',
+            'visibility', b.visibility,
             'city', b.address_city,
             'country', b.country,
             'timezone', b.timezone,
@@ -316,10 +321,31 @@ BEGIN
             'verification_stamp', CASE WHEN b.kyb_status = 'verified'::finance.kyc_status
                 THEN 'corporate_verified' ELSE 'none' END,
             'hire_intake', '[]'::jsonb,
-            'response_minutes', NULL
+            'response_minutes', NULL,
+            -- BP1 (Decision #244). Why an outsider gets NULL here — fn_profile_visible's business arm,
+            -- inverted (status first, then reach); NULL while anybody may open it, so only a member is
+            -- ever told. And the console doors as the viewer's OWN seat answers them — never
+            -- fn_profile_manages' platform-admin arm, which opens the profile but no console.
+            'workspace', jsonb_build_object(
+                'hidden_reason', CASE
+                    WHEN b.status = 'archived' THEN 'archived'
+                    WHEN b.status = 'draft' THEN 'draft'
+                    WHEN b.visibility = 'invite_only' THEN 'invite_only'
+                END,
+                'viewer_edits', org.fn_member_can ('business', b.id, 'edit_profile'),
+                'viewer_settings', org.fn_member_can ('business', b.id, 'manage_settings')
+            ),
+            -- A DM is person-to-person (comms.get_or_create_dm_thread), so a Message to a business
+            -- reaches its owner — already public on the roster.
+            'contact', jsonb_build_object(
+                'handle', up.username,
+                'name', NULLIF(btrim(concat_ws(' ', up.first_name, up.last_name)), '')
+            )
         )
         INTO v_base
-        FROM org.business_profiles b WHERE b.id = v_id;
+        FROM org.business_profiles b
+        LEFT JOIN org.users_public up ON up.user_id = b.owner_user_id
+        WHERE b.id = v_id;
         v_sched_type := 'business';
 
         SELECT count(*)::int INTO v_completed
@@ -599,12 +625,16 @@ BEGIN
             WHERE tm.team_id = v_id AND tm.status = 'active'
         ), '[]'::jsonb));
     ELSIF v_type = 'business' THEN
+        -- A business row reads the member's title, else the base preset's label — never a custom
+        -- role's name, which RLS keeps to members (org.business_roles) — and since when they belong
+        -- (BP1, Decision #244).
         RETURN jsonb_build_object('departments', '[]'::jsonb, 'members', COALESCE((
             SELECT jsonb_agg(jsonb_build_object(
                 'handle', up.username,
                 'name', NULLIF(btrim(concat_ws(' ', up.first_name, up.last_name)), ''),
                 'avatar', files.fn_public_media_ref (up.avatar_file_id),
-                'role', COALESCE(NULLIF(btrim(bm.title), ''), r.name),
+                'role', COALESCE(NULLIF(btrim(bm.title), ''), initcap(r.base_preset)),
+                'since', bm.joined_at,
                 'is_freelancer', up.is_freelancer,
                 'departments', '[]'::jsonb
             ) ORDER BY org.fn_preset_rank (bm.role) DESC, bm.joined_at)

@@ -87,13 +87,19 @@ BEGIN
         RETURN jsonb_build_object('participant_id', v_row.id, 'role', p_role, 'changed', false);
     END IF;
 
-    UPDATE projects.project_participants SET role = v_stored WHERE id = v_row.id;
+    -- A ticket-management grant belongs to an admin/manager seat (Decision #294): leaving those seats
+    -- ends it in the same write, or the seat check would refuse the change.
+    UPDATE projects.project_participants
+    SET role = v_stored,
+        can_manage_tickets = can_manage_tickets AND v_stored IN ('admin', 'manager')
+    WHERE id = v_row.id;
 
     INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
     VALUES (
         v_actor, 'project.member_role_changed', 'projects.project_participants', v_row.id,
         jsonb_build_object('project_id', p_project_id, 'member_user_id', v_row.profile_id,
-                           'from', v_row.role, 'to', v_stored)
+                           'from', v_row.role, 'to', v_stored,
+                           'ticket_grant_ended', v_row.can_manage_tickets AND v_stored NOT IN ('admin', 'manager'))
     );
 
     INSERT INTO projects.project_activity (project_id, actor_user_id, kind, payload, entity_table, entity_id)
@@ -109,7 +115,109 @@ END;
 $$;
 
 COMMENT ON FUNCTION projects.set_member_role(uuid, uuid, text) IS
-'Changes one person-participant''s role on a project as its review authority (owner or client-business member). Stores `freelancer` as `assignee` (the vocabulary fn_apply_invitation_decision writes), refuses the caller''s own row and closed projects, is idempotent, and records the change in security.audit_logs and projects.project_activity. Moves no seat, ticket or escrow.';
+'Changes one person-participant''s role on a project as its review authority (owner or client-business member). Stores `freelancer` as `assignee` (the vocabulary fn_apply_invitation_decision writes), refuses the caller''s own row and closed projects, is idempotent, and records the change in security.audit_logs and projects.project_activity. Ends a ticket-management grant when the seat leaves admin/manager. Moves no seat, ticket or escrow.';
+-- #endregion
+
+-- #region 1b. set_ticket_manager
+-- projects.set_ticket_manager(project, participant, allowed) -> jsonb
+--
+-- The business client's explicit grant to a delegated project manager to compose and edit tickets on
+-- its behalf (Decision #294; PRODUCT_SPEC §Editing & Reordering Restrictions). Ticket content is the
+-- client's: a freelancer never writes it, except a delegate the business chose for exactly that.
+--
+-- Authority is the one that appoints the delegate: review authority, and on a business project the
+-- `hire` capability (projects.fn_assert_business_actor). Only a BUSINESS client grants it — a personal
+-- client's project has no business to act for — and only to a person seat the project made `admin` or
+-- `manager`. Not the caller's own seat, and not on a closed project. Idempotent; the change is recorded
+-- in security.audit_logs and projects.project_activity in the same transaction.
+--
+-- What the grant buys is narrow (projects.fn_ticket_immutability_guard): the ticket's content and
+-- composition columns, on tickets nobody has claimed. Never its assignee, status, payment bookkeeping or
+-- deletion, never a claimed ticket's terms or stage — a delegate edits what the client could edit
+-- before a claim, and no more.
+CREATE OR REPLACE FUNCTION projects.set_ticket_manager(
+    p_project_id     uuid,
+    p_participant_id uuid,
+    p_allowed        boolean
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, projects, auth
+AS $$
+DECLARE
+    v_actor   uuid := auth.uid();
+    v_row     projects.project_participants%ROWTYPE;
+    v_project record;
+BEGIN
+    IF v_actor IS NULL THEN
+        RAISE EXCEPTION 'Sign in to change who manages tickets.' USING ERRCODE = '42501';
+    END IF;
+    IF p_allowed IS NULL THEN
+        RAISE EXCEPTION 'Say whether this member may manage tickets.' USING ERRCODE = 'check_violation';
+    END IF;
+
+    SELECT p.status, p.client_business_id INTO v_project
+    FROM projects.projects p WHERE p.id = p_project_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Project % not found.', p_project_id USING ERRCODE = 'no_data_found';
+    END IF;
+    IF NOT projects.can_review_project(p_project_id) THEN
+        RAISE EXCEPTION 'Only the client may let a member manage tickets.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    -- Choosing who writes the work on the business's behalf is a staffing decision.
+    PERFORM projects.fn_assert_business_actor(p_project_id, 'hire');
+    IF v_project.client_business_id IS NULL THEN
+        RAISE EXCEPTION 'Only a business client delegates its tickets to a project manager.'
+            USING ERRCODE = 'check_violation';
+    END IF;
+    IF v_project.status IN ('archived', 'cancelled', 'completed') THEN
+        RAISE EXCEPTION 'This project is closed — who manages its tickets can no longer change.'
+            USING ERRCODE = 'check_violation';
+    END IF;
+
+    SELECT * INTO v_row
+    FROM projects.project_participants pp
+    WHERE pp.id = p_participant_id AND pp.project_id = p_project_id
+    FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'That member is not part of this project.' USING ERRCODE = 'check_violation';
+    END IF;
+    IF v_row.profile_id = v_actor THEN
+        RAISE EXCEPTION 'You cannot change your own ticket permission.' USING ERRCODE = 'check_violation';
+    END IF;
+    IF p_allowed AND (v_row.profile_type <> 'freelancer' OR v_row.role NOT IN ('admin', 'manager')) THEN
+        RAISE EXCEPTION 'Make this member a project admin or manager before letting them manage tickets.'
+            USING ERRCODE = 'check_violation';
+    END IF;
+
+    IF v_row.can_manage_tickets = p_allowed THEN
+        RETURN jsonb_build_object('participant_id', v_row.id, 'can_manage_tickets', p_allowed, 'changed', false);
+    END IF;
+
+    UPDATE projects.project_participants SET can_manage_tickets = p_allowed WHERE id = v_row.id;
+
+    INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
+    VALUES (
+        v_actor, 'project.ticket_manager_changed', 'projects.project_participants', v_row.id,
+        jsonb_build_object('project_id', p_project_id, 'member_user_id', v_row.profile_id,
+                           'can_manage_tickets', p_allowed)
+    );
+
+    INSERT INTO projects.project_activity (project_id, actor_user_id, kind, payload, entity_table, entity_id)
+    VALUES (
+        p_project_id, v_actor, 'ticket_manager_changed',
+        jsonb_build_object('participant_id', v_row.id, 'member_user_id', v_row.profile_id,
+                           'can_manage_tickets', p_allowed),
+        'projects.project_participants', v_row.id
+    );
+
+    RETURN jsonb_build_object('participant_id', v_row.id, 'can_manage_tickets', p_allowed, 'changed', true);
+END;
+$$;
+
+COMMENT ON FUNCTION projects.set_ticket_manager(uuid, uuid, boolean) IS
+'Grants or ends a delegated project manager''s right to compose and edit tickets on a business client''s project (Decision #294). Review authority plus `hire`; business projects only; admin/manager person seats only; not the caller''s own seat; not on a closed project. Idempotent; audited in security.audit_logs and projects.project_activity.';
 -- #endregion
 
 -- #region 2. invite_by_email

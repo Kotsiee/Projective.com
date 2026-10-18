@@ -331,10 +331,12 @@ function emptySession(display: string): CheckoutBootstrap["session"] {
 			spent: zero(display),
 			remaining: zero(display),
 			periodLabel: null,
-			requestHref: null,
+			gate: null,
+			request: null,
 			requestRef: null,
 			approved: false,
 		},
+		businessAccount: null,
 	};
 }
 // #endregion

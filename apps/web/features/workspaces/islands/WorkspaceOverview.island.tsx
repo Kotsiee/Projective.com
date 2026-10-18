@@ -5,6 +5,7 @@ import "../styles/workspace.css";
 import { Tooltip } from "@projective/ui/feedback";
 import {
 	activeMembers,
+	canOpenVerification,
 	kindCopy,
 	setupProgress,
 	type WorkspaceDetail,
@@ -167,7 +168,7 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 					verification={detail.verification}
 					prompt={detail.verificationPrompt}
 					href={workspaceHref(detail.kind, detail.handle, "verification")}
-					canManage={held.has("manage_settings")}
+					canManage={canOpenVerification(detail.kind, detail.viewerCapabilities)}
 					tone="band"
 				/>
 

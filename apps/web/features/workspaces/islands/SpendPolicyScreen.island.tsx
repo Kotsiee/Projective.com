@@ -7,6 +7,7 @@ import { InputNumber } from "@projective/ui/fields";
 import { toMajorUnits, toMinorUnits } from "@projective/types/finance";
 import {
 	type BusinessSpendPolicy,
+	canOpenVerification,
 	kindCopy,
 	type SpendLimit,
 	type WorkspaceDetail,
@@ -215,7 +216,7 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 					verification={policy.value.verification}
 					prompt={policy.value.verificationPrompt}
 					href={workspaceHref(ws.kind, ws.handle, "verification")}
-					canManage={held.has("manage_settings")}
+					canManage={canOpenVerification(ws.kind, ws.viewerCapabilities)}
 					tone="band"
 				/>
 

@@ -199,6 +199,8 @@ function invite(overrides: Partial<IncomingInvite>): IncomingInvite {
 		fromHandle: "ada",
 		roleLabel: "Member",
 		sentAt: "2d ago",
+		note: null,
+		expiresAt: null,
 		...overrides,
 	};
 }

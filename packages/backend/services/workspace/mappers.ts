@@ -526,6 +526,12 @@ export interface SetupFacts {
 	invite: boolean;
 	money: boolean;
 	verified: boolean;
+	/**
+	 * Whether the viewer may open the Verification module (`canOpenVerification`); `false` leaves its
+	 * step unlinked, so the checklist never sends someone to a page that turns them away. Absent reads
+	 * as linked — the roster's cards only count the steps.
+	 */
+	canVerify?: boolean;
 }
 
 /**
@@ -576,7 +582,7 @@ export function setupSteps(kind: WorkspaceKind, handle: string, facts: SetupFact
 				? "The owner's verified identity unlocks withdrawals from the vault."
 				: "Verification unlocks the pooled wallet so you can hire.",
 			done: facts.verified,
-			href: workspaceHref(kind, handle, "verification"),
+			href: facts.canVerify === false ? "" : workspaceHref(kind, handle, "verification"),
 		},
 	];
 }
@@ -674,6 +680,8 @@ export function toIncomingInvite(
 		fromHandle: clamp(from?.username, 40),
 		roleLabel: clampOr(raw.role_name, 48, "Member"),
 		sentAt: clamp(relativeLabel(raw.created_at, nowMs), 40),
+		note: raw.note?.trim() ? clamp(raw.note.trim(), 400) : null,
+		expiresAt: raw.expires_at ? isoOf(raw.expires_at) || null : null,
 	};
 }
 

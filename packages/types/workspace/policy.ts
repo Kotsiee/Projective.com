@@ -394,6 +394,11 @@ export const BusinessKybSchema = z.object({
 	 */
 	connectOnboardingUrl: z.string().max(300).nullable(),
 	requirementsDue: z.array(KybRequirement),
+	/**
+	 * Whether the payment processor that runs the check is connected in this environment. Without it
+	 * neither door can reach Stripe, so the module offers no action and says why (Decision #225 (B)).
+	 */
+	processorConnected: z.boolean().default(false),
 });
 export type BusinessKyb = z.infer<typeof BusinessKybSchema>;
 
@@ -428,32 +433,62 @@ export type SpendEnvelopePreview = z.infer<typeof SpendEnvelopePreviewSchema>;
  *
  * Returns a **routable outcome**, never a bare refusal: a blocked purchase must always offer the
  * request path (brief §8), so `needs_approval` is a first-class result rather than a failure.
+ *
+ * `code` is the sub-code the database's business spend gate would raise for the same spend
+ * (`finance.fn_assert_business_spend`, Decision #240): `kyb_required`, `over_limit` (the member's own
+ * envelope — the per-transaction ceiling or the remaining cap) or `needs_approval` (the vault's
+ * threshold). `no_spend` has no database twin: the caller holds no `spend` on the wallet, which the
+ * money door refuses as authority, not as the gate.
  */
 export type SpendVerdict =
 	| { outcome: "allowed" }
-	| { outcome: "needs_approval"; reason: string }
-	| { outcome: "blocked"; reason: string };
+	| { outcome: "needs_approval"; reason: string; code: "over_limit" | "needs_approval" }
+	| { outcome: "blocked"; reason: string; code: "kyb_required" | "no_spend" };
 
-/** Decide a spend against a member's limit and the entity's approval threshold. */
+/**
+ * Decide a spend against a member's limit and the entity's approval threshold, in the order the
+ * database gate checks them: verification, the spend right, the per-transaction ceiling, the remaining
+ * cap, then the threshold.
+ */
 export function evaluateSpend(
 	amountMinor: number,
 	limit: Pick<SpendLimit, "canSpend" | "limitMinor" | "perTransactionMinor"> | undefined,
 	policy: Pick<BusinessSpendPolicy, "approvalThresholdMinor" | "verification">,
 ): SpendVerdict {
 	if (policy.verification !== "verified") {
-		return { outcome: "blocked", reason: "The pooled wallet is locked until verification clears." };
+		return {
+			outcome: "blocked",
+			reason: "The pooled wallet is locked until verification clears.",
+			code: "kyb_required",
+		};
 	}
 	if (!limit || !limit.canSpend) {
-		return { outcome: "blocked", reason: "You do not have permission to spend from this wallet." };
+		return {
+			outcome: "blocked",
+			reason: "You do not have permission to spend from this wallet.",
+			code: "no_spend",
+		};
 	}
 	if (limit.perTransactionMinor !== null && amountMinor > limit.perTransactionMinor) {
-		return { outcome: "needs_approval", reason: "Above your per-transaction ceiling." };
+		return {
+			outcome: "needs_approval",
+			reason: "Above your per-transaction ceiling.",
+			code: "over_limit",
+		};
 	}
 	if (limit.limitMinor !== null && amountMinor > limit.limitMinor) {
-		return { outcome: "needs_approval", reason: "Above your remaining spend limit." };
+		return {
+			outcome: "needs_approval",
+			reason: "Above your remaining spend limit.",
+			code: "over_limit",
+		};
 	}
 	if (policy.approvalThresholdMinor !== null && amountMinor >= policy.approvalThresholdMinor) {
-		return { outcome: "needs_approval", reason: "At or above the approval threshold." };
+		return {
+			outcome: "needs_approval",
+			reason: "At or above the approval threshold.",
+			code: "needs_approval",
+		};
 	}
 	return { outcome: "allowed" };
 }

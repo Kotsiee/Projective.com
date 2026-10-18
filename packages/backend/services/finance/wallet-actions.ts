@@ -463,15 +463,50 @@ export async function requestSpend(input: SpendRequestInput, query: WalletQuery,
 	const row = rowIn(account, input.currency);
 	if (!row) return refuse(409, `This account holds no ${input.currency.toUpperCase()}.`);
 
-	const { error } = await getUserClient(ctx.actor.accessToken).schema("finance").rpc("request_spend_approval", {
-		p_wallet: row.id,
-		p_amount: input.amountMinor,
-		p_reason: input.reason,
-		p_ref_table: input.refTable,
-		p_ref_id: input.refId,
+	const filed = await fileSpendRequest(ctx.actor.accessToken, {
+		walletId: row.id,
+		amountMinor: input.amountMinor,
+		reason: input.reason,
+		refTable: input.refTable,
+		refId: input.refId,
 	});
-	if (error) return governedRefusal(error);
+	if (!filed.ok) return filed as unknown as Result;
 	return after(query, actor, account.key, "Request sent for approval.");
+}
+
+/** What {@link fileSpendRequest} files: the wallet, the amount in its currency, and what it is for. */
+export interface SpendRequestFiling {
+	walletId: string;
+	amountMinor: number;
+	reason: string;
+	refTable: SpendRequestInput["refTable"];
+	refId: string;
+}
+
+/**
+ * File a spend approval request through `finance.request_spend_approval`, as the caller — the ONE door
+ * both `/wallet` ({@link requestSpend}) and the checkout (`CheckoutBackendService.requestApproval`,
+ * Decision #243) file through, so a request is refused the same way wherever it is asked for: `22023`
+ * keyed to its field (`reason`, `amountMinor` "needs no approval", `refId`), `42501` authority,
+ * `P0002` a wallet that is not a business's, `PC409` a request for the same ref already waiting.
+ */
+export async function fileSpendRequest(
+	accessToken: string,
+	filing: SpendRequestFiling,
+): Promise<ServiceResult<{ id: string | null }>> {
+	const { data, error } = await getUserClient(accessToken).schema("finance").rpc(
+		"request_spend_approval",
+		{
+			p_wallet: filing.walletId,
+			p_amount: filing.amountMinor,
+			p_reason: filing.reason,
+			p_ref_table: filing.refTable,
+			p_ref_id: filing.refId,
+		},
+	);
+	if (error) return governedRefusal(error) as unknown as ServiceResult<{ id: string | null }>;
+	const id = (data as { id?: unknown } | null)?.id;
+	return ok({ id: typeof id === "string" ? id : null });
 }
 
 /** Approve or reject a queued spend (an admin who is not the requester). */

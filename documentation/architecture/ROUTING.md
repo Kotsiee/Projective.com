@@ -88,6 +88,7 @@ Parenthesized folders group routes **without** adding a URL segment:
 | stage invite link       | `(dashboard)/invite/[token].tsx`                             | `/invite/:token` (where a stage invite link lands — the project, the stage, who shared it, and "Ask to join" when the link is open to this person, which files a pending request and seats nobody. Inside `(dashboard)`, so a guest signs in first and returns here via `redirectTo`; the token is shape-checked before any read; `noindex` + `no-referrer` + `no-store` because the path is a capability; Decision #145) |
 | share link              | `(public)/share/[slug].tsx`                                  | `/share/:slug` (the public resolution of a read-only share link — the one files surface a stranger can reach)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | outbound-link exit      | `(public)/exit.tsx`                                          | `/exit?url=…` (the interstitial an external link from a message passes through unless its scan came back safe — names the host, the verdict and why; asks for an explicit "I understand" before an unchecked or suspicious link and never offers a blocked one; never redirects by itself; `noindex` + `no-referrer` + `no-store`; Decision #128)                                                                                                                                                                                                                                                                            |
+| pricing (**Planned**)   | `(public)/pricing.tsx` → `features/pricing/routes/PricingScreen.tsx` | `/pricing` — every public plan by audience over the two payment planes (Decision #252). Guest → `GuestShell`, signed-in → `UserShell`, the same body. **Lane-less**: no `pricingLaneFor` (a lane would be a second home for a plan purchase). `pricingHeaderFor(url, authed)` — pure, synchronous, `null` off `/pricing`, chained beside `viewHeaderFor` in `(public)/_layout.tsx` — mounts the plane switcher band (audience tabs + billing cycle), which carries no figure and no purchase control. Query: see "`/pricing` query" below. Canonical link `/pricing` with no query. The handle is reserved (`packages/types/profile/reserved.ts`). |
 | file inspector          | `(standalone)/inspect/[fileId].tsx`                          | `/inspect/:fileId` (`?share=<slug>` optional) — the shell-free, full-window inspector for ONE stored file: a top bar, the canvas that suits the file (image, SVG, video, audio, PDF, code, text, Markdown, table, 3D model, Word document, font, or the unsupported fallback — `resolveViewer`, `@projective/types/files`) and a details panel. Controller `features/inspector/routes/InspectScreen.tsx` (re-exported); the handler reads `FilesBackendService.inspect` under the viewer's own read rule (`fn_can_read`, or the live share slug) and every refusal is the SAME calm `404` page, whether the file is missing, private or the link is dead. Addressed by the `files.items.id` **uuid** — an explicit exception to Decision #88 (files carry no slug; flagged in Decision #161(B)). Headers: the inspector CSP profile (`cspHeaderFor("inspector")`, Decision #161(D)), `noindex, nofollow`, `no-referrer`, `private, no-store`. Its bytes come only from `/api/media/proxy/:fileId`; `fileInspectHref(id, { share })` builds the address. |
 | notifications           | `(dashboard)/notifications/index.tsx`                        | `/notifications` (`?category=` an inbox tab — `money · work · messages · schedule · discovery · account · system`, absent = All; `?view=` `unread · archived`, absent = All) — the full inbox: the header drawer's tabs and rows plus the views, keyset Load more and bulk mark-read / archive. Re-exports `features/notifications/routes/NotificationsScreen.tsx` (DESIGN_SYSTEM §D.9, Decision #173) |
 | saved                   | `(dashboard)/saved/index.tsx`                                | `/saved` (`?tab=` `listings · people · projects · messages · files`, absent = All; `?collection=` `unfiled` or a collection id, absent = every collection) — everything the viewer saved, starred, favourited or followed, newest save first with "People you follow" last; un-save in place, file a bookmark into a collection, Load more. Re-exports `features/saved/routes/SavedScreen.tsx` (Decision #180). Reached from the account menu's **Saved**.|
@@ -132,6 +133,20 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   Hire control is a real anchor to it, so it works with JavaScript off), and the Reviews stance filter
   mirrors into `/[handle]/reviews?as=freelancer|client` (`parseReviewStance`; SSR honours it, the
   island keeps it in step with `replaceState`, and anything else reads as "all").
+- **`/pricing` query — Planned (Decision #252).** `?plane=individual|team|business` picks the
+  audience tab (default: the acting context's audience — team → `team`, business or enterprise →
+  `business`, otherwise `individual`); `?cycle=monthly|annual` the billing cycle (`annual` only
+  where the audience has annual prices); `?target=<public plan code>` emphasises one plan and
+  implies its plane (`/pricing?target=team_pro&cycle=annual` opens the Team tab on Pro Team). One
+  Zod `PricingQuerySchema` parses all three; an unknown value is dropped from the address with
+  `replaceState`, never answered with an error. `target` points; it never selects or charges. Every
+  upgrade prompt builds its link with one helper, `pricingHref(target, cycle?)` — today's allowance
+  meter link to `/settings/billing` moves to it (SUBSCRIPTIONS_BUILD_PROMPTS S5).
+- **`/[handle]?add=1` opens a seller's Add-to-project picker on arrival.** A signed-in visitor of a
+  freelancer or team profile lands with the hero's Add-to-project popover open — the business bench's
+  Add to project (the Talent module's re-hire, Decision #241) links here so there is one picker. The
+  marker is an instruction, not page state: `ProfileHero` strips it on read (`replaceState`), and it
+  opens nothing for a guest, a restricted account or the owner's preview.
 - **The Explore tree has one Back, and it is not `history.back()`.** `/explore` (with its query),
   `/view/[id]` and every page under a `/@handle` form one discovery tree, and the contextual Back
   control on a profile or a listing (`features/explore/islands/ExploreBackNav.island.tsx`) walks a
@@ -224,7 +239,14 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   pages read over one (overview · analytics draw cash flow over it, the ledger lists it; set from the
   pinned range ruler; the pre-ruler names `week|month|quarter|year` still resolve; each page omits its
   OWN default — `1m` for the cash-flow pages, `all` for the ledger, `defaultPeriodFor`),
-  `?display=` the currency the figures are drawn in. `/wallet/transactions` also carries its filter bar
+  `?display=` the currency the figures are drawn in. Two intents open the wallet mid-flow
+  (`apps/web/features/wallet/core/wallet-intent.ts`, Decision #243): `?do=<action>` opens that
+  action's dialog once — only an action the wallet draws for the viewer, offered or locked with its
+  reason — and is stripped from the address at once (`replaceState`), so a reload does not reopen it;
+  `?back=<path>` is where the movement's done step offers to return, allowlisted by `safeBack` to a
+  same-origin `/checkout` path (no scheme, no `//`, no backslash or control character) because it is
+  an open-redirect surface — the checkout's tier-1 Add money is
+  `/wallet?w=business:<id>&do=top_up&back=<this checkout step>`. `/wallet/transactions` also carries its filter bar
   (Decision #152): `?q=` the search, `?dir=in|out` the direction, `?kind=a,b` the line families
   (`LEDGER_KIND_CHOICES`), each dropped at its default (`withLedgerFilters`), so a filtered ledger links
   and reloads as it was. The island adds `?tz=<IANA zone>` to its own `/api/wallet/*` reads (never to a
@@ -636,12 +658,13 @@ themselves or left in a transfer), so an island adopts the server's state. RPC r
 | :----------------------------------- | :-------------------- | :-------------------------------------------------------------------------------------- |
 | `/api/workspace/roster`              | `GET · HEAD · OPTIONS` (`?kind=`) | `org.get_workspace_roster(kind)`                                                        |
 | `/api/workspace/detail`              | `GET · HEAD · OPTIONS` (`?kind=&ref=`) | `org.get_workspace_detail(kind, handle_or_id)`                                          |
+| `/api/workspace/bench`               | `GET · HEAD · OPTIONS` (`?ref=`) | `org.get_business_bench(handle_or_id)` — the Talent module's bench (its retry; the page reads it server-side); `hire` holders only (403), Decision #241 |
 | `/api/workspace/handle`              | `GET`                 | `org.check_handle(handle)` — the create form's probe                                    |
 | `/api/workspace/create`              | `POST`                | `org.create_workspace(kind, name, handle)` → 201                                        |
 | `/api/workspace/update`              | `POST`                | `org.update_workspace` (name, tagline) · `org.set_workspace_status` (publish / archive / restore) |
 | `/api/workspace/invite`              | `POST`                | `org.invite_workspace_member` (by handle **or** email)                                  |
 | `/api/workspace/invite-action`       | `POST`                | `org.revoke_workspace_invitation` · `org.resend_workspace_invitation` (the inviting side) |
-| `/api/workspace/invite-respond`      | `POST`                | `org.respond_to_workspace_invitation` (the invitee)                                     |
+| `/api/workspace/invite-respond`      | `POST`                | `org.respond_to_workspace_invitation` (the invitee). A refused accept is typed by `details.reason`: `persona` (403, Decision #228 (A)) · `payout_not_ready` (403, with `href` to `/settings/verification`, Decision #196) · `seat_cap` (409, the team's `team_seats` cap — `org.fn_assert_seat`'s `55000 plan:`, which on this door is never anything else). The roster's invitation strip words each one beside its row |
 | `/api/workspace/member`              | `POST`                | `org.update_workspace_member` (role, overrides, title, reports-to, spend envelope, remove / leave) |
 | `/api/workspace/transfer-ownership`  | `POST`                | `org.transfer_workspace_ownership`                                                      |
 | `/api/workspace/role`                | `POST`                | `org.upsert_workspace_role`                                                             |
@@ -669,7 +692,10 @@ and it is the rule a future "claim your handle" flow must validate against. The 
 on `ctx.state.profileStatus` — `200`, `404` for a reserved, unknown or hidden handle (the three are
 deliberately indistinguishable), or `503` when the database could not be asked — so the shared
 layout paints a calm not-found or an honest "try again", never a fabricated profile. (Profiles are
-live-only since 2026-09-23; there is no stub profile to fabricate.)
+live-only since 2026-09-23; there is no stub profile to fabricate.) In development only, the same
+middleware lays the Dev Context Switcher's business page state (`pj.dev.business-page`, Decision
+#244) over a business's read: a member's hidden reason (draft · archived · invite-only), or
+`missing` — the outsider's `404`.
 
 ### Messaging, hiring-handshake & link API (Decision #128)
 
@@ -712,6 +738,8 @@ nothing.
 
 | Path | Method / body | Delegates to |
 | :-- | :-- | :-- |
+| `/api/finance/plans` (**Planned**, #252) | `GET · HEAD` | `PricingBackendService.catalogue` → `finance.get_public_plan_catalogue()` (a definer granted to `anon`, since both plan policies are `authenticated`-only today); adds the caller's `current` plan when signed in. Public cache for a guest, private otherwise |
+| `/api/finance/subscriptions/checkout` (**Planned**, #252 (f)) | `POST` `{ planCode, cycle, subject }` | `SubscriptionBackendService.startCheckout` → a Stripe Billing Checkout URL; 402 `PK402` · 403 cannot bill this subject · 409 already on it |
 | `/api/finance/disputes` | `GET` `?status=open\|awaiting_response\|under_review` (optional) | `DisputeBackendService.queue` → `finance.list_disputes_for_review` (operator only, else 403) |
 | `/api/finance/disputes/[disputeId]` | `GET` | `DisputeBackendService.get` → `finance.get_dispute` (a party or an operator; 404 otherwise) |
 | `/api/finance/disputes/[disputeId]/resolve` | `POST` `{ outcome, payeeShareBp, notes }` | `DisputeBackendService.resolve` → `finance.resolve_dispute` (operator only, else 403) |

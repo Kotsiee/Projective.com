@@ -60,7 +60,9 @@ and high-level metadata.
 (`(status = 'archived') = (archived_at IS NOT NULL)`). **Indexes:** `idx_projects_source_blueprint`
 (`source_blueprint_id, owner_user_id, status` WHERE `source_blueprint_id IS NOT NULL`) ·
 `idx_projects_stale_drafts` (`last_activity_at` WHERE `status = 'draft' AND source_blueprint_id IS NOT
-NULL`). **Triggers:** `trg_projects_slug` (`security.fn_slug_guard('prj')`) · `trg_sync_project_search`
+NULL`) · `idx_projects_client_business` (`client_business_id` WHERE NOT NULL — the business console
+detail, its archive blockers and the bench). **Triggers:** `trg_projects_slug`
+(`security.fn_slug_guard('prj')`) · `trg_sync_project_search`
 · `trg_update_project_counts` · `trg_project_handover_on_complete` · `trg_project_shape_lock` (freezes
 `format`/`structure_variation` once a seat is taken) · `trg_check_public_project_footprint` ·
 `trg_projects_touch_updated_at` (`projects.fn_touch_updated_at`, every `UPDATE` — `updated_at` is
@@ -366,10 +368,11 @@ Maps a specific freelancer or team to a project stage.
 | `status`                | text            | NOT NULL, no CHECK. Written values include `assigned`, `accepted`, `pending_funding`; `released`/`cancelled`/`declined`/`completed` are the inactive set. |
 | `created_at`            | timestamptz     | NOT NULL `DEFAULT now()`.                                                |
 
-**Index:** `uq_stage_assignment_active_assignee` — UNIQUE on (`project_stage_id`, `assignee_type`,
+**Indexes:** `uq_stage_assignment_active_assignee` — UNIQUE on (`project_stage_id`, `assignee_type`,
 `COALESCE(freelancer_profile_id, team_id)`) WHERE `status NOT IN ('released', 'cancelled',
-'declined', 'completed')`: one active seat per assignee per stage. In the `supabase_realtime`
-publication.
+'declined', 'completed')`: one active seat per assignee per stage · `idx_stage_assignments_stage`
+(`project_stage_id`, every status — the business bench reads completed seats too, Decision #241). In
+the `supabase_realtime` publication.
 
 ### `projects.project_participants`
 
@@ -383,6 +386,7 @@ A registry of all profiles (Business or Freelancer) with access to the project w
 | `profile_id`   | uuid         | NOT NULL. Polymorphic on `profile_type` — no FK.            |
 | `role`         | text         | NOT NULL, no CHECK.                                         |
 | `created_at`   | timestamptz  | NOT NULL `DEFAULT now()`.                                   |
+| `can_manage_tickets` | boolean | NOT NULL `DEFAULT false`. The business client's explicit grant to this delegated project manager to compose and edit tickets on its behalf (Decision #294). `ck_project_participants_ticket_manager_seat`: only a `freelancer` seat with `role` `admin` / `manager` can hold it. Derived (`trg_project_participants_derived`): written only by `projects.set_ticket_manager` (review authority + `hire`, audited), and cleared by `projects.set_member_role` when the seat leaves admin/manager. Read by `projects.is_ticket_manager`, which also requires a business-billed project. |
 
 ### `projects.stage_staffing_roles`
 
@@ -643,7 +647,7 @@ sort_order`).
 | `trg_ticket_touch_updated_at`            | BEFORE UPDATE                                                   | `updated_at := now()`.                                                                                                       |
 | `trg_enforce_ticket_checkout_desc`       | BEFORE UPDATE                                                   | Entering `escrow_funded` or `claimed`/`in_progress` requires a description.                                                  |
 | `trg_ticket_ordering_guard`              | BEFORE UPDATE OF `sort_order`                                   | Refuses a manual reorder outside `backlog`.                                                                                  |
-| `trg_ticket_immutability_guard`          | BEFORE UPDATE                                                   | Once claimed, `title`/`description`/`text_description`/`unit_price_cents`/`required_stages`/`workload_intensity` are locked to all but the assignee and admins. |
+| `trg_ticket_immutability_guard`          | BEFORE INSERT OR UPDATE                                         | Once claimed, `title`/`description`/`text_description`/`unit_price_cents`/`required_stages`/`workload_intensity` are locked to both parties, and `current_stage_id` to all but review authority; an assigned INSERT needs review authority; `payment_status`/`total_amount_paid` are written by the escrow functions only (Decision #291); a delegated ticket manager's own statement changes only the composer's columns of an unclaimed ticket, and its INSERT starts unclaimed in `backlog` (Decision #294). |
 | `trg_ticket_authority_guard`             | BEFORE UPDATE OF `status` OR DELETE                             | `fn_ticket_settlement_guard`: only review authority (`can_review_project`) may complete or delete; service role ungated.      |
 | `trg_ticket_claim_before`                | BEFORE UPDATE OF `current_assignee_id`, `status`                | Stamps `claimed_at`; unassignment resets to `backlog`.                                                                       |
 | `trg_ticket_delete_protocol`             | BEFORE DELETE                                                   | Releases held escrow before the row goes.                                                                                    |
@@ -692,7 +696,8 @@ created_at DESC`).
 ### `projects.ticket_workload_reports`
 
 A freelancer's report that a ticket's workload was mis-stated, filed by
-`projects.file_workload_report`. Inserting one hides the ticket for the response window.
+`projects.file_workload_report` or inserted by the assignee under the _File workload report_ policy.
+Inserting one suspends the ticket for the response window and moves no money.
 
 | Column               | Type                            | Notes                                                       |
 | :------------------- | :------------------------------ | :---------------------------------------------------------- |
@@ -703,15 +708,18 @@ A freelancer's report that a ticket's workload was mis-stated, filed by
 | `reported_intensity` | numeric(4,2)                    | What the reporter says it should be.                        |
 | `reason`             | text                            | NOT NULL.                                                   |
 | `status`             | projects.workload_report_status | NOT NULL `DEFAULT 'open'`. `open`, `acknowledged`, `adjusted`, `expired_penalized`, `dismissed_bad_faith`. |
-| `hidden_until`       | timestamptz                     |                                                             |
+| `hidden_until`       | timestamptz                     | End of the response window, stamped at filing; the expiry sweep's clock. |
 | `created_at`         | timestamptz                     | NOT NULL `DEFAULT now()`.                                   |
 | `resolved_at`        | timestamptz                     |                                                             |
 
 **Indexes:** `idx_workload_reports_ticket` (`ticket_id`) · `idx_workload_reports_sweep` (`status,
-hidden_until`). **Trigger:** `trg_open_workload_report` (AFTER INSERT) clears the ticket's
-assignee (which resets it to backlog and releases escrow via the ticket triggers), sets its
-`hidden_until` to now + `workload_report_window_hours` (default 48) and points
-`tickets.workload_report_id` at the report.
+hidden_until`). **Trigger:** `trg_open_workload_report` (AFTER INSERT) suspends the ticket —
+refused unless it is `claimed` / `in_progress`; it becomes `reported_hidden` with its assignee and
+held escrow kept, nothing paid (Decision #290) — sets its `hidden_until`, and this row's, to now +
+`workload_report_window_hours` (default 48), and points `tickets.workload_report_id` at the report.
+The report closes `adjusted` when the client raises the ticket's W_i (`trg_adjust_workload_report` on
+`tickets`), `expired_penalized` by the expiry sweep, or `dismissed_bad_faith` by an audit; each
+resumes the work.
 
 ---
 

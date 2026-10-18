@@ -51,7 +51,13 @@ GRANT EXECUTE ON FUNCTION projects.has_project_access (uuid) TO anon, authentica
 GRANT EXECUTE ON FUNCTION projects.has_stage_access (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.can_review_project (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.can_manage_project_members (uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.is_ticket_manager (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.is_cohort_member (uuid) TO anon, authenticated;
+
+-- Who may move a claimed ticket (Decision #293). trg_ticket_immutability_guard is INVOKER and calls
+-- it for a statement PostgREST runs as `authenticated`, so that role must be able to execute it. It
+-- writes nothing and answers only about auth.uid(); called directly it raises or returns, no more.
+GRANT EXECUTE ON FUNCTION projects.fn_assert_ticket_move (uuid, uuid, public.ticket_status, public.ticket_status, uuid, uuid) TO authenticated;
 
 -- The business-authority predicates (BB2): each answers only about auth.uid(), so a signed-in caller
 -- may ask them of a project (the app reads them to decide which commit to offer). Not `anon`: a
@@ -1258,11 +1264,14 @@ REVOKE ALL ON FUNCTION projects.fn_stage_revision_terms () FROM PUBLIC, anon, au
 
 -- SECURITY DEFINER writes into security.audit_logs / comms.fn_notify, which no client role reaches, so
 -- the grant is part of the access decision: signed-in callers only. Each body also refuses a NULL
--- auth.uid() itself and applies its own authority check (set_member_role: can_review_project;
--- invite_by_email, act_on_invitation and the stage invite-link doors: can_manage_project_members;
--- resolve/redeem_invite_link: any signed-in holder of the token).
+-- auth.uid() itself and applies its own authority check (set_member_role and set_ticket_manager:
+-- can_review_project + `hire`; invite_by_email, act_on_invitation and the stage invite-link doors:
+-- can_manage_project_members; resolve/redeem_invite_link: any signed-in holder of the token).
 REVOKE ALL ON FUNCTION projects.set_member_role (uuid, uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.set_member_role (uuid, uuid, text) TO authenticated;
+
+REVOKE ALL ON FUNCTION projects.set_ticket_manager (uuid, uuid, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.set_ticket_manager (uuid, uuid, boolean) TO authenticated;
 
 REVOKE ALL ON FUNCTION projects.invite_by_email (uuid, uuid, text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.invite_by_email (uuid, uuid, text, text) TO authenticated;
@@ -1653,6 +1662,8 @@ GRANT EXECUTE ON FUNCTION org.upsert_workspace_role (text, uuid, uuid, text, tex
 GRANT EXECUTE ON FUNCTION org.archive_workspace_role (text, uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION org.get_workspace_roster (text) TO authenticated;
 GRANT EXECUTE ON FUNCTION org.get_workspace_detail (text, text) TO authenticated;
+-- The Talent module's bench (00001020 §17, BU5): answers `forbidden` to anybody without `hire`.
+GRANT EXECUTE ON FUNCTION org.get_business_bench (text) TO authenticated;
 
 -- Money governance (00001210 §13). The finance schema is deny-by-default (above), so each is granted.
 GRANT EXECUTE ON FUNCTION finance.save_team_split (uuid, jsonb) TO authenticated;

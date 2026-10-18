@@ -73,15 +73,15 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | BF17 | Spend policy writer | `finance.save_spend_policy` (F1210:2106-2221): `manage_finances`, rank/self/owner/grant-what-you-hold checks, vault re-sync | ✅ |
 | BF18 | Request approval | `request_spend_approval` (F1210:2228-2294): needs vault `spend`, genuine need, 7-day expiry, notifies approvers | ✅ |
 | BF19 | Threshold fallback consistent | `request_spend_approval` and `place_wallet_order` use `COALESCE(threshold, 0)` — **ignore** the platform `vault_approval_threshold_cents` fallback that `fn_auto_fund_drain` honours (F1250:226-227) | ❌ |
-| BF20 | **Approved request is redeemable** | `decide_spend_approval` only drains auto-fund on approval (F1210:1958-1960). `place_wallet_order` refuses ≥ threshold **unconditionally** (F1210:1454) and never reads `spend_approvals`; the app files requests with `p_ref_table: null, p_ref_id: null` (`wallet-actions.ts:420-436`); checkout links "needs approval" to `/businesses/{slug}/spend` (`live-buyer.ts:526-532`) where nothing can be redeemed | ✅ DB + API (BB4: ref-bound, single-use, `finance.fn_redeem_spend_approval`; checkout refusal carries `approvalRef`) · 🧩 checkout request dialog is BP2 |
+| BF20 | **Approved request is redeemable** | `decide_spend_approval` only drains auto-fund on approval (F1210:1958-1960). `place_wallet_order` refuses ≥ threshold **unconditionally** (F1210:1454) and never reads `spend_approvals`; the app files requests with `p_ref_table: null, p_ref_id: null` (`wallet-actions.ts:420-436`); checkout links "needs approval" to `/businesses/{slug}/spend` (`live-buyer.ts:526-532`) where nothing can be redeemed | ✅ DB + API (BB4: ref-bound, single-use, `finance.fn_redeem_spend_approval`; checkout refusal carries `approvalRef`) · ✅ checkout request in place, bound to the basket, pending / approved shown, no `/spend` link (BP2, #243) |
 | BF21 | Envelope + threshold + KYB on **every** spend door | Basket (`place_wallet_order`) ✅ all three. `transfer_funds` ✅ envelope + KYB, no threshold. **`fund_stage`, `fund_ticket`, `fund_paid_revision`, card `escrow_lock`, claim-lock holds** — envelope of the **project owner** (not the actor, F1200:432, :616), **no threshold, no KYB** (`finance/Functions.md:245-246` admits it) | ❌ |
 | BF22 | No double counting | A basket ticket line counts against the caller's envelope in `place_wallet_order` and again against the project owner's in `fn_hold_ticket_escrow` (`fn_check_spending_limit` increments `spent_cents`, F1200:262) | ❌ |
 | BF23 | Who can fund a business project | `has_project_access` admits a business only via a `project_participants` row whose business **owner** is the caller (`00001100:661-745`): a member holding `spend` cannot fund; yet every member passes `can_review_project` (BF14) — the authorities are inverted | ❌ |
-| BF24 | Pool short | `place_wallet_order` raises PF402; #61 flag (d) undecided (fail / prompt to contribute / charge personal); PRODUCT_SPEC:1262-1264 forbids a personal card for a business purchase | 🧑 BX-c |
+| BF24 | Pool short | `place_wallet_order` raises PF402; #61 flag (d) undecided (fail / prompt to contribute / charge personal); PRODUCT_SPEC:1262-1264 forbids a personal card for a business purchase | ✅ refused at checkout with a tier-1 **Add money** (the business wallet's top-up, back to checkout) for `contribute_funds` holders; no personal card; no on-account fallback (#230 (c) [1], BP2, #243) |
 | BF25 | Contribution ledger complete | Reads `ledger_audit WHERE action='add_funds'`, written only by `transfer_funds` — **card top-ups never appear** (`live-money.ts:356-358`) | ✅ card top-ups write `add_funds` at settlement (BB6, Decision #238) |
 | BF26 | Withdrawals | `begin_payout`: vault `withdraw` (owner preset only), KYB, verified payout account | ✅ |
 | BF27 | KYB start | `record_payout_account('business')` needs `manage_billing` (owner only); `sync_payout_account` sets `kyb_status` | ✅ backend |
-| BF28 | KYB UI | Verification module is a `ModulePlaceholder` with **no action**, yet every "Finish KYB" / "Verify {name}" link targets it (`ModuleScreen.tsx:160-168`; `VerificationLock.tsx`; `BillingScreen:296`; `WorkspaceLane:768`) — a **dead-end loop** (§3.11) | ❌ |
+| BF28 | KYB UI | Verification module is a `ModulePlaceholder` with **no action**, yet every "Finish KYB" / "Verify {name}" link targets it (`ModuleScreen.tsx:160-168`; `VerificationLock.tsx`; `BillingScreen:296`; `WorkspaceLane:768`) — a **dead-end loop** (§3.11) | ✅ `BusinessVerificationScreen`: status, what is due, one tier-3 Verify / Continue verification, what verification unlocks; every KYB link asks the module's own gate (BU4, Decision #242) |
 | BF29 | `manage_billing` vs module gate | Every billing write needs `manage_billing` (owner only), but the Billing module is gated on `manage_finances` (admins see it, cannot act); Verification gated on `manage_settings` though KYB start needs `manage_billing` | ✅ Billing and Verification gated on `manage_billing`, owner-grantable to a named admin (BB6, #238) |
 | BF30 | Spend module gate | Gated on `spend_funds`; editing needs `manage_finances`, deciding needs `approve_spend` — an approver-only role cannot reach the queue; a `member` without `spend_funds` cannot open the screen but RLS lets it read every member's limits and requests (`00002013:90-105`) | ✅ Spend opens on spend · manage finances · approve spend; envelopes read by their owner or `fn_reads_wallet_envelopes` (BB6) |
 
@@ -106,17 +106,17 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | BF40 | uuid → handle | 303 (should be 308, as Teams #228 B) | ❌ |
 | BF41 | `/businesses/x/overview` | Renders — a duplicate URL of `/businesses/x` (not canonicalised) | ❌ |
 | BF42 | Missing / forbidden | Silent 303 → `/businesses`; from `[module]` it is **two hops** (`/businesses/<ref>` → `/businesses`) | ❌ |
-| BF43 | Talent module | Registry entry (gate `hire`, "the bench — freelancers and teams this business works with") falls to `ModulePlaceholder` "Not built yet"; no doc defines Talent | ❌ 🧑 BX-i |
+| BF43 | Talent module | Registry entry (gate `hire`, "the bench — freelancers and teams this business works with") falls to `ModulePlaceholder` "Not built yet"; no doc defines Talent | ✅ the bench — `org.get_business_bench` + the Talent screen (BU5, Decision #241) |
 | BF44 | Team wallets accept spend requests | `request_spend_approval` accepts team wallets, but teams never hold `approve_spend` — only the owner can decide | ✅ business wallets only (BB4) |
 
 ### 1.6 Public `/:handle` (buyer profile)
 
 | # | Rule | Status |
 | :-- | :-- | :-- |
-| BF45 | Buyer cannot be hired: Message primary, Follow secondary (PRODUCT_SPEC:517-521) | verify in BP1 |
-| BF46 | "Corporate verified" crest on KYB (PRODUCT_SPEC:2330-2334); Client Trust Score, **no Standing** (:2326-2328) | verify in BP1 |
-| BF47 | Editors = `edit_profile` (owner + admin) vs PRODUCT_SPEC:591 "a business's owner" | 📄 (twin of #226 b) |
-| BF48 | Unlisted businesses | Impossible today (BF9) | ❌ |
+| BF45 | Buyer cannot be hired: Message primary, Follow secondary (PRODUCT_SPEC:517-521) | ✅ business rig: tier-3 Message to the owner, icon-only Follow, Manage business for editors, no listings resolved (BP1, #244) |
+| BF46 | "Corporate verified" crest on KYB (PRODUCT_SPEC:2330-2334); Client Trust Score, **no Standing** (:2326-2328) | ✅ crest only on `kyb_status = 'verified'`, no Standing (probe-pinned); ⚠️ Client Trust Score undefined — the freelancer-given client rating is the readout (BP1, #244 FLAG c) |
+| BF47 | Editors = `edit_profile` (owner + admin) vs PRODUCT_SPEC:591 "a business's owner" | ✅ business clause aligned to owner or admin (BP1, #244); the team clause is #250 (b)'s, corrected by Teams P1 |
+| BF48 | Unlisted businesses | ✅ visibility built (BB5, #236 C) and honoured by `/@handle`: draft · archived · invite-only are missing to outsiders (BP1, #244); ⚠️ unlisted opens by link, as for people and teams — BP1's acceptance worded it a 404 to strangers, so it awaits the owner (#244 FLAG a) |
 
 ---
 
@@ -164,7 +164,7 @@ Severity: **G** gate · **M** matrix/parity · **T** tidy · **B** functional bu
 | BD23 | G | `--wsp-business` = `--secondary`, which is also the **focus-ring colour** (`theme-engine.ts:203-213`): a ring on a business-tinted mark is invisible against it | Business marks use `--tertiary` (the CVD anchor already used at :334-338) or the ring gets the inverse-surface halo on business surfaces — 🧑 BX-j |
 | BD24 | M | Roster table money column header is the stats label "Spent (30d)" from the first card; only the largest currency is shown; `delta` always null | Explicit column def; multi-currency MetaLine; drop the delta slot until it has data |
 | BD25 | T | `PolicyAmount` literal 600 at every size (`tokens.css:401-416`) | `--fw-medium` (figures are not headings; weight is the money register's) |
-| BD26 | B | Talent and Verification render "Not built yet"; Verification shows "is verified" **and** "Not built yet" when verified; `ModulePlaceholder.tsx:15` still lists Billing as next; `VerificationLock` hard-codes "two working days" | Build Verification (BU4); Talent per BX-i; correct stale copy |
+| BD26 | B | Talent and Verification render "Not built yet"; Verification shows "is verified" **and** "Not built yet" when verified; `ModulePlaceholder.tsx:15` still lists Billing as next; `VerificationLock` hard-codes "two working days" | Build Verification (BU4); Talent per BX-i; correct stale copy — a business's Verification built and its stale copy corrected (BU4, Decision #242); a team's Verification is still the placeholder (Teams series, #242 flag (d)); Talent per BU5 |
 
 ---
 

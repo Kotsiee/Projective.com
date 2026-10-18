@@ -247,6 +247,41 @@ export type ProfileMetrics = z.infer<typeof ProfileMetricsSchema>;
 
 // #region ProfileView
 /**
+ * Why a team's or business's page is missing to everyone outside it (BP1, Decision #244): it is a
+ * `draft`, `archived`, or `invite_only`. Only a member is ever told — an outsider gets the same
+ * "not found" an unknown handle gets.
+ */
+export const ProfileHiddenReason = z.enum(["draft", "archived", "invite_only"]);
+export type ProfileHiddenReason = z.infer<typeof ProfileHiddenReason>;
+
+/**
+ * A workspace profile's member-facing facts, decided by `org.get_profile_view` under the viewer's own
+ * session from the viewer's OWN seat (a platform admin who may open the profile holds no console
+ * door). BP1 fills it for a business; the team arm is Teams P1's.
+ */
+export const ProfileWorkspaceFactsSchema = z.object({
+	/** Why outsiders cannot open this page, or `null` while anybody may. */
+	hiddenReason: ProfileHiddenReason.nullable(),
+	/** `/businesses/:h` — the "Manage business" link, for a member holding `edit_profile`; else `null`. */
+	consoleHref: z.string().max(120).nullable(),
+	/** `/businesses/:h/settings`, when the viewer may open Settings (`manage_settings`); else `null`. */
+	settingsHref: z.string().max(120).nullable(),
+});
+export type ProfileWorkspaceFacts = z.infer<typeof ProfileWorkspaceFactsSchema>;
+
+/**
+ * Who a Message from this profile reaches when that is not the profile itself — a business's owner,
+ * because a direct message is person-to-person (PRODUCT_SPEC §Direct & Group Conversations).
+ */
+export const ProfileMessageTargetSchema = z.object({
+	/** The person's canonical `@handle` (the `dm-{handle}` thread). */
+	handle: z.string().max(41),
+	/** Their display name, for the conversation's title. */
+	name: z.string().max(120),
+});
+export type ProfileMessageTarget = z.infer<typeof ProfileMessageTargetSchema>;
+
+/**
  * The full public-profile header + overview projection the `/[handle]` shell renders. `handle` carries
  * the leading `@` (the canonical entity identifier, root CLAUDE.md Decision #3). `userId` lets the
  * shell compare against the hydrated `UserContext.userId` to unlock the owner-only chrome (Edit
@@ -365,7 +400,10 @@ export const ProfileViewSchema = z.object({
 	avatarFull: z.string().optional(),
 	/** The owner's presentation switches; absent reads as {@link DEFAULT_PROFILE_SETTINGS}. */
 	settings: ProfileSettingsSchema.optional(),
-	/** The profile's reach — only an individual carries all three states. */
+	/**
+	 * The profile's reach. A person's own three states; a business's `public` · `unlisted`, with its
+	 * `invite_only` (members only) read as `private`.
+	 */
 	visibility: ProfileVisibility.optional(),
 	/** The polymorphic owner, which every owner write is addressed to. */
 	owner: z.object({ type: ProfileOwnerType, id: z.string() }).optional(),
@@ -375,6 +413,16 @@ export const ProfileViewSchema = z.object({
 	 * owner sub-nav and the edit routes; `follows` seeds the Follow control.
 	 */
 	viewer: z.object({ isOwner: z.boolean(), follows: z.boolean() }).optional(),
+	/**
+	 * A business's member-facing facts — the reason it is hidden from outsiders and the viewer's
+	 * console doors (BP1, Decision #244). Absent for every other kind.
+	 */
+	workspace: ProfileWorkspaceFactsSchema.optional(),
+	/**
+	 * Who the Message control reaches when it is not the profile itself — a business's owner. Absent
+	 * when the profile is its own recipient (a person) or has none.
+	 */
+	messageTo: ProfileMessageTargetSchema.optional(),
 });
 export type ProfileView = z.infer<typeof ProfileViewSchema>;
 

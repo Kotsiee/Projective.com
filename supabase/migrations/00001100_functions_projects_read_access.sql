@@ -971,6 +971,32 @@ AS $$
         );
 $$;
 
+-- TRUE when the caller is a delegated project manager the business client has explicitly let compose
+-- and edit tickets on its behalf (Decision #294): an `admin` / `manager` person seat carrying
+-- `can_manage_tickets`, on a project billed to a business (projects.set_ticket_manager grants it). The
+-- predicate behind the _Ticket managers compose/edit tickets_ policies; what such a caller may change is
+-- narrowed again by projects.fn_ticket_immutability_guard. Not review authority: it approves, hires,
+-- funds and settles nothing.
+CREATE OR REPLACE FUNCTION projects.is_ticket_manager(_project_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, projects, org, auth
+AS $$
+    SELECT EXISTS (
+        SELECT 1
+        FROM projects.project_participants pp
+        JOIN projects.projects p ON p.id = pp.project_id
+        WHERE pp.project_id = _project_id
+            AND p.client_business_id IS NOT NULL
+            AND pp.profile_type = 'freelancer'
+            AND pp.profile_id = auth.uid()
+            AND pp.role IN ('admin', 'manager')
+            AND pp.can_manage_tickets
+    );
+$$;
+
 -- TRUE when the caller holds a membership of the cohort. SECURITY DEFINER so the member arms of the
 -- cohorts / session_events policies do not read cohort_memberships through its own policy, whose
 -- owner arm reads cohorts — that cycle raised "infinite recursion detected in policy".

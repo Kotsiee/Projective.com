@@ -17,6 +17,12 @@ import {
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import type { RosterNotice } from "../core/console-route.ts";
 import { useContextSwitch } from "../core/useContextSwitch.ts";
+import { useInvitationAnswers } from "../core/useInvitationAnswers.ts";
+import {
+	invitationStripDismissible,
+	invitationStripIsTheList,
+	invitationStripShown,
+} from "../core/invitation-strip-model.ts";
 import { openCreate, rosterTab, rosterView, selectRosterTab } from "../core/workspace-state.ts";
 import { displayZoom, gridColWidth, workspaceZoom } from "../core/view-state.ts";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
@@ -100,10 +106,6 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 		if (shared !== null) tab.value = shared;
 	});
 	const search = useSignal(props.initialSearch ?? "");
-	/** Invitations answered in this session — filtered out immediately, before the server replies. */
-	const answered = useSignal<ReadonlySet<string>>(new Set());
-	/** Answers in flight, so a row cannot be double-submitted. */
-	const inFlight = useSignal<ReadonlySet<string>>(new Set());
 	const stripDismissed = useSignal(false);
 	/** A failure the reader can act on — rendered as an alert with a retry. */
 	const notice = useSignal<string | null>(props.initialError ?? null);
@@ -123,9 +125,10 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 	// #endregion
 
 	// #region Derived
-	const invites = useComputed(() =>
-		roster.value.invitations.filter((i) => !answered.value.has(i.id))
-	);
+	const invitations = useComputed(() => roster.value.invitations);
+	/** The strip's answers: optimistic, restored with their refusal; a landed one re-reads the roster. */
+	const answers = useInvitationAnswers(invitations, () => refresh());
+	const invites = answers.visible;
 	const counts = useComputed(() => rosterTabCounts(roster.value.items, invites.value));
 	const rows = useComputed(() => filterRoster(roster.value.items, tab.value, search.value));
 	const searching = useComputed(() => search.value.trim().length > 0);
@@ -135,7 +138,19 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 		!searching.value
 	);
 	const stripVisible = useComputed(() =>
-		invites.value.length > 0 && (tab.value === "invitations" || !stripDismissed.value)
+		invitationStripShown({
+			waiting: invites.value.length,
+			answeredHere: answers.answeredHere.value,
+			dismissed: stripDismissed.value,
+			onInvitationsTab: tab.value === "invitations",
+		})
+	);
+	/** On the Invitations tab the strip is the one list and its one empty line; the body defers to it. */
+	const stripIsTheList = useComputed(() =>
+		invitationStripIsTheList({
+			shown: stripVisible.value,
+			onInvitationsTab: tab.value === "invitations",
+		})
 	);
 	// #endregion
 
@@ -171,7 +186,6 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 		refreshing.value = false;
 		if (res.ok && res.data) {
 			roster.value = res.data;
-			answered.value = new Set();
 			loaded.value = true;
 			notice.value = null;
 			return true;
@@ -182,31 +196,14 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 	// #endregion
 
 	// #region Invitations
-	async function respond(invite: IncomingInvite, accept: boolean): Promise<void> {
-		if (inFlight.value.has(invite.id)) return;
+	/**
+	 * Answer from the strip. A page-level message about an earlier act is stale once the reader moves
+	 * on; the answer's own outcome, or its refusal, is the strip's to show beside the row.
+	 */
+	function respond(invite: IncomingInvite, accept: boolean): void {
 		notice.value = null;
 		info.value = null;
-		inFlight.value = withId(inFlight.value, invite.id);
-		// Optimistic: the row leaves at once, because a decision the reader has made should not sit on
-		// screen waiting for a network. It comes back only if the server refuses.
-		answered.value = withId(answered.value, invite.id);
-
-		const res = await WorkspaceService.respondInvite({ inviteId: invite.id, accept });
-		inFlight.value = withoutId(inFlight.value, invite.id);
-
-		if (!res.ok) {
-			answered.value = withoutId(answered.value, invite.id);
-			notice.value = res.message ??
-				`Couldn't ${accept ? "accept" : "decline"} the invitation from ${invite.workspaceName}.`;
-			return;
-		}
-		// Reconcile wholesale: accepting adds an entity to the roster, so the list itself is what went
-		// stale — not just the strip. The answer carries no roster, so re-read it.
-		if (await refresh()) {
-			info.value = accept
-				? `You joined ${invite.workspaceName}.`
-				: `You declined the invitation from ${invite.workspaceName}.`;
-		}
+		void answers.respond(invite, accept);
 	}
 	// #endregion
 
@@ -332,8 +329,13 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 						<div class="wsp-band__inner">
 							<InvitationStrip
 								invitations={invites.value}
-								pending={inFlight.value}
+								actions={answers.actions.value}
+								refusals={answers.refusals.value}
+								outcome={answers.outcome.value}
 								onRespond={respond}
+								dismissible={invitationStripDismissible({
+									onInvitationsTab: tab.value === "invitations",
+								})}
 								onDismiss={() => (stripDismissed.value = true)}
 							/>
 						</div>
@@ -400,7 +402,7 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 										onCreate={() => openCreate(props.kind)}
 									/>
 								)
-								: (
+								: !stripIsTheList.value && (
 									<>
 										<p class="wsp-roster__count" aria-live="polite">
 											{countLabel(props.kind, rows.value.length)}
@@ -529,24 +531,5 @@ function RosterBody(
 			))}
 		</Grid>
 	);
-}
-// #endregion
-
-// #region Immutable id-set helpers
-/**
- * Sets are replaced rather than mutated: a signal holding a mutated `Set` never notifies, because its
- * identity did not change — the row would go on rendering its old state until something unrelated
- * re-rendered it.
- */
-function withId(set: ReadonlySet<string>, id: string): ReadonlySet<string> {
-	const next = new Set(set);
-	next.add(id);
-	return next;
-}
-
-function withoutId(set: ReadonlySet<string>, id: string): ReadonlySet<string> {
-	const next = new Set(set);
-	next.delete(id);
-	return next;
 }
 // #endregion

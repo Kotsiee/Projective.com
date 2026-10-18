@@ -18,7 +18,7 @@ fixture for it to drift from. The source of truth is three places:
 | `supabase/seeds/gen/corpus.ts` (the listings) | The authored listing content — nine services with their stage templates, intake questions, team roles and session terms; eight products with manifests, specs and compatibility; five articles with block bodies. Seed-only: nothing outside `supabase/seeds/` imports it. |
 | `supabase/seeds/gen/reviews.ts`           | The listing reviews (21 on services, 16 on products), each by a persona key.                           |
 | `supabase/seeds/gen/world.ts` (the world) | Everything a running product accumulates — who is a member of what, who was hired into which stage, which tickets were paid, who messaged whom, what is unread. |
-| `supabase/seeds/gen/schedules.ts`         | Ten schedules: each owner's timezone, working hours, call windows, time off, call settings and platforms, their busy events, and four discovery calls. |
+| `supabase/seeds/gen/schedules.ts`         | Ten schedules: each owner's timezone, working hours, call windows, time off, call settings and platforms, their busy events, and four discovery calls; plus the stage calendar facts `06_projects.sql` reads — five fixed stage deadlines (`STAGE_DEADLINES`) and one fixed stage start (`STAGE_STARTS`: Meridian's documentation stage). |
 
 `supabase/seeds/generate.ts` resolves them into `supabase/seeds/0*.sql` and the image tree under
 `supabase/seed-assets/`, and **both outputs are committed** so a clone resets with no toolchain.
@@ -51,7 +51,7 @@ every persona lands on the authenticated shell directly.
 | :--------------- | :-------------- | :------------------------------------- | :---------------------------- | :-------------------------------------------------------------- |
 | `marisdelacroix` | Maris Delacroix | Freelancer (product design lead)       | —                             | KYC verified, Pro plan, 2 funded tickets, 1 released, Income Smoother enrolled, monthly payouts |
 | `renkoda`        | Ren Koda        | Freelancer (3D & motion)               | —                             | Pending invitation from Theo (draft project), sells a product   |
-| `juno`           | Juno Park       | Freelancer (frontend)                  | —                             | KYC pending, pending invitation + pending application, building Noor's site |
+| `juno`           | Juno Park       | Freelancer (frontend)                  | —                             | KYC pending, pending invitation + pending application, building Noor's site; on Helia's Meridian docs stage (Helia's second bench freelancer), which opens on a fixed day after her Haddad Studio deadline so the two seats never overlap (AC6) |
 | `noor`           | Noor Haddad     | Client (creative director)             | — (invited to Helia Finance)  | Owns an individual project, 2 product orders, basket, unread DM; a pending Member invitation from Helia |
 | `theo`           | Theo Almeida    | Client (founder)                       | —                             | Draft project with a placeholder invitation, service + product orders |
 | `inesduarte`     | Inês Duarte     | Freelancer, **owns Atelier Nova**      | Atelier Nova (owner)          | Claimed the one-off Verdant ticket, escrow held for the team    |

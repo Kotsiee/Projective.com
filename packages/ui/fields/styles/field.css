@@ -55,19 +55,6 @@
 	--field-radius: var(--fld-r-lg);
 }
 
-/*
- * The 16px mobile floor. Safari on iOS zooms the viewport when a text field smaller than 16px takes
- * focus, and it does not zoom back out — the user is left on a page they now have to pan. The
- * desktop ramp is a density decision and stays; on a touch viewport the editable text steps up to
- * the document base instead. The CONTROL keeps its height, so nothing reflows around it.
- */
-@media (max-width: 767px) and (pointer: coarse) {
-	.ui-field__input,
-	.ui-field__input::placeholder {
-		font-size: max(var(--field-font), var(--text-base));
-	}
-}
-
 /* #endregion */
 
 /* #region Variants */
@@ -347,6 +334,20 @@
 .ui-field__input::placeholder {
 	color: var(--fld-placeholder-fg);
 	opacity: 1;
+}
+
+/*
+ * The 16px mobile floor. Safari on iOS zooms the viewport when a text field smaller than 16px takes
+ * focus, and it does not zoom back out — the user is left on a page they now have to pan. The
+ * desktop ramp is a density decision and stays; on a touch viewport the editable text steps up to
+ * the document base instead. The CONTROL keeps its height, so nothing reflows around it. It sits
+ * after `.ui-field__input`'s `font: inherit`, which would reset it at equal specificity.
+ */
+@media (max-width: 767px) and (pointer: coarse) {
+	.ui-field__input,
+	.ui-field__input::placeholder {
+		font-size: max(var(--field-font), var(--text-base));
+	}
 }
 
 /*

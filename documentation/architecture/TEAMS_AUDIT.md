@@ -147,7 +147,7 @@ Severity: **G** = merge-gate violation (root `CLAUDE.md` §3) · **M** = matrix 
 | ID | Sev | Defect | Fix |
 | :-- | :-- | :-- | :-- |
 | D17 | G | Role label as `wsp-chip`: `WorkspaceCard.tsx:114,121`, `WorkspaceTable.tsx:157`, `WorkspaceLane.island.tsx:498` | Inline Meta: `Owner · 4 members · Active 2d ago`. |
-| D18 | G | Kind chip "Team" in `InvitationStrip.tsx:111` | Meta text. |
+| D18 | G | Kind chip "Team" in `InvitationStrip.tsx:111` | Meta text. ✅ fixed by R2: the row's facts are one `MetaLine` (kind · as role · from @inviter · expires in N days, tabular); `.wsp-chip--kind` deleted. |
 | D19 | G | "Unlimited" / "Per purchase" chips (`SpendLimitRow.tsx:161,168`) | Meta text. |
 | D20 | G | `wsp-capchip` capability labels (`MemberCard.tsx:492`, `MemberTable.tsx:89`, `WorkspaceOverview:134` standing) | Meta text list; the sensitive count may stay a **count** badge. |
 | D21 | M | `wsp-override` grant/revoke chips (`MemberCard.tsx:449,480`; `MemberTable.tsx:77`) | Meta text with `+`/`−` glyph prefix; "+N more" stays a count. |
@@ -160,7 +160,7 @@ Severity: **G** = merge-gate violation (root `CLAUDE.md` §3) · **M** = matrix 
 | D22 | M | Roster empty · "Create a team" (`RosterEmpty.tsx:86`) | Tier 3 filled primary | **Tier 2** monochrome inverted (primary creation trigger) |
 | D23 | M | Roster lane · New (`WorkspaceLane.island.tsx:~308`), rail New (`WorkspaceRail.tsx:249`) | `LaneIconButton accent` / raw button | `LaneCreateButton` (tier 2) — parity with ProjectsLane:567, CatalogueLane:151 |
 | D24 | M | Create modal · "Create team" (`CreateWorkspaceModal.island.tsx:258`); Roles · "Create role" (`RolesMatrix.island.tsx:538`) | Tier 3 | Tier 2 (structural creation) |
-| D25 | G | Invitation strip · Accept ×N (`InvitationStrip.tsx:119`, `roster.css:254` `background: var(--wsp-kind)`) | Raw filled button **per row** → N filled in one region | `Button` tier 3 on the *first/focused* invite only, or all rows `variant="outlined"` with one filled "Accept" inside an expanded row; Decline `variant="text"` |
+| D25 | G | Invitation strip · Accept ×N (`InvitationStrip.tsx:119`, `roster.css:254` `background: var(--wsp-kind)`) | Raw filled button **per row** → N filled in one region | `Button` tier 3 on the *first/focused* invite only, or all rows `variant="outlined"` with one filled "Accept" inside an expanded row; Decline `variant="text"` ✅ fixed by R2: `planInviteActions` (`core/invitation-strip-model.ts`, unit-tested) gives the first row's Accept tier 3 and every other tier 4 neutral outlined, Decline tier 5 on every row; the `.wsp-invitestrip__accept` fill is deleted |
 | D26 | M | Error · "Try again" (`WorkspaceRoster.island.tsx:355`) | Raw ghost | Tier 4 `severity="neutral" variant="outlined"` (B.8.1 names it) |
 | D27 | M | Footer rig · Save (`WorkspaceFooterRig.island.tsx:183`) | Ghost with `data-active` tint | Tier 3 `Button` filled when dirty — the console's one workflow commit |
 | D28 | M | Footer rig · Invite, Settings, Org chart; header band icon (`HeaderBand:197`) | Raw ghost `wsp-footerrig__action` | Tier 4 neutral outlined (Invite, Settings are named utilities); Org chart tier 5 |

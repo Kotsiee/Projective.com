@@ -34,14 +34,26 @@ interface Metric {
 	href?: string;
 }
 
+/**
+ * A business's trust readout (BP1, Decision #244): the rating freelancers gave it as their client,
+ * with how many reviews stand behind it. It is the only COMPUTED input of the Client Trust Score
+ * PRODUCT_SPEC names — the score itself has no definition yet (#244 FLAG), so the strip shows the
+ * figure that exists rather than inventing one.
+ */
+function clientRatingSub(count: number): string {
+	return `${count} ${count === 1 ? "review" : "reviews"} from freelancers`;
+}
+
 function metricsFor(profile: ProfileView, spend: EstimatedSpend | null): Metric[] {
 	const items: Metric[] = [];
 	const track = profile.rating.asHelper ?? profile.rating.asClient;
 	if (track && track.count > 0) {
+		const business = profile.kind === "business";
 		items.push({
 			key: "rating",
 			value: track.value.toFixed(1),
-			label: "Rating",
+			label: business ? "Client rating" : "Rating",
+			sub: business ? clientRatingSub(track.count) : undefined,
 			href: reviewsHref(profile.handle),
 		});
 	}

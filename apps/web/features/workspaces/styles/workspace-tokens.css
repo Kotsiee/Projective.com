@@ -710,11 +710,6 @@ frozen animation clock costs nothing. */
 	white-space: nowrap;
 }
 
-.wsp-chip--kind {
-	background: var(--wsp-kind-tint-hi);
-	color: var(--wsp-kind-ink);
-}
-
 /* The role chip carrying the acting state, so the two facts occupy one mark instead of two chips of
    identical shape sitting side by side. Same tones as `.wsp-actingchip`, which still serves the
    surfaces that show acting WITHOUT a role beside it. */

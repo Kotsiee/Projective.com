@@ -10,8 +10,14 @@ import type { SpendLimitBlock } from "../types/checkout-types.ts";
  * **`needs_approval` is a route forward, not a wall.** That is the whole reason the SSOT carries a
  * verdict rather than an over/under boolean: a member who has passed their ceiling is not refused,
  * they are routed to whoever can approve it, and a surface that rendered the same red refusal for
- * both outcomes would teach them their purchase is impossible. So the deferred case is `warning`
- * with the request link as its action, and only `blocked` is a refusal.
+ * both outcomes would teach them their purchase is impossible. So the deferred case is `warning`,
+ * and only `blocked` is a refusal.
+ *
+ * **On a business checkout it states the envelope only.** The refusal and its way forward — "Request
+ * approval" bound to the basket, the pending request, KYB, a short pool — are the business gate's
+ * (`BusinessSpendGate`, Decision #243), worded from the one business refusal map; a second wording
+ * here would put two sentences on one refusal. A team or an enterprise has no request to file, so its
+ * refusal is still said here.
  *
  * `warning` here means what §A.1 says it means — caution, a state that needs attention before the
  * thing can proceed — not a decoration and not an action colour.
@@ -27,6 +33,11 @@ import type { SpendLimitBlock } from "../types/checkout-types.ts";
 export interface SpendLimitNoticeProps {
 	/** The server's projection. `applies: false` renders nothing. */
 	limit: SpendLimitBlock;
+	/**
+	 * A business checkout, whose refusal the business gate says: only the envelope's figures render
+	 * here, whatever the verdict.
+	 */
+	business?: boolean;
 }
 // #endregion
 
@@ -73,7 +84,7 @@ export function SpendLimitNotice(props: SpendLimitNoticeProps): JSX.Element | nu
 	// An allowed purchase under a cap still shows the position: a member spending an entity's money
 	// is entitled to know how much of the window this purchase uses, and only telling them once they
 	// have run out is how a budget becomes a surprise.
-	if (limit.verdict === "allowed") {
+	if (limit.verdict === "allowed" || props.business) {
 		return (
 			<section class="cko-limit" data-verdict="allowed" aria-labelledby="cko-limit-head">
 				<h3 class="cko-limit__head" id="cko-limit-head">
@@ -92,14 +103,6 @@ export function SpendLimitNotice(props: SpendLimitNoticeProps): JSX.Element | nu
 			class="cko-limit cko-limit--gate"
 			severity={deferred ? "warning" : "danger"}
 			title={deferred ? "This purchase needs approval" : "This purchase is over your limit"}
-			actions={deferred && limit.requestHref
-				? (
-					<a class="cko-limit__request" href={limit.requestHref}>
-						<Icon name="send" />
-						Request approval
-					</a>
-				)
-				: undefined}
 		>
 			{
 				/*

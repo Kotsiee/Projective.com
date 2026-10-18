@@ -1119,8 +1119,7 @@ BEGIN
         'held_cents', v_held,
         'tickets_to_cancel', (SELECT count(*) FROM projects.tickets tk
                                WHERE tk.current_stage_id = p_stage_id
-                                 AND tk.status NOT IN ('completed'::ticket_status, 'cancelled'::ticket_status,
-                                                       'reported_hidden'::ticket_status)),
+                                 AND tk.status NOT IN ('completed'::ticket_status, 'cancelled'::ticket_status)),
         'tiers', (SELECT jsonb_agg(projects.fn_fair_exit_quote(p_stage_id, t.tier) ORDER BY t.tier)
                     FROM unnest(ARRAY[25, 50, 75]) AS t(tier))
     );
@@ -1229,16 +1228,17 @@ BEGIN
     v_assignees := ARRAY(SELECT DISTINCT tk.current_assignee_id FROM projects.tickets tk
                           WHERE tk.current_stage_id = p_stage_id AND tk.current_assignee_id IS NOT NULL);
 
+    -- A ticket suspended by a workload report is still assigned and was held (Decision #290): it
+    -- closes with its stage, and its report countdown with it.
     FOR t IN
         SELECT tk.id, tk.status
           FROM projects.tickets tk
          WHERE tk.current_stage_id = p_stage_id
-           AND tk.status NOT IN ('completed'::ticket_status, 'cancelled'::ticket_status,
-                                 'reported_hidden'::ticket_status)
+           AND tk.status NOT IN ('completed'::ticket_status, 'cancelled'::ticket_status)
          ORDER BY tk.id
            FOR UPDATE
     LOOP
-        UPDATE projects.tickets SET status = 'cancelled'::ticket_status WHERE id = t.id;
+        UPDATE projects.tickets SET status = 'cancelled'::ticket_status, hidden_until = NULL WHERE id = t.id;
         INSERT INTO projects.ticket_history
             (ticket_id, actor_id, action_type, previous_stage_id, new_stage_id, previous_status, new_status, changes)
         VALUES

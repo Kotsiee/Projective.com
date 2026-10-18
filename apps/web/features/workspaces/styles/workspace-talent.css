@@ -1,0 +1,12 @@
+/*
+ * workspace-talent.css — the business console's Talent module (`.wsp-talent`): the bench (Decision
+ * #230 (i), #241). The table is the `DataTable` preset's own; this sheet only finishes the empty
+ * state's way out. Token-only, strict BEM, logical properties only.
+ */
+
+/* #region Empty state */
+/* The tier-4 link to Explore is an anchor drawn as an outlined Button: a button carries no underline. */
+.wsp-talent__explore {
+	text-decoration: none;
+}
+/* #endregion */
