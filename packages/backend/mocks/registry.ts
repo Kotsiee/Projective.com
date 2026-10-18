@@ -257,8 +257,10 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		domain: "editorial",
 		label: "Help centre, changelog & articles",
 		gate: "EDITORIAL_BACKEND_LIVE",
-		// The help centre reads editorial.help_* through readEditorialTable's anon-client path
-		// (HelpBackendService, P2); the changelog and articles sources join it as their work orders land.
+		// The shared reader (`services/editorial/editorial-source.ts` readEditorialTable) has a real
+		// anon-client path: the help centre reads editorial.help_* through it (HelpBackendService, P2)
+		// and `ChangelogBackendService` reads `editorial.changelog_releases` (P5); the articles source
+		// joins them as its work order lands.
 		liveImplemented: true,
 		modules: [
 			"services/editorial/content/help.ts",

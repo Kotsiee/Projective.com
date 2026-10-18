@@ -953,6 +953,16 @@ per 10 minutes, 20 per guest address a minute) in front of the door's durable li
 and answers without storing. Routes: `/help/[...path]`, `GET /api/help/search`,
 `POST /api/help/feedback` (ROUTING.md).
 
+**Changelog (P5, Decision #278).** `services/editorial/ChangelogBackendService.ts` reads
+`editorial.changelog_releases` through `readEditorialTable` (the table's `visible` predicate has
+already dropped withdrawn and future-dated releases on either road) and orders, filters and pages
+the whole table in TypeScript with the pure `changelog-feed.ts` (newest first by day then semver
+precedence; a category filter matching ANY selected category; ten to a page; a release's
+neighbours): `releases()`, `feed({ categories, page })` (404 past the last page) and
+`release(version)` (one 404 for unknown, withdrawn or future). The routes `/changelog`,
+`/changelog/[version]` and `/changelog/rss.xml` are thin controllers in `features/changelog/routes/`;
+the RSS document is the pure `features/changelog/core/rss.ts`, every URL absolute on `siteOrigin`.
+
 ### Messaging services
 
 The global inbox (`/messages`) is a READ-heavy implementation of the contract: `MessagingService`

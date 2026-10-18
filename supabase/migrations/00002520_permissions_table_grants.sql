@@ -750,6 +750,8 @@ GRANT SELECT ON editorial.help_categories, editorial.help_articles TO anon, auth
 
 
 -- #region [editorial.changelog]
+-- Read-only for the client roles; the SELECT policy (00002021) decides which releases they see.
+GRANT SELECT ON editorial.changelog_releases TO anon, authenticated;
 -- #endregion
 
 

@@ -49,6 +49,28 @@ COMMENT ON FUNCTION editorial.fn_guard_slug_immutable() IS
 
 
 -- #region [editorial.changelog]
+-- A release's version is its public address (/changelog/<version>) and the natural key the
+-- generated seed upserts on, so it never changes once the row exists — the changelog's twin of
+-- fn_guard_slug_immutable (Decision #274 (k): changelog versions are fixed identifiers). A
+-- mis-versioned release is withdrawn and authored again under the right version. Attached in
+-- 00001898, [editorial.changelog]; a trigger function needs no client EXECUTE grant.
+CREATE OR REPLACE FUNCTION editorial.fn_guard_release_version_immutable()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+	IF NEW.version IS DISTINCT FROM OLD.version THEN
+		RAISE EXCEPTION 'changelog release "%" keeps its version for good', OLD.version
+			USING ERRCODE = '23514',
+				HINT = 'Withdraw the release and author it again under the new version.';
+	END IF;
+	RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION editorial.fn_guard_release_version_immutable() IS
+	'BEFORE UPDATE OF version guard on editorial.changelog_releases: a release''s version is its permanent public address (Decisions #274 (k) / #278).';
 -- #endregion
 
 

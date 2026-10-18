@@ -13,6 +13,8 @@
 
 
 -- #region [editorial.changelog]
+-- No secondary index, on purpose: the changelog reads the whole table (tens of rows) and orders it
+-- in the service, and the one keyed read — a release by version — is the primary key.
 -- #endregion
 
 

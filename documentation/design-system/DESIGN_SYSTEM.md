@@ -3095,6 +3095,47 @@ stops it for good (the WAI-ARIA carousel rule), and under reduced motion there i
 control. The closing band's actions are native links in the Button class set: the neutral outlined
 escape first, the one filled `--primary` commitment last (§B.8.6).
 
+**Changelog (`features/changelog/`, PUBLIC_ROUTES P5, Decision #278).** The public release feed,
+composed on the editorial reading family. **`ui-doc--feed`** — a new `DocumentLayout` variant in
+`document-layout.css`'s Variants region: from `--bp-md` of frame the reading column widens by a
+dated gutter (`--doc-feed-gutter`, 8.5rem) and `--space-6`, so an entry's body still reads at
+`--measure`. **`ChangelogFeedView`** (`/changelog`: `DocumentHeader` with the display title, the
+standfirst and a Meta-register facts line — count · latest version · `Updated <time>` — and, in its
+slot, the subscribe row: a tier-4 neutral outlined **RSS feed** link beside `NewsletterForm
+topic="changelog" source="changelog"`, the field's `--lp-*` hooks pointed at solid tones; then
+`CategoryFilters`, the timeline and `FeedPager`). **`CategoryFilters`** (a `<nav>` of real links —
+"All releases" plus a chip per category that has releases or is selected; each toggles its category
+on page 1, several may be on; solid `--surface-1` fill, the selected chip the inverted
+`--on-surface` / `--surface` pair Explore's chip bar uses, with `aria-current="true"` and the count
+in tabular figures and in its name). **`ReleaseEntry`** (one `<li>` of the `<ol
+class="chl-timeline">` holding an `<article>` named by its `h2` `AnchorHeading` — `#v0-12-0`, a link
+to itself — at the document family's h2 step: `--text-xl` / `--fw-medium`; a gutter of `<time
+datetime>` (short month, `23 Sept 2026`, `nowrap`, so it fits under every font overlay) and the
+version as a small solid-fill link to the release page, both `--font-mono` and spaced as text,
+sticky at `--doc-sticky-top` from 768px of frame, its dot riding ONE `--hairline` spine —
+`--primary` for the newest release, which also says "Latest" in words, `--text-secondary` for the
+rest; the categories as inline meta text with a TRAILING `::after` middot (a wrapped line never
+opens on a dot), never chips; the summary in the reading face; the body through `ContentRenderer`
+against ONE page-wide anchor registry; entries `--space-7` apart). **`ReleaseGallery`** (a
+responsive grid of 16:10 `--card-media-ratio` tiles, each a real link to its picture carrying
+`data-chl-image="<anchor>:<n>"`, intrinsic `width`/`height`, every picture lazy (a gallery follows
+its release's whole body), a required caption under the tile that also describes the link; hover the
+card family's `--card-media-zoom` inside the tile's corner, press `--btn-press-scale`, both removed
+under either reduced-motion channel). **`FeedPager`** (Newer / Older releases as tier-4 links with
+`rel`, "Page n of m" between, rendered only for links that exist, above one `--hairline`).
+**`ChangelogReleaseView`** (`/changelog/[version]`: breadcrumb, `DocumentHeader` with "Released
+<time>" · version · categories — the date and the version figure in `.chl-mono`, the words around
+them in the sans face — the body and gallery in a `<section>` under a visually hidden `h2` so the
+body's `h3`s never skip a level, and a footer of previous / next release rows beside "All releases":
+one column below `--bp-md` of frame, older left and newer right from it, each row's hover tint hung
+into the margin so the text lines up with the hairline and the button). **`ChangelogNoticeView`**
+(the 404 and 503 states in the same frame, one `<h1>`, one way out). The island
+**`ChangelogLightbox`** is the one owner of `?image=` and the CSS carrier of every changelog page
+(it imports `changelog.css` and the button sheet, and mounts even on a page with no pictures); it
+draws the app's one media lightbox, `MediaLightbox` (Decision #184), which gains an optional caption
+for it. Press feedback is `transform` only and removed under both reduced-motion channels; every
+step is a container query on the `ui-doc` frame.
+
 **`FundStageDialog` (`features/payments/components/`, Decision #197).** The client funds a whole
 stage — every ticket in it nobody has paid for, claimed or not — from the stage board's money sentence
 ("{n} tickets need {total} to start." → **Fund stage**; the project board keeps **Fund all**, the
@@ -4424,7 +4465,10 @@ and pans against the **viewport**, never inside a frame, through the inspector's
 A bitmap is never upscaled to fit and never zoomed out past the fit. A click toggles fit ↔
 enlarged at the click point; wheel and pinch zoom at the pointer; a drag pans an enlarged picture and
 swipes the gallery while it is fitted. A bottom carousel (Previous · thumbnail strip with an
-`aria-current` ring · Next · `n / m`) is drawn only for two or more items.
+`aria-current` ring · Next · `n / m`) is drawn only for two or more items. An item may carry a
+`caption` (the changelog's release pictures do, Decision #278): it renders as a `--surface-1` band
+between the stage and the tray, in `--text-sm` `--on-surface`, and is the dialog's
+`aria-describedby`; an item without one renders nothing there.
 
 **D.8.1 Pipelines and multi-stage services.** The stage ledger is a **continuous vertical timeline
 track**: one hairline running the full height of the run, with each stage's step number in a small
