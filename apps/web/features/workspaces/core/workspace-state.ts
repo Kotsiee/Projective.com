@@ -1,6 +1,7 @@
 import { computed, signal } from "@preact/signals";
 import type { WorkspaceDetail, WorkspaceKind } from "@projective/types/workspace";
 import { viewMode } from "./view-state.ts";
+import type { RosterTab } from "./workspace-model.ts";
 
 /**
  * workspace-state — the cross-island signal bridge for the `/teams` and `/businesses` surface.
@@ -132,6 +133,22 @@ export const membersView = computed<MembersView>(() =>
 
 /** How the roster index presents its entities. */
 export type RosterView = "grid" | "table";
+
+/**
+ * The roster index's PARTITION (All · Owned · Member · Invitations · Archived) — one value for every
+ * root that offers it: the lane's context controls and the roster canvas.
+ *
+ * `null` until a control on either root picks one. Each root renders its server-resolved `?tab=` prop
+ * until then, so the first painted byte and the first hydrated frame agree, and a module-level value
+ * written during one request's SSR can never leak into the next request's render. A root that offers
+ * the partition mirrors this value into its own control once it is set (`useSignalEffect`).
+ */
+export const rosterTab = signal<RosterTab | null>(null);
+
+/** Pick the roster partition on every root that shows it. */
+export function selectRosterTab(tab: RosterTab): void {
+	rosterTab.value = tab;
+}
 
 /**
  * The roster index's current presentation — DERIVED from the shared zoom, never written.

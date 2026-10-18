@@ -1142,8 +1142,10 @@ BEGIN
     v_used := finance.fn_footprint_usage('user', v_uid, v_key);
     IF v_limit IS NOT NULL AND v_used >= v_limit THEN
         RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'plan: your plan includes ' || v_limit || ' '
-            || CASE p_kind WHEN 'team' THEN 'team' ELSE 'business' END
-            || CASE WHEN v_limit = 1 THEN '' ELSE 'es' END || ' — archive one or upgrade to create another';
+            || CASE p_kind
+                WHEN 'team' THEN CASE WHEN v_limit = 1 THEN 'team' ELSE 'teams' END
+                ELSE CASE WHEN v_limit = 1 THEN 'business' ELSE 'businesses' END
+            END || ' — archive one or upgrade to create another';
     END IF;
 
     v_currency := COALESCE(

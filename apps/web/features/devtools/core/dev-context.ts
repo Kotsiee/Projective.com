@@ -39,6 +39,7 @@ import {
 	DEV_SEAM_EVENT,
 	type DevAccountLifecycle,
 	type DevLayoutDirection,
+	type DevMemberClient,
 	type DevMemberRole,
 	type DevMessagingRole,
 	type DevMicPermission,
@@ -104,6 +105,7 @@ export type DevTeamPage = "auto" | TeamPageSim;
 export type {
 	DevAccountLifecycle,
 	DevLayoutDirection,
+	DevMemberClient,
 	DevMemberRole,
 	DevMessagingRole,
 	DevMicPermission,
@@ -241,6 +243,12 @@ export interface DevOverrides {
 	hasPendingInvites: boolean;
 	/** Whether the Members tab's Requests section should carry open applications. */
 	hasPendingRequests: boolean;
+	/**
+	 * Whether the Members tab's engagement is billed to a business client (Decision #294). Only a
+	 * business lets an admin/manager seat manage tickets, and the fixtures carry none, so `business` is
+	 * the only runtime route to the row action that grants it. `auto` defers to the server.
+	 */
+	memberClient: DevMemberClient;
 	/**
 	 * Simulated `/messages` inbox view (task §4) — a NEW axis selecting which advanced-filter set the
 	 * inbox sidebar shows (provider-side vs buyer-side) and whether auto-responses are offered. Consumed
@@ -472,6 +480,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	memberRole: "owner_admin",
 	hasPendingInvites: true,
 	hasPendingRequests: true,
+	memberClient: "auto",
 	messagingRole: "freelancer",
 	micPermission: "auto",
 	layoutDirection: "ltr",
@@ -613,6 +622,13 @@ export const DEV_PROJECT_ONBOARDINGS: ReadonlyArray<DevOption<DevProjectOnboardi
 	{ value: "none", label: "Nobody" },
 	{ value: "first_stage", label: "First stage" },
 	{ value: "all_stages", label: "All stages" },
+];
+
+/** Members-tab client options (Decision #294): whether a business is paying, so tickets can be delegated. */
+export const DEV_MEMBER_CLIENTS: ReadonlyArray<DevOption<DevMemberClient>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "business", label: "Business" },
+	{ value: "individual", label: "Individual" },
 ];
 
 /** Members-tab acting-role options in display order (task §4). */
@@ -983,6 +999,9 @@ function reflect(next: DevOverrides): void {
 		root.dataset.devMemberRole = next.memberRole;
 		root.dataset.devPendingInvites = String(next.hasPendingInvites);
 		root.dataset.devPendingRequests = String(next.hasPendingRequests);
+		// Absent = `auto` on the seam, like `projectOnboarding` above.
+		if (next.memberClient !== "auto") root.dataset.devMemberClient = next.memberClient;
+		else delete root.dataset.devMemberClient;
 		root.dataset.devMessagingRole = next.messagingRole;
 		root.dataset.devMicPermission = next.micPermission;
 		// Absent = `auto` on the seam, like `projectOnboarding` above.
@@ -1084,6 +1103,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devMemberRole;
 		delete root.dataset.devPendingInvites;
 		delete root.dataset.devPendingRequests;
+		delete root.dataset.devMemberClient;
 		delete root.dataset.devMessagingRole;
 		delete root.dataset.devMicPermission;
 		delete root.dataset.devProfileSetup;

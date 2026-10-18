@@ -178,6 +178,10 @@ export const IncomingInviteSchema = z.object({
 	/** The role offered, already resolved to a label. */
 	roleLabel: z.string().max(48),
 	sentAt: z.string().max(40),
+	/** The sender's optional note, shown as body text under the row. */
+	note: z.string().max(400).nullable().default(null),
+	/** ISO expiry (14 days from sending; a resend renews it), or `null` for one that never lapses. */
+	expiresAt: z.string().max(40).nullable().default(null),
 });
 export type IncomingInvite = z.infer<typeof IncomingInviteSchema>;
 // #endregion

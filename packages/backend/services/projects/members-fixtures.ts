@@ -729,6 +729,9 @@ export function findMemberRoster(params: MemberRosterParams): MemberRosterPage |
 		viewerId: marked.viewerId,
 		viewerRole: viewer.role,
 		viewerCaps: viewer.caps,
+		// No fixture engagement is billed to a business; the Dev Context Switcher's "Paying client"
+		// axis is how the ticket-delegation action (Decision #294) is reached here.
+		businessClient: params.simBusinessClient ?? false,
 		total: rostered.length,
 	};
 }

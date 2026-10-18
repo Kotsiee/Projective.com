@@ -126,3 +126,39 @@ Deno.test("no stage picture, no stage actions — and no management without the 
 		["profile", "role"],
 	);
 });
+
+Deno.test("only a business client's admin/manager seats can be let manage tickets (Decision #294)", () => {
+	const asked: [string, boolean][] = [];
+	const onTicketManager = (m: ProjectMemberRow, allowed: boolean) => asked.push([m.id, allowed]);
+	const manager: ProjectMemberRow = { ...member, role: "manager" };
+
+	const grant = memberMenuModel(input({ member: manager, businessClient: true, onTicketManager }));
+	assertEquals(keys(grant).slice(0, 3), ["profile", "role", "tickets"]);
+	const item = grant.find((entry) => entry.key === "tickets");
+	assertEquals(item?.label, "Let manage tickets");
+	item?.command?.({} as never);
+	assertEquals(asked, [["m-juno", true]]);
+
+	const granted = memberMenuModel(input({
+		member: { ...manager, role: "admin", canManageTickets: true },
+		businessClient: true,
+		onTicketManager,
+	}));
+	assertEquals(granted.find((entry) => entry.key === "tickets")?.label, "Stop managing tickets");
+
+	// A freelancer seat, an individual client, or a viewer who cannot change roles: no such action.
+	const none = [
+		input({ member, businessClient: true, onTicketManager }),
+		input({ member: manager, businessClient: false, onTicketManager }),
+		input({
+			member: manager,
+			businessClient: true,
+			onTicketManager,
+			caps: { ...ALL, canEditRoles: false },
+		}),
+		input({ member: manager, businessClient: true, onTicketManager, manageable: false }),
+	];
+	for (const each of none) {
+		assert(!keys(memberMenuModel(each)).includes("tickets"));
+	}
+});

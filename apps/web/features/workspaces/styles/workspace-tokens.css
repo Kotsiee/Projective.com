@@ -261,10 +261,6 @@
 	--wsp-node-w: 13rem;
 	--wsp-tree-indent: var(--space-5);
 
-	/* Progress ring */
-	--wsp-ring-size: 2.75rem;
-	--wsp-ring-w: 4px;
-
 	/*
 	 * Marks drawn in CSS — the dots, swatches, strokes, meters and hatches. Pixels rather than `rem`
 	 * on purpose, for the reason the global `--space-px` gives: these are graphical marks, and a 2px
@@ -708,11 +704,6 @@ frozen animation clock costs nothing. */
 	font-size: var(--wsp-fs-micro);
 	font-weight: var(--fw-semibold);
 	white-space: nowrap;
-}
-
-.wsp-chip--kind {
-	background: var(--wsp-kind-tint-hi);
-	color: var(--wsp-kind-ink);
 }
 
 /* The role chip carrying the acting state, so the two facts occupy one mark instead of two chips of

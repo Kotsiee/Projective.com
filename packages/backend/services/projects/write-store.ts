@@ -36,6 +36,7 @@ import {
 	type SubmissionTreeNode,
 	type SubmissionUnit,
 	stageAssignmentOf,
+	TICKET_MANAGER_ROLES,
 	type TicketIntensity,
 	type TicketStageRef,
 	ticketTotalCents,
@@ -196,6 +197,12 @@ interface OwnerBucket {
 	 */
 	roles: Map<string, Map<string, MemberRole>>;
 	/**
+	 * Ticket-management grants the client gave or ended, keyed by project slug then by roster row id —
+	 * the stub twin of `projects.set_ticket_manager` (Decision #294). Folded on after the role changes,
+	 * so a seat that has left admin/manager carries no grant.
+	 */
+	ticketManagers: Map<string, Map<string, boolean>>;
+	/**
 	 * Review verdicts recorded over submissions — a fixture's or a stub-created one — keyed by project
 	 * id, then by submission id (a unit's LAST path segment). Like `invites`, the unit itself is never
 	 * rewritten; the verdict is folded onto it at read time by {@link overlaySubmissionPage}.
@@ -249,6 +256,7 @@ function bucketFor(owner: string): OwnerBucket {
 		joined: new Map(),
 		removed: new Map(),
 		roles: new Map(),
+		ticketManagers: new Map(),
 		reviews: new Map(),
 	};
 	buckets.set(owner, fresh);
@@ -1336,7 +1344,10 @@ export function overlayMemberRoster(
 	const joined = bucket.joined.get(slug) ?? [];
 	const removed = bucket.removed.get(slug);
 	const roles = bucket.roles.get(slug);
-	if (joined.length === 0 && (!removed || removed.size === 0)) return withRoleChanges(out, roles);
+	const grants = bucket.ticketManagers.get(slug);
+	if (joined.length === 0 && (!removed || removed.size === 0)) {
+		return withTicketManagers(withRoleChanges(out, roles), grants);
+	}
 
 	const stageChannel = out.scope === "channel" && out.channelKind === "stage";
 	const stageNameById = new Map(out.stages.map((stage) => [stage.id, stage.name]));
@@ -1387,7 +1398,26 @@ export function overlayMemberRoster(
 		});
 	}
 
-	return withRoleChanges({ ...out, members, total }, roles);
+	return withTicketManagers(withRoleChanges({ ...out, members, total }, roles), grants);
+}
+
+/**
+ * Fold recorded ticket-management grants onto the roster (Decision #294) — after the role changes,
+ * because the grant belongs to an admin/manager seat: a member moved off one carries none, as
+ * `projects.set_member_role` clears it on the live path.
+ */
+function withTicketManagers(
+	page: MemberRosterPage,
+	grants: ReadonlyMap<string, boolean> | undefined,
+): MemberRosterPage {
+	const members = page.members.map((row) => {
+		const granted = grants?.get(row.id) ?? row.canManageTickets ?? false;
+		const canManageTickets = granted && TICKET_MANAGER_ROLES.has(row.role);
+		return canManageTickets === (row.canManageTickets ?? false)
+			? row
+			: { ...row, canManageTickets };
+	});
+	return { ...page, members };
 }
 
 /**
@@ -1422,6 +1452,19 @@ export function recordRoleChange(
 	const byProject = bucket.roles.get(projectId) ?? new Map<string, MemberRole>();
 	byProject.set(memberId, role);
 	bucket.roles.set(projectId, byProject);
+}
+
+/** Record a ticket-management grant — the stub twin of `projects.set_ticket_manager`. */
+export function recordTicketManager(
+	owner: string,
+	projectId: string,
+	memberId: string,
+	allowed: boolean,
+): void {
+	const bucket = bucketFor(owner);
+	const byProject = bucket.ticketManagers.get(projectId) ?? new Map<string, boolean>();
+	byProject.set(memberId, allowed);
+	bucket.ticketManagers.set(projectId, byProject);
 }
 
 /**

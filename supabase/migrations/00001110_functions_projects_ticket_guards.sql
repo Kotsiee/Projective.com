@@ -73,26 +73,255 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Once claimed, client-owned content is locked; only the assignee (or an admin) may edit it.
+-- Who may move a claimed ticket between status columns (Decision #293; PRODUCT_SPEC §Ticket
+-- Movement, §The Claim-and-Commit Protocol). Raises 42501, or returns when the move is allowed.
+--   • Only the ticket's assignee or review authority moves it: another freelancer on the project
+--     never moves someone else's work.
+--   • Nobody moves it into `claimed`, `cancelled` or `reported_hidden`. The claim enters `claimed`
+--     (claim_ticket, the owner's routing), the stage's cancellation enters `cancelled`
+--     (cancel_stage_fair_exit) and a workload report enters `reported_hidden`; each settles or keeps
+--     the escrow on its own terms. A move into `claimed` restamps claimed_at, and
+--     projects.fn_release_expired_claims refunds an expired claim to the client in full, so a client
+--     who moved delivered work back there was refunded a day later and the freelancer paid nothing.
+--   • The assignee moves it only between the work columns of its stage — To do, In progress, In
+--     review (and out of Claimed into them). The New backlog, Done and every other move are the
+--     client's.
+--   • Review authority's move is locked while the ticket is `claimed` / `in_progress` (#94): the
+--     freelancer is mid-delivery, so the client waits for the hand-back to Review.
+-- A stage change is judged here only by the #94 lock; who may move a claimed ticket to another stage
+-- at all is the stage rule in projects.fn_ticket_immutability_guard (#291). An unclaimed ticket, an
+-- unchanged status and stage, one person on both sides, an admin and the platform (no auth.uid())
+-- are not gated. The reporting assignee of a suspended ticket is answered by the suspension guard
+-- (#290). Called by projects.move_ticket (a definer, so RLS never sees its write) and by
+-- fn_ticket_immutability_guard for a statement PostgREST runs directly.
+CREATE OR REPLACE FUNCTION projects.fn_assert_ticket_move(
+    p_project_id  uuid,
+    p_assignee_id uuid,
+    p_from_status ticket_status,
+    p_to_status   ticket_status,
+    p_from_stage  uuid,
+    p_to_stage    uuid
+)
+RETURNS void AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_payee boolean;
+    v_reviewer boolean;
+BEGIN
+    IF v_uid IS NULL
+        OR p_assignee_id IS NULL
+        OR (p_to_status IS NOT DISTINCT FROM p_from_status
+            AND p_to_stage IS NOT DISTINCT FROM p_from_stage)
+        OR security.is_admin() THEN
+        RETURN;
+    END IF;
+
+    v_payee := v_uid = p_assignee_id;
+    v_reviewer := projects.can_review_project(p_project_id);
+    IF v_payee AND v_reviewer THEN
+        RETURN;
+    END IF;
+
+    IF NOT v_payee AND NOT v_reviewer THEN
+        RAISE EXCEPTION 'Only the client or the freelancer working this ticket may move it.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    IF p_to_status IS DISTINCT FROM p_from_status
+        AND p_to_status IN ('claimed'::ticket_status, 'cancelled'::ticket_status,
+            'reported_hidden'::ticket_status) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '42501',
+            MESSAGE = 'A ticket enters that state by a claim, its stage''s cancellation or a '
+                || 'workload report, never by a move.';
+    END IF;
+
+    IF v_payee THEN
+        IF p_from_status = 'reported_hidden'::ticket_status
+            OR (p_from_status IN ('todo'::ticket_status, 'claimed'::ticket_status,
+                    'in_progress'::ticket_status, 'in_review'::ticket_status)
+                AND p_to_status IN ('todo'::ticket_status, 'claimed'::ticket_status,
+                    'in_progress'::ticket_status, 'in_review'::ticket_status)) THEN
+            RETURN;
+        END IF;
+        RAISE EXCEPTION USING
+            ERRCODE = '42501',
+            MESSAGE = 'You move your ticket between To do, In progress and In review; any other '
+                || 'move is the client''s.';
+    END IF;
+
+    IF p_from_status IN ('claimed'::ticket_status, 'in_progress'::ticket_status) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '42501',
+            MESSAGE = 'A freelancer is working this ticket — it can be moved once the work is '
+                || 'handed back.';
+    END IF;
+END;
+$$ LANGUAGE plpgsql STABLE SET search_path = public, projects, security, auth;
+
+-- Once claimed, a ticket's terms bind both parties and neither rewrites them alone (Decision #291;
+-- PRODUCT_SPEC §Editing & Reordering Restrictions, §Post-Onboarding Immutability). The terms are
+-- its title, description, price, stage sequence and W_i: the client may not change what the
+-- freelancer agreed to deliver, and the assignee — the payee — may not change what the client
+-- agreed to pay for. finance.fn_hold_ticket_escrow prices a hold from unit_price_cents (else the
+-- current stage's price) and the Chain Reaction holds the next required stage the moment the
+-- client approves one, so a payee who could edit either column chose the figure the client's
+-- wallet was next held at. For the same reason only review authority moves a claimed ticket's
+-- current_stage_id, on any path: the hold reads that stage's price and the Chain Reaction counts
+-- the next installment from it, and move_ticket once admitted anyone with project access — the
+-- assignee, or another freelancer on the project. Status moves of a claimed ticket follow
+-- projects.fn_assert_ticket_move (Decision #293). One person on both sides (the owner working
+-- their own ticket, as on a personal project) has nobody to be held to; an admin and the platform
+-- (no auth.uid()) are not gated.
+--
+-- A ticket is written by its client: an INSERT naming an assignee needs review authority, or the
+-- payee could put a ticket of their own pricing into the client's project. payment_status and
+-- total_amount_paid are the escrow functions' bookkeeping, and the auto-fund drain holds any
+-- ticket marked needs_funding, so a client role's own statement may not move them. INVOKER on
+-- purpose: inside a SECURITY DEFINER door `current_user` is its owner, so the escrow functions
+-- that keep those columns pass and only a statement PostgREST runs as anon/authenticated is
+-- judged.
+--
+-- A delegated project manager the business client let manage tickets (projects.is_ticket_manager,
+-- Decision #294) reaches the table through its own policies, as neither the owner nor the assignee.
+-- Such a statement acts for the client and may change only what the client's composer writes
+-- (title, description, stages, price, W_i, tasks, priority, due date, accountable member, order). An
+-- assignee, a status, the claim and workload-report markers are a hire, a move or a settlement, which
+-- go through their own doors; a new ticket starts unclaimed in the backlog. Everything above still
+-- binds it: once claimed, the terms are frozen and only review authority moves the stage.
+--
+-- A workload report turns the W_i rule round for its window (Decision #290): the work is
+-- suspended until the client answers, so the reporting assignee may neither resume the ticket nor
+-- move the W_i it disputes, and raising W_i becomes the one edit the client may make
+-- (projects.fn_adjust_workload_report).
 CREATE OR REPLACE FUNCTION projects.fn_ticket_immutability_guard()
 RETURNS TRIGGER AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_payee boolean;
+    v_reviewer boolean;
+    -- The columns the client's composer writes (ProjectBackendService.commitTicket), plus the stamp
+    -- trg_ticket_touch_updated_at keeps; a ticket manager's statement may move these and no others.
+    v_composer CONSTANT text[] := ARRAY[
+        'title', 'description', 'text_description', 'current_stage_id', 'owner_user_id', 'priority',
+        'workload_intensity', 'required_stages', 'tasks', 'due_date', 'unit_price_cents', 'sort_order',
+        'updated_at'
+    ];
 BEGIN
-    IF OLD.current_assignee_id IS NOT NULL
-        AND auth.uid() IS NOT NULL
-        AND auth.uid() <> OLD.current_assignee_id
-        AND NOT security.is_admin() THEN
-        IF NEW.title IS DISTINCT FROM OLD.title
-            OR NEW.description IS DISTINCT FROM OLD.description
-            OR NEW.text_description IS DISTINCT FROM OLD.text_description
-            OR NEW.unit_price_cents IS DISTINCT FROM OLD.unit_price_cents
-            OR NEW.required_stages IS DISTINCT FROM OLD.required_stages
-            OR NEW.workload_intensity IS DISTINCT FROM OLD.workload_intensity THEN
-            RAISE EXCEPTION 'This ticket has been claimed by a freelancer; its content is locked to the client.';
+    IF current_user IN ('anon', 'authenticated') THEN
+        IF TG_OP = 'INSERT' THEN
+            IF NEW.payment_status IS DISTINCT FROM 'unpaid'::payment_status
+                OR NEW.total_amount_paid IS DISTINCT FROM 0 THEN
+                RAISE EXCEPTION USING
+                    ERRCODE = '42501',
+                    MESSAGE = 'A new ticket starts unpaid; its payment state is kept by its escrow.';
+            END IF;
+        ELSIF NEW.payment_status IS DISTINCT FROM OLD.payment_status
+            OR NEW.total_amount_paid IS DISTINCT FROM OLD.total_amount_paid THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'A ticket''s payment state is kept by its escrow and cannot be written '
+                    || 'directly.';
         END IF;
+
+        -- Neither the owner nor the ticket's own assignee: admitted only as a ticket manager.
+        IF v_uid IS NOT NULL
+            AND NOT EXISTS (
+                SELECT 1 FROM projects.projects p
+                WHERE p.id = NEW.project_id AND p.owner_user_id = v_uid
+            )
+            AND (CASE WHEN TG_OP = 'INSERT' THEN NEW.current_assignee_id
+                      ELSE OLD.current_assignee_id END) IS DISTINCT FROM v_uid THEN
+            IF TG_OP = 'INSERT' THEN
+                IF NEW.status IS DISTINCT FROM 'backlog'::ticket_status
+                    OR NEW.current_assignee_id IS NOT NULL
+                    OR NEW.claimed_at IS NOT NULL
+                    OR NEW.hidden_until IS NOT NULL
+                    OR NEW.workload_report_id IS NOT NULL THEN
+                    RAISE EXCEPTION USING
+                        ERRCODE = '42501',
+                        MESSAGE = 'A ticket you write for the client starts unclaimed in the '
+                            || 'backlog; hiring and moving it go through the board.';
+                END IF;
+            ELSIF (to_jsonb(NEW) - v_composer) IS DISTINCT FROM (to_jsonb(OLD) - v_composer) THEN
+                RAISE EXCEPTION USING
+                    ERRCODE = '42501',
+                    MESSAGE = 'You may edit a ticket''s content for the client, not its assignee, '
+                        || 'status or payment.';
+            END IF;
+        END IF;
+    END IF;
+
+    IF v_uid IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    IF TG_OP = 'UPDATE'
+        AND OLD.status = 'reported_hidden'::ticket_status
+        AND v_uid = OLD.current_assignee_id
+        AND (NEW.status IS DISTINCT FROM OLD.status
+            OR NEW.workload_intensity IS DISTINCT FROM OLD.workload_intensity) THEN
+        RAISE EXCEPTION 'Work on this ticket is suspended until the client answers your workload report.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    IF security.is_admin() THEN
+        RETURN NEW;
+    END IF;
+
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.current_assignee_id IS NOT NULL
+            AND NOT projects.can_review_project(NEW.project_id) THEN
+            RAISE EXCEPTION 'A ticket is written by its client; a freelancer claims it.'
+                USING ERRCODE = '42501';
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    IF OLD.current_assignee_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+    v_payee := v_uid = OLD.current_assignee_id;
+    v_reviewer := projects.can_review_project(OLD.project_id);
+    IF v_payee AND v_reviewer THEN
+        RETURN NEW;
+    END IF;
+
+    -- A statement PostgREST runs directly moves a claimed ticket by the rule move_ticket applies
+    -- (Decision #293). A change of assignee is not a move: the doors that reassign or release work
+    -- own it, and fn_ticket_claim_before has already reset such a row's status.
+    IF current_user IN ('anon', 'authenticated')
+        AND NEW.current_assignee_id IS NOT DISTINCT FROM OLD.current_assignee_id THEN
+        PERFORM projects.fn_assert_ticket_move(OLD.project_id, OLD.current_assignee_id,
+            OLD.status, NEW.status, OLD.current_stage_id, NEW.current_stage_id);
+    END IF;
+
+    IF NEW.current_stage_id IS DISTINCT FROM OLD.current_stage_id AND NOT v_reviewer THEN
+        RAISE EXCEPTION 'Only the client moves a claimed ticket to another stage.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    IF NEW.title IS DISTINCT FROM OLD.title
+        OR NEW.description IS DISTINCT FROM OLD.description
+        OR NEW.text_description IS DISTINCT FROM OLD.text_description
+        OR NEW.unit_price_cents IS DISTINCT FROM OLD.unit_price_cents
+        OR NEW.required_stages IS DISTINCT FROM OLD.required_stages
+        OR (NEW.workload_intensity IS DISTINCT FROM OLD.workload_intensity
+            AND NOT (NOT v_payee
+                AND OLD.status = 'reported_hidden'::ticket_status
+                AND NEW.workload_intensity > OLD.workload_intensity)) THEN
+        IF v_payee THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'You claimed this ticket on its client''s terms: its content, price, '
+                    || 'stages and workload stay as the client set them.';
+        END IF;
+        RAISE EXCEPTION
+            'This ticket has been claimed by a freelancer; its content is locked to the client.';
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, security, auth;
+$$ LANGUAGE plpgsql SET search_path = public, projects, security, auth;
 
 -- Stamp claim time on claim; on freelancer removal, reset to backlog (re-enter the "New" backlog).
 CREATE OR REPLACE FUNCTION projects.fn_ticket_claim_before()
