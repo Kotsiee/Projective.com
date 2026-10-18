@@ -99,7 +99,7 @@ export const NO_HOLD_NO_WORK: EditorialArticleRecord = {
 				{
 					type: "p",
 					content:
-						"Money a freelancer earns — a released escrow, a team's shares, a session payout — shows as Pending for seven days before it becomes Available to withdraw or spend. The window is a safety margin: it gives the platform time to deal with a payment that goes wrong, such as a card the payer's bank later disputes, before earnings leave the platform. A lost card dispute is recovered from the payer's wallet, not from the freelancer's earnings.",
+						"Money a freelancer earns — a released escrow, a team's shares, a session payout — shows as Pending for seven days before it becomes Available to withdraw or spend. The window is a safety margin: it gives the platform time to deal with a payment that goes wrong, such as a card the payer's bank later disputes, before earnings leave the platform. A lost card dispute is recovered from the payer's wallet first.",
 				},
 				{
 					type: "p",

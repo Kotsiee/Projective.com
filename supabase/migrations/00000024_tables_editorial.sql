@@ -84,6 +84,11 @@ CREATE TABLE IF NOT EXISTS editorial.articles (
     status text NOT NULL DEFAULT 'draft',
     published_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
+    -- Earlier addresses of this article. A slug never changes (Decision #274 (k)), so a renamed
+    -- article is a NEW row that lists the old slug here, and the reader 308s a request for it to this
+    -- row. The old row stays (archived), and its primary key keeps the old slug from ever being
+    -- reused.
+    former_slugs text[] NOT NULL DEFAULT '{}',
     CONSTRAINT articles_slug_check
         CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND char_length(slug) <= 96),
     CONSTRAINT articles_title_check CHECK (char_length(btrim(title)) BETWEEN 1 AND 140),
@@ -103,13 +108,33 @@ CREATE TABLE IF NOT EXISTS editorial.articles (
     -- PRODUCT_MANAGEMENT §3.5 "Editorial article": draft → published → archived (a retraction; the
     -- row is kept, never deleted).
     CONSTRAINT articles_status_check CHECK (status IN ('draft', 'published', 'archived')),
-    CONSTRAINT articles_dates_check CHECK (updated_at >= published_at)
+    CONSTRAINT articles_dates_check CHECK (updated_at >= published_at),
+    -- At most 16, none NULL, never the row's own slug, each slug-shaped and at most 96 characters.
+    -- A CHECK cannot unnest, so the elements are read through two joins: glued together they hold
+    -- slug characters only (so no element holds a space), and joined by single spaces every piece is
+    -- a non-empty slug the lookahead caps at 96 (so no element is empty or malformed). That each
+    -- names an ARCHIVED row and belongs to one article only is a cross-row rule no CHECK can state:
+    -- content/articles.test.ts enforces it where the rows are authored, and the reader resolves a
+    -- clash newest-first.
+    CONSTRAINT articles_former_slugs_check CHECK (
+        cardinality(former_slugs) <= 16
+        AND array_position(former_slugs, NULL) IS NULL
+        AND NOT (slug = ANY (former_slugs))
+        AND array_to_string(former_slugs, '') ~ '^[a-z0-9-]*$'
+        AND (
+            cardinality(former_slugs) = 0
+            OR array_to_string(former_slugs, ' ')
+                ~ '^(?=[a-z0-9-]{1,96}( |$))[a-z0-9]+(-[a-z0-9]+)*( (?=[a-z0-9-]{1,96}( |$))[a-z0-9]+(-[a-z0-9]+)*)*$'
+        )
+    )
 );
 
 COMMENT ON TABLE editorial.articles IS
     'Projective''s own articles (Decision #271), canonical at /articles/[slug]. Shown to readers only while status = ''published'' and published_at has passed (the SELECT policy and the reader''s visible predicate state the same rule). Member posts stay in catalogue.articles.';
 COMMENT ON COLUMN editorial.articles.slug IS
     'Readable and authored on its own; permanent once the row exists (editorial.fn_guard_slug_immutable).';
+COMMENT ON COLUMN editorial.articles.former_slugs IS
+    'Earlier addresses of this article (a rename is a new row plus a redirect, Decision #274 (k)); each names the archived row that held it, and /articles/<former slug> answers 308 here.';
 COMMENT ON COLUMN editorial.articles.body IS
     'P0 DocSection[] — sections of ContentNode JSON (@projective/types/content), generated from packages/backend/services/editorial/content/articles.ts; never hand-edited.';
 -- #endregion

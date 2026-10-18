@@ -33,7 +33,7 @@ export const ASYNCHRONOUS_COLLABORATION_IN_STAGES: EditorialArticleRecord = {
 					content: [
 						"Projective is built around that arrangement. A project is a run of ",
 						{ type: "strong", text: "stages" },
-						", and each stage carries everything needed to finish it: a conversation, a board, files, the work handed over for review, and the money held for it before anyone starts.",
+						", and each stage carries everything needed to finish it: a conversation, files, the work handed over for review, the money held for it before anyone starts and, on a larger project, a board.",
 					],
 				},
 			],
@@ -123,7 +123,7 @@ export const ASYNCHRONOUS_COLLABORATION_IN_STAGES: EditorialArticleRecord = {
 				{
 					type: "p",
 					content:
-						'"Where are we?" is the most expensive question in a remote project, because it interrupts the person doing the work to report on it. Inside every stage is a board where the freelancer breaks the stage into smaller steps — an initial sketch, a colour pass, the export — and moves them as they go. The client sees that progress as it happens, without asking.',
+						'"Where are we?" is the most expensive question in a remote project, because it interrupts the person doing the work to report on it. Inside every stage of a one-off or pipeline project is a board where the freelancer breaks the stage into smaller steps — an initial sketch, a colour pass, the export — and moves them as they go. The client sees that progress as it happens, without asking.',
 				},
 				{
 					type: "image",

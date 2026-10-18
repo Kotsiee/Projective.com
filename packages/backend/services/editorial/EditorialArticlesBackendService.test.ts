@@ -1,6 +1,14 @@
 import { assert, assertEquals } from "@std/assert";
+import type { SupabaseClient } from "supabaseClient";
+import { rowsFromRecords } from "../../core/row-mapper.ts";
 import { EditorialArticlesBackendService as Articles } from "./EditorialArticlesBackendService.ts";
 import { ARTICLES_PAGE_SIZE } from "./articles-model.ts";
+import {
+	ARTICLE_AUTHORS,
+	ARTICLE_AUTHORS_TABLE,
+	ARTICLES,
+	ARTICLES_TABLE,
+} from "./content/articles.ts";
 
 /**
  * EditorialArticlesBackendService on the fixture road (the content source through the same row parse
@@ -88,4 +96,32 @@ Deno.test("article: unknown, not-yet-published and malformed slugs are all a pla
 	});
 	assertEquals(beforePublication.status, 404);
 	assertEquals((await Articles.article("No-Hold-No-Work", fixture)).status, 404);
+});
+
+Deno.test("movedTo: a renamed article's old slug resolves to the new one; nothing else does", async () => {
+	// The live road over a stubbed PostgREST: the old row archived, the new one listing its slug.
+	const authors = rowsFromRecords(ARTICLE_AUTHORS_TABLE, ARTICLE_AUTHORS.records);
+	const [first, ...rest] = ARTICLES.records;
+	const retired = { ...first, status: "archived" as const };
+	const renamed = { ...first, slug: "work-that-keeps-moving", formerSlugs: [first.slug] };
+	const articles = rowsFromRecords(ARTICLES_TABLE, [retired, renamed, ...rest]);
+	const client = {
+		schema: () => ({
+			from: (name: string) => ({
+				select: () =>
+					Promise.resolve({ data: name === "article_authors" ? authors : articles, error: null }),
+			}),
+		}),
+	} as unknown as SupabaseClient;
+	const live = { source: "live" as const, client, now: NOW };
+
+	assertEquals((await Articles.article(first.slug, live)).status, 404);
+	const moved = await Articles.movedTo(first.slug, live);
+	assert(moved.ok);
+	assertEquals(moved.data, "work-that-keeps-moving");
+	assertEquals((await Articles.article("work-that-keeps-moving", live)).status, 200);
+
+	// The seeded corpus has no renames yet, and a slug nobody held moves nowhere.
+	assertEquals((await Articles.movedTo("nothing-here", fixture)).data, null);
+	assertEquals((await Articles.movedTo(first.slug, fixture)).data, null);
 });

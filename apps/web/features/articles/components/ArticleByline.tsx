@@ -16,7 +16,7 @@ export interface ArticleBylineProps {
  */
 export function ArticleByline({ author, size = "md" }: ArticleBylineProps): JSX.Element {
 	return (
-		<address class="artl-byline">
+		<address class={size === "lg" ? "artl-byline artl-byline--lg" : "artl-byline"}>
 			<img
 				class={size === "lg"
 					? "artl-byline__avatar artl-byline__avatar--lg"

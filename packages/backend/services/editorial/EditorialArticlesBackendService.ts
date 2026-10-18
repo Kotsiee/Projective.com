@@ -16,6 +16,7 @@ import {
 	filterByTopics,
 	paginate,
 	relatedArticles,
+	successorFor,
 	toArticleCard,
 	toArticleView,
 } from "./articles-model.ts";
@@ -143,6 +144,23 @@ export const EditorialArticlesBackendService = {
 				toArticleCard(other, authorName(data, other))
 			),
 		});
+	},
+
+	/**
+	 * Where a former address now lives: the slug of the visible article that lists `slug` among its
+	 * former slugs (a renamed article — Decision #274 (k): a new row plus a redirect), or `null` when
+	 * none does. The reader asks only after {@link article} answered 404, and 308s there. Only
+	 * visible articles are searched, so a redirect never confirms a hidden one.
+	 */
+	async movedTo(
+		slug: string,
+		options: EditorialReadOptions = {},
+	): Promise<ServiceResult<string | null>> {
+		const corpus = await readCorpus(options);
+		if (!corpus.ok || !corpus.data) {
+			return fail(corpus.status, { message: corpus.message, details: corpus.details });
+		}
+		return ok(successorFor(slug, corpus.data.articles)?.slug ?? null);
 	},
 };
 // #endregion

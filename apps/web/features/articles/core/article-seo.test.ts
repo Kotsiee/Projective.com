@@ -4,6 +4,7 @@ import { serializeJsonLd } from "@features/marketing/core/seo.ts";
 import {
 	articleJsonLdGraph,
 	articleMeta,
+	articlesIndexCanonicalPath,
 	articlesIndexJsonLd,
 	articlesIndexMeta,
 	articlesIndexTitle,
@@ -11,7 +12,8 @@ import {
 
 /**
  * The `<head>` and structured data of the article surfaces (P6): one canonical per page (an article
- * at `/articles/<slug>`, every index view at `/articles`), an `article` Open Graph block carrying the
+ * at `/articles/<slug>`, page 1 of every index view at `/articles`, a later page at its own address),
+ * an `article` Open Graph block carrying the
  * cover, a CollectionPage + ItemList for the index and an Article + BreadcrumbList for the reader.
  */
 
@@ -37,7 +39,7 @@ Deno.test("index titles name the filter and the page", () => {
 	);
 });
 
-Deno.test("every index view is canonical at /articles and leads with the lead story's cover", async () => {
+Deno.test("page 1 of a filtered view is canonical at /articles and leads with the lead's cover", async () => {
 	const result = await EditorialArticlesBackendService.index(
 		{ topics: ["value-pricing"], page: 1 },
 		fixture,
@@ -61,6 +63,30 @@ Deno.test("every index view is canonical at /articles and leads with the lead st
 	assertEquals(list.itemListElement[0].url, `${ORIGIN}/articles/${result.data.items[0].slug}`);
 	const crumbs = node(graph, "BreadcrumbList").itemListElement as Array<{ item: string }>;
 	assertEquals(crumbs.map((c) => c.item), [`${ORIGIN}/`, `${ORIGIN}/articles`]);
+});
+
+Deno.test("a later index page is its own canonical, in the head and in the CollectionPage", async () => {
+	const result = await EditorialArticlesBackendService.index({ topics: [], page: 1 }, fixture);
+	assert(result.ok && result.data);
+	assertEquals(articlesIndexCanonicalPath({ topics: [], page: 1 }), "/articles");
+	assertEquals(articlesIndexCanonicalPath({ topics: ["value-pricing"], page: 1 }), "/articles");
+	assertEquals(
+		articlesIndexCanonicalPath({ topics: ["value-pricing"], page: 3 }),
+		"/articles?topic=value-pricing&page=3",
+	);
+
+	const second = { ...result.data, page: 2, pageCount: 2 };
+	const meta = articlesIndexMeta(second, ORIGIN);
+	assertEquals(meta.canonical, `${ORIGIN}/articles?page=2`);
+	assertEquals(meta.og.url, `${ORIGIN}/articles?page=2`);
+	const graph = articlesIndexJsonLd(second, ORIGIN);
+	JSON.parse(serializeJsonLd(graph));
+	const page = node(graph, "CollectionPage");
+	assertEquals(page.url, `${ORIGIN}/articles?page=2`);
+	assertEquals(page["@id"], `${ORIGIN}/articles?page=2#webpage`);
+	// The trail is still Home › Articles, and the page still points at it.
+	const crumbs = node(graph, "BreadcrumbList");
+	assertEquals((page.breadcrumb as { "@id": string })["@id"], crumbs["@id"]);
 });
 
 Deno.test("an article: one canonical, an article OG block, and an Article with author, image and count", async () => {

@@ -380,7 +380,9 @@
 	line-clamp: 4;
 }
 
-@container artl-index (min-width: 768px) {
+/* Side by side only from 1024px: at 768 the text column is ~280px and the title, standfirst and meta
+   all wrap into a cramped stack. The features go 2-up from 768 on their own. */
+@container artl-index (min-width: 1024px) {
 	.artl-tile--lead {
 		display: grid;
 		grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
@@ -400,7 +402,9 @@
 		justify-content: center;
 		padding: var(--space-6);
 	}
+}
 
+@container artl-index (min-width: 768px) {
 	.artl-tile--feature .artl-tile__title {
 		font-size: var(--text-xl);
 	}
@@ -538,8 +542,17 @@
 
 .artl-byline__role {
 	font-size: var(--text-sm);
+	/* Explicit, so the dyslexic overlay's bold `address` (emphasis moved from slant to weight) never
+	   makes the role heavier than the name above it. */
+	font-weight: var(--fw-normal);
 	line-height: var(--leading-snug);
 	color: var(--text-secondary);
+}
+
+/* The end-of-article author block: the name keeps the bio's size, so the object never reads smaller
+   than its own description beside the larger picture. */
+.artl-byline--lg .artl-byline__name {
+	font-size: var(--text-base);
 }
 
 /*
@@ -581,6 +594,9 @@
 .ui-prose .artl-cta a.artl-cta__action {
 	color: var(--btn-on);
 	text-decoration: none;
+	/* The prose link rule (0,2,1) swaps the button's press transition for an underline fade; restore
+	   it. `.ui-button:active…` (0,4,0) still out-ranks this and shortens the press-in. */
+	transition: var(--btn-transition-press);
 }
 
 .artl-footer {

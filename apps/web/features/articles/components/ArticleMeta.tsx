@@ -10,7 +10,9 @@ export interface ArticleMetaProps {
 
 /**
  * ArticleMeta — non-actionable facts as one Meta-register line (§B.11.2): list items separated by an
- * `aria-hidden` middot, so a screen reader hears a list rather than punctuation. Never chips.
+ * `aria-hidden` middot, so a screen reader hears a list rather than punctuation. Never chips. The
+ * middot closes the fact before it rather than opening the next, so a line that wraps always starts
+ * with a fact, never with a dangling separator.
  */
 export function ArticleMeta({ facts, class: className }: ArticleMetaProps): JSX.Element {
 	const shown = facts.filter((fact) =>
@@ -20,8 +22,8 @@ export function ArticleMeta({ facts, class: className }: ArticleMetaProps): JSX.
 		<ul class={className ? `artl-meta ${className}` : "artl-meta"} role="list">
 			{shown.map((fact, i) => (
 				<li key={i} class="artl-meta__item">
-					{i > 0 ? <span class="artl-meta__sep" aria-hidden="true">·</span> : null}
 					{fact}
+					{i < shown.length - 1 ? <span class="artl-meta__sep" aria-hidden="true">·</span> : null}
 				</li>
 			))}
 		</ul>

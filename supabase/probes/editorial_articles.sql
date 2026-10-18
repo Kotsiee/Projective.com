@@ -13,11 +13,15 @@
 --   4. Clients cannot write: INSERT / UPDATE / DELETE as either client role is refused (42501).
 --   5. A slug is permanent: changing an article's or an author's slug is refused (23514), while
 --      the seed's own upsert path (UPDATE of every other column) still works.
---   6. The CHECKs and the foreign key refuse a bad slug, an unknown topic, an empty, NULL-holding
---      or four-topic list, an empty or non-array body, a protocol-relative cover, an unknown status,
---      an update dated before publication, a bad author row (23514) and an unknown author (23503).
+--   6. The CHECKs and the foreign key refuse a bad or over-long slug, a blank title, an unknown
+--      topic, an empty, NULL-holding or four-topic list, an empty or non-array body, a
+--      protocol-relative or loopback-http cover, an unknown status, an update dated before
+--      publication, a bad former slug (its own, malformed, over-long, NULL, empty, more than 16),
+--      bad author rows (each 23514, asserted by CONSTRAINT NAME so no case passes through another
+--      CHECK) and an unknown author (23503); well-formed former slugs are accepted and round-trip.
 --      A repeated topic is refused by the Zod row schema, before the generator writes a row (a
---      CHECK cannot hold the subquery that test needs).
+--      CHECK cannot hold the subquery that test needs); so are the cross-row former-slug rules
+--      (content/articles.test.ts).
 --
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated local DB:
 --   docker exec -i supabase_db_Projective psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
@@ -242,39 +246,75 @@ BEGIN
 END $$;
 -- #endregion
 
--- #region 6. CHECKs and the foreign key
+-- #region 6. CHECKs and the foreign key — each refusal by the constraint it is aimed at
+-- Every case names the constraint that must refuse it (GET STACKED DIAGNOSTICS … CONSTRAINT_NAME),
+-- so a row that trips some other CHECK by accident fails the probe instead of passing it.
 DO $$
 DECLARE
     v_author text := (SELECT slug FROM editorial.article_authors ORDER BY slug LIMIT 1);
     v_case record;
+    v_con text;
 BEGIN
     FOR v_case IN
         SELECT * FROM (VALUES
-            ('slug with a capital', 'Bad-Slug', ARRAY['agile-delivery'], '[{"id":"a"}]', '/c.jpg', 'published', 0, '23514'),
-            ('unknown topic', 'probe-c1', ARRAY['marketing'], '[{"id":"a"}]', '/c.jpg', 'published', 0, '23514'),
-            ('empty topics', 'probe-c2', ARRAY[]::text[], '[{"id":"a"}]', '/c.jpg', 'published', 0, '23514'),
-            ('NULL topic', 'probe-c3', ARRAY['agile-delivery', NULL], '[{"id":"a"}]', '/c.jpg', 'published', 0, '23514'),
-            ('four topics', 'probe-c4', ARRAY['agile-delivery', 'value-pricing', 'team-structure', 'escrow-and-trust'], '[{"id":"a"}]', '/c.jpg', 'published', 0, '23514'),
-            ('empty body', 'probe-c5', ARRAY['agile-delivery'], '[]', '/c.jpg', 'published', 0, '23514'),
-            ('object body', 'probe-c6', ARRAY['agile-delivery'], '{"id":"a"}', '/c.jpg', 'published', 0, '23514'),
-            ('protocol-relative cover', 'probe-c7', ARRAY['agile-delivery'], '[{"id":"a"}]', '//evil.example/c.jpg', 'published', 0, '23514'),
-            ('unknown status', 'probe-c8', ARRAY['agile-delivery'], '[{"id":"a"}]', '/c.jpg', 'live', 0, '23514'),
-            ('updated before published', 'probe-c9', ARRAY['agile-delivery'], '[{"id":"a"}]', '/c.jpg', 'published', -1, '23514')
-        ) AS t (label, slug, topics, body, cover, status, updated_shift, code)
+            ('slug with a capital', 'Bad-Slug', 'T', ARRAY['agile-delivery'], '[{"id":"a"}]', '/c.jpg', 'published', 0, ARRAY[]::text[], 'articles_slug_check'),
+            ('97-character slug', repeat('a', 97), 'T', ARRAY['agile-delivery'], '[{"id":"a"}]', '/c.jpg', 'published', 0, ARRAY[]::text[], 'articles_slug_check'),
+            ('blank title', 'probe-c0', '   ', ARRAY['agile-delivery'], '[{"id":"a"}]', '/c.jpg', 'published', 0, ARRAY[]::text[], 'articles_title_check'),
+            ('unknown topic', 'probe-c1', 'T', ARRAY['marketing'], '[{"id":"a"}]', '/c.jpg', 'published', 0, ARRAY[]::text[], 'articles_topics_check'),
+            ('empty topics', 'probe-c2', 'T', ARRAY[]::text[], '[{"id":"a"}]', '/c.jpg', 'published', 0, ARRAY[]::text[], 'articles_topics_check'),
+            ('NULL topic', 'probe-c3', 'T', ARRAY['agile-delivery', NULL], '[{"id":"a"}]', '/c.jpg', 'published', 0, ARRAY[]::text[], 'articles_topics_check'),
+            ('four topics', 'probe-c4', 'T', ARRAY['agile-delivery', 'value-pricing', 'team-structure', 'escrow-and-trust'], '[{"id":"a"}]', '/c.jpg', 'published', 0, ARRAY[]::text[], 'articles_topics_check'),
+            ('empty body', 'probe-c5', 'T', ARRAY['agile-delivery'], '[]', '/c.jpg', 'published', 0, ARRAY[]::text[], 'articles_body_check'),
+            ('object body', 'probe-c6', 'T', ARRAY['agile-delivery'], '{"id":"a"}', '/c.jpg', 'published', 0, ARRAY[]::text[], 'articles_body_check'),
+            ('protocol-relative cover', 'probe-c7', 'T', ARRAY['agile-delivery'], '[{"id":"a"}]', '//evil.example/c.jpg', 'published', 0, ARRAY[]::text[], 'articles_cover_check'),
+            ('loopback http cover', 'probe-c8', 'T', ARRAY['agile-delivery'], '[{"id":"a"}]', 'http://127.0.0.1/c.jpg', 'published', 0, ARRAY[]::text[], 'articles_cover_check'),
+            ('unknown status', 'probe-c9', 'T', ARRAY['agile-delivery'], '[{"id":"a"}]', '/c.jpg', 'live', 0, ARRAY[]::text[], 'articles_status_check'),
+            ('updated before published', 'probe-c10', 'T', ARRAY['agile-delivery'], '[{"id":"a"}]', '/c.jpg', 'published', -1, ARRAY[]::text[], 'articles_dates_check'),
+            ('own slug as a former one', 'probe-c11', 'T', ARRAY['agile-delivery'], '[{"id":"a"}]', '/c.jpg', 'published', 0, ARRAY['probe-c11'], 'articles_former_slugs_check'),
+            ('malformed former slug', 'probe-c12', 'T', ARRAY['agile-delivery'], '[{"id":"a"}]', '/c.jpg', 'published', 0, ARRAY['old-name', 'Old_Name'], 'articles_former_slugs_check'),
+            ('97-character former slug', 'probe-c13', 'T', ARRAY['agile-delivery'], '[{"id":"a"}]', '/c.jpg', 'published', 0, ARRAY['old-name', repeat('b', 97)], 'articles_former_slugs_check'),
+            ('NULL former slug', 'probe-c14', 'T', ARRAY['agile-delivery'], '[{"id":"a"}]', '/c.jpg', 'published', 0, ARRAY['old-name', NULL], 'articles_former_slugs_check'),
+            ('empty former slug', 'probe-c15', 'T', ARRAY['agile-delivery'], '[{"id":"a"}]', '/c.jpg', 'published', 0, ARRAY['old-name', ''], 'articles_former_slugs_check'),
+            ('lone empty former slug', 'probe-c17', 'T', ARRAY['agile-delivery'], '[{"id":"a"}]', '/c.jpg', 'published', 0, ARRAY[''], 'articles_former_slugs_check'),
+            ('former slug holding a space', 'probe-c18', 'T', ARRAY['agile-delivery'], '[{"id":"a"}]', '/c.jpg', 'published', 0, ARRAY['old name'], 'articles_former_slugs_check'),
+            ('former slugs hiding an empty one', 'probe-c19', 'T', ARRAY['agile-delivery'], '[{"id":"a"}]', '/c.jpg', 'published', 0, ARRAY['', 'old-name'], 'articles_former_slugs_check'),
+            ('seventeen former slugs', 'probe-c16', 'T', ARRAY['agile-delivery'], '[{"id":"a"}]', '/c.jpg', 'published', 0, (SELECT array_agg('old-' || i) FROM generate_series(1, 17) AS i), 'articles_former_slugs_check')
+        ) AS t (label, slug, title, topics, body, cover, status, updated_shift, former, constraint_name)
     LOOP
         BEGIN
             INSERT INTO editorial.articles
                 (slug, title, standfirst, topics, body, cover_path, cover_alt, cover_w, cover_h,
-                 author_slug, status, published_at, updated_at)
-            VALUES (v_case.slug, 'T', 'S', v_case.topics, v_case.body::jsonb, v_case.cover, 'Alt', 10, 10,
-                v_author, v_case.status, now(), now() + make_interval(days => v_case.updated_shift));
+                 author_slug, status, published_at, updated_at, former_slugs)
+            VALUES (v_case.slug, v_case.title, 'S', v_case.topics, v_case.body::jsonb, v_case.cover, 'Alt',
+                10, 10, v_author, v_case.status, now(), now() + make_interval(days => v_case.updated_shift),
+                v_case.former);
             RAISE EXCEPTION 'FAIL % was accepted', v_case.label;
         EXCEPTION
             WHEN check_violation THEN
-                IF v_case.code <> '23514' THEN RAISE; END IF;
-                RAISE NOTICE 'PASS % refused [%]', v_case.label, SQLSTATE;
+                GET STACKED DIAGNOSTICS v_con = CONSTRAINT_NAME;
+                IF v_con IS DISTINCT FROM v_case.constraint_name THEN
+                    RAISE EXCEPTION 'FAIL % was refused by % (expected %)',
+                        v_case.label, v_con, v_case.constraint_name;
+                END IF;
+                RAISE NOTICE 'PASS % refused by % [%]', v_case.label, v_con, SQLSTATE;
         END;
     END LOOP;
+
+    -- A rename's new row: well-formed former slugs (one at the 96-character cap) are accepted.
+    INSERT INTO editorial.articles
+        (slug, title, standfirst, topics, body, cover_path, cover_alt, cover_w, cover_h,
+         author_slug, status, published_at, updated_at, former_slugs)
+    VALUES ('probe-renamed', 'T', 'S', ARRAY['agile-delivery'], '[{"id":"a"}]', '/c.jpg', 'Alt', 10, 10,
+        v_author, 'draft', now(), now(), ARRAY['old-name', repeat('c', 96), 'an-older-name-2']);
+    RAISE NOTICE 'PASS well-formed former slugs accepted';
+    IF (SELECT former_slugs FROM editorial.articles WHERE slug = 'probe-renamed')
+        <> ARRAY['old-name', repeat('c', 96), 'an-older-name-2'] THEN
+        RAISE EXCEPTION 'FAIL former slugs did not round-trip';
+    END IF;
+    IF EXISTS (SELECT 1 FROM editorial.articles WHERE slug NOT LIKE 'probe-%' AND former_slugs <> '{}') THEN
+        RAISE EXCEPTION 'FAIL a seeded article carries former slugs (the corpus has no renames yet)';
+    END IF;
+    RAISE NOTICE 'PASS seeded articles default to no former slugs';
 
     BEGIN
         INSERT INTO editorial.articles
@@ -284,17 +324,34 @@ BEGIN
             'nobody-at-all', 'published', now(), now());
         RAISE EXCEPTION 'FAIL an article naming no author was accepted';
     EXCEPTION WHEN foreign_key_violation THEN
-        RAISE NOTICE 'PASS unknown author refused [%]', SQLSTATE;
+        GET STACKED DIAGNOSTICS v_con = CONSTRAINT_NAME;
+        RAISE NOTICE 'PASS unknown author refused by % [%]', v_con, SQLSTATE;
     END;
 
-    BEGIN
-        INSERT INTO editorial.article_authors
-            (slug, name, role, kind, bio, avatar_path, avatar_alt, avatar_w, avatar_h, profile_href)
-        VALUES ('probe-author', 'P', 'R', 'robot', 'B', '/a.png', 'A', 1, 1, 'https://elsewhere.example');
-        RAISE EXCEPTION 'FAIL an author with an unknown kind and an off-site profile link was accepted';
-    EXCEPTION WHEN check_violation THEN
-        RAISE NOTICE 'PASS bad author refused [%]', SQLSTATE;
-    END;
+    FOR v_case IN
+        SELECT * FROM (VALUES
+            ('unknown kind', 'probe-a1', 'P', 'robot', '/a.png', NULL, 'article_authors_kind_check'),
+            ('off-site profile link', 'probe-a2', 'P', 'person', '/a.png', 'https://elsewhere.example/me', 'article_authors_profile_href_check'),
+            ('blank name', 'probe-a3', '  ', 'person', '/a.png', NULL, 'article_authors_name_check'),
+            ('loopback http avatar', 'probe-a4', 'P', 'person', 'http://localhost/a.png', NULL, 'article_authors_avatar_check'),
+            ('97-character slug', repeat('d', 97), 'P', 'person', '/a.png', NULL, 'article_authors_slug_check')
+        ) AS t (label, slug, name, kind, avatar, profile_href, constraint_name)
+    LOOP
+        BEGIN
+            INSERT INTO editorial.article_authors
+                (slug, name, role, kind, bio, avatar_path, avatar_alt, avatar_w, avatar_h, profile_href)
+            VALUES (v_case.slug, v_case.name, 'R', v_case.kind, 'B', v_case.avatar, 'A', 1, 1,
+                v_case.profile_href);
+            RAISE EXCEPTION 'FAIL author with % was accepted', v_case.label;
+        EXCEPTION WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS v_con = CONSTRAINT_NAME;
+            IF v_con IS DISTINCT FROM v_case.constraint_name THEN
+                RAISE EXCEPTION 'FAIL author with % was refused by % (expected %)',
+                    v_case.label, v_con, v_case.constraint_name;
+            END IF;
+            RAISE NOTICE 'PASS author with % refused by % [%]', v_case.label, v_con, SQLSTATE;
+        END;
+    END LOOP;
 END $$;
 -- #endregion
 

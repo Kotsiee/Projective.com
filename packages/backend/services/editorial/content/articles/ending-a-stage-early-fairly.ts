@@ -134,7 +134,7 @@ export const ENDING_A_STAGE_EARLY_FAIRLY: EditorialArticleRecord = {
 						{
 							term: "A deleted ticket",
 							definition:
-								"Deleting a ticket before it is claimed moves no money. Deleting one after it is claimed releases its escrow to the freelancer in full.",
+								"Deleting a ticket before it is claimed pays nobody; if the client prepaid it, the escrow comes back to them in full. Deleting one after it is claimed releases its escrow to the freelancer in full.",
 						},
 						{
 							term: "A cancelled session",

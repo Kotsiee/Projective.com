@@ -1,4 +1,9 @@
-import { EDITORIAL_ARTICLE_TOPICS, type EditorialArticleTopic } from "@projective/types/editorial";
+import { z } from "zod";
+import {
+	EDITORIAL_ARTICLE_TOPICS,
+	type EditorialArticleTopic,
+	EditorialArticleTopicSchema,
+} from "@projective/types/editorial";
 
 /**
  * index-query.ts — the `/articles` URL contract (P6): `?topic=<slug>` (repeatable, any-of) and
@@ -33,17 +38,29 @@ export interface ParsedArticleIndexQuery extends ArticleIndexQuery {
 /** The largest page number accepted; beyond it a page is malformed rather than merely empty. */
 const MAX_PAGE = 9999;
 
-/** Topics in canonical order, unknown values and repeats dropped. */
+/**
+ * One `?page=` value: a plain positive integer (no sign, no leading zero, no fraction) up to
+ * {@link MAX_PAGE}. Anything else is malformed, read as page 1 and redirected.
+ */
+const PageParamSchema = z.string().regex(/^[1-9]\d*$/).transform(Number).pipe(
+	z.number().int().max(MAX_PAGE),
+);
+
+/** Topics in canonical order: each value parsed by the SSOT topic schema, unknowns and repeats dropped. */
 export function canonicalTopics(values: readonly string[]): EditorialArticleTopic[] {
-	const wanted = new Set(values);
+	const wanted = new Set<EditorialArticleTopic>();
+	for (const value of values) {
+		const topic = EditorialArticleTopicSchema.safeParse(value);
+		if (topic.success) wanted.add(topic.data);
+	}
 	return EDITORIAL_ARTICLE_TOPICS.filter((topic) => wanted.has(topic));
 }
 
 /** A `?page=` value as a page number: absent or malformed is page 1. */
 function readPage(raw: string | null): number {
-	if (raw === null || !/^[1-9]\d*$/.test(raw)) return 1;
-	const page = Number(raw);
-	return page <= MAX_PAGE ? page : 1;
+	if (raw === null) return 1;
+	const page = PageParamSchema.safeParse(raw);
+	return page.success ? page.data : 1;
 }
 
 /** Read `/articles`' query: topics, page, and the canonical spelling of both. */

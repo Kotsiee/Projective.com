@@ -6,10 +6,15 @@ import type {
 	DocSection,
 	InlineContent,
 } from "@projective/types/content";
-import { EDITORIAL_ARTICLE_TOPICS, type EditorialArticleRecord } from "@projective/types/editorial";
+import {
+	EDITORIAL_ARTICLE_TOPICS,
+	EditorialArticleAuthorRowSchema,
+	type EditorialArticleRecord,
+	EditorialArticleRowSchema,
+} from "@projective/types/editorial";
 import { rowsFromRecords } from "../../../core/row-mapper.ts";
 import { readEditorialTable } from "../editorial-source.ts";
-import { articleWordCount } from "../articles-model.ts";
+import { articleWordCount, formerSlugProblems } from "../articles-model.ts";
 import {
 	ARTICLE_AUTHORS,
 	ARTICLE_AUTHORS_TABLE,
@@ -66,7 +71,28 @@ function hrefsOf(sections: readonly DocSection[]): string[] {
 	);
 }
 
-/** Intrinsic size of a JPEG (its first SOF marker) or an SVG (its width/height attributes). */
+/** A little-endian unsigned integer of `length` bytes at `at`. */
+function uintLE(bytes: Uint8Array, at: number, length: number): number {
+	let value = 0;
+	for (let i = length - 1; i >= 0; i--) value = value * 256 + bytes[at + i];
+	return value;
+}
+
+/** Intrinsic size of a WebP (its VP8X, VP8L or VP8 header). */
+function webpSize(bytes: Uint8Array, path: string): { w: number; h: number } {
+	const chunk = new TextDecoder().decode(bytes.subarray(12, 16));
+	if (chunk === "VP8X") return { w: uintLE(bytes, 24, 3) + 1, h: uintLE(bytes, 27, 3) + 1 };
+	if (chunk === "VP8L") {
+		const bits = uintLE(bytes, 21, 4);
+		return { w: (bits & 0x3fff) + 1, h: ((bits >> 14) & 0x3fff) + 1 };
+	}
+	if (chunk === "VP8 ") {
+		return { w: uintLE(bytes, 26, 2) & 0x3fff, h: uintLE(bytes, 28, 2) & 0x3fff };
+	}
+	throw new Error(`${path}: unknown WebP chunk ${chunk}`);
+}
+
+/** Intrinsic size of a JPEG (its first SOF marker), a WebP or an SVG (its width/height attributes). */
 async function intrinsicSize(path: string): Promise<{ w: number; h: number }> {
 	const bytes = await Deno.readFile(new URL(path.replace(/^\//, ""), STATIC));
 	if (path.endsWith(".svg")) {
@@ -75,6 +101,7 @@ async function intrinsicSize(path: string): Promise<{ w: number; h: number }> {
 		const h = Number(/<svg[^>]*\sheight="(\d+)"/.exec(text)?.[1]);
 		return { w, h };
 	}
+	if (path.endsWith(".webp")) return webpSize(bytes, path);
 	let i = 2;
 	while (i < bytes.length) {
 		if (bytes[i] !== 0xff) {
@@ -100,6 +127,71 @@ Deno.test("every author and article is a row the database accepts (toRow + the Z
 		"editorial.article_authors",
 		"editorial.articles",
 	]);
+});
+
+Deno.test("the row schemas refuse every value the probe shows the CHECKs refusing", () => {
+	const [article] = rowsFromRecords(ARTICLES_TABLE, articles);
+	const [author] = rowsFromRecords(ARTICLE_AUTHORS_TABLE, ARTICLE_AUTHORS.records);
+	assert(EditorialArticleRowSchema.safeParse(article).success);
+	assert(EditorialArticleAuthorRowSchema.safeParse(author).success);
+	const published = article.published_at as string;
+	const before = new Date(Date.parse(published) - 86_400_000).toISOString();
+	const articleCases: Array<[string, Record<string, unknown>]> = [
+		["slug with a capital", { slug: "Bad-Slug" }],
+		["97-character slug", { slug: "a".repeat(97) }],
+		["blank title", { title: "   " }],
+		["blank standfirst", { standfirst: " " }],
+		["unknown topic", { topics: ["marketing"] }],
+		["empty topics", { topics: [] }],
+		["NULL topic", { topics: ["agile-delivery", null] }],
+		["four topics", {
+			topics: ["agile-delivery", "value-pricing", "team-structure", "escrow-and-trust"],
+		}],
+		["empty body", { body: [] }],
+		["object body", { body: { id: "a" } }],
+		["protocol-relative cover", { cover_path: "//evil.example/c.jpg" }],
+		["loopback http cover", { cover_path: "http://127.0.0.1/c.jpg" }],
+		["blank cover alt", { cover_alt: "  " }],
+		["zero-width cover", { cover_w: 0 }],
+		["unknown status", { status: "live" }],
+		["updated before published", { updated_at: before }],
+		["own slug as a former one", { former_slugs: [article.slug] }],
+		["malformed former slug", { former_slugs: ["old-name", "Old_Name"] }],
+		["97-character former slug", { former_slugs: ["b".repeat(97)] }],
+		["NULL former slug", { former_slugs: ["old-name", null] }],
+		["empty former slug", { former_slugs: ["old-name", ""] }],
+		["lone empty former slug", { former_slugs: [""] }],
+		["former slug holding a space", { former_slugs: ["old name"] }],
+		["former slugs hiding an empty one", { former_slugs: ["", "old-name"] }],
+		["seventeen former slugs", {
+			former_slugs: Array.from({ length: 17 }, (_, i) => `old-${i + 1}`),
+		}],
+	];
+	for (const [label, change] of articleCases) {
+		assertFalse(EditorialArticleRowSchema.safeParse({ ...article, ...change }).success, label);
+	}
+	assert(
+		EditorialArticleRowSchema.safeParse({ ...article, former_slugs: ["old-name", "c".repeat(96)] })
+			.success,
+		"well-formed former slugs parse",
+	);
+	const authorCases: Array<[string, Record<string, unknown>]> = [
+		["unknown kind", { kind: "robot" }],
+		["off-site profile link", { profile_href: "https://elsewhere.example/me" }],
+		["protocol-relative profile link", { profile_href: "//elsewhere.example/me" }],
+		["blank name", { name: "  " }],
+		["blank role", { role: "   " }],
+		["blank bio", { bio: " " }],
+		["loopback http avatar", { avatar_path: "http://localhost/a.png" }],
+		["blank avatar alt", { avatar_alt: " " }],
+		["97-character slug", { slug: "d".repeat(97) }],
+	];
+	for (const [label, change] of authorCases) {
+		assertFalse(EditorialArticleAuthorRowSchema.safeParse({ ...author, ...change }).success, label);
+	}
+	assert(
+		EditorialArticleAuthorRowSchema.safeParse({ ...author, profile_href: "/@editorial" }).success,
+	);
 });
 
 Deno.test("at least six articles are published and visible now, each with a unique readable slug", () => {
@@ -159,7 +251,19 @@ Deno.test("every cover and avatar is a served static file whose declared size is
 		assertFalse(picture.src.includes("banner_3"), "banner_3.jpg is too heavy to be a cover");
 		assertEquals(await intrinsicSize(picture.src), { w: picture.w, h: picture.h }, picture.src);
 		assert(picture.alt.trim().length > 0, `${picture.src} has no alt text`);
+		// A cover is a page's largest paint: keep every one light.
+		const { size } = await Deno.stat(new URL(picture.src.replace(/^\//, ""), STATIC));
+		assert(size <= 256 * 1024, `${picture.src} is ${size} bytes`);
 	}
+});
+
+Deno.test("every article has its own cover, so no two are told apart by their titles alone", () => {
+	const covers = articles.map((article) => article.cover.src);
+	assertEquals(new Set(covers).size, covers.length, covers.join(", "));
+});
+
+Deno.test("former slugs name archived articles, one claimant each (the rules no CHECK can state)", () => {
+	assertEquals(formerSlugProblems(articles), []);
 });
 
 Deno.test("inline figures are labelled 1200×675 placeholders with real alt text", () => {

@@ -30,9 +30,10 @@ import { ENDING_A_STAGE_EARLY_FAIRLY } from "./articles/ending-a-stage-early-fai
  * `org.users_public` row, and an image is a static asset, not a seeded storage object.
  *
  * An article's slug is permanent once seeded (`editorial.fn_guard_slug_immutable`): to rename one,
- * author a NEW record under the new slug and retract the old one by setting its `status` to
- * `archived` — never edit the slug, never delete the record (the generated seed upserts and never
- * prunes).
+ * author a NEW record under the new slug with the old slug in its `formerSlugs`, and retract the old
+ * record by setting its `status` to `archived` — never edit the slug, never delete the record (the
+ * generated seed upserts and never prunes). The reader then answers the old address with a 308 to
+ * the new one, so no inbound link breaks.
  */
 
 // #region Visibility
@@ -88,7 +89,12 @@ export const ARTICLES_TABLE = defineEditorialTable<EditorialArticleRow, Editoria
 	table: "editorial.articles",
 	key: ["slug"],
 	row: EditorialArticleRowSchema,
-	casts: { topics: "text[]", published_at: "timestamptz", updated_at: "timestamptz" },
+	casts: {
+		topics: "text[]",
+		published_at: "timestamptz",
+		updated_at: "timestamptz",
+		former_slugs: "text[]",
+	},
 	toRow: (article) => ({
 		slug: article.slug,
 		title: article.title,
@@ -103,6 +109,7 @@ export const ARTICLES_TABLE = defineEditorialTable<EditorialArticleRow, Editoria
 		status: article.status,
 		published_at: article.publishedAt,
 		updated_at: article.updatedAt,
+		former_slugs: article.formerSlugs ?? [],
 	}),
 	fromRow: (row) => ({
 		slug: row.slug,
@@ -115,6 +122,7 @@ export const ARTICLES_TABLE = defineEditorialTable<EditorialArticleRow, Editoria
 		status: row.status,
 		publishedAt: instant(row.published_at),
 		updatedAt: instant(row.updated_at),
+		formerSlugs: row.former_slugs,
 	}),
 	visible: isEditorialArticleVisible,
 });

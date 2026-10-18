@@ -5,7 +5,7 @@ import {
 	type DocSection,
 	DocSectionSchema,
 } from "../content/doc.ts";
-import { SafeHrefSchema, SafeImageSrcSchema } from "../content/nodes.ts";
+import { SafeImageSrcSchema } from "../content/nodes.ts";
 import { slug, timestamp } from "./common.ts";
 
 /**
@@ -72,7 +72,8 @@ export function isEditorialArticleTopic(value: string): value is EditorialArticl
 /**
  * An article's lifecycle (PRODUCT_MANAGEMENT §3.5 "Editorial article"): `draft → published →
  * archived`. Only a `published` article whose `published_at` has passed is shown; `archived` is a
- * retraction — the row is kept (nothing is hard-deleted) and its address answers "not found".
+ * retraction — the row is kept (nothing is hard-deleted) and its address answers "not found", unless
+ * a visible article lists that slug among its `former_slugs` (a rename), when it answers 308 there.
  */
 export const EDITORIAL_ARTICLE_STATUSES = ["draft", "published", "archived"] as const;
 
@@ -91,29 +92,70 @@ export type EditorialArticleAuthorKind = z.infer<typeof EditorialArticleAuthorKi
 // #endregion
 
 // #region Rows
+/*
+ * Every field below accepts no value its column's CHECK in `00000024_tables_editorial.sql` refuses:
+ * these schemas are the generator's only validation, so a looser one lets a record through the tests
+ * and the fixture road and then fails `db:reset` on the generated seed. Where JavaScript and SQL
+ * differ, the schema is the stricter of the two (`trim()` drops every whitespace, `btrim` only
+ * spaces; `.length` counts UTF-16 units, `char_length` code points).
+ */
+
 /** A timestamp a reader can order by: any string `Date.parse` understands. */
 const instant = timestamp.refine((value) => !Number.isNaN(Date.parse(value)), {
 	message: "Expected an ISO date-time.",
 });
 
-/** A positive pixel dimension. */
-const pixels = z.number().int().positive();
+/** A positive pixel dimension that fits the `integer` column. */
+const pixels = z.number().int().positive().max(2_147_483_647);
+
+/** An article's or author's slug: the shared slug shape, at most 96 characters (the CHECK's cap). */
+const articleSlug = slug.max(96, "A slug is at most 96 characters.");
+
+/** Text that is not blank once trimmed (`char_length(btrim(…)) >= 1`), at most `max` long. */
+function textField(max?: number) {
+	const base = max === undefined ? z.string() : z.string().max(max);
+	return base.refine((value) => value.trim().length > 0, { message: "Must not be blank." });
+}
+
+/** The CHECK's picture rule, `^(/[^/\\]|https://)`: a same-origin path or an https:// URL. */
+const EDITORIAL_IMAGE_PATH_RE = /^(\/[^/\\]|https:\/\/)/;
+
+/** The CHECK's profile-link rule, `^/[^/\\]`: a same-origin path, never another site. */
+const SAME_ORIGIN_PATH_RE = /^\/[^/\\]/;
+
+/**
+ * A picture an editorial row names: a same-origin static path or an https:// URL. Never the loopback
+ * `http://` the content renderer also allows, and never a storage object (editorial migrations run
+ * where no seeded object exists).
+ */
+const editorialImagePath = SafeImageSrcSchema.refine(
+	(value) => EDITORIAL_IMAGE_PATH_RE.test(value),
+	{
+		message: "Expected a same-origin /path or an https:// URL.",
+	},
+);
+
+/** An author's public page (`/@handle`): a same-origin path with no whitespace. */
+const profileHref = z.string().regex(SAME_ORIGIN_PATH_RE, "Expected a same-origin /path.").refine(
+	(value) => !/\s/.test(value),
+	{ message: "A link has no whitespace." },
+);
 
 /** One row of `editorial.article_authors` — a byline, never a foreign key onto a seeded profile. */
 export const EditorialArticleAuthorRowSchema = z.object({
-	slug,
-	name: z.string().min(1).max(80),
-	role: z.string().min(1).max(80),
+	slug: articleSlug,
+	name: textField(80),
+	role: textField(80),
 	kind: EditorialArticleAuthorKindSchema,
 	/** One or two sentences under the end-of-article byline. */
-	bio: z.string().min(1).max(320),
+	bio: textField(320),
 	/** A static asset (`/logo.svg`, `/test_images/…`): editorial rows never name a storage object. */
-	avatar_path: SafeImageSrcSchema,
-	avatar_alt: z.string().min(1),
+	avatar_path: editorialImagePath,
+	avatar_alt: textField(),
 	avatar_w: pixels,
 	avatar_h: pixels,
 	/** The author's public page (`/@handle`) when they have one; a team byline has none. */
-	profile_href: SafeHrefSchema.nullable(),
+	profile_href: profileHref.nullable(),
 });
 /** One `editorial.article_authors` row. */
 export type EditorialArticleAuthorRow = z.infer<typeof EditorialArticleAuthorRowSchema>;
@@ -125,10 +167,10 @@ const ArticleBodySchema = z.array(DocSectionSchema).min(1).superRefine((sections
 
 /** One row of `editorial.articles`. */
 export const EditorialArticleRowSchema = z.object({
-	slug,
-	title: z.string().min(1).max(140),
+	slug: articleSlug,
+	title: textField(140),
 	/** The lead paragraph under the title — also the page's meta description. */
-	standfirst: z.string().min(1).max(320),
+	standfirst: textField(320),
 	/** One to three topics, the first being the article's primary topic. */
 	topics: z.array(EditorialArticleTopicSchema).min(1).max(3).refine(
 		(topics) => new Set(topics).size === topics.length,
@@ -136,17 +178,26 @@ export const EditorialArticleRowSchema = z.object({
 	),
 	/** The article's sections (P0 `DocSection[]`): ContentNode JSON in a `jsonb` column. */
 	body: ArticleBodySchema,
-	cover_path: SafeImageSrcSchema,
-	cover_alt: z.string().min(1),
+	cover_path: editorialImagePath,
+	cover_alt: textField(),
 	cover_w: pixels,
 	cover_h: pixels,
-	author_slug: slug,
+	author_slug: articleSlug,
 	status: EditorialArticleStatusSchema,
 	published_at: instant,
 	updated_at: instant,
+	/**
+	 * Earlier addresses of a renamed article, each the slug of the archived row that held it; the
+	 * reader 308s a request for one to this row (Decision #274 (k): a rename is a new row plus a
+	 * redirect).
+	 */
+	former_slugs: z.array(articleSlug).max(16),
 }).refine((row) => Date.parse(row.updated_at) >= Date.parse(row.published_at), {
 	message: "An article cannot be updated before it was published.",
 	path: ["updated_at"],
+}).refine((row) => !row.former_slugs.includes(row.slug), {
+	message: "An article cannot list its own slug as a former one.",
+	path: ["former_slugs"],
 });
 /** One `editorial.articles` row. */
 export type EditorialArticleRow = z.infer<typeof EditorialArticleRowSchema>;
@@ -181,6 +232,12 @@ export interface EditorialArticleRecord {
 	publishedAt: string;
 	/** ISO date-time, never before {@link publishedAt}. */
 	updatedAt: string;
+	/**
+	 * Earlier slugs of a renamed article (a slug never changes, so a rename is a new record listing
+	 * the old slug here, with the old record archived); a request for one is redirected here. Omitted
+	 * when authored means none; always present once read.
+	 */
+	formerSlugs?: string[];
 }
 // #endregion
 

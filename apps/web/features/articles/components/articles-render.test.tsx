@@ -55,7 +55,8 @@ Deno.test("index: one h1, a lead, two features and the grid, every picture's box
 	for (const img of imgs) {
 		assertMatch(img, /\swidth="\d+"/);
 		assertMatch(img, /\sheight="\d+"/);
-		assertMatch(img, /\salt="[^"]+"/);
+		// A tile's cover is decoration: the title link names the card.
+		assertMatch(img, /\salt=""/);
 	}
 	assertEquals(imgs.filter((img) => img.includes('fetchpriority="high"')).length, 1);
 	assert(imgs[0].includes('fetchpriority="high"') && imgs[0].includes('loading="eager"'));
@@ -65,6 +66,13 @@ Deno.test("index: one h1, a lead, two features and the grid, every picture's box
 	// Each tile is ONE link, named by its title.
 	assertEquals(count(html, 'class="artl-tile__link"'), 6);
 	assertMatch(html, /<time\s+datetime="2026-10-14T08:00:00.000Z">14 Oct 2026<\/time>/);
+	// A middot closes the fact before it, so a wrapped meta line never starts with a separator.
+	assertEquals(count(html, '<li class="artl-meta__item"><span class="artl-meta__sep"'), 0);
+	assertEquals(
+		count(html, /<span class="artl-meta__sep" aria-hidden="true">·<\/span><\/li><\/ul>/),
+		0,
+	);
+	assert(count(html, "artl-meta__sep") > 0);
 });
 
 Deno.test("index: the topic filter is a nav of links whose chosen chips are aria-current", async () => {
@@ -74,7 +82,12 @@ Deno.test("index: the topic filter is a nav of links whose chosen chips are aria
 	assertEquals(count(html, 'class="artl-topic"'), 6);
 	assertEquals(count(html, 'aria-current="true"'), 1);
 	assertMatch(html, /href="\/articles" class="artl-topic"|class="artl-topic" href="\/articles"/);
-	assertMatch(html, /Value pricing<\/span>.*?, 3 articles, selected/s);
+	// The chosen state is announced once, by aria-current — not again in the hidden text.
+	assertMatch(
+		html,
+		/aria-current="true">(?:(?!<\/a>).)*Value pricing<\/span>(?:(?!<\/a>).)*, 3 articles<\/span>/s,
+	);
+	assertEquals(count(html, ", selected"), 0);
 	assertEquals(indexSummary(filtered), "3 articles on Value pricing");
 	assertEquals(
 		indexSummary({ total: 1, topics: ["agile-delivery", "team-structure", "value-pricing"] }),
@@ -136,6 +149,9 @@ Deno.test("reader: one h1, the article landmark, the TOC nav, the byline address
 	assertMatch(html, /<nav [^>]*aria-label="On this page"/);
 	assertMatch(html, /class="ui-doc ui-doc--article"/);
 	assertEquals(count(html, "<address"), 2);
+	assertEquals(count(html, 'class="artl-byline artl-byline--lg"'), 1);
+	// The reader's cover keeps its description; it is the article's picture, not a tile's.
+	assertMatch(html, /<img class="artl-cover__img"[^>]*\salt="[^"]+"/);
 	assertMatch(html, /Escrow &amp; trust/);
 	assertMatch(html, /<time datetime="2026-10-08T08:00:00.000Z">8 October 2026<\/time>/);
 	assertMatch(html, /Updated <time datetime="2026-10-12T09:30:00.000Z">12 October 2026<\/time>/);
@@ -165,6 +181,8 @@ Deno.test("reader: exactly one call to action, inside the reading, guest-aware",
 		<ArticleReaderView page={result.data} signedIn={false} Document={StaticDocument} />,
 	);
 	assertEquals(count(guest, 'class="artl-cta"'), 1);
+	// On paper the call to action is a box and a link nobody can follow.
+	assertMatch(guest, /<aside class="artl-cta" aria-labelledby="artl-cta-title" data-print="hide">/);
 	assertEquals(count(guest, "ui-button--filled"), 1);
 	assertMatch(guest, /Run your next project in stages/);
 	assertMatch(

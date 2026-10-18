@@ -1,5 +1,5 @@
 import type { EditorialArticleRecord } from "@projective/types/editorial";
-import { COVER_ORANGE_SUN, placeholderFigure } from "./covers.ts";
+import { COVER_PALM_DUSK, placeholderFigure } from "./covers.ts";
 
 /** "Agile without the ceremony: stages as increments" — agile delivery. */
 export const AGILE_DELIVERY_IN_STAGES: EditorialArticleRecord = {
@@ -8,7 +8,7 @@ export const AGILE_DELIVERY_IN_STAGES: EditorialArticleRecord = {
 	standfirst:
 		"Sprints, stand-ups and story points were designed for teams who share an office and a payroll. A stage keeps what made agile work — small increments, a clear definition of done, review before moving on — and drops the rituals that assume you do.",
 	topics: ["agile-delivery", "async-collaboration"],
-	cover: COVER_ORANGE_SUN,
+	cover: COVER_PALM_DUSK,
 	authorSlug: "projective-editorial",
 	status: "published",
 	publishedAt: "2026-09-09T08:00:00Z",

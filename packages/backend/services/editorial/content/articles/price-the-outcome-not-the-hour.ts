@@ -1,5 +1,5 @@
 import type { EditorialArticleRecord } from "@projective/types/editorial";
-import { COVER_MOUNTAIN_WATCH } from "./covers.ts";
+import { COVER_EGG_ORBITS } from "./covers.ts";
 
 /** "Price the outcome, not the hour" — value pricing. */
 export const PRICE_THE_OUTCOME_NOT_THE_HOUR: EditorialArticleRecord = {
@@ -8,7 +8,7 @@ export const PRICE_THE_OUTCOME_NOT_THE_HOUR: EditorialArticleRecord = {
 	standfirst:
 		"Projective has no hourly-rate field, and that is deliberate. When every stage has a price agreed before it starts, the conversation moves from how long something takes to what it is worth.",
 	topics: ["value-pricing", "agile-delivery"],
-	cover: COVER_MOUNTAIN_WATCH,
+	cover: COVER_EGG_ORBITS,
 	authorSlug: "projective-editorial",
 	status: "published",
 	publishedAt: "2026-10-01T08:00:00Z",
@@ -111,7 +111,7 @@ export const PRICE_THE_OUTCOME_NOT_THE_HOUR: EditorialArticleRecord = {
 						{
 							type: "p",
 							content:
-								"A price of zero makes extra rounds free. Leaving the price unstated means the stage cannot be sent back again once its free rounds are spent, so decide which you mean.",
+								"A price of zero makes extra rounds free. If you set free rounds but leave the price blank, an extra round costs the stage's own price. State the one you mean.",
 						},
 					],
 				},

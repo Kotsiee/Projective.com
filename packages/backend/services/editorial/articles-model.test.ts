@@ -7,15 +7,18 @@ import {
 	compareNewestFirst,
 	countTopics,
 	filterByTopics,
+	formerSlugProblems,
 	paginate,
 	relatedArticles,
+	successorFor,
 	toArticleCard,
 	toArticleView,
 } from "./articles-model.ts";
 
 /**
  * articles-model — the pure rules of Projective's article index and reader (P6): reading time from
- * the word count, newest-first order, the any-of topic filter, pagination and related reading.
+ * the word count, newest-first order, the any-of topic filter, pagination, related reading and the
+ * redirect a renamed article leaves behind.
  */
 
 // #region Fixtures
@@ -188,5 +191,54 @@ Deno.test("related reading tops up with the newest others when too few share a t
 	];
 	assertEquals(relatedArticles(self, pool).map((a) => a.slug), ["shares", "newest", "older"]);
 	assertEquals(relatedArticles(self, [self]), []);
+});
+// #endregion
+
+// #region Renames
+Deno.test("a former slug resolves to the visible article that lists it, newest first", () => {
+	const renamed = {
+		...record("new-name", "2026-10-01T00:00:00Z", ["value-pricing"]),
+		formerSlugs: ["old-name"],
+	};
+	const later = {
+		...record("newer-claim", "2026-10-05T00:00:00Z", ["value-pricing"]),
+		formerSlugs: ["old-name", "older-name"],
+	};
+	const plain = record("plain", "2026-10-09T00:00:00Z", ["value-pricing"]);
+	assertEquals(successorFor("old-name", [renamed, plain])?.slug, "new-name");
+	// A clash the source's tests forbid still has one answer: the newest claim.
+	assertEquals(successorFor("old-name", [renamed, later, plain])?.slug, "newer-claim");
+	assertEquals(successorFor("older-name", [renamed, later])?.slug, "newer-claim");
+	assertEquals(successorFor("never-was", [renamed, later, plain]), null);
+	assertEquals(successorFor("plain", [plain]), null);
+});
+
+Deno.test("former slugs must name an archived article of the set, never itself, and one claimant", () => {
+	const archived = {
+		...record("old-name", "2026-09-01T00:00:00Z", ["value-pricing"]),
+		status: "archived" as const,
+	};
+	const live = record("still-live", "2026-09-02T00:00:00Z", ["value-pricing"]);
+	const renamed = {
+		...record("new-name", "2026-10-01T00:00:00Z", ["value-pricing"]),
+		formerSlugs: ["old-name"],
+	};
+	assertEquals(formerSlugProblems([archived, live, renamed]), []);
+	assertEquals(formerSlugProblems([archived, { ...renamed, formerSlugs: ["new-name"] }]), [
+		"new-name lists its own slug as a former one",
+	]);
+	assertEquals(formerSlugProblems([{ ...renamed, formerSlugs: ["missing"] }]), [
+		"new-name: former slug missing names no article",
+	]);
+	assertEquals(formerSlugProblems([live, { ...renamed, formerSlugs: ["still-live"] }]), [
+		"new-name: former slug still-live is still published",
+	]);
+	const rival = {
+		...record("rival", "2026-10-02T00:00:00Z", ["value-pricing"]),
+		formerSlugs: ["old-name"],
+	};
+	assertEquals(formerSlugProblems([archived, renamed, rival]), [
+		"former slug old-name is claimed by both new-name and rival",
+	]);
 });
 // #endregion

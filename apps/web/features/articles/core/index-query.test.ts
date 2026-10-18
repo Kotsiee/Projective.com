@@ -47,6 +47,14 @@ Deno.test("page=1, a malformed page and a repeated page redirect; other paramete
 		assertEquals(parsed.search, "?utm_source=mail", search);
 		assert(parsed.changed, search);
 	}
+	// The cap is the last page accepted, not the first refused.
+	assertEquals(parse("page=9999"), {
+		topics: [],
+		page: 9999,
+		search: "?page=9999",
+		changed: false,
+	});
+	assertEquals(parse("page=10000").page, 1);
 	const twice = parse("page=2&page=3");
 	assertEquals(twice.page, 2);
 	assert(twice.changed);

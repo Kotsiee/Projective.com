@@ -153,6 +153,52 @@ export function paginate<T>(
 }
 // #endregion
 
+// #region Renames
+/**
+ * The article that now answers for `slug`: one among `visible` that lists it in its former slugs (a
+ * renamed article — Decision #274 (k): a rename is a new row plus a redirect), or `null`. Newest
+ * first, so a clash the content source's tests forbid still resolves to one answer.
+ */
+export function successorFor<
+	T extends Pick<EditorialArticleRecord, "slug" | "publishedAt" | "formerSlugs">,
+>(slug: string, visible: readonly T[]): T | null {
+	const claims = visible.filter((article) => article.formerSlugs?.includes(slug) ?? false);
+	return claims.sort(compareNewestFirst)[0] ?? null;
+}
+
+/**
+ * What is wrong with a set of records' former slugs, as sentences (empty = nothing). A former slug
+ * must name an ARCHIVED record of the set — whose primary key then keeps the slug from being reused,
+ * and which is hidden, so the redirect is what answers — never the record's own slug, and belong to
+ * one record only. These are the cross-row rules `articles_former_slugs_check` cannot state.
+ */
+export function formerSlugProblems(
+	records: readonly Pick<EditorialArticleRecord, "slug" | "status" | "formerSlugs">[],
+): string[] {
+	const problems: string[] = [];
+	const bySlug = new Map(records.map((record) => [record.slug, record]));
+	const claimedBy = new Map<string, string>();
+	for (const record of records) {
+		for (const former of record.formerSlugs ?? []) {
+			const held = bySlug.get(former);
+			if (former === record.slug) {
+				problems.push(`${record.slug} lists its own slug as a former one`);
+			} else if (!held) {
+				problems.push(`${record.slug}: former slug ${former} names no article`);
+			} else if (held.status !== "archived") {
+				problems.push(`${record.slug}: former slug ${former} is still ${held.status}`);
+			}
+			const other = claimedBy.get(former);
+			if (other && other !== record.slug) {
+				problems.push(`former slug ${former} is claimed by both ${other} and ${record.slug}`);
+			}
+			claimedBy.set(former, record.slug);
+		}
+	}
+	return problems;
+}
+// #endregion
+
 // #region Related reading
 /**
  * Up to `limit` other articles to read next: those sharing the most topics first, then those

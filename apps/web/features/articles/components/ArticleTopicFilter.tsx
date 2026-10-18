@@ -70,7 +70,7 @@ function TopicChip(
 			<span>{label}</span>
 			<span class="artl-topic__count" aria-hidden="true">{count}</span>
 			<span class="ui-visually-hidden">
-				{`, ${count} ${count === 1 ? "article" : "articles"}${current ? ", selected" : ""}`}
+				{`, ${count} ${count === 1 ? "article" : "articles"}`}
 			</span>
 		</a>
 	);

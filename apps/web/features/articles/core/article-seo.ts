@@ -4,6 +4,7 @@ import {
 	type EditorialArticlePage,
 } from "@projective/types/editorial";
 import {
+	absoluteUrl,
 	articleJsonLd,
 	breadcrumbListJsonLd,
 	collectionPageJsonLd,
@@ -21,9 +22,9 @@ import { articleHref, articlesIndexHref } from "./index-query.ts";
  * article-seo.ts — the `<head>` facts and the structured data of `/articles` and `/articles/[slug]`
  * (P6). Pure: the route passes the site origin (`siteOrigin(ctx.url)`).
  *
- * One canonical per page (Decision #271): an article's is `/articles/<slug>`, and every spelling of
- * the index — a topic filter, a later page — names `/articles`, since each is a view of that one
- * collection. Member-authored posts are `/view` pages and never appear here.
+ * One canonical per page (Decision #271): an article's is `/articles/<slug>`; page 1 of the index,
+ * filtered or not, names `/articles`, and a later page names itself (see
+ * {@link articlesIndexCanonicalPath}). Member-authored posts are `/view` pages and never appear here.
  */
 
 // #region Index
@@ -38,33 +39,61 @@ export function articlesIndexTitle(index: Pick<EditorialArticleIndex, "topics" |
 	return index.page > 1 ? `${base} · Page ${index.page}` : base;
 }
 
+/**
+ * The index view's canonical path. Page 1 of any filter folds into `/articles`, the collection's
+ * landing. A later page is its OWN canonical (`/articles?page=2`, `/articles?topic=…&page=2`): it
+ * lists articles no other page shows, so naming page 1 would tell a crawler to drop them.
+ */
+export function articlesIndexCanonicalPath(
+	index: Pick<EditorialArticleIndex, "topics" | "page">,
+): string {
+	return index.page > 1
+		? articlesIndexHref({ topics: index.topics, page: index.page })
+		: articlesIndexHref();
+}
+
 /** The index's `<head>` facts. */
 export function articlesIndexMeta(index: EditorialArticleIndex, origin: string): PageMeta {
 	const lead = index.items[0];
-	return pageMeta({
+	const meta = pageMeta({
 		title: articlesIndexTitle(index),
 		description: ARTICLES_INDEX_DESCRIPTION,
 		path: articlesIndexHref(),
 		origin,
 		...(lead ? { ogImage: lead.cover } : {}),
 	});
+	const path = articlesIndexCanonicalPath(index);
+	if (path === articlesIndexHref()) return meta;
+	// `pageMeta` strips every query from a canonical; a later page keeps its own.
+	const canonical = absoluteUrl(origin, path);
+	return { ...meta, canonical, og: { ...meta.og, url: canonical } };
 }
 
-/** The index's structured data: the organisation, the site, a CollectionPage + ItemList, crumbs. */
+/**
+ * The index's structured data: the organisation, the site, a CollectionPage + ItemList, crumbs. The
+ * CollectionPage's `url` and `@id` are the view's canonical, so a later page's ItemList is never
+ * attributed to page 1.
+ */
 export function articlesIndexJsonLd(index: EditorialArticleIndex, origin: string): JsonLdGraph {
-	const path = articlesIndexHref();
+	const landing = articlesIndexHref();
+	const path = articlesIndexCanonicalPath(index);
+	const collection = collectionPageJsonLd({
+		origin,
+		path: landing,
+		name: articlesIndexTitle(index),
+		description: ARTICLES_INDEX_DESCRIPTION,
+		breadcrumb: true,
+		items: index.items.map((item) => ({ name: item.title, path: articleHref(item.slug) })),
+	});
+	const url = absoluteUrl(origin, path);
 	return jsonLdGraph(
 		organizationJsonLd(origin),
 		webSiteJsonLd(origin),
-		collectionPageJsonLd({
-			origin,
-			path,
-			name: articlesIndexTitle(index),
-			description: ARTICLES_INDEX_DESCRIPTION,
-			breadcrumb: true,
-			items: index.items.map((item) => ({ name: item.title, path: articleHref(item.slug) })),
-		}),
-		breadcrumbListJsonLd(origin, [{ name: "Home", path: "/" }, { name: "Articles", path }]),
+		path === landing ? collection : { ...collection, "@id": `${url}#webpage`, url },
+		breadcrumbListJsonLd(origin, [{ name: "Home", path: "/" }, {
+			name: "Articles",
+			path: landing,
+		}]),
 	);
 }
 // #endregion

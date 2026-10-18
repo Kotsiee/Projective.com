@@ -29,6 +29,8 @@ export interface ArticleTileProps {
  * byline · reading time · date. The title's link is the tile's only control; its overlay makes the
  * whole card the target, so a screen reader hears one link named by the title, not a card of links.
  * The cover keeps its box from the first byte (width/height plus an aspect ratio on a solid tone).
+ * On a tile the cover is decoration (`alt=""`): the title link names the card, and a placeholder
+ * photo's description read before every heading would only be noise. The reader's cover keeps it.
  */
 export function ArticleTile(
 	{ card, variant, level, priority = false }: ArticleTileProps,
@@ -40,7 +42,7 @@ export function ArticleTile(
 				<img
 					class="artl-tile__img"
 					src={card.cover.src}
-					alt={card.cover.alt}
+					alt=""
 					width={card.cover.w}
 					height={card.cover.h}
 					decoding="async"

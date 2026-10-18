@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { stub } from "@std/testing/mock";
 import { HttpError } from "fresh";
-import { fail } from "@server/services/ServiceResult.ts";
+import { fail, ok } from "@server/services/ServiceResult.ts";
 import { EditorialArticlesBackendService } from "@server/services/editorial/EditorialArticlesBackendService.ts";
 import type { PageMeta } from "@features/marketing/core/seo.ts";
 import { handler as indexHandler } from "./index-handler.ts";
@@ -116,6 +116,34 @@ Deno.test("/articles/[slug]: a malformed or unknown slug is a 404, read or not",
 		assertEquals(read.calls.length, 0, "a malformed slug is never read");
 	} finally {
 		read.restore();
+	}
+});
+
+Deno.test("/articles/[slug]: a renamed article's former slug 308s to it, query kept", async () => {
+	const moved = stub(
+		EditorialArticlesBackendService,
+		"movedTo",
+		(slug: string) => Promise.resolve(ok(slug === "old-name" ? "new-name" : null)),
+	);
+	try {
+		assertEquals(
+			await call(readerHandler, "/articles/old-name?ref=mail", { slug: "old-name" }),
+			{ status: 308, location: "/articles/new-name?ref=mail" },
+		);
+		const err = await assertRejects(
+			() => call(readerHandler, "/articles/nothing-here", { slug: "nothing-here" }),
+			HttpError,
+		);
+		assertEquals(err.status, 404);
+		// A visible article is served as itself; its slug is never looked up as a former one.
+		const before = moved.calls.length;
+		assertEquals(
+			(await call(readerHandler, "/articles/no-hold-no-work", { slug: "no-hold-no-work" })).status,
+			200,
+		);
+		assertEquals(moved.calls.length, before);
+	} finally {
+		moved.restore();
 	}
 });
 // #endregion

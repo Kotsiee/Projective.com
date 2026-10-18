@@ -120,10 +120,12 @@ function ArticleFooter(
 			<p class="artl-footer__topics">
 				Filed under {article.topics.map((topic, i) => (
 					<span key={topic}>
-						{i > 0 ? <span class="artl-meta__sep" aria-hidden="true">·</span> : null}
 						<a href={articlesIndexHref({ topics: [topic] })}>
 							{EDITORIAL_ARTICLE_TOPIC_LABEL[topic]}
 						</a>
+						{i < article.topics.length - 1
+							? <span class="artl-meta__sep" aria-hidden="true">·</span>
+							: null}
 					</span>
 				))}
 			</p>

@@ -11,11 +11,12 @@ export interface ArticleCtaProps {
  * line, a sentence and the region's only filled button — tier 3 brand primary (DESIGN_SYSTEM §B.8.1),
  * since joining or creating a project is a workflow step, not a payment. An `<aside>` named by its
  * line, so it is skippable and never mistaken for the article's own words; its line is not a heading,
- * so it stays out of the article's outline and table of contents.
+ * so it stays out of the article's outline and table of contents. Not printed: on paper it is a
+ * tinted box and a link nobody can follow.
  */
 export function ArticleCta({ cta }: ArticleCtaProps): JSX.Element {
 	return (
-		<aside class="artl-cta" aria-labelledby="artl-cta-title">
+		<aside class="artl-cta" aria-labelledby="artl-cta-title" data-print="hide">
 			<p class="artl-cta__title" id="artl-cta-title">{cta.title}</p>
 			<p class="artl-cta__body">{cta.body}</p>
 			<a
