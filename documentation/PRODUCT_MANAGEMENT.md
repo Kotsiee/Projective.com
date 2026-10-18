@@ -621,8 +621,8 @@ Ready | In Progress | Complete ──(retired)───────────�
 
 **Rules.** Draft, Claimed, Review and Disputed are not used — an idea has no owner to claim it and no
 deliverable to review — so three moves have no §3.2 edge: Ready → In Progress (§3.2 goes through
-Claimed), In Progress → Complete (through Review) and Ready → Backlog (none), awaiting the owner's
-confirmation (Decision #272 flag (l)). Only an operator (`ops.admin_users`) moves an idea, through
+Claimed), In Progress → Complete (through Review) and Ready → Backlog (none). The owner confirmed all three on 2026-10-18
+(Decision #272 (l)): an idea carries its own edge set on the unified states. Only an operator (`ops.admin_users`) moves an idea, through
 `community.set_feedback_idea_status`, and only along the moves above (`fn_feedback_move_legal`);
 **Archived is terminal and non-reopenable**, and a shipped idea that regresses is a new idea. Nothing
 is hard-deleted (§5.4): an idea refuses `DELETE`, and its history is append-only. Every move

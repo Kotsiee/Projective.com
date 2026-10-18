@@ -295,6 +295,10 @@ engine for continuous work. Sessions (below) are a provider-side work flow, not 
 type. The three types are the Zod SSOT's `ProjectTypeChoice` (`task | one_off | pipeline`), stored
 as the `format` + `structure_variation` pair.
 
+**A seller offers one of exactly four service types** (owner ruling, Decision #275 (c)):
+**Deliverable**, **One-Off**, **Pipeline** and **Session** — a Session is either one-to-one or a
+group cohort, which is a kind of Session rather than a fifth type.
+
 #### The Three Work Flows
 
 ##### 1. One-Off Projects (The "Sprint")
@@ -2176,7 +2180,7 @@ more:
 | Field            | Notes                                                                                      |
 | :--------------- | :------------------------------------------------------------------------------------------ |
 | **Title**        | Required, at least 3 characters. Long enough to be a name, short enough not to be a brief. |
-| **Project type** | `pipeline` or `one_off`. Two options, not three — see below.                               |
+| **Project type** | **Task**, **One-Off** or **Pipeline** — three types, stored as two formats (see below).   |
 | **Currency**     | Seeded from the viewer's display preference, then **fixed to the project**.                |
 | **Baseline**     | ONE price: a pipeline's default ticket rate, or a one-off's escrow budget. Optional.       |
 
@@ -2189,13 +2193,16 @@ configuration workspace at the project's `prj-` address (Decision #195).
 before the client can look anything up, and a half-filled one loses everything on dismiss. A draft
 row loses nothing. So the modal's only job is to reach a URL, and the URL is where the work happens.
 
-**Why two project types.** `session` is excluded because a session is a **service a freelancer
-sells**, not a project a client posts — it is created provider-side from the catalogue composer, and
-a project only ever receives one by instantiation. Offering it here would let a buyer mint an
-engagement with no seller and no schedule. A **Direct Deliverable** can no longer be BORN here
-either: it was a third word a client had to choose between before writing a sentence, and it is a
-staffing distinction rather than a workflow one. It survives intact one level down as the project's
-structure, so an existing Direct Deliverable stays fully editable.
+**Why three project types, stored as two formats (owner ruling, Decision #275 (c)).** A client
+creates exactly three project types: **Task**, **One-Off** and **Pipeline**. A Task is the
+stage-less One-Off (Decision #86): the modal sends `format: one_off` with `hasStages: false`, which
+`createFormatToColumns` stores as the `single_task` structure, so the `format` column keeps two
+values and no third vocabulary exists. `session` is excluded because a session is a **service a
+freelancer sells**, not a project a client posts — it is created provider-side from the catalogue
+composer, and a project only ever receives one by instantiation. Offering it here would let a buyer
+mint an engagement with no seller and no schedule. The retired word **Direct Deliverable** is not
+offered either: the stage-less structure it named is what a Task now is, so an existing Direct
+Deliverable stays fully editable as a Task.
 
 **Currency is a stored origin, not a presentation choice** — it prices escrow. A viewer later
 switching how they prefer to READ money must never move what a project is priced in.

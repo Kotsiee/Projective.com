@@ -101,7 +101,7 @@ const whatIsProjective = helpArticle({
 /**
  * The three project types. Grounded in PRODUCT_SPEC §Projects & Services → The Three Work Flows
  * (Decisions #117, #143). Read from the code: the create modal (`ProjectCreateModal.tsx`) offers
- * Task · One-off · Pipeline — the spec's Quick-Init table still lists two.
+ * Task · One-off · Pipeline, the three types the owner confirmed (Decision #275 (c)).
  */
 const chooseAProjectType = helpArticle({
 	slug: "choose-a-project-type",
