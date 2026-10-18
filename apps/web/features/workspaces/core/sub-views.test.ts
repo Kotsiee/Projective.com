@@ -7,6 +7,8 @@ import {
 	MEMBERS_QUEUE,
 	MEMBERS_READINGS,
 	pickSubView,
+	PROJECTS_ACTIVE,
+	PROJECTS_PROPOSALS,
 	resolveSubView,
 	SUB_VIEW_TABS_ID,
 	SUB_VIEWS,
@@ -50,10 +52,31 @@ Deno.test("sub-views: the lane's readings are the Members views that are not the
 });
 // #endregion
 
+// #region Projects
+Deno.test("sub-views: a team's Projects offers Active · Proposals to every member; a business's none", () => {
+	for (const caps of [INVITER, MEMBER]) {
+		const views = subViewsFor("projects", "team", caps);
+		assertEquals(values(views), [PROJECTS_ACTIVE, PROJECTS_PROPOSALS]);
+		assertEquals(views.map((v) => v.label), ["Active", "Proposals"]);
+	}
+	assertEquals(resolveSubView("projects", "team", MEMBER, null), PROJECTS_ACTIVE);
+	assertEquals(resolveSubView("projects", "team", MEMBER, PROJECTS_PROPOSALS), PROJECTS_PROPOSALS);
+	assertEquals(resolveSubView("projects", "team", MEMBER, "ledger"), PROJECTS_ACTIVE);
+	// A business's Projects still hands off to /projects: no partition, so no tab and no ?view=.
+	assertEquals(subViewsFor("projects", "business", INVITER), []);
+	assertEquals(resolveSubView("projects", "business", INVITER, PROJECTS_PROPOSALS), null);
+	// The landing view keeps the bare URL.
+	const views = subViewsFor("projects", "team", MEMBER);
+	assertEquals(subViewSearch("?view=proposals", views, PROJECTS_ACTIVE), "");
+	assertEquals(subViewSearch("", views, PROJECTS_PROPOSALS), "?view=proposals");
+});
+// #endregion
+
 // #region A tab is a control
 Deno.test("sub-views: a module whose body ignores ?view= draws no tabs", () => {
 	const planned = SUB_VIEWS.filter((e) => !e.live).map((e) => e.module);
-	assertEquals(planned.sort(), ["payouts", "projects"]);
+	assert(!planned.includes("projects"), "a team's Projects body reads ?view=");
+	assertEquals(planned.sort(), ["payouts"]);
 	for (const module of planned) {
 		assertEquals(subViewsFor(module, "team", INVITER), [], `${module} drew a tab`);
 		assertEquals(resolveSubView(module, "team", INVITER, "ledger"), null);

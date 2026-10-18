@@ -307,9 +307,9 @@ function rosterCreateNote(kind: WorkspaceKind, reason: string | null | undefined
  * Org chart toggle also write. Only on a people reading: the queue (`?view=pending`) has no org chart
  * to switch to.
  *
- * Projects gets none yet: its body hands off to `/projects` and has no Active · Proposals partition of
- * its own, and a segmented control over a body that ignores it would reach nothing (§3.11). Its
- * sub-views wait in `sub-views.ts` (not live) for the day that body grows one.
+ * A team's Projects gets none: Active and Proposals are two different lists, not two readings of one
+ * (Teams C5), so the header band's tabs are their one switch — a second control here would only repeat
+ * them.
  */
 function consoleContext(input: ConsoleLaneInput): LaneContextZone | null {
 	if (input.module === "members" && isPeopleReading(input.subView)) {

@@ -1636,11 +1636,11 @@ FROM public, anon;
 GRANT
 EXECUTE ON FUNCTION projects.withdraw_application (uuid) TO authenticated;
 
-REVOKE ALL ON FUNCTION projects.list_my_applications (text)
+REVOKE ALL ON FUNCTION projects.list_my_applications (text, uuid)
 FROM public, anon;
 
 GRANT
-EXECUTE ON FUNCTION projects.list_my_applications (text) TO authenticated;
+EXECUTE ON FUNCTION projects.list_my_applications (text, uuid) TO authenticated;
 
 -- #region The workspace console (Teams & Businesses, Decision #122)
 -- The write and read doors of /teams and /businesses. Each is a definer that resolves the caller from

@@ -1325,7 +1325,13 @@ COMMENT ON FUNCTION projects.withdraw_application(uuid) IS
 -- read a project that has since gone private, and the title they applied to is still theirs to see,
 -- so the names are read with the definer's rights; the ROWS are scoped to the caller.
 -- `p_project` narrows to one project (slug or uuid) — the listing page asks "have I applied here?".
-CREATE OR REPLACE FUNCTION projects.list_my_applications(p_project text DEFAULT NULL)
+-- `p_team` narrows to the applications filed for one team, whoever filed them — the team console's
+-- Proposals view (Teams C5). It narrows the caller's rows, never widens them, and it applies before the
+-- 200-row cap, so a member's own proposals cannot push the team's out of the list.
+CREATE OR REPLACE FUNCTION projects.list_my_applications(
+    p_project text DEFAULT NULL,
+    p_team    uuid DEFAULT NULL
+)
 RETURNS jsonb
 LANGUAGE plpgsql
 STABLE
@@ -1375,6 +1381,7 @@ BEGIN
                  OR (pa.applicant_type = 'team' AND org.is_active_team_member(pa.applicant_profile_id))
                   )
               AND (p_project IS NULL OR p.slug = p_project OR p.id::text = p_project)
+              AND (p_team IS NULL OR (pa.applicant_type = 'team' AND pa.applicant_profile_id = p_team))
             ORDER BY pa.created_at DESC
             LIMIT 200
         ) r
@@ -1382,8 +1389,8 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION projects.list_my_applications(text) IS
-'The applications the caller filed or that were filed for a team they belong to, newest first, with project, stage, role and team names and whether the caller may withdraw each. p_project narrows to one project (slug or uuid).';
+COMMENT ON FUNCTION projects.list_my_applications(text, uuid) IS
+'The applications the caller filed or that were filed for a team they belong to, newest first, with project, stage, role and team names and whether the caller may withdraw each. p_project narrows to one project (slug or uuid); p_team to the applications filed for one team.';
 
 -- #endregion
 

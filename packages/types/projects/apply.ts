@@ -81,9 +81,16 @@ export const SentApplicationSchema = z.object({
 });
 export type SentApplication = z.infer<typeof SentApplicationSchema>;
 
-/** `GET /api/projects/applications/mine?project=` — narrows to one project when given. */
+/**
+ * `GET /api/projects/applications/mine?project=&team=` — narrows to one project, and to the
+ * applications filed for one team (the team console's Proposals view), when given. The team filter
+ * only narrows the caller's own list (`projects.list_my_applications`' `p_team`); it never reveals a
+ * team's applications to somebody who is not its member.
+ */
 export const SentApplicationsQuerySchema = z.object({
 	project: z.string().trim().min(1).max(120).optional(),
+	/** The team's id (`org.teams.id`). */
+	team: z.string().uuid().optional(),
 });
 export type SentApplicationsQuery = z.infer<typeof SentApplicationsQuerySchema>;
 

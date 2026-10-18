@@ -1,0 +1,275 @@
+/*
+ * workspace-projects.css — a team console's Projects module (Teams work order C5): the allowance band
+ * (`.wsp-allowance`), the Active view's engagement rows (`.wsp-engagements`, `.wsp-engagement`) and
+ * the Proposals view (`.wsp-proposals`).
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY. Separation is spacing → the band's SOLID tonal
+ * step (`--surface-1` on the canvas's `--surface`) → type → ONE hairline between rows (§B.4): nothing
+ * here is boxed, and no row is a card. Both lists lay out by their OWN width (`@container`), because the
+ * console's body narrows with the docked lane whatever the viewport.
+ *
+ * The figures — the weekly meter, each Wᵢ readout, the stage's facts — are tabular. The bars are the ui
+ * `ProgressBar`, which owns its fill; nothing here sizes a fill.
+ */
+
+/* #region The allowance band */
+/*
+ * The band is the module's one tonal step: a solid `--surface-1` ramp tone, full-bleed like every band,
+ * never a card. Its meter and its gate sit side by side and stack when the band is narrow.
+ */
+.wsp-band--allowance {
+	container: wsp-allowance / inline-size;
+	background: var(--surface-1);
+}
+
+.wsp-allowance {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	align-items: start;
+	gap: var(--space-4) var(--space-7);
+}
+
+.wsp-allowance__meter {
+	display: grid;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.wsp-allowance__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: var(--space-2) var(--space-4);
+}
+
+/* The head's title is `.wsp-band__title` (the section-header register); the figure is the key number. */
+.wsp-allowance__figure {
+	margin: 0;
+	font-size: var(--wsp-fs-key);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--wsp-num-track);
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
+}
+
+.wsp-allowance__gate {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.wsp-allowance__unavailable {
+	grid-column: 1 / -1;
+}
+
+/* The tier-4 Settings link is an anchor drawn as an outlined Button: a button carries no underline. */
+.wsp-allowance__link {
+	text-decoration: none;
+}
+
+@container wsp-allowance (max-width: 39.9375rem) {
+	.wsp-allowance {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+/* #endregion */
+
+/* #region Engagements */
+.wsp-engagements {
+	container: wsp-engagements / inline-size;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+/* A row: what and where on the leading half, who and how loaded on the trailing half. */
+.wsp-engagement {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	align-items: start;
+	gap: var(--space-4) var(--space-7);
+	padding-block: var(--space-5);
+}
+
+.wsp-engagement:first-child {
+	padding-block-start: 0;
+}
+
+.wsp-engagement + .wsp-engagement {
+	border-block-start: var(--hairline);
+}
+
+.wsp-engagement__main {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--space-4);
+	min-inline-size: 0;
+}
+
+.wsp-engagement__titles {
+	display: grid;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.wsp-engagement__project {
+	font-size: var(--wsp-fs-body);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	text-decoration: none;
+	overflow-wrap: anywhere;
+}
+
+/* The stage steps down a register and takes the kind's ink, so the second link reads as one. */
+.wsp-engagement__stage {
+	font-size: var(--text-sm);
+	color: var(--wsp-kind-ink);
+	text-decoration: none;
+	overflow-wrap: anywhere;
+}
+
+.wsp-engagement__project:hover,
+.wsp-engagement__stage:hover {
+	text-decoration: underline;
+}
+
+.wsp-engagement__meta {
+	margin: 0;
+}
+
+.wsp-engagement__status {
+	flex: none;
+}
+
+.wsp-engagement__people {
+	display: grid;
+	align-content: start;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.wsp-engagement__load {
+	display: grid;
+	gap: var(--space-3);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/* Name · readout · bar on one line; the soft-cap sentence, when there is one, on the line under it. */
+.wsp-engagement__assignee {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto minmax(0, 10rem);
+	grid-template-areas:
+		"who wi bar"
+		"warn warn warn";
+	align-items: center;
+	gap: var(--space-1) var(--space-3);
+}
+
+.wsp-engagement__who {
+	grid-area: who;
+	min-inline-size: 0;
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+	overflow-wrap: anywhere;
+}
+
+.wsp-engagement__wi {
+	grid-area: wi;
+	font-size: var(--text-sm);
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
+	white-space: nowrap;
+}
+
+.wsp-engagement__bar {
+	grid-area: bar;
+	min-inline-size: 0;
+}
+
+.wsp-engagement__warn {
+	grid-area: warn;
+	margin: 0;
+}
+
+.wsp-engagement__idle {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+/* The empty state's way out is an anchor drawn as an outlined Button: no underline. */
+.wsp-engagements__explore {
+	text-decoration: none;
+}
+
+@container wsp-engagements (max-width: 47.9375rem) {
+	.wsp-engagement {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+/* #endregion */
+
+/* #region Proposals */
+.wsp-proposals {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wsp-proposals__row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-4);
+	padding-block: var(--space-4);
+}
+
+.wsp-proposals__row:first-child {
+	padding-block-start: 0;
+}
+
+.wsp-proposals__row + .wsp-proposals__row {
+	border-block-start: var(--hairline);
+}
+
+.wsp-proposals__text {
+	display: grid;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.wsp-proposals__title {
+	font-size: var(--wsp-fs-body);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	text-decoration: none;
+	overflow-wrap: anywhere;
+}
+
+.wsp-proposals__title:hover {
+	text-decoration: underline;
+}
+
+.wsp-proposals__meta {
+	margin: 0;
+}
+
+.wsp-proposals__action {
+	flex: none;
+}
+
+/* The empty state's way out is an anchor drawn as an outlined Button: no underline. */
+.wsp-proposals__explore {
+	text-decoration: none;
+}
+/* #endregion */
