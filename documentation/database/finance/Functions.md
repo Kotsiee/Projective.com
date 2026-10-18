@@ -1517,6 +1517,32 @@ escrow, evidence access and immutability, the workspace fields, grants) and
 CHECK, the operator queue's gate / order / filter / counts, the overdue alert that never rules and
 repeats at most daily, grants).
 
+## 📊 Public metrics (`00001265`, Decision #277)
+
+### `finance.public_metrics()` → jsonb (service role)
+
+The public site's live platform figures (`/about`, the landing page; read by `PublicMetricsService`,
+cached an hour). `SECURITY DEFINER`, `STABLE`, `search_path = ''`; EXECUTE revoked from `PUBLIC`,
+`anon` and `authenticated` and granted to `service_role` only (`00002510` `[about_metrics]`).
+**Aggregates only** — no row of any table is returned — and the publication threshold is applied
+HERE, so a figure resting on fewer than `security.platform_params.public_metrics_min_n` rows comes
+back `NULL` together with its count and never leaves the database.
+
+| Key | Meaning |
+| :-- | :-- |
+| `as_of` | `now()` of the read. |
+| `min_n` · `min_n_configured` | The threshold: the param when it is a number ≥ 1 (floored, capped at int4), else the literal 10 with `min_n_configured = false`. |
+| `platform_fee_bp` | The `platform_fee_bp` param (the public rate, never a negotiated one); `NULL` when missing or not an integer 0–10,000. |
+| `base_currency` | The `base_currency` param, upper case; `NULL` when not a three-letter code. |
+| `protected_count` · `protected_by_currency` | Escrows whose status is `funded` · `held` · `disputed` · `released`, and `[{currency, amount_minor}]` of their `amount_cents` per upper-cased currency. `refunded` is left out (refunded money can be escrowed again). Never summed across currencies. |
+| `stages_delivered` | `projects.project_stages` with status `approved` or `paid`, all time (archived included). |
+| `approval_count` · `median_funding_to_approval_hours` | Over delivered stages with a `completed_at`: hours from the stage's first `released` escrow's `created_at` to `completed_at`; the count of such stages and their `percentile_cont(0.5)`. |
+
+Zod: `PublicMetricsAggregateSchema` (`@projective/types/marketing`). The service converts a
+multi-currency total into `base_currency` through `FxService` and withholds it if any currency has no
+rate. Probe: `supabase/probes/public_metrics.sql` (grants and definition, every threshold fallback,
+an independent recomputation of each figure, nothing below the threshold, malformed params).
+
 ## Under-18 accounts (Decision #208)
 
 `finance.record_payout_account` asserts an adult (`org.fn_assert_adult`, `PM403`): a Stripe connected

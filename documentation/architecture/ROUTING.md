@@ -634,6 +634,12 @@ rolls its optimistic change back; the Dev Context Switcher's `saved` axis substi
 | `/api/saved/collections/[id]`    | `DELETE` | Delete one; its bookmarks stay saved, unfiled → `{ id }`. |
 | `/api/messages/[id]/pin`         | `POST` · `DELETE` | Pin / unpin a message for everyone in its room (a conversation's or a project room's) → `MessagingBackendService.setPinned` → `comms.message_pins` → `{ pinned }`. 404 for a message the caller cannot read. |
 
+### Public metrics API (Decision #277)
+
+| Route | Method | Behaviour |
+| :-- | :-- | :-- |
+| `/api/public/metrics` | `GET` · `HEAD` · `OPTIONS` | The public site's live figures — `PublicMetricsService.get()` in the flat `{ ok, …PublicMetrics }` envelope (`@projective/types/marketing`): `asOf`, `minN`, `platformFeeBp`, `totalValueProtected` (`{ amountMinor, currency }`), `stagesDelivered`, `medianFundingToApprovalHours`; a `null` figure is below the threshold and its tile is hidden. No parameters, no session. `defineReadRoute` with the `public-metadata` cache policy and a strong `ETag`; a failure (503 / 502) is `no-store`. `/about` reads the same service server-side and never fetches this from the browser. |
+
 ### Workspace (Teams & Businesses) API
 
 Live-only since 2026-09-28 (root `CLAUDE.md` §8 Decision #61): no fixture branch and no backend gate.

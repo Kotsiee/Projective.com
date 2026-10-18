@@ -2897,6 +2897,36 @@ follower / following counts (`tabular-nums` text controls) that open `Connection
 (`features/profile/components/`, hairline rows of avatar · name · `@handle · kind`, Load more); the
 account menu gains **Saved** (`NavIcon` `saved`, a bookmark glyph).
 
+**The `/about` page (`features/marketing/about/`, PUBLIC_ROUTES P4, Decision #277).** Three
+app-level pieces on one editorial column (`--measure-wide` display, `--measure` prose) of
+full-bleed bands in SOLID alternating tones (`--bg` / `--surface-1`, each band publishing its
+ground as `--abt-ground`), no cards, a named inline-size container (`abt`) answering every
+breakpoint. **`AboutMetrics`** — the live metrics row: one unboxed tile per published figure
+(section-caps label · the figure at `--text-3xl` / `--fw-medium` / `tabular-nums`, an abbreviated
+money figure carrying its exact words for assistive technology · one `--text-sm` meta sentence ·
+`As of <time>` in `--font-mono` `--text-2xs`), one column below 768px of frame (a block hairline
+between tiles) and two a row from it (an inline hairline between the pair, rows separated by spacing
+alone), so a display money figure never breaks mid-number; a figure below the threshold has NO tile
+and one sentence names what is withheld; a failed read says so and shows none. Feature-local rather
+than `StatTile` because it needs the timestamp slot and must render under `deno test` (`StatTile`
+imports its sheet). **`TourFigure`** —
+the walkthrough diagram: inline SVG in tokens only (`fill` / `stroke` set by class, `--icon-stroke`
+with `vector-effect: non-scaling-stroke`, labels in `--text-md` / `--text-2xs`), eight numbered
+nodes on a rail, the money's place bracketed and named beneath, a token moved by `transform` alone
+(`--dur-medium` / `--ease-standard`; colour on the theme clock, `--dur-slow`); two layouts of one
+drawing — a row of eight from 720px of frame, two rows of four with a U-turn below — exactly one
+displayed; `role="img"` with `<title>` / `<desc>`. **`DeliveryTour`** (island, the page's only one
+and its stylesheet carrier) — the WAI-ARIA tabs pattern over that diagram: eight real buttons
+(roving tabindex, arrows wrap, Home / End, automatic activation; a reserved transparent 2px
+block-end bar recoloured `--primary` when selected; press `scale()` removed under both
+reduced-motion channels) controlling one explanation panel ("Where the money is" + two lines), a
+visually hidden ordered list as the text equivalent, and a ghost Play / Pause / Replay control.
+Autoplay is one pass, only under no-preference motion on BOTH channels, only once 35% of it is on
+screen, never in a hidden tab; a pointer resting on it holds it, keyboard focus or a picked step
+stops it for good (the WAI-ARIA carousel rule), and under reduced motion there is no autoplay and no
+control. The closing band's actions are native links in the Button class set: the neutral outlined
+escape first, the one filled `--primary` commitment last (§B.8.6).
+
 **`FundStageDialog` (`features/payments/components/`, Decision #197).** The client funds a whole
 stage — every ticket in it nobody has paid for, claimed or not — from the stage board's money sentence
 ("{n} tickets need {total} to start." → **Fund stage**; the project board keeps **Fund all**, the

@@ -1034,6 +1034,14 @@ REVOKE ALL ON FUNCTION finance.fn_assert_business_spend (uuid, uuid, bigint, tex
 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_close_spend_cover (uuid) FROM PUBLIC, anon, authenticated;
 
+-- #region [about_metrics] The public site's live aggregates (00001265, Decision #277)
+-- Service role only: PublicMetricsService reads it and serves the cached answer to everyone. A
+-- browser never calls it, so the thresholded figures and their freshness stay the service's to
+-- decide; no client role may reach it even though the answer is public.
+REVOKE ALL ON FUNCTION finance.public_metrics () FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.public_metrics () TO service_role;
+-- #endregion
+
 
 -- --- finance: the Stripe fiat rails (00001230, Decision #125) ---
 -- USER doors: each authorises the caller with auth.uid() and records a REQUEST — it can never mark
