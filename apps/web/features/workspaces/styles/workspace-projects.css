@@ -15,7 +15,8 @@
 /* #region The allowance band */
 /*
  * The band is the module's one tonal step: a solid `--surface-1` ramp tone, full-bleed like every band,
- * never a card. Its meter and its gate sit side by side and stack when the band is narrow.
+ * never a card. With no gate the meter takes the full width; a gated band (`--gated`) sets the meter and
+ * the gate side by side, stacked when the band is narrow.
  */
 .wsp-band--allowance {
 	container: wsp-allowance / inline-size;
@@ -24,9 +25,13 @@
 
 .wsp-allowance {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	grid-template-columns: minmax(0, 1fr);
 	align-items: start;
 	gap: var(--space-4) var(--space-7);
+}
+
+.wsp-allowance--gated {
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .wsp-allowance__meter {
@@ -53,6 +58,7 @@
 	color: var(--on-surface);
 }
 
+/* Every gate that applies, one under the next, then the viewer's note. */
 .wsp-allowance__gate {
 	display: flex;
 	flex-direction: column;
@@ -61,8 +67,13 @@
 	min-inline-size: 0;
 }
 
-.wsp-allowance__unavailable {
-	grid-column: 1 / -1;
+/* One gate: its sentence, and under it the fix the viewer may make. */
+.wsp-allowance__item {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-2);
+	min-inline-size: 0;
 }
 
 /* The tier-4 Settings link is an anchor drawn as an outlined Button: a button carries no underline. */
@@ -71,7 +82,7 @@
 }
 
 @container wsp-allowance (max-width: 39.9375rem) {
-	.wsp-allowance {
+	.wsp-allowance--gated {
 		grid-template-columns: minmax(0, 1fr);
 	}
 }

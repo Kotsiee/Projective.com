@@ -18,6 +18,7 @@ import {
 } from "./module-registry.tsx";
 import { countLabel, filterRoster, type RosterTab } from "./workspace-model.ts";
 import { isPeopleReading, MEMBERS_READINGS } from "./sub-views.ts";
+import { inviteOpensInPlace } from "./rig-model.ts";
 
 /**
  * lane-model — the workspace lane's composition as a pure function of what the viewer is looking at
@@ -133,9 +134,10 @@ export type LaneCreate =
 		action: "invite";
 		label: string;
 		/**
-		 * Whether the invite modal is mounted on this page (the Members screen mounts it), so the action
-		 * is a button that opens it. Elsewhere the action is a LINK to Members with the modal open
-		 * (`?invite=1`) — a destination is an `<a>`, never a button that assigns `location`.
+		 * Whether the invite modal is mounted on this page (`inviteOpensInPlace`: Members, and a team's
+		 * Projects), so the action is a button that opens it. Elsewhere the action is a LINK to Members
+		 * with the modal open (`?invite=1`) — a destination is an `<a>`, never a button that assigns
+		 * `location`.
 		 */
 		inPlace: boolean;
 		/** Where the action links when it is not in place. */
@@ -329,7 +331,7 @@ function consoleCreate(input: ConsoleLaneInput): LaneCreate | null {
 	return {
 		action: "invite",
 		label: "Invite member",
-		inPlace: input.module === "members" || input.module === "invitations",
+		inPlace: inviteOpensInPlace(input.kind, input.module),
 		href: `${workspaceHref(input.kind, input.handle, "members")}?invite=1`,
 	};
 }

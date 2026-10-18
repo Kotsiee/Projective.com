@@ -19,15 +19,19 @@ import {
 	subViewsFor,
 	subViewTabId,
 } from "../core/sub-views.ts";
+import { cx } from "@ui/core/cx.ts";
 import {
 	allowanceBand,
 	type AllowanceBandModel,
+	bandGated,
 	engagementRow,
 	engagementsSummary,
 	FIND_PROJECTS_HREF,
+	focusAfterWithdraw,
 	type ProposalRowModel,
 	proposalsSummary,
 	teamProposals,
+	withdrawConfirmMessage,
 } from "../core/projects-model.ts";
 import { EngagementRow } from "../components/EngagementRow.tsx";
 import InviteModal from "./InviteModal.island.tsx";
@@ -37,11 +41,11 @@ import InviteModal from "./InviteModal.island.tsx";
  * order C5; Decisions #154, #214, #233). Top to bottom:
  *
  *   - **The allowance band** — "Proposals this week": the weekly units used against the week's grant on
- *     a ui `ProgressBar`, the buffer and the refill day as a `MetaLine`, and the gate when the team cannot
- *     send proposals: unpublished (an `InlineNotice` and a tier-4 link to Settings), under two members
- *     (an `InlineNotice` and the tier-2 Invite member — the band's one filled control), or a viewer who
- *     may not bind the team (Meta "Ask a lead to apply for the team"). A solid `--surface-1` band, never
- *     a card.
+ *     a ui `ProgressBar`, the buffer and the refill day as a `MetaLine`, and, beside it, every gate that
+ *     stands in the way: unpublished (an `InlineNotice` and a tier-4 link to Settings), under two members
+ *     (an `InlineNotice` and the tier-2 Invite member — the band's one filled control), a viewer who may
+ *     not bind the team (Meta "Ask a lead to apply for the team"). A solid `--surface-1` band, never a
+ *     card; with no gate the meter takes the band's full width.
  *   - **Active** (the default view) — one `EngagementRow` per live stage assignment, with each assignee's
  *     Wᵢ on the stage against its cap.
  *   - **Proposals** (`?view=proposals`) — the team's pending applications, each with the tier-5
@@ -128,23 +132,31 @@ export default function TeamProjectsScreen(props: TeamProjectsScreenProps): JSX.
 
 	/**
 	 * Withdraw the confirmed proposal through the shared store (which moves the header popover's meter
-	 * too), then re-read this team's allowance so the band shows the returned weekly unit.
+	 * too), then re-read this team's allowance so the band shows the returned weekly unit. Keyboard
+	 * focus is placed where it can stay: back on the row's Withdraw after a refusal, and on the next
+	 * row's Withdraw (or the list's heading) once the withdrawn row has left the list.
 	 */
 	async function withdraw(): Promise<void> {
 		const row = withdrawFor.peek();
 		if (!row) return;
+		const before = teamProposals(proposals.peek() ?? [], detail.peek().id);
 		withdrawing.value = row.id;
 		const result = await withdrawProposal(row.id);
 		withdrawing.value = null;
 		withdrawFor.value = null;
 		if (!result.ok) {
 			withdrawNotice.value = { ok: false, text: result.message };
+			focusWhenLive(() => withdrawButton(row.id));
 			return;
 		}
 		proposals.value = (proposals.peek() ?? []).map((r) =>
 			r.id === row.id ? { ...r, status: "withdrawn", canWithdraw: false } : r
 		);
 		withdrawNotice.value = { ok: true, text: result.message };
+		const next = focusAfterWithdraw(before, row.id);
+		focusWhenLive(() =>
+			(next ? withdrawButton(next) : null) ?? document.getElementById(PROPOSALS_TITLE_ID)
+		);
 		const read = await AllowanceService.status({ teamId: detail.peek().id });
 		if (read.ok && read.status) allowance.value = read.status;
 	}
@@ -159,6 +171,7 @@ export default function TeamProjectsScreen(props: TeamProjectsScreenProps): JSX.
 		allowance: shown?.status ?? null,
 		canInvite,
 		canOpenSettings: held.has("manage_settings"),
+		canRestore: held.has("archive_entity"),
 		settingsHref: workspaceHref(ws.kind, ws.handle, "settings"),
 	});
 
@@ -208,9 +221,7 @@ export default function TeamProjectsScreen(props: TeamProjectsScreenProps): JSX.
 			<ConfirmDialog
 				visible={confirmOpen}
 				header="Withdraw this proposal?"
-				message={withdrawFor.value
-					? `${withdrawFor.value.title} — one proposal returns to ${ws.name}'s weekly allowance. The anti-burst token does not come back, so applying again spends one.`
-					: ""}
+				message={withdrawFor.value ? withdrawConfirmMessage(withdrawFor.value) : ""}
 				acceptLabel="Withdraw"
 				rejectLabel="Keep it"
 				acceptSeverity="danger"
@@ -222,22 +233,71 @@ export default function TeamProjectsScreen(props: TeamProjectsScreenProps): JSX.
 	);
 }
 
+// #region Focus after a withdrawal
+/** The proposals list's heading — focus's last resort once no row is left to take it. */
+const PROPOSALS_TITLE_ID = "wsp-proposals-title";
+/** How often a pending focus move is retried while the closing confirm still holds the page. */
+const FOCUS_RETRY_MS = 50;
+/** How many times — about a second in a painted tab. */
+const FOCUS_RETRIES = 20;
+
+/** A row's Withdraw button, by the row's proposal id. */
+function withdrawButton(id: string): HTMLElement | null {
+	return document.querySelector<HTMLElement>(
+		`[data-proposal="${CSS.escape(id)}"] .wsp-proposals__action:not([disabled])`,
+	);
+}
+
+/**
+ * Whether keyboard focus has nowhere to be: on the body, on a node that left the page or went
+ * disabled, inside an `inert` page, or still in the closing confirm.
+ */
+function focusLost(): boolean {
+	const active = document.activeElement as HTMLElement | null;
+	return !active || active === document.body || !active.isConnected ||
+		(active as HTMLButtonElement).disabled === true || active.closest("[inert]") !== null ||
+		active.closest('[role="alertdialog"]') !== null;
+}
+
+/**
+ * Move focus to `pick()`'s element once the page is live again. The confirm's focus trap keeps the
+ * page `inert` until its exit ends and then hands focus back to the Withdraw that opened it — disabled
+ * while its request runs, gone once the withdrawal lands — so without this focus falls to the body.
+ * Retried on a timer (a hidden tab never paints a frame), and only while focus is lost: a reader who
+ * has already moved on keeps their place.
+ */
+function focusWhenLive(pick: () => HTMLElement | null): void {
+	const attempt = (left: number) => {
+		if (!focusLost()) return;
+		const target = pick();
+		if (target && target.closest("[inert]") === null) {
+			target.focus();
+			if (document.activeElement === target) return;
+		}
+		if (left > 0) setTimeout(() => attempt(left - 1), FOCUS_RETRY_MS);
+	};
+	setTimeout(() => attempt(FOCUS_RETRIES), 0);
+}
+// #endregion
+
 // #region The allowance band
 /**
- * The band: the weekly meter beside the gate. Its one filled control, when there is one, is the tier-2
- * Invite member; the Settings fix is a tier-4 outlined link; the viewer's own limit is Meta text.
+ * The band: the weekly meter, beside the gate when one applies (the meter alone takes the full width).
+ * Its one filled control, when there is one, is the tier-2 Invite member; the Settings fix is a tier-4
+ * outlined link; the viewer's own limit is Meta text.
  */
 function AllowanceBand(
 	{ band, onInvite }: { band: AllowanceBandModel; onInvite: () => void },
 ): JSX.Element {
 	const { gate, meter } = band;
+	const gated = bandGated(gate);
 	return (
 		<section
 			class="wsp-band wsp-band--allowance"
 			data-i={0}
 			aria-labelledby="wsp-allowance-title"
 		>
-			<div class="wsp-band__inner wsp-allowance">
+			<div class={cx("wsp-band__inner", "wsp-allowance", gated && "wsp-allowance--gated")}>
 				<div class="wsp-allowance__meter">
 					<div class="wsp-allowance__head">
 						<h2 class="wsp-band__title" id="wsp-allowance-title">{band.title}</h2>
@@ -257,20 +317,24 @@ function AllowanceBand(
 						: <InlineNotice align="start" text={band.unavailable ?? ""} />}
 				</div>
 
-				{(gate.notice || gate.viewerNote) && (
+				{gated && (
 					<div class="wsp-allowance__gate">
-						{gate.notice && <InlineNotice align="start" text={gate.notice} />}
-						{gate.action?.key === "settings" && (
-							<a
-								class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm wsp-allowance__link"
-								href={gate.action.href}
-							>
-								<span class="ui-button__label">{gate.action.label}</span>
-							</a>
-						)}
-						{gate.action?.key === "invite" && (
-							<Button structural size="sm" label={gate.action.label} onClick={onInvite} />
-						)}
+						{gate.items.map((item) => (
+							<div key={item.reason} class="wsp-allowance__item">
+								<InlineNotice align="start" text={item.notice} />
+								{item.action?.key === "settings" && (
+									<a
+										class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm wsp-allowance__link"
+										href={item.action.href}
+									>
+										<span class="ui-button__label">{item.action.label}</span>
+									</a>
+								)}
+								{item.action?.key === "invite" && (
+									<Button structural size="sm" label={item.action.label} onClick={onInvite} />
+								)}
+							</div>
+						))}
 						{gate.viewerNote && <MetaLine as="p" items={[gate.viewerNote]} />}
 					</div>
 				)}
@@ -340,7 +404,7 @@ function ProposalsView(props: ProposalsViewProps): JSX.Element {
 	return (
 		<>
 			<div class="wsp-band__head">
-				<h2 class="wsp-band__title" id="wsp-proposals-title">Awaiting a reply</h2>
+				<h2 class="wsp-band__title" id={PROPOSALS_TITLE_ID} tabIndex={-1}>Awaiting a reply</h2>
 				{facts.length > 0 && (
 					<MetaLine as="span" items={facts.map((text) => ({ text, tabular: true }))} />
 				)}
@@ -374,9 +438,9 @@ function ProposalsView(props: ProposalsViewProps): JSX.Element {
 						/>
 					)
 					: (
-						<ul class="wsp-proposals" aria-labelledby="wsp-proposals-title">
+						<ul class="wsp-proposals" aria-labelledby={PROPOSALS_TITLE_ID}>
 							{rows.map((row) => (
-								<li key={row.id} class="wsp-proposals__row">
+								<li key={row.id} class="wsp-proposals__row" data-proposal={row.id}>
 									<div class="wsp-proposals__text">
 										<a class="wsp-proposals__title" href={row.href}>{row.title}</a>
 										<MetaLine
@@ -392,7 +456,7 @@ function ProposalsView(props: ProposalsViewProps): JSX.Element {
 											variant="text"
 											size="sm"
 											label="Withdraw"
-											aria-label={`Withdraw the proposal for ${row.title}`}
+											aria-label={row.withdrawLabel}
 											loading={props.withdrawing === row.id}
 											onClick={() => props.onWithdraw(row)}
 										/>

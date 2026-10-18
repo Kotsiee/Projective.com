@@ -8,11 +8,11 @@ import {
  * apply-as — the apply modal's two pure rules (Teams work order C5): who it applies as by default, and
  * which refusals it states as its `InlineNotice` rather than as an error line.
  *
- * **The default applicant (Decision #154 flag (c)).** The modal used to open on "Yourself" even while the
- * shell was acting as a team. It now opens on the acting team — but only when the viewer may bind that
- * team to work (`bind_seat`, read from the team's own allowance answer): defaulting a member who cannot
- * apply for the team onto the team would open the modal on a refusal. A reader's own pick is never
- * overridden (the modal asks this only until they choose).
+ * **The default applicant (Decision #154 flag (c)).** While the shell is acting as a team, the modal
+ * opens on that team when the viewer may bind it to work (`bind_seat`, read from the team's own
+ * allowance answer), and on "Yourself" otherwise: defaulting a member who cannot apply for the team
+ * onto the team would open the modal on a refusal. A reader's own pick is never overridden (the modal
+ * asks this only until they choose).
  *
  * **The eligibility refusals (B2, Decision #228 (E)).** `team_not_active`, `team_too_small` and
  * `missing_permission` are rules, not failures: the server's pre-flight answers them as a `422` tagged

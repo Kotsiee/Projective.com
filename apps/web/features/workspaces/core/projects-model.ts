@@ -87,34 +87,42 @@ function counted(n: number, one: string, many: string): string {
 // #endregion
 
 // #region The allowance band — its gate
-/** Why the team cannot send proposals, as the band names it. `null` — nothing team-level stands in the way. */
+/** Why the team cannot send proposals, as the band names it. */
 export type BandGateReason = "team_not_active" | "team_too_small";
 
 /**
- * The band's one control, when the gate has a fix the viewer can make: a tier-4 outlined link to
- * Settings (where a draft team is published), or the tier-2 monochrome Invite member — the band's one
- * filled control, because adding the second member IS the band's structural commit (§B.8.1).
+ * A gate's control, when the viewer can make its fix: a tier-4 outlined link to Settings (where a
+ * draft team is published and an archived one restored), or the tier-2 monochrome Invite member — the
+ * band's one filled control, because adding the second member IS the band's structural commit
+ * (§B.8.1).
  */
 export type BandAction =
 	| { key: "settings"; tier: 4; filled: false; label: string; href: string }
 	| { key: "invite"; tier: 2; filled: true; label: string };
 
-/** The gate the band draws under its meter. */
-export interface BandGate {
-	reason: BandGateReason | null;
-	/** The InlineNotice sentence, when a team-level gate applies. */
-	notice: string | null;
+/** One team-level gate: the band's `InlineNotice` sentence and, when the viewer may make it, its fix. */
+export interface BandGateItem {
+	reason: BandGateReason;
+	notice: string;
 	/** The fix, when the viewer may make it; `null` otherwise — never a control that would only refuse. */
 	action: BandAction | null;
+}
+
+/** The gate the band draws beside its meter. */
+export interface BandGate {
+	/**
+	 * Every team-level gate that stands in the way, in `projects.fn_assert_team_can_apply`'s order (a
+	 * published team, then two members); empty when none does.
+	 */
+	items: BandGateItem[];
 	/**
 	 * The viewer-level fact — they may not bind the team (`bind_seat`), so somebody else applies — said
-	 * as Meta text, never as a control. Only once no team-level gate applies: the team's own fix comes
-	 * first, and "ask a lead" means nothing while no lead could apply either.
+	 * as Meta text, never as a control.
 	 */
 	viewerNote: string | null;
 }
 
-/** What the gate is decided from — the allowance read's facts and the viewer's two rights. */
+/** What the gate is decided from — the allowance read's facts and the viewer's rights. */
 export interface BandGateInput {
 	/** `allowance.teamStatus`. */
 	status: WorkspaceStatus | null;
@@ -126,6 +134,11 @@ export interface BandGateInput {
 	canInvite: boolean;
 	/** `manage_settings` — the Settings module opens for this viewer (where Publish lives). */
 	canOpenSettings: boolean;
+	/**
+	 * `archive_entity` — the viewer may restore an archived team. `org.set_workspace_status` asks for it
+	 * (not `manage_settings`) to leave `archived`, and the admin preset does not hold it.
+	 */
+	canRestore: boolean;
 	/** The team's Settings module address. */
 	settingsHref: string;
 }
@@ -140,56 +153,70 @@ export const BAND_TOO_SMALL_NOTICE =
 /** The viewer without `bind_seat` (Teams C5's wording). */
 export const BAND_ASK_A_LEAD = "Ask a lead to apply for the team";
 
+/** The tier-4 link to the team's Settings module. */
+function settingsAction(href: string): BandAction {
+	return { key: "settings", tier: 4, filled: false, label: "Open settings", href };
+}
+
 /**
- * The band's gate, in `projects.fn_assert_team_can_apply`'s team order — a published team, then two
- * members — with the viewer's own `bind_seat` after them:
+ * The band's gate. Each condition Teams C5 names is its own line, so a team that is both unpublished
+ * and short of members is told both, each with the fix the viewer may make:
  *
- *   - **not `active`** → "Publish the team to send proposals" (an archived team: "Restore …") and a
- *     tier-4 link to Settings for a viewer who may open it;
+ *   - **draft** → "Publish the team to send proposals" and a tier-4 link to Settings for a viewer who
+ *     may open it (`manage_settings`);
  *   - **fewer than two active members** → the sentence and the tier-2 Invite member for a viewer who
  *     may invite — the band's one filled control;
- *   - **otherwise**, a viewer without `bind_seat` → Meta "Ask a lead to apply for the team".
+ *   - **a viewer without `bind_seat`** → Meta "Ask a lead to apply for the team".
  *
- * So the band holds exactly one filled control (a sub-two team, viewed by an inviter) or none.
+ * An **archived** team is told only to restore: it takes no invitation (`org.invite_workspace_member`
+ * refuses one) and sends no proposal until it is back, so its one line is "Restore the team to send
+ * proposals", linked to Settings only for a viewer who may both open Settings and restore
+ * (`archive_entity`).
+ *
+ * So the band holds exactly one filled control (a sub-two, non-archived team viewed by an inviter) or
+ * none.
  */
 export function bandGate(input: BandGateInput): BandGate {
-	if (input.status !== null && input.status !== "active") {
+	if (input.status === "archived") {
 		return {
-			reason: "team_not_active",
-			notice: input.status === "archived" ? BAND_ARCHIVED_NOTICE : BAND_DRAFT_NOTICE,
-			action: input.canOpenSettings
-				? {
-					key: "settings",
-					tier: 4,
-					filled: false,
-					label: "Open settings",
-					href: input.settingsHref,
-				}
-				: null,
+			items: [{
+				reason: "team_not_active",
+				notice: BAND_ARCHIVED_NOTICE,
+				action: input.canOpenSettings && input.canRestore
+					? settingsAction(input.settingsHref)
+					: null,
+			}],
 			viewerNote: null,
 		};
 	}
+	const items: BandGateItem[] = [];
+	if (input.status === "draft") {
+		items.push({
+			reason: "team_not_active",
+			notice: BAND_DRAFT_NOTICE,
+			action: input.canOpenSettings ? settingsAction(input.settingsHref) : null,
+		});
+	}
 	if (input.members !== null && input.members < TEAM_PROPOSAL_MIN_MEMBERS) {
-		return {
+		items.push({
 			reason: "team_too_small",
 			notice: BAND_TOO_SMALL_NOTICE,
 			action: input.canInvite
 				? { key: "invite", tier: 2, filled: true, label: "Invite member" }
 				: null,
-			viewerNote: null,
-		};
+		});
 	}
-	return {
-		reason: null,
-		notice: null,
-		action: null,
-		viewerNote: input.canBindSeat === false ? BAND_ASK_A_LEAD : null,
-	};
+	return { items, viewerNote: input.canBindSeat === false ? BAND_ASK_A_LEAD : null };
+}
+
+/** Whether the band draws a gate at all — a team-level line or the viewer's note. */
+export function bandGated(gate: BandGate): boolean {
+	return gate.items.length > 0 || gate.viewerNote !== null;
 }
 
 /** How many filled controls a gate puts in the band — 0 or 1, never more. */
 export function bandFilledCount(gate: BandGate): number {
-	return gate.action?.filled ? 1 : 0;
+	return gate.items.filter((item) => item.action?.filled).length;
 }
 // #endregion
 
@@ -223,11 +250,13 @@ export interface AllowanceBandModel {
 	unavailable: string | null;
 }
 
-/** The band's inputs: the read's allowance (simulated or not) and the viewer's two rights. */
+/** The band's inputs: the read's allowance (simulated or not) and the viewer's rights. */
 export interface AllowanceBandInput {
 	allowance: ProposalAllowanceStatus | null;
 	canInvite: boolean;
 	canOpenSettings: boolean;
+	/** `archive_entity` — see {@link BandGateInput.canRestore}. */
+	canRestore: boolean;
 	settingsHref: string;
 }
 
@@ -257,7 +286,7 @@ export function allowanceBand(input: AllowanceBandInput): AllowanceBandModel {
 			title,
 			meter: null,
 			meta: [],
-			gate: { reason: null, notice: null, action: null, viewerNote: null },
+			gate: { items: [], viewerNote: null },
 			unavailable: ALLOWANCE_UNAVAILABLE,
 		};
 	}
@@ -275,6 +304,7 @@ export function allowanceBand(input: AllowanceBandInput): AllowanceBandModel {
 			canBindSeat: status.canBindSeat,
 			canInvite: input.canInvite,
 			canOpenSettings: input.canOpenSettings,
+			canRestore: input.canRestore,
 			settingsHref: input.settingsHref,
 		}),
 		unavailable: null,
@@ -422,6 +452,11 @@ export interface ProposalRowModel {
 	meta: string[];
 	/** The row's one action — the tier-5 Withdraw — offered only to the filer or a `bind_seat` holder. */
 	canWithdraw: boolean;
+	/**
+	 * Withdraw's accessible name — the project AND the row's facts, because a team may hold several
+	 * proposals on one project, and a name that says only the project reads the same on each.
+	 */
+	withdrawLabel: string;
 }
 
 /**
@@ -441,16 +476,40 @@ export function teamProposals(
 		.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
 		.map((r) => {
 			const sent = utcDayMonth(r.createdAt);
+			const meta = [r.stageName ?? r.stageSlug, r.roleTitle, sent ? `sent ${sent}` : null].filter(
+				(fact): fact is string => !!fact,
+			);
 			return {
 				id: r.id,
 				title: r.projectTitle,
 				href: projectHref(r.projectSlug),
-				meta: [r.stageName ?? r.stageSlug, r.roleTitle, sent ? `sent ${sent}` : null].filter(
-					(fact): fact is string => !!fact,
-				),
+				meta,
 				canWithdraw: r.canWithdraw,
+				withdrawLabel: `Withdraw the proposal for ${[r.projectTitle, ...meta].join(", ")}`,
 			};
 		});
+}
+
+/**
+ * The Withdraw confirm's sentence. It names no pool owner, exactly as the band does not: whether a
+ * team's proposals draw on a pool of its own or on its members' is still open (Decision #154 flag (b),
+ * TEAMS_AUDIT A6), so the returned unit goes back to "this week's allowance" — the figure the band
+ * shows.
+ */
+export function withdrawConfirmMessage(row: Pick<ProposalRowModel, "title">): string {
+	return `${row.title} — one proposal returns to this week's allowance. The anti-burst token does not come back, so applying again spends one.`;
+}
+
+/**
+ * Where keyboard focus goes once a withdrawn proposal leaves the list (`rows` as it stood): the next
+ * row's Withdraw, else the previous row's, else `null` — the list's heading, which stays.
+ */
+export function focusAfterWithdraw(rows: readonly ProposalRowModel[], id: string): string | null {
+	const at = rows.findIndex((r) => r.id === id);
+	if (at < 0) return null;
+	const after = rows.slice(at + 1).find((r) => r.canWithdraw);
+	if (after) return after.id;
+	return rows.slice(0, at).reverse().find((r) => r.canWithdraw)?.id ?? null;
 }
 
 /** The Proposals view's fact line — how many await an answer. Empty with none. */

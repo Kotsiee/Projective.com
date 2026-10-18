@@ -24,15 +24,19 @@ export interface EngagementRowProps {
 /** One engagement. */
 export function EngagementRow({ row }: EngagementRowProps): JSX.Element {
 	const titleId = `wsp-engagement-${row.key.replace(/[^a-z0-9-]/gi, "-")}`;
+	const stageId = `${titleId}-stage`;
+	// Named by the project AND the stage: a team can hold seats on several stages of one project.
 	return (
-		<li class="wsp-engagement" aria-labelledby={titleId}>
+		<li class="wsp-engagement" aria-labelledby={`${titleId} ${stageId}`}>
 			{/* #region What and where */}
 			<div class="wsp-engagement__main">
 				<div class="wsp-engagement__titles">
 					<a class="wsp-engagement__project" id={titleId} href={row.projectHref}>
 						{row.projectTitle}
 					</a>
-					<a class="wsp-engagement__stage" href={row.stageHref}>{row.stageTitle}</a>
+					<a class="wsp-engagement__stage" id={stageId} href={row.stageHref}>
+						{row.stageTitle}
+					</a>
 					<MetaLine
 						as="p"
 						size="xs"
@@ -58,18 +62,19 @@ export function EngagementRow({ row }: EngagementRowProps): JSX.Element {
 						people={row.faces}
 						max={4}
 						size="sm"
-						aria-label={`Working this stage: ${row.faces.map((f) => f.name).join(", ")}`}
+						aria-label={`Working on ${row.stageTitle}: ${row.faces.map((f) => f.name).join(", ")}`}
 					/>
 				)}
-				{row.idle
-					? <p class="wsp-engagement__idle">{row.idle}</p>
-					: (
-						<ul class="wsp-engagement__load" aria-label={`Workload on ${row.stageTitle}`}>
-							{row.assignees.map((assignee) => (
-								<AssigneeLine key={assignee.handle} assignee={assignee} />
-							))}
-						</ul>
-					)}
+				{row.idle ? <p class="wsp-engagement__idle">{row.idle}</p> : (
+					<ul
+						class="wsp-engagement__load"
+						aria-label={`Workload on ${row.stageTitle}, ${row.projectTitle}`}
+					>
+						{row.assignees.map((assignee) => (
+							<AssigneeLine key={assignee.handle} assignee={assignee} />
+						))}
+					</ul>
+				)}
 			</div>
 			{/* #endregion */}
 		</li>

@@ -16,16 +16,19 @@ import {
 	BAND_TOO_SMALL_NOTICE,
 	bandFilledCount,
 	bandGate,
+	bandGated,
 	ENGAGEMENT_IDLE,
 	engagementRow,
 	engagementsSummary,
 	engagementStatus,
+	focusAfterWithdraw,
 	formatWi,
 	proposalsSummary,
 	stageHref,
 	teamProposals,
 	utcDayMonth,
 	utcWeekday,
+	withdrawConfirmMessage,
 } from "./projects-model.ts";
 
 /**
@@ -126,35 +129,63 @@ Deno.test("band gate: exactly one filled control or none, per (status, members, 
 			for (const canBindSeat of BIND) {
 				for (const canInvite of FLAGS) {
 					for (const canOpenSettings of FLAGS) {
-						const gate = bandGate({
-							status: s,
-							members,
-							canBindSeat,
-							canInvite,
-							canOpenSettings,
-							settingsHref: SETTINGS,
-						});
-						const at = JSON.stringify({ s, members, canBindSeat, canInvite, canOpenSettings });
-						const filled = bandFilledCount(gate);
-						assert(filled === 0 || filled === 1, `${filled} filled controls at ${at}`);
-						// The one fill is Invite member, and only for an active team under two members, to an
-						// inviter.
-						const expectFill = (s === "active" || s === null) && members !== null &&
-							members < 2 && canInvite;
-						assertStrictEquals(filled, expectFill ? 1 : 0, at);
-						if (filled === 1) {
-							assertEquals(gate.action, {
-								key: "invite",
-								tier: 2,
-								filled: true,
-								label: "Invite member",
+						for (const canRestore of FLAGS) {
+							const gate = bandGate({
+								status: s,
+								members,
+								canBindSeat,
+								canInvite,
+								canOpenSettings,
+								canRestore,
+								settingsHref: SETTINGS,
 							});
+							const at = JSON.stringify({
+								s,
+								members,
+								canBindSeat,
+								canInvite,
+								canOpenSettings,
+								canRestore,
+							});
+							const filled = bandFilledCount(gate);
+							assert(filled === 0 || filled === 1, `${filled} filled controls at ${at}`);
+							// The one fill is Invite member: a team under two members that is not archived (an
+							// archived team takes no invitation), to an inviter — draft or published alike.
+							const expectFill = s !== "archived" && members !== null && members < 2 &&
+								canInvite;
+							assertStrictEquals(filled, expectFill ? 1 : 0, at);
+							for (const { action } of gate.items) {
+								if (!action) continue;
+								if (action.filled) {
+									assertEquals(action, {
+										key: "invite",
+										tier: 2,
+										filled: true,
+										label: "Invite member",
+									});
+								}
+								// A control never appears for a viewer who could not use it.
+								if (action.key === "settings") {
+									assert(canOpenSettings, at);
+									if (s === "archived") assert(canRestore, at);
+								}
+								if (action.key === "invite") assert(canInvite, at);
+							}
+							// Every condition that holds is its own line, in the door's order.
+							const expected = s === "archived" ? ["team_not_active"] : [
+								...(s === "draft" ? ["team_not_active"] : []),
+								...(members !== null && members < 2 ? ["team_too_small"] : []),
+							];
+							assertEquals(gate.items.map((item) => item.reason), expected, at);
+							// The viewer's note is its own condition — except on an archived team, which
+							// nobody applies for until it is restored.
+							assertStrictEquals(
+								gate.viewerNote,
+								canBindSeat === false && s !== "archived" ? BAND_ASK_A_LEAD : null,
+								at,
+							);
+							assertStrictEquals(bandGated(gate), expected.length > 0 || gate.viewerNote !== null);
 						}
-						// A control never appears for a viewer who could not use it.
-						if (gate.action?.key === "settings") assert(canOpenSettings, at);
-						if (gate.action?.key === "invite") assert(canInvite, at);
-						// A gate's notice and the viewer's note never share the band.
-						assert(!(gate.notice && gate.viewerNote), at);
 					}
 				}
 			}
@@ -162,30 +193,76 @@ Deno.test("band gate: exactly one filled control or none, per (status, members, 
 	}
 });
 
-Deno.test("band gate: an unpublished team — publish (or restore) it, a tier-4 link to Settings", () => {
+Deno.test("band gate: an unpublished team — publish it, a tier-4 link to Settings", () => {
 	const input = {
 		members: 3,
 		canBindSeat: true,
 		canInvite: true,
 		canOpenSettings: true,
+		canRestore: false,
 		settingsHref: SETTINGS,
 	};
 	const draft = bandGate({ ...input, status: "draft" });
-	assertEquals(draft.reason, "team_not_active");
-	assertStrictEquals(draft.notice, BAND_DRAFT_NOTICE);
-	assertStrictEquals(draft.notice, "Publish the team to send proposals.");
-	assertEquals(draft.action, {
-		key: "settings",
-		tier: 4,
-		filled: false,
-		label: "Open settings",
-		href: SETTINGS,
-	});
-	assertStrictEquals(bandGate({ ...input, status: "archived" }).notice, BAND_ARCHIVED_NOTICE);
+	assertEquals(draft.items, [{
+		reason: "team_not_active",
+		notice: BAND_DRAFT_NOTICE,
+		action: { key: "settings", tier: 4, filled: false, label: "Open settings", href: SETTINGS },
+	}]);
+	assertStrictEquals(BAND_DRAFT_NOTICE, "Publish the team to send proposals.");
 	// Somebody who may not open Settings is told, and offered nothing that would only refuse.
-	assertStrictEquals(bandGate({ ...input, status: "draft", canOpenSettings: false }).action, null);
-	// Publishing comes first: a draft one-member team is not offered Invite member here.
-	assertStrictEquals(bandGate({ ...input, status: "draft", members: 1 }).reason, "team_not_active");
+	assertStrictEquals(
+		bandGate({ ...input, status: "draft", canOpenSettings: false }).items[0].action,
+		null,
+	);
+});
+
+Deno.test("band gate: a new draft team of one is told both — publish it AND invite a member", () => {
+	const gate = bandGate({
+		status: "draft",
+		members: 1,
+		canBindSeat: true,
+		canInvite: true,
+		canOpenSettings: true,
+		canRestore: true,
+		settingsHref: SETTINGS,
+	});
+	assertEquals(gate.items.map((item) => [item.reason, item.notice, item.action?.key ?? null]), [
+		["team_not_active", BAND_DRAFT_NOTICE, "settings"],
+		["team_too_small", BAND_TOO_SMALL_NOTICE, "invite"],
+	]);
+	// Still one fill: the Settings link is tier-4 outlined, Invite member the band's one filled control.
+	assertStrictEquals(bandFilledCount(gate), 1);
+	assertStrictEquals(gate.viewerNote, null);
+});
+
+Deno.test("band gate: an archived team — restore it; the link only for a viewer who may restore", () => {
+	const input = {
+		status: "archived" as const,
+		members: 1,
+		canBindSeat: false,
+		canInvite: true,
+		canOpenSettings: true,
+		settingsHref: SETTINGS,
+	};
+	// The owner (manage_settings + archive_entity): the sentence and the way to Settings.
+	assertEquals(bandGate({ ...input, canRestore: true }), {
+		items: [{
+			reason: "team_not_active",
+			notice: BAND_ARCHIVED_NOTICE,
+			action: { key: "settings", tier: 4, filled: false, label: "Open settings", href: SETTINGS },
+		}],
+		viewerNote: null,
+	});
+	// An admin holds manage_settings but not archive_entity: org.set_workspace_status would refuse the
+	// restore, so the band says it and sends them nowhere.
+	assertEquals(bandGate({ ...input, canRestore: false }).items[0].action, null);
+	// archive_entity without Settings access: no link to a module that would not open.
+	assertEquals(
+		bandGate({ ...input, canRestore: true, canOpenSettings: false }).items[0].action,
+		null,
+	);
+	// No Invite member on an archived team — org.invite_workspace_member refuses one.
+	assertStrictEquals(bandFilledCount(bandGate({ ...input, canRestore: true })), 0);
 });
 
 Deno.test("band gate: under two members — the sentence and Invite member, for an inviter only", () => {
@@ -193,52 +270,56 @@ Deno.test("band gate: under two members — the sentence and Invite member, for 
 		status: "active" as const,
 		canBindSeat: true,
 		canOpenSettings: true,
+		canRestore: true,
 		settingsHref: SETTINGS,
 	};
 	const solo = bandGate({ ...input, members: 1, canInvite: true });
-	assertEquals(solo.reason, "team_too_small");
-	assertStrictEquals(solo.notice, BAND_TOO_SMALL_NOTICE);
-	assertStrictEquals(solo.action?.key, "invite");
-	assertStrictEquals(bandGate({ ...input, members: 1, canInvite: false }).action, null);
-	assertStrictEquals(bandGate({ ...input, members: 2, canInvite: true }).reason, null);
+	assertEquals(solo.items.map((item) => item.reason), ["team_too_small"]);
+	assertStrictEquals(solo.items[0].notice, BAND_TOO_SMALL_NOTICE);
+	assertStrictEquals(solo.items[0].action?.key, "invite");
+	assertStrictEquals(bandGate({ ...input, members: 1, canInvite: false }).items[0].action, null);
+	assertEquals(bandGate({ ...input, members: 2, canInvite: true }).items, []);
 });
 
 Deno.test("band gate: a viewer without bind_seat is told as Meta, never offered a control", () => {
-	const gate = bandGate({
-		status: "active",
+	const input = {
 		members: 3,
-		canBindSeat: false,
 		canInvite: true,
-		canOpenSettings: true,
+		canOpenSettings: false,
+		canRestore: false,
 		settingsHref: SETTINGS,
-	});
-	assertEquals(gate, { reason: null, notice: null, action: null, viewerNote: BAND_ASK_A_LEAD });
+	};
+	const gate = bandGate({ ...input, status: "active", canBindSeat: false });
+	assertEquals(gate, { items: [], viewerNote: BAND_ASK_A_LEAD });
 	assertStrictEquals(BAND_ASK_A_LEAD, "Ask a lead to apply for the team");
+	// On a draft team it rides beside the publish line: once published, a lead still applies.
+	const draft = bandGate({ ...input, status: "draft", canBindSeat: false });
+	assertEquals(draft.items.map((item) => item.reason), ["team_not_active"]);
+	assertStrictEquals(draft.viewerNote, BAND_ASK_A_LEAD);
 	// A lead — or a read that did not say — gets no note.
 	for (const canBindSeat of [true, null]) {
-		assertStrictEquals(
-			bandGate({
-				status: "active",
-				members: 3,
-				canBindSeat,
-				canInvite: true,
-				canOpenSettings: true,
-				settingsHref: SETTINGS,
-			}).viewerNote,
-			null,
-		);
+		assertStrictEquals(bandGate({ ...input, status: "active", canBindSeat }).viewerNote, null);
 	}
 });
 // #endregion
 
 // #region The band's meter
+/** The viewer's rights for a band read — an owner's by default. */
+const OWNER_RIGHTS = {
+	canInvite: true,
+	canOpenSettings: true,
+	canRestore: true,
+	settingsHref: SETTINGS,
+};
+const NO_RIGHTS = {
+	canInvite: false,
+	canOpenSettings: false,
+	canRestore: false,
+	settingsHref: SETTINGS,
+};
+
 Deno.test("band: the weekly meter is used over granted, tabular, with the buffer and refill day", () => {
-	const band = allowanceBand({
-		allowance: status(),
-		canInvite: true,
-		canOpenSettings: true,
-		settingsHref: SETTINGS,
-	});
+	const band = allowanceBand({ allowance: status(), ...OWNER_RIGHTS });
 	assertStrictEquals(band.title, "Proposals this week");
 	assertEquals(band.meter, {
 		used: 12,
@@ -252,21 +333,19 @@ Deno.test("band: the weekly meter is used over granted, tabular, with the buffer
 	assert(!band.meta.some((fact) => /pool/i.test(fact)), "the pool is named");
 	assertStrictEquals(band.unavailable, null);
 	assertStrictEquals(bandFilledCount(band.gate), 0);
+	// Nothing in the way: no gate, so the meter takes the band's full width.
+	assertStrictEquals(bandGated(band.gate), false);
 });
 
 Deno.test("band: the meter clamps a spent week and reads an empty grant as empty", () => {
 	const over = allowanceBand({
 		allowance: status({ weeklyConsumed: 60, weeklyGranted: 50 }),
-		canInvite: false,
-		canOpenSettings: false,
-		settingsHref: SETTINGS,
+		...NO_RIGHTS,
 	});
 	assertStrictEquals(over.meter?.percent, 100);
 	const none = allowanceBand({
 		allowance: status({ weeklyConsumed: 0, weeklyGranted: 0, bufferCap: 0 }),
-		canInvite: false,
-		canOpenSettings: false,
-		settingsHref: SETTINGS,
+		...NO_RIGHTS,
 	});
 	assertStrictEquals(none.meter?.percent, 0);
 	assertEquals(none.meta, ["refills Mon"]);
@@ -275,25 +354,34 @@ Deno.test("band: the meter clamps a spent week and reads an empty grant as empty
 Deno.test("band: the gate reads the allowance's team facts, not anything else", () => {
 	const band = allowanceBand({
 		allowance: status({ teamStatus: "active", teamMemberCount: 1, canBindSeat: true }),
-		canInvite: true,
-		canOpenSettings: true,
-		settingsHref: SETTINGS,
+		...OWNER_RIGHTS,
 	});
-	assertStrictEquals(band.gate.reason, "team_too_small");
+	assertEquals(band.gate.items.map((item) => item.reason), ["team_too_small"]);
 	assertStrictEquals(bandFilledCount(band.gate), 1);
+	const draft = allowanceBand({
+		allowance: status({ teamStatus: "draft", teamMemberCount: 1, canBindSeat: true }),
+		...OWNER_RIGHTS,
+	});
+	assertEquals(draft.gate.items.map((item) => item.reason), ["team_not_active", "team_too_small"]);
+	// The archived restore link follows the viewer's archive_entity, which the band passes through.
+	const archived = status({ teamStatus: "archived", teamMemberCount: 3 });
+	assertStrictEquals(
+		allowanceBand({ allowance: archived, ...OWNER_RIGHTS, canRestore: false }).gate.items[0].action,
+		null,
+	);
+	assertStrictEquals(
+		allowanceBand({ allowance: archived, ...OWNER_RIGHTS }).gate.items[0].action?.key,
+		"settings",
+	);
 });
 
 Deno.test("band: no allowance answered — no meter, no gate, a sentence instead of a guess", () => {
-	const band = allowanceBand({
-		allowance: null,
-		canInvite: true,
-		canOpenSettings: true,
-		settingsHref: SETTINGS,
-	});
+	const band = allowanceBand({ allowance: null, ...OWNER_RIGHTS });
 	assertStrictEquals(band.meter, null);
 	assertEquals(band.meta, []);
 	assertStrictEquals(band.unavailable, ALLOWANCE_UNAVAILABLE);
-	assertEquals(band.gate, { reason: null, notice: null, action: null, viewerNote: null });
+	assertEquals(band.gate, { items: [], viewerNote: null });
+	assertStrictEquals(bandGated(band.gate), false);
 });
 // #endregion
 
@@ -416,6 +504,49 @@ Deno.test("proposals: a row links the project, says stage · role · when, and a
 	// A stage the read could not name falls back to its slug.
 	assertEquals(teamProposals([sent({ stageName: null })], TEAM)[0].meta[0], "stg-def456");
 });
+
+Deno.test("proposals: two proposals on one project get Withdraw names that tell them apart", () => {
+	const rows = teamProposals([
+		sent({ id: "a", stageName: "Discovery", createdAt: "2026-10-12T10:00:00.000Z" }),
+		sent({ id: "b", stageName: "Build", createdAt: "2026-10-13T10:00:00.000Z" }),
+	], TEAM);
+	assertEquals(rows.map((r) => r.withdrawLabel), [
+		"Withdraw the proposal for Checkout rebuild, Build, sent 13 Oct",
+		"Withdraw the proposal for Checkout rebuild, Discovery, sent 12 Oct",
+	]);
+	const [withRole] = teamProposals([sent({ roleTitle: "Researcher" })], TEAM);
+	assertStrictEquals(
+		withRole.withdrawLabel,
+		"Withdraw the proposal for Checkout rebuild, Discovery, Researcher, sent 12 Oct",
+	);
+});
+
+Deno.test("proposals: after a withdrawal focus goes to the next Withdraw, else the previous, else none", () => {
+	const rows = teamProposals([
+		sent({ id: "1", createdAt: "2026-10-15T10:00:00.000Z" }),
+		sent({ id: "2", createdAt: "2026-10-14T10:00:00.000Z", canWithdraw: false }),
+		sent({ id: "3", createdAt: "2026-10-13T10:00:00.000Z" }),
+		sent({ id: "4", createdAt: "2026-10-12T10:00:00.000Z" }),
+	], TEAM);
+	assertEquals(rows.map((r) => r.id), ["1", "2", "3", "4"]);
+	// The next row that has a Withdraw — a row the viewer may not withdraw is skipped.
+	assertStrictEquals(focusAfterWithdraw(rows, "1"), "3");
+	assertStrictEquals(focusAfterWithdraw(rows, "3"), "4");
+	// The last one falls back to the previous row with a Withdraw.
+	assertStrictEquals(focusAfterWithdraw(rows, "4"), "3");
+	// Nothing left to take it — the list's heading does (the island's fallback).
+	assertStrictEquals(focusAfterWithdraw(rows.slice(0, 1), "1"), null);
+	assertStrictEquals(focusAfterWithdraw(rows, "missing"), null);
+});
+
+Deno.test("proposals: the Withdraw confirm names no pool owner while #154 (b) is open", () => {
+	const message = withdrawConfirmMessage({ title: "Checkout rebuild" });
+	assertStrictEquals(
+		message,
+		"Checkout rebuild — one proposal returns to this week's allowance. The anti-burst token does not come back, so applying again spends one.",
+	);
+	assert(!/'s weekly allowance|team's|members'|pool/i.test(message), message);
+});
 // #endregion
 
 // #region The screen and the dispatcher — source scans
@@ -478,6 +609,39 @@ Deno.test("projects screen: it is the header band tabs' panel and reads the shar
 	assert(/viewOr\(props\.view \?\? null\)/.test(SCREEN));
 	assert(!/selectModuleView|<TabMenu\b/.test(SCREEN), "the body draws or writes its own tabs");
 	assert(!/style=/.test(SCREEN), "an inline style");
+});
+
+Deno.test("projects screen: Withdraw is named per row, confirmed owner-neutrally, and keeps focus", () => {
+	assert(/aria-label=\{row\.withdrawLabel\}/.test(SCREEN), "Withdraw's name is not the row's own");
+	assert(/message=\{withdrawFor\.value \? withdrawConfirmMessage\(/.test(SCREEN));
+	assert(!/weekly allowance/.test(SCREEN), "the confirm's sentence is written in the island");
+	// Focus is placed after a refusal and after a landed withdrawal, never left on the body.
+	assertEquals(SCREEN.match(/focusWhenLive\(/g)?.length, 3, "focusWhenLive is not called twice");
+	assert(/focusAfterWithdraw\(before, row\.id\)/.test(SCREEN));
+	assert(/id=\{PROPOSALS_TITLE_ID\} tabIndex=\{-1\}/.test(SCREEN), "the heading cannot take focus");
+	assert(/data-proposal=\{row\.id\}/.test(SCREEN));
+});
+
+Deno.test("engagement row: each row is named by its project AND its stage", () => {
+	const row = source("../components/EngagementRow.tsx");
+	assert(
+		/aria-labelledby=\{`\$\{titleId\} \$\{stageId\}`\}/.test(row),
+		"the row is named by its project only",
+	);
+	assert(/class="wsp-engagement__stage" id=\{stageId\}/.test(row));
+});
+
+Deno.test("projects sheet: no rule styles a class nothing renders", () => {
+	const sheet = Deno.readTextFileSync(
+		new URL("../styles/workspace-projects.css", import.meta.url),
+	).replace(/\/\*[\s\S]*?\*\//g, "");
+	const rendered = SCREEN + source("../components/EngagementRow.tsx");
+	const classes = new Set([...sheet.matchAll(/\.(wsp-[a-z0-9_-]+)/g)].map((m) => m[1]));
+	for (const name of classes) {
+		// `wsp-band…` is the console sheet's family, drawn here and on every module.
+		if (name.startsWith("wsp-band")) continue;
+		assert(rendered.includes(name), `.${name} is styled but never rendered`);
+	}
 });
 
 Deno.test("projects screen: its regions are grouped (§7)", () => {
