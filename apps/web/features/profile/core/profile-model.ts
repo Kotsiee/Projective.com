@@ -443,16 +443,16 @@ export type WorkspaceProfileKind = "team" | "business";
 
 /**
  * Whether a workspace kind's console Settings can do what the member notice is about — publish the
- * entity and change its visibility. The notice's tier-4 Settings link renders only where it can, so
- * that it lands on a surface that can act (root CLAUDE.md §3.11). Neither kind's can yet: the
- * Settings module is still a `ModulePlaceholder` whose copy sends visibility to a profile editor that
- * offers a team or a business none. So both links are withheld — the business's by Decision #244
- * (d), the team's (Teams P1 SPEC 1) until Teams C6 puts Publish and Visibility on its Settings screen,
- * when the `team` entry turns on. The read keeps carrying `settingsHref` for a `manage_settings`
- * holder, so the link returns with that one change.
+ * entity (for the `manage_settings` holder the link is shown to), restore it (for an `archive_entity`
+ * holder) and change its visibility (for an `edit_profile` holder). The notice's tier-4 Settings link
+ * renders only where it can, so that it lands on a surface that can act (root CLAUDE.md §3.11). A
+ * team's can: Teams C6 put Publish, Restore and Visibility on its Settings screen, each offered to
+ * its own right's holder. A business's cannot yet — its Settings
+ * module is still a `ModulePlaceholder` — so its link stays withheld by Decision #244 (d); the read
+ * keeps carrying `settingsHref` for a `manage_settings` holder, so it returns with this one entry.
  */
 export const SETTINGS_PUBLISHES: Readonly<Record<WorkspaceProfileKind, boolean>> = {
-	team: false,
+	team: true,
 	business: false,
 };
 

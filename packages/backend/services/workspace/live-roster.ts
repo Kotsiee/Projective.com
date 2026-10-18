@@ -12,6 +12,7 @@ import {
 	parseStatus,
 	parseVerification,
 	type Person,
+	publishedFact,
 	type RawRoster,
 	type RawRosterItem,
 	rosterActivity,
@@ -86,7 +87,7 @@ function toSummary(
 		funded: !!item.setup?.funded,
 		limitsOffered: !!item.setup?.limits_offered,
 		verification,
-		published: status !== "draft",
+		published: publishedFact(status),
 	});
 	const faces = (item.face_user_ids ?? []).slice(0, 5)
 		.map((id) => faceOf(people.get(id)))

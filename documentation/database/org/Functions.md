@@ -763,22 +763,41 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   `finance.fn_on_account_owed > 0`) · `wallet_balance` (wallets with a positive balance) ·
   `pending_payouts` (`pending` payouts from its wallets). Read by `set_workspace_status` and
   `get_workspace_detail`. Internal.
-- **`set_workspace_status(kind, id, status) → {id, status}`** — `authenticated`. Publishing
-  (`draft → active`) needs `manage_settings`; archiving or restoring (to or from `archived`) needs
-  `archive_entity`. A published entity never goes back to `draft`. **Archive is refused (`55000`)**
-  while an escrow is `held` owed to the team (`payee_type = 'team'`) or funded by the business
-  (`payer_business_id`); for a team, also while a `held` escrow on a stage the team is assigned to
-  (`projects.stage_assignments.team_id`, joined on `escrows.project_stage_id`, assignment not
-  `declined`/`cancelled`/`released`) is **unbound** (a Decision #197 prepaid ticket escrow) or bound
-  to one of its **members** (`payee_type = 'freelancer'`, the team-seat payee rule of #197 flag (b)) —
-  the same `55000` "money is held in escrow" refusal (TEAMS_AUDIT S3; probe
-  `supabase/probes/team_archive_escrow_guard.sql`); a non-member's escrow on a shared stage does not
-  block. It is also refused while a team holds a live `projects.stage_assignments` row on an
-  `active`/`on_hold` project. A **business** is refused on every `fn_business_archive_blockers`
-  entry: `55000` whose MESSAGE leads with the first blocker's code (`escrow_held: …`,
-  `live_projects: …`, …) and whose DETAIL is `{"blockers": [...]}` — the API answers `409` with
-  `details {reason, blockers}` (`packages/backend/services/workspace/live-support.ts`). Audits
-  `{kind}.status_changed`.
+- **`fn_team_archive_blockers(team) → jsonb`** — a team's twin, in the same `[{code, count}]` shape
+  and order (`[]` when none): `escrow_held` — `held` escrows owed to the team (payee type `team`),
+  or on a stage the team is assigned to (`projects.stage_assignments.team_id`, joined on
+  `escrows.project_stage_id`, assignment not `declined`/`cancelled`/`released`) that are **unbound**
+  (a Decision #197 prepaid ticket escrow) or bound to one of its **members** (payee type
+  `freelancer`, the team-seat payee rule of #197 flag (b)); a non-member's escrow on a shared stage
+  does not count (TEAMS_AUDIT S3) — then `live_assignments` — its `projects.stage_assignments` rows
+  not `declined`/`cancelled`/`released`/`completed` on an `active`/`on_hold` project (S4). Read by
+  `set_workspace_status` and `get_workspace_detail`. Internal (Teams C6; probe
+  `supabase/probes/team_archive_blockers.sql`).
+- **`fn_workspace_restore_target(kind, id) → text`** — where restoring an archived entity lands
+  (Decision #250 (c); a business's by #236 (d)): `active` when its `security.audit_logs` trail
+  (`{kind}.status_changed` on `org.teams` / `org.business_profiles`, metadata `{from, to}`) ever
+  touched `active` — `active → draft` is refused, so that is exactly "it was published once" — else
+  `draft`. An entity with **no** status trail (a seeded or hand-written row) has no evidence of ever
+  being published and restores to `draft`. `STABLE`; read through `idx_audit_logs_entity`. Internal
+  (probe `supabase/probes/team_restore_target.sql`).
+- **`set_workspace_status(kind, id, status) → {id, status}`** — `authenticated`. `status` is `draft`
+  · `active` · `archived` · **`restore`**. Publishing (`draft → active`) needs `manage_settings`;
+  archiving or restoring (to or from `archived`) needs `archive_entity`. A published entity never
+  goes back to `draft`. **Restore** lands where `fn_workspace_restore_target` says: `restore`
+  resolves to it, naming that target outright is accepted, and naming the other is refused `22023`
+  with a `restore_target:` message and DETAIL `{"target": …}` (the API answers `409` with `details`
+  `{reason: "restore_target", target}`); `restore` on an entity that is not archived is refused
+  `22023` ("only an archived … is restored"). The answer's `status` is the one it landed on.
+  **Archive is refused (`55000`)** on every blocker the kind's list names — a team's
+  `fn_team_archive_blockers` (its two `status:` sentences kept: "money is held in escrow for this
+  team — let it release first" for `escrow_held`, "this team is still assigned to live work — finish
+  or hand it back first" for `live_assignments`; probes `team_archive_escrow_guard.sql`,
+  `team_archive_blockers.sql`), a business's `fn_business_archive_blockers` (the MESSAGE led by the
+  first blocker's code — `escrow_held:`, `live_projects:`, …) — refused on the first, with DETAIL
+  `{"blockers": [...]}` for both kinds. The API answers `409` with `details` `{reason, blockers}`,
+  `reason` the first code (`packages/backend/services/workspace/live-writes.ts` `statusRefusal` for
+  a team, `live-support.ts` `refusalFrom` for a business). Audits `{kind}.status_changed`
+  `{from, to}`, `to` the status it landed on.
 - **`update_workspace(kind, id, patch) → {id}`** — `authenticated`, needs `edit_profile`. Patch keys
   `name` (2–80), `headline` (≤ 160, refused as `tagline:`) and `visibility` (`public` · `unlisted` ·
   `invite_only`, either kind; else `22023 visibility:`; Decision #230 (h)). Pictures move through the
@@ -936,10 +955,11 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
   `limits_offered`: `NOT (fn_business_plan_gates_enforced() AND NOT fn_business_gate_flag(id,
   'pooled_wallet_full'))`, the negation of the spend block's `limits_plan_gated` — Decision #248;
   probe `supabase/probes/business_overview_setup.sql`).
-  Both kinds carry `visibility`. A **business** also answers `archive_blockers` —
-  `fn_business_archive_blockers` **only when the viewer holds `archive_entity`**, else `[]` (always
-  `[]` for a team) — so Settings lists what to clear before the archive confirm (BB5; `archiveBlockers`
-  in `WorkspaceDetail`).
+  Both kinds carry `visibility`, and `archive_blockers` — `fn_team_archive_blockers` /
+  `fn_business_archive_blockers` **only when the viewer holds `archive_entity`**, else `[]` — so
+  Settings lists what to clear before the archive confirm (BB5; Teams C6; `archiveBlockers` in
+  `WorkspaceDetail`), and `restore_target` — `fn_workspace_restore_target` while the entity is
+  `archived`, else `null` — so Restore says where it lands (`restoreTarget`).
   A **business** also answers, every flag and figure decided here so no screen recomputes policy
   (BB9; always `null` / `[]` for a team):
   - `spend` — **only when the viewer may open Spend** (`spend_funds` · `manage_finances` ·

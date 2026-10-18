@@ -246,8 +246,13 @@ export interface RawDetail {
 	payout?: RawTeamPayout | null;
 	/** A team's `finance.get_proposal_allowance` answer (`null` for a business). */
 	allowance?: unknown;
-	/** A business's `org.fn_business_archive_blockers` (`[]` without `archive_entity`, and for a team). */
+	/**
+	 * `org.fn_team_archive_blockers` / `org.fn_business_archive_blockers` — what would refuse an archive
+	 * now (`[]` without `archive_entity`).
+	 */
 	archive_blockers?: unknown;
+	/** `org.fn_workspace_restore_target` while the entity is archived (`null` otherwise). */
+	restore_target?: unknown;
 	/** A business's spend block — present ONLY for a viewer who may open Spend. */
 	spend?: RawBusinessSpend | null;
 	/** A business's money tiles per wallet currency — `[]` unless the viewer may open Finance. */
@@ -579,7 +584,7 @@ export interface SetupFacts {
 	 * `pending` is not done, and asks nothing of anyone: the check is with the reviewers.
 	 */
 	verification: VerificationState;
-	/** Whether the entity has left `draft` (it is `active`, or `archived` after being live). */
+	/** Whether the entity has left `draft` — {@link publishedFact}, the one rule both reads share. */
 	published: boolean;
 	/**
 	 * The viewer's effective capabilities, which stamp each step's `actionable`. Absent where nobody is
@@ -591,6 +596,18 @@ export interface SetupFacts {
 	 * check, so only they may act on that step ({@link canActOnSetupStep}).
 	 */
 	viewerIsOwner?: boolean;
+}
+
+/**
+ * The setup walk's Publish fact, read the same way by the roster card and the console detail: done
+ * once the entity has left `draft` — `active`, or `archived` whichever way it got there. Publishing is
+ * a draft's step; an archived entity is not walking setup, and its way back is Settings' Restore,
+ * which lands a never-published one on `draft` (Decision #250 (c), #236 (d)) where this step opens
+ * again. Read narrower, an archived never-published entity would be offered a Publish its status
+ * door always refuses.
+ */
+export function publishedFact(status: WorkspaceStatus): boolean {
+	return status !== "draft";
 }
 
 /**

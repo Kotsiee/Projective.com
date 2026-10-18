@@ -10,9 +10,10 @@ import { isPeopleReading, MEMBERS_CHART, MEMBERS_PEOPLE } from "./sub-views.ts";
  * The leading side is the shared zoom (the roster, and the Members People reading) with the Org chart
  * toggle riding beside it — and the toggle alone on the chart, which has no density to zoom. The
  * trailing side is the Button Interaction Matrix (§B.8.1) in one row:
- * tier-4 utilities (New, Invite, Settings), then the policy editor's Discard (tier 5) and Save
- * (tier 3) — both present ONLY while the open editor holds unsaved changes, so the rig never shows a
- * Save that has nothing to save, and Save is the rig's one filled control.
+ * tier-4 utilities (New, Invite, Settings), then the open editor's Discard (tier 5) and Save
+ * (tier 3) — both present ONLY while the editor holds unsaved changes, so the rig never shows a
+ * Save that has nothing to save, and Save is the rig's one filled control. The editors are the money
+ * policies (Payouts, Spend, Billing) and a team's Settings name and visibility (Teams C6).
  *
  * A navigation is a link (the rig renders a ui `Link`), never a button that assigns `location`; an
  * action that opens something on this page is a button.
@@ -25,8 +26,14 @@ import { isPeopleReading, MEMBERS_CHART, MEMBERS_PEOPLE } from "./sub-views.ts";
 /** The lifecycle of a policy save, as the rig reports it. */
 export type SaveState = "idle" | "saving" | "saved" | "error";
 
-/** The modules whose body is a policy editor answering the rig's Save and Discard. */
+/** The modules whose body is a money-policy editor answering the rig's Save and Discard. */
 export const POLICY_MODULES: readonly string[] = ["payouts", "spend", "billing"];
+
+/**
+ * The module whose body is the identity editor (name and visibility, `org.update_workspace`) answering
+ * the same Save and Discard — a team's Settings (Teams C6), for an `edit_profile` holder.
+ */
+export const PROFILE_EDITOR_MODULE = "settings";
 
 /** The rig's inputs. Capabilities are the server-resolved ones; the rig decides PRESENCE from them. */
 export interface RigInput {
@@ -47,6 +54,8 @@ export interface RigInput {
 	canInvite: boolean;
 	canManageMoney: boolean;
 	canManageSettings: boolean;
+	/** Whether the viewer may edit the entity's identity (`edit_profile`) — a team's Settings' Save. */
+	canEditProfile: boolean;
 	/** Whether the open policy editor holds unsaved changes (`policyDirty`). */
 	dirty: boolean;
 	saveState: SaveState;
@@ -138,7 +147,7 @@ export function rigModel(input: RigInput): RigModel {
 
 	const people = input.module === "members" && isPeopleReading(input.view);
 	const charted = people && input.view === MEMBERS_CHART;
-	const editing = input.canManageMoney && POLICY_MODULES.includes(input.module ?? "");
+	const editing = editorOpen(input);
 	const pending = editing && input.dirty;
 	const actions: RigAction[] = [];
 
@@ -186,6 +195,19 @@ export function rigModel(input: RigInput): RigModel {
 		actions,
 		holds: pending ? "commit" : editing ? "editor" : "utilities",
 	};
+}
+
+/**
+ * Whether the open module's body is an editor this viewer may save: a money-policy editor for the
+ * money right, a team's Settings identity editor for `edit_profile`. Only a team's Settings mounts that
+ * editor (`TeamSettingsScreen`); a business's is still a placeholder, so its rig stays the utilities.
+ */
+export function editorOpen(
+	input: Pick<RigInput, "kind" | "module" | "canManageMoney" | "canEditProfile">,
+): boolean {
+	const module = input.module ?? "";
+	return (input.canManageMoney && POLICY_MODULES.includes(module)) ||
+		(input.kind === "team" && input.canEditProfile && module === PROFILE_EDITOR_MODULE);
 }
 
 /** What the policy editor's save state says, or `null` when there is nothing to say. */

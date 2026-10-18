@@ -1,0 +1,157 @@
+/*
+ * workspace-settings.css — the Settings module (`.wsp-settings`, Teams C6): Identity, Visibility and
+ * Lifecycle in one column. Token-only, strict BEM, logical properties only.
+ *
+ * The three sections are separated the way §B.4 orders it: `--space-7` above each, then ONE hairline
+ * on one edge — never a box, never a tonal card. Section titles take the label register
+ * (`--wsp-fs-label`, uppercase, `--fw-semibold`) with `--space-3` below. Fields keep `--wsp-field`, the
+ * one width a form field may be held to; sentences keep `--wsp-prose`. Press feedback, focus and the
+ * danger tone are the ui Button's and SelectButton's own — nothing here reaches inside them.
+ */
+
+/* The block sits on the band's inner wrapper, so every element below has its block in the tree. */
+.wsp-settings {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+/* #region Sections */
+.wsp-settings__section {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.wsp-settings__section + .wsp-settings__section {
+	margin-block-start: var(--space-7);
+	padding-block-start: var(--space-5);
+	border-block-start: var(--hairline);
+}
+
+.wsp-settings__title {
+	margin: 0 0 var(--space-3);
+	font-size: var(--wsp-fs-label);
+	letter-spacing: var(--wsp-label-track);
+	line-height: var(--leading-snug);
+	text-transform: uppercase;
+	font-weight: var(--fw-semibold);
+	color: var(--text-secondary);
+}
+
+.wsp-settings__body {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-4);
+	min-inline-size: 0;
+}
+
+/* A form field's one permitted width. */
+.wsp-settings__field {
+	inline-size: 100%;
+	max-inline-size: var(--wsp-field);
+}
+
+/* A sentence under a control or a fact. */
+.wsp-settings__note {
+	max-inline-size: var(--wsp-prose);
+}
+/* #endregion */
+
+/* #region Facts — a value that cannot be edited here, said as text, never as a disabled field */
+.wsp-settings__fact {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	min-inline-size: 0;
+}
+
+/* The field label's register, so a fact and a field above it read as one form. */
+.wsp-settings__factlabel {
+	font-size: var(--fld-label-fs);
+	font-weight: var(--fld-label-fw);
+	color: var(--fld-label-fg);
+}
+
+.wsp-settings__factvalue {
+	margin: 0;
+	font-size: var(--wsp-fs-body);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+	overflow-wrap: anywhere;
+}
+
+.wsp-settings__factnote {
+	margin: 0;
+	max-inline-size: var(--wsp-prose);
+}
+/* #endregion */
+
+/* #region Lifecycle */
+/* The status Tag and what it means, on one line that wraps. Focus lands here after a lifecycle change. */
+.wsp-settings__status {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2) var(--space-3);
+	min-inline-size: 0;
+}
+
+.wsp-settings__action {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+/* The blockers that stand in for the archive control, one InlineNotice each, in the server's order. */
+.wsp-settings__blockers {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+/*
+ * InlineNotice pads itself for a list's foot; here it sits in the section's own column, so it drops
+ * that padding and starts on the column edge. Doubled class so the override never depends on bundle
+ * order. The count it names is a figure.
+ */
+.ui-inline-notice.wsp-settings__blocker,
+.ui-inline-notice.wsp-settings__failure {
+	padding: 0;
+	max-inline-size: var(--wsp-prose);
+	font-variant-numeric: tabular-nums;
+}
+
+/*
+ * A blocker's lock stays beside its sentence at every width. InlineNotice's row wraps and its text
+ * sizes to its content, so under the prose cap a sentence wider than what the lock leaves would drop
+ * whole beneath it and leave the glyph alone on a line: the row holds, the sentence takes what the
+ * lock leaves (a zero basis) and wraps inside it, and the lock rides the FIRST line, centred on it.
+ */
+.ui-inline-notice.wsp-settings__blocker {
+	flex-wrap: nowrap;
+	align-items: flex-start;
+}
+
+.wsp-settings__blocker .ui-inline-notice__text {
+	flex: 1 1 0;
+}
+
+.wsp-settings__blocker .ui-inline-notice__icon {
+	margin-block-start: calc((1lh - var(--icon-xs)) / 2);
+}
+
+/* A refusal that named no blocker. Focus lands here once the pressed control has let it go. */
+.wsp-settings__refusal {
+	min-inline-size: 0;
+	max-inline-size: var(--wsp-prose);
+}
+/* #endregion */

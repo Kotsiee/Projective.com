@@ -155,9 +155,27 @@ Deno.test("header: a business offers Archive… only when the server says it wou
 			assertEquals(model.menu.archive, viewerCanArchive === true);
 		}
 	}
-	// A team ignores the business-only flag: its rule is the capability and the status.
+	// A team ignores the business-only flag: its rule is the capability, the status and its blockers.
 	const team = headerBand(input({ module: "overview", viewerCanArchive: false }));
 	assert(headerMenu(team, NOOP).some((r) => r.key === "archive"));
+});
+
+Deno.test("header: a team with a held escrow or live work is not offered Archive… (C6)", () => {
+	for (const status of ["draft", "active"] as WorkspaceStatus[]) {
+		const blocked = headerBand(input({ module: "overview", status, archiveBlocked: true }));
+		assert(!headerMenu(blocked, NOOP).some((r) => r.key === "archive"), status);
+		assertEquals(blocked.menu.archive, false);
+		const clear = headerBand(input({ module: "overview", status, archiveBlocked: false }));
+		assert(headerMenu(clear, NOOP).some((r) => r.key === "archive"), status);
+	}
+	assert(/archiveBlocked: ws\.archiveBlockers\.length > 0/.test(BAND), "the band reads the list");
+	// …and a refusal Settings has had since the read, for this entity, so a failed re-read never
+	// leaves the kebab offering an Archive… the server has just refused.
+	assert(
+		/archiveBlocked: ws\.archiveBlockers\.length > 0 \|\| archiveRefusal\.value\?\.id === ws\.id/
+			.test(BAND),
+		"the band honours a raced refusal",
+	);
 });
 
 Deno.test("header: the kebab carries the public profile, Copy handle, the way out, then Archive…", () => {

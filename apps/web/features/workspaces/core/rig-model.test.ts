@@ -1,8 +1,10 @@
 import { assert, assertEquals } from "@std/assert";
 import type { WorkspaceKind } from "@projective/types/workspace";
 import {
+	editorOpen,
 	inviteOpensInPlace,
 	POLICY_MODULES,
+	PROFILE_EDITOR_MODULE,
 	rigFilledCount,
 	type RigInput,
 	rigModel,
@@ -41,6 +43,7 @@ function inConsole(overrides: Partial<RigInput> = {}): RigInput {
 		canInvite: true,
 		canManageMoney: true,
 		canManageSettings: true,
+		canEditProfile: true,
 		dirty: false,
 		saveState: "idle",
 		...overrides,
@@ -66,6 +69,7 @@ Deno.test("rig: never more than one filled control, in any state", () => {
 							canInvite: allowed,
 							canManageMoney: allowed,
 							canManageSettings: allowed,
+							canEditProfile: allowed,
 						}));
 						assert(rigFilledCount(model) <= 1, `${kind}/${module}`);
 					}
@@ -89,11 +93,46 @@ Deno.test("rig: Save (tier 3) and Discard (tier 5) render only while the editor 
 	}
 });
 
-Deno.test("rig: no Save without the money right, nor outside a policy editor", () => {
+Deno.test("rig: no Save without the money right, nor outside an editor", () => {
 	assert(!keys(inConsole({ dirty: true, canManageMoney: false })).includes("save"));
-	for (const module of ["overview", "members", "roles", "settings"]) {
+	for (const module of ["overview", "members", "roles"]) {
 		assert(!keys(inConsole({ module, dirty: true })).includes("save"), module);
 	}
+});
+
+Deno.test("rig: Settings' name and visibility save through the same tier-3 Save (C6)", () => {
+	const settings = inConsole({ module: PROFILE_EDITOR_MODULE, dirty: true });
+	assertEquals(keys(settings), ["invite", "discard", "save"]);
+	assertEquals(rigFilledCount(rigModel(settings)), 1);
+	// The identity editor answers edit_profile — not the money right, not manage_settings.
+	const team = { kind: "team" } as const;
+	assert(editorOpen({ ...team, module: "settings", canManageMoney: false, canEditProfile: true }));
+	assert(!editorOpen({ ...team, module: "settings", canManageMoney: true, canEditProfile: false }));
+	assert(!editorOpen({ ...team, module: "payouts", canManageMoney: false, canEditProfile: true }));
+	assertEquals(keys(inConsole({ module: "settings", dirty: true, canEditProfile: false })), [
+		"invite",
+	]);
+});
+
+Deno.test("rig: a business's Settings is not an editor — only a team's mounts one (C6)", () => {
+	// /businesses/:handle/settings is still a placeholder: no status line, no Save, the utilities' fold.
+	assert(
+		!editorOpen({
+			kind: "business",
+			module: "settings",
+			canManageMoney: true,
+			canEditProfile: true,
+		}),
+	);
+	for (const dirty of [false, true]) {
+		const business = rigModel(inConsole({ kind: "business", module: "settings", dirty }));
+		assertEquals(business.statusLine, false);
+		assertEquals(business.status, null);
+		assertEquals(business.holds, "utilities");
+		assertEquals(business.actions.map((a) => a.key), ["invite"]);
+	}
+	// A business's money editors are unchanged.
+	assert(rigModel(inConsole({ kind: "business", module: "spend" })).statusLine);
 });
 
 Deno.test("rig: the commit is 'Save' beside 'Discard' — the status line already says 'changes'", () => {
@@ -109,7 +148,9 @@ Deno.test("rig: what the trailing side holds — the width its words need before
 		"create",
 	);
 	for (const module of MODULES) {
-		const holds = POLICY_MODULES.includes(module) ? "editor" : "utilities";
+		const holds = POLICY_MODULES.includes(module) || module === PROFILE_EDITOR_MODULE
+			? "editor"
+			: "utilities";
 		assertEquals(rigModel(inConsole({ module })).holds, holds, module);
 		// Outside a policy editor a dirty flag changes nothing the rig holds.
 		if (holds === "utilities") {
@@ -158,7 +199,9 @@ Deno.test("rig: the status line stays mounted for the whole life of a policy edi
 		}
 	}
 	assert(!rigModel(inConsole({ canManageMoney: false })).statusLine);
-	for (const module of ["overview", "members", "settings"]) {
+	assert(rigModel(inConsole({ module: "settings" })).statusLine, "Settings is an editor too");
+	assert(!rigModel(inConsole({ module: "settings", canEditProfile: false })).statusLine);
+	for (const module of ["overview", "members"]) {
 		assert(!rigModel(inConsole({ module })).statusLine, module);
 	}
 	assert(!rigModel(inConsole({ handle: null, module: null })).statusLine);
@@ -353,6 +396,7 @@ Deno.test("policy editors answer Save and Discard through usePolicyBridge, never
 			"../islands/PayoutPolicyScreen.island.tsx",
 			"../islands/SpendPolicyScreen.island.tsx",
 			"../islands/BillingScreen.island.tsx",
+			"../islands/TeamSettingsScreen.island.tsx",
 		]
 	) {
 		const text = source(file);

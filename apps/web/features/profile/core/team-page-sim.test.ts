@@ -8,7 +8,7 @@ import { memberNoticeFor } from "./profile-model.ts";
  * team-page-sim_test — the Dev Context Switcher's team page state (Teams P1): only a recognised value
  * simulates anything, only a team is touched, `missing` is the outsider's 404, and a reason keeps the
  * viewer's real console doors — so a simulated draft reads the member notice, and keeps the Settings
- * door the notice will link once Settings can publish a team (Teams C6).
+ * door the notice links (a team's Settings publishes, Teams C6).
  */
 
 // #region Fixtures
@@ -44,13 +44,8 @@ Deno.test("applyTeamPageSim lays a reason over a team, keeps its doors, and the 
 		settingsHref: "/teams/northloop/settings",
 	});
 	const text = "North Loop is a draft. Only members can see this until the team is published.";
-	// The Settings link waits for a Settings screen that can publish (Teams C6)…
-	assertEquals(memberNoticeFor(shown!), { text, settingsHref: null });
-	// …and the simulated draft keeps the door it will open then.
-	assertEquals(memberNoticeFor(shown!, { team: true, business: false }), {
-		text,
-		settingsHref: "/teams/northloop/settings",
-	});
+	// The simulated draft keeps the door the notice links: Settings, which publishes (Teams C6).
+	assertEquals(memberNoticeFor(shown!), { text, settingsHref: "/teams/northloop/settings" });
 	const bare = applyTeamPageSim({ ...team, workspace: undefined }, "archived");
 	assertEquals(bare?.workspace, {
 		hiddenReason: "archived",

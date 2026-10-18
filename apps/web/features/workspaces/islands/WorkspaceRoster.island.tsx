@@ -54,6 +54,7 @@ import {
 	rosterTrackWidth,
 	toRosterTab,
 } from "../core/roster-model.ts";
+import { restoredNotice } from "../core/settings-model.ts";
 import { tierProps } from "../core/create-model.ts";
 import { cloneGlyph, DeclineGlyph, SearchGlyph } from "../core/workspace-glyphs.tsx";
 import { WorkspaceCard, type WorkspaceCardAction } from "../components/WorkspaceCard.tsx";
@@ -311,7 +312,8 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 				return;
 			case "archive":
 			case "restore": {
-				const status = action === "archive" ? "archived" : "active";
+				// A restore lands where the server decides (Decision #250 (c)): live if it ever was.
+				const status = action === "archive" ? "archived" : "restore";
 				const res = await WorkspaceService.update({ kind: summary.kind, id: summary.id, status });
 				if (!res.ok) {
 					actionError.value = res.message ??
@@ -321,7 +323,7 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 				if (await refresh()) {
 					info.value = action === "archive"
 						? `${summary.name} is archived. It is still restorable from Archived.`
-						: `${summary.name} is active again.`;
+						: restoredNotice(summary.kind, summary.name, res.data?.status);
 				}
 				return;
 			}
