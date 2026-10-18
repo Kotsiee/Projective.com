@@ -243,8 +243,9 @@ function entity(
 Deno.test("memberNoticeFor: a hidden team tells its member why, and links Settings, which publishes", () => {
 	const doors = { consoleHref: "/teams/northloop", settingsHref: "/teams/northloop/settings" };
 	const draft = entity("team", { hiddenReason: "draft", ...doors });
-	// A team's Settings publishes, restores and changes visibility (Teams C6), so its settings holder
-	// gets the link beside the line; a business's still cannot (#244 (d)).
+	// A team's Settings publishes for its settings holder (and restores and changes visibility for the
+	// archive and profile rights' holders, Teams C6), so that holder gets the link beside the line; a
+	// business's still cannot (#244 (d)).
 	assertEquals(SETTINGS_PUBLISHES, { team: true, business: false });
 	assertEquals(memberNoticeFor(draft), {
 		text: "North Loop is a draft. Only members can see this until the team is published.",

@@ -1,4 +1,4 @@
-import type { JSX } from "preact";
+import type { JSX, Ref } from "preact";
 import { batch, useComputed, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/workspace.css";
@@ -14,6 +14,7 @@ import {
 import { Icon } from "@projective/ui/icons";
 import { Link } from "@projective/ui/navigation";
 import {
+	type ArchiveBlockerCode,
 	kindCopy,
 	WORKSPACE_NAME_MAX,
 	type WorkspaceDetail,
@@ -27,7 +28,6 @@ import { usePolicyBridge } from "../hooks/usePolicyBridge.ts";
 import { useModuleCommit } from "../hooks/useModuleCommit.ts";
 import {
 	type BlockerLine,
-	blockerLine,
 	identityDirty,
 	identityPatch,
 	nameError,
@@ -47,12 +47,14 @@ import {
  *   - **Identity** — the display name in a FormControl (an `edit_profile` holder's; the same bounds
  *     `org.update_workspace` holds it to) and the `@handle`, read-only: handles never change.
  *   - **Visibility** — the directory visibility on a SelectButton (`org.update_workspace`, Decision
- *     #230 (h)), with what the choice means and, until the team is live, that only members see it.
+ *     #230 (h)), named by its visible label, with what the choice means and, until the team is live,
+ *     that only members see it.
  *   - **Lifecycle** — the status Tag and what it means, then ONE control: an `archive_entity` holder's
  *     "Archive team…" (danger, outlined, confirmed) — replaced, while the read lists a held escrow or
  *     live work, by those blockers, each with the link that clears it, never a button that would fail;
  *     on an archived team, Restore (tier 3) named for where the server says it lands (Decision #250
- *     (c)). A refusal that raced the read is said in the same words.
+ *     (c)). A refusal that raced the read is said in the same words, in the button's place: its codes
+ *     replace Archive at once, and the re-read that follows brings their counts to every root.
  *
  * Every rule above is `settings-model.ts`, pinned by its test; this island renders it. The one
  * filled control per region (§B.8.1) is split across three roots: Publish, while the team is a draft,
@@ -73,14 +75,11 @@ export interface TeamSettingsScreenProps {
 /** The lifecycle write in flight, if any. */
 type LifecycleMove = "publish" | "archive" | "restore";
 
-/** A lifecycle refusal: what the server said, and the blockers it named (raced reads). */
-interface LifecycleFailure {
-	message: string;
-	blockers: BlockerLine[];
-}
-
-/** The settings input the model reads, straight off the detail. */
-function inputOf(ws: WorkspaceDetail): SettingsInput {
+/**
+ * The settings input the model reads, straight off the detail, plus the blocker codes a refused
+ * archive named since that read (`raced`).
+ */
+function inputOf(ws: WorkspaceDetail, raced: readonly ArchiveBlockerCode[]): SettingsInput {
 	return {
 		kind: ws.kind,
 		id: ws.id,
@@ -90,6 +89,7 @@ function inputOf(ws: WorkspaceDetail): SettingsInput {
 		visibility: ws.visibility,
 		capabilities: ws.viewerCapabilities,
 		archiveBlockers: ws.archiveBlockers,
+		raced,
 		restoreTarget: ws.restoreTarget,
 		memberCount: ws.members.length,
 	};
@@ -99,9 +99,11 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 	// #region State
 	/** The server's projection — replaced wholesale by every write's re-read, never patched here. */
 	const detail = useSignal(props.workspace);
+	/** What a refused archive named since the read — it stands in for Archive until the re-read lands. */
+	const raced = useSignal<readonly ArchiveBlockerCode[]>([]);
 	const forced = useSignal<SettingsSimulation | undefined>(undefined);
 	const model = useComputed(() =>
-		settingsModel(simulateSettings(inputOf(detail.value), forced.value))
+		settingsModel(simulateSettings(inputOf(detail.value, raced.value), forced.value))
 	);
 
 	/** The identity being edited, and the last saved one it is measured against. */
@@ -127,10 +129,13 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 	const saveError = useSignal<string | null>(null);
 
 	const moving = useSignal<LifecycleMove | null>(null);
-	const failure = useSignal<LifecycleFailure | null>(null);
+	/** A lifecycle refusal that named no blocker — said beside the control. */
+	const failure = useSignal<string | null>(null);
 	const confirmArchive = useSignal(false);
 	/** The status line, where focus lands once a lifecycle change has replaced the pressed control. */
 	const statusRef = useRef<HTMLDivElement>(null);
+	/** The blockers' list, where focus lands when a refusal has replaced the Archive button with it. */
+	const blockersRef = useRef<HTMLUListElement>(null);
 
 	// The dev seam is a DOM attribute set, so it is read after mount and on every switcher change.
 	useEffect(() => {
@@ -150,6 +155,7 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 	function adopt(next: WorkspaceDetail, keepDraft = false): void {
 		batch(() => {
 			detail.value = next;
+			raced.value = [];
 			saved.value = { name: next.name, visibility: next.visibility };
 			if (keepDraft) return;
 			name.value = next.name;
@@ -198,10 +204,27 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 	// #endregion
 
 	// #region Lifecycle — Publish (header band), Archive and Restore (here)
+	/** Put focus where the pressed control was, once it has been replaced (after the next render). */
+	function focusLater(target: { current: HTMLElement | null }): void {
+		setTimeout(() => target.current?.focus({ preventScroll: true }), 0);
+	}
+
 	/**
-	 * Move the team through `org.set_workspace_status`. A refusal stays beside the control, worded
-	 * from the blockers it names; a landed move replaces the detail and puts focus on the status line,
-	 * because the control that was pressed is gone.
+	 * Re-read the detail after a refusal that raced the read, and adopt it here and on every other
+	 * root — so the blockers arrive counted and the header band withholds its Archive… too. A failed
+	 * re-read leaves the refusal's codes standing in.
+	 */
+	async function reread(ws: WorkspaceDetail): Promise<void> {
+		const res = await WorkspaceService.detail(ws.kind, ws.handle);
+		if (res.ok && res.data) adopt(res.data, true);
+	}
+
+	/**
+	 * Move the team through `org.set_workspace_status`. A refusal that names blockers replaces the
+	 * archive control with them at once (`raced`) — never leaving a button that would fail again —
+	 * and re-reads the detail, and focus moves onto that list; any other refusal is said beside the
+	 * control. A landed move replaces the detail, and focus moves to the status line — the control
+	 * that was pressed is gone.
 	 */
 	async function move(kind: LifecycleMove, status: WorkspaceStatusChange): Promise<void> {
 		moving.value = kind;
@@ -210,16 +233,18 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 		const res = await WorkspaceService.update({ kind: ws.kind, id: ws.id, status });
 		moving.value = null;
 		if (!res.ok || !res.data) {
-			failure.value = {
-				message: res.message ?? "That couldn't be completed. Nothing was changed.",
-				blockers: refusedBlockers(res.details?.blockers).map((code) =>
-					blockerLine(inputOf(ws), code, null)
-				),
-			};
+			const codes = refusedBlockers(res.details?.blockers);
+			if (codes.length > 0) {
+				raced.value = codes;
+				focusLater(blockersRef);
+				void reread(ws);
+				return;
+			}
+			failure.value = res.message ?? "That couldn't be completed. Nothing was changed.";
 			return;
 		}
 		adopt(res.data, true);
-		setTimeout(() => statusRef.current?.focus({ preventScroll: true }), 0);
+		focusLater(statusRef);
 	}
 
 	useModuleCommit(() => {
@@ -242,6 +267,8 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 	const failed = failure.value;
 	const visibilityLabel = view.visibility.options.find((o) => o.value === ws.visibility)?.label ??
 		ws.visibility;
+	/** The visibility field's visible label — also the radiogroup's accessible name (label in name). */
+	const whoCanSee = `Who can see /@${ws.handle}`;
 
 	return (
 		<div class="wsp" data-kind={ws.kind}>
@@ -332,13 +359,13 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 									? (
 										<FormControl
 											class="wsp-settings__field"
-											label={`Who can see /@${ws.handle}`}
+											label={whoCanSee}
 											hint={visibilityHint(visibility.value, ws.handle)}
 										>
 											{({ id, describedBy }) => (
 												<SelectButton
 													id={id}
-													aria-label="Visibility"
+													aria-label={whoCanSee}
 													aria-describedby={describedBy}
 													options={view.visibility.options}
 													value={visibilityPick}
@@ -351,7 +378,7 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 									)
 									: (
 										<Fact
-											label={`Who can see /@${ws.handle}`}
+											label={whoCanSee}
 											value={visibilityLabel}
 											note={view.visibility.hint}
 										/>
@@ -393,7 +420,9 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 									</div>
 								)}
 
-								{control.kind === "blocked" && <Blockers lines={control.blockers} />}
+								{control.kind === "blocked" && (
+									<Blockers lines={control.blockers} listRef={blockersRef} />
+								)}
 
 								{control.kind === "restore" && (
 									<div class="wsp-settings__action">
@@ -411,14 +440,12 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 								)}
 
 								{failed && (
-									failed.blockers.length > 0 ? <Blockers lines={failed.blockers} /> : (
-										<InlineNotice
-											class="wsp-settings__failure"
-											assertive
-											align="start"
-											text={failed.message}
-										/>
-									)
+									<InlineNotice
+										class="wsp-settings__failure"
+										assertive
+										align="start"
+										text={failed}
+									/>
 								)}
 							</div>
 						</section>
@@ -458,10 +485,21 @@ function Fact(props: { label: string; value: string; note: string }): JSX.Elemen
 	);
 }
 
-/** The blockers that stand in for Archive — one InlineNotice each, with the link that clears it. */
-function Blockers(props: { lines: readonly BlockerLine[] }): JSX.Element {
+/**
+ * The blockers that stand in for Archive — one InlineNotice each, with the link that clears it.
+ * Focusable from script (`tabIndex={-1}`), so a refusal that put them in the button's place can move
+ * focus onto them.
+ */
+function Blockers(
+	props: { lines: readonly BlockerLine[]; listRef: Ref<HTMLUListElement> },
+): JSX.Element {
 	return (
-		<ul class="wsp-settings__blockers" aria-label="What archiving waits on">
+		<ul
+			class="wsp-settings__blockers"
+			aria-label="What archiving waits on"
+			ref={props.listRef}
+			tabIndex={-1}
+		>
 			{props.lines.map((line) => (
 				<li key={line.code}>
 					<InlineNotice

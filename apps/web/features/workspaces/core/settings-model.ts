@@ -29,10 +29,11 @@ import type { FilledTier } from "./header-model.ts";
  *   - **Lifecycle** shows the status as a `Tag` and offers ONE control: while `draft`, Publish is the
  *     header band's filled commit (tier 3, `manage_settings`) and this section says what publishing
  *     does; an `archive_entity` holder on a draft or active entity gets "Archive …" (danger, outlined,
- *     confirmed) — or, while the server lists anything that would refuse it (a held escrow, live work),
- *     the blockers instead, each with the link that leads to clearing it, never a button that would
- *     fail; an archived entity offers its holder Restore (tier 3), named for where the server says it
- *     lands (`restoreTarget`, Decision #250 (c)).
+ *     confirmed, its facts worded for the status it leaves) — or, while the server lists anything that
+ *     would refuse it (a held escrow, live work) in the read or in a refusal that raced it, the
+ *     blockers instead, each with the link that leads to clearing it, never a button that would fail;
+ *     an archived entity offers its holder Restore (tier 3), named for where the server says it lands
+ *     (`restoreTarget`, Decision #250 (c)).
  *
  * Teams and Businesses share it (Decision #61): every sentence takes the kind's noun, and a
  * business's blocker codes are worded too, so the same screen can serve a business's Settings.
@@ -53,6 +54,12 @@ export interface SettingsInput {
 	capabilities: readonly WorkspaceCapability[];
 	/** What would refuse an archive now (`WorkspaceDetail.archiveBlockers`). */
 	archiveBlockers: readonly ArchiveBlocker[];
+	/**
+	 * The blocker codes a refused archive named since the read ({@link refusedBlockers}) — a refusal
+	 * that raced it. They block the archive control exactly as the read's list does, without counts,
+	 * until a fresh read replaces them.
+	 */
+	raced: readonly ArchiveBlockerCode[];
 	/** Where a restore lands while archived (`WorkspaceDetail.restoreTarget`). */
 	restoreTarget: RestoreTarget | null;
 	/** Active members — a team applies only from {@link TEAM_PROPOSAL_MIN_MEMBERS}. */
@@ -382,18 +389,44 @@ function publishFacts(input: SettingsInput): MetaLineEntry[] {
 	return [page, workFact(input, "lets it"), `a published ${copy.noun} never returns to draft`];
 }
 
-/** The confirm an archive asks, worded for where a later restore would land. */
+/**
+ * What archiving does, said beside the button — worded for the status it leaves. A live entity stops
+ * taking work; a draft never took any (the apply doors refuse a team that is not active, Decision
+ * #228 (E)), so it is only put away, and comes back a draft.
+ */
+function archiveFacts(input: SettingsInput): MetaLineEntry[] {
+	const copy = kindCopy(input.kind);
+	if (input.status === "draft") {
+		return [`Moves the unpublished draft to your archived ${copy.plural}`, "Restorable as a draft"];
+	}
+	return [`Leaves your active ${copy.plural}`, "Stops taking new work", "Restorable"];
+}
+
+/** The confirm an archive asks, worded for the status it leaves and where a restore would land. */
 function archiveConfirm(input: SettingsInput): ArchiveConfirm {
 	const copy = kindCopy(input.kind);
-	const back = input.status === "active" ? "live" : "as a draft";
+	const what = input.status === "draft"
+		? `It moves to your archived ${copy.plural} unpublished.`
+		: `It leaves your active ${copy.plural} and stops taking new work.`;
+	const back = input.status === "draft" ? "as a draft" : "live";
 	return {
 		header: `Archive ${input.name}?`,
-		message:
-			`It leaves your active ${copy.plural} and stops taking new work. Nothing is deleted — ` +
-			`restoring it brings it back ${back}.`,
+		message: `${what} Nothing is deleted — restoring it brings it back ${back}.`,
 		accept: "Archive",
 		reject: "Keep it",
 	};
+}
+
+/**
+ * The blockers that stand in for Archive: the read's, counted and in the server's order, then any code
+ * a raced refusal named that the read did not (uncounted).
+ */
+function archiveBlockerLines(input: SettingsInput): BlockerLine[] {
+	const read = input.archiveBlockers.map((b) => blockerLine(input, b.code, b.count));
+	const named = new Set(input.archiveBlockers.map((b) => b.code));
+	const raced = input.raced.filter((code) => !named.has(code))
+		.map((code) => blockerLine(input, code, null));
+	return [...read, ...raced];
 }
 
 /** The Lifecycle section's control for a viewer — see the module header. */
@@ -418,18 +451,30 @@ export function lifecycleControl(input: SettingsInput): LifecycleControl {
 	if (!mayArchive) {
 		return { kind: "none", note: `Archiving is for members who may archive the ${copy.noun}.` };
 	}
-	if (input.archiveBlockers.length > 0) {
-		return {
-			kind: "blocked",
-			blockers: input.archiveBlockers.map((b) => blockerLine(input, b.code, b.count)),
-		};
-	}
+	const blockers = archiveBlockerLines(input);
+	if (blockers.length > 0) return { kind: "blocked", blockers };
 	return {
 		kind: "archive",
 		label: `Archive ${copy.noun}…`,
-		facts: [`Leaves your active ${copy.plural}`, "Stops taking new work", "Restorable"],
+		facts: archiveFacts(input),
 		confirm: archiveConfirm(input),
 	};
+}
+
+/**
+ * What the roster says once a restore has landed, for the status the server put the entity in. A
+ * draft team is pointed at its Settings, where Publish lives; a business has no publish surface yet
+ * (its Settings is still a placeholder), so its line states the fact alone.
+ */
+export function restoredNotice(
+	kind: WorkspaceKind,
+	name: string,
+	status: WorkspaceStatus | undefined,
+): string {
+	if (status !== "draft") return `${name} is active again.`;
+	return kind === "team"
+		? `${name} is back as a draft — publish it from its settings.`
+		: `${name} is back as a draft.`;
 }
 
 /** What the status means, as MetaLine facts. */

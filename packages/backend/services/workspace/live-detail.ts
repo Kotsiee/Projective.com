@@ -47,6 +47,7 @@ import {
 	parseStatus,
 	parseVerification,
 	type Person,
+	publishedFact,
 	type RawDetail,
 	type RawDetailAnswer,
 	type RawDirectoryFace,
@@ -424,9 +425,7 @@ async function assemble(
 			invitePending: active < 2 && !!raw.setup?.invite,
 			money: !!raw.setup?.money,
 			verification,
-			// An archived entity was published once exactly when its restore lands on active (an older
-			// read that names no target is taken as it always was: archived means it left draft).
-			published: status === "active" || (status === "archived" && restoreTarget !== "draft"),
+			published: publishedFact(status),
 			viewer: viewerCaps,
 			viewerIsOwner,
 		}),

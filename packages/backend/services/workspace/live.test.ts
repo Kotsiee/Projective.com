@@ -8,7 +8,7 @@ import { stub } from "@std/testing/mock";
 import type { WorkspaceFinance } from "@projective/types/workspace";
 import { detailIo, readDetail } from "./live-detail.ts";
 import type { LiveActor } from "./live-support.ts";
-import type { RawDetail } from "./mappers.ts";
+import { publishedFact, type RawDetail } from "./mappers.ts";
 import { inviteAnswerRefusal, refusalFrom, sentence, splitRefusal } from "./live-support.ts";
 import {
 	memberPatch,
@@ -1432,7 +1432,7 @@ Deno.test("readDetail (team): the archive blockers ride the read, so Settings sh
 	assertStrictEquals(detail.restoreTarget, null);
 });
 
-Deno.test("readDetail: the restore target is read only while archived, and steers the publish step", async () => {
+Deno.test("readDetail: the restore target is read only while archived; the publish step is the roster's", async () => {
 	const archived = (target: unknown) => ({
 		...rawTeamDetail(true),
 		entity_status: "archived",
@@ -1442,9 +1442,16 @@ Deno.test("readDetail: the restore target is read only while archived, and steer
 	assertEquals(published.detail?.restoreTarget, "active");
 	assertEquals(published.detail?.setup.find((s) => s.id === "publish")?.done, true);
 
+	// Never published: a restore lands on draft, but while archived the step reads as the roster card
+	// reads it (`publishedFact` — it has left draft), so the Overview is never handed a Publish the
+	// status door would refuse; Settings' Restore is the way back.
 	const never = await readStubbed(archived("draft"));
 	assertEquals(never.detail?.restoreTarget, "draft");
-	assertEquals(never.detail?.setup.find((s) => s.id === "publish")?.done, false);
+	assertEquals(never.detail?.setup.find((s) => s.id === "publish")?.done, true);
+	assertEquals(
+		(["draft", "active", "archived"] as const).map(publishedFact),
+		[false, true, true],
+	);
 
 	// Neither target — no guess.
 	assertStrictEquals((await readStubbed(archived("live"))).detail?.restoreTarget, null);

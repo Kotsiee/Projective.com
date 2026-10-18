@@ -104,12 +104,34 @@ Deno.test("rig: Settings' name and visibility save through the same tier-3 Save 
 	assertEquals(keys(settings), ["invite", "discard", "save"]);
 	assertEquals(rigFilledCount(rigModel(settings)), 1);
 	// The identity editor answers edit_profile — not the money right, not manage_settings.
-	assert(editorOpen({ module: "settings", canManageMoney: false, canEditProfile: true }));
-	assert(!editorOpen({ module: "settings", canManageMoney: true, canEditProfile: false }));
-	assert(!editorOpen({ module: "payouts", canManageMoney: false, canEditProfile: true }));
+	const team = { kind: "team" } as const;
+	assert(editorOpen({ ...team, module: "settings", canManageMoney: false, canEditProfile: true }));
+	assert(!editorOpen({ ...team, module: "settings", canManageMoney: true, canEditProfile: false }));
+	assert(!editorOpen({ ...team, module: "payouts", canManageMoney: false, canEditProfile: true }));
 	assertEquals(keys(inConsole({ module: "settings", dirty: true, canEditProfile: false })), [
 		"invite",
 	]);
+});
+
+Deno.test("rig: a business's Settings is not an editor — only a team's mounts one (C6)", () => {
+	// /businesses/:handle/settings is still a placeholder: no status line, no Save, the utilities' fold.
+	assert(
+		!editorOpen({
+			kind: "business",
+			module: "settings",
+			canManageMoney: true,
+			canEditProfile: true,
+		}),
+	);
+	for (const dirty of [false, true]) {
+		const business = rigModel(inConsole({ kind: "business", module: "settings", dirty }));
+		assertEquals(business.statusLine, false);
+		assertEquals(business.status, null);
+		assertEquals(business.holds, "utilities");
+		assertEquals(business.actions.map((a) => a.key), ["invite"]);
+	}
+	// A business's money editors are unchanged.
+	assert(rigModel(inConsole({ kind: "business", module: "spend" })).statusLine);
 });
 
 Deno.test("rig: the commit is 'Save' beside 'Discard' — the status line already says 'changes'", () => {

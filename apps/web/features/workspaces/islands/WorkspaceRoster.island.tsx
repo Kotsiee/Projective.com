@@ -34,6 +34,7 @@ import {
 	rosterTabCounts,
 	toRosterTab,
 } from "../core/workspace-model.ts";
+import { restoredNotice } from "../core/settings-model.ts";
 import { cloneGlyph, SearchGlyph } from "../core/workspace-glyphs.tsx";
 import { WorkspaceCard, type WorkspaceCardAction } from "../components/WorkspaceCard.tsx";
 import { WorkspaceTable } from "../components/WorkspaceTable.tsx";
@@ -244,9 +245,7 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 				if (await refresh()) {
 					info.value = action === "archive"
 						? `${summary.name} is archived. It is still restorable from the Archived tab.`
-						: res.data?.status === "draft"
-						? `${summary.name} is back as a draft — publish it from its settings.`
-						: `${summary.name} is active again.`;
+						: restoredNotice(summary.kind, summary.name, res.data?.status);
 				}
 				return;
 			}

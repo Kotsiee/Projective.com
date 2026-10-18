@@ -16,6 +16,7 @@ import {
 	lifecycleTag,
 	nameError,
 	refusedBlockers,
+	restoredNotice,
 	settingsBodyFilledCount,
 	type SettingsInput,
 	settingsModel,
@@ -64,6 +65,7 @@ function input(overrides: Partial<SettingsInput> = {}): SettingsInput {
 		visibility: "public",
 		capabilities: OWNER,
 		archiveBlockers: [],
+		raced: [],
 		restoreTarget: null,
 		memberCount: 3,
 		...overrides,
@@ -151,8 +153,74 @@ Deno.test("settings: Archive is the danger control with a confirm that says wher
 	assertEquals(active.confirm.header, "Archive North Loop?");
 	assert(active.confirm.message.endsWith("restoring it brings it back live."));
 	assertEquals([active.confirm.accept, active.confirm.reject], ["Archive", "Keep it"]);
+	assertEquals(active.facts, ["Leaves your active teams", "Stops taking new work", "Restorable"]);
+	assertEquals(
+		active.confirm.message,
+		"It leaves your active teams and stops taking new work. Nothing is deleted — " +
+			"restoring it brings it back live.",
+	);
+});
+
+Deno.test("settings: a draft's Archive is worded for a draft — it never took work", () => {
+	// The status door archives a draft (`set_workspace_status`), so the control stays; but a draft
+	// never applied (the apply doors refuse a team that is not active, #228 (E)), so nothing it says
+	// may claim it stops taking work.
 	const draft = lifecycleControl(input({ status: "draft" }));
-	assert(draft.kind === "archive" && draft.confirm.message.endsWith("brings it back as a draft."));
+	assert(draft.kind === "archive");
+	assertEquals(draft.label, "Archive team…");
+	assertEquals(draft.facts, [
+		"Moves the unpublished draft to your archived teams",
+		"Restorable as a draft",
+	]);
+	assertEquals(
+		draft.confirm.message,
+		"It moves to your archived teams unpublished. Nothing is deleted — " +
+			"restoring it brings it back as a draft.",
+	);
+	const said = [
+		...draft.facts.map((f) => typeof f === "string" ? f : f.text),
+		draft.confirm.message,
+	].join(" ");
+	assert(!/taking new work|active teams/.test(said), said);
+});
+
+Deno.test("settings: a refusal that raced the read replaces the Archive control — never a button that fails again", () => {
+	// The read said nothing blocks it; the archive came back refused naming both codes.
+	const raced = lifecycleControl(input({ raced: ["escrow_held", "live_assignments"] }));
+	assert(raced.kind === "blocked", "the raced codes stand in for the button");
+	assertEquals(raced.blockers.map((b) => [b.code, b.text, b.link.href]), [
+		[
+			"escrow_held",
+			"Money is held in escrow for this team's work — archiving waits until it releases.",
+			"/wallet?w=team:team-1",
+		],
+		[
+			"live_assignments",
+			"This team is still assigned to live work — finish it or hand it back first.",
+			"/teams/northloop/projects",
+		],
+	]);
+	// A code the read already counted keeps its count, once; a new one follows it uncounted.
+	const merged = lifecycleControl(
+		input({ archiveBlockers: [ESCROW], raced: ["escrow_held", "live_assignments"] }),
+	);
+	assert(merged.kind === "blocked");
+	assertEquals(merged.blockers.map((b) => b.code), ["escrow_held", "live_assignments"]);
+	assertEquals(
+		merged.blockers[0].text,
+		"1 escrow is held for this team's work — archiving waits until it releases.",
+	);
+	// Raced codes block only an archive holder's control, and change nothing once archived.
+	assertEquals(
+		lifecycleControl(input({ capabilities: ADMIN, raced: ["escrow_held"] })).kind,
+		"none",
+	);
+	assertEquals(
+		lifecycleControl(input({ status: "archived", raced: ["escrow_held"] })).kind,
+		"restore",
+	);
+	// No filled control appears in the body for it.
+	assertEquals(settingsBodyFilledCount(settingsModel(input({ raced: ["escrow_held"] }))), 0);
 });
 
 Deno.test("settings: Restore names its target, as the server decides it (#250 (c))", () => {
@@ -388,8 +456,28 @@ Deno.test("settings island: Publish rides the band, Save the rig, Archive confir
 		"Archive is the danger outlined control",
 	);
 	assert(/<ConfirmDialog\b[\s\S]*?acceptSeverity="danger"/.test(ISLAND), "…behind a confirm");
-	assert(/control\.kind === "blocked" && <Blockers/.test(ISLAND), "blockers replace the button");
-	assert(/\{failed && \(/.test(ISLAND), "a raced refusal renders inline");
+	assert(
+		/control\.kind === "blocked" && \(?\s*<Blockers/.test(ISLAND),
+		"blockers replace the button",
+	);
+	assert(/\{failed && \(/.test(ISLAND), "a refusal naming no blocker renders inline");
+});
+
+Deno.test("settings island: a raced refusal's codes replace Archive at once, then the detail is re-read", () => {
+	// The codes feed the model (so `lifecycleControl` answers `blocked` and the button is gone)…
+	assert(/inputOf\(detail\.value, raced\.value\)/.test(ISLAND), "raced codes reach the model");
+	assert(
+		/const codes = refusedBlockers\(res\.details\?\.blockers\);[\s\S]*?raced\.value = codes;/.test(
+			ISLAND,
+		),
+		"a refusal naming blockers sets them",
+	);
+	// …and the re-read is adopted on every root, so the band's Archive… is withheld too.
+	assert(/WorkspaceService\.detail\(ws\.kind, ws\.handle\)/.test(ISLAND), "re-reads the detail");
+	assert(/function adopt[\s\S]*?raced\.value = \[\];[\s\S]*?publishDetail\(next\)/.test(ISLAND));
+	// The visibility radiogroup is named by its visible label (WCAG 2.5.3).
+	assert(/label=\{whoCanSee\}[\s\S]*?aria-label=\{whoCanSee\}/.test(ISLAND), "label in name");
+	assert(!/aria-label="Visibility"/.test(ISLAND));
 });
 
 Deno.test("settings island: ui controls only, signal state, no inline style", () => {
@@ -422,5 +510,20 @@ Deno.test("settings: the teamSettings axis substitutes the lifecycle, and auto c
 		lifecycleControl(simulateSettings(input({ status: "archived" }), "active")).kind,
 		"archive",
 	);
+});
+// #endregion
+
+// #region The roster's restore line
+Deno.test("settings: the roster's restore line points only at a Publish that exists", () => {
+	assertEquals(
+		restoredNotice("team", "North Loop", "draft"),
+		"North Loop is back as a draft — publish it from its settings.",
+	);
+	// A business's Settings is still a placeholder with no Publish (#244 (d)): the fact alone.
+	assertEquals(restoredNotice("business", "Atlas Labs", "draft"), "Atlas Labs is back as a draft.");
+	for (const kind of ["team", "business"] as WorkspaceKind[]) {
+		assertEquals(restoredNotice(kind, "N", "active"), "N is active again.");
+		assertEquals(restoredNotice(kind, "N", undefined), "N is active again.");
+	}
 });
 // #endregion

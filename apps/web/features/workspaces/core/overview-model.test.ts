@@ -21,6 +21,7 @@ import {
 	HERO_ACTION_LABEL,
 	heroDismissGuard,
 	heroDismissKey,
+	heroSteps,
 	liveProjectCount,
 	overviewMetrics,
 	overviewModel,
@@ -399,6 +400,38 @@ Deno.test("hero: a link step with no page offers no control", () => {
 		"verification:4",
 		"publish:-",
 	]);
+});
+
+Deno.test("hero: Publish is a draft's — an archived, never-published team is offered no Publish", () => {
+	// Every other step done and Publish open, as a read that keeps the step open while archived would
+	// send it: the status door would refuse `active` (`restore_target` — it restores as a draft), so
+	// the hero offers nothing there and Settings' Restore is the way back.
+	const steps = stepsOf(TEAM_STEPS, 0b01111, (id) => canActOnSetupStep("team", id, OWNER, true));
+	for (const status of ["archived", "active"] as const) {
+		const model = overviewModel(teamDetail(OWNER, { status, setup: steps }), { dismissed: false });
+		assert(model.hero, status);
+		assertEquals(controls(model.hero.steps), [
+			"invite:-",
+			"money:-",
+			"profile:-",
+			"verification:-",
+			"publish:-",
+		], status);
+		assertEquals(filledControls(model), 0, status);
+		assertEquals(
+			heroSteps({ status, setup: steps }).find((s) => s.id === "publish")?.actionable,
+			false,
+		);
+	}
+	// The same steps on a draft: Publish is the band's one fill.
+	const draft = overviewModel(teamDetail(OWNER, { setup: steps }), { dismissed: false });
+	assertEquals(draft.hero?.steps[4].action?.kind, "publish");
+	assertEquals(filledControls(draft), 1);
+	// Only the Publish step is withheld — the server's other answers pass through unchanged.
+	assertEquals(
+		heroSteps({ status: "archived", setup: stepsOf(TEAM_STEPS, 0) }).map((s) => s.actionable),
+		[true, true, true, true, false],
+	);
 });
 // #endregion
 

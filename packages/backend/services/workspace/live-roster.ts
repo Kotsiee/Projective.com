@@ -12,6 +12,7 @@ import {
 	parseStatus,
 	parseVerification,
 	type Person,
+	publishedFact,
 	type RawRoster,
 	type RawRosterItem,
 	rosterStats,
@@ -82,7 +83,7 @@ function toSummary(
 		invitePending: (Number(item.pending_invites) || 0) > 0,
 		money: !!item.setup?.money,
 		verification,
-		published: status !== "draft",
+		published: publishedFact(status),
 	});
 	const faces = (item.face_user_ids ?? []).slice(0, 5)
 		.map((id) => faceOf(people.get(id)))
