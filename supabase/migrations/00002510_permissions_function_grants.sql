@@ -1739,7 +1739,7 @@ GRANT EXECUTE ON FUNCTION org.get_business_bench (text) TO authenticated;
 -- Money governance (00001210 §13). The finance schema is deny-by-default (above), so each is granted.
 GRANT EXECUTE ON FUNCTION finance.save_team_split (uuid, jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION finance.save_split_rule (uuid, finance.split_rule_type, integer, uuid, integer) TO authenticated;
-GRANT EXECUTE ON FUNCTION finance.preview_team_split (uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.preview_team_split (uuid, bigint) TO authenticated;
 GRANT EXECUTE ON FUNCTION finance.save_spend_policy (uuid, jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION finance.preview_spend_envelope (uuid, jsonb) TO authenticated;
 -- The envelope reader behind the detail and the preview narrows by the caller, but answers for any

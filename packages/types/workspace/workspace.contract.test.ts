@@ -29,8 +29,10 @@ import { SplitRuleType } from "../finance/vault.ts";
 import {
 	BusinessViewerCanSchema,
 	KybRequirement,
+	PayoutPreviewQuerySchema,
 	SpendLimitSchema,
 	SplitRuleInputSchema,
+	TeamPayoutPolicySchema,
 } from "./policy.ts";
 import {
 	ArchiveBlockerSchema,
@@ -449,11 +451,23 @@ Deno.test("org.get_workspace_detail answers every key the service maps — and n
 			"'available_minor'",
 			"'pending_minor'",
 			"'preview'",
+			"'unlocked_templates'",
+			"'vault_capabilities'",
 			"'allowance'",
 		]
 	) {
 		assert(detailBody.includes(key), `get_workspace_detail no longer answers ${key}`);
 	}
+	assert(
+		/'unlocked_templates'[\s\S]*?finance\.fn_has_entitlement\('team', v_e\.id,\s*\('split_template_' \|\| /
+			.test(detailBody),
+		"the unlocked templates must be the split_template_<type> flags save_split_rule gates on",
+	);
+	assert(
+		/'vault_capabilities'[\s\S]*?org\.fn_vault_capabilities_for\('team', v_e\.id, m\.user_id\)/
+			.test(detailBody),
+		"the vault readout must be the projection itself",
+	);
 	assert(
 		/'payout', CASE WHEN p_kind = 'team' AND 'manage_finances' = ANY \(v_caps\)/.test(detailBody),
 		"the payout block must be gated on manage_finances",
@@ -713,6 +727,72 @@ Deno.test("WorkspaceDetailSchema: the business blocks default to absent for a te
 	assertEquals(shape.moneyTiles.parse(undefined), []);
 	assertEquals(shape.viewerCan.parse(undefined), null);
 	assertEquals(shape.kyb.parse(undefined), null);
+});
+
+// #endregion
+
+// #region The payout preview (Teams C4)
+
+const KYC_WALLET_SQL = "supabase/migrations/00001210_functions_finance_kyc_wallet.sql";
+const GRANTS_SQL = "supabase/migrations/00002510_permissions_function_grants.sql";
+
+Deno.test("finance.preview_team_split prices a chosen amount, and only that signature is granted", () => {
+	const sql = read(KYC_WALLET_SQL);
+	assert(
+		sql.includes(
+			"CREATE OR REPLACE FUNCTION finance.preview_team_split(p_team_id uuid, p_gross_minor bigint DEFAULT NULL)",
+		),
+		"preview_team_split must take an optional gross in minor units",
+	);
+	const body = functionBody(sql, "finance.preview_team_split");
+	assert(
+		body.includes("finance.fn_team_split_plan(p_team_id, v_payout)"),
+		"one plan, the release's",
+	);
+	assert(body.includes("'finder_bp'"), "the finder's rate travels with the preview");
+	assert(
+		body.includes("org.fn_member_can('team', p_team_id, 'manage_finances')"),
+		"the split rule and stakes are answered to manage_finances holders only (Decision #233 (b))",
+	);
+	assert(
+		body.indexOf("'manage_finances'") < body.indexOf("finance.fn_team_split_plan"),
+		"the gate runs before any plan is priced",
+	);
+	const grants = read(GRANTS_SQL);
+	assert(
+		grants.includes(
+			"GRANT EXECUTE ON FUNCTION finance.preview_team_split (uuid, bigint) TO authenticated;",
+		),
+	);
+	assert(!grants.includes("finance.preview_team_split (uuid) "), "the one-argument grant is gone");
+});
+
+Deno.test("PayoutPreviewQuerySchema: a query-string amount is coerced; 1 … 10^12 minor units only", () => {
+	const parsed = PayoutPreviewQuerySchema.safeParse({
+		workspaceId: "t1",
+		amountMinor: "100000",
+		currency: "GBP",
+	});
+	assert(parsed.success);
+	assertEquals(parsed.data.amountMinor, 100_000);
+	for (const amountMinor of ["0", "-5", "1.5", "1000000000001", "", "abc"]) {
+		assert(
+			!PayoutPreviewQuerySchema.safeParse({ workspaceId: "t1", amountMinor, currency: "GBP" })
+				.success,
+			`amount ${amountMinor}`,
+		);
+	}
+	assert(
+		!PayoutPreviewQuerySchema.safeParse({ workspaceId: "t1", amountMinor: "100", currency: "gbp" })
+			.success,
+	);
+});
+
+Deno.test("TeamPayoutPolicySchema: no plan answer is co_op only; no vault answer is no readout", () => {
+	const shape = TeamPayoutPolicySchema.shape;
+	assertEquals(shape.unlockedTemplates.parse(undefined), ["co_op"]);
+	assertEquals(shape.vaultAccess.parse(undefined), []);
+	assert(!shape.unlockedTemplates.safeParse(["by_role"]).success);
 });
 
 // #endregion

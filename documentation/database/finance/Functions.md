@@ -961,15 +961,29 @@ Under `pg_advisory_xact_lock(hashtext('split:' || team))` it retires the active 
 `previous_rule_id`, the cuts) and returns the new rule's id. `POST /api/workspace/payout` calls it
 before `save_team_split` when the request carries a `rule`. Probe: `supabase/probes/save_split_rule.sql`.
 
-### `finance.preview_team_split(p_team_id)` → jsonb
+### `finance.preview_team_split(p_team_id, p_gross_minor = NULL)` → jsonb
 
-What the team's NEXT release will pay, by `fn_team_split_plan`. Any active member may read it. The
-honest gross is the team's **oldest escrow still held** (principal + deadline bonus); the fee is that
-escrow's payer's rate, `fn_escrow_fee_bp(payer_business_id, payer_user_id)` (so a negotiated rate
-shows), on the principal, truncated — exactly what `fn_release_ticket_escrow` will charge (Decision
-#187). A team with nothing held has no projection — `gross_minor`, `currency`, `fee_minor` and
-`fee_bp` are `NULL` (never an invented figure) and the plan is the zero plan. Returns
-`{escrow_id?, gross_minor, currency, fee_minor, fee_bp, plan}`.
+What a team's release will pay, by `fn_team_split_plan` — the plan the release itself runs. Either
+answer carries the split rule (vault and finder cuts, the finder) and every stake, which Decision
+#233 (b) answers only to a `manage_finances` holder: a caller who is not an active member is refused
+`42501 workspace:`, a member without `manage_finances` `42501 payout:`. The detail's payout block,
+its other caller, is built for `manage_finances` holders alone. Returns
+`{escrow_id, gross_minor, currency, fee_minor, fee_bp, finder_bp, plan}`; `finder_bp` is the active
+`finders_fee` rule's cut (`NULL` under any other rule), carried so every cut can be labelled with its
+rate.
+
+- **No amount** (the console detail's `payout.preview`): the honest gross is the team's **oldest
+  escrow still held** (principal + deadline bonus); the fee is that escrow's payer's rate,
+  `fn_escrow_fee_bp(payer_business_id, payer_user_id)` (so a negotiated rate shows), on the principal,
+  truncated — exactly what `fn_release_ticket_escrow` will charge (Decision #187). A team with nothing
+  held has no projection — `gross_minor`, `currency`, `fee_minor` and `fee_bp` are `NULL` (never an
+  invented figure) and the plan is the zero plan.
+- **`p_gross_minor`** (1 … 10^12 minor units, `22023 gross_minor:` otherwise — the Payouts module's
+  Preview, `GET /api/workspace/payout/preview`, Teams C4): a release of THAT size, at the platform's
+  standard fee rate (`fn_escrow_fee_bp(NULL, NULL)` — there is no payer, so no negotiated rate),
+  truncated, then the team's stored rule and stakes. `escrow_id` and `currency` are `NULL` (the
+  caller prices in the vault's currency). Fee + finder + vault cut + Σ members + dust = the gross,
+  exactly. Probe: `supabase/probes/payout_preview_amount.sql`.
 
 ### `finance.save_spend_policy(p_business_id, p_patch)` → `{business_id, currency}`
 
