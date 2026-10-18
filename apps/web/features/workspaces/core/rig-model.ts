@@ -62,6 +62,16 @@ export interface RigStatus {
 	tone: "unsaved" | "saving" | "error" | "saved";
 }
 
+/**
+ * What the trailing side holds, which is how much room its words need: `create` (the roster's one
+ * New), `utilities` (Invite and Settings), `editor` (a policy editor at rest: its status line — empty,
+ * or "Saved" — then the utilities) or `commit` (the editor with unsaved changes: the status line, the
+ * utilities, Discard and Save). The stylesheet folds the utilities to their glyphs below each one's
+ * own width, asked of the trailing side's own box, so a docked lane that leaves the rig narrow folds
+ * them whatever the viewport.
+ */
+export type RigHolds = "create" | "utilities" | "editor" | "commit";
+
 /** The rig. */
 export interface RigModel {
 	/**
@@ -85,6 +95,8 @@ export interface RigModel {
 	status: RigStatus | null;
 	/** The trailing controls, in order. */
 	actions: RigAction[];
+	/** What the trailing side holds — the width its words need before the utilities fold. */
+	holds: RigHolds;
 }
 // #endregion
 
@@ -102,6 +114,7 @@ export function rigModel(input: RigInput): RigModel {
 			actions: input.canCreate
 				? [{ key: "create", control: "button", tier: 4, label: `New ${copy.noun}` }]
 				: [],
+			holds: "create",
 		};
 	}
 
@@ -135,9 +148,11 @@ export function rigModel(input: RigInput): RigModel {
 	}
 	if (pending) {
 		const saving = input.saveState === "saving";
+		// "Save", not "Save changes": the status line beside it already says "Unsaved changes", and the
+		// shorter commit keeps the status whole in a 390px phone's rig.
 		actions.push(
 			{ key: "discard", control: "button", tier: 5, label: "Discard", disabled: saving },
-			{ key: "save", control: "button", tier: 3, label: "Save changes", busy: saving },
+			{ key: "save", control: "button", tier: 3, label: "Save", busy: saving },
 		);
 	}
 
@@ -153,6 +168,7 @@ export function rigModel(input: RigInput): RigModel {
 		statusLine: editing,
 		status: editing ? saveStatus(input.dirty, input.saveState) : null,
 		actions,
+		holds: pending ? "commit" : editing ? "editor" : "utilities",
 	};
 }
 

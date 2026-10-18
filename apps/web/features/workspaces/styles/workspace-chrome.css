@@ -17,10 +17,10 @@
  * away in a compact splitter exactly as the package already folds them in the collapsed one. The
  * header band (L2) takes the same licence for one treatment: its `TabMenu` gets Decision #220's
  * in-band underline (the catalogue's `.cat-band` treatment). Nothing else of a shared control is
- * touched. Where a band needs a control in two forms — Share profile, and below `--bp-md` the footer
- * rig's utilities and Org chart toggle — it renders BOTH `Button`s (words, and `iconOnly`) and this
- * sheet only chooses which one paints; the Org chart toggle's engaged state is `Button`'s own
- * (`aria-pressed`).
+ * touched. Where a band needs a control in two forms — Share profile, and wherever their words do not
+ * fit the footer rig's utilities and Org chart toggle — it renders BOTH `Button`s (words, and
+ * `iconOnly`) and this sheet only chooses which one paints; the Org chart toggle's engaged state is
+ * `Button`'s own (`aria-pressed`).
  *
  * Press feedback (§B.12) is therefore split by owner:
  *   - From the package: `Button` (the acting switch, the Reset, every band and rig control), the
@@ -754,8 +754,13 @@ words — a ring colour on its own is not a channel. */
  * around a `--wsp-rig-row` control row, transparent, and NO hairline of its own — the seam is the
  * canvas frame's, which grows a block-end hairline whenever a footer band is registered. Every control
  * in it is a `@projective/ui` `Button` at its matrix tier or a ui `Link`.
+ *
+ * The rig is a size container, and so is its trailing side: whether a control draws its words is asked
+ * of the room it actually has, never of the viewport — a docked lane at 768px leaves the rig 424px, far
+ * narrower than a 767px phone's (see the folds under Responsive).
  */
 .wsp-footerrig {
+	container: wsp-footerrig / inline-size;
 	display: flex;
 	align-items: center;
 	gap: var(--space-3);
@@ -775,9 +780,24 @@ words — a ring colour on its own is not a channel. */
 	overflow: hidden;
 }
 
-.wsp-footerrig__spacer {
-	flex: 1 1 auto;
-	min-inline-size: 0;
+/* With no zoom and no toggle the leading side is empty, and takes neither room nor the rig's gap. */
+.wsp-footerrig__group:empty {
+	display: none;
+}
+
+/*
+ * The trailing side takes every pixel the leading side leaves and lays its controls against the end,
+ * so its own width is the room its words have — the container its folds ask (Responsive).
+ */
+.wsp-footerrig__actions {
+	container: wsp-footerrig-actions / inline-size;
+	flex: 1 1 0;
+	justify-content: flex-end;
+}
+
+/* Discard and Save never shrink, so a commit never wraps its label: the status line yields first. */
+.wsp-footerrig__commit {
+	flex: none;
 }
 
 /*
@@ -802,7 +822,11 @@ words — a ring colour on its own is not a channel. */
 	color: var(--danger);
 }
 
-/* A navigation in the rig: the ui `Link`'s ink and hover, laid on the rig's row beside its glyph. */
+/*
+ * A navigation in the rig: the ui `Link`'s ink and hover, laid on the rig's row beside its glyph. Its
+ * press adds `transform` to the global theme crossfade rather than replacing it, so the link's ink
+ * changes theme on the same clock as the band around it (§B.5).
+ */
 .wsp-footerrig__link {
 	display: inline-flex;
 	flex: none;
@@ -812,7 +836,12 @@ words — a ring colour on its own is not a channel. */
 	padding-inline: var(--space-2);
 	font-size: var(--wsp-fs-body);
 	white-space: nowrap;
-	transition: transform var(--dur-press) var(--ease-standard);
+	transition:
+		color var(--dur-slow) var(--ease-standard),
+		background-color var(--dur-slow) var(--ease-standard),
+		border-color var(--dur-slow) var(--ease-standard),
+		fill var(--dur-slow) var(--ease-standard),
+		transform var(--dur-press) var(--ease-standard);
 }
 
 .wsp-footerrig__link:active {
@@ -821,8 +850,8 @@ words — a ring colour on its own is not a channel. */
 
 /*
  * A utility or the Org chart toggle in two presentations — the words, or the `iconOnly` Button under
- * a Tooltip — and the viewport decides which paints (below), so SSR and hydration agree on the first
- * frame. The wrapper has no gap, so the one not drawn leaves no space behind.
+ * a Tooltip — and the rig's own width decides which paints (Responsive), so SSR and hydration agree
+ * on the first frame. The wrapper has no gap, so the one not drawn leaves no space behind.
  */
 .wsp-footerrig__utility {
 	display: inline-flex;
@@ -898,9 +927,82 @@ words — a ring colour on its own is not a channel. */
 
 /* #region Responsive */
 /*
- * Below `--bp-md` the rig's utilities and toggle swap to their icon-only Buttons and its links drop
- * their words; Save and Discard keep words.
+ * The rig's folds: a utility or the toggle swaps to its icon-only Button and a link drops its words
+ * (the name stays on its Tooltip and `aria-label`); Save and Discard keep their words at every width.
+ *
+ * Asked of the room each side actually has, never of the viewport — the trailing side by its own box,
+ * at the width its words need for what it holds (`data-holds`, from `rig-model.ts`), so the zoom and
+ * toggle beside it are already accounted for. THE BUDGETS, measured inner widths (default face, then
+ * the dyslexic overlay's) against each trigger:
+ *   - `create` — "New business", the longer noun: 8rem / 8.2rem; folds under 9rem.
+ *   - `utilities` — Invite members · Settings: 14.7rem / 15.7rem; folds under 16.5rem, so a 768px
+ *     viewport with the lane docked (24.5rem of rig) keeps the words beside the Org chart toggle.
+ *   - `editor` — the status line, then the utilities; "Saved" after a save: 17.1rem / 19.1rem; folds
+ *     under 18rem, where the overlay's "Saved" takes its ellipsis for a rem or so.
+ *   - `commit` — "Unsaved changes" · Invite members · Settings · Discard · Save: 30.3rem / 33.1rem;
+ *     folds under 32rem. Folded it needs 20.2rem / 21.3rem, inside the 22.9rem a 390px phone leaves.
+ * The controls never shrink and the status line does, so wherever the words run out early — a wider
+ * face, a larger text step — what yields is the status line's ellipsis, never a control.
  */
+@container wsp-footerrig-actions (max-width: 8.9375rem) {
+	.wsp-footerrig__actions[data-holds="create"] .wsp-footerrig__wide {
+		display: none;
+	}
+
+	.wsp-footerrig__actions[data-holds="create"] .wsp-footerrig__narrow {
+		display: inline-flex;
+	}
+}
+
+@container wsp-footerrig-actions (max-width: 16.4375rem) {
+	.wsp-footerrig__actions[data-holds="utilities"] .wsp-footerrig__label,
+	.wsp-footerrig__actions[data-holds="utilities"] .wsp-footerrig__wide {
+		display: none;
+	}
+
+	.wsp-footerrig__actions[data-holds="utilities"] .wsp-footerrig__narrow {
+		display: inline-flex;
+	}
+}
+
+@container wsp-footerrig-actions (max-width: 17.9375rem) {
+	.wsp-footerrig__actions[data-holds="editor"] .wsp-footerrig__label,
+	.wsp-footerrig__actions[data-holds="editor"] .wsp-footerrig__wide {
+		display: none;
+	}
+
+	.wsp-footerrig__actions[data-holds="editor"] .wsp-footerrig__narrow {
+		display: inline-flex;
+	}
+}
+
+@container wsp-footerrig-actions (max-width: 31.9375rem) {
+	.wsp-footerrig__actions[data-holds="commit"] .wsp-footerrig__label,
+	.wsp-footerrig__actions[data-holds="commit"] .wsp-footerrig__wide {
+		display: none;
+	}
+
+	.wsp-footerrig__actions[data-holds="commit"] .wsp-footerrig__narrow {
+		display: inline-flex;
+	}
+}
+
+/*
+ * The Org chart toggle beside the zoom: the zoom (14rem) + the toggle's words + the trailing glyphs
+ * need 26.1rem of rig (26.6rem in the overlay), so under 27rem the toggle folds too. Alone on the
+ * chart it keeps its words.
+ */
+@container wsp-footerrig (max-width: 26.9375rem) {
+	.wsp-footerrig__density + .wsp-footerrig__utility .wsp-footerrig__wide {
+		display: none;
+	}
+
+	.wsp-footerrig__density + .wsp-footerrig__utility .wsp-footerrig__narrow {
+		display: inline-flex;
+	}
+}
+
+/* Below `--bp-md` every fold applies whatever the room: the phone rig is glyphs, Save and Discard. */
 @media (max-width: 47.9375rem) {
 	.wsp-headerband {
 		gap: var(--space-2);

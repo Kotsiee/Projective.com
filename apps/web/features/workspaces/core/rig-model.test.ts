@@ -95,6 +95,38 @@ Deno.test("rig: no Save without the money right, nor outside a policy editor", (
 	}
 });
 
+Deno.test("rig: the commit is 'Save' beside 'Discard' — the status line already says 'changes'", () => {
+	const dirty = rigModel(inConsole({ dirty: true }));
+	assertEquals(dirty.actions.slice(-2).map((a) => a.label), ["Discard", "Save"]);
+	assertEquals(dirty.status?.text, "Unsaved changes");
+});
+
+Deno.test("rig: what the trailing side holds — the width its words need before they fold", () => {
+	assertEquals(rigModel(inConsole({ handle: null, module: null })).holds, "create");
+	assertEquals(
+		rigModel(inConsole({ handle: null, module: null, canCreate: false })).holds,
+		"create",
+	);
+	for (const module of MODULES) {
+		const holds = POLICY_MODULES.includes(module) ? "editor" : "utilities";
+		assertEquals(rigModel(inConsole({ module })).holds, holds, module);
+		// Outside a policy editor a dirty flag changes nothing the rig holds.
+		if (holds === "utilities") {
+			assertEquals(rigModel(inConsole({ module, dirty: true })).holds, holds);
+		}
+	}
+	for (const module of POLICY_MODULES) {
+		// At rest the editor holds its status line ("Saved" after a save) beside the utilities.
+		assertEquals(rigModel(inConsole({ module, saveState: "saved" })).holds, "editor", module);
+		assertEquals(rigModel(inConsole({ module, dirty: true })).holds, "commit", module);
+		for (const saveState of ["saving", "error"] as SaveState[]) {
+			assertEquals(rigModel(inConsole({ module, dirty: true, saveState })).holds, "commit");
+		}
+	}
+	// Without the money right no editor is open: no status line, no commit.
+	assertEquals(rigModel(inConsole({ dirty: true, canManageMoney: false })).holds, "utilities");
+});
+
 Deno.test("rig: while a save is in flight Save shows progress and Discard holds", () => {
 	const model = rigModel(inConsole({ dirty: true, saveState: "saving" }));
 	const save = model.actions.find((a) => a.key === "save");
@@ -244,6 +276,27 @@ Deno.test("footer rig: below --bp-md a control swaps to its icon-only Button, ne
 	assertEquals([narrow.length, wide.length], [2, 2]);
 	assert(narrow.every((b) => /\biconOnly\b/.test(b) && /aria-label=/.test(b)));
 	assert(!/wsp-footerrig__(fold|toggle)\b/.test(RIG), "the folded-label hack is back");
+});
+
+Deno.test("footer rig: the folds ask the rig's own room, and the commit never shrinks", () => {
+	// The trailing side names what it holds, so the sheet's container queries fold at the width its
+	// words need; Discard and Save carry the class that keeps them from shrinking into a wrap.
+	assert(/class="wsp-footerrig__actions" data-holds=\{rig\.holds\}/.test(RIG));
+	const commits = buttonElements(RIG).filter((b) => /class="wsp-footerrig__commit"/.test(b));
+	assertEquals(commits.length, 2, "Discard and Save");
+	assert(commits.some((b) => /onClick=\{props\.onSave\}/.test(b)));
+	assert(commits.some((b) => /onClick=\{props\.onDiscard\}/.test(b)));
+	assert(!/wsp-footerrig__spacer/.test(RIG), "the trailing side fills the rig; no spacer");
+	const sheet = Deno.readTextFileSync(new URL("../styles/workspace-chrome.css", import.meta.url));
+	for (const holds of ["create", "utilities", "editor", "commit"]) {
+		assert(
+			new RegExp(
+				`@container wsp-footerrig-actions[^{]*\\{\\s*\\.wsp-footerrig__actions\\[data-holds="${holds}"\\]`,
+			)
+				.test(sheet),
+			`no fold for data-holds="${holds}"`,
+		);
+	}
 });
 
 Deno.test("footer rig: a Save or Discard that held focus hands it on, signal-driven", () => {

@@ -52,9 +52,13 @@ import { cloneGlyph, InviteGlyph, PlusGlyph, SettingsGlyph } from "../core/works
  * clean, so a press that held focus would leave it on `<body>`; it lands on the status line, which
  * says what the press did, or on the last trailing control that stays.
  *
- * Below `--bp-md` each utility and the toggle swap to their icon-only `Button` (named by `aria-label`
- * and a Tooltip) — two presentations, the viewport deciding which paints, so no rule reaches inside a
- * shared control. Save and Discard keep their words, because a commit is never a guess.
+ * Where their words do not fit, each utility and the toggle swap to their icon-only `Button` (named by
+ * `aria-label` and a Tooltip) — two presentations, the stylesheet deciding which paints, so no rule
+ * reaches inside a shared control. The rig's OWN width decides (container queries: the trailing side
+ * by what `rig.holds` says it carries, the toggle by the rig beside a zoom), so a docked lane that
+ * leaves the rig narrow folds them at any viewport; below `--bp-md` they fold regardless. Save and
+ * Discard keep their words and never shrink, because a commit is never a guess: the status line is
+ * what yields.
  */
 
 export interface WorkspaceFooterRigProps {
@@ -165,10 +169,8 @@ export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.
 			</div>
 			{/* #endregion */}
 
-			<span class="wsp-footerrig__spacer" />
-
 			{/* #region Trailing — actions */}
-			<div ref={actionsRef} class="wsp-footerrig__actions">
+			<div ref={actionsRef} class="wsp-footerrig__actions" data-holds={rig.holds}>
 				{rig.statusLine && (
 					<span
 						ref={statusRef}
@@ -237,6 +239,7 @@ function RigControl(
 		case "discard":
 			return (
 				<Button
+					class="wsp-footerrig__commit"
 					variant="text"
 					severity="secondary"
 					size="sm"
@@ -246,13 +249,21 @@ function RigControl(
 				/>
 			);
 		case "save":
-			return <Button size="sm" label={action.label} loading={action.busy} onClick={props.onSave} />;
+			return (
+				<Button
+					class="wsp-footerrig__commit"
+					size="sm"
+					label={action.label}
+					loading={action.busy}
+					onClick={props.onSave}
+				/>
+			);
 	}
 }
 
 /**
- * A tier-4 utility — neutral outlined, in two presentations: its words, or below `--bp-md` its glyph
- * alone under a Tooltip. The wrapper has no gap, so the one not drawn leaves no space behind.
+ * A tier-4 utility — neutral outlined, in two presentations: its words, or where they do not fit its
+ * glyph alone under a Tooltip. The wrapper has no gap, so the one not drawn leaves no space behind.
  */
 function Utility(
 	props: { label: string; glyph: VNode; onClick: () => void },
@@ -321,7 +332,7 @@ function ChartToggle(
 	);
 }
 
-/** A navigation — a ui `Link`, its words folding to the glyph below `--bp-md`. */
+/** A navigation — a ui `Link`, its words folding to the glyph where they do not fit. */
 function RigLink(props: { label: string; href: string; glyph: VNode }): JSX.Element {
 	return (
 		<Tooltip content={props.label} placement="top">
