@@ -1,4 +1,4 @@
-import type { JSX } from "preact";
+import type { JSX, RefObject } from "preact";
 import "../styles/button.css";
 import { cx } from "../../core/cx.ts";
 import type { ButtonProps } from "../types/button.ts";
@@ -20,7 +20,7 @@ export type {
  * monochrome `structural` tier, the outlined-only `neutral` utility tier, raised/rounded
  * modifiers, icon (+ position) and icon-only forms, a corner badge, and a loading state that shows a
  * spinner and sets `aria-busy`. Fully keyboard-operable via the native `<button>`; disabled/loading
- * remove it from activation.
+ * remove it from activation. `triggerRef` hands the native `<button>` to an overlay it opens.
  */
 export function Button(props: ButtonProps): JSX.Element {
 	const {
@@ -40,6 +40,7 @@ export function Button(props: ButtonProps): JSX.Element {
 		disabled,
 		type = "button",
 		class: className,
+		triggerRef,
 		children,
 		...rest
 	} = props;
@@ -54,6 +55,7 @@ export function Button(props: ButtonProps): JSX.Element {
 	return (
 		<button
 			type={type as "button"}
+			ref={triggerRef as RefObject<HTMLButtonElement> | undefined}
 			class={cx(
 				"ui-button",
 				`ui-button--${severity}`,

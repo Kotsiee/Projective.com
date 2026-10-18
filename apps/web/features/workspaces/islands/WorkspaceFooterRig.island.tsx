@@ -1,37 +1,64 @@
 import type { JSX, VNode } from "preact";
+import { useRef } from "preact/hooks";
+import { useSignalEffect } from "@preact/signals";
 import "../styles/workspace.css";
 import { Tooltip } from "@projective/ui/feedback";
-import { kindCopy, workspaceHref, type WorkspaceKind } from "@projective/types/workspace";
+import { Button } from "@projective/ui/fields";
+import { Link } from "@projective/ui/navigation";
+import type { WorkspaceCapability, WorkspaceKind } from "@projective/types/workspace";
 import { type ModuleKey } from "../core/module-registry.tsx";
 import { ViewZoomRig } from "@web/features/shell/components/ViewZoomRig.tsx";
 import {
-	membersChart,
 	openCreate,
 	openInvite,
 	policyDirty,
+	requestDiscard,
 	requestSave,
 	saveState,
+	selectModuleView,
+	viewOr,
 } from "../core/workspace-state.ts";
 import { workspaceZoom } from "../core/view-state.ts";
+import { type RigAction, type RigModel, rigModel } from "../core/rig-model.ts";
+import { subViewsFor } from "../core/sub-views.ts";
 import { CardsViewIcon, ChartViewIcon, TableViewIcon } from "../components/MemberCard.tsx";
-import { cloneGlyph, InviteGlyph, PlusGlyph } from "../core/workspace-glyphs.tsx";
+import { cloneGlyph, InviteGlyph, PlusGlyph, SettingsGlyph } from "../core/workspace-glyphs.tsx";
 
 /**
  * WorkspaceFooterRig — the middle-nav frame's footer band across the workspace surface.
  *
- * The band's division of labour is strict and worth stating: **view switching on the leading side,
- * primary actions on the trailing side, and nothing in the body.** The body's remit is viewing and
- * selecting data — the moment a page grows its own "Save" button, there are two of them and the reader
- * has to work out which one is real.
+ * The band's division of labour: **view switching on the leading side, actions on the trailing side,
+ * and nothing in the body.** The body's remit is viewing and selecting data — the moment a page grows
+ * its own Save, there are two of them and the reader has to work out which one is real.
  *
- * **It talks to the body through signals, never props.** The footer band is a separate hydration root
- * mounted into a shell slot; it cannot receive a callback from a page it does not contain. So
- * `membersView` / `rosterView` are written here and read there, and `requestSave()` is a pulse the
- * open policy editor answers. That indirection is the sanctioned channel (`workspace-state.ts`), not a
- * workaround.
+ * Every control is a `@projective/ui` control at its Interaction Matrix tier (§B.8.1), from
+ * `rig-model.ts`, which decides what the rig holds and is pinned by its unit test:
  *
- * Every control is icon-first with a portal `Tooltip` and an `aria-label`; the words in each label sit
- * in a `<span>` so the mobile rule can drop them and keep the glyph (§B.6).
+ *   - Leading — the shared zoom (`ViewZoomRig`) on the roster and the Members People reading, and the
+ *     Org chart toggle (tier 5, `aria-pressed`) beside it, which selects the `chart` sub-view — the
+ *     same state the header band's tabs and the lane's context control write. On the chart the toggle
+ *     stands alone: the chart has no density, so a zoom there would do nothing.
+ *   - Trailing — tier-4 utilities (New, Invite), Settings as a ui `Link` (a navigation is a link,
+ *     never a button-styled anchor), then the policy editor's Discard (tier 5) and Save (tier 3, the
+ *     rig's one filled control) — both ONLY while the editor holds unsaved changes. The status line
+ *     says why before the buttons do.
+ *
+ * **It talks to the body through signals, never props.** The rig is a separate hydration root mounted
+ * into a shell slot; it cannot receive a callback from a page it does not contain. `requestSave()` /
+ * `requestDiscard()` are pulses the open policy editor answers (`usePolicyBridge`), and `policyDirty` /
+ * `saveState` come back the same way (`workspace-state.ts`).
+ *
+ * **Focus is never dropped.** Save goes inert while it saves and leaves with Discard once the editor is
+ * clean, so a press that held focus would leave it on `<body>`; it lands on the status line, which
+ * says what the press did, or on the last trailing control that stays.
+ *
+ * Where their words do not fit, each utility and the toggle swap to their icon-only `Button` (named by
+ * `aria-label` and a Tooltip) — two presentations, the stylesheet deciding which paints, so no rule
+ * reaches inside a shared control. The rig's OWN width decides (container queries: the trailing side
+ * by what `rig.holds` says it carries, the toggle by the rig beside a zoom), so a docked lane that
+ * leaves the rig narrow folds them at any viewport; below `--bp-md` they fold regardless. Save and
+ * Discard keep their words and never shrink, because a commit is never a guess: the status line is
+ * what yields.
  */
 
 export interface WorkspaceFooterRigProps {
@@ -40,6 +67,10 @@ export interface WorkspaceFooterRigProps {
 	workspaceHandle?: string | null;
 	/** The module being rendered — decides which actions are on offer. */
 	module?: ModuleKey | null;
+	/** The module's sub-view, resolved server-side (`resolveSubView`). */
+	view?: string | null;
+	/** The viewer's server-resolved capabilities — the sub-views they are offered. */
+	capabilities?: readonly WorkspaceCapability[];
 	/** Whether the viewer may invite (drives the Invite action's presence, not its disabled state). */
 	canInvite?: boolean;
 	/** Whether the viewer may edit money policy (drives Save's presence). */
@@ -50,161 +81,266 @@ export interface WorkspaceFooterRigProps {
 	canCreate?: boolean;
 }
 
-/** One icon-only control in the rig. */
-function RigButton(
-	props: {
-		label: string;
-		glyph: VNode;
-		onClick: () => void;
-		active?: boolean;
-		pressed?: boolean;
-	},
-): JSX.Element {
-	return (
-		<Tooltip content={props.label} placement="top">
-			<button
-				type="button"
-				class="wsp-footerrig__action"
-				data-active={props.active ? "true" : undefined}
-				aria-label={props.label}
-				aria-pressed={props.pressed}
-				onClick={props.onClick}
-			>
-				<span class="wsp-footerrig__glyph" aria-hidden="true">{props.glyph}</span>
-				<span class="wsp-footerrig__label">{props.label}</span>
-			</button>
-		</Tooltip>
-	);
-}
-
 export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.Element {
-	const copy = kindCopy(props.kind);
-	const onRoster = !props.workspaceHandle;
+	// #region The model
 	const module = props.module ?? null;
-	// The invite modal is mounted by the Members screen, so there the rig opens it in place; everywhere
-	// else it is a link that lands on Members with the modal open, rather than a press that does nothing.
-	const invitesInPlace = module === "members" || module === "invitations";
-	const dirty = policyDirty.value;
-	const state = saveState.value;
+	const views = subViewsFor(module, props.kind, props.capabilities ?? []);
+	const rig = rigModel({
+		kind: props.kind,
+		handle: props.workspaceHandle ?? null,
+		module,
+		view: viewOr(props.view ?? null),
+		canCreate: props.canCreate !== false,
+		canInvite: props.canInvite ?? false,
+		canManageMoney: props.canManageMoney ?? false,
+		canManageSettings: props.canManageSettings ?? false,
+		dirty: policyDirty.value,
+		saveState: saveState.value,
+	});
+	const chart = rig.chart;
+	// #endregion
+
+	// #region Focus continuity
+	const rigRef = useRef<HTMLDivElement>(null);
+	const actionsRef = useRef<HTMLDivElement>(null);
+	const statusRef = useRef<HTMLSpanElement>(null);
+	/**
+	 * Set when Save or Discard is pressed while it holds focus: that control is about to go inert or
+	 * leave, and the focus it holds has to land somewhere that stays.
+	 */
+	const carry = useRef(false);
+
+	useSignalEffect(() => {
+		// Every change that can disable or remove the pressed control re-runs this.
+		void policyDirty.value;
+		void saveState.value;
+		if (!carry.current) return;
+		// After the rig has re-rendered for the change, not before.
+		const timer = setTimeout(() => {
+			const active = globalThis.document.activeElement;
+			const lost = !active || active === globalThis.document.body ||
+				(active instanceof HTMLButtonElement && active.disabled);
+			if (lost) {
+				landFocus(actionsRef.current, statusRef.current);
+			} else if (!rigRef.current?.contains(active)) {
+				carry.current = false;
+				return;
+			}
+			if (!policyDirty.peek()) carry.current = false;
+		}, 0);
+		return () => clearTimeout(timer);
+	});
+
+	/** Press Save or Discard, remembering whether focus rode on it. */
+	function pressPending(event: Event, request: () => void): void {
+		carry.current = event.currentTarget === globalThis.document.activeElement;
+		request();
+	}
+	// #endregion
 
 	return (
-		<div class="wsp-footerrig" data-kind={props.kind}>
+		<div ref={rigRef} class="wsp-footerrig" data-kind={props.kind}>
 			{/* #region Leading — view switching */}
 			<div class="wsp-footerrig__group" role="group" aria-label="View">
 				{
 					/*
 					 * The persistent zoom rig, the same control the File Explorer, Submissions, Catalogue and
-					 * Wallet carry: crossing its centre marker IS the table⇄cards switch, so there is no separate
-					 * presentation toggle to disagree with it. The org chart sits BESIDE it rather than on it,
-					 * because a chart is a different reading of the people, not a different density.
+					 * Wallet carry: crossing its centre marker IS the table⇄cards switch. The org chart sits
+					 * BESIDE it rather than on it, because a chart is a different reading of the people, not
+					 * a different density — and it keeps its place whether the zoom is drawn or not, so a
+					 * press that hides the zoom never drops the toggle from under the reader's focus.
 					 */
 				}
-				{(onRoster || module === "members") && (
+				{rig.zoom && (
 					<ViewZoomRig
 						store={workspaceZoom}
-						label={onRoster ? `${copy.Plural} view zoom` : "People view zoom"}
+						label={rig.zoom.label}
 						class="wsp-footerrig__density"
 						listIcon={<TableViewIcon />}
 						gridIcon={<CardsViewIcon />}
-					>
-						{module === "members"
-							? (
-								<RigButton
-									label="Org chart"
-									glyph={<ChartViewIcon />}
-									active={membersChart.value}
-									pressed={membersChart.value}
-									onClick={() => {
-										membersChart.value = !membersChart.value;
-									}}
-								/>
-							)
-							: null}
-					</ViewZoomRig>
+					/>
+				)}
+				{chart && (
+					<ChartToggle
+						chart={chart}
+						onToggle={() => selectModuleView(chart.next, views)}
+					/>
 				)}
 			</div>
 			{/* #endregion */}
 
-			<span class="wsp-footerrig__spacer" />
-
-			{/* #region Trailing — primary actions */}
-			<div class="wsp-footerrig__actions">
-				{
-					/*
-					 * An unsaved policy says so BEFORE the button, because the nudge is the information and the
-					 * button is only the response to it.
-					 */
-				}
-				{dirty && (
-					<span class="wsp-footerrig__nudge" role="status">
-						<span class="wsp-footerrig__nudge-text">
-							{state === "error" ? "Could not save" : "Unsaved changes"}
-						</span>
+			{/* #region Trailing — actions */}
+			<div ref={actionsRef} class="wsp-footerrig__actions" data-holds={rig.holds}>
+				{rig.statusLine && (
+					<span
+						ref={statusRef}
+						class="wsp-footerrig__status"
+						data-tone={rig.status?.tone}
+						role="status"
+						tabIndex={-1}
+					>
+						{rig.status?.text}
 					</span>
 				)}
-
-				{onRoster && props.canCreate !== false && (
-					<RigButton
-						label={`New ${copy.noun}`}
-						glyph={cloneGlyph(PlusGlyph)}
-						onClick={() => openCreate(props.kind)}
+				{rig.actions.map((action) => (
+					<RigControl
+						key={action.key}
+						action={action}
+						onCreate={() => openCreate(props.kind)}
+						onSave={(event) => pressPending(event, requestSave)}
+						onDiscard={(event) => pressPending(event, requestDiscard)}
 					/>
-				)}
-
-				{!onRoster && props.canInvite && (invitesInPlace
-					? (
-						<RigButton
-							label="Invite members"
-							glyph={cloneGlyph(InviteGlyph)}
-							onClick={() => openInvite()}
-						/>
-					)
-					: (
-						<Tooltip content="Invite members" placement="top">
-							<a
-								class="wsp-footerrig__action"
-								aria-label="Invite members"
-								href={`${workspaceHref(props.kind, props.workspaceHandle!, "members")}?invite=1`}
-							>
-								<span class="wsp-footerrig__glyph" aria-hidden="true">
-									{cloneGlyph(InviteGlyph)}
-								</span>
-								<span class="wsp-footerrig__label">Invite members</span>
-							</a>
-						</Tooltip>
-					))}
-
-				{!onRoster && props.canManageMoney &&
-					(module === "payouts" || module === "spend" || module === "billing") && (
-					<Tooltip
-						content={dirty ? "Save the policy" : "Nothing to save yet"}
-						placement="top"
-					>
-						<button
-							type="button"
-							class="wsp-footerrig__action"
-							data-active={dirty ? "true" : undefined}
-							aria-label="Save changes"
-							disabled={!dirty || state === "saving"}
-							onClick={requestSave}
-						>
-							<span class="wsp-footerrig__label">
-								{state === "saving" ? "Saving…" : state === "saved" ? "Saved" : "Save changes"}
-							</span>
-						</button>
-					</Tooltip>
-				)}
-
-				{!onRoster && props.workspaceHandle && props.canManageSettings && (
-					<a
-						class="wsp-footerrig__action"
-						href={workspaceHref(props.kind, props.workspaceHandle, "settings")}
-					>
-						<span class="wsp-footerrig__label">Settings</span>
-					</a>
-				)}
+				))}
 			</div>
 			{/* #endregion */}
 		</div>
 	);
 }
+
+// #region Focus landing
+/**
+ * Put focus somewhere that stays, once the control holding it went inert or left: the status line
+ * while it has something to say (Saving…, Saved, Could not save), else the last trailing control
+ * still drawn, else the status line itself — it is mounted for as long as the editor is open.
+ */
+function landFocus(actions: HTMLElement | null, status: HTMLElement | null): void {
+	if (status?.textContent?.trim()) {
+		status.focus({ preventScroll: true });
+		return;
+	}
+	const controls = actions
+		? [...actions.querySelectorAll<HTMLElement>("a[href], button:not(:disabled)")]
+			.filter((el) => el.getClientRects().length > 0)
+		: [];
+	(controls.at(-1) ?? status)?.focus({ preventScroll: true });
+}
+// #endregion
+
+// #region Controls
+/** One trailing control, at its tier. */
+function RigControl(
+	props: {
+		action: RigAction;
+		onCreate: () => void;
+		onSave: (event: Event) => void;
+		onDiscard: (event: Event) => void;
+	},
+): JSX.Element {
+	const { action } = props;
+	switch (action.key) {
+		case "create":
+			return <Utility label={action.label} glyph={PlusGlyph} onClick={props.onCreate} />;
+		case "invite":
+			return action.control === "button"
+				? <Utility label={action.label} glyph={InviteGlyph} onClick={() => openInvite()} />
+				: <RigLink label={action.label} href={action.href} glyph={cloneGlyph(InviteGlyph)} />;
+		case "settings":
+			return <RigLink label={action.label} href={action.href} glyph={cloneGlyph(SettingsGlyph)} />;
+		case "discard":
+			return (
+				<Button
+					class="wsp-footerrig__commit"
+					variant="text"
+					severity="secondary"
+					size="sm"
+					label={action.label}
+					disabled={action.disabled}
+					onClick={props.onDiscard}
+				/>
+			);
+		case "save":
+			return (
+				<Button
+					class="wsp-footerrig__commit"
+					size="sm"
+					label={action.label}
+					loading={action.busy}
+					onClick={props.onSave}
+				/>
+			);
+	}
+}
+
+/**
+ * A tier-4 utility — neutral outlined, in two presentations: its words, or where they do not fit its
+ * glyph alone under a Tooltip. The wrapper has no gap, so the one not drawn leaves no space behind.
+ */
+function Utility(
+	props: { label: string; glyph: VNode; onClick: () => void },
+): JSX.Element {
+	return (
+		<span class="wsp-footerrig__utility">
+			<Button
+				class="wsp-footerrig__wide"
+				severity="neutral"
+				variant="outlined"
+				size="sm"
+				icon={cloneGlyph(props.glyph)}
+				label={props.label}
+				onClick={props.onClick}
+			/>
+			<Tooltip content={props.label} placement="top">
+				<Button
+					class="wsp-footerrig__narrow"
+					severity="neutral"
+					variant="outlined"
+					size="sm"
+					iconOnly
+					icon={cloneGlyph(props.glyph)}
+					aria-label={props.label}
+					onClick={props.onClick}
+				/>
+			</Tooltip>
+		</span>
+	);
+}
+
+/**
+ * The Org chart toggle — a tier-5 text Button whose engaged state is the Button's own
+ * (`aria-pressed`), in the same two presentations as a utility.
+ */
+function ChartToggle(
+	props: { chart: NonNullable<RigModel["chart"]>; onToggle: () => void },
+): JSX.Element {
+	const { chart } = props;
+	return (
+		<span class="wsp-footerrig__utility">
+			<Button
+				class="wsp-footerrig__wide"
+				variant="text"
+				severity="secondary"
+				size="sm"
+				icon={<ChartViewIcon />}
+				label={chart.label}
+				aria-pressed={chart.pressed}
+				onClick={props.onToggle}
+			/>
+			<Tooltip content={chart.label} placement="top">
+				<Button
+					class="wsp-footerrig__narrow"
+					variant="text"
+					severity="secondary"
+					size="sm"
+					iconOnly
+					icon={<ChartViewIcon />}
+					aria-label={chart.label}
+					aria-pressed={chart.pressed}
+					onClick={props.onToggle}
+				/>
+			</Tooltip>
+		</span>
+	);
+}
+
+/** A navigation — a ui `Link`, its words folding to the glyph where they do not fit. */
+function RigLink(props: { label: string; href: string; glyph: VNode }): JSX.Element {
+	return (
+		<Tooltip content={props.label} placement="top">
+			<Link class="wsp-footerrig__link" href={props.href} aria-label={props.label}>
+				<span class="wsp-footerrig__glyph" aria-hidden="true">{props.glyph}</span>
+				<span class="wsp-footerrig__label">{props.label}</span>
+			</Link>
+		</Tooltip>
+	);
+}
+// #endregion

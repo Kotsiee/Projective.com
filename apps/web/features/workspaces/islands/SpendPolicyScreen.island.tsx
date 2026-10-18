@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { batch, untracked, useComputed, useSignal, useSignalEffect } from "@preact/signals";
+import { batch, useComputed, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/workspace.css";
 import { FormControl, MoneyInput } from "@projective/ui/fields";
@@ -17,7 +17,8 @@ import {
 } from "@projective/types/workspace";
 import { readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
-import { policyDirty, publishDetail, saveRequested, saveState } from "../core/workspace-state.ts";
+import { publishDetail, saveState } from "../core/workspace-state.ts";
+import { usePolicyBridge } from "../hooks/usePolicyBridge.ts";
 import {
 	APPROVERS_PICKER_ID,
 	decideNotice,
@@ -84,9 +85,10 @@ import { VerificationLock } from "../components/VerificationLock.tsx";
  * **Render from the server.** What the viewer may do is `viewerCan` and the spend block's flags (BB9 +
  * #246); this island holds a draft, compares it with what was saved, and words it — no policy maths.
  *
- * **Save is the footer rig's**, watched here as a pulse, so there is one Save on the surface. Only the
- * keys that moved travel, and only for rows the viewer may change; after a decision or a withdrawal the
- * envelopes are re-read with the reader's own edits kept (BD3).
+ * **Save and Discard are the footer rig's**, answered here through `usePolicyBridge`, so there is one
+ * Save on the surface. Only the keys that moved travel, and only for rows the viewer may change; after
+ * a decision or a withdrawal the envelopes are re-read with the reader's own edits kept (BD3). Discard
+ * returns the draft to the last saved policy.
  */
 
 export interface SpendPolicyScreenProps {
@@ -203,22 +205,9 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 		});
 	}, []);
 
-	// Publish dirtiness so the footer rig can offer Save — it cannot see this island's state.
-	useSignalEffect(() => {
-		policyDirty.value = dirty.value;
-		return () => {
-			policyDirty.value = false;
-		};
-	});
-
-	// The footer rig's Save is a pulse: act on a press made after this island mounted.
-	const pulseSeen = useRef(saveRequested.peek());
-	useSignalEffect(() => {
-		const pulse = saveRequested.value;
-		if (pulse <= pulseSeen.current) return;
-		pulseSeen.current = pulse;
-		untracked(() => void save());
-	});
+	// The footer rig's Save and Discard are pulses, not callbacks: `usePolicyBridge` publishes this
+	// island's dirtiness to the rig and answers a press made after this island mounted.
+	usePolicyBridge({ dirty, save, discard });
 	// #endregion
 
 	// #region The draft
@@ -239,6 +228,25 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 			limitDrafts.value = { ...merged.limits };
 			preview.value = null;
 			previewFailed.value = false;
+		});
+		schedulePreview();
+	}
+
+	/**
+	 * The footer rig's Discard: the threshold, both pickers and every envelope return to the last saved
+	 * policy, the open row closes and the save refusal goes; `schedulePreview` then drops the price of a
+	 * draft that no longer differs.
+	 */
+	function discard(): void {
+		const base = draftOf(saved.peek());
+		const editable = new Set(saved.peek().editableMemberIds);
+		batch(() => {
+			threshold.value = base.thresholdMinor;
+			approverPick.value = base.approverIds.filter((id) => editable.has(id));
+			contributorPick.value = base.contributorIds.filter((id) => editable.has(id));
+			limitDrafts.value = { ...base.limits };
+			editingId.value = null;
+			saveError.value = null;
 		});
 		schedulePreview();
 	}

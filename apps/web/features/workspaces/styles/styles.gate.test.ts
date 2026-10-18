@@ -430,9 +430,25 @@ Deno.test("workspace styles: the body and micro money steps keep the minor run w
 Deno.test("workspace styles: the dead rules stay deleted", () => {
 	assertNone(
 		offences(
-			/\.wsp-skel\b|\.wsp-lane__new\b|\.wsp-footerrig__action\[data-variant|\.wsp-lane__(filter|switch|row|verify|foot|note)\b|\.wsp-rail__verify\b|\.wsp-verdict\b/,
+			/\.wsp-skel\b|\.wsp-lane__new\b|\.wsp-footerrig__action\[data-(variant|locked)|\.wsp-lane__(filter|switch|row|verify|foot|note)\b|\.wsp-rail__verify\b|\.wsp-verdict\b/,
 		),
 		"a deleted dead selector is back:",
+	);
+	// The header band and footer rig before Teams L2: the hand-rolled tab strip, the Popover menu and
+	// the rig's ghost-button extras — and the L2 review's folded-label and painted-toggle overrides of
+	// the shared Button, replaced by two presentations and Button's own engaged state.
+	assertNone(
+		offences(
+			/\.wsp-headerband__(tab|identity|name|handle|badge|divider|controls|icon|panel)\b|\.wsp-footerrig__(more|menu|note|nudge|fold|toggle)\b/,
+		),
+		"a deleted dead selector is back:",
+	);
+});
+
+Deno.test("workspace styles: the bands never reach inside a shared Button", () => {
+	assertNone(
+		offences(/\.ui-button__(label|icon)\b|--btn-[a-z-]+\s*:/),
+		"a workspace sheet restyles the inside of ui Button:",
 	);
 });
 

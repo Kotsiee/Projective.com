@@ -1,6 +1,5 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
 import "../styles/workspace.css";
 import { Tooltip } from "@projective/ui/feedback";
 import {
@@ -12,7 +11,8 @@ import {
 	type WorkspaceDetail,
 } from "@projective/types/workspace";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
-import { policyDirty, publishDetail, saveRequested, saveState } from "../core/workspace-state.ts";
+import { publishDetail, saveState } from "../core/workspace-state.ts";
+import { usePolicyBridge } from "../hooks/usePolicyBridge.ts";
 import { splitModelOf } from "../core/workspace-model.ts";
 import { SplitBar } from "../components/SplitBar.tsx";
 import { SplitLegend } from "../components/SplitLegend.tsx";
@@ -34,8 +34,8 @@ import { PolicyAmount } from "../components/PolicyAmount.tsx";
  * than printing a column of zeroes that reads like a payout. The vault's cut is taken before the split
  * and is shown as the rate, plus its amount when a release is held.
  *
- * Save lives in the FOOTER band: this island watches the `saveRequested` pulse instead of owning a
- * button, so there is exactly one Save on the surface.
+ * Save and Discard live in the FOOTER band: this island answers them through `usePolicyBridge`
+ * instead of owning buttons, so there is exactly one Save on the surface.
  */
 
 export interface PayoutPolicyScreenProps {
@@ -83,14 +83,6 @@ export default function PayoutPolicyScreen(props: PayoutPolicyScreenProps): JSX.
 		const base = baseline.value;
 		return stakes.value.some((s, i) => s.shareBp !== base[i]?.shareBp || s.held !== base[i]?.held);
 	});
-
-	// Publish dirtiness so the footer band can offer Save — it cannot see this island's state directly.
-	useEffect(() => {
-		policyDirty.value = dirty.value;
-		return () => {
-			policyDirty.value = false;
-		};
-	}, [dirty.value]);
 
 	/** Move one share; the SSOT holds the 100% invariant and respects held stakes. */
 	function move(memberId: string, nextBp: number): void {
@@ -142,10 +134,20 @@ export default function PayoutPolicyScreen(props: PayoutPolicyScreenProps): JSX.
 		}
 	}
 
-	// The footer band's Save is a pulse, not a callback — see the module header.
-	useEffect(() => {
-		if (saveRequested.value > 0) void save();
-	}, [saveRequested.value]);
+	/** Return every share and hold to the last saved split, in its saved order. */
+	function discard(): void {
+		const current = new Map(stakes.value.map((s) => [s.memberId, s]));
+		const known = new Map(policy.value.stakes.map((s) => [s.memberId, s]));
+		stakes.value = baseline.value.flatMap((saved) => {
+			const stake = current.get(saved.memberId) ?? known.get(saved.memberId);
+			return stake ? [{ ...stake, shareBp: saved.shareBp, held: saved.held }] : [];
+		});
+		changed.value = [];
+		error.value = null;
+	}
+
+	// The footer band's Save and Discard are pulses, not callbacks — see the module header.
+	usePolicyBridge({ dirty, save, discard });
 
 	return (
 		<div class="wsp" data-kind="team">

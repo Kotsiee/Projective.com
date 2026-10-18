@@ -65,12 +65,14 @@ import {
 } from "../core/lane-model.ts";
 import {
 	liveDetail,
-	membersChart,
 	openCreate,
 	openInvite,
 	rosterTab,
+	selectModuleView,
 	selectRosterTab,
+	viewOr,
 } from "../core/workspace-state.ts";
+import { MEMBERS_CHART, MEMBERS_PEOPLE, subViewsFor } from "../core/sub-views.ts";
 import {
 	BackGlyph,
 	cloneGlyph,
@@ -120,8 +122,9 @@ import { type LaneCreateTarget, WorkspaceRail } from "../components/WorkspaceRai
  * segmented control and the roster canvas both write it and both mirror it, and each falls back to its
  * server-resolved `?tab=` until something is picked. The lane reads it through {@link lanePartition},
  * so the canvas-only Archived reads as All here and the lane never lists rows under a control with no
- * segment selected. The Members reading is the existing `membersChart` signal the Members screen
- * already reads, so the lane's People · Org chart control drives the body directly.
+ * segment selected. The Members reading is the module's ONE sub-view state (`moduleView`, Teams L2),
+ * which the header band's tabs and the footer rig's Org chart toggle also write and the Members screen
+ * reads, so the lane's People · Org chart control drives the body directly.
  *
  * ### Why it reads the live-detail relay
  * A role change rewrites `viewerCapabilities`, which decides this lane's visible modules and its
@@ -148,7 +151,7 @@ export interface WorkspaceLaneProps {
 	workspace?: WorkspaceDetail;
 	/** The module being rendered, already corrected server-side. Falls back to the path. */
 	activeModule?: ModuleKey | null;
-	/** The module's resolved `?view=` sub-view (Members: `all` · `pending`), when it has one. */
+	/** The module's resolved `?view=` sub-view (Members: `people` · `pending` · `chart`), when it has one. */
 	view?: string | null;
 }
 
@@ -474,6 +477,7 @@ interface ConsoleLaneProps {
 /** One entity's lane — identity and the acting switch, its views, their controls, its one action. */
 function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 	const { detail } = props;
+	const subView = viewOr(props.view);
 	const zones: ConsoleLaneZones = laneZones({
 		view: "console",
 		kind: props.kind,
@@ -483,7 +487,7 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 		acting: detail.isActing,
 		capabilities: detail.viewerCapabilities,
 		module: props.activeModule,
-		subView: props.view,
+		subView,
 	});
 	const views = zones.views;
 	const signals = laneSignals(detail);
@@ -512,10 +516,13 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 		);
 	};
 
-	// The Members reading mirrors the signal the Members screen reads, whichever root last wrote it.
-	const reading = useSignal<string>(membersChart.value ? "chart" : "people");
+	// The Members reading mirrors the module's one sub-view state, whichever root last picked it.
+	const subViews = subViewsFor(props.activeModule, props.kind, detail.viewerCapabilities);
+	const readingOf = (view: string | null) =>
+		view === MEMBERS_CHART ? MEMBERS_CHART : MEMBERS_PEOPLE;
+	const reading = useSignal<string>(readingOf(subView));
 	useSignalEffect(() => {
-		reading.value = membersChart.value ? "chart" : "people";
+		reading.value = readingOf(viewOr(props.view));
 	});
 
 	const zone = (id: LaneZoneId): JSX.Element | null => {
@@ -615,7 +622,7 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 								options={zones.context.options}
 								value={reading}
 								onValueChange={(value) => {
-									membersChart.value = value === "chart";
+									if (typeof value === "string") selectModuleView(value, subViews);
 								}}
 								size="sm"
 								fluid

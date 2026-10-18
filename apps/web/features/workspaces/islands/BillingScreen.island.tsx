@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { untracked, useComputed, useSignal, useSignalEffect } from "@preact/signals";
+import { useComputed, useSignal } from "@preact/signals";
 import { useEffect, useMemo, useRef } from "preact/hooks";
 import "../styles/workspace.css";
 import { Button, FormControl, MoneyInput, Select, SelectButton } from "@projective/ui/fields";
@@ -17,7 +17,8 @@ import type {
 import type { WorkspaceDetail } from "@projective/types/workspace";
 import { readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
-import { policyDirty, saveRequested, saveState } from "../core/workspace-state.ts";
+import { saveState } from "../core/workspace-state.ts";
+import { usePolicyBridge } from "../hooks/usePolicyBridge.ts";
 import { BUSINESS_REFUSAL_COPY } from "../core/refusal-copy.ts";
 import {
 	billingCommits,
@@ -54,7 +55,8 @@ import {
  *  - **Gates** (draft · archived · KYB) are the refusal map's sentences with at most one tier-4 link,
  *    to a surface that clears them.
  *  - **Terms** are FormControls; monthly invoicing under the Business Pro gate says so before the
- *    Save. Save is the footer band's, watched here as a pulse, so there is one Save on the surface.
+ *    Save. Save and Discard are the footer band's, answered here through `usePolicyBridge`, so
+ *    there is one Save on the surface.
  *
  * The Dev Context Switcher's `autoFundMode` previews the mode sentence, `lowBalance` the floor warning
  * and `businessPlanGates` the Business Pro read (through the server); none changes what is stored.
@@ -288,15 +290,6 @@ export default function BillingScreen(props: BillingScreenProps): JSX.Element {
 		autoFund.value !== view.value.autoFundMode ||
 		floor.value !== view.value.lowBalanceFloorMinor
 	);
-
-	// The footer's Save is enabled honestly: it reads this screen's dirty flag across roots.
-	useSignalEffect(() => {
-		policyDirty.value = dirty.value;
-		return () => {
-			policyDirty.value = false;
-		};
-	});
-
 	function adopt(next: BusinessBillingView): void {
 		view.value = next;
 		mode.value = next.invoicingMode;
@@ -330,16 +323,18 @@ export default function BillingScreen(props: BillingScreenProps): JSX.Element {
 	}
 
 	/*
-	 * The footer's Save is a pulse: each press bumps `saveRequested`. Only a NEW pulse saves — one left
-	 * over from another module's editor does not fire on mount — and the save runs untracked, so the
-	 * effect never subscribes to the form (else every keystroke would save).
+	 * The footer band's Save and Discard are pulses, not callbacks (`usePolicyBridge`): only a NEW pulse
+	 * acts — one left over from another module's editor does not fire on mount — and the handler runs
+	 * untracked, so the bridge never subscribes to the form (else every keystroke would save). Discard
+	 * re-adopts the saved view.
 	 */
-	const handledPulse = useRef(saveRequested.peek());
-	useSignalEffect(() => {
-		const pulse = saveRequested.value;
-		if (pulse === handledPulse.current) return;
-		handledPulse.current = pulse;
-		untracked(() => void save());
+	usePolicyBridge({
+		dirty,
+		save,
+		discard: () => {
+			adopt(view.value);
+			error.value = null;
+		},
 	});
 
 	/** Open the review for an invoice. Money moves only from the review's commit. */
