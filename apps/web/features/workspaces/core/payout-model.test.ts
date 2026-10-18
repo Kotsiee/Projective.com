@@ -798,6 +798,7 @@ function rigFor(dirty: boolean): RigInput {
 		canInvite: true,
 		canManageMoney: true,
 		canManageSettings: true,
+		canEditProfile: true,
 		dirty,
 		saveState: "idle",
 	};
