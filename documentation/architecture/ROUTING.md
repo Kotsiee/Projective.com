@@ -266,13 +266,16 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   action's dialog once — only an action the wallet draws for the viewer, offered or locked with its
   reason — and is stripped from the address at once (`replaceState`), so a reload does not reopen it;
   `?back=<path>` is where the movement's done step offers to return, allowlisted by `safeBack` to a
-  same-origin `/checkout` path or exactly a business console's Billing module
-  `/businesses/<handle>/billing` (optionally with a query or fragment; Decision #247) — no scheme, no
-  `//`, no backslash or control character — because it is an open-redirect surface; the done step
-  names where it returns (`backLabelFor`: "Back to checkout" · "Back to billing"). The checkout's
-  tier-1 Add money is `/wallet?w=business:<id>&do=top_up&back=<this checkout step>`; Billing's Top
-  up (and an invoice review's _Top up the wallet_) is
-  `/wallet?w=business:<id>&do=top_up&back=/businesses/<handle>/billing`. `/wallet/transactions` also carries its filter bar
+  same-origin `/checkout` path, exactly a business console's Billing module
+  `/businesses/<handle>/billing` (Decision #247) or exactly a business console's Overview
+  `/businesses/<handle>` (Decision #248) — each optionally with a query or fragment, never a deeper
+  path; no scheme, no `//`, no backslash or control character — because it is an open-redirect
+  surface; the done step names where it returns (`backLabelFor`: "Back to checkout" · "Back to
+  billing" · "Back to overview"). The checkout's tier-1 Add money is
+  `/wallet?w=business:<id>&do=top_up&back=<this checkout step>`; Billing's Top up (and an invoice
+  review's _Top up the wallet_) is `/wallet?w=business:<id>&do=top_up&back=/businesses/<handle>/billing`;
+  the Overview's setup step Add money is `/wallet?w=business:<id>&do=top_up&back=/businesses/<handle>`
+  (`addMoneyHrefFor`). `/wallet/transactions` also carries its filter bar
   (Decision #152): `?q=` the search, `?dir=in|out` the direction, `?kind=a,b` the line families
   (`LEDGER_KIND_CHOICES`), each dropped at its default (`withLedgerFilters`), so a filtered ledger links
   and reloads as it was. The island adds `?tz=<IANA zone>` to its own `/api/wallet/*` reads (never to a

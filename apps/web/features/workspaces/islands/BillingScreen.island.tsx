@@ -438,6 +438,7 @@ export default function BillingScreen(props: BillingScreenProps): JSX.Element {
 		kyb: ws.kyb,
 		verification: ws.verification,
 		isOwner: self?.rolePreset === "owner",
+		canPublish: ws.viewerCapabilities.includes("manage_settings"),
 		name: ws.name,
 		handle: ws.handle,
 	}) ?? payBlock.value;

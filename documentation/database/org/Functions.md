@@ -909,7 +909,8 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
   ACTIVE memberships of that kind (owned first, then by name), each with its role, owner flag,
   verification, member count, up to five face user ids (by rank, then join date), pending-invite
   count, active projects, 30-day money by currency (team: payout splits + vault retention credited;
-  business: debits other than `transfer_out`), the setup facts (`logo` · `bio` · `money`) and an
+  business: debits other than `transfer_out`), the setup facts (`logo` · `bio` · `money` · `funded` ·
+  `limits_offered` — the last two as `get_workspace_detail` answers them) and an
   unseen-notification flag; plus the caller's own PENDING, unexpired invitations to non-archived
   entities of that kind (via `fn_is_invitee`); plus the create entitlement's limit and usage.
 - **`get_workspace_detail(kind, handle_or_id) → jsonb`** — the console for one entity, addressed by
@@ -928,7 +929,12 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
   assignments, each with its client business's `client` face; business: as client, excluding
   `draft`/`archived`, each with `provider_user_ids` and `provider_teams` faces — faces are
   `org.profiles_index` name + avatar bucket/path), the 30 most recent activity events (joins and
-  `finance.ledger_audit` money movements), and the setup facts (`logo` · `bio` · `invite` · `money`).
+  `finance.ledger_audit` money movements), and the setup facts (`logo` · `bio` · `invite` · `money`,
+  plus for a business — `false` for a team — `funded`: any `add_funds` `finance.ledger_audit` row on
+  its wallets, so the Overview's Add money stays done once the wallet is spent; and
+  `limits_offered`: `NOT (fn_business_plan_gates_enforced() AND NOT fn_business_gate_flag(id,
+  'pooled_wallet_full'))`, the negation of the spend block's `limits_plan_gated` — Decision #248;
+  probe `supabase/probes/business_overview_setup.sql`).
   Both kinds carry `visibility`. A **business** also answers `archive_blockers` —
   `fn_business_archive_blockers` **only when the viewer holds `archive_entity`**, else `[]` (always
   `[]` for a team) — so Settings lists what to clear before the archive confirm (BB5; `archiveBlockers`

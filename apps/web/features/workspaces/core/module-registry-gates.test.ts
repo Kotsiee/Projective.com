@@ -7,9 +7,11 @@ import {
 	SetupStepId,
 	spendAccess,
 	type WorkspaceCapability,
+	type WorkspaceDetail,
 	type WorkspaceKind,
 } from "@projective/types/workspace";
 import { importWithoutGlyphs, type RegistryApi } from "./registry-import.testing.ts";
+import { businessMoney } from "./overview-model.ts";
 
 /**
  * The money and admin module gates (BUSINESSES_AUDIT BF29, BF30; Decision #230 (d)), per preset and
@@ -101,14 +103,14 @@ Deno.test("co-owner: the admin preset is unchanged — it lacks exactly the rese
 /**
  * The module each setup step's action lands on (`mappers.ts` `setupSteps` hrefs) — except a team's
  * verification, which is the owner's own `/settings/verification`: no module, and no right but
- * ownership opens it (pinned below).
+ * ownership opens it (pinned below). A business's Add money lands on its pooled wallet, which the
+ * Finance module is the console's door to (BU6): whoever may add money may open Finance.
  */
 const STEP_MODULE: Record<SetupStepId, (kind: WorkspaceKind) => string> = {
 	invite: () => "invitations",
 	money: (kind) => kind === "team" ? "payouts" : "spend",
 	profile: () => "profile",
-	logo: () => "profile",
-	bio: () => "profile",
+	fund: () => "finance",
 	verification: () => "verification",
 	publish: () => "settings",
 };
@@ -125,6 +127,8 @@ const VIEWERS: readonly WorkspaceCapability[][] = [
 	["view_analytics"],
 	["invite_members"],
 	["manage_finances"],
+	["contribute_funds"],
+	["withdraw_funds"],
 	["edit_profile"],
 	["manage_settings"],
 	["manage_billing"],
@@ -175,5 +179,45 @@ Deno.test("setup steps: a team's owner verification is the owner's alone; a busi
 			);
 		}
 	}
+});
+
+Deno.test("setup steps: a business's Add money is actionable exactly when Finance opens — never a team's", () => {
+	for (const caps of VIEWERS) {
+		const who = `[${caps.join(", ")}]`;
+		assertEquals(
+			canActOnSetupStep("business", "fund", caps),
+			caps.includes("contribute_funds"),
+			`business ${who}`,
+		);
+		if (canActOnSetupStep("business", "fund", caps)) {
+			assertEquals(mayViewModule("finance", "business", caps), true, `finance ${who}`);
+		}
+		assertEquals(canActOnSetupStep("team", "fund", caps), false, `team ${who}`);
+	}
+});
+// #endregion
+
+// #region The Overview's money band (BU6)
+/** A business detail as far as the band reads it. */
+const business = (caps: readonly WorkspaceCapability[]): WorkspaceDetail =>
+	({
+		kind: "business",
+		id: "b-1",
+		viewerCapabilities: [...caps],
+		moneyTiles: [],
+	}) as unknown as WorkspaceDetail;
+
+Deno.test("money band: a business member sees it exactly when Finance opens for them (BD18)", () => {
+	for (const caps of VIEWERS) {
+		assertEquals(
+			businessMoney(business(caps)) !== null,
+			mayViewModule("finance", "business", caps),
+			`[${caps.join(", ")}]`,
+		);
+	}
+	// The plain member — contribute only — pays into the pool, so sees it.
+	assertEquals(businessMoney(business(MEMBER))?.walletHref, "/wallet?w=business:b-1");
+	// A withdraw-only role cannot open Finance, so it gets no band either.
+	assertEquals(businessMoney(business(["withdraw_funds"])), null);
 });
 // #endregion

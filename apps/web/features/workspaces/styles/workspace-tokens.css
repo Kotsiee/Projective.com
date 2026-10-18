@@ -498,24 +498,28 @@ ordinary prose keeps proportional figures. */
 	color: var(--on-surface);
 }
 
+/*
+ * A policy figure is read, not shouted: `--fw-medium` at every step (BUSINESSES_AUDIT BD25), so a
+ * threshold or a limit sits at the weight of the headings around it instead of out-weighing them.
+ */
 .wsp-money--figure {
 	font-size: var(--wsp-fs-figure);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 }
 
 .wsp-money--key {
 	font-size: var(--wsp-fs-key);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 }
 
 .wsp-money--body {
 	font-size: var(--wsp-fs-body);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 }
 
 .wsp-money--micro {
 	font-size: var(--wsp-fs-micro);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 }
 
 /*

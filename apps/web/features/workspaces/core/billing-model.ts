@@ -312,6 +312,8 @@ export interface BillingGateInput {
 	verification: VerificationState;
 	/** The viewer owns the business — Restore is the owner's. */
 	isOwner: boolean;
+	/** The viewer may publish a draft (`manage_settings`) — from the business's Overview. */
+	canPublish?: boolean;
 	name: string;
 	handle: string;
 }
@@ -327,9 +329,10 @@ export interface BillingGate {
 
 /**
  * Why this business cannot pay its invoices, in the database's order (an inactive business is refused
- * before KYB). A draft business has no publish surface yet, so its notice states the fact alone; an
- * archived one is restored by its owner from the archived roster; KYB links to Verification, which the
- * billing right always opens (Decision #230 (d)).
+ * before KYB). A draft business is published from its Overview (Decision #248), so a viewer who may
+ * publish is linked there and anyone else is given the fact alone; an archived one is restored by its
+ * owner from the archived roster; KYB links to Verification, which the billing right always opens
+ * (Decision #230 (d)).
  */
 export function billingGate(input: BillingGateInput): BillingGate | null {
 	const business = input.name;
@@ -344,7 +347,13 @@ export function billingGate(input: BillingGateInput): BillingGate | null {
 					: null,
 			};
 		}
-		return { kind: "draft", sentence, action: null };
+		return {
+			kind: "draft",
+			sentence,
+			action: input.canPublish
+				? { label: "Publish from the Overview", href: workspaceHref("business", input.handle) }
+				: null,
+		};
 	}
 	const state = input.kyb?.status ?? input.verification;
 	if (state === "verified") return null;

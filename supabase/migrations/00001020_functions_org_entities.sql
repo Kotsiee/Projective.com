@@ -2633,6 +2633,9 @@ BEGIN
                  WHERE w.owner_type = 'business' AND w.owner_id = e.id AND tx.direction = 'debit'
                    AND tx.reason <> 'transfer_out' AND tx.created_at > now() - interval '30 days'
                  GROUP BY tx.currency) s) END,
+        -- The Draft-First facts, the same as the console's (org.get_workspace_detail): a business's
+        -- `funded` (money was ever added to its pooled wallet) and `limits_offered` (its plan lets it
+        -- set a threshold or member limits — Business Pro's `pooled_wallet_full`, or the gates off).
         'setup', jsonb_build_object(
             'logo', e.avatar IS NOT NULL,
             'bio', COALESCE(e.headline, '') <> '',
@@ -2641,7 +2644,12 @@ BEGIN
                     JOIN org.team_members m3 ON m3.team_id = ca.team_id AND m3.user_id = ca.member_user_id AND m3.status = 'active'
                    WHERE ca.team_id = e.id AND ca.percent_bp > 0) > 1
                 ELSE EXISTS (SELECT 1 FROM finance.wallets w WHERE w.owner_type = 'business' AND w.owner_id = e.id
-                              AND COALESCE(w.approval_threshold_cents, 0) > 0) END),
+                              AND COALESCE(w.approval_threshold_cents, 0) > 0) END,
+            'funded', p_kind = 'business' AND EXISTS (SELECT 1 FROM finance.ledger_audit la
+                JOIN finance.wallets w ON w.id = la.wallet_id
+               WHERE w.owner_type = 'business' AND w.owner_id = e.id AND la.action = 'add_funds'),
+            'limits_offered', p_kind = 'business' AND NOT (finance.fn_business_plan_gates_enforced()
+                AND NOT finance.fn_business_gate_flag(e.id, 'pooled_wallet_full'::finance.entitlement_key))),
         'has_update', EXISTS (SELECT 1 FROM comms.notifications n
             WHERE n.user_id = v_uid AND n.context_type = p_kind AND n.context_id = e.id
               AND n.seen_at IS NULL AND n.archived_at IS NULL)
@@ -2712,7 +2720,11 @@ $$;
 --     `money_tiles` — for a viewer who may open Finance (contribute_funds · spend_funds ·
 --     manage_finances): per wallet currency, available · pending · committed · awaiting approval ·
 --     spent in 30 days; `viewer_can` — what the viewer may do, as the write doors decide it; and `kyb` —
---     the KYB status, the Connect account's presence and what is still due.
+--     the KYB status, the Connect account's presence and what is still due;
+--   * `setup` — the Draft-First facts the Overview's setup hero is decided on (the same as the
+--     roster's): mark, one-liner, invite, money (a team's split, a business's threshold) and, for a
+--     business (BU6), `funded` (any `add_funds` ledger row on its wallets) and `limits_offered` (its
+--     plan lets it set a threshold or member limits — NOT `limits_plan_gated`).
 -- VOLATILE because the allowance read opens the week and pays out the lazy drip.
 CREATE OR REPLACE FUNCTION org.get_workspace_detail(p_kind text, p_handle text)
 RETURNS jsonb
@@ -3141,7 +3153,16 @@ BEGIN
                     JOIN org.team_members m3 ON m3.team_id = ca.team_id AND m3.user_id = ca.member_user_id AND m3.status = 'active'
                    WHERE ca.team_id = v_e.id AND ca.percent_bp > 0) > 1
                 ELSE EXISTS (SELECT 1 FROM finance.wallets w WHERE w.owner_type = 'business' AND w.owner_id = v_e.id
-                              AND COALESCE(w.approval_threshold_cents, 0) > 0) END)
+                              AND COALESCE(w.approval_threshold_cents, 0) > 0) END,
+            -- Money was ever added to the business's pooled wallet (any `add_funds` row), so the
+            -- Overview's "Add money" step stays done once the wallet is spent.
+            'funded', p_kind = 'business' AND EXISTS (SELECT 1 FROM finance.ledger_audit la
+                JOIN finance.wallets w ON w.id = la.wallet_id
+               WHERE w.owner_type = 'business' AND w.owner_id = v_e.id AND la.action = 'add_funds'),
+            -- The plan lets the business set a threshold or member limits: the negation of the Spend
+            -- editor's `limits_plan_gated`. Without it the Overview leaves out "Set spending rules".
+            'limits_offered', p_kind = 'business' AND NOT (finance.fn_business_plan_gates_enforced()
+                AND NOT finance.fn_business_gate_flag(v_e.id, 'pooled_wallet_full'::finance.entitlement_key)))
     );
 END;
 $$;

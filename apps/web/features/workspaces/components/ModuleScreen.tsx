@@ -7,6 +7,7 @@ import {
 } from "@projective/types/workspace";
 import { moduleFor, type ModuleKey } from "../core/module-registry.tsx";
 import { ModulePlaceholder } from "./ModulePlaceholder.tsx";
+import { BusinessFinanceHead } from "./BusinessFinanceHead.tsx";
 import WorkspaceOverview from "../islands/WorkspaceOverview.island.tsx";
 import TalentScreen from "../islands/TalentScreen.island.tsx";
 import MembersScreen from "../islands/MembersScreen.island.tsx";
@@ -112,6 +113,8 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 
 		// --- Modules that DELEGATE to a surface that already exists -----------------------------------
 		case "finance":
+			// A business's Finance is a real head on its pooled wallet (BU6); a team's still hands off.
+			if (ws.kind === "business") return <BusinessFinanceHead workspace={ws} module={mod!} />;
 			return (
 				<ModulePlaceholder
 					kind={ws.kind}

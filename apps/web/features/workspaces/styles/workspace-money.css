@@ -25,6 +25,51 @@
 	gap: var(--space-5);
 	inline-size: 100%;
 	min-inline-size: 0;
+	container: wsp-money / inline-size;
+}
+
+/*
+ * A business's money band (BU6): each currency's row is always four figures, so it lays out as four
+ * columns, two rows of two, or one column, by the band's own width — never 3 + 1 — and the boundary
+ * hairline is drawn only BETWEEN tiles that share a row (in one column, between rows, as the console's
+ * stacked tiles are), so the tile that opens a second row sits flush under the one above it. Every
+ * tier sets both axes, so the console's viewport stack (`workspace-console.css`) never leaves a
+ * top hairline on a tile beside another. The breakpoints are the tiles' arithmetic: four
+ * `--wsp-tile-min` (11rem) tiles and three --space-5 gaps need 48.5rem; two need 23.5rem.
+ */
+.wsp-money-mod .wsp-tiles.ui-stats {
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.wsp-money-mod .wsp-tiles.ui-stats > .ui-stat + .ui-stat {
+	padding-block-start: 0;
+	padding-inline-start: var(--space-5);
+	border-block-start: none;
+	border-inline-start: var(--hairline);
+}
+
+@container wsp-money (inline-size < 48.5rem) {
+	.wsp-money-mod .wsp-tiles.ui-stats {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.wsp-money-mod .wsp-tiles.ui-stats > .ui-stat:nth-child(2n + 1) {
+		padding-inline-start: 0;
+		border-inline-start: none;
+	}
+}
+
+@container wsp-money (inline-size < 23.5rem) {
+	.wsp-money-mod .wsp-tiles.ui-stats {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.wsp-money-mod .wsp-tiles.ui-stats > .ui-stat + .ui-stat {
+		padding-block-start: var(--space-4);
+		padding-inline-start: 0;
+		border-block-start: var(--hairline);
+		border-inline-start: none;
+	}
 }
 
 /*
@@ -41,13 +86,6 @@
 	min-inline-size: 0;
 }
 
-/* The figure beside the hand-off link — the one number worth repeating next to the door. */
-.wsp-moneyhead__figure {
-	display: inline-flex;
-	align-items: baseline;
-	min-inline-size: 0;
-}
-
 .wsp-moneyhead__link {
 	display: inline-flex;
 	align-items: center;
@@ -61,6 +99,59 @@
 
 .wsp-moneyhead__link:hover {
 	text-decoration: underline;
+}
+
+/*
+ * A business's Finance module (BU6): the page head, the hand-off note, the balance line and ONE tier-4
+ * "Open the business wallet". The wallet is the finance UI; this is its door, so it holds no figure the
+ * balance line does not already say.
+ */
+.wsp-financehead__balance {
+	margin-block: var(--space-3) 0;
+}
+
+/*
+ * A balance figure on that line: tabular, and isolated left-to-right so its symbol and digits keep
+ * their order in either direction (DESIGN_SYSTEM §A Figures — the server's `display`, hand-placed).
+ */
+.wsp-financehead__num {
+	font-variant-numeric: tabular-nums;
+	direction: ltr;
+	unicode-bidi: isolate;
+}
+
+.wsp-financehead__act {
+	margin-block: var(--space-4) 0;
+}
+
+/* The anchor wears the Button tier; a Button draws no link underline. */
+.wsp-financehead__open {
+	text-decoration: none;
+}
+
+/*
+ * A draft business's not-active notice on its Overview (BU6): the sentence, then — for a viewer who
+ * may publish — the tier-3 Publish beside it, the band's one fill while the hero is hidden. The
+ * notice keeps the band's inset (no inline padding of its own) and the Button wraps under the
+ * sentence on a narrow column rather than squeezing it.
+ */
+.wsp-draft {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2) var(--space-4);
+	min-inline-size: 0;
+}
+
+.wsp-draft__notice.ui-inline-notice {
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	padding-inline: 0;
+	padding-block: var(--space-2);
+}
+
+.wsp-draft__publish {
+	flex: none;
 }
 
 /* #endregion */

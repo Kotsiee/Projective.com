@@ -721,7 +721,21 @@ team members.
 - **Draft-First Creation:** Creating a Business is low-friction — the owner supplies only a display
   **Name** and a unique alphanumeric **`@handle`**. The Business is created instantly in a
   **Draft/Unverified** state; legal name, logo, billing details, member roles, and financial setup
-  are completed afterwards on the Business settings page.
+  are completed afterwards on the Business settings page. The console's **Overview** walks the setup
+  in order (Decision #248): **Invite a colleague** · **Verify the business** (KYB) · **Add money**
+  (load the pooled wallet so members can fund work without a card each time — done once money has
+  ever been added) · **Set spending rules** (only on a plan that can set them, Business Pro; a
+  Business on Business Free walks four steps, never held at 80% by one it could not finish) ·
+  **Publish**. Each step offers a control only to a member who may act on it, and the setup band
+  carries ONE filled control — the viewer's next step; when that is **Add money**, the act that
+  starts a financial flow, it is the amber one and opens the wallet's top-up. **Publishing is not
+  held behind the earlier steps** — KYB waits on reviewers and a top-up on the payment processor —
+  so a member who may publish (`manage_settings`) publishes a draft from the Overview at any time:
+  the band's fill when it is their first open step, a quieter control otherwise. A draft Business
+  whose setup band the viewer has hidden states that it can't buy, hire or pay yet, with **Publish**
+  and the fact that publishing can't be undone (or, for anyone else, to ask the owner to publish
+  it). An **archived** Business shows no setup steps — nothing in its wallet can be spent until it
+  is restored, so it is never asked for money. The roster's "% set up" counts the same steps.
 - **Visibility:** a Business takes the same visibility a team does — **public**, **unlisted** or
   **invite-only** — and only a public Business is listed in the directory (Decision #230 (h)). Its
   public page (`/@handle`) opens for anyone while the Business is active and public or unlisted (an
@@ -3188,15 +3202,16 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               | `/become-partner`         |                          | Freelancer conversion funnel (Client/Operator → unlock freelancer suite)                       |
 |               | `/businesses`             | `index`                  | Show all businesses (any adult account — Decision #230 (a))                                   |
 |               | `/businesses/create`      |                          | Create a new business                                                                          |
-|               | `/businesses/[businessHandle]` | `index`             | The console's **Overview** — addressed by the business's `@handle` ([ROUTING.md](../architecture/ROUTING.md) business rows) |
+|               | `/businesses/[businessHandle]` | `index`             | The console's **Overview** — addressed by the business's `@handle` ([ROUTING.md](../architecture/ROUTING.md) business rows); the setup steps while any is open, and the money band (per currency: Available · Committed · Awaiting approval · Spent 30d) for whoever may open `finance` (Decision #248) |
 |               |                           | `members`                | Members                                                                                        |
 |               |                           | `projects`               | Projects the business has commissioned                                                         |
+|               |                           | `finance`                | The door to the pooled Business Wallet — the balance per currency and **Open the business wallet** (the wallet is the finance UI); opens for anyone who pays into, spends from or runs the wallet (Decision #248) |
 |               |                           | `spend`                  | Limits, approval thresholds, the approval queue and the attributable pool ledger                |
 |               |                           | `billing`                | Invoices (with **Pay**), statement PDFs, invoicing terms, auto-funding and the balance floor (§Escrow, Wallets & Finance #4) |
 |               |                           | `talent`                 | The bench — freelancers and teams the business has hired (Decision #230 (i))                    |
 |               |                           | `verification`           | Business verification (KYB) — where it stands, what is still due, what it unlocks, and the start of Stripe Connect onboarding for whoever holds the billing right (Decision #242) |
 |               |                           | `settings`               | Handle, defaults, ownership transfer and archiving                                             |
-|               |                           | _other modules_          | `roles` · `invitations` · `finance` (the Business Wallet) · `calendar` · `messages` · `analytics` · `standing` · `profile` — the rest of the kind-business module registry (`features/workspaces/core/module-registry.tsx`) |
+|               |                           | _other modules_          | `roles` · `invitations` · `calendar` · `messages` · `analytics` · `standing` · `profile` — the rest of the kind-business module registry (`features/workspaces/core/module-registry.tsx`) |
 |               | `/connections`            | `index`                  | View network connections                                                                       |
 |               | `/calendar`               | `index`                  | Personal agenda — the union of every engagement the account is on, over its own working hours, call windows and booked leave. The same occurrence as on `/projects/[project id]/calendar`, not a copy |
 |               | `/catalogue`              | `index`                  | Seller console — the listings (cards or rows by zoom, facets, a batch bar for the selection) and the Analytics and Clients views (`?view=`). A listing is created in the `?create=` Quick-Init modal, never on a page of its own |

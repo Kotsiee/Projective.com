@@ -1,17 +1,21 @@
 import {
 	type ActivityEntry,
+	type BusinessMoneyTile,
+	canOpenFinance,
 	type SetupStep,
 	type SetupStepId,
+	walletHrefFor,
 	type WorkspaceDetail,
-	type WorkspaceFinance,
 	workspaceHref,
 	type WorkspaceKind,
 } from "@projective/types/workspace";
+import { walletIntentHref } from "@features/wallet/core/wallet-intent.ts";
 
 /**
  * overview-model — every rule the console's Overview composes, as pure functions over the server's
  * {@link WorkspaceDetail}: the setup hero and its ONE filled control, which zones render, the metric
- * tiles, the projects preview and the activity rows.
+ * tiles, a business's money band, the projects preview and the activity rows — and the Finance
+ * module's balance line, which reads the same tiles.
  *
  * The island only paints what this returns, so the rules the Overview is judged by — exactly one filled
  * control whatever the setup state, no action a viewer cannot perform, no money for a viewer the read
@@ -26,17 +30,23 @@ import {
 export type HeroActionKind = "invite" | "publish" | "link";
 
 /**
- * The Button Interaction Matrix tier a step's control takes (DESIGN_SYSTEM §B.8.1): 2 — the monochrome
- * structural fill (Invite member); 3 — the primary fill (Publish, or the next step's page); 4 — the
- * neutral outlined utility (every other step the viewer may act on).
+ * The Button Interaction Matrix tier a step's control takes (DESIGN_SYSTEM §B.8.1): 1 — the amber
+ * accent (a business's Add money, the act that starts a financial flow); 2 — the monochrome
+ * structural fill (Invite member); 3 — the primary (Publish, or the next step's page); 4 — the
+ * neutral outlined utility (every other step the viewer may act on). Publish is a commit, never a
+ * utility: a business's Publish offered beside earlier open steps keeps tier 3's primary severity,
+ * `outlined` and unfilled (the weight table's real-alternative row, Decision #248).
  */
-export type HeroTier = 2 | 3 | 4;
+export type HeroTier = 1 | 2 | 3 | 4;
 
 /** One step's control. */
 export interface HeroAction {
 	kind: HeroActionKind;
 	tier: HeroTier;
-	/** Whether this is the band's ONE filled control — tiers 2 and 3. */
+	/**
+	 * Whether this is the band's ONE filled control. Every fill is tier 1 to 3; the only unfilled
+	 * tier 3 is a business's Publish beside earlier open steps.
+	 */
 	filled: boolean;
 	label: string;
 	/** The page a `link` goes to; `""` for an in-place action. */
@@ -81,22 +91,35 @@ function actionKind(id: SetupStepId): HeroActionKind {
  * step IS ("Complete the public profile") and sits right above its control, in a column a fifth of
  * the band wide, so the control names the act in a word or two instead of repeating it: a small
  * Button has a fixed height, and a label that wraps inside it spills past its border. A step not
- * listed keeps its own label, which is already that short ("Set the split", "Add a mark", "Publish").
+ * listed keeps its own label, which is already that short ("Set the split", "Add money", "Publish").
  */
 export const HERO_ACTION_LABEL: Readonly<
 	Record<WorkspaceKind, Readonly<Partial<Record<SetupStepId, string>>>>
 > = {
 	team: { invite: "Invite member", profile: "Edit profile", verification: "Verify identity" },
-	business: { invite: "Invite member", bio: "Edit profile", money: "Set threshold" },
+	business: { invite: "Invite member", verification: "Verify business", money: "Set rules" },
 };
+
+/**
+ * The tier of the band's ONE fill on a step: the structural Invite member is tier 2; a business's Add
+ * money is tier 1 — the amber that starts a financial flow (the wallet's top-up, §B.8.1); anything
+ * else (Publish, or the step's page) the tier-3 primary.
+ */
+function primaryTier(id: SetupStepId): HeroTier {
+	if (id === "invite") return 2;
+	if (id === "fund") return 1;
+	return 3;
+}
 
 /**
  * A step's control.
  *
- * The first unfinished step the viewer may act on carries the band's one fill: the tier-2 structural
- * Invite member, else the tier-3 primary (Publish, or the step's page). Every other step they may act on
- * gets a tier-4 utility — except Publish, a one-way commit offered only as the step at hand, never
- * beside the steps that come before it ({@link setupHero} never makes it primary before then). A step
+ * The first unfinished step the viewer may act on carries the band's one fill
+ * ({@link primaryTier}). Every other step they may act on gets a tier-4 utility — except Publish, a
+ * one-way commit. A TEAM's is offered only as the step at hand, never beside the steps that come
+ * before it ({@link setupHero} never makes it primary before then). A business's is not held behind
+ * its other steps (Decision #248): offered beside them it stays a tier-3 primary, `outlined` and
+ * unfilled, so the commit never reads as a utility and the band never holds a second fill. A step
  * whose page is unknown (`href: ""`) offers nothing. Its words are {@link HERO_ACTION_LABEL}'s.
  */
 function actionFor(step: SetupStep, primary: boolean, entity: WorkspaceKind): HeroAction | null {
@@ -105,8 +128,10 @@ function actionFor(step: SetupStep, primary: boolean, entity: WorkspaceKind): He
 	if (kind === "link" && !step.href) return null;
 	const label = HERO_ACTION_LABEL[entity][step.id] ?? step.label;
 	const href = kind === "link" ? step.href : "";
-	if (primary) return { kind, tier: kind === "invite" ? 2 : 3, filled: true, label, href };
-	if (kind === "publish") return null;
+	if (primary) return { kind, tier: primaryTier(step.id), filled: true, label, href };
+	if (kind === "publish") {
+		return entity === "team" ? null : { kind, tier: 3, filled: false, label, href };
+	}
 	return { kind, tier: 4, filled: false, label, href };
 }
 
@@ -121,11 +146,15 @@ export function setupHero(
 	if (input.dismissed || steps.length === 0 || steps.every((s) => s.done)) return null;
 	const current = steps.findIndex((s) => !s.done);
 	// The first unfinished step the viewer can actually act on (done, unactionable and page-less
-	// steps all answer `null`). Publish qualifies only as the CURRENT step: a viewer who may publish
-	// but not invite, split or edit the profile is never handed the one-way commit while the steps
-	// before it are still open — the band then simply carries no fill for them.
+	// steps all answer `null`). A team's Publish qualifies only as the CURRENT step: a viewer who may
+	// publish but not invite, split or edit the profile is never handed the one-way commit while the
+	// steps before it are still open — the band then simply carries no fill for them. A business's
+	// Publish qualifies whenever the viewer may publish (Decision #248): its earlier steps (KYB, money,
+	// spending rules) can wait on a reviewer, a processor or a plan, and the hero is where a draft
+	// business is published.
 	const primary = steps.findIndex((s, i) =>
-		(s.id !== "publish" || i === current) && actionFor(s, true, kind) !== null
+		(s.id !== "publish" || kind === "business" || i === current) &&
+		actionFor(s, true, kind) !== null
 	);
 	const done = steps.filter((s) => s.done).length;
 	return {
@@ -185,8 +214,8 @@ export function liveProjectCount(detail: WorkspaceDetail): number {
 /**
  * The metric row. Members and live projects for everyone; a team's vault only where the read answered
  * it (the payout block, `manage_finances` holders — Decision #233) and its proposal allowance (B7); a
- * business's proposals still awaiting a reply. A business's money is not a tile here: it keeps its own
- * band ({@link businessMoney}) until BU6 rebuilds the business Overview's money on its BB9 tiles.
+ * business's proposals still awaiting a reply. A business's money is not a tile here: it is its own
+ * band ({@link businessMoney}), BB9's tiles per wallet currency.
  */
 export function overviewMetrics(detail: WorkspaceDetail): OverviewMetric[] {
 	const members = detail.members.filter((m) => m.state === "active").length;
@@ -240,19 +269,62 @@ export function overviewMetrics(detail: WorkspaceDetail): OverviewMetric[] {
 	return metrics;
 }
 
+/** A business's money band: BB9's tiles and the hand-off to its pooled wallet. */
+export interface BusinessMoneyBand {
+	/** One per wallet currency, the business's default currency first (`WorkspaceDetail.moneyTiles`). */
+	tiles: BusinessMoneyTile[];
+	/** The business wallet, VIEWED (`/wallet?w=business:<id>`) — never a switch of who acts. */
+	walletHref: string;
+}
+
 /**
- * A business's money band — its Available, Committed and Awaiting-approval figures and the hand-off
- * to the full wallet (`FinanceSummary`) — for a viewer holding a money right (`manage_finances`,
- * `spend_funds` or `withdraw_funds`), else `null`. The business Overview's money is BU6's to rebuild
- * on its BB9 tiles; until then it renders exactly as it did. A team never has one: its money is the
- * vault tile.
+ * A business's money band — per wallet currency its Available, Committed, Awaiting-approval and
+ * Spent-in-30-days figures (BB9's `moneyTiles`), and the hand-off to its pooled wallet — exactly when
+ * the viewer may open the Finance module ({@link canOpenFinance}: `contribute_funds`, `spend_funds` or
+ * `manage_finances` — BUSINESSES_AUDIT BD18), the same predicate the read answers the tiles on, so the
+ * band and the module never disagree about one viewer. A team never has one: its money is the vault
+ * tile.
+ *
+ * The band's predicate is also the hand-off's: the wallet opens a business's `?w=business:<id>` view
+ * for every member of it (`resolveWalletContext` — membership alone is `view`), and every viewer the
+ * band renders for is one, so a band always carries its link and there is no second gate to pass
+ * (BD19, Decision #248).
  */
-export function businessMoney(detail: WorkspaceDetail): WorkspaceFinance | null {
+export function businessMoney(detail: WorkspaceDetail): BusinessMoneyBand | null {
 	if (detail.kind !== "business") return null;
-	const caps = detail.viewerCapabilities;
-	const canSee = caps.includes("manage_finances") || caps.includes("spend_funds") ||
-		caps.includes("withdraw_funds");
-	return canSee ? detail.finance : null;
+	if (!canOpenFinance("business", detail.viewerCapabilities)) return null;
+	return {
+		tiles: detail.moneyTiles,
+		walletHref: walletHrefFor("business", detail.id),
+	};
+}
+
+/** One fact on the Finance module's balance line. */
+export interface WalletBalanceFact {
+	key: string;
+	/**
+	 * The figure — the server's `display`, in the tile's OWN currency (never converted, so it reads
+	 * as the Overview band's pinned tile does) — or `null` for the empty-wallet fact.
+	 */
+	figure: string | null;
+	/** The words after the figure ("available"), or the whole fact when there is no figure. */
+	text: string;
+}
+
+/**
+ * The Finance module's balance line — one fact per wallet currency ("US$2,500.00 available"), from the
+ * same BB9 tiles as the Overview's band, or that the wallet holds nothing yet. Every figure is the
+ * server's `MoneyView.display` in its own currency: nothing here formats, converts or totals money.
+ */
+export function walletBalanceFacts(tiles: readonly BusinessMoneyTile[]): WalletBalanceFact[] {
+	if (tiles.length === 0) {
+		return [{ key: "empty", figure: null, text: "Nothing in the wallet yet" }];
+	}
+	return tiles.map((tile) => ({
+		key: tile.currency,
+		figure: tile.available.display,
+		text: "available",
+	}));
 }
 // #endregion
 
@@ -354,60 +426,99 @@ export interface ProposeNotice {
 	canInvite: boolean;
 }
 
+/**
+ * A draft business's `business_not_active` fact, stated only where the hero's Publish step is not
+ * already saying it (Decision #248).
+ */
+export interface DraftNotice {
+	/** Whether the notice may offer Publish (the viewer holds `manage_settings`). */
+	canPublish: boolean;
+}
+
 /** Everything the Overview renders, top to bottom. */
 export interface OverviewModel {
 	hero: SetupHeroModel | null;
-	/**
-	 * The verification lock while unverified — for a team only when the hero is not already showing
-	 * the step; a business keeps its lock beside the hero, as it always has (BU6's surface).
-	 */
+	/** The verification lock while unverified — only when the hero is not already showing the step. */
 	lock: boolean;
 	/** "Teams need two members to send proposals" — only for a team that cannot, off the hero. */
 	propose: ProposeNotice | null;
+	/** "{Business} isn't active…" — only for a draft business whose hero is not showing Publish. */
+	draft: DraftNotice | null;
 	/**
-	 * The notices the hero is carrying right now — what {@link lock} and {@link propose} become once
-	 * it is dismissed. The island draws them beside the hero, hidden until the stack carries the
-	 * dismissal mark (set by the pre-paint guard, {@link heroDismissGuard}, and by the island itself),
-	 * so a viewer who dismissed the hero earlier sees them in place from first paint instead of
-	 * popping in once the island has read their choice.
+	 * The notices the hero is carrying right now — what {@link lock}, {@link propose} and
+	 * {@link draft} become once it is dismissed. The island draws them beside the hero, hidden until
+	 * the stack carries the dismissal mark (set by the pre-paint guard, {@link heroDismissGuard}, and by
+	 * the island itself), so a viewer who dismissed the hero earlier sees them in place from first
+	 * paint instead of popping in once the island has read their choice.
 	 */
-	standIn: { lock: boolean; propose: ProposeNotice | null };
+	standIn: { lock: boolean; propose: ProposeNotice | null; draft: DraftNotice | null };
 	metrics: OverviewMetric[];
-	/** A business's money band ({@link businessMoney}); `null` for a team or a viewer without a money right. */
-	money: WorkspaceFinance | null;
+	/** A business's money band ({@link businessMoney}); `null` for a team or a viewer who cannot open Finance. */
+	money: BusinessMoneyBand | null;
 	projects: PreviewRow[];
 	/** The Projects module, for "See all". */
 	projectsHref: string;
 	activity: ActivityRow[];
 }
 
-/** The notices beside a hero (or none): the verification lock and the two-member rule. */
+/**
+ * The notices beside a hero (or none): the verification lock, the two-member rule and a draft
+ * business's not-active fact — each only where the hero is not showing its step.
+ */
 function notices(
 	detail: WorkspaceDetail,
 	hero: SetupHeroModel | null,
-): Pick<OverviewModel, "lock" | "propose"> {
+): Pick<OverviewModel, "lock" | "propose" | "draft"> {
 	return {
-		lock: detail.verification !== "verified" &&
-			(detail.kind === "business" || !heroHasOpen(hero, "verification")),
+		lock: detail.verification !== "verified" && !heroHasOpen(hero, "verification"),
 		propose: detail.kind === "team" && !detail.canPropose && !heroHasOpen(hero, "invite")
 			? { canInvite: detail.viewerCapabilities.includes("invite_members") }
+			: null,
+		draft: detail.kind === "business" && detail.status === "draft" && !heroHasOpen(hero, "publish")
+			? { canPublish: detail.viewerCapabilities.includes("manage_settings") }
 			: null,
 	};
 }
 
 /**
+ * Where a business's Add money step goes: its pooled wallet with the top-up already open, returning to
+ * this Overview when done (the wallet intent, Decision #243; the way back allowlisted by #248).
+ */
+export function addMoneyHrefFor(businessId: string, handle: string): string {
+	return walletIntentHref(`business:${businessId}`, "top_up", workspaceHref("business", handle));
+}
+
+/**
+ * The steps as the hero draws them: the server's, with a business's Add money pointed at the wallet's
+ * top-up intent rather than the bare wallet the read addresses it to.
+ */
+function heroSteps(detail: WorkspaceDetail): SetupStep[] {
+	if (detail.kind !== "business") return detail.setup;
+	return detail.setup.map((step) =>
+		step.id === "fund" && step.href
+			? { ...step, href: addMoneyHrefFor(detail.id, detail.handle) }
+			: step
+	);
+}
+
+/**
  * The Overview for one viewer. `dismissed` is their remembered choice to hide the hero; the notices
- * the hero was carrying (the two-member rule, the verification lock) come back once it is gone, so
- * hiding the steps never hides the facts.
+ * the hero was carrying (the two-member rule, the verification lock, a draft business's not-active
+ * fact) come back once it is gone, so hiding the steps never hides the facts.
+ *
+ * An archived business draws no hero: it is not being set up, nothing it holds can be spent until it
+ * is restored, and its steps would hand a member Add money into a wallet that cannot pay out
+ * (Decision #248).
  */
 export function overviewModel(
 	detail: WorkspaceDetail,
 	opts: { dismissed: boolean },
 ): OverviewModel {
-	const hero = setupHero({
+	const archivedBusiness = detail.kind === "business" && detail.status === "archived";
+	const hero = archivedBusiness ? null : setupHero({
 		kind: detail.kind,
 		name: detail.name,
-		steps: detail.setup,
+		steps: heroSteps(detail),
 		dismissed: opts.dismissed,
 	});
 	const shown = notices(detail, hero);
@@ -416,9 +527,11 @@ export function overviewModel(
 		hero,
 		lock: shown.lock,
 		propose: shown.propose,
+		draft: shown.draft,
 		standIn: {
 			lock: away.lock && !shown.lock,
 			propose: shown.propose ? null : away.propose,
+			draft: shown.draft ? null : away.draft,
 		},
 		metrics: overviewMetrics(detail),
 		money: businessMoney(detail),
@@ -429,13 +542,15 @@ export function overviewModel(
 }
 
 /**
- * How many FILLED controls the Overview renders. Only the hero carries one — the notices act through a
- * link-weight control, the money band's wallet hand-off is a link, the projects and activity rows are
- * links, "See all" is tier 5 and the dismiss is an icon-only text button — so this is the hero's
- * count, held to at most one.
+ * How many FILLED controls the Overview renders: the hero's one, or — only while no hero is showing
+ * Publish — a draft business's notice's tier-3 Publish for a viewer who may publish. Everything else
+ * is quieter: the other notices act through a link-weight control, the money band's wallet hand-off
+ * is a link, the projects and activity rows are links, "See all" is tier 5 and the dismiss is an
+ * icon-only text button. Held to at most one.
  */
 export function filledControls(model: OverviewModel): number {
-	return model.hero?.steps.filter((s) => s.action?.filled).length ?? 0;
+	const hero = model.hero?.steps.filter((s) => s.action?.filled).length ?? 0;
+	return hero + (model.draft?.canPublish ? 1 : 0);
 }
 // #endregion
 

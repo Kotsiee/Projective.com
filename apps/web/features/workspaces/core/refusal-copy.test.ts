@@ -36,6 +36,8 @@ const CONTEXTS: readonly BusinessRefusalContext[] = [
 	{ business: "Atlas Labs", kybStatus: "expired" },
 	{ business: "Atlas Labs", approvers: [], managesMembers: true },
 	{ managesMembers: true },
+	{ business: "Probe Co", businessStatus: "draft" },
+	{ businessStatus: "archived" },
 ];
 
 function assertPlain(text: string, where: string): void {
@@ -145,6 +147,41 @@ Deno.test("no other approver: the owner is told where to add one, never to ask t
 			"Nobody else at Atlas Labs can approve spending yet. Give a member approval rights in Members.",
 		);
 		assert(!owner.includes("Ask the owner"));
+	}
+});
+
+Deno.test("no ask sends a member to a surface that cannot act on it (BU6, Decision #248)", () => {
+	// Settings cannot publish or restore a business — the Overview publishes, the roster restores.
+	for (const code of BUSINESS_REFUSAL_CODES) {
+		for (const [i, ctx] of CONTEXTS.entries()) {
+			const ask = BUSINESS_REFUSAL_COPY[code].ask(ctx);
+			assert(!/settings/i.test(ask), `${code}.ask #${i}: "${ask}" names settings`);
+		}
+	}
+	assertEquals(
+		BUSINESS_REFUSAL_COPY.business_not_active.ask(EMPTY),
+		"Ask the owner to publish or restore it.",
+	);
+	assertEquals(
+		BUSINESS_REFUSAL_COPY.business_not_active.sentence({ business: "Probe Co" }),
+		"Probe Co isn't active, so it can't buy, hire or pay yet.",
+	);
+});
+
+Deno.test("business_not_active asks for the one act the business's status needs, where it is known", () => {
+	const ask = BUSINESS_REFUSAL_COPY.business_not_active.ask;
+	// A draft is published, never restored; an archived business is restored, never published.
+	assertEquals(
+		ask({ business: "Probe Co", businessStatus: "draft" }),
+		"Ask the owner to publish it.",
+	);
+	assertEquals(
+		ask({ business: "Probe Co", businessStatus: "archived" }),
+		"Ask the owner to restore it.",
+	);
+	// Unknown (the checkout reads no status) or anything else: both acts.
+	for (const businessStatus of [undefined, null, "active"]) {
+		assertEquals(ask({ businessStatus }), "Ask the owner to publish or restore it.");
 	}
 });
 

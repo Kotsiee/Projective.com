@@ -1373,6 +1373,11 @@ other commits in tier 2 — is open as Decision #157 flag (j); the docs follow t
   fill is the payment step's commit while it renders: the rail's Buy Now is then not rendered at all
   (`gateTakesCommit`), as for a pending card step (B.8.2), and the rail keeps its "Pay is off
   until…" line;
+- a business Overview's setup step **Add money** (`SetupHero`, an anchor in the accent pill's
+  classes — `ui-button--accent ui-button--filled ui-button--rounded`) — it opens the business
+  wallet's top-up and returns to the Overview (Decision #248). It is tier 1 only as the band's ONE
+  fill, the viewer's next step; beside an earlier open step it is a tier-4 neutral outlined link, so
+  the band never holds two fills or two ambers (`overview-model.ts` `setupHero`, unit-tested);
 - Settings → Verification & payouts' **Set up payouts** / **Continue setup** — the start of the
   personal Connect account money is transferred to, and only while it is the page's one next step
   (`nextVerificationStep`); otherwise, and as **Update payout details** on a verified account, it
@@ -1382,7 +1387,13 @@ other commits in tier 2 — is open as Decision #157 flag (j); the docs follow t
 **Commits that stay tier 3 — the "never borrowed" sentence, worked.** Wallet configuration commits
 (the payout schedule, recurring-deposit setup, spend request, income smoother, Save card), the
 spend-approval **Approve**, **Accept Submission** and **Publish** commit a setting or a workflow
-step, not a payment in flight, and keep `severity="primary"`. One money-releasing commit, and its
+step, not a payment in flight, and keep `severity="primary"`. A business Overview's **Publish**
+(Decision #248) keeps it wherever it renders and never drops to a utility: the setup hero's fill
+when it is the viewer's first open step; beside an earlier open step, `variant="outlined"` — the
+B.8.1 weight table's real-alternative row, so the band never holds a second fill; and on the draft
+notice that stands in for a hidden hero, a filled `size="sm"` Button, that view's one fill (it
+renders only while no hero shows Publish — `filledControls`, unit-tested), with the one-way
+consequence ("Publishing can't be undone.") in the sentence beside it. One money-releasing commit, and its
 opener, are held non-amber by a component, not by the rule: `ConfirmDialog` / `ConfirmPopup` type `acceptSeverity`
 as the shared `Severity`, so _Approve and release_ (`ApproveStageDialog`) cannot take `accent`, and
 its opener _Approve Stage_ (`SubmissionActionBar`) stays beside it for consistency (Decision #157

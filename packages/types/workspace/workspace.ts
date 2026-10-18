@@ -104,15 +104,15 @@ export type WorkspaceRoster = z.infer<typeof WorkspaceRosterSchema>;
 /**
  * Which Draft-First step a row is. A team walks `invite` (a second active member — two are needed to
  * apply) · `money` (the split) · `profile` (mark and one-liner) · `verification` (the owner's identity,
- * Decision #196) · `publish`; a business walks `logo` · `bio` · `invite` · `money` (its approval
- * threshold) · `verification` (KYB).
+ * Decision #196) · `publish`; a business walks `invite` (a colleague) · `verification` (KYB) · `fund`
+ * (money added to its pooled wallet) · `money` (its spending rules — only on a plan that lets it set
+ * them) · `publish` (BU6, Decision #248).
  */
 export const SetupStepId = z.enum([
 	"invite",
 	"money",
 	"profile",
-	"logo",
-	"bio",
+	"fund",
 	"verification",
 	"publish",
 ]);
@@ -126,8 +126,9 @@ export const SetupStepSchema = z.object({
 	note: z.string().max(160),
 	done: z.boolean(),
 	/**
-	 * Where the step's action goes: a console module, the public profile editor, or — for a team's
-	 * owner verification — the owner's own `/settings/verification`.
+	 * Where the step's action goes: a console module, the public profile editor, the business's
+	 * pooled wallet (`fund`, which the Overview turns into the wallet's top-up intent), or — for a
+	 * team's owner verification — the owner's own `/settings/verification`.
 	 */
 	href: z.string().max(200),
 	/**
@@ -728,7 +729,8 @@ export function setupProgress(steps: readonly SetupStep[]): number {
  * Whether a viewer holding `caps` may act on a setup step — the same right that opens the step's
  * module (`module-registry-gates.test.ts` pins the agreement), or the right its in-place write checks:
  * inviting needs `invite_members`; the split (a team's Payouts) and a business's threshold need
- * `manage_finances`; the profile needs `edit_profile`; publishing needs `manage_settings`
+ * `manage_finances`; the profile needs `edit_profile`; adding money to a business's pooled wallet needs
+ * `contribute_funds` (the vault's `add_funds`, which Finance opens on); publishing needs `manage_settings`
  * (`org.set_workspace_status`). Verification differs by kind: a business's KYB follows
  * {@link canOpenVerification} (the billing right), while a team's is its OWNER's own identity check
  * (`org.fn_workspace_verification` reads the owner's `kyc_status`, Decision #196), finished in their
@@ -746,9 +748,9 @@ export function canActOnSetupStep(
 		case "money":
 			return caps.includes("manage_finances");
 		case "profile":
-		case "logo":
-		case "bio":
 			return caps.includes("edit_profile");
+		case "fund":
+			return kind === "business" && caps.includes("contribute_funds");
 		case "verification":
 			return kind === "team" ? viewerIsOwner : canOpenVerification(kind, caps);
 		case "publish":
