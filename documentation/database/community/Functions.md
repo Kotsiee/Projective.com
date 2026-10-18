@@ -37,7 +37,28 @@ Its TypeScript twin is `planNewsletterSubscription` (`subscription-plan.ts`, uni
 
 ## Help feedback
 
-_Not yet documented._ (P2.)
+| Function                                                                                              | Returns                         | Security                                                                        | Purpose                                                            |
+| :---------------------------------------------------------------------------------------------------- | :------------------------------ | :------------------------------------------------------------------------------ | :----------------------------------------------------------------- |
+| `community.submit_help_feedback(p_article_slug text, p_helpful boolean, p_comment text DEFAULT NULL)` | `jsonb` `{recorded, duplicate}` | DEFINER, `search_path = ''`; EXECUTE to `anon`, `authenticated`, `service_role` | The one writer of `community.help_feedback` ("Was this helpful?"). |
+
+What it decides, so no caller can:
+
+- **The voter** is `auth.uid()` — only when it names an `org.users_public` row, so a session with no
+  profile votes as a guest instead of failing the FK. Never an argument.
+- **The article** must be readable now (the `help_articles_select_published` rule), else `PH404`.
+- **The comment** goes only with a "No" and is at most 280 characters before masking (`22023`; a
+  NULL `p_helpful` is `22023` too), and is stored only after `comms.mask_pii`, with its categories
+  (Decision #147).
+- **Durable rate limits** (the service's per-process limiters — 10 per signed-in voter per 10
+  minutes, 20 per guest address a minute — sit in front): a signed-in voter's second vote on an
+  article inside 24 hours writes nothing and answers `{recorded: false, duplicate: true}` —
+  serialised by an advisory lock per voter and article, so a double press cannot write twice; past
+  30 votes in an hour a voter is refused `PH429`; and an article takes at most 120 guest votes an
+  hour (`PH429`).
+
+`HelpFeedbackBackendService` calls it with the caller's own client (the voter's JWT, or anon) and
+maps `PH404` → 404, `PH429` → 429, `22023` → 422, anything else → 503. Pinned by
+`supabase/probes/help_centre.sql` §5–§6.
 
 ## Feedback board
 

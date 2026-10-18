@@ -622,6 +622,8 @@ ALTER TABLE catalogue.collection_listings ENABLE ROW LEVEL SECURITY;
 -- created in 00000024 / 00000025 without its line here is unprotected the moment a grant reaches it.
 
 -- #region [editorial.help]
+ALTER TABLE editorial.help_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE editorial.help_articles ENABLE ROW LEVEL SECURITY;
 -- #endregion
 
 
@@ -639,6 +641,7 @@ ALTER TABLE community.newsletter_subscriptions ENABLE ROW LEVEL SECURITY;
 
 
 -- #region [community.help_feedback]
+ALTER TABLE community.help_feedback ENABLE ROW LEVEL SECURITY;
 -- #endregion
 
 

@@ -6,6 +6,9 @@
 
 
 -- #region [editorial.help]
+-- None beyond the constraints: the help service reads both tables whole (they are small reference
+-- sets), help_articles_category_position_key leads with category_slug and so also serves its foreign
+-- key, and help_articles_faq_rank_key serves the FAQ order.
 -- #endregion
 
 
@@ -28,6 +31,17 @@ CREATE INDEX IF NOT EXISTS idx_newsletter_subscriptions_topics_sendable
 
 
 -- #region [community.help_feedback]
+-- submit_help_feedback's signed-in checks — "has this voter voted on this article in the last day"
+-- and "how many votes has this voter cast in the last hour" — and the user_id foreign key's
+-- ON DELETE SET NULL. Guests (user_id NULL) are never looked up by voter, so they are left out.
+CREATE INDEX IF NOT EXISTS idx_help_feedback_voter_recent
+    ON community.help_feedback (user_id, created_at DESC)
+    WHERE user_id IS NOT NULL;
+
+-- The per-article guest ceiling ("guest votes on this article in the last hour"), an operator's
+-- per-article tally, and the article_slug foreign key.
+CREATE INDEX IF NOT EXISTS idx_help_feedback_article_recent
+    ON community.help_feedback (article_slug, created_at DESC);
 -- #endregion
 
 

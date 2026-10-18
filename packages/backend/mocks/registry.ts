@@ -255,10 +255,9 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		domain: "editorial",
 		label: "Help centre, changelog & articles",
 		gate: "EDITORIAL_BACKEND_LIVE",
-		// The shared reader (`services/editorial/editorial-source.ts` readEditorialTable) has a real
-		// anon-client path, but no surface service calls it until the help centre, changelog and
-		// articles work orders add their tables — so nothing reads the database through this gate yet.
-		liveImplemented: false,
+		// The help centre reads editorial.help_* through readEditorialTable's anon-client path
+		// (HelpBackendService, P2); the changelog and articles sources join it as their work orders land.
+		liveImplemented: true,
 		modules: [
 			"services/editorial/content/help.ts",
 			"services/editorial/content/changelog.ts",
@@ -266,21 +265,20 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		],
 		schemas: ["editorial"],
 		description:
-			"Platform-authored content (Decision #274). The content sources are NOT demo data: they are the authored rows `deno task db:editorial:generate` emits into 00005071–00005073, and with the gate off they are served through the same Zod row parse and mapping the live read uses, so fixtures cannot drift from the database. Every source is empty until its surface lands.",
+			"Platform-authored content (Decision #274). The content sources are NOT demo data: they are the authored rows `deno task db:editorial:generate` emits into 00005071–00005073, and with the gate off they are served through the same Zod row parse and mapping the live read uses, so fixtures cannot drift from the database. The help source is filled (P2: 8 categories, 33 articles); the changelog and articles sources stay empty until their surfaces land.",
 	},
 	community: {
 		domain: "community",
 		label: "Helpfulness votes & feedback board",
 		gate: "COMMUNITY_BACKEND_LIVE",
-		// Scaffold only (Decision #274): the shared module (`services/community/community-source.ts`)
-		// resolves the gate and maps rows, but the help-feedback and feedback-board services that would
-		// read or write through it do not exist yet. The newsletter, also in `community`, keeps its own
-		// NEWSLETTER_BACKEND_LIVE gate.
-		liveImplemented: false,
+		// Live for the help centre's helpfulness votes (HelpFeedbackBackendService → the definer door
+		// community.submit_help_feedback, P2); the feedback board joins as P7 lands. The newsletter, also
+		// in `community`, keeps its own NEWSLETTER_BACKEND_LIVE gate.
+		liveImplemented: true,
 		modules: [],
 		schemas: ["community"],
 		description:
-			"User-generated activity around the platform: the help centre's helpfulness votes and the feedback board's ideas, votes and status history. No surface service exists yet.",
+			"User-generated activity around the platform: the help centre's helpfulness votes (written through community.submit_help_feedback; with the gate off they are validated and answered, nothing stored) and the feedback board's ideas, votes and status history (no service yet).",
 	},
 });
 

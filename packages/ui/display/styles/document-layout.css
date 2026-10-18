@@ -251,11 +251,19 @@
 	text-wrap: pretty;
 }
 
-/* Non-actionable facts (§B.11.2): one Meta-register line, middot-separated, never chips. */
+/*
+ * Non-actionable facts (§B.11.2): one Meta-register line, middot-separated, never chips. The facts
+ * wrap as whole units, and a fact that starts a line never shows its separator: each separator hangs
+ * in the column gap before its fact (below), and the gap before a line's first fact lies outside the
+ * list's own box, which clips it.
+ */
 .ui-doc-header__meta {
+	--doc-meta-gap: var(--space-5);
 	display: flex;
 	flex-wrap: wrap;
 	align-items: baseline;
+	column-gap: var(--doc-meta-gap);
+	overflow: clip;
 	margin: var(--space-4) 0 0;
 	padding: 0;
 	list-style: none;
@@ -267,13 +275,23 @@
 	color: var(--text-secondary);
 }
 
+/*
+ * Each fact is still a flex item of the list, but its own content is in flow, not a nested flex row:
+ * as flex items of an inline-flex fact, the text runs lost their edge spaces, so "Updated <time>"
+ * read "Updated17 October 2026". In flow the words and the <time> share one line box and baseline.
+ */
 .ui-doc-header__meta-item {
-	display: inline-flex;
-	align-items: baseline;
+	display: inline-block;
+	position: relative;
 }
 
+/* Out of flow, centred in the gap before its fact, on the fact's first line. */
 .ui-doc-header__sep {
-	margin-inline: var(--space-2);
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-end: 100%;
+	inline-size: var(--doc-meta-gap);
+	text-align: center;
 	color: var(--on-surface-variant);
 }
 

@@ -8,6 +8,15 @@
 
 
 -- #region [editorial.help]
+-- A help category's and a help article's readable slug is permanent once the row exists
+-- (Decision #274 (k)); a moved article keeps its slug and the route redirects its old address.
+CREATE TRIGGER trg_help_categories_slug_immutable
+    BEFORE UPDATE OF slug ON editorial.help_categories
+    FOR EACH ROW EXECUTE FUNCTION editorial.fn_guard_slug_immutable();
+
+CREATE TRIGGER trg_help_articles_slug_immutable
+    BEFORE UPDATE OF slug ON editorial.help_articles
+    FOR EACH ROW EXECUTE FUNCTION editorial.fn_guard_slug_immutable();
 -- #endregion
 
 

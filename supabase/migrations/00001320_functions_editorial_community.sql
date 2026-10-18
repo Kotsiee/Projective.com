@@ -157,6 +157,106 @@ $$;
 
 
 -- #region [community.help_feedback]
+-- community.submit_help_feedback — the one writer of community.help_feedback (00000025), called by
+-- HelpFeedbackBackendService (packages/backend/services/community/) with the caller's own client: the
+-- anon client for a guest, the voter's JWT client when signed in. SECURITY DEFINER because no client
+-- role holds any privilege on the table; everything a client could otherwise choose is decided here:
+--
+--   * the voter is auth.uid() — and only when it names a profile (org.users_public), so a session
+--     with no profile row votes as a guest rather than failing the foreign key;
+--   * the article must be one a reader can see right now (the same rule as
+--     help_articles_select_published), else PH404;
+--   * a comment goes only with a "No" and is at most 280 characters before masking (22023), and is
+--     stored only after comms.mask_pii, with the categories it hid (Decision #147);
+--   * the durable rate limits (the route's per-process limiter sits in front of them): a signed-in
+--     voter's second vote on one article inside 24 hours writes nothing and answers
+--     `duplicate: true` (serialised per voter and article, so a double press cannot write twice);
+--     past 30 votes in an hour a voter is refused PH429; and an article takes at most 120 guest
+--     votes an hour (PH429), which bounds a scripted flood the per-process limit cannot see.
+--
+-- Answers {recorded, duplicate}. Never updates or deletes a row.
+CREATE OR REPLACE FUNCTION community.submit_help_feedback(
+    p_article_slug text,
+    p_helpful boolean,
+    p_comment text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_slug text := lower(btrim(COALESCE(p_article_slug, '')));
+    v_comment text := NULLIF(btrim(COALESCE(p_comment, '')), '');
+    v_today date := (now() AT TIME ZONE 'UTC')::date;
+    v_voter uuid;
+    v_masked text;
+    v_categories text[] := '{}'::text[];
+    v_recent integer;
+BEGIN
+    IF p_helpful IS NULL THEN
+        RAISE EXCEPTION 'Say whether the article helped.' USING ERRCODE = '22023';
+    END IF;
+
+    PERFORM 1
+    FROM editorial.help_articles a
+    WHERE a.slug = v_slug
+        AND a.published_on <= v_today
+        AND (a.archived_on IS NULL OR a.archived_on > v_today);
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'help article "%" is not published', v_slug USING ERRCODE = 'PH404';
+    END IF;
+
+    IF v_comment IS NOT NULL THEN
+        IF p_helpful THEN
+            RAISE EXCEPTION 'A comment goes with a "No".' USING ERRCODE = '22023';
+        END IF;
+        IF char_length(v_comment) > 280 THEN
+            RAISE EXCEPTION 'A comment is at most 280 characters.' USING ERRCODE = '22023';
+        END IF;
+        SELECT m.masked, m.categories INTO v_masked, v_categories FROM comms.mask_pii(v_comment) m;
+    END IF;
+
+    SELECT u.user_id INTO v_voter FROM org.users_public u WHERE u.user_id = auth.uid();
+
+    IF v_voter IS NOT NULL THEN
+        PERFORM pg_advisory_xact_lock(hashtextextended('community.help_feedback:' || v_voter::text || ':' || v_slug, 0));
+        PERFORM 1
+        FROM community.help_feedback f
+        WHERE f.user_id = v_voter
+            AND f.article_slug = v_slug
+            AND f.created_at > now() - interval '24 hours';
+        IF FOUND THEN
+            RETURN jsonb_build_object('recorded', false, 'duplicate', true);
+        END IF;
+
+        SELECT count(*) INTO v_recent
+        FROM community.help_feedback f
+        WHERE f.user_id = v_voter AND f.created_at > now() - interval '1 hour';
+        IF v_recent >= 30 THEN
+            RAISE EXCEPTION 'Too many votes in the last hour.' USING ERRCODE = 'PH429';
+        END IF;
+    ELSE
+        SELECT count(*) INTO v_recent
+        FROM community.help_feedback f
+        WHERE f.article_slug = v_slug
+            AND f.user_id IS NULL
+            AND f.created_at > now() - interval '1 hour';
+        IF v_recent >= 120 THEN
+            RAISE EXCEPTION 'This article has had too many votes in the last hour.' USING ERRCODE = 'PH429';
+        END IF;
+    END IF;
+
+    INSERT INTO community.help_feedback (article_slug, helpful, comment, comment_pii_categories, user_id)
+    VALUES (v_slug, p_helpful, v_masked, COALESCE(v_categories, '{}'::text[]), v_voter);
+
+    RETURN jsonb_build_object('recorded', true, 'duplicate', false);
+END;
+$$;
+
+COMMENT ON FUNCTION community.submit_help_feedback(text, boolean, text) IS
+    'The one writer of community.help_feedback: a "Was this helpful?" vote on a published help article, the voter stamped from auth.uid(), a comment masked by comms.mask_pii (Decision #147), rate-limited (PH429) and deduplicated per signed-in voter per day (P2, Decision #274).';
 -- #endregion
 
 
