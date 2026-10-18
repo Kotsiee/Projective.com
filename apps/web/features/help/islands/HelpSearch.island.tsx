@@ -72,7 +72,10 @@ interface SearchBody {
  *   lists the last eight searches (`localStorage`, a per-viewer convenience) with Clear, else the
  *   common questions. The overlay is addressable: while open the address bar carries `?q=` (written
  *   with `replaceState`), a page requested with `?q=` opens it, and closing removes the parameter.
- *   Its panel has a fixed height and the results scroll inside it, so typing never moves it.
+ *   Its panel has a fixed height and the results scroll inside it, so typing never moves it. The
+ *   scroller is the listbox itself (`hc-palette__list`), not the dialog body: the region that scrolls
+ *   is then the combobox's own popup, reached row by row with ↑ / ↓, and the status line and the
+ *   recent-searches head stay put above it.
  */
 export default function HelpSearch(props: HelpSearchProps): JSX.Element {
 	const { variant, initialQuery, initialResults, suggestions = [] } = props;
@@ -310,7 +313,13 @@ export default function HelpSearch(props: HelpSearchProps): JSX.Element {
 				);
 			}
 			return (
-				<div id={ids.list} role="listbox" aria-label="Help articles" ref={listRef}>
+				<div
+					id={ids.list}
+					class="hc-palette__list"
+					role="listbox"
+					aria-label="Help articles"
+					ref={listRef}
+				>
 					{groups.value.map((group) => (
 						<div
 							key={group.category}
@@ -359,6 +368,7 @@ export default function HelpSearch(props: HelpSearchProps): JSX.Element {
 					</div>
 					<div
 						id={ids.list}
+						class="hc-palette__list"
 						role="listbox"
 						aria-labelledby={`${ids.list}-recent`}
 						ref={listRef}
@@ -383,7 +393,13 @@ export default function HelpSearch(props: HelpSearchProps): JSX.Element {
 
 		if (suggestions.length > 0) {
 			return (
-				<div id={ids.list} role="listbox" aria-label="Common questions" ref={listRef}>
+				<div
+					id={ids.list}
+					class="hc-palette__list"
+					role="listbox"
+					aria-label="Common questions"
+					ref={listRef}
+				>
 					<div role="group" aria-labelledby={`${ids.list}-common`}>
 						<p id={`${ids.list}-common`} class="hc-results__label">Common questions</p>
 						{suggestions.map((s, i) => (

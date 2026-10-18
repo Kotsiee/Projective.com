@@ -390,8 +390,22 @@
 	padding: var(--space-3) var(--space-4);
 }
 
+/*
+ * The listbox scrolls, not the body: the body is a column the list shrinks into, so the region that
+ * scrolls is the combobox's own popup (↑ / ↓ reach every row through aria-activedescendant) while the
+ * status line and the recent-searches head stay put above it.
+ */
 .hc-palette .ui-dialog__body {
+	display: flex;
+	flex-direction: column;
 	padding: var(--space-2) var(--space-2) var(--space-4);
+}
+
+.hc-palette__list {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
 }
 
 .hc-palette .ui-dialog__footer {
