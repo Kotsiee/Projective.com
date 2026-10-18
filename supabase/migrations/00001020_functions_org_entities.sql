@@ -932,7 +932,9 @@ $$;
 -- be unreachable at /@handle forever. Every create path now asks the whole namespace, under an
 -- advisory lock on the handle so two creates racing for it cannot both see it free.
 
--- The SQL twin of @projective/types/profile RESERVED_HANDLES (pinned by workspace.contract.test.ts).
+-- The SQL twin of @projective/types/profile RESERVED_HANDLES (pinned by workspace.contract.test.ts,
+-- which also fails when a top-level segment under apps/web/routes/ is missing from the list — a new
+-- top-level route is reserved here AND in RESERVED_HANDLES in the same change, pr-checklist.md).
 CREATE OR REPLACE FUNCTION org.fn_is_reserved_handle(p_handle text)
 RETURNS boolean
 LANGUAGE sql
@@ -948,8 +950,8 @@ AS $$
         'departments', 'education', 'experience', 'availability', 'become-partner', 'onboarding',
         'notifications', 'basket', 'cart', 'checkout', 'catalogue', 'orders', 'order', 'pay', 'payment',
         'payments', 'invoice', 'invoices', 'create', 'new', 'search', 'submissions', 'attachments',
-        'board', 'tasks', 'calendar', 'api', 'assets', 'static', 'public', '_app', '_middleware',
-        '_layout', 'favicon.ico', 'robots.txt', 'sitemap.xml', 'admin', 'internal'
+        'board', 'tasks', 'calendar', 'invite', 'saved', 'api', 'assets', 'static', 'public', '_app',
+        '_middleware', '_layout', 'favicon.ico', 'robots.txt', 'sitemap.xml', 'admin', 'internal'
     ]);
 $$;
 

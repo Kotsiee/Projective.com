@@ -34,10 +34,10 @@ import {
 } from "@features/profile/core/profile-ssr.ts";
 import {
 	activeTabOf,
-	BUSINESS_PREVIEW_NOTE,
 	defaultTabFor,
 	estimatedSpendFor,
 	isSellerKind,
+	previewNoteFor,
 	TABS_ANCHOR,
 } from "@features/profile/core/profile-model.ts";
 
@@ -83,6 +83,15 @@ import {
  * all — the database answers it as missing — so the only reader of such a page is a member, who is
  * told why by the {@link ProfileMemberNotice} above it. A member who may edit it previews the page
  * with "Manage business" in Message's place, and the owner nav's note says so.
+ *
+ * # A team's page (Teams P1)
+ *
+ * A team is a seller: its listings resolve as a freelancer's do, and its rig is the seller rig —
+ * Hire, Add to project, and the Message (to its owner) and Follow icons. The same database rule hides
+ * a draft, archived or invite-only team from everyone outside it, and the member who reaches it reads
+ * the notice, with a link to the console's Settings when they may open it. A member holding
+ * `edit_profile` (the owner and admin presets, or a custom role that grants it, Decision #250 (b))
+ * previews the page with "Manage team" in Hire's place, and the owner nav's note says so.
  */
 export default define.page(async function ProfileLayout(ctx) {
 	const profile = ctx.state.profile;
@@ -268,7 +277,7 @@ export default define.page(async function ProfileLayout(ctx) {
 					handle={profile.handle}
 					active="preview"
 					scheduling={!restricted}
-					note={profile.workspace?.consoleHref ? BUSINESS_PREVIEW_NOTE : undefined}
+					note={previewNoteFor(profile)}
 				/>
 			)}
 			<ProfileMemberNotice profile={profile} />

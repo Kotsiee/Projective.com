@@ -5,13 +5,16 @@ import { formatMoney } from "@projective/types/finance";
 import {
 	LEGACY_TAB_TARGET,
 	LegacyProfileTab,
+	type MemberEntry,
 	normalizeHandle,
 	type ProfileHiddenReason,
 	type ProfileKind,
+	type ProfileStandingFactors,
 	ProfileTab,
 	type ProfileView,
 	type ReviewEntry,
 } from "@projective/types/profile";
+import type { RatingTrack } from "@projective/types/explore";
 import { FAST_REPLY_MINUTES } from "@features/explore/core/card-signals.ts";
 import { type PriceAmount, serviceStartingPrice } from "@features/explore/core/pricing.ts";
 import type { ServiceItem } from "../types/profile-types.ts";
@@ -153,6 +156,13 @@ export function isSellerKind(kind: ProfileKind): boolean {
  *    through it ends at the sign-in prompt, so the control is withheld rather than offered and then
  *    refused (product owner, 2026-09-20).
  *
+ * A member who may edit a TEAM's profile (`manages` — `edit_profile`, the owner and admin presets or
+ * a custom role that grants it, Decision #250 (b)) sees **Manage team**, a tier-4 link to its
+ * console, in Hire's place (Teams P1): hiring their own team is not a thing they came to do. Add to
+ * project stays, as it would for any signed-in viewer. A team's Message reaches its owner, as a
+ * business's does (a direct message is person-to-person), so a read that names no owner withholds
+ * the Message icon (`messageable: false`) rather than opening a thread nobody reads.
+ *
  * A BUYER entity cannot be hired or assigned. A client or an enterprise keeps Message as its text
  * primary with Follow as a text secondary. A **business** (BP1, Decision #244) leads with Message as
  * the one filled control — the tier-3 teal pill Hire takes on a seller, because it is the only way
@@ -178,8 +188,15 @@ export interface ProfileRig {
 	/** Whether the Add-to-project control renders. */
 	addToProject: boolean;
 	/**
-	 * Which control carries the primary slot (`manage` is a tier-4 link, never filled; `none` is a
-	 * business with nobody for Message to reach, whose slot stays empty).
+	 * Whether a Message control renders — the seller's icon, the business's filled pill, the buyer's
+	 * text pill. `false` only when the entity's Message has nobody to reach, or (a business) its
+	 * editor sees Manage business in that slot.
+	 */
+	message: boolean;
+	/**
+	 * Which control carries the primary slot (`manage` is a tier-4 link to the console, never filled —
+	 * a business's or a team's editor; `none` is a business with nobody for Message to reach, whose
+	 * slot stays empty).
 	 */
 	primary: "hire" | "add" | "message" | "manage" | "none";
 }
@@ -199,36 +216,84 @@ export interface RigInput {
 	restricted?: boolean;
 	/**
 	 * Whether the viewer is a member who may edit this workspace's profile — they get its console
-	 * link in place of Message (a business today; kind-agnostic so a team can take it too).
+	 * link in place of a business's Message or a team's Hire.
 	 */
 	manages?: boolean;
 	/**
-	 * Whether the profile's Message reaches anybody — a business's reaches its owner, and a read that
-	 * names none has nobody to reach (Decision #244). Absent reads as reachable.
+	 * Whether the profile's Message reaches anybody — a team's or a business's reaches its owner, and
+	 * a read that names none has nobody to reach (Decision #244; Teams P1). Absent reads as reachable.
 	 */
 	messageable?: boolean;
 }
 
+/**
+ * Whether a Message from a profile of this kind is delivered to the entity's OWNER rather than to the
+ * profile itself — a team or a business, because a direct message is person-to-person and
+ * `dm-{slug}` resolves nobody (Decision #244 (C); Teams P1).
+ */
+export function messagesViaOwner(kind: ProfileKind): boolean {
+	return kind === "team" || kind === "business";
+}
+
+/**
+ * Whether the profile's Message has somebody to reach: always for a person; for a team or a business,
+ * only while the read names its owner (`messageTo`).
+ */
+export function messageReachable(profile: Pick<ProfileView, "kind" | "messageTo">): boolean {
+	return !messagesViaOwner(profile.kind) || !!profile.messageTo;
+}
+
 /** The action rig a VISITOR sees for a profile kind — see {@link ProfileRig}. */
 export function rigFor(kind: ProfileKind, input: RigInput): ProfileRig {
+	const messageable = input.messageable !== false;
 	if (kind === "business") {
+		const primary = input.manages ? "manage" : messageable ? "message" : "none";
 		return {
 			layout: "business",
 			hire: false,
 			addToProject: false,
-			primary: input.manages ? "manage" : input.messageable === false ? "none" : "message",
+			message: primary === "message",
+			primary,
 		};
 	}
 	if (!isSellerKind(kind)) {
-		return { layout: "buyer", hire: false, addToProject: false, primary: "message" };
+		return {
+			layout: "buyer",
+			hire: false,
+			addToProject: false,
+			message: true,
+			primary: "message",
+		};
 	}
-	const hire = !input.restricted && (input.hasServices || input.offersConsultation);
+	// A team's editor manages it rather than hiring it (Teams P1): Manage team takes Hire's slot.
+	const manage = kind === "team" && !!input.manages;
+	const hire = !manage && !input.restricted && (input.hasServices || input.offersConsultation);
 	const addToProject = input.authed && !input.restricted;
 	// With neither control (a guest on a seller with nothing to hire for) the row holds only the
 	// icon pair; `primary` then names a control that does not render, and the hero draws nothing
 	// filled — an honest absence, not a promoted secondary.
-	const primary = hire ? "hire" : input.restricted ? "message" : "add";
-	return { layout: "seller", hire, addToProject, primary };
+	const primary = manage ? "manage" : hire ? "hire" : input.restricted ? "message" : "add";
+	return { layout: "seller", hire, addToProject, message: messageable, primary };
+}
+
+/** A filled control a rig draws, by its Button-matrix tier (DESIGN_SYSTEM §B.8.1, Decision #183). */
+export type RigFill = "hire" | "add" | "message";
+
+/**
+ * The FILLED controls a rig draws, in reading order: Hire (tier 3, the teal pill), Add to project
+ * (tier 2, the monochrome pill) and a business's Message (tier 3). Every other control is tier 4 —
+ * the icon pair, the buyer's text pair and Manage team / Manage business, which is a link and never a
+ * fill. One fill per decision region, with the profile seller rig's teal + monochrome pair the one
+ * owner-directed exception (Decision #183 flag (a)) — so this never holds two tier-3 fills.
+ * `ProfileRig` gates every filled control it draws on this list, so the rule tested here is the one
+ * the page renders.
+ */
+export function rigFills(rig: ProfileRig): RigFill[] {
+	const fills: RigFill[] = [];
+	if (rig.hire) fills.push("hire");
+	if (rig.addToProject) fills.push("add");
+	if (rig.layout === "business" && rig.message) fills.push("message");
+	return fills;
 }
 
 /**
@@ -318,7 +383,7 @@ export function consultationPriceLabel(
 }
 // #endregion
 
-// #region Workspace profiles — the member's view of a business page
+// #region Workspace profiles — the member's view of a team or business page
 /**
  * The member notice above a business page outsiders cannot open (BP1, Decision #244): why they
  * cannot. Stated for the member, who is the only reader ever told — as a fact, never as a promise of
@@ -337,11 +402,107 @@ export function hiddenNoticeText(reason: ProfileHiddenReason, name: string): str
 }
 
 /**
+ * The member notice above a TEAM page outsiders cannot open (Teams P1). A draft team whose reach is
+ * already public or unlisted opens the moment it is published, so its notice says exactly that
+ * ("until the team is published"). A team is CREATED draft and invite-only, and publishing alone
+ * would leave that one missing to outsiders, so its notice names both conditions rather than
+ * promising what one step would change (#244's rule). An archived or invite-only team states the
+ * fact and nothing more.
+ */
+export function teamHiddenNoticeText(
+	reason: ProfileHiddenReason,
+	name: string,
+	visibility: ProfileView["visibility"],
+): string {
+	switch (reason) {
+		case "draft":
+			return visibility === "private"
+				? `${name} is a draft. Only members can see this until the team is published and no longer invite-only.`
+				: `${name} is a draft. Only members can see this until the team is published.`;
+		case "archived":
+			return `${name} is archived. Only members can see this page.`;
+		case "invite_only":
+			return `${name} is invite-only. Only members can see this page.`;
+	}
+}
+
+/** What a member reads above a hidden team or business page — see {@link memberNoticeFor}. */
+export interface MemberNotice {
+	/** The one-line fact the InlineNotice states. */
+	text: string;
+	/**
+	 * The console's Settings — the tier-4 link beside the line (BP1 and Teams P1 SPEC 1) — for a
+	 * member holding `manage_settings`, once that kind's Settings can publish it and change its
+	 * visibility ({@link SETTINGS_PUBLISHES}); `null` for everyone else.
+	 */
+	settingsHref: string | null;
+}
+
+/** A workspace kind — the two whose member notice can carry a Settings link. */
+export type WorkspaceProfileKind = "team" | "business";
+
+/**
+ * Whether a workspace kind's console Settings can do what the member notice is about — publish the
+ * entity and change its visibility. The notice's tier-4 Settings link renders only where it can, so
+ * that it lands on a surface that can act (root CLAUDE.md §3.11). Neither kind's can yet: the
+ * Settings module is still a `ModulePlaceholder` whose copy sends visibility to a profile editor that
+ * offers a team or a business none. So both links are withheld — the business's by Decision #244
+ * (d), the team's (Teams P1 SPEC 1) until Teams C6 puts Publish and Visibility on its Settings screen,
+ * when the `team` entry turns on. The read keeps carrying `settingsHref` for a `manage_settings`
+ * holder, so the link returns with that one change.
+ */
+export const SETTINGS_PUBLISHES: Readonly<Record<WorkspaceProfileKind, boolean>> = {
+	team: false,
+	business: false,
+};
+
+/**
+ * The member notice for a profile, or `null` when there is nothing to tell — a page anybody may
+ * open, or a kind with no workspace facts. Only a member ever reaches a hidden page (the database
+ * answers it as missing to everyone else), so the notice is never a stranger's to read. The Settings
+ * link rides along only for a kind whose Settings can publish (`publishes`, by default
+ * {@link SETTINGS_PUBLISHES}).
+ */
+export function memberNoticeFor(
+	profile: Pick<ProfileView, "kind" | "name" | "visibility" | "workspace">,
+	publishes: Readonly<Record<WorkspaceProfileKind, boolean>> = SETTINGS_PUBLISHES,
+): MemberNotice | null {
+	const facts = profile.workspace;
+	if (!facts?.hiddenReason) return null;
+	const kind = profile.kind;
+	const text = kind === "team"
+		? teamHiddenNoticeText(facts.hiddenReason, profile.name, profile.visibility)
+		: hiddenNoticeText(facts.hiddenReason, profile.name);
+	const linked = (kind === "team" || kind === "business") && publishes[kind];
+	return { text, settingsHref: linked ? facts.settingsHref : null };
+}
+
+/**
  * The owner header's Preview note on a business page for a member who may edit it: the rig they see
  * is not quite the visitors' one (Decision #244 amends #119 (B) for business editors).
  */
 export const BUSINESS_PREVIEW_NOTE =
 	"This is how your business looks to visitors. They see Message where you see Manage business.";
+
+/**
+ * The same note on a team page (Teams P1): Manage team stands in Hire's place for the team's editors
+ * only. It does not promise visitors a Hire — a team with nothing to hire for offers none.
+ */
+export const TEAM_PREVIEW_NOTE =
+	"This is how your team looks to visitors, who never see Manage team.";
+
+/**
+ * The Preview note for a workspace editor (a viewer whose read carries the console door), or
+ * `undefined` for everyone else — the owner nav then shows its plain note.
+ */
+export function previewNoteFor(
+	profile: Pick<ProfileView, "kind" | "workspace">,
+): string | undefined {
+	if (!profile.workspace?.consoleHref) return undefined;
+	if (profile.kind === "business") return BUSINESS_PREVIEW_NOTE;
+	if (profile.kind === "team") return TEAM_PREVIEW_NOTE;
+	return undefined;
+}
 
 /**
  * "Since 2026" — a roster row's membership start, by its UTC year. `null` for an absent or
@@ -352,6 +513,101 @@ export function memberSinceLabel(iso: string | null | undefined): string | null 
 	const at = new Date(iso);
 	if (Number.isNaN(at.getTime())) return null;
 	return `Since ${at.getUTCFullYear()}`;
+}
+
+/** One fact on a profile MetaLine — text, or a changing figure set in `tabular-nums`. */
+export type ProfileMetaFact = string | { text: string; tabular: true };
+
+/**
+ * A roster row's second line, in the order it reads (§B.11 — text, never chips). A team row is its
+ * public role · "Since 2025" · its top skill · its next skill (Teams P1); a business row is the
+ * title or role · "Since 2026" (BP1). `null` for an enterprise, whose row keeps its plain role line.
+ * No stake and no workload is ever part of it.
+ */
+export function rosterMetaFacts(
+	member: Pick<MemberEntry, "role" | "since" | "skills">,
+	kind: ProfileKind,
+): ProfileMetaFact[] | null {
+	if (kind !== "team" && kind !== "business") return null;
+	const since = memberSinceLabel(member.since);
+	const facts: ProfileMetaFact[] = [member.role];
+	if (since) facts.push({ text: since, tabular: true });
+	if (kind === "team") facts.push(...(member.skills ?? []).slice(0, 2));
+	return facts;
+}
+// #endregion
+
+// #region Standing — the rung and what it stands on
+/** `0.957` → `96%`. */
+function percent(rate: number): string {
+	return `${Math.round(rate * 100)}%`;
+}
+
+/**
+ * The factors beneath a TEAM's Standing rung, as MetaLine facts (Teams P1 SPEC 4): on-time
+ * delivery, completion and disputes — the client-valued inputs PRODUCT_SPEC §Standing "What moves a
+ * rung" names. A team's only: a person's rates are not published, so any other kind gets none. The
+ * database answers factors only from the volume floor of the ladder's first earned rung, so one
+ * flawless engagement never reads "100% on time · No disputes"; a read without any (or one that
+ * somehow counts no stage) gets none here either — a rate over nothing is not a fact. A dispute rate
+ * that rounds to nothing still reads 1%, so a record with disputes never claims "No disputes".
+ */
+export function standingFactorFacts(
+	factors: ProfileStandingFactors | undefined,
+	kind: ProfileKind,
+): ProfileMetaFact[] {
+	if (kind !== "team" || !factors || factors.stagesCompleted < 1) return [];
+	const disputed = Math.max(1, Math.round(factors.disputeRate * 100));
+	const disputes: ProfileMetaFact = factors.disputeRate === 0
+		? "No disputes"
+		: { text: `${disputed}% disputed`, tabular: true };
+	return [
+		{ text: `${percent(factors.onTimeRate)} on time`, tabular: true },
+		{ text: `${percent(factors.completionRate)} completion`, tabular: true },
+		disputes,
+	];
+}
+// #endregion
+
+// #region Reviews — the summary per kind
+/** One summary track the Reviews section draws: its label and the aggregate behind it. */
+export interface ReviewSummaryTrack {
+	label: string;
+	track: RatingTrack;
+}
+
+/** How the Reviews section summarises a profile of one kind — see {@link reviewSummaryFor}. */
+export interface ReviewSummaryLayout {
+	tracks: ReviewSummaryTrack[];
+	/** Whether the review count is a count Badge beside the stars (a team), rather than `(N)`. */
+	countBadge: boolean;
+	/** Whether the stance filter applies — only a profile reviewed from both sides has one. */
+	stances: boolean;
+}
+
+/**
+ * The Reviews summary for a profile kind. A person is reviewed on two tracks and filters by
+ * stance. A business is only ever the client (BP1). A TEAM's reviews are its collective ones —
+ * reviews whose subject is the team, never its members' own (Teams P1) — so it draws ONE aggregate
+ * RatingStars with a count Badge and no stance filter: a team is only ever the provider.
+ */
+export function reviewSummaryFor(
+	kind: ProfileKind,
+	summary: { asHelper?: RatingTrack; asClient?: RatingTrack } | undefined,
+): ReviewSummaryLayout {
+	const helper = summary?.asHelper;
+	const client = summary?.asClient;
+	if (kind === "team") {
+		return {
+			tracks: helper ? [{ label: "Team rating", track: helper }] : [],
+			countBadge: true,
+			stances: false,
+		};
+	}
+	const tracks: ReviewSummaryTrack[] = [];
+	if (helper) tracks.push({ label: "As a freelancer", track: helper });
+	if (client) tracks.push({ label: "As a client", track: client });
+	return { tracks, countBadge: false, stances: kind !== "business" };
 }
 // #endregion
 

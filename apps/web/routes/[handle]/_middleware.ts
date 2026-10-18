@@ -8,6 +8,11 @@ import {
 	BUSINESS_PAGE_SIM_COOKIE,
 	parseBusinessPageSim,
 } from "@features/profile/core/business-page-sim.ts";
+import {
+	applyTeamPageSim,
+	parseTeamPageSim,
+	TEAM_PAGE_SIM_COOKIE,
+} from "@features/profile/core/team-page-sim.ts";
 import { readCookies } from "@web/utils/auth-cookies.ts";
 import { IS_DEV } from "@web/utils/dev.ts";
 
@@ -28,8 +33,9 @@ import { IS_DEV } from "@web/utils/dev.ts";
  * not exist.
  *
  * In development only, the Dev Context Switcher's business page state (`pj.dev.business-page`,
- * Decision #244) is laid over a business's read here — once, so the layout and every section agree:
- * a member's hidden reason, or the outsider's 404.
+ * Decision #244) is laid over a business's read here, and its team page state (`pj.dev.team-page`,
+ * Teams P1) over a team's — once, so the layout and every section agree: a member's hidden reason,
+ * or the outsider's 404.
  */
 export default define.middleware(async (ctx) => {
 	// Prefer the routed param; fall back to the first path segment (robust if params aren't populated).
@@ -45,8 +51,11 @@ export default define.middleware(async (ctx) => {
 	}
 
 	const resolved = await resolveProfile(handle, readActor(ctx));
-	const sim = IS_DEV ? parseBusinessPageSim(readCookies(ctx.req)[BUSINESS_PAGE_SIM_COOKIE]) : null;
-	const profile = applyBusinessPageSim(resolved.profile, sim);
+	const cookies = IS_DEV ? readCookies(ctx.req) : null;
+	const businessSim = parseBusinessPageSim(cookies?.[BUSINESS_PAGE_SIM_COOKIE]);
+	const teamSim = parseTeamPageSim(cookies?.[TEAM_PAGE_SIM_COOKIE]);
+	// Each axis touches its own kind only, so the two compose in either order.
+	const profile = applyTeamPageSim(applyBusinessPageSim(resolved.profile, businessSim), teamSim);
 	const status = resolved.profile && !profile ? 404 : resolved.status;
 	ctx.state.profile = profile;
 	ctx.state.profileStatus = status;

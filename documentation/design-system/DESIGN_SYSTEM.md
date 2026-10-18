@@ -4115,7 +4115,8 @@ Button Interaction Matrix (§B.8.1, Decision #157) is stated per control:
 | :--------------------------------- | :---------------------------------------------------------------------- | :------------------------------------ | :---------------------------------- |
 | Profile hero + band (`ProfileRig`) | **Hire**                                                                | 3 · brand (Decision #183)             | teal `--primary` pill, white ink    |
 | Profile hero + band (`ProfileRig`) | **Add to project** — beside Hire or alone                               | 2 · structural commitment             | monochrome inverted pill            |
-| Profile hero + band (`ProfileRig`) | Seller rig: Message · Follow                                            | 4 · neutral outlined, icon-only       | `neutral` `outlined` circle         |
+| Profile hero + band (`ProfileRig`) | Seller rig: Message · Follow (a team's Message reaches its owner)       | 4 · neutral outlined, icon-only       | `neutral` `outlined` circle         |
+| Profile hero + band (`ProfileRig`) | Team rig, a member who may edit it: Manage team (an `<a>`, Hire's slot) | 4 · neutral outlined (Teams P1)       | `neutral` `outlined` pill           |
 | Profile hero + band (`ProfileRig`) | Buyer rig (client · enterprise): Message · Follow                       | 4 · neutral outlined                  | `neutral` `outlined` text pill      |
 | Profile hero + band (`ProfileRig`) | Business rig: **Message** (reaches the owner)                           | 3 · brand (Decision #244)             | teal `--primary` pill, white ink    |
 | Profile hero + band (`ProfileRig`) | Business rig: Follow                                                    | 4 · neutral outlined, icon-only       | `neutral` `outlined` circle         |
@@ -4134,10 +4135,21 @@ flag (a)); the client / enterprise buyer rig and the owner rig have no filled co
 which a member who may edit the business sees as the tier-4 Manage business link instead, and which
 is withheld (Follow then stands alone) when the read names no owner for it to reach (Decision #244;
 the business rig's Message is the `Button` `severity="primary" variant="filled"` preset, the same
-class set as Hire). The member notice above a business page outsiders cannot open
-(`ProfileMemberNotice`) carries no control: BP1's tier-4 link to Settings waits for a Settings
-screen that can publish a business or change its visibility (Decision #244 (d)). The markup per
-tier: Hire is the bare
+class set as Hire). A team's editor sees the tier-4 Manage team link in Hire's place, so their rig
+keeps one fill — Add to project's monochrome pill — and the team rig withholds its Message icon
+when the read names no owner for it to reach (Teams P1; `rigFills` / `rigFor` in
+`features/profile/core/profile-model.ts`). Manage team is twice Hire's width, so below the phone cusp
+one control per rig gives up its words: the band folds Manage team to a `settings` glyph circle, and
+the hero folds Add to project to its `plus` circle (as the band already does) so Manage team keeps
+the words the owner header's preview note names; a folded control's label is its accessible name.
+The member notice above a business page outsiders cannot
+open (`ProfileMemberNotice`) carries no control: BP1's tier-4 link to Settings waits for a Settings
+screen that can publish a business or change its visibility (Decision #244 (d)). A TEAM page's
+notice waits on the same ground (root CLAUDE.md §3.11): its tier-4 "Team settings" link (`neutral`
+`outlined` `sm` pill, an `<a>`) to the console's Settings, for a `manage_settings` holder, beside
+the line and wrapping beneath it on a phone (Teams P1 SPEC 1), renders once Teams C6 gives the
+team's Settings screen Publish and Visibility — `SETTINGS_PUBLISHES` in
+`features/profile/core/profile-model.ts` is the one switch. The markup per tier: Hire is the bare
 `ui-button--primary ui-button--filled ui-button--rounded` class set on a native `<button>` (its
 `Popover` needs the ref `Button` does not forward), with no rig-local colour override; Add to project is `ui-button--primary ui-button--filled` plus `.pf-rig__cta--mono`, the
 inverted override, wherever it renders; every tier-4 control is the shared
