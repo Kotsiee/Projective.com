@@ -109,6 +109,12 @@ CREATE TABLE security.audit_logs (
 );
 ```
 
+**Index:** `idx_audit_logs_entity (entity_id, action)` (`00004002_indexes_security.sql`) — one
+entity's trail by action. `org.fn_workspace_restore_target` reads a team's or a business's
+`{kind}.status_changed` rows through it to decide where a restore lands (Teams C6, Decision #250
+(c)), so those rows are evidence a lifecycle rule depends on: a retention or partitioning scheme for
+this table must keep them (see the retention note below).
+
 ---
 
 ## ⚙️ Tunable Parameters

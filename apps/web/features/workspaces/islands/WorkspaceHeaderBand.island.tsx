@@ -94,6 +94,7 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 		owner: self?.rolePreset === "owner",
 		capabilities: ws.viewerCapabilities,
 		viewerCanArchive: ws.viewerCan?.archive ?? null,
+		archiveBlocked: ws.archiveBlockers.length > 0,
 		subViews: views,
 		view,
 		commit: moduleCommit.value,

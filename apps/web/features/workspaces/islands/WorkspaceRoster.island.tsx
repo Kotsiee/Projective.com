@@ -233,7 +233,8 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 				return;
 			case "archive":
 			case "restore": {
-				const status = action === "archive" ? "archived" : "active";
+				// A restore lands where the server decides (Decision #250 (c)): live if it ever was.
+				const status = action === "archive" ? "archived" : "restore";
 				const res = await WorkspaceService.update({ kind: summary.kind, id: summary.id, status });
 				if (!res.ok) {
 					notice.value = res.message ??
@@ -243,6 +244,8 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 				if (await refresh()) {
 					info.value = action === "archive"
 						? `${summary.name} is archived. It is still restorable from the Archived tab.`
+						: res.data?.status === "draft"
+						? `${summary.name} is back as a draft — publish it from its settings.`
 						: `${summary.name} is active again.`;
 				}
 				return;

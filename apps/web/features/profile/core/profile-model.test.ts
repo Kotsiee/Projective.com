@@ -240,22 +240,22 @@ function entity(
 	return { kind, name: kind === "team" ? "North Loop" : "Atlas Labs", visibility, workspace };
 }
 
-Deno.test("memberNoticeFor: a hidden team tells its member why; Settings waits until it can publish", () => {
+Deno.test("memberNoticeFor: a hidden team tells its member why, and links Settings, which publishes", () => {
 	const doors = { consoleHref: "/teams/northloop", settingsHref: "/teams/northloop/settings" };
 	const draft = entity("team", { hiddenReason: "draft", ...doors });
-	// Today the console's Settings cannot publish a team or change its visibility, so the link is
-	// withheld from a settings holder too (root CLAUDE.md §3.11) — Teams C6 turns it on.
-	assertEquals(SETTINGS_PUBLISHES, { team: false, business: false });
+	// A team's Settings publishes, restores and changes visibility (Teams C6), so its settings holder
+	// gets the link beside the line; a business's still cannot (#244 (d)).
+	assertEquals(SETTINGS_PUBLISHES, { team: true, business: false });
 	assertEquals(memberNoticeFor(draft), {
-		text: "North Loop is a draft. Only members can see this until the team is published.",
-		settingsHref: null,
-	});
-	// Once a team's Settings can publish, its settings holder gets the link beside the line…
-	const c6 = { team: true, business: false };
-	assertEquals(memberNoticeFor(draft, c6), {
 		text: "North Loop is a draft. Only members can see this until the team is published.",
 		settingsHref: "/teams/northloop/settings",
 	});
+	// A kind whose Settings could not act would withhold it (root CLAUDE.md §3.11)…
+	assertEquals(memberNoticeFor(draft, { team: false, business: false }), {
+		text: "North Loop is a draft. Only members can see this until the team is published.",
+		settingsHref: null,
+	});
+	const c6 = SETTINGS_PUBLISHES;
 	// …and a member who may not open Settings still reads the line alone.
 	assertEquals(
 		memberNoticeFor(

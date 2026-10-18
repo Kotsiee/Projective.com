@@ -77,6 +77,8 @@ export interface WorkspaceFooterRigProps {
 	canManageMoney?: boolean;
 	/** Whether the viewer may open the Settings module (drives the Settings link's presence). */
 	canManageSettings?: boolean;
+	/** Whether the viewer may edit the entity's name and visibility (drives Settings' Save). */
+	canEditProfile?: boolean;
 	/** Whether the viewer may create another entity of this kind. */
 	canCreate?: boolean;
 }
@@ -94,6 +96,7 @@ export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.
 		canInvite: props.canInvite ?? false,
 		canManageMoney: props.canManageMoney ?? false,
 		canManageSettings: props.canManageSettings ?? false,
+		canEditProfile: props.canEditProfile ?? false,
 		dirty: policyDirty.value,
 		saveState: saveState.value,
 	});

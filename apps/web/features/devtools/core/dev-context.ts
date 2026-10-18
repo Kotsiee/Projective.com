@@ -52,6 +52,7 @@ import {
 	type DevAutoFundMode,
 	type DevLowBalance,
 	type DevBusinessKyb,
+	type DevTeamSettings,
 	type DevNotifications,
 	type DevSessionState,
 	type DevDisputeState,
@@ -117,6 +118,7 @@ export type {
 	DevAutoFundMode,
 	DevLowBalance,
 	DevBusinessKyb,
+	DevTeamSettings,
 	DevNotifications,
 	DevSessionState,
 	DevDisputeState,
@@ -228,7 +230,7 @@ export interface DevOverrides {
 	businessPage: DevBusinessPage;
 	/**
 	 * Simulated state of a team's `/:handle` (Teams P1): a member's view of a draft, archived or
-	 * invite-only team (the member notice; its Settings link waits for Teams C6's Settings screen), or
+	 * invite-only team (the member notice, with its link to Settings for a `manage_settings` holder), or
 	 * `missing` — the page as an outsider meets it (the "Profile not found" 404). Every seeded team is
 	 * active and public, so this is the only route to those states. Server-side, through the
 	 * `pj.dev.team-page` cookie the profile middleware honours in development only; the panel reloads
@@ -334,6 +336,13 @@ export interface DevOverrides {
 	 * updates; the locks and every money door still read the stored status.
 	 */
 	businessKyb: DevBusinessKyb;
+	/**
+	 * The lifecycle a team's Settings module shows (Teams C6): draft (Publish in the header band),
+	 * active (Archive…), an archive held back by a held escrow or by live work (the blockers, each with
+	 * its link), or archived with Restore as active / as a draft. Its own axis because every seeded team
+	 * is active with nothing in flight; Publish, Archive and Restore still ask the server.
+	 */
+	teamSettings: DevTeamSettings;
 	/**
 	 * A session's server-only facts (Decision #171): a full cohort, a sitting in progress, every sitting
 	 * over, and a seat escrow waiting out the 24-hour window. Each takes a real booking, a real clock or
@@ -505,6 +514,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	autoFundMode: "auto",
 	lowBalance: "auto",
 	businessKyb: "auto",
+	teamSettings: "auto",
 	sessionState: "auto",
 	disputeState: "auto",
 	notifications: "auto",
@@ -790,6 +800,20 @@ export const DEV_BUSINESS_KYBS: ReadonlyArray<DevOption<DevBusinessKyb>> = [
 	{ value: "verified", label: "Verified" },
 ];
 
+/**
+ * Team Settings lifecycle options (Teams C6). `Escrow held` and `Live work` are the values worth
+ * having: the archive control replaced by its blockers, which no seeded team sits at.
+ */
+export const DEV_TEAM_SETTINGS: ReadonlyArray<DevOption<DevTeamSettings>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "draft", label: "Draft" },
+	{ value: "active", label: "Active" },
+	{ value: "escrow_held", label: "Escrow held" },
+	{ value: "live_assignments", label: "Live work" },
+	{ value: "archived_published", label: "Archived (was live)" },
+	{ value: "archived_draft", label: "Archived (never live)" },
+];
+
 /** Notification inbox options (DESIGN_SYSTEM §D.9). */
 export const DEV_NOTIFICATIONS: ReadonlyArray<DevOption<DevNotifications>> = [
 	{ value: "auto", label: "Auto" },
@@ -1054,6 +1078,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devLowBalance;
 		if (next.businessKyb !== "auto") root.dataset.devBusinessKyb = next.businessKyb;
 		else delete root.dataset.devBusinessKyb;
+		if (next.teamSettings !== "auto") root.dataset.devTeamSettings = next.teamSettings;
+		else delete root.dataset.devTeamSettings;
 		if (next.sessionState !== "auto") root.dataset.devSessionState = next.sessionState;
 		else delete root.dataset.devSessionState;
 		if (next.disputeState !== "auto") root.dataset.devDisputeState = next.disputeState;
@@ -1140,6 +1166,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devAutoFundMode;
 		delete root.dataset.devLowBalance;
 		delete root.dataset.devBusinessKyb;
+		delete root.dataset.devTeamSettings;
 		delete root.dataset.devSessionState;
 		delete root.dataset.devDisputeState;
 		delete root.dataset.devNotifications;

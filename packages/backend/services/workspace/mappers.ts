@@ -228,8 +228,13 @@ export interface RawDetail {
 	payout?: RawTeamPayout | null;
 	/** A team's `finance.get_proposal_allowance` answer (`null` for a business). */
 	allowance?: unknown;
-	/** A business's `org.fn_business_archive_blockers` (`[]` without `archive_entity`, and for a team). */
+	/**
+	 * `org.fn_team_archive_blockers` / `org.fn_business_archive_blockers` — what would refuse an archive
+	 * now (`[]` without `archive_entity`).
+	 */
 	archive_blockers?: unknown;
+	/** `org.fn_workspace_restore_target` while the entity is archived (`null` otherwise). */
+	restore_target?: unknown;
 	/** A business's spend block — present ONLY for a viewer who may open Spend. */
 	spend?: RawBusinessSpend | null;
 	/** A business's money tiles per wallet currency — `[]` unless the viewer may open Finance. */

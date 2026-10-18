@@ -208,9 +208,20 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   **invite-only** the page is missing to everyone outside it — worded exactly as an unknown handle —
   and its members see it with a note saying why ("Only members can see this until the team is
   published", and for a Team created invite-only, "…and no longer invite-only"); a member who may
-  open the Team's Settings also gets a link to them there once Settings can publish the Team and
-  change its visibility (Teams C6) — until then the note stands alone, as a business's does. A Team
-  is created draft and invite-only (Teams P1).
+  open the Team's Settings also gets a link to them there (a business's note still stands alone). A
+  Team is created draft and invite-only (Teams P1).
+- **Settings and the lifecycle:** a Team's Settings (`/teams/:teamHandle/settings`, for members who
+  may change its settings) holds its display name (editable by whoever may edit the profile; the
+  `@handle` never changes), its visibility (public · unlisted · invite only), and its lifecycle. A
+  draft is **published** from there by anyone who may change its settings — which lists it as its
+  visibility allows and lets it apply once it has two active members; a published Team never returns
+  to draft. **Archiving** (the owner, or whoever holds the archive right) is refused while money is
+  held in escrow for the Team's work or while it is still assigned to live work, and Settings names
+  each of those before anybody presses Archive, with a link to where it is cleared (the wallet, or
+  the Projects module) — never an Archive button that would fail. **Restoring** an archived Team
+  brings it back **active if it was ever published, otherwise as a draft** (Decision #250 (c)); the
+  platform decides which, from the Team's own history, and the Restore control says which it will
+  be. A Business restores by the same rule (#236 (d)) (Teams C6).
 
 ##### Role-Based Access Control (RBAC)
 
@@ -3214,7 +3225,7 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `projects`               | Projects                                                                                       |
 |               |                           | `payouts`                | Payouts                                                                                        |
 |               |                           | `roles`                  | Roles                                                                                          |
-|               |                           | `settings`               | Settings                                                                                       |
+|               |                           | `settings`               | Name, visibility and the lifecycle — publish, archive (what blocks it named first), restore (Teams C6) |
 |               |                           | _secondary group_        | The other modules stay reachable in the lane's secondary group: `catalogue` · `calendar` · `messages` · `invitations` · `finance` (the Team Vault) · `analytics` · `standing` · `profile` · `verification` (Decision #228 (C)) |
 |               | `/analytics`              | `index`                  | Performance data                                                                               |
 |               | `/wallet`                 | `index`                  | **The command centre.** A balance hero (total · available · in escrow · clearing) with every money action, over a sheet of accounts, cash flow, upcoming obligations, recent transactions and payment methods. A middle-nav lane links the wallet's pages and carries every money action. The retired deep pages `activity` **308→** `analytics`; `payouts`, `funding`, `access`, `methods` **308→** overview sections |

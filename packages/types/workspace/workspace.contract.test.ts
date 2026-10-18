@@ -33,12 +33,17 @@ import {
 	SplitRuleInputSchema,
 } from "./policy.ts";
 import {
+	ArchiveBlockerSchema,
+	BusinessArchiveBlockerCode,
 	CreateWorkspaceInputSchema,
 	HANDLE_REFUSALS,
 	handleAlternatives,
 	HandleRefusalCode,
 	handleRefusalOf,
 	localHandleRefusal,
+	RESTORE_TARGET_REASON,
+	RestoreTarget,
+	TeamArchiveBlockerCode,
 	TeamEngagementSchema,
 	UpdatePayoutInputSchema,
 	UpdateSpendInputSchema,
@@ -49,6 +54,7 @@ import {
 	WORKSPACE_NAME_MAX,
 	WORKSPACE_NAME_MIN,
 	WorkspaceDetailSchema,
+	WorkspaceStatusChange,
 } from "./workspace.ts";
 
 // #region Reading the SQL
@@ -660,6 +666,46 @@ Deno.test("UpdateSpendInputSchema: a figure past what JSON carries exactly is a 
 Deno.test("walletHrefFor: the access section lands on the entity wallet's approvals", () => {
 	assertEquals(walletHrefFor("business", "b-1"), "/wallet?w=business:b-1");
 	assertEquals(walletHrefFor("business", "b-1", "access"), "/wallet?w=business:b-1#upcoming");
+});
+
+Deno.test("the archive blockers each kind's SQL lists are the codes the schema admits (C6)", () => {
+	/** The `'code', '<x>'` literals a blocker function builds, in order. */
+	const codes = (name: string) =>
+		[...functionBody(entities, name).matchAll(/'code', '([a-z_]+)'/g)].map((m) => m[1]);
+	assertEquals(codes("org.fn_team_archive_blockers"), [...TeamArchiveBlockerCode.options]);
+	assertEquals(codes("org.fn_business_archive_blockers"), [...BusinessArchiveBlockerCode.options]);
+	for (const code of [...TeamArchiveBlockerCode.options, ...BusinessArchiveBlockerCode.options]) {
+		assert(ArchiveBlockerSchema.safeParse({ code, count: 1 }).success, `${code} is not admitted`);
+	}
+	// The detail answers a team's list too, and the door refuses on the same function's first entry.
+	assert(detailBody.includes("org.fn_team_archive_blockers(v_e.id)"));
+	assert(
+		functionBody(entities, "org.set_workspace_status").includes(
+			"org.fn_team_archive_blockers(p_id)",
+		),
+	);
+});
+
+Deno.test("a restore lands where the server decides, in every word the contract uses (C6)", () => {
+	const door = functionBody(entities, "org.set_workspace_status");
+	const accepted = /p_status NOT IN \(([^)]*)\)/.exec(door);
+	assert(accepted, "set_workspace_status no longer lists the statuses it accepts");
+	assertEquals(literals(accepted[1]), [...WorkspaceStatusChange.options]);
+	assert(door.includes(`'${RESTORE_TARGET_REASON}: '`), "the wrong-target refusal's prefix moved");
+	assert(door.includes("org.fn_workspace_restore_target(p_kind, p_id)"));
+	const target = functionBody(entities, "org.fn_workspace_restore_target");
+	assertEquals(
+		literals(target.slice(target.lastIndexOf("THEN"))).filter((l) =>
+			RestoreTarget.safeParse(l).success
+		),
+		[...RestoreTarget.options].reverse(),
+		"the target function answers exactly the two RestoreTarget values",
+	);
+	assert(
+		detailBody.includes("'restore_target'"),
+		"get_workspace_detail no longer names the target",
+	);
+	assertEquals(WorkspaceDetailSchema.shape.restoreTarget.parse(undefined), null);
 });
 
 Deno.test("WorkspaceDetailSchema: the business blocks default to absent for a team", () => {
