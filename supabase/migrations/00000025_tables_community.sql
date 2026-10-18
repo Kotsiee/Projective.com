@@ -77,7 +77,7 @@ CREATE TABLE community.newsletter_subscriptions (
     CONSTRAINT newsletter_subscriptions_token_key UNIQUE (token),
     CONSTRAINT newsletter_subscriptions_email_lowercase CHECK (email = lower(email)),
     CONSTRAINT newsletter_subscriptions_email_length CHECK (char_length(email) <= 254),
-    CONSTRAINT newsletter_subscriptions_source_check CHECK (source IN ('footer', 'landing', 'explore')),
+    CONSTRAINT newsletter_subscriptions_source_check CHECK (source IN ('footer', 'landing', 'explore', 'changelog')),
     CONSTRAINT newsletter_subscriptions_topics_check CHECK (
         cardinality(topics) >= 1
         AND array_position(topics, NULL) IS NULL

@@ -30,9 +30,9 @@ _Not yet documented._ (P2.)
 
 ## Changelog
 
-| Table                          | RLS | Policy                              | Command | Roles                   | Rule                                                                 |
-| :----------------------------- | :-- | :---------------------------------- | :------ | :---------------------- | :------------------------------------------------------------------- |
-| `editorial.changelog_releases` | on  | `changelog_releases_select_public`  | SELECT  | `anon`, `authenticated` | `NOT withdrawn AND released_on <= (now() AT TIME ZONE 'UTC')::date` |
+| Table                          | RLS | Policy                             | Command | Roles                   | Rule                                                                |
+| :----------------------------- | :-- | :--------------------------------- | :------ | :---------------------- | :------------------------------------------------------------------ |
+| `editorial.changelog_releases` | on  | `changelog_releases_select_public` | SELECT  | `anon`, `authenticated` | `NOT withdrawn AND released_on <= (now() AT TIME ZONE 'UTC')::date` |
 
 The rule is the content source's `visible` predicate (`!withdrawn && releasedOn <= UTC today`),
 pinned to UTC so it is never narrower than it whatever the session's TimeZone. Privileges

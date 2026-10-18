@@ -7,5 +7,5 @@ export interface ChangelogGallery {
 	entry: string;
 	/** The gallery's name, read as the dialog's label (`v0.12.0 — Funding before work`). */
 	title: string;
-	images: Array<{ src: string; alt: string; caption?: string }>;
+	images: Array<{ src: string; alt: string; caption: string }>;
 }

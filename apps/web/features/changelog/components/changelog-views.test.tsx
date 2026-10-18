@@ -53,6 +53,23 @@ Deno.test("feed: one h1, an ol of article entries, dates as <time datetime>", as
 	assertEquals(feed.releases.length, 10);
 });
 
+Deno.test("feed: the gutter prints the short month and the facts read apart as text", async () => {
+	const { html } = await feedHtml();
+	// 0.17.0 is the newest: its facts are the date, a space, the version link, a space, "Latest".
+	assertMatch(
+		html,
+		/<time class="chl-entry__date" datetime="2026-10-17">17 Oct 2026<\/time> <a class="chl-entry__version" href="\/changelog\/0\.17\.0">v0\.17\.0<span class="ui-visually-hidden">, release page<\/span><\/a> <span class="chl-entry__latest">Latest<\/span>/,
+	);
+	assert(html.includes('datetime="2026-09-23">23 Sept 2026</time>'));
+	assertFalse(html.includes("September 2026</time> <a"), "no long month in the gutter");
+});
+
+Deno.test("feed: the header's figures are mono, the words around them are not", async () => {
+	const { html } = await feedHtml();
+	assertMatch(html, /Latest <span class="chl-mono">v0\.17\.0<\/span>/);
+	assertMatch(html, /Updated <time class="chl-mono" datetime="2026-10-17">17 October 2026<\/time>/);
+});
+
 Deno.test("feed: each entry is named by its h2 anchor, whose text links to itself", async () => {
 	const { html, feed } = await feedHtml();
 	const first = feed.releases[0];
@@ -89,7 +106,10 @@ Deno.test("feed: no id on the page repeats, sub-headings included", async () => 
 Deno.test("feed: categories are inline meta text, not links", async () => {
 	const { html } = await feedHtml();
 	assertMatch(html, /<ul class="chl-entry__categories" role="list" aria-label="Categories">/);
-	assertFalse(/<li class="chl-entry__category"><a /.test(html));
+	assertFalse(/<li\s+class="chl-entry__category"><a /.test(html));
+	// The middot is drawn by CSS after each item, so a wrapped line never opens on one.
+	assertFalse(html.includes("chl-entry__sep"));
+	assertMatch(html, /<li\s+class="chl-entry__category">Teams &amp; businesses<\/li>/);
 });
 
 Deno.test("feed: the filter chips are links, the selected ones aria-current", async () => {
@@ -115,18 +135,21 @@ Deno.test("feed: the pager links to page 2 and back, as real addresses", async (
 	assertFalse(two.html.includes('rel="next"'));
 });
 
-Deno.test("feed: pictures are real links the lightbox addresses, sized, lazy after the first", async () => {
+Deno.test("feed: pictures are real links the lightbox addresses, sized, lazy, captioned", async () => {
 	const { html } = await feedHtml();
 	assertMatch(
 		html,
-		/<a class="chl-shot__link" href="https:\/\/placehold\.co\/1600x1000\?text=[^"]+" data-chl-image="v0-17-0:1"/,
+		/<a class="chl-shot__link" href="https:\/\/placehold\.co\/1600x1000\?text=[^"]+" data-chl-image="v0-17-0:1" aria-describedby="v0-17-0-pic-1"/,
 	);
 	assertMatch(
 		html,
-		/<img class="chl-shot__img" src="[^"]+" alt="[^"]+" width="1600" height="1000" loading="eager"/,
+		/<img class="chl-shot__img" src="[^"]+" alt="[^"]+" width="1600" height="1000" loading="lazy"/,
 	);
-	assert(count(html, 'loading="lazy"') > 0);
-	assertEquals(count(html, 'loading="eager"'), 1);
+	const pictures = count(html, '<img class="chl-shot__img"');
+	assert(pictures > 0);
+	assertEquals(count(html, 'loading="lazy"'), pictures, "every picture is lazy");
+	assertEquals(count(html, 'loading="eager"'), 0);
+	assertEquals(count(html, '<figcaption id="'), pictures, "every picture has a caption");
 });
 
 Deno.test("feed: the subscribe row links the RSS feed", async () => {
@@ -143,12 +166,38 @@ Deno.test("release page: one h1 (its title), a breadcrumb, neighbours both ways"
 	assertEquals(count(html, /<h1[\s>]/g), 1);
 	assertMatch(html, /<h1 id="doc-title"[^>]*>Profiles, hiring and invitations<\/h1>/);
 	assertMatch(html, /<nav class="chl-crumbs" aria-label="Breadcrumb">/);
-	assertMatch(html, /<time datetime="2026-09-23">23 September 2026<\/time>/);
+	assertMatch(
+		html,
+		/Released <time class="chl-mono" datetime="2026-09-23">23 September 2026<\/time>/,
+	);
+	assertMatch(html, /Version <span class="chl-mono">0\.9\.0<\/span>/);
 	assertMatch(html, /href="\/changelog\/0\.8\.0" rel="prev"/);
 	assertMatch(html, /href="\/changelog\/0\.10\.0" rel="next"/);
 	assertMatch(html, /data-chl-image="v0-9-0:2"/);
+	assertFalse(html.includes('loading="eager"'), "the gallery follows the body, below the fold");
 	const all = ids(html);
 	assertEquals(all.length, new Set(all).size);
+});
+
+Deno.test("release page: the heading outline never skips a level", async () => {
+	for (const version of ["0.12.0", "0.9.0", "0.1.0"]) {
+		const result = await ChangelogBackendService.release(version, { source: "fixture", now: NOW });
+		const html = renderToString(<ChangelogReleaseView data={result.data!} />);
+		const levels = [...html.matchAll(/<h([1-6])[\s>]/g)].map((m) => Number(m[1]));
+		assertEquals(levels[0], 1, version);
+		for (let i = 1; i < levels.length; i++) {
+			assert(levels[i] <= levels[i - 1] + 1, `${version}: h${levels[i - 1]} → h${levels[i]}`);
+		}
+		const id = `v${version.replace(/\./g, "-")}-changes`;
+		assertMatch(
+			html,
+			new RegExp(
+				`<section class="chl-release__changes" aria-labelledby="${id}"><h2 id="${id}" class="ui-visually-hidden">What changed in v${
+					version.replace(/\./g, "\.")
+				}</h2>`,
+			),
+		);
+	}
 });
 
 Deno.test("release page: the oldest has no previous, the newest says Latest release", async () => {

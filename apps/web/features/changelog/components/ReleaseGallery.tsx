@@ -9,21 +9,20 @@ export interface ReleaseGalleryProps {
 	/** The release's version, for the gallery's accessible name. */
 	version: string;
 	images: readonly ChangelogImage[];
-	/** Load the first picture eagerly (the first release on a page sits near the fold). */
-	eager?: boolean;
 }
 
 /**
  * ReleaseGallery — a release's pictures in a responsive grid of 16:10 tiles, each a real link to
  * the picture (`href` = the image itself, so it works with no JavaScript) that the changelog
  * lightbox island intercepts by its `data-chl-image` address (`?image=<entry>:<n>`). Every `<img>`
- * carries its intrinsic width and height, so nothing shifts while it loads, and is lazy below the
- * fold. A caption sits under its tile and also describes the link.
+ * carries its intrinsic width and height, so nothing shifts while it loads, and loads lazily — a
+ * gallery always follows its release's whole body, below the fold. Every picture has a caption,
+ * under its tile, which also describes the link.
  *
  * Server-rendered and stylesheet-free (the changelog sheet arrives with the lightbox island).
  */
 export function ReleaseGallery(
-	{ entry, version, images, eager = false }: ReleaseGalleryProps,
+	{ entry, version, images }: ReleaseGalleryProps,
 ): JSX.Element | null {
 	if (images.length === 0) return null;
 	return (
@@ -34,7 +33,7 @@ export function ReleaseGallery(
 			data-count={images.length}
 		>
 			{images.map((image, i) => {
-				const captionId = image.caption ? `${entry}-pic-${i + 1}` : undefined;
+				const captionId = `${entry}-pic-${i + 1}`;
 				return (
 					<li key={image.src} class="chl-gallery__item">
 						<figure class="chl-shot">
@@ -50,14 +49,12 @@ export function ReleaseGallery(
 									alt={image.alt}
 									width={image.w}
 									height={image.h}
-									loading={eager && i === 0 ? "eager" : "lazy"}
+									loading="lazy"
 									decoding="async"
 								/>
 								<span class="ui-visually-hidden">, view larger</span>
 							</a>
-							{image.caption
-								? <figcaption id={captionId} class="chl-shot__caption">{image.caption}</figcaption>
-								: null}
+							<figcaption id={captionId} class="chl-shot__caption">{image.caption}</figcaption>
 						</figure>
 					</li>
 				);

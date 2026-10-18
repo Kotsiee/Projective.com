@@ -97,14 +97,14 @@ function release(authored: AuthoredRelease): ChangelogRelease {
  * A product capture's placeholder: a 1600 × 1000 `placehold.co` image labelled with the capture it
  * stands for. `alt` and `caption` describe the real screenshot, so they stay right when it lands.
  */
-function capture(label: string, alt: string, caption?: string): ChangelogImage {
+function capture(label: string, alt: string, caption: string): ChangelogImage {
 	const text = encodeURIComponent(label).replace(/%20/g, "+");
 	return {
 		src: `https://placehold.co/1600x1000?text=${text}`,
 		alt,
 		w: 1600,
 		h: 1000,
-		...(caption ? { caption } : {}),
+		caption,
 	};
 }
 // #endregion
@@ -227,6 +227,7 @@ const RELEASES: readonly ChangelogRelease[] = [
 			capture(
 				"Submissions",
 				"The submissions explorer: deliverables grouped under each stage",
+				"Deliverables, organised by stage.",
 			),
 		],
 	}),
@@ -258,6 +259,7 @@ const RELEASES: readonly ChangelogRelease[] = [
 			capture(
 				"View page",
 				"A service's view page: its description and stages beside the lane that holds the price and the purchase",
+				"A view page, with the purchase in its lane.",
 			),
 		],
 	}),
@@ -301,6 +303,7 @@ const RELEASES: readonly ChangelogRelease[] = [
 			capture(
 				"Wallet",
 				"The first wallet screen: balances, money in escrow and recent history",
+				"The first wallet screen, on sample data.",
 			),
 		],
 	}),
@@ -336,6 +339,7 @@ const RELEASES: readonly ChangelogRelease[] = [
 			capture(
 				"Asset picker",
 				"The asset picker: a library of files with a selection tray",
+				"One picker wherever you attach a file.",
 			),
 		],
 	}),
@@ -371,6 +375,7 @@ const RELEASES: readonly ChangelogRelease[] = [
 			capture(
 				"Calendar",
 				"The calendar's week view, zoomed in on one day with events side by side",
+				"Overlapping events, side by side.",
 			),
 		],
 	}),
@@ -422,6 +427,7 @@ const RELEASES: readonly ChangelogRelease[] = [
 			capture(
 				"Timeline",
 				"The project timeline: one lane per stage with its dated tickets and the links between them",
+				"A project's stages and dated tickets on the timeline.",
 			),
 		],
 	}),
@@ -440,7 +446,7 @@ const RELEASES: readonly ChangelogRelease[] = [
 				type: "list",
 				items: [
 					"Profiles: a split hero and four sections — Work, Experience, Reviews and Posts — with a showcase carousel and a headline the owner writes, now served from the database.",
-					"Hire from a profile: invite a freelancer to a new or an existing project. The same invitation cannot be sent again for 48 days.",
+					"Hire from a profile: invite a freelancer to a new or an existing project. A freelancer who declines cannot be invited to the same project again for 48 days.",
 					"Invitations are tracked in the database from the moment they are sent until they are answered.",
 					"Three kinds of project — Task, One-off and Pipeline — are created from one dialog.",
 					"Messaging: group conversations, a people picker ranked by who you work with, and one dialog for sharing.",
@@ -466,6 +472,7 @@ const RELEASES: readonly ChangelogRelease[] = [
 			capture(
 				"Hire invitation",
 				"The hire dialog: choosing a project and writing an introduction for the freelancer",
+				"Inviting a freelancer from their profile.",
 			),
 		],
 	}),
@@ -565,6 +572,7 @@ const RELEASES: readonly ChangelogRelease[] = [
 			capture(
 				"Settings",
 				"The Settings hub: a search field above what needs your attention and every section",
+				"One search over every setting.",
 			),
 		],
 	}),
@@ -617,6 +625,7 @@ const RELEASES: readonly ChangelogRelease[] = [
 			capture(
 				"File inspector",
 				"The file inspector showing a PDF full-window, with the details panel beside it",
+				"A PDF open in the file inspector.",
 			),
 			capture(
 				"Needs funding",
@@ -664,6 +673,7 @@ const RELEASES: readonly ChangelogRelease[] = [
 			capture(
 				"Saved",
 				"The Saved page: saved listings and people in rows, filtered by a collection",
+				"Saved listings and people, kept in collections.",
 			),
 		],
 	}),
@@ -692,7 +702,7 @@ const RELEASES: readonly ChangelogRelease[] = [
 					"Earnings wait seven days in a pending balance before they can be withdrawn.",
 					"Approving work settles the board and the money together, and an approval never releases money nobody can receive.",
 					"A card payment always lands in the ledger. If what it paid for falls through, the money waits in your wallet and you are told why.",
-					"A withdrawal follows the bank's answer: a reversed or failed payout returns the money to your wallet.",
+					"A reversed transfer returns its money to your wallet, and you are told when a bank payout is paid or fails.",
 				],
 			},
 			{ type: "h3", text: "Funding work" },
@@ -712,6 +722,7 @@ const RELEASES: readonly ChangelogRelease[] = [
 			capture(
 				"Fund a stage",
 				"The Fund a stage dialog: the stage's tickets and total, paid from the wallet or by card",
+				"Funding a whole stage up front.",
 			),
 		],
 	}),
@@ -763,6 +774,7 @@ const RELEASES: readonly ChangelogRelease[] = [
 			capture(
 				"Dispute desk",
 				"The operator dispute desk: the queue by status, oldest due first, with an open case",
+				"Where an operator decides a dispute.",
 			),
 		],
 	}),
@@ -820,6 +832,7 @@ const RELEASES: readonly ChangelogRelease[] = [
 			capture(
 				"Buyer simulation",
 				"A listing in buyer simulation, framed by the workspace's Preview tab",
+				"A listing as a buyer sees it; nothing is booked or charged.",
 			),
 		],
 	}),
@@ -870,6 +883,7 @@ const RELEASES: readonly ChangelogRelease[] = [
 			capture(
 				"Team console",
 				"A team console's Overview, with the Payouts split beside the members",
+				"A team's console, with its payout split.",
 			),
 			capture(
 				"Business spend",

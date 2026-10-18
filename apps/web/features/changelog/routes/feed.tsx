@@ -13,7 +13,7 @@ import ChangelogLightbox from "../islands/ChangelogLightbox.island.tsx";
 import { ChangelogFeedView } from "../components/ChangelogFeedView.tsx";
 import { type ChangelogNoticeKind, ChangelogNoticeView } from "../components/ChangelogNotice.tsx";
 import { parseFeedQuery } from "../core/changelog-url.ts";
-import { feedJsonLd, feedPageMeta } from "../core/changelog-meta.ts";
+import { feedJsonLd, feedPageMeta, feedViewMeta } from "../core/changelog-meta.ts";
 import { galleriesFor } from "../core/galleries.ts";
 import type { ChangelogGallery } from "../types/gallery.ts";
 
@@ -27,8 +27,10 @@ type FeedPageData =
  *
  * Thin: the handler parses the query (`?category=` repeatable, `?page=n`), answers a non-canonical
  * spelling with a 308 to the canonical one, asks {@link ChangelogBackendService.feed} for the page
- * and applies the page meta (canonical `/changelog`, the RSS alternate). A page past the last is a
- * 404 notice and an unreadable changelog a 503 notice, both `noindex`.
+ * and applies the page meta (`feedViewMeta`: canonical `/changelog`, or the page itself from page 2
+ * of the unfiltered feed; the RSS alternate). A page past the last is a 404 notice and an unreadable
+ * changelog a 503 notice, both `noindex`. The newsletter capture records its sign-ups with the
+ * `changelog` source and topic.
  */
 export const handler = define.handlers({
 	async GET(ctx) {
@@ -53,13 +55,14 @@ export const handler = define.handlers({
 				{ status: notice === "page-missing" ? 404 : 503 },
 			);
 		}
-		applyPageMeta(ctx.state, pageMeta(feedPageMeta(origin)));
 		const feed = result.data;
+		const view = { categories: feed.selected, page: feed.page };
+		applyPageMeta(ctx.state, feedViewMeta(origin, view));
 		return page<FeedPageData>({
 			kind: "feed",
 			feed,
 			galleries: galleriesFor(feed.releases),
-			graph: feedJsonLd(origin, feed.releases, feed.latest?.releasedOn ?? null),
+			graph: feedJsonLd(origin, feed.releases, feed.latest?.releasedOn ?? null, view),
 		});
 	},
 });
@@ -79,7 +82,7 @@ export default define.page<typeof handler>(function ChangelogFeedPage({ data }) 
 			<ChangelogFeedView
 				feed={data.feed}
 				glyphs={EDITORIAL_ICONS}
-				newsletter={<NewsletterForm topic="changelog" />}
+				newsletter={<NewsletterForm topic="changelog" source="changelog" />}
 				lightbox={<ChangelogLightbox galleries={data.galleries} />}
 			/>
 			<JsonLd graph={data.graph} />

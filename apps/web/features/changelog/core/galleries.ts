@@ -17,7 +17,7 @@ export function galleriesFor(releases: readonly ChangelogRelease[]): ChangelogGa
 			images: release.images.map((image) => ({
 				src: image.src,
 				alt: image.alt,
-				...(image.caption ? { caption: image.caption } : {}),
+				caption: image.caption,
 			})),
 		}));
 }

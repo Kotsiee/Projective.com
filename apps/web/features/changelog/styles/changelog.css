@@ -77,6 +77,7 @@
 	line-height: var(--leading-normal);
 	color: var(--text-secondary);
 	max-inline-size: var(--measure);
+	text-wrap: pretty;
 }
 /* #endregion */
 
@@ -165,6 +166,16 @@
 
 	.chl-filters__list > li {
 		flex: none;
+	}
+
+	/*
+	 * A release's anchor is its h2, but in one column the date and version row sits above it: a
+	 * deep link clears the pinned chrome AND that row, so the release opens with its facts in view.
+	 */
+	.chl-timeline .chl-entry__title[id] {
+		scroll-margin-block-start: calc(
+			var(--doc-sticky-top) + var(--text-sm) * var(--leading-normal) + var(--space-2)
+		);
 	}
 }
 /* #endregion */
@@ -257,6 +268,10 @@
 	transition-duration: var(--dur-press);
 }
 
+.chl-entry__date {
+	white-space: nowrap;
+}
+
 .chl-entry__latest {
 	font-family: var(--font-sans);
 	font-size: var(--text-xs);
@@ -283,7 +298,11 @@
 	text-wrap: balance;
 }
 
-/* Categories: non-actionable meta text, middot-separated (§B.11.2). */
+/*
+ * Categories: non-actionable meta text, middot-separated (§B.11.2). The middot TRAILS each item but
+ * the last, so a category that wraps takes its dot to the end of the line above instead of opening
+ * the next line with one; its alt text is empty, so a screen reader hears the list, not punctuation.
+ */
 .chl-entry__categories {
 	display: flex;
 	flex-wrap: wrap;
@@ -296,7 +315,8 @@
 	color: var(--text-secondary);
 }
 
-.chl-entry__sep {
+.chl-entry__category:not(:last-child)::after {
+	content: "·" / "";
 	margin-inline: var(--space-2);
 	color: var(--on-surface-variant);
 }
@@ -386,7 +406,10 @@
 	margin: 0;
 }
 
-/* An interactive tile: radius and a solid fill under the picture while it loads; a ring on hover. */
+/*
+ * An interactive tile: radius and a solid fill under the picture while it loads; on hover the
+ * picture takes the card family's media zoom inside its corner (transform only, a token scale).
+ */
 .chl-shot__link {
 	display: block;
 	overflow: hidden;
@@ -394,13 +417,11 @@
 	border-radius: var(--radius-md);
 	background: var(--surface-1);
 	transform: scale(1);
-	transition:
-		box-shadow var(--dur-fast) var(--ease-standard),
-		transform var(--dur-fast) var(--ease-standard);
+	transition: transform var(--dur-fast) var(--ease-standard);
 }
 
-.chl-shot__link:hover {
-	box-shadow: 0 0 0 2px var(--primary);
+.chl-shot__link:hover .chl-shot__img {
+	transform: scale(var(--card-media-zoom));
 }
 
 .chl-shot__link:active {
@@ -414,6 +435,7 @@
 	block-size: auto;
 	aspect-ratio: var(--card-media-ratio);
 	object-fit: cover;
+	transition: transform var(--dur-medium) var(--ease-standard);
 }
 
 .chl-shot__caption {
@@ -505,20 +527,26 @@
 	border-block-start: var(--hairline);
 }
 
+/* One column below --bp-md of frame; from it, the older release on the left and the newer right. */
 .chl-siblings__list {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+	grid-template-columns: minmax(0, 1fr);
 	gap: var(--space-3);
 	margin: 0;
 	padding: 0;
 	list-style: none;
 }
 
-/* A neighbour is a whole-row link: a solid tint on hover, no box at rest. */
+/*
+ * A neighbour is a whole-row link: a solid tint on hover, no box at rest. The tint HANGS into the
+ * margin (a negative inline margin the size of its padding), so at rest the text lines up with the
+ * hairline above and the "All releases" button below.
+ */
 .chl-siblings__link {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-1);
+	margin-inline: calc(-1 * var(--space-4));
 	padding: var(--space-3) var(--space-4);
 	border-radius: var(--radius-md);
 	color: var(--on-surface);
@@ -538,9 +566,22 @@
 	transition-duration: var(--dur-press);
 }
 
-.chl-siblings__item--newer:last-child:not(:first-child) .chl-siblings__link {
-	align-items: flex-end;
-	text-align: end;
+@container ui-doc (min-width: 768px) {
+	.chl-siblings__list {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		/* Wider than the two hung tints (--space-4 each), so they never meet. */
+		column-gap: var(--space-7);
+	}
+
+	/* Side by side, the newer release sits at the end of the row and its text aligns there. */
+	.chl-siblings__item--newer {
+		grid-column: 2;
+	}
+
+	.chl-siblings__item--newer .chl-siblings__link {
+		align-items: flex-end;
+		text-align: end;
+	}
 }
 
 .chl-siblings__title {
@@ -563,17 +604,19 @@
 }
 /* #endregion */
 
-/* #region Reduced motion — press feedback removed in both channels (§B.12.1) */
+/* #region Reduced motion — press feedback and the hover zoom removed in both channels (§B.12.1) */
 @media (prefers-reduced-motion: reduce) {
 	.chl-filter:active,
 	.chl-entry__version:active,
 	.chl-shot__link:active,
-	.chl-siblings__link:active {
+	.chl-siblings__link:active,
+	.chl-shot__link:hover .chl-shot__img {
 		transform: none !important;
 	}
 }
 
-:root[data-motion="reduced"] :is(.chl-filter, .chl-entry__version, .chl-shot__link, .chl-siblings__link):active {
+:root[data-motion="reduced"] :is(.chl-filter, .chl-entry__version, .chl-shot__link, .chl-siblings__link):active,
+:root[data-motion="reduced"] .chl-shot__link:hover .chl-shot__img {
 	transform: none !important;
 }
 /* #endregion */

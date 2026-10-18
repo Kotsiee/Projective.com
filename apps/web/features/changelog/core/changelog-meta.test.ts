@@ -1,9 +1,12 @@
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertFalse } from "@std/assert";
 import type { ChangelogRelease } from "@projective/types/editorial";
 import { pageMeta, serializeJsonLd } from "@features/marketing/core/seo.ts";
 import {
+	CHANGELOG_OG_IMAGE,
 	feedJsonLd,
 	feedPageMeta,
+	feedViewMeta,
+	previewImage,
 	releaseJsonLd,
 	releaseLabel,
 	releasePageMeta,
@@ -27,7 +30,13 @@ const release = {
 			h: 1000,
 			caption: "Waiting for its payment.",
 		},
-		{ src: "/test_images/banner_2.jpg", alt: "A second capture", w: 1280, h: 720 },
+		{
+			src: "/test_images/banner_2.jpg",
+			alt: "A second capture",
+			w: 1280,
+			h: 720,
+			caption: "A second caption.",
+		},
 	],
 	withdrawn: false,
 } satisfies ChangelogRelease;
@@ -54,6 +63,49 @@ Deno.test("feed meta: canonical /changelog, the RSS alternate, a website preview
 	}]);
 });
 
+Deno.test("feed views: page 1 and filters are canonical at /changelog, later pages at themselves", () => {
+	const home = feedViewMeta(origin, { categories: [], page: 1 });
+	assertEquals(home.canonical, "https://projective.test/changelog");
+	assertEquals(home.title, "Changelog · Projective");
+
+	const two = feedViewMeta(origin, { categories: [], page: 2 });
+	assertEquals(two.canonical, "https://projective.test/changelog?page=2");
+	assertEquals(two.og.url, two.canonical);
+	assertEquals(two.title, "Changelog · page 2 · Projective");
+	assertEquals(two.robots, "index, follow");
+
+	const filtered = feedViewMeta(origin, { categories: ["escrow"], page: 2 });
+	assertEquals(filtered.canonical, "https://projective.test/changelog");
+	assertEquals(filtered.og.url, filtered.canonical);
+});
+
+Deno.test("feed graph: only the feed itself carries the CollectionPage", () => {
+	const types = (graph: { "@graph": Array<Record<string, unknown>> }) =>
+		graph["@graph"].map((n) => n["@type"]);
+	const home = feedJsonLd(origin, [release], "2026-10-11", { categories: [], page: 1 });
+	assertEquals(types(home), ["Organization", "WebSite", "CollectionPage"]);
+	for (const view of [{ categories: [], page: 2 }, { categories: ["escrow" as const], page: 1 }]) {
+		const graph = feedJsonLd(origin, [release], "2026-10-11", view);
+		assertEquals(types(graph), ["Organization", "WebSite"], JSON.stringify(view));
+	}
+});
+
+Deno.test("previews are raster: placeholders are asked for as PNG, real pictures pass through", () => {
+	assertEquals(
+		CHANGELOG_OG_IMAGE.src,
+		"https://placehold.co/1200x630.png?text=Projective+changelog",
+	);
+	assertEquals(previewImage(release.images[0]), {
+		src: "https://placehold.co/1600x1000.png?text=Needs+funding",
+		alt: "A ticket waiting in Needs funding",
+		width: 1600,
+		height: 1000,
+	});
+	assertEquals(previewImage(release.images[1]).src, "/test_images/banner_2.jpg");
+	assertEquals(previewImage(CHANGELOG_OG_IMAGE).src, CHANGELOG_OG_IMAGE.src);
+	assertFalse(pageMeta(feedPageMeta(origin)).og.image?.url.endsWith(".svg"));
+});
+
 Deno.test("feed graph: a CollectionPage whose ItemList is the page's releases", () => {
 	const graph = feedJsonLd(origin, [release, bare], "2026-10-11");
 	const page = node(graph, "CollectionPage");
@@ -73,7 +125,7 @@ Deno.test("release meta: an article on its own canonical path, its first picture
 	assertEquals(meta.canonical, "https://projective.test/changelog/0.12.0");
 	assertEquals(meta.og.type, "article");
 	assertEquals(meta.og.publishedAt, "2026-10-11");
-	assertEquals(meta.og.image?.url, release.images[0].src);
+	assertEquals(meta.og.image?.url, "https://placehold.co/1600x1000.png?text=Needs+funding");
 	assertEquals(meta.twitterCard, "summary_large_image");
 	assertEquals(pageMeta(releasePageMeta(origin, bare)).og.image, undefined);
 });
@@ -111,7 +163,7 @@ Deno.test("galleries: one per release with pictures, keyed by its anchor, captio
 				alt: release.images[0].alt,
 				caption: "Waiting for its payment.",
 			},
-			{ src: "/test_images/banner_2.jpg", alt: "A second capture" },
+			{ src: "/test_images/banner_2.jpg", alt: "A second capture", caption: "A second caption." },
 		],
 	}]);
 });

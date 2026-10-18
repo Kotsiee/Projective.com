@@ -28,8 +28,11 @@ const email = z.string().trim().max(NEWSLETTER_EMAIL_MAX, "Enter a valid email a
 	"Enter a valid email address.",
 );
 
-/** Where the capture originated, so the backend can attribute intent (footer, a campaign, …). */
-export const NewsletterSource = z.enum(["footer", "landing", "explore"]);
+/**
+ * Where the capture originated, so the backend can attribute intent (footer, a campaign, …):
+ * `changelog` is the subscribe row on /changelog (Decision #278).
+ */
+export const NewsletterSource = z.enum(["footer", "landing", "explore", "changelog"]);
 export type NewsletterSource = z.infer<typeof NewsletterSource>;
 
 /**

@@ -206,6 +206,15 @@ Deno.test("authored pictures are placeholders or shipped static images, sized at
 	}
 });
 
+Deno.test("every authored picture has its own caption, distinct from its alt text", () => {
+	for (const release of CHANGELOG_RECORDS) {
+		for (const image of release.images) {
+			assert(image.caption.trim().length > 0, `${release.version}: ${image.src} has no caption`);
+			assert(image.caption !== image.alt, `${release.version}: the caption repeats the alt`);
+		}
+	}
+});
+
 Deno.test("no authored release is withdrawn or dated after today's build", () => {
 	for (const release of CHANGELOG_RECORDS) {
 		assertEquals(release.withdrawn, false, release.version);

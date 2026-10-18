@@ -1,9 +1,12 @@
-import type { ComponentChildren, JSX } from "preact";
-import { createAnchorRegistry, RESERVED_ANCHOR_IDS } from "@projective/types/content";
+import { type ComponentChildren, Fragment, type JSX } from "preact";
+import {
+	createAnchorRegistry,
+	formatContentDate,
+	RESERVED_ANCHOR_IDS,
+} from "@projective/types/content";
 import { CHANGELOG_CATEGORY_LABEL, type ChangelogRelease } from "@projective/types/editorial";
 import {
 	ContentRenderer,
-	DocumentDate,
 	DocumentHeader,
 	DocumentLayout,
 	EditorialGlyphContext,
@@ -48,8 +51,10 @@ function Sibling(
 /**
  * ChangelogReleaseView — `/changelog/[version]`, a release's canonical page: a breadcrumb back to the
  * feed, the release as a document (its title the page's `<h1>`, the summary as the lead, then
- * "Released <time>" · the version · its categories as one meta line), the body and its pictures, and
- * a footer naming the previous and next releases beside "All releases".
+ * "Released <time>" · the version · its categories as one meta line, the figures in the mono face),
+ * the body and its pictures under a visually hidden `<h2>` — so the body's `<h3>` sub-headings sit
+ * one level below a section, as they do under each entry's `<h2>` on the feed — and a footer naming
+ * the previous and next releases beside "All releases".
  *
  * Injectable islands, so a render test mounts it with none; the route passes the real ones.
  */
@@ -58,10 +63,18 @@ export function ChangelogReleaseView(
 ): JSX.Element {
 	const { release, newer, older, latest } = data;
 	const anchor = releaseAnchorId(release.version);
-	const registry = createAnchorRegistry([...RESERVED_ANCHOR_IDS, anchor]);
+	const changesId = `${anchor}-changes`;
+	const registry = createAnchorRegistry([...RESERVED_ANCHOR_IDS, anchor, changesId]);
 	const meta = [
-		<DocumentDate key="released" prefix="Released" iso={release.releasedOn} />,
-		<span key="version" class="chl-mono">Version {release.version}</span>,
+		<Fragment key="released">
+			Released{" "}
+			<time class="chl-mono" dateTime={release.releasedOn}>
+				{formatContentDate(release.releasedOn)}
+			</time>
+		</Fragment>,
+		<Fragment key="version">
+			Version <span class="chl-mono">{release.version}</span>
+		</Fragment>,
 		...release.categories.map((category) => CHANGELOG_CATEGORY_LABEL[category]),
 		latest ? "Latest release" : null,
 	];
@@ -103,15 +116,13 @@ export function ChangelogReleaseView(
 					</nav>
 				}
 			>
-				<Prose class="chl-release__body">
-					<ContentRenderer nodes={release.body} registry={registry} />
-				</Prose>
-				<ReleaseGallery
-					entry={anchor}
-					version={release.version}
-					images={release.images}
-					eager
-				/>
+				<section class="chl-release__changes" aria-labelledby={changesId}>
+					<h2 id={changesId} class="ui-visually-hidden">What changed in v{release.version}</h2>
+					<Prose class="chl-release__body">
+						<ContentRenderer nodes={release.body} registry={registry} />
+					</Prose>
+					<ReleaseGallery entry={anchor} version={release.version} images={release.images} />
+				</section>
 			</DocumentLayout>
 			{lightbox}
 		</EditorialGlyphContext.Provider>

@@ -96,12 +96,21 @@ Deno.test("an empty body, a blank title and an unsafe image are refused", () => 
 	assertFalse(ChangelogReleaseRowSchema.safeParse(withField("title", "   ")).success);
 	assertFalse(
 		ChangelogReleaseRowSchema.safeParse(
-			withField("images", [{ src: "//evil.example/x.png", alt: "x", w: 1, h: 1 }]),
+			withField("images", [{ src: "//evil.example/x.png", alt: "x", w: 1, h: 1, caption: "x" }]),
 		).success,
 	);
 	assertFalse(
 		ChangelogReleaseRowSchema.safeParse(
-			withField("images", [{ src: "https://placehold.co/1x1", alt: "", w: 1, h: 1 }]),
+			withField("images", [{ src: "https://placehold.co/1x1", alt: "", w: 1, h: 1, caption: "x" }]),
 		).success,
+	);
+});
+
+Deno.test("every picture carries a caption", () => {
+	const { caption: _caption, ...uncaptioned } = row.images[0];
+	assertFalse(ChangelogReleaseRowSchema.safeParse(withField("images", [uncaptioned])).success);
+	assertFalse(
+		ChangelogReleaseRowSchema.safeParse(withField("images", [{ ...row.images[0], caption: "" }]))
+			.success,
 	);
 });

@@ -159,7 +159,7 @@ export default function ChangelogLightbox({ galleries }: ChangelogLightboxProps)
 		? gallery.images.map((image) => ({
 			src: image.src,
 			alt: image.alt,
-			...(image.caption ? { caption: image.caption } : {}),
+			caption: image.caption,
 		}))
 		: [];
 	return (

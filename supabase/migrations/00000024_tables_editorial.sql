@@ -62,7 +62,7 @@ CREATE TABLE editorial.changelog_releases (
     ),
     -- A ContentNode list (@projective/types/content); the Zod row schema validates the nodes.
     CONSTRAINT changelog_releases_body_blocks CHECK (jsonb_typeof(body) = 'array' AND jsonb_array_length(body) >= 1),
-    -- The release's gallery: an array of { src, alt, w, h, caption? } (ChangelogImageSchema).
+    -- The release's gallery: an array of { src, alt, w, h, caption } (ChangelogImageSchema).
     CONSTRAINT changelog_releases_images_array CHECK (jsonb_typeof(images) = 'array' AND jsonb_array_length(images) <= 12)
 );
 
@@ -79,7 +79,7 @@ COMMENT ON COLUMN editorial.changelog_releases.categories IS
 COMMENT ON COLUMN editorial.changelog_releases.body IS
     'ContentNode blocks (@projective/types/content) — no image nodes (pictures are the gallery) and no explicit h3 ids (a feed anchors many bodies on one page).';
 COMMENT ON COLUMN editorial.changelog_releases.images IS
-    'The release''s gallery, opened in the lightbox: [{ src, alt, w, h, caption? }].';
+    'The release''s gallery, opened in the lightbox: [{ src, alt, w, h, caption }].';
 COMMENT ON COLUMN editorial.changelog_releases.withdrawn IS
     'Retracted: hidden from every reader by the SELECT policy and the content source''s visible predicate. Never deleted.';
 -- #endregion

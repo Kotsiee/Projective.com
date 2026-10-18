@@ -1,8 +1,9 @@
 import type { JSX } from "preact";
-import { type AnchorRegistry, formatContentDate } from "@projective/types/content";
+import type { AnchorRegistry } from "@projective/types/content";
 import { CHANGELOG_CATEGORY_LABEL, type ChangelogRelease } from "@projective/types/editorial";
 import { AnchorHeading, ContentRenderer, Prose } from "@projective/ui/display/editorial";
 import { releaseAnchorId, releasePath } from "../core/changelog-url.ts";
+import { formatShortReleaseDate } from "../core/release-date.ts";
 import { ReleaseGallery } from "./ReleaseGallery.tsx";
 
 /** Props for {@link ReleaseEntry}. */
@@ -15,26 +16,26 @@ export interface ReleaseEntryProps {
 	 * (pre-seeded with the layout's ids and every release anchor), so no id repeats on the page.
 	 */
 	registry: AnchorRegistry;
-	/** The first entry on the page: its first picture loads eagerly. */
-	first?: boolean;
 }
 
 /**
  * ReleaseEntry — one release on the changelog timeline: a `<li>` holding an `<article>` named by its
  * title.
  *
- * The gutter (`chl-entry__aside`) carries the release day as `<time datetime>` and the version as a
- * small link to the release's own page, both in the mono face; from 768px of frame it sits beside
+ * The gutter (`chl-entry__aside`) carries the release day as `<time datetime>` (the short month, so
+ * it fits the gutter under every font overlay) and the version as a small link to the release's own
+ * page, both in the mono face, with a space between the facts so they read apart as text too; from
+ * 768px of frame it sits beside
  * the entry and stays in view (sticky) while the entry scrolls, its dot riding the timeline's
  * hairline spine. The content column holds the title — an {@link AnchorHeading} `h2` whose text is
  * a link to its own `#v0-12-0` anchor — the categories as inline middot meta text (never chips: the
- * filters above are the controls), the summary, the body through {@link ContentRenderer}, and the
- * picture grid.
+ * filters above are the controls; the middot trails each item, so a wrapped line never opens on
+ * one), the summary, the body through {@link ContentRenderer}, and the picture grid.
  *
  * Server-rendered and stylesheet-free.
  */
 export function ReleaseEntry(
-	{ release, latest, registry, first = false }: ReleaseEntryProps,
+	{ release, latest, registry }: ReleaseEntryProps,
 ): JSX.Element {
 	const anchor = releaseAnchorId(release.version);
 	return (
@@ -44,13 +45,20 @@ export function ReleaseEntry(
 					<span class="chl-entry__dot" aria-hidden="true" />
 					<p class="chl-entry__facts">
 						<time class="chl-entry__date" dateTime={release.releasedOn}>
-							{formatContentDate(release.releasedOn)}
-						</time>
+							{formatShortReleaseDate(release.releasedOn)}
+						</time>{" "}
 						<a class="chl-entry__version" href={releasePath(release.version)}>
 							v{release.version}
 							<span class="ui-visually-hidden">, release page</span>
 						</a>
-						{latest ? <span class="chl-entry__latest">Latest</span> : null}
+						{latest
+							? (
+								<>
+									{" "}
+									<span class="chl-entry__latest">Latest</span>
+								</>
+							)
+							: null}
 					</p>
 				</div>
 				<div class="chl-entry__main">
@@ -58,9 +66,8 @@ export function ReleaseEntry(
 						{release.title}
 					</AnchorHeading>
 					<ul class="chl-entry__categories" role="list" aria-label="Categories">
-						{release.categories.map((category, i) => (
+						{release.categories.map((category) => (
 							<li key={category} class="chl-entry__category">
-								{i > 0 ? <span class="chl-entry__sep" aria-hidden="true">·</span> : null}
 								{CHANGELOG_CATEGORY_LABEL[category]}
 							</li>
 						))}
@@ -73,7 +80,6 @@ export function ReleaseEntry(
 						entry={anchor}
 						version={release.version}
 						images={release.images}
-						eager={first}
 					/>
 				</div>
 			</article>

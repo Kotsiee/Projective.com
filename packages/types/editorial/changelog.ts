@@ -74,11 +74,12 @@ export const ChangelogVersionSchema = SemverSchema.max(64).refine(
 
 // #region Images & body
 /**
- * One picture in a release's gallery: a content image (`src`, `alt`, intrinsic `w` × `h`) and an
- * optional caption, shown under the thumbnail and in the lightbox.
+ * One picture in a release's gallery: a content image (`src`, `alt`, intrinsic `w` × `h`) and its
+ * caption, shown under the thumbnail and in the lightbox. Every picture carries one, so a gallery's
+ * tiles read evenly and the lightbox always has a description to announce.
  */
 export const ChangelogImageSchema = ContentImageSchema.extend({
-	caption: z.string().min(1).max(240).optional(),
+	caption: z.string().min(1).max(240),
 });
 /** One picture in a release's gallery. */
 export type ChangelogImage = z.infer<typeof ChangelogImageSchema>;

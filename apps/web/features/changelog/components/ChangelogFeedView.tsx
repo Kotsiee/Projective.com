@@ -1,8 +1,11 @@
 import { type ComponentChildren, Fragment, type JSX } from "preact";
-import { createAnchorRegistry, RESERVED_ANCHOR_IDS } from "@projective/types/content";
+import {
+	createAnchorRegistry,
+	formatContentDate,
+	RESERVED_ANCHOR_IDS,
+} from "@projective/types/content";
 import type { ChangelogRelease } from "@projective/types/editorial";
 import {
-	DocumentDate,
 	DocumentHeader,
 	DocumentLayout,
 	EditorialGlyphContext,
@@ -29,7 +32,10 @@ export const CHANGELOG_PAGE_IDS = [
 /** Props for {@link ChangelogFeedView}. */
 export interface ChangelogFeedViewProps {
 	feed: ChangelogFeed;
-	/** The newsletter capture (`<NewsletterForm topic="changelog" />` in the route; omitted in tests). */
+	/**
+	 * The newsletter capture (`<NewsletterForm topic="changelog" source="changelog" />` in the route;
+	 * omitted in tests).
+	 */
 	newsletter?: ComponentChildren;
 	/** The lightbox island (the route's; omitted in tests). Rendered after the document. */
 	lightbox?: ComponentChildren;
@@ -68,7 +74,14 @@ export function ChangelogFeedView(
 			)
 			: null,
 		feed.latest
-			? <DocumentDate key="updated" prefix="Updated" iso={feed.latest.releasedOn} />
+			? (
+				<Fragment key="updated">
+					Updated{" "}
+					<time class="chl-mono" dateTime={feed.latest.releasedOn}>
+						{formatContentDate(feed.latest.releasedOn)}
+					</time>
+				</Fragment>
+			)
 			: null,
 	];
 	return (
@@ -113,13 +126,12 @@ export function ChangelogFeedView(
 				{feed.releases.length > 0
 					? (
 						<ol id="chl-releases" class="chl-timeline" aria-label="Releases, newest first">
-							{feed.releases.map((release, i) => (
+							{feed.releases.map((release) => (
 								<ReleaseEntry
 									key={release.version}
 									release={release}
 									latest={release.version === feed.latest?.version}
 									registry={registry}
-									first={i === 0}
 								/>
 							))}
 						</ol>
