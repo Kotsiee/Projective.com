@@ -11,6 +11,7 @@ import {
 	parseContactIntent,
 } from "@projective/types/contact";
 import { intentOptions, type ReceiptReply } from "../core/contact-copy.ts";
+import type { ContactPrefill } from "../core/contact-prefill.ts";
 import { type ContactFormError, contactHref } from "../core/contact-url.ts";
 import {
 	type AttachmentEntry,
@@ -61,6 +62,8 @@ export interface ContactIntakeProps {
 	signedIn: boolean;
 	/** A signed-in reader's open engagements, for the dispute intent. */
 	engagements: ContactEngagementOption[];
+	/** A signed-in reader's own name and address, which the sender fields open with (editable). */
+	prefill: ContactPrefill;
 	/** Where a guest signs in and comes back to the dispute form. */
 	loginHref: string;
 	/** A no-JS submission's receipt (from the route's cookie), shown instead of the form. */
@@ -83,9 +86,11 @@ const NO_JS_FIELD_TEXT = "Check this field.";
 
 const FIELD_KEYS = Object.keys(EMPTY_CONTACT_FORM) as Array<keyof ContactFormState>;
 
-function freshFields(): FieldSignals {
+/** One signal per field, opening on the empty form with the reader's own name and address. */
+function freshFields(prefill: ContactPrefill): FieldSignals {
+	const start: ContactFormState = { ...EMPTY_CONTACT_FORM, ...prefill };
 	const out = {} as Record<string, unknown>;
-	for (const key of FIELD_KEYS) out[key] = signal(EMPTY_CONTACT_FORM[key]);
+	for (const key of FIELD_KEYS) out[key] = signal(start[key]);
 	return out as FieldSignals;
 }
 
@@ -97,7 +102,7 @@ function readFields(fields: FieldSignals): ContactFormState {
 
 export default function ContactIntake(props: ContactIntakeProps): JSX.Element {
 	const intent = useSignal<ContactIntent>(props.intent);
-	const fields = useMemo(freshFields, []);
+	const fields = useMemo(() => freshFields(props.prefill), []);
 	const attachments = useMemo(
 		() =>
 			Object.fromEntries(

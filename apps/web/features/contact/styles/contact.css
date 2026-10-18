@@ -233,6 +233,9 @@
 .ctc-route__body p {
 	margin: 0;
 }
+.ctc-route__body a:not(.ui-button) {
+	color: var(--primary);
+}
 
 /* The message counter: figures change, so they do not jitter. */
 .ctc-counter {

@@ -3,7 +3,7 @@ import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { isSecureRequest, readCookies } from "@web/utils/auth-cookies.ts";
 import { ensureSession } from "@web/utils/session.ts";
-import { resolveTokenContext } from "@web/utils/user-context.ts";
+import { decodeAccessClaims, resolveTokenContext } from "@web/utils/user-context.ts";
 import type { ContactEngagementOption, ContactIntent } from "@projective/types/contact";
 import { ContactBackendService } from "@server/services/contact/ContactBackendService.ts";
 import { applyPageMeta, type JsonLdGraph, pageMeta } from "@features/marketing/core/seo.ts";
@@ -24,6 +24,11 @@ import {
 	parseReceiptCookie,
 } from "../core/contact-form.ts";
 import { contactJsonLd } from "../core/contact-jsonld.ts";
+import {
+	type ContactPrefill,
+	contactPrefillFromClaims,
+	NO_PREFILL,
+} from "../core/contact-prefill.ts";
 
 /**
  * `/contact` — the page controller (Decision #276); `routes/(public)/contact.tsx` re-exports it.
@@ -44,6 +49,7 @@ interface ContactPageData {
 	intent: ContactIntent;
 	signedIn: boolean;
 	engagements: ContactEngagementOption[];
+	prefill: ContactPrefill;
 	receipt: FormReceipt | null;
 	formError: { error: ContactFormError; fields: string[] } | null;
 	loginHref: string;
@@ -69,9 +75,11 @@ export const handler = define.handlers({
 
 		const url = parseContactUrl(ctx.url);
 		const signedIn = ctx.state.isAuthenticated === true;
-		const engagements = signedIn
-			? await ContactBackendService.disputeEngagements(readActor(ctx))
-			: [];
+		const actor = readActor(ctx);
+		const engagements = signedIn ? await ContactBackendService.disputeEngagements(actor) : [];
+		const prefill = signedIn
+			? contactPrefillFromClaims(decodeAccessClaims(actor.accessToken))
+			: { ...NO_PREFILL };
 
 		let receipt: ContactPageData["receipt"] = null;
 		if (url.sent) {
@@ -89,6 +97,7 @@ export const handler = define.handlers({
 			intent: receipt?.intent ?? url.intent,
 			signedIn,
 			engagements,
+			prefill,
 			receipt,
 			formError: url.error ? { error: url.error, fields: url.fields } : null,
 			loginHref: contactLoginHref("dispute"),
@@ -113,6 +122,7 @@ export default define.page<typeof handler>(function ContactPage({ data }) {
 					intent={data.intent}
 					signedIn={data.signedIn}
 					engagements={data.engagements}
+					prefill={data.prefill}
 					loginHref={data.loginHref}
 					receipt={data.receipt}
 					formError={data.formError}

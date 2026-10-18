@@ -2878,12 +2878,13 @@ column — over one `<form method="post" action="/api/contact">` whose four inte
 moves nothing; the inactive three are `disabled`, `inert` and `aria-hidden`, and the pair
 cross-fades on `--dur-fast` (opacity, with a delayed `visibility` step on the way out; a cut under
 both reduced-motion channels). Labels sit above fields through `FormControl`, hints are
-`--text-secondary`, and an error is inline and `aria-describedby`; a submission is pre-checked
-against the shared Zod schema and the first invalid field takes focus. The outcome replaces the
+`--text-secondary`, and an error is inline and `aria-describedby`; a signed-in reader's name and
+address open pre-filled (editable); a submission is pre-checked against the shared Zod schema and
+the first invalid field takes focus. The outcome replaces the
 form: `ContactReceiptPanel` — a success mark, the heading (the focus target), the reference in
 `--font-mono` with a Copy control that really copies, the intent's next steps, and Send another
-(neutral outlined) beside Browse the help centre (the column's one filled primary at that point) —
-announced through the intake's polite live region independently of any motion. Each form's submit
+(neutral outlined) beside Browse the help centre (a `link`-variant anchor; no fill competes once the
+request is in) — announced through the intake's polite live region independently of any motion. Each form's submit
 is the column's one filled primary; the sales form's Book a discovery call is `neutral` `outlined`
 (tier 4) and, while no Projective sales profile exists, `aria-disabled` with its reason as visible
 text (gate 11). Routing notes (sign in to pick an engagement; a session's no-show claim; responsible
