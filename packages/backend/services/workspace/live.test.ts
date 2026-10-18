@@ -1097,4 +1097,15 @@ Deno.test("readDetail (team): no business blocks", async () => {
 	assertEquals([detail.moneyTiles, detail.viewerCan, detail.kyb], [[], null, null]);
 });
 
+Deno.test("readDetail (team): seats map as the read gives them; a drifted or absent shape is null", async () => {
+	const capped = await readStubbed({ ...rawTeamDetail(false), seats: { used: 5, limit: 15 } });
+	assertEquals(capped.detail?.seats, { used: 5, limit: 15 });
+	const unlimited = await readStubbed({ ...rawTeamDetail(false), seats: { used: 3, limit: null } });
+	assertEquals(unlimited.detail?.seats, { used: 3, limit: null });
+	const drifted = await readStubbed({ ...rawTeamDetail(false), seats: { used: "five" } });
+	assertStrictEquals(drifted.detail?.seats, null);
+	const absent = await readStubbed(rawTeamDetail(false));
+	assertStrictEquals(absent.detail?.seats, null);
+});
+
 // #endregion

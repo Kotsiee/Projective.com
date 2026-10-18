@@ -48,3 +48,24 @@ export const {
 /** The whole store, for the shared `ViewZoomRig` / `useCtrlWheelZoom`, which take it as one value. */
 export const workspaceZoom = store;
 // #endregion
+
+// #region People store (the Members module)
+/**
+ * The Members module's People density — a store of its own (Teams C2): People opens on the
+ * comparison TABLE (Decision #224 — the DataTable is the default reading of a roster), where the roster
+ * index opens on cards. Crossing the centre marker still switches table ⇄ cards; the ramps match the
+ * roster's, since a member card and an entity card carry the same weight.
+ */
+export const peopleZoom = createZoomStore({
+	storageKey: LocalKeys.WORKSPACE_PEOPLE_ZOOM,
+	/** The default density: a comfortable table, the list half's upper third. */
+	initial: 0.38,
+	gridColumn: { min: 240, max: 400 },
+	listRow: { min: 44, max: 76 },
+});
+
+/** The zoom store a console module's footer rig drives — People's own on Members, else the roster's. */
+export function zoomStoreFor(module: string | null): typeof store {
+	return module === "members" ? peopleZoom : store;
+}
+// #endregion

@@ -1,94 +1,191 @@
-import type { JSX } from "preact";
-import { useComputed, useSignal } from "@preact/signals";
+import type { JSX, VNode } from "preact";
+import { batch, useSignal, useSignalEffect } from "@preact/signals";
+import { useRef } from "preact/hooks";
 import "../styles/workspace.css";
-import { Dialog } from "@projective/ui/feedback";
-import { Button, InputText } from "@projective/ui/fields";
-import { CAPABILITY_LABEL, type WorkspaceDetail } from "@projective/types/workspace";
+import { MetaLine } from "@projective/ui/display";
+import { Dialog, InlineNotice, ProgressSpinner } from "@projective/ui/feedback";
+import {
+	Button,
+	FormControl,
+	InputText,
+	Select,
+	SelectButton,
+	Textarea,
+	useFieldValidation,
+} from "@projective/ui/fields";
+import { CAPABILITY_LABEL, kindCopy, type WorkspaceDetail } from "@projective/types/workspace";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import { closeInvite, inviteModalOpen, inviteSeedRoleId } from "../core/workspace-state.ts";
+import { CheckGlyph, cloneGlyph } from "../core/workspace-glyphs.tsx";
+import {
+	grantableRoles,
+	INVITE_EMAIL_MAX,
+	INVITE_MODES,
+	inviteEmailProblem,
+	inviteFooter,
+	type InviteGateInput,
+	inviteGateOpen,
+	type InviteHandleLine,
+	inviteHandleLine,
+	inviteHandleProblem,
+	type InviteMode,
+	inviteRefusalText,
+	inviteRoleSeed,
+	inviteSeatItems,
+	membersTierProps,
+	normalizeInviteHandle,
+	roleOptions,
+	seatsFull,
+} from "../core/members-model.ts";
+import { useHandleCheck } from "../hooks/useHandleCheck.ts";
 
 /**
  * InviteModal — bring somebody in, by handle or by email.
  *
- * **Two routes to the same act, because the obstacle differs.** A handle works when they are already
- * here; an email when they are not yet. An invitation always names one person or one address and only
- * that invitee can accept it — there are no shareable join links, because a link that silently carries a
- * role is the one invitation mechanism nobody audits.
+ * **Two routes to the same act** — a handle when they are already here, an email when they are not
+ * yet — chosen with a `SelectButton`. An invitation always names one person or one address and only
+ * that invitee can accept it; there are no shareable join links.
  *
- * **The role is chosen at invite time and previewed in full.** An invitation is a permission grant that
- * happens to arrive later, so the modal shows what the chosen role will let them do BEFORE it is sent.
- * The owner seat is never on offer: ownership moves only by transfer, from the owner themselves.
+ * **The handle is looked up live** with R3's `useHandleCheck` (the one handle binding every form
+ * shares), read the other way round: a handle the shared namespace calls taken belongs to somebody —
+ * the person to invite — and one it calls available belongs to nobody (`inviteHandleLine` /
+ * `inviteHandleProblem`). A username the entity claim rule cannot judge (it may hold `.` or `_`) is
+ * left for the server to look up on send.
+ *
+ * **The role list holds only roles the inviter may grant** — never the owner seat, never one carrying
+ * a capability they lack (`grantableRoles`, the mirror of `org.invite_workspace_member`) — and what the
+ * chosen role permits is said before the invitation goes out. The plan's free seats and the pending
+ * count are a MetaLine; a full plan closes Send and says why.
+ *
+ * Every field is a `FormControl` (§A.7 rest-only validation paint); "Send invitation" is the dialog's
+ * one filled control (tier 3), Cancel tier 5. When the lane footer opened it, the lane's button was the
+ * tier-2 trigger. Shared by teams and businesses (Decision #61).
  */
+
+/** The form's id — the footer's commit sits outside the body and submits it by reference. */
+const FORM_ID = "wsp-invite-form";
 
 export interface InviteModalProps {
 	workspace: WorkspaceDetail;
 	onUpdated: (next: WorkspaceDetail) => void;
 }
 
-/** How the invitee is addressed. */
-type Mode = "handle" | "email";
-
 export default function InviteModal(props: InviteModalProps): JSX.Element {
 	const ws = props.workspace;
-	/**
-	 * Every role this viewer may offer: never the owner seat, and never one carrying a permission the
-	 * viewer does not hold themselves — offering a role is granting it, and the database refuses that, so
-	 * the picker does not present a choice that can only fail.
-	 */
-	const held = new Set(ws.viewerCapabilities);
-	const offerable = ws.roles.filter((r) =>
-		r.basePreset !== "owner" && r.capabilities.every((c) => held.has(c))
-	);
-	const mode = useSignal<Mode>("handle");
-	const target = useSignal("");
-	const roleId = useSignal<string>(
-		inviteSeedRoleId.value ?? offerable.find((r) => r.preset === "member")?.id ??
-			offerable[0]?.id ?? "",
-	);
+	const copy = kindCopy(ws.kind);
+	const grantable = grantableRoles(ws.roles, ws.viewerCapabilities);
+	const memberHandles = new Set(ws.members.map((m) => m.handle.toLowerCase()));
+
+	const mode = useSignal<InviteMode>("handle");
+	const handle = useSignal("");
+	const email = useSignal("");
+	const roleId = useSignal(inviteRoleSeed(grantable, inviteSeedRoleId.peek()));
 	const note = useSignal("");
 	const sending = useSignal(false);
-	const error = useSignal<string | null>(null);
+	const refusal = useSignal<string | null>(null);
 
-	const role = useComputed(() => offerable.find((r) => r.id === roleId.value) ?? null);
+	const checker = useHandleCheck();
+	const handleField = useFieldValidation({
+		problem: () => inviteHandleProblem(checker.state.value, memberHandles, ws.kind),
+	});
+	const emailField = useFieldValidation({ problem: () => inviteEmailProblem(email.value) });
 
+	/** Initial focus: the dialog resolves this scope to the address input inside it. */
+	const addressScope = useRef<HTMLDivElement>(null);
+	/** The roles on offer as of the latest render, for the effect that seeds the picker on open. */
+	const offer = useRef(grantable);
+	offer.current = grantable;
+
+	// The picker opens on the role the trigger implied, re-read every time the dialog opens.
+	useSignalEffect(() => {
+		if (!inviteModalOpen.value) return;
+		roleId.value = inviteRoleSeed(offer.current, inviteSeedRoleId.value);
+	});
+
+	const gate: InviteGateInput = {
+		mode: mode.value,
+		handle: checker.state.value,
+		email: email.value,
+		roleId: roleId.value,
+		sending: sending.value,
+		seats: ws.seats,
+		memberHandles,
+		kind: ws.kind,
+	};
+	const [cancel, send] = inviteFooter(gate);
+	const line = mode.value === "handle"
+		? inviteHandleLine(checker.state.value, memberHandles)
+		: null;
+	const role = grantable.find((r) => r.id === roleId.value) ?? null;
+	const full = seatsFull(ws.seats);
+
+	// #region Handlers
+	/** Clear every field and verdict, so a dismissed draft never reappears half-filled. */
 	function reset(): void {
-		target.value = "";
-		note.value = "";
-		error.value = null;
-		sending.value = false;
+		batch(() => {
+			mode.value = "handle";
+			handle.value = "";
+			email.value = "";
+			note.value = "";
+			sending.value = false;
+			refusal.value = null;
+			handleField.reset();
+			emailField.reset();
+		});
+		checker.reset();
 	}
 
-	async function send(): Promise<void> {
-		error.value = null;
-		const value = target.value.trim();
-		if (value.length === 0) {
-			error.value = mode.value === "handle" ? "Enter a handle." : "Enter an email address.";
-			return;
-		}
-		if (!role.value) {
-			error.value = "Choose the role they will hold.";
-			return;
-		}
-
-		sending.value = true;
-		const res = await WorkspaceService.invite({
-			kind: ws.kind,
-			workspaceId: ws.id,
-			handle: mode.value === "handle" ? value.replace(/^@/, "") : undefined,
-			email: mode.value === "email" ? value : undefined,
-			roleId: role.value.id,
-			note: note.value.trim() || undefined,
-		});
-		sending.value = false;
-		if (!res.ok || !res.data) {
-			error.value = res.errors?.handle ?? res.errors?.email ?? res.errors?.roleId ??
-				res.errors?.note ?? res.message ?? "Could not send that invitation.";
-			return;
-		}
-		props.onUpdated(res.data);
+	function close(): void {
 		closeInvite();
 		reset();
 	}
+
+	function onHandleInput(value: string): void {
+		const next = normalizeInviteHandle(value);
+		handle.value = next;
+		refusal.value = null;
+		checker.input(next);
+	}
+
+	async function submit(): Promise<void> {
+		const current: InviteGateInput = {
+			...gate,
+			mode: mode.peek(),
+			handle: checker.state.peek(),
+			email: email.peek(),
+			roleId: roleId.peek(),
+			sending: sending.peek(),
+		};
+		if (!inviteGateOpen(current)) {
+			if (current.mode === "handle") handleField.touched.value = true;
+			else emailField.touched.value = true;
+			return;
+		}
+		const byHandle = current.mode === "handle";
+		const addressee = byHandle ? `@${handle.peek()}` : email.peek().trim();
+		batch(() => {
+			sending.value = true;
+			refusal.value = null;
+		});
+		const res = await WorkspaceService.invite({
+			kind: ws.kind,
+			workspaceId: ws.id,
+			handle: byHandle ? handle.peek() : undefined,
+			email: byHandle ? undefined : email.peek().trim(),
+			roleId: current.roleId,
+			note: note.peek().trim() || undefined,
+		});
+		if (!res.ok || !res.data) {
+			batch(() => {
+				sending.value = false;
+				refusal.value = inviteRefusalText(res, addressee);
+			});
+			return;
+		}
+		props.onUpdated(res.data);
+		close();
+	}
+	// #endregion
 
 	return (
 		<Dialog
@@ -96,125 +193,217 @@ export default function InviteModal(props: InviteModalProps): JSX.Element {
 			header={`Invite to ${ws.name}`}
 			modal
 			width="30rem"
-			class="wsp-inviteform"
+			initialFocusRef={addressScope}
 			onVisibleChange={(open) => {
-				if (!open) {
-					closeInvite();
-					reset();
-				}
+				if (!open) close();
 			}}
 			footer={
-				<div class="wsp-inviteform__actions">
+				<div class="wsp-dialog__actions">
+					<Button {...membersTierProps(cancel.tier)} label={cancel.label} onClick={close} />
 					<Button
-						variant="text"
-						label="Cancel"
-						onClick={() => {
-							closeInvite();
-							reset();
-						}}
-					/>
-					<Button
-						variant="filled"
-						label={sending.value ? "Sending…" : "Send invitation"}
-						disabled={sending.value}
-						onClick={send}
+						{...membersTierProps(send.tier)}
+						type="submit"
+						form={FORM_ID}
+						label={send.label}
+						disabled={send.disabled}
+						loading={send.busy}
 					/>
 				</div>
 			}
 		>
-			<div class="wsp-inviteform__row" role="radiogroup" aria-label="How to invite">
-				{(["handle", "email"] as const).map((m) => (
-					<button
-						key={m}
-						type="button"
-						role="radio"
-						aria-checked={mode.value === m}
-						class="wsp-create__kind"
-						data-on={mode.value === m ? "true" : undefined}
-						data-kind={ws.kind}
-						onClick={() => {
-							mode.value = m;
-							error.value = null;
-						}}
-					>
-						<span class="wsp-create__kind-name">
-							{m === "handle" ? "By handle" : "By email"}
-						</span>
-						<span class="wsp-create__kind-note">
-							{m === "handle" ? "They are already here" : "They are not yet"}
-						</span>
-					</button>
-				))}
-			</div>
+			<form
+				id={FORM_ID}
+				class="wsp-dialog"
+				noValidate
+				onSubmit={(event) => {
+					event.preventDefault();
+					void submit();
+				}}
+			>
+				<MetaLine class="wsp-dialog__meta" items={inviteSeatItems(ws.seats, ws.invites.length)} />
 
-			<div class="wsp-inviteform__field">
-				<label class="wsp-inviteform__label" for="wsp-invite-target">
-					{mode.value === "handle" ? "Handle" : "Email address"}
-				</label>
-				<InputText
-					id="wsp-invite-target"
-					value={target}
-					onValueChange={(v) => {
-						target.value = v;
-						error.value = null;
-					}}
-					placeholder={mode.value === "handle" ? "ravi" : "name@company.com"}
-					type={mode.value === "email" ? "email" : "text"}
-					start={mode.value === "handle" ? "@" : undefined}
-					block
-					maxLength={160}
-				/>
-			</div>
-
-			<div class="wsp-inviteform__field">
-				<label class="wsp-inviteform__label" for="wsp-invite-role">Role</label>
-				<select
-					id="wsp-invite-role"
-					class="wsp-select"
-					value={roleId.value}
-					onChange={(e) => {
-						roleId.value = (e.target as HTMLSelectElement).value;
-					}}
+				<FormControl
+					label="How to reach them"
+					hint={INVITE_MODES.find((m) => m.value === mode.value)?.note}
 				>
-					{offerable.map((r) => (
-						<option key={r.id} value={r.id}>
-							{r.name}
-							{r.preset ? "" : " (custom)"}
-						</option>
-					))}
-				</select>
-				{/* What the role actually permits, BEFORE the invitation goes out. */}
-				{role.value && (
-					<div class="wsp-inviteform__preview">
-						<p class="wsp-inviteform__hint">{role.value.summary}</p>
-						<p class="wsp-inviteform__preview-caps">
-							{role.value.capabilities.length === 0
-								? "No special permissions — they can see the workspace and take part."
-								: role.value.capabilities.map((c) => CAPABILITY_LABEL[c]).join(" · ")}
-						</p>
-					</div>
+					{({ id, describedBy }) => (
+						<SelectButton
+							id={id}
+							aria-label="How to reach them"
+							aria-describedby={describedBy}
+							options={INVITE_MODES.map(({ value, label }) => ({ value, label }))}
+							value={mode}
+							onValueChange={() => (refusal.value = null)}
+						/>
+					)}
+				</FormControl>
+
+				<div ref={addressScope} class="wsp-dialog__field">
+					{mode.value === "handle"
+						? (
+							<>
+								<FormControl
+									label="Handle"
+									required
+									hint="Their @handle on Projective."
+									status={handleField.hintStatus.value}
+									error={handleField.message.value ?? undefined}
+								>
+									{({ id, describedBy, required }) => (
+										<InputText
+											id={id}
+											aria-describedby={describedBy}
+											required={required}
+											value={handle}
+											onValueChange={onHandleInput}
+											status={handleField.status.value}
+											onFocus={handleField.handlers.onFocus}
+											onBlur={handleField.handlers.onBlur}
+											start="@"
+											placeholder="ravi"
+											maxLength={40}
+											autoCapitalize="none"
+											spellcheck={false}
+											autoComplete="off"
+											block
+										/>
+									)}
+								</FormControl>
+								{
+									/*
+									 * The lookup's live line — a polite region, mounted and empty between answers so it
+									 * exists before the first one.
+									 */
+								}
+								<p class="wsp-dialog__check" role="status" aria-live="polite">
+									{line && (
+										<>
+											<LiveMark tone={line.tone} />
+											<span>{line.text}</span>
+										</>
+									)}
+								</p>
+							</>
+						)
+						: (
+							<FormControl
+								label="Email address"
+								required
+								hint="They join with this address."
+								status={emailField.hintStatus.value}
+								error={emailField.message.value ?? undefined}
+							>
+								{({ id, describedBy, required }) => (
+									<InputText
+										id={id}
+										aria-describedby={describedBy}
+										required={required}
+										type="email"
+										value={email}
+										onValueChange={() => (refusal.value = null)}
+										status={emailField.status.value}
+										onFocus={emailField.handlers.onFocus}
+										onBlur={emailField.handlers.onBlur}
+										placeholder="name@company.com"
+										maxLength={INVITE_EMAIL_MAX}
+										autoComplete="off"
+										block
+									/>
+								)}
+							</FormControl>
+						)}
+				</div>
+
+				<div class="wsp-dialog__field">
+					<FormControl
+						label="Role"
+						required
+						hint={role?.summary || `The role they hold when they join this ${copy.noun}.`}
+					>
+						{({ id, describedBy, required }) => (
+							<Select
+								id={id}
+								aria-describedby={describedBy}
+								required={required}
+								options={roleOptions(grantable)}
+								value={roleId}
+								onValueChange={() => (refusal.value = null)}
+								placeholder="Choose a role"
+								fluid
+							/>
+						)}
+					</FormControl>
+					{
+						/* What the role permits, BEFORE the invitation goes out — facts, so a MetaLine. */
+					}
+					{role && (
+						<MetaLine
+							size="xs"
+							class="wsp-dialog__caps"
+							items={role.capabilities.length === 0
+								? ["No special permissions — they see the workspace and take part"]
+								: role.capabilities.map((c) => CAPABILITY_LABEL[c])}
+						/>
+					)}
+				</div>
+
+				<FormControl label="Note" hint="Optional. They read it with the invitation.">
+					{({ id, describedBy }) => (
+						<Textarea
+							id={id}
+							aria-describedby={describedBy}
+							value={note}
+							rows={2}
+							autoResize
+							maxRows={6}
+							maxLength={400}
+							placeholder={`Come and help us on ${ws.name}`}
+							fluid
+						/>
+					)}
+				</FormControl>
+
+				<p class="wsp-dialog__intro">
+					The invitation lasts 14 days. You can resend or withdraw it from Invitations.
+				</p>
+
+				{grantable.length === 0 && (
+					<InlineNotice
+						align="start"
+						text={`You can offer only a role whose permissions you hold yourself, and none of this ${copy.noun}'s roles fits. Ask an admin to invite them.`}
+					/>
 				)}
-			</div>
-
-			<div class="wsp-inviteform__field">
-				<label class="wsp-inviteform__label" for="wsp-invite-note">Note (optional)</label>
-				<InputText
-					id="wsp-invite-note"
-					value={note}
-					onValueChange={(v) => {
-						note.value = v;
-					}}
-					placeholder={`Come and help us on ${ws.name}`}
-					block
-					maxLength={400}
-				/>
-			</div>
-
-			<p class="wsp-inviteform__hint">
-				The invitation lasts 14 days. You can resend or withdraw it from the invitations queue.
-			</p>
-
-			{error.value && <p class="wsp-inviteform__error" role="alert">{error.value}</p>}
+				{full && (
+					<InlineNotice
+						align="start"
+						text={`Every seat on the ${copy.noun}'s plan is taken or offered. Withdraw an invitation or upgrade the plan to invite someone else.`}
+					/>
+				)}
+				{refusal.value && <InlineNotice assertive align="start" text={refusal.value} />}
+			</form>
 		</Dialog>
 	);
 }
+
+// #region Live line
+/**
+ * The live line's leading mark: a spinner while the namespace is asked, a tick for a handle that
+ * belongs to somebody. Decorative — the sentence beside it carries the meaning — so the neutral lines
+ * draw none.
+ */
+function LiveMark({ tone }: { tone: InviteHandleLine["tone"] }): VNode | null {
+	if (tone === "checking") {
+		return (
+			<span class="wsp-dialog__check-mark" aria-hidden="true">
+				<ProgressSpinner size={14} strokeWidth={2} aria-label="Looking up" />
+			</span>
+		);
+	}
+	if (tone !== "found") return null;
+	return (
+		<span class="wsp-dialog__check-mark" data-tone="found" aria-hidden="true">
+			{cloneGlyph(CheckGlyph)}
+		</span>
+	);
+}
+// #endregion

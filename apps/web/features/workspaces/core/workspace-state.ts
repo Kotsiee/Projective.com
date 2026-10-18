@@ -1,6 +1,6 @@
 import { computed, signal } from "@preact/signals";
 import type { WorkspaceDetail, WorkspaceKind } from "@projective/types/workspace";
-import { viewMode } from "./view-state.ts";
+import { peopleZoom, viewMode } from "./view-state.ts";
 import type { RosterTab } from "./workspace-model.ts";
 import type { ModuleCommit } from "./header-model.ts";
 import type { SaveState } from "./rig-model.ts";
@@ -157,13 +157,14 @@ export type MembersView = "cards" | "table" | "chart";
  *
  * The zoom axis runs table → cards; an org chart is not a denser or looser version of either, so it
  * is the `chart` sub-view, and while it is selected it wins over whatever the zoom selects —
- * releasing it drops the reader back exactly where their density was. One value (`zoom`) and one
- * sub-view mean no code path can set a presentation the controls do not show. Reads the zoom signal,
- * so a component calling it during render re-renders with the zoom.
+ * releasing it drops the reader back exactly where their density was. One value (People's own
+ * `zoom`, which opens on the table) and one sub-view mean no code path can set a presentation the
+ * controls do not show. Reads the zoom signal, so a component calling it during render re-renders
+ * with the zoom.
  */
 export function membersViewFor(view: string | null): MembersView {
 	if (view === MEMBERS_CHART) return "chart";
-	return viewMode.value === "grid" ? "cards" : "table";
+	return peopleZoom.viewMode.value === "grid" ? "cards" : "table";
 }
 
 /** How the roster index presents its entities. */

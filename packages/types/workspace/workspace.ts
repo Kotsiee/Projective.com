@@ -233,6 +233,17 @@ export const ActivityEntrySchema = z.object({
 });
 export type ActivityEntry = z.infer<typeof ActivityEntrySchema>;
 
+/**
+ * A team's seats (`get_workspace_detail`'s `seats`): `used` is what holds one — active members plus
+ * pending, unexpired invitations, the count `org.fn_assert_seat` checks (`org.fn_team_seats_used`) —
+ * and `limit` the plan's `team_seats` entitlement, `null` when unlimited. A business has none.
+ */
+export const WorkspaceSeatsSchema = z.object({
+	used: z.number().int().min(0),
+	limit: z.number().int().min(0).nullable(),
+});
+export type WorkspaceSeats = z.infer<typeof WorkspaceSeatsSchema>;
+
 /** The full console projection for one entity. */
 export const WorkspaceDetailSchema = z.object({
 	id: z.string().max(64),
@@ -266,6 +277,8 @@ export const WorkspaceDetailSchema = z.object({
 	members: z.array(WorkspaceMemberSchema),
 	roles: z.array(WorkspaceRoleDefSchema),
 	invites: z.array(WorkspaceInviteSchema),
+	/** A team's seats against its plan's cap; `null` for a business (never seat-capped). */
+	seats: WorkspaceSeatsSchema.nullable().default(null),
 
 	// Money — at most one is present, matching {@link kind}; a team's payout only for `manage_finances`,
 	// a business's spend only for a viewer who may open Spend (`spend_funds` · `manage_finances` ·

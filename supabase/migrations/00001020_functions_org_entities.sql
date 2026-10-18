@@ -1503,6 +1503,22 @@ AS $$
       FROM org.business_roles r WHERE p_kind = 'business' AND r.business_id = p_entity AND r.id = p_role;
 $$;
 
+-- What holds a team's seats: its active members plus its pending, unexpired invitations. The ONE
+-- count the seat cap is checked against (fn_assert_seat) and the console shows beside the cap
+-- (get_workspace_detail's `seats`), so the two can never disagree about how full a team is.
+CREATE OR REPLACE FUNCTION org.fn_team_seats_used(p_team uuid)
+RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT ((SELECT count(*) FROM org.team_members m WHERE m.team_id = p_team AND m.status = 'active')
+          + (SELECT count(*) FROM org.org_invitations i
+              WHERE i.team_id = p_team AND i.status = 'pending'
+                AND (i.expires_at IS NULL OR i.expires_at > now())))::integer;
+$$;
+
 -- The seat cap. A team's is its plan's `team_seats` entitlement (NULL = unlimited); a business has
 -- none. Pending invitations count, or an owner could over-invite and have acceptances refused.
 CREATE OR REPLACE FUNCTION org.fn_assert_seat(p_kind text, p_entity uuid, p_extra integer)
@@ -1522,10 +1538,7 @@ BEGIN
     IF v_limit IS NULL THEN
         RETURN;
     END IF;
-    v_used := (SELECT count(*) FROM org.team_members m WHERE m.team_id = p_entity AND m.status = 'active')
-            + (SELECT count(*) FROM org.org_invitations i
-                WHERE i.team_id = p_entity AND i.status = 'pending'
-                  AND (i.expires_at IS NULL OR i.expires_at > now()));
+    v_used := org.fn_team_seats_used(p_entity);
     IF v_used + p_extra > v_limit THEN
         RAISE EXCEPTION USING ERRCODE = '55000',
             MESSAGE = 'plan: this team''s plan has ' || v_limit || ' seats, and they are all taken or offered';
@@ -2864,6 +2877,12 @@ BEGIN
             ) ORDER BY i.created_at DESC), '[]'::jsonb)
             FROM org.org_invitations i
             WHERE COALESCE(i.team_id, i.business_id) = v_e.id AND i.status = 'pending') ELSE '[]'::jsonb END,
+        -- A team's seats as fn_assert_seat counts them, beside its plan's cap (NULL = unlimited). A
+        -- business is not seat-capped, so it answers none.
+        'seats', CASE WHEN p_kind = 'team' THEN jsonb_build_object(
+            'used', org.fn_team_seats_used(v_e.id),
+            'limit', finance.fn_effective_limit('team', v_e.id, 'team_seats'::finance.entitlement_key)
+        ) END,
         'standing', (SELECT l.label FROM org.entity_standing s JOIN org.standing_levels l ON l.level = s.level
                       WHERE p_kind = 'team' AND s.subject_type = 'team' AND s.subject_id = v_e.id),
         'projects', CASE p_kind

@@ -1,9 +1,11 @@
 import type { JSX } from "preact";
+import { MetaLine } from "@projective/ui/display";
 import { Button } from "@projective/ui/fields";
 import { Tooltip } from "@projective/ui/feedback";
 import type { WorkspaceInvite, WorkspaceRoleDef } from "@projective/types/workspace";
 import { shortDate } from "../core/workspace-model.ts";
-import { CrossIcon, InviteOutIcon, memberProfileHref, ResendIcon } from "./MemberCard.tsx";
+import { roleDefText } from "../core/members-model.ts";
+import { CrossIcon, InviteOutIcon, ResendIcon } from "./MemberCard.tsx";
 
 /**
  * InviteQueue — the invitations this entity has sent that nobody has answered yet.
@@ -27,7 +29,7 @@ export type InviteAction =
 export interface InviteQueueProps {
 	invites: readonly WorkspaceInvite[];
 	roles: readonly WorkspaceRoleDef[];
-	/** Whether the viewer holds `invite_members`. Gated rows stay visible, disabled, with the reason. */
+	/** Whether the viewer holds `invite_members` — the rows' Resend and Withdraw exist only then. */
 	canManage: boolean;
 	/** The row currently mid-request, so its buttons can show progress rather than appear inert. */
 	busyId?: string | null;
@@ -38,9 +40,10 @@ export interface InviteQueueProps {
 // #endregion
 
 // #region Helpers
-/** The role a pending person will hold on acceptance, by name. */
+/** The role a pending person will hold on acceptance ("Designer · based on Lead"). */
 function offeredRole(invite: WorkspaceInvite, roles: readonly WorkspaceRoleDef[]): string {
-	return roles.find((r) => r.id === invite.roleId)?.name ?? "A role that has since been archived";
+	const role = roles.find((r) => r.id === invite.roleId);
+	return role ? `as ${roleDefText(role)}` : "a role that has since been archived";
 }
 
 /** Whether an invitation's window has closed. A lapsed invite is resendable, not broken. */
@@ -69,7 +72,6 @@ function InviteRow(props: {
 	const { invite, roles, canManage, busy, onAction, referenceYear } = props;
 	const who = addresseeOf(invite);
 	const lapsed = hasLapsed(invite);
-	const gate = canManage ? null : "You need permission to invite members to change this.";
 
 	return (
 		<li class="wsp-invites__item" data-direction="invite">
@@ -80,17 +82,22 @@ function InviteRow(props: {
 			</Tooltip>
 
 			<div class="wsp-invites__body">
-				<span class="wsp-invites__name">{who}</span>
-				<span class="wsp-invites__meta">
-					{invite.handle && (
-						<a class="wsp-invites__meta" href={memberProfileHref(invite.handle)}>
-							{`@${invite.handle}`}
+				{invite.handle
+					? (
+						<a class="wsp-invites__name" href={`/@${invite.handle}`}>
+							{who}
 						</a>
-					)}
-					{invite.email && invite.email !== who && <span>{invite.email}</span>}
-					<span>{offeredRole(invite, roles)}</span>
-					<span>{invite.sentAt}</span>
-				</span>
+					)
+					: <span class="wsp-invites__name">{who}</span>}
+				<MetaLine
+					size="xs"
+					items={[
+						invite.handle && invite.name && `@${invite.handle}`,
+						invite.email && invite.email !== who && invite.email,
+						offeredRole(invite, roles),
+						invite.sentAt,
+					]}
+				/>
 				{invite.note && <p class="wsp-invites__note">{invite.note}</p>}
 			</div>
 
@@ -108,33 +115,34 @@ function InviteRow(props: {
 				)
 				: <span class="wsp-invites__expiry" />}
 
-			<div class="wsp-invites__actions">
-				<Tooltip content={gate ?? "Send this invitation again with a fresh window."}>
-					<Button
-						variant="text"
-						severity="secondary"
-						size="sm"
-						iconOnly
-						icon={<ResendIcon />}
-						loading={busy}
-						disabled={!canManage}
-						aria-label={`Resend the invitation to ${who}`}
-						onClick={() => onAction("resend", invite)}
-					/>
-				</Tooltip>
-				<Tooltip content={gate ?? "Withdraw this invitation."}>
-					<Button
-						variant="text"
-						severity="secondary"
-						size="sm"
-						iconOnly
-						icon={<CrossIcon />}
-						disabled={!canManage || busy}
-						aria-label={`Withdraw the invitation to ${who}`}
-						onClick={() => onAction("revoke", invite)}
-					/>
-				</Tooltip>
-			</div>
+			{canManage && (
+				<div class="wsp-invites__actions">
+					<Tooltip content="Send this invitation again with a fresh window.">
+						<Button
+							variant="text"
+							severity="secondary"
+							size="sm"
+							iconOnly
+							icon={<ResendIcon />}
+							loading={busy}
+							aria-label={`Resend the invitation to ${who}`}
+							onClick={() => onAction("resend", invite)}
+						/>
+					</Tooltip>
+					<Tooltip content="Withdraw this invitation.">
+						<Button
+							variant="text"
+							severity="secondary"
+							size="sm"
+							iconOnly
+							icon={<CrossIcon />}
+							disabled={busy}
+							aria-label={`Withdraw the invitation to ${who}`}
+							onClick={() => onAction("revoke", invite)}
+						/>
+					</Tooltip>
+				</div>
+			)}
 		</li>
 	);
 }

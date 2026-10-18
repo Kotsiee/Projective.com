@@ -1,28 +1,33 @@
 import type { JSX } from "preact";
-import { useComputed, useSignal } from "@preact/signals";
-import { Dialog } from "@projective/ui/feedback";
-import { Button } from "@projective/ui/fields";
-import {
-	activeMembers,
-	kindCopy,
-	roleLabel,
-	type WorkspaceDetail,
-	type WorkspaceMember,
-} from "@projective/types/workspace";
+import { batch, useComputed, useSignal } from "@preact/signals";
+import { Dialog, InlineNotice } from "@projective/ui/feedback";
+import { Button, Checkbox, FormControl, Select } from "@projective/ui/fields";
+import { kindCopy, type WorkspaceDetail, type WorkspaceMember } from "@projective/types/workspace";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
-import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import {
+	membersTierProps,
+	roleText,
+	transferCandidates,
+	transferConsequences,
+	transferFooter,
+	transferRefusal,
+} from "../core/members-model.ts";
 
 /**
  * OwnershipTransfer — the way the owner hands the entity over.
  *
  * An entity has exactly one owner, and the owner's standing changes only by transfer: an ownerless
- * entity has nobody who can restore it. So rather than refuse the owner's "remove me" with an error,
- * this is the mechanism — pick a successor, confirm, and the handover (and, if asked, the departure)
- * happens as ONE server act. There is no moment with two owners or none, which two separate role edits
- * could never promise.
+ * entity has nobody who can restore it. So rather than refuse the owner's "remove me", this is the
+ * mechanism — pick a successor, read what moves, confirm — and the handover (and, if asked, the
+ * departure) happens as ONE server act (`org.transfer_workspace_ownership`). There is no moment with
+ * two owners or none.
  *
- * Candidates are ACTIVE members only. Offering somebody who has not yet accepted an invitation would let
- * ownership land on a person who may never arrive — the same ownerless state by a slower route.
+ * The successor is a `Select` of ACTIVE members other than the owner, inside a `FormControl`; leaving
+ * in the same act is a `Checkbox`. What the transfer does is a required disclosure, so it is an
+ * `InlineNotice` naming the successor — on a team the vault's withdrawals follow the owner and the
+ * successor must be payout-ready (Decision #196). The confirm keeps the destructive ramp; Cancel is
+ * tier 5. A refusal — the successor not payout-ready, not a freelancer account — is an `InlineNotice`
+ * that names them. Every rule here is `core/members-model.ts`'s.
  */
 
 export interface OwnershipTransferProps {
@@ -34,40 +39,38 @@ export interface OwnershipTransferProps {
 	onTransferred: (next: WorkspaceDetail | null) => void;
 }
 
-/** The successor picker + confirmation. */
+/** The successor picker, the disclosure and the confirmation. */
 export function OwnershipTransfer(props: OwnershipTransferProps): JSX.Element {
 	const ws = props.workspace;
 	const copy = kindCopy(ws.kind);
-	const successorId = useSignal<string>("");
+	const successorId = useSignal("");
 	const alsoLeave = useSignal(false);
 	const working = useSignal(false);
-	const error = useSignal<string | null>(null);
+	const refusal = useSignal<string | null>(null);
 
-	/** Anyone active who is not the person stepping back. */
-	const candidates = useComputed(() =>
-		activeMembers(ws.members).filter((m) => m.id !== props.leaving.id)
-	);
-	const successor = useComputed(() =>
-		candidates.value.find((m) => m.id === successorId.value) ?? null
-	);
+	const candidates = transferCandidates(ws.members, props.leaving.id);
+	const successor = useComputed(() => candidates.find((m) => m.id === successorId.value) ?? null);
+	const [cancel, confirm] = transferFooter({
+		working: working.value,
+		successorId: successorId.value,
+	});
 
 	async function transfer(): Promise<void> {
-		if (!successor.value) {
-			error.value = "Choose who takes ownership.";
-			return;
-		}
-		working.value = true;
-		error.value = null;
+		const next = successor.peek();
+		if (!next || working.peek()) return;
+		batch(() => {
+			working.value = true;
+			refusal.value = null;
+		});
 		const res = await WorkspaceService.transferOwnership({
 			kind: ws.kind,
 			workspaceId: ws.id,
-			successorMemberId: successor.value.id,
-			leave: alsoLeave.value,
+			successorMemberId: next.id,
+			leave: alsoLeave.peek(),
 		});
 		working.value = false;
 		if (!res.ok) {
-			error.value = res.errors?.successorMemberId ?? res.errors?.owner ?? res.message ??
-				"Could not transfer ownership.";
+			refusal.value = transferRefusal(res, next.name).text;
 			return;
 		}
 		props.onTransferred(res.data ?? null);
@@ -79,98 +82,86 @@ export function OwnershipTransfer(props: OwnershipTransferProps): JSX.Element {
 			header="Transfer ownership"
 			modal
 			width="30rem"
-			class="wsp-inviteform"
+			class="wsp-transfer"
 			onVisibleChange={(open) => {
 				if (!open) props.onClose();
 			}}
 			footer={
-				<div class="wsp-inviteform__actions">
-					<Button variant="text" label="Cancel" onClick={props.onClose} />
-					{
-						/*
-						 * Destructive severity, deliberately. This hands the owner's control of the workspace to
-						 * someone else and cannot be undone by the person clicking it.
-						 */
-					}
+				<div class="wsp-dialog__actions">
 					<Button
-						variant="filled"
-						severity="danger"
-						label={working.value ? "Transferring…" : "Transfer ownership"}
-						disabled={working.value || !successorId.value}
-						onClick={transfer}
+						{...membersTierProps(cancel.tier)}
+						label={cancel.label}
+						onClick={props.onClose}
+					/>
+					<Button
+						{...membersTierProps(confirm.tier, confirm.danger)}
+						label={confirm.label}
+						disabled={confirm.disabled}
+						loading={confirm.busy}
+						onClick={() => void transfer()}
 					/>
 				</div>
 			}
 		>
-			<p class="wsp-inviteform__hint">
-				You own {ws.name}. Someone has to be able to restore this{" "}
-				{copy.noun}, so ownership moves to another member before you can step back.
-			</p>
+			<div class="wsp-dialog">
+				<p class="wsp-dialog__intro">
+					You own {ws.name}. Someone has to be able to restore this{" "}
+					{copy.noun}, so ownership moves to another member before you can step back.
+				</p>
 
-			{candidates.value.length === 0
-				? (
-					<p class="wsp-inviteform__error">
-						There is nobody else here yet. Invite someone and wait for them to join — then ownership
-						can move to them.
-					</p>
-				)
-				: (
-					<>
-						<div class="wsp-inviteform__field">
-							<label class="wsp-inviteform__label" for="wsp-transfer-to">
-								New owner
-							</label>
-							<select
-								id="wsp-transfer-to"
-								class="wsp-select"
-								value={successorId.value}
-								onChange={(e) => {
-									successorId.value = (e.target as HTMLSelectElement).value;
-									error.value = null;
-								}}
-							>
-								<option value="">Choose a member…</option>
-								{candidates.value.map((m) => (
-									<option key={m.id} value={m.id}>
-										{m.name} — {roleLabel(m.rolePreset)}
-									</option>
-								))}
-							</select>
-						</div>
+				{candidates.length === 0
+					? (
+						<InlineNotice
+							align="start"
+							text={`There is nobody else in this ${copy.noun} yet. Invite someone and wait for them to join — then ownership can move to them.`}
+						/>
+					)
+					: (
+						<>
+							<FormControl label="New owner" required hint="Active members only.">
+								{({ id, describedBy, required }) => (
+									<Select
+										id={id}
+										aria-describedby={describedBy}
+										required={required}
+										options={candidates.map((m) => ({
+											value: m.id,
+											label: m.name,
+											description: `@${m.handle} · ${roleText(m, ws.roles)}`,
+										}))}
+										value={successorId}
+										onValueChange={() => (refusal.value = null)}
+										placeholder="Choose a member"
+										filter={candidates.length > 8}
+										fluid
+									/>
+								)}
+							</FormControl>
 
-						{successor.value && (
-							<div class="wsp-inviteform__preview">
-								<UserAvatar
-									image={successor.value.avatar}
-									alt=""
-									label={successor.value.name}
-									shape="circle"
-									size="md"
-								/>
-								<p class="wsp-inviteform__preview-caps">
-									{successor.value.name} becomes owner and gains every permission in this{" "}
-									{copy.noun}, including moving money and archiving it.
-								</p>
-							</div>
-						)}
+							<FormControl collapseHint>
+								{({ id }) => (
+									<Checkbox
+										id={id}
+										value={alsoLeave}
+										label={`Leave the ${copy.noun} after the transfer`}
+									/>
+								)}
+							</FormControl>
 
-						<label class="wsp-inviteform__label">
-							<input
-								type="checkbox"
-								checked={alsoLeave.value}
-								onChange={(e) => {
-									alsoLeave.value = (e.target as HTMLInputElement).checked;
-								}}
-							/>{" "}
-							Also leave this {copy.noun}
-						</label>
-						<p class="wsp-inviteform__hint">
-							Leaving this unchecked keeps you here as an admin.
-						</p>
-					</>
-				)}
+							<InlineNotice
+								align="start"
+								class="wsp-dialog__disclosure"
+								text={transferConsequences(
+									ws.kind,
+									successor.value?.name ?? null,
+									alsoLeave.value,
+								).join(" ")}
+							/>
+						</>
+					)}
 
-			{error.value && <p class="wsp-inviteform__error" role="alert">{error.value}</p>}
+				{refusal.value && <InlineNotice assertive align="start" text={refusal.value} />}
+			</div>
 		</Dialog>
 	);
 }

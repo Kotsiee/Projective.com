@@ -215,6 +215,8 @@ export interface RawDetail {
 	members: RawMember[];
 	roles: RawRole[];
 	invites: RawOutgoingInvite[];
+	/** A team's `{used, limit}` seats (`org.fn_team_seats_used` · `team_seats`); `null` for a business. */
+	seats?: unknown;
 	standing: string | null;
 	projects: RawProject[];
 	activity: RawActivity[];

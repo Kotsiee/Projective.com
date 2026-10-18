@@ -1,15 +1,14 @@
 import type { JSX } from "preact";
-import { useComputed, useSignal } from "@preact/signals";
-import { useEffect, useRef } from "preact/hooks";
+import { batch, useSignal } from "@preact/signals";
+import { useEffect, useMemo, useRef } from "preact/hooks";
 import "../styles/workspace.css";
 import { Grid } from "@projective/ui/layout";
-import { InputText } from "@projective/ui/fields";
-import { ConfirmDialog, Message } from "@projective/ui/feedback";
+import { MetaLine } from "@projective/ui/display";
+import { Button, InputText } from "@projective/ui/fields";
+import { ConfirmDialog, InlineNotice } from "@projective/ui/feedback";
 import {
 	activeMembers,
-	isLastOwner,
 	kindCopy,
-	mayManageMember,
 	type PermissionFacet,
 	permissionFacets,
 	workspaceBase,
@@ -17,6 +16,8 @@ import {
 	type WorkspaceInvite,
 	type WorkspaceMember,
 } from "@projective/types/workspace";
+import { UserAvatarStack } from "@web/components/UserAvatar.tsx";
+import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import { membersViewFor, openInvite, publishDetail, viewOr } from "../core/workspace-state.ts";
 import {
@@ -26,43 +27,40 @@ import {
 	subViewsFor,
 	subViewTabId,
 } from "../core/sub-views.ts";
-import { gridColWidth, workspaceZoom, displayZoom } from "../core/view-state.ts";
-import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
+import { peopleZoom } from "../core/view-state.ts";
+import { filterMembers, sortMembers } from "../core/workspace-model.ts";
 import {
-	filterMembers,
-	MEMBER_SORTS,
-	type MemberSort,
-	sortMembers,
-} from "../core/workspace-model.ts";
-import {
+	actionInputFor,
+	memberAbilities,
 	type MemberAction,
-	MemberCard,
-	type MemberGuards,
-	SearchIcon,
-} from "../components/MemberCard.tsx";
+	memberMenu,
+	memberProfileHref,
+	membersHeaderItems,
+	showsStake,
+} from "../core/members-model.ts";
+import { MemberCard, SearchIcon } from "../components/MemberCard.tsx";
 import { MemberTable } from "../components/MemberTable.tsx";
 import { OrgChart } from "../components/OrgChart.tsx";
 import { type InviteAction, InviteQueue } from "../components/InviteQueue.tsx";
+import { OwnershipTransfer } from "../components/OwnershipTransfer.tsx";
 import MemberDrawer from "./MemberDrawer.island.tsx";
 import InviteModal from "./InviteModal.island.tsx";
-import { OwnershipTransfer } from "../components/OwnershipTransfer.tsx";
-import { cloneGlyph, MembersGlyph } from "../core/workspace-glyphs.tsx";
 
 /**
- * MembersScreen — the roster, its three presentations, and the outgoing invitation queue.
+ * MembersScreen — the Members module (Teams work order C2): who is in the entity, what they may do,
+ * how loaded they are, and the invitations waiting on an answer.
  *
- * **The three views are one dataset seen three ways**, not three features: cards for scanning people,
- * a table for comparing them, an org chart for reading reporting lines. The switches are chrome — the
- * header band's People · Invitations · Org chart tabs, the lane's reading control, the footer rig's
- * zoom and Org chart toggle — and all of them write ONE sub-view state (`moduleView`), so this island
- * only reads it, and is the tabs' `tabpanel`.
+ * **The head** is the section title, a MetaLine of the plan's seats and the pending invitations
+ * (tabular), and an `AvatarStack` of the active members (five faces, then a count).
  *
- * **Permissions are presented, never recomputed.** `permissionFacets()` and `mayManageMember()` come
- * from the SSOT and the server's `viewerCapabilities` is the input — the roster row, the drawer, the
- * matrix and the database must give one answer.
+ * **The sub-views are the registry's** (`core/sub-views.ts`): People · Invitations · Org chart render
+ * as the header band's TabMenu, and this island is their one `tabpanel`. People is one dataset read
+ * two ways on the People zoom — the `DataTable` (the default, Decision #224) or the card grid — and
+ * the org chart is a third reading of the same people.
  *
- * **A refused action always names a route forward.** The owner's standing changes only by transfer, so
- * their row offers the transfer (to them) instead of Remove; the viewer's own row offers Leave.
+ * **The rank rule decides every action** (`core/members-model.ts`): a row's menu and the drawer offer
+ * only what the viewer may do — an action they cannot perform is absent, not disabled. Removing and
+ * leaving are confirmed; the owner steps back only through the ownership transfer.
  *
  * Every mutation resolves to the re-read `WorkspaceDetail` and replaces the whole projection, so a
  * change the server clamped or refused cannot survive on screen as something the reader believes.
@@ -76,54 +74,58 @@ export interface MembersScreenProps {
 	module?: "members" | "invitations";
 }
 
+/** A line the screen says about the last thing that happened. */
+interface ScreenNotice {
+	tone: "error" | "info";
+	text: string;
+}
+
 export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	const detail = useSignal<WorkspaceDetail>(props.workspace);
 	const search = useSignal("");
-	const sort = useSignal<MemberSort>("role");
-	const selected = useSignal<ReadonlySet<string>>(new Set());
 	const busyId = useSignal<string | null>(null);
-	const notice = useSignal<string | null>(null);
-	const info = useSignal<string | null>(null);
-	/** The member whose drawer is open. */
+	const notice = useSignal<ScreenNotice | null>(null);
+	/** The member whose drawer is open (kept while it animates out). */
 	const openMember = useSignal<WorkspaceMember | null>(null);
+	const drawerOpen = useSignal(false);
+	/** Bumped on every open, so a reopened drawer starts from the saved member, never a stale draft. */
+	const drawerSeq = useSignal(0);
 	/** Set while the owner is handing the owner seat over. */
 	const transferFor = useSignal<WorkspaceMember | null>(null);
-	/** Open while the viewer confirms leaving the entity. */
 	const confirmLeave = useSignal(false);
+	const confirmRemove = useSignal(false);
+	const removing = useSignal<WorkspaceMember | null>(null);
 	const peopleRef = useRef<HTMLDivElement>(null);
 
-	// `Ctrl`+wheel / pinch over the people collection scales it, the same gesture the roster and the
-	// File Explorer answer. The org-chart override is off this axis, so the gesture never fights it.
-	useCtrlWheelZoom(peopleRef, workspaceZoom);
+	// `Ctrl`+wheel / pinch over the people scales them on People's own zoom; it also restores it.
+	useCtrlWheelZoom(peopleRef, peopleZoom);
 
-	// `?invite=1` — the footer band and the lane on modules that do not mount the invite modal link here
-	// with it, so their Invite control lands on the modal rather than on a page the reader must search.
+	// `?invite=1` — the bands on modules that do not mount the invite dialog link here with it, so their
+	// Invite lands on the dialog rather than on a page the reader must search.
 	useEffect(() => {
 		const url = new URL(globalThis.location.href);
 		if (url.searchParams.get("invite") !== "1") return;
 		url.searchParams.delete("invite");
 		globalThis.history.replaceState(null, "", `${url.pathname}${url.search}`);
-		if (detail.value.viewerCapabilities.includes("invite_members")) openInvite();
+		if (detail.peek().viewerCapabilities.includes("invite_members")) openInvite();
 	}, []);
 
 	const ws = detail.value;
 	const copy = kindCopy(ws.kind);
-	const held = new Set(ws.viewerCapabilities);
-	const canManage = held.has("manage_roles");
-	const canInvite = held.has("invite_members");
+	const caps = ws.viewerCapabilities;
+	const canInvite = caps.includes("invite_members");
+	const stake = showsStake(ws.kind, caps);
 
-	/** The viewer's own row — the actor every guard is evaluated against. */
-	const actor = useComputed(() =>
-		ws.members.find((m) => m.id === ws.viewerMemberId) ?? ws.members.find((m) => m.isSelf) ?? null
-	);
+	/** The viewer's own row — the actor the rank rule is evaluated against. */
+	const actor = ws.members.find((m) => m.id === ws.viewerMemberId) ??
+		ws.members.find((m) => m.isSelf) ?? null;
+	const active = activeMembers(ws.members);
 
 	const view = viewOr(props.view ?? null);
 	const showPending = view === MEMBERS_QUEUE || props.module === "invitations";
 	const presentation = membersViewFor(view);
 	/** The header band's tabs over this body — present on the Members module only. */
-	const subViews = props.module === "invitations"
-		? []
-		: subViewsFor("members", ws.kind, ws.viewerCapabilities);
+	const subViews = props.module === "invitations" ? [] : subViewsFor("members", ws.kind, caps);
 	const panel = subViews.length > 0
 		? {
 			id: SUB_VIEW_PANEL_ID,
@@ -132,37 +134,20 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 		}
 		: {};
 
-	const visible = useComputed(() => {
-		const active = activeMembers(ws.members);
-		return sortMembers(filterMembers(active, { search: search.value }), sort.value);
-	});
+	const people = filterMembers(active, { search: search.value });
 
-	/** Per-member facets + guards, resolved once per render rather than per presentation. */
-	const facetsById = useComputed<Record<string, readonly PermissionFacet[]>>(() => {
+	/** Per-member facets from the SSOT, resolved once per detail rather than per presentation. */
+	const facetsById = useMemo(() => {
 		const out: Record<string, readonly PermissionFacet[]> = {};
-		for (const m of ws.members) {
-			out[m.id] = permissionFacets(m, ws.kind, ws.roles, m.roleId);
-		}
+		for (const m of ws.members) out[m.id] = permissionFacets(m, ws.kind, ws.roles, m.roleId);
 		return out;
-	});
+	}, [ws]);
 
-	const guardsById = useComputed<Record<string, MemberGuards>>(() => {
-		const out: Record<string, MemberGuards> = {};
-		const a = actor.value;
-		for (const m of ws.members) {
-			out[m.id] = {
-				manageable: a ? mayManageMember(a, m, ws.kind) : false,
-				lastOwner: isLastOwner(m, ws.members),
-			};
-		}
-		return out;
-	});
-
+	// #region Actions
 	/** Replace the whole projection from a server response, and republish it to the bands. */
 	function adopt(next: WorkspaceDetail): void {
 		detail.value = next;
 		publishDetail(next);
-		selected.value = new Set();
 	}
 
 	/** Leave the console for the roster — the viewer is no longer a member of this entity. */
@@ -170,10 +155,19 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 		globalThis.location.assign(workspaceBase(ws.kind));
 	}
 
+	function openDrawer(member: WorkspaceMember): void {
+		batch(() => {
+			openMember.value = member;
+			drawerSeq.value = drawerSeq.peek() + 1;
+			drawerOpen.value = true;
+		});
+	}
+
 	async function removeMember(member: WorkspaceMember): Promise<void> {
-		busyId.value = member.id;
-		notice.value = null;
-		info.value = null;
+		batch(() => {
+			busyId.value = member.id;
+			notice.value = null;
+		});
 		const res = await WorkspaceService.updateMember({
 			kind: ws.kind,
 			workspaceId: ws.id,
@@ -182,47 +176,63 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 		});
 		busyId.value = null;
 		if (!res.ok) {
-			notice.value = res.errors?.member ?? res.message ?? "Could not update that member.";
+			notice.value = {
+				tone: "error",
+				text: res.errors?.member ?? res.message ?? "Could not update that member.",
+			};
 			return;
 		}
-		openMember.value = null;
 		// `null` means the caller removed themselves — there is no console left for them to see.
 		if (!res.data) {
 			leaveConsole();
 			return;
 		}
 		adopt(res.data);
-		info.value = member.isSelf ? null : `${member.name} is no longer in ${ws.name}.`;
+		notice.value = { tone: "info", text: `${member.name} is no longer in ${ws.name}.` };
 	}
 
 	function onAction(action: MemberAction, member: WorkspaceMember): void {
 		switch (action) {
 			case "open":
-				openMember.value = member;
+				openDrawer(member);
 				return;
 			case "profile":
-				globalThis.location.assign(`/@${member.handle}`);
+				globalThis.location.assign(memberProfileHref(member.handle));
 				return;
 			case "message":
 				globalThis.location.assign(`/messages/dm-${member.handle}`);
 				return;
 			case "transfer":
-				// Only the owner can hand the seat over; the menu offers it on their own row alone.
-				if (member.isSelf) transferFor.value = member;
+				transferFor.value = member;
 				return;
 			case "leave":
 				confirmLeave.value = true;
 				return;
 			case "remove":
-				void removeMember(member);
+				batch(() => {
+					removing.value = member;
+					confirmRemove.value = true;
+				});
 				return;
 		}
 	}
 
+	/** A row's menu — only what the viewer may do on it. */
+	function menuFor(member: WorkspaceMember) {
+		return memberMenu(member, memberAbilities(actionInputFor(actor, member, caps)), onAction, {
+			onCopied: (ok) => {
+				notice.value = ok
+					? { tone: "info", text: `Link to ${member.name}'s profile copied.` }
+					: { tone: "error", text: "Could not copy the link." };
+			},
+		});
+	}
+
 	async function onInviteAction(action: InviteAction, invite: WorkspaceInvite): Promise<void> {
-		busyId.value = invite.id;
-		notice.value = null;
-		info.value = null;
+		batch(() => {
+			busyId.value = invite.id;
+			notice.value = null;
+		});
 		const res = await WorkspaceService.inviteAction({
 			kind: ws.kind,
 			workspaceId: ws.id,
@@ -231,19 +241,28 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 		});
 		busyId.value = null;
 		if (!res.ok || !res.data) {
-			notice.value = res.message ??
-				`Could not ${action === "revoke" ? "withdraw" : "resend"} that invitation.`;
+			notice.value = {
+				tone: "error",
+				text: res.message ??
+					`Could not ${action === "revoke" ? "withdraw" : "resend"} that invitation.`,
+			};
 			return;
 		}
 		adopt(res.data);
 		const who = invite.name || invite.email || `@${invite.handle}`;
-		info.value = action === "revoke"
-			? `The invitation to ${who} was withdrawn.`
-			: `The invitation to ${who} was sent again.`;
+		notice.value = {
+			tone: "info",
+			text: action === "revoke"
+				? `The invitation to ${who} was withdrawn.`
+				: `The invitation to ${who} was sent again.`,
+		};
 	}
+	// #endregion
 
-	/** How many invitations are awaiting an answer. Empty unless the viewer may invite. */
-	const pendingCount = ws.invites.length;
+	/** The open member as the latest detail holds them — gone when they left. */
+	const drawerMember = openMember.value
+		? ws.members.find((m) => m.id === openMember.value?.id) ?? null
+		: null;
 
 	return (
 		<div class="wsp" data-kind={ws.kind}>
@@ -251,35 +270,46 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 				<section class="wsp-band wsp-band--head" data-i={0}>
 					<div class="wsp-band__inner">
 						<div class="wsp-pagehead">
-							<h1 class="wsp-pagehead__title">{showPending ? "Invitations" : "Members"}</h1>
-							<p class="wsp-pagehead__note">
-								{showPending
-									? `People invited to ${ws.name} who have not answered yet. Each invitation lasts 14 days; resending it starts a fresh window.`
-									: `Everyone in ${ws.name}, what they may do, and how loaded they are.`}
-							</p>
+							<div class="wsp-mhead">
+								<h1 class="wsp-pagehead__title">
+									{props.module === "invitations" ? "Invitations" : "Members"}
+								</h1>
+								<MetaLine
+									items={membersHeaderItems({
+										seats: ws.seats,
+										activeCount: active.length,
+										pending: ws.invites.length,
+									})}
+								/>
+							</div>
+							<UserAvatarStack
+								people={active.map((m) => ({ name: m.name, avatar: m.avatar || null }))}
+								max={5}
+								size="sm"
+								aria-label={`${active.length} ${active.length === 1 ? "member" : "members"}: ${
+									active.map((m) => m.name).join(", ")
+								}`}
+							/>
 						</div>
 					</div>
 				</section>
 
-				{(notice.value || info.value) && (
+				{notice.value && (
 					<section class="wsp-band wsp-band--plain">
 						<div class="wsp-band__inner">
-							<div class="wsp-error">
-								<Message
-									class="wsp-error__alert"
-									severity={notice.value ? "danger" : "success"}
-									variant="subtle"
-									text={notice.value ?? info.value ?? ""}
-								/>
-							</div>
+							<InlineNotice
+								align="start"
+								assertive={notice.value.tone === "error"}
+								text={notice.value.text}
+							/>
 						</div>
 					</section>
 				)}
 
-				{showPending
-					? (
-						<section class="wsp-band wsp-band--page wsp-band--tail">
-							<div class="wsp-band__inner">
+				<section class="wsp-band wsp-band--page wsp-band--tail">
+					<div class="wsp-band__inner">
+						{showPending
+							? (
 								<InviteQueue
 									invites={ws.invites}
 									roles={ws.roles}
@@ -287,149 +317,92 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 									busyId={busyId.value}
 									onAction={(a, i) => void onInviteAction(a, i)}
 								/>
-							</div>
-						</section>
-					)
-					: (
-						<section class="wsp-band wsp-band--page wsp-band--tail">
-							<div class="wsp-band__inner">
+							)
+							: presentation === "chart"
+							? <OrgChart members={active} roles={ws.roles} onAction={onAction} />
+							: (
 								<div class="wsp-people">
 									<div class="wsp-people__bar">
 										<InputText
 											class="wsp-people__search"
 											value={search}
-											onValueChange={(v) => {
-												search.value = v;
-											}}
 											placeholder={`Search ${copy.noun} members`}
 											aria-label="Search members"
 											start={<SearchIcon />}
 											block
 										/>
-										<span class="wsp-people__spacer" />
-										<label class="wsp-people__count">
-											<span class="wsp-idhead__metaitem">
-												<span aria-hidden="true">{cloneGlyph(MembersGlyph)}</span>
-												{visible.value.length} of {activeMembers(ws.members).length}
-											</span>
-										</label>
-										<select
-											class="wsp-select wsp-select--compact"
-											aria-label="Sort members"
-											value={sort.value}
-											onChange={(e) => {
-												sort.value = (e.target as HTMLSelectElement).value as MemberSort;
-											}}
-										>
-											{MEMBER_SORTS.map((s) => (
-												<option key={s.value} value={s.value}>{s.label}</option>
-											))}
-										</select>
 									</div>
 
-									{pendingCount > 0 && (
-										<p class="wsp-people__group-head">
-											<span class="wsp-people__group-title">
-												{pendingCount === 1
-													? "1 invitation awaiting an answer"
-													: `${pendingCount} invitations awaiting an answer`}
-											</span>
-											<a class="wsp-band__action" href="?view=pending">Review</a>
-										</p>
-									)}
-
 									<div class="wsp-people__body" ref={peopleRef}>
-										{visible.value.length === 0
+										{people.length === 0
 											? (
-												<p class="wsp-pagehead__meta">
+												<p class="wsp-people__empty">
 													Nobody matches that. {canInvite && (
-														<button
-															type="button"
-															class="wsp-propose__link"
+														<Button
+															variant="link"
+															label="Invite someone"
 															onClick={() => openInvite()}
-														>
-															Invite someone
-														</button>
+														/>
 													)}
 												</p>
 											)
 											: presentation === "cards"
 											? (
 												<Grid
-													minChildWidth={`${gridColWidth(displayZoom.value)}px`}
+													minChildWidth={`${
+														peopleZoom.gridColWidth(peopleZoom.displayZoom.value)
+													}px`}
 													fit="exact"
 													maxCols={4}
 													gap="var(--space-4)"
 												>
-													{visible.value.map((m) => (
+													{sortMembers(people, "role").map((m) => (
 														<MemberCard
 															key={m.id}
 															member={m}
 															kind={ws.kind}
 															roles={ws.roles}
-															facets={facetsById.value[m.id] ?? []}
-															guards={guardsById.value[m.id] ??
-																{ manageable: false, lastOwner: false }}
-															onAction={onAction}
+															facets={facetsById[m.id] ?? []}
+															menu={menuFor(m)}
+															showStake={stake}
+															onOpen={() => openDrawer(m)}
 														/>
 													))}
 												</Grid>
 											)
-											: presentation === "table"
-											? (
-												<MemberTable
-													members={visible.value}
-													roles={ws.roles}
-													facetsById={facetsById.value}
-													guardsById={guardsById.value}
-													selected={selected.value}
-													onSelect={(id, next) => {
-														const s = new Set(selected.value);
-														if (next) s.add(id);
-														else s.delete(id);
-														selected.value = s;
-													}}
-													onSelectAll={(next) => {
-														selected.value = next
-															? new Set(visible.value.map((m) => m.id))
-															: new Set();
-													}}
-													onAction={onAction}
-												/>
-											)
 											: (
-												<OrgChart
-													members={visible.value}
+												<MemberTable
+													members={people}
 													roles={ws.roles}
-													onAction={onAction}
+													facetsById={facetsById}
+													menuFor={menuFor}
+													showStake={stake}
+													onOpen={openDrawer}
 												/>
 											)}
 									</div>
 								</div>
-							</div>
-						</section>
-					)}
+							)}
+					</div>
+				</section>
 			</div>
 
 			{/* Overlays — all BodyPortal-mounted by their own components (the glass-blur fixed trap). */}
-			{openMember.value && (
+			{drawerMember && (
 				<MemberDrawer
+					key={`${drawerMember.id}:${drawerSeq.value}`}
 					workspace={ws}
-					member={openMember.value}
-					actor={actor.value}
-					canManage={canManage}
-					onClose={() => {
-						openMember.value = null;
-					}}
+					member={drawerMember}
+					actor={actor}
+					visible={drawerOpen}
 					onUpdated={adopt}
-					onTransfer={(m) => {
-						openMember.value = null;
-						transferFor.value = m;
-					}}
+					onTransfer={(m) => (transferFor.value = m)}
+					onLeave={() => (confirmLeave.value = true)}
+					onRemove={(m) => onAction("remove", m)}
 				/>
 			)}
 
-			<InviteModal workspace={ws} onUpdated={adopt} />
+			{canInvite && <InviteModal workspace={ws} onUpdated={adopt} />}
 
 			<ConfirmDialog
 				visible={confirmLeave}
@@ -439,8 +412,20 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 				rejectLabel="Stay"
 				acceptSeverity="danger"
 				onAccept={() => {
-					const self = actor.value;
-					if (self) void removeMember(self);
+					if (actor) void removeMember(actor);
+				}}
+			/>
+
+			<ConfirmDialog
+				visible={confirmRemove}
+				header={`Remove ${removing.value?.name ?? "this member"}?`}
+				message={`They lose access to ${ws.name} straight away. Their work stays on record — nothing is deleted — and you can invite them back.`}
+				acceptLabel="Remove"
+				rejectLabel="Keep them"
+				acceptSeverity="danger"
+				onAccept={() => {
+					const member = removing.peek();
+					if (member) void removeMember(member);
 				}}
 			/>
 

@@ -150,29 +150,12 @@ export function rosterTabCounts(
 }
 // #endregion
 
-// #region Options
-/**
- * One value/label option of a small in-body choice (the member sort). A module's sub-views are not
- * these: they are data in `sub-views.ts`, shared by the header band, the lane, the rig and the body.
- */
-export interface ModuleTab {
-	/** URL-safe value. */
-	value: string;
-	label: string;
-}
-// #endregion
-
 // #region Member filtering & sorting
-/** How the roster orders its people. */
+/**
+ * How the card grid and the org chart order people. The People table sorts by its own header
+ * (Decision #224), so there is no sort control in the body.
+ */
 export type MemberSort = "role" | "name" | "workload" | "joined";
-
-/** The member sort options (feeds a `SortControl` / `Select`). */
-export const MEMBER_SORTS: readonly ModuleTab[] = [
-	{ value: "role", label: "Role" },
-	{ value: "name", label: "Name" },
-	{ value: "workload", label: "Workload" },
-	{ value: "joined", label: "Joined" },
-];
 
 /** The member-list filter state. Every field is optional — an unset field filters nothing. */
 export interface MemberFilter {
@@ -304,11 +287,6 @@ export function availabilityTone(
 	if (availability === "available") return "success";
 	if (availability === "limited") return "warning";
 	return "muted";
-}
-
-/** Sentence-case label for a membership state, for a status chip's tooltip. */
-export function membershipLabel(state: WorkspaceMember["state"]): string {
-	return state === "active" ? "Active member" : "No longer a member";
 }
 
 /**
