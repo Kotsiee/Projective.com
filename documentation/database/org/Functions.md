@@ -819,9 +819,13 @@ namespace under a `pg_advisory_xact_lock` on the handle.
 
 - **`fn_role_of_entity(kind, entity, role)`** — the role row, resolved capabilities and `archived`
   flag, scoped to the entity. Internal.
+- **`fn_team_seats_used(team) → integer`** — what holds a team's seats: its active members **plus
+  its pending, unexpired invitations**. The one count `fn_assert_seat` checks and
+  `get_workspace_detail`'s `seats.used` answers (Teams C2). `STABLE`, internal.
 - **`fn_assert_seat(kind, entity, extra)`** — a team's seat cap is its plan's `team_seats`
   entitlement (`NULL` = unlimited; a business has none). Active members **plus pending, unexpired
-  invitations** count, or an owner could over-invite and have acceptances refused. `55000` when full.
+  invitations** count (`fn_team_seats_used`), or an owner could over-invite and have acceptances
+  refused. `55000` when full.
 - **`fn_business_role_is_manager(business, role)`** / **`fn_business_member_is_manager(business,
   user)`** — does a role, or an active member's effective capabilities, count against the business's
   `business_managers` cap (Decision #230 (b)): admin-ranked, or holding `manage_projects`; never the
@@ -955,7 +959,9 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
   `wi` — the LIVE Workload Intensity, Σ `workload_intensity` of the member's `claimed` / `in_progress`
   / `in_review` tickets, summed exactly as `projects.check_ticket_capacity` sums it — and `wi_cap`,
   their `max_workload_intensity` else `security.platform_params.global_workload_cap_default` else 10;
-  a team member also carries `share_bp` / `share_held` from `finance.contribution_agreements`), the
+  a team member also carries `share_bp` / `share_held` from `finance.contribution_agreements` —
+  **only when the viewer holds `manage_finances`**, the `payout` block's gate (Decision #233), else
+  `null` for every member, their own included; probe `supabase/probes/workspace_member_stakes.sql`), the
   live roles with RESOLVED capabilities and holder counts, the outgoing pending invitations **only
   when the viewer holds `invite_members`**, a team's Standing label, the projects (team: via its stage
   assignments, each with its client business's `client` face; business: as client, excluding
@@ -1029,8 +1035,12 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
     `stage_wi`). No other uuid; the service resolves assignees to faces and drops their ids.
   - `allowance` — `finance.get_proposal_allowance(team)`'s answer (incl. `team_status`,
     `team_member_count`, `can_bind_seat` for the caller).
-  A business answers `engagements = []`, `payout = null`, `allowance = null`. **VOLATILE**: the
-  allowance read opens the week and pays out the lazy drip.
+  - `seats` — `{used, limit}` for every member (Teams C2 — the Members header and the invite
+    dialog): `used` = `fn_team_seats_used` (active members + pending, unexpired invitations, the
+    count `fn_assert_seat` checks), `limit` = `finance.fn_effective_limit('team', team,
+    'team_seats')`, `NULL` when unlimited (`seats` in `WorkspaceDetail`).
+  A business answers `engagements = []`, `payout = null`, `allowance = null`, `seats = null`.
+  **VOLATILE**: the allowance read opens the week and pays out the lazy drip.
 
 ### §17 — The business bench (Talent — Decision #230 (i), #241)
 

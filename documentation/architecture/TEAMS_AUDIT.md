@@ -135,7 +135,7 @@ Severity: **G** = merge-gate violation (root `CLAUDE.md` §3) · **M** = matrix 
 | :-- | :-- | :-- | :-- |
 | D9 | G | Translucent backgrounds via `color-mix(…, transparent)`: matrix cells (281, 291), legend marks (407, 412), preset hover (325), `.wsp-capchip[consequential]` (595); `.wsp-verdict[…]` (money 863-873); `.wsp-override[grant/revoke]` (people 395/400); `.wsp-create__kind[data-on]` (roster 821/826); `.wsp-chip[tone]` (tokens 608-618); tokens 66/87/109/134/136/148/149/176 + HC copies | Re-derive every `--wsp-*-tint` as an **opaque** mix against the region tone (`color-mix(in oklab, var(--success) 12%, var(--surface-1))`). |
 | D10 | M | `opacity` used as a state dim (chrome 829; matrix 549; money 206/212/235/627/781/982; people 204; roster 332) — lowers label contrast below 4.5:1 | Use `--text-secondary` / `--fld-disabled-mix` tokens instead of opacity. |
-| D11 | G | Inset rings reading as four-sided borders on static containers: `.wsp-mcard[data-self]` (people:193), `[data-state=requested]` (:200), `.wsp-card[data-acting]` (roster:327), `.wsp-lane__entity[data-acting]` (chrome:167) | Express "self / acting" with a leading `--hairline` accent rule or tonal step (`--surface-2`), not a box. |
+| D11 | G | Inset rings reading as four-sided borders on static containers: `.wsp-mcard[data-self]` (people:193), `[data-state=requested]` (:200), `.wsp-card[data-acting]` (roster:327), `.wsp-lane__entity[data-acting]` (chrome:167) | Express "self / acting" with a leading `--hairline` accent rule or tonal step (`--surface-2`), not a box. ✅ Members half by W1 + C2: the card and the table row keep W1's leading rule in `--wsp-acting-ring` (the row's as a logical `::before` the table's hover and focus never reset — C2 review) and their MetaLine says "You"; the `[data-state]` rules are gone with the states (the roster holds active members only) |
 | D12 | G | Boxed static content: `.wsp-propose` (console:326), `.wsp-verdict` (money:858), `.wsp-split__drift` (money:407), `.wsp-lock[pending]` (money:921) | `InlineNotice` (a required disclosure may be contained) or unboxed Meta text. ✅ `.wsp-verdict` (dead) and `.wsp-split__drift` deleted by C4 — split drift is an `InlineNotice` with a Rebalance action; `styles.gate.test.ts` keeps both deleted |
 | D13 | M | `.wsp-approvals__item` rows on `--surface-1` inside a band | Plain rows separated by one `--hairline`. |
 | D14 | T | `border: 1px solid` literals (chrome 79/227/787/865; money 433; people 561; roster 246/796/886) | `var(--hairline)` / `--hairline-strong`. |
@@ -149,8 +149,8 @@ Severity: **G** = merge-gate violation (root `CLAUDE.md` §3) · **M** = matrix 
 | D17 | G | Role label as `wsp-chip`: `WorkspaceCard.tsx:114,121`, `WorkspaceTable.tsx:157`, `WorkspaceLane.island.tsx:498` | Inline Meta: `Owner · 4 members · Active 2d ago`. ✅ fixed by R1 (the lane row by L1): the card's facts are one `MetaLine` (`cardMeta`, `core/roster-model.ts`: role · N members · N live projects · Acting), the table's role cell a `MetaLine`; `roster.gate.test.ts` fails on any `wsp-chip` in the roster |
 | D18 | G | Kind chip "Team" in `InvitationStrip.tsx:111` | Meta text. ✅ fixed by R2: the row's facts are one `MetaLine` (kind · as role · from @inviter · expires in N days, tabular); `.wsp-chip--kind` deleted. |
 | D19 | G | "Unlimited" / "Per purchase" chips (`SpendLimitRow.tsx:161,168`) | Meta text. |
-| D20 | G | `wsp-capchip` capability labels (`MemberCard.tsx:492`, `MemberTable.tsx:89`, `WorkspaceOverview:134` standing) | Meta text list; the sensitive count may stay a **count** badge. |
-| D21 | M | `wsp-override` grant/revoke chips (`MemberCard.tsx:449,480`; `MemberTable.tsx:77`) | Meta text with `+`/`−` glyph prefix; "+N more" stays a count. |
+| D20 | G | `wsp-capchip` capability labels (`MemberCard.tsx:492`, `MemberTable.tsx:89`, `WorkspaceOverview:134` standing) | Meta text list; the sensitive count may stay a **count** badge. ✅ Members half fixed by C2: the card and the table say a member's overrides as one `MetaLine` and the sensitive grants as a ui `Badge` count (`OverrideLine` / `SensitiveCount`); `CapChip` is deleted. The Overview's Standing chip is C1's |
+| D21 | M | `wsp-override` grant/revoke chips (`MemberCard.tsx:449,480`; `MemberTable.tsx:77`) | Meta text with `+`/`−` glyph prefix; "+N more" stays a count. ✅ fixed by C2: "+2 granted · −1 revoked" as a `MetaLine` (`overrideItems`, `core/members-model.ts`, unit-tested), every override by name in its title; the `.wsp-override` rules are deleted |
 | ✅ | — | Lifecycle `Tag` (Billing), acting chip, status dots | Allowed containers. |
 
 ### 2.5 Buttons (§B.8 matrix, one filled per region)
@@ -174,10 +174,10 @@ Severity: **G** = merge-gate violation (root `CLAUDE.md` §3) · **M** = matrix 
 
 | ID | Sev | Defect | Fix |
 | :-- | :-- | :-- | :-- |
-| D34 | G | 6 native `<select class="wsp-select">` (OwnershipTransfer:123; RolesMatrix:509; MemberDrawer:282,326; MembersScreen:295; InviteModal:171) bypass `--fld-*` geometry and the 16px mobile floor | `Select` (MembersScreen sort → `SortControl`) |
-| D35 | G | Raw checkbox (`OwnershipTransfer.tsx:158`) | `Checkbox` |
-| D36 | M | Hand-rolled `role="radio"` groups (InviteModal:125; CreateWorkspaceModal:274) | `RadioGroup` or `SelectButton` |
-| D37 | M | Hand-rolled `<label class="wsp-*__label">` (InviteModal 151/170/200; Create 304/317; Roles 490/508; Drawer 310/325; Transfer 120/157) — no touched/blur validation, no error wiring | `FormControl` (gives the §A.7 rest-only validation paint and focus clearing) |
+| D34 | G | 6 native `<select class="wsp-select">` (OwnershipTransfer:123; RolesMatrix:509; MemberDrawer:282,326; MembersScreen:295; InviteModal:171) bypass `--fld-*` geometry and the 16px mobile floor | `Select` (MembersScreen sort → `SortControl`) ✅ five of six fixed by C2: the transfer's successor, the drawer's Role and Reports to and the invite's Role are ui `Select`s in `FormControl`s; the Members sort select is deleted (the People `DataTable` sorts by its own header). RolesMatrix's is C3's, and its `.wsp-select` rules moved into C3's `workspace-matrix.css` (C2 review) so they go with their last user; `core/members-screen.gate.test.ts` holds the C2 files |
+| D35 | G | Raw checkbox (`OwnershipTransfer.tsx:158`) | `Checkbox` ✅ fixed by C2 ("Leave the team after the transfer") |
+| D36 | M | Hand-rolled `role="radio"` groups (InviteModal:125; CreateWorkspaceModal:274) | `RadioGroup` or `SelectButton` ✅ fixed: R3 (create) and C2 (invite: By handle · By email as a `SelectButton`) |
+| D37 | M | Hand-rolled `<label class="wsp-*__label">` (InviteModal 151/170/200; Create 304/317; Roles 490/508; Drawer 310/325; Transfer 120/157) — no touched/blur validation, no error wiring | `FormControl` (gives the §A.7 rest-only validation paint and focus clearing) ✅ Invite, Drawer and Transfer fixed by C2 (every field a `FormControl`; the invite's handle and email paint at rest through `useFieldValidation`); Create by R3; Roles is C3's |
 | D38 | G | 47 local `:focus-visible { outline: none }` with no replacement ring → keyboard focus invisible unless the ui base paints it | Delete the local overrides; controls inherit `--focus-ring-shadow` from ui. Verify in the browser before merge. |
 
 ### 2.7 Other gates
@@ -304,6 +304,9 @@ Each is logged under **Decision #226** with a proposal; items marked *needs ruli
      join), but grandfathered members (#196 (3)) may not be. Covered by (1).
   3. UI: "Leave team" for the owner must route to the transfer dialog, never render a dead
      control (§3.11). Verify `MemberDrawer.island.tsx:380` `lastowner-link` does exactly that.
+     ✅ C2: the owner's own row offers "Transfer ownership" (a tier-5 `Button variant="link"` in the
+     drawer, "Transfer ownership…" in the row menu) and no row ever offers the owner Leave or Remove
+     (`memberAbilities`, `core/members-model.ts`, unit-tested).
 
 ### 4.4 Vault governance & split reconciliation
 

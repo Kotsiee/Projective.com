@@ -1,6 +1,6 @@
 /*
- * workspace-people — the Members module (cards · table · org chart), the member drawer, and the
- * Invitations module (outgoing invites, incoming requests, share links).
+ * workspace-people — the Members module (the People table and cards · the org chart), the member
+ * drawer, the invitation queue, and the invite and ownership-transfer dialogs.
  *
  * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY.
  *
@@ -8,15 +8,25 @@
  * here ever gives a person a rounded square — that shape belongs to entities. The distinction carries
  * real information on a page where an entity and its members appear together.
  *
- * The three-layer permission model (role ∪ granted − revoked) is presented, never recomputed: the
- * drawer's list renders the facets the SSOT's `permissionFacets` produced, and the `+` / `−` markers
- * exist so a reader never has to diff two capability lists in their head.
+ * Facts are MetaLines and fields are `@projective/ui` controls in FormControls (Teams C2), so nothing
+ * here draws a chip, a pill or a field: these rules only lay the regions out. The one container left
+ * on a person is the sensitive-grant COUNT (a ui Badge, §B.11).
  *
  * The org chart is a CSS-only connector tree built entirely from logical properties, so it mirrors
  * under `dir="rtl"` with no script and no second layout.
  */
 
-/* #region Module frame */
+/* #region Head */
+/* The section title over its MetaLine (seats · pending); the avatar stack sits at the row's end. */
+.wsp-mhead {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+/* #endregion */
+
+/* #region People */
 .wsp-people {
 	display: flex;
 	flex-direction: column;
@@ -26,103 +36,19 @@
 }
 
 /*
- * The module's own bar. It holds ORIENTATION only — a count, the view switch and a search box. The
- * filters live in the lane and the actions live in the footer band, so this bar never grows a CTA.
+ * The reading's own bar holds ORIENTATION only — the search. The views live in the header band, the
+ * density in the footer rig, and the actions in the rows, so this bar never grows a CTA.
  */
 .wsp-people__bar {
 	display: flex;
 	align-items: center;
 	gap: var(--space-3);
-	flex-wrap: wrap;
 	min-inline-size: 0;
 }
 
-.wsp-people__count {
-	font-size: var(--wsp-fs-body);
-	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
-}
-
-.wsp-people__spacer {
-	flex: 1 1 auto;
-	min-inline-size: 0;
-}
-
-.wsp-people__views {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-px);
-	padding: var(--space-px);
-	border-radius: var(--radius-base);
-	background: var(--surface-2);
-}
-
-.wsp-people__view {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 1.75rem;
-	block-size: 1.75rem;
-	padding: 0;
-	border: none;
-	border-radius: var(--radius-sm);
-	background: none;
-	color: var(--text-secondary);
-	cursor: pointer;
-}
-
-.wsp-people__view:hover {
-	color: var(--on-surface);
-}
-
-.wsp-people__view[aria-pressed="true"],
-.wsp-people__view[data-active="true"] {
-	background: var(--surface);
-	color: var(--on-surface);
-}
-
-/*
- * A native select in a workspace form (role, reporting line, successor, base preset) or toolbar (member
- * sort). It takes the field contract's geometry and state tokens, so a picker reads like every other field
- * — the icon-button class these once borrowed drew them 28px wide with their value clipped away.
- */
-.wsp-select {
+.wsp-people__search {
 	inline-size: 100%;
 	max-inline-size: var(--wsp-field);
-	block-size: var(--fld-h-md);
-	padding-inline: var(--fld-px-md);
-	border: var(--fld-bw) solid var(--fld-rest-bd);
-	border-radius: var(--fld-r-md);
-	background: var(--fld-rest-bg);
-	color: var(--fld-rest-fg);
-	font: inherit;
-	font-size: var(--fld-fs-md);
-	cursor: pointer;
-}
-
-.wsp-select:hover:not(:disabled) {
-	border-color: var(--fld-hover-bd);
-}
-
-.wsp-select:focus-visible {
-	border-color: var(--fld-focus-bd);
-	box-shadow: var(--fld-focus-glow);
-}
-
-/* Disabled fades the INK and the BORDER through the shared mix, never the whole box (§A.7): the same
-two declarations the package field draws its own disabled state with. */
-.wsp-select:disabled {
-	color: color-mix(in srgb, var(--fld-rest-fg) var(--fld-disabled-mix), var(--fld-rest-bg));
-	border-color: color-mix(in srgb, var(--fld-rest-bd) var(--fld-disabled-mix), var(--fld-rest-bg));
-	cursor: not-allowed;
-}
-
-/* The toolbar size: sits in a row of small controls, so it takes its own width rather than the row's. */
-.wsp-select--compact {
-	inline-size: auto;
-	block-size: var(--fld-h-sm);
-	padding-inline: var(--fld-px-sm);
-	font-size: var(--fld-fs-sm);
 }
 
 .wsp-people__body {
@@ -130,45 +56,14 @@ two declarations the package field draws its own disabled state with. */
 	min-inline-size: 0;
 }
 
-/* Grouped rosters (by role, or by department on an enterprise-shaped roster). */
-.wsp-people__group + .wsp-people__group {
-	margin-block-start: var(--space-5);
-}
-
-.wsp-people__group-head {
-	display: flex;
-	align-items: baseline;
-	gap: var(--space-3);
-	margin-block-end: var(--space-3);
-	padding-block-end: var(--space-2);
-	border-block-end: var(--hairline);
-}
-
-.wsp-people__group-title {
+.wsp-people__empty {
 	margin: 0;
-	font-size: var(--wsp-fs-micro);
-	letter-spacing: var(--wsp-label-track);
-	text-transform: uppercase;
-	font-weight: var(--fw-semibold);
-	color: var(--text-secondary);
-}
-
-.wsp-people__group-count {
-	font-size: var(--wsp-fs-micro);
-	font-variant-numeric: tabular-nums;
+	font-size: var(--wsp-fs-body);
 	color: var(--text-secondary);
 }
 /* #endregion */
 
 /* #region Member card */
-.wsp-mgrid {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
-	gap: var(--space-4);
-	inline-size: 100%;
-	min-inline-size: 0;
-}
-
 .wsp-mcard {
 	position: relative;
 	display: flex;
@@ -177,8 +72,8 @@ two declarations the package field draws its own disabled state with. */
 	inline-size: 100%;
 	min-inline-size: 0;
 	padding: var(--space-4);
-	/* One leading edge, reserved transparent at rest: the self and pending states below recolour it
-	rather than adding a box (§B.4, §B.12.3). */
+	/* One leading edge, reserved transparent at rest: the self state recolours it rather than adding
+	a box (§B.4, §B.12.3). */
 	border-inline-start: var(--hairline-strong);
 	border-inline-start-width: var(--wsp-acting-line-h);
 	border-inline-start-color: transparent;
@@ -191,30 +86,10 @@ two declarations the package field draws its own disabled state with. */
 	background: var(--surface-2);
 }
 
-/* The revocation marker is a `--surface-2` step, the tone the card hovers to, so it steps up one with
-the card or its container would vanish. */
-.wsp-mcard:hover .wsp-override[data-override="revoke"] {
-	background: var(--surface-3);
-}
-
-/* The viewer's own card gets one leading rule in the kind's opaque edge tone — orientation, not
-emphasis, and never a four-sided ring around static content. A neutral hairline here is invisible at
-1x, and this rule is the card's only self cue until the name line says "You". */
+/* The viewer's own card keeps one leading rule in the kind's opaque edge tone beside the "You" its
+MetaLine says — orientation, not emphasis, and never a four-sided ring around static content. */
 .wsp-mcard[data-self="true"] {
 	border-inline-start-color: var(--wsp-acting-ring);
-}
-
-/* An invited or requested member is present but not yet counted: no tonal plate of their own, just
-the quiet leading hairline. Dimmed, never hidden. */
-.wsp-mcard[data-state="invited"],
-.wsp-mcard[data-state="requested"] {
-	background: transparent;
-	border-inline-start-color: var(--hairline-color);
-}
-
-/* A member who left keeps their card, dimmed through the INK rather than `opacity` (§B.12). */
-.wsp-mcard[data-state="left"] .wsp-mcard__name {
-	color: var(--text-secondary);
 }
 
 .wsp-mcard__top {
@@ -222,11 +97,6 @@ the quiet leading hairline. Dimmed, never hidden. */
 	grid-template-columns: auto minmax(0, 1fr) auto;
 	align-items: start;
 	gap: var(--space-3);
-}
-
-.wsp-mcard__avatar {
-	flex: none;
-	border-radius: 50%;
 }
 
 .wsp-mcard__ident {
@@ -237,9 +107,6 @@ the quiet leading hairline. Dimmed, never hidden. */
 }
 
 .wsp-mcard__name {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
 	margin: 0;
 	min-inline-size: 0;
 	font-size: var(--wsp-fs-body);
@@ -248,9 +115,9 @@ the quiet leading hairline. Dimmed, never hidden. */
 }
 
 .wsp-mcard__name-link {
+	display: block;
 	color: inherit;
 	text-decoration: none;
-	min-inline-size: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -260,49 +127,20 @@ the quiet leading hairline. Dimmed, never hidden. */
 	text-decoration: underline;
 }
 
-.wsp-mcard__title {
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.wsp-mcard__handle {
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
-}
-
 .wsp-mcard__flags {
 	display: flex;
 	align-items: center;
-	gap: var(--space-2);
+	gap: var(--space-1);
 	justify-self: end;
-	flex-wrap: wrap;
-	justify-content: flex-end;
-}
-
-.wsp-mcard__kebab {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	flex: none;
-	inline-size: 1.75rem;
-	block-size: 1.75rem;
-	padding: 0;
-	border: none;
-	border-radius: var(--radius-base);
-	background: none;
-	color: var(--text-secondary);
-	cursor: pointer;
-}
-
-.wsp-mcard__kebab:hover {
-	background: var(--surface-3);
-	color: var(--on-surface);
 }
 
 /* Availability is a dot on the avatar's corner, with the word in its Tooltip (§B.6). */
+.wsp-mcard__avatarwrap {
+	position: relative;
+	display: inline-flex;
+	flex: none;
+}
+
 .wsp-mcard__avail {
 	position: absolute;
 	inset-block-end: 0;
@@ -312,12 +150,6 @@ the quiet leading hairline. Dimmed, never hidden. */
 	border-radius: 50%;
 	background: var(--wsp-unverified);
 	box-shadow: 0 0 0 var(--space-px) var(--surface-1);
-}
-
-.wsp-mcard__avatarwrap {
-	position: relative;
-	display: inline-flex;
-	flex: none;
 }
 
 .wsp-mcard__avail[data-avail="available"] {
@@ -333,138 +165,91 @@ the quiet leading hairline. Dimmed, never hidden. */
 	box-shadow: 0 0 0 var(--space-px) var(--surface-1), inset 0 0 0 var(--wsp-stroke) var(--outline);
 }
 
-/* Workload. The fill's inline-size encodes the commitment, so it is never animated. */
+/* Workload: the ui ProgressBar over the member's live W_i against their cap, the figure beside it. */
 .wsp-mcard__load {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.wsp-mcard__meter {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+/* The figure keeps its own width on one line: the bar is what gives way, never "Workload · 2 / 5". */
+.wsp-mcard__figure {
+	flex: none;
+	white-space: nowrap;
+}
+
+/* The override counts close the card behind one hairline — present only when the person departs from
+their role. */
+.wsp-mcard__overrides {
+	padding-block-start: var(--space-3);
+	border-block-start: var(--hairline);
+}
+
+/* The override MetaLine and the sensitive count beside it, on one line. */
+.wsp-overrides,
+.wsp-mcard__overrides,
+.wsp-mtable__overrides {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
 	min-inline-size: 0;
 }
 
-.wsp-mcard__load-track {
-	flex: 1 1 auto;
-	min-inline-size: 0;
-	block-size: var(--wsp-meter-h);
-	border-radius: var(--radius-xs);
-	background: var(--wsp-track-bg);
-	overflow: hidden;
-}
-
-.wsp-mcard__load-fill {
-	display: block;
-	block-size: 100%;
-	inline-size: calc(var(--wsp-fill, 0) * 100%);
-	border-radius: inherit;
-	background: var(--wsp-kind);
-}
-
-/* At capacity the meter warms rather than reddening: a fully-committed member is doing their job. */
-.wsp-mcard__load[data-tone="full"] .wsp-mcard__load-fill {
-	background: var(--warning);
-}
-
-.wsp-mcard__load-text {
-	flex: none;
-	font-size: var(--wsp-fs-micro);
-	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
-}
-
-/*
- * The override summary — the whole reason the three-layer model is legible. `+` is an addition to the
- * role baseline and `−` a subtraction; neither is an error state.
- */
-.wsp-mcard__overrides {
-	display: flex;
-	align-items: center;
-	gap: var(--space-1);
-	flex-wrap: wrap;
-	padding-block-start: var(--space-3);
-	border-block-start: var(--hairline);
-}
-
-.wsp-override {
+.wsp-sensitive {
 	display: inline-flex;
+	flex: none;
 	align-items: center;
-	gap: var(--space-px);
-	padding-inline: var(--space-1);
-	padding-block: calc(var(--space-px) / 2);
-	border-radius: var(--radius-xs);
-	font-size: var(--wsp-fs-micro);
-	font-weight: var(--fw-semibold);
-	white-space: nowrap;
-}
-
-/* Both markers fill with a SOLID tonal step (§B.11.6): the grant is the kind mixed against the card's
-own `--surface-1`, the revocation one ramp step up from it. */
-.wsp-override[data-override="grant"] {
-	background: color-mix(in oklab, var(--wsp-grant) var(--tint), var(--surface-1));
-	color: var(--wsp-grant);
-}
-
-.wsp-override[data-override="revoke"] {
-	background: var(--surface-2);
-	color: var(--wsp-revoke);
-	text-decoration: line-through;
-}
-
-.wsp-override__sign {
-	font-variant-numeric: tabular-nums;
-}
-
-.wsp-mcard__money {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: var(--space-3);
-	min-inline-size: 0;
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
 }
 /* #endregion */
 
 /* #region Member table */
-.wsp-mtable .ui-dt__row[data-state="self"] {
-	box-shadow: inset var(--wsp-acting-line-h) 0 0 0 var(--wsp-kind-edge);
+/*
+ * The viewer's own row: W1's leading rule in `--wsp-acting-ring`, as the card draws it, beside the
+ * "You" in its meta. It is a `::before` on the row's inline-start edge rather than a border or a shadow:
+ * it moves no box (so the body's columns stay aligned with the head's), it mirrors under RtL, and the
+ * table's own hover and focus — which reset the row's `box-shadow` — never wipe it. It sits above the
+ * pinned Member cell, which paints the row's ground over that edge.
+ */
+.wsp-mtable .ui-dt__row[data-state="self"]::before {
+	content: "";
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 0;
+	z-index: 2;
+	inline-size: var(--wsp-acting-line-h);
+	background: var(--wsp-acting-ring);
+	pointer-events: none;
 }
 
-.wsp-mtable__ident {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
+.wsp-mtable__text {
 	min-inline-size: 0;
-}
-
-.wsp-mtable__name {
-	display: flex;
-	flex-direction: column;
-	min-inline-size: 0;
-}
-
-.wsp-mtable__name-text {
-	font-weight: var(--fw-medium);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 	color: var(--on-surface);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
-.wsp-mtable__sub {
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
+.wsp-mtable__overrides {
 	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
-.wsp-mtable__perms {
-	display: flex;
-	align-items: center;
+.wsp-mtable__figure {
+	display: inline-flex;
+	align-items: baseline;
+	justify-content: flex-end;
 	gap: var(--space-1);
-	min-inline-size: 0;
-	overflow: hidden;
+	font-variant-numeric: tabular-nums;
 }
 
+.wsp-mtable__value {
+	color: var(--on-surface);
+}
 /* #endregion */
 
 /* #region Org chart — a CSS-only connector tree, logical properties throughout */
@@ -567,11 +352,19 @@ own `--surface-1`, the revocation one ramp step up from it. */
 	text-align: start;
 	text-decoration: none;
 	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
 }
 
 .wsp-chart__card:hover {
 	background: var(--surface-2);
+}
+
+/* A node opens its member, so it compresses on press like the package controls around it (§B.12). */
+.wsp-chart__card:active {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-press);
 }
 
 .wsp-chart__card[data-self="true"] {
@@ -608,24 +401,10 @@ own `--surface-1`, the revocation one ramp step up from it. */
 	white-space: nowrap;
 }
 
+/* The disclosure is a ui icon Button (tier 5); this only pushes it to the card's inline end. */
 .wsp-chart__toggle {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
 	flex: none;
-	inline-size: 1.25rem;
-	block-size: 1.25rem;
 	margin-inline-start: auto;
-	padding: 0;
-	border: none;
-	border-radius: var(--radius-xs);
-	background: none;
-	color: var(--text-secondary);
-	cursor: pointer;
-}
-
-.wsp-chart__toggle:hover {
-	color: var(--on-surface);
 }
 
 /* The caret rotates on the BLOCK axis, so its meaning does not invert under RtL. */
@@ -670,46 +449,11 @@ own `--surface-1`, the revocation one ramp step up from it. */
 	gap: var(--space-3);
 }
 
-.wsp-mdrawer__avatar {
-	flex: none;
-	border-radius: 50%;
-}
-
 .wsp-mdrawer__ident {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-px);
 	min-inline-size: 0;
-}
-
-.wsp-mdrawer__name {
-	margin: 0;
-	font-size: var(--wsp-fs-key);
-	font-weight: var(--fw-medium);
-	color: var(--on-surface);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.wsp-mdrawer__handle {
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
-	text-decoration: none;
-}
-
-.wsp-mdrawer__handle:hover {
-	text-decoration: underline;
-}
-
-.wsp-mdrawer__meta {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	flex-wrap: wrap;
-	font-size: var(--wsp-fs-micro);
-	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
 }
 
 .wsp-mdrawer__section {
@@ -733,6 +477,13 @@ own `--surface-1`, the revocation one ramp step up from it. */
 	color: var(--text-secondary);
 }
 
+/* Role, Title and Reports to: fluid inside the field measure, never stretched across a wide panel. */
+.wsp-mdrawer__field {
+	inline-size: 100%;
+	max-inline-size: var(--wsp-field);
+	min-inline-size: 0;
+}
+
 .wsp-mdrawer__section-note {
 	margin: 0;
 	max-inline-size: var(--wsp-prose);
@@ -740,8 +491,51 @@ own `--surface-1`, the revocation one ramp step up from it. */
 	color: var(--text-secondary);
 }
 
-/* The per-capability breakdown. Each row shows the baseline AND the override, so the effective answer
-is never presented without its reason. */
+/* A viewer who may not change this person reads their role and reporting line as facts. */
+.wsp-mdrawer__facts {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	gap: var(--space-2) var(--space-4);
+	margin: 0;
+	font-size: var(--wsp-fs-body);
+}
+
+.wsp-mdrawer__fact-label {
+	color: var(--text-secondary);
+}
+
+.wsp-mdrawer__fact-value {
+	margin: 0;
+	min-inline-size: 0;
+	color: var(--on-surface);
+}
+
+/*
+ * One capability group. Its title takes the section-header register — micro, uppercase, tracked — as
+ * the PermissionMatrix's `th[scope=rowgroup]` group rows do (§C.1), so it differs from the switch rows
+ * under it by size, case and tracking, never by weight alone (§A.4). The drawer's section title above
+ * it is set apart by the note between them and the section's hairline, not by a second weight.
+ */
+.wsp-mdrawer__group {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.wsp-mdrawer__group + .wsp-mdrawer__group {
+	margin-block-start: var(--space-3);
+}
+
+.wsp-mdrawer__group-title {
+	margin: 0;
+	font-size: var(--wsp-fs-micro);
+	letter-spacing: var(--wsp-label-track);
+	text-transform: uppercase;
+	font-weight: var(--fw-semibold);
+	color: var(--text-secondary);
+}
+
 .wsp-mdrawer__perms {
 	list-style: none;
 	margin: 0;
@@ -750,13 +544,13 @@ is never presented without its reason. */
 	flex-direction: column;
 }
 
+/* A switch (or, where the viewer may not flip it, the capability as text) over where it comes from. */
 .wsp-mdrawer__perm {
-	display: grid;
-	grid-template-columns: auto minmax(0, 1fr) auto;
-	align-items: center;
-	gap: var(--space-3);
-	min-block-size: var(--wsp-rowh-dense);
-	padding-inline: var(--space-1);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+	padding-block: var(--space-2);
 	border-block-start: var(--hairline);
 }
 
@@ -764,129 +558,49 @@ is never presented without its reason. */
 	border-block-start: none;
 }
 
-.wsp-mdrawer__perm-mark {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	flex: none;
-	inline-size: 1.125rem;
-	block-size: 1.125rem;
-	color: var(--wsp-denied);
-	line-height: 0;
-}
-
-.wsp-mdrawer__perm[data-effective="true"] .wsp-mdrawer__perm-mark {
-	color: var(--wsp-allowed);
-}
-
-.wsp-mdrawer__perm[data-state="conditional"] .wsp-mdrawer__perm-mark {
-	color: var(--wsp-conditional);
-}
-
 .wsp-mdrawer__perm-label {
-	min-inline-size: 0;
 	font-size: var(--wsp-fs-body);
 	color: var(--on-surface);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
-.wsp-mdrawer__perm[data-effective="false"] .wsp-mdrawer__perm-label {
+.wsp-mdrawer__perm[data-on="false"] .wsp-mdrawer__perm-label {
 	color: var(--text-secondary);
 }
 
-/* A consequential capability is flagged in the row itself — burying "may withdraw funds" in a list of
-eighteen ticks is how a permission system stops being read. */
-.wsp-mdrawer__perm[data-consequential="true"] .wsp-mdrawer__perm-label {
-	font-weight: var(--fw-semibold);
+.wsp-mdrawer__perm-note {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	min-inline-size: 0;
 }
 
-.wsp-mdrawer__perm-flag {
+/* A sensitive capability's consequence: meta text behind a warning glyph that carries the hue. */
+.wsp-mdrawer__warning {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wsp-mdrawer__warning-mark {
 	display: inline-flex;
 	flex: none;
-	color: var(--wsp-consequential);
+	color: var(--warning);
 	line-height: 0;
 }
 
-.wsp-mdrawer__perm-ovr {
-	justify-self: end;
+/* The row's one terminal act — Transfer ownership, Leave or Remove — under the sentence it follows. */
+.wsp-mdrawer__terminal {
+	align-items: flex-start;
+}
+
+.wsp-mdrawer__terminal-act {
 	flex: none;
 }
-
-.wsp-mdrawer__limit {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
-	min-inline-size: 0;
-}
-
-.wsp-mdrawer__actions {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	flex-wrap: wrap;
-}
-
-/* The destructive zone. Tonal, not bordered, and the copy explains the consequence before the button
-does anything (§B.4 — the fill is the separator). */
-.wsp-mdrawer__danger {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	padding: var(--space-3) var(--space-4);
-	border-radius: var(--radius-container-lg);
-	background: color-mix(in srgb, var(--danger) var(--tint-soft), var(--surface-1));
-}
-
-.wsp-mdrawer__danger-text {
-	margin: 0;
-	max-inline-size: var(--wsp-prose);
-	font-size: var(--wsp-fs-body);
-	color: var(--on-surface);
-}
-
-/*
- * The last owner cannot be demoted or removed. The surface routes to an ownership TRANSFER rather than
- * refusing blankly — a dead end here means an entity nobody can ever hand over.
- */
-.wsp-mdrawer__lastowner {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	flex-wrap: wrap;
-	padding-block-start: var(--space-3);
-	border-block-start: var(--hairline);
-}
-
-.wsp-mdrawer__lastowner-text {
-	margin: 0;
-	flex: 1 1 14rem;
-	min-inline-size: 0;
-	font-size: var(--wsp-fs-body);
-	color: var(--on-surface);
-}
-
-.wsp-mdrawer__lastowner-link {
-	flex: none;
-	font-size: var(--wsp-fs-body);
-	color: var(--primary);
-	text-decoration: none;
-	white-space: nowrap;
-}
-
-.wsp-mdrawer__lastowner-link:hover {
-	text-decoration: underline;
-}
-
 /* #endregion */
 
-/* #region Invitations module */
-/*
- * `invite` (we asked them) and `request` (they asked us) are distinct states with opposite actions, so
- * the direction is a leading glyph and the action pair swaps — collapsing them into one "pending" makes
- * the list lie about who owes whom a decision.
- */
+/* #region Invitations queue */
 .wsp-invites {
 	display: flex;
 	flex-direction: column;
@@ -918,11 +632,6 @@ does anything (§B.4 — the fill is the separator). */
 	border-block-start: none;
 }
 
-.wsp-invites__avatar {
-	flex: none;
-	border-radius: 50%;
-}
-
 .wsp-invites__dir {
 	display: inline-flex;
 	flex: none;
@@ -941,19 +650,14 @@ does anything (§B.4 — the fill is the separator). */
 	font-size: var(--wsp-fs-body);
 	font-weight: var(--fw-medium);
 	color: var(--on-surface);
+	text-decoration: none;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.wsp-invites__meta {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	flex-wrap: wrap;
-	min-inline-size: 0;
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
+.wsp-invites__name[href]:hover {
+	text-decoration: underline;
 }
 
 .wsp-invites__note {
@@ -980,96 +684,78 @@ does anything (§B.4 — the fill is the separator). */
 	justify-self: end;
 	flex: none;
 }
-
 /* #endregion */
 
-/* #region Invite form */
-.wsp-inviteform {
+/* #region Invite and transfer dialogs */
+/*
+ * Both dialogs are FormControls over `@projective/ui` fields, so nothing here styles a field: these
+ * rules space the form, draw the handle lookup's live line and lay the footer's two buttons out.
+ */
+.wsp-dialog {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-4);
 	min-inline-size: 0;
+	margin: 0;
 }
 
-.wsp-inviteform__row {
-	display: flex;
-	align-items: flex-start;
-	gap: var(--space-3);
-	flex-wrap: wrap;
+.wsp-dialog__intro {
+	margin: 0;
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-body);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
 }
 
-.wsp-inviteform__field {
+/* A field and the line that belongs to it (the lookup, the role's permissions) read as one. */
+.wsp-dialog__field {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-2);
-	inline-size: 100%;
-	max-inline-size: var(--wsp-field);
+	gap: var(--space-1);
 	min-inline-size: 0;
 }
 
 /*
- * A FORM label, so it takes the package's field-label register — not `--wsp-fs-label`, which is the
- * console's 12px eyebrow step for section headings and stat tiles. The two registers were being
- * spelled the same way, which is how a form field ended up labelled two steps below its own value.
+ * The handle lookup's live line — a polite live region, empty until there is news, its line held open
+ * so an answer arriving never shoves the fields below.
  */
-.wsp-inviteform__label {
-	font-size: var(--fld-label-fs);
-	font-weight: var(--fld-label-fw);
-	color: var(--fld-label-fg);
-}
-
-.wsp-inviteform__hint {
+.wsp-dialog__check {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-2);
+	min-block-size: var(--space-5);
+	margin: 0;
 	font-size: var(--wsp-fs-micro);
 	color: var(--text-secondary);
 }
 
-/* The role picker shows what the role WILL be able to do before the invitation is sent. */
-.wsp-inviteform__preview {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
-	min-inline-size: 0;
-}
-
-.wsp-inviteform__preview-caps {
-	display: flex;
+.wsp-dialog__check-mark {
+	display: inline-flex;
+	flex: none;
 	align-items: center;
-	gap: var(--space-1);
-	flex-wrap: wrap;
 }
 
-.wsp-inviteform__actions {
+.wsp-dialog__actions {
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;
 	gap: var(--space-3);
 	flex-wrap: wrap;
 }
-
-.wsp-inviteform__error {
-	margin: 0;
-	font-size: var(--wsp-fs-body);
-	color: var(--danger);
-}
 /* #endregion */
 
 /* #region Responsive */
 @media (max-width: 79.9375rem) {
-	.wsp-mgrid {
-		grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-	}
-
+	/* Narrower nodes so more siblings sit side by side, still leaving a short name its room beside the
+	32px disclosure Button and its count. */
 	.wsp-chart {
-		--wsp-node-w: 11rem;
+		--wsp-node-w: 11.75rem;
 		--wsp-connector: var(--space-4);
 	}
 }
 
 @media (max-width: 47.9375rem) {
-	.wsp-mgrid {
-		grid-template-columns: minmax(0, 1fr);
-	}
-
 	/*
 	 * The chart becomes an indented list: a horizontal tree on a phone is a horizontal scroller, and a
 	 * reporting line read sideways is not a reporting line. One `border-inline-start` rail replaces
@@ -1111,10 +797,6 @@ does anything (§B.4 — the fill is the separator). */
 		grid-column: 1 / -1;
 		justify-self: start;
 	}
-
-	.wsp-inviteform__row {
-		flex-direction: column;
-	}
 }
 /* #endregion */
 
@@ -1125,11 +807,19 @@ does anything (§B.4 — the fill is the separator). */
 	.wsp-chart__toggle-glyph {
 		transition: none;
 	}
+
+	.wsp-chart__card:active {
+		transform: none;
+	}
 }
 
 :root[data-motion="reduced"] .wsp-mcard,
 :root[data-motion="reduced"] .wsp-chart__card,
 :root[data-motion="reduced"] .wsp-chart__toggle-glyph {
 	transition: none;
+}
+
+:root[data-motion="reduced"] .wsp-chart__card:active {
+	transform: none;
 }
 /* #endregion */

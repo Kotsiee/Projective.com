@@ -266,11 +266,17 @@ export const LocalKeys = {
 	CATALOGUE_COLUMNS: "pj.local.catalogue.columns",
 	/**
 	 * The workspace console's zoom-driven view density (a `0`–`1` float) — the same list⇄grid model as
-	 * the File Explorer, shared cross-island (the footer rig ↔ the roster / people body). One key across
+	 * the File Explorer, shared cross-island (the footer rig ↔ the roster body). One key across
 	 * `/teams` and `/businesses`: they are one surface parameterised by kind, so a reader who set a
 	 * comfortable density on their teams expects the same on their businesses.
 	 */
 	WORKSPACE_ZOOM: "pj.local.workspace.zoom",
+	/**
+	 * The workspace Members module's People density (a `0`–`1` float) — its own key, because People
+	 * opens on the comparison TABLE (Teams C2) while the roster opens on cards, and a reader who widens
+	 * one should not find the other moved. One key across `/teams` and `/businesses`, like the roster's.
+	 */
+	WORKSPACE_PEOPLE_ZOOM: "pj.local.workspace.peopleZoom",
 	/**
 	 * The workspace lane's "More" section memory — ONE JSON map from `<kind>.<viewer>` to `true` (open)
 	 * | `false` (closed), so the choice is kept per viewer and kind without minting a key per viewer

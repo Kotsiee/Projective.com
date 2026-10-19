@@ -15,6 +15,8 @@ import {
 	type WorkspaceKind,
 	type WorkspaceMember,
 	type WorkspaceRoleDef,
+	type WorkspaceSeats,
+	WorkspaceSeatsSchema,
 	type WorkspaceStatus,
 	WorkspaceVisibility,
 } from "@projective/types/workspace";
@@ -242,6 +244,20 @@ function allowanceOf(raw: unknown): ProposalAllowanceStatus | null {
 }
 
 /**
+ * A team's seats from the read, or `null` (a business, or an answer whose shape drifted — never a
+ * seat count the database did not give).
+ */
+export function seatsOf(raw: unknown): WorkspaceSeats | null {
+	if (raw === null || raw === undefined) return null;
+	const parsed = WorkspaceSeatsSchema.safeParse(raw);
+	if (!parsed.success) {
+		console.warn("[workspace:detail] seats shape drifted:", parsed.error.message);
+		return null;
+	}
+	return parsed.data;
+}
+
+/**
  * The archive blockers from the read (a team's or a business's), dropping any row whose shape drifted
  * rather than inventing a blocker the database did not name.
  */
@@ -397,6 +413,7 @@ async function assemble(
 		invites: (raw.invites ?? []).map((i) =>
 			toOutgoingInvite(i, i.target_user_id ? people.get(i.target_user_id) : undefined, nowMs)
 		),
+		seats: kind === "team" ? seatsOf(raw.seats) : null,
 		payout: teamMoney ? buildPayoutPolicy(moneyMembers, teamMoney) : null,
 		spend: spend
 			? buildSpendPolicy(spend, moneyMembers, people, verification, nowMs, {

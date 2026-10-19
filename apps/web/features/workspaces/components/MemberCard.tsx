@@ -1,60 +1,52 @@
-import type { JSX, RefObject } from "preact";
+import type { JSX } from "preact";
 import { useRef } from "preact/hooks";
-import type { AvatarSize } from "@projective/ui/display";
-import { Tooltip } from "@projective/ui/feedback";
-import { Checkbox } from "@projective/ui/fields";
-import {
-	ActionMenu,
-	composeMenu,
-	type ContextSurfaceSource,
-	linkActionItems,
-	type MenuItem,
-} from "@projective/ui/navigation";
-import { styleVars } from "@ui/core/style.ts";
-import {
-	capabilitiesForKind,
-	CAPABILITY_LABEL,
-	type CellState,
-	CONSEQUENTIAL,
-	type PermissionFacet,
-	roleLabel,
-	type WorkspaceCapability,
-	type WorkspaceDetail,
-	type WorkspaceKind,
-	type WorkspaceMember,
-	type WorkspaceRoleDef,
+import { type AvatarSize, Badge, MetaLine } from "@projective/ui/display";
+import { ProgressBar, Tooltip } from "@projective/ui/feedback";
+import { Button } from "@projective/ui/fields";
+import { ActionMenu, type ContextSurfaceSource, type MenuItem } from "@projective/ui/navigation";
+import type {
+	PermissionFacet,
+	WorkspaceKind,
+	WorkspaceMember,
+	WorkspaceRoleDef,
 } from "@projective/types/workspace";
-import { membershipLabel, shortDate } from "../core/workspace-model.ts";
+import { shortDate } from "../core/workspace-model.ts";
+import {
+	formatWi,
+	memberProfileHref,
+	overrideItems,
+	overrideSummary,
+	overrideTitle,
+	roleMetaText,
+	roleText,
+	sensitiveLabel,
+	stakePercent,
+	workloadText,
+} from "../core/members-model.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
- * MemberCard — the canonical presentation of one person in an entity, **and** the shared atom set the
- * whole members surface composes.
+ * MemberCard — one person in an entity at card density (the People reading's grid half), **and** the
+ * small set of person atoms and glyphs the members surface composes.
  *
- * The card, the table, the org chart, the member drawer, the invitation queue and the roles matrix all
- * need the same handful of pieces: a circular person avatar, a workload meter, the `+`/`−` override
- * markers, a capability chip, the capability GROUPING the matrix and the role editor must agree on, and
- * the rule that decides whether a granted capability is plainly `allowed` or `conditional`. Those live
- * here, beside the canonical member presentation, so there is one set rather than six — six copies of a
- * capability grouping is how a matrix and a role editor start teaching two different mental models of
- * the same permission system.
+ * **Facts are a MetaLine, never chips** (§B.11): handle, "You", role, title, stake, joined date and the
+ * override counts are inline `--text-secondary` text joined by middots. The only containers left are
+ * controls (the two icon buttons) and the one count a reader must not miss — how many sensitive
+ * capabilities this person was granted beyond their role — as a `Badge`.
  *
- * **People are circular.** Every avatar on this surface is `Avatar` from `@projective/ui`; the rounded
- * square belongs to entities and nothing here ever gives a person one. The distinction carries real
- * information on a page where an entity and its members appear together.
+ * **People are circular.** Every avatar here is `UserAvatar` (the ui `Avatar` with the person
+ * stand-in); the rounded square belongs to entities, and the distinction carries information on a page
+ * where an entity and its members appear together.
  *
- * The three-layer model (`role ∪ granted − revoked`) is **presented, never recomputed**: the override
- * markers render the facets the SSOT's `permissionFacets` produced. Nothing in this file derives an
- * effective permission of its own.
+ * Every rule the card shows — role text, override counts, the stake, the W_i figure, which menu rows
+ * exist — is computed in `core/members-model.ts`, where it is unit-tested; the card only draws it.
  */
 
 // #region Local icons
 /**
- * Local glyphs are **function components**, not the module-level VNode constants of
- * `workspace-glyphs.tsx`. Everything here renders inside a list — a roster of twenty members mounts the
- * kebab twenty times in one tree — and Preact reuses a VNode by identity, so a shared constant would
- * silently drop from every position but the first. A function yields a fresh node per call site, which
- * is the same reason `packages/ui`'s own `Checkbox` builds its tick that way.
+ * Local glyphs are **function components**, not module-level VNode constants: a roster of twenty
+ * members mounts the kebab twenty times in one tree, and Preact reuses a VNode by identity, so a shared
+ * constant would silently drop from every position but the first.
  */
 function Svg(props: JSX.SVGAttributes<SVGSVGElement>): JSX.Element {
 	return (
@@ -105,11 +97,8 @@ export function TickIcon(): JSX.Element {
 }
 
 /**
- * The `conditional` mark — a tick over a rule.
- *
- * Two marks rather than one, so the silhouette differs from a plain tick at 18px and in greyscale: the
- * state means "allowed, but bounded by a written rule", and drawing it as a tick with something under
- * it says exactly that without spending a colour.
+ * The `conditional` mark — a tick over a rule: "allowed, but bounded by a written rule", told apart
+ * from a plain tick by silhouette rather than colour.
  */
 export function ConditionalIcon(): JSX.Element {
 	return (
@@ -150,7 +139,7 @@ export function SearchIcon(): JSX.Element {
 	);
 }
 
-/** Cards — the roster's default density. */
+/** Cards — the grid half of the People zoom. */
 export function CardsViewIcon(): JSX.Element {
 	return (
 		<Svg>
@@ -223,26 +212,6 @@ export function ResendIcon(): JSX.Element {
 	);
 }
 
-/** A duplicate — copy a preset's bundle into an editable custom role. */
-export function DuplicateIcon(): JSX.Element {
-	return (
-		<Svg>
-			<rect x="4" y="4" width="11" height="11" rx="2" />
-			<path d="M9 19a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2" />
-		</Svg>
-	);
-}
-
-/** A pencil — edit a custom role. */
-export function EditIcon(): JSX.Element {
-	return (
-		<Svg>
-			<path d="M4 20h4l10-10-4-4L4 16z" />
-			<path d="M13.5 6.5l4 4" />
-		</Svg>
-	);
-}
-
 /** A chevron — node disclosure in the org chart. Rotated by CSS on the block axis. */
 export function ChevronDownIcon(): JSX.Element {
 	return (
@@ -253,145 +222,8 @@ export function ChevronDownIcon(): JSX.Element {
 }
 // #endregion
 
-// #region Capability grouping
-/** A named run of capabilities — the matrix's row groups and the role editor's columns. */
-export interface CapabilityGroup {
-	/** Heading, sentence case. */
-	title: string;
-	capabilities: readonly WorkspaceCapability[];
-}
-
-/**
- * Every capability, grouped by what it governs — the ONE grouping the matrix rows, the role editor and
- * the member drawer share.
- *
- * The groups mirror the SSOT enum's own runs, so a capability added there falls into an obvious slot
- * here. {@link capabilityGroupsFor} then scopes them to the kind, which is why the union covers all
- * eighteen even though neither kind renders all eighteen.
- */
-export const CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
-	{ title: "Membership", capabilities: ["invite_members", "remove_members", "manage_roles"] },
-	{ title: "Identity", capabilities: ["edit_profile", "manage_settings"] },
-	{ title: "Delivery", capabilities: ["bind_seat", "manage_projects", "publish_listings"] },
-	{ title: "Commerce", capabilities: ["purchase", "hire"] },
-	{
-		title: "Money",
-		capabilities: [
-			"contribute_funds",
-			"spend_funds",
-			"withdraw_funds",
-			"manage_finances",
-			"approve_spend",
-			"manage_billing",
-		],
-	},
-	{ title: "Oversight", capabilities: ["view_analytics", "view_audit"] },
-	{ title: "Terminal", capabilities: ["archive_entity"] },
-];
-
-/**
- * The capability groups a kind renders, with kind-excluded capabilities dropped and empty groups
- * removed — a heading over nothing tells the reader something is being withheld.
- */
-export function capabilityGroupsFor(kind: WorkspaceKind): CapabilityGroup[] {
-	const allowed = new Set(capabilitiesForKind(kind));
-	return CAPABILITY_GROUPS
-		.map((group) => ({
-			title: group.title,
-			capabilities: group.capabilities.filter((c) => allowed.has(c)),
-		}))
-		.filter((group) => group.capabilities.length > 0);
-}
-
-/** Whether a capability's consequences are severe enough to be surfaced rather than merely listed. */
-export function isConsequential(capability: WorkspaceCapability): boolean {
-	return CONSEQUENTIAL.includes(capability);
-}
-// #endregion
-
-// #region Conditional rules
-/** The slice of the detail projection the conditional rules read. */
-export type PolicyContext = Pick<WorkspaceDetail, "kind" | "payout" | "spend" | "canPropose">;
-
-/**
- * The written rule that bounds a granted capability, or `null` when the grant is unqualified.
- *
- * This is what makes the matrix's third state honest. `conditional` is not "half allowed" — it means
- * the capability applies only under a rule the entity has actually configured, and the rule is the
- * cell's tooltip. Every rule below is read from **server state** on the detail projection, never
- * invented: a spend ladder the business set up, a withdrawal approver list the team nominated, the
- * two-member floor a one-person team has not yet cleared. A capability with no configured rule renders
- * as a plain tick, because hedging an unqualified grant under-promises exactly as badly as a bare tick
- * over-promises a bounded one.
- */
-export function conditionalRuleFor(
-	capability: WorkspaceCapability,
-	workspace: PolicyContext,
-): string | null {
-	if (capability === "spend_funds") {
-		const threshold = workspace.spend?.approvalThreshold?.display;
-		return threshold ? `Spending at or above ${threshold} needs an approver's sign-off.` : null;
-	}
-	if (capability === "withdraw_funds") {
-		return (workspace.payout?.withdrawApprovers.length ?? 0) > 0
-			? "A withdrawal needs a nominated approver's sign-off before it leaves the vault."
-			: null;
-	}
-	if (capability === "bind_seat" && workspace.canPropose === false) {
-		return "The team needs at least two active members before it can bid for a seat.";
-	}
-	return null;
-}
-
-/**
- * The tri-state a cell or a permission row renders: `denied` when the capability is not granted at all,
- * `conditional` when it is granted but bounded by a configured rule, else `allowed`.
- */
-export function cellStateFor(
-	granted: boolean,
-	capability: WorkspaceCapability,
-	workspace: PolicyContext,
-): CellState {
-	if (!granted) return "denied";
-	return conditionalRuleFor(capability, workspace) === null ? "allowed" : "conditional";
-}
-
-/** The mark for a cell state — three states, three silhouettes, so hue is never the first channel. */
-export function StateMark(props: { state: CellState }): JSX.Element {
-	if (props.state === "allowed") {
-		return (
-			<span class="wsp-matrix__mark">
-				<TickIcon />
-			</span>
-		);
-	}
-	if (props.state === "conditional") {
-		return (
-			<span class="wsp-matrix__mark">
-				<ConditionalIcon />
-			</span>
-		);
-	}
-	return <span class="wsp-matrix__mark wsp-matrix__mark--denied" />;
-}
-// #endregion
-
 // #region Shared atoms
-/** The canonical profile link for a member — `/@handle` (root CLAUDE.md §8 Decision #3). */
-export function memberProfileHref(handle: string): string {
-	const clean = handle.startsWith("@") ? handle.slice(1) : handle;
-	return `/@${clean}`;
-}
-
-/** The display name of the role a member holds — a custom role's own name, else the preset label. */
-export function roleNameOf(
-	member: Pick<WorkspaceMember, "roleId" | "rolePreset">,
-	roles: readonly WorkspaceRoleDef[],
-): string {
-	return roles.find((r) => r.id === member.roleId)?.name ?? roleLabel(member.rolePreset);
-}
-
-/** A circular person avatar with an initials fallback. Never a rounded square — squares are entities. */
+/** A circular person avatar with the person stand-in, then initials. Never a rounded square. */
 export function PersonAvatar(props: {
 	member: Pick<WorkspaceMember, "name" | "avatar">;
 	size?: AvatarSize;
@@ -418,250 +250,90 @@ export function availabilityPhrase(availability: WorkspaceMember["availability"]
 }
 
 /**
- * The workload meter. The fill's `inline-size` **encodes** the commitment, so it is delivered as a data
- * custom property and never transitioned or keyframed: a frozen animation clock must not be able to
- * render a fully-committed member as idle (root CLAUDE.md §11).
+ * The count of sensitive grants — a number badge (a count is a permitted container, §B.11), its
+ * sentence for assistive tech beside it, the capabilities by name on hover. Nothing when there are none.
  */
-export function WorkloadMeter(props: { workload: number; label?: string }): JSX.Element {
-	const { workload, label = "Workload" } = props;
-	const clamped = Math.max(0, Math.min(100, Math.round(workload)));
+export function SensitiveCount(props: { facets: readonly PermissionFacet[] }): JSX.Element | null {
+	const summary = overrideSummary(props.facets);
+	const label = sensitiveLabel(summary);
+	if (!label) return null;
 	return (
-		<div class="wsp-mcard__load" data-tone={clamped >= 90 ? "full" : undefined}>
-			<span class="ui-visually-hidden">{`${label} ${clamped}%`}</span>
-			<span class="wsp-mcard__load-track" aria-hidden="true">
-				<span class="wsp-mcard__load-fill" style={styleVars({ "--wsp-fill": clamped / 100 })} />
-			</span>
-			<span class="wsp-mcard__load-text wsp-num" aria-hidden="true">{`${clamped}%`}</span>
-		</div>
-	);
-}
-
-/** One `+ granted` / `− revoked` marker, read against the role baseline. */
-export function OverrideChip(props: { facet: PermissionFacet }): JSX.Element {
-	const { facet } = props;
-	const grant = facet.override === "grant";
-	const label = CAPABILITY_LABEL[facet.capability];
-	return (
-		<Tooltip
-			content={grant
-				? `Granted individually, on top of the role: ${label}.`
-				: `Revoked individually, against the role: ${label}.`}
-		>
-			<span class="wsp-override" data-override={facet.override ?? undefined}>
-				<span class="wsp-override__sign" aria-hidden="true">{grant ? "+" : "−"}</span>
-				{label}
+		<Tooltip content={label}>
+			<span class="wsp-sensitive">
+				<Badge value={summary.sensitive.length} severity="warning" size="sm" />
+				<span class="ui-visually-hidden">{label}</span>
 			</span>
 		</Tooltip>
 	);
 }
 
 /**
- * The override summary — the whole reason the three-layer model is legible on a roster.
- *
- * A member whose effective set differs from their role is **never** shown as just the role name: the
- * reader would have to diff two capability lists in their head to notice somebody can move money their
- * role does not permit. Overflow collapses to a count rather than truncating silently, so the row still
- * admits there is more.
+ * A member's overrides as one MetaLine — "+2 granted · −1 revoked", or "Role default" — with every
+ * override by name in its hover title, and the sensitive count beside it.
  */
-export function OverrideChips(
-	props: { facets: readonly PermissionFacet[]; max?: number },
-): JSX.Element | null {
-	const { facets, max = 3 } = props;
-	const changed = facets.filter((f) => f.override !== null);
-	if (changed.length === 0) return null;
-	const shown = changed.slice(0, max);
-	const rest = changed.length - shown.length;
-	return (
-		<div class="wsp-mcard__overrides">
-			{shown.map((facet) => <OverrideChip key={facet.capability} facet={facet} />)}
-			{rest > 0 && (
-				<Tooltip
-					content={changed.slice(max).map((f) => CAPABILITY_LABEL[f.capability]).join(", ")}
-				>
-					<span class="wsp-override wsp-num">{`+${rest} more`}</span>
-				</Tooltip>
-			)}
-		</div>
+export function OverrideLine(props: {
+	facets: readonly PermissionFacet[];
+	/** Say "Role default" when nothing differs (the table) rather than drawing nothing (the card). */
+	showDefault?: boolean;
+	class?: string;
+}): JSX.Element | null {
+	const summary = overrideSummary(props.facets);
+	const changed = summary.granted.length + summary.revoked.length > 0;
+	if (!changed && !props.showDefault) return null;
+	const title = overrideTitle(summary);
+	const items = overrideItems(summary).map((item) =>
+		typeof item === "string" ? item : { ...item, title }
 	);
-}
-
-/** A capability pill — the invite preview's role summary and the drawer's consequential group. */
-export function CapChip(props: { capability: WorkspaceCapability }): JSX.Element {
-	const { capability } = props;
-	const severe = isConsequential(capability);
 	return (
-		<span class="wsp-capchip" data-level={severe ? "consequential" : undefined}>
-			{severe && <ConsequenceIcon />}
-			{CAPABILITY_LABEL[capability]}
+		<span class={props.class ?? "wsp-overrides"}>
+			<MetaLine as="span" size="xs" items={items} />
+			<SensitiveCount facets={props.facets} />
 		</span>
-	);
-}
-
-/** A membership-state dot with the state in its tooltip — iconographic, never inline prose (§B.6). */
-export function MembershipDot(props: { state: WorkspaceMember["state"] }): JSX.Element {
-	const { state } = props;
-	return (
-		<Tooltip content={membershipLabel(state)}>
-			<span
-				class="wsp-statedot"
-				data-state={state === "active" ? "active" : state === "left" ? "archived" : "draft"}
-			>
-				<span class="ui-visually-hidden">{membershipLabel(state)}</span>
-			</span>
-		</Tooltip>
 	);
 }
 // #endregion
 
 // #region Row actions
-/** Everything a member row can ask the surface to do. */
-export type MemberAction =
-	/** Open the member drawer — role, overrides, envelope, removal. */
-	| "open"
-	/** Message them. */
-	| "message"
-	/** Open their public profile. */
-	| "profile"
-	/** Soft-remove them from the entity. */
-	| "remove"
-	/** The viewer leaves the entity themselves (soft — they become `left`). */
-	| "leave"
-	/** The owner hands the owner seat to somebody else. */
-	| "transfer";
-
-/** Whether the viewer may act on a row, and what stands in the way when they may not. */
-export interface MemberGuards {
-	/** `mayManageMember(actor, target, kind)` from the SSOT, resolved by the caller. */
-	manageable: boolean;
-	/** Whether this row is the entity's owner — whose standing changes only by transfer. */
-	lastOwner: boolean;
-}
-
-/** The reason a row's management actions are unavailable, or `null` when they are available. */
-export function manageBlockedReason(
-	member: Pick<WorkspaceMember, "isSelf">,
-	guards: MemberGuards,
-): string | null {
-	if (guards.manageable) return null;
-	return member.isSelf
-		? "You cannot change your own role or permissions."
-		: "You need a higher role than theirs to change their membership.";
-}
-
 const MENU_AVOID = [".ui-app-shell__sidebar", ".ui-middle-nav__lane"] as const;
 
 /** Props for {@link MemberActionsMenu}. */
 export interface MemberActionsMenuProps {
-	member: WorkspaceMember;
-	guards: MemberGuards;
-	onAction: (action: MemberAction, member: WorkspaceMember) => void;
-	/** The card or row this menu belongs to; right-click on it opens the same rows at the pointer. */
+	member: Pick<WorkspaceMember, "name">;
+	/** The rows — `memberMenu` from the model, holding only what the viewer may do. */
+	menu: MenuItem[];
+	/** The card this menu belongs to; right-click on it opens the same rows at the pointer (#222). */
 	surface?: ContextSurfaceSource;
-	class?: string;
 }
 
-/** A member's menu rows, shared by the card's kebab and the table's row actions. */
-export function memberMenuRows(
-	member: WorkspaceMember,
-	guards: MemberGuards,
-	onAction: (action: MemberAction, member: WorkspaceMember) => void,
-): MenuItem[] {
-	const reason = manageBlockedReason(member, guards);
-	const terminal: MenuItem = guards.lastOwner
-		? {
-			key: "transfer",
-			label: "Transfer ownership…",
-			icon: "keystone-check",
-			hint: member.isSelf ? "Hand the owner seat to another member." : undefined,
-			disabled: !member.isSelf,
-			disabledReason: `Only ${member.name} can hand ownership over.`,
-			command: () => onAction("transfer", member),
-		}
-		: member.isSelf
-		? {
-			key: "leave",
-			label: "Leave",
-			icon: "logout",
-			danger: true,
-			hint: "Your work stays on record; nothing is deleted.",
-			command: () => onAction("leave", member),
-		}
-		: {
-			key: "remove",
-			label: "Remove",
-			icon: "user-minus",
-			danger: true,
-			disabled: reason !== null,
-			disabledReason: reason ?? undefined,
-			command: () => onAction("remove", member),
-		};
-
-	const own: MenuItem[] = [
-		{
-			key: "open",
-			label: "Role and permissions",
-			icon: "shield-check",
-			command: () => onAction("open", member),
-		},
-		{
-			key: "message",
-			label: "Message",
-			icon: "message",
-			command: () => onAction("message", member),
-		},
-		{
-			key: "profile",
-			label: "View profile",
-			icon: "user",
-			command: () => onAction("profile", member),
-		},
-		terminal,
-	];
-	const links = member.handle
-		? linkActionItems({
-			href: memberProfileHref(member.handle),
-			title: member.name,
-			include: ["open-new-tab", "copy-link"],
-		})
-		: [];
-	return composeMenu(links, own);
-}
-
-/**
- * The row's action menu, opened from its kebab or by right-clicking the `surface` it belongs to.
- *
- * Every gated item stays **visible and disabled with its reason in a tooltip** rather than vanishing: a
- * control that disappears teaches nothing, and on a permission surface the reader's next question is
- * always "why can't I?". The owner's row offers the ownership transfer instead of Remove — to the owner
- * themselves, since only they can hand the seat over — and the viewer's own row offers Leave.
- */
+/** The card's kebab: a tier-5 icon-only Button opening the row's menu. */
 export function MemberActionsMenu(props: MemberActionsMenuProps): JSX.Element {
-	const { member, guards, onAction, surface, class: className } = props;
-
+	const { member, menu, surface } = props;
+	const label = `Actions for ${member.name}`;
 	return (
 		<ActionMenu
-			model={memberMenuRows(member, guards, onAction)}
+			model={menu}
 			surface={surface}
 			placement="bottom-end"
 			avoid={MENU_AVOID}
-			aria-label={`Actions for ${member.name}`}
+			aria-label={label}
 			trigger={(api) => (
-				<Tooltip content={`Actions for ${member.name}`}>
-					<button
-						type="button"
-						ref={api.ref as RefObject<HTMLButtonElement>}
-						class={className ?? "wsp-mcard__kebab"}
-						aria-label={`Actions for ${member.name}`}
+				<Tooltip content={label}>
+					<Button
+						triggerRef={api.ref}
+						variant="text"
+						severity="secondary"
+						size="sm"
+						iconOnly
+						icon={<KebabIcon />}
+						aria-label={label}
 						aria-haspopup="menu"
 						aria-expanded={api.expanded}
 						aria-controls={api.panelId}
-						onClick={(event) => {
+						onClick={(event: MouseEvent) => {
 							event.stopPropagation();
 							api.toggle();
 						}}
-					>
-						<KebabIcon />
-					</button>
+					/>
 				</Tooltip>
 			)}
 		/>
@@ -676,47 +348,41 @@ export interface MemberCardProps {
 	roles: readonly WorkspaceRoleDef[];
 	/** The per-capability breakdown from the SSOT's `permissionFacets` — presented, never recomputed. */
 	facets: readonly PermissionFacet[];
-	guards: MemberGuards;
-	/** Bulk-selection state. Omit `onSelect` to render the card without a selection control. */
-	selected?: boolean;
-	onSelect?: (memberId: string, next: boolean) => void;
-	onAction: (action: MemberAction, member: WorkspaceMember) => void;
+	/** The row's menu (`memberMenu`) — only what the viewer may do. */
+	menu: MenuItem[];
+	/** Whether the viewer reads payout stakes (`showsStake`). */
+	showStake: boolean;
+	/** Open the member drawer. */
+	onOpen: () => void;
 	/** Server-resolved reference year, so an SSR date and its hydration agree across a New Year. */
 	referenceYear?: number;
 }
 
 /**
- * One member, at card density.
- *
- * The card carries five facts in five channels: who (circular avatar + name + handle), what they may do
- * (role name, plus the override markers whenever their effective set differs from it), where they stand
- * (membership dot), how loaded they are (availability dot + workload meter), and their money position
- * (payout share on a team, spend permission on a business). Statuses are iconographic with the words in
- * their tooltips (§B.6), and nothing here is a four-sided box (§B.4 — the tonal fill is the separator).
- *
- * **No money is composed here.** A team shows its integer basis-point share as a percentage — share
- * arithmetic, which is exact — and a business states whether a ceiling exists rather than inventing a
- * figure out of minor units, because the client never formats currency (root CLAUDE.md §12). The real
- * envelopes are the Spend module's server-formatted `MoneyView`s.
+ * One member, at card density: who (avatar, name, handle, "You"), what they may do (role, and the
+ * override counts whenever their effective set differs from it), how loaded they are (a `ProgressBar`
+ * over their W_i against their cap), and — for a viewer who reads payouts — their stake. The viewer's
+ * own card keeps W1's leading rule as well as saying "You".
  */
 export function MemberCard(props: MemberCardProps): JSX.Element {
-	const { member, kind, roles, facets, guards, selected, onSelect, onAction, referenceYear } =
-		props;
-	const role = roleNameOf(member, roles);
+	const { member, kind, roles, facets, menu, showStake, onOpen, referenceYear } = props;
+	const role = roleText(member, roles);
+	/** The role as ONE MetaLine item — its own middot would read as the line's separator. */
+	const roleMeta = roleMetaText(member, roles);
 	const cardRef = useRef<HTMLElement>(null);
+	const load = workloadText(member);
 
 	return (
 		<article
 			ref={cardRef}
 			class="wsp-mcard"
 			data-self={member.isSelf ? "true" : undefined}
-			data-state={member.state !== "active" ? member.state : undefined}
 			aria-label={`${member.name}, ${role}`}
 		>
 			<div class="wsp-mcard__top">
 				<Tooltip content={`${member.name} — ${availabilityPhrase(member.availability)}`}>
 					<span class="wsp-mcard__avatarwrap">
-						<PersonAvatar member={member} size="lg" class="wsp-mcard__avatar" />
+						<PersonAvatar member={member} size="lg" />
 						<span class="wsp-mcard__avail" data-avail={member.availability} aria-hidden="true" />
 					</span>
 				</Tooltip>
@@ -726,68 +392,56 @@ export function MemberCard(props: MemberCardProps): JSX.Element {
 						<a class="wsp-mcard__name-link" href={memberProfileHref(member.handle)}>
 							{member.name}
 						</a>
-						<MembershipDot state={member.state} />
 					</h3>
-					{member.title && <span class="wsp-mcard__title">{member.title}</span>}
-					<span class="wsp-mcard__handle">{`@${member.handle} · ${role}`}</span>
+					<MetaLine size="xs" items={[`@${member.handle}`, member.isSelf && "You"]} />
+					<MetaLine size="xs" items={[roleMeta, member.title]} />
 				</div>
 
 				<div class="wsp-mcard__flags">
-					{onSelect && (
-						<Checkbox
-							value={selected ?? false}
-							onValueChange={(next) => onSelect(member.id, next)}
-							aria-label={`Select ${member.name}`}
-						/>
-					)}
 					<Tooltip content={`Role and permissions for ${member.name}`}>
-						<button
-							type="button"
-							class="wsp-mcard__kebab"
+						<Button
+							variant="text"
+							severity="secondary"
+							size="sm"
+							iconOnly
+							icon={<PermissionsIcon />}
 							aria-label={`Role and permissions for ${member.name}`}
-							onClick={() => onAction("open", member)}
-						>
-							<PermissionsIcon />
-						</button>
+							onClick={onOpen}
+						/>
 					</Tooltip>
-					<MemberActionsMenu
-						member={member}
-						guards={guards}
-						onAction={onAction}
-						surface={cardRef}
-					/>
+					<MemberActionsMenu member={member} menu={menu} surface={cardRef} />
 				</div>
 			</div>
 
-			<WorkloadMeter workload={member.workload} />
-
-			<div class="wsp-mcard__money">
-				{kind === "team"
-					? (
-						<>
-							<span class="wsp-label">Payout share</span>
-							<span class="wsp-num">
-								{`${(member.shareBp / 100).toFixed(member.shareBp % 100 === 0 ? 0 : 2)}%`}
-								{member.shareHeld ? " · held" : ""}
-							</span>
-						</>
-					)
-					: (
-						<>
-							<span class="wsp-label">Spending</span>
-							<span>
-								{member.spendLimitMinor === null ? "No personal ceiling" : "Ceiling set"}
-							</span>
-						</>
-					)}
+			<div class="wsp-mcard__load">
+				<ProgressBar
+					class="wsp-mcard__meter"
+					value={member.workload}
+					severity={member.workload >= 90 ? "warning" : "primary"}
+					aria-label={`Workload ${formatWi(member.wi)} of ${formatWi(member.wiCap)}`}
+				/>
+				<MetaLine
+					as="span"
+					size="xs"
+					class="wsp-mcard__figure"
+					items={["Workload", { text: load, tabular: true }]}
+				/>
 			</div>
 
-			<div class="wsp-mcard__money">
-				<span class="wsp-label">Joined</span>
-				<span class="wsp-num">{shortDate(member.joinedAt, referenceYear)}</span>
-			</div>
+			<MetaLine
+				size="xs"
+				items={[
+					showStake && kind === "team" && {
+						text: `Stake ${stakePercent(member.shareBp)}${member.shareHeld ? " (held)" : ""}`,
+						tabular: true,
+					},
+					kind === "business" &&
+					(member.spendLimitMinor === null ? "No personal spend ceiling" : "Spend ceiling set"),
+					{ text: `Joined ${shortDate(member.joinedAt, referenceYear)}`, tabular: true },
+				]}
+			/>
 
-			<OverrideChips facets={facets} />
+			<OverrideLine facets={facets} class="wsp-mcard__overrides" />
 		</article>
 	);
 }

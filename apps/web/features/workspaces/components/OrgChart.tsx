@@ -1,9 +1,11 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { Tooltip } from "@projective/ui/feedback";
+import { Button } from "@projective/ui/fields";
 import type { WorkspaceMember, WorkspaceRoleDef } from "@projective/types/workspace";
 import { sortMembers } from "../core/workspace-model.ts";
-import { ChevronDownIcon, type MemberAction, PersonAvatar, roleNameOf } from "./MemberCard.tsx";
+import { type MemberAction, roleText } from "../core/members-model.ts";
+import { ChevronDownIcon, PersonAvatar } from "./MemberCard.tsx";
 
 /**
  * OrgChart — the roster read as a reporting structure, built from each member's `reportsTo`.
@@ -22,6 +24,14 @@ import { ChevronDownIcon, type MemberAction, PersonAvatar, roleNameOf } from "./
  * All three land in the "Not placed" group beneath the chart. Silently rooting them would draw an
  * reporting chart that quietly lies about who answers to whom, and dropping them would make the chart
  * show fewer people than the roster — a chart you cannot trust to be complete is worse than no chart.
+ *
+ * **Why not `@projective/ui/display` OrgChart** (Teams C2 asked whether it covers the tree). That
+ * chart takes ONE root (several people at the top would need a synthetic parent drawn as a card for
+ * nobody), puts `role="treeitem"` on the `<li>` while focus lands on the inner card (so the focused
+ * element carries no tree role), answers Enter/Space with selection rather than an action (opening the
+ * member drawer would have to ride on selection), and has no place for the people not placed. Those
+ * are this reading's essentials, so the local tree stays until the ui chart grows multi-root,
+ * focusable treeitems and an activate callback.
  */
 
 // #region Tree shaping
@@ -119,7 +129,7 @@ function ChartBranch(props: {
 	const { member, children } = node;
 	const hasChildren = children.length > 0;
 	const open = hasChildren && openIds.has(member.id);
-	const role = roleNameOf(member, roles);
+	const role = roleText(member, roles);
 
 	return (
 		<li class="wsp-chart__node" role="none" data-open={open ? "true" : "false"}>
@@ -133,6 +143,8 @@ function ChartBranch(props: {
 				data-self={member.isSelf ? "true" : undefined}
 				onClick={() => onAction("open", member)}
 				onKeyDown={(event) => {
+					// The disclosure Button answers its own keys; only the node itself opens the member.
+					if (event.target !== event.currentTarget) return;
 					if (event.key === "Enter" || event.key === " ") {
 						event.preventDefault();
 						onAction("open", member);
@@ -157,21 +169,25 @@ function ChartBranch(props: {
 				{hasChildren && (
 					<>
 						<Tooltip content={open ? "Hide reports" : `Show ${node.descendants} reporting below`}>
-							<button
-								type="button"
+							<Button
 								class="wsp-chart__toggle"
+								variant="text"
+								severity="secondary"
+								size="sm"
+								iconOnly
+								icon={
+									<span class="wsp-chart__toggle-glyph">
+										<ChevronDownIcon />
+									</span>
+								}
 								aria-label={open
 									? `Hide the people reporting to ${member.name}`
 									: `Show the ${node.descendants} people reporting to ${member.name}`}
-								onClick={(event) => {
+								onClick={(event: MouseEvent) => {
 									event.stopPropagation();
 									onToggle(member.id);
 								}}
-							>
-								<span class="wsp-chart__toggle-glyph">
-									<ChevronDownIcon />
-								</span>
-							</button>
+							/>
 						</Tooltip>
 						<span class="wsp-chart__count wsp-num" aria-hidden="true">{node.descendants}</span>
 					</>
@@ -254,7 +270,7 @@ export function OrgChart(props: OrgChartProps): JSX.Element {
 									role="treeitem"
 									tabIndex={0}
 									aria-level={1}
-									aria-label={`${member.name}, ${roleNameOf(member, roles)}, not placed`}
+									aria-label={`${member.name}, ${roleText(member, roles)}, not placed`}
 									data-self={member.isSelf ? "true" : undefined}
 									onClick={() =>
 										onAction("open", member)}
@@ -268,7 +284,7 @@ export function OrgChart(props: OrgChartProps): JSX.Element {
 									<PersonAvatar member={member} size="sm" class="wsp-chart__avatar" />
 									<span class="wsp-chart__body">
 										<span class="wsp-chart__name">{member.name}</span>
-										<span class="wsp-chart__role">{roleNameOf(member, roles)}</span>
+										<span class="wsp-chart__role">{roleText(member, roles)}</span>
 									</span>
 								</div>
 							</li>

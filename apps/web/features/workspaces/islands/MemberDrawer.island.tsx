@@ -1,411 +1,414 @@
 import type { JSX } from "preact";
-import { useComputed, useSignal } from "@preact/signals";
-import "../styles/workspace.css";
-import { Drawer, Tooltip } from "@projective/ui/feedback";
-import { Button, InputText } from "@projective/ui/fields";
 import {
-	CAPABILITY_LABEL,
-	CONSEQUENTIAL,
-	isLastOwner,
+	batch,
+	type Signal,
+	signal,
+	useComputed,
+	useSignal,
+	useSignalEffect,
+} from "@preact/signals";
+import { useMemo } from "preact/hooks";
+import "../styles/workspace.css";
+import { MetaLine } from "@projective/ui/display";
+import { Drawer, InlineNotice } from "@projective/ui/feedback";
+import { Button, FormControl, InputText, Select, ToggleSwitch } from "@projective/ui/fields";
+import {
+	capabilitiesForKind,
 	kindCopy,
-	mayGrant,
-	mayManageMember,
-	type PermissionFacet,
-	permissionFacets,
-	roleLabel,
 	type WorkspaceCapability,
 	type WorkspaceDetail,
 	type WorkspaceMember,
 } from "@projective/types/workspace";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import { shortDate } from "../core/workspace-model.ts";
-import { ConditionalIcon, LockIcon, TickIcon } from "../components/MemberCard.tsx";
-import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import {
+	actionInputFor,
+	assignableRoles,
+	draftFacets,
+	drawerFooter,
+	drawerTerminal,
+	managerOptions,
+	memberAbilities,
+	type MemberDraft,
+	memberDraftOf,
+	memberPatch,
+	membersTierProps,
+	NOBODY,
+	type OverrideDraft,
+	permissionGroups,
+	type PermissionRow,
+	roleName,
+	roleOptions,
+	roleText,
+	showsStake,
+	stakePercent,
+	toggleCapability,
+	workloadText,
+} from "../core/members-model.ts";
+import { ConsequenceIcon, PersonAvatar } from "../components/MemberCard.tsx";
 
 /**
- * MemberDrawer — layer 3 of the permission model: this person's overrides on top of their role.
+ * MemberDrawer — one person's place in the entity: their role, their title and reporting line, and
+ * layer 3 of the permission model — their overrides on top of the role.
  *
- * **The drawer's one job is to make a difference legible.** A member's effective set is
- * `role ∪ granted − revoked`, and the failure mode of every permission UI is showing only the final
- * answer — a reader then cannot tell whether "may withdraw funds" comes from the role (so changing the
- * role removes it) or from an override on this person (so it does not). Every row therefore carries
- * BOTH the outcome and its provenance, marked `+` for a grant and `−` for a revocation against the
- * baseline, straight from the SSOT's `permissionFacets()`.
+ * **The drawer makes a difference legible.** A member's effective set is `role ∪ granted − revoked`;
+ * every capability row says where its state comes from (the role, or an override on this person),
+ * straight from the SSOT's `permissionFacets()` over the DRAFT, so the list previews what saving does.
  *
- * **Consequential capabilities are surfaced, not buried.** Binding the entity to a seat, spending,
- * withdrawing and changing roles sit in their own group above the rest, because a list of eighteen
- * alphabetised checkboxes hides exactly the four that matter.
+ * **Fields are `@projective/ui` controls in `FormControl`s** (§A.7): Role and Reports to are `Select`s,
+ * Title an `InputText`, and each capability a labelled `ToggleSwitch`, grouped by the shared capability
+ * groups, a sensitive one carrying its consequence as a Meta warning. Save is tier 3, Close tier 5.
  *
- * **A refused change names a route forward.** Demoting or removing the last owner opens an ownership
- * transfer instead of erroring: the intent is legitimate, only the mechanism was not. And a capability
- * the ACTOR does not themselves hold is shown disabled with the reason in its tooltip
- * (`mayGrant`) — a permission surface must never be a privilege-escalation ladder.
+ * **Absent, not disabled** (the rank rule, `core/members-model.ts`): a viewer who may not change this
+ * person sees their role and permissions as text — no dead picker, no greyed switch — and a switch the
+ * viewer may not flip (they lack the capability, or it is an owner-reserved right) is drawn as text
+ * too. The owner's row never offers Leave or Remove: to the owner it offers "Transfer ownership" as a
+ * tier-5 link; anybody else's own row offers Leave, and a row the viewer outranks offers Remove — each
+ * confirmed in its own dialog by the screen.
+ *
+ * Controlled by the screen through `visible`, so Escape and Close animate it out and the ui focus trap
+ * returns focus to the table row (or card) that opened it.
  */
 
 export interface MemberDrawerProps {
 	workspace: WorkspaceDetail;
 	member: WorkspaceMember;
-	/** The viewer's own member row — every guard is evaluated against it. */
+	/** The viewer's own member row — the rank rule is evaluated against it. */
 	actor: WorkspaceMember | null;
-	canManage: boolean;
-	onClose: () => void;
+	/** Whether the drawer is open; the screen owns it. */
+	visible: Signal<boolean>;
 	onUpdated: (next: WorkspaceDetail) => void;
-	/** Route the last owner into an ownership transfer rather than a dead-end refusal. */
+	/** Open the ownership transfer — the owner's way to step back. */
 	onTransfer: (member: WorkspaceMember) => void;
+	/** Ask to leave — the viewer's own row. */
+	onLeave: (member: WorkspaceMember) => void;
+	/** Ask to remove this member. */
+	onRemove: (member: WorkspaceMember) => void;
 }
 
 export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 	const { workspace: ws, member, actor } = props;
 	const copy = kindCopy(ws.kind);
+	const caps = ws.viewerCapabilities;
+	const abilities = memberAbilities(actionInputFor(actor, member, caps));
+	const editable = abilities.edit;
+	const viewerIsOwner = actor?.rolePreset === "owner";
 
-	/** Pending role change, or `null` while the member's saved role stands. */
-	const draftRoleId = useSignal<string | null>(null);
-	/** Pending override edits, keyed by capability: `true` grant, `false` revoke, absent = baseline. */
-	const draftOverrides = useSignal<Record<string, boolean | undefined>>({});
-	/** Pending title, or `null` while the saved title stands. */
-	const draftTitle = useSignal<string | null>(null);
-	/** Pending reporting line (a member id, or `""` for nobody), or `null` while the saved one stands. */
-	const draftReportsTo = useSignal<string | null>(null);
+	// #region Draft
+	const start = memberDraftOf(member);
+	const roleId = useSignal(start.roleId);
+	const overrides = useSignal<OverrideDraft>(start.overrides);
+	const title = useSignal(start.title);
+	/** The Reports to picker's value — `NOBODY` stands for the top of the chart. */
+	const reports = useSignal(start.reportsTo === "" ? NOBODY : start.reportsTo);
 	const saving = useSignal(false);
 	const error = useSignal<string | null>(null);
 
-	/**
-	 * Roles a member may be moved to: never the owner seat (it moves only by transfer), and never one that
-	 * carries a permission the viewer does not hold — the database refuses both. Their current role stays
-	 * listed so the picker always shows where they stand.
-	 */
-	const viewerHolds = new Set(ws.viewerCapabilities);
-	const assignable = ws.roles.filter((r) =>
-		r.id === member.roleId ||
-		(r.basePreset !== "owner" && r.capabilities.every((c) => viewerHolds.has(c)))
+	const draft = useComputed<MemberDraft>(() => ({
+		roleId: roleId.value,
+		overrides: overrides.value,
+		title: title.value,
+		reportsTo: reports.value === NOBODY ? "" : reports.value,
+	}));
+	const patch = useComputed(() => memberPatch(member, draft.value));
+	const facets = useComputed(() =>
+		draftFacets(member, ws.kind, ws.roles, roleId.value, overrides.value)
 	);
-	/**
-	 * Who they may report to: any other active member. Choosing someone who reports (directly or not) to
-	 * this member would close a loop; the database refuses that with a sentence, which is shown here.
-	 */
-	const managers = ws.members.filter((m) => m.state === "active" && m.id !== member.id);
+	const role = roleName({ roleId: roleId.value, rolePreset: member.rolePreset }, ws.roles);
+	const groups = permissionGroups(
+		facets.value,
+		{ kind: ws.kind, editable, viewerCaps: caps, viewerIsOwner },
+		role,
+	);
 
-	const effectiveRoleId = useComputed(() => draftRoleId.value ?? member.roleId);
-
 	/**
-	 * Facets recomputed against the DRAFT, so the list previews what saving would do rather than what
-	 * the server currently thinks. The preview and the save read the same SSOT function.
+	 * One writable signal per capability switch, kept in step with the draft's facets. A switch must be
+	 * CONTROLLED (a role change flips the ones that came from the role), and a computed cannot be written
+	 * by the control, so the drawer holds the signals and mirrors the facets into them.
 	 */
-	const facets = useComputed<readonly PermissionFacet[]>(() => {
-		const granted = new Set(member.overrides.granted);
-		const revoked = new Set(member.overrides.revoked);
-		for (const [cap, state] of Object.entries(draftOverrides.value)) {
-			const c = cap as WorkspaceCapability;
-			granted.delete(c);
-			revoked.delete(c);
-			if (state === true) granted.add(c);
-			else if (state === false) revoked.add(c);
-		}
-		return permissionFacets(
-			{
-				rolePreset: member.rolePreset,
-				overrides: { granted: [...granted], revoked: [...revoked] },
-			},
-			ws.kind,
-			ws.roles,
-			effectiveRoleId.value,
+	const switches = useMemo(() => {
+		const on = new Set(facets.peek().filter((f) => f.effective).map((f) => f.capability));
+		return new Map<WorkspaceCapability, Signal<boolean>>(
+			capabilitiesForKind(ws.kind).map((c) => [c, signal(on.has(c))]),
 		);
+	}, []);
+	useSignalEffect(() => {
+		for (const f of facets.value) {
+			const s = switches.get(f.capability);
+			if (s && s.peek() !== f.effective) s.value = f.effective;
+		}
 	});
+	// #endregion
 
-	const manageable = actor ? mayManageMember(actor, member, ws.kind) : false;
-	const lastOwner = isLastOwner(member, ws.members);
-	const titleChanged = useComputed(() =>
-		draftTitle.value !== null && draftTitle.value.trim() !== (member.title ?? "")
-	);
-	const reportsChanged = useComputed(() =>
-		draftReportsTo.value !== null && draftReportsTo.value !== (member.reportsTo ?? "")
-	);
-	const overridesChanged = useComputed(() => Object.keys(draftOverrides.value).length > 0);
-	const dirty = useComputed(() =>
-		draftRoleId.value !== null || overridesChanged.value || titleChanged.value ||
-		reportsChanged.value
-	);
-	/** Whether the viewer may edit this person at all — their own row and the owner's never are. */
-	const editable = props.canManage && manageable;
+	// #region Handlers
+	function flip(row: PermissionRow, on: boolean): void {
+		const facet = facets.peek().find((f) => f.capability === row.capability);
+		if (!facet || !row.toggleable) return;
+		batch(() => {
+			overrides.value = toggleCapability(overrides.peek(), facet, on);
+			error.value = null;
+		});
+	}
 
-	/** Toggle one capability between baseline, granted and revoked. */
-	function cycle(facet: PermissionFacet): void {
-		if (!props.canManage || !manageable) return;
-		if (!actor || !mayGrant(actor, facet.capability, ws.kind)) return;
-
-		const next = { ...draftOverrides.value };
-		const current = next[facet.capability];
-		// Cycle relative to the ROLE baseline, so "clear the override" is always reachable in one step.
-		if (current === undefined) next[facet.capability] = !facet.fromRole;
-		else if (current === !facet.fromRole) next[facet.capability] = facet.fromRole;
-		else delete next[facet.capability];
-		draftOverrides.value = next;
-		error.value = null;
+	function close(): void {
+		props.visible.value = false;
 	}
 
 	async function save(): Promise<void> {
-		if (!dirty.value) return;
-		saving.value = true;
-		error.value = null;
-
-		const granted: WorkspaceCapability[] = [];
-		const revoked: WorkspaceCapability[] = [];
-		for (const f of facets.value) {
-			if (f.override === "grant") granted.push(f.capability);
-			if (f.override === "revoke") revoked.push(f.capability);
-		}
-
-		// Only what changed is sent: the patch is keyed, and a key present is a change.
+		const changes = patch.peek();
+		if (!changes || saving.peek()) return;
+		batch(() => {
+			saving.value = true;
+			error.value = null;
+		});
 		const res = await WorkspaceService.updateMember({
 			kind: ws.kind,
 			workspaceId: ws.id,
 			memberId: member.id,
-			roleId: draftRoleId.value ?? undefined,
-			granted: overridesChanged.value || draftRoleId.value !== null ? granted : undefined,
-			revoked: overridesChanged.value || draftRoleId.value !== null ? revoked : undefined,
-			title: titleChanged.value ? (draftTitle.value?.trim() || null) : undefined,
-			reportsTo: reportsChanged.value ? (draftReportsTo.value || null) : undefined,
+			...changes,
 		});
 		saving.value = false;
 		if (!res.ok || !res.data) {
 			error.value = res.errors?.title ?? res.errors?.reportsTo ?? res.errors?.roleId ??
-				res.errors?.granted ?? res.message ?? "Could not save those changes.";
+				res.errors?.granted ?? res.errors?.revoked ?? res.errors?.confirm ?? res.message ??
+				"Could not save those changes.";
 			return;
 		}
-		draftRoleId.value = null;
-		draftOverrides.value = {};
-		draftTitle.value = null;
-		draftReportsTo.value = null;
 		props.onUpdated(res.data);
-		props.onClose();
+		close();
 	}
 
-	/** Split the list so the four that matter are not buried among the eighteen that do not. */
-	const consequential = useComputed(() =>
-		facets.value.filter((f) => CONSEQUENTIAL.includes(f.capability))
-	);
-	const ordinary = useComputed(() =>
-		facets.value.filter((f) => !CONSEQUENTIAL.includes(f.capability))
-	);
-
-	/** One permission row. */
-	function Row(facet: PermissionFacet): JSX.Element {
-		const blocked = !actor || !mayGrant(actor, facet.capability, ws.kind);
-		const editable = props.canManage && manageable && !blocked;
-		const reason = blocked
-			? "You cannot grant a permission you do not hold yourself."
-			: !manageable
-			? "You need a higher role than theirs to change this."
-			: facet.override === "grant"
-			? "Granted to this person on top of their role."
-			: facet.override === "revoke"
-			? "Revoked from this person, against their role."
-			: facet.fromRole
-			? `Comes from the ${roleLabel(member.rolePreset)} role.`
-			: "Not granted by their role.";
-
-		return (
-			<li class="wsp-mdrawer__perm" key={facet.capability}>
-				<Tooltip content={reason} placement="left">
-					<button
-						type="button"
-						class="wsp-mdrawer__perm-mark"
-						data-state={facet.effective ? "allowed" : "denied"}
-						aria-pressed={facet.effective}
-						aria-label={`${CAPABILITY_LABEL[facet.capability]} — ${
-							facet.effective ? "allowed" : "not allowed"
-						}`}
-						disabled={!editable}
-						onClick={() => cycle(facet)}
-					>
-						{facet.effective ? <TickIcon /> : editable ? <ConditionalIcon /> : <LockIcon />}
-					</button>
-				</Tooltip>
-				<span class="wsp-mdrawer__perm-label">{CAPABILITY_LABEL[facet.capability]}</span>
-				{facet.override && (
-					<Tooltip
-						content={facet.override === "grant"
-							? "Granted on top of their role"
-							: "Revoked from their role"}
-						placement="left"
-					>
-						<span class="wsp-mdrawer__perm-ovr" data-sign={facet.override}>
-							<span class="wsp-override__sign" aria-hidden="true">
-								{facet.override === "grant" ? "+" : "−"}
-							</span>
-							<span class="wsp-mdrawer__perm-flag">
-								{facet.override === "grant" ? "granted" : "revoked"}
-							</span>
-						</span>
-					</Tooltip>
-				)}
-			</li>
-		);
+	/**
+	 * Close, then ask the screen for the act's dialog. The screen opens it only once this panel has left
+	 * (`core/overlay-handoff.ts`), so the dialog never records a button that is about to vanish.
+	 */
+	function terminalAct(key: "transfer" | "leave" | "remove"): void {
+		close();
+		if (key === "transfer") props.onTransfer(member);
+		else if (key === "leave") props.onLeave(member);
+		else props.onRemove(member);
 	}
+	// #endregion
+
+	const footer = drawerFooter({
+		editable,
+		dirty: patch.value !== null,
+		saving: saving.value,
+	});
+	const terminal = drawerTerminal(abilities, member, ws.kind);
+	const managers = managerOptions(ws.members, member);
+	const manager = ws.members.find((m) => m.id === member.reportsTo) ?? null;
 
 	return (
 		<Drawer
-			visible
+			visible={props.visible}
 			position="right"
 			class="wsp-mdrawer"
 			header={member.name}
-			onVisibleChange={(open) => {
-				if (!open) props.onClose();
-			}}
+			footer={
+				<div class="wsp-dialog__actions">
+					{footer.map((action) => (
+						<Button
+							key={action.key}
+							{...membersTierProps(action.tier, action.danger)}
+							label={action.label}
+							disabled={action.disabled}
+							loading={action.busy}
+							onClick={action.key === "save" ? () => void save() : close}
+						/>
+					))}
+				</div>
+			}
 		>
 			<div class="wsp-mdrawer__head">
-				<UserAvatar
-					class="wsp-mdrawer__avatar"
-					image={member.avatar}
-					alt=""
-					label={member.name}
-					shape="circle"
-					size="lg"
-				/>
+				<PersonAvatar member={member} size="lg" />
 				<div class="wsp-mdrawer__ident">
-					<p class="wsp-mdrawer__name">{member.name}</p>
-					<a class="wsp-mdrawer__handle" href={`/@${member.handle}`}>@{member.handle}</a>
-					<p class="wsp-mdrawer__meta">
-						{member.title ? `${member.title} · ` : ""}
-						Joined {shortDate(member.joinedAt)}
-					</p>
+					<MetaLine items={[`@${member.handle}`, member.isSelf && "You", member.title]} />
+					<MetaLine
+						size="xs"
+						items={[
+							{ text: `Joined ${shortDate(member.joinedAt)}`, tabular: true },
+							{ text: `Workload ${workloadText(member)}`, tabular: true },
+							showsStake(ws.kind, caps) &&
+							{ text: `Stake ${stakePercent(member.shareBp)}`, tabular: true },
+						]}
+					/>
 				</div>
 			</div>
 
-			{/* #region Role (layers 1–2) */}
-			<section class="wsp-mdrawer__section">
-				<h3 class="wsp-mdrawer__section-title">Role</h3>
-				<p class="wsp-mdrawer__section-note">
-					A role is a named bundle of permissions. Changing it moves every permission that came from
-					it — the overrides below stay.
-				</p>
-				<select
-					class="wsp-select"
-					aria-label="Role"
-					disabled={!editable}
-					value={effectiveRoleId.value}
-					onChange={(e) => {
-						draftRoleId.value = (e.target as HTMLSelectElement).value;
-						error.value = null;
-					}}
-				>
-					{/* The owner's own row shows its seat; the seat itself is never offered to anyone else. */}
-					{(editable ? assignable : ws.roles).map((r) => (
-						<option key={r.id} value={r.id}>
-							{r.name}
-							{r.preset ? "" : " (custom)"}
-						</option>
-					))}
-				</select>
+			{/* #region Role and place */}
+			<section class="wsp-mdrawer__section" aria-labelledby={`wsp-mdrawer-role-${member.id}`}>
+				<h3 class="wsp-mdrawer__section-title" id={`wsp-mdrawer-role-${member.id}`}>
+					Role and place
+				</h3>
+				{editable
+					? (
+						<>
+							<FormControl
+								class="wsp-mdrawer__field"
+								label="Role"
+								hint="Changing it moves every permission that came from it — the overrides below stay."
+							>
+								{({ id, describedBy }) => (
+									<Select
+										id={id}
+										aria-describedby={describedBy}
+										options={roleOptions(assignableRoles(ws.roles, caps, member.roleId))}
+										value={roleId}
+										onValueChange={() => (error.value = null)}
+										fluid
+									/>
+								)}
+							</FormControl>
+							<FormControl
+								class="wsp-mdrawer__field"
+								label="Title"
+								hint="What they do here — shown on the org chart."
+							>
+								{({ id, describedBy }) => (
+									<InputText
+										id={id}
+										aria-describedby={describedBy}
+										value={title}
+										onValueChange={() => (error.value = null)}
+										placeholder="Design lead"
+										maxLength={80}
+										block
+									/>
+								)}
+							</FormControl>
+							<FormControl
+								class="wsp-mdrawer__field"
+								label="Reports to"
+								hint="The edge the org chart draws. A loop is refused."
+							>
+								{({ id, describedBy }) => (
+									<Select
+										id={id}
+										aria-describedby={describedBy}
+										options={managers}
+										value={reports}
+										onValueChange={() => (error.value = null)}
+										filter={managers.length > 8}
+										fluid
+									/>
+								)}
+							</FormControl>
+						</>
+					)
+					: (
+						<dl class="wsp-mdrawer__facts">
+							<dt class="wsp-mdrawer__fact-label">Role</dt>
+							<dd class="wsp-mdrawer__fact-value">{roleText(member, ws.roles)}</dd>
+							<dt class="wsp-mdrawer__fact-label">Reports to</dt>
+							<dd class="wsp-mdrawer__fact-value">
+								{manager ? manager.name : "Nobody — top of the chart"}
+							</dd>
+						</dl>
+					)}
 			</section>
 			{/* #endregion */}
 
-			{/* #region Place in the entity — title and reporting line */}
-			<section class="wsp-mdrawer__section">
-				<h3 class="wsp-mdrawer__section-title">Title and reporting line</h3>
+			{/* #region Permissions (layer 3) */}
+			<section class="wsp-mdrawer__section" aria-labelledby={`wsp-mdrawer-perms-${member.id}`}>
+				<h3 class="wsp-mdrawer__section-title" id={`wsp-mdrawer-perms-${member.id}`}>
+					What they may do here
+				</h3>
 				<p class="wsp-mdrawer__section-note">
-					What they do here, and who they report to — the edge the org chart draws.
+					{editable
+						? "Each switch shows where its state comes from — the role, or an override on this person."
+						: "Their effective permissions, and where each comes from."}
 				</p>
-				<div class="wsp-inviteform__field">
-					<label class="wsp-inviteform__label" for={`wsp-title-${member.id}`}>Title</label>
-					<InputText
-						id={`wsp-title-${member.id}`}
-						value={draftTitle.value ?? member.title ?? ""}
-						onValueChange={(v) => {
-							draftTitle.value = v;
-							error.value = null;
-						}}
-						placeholder="Design lead"
-						maxLength={80}
-						disabled={!editable}
-						block
-					/>
-				</div>
-				<div class="wsp-inviteform__field">
-					<label class="wsp-inviteform__label" for={`wsp-reports-${member.id}`}>Reports to</label>
-					<select
-						id={`wsp-reports-${member.id}`}
-						class="wsp-select"
-						disabled={!editable}
-						value={draftReportsTo.value ?? member.reportsTo ?? ""}
-						onChange={(e) => {
-							draftReportsTo.value = (e.target as HTMLSelectElement).value;
-							error.value = null;
-						}}
+				{groups.map((group) => (
+					<div
+						key={group.title}
+						class="wsp-mdrawer__group"
+						role="group"
+						aria-labelledby={`wsp-mdrawer-${member.id}-${group.title}`}
 					>
-						<option value="">Nobody — top of the chart</option>
-						{managers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-					</select>
-				</div>
-			</section>
-			{/* #endregion */}
-
-			{/* #region Overrides (layer 3) */}
-			<section class="wsp-mdrawer__section">
-				<h3 class="wsp-mdrawer__section-title">What they may do here</h3>
-				<p class="wsp-mdrawer__section-note">
-					Their effective permissions. A <span class="wsp-override__sign">+</span> or{" "}
-					<span class="wsp-override__sign">−</span> marks where this person differs from their role.
-				</p>
-
-				<h4 class="wsp-mdrawer__section-title">Consequential</h4>
-				<ul class="wsp-mdrawer__perms">{consequential.value.map(Row)}</ul>
-
-				<h4 class="wsp-mdrawer__section-title">Everything else</h4>
-				<ul class="wsp-mdrawer__perms">{ordinary.value.map(Row)}</ul>
+						<h4 class="wsp-mdrawer__group-title" id={`wsp-mdrawer-${member.id}-${group.title}`}>
+							{group.title}
+						</h4>
+						<ul class="wsp-mdrawer__perms">
+							{group.rows.map((row) => {
+								const noteId = `wsp-mdrawer-${member.id}-${row.capability}`;
+								return (
+									<li
+										key={row.capability}
+										class="wsp-mdrawer__perm"
+										data-on={row.on ? "true" : "false"}
+									>
+										{row.toggleable
+											? (
+												<ToggleSwitch
+													value={switches.get(row.capability)}
+													onValueChange={(on) => flip(row, on)}
+													label={row.label}
+													aria-describedby={noteId}
+												/>
+											)
+											: (
+												<span class="wsp-mdrawer__perm-label">
+													{row.label}
+												</span>
+											)}
+										<span id={noteId} class="wsp-mdrawer__perm-note">
+											<MetaLine
+												as="span"
+												size="xs"
+												items={[
+													!row.toggleable && (row.on ? "Allowed" : "Not allowed"),
+													row.provenance,
+												]}
+											/>
+											{row.warning && (
+												<span class="wsp-mdrawer__warning">
+													<span class="wsp-mdrawer__warning-mark" aria-hidden="true">
+														<ConsequenceIcon />
+													</span>
+													{row.warning}
+												</span>
+											)}
+										</span>
+									</li>
+								);
+							})}
+						</ul>
+					</div>
+				))}
 			</section>
 			{/* #endregion */}
 
 			{ws.kind === "business" && member.spendLimitMinor !== null && (
 				<section class="wsp-mdrawer__section">
 					<h3 class="wsp-mdrawer__section-title">Spend envelope</h3>
-					<p class="wsp-mdrawer__limit">
-						Their ceiling and contributions are edited on the spend policy, where they sit beside
-						everyone else's — a limit only means something relative to the others.
+					<p class="wsp-mdrawer__section-note">
+						Their ceiling and contributions are edited on the spend policy, beside everyone else's —
+						a limit only means something relative to the others.
 					</p>
 				</section>
 			)}
 
-			{/* #region Terminal actions */}
-			<section class="wsp-mdrawer__section wsp-mdrawer__danger">
-				{lastOwner
-					? (
-						<p class="wsp-mdrawer__lastowner">
-							<span class="wsp-mdrawer__lastowner-text">
-								{member.isSelf
-									? `You own this ${copy.noun}. Ownership has to move to another member before you can step back.`
-									: `${member.name} owns this ${copy.noun}. Only they can hand ownership over.`}
-							</span>
-							{member.isSelf && (
-								<button
-									type="button"
-									class="wsp-mdrawer__lastowner-link"
-									onClick={() => props.onTransfer(member)}
-								>
-									Transfer ownership…
-								</button>
-							)}
-						</p>
-					)
-					: (
-						<p class="wsp-mdrawer__danger-text">
-							Removing somebody keeps the record of their work — nothing is deleted.
-						</p>
-					)}
-			</section>
+			{/* #region Terminal act */}
+			{terminal && (
+				<section class="wsp-mdrawer__section wsp-mdrawer__terminal">
+					<p class="wsp-mdrawer__section-note">{terminal.note}</p>
+					<Button
+						{...membersTierProps(terminal.tier, terminal.danger)}
+						class="wsp-mdrawer__terminal-act"
+						label={terminal.label}
+						onClick={() => terminalAct(terminal.key)}
+					/>
+				</section>
+			)}
+			{!terminal && member.rolePreset === "owner" && !member.isSelf && (
+				<p class="wsp-mdrawer__section-note">
+					{member.name} owns this {copy.noun}. Ownership changes only when they hand it over.
+				</p>
+			)}
 			{/* #endregion */}
 
-			{error.value && <p class="wsp-create__error" role="alert">{error.value}</p>}
-
-			<div class="wsp-mdrawer__actions">
-				<Button variant="text" label="Close" onClick={props.onClose} />
-				<Button
-					variant="filled"
-					label={saving.value ? "Saving…" : "Save changes"}
-					disabled={!dirty.value || saving.value}
-					onClick={save}
-				/>
-			</div>
+			{error.value && <InlineNotice assertive align="start" text={error.value} />}
 		</Drawer>
 	);
 }

@@ -19,7 +19,7 @@ import {
 	selectModuleView,
 	viewOr,
 } from "../core/workspace-state.ts";
-import { workspaceZoom } from "../core/view-state.ts";
+import { zoomStoreFor } from "../core/view-state.ts";
 import { type RigAction, type RigModel, rigModel } from "../core/rig-model.ts";
 import { subViewsFor } from "../core/sub-views.ts";
 import { CardsViewIcon, ChartViewIcon, TableViewIcon } from "../components/MemberCard.tsx";
@@ -165,7 +165,7 @@ export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.
 				}
 				{rig.zoom && (
 					<ViewZoomRig
-						store={workspaceZoom}
+						store={zoomStoreFor(module)}
 						label={rig.zoom.label}
 						class="wsp-footerrig__density"
 						listIcon={<TableViewIcon />}

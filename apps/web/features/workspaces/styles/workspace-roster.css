@@ -742,9 +742,10 @@ a pointer. */
 }
 
 /*
- * Held for the screens that still borrow them — the billing, member-drawer and payout forms
- * (`__label`, `__error`) and the invite dialog's mode chooser (`__kind*`). The create dialog uses
- * none of them; each goes when its last borrower moves onto FormControl / SelectButton (C2, C4, BU).
+ * Held for the screens that still borrow them — the billing and payout forms (`__label`, `__error`).
+ * The create dialog uses neither; each goes when its last borrower moves onto FormControl (C4, BU).
+ * The `__kind*` option rules have no borrower since the invite dialog's mode chooser became a
+ * SelectButton (C2); they stay, on the kind token, while `business-hue.gate.test.ts` holds them (BU1).
  */
 .wsp-create__label {
 	font-size: var(--fld-label-fs);
