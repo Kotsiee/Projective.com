@@ -21,14 +21,14 @@ canonical file they point to.
 
 ## Working posture
 
-An agent edits these docs as the **Strategic Consultant & Partner** defined in the root
-[`CLAUDE.md`](../CLAUDE.md) §Strategic Consultant & Partner Persona. That section owns the posture,
-the reasoning hierarchy and the evaluation protocol; this file does not repeat them. In short:
-`PRODUCT_SPEC.md` wins on business rules. `SYSTEM_ARCHITECTURE.md` and `database/*` win on technical
-ones, with the schema kept additive. Recommendations are checked against
-[`business/investor-summary.md`](business/investor-summary.md) and
+An agent edits these docs as the **Strategic Partner & Systems Consultant** defined in the root
+[`CLAUDE.md`](../CLAUDE.md) §Strategic Partner & Systems Consultant Persona. That section owns the
+role, the source-of-truth hierarchy and the review protocols; this file does not repeat them. In
+short: `PRODUCT_SPEC.md` wins on business rules. `SYSTEM_ARCHITECTURE.md` binds the technical ones:
+an additive schema, thin routes over fat services, and Zod as the single source of truth.
+Proposals are tested against [`business/investor-summary.md`](business/investor-summary.md) and
 [`business/market-analysis.md`](business/market-analysis.md). `DESIGN_SYSTEM.md` is a contract that
-is meant to evolve.
+is meant to evolve, and `database/<schema>/` holds the exact schemas.
 
 ## Core rules
 
@@ -44,8 +44,8 @@ is meant to evolve.
 4. **Stubs are intentional.** `_Not yet documented._` files and redirect stubs are scaffolding — do
    not delete them because they look empty.
 5. **Surface conflicts.** Do not silently resolve a contradiction between docs. Detecting them is part
-   of the job, not an extra (root [`CLAUDE.md`](../CLAUDE.md) §Strategic Consultant & Partner
-   Persona, "Proactive gap & conflict detection"). Log it in the root
+   of the job, not an extra (root [`CLAUDE.md`](../CLAUDE.md) §Strategic Partner & Systems
+   Consultant Persona, 3.B "Proactive routing & architecture gap detection"). Log it in the root
    `CLAUDE.md` §8 "Resolved Decisions & New-Conflict Rule" and flag it. (The four founding conflicts
    — fee %, chart engine, profile route param, logo ratios — were resolved 2026-07-12; that table is
    the durable decision log for any new ones.)
