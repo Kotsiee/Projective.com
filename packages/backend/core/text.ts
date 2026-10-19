@@ -17,3 +17,13 @@ export function clampOr(value: string | null | undefined, max: number, fallback:
 	const out = clamp(value, max).trim();
 	return out.length > 0 ? out : fallback;
 }
+
+/**
+ * Whether a write's error code says its INPUT held text no layer below can store: `22P05` (Postgres
+ * refuses a NUL in text or jsonb) or `PGRST102` (PostgREST cannot read the body, e.g. a lone UTF-16
+ * surrogate). The request schemas refuse such text first (`isStorableText`, `@projective/types/
+ * content/text`); a service that still meets one answers 422 — malformed input — never 503.
+ */
+export function isUnstorableInputError(code: string | null | undefined): boolean {
+	return code === "22P05" || code === "PGRST102";
+}

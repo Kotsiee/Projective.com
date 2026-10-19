@@ -1,8 +1,8 @@
 # Development seed
 
 `supabase db reset` (or `deno task db:reset`) rebuilds the local database from the consolidated
-migrations and then loads a **complete, interconnected development world**: seventeen real personas,
-three teams, two businesses, seven projects in every hiring and delivery state, funded and released
+migrations and then loads a **complete, interconnected development world**: eighteen real personas
+(one of them the platform operator), three teams, two businesses, seven projects in every hiring and delivery state, funded and released
 escrows, a computed wallet ledger, product and service orders, direct messages, project channels,
 read/unread notifications, and published schedules with working hours, call windows, time off and
 discovery calls — with profile photos, banners, brand marks, product/service covers and submission
@@ -75,12 +75,13 @@ every persona lands on the authenticated shell directly.
 | `hannahcole`     | Hannah Cole     | Operator                               | Helia Finance (admin)         | Runs two projects, spending cap on the vault, unread applications |
 | `miguelsantos`   | Miguel Santos   | Operator                               | Atlas Labs (member)           | Owns the hiring-stage Loop mobile project; plain Member role **plus two per-member grants** (`hire`, `manage_projects`) |
 | `chloewinters`   | Chloe Winters   | Freelancer (new account)               | — (invited to Studio Fern)    | Unverified, pending application, booked a review session        |
+| `rosalindqvist`  | Rosa Lindqvist  | **Platform operator** (`ops.admin_users`) | —                          | The one `security.is_admin()` account: receives `contact.received`, reads the contact intake, the dispute desk (`/admin/disputes`) and Archived feedback ideas, and is the actor on every seeded feedback-board move. A plain account otherwise — no listings, memberships or money — so nothing else it reads is explained by anything but the role (Decision #296 (E)) |
 
 ## What is seeded, by file
 
 | File                   | Contents                                                                                                                                                  |
 | :--------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `01_identities.sql`    | `auth.users` + `auth.identities`, `org.users_public`, emails, preferences (display currency/locale), freelancer profiles (KYC), skills, languages, links, KYC cases |
+| `01_identities.sql`    | `auth.users` + `auth.identities`, `org.users_public`, the platform operator's `ops.admin_users` row (personas with `platformOperator`), emails, preferences (display currency/locale), freelancer profiles (KYC), skills, languages, links, KYC cases |
 | `02_assets.sql`        | One `files.items` row per image (real size, SHA-256, dimensions in a schema-valid `AssetMetadata` envelope); avatar/banner links; education + experience (with employer logos) |
 | `03_entities.sql`      | Teams + businesses (brand marks); each entity's **preset** role rows (Owner · Admin · Lead · Member for a team, no Lead for a business — name, summary, `preset` = `base_preset`, no stored capabilities, exactly what `org.fn_seed_preset_roles` writes); memberships with titles, the held `role_id`, and per-member `granted_capabilities` (Miguel's two); seven `reports_to` org-chart edges (written after both rosters exist — Lena → Inês, Aiko → Lena, Samuel → Kwame, Tomasz → Samuel, Aiko → Saoirse, Hannah → Priya, Miguel → Daniel); team contribution splits (no stake starts `held`) + split rules; KYB cases; two pending invitations (Studio Fern → Chloe, Helia Finance → Noor) addressed through `team_role_id` / `business_role_id`; follows, bookmarks; **recent views** (`org.recent_views`, Decision #178 — Noor's and Maris's histories anchor "Because you viewed" for a client and a freelancer, and four people on the brand sprint plus three each on Maris and the Helia wallet put three items past Trending's three-person floor; times are relative to the reset, so after a week Trending falls back to "New on Projective") |
 | `04_marketplace.sql`   | Nine service blueprints (all five delivery models, team-owned where the corpus says so) with covers, stage templates (priced per stage), intake questions, team roles, deliverables and session terms |
@@ -175,7 +176,7 @@ extension, does not know `.avif`, and the storage API refuses `application/octet
 - **Ledger.** Every `balance_after_cents` is a running balance over a chronologically sorted event
   list per wallet; the generator refuses to emit if any balance would go negative, and same-day
   rows are staggered by seconds so `ORDER BY created_at` reproduces the walk. **Nothing is minted**:
-  the platform's opening-credit trigger is gone (Decision #122), so each business opens with a real
+  the platform's opening-credit trigger is gone (Decision #61), so each business opens with a real
   dated `topup` of 2,500,000 minor units from its owner's funding card on the day it was created.
   Platform fee 5%; team income = 10% vault retention + `contribution_agreements` split.
 - **The vault audit is derived, not typed.** Every `topup` credit to a business or team wallet
@@ -234,7 +235,7 @@ extension, does not know `.avif`, and the storage API refuses `application/octet
   lead with the seller's other work, so every card still shows a picture.
 - The two businesses (Helia Finance, Atlas Labs) have no banner, so the projects they post show the
   tonal band rather than a cover on the landing page and the project view.
-- Five freelancers and four users have no profile photo (eight photos for seventeen personas); their
+- Five freelancers and five users have no profile photo (eight photos for eighteen personas); their
   avatars render the temporary default picture (`test_images/profile_1.jpg`, Decision #127), with
   initials beneath it.
 - **Product downloads never arrive.** A product describes its files (`catalogue.products.file_manifest`)

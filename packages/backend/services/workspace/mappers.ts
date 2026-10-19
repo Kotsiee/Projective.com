@@ -17,6 +17,7 @@ import {
 	type TeamEngagement,
 	type TeamSplitRule,
 	type VerificationState,
+	walletHrefFor,
 	type WorkspaceCapability,
 	WorkspaceCapability as WorkspaceCapabilityEnum,
 	workspaceHref,
@@ -62,13 +63,22 @@ export interface RawRosterItem {
 	role: string;
 	is_owner: boolean;
 	created_at: string;
+	/** The entity row's `updated_at` — the roster table's Updated column. */
+	updated_at: string;
 	verification: string;
 	member_count: number;
 	face_user_ids: string[];
 	pending_invites: number;
 	active_projects: number;
 	money_30d: { currency: string; minor: number }[];
-	setup: { logo: boolean; bio: boolean; money: boolean };
+	/** The Draft-First facts; `funded` and `limits_offered` are a business's (BU6), `false` for a team. */
+	setup: {
+		logo: boolean;
+		bio: boolean;
+		money: boolean;
+		funded?: boolean;
+		limits_offered?: boolean;
+	};
 	has_update: boolean;
 }
 
@@ -153,6 +163,8 @@ export interface RawRole {
 	base_preset: string;
 	capabilities: string[] | null;
 	member_count: number;
+	/** Pending invitations offering the role — a `manage_roles` holder's read only; `null` otherwise. */
+	pending_invites?: number | null;
 }
 
 /** One outgoing invitation on the detail read (empty unless the viewer holds `invite_members`). */
@@ -218,18 +230,33 @@ export interface RawDetail {
 	members: RawMember[];
 	roles: RawRole[];
 	invites: RawOutgoingInvite[];
+	/** A team's `{used, limit}` seats (`org.fn_team_seats_used` · `team_seats`); `null` for a business. */
+	seats?: unknown;
 	standing: string | null;
 	projects: RawProject[];
 	activity: RawActivity[];
-	setup: { logo: boolean; bio: boolean; invite: boolean; money: boolean };
+	/** The Draft-First facts; `funded` and `limits_offered` are a business's (BU6), `false` for a team. */
+	setup: {
+		logo: boolean;
+		bio: boolean;
+		invite: boolean;
+		money: boolean;
+		funded?: boolean;
+		limits_offered?: boolean;
+	};
 	/** A team's live stage assignments (`[]` for a business). */
 	engagements?: RawEngagement[] | null;
 	/** A team's payout block — present ONLY for a caller holding `manage_finances`. */
 	payout?: RawTeamPayout | null;
 	/** A team's `finance.get_proposal_allowance` answer (`null` for a business). */
 	allowance?: unknown;
-	/** A business's `org.fn_business_archive_blockers` (`[]` without `archive_entity`, and for a team). */
+	/**
+	 * `org.fn_team_archive_blockers` / `org.fn_business_archive_blockers` — what would refuse an archive
+	 * now (`[]` without `archive_entity`).
+	 */
 	archive_blockers?: unknown;
+	/** `org.fn_workspace_restore_target` while the entity is archived (`null` otherwise). */
+	restore_target?: unknown;
 	/** A business's spend block — present ONLY for a viewer who may open Spend. */
 	spend?: RawBusinessSpend | null;
 	/** A business's money tiles per wallet currency — `[]` unless the viewer may open Finance. */
@@ -463,6 +490,27 @@ function periodValue(amounts: RawRosterItem["money_30d"]): string {
 }
 
 /**
+ * The 30-day money as figures, one per currency that moved (`WorkspaceSummary.money30d`): non-positive
+ * and currency-less entries dropped, codes upper-cased, one figure per currency (the larger, should the
+ * read ever repeat one), ordered largest first in MAJOR units — the same comparison
+ * {@link largestAmount} makes for the card's figure — and each formatted in its own currency. Never a
+ * converted or summed figure; `[]` when nothing moved.
+ */
+export function rosterMoney(amounts: RawRosterItem["money_30d"] | null | undefined): MoneyView[] {
+	const byCurrency = new Map<string, number>();
+	for (const a of amounts ?? []) {
+		const minor = Math.trunc(Number(a?.minor) || 0);
+		const currency = (a?.currency ?? "").trim().toUpperCase();
+		if (minor <= 0 || !currency) continue;
+		byCurrency.set(currency, Math.max(minor, byCurrency.get(currency) ?? 0));
+	}
+	const major = (currency: string, minor: number) => minor / 10 ** currencyExponent(currency);
+	return [...byCurrency]
+		.sort(([ca, ma], [cb, mb]) => major(cb, mb) - major(ca, ma) || ca.localeCompare(cb))
+		.map(([currency, minor]) => moneyOf(minor, currency));
+}
+
+/**
  * The three stats a roster card carries, chosen per kind so each number means something: a team's
  * members · live projects · what it earned in 30 days; a business's members · live projects · what it
  * spent. `delta` is always `null` — no honest period-over-period comparison is recorded.
@@ -480,6 +528,20 @@ export function rosterStats(
 			delta: null,
 		},
 	];
+}
+
+/**
+ * A roster entity's activity facts as plain values: its live projects as a count (never negative,
+ * `0` for a missing or garbled figure) and when its row last changed as ISO, or `null` when the read
+ * carries no instant that parses — the table then shows a blank rather than an invented date.
+ */
+export function rosterActivity(
+	item: Pick<RawRosterItem, "active_projects" | "updated_at">,
+): { activeProjects: number; updatedAt: string | null } {
+	return {
+		activeProjects: Math.max(0, Math.trunc(Number(item.active_projects) || 0)),
+		updatedAt: isoOf(item.updated_at) || null,
+	};
 }
 
 /** Whether the viewer's plan admits another entity of this kind (`null` limit = unlimited). */
@@ -524,19 +586,30 @@ export function avatarOf(url: string | null | undefined): string {
 
 /** The facts the Draft-First steps are decided on. */
 export interface SetupFacts {
+	/** The entity's id — a business's Add money step goes to its own pooled wallet. */
+	entityId: string;
 	logo: boolean;
 	bio: boolean;
 	/** Active members, the owner included. */
 	activeMembers: number;
 	/** Whether an invitation is still waiting for an answer. */
 	invitePending: boolean;
+	/** A team's split is set; a business's approval threshold is set. */
 	money: boolean;
+	/** A business: money was ever added to its pooled wallet (any `add_funds` ledger row). */
+	funded: boolean;
+	/**
+	 * A business: its plan lets it set a threshold or member limits (Business Pro's
+	 * `pooled_wallet_full`, or the plan gates off). Without it the spending-rules step is left out —
+	 * on Business Free it could never be finished.
+	 */
+	limitsOffered: boolean;
 	/**
 	 * The entity's verification — a team's is its owner's identity check, a business's its KYB.
 	 * `pending` is not done, and asks nothing of anyone: the check is with the reviewers.
 	 */
 	verification: VerificationState;
-	/** Whether the entity has left `draft` (it is `active`, or `archived` after being live). */
+	/** Whether the entity has left `draft` — {@link publishedFact}, the one rule both reads share. */
 	published: boolean;
 	/**
 	 * The viewer's effective capabilities, which stamp each step's `actionable`. Absent where nobody is
@@ -551,17 +624,31 @@ export interface SetupFacts {
 }
 
 /**
+ * The setup walk's Publish fact, read the same way by the roster card and the console detail: done
+ * once the entity has left `draft` — `active`, or `archived` whichever way it got there. Publishing is
+ * a draft's step; an archived entity is not walking setup, and its way back is Settings' Restore,
+ * which lands a never-published one on `draft` (Decision #250 (c), #236 (d)) where this step opens
+ * again. Read narrower, an archived never-published entity would be offered a Publish its status
+ * door always refuses.
+ */
+export function publishedFact(status: WorkspaceStatus): boolean {
+	return status !== "draft";
+}
+
+/**
  * The Draft-First setup steps, worded by kind, each stamped with whether the viewer may act on it
  * ({@link canActOnSetupStep}).
  *
  * A **team** walks five steps (TEAMS_BUILD_PROMPTS C1): a second ACTIVE member — the apply doors
  * refuse a team under two (Decision #228 (E)), so an invitation still out does not finish it — the
  * split, the public profile (mark AND one-liner), the owner's identity (the payout-ready gate,
- * Decision #196) and publishing. A **business** keeps its five: mark, one-liner, an invitation (sent
- * or accepted), the approval threshold and KYB. Identity steps are edited in the entity's public
- * profile editor — the media pipeline is the only door a picture may use — so they link to
- * `/@handle/edit`; a team's owner verifies in their own settings (`/settings/verification`, the
- * personal flow the team's state is read from); the rest link to their console module.
+ * Decision #196) and publishing. A **business** walks four or five (BU6, Decision #248): a colleague
+ * (an invitation sent or accepted), KYB, money added to its pooled wallet, its spending rules — the
+ * approval threshold, left out on a plan that cannot set one (Business Free), where it could never be
+ * finished — and publishing. The profile is edited in the entity's public profile editor — the media
+ * pipeline is the only door a picture may use — so it links to `/@handle/edit`; a team's owner
+ * verifies in their own settings (`/settings/verification`, the personal flow the team's state is read
+ * from); a business's Add money goes to its pooled wallet; the rest link to their console module.
  *
  * A verification already with the reviewers (`pending`) says so and is actionable for nobody — there
  * is nothing left to do, so no control is offered beside it.
@@ -629,49 +716,55 @@ function teamSteps(handle: string, facts: SetupFacts): Omit<SetupStep, "actionab
 	];
 }
 
-/** A business's five steps. */
+/**
+ * A business's steps, in the order the setup hero walks them: four on a plan that cannot set spending
+ * rules, five where it can.
+ */
 function businessSteps(handle: string, facts: SetupFacts): Omit<SetupStep, "actionable">[] {
 	const copy = kindCopy("business");
-	const edit = `/@${handle}/edit`;
-	return [
-		{
-			id: "logo",
-			label: "Add a mark",
-			note: `A logo makes the ${copy.noun} recognisable everywhere it appears.`,
-			done: facts.logo,
-			href: edit,
-		},
-		{
-			id: "bio",
-			label: "Say what you do",
-			note: "One line clients can scan before they decide to talk to you.",
-			done: facts.bio,
-			href: edit,
-		},
+	const steps: Omit<SetupStep, "actionable">[] = [
 		{
 			id: "invite",
-			label: "Invite someone",
+			label: "Invite a colleague",
 			note: "Bring in the people who will approve and spend alongside you.",
 			done: facts.activeMembers > 1 || facts.invitePending,
 			href: workspaceHref("business", handle, "invitations"),
 		},
 		{
-			id: "money",
-			label: "Set an approval threshold",
-			note: "A threshold and per-person limits keep the pooled wallet predictable.",
-			done: facts.money,
-			href: workspaceHref("business", handle, "spend"),
-		},
-		{
 			id: "verification",
-			label: `Finish ${copy.verification}`,
+			label: "Verify the business",
 			note: facts.verification === "pending"
 				? `${copy.verification} is with our reviewers.`
 				: "Verification unlocks the pooled wallet so you can hire.",
 			done: facts.verification === "verified",
 			href: workspaceHref("business", handle, "verification"),
 		},
+		{
+			id: "fund",
+			label: "Add money",
+			note: "Load the pooled wallet so members can fund work without a card each time.",
+			done: facts.funded,
+			href: walletHrefFor("business", facts.entityId),
+		},
 	];
+	if (facts.limitsOffered) {
+		steps.push({
+			id: "money",
+			label: "Set spending rules",
+			note: "A threshold and per-person limits keep the pooled wallet predictable.",
+			done: facts.money,
+			href: workspaceHref("business", handle, "spend"),
+		});
+	}
+	steps.push({
+		id: "publish",
+		label: "Publish",
+		note:
+			"Lets the business start projects, hire and buy. A published business never returns to draft.",
+		done: facts.published,
+		href: workspaceHref("business", handle, "settings"),
+	});
+	return steps;
 }
 
 /** Completion 0–1 over the checklist (the same arithmetic as the SSOT's `setupProgress`). */
@@ -712,6 +805,9 @@ export function toRoleDef(raw: RawRole): WorkspaceRoleDef {
 		basePreset: base,
 		capabilities: parseCapabilities(raw.capabilities),
 		memberCount: Math.max(0, Number(raw.member_count) || 0),
+		...(raw.pending_invites == null
+			? {}
+			: { pendingInvites: Math.max(0, Number(raw.pending_invites) || 0) }),
 	};
 }
 

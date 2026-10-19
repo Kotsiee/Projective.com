@@ -18,6 +18,12 @@ import "@ui/navigation/styles/index.css";
  * without a table of contents) must still be styled.
  */
 import "@ui/display/styles/editorial.css";
+/*
+ * EmptyState, for the root error page (`routes/_error.tsx`): it renders outside every group layout
+ * and mounts no island that imports `@projective/ui/utils`, so the sheet otherwise never reached it
+ * and the 404 / 500 card painted as unstyled, left-aligned text.
+ */
+import "@ui/utils/styles/empty-state.css";
 import "@web/styles/global.css";
 /*
  * The authenticated shell's own chrome sheet.

@@ -42,6 +42,9 @@ export const HELP_HUB_TITLE = "Help centre";
 export const HELP_HUB_DESCRIPTION =
 	"Answers about projects, stages, escrow, revisions, Fair Exit, payouts and verification on Projective, written from how the platform actually works.";
 
+/** The tab title of a help address that names no category or article (a `noindex` 404). */
+export const HELP_NOT_FOUND_TITLE = `Page not found · ${HELP_HUB_TITLE}`;
+
 /** The breadcrumb root. */
 const ROOT_CRUMB: Crumb = { name: HELP_HUB_TITLE, path: HELP_ROOT };
 

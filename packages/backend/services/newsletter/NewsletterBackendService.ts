@@ -2,6 +2,7 @@ import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { getServiceClient, isNewsletterBackendLive } from "../../core/supabase.ts";
 import { serverEnv } from "../../core/env.ts";
 import { type RateLimitRule, SlidingWindowLimiter } from "../../core/rate-limit.ts";
+import { isUnstorableInputError } from "../../core/text.ts";
 import { communityRpc } from "../community/community-source.ts";
 import {
 	type NewsletterSubscribeResult,
@@ -129,9 +130,10 @@ export class NewsletterBackendService {
 			p_topic: topic,
 		});
 		if (error) {
-			// 22023 is the writer's own address guard (malformed, or over NEWSLETTER_EMAIL_MAX); the
-			// schema above should make it unreachable.
-			if (error.code === "22023") {
+			// 22023 is the writer's own address guard (malformed, or over NEWSLETTER_EMAIL_MAX); 22P05
+			// (a NUL Postgres cannot store) and PGRST102 (a body PostgREST cannot read, e.g. a lone
+			// surrogate) are malformed input too. The schema above should make all three unreachable.
+			if (error.code === "22023" || isUnstorableInputError(error.code)) {
 				return fail(422, { errors: { email: "Enter a valid email address." } });
 			}
 			return fail(503, {

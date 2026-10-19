@@ -64,7 +64,6 @@ Deno.test("a business's Billing module is a way back — exactly that page, noth
 			"/businesses/Helia/billing",
 			"/businesses/helia finance/billing",
 			"/businesses/-helia/billing",
-			"/businesses/heliafinance",
 			"https://evil.com/businesses/heliafinance/billing",
 			"//evil.com/businesses/heliafinance/billing",
 			"/teams/heliafinance/billing",
@@ -84,4 +83,41 @@ Deno.test("the Billing module's Top up round-trips the business wallet, top_up a
 	const url = new URL(walletIntentHref(BUSINESS, "top_up", back), "https://projective.test");
 	assertEquals(url.searchParams.get("w"), BUSINESS);
 	assertEquals(walletIntentOf(url.searchParams), { action: "top_up", back });
+});
+
+Deno.test("a business's Overview is a way back — the console root only (BU6, #248)", () => {
+	assertEquals(safeBack("/businesses/heliafinance"), "/businesses/heliafinance");
+	assertEquals(safeBack("/businesses/helia-finance?x=1"), "/businesses/helia-finance?x=1");
+	assertEquals(safeBack("/businesses/abc#setup"), "/businesses/abc#setup");
+	for (
+		const raw of [
+			"/businesses/heliafinance/spend",
+			"/businesses/heliafinance/",
+			"/businesses/heliafinancex/../billing",
+			"/businesses/ab",
+			"/businesses/Helia",
+			"/businesses/-helia",
+			"/businesses/helia-",
+			"/businesses",
+			"/businesses/",
+			"//businesses/heliafinance",
+			"/\\businesses/heliafinance",
+			"/businesses\\heliafinance",
+			"/businesses/heliafinance\u0000",
+			"/businesses/helia\u001ffinance",
+			"https://evil.com/businesses/heliafinance",
+			"/teams/heliafinance",
+		]
+	) {
+		assertEquals(safeBack(raw), null, raw);
+	}
+});
+
+Deno.test("the Overview's Add money round-trips the business wallet, top_up and 'Back to overview'", () => {
+	const back = "/businesses/heliafinance";
+	const url = new URL(walletIntentHref(BUSINESS, "top_up", back), "https://projective.test");
+	assertEquals(url.searchParams.get("w"), BUSINESS);
+	assertEquals(walletIntentOf(url.searchParams), { action: "top_up", back });
+	assertEquals(backLabelFor(back), "Back to overview");
+	assertEquals(backLabelFor("/businesses/heliafinance/billing"), "Back to billing");
 });

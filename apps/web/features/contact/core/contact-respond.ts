@@ -60,7 +60,5 @@ export function unsupportedBody(): Response {
 	);
 }
 
-/** The caller's transport address — the per-IP rate-limit key (the platform's own convention). */
-export function clientKey(remote: Deno.Addr): string {
-	return "hostname" in remote ? remote.hostname : remote.transport;
-}
+/** The caller's transport address — the per-IP rate-limit key (one helper for every route). */
+export { clientKey } from "@web/utils/client-key.ts";

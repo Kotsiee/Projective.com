@@ -1,16 +1,19 @@
 /*
- * workspace-roster — the `/teams` and `/businesses` INDEX: the entity cards, the compact table view,
- * the incoming-invitation strip, the first-run empty state and the Draft-First create dialog.
+ * workspace-roster — the `/teams` and `/businesses` INDEX: the page head, the entity cards, the
+ * table's cells, the incoming-invitation strip and the Draft-First create dialog. The empty states are
+ * the ui `EmptyState`, the notices the ui `InlineNotice`, the partitions the ui `TabMenu` — this sheet
+ * only places them (Teams work order R1).
  *
  * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY.
  *
  * The index's job is to answer three questions at a glance: which of these am I acting as, which one
- * needs me, and how do I make another. So the card carries exactly one loud mark (the acting chip),
- * iconographic state (a dot, never a status sentence), and the stats the kind actually earns.
+ * needs me, and how do I make another. So a card carries its facts as one line of meta text (never a
+ * chip), a lifecycle `Tag` only when the entity is not active, iconographic state (a dot, never a
+ * status sentence), and the acting state as one reserved leading rule.
  *
  * There is not a single four-sided border on a card: an entity card is a LINK, and the whole card is
- * the hit area, so its interactivity is expressed as a hover tonal step plus the mark's kind tint
- * (§B.4). The shared surface root (`.wsp`), the band (`.wsp-band`) and `.wsp-pagehead` live in
+ * the hit area, so its interactivity is expressed as a hover tonal step and a press compression
+ * (§B.4, §B.12). The shared surface root (`.wsp`) and the band (`.wsp-band`) live in
  * `workspace-console.css` — the index composes them rather than owning a second layout system.
  */
 
@@ -18,6 +21,7 @@
 .wsp-roster {
 	display: flex;
 	flex-direction: column;
+	gap: var(--space-4);
 	inline-size: 100%;
 	min-inline-size: 0;
 }
@@ -30,93 +34,133 @@
 	flex-wrap: wrap;
 }
 
+.wsp-roster__heading {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+/* The display register: the one thing the page is about (§A.4). */
 .wsp-roster__title {
 	margin: 0;
 	font-size: var(--wsp-fs-display);
 	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
 	letter-spacing: var(--tracking-tight);
 	color: var(--on-surface);
 }
 
-.wsp-roster__pitch {
-	margin: var(--space-2) 0 0;
-	max-inline-size: var(--wsp-prose);
-	font-size: var(--wsp-fs-body);
-	line-height: 1.6;
-	color: var(--text-secondary);
+.wsp-roster__search {
+	inline-size: min(100%, 18rem);
 }
 
-.wsp-roster__tools {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	min-inline-size: 0;
-	flex-wrap: wrap;
-}
-
-/* `Owned` / `Member of` — a segmented control, so the two partitions read as one choice. */
-.wsp-roster__tabs {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-px);
-	padding: var(--space-px);
-	border-radius: var(--radius-base);
-	background: var(--surface-2);
-}
-
-.wsp-roster__tab {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding-inline: var(--space-3);
-	padding-block: var(--space-1);
-	border: none;
-	border-radius: var(--radius-sm);
-	background: none;
-	color: var(--text-secondary);
-	font: inherit;
-	font-size: var(--wsp-fs-body);
-	white-space: nowrap;
-	cursor: pointer;
-}
-
-.wsp-roster__tab:hover {
-	color: var(--on-surface);
-}
-
-.wsp-roster__tab[aria-selected="true"],
-.wsp-roster__tab[data-active="true"] {
-	background: var(--surface);
-	color: var(--on-surface);
-	font-weight: var(--fw-medium);
-}
-
-.wsp-roster__tab-count {
-	font-size: var(--wsp-fs-micro);
-	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
-}
-
+/* The status line of a context switch, and the live count over a narrowed roster. */
+.wsp-roster__status,
 .wsp-roster__count {
+	margin: 0;
+	margin-block-end: var(--space-3);
 	font-size: var(--wsp-fs-body);
 	font-variant-numeric: tabular-nums;
 	color: var(--text-secondary);
+}
+
+/* The count is a live region, so it stays mounted; it takes room only while it speaks. */
+.wsp-roster__count:empty {
+	margin-block-end: 0;
+}
+
+/*
+ * The notices sit on the band's own text column, one spacing step above what they report on — so each
+ * drops InlineNotice's own edge-of-region padding (doubled class, so the override never depends on
+ * bundle order).
+ */
+.ui-inline-notice.wsp-roster__notice,
+.ui-inline-notice.wsp-roster__alert {
+	padding: 0;
+	margin-block-end: var(--space-3);
+}
+
+/* A failed read: the notice, then its Try again beside it, wrapping under it when the line is full. */
+.wsp-roster__error {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2) var(--space-3);
+	margin-block-end: var(--space-3);
+}
+
+.wsp-roster__error .ui-inline-notice.wsp-roster__alert {
+	margin-block-end: 0;
+}
+
+/*
+ * InlineNotice is shaped for one SHORT line: it wraps its parts, so a failure sentence wider than the
+ * room beside its mark drops whole under it and leaves the mark alone on a line (a phone, or the longer
+ * server fallback). Here the mark stays beside the sentence and sits on its first line — the text
+ * column shrinks and its words wrap instead — as the create dialog's refusal does (R3). Doubled class
+ * so the override never depends on bundle order.
+ */
+.ui-inline-notice.wsp-roster__alert {
+	flex-wrap: nowrap;
+	align-items: flex-start;
+}
+
+.ui-inline-notice.wsp-roster__alert .ui-inline-notice__text {
+	flex: 1 1 auto;
+}
+
+.ui-inline-notice.wsp-roster__alert .ui-inline-notice__icon {
+	margin-block-start: var(--space-px);
+}
+
+/* A non-text mark, so it carries the danger hue; the sentence beside it stays in the meta ink. */
+.wsp-roster__alert-mark {
+	display: inline-flex;
+	color: var(--danger);
 }
 
 .wsp-roster__body {
 	inline-size: 100%;
 	min-inline-size: 0;
 }
+/* #endregion */
 
-.wsp-roster__section {
-	inline-size: 100%;
-	min-inline-size: 0;
+/* #region The first run's points (BU1) */
+/*
+ * What a business does for the viewer, as a short BODY list inside the first-run `EmptyState`'s body
+ * slot — plain text, never a MetaLine and never chips (§B.11). The list is centred as a block but its
+ * lines read from the start edge, so a wrapped sentence never centres raggedly. Each line leads with a
+ * tick in the kind's ink (`--wsp-kind-ink`, the mark's own text tone, so it clears 4.5:1 on the
+ * `EmptyState`'s `--surface-1`), centred on the first line of its sentence.
+ */
+.wsp-roster__points {
+	display: grid;
+	gap: var(--space-2);
+	inline-size: fit-content;
+	max-inline-size: var(--wsp-prose);
+	margin: 0;
+	margin-inline: auto;
+	padding: 0;
+	list-style: none;
+	text-align: start;
+	font-size: var(--wsp-fs-body);
+	line-height: var(--leading-normal);
+	color: var(--on-surface);
 }
 
-.wsp-roster__section + .wsp-roster__section {
-	margin-block-start: var(--space-6);
-	padding-block-start: var(--space-5);
-	border-block-start: var(--hairline);
+.wsp-roster__point {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+}
+
+.wsp-roster__point-mark {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	block-size: 1lh;
+	color: var(--wsp-kind-ink);
 }
 /* #endregion */
 
@@ -247,16 +291,10 @@
 
 /* #region The card grid */
 /*
- * The grid element IS the library `Grid` in its column-capped mode (`.ui-grid--capped`), which owns
- * `grid-template-columns` and `gap` — it reads `--wsp-card-min` through its own `--grid-min` and caps
- * the auto-fit count so tracks widen on a large display instead of multiplying into an over-narrow
- * many-column row.
- *
- * This class therefore declares NEITHER of those two properties, and must not: `.wsp-grid` and
- * `.ui-grid--capped` carry equal specificity, so a second `grid-template-columns` here would be
- * decided by stylesheet order in the bundle and the cap would silently stop applying on the day an
- * unrelated island pulled `grid.css` in earlier. One owner, no race. The responsive step below tunes
- * the track floor through the token instead, which flows into the primitive's formula untouched.
+ * The grid element IS the library `Grid` in its exact-track mode (`.ui-grid--exact`), which owns
+ * `grid-template-columns` and `gap`: every track is the zoom's card width, or the whole row once two no
+ * longer fit (`rosterTrackWidth`, passed in as `minChildWidth`). This class therefore declares neither
+ * property, and must not — one owner, no bundle-order race.
  */
 .wsp-grid {
 	inline-size: 100%;
@@ -266,8 +304,9 @@
 
 /* #region The entity card */
 /*
- * The whole card is one link. The kebab and the acting chip sit above it in the stacking order via
- * `position: relative`, so a menu click never navigates.
+ * The card is the interactive container: `--surface-1` with no border, a tonal lift on hover, a
+ * compression on press. The whole card is one link; the marks and the kebab sit above it in the
+ * stacking order, so a menu press never navigates.
  */
 .wsp-card {
 	position: relative;
@@ -284,36 +323,37 @@
 	border-inline-start-color: transparent;
 	border-radius: var(--radius-container-lg);
 	background: var(--surface-1);
-	transition: background-color var(--dur-fast) var(--ease-standard);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
 }
 
 .wsp-card:hover {
 	background: var(--surface-2);
 }
 
-/* The quiet chip is a `--surface-2` step, the same tone the card hovers to, so it steps up one with
-the card or its container would vanish. */
-.wsp-card:hover .wsp-chip[data-tone="muted"] {
-	background: var(--surface-3);
+/*
+ * Press (§B.12): a press on the card's link compresses the whole card, and only that press — the
+ * kebab's press is its own Button's. Scale only; nothing moves a box. Removed under both
+ * reduced-motion channels below.
+ */
+.wsp-card:has(> .wsp-card__link:active) {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-fast), var(--dur-press);
 }
 
-/*
- * Acting: one leading `--hairline-strong` rule plus one tonal step — never a four-sided ring around a
- * card (§B.4). Both are quiet on purpose — the chip in `__flags` is the loud channel, and two loud
- * markers on one card cancel each other out.
- */
+/* Acting: the one reserved leading rule in the opaque kind edge — never a ring, never a box (§B.4). */
 .wsp-card[data-acting="true"] {
-	background: var(--wsp-acting-tint);
 	border-inline-start-color: var(--wsp-acting-ring);
 }
 
 /*
  * An archived entity is dimmed, never struck through: it is restorable. The dim is carried by the INK
- * — the name and the figures step down to `--text-secondary` — never by `opacity`, which would drop
+ * — the name and the figure step down to `--text-secondary` — never by `opacity`, which would drop
  * every label on the card under 4.5:1 (§B.12).
  */
 .wsp-card[data-status="archived"] .wsp-card__name,
-.wsp-card[data-status="archived"] .wsp-card__stat-value {
+.wsp-card[data-status="archived"] .wsp-card__figure-value {
 	color: var(--text-secondary);
 }
 
@@ -322,7 +362,7 @@ the card or its container would vanish. */
 	inset: 0;
 	border-radius: inherit;
 	z-index: var(--z-base);
-	/* Announced by its own text; the visible label lives in `__name`. */
+	/* Announced by its own text; the visible name is the heading. */
 	font-size: 0;
 	color: transparent;
 	text-decoration: none;
@@ -344,194 +384,114 @@ the card or its container would vanish. */
 	min-inline-size: 0;
 }
 
+/*
+ * The name in the title register, read WHOLE: it wraps (an unbroken word breaks anywhere) and is never
+ * clipped. Beside the mark and the kebab its column is about 150px at the default zoom, where a valid
+ * name — up to WORKSPACE_NAME_MAX characters — runs past any fixed line count, so a clamp would cut
+ * the one thing that identifies the card.
+ */
 .wsp-card__name {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
 	margin: 0;
+	overflow-wrap: anywhere;
 	font-size: var(--wsp-fs-key);
 	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
 	color: var(--on-surface);
-	min-inline-size: 0;
-}
-
-.wsp-card__name-text {
-	min-inline-size: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
 .wsp-card__handle {
+	overflow: hidden;
 	font-size: var(--wsp-fs-micro);
 	color: var(--text-secondary);
-	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+/* The activity and verification marks, then the kebab — above the link, and the only part that takes
+a pointer. */
+.wsp-card__marks {
+	position: relative;
+	z-index: var(--z-raised);
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	pointer-events: auto;
+}
+
+/* The lifecycle Tag (Draft / Archived only), then the facts as one line of meta text. */
+.wsp-card__facts {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1) var(--space-2);
+	min-inline-size: 0;
+	pointer-events: none;
+}
+
+.wsp-card__meta {
+	min-inline-size: 0;
 }
 
 .wsp-card__tagline {
-	margin: 0;
-	font-size: var(--wsp-fs-body);
-	line-height: 1.5;
-	color: var(--text-secondary);
-	/* Two lines, then clipped — a tagline is not a description. */
 	display: -webkit-box;
 	-webkit-line-clamp: 2;
 	-webkit-box-orient: vertical;
+	margin: 0;
 	overflow: hidden;
+	font-size: var(--wsp-fs-body);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+	pointer-events: none;
 }
 
-/* The flag stack: acting chip, then role, then state dot. At most one of these is loud. */
-.wsp-card__flags {
+/*
+ * Who is on it: the member faces as the ui AvatarStack, a `+N` for the rest. The stack's separating
+ * ring is drawn in the card's own tone — at rest and on the hover lift — so it reads as a gap between
+ * faces, never as a halo; and the faces take no pointer, so a press on them is the card's link.
+ */
+.wsp-card__people {
+	--avatar-ring: var(--surface-1);
+	align-self: flex-start;
+	pointer-events: none;
+}
+
+.wsp-card:hover .wsp-card__people {
+	--avatar-ring: var(--surface-2);
+}
+
+/*
+ * The kind's 30-day figure: its label in the meta register, the figure in tabular digits. The two wrap
+ * as wholes — the figure drops under its label on a narrow card and is never split inside itself.
+ * One hairline above, because the row sits on the card's own tone.
+ */
+.wsp-card__figure {
 	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	justify-self: end;
 	flex-wrap: wrap;
-	justify-content: flex-end;
-	pointer-events: auto;
-}
-
-.wsp-card__dot {
-	flex: none;
-}
-
-/* The kebab must beat the stretched link. */
-.wsp-card__kebab {
-	position: relative;
-	z-index: var(--z-raised);
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	flex: none;
-	inline-size: 1.75rem;
-	block-size: 1.75rem;
-	padding: 0;
-	border: none;
-	border-radius: var(--radius-base);
-	background: none;
-	color: var(--text-secondary);
-	cursor: pointer;
-	pointer-events: auto;
-}
-
-.wsp-card__kebab:hover {
-	background: var(--surface-3);
-	color: var(--on-surface);
-}
-
-/* People are circular; the entity mark above is the square. */
-.wsp-card__faces {
-	display: flex;
-	align-items: center;
-	pointer-events: none;
-}
-
-.wsp-card__face {
-	flex: none;
-	border-radius: 50%;
-	box-shadow: 0 0 0 var(--space-px) var(--surface-1);
-}
-
-.wsp-card__face + .wsp-card__face {
-	margin-inline-start: calc(-1 * var(--space-2));
-}
-
-.wsp-card:hover .wsp-card__face {
-	box-shadow: 0 0 0 var(--space-px) var(--surface-2);
-}
-
-.wsp-card__more {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	flex: none;
-	inline-size: var(--wsp-mark-sm);
-	block-size: var(--wsp-mark-sm);
-	margin-inline-start: calc(-1 * var(--space-2));
-	border-radius: 50%;
-	background: var(--surface-3);
-	color: var(--text-secondary);
-	font-size: var(--wsp-fs-micro);
-	font-variant-numeric: tabular-nums;
-	font-weight: var(--fw-semibold);
-	box-shadow: 0 0 0 var(--space-px) var(--surface-1);
-}
-
-.wsp-card__members {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	min-inline-size: 0;
-	pointer-events: none;
-}
-
-.wsp-card__membercount {
-	font-size: var(--wsp-fs-micro);
-	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
-}
-
-/* The three stats. A hairline above, because a stat row on the same tone needs one edge. */
-.wsp-card__stats {
-	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: var(--space-3);
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-1) var(--space-3);
+	margin: 0;
 	padding-block-start: var(--space-3);
 	border-block-start: var(--hairline);
-	/* Every figure in the row — value, delta, and any count in a label — keeps its column. */
 	font-variant-numeric: tabular-nums;
 	pointer-events: none;
 }
 
-.wsp-card__stat {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-px);
-	min-inline-size: 0;
-	font-variant-numeric: tabular-nums;
-}
-
-.wsp-card__stat-label {
-	font-size: var(--wsp-fs-micro);
-	letter-spacing: var(--wsp-label-track);
-	text-transform: uppercase;
+.wsp-card__figure-label {
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
-.wsp-card__stat-value {
+.wsp-card__figure-value {
 	font-size: var(--wsp-fs-body);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 	font-variant-numeric: tabular-nums lining-nums;
 	letter-spacing: var(--wsp-num-track);
 	color: var(--on-surface);
+	white-space: nowrap;
 }
 
-.wsp-card__stat-delta {
-	font-size: var(--wsp-fs-micro);
-	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
-}
-
-.wsp-card__stat-delta[data-dir="up"] {
-	color: var(--success);
-}
-
-/* A downward delta is not a failure — it is a direction. Amber, never red. */
-.wsp-card__stat-delta[data-dir="down"] {
-	color: var(--warning);
-}
-
-.wsp-card__stat-delta[data-dir="flat"] {
-	color: var(--text-secondary);
-}
-
-/* The Draft-First setup nudge. It appears on the card so the unfinished entity is visible from the
-index, and it disappears at 100% — a completed checklist is noise. */
+/* The Draft-First setup meter. It leaves at 100% — a completed checklist is noise. */
 .wsp-card__setup {
 	display: flex;
 	align-items: center;
@@ -544,22 +504,26 @@ index, and it disappears at 100% — a completed checklist is noise. */
 .wsp-card__setup-bar {
 	flex: 1 1 auto;
 	min-inline-size: 0;
-	block-size: var(--wsp-meter-h);
-	border-radius: var(--radius-xs);
-	background: var(--wsp-track-bg);
-	overflow: hidden;
 }
 
 /*
- * The fill's inline-size ENCODES the progress, so it is never transitioned or animated: a frozen
- * animation clock must not be able to render a dishonest zero.
+ * The fill is the card's kind token, not a ProgressBar severity: `--wsp-kind` resolves under the card's
+ * `[data-kind]`, so the meter keeps the team / business tone under every colour-vision overlay
+ * (Decision #251) — the business side is `--tertiary` in every mode (Decision #230 (j)). Doubled class,
+ * so the override never depends on bundle order against the ProgressBar's own severity rule.
  */
-.wsp-card__setup-fill {
-	display: block;
-	block-size: 100%;
-	inline-size: calc(var(--wsp-progress, 0) * 100%);
-	border-radius: inherit;
-	background: var(--wsp-kind);
+.ui-progressbar.wsp-card__setup-bar {
+	--pb-accent: var(--wsp-kind);
+}
+
+/*
+ * The surface's slim meter on the recessed track (the shell's setup nudge thins the stock track the
+ * same way): the stock `--surface-2` track is the tone the card lifts to on hover, where it would
+ * vanish.
+ */
+.wsp-card__setup-bar .ui-progressbar__track {
+	block-size: var(--wsp-meter-h);
+	background: var(--wsp-track-bg);
 }
 
 .wsp-card__setup-text {
@@ -568,7 +532,7 @@ index, and it disappears at 100% — a completed checklist is noise. */
 }
 /* #endregion */
 
-/* #region The compact table view */
+/* #region The table's cells */
 .wsp-rtable .ui-dt__row[data-state="acting"] {
 	--dt-row-bg: var(--wsp-acting-tint);
 }
@@ -588,106 +552,24 @@ index, and it disappears at 100% — a completed checklist is noise. */
 }
 
 .wsp-rtable__name-text {
+	overflow: hidden;
 	font-weight: var(--fw-medium);
 	color: var(--on-surface);
-	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
 .wsp-rtable__sub {
+	overflow: hidden;
 	font-size: var(--wsp-fs-micro);
 	color: var(--text-secondary);
-	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
-
 /* #endregion */
 
-/* #region First-run empty state */
-/*
- * The one place on this surface that sells rather than reports, because a person with no team has no
- * idea what one would do for them. Left-aligned and in the band's rhythm — no centred cartoon, no
- * illustration: the layout the user is about to live in is what teaches the surface's shape.
- */
-.wsp-empty {
-	display: flex;
-	flex-direction: column;
-	align-items: flex-start;
-	gap: var(--space-4);
-	inline-size: 100%;
-	min-inline-size: 0;
-	padding-block: var(--space-6);
-}
-
-.wsp-empty__glyph {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: var(--wsp-mark-lg);
-	block-size: var(--wsp-mark-lg);
-	border-radius: var(--radius-lg);
-	background: var(--wsp-kind-tint);
-	color: var(--wsp-kind-ink);
-}
-
-.wsp-empty__title {
-	margin: 0;
-	font-size: var(--wsp-fs-figure);
-	font-weight: var(--fw-medium);
-	color: var(--on-surface);
-}
-
-.wsp-empty__pitch {
-	margin: 0;
-	max-inline-size: var(--wsp-prose);
-	font-size: var(--wsp-fs-body);
-	line-height: 1.6;
-	color: var(--text-secondary);
-}
-
-.wsp-empty__points {
-	list-style: none;
-	margin: 0;
-	padding: 0;
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
-	max-inline-size: var(--wsp-prose);
-}
-
-.wsp-empty__point {
-	display: flex;
-	align-items: flex-start;
-	gap: var(--space-2);
-	font-size: var(--wsp-fs-body);
-	color: var(--text-secondary);
-}
-
-.wsp-empty__point-glyph {
-	display: inline-flex;
-	flex: none;
-	color: var(--wsp-kind);
-	line-height: 0;
-	padding-block-start: var(--space-px);
-}
-
-.wsp-empty__actions {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	flex-wrap: wrap;
-}
-
-.wsp-empty__hint {
-	margin: 0;
-	max-inline-size: var(--wsp-prose);
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
-}
-
-/* An in-band empty line — a module with nothing in it yet keeps its band. */
+/* #region In-band blank line */
+/* An in-band empty line — a console module with nothing in it yet keeps its band (ProjectList). */
 .wsp-blank {
 	padding-block: var(--space-5);
 }
@@ -860,9 +742,10 @@ index, and it disappears at 100% — a completed checklist is noise. */
 }
 
 /*
- * Held for the screens that still borrow them — the billing, member-drawer and payout forms
- * (`__label`, `__error`) and the invite dialog's mode chooser (`__kind*`). The create dialog uses
- * none of them; each goes when its last borrower moves onto FormControl / SelectButton (C2, C4, BU).
+ * Held for the screens that still borrow them — the billing and payout forms (`__label`, `__error`).
+ * The create dialog uses neither; each goes when its last borrower moves onto FormControl (C4, BU).
+ * The `__kind*` option rules have no borrower since the invite dialog's mode chooser became a
+ * SelectButton (C2); they stay, on the kind token, while `business-hue.gate.test.ts` holds them (BU1).
  */
 .wsp-create__label {
 	font-size: var(--fld-label-fs);
@@ -892,7 +775,8 @@ index, and it disappears at 100% — a completed checklist is noise. */
 
 /*
  * The selected option is marked by its kind's own tint, mixed against the dialog's solid `--surface`,
- * never `transparent` (§B.4.2).
+ * never `transparent` (§B.4.2). The option carries `data-kind`, so the business rule reads the kind
+ * token it re-resolves there — `--tertiary`, never the ring's `--secondary` (Decision #230 (j)).
  */
 .wsp-create__kind[data-on="true"][data-kind="team"] {
 	border-color: var(--primary);
@@ -900,8 +784,8 @@ index, and it disappears at 100% — a completed checklist is noise. */
 }
 
 .wsp-create__kind[data-on="true"][data-kind="business"] {
-	border-color: var(--secondary);
-	background: color-mix(in oklab, var(--secondary) 10%, var(--surface));
+	border-color: var(--wsp-kind);
+	background: color-mix(in oklab, var(--wsp-kind) 10%, var(--surface));
 }
 
 .wsp-create__kind-name {
@@ -923,31 +807,18 @@ index, and it disappears at 100% — a completed checklist is noise. */
 :root[data-motion="reduced"] .wsp-create__kind {
 	transition: none;
 }
-
-.wsp-create__error {
-	margin: 0;
-	font-size: var(--wsp-fs-body);
-	color: var(--danger);
-}
 /* #endregion */
 
 /* #region Responsive */
-@media (max-width: 79.9375rem) {
-	.wsp-grid {
-		--wsp-card-min: 17rem;
-	}
-}
-
 @media (max-width: 47.9375rem) {
-	/* One card per row — expressed as a full-width track FLOOR so the primitive's own formula
-	(`min(--grid-min, 100%)`) resolves it, rather than a competing template. */
-	.wsp-grid {
-		--wsp-card-min: 100%;
+	/* The head stacks: the title over its facts, then the search across the full width. */
+	.wsp-roster__head {
+		align-items: stretch;
+		flex-direction: column;
 	}
 
-	.wsp-roster__head {
-		align-items: flex-start;
-		flex-direction: column;
+	.wsp-roster__search {
+		inline-size: 100%;
 	}
 
 	/* The invitation strip's actions drop below the text rather than squeezing a name to two words. */
@@ -959,23 +830,25 @@ index, and it disappears at 100% — a completed checklist is noise. */
 		grid-column: 1 / -1;
 		justify-content: flex-start;
 	}
-
-	.wsp-card__stats {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-	}
 }
 /* #endregion */
 
 /* #region Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-	.wsp-card,
-	.wsp-rtable__row {
+	.wsp-card {
 		transition: none;
+	}
+
+	.wsp-card:has(> .wsp-card__link:active) {
+		transform: none;
 	}
 }
 
-:root[data-motion="reduced"] .wsp-card,
-:root[data-motion="reduced"] .wsp-rtable__row {
+:root[data-motion="reduced"] .wsp-card {
 	transition: none;
+}
+
+:root[data-motion="reduced"] .wsp-card:has(> .wsp-card__link:active) {
+	transform: none;
 }
 /* #endregion */

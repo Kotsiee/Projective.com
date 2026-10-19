@@ -137,15 +137,24 @@ export function refusalBlocker(
 ): CheckoutBlocker | null {
 	if (error.code === NOT_ACTIVE_SQLSTATE) {
 		if (prefixOf(error.message) !== BUSINESS_NOT_ACTIVE_REASON) return null;
-		return {
-			code: "not_authorised",
-			message: sentenceOf(error.message),
-			itemId: null,
-			gate: "business_not_active",
-		};
+		return businessNotActiveBlocker(sentenceOf(error.message));
 	}
 	const code = BLOCKER_FOR_SQLSTATE[error.code ?? ""] ?? fallback;
 	return code ? orderRefusal(code, error, basketId, ownerType) : null;
+}
+
+/**
+ * A draft or archived business's refusal as a blocker: `not_authorised` with the `business_not_active`
+ * gate, whichever door raised it — the wallet order, or the card top-up a card checkout starts with,
+ * which an archived business refuses before anyone is charged (Decision #248 (k)).
+ */
+export function businessNotActiveBlocker(message: string): CheckoutBlocker {
+	return {
+		code: "not_authorised",
+		message: message.slice(0, 200),
+		itemId: null,
+		gate: "business_not_active",
+	};
 }
 
 /**

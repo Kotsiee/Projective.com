@@ -355,12 +355,17 @@ Deno.test("KYB in review: the map's sentence and See verification, landing on th
 	);
 });
 
-Deno.test("an inactive business is said before KYB; a draft has no link, an archive is the owner's to restore", () => {
+Deno.test("an inactive business is said before KYB; a draft is published from the Overview, an archive is the owner's to restore", () => {
 	const draft = billingGate({ ...GATE, status: "draft", kyb: KYB({ status: "pending" }) });
 	assertEquals(draft, {
 		kind: "draft",
 		sentence: "Atlas Labs isn't active, so it can't buy, hire or pay yet.",
 		action: null,
+	});
+	// A viewer who may publish is sent to the Overview, the business's publish door (Decision #248).
+	assertEquals(billingGate({ ...GATE, status: "draft", canPublish: true })?.action, {
+		label: "Publish from the Overview",
+		href: "/businesses/atlaslabs",
 	});
 	assertEquals(billingGate({ ...GATE, status: "archived" })?.action, {
 		label: "See archived businesses",

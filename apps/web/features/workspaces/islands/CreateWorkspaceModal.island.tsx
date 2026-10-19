@@ -349,7 +349,7 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 								onFocus={handleField.handlers.onFocus}
 								onBlur={handleField.handlers.onBlur}
 								start="@"
-								placeholder="northern-grid"
+								placeholder={copy.handlePlaceholder}
 								maxLength={WORKSPACE_HANDLE_MAX}
 								autoCapitalize="none"
 								spellcheck={false}

@@ -6,8 +6,9 @@
  * from a real one: the submission is a history row from NULL into `backlog`, every operator move after
  * it is another, the author's own vote is cast with the idea, and `vote_count` is left at 0 for
  * `trg_feedback_votes_count` to count the vote rows as they arrive. The idea's text passes through the
- * Decision #147 screen trigger like any other write. The moves carry no actor: no seed persona is a
- * platform operator, and `actor_id` is an audit column with no foreign key.
+ * Decision #147 screen trigger like any other write. Every move after the submission carries the
+ * seeded platform operator as its actor (`rosalindqvist`, the one `ops.admin_users` row), as
+ * `community.set_feedback_idea_status` would stamp it.
  */
 
 import { ago, HEADER, id, insert, q, slugFor, uuidFor } from "./sql.ts";
@@ -35,6 +36,8 @@ export function emitCommunity(world: World): string {
 	const ideaRows: string[][] = [];
 	const eventRows: string[][] = [];
 	const voteRows: string[][] = [];
+	/** The operator who moved the ideas along (the seed's `ops.admin_users` persona). */
+	const operator = [...world.personas.values()].find((p) => p.platformOperator);
 
 	for (const spec of FEEDBACK_IDEAS) {
 		const author = persona(world, spec.author);
@@ -75,7 +78,7 @@ export function emitCommunity(world: World): string {
 				id(ideaId),
 				q(from),
 				q(move.to),
-				"NULL",
+				operator ? id(operator.userId) : "NULL",
 				ago(move.daysAgo),
 			]);
 			from = move.to;

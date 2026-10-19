@@ -7,13 +7,9 @@ import { ConfirmDialog, Toast, Tooltip, useToast } from "@projective/ui/feedback
 import { Button } from "@projective/ui/fields";
 import { absoluteHref, ActionMenu, copyLink, TabMenu } from "@projective/ui/navigation";
 import { BodyPortal } from "@projective/ui/overlay";
-import {
-	kindCopy,
-	workspaceBase,
-	type WorkspaceDetail,
-	type WorkspaceKind,
-} from "@projective/types/workspace";
+import { kindCopy, type WorkspaceDetail, type WorkspaceKind } from "@projective/types/workspace";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
+import { rosterHref } from "../core/roster-model.ts";
 import { moduleFor, type ModuleKey } from "../core/module-registry.tsx";
 import { headerBand, headerMenu, type ModuleCommit } from "../core/header-model.ts";
 import {
@@ -22,7 +18,13 @@ import {
 	subViewIndex,
 	subViewsFor,
 } from "../core/sub-views.ts";
-import { liveDetail, moduleCommit, selectModuleView, viewOr } from "../core/workspace-state.ts";
+import {
+	archiveRefusal,
+	liveDetail,
+	moduleCommit,
+	selectModuleView,
+	viewOr,
+} from "../core/workspace-state.ts";
 import { cloneGlyph, KebabGlyph, ShareGlyph } from "../core/workspace-glyphs.tsx";
 
 /**
@@ -40,7 +42,8 @@ import { cloneGlyph, KebabGlyph, ShareGlyph } from "../core/workspace-glyphs.tsx
  *     `workspace-state`), the tier-4 Share profile, then the kebab (`ActionMenu`) carrying the rest:
  *     View public profile, Open in new tab, Copy handle, the way to leave, and Archive… for an
  *     `archive_entity` holder (on a business, only when the server's `viewerCan.archive` says no
- *     blocker stands in the way), confirmed as a danger before anything changes.
+ *     blocker stands in the way; on a team, while neither the read nor a refusal Settings has had
+ *     since it names one — `archiveRefusal`), confirmed as a danger before anything changes.
  *
  * Right-click, the ContextMenu key and Shift+F10 anywhere on the band open the kebab's rows (Decision
  * #222's `surface`). Every rule above — which regions exist, which actions, how many fill — is
@@ -94,6 +97,8 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 		owner: self?.rolePreset === "owner",
 		capabilities: ws.viewerCapabilities,
 		viewerCanArchive: ws.viewerCan?.archive ?? null,
+		// The read's blockers, or a refusal Settings has had since that read (its re-read may fail).
+		archiveBlocked: ws.archiveBlockers.length > 0 || archiveRefusal.value?.id === ws.id,
 		subViews: views,
 		view,
 		commit: moduleCommit.value,
@@ -156,7 +161,7 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 			notify(res.message ?? `Couldn't archive ${ws.name}. Nothing was changed.`, false);
 			return;
 		}
-		globalThis.location.assign(`${workspaceBase(kind)}?tab=archived`);
+		globalThis.location.assign(rosterHref(kind, "archived"));
 	}
 	// #endregion
 

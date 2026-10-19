@@ -280,6 +280,16 @@
 				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13214'; deno task dev --port 13214 --strictPort"
 			],
 			"port": 13214
+		},
+		{
+			"name": "web-landing",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"Set-Location \"C:/Users/Ahmed/Documents/0_Websites/Projective/.claude/worktrees/landing-track\"; $line = Get-Content .env | Select-String \"^SUPABASE_SERVICE_ROLE_KEY=\"; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split(\"=\", 2)[1].Trim([char]34) }; $env:PORT = \"13310\"; deno task dev --port 13310 --strictPort"
+			],
+			"port": 13310
 		}
 	]
 }

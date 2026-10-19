@@ -87,11 +87,21 @@ export function stubApplicationStatus(
 	return "pending";
 }
 
-/** This viewer's stub applications, newest first, optionally narrowed to one project. */
-export function listStubApplications(actor: ReadActor, projectId?: string): StubApplication[] {
+/**
+ * This viewer's stub applications, newest first, optionally narrowed to one project and to the ones
+ * filed for one team.
+ */
+export function listStubApplications(
+	actor: ReadActor,
+	projectId?: string,
+	teamId?: string,
+): StubApplication[] {
 	const owner = actor.userId || "anonymous";
 	return applications
-		.filter((a) => a.owner === owner && (!projectId || a.projectId === projectId))
+		.filter((a) =>
+			a.owner === owner && (!projectId || a.projectId === projectId) &&
+			(!teamId || a.teamId === teamId)
+		)
 		.reverse();
 }
 

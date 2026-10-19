@@ -114,3 +114,45 @@ Deno.test("globalNav — acting as a business shows Businesses and no seller sur
 	assertEquals(keys.includes("teams"), false);
 });
 // #endregion
+
+// #region Every entry leads somewhere real (Decision #296 (C), UI gate 11)
+const hrefOf = (ctx: UserContext, key: string, path = "/home"): string | undefined =>
+	globalNav(path, ctx).find((i) => i.key === key)?.href;
+
+Deno.test("globalNav — Analytics leads to the acting context's real analytics view, never /analytics", () => {
+	assertEquals(hrefOf(freelancer, "analytics"), "/catalogue?view=analytics");
+	assertEquals(
+		hrefOf({ ...freelancer, contextType: "team", handle: "northwind" }, "analytics"),
+		"/teams/northwind/analytics",
+	);
+	assertEquals(
+		hrefOf({ ...client, contextType: "business", handle: "atlaslabs" }, "analytics"),
+		"/businesses/atlaslabs/analytics",
+	);
+	// A client who only belongs to a team has no analytics of their own: the entry is withheld.
+	assertEquals(hrefOf({ ...client, belongsToTeam: true }, "analytics"), undefined);
+	// A minor never reaches the catalogue, so a query-string link into it is withheld too.
+	assertEquals(hrefOf({ ...freelancer, restricted: true }, "analytics"), undefined);
+	for (const ctx of [freelancer, client, { ...client, belongsToTeam: true }]) {
+		assertEquals(globalNav("/home", ctx).some((i) => i.href === "/analytics"), false);
+	}
+	const lit = (path: string) =>
+		globalNav(path, { ...freelancer, contextType: "team", handle: "northwind" })
+			.find((i) => i.key === "analytics")?.active;
+	assertEquals(lit("/teams/northwind/analytics"), true);
+	assertEquals(lit("/teams/northwind"), false);
+});
+
+Deno.test("globalNav — no fixture disclosures: Projects and Catalogue are plain links", () => {
+	for (const ctx of [freelancer, client]) {
+		for (const item of globalNav("/home", ctx)) {
+			if (item.key === "projects" || item.key === "catalogue") {
+				assertEquals(item.children, undefined, item.key);
+			}
+			for (const sub of item.children ?? []) {
+				assertEquals(sub.avatar, undefined, "no hot-linked owner avatars");
+			}
+		}
+	}
+});
+// #endregion

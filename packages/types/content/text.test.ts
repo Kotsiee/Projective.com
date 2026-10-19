@@ -1,17 +1,31 @@
 /**
  * Plain-text projections and display dates — what a meta description, an FAQPage answer and a
- * reading-time estimate are built from.
+ * reading-time estimate are built from — and the storable-text rule free-text writes refine with.
  */
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertFalse } from "@std/assert";
 import {
 	docText,
 	formatContentDate,
 	inlineText,
+	isStorableText,
 	nodesText,
 	readingMinutes,
 	wordCount,
 } from "./mod.ts";
 import { SAMPLE_DOC } from "./fixtures.ts";
+
+Deno.test("isStorableText: tab, newlines and real surrogate pairs pass; NUL, C0 and lone halves do not", () => {
+	assert(isStorableText(""));
+	assert(isStorableText("Line one\r\nline two\tindented — café 🎉"));
+	assertFalse(isStorableText("nul\u0000byte"), "Postgres refuses NUL in text and jsonb (22P05)");
+	assertFalse(isStorableText("bell\u0007"));
+	assertFalse(isStorableText("escape\u001b[0m"));
+	assertFalse(isStorableText("lone high \ud800 surrogate"), "PostgREST refuses it (PGRST102)");
+	assertFalse(isStorableText("trailing high \ud83c"));
+	assertFalse(isStorableText("lone low \udc00 surrogate"));
+	assertFalse(isStorableText("reversed \udf89\ud83c pair"));
+	assert(isStorableText("\u007f is DEL, which Postgres stores"));
+});
 
 Deno.test("inline runs join without inventing spaces", () => {
 	assertEquals(

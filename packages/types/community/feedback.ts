@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { slugPattern } from "../slugs/slug.ts";
 import { timestamp, uuid } from "./common.ts";
+import { isStorableText, UNSTORABLE_TEXT_MESSAGE } from "../content/text.ts";
 import {
 	FEEDBACK_SORTS,
 	FEEDBACK_STATUS_FILTERS,
@@ -319,16 +320,22 @@ export const FeedbackIdeaDetailSchema = z.object({
 });
 export type FeedbackIdeaDetail = z.infer<typeof FeedbackIdeaDetailSchema>;
 
-/** `POST /api/feedback/ideas` body. */
+/**
+ * `POST /api/feedback/ideas` body. Every free-text field holds only storable text
+ * ({@link isStorableText}), so a NUL or a lone surrogate is a 422 field error, never a 503.
+ */
 export const FeedbackIdeaCreateSchema = z.object({
 	title: z.string().trim()
 		.min(FEEDBACK_TITLE_MIN, `Give the idea a title of at least ${FEEDBACK_TITLE_MIN} characters.`)
-		.max(FEEDBACK_TITLE_MAX, `Keep the title to ${FEEDBACK_TITLE_MAX} characters.`),
+		.max(FEEDBACK_TITLE_MAX, `Keep the title to ${FEEDBACK_TITLE_MAX} characters.`)
+		.refine(isStorableText, UNSTORABLE_TEXT_MESSAGE),
 	category: FeedbackCategorySchema,
 	impact: z.string().trim()
 		.min(FEEDBACK_IMPACT_MIN, "Say what problem this solves, in a sentence or two.")
-		.max(FEEDBACK_IMPACT_MAX, `Keep this to ${FEEDBACK_IMPACT_MAX} characters.`),
+		.max(FEEDBACK_IMPACT_MAX, `Keep this to ${FEEDBACK_IMPACT_MAX} characters.`)
+		.refine(isStorableText, UNSTORABLE_TEXT_MESSAGE),
 	body: z.string().trim().max(FEEDBACK_BODY_MAX, `Keep the details under 4,000 characters.`)
+		.refine(isStorableText, UNSTORABLE_TEXT_MESSAGE)
 		.optional(),
 });
 export type FeedbackIdeaCreate = z.infer<typeof FeedbackIdeaCreateSchema>;
@@ -343,9 +350,11 @@ export type FeedbackVoteResult = z.infer<typeof FeedbackVoteResultSchema>;
 /** `POST /api/feedback/ideas/[id]/status` body — an operator's move, and the response if any. */
 export const FeedbackModerationSchema = z.object({
 	status: FeedbackIdeaStateSchema.optional(),
-	note: z.string().trim().max(FEEDBACK_NOTE_MAX).optional(),
+	note: z.string().trim().max(FEEDBACK_NOTE_MAX).refine(isStorableText, UNSTORABLE_TEXT_MESSAGE)
+		.optional(),
 	/** The team's response; an empty string clears it. Omitted, it is left as it is. */
-	response: z.string().trim().max(FEEDBACK_RESPONSE_MAX).optional(),
+	response: z.string().trim().max(FEEDBACK_RESPONSE_MAX)
+		.refine(isStorableText, UNSTORABLE_TEXT_MESSAGE).optional(),
 }).refine((v) => v.status !== undefined || v.response !== undefined, {
 	message: "Change the status, the response, or both.",
 });

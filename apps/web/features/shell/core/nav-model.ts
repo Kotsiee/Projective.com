@@ -1,7 +1,7 @@
 import type { UserContext } from "@projective/types/auth";
 import { PERSONAL_MEMBER_CONTEXT } from "@projective/types/auth";
 import type { IconName } from "./nav-icon-names.ts";
-import { getOfferings, getRecentWorkspaces } from "./nav-fixtures.ts";
+import { consoleHref } from "@projective/types/catalogue";
 import { accountFacts, canCreateBusiness } from "./account-facts.ts";
 import { isExploreSurface } from "./explore-surface.ts";
 import { canUseTeams, isRestrictedPath } from "./restricted-surfaces.ts";
@@ -18,7 +18,7 @@ import { canUseTeams, isRestrictedPath } from "./restricted-surfaces.ts";
  */
 
 // #region Types
-/** A nested disclosure row (recent workspace or Dashboard quick-link). */
+/** A nested disclosure row (the acting team or business). */
 export interface NavSublink {
 	label: string;
 	href: string;
@@ -52,12 +52,17 @@ function isActive(path: string, base: string): boolean {
 	return path === base || path.startsWith(`${base}/`);
 }
 
+/** The path of an in-app href, without its query or fragment. */
+function pathOf(href: string): string {
+	return href.split(/[?#]/, 1)[0];
+}
+
 /**
  * The global navigation roster for a given pathname, tailored to the hydrated {@link UserContext} +
  * the account's standing {@link accountFacts}. Kind-strict disclosures expose the
- * most-recently-active workspaces of exactly one entity kind (Projects → projects, Teams → teams,
- * Businesses → businesses) and the seller's offerings (Products & Services → services/products),
- * pulled from `nav-fixtures`.
+ * entity the session is acting as (Teams → the acting team, Businesses → the acting business). The
+ * Projects and Catalogue entries carry no disclosure until the viewer's own recent projects and
+ * listings have a read — never fixture rows that are not the viewer's and do not resolve.
  *
  * Role/context tailoring (chrome only — never an access decision; the server re-checks under RLS):
  *  - **Files** → everyone, ungated. An asset hub is not a side of the market.
@@ -115,25 +120,20 @@ export function globalNav(
 		}];
 	};
 
-	/** Map recent projects into the Projects disclosure's sublinks (owner-avatar led). */
-	const workspaceSublinks = (): NavSublink[] =>
-		getRecentWorkspaces().map((w): NavSublink => ({
-			label: w.label,
-			href: w.href,
-			avatar: w.ownerAvatar,
-			owner: w.owner,
-			active: isActive(path, w.href),
-			dot: w.hasUpdate,
-		}));
-
-	/** The seller's products & services, as offering-glyph-led sublinks. */
-	const offeringSublinks = (): NavSublink[] =>
-		getOfferings().map((o): NavSublink => ({
-			label: o.label,
-			href: o.href,
-			icon: o.kind === "product" ? "product" : "services",
-			active: isActive(path, o.href),
-		}));
+	/**
+	 * Where Analytics leads for the acting context — only ever a route that exists: the acting team's
+	 * or business's own Analytics module, or a personal seller's catalogue analytics view. `null` for a
+	 * context with neither (a client who only belongs to an organisation reads that organisation's
+	 * analytics from its console), so the entry is withheld rather than left dead (UI gate 11).
+	 */
+	const analyticsHref = (): string | null => {
+		if ((isTeamCtx || isBusinessCtx) && context.handle) {
+			return `${isTeamCtx ? "/teams" : "/businesses"}/${context.handle}/analytics`;
+		}
+		if (isFreelancer && !isBusinessCtx) return consoleHref({ view: "analytics" });
+		return null;
+	};
+	const analytics = showAnalytics ? analyticsHref() : null;
 
 	const items: Array<NavModelItem | null> = [
 		{ key: "home", label: "Home", href: "/home", icon: "home", active: isActive(path, "/home") },
@@ -172,7 +172,8 @@ export function globalNav(
 			href: "/projects",
 			icon: "briefcase",
 			active: isActive(path, "/projects"),
-			children: workspaceSublinks(),
+			// No disclosure until the viewer's own recent projects have a read: a fixture list here
+			// showed every user the same two projects that do not exist.
 		},
 		// Calendar — the acting account's own agenda. UNGATED for the same reason Files is:
 		// everyone has a week, whichever side of the market they are on, so this destination carries no
@@ -207,7 +208,7 @@ export function globalNav(
 				href: "/catalogue",
 				icon: "services",
 				active: isActive(path, "/catalogue"),
-				children: offeringSublinks(),
+				// No disclosure until the seller's own listings have a read (see Projects above).
 			}
 			: null,
 		// Teams — the freelancer persona outside operator mode, or a team context; disclosure is STRICTLY
@@ -235,14 +236,15 @@ export function globalNav(
 				children: actingSublinks("business"),
 			}
 			: null,
-		// Analytics — replaces the generic Dashboard; gated to sellers / entity members.
-		showAnalytics
+		// Analytics — replaces the generic Dashboard; gated to sellers / entity members, and led to the
+		// acting context's real analytics view (there is no `/analytics` page).
+		analytics
 			? {
 				key: "analytics",
 				label: "Analytics",
-				href: "/analytics",
+				href: analytics,
 				icon: "analytics",
-				active: isActive(path, "/analytics"),
+				active: isActive(path, pathOf(analytics)) && pathOf(analytics) !== "/catalogue",
 			}
 			: null,
 		// NO Basket entry. The basket has exactly ONE control on the chrome and it is the header's,
@@ -259,8 +261,9 @@ export function globalNav(
 		},
 	];
 
-	// A restricted (13–17) account sees no money, selling or workspace surface (Decision #192).
+	// A restricted (13–17) account sees no money, selling or workspace surface (Decision #192). The
+	// check reads each entry's PATH, so a query-string deep link into a restricted surface is withheld.
 	return items.filter((item): item is NavModelItem =>
-		item !== null && !(context.restricted && isRestrictedPath(item.href))
+		item !== null && !(context.restricted && isRestrictedPath(pathOf(item.href)))
 	);
 }

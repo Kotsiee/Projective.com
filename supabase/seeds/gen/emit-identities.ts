@@ -14,7 +14,7 @@ export function emitIdentities(world: World): string {
 	const out: string[] = [
 		HEADER(
 			"01_identities.sql — auth accounts, public profiles and freelancer profiles",
-			`Seventeen development personas (see gen/world.ts). Every account signs in with the password '${DEV_PASSWORD}' at <username>@projective.dev. Triggers stay ENABLED: public.handle_new_user is a no-op without username/dob metadata, and the users_public triggers are what seed each person's preference rows and search index.`,
+			`Eighteen development personas (see gen/world.ts), one of them the platform operator. Every account signs in with the password '${DEV_PASSWORD}' at <username>@projective.dev. Triggers stay ENABLED: public.handle_new_user is a no-op without username/dob metadata, and the users_public triggers are what seed each person's preference rows and search index.`,
 		),
 	];
 
@@ -172,6 +172,21 @@ export function emitIdentities(world: World): string {
 					ago(Math.min(p.joinedDaysAgo, 2)),
 				];
 			}),
+			"(user_id)",
+		),
+	);
+
+	// The platform operator(s) — `security.is_admin()` reads `ops.admin_users`. Written right after the
+	// account so every later file can rely on it (contact.received fans out to these rows).
+	out.push(
+		insert(
+			"ops.admin_users",
+			["user_id", "role", "created_at"],
+			personas.filter((p) => p.platformOperator).map((p) => [
+				id(p.userId),
+				"'admin'",
+				ago(p.joinedDaysAgo),
+			]),
 			"(user_id)",
 		),
 	);

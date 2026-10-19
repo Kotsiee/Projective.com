@@ -14,15 +14,23 @@ export type { PermissionMatrixGlyphs, PermissionMatrixProps } from "./Permission
  *
  * The state is carried by an opaque tint AND a consumer-supplied glyph, so it survives the
  * colour-blind overlays. The header row and the capability column stay pinned while the grid
- * scrolls inside a `ScrollArea` on narrow widths; bound the root's block size (via `class`) for
- * the header to pin vertically too.
+ * scrolls inside a `ScrollArea` on narrow widths; give the root a definite block size (via `class`)
+ * for the header to pin vertically too. Role columns widen to seat a header control when
+ * `columnActions` is passed, and the capability column narrows when the matrix itself is narrower
+ * than `--bp-sm` (a container query on the root, never the viewport).
  *
  * Interactive — mount it inside an island. DESIGN_SYSTEM.md §B.13, §C.1.
  */
 export function PermissionMatrix(props: PermissionMatrixProps): JSX.Element {
 	const { class: className, ...rest } = props;
 	return (
-		<div class={cx("ui-permission-matrix", className)}>
+		<div
+			class={cx(
+				"ui-permission-matrix",
+				props.columnActions && "ui-permission-matrix--actions",
+				className,
+			)}
+		>
 			<ScrollArea
 				orientation="both"
 				type="auto"

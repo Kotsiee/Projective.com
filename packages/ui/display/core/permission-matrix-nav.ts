@@ -37,10 +37,19 @@ export interface PermissionMatrixColumn {
 	key: string;
 	/** The role's name; the column header and the second part of every cell's name. */
 	label: string;
-	/** One meta line under the label (e.g. "3 members"). */
-	meta?: string;
+	/**
+	 * The meta under the label: one line (e.g. "3 members"), or one line per entry. Every column's
+	 * first line shares a top across the header row, so lead with the fact every column has (a count)
+	 * and give a longer fact a line of its own rather than letting it break mid-phrase.
+	 */
+	meta?: string | readonly string[];
 	/** Every cell in a locked column is readable but never toggles (e.g. Owner). */
 	locked?: boolean;
+	/**
+	 * Why this locked column's cells cannot change — describes each of them in place of the matrix's
+	 * `lockedHint`, so two kinds of locked column can each give their own reason.
+	 */
+	lockedHint?: string;
 }
 
 /** A cell position: capability row × role column. */
@@ -105,15 +114,52 @@ export function cellPressed(state: PermissionCellState): "true" | "false" | "mix
 
 // #region Toggle rule
 /**
- * Whether a cell may toggle. A locked state, a locked column, or a read-only matrix (no `onToggle`)
- * each refuse; all three still take focus so the cell can be read.
+ * Whether a cell may toggle. A locked state, a locked column, a read-only matrix (no `onToggle`), or
+ * a cell the consumer fixed with a reason (`fixedReason`, from `cellLock`) each refuse; all four
+ * still take focus so the cell can be read.
  */
 export function cellToggleable(
 	state: PermissionCellState,
 	column: Pick<PermissionMatrixColumn, "locked">,
 	interactive: boolean,
+	fixedReason?: string | null,
 ): boolean {
-	return interactive && state !== "locked" && column.locked !== true;
+	return interactive && state !== "locked" && column.locked !== true && !fixedReason;
+}
+
+/**
+ * Why a cell cannot change, or `null` when it can (or the matrix is read-only and the cell is not
+ * locked): the consumer's per-cell reason first, then — for a `locked` state or a `locked` column —
+ * the column's own `lockedHint`, then the matrix-wide `fallback`. A cell fixed by `fixedReason`
+ * keeps the state it draws; only its toggle is withheld.
+ */
+export function cellLockReason(
+	state: PermissionCellState,
+	column: Pick<PermissionMatrixColumn, "locked" | "lockedHint">,
+	fixedReason: string | null | undefined,
+	fallback: string,
+): string | null {
+	if (fixedReason) return fixedReason;
+	if (state === "locked" || column.locked === true) return column.lockedHint || fallback;
+	return null;
+}
+
+/**
+ * One element id per distinct lock reason, so every locked cell is described by the sentence that
+ * applies to it without repeating the sentence per cell. The matrix-wide `fallback` always holds
+ * `baseId` (it is rendered whether or not a cell uses it); every other reason, in first-seen order,
+ * takes `<baseId>-<n>` from 1.
+ */
+export function lockReasonIds(
+	reasons: Iterable<string | null>,
+	fallback: string,
+	baseId: string,
+): Map<string, string> {
+	const ids = new Map<string, string>([[fallback, baseId]]);
+	for (const reason of reasons) {
+		if (reason && !ids.has(reason)) ids.set(reason, `${baseId}-${ids.size}`);
+	}
+	return ids;
 }
 // #endregion
 

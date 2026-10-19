@@ -86,6 +86,7 @@ Deno.test("/articles/[slug] renders a visible article; the call to action follow
 		state,
 	);
 	assertEquals(res.status, 200);
+	assertEquals(res.data?.kind, "article");
 	assertEquals(res.data?.signedIn, true);
 	assertEquals(state.meta?.canonical, "https://projective.test/articles/no-hold-no-work");
 	assertEquals(state.meta?.og.type, "article");
@@ -98,24 +99,39 @@ Deno.test("/articles/[slug]: the wrong case 308s to the stored spelling, query k
 	);
 });
 
-Deno.test("/articles/[slug]: a malformed or unknown slug is a 404, read or not", async () => {
+Deno.test("/articles/[slug]: a malformed or unknown slug is an in-frame 404 notice, read or not", async () => {
 	for (const slug of ["new", "not_a_slug", "nothing-here"]) {
-		const err = await assertRejects(
-			() => call(readerHandler, `/articles/${slug}`, { slug }),
-			HttpError,
-		);
-		assertEquals(err.status, 404, slug);
+		const state: State = {};
+		const res = await call(readerHandler, `/articles/${slug}`, { slug }, state);
+		assertEquals(res.status, 404, slug);
+		assertEquals(res.data, { kind: "missing" }, slug);
+		assertEquals(state.meta?.robots, "noindex, follow", slug);
+		assertEquals(state.meta?.canonical, "https://projective.test/articles");
 	}
 	const read = stub(EditorialArticlesBackendService, "article");
 	try {
-		const err = await assertRejects(
-			() => call(readerHandler, "/articles/not_a_slug", { slug: "not_a_slug" }),
-			HttpError,
-		);
-		assertEquals(err.status, 404);
+		const res = await call(readerHandler, "/articles/not_a_slug", { slug: "not_a_slug" });
+		assertEquals(res.status, 404);
 		assertEquals(read.calls.length, 0, "a malformed slug is never read");
 	} finally {
 		read.restore();
+	}
+});
+
+Deno.test("/articles/[slug]: an unreachable store is still the error page's 503", async () => {
+	const down = stub(
+		EditorialArticlesBackendService,
+		"article",
+		() => Promise.resolve(fail(503, { message: "Unavailable." })),
+	);
+	try {
+		const err = await assertRejects(
+			() => call(readerHandler, "/articles/no-hold-no-work", { slug: "no-hold-no-work" }),
+			HttpError,
+		);
+		assertEquals(err.status, 503);
+	} finally {
+		down.restore();
 	}
 });
 
@@ -130,11 +146,9 @@ Deno.test("/articles/[slug]: a renamed article's former slug 308s to it, query k
 			await call(readerHandler, "/articles/old-name?ref=mail", { slug: "old-name" }),
 			{ status: 308, location: "/articles/new-name?ref=mail" },
 		);
-		const err = await assertRejects(
-			() => call(readerHandler, "/articles/nothing-here", { slug: "nothing-here" }),
-			HttpError,
-		);
-		assertEquals(err.status, 404);
+		const missing = await call(readerHandler, "/articles/nothing-here", { slug: "nothing-here" });
+		assertEquals(missing.status, 404);
+		assertEquals(missing.data, { kind: "missing" });
 		// A visible article is served as itself; its slug is never looked up as a former one.
 		const before = moved.calls.length;
 		assertEquals(

@@ -1,23 +1,27 @@
-import type {
-	ArchiveRoleInput,
-	CreateWorkspaceInput,
-	InviteActionInput,
-	InviteMemberInput,
-	RespondInviteInput,
-	SplitRuleInput,
-	TransferOwnershipInput,
-	UpdateMemberInput,
-	UpdatePayoutInput,
-	UpdateSpendInput,
-	UpdateWorkspaceInput,
-	UpsertRoleInput,
-	WorkspaceDetail,
-	WorkspaceKind,
+import {
+	type ArchiveRoleInput,
+	type CreateWorkspaceInput,
+	type InviteActionInput,
+	type InviteMemberInput,
+	type RespondInviteInput,
+	RESTORE_TARGET_REASON,
+	RestoreTarget,
+	type SplitRuleInput,
+	type TeamArchiveBlockerCode,
+	type TransferOwnershipInput,
+	type UpdateMemberInput,
+	type UpdatePayoutInput,
+	type UpdateSpendInput,
+	type UpdateWorkspaceInput,
+	type UpsertRoleInput,
+	type WorkspaceDetail,
+	type WorkspaceKind,
 } from "@projective/types/workspace";
 import { type EntitlementKey, PLAN_GATE_REASON } from "@projective/types/finance";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import {
 	badId,
+	blockersFromDetail,
 	callRpc,
 	clientFor,
 	type DbError,
@@ -123,10 +127,68 @@ export async function createWorkspace(
 	});
 }
 
+/** A team archive refusal's sentence → its blocker code, for a refusal that carries no DETAIL. */
+const TEAM_ARCHIVE_SENTENCES: readonly [RegExp, TeamArchiveBlockerCode][] = [
+	[/held in escrow/i, "escrow_held"],
+	[/assigned to live work/i, "live_assignments"],
+];
+
+/** The `{ target }` a `restore_target:` refusal's DETAIL names, or `null`. */
+function restoreTargetFromDetail(detail: string | null | undefined): RestoreTarget | null {
+	if (!detail) return null;
+	try {
+		const parsed = RestoreTarget.safeParse((JSON.parse(detail) as { target?: unknown })?.target);
+		return parsed.success ? parsed.data : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Map `org.set_workspace_status`'s refusal onto the result Settings reads. Two are named more precisely
+ * than {@link refusalFrom} can, because only this door raises them:
+ *
+ *   - A TEAM's archive blockers — `55000 status: money is held in escrow …` / `… still assigned to live
+ *     work …` — become a 409 whose `details` are `{ reason, blockers }`, `reason` the first blocker's
+ *     code (`escrow_held` · `live_assignments`) and `blockers` every code, comma-joined, from the
+ *     refusal's DETAIL (or, from an older database without one, the sentence). A business's coded
+ *     refusal already reaches the same shape through {@link refusalFrom}.
+ *   - `22023 restore_target: …` — a restore that named the target the server did not decide — becomes a
+ *     409 with `details { reason: "restore_target", target }`.
+ */
+export function statusRefusal(error: DbError): ServiceResult<never> {
+	const parts = splitRefusal(error.message ?? "");
+	if (error.code === "55000" && parts?.field === "status") {
+		const fromDetail = blockersFromDetail(error.details).map((b) => b.code);
+		const codes = fromDetail.length > 0
+			? fromDetail
+			: TEAM_ARCHIVE_SENTENCES.filter(([pattern]) => pattern.test(parts.reason)).map(([, code]) =>
+				code
+			);
+		if (codes.length > 0) {
+			return fail(409, {
+				message: sentence(parts.reason),
+				details: { reason: codes[0], blockers: codes.join(",") },
+			});
+		}
+	}
+	if (error.code === "22023" && parts?.field === RESTORE_TARGET_REASON) {
+		const target = restoreTargetFromDetail(error.details);
+		return fail(409, {
+			message: sentence(parts.reason),
+			details: target
+				? { reason: RESTORE_TARGET_REASON, target }
+				: { reason: RESTORE_TARGET_REASON },
+		});
+	}
+	return refusalFrom(error, "set_workspace_status");
+}
+
 /**
  * Patch identity (name · tagline · directory visibility) and/or lifecycle status, then answer with the
- * fresh detail. A refused archive is a 409 whose `details` name the blocker (`{ reason, blockers }`, see
- * `refusalFrom`), so Settings can say what to clear.
+ * fresh detail. A refused archive is a 409 whose `details` name the blockers (`{ reason, blockers }`,
+ * {@link statusRefusal} for a team, `refusalFrom` for a business), so Settings can say what to clear;
+ * `status: "restore"` lands where the server decides (`org.fn_workspace_restore_target`).
  */
 export async function updateWorkspace(
 	input: UpdateWorkspaceInput,
@@ -150,7 +212,7 @@ export async function updateWorkspace(
 			p_kind: input.kind,
 			p_id: input.id,
 			p_status: input.status,
-		});
+		}, statusRefusal);
 		if (!res.ok) {
 			// The identity half may already have landed; the refusal is still the answer, but the next
 			// read in this request must not serve the pre-write projection.

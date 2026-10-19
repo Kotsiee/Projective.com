@@ -119,8 +119,11 @@ BEGIN
       FROM projects.projects p JOIN projects.project_stages s ON s.project_id = p.id
      WHERE p.owner_user_id IS NOT NULL
      ORDER BY p.id, s.id LIMIT 1;
-    SELECT u.user_id INTO v_a FROM org.users_public u WHERE u.user_id <> v_host ORDER BY u.user_id LIMIT 1;
-    SELECT u.user_id INTO v_c FROM org.users_public u WHERE u.user_id NOT IN (v_host, v_a) ORDER BY u.user_id LIMIT 1;
+    -- The parties are never operators (the seed carries one, rosalindqvist); the probe makes its own.
+    SELECT u.user_id INTO v_a FROM org.users_public u WHERE u.user_id <> v_host
+       AND NOT EXISTS (SELECT 1 FROM ops.admin_users au WHERE au.user_id = u.user_id) ORDER BY u.user_id LIMIT 1;
+    SELECT u.user_id INTO v_c FROM org.users_public u WHERE u.user_id NOT IN (v_host, v_a)
+       AND NOT EXISTS (SELECT 1 FROM ops.admin_users au WHERE au.user_id = u.user_id) ORDER BY u.user_id LIMIT 1;
     SELECT u.user_id INTO v_op FROM org.users_public u WHERE u.user_id NOT IN (v_host, v_a, v_c)
        AND NOT EXISTS (SELECT 1 FROM org.team_members tm WHERE tm.user_id = u.user_id) ORDER BY u.user_id LIMIT 1;
     IF v_op IS NULL THEN

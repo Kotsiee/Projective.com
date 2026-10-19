@@ -56,18 +56,26 @@ function StepAction(
 			);
 	}
 	if (action.kind === "publish") {
+		const label = props.publishing ? "Publishing…" : action.label;
+		// Publish is a tier-3 commit wherever it renders: the band's fill as the step at hand; a
+		// business's Publish beside earlier open steps keeps the primary severity, `outlined` — the
+		// weight table's real alternative, never a second fill and never a utility (Decision #248).
 		return (
 			<Button
+				variant={action.filled ? "filled" : "outlined"}
 				size="sm"
-				label={props.publishing ? "Publishing…" : action.label}
+				label={label}
 				loading={props.publishing}
 				onClick={props.onPublish}
 			/>
 		);
 	}
 	// A destination is an anchor, wearing the Button tier it was given (`wsp-hero__link` drops the
-	// link underline no Button draws).
-	const tone = action.filled
+	// link underline no Button draws): tier 1 the amber accent that starts a financial flow (a
+	// business's Add money), tier 3 the primary fill, tier 4 the neutral outlined utility.
+	const tone = action.tier === 1
+		? "ui-button--accent ui-button--filled ui-button--rounded"
+		: action.filled
 		? "ui-button--primary ui-button--filled"
 		: "ui-button--neutral ui-button--outlined";
 	return (

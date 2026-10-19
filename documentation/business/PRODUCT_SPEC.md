@@ -198,7 +198,12 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   same five steps.
 - **Automated Payment Splitting:** Payments are distributed at the moment of Escrow release. If a
   Stage payout is $1,000, Projective automatically routes percentages to individual member wallets
-  based on predefined **Contribution Agreements**.
+  based on predefined **Contribution Agreements**. A Team chooses its **split template** (Co-op ·
+  Finder's fee · Benevolent dictator) and sets its members' stakes on its Payouts module. A member
+  who may manage the Team's finances can write the template; which templates a plan unlocks is data;
+  rounding dust always stays with the Team Vault. The rules and figures are in
+  [`finance-model.md` §5](finance-model.md#5-team-payouts-per-stage-smart-splits) (Decisions
+  #228 (F), #234).
 - **Unified Identity:** Teams can create "Services" (Sessions) and bid on "Projects" as a single
   entity, building a collective reputation and portfolio.
 - **The public page:** a Team's storefront is its `/@handle` — showcase, services, the public
@@ -208,20 +213,35 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   **invite-only** the page is missing to everyone outside it — worded exactly as an unknown handle —
   and its members see it with a note saying why ("Only members can see this until the team is
   published", and for a Team created invite-only, "…and no longer invite-only"); a member who may
-  open the Team's Settings also gets a link to them there once Settings can publish the Team and
-  change its visibility (Teams C6) — until then the note stands alone, as a business's does. A Team
-  is created draft and invite-only (Teams P1).
+  open the Team's Settings also gets a link to them there (a business's note still stands alone). A
+  Team is created draft and invite-only (Teams P1).
+- **Settings and the lifecycle:** a Team's Settings (`/teams/:teamHandle/settings`, for members who
+  may change its settings) holds its display name (editable by whoever may edit the profile; the
+  `@handle` never changes), its visibility (public · unlisted · invite only), and its lifecycle. A
+  draft is **published** from there by anyone who may change its settings — which lists it as its
+  visibility allows and lets it apply once it has two active members; a published Team never returns
+  to draft. **Archiving** (the owner, or whoever holds the archive right) is refused while money is
+  held in escrow for the Team's work or while it is still assigned to live work, and Settings names
+  each of those before anybody presses Archive, with a link to where it is cleared (the wallet, or
+  the Projects module) — never an Archive button that would fail. **Restoring** an archived Team
+  brings it back **active if it was ever published, otherwise as a draft** (Decision #250 (c)); the
+  platform decides which, from the Team's own history, and the Restore control says which it will
+  be. A Business restores by the same rule (#236 (d)) (Teams C6).
 
 ##### Role-Based Access Control (RBAC)
 
-To maintain security and operational integrity, Team members are assigned specific roles that
-dictate their "Action Permissions" across the monorepo.
-
-| Role             | Actions                                                                                 |
-| :--------------- | :-------------------------------------------------------------------------------------- |
-| **Lead / Admin** | Create Services, Manage Financial Splits, Invite/Remove Members, Finalize Submissions.  |
-| **Member**       | Join Projects, Claim Stage Tickets, Manage Boards, Communicate with Clients.            |
-| **Contributor**  | View Project Details, Post Internal Comments, Upload Drafts (Requires Member Approval). |
+A Team member's authority is a **role** plus per-member overrides, resolved to workspace
+**capabilities** (the role's, plus what was granted, minus what was revoked), and every team write is
+checked against a capability, never against a role's name. The preset roles are **Owner · Admin ·
+Lead · Member**. What each preset holds, how they rank, and which capabilities a Team can hold at all
+are the database's, in
+[`database/org/Functions.md` §6](../database/org/Functions.md#6--the-permission-engines-sql-twin)
+(Decisions #228, #250). A Team adds **custom roles** on top of a preset. The role editor offers
+ready-made **role templates**, kept as data; the first is **Contributor**, a one-click custom role
+based on Member (Decision #250 (a)). Today it carries the team Member preset's capabilities under
+its own name and summary; whether it should add a grant is open (Decision #264 FLAG (a)).
+Contributor is a template, not a fifth preset. Who may use the Teams workspace at all is the
+freelancer-only rule above (Decision #228 (A)).
 
 ##### Resource Allocation Logic
 
@@ -721,7 +741,25 @@ team members.
 - **Draft-First Creation:** Creating a Business is low-friction — the owner supplies only a display
   **Name** and a unique alphanumeric **`@handle`**. The Business is created instantly in a
   **Draft/Unverified** state; legal name, logo, billing details, member roles, and financial setup
-  are completed afterwards on the Business settings page.
+  are completed afterwards on the Business settings page. The console's **Overview** walks the setup
+  in order (Decision #248): **Invite a colleague** · **Verify the business** (KYB) · **Add money**
+  (load the pooled wallet so members can fund work without a card each time — done once money has
+  ever been added) · **Set spending rules** (only on a plan that can set them, Business Pro; a
+  Business on Business Free walks four steps, never held at 80% by one it could not finish) ·
+  **Publish**. Each step offers a control only to a member who may act on it, and the setup band
+  carries ONE filled control — the viewer's next step; when that is **Add money**, the act that
+  starts a financial flow, it is the amber one and opens the wallet's top-up. **Publishing is not
+  held behind the earlier steps** — KYB waits on reviewers and a top-up on the payment processor —
+  so a member who may publish (`manage_settings`) publishes a draft from the Overview at any time:
+  the band's fill when it is their first open step, a quieter control otherwise. A draft Business
+  whose setup band the viewer has hidden states that it can't buy, hire or pay yet, with **Publish**
+  and the fact that publishing can't be undone (or, for anyone else, to ask the owner to publish
+  it). An **archived** Business shows no setup steps — nothing in its wallet can be spent until it
+  is restored, so it is never asked for money — and it **takes no money in**: a top-up, a recurring
+  deposit or a member's transfer into its wallet is refused until it is restored, and a card payment
+  that completes after it was archived is not added to the wallet but held for the platform to
+  refund (or to settle once the Business is restored). A **draft** Business still takes money in — Add money is one of its setup steps (Decision
+  #248 (k)). The roster's "% set up" counts the same steps.
 - **Visibility:** a Business takes the same visibility a team does — **public**, **unlisted** or
   **invite-only** — and only a public Business is listed in the directory (Decision #230 (h)). Its
   public page (`/@handle`) opens for anyone while the Business is active and public or unlisted (an
@@ -1235,11 +1273,11 @@ Designed for companies managing multiple projects and teams.
 - **Analytics:** Provides a macro-view of company-wide burn-rate across all departments, read
   under the member's own RLS by the wallet surface and summarised on the business console
   (`/businesses/[businessHandle]`). (The former `org.get_business_finance` wrapper and its
-  `/dashboard` page are retired — Decision #122.)
+  `/dashboard` page are retired — Decision #61.)
 - **No minted money.** A Business Wallet starts at zero and its balance is only ever the sum of real
   movements (top-ups, releases, transfers). The former **Opening Platform Credit** — a one-time
   `demo_opening_credit` of 2,500,000 minor units granted to every new business wallet, in whatever
-  currency it was opened in — was **removed 2026-09-28** (root `CLAUDE.md` §8 Decision #122): it put
+  currency it was opened in — was **removed 2026-09-28** (root `CLAUDE.md` §8 Decision #61): it put
   spendable funds nobody had paid in into every business, in every currency. The development seed
   opens each seeded business with a dated owner top-up instead (`documentation/database/Seed.md`).
 
@@ -2747,6 +2785,96 @@ Projective treats sensitive identity data with "Zero-Trust" principles.
   maintaining the minimum data required by financial regulators for tax auditing (typically 7
   years).
 
+### Screen Sharing & Privacy Mode
+
+_Specified 2026-10-19 (root `CLAUDE.md` §8, Decision #297); not yet built. Technical contract:
+`SYSTEM_ARCHITECTURE.md` §3 and §State Hydration. Visual contract: `DESIGN_SYSTEM.md` §B.14._
+
+**The problem.** People show Projective to an audience more and more. Freelancers stream their
+work on YouTube, TikTok and Twitch. Teams demo progress on live client calls. Agencies record
+walkthroughs for prospects. Each time, the screen shows things the audience should never see:
+the wallet balance, a rate quoted to another client, a teammate's payout split, a client's legal
+name under NDA, an email address, a phone number, an identity document or a meeting link. Today
+the only defence is to hope nobody notices. One leaked figure can cost a freelancer their pricing
+power. One leaked client name can breach a contract.
+
+**The promise.** One switch, **Screen sharing mode**, makes every Projective page safe to show.
+While it is on, sensitive things are hidden wherever they appear, from the very first frame of
+every page, in every open tab. The page keeps its layout, so the person can still navigate, demo
+and work with no extra steps.
+
+**Who it is for, and how they use it.**
+- **The creator.** A freelancer streams a build session on YouTube or a time-lapse on TikTok. They
+  turn the mode on before going live. The board, files and messages stay usable on camera. Money,
+  contact details and client identities never reach the stream.
+- **The live client call.** A team lead shares the project board with one client on a call. Other
+  clients' names, the team's internal payout splits and the lead's wallet stay hidden. The
+  micro-agency's internal economics stay internal, which is the trust a team needs before it lets
+  a client watch it work.
+- **The forgotten stream.** Someone is already sharing when they realise. **Ctrl + Shift + S**
+  (**⌘ + Shift + S** on a Mac) turns the mode on at once, even while typing in a field. No menu
+  needs to be opened first.
+
+**Where the switch lives.**
+- **Settings → Privacy & screen sharing.** The setting, with a plain description of what it hides.
+- **The account menu** (the avatar menu in the top bar), next to the theme control. One press
+  turns the mode on or off, and the row shows the keyboard shortcut.
+- **The keyboard shortcut** above.
+- **While the mode is on**, the top bar shows a small "eye-off" mark. It is the reminder that the
+  mode is on, and pressing it turns the mode off. Nobody should wonder later why their balance
+  shows dots.
+
+**What is hidden.** There are four treatments, chosen by how much harm the leak would do:
+
+| Treatment | What it covers | What the audience sees |
+| :-- | :-- | :-- |
+| **Masked** | Exact money: balances, wallet and ledger figures, transaction amounts, hourly and stage rates, platform fees, payout splits, bank details. | The currency symbol and a fixed run of dots (`£••••••`). The run never grows or shrinks, so its length gives no clue to the amount. |
+| **Redacted** | Personal and highly sensitive details: email addresses, phone numbers, postal addresses, identity and business-verification documents, dispute statements. | A solid block the size of the field. Nothing underneath can be read, selected or copied. |
+| **Blurred** | Visual context with little harm in it: file thumbnails, submission cover images, portfolio media, partner banners. | A heavy blur that keeps the page's look without the detail. |
+| **Removed** | Things that must never appear at all: client legal names in project headers, meeting links in the calendar, API keys, webhook URLs, developer tokens. | Nothing. Where a sentence needs a subject, "the client" stands in. A Join button stays and still works; only the link text is gone. |
+
+**The rules.**
+- **It is per device, not per account.** The mode belongs to the screen being shared, so it is
+  remembered on this device (across visits and every tab) and never synced to the person's other
+  devices. Nothing about it is saved to the account.
+- **It is about what is shown, not what is allowed.** The mode hides things from a viewer of the
+  screen. It never changes what the person can do, what anyone else can see, what is charged or
+  what is paid. Paying, withdrawing and approving all work normally. Amounts typed into a money
+  field are masked too. The person must still be able to check an amount before committing money,
+  so a money field and every payment confirmation carry a press-and-hold **Show** control. It
+  reveals the figure only while it is held.
+- **It cannot be weaker than the person expects.** Every page must apply it from the first frame,
+  including standalone pages such as the file inspector. A page that flashes a real balance
+  before hiding it is a defect, not a cosmetic issue.
+- **A file the person opens on purpose is shown.** Thumbnails and covers are blurred because they
+  appear incidentally. A file opened deliberately in the inspector is shown, because demoing it is
+  usually the point. Identity documents and dispute evidence are the exception and stay redacted.
+- **Secrets cannot be revealed while it is on.** A "Reveal" or "Copy" control for an API key, a
+  webhook URL or a token is disabled, with the reason given beside it.
+
+**Feature boundaries (what it does not do).**
+- **It cannot detect that the screen is being shared.** No browser tells a web page that, so the
+  mode never switches itself on. The shortcut is the fast path.
+- **It does not cover the operating system's notifications.** A desktop notification is drawn by
+  the operating system, outside the page. The Settings description recommends the system's own
+  "do not disturb while sharing" option, which macOS and Windows provide.
+- **It does not hide message text.** Conversations stay readable, otherwise a demo of the
+  workspace would be pointless. Contact details inside messages are already masked during the
+  protected phase (§Messaging, Decision #147). After that it is the person's own judgment.
+- **It is not a security control.** It protects the frame on screen. It does not protect data
+  that a technical viewer could pull from the browser's developer tools or the network. Secrets
+  are the exception: they are removed from the page entirely.
+
+**Why it matters commercially.** Creator-led acquisition is the cheapest growth channel a
+freelancing platform has. Every "build with me" stream recorded inside Projective advertises the
+stage board, the escrow and the team workspace to the audience most likely to adopt them. Without
+the mode, the platform's most-shown screens (wallet, payouts, pricing) are the ones a creator cannot
+afford to show. For teams, hiding internal splits during client calls protects the operational
+transparency the Micro-Agency thesis sells. The client sees the work, never the margin. Trust in
+the money surfaces is what keeps funds in stage escrow. Discord's Streamer Mode shows that
+streamers expect this feature. We know of no platform-wide equivalent on Fiverr or Upwork; check
+that claim before it appears in any marketing copy.
+
 ---
 
 ## Account Creation, Age Guardrails & Onboarding
@@ -3038,6 +3166,10 @@ full **Settings console** (`/settings`), one page per section. One search finds 
   An enterprise owner's account starts the same way. All of it is changeable in Settings.
 - **Display currency is presentation only** (§Global Multi-Currency & Localized Money): it changes
   how prices read, never what is charged or paid.
+- **Screen sharing mode** (specified, Decision #297; not yet built). It adds a twelfth section,
+  **Privacy & screen sharing**, holding the one per-device switch that hides money, personal
+  details and client identities while the screen is shown to others. It is also in the account
+  menu and on Ctrl/⌘ + Shift + S. The behaviour is in §Screen Sharing & Privacy Mode.
 
 ## Assets & Attachments
 
@@ -3188,15 +3320,16 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               | `/become-partner`         |                          | Freelancer conversion funnel (Client/Operator → unlock freelancer suite)                       |
 |               | `/businesses`             | `index`                  | Show all businesses (any adult account — Decision #230 (a))                                   |
 |               | `/businesses/create`      |                          | Create a new business                                                                          |
-|               | `/businesses/[businessHandle]` | `index`             | The console's **Overview** — addressed by the business's `@handle` ([ROUTING.md](../architecture/ROUTING.md) business rows) |
+|               | `/businesses/[businessHandle]` | `index`             | The console's **Overview** — addressed by the business's `@handle` ([ROUTING.md](../architecture/ROUTING.md) business rows); the setup steps while any is open, and the money band (per currency: Available · Committed · Awaiting approval · Spent 30d) for whoever may open `finance` (Decision #248) |
 |               |                           | `members`                | Members                                                                                        |
 |               |                           | `projects`               | Projects the business has commissioned                                                         |
+|               |                           | `finance`                | The door to the pooled Business Wallet — the balance per currency and **Open the business wallet** (the wallet is the finance UI); opens for anyone who pays into, spends from or runs the wallet (Decision #248) |
 |               |                           | `spend`                  | Limits, approval thresholds, the approval queue and the attributable pool ledger                |
 |               |                           | `billing`                | Invoices (with **Pay**), statement PDFs, invoicing terms, auto-funding and the balance floor (§Escrow, Wallets & Finance #4) |
 |               |                           | `talent`                 | The bench — freelancers and teams the business has hired (Decision #230 (i))                    |
 |               |                           | `verification`           | Business verification (KYB) — where it stands, what is still due, what it unlocks, and the start of Stripe Connect onboarding for whoever holds the billing right (Decision #242) |
 |               |                           | `settings`               | Handle, defaults, ownership transfer and archiving                                             |
-|               |                           | _other modules_          | `roles` · `invitations` · `finance` (the Business Wallet) · `calendar` · `messages` · `analytics` · `standing` · `profile` — the rest of the kind-business module registry (`features/workspaces/core/module-registry.tsx`) |
+|               |                           | _other modules_          | `roles` · `invitations` · `calendar` · `messages` · `analytics` · `standing` · `profile` — the rest of the kind-business module registry (`features/workspaces/core/module-registry.tsx`) |
 |               | `/connections`            | `index`                  | View network connections                                                                       |
 |               | `/calendar`               | `index`                  | Personal agenda — the union of every engagement the account is on, over its own working hours, call windows and booked leave. The same occurrence as on `/projects/[project id]/calendar`, not a copy |
 |               | `/catalogue`              | `index`                  | Seller console — the listings (cards or rows by zoom, facets, a batch bar for the selection) and the Analytics and Clients views (`?view=`). A listing is created in the `?create=` Quick-Init modal, never on a page of its own |
@@ -3218,10 +3351,10 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               | `/teams/create`           |                          | Create a new team                                                                              |
 |               | `/teams/[teamHandle]`     | `index`                  | The console's **Overview** — addressed by the team's `@handle`; a uuid or wrong-case handle **308→** the handle ([ROUTING.md](../architecture/ROUTING.md) team rows, Decision #228 (B)) |
 |               |                           | `members`                | Members                                                                                        |
-|               |                           | `projects`               | Projects                                                                                       |
+|               |                           | `projects`               | Projects — the team's live engagements (each stage assignment with its assignees' Wᵢ against the stage cap, or each one's own workload cap on a stage that sets none) under its proposal allowance; `?view=proposals` the applications filed for the team, awaiting an answer ([ROUTING.md](../architecture/ROUTING.md) team rows) |
 |               |                           | `payouts`                | Payouts                                                                                        |
 |               |                           | `roles`                  | Roles                                                                                          |
-|               |                           | `settings`               | Settings                                                                                       |
+|               |                           | `settings`               | Name, visibility and the lifecycle — publish, archive (what blocks it named first), restore (Teams C6) |
 |               |                           | _secondary group_        | The other modules stay reachable in the lane's secondary group: `catalogue` · `calendar` · `messages` · `invitations` · `finance` (the Team Vault) · `analytics` · `standing` · `profile` · `verification` (Decision #228 (C)) |
 |               | `/analytics`              | `index`                  | Performance data                                                                               |
 |               | `/wallet`                 | `index`                  | **The command centre.** A balance hero (total · available · in escrow · clearing) with every money action, over a sheet of accounts, cash flow, upcoming obligations, recent transactions and payment methods. A middle-nav lane links the wallet's pages and carries every money action. The retired deep pages `activity` **308→** `analytics`; `payouts`, `funding`, `access`, `methods` **308→** overview sections |

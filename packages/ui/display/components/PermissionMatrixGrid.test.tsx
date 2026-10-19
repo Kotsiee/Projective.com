@@ -92,6 +92,103 @@ Deno.test("pressed and disabled states follow the cell and its column", () => {
 	assert(owner.includes('aria-describedby="pm-locked pm-hint-0"'));
 });
 
+Deno.test("a locked column gives its own reason; a fixed cell keeps its state and gives its own", () => {
+	const html = renderToString(
+		<PermissionMatrixGrid
+			{...base}
+			columns={[
+				{ key: "owner", label: "Owner", locked: true, lockedHint: "Presets are read-only." },
+				{ key: "admin", label: "Admin" },
+				{ key: "member", label: "Member" },
+			]}
+			cellLock={(row, col) =>
+				row.key === "spend" && col.key === "member" ? "You can't grant what you don't hold." : null}
+			onToggle={() => {}}
+		/>,
+	);
+	const cell = (label: string) => tags(html, `aria-label="${label}`)[0];
+
+	const owner = cell("Approve spend for Owner");
+	assert(owner.includes('aria-describedby="pm-locked-1 pm-hint-0"'));
+	assertMatch(html, /<span id="pm-locked-1" hidden(="")?>Presets are read-only\.<\/span>/);
+
+	// The fixed cell still says it is off — only its toggle is withheld.
+	const member = cell("Approve spend for Member: Not allowed");
+	assert(member.includes('aria-pressed="false"'));
+	assert(member.includes('aria-disabled="true"'));
+	assert(member.includes("ui-permission-matrix__cell--fixed"));
+	assert(member.includes('aria-describedby="pm-locked-2 pm-hint-0"'));
+	assertMatch(
+		html,
+		/<span id="pm-locked-2" hidden(="")?>You can't grant what you don't hold\.<\/span>/,
+	);
+
+	// The matrix-wide hint still describes a locked STATE, and stays rendered under its base id.
+	assert(cell("Invite members for Member").includes('aria-describedby="pm-locked"'));
+	assertMatch(html, /<span id="pm-locked" hidden(="")?>[^<]+<\/span>/);
+
+	// An unfixed cell is untouched.
+	const admin = cell("Approve spend for Admin");
+	assertFalse(admin.includes("aria-disabled"));
+	assertFalse(admin.includes('aria-describedby="pm-locked'));
+});
+
+Deno.test("a read-only matrix ignores cellLock", () => {
+	const html = renderToString(
+		<PermissionMatrixGrid {...base} cellLock={() => "Never shown."} />,
+	);
+	assertFalse(html.includes("Never shown."));
+});
+
+Deno.test("column actions render in the header beside the label, outside the grid's cells", () => {
+	const html = renderToString(
+		<PermissionMatrixGrid
+			{...base}
+			onToggle={() => {}}
+			columnActions={(col) => col.key === "admin" ? <button type="button">More</button> : null}
+		/>,
+	);
+	// Every column's label sits on the control's line, seated or not, so the header row stays level.
+	assertEquals(tags(html, 'class="ui-permission-matrix__colhead-row"').length, 3);
+	assertEquals(tags(html, 'class="ui-permission-matrix__colhead-actions"').length, 1);
+	assertMatch(
+		html,
+		/<span class="ui-permission-matrix__colhead-actions"><button type="button">More<\/button><\/span>/,
+	);
+	// A header control is never a roving-focus cell.
+	assertEquals(tags(html, "data-pm-row").length, 6);
+});
+
+Deno.test("no column seats a control: labels keep their own line", () => {
+	for (const columnActions of [undefined, () => null]) {
+		const html = renderToString(
+			<PermissionMatrixGrid {...base} onToggle={() => {}} columnActions={columnActions} />,
+		);
+		assertEquals(tags(html, "ui-permission-matrix__colhead-row").length, 0);
+		assertEquals(tags(html, 'class="ui-permission-matrix__colhead-label"').length, 3);
+	}
+});
+
+Deno.test("column meta: one line from a string, one line per entry from a list", () => {
+	const html = renderToString(
+		<PermissionMatrixGrid
+			{...base}
+			columns={[
+				{ key: "admin", label: "Admin", meta: "3 members" },
+				{ key: "designer", label: "Designer", meta: ["0 members · edited", "based on Lead"] },
+			]}
+			value={() => "off"}
+		/>,
+	);
+	assertEquals(tags(html, 'class="ui-permission-matrix__meta-line"').length, 3);
+	assertMatch(html, /<span class="ui-permission-matrix__meta-line">3 members<\/span><\/span>/);
+	// A second line is read after a pause, not run into the first.
+	assertMatch(
+		html,
+		/0 members · edited<\/span><span class="ui-visually-hidden">,<\/span><span class="ui-permission-matrix__meta-line">based on Lead</,
+	);
+});
+
 Deno.test("glyphs are decorative and off draws none", () => {
 	const html = renderToString(<PermissionMatrixGrid {...base} onToggle={() => {}} />);
 	const glyphs = tags(html, 'class="ui-permission-matrix__glyph"');
@@ -127,4 +224,17 @@ Deno.test("stylesheet: opaque fills, token durations, press removed under both m
 	assert(css.includes("--pm-allowed: var(--primary-tint)"));
 	assert(css.includes("--pm-conditional: var(--warning-tint)"));
 	assert(css.includes("--pm-locked: var(--surface-2)"));
+});
+
+Deno.test("stylesheet: a seated header's label line is the control's height in every column", () => {
+	assert(css.includes("--pm-action-size: var(--fld-h-sm)"));
+	const row = css.match(/\.ui-permission-matrix__colhead-row \{[^}]*\}/)?.[0] ?? "";
+	assert(row.includes("min-block-size: var(--pm-action-size)"), row);
+	assert(row.includes("align-items: center"), row);
+});
+
+Deno.test("stylesheet: the narrow step asks the matrix's own width, never the viewport", () => {
+	assert(css.includes("container: ui-pm / inline-size"));
+	assert(/@container ui-pm \(width < 480px\)/.test(css), "the step sits at --bp-sm");
+	assertFalse(/@media[^{]*width/.test(css), "no viewport breakpoint");
 });

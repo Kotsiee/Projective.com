@@ -54,9 +54,13 @@ export const WorkspaceRole = z.enum(["owner", "admin", "lead", "member"]);
 export type WorkspaceRole = z.infer<typeof WorkspaceRole>;
 
 /**
- * Where a person stands relative to the entity. `invited` (we asked them) and `requested` (they asked
- * us) are deliberately distinct states rather than one "pending" — they route to opposite actions, and
- * collapsing them would make the invitation inbox lie about who owes whom a decision.
+ * Where a member stands relative to the entity — the `org.team_members` / `org.business_members`
+ * `status` CHECK: `active` (holds a seat and their role's capabilities) or `left` (removed or departed,
+ * `left_at` stamped; kept on record, never deleted). Somebody asked to join is not a member yet: a
+ * pending invitation is its own row (`org.org_invitations`, projected as `WorkspaceInvite`) until it is
+ * accepted — which seats an `active` member — declined, revoked or lapsed. There is no "requested"
+ * state: nobody asks an entity to let them in; every invitation names one person or one address, and
+ * only that invitee can accept it.
  */
 export const MembershipState = z.enum(["active", "left"]);
 export type MembershipState = z.infer<typeof MembershipState>;
@@ -64,7 +68,7 @@ export type MembershipState = z.infer<typeof MembershipState>;
 
 // #region Capability vocabulary
 /**
- * The permission vocabulary — the columns of the roles matrix and the atoms a per-member override
+ * The permission vocabulary — the rows of the roles matrix and the atoms a per-member override
  * grants or revokes.
  *
  * Deliberately **one flat vocabulary across both kinds** rather than a team enum and a business enum:
@@ -115,7 +119,7 @@ const BUSINESS_ONLY: readonly WorkspaceCapability[] = [
 ];
 
 /**
- * The capability columns a given kind renders. A team never shows "approve spend" (it earns, it does
+ * The capability rows a given kind renders. A team never shows "approve spend" (it earns, it does
  * not run a purchase-approval ladder); a business never shows "bind seat" (it buys delivery, it does
  * not deliver). Everything else is shared.
  */
@@ -205,7 +209,8 @@ export function isCoOwner(
 // #region Role presets
 /**
  * The capability bundle each preset role carries. Presets are **read-only** in the matrix editor —
- * `Duplicate to custom role` is the escape hatch — so this table is the definition, not a default.
+ * a custom role started as a copy of one is the escape hatch — so this table is the definition, not a
+ * default.
  *
  * `lead` sits between admin and member on the seller side: it may bind the team to a seat and run
  * projects, but may not restructure the roster or move money.
@@ -321,9 +326,9 @@ const COPY: Record<WorkspaceKind, KindCopy> = {
 		Noun: "Business",
 		Plural: "Businesses",
 		base: "/businesses",
-		pitch:
-			"A business hires as one company — pooled funds several people contribute to and spend " +
-			"from, under limits you set.",
+		// No "limits you set": per-member caps and an approval threshold are Business Pro (#230 (e)).
+		pitch: "A business hires as one company — a pooled wallet several people add money to and " +
+			"spend from, and you decide who may spend.",
 		verification: "KYB",
 		moneyNoun: "pooled wallet",
 	},

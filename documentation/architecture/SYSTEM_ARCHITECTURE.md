@@ -82,6 +82,15 @@
 - **Hierarchy is four registers, not five weights.** Display / section header / body / meta, each
   moving size, case and tracking together. A heading is never `--fw-bold` or heavier; a changing
   figure is always `tabular-nums` (§A.4).
+- **Screen sharing mode is a pre-paint overlay, not a permission (Decision #297).** It is carried
+  by `<html data-screen-share="active">` and painted from the first byte on every route, standalone
+  ones included (§State Hydration → Screen sharing mode). Sensitive output uses the four
+  `ui-obscure` treatments (mask · solid · blur · omit, `DESIGN_SYSTEM.md` §B.14), never a bespoke
+  hide. `filter: blur()` is bound by the same rule as `backdrop-filter` above: it makes its element
+  the containing block for `position: fixed` descendants. So it goes on a media element inside a
+  clipping frame, never on a container that renders overlays. It never nests inside another blur
+  or a glass layer, and never runs per item on a dense surface (`KanbanBoard`, `GanttChart`,
+  `DataTable`, card grids), which substitute the BlurHash placeholder instead.
 
 ### 4. Security & Environment Variables
 
@@ -1880,6 +1889,25 @@ Every write returns the RE-READ console so an island adopts the server's state. 
   client render reads the same key and carries the same `data-hero-dismissed` mark: Fresh's revive
   renders over the server's DOM and removes every attribute its tree lacks, so a mark set only by a
   pre-paint script is dropped at revive and the band flashes back.
+- **A business's Overview and Finance (BU6, Decision #248).** The money band shows exactly when
+  `canOpenFinance("business", caps)` holds (`contribute_funds` · `spend_funds` · `manage_finances`) —
+  the same predicate the read answers `money_tiles` on (`v_sees_money`) and the Finance module opens
+  on — and draws BB9's tiles per wallet currency (Available · Committed · Awaiting approval · Spent
+  30d) with one wallet hand-off link; `WorkspaceDetail.finance` has no reader left in the app. The
+  business setup steps come from the read's `setup` facts, which for a business add `funded` (any
+  `add_funds` ledger row on its wallets — so the step stays done once the wallet is spent) and
+  `limits_offered` (NOT `limits_plan_gated`: Business Pro's `pooled_wallet_full`, or the gates off);
+  `setupSteps` leaves Set spending rules out without it, so a Business Free business walks invite ·
+  KYB · Add money · publish. Add money (`fund`) is actionable for `contribute_funds` (the vault's
+  `add_funds`), and the Overview points it at the wallet intent
+  (`/wallet?w=business:<id>&do=top_up&back=/businesses/<handle>`). A business's Publish is not
+  gated by its earlier steps — `setupHero` lets it carry the band's one fill whenever it is the
+  viewer's first open step and draws it tier 3 `outlined` otherwise (a team keeps C1's at-hand rule) — and it
+  publishes through the existing door (`POST /api/workspace/update` → `org.set_workspace_status`,
+  `manage_settings`). A dismissed hero on a draft business hands its Publish to a not-active notice
+  worded from `BUSINESS_REFUSAL_COPY.business_not_active`. The Finance module of a business is
+  `BusinessFinanceHead` (a server component): the page head, a balance MetaLine from the same tiles
+  (`walletBalanceFacts`) and a tier-4 "Open the business wallet".
 - **The acting context is written only by the switch RPCs.** (Its enterprise targets are listed by
   `GET /api/context/enterprises` → `ContextBackendService.enterprises`: owned or ACTIVE-member
   enterprises, archived excluded, filtered explicitly because the `org.enterprises` SELECT
@@ -2435,7 +2463,20 @@ Deno 2.x provides a hardened environment that we strictly configure through perm
   `--allow-net`, `--allow-env`). We never use `--allow-all` in production.
 - **Input Validation:** Every API route handler uses Zod schemas from `@projective/types` to parse
   and validate request bodies before calling any Service. This prevents SQL injection and malformed
-  data from reaching the logic layer.
+  data from reaching the logic layer. Every free-text field of a public write (contact, newsletter,
+  help feedback, feedback ideas) also refines with `isStorableText`
+  (`@projective/types/content/text`): a NUL, another C0 control or an unpaired UTF-16 surrogate is a
+  422 field error, never a 503 from Postgres (`22P05`) or PostgREST (`PGRST102`); a service that
+  still meets either code answers 422 (`isUnstorableInputError`, `packages/backend/core/text.ts`) —
+  Decision #296 (A).
+- **Per-IP rate-limit keys:** one helper, `apps/web/utils/client-key.ts` `clientKey(remoteAddr,
+  headers)`. The key is the socket's peer. Under the Vite dev server Fresh passes no connection info
+  (its placeholder `localhost:1234` for every caller), so the serve-only
+  `projective:dev-client-address` plugin overwrites `x-projective-dev-remote` with the TCP peer and
+  the helper reads it only for that placeholder — never in production, where `deno serve` passes the
+  real peer. **No forwarded header is trusted:** behind a reverse proxy every caller is the proxy
+  and a per-IP limit becomes one bucket per proxy, so such a deployment must wire the proxy's own
+  client-address header into this one function (Decision #296 (F)).
 - **Content Security Policy (CSP):** every response gets one policy, built by the pure
   `apps/web/utils/csp.ts` and set by the global `routes/_middleware.ts` (only when the response has
   none of its own). Third-party origins are exactly the ones a page talks to: **Stripe** —
@@ -2847,6 +2888,83 @@ interactivity must be strictly maintained.
   Island receives `initialData` and instantly hydrates it into a local `@preact/signals` state or
   Store class for high-performance interactivity.
 
+### Screen sharing mode — the pre-paint privacy overlay (Decision #297)
+
+_Specified 2026-10-19; not yet built. Business rules: `PRODUCT_SPEC.md` §Screen Sharing & Privacy
+Mode. Visual contract: `DESIGN_SYSTEM.md` §B.14._ The mode follows the accessibility overlays'
+pattern (`pj.a11y`, §The Settings engine → "Appearance paints from the first byte") with one
+difference: there is **no durable row**, because the state belongs to the device whose screen is
+shown.
+
+**State carriers.**
+
+| Carrier | Value | Owner | Notes |
+| :-- | :-- | :-- | :-- |
+| `localStorage` `LocalKeys.SCREEN_SHARE` | `"pj.local.screenShare"` = `"1"`; removed when off | `ScreenShareBridge` island | The durable per-device copy. Its `storage` event flips every other open tab of the origin. |
+| Cookie `pj.screen_share` | `1`; deleted (`max-age=0`) when off | `ScreenShareBridge`, and the pre-paint restorer | Mirror only: `path=/; max-age=31536000; samesite=lax`, `Secure` on HTTPS (Decision #201's builders), **not** HttpOnly. It is **non-authoritative**: it can only remove output, never widen access. |
+| `ctx.state.screenShare: boolean` | `true` only for exactly `1` | `routes/_middleware.ts` via `utils/screen-share-context.ts` `resolveScreenShare(req)` | A header read with no I/O, like `resolveA11yContext`. Anything malformed means off. |
+| `<html data-screen-share="active">` | present only when on | `_app.tsx` (SSR), the pre-paint restorer, then the bridge | The one selector every CSS treatment keys on. Like the a11y overlays, only ON becomes an attribute. |
+| `ScreenShareContext` | `{ active: boolean }` | `_app.tsx` provider | Per-request **context**, never a module signal, for `CurrencyContext`'s reason: one server process renders many viewers at once. |
+| `screenShareActive` signal | seeded from the `<html>` attribute | `@projective/ui/utils` store | What islands read. `MoneyView` / `NumberInput` / `Obscure` resolve **context → store**, the way `useCurrencyView` resolves currency. |
+
+**`_app.tsx` duties.** Three things, in the same discipline as `data-theme` and `pj.a11y`:
+1. **Write `data-screen-share="active"` on `<html>`** when `state.screenShare` is true.
+2. **Provide `ScreenShareContext`** around `<Component />`, so server components mask or omit in
+   the first byte.
+3. **Run a pre-paint restorer** `<script>`. If the cookie is absent but the `localStorage` key is
+   `"1"`, it sets the attribute before first paint and re-writes the cookie, so the next request
+   is server-masked again. Its literal key **MUST** match `LocalKeys.SCREEN_SHARE`, and its cookie
+   format **MUST** match `screen-share-context.ts`. It does nothing when the cookie exists.
+
+**Standalone route inheritance.** Every route group renders through `routes/_app.tsx` under
+`routes/_middleware.ts`. That includes `(standalone)` (`/inspect/[fileId]`), `(public)`,
+`[handle]` and `_error`. The guarantee is structural, not per-route:
+- No route may opt out of the app wrapper (`skipAppWrapper` or any equivalent). None does today.
+  A future standalone page that needs a bare document still renders `<html>` through `_app.tsx`.
+- A group middleware such as `(standalone)/_middleware.ts` runs after the root one and must never
+  overwrite `ctx.state.screenShare`.
+- Same-origin frames and pop-outs inherit through the shared cookie. Examples are
+  `/catalogue/[id]/simulate` in the catalogue Preview tab and the chat pop-out. A frame never takes
+  the state as a URL parameter.
+
+**Enforcement in three layers.** Each layer covers the gap the one before it cannot see:
+
+| Layer | When it applies | Mechanism |
+| :-- | :-- | :-- |
+| **Server** | The cookie reached the request. | Server components read `ScreenShareContext`. `MoneyView` renders the mask and **omits** `data-money-minor` and the figure-bearing `title` / `aria-label`. Omit-tier content is not rendered, and is **not serialized into island props**. |
+| **Pre-paint CSS** | Only `localStorage` knew, before hydration. | `:root[data-screen-share="active"]` rules in `@projective/ui` paint the mask, the solid block, the blur and `display: none` for `.ui-obscure--omit`. They protect the **frame**, not the DOM, until the next layer runs. |
+| **Hydrated** | Islands are live. | Islands render from the store. `ScreenShareBridge` sweeps server-rendered nodes (`[data-money]` and `[data-obscure]`) and scrubs their text and data attributes into an in-memory `WeakMap`. `CurrencyBridge` skips any node marked `data-money-masked`. |
+
+**Turning it on and off.** The bridge applies a change in this order: store (same frame) →
+attribute → cookie → `localStorage` (the `storage` event carries it to other tabs) → a polite
+live-region announcement ("Screen sharing mode on" / "off"). Turning it off restores swept nodes
+from the `WeakMap`, and islands re-render from props they already hold. A figure that was masked
+**from the first byte** never reached the client, so it stays masked until the next navigation.
+A toast says so. A reload is never forced, because it would discard unsaved drafts.
+
+**Keyboard.** `shell/core/shortcuts.ts` gains `isScreenShareShortcut`: `ctrlKey || metaKey`, plus
+Shift and S, with no Alt, not `repeat`, and not already `defaultPrevented`. It matches by `code ===
+"KeyS"` on non-Latin layouts, like `isToggleSidebarShortcut`. Unlike `/`, it **does** fire inside
+editable targets, because the shortcut exists for the person who is already live and typing. The
+bridge calls `preventDefault()`. Some browsers reserve the chord (see Decision #297 flag (a)), so
+the account-menu row and Settings remain the guaranteed paths.
+
+**Boundaries.**
+- **Services never read it.** It is a render concern of routes, components and islands. RLS, API
+  payloads, money arithmetic and notifications are unchanged. No `/api/*` route branches on the
+  cookie.
+- **No schema change.** There is no column, migration or Zod row type, so the Additive Rule is
+  untouched. Settings gains the `privacy` key in `@projective/types/settings` `SettingsSectionKey`.
+  Its one entry (`privacy.screen-share`) is device-local, so `PATCH /api/user/preferences` gains no
+  field. The section's server read is `state.screenShare`.
+- **Not a Dev Context Switcher axis** (root §5). The real control ships in every environment, and
+  a probe sets the cookie. There is no `DevOverrides` entry.
+- **Threat model.** It protects the rendered frame and the visible DOM text and attributes of
+  masked nodes. It does **not** protect money values that islands legitimately hold in their
+  serialized props or in network responses that devtools can read. That is why secrets (API keys,
+  webhook URLs, tokens) are omit-tier: they are kept out of the document and out of island props
+  entirely while the mode is on, and their reveal / copy controls are disabled.
+
 ---
 
 ## Integration Blueprints
@@ -2952,10 +3070,13 @@ incorrect API flows.
   call raised and rolled its claim back). A success whose amount / currency can NEVER match its
   payment is deterministic, so it is not retried: the claim is completed with
   `reconciliation = 'settlement_mismatch'`, the webhook answers 2xx, ONE `ops.log_entries` error row
-  and a WARNING are written, nothing is credited, and redeliveries replay that outcome. A
-  `payment_intent.succeeded` without `metadata.projective_payment_id` was not created by Projective
+  and a WARNING are written, nothing is credited, and redeliveries replay that outcome. A card
+  captured for a business that is now archived is handled the same way under
+  `reconciliation = 'business_archived'` — an archived business takes no money in (Decision #248 (k)).
+  A `payment_intent.succeeded` without `metadata.projective_payment_id` was not created by Projective
   and is acknowledged as ignored. `finance.v_ops_unledgered_payments` (service role) lists any settled
-  payment without its ledger credit, and every `settlement_mismatch` still awaiting a human.
+  payment without its ledger credit, and every `settlement_mismatch` / `business_archived` still
+  awaiting a human.
 - **Every processor door is idempotent on the Stripe event id** (`stripe:<evt>` in
   `finance.idempotency_keys`, claimed in the same transaction as the effects). Handled events:
   the four above plus `payment_intent.payment_failed`/`.canceled` and

@@ -1,5 +1,6 @@
 /**
- * content.text — plain-text projections and display formatting of a document.
+ * content.text — plain-text projections and display formatting of a document, and the one
+ * storable-text rule every free-text field refines with ({@link isStorableText}).
  *
  * The plain text of a body is what a meta description, an FAQPage answer, a search index and a
  * reading-time estimate read; it is derived here from the AST so no consumer re-walks the nodes.
@@ -74,6 +75,34 @@ export function docText(doc: Doc): string {
 			nodesText(section.body),
 		]),
 	].filter((part) => part.length > 0).join("\n\n");
+}
+// #endregion
+
+// #region Storable text
+/** The sentence a field shows when its text holds a character no layer below can store. */
+export const UNSTORABLE_TEXT_MESSAGE = "Remove the hidden control character and try again.";
+
+/**
+ * Whether `value` can be stored as Postgres `text` / `jsonb` and sent through PostgREST: no NUL or
+ * other C0 control character except tab, line feed and carriage return (Postgres refuses `\u0000`
+ * with 22P05), and no unpaired UTF-16 surrogate (PostgREST refuses the body with PGRST102). A
+ * free-text field of a write refines with it, so such input is a 422 field error at the schema —
+ * the same on the client and the server — and never a 503 from the writer.
+ */
+export function isStorableText(value: string): boolean {
+	for (let i = 0; i < value.length; i++) {
+		const unit = value.charCodeAt(i);
+		if (unit < 0x20) {
+			if (unit !== 0x09 && unit !== 0x0a && unit !== 0x0d) return false;
+		} else if (unit >= 0xd800 && unit <= 0xdbff) {
+			const next = value.charCodeAt(i + 1);
+			if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+			i++;
+		} else if (unit >= 0xdc00 && unit <= 0xdfff) {
+			return false;
+		}
+	}
+	return true;
 }
 // #endregion
 

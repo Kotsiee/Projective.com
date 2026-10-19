@@ -89,6 +89,21 @@ Deno.test("copy: the title and the commit name the kind; a neutral title names b
 	assertEquals(createCopy("business", "choice").header, "Create a team or business");
 	assert(createCopy("team", "fixed").intro.includes("draft"));
 });
+
+Deno.test("copy: a business's placeholders are neutral and agree; a team's are unchanged (BU1)", () => {
+	const business = createCopy("business", "fixed");
+	assertEquals(business.namePlaceholder, "Acme Studio");
+	assertEquals(business.handlePlaceholder, "acme-studio");
+	// The handle placeholder is the name placeholder's own handle, as the field would mirror it.
+	assertEquals(handleFromName(business.namePlaceholder), business.handlePlaceholder);
+	const team = createCopy("team", "fixed");
+	assertEquals(team.namePlaceholder, "Northern Grid Collective");
+	assertEquals(team.handlePlaceholder, "northern-grid");
+	// The intro claims nothing a free business lacks: caps and approvals are Business Pro (#230 (e)).
+	assert(!/limits you set/i.test(business.intro), business.intro);
+	assert(business.intro.includes("you decide who may spend"), business.intro);
+	assert(business.intro.endsWith("It starts as a draft — you finish setting it up inside."));
+});
 // #endregion
 
 // #region Fields

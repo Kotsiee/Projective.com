@@ -17,6 +17,12 @@ export interface AvatarStackProps {
 	people: readonly AvatarStackPerson[];
 	/** How many faces render before the rest collapse into `+N` (default 4). */
 	max?: number;
+	/**
+	 * The group's real size when `people` is only a sample of it — a server that sends the first five
+	 * faces of twelve. The `+N` then counts everyone not drawn (`total − shown`), not only the sample's
+	 * remainder. Defaults to `people.length`; a value below it is ignored.
+	 */
+	total?: number;
 	size?: AvatarSize;
 	shape?: AvatarShape;
 	/** Each face's stand-in picture — see `Avatar`'s `fallbackImage`. Not applied to the `+N` chip. */
@@ -56,11 +62,13 @@ export function AvatarStack(props: AvatarStackProps): JSX.Element | null {
 	if (people.length === 0) return null;
 
 	const visible = people.slice(0, max);
-	const overflow = people.length - visible.length;
+	const count = Math.max(people.length, props.total ?? 0);
+	const overflow = count - visible.length;
+	const names = people.map((p) => p.name).join(", ");
 	const label = props["aria-label"] ??
-		`${people.length} ${people.length === 1 ? "person" : "people"}: ${
-			people.map((p) => p.name).join(", ")
-		}`;
+		(count > people.length
+			? `${count} people, including ${names}`
+			: `${count} ${count === 1 ? "person" : "people"}: ${names}`);
 
 	return (
 		<div

@@ -1,11 +1,17 @@
 import { HttpError, page } from "fresh";
+import type { EditorialArticlePage } from "@projective/types/editorial";
 import { define } from "@web/utils/state.ts";
-import { applyPageMeta } from "@features/marketing/core/seo.ts";
+import { applyPageMeta, type JsonLdGraph } from "@features/marketing/core/seo.ts";
 import { siteOrigin } from "@features/marketing/core/site-origin.ts";
 import { EditorialArticlesBackendService } from "@server/services/editorial/EditorialArticlesBackendService.ts";
 import { articleHref, isArticleSlug } from "../core/index-query.ts";
 import { readFailureStatus } from "../core/read-status.ts";
-import { articleJsonLdGraph, articleMeta } from "../core/article-seo.ts";
+import { articleJsonLdGraph, articleMeta, articleMissingMeta } from "../core/article-seo.ts";
+
+/** What the reader renders: the article, or the not-found notice in the same reading frame. */
+export type ArticleReaderData =
+	| { kind: "article"; page: EditorialArticlePage; signedIn: boolean; jsonLd: JsonLdGraph }
+	| { kind: "missing" };
 
 /**
  * `/articles/[slug]`'s handler (P6), kept apart from the page so it loads without an island under
@@ -15,7 +21,8 @@ import { articleJsonLdGraph, articleMeta } from "../core/article-seo.ts";
  * - A renamed article's former slug is a 308 to the visible article that lists it (query kept).
  * - Anything else that cannot be a slug, or names no visible article — never written, a draft, dated
  *   in the future, or retracted — is a 404, all alike, so a hidden article is never confirmed to
- *   exist.
+ *   exist. It is rendered in the reading frame (inside the public shell), `noindex`, with its own
+ *   `<h1>` and the way back to the index — never the bare root error page.
  * - A failed read is the error page's status (503 when the content store is unreachable).
  *
  * Projective's articles live only here (Decision #271): member posts stay at `/view`, and neither
@@ -31,7 +38,12 @@ export const handler = define.handlers({
 				headers: { location: `${articleHref(lower)}${ctx.url.search}` },
 			});
 		}
-		if (!isArticleSlug(slug)) throw new HttpError(404);
+		const origin = siteOrigin(ctx.url);
+		const missing = () => {
+			applyPageMeta(ctx.state, articleMissingMeta(origin));
+			return page<ArticleReaderData>({ kind: "missing" }, { status: 404 });
+		};
+		if (!isArticleSlug(slug)) return missing();
 		const result = await EditorialArticlesBackendService.article(slug);
 		if (!result.ok && result.status === 404) {
 			// A renamed article's old address follows it (Decision #274 (k)), so no inbound link breaks.
@@ -42,11 +54,12 @@ export const handler = define.handlers({
 					headers: { location: `${articleHref(moved.data)}${ctx.url.search}` },
 				});
 			}
+			return missing();
 		}
 		if (!result.ok || !result.data) throw new HttpError(readFailureStatus(result.status));
-		const origin = siteOrigin(ctx.url);
 		applyPageMeta(ctx.state, articleMeta(result.data, origin));
-		return page({
+		return page<ArticleReaderData>({
+			kind: "article",
 			page: result.data,
 			signedIn: ctx.state.isAuthenticated ?? false,
 			jsonLd: articleJsonLdGraph(result.data, origin),

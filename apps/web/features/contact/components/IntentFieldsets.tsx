@@ -24,6 +24,7 @@ import {
 } from "@projective/types/contact";
 import type { ContactFormState } from "../core/contact-model.ts";
 import { counterText } from "../core/contact-model.ts";
+import { contactLoginHref } from "../core/contact-url.ts";
 import {
 	BOOKING_UNAVAILABLE_REASON,
 	DISCLOSURE_NOTE,
@@ -70,6 +71,11 @@ export interface IntakeModel {
 	topics: readonly ContactChoice[];
 	/** Each intent's own files — a file belongs to the form it was added to. */
 	attachments: Readonly<Record<ContactIntent, Signal<Record<string, AttachmentEntry>>>>;
+	/**
+	 * The dispute form's sign-in link (its "Sign in to continue" note). The attachments block builds
+	 * its own per intent ({@link contactLoginHref}), so a guest who signs in to attach a file comes
+	 * back to the form they were filling in.
+	 */
 	loginHref: string;
 	/** Say something through the intake's polite live region. */
 	announce: (text: string) => void;
@@ -273,8 +279,8 @@ function Attachments(
 		return (
 			<p class="ctc-note">
 				Attachments need an account, because a file is stored in its sender's name.{" "}
-				<a href={model.loginHref}>Sign in to attach files</a>, or describe them and we'll ask for
-				them.
+				<a href={contactLoginHref(intent)}>Sign in to attach files</a>, or describe them and we'll
+				ask for them.
 			</p>
 		);
 	}

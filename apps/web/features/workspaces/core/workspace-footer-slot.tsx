@@ -4,6 +4,7 @@ import WorkspaceFooterRig from "../islands/WorkspaceFooterRig.island.tsx";
 import { resolveRoster, resolveWorkspaceConsole } from "./workspace-ssr.ts";
 import { activeModuleOf, kindFromPath, workspaceHandleOf } from "./workspace-model.ts";
 import { resolveSubView } from "./sub-views.ts";
+import { isFirstRun } from "./roster-model.ts";
 
 /**
  * workspace-footer-slot — the SSR-idiomatic resolver for the middle-nav FOOTER band across the
@@ -28,8 +29,21 @@ export async function workspaceFooterFor(url: URL, actor: ReadActor): Promise<Co
 	if (!handle) {
 		const read = await resolveRoster(kind, actor, url);
 		// A failed roster read still offers New: creation is re-validated server-side on submit, and
-		// withholding the only forward action because a READ failed would strand the viewer.
-		return <WorkspaceFooterRig kind={kind} canCreate={read.ok ? read.roster.canCreate : true} />;
+		// withholding the only forward action because a READ failed would strand the viewer. A failed
+		// read is never first run, for the same reason; a successful one with nothing in it is, and the
+		// canvas's empty state then carries the page's one create.
+		const firstRun = read.ok && isFirstRun({
+			loaded: true,
+			entityCount: read.roster.items.length,
+			invitationCount: read.roster.invitations.length,
+		});
+		return (
+			<WorkspaceFooterRig
+				kind={kind}
+				canCreate={read.ok ? read.roster.canCreate : true}
+				firstRun={firstRun}
+			/>
+		);
 	}
 
 	const requested = activeModuleOf(url.pathname) ?? "overview";
@@ -53,6 +67,8 @@ export async function workspaceFooterFor(url: URL, actor: ReadActor): Promise<Co
 			canInvite={held.has("invite_members")}
 			canManageMoney={held.has("manage_finances")}
 			canManageSettings={held.has("manage_settings")}
+			canEditProfile={held.has("edit_profile")}
+			canManageRoles={held.has("manage_roles")}
 		/>
 	);
 }

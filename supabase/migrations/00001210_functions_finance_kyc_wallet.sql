@@ -685,6 +685,12 @@ BEGIN
         IF NOT finance.fn_can_move_wallet_funds(v_to.id) THEN
             RAISE EXCEPTION 'Not authorised to move funds into this wallet.' USING ERRCODE = '42501';
         END IF;
+
+        -- A simulation never reaches a state the real doors refuse: an archived business takes no
+        -- money in (Decision #248 (k)).
+        IF v_to.owner_type = 'business' THEN
+            PERFORM org.fn_assert_business_not_archived(v_to.owner_id);
+        END IF;
     END IF;
 
     v_reason := 'simulated_' || p_type;
@@ -770,7 +776,8 @@ $$;
 COMMENT ON FUNCTION finance.simulate_wallet_transaction(uuid, uuid, bigint, text, text) IS
 'DEVELOPER SIMULATOR — moves REAL money. Refuses unless security.platform_params
 finance_simulation_enabled is true (seeded false; flipping it needs human sign-off), refuses an
-unauthenticated caller, and requires finance.fn_can_move_wallet_funds on every wallet touched.
+unauthenticated caller, and requires finance.fn_can_move_wallet_funds on every wallet touched; never
+credits an archived business (55000 business_not_active).
 Writes genuine finance.transactions lines tagged reason = simulated_<type>, ref_table = simulation.
 Never converts currency. EXECUTE is granted to authenticated only.';
 -- #endregion
@@ -1954,6 +1961,11 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'You can only transfer between your own wallets' USING ERRCODE = '42501';
     END IF;
+    -- Money landing in a business wallet is a contribution: a draft takes it, an archived business
+    -- takes nothing in (Decision #248 (k)).
+    IF v_to.owner_type = 'business' THEN
+        PERFORM org.fn_assert_business_not_archived (v_to.owner_id);
+    END IF;
     IF v_from.currency <> v_to.currency THEN
         RAISE EXCEPTION 'Both wallets must hold % — a transfer is not a currency conversion', v_from.currency
             USING ERRCODE = 'PX409';
@@ -2002,9 +2014,10 @@ COMMENT ON FUNCTION finance.transfer_funds(uuid, uuid, bigint, text, text) IS
 'Move money between two of the caller''s own wallets (their personal wallet and the vaults they belong
 to), same currency only. Leaving a vault needs the withdraw capability and the member''s spending limit;
 leaving a business wallet passes finance.fn_assert_business_spend (KYB, the envelope, the approval
-threshold). Landing needs membership. Idempotent on the attempt key. Refusals: 42501 not allowed ·
-22023 bad input or key · PB404 wallet gone · PX409 different currencies · PK403 KYB · PA403 spending
-limit or approval · PF402 not enough.';
+threshold). Landing needs membership, and never lands in an archived business''s wallet. Idempotent on
+the attempt key. Refusals: 42501 not allowed · 22023 bad input or key · PB404 wallet gone · PX409
+different currencies · 55000 business_not_active (an archived destination, or a source the spend gate
+refuses) · PK403 KYB · PA403 spending limit or approval · PF402 not enough.';
 
 -- Distribute part of a TEAM vault to its members by their agreed stakes
 -- (`finance.contribution_agreements.percent_bp`, active members only). Each share is floored to the
@@ -2459,7 +2472,16 @@ $$;
 -- honest gross is the team's oldest escrow still held; a team with none has no projection (`gross`
 -- NULL) rather than an invented one. The fee is that escrow's payer's rate (fn_escrow_fee_bp), the one
 -- the release will charge, truncated as the release truncates (Decision #187).
-CREATE OR REPLACE FUNCTION finance.preview_team_split(p_team_id uuid)
+--
+-- With `p_gross_minor` (1 … 10^12 minor units) it prices a release of THAT size instead — the Payouts
+-- module's Preview: the platform's standard fee rate (no payer, so no negotiated rate), truncated the
+-- same way, then the team's stored rule and stakes through the same plan. Either answer carries the
+-- active rule's `finder_bp` beside the plan, so every cut can be labelled with its rate.
+--
+-- Either answer exposes the split rule (the vault and finder cuts, the finder) and every stake, which
+-- Decision #233 (b) answers only to a `manage_finances` holder — the detail's payout block, which calls
+-- this, is built for nobody else — so a member without it is refused (`42501 payout:`).
+CREATE OR REPLACE FUNCTION finance.preview_team_split(p_team_id uuid, p_gross_minor bigint DEFAULT NULL)
 RETURNS jsonb
 LANGUAGE plpgsql
 STABLE
@@ -2471,11 +2493,37 @@ DECLARE
     v_fee_bp integer;
     v_fee bigint;
     v_payout bigint;
+    v_finder_bp integer;
 BEGIN
     IF auth.uid() IS NULL OR NOT EXISTS (
         SELECT 1 FROM org.fn_member_seat('team', p_team_id, auth.uid())
     ) THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'workspace: you are not a member of this team';
+    END IF;
+    IF NOT org.fn_member_can('team', p_team_id, 'manage_finances') THEN
+        RAISE EXCEPTION USING ERRCODE = '42501',
+            MESSAGE = 'payout: only members who manage the team''s finances can preview its split';
+    END IF;
+    SELECT r.finder_bp INTO v_finder_bp
+      FROM finance.split_rules r
+     WHERE r.team_id = p_team_id AND r.active AND r.rule_type = 'finders_fee';
+    IF p_gross_minor IS NOT NULL THEN
+        IF p_gross_minor < 1 OR p_gross_minor > 1000000000000 THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = 'gross_minor: preview an amount from 1 to 1000000000000 minor units';
+        END IF;
+        v_fee_bp := finance.fn_escrow_fee_bp(NULL, NULL);
+        v_fee := (p_gross_minor * v_fee_bp) / 10000;
+        v_payout := GREATEST(p_gross_minor - v_fee, 0);
+        RETURN jsonb_build_object(
+            'escrow_id', NULL,
+            'gross_minor', p_gross_minor,
+            'currency', NULL,
+            'fee_minor', v_fee,
+            'fee_bp', v_fee_bp,
+            'finder_bp', v_finder_bp,
+            'plan', finance.fn_team_split_plan(p_team_id, v_payout)
+        );
     END IF;
     SELECT e.id, e.amount_cents, COALESCE(e.deadline_bonus_cents, 0) AS bonus, e.currency,
            e.payer_business_id, e.payer_user_id
@@ -2486,7 +2534,7 @@ BEGIN
      LIMIT 1;
     IF v_escrow.id IS NULL THEN
         RETURN jsonb_build_object('gross_minor', NULL, 'currency', NULL, 'fee_minor', NULL, 'fee_bp', NULL,
-            'plan', finance.fn_team_split_plan(p_team_id, 0));
+            'finder_bp', v_finder_bp, 'plan', finance.fn_team_split_plan(p_team_id, 0));
     END IF;
     v_fee_bp := finance.fn_escrow_fee_bp(v_escrow.payer_business_id, v_escrow.payer_user_id);
     v_fee := (v_escrow.amount_cents * v_fee_bp) / 10000;
@@ -2497,6 +2545,7 @@ BEGIN
         'currency', v_escrow.currency,
         'fee_minor', v_fee,
         'fee_bp', v_fee_bp,
+        'finder_bp', v_finder_bp,
         'plan', finance.fn_team_split_plan(p_team_id, v_payout)
     );
 END;

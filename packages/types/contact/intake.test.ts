@@ -126,6 +126,25 @@ Deno.test("message: 20 to 5,000 characters after trimming", () => {
 	parse({ ...base, message: "x".repeat(20) });
 });
 
+Deno.test("storable text: a NUL or a lone surrogate is the field's 422, never the writer's 503", () => {
+	const base = { intent: "support", name: "Ada", email: "ada@example.com", topic: "other" };
+	assertEquals(issues({ ...base, message: `${MESSAGE} \u0000` }), ["message"]);
+	assertEquals(issues({ ...base, message: `${MESSAGE} \ud800` }), ["message"]);
+	assertEquals(issues({ ...base, message: MESSAGE, name: "A\u0000da" }), ["name"]);
+	assertEquals(issues({ ...base, message: MESSAGE, email: "a\u0000da@example.com" }), ["email"]);
+	assertEquals(
+		issues({
+			intent: "dispute",
+			name: "Ada",
+			email: "a@b.co",
+			message: MESSAGE,
+			referenceId: "\udc00",
+		}),
+		["referenceId"],
+	);
+	parse({ ...base, message: `${MESSAGE}\r\nSecond line.\tTabbed.` });
+});
+
 Deno.test("email: a malformed or over-long reply address is refused", () => {
 	const base = { intent: "support", name: "Ada", topic: "other", message: MESSAGE };
 	assertEquals(issues({ ...base, email: "ada@example" }), ["email"]);
