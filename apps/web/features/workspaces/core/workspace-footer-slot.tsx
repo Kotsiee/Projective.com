@@ -68,6 +68,7 @@ export async function workspaceFooterFor(url: URL, actor: ReadActor): Promise<Co
 			canManageMoney={held.has("manage_finances")}
 			canManageSettings={held.has("manage_settings")}
 			canEditProfile={held.has("edit_profile")}
+			canManageRoles={held.has("manage_roles")}
 		/>
 	);
 }

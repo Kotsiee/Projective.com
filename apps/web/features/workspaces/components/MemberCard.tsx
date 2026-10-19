@@ -77,38 +77,6 @@ export function KebabIcon(): JSX.Element {
 	);
 }
 
-/** A closed padlock — the read-only signal on a preset role, legible in greyscale. */
-export function LockIcon(): JSX.Element {
-	return (
-		<Svg>
-			<rect x="5" y="10.5" width="14" height="9.5" rx="2" />
-			<path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" />
-		</Svg>
-	);
-}
-
-/** A bare tick — the `allowed` cell mark and a satisfied permission row. */
-export function TickIcon(): JSX.Element {
-	return (
-		<Svg>
-			<path d="M5 12.5l4.5 4.5L19 7" />
-		</Svg>
-	);
-}
-
-/**
- * The `conditional` mark — a tick over a rule: "allowed, but bounded by a written rule", told apart
- * from a plain tick by silhouette rather than colour.
- */
-export function ConditionalIcon(): JSX.Element {
-	return (
-		<Svg>
-			<path d="M5.5 10.5l4 4L18.5 5" />
-			<path d="M6 19h12" />
-		</Svg>
-	);
-}
-
 /** A hollow warning triangle — flags a capability whose consequences are severe. */
 export function ConsequenceIcon(): JSX.Element {
 	return (

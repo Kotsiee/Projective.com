@@ -81,6 +81,8 @@ export interface WorkspaceFooterRigProps {
 	canManageSettings?: boolean;
 	/** Whether the viewer may edit the entity's name and visibility (drives Settings' Save). */
 	canEditProfile?: boolean;
+	/** Whether the viewer may edit custom roles (drives the Roles matrix's Save). */
+	canManageRoles?: boolean;
 	/** Whether the viewer may create another entity of this kind. */
 	canCreate?: boolean;
 	/**
@@ -106,6 +108,7 @@ export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.
 		canManageMoney: props.canManageMoney ?? false,
 		canManageSettings: props.canManageSettings ?? false,
 		canEditProfile: props.canEditProfile ?? false,
+		canManageRoles: props.canManageRoles ?? false,
 		dirty: policyDirty.value,
 		saveState: saveState.value,
 	});

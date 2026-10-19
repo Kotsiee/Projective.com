@@ -89,9 +89,11 @@ export type {
 } from "./components/PermissionMatrix.tsx";
 export {
 	cellAccessibleName,
+	cellLockReason,
 	cellPressed,
 	cellToggleable,
 	groupRuns,
+	lockReasonIds,
 	matrixKeyIntent,
 	moveFocus,
 	PERMISSION_STATE_LABELS,

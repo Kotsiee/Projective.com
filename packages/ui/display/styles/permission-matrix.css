@@ -27,11 +27,25 @@
 	color: var(--on-surface);
 	background: var(--pm-surface);
 	font-family: var(--font-sans);
+	container: ui-pm / inline-size;
+}
+
+/* A header control (a role's kebab) sits beside the label, so every role column gains its width. */
+.ui-permission-matrix--actions {
+	--pm-col-size: calc(var(--fld-h-md) * 3.5);
 }
 
 .ui-permission-matrix__scroll {
 	block-size: 100%;
 	max-block-size: inherit;
+}
+
+/* A matrix narrower than --bp-sm (a phone, or a docked lane's leftover) gives the role columns the
+   room: the pinned capability column narrows, and its labels wrap. */
+@container ui-pm (width < 480px) {
+	.ui-permission-matrix__scroll {
+		--pm-head-size: calc(var(--fld-h-md) * 4);
+	}
 }
 
 /* A focused cell scrolls clear of the pinned column and header row, not under them. */
@@ -107,6 +121,25 @@
 .ui-permission-matrix__colhead-lock {
 	display: inline-flex;
 	color: var(--text-secondary);
+}
+
+/* The label and a consumer's header control share one centred line; the label wraps first. */
+.ui-permission-matrix__colhead-row {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.ui-permission-matrix__colhead-row > .ui-permission-matrix__colhead-label {
+	min-inline-size: 0;
+}
+
+.ui-permission-matrix__colhead-actions {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
 }
 
 .ui-permission-matrix__rowhead {

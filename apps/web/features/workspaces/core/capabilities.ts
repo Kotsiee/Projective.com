@@ -25,15 +25,20 @@ export interface CapabilityGroup {
 }
 
 /**
- * Every capability, grouped by what it governs. The groups mirror the SSOT enum's own runs, so a
- * capability added there falls into an obvious slot here. {@link capabilityGroupsFor} scopes them to a
- * kind, which is why the union covers every capability although neither kind renders all of them.
+ * Every capability, grouped by what it governs — People · Work · Money · Admin (Teams work order C3).
+ * Four groups a reader can hold in their head, in the order a role is usually reasoned about: who it
+ * may bring in or move, what work it may commit the entity to (delivery on a team, buying on a
+ * business), what money it may move, and the entity-level administration that remains.
+ * {@link capabilityGroupsFor} scopes them to a kind, which is why the union covers every capability
+ * although neither kind renders all of them. A capability added to the SSOT enum must be added to
+ * exactly one group here (`roles-model.test.ts` holds that).
  */
 export const CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
-	{ title: "Membership", capabilities: ["invite_members", "remove_members", "manage_roles"] },
-	{ title: "Identity", capabilities: ["edit_profile", "manage_settings"] },
-	{ title: "Delivery", capabilities: ["bind_seat", "manage_projects", "publish_listings"] },
-	{ title: "Commerce", capabilities: ["purchase", "hire"] },
+	{ title: "People", capabilities: ["invite_members", "remove_members", "manage_roles"] },
+	{
+		title: "Work",
+		capabilities: ["bind_seat", "manage_projects", "publish_listings", "purchase", "hire"],
+	},
 	{
 		title: "Money",
 		capabilities: [
@@ -45,8 +50,16 @@ export const CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
 			"manage_billing",
 		],
 	},
-	{ title: "Oversight", capabilities: ["view_analytics", "view_audit"] },
-	{ title: "Terminal", capabilities: ["archive_entity"] },
+	{
+		title: "Admin",
+		capabilities: [
+			"edit_profile",
+			"manage_settings",
+			"view_analytics",
+			"view_audit",
+			"archive_entity",
+		],
+	},
 ];
 
 /**

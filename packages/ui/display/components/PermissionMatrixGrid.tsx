@@ -5,10 +5,12 @@ import { cx } from "../../core/cx.ts";
 import { useId } from "../../hooks/useId.ts";
 import {
 	cellAccessibleName,
+	cellLockReason,
 	cellPressed,
 	cellToggleable,
 	clampPos,
 	groupRuns,
+	lockReasonIds,
 	matrixKeyIntent,
 	type MatrixPos,
 	PERMISSION_STATE_LABELS,
@@ -45,8 +47,27 @@ export interface PermissionMatrixProps {
 	glyphs: PermissionMatrixGlyphs;
 	/** Override the spoken state words (defaults: Allowed · Conditional · Locked · Not allowed). */
 	stateLabels?: Partial<Record<PermissionCellState, string>>;
-	/** Why a locked cell cannot change; every locked cell is described by it. */
+	/**
+	 * Why a locked cell cannot change; every locked cell is described by it unless its column carries
+	 * its own `lockedHint` or `cellLock` gives the cell a reason.
+	 */
 	lockedHint?: string;
+	/**
+	 * Fix one cell with the reason it cannot change, or return `null` to leave it to the state and its
+	 * column. A fixed cell keeps the state it draws (allowed, off, …) and stays focusable; it refuses
+	 * activation like a locked one and is described by the reason — e.g. a grant the editor may not
+	 * make. Ignored on a read-only matrix.
+	 */
+	cellLock?: (
+		row: PermissionMatrixRow,
+		column: PermissionMatrixColumn,
+	) => string | null | undefined;
+	/**
+	 * Controls for one column, rendered in its header beside the label (e.g. an `ActionMenu` kebab for
+	 * a role). They sit outside the grid's roving focus — each is its own tab stop — so keep them to
+	 * one compact control per column, and return `null` for a column that has none.
+	 */
+	columnActions?: (column: PermissionMatrixColumn, index: number) => ComponentChildren;
 	/** The inline word shown on a `sensitive` capability (default "Sensitive"). */
 	sensitiveLabel?: string;
 	/** Root id; minted when absent. */
@@ -86,6 +107,8 @@ export function PermissionMatrixGrid(props: PermissionMatrixProps): JSX.Element 
 		stateLabels,
 		lockedHint = DEFAULT_LOCKED_HINT,
 		sensitiveLabel = "Sensitive",
+		cellLock,
+		columnActions,
 		id: idProp,
 		class: className,
 	} = props;
@@ -99,9 +122,33 @@ export function PermissionMatrixGrid(props: PermissionMatrixProps): JSX.Element 
 	const focus = clampPos(active.value, dims);
 	const labels = { ...PERMISSION_STATE_LABELS, ...stateLabels };
 
-	const stateAt = (at: MatrixPos): PermissionCellState => value(rows[at.row], columns[at.col]);
-	const toggleableAt = (at: MatrixPos): boolean =>
-		cellToggleable(stateAt(at), columns[at.col], interactive);
+	// #region Cell facts
+	/**
+	 * Every cell's state and the consumer's fix on it, read once per render: the cells, the keyboard
+	 * and the hidden lock reasons all answer from the same reading.
+	 */
+	const facts = rows.map((row) =>
+		columns.map((column) => ({
+			state: value(row, column),
+			fixed: interactive ? cellLock?.(row, column) ?? null : null,
+		}))
+	);
+	const reasonAt = (at: MatrixPos): string | null => {
+		const fact = facts[at.row][at.col];
+		return cellLockReason(fact.state, columns[at.col], fact.fixed, lockedHint);
+	};
+	/** One hidden sentence per distinct reason; the matrix-wide hint keeps `<id>-locked`. */
+	const reasonIds = lockReasonIds(
+		facts.flatMap((cells, row) => cells.map((_, col) => reasonAt({ row, col }))),
+		lockedHint,
+		lockedId,
+	);
+
+	const toggleableAt = (at: MatrixPos): boolean => {
+		const fact = facts[at.row][at.col];
+		return cellToggleable(fact.state, columns[at.col], interactive, fact.fixed);
+	};
+	// #endregion
 
 	// #region Keyboard
 	const positionOf = (target: EventTarget | null): MatrixPos | null => {
@@ -142,11 +189,15 @@ export function PermissionMatrixGrid(props: PermissionMatrixProps): JSX.Element 
 		colIndex: number,
 	) => {
 		const at = { row: rowIndex, col: colIndex };
-		const state = value(row, column);
-		const toggleable = cellToggleable(state, column, interactive);
-		const locked = state === "locked" || column.locked === true;
+		const { state } = facts[rowIndex][colIndex];
+		const toggleable = toggleableAt(at);
+		const reason = reasonAt(at);
+		const locked = reason !== null;
 		const name = cellAccessibleName(row.label, column.label, labels[state]);
-		const describedBy = cx(locked && lockedId, row.hint && `${id}-hint-${rowIndex}`) || undefined;
+		const describedBy = cx(
+			reason !== null && reasonIds.get(reason),
+			row.hint && `${id}-hint-${rowIndex}`,
+		) || undefined;
 		const tabIndex = focus.row === rowIndex && focus.col === colIndex ? 0 : -1;
 		const glyph = state === "off" ? null : glyphs[state];
 		const mark = cx(
@@ -218,15 +269,9 @@ export function PermissionMatrixGrid(props: PermissionMatrixProps): JSX.Element 
 				<thead>
 					<tr>
 						<th scope="col" class="ui-permission-matrix__corner">{rowHeaderLabel}</th>
-						{columns.map((column) => (
-							<th
-								key={column.key}
-								scope="col"
-								class={cx(
-									"ui-permission-matrix__colhead",
-									column.locked && "ui-permission-matrix__colhead--locked",
-								)}
-							>
+						{columns.map((column, colIndex) => {
+							const actions = columnActions?.(column, colIndex);
+							const label = (
 								<span class="ui-permission-matrix__colhead-label">
 									{column.label}
 									{column.locked && (
@@ -235,9 +280,28 @@ export function PermissionMatrixGrid(props: PermissionMatrixProps): JSX.Element 
 										</span>
 									)}
 								</span>
-								{column.meta && <span class="ui-permission-matrix__meta">{column.meta}</span>}
-							</th>
-						))}
+							);
+							return (
+								<th
+									key={column.key}
+									scope="col"
+									class={cx(
+										"ui-permission-matrix__colhead",
+										column.locked && "ui-permission-matrix__colhead--locked",
+									)}
+								>
+									{actions == null || actions === false
+										? label
+										: (
+											<span class="ui-permission-matrix__colhead-row">
+												{label}
+												<span class="ui-permission-matrix__colhead-actions">{actions}</span>
+											</span>
+										)}
+									{column.meta && <span class="ui-permission-matrix__meta">{column.meta}</span>}
+								</th>
+							);
+						})}
 					</tr>
 				</thead>
 				{groupRuns(rows).map((run, runIndex) => (
@@ -281,7 +345,9 @@ export function PermissionMatrixGrid(props: PermissionMatrixProps): JSX.Element 
 					</tbody>
 				))}
 			</table>
-			<span id={lockedId} hidden>{lockedHint}</span>
+			{[...reasonIds].map(([reason, reasonId]) => (
+				<span key={reasonId} id={reasonId} hidden>{reason}</span>
+			))}
 		</>
 	);
 }

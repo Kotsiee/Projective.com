@@ -1,252 +1,295 @@
 import type { JSX } from "preact";
-import { useComputed, useSignal } from "@preact/signals";
-import { useRef } from "preact/hooks";
+import { batch, useComputed, useSignal } from "@preact/signals";
 import "../styles/workspace.css";
-import { Tooltip } from "@projective/ui/feedback";
-import { Button, InputText } from "@projective/ui/fields";
+import { MetaLine, PermissionMatrix } from "@projective/ui/display";
+import type { PermissionMatrixColumn, PermissionMatrixRow } from "@projective/ui/display";
+import { ConfirmDialog, InlineNotice, Tooltip } from "@projective/ui/feedback";
+import { Button } from "@projective/ui/fields";
+import { ActionMenu, type MenuItem } from "@projective/ui/navigation";
 import {
-	capabilitiesForKind,
-	CAPABILITY_LABEL,
-	CONSEQUENTIAL,
 	kindCopy,
-	mayGrant,
-	roleLabel,
-	roleRank,
-	rolesForKind,
-	type UpsertRoleInput,
 	type WorkspaceCapability,
 	type WorkspaceDetail,
 	type WorkspaceRoleDef,
 } from "@projective/types/workspace";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
-import { publishDetail } from "../core/workspace-state.ts";
-import { ConditionalIcon, LockIcon, TickIcon } from "../components/MemberCard.tsx";
-import { cloneGlyph, PlusGlyph, RoleGlyph } from "../core/workspace-glyphs.tsx";
+import { publishDetail, saveState } from "../core/workspace-state.ts";
+import { usePolicyBridge } from "../hooks/usePolicyBridge.ts";
+import { useModuleCommit } from "../hooks/useModuleCommit.ts";
+import {
+	BLANK_START,
+	cellLock,
+	dirtyRoleIds,
+	pruneDraft,
+	roleCaps,
+	roleCellState,
+	type RoleDraft,
+	type RoleEditorMode,
+	roleMatrixColumns,
+	roleMatrixRows,
+	roleMenu,
+	type RoleMenuAction,
+	roleSavePlan,
+	rolesCommit,
+	rolesHeaderItems,
+	rolesViewerOf,
+	roleWriteInput,
+	toggleRoleCap,
+} from "../core/roles-model.ts";
+import { KebabIcon } from "../components/MemberCard.tsx";
+import { RoleEditor } from "../components/RoleEditor.tsx";
+import {
+	AllowedGlyph,
+	ConditionalGlyph,
+	LockedGlyph,
+	roleMatrixGlyphs,
+} from "../components/role-glyphs.tsx";
 
 /**
- * RolesMatrix — layers 1 and 2 of the permission model, as a grid you can actually read.
+ * RolesMatrix — the Roles module (Teams work order C3): the entity's roles as columns of a
+ * `PermissionMatrix` (`@projective/ui/display`, §B.13), the capabilities its kind renders as rows.
  *
- * Roles run down; capabilities run across. A cell answers one question — may this role do this thing —
- * and the answer is a GLYPH, because eighteen columns of the word "Allowed" is a wall rather than a
- * table (§B.6). The words live in each cell's tooltip, along with WHY when the answer is no.
+ * **Columns** are the presets, most-privileged first, then the custom roles; each carries its member
+ * count (and, for a custom role, the preset it is based on) as its meta line. **Rows** are the kind's
+ * own capability list, grouped People · Work · Money · Admin, the consequential ones flagged sensitive
+ * with what holding them lets a person do, a rule-bounded one with its rule.
  *
- * **Presets are locked, and visibly so.** `owner` / `admin` / `lead` / `member` are the definition of
- * the common case; if they were editable, two entities using "Admin" could mean different things and
- * every conversation about permissions would need a lookup. `Duplicate to custom role` is the escape
- * hatch — copy the bundle, then diverge under a name of your own.
+ * **Presets are locked columns** — the owner's all-allowed — described by "Preset roles can't be
+ * edited — create a custom role". A custom role's column is the viewer's to edit, cell by cell, into a
+ * local draft; Save and Discard are the footer rig's (tier 3 and tier 5, `usePolicyBridge`), so the
+ * body never grows a Save of its own. A cell the server would refuse is LOCKED in place with the
+ * server's reason — a grant the viewer does not hold, a business's owner-reserved right — and a
+ * column that ranks above the viewer is locked whole. Anything a role allows may be taken away.
  *
- * **A cell the actor cannot grant is disabled with its reason, not hidden.** `mayGrant()` enforces
- * "you cannot give away what you do not hold"; hiding those cells would make the matrix look different
- * per viewer and teach nobody why.
+ * **New role** is the header band's one filled action (tier 2 structural, `useModuleCommit`); it
+ * opens the `RoleEditor`, which also renames. A custom column's kebab carries Rename… · Duplicate… ·
+ * Archive role…, the last confirmed by a danger `ConfirmDialog` and refused in place, with the count
+ * and the reason, while anybody holds the role or an invitation offers it. Nothing is deleted.
  *
- * The grid is a real `role="grid"` with arrow-key navigation and Space to toggle, so it is fully usable
- * without a pointer. Both the header row and the first column are sticky, and the horizontal scroll
- * lives on the matrix wrapper — never the page.
+ * Every rule is `core/roles-model.ts`; every write resolves to the re-read detail, which replaces the
+ * projection and is republished to the bands. Teams and Businesses share it (Decision #61): a
+ * business's matrix is its own capability list, with no `lead`.
  */
 
 export interface RolesMatrixProps {
 	workspace: WorkspaceDetail;
 }
 
+/** A line the screen says about the last thing that happened. */
+interface ScreenNotice {
+	tone: "error" | "info";
+	text: string;
+}
+
+/** Layout zones a column menu's panel keeps clear of. */
+const MENU_AVOID = [".ui-app-shell__sidebar", ".ui-middle-nav__lane"] as const;
+
 export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 	const detail = useSignal<WorkspaceDetail>(props.workspace);
-	const ws = detail.value;
-	const copy = kindCopy(ws.kind);
+	/** Unsaved capability lists per custom role id. */
+	const draft = useSignal<RoleDraft>({});
+	/** A role write (Save or an archive) is in flight — the matrix takes no toggles meanwhile. */
+	const busy = useSignal(false);
+	const notice = useSignal<ScreenNotice | null>(null);
 
-	const columns = useComputed(() => capabilitiesForKind(ws.kind));
-	const held = new Set(ws.viewerCapabilities);
-	const canManage = held.has("manage_roles");
+	/** The role editor: open, its job, and a sequence that remounts it fresh on every open. */
+	const editorOpen = useSignal(false);
+	const editorSeq = useSignal(0);
+	const editorMode = useSignal<RoleEditorMode>("create");
+	const editorRole = useSignal<WorkspaceRoleDef | null>(null);
+	const editorStart = useSignal(BLANK_START);
 
-	/** The viewer's row, for `mayGrant`. */
-	const actor = useComputed(() =>
-		ws.members.find((m) => m.id === ws.viewerMemberId) ?? ws.members.find((m) => m.isSelf) ?? null
-	);
+	/** The archive confirmation and the role it names. */
+	const confirmArchive = useSignal(false);
+	const archiving = useSignal<WorkspaceRoleDef | null>(null);
 
-	/** Pending capability edits per custom role id — presets are never in here. */
-	const draft = useSignal<Record<string, Set<WorkspaceCapability>>>({});
-	const saving = useSignal(false);
-	const error = useSignal<string | null>(null);
-	/** The focused cell, as `[rowIndex, colIndex]`, for keyboard navigation. */
-	const focus = useSignal<[number, number]>([0, 0]);
-	const gridRef = useRef<HTMLDivElement | null>(null);
+	const dirty = useComputed(() => dirtyRoleIds(detail.value.roles, draft.value).length > 0);
 
-	/** New-role composer state. */
-	const composing = useSignal(false);
-	const newName = useSignal("");
-	const seedFrom = useSignal<string | null>(null);
-	/** The preset the new role ranks as — what "may this person manage that one" compares. */
-	const newBase = useSignal<UpsertRoleInput["basePreset"]>("member");
-	/** The role whose archive is in flight, so its control can say so. */
-	const archivingId = useSignal<string | null>(null);
+	// #region Writes
+	/** Replace the projection from a server response, republish it, and drop a draft it settled. */
+	function adopt(next: WorkspaceDetail, settled: readonly string[] = []): void {
+		batch(() => {
+			detail.value = next;
+			const rest = Object.fromEntries(
+				Object.entries(draft.peek()).filter(([id]) => !settled.includes(id)),
+			);
+			draft.value = pruneDraft(rest, next.roles);
+		});
+		publishDetail(next);
+	}
 
 	/**
-	 * The presets a custom role may rank as: never owner (ownership moves only by transfer), `lead` on a
-	 * team only, and never above the author's own rank — the database refuses the rest, so they are not
-	 * offered.
+	 * The footer rig's Save: one write per edited custom role. A role the server would refuse (it still
+	 * allows something the viewer may not put on a role) is held back with its sentence; the rest save.
 	 */
-	const basePresets = useComputed(() => {
-		const mine = actor.value ? roleRank(actor.value.rolePreset) : 0;
-		return rolesForKind(ws.kind).filter((r): r is UpsertRoleInput["basePreset"] =>
-			r !== "owner" && roleRank(r) <= mine
-		);
-	});
-
-	const dirty = useComputed(() => Object.keys(draft.value).length > 0);
-
-	/** The effective capability set for a role, draft first. */
-	function capsOf(role: WorkspaceRoleDef): Set<WorkspaceCapability> {
-		return draft.value[role.id] ?? new Set(role.capabilities);
-	}
-
-	function toggle(role: WorkspaceRoleDef, capability: WorkspaceCapability): void {
-		if (role.preset || !canManage) return;
-		if (!actor.value || !mayGrant(actor.value, capability, ws.kind)) return;
-
-		const next = { ...draft.value };
-		const set = new Set(next[role.id] ?? role.capabilities);
-		if (set.has(capability)) set.delete(capability);
-		else set.add(capability);
-		next[role.id] = set;
-		draft.value = next;
-		error.value = null;
-	}
-
-	async function saveRole(role: WorkspaceRoleDef): Promise<void> {
-		const set = draft.value[role.id];
-		if (!set) return;
-		saving.value = true;
-		error.value = null;
-		const res = await WorkspaceService.upsertRole({
-			kind: ws.kind,
-			workspaceId: ws.id,
-			roleId: role.id,
-			name: role.name,
-			summary: role.summary,
-			capabilities: [...set],
-			basePreset: role.basePreset === "owner" ? "admin" : role.basePreset,
+	async function save(): Promise<void> {
+		if (busy.peek()) return;
+		const ws = detail.peek();
+		const plan = roleSavePlan(ws.roles, draft.peek(), rolesViewerOf(ws));
+		if (plan.writes.length === 0 && plan.problems.length === 0) return;
+		batch(() => {
+			busy.value = true;
+			notice.value = null;
+			saveState.value = "saving";
 		});
-		saving.value = false;
-		if (!res.ok || !res.data) {
-			error.value = res.errors?.capabilities ?? res.message ?? "Could not save that role.";
-			return;
+		const failures = plan.problems.map((p) => p.text);
+		const settled: string[] = [];
+		let latest: WorkspaceDetail | null = null;
+		for (const write of plan.writes) {
+			const res = await WorkspaceService.upsertRole(roleWriteInput(ws, write));
+			if (!res.ok || !res.data) {
+				failures.push(
+					`${write.role.name}: ${
+						res.errors?.capabilities ?? res.errors?.basePreset ?? res.message ??
+							"it could not be saved."
+					}`,
+				);
+				continue;
+			}
+			latest = res.data;
+			settled.push(write.role.id);
 		}
-		const next = { ...draft.value };
-		delete next[role.id];
-		draft.value = next;
-		adopt(res.data);
-	}
-
-	async function createRole(): Promise<void> {
-		const name = newName.value.trim();
-		if (name.length === 0) {
-			error.value = "Give the role a name.";
-			return;
-		}
-		const seed = seedFrom.value ? ws.roles.find((r) => r.id === seedFrom.value) : null;
-		saving.value = true;
-		error.value = null;
-		const res = await WorkspaceService.upsertRole({
-			kind: ws.kind,
-			workspaceId: ws.id,
-			name,
-			summary: seed ? `Based on ${seed.name}.` : "",
-			capabilities: seed ? [...seed.capabilities] : [],
-			basePreset: newBase.value,
+		batch(() => {
+			if (latest) adopt(latest, settled);
+			busy.value = false;
+			if (failures.length > 0) {
+				saveState.value = "error";
+				notice.value = { tone: "error", text: failures.join(" ") };
+			} else {
+				saveState.value = "saved";
+			}
 		});
-		saving.value = false;
-		if (!res.ok || !res.data) {
-			error.value = res.errors?.name ?? res.errors?.basePreset ?? res.errors?.capabilities ??
-				res.message ?? "Could not create that role.";
-			return;
-		}
-		composing.value = false;
-		newName.value = "";
-		seedFrom.value = null;
-		newBase.value = "member";
-		adopt(res.data);
 	}
 
-	/** Archive a custom role. Nothing is deleted; a role anybody holds or is offered is refused. */
-	async function archiveRole(role: WorkspaceRoleDef): Promise<void> {
-		archivingId.value = role.id;
-		error.value = null;
+	/** The footer rig's Discard: every column back to what is saved. */
+	function discard(): void {
+		batch(() => {
+			draft.value = {};
+			notice.value = null;
+		});
+	}
+
+	usePolicyBridge({ dirty, save, discard });
+
+	/** Archive a custom role — kept on record, never deleted. */
+	async function archive(role: WorkspaceRoleDef): Promise<void> {
+		const ws = detail.peek();
+		batch(() => {
+			busy.value = true;
+			notice.value = null;
+		});
 		const res = await WorkspaceService.archiveRole({
 			kind: ws.kind,
 			workspaceId: ws.id,
 			roleId: role.id,
 		});
-		archivingId.value = null;
+		busy.value = false;
 		if (!res.ok || !res.data) {
-			error.value = res.errors?.role ?? res.message ?? `Could not archive ${role.name}.`;
+			notice.value = {
+				tone: "error",
+				text: res.errors?.role ?? res.message ?? `Could not archive ${role.name}.`,
+			};
 			return;
 		}
-		const next = { ...draft.value };
-		delete next[role.id];
-		draft.value = next;
-		adopt(res.data);
+		adopt(res.data, [role.id]);
+		notice.value = {
+			tone: "info",
+			text: `${role.name} is archived. It stays on record — nothing was deleted.`,
+		};
+	}
+	// #endregion
+
+	// #region Editor and menus
+	function openEditor(mode: RoleEditorMode, role: WorkspaceRoleDef | null, start: string): void {
+		batch(() => {
+			editorMode.value = mode;
+			editorRole.value = role;
+			editorStart.value = start;
+			editorSeq.value = editorSeq.peek() + 1;
+			editorOpen.value = true;
+		});
 	}
 
-	/** Replace the projection from a server response and republish it to the bands. */
-	function adopt(next: WorkspaceDetail): void {
-		detail.value = next;
-		publishDetail(next);
-	}
+	// The header band's one filled action: "New role" (tier 2 structural), for a manage_roles holder.
+	useModuleCommit(() => {
+		const commit = rolesCommit(rolesViewerOf(detail.value));
+		return commit ? { ...commit, run: () => openEditor("create", null, BLANK_START) } : null;
+	});
 
-	/** Start a new custom role, optionally as a copy of an existing row. */
-	function compose(seed: WorkspaceRoleDef | null): void {
-		composing.value = true;
-		seedFrom.value = seed?.id ?? null;
-		newName.value = seed ? `${seed.name} copy` : "";
-		// A copy ranks as the row it copies, capped at what the author may create.
-		const wanted = seed ? (seed.basePreset === "owner" ? "admin" : seed.basePreset) : "member";
-		newBase.value = basePresets.value.includes(wanted) ? wanted : "member";
-	}
-
-	/** Arrow-key navigation across the grid; Space toggles the focused cell. */
-	function onKeyDown(e: KeyboardEvent): void {
-		const [r, c] = focus.value;
-		const rows = ws.roles.length;
-		const cols = columns.value.length;
-		let next: [number, number] | null = null;
-
-		switch (e.key) {
-			case "ArrowRight":
-				next = [r, Math.min(cols - 1, c + 1)];
-				break;
-			case "ArrowLeft":
-				next = [r, Math.max(0, c - 1)];
-				break;
-			case "ArrowDown":
-				next = [Math.min(rows - 1, r + 1), c];
-				break;
-			case "ArrowUp":
-				next = [Math.max(0, r - 1), c];
-				break;
-			case "Home":
-				next = [r, 0];
-				break;
-			case "End":
-				next = [r, cols - 1];
-				break;
-			case " ":
-			case "Enter": {
-				e.preventDefault();
-				toggle(ws.roles[r], columns.value[c]);
+	function onMenuAction(action: RoleMenuAction, role: WorkspaceRoleDef): void {
+		switch (action) {
+			case "rename":
+				openEditor("rename", role, BLANK_START);
 				return;
-			}
-			default:
+			case "duplicate":
+				openEditor("create", null, `role:${role.id}`);
+				return;
+			case "archive":
+				batch(() => {
+					archiving.value = role;
+					confirmArchive.value = true;
+				});
 				return;
 		}
-
-		if (next) {
-			e.preventDefault();
-			focus.value = next;
-			const cell = gridRef.current?.querySelector<HTMLElement>(
-				`[data-cell="${next[0]}-${next[1]}"]`,
-			);
-			cell?.focus();
-		}
 	}
+
+	/** After the editor wrote a role: adopt the re-read detail and say what happened. */
+	function onSaved(next: WorkspaceDetail, name: string): void {
+		adopt(next);
+		notice.value = {
+			tone: "info",
+			text: editorMode.peek() === "create"
+				? `${name} is created. Tick what it may do in its column, then save.`
+				: `Renamed to ${name}.`,
+		};
+	}
+	// #endregion
+
+	// #region The matrix
+	const ws = detail.value;
+	const copy = kindCopy(ws.kind);
+	const viewer = rolesViewerOf(ws);
+	const byId = new Map(ws.roles.map((r) => [r.id, r]));
+	const rows = roleMatrixRows(ws.kind, ws);
+	const columns = roleMatrixColumns(ws.roles, viewer, draft.value);
+	const conditional = ws.roles.some((role) =>
+		rows.some((row) =>
+			roleCellState(role, row.key as WorkspaceCapability, roleCaps(role, draft.value), ws) ===
+				"conditional"
+		)
+	);
+
+	const capOf = (row: PermissionMatrixRow) => row.key as WorkspaceCapability;
+	const roleOf = (column: PermissionMatrixColumn) => byId.get(column.key) ?? null;
+
+	function cellValue(row: PermissionMatrixRow, column: PermissionMatrixColumn) {
+		const role = roleOf(column);
+		if (!role) return "off" as const;
+		return roleCellState(role, capOf(row), roleCaps(role, draft.value), ws);
+	}
+
+	function cellFix(row: PermissionMatrixRow, column: PermissionMatrixColumn): string | null {
+		const role = roleOf(column);
+		if (!role || column.locked) return null;
+		return cellLock(capOf(row), roleCaps(role, draft.value).includes(capOf(row)), viewer);
+	}
+
+	function toggle(row: PermissionMatrixRow, column: PermissionMatrixColumn): void {
+		const role = roleOf(column);
+		if (!role || role.preset || busy.peek()) return;
+		batch(() => {
+			draft.value = toggleRoleCap(draft.peek(), role, capOf(row));
+			if (saveState.peek() !== "saving") saveState.value = "idle";
+		});
+	}
+
+	function columnMenu(column: PermissionMatrixColumn): JSX.Element | null {
+		const role = roleOf(column);
+		if (!role) return null;
+		const menu = roleMenu(role, viewer, ws.invites, onMenuAction);
+		return menu.length > 0 ? <RoleActionsMenu role={role} menu={menu} /> : null;
+	}
+	// #endregion
 
 	return (
 		<div class="wsp" data-kind={ws.kind}>
@@ -254,311 +297,138 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 				<section class="wsp-band wsp-band--head" data-i={0}>
 					<div class="wsp-band__inner">
 						<div class="wsp-pagehead">
-							<h1 class="wsp-pagehead__title">Roles and permissions</h1>
-							<p class="wsp-pagehead__note">
-								A role is a named bundle of permissions. Pick one and most people never think about
-								this page again; compose your own when the presets do not fit. Individual exceptions
-								live on each member, not here.
-							</p>
+							<div class="wsp-roles__head">
+								<h1 class="wsp-pagehead__title">Roles and permissions</h1>
+								<MetaLine items={rolesHeaderItems(ws.roles)} />
+							</div>
 						</div>
+						<p class="wsp-pagehead__note">
+							A role is a named bundle of permissions. The presets are fixed; a custom role is yours
+							to compose, cell by cell. An exception for one person lives on that member, not here.
+						</p>
 					</div>
 				</section>
+
+				{notice.value && (
+					<section class="wsp-band wsp-band--plain">
+						<div class="wsp-band__inner">
+							<InlineNotice
+								align="start"
+								assertive={notice.value.tone === "error"}
+								text={notice.value.text}
+							/>
+						</div>
+					</section>
+				)}
 
 				<section class="wsp-band wsp-band--page wsp-band--tail">
 					<div class="wsp-band__inner">
-						{/* #region Legend */}
-						<div class="wsp-matrix__legend">
-							<span class="wsp-matrix__legend-item">
-								<span class="wsp-matrix__legend-mark" data-state="allowed">
-									<TickIcon />
-								</span>
-								Allowed
-							</span>
-							<span class="wsp-matrix__legend-item">
-								<span class="wsp-matrix__legend-mark" data-state="conditional">
-									<ConditionalIcon />
-								</span>
-								Conditional — a limit or an approval applies
-							</span>
-							<span class="wsp-matrix__legend-item">
-								<span class="wsp-matrix__legend-mark" data-state="denied">
-									<LockIcon />
-								</span>
-								Not allowed
-							</span>
+						<div class="wsp-roles">
+							<ul class="wsp-roles__legend" aria-label="What the cells mean">
+								<li class="wsp-roles__legend-item">
+									<span class="wsp-roles__legend-glyph" aria-hidden="true">
+										<AllowedGlyph />
+									</span>
+									Allowed
+								</li>
+								{conditional && (
+									<li class="wsp-roles__legend-item">
+										<span class="wsp-roles__legend-glyph" aria-hidden="true">
+											<ConditionalGlyph />
+										</span>
+										Allowed within a rule this {copy.noun} set
+									</li>
+								)}
+								<li class="wsp-roles__legend-item">
+									<span class="wsp-roles__legend-glyph" aria-hidden="true">
+										<LockedGlyph />
+									</span>
+									Preset — read-only
+								</li>
+							</ul>
+
+							<PermissionMatrix
+								class="wsp-roles__matrix"
+								caption={`${copy.Noun} roles and permissions`}
+								captionHidden
+								rowHeaderLabel="Permission"
+								rows={rows}
+								columns={columns}
+								value={cellValue}
+								onToggle={viewer.canManage ? toggle : undefined}
+								cellLock={cellFix}
+								columnActions={viewer.canManage ? columnMenu : undefined}
+								glyphs={roleMatrixGlyphs()}
+								stateLabels={{ conditional: "Allowed within a rule" }}
+								lockedHint="This cell can't be changed here."
+							/>
 						</div>
-						{/* #endregion */}
-
-						{/* #region The grid */}
-						<div class="wsp-matrix">
-							<div
-								class="wsp-matrix__grid"
-								role="grid"
-								aria-label={`${copy.Noun} roles and permissions`}
-								aria-rowcount={ws.roles.length + 1}
-								aria-colcount={columns.value.length + 1}
-								ref={gridRef}
-								onKeyDown={onKeyDown}
-							>
-								<div class="wsp-matrix__head" role="row" aria-rowindex={1}>
-									<div class="wsp-matrix__corner" role="columnheader" aria-colindex={1}>Role</div>
-									{columns.value.map((cap, i) => (
-										<div
-											class="wsp-matrix__col"
-											role="columnheader"
-											aria-colindex={i + 2}
-											key={cap}
-										>
-											<Tooltip content={CAPABILITY_LABEL[cap]} placement="top">
-												<span
-													class="wsp-matrix__colbtn"
-													data-consequential={CONSEQUENTIAL.includes(cap) ? "true" : undefined}
-												>
-													<span class="wsp-matrix__col-name">{CAPABILITY_LABEL[cap]}</span>
-												</span>
-											</Tooltip>
-										</div>
-									))}
-								</div>
-
-								{ws.roles.map((role, rowIndex) => {
-									const caps = capsOf(role);
-									const roleDirty = Boolean(draft.value[role.id]);
-									return (
-										<div
-											class="wsp-matrix__row"
-											role="row"
-											aria-rowindex={rowIndex + 2}
-											key={role.id}
-											data-preset={role.preset ? "true" : undefined}
-										>
-											<div class="wsp-matrix__rowhead" role="rowheader" aria-colindex={1}>
-												<span class="wsp-matrix__rowlabel">
-													{role.name}
-													{role.preset && (
-														<Tooltip
-															content="A preset role — duplicate it to make an editable copy"
-															placement="right"
-														>
-															<span class="wsp-matrix__lock" aria-label="Read-only preset">
-																<LockIcon />
-															</span>
-														</Tooltip>
-													)}
-												</span>
-												<span class="wsp-matrix__rownote">
-													{role.memberCount === 1 ? "1 member" : `${role.memberCount} members`}
-													{role.summary ? ` · ${role.summary}` : ""}
-												</span>
-												<span class="wsp-matrix__actions">
-													{role.preset
-														? (
-															canManage && (
-																<button
-																	type="button"
-																	class="wsp-matrix__colbtn"
-																	onClick={() => compose(role)}
-																>
-																	Duplicate to custom role
-																</button>
-															)
-														)
-														: roleDirty
-														? (
-															<button
-																type="button"
-																class="wsp-matrix__colbtn"
-																disabled={saving.value}
-																onClick={() => void saveRole(role)}
-															>
-																{saving.value ? "Saving…" : "Save"}
-															</button>
-														)
-														: canManage && (
-															<Tooltip
-																content={role.memberCount > 0
-																	? "Move its members to another role before archiving it."
-																	: "Archive this role — it is kept on record, never deleted."}
-																placement="right"
-															>
-																<button
-																	type="button"
-																	class="wsp-matrix__colbtn"
-																	disabled={role.memberCount > 0 ||
-																		archivingId.value === role.id}
-																	onClick={() => void archiveRole(role)}
-																>
-																	{archivingId.value === role.id ? "Archiving…" : "Archive"}
-																</button>
-															</Tooltip>
-														)}
-												</span>
-											</div>
-
-											{columns.value.map((cap, colIndex) => {
-												const on = caps.has(cap);
-												const blockedByActor = !actor.value ||
-													!mayGrant(actor.value, cap, ws.kind);
-												const editable = canManage && !role.preset && !blockedByActor;
-												// Money capabilities on a business are genuinely conditional: a limit or
-												// an approval threshold governs them even when the role allows them.
-												const conditional = on && ws.kind === "business" &&
-													(cap === "spend_funds" || cap === "purchase" || cap === "hire");
-												const state = on ? (conditional ? "conditional" : "allowed") : "denied";
-												const reason = role.preset
-													? "Preset roles are read-only — duplicate this row to change it."
-													: blockedByActor
-													? "You cannot grant a permission you do not hold yourself."
-													: !canManage
-													? "You need permission to change roles."
-													: conditional
-													? "Allowed, within this member's spend limit and the approval threshold."
-													: on
-													? "Allowed."
-													: "Not allowed.";
-
-												return (
-													<div
-														class="wsp-matrix__cellwrap"
-														role="gridcell"
-														aria-colindex={colIndex + 2}
-														key={cap}
-													>
-														<Tooltip
-															content={`${CAPABILITY_LABEL[cap]} — ${reason}`}
-															placement="top"
-														>
-															<button
-																type="button"
-																class="wsp-matrix__cell"
-																data-cell={`${rowIndex}-${colIndex}`}
-																data-state={state}
-																aria-pressed={on}
-																aria-label={`${role.name}: ${CAPABILITY_LABEL[cap]}`}
-																disabled={!editable}
-																tabIndex={focus.value[0] === rowIndex &&
-																		focus.value[1] === colIndex
-																	? 0
-																	: -1}
-																onFocus={() => {
-																	focus.value = [rowIndex, colIndex];
-																}}
-																onClick={() => toggle(role, cap)}
-															>
-																<span class="wsp-matrix__mark" data-state={state}>
-																	{state === "allowed"
-																		? <TickIcon />
-																		: state === "conditional"
-																		? <ConditionalIcon />
-																		: <LockIcon />}
-																</span>
-															</button>
-														</Tooltip>
-													</div>
-												);
-											})}
-										</div>
-									);
-								})}
-							</div>
-						</div>
-						{/* #endregion */}
-
-						{dirty.value && (
-							<p class="wsp-matrix__dirty" role="status">
-								<span class="wsp-matrix__dirty-text">
-									Unsaved role changes — save each row you edited.
-								</span>
-							</p>
-						)}
-						{error.value && <p class="wsp-create__error" role="alert">{error.value}</p>}
-
-						{/* #region Custom-role composer */}
-						{canManage && (
-							<div class="wsp-roleeditor">
-								{composing.value
-									? (
-										<>
-											<div class="wsp-roleeditor__head">
-												<span class="wsp-roleeditor__label">
-													<span aria-hidden="true">{cloneGlyph(RoleGlyph)}</span>
-													New custom role
-												</span>
-											</div>
-											<div class="wsp-roleeditor__field">
-												<label class="wsp-roleeditor__label" for="wsp-role-name">Name</label>
-												<InputText
-													id="wsp-role-name"
-													value={newName}
-													onValueChange={(v) => {
-														newName.value = v;
-													}}
-													placeholder="Purchaser"
-													block
-													maxLength={48}
-												/>
-												<p class="wsp-roleeditor__hint">
-													{seedFrom.value
-														? "It starts as a copy of the row you duplicated — edit its cells afterwards."
-														: "It starts with no permissions — tick what it should allow afterwards."}
-												</p>
-											</div>
-											<div class="wsp-roleeditor__field">
-												<label class="wsp-roleeditor__label" for="wsp-role-base">Ranks as</label>
-												<select
-													id="wsp-role-base"
-													class="wsp-select"
-													value={newBase.value}
-													onChange={(e) => {
-														newBase.value = (e.target as HTMLSelectElement)
-															.value as UpsertRoleInput["basePreset"];
-													}}
-												>
-													{basePresets.value.map((p) => (
-														<option key={p} value={p}>{roleLabel(p)}</option>
-													))}
-												</select>
-												<p class="wsp-roleeditor__hint">
-													Who can manage the people holding it — a role never outranks the one you
-													hold.
-												</p>
-											</div>
-											<div class="wsp-roleeditor__actions">
-												<Button
-													variant="text"
-													label="Cancel"
-													onClick={() => {
-														composing.value = false;
-														newName.value = "";
-														seedFrom.value = null;
-														newBase.value = "member";
-													}}
-												/>
-												<Button
-													variant="filled"
-													label={saving.value ? "Creating…" : "Create role"}
-													disabled={saving.value}
-													onClick={createRole}
-												/>
-											</div>
-										</>
-									)
-									: (
-										<button
-											type="button"
-											class="wsp-roleeditor__label"
-											onClick={() => compose(null)}
-										>
-											<span aria-hidden="true">{cloneGlyph(PlusGlyph)}</span>
-											New custom role
-										</button>
-									)}
-							</div>
-						)}
-						{/* #endregion */}
 					</div>
 				</section>
 			</div>
+
+			{viewer.canManage && (
+				<RoleEditor
+					key={`role-editor-${editorSeq.value}`}
+					workspace={ws}
+					viewer={viewer}
+					visible={editorOpen}
+					mode={editorMode.value}
+					role={editorRole.value}
+					startKey={editorStart.value}
+					onSaved={onSaved}
+				/>
+			)}
+
+			<ConfirmDialog
+				visible={confirmArchive}
+				header={`Archive ${archiving.value?.name ?? "this role"}?`}
+				message={`${
+					archiving.value?.name ?? "It"
+				} leaves the matrix and can no longer be given to anyone. It stays on record — nothing is deleted.`}
+				acceptLabel="Archive role"
+				rejectLabel="Keep it"
+				acceptSeverity="danger"
+				onAccept={() => {
+					const role = archiving.peek();
+					if (role) void archive(role);
+				}}
+			/>
 		</div>
 	);
 }
+
+// #region Column menu
+/**
+ * A custom role column's kebab — a tier-5 icon-only Button opening the role's menu (Rename… ·
+ * Duplicate… · Archive role…), named for the role it acts on.
+ */
+function RoleActionsMenu(props: { role: WorkspaceRoleDef; menu: MenuItem[] }): JSX.Element {
+	const label = `Actions for ${props.role.name}`;
+	return (
+		<ActionMenu
+			model={props.menu}
+			placement="bottom-end"
+			avoid={MENU_AVOID}
+			aria-label={label}
+			trigger={(api) => (
+				<Tooltip content={label}>
+					<Button
+						triggerRef={api.ref}
+						variant="text"
+						severity="secondary"
+						size="sm"
+						iconOnly
+						icon={<KebabIcon />}
+						aria-label={label}
+						aria-haspopup="menu"
+						aria-expanded={api.expanded}
+						aria-controls={api.panelId}
+						onClick={() => api.toggle()}
+					/>
+				</Tooltip>
+			)}
+		/>
+	);
+}
+// #endregion
