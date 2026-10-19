@@ -9,6 +9,9 @@ import { personFallbackImage } from "@web/components/UserAvatar.tsx";
  * (`/[handle]/availability`, reached from the context bar's "Full calendar" link). The page has no
  * profile chrome, and a calendar with no name on it answers nobody's question, so this carries a way
  * back and whose calendar this is, and nothing else.
+ *
+ * The name is the page's one `<h1>` — the calendar below carries no title of its own — drawn in the
+ * strip's meta register (the UA heading margin, size and weight reset in `profile-base.css`).
  */
 export function ProfileCalendarHead({ profile }: { profile: ProfileView }): JSX.Element {
 	return (
@@ -24,7 +27,7 @@ export function ProfileCalendarHead({ profile }: { profile: ProfileView }): JSX.
 				size={24}
 				shape="circle"
 			/>
-			<span class="pf-calhead__name">{profile.name} · availability</span>
+			<h1 class="pf-calhead__name">{profile.name} · availability</h1>
 		</header>
 	);
 }

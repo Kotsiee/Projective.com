@@ -44,7 +44,8 @@ export default function InviteLinkLanding(props: InviteLinkLandingProps): JSX.El
 	}
 
 	return (
-		<main class="invite-landing">
+		// Not a second `<main>`: the shell's canvas is the page's one main landmark.
+		<div class="invite-landing">
 			<span class="invite-landing__glyph" aria-hidden="true">
 				<Icon name={view.value.state === "requested" ? "check" : "user-plus"} size="lg" />
 			</span>
@@ -90,6 +91,6 @@ export default function InviteLinkLanding(props: InviteLinkLandingProps): JSX.El
 					<Icon name="arrow-right" size="sm" />
 				</a>
 			)}
-		</main>
+		</div>
 	);
 }

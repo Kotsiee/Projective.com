@@ -31,6 +31,12 @@ export default function JoinExperience(props: JoinFormProps) {
 
 	return (
 		<AuthShell wide aside={<SummaryPanel store={store} />}>
+			{
+				/* The page's one `<h1>`, inside the shell's `<main>`. The wizard draws its title as the
+				   aside's per-step headline (an `h2`), so the heading is visually hidden: it names the page
+				   for assistive technology without adding a second visible title. */
+			}
+			<h1 class="ui-visually-hidden">Join Projective</h1>
 			{store.ageLocked.value
 				? (
 					<div class="auth-agenote auth-agenote--blocked" role="alert">

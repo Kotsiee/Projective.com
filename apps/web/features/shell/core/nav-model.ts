@@ -4,7 +4,7 @@ import type { IconName } from "./nav-icon-names.ts";
 import { consoleHref } from "@projective/types/catalogue";
 import { accountFacts, canCreateBusiness } from "./account-facts.ts";
 import { isExploreSurface } from "./explore-surface.ts";
-import { canUseTeams, isRestrictedPath } from "./restricted-surfaces.ts";
+import { canUseTeams, hrefPath, isRestrictedHref } from "./restricted-surfaces.ts";
 
 /**
  * nav-model — the single source of truth for the global sidebar's destinations, their glyphs, active
@@ -52,11 +52,6 @@ function isActive(path: string, base: string): boolean {
 	return path === base || path.startsWith(`${base}/`);
 }
 
-/** The path of an in-app href, without its query or fragment. */
-function pathOf(href: string): string {
-	return href.split(/[?#]/, 1)[0];
-}
-
 /**
  * The global navigation roster for a given pathname, tailored to the hydrated {@link UserContext} +
  * the account's standing {@link accountFacts}. Kind-strict disclosures expose the
@@ -74,7 +69,7 @@ function pathOf(href: string): string {
  *    `businesses_owned` headroom), or is acting as a business. Independent of seller capability.
  *  - **Analytics** (replaces the generic Dashboard) → freelancers, teams, businesses, or anyone who
  *    belongs to a team/business.
- *  - A **restricted** (13–17) account loses every entry {@link isRestrictedPath} names — Wallet,
+ *  - A **restricted** (13–17) account loses every entry {@link isRestrictedHref} names — Wallet,
  *    Businesses, Catalogue, Teams, Analytics — whatever else it holds (Decision #192).
  *
  * `context` defaults to {@link PERSONAL_MEMBER_CONTEXT} so a caller that hasn't resolved one yet
@@ -244,7 +239,7 @@ export function globalNav(
 				label: "Analytics",
 				href: analytics,
 				icon: "analytics",
-				active: isActive(path, pathOf(analytics)) && pathOf(analytics) !== "/catalogue",
+				active: isActive(path, hrefPath(analytics)) && hrefPath(analytics) !== "/catalogue",
 			}
 			: null,
 		// NO Basket entry. The basket has exactly ONE control on the chrome and it is the header's,
@@ -264,6 +259,6 @@ export function globalNav(
 	// A restricted (13–17) account sees no money, selling or workspace surface (Decision #192). The
 	// check reads each entry's PATH, so a query-string deep link into a restricted surface is withheld.
 	return items.filter((item): item is NavModelItem =>
-		item !== null && !(context.restricted && isRestrictedPath(pathOf(item.href)))
+		item !== null && !(context.restricted && isRestrictedHref(item.href))
 	);
 }

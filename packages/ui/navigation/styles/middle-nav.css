@@ -357,8 +357,10 @@
 	* The footer band pins to `inset-block-end: 0`, which on mobile is exactly where the fixed
 	* `.ui-bottom-nav` already sits — measured at 390px, the two occupied the identical 390×56 rect,
 	* so a footer action and a nav destination shared every pixel. Lift the band clear of the bottom
-	* nav (and the home indicator beneath it); `.ui-page-canvas__body` already reserves the same
-	* offset for the scrolling content, so this only aligns the pinned band with that reservation.
+	* nav (and the home indicator beneath it); the page canvas already reserves the same offset for
+	* the scrolling content — on `.ui-page-canvas__body`, or on the `.ui-page-canvas__footer` slot
+	* when a page footer follows `<main>` (page-canvas.css) — so this only aligns the pinned band
+	* with that reservation.
 	*/
     .ui-middle-nav__footer {
         inset-block-end: calc(

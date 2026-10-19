@@ -1,6 +1,7 @@
 import type { UserContext } from "@projective/types/auth";
 import type { IconName } from "./nav-icon-names.ts";
 import { isExploreSurface } from "./explore-surface.ts";
+import { PROJECT_CREATE_HREF } from "./actions-model.ts";
 
 /** One primary of the mobile bottom nav, before the app's glyph is attached. */
 export interface BottomNavDestination {
@@ -13,9 +14,10 @@ export interface BottomNavDestination {
 
 /**
  * Where the bottom nav's Create leads: the project Quick-Init modal on `/projects` — the one create
- * flow every account has, and the Create menu's first entry (there is no `/create` page).
+ * flow every account has (there is no `/create` page). It IS the Create menu's first entry,
+ * {@link PROJECT_CREATE_HREF}, re-exported under this surface's name so the two cannot drift.
  */
-export const BOTTOM_NAV_CREATE_HREF = "/projects?create=1";
+export const BOTTOM_NAV_CREATE_HREF = PROJECT_CREATE_HREF;
 
 function on(path: string, base: string): boolean {
 	return path === base || path.startsWith(`${base}/`);

@@ -68,6 +68,16 @@
     position: relative;
 }
 
+/* The page footer slot — a sibling AFTER `<main>`, so the footer it holds is the page's `contentinfo`
+   landmark. It is positioned for the reason the body is: the shell's viewport-fixed `::before` fills
+   (z-index 0) paint over any in-flow, unpositioned box, so an unpositioned footer here is invisible.
+   The body keeps `flex: 1 1 auto`, so on a short page it still grows and the footer sits at the
+   canvas's foot. */
+.ui-page-canvas__footer {
+    flex: none;
+    position: relative;
+}
+
 /* Mobile: reserve space so the fixed BottomNav (Part D.3) never covers the tail of the content. */
 @media (max-width: 767px) {
     .ui-page-canvas__body {
@@ -80,6 +90,23 @@
 	   the step's body. Paired with the matching rule in middle-nav.css — the two must move together
 	   or the band and the body disagree about where the viewport bottom is. */
     .ui-app-shell[data-chrome="focus"] .ui-page-canvas__body {
+        padding-block-end: calc(env(safe-area-inset-bottom, 0px) + var(--ribbon-inset, 0px));
+    }
+
+    /* With a footer slot the reservation moves to it — the canvas's last box — so the gap sits under
+	   the footer, where it sat when the footer was the body's last child, rather than between the page
+	   and its footer. Declared after the focus rule so the two agree in either chrome. */
+    .ui-page-canvas:has(> .ui-page-canvas__footer) > .ui-page-canvas__body {
+        padding-block-end: 0;
+    }
+
+    .ui-page-canvas__footer {
+        padding-block-end: calc(
+            var(--shell-bottomnav-h) + env(safe-area-inset-bottom, 0px) + var(--ribbon-inset, 0px)
+        );
+    }
+
+    .ui-app-shell[data-chrome="focus"] .ui-page-canvas__footer {
         padding-block-end: calc(env(safe-area-inset-bottom, 0px) + var(--ribbon-inset, 0px));
     }
 }
