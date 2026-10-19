@@ -22,39 +22,16 @@ import { type HandleCheckState, handleReady, handleSuggestions } from "./handle-
  * create-model — every rule the Draft-First create dialog renders, as pure functions.
  *
  * The dialog (`islands/CreateWorkspaceModal.island.tsx`) is a binding over these: which kind it
- * creates and whether it asks, what its two fields accept, when its one commit opens, which buttons
- * its regions hold and at what tier (and so with which Button tone), what the handle's live line says
- * and when, and how a refusal from the create door is worded and fixed.
+ * creates (its route's — it never asks), what its two fields accept, when its one commit opens, which
+ * buttons its regions hold and at what tier (and so with which Button tone), what the handle's live
+ * line says and when, and how a refusal from the create door is worded and fixed.
  * Keeping them here is what lets the acceptance rules — one filled control, the gate, the refusal
  * routing — be tested without a DOM, and keeps `/businesses` (which shares the dialog, Decision #61)
  * on the same rules as `/teams`.
  */
 
-// #region Kind
-/**
- * Whether the dialog asks what to create. A route that already committed to a kind (`/teams`,
- * `/businesses`) has answered the question, so the kind is `fixed`; only a neutral surface that offers
- * both asks — and `allowKindChoice` lets a caller force the question inside a committed route.
- */
-export type CreateKindMode = "fixed" | "choice";
-
-/** The dialog's kind mode for the props it was mounted with. */
-export function createKindMode(
-	kind: WorkspaceKind | undefined,
-	allowKindChoice?: boolean,
-): CreateKindMode {
-	return (allowKindChoice ?? kind === undefined) ? "choice" : "fixed";
-}
-
-/** The choices a neutral surface offers, with the one-line difference each makes. */
-export const KIND_CHOICES: ReadonlyArray<{ value: WorkspaceKind; label: string; note: string }> = [
-	{ value: "team", label: "Team", note: "Deliver work as one unit." },
-	{ value: "business", label: "Business", note: "Hire as one company." },
-];
-// #endregion
-
 // #region Copy
-/** The dialog's words for one kind and mode. */
+/** The dialog's words for one kind. */
 export interface CreateCopy {
 	/** The dialog title. */
 	header: string;
@@ -66,7 +43,10 @@ export interface CreateCopy {
 	intro: string;
 	/** A placeholder name in the kind's register. */
 	namePlaceholder: string;
-	/** The handle field's placeholder — the name's own handle, so the two placeholders agree. */
+	/**
+	 * The handle field's placeholder. A business's is its name placeholder's own handle
+	 * (`acme-studio`), so the two agree; a team's keeps R3's shorter `northern-grid`.
+	 */
 	handlePlaceholder: string;
 }
 
@@ -79,11 +59,11 @@ const PLACEHOLDERS: Record<WorkspaceKind, { name: string; handle: string }> = {
 	business: { name: "Acme Studio", handle: "acme-studio" },
 };
 
-/** The dialog's copy. In `choice` mode the title names both kinds; the commit always names one. */
-export function createCopy(kind: WorkspaceKind, mode: CreateKindMode): CreateCopy {
+/** The dialog's copy: the title and the commit both name the route's kind. */
+export function createCopy(kind: WorkspaceKind): CreateCopy {
 	const copy = kindCopy(kind);
 	return {
-		header: mode === "choice" ? "Create a team or business" : `Create a ${copy.noun}`,
+		header: `Create a ${copy.noun}`,
 		submit: `Create ${copy.noun}`,
 		submitting: "Creating…",
 		intro: `${copy.pitch} It starts as a draft — you finish setting it up inside.`,
@@ -194,12 +174,8 @@ export function isFilled(tier: CreateTier): boolean {
 }
 
 /** The footer: Cancel (tier 5), then the one structural commit (tier 2), gated. */
-export function createFooterActions(
-	kind: WorkspaceKind,
-	mode: CreateKindMode,
-	gate: CreateGateInput,
-): CreateAction[] {
-	const copy = createCopy(kind, mode);
+export function createFooterActions(kind: WorkspaceKind, gate: CreateGateInput): CreateAction[] {
+	const copy = createCopy(kind);
 	return [
 		{ key: "cancel", label: "Cancel", tier: 5, disabled: false },
 		{
@@ -232,7 +208,6 @@ export function recheckAction(state: HandleCheckState): CreateAction | null {
 /** Every button the dialog renders in one state — what the one-filled-control rule is judged over. */
 export function createDialogActions(
 	kind: WorkspaceKind,
-	mode: CreateKindMode,
 	gate: CreateGateInput,
 	suggestions: readonly string[],
 ): CreateAction[] {
@@ -240,7 +215,7 @@ export function createDialogActions(
 	return [
 		...suggestionActions(suggestions),
 		...(recheck ? [recheck] : []),
-		...createFooterActions(kind, mode, gate),
+		...createFooterActions(kind, gate),
 	];
 }
 // #endregion

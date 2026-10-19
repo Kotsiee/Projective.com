@@ -1,4 +1,5 @@
-import { Fragment, type JSX } from "preact";
+import type { JSX } from "preact";
+import { MetaLine } from "@projective/ui/display";
 import { walletHrefFor, type WorkspaceDetail } from "@projective/types/workspace";
 import type { WorkspaceModule } from "../core/module-registry.tsx";
 import { walletBalanceFacts } from "../core/overview-model.ts";
@@ -15,9 +16,9 @@ import { possessive } from "../core/refusal-copy.ts";
  * tier-4 "Open the business wallet". Following it is a page-local VIEW of the business's figures,
  * never a switch of who the viewer acts as, and the note says so.
  *
- * The balance line is MetaLine's markup (`ui-meta-line`, middot separators) built here because
- * MetaLine takes text only and a figure must be isolated left-to-right and tabular on its own
- * (DESIGN_SYSTEM §A Figures — "a hand-built figure must too", as Billing's `.wsp-billing__num`). Each
+ * The balance line is one `MetaLine` whose entries carry their figure as a `node`, because a figure
+ * must be isolated left-to-right and tabular on its own (DESIGN_SYSTEM §A Figures — "a hand-built
+ * figure must too", as Billing's `.wsp-billing__num`). Each
  * figure is the server's `display` in its own currency, never converted — the Overview band pins its
  * tiles to the same currency, so one balance reads the same on both pages. It is not a `MoneyView`
  * because this is a server component: the app's currency sweep re-projects every server-rendered
@@ -53,22 +54,17 @@ export function BusinessFinanceHead(props: BusinessFinanceHeadProps): JSX.Elemen
 							<h1 class="wsp-pagehead__title" id={titleId}>{module.label}</h1>
 						</div>
 						<p class="wsp-pagehead__note">{note}</p>
-						<p class="ui-meta-line wsp-financehead__balance">
-							{walletBalanceFacts(ws.moneyTiles).map((fact, i) => (
-								<Fragment key={fact.key}>
-									{i > 0 && <span class="ui-meta-line__sep" aria-hidden="true">·</span>}
-									<span class="ui-meta-line__item">
-										{fact.figure !== null && (
-											<>
-												<span class="wsp-financehead__num">{fact.figure}</span>
-												{" "}
-											</>
-										)}
-										{fact.text}
-									</span>
-								</Fragment>
-							))}
-						</p>
+						<MetaLine
+							class="wsp-financehead__balance"
+							items={walletBalanceFacts(ws.moneyTiles).map((fact) => ({
+								text: fact.figure === null ? fact.text : `${fact.figure} ${fact.text}`,
+								node: fact.figure === null ? undefined : (
+									<>
+										<span class="wsp-financehead__num">{fact.figure}</span> {fact.text}
+									</>
+								),
+							}))}
+						/>
 						<div class="wsp-financehead__act">
 							<a
 								class="ui-button ui-button--neutral ui-button--outlined ui-button--size-md wsp-financehead__open"

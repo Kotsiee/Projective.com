@@ -476,6 +476,10 @@ Deno.test("workspace styles: the dead rules stay deleted", () => {
 		),
 		"a deleted dead selector is back:",
 	);
+	// The create dialog's kind options and its borrowed label (BU1, #245): their last consumers went
+	// in Teams R3 (the dialog's own radio) and C2 (the invite dialog's chooser, now a SelectButton);
+	// no form borrows `__label` since billing and payouts moved onto FormControl.
+	assertNone(offences(/\.wsp-create__(kind|label)\b/), "a deleted dead selector is back:");
 });
 
 Deno.test("workspace styles: the bands never reach inside a shared Button", () => {

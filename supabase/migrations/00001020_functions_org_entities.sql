@@ -2759,12 +2759,18 @@ BEGIN
                      WHERE w.owner_type = 'team' AND w.owner_id = e.id AND tx.direction = 'credit'
                        AND tx.reason LIKE '%vault_retention' AND tx.created_at > now() - interval '30 days') x
                  GROUP BY x.currency) s)
-            ELSE (SELECT COALESCE(jsonb_agg(jsonb_build_object('currency', s.currency, 'minor', s.total)), '[]'::jsonb) FROM (
-                SELECT tx.currency, sum(tx.amount_cents) AS total FROM finance.transactions tx
-                  JOIN finance.wallets w ON w.id = tx.wallet_id
-                 WHERE w.owner_type = 'business' AND w.owner_id = e.id AND tx.direction = 'debit'
-                   AND tx.reason <> 'transfer_out' AND tx.created_at > now() - interval '30 days'
-                 GROUP BY tx.currency) s) END,
+            -- A business's spend is the Finance figure (get_workspace_detail's `money_tiles`
+            -- spent_30d_minor), so it is answered under that read's own predicate, `v_sees_money`:
+            -- only to a viewer holding contribute_funds · spend_funds · manage_finances. Anybody else
+            -- gets NULL (withheld), which is not `[]` (nothing moved) — the roster drops the figure.
+            ELSE CASE WHEN org.fn_member_capabilities('business', e.id, v_uid)
+                    && ARRAY['contribute_funds', 'spend_funds', 'manage_finances']::org.workspace_capability[]
+                THEN (SELECT COALESCE(jsonb_agg(jsonb_build_object('currency', s.currency, 'minor', s.total)), '[]'::jsonb) FROM (
+                    SELECT tx.currency, sum(tx.amount_cents) AS total FROM finance.transactions tx
+                      JOIN finance.wallets w ON w.id = tx.wallet_id
+                     WHERE w.owner_type = 'business' AND w.owner_id = e.id AND tx.direction = 'debit'
+                       AND tx.reason <> 'transfer_out' AND tx.created_at > now() - interval '30 days'
+                     GROUP BY tx.currency) s) END END,
         -- The Draft-First facts, the same as the console's (org.get_workspace_detail): a business's
         -- `funded` (money was ever added to its pooled wallet) and `limits_offered` (its plan lets it
         -- set a threshold or member limits — Business Pro's `pooled_wallet_full`, or the gates off).

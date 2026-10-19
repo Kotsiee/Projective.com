@@ -107,7 +107,8 @@ function toSummary(
 		...rosterActivity(item),
 		faces,
 		stats: rosterStats(kind, item),
-		money30d: rosterMoney(item.money_30d),
+		// Only the business table draws the figures; a team's earned money stays the card's `stats[2]`.
+		money30d: kind === "business" ? rosterMoney(item.money_30d) : [],
 		hasUpdate: !!item.has_update,
 		isActing: actor.contextType === kind && actor.contextId === item.id,
 		tagline: clamp(item.headline, 160),

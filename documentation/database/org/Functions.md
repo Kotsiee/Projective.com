@@ -947,8 +947,11 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
   `created_at` and `updated_at` (the row's own; the roster table's Updated column, Teams R1),
   verification, member count, up to five face user ids (by rank, then join date), pending-invite
   count, active projects, 30-day money by currency (team: payout splits + vault retention credited;
-  business: debits other than `transfer_out`), the setup facts (`logo` · `bio` · `money` · `funded` ·
-  `limits_offered` — the last two as `get_workspace_detail` answers them) and an
+  business: debits other than `transfer_out`, answered only to a viewer who may open Finance —
+  `contribute_funds` · `spend_funds` · `manage_finances`, the predicate `get_workspace_detail`
+  answers `money_tiles` under — and JSON `null`, WITHHELD rather than `[]`, to anybody else; BU1
+  review, `supabase/probes/business_roster_spend.sql`), the setup facts (`logo` · `bio` · `money` ·
+  `funded` · `limits_offered` — the last two as `get_workspace_detail` answers them) and an
   unseen-notification flag; plus the caller's own PENDING, unexpired invitations to non-archived
   entities of that kind (via `fn_is_invitee`); plus the create entitlement's limit and usage.
 - **`get_workspace_detail(kind, handle_or_id) → jsonb`** — the console for one entity, addressed by

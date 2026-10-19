@@ -101,9 +101,14 @@
 	 * The business hue is `--tertiary` in EVERY mode and overlay (Decision #230 (j)), and the rest of
 	 * the family is derived from `--wsp-business` itself, so this one line re-anchors all of it. Not
 	 * `--secondary`: that is the focus ring's ink (`theme-engine.ts`, `ringInk`), and a business mark
-	 * painted in it measured ΔE_OK 0.00 against the ring. The solid mark and the acting chip draw
-	 * `--on-tertiary` on the hue — 6.18:1 light, 7.72:1 dark. `business-hue.gate.test.ts` re-computes
-	 * every figure in this block from the theme engine.
+	 * painted in it measured ΔE_OK 0.00 against the ring. That is only PARTLY solved: `--tertiary`
+	 * shares `--secondary`'s tone, so the ring still measures 1.00–1.01:1 in luminance against the hue
+	 * (ΔE_OK 0.05 light, dark and light high contrast, 0.03 dark high contrast) — distinct in hue, not
+	 * in lightness; rings are off by directive (Decision #245 flag (a)). The solid mark and the acting
+	 * chip draw `--on-tertiary` on the hue — 6.18:1 light, 7.72:1 dark. `business-hue.gate.test.ts`
+	 * holds every business pair to its floor for three seeds and pins each business figure this
+	 * sheet and DESIGN_SYSTEM §A.1.3 print for the brand seed to two decimals (the team's figures
+	 * are not gated there).
 	 */
 	--wsp-business: var(--tertiary);
 	--wsp-business-on: var(--on-tertiary);
@@ -325,28 +330,24 @@
 }
 
 /*
- * Colour-vision deficiency. One adjacent-hue risk is this surface's own: the business hue against the
- * brand (the two entity kinds side by side on a mixed roster). The roles matrix's `allowed` against
- * `conditional` is the ui PermissionMatrix's, which keeps a GLYPH per state beside the fill, so the
- * separation survives on a non-colour channel even when hue collapses entirely.
+ * Colour-vision deficiency: no overlay rule. One adjacent-hue risk is this surface's own: the business
+ * hue against the brand (the two entity kinds side by side on a mixed roster). The roles matrix's
+ * `allowed` against `conditional` is the ui PermissionMatrix's, which keeps a GLYPH per state beside
+ * the fill, so the separation survives on a non-colour channel even when hue collapses entirely.
  *
- * The business side needs no re-anchor here: it is `--tertiary` in every mode (Decision #230 (j)).
- * The block that used to swap it in under an overlay bought nothing measurable — simulated at full
+ * The business side needs no re-anchor: it is `--tertiary` in every mode (Decision #230 (j)). The
+ * block that used to swap it in under an overlay bought nothing measurable — simulated at full
  * severity (Machado 2009), brand~tertiary and brand~secondary sit within ΔE_OK 0.01 of each other
  * under protan, deutan and tritan alike — and it left the mark's ink and filled pair on the old hue.
- * The split bar's stake tones now live in @projective/ui's SplitBar (Teams C4).
+ * Teams C4 had already moved the split bar's stake tones into @projective/ui's SplitBar; BU1 removed
+ * the business re-anchor, which left the overlay rule empty, so the rule went too.
  *
- * VALUE-scoped, never `:root[data-cvd]`. `CvdMode` is `none | protan | deutan | tritan` and
- * `applyConfig` writes the attribute UNCONDITIONALLY, so every hydrated page carries
+ * A future CVD tone is VALUE-scoped, never `:root[data-cvd]`. `CvdMode` is `none | protan | deutan |
+ * tritan` and `applyConfig` writes the attribute UNCONDITIONALLY, so every hydrated page carries
  * `data-cvd="none"` — which an attribute-PRESENCE selector matches, and which would hold the overlay
- * permanently on for every user. Enumerate the real deficiencies, exactly as the sibling
- * `[data-contrast="high"]` block does; a fourth mode must be added here explicitly.
+ * permanently on for every user. Enumerate the real deficiencies (`:root[data-cvd="protan"]`, …),
+ * exactly as the sibling `[data-contrast="high"]` block does.
  */
-:root[data-cvd="protan"],
-:root[data-cvd="deutan"],
-:root[data-cvd="tritan"] {
-	/* Nothing re-anchors under an overlay today; the selector stays as the one place a future CVD tone goes. */
-}
 
 /* #region Shared primitives */
 

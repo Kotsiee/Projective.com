@@ -70,7 +70,13 @@ export interface RawRosterItem {
 	face_user_ids: string[];
 	pending_invites: number;
 	active_projects: number;
-	money_30d: { currency: string; minor: number }[];
+	/**
+	 * The kind's 30-day money per currency (a team's earned, a business's spent); `[]` when nothing
+	 * moved. A business answers `null` — WITHHELD — to a viewer who may not open Finance (neither
+	 * contribute_funds, spend_funds nor manage_finances: the predicate `money_tiles` answers under), so
+	 * the roster drops the figure rather than claim nothing was spent.
+	 */
+	money_30d: { currency: string; minor: number }[] | null;
 	/** The Draft-First facts; `funded` and `limits_offered` are a business's (BU6), `false` for a team. */
 	setup: {
 		logo: boolean;
@@ -494,7 +500,7 @@ function periodValue(amounts: RawRosterItem["money_30d"]): string {
  * and currency-less entries dropped, codes upper-cased, one figure per currency (the larger, should the
  * read ever repeat one), ordered largest first in MAJOR units — the same comparison
  * {@link largestAmount} makes for the card's figure — and each formatted in its own currency. Never a
- * converted or summed figure; `[]` when nothing moved.
+ * converted or summed figure; `[]` when nothing moved or the read withheld it (`null`).
  */
 export function rosterMoney(amounts: RawRosterItem["money_30d"] | null | undefined): MoneyView[] {
 	const byCurrency = new Map<string, number>();
@@ -511,23 +517,27 @@ export function rosterMoney(amounts: RawRosterItem["money_30d"] | null | undefin
 }
 
 /**
- * The three stats a roster card carries, chosen per kind so each number means something: a team's
- * members · live projects · what it earned in 30 days; a business's members · live projects · what it
- * spent. `delta` is always `null` — no honest period-over-period comparison is recorded.
+ * The stats a roster card carries, chosen per kind so each number means something: a team's members ·
+ * live projects · what it earned in 30 days; a business's members · live projects · what it spent.
+ * When the read WITHHOLDS the money (`money_30d: null` — a business viewer who may not open Finance),
+ * the money stat is dropped rather than drawn as "—", which would say nothing was spent. `delta` is
+ * always `null` — no honest period-over-period comparison is recorded.
  */
 export function rosterStats(
 	kind: WorkspaceKind,
 	item: Pick<RawRosterItem, "member_count" | "active_projects" | "money_30d">,
 ): WorkspaceStat[] {
-	return [
+	const stats: WorkspaceStat[] = [
 		{ label: "Members", value: String(Number(item.member_count) || 0), delta: null },
 		{ label: "Active projects", value: String(Number(item.active_projects) || 0), delta: null },
-		{
-			label: kind === "team" ? "Earned (30d)" : "Spent (30d)",
-			value: periodValue(item.money_30d),
-			delta: null,
-		},
 	];
+	if (item.money_30d === null) return stats;
+	stats.push({
+		label: kind === "team" ? "Earned (30d)" : "Spent (30d)",
+		value: periodValue(item.money_30d),
+		delta: null,
+	});
+	return stats;
 }
 
 /**
