@@ -176,7 +176,7 @@ extension, does not know `.avif`, and the storage API refuses `application/octet
 - **Ledger.** Every `balance_after_cents` is a running balance over a chronologically sorted event
   list per wallet; the generator refuses to emit if any balance would go negative, and same-day
   rows are staggered by seconds so `ORDER BY created_at` reproduces the walk. **Nothing is minted**:
-  the platform's opening-credit trigger is gone (Decision #122), so each business opens with a real
+  the platform's opening-credit trigger is gone (Decision #61), so each business opens with a real
   dated `topup` of 2,500,000 minor units from its owner's funding card on the day it was created.
   Platform fee 5%; team income = 10% vault retention + `contribution_agreements` split.
 - **The vault audit is derived, not typed.** Every `topup` credit to a business or team wallet

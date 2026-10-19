@@ -4,7 +4,7 @@ Only the functions touched by recent work are documented here; the remaining `or
 (`set_operator_mode`, …) are still to be backfilled. See `brain2.md`'s Database section for the
 migration-numbering and RLS conventions.
 
-> **Retired 2026-09-28 (Decision #122) — these no longer exist:** `org.create_team` (it trusted a
+> **Retired 2026-09-28 (Decision #61) — these no longer exist:** `org.create_team` (it trusted a
 > caller-supplied owner and was executable by `anon`), `org.create_business` (it rewrote the
 > caller's session context behind their back), `org.get_dashboard_teams` (it answered for any user
 > id it was handed) and `org.get_dashboard_businesses`, and the 0309 business-dashboard quartet

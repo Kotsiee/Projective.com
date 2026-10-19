@@ -11,7 +11,7 @@ the access-token hook copies it into every issued JWT so both Row-Level Security
 read one consistent source.
 
 **The switches are the only writers of `security.session_context`** (rewritten 2026-09-28, migration
-`00001001` §2, root `CLAUDE.md` §8 Decision #122). The table carries a SELECT-only client policy
+`00001001` §2, root `CLAUDE.md` §8 Decision #61). The table carries a SELECT-only client policy
 ([Policies.md](Policies.md)) and `ck_session_context_one_slot` makes a second active slot
 unrepresentable. Every switch is `SECURITY DEFINER`, `SET search_path = ''`, refuses an anonymous
 caller (`42501`), re-checks the membership it claims, and then **UPSERTS** through one shared writer

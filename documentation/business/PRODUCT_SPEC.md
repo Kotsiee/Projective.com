@@ -198,7 +198,12 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   same five steps.
 - **Automated Payment Splitting:** Payments are distributed at the moment of Escrow release. If a
   Stage payout is $1,000, Projective automatically routes percentages to individual member wallets
-  based on predefined **Contribution Agreements**.
+  based on predefined **Contribution Agreements**. A Team chooses its **split template** (Co-op ·
+  Finder's fee · Benevolent dictator) and sets its members' stakes on its Payouts module. A member
+  who may manage the Team's finances can write the template; which templates a plan unlocks is data;
+  rounding dust always stays with the Team Vault. The rules and figures are in
+  [`finance-model.md` §5](finance-model.md#5-team-payouts-per-stage-smart-splits) (Decisions
+  #228 (F), #234).
 - **Unified Identity:** Teams can create "Services" (Sessions) and bid on "Projects" as a single
   entity, building a collective reputation and portfolio.
 - **The public page:** a Team's storefront is its `/@handle` — showcase, services, the public
@@ -225,14 +230,16 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
 
 ##### Role-Based Access Control (RBAC)
 
-To maintain security and operational integrity, Team members are assigned specific roles that
-dictate their "Action Permissions" across the monorepo.
-
-| Role             | Actions                                                                                 |
-| :--------------- | :-------------------------------------------------------------------------------------- |
-| **Lead / Admin** | Create Services, Manage Financial Splits, Invite/Remove Members, Finalize Submissions.  |
-| **Member**       | Join Projects, Claim Stage Tickets, Manage Boards, Communicate with Clients.            |
-| **Contributor**  | View Project Details, Post Internal Comments, Upload Drafts (Requires Member Approval). |
+A Team member's authority is a **role** plus per-member overrides, resolved to workspace
+**capabilities** (the role's, plus what was granted, minus what was revoked), and every team write is
+checked against a capability, never against a role's name. The preset roles are **Owner · Admin ·
+Lead · Member**. What each preset holds, how they rank, and which capabilities a Team can hold at all
+are the database's, in
+[`database/org/Functions.md` §6](../database/org/Functions.md#6--the-permission-engines-sql-twin)
+(Decisions #228, #250). A Team adds **custom roles** on top of a preset. The role editor offers
+ready-made **role templates**, kept as data; the first is **Contributor**, a one-click custom role
+based on Member that adds analytics (Decision #250 (a)). Contributor is a template, not a fifth
+preset. Who may use the Teams workspace at all is the freelancer-only rule above (Decision #228 (A)).
 
 ##### Resource Allocation Logic
 
@@ -1264,11 +1271,11 @@ Designed for companies managing multiple projects and teams.
 - **Analytics:** Provides a macro-view of company-wide burn-rate across all departments, read
   under the member's own RLS by the wallet surface and summarised on the business console
   (`/businesses/[businessHandle]`). (The former `org.get_business_finance` wrapper and its
-  `/dashboard` page are retired — Decision #122.)
+  `/dashboard` page are retired — Decision #61.)
 - **No minted money.** A Business Wallet starts at zero and its balance is only ever the sum of real
   movements (top-ups, releases, transfers). The former **Opening Platform Credit** — a one-time
   `demo_opening_credit` of 2,500,000 minor units granted to every new business wallet, in whatever
-  currency it was opened in — was **removed 2026-09-28** (root `CLAUDE.md` §8 Decision #122): it put
+  currency it was opened in — was **removed 2026-09-28** (root `CLAUDE.md` §8 Decision #61): it put
   spendable funds nobody had paid in into every business, in every currency. The development seed
   opens each seeded business with a dated owner top-up instead (`documentation/database/Seed.md`).
 

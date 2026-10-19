@@ -48,7 +48,7 @@ a sent payout was reversed back to the wallet. `payout.failed`, seeded long befo
 chargeback-resolution RPCs in `00001240`. Until then both auto-registered as `system`/`medium` on
 first use, i.e. a money outcome routed as a mutable system notice.
 
-**The eight added 2026-09-28 (Teams & Businesses, root `CLAUDE.md` §8 Decision #122)**, each
+**The eight added 2026-09-28 (Teams & Businesses, root `CLAUDE.md` §8 Decision #61)**, each
 emitted by a workspace or money RPC. `spend.approved` / `spend.rejected` were already emitted by
 `finance.decide_spend_approval` before they were seeded, so until now they auto-registered as
 `system`/`medium` at first use — they now route as the money events they are:

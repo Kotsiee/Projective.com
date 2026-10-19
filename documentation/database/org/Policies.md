@@ -132,7 +132,7 @@ USING (
 );
 ```
 
-**No client INSERT, UPDATE or DELETE policy** (2026-09-28, Decision #122). A team is created by
+**No client INSERT, UPDATE or DELETE policy** (2026-09-28, Decision #61). A team is created by
 `org.create_workspace`, renamed by `org.update_workspace`, published or archived by
 `org.set_workspace_status` and handed on by `org.transfer_workspace_ownership` — each a definer that
 checks the caller's workspace capability (`org.fn_member_can`). The owner-only UPDATE policy these
