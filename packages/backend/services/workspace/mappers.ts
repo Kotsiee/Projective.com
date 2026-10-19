@@ -163,6 +163,8 @@ export interface RawRole {
 	base_preset: string;
 	capabilities: string[] | null;
 	member_count: number;
+	/** Pending invitations offering the role — a `manage_roles` holder's read only; `null` otherwise. */
+	pending_invites?: number | null;
 }
 
 /** One outgoing invitation on the detail read (empty unless the viewer holds `invite_members`). */
@@ -803,6 +805,9 @@ export function toRoleDef(raw: RawRole): WorkspaceRoleDef {
 		basePreset: base,
 		capabilities: parseCapabilities(raw.capabilities),
 		memberCount: Math.max(0, Number(raw.member_count) || 0),
+		...(raw.pending_invites == null
+			? {}
+			: { pendingInvites: Math.max(0, Number(raw.pending_invites) || 0) }),
 	};
 }
 

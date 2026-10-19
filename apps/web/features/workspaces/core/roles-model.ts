@@ -14,6 +14,7 @@ import {
 	capabilitiesForKind,
 	CAPABILITY_LABEL,
 	CONSEQUENTIAL,
+	kindCopy,
 	reservedCapabilities,
 	roleLabel,
 	roleRank,
@@ -111,6 +112,12 @@ export const RESERVED_LOCK =
 	"Billing, withdrawals and archiving go to a named admin by the owner — never to a role.";
 
 /**
+ * Why an editable cell waits while a role write (the footer rig's Save, or an archive) is in flight —
+ * the screen takes no toggle meanwhile, so the cell says so rather than ignoring the press.
+ */
+export const BUSY_LOCK = "Saving — this can change again once the save lands.";
+
+/**
  * Why a whole role column is locked, or `null` when its cells are the viewer's to change: a preset
  * is read-only (the server refuses any edit of one), and a custom role that ranks above the viewer
  * cannot be saved by them (`basePreset: a role cannot rank above you`).
@@ -127,13 +134,16 @@ export function columnLock(
 /**
  * Why one cell of an editable custom-role column cannot change, or `null` when it can. Anything the
  * role allows may be taken away; an off cell may be switched on only for a capability the viewer
- * holds, and never for a business's owner-reserved rights, which no role may carry.
+ * holds, and never for a business's owner-reserved rights, which no role may carry. While a role
+ * write is in flight (`busy`) every such cell waits, with {@link BUSY_LOCK}.
  */
 export function cellLock(
 	capability: WorkspaceCapability,
 	on: boolean,
 	viewer: Pick<RolesViewer, "kind" | "caps">,
+	busy = false,
 ): string | null {
+	if (busy) return BUSY_LOCK;
 	if (on) return null;
 	if (reservedCapabilities(viewer.kind).includes(capability)) return RESERVED_LOCK;
 	if (!viewer.caps.includes(capability)) return GRANT_LOCK;
@@ -249,6 +259,110 @@ export function roleMatrixColumns(
 			...(lock ? { locked: true, lockedHint: lock } : {}),
 		};
 	});
+}
+
+/** One line of the Roles screen's list of what each role is for. */
+export interface RoleRemit {
+	key: string;
+	name: string;
+	summary: string;
+}
+
+/**
+ * Every role with a written remit, in the matrix's column order — the one-line summary a column
+ * header has no room for, said beside the role's name under the matrix.
+ */
+export function roleRemits(
+	roles: readonly WorkspaceRoleDef[],
+): RoleRemit[] {
+	return orderedRoles(roles)
+		.filter((r) => r.summary.trim() !== "")
+		.map((r) => ({ key: r.id, name: r.name, summary: r.summary.trim() }));
+}
+// #endregion
+
+// #region Legend
+/** What one legend line explains: one of the matrix's three glyphs, or a cell drawn without its box. */
+export type RolesLegendMark = "allowed" | "conditional" | "locked" | "fixed";
+
+/** One line of the legend over the matrix. */
+export interface RolesLegendItem {
+	mark: RolesLegendMark;
+	text: string;
+}
+
+/**
+ * Every reason a cell of a column the viewer may edit is fixed for them (`cellLock`, never the
+ * transient {@link BUSY_LOCK}), in first-seen order — what the legend's no-box line must explain.
+ * Empty without `manage_roles`: a read-only matrix fixes no cell of its own.
+ */
+export function fixedCellReasons(
+	roles: readonly WorkspaceRoleDef[],
+	viewer: RolesViewer,
+	draft: RoleDraft,
+): string[] {
+	if (!viewer.canManage) return [];
+	const reasons = new Set<string>();
+	const rows = capabilitiesForKind(viewer.kind);
+	for (const role of roles) {
+		if (columnLock(role, viewer) !== null) continue;
+		const held = roleCaps(role, draft);
+		for (const capability of rows) {
+			const reason = cellLock(capability, held.includes(capability), viewer);
+			if (reason) reasons.add(reason);
+		}
+	}
+	return [...reasons];
+}
+
+/**
+ * The legend, worded for what the matrix actually draws: Allowed; the conditional line only when a
+ * cell is conditional; the padlock line naming every kind of read-only column on screen — a preset,
+ * and a custom role ranking above the viewer when there is one, since both carry the padlock; and,
+ * when a cell the viewer could otherwise edit is fixed, the line saying what its missing box means
+ * and why (a grant they do not hold; a business's owner-reserved right).
+ */
+export function rolesLegend(input: {
+	kind: WorkspaceKind;
+	/** Whether any cell on screen is drawn conditional. */
+	conditional: boolean;
+	/** Each column's lock (`columnLock` / `lockedHint`), or nothing for an editable column. */
+	columnLocks: readonly (string | null | undefined)[];
+	/** {@link fixedCellReasons}. */
+	fixedReasons: readonly string[];
+}): RolesLegendItem[] {
+	const items: RolesLegendItem[] = [{ mark: "allowed", text: "Allowed" }];
+	if (input.conditional) {
+		items.push({
+			mark: "conditional",
+			text: `Allowed within a rule this ${kindCopy(input.kind).noun} set`,
+		});
+	}
+	const presets = input.columnLocks.includes(PRESET_LOCK);
+	const ranked = input.columnLocks.includes(RANK_LOCK);
+	if (presets || ranked) {
+		items.push({
+			mark: "locked",
+			text: presets && ranked
+				? "Read-only — a preset, or a role ranking above yours"
+				: presets
+				? "Preset — read-only"
+				: "Read-only — the role ranks above yours",
+		});
+	}
+	const grant = input.fixedReasons.includes(GRANT_LOCK);
+	const reserved = input.fixedReasons.includes(RESERVED_LOCK);
+	if (grant || reserved) {
+		items.push({
+			mark: "fixed",
+			text: grant && reserved
+				? "No box: you can't grant it — you don't hold it, or the owner reserves it"
+				: grant
+				? "No box: you don't hold it yourself, so you can't grant it"
+				: "No box: owner-reserved — given to a named admin, never to a role",
+		});
+	}
+	return items;
 }
 // #endregion
 
@@ -377,9 +491,21 @@ export function roleWriteInput(
 /** What a role column's menu can ask for. */
 export type RoleMenuAction = "rename" | "duplicate" | "archive";
 
-/** How many pending invitations offer a role. */
+/** How many pending invitations in an outgoing queue offer a role. */
 export function invitesOffering(roleId: string, invites: readonly WorkspaceInvite[]): number {
 	return invites.filter((i) => i.roleId === roleId).length;
+}
+
+/**
+ * How many pending invitations offer a role, as the archive door counts them: the detail's own
+ * per-role count (`pendingInvites`, answered to every `manage_roles` holder — the outgoing queue is
+ * `invite_members`' alone, so a role manager without it would read an empty queue), else the queue.
+ */
+export function pendingInvitesFor(
+	role: Pick<WorkspaceRoleDef, "id" | "pendingInvites">,
+	invites: readonly WorkspaceInvite[],
+): number {
+	return role.pendingInvites ?? invitesOffering(role.id, invites);
 }
 
 /**
@@ -404,6 +530,35 @@ export function archiveBlock(
 	return null;
 }
 
+/** The Archive row's visible line when nothing refuses it. */
+export const ARCHIVE_HINT = "Kept on record, never deleted.";
+
+/**
+ * The Archive row's visible second line: the refusal's count and its remedy, short enough for a menu
+ * row (the full sentence, {@link archiveBlock}, is the row's tooltip and description) — or, when
+ * nothing refuses it, {@link ARCHIVE_HINT}. The count is on the row itself, so a touch reader, or one
+ * who never hovers, still sees why the row is dead.
+ */
+export function archiveHint(
+	role: Pick<WorkspaceRoleDef, "memberCount">,
+	offeredBy: number,
+): string {
+	if (role.memberCount > 0) {
+		return `${memberCountText(role.memberCount)} ${
+			role.memberCount === 1 ? "holds" : "hold"
+		} it — move them first.`;
+	}
+	if (offeredBy > 0) {
+		return `${
+			offeredBy === 1 ? "A pending invitation offers" : `${offeredBy} pending invitations offer`
+		} it.`;
+	}
+	return ARCHIVE_HINT;
+}
+
+/** The Rename row's visible second line when {@link renameBlock} refuses it. */
+export const RENAME_BLOCKED_HINT = "It allows what you can't grant.";
+
 /**
  * Why the viewer cannot rename a role they may otherwise edit, or `null`: a rename re-writes the
  * role's saved capabilities, so one that still allows something the viewer may not put on a role is
@@ -419,27 +574,43 @@ export function renameBlock(
 		: `${role.name} allows ${labelList(blocked)}, which you can't give a role.`;
 }
 
+/** One row of a role column's menu, before it is bound to the screen. */
+export interface RoleMenuRow {
+	action: RoleMenuAction;
+	/** Why the row is refused — its tooltip and description — or `null` when it acts. */
+	disabledReason: string | null;
+	/** The row's visible second line (a refused row's count and remedy), or `null` for none. */
+	hint: string | null;
+}
+
 /**
  * The menu rows a role column offers, in order — none on a preset (a preset is copied through New
  * role's "Start from") and none without `manage_roles`. Rename only on a column the viewer may edit,
  * refused in place when the role carries what they cannot grant; Duplicate always; Archive always,
- * refused in place with its count and reason while anybody holds the role or an invitation offers it
- * — never hidden, so the reader learns why.
+ * refused in place while anybody holds the role or an invitation offers it ({@link pendingInvitesFor})
+ * — never hidden, and the count and remedy on the row itself, so the reader learns why.
  */
 export function roleMenuRows(
 	role: WorkspaceRoleDef,
 	viewer: RolesViewer,
 	invites: readonly WorkspaceInvite[],
-): Array<{ action: RoleMenuAction; disabledReason: string | null }> {
+): RoleMenuRow[] {
 	if (!viewer.canManage || role.preset) return [];
-	const rows: Array<{ action: RoleMenuAction; disabledReason: string | null }> = [];
+	const rows: RoleMenuRow[] = [];
 	if (columnLock(role, viewer) === null) {
-		rows.push({ action: "rename", disabledReason: renameBlock(role, viewer) });
+		const blocked = renameBlock(role, viewer);
+		rows.push({
+			action: "rename",
+			disabledReason: blocked,
+			hint: blocked ? RENAME_BLOCKED_HINT : null,
+		});
 	}
-	rows.push({ action: "duplicate", disabledReason: null });
+	rows.push({ action: "duplicate", disabledReason: null, hint: null });
+	const offered = pendingInvitesFor(role, invites);
 	rows.push({
 		action: "archive",
-		disabledReason: archiveBlock(role, invitesOffering(role.id, invites)),
+		disabledReason: archiveBlock(role, offered),
+		hint: archiveHint(role, offered),
 	});
 	return rows;
 }
@@ -454,17 +625,16 @@ export function roleMenu(
 	const items: MenuItem[] = [];
 	for (const row of roleMenuRows(role, viewer, invites)) {
 		const command = () => onAction(row.action, role);
+		const act = {
+			...(row.hint ? { hint: row.hint } : {}),
+			...(row.disabledReason
+				? { disabled: true, disabledReason: row.disabledReason }
+				: { command }),
+		};
 		if (row.action === "rename") {
-			items.push({
-				key: "rename",
-				label: "Rename…",
-				icon: "edit",
-				...(row.disabledReason
-					? { disabled: true, disabledReason: row.disabledReason }
-					: { command }),
-			});
+			items.push({ key: "rename", label: "Rename…", icon: "edit", ...act });
 		} else if (row.action === "duplicate") {
-			items.push({ key: "duplicate", label: "Duplicate…", icon: "copy", command });
+			items.push({ key: "duplicate", label: "Duplicate…", icon: "copy", ...act });
 		} else {
 			if (items.length > 0) items.push({ separator: true });
 			items.push({
@@ -472,10 +642,7 @@ export function roleMenu(
 				label: "Archive role…",
 				icon: "archive-box",
 				danger: true,
-				hint: "Kept on record, never deleted.",
-				...(row.disabledReason
-					? { disabled: true, disabledReason: row.disabledReason }
-					: { command }),
+				...act,
 			});
 		}
 	}
@@ -638,6 +805,45 @@ export function seedNote(
 		);
 	}
 	return parts.join(" ");
+}
+
+/**
+ * The example the Name field shows, per kind — a role that kind really has: a business's buyer-side
+ * Purchaser rides `purchase`, a right no team ever holds (`BUSINESS_ONLY`), so a team suggests a
+ * delivery role instead.
+ */
+export const ROLE_NAME_EXAMPLE: Readonly<Record<WorkspaceKind, string>> = {
+	team: "Designer",
+	business: "Purchaser",
+};
+
+/** "View analytics", "A, B and C" — or, past three, a count ("9 permissions"). */
+function startsWith(caps: readonly WorkspaceCapability[]): string {
+	return caps.length <= 3 ? labelList(caps) : `${caps.length} permissions`;
+}
+
+/**
+ * The editor's opening line. Creating, it follows the starting point: a role that starts with
+ * nothing is told to tick its column once it exists; one a template or a copy seeded says what it
+ * starts with. Renaming keeps everything but the name and rank.
+ */
+export function roleEditorIntro(
+	mode: RoleEditorMode,
+	kind: WorkspaceKind,
+	seeded: readonly WorkspaceCapability[],
+): string {
+	if (mode === "rename") return "Its permissions and the people holding it stay as they are.";
+	const lead = `A custom role is a named bundle of permissions for this ${kindCopy(kind).noun}.`;
+	return seeded.length === 0
+		? `${lead} Tick what it may do in its column once it exists.`
+		: `${lead} It starts with ${startsWith(seeded)} — change its column any time.`;
+}
+
+/** What the screen says once the editor created a role, by what the role was created with. */
+export function roleCreatedNotice(name: string, caps: readonly WorkspaceCapability[]): string {
+	return caps.length === 0
+		? `${name} is created. Tick what it may do in its column, then save.`
+		: `${name} is created with ${startsWith(caps)}. Change its column any time, then save.`;
 }
 
 /** The longest role name the database takes (`WorkspaceRoleDef.name`). */

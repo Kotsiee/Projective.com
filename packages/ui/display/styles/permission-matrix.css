@@ -316,6 +316,12 @@ button.ui-permission-matrix__cell:active:not(.ui-permission-matrix__cell--fixed)
 	border-color: var(--outline);
 }
 
+/* …except a fixed cell, whose missing edge IS its "can't change" cue — hardening it would make it
+   look as pressable as its neighbours. */
+:root[data-contrast="high"] .ui-permission-matrix__cell--fixed {
+	border-color: var(--pm-surface);
+}
+
 :root[data-contrast="high"] .ui-permission-matrix__cell--locked,
 :root[data-contrast="high"] .ui-permission-matrix__colhead-lock {
 	color: var(--on-surface);

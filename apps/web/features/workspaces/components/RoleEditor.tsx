@@ -6,6 +6,7 @@ import { Button, FormControl, InputText, Select, useFieldValidation } from "@pro
 import {
 	kindCopy,
 	roleLabel,
+	type UpsertRoleInput,
 	type WorkspaceDetail,
 	type WorkspaceRoleDef,
 } from "@projective/types/workspace";
@@ -15,9 +16,11 @@ import {
 	BLANK_START,
 	clampBase,
 	type CustomRoleBase,
+	ROLE_NAME_EXAMPLE,
 	ROLE_NAME_MAX,
 	roleEditorFooter,
 	roleEditorInput,
+	roleEditorIntro,
 	type RoleEditorMode,
 	roleNameProblem,
 	rolesTierProps,
@@ -60,8 +63,8 @@ export interface RoleEditorProps {
 	role: WorkspaceRoleDef | null;
 	/** The starting point the trigger implied (`mode: "create"`): `blank`, `template:…` or `role:…`. */
 	startKey: string;
-	/** The re-read detail after a write, and the role's name as written. */
-	onSaved: (next: WorkspaceDetail, name: string) => void;
+	/** The re-read detail after a write, and the role's name and capabilities as written. */
+	onSaved: (next: WorkspaceDetail, written: Pick<UpsertRoleInput, "name" | "capabilities">) => void;
 }
 
 export function RoleEditor(props: RoleEditorProps): JSX.Element {
@@ -146,7 +149,7 @@ export function RoleEditor(props: RoleEditorProps): JSX.Element {
 			return;
 		}
 		saving.value = false;
-		props.onSaved(res.data, input.name);
+		props.onSaved(res.data, input);
 		close();
 	}
 	// #endregion
@@ -185,11 +188,7 @@ export function RoleEditor(props: RoleEditorProps): JSX.Element {
 					void submit();
 				}}
 			>
-				<p class="wsp-dialog__intro">
-					{mode === "create"
-						? `A custom role is a named bundle of permissions for this ${copy.noun}. Tick what it may do in its column once it exists.`
-						: "Its permissions and the people holding it stay as they are."}
-				</p>
+				<p class="wsp-dialog__intro">{roleEditorIntro(mode, ws.kind, seed.capabilities)}</p>
 
 				<div class="wsp-dialog__field" ref={nameScope}>
 					<FormControl
@@ -209,7 +208,7 @@ export function RoleEditor(props: RoleEditorProps): JSX.Element {
 								status={nameField.status.value}
 								onFocus={nameField.handlers.onFocus}
 								onBlur={nameField.handlers.onBlur}
-								placeholder="Purchaser"
+								placeholder={ROLE_NAME_EXAMPLE[ws.kind]}
 								maxLength={ROLE_NAME_MAX}
 								autoComplete="off"
 								block

@@ -15,38 +15,49 @@ import { CAPABILITY_GROUPS, type PolicyContext } from "./capabilities.ts";
 import { sensitiveWarning } from "./members-model.ts";
 import { ROLE_TEMPLATES, type RoleTemplate, templatesForKind } from "./role-templates.ts";
 import {
+	ARCHIVE_HINT,
 	archiveBlock,
+	archiveHint,
 	baseOptions,
 	BLANK_START,
+	BUSY_LOCK,
 	cellLock,
 	clampBase,
 	columnLock,
 	dirtyRoleIds,
+	fixedCellReasons,
 	GRANT_LOCK,
 	invitesOffering,
 	mayGrantToRole,
 	orderedRoles,
+	pendingInvitesFor,
 	PRESET_LOCK,
 	pruneDraft,
 	RANK_LOCK,
+	RENAME_BLOCKED_HINT,
 	renameBlock,
 	RESERVED_LOCK,
+	ROLE_NAME_EXAMPLE,
 	ROLE_NAME_MAX,
 	roleCaps,
 	roleCellState,
 	roleColumnMeta,
+	roleCreatedNotice,
 	type RoleDraft,
 	roleEditorFooter,
 	roleEditorInput,
+	roleEditorIntro,
 	roleMatrixColumns,
 	roleMatrixRows,
 	roleMenu,
 	roleMenuRows,
 	roleNameProblem,
+	roleRemits,
 	roleSavePlan,
 	rolesCommit,
 	rolesFilledCount,
 	rolesHeaderItems,
+	rolesLegend,
 	rolesTierProps,
 	type RolesViewer,
 	rolesViewerOf,
@@ -262,6 +273,103 @@ Deno.test("header: presets · custom roles, tabular", () => {
 		{ text: "1 custom role", tabular: true },
 	]);
 });
+
+Deno.test("remits: every written summary, in column order — the line a header has no room for", () => {
+	const unwritten = { ...byId("r-designer"), summary: "  " };
+	const roles = ROLES.map((r) => (r.id === "r-designer" ? unwritten : r));
+	assertEquals(roleRemits(roles), [
+		{ key: "r-owner", name: "Owner", summary: "Owner summary" },
+		{ key: "r-admin", name: "Admin", summary: "Admin summary" },
+		{ key: "r-lead", name: "Lead", summary: "Lead summary" },
+		{ key: "r-member", name: "Member", summary: "Member summary" },
+		{ key: "r-treasurer", name: "Treasurer", summary: "Treasurer summary" },
+	]);
+});
+// #endregion
+
+// #region Legend
+Deno.test("legend: the padlock line names every kind of read-only column on screen", () => {
+	const base = { kind: "team" as const, conditional: false, fixedReasons: [] };
+	// The owner: only presets carry the padlock.
+	const owner = rolesLegend({
+		...base,
+		columnLocks: roleMatrixColumns(ROLES, viewer("owner"), {}).map((c) => c.lockedHint),
+	});
+	assertEquals(owner, [
+		{ mark: "allowed", text: "Allowed" },
+		{ mark: "locked", text: "Preset — read-only" },
+	]);
+	// A lead granted manage_roles: Treasurer ranks above them and carries the same padlock, so the
+	// line may not call every padlocked column a preset.
+	const lead = rolesLegend({
+		...base,
+		columnLocks: roleMatrixColumns(ROLES, viewer("lead"), {}).map((c) => c.lockedHint),
+	});
+	assertEquals(lead.at(-1), {
+		mark: "locked",
+		text: "Read-only — a preset, or a role ranking above yours",
+	});
+	assertEquals(
+		rolesLegend({ ...base, columnLocks: [RANK_LOCK] }).at(-1)?.text,
+		"Read-only — the role ranks above yours",
+	);
+	// The conditional line only when a cell is conditional.
+	assertEquals(
+		rolesLegend({ ...base, conditional: true, columnLocks: [PRESET_LOCK] })[1],
+		{ mark: "conditional", text: "Allowed within a rule this team set" },
+	);
+});
+
+Deno.test("legend: a cell fixed for the viewer is explained — its missing box and the reason", () => {
+	const lead = {
+		...viewer("lead"),
+		caps: [...LEAD_CAPS, "manage_roles" as const],
+		canManage: true,
+	};
+	// Designer is the lead's to edit; withdraw_funds (off, and not theirs) is fixed for them.
+	assertEquals(fixedCellReasons(ROLES, lead, {}), [GRANT_LOCK]);
+	assertEquals(
+		rolesLegend({ kind: "team", conditional: false, columnLocks: [], fixedReasons: [GRANT_LOCK] }),
+		[
+			{ mark: "allowed", text: "Allowed" },
+			{ mark: "fixed", text: "No box: you don't hold it yourself, so you can't grant it" },
+		],
+	);
+	// A team owner holds every right and a team reserves none: nothing is fixed, no line.
+	assertEquals(fixedCellReasons(ROLES, viewer("owner"), {}), []);
+	// Without manage_roles the matrix is read-only — nothing of the viewer's is fixed.
+	assertEquals(fixedCellReasons(ROLES, { ...lead, canManage: false }, {}), []);
+	// A business owner: the reserved rights are fixed on every custom role.
+	const bizRoles = [
+		role("b-owner", "owner", "owner", presetCapabilities("owner", "business")),
+		role("b-buyer", null, "member", ["purchase"], "Purchaser"),
+	];
+	assertEquals(fixedCellReasons(bizRoles, viewer("owner", "business"), {}), [RESERVED_LOCK]);
+	assertEquals(
+		rolesLegend({
+			kind: "business",
+			conditional: false,
+			columnLocks: [],
+			fixedReasons: [RESERVED_LOCK],
+		}).at(-1)?.text,
+		"No box: owner-reserved — given to a named admin, never to a role",
+	);
+	assertEquals(
+		rolesLegend({
+			kind: "business",
+			conditional: false,
+			columnLocks: [],
+			fixedReasons: [RESERVED_LOCK, GRANT_LOCK],
+		}).at(-1)?.text,
+		"No box: you can't grant it — you don't hold it, or the owner reserves it",
+	);
+	// The save lock is transient and never a legend line.
+	assertEquals(
+		rolesLegend({ kind: "team", conditional: false, columnLocks: [], fixedReasons: [BUSY_LOCK] })
+			.length,
+		1,
+	);
+});
 // #endregion
 
 // #region Cells
@@ -307,6 +415,13 @@ Deno.test("cell locks: anything on may be taken away; off needs the grant, and n
 		assert(!mayGrantToRole(cap, owner));
 	}
 	assert(mayGrantToRole("spend_funds", owner));
+});
+
+Deno.test("cell locks: while a write is in flight every editable cell waits, and says so", () => {
+	const owner = viewer("owner");
+	assertEquals(cellLock("view_analytics", true, owner, true), BUSY_LOCK);
+	assertEquals(cellLock("view_analytics", false, owner, true), BUSY_LOCK);
+	assertStrictEquals(cellLock("view_analytics", false, owner, false), null);
 });
 // #endregion
 
@@ -403,7 +518,9 @@ Deno.test("menu: none on a preset or without manage_roles; Rename only where the
 	assertEquals(roleMenuRows(byId("r-treasurer"), admin, [])[0], {
 		action: "rename",
 		disabledReason: "Treasurer allows Withdraw funds, which you can't give a role.",
+		hint: RENAME_BLOCKED_HINT,
 	});
+	assertEquals(roleMenuRows(byId("r-designer"), owner, [])[0].hint, null);
 });
 
 Deno.test("archive: refused with the count and the reason while anybody holds or is offered the role", () => {
@@ -426,6 +543,32 @@ Deno.test("archive: refused with the count and the reason while anybody holds or
 	assertStrictEquals(archiveBlock({ memberCount: 0 }, 0), null);
 	const invites = [invite("i1", "r-designer"), invite("i2", "r-admin")];
 	assertEquals(invitesOffering("r-designer", invites), 1);
+	// The visible line: the count and the remedy, short enough for a menu row.
+	assertEquals(archiveHint({ memberCount: 3 }, 0), "3 members hold it — move them first.");
+	assertEquals(archiveHint({ memberCount: 1 }, 2), "1 member holds it — move them first.");
+	assertEquals(archiveHint({ memberCount: 0 }, 1), "A pending invitation offers it.");
+	assertEquals(archiveHint({ memberCount: 0 }, 2), "2 pending invitations offer it.");
+	assertEquals(archiveHint({ memberCount: 0 }, 0), ARCHIVE_HINT);
+	for (const [held, offered] of [[3, 0], [1, 2], [0, 1], [0, 2]]) {
+		const line = archiveHint({ memberCount: held }, offered);
+		assert(line.length <= 37, `"${line}" fits a menu row`);
+	}
+});
+
+Deno.test("archive: the detail's own invitation count wins — a role manager may read no queue", () => {
+	const scout = { ...role("r-scout", null, "member", [], "Scout", 0), pendingInvites: 2 };
+	// A manage_roles holder without invite_members reads an empty queue, but the count is theirs.
+	assertEquals(pendingInvitesFor(scout, []), 2);
+	assertEquals(roleMenuRows(scout, viewer("owner"), []).at(-1), {
+		action: "archive",
+		disabledReason: "2 pending invitations offer this role — withdraw them first.",
+		hint: "2 pending invitations offer it.",
+	});
+	// The count says none: the queue is not consulted over it.
+	assertEquals(pendingInvitesFor({ ...scout, pendingInvites: 0 }, [invite("i1", "r-scout")]), 0);
+	// A read that carries no count falls back to the queue.
+	const { pendingInvites: _gone, ...legacy } = scout;
+	assertEquals(pendingInvitesFor(legacy, [invite("i1", "r-scout")]), 1);
 });
 
 Deno.test("menu items: Archive is danger, after a separator, refused in place — never hidden", () => {
@@ -444,6 +587,8 @@ Deno.test("menu items: Archive is danger, after a separator, refused in place �
 		archive.disabledReason,
 		"2 members hold this role — move them all to another role first.",
 	);
+	// The count is on the row itself, not only in its tooltip.
+	assertEquals(archive.hint, "2 members hold it — move them first.");
 	assertStrictEquals(archive.command, undefined);
 	const free = roleMenu(
 		byId("r-designer"),
@@ -451,6 +596,8 @@ Deno.test("menu items: Archive is danger, after a separator, refused in place �
 		[],
 		(action, r) => calls.push(`${action}:${r.id}`),
 	);
+	assertEquals(free.at(-1)?.hint, ARCHIVE_HINT);
+	assertEquals(free.find((i) => i.key === "rename")?.hint, undefined);
 	const evt = { item: {}, originalEvent: new Event("click") };
 	free.forEach((i) => i.command?.(evt));
 	assertEquals(calls, ["rename:r-designer", "duplicate:r-designer", "archive:r-designer"]);
@@ -600,6 +747,47 @@ Deno.test("editor input: create sends the seed; rename keeps the role's capabili
 			summary: "Designer summary",
 			capabilities: ["publish_listings", "view_analytics"],
 		},
+	);
+});
+
+Deno.test("editor copy: the example name fits the kind; the intro and notice follow the start", () => {
+	// purchase is a business's alone, so a team is never shown a Purchaser.
+	assertEquals(ROLE_NAME_EXAMPLE, { team: "Designer", business: "Purchaser" });
+	assert(!capabilitiesForKind("team").includes("purchase"));
+	// Nothing yet: tick its column once it exists.
+	assertEquals(
+		roleEditorIntro("create", "team", []),
+		"A custom role is a named bundle of permissions for this team. Tick what it may do in its " +
+			"column once it exists.",
+	);
+	// The Contributor template already carries View analytics — the intro says so instead.
+	const owner = viewer("owner");
+	const points = startPoints("team", ROLES);
+	const contributor = seedFrom(startPointOf(points, "template:contributor"), owner);
+	assertEquals(
+		roleEditorIntro("create", "team", contributor.capabilities),
+		"A custom role is a named bundle of permissions for this team. It starts with View " +
+			"analytics — change its column any time.",
+	);
+	// A copy of a large role: a count, not a wall of names.
+	const admin = seedFrom(startPointOf(points, "role:r-admin"), owner);
+	assert(admin.capabilities.length > 3);
+	assert(
+		roleEditorIntro("create", "team", admin.capabilities).includes(
+			`It starts with ${admin.capabilities.length} permissions`,
+		),
+	);
+	assertEquals(
+		roleEditorIntro("rename", "business", ["purchase"]),
+		"Its permissions and the people holding it stay as they are.",
+	);
+	assertEquals(
+		roleCreatedNotice("Scout", []),
+		"Scout is created. Tick what it may do in its column, then save.",
+	);
+	assertEquals(
+		roleCreatedNotice("Contributor", contributor.capabilities),
+		"Contributor is created with View analytics. Change its column any time, then save.",
 	);
 });
 // #endregion

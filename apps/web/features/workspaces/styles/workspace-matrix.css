@@ -1,6 +1,6 @@
 /*
- * workspace-matrix — the Roles module (Teams work order C3): the page head, the cell legend and the
- * frame the ui `PermissionMatrix` sits in.
+ * workspace-matrix — the Roles module (Teams work order C3): the page head, the cell legend, the
+ * frame the ui `PermissionMatrix` sits in and the list of what each role is for.
  *
  * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY.
  *
@@ -65,5 +65,58 @@
  */
 .wsp-roles__matrix {
 	block-size: min(70vh, 44rem);
+}
+/* #endregion */
+
+/* #region What each role is for */
+/*
+ * Every role's one-line remit — the summary a column header has no room for — under a section-header
+ * label (`.wsp-label`). Running text, never boxed (§B.9): the name in the body register, its remit in
+ * meta beside it; where the band is narrow the remit drops under its name.
+ */
+.wsp-roles__remits {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	margin-block-start: var(--space-7);
+	min-inline-size: 0;
+	container: wsp-remits / inline-size;
+}
+
+.wsp-roles__remit-list {
+	display: grid;
+	grid-template-columns: fit-content(14rem) minmax(0, 1fr);
+	gap: var(--space-2) var(--space-4);
+	margin: 0;
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-body);
+	line-height: var(--leading-snug);
+}
+
+/* Each name/remit pair is one grid row; the wrapper only groups them for the `dl`. */
+.wsp-roles__remit {
+	display: contents;
+}
+
+.wsp-roles__remit-name {
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	overflow-wrap: anywhere;
+}
+
+.wsp-roles__remit-summary {
+	margin: 0;
+	color: var(--text-secondary);
+}
+
+@container wsp-remits (inline-size < 36rem) {
+	.wsp-roles__remit-list {
+		grid-template-columns: minmax(0, 1fr);
+		row-gap: 0;
+	}
+
+	.wsp-roles__remit-summary {
+		margin-block-end: var(--space-2);
+	}
 }
 /* #endregion */

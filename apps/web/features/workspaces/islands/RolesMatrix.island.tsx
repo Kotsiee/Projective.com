@@ -8,6 +8,7 @@ import { Button } from "@projective/ui/fields";
 import { ActionMenu, type MenuItem } from "@projective/ui/navigation";
 import {
 	kindCopy,
+	type UpsertRoleInput,
 	type WorkspaceCapability,
 	type WorkspaceDetail,
 	type WorkspaceRoleDef,
@@ -20,18 +21,23 @@ import {
 	BLANK_START,
 	cellLock,
 	dirtyRoleIds,
+	fixedCellReasons,
 	pruneDraft,
 	roleCaps,
 	roleCellState,
+	roleCreatedNotice,
 	type RoleDraft,
 	type RoleEditorMode,
 	roleMatrixColumns,
 	roleMatrixRows,
 	roleMenu,
 	type RoleMenuAction,
+	roleRemits,
 	roleSavePlan,
 	rolesCommit,
 	rolesHeaderItems,
+	rolesLegend,
+	type RolesLegendMark,
 	rolesViewerOf,
 	roleWriteInput,
 	toggleRoleCap,
@@ -59,7 +65,11 @@ import {
  * local draft; Save and Discard are the footer rig's (tier 3 and tier 5, `usePolicyBridge`), so the
  * body never grows a Save of its own. A cell the server would refuse is LOCKED in place with the
  * server's reason — a grant the viewer does not hold, a business's owner-reserved right — and a
- * column that ranks above the viewer is locked whole. Anything a role allows may be taken away.
+ * column that ranks above the viewer is locked whole. Anything a role allows may be taken away. While
+ * a write is in flight every editable cell waits, saying so, rather than ignoring a press. The legend
+ * (`rolesLegend`) is worded for what is on screen: the padlock line names a role ranking above the
+ * viewer when one is padlocked, and a cell fixed for the viewer gets the line saying what its missing
+ * box means. Under the matrix, each role's one-line remit — what a column header has no room for.
  *
  * **New role** is the header band's one filled action (tier 2 structural, `useModuleCommit`); it
  * opens the `RoleEditor`, which also renames. A custom column's kebab carries Rename… · Duplicate… ·
@@ -83,6 +93,14 @@ interface ScreenNotice {
 
 /** Layout zones a column menu's panel keeps clear of. */
 const MENU_AVOID = [".ui-app-shell__sidebar", ".ui-middle-nav__lane"] as const;
+
+/** The glyph a legend line repeats — none for the no-box line, whose mark is the missing box. */
+const LEGEND_GLYPH: Record<RolesLegendMark, (() => JSX.Element) | null> = {
+	allowed: AllowedGlyph,
+	conditional: ConditionalGlyph,
+	locked: LockedGlyph,
+	fixed: null,
+};
 
 export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 	const detail = useSignal<WorkspaceDetail>(props.workspace);
@@ -234,13 +252,16 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 	}
 
 	/** After the editor wrote a role: adopt the re-read detail and say what happened. */
-	function onSaved(next: WorkspaceDetail, name: string): void {
+	function onSaved(
+		next: WorkspaceDetail,
+		written: Pick<UpsertRoleInput, "name" | "capabilities">,
+	): void {
 		adopt(next);
 		notice.value = {
 			tone: "info",
 			text: editorMode.peek() === "create"
-				? `${name} is created. Tick what it may do in its column, then save.`
-				: `Renamed to ${name}.`,
+				? roleCreatedNotice(written.name, written.capabilities)
+				: `Renamed to ${written.name}.`,
 		};
 	}
 	// #endregion
@@ -258,6 +279,15 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 				"conditional"
 		)
 	);
+	const legend = rolesLegend({
+		kind: ws.kind,
+		conditional,
+		columnLocks: columns.map((column) => column.lockedHint),
+		fixedReasons: fixedCellReasons(ws.roles, viewer, draft.value),
+	});
+	const remits = roleRemits(ws.roles);
+	/** A role write is in flight: every editable cell waits, and says so. */
+	const writing = busy.value;
 
 	const capOf = (row: PermissionMatrixRow) => row.key as WorkspaceCapability;
 	const roleOf = (column: PermissionMatrixColumn) => byId.get(column.key) ?? null;
@@ -271,7 +301,7 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 	function cellFix(row: PermissionMatrixRow, column: PermissionMatrixColumn): string | null {
 		const role = roleOf(column);
 		if (!role || column.locked) return null;
-		return cellLock(capOf(row), roleCaps(role, draft.value).includes(capOf(row)), viewer);
+		return cellLock(capOf(row), roleCaps(role, draft.value).includes(capOf(row)), viewer, writing);
 	}
 
 	function toggle(row: PermissionMatrixRow, column: PermissionMatrixColumn): void {
@@ -325,26 +355,19 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 					<div class="wsp-band__inner">
 						<div class="wsp-roles">
 							<ul class="wsp-roles__legend" aria-label="What the cells mean">
-								<li class="wsp-roles__legend-item">
-									<span class="wsp-roles__legend-glyph" aria-hidden="true">
-										<AllowedGlyph />
-									</span>
-									Allowed
-								</li>
-								{conditional && (
-									<li class="wsp-roles__legend-item">
-										<span class="wsp-roles__legend-glyph" aria-hidden="true">
-											<ConditionalGlyph />
-										</span>
-										Allowed within a rule this {copy.noun} set
-									</li>
-								)}
-								<li class="wsp-roles__legend-item">
-									<span class="wsp-roles__legend-glyph" aria-hidden="true">
-										<LockedGlyph />
-									</span>
-									Preset — read-only
-								</li>
+								{legend.map((item) => {
+									const Glyph = LEGEND_GLYPH[item.mark];
+									return (
+										<li key={item.mark} class="wsp-roles__legend-item">
+											{Glyph && (
+												<span class="wsp-roles__legend-glyph" aria-hidden="true">
+													<Glyph />
+												</span>
+											)}
+											{item.text}
+										</li>
+									);
+								})}
 							</ul>
 
 							<PermissionMatrix
@@ -363,6 +386,20 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 								lockedHint="This cell can't be changed here."
 							/>
 						</div>
+
+						{remits.length > 0 && (
+							<section class="wsp-roles__remits" aria-labelledby="wsp-roles-remits">
+								<h2 id="wsp-roles-remits" class="wsp-label">What each role is for</h2>
+								<dl class="wsp-roles__remit-list">
+									{remits.map((remit) => (
+										<div key={remit.key} class="wsp-roles__remit">
+											<dt class="wsp-roles__remit-name">{remit.name}</dt>
+											<dd class="wsp-roles__remit-summary">{remit.summary}</dd>
+										</div>
+									))}
+								</dl>
+							</section>
+						)}
 					</div>
 				</section>
 			</div>
