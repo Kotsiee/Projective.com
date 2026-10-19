@@ -2269,6 +2269,63 @@ columns, and each cell is one of four states:
    step; the app's no-focus-ring directive neutralises the ring (Decision #217 flag (n)), so the
    tonal step is what a keyboard reader actually sees.
 
+### B.14 Screen-sharing obscurity — the four treatments (merge gate)
+
+_Specified 2026-10-19 (Decision #297); not yet built. Business rules: `PRODUCT_SPEC.md` §Screen
+Sharing & Privacy Mode. State and hydration: `SYSTEM_ARCHITECTURE.md` §State Hydration → Screen
+sharing mode._ Every treatment keys on one selector, `:root[data-screen-share="active"]`, and lives
+in one BEM block, `ui-obscure`, with an `Obscure` primitive in `@projective/ui/utils` that enters
+the §C.1 roster when it is built. A surface never invents its own hide.
+
+**Tokens** (defined beside `--glass-blur` / `--scrim-blur` in `packages/ui/styles/index.css`):
+
+| Token | Value | Use |
+| :-- | :-- | :-- |
+| `--obscure-blur` | `12px` | The blur radius for tier C. It is lighter than `--glass-blur` (18px) because it blurs content, not chrome. |
+| `--obscure-bleed` | `1.04` | The scale that pushes tier C's soft edge halo outside the clipping frame. |
+| `--obscure-mask` | `"••••••"` | Tier A's fixed glyph run. It never varies with the value's length. |
+| `--surface-2`, `--radius-xs` | existing | Tier B's fill and corner. |
+
+| Tier | Class | Scope | Rendering contract |
+| :-- | :-- | :-- | :-- |
+| **A. Mask** | `.ui-obscure--mask` | Exact money: balances, ledgers, transactions, rates, fees, splits, bank details. | `MoneyView` keeps the currency symbol and replaces the figure with `--obscure-mask` in the same register and `tabular-nums` width, so layout never shifts. It **omits** `data-money-minor` and the figure-bearing `title` / `aria-label`. The accessible name is "Amount hidden while screen sharing", and it marks itself `data-money-masked`. `NumberInput` masks its displayed value. A press-and-hold **Show** (a `Button` text, icon `eye`) reveals it only while held. |
+| **B. Solid** | `.ui-obscure--solid` | PII: emails, phones, addresses, KYC/KYB document previews, dispute statements. | `background: var(--surface-2); color: transparent; user-select: none; border-radius: var(--radius-xs);`. The component renders a **placeholder of fixed width, not the text**: `color: transparent` alone fails under `forced-colors: active`, which forces the text colour back. The CSS-only fallback (pre-hydration) adds `forced-color-adjust: none`. A solid block is a redaction, not a card: no border, no shadow (§B.4, §B.9). |
+| **C. Blur** | `.ui-obscure--blur` | Low-harm visuals: file thumbnails, submission covers, portfolio media, partner banners. | `filter: blur(var(--obscure-blur)); transform: scale(var(--obscure-bleed));` on the **media element** (`img`, `video`, `picture`'s image), inside a frame that carries `overflow: hidden`. Never on a container, never on a pressable (the scale would fight §B.12's press transform), never on the `::before` underlay of a glass surface. |
+| **D. Omit** | `.ui-obscure--omit` | Client legal names in public headers, meeting links, API keys, webhook URLs, developer tokens. | It is not rendered: skipped in SSR and absent from island props. `display: none` is only the pre-hydration fallback. A control keeps working without its text: a meeting's Join button stays, and its URL text goes. Reveal and copy controls for a secret are disabled with the reason in their description (§3 gate 11 still holds: the disabled control says why). |
+
+1. **Blur limits — the explicit ban on nested blur compositing.** `filter` makes its element a
+   containing block for `position: fixed` descendants, exactly as `backdrop-filter` does (§B.4.3).
+   Every blurred element is also a separate compositor layer. Therefore:
+   - a tier C element never sits inside another filtered or glass layer, and never contains one;
+   - **dense surfaces never run a per-item filter.** On `KanbanBoard`, `Gantt` (`@projective/ui/gantt`),
+     `DataTable`, card grids and virtualised lists, a thumbnail swaps to its `ProgressiveImage`
+     BlurHash ground and the picture is not loaded. The look is the same, there is no filter layer,
+     and no image bytes are fetched;
+   - a modal stack still composites one blurred backdrop (§B.10.9). Content beneath the scrim is
+     never additionally blurred for screen sharing.
+2. **Canvas surfaces paint their own mask.** CSS cannot reach a `<canvas>`. `Gantt`'s stage and the
+   Canvas2D charts (Decision #217 (m)) read the `screenShareActive` store. They draw masked figures
+   in labels, axes and tooltips, and drop the hover readout of an exact value.
+3. **Reduced motion.** Under **both** channels (`prefers-reduced-motion: reduce` and
+   `[data-motion="reduced"]`), entering and leaving a treatment is an instant jump: no blur fade and
+   no scale transition. The static blur and scale themselves stay, because they are not motion.
+   Without reduced motion, the change uses the §B.5 simultaneous theme transition, so every
+   treatment on the page lands in the same frame.
+4. **The indicator.** While the mode is on, the top bar carries one `iconOnly` `Button` (`eye-off`,
+   `aria-pressed="true"`, labelled "Screen sharing mode on, turn off"). It is a control, so it may
+   be contained (§B.11). The account menu row is a `role="menuitemcheckbox"` beside the theme
+   control, showing the chord as meta text.
+5. **No layout shift.** Every treatment keeps its node's box: mask at the figure's register, solid
+   at the field's size, blur inside the frame. Omit is the one treatment that removes a box, so it
+   is used only where the slot can collapse without reflowing a neighbour that is being read.
+
+> **Merge gate.** A PR is not mergeable if a sensitive value in one of the four scopes renders
+> without its tier under `data-screen-share="active"`. It is also not mergeable if a tier is
+> drawn by a bespoke rule instead of `ui-obscure`, or if a masked node keeps the raw value in a
+> `data-*`, `title` or `aria-*` attribute. Blur may not run on a container, a pressable, a dense
+> surface or inside another blur or glass layer. Treatments may not animate under either
+> reduced-motion channel, and an omit-tier secret may not reach the document or island props.
+
 ---
 
 ## Part C — Component Library Architecture (`@projective/ui`)
@@ -4927,6 +4984,9 @@ A PR touching `@projective/ui` must satisfy (enforced via root `CLAUDE.md`):
    (the conversion lane and the entity-view archetypes). These govern how a *page* is assembled
    rather than how a *component* is built, which is why they are listed apart: a PR can satisfy every
    component law and still ship a boxed, tagified, three-column view page.
+10. **Screen-sharing obscurity (§B.14).** Every sensitive value carries its `ui-obscure` tier under
+    `data-screen-share="active"` from the first paint. No masked node keeps its raw value in an
+    attribute, and blur never runs nested or on a dense surface.
 
 ---
 

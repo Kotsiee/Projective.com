@@ -2776,6 +2776,96 @@ Projective treats sensitive identity data with "Zero-Trust" principles.
   maintaining the minimum data required by financial regulators for tax auditing (typically 7
   years).
 
+### Screen Sharing & Privacy Mode
+
+_Specified 2026-10-19 (root `CLAUDE.md` §8, Decision #297); not yet built. Technical contract:
+`SYSTEM_ARCHITECTURE.md` §3 and §State Hydration. Visual contract: `DESIGN_SYSTEM.md` §B.14._
+
+**The problem.** People show Projective to an audience more and more. Freelancers stream their
+work on YouTube, TikTok and Twitch. Teams demo progress on live client calls. Agencies record
+walkthroughs for prospects. Each time, the screen shows things the audience should never see:
+the wallet balance, a rate quoted to another client, a teammate's payout split, a client's legal
+name under NDA, an email address, a phone number, an identity document or a meeting link. Today
+the only defence is to hope nobody notices. One leaked figure can cost a freelancer their pricing
+power. One leaked client name can breach a contract.
+
+**The promise.** One switch, **Screen sharing mode**, makes every Projective page safe to show.
+While it is on, sensitive things are hidden wherever they appear, from the very first frame of
+every page, in every open tab. The page keeps its layout, so the person can still navigate, demo
+and work with no extra steps.
+
+**Who it is for, and how they use it.**
+- **The creator.** A freelancer streams a build session on YouTube or a time-lapse on TikTok. They
+  turn the mode on before going live. The board, files and messages stay usable on camera. Money,
+  contact details and client identities never reach the stream.
+- **The live client call.** A team lead shares the project board with one client on a call. Other
+  clients' names, the team's internal payout splits and the lead's wallet stay hidden. The
+  micro-agency's internal economics stay internal, which is the trust a team needs before it lets
+  a client watch it work.
+- **The forgotten stream.** Someone is already sharing when they realise. **Ctrl + Shift + S**
+  (**⌘ + Shift + S** on a Mac) turns the mode on at once, even while typing in a field. No menu
+  needs to be opened first.
+
+**Where the switch lives.**
+- **Settings → Privacy & screen sharing.** The setting, with a plain description of what it hides.
+- **The account menu** (the avatar menu in the top bar), next to the theme control. One press
+  turns the mode on or off, and the row shows the keyboard shortcut.
+- **The keyboard shortcut** above.
+- **While the mode is on**, the top bar shows a small "eye-off" mark. It is the reminder that the
+  mode is on, and pressing it turns the mode off. Nobody should wonder later why their balance
+  shows dots.
+
+**What is hidden.** There are four treatments, chosen by how much harm the leak would do:
+
+| Treatment | What it covers | What the audience sees |
+| :-- | :-- | :-- |
+| **Masked** | Exact money: balances, wallet and ledger figures, transaction amounts, hourly and stage rates, platform fees, payout splits, bank details. | The currency symbol and a fixed run of dots (`£••••••`). The run never grows or shrinks, so its length gives no clue to the amount. |
+| **Redacted** | Personal and highly sensitive details: email addresses, phone numbers, postal addresses, identity and business-verification documents, dispute statements. | A solid block the size of the field. Nothing underneath can be read, selected or copied. |
+| **Blurred** | Visual context with little harm in it: file thumbnails, submission cover images, portfolio media, partner banners. | A heavy blur that keeps the page's look without the detail. |
+| **Removed** | Things that must never appear at all: client legal names in project headers, meeting links in the calendar, API keys, webhook URLs, developer tokens. | Nothing. Where a sentence needs a subject, "the client" stands in. A Join button stays and still works; only the link text is gone. |
+
+**The rules.**
+- **It is per device, not per account.** The mode belongs to the screen being shared, so it is
+  remembered on this device (across visits and every tab) and never synced to the person's other
+  devices. Nothing about it is saved to the account.
+- **It is about what is shown, not what is allowed.** The mode hides things from a viewer of the
+  screen. It never changes what the person can do, what anyone else can see, what is charged or
+  what is paid. Paying, withdrawing and approving all work normally. Amounts typed into a money
+  field are masked too. The person must still be able to check an amount before committing money,
+  so a money field and every payment confirmation carry a press-and-hold **Show** control. It
+  reveals the figure only while it is held.
+- **It cannot be weaker than the person expects.** Every page must apply it from the first frame,
+  including standalone pages such as the file inspector. A page that flashes a real balance
+  before hiding it is a defect, not a cosmetic issue.
+- **A file the person opens on purpose is shown.** Thumbnails and covers are blurred because they
+  appear incidentally. A file opened deliberately in the inspector is shown, because demoing it is
+  usually the point. Identity documents and dispute evidence are the exception and stay redacted.
+- **Secrets cannot be revealed while it is on.** A "Reveal" or "Copy" control for an API key, a
+  webhook URL or a token is disabled, with the reason given beside it.
+
+**Feature boundaries (what it does not do).**
+- **It cannot detect that the screen is being shared.** No browser tells a web page that, so the
+  mode never switches itself on. The shortcut is the fast path.
+- **It does not cover the operating system's notifications.** A desktop notification is drawn by
+  the operating system, outside the page. The Settings description recommends the system's own
+  "do not disturb while sharing" option, which macOS and Windows provide.
+- **It does not hide message text.** Conversations stay readable, otherwise a demo of the
+  workspace would be pointless. Contact details inside messages are already masked during the
+  protected phase (§Messaging, Decision #147). After that it is the person's own judgment.
+- **It is not a security control.** It protects the frame on screen. It does not protect data
+  that a technical viewer could pull from the browser's developer tools or the network. Secrets
+  are the exception: they are removed from the page entirely.
+
+**Why it matters commercially.** Creator-led acquisition is the cheapest growth channel a
+freelancing platform has. Every "build with me" stream recorded inside Projective advertises the
+stage board, the escrow and the team workspace to the audience most likely to adopt them. Without
+the mode, the platform's most-shown screens (wallet, payouts, pricing) are the ones a creator cannot
+afford to show. For teams, hiding internal splits during client calls protects the operational
+transparency the Micro-Agency thesis sells. The client sees the work, never the margin. Trust in
+the money surfaces is what keeps funds in stage escrow. Discord's Streamer Mode shows that
+streamers expect this feature. We know of no platform-wide equivalent on Fiverr or Upwork; check
+that claim before it appears in any marketing copy.
+
 ---
 
 ## Account Creation, Age Guardrails & Onboarding
@@ -3067,6 +3157,10 @@ full **Settings console** (`/settings`), one page per section. One search finds 
   An enterprise owner's account starts the same way. All of it is changeable in Settings.
 - **Display currency is presentation only** (§Global Multi-Currency & Localized Money): it changes
   how prices read, never what is charged or paid.
+- **Screen sharing mode** (specified, Decision #297; not yet built). It adds a twelfth section,
+  **Privacy & screen sharing**, holding the one per-device switch that hides money, personal
+  details and client identities while the screen is shown to others. It is also in the account
+  menu and on Ctrl/⌘ + Shift + S. The behaviour is in §Screen Sharing & Privacy Mode.
 
 ## Assets & Attachments
 

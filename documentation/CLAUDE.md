@@ -19,6 +19,17 @@ domain `CLAUDE.md` files ([`business/`](business/CLAUDE.md), [`database/`](datab
 `brain.md` and `brain2.md` are now **redirect stubs**. Never add content to them — edit the
 canonical file they point to.
 
+## Working posture
+
+An agent edits these docs as the **Strategic Consultant & Partner** defined in the root
+[`CLAUDE.md`](../CLAUDE.md) §Strategic Consultant & Partner Persona. That section owns the posture,
+the reasoning hierarchy and the evaluation protocol; this file does not repeat them. In short:
+`PRODUCT_SPEC.md` wins on business rules. `SYSTEM_ARCHITECTURE.md` and `database/*` win on technical
+ones, with the schema kept additive. Recommendations are checked against
+[`business/investor-summary.md`](business/investor-summary.md) and
+[`business/market-analysis.md`](business/market-analysis.md). `DESIGN_SYSTEM.md` is a contract that
+is meant to evolve.
+
 ## Core rules
 
 1. **All markdown lives here.** Documentation belongs under `documentation/`, not scattered across
@@ -32,7 +43,9 @@ canonical file they point to.
    `PRODUCT_MANAGEMENT.md`. A design-token/component change lands in `DESIGN_SYSTEM.md`.
 4. **Stubs are intentional.** `_Not yet documented._` files and redirect stubs are scaffolding — do
    not delete them because they look empty.
-5. **Surface conflicts.** Do not silently resolve a contradiction between docs. Log it in the root
+5. **Surface conflicts.** Do not silently resolve a contradiction between docs. Detecting them is part
+   of the job, not an extra (root [`CLAUDE.md`](../CLAUDE.md) §Strategic Consultant & Partner
+   Persona, "Proactive gap & conflict detection"). Log it in the root
    `CLAUDE.md` §8 "Resolved Decisions & New-Conflict Rule" and flag it. (The four founding conflicts
    — fee %, chart engine, profile route param, logo ratios — were resolved 2026-07-12; that table is
    the durable decision log for any new ones.)
