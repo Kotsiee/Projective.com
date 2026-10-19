@@ -110,34 +110,33 @@ export interface UserShellProps {
 	 */
 	chrome?: ShellChrome;
 	/**
-	 * Optional page-level footer rendered at the END of the canvas body — the marketing
-	 * `PublicFooter` on the public surfaces a signed-in visitor can still reach (`/`, `/explore`,
-	 * `/view/[id]`, `/[handle]`). Resolved per-URL by `publicFooterFor` in the layout, exactly like the
-	 * lane and the two bands, so it paints in the first byte.
+	 * Optional site footer for the page — the marketing `PublicFooter` on the public surfaces a
+	 * signed-in visitor can still reach (`/`, `/explore`, `/view/[id]`, `/[handle]`, the help centre and
+	 * the rest of `(public)`). Resolved per-URL by `publicFooterFor` in the layout, exactly like the lane
+	 * and the two bands, so it paints in the first byte.
 	 *
-	 * **Inside the canvas body specifically**, and this is not interchangeable with the other three
-	 * plausible mount points:
+	 * It mounts in {@link PageCanvas}'s `footer` slot — AFTER the canvas's `<main>`, inside its frame —
+	 * and that is not interchangeable with the other plausible mount points (Decision #295):
 	 *
-	 * - `.ui-page-canvas__body` already carries `position: relative` (page-canvas.css). THREE
-	 *   `position: fixed; z-index: 0` pseudo-elements paint opaque `--surface-1` / `--surface` fills
-	 *   across the whole viewport (`shell-frame.css`, `page-canvas.css`, `top-bar.css` — they are how
-	 *   the frame seams stay pinned while the document scrolls). A footer mounted anywhere else in the
-	 *   shell is a non-positioned in-flow element, so those fills paint OVER it and it is simply
-	 *   invisible. In here it inherits the fix for free.
-	 * - The ≤767px bottom-nav clearance is already reserved by the body's
-	 *   `padding-block-end: calc(var(--shell-bottomnav-h) + env(safe-area-inset-bottom, 0px))`, so the
-	 *   footer clears the fixed bar on a phone without a second reservation that would have to be kept
-	 *   in step with it.
+	 * - Inside `<main>` (where it used to sit) it is only a footer of the main content, so a signed-in
+	 *   page had no `contentinfo` landmark while the same page for a guest did.
+	 * - Anywhere outside the canvas frame it is invisible: THREE `position: fixed; z-index: 0`
+	 *   pseudo-elements paint opaque `--surface-1` / `--surface` fills across the whole viewport
+	 *   (`shell-frame.css`, `page-canvas.css`, `top-bar.css` — they are how the frame seams stay pinned
+	 *   while the document scrolls), and an in-flow unpositioned box beside them is painted over. The
+	 *   canvas slot is positioned, as the body is.
+	 * - The ≤767px bottom-nav clearance moves from the body to the slot whenever the slot is present
+	 *   (page-canvas.css), so the footer clears the fixed bar on a phone and no gap opens between the
+	 *   page and its footer.
 	 * - The frame's corner seam is drawn by those viewport-FIXED pseudo-elements, which never read the
-	 *   flow, so adding a tall child changes nothing about the curve and `flushBottom` stays correctly
-	 *   `true`.
-	 * - The sticky header/footer bands are the middle-nav frame's grid rows 1 and 3 and the content is
-	 *   row 2, so a footer in the body scrolls beneath both instead of colliding with either.
+	 *   flow, so a tall footer changes nothing about the curve and `flushBottom` stays correctly `true`;
+	 *   and the sticky header/footer bands are the middle-nav frame's grid rows 1 and 3 with the canvas
+	 *   in row 2, so the footer scrolls beneath both instead of colliding with either.
 	 *
 	 * Withheld in `focus` chrome for the same reason {@link BottomNav} is: that mode exists to remove
 	 * every navigational exit from a linear, committing flow, and a footer is a wall of them.
 	 */
-	bodyFooter?: ComponentChildren;
+	pageFooter?: ComponentChildren;
 	/** The page body. */
 	children: ComponentChildren;
 }
@@ -171,7 +170,7 @@ export function UserShell(
 		middleNavFooter,
 		middleNavPanel,
 		chrome = "full",
-		bodyFooter,
+		pageFooter,
 		children,
 	}: UserShellProps,
 ): JSX.Element {
@@ -179,7 +178,7 @@ export function UserShell(
 	// the bands and the top bar with it: the page is the whole frame.
 	const bare = chrome === "bare";
 	const focus = chrome === "focus" || bare;
-	const canvas = <PageCanvas>{children}{focus ? null : bodyFooter}</PageCanvas>;
+	const canvas = <PageCanvas footer={focus ? null : pageFooter}>{children}</PageCanvas>;
 	// In focus mode every navigational exit is withheld, so the lane is not constructed at all — but
 	// the middle-nav FRAME still renders whenever a band was registered, because the checkout stepper
 	// lives in the header band and must span the canvas with no lane beside it. The frame's grid is

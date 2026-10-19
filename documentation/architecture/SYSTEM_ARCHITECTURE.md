@@ -82,6 +82,15 @@
 - **Hierarchy is four registers, not five weights.** Display / section header / body / meta, each
   moving size, case and tracking together. A heading is never `--fw-bold` or heavier; a changing
   figure is always `tabular-nums` (§A.4).
+- **Screen sharing mode is a pre-paint overlay, not a permission (Decision #297).** It is carried
+  by `<html data-screen-share="active">` and painted from the first byte on every route, standalone
+  ones included (§State Hydration → Screen sharing mode). Sensitive output uses the four
+  `ui-obscure` treatments (mask · solid · blur · omit, `DESIGN_SYSTEM.md` §B.14), never a bespoke
+  hide. `filter: blur()` is bound by the same rule as `backdrop-filter` above: it makes its element
+  the containing block for `position: fixed` descendants. So it goes on a media element inside a
+  clipping frame, never on a container that renders overlays. It never nests inside another blur
+  or a glass layer, and never runs per item on a dense surface (`KanbanBoard`, `GanttChart`,
+  `DataTable`, card grids), which substitute the BlurHash placeholder instead.
 
 ### 4. Security & Environment Variables
 
@@ -2878,6 +2887,83 @@ interactivity must be strictly maintained.
   to the Island as standard props (e.g., `<ProjectBoardIsland initialData={project} />`). 3. The
   Island receives `initialData` and instantly hydrates it into a local `@preact/signals` state or
   Store class for high-performance interactivity.
+
+### Screen sharing mode — the pre-paint privacy overlay (Decision #297)
+
+_Specified 2026-10-19; not yet built. Business rules: `PRODUCT_SPEC.md` §Screen Sharing & Privacy
+Mode. Visual contract: `DESIGN_SYSTEM.md` §B.14._ The mode follows the accessibility overlays'
+pattern (`pj.a11y`, §The Settings engine → "Appearance paints from the first byte") with one
+difference: there is **no durable row**, because the state belongs to the device whose screen is
+shown.
+
+**State carriers.**
+
+| Carrier | Value | Owner | Notes |
+| :-- | :-- | :-- | :-- |
+| `localStorage` `LocalKeys.SCREEN_SHARE` | `"pj.local.screenShare"` = `"1"`; removed when off | `ScreenShareBridge` island | The durable per-device copy. Its `storage` event flips every other open tab of the origin. |
+| Cookie `pj.screen_share` | `1`; deleted (`max-age=0`) when off | `ScreenShareBridge`, and the pre-paint restorer | Mirror only: `path=/; max-age=31536000; samesite=lax`, `Secure` on HTTPS (Decision #201's builders), **not** HttpOnly. It is **non-authoritative**: it can only remove output, never widen access. |
+| `ctx.state.screenShare: boolean` | `true` only for exactly `1` | `routes/_middleware.ts` via `utils/screen-share-context.ts` `resolveScreenShare(req)` | A header read with no I/O, like `resolveA11yContext`. Anything malformed means off. |
+| `<html data-screen-share="active">` | present only when on | `_app.tsx` (SSR), the pre-paint restorer, then the bridge | The one selector every CSS treatment keys on. Like the a11y overlays, only ON becomes an attribute. |
+| `ScreenShareContext` | `{ active: boolean }` | `_app.tsx` provider | Per-request **context**, never a module signal, for `CurrencyContext`'s reason: one server process renders many viewers at once. |
+| `screenShareActive` signal | seeded from the `<html>` attribute | `@projective/ui/utils` store | What islands read. `MoneyView` / `NumberInput` / `Obscure` resolve **context → store**, the way `useCurrencyView` resolves currency. |
+
+**`_app.tsx` duties.** Three things, in the same discipline as `data-theme` and `pj.a11y`:
+1. **Write `data-screen-share="active"` on `<html>`** when `state.screenShare` is true.
+2. **Provide `ScreenShareContext`** around `<Component />`, so server components mask or omit in
+   the first byte.
+3. **Run a pre-paint restorer** `<script>`. If the cookie is absent but the `localStorage` key is
+   `"1"`, it sets the attribute before first paint and re-writes the cookie, so the next request
+   is server-masked again. Its literal key **MUST** match `LocalKeys.SCREEN_SHARE`, and its cookie
+   format **MUST** match `screen-share-context.ts`. It does nothing when the cookie exists.
+
+**Standalone route inheritance.** Every route group renders through `routes/_app.tsx` under
+`routes/_middleware.ts`. That includes `(standalone)` (`/inspect/[fileId]`), `(public)`,
+`[handle]` and `_error`. The guarantee is structural, not per-route:
+- No route may opt out of the app wrapper (`skipAppWrapper` or any equivalent). None does today.
+  A future standalone page that needs a bare document still renders `<html>` through `_app.tsx`.
+- A group middleware such as `(standalone)/_middleware.ts` runs after the root one and must never
+  overwrite `ctx.state.screenShare`.
+- Same-origin frames and pop-outs inherit through the shared cookie. Examples are
+  `/catalogue/[id]/simulate` in the catalogue Preview tab and the chat pop-out. A frame never takes
+  the state as a URL parameter.
+
+**Enforcement in three layers.** Each layer covers the gap the one before it cannot see:
+
+| Layer | When it applies | Mechanism |
+| :-- | :-- | :-- |
+| **Server** | The cookie reached the request. | Server components read `ScreenShareContext`. `MoneyView` renders the mask and **omits** `data-money-minor` and the figure-bearing `title` / `aria-label`. Omit-tier content is not rendered, and is **not serialized into island props**. |
+| **Pre-paint CSS** | Only `localStorage` knew, before hydration. | `:root[data-screen-share="active"]` rules in `@projective/ui` paint the mask, the solid block, the blur and `display: none` for `.ui-obscure--omit`. They protect the **frame**, not the DOM, until the next layer runs. |
+| **Hydrated** | Islands are live. | Islands render from the store. `ScreenShareBridge` sweeps server-rendered nodes (`[data-money]` and `[data-obscure]`) and scrubs their text and data attributes into an in-memory `WeakMap`. `CurrencyBridge` skips any node marked `data-money-masked`. |
+
+**Turning it on and off.** The bridge applies a change in this order: store (same frame) →
+attribute → cookie → `localStorage` (the `storage` event carries it to other tabs) → a polite
+live-region announcement ("Screen sharing mode on" / "off"). Turning it off restores swept nodes
+from the `WeakMap`, and islands re-render from props they already hold. A figure that was masked
+**from the first byte** never reached the client, so it stays masked until the next navigation.
+A toast says so. A reload is never forced, because it would discard unsaved drafts.
+
+**Keyboard.** `shell/core/shortcuts.ts` gains `isScreenShareShortcut`: `ctrlKey || metaKey`, plus
+Shift and S, with no Alt, not `repeat`, and not already `defaultPrevented`. It matches by `code ===
+"KeyS"` on non-Latin layouts, like `isToggleSidebarShortcut`. Unlike `/`, it **does** fire inside
+editable targets, because the shortcut exists for the person who is already live and typing. The
+bridge calls `preventDefault()`. Some browsers reserve the chord (see Decision #297 flag (a)), so
+the account-menu row and Settings remain the guaranteed paths.
+
+**Boundaries.**
+- **Services never read it.** It is a render concern of routes, components and islands. RLS, API
+  payloads, money arithmetic and notifications are unchanged. No `/api/*` route branches on the
+  cookie.
+- **No schema change.** There is no column, migration or Zod row type, so the Additive Rule is
+  untouched. Settings gains the `privacy` key in `@projective/types/settings` `SettingsSectionKey`.
+  Its one entry (`privacy.screen-share`) is device-local, so `PATCH /api/user/preferences` gains no
+  field. The section's server read is `state.screenShare`.
+- **Not a Dev Context Switcher axis** (root §5). The real control ships in every environment, and
+  a probe sets the cookie. There is no `DevOverrides` entry.
+- **Threat model.** It protects the rendered frame and the visible DOM text and attributes of
+  masked nodes. It does **not** protect money values that islands legitimately hold in their
+  serialized props or in network responses that devtools can read. That is why secrets (API keys,
+  webhook URLs, tokens) are omit-tier: they are kept out of the document and out of island props
+  entirely while the mode is on, and their reveal / copy controls are disabled.
 
 ---
 

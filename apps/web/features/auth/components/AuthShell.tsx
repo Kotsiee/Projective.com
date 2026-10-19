@@ -9,6 +9,10 @@ import ThemeToggle from "@web/features/theme/islands/ThemeToggle.island.tsx";
  * toggle only) over the active form. Softness over outlines (DESIGN_SYSTEM.md §B.4): regions read
  * through surface tint, depth, and spacing — the interactive controls inside provide their own
  * affordance.
+ *
+ * The right column IS the page's one `<main>` landmark: the `(auth)` routes render no other shell
+ * (`(public)/_layout.tsx` passes them through bare), so nothing else can supply it, and the `aside`
+ * stays its sibling — the form, not the overview, is where a screen reader's "main" lands.
  */
 export interface AuthShellProps {
 	/** The active form / step content (right column). */
@@ -26,7 +30,7 @@ export function AuthShell({ children, aside, wide, footer }: AuthShellProps): JS
 		<div class={`auth${wide ? " auth--wide" : ""}`}>
 			<aside class="auth__aside" aria-label="Overview">{aside}</aside>
 
-			<section class="auth__main">
+			<main class="auth__main">
 				{/* The brand mark lives once, in the aside; the top bar carries only the theme toggle. */}
 				<header class="auth__topbar">
 					<ThemeToggle />
@@ -36,7 +40,7 @@ export function AuthShell({ children, aside, wide, footer }: AuthShellProps): JS
 					<div class="auth__panel">{children}</div>
 					{footer ? <div class="auth__footer">{footer}</div> : null}
 				</div>
-			</section>
+			</main>
 		</div>
 	);
 }

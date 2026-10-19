@@ -57,6 +57,12 @@
 .wsp-settings__note {
 	max-inline-size: var(--wsp-prose);
 }
+
+/* A link inside a sentence is told from its words by an underline, never by hue alone (WCAG 1.4.1). */
+.wsp-settings__note .ui-link,
+.wsp-settings__blocker .ui-link {
+	text-decoration: underline;
+}
 /* #endregion */
 
 /* #region Facts — a value that cannot be edited here, said as text, never as a disabled field */

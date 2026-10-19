@@ -434,12 +434,13 @@ their role. */
 /* #endregion */
 
 /* #region Member drawer */
-.wsp-mdrawer {
+/* `wsp-mdrawer` is the `Drawer`'s `class`, so it lands on the panel: the column belongs to the body,
+   and the panel keeps the shared `--drawer-size` (Decision #171). Compound, so it outranks
+   `.ui-drawer__body` whatever the stylesheet order. */
+.ui-drawer.wsp-mdrawer .ui-drawer__body {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-5);
-	inline-size: 100%;
-	min-inline-size: 0;
 }
 
 .wsp-mdrawer__head {

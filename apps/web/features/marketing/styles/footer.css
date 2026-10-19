@@ -31,12 +31,11 @@
 	padding: clamp(3.5rem, 7vw, 6rem) var(--lp-pad-x) clamp(1.75rem, 3.5vw, 2.75rem);
 	border-block-start: 1px solid var(--lp-hair);
 	/*
-	 * Sink to the foot of whatever column holds it. Inside the authenticated shell the footer is the
-	 * last child of `.ui-page-canvas__body`, which is `display: flex; flex-direction: column` — so
-	 * without this it would default to `flex: 0 1 auto` and sit immediately under a short page's
-	 * content with the canvas's remaining height empty beneath it. `auto` resolves to 0 wherever the
-	 * parent is a plain block container (the guest `.site`) or already fills its track, so the
-	 * declaration is inert everywhere it is not needed rather than conditional on the shell.
+	 * Sink to the foot of whatever column holds it, should that column be a flex column taller than
+	 * its content. Inside the authenticated shell the footer sits in `.ui-page-canvas__footer`, after
+	 * the canvas's `<main>`, whose `flex: 1 1 auto` already pushes the slot to the canvas's foot — so
+	 * here, as in the guest `.site` block flow, `auto` resolves to 0 and the declaration is inert; it
+	 * stays so the footer never rides up under a short page in any flex column it is dropped into.
 	 */
 	margin-block-start: auto;
 }

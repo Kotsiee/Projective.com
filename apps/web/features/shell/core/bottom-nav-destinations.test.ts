@@ -5,36 +5,19 @@
  */
 import { assert, assertEquals } from "@std/assert";
 import { BOTTOM_NAV_CREATE_HREF, bottomNavDestinations } from "./bottom-nav-destinations.ts";
-
-const ROUTES = new URL("../../../routes/", import.meta.url);
-
-/** Whether a route file answers `href`'s path (the few shapes the bottom nav uses). */
-function routeExists(href: string): boolean {
-	const path = href.split("?", 1)[0].replace(/^\//, "");
-	const candidates = [
-		`(dashboard)/${path}.tsx`,
-		`(dashboard)/${path}/index.tsx`,
-		`(public)/${path}.tsx`,
-		`(public)/${path}/index.tsx`,
-	];
-	return candidates.some((c) => {
-		try {
-			return Deno.statSync(new URL(c, ROUTES)).isFile;
-		} catch {
-			return false;
-		}
-	});
-}
+import { PROJECT_CREATE_HREF } from "./actions-model.ts";
+import { staticRouteServes } from "./route-tree.ts";
 
 Deno.test("bottom nav: exactly five primaries, each to a route that exists", () => {
 	const items = bottomNavDestinations("/home");
 	assertEquals(items.map((i) => i.label), ["Home", "Explore", "Create", "Workspace", "Calendar"]);
-	for (const item of items) assert(routeExists(item.href), `${item.label} → ${item.href}`);
+	for (const item of items) assert(staticRouteServes(item.href), `${item.label} → ${item.href}`);
 	assertEquals(items.some((i) => i.href === "/create" || i.href === "/dashboard"), false);
 });
 
 Deno.test("bottom nav: Create opens the project Quick-Init modal and never lights", () => {
 	assertEquals(BOTTOM_NAV_CREATE_HREF, "/projects?create=1");
+	assertEquals(BOTTOM_NAV_CREATE_HREF, PROJECT_CREATE_HREF, "the Create menu's first entry");
 	const create = (path: string) => bottomNavDestinations(path).find((i) => i.key === "create");
 	assertEquals(create("/home")?.href, BOTTOM_NAV_CREATE_HREF);
 	assertEquals(create("/projects")?.active, false);

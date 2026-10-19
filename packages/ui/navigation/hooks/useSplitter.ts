@@ -67,6 +67,7 @@ export interface Splitter {
 	onKeyDown: (e: KeyboardEvent) => void;
 }
 
+export const SPLITTER_RANGE = { min: 56, max: 560 } as const;
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
 /**
@@ -76,8 +77,8 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
  */
 export function useSplitter(opts: UseSplitterOptions = {}): Splitter {
 	const {
-		min = 56,
-		max = 560,
+		min = SPLITTER_RANGE.min,
+		max = SPLITTER_RANGE.max,
 		initial = 280,
 		storageKey,
 		collapseBelow = 96,
