@@ -14,11 +14,12 @@ import {
 	policyDirty,
 	requestDiscard,
 	requestSave,
+	rosterFirstRun,
 	saveState,
 	selectModuleView,
 	viewOr,
 } from "../core/workspace-state.ts";
-import { workspaceZoom } from "../core/view-state.ts";
+import { zoomStoreFor } from "../core/view-state.ts";
 import { type RigAction, type RigModel, rigModel } from "../core/rig-model.ts";
 import { subViewsFor } from "../core/sub-views.ts";
 import { CardsViewIcon, ChartViewIcon, TableViewIcon } from "../components/MemberCard.tsx";
@@ -38,7 +39,8 @@ import { cloneGlyph, InviteGlyph, PlusGlyph, SettingsGlyph } from "../core/works
  *     Org chart toggle (tier 5, `aria-pressed`) beside it, which selects the `chart` sub-view — the
  *     same state the header band's tabs and the lane's context control write. On the chart the toggle
  *     stands alone: the chart has no density, so a zoom there would do nothing.
- *   - Trailing — tier-4 utilities (New, Invite), Settings as a ui `Link` (a navigation is a link,
+ *   - Trailing — tier-4 utilities (New — not in the roster's first run, whose empty state carries the
+ *     one create — and Invite), Settings as a ui `Link` (a navigation is a link,
  *     never a button-styled anchor), then the policy editor's Discard (tier 5) and Save (tier 3, the
  *     rig's one filled control) — both ONLY while the editor holds unsaved changes. The status line
  *     says why before the buttons do.
@@ -77,8 +79,18 @@ export interface WorkspaceFooterRigProps {
 	canManageMoney?: boolean;
 	/** Whether the viewer may open the Settings module (drives the Settings link's presence). */
 	canManageSettings?: boolean;
+	/** Whether the viewer may edit the entity's name and visibility (drives Settings' Save). */
+	canEditProfile?: boolean;
+	/** Whether the viewer may edit custom roles (drives the Roles matrix's Save). */
+	canManageRoles?: boolean;
 	/** Whether the viewer may create another entity of this kind. */
 	canCreate?: boolean;
+	/**
+	 * The roster's first run over the server's read (`isFirstRun`) — the rig then offers no New, since
+	 * the canvas's empty state carries the page's one create. Once the canvas publishes its own reading
+	 * (`rosterFirstRun` — a retried read or an answered invitation can change it), that wins.
+	 */
+	firstRun?: boolean;
 }
 
 export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.Element {
@@ -91,9 +103,12 @@ export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.
 		module,
 		view: viewOr(props.view ?? null),
 		canCreate: props.canCreate !== false,
+		firstRun: rosterFirstRun.value ?? props.firstRun ?? false,
 		canInvite: props.canInvite ?? false,
 		canManageMoney: props.canManageMoney ?? false,
 		canManageSettings: props.canManageSettings ?? false,
+		canEditProfile: props.canEditProfile ?? false,
+		canManageRoles: props.canManageRoles ?? false,
 		dirty: policyDirty.value,
 		saveState: saveState.value,
 	});
@@ -153,7 +168,7 @@ export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.
 				}
 				{rig.zoom && (
 					<ViewZoomRig
-						store={workspaceZoom}
+						store={zoomStoreFor(module)}
 						label={rig.zoom.label}
 						class="wsp-footerrig__density"
 						listIcon={<TableViewIcon />}

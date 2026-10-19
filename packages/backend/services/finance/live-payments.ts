@@ -19,6 +19,7 @@ import {
 } from "@projective/types/finance";
 import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
 import { businessAuthorityRefusal } from "../../core/business-authority.ts";
+import { businessNotActiveRefusal } from "../../core/business-lifecycle.ts";
 import { spendGateRefusal } from "../../core/spend-gate.ts";
 import { getServiceClient, getUserClient } from "../../core/supabase.ts";
 import type { FailureDetails, FieldErrors } from "../ServiceResult.ts";
@@ -91,7 +92,7 @@ function statusForCode(code: string | undefined, reason: string): number {
 			return 404;
 		case "PX409":
 		case "PC409":
-		// `business_not_active:` — a draft or archived business moves no money (BB5).
+		// A state, not a fault (`business_not_active:` is answered with its code before this).
 		case "55000":
 			return 409;
 		case "PR429":
@@ -122,6 +123,10 @@ export function refusalOf(
 	// `kyb_required:` · `needs_approval:` — the card escrow lock's check of the business spend gate (BB3).
 	const spend = spendGateRefusal(error);
 	if (spend) return spend;
+	// `business_not_active:` — a draft or archived business moves no money out (BB5), and an archived
+	// one takes none in: a card top-up, a recurring deposit (Decision #248 (k)).
+	const inactive = businessNotActiveRefusal(error);
+	if (inactive) return inactive;
 	const match = /^([A-Za-z]+):\s*([\s\S]+)$/.exec(error.message.trim());
 	const prefix = match ? match[1] : null;
 	const raw = (match ? match[2] : error.message).replace(/\s+/g, " ").trim();

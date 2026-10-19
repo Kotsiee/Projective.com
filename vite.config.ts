@@ -722,6 +722,43 @@ function browserEntries(): Plugin {
 }
 // #endregion
 
+// #region Dev client address
+/**
+ * Hands each dev request's TCP peer address to the app. Fresh's dev middleware calls the app's
+ * `fetch(req)` without connection info, so `ctx.info.remoteAddr` is Fresh's placeholder
+ * (`localhost:1234`) for every caller and every per-IP limiter shares one bucket. This middleware
+ * (serve only, listed ahead of `fresh()`) OVERWRITES `x-projective-dev-remote` with the socket's
+ * peer — a client's own copy never survives — and `clientKey` (`apps/web/utils/client-key.ts`)
+ * reads it only while the address is that placeholder, which `deno serve` never reports.
+ *
+ * Fresh builds its `Request` from `rawHeaders` (node-fetch-server), not `headers`, so both are
+ * rewritten: every incoming copy is removed from `rawHeaders` before the peer is appended.
+ */
+function devClientAddress(): Plugin {
+	const header = "x-projective-dev-remote";
+	return {
+		name: "projective:dev-client-address",
+		apply: "serve",
+		configureServer(server) {
+			server.middlewares.use((req, _res, next) => {
+				const raw = req.rawHeaders;
+				for (let i = raw.length - 2; i >= 0; i -= 2) {
+					if (raw[i].toLowerCase() === header) raw.splice(i, 2);
+				}
+				const peer = req.socket.remoteAddress;
+				if (peer) {
+					raw.push(header, peer);
+					req.headers[header] = peer;
+				} else {
+					delete req.headers[header];
+				}
+				next();
+			});
+		},
+	};
+}
+// #endregion
+
 // #region Vite Configuration
 export default defineConfig(({ mode }) => {
 	const isProduction = mode === "production";
@@ -741,6 +778,7 @@ export default defineConfig(({ mode }) => {
 			dedupeFreshStaticAssets(),
 			flattenManifestCss(),
 			vendorAssets(),
+			devClientAddress(),
 			fresh({
 				islandSpecifiers,
 			}),

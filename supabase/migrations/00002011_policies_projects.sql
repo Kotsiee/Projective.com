@@ -143,14 +143,21 @@ CREATE POLICY "Owner manage participants" ON projects.project_participants FOR A
     )
 );
 
+-- A participant always reads their OWN participant row (`profile_id` is the user id of an individual
+-- participant; a business row carries a business id, which is never a user id). Without this arm a
+-- freelancer hired onto an invite-only engagement could read the project but not their own seat on
+-- it, so every "my projects" read keyed on project_participants (the projects feed, the /contact
+-- dispute picker) silently left the engagement out. Other participants' rows stay as they were:
+-- the owner's, or anyone's on an active public project.
 CREATE POLICY "View participants" ON projects.project_participants FOR
 SELECT TO public USING (
-    EXISTS (
+    project_participants.profile_id = auth.uid()
+    OR EXISTS (
         SELECT 1
         FROM projects.projects p
         WHERE p.id = project_participants.project_id
         AND (
-            p.owner_user_id = auth.uid() 
+            p.owner_user_id = auth.uid()
             OR (p.status = 'active'::project_status AND p.visibility = 'public'::visibility)
         )
     )

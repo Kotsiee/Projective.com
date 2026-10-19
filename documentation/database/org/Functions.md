@@ -4,7 +4,7 @@ Only the functions touched by recent work are documented here; the remaining `or
 (`set_operator_mode`, …) are still to be backfilled. See `brain2.md`'s Database section for the
 migration-numbering and RLS conventions.
 
-> **Retired 2026-09-28 (Decision #122) — these no longer exist:** `org.create_team` (it trusted a
+> **Retired 2026-09-28 (Decision #61) — these no longer exist:** `org.create_team` (it trusted a
 > caller-supplied owner and was executable by `anon`), `org.create_business` (it rewrote the
 > caller's session context behind their back), `org.get_dashboard_teams` (it answered for any user
 > id it was handed) and `org.get_dashboard_businesses`, and the 0309 business-dashboard quartet
@@ -756,6 +756,18 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   through the spend gate inherits it), `finance.place_wallet_order` (a business basket),
   `projects.fn_assert_business_actor` for `hire` (every hiring door), `finance.pay_invoice` and
   `finance.set_invoicing_terms`. Internal. Probe: `supabase/probes/business_lifecycle.sql`.
+- **`fn_assert_business_not_archived(business) → void`** — money INTO a business wallet (Decision
+  #248 (k)): an archived business takes nothing in, a draft or active one does (a draft's setup asks
+  for money before Publish, #236 (f)). Refuses `55000 business_not_active: this business is archived —
+  restore it first` (`fn_assert_business_active`'s archived wording) with DETAIL `{business_id,
+  status}`; `P0002` when the row does not exist; NULL passes. `VOLATILE`: it locks the business row
+  `FOR SHARE` until the caller's transaction ends, so an archive racing a credit
+  (`set_workspace_status` locks `FOR UPDATE` before counting blockers) either waits and then sees the
+  money (`wallet_balance`) or wins and the credit sees `archived`. Called by
+  `finance.begin_card_payment` (`wallet_topup`), `finance.transfer_funds` (a business destination),
+  `finance.create_deposit_rule` and `finance.simulate_wallet_transaction` (a business destination);
+  `finance.settle_card_payment` and `finance.fn_deposit_charge_target` read the same status inline
+  (`../finance/Functions.md`). Internal. Probe: `supabase/probes/business_archived_topup.sql`.
 - **`fn_business_archive_blockers(business) → jsonb`** — `[{code, count}]`, in this order, one entry
   per kind that applies (`[]` when none): `escrow_held` (held escrows it funded) · `live_projects`
   (`client_business_id`, `active`/`on_hold`) · `pending_approvals` (pending, unlapsed spend requests
@@ -763,22 +775,41 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   `finance.fn_on_account_owed > 0`) · `wallet_balance` (wallets with a positive balance) ·
   `pending_payouts` (`pending` payouts from its wallets). Read by `set_workspace_status` and
   `get_workspace_detail`. Internal.
-- **`set_workspace_status(kind, id, status) → {id, status}`** — `authenticated`. Publishing
-  (`draft → active`) needs `manage_settings`; archiving or restoring (to or from `archived`) needs
-  `archive_entity`. A published entity never goes back to `draft`. **Archive is refused (`55000`)**
-  while an escrow is `held` owed to the team (`payee_type = 'team'`) or funded by the business
-  (`payer_business_id`); for a team, also while a `held` escrow on a stage the team is assigned to
-  (`projects.stage_assignments.team_id`, joined on `escrows.project_stage_id`, assignment not
-  `declined`/`cancelled`/`released`) is **unbound** (a Decision #197 prepaid ticket escrow) or bound
-  to one of its **members** (`payee_type = 'freelancer'`, the team-seat payee rule of #197 flag (b)) —
-  the same `55000` "money is held in escrow" refusal (TEAMS_AUDIT S3; probe
-  `supabase/probes/team_archive_escrow_guard.sql`); a non-member's escrow on a shared stage does not
-  block. It is also refused while a team holds a live `projects.stage_assignments` row on an
-  `active`/`on_hold` project. A **business** is refused on every `fn_business_archive_blockers`
-  entry: `55000` whose MESSAGE leads with the first blocker's code (`escrow_held: …`,
-  `live_projects: …`, …) and whose DETAIL is `{"blockers": [...]}` — the API answers `409` with
-  `details {reason, blockers}` (`packages/backend/services/workspace/live-support.ts`). Audits
-  `{kind}.status_changed`.
+- **`fn_team_archive_blockers(team) → jsonb`** — a team's twin, in the same `[{code, count}]` shape
+  and order (`[]` when none): `escrow_held` — `held` escrows owed to the team (payee type `team`),
+  or on a stage the team is assigned to (`projects.stage_assignments.team_id`, joined on
+  `escrows.project_stage_id`, assignment not `declined`/`cancelled`/`released`) that are **unbound**
+  (a Decision #197 prepaid ticket escrow) or bound to one of its **members** (payee type
+  `freelancer`, the team-seat payee rule of #197 flag (b)); a non-member's escrow on a shared stage
+  does not count (TEAMS_AUDIT S3) — then `live_assignments` — its `projects.stage_assignments` rows
+  not `declined`/`cancelled`/`released`/`completed` on an `active`/`on_hold` project (S4). Read by
+  `set_workspace_status` and `get_workspace_detail`. Internal (Teams C6; probe
+  `supabase/probes/team_archive_blockers.sql`).
+- **`fn_workspace_restore_target(kind, id) → text`** — where restoring an archived entity lands
+  (Decision #250 (c); a business's by #236 (d)): `active` when its `security.audit_logs` trail
+  (`{kind}.status_changed` on `org.teams` / `org.business_profiles`, metadata `{from, to}`) ever
+  touched `active` — `active → draft` is refused, so that is exactly "it was published once" — else
+  `draft`. An entity with **no** status trail (a seeded or hand-written row) has no evidence of ever
+  being published and restores to `draft`. `STABLE`; read through `idx_audit_logs_entity`. Internal
+  (probe `supabase/probes/team_restore_target.sql`).
+- **`set_workspace_status(kind, id, status) → {id, status}`** — `authenticated`. `status` is `draft`
+  · `active` · `archived` · **`restore`**. Publishing (`draft → active`) needs `manage_settings`;
+  archiving or restoring (to or from `archived`) needs `archive_entity`. A published entity never
+  goes back to `draft`. **Restore** lands where `fn_workspace_restore_target` says: `restore`
+  resolves to it, naming that target outright is accepted, and naming the other is refused `22023`
+  with a `restore_target:` message and DETAIL `{"target": …}` (the API answers `409` with `details`
+  `{reason: "restore_target", target}`); `restore` on an entity that is not archived is refused
+  `22023` ("only an archived … is restored"). The answer's `status` is the one it landed on.
+  **Archive is refused (`55000`)** on every blocker the kind's list names — a team's
+  `fn_team_archive_blockers` (its two `status:` sentences kept: "money is held in escrow for this
+  team — let it release first" for `escrow_held`, "this team is still assigned to live work — finish
+  or hand it back first" for `live_assignments`; probes `team_archive_escrow_guard.sql`,
+  `team_archive_blockers.sql`), a business's `fn_business_archive_blockers` (the MESSAGE led by the
+  first blocker's code — `escrow_held:`, `live_projects:`, …) — refused on the first, with DETAIL
+  `{"blockers": [...]}` for both kinds. The API answers `409` with `details` `{reason, blockers}`,
+  `reason` the first code (`packages/backend/services/workspace/live-writes.ts` `statusRefusal` for
+  a team, `live-support.ts` `refusalFrom` for a business). Audits `{kind}.status_changed`
+  `{from, to}`, `to` the status it landed on.
 - **`update_workspace(kind, id, patch) → {id}`** — `authenticated`, needs `edit_profile`. Patch keys
   `name` (2–80), `headline` (≤ 160, refused as `tagline:`) and `visibility` (`public` · `unlisted` ·
   `invite_only`, either kind; else `22023 visibility:`; Decision #230 (h)). Pictures move through the
@@ -788,9 +819,13 @@ namespace under a `pg_advisory_xact_lock` on the handle.
 
 - **`fn_role_of_entity(kind, entity, role)`** — the role row, resolved capabilities and `archived`
   flag, scoped to the entity. Internal.
+- **`fn_team_seats_used(team) → integer`** — what holds a team's seats: its active members **plus
+  its pending, unexpired invitations**. The one count `fn_assert_seat` checks and
+  `get_workspace_detail`'s `seats.used` answers (Teams C2). `STABLE`, internal.
 - **`fn_assert_seat(kind, entity, extra)`** — a team's seat cap is its plan's `team_seats`
   entitlement (`NULL` = unlimited; a business has none). Active members **plus pending, unexpired
-  invitations** count, or an owner could over-invite and have acceptances refused. `55000` when full.
+  invitations** count (`fn_team_seats_used`), or an owner could over-invite and have acceptances
+  refused. `55000` when full.
 - **`fn_business_role_is_manager(business, role)`** / **`fn_business_member_is_manager(business,
   user)`** — does a role, or an active member's effective capabilities, count against the business's
   `business_managers` cap (Decision #230 (b)): admin-ranked, or holding `manage_projects`; never the
@@ -894,6 +929,8 @@ namespace under a `pg_advisory_xact_lock` on the handle.
 - **`archive_workspace_role(kind, entity, role) → {id, archived}`** — `authenticated`, needs
   `manage_roles`. Custom roles only; refused (`55000`) while any ACTIVE member holds it or a PENDING
   invitation offers it. Sets `archived_at` (the role-delete path is gone — nothing is hard-deleted).
+  Both refusals are readable before the press: `get_workspace_detail` answers each role's
+  `member_count` and, to a `manage_roles` holder, its `pending_invites`.
 
 ### §16 — Reads, as raw facts
 
@@ -907,6 +944,7 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
   owner is the person accountable for the team. `unverified | pending | verified`.
 - **`get_workspace_roster(kind) → {items, invitations, create_limit, create_used}`** — the caller's
   ACTIVE memberships of that kind (owned first, then by name), each with its role, owner flag,
+  `created_at` and `updated_at` (the row's own; the roster table's Updated column, Teams R1),
   verification, member count, up to five face user ids (by rank, then join date), pending-invite
   count, active projects, 30-day money by currency (team: payout splits + vault retention credited;
   business: debits other than `transfer_out`), the setup facts (`logo` · `bio` · `money` · `funded` ·
@@ -923,8 +961,14 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
   `wi` — the LIVE Workload Intensity, Σ `workload_intensity` of the member's `claimed` / `in_progress`
   / `in_review` tickets, summed exactly as `projects.check_ticket_capacity` sums it — and `wi_cap`,
   their `max_workload_intensity` else `security.platform_params.global_workload_cap_default` else 10;
-  a team member also carries `share_bp` / `share_held` from `finance.contribution_agreements`), the
-  live roles with RESOLVED capabilities and holder counts, the outgoing pending invitations **only
+  a team member also carries `share_bp` / `share_held` from `finance.contribution_agreements` —
+  **only when the viewer holds `manage_finances`**, the `payout` block's gate (Decision #233), else
+  `null` for every member, their own included; probe `supabase/probes/workspace_member_stakes.sql`), the
+  live roles with RESOLVED capabilities and holder counts — each role also carrying `pending_invites`,
+  how many PENDING invitations offer it, counted exactly as `archive_workspace_role`'s refusal counts
+  them, **only when the viewer holds `manage_roles`** (else `null`), so a role manager without
+  `invite_members` still sees that refusal before pressing Archive (Teams C3 review; probe
+  `supabase/probes/workspace_role_pending_invites.sql`) — the outgoing pending invitations **only
   when the viewer holds `invite_members`**, a team's Standing label, the projects (team: via its stage
   assignments, each with its client business's `client` face; business: as client, excluding
   `draft`/`archived`, each with `provider_user_ids` and `provider_teams` faces — faces are
@@ -935,10 +979,11 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
   `limits_offered`: `NOT (fn_business_plan_gates_enforced() AND NOT fn_business_gate_flag(id,
   'pooled_wallet_full'))`, the negation of the spend block's `limits_plan_gated` — Decision #248;
   probe `supabase/probes/business_overview_setup.sql`).
-  Both kinds carry `visibility`. A **business** also answers `archive_blockers` —
-  `fn_business_archive_blockers` **only when the viewer holds `archive_entity`**, else `[]` (always
-  `[]` for a team) — so Settings lists what to clear before the archive confirm (BB5; `archiveBlockers`
-  in `WorkspaceDetail`).
+  Both kinds carry `visibility`, and `archive_blockers` — `fn_team_archive_blockers` /
+  `fn_business_archive_blockers` **only when the viewer holds `archive_entity`**, else `[]` — so
+  Settings lists what to clear before the archive confirm (BB5; Teams C6; `archiveBlockers` in
+  `WorkspaceDetail`), and `restore_target` — `fn_workspace_restore_target` while the entity is
+  `archived`, else `null` — so Restore says where it lands (`restoreTarget`).
   A **business** also answers, every flag and figure decided here so no screen recomputes policy
   (BB9; always `null` / `[]` for a team):
   - `spend` — **only when the viewer may open Spend** (`spend_funds` · `manage_finances` ·
@@ -981,7 +1026,13 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
     `vault_bp`, `finder_user_id`, `finder_bp`, or `null`), `wallet` (the treasury wallet, else the
     fullest: `id`, `currency`, `available_minor` = `balance_cents`, `pending_minor` = Σ
     `amount_cents − recovered_cents` of its `pending` `finance.pending_releases`, both integer minor
-    units) and `preview` (`finance.preview_team_split`'s answer).
+    units), `preview` (`finance.preview_team_split`'s answer), `unlocked_templates` (the
+    `finance.split_rule_type`s whose `split_template_<type>` flag `finance.fn_has_entitlement` grants
+    the team, in enum order — the gate `finance.save_split_rule` applies, Decision #234, so the
+    Payouts module offers a locked template disabled before a save) and `vault_capabilities` (one
+    `{user_id, capabilities}` per ACTIVE member, `capabilities` = `fn_vault_capabilities_for('team',
+    team, user)` — the §7 projection `finance.vault_permissions` holds; the Payouts module's "Who can
+    move money", Teams C4).
   - `engagements` — the team's live `projects.stage_assignments` (status not `declined` /
     `cancelled` / `released` / `completed`; project `active` or `on_hold`), one per stage:
     `project_slug` (`prj-…`), `title`, `stage_slug` (`stg-…`), `stage_title`, `assignment_status`,
@@ -990,8 +1041,12 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
     `stage_wi`). No other uuid; the service resolves assignees to faces and drops their ids.
   - `allowance` — `finance.get_proposal_allowance(team)`'s answer (incl. `team_status`,
     `team_member_count`, `can_bind_seat` for the caller).
-  A business answers `engagements = []`, `payout = null`, `allowance = null`. **VOLATILE**: the
-  allowance read opens the week and pays out the lazy drip.
+  - `seats` — `{used, limit}` for every member (Teams C2 — the Members header and the invite
+    dialog): `used` = `fn_team_seats_used` (active members + pending, unexpired invitations, the
+    count `fn_assert_seat` checks), `limit` = `finance.fn_effective_limit('team', team,
+    'team_seats')`, `NULL` when unlimited (`seats` in `WorkspaceDetail`).
+  A business answers `engagements = []`, `payout = null`, `allowance = null`, `seats = null`.
+  **VOLATILE**: the allowance read opens the week and pays out the lazy drip.
 
 ### §17 — The business bench (Talent — Decision #230 (i), #241)
 

@@ -50,6 +50,7 @@ import {
 	DEV_STAGE_ASSIGNMENTS,
 	DEV_SUBMISSION_STATES,
 	DEV_TEAM_PAGES,
+	DEV_TEAM_SETTINGS,
 	DEV_TRUST_ADORNMENTS,
 	DEV_VERIFICATION_STAMPS,
 	DEV_WALLET_AURORAS,
@@ -612,7 +613,7 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 				{
 					/* A team's /:handle (Teams P1) — the business axis's twin. Every seeded team is active and
 				    public, so this is the only route to a member's notice (draft · archived · invite-only,
-				    its Settings link waiting for Teams C6) or an outsider's 404 (Missing).
+				    with its Settings link for a settings holder) or an outsider's 404 (Missing).
 				    Server-side via `pj.dev.team-page`, so a change reloads a profile page. */
 				}
 				<Field label="Team page" hint="member notice · outsider 404 · reloads">
@@ -691,6 +692,22 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.businessKyb}
 						disabled={!o.enabled}
 						onChange={(businessKyb) => patchDevContext({ businessKyb })}
+					/>
+				</Field>
+
+				{
+					/* A team's Settings lifecycle (Teams C6). Every seeded team is active with nothing in
+				    flight, so this is the only route to a draft's Publish, an archive held back by its
+				    blockers, or either Restore. Client-side: Publish, Archive and Restore still ask the
+				    server. */
+				}
+				<Field label="Team settings" hint="settings module lifecycle">
+					<Segment
+						name="Team settings"
+						options={DEV_TEAM_SETTINGS}
+						value={o.teamSettings}
+						disabled={!o.enabled}
+						onChange={(teamSettings) => patchDevContext({ teamSettings })}
 					/>
 				</Field>
 

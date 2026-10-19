@@ -1,10 +1,12 @@
 import { assertEquals } from "@std/assert";
 import {
 	cellAccessibleName,
+	cellLockReason,
 	cellPressed,
 	cellToggleable,
 	clampPos,
 	groupRuns,
+	lockReasonIds,
 	type MatrixDims,
 	matrixKeyIntent,
 	moveFocus,
@@ -88,6 +90,51 @@ Deno.test("toggle rule: locked state, locked column and read-only all refuse", (
 	assertEquals(cellToggleable("locked", {}, true), false);
 	assertEquals(cellToggleable("allowed", { locked: true }, true), false);
 	assertEquals(cellToggleable("allowed", {}, false), false);
+});
+
+Deno.test("toggle rule: a cell the consumer fixed refuses whatever state it draws", () => {
+	assertEquals(cellToggleable("off", {}, true, "You can't grant what you don't hold."), false);
+	assertEquals(cellToggleable("allowed", {}, true, "Fixed."), false);
+	assertEquals(cellToggleable("off", {}, true, null), true);
+	assertEquals(cellToggleable("off", {}, true, ""), true);
+});
+
+Deno.test("lock reason: the cell's own, then the column's, then the matrix's", () => {
+	const fallback = "Fixed for this role.";
+	assertEquals(cellLockReason("off", {}, "Not yours to grant.", fallback), "Not yours to grant.");
+	assertEquals(
+		cellLockReason(
+			"allowed",
+			{ locked: true, lockedHint: "Presets are read-only." },
+			null,
+			fallback,
+		),
+		"Presets are read-only.",
+	);
+	assertEquals(cellLockReason("allowed", { locked: true }, null, fallback), fallback);
+	assertEquals(cellLockReason("locked", {}, null, fallback), fallback);
+	// A cell the consumer fixed keeps that reason even inside a locked column.
+	assertEquals(
+		cellLockReason("off", { locked: true, lockedHint: "Preset." }, "Own.", fallback),
+		"Own.",
+	);
+	// Nothing locks it: no reason, so nothing describes it.
+	assertEquals(cellLockReason("allowed", {}, null, fallback), null);
+	assertEquals(cellLockReason("off", { locked: false }, undefined, fallback), null);
+});
+
+Deno.test("lock reason ids: one per distinct sentence, the matrix hint keeps the base id", () => {
+	const ids = lockReasonIds(
+		["Preset.", null, "Not yours.", "Preset.", "Fallback.", "Not yours."],
+		"Fallback.",
+		"pm-locked",
+	);
+	assertEquals([...ids], [
+		["Fallback.", "pm-locked"],
+		["Preset.", "pm-locked-1"],
+		["Not yours.", "pm-locked-2"],
+	]);
+	assertEquals([...lockReasonIds([], "Fallback.", "x")], [["Fallback.", "x"]]);
 });
 
 Deno.test("pressed state and accessible name", () => {

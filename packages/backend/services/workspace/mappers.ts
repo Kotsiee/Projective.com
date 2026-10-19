@@ -63,6 +63,8 @@ export interface RawRosterItem {
 	role: string;
 	is_owner: boolean;
 	created_at: string;
+	/** The entity row's `updated_at` — the roster table's Updated column. */
+	updated_at: string;
 	verification: string;
 	member_count: number;
 	face_user_ids: string[];
@@ -161,6 +163,8 @@ export interface RawRole {
 	base_preset: string;
 	capabilities: string[] | null;
 	member_count: number;
+	/** Pending invitations offering the role — a `manage_roles` holder's read only; `null` otherwise. */
+	pending_invites?: number | null;
 }
 
 /** One outgoing invitation on the detail read (empty unless the viewer holds `invite_members`). */
@@ -226,6 +230,8 @@ export interface RawDetail {
 	members: RawMember[];
 	roles: RawRole[];
 	invites: RawOutgoingInvite[];
+	/** A team's `{used, limit}` seats (`org.fn_team_seats_used` · `team_seats`); `null` for a business. */
+	seats?: unknown;
 	standing: string | null;
 	projects: RawProject[];
 	activity: RawActivity[];
@@ -244,8 +250,13 @@ export interface RawDetail {
 	payout?: RawTeamPayout | null;
 	/** A team's `finance.get_proposal_allowance` answer (`null` for a business). */
 	allowance?: unknown;
-	/** A business's `org.fn_business_archive_blockers` (`[]` without `archive_entity`, and for a team). */
+	/**
+	 * `org.fn_team_archive_blockers` / `org.fn_business_archive_blockers` — what would refuse an archive
+	 * now (`[]` without `archive_entity`).
+	 */
 	archive_blockers?: unknown;
+	/** `org.fn_workspace_restore_target` while the entity is archived (`null` otherwise). */
+	restore_target?: unknown;
 	/** A business's spend block — present ONLY for a viewer who may open Spend. */
 	spend?: RawBusinessSpend | null;
 	/** A business's money tiles per wallet currency — `[]` unless the viewer may open Finance. */
@@ -479,6 +490,27 @@ function periodValue(amounts: RawRosterItem["money_30d"]): string {
 }
 
 /**
+ * The 30-day money as figures, one per currency that moved (`WorkspaceSummary.money30d`): non-positive
+ * and currency-less entries dropped, codes upper-cased, one figure per currency (the larger, should the
+ * read ever repeat one), ordered largest first in MAJOR units — the same comparison
+ * {@link largestAmount} makes for the card's figure — and each formatted in its own currency. Never a
+ * converted or summed figure; `[]` when nothing moved.
+ */
+export function rosterMoney(amounts: RawRosterItem["money_30d"] | null | undefined): MoneyView[] {
+	const byCurrency = new Map<string, number>();
+	for (const a of amounts ?? []) {
+		const minor = Math.trunc(Number(a?.minor) || 0);
+		const currency = (a?.currency ?? "").trim().toUpperCase();
+		if (minor <= 0 || !currency) continue;
+		byCurrency.set(currency, Math.max(minor, byCurrency.get(currency) ?? 0));
+	}
+	const major = (currency: string, minor: number) => minor / 10 ** currencyExponent(currency);
+	return [...byCurrency]
+		.sort(([ca, ma], [cb, mb]) => major(cb, mb) - major(ca, ma) || ca.localeCompare(cb))
+		.map(([currency, minor]) => moneyOf(minor, currency));
+}
+
+/**
  * The three stats a roster card carries, chosen per kind so each number means something: a team's
  * members · live projects · what it earned in 30 days; a business's members · live projects · what it
  * spent. `delta` is always `null` — no honest period-over-period comparison is recorded.
@@ -496,6 +528,20 @@ export function rosterStats(
 			delta: null,
 		},
 	];
+}
+
+/**
+ * A roster entity's activity facts as plain values: its live projects as a count (never negative,
+ * `0` for a missing or garbled figure) and when its row last changed as ISO, or `null` when the read
+ * carries no instant that parses — the table then shows a blank rather than an invented date.
+ */
+export function rosterActivity(
+	item: Pick<RawRosterItem, "active_projects" | "updated_at">,
+): { activeProjects: number; updatedAt: string | null } {
+	return {
+		activeProjects: Math.max(0, Math.trunc(Number(item.active_projects) || 0)),
+		updatedAt: isoOf(item.updated_at) || null,
+	};
 }
 
 /** Whether the viewer's plan admits another entity of this kind (`null` limit = unlimited). */
@@ -563,7 +609,7 @@ export interface SetupFacts {
 	 * `pending` is not done, and asks nothing of anyone: the check is with the reviewers.
 	 */
 	verification: VerificationState;
-	/** Whether the entity has left `draft` (it is `active`, or `archived` after being live). */
+	/** Whether the entity has left `draft` — {@link publishedFact}, the one rule both reads share. */
 	published: boolean;
 	/**
 	 * The viewer's effective capabilities, which stamp each step's `actionable`. Absent where nobody is
@@ -575,6 +621,18 @@ export interface SetupFacts {
 	 * check, so only they may act on that step ({@link canActOnSetupStep}).
 	 */
 	viewerIsOwner?: boolean;
+}
+
+/**
+ * The setup walk's Publish fact, read the same way by the roster card and the console detail: done
+ * once the entity has left `draft` — `active`, or `archived` whichever way it got there. Publishing is
+ * a draft's step; an archived entity is not walking setup, and its way back is Settings' Restore,
+ * which lands a never-published one on `draft` (Decision #250 (c), #236 (d)) where this step opens
+ * again. Read narrower, an archived never-published entity would be offered a Publish its status
+ * door always refuses.
+ */
+export function publishedFact(status: WorkspaceStatus): boolean {
+	return status !== "draft";
 }
 
 /**
@@ -747,6 +805,9 @@ export function toRoleDef(raw: RawRole): WorkspaceRoleDef {
 		basePreset: base,
 		capabilities: parseCapabilities(raw.capabilities),
 		memberCount: Math.max(0, Number(raw.member_count) || 0),
+		...(raw.pending_invites == null
+			? {}
+			: { pendingInvites: Math.max(0, Number(raw.pending_invites) || 0) }),
 	};
 }
 

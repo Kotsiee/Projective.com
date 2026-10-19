@@ -5,9 +5,11 @@ import {
 	HelpFeedbackRpcResultSchema,
 } from "@projective/types/community";
 import { isHelpCentreArticleVisible } from "@projective/types/editorial";
+import { UNSTORABLE_TEXT_MESSAGE } from "@projective/types/content/text";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
 import { type RateLimitRule, SlidingWindowLimiter } from "../../core/rate-limit.ts";
+import { isUnstorableInputError } from "../../core/text.ts";
 import { communityRpc, communitySource } from "./community-source.ts";
 import { HELP_ARTICLES } from "../editorial/content/help.ts";
 
@@ -133,6 +135,12 @@ export class HelpFeedbackBackendService {
 			if (error.code === "PH429") return tooMany(60 * 60_000);
 			if (error.code === "22023") {
 				return fail(422, { message: error.message, errors: { comment: error.message } });
+			}
+			if (isUnstorableInputError(error.code)) {
+				return fail(422, {
+					message: UNSTORABLE_TEXT_MESSAGE,
+					errors: { comment: UNSTORABLE_TEXT_MESSAGE },
+				});
 			}
 			return fail(503, {
 				message: "We couldn't save that just now. Please try again shortly.",

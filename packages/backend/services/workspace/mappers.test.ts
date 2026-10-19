@@ -21,6 +21,8 @@ import {
 	projectStatusLabel,
 	type RawActivity,
 	relativeLabel,
+	rosterActivity,
+	rosterMoney,
 	rosterStats,
 	setupCompletion,
 	type SetupFacts,
@@ -70,6 +72,25 @@ Deno.test("rosterStats: team earns, business spends, members and projects are pl
 	assertEquals(multi[2].value, "US$28,500.00 +2");
 });
 
+Deno.test("rosterActivity: live projects as a count, the row's last change as ISO or null", () => {
+	assertEquals(
+		// jsonb renders a timestamptz as ISO 8601 with its offset.
+		rosterActivity({ active_projects: 2, updated_at: "2026-09-27T10:30:00.123456+01:00" }),
+		{ activeProjects: 2, updatedAt: "2026-09-27T09:30:00.123Z" },
+	);
+	// A read from a database that has not yet been given the column, or a garbled figure, says
+	// nothing rather than inventing one.
+	const missing = { active_projects: Number.NaN } as unknown as Parameters<
+		typeof rosterActivity
+	>[0];
+	assertEquals(rosterActivity(missing), { activeProjects: 0, updatedAt: null });
+	assertEquals(rosterActivity({ active_projects: -3, updated_at: "not a date" }), {
+		activeProjects: 0,
+		updatedAt: null,
+	});
+	assertEquals(rosterActivity({ active_projects: 4.7, updated_at: "" }).activeProjects, 4);
+});
+
 Deno.test("largestAmount compares in major units and never sums currencies", () => {
 	// ¥500,000 (exponent 0) is 500,000 major; $6,000.00 is 6,000 major — the yen wins, unconverted.
 	assertEquals(
@@ -81,6 +102,28 @@ Deno.test("largestAmount compares in major units and never sums currencies", () 
 	);
 	assertEquals(largestAmount([{ currency: "GBP", minor: 0 }]), null);
 	assertEquals(largestAmount(null), null);
+});
+
+Deno.test("rosterMoney: one figure per currency that moved, largest first in major units, never summed", () => {
+	const money = rosterMoney([
+		{ currency: "gbp", minor: 40_000 },
+		{ currency: "USD", minor: 0 },
+		{ currency: "", minor: 9_000 },
+		{ currency: "JPY", minor: 500_000 },
+		{ currency: "USD", minor: 600_000 },
+	]);
+	// ¥500,000 (500,000 major) · US$6,000.00 (6,000) · £400.00 (400): the zero and the code-less drop.
+	assertEquals(money.map((m) => [m.currency, m.minor]), [
+		["JPY", 500_000],
+		["USD", 600_000],
+		["GBP", 40_000],
+	]);
+	// Each figure is formatted in its OWN currency and carries no origin — nothing was converted.
+	assertEquals(money[2].display, "£400.00");
+	assertEquals(money.every((m) => m.origin === null), true);
+	assertEquals(rosterMoney([]), []);
+	assertEquals(rosterMoney(null), []);
+	assertEquals(rosterMoney(undefined), []);
 });
 
 Deno.test("createBlockedReason: unlimited or under the cap → null; at the cap → the plan's own number, kind-worded", () => {
@@ -389,6 +432,24 @@ Deno.test("toRoleDef: a custom role ranks as its base, a preset as itself; capab
 			.basePreset,
 		"member",
 	);
+});
+
+Deno.test("toRoleDef: the pending-invitation count rides only when the read carries it", () => {
+	const raw = {
+		id: "r4",
+		name: "Scout",
+		summary: "",
+		preset: null,
+		base_preset: "member",
+		capabilities: [],
+		member_count: 0,
+	};
+	// A manage_roles holder's read: the count the archive door would refuse on.
+	assertEquals(toRoleDef({ ...raw, pending_invites: 2 }).pendingInvites, 2);
+	assertEquals(toRoleDef({ ...raw, pending_invites: 0 }).pendingInvites, 0);
+	// Anybody else's read answers null: no count, not a zero that would read as "none offer it".
+	assertEquals("pendingInvites" in toRoleDef({ ...raw, pending_invites: null }), false);
+	assertEquals("pendingInvites" in toRoleDef(raw), false);
 });
 
 Deno.test("toOutgoingInvite: an email-only invite has no handle and is named by its address", () => {

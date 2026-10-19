@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { timestamp, uuid } from "./common.ts";
+import { isStorableText } from "../content/text.ts";
 
 /**
  * community.newsletter — the Zod SSOT for the public "stay updated" capture and its table,
@@ -22,11 +23,15 @@ import { timestamp, uuid } from "./common.ts";
  */
 export const NEWSLETTER_EMAIL_MAX = 254;
 
-/** Shared email shape — the same permissive structure check the auth feature uses (`EMAIL_RE`). */
+/**
+ * Shared email shape — the same permissive structure check the auth feature uses (`EMAIL_RE`), and
+ * only characters the writer can store ({@link isStorableText}): a NUL or a lone surrogate is a
+ * field error here, never a 503 from Postgres or PostgREST.
+ */
 const email = z.string().trim().max(NEWSLETTER_EMAIL_MAX, "Enter a valid email address.").regex(
 	/^[^\s@]+@[^\s@]+\.[^\s@]+$/,
 	"Enter a valid email address.",
-);
+).refine(isStorableText, "Enter a valid email address.");
 
 /**
  * Where the capture originated, so the backend can attribute intent (footer, a campaign, …):

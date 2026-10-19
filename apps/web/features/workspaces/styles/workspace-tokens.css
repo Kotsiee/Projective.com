@@ -20,9 +20,9 @@
  * overlay.
  *
  * Every mix is OPAQUE (§B.4.2): it is mixed against the solid surface the colour actually lands on —
- * `--surface` for the matrix and the dialogs, `--surface-1` for cards and bands, a stake's own tone or
- * a matrix cell's own fill for the hatch drawn over it — and never against `transparent`, so each tone
- * is measurable and none of them compounds when nested. The quiet status fills are the U1 tokens
+ * `--surface` for the dialogs, `--surface-1` for cards and bands — and never against `transparent`,
+ * so each tone is measurable and none of them compounds when nested. (The roles matrix is the ui
+ * `PermissionMatrix`, which carries its own opaque fills — Teams C3.) The quiet status fills are the U1 tokens
  * (`--success-tint`, `--warning-tint`, `--danger-tint`), which already carry their own
  * per-mode/contrast strength.
  *
@@ -63,7 +63,7 @@
 	--wsp-minor-fade: var(--minor-fade);
 	/* #endregion */
 
-	/* #region Kind identity — a team takes the BRAND tint, a business the ACCENT tint */
+	/* #region Kind identity — a team takes the BRAND tint (--primary), a business the TERTIARY tint (--tertiary, Decision #230 (j)) */
 	/*
 	 * The two kinds are one architecture parameterised by a discriminator, and that holds in CSS too:
 	 * nothing below reads `--wsp-team` or `--wsp-business` directly. Any element carrying
@@ -79,27 +79,38 @@
 	`--surface-1`: the same tone the old 40% alpha produced there, now measurable everywhere. */
 	--wsp-team-edge: color-mix(in oklab, var(--primary) 40%, var(--surface-1));
 	/*
-	 * `-ink` is the accent as TEXT on one of its own tints, and it exists because the accent itself
+	 * `-ink` is the kind hue as TEXT on one of its own tints, and it exists because the hue itself
 	 * was not readable there. `.wsp-mark` — the entity identity badge, the single most repeated mark
 	 * on /teams — set `--wsp-kind` on `--wsp-kind-tint-hi` at 14px/600, which is normal text and so
 	 * owes 4.5:1. Measured: 3.79:1 on tint-hi and 4.25:1 on tint in light mode. Both fail.
 	 *
-	 * Mixing 20% of `--on-surface` into the accent fixes it in BOTH modes from one declaration,
+	 * Mixing 20% of `--on-surface` into the kind hue fixes it in BOTH modes from one declaration,
 	 * because `--on-surface` is by definition the opposite polarity to the surface: in light it pulls
 	 * the ink down, in dark it lifts it up. Deepening the tint instead would have worked in light and
-	 * made dark worse. Measured after: light team 4.86:1 on tint-hi / 5.44 on tint / 6.25 on
-	 * surface-1; light business 5.59 / 6.28 / 7.16; dark 6.96–10.65 across the board.
+	 * made dark worse. Measured (brand seed, theme-engine tones, BU1): team 4.88:1 on tint-hi / 5.46
+	 * on tint / 6.24 on surface-1 in light, 4.72 / 5.25 / 5.85 in dark (dark `--primary` is tone 55
+	 * since Decision #96 (a), so the earlier 6.96–10.65 no longer holds); business 5.62 / 6.30 / 7.21
+	 * in light, 7.41 / 9.05 / 11.09 in dark.
 	 *
-	 * The accent hue survives at 80% — this reads as the same brand teal, one step deeper.
+	 * The kind hue survives at 80% — the team's reads as the same brand teal one step deeper, the
+	 * business's as the same slate.
 	 */
 	--wsp-team-ink: color-mix(in srgb, var(--primary) 80%, var(--on-surface));
 
-	--wsp-business: var(--secondary);
-	--wsp-business-on: var(--surface);
-	--wsp-business-tint: color-mix(in srgb, var(--secondary) 10%, var(--surface-1));
-	--wsp-business-tint-hi: color-mix(in srgb, var(--secondary) 18%, var(--surface-1));
-	--wsp-business-edge: color-mix(in oklab, var(--secondary) 40%, var(--surface-1));
-	--wsp-business-ink: color-mix(in srgb, var(--secondary) 80%, var(--on-surface));
+	/*
+	 * The business hue is `--tertiary` in EVERY mode and overlay (Decision #230 (j)), and the rest of
+	 * the family is derived from `--wsp-business` itself, so this one line re-anchors all of it. Not
+	 * `--secondary`: that is the focus ring's ink (`theme-engine.ts`, `ringInk`), and a business mark
+	 * painted in it measured ΔE_OK 0.00 against the ring. The solid mark and the acting chip draw
+	 * `--on-tertiary` on the hue — 6.18:1 light, 7.72:1 dark. `business-hue.gate.test.ts` re-computes
+	 * every figure in this block from the theme engine.
+	 */
+	--wsp-business: var(--tertiary);
+	--wsp-business-on: var(--on-tertiary);
+	--wsp-business-tint: color-mix(in srgb, var(--wsp-business) 10%, var(--surface-1));
+	--wsp-business-tint-hi: color-mix(in srgb, var(--wsp-business) 18%, var(--surface-1));
+	--wsp-business-edge: color-mix(in oklab, var(--wsp-business) 40%, var(--surface-1));
+	--wsp-business-ink: color-mix(in srgb, var(--wsp-business) 80%, var(--on-surface));
 
 	/* The resolved trio. Defaults to the seller side so a kind-less fragment still paints. */
 	--wsp-kind: var(--wsp-team);
@@ -141,65 +152,11 @@
 	--wsp-alert: var(--danger);
 	/* #endregion */
 
-	/* #region Permission semantics — the matrix's tri-state and the override markers */
-	/*
-	 * `conditional` is NOT "half allowed": it means the capability applies only under a written rule
-	 * (a spend ceiling, an approval threshold). It gets its own hue AND its own glyph so a limited
-	 * permission is never drawn as a plain tick, which would over-promise.
-	 */
-	--wsp-allowed: var(--success);
-	--wsp-allowed-tint: var(--success-tint);
-	--wsp-conditional: var(--warning);
-	--wsp-conditional-tint: var(--warning-tint);
-	--wsp-denied: var(--on-surface-variant);
-	/* "No fill" spelled as the matrix's own solid ground, so a denied cell is a measured tone too. */
-	--wsp-denied-tint: var(--surface);
-
-	/* Override markers. A grant reads as an addition to the role baseline, a revocation as a
-	subtraction — never as an error, because a deliberate revocation is correct configuration. */
-	--wsp-grant: var(--wsp-kind);
-	--wsp-revoke: var(--on-surface-variant);
-	--wsp-consequential: var(--warning);
-
-	/* A preset role is read-only by design. The locked look is a hatch plus a lock glyph, so it is
-	legible without colour. The hover tint is drawn on the matrix's `--surface` ground. The hatch is laid
-	over whatever fill the cell already paints (an allowed, conditional or denied tint), so the colour
-	itself, `--wsp-locked-hatch`, is mixed on the cell in workspace-matrix.css against that fill; this is
-	only its strength. */
-	--wsp-locked-tint: color-mix(in oklab, var(--on-surface) 5%, var(--surface));
-	--wsp-locked-hatch-mix: 12%;
-	/* #endregion */
-
-	/* #region Money — the split bar, the spend envelopes, the approval ladder */
+	/* #region Money — the spend envelopes, the approval ladder */
 	/* The recessed track and the meter well are global now — wallet-tokens.css had independently
 	arrived at the same mixes, including the same high-contrast widening. */
 	--wsp-track-bg: var(--track-recessed);
 	--wsp-meter-bg: var(--track-meter);
-	/* The conditional cell's hatch. It is only ever drawn over that cell's own fill, so it is mixed
-	against that fill — the opaque twin of the global translucent `--hatch-color` (16%, 30% under high
-	contrast), with the same strength. */
-	--wsp-hatch: color-mix(in oklab, var(--on-surface) 16%, var(--wsp-conditional-tint));
-
-	/*
-	 * Six stake tones for the split bar. Derived by walking the three accent roles at descending
-	 * mixes rather than inventing hues, so a split recolours with the theme and no stake can land on
-	 * a colour the palette does not own. Beyond six, `--wsp-stake-n` cycles (the island applies the
-	 * index modulo six) — and every stake carries its member's name and share in the legend, so the
-	 * colour is a locator, never the identity.
-	 */
-	--wsp-stake-1: var(--primary);
-	--wsp-stake-2: var(--secondary);
-	--wsp-stake-3: var(--tertiary);
-	--wsp-stake-4: color-mix(in srgb, var(--primary) 55%, var(--surface-2));
-	--wsp-stake-5: color-mix(in srgb, var(--secondary) 55%, var(--surface-2));
-	--wsp-stake-6: color-mix(in srgb, var(--tertiary) 55%, var(--surface-2));
-	--wsp-stake: var(--wsp-stake-1);
-
-	/* A held stake stays in the vault for a manual decision. It is hatched, not greyed out: the
-	share is still theirs. The hatch is drawn over the stake's own tone, so it is mixed against that
-	tone — and re-declared on every `[data-stake]` element below, because a custom property resolves
-	where it is DECLARED and this `:root` copy only knows stake 1. */
-	--wsp-held-hatch: color-mix(in oklab, var(--on-surface) 22%, var(--wsp-stake));
 
 	--wsp-spent: var(--wsp-kind);
 	--wsp-remaining: var(--wsp-track-bg);
@@ -210,12 +167,11 @@
 	 * #region Geometry
 	 *
 	 * The shared rhythm aliases the global structure block rather than restating it: band gap and
-	 * block-end padding, both row heights, the rig row, the track heights, the seam, the pip, the
-	 * chart height and the drawer width were all values this file and wallet-tokens.css reached
-	 * independently. The split bar's 18/24px geometry is the one that won the promotion, so it is
-	 * unchanged here. What stays local
-	 * is what only this surface has: the entity marks, the matrix columns, the org-chart connectors,
-	 * the ring, and the sliver threshold tuned for N stakes rather than four.
+	 * block-end padding, both row heights, the rig row, the pip, the chart height and the drawer width
+	 * were all values this file and wallet-tokens.css reached independently. What stays local is what
+	 * only this surface has: the entity marks, the org-chart connectors and the ring. (The team split
+	 * bar is the ui `SplitBar` and the roles matrix the ui `PermissionMatrix`; each carries its own
+	 * geometry.)
 	 */
 	--wsp-band-pad: clamp(var(--space-5), 2.6vw, var(--space-7));
 	--wsp-band-pad-b: var(--band-pad-block-end);
@@ -232,37 +188,24 @@
 	--wsp-rowh-dense: var(--row-h-dense);
 	--wsp-rig-row: var(--rig-row-h);
 
-	--wsp-card-min: 20rem;
 	--wsp-tile-min: 11rem;
 	/* Orphan: nothing in this feature reads it yet (it predates the promotion). Aliased rather than
 	deleted so the first chart that lands here is already on the shared height; flagged for the
 	orphan sweep. No `-sm` companion is declared, because an unread token does not need two. */
 	--wsp-chart-h: var(--chart-h);
 
-	/* Split bar */
-	--wsp-track-h: var(--track-h);
-	--wsp-track-h-hi: var(--track-h-hi);
-	--wsp-seg-gap: var(--space-px);
-	/* Share (percent) below which a stake gains an overhanging pip instead of a dishonest minimum
-	width. The bar never fabricates room for a small share. Deliberately NOT promoted: the wallet
-	uses 1.75 for a four-segment meter, a genuinely different data density. */
-	--wsp-sliver: 3;
 	--wsp-pip-dot: var(--pip-dot);
-	--wsp-handle-w: 12px;
-
-	/* Permission matrix */
-	--wsp-matrix-first: 14rem;
-	--wsp-matrix-col: 7.5rem;
-	--wsp-matrix-cellh: 2.5rem;
 
 	/* Org chart connectors. There is no `--wsp-connector-color`: it was an exact re-export of
 	`--hairline-color`, so the call sites read that directly. */
 	--wsp-connector: var(--space-5);
-	--wsp-node-w: 13rem;
+	/* A node holds an avatar, a name, the ui icon Button disclosure (32px at `sm`) and its count; at
+	14.5rem a fifteen-character name reads whole beside all three. */
+	--wsp-node-w: 14.5rem;
 	--wsp-tree-indent: var(--space-5);
 
 	/*
-	 * Marks drawn in CSS — the dots, swatches, strokes, meters and hatches. Pixels rather than `rem`
+	 * Marks drawn in CSS — the dots, swatches, strokes and meters. Pixels rather than `rem`
 	 * on purpose, for the reason the global `--space-px` gives: these are graphical marks, and a 2px
 	 * stroke that doubles at 200% type zoom stops reading as a stroke. `--wsp-hairline-w` mirrors the
 	 * width inside the global `--hairline` shorthand, for the stems and offsets that need the number on
@@ -277,13 +220,6 @@
 	--wsp-swatch: 10px;
 	--wsp-meter-h: var(--space-1);
 	--wsp-meter-h-lg: 6px;
-	/* One hatch line every `pitch`, one hairline thick: wide for a cell or a stake, tight for a small
-	swatch, so the stripe count reads the same at every size. */
-	--wsp-hatch-pitch: 6px;
-	--wsp-hatch-pitch-sm: 5px;
-	--wsp-hatch-pitch-xs: 4px;
-	/* The headroom an overhanging split pip's label occupies above the rail. */
-	--wsp-pip-room: 20px;
 
 	/*
 	 * Breakpoints. A media query cannot read a custom property and no build step here expands
@@ -299,9 +235,8 @@
 	 *
 	 * The tablet step used to be a bespoke 1100px and snapped UP to `--bp-xl`, not down to `--bp-lg`, so
 	 * windows of 1101–1279px now take the tablet adaptation too: they hide the header band's handle and
-	 * badge, the footer rig's note and the split legend's avatars, and narrow the card, member grid and
-	 * matrix columns. Snapping down instead would hand windows of 1024–1100px a desktop layout the old
-	 * step kept from them.
+	 * badge and the footer rig's note, and narrow the card and member grid. Snapping down instead would
+	 * hand windows of 1024–1100px a desktop layout the old step kept from them.
 	 */
 
 	/* The ONLY two max-widths permitted on this surface: running text and form fields. No card, no
@@ -338,9 +273,9 @@
 /*
  * The tokens DERIVED from the kind, re-declared under the switch. A custom property's `var()` is
  * substituted where the property is declared, so the `:root` copies above froze on the team's brand
- * and every business subtree inherited them: the acting chip, the active state, a grant marker and the
- * spend meter all painted teal on `/businesses`. Declared here, they re-resolve against whichever
- * `--wsp-kind` the same element just set.
+ * and every business subtree inherited them: the acting chip, the active state and the spend meter all
+ * painted teal on `/businesses`. Declared here, they re-resolve against whichever `--wsp-kind` the
+ * same element just set.
  */
 [data-kind] {
 	--wsp-acting: var(--wsp-kind);
@@ -348,7 +283,6 @@
 	--wsp-acting-tint: color-mix(in srgb, var(--wsp-kind) 8%, var(--surface-1));
 	--wsp-acting-ring: color-mix(in oklab, var(--wsp-kind) 55%, var(--surface-1));
 	--wsp-active: var(--wsp-kind);
-	--wsp-grant: var(--wsp-kind);
 	--wsp-spent: var(--wsp-kind);
 }
 
@@ -356,58 +290,32 @@
 	--wsp-acting-ring: color-mix(in oklab, var(--wsp-kind) 85%, var(--surface-1));
 }
 
-/* Stake index → tone. Six rules, because a `nth-child` cycle cannot survive a reordered split. */
-[data-stake="1"] {
-	--wsp-stake: var(--wsp-stake-1);
-}
-
-[data-stake="2"] {
-	--wsp-stake: var(--wsp-stake-2);
-}
-
-[data-stake="3"] {
-	--wsp-stake: var(--wsp-stake-3);
-}
-
-[data-stake="4"] {
-	--wsp-stake: var(--wsp-stake-4);
-}
-
-[data-stake="5"] {
-	--wsp-stake: var(--wsp-stake-5);
-}
-
-[data-stake="6"] {
-	--wsp-stake: var(--wsp-stake-6);
-}
-
-/* Re-resolved per stake, against the tone the same element just set (see `--wsp-held-hatch`). */
-[data-stake] {
-	--wsp-held-hatch: color-mix(in oklab, var(--on-surface) 22%, var(--wsp-stake));
-}
-
 /*
  * High contrast. The attribute is written by `packages/ui/system` (`applyConfig`). Two rules apply,
  * in opposite directions:
  *
- *  - The kind tints, the edges, the acting ring and both hatches WIDEN, so every mark that separates
- *    one state from another by tone alone clears a wider step.
- *  - The status fills do NOT widen. The matrix's allowed / conditional cells (and their legend marks)
- *    read the U1 `--success-tint` / `--warning-tint`, which step their own strength DOWN under high
- *    contrast: a lighter fill pulls the cell toward its surface and widens the glyph ink drawn on it.
- *    So in high contrast a cell's FILL sits closer to a denied cell's `--surface` than it does at
- *    normal contrast, and the state is carried by the glyph (tick · conditional mark · dash) and, on
- *    a conditional cell, the hatch. The ui PermissionMatrix makes the same trade on the same U1 tint
- *    family; it is a deliberate step-down, not a widening.
+ *  - The kind tints, the edges and the acting ring WIDEN, so every mark that separates one state from
+ *    another by tone alone clears a wider step.
+ *  - The status fills do NOT widen. They read the U1 tints, which step their own strength DOWN under
+ *    high contrast: a lighter fill pulls a mark toward its surface and widens the ink drawn on it, so
+ *    the state is carried by the glyph. The roles matrix is the ui PermissionMatrix, which makes that
+ *    trade on the same U1 tint family itself (Teams C3).
+ *
+ * The business family widens all four of its tones (BU1), each still opaque and still derived from
+ * `--wsp-business`: tint 20%, tint-hi 26%, edge 70%, and the ink takes MORE `--on-surface` (65% hue),
+ * so every text pair on the mark clears the 7:1 §A.5 promises in high contrast. Measured (brand seed,
+ * theme-engine tones): ink on tint-hi 8.24:1 / on tint 9.19 / on surface-1 12.85, edge 4.29:1 against
+ * the card and `--on-tertiary` on the hue 10.05:1 in light; 7.34 / 8.94 / 15.69, edge 7.05 and 14.60
+ * in dark. The tint-hi step off the card widens 1.35 → 1.56 (light) and 1.64 → 2.14 (dark).
  */
 :root[data-contrast="high"] {
 	--wsp-team-tint: color-mix(in srgb, var(--primary) 20%, var(--surface-1));
 	--wsp-team-edge: color-mix(in oklab, var(--primary) 70%, var(--surface-1));
-	--wsp-business-tint: color-mix(in srgb, var(--secondary) 20%, var(--surface-1));
-	--wsp-business-edge: color-mix(in oklab, var(--secondary) 70%, var(--surface-1));
+	--wsp-business-tint: color-mix(in srgb, var(--wsp-business) 20%, var(--surface-1));
+	--wsp-business-tint-hi: color-mix(in srgb, var(--wsp-business) 26%, var(--surface-1));
+	--wsp-business-edge: color-mix(in oklab, var(--wsp-business) 70%, var(--surface-1));
+	--wsp-business-ink: color-mix(in srgb, var(--wsp-business) 65%, var(--on-surface));
 	--wsp-acting-ring: color-mix(in oklab, var(--wsp-kind) 85%, var(--surface-1));
-	--wsp-locked-hatch-mix: 26%;
-	--wsp-hatch: color-mix(in oklab, var(--on-surface) 30%, var(--wsp-conditional-tint));
 	/*
 	 * The recessed track and the minor-unit fade widened here too, by exactly the amounts
 	 * wallet-tokens.css used; both moved to the global layer with their tokens, so re-declaring them
@@ -417,29 +325,27 @@
 }
 
 /*
- * Colour-vision deficiency. Two adjacent-hue risks exist on this surface: business accent against
- * brand (the two entity kinds side by side on a mixed roster) and `allowed` against `conditional` in
- * the matrix. Under any CVD overlay the business side re-anchors to `--tertiary`, and both the matrix
- * tri-state and the split bar keep their static GLYPH and HATCH-ANGLE channels — so separation
- * survives on non-colour channels even when hue collapses entirely.
+ * Colour-vision deficiency. One adjacent-hue risk is this surface's own: the business hue against the
+ * brand (the two entity kinds side by side on a mixed roster). The roles matrix's `allowed` against
+ * `conditional` is the ui PermissionMatrix's, which keeps a GLYPH per state beside the fill, so the
+ * separation survives on a non-colour channel even when hue collapses entirely.
+ *
+ * The business side needs no re-anchor here: it is `--tertiary` in every mode (Decision #230 (j)).
+ * The block that used to swap it in under an overlay bought nothing measurable — simulated at full
+ * severity (Machado 2009), brand~tertiary and brand~secondary sit within ΔE_OK 0.01 of each other
+ * under protan, deutan and tritan alike — and it left the mark's ink and filled pair on the old hue.
+ * The split bar's stake tones now live in @projective/ui's SplitBar (Teams C4).
  *
  * VALUE-scoped, never `:root[data-cvd]`. `CvdMode` is `none | protan | deutan | tritan` and
  * `applyConfig` writes the attribute UNCONDITIONALLY, so every hydrated page carries
- * `data-cvd="none"` — which an attribute-PRESENCE selector matches. Bare `[data-cvd]` therefore held
- * this overlay permanently on for every user: a Business rendered `--tertiary` on every load and the
- * documented kind-identity rule above ("a team takes the BRAND tint, a business the ACCENT tint")
- * never shipped. Enumerate the real deficiencies, exactly as the sibling `[data-contrast="high"]`
- * block does; a fourth mode must be added here explicitly.
+ * `data-cvd="none"` — which an attribute-PRESENCE selector matches, and which would hold the overlay
+ * permanently on for every user. Enumerate the real deficiencies, exactly as the sibling
+ * `[data-contrast="high"]` block does; a fourth mode must be added here explicitly.
  */
 :root[data-cvd="protan"],
 :root[data-cvd="deutan"],
 :root[data-cvd="tritan"] {
-	--wsp-business: var(--tertiary);
-	--wsp-business-tint: color-mix(in srgb, var(--tertiary) 12%, var(--surface-1));
-	--wsp-business-tint-hi: color-mix(in srgb, var(--tertiary) 20%, var(--surface-1));
-	--wsp-business-edge: color-mix(in oklab, var(--tertiary) 46%, var(--surface-1));
-	--wsp-stake-2: color-mix(in srgb, var(--tertiary) 80%, var(--surface-2));
-	--wsp-stake-5: color-mix(in srgb, var(--primary) 40%, var(--surface-3));
+	/* Nothing re-anchors under an overlay today; the selector stays as the one place a future CVD tone goes. */
 }
 
 /* #region Shared primitives */
@@ -644,13 +550,6 @@ identity band, where the entity is the subject of the page. */
 	white-space: nowrap;
 }
 
-/* The quiet variant, for a row that already carries the leading rule + tint and must not shout
-twice. */
-.wsp-actingchip--quiet {
-	background: var(--wsp-kind-tint-hi);
-	color: var(--wsp-kind-ink);
-}
-
 .wsp-actingchip__dot {
 	flex: none;
 	inline-size: var(--wsp-dot-sm);
@@ -708,14 +607,6 @@ frozen animation clock costs nothing. */
 	font-size: var(--wsp-fs-micro);
 	font-weight: var(--fw-semibold);
 	white-space: nowrap;
-}
-
-/* The role chip carrying the acting state, so the two facts occupy one mark instead of two chips of
-   identical shape sitting side by side. Same tones as `.wsp-actingchip`, which still serves the
-   surfaces that show acting WITHOUT a role beside it. */
-.wsp-chip--acting {
-	background: var(--wsp-acting);
-	color: var(--wsp-acting-on);
 }
 
 /* A permitted chip fills with a SOLID tonal step (§B.11.6): the U1 status tints, never an alpha wash. */
@@ -834,7 +725,7 @@ frozen animation clock costs nothing. */
 	transform: scaleX(-1);
 }
 
-/* Announced, never seen - the table captions and the split bar's textual summary.
+/* Announced, never seen - the table captions.
    Visually hidden via the shared `.ui-visually-hidden` utility in `@projective/ui/styles`
    (this rule was a byte-for-byte reimplementation of it). */
 

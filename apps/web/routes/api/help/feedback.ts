@@ -1,6 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { serviceResponse } from "@web/utils/service-response.ts";
 import { readActor } from "@web/utils/api-session.ts";
+import { clientKey } from "@web/utils/client-key.ts";
 import { HelpFeedbackBackendService } from "@server/services/community/HelpFeedbackBackendService.ts";
 import {
 	FEEDBACK_FIELD,
@@ -8,11 +9,6 @@ import {
 	isFormPost,
 	parseFeedbackForm,
 } from "@features/help/core/feedback-form.ts";
-
-/** The caller's transport address — a guest's rate-limit key. */
-function clientKey(remote: Deno.Addr): string {
-	return "hostname" in remote ? remote.hostname : remote.transport;
-}
 
 /**
  * `POST /api/help/feedback` — "Was this helpful?" on a help article (P2). Open to guests; thin route:
@@ -42,7 +38,7 @@ export const handler = define.handlers({
 		const actor = readActor(ctx);
 		const signedIn = ctx.state.isAuthenticated === true && Boolean(actor.accessToken);
 		const result = await HelpFeedbackBackendService.submit(body, {
-			clientKey: clientKey(ctx.info.remoteAddr),
+			clientKey: clientKey(ctx.info.remoteAddr, ctx.req.headers),
 			userId: signedIn ? actor.userId : undefined,
 			accessToken: signedIn ? actor.accessToken : undefined,
 		});

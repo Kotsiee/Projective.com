@@ -12,8 +12,11 @@ import {
 	parseStatus,
 	parseVerification,
 	type Person,
+	publishedFact,
 	type RawRoster,
 	type RawRosterItem,
+	rosterActivity,
+	rosterMoney,
 	rosterStats,
 	setupCompletion,
 	setupSteps,
@@ -85,7 +88,7 @@ function toSummary(
 		funded: !!item.setup?.funded,
 		limitsOffered: !!item.setup?.limits_offered,
 		verification,
-		published: status !== "draft",
+		published: publishedFact(status),
 	});
 	const faces = (item.face_user_ids ?? []).slice(0, 5)
 		.map((id) => faceOf(people.get(id)))
@@ -101,8 +104,10 @@ function toSummary(
 		role: parseRole(item.role) ?? "member",
 		isOwner: !!item.is_owner,
 		memberCount,
+		...rosterActivity(item),
 		faces,
 		stats: rosterStats(kind, item),
+		money30d: rosterMoney(item.money_30d),
 		hasUpdate: !!item.has_update,
 		isActing: actor.contextType === kind && actor.contextId === item.id,
 		tagline: clamp(item.headline, 160),

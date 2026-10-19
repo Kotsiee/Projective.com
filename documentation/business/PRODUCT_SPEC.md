@@ -198,7 +198,12 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   same five steps.
 - **Automated Payment Splitting:** Payments are distributed at the moment of Escrow release. If a
   Stage payout is $1,000, Projective automatically routes percentages to individual member wallets
-  based on predefined **Contribution Agreements**.
+  based on predefined **Contribution Agreements**. A Team chooses its **split template** (Co-op ·
+  Finder's fee · Benevolent dictator) and sets its members' stakes on its Payouts module. A member
+  who may manage the Team's finances can write the template; which templates a plan unlocks is data;
+  rounding dust always stays with the Team Vault. The rules and figures are in
+  [`finance-model.md` §5](finance-model.md#5-team-payouts-per-stage-smart-splits) (Decisions
+  #228 (F), #234).
 - **Unified Identity:** Teams can create "Services" (Sessions) and bid on "Projects" as a single
   entity, building a collective reputation and portfolio.
 - **The public page:** a Team's storefront is its `/@handle` — showcase, services, the public
@@ -208,20 +213,35 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   **invite-only** the page is missing to everyone outside it — worded exactly as an unknown handle —
   and its members see it with a note saying why ("Only members can see this until the team is
   published", and for a Team created invite-only, "…and no longer invite-only"); a member who may
-  open the Team's Settings also gets a link to them there once Settings can publish the Team and
-  change its visibility (Teams C6) — until then the note stands alone, as a business's does. A Team
-  is created draft and invite-only (Teams P1).
+  open the Team's Settings also gets a link to them there (a business's note still stands alone). A
+  Team is created draft and invite-only (Teams P1).
+- **Settings and the lifecycle:** a Team's Settings (`/teams/:teamHandle/settings`, for members who
+  may change its settings) holds its display name (editable by whoever may edit the profile; the
+  `@handle` never changes), its visibility (public · unlisted · invite only), and its lifecycle. A
+  draft is **published** from there by anyone who may change its settings — which lists it as its
+  visibility allows and lets it apply once it has two active members; a published Team never returns
+  to draft. **Archiving** (the owner, or whoever holds the archive right) is refused while money is
+  held in escrow for the Team's work or while it is still assigned to live work, and Settings names
+  each of those before anybody presses Archive, with a link to where it is cleared (the wallet, or
+  the Projects module) — never an Archive button that would fail. **Restoring** an archived Team
+  brings it back **active if it was ever published, otherwise as a draft** (Decision #250 (c)); the
+  platform decides which, from the Team's own history, and the Restore control says which it will
+  be. A Business restores by the same rule (#236 (d)) (Teams C6).
 
 ##### Role-Based Access Control (RBAC)
 
-To maintain security and operational integrity, Team members are assigned specific roles that
-dictate their "Action Permissions" across the monorepo.
-
-| Role             | Actions                                                                                 |
-| :--------------- | :-------------------------------------------------------------------------------------- |
-| **Lead / Admin** | Create Services, Manage Financial Splits, Invite/Remove Members, Finalize Submissions.  |
-| **Member**       | Join Projects, Claim Stage Tickets, Manage Boards, Communicate with Clients.            |
-| **Contributor**  | View Project Details, Post Internal Comments, Upload Drafts (Requires Member Approval). |
+A Team member's authority is a **role** plus per-member overrides, resolved to workspace
+**capabilities** (the role's, plus what was granted, minus what was revoked), and every team write is
+checked against a capability, never against a role's name. The preset roles are **Owner · Admin ·
+Lead · Member**. What each preset holds, how they rank, and which capabilities a Team can hold at all
+are the database's, in
+[`database/org/Functions.md` §6](../database/org/Functions.md#6--the-permission-engines-sql-twin)
+(Decisions #228, #250). A Team adds **custom roles** on top of a preset. The role editor offers
+ready-made **role templates**, kept as data; the first is **Contributor**, a one-click custom role
+based on Member (Decision #250 (a)). Today it carries the team Member preset's capabilities under
+its own name and summary; whether it should add a grant is open (Decision #264 FLAG (a)).
+Contributor is a template, not a fifth preset. Who may use the Teams workspace at all is the
+freelancer-only rule above (Decision #228 (A)).
 
 ##### Resource Allocation Logic
 
@@ -735,7 +755,11 @@ team members.
   whose setup band the viewer has hidden states that it can't buy, hire or pay yet, with **Publish**
   and the fact that publishing can't be undone (or, for anyone else, to ask the owner to publish
   it). An **archived** Business shows no setup steps — nothing in its wallet can be spent until it
-  is restored, so it is never asked for money. The roster's "% set up" counts the same steps.
+  is restored, so it is never asked for money — and it **takes no money in**: a top-up, a recurring
+  deposit or a member's transfer into its wallet is refused until it is restored, and a card payment
+  that completes after it was archived is not added to the wallet but held for the platform to
+  refund (or to settle once the Business is restored). A **draft** Business still takes money in — Add money is one of its setup steps (Decision
+  #248 (k)). The roster's "% set up" counts the same steps.
 - **Visibility:** a Business takes the same visibility a team does — **public**, **unlisted** or
   **invite-only** — and only a public Business is listed in the directory (Decision #230 (h)). Its
   public page (`/@handle`) opens for anyone while the Business is active and public or unlisted (an
@@ -1249,11 +1273,11 @@ Designed for companies managing multiple projects and teams.
 - **Analytics:** Provides a macro-view of company-wide burn-rate across all departments, read
   under the member's own RLS by the wallet surface and summarised on the business console
   (`/businesses/[businessHandle]`). (The former `org.get_business_finance` wrapper and its
-  `/dashboard` page are retired — Decision #122.)
+  `/dashboard` page are retired — Decision #61.)
 - **No minted money.** A Business Wallet starts at zero and its balance is only ever the sum of real
   movements (top-ups, releases, transfers). The former **Opening Platform Credit** — a one-time
   `demo_opening_credit` of 2,500,000 minor units granted to every new business wallet, in whatever
-  currency it was opened in — was **removed 2026-09-28** (root `CLAUDE.md` §8 Decision #122): it put
+  currency it was opened in — was **removed 2026-09-28** (root `CLAUDE.md` §8 Decision #61): it put
   spendable funds nobody had paid in into every business, in every currency. The development seed
   opens each seeded business with a dated owner top-up instead (`documentation/database/Seed.md`).
 
@@ -3233,10 +3257,10 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               | `/teams/create`           |                          | Create a new team                                                                              |
 |               | `/teams/[teamHandle]`     | `index`                  | The console's **Overview** — addressed by the team's `@handle`; a uuid or wrong-case handle **308→** the handle ([ROUTING.md](../architecture/ROUTING.md) team rows, Decision #228 (B)) |
 |               |                           | `members`                | Members                                                                                        |
-|               |                           | `projects`               | Projects                                                                                       |
+|               |                           | `projects`               | Projects — the team's live engagements (each stage assignment with its assignees' Wᵢ against the stage cap, or each one's own workload cap on a stage that sets none) under its proposal allowance; `?view=proposals` the applications filed for the team, awaiting an answer ([ROUTING.md](../architecture/ROUTING.md) team rows) |
 |               |                           | `payouts`                | Payouts                                                                                        |
 |               |                           | `roles`                  | Roles                                                                                          |
-|               |                           | `settings`               | Settings                                                                                       |
+|               |                           | `settings`               | Name, visibility and the lifecycle — publish, archive (what blocks it named first), restore (Teams C6) |
 |               |                           | _secondary group_        | The other modules stay reachable in the lane's secondary group: `catalogue` · `calendar` · `messages` · `invitations` · `finance` (the Team Vault) · `analytics` · `standing` · `profile` · `verification` (Decision #228 (C)) |
 |               | `/analytics`              | `index`                  | Performance data                                                                               |
 |               | `/wallet`                 | `index`                  | **The command centre.** A balance hero (total · available · in escrow · clearing) with every money action, over a sheet of accounts, cash flow, upcoming obligations, recent transactions and payment methods. A middle-nav lane links the wallet's pages and carries every money action. The retired deep pages `activity` **308→** `analytics`; `payouts`, `funding`, `access`, `methods` **308→** overview sections |

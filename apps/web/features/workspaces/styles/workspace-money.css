@@ -3,19 +3,14 @@
  *
  * A **team's** money moves in and then SPLITS: a released payout divides across the people who did the
  * work. A **business's** money moves in from its own members and then OUT as purchases, bounded by
- * per-member envelopes and an approval ladder. So this sheet holds two instruments (the split bar, the
- * spend envelope), one queue (approvals) and one gate (verification).
+ * per-member envelopes and an approval ladder. So this sheet lays out the team's payout policy (its
+ * split rule, the ui `SplitBar` of member stakes, the preview ledger and the vault readout), the spend
+ * envelope, one queue (approvals) and one gate (verification).
  *
  * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY.
  *
- * THE RULE THAT SHAPES THE SPLIT BAR: `flex-grow` IS the share. `flex-basis: 0` plus
- * `min-inline-size: 0` guarantee nothing but the honest proportion decides a stake's width, that width
- * is NEVER transitioned or keyframed, and no stake is ever given a minimum. A near-zero share gets an
- * overhanging pip instead — a frozen animation clock or a fabricated 4px floor would both make the bar
- * lie about somebody's money, and the bar's entire promise is that the dividers ARE the total.
- *
  * The client never totals, splits, converts or fee-adjusts: every figure here is a server-computed
- * `MoneyView.display` string, and every share is integer basis points.
+ * `MoneyView`, and every share is integer basis points.
  */
 
 /* #region Money module frame */
@@ -156,404 +151,229 @@
 
 /* #endregion */
 
-/* #region Team — the split bar */
-.wsp-split {
+/* #region Team — the payout policy */
+/*
+ * Four sections — Split rule · Member stakes · Preview · Who can move money — on the band's own tone.
+ * Separated the §B.4 way and no other: `--space-7` above a section, ONE hairline between two, and
+ * `--space-3` under a heading. Nothing is boxed: the controls carry their own borders, everything else
+ * is text in the body or meta register.
+ *
+ * The split bar itself is the ui `SplitBar` (its widths ride the ui's own variable seam, never a
+ * `style=` written here), so this sheet only lays out what sits around it.
+ */
+.wsp-payout {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-4);
 	inline-size: 100%;
 	min-inline-size: 0;
 }
 
-.wsp-split__head {
+.wsp-payout__section {
 	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: var(--space-4);
-	flex-wrap: wrap;
+	flex-direction: column;
+	align-items: stretch;
+	gap: var(--space-3);
+	min-inline-size: 0;
 }
 
-/* The projected release the shares are priced against — the reason the editor shows consequences
-("Ravi receives £412.50") instead of abstract percentages. */
-.wsp-split__against {
+.wsp-payout__section + .wsp-payout__section {
+	margin-block-start: var(--space-7);
+	padding-block-start: var(--space-7);
+	border-block-start: var(--hairline);
+}
+
+.wsp-payout__head {
 	display: flex;
-	align-items: baseline;
-	gap: var(--space-2);
-	font-size: var(--wsp-fs-body);
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+/* The meta register: one sentence about the section, never a control. */
+.wsp-payout__meta {
+	margin: 0;
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
 	color: var(--text-secondary);
 }
 
 /*
- * The bar. `overflow` stays visible on purpose: a pip overhangs above the rail and a hovered stake
- * grows past its block-size rather than pushing its neighbours.
+ * A required disclosure on one meta line, flush with the section's text rather than inset. Its
+ * sentences carry percentages (a drifted total), so its figures are tabular like every other.
  */
-.wsp-split__bar {
-	position: relative;
-	inline-size: 100%;
-	min-inline-size: 0;
-}
-
-.wsp-split__track {
-	display: flex;
-	align-items: center;
-	gap: var(--wsp-seg-gap);
-	block-size: var(--wsp-track-h);
-	min-inline-size: 0;
-	border-radius: var(--radius-sm);
-	background: var(--wsp-track-bg);
-}
-
-/* Room for the overhanging pip labels, reserved only when a sliver actually produced one. */
-.wsp-split__bar:has(.wsp-split__pip) {
-	padding-block-start: calc(var(--space-7) + var(--wsp-pip-room));
-}
-
-/*
- * `--wsp-share` (a unitless 0–1 fraction, or the basis points / 100 — the island's choice, delivered by
- * `styleVars()`) is the ONLY thing that decides a stake's width. There is no transition on this
- * property and there never may be one.
- */
-.wsp-split__seg {
-	position: relative;
-	flex: var(--wsp-share, 0) 0 0px;
-	min-inline-size: 0;
-	block-size: var(--wsp-track-h);
-	background-color: var(--wsp-stake);
-	/* Only the emphasis height and the fill tone animate — never the share. */
-	transition:
-		block-size var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard);
-}
-
-.wsp-split__track > .wsp-split__seg:first-child {
-	border-start-start-radius: var(--radius-sm);
-	border-end-start-radius: var(--radius-sm);
-}
-
-.wsp-split__track > .wsp-split__seg:last-child {
-	border-start-end-radius: var(--radius-sm);
-	border-end-end-radius: var(--radius-sm);
-}
-
-/*
- * A held stake is hatched, not greyed: the share is still theirs, it simply will not distribute
- * automatically. Holding somebody's share never reassigns it, so the segment keeps its full width.
- */
-.wsp-split__seg[data-held="true"] {
-	background-image: repeating-linear-gradient(
-		135deg,
-		transparent 0 calc(var(--wsp-hatch-pitch) - var(--wsp-hairline-w)),
-		var(--wsp-held-hatch) calc(var(--wsp-hatch-pitch) - var(--wsp-hairline-w))
-		var(--wsp-hatch-pitch)
-	);
-}
-
-/* An exact zero contributes no width and no chroma. */
-.wsp-split__seg[data-zero="true"] {
-	flex-grow: 0;
-	background-color: transparent;
-	background-image: none;
-}
-
-.wsp-split__seg:hover,
-.wsp-split:has(.wsp-split__key:hover) .wsp-split__seg[data-hover="true"],
-.wsp-split:has(.wsp-split__key:focus-visible) .wsp-split__seg[data-hover="true"] {
-	block-size: var(--wsp-track-h-hi);
-}
-
-/*
- * The drag handle, sitting ON the boundary between two stakes. Placed with `inset-inline-end` and a
- * negative half-width so it straddles the seam and mirrors under RtL without a transform. It is a real
- * focusable control (`role="slider"`), because a split editable only by pointer is a split a keyboard
- * user cannot audit — so its focus state (the grip at full ink and width, below) is not optional here:
- * with the product-wide ring off (Decision #217 flag (n)) it is the only affordance they get.
- */
-.wsp-split__handle {
-	position: absolute;
-	inset-block: calc(-1 * var(--space-1));
-	inset-inline-end: calc(var(--wsp-handle-w) / -2);
-	inline-size: var(--wsp-handle-w);
-	padding: 0;
-	border: none;
-	border-radius: var(--radius-xs);
-	background: none;
-	cursor: ew-resize;
-	touch-action: none;
-	z-index: var(--z-raised);
-}
-
-/*
- * The visible grip: a hairline-thin bar the handle's hit area is twice the width of. It sits on the
- * stake it belongs to (the handle is that segment's child, so `--wsp-stake` is the tone under it), and
- * its intensity is an OPAQUE mix of ink into that tone — never `opacity`, which would make the grip's
- * reading depend on whatever composited beneath it (§B.4.2).
- */
-.wsp-split__handle::before {
-	content: "";
-	position: absolute;
-	inset-block: 0;
-	inset-inline: 0;
-	margin-inline: auto;
-	inline-size: var(--wsp-stroke);
-	border-radius: var(--radius-xs);
-	background: color-mix(in oklab, var(--on-surface) var(--tint-heavy), var(--wsp-stake));
-	transition: background-color var(--dur-fast) var(--ease-standard), transform var(--dur-fast)
-		var(--ease-standard);
-}
-
-.wsp-split__handle:hover::before {
-	background: var(--on-surface);
-	transform: scaleX(1.5);
-}
-
-.wsp-split__handle:focus-visible::before {
-	background: var(--on-surface);
-	transform: scaleX(1.5);
-}
-
-.wsp-split__handle[data-dragging="true"]::before {
-	background: var(--on-surface);
-}
-
-/* A handle whose neighbours are all held cannot move; it says so rather than silently refusing. */
-.wsp-split__handle[data-locked="true"] {
-	cursor: not-allowed;
-}
-
-.wsp-split__handle[data-locked="true"]::before {
-	background: color-mix(in oklab, var(--on-surface) var(--tint-strong), var(--wsp-stake));
-}
-
-/*
- * The pip — visibility decoupled from width. A stake too small to label inside the rail labels itself
- * ABOVE the rail with a stem pointing back at its segment, so a 1% share is readable without the bar
- * inventing 4px of width it does not own. `--wsp-pip-lift` arrives from the island because whether two
- * pips collide depends on which stakes happen to be slivers in THIS split — no static stagger can know.
- */
-.wsp-split__pip {
-	position: absolute;
-	inset-block-end: calc(100% + var(--space-2) + var(--wsp-pip-lift, 0px));
-	inset-inline: 0;
-	margin-inline: auto;
-	inline-size: max-content;
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding-inline: var(--space-2);
+.wsp-payout__notice.ui-inline-notice {
+	padding-inline: 0;
 	padding-block: var(--space-1);
-	font-size: var(--wsp-fs-micro);
-	font-weight: var(--fw-semibold);
 	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
-	pointer-events: none;
 }
 
-.wsp-split__pip-dot {
+/* A plan gate: the notice, then its tier-4 "See plans" beside it while there is room. */
+.wsp-payout__gate {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2) var(--space-3);
+	min-inline-size: 0;
+}
+
+/* "See plans" is an anchor drawn as a Button, so it sheds the user agent's link underline. */
+.wsp-payout__plans {
 	flex: none;
-	inline-size: var(--wsp-pip-dot);
-	block-size: var(--wsp-pip-dot);
-	border-radius: 50%;
-	background: var(--wsp-stake);
+	text-decoration: none;
 }
 
-.wsp-split__pip-stem {
-	position: absolute;
-	inset-block-start: 100%;
-	inset-inline: 0;
-	margin-inline: auto;
-	inline-size: 0;
-	block-size: calc(var(--space-2) + var(--wsp-pip-lift, 0px));
-	border-inline-start: var(--hairline);
+/* The template's cuts, side by side while there is room, one per row on a phone. */
+.wsp-payout__fields {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+	gap: var(--space-2) var(--space-4);
+	max-inline-size: 48rem;
+	min-inline-size: 0;
+}
+
+.wsp-payout__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+
+.wsp-payout__link {
+	align-self: flex-start;
+	font-size: var(--wsp-fs-body);
+}
+
+/* The stakes' record: the tabular legend, then the hold toggles. */
+.wsp-stakes__legend {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.wsp-stakes__holds {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.wsp-stakes__holds-label {
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+/*
+ * A toggle's hold mark keeps its slot whether or not the stake is held: pressing one toggle never
+ * widens it or moves the toggles after it. Only a held stake paints the mark.
+ */
+.wsp-stakes__hold-mark {
+	display: inline-flex;
+	line-height: 0;
+}
+
+.wsp-stakes__hold-mark[data-held="false"] {
+	visibility: hidden;
 }
 /* #endregion */
 
-/* #region Team — the split legend */
+/* #region Team — the preview ledger */
 /*
- * Every stake states five things in five independent channels: the tone swatch, the person, the share,
- * the money it becomes, and the held mark. The bar is the overview; this is the record.
+ * One row per cut, in the plan's order, then the total. Rows are separated by one hairline each; the
+ * label leads, the rate is meta, and the figure is right-aligned in tabular digits so a column of
+ * amounts can be compared down the page. The total is the server's sum and reads at the medium weight —
+ * a row, not a heading, so weight is the only step it takes.
+ *
+ * The columns belong to the LIST, not the row: each row is a subgrid of the ledger's one track set, so
+ * the widest amount sizes the figure column for every row and the rates line up down the page. A row
+ * that sized its own `auto` tracks set each rate against its own amount's width, and the rate column
+ * drifted with the figures.
  */
-.wsp-split__legend {
+.wsp-ledger {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	column-gap: var(--space-4);
+	max-inline-size: 40rem;
+	min-inline-size: 0;
+}
+
+.wsp-ledger__row {
+	display: grid;
+	grid-column: 1 / -1;
+	grid-template-columns: subgrid;
+	align-items: baseline;
+	padding-block: var(--space-2);
+}
+
+.wsp-ledger__row + .wsp-ledger__row {
+	border-block-start: var(--hairline);
+}
+
+.wsp-ledger__label {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--wsp-fs-body);
+	color: var(--on-surface);
+}
+
+.wsp-ledger__rate {
+	min-inline-size: 4.5rem;
+	font-size: var(--text-sm);
+	font-variant-numeric: tabular-nums;
+	text-align: end;
+	color: var(--text-secondary);
+}
+
+.wsp-ledger__amount {
+	justify-self: end;
+	font-variant-numeric: tabular-nums;
+}
+
+.wsp-ledger__row--total .wsp-ledger__label {
+	font-weight: var(--fw-medium);
+}
+
+/* A new amount is on its way: the figures step down to the secondary ink, never to an opacity. */
+.wsp-ledger[aria-busy="true"] {
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Team — who can move money */
+.wsp-access {
 	list-style: none;
 	margin: 0;
 	padding: 0;
 	display: flex;
 	flex-direction: column;
-	inline-size: 100%;
 	min-inline-size: 0;
 }
 
-.wsp-split__key {
+.wsp-access__row {
 	display: grid;
-	grid-template-columns: auto auto minmax(0, 1fr) auto auto auto;
-	align-items: center;
-	gap: var(--space-3);
-	min-block-size: var(--wsp-rowh);
-	padding-inline: var(--space-2);
+	grid-template-columns: minmax(8rem, 14rem) minmax(0, 1fr);
+	align-items: baseline;
+	gap: var(--space-4);
+	padding-block: var(--space-2);
+}
+
+.wsp-access__row + .wsp-access__row {
 	border-block-start: var(--hairline);
 }
 
-.wsp-split__key:first-child {
-	border-block-start: none;
-}
-
-.wsp-split__key-mark {
-	flex: none;
-	inline-size: var(--wsp-swatch);
-	block-size: var(--wsp-swatch);
-	border-radius: var(--radius-xs);
-	background: var(--wsp-stake);
-}
-
-.wsp-split__key[data-held="true"] .wsp-split__key-mark {
-	background-image: repeating-linear-gradient(
-		135deg,
-		transparent 0 calc(var(--wsp-hatch-pitch-xs) - var(--wsp-hairline-w)),
-		var(--wsp-held-hatch) calc(var(--wsp-hatch-pitch-xs) - var(--wsp-hairline-w))
-		var(--wsp-hatch-pitch-xs)
-	);
-}
-
-.wsp-split__key-avatar {
-	flex: none;
-	border-radius: 50%;
-}
-
-.wsp-split__key-name {
+.wsp-access__name {
 	min-inline-size: 0;
-	font-size: var(--wsp-fs-body);
-	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-}
-
-.wsp-split__key-share {
-	flex: none;
 	font-size: var(--wsp-fs-body);
-	font-weight: var(--fw-semibold);
-	font-variant-numeric: tabular-nums lining-nums;
-	letter-spacing: var(--wsp-num-track);
 	color: var(--on-surface);
-	text-align: end;
-	min-inline-size: 4rem;
-}
-
-.wsp-split__key-amount {
-	flex: none;
-	justify-self: end;
-}
-
-/* The hold toggle. Iconographic, with the words in its Tooltip. */
-.wsp-split__key-hold {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	flex: none;
-	inline-size: 1.75rem;
-	block-size: 1.75rem;
-	padding: 0;
-	border: none;
-	border-radius: var(--radius-base);
-	background: none;
-	color: var(--text-secondary);
-	cursor: pointer;
-}
-
-.wsp-split__key-hold:hover {
-	background: var(--surface-3);
-	color: var(--on-surface);
-}
-
-.wsp-split__key[data-held="true"] .wsp-split__key-hold {
-	color: var(--warning);
-}
-
-/*
- * Drift. The 100% invariant is exact integer arithmetic, so a bar that does not sum to 10 000 bp is a
- * bug the editor must state, not hide — and it must offer the fix, not just the complaint.
- */
-.wsp-split__drift {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	flex-wrap: wrap;
-	padding: var(--space-3) var(--space-4);
-	border-radius: var(--radius-container-lg);
-	background: color-mix(in srgb, var(--warning) var(--tint), var(--surface-1));
-}
-
-/* The drift percentage changes while a handle is dragged, so its digits hold their width. */
-.wsp-split__drift-text {
-	margin: 0;
-	flex: 1 1 16rem;
-	min-inline-size: 0;
-	font-size: var(--wsp-fs-body);
-	font-variant-numeric: tabular-nums;
-	color: var(--on-surface);
-}
-
-.wsp-split__drift[data-balanced="true"] {
-	background: var(--surface-2);
-}
-
-.wsp-split__balance {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	font-size: var(--wsp-fs-micro);
-	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
-}
-
-/* Named templates. A chip row, because choosing one is a small act with a large consequence. */
-.wsp-split__templates {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	flex-wrap: wrap;
-}
-
-.wsp-split__template {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	padding-inline: var(--space-3);
-	padding-block: var(--space-1);
-	border: var(--hairline-strong);
-	border-radius: var(--radius-base);
-	background: none;
-	color: var(--on-surface);
-	font: inherit;
-	font-size: var(--wsp-fs-body);
-	white-space: nowrap;
-	cursor: pointer;
-}
-
-.wsp-split__template:hover {
-	background: var(--surface-2);
-}
-
-.wsp-split__template[data-default="true"] {
-	border-color: var(--wsp-kind-edge);
-	background: var(--wsp-kind-tint);
-	color: var(--wsp-kind-ink);
-}
-
-/* The split's reading and the vault's cut, in one line of running text — it describes the policy, it
-   is not a control, so it is set as prose rather than boxed (§B.11). */
-.wsp-split__vault {
-	margin: 0;
-	max-inline-size: var(--wsp-prose);
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
-}
-
-.wsp-split__fee {
-	display: flex;
-	align-items: baseline;
-	gap: var(--space-2);
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
 }
 /* #endregion */
 
@@ -1121,15 +941,6 @@ the requester and the amount step down to the secondary register — never throu
 
 /* #region Responsive */
 @media (max-width: 79.9375rem) {
-	.wsp-split__key {
-		grid-template-columns: auto auto minmax(0, 1fr) auto auto;
-	}
-
-	/* The avatar yields before the name does. */
-	.wsp-split__key-avatar {
-		display: none;
-	}
-
 	.wsp-spend__limit {
 		grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto;
 	}
@@ -1137,24 +948,27 @@ the requester and the amount step down to the secondary register — never throu
 
 @media (max-width: 47.9375rem) {
 	/*
-	 * The bar stays a bar: it is the instrument, and a stacked list of percentages does not show that
-	 * the shares are one whole. Only the legend reflows.
+	 * The ledger's rate moves under its label (the list keeps two shared tracks, so the figures still
+	 * align); the access list stacks name over capabilities.
 	 */
-	.wsp-split__key {
-		grid-template-columns: auto minmax(0, 1fr) auto auto;
+	.wsp-ledger {
+		grid-template-columns: minmax(0, 1fr) auto;
+	}
+
+	.wsp-ledger__row {
 		row-gap: var(--space-1);
 	}
 
-	.wsp-split__key-amount {
-		grid-column: 2 / -1;
-		justify-self: start;
+	.wsp-ledger__rate {
+		grid-row: 2;
+		grid-column: 1;
+		min-inline-size: 0;
+		text-align: start;
 	}
 
-	/* The handle grows to a comfortable touch target without taking a pixel of rail width. */
-	.wsp-split {
-		--wsp-handle-w: var(--fld-hit);
-		--wsp-track-h: 22px;
-		--wsp-track-h-hi: 28px;
+	.wsp-access__row {
+		grid-template-columns: minmax(0, 1fr);
+		row-gap: var(--space-1);
 	}
 
 	.wsp-spend__limit {
@@ -1196,19 +1010,5 @@ the requester and the amount step down to the secondary register — never throu
 		justify-self: start;
 		justify-content: flex-start;
 	}
-}
-/* #endregion */
-
-/* #region Reduced motion */
-@media (prefers-reduced-motion: reduce) {
-	.wsp-split__seg,
-	.wsp-split__handle::before {
-		transition: none;
-	}
-}
-
-:root[data-motion="reduced"] .wsp-split__seg,
-:root[data-motion="reduced"] .wsp-split__handle::before {
-	transition: none;
 }
 /* #endregion */

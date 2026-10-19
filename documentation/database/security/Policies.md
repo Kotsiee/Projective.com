@@ -18,7 +18,7 @@ USING (user_id = auth.uid());
 GRANT SELECT ON TABLE security.session_context TO authenticated;
 ```
 
-**No client write policy, and no write grant** (2026-09-28, root `CLAUDE.md` §8 Decision #122). The
+**No client write policy, and no write grant** (2026-09-28, root `CLAUDE.md` §8 Decision #61). The
 acting context is written only by the `security.switch_*` / `clear_session_context` definers
 ([Functions.md](Functions.md#context-switching--the-access-token-hook)), each of which re-checks the
 membership it names. The `FOR ALL` policy (`"Users can manage own session context"`) and the

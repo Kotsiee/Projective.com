@@ -5,12 +5,14 @@ import { HelpHubPage } from "../hub/components/HelpHubPage.tsx";
 import { HelpCategoryPage } from "../category/components/HelpCategoryPage.tsx";
 import { HelpArticlePage } from "../article/components/HelpArticlePage.tsx";
 import { HelpStillStuck } from "../components/HelpStillStuck.tsx";
+import { HelpNotFound } from "../components/HelpNotFound.tsx";
 import { HELP_HUB_TITLE } from "../core/help-seo.ts";
 import { handler, type HelpPageData } from "./help-handler.ts";
 
 /**
  * The help centre's page (P2), re-exported by `routes/(public)/help/[...path].tsx`: the hub, a
- * category or an article, as {@link handler} resolved it, with its JSON-LD.
+ * category or an article, as {@link handler} resolved it, with its JSON-LD — or, in the same frame,
+ * the not-found (404) or unavailable (503) notice.
  */
 export { handler };
 
@@ -36,6 +38,12 @@ export default define.page<typeof handler>(function HelpPage({ data }) {
 					category={view.category}
 					query={query}
 					outcome={view.outcome}
+				/>
+			)}
+			{view.kind === "not-found" && (
+				<HelpNotFound
+					search={<HelpSearch variant="hero" initialQuery={query} />}
+					signedIn={signedIn}
 				/>
 			)}
 			{view.kind === "unavailable" && (

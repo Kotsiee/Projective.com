@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "supabaseClient";
 import { containsPii } from "@projective/types/comms";
+import { UNSTORABLE_TEXT_MESSAGE } from "@projective/types/content/text";
 import {
 	canSeeFeedbackIdea,
 	FEEDBACK_IDEA_COLUMNS,
@@ -18,6 +19,7 @@ import {
 } from "@projective/types/community";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
+import { isUnstorableInputError } from "../../core/text.ts";
 import type { ReadActor } from "../read-actor.ts";
 import { fetchProfileCards, profileKey } from "../profile/live-follows.ts";
 import {
@@ -127,6 +129,10 @@ function doorRefusal<T>(error: DoorError): ServiceResult<T> {
 		case "23503":
 			return fail(403, { message: "Finish setting up your account to take part." });
 		default:
+			// Text no layer can store (a NUL, a lone surrogate) is malformed input, not an outage.
+			if (isUnstorableInputError(error.code)) {
+				return fail(422, { message: UNSTORABLE_TEXT_MESSAGE });
+			}
 			return fail(503, {
 				message: "The feedback board is unavailable right now. Please try again shortly.",
 				details: { code: error.code ?? null },

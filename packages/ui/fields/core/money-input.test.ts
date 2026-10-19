@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
+import { formatMoney } from "../../display/core/currency-store.ts";
 import {
 	clampMinor,
 	currencyAdornment,
@@ -11,6 +12,8 @@ const CASES = [
 	{ locale: "en-GB", currency: "GBP" },
 	{ locale: "de-DE", currency: "EUR" },
 	{ locale: "ja-JP", currency: "JPY" },
+	{ locale: "pt-PT", currency: "USD" },
+	{ locale: "fr-FR", currency: "EUR" },
 ] as const;
 
 const AMOUNTS = [0, 1, 5, 99, 100, 1_234, 123_456, 1_234_567_89, 9_007_199_254];
@@ -37,6 +40,34 @@ Deno.test("formatting groups and keeps the currency's decimals", () => {
 	assertEquals(formatMoneyInput(123_456, "EUR", "de-DE"), "1.234,56");
 	assertEquals(formatMoneyInput(1_234, "JPY", "ja-JP"), "1,234");
 	assertEquals(formatMoneyInput(500, "GBP", "en-GB"), "5.00");
+});
+
+/** Locales whose grouping rules differ: always, from five integer digits, a thin space, a dot. */
+const FIGURE_LOCALES = [
+	"en-GB",
+	"en-US",
+	"de-DE",
+	"fr-FR",
+	"pt-PT",
+	"pt-BR",
+	"es-ES",
+	"pl-PL",
+	"ja-JP",
+];
+
+Deno.test("the box prints the digits a MoneyView of the same amount prints, in every locale", () => {
+	// pt-PT, es-ES and pl-PL group only from five integer digits; forcing grouping printed "1 000,00".
+	assertEquals(formatMoneyInput(100_000, "USD", "pt-PT"), "1000,00");
+	assertEquals(formatMoneyInput(100_000, "EUR", "es-ES"), "1000,00");
+	for (const locale of FIGURE_LOCALES) {
+		for (const currency of ["USD", "EUR", "JPY"]) {
+			for (const minor of AMOUNTS) {
+				const box = formatMoneyInput(minor, currency, locale);
+				const figure = formatMoney(minor, currency, locale);
+				assert(figure.includes(box), `${locale} ${currency} ${minor}: "${box}" not in "${figure}"`);
+			}
+		}
+	}
 });
 
 Deno.test("typing is forgiving: marks, spaces, partial and extra decimals", () => {

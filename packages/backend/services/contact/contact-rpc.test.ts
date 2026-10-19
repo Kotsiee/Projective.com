@@ -75,11 +75,27 @@ Deno.test("receiptFromRpc: the writer's document, or null when it drifted", () =
 			reference: "CT-7K4Q-2M9X",
 			intent: "sales",
 			status: "backlog",
-			receivedAt: "2026-10-17T20:00:00Z",
+			receivedAt: "2026-10-17T20:00:00.000Z",
 		},
 	);
 	assertEquals(receiptFromRpc({ reference: "nope" }), null);
 	assertEquals(receiptFromRpc(null), null);
+});
+
+Deno.test("receiptFromRpc: a real receipt's timestamp has the honeypot's shape (Decision #276)", () => {
+	const row = {
+		id: "00000000-0000-4000-8000-000000000001",
+		reference: "CT-0MX7-K931",
+		intent: "support",
+		status: "backlog",
+	};
+	const real = receiptFromRpc({ ...row, created_at: "2026-10-18T10:13:50.220843+00:00" });
+	assertEquals(real?.receivedAt, "2026-10-18T10:13:50.220Z");
+	const decoy = localReceipt("support", new Date("2026-10-18T10:13:50.519Z"));
+	const shape = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+	assertMatch(real?.receivedAt ?? "", shape);
+	assertMatch(decoy.receivedAt, shape);
+	assertEquals(receiptFromRpc({ ...row, created_at: "not a time" }), null);
 });
 
 Deno.test("localReceipt: a well-formed reference in backlog", () => {
@@ -115,6 +131,8 @@ Deno.test("submitRefusal: PR429 → 429, 22023 → 422 naming the field, 42501 �
 	const signIn = submitRefusal({ code: "42501", message: "contact: sign in to attach files" });
 	assertEquals(signIn.status, 401);
 	assert(signIn.errors?.attachmentIds);
+	assertEquals(submitRefusal({ code: "22P05", message: "unsupported Unicode escape" }).status, 422);
+	assertEquals(submitRefusal({ code: "PGRST102", message: "Empty or invalid json" }).status, 422);
 	const down = submitRefusal({ code: "PGRST202", message: "not found" });
 	assertEquals(down.status, 503);
 	assertEquals(down.details, { code: "PGRST202" });

@@ -486,6 +486,14 @@
 	line-height: var(--leading-normal);
 	color: var(--text-secondary);
 }
+
+/* The reader's not-found notice (`ArticleMissingView`): the way back, one control row. */
+.artl-notice__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+	margin: 0;
+}
 /* #endregion */
 
 /* #region Reader — cover, byline, call to action, footer */

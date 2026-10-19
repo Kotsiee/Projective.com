@@ -49,11 +49,15 @@
 	font-size: 2.75rem;
 }
 
+/*
+ * The title register (§A.4): `--fw-medium`, never heavier — the step from the sentence below is carried
+ * by size and ink, not by weight.
+ */
 .ui-empty__title {
 	margin: 0;
 	font-family: var(--font-sans);
-	font-size: 1.0625rem;
-	font-weight: 600;
+	font-size: var(--text-lg);
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 }
 
@@ -64,6 +68,11 @@
 	font-size: 0.9375rem;
 	line-height: 1.5;
 	color: var(--text-secondary);
+}
+
+/* The optional body (a first run's short list): body text at the description's measure. */
+.ui-empty__body {
+	max-inline-size: var(--container-sm);
 }
 
 .ui-empty__actions {

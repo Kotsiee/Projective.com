@@ -38,6 +38,8 @@ const CONTEXTS: readonly BusinessRefusalContext[] = [
 	{ managesMembers: true },
 	{ business: "Probe Co", businessStatus: "draft" },
 	{ businessStatus: "archived" },
+	{ business: "Probe Co", businessStatus: "archived", ownsBusiness: true },
+	{ ownsBusiness: true },
 ];
 
 function assertPlain(text: string, where: string): void {
@@ -182,6 +184,16 @@ Deno.test("business_not_active asks for the one act the business's status needs,
 	// Unknown (the checkout reads no status) or anything else: both acts.
 	for (const businessStatus of [undefined, null, "active"]) {
 		assertEquals(ask({ businessStatus }), "Ask the owner to publish or restore it.");
+	}
+});
+
+Deno.test("business_not_active tells the owner the act itself, never to ask the owner (#248 (k))", () => {
+	const ask = BUSINESS_REFUSAL_COPY.business_not_active.ask;
+	assertEquals(ask({ businessStatus: "draft", ownsBusiness: true }), "Publish it first.");
+	assertEquals(ask({ businessStatus: "archived", ownsBusiness: true }), "Restore it first.");
+	assertEquals(ask({ ownsBusiness: true }), "Publish or restore it first.");
+	for (const businessStatus of [undefined, "draft", "archived"]) {
+		assert(!ask({ businessStatus, ownsBusiness: true }).includes("Ask the owner"));
 	}
 });
 

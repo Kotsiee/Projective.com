@@ -80,7 +80,7 @@ CREATE TYPE finance.deposit_interval AS ENUM ('weekly', 'monthly');
 CREATE TYPE finance.payout_mode      AS ENUM ('manual', 'scheduled_weekly', 'scheduled_monthly', 'threshold');
 CREATE TYPE finance.pot_purpose      AS ENUM ('tax', 'savings', 'goal', 'general');
 -- Vault governance
--- `approve_spend` added 2026-09-28 (Decision #122): deciding an over-limit spend request is its own
+-- `approve_spend` added 2026-09-28 (Decision #61): deciding an over-limit spend request is its own
 -- grant, because `manage_members` also carries `withdraw`. The whole array is a PROJECTION of
 -- org.workspace_capability (org.fn_sync_vault_permissions), never hand-maintained.
 CREATE TYPE finance.vault_capability AS ENUM ('view', 'add_funds', 'spend', 'distribute', 'withdraw', 'manage_members', 'manage_billing', 'approve_spend');

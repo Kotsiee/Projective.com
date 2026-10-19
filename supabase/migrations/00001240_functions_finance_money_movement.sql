@@ -974,6 +974,8 @@ $$;
 -- source must be an ACTIVE Stripe funding card belonging to the wallet's owner or to the caller
 -- personally; the rule charges in the wallet's own currency. The first charge is one interval from
 -- now — a rule created today is not a charge made today. `created_by` is stamped here and only here.
+-- An archived business's wallet takes no standing top-up (55000 `business_not_active:`, Decision
+-- #248 (k)); each run is re-checked when it falls due (finance.fn_deposit_charge_target).
 CREATE OR REPLACE FUNCTION finance.create_deposit_rule(
     p_wallet_id uuid,
     p_amount bigint,
@@ -1015,6 +1017,9 @@ BEGIN
         )
     ) THEN
         RAISE EXCEPTION 'auth: you can''t add funds to this wallet' USING ERRCODE = '42501';
+    END IF;
+    IF v_wallet.owner_type = 'business' THEN
+        PERFORM org.fn_assert_business_not_archived(v_wallet.owner_id);
     END IF;
     IF pg_catalog.upper(v_wallet.currency) <> v_currency THEN
         RAISE EXCEPTION 'currency: this wallet holds %', pg_catalog.upper(v_wallet.currency) USING ERRCODE = '22023';
@@ -1060,8 +1065,9 @@ $$;
 
 -- What a deposit rule's run would be charged to, re-authorised NOW (internal; revoked from every role).
 -- The rule's author is checked AS THEM (they may have lost the right to move this wallet's money), the
--- card must still be active and attached to a Stripe Customer. Exactly one of `refusal` or the two refs
--- is set; the refusal is the sentence the rule is paused with.
+-- card must still be active and attached to a Stripe Customer, and a business wallet's business must
+-- not be archived (Decision #248 (k) — nobody is charged for money it could not take in). Exactly one
+-- of `refusal` or the two refs is set; the refusal is the sentence the rule is paused with.
 CREATE OR REPLACE FUNCTION finance.fn_deposit_charge_target(
     p_rule finance.deposit_rules,
     OUT customer_ref text,
@@ -1097,6 +1103,12 @@ BEGIN
     PERFORM pg_catalog.set_config('request.jwt.claim.sub', COALESCE(v_prev_sub, ''), true);
     IF NOT v_allowed THEN
         refusal := 'Paused: the person who set this up can no longer add funds to this wallet.';
+        RETURN;
+    END IF;
+    IF v_wallet.owner_type = 'business' AND EXISTS (
+        SELECT 1 FROM org.business_profiles b WHERE b.id = v_wallet.owner_id AND b.status = 'archived'
+    ) THEN
+        refusal := 'Paused: this business is archived — restore it before money is added again.';
         RETURN;
     END IF;
 

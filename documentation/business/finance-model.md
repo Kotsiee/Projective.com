@@ -391,7 +391,7 @@ Governs shared wallets (Business / Team / Enterprise).
 
 - **Capability grants** (`finance.vault_permissions`, not a single role): `view` · `add_funds` ·
   `spend` · `distribute` · `withdraw` · `manage_members` · `manage_billing` · `approve_spend`.
-  Enforced in-DB by `finance.fn_has_vault_capability`. **Reconciled 2026-09-28 (Decision #122):** the
+  Enforced in-DB by `finance.fn_has_vault_capability`. **Reconciled 2026-09-28 (Decision #61):** the
   grants are a PROJECTION of the workspace capabilities (`org.workspace_capability` — contribute →
   `add_funds`, spend → `spend`, manage finances → `distribute`, withdraw → `withdraw`, approve spend →
   `approve_spend`, the owner → `manage_members` + `manage_billing`, and on a business a named

@@ -391,16 +391,20 @@ Deno.test("workspace styles: no four-sided inset ring on a card or row", () => {
 Deno.test("workspace styles: figure classes are tabular", () => {
 	const all = SHEETS.map((sheet) => sheet.css).join("\n");
 	const untabular = [
-		".wsp-card__stats",
-		".wsp-card__stat",
-		".wsp-card__stat-delta",
-		".wsp-split__pip",
-		".wsp-split__drift-text",
-		// Text that carries a count or an amount: the lane's queue count, a role's member count, a
-		// band's live queue count ("2 requests waiting") and a feed line's sum. (A projects-preview
-		// row's facts are a MetaLine, whose figures set their own `tabular-nums`.)
+		// The roster card's figure row and its setup percentage, and the roster's live count (R1).
+		".wsp-card__figure",
+		".wsp-card__figure-value",
+		".wsp-card__setup-text",
+		".wsp-roster__count",
+		// The payout preview's rate and figure columns, and the payout notices' percentages.
+		".wsp-ledger__rate",
+		".wsp-ledger__amount",
+		".wsp-payout__notice.ui-inline-notice",
+		// Text that carries a count or an amount: the lane's queue count, a band's live queue count
+		// ("2 requests waiting") and a feed line's sum. (A projects-preview row's facts and the roles
+		// page head are MetaLines, and a role's member count is the PermissionMatrix's column meta —
+		// each sets its own `tabular-nums`.)
 		".wsp-lane__navcount",
-		".wsp-matrix__rownote",
 		".wsp-band__title",
 		".wsp-activity__text",
 		// A metric tile's caption: "of 50 this week", "1 invitation out".
@@ -434,12 +438,41 @@ Deno.test("workspace styles: the dead rules stay deleted", () => {
 		),
 		"a deleted dead selector is back:",
 	);
+	// The team split bar before Teams C4 — the feature's own bar, legend, drift box and quick-split
+	// chips, replaced by the ui SplitBar, a MetaLine legend and an InlineNotice — and the spend verdict
+	// box (TEAMS_AUDIT D12).
+	assertNone(
+		offences(
+			/\.wsp-split\b|\.wsp-split__|\.wsp-verdict\b|\[data-stake\b|--wsp-stake\b|--wsp-held-hatch\b/,
+		),
+		"a deleted dead selector is back:",
+	);
 	// The header band and footer rig before Teams L2: the hand-rolled tab strip, the Popover menu and
 	// the rig's ghost-button extras — and the L2 review's folded-label and painted-toggle overrides of
 	// the shared Button, replaced by two presentations and Button's own engaged state.
 	assertNone(
 		offences(
 			/\.wsp-headerband__(tab|identity|name|handle|badge|divider|controls|icon|panel)\b|\.wsp-footerrig__(more|menu|note|nudge|fold|toggle)\b/,
+		),
+		"a deleted dead selector is back:",
+	);
+	// The roles matrix before Teams C3: the hand-rolled grid, its cells, column buttons, legend marks
+	// and hatch gradients, the inline composer, its error line and the native select's class, and
+	// every token only they read — replaced by the ui PermissionMatrix, the RoleEditor dialog, an
+	// InlineNotice and ui fields.
+	assertNone(
+		offences(
+			/\.wsp-matrix\b|\.wsp-matrix__|\.wsp-roleeditor\b|\.wsp-roleeditor__|\.wsp-select\b|\.wsp-capchip\b|\.wsp-create__error\b|--wsp-(allowed|conditional|denied|locked|hatch|matrix|grant|revoke|consequential)\b|--wsp-(allowed|conditional|denied|locked|hatch|matrix)-|repeating-linear-gradient/,
+		),
+		"a deleted dead selector is back:",
+	);
+	// The roster before Teams R1: the hand-rolled tab strip, the role chip's flag stack, the three-stat
+	// grid, the face stack, the hand-drawn meter fill and kebab, and the hand-built empty state — each
+	// replaced by a ui primitive (TabMenu, MetaLine, ProgressBar, Button, EmptyState) — and the acting
+	// role chip, the table's quiet acting chip and the raw Try again, whose last consumers R1 removed.
+	assertNone(
+		offences(
+			/\.wsp-roster__(tab|tab-count|pitch|tools|section)\b|\.wsp-card__(flags|dot|kebab|stats?|stat-label|stat-value|stat-delta|faces?|more|members|membercount|setup-fill|name-text)\b|\.wsp-empty\b|--wsp-card-min\b|\.wsp-chip--acting\b|\.wsp-actingchip--quiet\b|\.wsp-error__retry\b/,
 		),
 		"a deleted dead selector is back:",
 	);

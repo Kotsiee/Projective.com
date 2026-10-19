@@ -8,9 +8,15 @@ import { stub } from "@std/testing/mock";
 import type { WorkspaceFinance } from "@projective/types/workspace";
 import { detailIo, readDetail } from "./live-detail.ts";
 import type { LiveActor } from "./live-support.ts";
-import type { RawDetail } from "./mappers.ts";
+import { publishedFact, type RawDetail } from "./mappers.ts";
 import { inviteAnswerRefusal, refusalFrom, sentence, splitRefusal } from "./live-support.ts";
-import { memberPatch, spendPatch, splitRuleArgs, withdrawSpend } from "./live-writes.ts";
+import {
+	memberPatch,
+	spendPatch,
+	splitRuleArgs,
+	statusRefusal,
+	withdrawSpend,
+} from "./live-writes.ts";
 import {
 	buildPayoutPolicy,
 	buildSpendPolicy,
@@ -1450,6 +1456,117 @@ Deno.test("readDetail (team): no business blocks", async () => {
 	const { detail } = await readStubbed(rawTeamDetail(true));
 	assert(detail);
 	assertEquals([detail.moneyTiles, detail.viewerCan, detail.kyb], [[], null, null]);
+});
+
+Deno.test("readDetail (team): seats map as the read gives them; a drifted or absent shape is null", async () => {
+	const capped = await readStubbed({ ...rawTeamDetail(false), seats: { used: 5, limit: 15 } });
+	assertEquals(capped.detail?.seats, { used: 5, limit: 15 });
+	const unlimited = await readStubbed({ ...rawTeamDetail(false), seats: { used: 3, limit: null } });
+	assertEquals(unlimited.detail?.seats, { used: 3, limit: null });
+	const drifted = await readStubbed({ ...rawTeamDetail(false), seats: { used: "five" } });
+	assertStrictEquals(drifted.detail?.seats, null);
+	const absent = await readStubbed(rawTeamDetail(false));
+	assertStrictEquals(absent.detail?.seats, null);
+});
+
+Deno.test("readDetail (team): the archive blockers ride the read, so Settings shows them first (C6)", async () => {
+	const raw: RawDetail = {
+		...rawTeamDetail(true),
+		archive_blockers: [
+			{ code: "escrow_held", count: 1 },
+			{ code: "live_assignments", count: 2 },
+			{ code: "not_a_blocker", count: 1 },
+		],
+	};
+	const { detail } = await readStubbed(raw);
+	assert(detail);
+	// A drifted row is dropped rather than named.
+	assertEquals(detail.archiveBlockers, [
+		{ code: "escrow_held", count: 1 },
+		{ code: "live_assignments", count: 2 },
+	]);
+	assertStrictEquals(detail.restoreTarget, null);
+});
+
+Deno.test("readDetail: the restore target is read only while archived; the publish step is the roster's", async () => {
+	const archived = (target: unknown) => ({
+		...rawTeamDetail(true),
+		entity_status: "archived",
+		restore_target: target,
+	});
+	const published = await readStubbed(archived("active"));
+	assertEquals(published.detail?.restoreTarget, "active");
+	assertEquals(published.detail?.setup.find((s) => s.id === "publish")?.done, true);
+
+	// Never published: a restore lands on draft, but while archived the step reads as the roster card
+	// reads it (`publishedFact` — it has left draft), so the Overview is never handed a Publish the
+	// status door would refuse; Settings' Restore is the way back.
+	const never = await readStubbed(archived("draft"));
+	assertEquals(never.detail?.restoreTarget, "draft");
+	assertEquals(never.detail?.setup.find((s) => s.id === "publish")?.done, true);
+	assertEquals(
+		(["draft", "active", "archived"] as const).map(publishedFact),
+		[false, true, true],
+	);
+
+	// Neither target — no guess.
+	assertStrictEquals((await readStubbed(archived("live"))).detail?.restoreTarget, null);
+	// Not archived — no target, whatever the read says.
+	const active = await readStubbed({ ...rawTeamDetail(true), restore_target: "draft" });
+	assertStrictEquals(active.detail?.restoreTarget, null);
+});
+
+Deno.test("statusRefusal: a team's two archive refusals reach Settings as typed codes", () => {
+	const escrow = statusRefusal({
+		code: "55000",
+		message: "status: money is held in escrow for this team — let it release first",
+		details: JSON.stringify({
+			blockers: [{ code: "escrow_held", count: 1 }, { code: "live_assignments", count: 1 }],
+		}),
+	});
+	assertEquals([escrow.status, escrow.message], [
+		409,
+		"Money is held in escrow for this team — let it release first.",
+	]);
+	assertEquals(escrow.details, { reason: "escrow_held", blockers: "escrow_held,live_assignments" });
+
+	// A database without the DETAIL still names the blocker from its sentence.
+	const live = statusRefusal({
+		code: "55000",
+		message: "status: this team is still assigned to live work — finish or hand it back first",
+	});
+	assertEquals(live.details, { reason: "live_assignments", blockers: "live_assignments" });
+
+	// A business's coded refusal keeps refusalFrom's shape.
+	const business = statusRefusal({
+		code: "55000",
+		message: "wallet_balance: the business wallet still holds money — withdraw or move it first",
+		details: JSON.stringify({ blockers: [{ code: "wallet_balance", count: 1 }] }),
+	});
+	assertEquals(business.details, { reason: "wallet_balance", blockers: "wallet_balance" });
+
+	// Any other status refusal is refusalFrom's.
+	const other = statusRefusal({
+		code: "22023",
+		message: "status: a published team cannot go back to draft",
+	});
+	assertEquals([other.status, other.details], [422, undefined]);
+});
+
+Deno.test("statusRefusal: a restore that names the wrong target says where it lands", () => {
+	const res = statusRefusal({
+		code: "22023",
+		message:
+			"restore_target: this team was never published, so it is restored as a draft — publish it from there",
+		details: JSON.stringify({ target: "draft" }),
+	});
+	assertEquals(res.status, 409);
+	assertEquals(res.details, { reason: "restore_target", target: "draft" });
+	assertEquals(res.errors, undefined, "a lifecycle refusal keys no field");
+	assertEquals(
+		statusRefusal({ code: "22023", message: "restore_target: x", details: "{}" }).details,
+		{ reason: "restore_target" },
+	);
 });
 
 // #endregion

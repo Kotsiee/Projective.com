@@ -170,6 +170,21 @@ Deno.test("console route: a module the viewer may not open answers 303 and drops
 	});
 });
 
+Deno.test("console route: Payouts opens on manage_finances alone; anybody else is 303'd (Teams C4)", async () => {
+	assertEquals(await answer("team", `/teams/${HANDLE}/payouts`, MEMBER), {
+		status: 303,
+		location: `/teams/${HANDLE}`,
+	});
+	assertEquals(
+		await answer("team", `/teams/${HANDLE}/payouts`, ["spend_funds", "withdraw_funds"]),
+		{
+			status: 303,
+			location: `/teams/${HANDLE}`,
+		},
+	);
+	assertEquals(await answer("team", `/teams/${HANDLE}/payouts`, ["manage_finances"]), null);
+});
+
 Deno.test("console route: a uuid AND a withheld module answer ONE 308 to the allowed module", async () => {
 	assertEquals(await answer("team", `/teams/${UUID}/roles?view=matrix`, MEMBER), {
 		status: 308,

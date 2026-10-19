@@ -10,9 +10,11 @@ import { isPeopleReading, MEMBERS_CHART, MEMBERS_PEOPLE } from "./sub-views.ts";
  * The leading side is the shared zoom (the roster, and the Members People reading) with the Org chart
  * toggle riding beside it — and the toggle alone on the chart, which has no density to zoom. The
  * trailing side is the Button Interaction Matrix (§B.8.1) in one row:
- * tier-4 utilities (New, Invite, Settings), then the policy editor's Discard (tier 5) and Save
- * (tier 3) — both present ONLY while the open editor holds unsaved changes, so the rig never shows a
- * Save that has nothing to save, and Save is the rig's one filled control.
+ * tier-4 utilities (New, Invite, Settings), then the open editor's Discard (tier 5) and Save
+ * (tier 3) — both present ONLY while the editor holds unsaved changes, so the rig never shows a
+ * Save that has nothing to save, and Save is the rig's one filled control. The editors are the money
+ * policies (Payouts, Spend, Billing), a team's Settings name and visibility (Teams C6) and the Roles
+ * matrix's custom-role columns (Teams C3).
  *
  * A navigation is a link (the rig renders a ui `Link`), never a button that assigns `location`; an
  * action that opens something on this page is a button.
@@ -25,8 +27,21 @@ import { isPeopleReading, MEMBERS_CHART, MEMBERS_PEOPLE } from "./sub-views.ts";
 /** The lifecycle of a policy save, as the rig reports it. */
 export type SaveState = "idle" | "saving" | "saved" | "error";
 
-/** The modules whose body is a policy editor answering the rig's Save and Discard. */
+/** The modules whose body is a money-policy editor answering the rig's Save and Discard. */
 export const POLICY_MODULES: readonly string[] = ["payouts", "spend", "billing"];
+
+/**
+ * The module whose body is the identity editor (name and visibility, `org.update_workspace`) answering
+ * the same Save and Discard — a team's Settings (Teams C6), for an `edit_profile` holder.
+ */
+export const PROFILE_EDITOR_MODULE = "settings";
+
+/**
+ * The module whose body is the custom-role editor (the `PermissionMatrix`'s custom-role columns,
+ * `org.upsert_workspace_role`) answering the same Save and Discard — Roles (Teams C3), for a
+ * `manage_roles` holder, on both kinds: a business's roles share the screen (Decision #61).
+ */
+export const ROLES_EDITOR_MODULE = "roles";
 
 /** The rig's inputs. Capabilities are the server-resolved ones; the rig decides PRESENCE from them. */
 export interface RigInput {
@@ -39,9 +54,18 @@ export interface RigInput {
 	view: string | null;
 	/** Whether the viewer may create another entity of this kind (the roster). */
 	canCreate: boolean;
+	/**
+	 * The roster's first run (`roster-model.ts` `isFirstRun`): no entity of this kind and nothing to
+	 * answer. The canvas's empty state then carries the page's one create, so the rig offers no New.
+	 */
+	firstRun?: boolean;
 	canInvite: boolean;
 	canManageMoney: boolean;
 	canManageSettings: boolean;
+	/** Whether the viewer may edit the entity's identity (`edit_profile`) — a team's Settings' Save. */
+	canEditProfile: boolean;
+	/** Whether the viewer may edit custom roles (`manage_roles`) — the Roles matrix's Save. */
+	canManageRoles?: boolean;
 	/** Whether the open policy editor holds unsaved changes (`policyDirty`). */
 	dirty: boolean;
 	saveState: SaveState;
@@ -64,7 +88,7 @@ export interface RigStatus {
 
 /**
  * What the trailing side holds, which is how much room its words need: `create` (the roster's one
- * New), `utilities` (Invite and Settings), `editor` (a policy editor at rest: its status line — empty,
+ * New, absent in first run and when the plan admits none), `utilities` (Invite and Settings), `editor` (a policy editor at rest: its status line — empty,
  * or "Saved" — then the utilities) or `commit` (the editor with unsaved changes: the status line, the
  * utilities, Discard and Save). The stylesheet folds the utilities to their glyphs below each one's
  * own width, asked of the trailing side's own box, so a docked lane that leaves the rig narrow folds
@@ -101,6 +125,18 @@ export interface RigModel {
 // #endregion
 
 // #region Composition
+/**
+ * Whether a console module's screen mounts the invite modal, so an Invite there opens in place: the
+ * Members screen (and its invitation queue), and a team's Projects, whose allowance band offers Invite
+ * member to a team short of members (Teams C5). A business's Projects hands off and mounts none.
+ * Everywhere else an Invite is a link that lands on Members with the modal open. The footer rig and the
+ * lane's create action both ask this, so the controls on one page never disagree.
+ */
+export function inviteOpensInPlace(kind: WorkspaceKind, module: string | null): boolean {
+	return module === "members" || module === "invitations" ||
+		(kind === "team" && module === "projects");
+}
+
 /** The footer rig for what the viewer is looking at. Total: every input yields a model. */
 export function rigModel(input: RigInput): RigModel {
 	const copy = kindCopy(input.kind);
@@ -111,7 +147,8 @@ export function rigModel(input: RigInput): RigModel {
 			chart: null,
 			statusLine: false,
 			status: null,
-			actions: input.canCreate
+			// In first run the canvas's tier-2 create is the page's one; a New here would be a second.
+			actions: input.canCreate && !input.firstRun
 				? [{ key: "create", control: "button", tier: 4, label: `New ${copy.noun}` }]
 				: [],
 			holds: "create",
@@ -120,15 +157,13 @@ export function rigModel(input: RigInput): RigModel {
 
 	const people = input.module === "members" && isPeopleReading(input.view);
 	const charted = people && input.view === MEMBERS_CHART;
-	const editing = input.canManageMoney && POLICY_MODULES.includes(input.module ?? "");
+	const editing = editorOpen(input);
 	const pending = editing && input.dirty;
 	const actions: RigAction[] = [];
 
 	if (input.canInvite) {
-		// The invite modal is mounted by the Members screen, so there it opens in place; everywhere else
-		// the action is a link that lands on Members with the modal open.
 		actions.push(
-			input.module === "members" || input.module === "invitations"
+			inviteOpensInPlace(input.kind, input.module)
 				? { key: "invite", control: "button", tier: 4, label: "Invite members" }
 				: {
 					key: "invite",
@@ -170,6 +205,22 @@ export function rigModel(input: RigInput): RigModel {
 		actions,
 		holds: pending ? "commit" : editing ? "editor" : "utilities",
 	};
+}
+
+/**
+ * Whether the open module's body is an editor this viewer may save: a money-policy editor for the
+ * money right, a team's Settings identity editor for `edit_profile`, the Roles matrix for
+ * `manage_roles`. Only a team's Settings mounts the identity editor (`TeamSettingsScreen`); a
+ * business's is still a placeholder, so its rig stays the utilities. Both kinds mount the Roles
+ * matrix (`RolesMatrix`).
+ */
+export function editorOpen(
+	input: Pick<RigInput, "kind" | "module" | "canManageMoney" | "canEditProfile" | "canManageRoles">,
+): boolean {
+	const module = input.module ?? "";
+	return (input.canManageMoney && POLICY_MODULES.includes(module)) ||
+		(input.kind === "team" && input.canEditProfile && module === PROFILE_EDITOR_MODULE) ||
+		(input.canManageRoles === true && module === ROLES_EDITOR_MODULE);
 }
 
 /** What the policy editor's save state says, or `null` when there is nothing to say. */

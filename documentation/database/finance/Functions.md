@@ -609,7 +609,9 @@ finance.simulate_wallet_transaction(
    `false` all mean refuse).
 2. `auth.uid()` is present, or `42501`.
 3. `finance.fn_can_move_wallet_funds` holds on **every** wallet touched — source **and**
-   destination.
+   destination. A destination owned by an **archived** business is refused `55000
+   business_not_active` (`org.fn_assert_business_not_archived`, Decision #248 (k)) — a simulation
+   never reaches a state the real doors refuse.
 4. `EXECUTE` is `authenticated` only (never `anon`; deliberately not `service_role`).
 
 **Direction matrix** — which side of a movement a type touches is not a caller decision:
@@ -837,7 +839,10 @@ only for a member holding `withdraw`; it lands only in the caller's own personal
 are a member of (`fn_owner_visible`). Same currency only (`PX409` — a transfer is not a conversion). A
 business source passes `fn_assert_business_spend(…, 'transfers', to_wallet)` — KYB (`PK403`), the
 mover's envelope and the approval threshold (`PA403`); a team or enterprise vault source clears the
-member's spending limit (`PA403`); the source must hold the amount (`PF402`). The ledger lines are `transfer_out` / `transfer_in`, each
+member's spending limit (`PA403`); the source must hold the amount (`PF402`). Money landing in a
+business wallet is a contribution, refused when the business is **archived** (`55000
+business_not_active`, `org.fn_assert_business_not_archived`, checked after the landing check —
+Decision #248 (k)); a draft's still lands. The ledger lines are `transfer_out` / `transfer_in`, each
 pointing at the OTHER wallet (`ref_table = 'wallets'`), and a vault on either side gets a
 `finance.ledger_audit` row carrying the note. Returns `{ amount_minor, currency, from_wallet,
 to_wallet, replayed }`.
@@ -920,7 +925,7 @@ hold's spend gate redeems the approval exactly once. Never raises.
 
 ## 🏢 Workspace money governance (`00001210` §13)
 
-The write side of the `/teams` and `/businesses` Money modules (root `CLAUDE.md` §8 Decision #122).
+The write side of the `/teams` and `/businesses` Money modules (root `CLAUDE.md` §8 Decision #61).
 Authority is the WORKSPACE capability `manage_finances` (`org.fn_member_can`) — the same answer the
 console renders from — and the vault projection the money functions enforce is re-synced after every
 change. All four are `SECURITY DEFINER`, `search_path = ''`, `EXECUTE` to `authenticated` only
@@ -961,15 +966,29 @@ Under `pg_advisory_xact_lock(hashtext('split:' || team))` it retires the active 
 `previous_rule_id`, the cuts) and returns the new rule's id. `POST /api/workspace/payout` calls it
 before `save_team_split` when the request carries a `rule`. Probe: `supabase/probes/save_split_rule.sql`.
 
-### `finance.preview_team_split(p_team_id)` → jsonb
+### `finance.preview_team_split(p_team_id, p_gross_minor = NULL)` → jsonb
 
-What the team's NEXT release will pay, by `fn_team_split_plan`. Any active member may read it. The
-honest gross is the team's **oldest escrow still held** (principal + deadline bonus); the fee is that
-escrow's payer's rate, `fn_escrow_fee_bp(payer_business_id, payer_user_id)` (so a negotiated rate
-shows), on the principal, truncated — exactly what `fn_release_ticket_escrow` will charge (Decision
-#187). A team with nothing held has no projection — `gross_minor`, `currency`, `fee_minor` and
-`fee_bp` are `NULL` (never an invented figure) and the plan is the zero plan. Returns
-`{escrow_id?, gross_minor, currency, fee_minor, fee_bp, plan}`.
+What a team's release will pay, by `fn_team_split_plan` — the plan the release itself runs. Either
+answer carries the split rule (vault and finder cuts, the finder) and every stake, which Decision
+#233 (b) answers only to a `manage_finances` holder: a caller who is not an active member is refused
+`42501 workspace:`, a member without `manage_finances` `42501 payout:`. The detail's payout block,
+its other caller, is built for `manage_finances` holders alone. Returns
+`{escrow_id, gross_minor, currency, fee_minor, fee_bp, finder_bp, plan}`; `finder_bp` is the active
+`finders_fee` rule's cut (`NULL` under any other rule), carried so every cut can be labelled with its
+rate.
+
+- **No amount** (the console detail's `payout.preview`): the honest gross is the team's **oldest
+  escrow still held** (principal + deadline bonus); the fee is that escrow's payer's rate,
+  `fn_escrow_fee_bp(payer_business_id, payer_user_id)` (so a negotiated rate shows), on the principal,
+  truncated — exactly what `fn_release_ticket_escrow` will charge (Decision #187). A team with nothing
+  held has no projection — `gross_minor`, `currency`, `fee_minor` and `fee_bp` are `NULL` (never an
+  invented figure) and the plan is the zero plan.
+- **`p_gross_minor`** (1 … 10^12 minor units, `22023 gross_minor:` otherwise — the Payouts module's
+  Preview, `GET /api/workspace/payout/preview`, Teams C4): a release of THAT size, at the platform's
+  standard fee rate (`fn_escrow_fee_bp(NULL, NULL)` — there is no payer, so no negotiated rate),
+  truncated, then the team's stored rule and stakes. `escrow_id` and `currency` are `NULL` (the
+  caller prices in the vault's currency). Fee + finder + vault cut + Σ members + dust = the gross,
+  exactly. Probe: `supabase/probes/payout_preview_amount.sql`.
 
 ### `finance.save_spend_policy(p_business_id, p_patch)` → `{business_id, currency}`
 
@@ -1172,10 +1191,11 @@ redelivered event returns the first outcome (`fn_stripe_event_replay`) and moves
 `unmatched` event (no row bound to it, or amounts that disagree) is recorded for reconciliation and
 never guessed at — except a card SETTLEMENT, which is acknowledged only with its ledger row
 (Decision #200): an unmatched `payment_intent.succeeded` releases its claim
-(`fn_release_stripe_event`) so Stripe's retry is processed, and the webhook answers 5xx. The one
-settlement acknowledged WITHOUT a ledger row is a deterministic mismatch (amount / currency that can
-never match the payment): it is completed with `reconciliation = 'settlement_mismatch'`, the webhook
-answers 2xx, and a human reconciles it from `finance.v_ops_unledgered_payments` (see
+(`fn_release_stripe_event`) so Stripe's retry is processed, and the webhook answers 5xx. The two
+settlements acknowledged WITHOUT a ledger row are a deterministic mismatch (amount / currency that can
+never match the payment, `reconciliation = 'settlement_mismatch'`) and a card captured for a business
+that is now archived (`reconciliation = 'business_archived'`, Decision #248 (k)): each is completed,
+the webhook answers 2xx, and a human reconciles it from `finance.v_ops_unledgered_payments` (see
 `settle_card_payment` below).
 
 ### Event bookkeeping (internal)
@@ -1196,10 +1216,16 @@ answers 2xx, and a human reconciles it from `finance.v_ops_unledgered_payments` 
 Opens (or replays) one `finance.inbound_payments` row and registers the attempt key
 (`card_payment:<uid>`, 7 days, hashed with the request — the same key with a different request is
 `22023`, a key still in flight for another request is `PX409`). A repeat of the same request returns
-the existing row with `replayed: true`.
+the existing row with `replayed: true` — except that a replay a card could still pay (the row is
+`requires_payment` or `failed`, either purpose) into the wallet of a business archived since it began
+is refused `55000 business_not_active:` as a new attempt is (Decision #248 (k)), so a replay charges
+nobody for money the business cannot take in.
 
 - **`wallet_topup`** — the caller's own wallet or a vault they may `add_funds` to; the currency must be
-  the wallet's; the amount is the caller's.
+  the wallet's; the amount is the caller's. A business wallet whose business is **archived** is
+  refused `55000 business_not_active: this business is archived — restore it first`
+  (`org.fn_assert_business_not_archived`, after the `add_funds` check — Decision #248 (k)); a draft's
+  is not (#236 (f)). A card checkout's top-up of a business wallet is this branch too.
 - **`escrow_lock`** — the caller must pass `projects.fn_can_fund_project`, the funder predicate
   `fund_stage` asks (`PK403 not_funder`, BB2; it replaced a `has_project_access` + payer check); the
   amount is **never the caller's**: it is `projects.fn_stage_funding_need`'s
@@ -1291,9 +1317,19 @@ is COMPLETED with `outcome = 'unmatched'`, `reconciliation = 'settlement_mismatc
 `transaction_id = NULL`, `amount_received_cents`, `currency_received`; ONE `error` row is written to
 `ops.log_entries` (`scope = 'finance.settle_card_payment'`, `client_id = 'stripe:<evt_id>'`, the
 figures in `data`; guarded so nothing writes it twice) plus a WARNING; nothing is credited and the
-payment stays `processing`; `finance.v_ops_unledgered_payments` lists it as `settlement_mismatch`
-until a human settles or closes the payment. A redelivery of that event replays the reconciliation
-outcome (still `reconciliation = 'settlement_mismatch'`) and writes nothing. A replayed event otherwise
+payment keeps its unsettled status — `requires_payment` (a browser top-up or lock), `processing` (a
+scheduled deposit, the only payment `bind_scheduled_payment` moves there) or `failed` (a declined
+attempt, not final); `finance.v_ops_unledgered_payments` lists it as `settlement_mismatch` in any of
+those until a human settles or closes the payment. A redelivery of that event replays the reconciliation
+outcome (still `reconciliation = 'settlement_mismatch'`) and writes nothing. **A card captured for an
+archived business** (archived after the payment began — either purpose; Decision #248 (k)) takes the
+same path, checked after the mismatch and before the credit with the business row locked `FOR SHARE`:
+nothing is credited — an archived business takes no money in, and the money is never parked silently
+in a wallet nothing can spend from — the claim is completed with `reconciliation =
+'business_archived'` (and `payment_id`, `amount_received_cents`, `currency_received`), one ops error
+row names the business, the payment keeps its unsettled status (as above), a redelivery replays it, and
+the ops view lists it as `business_archived` until a human refunds it or settles it by hand once the business is restored
+(probe `business_archived_topup.sql`). A replayed event otherwise
 answers with the payment's `transaction_id`; a completed claim whose payment has no ledger row and
 which is NOT a reconciliation is released and processed again (the payment's own status is what stops
 a second credit). Every other acknowledged outcome carries `transaction_id`, plus `status` and
@@ -1479,8 +1515,14 @@ Proven by `supabase/probes/pending_window.sql`.
 ### Recurring deposits
 
 - `finance.create_deposit_rule(p_wallet_id, p_amount, p_currency, p_interval, p_source_method_id)` (user)
-  — `add_funds` on the wallet; an ACTIVE Stripe funding card of the wallet's owner or the caller; the
-  wallet's currency; first charge one interval from now; stamps `created_by`.
+  — `add_funds` on the wallet; not an **archived** business's wallet (`55000 business_not_active`,
+  `org.fn_assert_business_not_archived`, Decision #248 (k) — a draft's is fine); an ACTIVE Stripe
+  funding card of the wallet's owner or the caller; the wallet's currency; first charge one interval
+  from now; stamps `created_by`.
+- `finance.fn_deposit_charge_target(p_rule)` (internal) — what a due run is charged to, re-authorised
+  now: the author AS THEM, the card still active on a Stripe Customer, and — for a business wallet —
+  the business not archived (`refusal` "Paused: this business is archived — …", Decision #248 (k)), so
+  `claim_due_deposit_rules` pauses that rule (or cancels an unbound retry) and charges nothing.
 - `finance.claim_due_deposit_rules(p_limit)` (processor, the scheduler) — `FOR UPDATE SKIP LOCKED`;
   re-authorises the author AS THEM; records the run as an inbound payment (key =
   `deposit:<rule>:<period>`, so a period is charged once); advances past `now()` — missed periods are

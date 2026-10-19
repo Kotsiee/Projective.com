@@ -66,7 +66,18 @@ export interface CreateCopy {
 	intro: string;
 	/** A placeholder name in the kind's register. */
 	namePlaceholder: string;
+	/** The handle field's placeholder — the name's own handle, so the two placeholders agree. */
+	handlePlaceholder: string;
 }
+
+/**
+ * The placeholders per kind. A business's is deliberately NEUTRAL ("Acme Studio", BU1) — a
+ * real-sounding firm in a hiring dialog reads like a suggestion, or like somebody else's company.
+ */
+const PLACEHOLDERS: Record<WorkspaceKind, { name: string; handle: string }> = {
+	team: { name: "Northern Grid Collective", handle: "northern-grid" },
+	business: { name: "Acme Studio", handle: "acme-studio" },
+};
 
 /** The dialog's copy. In `choice` mode the title names both kinds; the commit always names one. */
 export function createCopy(kind: WorkspaceKind, mode: CreateKindMode): CreateCopy {
@@ -76,7 +87,8 @@ export function createCopy(kind: WorkspaceKind, mode: CreateKindMode): CreateCop
 		submit: `Create ${copy.noun}`,
 		submitting: "Creating…",
 		intro: `${copy.pitch} It starts as a draft — you finish setting it up inside.`,
-		namePlaceholder: kind === "team" ? "Northern Grid Collective" : "Halliwell Estates",
+		namePlaceholder: PLACEHOLDERS[kind].name,
+		handlePlaceholder: PLACEHOLDERS[kind].handle,
 	};
 }
 // #endregion

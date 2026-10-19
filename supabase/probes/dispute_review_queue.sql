@@ -101,7 +101,9 @@ BEGIN
       FROM projects.projects p JOIN projects.project_stages s ON s.project_id = p.id
      WHERE p.owner_user_id IS NOT NULL
      ORDER BY p.id, s.id LIMIT 1;
-    SELECT u.user_id INTO v_a FROM org.users_public u WHERE u.user_id <> v_host ORDER BY u.user_id LIMIT 1;
+    -- The parties are never operators (the seed carries one, rosalindqvist); the probe makes its own.
+    SELECT u.user_id INTO v_a FROM org.users_public u WHERE u.user_id <> v_host
+       AND NOT EXISTS (SELECT 1 FROM ops.admin_users au WHERE au.user_id = u.user_id) ORDER BY u.user_id LIMIT 1;
     SELECT u.user_id INTO v_op FROM org.users_public u WHERE u.user_id NOT IN (v_host, v_a)
        AND NOT EXISTS (SELECT 1 FROM org.team_members tm WHERE tm.user_id = u.user_id) ORDER BY u.user_id LIMIT 1;
     IF v_op IS NULL THEN
@@ -260,12 +262,18 @@ BEGIN
                               AND l.scope = 'finance.sweep_disputes'
                               AND l.data ->> 'dispute_id' = v_id::text) = 1,
         '4c one ops alert row');
+    -- Every operator is told once — the probe's own and any the seed carries (rosalindqvist) — and
+    -- nobody who is not one.
     PERFORM pg_temp.check((SELECT count(*) FROM comms.notifications n
                             WHERE n.entity_id = v_id AND n.type = 'dispute.review_overdue' AND n.user_id = v_op) = 1
+                          AND (SELECT count(*) FROM comms.notifications n
+                                WHERE n.entity_id = v_id AND n.type = 'dispute.review_overdue')
+                              = (SELECT count(*) FROM ops.admin_users)
                           AND NOT EXISTS (SELECT 1 FROM comms.notifications n
                                            WHERE n.entity_id = v_id AND n.type = 'dispute.review_overdue'
-                                             AND n.user_id <> v_op),
-        '4d the operator is told, nobody else');
+                                             AND NOT EXISTS (SELECT 1 FROM ops.admin_users au
+                                                              WHERE au.user_id = n.user_id)),
+        '4d every operator is told once, nobody else');
     PERFORM pg_temp.check((SELECT review_alerted_at FROM finance.disputes WHERE id = v_id) = now(),
         '4e review_alerted_at stamped');
 

@@ -114,9 +114,14 @@ export interface HeaderBandInput {
 	/**
 	 * A business's server answer to "may the viewer archive it now" (`WorkspaceDetail.viewerCan.archive`:
 	 * `archive_entity`, not archived, and no archive blocker). `null`/absent for a team, whose rule is
-	 * the capability and the status alone.
+	 * the capability, the status and {@link archiveBlocked}.
 	 */
 	viewerCanArchive?: boolean | null;
+	/**
+	 * Whether the read lists anything that would refuse an archive now (`WorkspaceDetail.archiveBlockers`
+	 * non-empty, Teams C6) — Archive… is then withheld, and Settings names what to clear instead.
+	 */
+	archiveBlocked?: boolean;
 	/** The module's sub-views for this viewer (`subViewsFor`). */
 	subViews: readonly SubView[];
 	/** The current sub-view, or `null` when the module has none. */
@@ -177,11 +182,13 @@ export function headerBand(input: HeaderBandInput): HeaderBandModel {
 /**
  * Whether Archive… is offered. A business asks the server, which already weighs the archive blockers
  * (a wallet balance, a held escrow) — offering a confirm the write door will refuse would promise
- * something that cannot happen. A team's rule is `archive_entity` on an entity not yet archived.
+ * something that cannot happen. A team's rule is `archive_entity` on an entity not yet archived, with
+ * nothing in the read's blocker list (a held escrow, a live assignment — Teams C6).
  */
 function canArchive(input: HeaderBandInput): boolean {
 	if (input.kind === "business") return input.viewerCanArchive === true;
-	return input.capabilities.includes("archive_entity") && input.status !== "archived";
+	return input.capabilities.includes("archive_entity") && input.status !== "archived" &&
+		input.archiveBlocked !== true;
 }
 
 /**
