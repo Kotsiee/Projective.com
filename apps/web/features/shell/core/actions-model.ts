@@ -1,7 +1,7 @@
 import type { UserContext } from "@projective/types/auth";
 import { consoleHref } from "@projective/types/catalogue";
 import type { IconName } from "./nav-icon-names.ts";
-import { canUseTeams, isRestrictedPath } from "./restricted-surfaces.ts";
+import { canUseTeams, isRestrictedHref } from "./restricted-surfaces.ts";
 import { canCreateBusiness } from "./account-facts.ts";
 
 /**
@@ -12,6 +12,15 @@ import { canCreateBusiness } from "./account-facts.ts";
  */
 
 // #region Create menu
+/**
+ * Where "create a project" leads from the chrome: `/projects?create=1`, the project Quick-Init modal
+ * on the feed, rather than a create ROUTE. The lane island opens the modal from this parameter and
+ * strips it. There is no `/projects/new` — the segment would fall into `[projectSlug]`, resolve
+ * nothing, and render "not found". The Create menu's first entry and the BottomNav's Create
+ * (`BOTTOM_NAV_CREATE_HREF`) are both this one value.
+ */
+export const PROJECT_CREATE_HREF = "/projects?create=1";
+
 /** A quick-create option in the header Create dropdown. */
 export interface CreateOption {
 	/** Stable key (menu item id). */
@@ -47,11 +56,7 @@ export interface CreateOption {
 export function createMenuOptions(context: UserContext): CreateOption[] {
 	const { isFreelancer, contextType } = context;
 	const options: Array<CreateOption | null> = [
-		// `/projects?create=1` rather than a create ROUTE: project creation is a Quick-Init modal on the
-		// feed, and the lane island opens it from this parameter. There is no `/projects/new` — the
-		// segment would fall into `[projectId]`, resolve nothing, and render "not found" from the global
-		// header of every authenticated route.
-		{ key: "project", label: "Create Project", href: "/projects?create=1", icon: "projects" },
+		{ key: "project", label: "Create Project", href: PROJECT_CREATE_HREF, icon: "projects" },
 		canUseTeams(context) && contextType !== "enterprise"
 			? { key: "team", label: "Create Team", href: "/teams/create", icon: "teams" }
 			: null,
@@ -78,13 +83,8 @@ export function createMenuOptions(context: UserContext): CreateOption[] {
 			: null,
 	];
 	return options.filter((o): o is CreateOption =>
-		o !== null && !(context.restricted && isRestrictedPath(pathOf(o.href)))
+		o !== null && !(context.restricted && isRestrictedHref(o.href))
 	);
-}
-
-/** The path of an in-app href, without its query or fragment. */
-function pathOf(href: string): string {
-	return href.split(/[?#]/, 1)[0];
 }
 // #endregion
 

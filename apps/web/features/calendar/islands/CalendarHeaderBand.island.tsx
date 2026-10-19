@@ -34,6 +34,11 @@ import {
  * the shell's own glass underlay and the seam beneath is the canvas frame's hairline, so painting a
  * plate or a second rule here doubles both.
  *
+ * **The identity is the page's one `<h1>`.** `/calendar` is a bottom-nav primary, and the grid below
+ * carries no title of its own, so the band's name is the heading a screen reader lands on. It keeps
+ * the band's body register (semibold, never bold), and below 767px it is hidden visually rather than
+ * removed, so the page keeps its heading where the period takes the band's width.
+ *
  * **The period trail lives here, not in the grid.** The engine's own header is suppressed on this
  * surface (`hideHeader`), because a shell band and an in-body toolbar carrying the same Prev/Today/
  * Next would be two controls for one fact.
@@ -87,7 +92,7 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 	return (
 		<div class="cal-band">
 			<div class="cal-band__identity">
-				<span class="cal-band__name">{page?.title ?? "Calendar"}</span>
+				<h1 class="cal-band__name">{page?.title ?? "Calendar"}</h1>
 				<span class="cal-band__tz">{tz.replace(/_/g, " ")}</span>
 			</div>
 

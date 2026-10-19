@@ -410,9 +410,13 @@
 	min-inline-size: 0;
 }
 
+/* The page's one `<h1>`, drawn in the band's body register: the UA heading margin goes, and the size
+   and weight are the band's own, never the UA's 2em bold. */
 .cal-band__name {
+	margin: 0;
 	font-size: var(--cal-hub-fs-body);
 	font-weight: var(--fw-semibold);
+	line-height: inherit;
 	color: var(--on-surface);
 	white-space: nowrap;
 }
@@ -588,9 +592,19 @@
 		display: inline-flex;
 	}
 
-	/* By this width the identity is down to one word, and the period is what may truncate. */
+	/*
+	 * By this width the identity is down to one word, and the period is what may truncate. The name is
+	 * the page's heading, so it is hidden visually and kept for assistive technology, never removed.
+	 */
 	.cal-band__name {
-		display: none;
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 }
 

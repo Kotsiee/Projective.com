@@ -3133,7 +3133,9 @@ the track's reserved `--ex-reveal-reserve`; grids never reveal and card media ne
 now" carries a three-cycle pulse dot, and "0 delivered" is omitted. Edge-fade masks take
 `--ex-fade-ink`, never a raw hex. A card link into `/view` names the card's media
 `ex-hero-media` on click (`core/hero-morph.ts`), matching `.evp-canvas__stage`, for a
-cross-document View Transition; any un-armed navigation from Explore skips its transition.
+cross-document View Transition; any un-armed navigation from Explore skips its transition, consuming
+the skipped transition's `ready` rejection first (`PageSwapLike.ready`), so leaving Explore by a
+help read or a footer link raises no unhandled `AbortError`.
 
 
 **Notifications (`features/notifications/`, §D.9, Decision #173).** `NotificationTabs` (the
@@ -3806,7 +3808,13 @@ engine hides the bar and the other does not.
     `/teams/create`, Business → `/businesses/create`, Service / Product →
     `/catalogue?create=service|product` (the seller console's Quick-Init on that kind). There is no
     Create Article until member posts have a create flow — `/articles/new` is the editorial reader's
-    404; a test resolves every entry against the route tree.
+    404; a test resolves every entry against the route tree. Project's href is ONE constant,
+    `PROJECT_CREATE_HREF` (`actions-model.ts`), which the BottomNav's Create re-exports, and the
+    menu's and the BottomNav's tests ask one shared check (`core/route-tree.ts`
+    `staticRouteServes`, every route group at any depth, never a `[param]` that 404s the address).
+    The restricted filter reads each target through `isRestrictedHref` (`restricted-surfaces.ts`:
+    `isRestrictedPath` over the link's `hrefPath`), the same predicate the sidebar filters by, so a
+    hidden link and a guarded page cannot disagree.
   - **Notifications** and **Basket** each open a **right-side** sliding `Drawer` (the Drawer's solid
     `--surface` over the backdrop blur — the 92% glass veil was removed, §B.4.2; "View all" and the
     basket totals + checkout sit in the pinned `footer`). The basket drawer's **header is a switcher**
@@ -3882,6 +3890,18 @@ engine hides the bar and the other does not.
   sits under the footer as it did when the footer was the body's last child — nothing moves
   visually. `focus` and `bare` chrome withhold it with the BottomNav. A page inside the canvas never
   renders its own `<main>` (the `/invite/[token]` landing was the last that did).
+- **One `main` and one `h1` on every page — including the ones no shell frames (Decision #295,
+  landing review 2026-10-19).** A surface that renders outside both shells supplies its own single
+  `<main>`: the `(auth)` routes (`/login`, `/join`, `/forgot-password`, `/verify`) take it from
+  `AuthShell`, whose form column is `<main class="auth__main">` with the overview `aside` as its
+  sibling, never inside it; `/join`, whose wizard draws its title as the aside's per-step `h2`,
+  carries a visually hidden "Join Projective" `h1` inside that `main`. A surface whose title lives
+  in a band or strip draws its `h1` there, in that element's own register (the UA heading margin,
+  size and weight reset with tokens; never `--fw-bold`): `/calendar`'s header-band name
+  (`.cal-band__name`, semibold) is the page's `h1`, and below 767px — where the period takes the
+  band's width — it is hidden visually and kept for assistive technology, never `display: none`;
+  the full-page `/:handle/availability` calendar's identity strip name (`ProfileCalendarHead`,
+  `.pf-calhead__name`, meta register) is its `h1`.
 
 ### D.2 Middle-nav Flex Splitter
 
@@ -3955,7 +3975,9 @@ Below `--bp-md` (768px) the frame adapts:
   page) and never lights itself (Workspace does); the fifth slot is **Calendar** because the former
   **Dashboard** pointed at the retired `/dashboard` (a 404 the `[handle]` route titled "Profile")
   and the dashboard IS `/home` (PRODUCT_SPEC sitemap), so it duplicated Home — the choice of fifth
-  primary is FLAGGED for the owner. The destinations are the pure `bottom-nav-destinations.ts`. It is
+  primary is FLAGGED for the owner. The destinations are the pure `bottom-nav-destinations.ts`;
+  Create's `BOTTOM_NAV_CREATE_HREF` re-exports the Create menu's `PROJECT_CREATE_HREF`, so the two
+  cannot drift. It is
   **mobile-only** (`display: none` ≥ `--bp-md`), so the shell renders it unconditionally; the page
   reserves `--shell-bottomnav-h` (+ `env(safe-area-inset-bottom)`) of trailing space so content
   never hides behind it. Icons are supplied by the app (`bottom-nav-model.tsx`) — the package stays

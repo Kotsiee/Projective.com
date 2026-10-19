@@ -34,6 +34,25 @@ export function isRestrictedPath(path: string): boolean {
 	);
 }
 
+/**
+ * The path of an in-app href, without its query or fragment: `/catalogue?create=service` →
+ * `/catalogue`. The one parser every chrome model reads a link through, so the rule that judges a
+ * link and the guard that judges the request it makes see the same path.
+ */
+export function hrefPath(href: string): string {
+	return href.split(/[?#]/, 1)[0];
+}
+
+/**
+ * Whether the in-app link `href` leads to a restricted surface — {@link isRestrictedPath} over its
+ * {@link hrefPath}, so a query-string or fragment deep link (`/catalogue?create=product`) is withheld
+ * like the surface it opens. What the sidebar and the Create menu filter a restricted account's
+ * entries by.
+ */
+export function isRestrictedHref(href: string): boolean {
+	return isRestrictedPath(hrefPath(href));
+}
+
 /** Where the dashboard guard sends a restricted account that asked for a hidden surface. */
 export const RESTRICTED_FALLBACK_PATH = "/home";
 

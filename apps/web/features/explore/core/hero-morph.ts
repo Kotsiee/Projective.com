@@ -26,20 +26,32 @@ export function armHeroMorph(card: Element): void {
 	media.dataset.heroMorph = "";
 }
 
-interface PageSwapLike extends Event {
-	viewTransition?: { skipTransition(): void } | null;
+/** The slice of a `pageswap` event, and of its `ViewTransition`, this module touches. */
+export interface PageSwapLike extends Event {
+	viewTransition?: {
+		/** Settles when the transition's animation is about to run; REJECTS when it is skipped. */
+		ready: Promise<void>;
+		skipTransition(): void;
+	} | null;
 }
 
 /**
  * Lets only an armed card navigation run the cross-document transition, and drops a stale name when
  * the page is restored from the back-forward cache. Returns the unbinder.
+ *
+ * Skipping a transition rejects its `ready` promise with an `AbortError` ("Transition was skipped").
+ * Skipping is this handler's intent, not a failure, so the rejection is consumed before the skip —
+ * otherwise every un-armed exit from Explore (a help read, a footer link) reports an unhandled
+ * rejection from the page it is leaving.
  */
 export function bindHeroMorph(): () => void {
 	const onSwap = (e: Event) => {
 		const vt = (e as PageSwapLike).viewTransition;
 		if (!vt) return;
 		const armed = document.querySelector("[data-hero-morph]") !== null;
-		if (!armed || motionReduced()) vt.skipTransition();
+		if (armed && !motionReduced()) return;
+		vt.ready.catch(() => {});
+		vt.skipTransition();
 	};
 	const onShow = () => clearNames();
 	globalThis.addEventListener("pageswap", onSwap);

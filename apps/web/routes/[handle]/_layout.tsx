@@ -107,9 +107,9 @@ export default define.page(async function ProfileLayout(ctx) {
 	 *
 	 * `footer` renders the marketing footer after the page's `<main>`, as its `contentinfo` — off for
 	 * the full-page calendars, which fill the content region and own their own scrolling. The authed
-	 * branch composes it with the
-	 * URL-keyed `publicFooterFor` resolver (the same one the sibling `(public)` layout uses), NARROWING
-	 * only — the flag can withhold a footer the resolver agreed to, never add one it refused.
+	 * branch composes it with the URL-keyed `publicFooterFor` resolver (the same one the sibling
+	 * `(public)` layout uses), NARROWING only — the flag can withhold a footer the resolver agreed to,
+	 * never add one it refused.
 	 */
 	const shell = (
 		children: ComponentChildren,

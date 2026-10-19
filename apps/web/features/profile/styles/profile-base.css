@@ -344,8 +344,12 @@ a.pf-tag:focus-visible {
     block-size: var(--icon-sm);
 }
 
+/* The page's `<h1>`, kept in the strip's meta register: never the UA's margin, 2em or bold. */
 .pf-calhead__name {
+    margin: 0;
     font-size: var(--text-sm);
+    font-weight: var(--fw-normal);
+    line-height: inherit;
     color: var(--text-secondary);
 }
 
