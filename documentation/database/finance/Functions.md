@@ -925,7 +925,7 @@ hold's spend gate redeems the approval exactly once. Never raises.
 
 ## 🏢 Workspace money governance (`00001210` §13)
 
-The write side of the `/teams` and `/businesses` Money modules (root `CLAUDE.md` §8 Decision #122).
+The write side of the `/teams` and `/businesses` Money modules (root `CLAUDE.md` §8 Decision #61).
 Authority is the WORKSPACE capability `manage_finances` (`org.fn_member_can`) — the same answer the
 console renders from — and the vault projection the money functions enforce is re-synced after every
 change. All four are `SECURITY DEFINER`, `search_path = ''`, `EXECUTE` to `authenticated` only

@@ -31,7 +31,10 @@ edit is searchable without a rebuild.
 | `search.fn_listing_tags_touch`    | `catalogue.listing_tags` (`trg_listing_tags_touch`, INSERT/UPDATE/DELETE) | the listing's `services_index` or `catalogue_index` row (`tags`, `fts`) |
 
 Each is an upsert keyed on the source id, so re-running one is idempotent and a row can never be
-duplicated by a second write.
+duplicated by a second write. The bindings in `00001800` are named for their source:
+`trg_sync_team_search` (`org.teams`), `trg_sync_freelancer_search`, `trg_sync_project_search`,
+`trg_sync_user_search`, `trg_sync_business_search` (`org.business_profiles`),
+`trg_sync_service_search`, `trg_sync_product_listing_search` and `trg_sync_article_search`.
 
 ### A team's live W_i (Decision #235, closing #233 FLAG (a))
 
