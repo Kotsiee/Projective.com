@@ -17,6 +17,8 @@
 	--pm-cell-size: var(--fld-h-md);
 	--pm-col-size: calc(var(--fld-h-md) * 3);
 	--pm-head-size: calc(var(--fld-h-md) * 6);
+	/* The header control a role column may seat — a small icon-only Button. */
+	--pm-action-size: var(--fld-h-sm);
 	--pm-allowed: var(--primary-tint);
 	--pm-conditional: var(--warning-tint);
 	--pm-locked: var(--surface-2);
@@ -27,11 +29,25 @@
 	color: var(--on-surface);
 	background: var(--pm-surface);
 	font-family: var(--font-sans);
+	container: ui-pm / inline-size;
+}
+
+/* A header control (a role's kebab) sits beside the label, so every role column gains its width. */
+.ui-permission-matrix--actions {
+	--pm-col-size: calc(var(--fld-h-md) * 3.5);
 }
 
 .ui-permission-matrix__scroll {
 	block-size: 100%;
 	max-block-size: inherit;
+}
+
+/* A matrix narrower than --bp-sm (a phone, or a docked lane's leftover) gives the role columns the
+   room: the pinned capability column narrows, and its labels wrap. */
+@container ui-pm (width < 480px) {
+	.ui-permission-matrix__scroll {
+		--pm-head-size: calc(var(--fld-h-md) * 4);
+	}
 }
 
 /* A focused cell scrolls clear of the pinned column and header row, not under them. */
@@ -109,6 +125,28 @@
 	color: var(--text-secondary);
 }
 
+/* The label and a consumer's header control share one centred line; the label wraps first. Once any
+   column seats a control, every column's label sits on this line — the control's height, with or
+   without one — so the role names, and the meta lines under them, keep one top across the row. */
+.ui-permission-matrix__colhead-row {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-1);
+	min-inline-size: 0;
+	min-block-size: var(--pm-action-size);
+}
+
+.ui-permission-matrix__colhead-row > .ui-permission-matrix__colhead-label {
+	min-inline-size: 0;
+}
+
+.ui-permission-matrix__colhead-actions {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+}
+
 .ui-permission-matrix__rowhead {
 	position: sticky;
 	inset-inline-start: 0;
@@ -135,6 +173,11 @@
 	color: var(--text-secondary);
 	font-variant-numeric: tabular-nums;
 	overflow-wrap: anywhere;
+}
+
+/* A column's meta lines stack; each wraps on its own, so a longer fact never splits the one above. */
+.ui-permission-matrix__meta-line {
+	display: block;
 }
 
 .ui-permission-matrix__sep {
@@ -281,6 +324,12 @@ button.ui-permission-matrix__cell:active:not(.ui-permission-matrix__cell--fixed)
 /* The fills stay; the glyph ink and the cell edge harden so the state reads without the tint. */
 :root[data-contrast="high"] .ui-permission-matrix__cell {
 	border-color: var(--outline);
+}
+
+/* …except a fixed cell, whose missing edge IS its "can't change" cue — hardening it would make it
+   look as pressable as its neighbours. */
+:root[data-contrast="high"] .ui-permission-matrix__cell--fixed {
+	border-color: var(--pm-surface);
 }
 
 :root[data-contrast="high"] .ui-permission-matrix__cell--locked,

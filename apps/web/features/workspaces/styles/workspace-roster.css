@@ -807,12 +807,6 @@ a pointer. */
 :root[data-motion="reduced"] .wsp-create__kind {
 	transition: none;
 }
-
-.wsp-create__error {
-	margin: 0;
-	font-size: var(--wsp-fs-body);
-	color: var(--danger);
-}
 /* #endregion */
 
 /* #region Responsive */

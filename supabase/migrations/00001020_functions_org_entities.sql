@@ -2835,6 +2835,10 @@ $$;
 -- It is the console's ONE read (Decision #233): besides the roster, roles and activity it answers
 --   * each member's live W_i (`wi`) and cap (`wi_cap`), summed exactly as projects.check_ticket_capacity
 --     sums them, and a team member's split stake (`share_bp`, `share_held`);
+--   * each role's `pending_invites` — how many pending invitations offer it, counted exactly as
+--     org.archive_workspace_role's refusal counts them — for a `manage_roles` holder only (NULL for
+--     anybody else), so the Roles screen says that refusal before the press even to a role manager who
+--     cannot read the outgoing queue (`invites` is `invite_members`' alone);
 --   * each project's counterparty face (a team's client; a business's providers) from org.profiles_index;
 --   * for a team: `payout` — the active split rule, the vault wallet and finance.preview_team_split —
 --     ONLY for a caller holding `manage_finances`; `engagements` — the team's live stage assignments with
@@ -3001,7 +3005,12 @@ BEGIN
                 'capabilities', to_jsonb(org.fn_role_capabilities(p_kind, r.preset, r.capabilities)),
                 'member_count', (SELECT count(*) FROM (
                     SELECT 1 FROM org.team_members x WHERE x.role_id = r.id AND x.status = 'active'
-                    UNION ALL SELECT 1 FROM org.business_members x WHERE x.role_id = r.id AND x.status = 'active') c)
+                    UNION ALL SELECT 1 FROM org.business_members x WHERE x.role_id = r.id AND x.status = 'active') c),
+                -- org.archive_workspace_role's second refusal, counted as it counts: a count, never the
+                -- invitees, and only for the people who may archive a role.
+                'pending_invites', CASE WHEN 'manage_roles' = ANY (v_caps) THEN (
+                    SELECT count(*) FROM org.org_invitations i
+                     WHERE (i.team_role_id = r.id OR i.business_role_id = r.id) AND i.status = 'pending') END
             ) ORDER BY r.preset IS NULL, org.fn_preset_rank(r.base_preset) DESC, r.name), '[]'::jsonb)
             FROM (
                 SELECT x.id, x.name, x.summary, x.preset, x.base_preset, x.capabilities

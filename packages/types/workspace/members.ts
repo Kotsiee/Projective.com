@@ -43,7 +43,10 @@ export const WorkspaceRoleDefSchema = z.object({
 	id: z.string().max(64),
 	/** Display name ("Admin", "Purchaser", "Finance"). */
 	name: z.string().min(1).max(48),
-	/** One line explaining the remit — shown under the name in pickers and the matrix. */
+	/**
+	 * One line explaining the remit — shown under the name in pickers, and beside it in the Roles
+	 * screen's list of what each role is for (the matrix's narrow column headers carry only the name).
+	 */
 	summary: z.string().max(160),
 	/** The preset this row IS, or `null` for a custom role. Presets are read-only. */
 	preset: WorkspaceRole.nullable(),
@@ -57,6 +60,13 @@ export const WorkspaceRoleDefSchema = z.object({
 	capabilities: z.array(WorkspaceCapability),
 	/** How many members currently hold it — the matrix shows this so a role is never deleted blind. */
 	memberCount: z.number().int().min(0),
+	/**
+	 * How many pending invitations offer it — `org.archive_workspace_role`'s second refusal, counted as
+	 * that door counts it, so the Roles screen says the refusal before the press. Present only for a
+	 * viewer holding `manage_roles` (the people who may archive a role); absent for everybody else,
+	 * who reads neither the count nor the outgoing queue.
+	 */
+	pendingInvites: z.number().int().min(0).optional(),
 });
 export type WorkspaceRoleDef = z.infer<typeof WorkspaceRoleDefSchema>;
 

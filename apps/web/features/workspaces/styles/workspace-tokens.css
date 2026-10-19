@@ -20,9 +20,9 @@
  * overlay.
  *
  * Every mix is OPAQUE (§B.4.2): it is mixed against the solid surface the colour actually lands on —
- * `--surface` for the matrix and the dialogs, `--surface-1` for cards and bands, a matrix cell's own
- * fill for the hatch drawn over it — and never against `transparent`, so each tone
- * is measurable and none of them compounds when nested. The quiet status fills are the U1 tokens
+ * `--surface` for the dialogs, `--surface-1` for cards and bands — and never against `transparent`,
+ * so each tone is measurable and none of them compounds when nested. (The roles matrix is the ui
+ * `PermissionMatrix`, which carries its own opaque fills — Teams C3.) The quiet status fills are the U1 tokens
  * (`--success-tint`, `--warning-tint`, `--danger-tint`), which already carry their own
  * per-mode/contrast strength.
  *
@@ -152,44 +152,11 @@
 	--wsp-alert: var(--danger);
 	/* #endregion */
 
-	/* #region Permission semantics — the matrix's tri-state and the override markers */
-	/*
-	 * `conditional` is NOT "half allowed": it means the capability applies only under a written rule
-	 * (a spend ceiling, an approval threshold). It gets its own hue AND its own glyph so a limited
-	 * permission is never drawn as a plain tick, which would over-promise.
-	 */
-	--wsp-allowed: var(--success);
-	--wsp-allowed-tint: var(--success-tint);
-	--wsp-conditional: var(--warning);
-	--wsp-conditional-tint: var(--warning-tint);
-	--wsp-denied: var(--on-surface-variant);
-	/* "No fill" spelled as the matrix's own solid ground, so a denied cell is a measured tone too. */
-	--wsp-denied-tint: var(--surface);
-
-	/* Override markers. A grant reads as an addition to the role baseline, a revocation as a
-	subtraction — never as an error, because a deliberate revocation is correct configuration. */
-	--wsp-grant: var(--wsp-kind);
-	--wsp-revoke: var(--on-surface-variant);
-	--wsp-consequential: var(--warning);
-
-	/* A preset role is read-only by design. The locked look is a hatch plus a lock glyph, so it is
-	legible without colour. The hover tint is drawn on the matrix's `--surface` ground. The hatch is laid
-	over whatever fill the cell already paints (an allowed, conditional or denied tint), so the colour
-	itself, `--wsp-locked-hatch`, is mixed on the cell in workspace-matrix.css against that fill; this is
-	only its strength. */
-	--wsp-locked-tint: color-mix(in oklab, var(--on-surface) 5%, var(--surface));
-	--wsp-locked-hatch-mix: 12%;
-	/* #endregion */
-
 	/* #region Money — the spend envelopes, the approval ladder */
 	/* The recessed track and the meter well are global now — wallet-tokens.css had independently
 	arrived at the same mixes, including the same high-contrast widening. */
 	--wsp-track-bg: var(--track-recessed);
 	--wsp-meter-bg: var(--track-meter);
-	/* The conditional cell's hatch. It is only ever drawn over that cell's own fill, so it is mixed
-	against that fill — the opaque twin of the global translucent `--hatch-color` (16%, 30% under high
-	contrast), with the same strength. */
-	--wsp-hatch: color-mix(in oklab, var(--on-surface) 16%, var(--wsp-conditional-tint));
 
 	--wsp-spent: var(--wsp-kind);
 	--wsp-remaining: var(--wsp-track-bg);
@@ -202,8 +169,9 @@
 	 * The shared rhythm aliases the global structure block rather than restating it: band gap and
 	 * block-end padding, both row heights, the rig row, the pip, the chart height and the drawer width
 	 * were all values this file and wallet-tokens.css reached independently. What stays local is what
-	 * only this surface has: the entity marks, the matrix columns, the org-chart connectors and the
-	 * ring. (The team split bar is the ui `SplitBar`, which carries its own geometry.)
+	 * only this surface has: the entity marks, the org-chart connectors and the ring. (The team split
+	 * bar is the ui `SplitBar` and the roles matrix the ui `PermissionMatrix`; each carries its own
+	 * geometry.)
 	 */
 	--wsp-band-pad: clamp(var(--space-5), 2.6vw, var(--space-7));
 	--wsp-band-pad-b: var(--band-pad-block-end);
@@ -228,11 +196,6 @@
 
 	--wsp-pip-dot: var(--pip-dot);
 
-	/* Permission matrix */
-	--wsp-matrix-first: 14rem;
-	--wsp-matrix-col: 7.5rem;
-	--wsp-matrix-cellh: 2.5rem;
-
 	/* Org chart connectors. There is no `--wsp-connector-color`: it was an exact re-export of
 	`--hairline-color`, so the call sites read that directly. */
 	--wsp-connector: var(--space-5);
@@ -242,7 +205,7 @@
 	--wsp-tree-indent: var(--space-5);
 
 	/*
-	 * Marks drawn in CSS — the dots, swatches, strokes, meters and hatches. Pixels rather than `rem`
+	 * Marks drawn in CSS — the dots, swatches, strokes and meters. Pixels rather than `rem`
 	 * on purpose, for the reason the global `--space-px` gives: these are graphical marks, and a 2px
 	 * stroke that doubles at 200% type zoom stops reading as a stroke. `--wsp-hairline-w` mirrors the
 	 * width inside the global `--hairline` shorthand, for the stems and offsets that need the number on
@@ -257,10 +220,6 @@
 	--wsp-swatch: 10px;
 	--wsp-meter-h: var(--space-1);
 	--wsp-meter-h-lg: 6px;
-	/* One hatch line every `pitch`, one hairline thick: wide for a cell, tighter for a small mark, so
-	the stripe count reads the same at every size. */
-	--wsp-hatch-pitch: 6px;
-	--wsp-hatch-pitch-sm: 5px;
 
 	/*
 	 * Breakpoints. A media query cannot read a custom property and no build step here expands
@@ -276,9 +235,8 @@
 	 *
 	 * The tablet step used to be a bespoke 1100px and snapped UP to `--bp-xl`, not down to `--bp-lg`, so
 	 * windows of 1101–1279px now take the tablet adaptation too: they hide the header band's handle and
-	 * badge and the footer rig's note, and narrow the card, member grid and
-	 * matrix columns. Snapping down instead would hand windows of 1024–1100px a desktop layout the old
-	 * step kept from them.
+	 * badge and the footer rig's note, and narrow the card and member grid. Snapping down instead would
+	 * hand windows of 1024–1100px a desktop layout the old step kept from them.
 	 */
 
 	/* The ONLY two max-widths permitted on this surface: running text and form fields. No card, no
@@ -315,9 +273,9 @@
 /*
  * The tokens DERIVED from the kind, re-declared under the switch. A custom property's `var()` is
  * substituted where the property is declared, so the `:root` copies above froze on the team's brand
- * and every business subtree inherited them: the acting chip, the active state, a grant marker and the
- * spend meter all painted teal on `/businesses`. Declared here, they re-resolve against whichever
- * `--wsp-kind` the same element just set.
+ * and every business subtree inherited them: the acting chip, the active state and the spend meter all
+ * painted teal on `/businesses`. Declared here, they re-resolve against whichever `--wsp-kind` the
+ * same element just set.
  */
 [data-kind] {
 	--wsp-acting: var(--wsp-kind);
@@ -325,7 +283,6 @@
 	--wsp-acting-tint: color-mix(in srgb, var(--wsp-kind) 8%, var(--surface-1));
 	--wsp-acting-ring: color-mix(in oklab, var(--wsp-kind) 55%, var(--surface-1));
 	--wsp-active: var(--wsp-kind);
-	--wsp-grant: var(--wsp-kind);
 	--wsp-spent: var(--wsp-kind);
 }
 
@@ -337,15 +294,12 @@
  * High contrast. The attribute is written by `packages/ui/system` (`applyConfig`). Two rules apply,
  * in opposite directions:
  *
- *  - The kind tints, the edges, the acting ring and both hatches WIDEN, so every mark that separates
- *    one state from another by tone alone clears a wider step.
- *  - The status fills do NOT widen. The matrix's allowed / conditional cells (and their legend marks)
- *    read the U1 `--success-tint` / `--warning-tint`, which step their own strength DOWN under high
- *    contrast: a lighter fill pulls the cell toward its surface and widens the glyph ink drawn on it.
- *    So in high contrast a cell's FILL sits closer to a denied cell's `--surface` than it does at
- *    normal contrast, and the state is carried by the glyph (tick · conditional mark · dash) and, on
- *    a conditional cell, the hatch. The ui PermissionMatrix makes the same trade on the same U1 tint
- *    family; it is a deliberate step-down, not a widening.
+ *  - The kind tints, the edges and the acting ring WIDEN, so every mark that separates one state from
+ *    another by tone alone clears a wider step.
+ *  - The status fills do NOT widen. They read the U1 tints, which step their own strength DOWN under
+ *    high contrast: a lighter fill pulls a mark toward its surface and widens the ink drawn on it, so
+ *    the state is carried by the glyph. The roles matrix is the ui PermissionMatrix, which makes that
+ *    trade on the same U1 tint family itself (Teams C3).
  *
  * The business family widens all four of its tones (BU1), each still opaque and still derived from
  * `--wsp-business`: tint 20%, tint-hi 26%, edge 70%, and the ink takes MORE `--on-surface` (65% hue),
@@ -362,8 +316,6 @@
 	--wsp-business-edge: color-mix(in oklab, var(--wsp-business) 70%, var(--surface-1));
 	--wsp-business-ink: color-mix(in srgb, var(--wsp-business) 65%, var(--on-surface));
 	--wsp-acting-ring: color-mix(in oklab, var(--wsp-kind) 85%, var(--surface-1));
-	--wsp-locked-hatch-mix: 26%;
-	--wsp-hatch: color-mix(in oklab, var(--on-surface) 30%, var(--wsp-conditional-tint));
 	/*
 	 * The recessed track and the minor-unit fade widened here too, by exactly the amounts
 	 * wallet-tokens.css used; both moved to the global layer with their tokens, so re-declaring them
@@ -373,10 +325,10 @@
 }
 
 /*
- * Colour-vision deficiency. Two adjacent-hue risks exist on this surface: the business hue against
- * the brand (the two entity kinds side by side on a mixed roster) and `allowed` against `conditional`
- * in the matrix. The matrix tri-state keeps its static GLYPH and HATCH-ANGLE channels — so separation
- * survives on non-colour channels even when hue collapses entirely.
+ * Colour-vision deficiency. One adjacent-hue risk is this surface's own: the business hue against the
+ * brand (the two entity kinds side by side on a mixed roster). The roles matrix's `allowed` against
+ * `conditional` is the ui PermissionMatrix's, which keeps a GLYPH per state beside the fill, so the
+ * separation survives on a non-colour channel even when hue collapses entirely.
  *
  * The business side needs no re-anchor here: it is `--tertiary` in every mode (Decision #230 (j)).
  * The block that used to swap it in under an overlay bought nothing measurable — simulated at full

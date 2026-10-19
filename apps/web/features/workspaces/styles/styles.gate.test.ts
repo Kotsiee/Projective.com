@@ -400,11 +400,11 @@ Deno.test("workspace styles: figure classes are tabular", () => {
 		".wsp-ledger__rate",
 		".wsp-ledger__amount",
 		".wsp-payout__notice.ui-inline-notice",
-		// Text that carries a count or an amount: the lane's queue count, a role's member count, a
-		// band's live queue count ("2 requests waiting") and a feed line's sum. (A projects-preview
-		// row's facts are a MetaLine, whose figures set their own `tabular-nums`.)
+		// Text that carries a count or an amount: the lane's queue count, a band's live queue count
+		// ("2 requests waiting") and a feed line's sum. (A projects-preview row's facts and the roles
+		// page head are MetaLines, and a role's member count is the PermissionMatrix's column meta —
+		// each sets its own `tabular-nums`.)
 		".wsp-lane__navcount",
-		".wsp-matrix__rownote",
 		".wsp-band__title",
 		".wsp-activity__text",
 		// A metric tile's caption: "of 50 this week", "1 invitation out".
@@ -453,6 +453,16 @@ Deno.test("workspace styles: the dead rules stay deleted", () => {
 	assertNone(
 		offences(
 			/\.wsp-headerband__(tab|identity|name|handle|badge|divider|controls|icon|panel)\b|\.wsp-footerrig__(more|menu|note|nudge|fold|toggle)\b/,
+		),
+		"a deleted dead selector is back:",
+	);
+	// The roles matrix before Teams C3: the hand-rolled grid, its cells, column buttons, legend marks
+	// and hatch gradients, the inline composer, its error line and the native select's class, and
+	// every token only they read — replaced by the ui PermissionMatrix, the RoleEditor dialog, an
+	// InlineNotice and ui fields.
+	assertNone(
+		offences(
+			/\.wsp-matrix\b|\.wsp-matrix__|\.wsp-roleeditor\b|\.wsp-roleeditor__|\.wsp-select\b|\.wsp-capchip\b|\.wsp-create__error\b|--wsp-(allowed|conditional|denied|locked|hatch|matrix|grant|revoke|consequential)\b|--wsp-(allowed|conditional|denied|locked|hatch|matrix)-|repeating-linear-gradient/,
 		),
 		"a deleted dead selector is back:",
 	);

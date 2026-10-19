@@ -434,6 +434,24 @@ Deno.test("toRoleDef: a custom role ranks as its base, a preset as itself; capab
 	);
 });
 
+Deno.test("toRoleDef: the pending-invitation count rides only when the read carries it", () => {
+	const raw = {
+		id: "r4",
+		name: "Scout",
+		summary: "",
+		preset: null,
+		base_preset: "member",
+		capabilities: [],
+		member_count: 0,
+	};
+	// A manage_roles holder's read: the count the archive door would refuse on.
+	assertEquals(toRoleDef({ ...raw, pending_invites: 2 }).pendingInvites, 2);
+	assertEquals(toRoleDef({ ...raw, pending_invites: 0 }).pendingInvites, 0);
+	// Anybody else's read answers null: no count, not a zero that would read as "none offer it".
+	assertEquals("pendingInvites" in toRoleDef({ ...raw, pending_invites: null }), false);
+	assertEquals("pendingInvites" in toRoleDef(raw), false);
+});
+
 Deno.test("toOutgoingInvite: an email-only invite has no handle and is named by its address", () => {
 	const inv = toOutgoingInvite(
 		{

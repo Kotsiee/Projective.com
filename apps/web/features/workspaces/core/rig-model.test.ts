@@ -8,6 +8,7 @@ import {
 	rigFilledCount,
 	type RigInput,
 	rigModel,
+	ROLES_EDITOR_MODULE,
 	type SaveState,
 	saveStatus,
 } from "./rig-model.ts";
@@ -70,6 +71,7 @@ Deno.test("rig: never more than one filled control, in any state", () => {
 							canManageMoney: allowed,
 							canManageSettings: allowed,
 							canEditProfile: allowed,
+							canManageRoles: allowed,
 						}));
 						assert(rigFilledCount(model) <= 1, `${kind}/${module}`);
 					}
@@ -112,6 +114,35 @@ Deno.test("rig: Settings' name and visibility save through the same tier-3 Save 
 	assertEquals(keys(inConsole({ module: "settings", dirty: true, canEditProfile: false })), [
 		"invite",
 	]);
+});
+
+Deno.test("rig: the Roles matrix saves through the same tier-3 Save, for manage_roles, on both kinds (C3)", () => {
+	for (const kind of ["team", "business"] as WorkspaceKind[]) {
+		const roles = inConsole({ kind, module: ROLES_EDITOR_MODULE, canManageRoles: true });
+		assert(editorOpen({ ...roles }), kind);
+		assert(rigModel(roles).statusLine, `${kind}: the status line is mounted`);
+		assertEquals(rigModel(roles).holds, "editor");
+		const dirty = rigModel({ ...roles, dirty: true });
+		assertEquals(dirty.actions.slice(-2).map((a) => a.key), ["discard", "save"], kind);
+		const save = dirty.actions.find((a) => a.key === "save");
+		assert(save?.control === "button" && save.tier === 3);
+		assertEquals(rigFilledCount(dirty), 1);
+		assertEquals(dirty.holds, "commit");
+		// Without manage_roles the module is no editor: no status line, no Save, whatever the flag says.
+		const reader = rigModel({ ...roles, canManageRoles: false, dirty: true });
+		assert(!reader.statusLine);
+		assert(!reader.actions.some((a) => a.key === "save"));
+	}
+	// manage_roles opens no other module's editor.
+	assert(
+		!editorOpen({
+			kind: "team",
+			module: "members",
+			canManageMoney: false,
+			canEditProfile: false,
+			canManageRoles: true,
+		}),
+	);
 });
 
 Deno.test("rig: a business's Settings is not an editor — only a team's mounts one (C6)", () => {
@@ -397,6 +428,7 @@ Deno.test("policy editors answer Save and Discard through usePolicyBridge, never
 			"../islands/SpendPolicyScreen.island.tsx",
 			"../islands/BillingScreen.island.tsx",
 			"../islands/TeamSettingsScreen.island.tsx",
+			"../islands/RolesMatrix.island.tsx",
 		]
 	) {
 		const text = source(file);

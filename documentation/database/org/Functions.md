@@ -929,6 +929,8 @@ namespace under a `pg_advisory_xact_lock` on the handle.
 - **`archive_workspace_role(kind, entity, role) → {id, archived}`** — `authenticated`, needs
   `manage_roles`. Custom roles only; refused (`55000`) while any ACTIVE member holds it or a PENDING
   invitation offers it. Sets `archived_at` (the role-delete path is gone — nothing is hard-deleted).
+  Both refusals are readable before the press: `get_workspace_detail` answers each role's
+  `member_count` and, to a `manage_roles` holder, its `pending_invites`.
 
 ### §16 — Reads, as raw facts
 
@@ -962,7 +964,11 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
   a team member also carries `share_bp` / `share_held` from `finance.contribution_agreements` —
   **only when the viewer holds `manage_finances`**, the `payout` block's gate (Decision #233), else
   `null` for every member, their own included; probe `supabase/probes/workspace_member_stakes.sql`), the
-  live roles with RESOLVED capabilities and holder counts, the outgoing pending invitations **only
+  live roles with RESOLVED capabilities and holder counts — each role also carrying `pending_invites`,
+  how many PENDING invitations offer it, counted exactly as `archive_workspace_role`'s refusal counts
+  them, **only when the viewer holds `manage_roles`** (else `null`), so a role manager without
+  `invite_members` still sees that refusal before pressing Archive (Teams C3 review; probe
+  `supabase/probes/workspace_role_pending_invites.sql`) — the outgoing pending invitations **only
   when the viewer holds `invite_members`**, a team's Standing label, the projects (team: via its stage
   assignments, each with its client business's `client` face; business: as client, excluding
   `draft`/`archived`, each with `provider_user_ids` and `provider_teams` faces — faces are
