@@ -16,6 +16,15 @@ import { isPeopleReading, MEMBERS_CHART, MEMBERS_PEOPLE } from "./sub-views.ts";
  * policies (Payouts, Spend, Billing), a team's Settings name and visibility (Teams C6) and the Roles
  * matrix's custom-role columns (Teams C3).
  *
+ * On the roster index the rig's New is that tier-4 utility only while the lane is on the canvas, whose
+ * `LaneCreateButton` is then the page's tier-2 create. Below `--bp-md` the frame takes the lane
+ * off-canvas, and the lane's duty moves into the rig (Decision #245 (k)): New becomes the tier-2
+ * structural create, or, where the plan admits none, the rig says the lane's reason. The collapsed
+ * rail keeps the lane's create but has no room for its reason, so beside the rail the rig says that
+ * too. The viewport and the splitter decide which, and no server read knows either, so
+ * {@link rigLayouts} answers for every layout and the stylesheet paints the one that holds. The page
+ * never shows two tier-2 creates.
+ *
  * A navigation is a link (the rig renders a ui `Link`), never a button that assigns `location`; an
  * action that opens something on this page is a button.
  *
@@ -43,6 +52,14 @@ export const PROFILE_EDITOR_MODULE = "settings";
  */
 export const ROLES_EDITOR_MODULE = "roles";
 
+/**
+ * Where the middle-nav lane is, beside the rig (Decision #245 (k)): `expanded`, the lane with its
+ * footer's `LaneCreateButton` or its reason line; `rail`, the splitter collapsed to `WorkspaceRail`,
+ * which keeps the create but says no reason; `off-canvas`, below `--bp-md`, where the frame hides the
+ * lane (`middle-nav.css`) and the lane's create and reason go with it.
+ */
+export type RigLane = "expanded" | "rail" | "off-canvas";
+
 /** The rig's inputs. Capabilities are the server-resolved ones; the rig decides PRESENCE from them. */
 export interface RigInput {
 	kind: WorkspaceKind;
@@ -55,10 +72,20 @@ export interface RigInput {
 	/** Whether the viewer may create another entity of this kind (the roster). */
 	canCreate: boolean;
 	/**
+	 * The roster's `createBlockedReason`: the plan's words for why `canCreate` is false. The rig says
+	 * them only while the expanded lane, which otherwise says them, is not on the canvas.
+	 */
+	createBlockedReason?: string | null;
+	/**
 	 * The roster's first run (`roster-model.ts` `isFirstRun`): no entity of this kind and nothing to
 	 * answer. The canvas's empty state then carries the page's one create, so the rig offers no New.
 	 */
 	firstRun?: boolean;
+	/**
+	 * Where the lane is beside the rig ({@link RigLane}); absent means `expanded`. Only the roster index
+	 * reads it (Decision #245 (k)).
+	 */
+	lane?: RigLane;
 	canInvite: boolean;
 	canManageMoney: boolean;
 	canManageSettings: boolean;
@@ -71,9 +98,12 @@ export interface RigInput {
 	saveState: SaveState;
 }
 
-/** One trailing control. */
+/**
+ * One trailing control. The roster's New is a tier-4 utility beside the lane or its rail, and the
+ * tier-2 structural create when the lane is off-canvas ({@link RigInput.lane}).
+ */
 export type RigAction =
-	| { key: "create"; control: "button"; tier: 4; label: string }
+	| { key: "create"; control: "button"; tier: 2 | 4; label: string }
 	| { key: "invite"; control: "button"; tier: 4; label: string }
 	| { key: "invite"; control: "link"; label: string; href: string }
 	| { key: "settings"; control: "link"; label: string; href: string }
@@ -88,7 +118,8 @@ export interface RigStatus {
 
 /**
  * What the trailing side holds, which is how much room its words need: `create` (the roster's one
- * New, absent in first run and when the plan admits none), `utilities` (Invite and Settings), `editor` (a policy editor at rest: its status line — empty,
+ * New, absent in first run and when the plan admits none, or the plan's reason in its place while the
+ * expanded lane is not on the canvas), `utilities` (Invite and Settings), `editor` (a policy editor at rest: its status line — empty,
  * or "Saved" — then the utilities) or `commit` (the editor with unsaved changes: the status line, the
  * utilities, Discard and Save). The stylesheet folds the utilities to their glyphs below each one's
  * own width, asked of the trailing side's own box, so a docked lane that leaves the rig narrow folds
@@ -119,8 +150,27 @@ export interface RigModel {
 	status: RigStatus | null;
 	/** The trailing controls, in order. */
 	actions: RigAction[];
+	/**
+	 * Why the roster offers no create: the lane's own line ({@link rosterCreateNote}), said by the rig
+	 * only beside the collapsed rail or with the lane off-canvas, where the expanded lane that says it
+	 * is not drawn, so the reason is on screen in one place in every layout. It is `null` beside the
+	 * expanded lane, in first run (the canvas's empty state says it) and in every console.
+	 */
+	note: string | null;
 	/** What the trailing side holds — the width its words need before the utilities fold. */
 	holds: RigHolds;
+}
+
+/**
+ * The rig in each layout the frame can take: `withLane` beside the expanded lane, `withRail` beside
+ * the collapsed rail, `withoutLane` below `--bp-md` with the lane off-canvas. `withRail` holds
+ * `withLane`'s controls (the rail keeps the lane's create) and adds only the reason the rail cannot
+ * say. Both are `null` where the lane's state changes nothing the rig holds, which is every console.
+ */
+export interface RigLayouts {
+	withLane: RigModel;
+	withRail: RigModel | null;
+	withoutLane: RigModel | null;
 }
 // #endregion
 
@@ -137,20 +187,44 @@ export function inviteOpensInPlace(kind: WorkspaceKind, module: string | null): 
 		(kind === "team" && module === "projects");
 }
 
+/**
+ * What the roster says in place of a create the plan refuses: the server's reason (it carries the
+ * plan's number), or the kind's own words when the projection sent none. The lane's footer and the
+ * rig both ask this, so the line reads the same wherever it is drawn.
+ */
+export function rosterCreateNote(kind: WorkspaceKind, reason: string | null | undefined): string {
+	const text = reason?.trim();
+	return text ? text : `Your plan does not include another ${kindCopy(kind).noun}.`;
+}
+
 /** The footer rig for what the viewer is looking at. Total: every input yields a model. */
 export function rigModel(input: RigInput): RigModel {
 	const copy = kindCopy(input.kind);
 
 	if (!input.handle) {
+		const lane = input.lane ?? "expanded";
+		// In first run the canvas's tier-2 create is the page's one, and its empty state says the plan's
+		// reason; a New or a note here would be a second.
+		const offered = !input.firstRun;
 		return {
 			zoom: { label: `${copy.Plural} view zoom` },
 			chart: null,
 			statusLine: false,
 			status: null,
-			// In first run the canvas's tier-2 create is the page's one; a New here would be a second.
-			actions: input.canCreate && !input.firstRun
-				? [{ key: "create", control: "button", tier: 4, label: `New ${copy.noun}` }]
+			// Beside the lane or its rail, their LaneCreateButton is the region's tier-2 create, so New is
+			// a utility. Without the lane, New is the create.
+			actions: offered && input.canCreate
+				? [{
+					key: "create",
+					control: "button",
+					tier: lane === "off-canvas" ? 2 : 4,
+					label: `New ${copy.noun}`,
+				}]
 				: [],
+			// Only the expanded lane says the reason itself; the rail has no room for it.
+			note: offered && !input.canCreate && lane !== "expanded"
+				? rosterCreateNote(input.kind, input.createBlockedReason)
+				: null,
 			holds: "create",
 		};
 	}
@@ -203,7 +277,22 @@ export function rigModel(input: RigInput): RigModel {
 		statusLine: editing,
 		status: editing ? saveStatus(input.dirty, input.saveState) : null,
 		actions,
+		note: null,
 		holds: pending ? "commit" : editing ? "editor" : "utilities",
+	};
+}
+
+/**
+ * The rig for every layout of the page, for the island to draw them and the stylesheet to paint one.
+ * Only the roster index differs between them. A console's lane holds Invite member, and moving that
+ * onto the phone rig is not part of Decision #245 (k), so a console has one layout.
+ */
+export function rigLayouts(input: RigInput): RigLayouts {
+	const roster = !input.handle;
+	return {
+		withLane: rigModel({ ...input, lane: "expanded" }),
+		withRail: roster ? rigModel({ ...input, lane: "rail" }) : null,
+		withoutLane: roster ? rigModel({ ...input, lane: "off-canvas" }) : null,
 	};
 }
 

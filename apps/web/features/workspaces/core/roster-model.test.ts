@@ -50,7 +50,7 @@ import { importWithoutGlyphs } from "./registry-import.testing.ts";
  * controls each state draws at their Button-matrix tiers — and, composed with the lane's footer, the
  * footer rig and the invitation strip, exactly ONE filled control on the page in first run,
  * populated, empty and error while no invitation waits, and one per decision region once one does
- * (Decision #245 (j)) — the head's facts, each card's facts as metadata (never chips), and the
+ * (Decision #245 (j)), beside the lane or its rail and with the lane off-canvas (#245 (k)) — the head's facts, each card's facts as metadata (never chips), and the
  * table's column contract.
  */
 
@@ -285,7 +285,7 @@ Deno.test("roster: each state's canvas controls, at their tiers", () => {
 	);
 });
 
-Deno.test("roster: one filled control per decision region in every state — one on the page until an invitation waits — and one create in first run", () => {
+Deno.test("roster: one filled control per decision region in every state, beside the lane and without it — one on the page until an invitation waits — and one create in first run", () => {
 	type Scene = {
 		state: RosterCanvasState;
 		/** What the lane's SSR roster would hold; `null` when the read failed and the lane got none. */
@@ -342,88 +342,118 @@ Deno.test("roster: one filled control per decision region in every state — one
 			invites: 1,
 		},
 	];
+	const REASON = "Your plan includes 1 team — archive one or upgrade to create another.";
 	for (const kind of KINDS) {
 		for (const canCreate of [true, false]) {
-			for (const scene of scenes) {
-				// A failed read leaves the chrome without the plan's answer, so the lane and the rig offer
-				// the create (the server re-checks it on submit) — the slots' own fallback.
-				const chromeCanCreate = scene.lane ? canCreate : true;
-				const canvasFills = filledCount(
-					rosterCanvasControls({
+			// Below --bp-md the frame hides the lane, and the rig takes over its create or its reason; the
+			// collapsed rail keeps the create and leaves the reason to the rig (Decision #245 (k)).
+			for (const place of ["expanded", "rail", "off-canvas"] as const) {
+				for (const scene of scenes) {
+					// A failed read leaves the chrome without the plan's answer, so the lane and the rig offer
+					// the create (the server re-checks it on submit) — the slots' own fallback.
+					const chromeCanCreate = scene.lane ? canCreate : true;
+					const canvasFills = filledCount(
+						rosterCanvasControls({
+							kind,
+							state: scene.state,
+							canCreate,
+							filtered: scene.filtered,
+							readError: scene.readError,
+						}),
+					);
+					// The lane reads the same first-run rule over its own roster (none when the read failed).
+					const firstRun = scene.lane
+						? isFirstRun({
+							loaded: true,
+							entityCount: scene.lane.entities,
+							invitationCount: scene.lane.invitations,
+						})
+						: false;
+					const laneFooter = lane.laneZones({
+						view: "roster",
 						kind,
-						state: scene.state,
-						canCreate,
-						filtered: scene.filtered,
-						readError: scene.readError,
-					}),
-				);
-				// The lane reads the same first-run rule over its own roster (none when the read failed).
-				const firstRun = scene.lane
-					? isFirstRun({
-						loaded: true,
-						entityCount: scene.lane.entities,
-						invitationCount: scene.lane.invitations,
-					})
-					: false;
-				const laneCreate = lane.laneZones({
-					view: "roster",
-					kind,
-					liveCount: scene.lane?.entities ?? 0,
-					invitationCount: scene.lane?.invitations ?? 0,
-					canCreate: chromeCanCreate,
-					firstRun,
-				}).footer.create;
-				const laneFills = laneCreate ? 1 : 0; // LaneCreateButton is tier 2 — filled
-				// The footer band's rig reads the same first-run rule (the slot's SSR read, then the
-				// canvas's published reading).
-				const rig = rigModel({
-					kind,
-					handle: null,
-					module: null,
-					view: null,
-					canCreate: chromeCanCreate,
-					firstRun,
-					canInvite: false,
-					canManageMoney: false,
-					canManageSettings: false,
-					canEditProfile: false,
-					dirty: false,
-					saveState: "idle",
-				});
-				const rigFills = rigFilledCount(rig);
-				const stripFills = filledAcceptCount(
-					planInviteActions(Array.from({ length: scene.invites }, (_, i) => ({ id: `inv-${i}` }))),
-				);
-				const total = canvasFills + stripFills + laneFills + rigFills;
-				const where =
-					`${kind} ${scene.state} canCreate=${canCreate} readError=${scene.readError} invites=${scene.invites}`;
-				// Each decision region holds at most one fill (§B.8.1): the canvas with its strip, and the
-				// chrome — the lane's footer and the footer band's rig.
-				assert(canvasFills + stripFills <= 1, `the canvas holds two fills: ${where}`);
-				assert(laneFills + rigFills <= 1, `the chrome holds two fills: ${where}`);
-				if (scene.invites === 0) {
-					// A plan that admits no entity draws no create anywhere; otherwise exactly one fills.
-					assertEquals(total, chromeCanCreate ? 1 : 0, where);
-				} else {
-					// An invitation waiting: the strip's tier-3 Accept AND the lane's tier-2 create — one per
-					// region, two on the page. Measured on noor's page; left to the owner, Decision #245 (j).
-					assertEquals(stripFills, 1, where);
-					assertEquals(total, 1 + (chromeCanCreate ? 1 : 0), where);
-				}
-				// In first run the one fill is the canvas's, never the lane's — and it is the page's ONLY
-				// create at any tier: the rig's tier-4 New is withheld too.
-				if (scene.state === "first-run") {
-					assertEquals(laneFills, 0, where);
-					const creates = rosterCanvasControls({
+						liveCount: scene.lane?.entities ?? 0,
+						invitationCount: scene.lane?.invitations ?? 0,
+						canCreate: chromeCanCreate,
+						createBlockedReason: chromeCanCreate ? null : REASON,
+						firstRun,
+					}).footer;
+					// What the reader sees of the lane: the rail draws its create but no reason
+					// (`WorkspaceRail`), and nothing is left once the frame hides it.
+					const laneCreate = place === "off-canvas" ? null : laneFooter.create;
+					const laneNote = place === "expanded" ? laneFooter.note : null;
+					const laneFills = laneCreate ? 1 : 0; // LaneCreateButton is tier 2 — filled
+					// The footer band's rig reads the same first-run rule (the slot's SSR read, then the
+					// canvas's published reading).
+					const rig = rigModel({
 						kind,
-						state: scene.state,
-						canCreate,
-						filtered: scene.filtered,
-						readError: scene.readError,
-					}).filter((c) => c.key === "create").length +
-						(laneCreate ? 1 : 0) +
-						rig.actions.filter((a) => a.key === "create").length;
-					assertEquals(creates, canCreate ? 1 : 0, where);
+						handle: null,
+						module: null,
+						view: null,
+						canCreate: chromeCanCreate,
+						createBlockedReason: chromeCanCreate ? null : REASON,
+						firstRun,
+						lane: place,
+						canInvite: false,
+						canManageMoney: false,
+						canManageSettings: false,
+						canEditProfile: false,
+						dirty: false,
+						saveState: "idle",
+					});
+					const rigFills = rigFilledCount(rig);
+					const stripFills = filledAcceptCount(
+						planInviteActions(
+							Array.from({ length: scene.invites }, (_, i) => ({ id: `inv-${i}` })),
+						),
+					);
+					const total = canvasFills + stripFills + laneFills + rigFills;
+					const where =
+						`${kind} ${scene.state} canCreate=${canCreate} readError=${scene.readError} invites=${scene.invites} lane=${place}`;
+					// Each decision region holds at most one fill (§B.8.1): the canvas with its strip, and the
+					// chrome — the lane's footer and the footer band's rig.
+					assert(canvasFills + stripFills <= 1, `the canvas holds two fills: ${where}`);
+					assert(laneFills + rigFills <= 1, `the chrome holds two fills: ${where}`);
+					if (scene.invites === 0) {
+						// A plan that admits no entity draws no create anywhere; otherwise exactly one fills.
+						assertEquals(total, chromeCanCreate ? 1 : 0, where);
+					} else {
+						// An invitation waiting: the strip's tier-3 Accept AND the lane's tier-2 create — one per
+						// region, two on the page. Measured on noor's page; left to the owner, Decision #245 (j).
+						assertEquals(stripFills, 1, where);
+						assertEquals(total, 1 + (chromeCanCreate ? 1 : 0), where);
+					}
+					// Outside first run the chrome's fill is the lane's (or its rail's) beside it and the rig's
+					// without it, never both, and never neither while the plan admits one.
+					if (scene.state !== "first-run") {
+						const bare = place === "off-canvas";
+						assertEquals(laneFills, !bare && chromeCanCreate ? 1 : 0, where);
+						assertEquals(rigFills, bare && chromeCanCreate ? 1 : 0, where);
+					}
+					// A plan that refuses the create says why exactly once on screen: the lane's line beside
+					// the expanded lane, the rig's same line beside the rail or without the lane — the
+					// canvas's empty state in first run.
+					const notes = [laneNote, rig.note].filter((n) => n !== null);
+					if (!chromeCanCreate && scene.state !== "first-run") {
+						assertEquals(notes, [REASON], where);
+					} else {
+						assertEquals(notes, [], where);
+					}
+					// In first run the one fill is the canvas's, never the lane's — and it is the page's ONLY
+					// create at any tier: the rig's New is withheld too, in either layout.
+					if (scene.state === "first-run") {
+						assertEquals(laneFills, 0, where);
+						const creates = rosterCanvasControls({
+							kind,
+							state: scene.state,
+							canCreate,
+							filtered: scene.filtered,
+							readError: scene.readError,
+						}).filter((c) => c.key === "create").length +
+							(laneCreate ? 1 : 0) +
+							rig.actions.filter((a) => a.key === "create").length;
+						assertEquals(creates, canCreate ? 1 : 0, where);
+					}
 				}
 			}
 		}

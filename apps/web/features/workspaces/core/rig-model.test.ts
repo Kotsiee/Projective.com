@@ -7,8 +7,11 @@ import {
 	PROFILE_EDITOR_MODULE,
 	rigFilledCount,
 	type RigInput,
+	type RigLane,
+	rigLayouts,
 	rigModel,
 	ROLES_EDITOR_MODULE,
+	rosterCreateNote,
 	type SaveState,
 	saveStatus,
 } from "./rig-model.ts";
@@ -17,7 +20,9 @@ import { MEMBERS_CHART, MEMBERS_PEOPLE, MEMBERS_QUEUE } from "./sub-views.ts";
 /**
  * The workspace footer rig (Teams work order L2): every control at its Button Interaction Matrix tier,
  * Save (tier 3) and Discard (tier 5) only while the policy editor is dirty, one filled control at
- * most, navigations as links, and the Org chart toggle on the one sub-view state.
+ * most, navigations as links, and the Org chart toggle on the one sub-view state. The roster's New is
+ * a tier-4 utility beside the lane and the tier-2 create with the lane off-canvas, with the plan's
+ * reason in its place when the plan admits none (Decision #245 (k)).
  */
 
 // #region Fixtures
@@ -52,6 +57,14 @@ function inConsole(overrides: Partial<RigInput> = {}): RigInput {
 }
 
 const keys = (input: RigInput) => rigModel(input).actions.map((a) => a.key);
+
+/** The roster index's rig input. */
+function onRoster(overrides: Partial<RigInput> = {}): RigInput {
+	return inConsole({ handle: null, module: null, ...overrides });
+}
+
+/** Every place the lane can be beside the rig. */
+const LANES: readonly RigLane[] = ["expanded", "rail", "off-canvas"];
 // #endregion
 
 // #region One filled control
@@ -79,6 +92,18 @@ Deno.test("rig: never more than one filled control, in any state", () => {
 			}
 		}
 		assertEquals(rigFilledCount(rigModel(inConsole({ kind, handle: null, module: null }))), 0);
+		// The roster in every layout, every create state: at most one fill, and never beside the lane or
+		// its rail.
+		for (const canCreate of [true, false]) {
+			for (const firstRun of [true, false]) {
+				for (const lane of [...LANES, undefined]) {
+					const model = rigModel(onRoster({ kind, canCreate, firstRun, lane }));
+					const fills = rigFilledCount(model);
+					assert(fills <= 1, `${kind} roster lane=${lane}`);
+					if (lane !== "off-canvas") assertEquals(fills, 0, `${kind} roster beside the lane`);
+				}
+			}
+		}
 	}
 });
 
@@ -303,6 +328,98 @@ Deno.test("rig: the roster's first run offers no New — the canvas's empty stat
 	// Inside a console the roster's first run means nothing.
 	assertEquals(keys(inConsole({ module: "members", firstRun: true })), ["invite", "settings"]);
 });
+
+Deno.test("rig: with the lane off-canvas the roster's New is the tier-2 create (#245 (k))", () => {
+	for (const kind of ["team", "business"] as WorkspaceKind[]) {
+		const label = kind === "team" ? "New team" : "New business";
+		const bare = rigModel(onRoster({ kind, lane: "off-canvas" }));
+		assertEquals(bare.actions, [{ key: "create", control: "button", tier: 2, label }], kind);
+		assertEquals(rigFilledCount(bare), 1, kind);
+		assertEquals(bare.note, null, kind);
+		assertEquals(bare.holds, "create", kind);
+		// Beside the lane, expanded or as the rail, the lane's LaneCreateButton is the tier-2 create.
+		for (const lane of ["expanded", "rail", undefined] as const) {
+			const docked = rigModel(onRoster({ kind, lane }));
+			assertEquals(docked.actions, [{ key: "create", control: "button", tier: 4, label }], kind);
+			assertEquals(rigFilledCount(docked), 0, kind);
+			assertEquals(docked.note, null, kind);
+		}
+		// The zoom does not depend on the lane.
+		assertEquals(bare.zoom, rigModel(onRoster({ kind })).zoom, kind);
+	}
+});
+
+Deno.test("rig: a plan-capped roster offers no New in any layout, and says the lane's reason wherever the expanded lane is not drawn", () => {
+	const reason = "Your plan includes 1 business — archive one or upgrade to create another.";
+	for (const kind of ["team", "business"] as WorkspaceKind[]) {
+		const capped = { kind, canCreate: false, createBlockedReason: reason };
+		const docked = rigModel(onRoster({ ...capped, lane: "expanded" }));
+		const rail = rigModel(onRoster({ ...capped, lane: "rail" }));
+		const bare = rigModel(onRoster({ ...capped, lane: "off-canvas" }));
+		// The server would refuse it, so no layout offers a create at any tier.
+		assertEquals([docked.actions, rail.actions, bare.actions], [[], [], []], kind);
+		assertEquals([docked, rail, bare].map(rigFilledCount), [0, 0, 0], kind);
+		// The expanded lane says why. The collapsed rail draws the lane's create but no reason, and
+		// without the lane there is neither, so the rig says the same line in both.
+		assertEquals([docked.note, rail.note, bare.note], [null, reason, reason], kind);
+		assertEquals(rigModel(onRoster(capped)).note, null, `${kind}: absent means expanded`);
+		// No reason from the projection: the kind's own words, as the lane says them.
+		for (const lane of ["rail", "off-canvas"] as const) {
+			assertEquals(
+				rigModel(onRoster({ kind, canCreate: false, lane })).note,
+				rosterCreateNote(kind, null),
+			);
+			// In first run the canvas's empty state carries the reason, so the rig says nothing.
+			assertEquals(rigModel(onRoster({ ...capped, lane, firstRun: true })).note, null);
+		}
+	}
+	assertEquals(rosterCreateNote("team", "  "), "Your plan does not include another team.");
+	assertEquals(rosterCreateNote("business", null), "Your plan does not include another business.");
+	assertEquals(rosterCreateNote("team", ` ${reason} `), reason);
+});
+
+Deno.test("rig: the roster's first run holds no New and no note in any layout", () => {
+	for (const kind of ["team", "business"] as WorkspaceKind[]) {
+		for (const canCreate of [true, false]) {
+			const { withLane, withRail, withoutLane } = rigLayouts(
+				onRoster({ kind, canCreate, firstRun: true }),
+			);
+			for (const model of [withLane, withRail, withoutLane]) {
+				assertEquals(model?.actions, [], kind);
+				assertEquals(model?.note, null, kind);
+			}
+		}
+	}
+});
+
+Deno.test("rig: rigLayouts answers every layout on the roster and one in a console", () => {
+	for (const kind of ["team", "business"] as WorkspaceKind[]) {
+		for (const canCreate of [true, false]) {
+			const input = { kind, canCreate, createBlockedReason: "Upgrade to add another." };
+			const roster = rigLayouts(onRoster({ ...input, lane: "off-canvas" }));
+			assertEquals(roster.withLane, rigModel(onRoster({ ...input, lane: "expanded" })));
+			assertEquals(roster.withRail, rigModel(onRoster({ ...input, lane: "rail" })));
+			assertEquals(roster.withoutLane, rigModel(onRoster({ ...input, lane: "off-canvas" })));
+			// Whatever the caller passed, each layout is its own answer.
+			for (const lane of LANES) assertEquals(rigLayouts(onRoster({ ...input, lane })), roster);
+			// The island draws the rail's layout as the lane's controls plus its reason, so the two hold
+			// the same controls and differ by the note alone.
+			assertEquals(roster.withRail?.actions, roster.withLane.actions, kind);
+			assertEquals(roster.withLane.note, null, kind);
+			// Beside the lane or its rail the rig never fills; without the lane its New is the one fill.
+			assertEquals(rigFilledCount(roster.withLane), 0);
+			assertEquals(rigFilledCount(roster.withRail!), 0);
+			assertEquals(rigFilledCount(roster.withoutLane!), canCreate ? 1 : 0);
+		}
+		// A console's lane holds Invite member, which the ruling leaves alone: one layout.
+		for (const module of MODULES) {
+			const inside = rigLayouts(inConsole({ kind, module }));
+			assertEquals([inside.withRail, inside.withoutLane], [null, null], `${kind}/${module}`);
+			assertEquals(inside.withLane, rigModel(inConsole({ kind, module, lane: "off-canvas" })));
+			assertEquals(inside.withLane.note, null);
+		}
+	}
+});
 // #endregion
 
 // #region View switching
@@ -365,11 +482,25 @@ Deno.test("footer rig: no raw <button>, no raw or action-styled <a> — Buttons 
 	assert(!/\bRigButton\b/.test(RIG), "RigButton is back");
 });
 
-Deno.test("footer rig: Save is the only filled Button; Discard and the toggle are text, utilities outlined", () => {
+Deno.test("footer rig: the filled Buttons are Save and the roster's promoted New; Discard and the toggle are text, utilities outlined", () => {
 	const buttons = buttonElements(RIG);
 	const filled = buttons.filter((b) => !/\bvariant="(outlined|text)"/.test(b));
-	assertEquals(filled.length, 1, `filled: ${filled.join(" | ")}`);
-	assert(/onClick=\{props\.onSave\}/.test(filled[0]), "the one filled Button is Save");
+	assertEquals(filled.length, 2, `filled: ${filled.join(" | ")}`);
+	// Save (tier 3) lives in a console's editor and the promoted New (tier 2) on the roster without
+	// the lane, so no model draws both (the fill sweep above).
+	const save = filled.filter((b) => /onClick=\{props\.onSave\}/.test(b));
+	const create = filled.filter((b) => /\bstructural\b/.test(b));
+	assertEquals([save.length, create.length], [1, 1], `filled: ${filled.join(" | ")}`);
+	assert(!/\bstructural\b/.test(save[0]), "Save is tier 3, not structural");
+	assert(
+		/onClick=\{props\.onCreate\}/.test(create[0]),
+		"the structural Button is the roster's New",
+	);
+	assert(/\brounded\b/.test(create[0]), "the promoted New is the lane's pill, moved");
+	assert(
+		/action\.tier === 2\s*\?/.test(RIG),
+		"the structural New is drawn only for a tier-2 create",
+	);
 	assert(/onSave=\{\(event\) => pressPending\(event, requestSave\)\}/.test(RIG));
 	assert(buttons.some((b) => /variant="text"[\s\S]*onClick=\{props\.onDiscard\}/.test(b)));
 	assert(/onDiscard=\{\(event\) => pressPending\(event, requestDiscard\)\}/.test(RIG));
@@ -409,6 +540,90 @@ Deno.test("footer rig: the folds ask the rig's own room, and the commit never sh
 			`no fold for data-holds="${holds}"`,
 		);
 	}
+});
+
+/** Every `@media` block of a sheet: its query and its body, read to the matching brace. */
+function mediaBlocks(sheet: string): { query: string; body: string }[] {
+	const out: { query: string; body: string }[] = [];
+	for (const match of sheet.matchAll(/@media([^{]*)\{/g)) {
+		const open = (match.index ?? 0) + match[0].length;
+		let depth = 1;
+		let at = open;
+		while (at < sheet.length && depth > 0) {
+			if (sheet[at] === "{") depth++;
+			else if (sheet[at] === "}") depth--;
+			at++;
+		}
+		out.push({ query: match[1].trim(), body: sheet.slice(open, at - 1) });
+	}
+	return out;
+}
+
+/** A sheet's text with its comments removed and its line endings unified. */
+function sheetText(url: URL): string {
+	return Deno.readTextFileSync(url).replaceAll("\r\n", "\n").replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+Deno.test("footer rig: the roster draws both layouts, and the sheet paints one with the frame's own lane query (#245 (k))", () => {
+	// The island draws each layout's answer in its own wrapper; the reason rides only where the
+	// expanded lane is not drawn: the phone's in its layout, the rail's in the lane's.
+	assert(/rigLayouts\(\{/.test(RIG), "the rig reads every layout");
+	assert(
+		/class="wsp-footerrig__layout" data-lane="shown">\s*\{controls\(rig\)\}\s*\{withRail\?\.note && \(\s*<span class="wsp-footerrig__createnote" data-lane="rail">\{withRail\.note\}<\/span>/
+			.test(RIG),
+	);
+	assert(
+		/class="wsp-footerrig__layout" data-lane="hidden">\s*\{controls\(withoutLane\)\}/.test(RIG),
+	);
+	assert(/class="wsp-footerrig__createnote">\{withoutLane\.note\}/.test(RIG));
+	assert(
+		!/\bmatchMedia\b|\buseMediaQuery\b/.test(RIG),
+		"the swap is the stylesheet's, not a script's",
+	);
+
+	const sheet = sheetText(new URL("../styles/workspace-chrome.css", import.meta.url));
+	// At rest the layout beside the lane paints, and the one without it is out of the tree.
+	assert(/\.wsp-footerrig__layout\s*\{\s*display:\s*contents;\s*\}/.test(sheet));
+	assert(/\.wsp-footerrig__layout\[data-lane="hidden"\]\s*\{\s*display:\s*none;\s*\}/.test(sheet));
+	// One media block swaps them.
+	const swaps = mediaBlocks(sheet).filter((b) => /wsp-footerrig__layout/.test(b.body));
+	assertEquals(swaps.length, 1, "one block swaps the layouts");
+	const [swap] = swaps;
+	assert(
+		/\.wsp-footerrig__layout\[data-lane="shown"\]\s*\{\s*display:\s*none;\s*\}/.test(swap.body),
+	);
+	assert(
+		/\.wsp-footerrig__layout\[data-lane="hidden"\]\s*\{\s*display:\s*contents;\s*\}/.test(
+			swap.body,
+		),
+	);
+
+	// The phone's reason wraps under the zoom in the same block, so it follows the same query.
+	assert(
+		/\.wsp-footerrig:has\(\.wsp-footerrig__layout\[data-lane="hidden"\] > \.wsp-footerrig__createnote\)\s*\{[^}]*flex-wrap:\s*wrap;/
+			.test(swap.body),
+	);
+
+	// That block's query IS the frame's, character for character, so the rig's tier-2 New and the
+	// lane's LaneCreateButton never paint together and the page is never left without either. A
+	// `rem` copy would agree only at a 16px browser default: a media query's `rem` reads the
+	// browser's default font size, and the frame's `px` does not move with it.
+	const frameSheet = new URL(import.meta.resolve("@ui/navigation/styles/middle-nav.css"));
+	const frame = mediaBlocks(sheetText(frameSheet))
+		.filter((b) => /\.ui-middle-nav__lane\s*\{\s*display:\s*none;\s*\}/.test(b.body));
+	assertEquals(frame.length, 1, "the frame hides its lane in one block");
+	assertEquals(swap.query, frame[0].query, "the rig swaps on the frame's own lane query");
+
+	// The rail's reason paints only while the splitter is collapsed, and only from the lane's layout,
+	// which the phone's query hides.
+	assert(
+		/\.wsp-footerrig__createnote\[data-lane="rail"\]\s*\{\s*display:\s*none;\s*\}/.test(sheet),
+	);
+	assert(
+		/\.ui-middle-nav:has\(\.ui-middle-nav__lane \.ui-splitter\[data-mode="collapsed"\]\)\s+\.ui-middle-nav__footer\s+\.wsp-footerrig__createnote\[data-lane="rail"\]\s*\{\s*display:\s*-webkit-box;\s*\}/
+			.test(sheet),
+		"the rail's reason paints beside the collapsed rail",
+	);
 });
 
 Deno.test("footer rig: a Save or Discard that held focus hands it on, signal-driven", () => {

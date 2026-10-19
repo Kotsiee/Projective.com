@@ -55,7 +55,8 @@ export interface RoleTemplate {
  * manages them (`editable_member_ids` and the member rank rule need the editor to outrank the seat).
  * `manage_projects` makes its holder a MANAGER, so it takes one of the plan's `business_managers`
  * seats (`fn_business_role_is_manager`). The work order's "base admin minus withdraw/finance" was
- * read under the spec's narrower remit — FLAG #249 (a).
+ * read under the spec's narrower remit, and the owner ruled it stays that way (2026-10-19, #249 (a):
+ * kept as built).
  *
  * **Observer** (a business's, #230 (b) [1]; #249 (b)): based on Member, with `view_analytics` alone —
  * every member already sees the business's projects, so it reads progress and analytics and changes,

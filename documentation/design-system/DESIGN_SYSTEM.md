@@ -1476,6 +1476,18 @@ actions all `text` (severity distinguishing accept from the rest), and the one u
 `outlined`. A repeated action is **never** `filled` — a column of filled buttons is a column of
 noise, and it makes the row's _content_ the least prominent thing in the row.
 
+**Right** — the workspace roster's one create (`/teams`, `/businesses`; Decision #245 (k)). Beside
+the lane, the tier-2 create is the lane's `LaneCreateButton` and the footer rig's New is a tier-4
+utility. Below `--bp-md` the frame takes the lane off-canvas, so the rig's New becomes the tier-2
+`<Button structural rounded>`, or, where the plan admits none, the rig shows the lane's reason as
+meta text. Beside the collapsed rail, which keeps the create but has no room for the reason, the rig
+shows the reason too (`rigLayouts`, `rig-model.ts`). Every layout is in the markup, and the
+stylesheet paints one with the frame's own lane query, `@media (max-width: 767px)` copied as
+`middle-nav.css` writes it: a `rem` copy would split from the frame's `px` at any browser default
+font size but 16px. It is one create in two places, exclusive by render condition: at any width and
+any default font size the reader never sees two tier-2 creates, and never sees none while the plan
+admits one.
+
 > **Two fills are legal only when ranked by hue (§D.7.7, Decision #157).** The cap exists to
 > protect the reader's ability to rank the actions. Where a decision region genuinely holds a
 > terminal financial commit AND a structural commitment, the two may both be filled because the
@@ -5046,8 +5058,13 @@ and this entry only points at them:
   `?view=` ([`ROUTING.md`](../architecture/ROUTING.md)).
 - **The footer rig** (Decision #258) is built by `rigModel` (`rig-model.ts`). It holds the shared
   zoom, the tier-4 utilities (`Button`, or a ui `Link` when the utility navigates) and, only while a
-  policy editor is dirty, its status line, a tier-5 Discard and a tier-3 Save, which is the rig's one
-  fill (§B.8.2). It folds by its own width (container queries), not by the viewport.
+  policy editor is dirty, its status line, a tier-5 Discard and a tier-3 Save, which is a console
+  editor's one fill (§B.8.2). It folds by its own width (container queries), except below `--bp-md`,
+  where the viewport applies every fold (the phone rig is glyphs). On the roster index the rig's New
+  is a tier-4 utility beside the lane or its collapsed rail. With the lane off-canvas it is the
+  tier-2 create, or the lane's plan reason where the plan admits none, and beside the rail the rig
+  says that reason too (Decision #245 (k), §B.8.2). That swap follows the frame's own `px` lane
+  query rather than the workspace sheets' `rem` breakpoint, so it never splits from the lane.
 
 The workspace sheets are token-only and policed by `styles.gate.test.ts` (Decision #251).
 

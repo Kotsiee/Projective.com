@@ -20,7 +20,7 @@ import {
 	viewOr,
 } from "../core/workspace-state.ts";
 import { zoomStoreFor } from "../core/view-state.ts";
-import { type RigAction, type RigModel, rigModel } from "../core/rig-model.ts";
+import { type RigAction, rigLayouts, type RigModel } from "../core/rig-model.ts";
 import { subViewsFor } from "../core/sub-views.ts";
 import { CardsViewIcon, ChartViewIcon, TableViewIcon } from "../components/MemberCard.tsx";
 import { cloneGlyph, InviteGlyph, PlusGlyph, SettingsGlyph } from "../core/workspace-glyphs.tsx";
@@ -44,6 +44,15 @@ import { cloneGlyph, InviteGlyph, PlusGlyph, SettingsGlyph } from "../core/works
  *     never a button-styled anchor), then the policy editor's Discard (tier 5) and Save (tier 3, the
  *     rig's one filled control) — both ONLY while the editor holds unsaved changes. The status line
  *     says why before the buttons do.
+ *   - The roster's New in two layouts (Decision #245 (k)): beside the lane it is the tier-4 utility,
+ *     because the lane's `LaneCreateButton` is the tier-2 create. Below `--bp-md`, where the frame
+ *     hides the lane, it is the tier-2 structural `Button`, or, where the plan admits none, the
+ *     lane's reason as meta text. Beside the collapsed rail, which keeps the create but has no room
+ *     for the reason, the rig says the reason too. `rigLayouts` answers every layout. The island
+ *     draws the lane's and the phone's inside `data-lane` wrappers, with the rail's reason in the
+ *     first, and the stylesheet paints one with the frame's own lane query and the splitter's
+ *     `data-mode`. No server read knows the viewport or the splitter, so this keeps SSR and hydration
+ *     on the same first frame and never shows two tier-2 creates.
  *
  * **It talks to the body through signals, never props.** The rig is a separate hydration root mounted
  * into a shell slot; it cannot receive a callback from a page it does not contain. `requestSave()` /
@@ -86,6 +95,11 @@ export interface WorkspaceFooterRigProps {
 	/** Whether the viewer may create another entity of this kind. */
 	canCreate?: boolean;
 	/**
+	 * The roster's `createBlockedReason`, the plan's words for a refused create. The rig says them
+	 * only beside the collapsed rail or with the lane off-canvas.
+	 */
+	createBlockedReason?: string | null;
+	/**
 	 * The roster's first run over the server's read (`isFirstRun`) — the rig then offers no New, since
 	 * the canvas's empty state carries the page's one create. Once the canvas publishes its own reading
 	 * (`rosterFirstRun` — a retried read or an answered invitation can change it), that wins.
@@ -97,12 +111,13 @@ export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.
 	// #region The model
 	const module = props.module ?? null;
 	const views = subViewsFor(module, props.kind, props.capabilities ?? []);
-	const rig = rigModel({
+	const layouts = rigLayouts({
 		kind: props.kind,
 		handle: props.workspaceHandle ?? null,
 		module,
 		view: viewOr(props.view ?? null),
 		canCreate: props.canCreate !== false,
+		createBlockedReason: props.createBlockedReason ?? null,
 		firstRun: rosterFirstRun.value ?? props.firstRun ?? false,
 		canInvite: props.canInvite ?? false,
 		canManageMoney: props.canManageMoney ?? false,
@@ -112,6 +127,9 @@ export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.
 		dirty: policyDirty.value,
 		saveState: saveState.value,
 	});
+	const rig = layouts.withLane;
+	const withRail = layouts.withRail;
+	const withoutLane = layouts.withoutLane;
 	const chart = rig.chart;
 	// #endregion
 
@@ -150,6 +168,21 @@ export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.
 	function pressPending(event: Event, request: () => void): void {
 		carry.current = event.currentTarget === globalThis.document.activeElement;
 		request();
+	}
+	// #endregion
+
+	// #region Layouts
+	/** One layout's trailing controls, in order, at their tiers. */
+	function controls(model: RigModel): JSX.Element[] {
+		return model.actions.map((action) => (
+			<RigControl
+				key={action.key}
+				action={action}
+				onCreate={() => openCreate(props.kind)}
+				onSave={(event) => pressPending(event, requestSave)}
+				onDiscard={(event) => pressPending(event, requestDiscard)}
+			/>
+		));
 	}
 	// #endregion
 
@@ -197,15 +230,33 @@ export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.
 						{rig.status?.text}
 					</span>
 				)}
-				{rig.actions.map((action) => (
-					<RigControl
-						key={action.key}
-						action={action}
-						onCreate={() => openCreate(props.kind)}
-						onSave={(event) => pressPending(event, requestSave)}
-						onDiscard={(event) => pressPending(event, requestDiscard)}
-					/>
-				))}
+				{withoutLane
+					? (
+						<>
+							{
+								/*
+								 * Beside the lane, and with the lane off-canvas: the stylesheet paints one with the
+								 * frame's own query for hiding the lane, so the hidden one is out of the
+								 * accessibility tree and the Tab order. Beside the collapsed rail the controls are
+								 * the lane's layout, and the rail's reason paints only while the splitter is
+								 * collapsed (`withRail` adds nothing else).
+								 */
+							}
+							<span class="wsp-footerrig__layout" data-lane="shown">
+								{controls(rig)}
+								{withRail?.note && (
+									<span class="wsp-footerrig__createnote" data-lane="rail">{withRail.note}</span>
+								)}
+							</span>
+							<span class="wsp-footerrig__layout" data-lane="hidden">
+								{controls(withoutLane)}
+								{withoutLane.note && (
+									<span class="wsp-footerrig__createnote">{withoutLane.note}</span>
+								)}
+							</span>
+						</>
+					)
+					: controls(rig)}
 			</div>
 			{/* #endregion */}
 		</div>
@@ -244,7 +295,20 @@ function RigControl(
 	const { action } = props;
 	switch (action.key) {
 		case "create":
-			return <Utility label={action.label} glyph={PlusGlyph} onClick={props.onCreate} />;
+			// Tier 2 only with the lane off-canvas: the lane's LaneCreateButton, moved, in Button terms.
+			return action.tier === 2
+				? (
+					<Button
+						class="wsp-footerrig__create"
+						structural
+						rounded
+						size="sm"
+						icon={cloneGlyph(PlusGlyph)}
+						label={action.label}
+						onClick={props.onCreate}
+					/>
+				)
+				: <Utility label={action.label} glyph={PlusGlyph} onClick={props.onCreate} />;
 		case "invite":
 			return action.control === "button"
 				? <Utility label={action.label} glyph={InviteGlyph} onClick={() => openInvite()} />

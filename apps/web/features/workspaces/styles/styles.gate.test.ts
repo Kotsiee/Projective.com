@@ -4,7 +4,8 @@
  * The repo has no CSS lint hook (`deno.json` runs `deno lint` over TypeScript only), so this reads
  * every sheet in `apps/web/features/workspaces/styles/` and fails, naming `file:line`, on anything the
  * W1 sweep removed coming back: a translucent `color-mix`, a literal weight, a literal duration, a hex
- * or `rgb()` colour, glass, a `px` breakpoint, or an `outline: none` with no ring beside it. The
+ * or `rgb()` colour, glass, a `px` breakpoint (save the footer rig's one mirror of the frame's lane
+ * query, Decision #245 (k)), or an `outline: none` with no ring beside it. The
  * remaining gates hold the rest of the sweep in place — `px` only inside a token declaration, `opacity`
  * only inside an animation, both reduced-motion channels (and an in-app stop for every opt-in
  * animation), the `data-i` stagger, the deleted dead rules and the removed inset rings.
@@ -14,7 +15,7 @@
  * trip a gate. `url()` arguments are blanked for the colour, pixel and duration gates for the same
  * reason: a resource path is a name, not a value.
  */
-import { assert } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 
 // #region Sources
 const STYLES_DIR = new URL("./", import.meta.url);
@@ -229,6 +230,55 @@ function assertNone(found: string[], gate: string): void {
 }
 // #endregion
 
+// #region The frame's lane mirror
+/**
+ * The one `px` query this surface may write (Decision #245 (k)). The roster's footer rig swaps to its
+ * layout without the lane exactly where the frame hides the lane, so it copies the frame's own query
+ * from `middle-nav.css`: a `rem` query resolves against the browser's default font size and the
+ * frame's `px` one does not, so at any default but 16px a `rem` swap would paint the rig's tier-2 New
+ * beside the lane's, or neither. The block may hold only these selectors; `rig-model.test.ts` holds
+ * its query to the frame's.
+ */
+const FRAME_MIRROR = {
+	sheet: "workspace-chrome.css",
+	prelude: /@media\s*\(max-width:\s*767px\)\s*\{/g,
+	selectors: [
+		'.wsp-footerrig__layout[data-lane="shown"]',
+		'.wsp-footerrig__layout[data-lane="hidden"]',
+		'.wsp-footerrig:has(.wsp-footerrig__layout[data-lane="hidden"] > .wsp-footerrig__createnote)',
+		'.wsp-footerrig:has(.wsp-footerrig__layout[data-lane="hidden"] > .wsp-footerrig__createnote) .wsp-footerrig__actions',
+	],
+} as const;
+
+/** The selectors of the at-rule block opening at `open`, in source order. */
+function selectorsOf(sheet: Sheet, open: number): string[] {
+	return blockSelectors(sheet.css, open, closeBrace(sheet.css, open)).map((rule) => rule.selector);
+}
+
+/**
+ * [start, end) of each frame-mirror block, from its `@media` to its closing brace — only while it
+ * holds nothing but the mirror's selectors, so any other rule in it trips the `px` gates.
+ */
+function frameMirrorRanges(sheet: Sheet): [number, number][] {
+	if (sheet.name !== FRAME_MIRROR.sheet) return [];
+	const ranges: [number, number][] = [];
+	for (const match of sheet.css.matchAll(FRAME_MIRROR.prelude)) {
+		const open = match.index! + match[0].length - 1;
+		const close = closeBrace(sheet.css, open);
+		const allowed: readonly string[] = FRAME_MIRROR.selectors;
+		if (close > open && selectorsOf(sheet, open).every((s) => allowed.includes(s))) {
+			ranges.push([match.index!, close + 1]);
+		}
+	}
+	return ranges;
+}
+
+/** True when `index` falls inside the frame's lane mirror. */
+function inFrameMirror(sheet: Sheet, index: number): boolean {
+	return frameMirrorRanges(sheet).some(([start, end]) => index >= start && index < end);
+}
+// #endregion
+
 // #region The W1 acceptance gates
 Deno.test("workspace styles: the sheets were found", () => {
 	assert(SHEETS.length >= 9, `expected the nine workspace sheets, read ${SHEETS.length}`);
@@ -290,9 +340,27 @@ Deno.test("workspace styles: no backdrop-filter", () => {
 
 Deno.test("workspace styles: no px breakpoint", () => {
 	assertNone(
-		offences(/@media[^{]*\d+px/),
+		offences(/@media[^{]*\d+px/, (sheet, index) => !inFrameMirror(sheet, index)),
 		"px in @media — spell the ui breakpoint in rem (workspace-tokens.css):",
 	);
+});
+
+Deno.test("workspace styles: the one px query is the frame's lane mirror, holding only the rig's swap (#245 (k))", () => {
+	const found: string[] = [];
+	for (const sheet of SHEETS) {
+		for (const match of sheet.css.matchAll(/@media[^{]*\d+px[^{]*\{/g)) {
+			const where = `${sheet.name}:${lineOf(sheet.css, match.index!)}`;
+			found.push(where);
+			assertEquals(sheet.name, FRAME_MIRROR.sheet, `${where} is not the mirror's sheet`);
+			assert(new RegExp(FRAME_MIRROR.prelude.source).test(match[0]), `${where}: ${match[0]}`);
+			assertEquals(
+				selectorsOf(sheet, match.index! + match[0].length - 1),
+				[...FRAME_MIRROR.selectors],
+				`${where} holds more than the rig's swap`,
+			);
+		}
+	}
+	assertEquals(found.length, 1, `one frame mirror, found: ${found.join(", ")}`);
 });
 
 Deno.test("workspace styles: no outline: none without a ring in the same rule", () => {
@@ -317,7 +385,8 @@ Deno.test("workspace styles: px literals live only in token declarations", () =>
 		offences(
 			/(\d*\.?\d+)px\b/,
 			(sheet, index, match) =>
-				Number(match[1]) !== 0 && !declarationAt(sheet.css, index).startsWith("--"),
+				Number(match[1]) !== 0 && !declarationAt(sheet.css, index).startsWith("--") &&
+				!inFrameMirror(sheet, index),
 			withoutUrls,
 		),
 		"px literal in a rule — read a token (--space-*, --wsp-* geometry):",

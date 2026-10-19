@@ -804,7 +804,7 @@ Every member holds one role — a preset, or a custom role the Business writes i
   remit above — it creates projects, hires and approves the work that releases escrow, and funds
   escrow and buys from the pool within the spending cap set for it — on a Member rank, so an Admin
   can set its limit; managing projects is what takes a manager seat. It manages no members, roles,
-  settings or money policy; whether it should is an open owner question (#249 (a)). The **Observer**
+  settings or money policy, and the owner ruled it stays so (#249 (a), 2026-10-19). The **Observer**
   template ranks as a Member and carries viewing analytics alone. Either is an ordinary custom role
   once created, editable like any other. The Members view shows the manager headroom ("1 of 2
   managers"), counting open invitations, and says the cap — with who to ask, or that plans can't
