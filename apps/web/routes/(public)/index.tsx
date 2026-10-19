@@ -1,13 +1,21 @@
 import { page } from "fresh";
 import type { LandingHero, LandingPayload } from "@projective/types/explore";
+import type { PublicMetrics } from "@projective/types/marketing";
 import { ExploreBackendService } from "@server/services/explore/ExploreBackendService.ts";
 import { PublicMetricsService } from "@server/services/marketing/PublicMetricsService.ts";
 import { define } from "@web/utils/state.ts";
 import { isRestrictedRequest } from "@web/utils/age-gate.ts";
+import { readCookies } from "@web/utils/auth-cookies.ts";
+import { IS_DEV } from "@web/utils/dev.ts";
 import { LandingPage, landingPageMeta } from "@features/landing/routes/LandingPage.tsx";
 import { tkvRedirect } from "@features/landing/core/strip-tkv.ts";
 import { heroViewerOf } from "@features/landing/core/hero-search.ts";
 import { DEMO_PARAM, parseDemoId } from "@features/landing/core/demo-stage.ts";
+import {
+	applyLandingMetricsSim,
+	LANDING_METRICS_SIM_COOKIE,
+	parseLandingMetricsSim,
+} from "@features/landing/core/metrics-sim.ts";
 import { applyPageMeta } from "@features/marketing/core/seo.ts";
 import { siteOrigin } from "@features/marketing/core/site-origin.ts";
 
@@ -20,12 +28,15 @@ const NO_HERO_SEARCH: LandingHero = { terms: [], trending: [], chips: [] };
  * facts on request state — the root `_app` renders them into `<head>` — and reads, through the fat
  * discovery service, the live marketplace and the hero search's data (`landingHero`: the trending
  * terms, the typewriter's confirmed examples and the "Try:" chips), and, through the public metrics
- * service, the platform fee every simulated payout uses (`platformFeeBp`). The calls to action read
+ * service, the live figures — the numbers section's, and the platform fee every fee clause and
+ * simulated payout uses (`platformFeeBp`), handed through whole. The calls to action read
  * three viewer facts, never the whole context; "restricted" honours the Dev Context Switcher's age
  * override as every public surface does (`isRestrictedRequest`). `?demo=` names the demo stage's
  * open tab, so a deep link renders it open with no JavaScript. A failed read renders the page with
- * that part withheld rather than an error document — a missing fee drops every fee clause — since
- * the landing's story does not depend on the database being up.
+ * that part withheld rather than an error document — failed metrics hide the numbers and drop every
+ * fee clause — since the landing's story does not depend on the database being up. In development
+ * only, the Dev Context Switcher's `landingMetrics` axis (`pj.dev.landing-metrics`) forces the
+ * numbers' threshold result over the read (`applyLandingMetricsSim`).
  */
 export const handler = define.handlers({
 	async GET(ctx) {
@@ -39,7 +50,13 @@ export const handler = define.handlers({
 			PublicMetricsService.get(),
 		]);
 		const landing: LandingPayload | null = res.ok && res.data ? res.data : null;
-		const feeBp = metrics.ok && metrics.data ? metrics.data.platformFeeBp : null;
+		const metricsSim = IS_DEV
+			? parseLandingMetricsSim(readCookies(ctx.req)[LANDING_METRICS_SIM_COOKIE])
+			: null;
+		const publicMetrics: PublicMetrics | null = applyLandingMetricsSim(
+			metrics.ok && metrics.data ? metrics.data : null,
+			metricsSim,
+		);
 		const context = ctx.state.userContext;
 		const viewer = heroViewerOf(
 			ctx.state.isAuthenticated === true,
@@ -54,7 +71,7 @@ export const handler = define.handlers({
 			landing,
 			origin,
 			hero: { ...(search.ok && search.data ? search.data : NO_HERO_SEARCH), viewer },
-			feeBp,
+			metrics: publicMetrics,
 			demo: parseDemoId(ctx.url.searchParams.get(DEMO_PARAM)),
 		});
 	},
@@ -66,7 +83,7 @@ export default define.page<typeof handler>(function LandingRoute({ data }) {
 			landing={data.landing}
 			origin={data.origin}
 			hero={data.hero}
-			feeBp={data.feeBp}
+			metrics={data.metrics}
 			demo={data.demo}
 		/>
 	);

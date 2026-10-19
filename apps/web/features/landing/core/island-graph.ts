@@ -14,6 +14,11 @@
  * defines it; and a module is walked whole once anything it defines is used. Specifiers that are not
  * workspace paths (npm, jsr) are outside the app and never render an island. The developer tools are
  * skipped: a production build strips their islands (`vite.config.ts` `isDevToolsIsland`).
+ *
+ * Fresh registers an island by the IDENTITY of its default export, so an island module that only
+ * re-exports a component (`export default MoneyView;`) makes every server render of that component
+ * an island, wherever it is imported from. {@link islandBindingsOf} maps each such component to its
+ * island, and the walk counts a named import of it as that island ({@link WalkOptions.islandBindings}).
  */
 
 // #region Types
@@ -279,18 +284,30 @@ function localExports(code: string): Set<string> {
 export interface WalkOptions {
 	read: SourceReader;
 	resolve: SpecifierResolver;
+	/**
+	 * Components an island module default-exports by re-export, keyed `"<defining file>#<name>"`,
+	 * each mapped to its island ({@link islandBindingsOf}). Absent, no import is read as an island
+	 * by its binding.
+	 */
+	islandBindings?: ReadonlyMap<string, string>;
+}
+
+/** Where an export is defined: the module, and its name there (`"*"` for a namespace). */
+interface Binding {
+	file: string;
+	name: string;
 }
 
 /**
- * The module that defines the export `name` of `file`, followed through re-exports, or `null` when
- * `file` does not export it.
+ * Where the export `name` of `file` is defined, followed through re-exports, or `null` when `file`
+ * does not export it.
  */
-function definerOf(
+function bindingOf(
 	file: string,
 	name: string,
-	options: WalkOptions,
+	options: Pick<WalkOptions, "read" | "resolve">,
 	seen: Set<string>,
-): string | null {
+): Binding | null {
 	const key = `${file}#${name}`;
 	if (seen.has(key)) return null;
 	seen.add(key);
@@ -305,17 +322,73 @@ function definerOf(
 		if (!pair && re.namespace !== name) continue;
 		const target = options.resolve(re.specifier, file);
 		if (target === null) return null;
-		return pair ? definerOf(target, pair[0], options, seen) ?? target : target;
+		return pair
+			? bindingOf(target, pair[0], options, seen) ?? { file: target, name: pair[0] }
+			: { file: target, name: "*" };
 	}
-	if (localExports(code).has(name)) return file;
+	if (localExports(code).has(name)) return { file, name };
 	for (const re of reExports) {
 		if (!re.star) continue;
 		const target = options.resolve(re.specifier, file);
 		if (target === null) continue;
-		const found = definerOf(target, name, options, seen);
+		const found = bindingOf(target, name, options, seen);
 		if (found !== null) return found;
 	}
 	return null;
+}
+
+/** `export default <identifier>;` — a default export that is a binding, not a declaration. */
+const EXPORT_DEFAULT_BINDING_RE = /\bexport\s+default\s+([\w$]+)\s*;/g;
+
+/** Words `export default` may be followed by that start a declaration rather than name a binding. */
+const DECLARATION_KEYWORDS = new Set(["function", "class", "async", "abstract", "interface"]);
+
+/**
+ * The components island modules default-export BY BINDING — `import { MoneyView } from …;
+ * export default MoneyView;`, or `export { MoneyView as default } from …` — keyed
+ * `"<defining file>#<name>"` (followed through barrels), each mapped to its island. Fresh registers
+ * an island by its default export's identity, so rendering that component anywhere renders the
+ * island. An island that declares its own component maps nothing here: importing it is already an
+ * island import.
+ *
+ * @param islands Repository-relative island modules to read (every island the app can register).
+ */
+export function islandBindingsOf(
+	islands: readonly string[],
+	options: Pick<WalkOptions, "read" | "resolve">,
+): Map<string, string> {
+	const out = new Map<string, string>();
+	for (const island of islands) {
+		const src = options.read(island);
+		if (src === null) continue;
+		const code = blankComments(src);
+		const found: Array<{ specifier: string; name: string }> = [];
+		for (const re of parseReExports(code)) {
+			const pair = re.pairs.find(([, exported]) => exported === "default");
+			if (pair) found.push({ specifier: re.specifier, name: pair[0] });
+		}
+		for (const match of code.matchAll(EXPORT_DEFAULT_BINDING_RE)) {
+			const local = match[1];
+			if (DECLARATION_KEYWORDS.has(local)) continue;
+			for (const statement of code.matchAll(IMPORT_FROM_RE)) {
+				if (statement[1]) continue;
+				const clause = statement[2];
+				const brace = clause.indexOf("{");
+				const items = brace === -1 ? [] : braceItems(clause.slice(brace));
+				const item = items.find(([, alias]) => alias === local);
+				const head = (brace === -1 ? clause : clause.slice(0, brace)).replace(/,\s*$/, "").trim();
+				if (item) found.push({ specifier: statement[4], name: item[0] });
+				else if (head === local) found.push({ specifier: statement[4], name: "default" });
+			}
+		}
+		for (const { specifier, name } of found) {
+			const target = options.resolve(specifier, island);
+			if (target === null) continue;
+			const binding = bindingOf(target, name, options, new Set()) ?? { file: target, name };
+			out.set(`${binding.file}#${binding.name}`, island);
+		}
+	}
+	return out;
 }
 
 /**
@@ -335,6 +408,12 @@ export function islandsRenderedBy(roots: readonly string[], options: WalkOptions
 		else walk(path);
 	};
 
+	/** The island a binding stands for, when an island module default-exports it. */
+	const aliasOf = (binding: Binding): string | null => {
+		const island = options.islandBindings?.get(`${binding.file}#${binding.name}`);
+		return island !== undefined && !isDevToolsPath(island) ? island : null;
+	};
+
 	const walk = (file: string): void => {
 		if (walked.has(file)) return;
 		walked.add(file);
@@ -346,7 +425,10 @@ export function islandsRenderedBy(roots: readonly string[], options: WalkOptions
 			if (statement.whole || isIslandPath(target)) use(target);
 			if (isIslandPath(target)) continue;
 			for (const name of statement.names) {
-				use(definerOf(target, name, options, new Set()) ?? target);
+				const binding = bindingOf(target, name, options, new Set());
+				const island = binding ? aliasOf(binding) : null;
+				if (island) islands.add(island);
+				else use(binding?.file ?? target);
 			}
 		}
 	};

@@ -81,6 +81,10 @@
 	/* Layout. The header is a full-width bar (§2.8): 3.5rem below --bp-md, 4rem from it. */
 	--lp-gutter: clamp(1rem, 0.25rem + 3.5vw, 3rem);
 	--lp-section-pad: clamp(4rem, 2.5rem + 6.5vw, 9rem);
+	/* A canvas section's foot: less below its last element than above the next head (§B.4.1 tier
+	   1), so two canvas sections never meet across a doubled pad. Bands keep the full pad inside
+	   their tone. */
+	--lp-section-pad-end: calc(var(--lp-section-pad) * 0.6);
 	--lp-header-h: 3.5rem;
 	--lp-header-inset: 0px;
 	/* The hero's top: the bar, then 24px at 375 growing to 38px at 768; from --bp-lg it follows the
@@ -106,7 +110,9 @@
 	--lp-maxw-text: 44rem;
 	--lp-measure: var(--measure);
 	--lp-measure-lead: 56ch;
-	--lp-measure-display: 18ch;
+	/* Every precision-voice section h2: one cap, wide enough that the wireframes' one-line titles
+	   ("Work the way you want.", "One team, not five strangers.") hold one line from --bp-lg. */
+	--lp-measure-title: 30ch;
 	/* The theatre's board frame, fixed so the loop never shifts the page: the tallest frame of the
 	   scripted loop (two cards in a lane, measured 236px) plus --space-2, and below --bp-md the
 	   poster's still frame (its narrow cards wrap their foot, 222px) plus --space-2. */
@@ -192,6 +198,9 @@
 	--lp-surface-3: #e9edef;
 	/* The theatre's window: one measurable tone step off the canvas in each mode. */
 	--lp-window: #ffffff;
+	/* The neutral region step (§B.4.2 tier 2): a solid tone one step off the canvas — never the
+	   white window — for a precision section that is not a warm band. */
+	--lp-step-bg: var(--lp-surface-2);
 
 	/* Text */
 	--lp-text: #101417;
@@ -284,6 +293,7 @@
 	--lp-surface-2: #13171a;
 	--lp-surface-3: #1a1f23;
 	--lp-window: #13171a;
+	--lp-step-bg: var(--lp-surface-1);
 
 	--lp-text: #eef1f2;
 	--lp-text-2: #c6ced2;

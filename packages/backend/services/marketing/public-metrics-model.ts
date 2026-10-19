@@ -3,6 +3,7 @@ import {
 	type PublicMetrics,
 	type PublicMetricsAggregate,
 	type PublicMoneyTotal,
+	type PublicProtectedTotal,
 } from "@projective/types/marketing";
 import {
 	currencyExponent,
@@ -137,14 +138,14 @@ export const PUBLISHED_TOTAL_SIGNIFICANT_FIGURES = 2;
  * and grows coarser as the platform grows. Floored, never rounded: a public total may understate,
  * never overstate. `null` when less than one whole unit is left — too small to mean anything.
  */
-export function coarsenPublishedTotal(total: PublicMoneyTotal): PublicMoneyTotal | null {
+export function coarsenPublishedTotal<T extends PublicMoneyTotal>(total: T): T | null {
 	const unit = 10 ** currencyExponent(total.currency);
 	const major = Math.floor(Math.max(0, total.amountMinor) / unit);
 	if (major < 1) return null;
 	// The digit count from the integer's own text: `Math.log10` is not exact at every power of ten.
 	const digits = String(major).length;
 	const step = 10 ** Math.max(0, digits - PUBLISHED_TOTAL_SIGNIFICANT_FIGURES);
-	return { amountMinor: Math.floor(major / step) * step * unit, currency: total.currency };
+	return { ...total, amountMinor: Math.floor(major / step) * step * unit };
 }
 // #endregion
 
@@ -164,11 +165,12 @@ export function normaliseAsOf(raw: string, fallback: Date): string {
  * Fold the database aggregate and the already-resolved protected total into the public payload.
  * Every nullable figure is re-held to the threshold here even though the database applied it too,
  * so a fixture or a drifted function cannot publish a figure the rule forbids, and the total is
- * coarsened ({@link coarsenPublishedTotal}) — the only form in which it is ever published.
+ * coarsened ({@link coarsenPublishedTotal}) — the only form in which it is ever published — with
+ * its `converted` marker carried through unchanged.
  */
 export function foldPublicMetrics(
 	aggregate: PublicMetricsAggregate,
-	totalValueProtected: PublicMoneyTotal | null,
+	totalValueProtected: PublicProtectedTotal | null,
 	now: Date,
 ): PublicMetrics {
 	const minN = thresholdOf(aggregate);

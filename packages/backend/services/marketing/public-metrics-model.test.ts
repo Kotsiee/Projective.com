@@ -164,7 +164,7 @@ Deno.test("foldPublicMetrics: every figure that clears the threshold is publishe
 		asOf: "2026-10-17T12:00:00.500Z",
 		minN: 10,
 		platformFeeBp: 500,
-		totalValueProtected: { amountMinor: 1_200_000, currency: "GBP" },
+		totalValueProtected: { amountMinor: 1_200_000, currency: "GBP", converted: false },
 		stagesDelivered: 25,
 		medianFundingToApprovalHours: 51.3,
 	});
@@ -173,15 +173,38 @@ Deno.test("foldPublicMetrics: every figure that clears the threshold is publishe
 
 Deno.test("foldPublicMetrics: re-holds each figure to the threshold even if the database did not", () => {
 	const aggregate = rich({ min_n: 30 });
-	const out = foldPublicMetrics(aggregate, { amountMinor: 5_000_000, currency: "GBP" }, NOW);
-	assertEquals(out.totalValueProtected, { amountMinor: 5_000_000, currency: "GBP" });
+	const out = foldPublicMetrics(
+		aggregate,
+		{ amountMinor: 5_000_000, currency: "GBP", converted: false },
+		NOW,
+	);
+	assertEquals(out.totalValueProtected, {
+		amountMinor: 5_000_000,
+		currency: "GBP",
+		converted: false,
+	});
 	assertEquals(out.stagesDelivered, null);
 	assertEquals(out.medianFundingToApprovalHours, null);
 	const thin = foldPublicMetrics(rich({ protected_count: 3 }), {
 		amountMinor: 5_000_000,
 		currency: "GBP",
+		converted: false,
 	}, NOW);
 	assertEquals(thin.totalValueProtected, null);
+});
+
+Deno.test("foldPublicMetrics: a converted total keeps its marker through the coarsening", () => {
+	const out = foldPublicMetrics(
+		rich(),
+		{ amountMinor: 1_234_567, currency: "GBP", converted: true },
+		NOW,
+	);
+	assertEquals(out.totalValueProtected, {
+		amountMinor: 1_200_000,
+		currency: "GBP",
+		converted: true,
+	});
+	assertEquals(PublicMetricsSchema.safeParse(out).success, true);
 });
 
 Deno.test("foldPublicMetrics: a missing fee falls back to the display constant; a bad timestamp to now", () => {
@@ -211,7 +234,11 @@ Deno.test("the frozen fixture parses and, at the default threshold, publishes on
 		NOW,
 	);
 	// $151,000 raw, published coarsened to two significant figures.
-	assertEquals(lifted.totalValueProtected, { amountMinor: 15_000_000, currency: "USD" });
+	assertEquals(lifted.totalValueProtected, {
+		amountMinor: 15_000_000,
+		currency: "USD",
+		converted: false,
+	});
 	assertEquals(lifted.stagesDelivered, 2);
 	assertEquals(lifted.medianFundingToApprovalHours, 396);
 });
@@ -235,5 +262,5 @@ Deno.test("aggregateWarnings: names each fallback a live answer depends on", () 
 /** The single-currency total of an aggregate, as the service resolves it before the fold. */
 function planTotal(aggregate: PublicMetricsAggregate) {
 	const plan = planProtectedTotal(aggregate);
-	return plan.kind === "single" ? plan.total : null;
+	return plan.kind === "single" ? { ...plan.total, converted: false } : null;
 }

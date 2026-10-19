@@ -22,6 +22,7 @@ import {
 	DEV_EMBEDDINGS,
 	DEV_FUNDING_STATES,
 	DEV_LANDING_BACKGROUNDS,
+	DEV_LANDING_METRICS,
 	DEV_LAYOUT_DIRECTIONS,
 	DEV_LOW_BALANCES,
 	DEV_MEMBER_CLIENTS,
@@ -110,6 +111,14 @@ function reloadExplorePage(): void {
  */
 function reloadProfilePage(): void {
 	if (globalThis.location?.pathname.startsWith("/@")) globalThis.location.reload();
+}
+
+/**
+ * Reload when the open page is the landing (`/`), so a server-side landing-numbers simulation applies
+ * at once. Elsewhere nothing reads it until the next `/` request.
+ */
+function reloadLandingPage(): void {
+	if (globalThis.location?.pathname === "/") globalThis.location.reload();
 }
 
 function reloadDiscoveryPage(): void {
@@ -965,6 +974,25 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.landingBackground}
 						disabled={!o.enabled}
 						onChange={(landingBackground) => patchDevContext({ landingBackground })}
+					/>
+				</Field>
+
+				{
+					/* The landing's "The numbers so far" (`flows/LANDING.md` §4.7). The public metrics hold every
+				    figure to a database threshold the seed never clears, so this is the only runtime route to
+				    the tiles — and to the omitted section where real data clears it. Server-side via
+				    `pj.dev.landing-metrics`, so a change reloads `/`. The fee is never simulated. */
+				}
+				<Field label="Landing numbers" hint="#numbers threshold · reloads">
+					<Segment
+						name="Landing numbers"
+						options={DEV_LANDING_METRICS}
+						value={o.landingMetrics}
+						disabled={!o.enabled}
+						onChange={(landingMetrics) => {
+							patchDevContext({ landingMetrics });
+							reloadLandingPage();
+						}}
 					/>
 				</Field>
 

@@ -2380,11 +2380,16 @@ verbatim because every component depends only on the token contract (Part A) —
 > `theatre-player`), `MoneyFlowStage` (with its `MoneyFlow` island), `DemoStage` (with
 > `DemoStageHeader` / `DemoStageView`, its `DemoHost` island and the lazily loaded demos —
 > `BoardDemo` with `BoardPicture` / `BoardTicket`, `PaymentsDemo` with `PaymentsPicture`,
-> `BookingDemo` with `BookingPicture`, `TeamPayDemo` with `TeamPayPicture`) and the `LazyChatHost`
-> island live in `apps/web/features/landing/**` under the #280 exemption, outside `@projective/ui`;
-> Part E, "Off-system surfaces", documents them, and gate 5 is answered there (Decisions #286 (B),
-> #287). The retired marketing landing components (`Hero`, `HowItWorks`, the landing-only cards…)
-> were app components too and were never roster entries.
+> `BookingDemo` with `BookingPicture`, `TeamPayDemo` with `TeamPayPicture`), the `LazyChatHost`
+> island and L4's sections — `LandingPageView` (the page's composition), `WhyDifferent`,
+> `WaysToWork` (with `WaysToWorkView`, `LandingRail` / `RailCard` and its `RailScroll` island),
+> `PaymentProtection`, `LiveNumbers`, `ForTeams`, `Pricing` (with `PricingSection` /
+> `PricingCalculatorView` and its `PricingCalculator` island), `Faq` and `FinalCta` (with
+> `LandingBackground`'s `final` variant) — live in `apps/web/features/landing/**` under the #280
+> exemption, outside `@projective/ui`; Part E, "Off-system surfaces", documents them, and gate 5 is
+> answered there (Decisions #286 (B), #287, #301). The retired marketing landing components
+> (`Hero`, `HowItWorks`, the landing-only cards…) were app components too and were never roster
+> entries.
 
 > **Field validation statuses — two-tier creation gate.** Beyond the generic `invalid`/`success`/
 > `warning` `FieldStatus`es, `fields` (and `editor`) expose the platform's "quick to onboard, slow
@@ -5241,6 +5246,87 @@ and the exemption widens only by a new decision row.
   the window changes instantly; with no JavaScript, and on a phone, each step shows its own
   server-rendered still. Its fixture is its own project and task ("Shop relaunch · Product pages");
   at the withdrawal the team's place is passed through and the bank holds the net, one sum moving.
+- **`LandingPageView`** (`features/landing/components/`) is the whole of `/` in the
+  `flows/LANDING.md` §2 order, inside LandingShell's `<main>` (L4): the structured data (the
+  organisation, the website's search and the FAQPage of the questions it prints — one list for
+  both), then the hero, Why it's different, How it works, the demo stage, Ways to work, Payment
+  protection, the numbers so far, For freelancers and teams, Pricing, the questions and the final
+  call to action. Every section after the hero is a landmark labelled by its one h2; every fee
+  figure reads one value, `platform_fee_bp` through `PublicMetricsService` (`null` drops every fee
+  clause and hides the calculator, §4); the island-bearing parts arrive as slots from the page
+  controller (`routes/LandingPage.tsx`), so the composition renders under `deno test`. The page's
+  rhythm: a canvas section pads more above its head than below its last element
+  (`--lp-section-pad` / `--lp-section-pad-end`), so two canvas sections never meet across a doubled
+  pad, and the regions step in solid tones only — the neutral `--lp-step-bg` once in the opening run
+  (Why it's different), the warm `--lp-warm-bg` band twice (Payment protection with the numbers,
+  Pricing) — never an alpha wash (#301 (H)). Nothing after the hero moves on its own (§2.7).
+- **`WhyDifferent`** (`features/landing/components/`) is `#why-different`: the section header, the
+  h2 and the glossary's one subtitle, then the old way and Projective compared as a real `<table>` of
+  plain text (a row label, the old way in the quieter ink, Projective's in the stronger one, one
+  hairline per row, the Projective column marked only by its header's teal rule), on the neutral
+  step. Below `--bp-md` each row stacks under its label, each way beside its own cue.
+- **`WaysToWork`** (`features/landing/components/`) is `#ways-to-work`: `WaysToWorkView`'s section
+  header, h2 and subline; the three ways as columns of text (a small decorative SVG mark, the title,
+  what it is, when the money moves one register quieter, and the column's one text link), never
+  cards; the small print; then the live rails (**`LandingRail`**): Services · Open projects ·
+  Ready-made teams · Freelancers from `LandingPayload.home.recommended`, each hidden below four
+  items and cut to eight, paid placements left out (no "Promoted" disclosure exists here), sliced on
+  the server (`core/rails.ts` `sliceRails`) so no island receives the feed. A rail is a native
+  scroller with scroll-snap and fade edges, named "{title}, {n} items" as a carousel region; each
+  `RailCard` is ONE link — the section's only contained object — with a 16 / 9 picture frame (or the
+  owner's initials) and inline meta text; a brief (project) card is text-forward and puts its title
+  first in the source so its link's name opens with it. The **`RailScroll`** island wires the scroll
+  buttons (tier 4 outlined, shown for a fine pointer at every width, once wired and while the rail
+  overflows), marks a picture that fails to load (a failed cover leaves the initials, a failed
+  avatar leaves the flow) and carries `lp-ways.css`. The rail of services is titled "Services": its
+  ranking is the marketplace's quality score, so nothing measures popularity (#301 (C)).
+- **`PaymentProtection`** (`features/landing/components/`) is `#payment-protection`, the first warm
+  band, in the editorial voice (the serif display at `--fw-medium`): the section header, the h2, the
+  page body's one "payment protection (escrow)" explainer, the eight points as ONE column of
+  labelled rows — a ledger, the h3 a label beside its body from `--bp-md` — and the money's five
+  stops as a rail (down the page on a phone, across it between `--bp-md` and 1279px, beside the
+  ledger and sticky from 1280px; its stop names in the body sans with lining figures), then the
+  Fair Exit example from the `fn_fair_exit_split` mirror, and the links: "Get help with payments"
+  and, only once a lawyer has reviewed the escrow terms in effect (`core/protection-terms.ts`, §9
+  row 8), "Read the payment protection terms".
+- **`LiveNumbers`** (`features/landing/components/`) is `#numbers`, on the same warm band: up to
+  three live figures from `PublicMetricsService` (money protected so far as the floor it is, stages
+  delivered, the median hours from funding to approval) in the display register with
+  `tabular-nums`, never boxed, each hidden when the service withheld it — and the protected total
+  also when it was CONVERTED across currencies (`totalValueProtected.converted`, #301 (A)); with no
+  figure left the section, h2 included, is omitted. Static: no count-up. The Dev Context
+  Switcher's `landingMetrics` axis (Auto · All hidden · All shown) forces its threshold result in
+  development.
+- **`ForTeams`** (`features/landing/components/`) is `#for-freelancers`, on the canvas in the
+  precision voice, and leads with its figure: the head with the team-pay figure beside it from
+  `--bp-lg` (a still of the Team pay example — the approved stage after the fee, the vault's 10%
+  first, a bar drawn from the amounts and the rows to the penny, amounts only, then the spare-penny
+  line), the eight points as a dense grid (two across from `--bp-md`, four from 1280px), the small
+  print and the calls to action ("Offer your skills" by the hero's per-viewer mapping as the
+  region's one tier-2 fill, never amber, and "Find open projects").
+- **`Pricing`** (`features/landing/components/`) is `#pricing`, the second warm band:
+  `PricingSection`'s serif h2 "A {fee} fee. You pay the price you see.", the lead and the worked and
+  rounding examples computed with `platformFeeFor` (truncating like SQL), beside the calculator
+  panel — the band's one raised object, since it holds controls. **`PricingCalculator`** (the
+  island) renders `PricingCalculatorView`: "Stage price" with its "£" prefix and two steppers in one
+  contour, three quick picks as underlined text buttons, then You pay · From the team's payment ·
+  Projective fee · The team receives, the rows and the empty / invalid message in one grid cell,
+  and a polite live region that speaks every state. Before hydration (and with no JavaScript) the
+  controls' cell shows the default price as text in the same cell, so the controls appear without a
+  shift and never render dead. Its notes end "Example only." (the figures are exact for a stage paid
+  as one payment at the standard rate). Without a fee the panel and the examples are omitted. The
+  island also carries `lp-numbers.css`.
+- **`Faq`** (`features/landing/components/`) is `#faq`: the section header and the h2, then the
+  eight questions as native `<details>` (the first open; the same text as the FAQPage JSON-LD, the
+  fee question asking "Who pays the fee?" when the fee is unavailable), one hairline between items,
+  a drawn plus that becomes a minus; "More answers in Help" follows the questions in the source and
+  on the page alike. No island.
+- **`FinalCta`** (`features/landing/components/`) is `#get-started`: the h2 "Find your team." and
+  its subline, a second `HeroSearch` instance (`idSuffix` `-final`: the static placeholder, no
+  typewriter, no `/` shortcut, its search landmark named by the h2 so it is told apart from the
+  hero's "Search Projective"), the hero's calls to action, over `LandingBackground variant="final"`
+  — the same gate as the hero's over its own region, its grid rising from the region's foot and its
+  state reflected on its own host.
 - **`LazyChatHost`** (`features/landing/islands/`) is the landing paths' stand-in for the global
   `ChatPopoutHost` for a signed-in visitor (#286 (A)): it renders and loads nothing until the tab has
   a floating chat open, then imports the real host once and renders it with the same `path`.

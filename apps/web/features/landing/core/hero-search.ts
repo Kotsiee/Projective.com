@@ -22,6 +22,8 @@ import { entityHref, profileHref } from "@features/explore/core/routing.ts";
 // #region Copy
 /** The search bar's fixed copy (`flows/LANDING.md` §4.1). */
 export const HERO_SEARCH_COPY = {
+	/** The hero search landmark's name; the page's second search is named by its own heading. */
+	landmark: "Search Projective",
 	/** The input's visually hidden `<label>`. */
 	label: "Search freelancers, teams, services and projects",
 	/** The real placeholder: screen readers, no JavaScript, both reduced-motion channels. `[U1]` */

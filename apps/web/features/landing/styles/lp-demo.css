@@ -38,7 +38,7 @@
 
 /* #region Section */
 .lp-demo {
-	padding-block: var(--lp-section-pad);
+	padding-block: var(--lp-section-pad) var(--lp-section-pad-end);
 	padding-inline: var(--lp-gutter);
 }
 
@@ -60,7 +60,7 @@
 }
 
 .lp-demo__title {
-	max-inline-size: var(--lp-measure-display);
+	max-inline-size: var(--lp-measure-title);
 	text-wrap: balance;
 }
 

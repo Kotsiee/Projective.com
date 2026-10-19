@@ -24,7 +24,12 @@
  * No focus ring anywhere (Decision #285 (A), the app-wide directive in `apps/web/styles/global.css`).
  * Every colour is a `--lp-*` token from `lp-theme.css`. Colour transitions keep the app's theme
  * crossfade clock (`--dur-slow`), so a theme switch repaints the landing in step with the page.
+ *
+ * It also carries the server-rendered sections' sheet (`lp-sections.css`): those sections mount no
+ * island, so their styles ride this one, which every landing page loads.
  */
+
+@import "./lp-sections.css";
 
 /* #region Root canvas */
 .lp-root {

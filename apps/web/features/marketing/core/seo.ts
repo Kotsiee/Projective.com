@@ -13,8 +13,8 @@
  *    "schema injections inside the live DOM"). Pages never hand-write a `<script>` tag.
  *
  * Every public page, the landing included, builds its head and graph from these primitives: the
- * landing's copy lives with its controller (`features/landing/routes/LandingPage.tsx`,
- * `flows/LANDING.md` §4.0), not here.
+ * landing's copy lives with it (`features/landing/core/landing-seo.ts`, `flows/LANDING.md` §4.0),
+ * not here.
  *
  * Kept client-safe: it value-imports nothing that builds schemas or reads the environment — the
  * plain-text projection comes from the schema-free `@projective/types/content/text` sub-path, the

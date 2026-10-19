@@ -2,7 +2,7 @@
 import "../styles/lp-background.css";
 import { useEffect, useRef } from "preact/hooks";
 import { readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
-import { BackgroundFallback } from "../components/BackgroundFallback.tsx";
+import { BackgroundFallback, type BackgroundVariant } from "../components/BackgroundFallback.tsx";
 import {
 	type BackgroundForce,
 	type BackgroundSnapshot,
@@ -14,8 +14,11 @@ import {
 // #region Contract
 /** Props for {@link LandingBackground}. */
 export interface LandingBackgroundProps {
-	/** Which background; only the hero's exists today. */
-	variant?: "hero";
+	/**
+	 * Which background: the hero's (the default), or the final call to action's. Each instance runs
+	 * its own gate over its own region, so only the one on screen follows the pointer.
+	 */
+	variant?: BackgroundVariant;
 }
 
 /** The non-standard navigator hints the gate reads, where the browser exposes them. */
@@ -37,13 +40,15 @@ function devForce(): BackgroundForce {
 
 // #region Controller
 /**
- * Run the hero background for `host` (the `.lp-bg` element) until the returned stop function is
- * called: read the environment, ask the gate, and move the spotlight from its answer. Every listener
- * and observer is a stable function created here, so each is removed by identity on stop.
+ * Run a background for `host` (the `.lp-bg` element) until the returned stop function is called:
+ * read the environment, ask the gate, and move the spotlight from its answer. Every listener and
+ * observer is a stable function created here, so each is removed by identity on stop. The hero's
+ * state is reflected on `.lp-root` (its documented hook); any other region's on its own host, so a
+ * second background never overwrites the hero's.
  */
-function startBackground(host: HTMLElement): () => void {
+function startBackground(host: HTMLElement, variant: BackgroundVariant): () => void {
 	const root = document.documentElement;
-	const reflectOn = host.closest<HTMLElement>(".lp-root") ?? host;
+	const reflectOn = variant === "hero" ? host.closest<HTMLElement>(".lp-root") ?? host : host;
 	const nav = navigator as Navigator & NavigatorHints;
 	const query = (q: string) => globalThis.matchMedia?.(q) ?? null;
 	const motionQuery = query("(prefers-reduced-motion: reduce)");
@@ -204,6 +209,10 @@ function startBackground(host: HTMLElement): () => void {
  * holds still offscreen and in a hidden tab, and returns to its SSR position the moment reduced
  * motion turns on. The state is reflected as `data-lp-bg="spotlight|static"`, `data-lp-bg-reason`
  * and `data-lp-bg-paused` on `.lp-root`.
+ *
+ * The final call to action mounts a second instance (`variant="final"`, §2.3 note 22): the same
+ * gate over its own region, so the spotlight follows the pointer only in the one on screen, and its
+ * state reflected on its own host.
  */
 export default function LandingBackground({ variant = "hero" }: LandingBackgroundProps) {
 	const host = useRef<HTMLDivElement>(null);
@@ -212,7 +221,7 @@ export default function LandingBackground({ variant = "hero" }: LandingBackgroun
 	useEffect(() => {
 		const el = host.current;
 		if (!el) return;
-		return startBackground(el);
+		return startBackground(el, variant);
 	}, []);
 
 	return <BackgroundFallback variant={variant} hostRef={host} />;

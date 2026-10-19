@@ -1,0 +1,407 @@
+/*
+ * lp-pricing — Pricing, `#pricing`, and its calculator (Decisions #280, #281, #288;
+ * `documentation/flows/LANDING.md` §2.1 notes 21–22, §2.2 note 21, §2.3 note 20, §2.7, §4.9).
+ *
+ *   - `.lp-pricing`: the section, its own warm editorial band (`--lp-warm-bg`, solid). The words sit
+ *     on the band, never boxed: the section header, the serif display h2 (each sentence its own
+ *     line), the lead, then the worked and rounding examples in the body register. From --bp-lg
+ *     the words take the left column and the calculator the right; below it they stack.
+ *   - `.lp-calc`: the calculator panel, the band's ONE raised object (§2.3 note 20) — the
+ *     `--lp-warm-surface` step and the card shadow; it holds controls, so it may be raised. Its body
+ *     is two columns (field and quick picks left, results right) once the panel is 36rem wide (the
+ *     768 frame), one column otherwise (375, and the 1280 side column). Its notes close it below a
+ *     single hairline.
+ *   - `.lp-calc__field`: "£", the field and the two steppers inside ONE contour (`--lp-edge`, the
+ *     audited ≥ 3:1 interactive boundary on the editorial grounds); the contour darkens on hover and
+ *     focus and never moves (no focus ring, Decision #285 (A)). The steppers are ghost icon buttons
+ *     inside it; the quick picks are underlined text buttons on one meta line, like the hero's
+ *     "Try:" line. Nothing here is filled: no money moves, so no amber, and no fill at all.
+ *   - `.lp-calc__results`: the rows and the empty / invalid message share ONE grid cell, so
+ *     switching between them never moves the panel; figures are right-aligned `tabular-nums`, the
+ *     team's share below a single sum hairline.
+ *
+ * The calculator updates instantly (§2.7): no transition on any figure. Press feedback is
+ * `scale()` alone, removed under both reduced-motion channels. Every text pairing is a §3.3
+ * editorial row (warm-text, warm-text-2, warm-text-3 on warm-bg and warm-surface). Delivered by the
+ * PricingCalculator island, which `Pricing` mounts with or without a fee.
+ */
+
+/* #region Section */
+.lp-pricing {
+	padding-block: var(--lp-section-pad);
+	padding-inline: var(--lp-gutter);
+	background-color: var(--lp-warm-bg);
+	color: var(--lp-warm-text);
+}
+
+.lp-pricing__inner {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	align-items: start;
+	gap: var(--lp-stack-2xl);
+	max-inline-size: var(--lp-maxw);
+	margin-inline: auto;
+}
+
+@media (min-width: 1024px) {
+	.lp-pricing__inner--calc {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 29rem);
+		column-gap: clamp(3rem, 1rem + 5vw, 7rem);
+	}
+}
+
+/* Section header → display at --lp-heading-gap; the lead follows at --space-3 (§B.4.1). */
+.lp-pricing__copy {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--lp-heading-gap);
+	min-inline-size: 0;
+	max-inline-size: var(--lp-maxw-text);
+}
+
+/* "5%" in the serif: lining figures where the face has them (§3.1: no old-style figures). */
+.lp-pricing__title {
+	font-variant-numeric: lining-nums;
+}
+
+.lp-pricing__line {
+	display: block;
+}
+
+.lp-pricing .lp-pricing__body {
+	margin: calc(var(--lp-stack-sm) - var(--lp-heading-gap) + var(--lp-stack-xs)) 0 0;
+	max-inline-size: var(--lp-measure-lead);
+	color: var(--lp-warm-text-2);
+}
+
+.lp-pricing__examples {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-sm);
+	margin-block-start: calc(var(--lp-stack-lg) - var(--lp-heading-gap));
+	max-inline-size: var(--lp-measure);
+}
+
+.lp-pricing .lp-pricing__example {
+	margin: 0;
+	color: var(--lp-warm-text-2);
+	font-variant-numeric: tabular-nums;
+}
+/* #endregion */
+
+/* #region Calculator panel */
+.lp-calc {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-lg);
+	min-inline-size: 0;
+	padding: clamp(1.25rem, 0.9rem + 1.5vw, 2rem);
+	border-radius: var(--lp-r-lg);
+	background-color: var(--lp-warm-surface);
+	box-shadow: var(--lp-shadow-1);
+	color: var(--lp-warm-text);
+	container-type: inline-size;
+}
+
+.lp-calc__body {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--lp-stack-lg);
+}
+
+@container (min-width: 36rem) {
+	.lp-calc__body {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		column-gap: var(--lp-stack-2xl);
+	}
+}
+
+.lp-calc .lp-calc__notes {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-2xs);
+	margin: 0;
+	padding: var(--lp-stack-md) 0 0;
+	border-block-start: 1px solid var(--lp-warm-hair);
+	list-style: none;
+	color: var(--lp-warm-text-3);
+}
+/* #endregion */
+
+/* #region Field, steppers and quick picks */
+/* The controls and, before hydration, the default price as text share ONE grid cell: the controls
+   hold the cell's height in both states, so they appear without moving anything (gate 11: with no
+   JavaScript nothing answers them, so they are never shown). */
+.lp-calc__controls {
+	display: grid;
+	min-inline-size: 0;
+}
+
+.lp-calc__controls > * {
+	grid-area: 1 / 1;
+	min-inline-size: 0;
+}
+
+.lp-calc__live {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-xs);
+}
+
+.lp-calc__controls:not([data-live]) .lp-calc__live,
+.lp-calc__controls[data-live] .lp-calc__static {
+	visibility: hidden;
+}
+
+.lp-calc__static {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-xs);
+}
+
+.lp-calc .lp-calc__static p {
+	margin: 0;
+}
+
+.lp-calc__static-price {
+	color: var(--lp-warm-text);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body-lg);
+	font-variant-numeric: tabular-nums lining-nums;
+	letter-spacing: var(--lp-track-body);
+	line-height: 1.3;
+}
+
+.lp-calc__label {
+	color: var(--lp-warm-text);
+	font-size: var(--lp-fs-body-sm);
+	font-weight: var(--fw-medium);
+	line-height: 1.35;
+}
+
+.lp-calc__field {
+	display: flex;
+	align-items: center;
+	gap: var(--lp-stack-2xs);
+	min-block-size: 3.25rem;
+	padding-inline: var(--lp-stack-sm) calc(var(--lp-stack-2xs) - 1px);
+	border: 1px solid var(--lp-edge);
+	border-radius: var(--lp-r-md);
+	background-color: var(--lp-warm-surface);
+	cursor: text;
+}
+
+.lp-calc__field:hover {
+	border-color: var(--lp-warm-text-3);
+}
+
+.lp-calc__field:focus-within {
+	border-color: var(--lp-warm-text-2);
+}
+
+.lp-calc__prefix {
+	color: var(--lp-warm-text-2);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body-lg);
+	line-height: 1.3;
+}
+
+/* Never under 16px, so a phone does not zoom into the field (DESIGN_SYSTEM.md:586-587). */
+.lp-calc__input {
+	flex: 1 1 auto;
+	inline-size: 100%;
+	min-inline-size: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--lp-warm-text);
+	font-family: var(--lp-font-body);
+	font-size: max(1rem, var(--lp-fs-body-lg));
+	font-variant-numeric: tabular-nums lining-nums;
+	letter-spacing: var(--lp-track-body);
+	line-height: 1.3;
+}
+
+.lp-calc__step {
+	display: inline-grid;
+	flex: none;
+	place-items: center;
+	inline-size: 2.5rem;
+	block-size: 2.5rem;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: var(--lp-r-sm);
+	background-color: transparent;
+	color: var(--lp-warm-text-2);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body-lg);
+	line-height: 1;
+	cursor: pointer;
+	transition:
+		transform var(--lp-dur-press) var(--lp-ease-out),
+		color var(--dur-slow) var(--ease-standard),
+		background-color var(--dur-slow) var(--ease-standard),
+		border-color var(--dur-slow) var(--ease-standard);
+}
+
+.lp-calc__step:hover {
+	background-color: var(--lp-warm-bg);
+	color: var(--lp-warm-text);
+}
+
+.lp-calc__step:active {
+	transform: scale(var(--lp-press-scale));
+}
+
+.lp-calc .lp-calc__hint {
+	margin: 0;
+	color: var(--lp-warm-text-3);
+}
+
+.lp-calc__picks {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	margin-block-start: var(--lp-stack-2xs);
+	color: var(--lp-warm-text-3);
+	font-size: var(--lp-fs-body-sm);
+	line-height: 1.45;
+}
+
+.lp-calc__picks-label {
+	margin-inline-end: var(--lp-stack-xs);
+	color: var(--lp-warm-text-2);
+}
+
+.lp-calc__dot {
+	padding-inline: 0.5em;
+}
+
+.lp-calc__pick {
+	display: inline-block;
+	padding: var(--lp-stack-2xs) 0;
+	border: 0;
+	background: none;
+	color: var(--lp-warm-text);
+	font: inherit;
+	font-variant-numeric: tabular-nums;
+	text-decoration-line: underline;
+	text-decoration-color: var(--lp-hair-strong);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.25em;
+	white-space: nowrap;
+	cursor: pointer;
+	transition:
+		transform var(--lp-dur-press) var(--lp-ease-out),
+		color var(--dur-slow) var(--ease-standard),
+		text-decoration-color var(--dur-slow) var(--ease-standard);
+}
+
+.lp-calc__pick:hover {
+	text-decoration-color: currentColor;
+}
+
+.lp-calc__pick:active {
+	transform: scale(var(--lp-press-scale));
+}
+/* #endregion */
+
+/* #region Results */
+.lp-calc__results {
+	display: grid;
+	min-inline-size: 0;
+}
+
+/* The rows and the message share one cell: the taller (the rows) holds the height in every state. */
+.lp-calc__results > * {
+	grid-area: 1 / 1;
+}
+
+.lp-calc__results:not([data-state="ok"]) .lp-calc__rows {
+	visibility: hidden;
+}
+
+.lp-calc__state {
+	align-self: center;
+	margin: 0;
+	max-inline-size: 30ch;
+	color: var(--lp-warm-text-2);
+}
+
+.lp-calc__rows {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-xs);
+	min-inline-size: 0;
+}
+
+.lp-calc__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-xs);
+	margin: 0;
+}
+
+.lp-calc__row {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--lp-stack-md);
+}
+
+.lp-calc__row dt {
+	min-inline-size: 0;
+	color: var(--lp-warm-text-2);
+}
+
+.lp-calc__row dd {
+	margin: 0;
+	color: var(--lp-warm-text);
+	font-variant-numeric: tabular-nums lining-nums;
+	text-align: end;
+	white-space: nowrap;
+}
+
+.lp-calc__row--key dt {
+	color: var(--lp-warm-text);
+}
+
+.lp-calc__row--key dd {
+	font-size: var(--lp-fs-body-lg);
+	font-weight: var(--fw-medium);
+}
+
+/* The team's share: below one sum hairline, like a ledger's total. */
+.lp-calc__row--net {
+	margin-block-start: var(--lp-stack-2xs);
+	padding-block-start: var(--lp-stack-sm);
+	border-block-start: 1px solid var(--lp-warm-hair);
+}
+
+.lp-calc .lp-calc__sub {
+	margin: var(--lp-stack-xs) 0 0;
+	color: var(--lp-warm-text-3);
+}
+/* #endregion */
+
+/* #region Motion contract — both reduced-motion channels (§3.6) */
+@media (prefers-reduced-motion: reduce) {
+	:is(.lp-calc__step, .lp-calc__pick):active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] :is(.lp-calc__step, .lp-calc__pick):active {
+	transform: none;
+}
+/* #endregion */
+
+/* #region Forced colours */
+@media (forced-colors: active) {
+	.lp-calc__field {
+		border-color: ButtonText;
+	}
+}
+/* #endregion */

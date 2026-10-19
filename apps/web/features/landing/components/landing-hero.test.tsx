@@ -169,6 +169,27 @@ Deno.test("LandingHero: the input has a visually hidden label and the combobox w
 	assert(html.includes('class="lp-search"'), "the field is the hero's one contour");
 });
 
+Deno.test("HeroSearchForm: two searches on one page carry two landmark names", () => {
+	const form = (markup: string) => tagWith(markup, 'role="search"');
+	const hero = renderToString(
+		<HeroSearchForm {...firstPaint({ landmark: { label: "Search Projective" } })} />,
+	);
+	assertMatch(form(hero), /aria-label="Search Projective"/);
+	assertFalse(form(hero).includes("aria-labelledby"));
+	const final = renderToString(
+		<HeroSearchForm
+			{...firstPaint({
+				ids: heroSearchIds("-final"),
+				landmark: { label: "ignored", labelledBy: "get-started-title" },
+			})}
+		/>,
+	);
+	assertMatch(form(final), /aria-labelledby="get-started-title"/);
+	assertFalse(form(final).includes("aria-label="), "a heading's name wins over a label");
+	const unnamed = renderToString(<HeroSearchForm {...firstPaint()} />);
+	assertFalse(/aria-label(?:ledby)?=/.test(form(unnamed)));
+});
+
 Deno.test("HeroSearchForm: the / hint and aria-keyshortcuts are promised only once the key is bound", () => {
 	const before = renderToString(<HeroSearchForm {...firstPaint()} />);
 	assertFalse(tagWith(before, 'name="q"').includes("aria-keyshortcuts"));

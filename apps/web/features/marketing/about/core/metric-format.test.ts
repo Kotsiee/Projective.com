@@ -14,7 +14,7 @@ const FULL: PublicMetrics = {
 	asOf: "2026-10-17T21:07:08.982Z",
 	minN: 10,
 	platformFeeBp: 500,
-	totalValueProtected: { amountMinor: 15_100_099, currency: "USD" },
+	totalValueProtected: { amountMinor: 15_100_099, currency: "USD", converted: false },
 	stagesDelivered: 1204,
 	medianFundingToApprovalHours: 396,
 };

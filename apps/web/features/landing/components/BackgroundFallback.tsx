@@ -1,9 +1,15 @@
 import type { JSX, Ref } from "preact";
 
+/**
+ * Which background a region paints: the hero's (its grid kept to the top-right corner), or the
+ * final call to action's (its grid rising from the region's foot, `#get-started`).
+ */
+export type BackgroundVariant = "hero" | "final";
+
 /** Props for {@link BackgroundFallback}. */
 export interface BackgroundFallbackProps {
-	/** Which background this is; only the hero's exists today. */
-	variant?: "hero";
+	/** Which background this is. */
+	variant?: BackgroundVariant;
 	/** The background element, for the island's effects. */
 	hostRef?: Ref<HTMLDivElement>;
 }

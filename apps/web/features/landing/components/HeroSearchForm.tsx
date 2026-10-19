@@ -84,6 +84,11 @@ export interface HeroSearchFormProps {
 	typewriter: string | ReadonlySignal<string> | null;
 	/** The `/` hint and `aria-keyshortcuts` belong to this instance (the hero's only, #282). */
 	slashFocus: boolean;
+	/**
+	 * The search landmark's name, so two searches on one page are told apart: `labelledBy` (a
+	 * heading's id, `aria-labelledby`) or else `label` (`aria-label`). Neither leaves it unnamed.
+	 */
+	landmark?: { label?: string; labelledBy?: string };
 	/** The suggestions panel is open. */
 	open: boolean;
 	sections: readonly SuggestSection[];
@@ -247,6 +252,8 @@ export function HeroSearchForm(props: HeroSearchFormProps): JSX.Element {
 				ref={props.formRef}
 				class="lp-hero-search__form"
 				role="search"
+				aria-labelledby={props.landmark?.labelledBy || undefined}
+				aria-label={props.landmark?.labelledBy ? undefined : props.landmark?.label || undefined}
 				action="/explore"
 				method="get"
 				onSubmit={on?.submit}

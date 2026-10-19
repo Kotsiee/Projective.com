@@ -788,7 +788,7 @@ rolls its optimistic change back; the Dev Context Switcher's `saved` axis substi
 
 | Route | Method | Behaviour |
 | :-- | :-- | :-- |
-| `/api/public/metrics` | `GET` · `HEAD` · `OPTIONS` | The public site's live figures — `PublicMetricsService.get()` in the flat `{ ok, …PublicMetrics }` envelope (`@projective/types/marketing`): `asOf`, `minN`, `platformFeeBp`, `totalValueProtected` (`{ amountMinor, currency }`), `stagesDelivered`, `medianFundingToApprovalHours`; a `null` figure is below the threshold and its tile is hidden. No parameters, no session. `defineReadRoute` with the `public-metadata` cache policy and a strong `ETag`; a failure (503 / 502) is `no-store`. `/about` reads the same service server-side and never fetches this from the browser. |
+| `/api/public/metrics` | `GET` · `HEAD` · `OPTIONS` | The public site's live figures — `PublicMetricsService.get()` in the flat `{ ok, …PublicMetrics }` envelope (`@projective/types/marketing`): `asOf`, `minN`, `platformFeeBp`, `totalValueProtected` (`{ amountMinor, currency, converted }` — `converted` is `true` when several currencies were summed at reference rates, and the landing then hides it; Decision #301 (A)), `stagesDelivered`, `medianFundingToApprovalHours`; a `null` figure is below the threshold and its tile is hidden. No parameters, no session. `defineReadRoute` with the `public-metadata` cache policy and a strong `ETag`; a failure (503 / 502) is `no-store`. `/about` reads the same service server-side and never fetches this from the browser. |
 
 ### Workspace (Teams & Businesses) API
 

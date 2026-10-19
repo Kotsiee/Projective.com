@@ -25,6 +25,7 @@ import {
 	type BusinessPageSim,
 } from "@features/profile/core/business-page-sim.ts";
 import { TEAM_PAGE_SIM_COOKIE, type TeamPageSim } from "@features/profile/core/team-page-sim.ts";
+import { LANDING_METRICS_SIM_COOKIE } from "@features/landing/core/metrics-sim.ts";
 import { DISCOVERY_SIM_COOKIE, encodeDiscoverySim } from "@features/explore/core/discovery-sim.ts";
 import { EMBEDDINGS_OVERRIDE_COOKIE } from "@projective/types/explore";
 import { AGE_OVERRIDE_COOKIE, OPERATOR_MODE_OVERRIDE_COOKIE } from "@projective/types/auth";
@@ -54,6 +55,7 @@ import {
 	type DevEmbeddings,
 	type DevFundingState,
 	type DevLandingBackground,
+	type DevLandingMetrics,
 	type DevLayoutDirection,
 	type DevLowBalance,
 	type DevMemberClient,
@@ -123,6 +125,7 @@ export type {
 	DevEmbeddings,
 	DevFundingState,
 	DevLandingBackground,
+	DevLandingMetrics,
 	DevLayoutDirection,
 	DevLowBalance,
 	DevMemberClient,
@@ -291,6 +294,14 @@ export interface DevOverrides {
 	 * device facts no page control can change. Applies live.
 	 */
 	landingBackground: DevLandingBackground;
+	/**
+	 * The landing's "The numbers so far" (`flows/LANDING.md` §4.7, §6): `auto` shows what the public
+	 * metrics answer (on the seed, nothing: the section is omitted), `hidden` withholds every figure,
+	 * `shown` prints a sample in every tile. Its own axis because the threshold is a database fact
+	 * no page control can change. Server-side, through the `pj.dev.landing-metrics` cookie the
+	 * landing route honours in a development build only; the panel reloads `/` to apply it.
+	 */
+	landingMetrics: DevLandingMetrics;
 	/**
 	 * The `/settings` attention dashboard and lane marks: the real facts, a fully set-up account, or
 	 * every rule tripped once. Its own axis because KYC, payout and connector states are server facts
@@ -515,6 +526,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	profileSetup: "auto",
 	walletAurora: "auto",
 	landingBackground: "auto",
+	landingMetrics: "auto",
 	settingsAttention: "auto",
 	accountLifecycle: "auto",
 	proposalAllowance: "auto",
@@ -723,6 +735,16 @@ export const DEV_LANDING_BACKGROUNDS: ReadonlyArray<DevOption<DevLandingBackgrou
 	{ value: "auto", label: "Auto" },
 	{ value: "static", label: "Static only" },
 	{ value: "spotlight", label: "Force spotlight" },
+];
+
+/**
+ * Landing-numbers options in display order (`flows/LANDING.md` §6). `All shown` is the value worth
+ * having: the seed clears no threshold, so it is the only way to see the tiles.
+ */
+export const DEV_LANDING_METRICS: ReadonlyArray<DevOption<DevLandingMetrics>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "hidden", label: "All hidden" },
+	{ value: "shown", label: "All shown" },
 ];
 
 /** Settings-attention options in display order (the `/settings` dashboard and the lane's marks). */
@@ -1077,6 +1099,8 @@ function reflect(next: DevOverrides): void {
 		if (next.landingBackground !== "auto") {
 			root.dataset.devLandingBackground = next.landingBackground;
 		} else delete root.dataset.devLandingBackground;
+		if (next.landingMetrics !== "auto") root.dataset.devLandingMetrics = next.landingMetrics;
+		else delete root.dataset.devLandingMetrics;
 		if (next.settingsAttention !== "auto") {
 			root.dataset.devSettingsAttention = next.settingsAttention;
 		} else delete root.dataset.devSettingsAttention;
@@ -1181,6 +1205,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devProfileSetup;
 		delete root.dataset.devWalletAurora;
 		delete root.dataset.devLandingBackground;
+		delete root.dataset.devLandingMetrics;
 		delete root.dataset.devSettingsAttention;
 		delete root.dataset.devAccountLifecycle;
 		delete root.dataset.devProposalAllowance;
@@ -1219,6 +1244,7 @@ function reflect(next: DevOverrides): void {
 	writeLandingCookie(next);
 	writeBusinessPageCookie(next);
 	writeTeamPageCookie(next);
+	writeLandingMetricsCookie(next);
 	writeDiscoveryCookie(next);
 	writeEmbeddingsCookie(next);
 	writeAgeCookie(next);
@@ -1324,6 +1350,17 @@ function writeTeamPageCookie(next: DevOverrides): void {
 	document.cookie = next.enabled && next.teamPage !== "auto"
 		? `${TEAM_PAGE_SIM_COOKIE}=${next.teamPage}; path=/; samesite=lax`
 		: `${TEAM_PAGE_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}
+
+/**
+ * Mirror the landing-numbers axis into the `pj.dev.landing-metrics` cookie — the only channel that
+ * reaches `/`'s SERVER render of "The numbers so far". Written while simulation is on and the axis
+ * is not `auto`; removed otherwise. The route reads it in a development build only.
+ */
+function writeLandingMetricsCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.landingMetrics !== "auto"
+		? `${LANDING_METRICS_SIM_COOKIE}=${next.landingMetrics}; path=/; samesite=lax`
+		: `${LANDING_METRICS_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 /** Patch a subset of the overrides. */

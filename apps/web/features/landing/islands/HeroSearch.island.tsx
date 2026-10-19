@@ -74,6 +74,13 @@ export interface HeroSearchProps {
 	trending: readonly string[];
 	/** The picture a person row shows when the payload carries none (`DEFAULT_AVATAR_URL`). */
 	avatarFallback: string;
+	/**
+	 * The search landmark's name, when the page has more than one (each must be told apart): an
+	 * `aria-label` ("Search Projective" for the hero's instance)…
+	 */
+	landmarkLabel?: string;
+	/** …or the id of a heading that names it (the final call to action's h2). Wins over the label. */
+	landmarkLabelledBy?: string;
 }
 // #endregion
 
@@ -105,8 +112,16 @@ export interface HeroSearchProps {
  * device's recent searches. It carries `lp-search.css` and `lp-hero.css` for the whole hero.
  */
 export default function HeroSearch(
-	{ idSuffix = "", slashFocus = false, typewriter = false, terms, trending, avatarFallback }:
-		HeroSearchProps,
+	{
+		idSuffix = "",
+		slashFocus = false,
+		typewriter = false,
+		terms,
+		trending,
+		avatarFallback,
+		landmarkLabel,
+		landmarkLabelledBy,
+	}: HeroSearchProps,
 ): JSX.Element {
 	const ids = heroSearchIds(idSuffix);
 	const formRef = useRef<HTMLFormElement>(null);
@@ -360,6 +375,7 @@ export default function HeroSearch(
 				scopeButton={hydrated.value && !sheetFailed.value}
 				typewriter={overlayShown.value ? typewriterText : null}
 				slashFocus={slashFocus}
+				landmark={{ label: landmarkLabel, labelledBy: landmarkLabelledBy }}
 				open={panelOpen}
 				sections={panelOpen ? sections : []}
 				active={panelOpen ? active.value : -1}

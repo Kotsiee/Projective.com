@@ -45,6 +45,19 @@ export const PublicMoneyTotalSchema = z.object({
 export type PublicMoneyTotal = z.infer<typeof PublicMoneyTotalSchema>;
 
 /**
+ * The published protected total: a {@link PublicMoneyTotalSchema} and whether it was CONVERTED.
+ * `converted` is `false` when every protected escrow is in the total's own currency (the exact sum,
+ * coarsened), and `true` when escrows in several currencies were converted into the platform base at
+ * the newest reference rate and summed (Decision #277 (C), flag (c)) — a figure resting on rates, so
+ * a surface that may only print an unconverted total (the landing's "Money protected so far",
+ * `flows/LANDING.md` §4.7 Y1) hides it.
+ */
+export const PublicProtectedTotalSchema = PublicMoneyTotalSchema.extend({
+	converted: z.boolean(),
+});
+export type PublicProtectedTotal = z.infer<typeof PublicProtectedTotalSchema>;
+
+/**
  * What `PublicMetricsService.get()` answers and `GET /api/public/metrics` returns (inside the flat
  * `{ ok, … }` envelope every thin route uses). `null` means "below the threshold — hide the tile".
  */
@@ -58,8 +71,9 @@ export const PublicMetricsSchema = z.object({
 	/**
 	 * Escrowed principal (held + released, all time), in one currency, floored to two significant
 	 * figures of whole units before it is published (Decision #277 (C)) — never exact to the minor unit.
+	 * `converted` says whether it was summed across currencies at reference rates.
 	 */
-	totalValueProtected: PublicMoneyTotalSchema.nullable(),
+	totalValueProtected: PublicProtectedTotalSchema.nullable(),
 	/** Stages approved and paid out (an escrow released to a payee; never personal), all time. */
 	stagesDelivered: z.number().int().nonnegative().nullable(),
 	/** Median hours from a delivered stage's first funding to its last release. */

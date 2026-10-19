@@ -283,6 +283,27 @@ export const LANDING_PAGES: readonly BudgetPage[] = [
 				audience: "everyone",
 				ownMax: 8 * KB,
 			},
+			{
+				// Pricing's calculator (L4 target 6 kB). Mounted with or without a fee: it carries the
+				// Pricing and "The numbers so far" stylesheets.
+				path: "apps/web/features/landing/islands/PricingCalculator.island.tsx",
+				audience: "everyone",
+				ownMax: 6 * KB,
+			},
+			{
+				// Ways to work's rails: their scroll buttons and end fades. Mounted with or without
+				// rails: it carries the section's stylesheet.
+				path: "apps/web/features/landing/islands/RailScroll.island.tsx",
+				audience: "everyone",
+				ownMax: 4 * KB,
+			},
+			{
+				// `@projective/ui`'s MoneyView: its island module default-exports the same function
+				// How it works and the demo posters render, and Fresh registers an island by that
+				// identity, so every figure they print hydrates as one (`islandBindingsOf`).
+				path: "packages/ui/display/islands/MoneyView.island.tsx",
+				audience: "everyone",
+			},
 		],
 	},
 ];

@@ -15,6 +15,7 @@ import {
 	createResolver,
 	type DenoJson,
 	isIslandPath,
+	islandBindingsOf,
 	islandsImportedBy,
 	islandsRenderedBy,
 	joinPath,
@@ -143,6 +144,56 @@ Deno.test("islandsRenderedBy traces barrel names, stops at islands, and skips la
 	]);
 });
 
+Deno.test("islandBindingsOf: a component an island re-exports as its default renders that island anywhere", () => {
+	const files: Readonly<Record<string, string>> = {
+		"apps/web/features/site/routes/Prices.tsx": [
+			'import { Money } from "@projective/ui/display";',
+			'import { Card } from "@projective/ui/display";',
+			"export function Prices() {}",
+		].join("\n"),
+		"packages/ui/display/mod.ts": [
+			'export { Money } from "./components/Money.tsx";',
+			'export { Card } from "./components/Card.tsx";',
+		].join("\n"),
+		"packages/ui/display/components/Money.tsx": "export function Money() {}",
+		"packages/ui/display/components/Card.tsx": "export function Card() {}",
+		// The island is the same function as the component, re-exported as its default.
+		"packages/ui/display/islands/Money.island.tsx":
+			'import { Money } from "../components/Money.tsx";\n// export default Ghost;\nexport default Money;',
+		"packages/ui/display/islands/Badge.island.tsx":
+			'export { Card as default } from "../components/Card.tsx";',
+		// An island with a component of its own is not an alias of anything.
+		"packages/ui/display/islands/Own.island.tsx": "export default function Own() {}",
+	};
+	const walk: WalkOptions = { read: (path) => files[path] ?? null, resolve: FIXTURE.resolve };
+	const bindings = islandBindingsOf([
+		"packages/ui/display/islands/Money.island.tsx",
+		"packages/ui/display/islands/Badge.island.tsx",
+		"packages/ui/display/islands/Own.island.tsx",
+	], walk);
+	assertEquals([...bindings.entries()].sort(), [
+		[
+			"packages/ui/display/components/Card.tsx#Card",
+			"packages/ui/display/islands/Badge.island.tsx",
+		],
+		[
+			"packages/ui/display/components/Money.tsx#Money",
+			"packages/ui/display/islands/Money.island.tsx",
+		],
+	]);
+	assertEquals(
+		islandsRenderedBy(["apps/web/features/site/routes/Prices.tsx"], {
+			...walk,
+			islandBindings: bindings,
+		}),
+		[
+			"packages/ui/display/islands/Badge.island.tsx",
+			"packages/ui/display/islands/Money.island.tsx",
+		],
+	);
+	assertEquals(islandsRenderedBy(["apps/web/features/site/routes/Prices.tsx"], walk), []);
+});
+
 Deno.test("islandsImportedBy lists only a module's direct island imports", () => {
 	assertEquals(islandsImportedBy("apps/web/features/site/islands/Hero.island.tsx", FIXTURE), [
 		"apps/web/features/site/islands/Inner.island.tsx",
@@ -163,14 +214,40 @@ const readRepo: SourceReader = (path) => {
 	}
 };
 
-/** The workspace's own import map: root aliases and member `exports`. */
+/** Directories never searched for island modules: dependencies and build output. */
+const SKIPPED_DIRS = new Set(["node_modules", "_fresh", ".vite", "dist", "coverage"]);
+
+/** Every island module under `dir` (repository-relative), recursively. */
+function islandModulesUnder(dir: string): string[] {
+	const out: string[] = [];
+	let entries: Deno.DirEntry[];
+	try {
+		entries = [...Deno.readDirSync(new URL(`${dir}/`, ROOT))];
+	} catch {
+		return out;
+	}
+	for (const entry of entries) {
+		const path = `${dir}/${entry.name}`;
+		if (entry.isDirectory && !SKIPPED_DIRS.has(entry.name) && !entry.name.startsWith(".")) {
+			out.push(...islandModulesUnder(path));
+		} else if (entry.isFile && isIslandPath(path)) out.push(path);
+	}
+	return out;
+}
+
+/**
+ * The workspace's own import map (root aliases and member `exports`), with every island the app
+ * and its packages can register read for components it re-exports as its default.
+ */
 function repoWalk(): WalkOptions {
 	const root = JSON.parse(readRepo("deno.json") ?? "{}") as DenoJson;
 	const members = (root.workspace ?? []).map((dir) => {
 		const clean = dir.replace(/^\.\//, "");
 		return { dir: clean, json: JSON.parse(readRepo(`${clean}/deno.json`) ?? "{}") as DenoJson };
 	});
-	return { read: readRepo, resolve: createResolver(workspaceMapFrom(root, members)) };
+	const base = { read: readRepo, resolve: createResolver(workspaceMapFrom(root, members)) };
+	const islands = [...islandModulesUnder("apps/web"), ...islandModulesUnder("packages")];
+	return { ...base, islandBindings: islandBindingsOf(islands, base) };
 }
 
 const paths = (islands: readonly BudgetIsland[]) => islands.map((island) => island.path).sort();

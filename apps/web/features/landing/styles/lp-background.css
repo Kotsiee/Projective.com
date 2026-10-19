@@ -18,6 +18,10 @@
  * spotlight on the grid's corner, away from the headline; the island writes px on fine pointers
  * only, and the lit grid it carries is the one flourish across the whole hero. The background takes
  * no layout space and is never the LCP element.
+ *
+ * `.lp-bg--final` is the same stack under the final call to action (`#get-started`, §2.3 note 22):
+ * its grid rises from the region's foot and its spotlight rests there. Each region's grain fades
+ * where it meets the plain canvas of the section beside it.
  */
 
 /* #region Base */
@@ -72,6 +76,17 @@
 	opacity: var(--lp-grain-opacity);
 	background-size: var(--lp-grain-size);
 	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* The hero's grain fades out over its foot, so the plain canvas of the section after it meets it
+   with no hard edge (the grain lifts the tone a step it would otherwise draw as a line). */
+.lp-bg--hero::after {
+	-webkit-mask-image: linear-gradient(
+		to bottom,
+		var(--lp-mask-ink) calc(100% - 12rem),
+		transparent
+	);
+	mask-image: linear-gradient(to bottom, var(--lp-mask-ink) calc(100% - 12rem), transparent);
 }
 
 @media (min-width: 768px) {
@@ -191,6 +206,74 @@
 			to bottom,
 			transparent calc(var(--lp-header-h) + var(--lp-header-inset)),
 			var(--lp-mask-ink) calc(var(--lp-header-h) + var(--lp-header-inset))
+		);
+	}
+}
+/* #endregion */
+
+/* #region Final call to action (`.lp-bg--final`, §2.3 note 22) */
+/* The same ruled field as the hero's, its origin on the container's left edge (`.lp-final` is an
+   inline-size container), rising from the region's foot: the headline above sits on calm canvas,
+   the search and the calls to action on the grid. The spotlight rests at the foot's centre. No bar
+   above this region, so neither layer keeps a band clear for it. */
+.lp-bg--final {
+	--lp-spot-x: 50%;
+	--lp-spot-y: 100%;
+}
+
+/* The grain fades in from the region's top, so the plain canvas above (the questions) meets it with
+   no hard edge. */
+.lp-bg--final::after {
+	-webkit-mask-image: linear-gradient(to bottom, transparent, var(--lp-mask-ink) 12rem);
+	mask-image: linear-gradient(to bottom, transparent, var(--lp-mask-ink) 12rem);
+}
+
+.lp-bg--final::before {
+	-webkit-mask-image: radial-gradient(
+		ellipse 80% 85% at 50% 100%,
+		var(--lp-mask-ink) 15%,
+		transparent 80%
+	);
+	mask-image: radial-gradient(ellipse 80% 85% at 50% 100%, var(--lp-mask-ink) 15%, transparent 80%);
+}
+
+.lp-bg--final .lp-bg__lit {
+	-webkit-mask-image: radial-gradient(
+		circle var(--lp-spot-r) at var(--lp-spot-x) var(--lp-spot-y),
+		var(--lp-mask-ink),
+		transparent
+	);
+	mask-image: radial-gradient(
+		circle var(--lp-spot-r) at var(--lp-spot-x) var(--lp-spot-y),
+		var(--lp-mask-ink),
+		transparent
+	);
+}
+
+@media (min-width: 768px) {
+	.lp-bg--final::before {
+		-webkit-mask-image: radial-gradient(
+			ellipse 60% 90% at 50% 100%,
+			var(--lp-mask-ink) 15%,
+			transparent 80%
+		);
+		mask-image: radial-gradient(
+			ellipse 60% 90% at 50% 100%,
+			var(--lp-mask-ink) 15%,
+			transparent 80%
+		);
+	}
+
+	.lp-bg--final .lp-bg__lit {
+		-webkit-mask-image: radial-gradient(
+			circle var(--lp-spot-r) at var(--lp-spot-x) var(--lp-spot-y),
+			var(--lp-mask-ink),
+			transparent
+		);
+		mask-image: radial-gradient(
+			circle var(--lp-spot-r) at var(--lp-spot-x) var(--lp-spot-y),
+			var(--lp-mask-ink),
+			transparent
 		);
 	}
 }

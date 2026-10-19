@@ -1,5 +1,7 @@
 import "../styles/lp-theme.css";
 import "../styles/lp-shell.css";
+import "../styles/lp-faq.css";
+import "../styles/lp-final.css";
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
@@ -8,27 +10,11 @@ import { Icon } from "@projective/ui/icons";
 import { Logo } from "@web/components/Logo.tsx";
 import ThemeToggle from "@web/features/theme/islands/ThemeToggle.island.tsx";
 import { withRedirect } from "@features/auth/core/redirect.ts";
-import { HEADER_TOP_BAND_PX } from "../core/header.ts";
+import { HEADER_TOP_BAND_PX, LANDING_NAV_LINKS } from "../core/header.ts";
 
 // #region Navigation
-/** One link in the bar's "Main" navigation. */
-interface LandingNavLink {
-	label: string;
-	href: string;
-	/** Shown in the bar from `--bp-lg` only (the hero is the search below that); always in the sheet. */
-	wide?: boolean;
-}
-
-/**
- * The bar's links (`flows/LANDING.md` §4.0). An entry is listed only once its destination exists:
- * "How it works" (`/#how-it-works`) and "Pricing" (`/#pricing`) join when those sections render on
- * `/`, and "Features" (`/features`) when that page ships — a link to an anchor the page does not
- * have would render and do nothing (root CLAUDE.md §3 gate 11). Explore joins the bar at
- * `--bp-lg` (§2.2 note 1): below that the hero's own search stands in for it.
- */
-const NAV_LINKS: readonly LandingNavLink[] = [
-	{ label: "Explore", href: "/explore", wide: true },
-];
+/** The bar's links (`core/header.ts`): How it works · Explore (from `--bp-lg`) · Pricing. */
+const NAV_LINKS = LANDING_NAV_LINKS;
 
 /** Every bar link waits for `--bp-lg`, so the bar's nav itself does too (no empty landmark). */
 const NAV_WIDE_ONLY = NAV_LINKS.every((link) => link.wide === true);
@@ -64,8 +50,10 @@ export interface LandingHeaderProps {
  * drops its glass and its hairline while the page sits within {@link HEADER_TOP_BAND_PX} of the
  * top.
  *
- * It is also the carrier of the landing's token sheet and shell stylesheet: a stylesheet imported
- * by a server component never reaches the page, and this island renders on every LandingShell page.
+ * It is also the carrier of the landing's token sheet and shell stylesheet, and of the sheets of
+ * the server-only sections that close the page (the questions, `lp-faq.css`, and the final call to
+ * action, `lp-final.css`): a stylesheet imported by a server component never reaches the page, and
+ * this island renders on every LandingShell page.
  */
 export default function LandingHeader(
 	{ authenticated, returnTo }: LandingHeaderProps,

@@ -45,7 +45,7 @@
 	--mf-mark-y: calc((var(--lp-fs-h3) * var(--lp-lead-h3) - var(--mf-mark)) / 2);
 
 	position: relative;
-	padding-block: var(--lp-section-pad);
+	padding-block: var(--lp-section-pad) var(--lp-section-pad-end);
 	padding-inline: var(--lp-gutter);
 }
 
