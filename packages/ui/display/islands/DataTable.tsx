@@ -556,7 +556,7 @@ export function DataTable<T>(props: DataTableProps<T>): JSX.Element {
 		? `--dt-body-h:${scroll.height};`
 		: "";
 
-	return (
+	const grid = (
 		<div
 			ref={rootRef}
 			class={cx("ui-dt", props.class)}
@@ -662,8 +662,14 @@ export function DataTable<T>(props: DataTableProps<T>): JSX.Element {
 					)
 					: null}
 			</div>
-			<div class="ui-visually-hidden" role="status" aria-live="polite">{announce.value}</div>
 		</div>
+	);
+	// The live region is the grid's sibling: `role="grid"` may own only rows and row groups.
+	return (
+		<>
+			{grid}
+			<div class="ui-visually-hidden" role="status" aria-live="polite">{announce.value}</div>
+		</>
 	);
 	// #endregion
 }
