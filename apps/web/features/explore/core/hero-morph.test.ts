@@ -2,7 +2,7 @@
 /**
  * The hero morph's `pageswap` gate: only an armed card navigation keeps its cross-document View
  * Transition, and skipping one never leaks the `AbortError` that a skipped transition's `ready`
- * rejects with (it used to surface as an unhandled rejection on every non-card exit from Explore).
+ * rejects with, so no exit from Explore raises an unhandled rejection.
  */
 import { assertEquals } from "@std/assert";
 import { bindHeroMorph, type PageSwapLike } from "./hero-morph.ts";
