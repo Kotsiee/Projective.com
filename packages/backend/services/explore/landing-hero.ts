@@ -4,10 +4,11 @@ import type { LandingHero, Suggestions, SuggestQuery } from "@projective/types/e
  * landing-hero — the landing hero search's server-derived data as pure functions
  * (`documentation/flows/LANDING.md` §4.1 `[U2]` `[U3]`), behind `ExploreBackendService.landingHero`.
  *
- * - The typewriter's example searches: a generic phrase read off each recommended service and
- *   project title — names and acronyms cut out, so a client's brand never reaches the hero, and the
- *   catalogue's own lower-case vocabulary deciding what an ordinary word is — each kept only when the
- *   typeahead hits it, then topped up from the §4.1 fallbacks, each confirmed the same way.
+ * - The typewriter's example searches: the §4.1 curated list first, each kept only while the
+ *   typeahead hits it (Decision #289), then — only while fewer than four survive — topped up with
+ *   generic phrases read off the recommended service and project titles: names and acronyms cut out,
+ *   so a client's brand never reaches the hero, the catalogue's own lower-case vocabulary deciding
+ *   what an ordinary word is, each confirmed the same way.
  * - The trending terms of an empty-query typeahead read (the empty field's Trending rows).
  * - The "Try:" chips: the trending terms, else the confirmed typewriter terms.
  *
@@ -15,7 +16,10 @@ import type { LandingHero, Suggestions, SuggestQuery } from "@projective/types/e
  */
 
 // #region Limits
-/** The typewriter's fallback examples (§4.1 `[U2]`), each shown only once the typeahead hits it. */
+/**
+ * The typewriter's curated examples (§4.1 `[U2]`), preferred over derived terms, each shown only
+ * while the typeahead hits it (Decision #289).
+ */
 export const FALLBACK_TERMS: readonly string[] = [
 	"brand identity",
 	"landing page",
@@ -27,7 +31,7 @@ export const FALLBACK_TERMS: readonly string[] = [
 /** The typewriter shows at most this many examples, one cycle each (§2.7). */
 export const HERO_TERMS_MAX = 6;
 
-/** Fewer derived examples than this are topped up from {@link FALLBACK_TERMS}. */
+/** Fewer confirmed {@link FALLBACK_TERMS} than this are topped up to this many with derived terms. */
 export const HERO_TERMS_MIN = 4;
 
 /** The most titles turned into candidate terms. */
@@ -195,20 +199,29 @@ function confirmed(read: SuggestRead, candidates: readonly string[], max: number
 	return candidates.filter((q) => read({ q, scope: "all" }).hits.length > 0).slice(0, max);
 }
 
+/** The same term, or one's words inside the other's ("brand identity" in "brand identity sprint"). */
+function overlaps(a: string, b: string): boolean {
+	const padded = (term: string) => ` ${term.trim().toLowerCase().replace(/\s+/g, " ")} `;
+	return padded(a).includes(padded(b)) || padded(b).includes(padded(a));
+}
+
 /**
- * The typewriter's examples (`[U2]`): the confirmed {@link candidateTerms}, topped up from
- * {@link FALLBACK_TERMS} (each confirmed the same way) while fewer than {@link HERO_TERMS_MIN}
- * survive; at most {@link HERO_TERMS_MAX}. Empty keeps the typewriter off.
+ * The typewriter's examples (`[U2]`, Decision #289): every {@link FALLBACK_TERMS} entry the typeahead
+ * hits, in the curated order; while fewer than {@link HERO_TERMS_MIN} survive, topped up to that
+ * many with confirmed {@link candidateTerms}, skipping any that {@link overlaps} a kept term.
+ * At most {@link HERO_TERMS_MAX}. Empty keeps the typewriter off.
  */
 export function heroTerms(
 	recommended: RecommendedTitles | null,
 	vocabulary: Vocabulary,
 	read: SuggestRead,
 ): string[] {
-	const derived = confirmed(read, candidateTerms(recommended, vocabulary), HERO_TERMS_MAX);
-	if (derived.length >= HERO_TERMS_MIN) return derived;
-	const extra = FALLBACK_TERMS.filter((term) => !derived.some((kept) => sameTerm(kept, term)));
-	return [...derived, ...confirmed(read, extra, HERO_TERMS_MAX - derived.length)];
+	const curated = confirmed(read, FALLBACK_TERMS, HERO_TERMS_MAX);
+	if (curated.length >= HERO_TERMS_MIN) return curated;
+	const extra = candidateTerms(recommended, vocabulary).filter((term) =>
+		!curated.some((kept) => overlaps(kept, term))
+	);
+	return [...curated, ...confirmed(read, extra, HERO_TERMS_MIN - curated.length)];
 }
 
 /**

@@ -14,13 +14,15 @@
  *     funding; a held escrow is Funded; a released one is shown as "Team paid" (#283 (b)). The TAG
  *     reads the way the product's card reads it (`fundingTagState`, `funding-ui.ts`): a described,
  *     priced ticket nobody has paid for asks to be funded, so it reads Needs funding, and a card in a
- *     work lane wears no tag, its lane already saying it (`FundingStatus` `COLUMN_SAYS`) — both
- *     pending the owner's ruling, Decision #287 FLAGS (B) and (C).
+ *     work lane wears no tag, its lane already saying it (`FundingStatus` `COLUMN_SAYS`) — the
+ *     board follows the product, as Decision #288 (G) rules on #287 FLAGS (B) and (C).
  *   - **Starting work** is the work-start gate (`fn_ticket_escrow_sync`, `workColumnLocked`): no
  *     hold, no work. A freelancer's start on an unclaimed ticket is the claim, which tries the hold
  *     from the client's live wallet balance and, when it is short, is refused and leaves the ticket
  *     where it was, marked Needs funding (K3). A claimed ticket with no hold is simply refused. A
- *     client cannot start an unclaimed ticket (K6, Decision #206).
+ *     client cannot start an unclaimed ticket (K6, Decision #206). A claim makes the claimer the
+ *     ticket's assignee, as the product's claim does, so a card in a work lane always shows who is
+ *     doing the work (the fixture's {@link DemoBoardFixture.freelancer}).
  *   - **Paying** is the client's checkout for exactly the stage's price, held as its escrow (K4);
  *     the wallet only funds the holds the product itself takes from it (a claim, Chain Reaction).
  *   - **Approving** a ticket in Review releases its stage: the team receives the price minus
@@ -33,7 +35,7 @@
  *
  * Deterministic: no clock, no randomness, so a scripted loop always plays the same frames.
  */
-import { platformFeeFor } from "@projective/types/finance";
+import { platformFeeFor } from "@projective/types/finance/fee";
 import type { FundingNextAction, FundingState } from "@projective/types/finance";
 import type { TicketColumnStatus } from "@projective/types/projects";
 
@@ -154,6 +156,11 @@ export interface DemoBoardFixture {
 	/** The client's spendable wallet balance (minor units). */
 	walletMinor: number;
 	cards: readonly DemoCard[];
+	/**
+	 * The freelancer whose start is a claim: an unassigned ticket they claim gets them as its
+	 * assignee. Absent on a board where nobody claims anything (the hero theatre's loop).
+	 */
+	freelancer?: DemoParty;
 }
 
 /** The server's facts the board needs. */
@@ -447,14 +454,20 @@ function reduceStart(
 			walletMinor,
 			last: { kind: "started", cardId: card.id, lane, heldFrom },
 		});
+	// A claim assigns the claimer; a ticket someone already holds keeps its assignee.
+	const assignee = card.assignee ?? state.origin.freelancer ?? null;
 	if (card.escrow === "held") {
-		return started({ ...card, status: lane, claimed: true }, "escrow", state.walletMinor);
+		return started(
+			{ ...card, status: lane, claimed: true, assignee },
+			"escrow",
+			state.walletMinor,
+		);
 	}
 	if (card.claimed) return refuse("needs_funding");
 	// The claim is the hold: from the client's live wallet balance, or refused.
 	if (state.walletMinor >= price) {
 		return started(
-			{ ...card, status: lane, claimed: true, escrow: "held", needsFunding: false },
+			{ ...card, status: lane, claimed: true, escrow: "held", needsFunding: false, assignee },
 			"wallet",
 			state.walletMinor - price,
 		);
@@ -557,6 +570,41 @@ export function reduceBoard(state: DemoBoardState, action: BoardAction): DemoBoa
 		case "approve":
 			return reduceApprove(state, card);
 	}
+}
+
+/**
+ * What moving `cardId` into `lane` would do, without doing it: the outcome {@link reduceBoard}
+ * would record, or `null` for an unknown card.
+ */
+export function previewStart(
+	state: DemoBoardState,
+	cardId: string,
+	lane: BoardLane,
+	by: "freelancer" | "client" = "freelancer",
+): DemoOutcome | null {
+	if (!cardById(state, cardId)) return null;
+	return reduceBoard(state, start(cardId, lane, by)).last;
+}
+
+/**
+ * Why `lane` refuses `cardId` before it is dropped there — what a board shows on a lane while the
+ * card is in flight, as the product's column lock does (`workColumnLocked`) — or `null` when the
+ * drop goes through to {@link reduceBoard}. An unclaimed task's start into work always goes
+ * through, even when the wallet will refuse it: that start is the claim, and its refusal is what
+ * marks the task Needs funding (K3). A claimed task with nothing held is refused at the lane
+ * (`"needs_funding"`), and so is any move the board never makes.
+ */
+export function dropRefusalOf(
+	state: DemoBoardState,
+	cardId: string,
+	lane: BoardLane,
+	by: "freelancer" | "client" = "freelancer",
+): RefusalReason | null {
+	const card = cardById(state, cardId);
+	const outcome = previewStart(state, cardId, lane, by);
+	if (!card || outcome?.kind !== "refused") return null;
+	if (outcome.reason === "needs_funding" && !card.claimed) return null;
+	return outcome.reason;
 }
 // #endregion
 

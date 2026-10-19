@@ -5,7 +5,10 @@ import LandingBackground from "@features/landing/islands/LandingBackground.islan
 import HeroSearch from "@features/landing/islands/HeroSearch.island.tsx";
 import { LandingHero } from "@features/landing/components/LandingHero.tsx";
 import HeroTheatre from "@features/landing/components/HeroTheatre.tsx";
+import MoneyFlowStage from "@features/landing/components/MoneyFlowStage.tsx";
+import DemoStage from "@features/landing/components/DemoStage.tsx";
 import type { HeroViewer } from "@features/landing/core/hero-search.ts";
+import type { DemoId } from "@features/landing/core/demos/demo-contract.ts";
 import { JsonLd } from "@features/marketing/components/JsonLd.tsx";
 import {
 	absoluteUrl,
@@ -78,6 +81,14 @@ export interface LandingPageProps {
 	origin: string;
 	/** The hero search's server-derived data (`routes/(public)/index.tsx`). */
 	hero: LandingHeroData;
+	/**
+	 * The platform fee in basis points (`PublicMetricsService` `platformFeeBp`), or `null` when the
+	 * read failed — then every fee clause on the page drops (`flows/LANDING.md` §4). Never
+	 * hard-coded.
+	 */
+	feeBp: number | null;
+	/** The demo stage's open tab, from `?demo=` (default `board`). */
+	demo: DemoId;
 }
 
 /**
@@ -101,9 +112,11 @@ export interface LandingHeroData {
  * {@link LandingBackground} beneath it, the {@link HeroSearch} instance that owns `/` and the
  * typewriter (`idSuffix` empty; the final call to action, L4, mounts a second, quiet one), and
  * the {@link HeroTheatre}, which shows no fee and so is not handed one, and is handed `demo` (its
- * "Try it yourself" link) only once the page renders the demo stage (L3).
+ * "Try it yourself" link), since the page renders the demo stage. Then, in the §2 wireframes'
+ * order, How it works ({@link MoneyFlowStage}) and the demo stage ({@link DemoStage}, `#demo`),
+ * both handed the server's fee.
  */
-export function LandingPage({ origin, hero }: LandingPageProps): JSX.Element {
+export function LandingPage({ origin, hero, feeBp, demo }: LandingPageProps): JSX.Element {
 	return (
 		<>
 			<JsonLd graph={landingGraph(origin)} id="landing-jsonld" />
@@ -120,8 +133,10 @@ export function LandingPage({ origin, hero }: LandingPageProps): JSX.Element {
 				}
 				chips={hero.chips}
 				viewer={hero.viewer}
-				theatre={<HeroTheatre />}
+				theatre={<HeroTheatre demo />}
 			/>
+			<MoneyFlowStage feeBp={feeBp} />
+			<DemoStage demo={demo} feeBp={feeBp} />
 		</>
 	);
 }

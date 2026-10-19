@@ -6,6 +6,7 @@ import {
 	FALLBACK_TERMS,
 	HERO_CHIPS_MAX,
 	HERO_TERMS_MAX,
+	HERO_TERMS_MIN,
 	heroChips,
 	heroTerms,
 	landingHeroFrom,
@@ -17,9 +18,9 @@ import {
 import { suggestFrom } from "./suggest.ts";
 
 /**
- * The landing hero's server-derived search data: generic phrases read off listing titles (names and
- * acronyms cut out), each confirmed by the typeahead, the fallbacks topping up a short list, and the
- * "Try:" chips (`flows/LANDING.md` §4.1 `[U2]` `[U3]`).
+ * The landing hero's server-derived search data: the curated terms first, each confirmed by the
+ * typeahead, generic phrases read off listing titles (names and acronyms cut out) topping up a short
+ * list (Decision #289), and the "Try:" chips (`flows/LANDING.md` §4.1 `[U2]` `[U3]`).
  */
 
 // #region Fixtures
@@ -137,34 +138,48 @@ Deno.test("landing-hero: candidates interleave services and projects, de-duplica
 // #endregion
 
 // #region Confirmation and chips
-Deno.test("landing-hero: only terms the typeahead hits survive, derived first", () => {
-	const { read, asked } = fakeRead([
-		"brand identity sprint",
-		"mobile app",
-		"landing page",
-		"brand refresh",
-		"analytics platform",
-	]);
+Deno.test("landing-hero: the curated terms come first, each kept only while the typeahead hits it", () => {
+	const { read, asked } = fakeRead([...FALLBACK_TERMS, ...candidateTerms(RECOMMENDED, VOCABULARY)]);
 	const terms = heroTerms(RECOMMENDED, VOCABULARY, read);
-	assertEquals(terms, [
-		"brand identity sprint",
-		"mobile app",
-		"landing page",
-		"brand refresh",
-		"analytics platform",
-	]);
+	assertEquals(terms, [...FALLBACK_TERMS]);
 	assert(terms.length <= HERO_TERMS_MAX);
 	assert(asked.every((query) => query.scope === "all"));
-	assertEquals(asked.length, candidateTerms(RECOMMENDED, VOCABULARY).length);
+	// Enough curated terms hit, so no derived term is even asked about.
+	assertEquals(asked.map((query) => query.q), [...FALLBACK_TERMS]);
 });
 
-Deno.test("landing-hero: fallbacks top up a short list, each confirmed first", () => {
-	const { read } = fakeRead(["landing page", "motion design", "brand identity"]);
-	assertEquals(heroTerms(RECOMMENDED, VOCABULARY, read), [
-		"landing page",
-		"brand identity",
-		"motion design",
+Deno.test("landing-hero: a curated term the typeahead hits wins over every derived one", () => {
+	// Four of the five curated terms hit, and so does every derived term: only the curated show.
+	const derived = candidateTerms(RECOMMENDED, VOCABULARY);
+	const { read } = fakeRead([
+		...FALLBACK_TERMS.filter((term) => term !== "motion design"),
+		...derived,
 	]);
+	const terms = heroTerms(RECOMMENDED, VOCABULARY, read);
+	assertEquals(terms, ["brand identity", "landing page", "design system", "mobile app"]);
+	assertEquals(terms.length, HERO_TERMS_MIN);
+	assert(!terms.includes("design mentorship block"));
+	assert(terms.every((term) => FALLBACK_TERMS.includes(term)));
+});
+
+Deno.test("landing-hero: derived terms only top a short curated list up to the minimum, never repeating one", () => {
+	const { read } = fakeRead([
+		"brand identity",
+		"landing page",
+		"brand identity sprint",
+		"brand refresh",
+		"design mentorship block",
+		"analytics platform",
+	]);
+	// "brand identity sprint" repeats a curated term's words and "mobile app" never hits.
+	assertEquals(heroTerms(RECOMMENDED, VOCABULARY, read), [
+		"brand identity",
+		"landing page",
+		"brand refresh",
+		"design mentorship block",
+	]);
+	const curatedOnly = fakeRead(["landing page", "motion design"]);
+	assertEquals(heroTerms(null, VOCABULARY, curatedOnly.read), ["landing page", "motion design"]);
 	const none = fakeRead([]);
 	assertEquals(heroTerms(null, VOCABULARY, none.read), []);
 	assertEquals(none.asked.length, FALLBACK_TERMS.length);
@@ -205,7 +220,8 @@ Deno.test("landing-hero: the whole hero from the live typeahead over a catalogue
 		{ services: items, projects: [] },
 		(query) => suggestFrom(items, query, NOW),
 	);
-	assertEquals(hero.terms, ["brand refresh", "mobile app", "landing page"]);
+	// The two curated terms this catalogue answers, then the one derived term that repeats neither.
+	assertEquals(hero.terms, ["landing page", "mobile app", "brand refresh"]);
 	assert(hero.terms.every((term) => !/verdant|loop/i.test(term)));
 	assertEquals(hero.chips, hero.trending.length > 0 ? hero.trending.slice(0, 5) : hero.terms);
 });

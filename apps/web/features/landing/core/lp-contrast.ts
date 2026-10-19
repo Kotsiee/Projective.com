@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 /**
  * lp-contrast.ts — the landing token sheet's contrast audit (`flows/LANDING.md` §3.3), recomputed
  * from `styles/lp-theme.css` itself so the published table cannot drift from the stylesheet.
@@ -14,11 +15,17 @@
  *     (white and black), the worse kept — a conservative bound, since grain never paints over
  *     surfaces or fills. The high-contrast states carry no grain (`--lp-grain-opacity: 0`).
  *   - **Glass.** The header bar's glass is `--lp-bg` at `--lp-glass-veil` over white or black content.
+ *   - **The demo viewport.** Inside `.lp-demo__viewport` the ground is the product's own surface —
+ *     the app's `--bg` and surfaces, as `_app.tsx` emits them from its seed — so the demo-stage
+ *     rows there are measured against {@link viewportScheme}, the same `buildScheme` call, in each
+ *     state (its high-contrast states are the app's in-app overlay; Decision #298).
  *
  * Run it to print the table: `deno run --allow-read apps/web/features/landing/core/lp-contrast.ts`.
  * `lp-theme.contrast.test.ts` fails any cell below its floor and any published cell that differs from
  * this output by more than 0.01.
  */
+
+import { buildScheme } from "@ui/system/core/theme-engine.ts";
 
 // #region Sheet
 /** The four states the table reports, in column order. */
@@ -167,6 +174,36 @@ export function contrastRatio(a: Rgb, b: Rgb): number {
 	const x = relativeLuminance(a);
 	const y = relativeLuminance(b);
 	return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+// #endregion
+
+// #region The demo viewport (the app's tokens)
+/** The seed `apps/web/routes/_app.tsx` builds the app's token rules from (`SEED`). */
+export const APP_SEED = "#288690";
+
+/** The app tokens the viewport's text and grounds use. */
+const VIEWPORT_TOKENS = ["--bg", "--surface-1", "--surface-2", "--text-secondary"] as const;
+
+/** One state's app tokens inside the demo viewport, as solid colours. */
+export type ViewportScheme = Readonly<Record<(typeof VIEWPORT_TOKENS)[number], Rgb>>;
+
+/**
+ * The app's own tokens in `state` — the scheme `_app.tsx` emits (`buildScheme` over
+ * {@link APP_SEED}), with the in-app high-contrast overlay in the HC states.
+ */
+export function viewportScheme(state: ThemeState): ViewportScheme {
+	const vars = buildScheme({
+		seed: APP_SEED,
+		dark: state.startsWith("dark"),
+		highContrast: state.endsWith("HC"),
+	}) as Record<string, string>;
+	return Object.fromEntries(
+		VIEWPORT_TOKENS.map((token) => {
+			const value = vars[token];
+			if (value === undefined) throw new Error(`buildScheme: ${token} is not emitted`);
+			return [token, parseColor(value).rgb];
+		}),
+	) as ViewportScheme;
 }
 // #endregion
 
@@ -422,6 +459,38 @@ export function contrastTable(sheet: string): ContrastRow[] {
 		["--lp-ok-ink", ["--lp-surface-1", "--lp-surface-2"]],
 		["--lp-held-ink", ["--lp-surface-1", "--lp-surface-2"]],
 	], " / ");
+
+	// Inside the demo viewport: the product's surface, the app's own tokens (Decision #298).
+	const viewport = Object.fromEntries(STATES.map((s) => [s, viewportScheme(s)])) as Record<
+		ThemeState,
+		ViewportScheme
+	>;
+	const viewportGrounds = ["--bg", "--surface-1", "--surface-2"] as const;
+	rows.push({
+		label: "viewport (the app's tokens): text-secondary on bg / surface-1 / surface-2",
+		values: Object.fromEntries(
+			STATES.map((s) => [
+				s,
+				viewportGrounds.map((g) => contrastRatio(viewport[s]["--text-secondary"], viewport[s][g])),
+			]),
+		) as Record<ThemeState, number[]>,
+		join: " / ",
+		floor: AA,
+		floorText: "4.5 (7)",
+		passText: "PASS",
+	});
+	rows.push({
+		label: "viewport: ok-ink · refuse-ink on the app's bg and surface-1, -2 (Booking's statuses)",
+		values: per((p, s) =>
+			["--lp-ok-ink", "--lp-refuse-ink"].map((ink) =>
+				Math.min(...viewportGrounds.map((g) => contrastRatio(p.color(ink), viewport[s][g])))
+			)
+		),
+		join: " · ",
+		floor: AA,
+		floorText: "4.5 (7)",
+		passText: "PASS",
+	});
 
 	// Boundaries (non-text, 3:1).
 	const boundary = (

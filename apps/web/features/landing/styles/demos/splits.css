@@ -1,0 +1,440 @@
+/*
+ * splits — the demo stage's Team pay tab (`?demo=splits`; Decisions #280, #288;
+ * `documentation/flows/LANDING.md` §2.3 "demo viewport · ?demo=splits", §4.4, §6 V5).
+ *
+ *   - `.lp-split`: the demo, filling the stage's viewport (`.lp-demo__viewport`, the product's own
+ *     surface: `var(--bg)` and the app's tokens). Nothing in it is boxed (§B.4): space, one hairline
+ *     between ledger rows and the type registers separate the parts; the only outlines are on the
+ *     split's two radios and the bar's dividers.
+ *   - `__top`: the approved stage's sentence and its release in the pricing calculator's labels.
+ *   - `__controls`: "Example even split" / "Custom split" and the vault's fixed line (never a control).
+ *   - `__bar`: the product's `SplitBar` (`@ui/fields`) over the members' stakes, and its hint.
+ *   - `__ledger`: one row per member and the team vault, on the product's ledger recipe
+ *     (`.wsp-ledger`, `features/workspaces/styles/workspace-money.css`): one shared track set, so
+ *     the figures align down the list, and one hairline between rows. On a phone a row reads inline,
+ *     "{role} · {pct} · {amount} · clears in 7 days".
+ *   - `[data-mode="frames"]`: the same parts as stills inside the shared `.lp-demo-frames` chrome.
+ *
+ * Motion: on arrival the payment settles in once — the release, then the vault's row, then each
+ * member's — over `--lp-dur-base` steps (over-damped, no overshoot); a changed amount settles in the
+ * same way. None of it under either reduced-motion channel, where the demo is its frames. The bar's
+ * widths are never animated (`SplitBar`). No focus ring (Decision #285 (A)).
+ */
+
+/* #region Root */
+.lp-split {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-block-size: 0;
+	color: var(--on-surface);
+	font-variant-numeric: tabular-nums;
+}
+
+/* Frame mode takes its gap and padding from the shared `.lp-demo-frames` chrome. */
+.lp-split[data-mode="live"] {
+	gap: var(--space-2);
+	padding: var(--space-3);
+}
+
+@container (min-width: 30rem) {
+	.lp-split[data-mode="live"] {
+		gap: var(--space-4);
+		padding: var(--space-4);
+	}
+}
+
+@container (min-width: 60rem) {
+	.lp-split[data-mode="live"] {
+		padding: var(--space-6);
+	}
+}
+
+.lp-split :is(p, dl, dd, fieldset) {
+	margin: 0;
+}
+
+.lp-split ul {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+/* #endregion */
+
+/* #region Top — the approved stage and its release */
+.lp-split__top {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: var(--space-2) var(--space-6);
+}
+
+.lp-split__lead {
+	flex: 1 1 18rem;
+	max-inline-size: var(--measure);
+	color: var(--on-surface);
+	font-size: var(--text-base);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	text-wrap: pretty;
+}
+
+.lp-split__release {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2) var(--space-5);
+}
+
+/* On a phone the sentence above already says it. */
+.lp-split[data-mode="live"] .lp-split__release {
+	display: none;
+}
+
+@container (min-width: 30rem) {
+	.lp-split[data-mode="live"] .lp-split__release {
+		display: flex;
+	}
+}
+
+.lp-split__fact {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-0);
+}
+
+.lp-split__label {
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug);
+}
+
+.lp-split__figure {
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+}
+/* #endregion */
+
+/* #region Controls — the two examples and the vault's fixed line */
+.lp-split__controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2) var(--space-4);
+}
+
+.lp-split__choice {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	padding: 0;
+	border: 0;
+}
+
+.lp-split__option {
+	position: relative;
+	display: inline-flex;
+	cursor: pointer;
+}
+
+/* The native radio stays the control (arrow keys move the choice); its face is drawn beside it. */
+.lp-split__option-input {
+	position: absolute;
+	inset: 0;
+	margin: 0;
+	opacity: 0;
+	cursor: pointer;
+}
+
+.lp-split__option-face {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: 2.25rem;
+	padding-inline: var(--space-3);
+	border: 1px solid var(--hairline-strong-color);
+	border-radius: var(--radius-sm);
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	white-space: nowrap;
+	transition:
+		transform var(--lp-dur-press) var(--lp-ease-out),
+		background-color var(--lp-dur-base) var(--lp-ease-standard),
+		border-color var(--lp-dur-base) var(--lp-ease-standard);
+}
+
+/* The radio's own mark: a ring, filled when chosen. */
+.lp-split__option-face::before {
+	content: "";
+	flex: none;
+	inline-size: 0.875rem;
+	block-size: 0.875rem;
+	box-sizing: border-box;
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-full);
+	transition:
+		border-width var(--lp-dur-base) var(--lp-ease-standard),
+		border-color var(--lp-dur-base) var(--lp-ease-standard);
+}
+
+.lp-split__option:hover .lp-split__option-face {
+	border-color: var(--outline);
+	background: var(--surface-2);
+}
+
+.lp-split__option-input:checked + .lp-split__option-face {
+	border-color: var(--primary);
+	background: var(--surface-2);
+}
+
+.lp-split__option-input:checked + .lp-split__option-face::before {
+	border: 0.25rem solid var(--primary);
+}
+
+.lp-split__option:active .lp-split__option-face {
+	transform: scale(var(--lp-press-scale));
+}
+
+/* A fact about this team, never a control (N2): the meta register. */
+.lp-split__fixed {
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+}
+/* #endregion */
+
+/* #region Bar — the product's SplitBar over the stakes */
+.lp-split__bar {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+/* #endregion */
+
+/* #region Ledger — one row per member, then the vault */
+.lp-split__ledger {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	min-inline-size: 0;
+}
+
+.lp-split__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-0) var(--space-1);
+	padding-block: var(--space-1);
+	padding-inline: var(--space-1);
+	border-radius: var(--radius-sm);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	transition: background-color var(--lp-dur-base) var(--lp-ease-standard);
+}
+
+.lp-split__row + .lp-split__row {
+	border-block-start: var(--hairline);
+	border-start-start-radius: 0;
+	border-start-end-radius: 0;
+}
+
+/* The row a frame speaks about: one tonal step, never a box. */
+.lp-split__row[data-focus] {
+	background: var(--surface-2);
+}
+
+.lp-split__role {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	color: var(--on-surface);
+	font-weight: var(--fw-medium);
+}
+
+.lp-split__amount {
+	color: var(--on-surface);
+	animation: lp-split-in var(--lp-dur-base) var(--lp-ease-out) backwards;
+}
+
+/* Each member's swatch is their segment's tone on the bar (SplitBar's first three); the vault's a ring. */
+.lp-split__swatch {
+	flex: none;
+	inline-size: 0.625rem;
+	block-size: 0.625rem;
+	box-sizing: border-box;
+	border-radius: var(--radius-full);
+	border: 1px solid var(--outline);
+}
+
+.lp-split__swatch[data-tone="1"] {
+	border: 0;
+	background: var(--primary);
+}
+
+.lp-split__swatch[data-tone="2"] {
+	border: 0;
+	background: var(--secondary);
+}
+
+.lp-split__swatch[data-tone="3"] {
+	border: 0;
+	background: var(--tertiary);
+}
+
+/* From the ledger's width the row is columns on one shared track set; the middots give way to space. */
+@container (min-width: 30rem) {
+	.lp-split__ledger {
+		grid-template-columns: minmax(0, 1fr) auto auto auto;
+		column-gap: var(--space-6);
+	}
+
+	/* A subgrid row keeps the ledger's column gap; only its own row gap is set. */
+	.lp-split__row {
+		display: grid;
+		grid-column: 1 / -1;
+		grid-template-columns: subgrid;
+		column-gap: var(--space-6);
+		row-gap: 0;
+		padding-block: var(--space-2);
+		padding-inline: var(--space-2);
+	}
+
+	.lp-split__dot {
+		display: none;
+	}
+
+	.lp-split__pct {
+		grid-column: 2;
+		text-align: end;
+	}
+
+	.lp-split__amount {
+		grid-column: 3;
+		justify-self: end;
+	}
+
+	.lp-split__clears {
+		grid-column: 4;
+	}
+}
+
+/* A wide viewport gives the ledger the room it is the picture of: taller rows, larger figures. */
+@container (min-width: 60rem) {
+	.lp-split[data-mode="live"] .lp-split__lead {
+		font-size: var(--text-lg);
+	}
+
+	.lp-split[data-mode="live"] .lp-split__row {
+		padding-block: var(--space-4);
+		font-size: var(--text-base);
+	}
+
+	.lp-split[data-mode="live"] .lp-split__amount {
+		font-size: var(--text-lg);
+		font-weight: var(--fw-medium);
+	}
+}
+/* #endregion */
+
+/* #region Notes */
+.lp-split__notes {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin-block-start: auto;
+}
+/* #endregion */
+
+/* #region Arrival — the payment settles in once */
+@keyframes lp-split-in {
+	from {
+		opacity: 0;
+		translate: 0 0.25rem;
+	}
+}
+
+.lp-split[data-mode="live"] :is(.lp-split__release, .lp-split__row) {
+	animation: lp-split-in var(--lp-dur-base) var(--lp-ease-out) backwards;
+}
+
+/* The release, then the vault's cut, then each member's share (the plan's own order). */
+.lp-split[data-mode="live"] .lp-split__row[data-kind="vault"] {
+	animation-delay: var(--lp-dur-fast);
+}
+
+.lp-split[data-mode="live"] .lp-split__row[data-kind="member"]:nth-child(1) {
+	animation-delay: calc(2 * var(--lp-dur-fast));
+}
+
+.lp-split[data-mode="live"] .lp-split__row[data-kind="member"]:nth-child(2) {
+	animation-delay: calc(3 * var(--lp-dur-fast));
+}
+
+.lp-split[data-mode="live"] .lp-split__row[data-kind="member"]:nth-child(3) {
+	animation-delay: calc(4 * var(--lp-dur-fast));
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.lp-split :is(.lp-split__release, .lp-split__row, .lp-split__amount) {
+		animation: none;
+	}
+
+	.lp-split__option:active .lp-split__option-face {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .lp-split :is(.lp-split__release, .lp-split__row, .lp-split__amount) {
+	animation: none;
+}
+
+:root[data-motion="reduced"] .lp-split__option:active .lp-split__option-face {
+	transform: none;
+}
+/* #endregion */
+
+/* #region Frame mode — the shared chrome's own parts */
+.lp-split[data-mode="frames"] .lp-demo-frames__caption {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.lp-split[data-mode="frames"] .lp-demo-frames__caption p {
+	margin: 0;
+}
+
+.lp-split[data-mode="frames"] .lp-demo-frames__picture {
+	justify-content: center;
+	gap: var(--space-3);
+}
+
+/* The ends of the sequence: the control stays focusable and says it cannot go further. */
+.lp-split .lp-demo-step[aria-disabled="true"] {
+	border-color: var(--hairline-color);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: default;
+	transform: none;
+}
+/* #endregion */
+
+/* #region Forced colours */
+@media (forced-colors: active) {
+	.lp-split__option-face {
+		border-color: ButtonText;
+	}
+
+	.lp-split__option-input:checked + .lp-split__option-face::before {
+		border-color: Highlight;
+	}
+
+	.lp-split__swatch {
+		forced-color-adjust: none;
+	}
+}
+/* #endregion */

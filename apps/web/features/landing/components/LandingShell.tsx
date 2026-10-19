@@ -23,7 +23,8 @@ export interface LandingShellProps {
  * `PAGE_CANVAS_MAIN_ID` (Decision #285 (C)); the header bar ({@link LandingHeader}); and
  * the `<main>` landmark. The unchanged {@link PublicFooter} (Decision #13) renders OUTSIDE
  * `.lp-root`, so no landing token reaches the footer and no footer-local `--lp-*` token reaches the
- * landing (Decision #285 (B)).
+ * landing (Decision #285 (B)). It names no Products marketplace: a product bought today is not
+ * delivered, so the landing pages offer no Products surface until W2 (§4.1, Decisions #281 k, #298).
  */
 export function LandingShell(
 	{ authenticated, returnTo, children }: LandingShellProps,
@@ -37,7 +38,7 @@ export function LandingShell(
 					{children}
 				</main>
 			</div>
-			<PublicFooter />
+			<PublicFooter products={false} />
 		</>
 	);
 }

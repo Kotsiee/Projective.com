@@ -1,0 +1,389 @@
+/*
+ * demos/board — the demo stage's Work board (`documentation/flows/LANDING.md` §2.1 note 12, §2.2
+ * note 12, §2.3 note 12, §4.4 Work board, §6 V1).
+ *
+ *   - `.lp-board-demo`: the board filling the stage's viewport — its bar (the board's name and the
+ *     client's wallet), the phone's lane pager, the real `@projective/ui` kanban and the status line
+ *     (the drag hint, a refusal, or the "Team paid" moment). `--still` is a picture of it: the
+ *     poster and each frame of the reduced-motion sequence.
+ *   - Lanes: all five from a 60rem viewport, about 3.4 with a trailing fade from 40rem, one at a
+ *     time below --bp-md, where the pager turns them (a drag inside a scroller fights the page's
+ *     scroll, so a phone moves cards with each card's "Move to…" menu instead — a disclosure whose
+ *     lanes are buttons, drawn only where a card cannot be dragged). From 60rem the lanes' empty
+ *     lower part fades into the viewport's ground, as the hero's window crops it.
+ *   - The faces are the hero theatre's `.lp-ticket` (`lp-theatre.css`); inside the viewport every
+ *     colour is the app's own token, as on the product's board, except the status line's audited
+ *     `--lp-refuse-*` / `--lp-ok-*` pairs (§3.2 "Demo-stage status").
+ *   - A refused move nudges its card once, over-damped (one excursion, no overshoot), only while
+ *     both reduced-motion channels allow motion; under either the stage shows the frames instead.
+ *
+ * No focus ring (Decision #285 (A)).
+ */
+
+/* #region Board */
+.lp-board-demo {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-block-size: 0;
+}
+
+.lp-board-demo__still {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-block-size: 0;
+	pointer-events: none;
+}
+
+.lp-board-demo__bar {
+	display: flex;
+	flex: none;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-1) var(--space-3);
+	padding: var(--space-2) var(--space-3);
+	border-block-end: var(--hairline);
+}
+
+.lp-board-demo__name {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	white-space: nowrap;
+}
+
+.lp-board-demo__kicker {
+	margin-inline-start: 0.35em;
+	color: var(--text-secondary);
+	font-weight: var(--fw-normal);
+}
+
+.lp-board-demo__wallet {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.lp-board-demo__amount {
+	margin-inline-start: 0.5em;
+	color: var(--on-surface);
+	font-weight: var(--fw-semibold);
+}
+
+.lp-board-demo__board {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-block-size: 0;
+}
+
+.lp-board-demo__board .ui-kanban__board {
+	gap: var(--space-3);
+	padding: var(--space-3);
+}
+
+.lp-board-demo .ui-kanban__col-body:has(> [role="listitem"]) > .ui-kanban__col-empty {
+	display: none;
+}
+
+/* All five lanes once the viewport holds them; about 3.4 and a trailing fade before that. The
+   lanes' empty lower part fades into the ground: a wide window shows the work, not empty columns. */
+@container (min-width: 60rem) {
+	.lp-board-demo__board {
+		--kanban-col-w: calc((100cqi - 6 * var(--space-3)) / 5);
+	}
+
+	.lp-demo__screen > .lp-board-demo .lp-board-demo__board .ui-kanban__board {
+		-webkit-mask-image: linear-gradient(to bottom, var(--lp-mask-ink) 62%, transparent);
+		mask-image: linear-gradient(to bottom, var(--lp-mask-ink) 62%, transparent);
+	}
+}
+
+@container (40rem <= width < 60rem) {
+	.lp-board-demo__board {
+		--kanban-col-w: calc((100cqi - 5 * var(--space-3)) / 3.4);
+	}
+
+	.lp-board-demo__board .ui-kanban__board {
+		-webkit-mask-image: linear-gradient(to right, var(--lp-mask-ink) 86%, transparent);
+		mask-image: linear-gradient(to right, var(--lp-mask-ink) 86%, transparent);
+	}
+}
+/* #endregion */
+
+/* #region Phone — one lane at a time */
+.lp-board-demo__pager {
+	display: none;
+}
+
+@media (max-width: 767px) {
+	.lp-board-demo__board {
+		--kanban-col-w: calc(100cqi - 2 * var(--space-3));
+	}
+
+	.lp-board-demo__board .ui-kanban__board {
+		overflow-x: clip;
+	}
+
+	.lp-board-demo__pager {
+		display: flex;
+		flex: none;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-2);
+		padding: var(--space-2) var(--space-3) 0;
+	}
+
+	.lp-board-demo__board[data-lane="0"] .ui-kanban__column:not(:nth-child(1)),
+	.lp-board-demo__board[data-lane="1"] .ui-kanban__column:not(:nth-child(2)),
+	.lp-board-demo__board[data-lane="2"] .ui-kanban__column:not(:nth-child(3)),
+	.lp-board-demo__board[data-lane="3"] .ui-kanban__column:not(:nth-child(4)),
+	.lp-board-demo__board[data-lane="4"] .ui-kanban__column:not(:nth-child(5)) {
+		display: none;
+	}
+}
+
+.lp-demo__viewport .lp-board-demo__page {
+	inline-size: 2.25rem;
+	padding-inline: 0;
+}
+
+.lp-board-demo__count {
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+}
+/* #endregion */
+
+/* #region Card controls — beside the card, outside its handle */
+.lp-board-demo .ui-kanban__card-actions {
+	justify-content: flex-start;
+	align-items: center;
+}
+
+.lp-demo__viewport .lp-board-demo .ui-kanban__card-actions .lp-demo-btn {
+	min-block-size: 2rem;
+	padding-inline: var(--space-3);
+	font-size: var(--text-xs);
+}
+
+/* "Move to…": a quiet button at the actions' end; open, the card's lanes follow it as buttons. */
+.lp-board-demo__move {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: var(--space-1);
+	max-inline-size: 100%;
+	margin-inline-start: auto;
+}
+
+:is(.lp-board-demo__move-toggle, .lp-board-demo__move-option) {
+	min-block-size: 2rem;
+	padding-inline: var(--space-2);
+	border: 1px solid var(--hairline-color);
+	border-radius: var(--radius-base);
+	background: transparent;
+	color: var(--text-secondary);
+	font-family: var(--font-sans);
+	font-size: var(--text-xs);
+	cursor: pointer;
+	transition:
+		transform var(--lp-dur-press) var(--lp-ease-out),
+		border-color var(--dur-slow) var(--ease-standard),
+		color var(--dur-slow) var(--ease-standard);
+}
+
+:is(.lp-board-demo__move-toggle, .lp-board-demo__move-option):hover,
+.lp-board-demo__move-toggle[aria-expanded="true"] {
+	border-color: var(--hairline-strong-color);
+	color: var(--on-surface);
+}
+
+:is(.lp-board-demo__move-toggle, .lp-board-demo__move-option):active {
+	transform: scale(var(--lp-press-scale));
+}
+
+.lp-board-demo__move-option {
+	color: var(--on-surface);
+}
+
+.lp-board-demo__move-list {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.lp-board-demo__move-list[hidden] {
+	display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:is(.lp-board-demo__move-toggle, .lp-board-demo__move-option):active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] :is(.lp-board-demo__move-toggle, .lp-board-demo__move-option):active {
+	transform: none;
+}
+
+@media (forced-colors: active) {
+	:is(.lp-board-demo__move-toggle, .lp-board-demo__move-option) {
+		border-color: ButtonText;
+	}
+}
+/* #endregion */
+
+/* #region Status line — the hint, a refusal, or Team paid */
+.lp-board-demo__status {
+	display: flex;
+	flex: none;
+	align-items: center;
+	min-block-size: 3.25rem;
+	padding: var(--space-2) var(--space-3) 0;
+}
+
+/* A phone has no drag to hint at, so the line takes no room: what it says (a refusal, Team paid)
+   rises over the foot of the lane inside the viewport, never over the page, and moves nothing. */
+@media (max-width: 767px) {
+	.lp-board-demo {
+		position: relative;
+	}
+
+	/* A zero-height anchor at the viewport's foot: it never moves, and each notice is a new box. */
+	.lp-board-demo__status {
+		position: absolute;
+		inset-inline: 0;
+		inset-block-end: 0;
+		z-index: 1;
+		block-size: 0;
+		min-block-size: 0;
+		padding: 0;
+		pointer-events: none;
+	}
+
+	.lp-board-demo__status .lp-board-demo__notice {
+		position: absolute;
+		inset-inline: var(--space-3);
+		inset-block-end: var(--space-3);
+		display: grid;
+		box-shadow: var(--elevation-medium);
+	}
+}
+
+.lp-board-demo__hint {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+.lp-board-demo__hint-keys {
+	display: none;
+}
+
+/* A keyboard on a card: the help that card needs replaces the pointer's hint. */
+.lp-board-demo:has(.ui-kanban__card:focus-visible) .lp-board-demo__hint-drag {
+	display: none;
+}
+
+.lp-board-demo:has(.ui-kanban__card:focus-visible) .lp-board-demo__hint-keys {
+	display: inline;
+}
+
+/* A status (§B.11: containers are for lifecycle statuses): colour, a glyph and the words. */
+.lp-board-demo__notice {
+	display: inline-grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: center;
+	gap: var(--space-1) var(--space-2);
+	margin: 0;
+	padding: var(--space-2) var(--space-3);
+	border: 1px solid var(--lp-refuse-edge);
+	border-radius: var(--lp-r-sm);
+	background: var(--lp-refuse-fill);
+	color: var(--lp-refuse-ink);
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+}
+
+.lp-board-demo__notice[data-kind="paid"] {
+	border-color: var(--lp-ok-fill);
+	background: var(--lp-ok-fill);
+	color: var(--lp-ok-ink);
+}
+
+.lp-board-demo__notice-text {
+	font-weight: var(--fw-medium);
+}
+
+.lp-board-demo__detail {
+	grid-column: 2;
+	font-variant-numeric: tabular-nums;
+}
+
+/* With room, the team's figure follows the moment on the same line. */
+@container (min-width: 40rem) {
+	.lp-board-demo__notice {
+		grid-template-columns: auto auto auto;
+	}
+
+	.lp-board-demo__detail {
+		grid-column: auto;
+	}
+}
+
+.lp-board-demo__glyph {
+	flex: none;
+	inline-size: 1em;
+	block-size: 1em;
+	fill: none;
+	stroke: currentColor;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-width: 2;
+}
+
+@media (forced-colors: active) {
+	.lp-board-demo__notice {
+		border-color: CanvasText;
+	}
+}
+/* #endregion */
+
+/* #region Refusal nudge — over-damped, only while motion is allowed */
+@keyframes lp-board-nudge {
+	35% {
+		translate: calc(-1 * var(--space-2)) 0;
+	}
+
+	to {
+		translate: 0 0;
+	}
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	:root:not([data-motion="reduced"]) .lp-board-ticket[data-lp-nudge] {
+		animation: lp-board-nudge var(--lp-dur-base) var(--lp-ease-out);
+	}
+}
+/* #endregion */
+
+/* #region Frames — the reduced-motion sequence's still */
+.lp-board-frames .lp-demo-frames__picture {
+	border-block-start: var(--hairline);
+}
+
+/* The still's lanes are narrower than the live board's: an empty assignee would wrap the foot. */
+.lp-board-frames .lp-ticket__unassigned {
+	display: none;
+}
+/* #endregion */

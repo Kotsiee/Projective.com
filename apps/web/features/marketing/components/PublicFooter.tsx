@@ -56,7 +56,16 @@ const SOCIAL_NETWORKS = {
 const SOCIAL_PROFILES: ReadonlyArray<{ network: keyof typeof SOCIAL_NETWORKS; href: string }> = [];
 // #endregion
 
-export function PublicFooter(): JSX.Element {
+/** Props for {@link PublicFooter}. */
+export interface PublicFooterProps {
+	/**
+	 * Name the Products marketplace in "Explore & learn" (default `true`); the landing pages pass
+	 * `false` until digital-product delivery ships (`FooterGroupOptions.products`, Decision #298).
+	 */
+	products?: boolean;
+}
+
+export function PublicFooter({ products = true }: PublicFooterProps = {}): JSX.Element {
 	const today = legalToday();
 	const { legal, contactHelp } = footerUtilityLinks(today);
 	// Rendered on the server for every request, so the year turns over without a deploy.
@@ -73,7 +82,7 @@ export function PublicFooter(): JSX.Element {
 						<span class="lp-footer__brand-text">Projective</span>
 					</a>
 					<p class="lp-footer__tagline">
-						The friendly place to build, find, and hire micro-agency helper teams.
+						The place to find, hire and work with ready-made teams.
 					</p>
 					{SOCIAL_PROFILES.length > 0
 						? (
@@ -101,14 +110,14 @@ export function PublicFooter(): JSX.Element {
 				{/* #endregion */}
 
 				{/* #region Column 2 — the six quick-link stacks (accordions on mobile) */}
-				<FooterLinkGroups groups={footerGroups(today)} />
+				<FooterLinkGroups groups={footerGroups(today, { products })} />
 				{/* #endregion */}
 
 				{/* #region Column 3 — newsletter capture */}
 				<div class="lp-footer__news">
 					<span class="lp-footer__news-title">Stay updated</span>
 					<p class="lp-footer__news-lede">
-						Fresh helper teams, new features, and the odd good idea. No spam, ever.
+						New teams, new features, and the odd good idea. No spam, ever.
 					</p>
 					<NewsletterForm />
 					<p class="lp-footer__news-note">

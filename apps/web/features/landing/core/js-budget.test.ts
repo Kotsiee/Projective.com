@@ -1,15 +1,23 @@
 /**
  * js-budget.test — the manifest walk behind `deno task budget:landing`, over a fixture manifest:
  * client-entry lookup, static closures counted once, lazy groups beyond the initial chunks, the
- * per-audience island filter, the budget groups of Decision #286 (A) (the baseline's growth cap,
- * the landing-owned 60 kB, the reported layout hosts, footer and totals), own-weight caps, the
- * weight of each island and the verdicts.
+ * per-audience island filter, the budget groups of Decision #286 (A) (the baseline's pin, held
+ * until main moves and re-pinned after each main merge as Decision #289 rules, the landing-owned
+ * 60 kB, the reported layout hosts, footer and totals), own-weight caps, the weight of each island
+ * and the verdicts.
  */
 import { assert, assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
 import {
+	APP_BASELINE_PIN,
+	BASELINE_LABEL,
+	BASELINE_PIN_PATH,
+	BASELINE_WAIVED,
+	type BaselinePin,
+	baselineRule,
 	type ChunkSize,
 	clientEntryKey,
 	type ClientManifest,
+	formatKb,
 	formatPageReport,
 	groupChunks,
 	KB,
@@ -18,8 +26,10 @@ import {
 	MissingIslandsError,
 	MOUNT_GROUPS,
 	type MountedIslands,
+	parseBaselinePin,
 	planFiles,
 	planPage,
+	repinBaseline,
 	reportPage,
 	staticClosure,
 	type Verdict,
@@ -268,10 +278,9 @@ Deno.test("planFiles lists each chunk file once across plans", () => {
 // #endregion
 
 // #region Groups
-Deno.test("the ruled caps: landing-owned 60 kB, the baseline held at its measured bytes, the hero 20 kB, lazy 35 kB", () => {
+Deno.test("the ruled caps: landing-owned 60 kB, the hero 20 kB, lazy 35 kB", () => {
 	assertEquals(LANDING_JS_BUDGET, {
 		landingOwned: 60 * KB,
-		appBaseline: 109_799,
 		heroIsland: 20 * KB,
 		lazyChunk: 35 * KB,
 	});
@@ -329,7 +338,7 @@ function resized(file: string, gzip: number): ReadonlyMap<string, ChunkSize> {
 	return new Map([...SIZES, [file, { raw: gzip * 2, gzip }]]);
 }
 
-const BASELINE = "app baseline (client entry + _app islands)";
+const BASELINE = BASELINE_LABEL;
 const LANDING = "landing-owned (landing islands beyond the baseline)";
 
 Deno.test("reportPage fails the baseline cap, the landing-owned 60 kB, own weight and landing lazy chunks", () => {
@@ -338,7 +347,7 @@ Deno.test("reportPage fails the baseline cap, the landing-owned 60 kB, own weigh
 	assertEquals(verdicts[BASELINE], {
 		label: BASELINE,
 		gzip: 20_000,
-		max: LANDING_JS_BUDGET.appBaseline,
+		max: APP_BASELINE_PIN.bytes,
 		ok: true,
 	});
 	assertEquals(verdicts[LANDING], {
@@ -378,7 +387,7 @@ Deno.test("reportPage reports the layout hosts, the footer, both totals and the 
 
 Deno.test("reportPage holds the baseline at its cap and the landing to 60 kB, inclusive", () => {
 	// The fixture's baseline is the 10 kB client entry plus 10 kB more: the entry may take the rest.
-	const room = LANDING_JS_BUDGET.appBaseline - 10_000;
+	const room = APP_BASELINE_PIN.bytes - 10_000;
 	assertEquals(verdictsOf(resized("assets/client-entry.js", room))[BASELINE].ok, true);
 	assertEquals(verdictsOf(resized("assets/client-entry.js", room + 1))[BASELINE].ok, false);
 	assertEquals(verdictsOf(resized("assets/background.js", 60_000))[LANDING].ok, true);
@@ -445,12 +454,97 @@ Deno.test("formatPageReport prints the tables, marks a broken cap OVER and the r
 	assertStringIncludes(text, "assets/client-entry.js");
 	assertStringIncludes(text, "Weight by island");
 	assertStringIncludes(text, "counts toward");
-	assert(/app baseline \(client entry \+ _app islands\)\s+20\.0 kB\s+109\.8 kB\s+ok/.test(text));
+	const pinned = formatKb(APP_BASELINE_PIN.bytes).replace(".", "\\.");
+	assert(
+		new RegExp(`app baseline \\(client entry \\+ _app islands\\)\\s+20\\.0 kB\\s+${pinned}\\s+ok`)
+			.test(text),
+	);
 	assert(
 		/landing-owned \(landing islands beyond the baseline\)\s+0\.5 kB\s+60\.0 kB\s+ok/.test(text),
 	);
 	assert(/lazy, gl\.ts\s+37\.0 kB\s+35\.0 kB\s+OVER/.test(text));
 	assert(/page total, signed in\s+65\.8 kB\s+-\s+reported/.test(text));
 	assert(/lazy, sound\.ts \(\+1 lazy behind it\)\s+50\.0 kB\s+-\s+reported/.test(text));
+});
+// #endregion
+
+// #region Baseline pin
+/** Two main commits: the one pinned, and a later one merged after the pin. */
+const MAIN_A = "a".repeat(40);
+const MAIN_B = "b".repeat(40);
+/** The fixture baseline's 20 kB, pinned at {@link MAIN_A}. */
+const PIN: BaselinePin = { bytes: 20_000, measuredAt: "2026-10-19T09:00:00.000Z", mainSha: MAIN_A };
+
+Deno.test("the committed pin parses: whole bytes, a date and main's full commit id", async () => {
+	const file = JSON.parse(
+		await Deno.readTextFile(new URL(`../../../../../${BASELINE_PIN_PATH}`, import.meta.url)),
+	);
+	assertEquals(parseBaselinePin(file), APP_BASELINE_PIN);
+	assert(Number.isInteger(APP_BASELINE_PIN.bytes) && APP_BASELINE_PIN.bytes > 0);
+	assert(/^[0-9a-f]{40}$/.test(APP_BASELINE_PIN.mainSha));
+	assertStringIncludes(file.$comment, "--repin");
+});
+
+Deno.test("parseBaselinePin refuses a pin that is not whole bytes, a date and a commit id", () => {
+	assertEquals(parseBaselinePin({ ...PIN, $comment: "x" }), PIN);
+	assertThrows(() => parseBaselinePin({ ...PIN, bytes: 1.5 }), Error, "bytes");
+	assertThrows(() => parseBaselinePin({ ...PIN, bytes: 0 }), Error, "bytes");
+	assertThrows(() => parseBaselinePin({ ...PIN, measuredAt: "yesterday" }), Error, "measuredAt");
+	assertThrows(() => parseBaselinePin({ ...PIN, mainSha: "abc123" }), Error, "mainSha");
+	assertThrows(() => parseBaselinePin(null), Error, "bytes");
+});
+
+Deno.test("baselineRule holds the pin until main moves, and holds it when the merge base is unknown", () => {
+	assertEquals(baselineRule(PIN, MAIN_A), { max: 20_000, held: true });
+	assertEquals(baselineRule(PIN, MAIN_B), { max: 20_000, held: false });
+	assertEquals(baselineRule(PIN, null), { max: 20_000, held: true });
+});
+
+Deno.test("reportPage fails a held baseline one byte over its pin, and waives it once main moved", () => {
+	const over = resized("assets/client-entry.js", 10_001);
+	const report = (sizes: ReadonlyMap<string, ChunkSize>, mergeBase: string | null) =>
+		reportPage(MANIFEST, everyonePlan(), signedInPlan(), sizes, baselineRule(PIN, mergeBase));
+	const line = (sizes: ReadonlyMap<string, ChunkSize>, mergeBase: string | null) =>
+		report(sizes, mergeBase).verdicts.find((verdict) => verdict.label === BASELINE);
+
+	assertEquals(line(SIZES, MAIN_A), { label: BASELINE, gzip: 20_000, max: 20_000, ok: true });
+	assertEquals(line(over, MAIN_A), { label: BASELINE, gzip: 20_001, max: 20_000, ok: false });
+	assertEquals(line(over, null)?.ok, false);
+	assertEquals(line(over, MAIN_B), {
+		label: BASELINE,
+		gzip: 20_001,
+		max: 20_000,
+		ok: true,
+		waived: BASELINE_WAIVED,
+	});
+	// Within the pin nothing is waived, whichever main the branch has merged.
+	assertEquals(line(SIZES, MAIN_B)?.waived, undefined);
+	// A waived baseline never hides another line: gl.ts stays over its 35 kB.
+	assertEquals(report(over, MAIN_B).ok, false);
+	assert(
+		/app baseline .*20\.0 kB\s+main moved, re-pin/.test(formatPageReport(report(over, MAIN_B))),
+	);
+});
+
+Deno.test("repinBaseline takes main's size after a main merge, and a trim at any time", () => {
+	const at = "2026-10-20T10:00:00.000Z";
+	assertEquals(repinBaseline(PIN, 21_500, MAIN_B, at), {
+		ok: true,
+		pin: { bytes: 21_500, measuredAt: at, mainSha: MAIN_B },
+	});
+	assertEquals(repinBaseline(PIN, 19_000, MAIN_A, at), {
+		ok: true,
+		pin: { bytes: 19_000, measuredAt: at, mainSha: MAIN_A },
+	});
+	assertEquals(repinBaseline(PIN, 20_000, MAIN_A, at).ok, true);
+});
+
+Deno.test("repinBaseline refuses to grow the pin without a main merge: landing commits may not grow it", () => {
+	const result = repinBaseline(PIN, 20_001, MAIN_A, "2026-10-20T10:00:00.000Z");
+	assertEquals(result.ok, false);
+	if (!result.ok) {
+		assertStringIncludes(result.reason, "main has not been merged since the pin");
+		assertStringIncludes(result.reason, "20000 → 20001 bytes (+1)");
+	}
 });
 // #endregion

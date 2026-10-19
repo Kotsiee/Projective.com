@@ -180,6 +180,23 @@ Deno.test("the footer's groups: three audience stacks, then Company, Help and Le
 	assertEquals(named("Contact Help"), "/contact?intent=support");
 });
 
+Deno.test("the landing pages' footer names no Products marketplace until delivery ships", () => {
+	const explore = (products?: boolean) =>
+		footerGroups(TODAY, products === undefined ? {} : { products })
+			.find((g) => g.title === "Explore & learn")!.links.map((l) => l.label);
+	assertEquals(explore(), [
+		"Services directory",
+		"Products marketplace",
+		"Trending teams",
+		"Member articles",
+	]);
+	assertEquals(explore(false), ["Services directory", "Trending teams", "Member articles"]);
+	const shell = Deno.readTextFileSync(
+		new URL("../../landing/components/LandingShell.tsx", import.meta.url),
+	);
+	assertEquals(shell.includes("<PublicFooter products={false} />"), true);
+});
+
 Deno.test("no footer label points at the help hub in place of a page it names", () => {
 	const hub = ALL_FOOTER_LINKS.filter((l) => l.href === "/help").map((l) => l.label);
 	assertEquals(hub, ["Help centre"]);

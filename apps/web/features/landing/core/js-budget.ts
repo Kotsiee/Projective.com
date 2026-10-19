@@ -14,8 +14,10 @@
  * What the budget counts (Decision #286 (A), owner ruling 2026-10-18: "strip + defer + rescope").
  * Each initial chunk belongs to one {@link BudgetGroup}, by the mount of the islands that reach it:
  *  - the app baseline — the client entry and the `_app.tsx` islands, loaded by every page of the
- *    app. It fails past {@link LANDING_JS_BUDGET.appBaseline}, its measured size in bytes, so it
- *    cannot grow by a byte; trimming it is app-wide work, outside the landing.
+ *    app. It is held to {@link APP_BASELINE_PIN}, main's measured size, re-pinned after each main
+ *    merge (Decision #289): until main is merged again, one more byte fails, so landing commits
+ *    cannot grow it; once main has moved, main's growth is reported until the re-pin, never failing
+ *    ({@link baselineRule}). Trimming it is app-wide work, outside the landing.
  *  - landing-owned — every chunk a landing island reaches beyond the baseline: `LandingShell`'s
  *    header and the page's own islands (hero, demos, background), whether or not a footer island
  *    or a layout host shares the chunk. The 60 kB ({@link LANDING_JS_BUDGET.landingOwned}) fails here.
@@ -32,6 +34,7 @@
  * that adds an island to a landing page adds it to its list; `island-graph.test.ts` walks the source
  * and fails while a list and the code disagree.
  */
+import BASELINE_PIN_JSON from "./js-budget-baseline.json" with { type: "json" };
 
 // #region Budgets
 /** One kilobyte as Vite reports it (`kB`): 1,000 bytes. */
@@ -39,17 +42,11 @@ export const KB = 1000;
 
 /**
  * The landing's JavaScript budgets in gzip bytes (`flows/LANDING.md` §7, build prompts §2.0, L2,
- * L3, as ruled by Decision #286 (A)).
+ * L3, as ruled by Decision #286 (A)). The app baseline's cap is its pin, {@link APP_BASELINE_PIN}.
  */
 export const LANDING_JS_BUDGET = {
 	/** Landing-owned initial JS of each landing page (see {@link BudgetGroup}), lazy chunks excluded. */
 	landingOwned: 60 * KB,
-	/**
-	 * The app baseline (the client entry and the `_app.tsx` islands) at its measured size, in bytes:
-	 * 109,799 on the production build of 2026-10-18 (Decisions #286 (A), #287 (A)(12)). A cap on
-	 * growth, not a target: one more byte fails, and a change that trims the baseline lowers it.
-	 */
-	appBaseline: 109_799,
 	/** The hero search island's own weight (L2), set as that island's {@link BudgetIsland.ownMax}. */
 	heroIsland: 20 * KB,
 	/**
@@ -62,6 +59,94 @@ export const LANDING_JS_BUDGET = {
 
 /** Manifest-key prefix of the landing's own modules, whose lazy chunks {@link LANDING_JS_BUDGET.lazyChunk} always caps. */
 const LANDING_KEY_PREFIX = "features/landing/";
+// #endregion
+
+// #region Baseline pin
+/**
+ * The app baseline's pin (Decision #289, owner ruling 2026-10-19: "Re-pin on each main merge"):
+ * the client entry and the `_app.tsx` islands at main's measured size, committed as
+ * {@link BASELINE_PIN_PATH} and written only by `deno task budget:landing --repin`, run after each
+ * merge of main into the landing branch.
+ */
+export interface BaselinePin {
+	/** The app baseline in gzip bytes on the production build measured at the pin. */
+	bytes: number;
+	/** When that build was measured (ISO 8601, UTC). */
+	measuredAt: string;
+	/** `git merge-base HEAD main` at the pin: the main commit last merged into the branch. */
+	mainSha: string;
+}
+
+/** The committed pin, repository-relative. */
+export const BASELINE_PIN_PATH = "apps/web/features/landing/core/js-budget-baseline.json";
+
+/**
+ * `value` as a {@link BaselinePin}; other keys (the file's `$comment`) are dropped.
+ *
+ * @throws When `bytes` is not a positive whole number, `measuredAt` not a date or `mainSha` not a
+ *   full 40-character commit id.
+ */
+export function parseBaselinePin(value: unknown): BaselinePin {
+	const { bytes, measuredAt, mainSha } = (value ?? {}) as Record<string, unknown>;
+	if (typeof bytes !== "number" || !Number.isInteger(bytes) || bytes <= 0) {
+		throw new Error(`js-budget: the baseline pin's bytes must be a positive integer (${bytes})`);
+	}
+	if (typeof measuredAt !== "string" || Number.isNaN(Date.parse(measuredAt))) {
+		throw new Error(`js-budget: the baseline pin's measuredAt must be a date (${measuredAt})`);
+	}
+	if (typeof mainSha !== "string" || !/^[0-9a-f]{40}$/.test(mainSha)) {
+		throw new Error(`js-budget: the baseline pin's mainSha must be a commit id (${mainSha})`);
+	}
+	return { bytes, measuredAt, mainSha };
+}
+
+/** The committed pin ({@link BASELINE_PIN_PATH}). */
+export const APP_BASELINE_PIN: BaselinePin = parseBaselinePin(BASELINE_PIN_JSON);
+
+/** How one run judges the app baseline against its pin. */
+export interface BaselineRule {
+	/** The pinned bytes. */
+	max: number;
+	/** `true`: past `max` fails. `false`: main has moved since the pin, so past `max` is reported. */
+	held: boolean;
+}
+
+/**
+ * The run's {@link BaselineRule}: held to the pin while `git merge-base HEAD main` still equals the
+ * pin's `mainSha` — no main merge since, so any growth is the branch's own — and held as well when the
+ * merge base cannot be resolved (`null`), so a missing `main` never waives the cap. Once main has
+ * been merged since the pin, its growth is main's: reported, never failing, until `--repin`.
+ */
+export function baselineRule(pin: BaselinePin, mergeBase: string | null): BaselineRule {
+	return { max: pin.bytes, held: mergeBase === null || mergeBase === pin.mainSha };
+}
+
+/** What `--repin` decides: the new pin, or why it is refused. */
+export type RepinResult = { ok: true; pin: BaselinePin } | { ok: false; reason: string };
+
+/**
+ * The pin `--repin` writes from a fresh measurement: `measured` bytes at `mergeBase`. Refused when
+ * main has not been merged since `previous` and the baseline grew — landing commits may not grow it;
+ * a trim lowers the pin either way.
+ */
+export function repinBaseline(
+	previous: BaselinePin,
+	measured: number,
+	mergeBase: string,
+	measuredAt: string,
+): RepinResult {
+	if (mergeBase === previous.mainSha && measured > previous.bytes) {
+		return {
+			ok: false,
+			reason: `main has not been merged since the pin (${mergeBase.slice(0, 8)}), and the app ` +
+				`baseline grew on this branch: ${previous.bytes} → ${measured} bytes ` +
+				`(+${
+					measured - previous.bytes
+				}). Landing commits may not grow it: trim the growth instead.`,
+		};
+	}
+	return { ok: true, pin: parseBaselinePin({ bytes: measured, measuredAt, mainSha: mergeBase }) };
+}
 // #endregion
 
 // #region Island lists
@@ -183,6 +268,20 @@ export const LANDING_PAGES: readonly BudgetPage[] = [
 				path: "apps/web/features/landing/islands/HeroTheatre.island.tsx",
 				audience: "everyone",
 				ownMax: 12 * KB,
+			},
+			{
+				// How it works: the reading-line observer behind the sticky money flow (L3 target 8 kB).
+				path: "apps/web/features/landing/islands/MoneyFlow.island.tsx",
+				audience: "everyone",
+				ownMax: 8 * KB,
+			},
+			{
+				// The demo stage's tabs, URL state and live region (L3 target 8 kB). Each demo
+				// (`components/demos/*.demo.tsx`) is a lazy chunk it imports for the open tab only,
+				// capped at LANDING_JS_BUDGET.lazyChunk like every landing-owned lazy chunk.
+				path: "apps/web/features/landing/islands/DemoHost.island.tsx",
+				audience: "everyone",
+				ownMax: 8 * KB,
 			},
 		],
 	},
@@ -480,7 +579,18 @@ export interface Verdict {
 	/** `null` for a figure that is reported but not capped. */
 	max: number | null;
 	ok: boolean;
+	/**
+	 * Why a line over its cap still passes: set only on the app baseline once main has moved since
+	 * its pin ({@link baselineRule}), and only when it is over.
+	 */
+	waived?: string;
 }
+
+/** The app baseline's budget line. */
+export const BASELINE_LABEL = "app baseline (client entry + _app islands)";
+
+/** {@link Verdict.waived} for the app baseline after a main merge the pin predates. */
+export const BASELINE_WAIVED = "main moved, re-pin";
 
 /** One page's rows, root weights and verdicts. */
 export interface PageReport {
@@ -534,16 +644,19 @@ export function groupChunks(manifest: ClientManifest, plan: PagePlan): GroupedCh
 /**
  * The report for one page from its plan for everyone and for a signed-in visitor (Decision #286 (A)).
  *
- * Failing lines: the app baseline against its growth cap, the landing-owned initial JS against the
- * 60 kB (every landing island counted, whoever it renders for), each island's own-weight cap and
- * each lazy chunk the landing owns. Reported lines: what the layout hosts and the footer add beyond
- * those two groups, the page totals for both audiences, and each lazy group the landing does not
- * own (once, counting the lazy groups behind it; the signed-in visitor's own lazy groups apart).
+ * Failing lines: the app baseline against its pin (while {@link BaselineRule.held}; over it after a
+ * main merge the pin predates, it passes {@link Verdict.waived}), the landing-owned initial JS
+ * against the 60 kB (every landing island counted, whoever it renders for), each island's
+ * own-weight cap and each lazy chunk the landing owns. Reported lines: what the layout hosts and the
+ * footer add beyond those two groups, the page totals for both audiences, and each lazy group the
+ * landing does not own (once, counting the lazy groups behind it; the signed-in visitor's own lazy
+ * groups apart).
  *
  * The chunk table runs initial, then signed-in only, then the chunks of capped lazy groups, each by
  * gzip size descending.
  *
  * @param sizes Each chunk file's raw and gzip size.
+ * @param baseline How the app baseline is judged; the committed pin, held, by default.
  * @throws When a chunk file has no size.
  */
 export function reportPage(
@@ -551,6 +664,7 @@ export function reportPage(
 	everyone: PagePlan,
 	signedIn: PagePlan,
 	sizes: ReadonlyMap<string, ChunkSize>,
+	baseline: BaselineRule = { max: APP_BASELINE_PIN.bytes, held: true },
 ): PageReport {
 	const sizeOf = (key: string): ChunkSize => {
 		const size = sizes.get(manifest[key].file);
@@ -628,12 +742,12 @@ export function reportPage(
 				const label = `${prefix}${rootLabel(manifest, group.root)}${more}`;
 				return verdict(label, sum(group.chunks), null);
 			});
+	const baselineVerdict = (gzip: number): Verdict => {
+		const line = verdict(BASELINE_LABEL, gzip, baseline.max);
+		return line.ok || baseline.held ? line : { ...line, ok: true, waived: BASELINE_WAIVED };
+	};
 	const verdicts: Verdict[] = [
-		verdict(
-			"app baseline (client entry + _app islands)",
-			sum(grouped.baseline),
-			LANDING_JS_BUDGET.appBaseline,
-		),
+		baselineVerdict(sum(grouped.baseline)),
 		verdict(
 			"landing-owned (landing islands beyond the baseline)",
 			sum(grouped.landing),
@@ -711,7 +825,7 @@ export function formatPageReport(report: PageReport): string {
 			line.label,
 			formatKb(line.gzip),
 			line.max === null ? "-" : formatKb(line.max),
-			line.max === null ? "reported" : line.ok ? "ok" : "OVER",
+			line.max === null ? "reported" : line.waived ?? (line.ok ? "ok" : "OVER"),
 		]),
 		new Set([1, 2]),
 	);

@@ -299,8 +299,10 @@
 	line-height: 1;
 }
 
-/* Only for a fine pointer with hover (never touch-only), and gone once the field is in use. */
-@media (hover: hover) and (pointer: fine) {
+/* Only from --bp-md (below it the hint crowds the field, mouse or not) and for a fine pointer with
+   hover (never touch-only), and gone once the field is in use. `aria-keyshortcuts` stays declared
+   at every width: the key works where the hint is not drawn. */
+@media (hover: hover) and (pointer: fine) and (min-width: 768px) {
 	.lp-search__hint {
 		display: inline-flex;
 	}

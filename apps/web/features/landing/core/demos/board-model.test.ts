@@ -58,7 +58,7 @@ import {
 	stagePriceMinor,
 	start,
 } from "./board-model.ts";
-import { HERO_BOARD, HERO_LOOP } from "./board-fixtures.ts";
+import { DEMO_BOARD, DEMO_SCRIPT, HERO_BOARD, HERO_LOOP } from "./board-fixtures.ts";
 
 // #region Helpers
 const FEE = { feeBp: PLATFORM_FEE_BP };
@@ -153,6 +153,7 @@ const WAITING = run(v1Board(0), [
 
 const ROOTS = [
 	createBoard(HERO_BOARD, FEE),
+	createBoard(DEMO_BOARD, FEE),
 	v1Board(0),
 	v1Board(500_000),
 	v1Board(500_000, false),
@@ -163,7 +164,7 @@ const REACHABLE = explore(ROOTS, 2);
 // #endregion
 
 // #region The product's shapes and rules
-Deno.test("the hero fixture parses as the product's board card, stage and funding shapes", () => {
+Deno.test("the hero and demo fixtures parse as the product's board card, stage and funding shapes", () => {
 	const shape = BoardCardSchema.pick({
 		id: true,
 		title: true,
@@ -181,7 +182,11 @@ Deno.test("the hero fixture parses as the product's board card, stage and fundin
 		required: true,
 		costCents: true,
 	});
-	for (const c of HERO_BOARD.cards) {
+	for (
+		const [c, currency] of [HERO_BOARD, DEMO_BOARD].flatMap((b) =>
+			b.cards.map((card) => [card, b.currency] as const)
+		)
+	) {
 		shape.parse({
 			id: c.id,
 			title: c.title,
@@ -204,7 +209,7 @@ Deno.test("the hero fixture parses as the product's board card, stage and fundin
 		if (c.assignee) ProjectPartySchema.parse({ ...c.assignee, handle: null });
 		FundingStatusSchema.parse({
 			...fundingOf(c),
-			currency: HERO_BOARD.currency,
+			currency,
 			amountLabel: null,
 			reason: null,
 		});
@@ -380,7 +385,7 @@ Deno.test("an unfunded task cannot start: the claim tries the wallet and, short,
 Deno.test("V1: unpaid reads Needs funding, a refused start keeps it, pay → Funded, then work", () => {
 	let board = v1Board(0);
 	// A described, priced ticket nobody has paid for: the product's card reads Needs funding
-	// (`fundingTagState`), though its state is Draft (Decision #287 FLAG (B)).
+	// (`fundingTagState`), though its state is Draft (Decision #288 (G) on #287 FLAG (B)).
 	assertEquals(fundingOf(card(board, "homepage")).state, "draft");
 	assertEquals(fundingTagOf(card(board, "homepage")), "needs_funding");
 
@@ -413,6 +418,31 @@ Deno.test("a claim takes the hold from the wallet when the balance covers the ex
 	assertEquals(board.last?.kind, "started");
 	assertEquals(board.walletMinor, 50_000);
 	assertEquals(card(board, "homepage").escrow, "held");
+});
+
+Deno.test("a claim makes the claimer the assignee, so a work lane never shows an unassigned card", () => {
+	const noor = { name: "Noor", avatar: "/test_images/profile_6.jpg" };
+	const board = (walletMinor: number) =>
+		createBoard({ ...v1Board(walletMinor).origin, freelancer: noor }, FEE);
+	// Claimed with the wallet's hold.
+	const claimed = reduceBoard(board(250_000), start("homepage", "in_progress"));
+	assertEquals(card(claimed, "homepage").assignee, noor);
+	// Claimed after the client paid: the escrow is already held.
+	const paid = reduceBoard(board(0), pay("homepage"));
+	const started = reduceBoard(paid, start("homepage", "in_progress"));
+	assertEquals(card(started, "homepage").assignee, noor);
+	// A refused claim assigns nobody.
+	const refused = reduceBoard(board(0), start("homepage", "in_progress"));
+	assertEquals(card(refused, "homepage").assignee, null);
+	// The demo stage's own board: every card in a work lane, after its frames, has an assignee.
+	const frames = scriptFrames(createBoard(DEMO_BOARD, FEE), DEMO_SCRIPT);
+	for (const frame of frames) {
+		for (const view of frame.cards) {
+			if (view.lane === "in_progress" || view.lane === "in_review") {
+				assert(view.assignee !== null, `${view.title} in ${view.lane} has an assignee`);
+			}
+		}
+	}
 });
 
 Deno.test("a client cannot start an unclaimed task; a freelancer starts it by claiming it", () => {

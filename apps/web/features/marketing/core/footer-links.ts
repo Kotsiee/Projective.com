@@ -66,7 +66,7 @@ export const LIST_PRODUCT_HREF = "/catalogue?create=product";
 /**
  * Onboarding entry points — the "what do I do first" stack.
  *
- * Deliberately NOT personalised. `PublicFooter` takes no props and the guest shell that renders it has
+ * Deliberately NOT personalised. `PublicFooter` takes no viewer props and the guest shell that renders it has
  * no `UserContext` to read, so a persona branch here would mean threading one in — and under root
  * CLAUDE.md §5 a new persona-observed branch drags a matching Dev Context Switcher axis along with it,
  * for a footer list. So this is ONE stack that is honest for a signed-out and a signed-in reader alike:
@@ -99,12 +99,26 @@ function legalLinks(today: string, only?: readonly LegalSlug[]): FooterLink[] {
 		}));
 }
 
+/** What a page leaves out of the footer's stacks. */
+export interface FooterGroupOptions {
+	/**
+	 * Name the Products marketplace (default `true`). The landing pages pass `false`: a product
+	 * bought today is paid for but never delivered, so `/` and `/features` name no Products surface
+	 * until digital-product delivery ships (W2; `flows/LANDING.md` §4.1, Decision #281 flag k,
+	 * Decision #298).
+	 */
+	products?: boolean;
+}
+
 /**
  * The six quick-link stacks, in reading order: the three audience stacks (copy from Decision #13 —
  * friendly, "safe & easy payments", never "escrow"), then Company, Help and Legal. `today`
- * (`YYYY-MM-DD`, UTC) picks the legal titles in effect.
+ * (`YYYY-MM-DD`, UTC) picks the legal titles in effect; `options` is what the page leaves out.
  */
-export function footerGroups(today: string = legalToday()): FooterLinkGroup[] {
+export function footerGroups(
+	today: string = legalToday(),
+	{ products = true }: FooterGroupOptions = {},
+): FooterLinkGroup[] {
 	return [
 		{
 			title: "For helpers",
@@ -118,7 +132,7 @@ export function footerGroups(today: string = legalToday()): FooterLinkGroup[] {
 		{
 			title: "For clients",
 			links: [
-				{ label: "Hire helper teams", href: "/explore?category=teams" },
+				{ label: "Hire ready-made teams", href: "/explore?category=teams" },
 				{ label: "Post a new project", href: POST_PROJECT_HREF },
 				{ label: "Safe & easy payments", href: HELP_WHAT_IS_ESCROW },
 				{ label: "Fees", href: HELP_FEES },
@@ -128,8 +142,10 @@ export function footerGroups(today: string = legalToday()): FooterLinkGroup[] {
 			title: "Explore & learn",
 			links: [
 				{ label: "Services directory", href: "/explore?category=services" },
-				{ label: "Products marketplace", href: "/explore?category=products" },
-				{ label: "Trending helper teams", href: "/explore?category=teams" },
+				...(products
+					? [{ label: "Products marketplace", href: "/explore?category=products" }]
+					: []),
+				{ label: "Trending teams", href: "/explore?category=teams" },
 				// Member-written posts (`catalogue.articles`); Projective's own are under Company (#271).
 				{ label: "Member articles", href: "/explore?category=articles" },
 			],

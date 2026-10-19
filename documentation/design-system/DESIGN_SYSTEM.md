@@ -2316,15 +2316,18 @@ verbatim because every component depends only on the token contract (Part A) —
 > `SYSTEM_ARCHITECTURE.md` Restructure Change Log). Migration note: the former Fields/Data/Charts
 > package docs describe existing implementations now re-homed under these sub-paths.
 
-> **Off-system app components — deliberately not on this roster.** `LandingShell`,
-> `LandingHeader`, `LandingBackground` (with its server paint `BackgroundFallback`), `LandingHero`
-> (with `HeroCtas` / `HeroChips`), the `HeroSearch` island (with its markup `HeroSearchForm` and
-> its lazily loaded `CategorySheet`), `HeroTheatre` (the server figure, its `HeroTheatre` island and
-> the lazily loaded `theatre-player`) and the `LazyChatHost` island live in
-> `apps/web/features/landing/**` under the #280 exemption, outside `@projective/ui`; Part E,
-> "Off-system surfaces", documents them, and gate 5 is answered there (Decisions #286 (B), #287). The
-> retired marketing landing components (`Hero`, `HowItWorks`, the landing-only cards…) were app
-> components too and were never roster entries.
+> **Off-system app components — deliberately not on this roster.** `LandingShell`, `LandingHeader`,
+> `LandingBackground` (with its server paint `BackgroundFallback`), `LandingHero` (with `HeroCtas` /
+> `HeroChips`), the `HeroSearch` island (with its markup `HeroSearchForm` and its lazily loaded
+> `CategorySheet`), `HeroTheatre` (the server figure, its `HeroTheatre` island and the lazily loaded
+> `theatre-player`), `MoneyFlowStage` (with its `MoneyFlow` island), `DemoStage` (with
+> `DemoStageHeader` / `DemoStageView`, its `DemoHost` island and the lazily loaded demos —
+> `BoardDemo` with `BoardPicture` / `BoardTicket`, `PaymentsDemo` with `PaymentsPicture`,
+> `BookingDemo` with `BookingPicture`, `TeamPayDemo` with `TeamPayPicture`) and the `LazyChatHost`
+> island live in `apps/web/features/landing/**` under the #280 exemption, outside `@projective/ui`;
+> Part E, "Off-system surfaces", documents them, and gate 5 is answered there (Decisions #286 (B),
+> #287). The retired marketing landing components (`Hero`, `HowItWorks`, the landing-only cards…)
+> were app components too and were never roster entries.
 
 > **Field validation statuses — two-tier creation gate.** Beyond the generic `invalid`/`success`/
 > `warning` `FieldStatus`es, `fields` (and `editor`) expose the platform's "quick to onboard, slow
@@ -5075,6 +5078,60 @@ and the exemption widens only by a new decision row.
   frame). "Try it yourself" renders only once the page renders the demo stage (`demo`; L3), so no
   link points at a section that is not there. The island also carries `lp-theatre.css` and the
   kanban sheet.
+- **`DemoStage`** (`features/landing/components/`) is `#demo`, the demo stage (L3): the server
+  renders the section header, the one h2, the always-visible stage note and the role note
+  (**`DemoStageHeader`**), then the **`DemoHost`** island over **`DemoStageView`**, the stage's
+  markup as a pure function of its state — a tablist of four links (`/?demo=…#demo`, which the thin
+  controller renders open with no JavaScript) with a roving tab stop and manual activation, one
+  `tabpanel` per tab (the closed ones `hidden`), each a straight-on window (`--lp-window`, the
+  section's one elevated object) whose viewport reserves its aspect ratio (3 / 4, 4 / 3 from
+  `--bp-sm`, 16 / 9 from `--bp-lg`, 2 / 1 from 1280px) around the tab's poster and crawlable
+  description, then the caption and "Start again" (named by its own words, #298 (D); it keeps its
+  room and shows only while a demo is live). Server-rendered, every tab is its own tab stop; the
+  roving tab stop starts once `DemoHost` hydrates (#298), and below `--bp-md` the host scrolls the
+  open tab into the strip's view. Each poster (`.lp-demo-poster`, one `role="img"`, `inert`) is a
+  server-rendered still of its demo's opening picture drawn by the demo's own parts, handed to the
+  island as JSX props (`children` for the board, `paymentsPoster` / `bookingPoster` /
+  `splitsPoster`); `DemoHost` carries every demo's stylesheet so a poster is styled with no
+  JavaScript. `DemoHost` opens tabs in place (`history.replaceState`, no scroll jump; same-page
+  `?demo=` links included), and once the stage nears the viewport imports only the open tab's demo
+  module (`components/demos/*.demo.tsx`, outside `islands/`, each its own lazy chunk) and renders it
+  with the `core/demos/demo-contract.ts` props: the server's fee, either reduced-motion channel read
+  live, the "Start again" count and the stage's one polite live region. Every demo's frame mode and
+  controls share `lp-demo.css`'s chrome (`.lp-demo-frames`, `.lp-demo-counter`, `.lp-demo-step`,
+  `.lp-demo-btn`, tier 1 `.lp-demo-btn--money` only where money moves, `.lp-demo-note`). The Work
+  board (**`BoardDemo`**, with **`BoardPicture`** for its poster and frames and **`BoardTicket`**
+  for its faces) is the real `@projective/ui` `KanbanBoard` over the work-board model: its pointer
+  drag and keyboard path where a fine pointer and `--bp-md` allow a drag, and otherwise each card's
+  own "Move to…" disclosure (lanes as buttons, one lane at a time with a pager below `--bp-md`),
+  lanes refusing a card exactly where the model does (`dropRefusalOf`, the product's column lock);
+  one filled money control on the board (`moneyLead`, #298 (C)); under either reduced-motion
+  channel, six labelled stills with Previous step / Next step. **`PaymentsDemo`** (Payment
+  protection, V2; its parts **`PaymentsPicture`**: the stages on the product's funding tag, the five
+  stops, the ledger, the Fair Exit results, and the server poster) is a native-range scrubber over
+  `payments-model.ts`'s SQL-mirrored release and Fair Exit, "Approve and pay" its one tier 1
+  control, "Try Fair Exit" a switch and the tiers native radios. **`BookingDemo`** (V4; its parts
+  **`BookingPicture`**: the slot list on the product's `SlotPicker` anatomy, the booked summary, the
+  group session's roster, ballot and ending, the frame stills and the poster) runs
+  `booking-model.ts` over the product's scheduling rules. **`TeamPayDemo`** (V5; its parts
+  **`TeamPayPicture`**: the release, the ledger rows and the poster) drives the product's `SplitBar`
+  over `split-model.ts`, the mirror of `fn_team_split_plan`. Each renders its six frames under
+  either reduced-motion channel; the money-moving control is tier 1 amber, everything else tier 4 or
+  native. Their status text uses the stage's audited `--lp-ok-*` / `--lp-refuse-*` inks inside the
+  viewport (§3.3, #298 (F)).
+- **`MoneyFlowStage`** (`features/landing/components/`) is "How it works", `#how-it-works` (#288
+  (F), #298 (B)): the six §4.3 steps on a numbered hairline spine beside ONE sticky window — the
+  real `@projective/ui` kanban columns (Ready · In Progress · Review) over a money rail (Your wallet
+  · Held safely · Team paid · Their bank, each a `MoneyView` figure and the product's `Tag`) — drawn
+  from `core/money-flow.ts`'s frames, every changing part rendered once per value and marked with
+  the steps it shows on (`data-mf-on`), so a step change swaps visibility and nothing reflows. Its
+  **`MoneyFlow`** island moves the window's `data-step` as each step reaches the reading line (one
+  IntersectionObserver; native scroll, never hijacked) and carries `lp-money-flow.css`,
+  `lp-theatre.css`, the kanban, `money-view` and `tag` sheets; where scroll-driven animations exist
+  the coins, fills and clearing days follow the scroll itself. Under either reduced-motion channel
+  the window changes instantly; with no JavaScript, and on a phone, each step shows its own
+  server-rendered still. Its fixture is its own project and task ("Shop relaunch · Product pages");
+  at the withdrawal the team's place is passed through and the bank holds the net, one sum moving.
 - **`LazyChatHost`** (`features/landing/islands/`) is the landing paths' stand-in for the global
   `ChatPopoutHost` for a signed-in visitor (#286 (A)): it renders and loads nothing until the tab has
   a floating chat open, then imports the real host once and renders it with the same `path`.
