@@ -124,8 +124,10 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   `DETAIL` = `{state: 'needs_funding', reason, amount_minor, currency}` with `reason` one of `no_price`
   · `no_wallet` (no payer wallet in the project's currency) · `insufficient_funds` (checked for both
   wallet types — a business no longer relies on the `balance_cents` CHECK) · `spending_limit` ·
-  `needs_approval` · `kyb_required` (the business spend gate refused it; its `DETAIL` keys —
-  `wallet_id`, `ref_table`, `ref_id`, `threshold_minor` — are merged in). A missing
+  `needs_approval` · `kyb_required` (the business spend gate refused it. Its `DETAIL` is merged in:
+  `{wallet_id, business_id}` for KYB; `{wallet_id, ref_table, ref_id, threshold_minor}` for an
+  approval. The gate's `55000 business_not_active` is not a funding refusal: it is re-raised
+  unchanged). A missing
   stage is not a funding problem → `check_violation`; a missing payee is a **prepaid** hold (Decision
   #197): the escrow is written with `payee_type`/`payee_id` NULL, only the client is told ("It is
   paid to whoever claims it."), and the claim binds it. The payee is `finance.fn_ticket_payee`. Already held (a held escrow with no
@@ -159,7 +161,10 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   `check_violation`) and the same refusal shape as `fn_hold_ticket_escrow` under #165: `PF402` with
   `DETAIL` `{state: 'needs_funding', reason: no_price | no_wallet | insufficient_funds |
   spending_limit | needs_approval | kyb_required, amount_minor, currency}` — through the spend gate
-  with ref `revisions`, covered by `fund_paid_revision`'s own gate. Internal (`EXECUTE` revoked from `authenticated`); only
+  with ref `revisions`, covered by `fund_paid_revision`'s own gate. The gate's `DETAIL` is merged in
+  the same way (`{wallet_id, business_id}` for KYB; `{wallet_id, ref_table, ref_id, threshold_minor}`
+  for an approval), and its `55000 business_not_active` is re-raised unchanged, not turned into
+  `PF402`. Internal (`EXECUTE` revoked from `authenticated`); only
   `projects.fund_paid_revision` calls it, under a lock on the round. Released with the ticket's other
   held rows by `fn_release_ticket_escrow`.
 - **`finance.fn_release_ticket_escrow(ticket_id)`** — releases held escrow to the payee, applying
@@ -254,11 +259,9 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
 > **`service_role` only** — a client grant would let any signed-in account ask whether any other
 > person has cleared KYC.
 
-> ⚠️ **Enforcement wiring flagged (root `CLAUDE.md` §8):** these gating predicates are provided but
-> are **not** yet wired into the existing money-movement functions (`projects.claim_ticket`,
-> `finance.fn_hold_ticket_escrow`, `projects.fund_stage`, and the hire/join RPCs). Wiring them
-> changes escrow/stage behaviour on the protected relationships, so it is a follow-up requiring
-> human sign-off, not applied in this documentation/schema pass.
+> **Resolved.** The KYB predicate is enforced through the business spend gate
+> `finance.fn_assert_business_spend` (BB3, Decision #54(e)) on every door that moves business money
+> and on both escrow holds. The earning gate is `fn_assert_payout_ready` (Decision #196, above).
 
 ### Views
 
@@ -335,18 +338,18 @@ capabilities, [§ Workspace money governance](#-workspace-money-governance-00001
 ## Entitlement resolution & allowance metering (migrations `20260724112000` / `20260724113000`)
 
 The entitlement resolver is the bridge between the two ladders: it reads the **paid** layer
-(`finance.plans` â†’ `plan_entitlements`) and scales it by the **earned** layer
-(`org.standing_levels`), then lets an admin `entitlement_grant` raise â€” never lower â€” the
+(`finance.plans` → `plan_entitlements`) and scales it by the **earned** layer
+(`org.standing_levels`), then lets an admin `entitlement_grant` raise — never lower — the
 result.
 
 ### Plan resolution
 
-- **`finance.fn_audience_for(subject_type) â†’ finance.plan_audience`** â€” `IMMUTABLE`.
-  `user`/`freelancer` â†’ `individual`; `team` â†’ `team`; `business` â†’ `business`; `enterprise`
-  â†’ `enterprise`.
-- **`finance.fn_active_plan(subject_type, subject_id) â†’ uuid`** â€” the subject's live plan
+- **`finance.fn_audience_for(subject_type) → finance.plan_audience`** — `IMMUTABLE`.
+  `user`/`freelancer` → `individual`; `team` → `team`; `business` → `business`; `enterprise`
+  → `enterprise`.
+- **`finance.fn_active_plan(subject_type, subject_id) → uuid`** — the subject's live plan
   (`state IN ('trialing','active','past_due')` and not past `current_period_end`), falling back to
-  its audience's default free plan. **Every subject always resolves to a plan** â€” there is no
+  its audience's default free plan. **Every subject always resolves to a plan** — there is no
   unentitled state.
 - **`finance.fn_subject_standing_level(subject_type, subject_id) → smallint`** — defers to
   `org.fn_standing_level` for earning subjects; buyer subjects (`business`/`enterprise`) resolve
@@ -355,21 +358,21 @@ result.
   that type and no recompute writes a `user` row, so reading `user` literally pinned every individual
   at rung 1 and dropped the earned weekly-proposal bonus (Decision #154(C)).
 
-### `finance.fn_effective_limit(subject_type, subject_id, key) â†’ integer`
+### `finance.fn_effective_limit(subject_type, subject_id, key) → integer`
 
 The core resolver. `NULL` = **unlimited**; `0` = the subject's plan does not grant the lever at all
 (deny-by-default for any key a plan does not name).
 
 1. Look up the plan's `plan_entitlements` row.
 2. Apply `scaling`:
-   - `none` â†’ `limit_value`.
-   - `standing_base` â†’ `standing_levels.listing_base Ã— multiplier_bp / 10000` (Free = 1.0Ã—, Pro
-     = 2.0Ã— â€” Pro **doubles what was earned** rather than replacing it).
-   - `standing_bonus` â†’ `limit_value + standing_levels.proposal_bonus` (reliability buys volume
+   - `none` → `limit_value`.
+   - `standing_base` → `standing_levels.listing_base × multiplier_bp / 10000` (Free = 1.0×, Pro
+     = 2.0× — Pro **doubles what was earned** rather than replacing it).
+   - `standing_bonus` → `limit_value + standing_levels.proposal_bonus` (reliability buys volume
      the same way money does).
 3. Take `GREATEST(base, active grant)`; any unlimited flag anywhere wins.
 
-- **`finance.fn_has_entitlement(subject_type, subject_id, key) â†’ boolean`** â€” the flag-kind twin
+- **`finance.fn_has_entitlement(subject_type, subject_id, key) → boolean`** — the flag-kind twin
   (grant first, then plan, then `false`).
 
 Both are mirrored by pure TypeScript twins in `packages/types/finance/entitlements.ts`
@@ -377,18 +380,18 @@ Both are mirrored by pure TypeScript twins in `packages/types/finance/entitlemen
 
 ### Effective rates
 
-- **`finance.fn_effective_commission_bp(subject_type, subject_id) â†’ integer`** â€” negotiated rate
-  â†’ `standing_commission_tiers` for the rung â†’ `800` (8%). This is the **earned** marketplace
+- **`finance.fn_effective_commission_bp(subject_type, subject_id) → integer`** — negotiated rate
+  → `standing_commission_tiers` for the rung → `800` (8%). This is the **earned** marketplace
   taper.
-- **`finance.fn_effective_platform_fee_bp(subject_type, subject_id) â†’ integer`** â€” negotiated
-  rate â†’ `security.platform_params.platform_fee_bp` â†’ `0`. The 5% project service fee does
+- **`finance.fn_effective_platform_fee_bp(subject_type, subject_id) → integer`** — negotiated
+  rate → `security.platform_params.platform_fee_bp` → `0`. The 5% project service fee does
   **not** taper with Standing and is not bundled with any plan; the only sanctioned flex is an
   admin-approved `finance.negotiated_rates` row for an Enterprise/Business volume commitment.
 
 ### Allowance metering
 
-- **`finance.fn_current_allowance(subject_type, subject_id, key) â†’ finance.allowance_periods`**
-  â€” opens or rolls the weekly period (`date_trunc('week', now())`), snapshotting `granted_units`
+- **`finance.fn_current_allowance(subject_type, subject_id, key) → finance.allowance_periods`**
+  — opens or rolls the weekly period (`date_trunc('week', now())`), snapshotting `granted_units`
   with its `base_units` / `standing_bonus_units` provenance so a mid-week upgrade or promotion is an
   explicit new grant rather than a silent drift. Also applies the lazy buffer drip: while the buffer
   is below its cap and at least one `proposal_buffer_window_hours` window has passed since
@@ -428,14 +431,17 @@ Both are mirrored by pure TypeScript twins in `packages/types/finance/entitlemen
 
 ### Footprint
 
-- **`finance.fn_footprint_usage(subject_type, subject_id, key) â†’ integer`** â€” live counts for
+- **`finance.fn_footprint_usage(subject_type, subject_id, key) → integer`** — live counts for
   `active_public_projects` / `business_public_projects` / `team_public_projects` (from
   `projects.projects` where `status IN ('active','on_hold')` **and** `visibility = 'public'`),
   `teams_owned`, `businesses_owned` (an **archived** entity no longer occupies a slot — the create
   refusal tells an owner at their limit to "archive one or upgrade", which is only true if it frees one),
-  `team_seats`, `enterprise_seats`.
+  `team_seats`, `enterprise_seats`, `business_managers` (a business's active non-owner members who
+  sit as admin or hold `manage_projects`, plus pending, unexpired invitations to such a role — the
+  count `fn_assert_business_entitlement` refuses past, BB7; see
+  [§ Business plan gates](#-business-plan-gates-00001220-7-decision-230-b-e)).
 
-  **Drafts are never counted** â€” unlimited private drafting is the baseline promise.
+  **Drafts are never counted** — unlimited private drafting is the baseline promise.
   `published_listings` returns `0` until the `catalogue.*` listing tables land (Decision #53 keeps
   `/catalogue` on fixtures); its **cap already resolves**, only its usage count is pending.
 
@@ -477,14 +483,14 @@ Both are mirrored by pure TypeScript twins in `packages/types/finance/entitlemen
   seeded `false`. It inherits the same known limit: once flipped, the `RAISE` aborts the transaction
   and rolls back any denial telemetry written moments earlier, so the denial must be recorded by the
   app layer catching the `check_violation`.
-- **`finance.fn_footprint_remaining(...) â†’ integer`** â€” headroom, or `NULL` when unlimited.
+- **`finance.fn_footprint_remaining(...) → integer`** — headroom, or `NULL` when unlimited.
 
 ---
 
 ## âš–ï¸ Enforcement triggers (migration `20260724113000`)
 
 Triggers on existing project tables. They **meter unconditionally** and **block only when their
-platform param is switched on** â€” `proposal_allowance_enforced` and `footprint_caps_enforced`,
+platform param is switched on** — `proposal_allowance_enforced` and `footprint_caps_enforced`,
 both seeded `false`.
 
 > **Why fail-open.** Turning a cap into a hard block changes user-visible behaviour on a live
@@ -495,7 +501,7 @@ both seeded `false`.
 | Trigger                              | On                                                                   | Behaviour                                                                                                                                                         |
 | :----------------------------------- | :------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `trg_meter_application_allowance`    | `AFTER INSERT ON projects.project_applications`                      | Spends one `weekly_proposals` unit from the applicant (the **team** when a team applies, else the user). Emits `entitlement.denied` when exhausted.               |
-| `trg_refund_withdrawn_application`   | `AFTER UPDATE OF status ON projects.project_applications`            | Returns the unit on a transition to `withdrawn` â€” selectivity should never be punished twice.                                                                   |
+| `trg_refund_withdrawn_application`   | `AFTER UPDATE OF status ON projects.project_applications`            | Returns the unit on a transition to `withdrawn` — selectivity should never be punished twice.                                                                   |
 | `trg_check_public_project_footprint` | `BEFORE INSERT OR UPDATE OF status, visibility ON projects.projects` | Counts a slot only when a project **becomes** `active` + `public` (a project already live is not re-counted). Business-owned projects meter against the business. |
 
 None of these touch execution capacity: `projects.check_ticket_capacity` and the $W_i$ caps remain
@@ -508,7 +514,7 @@ the sole authority over how much work a freelancer may hold.
 > `check_violation` and call `analytics.fn_emit` from the service. Without that, the denial funnel
 > goes dark at exactly the moment enforcement starts mattering.
 
-## ðŸŽ› Platform parameters added
+## 🎛 Platform parameters added
 
 | Key                                 | Default | Meaning                                                                                                                         |
 | :---------------------------------- | :------ | :------------------------------------------------------------------------------------------------------------------------------ |
@@ -516,7 +522,7 @@ the sole authority over how much work a freelancer may hold.
 | `footprint_caps_enforced`           | `false` | Meter-only until flipped.                                                                                                       |
 | `storage_quota_enforced`            | `false` | Meter-only until flipped. Gates `files.fn_check_storage_quota` (seeded in `00005001`); flipping it starts **refusing uploads**. |
 | `proposal_buffer_window_hours`      | `10`    | The "3 per 10 hours" drip window.                                                                                               |
-| `proposal_buffer_hold_multiple`     | `4`     | Buffer hold cap as a multiple of the drip â€” how many may be banked.                                                           |
+| `proposal_buffer_hold_multiple`     | `4`     | Buffer hold cap as a multiple of the drip — how many may be banked.                                                           |
 | `subscription_grace_days`           | `7`     | Days a `past_due` subscription keeps its paid entitlements.                                                                     |
 | `standing_recompute_interval_hours` | `24`    | Standing sweep cadence (migration `20260724111000`).                                                                            |
 | `standing_demotion_grace_days`      | `30`    | Reserved anti-flapping guard on demotions.                                                                                      |
@@ -556,6 +562,9 @@ members + invitations. A plan downgrade evicts nobody; it only refuses the next 
   where the switch is off, `free` also resolves the business as on Business Free. It can only make
   a gate **stricter**, so it is honoured from any caller — a client that sends it refuses only
   itself. The app forwards it from the `pj.dev.plan-gates` cookie in development only.
+  `LANGUAGE sql STABLE`, **SECURITY INVOKER** (it reads only the request's own headers),
+  `search_path = ''`; no client grant (finance deny-by-default). The other gate functions above are
+  `SECURITY DEFINER`.
 
 The app maps `PK402` to HTTP 402 with `details { reason: "entitlement", entitlement }`
 (`packages/backend/core/plan-gate.ts`) for the surface's upgrade notice. Probe:
@@ -714,11 +723,14 @@ because it depends on the basket, not the code.
 ### `finance.set_invoicing_terms(p_owner_type, p_owner_id, p_mode, p_billing_day)` → jsonb
 
 The one door that changes `org.business_profiles.invoicing_mode` / `billing_day` (the table has no
-client write policy). Business owners only; `p_mode` ∈ `per_transaction` · `intervaled_monthly`;
-`p_billing_day` 1–28 or `NULL` to keep the current day. Requires `manage_billing` via
-`fn_owner_capability` and an `active` business (`55000 business_not_active`, BB5); the monthly mode
-additionally requires the business to be KYB-verified, the same gate the checkout's `invoice`
-provider applies. Returns `{ invoicing_mode, billing_day }`.
+client write policy). Business accounts only (`22023`); `p_mode` ∈ `per_transaction` ·
+`intervaled_monthly`; `p_billing_day` 1–28 or `NULL` to keep the current day. Requires vault
+`manage_billing` through `fn_owner_capability` (the owner, or an admin the owner granted the billing
+right — [org §7b](../org/Functions.md); else `42501`) and an `active` business (`55000
+business_not_active`, BB5; an unknown business `P0002`). The monthly mode additionally needs Business
+Pro's `intervaled_invoicing` (`PK402`, behind `business_plan_gates_enforced`, BB7) and then KYB, the
+same gate the checkout's `invoice` provider applies (refused `42501`, not `PK403`). Returns
+`{ invoicing_mode, billing_day }`.
 
 ### `finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key)` → jsonb
 
@@ -798,14 +810,15 @@ ticket and the round opens. Its order line is `item_type = 'paid_revision'`, `fu
 | SQLSTATE | Meaning                                        | Checkout blocker        |
 | :------- | :--------------------------------------------- | :---------------------- |
 | `42501`  | not signed in / may not spend / key not yours  | `not_authorised`        |
-| `PK403`  | the paying business is not KYB-verified        | `verification_required` |
+| `PK403`  | the paying business is not KYB-verified (un-prefixed early refusal, or the spend gate's `kyb_required:`), or the buyer lacks `purchase` (`missing_permission: purchase`, BB2) | `verification_required` (gate `kyb_required`); `missing_permission:` → `not_authorised` (gate `purchase`) |
+| `55000`  | `business_not_active:` — a draft or archived business buys nothing (BB5) | `not_authorised` (gate `business_not_active`) |
 | `PB404`  | the basket no longer exists                    | `price_changed`         |
 | `PC409`  | the basket, a price or the promo changed       | `price_changed`         |
 | `PD422`  | a line needs a delivery address                | `missing_email`         |
 | `PU422`  | the buyer's own listing; a ticket not purchasable (no description, no payee) or not this account's | `unavailable_item` |
 | `PS501`  | a line the wallet cannot settle here           | `no_provider`           |
 | `PF402`  | no wallet in the currency, or not enough in it | `insufficient_funds`    |
-| `PA403`  | approval threshold or spending limit           | `spend_limit`           |
+| `PA403`  | approval threshold or spending limit — a business's `over_limit:` / `needs_approval:` (spend gate; the blocker carries `approvalRef`), a team / enterprise vault's un-prefixed refusal | `spend_limit`           |
 | `PM403`  | the buyer is under 18 (Decision #190)          | `not_authorised`        |
 | `22023`  | a malformed attempt key                        | —                       |
 
@@ -813,6 +826,36 @@ ticket and the round opens. Its order line is `item_type = 'paid_revision'`, `fu
 > wallet is not materialised (#54(i)). A sale credits the seller through the 7-day pending window
 > (`fn_wallet_credit_pending`, keyed to the order — Decision #191), so it reaches their Available
 > balance only when it clears.
+
+### `finance.fn_on_account_owed(p_business_id, p_currency)` → bigint (`00001250`)
+
+What a business owes on account in one currency: every `on_account_credit` credit to its wallet in
+that currency less every `invoice_payment` debit from it (`finance.transactions`, the currency
+matched case-insensitively; `0` when there are none). Read by `place_on_account_order` (owed +
+amount within `on_account_limit_cents`), `get_on_account_standing` (`owed_minor`) and
+`org.fn_business_archive_blockers` (`on_account_owed` — each currency in which it is > 0, BB5).
+`LANGUAGE sql STABLE SECURITY DEFINER`; no grant to `authenticated` (the finance-wide `PUBLIC` /
+`anon` revoke, `00002510`), so only its definer callers read it.
+
+### `finance.place_on_account_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key, p_amount)` → jsonb (`00001250`, Decision #172)
+
+Checkout's Invoice route: the platform fronts the order's amount as an `on_account_credit` to the
+business wallet and `place_wallet_order` pays from it, in one transaction. Signed out `42501`. A key
+already on an order replays that order through `place_wallet_order` without crediting again. Then
+`p_amount > 0` (`22023`); the basket exists (`PB404`) and is a business's (`22023`);
+`fn_can_manage_basket` (`42501`); the workspace `purchase` capability (`PK403 missing_permission:
+purchase`, BB2); KYB, `intervaled_monthly` invoicing and no overdue invoice (each an un-prefixed
+`PK403`); owed (`fn_on_account_owed`) + `p_amount` within `on_account_limit_cents` (`PF402`). The
+active-business check and the spend gate (BB3 / BB5) run once, inside `place_wallet_order`, on what
+the order actually charges; a refusal there rolls the credit back with it. `SECURITY DEFINER`,
+`search_path = finance, org, security, public`; granted to `authenticated` (`00002510`).
+
+### `finance.get_on_account_standing(p_business_id, p_currency)` → `jsonb | NULL` (`00001250`)
+
+What the checkout and the Billing module read about paying on account: `{monthly, overdue,
+owed_minor, limit_minor, headroom_minor}` in that currency (`headroom_minor` floored at 0). `NULL`
+unless the caller passes `fn_owner_visible('business', …)`. `STABLE SECURITY DEFINER`, `search_path =
+finance, org, security, public`; granted to `authenticated` (`00002510`).
 
 ## 💸 Wallet movements (`00001210` §12)
 
@@ -837,8 +880,8 @@ belong to — so a transfer can never be a payment to somebody else. Both rows a
 (two crossing transfers cannot deadlock). Money leaves a personal wallet only for its owner and a vault
 only for a member holding `withdraw`; it lands only in the caller's own personal wallet or a vault they
 are a member of (`fn_owner_visible`). Same currency only (`PX409` — a transfer is not a conversion). A
-business source passes `fn_assert_business_spend(…, 'transfers', to_wallet)` — KYB (`PK403`), the
-mover's envelope and the approval threshold (`PA403`); a team or enterprise vault source clears the
+business source passes `fn_assert_business_spend(…, 'transfers', to_wallet)` — a published business
+(`55000`, BB5), KYB (`PK403`), the mover's envelope and the approval threshold (`PA403`); a team or enterprise vault source clears the
 member's spending limit (`PA403`); the source must hold the amount (`PF402`). Money landing in a
 business wallet is a contribution, refused when the business is **archived** (`55000
 business_not_active`, `org.fn_assert_business_not_archived`, checked after the landing check —
@@ -882,8 +925,9 @@ hold redeems it. A decision notifies the requester through `comms.fn_notify` (`s
 | `22023`  | bad amount, wallet pair, decision or attempt key         |
 | `PB404`  | the wallet or request no longer exists                   |
 | `PX409`  | the two wallets hold different currencies               |
-| `PK403`  | the paying business is not KYB-verified                  |
-| `PA403`  | over the member's spending limit, or (business) at/above the approval threshold with no approval |
+| `PK403`  | the paying business is not KYB-verified (`kyb_required:`) |
+| `55000`  | `business_not_active:` — money into an archived business (`fn_assert_business_not_archived`), or out of a draft or archived one (the spend gate) |
+| `PA403`  | over the member's spending limit (`over_limit:` on a business), or (business) at or above the approval threshold with no approval (`needs_approval:`) |
 | `PF402`  | the wallet doesn't hold enough                           |
 | `PD422`  | the team has no agreed split                             |
 | `PC409`  | the spend request was already decided, spent, expired or withdrawn |
@@ -928,8 +972,13 @@ hold's spend gate redeems the approval exactly once. Never raises.
 The write side of the `/teams` and `/businesses` Money modules (root `CLAUDE.md` §8 Decision #61).
 Authority is the WORKSPACE capability `manage_finances` (`org.fn_member_can`) — the same answer the
 console renders from — and the vault projection the money functions enforce is re-synced after every
-change. All four are `SECURITY DEFINER`, `search_path = ''`, `EXECUTE` to `authenticated` only
-(`00002510`), and raise `22023 '<field>: <reason>'` for a bad input (the workspace refusal convention,
+change. Every door here is `SECURITY DEFINER` and granted to `authenticated` only (`00002510`):
+`save_team_split`, `save_split_rule`, `preview_team_split`, `save_spend_policy`,
+`preview_spend_envelope`, `request_spend_approval`, `withdraw_spend_approval`, and
+`get_billing_settings` (`00001250`, `search_path = finance, org, security, public`). The two readers
+`fn_business_envelopes` and `fn_spend_ref` are internal definers, revoked from `PUBLIC`, `anon` and
+`authenticated`. All pin `search_path = ''` except `get_billing_settings`. The doors raise
+`22023 '<field>: <reason>'` for a bad input (the workspace refusal convention,
 [`../org/Functions.md`](../org/Functions.md#-the-workspace-console-00001020)).
 
 ### `finance.save_team_split(p_team_id, p_stakes)` → `{team_id, total_bp}`
@@ -1014,7 +1063,8 @@ monthly or total`). Changing it **carries over** what the current window counted
 what has been spent — unless that window has already lapsed (then nothing carries), and restarts the
 window at the new period's next boundary (`date_trunc('week'|'month', now())` + one period; `NULL` for
 `total`), the boundary `fn_check_spending_limit` itself uses. A new row takes the period given (default
-`monthly`).
+`monthly`). Probe: `supabase/probes/spend_governance_screen.sql` (BU2 — per-key limits patch, period
+carry-over).
 
 **Business Pro** (`pooled_wallet_full`, `PK402`) is asserted only for what SETS a ceiling: a non-null
 `approval_threshold_minor`, `limit_minor` or `per_transaction_minor`, or a period change on a row that
@@ -1028,7 +1078,8 @@ BD2). Same authority (`manage_finances`, else `42501 policy:`) and the same limi
 limits:` — an inactive member, a negative limit, a period other than weekly · monthly · total); the
 rank rules stay the save's to refuse. The
 wallet is looked up, never created — a currency with no wallet yet has spent nothing. `limits` is
-`fn_business_envelopes` with the patch applied. Backs `POST /api/workspace/spend/preview`.
+`fn_business_envelopes` with the patch applied. Backs `POST /api/workspace/spend/preview`. Probe:
+`supabase/probes/spend_governance_screen.sql` (BU2).
 
 ### `finance.fn_business_envelopes(p_business, p_wallet, p_patch DEFAULT NULL)` → `jsonb` (internal)
 
@@ -1042,7 +1093,7 @@ carry — `period` included, priced against the current window's spend, which a 
 over (Decision #246). The ONE envelope reader behind `org.get_workspace_detail` and `preview_spend_envelope`, so the
 console and the draft cannot disagree. Not executable by clients.
 
-### `finance.get_billing_settings(p_business_id)` → `jsonb | NULL`
+### `finance.get_billing_settings(p_business_id)` → `jsonb | NULL` (`00001250`)
 
 The Billing module's settings for whoever may see the business's finances (`fn_owner_visible`; `NULL`
 for anyone else): `currency`, `invoicing_mode`, `billing_day`, `kyb_verified`, `auto_fund_mode`,
@@ -1081,7 +1132,8 @@ notified with `spend_approval.requested`.
 It is the ONLY way a request is filed: the client INSERT policy (`"Request a spend approval"`,
 `00002013`) and the `INSERT` table grant to `authenticated` (`00002520`) were removed with it, so a
 direct PostgREST insert is refused and cannot skip the needs-approval check or choose its own
-`currency` and `expires_at`.
+`currency` and `expires_at`. Probe: `supabase/probes/checkout_approval_reads.sql` (BP2 — the
+checkout's threshold, envelope and own-request reads against this door).
 
 ### `finance.withdraw_spend_approval(p_approval)` → `{id, status}`
 
@@ -1097,7 +1149,7 @@ A request already past its expiry is marked `expired` instead, as a decision wou
 `{status: 'expired'}`. Audited as `business.spend_request_withdrawn` (`{wallet_id, ref_table, ref_id,
 amount_minor}`). Moves no money; the approvers' earlier `spend_approval.requested` notifications are
 not retracted (Decision #246 flag). Granted to `authenticated` only. Backs `POST
-/api/workspace/spend-withdraw`.
+/api/workspace/spend-withdraw`. Probe: `supabase/probes/spend_governance_screen.sql` (BU2).
 
 | SQLSTATE | Meaning                                                              |
 | :------- | :------------------------------------------------------------------- |
@@ -1235,9 +1287,14 @@ nobody for money the business cannot take in.
   is refused **here**, `PC409`, before anything is charged (before #197 the intent skipped it and
   `fund_stage` then refused the settled money, which stayed in the wallet). `p_expected_amount` is
   only a check: if the stage was re-priced since the payer looked, `PC409` says what it costs now. The
-  caller needs project access and the `spend` capability on the client business's wallet, or is the
-  owner of a project with no client business (created on demand); the stage must be `open`,
-  `assigned` or `in_progress`; `p_wallet_id` must be NULL (the money is paid into the payer's wallet).
+  stage must be `open`, `assigned` or `in_progress`; `p_wallet_id` must be NULL (the money is paid
+  into the payer's wallet). The payer's wallet in the project's currency is created on demand
+  (`fn_ensure_wallet`). A business payer then passes `finance.fn_assert_business_spend(wallet,
+  caller, amount, ref, p_count_envelope => false)` as a CHECK (BB3), with ref `project_stages` /
+  `tickets` / `revisions` for all three lock shapes: it refuses `55000 business_not_active` (draft or
+  archived), `PK403 kyb_required:` and, at or above the threshold with no approval for that ref,
+  `PA403 needs_approval:`. Nothing is counted, consumed or covered; the settlement's `fund_stage` /
+  `fund_ticket` / `fund_paid_revision` run the real gate as the payer.
 - **`escrow_lock` with `p_ticket_id`** (Decision #166) — funds ONE ticket instead: the amount is that
   ticket's `COALESCE(unit_price_cents, stage.unit_price_cents)`, and `projects.fund_ticket`'s gates are
   checked now (the ticket sits in `p_stage_id`, has a description, is `unpaid`/`needs_funding` with no
@@ -1357,10 +1414,13 @@ after the payment settled changes nothing. Notifies `wallet.topup_failed` on a f
 
 | Function                                                                        | Door      | What it does                                                                                                                                                                                                                    |
 | :------------------------------------------------------------------------------ | :-------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `finance.fn_payout_owner(p_scope, p_team_id)` → `TABLE(owner_type, owner_id)`   | internal  | `personal` → the caller's own payout owner (`fn_person_wallet_type`); `team` → the team, only for a member holding `manage_billing`.                                                                                            |
-| `finance.payout_account_for(p_scope, p_team_id)` → jsonb                        | user      | `{ owner_type, owner_id, display_name, contact_email, account, payout_ready }` — the owner, the name Stripe's form greets them with (a person's name or the team's), the CALLER's own sign-in address (Stripe requires a contact email on a v2 recipient account; it is passed to Stripe and never stored in `finance.*`), and their active account if any.                                         |
+| `finance.fn_payout_owner(p_scope, p_team_id)` → `TABLE(owner_type, owner_id)`   | internal  | `personal` → the caller's own payout owner (`fn_person_wallet_type`); `team` → the team, only for a member holding `manage_billing`; `business` → the business, for a member holding vault `manage_billing` (the owner, or an admin granted the billing right, org §7b) — its Connect onboarding is the Level-3 KYB check. `p_team_id` names the entity for both shared scopes. |
+| `finance.payout_account_for(p_scope, p_team_id)` → jsonb                        | user      | `{ owner_type, owner_id, display_name, contact_email, account, payout_ready }` — the owner, the name Stripe's form greets them with (a person's name, the team's or the business's), the CALLER's own sign-in address (Stripe requires a contact email on a v2 recipient account; it is passed to Stripe and never stored in `finance.*`), and their active account if any.                                         |
 | `finance.record_payout_account(p_scope, p_team_id, p_account_id)` → jsonb       | user      | Stores a newly created Connect account id (`^acct_…`) for that owner. An account already recorded for someone else is `PX409`; an existing active account wins, so two tabs cannot give one owner two accounts.               |
-| `finance.sync_payout_account(p_account_id, p_status)` → jsonb                   | processor | Writes the status Stripe reports (`payoutAccountStatusFor()` of the `stripe_transfers` capability) and recomputes the freelancer's `payout_ready` as "has a verified account" — the flag `fn_freelancer_payout_ready` reads. |
+| `finance.sync_payout_account(p_account_id, p_status)` → jsonb                   | processor | Writes the status Stripe reports (`payoutAccountStatusFor()` of the `stripe_transfers` capability) and recomputes the freelancer's `payout_ready` as "has a verified account" — the flag `fn_freelancer_payout_ready` reads. For a business account it mirrors KYB onto `org.business_profiles`: a verified account sets `kyb_status = 'verified'` (`kyb_verified_at` stamped once); any other status leaves a verified business verified and otherwise sets `pending`; `kyb_provider_ref` is the account id. |
+
+Probe: `supabase/probes/business_kyb_surface.sql` (BU4 — `viewer_can.start_kyb` against
+`payout_account_for('business', …)`, `kyb.requirements_due`).
 
 ### Transfers and disputes
 
@@ -1393,7 +1453,9 @@ the outcome is `finance.record_dispute_closed`'s (Decision #126).
 | `PX409`  | an id already bound elsewhere, an attempt key in flight, or already verified    |
 | `PC409`  | the stage is not ready to fund, or its price changed                            |
 | `PS501`  | the project has no paying business, so a stage cannot be funded by card         |
-| `PK403`  | identity checks are for freelancers                                             |
+| `PK403`  | identity checks are for freelancers; `not_funder:` (the caller cannot fund this project, BB2); `kyb_required:` (a business escrow lock, BB3) |
+| `55000`  | `business_not_active:` — a top-up (or a replay of one) into an archived business, Decision #248 (k); an escrow lock for a draft or archived business (BB5, via the spend gate) |
+| `PA403`  | `needs_approval:` — a business escrow lock at or above the approval threshold with no approval for that ref (BB3) |
 | `PR429`  | the daily identity-check limit                                                  |
 
 ## 💸 Money movement after the fiat rails (`00001240`, Decision #126)

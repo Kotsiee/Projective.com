@@ -314,9 +314,10 @@ ring would still measure **1.00–1.01:1** in luminance against a business mark:
 (ΔE_OK 0.05 light, dark and light-HC, 0.03 dark-HC — it was 0.00) but its lightness does not, and
 the ring's neutral halo is what would carry the indicator. Rings are off app-wide by the product
 owner's directive (`apps/web/styles/global.css`), so BU1's "focus ring visible on every
-business-tinted mark" could not be met as written — Decision #245 flag (a). `--tertiary` is
-low-chroma: in light the business slate sits close to the old secondary, in dark it reads as a
-distinct periwinkle (flag (g)).
+business-tinted mark" could not be met as written — Decision #245 flag (a), ruled by the owner
+2026-10-19: the directive stands, that acceptance line is superseded and nothing is restored.
+`--tertiary` is low-chroma: in light the business slate sits close to the old secondary, in dark it
+reads as a distinct periwinkle (flag (g)).
 The team's own high-contrast ink stays under 7:1 on its widened tint (5.14:1 light, 4.90:1 dark —
 flag (f), a Teams follow-up). `apps/web/features/workspaces/styles/business-hue.gate.test.ts`
 re-computes the pairs from the sheet's own percentages: it holds each to its floor for three seeds,
@@ -1423,7 +1424,9 @@ other commits in tier 2 — is open as Decision #157 flag (j); the docs follow t
 **Commits that stay tier 3 — the "never borrowed" sentence, worked.** Wallet configuration commits
 (the payout schedule, recurring-deposit setup, spend request, income smoother, Save card), the
 spend-approval **Approve**, **Accept Submission** and **Publish** commit a setting or a workflow
-step, not a payment in flight, and keep `severity="primary"`. A business Overview's **Publish**
+step, not a payment in flight, and keep `severity="primary"`. A business console's Verification
+module's one action (_Verify {business}_, _Continue verification_ or _Verify again_) is tier 3 for
+the same reason (Decision #242, #225 (A)). A business Overview's **Publish**
 (Decision #248) keeps it wherever it renders and never drops to a utility: the setup hero's fill
 when it is the viewer's first open step; beside an earlier open step, `variant="outlined"` — the
 B.8.1 weight table's real-alternative row, so the band never holds a second fill; and on the draft
@@ -1474,7 +1477,8 @@ rather than by word length.
 **Right** — `apps/web/features/workspaces/components/InviteQueue.tsx:147-236`: four repeated row
 actions all `text` (severity distinguishing accept from the rest), and the one utility action
 `outlined`. A repeated action is **never** `filled` — a column of filled buttons is a column of
-noise, and it makes the row's _content_ the least prominent thing in the row.
+noise, and it makes the row's _content_ the least prominent thing in the row. Two queues fill their
+first row's commit and no other; that is logged as a conflict awaiting a ruling (Part F.9).
 
 **Right** — the workspace roster's one create (`/teams`, `/businesses`; Decision #245 (k)). Beside
 the lane, the tier-2 create is the lane's `LaneCreateButton` and the footer rig's New is a tier-4
@@ -4634,11 +4638,13 @@ the words the owner header's preview note names; a folded control's label is its
 The member notice above a business page outsiders cannot
 open (`ProfileMemberNotice`) carries no control: BP1's tier-4 link to Settings waits for a Settings
 screen that can publish a business or change its visibility (Decision #244 (d)). A TEAM page's
-notice waits on the same ground (root CLAUDE.md §3.11): its tier-4 "Team settings" link (`neutral`
-`outlined` `sm` pill, an `<a>`) to the console's Settings, for a `manage_settings` holder, beside
-the line and wrapping beneath it on a phone (Teams P1 SPEC 1), renders once Teams C6 gives the
-team's Settings screen Publish and Visibility — `SETTINGS_PUBLISHES` in
-`features/profile/core/profile-model.ts` is the one switch. The markup per tier: Hire is the bare
+notice carries its tier-4 "Team settings" link (`neutral` `outlined` `sm` pill, an `<a>`) to the
+console's Settings, for a `manage_settings` holder, beside the line and wrapping beneath it on a
+phone (Teams P1 SPEC 1): Teams C6 (Decision #261) gave the team's Settings screen Publish,
+Restore and Visibility, so `SETTINGS_PUBLISHES` in `features/profile/core/profile-model.ts`, the
+one switch, reads `team: true`. A business's reads `false`: a draft business publishes from its
+Overview since Decision #248, but its Settings is still a placeholder (Decision #261 (c)) and its
+visibility has no control (root CLAUDE.md §3.11). The markup per tier: Hire is the bare
 `ui-button--primary ui-button--filled ui-button--rounded` class set on a native `<button>` (its
 `Popover` needs the ref `Button` does not forward), with no rig-local colour override; Add to project is `ui-button--primary ui-button--filled` plus `.pf-rig__cta--mono`, the
 inverted override, wherever it renders; every tier-4 control is the shared
@@ -5060,7 +5066,8 @@ and this entry only points at them:
   zoom, the tier-4 utilities (`Button`, or a ui `Link` when the utility navigates) and, only while a
   policy editor is dirty, its status line, a tier-5 Discard and a tier-3 Save, which is a console
   editor's one fill (§B.8.2). It folds by its own width (container queries), except below `--bp-md`,
-  where the viewport applies every fold (the phone rig is glyphs). On the roster index the rig's New
+  where the viewport applies every fold (the phone rig folds its utilities and links to glyphs;
+  Discard and Save keep their words). On the roster index the rig's New
   is a tier-4 utility beside the lane or its collapsed rail. With the lane off-canvas it is the
   tier-2 create, or the lane's plan reason where the plan admits none, and beside the rail the rig
   says that reason too (Decision #245 (k), §B.8.2). That swap follows the frame's own `px` lane
@@ -5208,7 +5215,21 @@ unbudgeted migration: `grep var(--text-*)|var(--fw-*)|var(--leading-*)` across a
 sheets returns **nothing**, and the off-ramp literals (`1.0625rem`, `1.05rem`, `0.74rem`, `0.72rem`)
 are what produce five header-density systems and bar heights running 40→64px within one class.
 Encoding it as a gate would make the next overlay PR responsible for a family-wide refactor. _Ruling
-needed:_ ship it as a gate now, or as a tracked migration with a deadline.
+needed:_ ship it as a gate now, or as a tracked migration with a deadline. _Since then:_ most of the
+family reads the ramp. The Dialog and Drawer titles take the title register (Teams Z2,
+Decision #265), and `CommitReview` (Decision #247), the notices, confirms, tooltips and hint
+popover read `var(--text-*)` / `var(--fw-*)`. None of the four off-ramp literals above is left in
+`feedback/styles` or `overlay/styles`, but `toast.css` (`0.875rem` / `600`) and `progress-bar.css`
+(`0.8125rem` / `600`) still set their type by literal. Whether to gate it stays open.
+
+**F.9 — A queue's first-row fill vs. "a repeated action is never filled".** _As built:_ the
+`/teams` · `/businesses` invitation strip gives the FIRST row's Accept the region's one fill
+(tier 3) and every other Accept tier 4 neutral outlined, handing the fill on as rows are answered
+(`invitation-strip-model.ts`, Decision #253); a business's Spend queue gives the first decidable
+row's Approve tier 3 and every other tier 4 (`spend-model.ts`, Decision #246, BU2 step 4).
+_Conflict:_ §B.8.2 says a repeated action is never `filled`. _Ruling needed:_ name the queue as a
+§B.8.2 exception (one fill, on the row a reader decides first), or drop the fill so every row's
+commit is tier 4 (Decision #299 FLAG (a)).
 
 ---
 

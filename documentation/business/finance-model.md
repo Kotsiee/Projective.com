@@ -146,10 +146,11 @@ current time against `stage.deadline`:
 - **Freelancer cancels:** client is issued a 100% refund for all remaining sessions.
 - **Completed sessions:** always paid in full to the freelancer once logged.
 
-> Note: `brain.md`'s own Session cancellation table describes a _full forfeit to freelancer_ for
-> late (<24h) client cancellations, not a 50% penalty fee. This is a second conflict between this
-> document and the brain files — `brain.md` takes precedence per the source-of-truth hierarchy; the
-> 50% figure here is preserved only as historical/legacy detail pending reconciliation.
+> Note: `PRODUCT_SPEC.md`'s own Session cancellation table describes a _full forfeit to freelancer_
+> for late (<24h) client cancellations, not a 50% penalty fee. This is a second conflict between
+> this document and `PRODUCT_SPEC.md` — `PRODUCT_SPEC.md` takes precedence per the source-of-truth
+> hierarchy; the 50% figure here is preserved only as historical/legacy detail pending
+> reconciliation.
 
 ### Maintenance-Based (Run/Test)
 
@@ -291,34 +292,36 @@ Breakdown: System Fee (5%) → £50 to the Fee Collection Account; Team Vault (1
 
 ## 10. KYC / KYB Gating
 
-The abstract rule lives in `brain.md` §Identity Verification (KYC & KYB); this is the **concrete
-gate**. Schema: `finance.verification_cases` + the `org.freelancer_profiles.kyc_*` /
+The abstract rule lives in `PRODUCT_SPEC.md` §Identity, Taxes & Compliance #1 (KYC & KYB); this is
+the **concrete gate**. Schema: `finance.verification_cases` + the `org.freelancer_profiles.kyc_*` /
 `org.business_profiles.kyb_*` caches (migration `20260723091000`).
 
 | Actor                                      | Gate                                                                                              | Enforced before                                                 |
 | :----------------------------------------- | :------------------------------------------------------------------------------------------------ | :-------------------------------------------------------------- |
 | **Freelancer (earner)**                    | Government-ID verification (Stripe Identity) **AND** a payout-ready wallet (Connect account set). | Applying, being seated or assigned, claiming, creating or joining a team (`fn_assert_payout_ready`, Decision #196). A team payee: every shareholder. Withdrawing earnings from a `user`/`team` wallet. |
 | **Client (individual buyer)**              | **None.** Tap-and-pay via Stripe (optional save-card for reuse). No ID, no wallet required.       | —                                                               |
-| **Business owner (incl. client-who-owns)** | KYB (corporate registration + UBO). `fn_business_kyb_verified`.                                   | Operating the pooled Business Wallet (fund/spend — paying an invoice from it included, `finance.pay_invoice`, Decision #247 (h)).              |
+| **Business** (verified by a holder of its billing right — the owner, or an admin they named) | KYB (corporate registration + UBO). `fn_business_kyb_verified`.                                   | Spending the pooled Business Wallet — every door through `finance.fn_assert_business_spend` (§14) — paying an invoice (`finance.pay_invoice`, Decision #247 (h)) and withdrawing (`finance.begin_payout`). Never adding money: top-ups, deposits and transfers in need no KYB (an archived Business takes none, Decision #248 (k)). |
 
 - **Why the freelancer gate is at _onboarding_, not payout-time:** it guarantees no funds ever land
   in a **permanent-escrow / unpayable** state — a freelancer cannot accept work they can't be paid
   for.
-- **Tier ladder** (mirrors `brain.md`): `1` Basic (email/phone) · `2` Verified (gov ID + liveness) ·
+- **Tier ladder** (mirrors `PRODUCT_SPEC.md`): `1` Basic (email/phone) · `2` Verified (gov ID + liveness) ·
   `3` Business (KYB/UBO). Stored as `finance.verification_cases.tier`.
 - **No PII in domain tables:** only opaque provider references (Stripe Identity session / Connect
-  account id) are stored; documents/PII live at Stripe / Supabase Vault (`brain.md` §Data Privacy).
-- ⚠️ **Distinct from email verification** (`org.user_emails.verified_at`). ⚠️ **Enforcement wiring**
-  into the hire/join/`fund_stage` functions is flagged for human sign-off (root `CLAUDE.md` §8) —
-  the predicates exist; the behavioural change to money-movement functions is not applied in this
-  pass.
+  account id) are stored; documents/PII live at Stripe / Supabase Vault (`PRODUCT_SPEC.md`
+  §Identity, Taxes & Compliance #5 (Data Privacy & The "Vault")).
+- ⚠️ **Distinct from email verification** (`org.user_emails.verified_at`).
+- **Enforced in the database:** the earner gate on every apply, seat, assign, claim and team door
+  (`fn_assert_payout_ready`, Decision #196), and KYB on every business spend door through
+  `finance.fn_assert_business_spend` (§14, Decision #240, closing #54 (e)), on `finance.pay_invoice`
+  (Decision #247 (h)) and on `finance.begin_payout`.
 
 ---
 
 ## 11. Multi-Currency & FX
 
-The abstract intent ("price and be paid in your own currency; see prices in yours") is in `brain.md`
-§Escrow, Wallets & Finance. The **mechanics**:
+The abstract intent ("price and be paid in your own currency; see prices in yours") is in
+`PRODUCT_SPEC.md` §Escrow, Wallets & Finance #6. The **mechanics**:
 
 - **Store-in-origin.** Every amount is `(amount_minor, currency)`, stored and **settled** in the
   currency it was entered in. No priced entity is currency-less (all already carry `currency`).
@@ -410,25 +413,31 @@ Governs shared wallets (Business / Team / Enterprise).
 - **One spend gate for business money** (`finance.fn_assert_business_spend`, BUSINESSES_AUDIT BF19 /
   BF21 / BF22): every door that moves a business's pooled money — the basket, paying on account, a
   transfer out, funding a stage, ticket or paid revision, the card escrow lock, and the escrow holds —
-  requires a **KYB-verified** business, counts the spend against the envelope of the **member who
+  requires an **active** business (`org.fn_assert_business_active`, `55000 business_not_active`,
+  Decision #236) that is **KYB-verified**, counts the spend against the envelope of the **member who
   acts** (never the project owner's, unless no person acts: a claim, the Chain Reaction or the
   auto-fund drain spends as the project owner) **once** per spend (a basket's ticket line counts
   against the buyer at the basket, not again at its hold), and applies the approval threshold. The
   threshold is the wallet's own `approval_threshold_cents`, else the platform's
   `vault_approval_threshold_cents` (seeded **0** = none) — one resolver, `fn_business_threshold`, for
   every reader. Team and personal spending are not governed by this gate.
-- **Approval thresholds** (`finance.spend_approvals`): a spend at/above
-  the threshold above (or over a member's cap) queues for a **second approver** before
-  it executes. A request is bound to the one thing it approves — a basket at checkout, a ticket,
-  stage or paid revision to fund, an invoice, a transfer's destination — at the amount it was filed
-  for, and is **spent exactly once**: the charge for that same thing, at or under that amount, by the
-  member who asked (any spender for a ticket's automatic hold), redeems it in the same transaction
-  as the money movement. A charge above the approved amount needs a new approval. A request lives
+- **Approval thresholds** (`finance.spend_approvals`): a spend at/above the threshold above (or
+  over a member's cap) is refused (`PA403 needs_approval` / `over_limit`) until a request for that
+  same thing is approved by a member holding `approve_spend` who is not the requester — the owner's
+  own spend included (#239 (e)). The member files it at checkout, and the auto-fund drain files one
+  for a ticket. A request is bound to the one thing it approves — a basket at checkout, a ticket,
+  stage or paid revision to fund, a transfer's destination (an invoice ref is accepted but never
+  needed: paying an invoice settles debt and reads no envelope or threshold) — at the amount it was
+  filed for, and is **spent exactly once**: the charge for that same thing, at or under that
+  amount, by the member who asked (any spender for a ticket's automatic hold), redeems it in the
+  same transaction as the money movement. A charge above the approved amount needs a new approval. A request lives
   **7 days** from filing, deciding and spending included; there is one open request per thing.
   The member who asked may **withdraw** it while it waits (`finance.withdraw_spend_approval`,
   Decision #246): it becomes `withdrawn` — never decided, never spent, nothing moves — and the thing
   it named is free for a new request.
-  **Business wallets only** — a team has nobody holding `approve_spend` to decide one.
+  **Business wallets only** — a team has nobody holding `approve_spend` to decide one. The request's
+  states — pending → approved → consumed · rejected · expired · withdrawn — are
+  `PRODUCT_MANAGEMENT.md` §3.5 (Spend approval).
 - **Audit** (`finance.ledger_audit`): immutable who/when/amount for every
   add/spend/distribute/withdraw.
 - **Team smart-splits** (`finance.split_rules` template → `finance.contribution_agreements`
@@ -452,7 +461,8 @@ Governs shared wallets (Business / Team / Enterprise).
 
 ## 15. Invoicing, Statements, Refunds, Reconciliation & Idempotency
 
-- **Intervaled invoicing** (`finance.invoices`, existing) — see `brain.md` §Business Invoicing:
+- **Intervaled invoicing** (`finance.invoices`, existing) — see `PRODUCT_SPEC.md` §Escrow, Wallets &
+  Finance #4 (Business Invoicing & Intervaled Billing):
   per-payout lines consolidated into a `consolidated_monthly` invoice, issued on the business's
   `org.business_profiles.billing_day` (1–28, set through `finance.set_invoicing_terms`; the 1st
   when NULL) — Decision #168. One invoice per currency, Projective as issuer, escrows selected by
@@ -493,51 +503,52 @@ Schema: `finance.plans` / `plan_entitlements` / `subscriptions` / `entitlement_g
 (migrations `20260724112000`, `20260724113000`) and `org.standing_levels` / `entity_standing` /
 `create_mastery` / `achievements` / `quality_streaks` (migration `20260724111000`). Zod SSOT:
 `@projective/types/finance` (`plans.ts`, `entitlements.ts`) and `@projective/types/org/standing.ts`.
-Abstract rules live in `PRODUCT_SPEC.md` Â§Standing, Mastery & Progression; the numbers live here.
+Abstract rules live in `PRODUCT_SPEC.md` §Standing, Mastery & Progression; the numbers live here.
 
 **The governing design constraint** (product owner, 2026-07-24):
 
 > _"A user should never feel suffocated by the tier they are on. It should feel like the features
 > they have are plentiful, and upgrading to a higher tier just makes sense."_
 
-Every magnitude below is held against that constraint â€” the free tier is generous by intent, and
+Every magnitude below is held against that constraint — the free tier is generous by intent, and
 each ceiling exists for anti-spam or shared-resource fairness, not as a toll.
 
 ### 16.1 The entitlement matrix (starting dials)
 
-**Individuals** â€” the freelancer plan _contains_ the client plan, because a freelancer is a
+**Individuals** — the freelancer plan _contains_ the client plan, because a freelancer is a
 superset of a client. There is no separate buyer plan to reconcile.
 
-| Lever                              | Free                 | Pro (Â£12.99/mo)      |
+| Lever                              | Free                 | Pro (£12.99/mo)      |
 | :--------------------------------- | :------------------- | :-------------------- |
 | Private draft projects             | **Unlimited**        | Unlimited             |
 | Active public projects             | 3 concurrent         | 15 concurrent         |
-| Published listings (seller)        | rung base: 10 â†’ 50 | **2Ã—** the rung base |
+| Published listings (seller)        | rung base: 10 → 50 | **2×** the rung base |
 | Weekly proposals                   | 50 + rung bonus      | 150 + rung bonus      |
 | Proposal buffer                    | 3 per 10h            | 5 per 10h             |
 | Teams owned                        | 3                    | 6                     |
 | Businesses owned                   | 1                    | 3                     |
 | Teams / businesses **joined**      | **Uncapped**         | Uncapped              |
 | Stored assets (`storage_megabytes`) | **25 GiB** (25 600) | **150 GiB** (153 600) |
-| Promoted placement, full analytics | â€”                  | âœ…                   |
+| Promoted placement, full analytics | —                  | ✅                   |
 
-**Entities** â€” attached to the team/business itself, not to its owner.
+**Entities** — attached to the team/business itself, not to its owner.
 
-| Lever                      | Team Free | Pro Team (Â£29) |   | Lever                      | Business Free | Business Pro |
+| Lever                      | Team Free | Pro Team (£29) |   | Lever                      | Business Free | Business Pro |
 | :------------------------- | :-------- | :-------------- | - | :------------------------- | :------------ | :----------- |
 | Members / seats            | 4         | 15              |   | Concurrent public projects | 3             | 25           |
-| Concurrent public projects | 2         | 15              |   | Managers (admins + PM roles) | 2           | 15           |
+| Concurrent public projects | 2         | 15              |   | Managers (admins + `manage_projects` holders) | 2 | 15 |
 | Proposal pool              | members'  | dedicated       |   | Pooled wallet              | basic         | full + caps  |
 | Stored assets              | 25 GiB    | **500 GiB**     |   | Stored assets              | 25 GiB        | **500 GiB**  |
-| Advanced vault splits      | â€”       | âœ…             |   | Intervaled invoicing       | â€”           | âœ…          |
-| Promoted placement         | â€”       | âœ…             |   | Departments                | 0             | 5            |
+| Advanced vault splits      | —       | ✅             |   | Intervaled invoicing       | —           | ✅          |
+| Promoted placement         | —       | ✅             |   | Departments                | 0             | 5            |
 
 **Advanced vault splits** are the Finder's Fee and Benevolent Dictator templates (Decision #226 (d)).
 They are enforced from day one, with no switch: `finance.save_split_rule` refuses a team whose plan
 lacks the template's `split_template_<type>` flag (§5).
 
-**Business Pro gates are enforced** (Decision #230 (e)): monthly intervaled invoicing and the full
-pooled wallet (per-member caps, an approval threshold) refuse a Business without Business Pro.
+**Business Pro gates are enforced** (Decision #230 (e)): monthly intervaled invoicing
+(`intervaled_invoicing`) and the full pooled wallet (`pooled_wallet_full`: per-member caps, an
+approval threshold) refuse a Business without Business Pro.
 Unlike the fail-open family in §16.2, the switch over them —
 `security.platform_params.business_plan_gates_enforced` — is seeded **on**, and each environment
 sets its own; off, nothing is refused. The manager cap (`business_managers`, 2 free / 15 Pro) counts
@@ -545,11 +556,13 @@ admins plus every member whose role or own grant may manage projects, and the pe
 that offer such a role (Decision #230 (b)); a downgrade removes nobody, it refuses the next manager.
 Clearing a cap or a threshold, and returning to per-transaction invoicing, are never refused. Each
 refusal is `PK402` naming the entitlement, which the console answers with an upgrade notice
-(`database/finance/Functions.md` § Business plan gates).
+(`database/finance/Functions.md` § Business plan gates). The ownership cap (`businesses_owned`:
+1 Free / 3 Pro, Decision #230 (f)) is a personal-plan limit, always enforced when a Business is
+created — no switch governs it (`org.create_workspace`, `55000 plan:`).
 
-A team must hold **â‰¥ 2 members** before it may send proposals.
+A team must hold **≥ 2 members** before it may send proposals.
 
-**Enterprise** â€” unlimited seats, nested businesses, departments and projects; adds SSO/SAML,
+**Enterprise** — unlimited seats, nested businesses, departments and projects; adds SSO/SAML,
 API access, 730-day audit retention, dedicated support, consolidated cross-department invoicing, and
 the only sanctioned platform-fee negotiation.
 
@@ -559,44 +572,44 @@ supply.
 
 ### 16.2 Proposal allowances (distribution, not a paywall)
 
-- **Weekly allowance** â€” 50 (Free) / 150 (Pro), plus the earned rung bonus (up to +40). Both
+- **Weekly allowance** — 50 (Free) / 150 (Pro), plus the earned rung bonus (up to +40). Both
   figures are chosen to be comfortably above real usage: 50 is enough for a freelancer to thrive
   without ever subscribing, and most will not spend it.
-- **The buffer** â€” a rolling drip of 3 (Free) / 5 (Pro) proposals returned every 10 hours, capped
-  at `proposal_buffer_hold_multiple` Ã— the drip. A spend needs **both** weekly headroom and a
+- **The buffer** — a rolling drip of 3 (Free) / 5 (Pro) proposals returned every 10 hours, capped
+  at `proposal_buffer_hold_multiple` × the drip. A spend needs **both** weekly headroom and a
   buffer token, so a week's allowance can never be dumped into one hour of spam.
 - **Withdrawing a proposal refunds the unit.** Selectivity should never be punished twice.
-- **Never sold Ã  la carte.** A paid tier _raises_ the ceiling; it never removes it. The moment deep
-  pockets can buy raw proposal volume, the anti-spam promise â€” the entire point of the mechanism
-  â€” is broken, and the platform has rebuilt Upwork Connects.
+- **Never sold à la carte.** A paid tier _raises_ the ceiling; it never removes it. The moment deep
+  pockets can buy raw proposal volume, the anti-spam promise — the entire point of the mechanism
+  — is broken, and the platform has rebuilt Upwork Connects.
 
 **Enforcement is fail-open until tuned.** `security.platform_params.proposal_allowance_enforced` and
 `footprint_caps_enforced` both default to `false`: the caps are **metered** from day one but refuse
 nothing until a human flips them. Every magnitude on this page is a dial to be re-fitted against
-`analytics.events` (`allowance.*`, `entitlement.denied`) â€” see
+`analytics.events` (`allowance.*`, `entitlement.denied`) — see
 `documentation/database/analytics/`.
 
 ### 16.3 The Standing ladder (earned, never purchasable)
 
-Standing is the discretised rung of the Reliability Index ($R_i$) â€” see `PRODUCT_SPEC.md`
-Â§Reputation & Discovery. Two paths up the same mountain: **earn it** (rung) or **accelerate it**
+Standing is the discretised rung of the Reliability Index ($R_i$) — see `PRODUCT_SPEC.md`
+§Reputation & Discovery. Two paths up the same mountain: **earn it** (rung) or **accelerate it**
 (Pro), and they stack.
 
 | Rung               | Min score | Min stages | Free listings | Proposal bonus | Discovery weight | Marketplace commission |
 | :----------------- | --------: | ---------: | ------------: | -------------: | ---------------: | ---------------------: |
-| **L1 New**         |         0 |          0 |            10 |            â€” |           1.00Ã— |                     8% |
-| **L2 Established** |        55 |          5 |            15 |            +10 |           1.05Ã— |                     8% |
-| **L3 Trusted**     |        70 |         20 |            20 |            +20 |           1.10Ã— |                   7.5% |
-| **L4 Expert**      |        82 |         50 |            30 |            +30 |           1.15Ã— |                     7% |
-| **L5 Elite**       |        92 |        120 |            50 |            +40 |           1.20Ã— |                   6.5% |
+| **L1 New**         |         0 |          0 |            10 |            — |           1.00× |                     8% |
+| **L2 Established** |        55 |          5 |            15 |            +10 |           1.05× |                     8% |
+| **L3 Trusted**     |        70 |         20 |            20 |            +20 |           1.10× |                   7.5% |
+| **L4 Expert**      |        82 |         50 |            30 |            +30 |           1.15× |                     7% |
+| **L5 Elite**       |        92 |        120 |            50 |            +40 |           1.20× |                   6.5% |
 
-Pro **doubles the listing column at every rung** â€” it multiplies what was earned rather than
+Pro **doubles the listing column at every rung** — it multiplies what was earned rather than
 replacing it, so a high-rung free user feels rewarded and Pro reads as an accelerant, not a gate.
 
 **Score inputs** (all client-valued; weights are tunable dials, exposed in
-`org.entity_standing.components`): stage completion 25 Â· on-time delivery 25 Â· dual-track review
-scores 20 Â· dispute-free rate 15 Â· $W_i$ reliability 10 Â· tenure 5, minus active
-`security.penalties` severity. **Never raw earnings and never raw proposal counts** â€” ranking by
+`org.entity_standing.components`): stage completion 25 · on-time delivery 25 · dual-track review
+scores 20 · dispute-free rate 15 · $W_i$ reliability 10 · tenure 5, minus active
+`security.penalties` severity. **Never raw earnings and never raw proposal counts** — ranking by
 spend or by volume is the pay-to-win trap this ladder exists to avoid.
 
 The `min_stages` column is a volume floor: a flawless single engagement must not vault a subject to
@@ -629,7 +642,7 @@ team-split projection) uses the same rate and the same rule, so a previewed fee 
 - **No login or attendance streaks.** Streaks celebrate delivered quality (on-time delivery, fast
   response, dispute-free runs), never presence. Guilt mechanics are hostile to freelancer wellbeing
   and attract the wrong behaviour.
-- **No metering of execution capacity.** Ever. See Â§1.1.
+- **No metering of execution capacity.** Ever. See §1.1.
 
 ### 16.6 Storage (the asset-management footprint lever)
 

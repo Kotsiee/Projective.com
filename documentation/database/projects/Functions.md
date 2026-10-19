@@ -96,7 +96,10 @@ the acts that commit the business. Those ask three predicates, each answering on
   DEFINER`, `search_path = ''`; `EXECUTE`: `authenticated`.
 - **`projects.fn_assert_business_actor(p_project uuid, p_cap org.workspace_capability,
   p_allow_delegate boolean DEFAULT false) → void`** — the typed refusal: **`PK403`
-  `missing_permission: <cap>`** (HINT names the permission to ask for). A no-op on a personal project
+  `missing_permission: <cap>`** (HINT names the permission to ask for) and, for `hire`, FIRST
+  **`55000 business_not_active:`** when the paying business is not `active`
+  (`org.fn_assert_business_active`, BB5) — for everyone, the project's owner included, before the
+  capability and delegate tests. A no-op on a personal project
   and for a `NULL` `auth.uid()` (service role, cron, seeds); with `p_allow_delegate` a
   person-participant whose project `role` is `admin` / `manager` passes too (Decision #145). Each
   door calls it AFTER its own authority check, so a stranger still gets that door's wording. plpgsql,
@@ -112,12 +115,12 @@ the acts that commit the business. Those ask three predicates, each answering on
 
 | Door | Business-project requirement | Refusal |
 | :-- | :-- | :-- |
-| `assign_from_application`, `reject_application`, `invite_to_project`, `invite_by_email`, `act_on_invitation`, `get_stage_invite_link`, `revoke_stage_invite_link` | `hire`, or a delegate (`admin`/`manager` participant) | `PK403 missing_permission: hire` |
-| Offering `admin`/`manager` (`invite_to_project`, `invite_by_email`), `set_member_role` | `hire` (no delegate) | `PK403 missing_permission: hire` |
-| `assign_ticket_manual`, `auto_assign_round_robin`, `assign_parallel_stream` | `hire` | `PK403 missing_permission: hire` |
-| `review_submission` with `accept`, `approve_stage`, `force_complete_stage`, `cancel_stage_fair_exit` | `hire` | `PK403 missing_permission: hire` |
-| Any ticket entering `completed`, or a delete that settles a claimed/funded ticket (`fn_ticket_settlement_guard` — covers `complete_ticket`, `move_ticket`, `delete_ticket` and the table path) | `hire` | `PK403 missing_permission: hire` |
-| `create_project` with `client_business_id`; re-pointing `client_business_id` (`fn_guard_project_ownership`) | `manage_projects` on that business | `PK403 missing_permission: manage_projects` |
+| `assign_from_application`, `reject_application`, `invite_to_project`, `invite_by_email`, `act_on_invitation`, `get_stage_invite_link`, `revoke_stage_invite_link` | `hire`, or a delegate (`admin`/`manager` participant) | `PK403 missing_permission: hire`; `55000 business_not_active` (draft / archived business, BB5) |
+| Offering `admin`/`manager` (`invite_to_project`, `invite_by_email`), `set_member_role` | `hire` (no delegate) | `PK403 missing_permission: hire`; `55000 business_not_active` (draft / archived business, BB5) |
+| `assign_ticket_manual`, `auto_assign_round_robin`, `assign_parallel_stream` | `hire` | `PK403 missing_permission: hire`; `55000 business_not_active` (draft / archived business, BB5) |
+| `review_submission` with `accept`, `approve_stage`, `force_complete_stage`, `cancel_stage_fair_exit` | `hire` | `PK403 missing_permission: hire`; `55000 business_not_active` (draft / archived business, BB5) |
+| Any ticket entering `completed`, or a delete that settles a claimed/funded ticket (`fn_ticket_settlement_guard` — covers `complete_ticket`, `move_ticket`, `delete_ticket` and the table path) | `hire` | `PK403 missing_permission: hire`; `55000 business_not_active` (draft / archived business, BB5) |
+| `create_project` with `client_business_id`; re-pointing `client_business_id` (`fn_guard_project_ownership`) | `manage_projects` on that business | `PK403 missing_permission: manage_projects`; `create_project` also `55000 business_not_active` (draft / archived business, BB5) |
 | `fund_stage`, `fund_ticket`, `fund_paid_revision`, `get_stage_funding_quote`, `finance.begin_card_payment` (`escrow_lock`) | `fn_can_fund_project` | `PK403 not_funder: …` |
 | `finance.place_wallet_order`, `finance.place_on_account_order` (business basket) | `purchase` on top of vault `spend` | `PK403 missing_permission: purchase` |
 
@@ -206,7 +209,7 @@ or not at all:
 | `owner_user_id`                                                  | `auth.uid()`                | **Never** from the payload.                                                                                                        |
 | `status`                                                         | hardcoded `draft`           | Not from the payload — it gates the public-footprint trigger and the escrow lifecycle.                                             |
 | `visibility`                                                     | hardcoded `unlisted`        | Not from the payload — publishing is a later, deliberate write.                                                                    |
-| `client_business_id` / `owner_team_id` / `owner_enterprise_id` | payload, membership-checked | Active membership of that workspace is required; the three are mutually exclusive. Personal scope is the **absence** of all three. A business also needs the caller to hold `manage_projects` on it (`PK403 missing_permission: manage_projects`, BB2). |
+| `client_business_id` / `owner_team_id` / `owner_enterprise_id` | payload, membership-checked | Active membership of that workspace is required; the three are mutually exclusive. Personal scope is the **absence** of all three. A business also needs the caller to hold `manage_projects` on it (`PK403 missing_permission: manage_projects`, BB2) and a published business: `55000 business_not_active` for a draft or archived one (`org.fn_assert_business_active`, BB5). |
 
 **The slug is MINTED, never derived** — not from the title, not from anything. `security.mint_slug`
 produces the canonical `prj-` address; the whole point of an opaque slug is that no input exists
@@ -1185,9 +1188,12 @@ function (`00001130`).
   `service_role`.
 - **`fund_paid_revision(p_revision_id uuid) → jsonb`** — run by `finance.place_wallet_order` for a
   `paid_revision` line, by `finance.settle_card_payment` for a card payment naming the round, and
-  directly by the review's "Pay from wallet" (Decision #199) — always as the payer. `fund_ticket`'s payer rule (`42501`); round not
+  directly by the review's "Pay from wallet" (Decision #199) — always as the payer. The funder
+  predicate `projects.fn_can_fund_project` (`PK403 not_funder`, BB2); round not
   `awaiting_payment` or submission already decided `PC409`; not a `paid_revision`, or its
-  `price_cents` no longer the stage's `extra_revision_price_cents`, `PC409` (raise it again). Holds the round's escrow
+  `price_cents` no longer the stage's `extra_revision_price_cents`, `PC409` (raise it again). A
+  business payer then passes `finance.fn_assert_business_spend(…, 'revisions', round)` as the funder
+  (BB3), and the hold finds the spend covered. Holds the round's escrow
   (`finance.fn_hold_revision_escrow`, `PF402` + `DETAIL` like #165), then opens the round: submission
   `revisions_requested` (feedback = the round's reason), ticket `in_review → in_progress`, a
   `submission_reviewed` activity row, `fn_notify_revision`. A refused hold rolls everything back.
@@ -1233,8 +1239,12 @@ before writing anything, `DETAIL` = `{code: 'paid_revision_required', price_mino
 allowed}`. Either verdict cancels a round still `awaiting_payment` on the submission. `fund_stage` (`search_path = public, projects, finance, comms, org,
 auth`): payer refusal `PK403 not_funder`; foreign stage `P0002`; stage not `open`, `assigned` or `in_progress`
 `55000` (Decision #197); any ticket with no price `PC409` before anything moves; an individual
-owner's wallet short of the stage total `PF402`, and any ticket's own hold refusal (`PF402`, Decision
-#165) aborts the whole stage; nothing fundable `PC409`. Fundable means in the stage, `unpaid` or
+owner's wallet short of the stage total `PF402`; a business payer passes
+`finance.fn_assert_business_spend` once for the stage total as the funder (ref `project_stages`,
+BB3) — `55000 business_not_active` (draft or archived), `PK403 kyb_required:`, `PA403 over_limit:` /
+`needs_approval:` (an approval bound to the stage carries it) — whose cover lets each ticket's hold
+through without counting again, and `fn_close_spend_cover` closes it after the holds; any ticket's
+own hold refusal (`PF402`, Decision #165) aborts the whole stage; nothing fundable `PC409`. Fundable means in the stage, `unpaid` or
 `needs_funding`, not `completed`/`cancelled`/`reported_hidden`, **claimed or not** — priced by
 `projects.fn_stage_funding_need`, the definition `finance.begin_card_payment` charges by. A ticket
 nobody has claimed is held PREPAID (no payee) and bound at its claim. On success an `assigned` stage
@@ -1254,7 +1264,8 @@ predicate as `fund_stage` (`PK403 not_funder`), then the PRODUCT_SPEC §5 purcha
 order: ticket not in the project `P0002`; no description `PU422`; already paid (`payment_status` not
 `unpaid`/`needs_funding`, or a held escrow) `PC409`; not in a stage, or the stage `approved`/`paid`/
 `cancelled` `PC409`; no price (own, else the stage's) `PC409`; an individual owner's wallet short of
-the price `PF402`. A ticket nobody has claimed is held PREPAID and bound at its claim (Decision #197;
+the price `PF402`; a business payer passes `finance.fn_assert_business_spend(…, 'tickets', ticket)`
+as the funder (BB3 — inside a basket the basket's cover passes it). A ticket nobody has claimed is held PREPAID and bound at its claim (Decision #197;
 before it, `PU422` "Nobody can be paid … yet"). Then exactly one
 `finance.fn_hold_ticket_escrow`. **The stage's status is not moved** — its other tickets are still
 unfunded, so it stays partially funded; `fund_stage` remains the whole-stage action. Returns
