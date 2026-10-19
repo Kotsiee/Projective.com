@@ -3,7 +3,13 @@ import { Button } from "@projective/ui/fields";
 import { EmptyState } from "@projective/ui/utils";
 import type { RosterControl, RosterEmptyCopy, RosterFirstRunCopy } from "../core/roster-model.ts";
 import { tierProps } from "../core/create-model.ts";
-import { cloneGlyph, MembersGlyph, PlusGlyph, SearchGlyph } from "../core/workspace-glyphs.tsx";
+import {
+	CheckGlyph,
+	cloneGlyph,
+	MembersGlyph,
+	PlusGlyph,
+	SearchGlyph,
+} from "../core/workspace-glyphs.tsx";
 
 /**
  * RosterEmpty — the two empty states of `/teams` and `/businesses`, both the ui `EmptyState` (the
@@ -15,7 +21,10 @@ import { cloneGlyph, MembersGlyph, PlusGlyph, SearchGlyph } from "../core/worksp
  *     what one IS in one sentence from PRODUCT_SPEC and holds the page's ONE structural commit, the
  *     tier-2 create; the lane's footer (`lane-model.ts`) and the footer band's rig (`rig-model.ts`)
  *     withhold theirs meanwhile, so the page never offers two. When the plan admits none, the
- *     sentence carries the plan's reason and no button is drawn — never a dead control.
+ *     sentence carries the plan's reason and no button is drawn — never a dead control. A business's
+ *     first run also lists what it does for the viewer (BU1) — three plain sentences in the
+ *     `EmptyState`'s body slot, each led by a tick in the kind's ink: body text, never a MetaLine or
+ *     a chip, and never a second control.
  *   - {@link RosterFiltered} — a partition or a search left nothing. Somebody who has just filtered
  *     does not need to be told what a team is; they need to know the filter matched nothing and how to
  *     get back — a tier-5 Clear filters, and no create.
@@ -35,9 +44,10 @@ export interface RosterFirstRunProps {
 	onCreate: () => void;
 }
 
-/** The first-run state: what the entity is, and the one way to make one. */
+/** The first-run state: what the entity is, what it does (a business), and the one way to make one. */
 export function RosterFirstRun(props: RosterFirstRunProps): JSX.Element {
 	const { copy, create } = props;
+	const points = copy.points ?? [];
 	return (
 		<EmptyState
 			class="wsp-roster__empty"
@@ -53,7 +63,20 @@ export function RosterFirstRun(props: RosterFirstRunProps): JSX.Element {
 					onClick={props.onCreate}
 				/>
 			)}
-		/>
+		>
+			{points.length > 0 && (
+				<ul class="wsp-roster__points">
+					{points.map((point) => (
+						<li key={point} class="wsp-roster__point">
+							<span class="wsp-roster__point-mark" aria-hidden="true">
+								{cloneGlyph(CheckGlyph)}
+							</span>
+							<span>{point}</span>
+						</li>
+					))}
+				</ul>
+			)}
+		</EmptyState>
 	);
 }
 // #endregion

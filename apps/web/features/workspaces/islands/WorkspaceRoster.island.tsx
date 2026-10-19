@@ -605,6 +605,7 @@ function RosterBody(
 	if (rosterView.value === "table") {
 		return (
 			<WorkspaceTable
+				kind={props.kind}
 				items={props.rows}
 				hrefFor={(s) => workspaceHref(s.kind, s.handle)}
 				busy={props.busy}

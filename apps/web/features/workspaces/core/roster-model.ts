@@ -1,4 +1,5 @@
 import type { MetaLineEntry } from "@ui/display/core/meta-line.tsx";
+import { currencyExponent, type MoneyView } from "@projective/types/finance";
 import {
 	kindCopy,
 	roleLabel,
@@ -268,6 +269,11 @@ export interface RosterFirstRunCopy {
 	description: string;
 	/** The one structural create's label. */
 	action: string;
+	/**
+	 * Business only — what it does for the viewer, as a short body list under the sentence (BU1). Each
+	 * entry is one plain sentence; the team's first run has none.
+	 */
+	points?: readonly string[];
 }
 
 /**
@@ -275,6 +281,11 @@ export interface RosterFirstRunCopy {
  * Required"); the business sentence is its "What is a Projective Business?" — both restated, not
  * extended. The business keeps the title its empty state has always had: it hires, where a team
  * delivers.
+ *
+ * The business's three points restate the same section's pillars (one buying identity, a pooled
+ * wallet several people fund and spend from, governed spending) and claim nothing a free business
+ * lacks: per-member caps and an approval threshold are Business Pro (Decision #230 (e)), so the third
+ * point says so rather than promising "limits you set" to everyone.
  */
 const FIRST_RUN: Record<WorkspaceKind, RosterFirstRunCopy> = {
 	team: {
@@ -288,6 +299,11 @@ const FIRST_RUN: Record<WorkspaceKind, RosterFirstRunCopy> = {
 		description:
 			"A business acts as the employer of record for the work your colleagues request, and gives you one central place to manage it.",
 		action: "Create a business",
+		points: [
+			"One company identity your whole staff hires under.",
+			"Several people can add money to one pooled wallet and spend from it.",
+			"You decide who may spend from it — and, on Business Pro, how much each person may spend and what needs approval first.",
+		],
 	},
 };
 
@@ -562,8 +578,8 @@ export function setupPercent(progress: number): number {
 /**
  * Whether the card still shows the setup meter — it leaves at 100%, a finished checklist is noise. The
  * meter's fill is the kind token (`--wsp-kind`, set on the ProgressBar's accent by the roster sheet), so
- * it follows the team / business tone under every colour-vision overlay (Decision #251), never a fixed
- * ProgressBar severity.
+ * it follows the team / business tone under every colour-vision overlay (Decision #251) — business is
+ * `--tertiary` in every mode (Decision #230 (j)) — never a fixed ProgressBar severity.
  */
 export function setupUnfinished(progress: number): boolean {
 	return setupPercent(progress) < 100;
@@ -592,7 +608,7 @@ export function rosterTrackWidth(px: number, gap = "var(--space-4)"): string {
 // #region The table
 /** One column of the roster's `DataTable`, as the contract the table builds its descriptors from. */
 export interface RosterColumn {
-	id: "name" | "role" | "members" | "projects" | "status" | "updated";
+	id: "name" | "role" | "members" | "projects" | "spent" | "status" | "updated";
 	header: string;
 	/** Counts sit right-aligned, in tabular figures. */
 	align: "start" | "end";
@@ -604,8 +620,8 @@ export interface RosterColumn {
 }
 
 /**
- * The table's columns, in order: Name · Your role · Members · Live projects · Status · Updated. Every
- * one sorts; Status shows a `Tag` only for a non-active entity ({@link lifecycleTag}); selection is
+ * A team's table columns, in order: Name · Your role · Members · Live projects · Status · Updated (a
+ * business adds Spent (30d), {@link BUSINESS_ROSTER_COLUMNS}). Every one sorts; Status shows a `Tag` only for a non-active entity ({@link lifecycleTag}); selection is
  * none — a row opens its console.
  *
  * A narrowing table gives up the least essential column first: Updated, then Your role (the acting
@@ -620,6 +636,56 @@ export const ROSTER_COLUMNS: readonly RosterColumn[] = [
 	{ id: "status", header: "Status", align: "start" },
 	{ id: "updated", header: "Updated", align: "start", priority: 1 },
 ];
+
+/**
+ * A business's columns (BU1): Name · Your role · Members · Live projects · Spent (30d) · Status ·
+ * Updated. Spent is what the business spent in the last 30 days, one server-formatted figure per
+ * currency (never summed, never converted, no period delta); it sits right-aligned in tabular figures
+ * beside the other counts. Updated stays, as R1 made it for both kinds, and still leaves first.
+ *
+ * A narrowing table gives up Updated, then Your role, then Live projects, then Members, and Spent
+ * last: on a phone a business row still says what it spent, and Name and Status never hide.
+ */
+export const BUSINESS_ROSTER_COLUMNS: readonly RosterColumn[] = [
+	{ id: "name", header: "Name", align: "start" },
+	{ id: "role", header: "Your role", align: "start", priority: 2 },
+	{ id: "members", header: "Members", align: "end", priority: 4 },
+	{ id: "projects", header: "Live projects", align: "end", priority: 3 },
+	{ id: "spent", header: "Spent (30d)", align: "end", priority: 5 },
+	{ id: "status", header: "Status", align: "start" },
+	{ id: "updated", header: "Updated", align: "start", priority: 1 },
+];
+
+/** The table's columns for a kind — a team's {@link ROSTER_COLUMNS}, a business's {@link BUSINESS_ROSTER_COLUMNS}. */
+export function rosterColumns(kind: WorkspaceKind): readonly RosterColumn[] {
+	return kind === "business" ? BUSINESS_ROSTER_COLUMNS : ROSTER_COLUMNS;
+}
+
+/**
+ * The Spent (30d) cell's figures: the server's per-currency `money30d`, in its order (largest first),
+ * or `null` when nothing moved — the table then draws its own empty mark. Each figure is drawn in its
+ * own currency; the client never totals or converts them (Decision #55).
+ */
+export function rosterSpent(
+	summary: Pick<WorkspaceSummary, "money30d">,
+): readonly MoneyView[] | null {
+	return summary.money30d.length > 0 ? summary.money30d : null;
+}
+
+/**
+ * The Spent column's SORT KEY: the row's largest figure in major units, compared across currencies
+ * the way the backend picks the card's figure (`largestAmount`) so a JPY total is not read as a
+ * hundred times a USD one. It only orders rows — it is never shown, never converted and never summed —
+ * and a row that spent nothing sorts below every row that did (`-1`).
+ */
+export function spentSortValue(summary: Pick<WorkspaceSummary, "money30d">): number {
+	let best = -1;
+	for (const figure of summary.money30d) {
+		const major = figure.minor / 10 ** currencyExponent(figure.currency);
+		if (major > best) best = major;
+	}
+	return best;
+}
 
 /**
  * The status column's sort order — the lifecycle's own order (draft, active, archived), not the

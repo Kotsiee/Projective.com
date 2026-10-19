@@ -63,7 +63,7 @@
 	--wsp-minor-fade: var(--minor-fade);
 	/* #endregion */
 
-	/* #region Kind identity — a team takes the BRAND tint, a business the ACCENT tint */
+	/* #region Kind identity — a team takes the BRAND tint (--primary), a business the TERTIARY tint (--tertiary, Decision #230 (j)) */
 	/*
 	 * The two kinds are one architecture parameterised by a discriminator, and that holds in CSS too:
 	 * nothing below reads `--wsp-team` or `--wsp-business` directly. Any element carrying
@@ -79,27 +79,38 @@
 	`--surface-1`: the same tone the old 40% alpha produced there, now measurable everywhere. */
 	--wsp-team-edge: color-mix(in oklab, var(--primary) 40%, var(--surface-1));
 	/*
-	 * `-ink` is the accent as TEXT on one of its own tints, and it exists because the accent itself
+	 * `-ink` is the kind hue as TEXT on one of its own tints, and it exists because the hue itself
 	 * was not readable there. `.wsp-mark` — the entity identity badge, the single most repeated mark
 	 * on /teams — set `--wsp-kind` on `--wsp-kind-tint-hi` at 14px/600, which is normal text and so
 	 * owes 4.5:1. Measured: 3.79:1 on tint-hi and 4.25:1 on tint in light mode. Both fail.
 	 *
-	 * Mixing 20% of `--on-surface` into the accent fixes it in BOTH modes from one declaration,
+	 * Mixing 20% of `--on-surface` into the kind hue fixes it in BOTH modes from one declaration,
 	 * because `--on-surface` is by definition the opposite polarity to the surface: in light it pulls
 	 * the ink down, in dark it lifts it up. Deepening the tint instead would have worked in light and
-	 * made dark worse. Measured after: light team 4.86:1 on tint-hi / 5.44 on tint / 6.25 on
-	 * surface-1; light business 5.59 / 6.28 / 7.16; dark 6.96–10.65 across the board.
+	 * made dark worse. Measured (brand seed, theme-engine tones, BU1): team 4.88:1 on tint-hi / 5.46
+	 * on tint / 6.24 on surface-1 in light, 4.72 / 5.25 / 5.85 in dark (dark `--primary` is tone 55
+	 * since Decision #96 (a), so the earlier 6.96–10.65 no longer holds); business 5.62 / 6.30 / 7.21
+	 * in light, 7.41 / 9.05 / 11.09 in dark.
 	 *
-	 * The accent hue survives at 80% — this reads as the same brand teal, one step deeper.
+	 * The kind hue survives at 80% — the team's reads as the same brand teal one step deeper, the
+	 * business's as the same slate.
 	 */
 	--wsp-team-ink: color-mix(in srgb, var(--primary) 80%, var(--on-surface));
 
-	--wsp-business: var(--secondary);
-	--wsp-business-on: var(--surface);
-	--wsp-business-tint: color-mix(in srgb, var(--secondary) 10%, var(--surface-1));
-	--wsp-business-tint-hi: color-mix(in srgb, var(--secondary) 18%, var(--surface-1));
-	--wsp-business-edge: color-mix(in oklab, var(--secondary) 40%, var(--surface-1));
-	--wsp-business-ink: color-mix(in srgb, var(--secondary) 80%, var(--on-surface));
+	/*
+	 * The business hue is `--tertiary` in EVERY mode and overlay (Decision #230 (j)), and the rest of
+	 * the family is derived from `--wsp-business` itself, so this one line re-anchors all of it. Not
+	 * `--secondary`: that is the focus ring's ink (`theme-engine.ts`, `ringInk`), and a business mark
+	 * painted in it measured ΔE_OK 0.00 against the ring. The solid mark and the acting chip draw
+	 * `--on-tertiary` on the hue — 6.18:1 light, 7.72:1 dark. `business-hue.gate.test.ts` re-computes
+	 * every figure in this block from the theme engine.
+	 */
+	--wsp-business: var(--tertiary);
+	--wsp-business-on: var(--on-tertiary);
+	--wsp-business-tint: color-mix(in srgb, var(--wsp-business) 10%, var(--surface-1));
+	--wsp-business-tint-hi: color-mix(in srgb, var(--wsp-business) 18%, var(--surface-1));
+	--wsp-business-edge: color-mix(in oklab, var(--wsp-business) 40%, var(--surface-1));
+	--wsp-business-ink: color-mix(in srgb, var(--wsp-business) 80%, var(--on-surface));
 
 	/* The resolved trio. Defaults to the seller side so a kind-less fragment still paints. */
 	--wsp-kind: var(--wsp-team);
@@ -335,12 +346,21 @@
  *    normal contrast, and the state is carried by the glyph (tick · conditional mark · dash) and, on
  *    a conditional cell, the hatch. The ui PermissionMatrix makes the same trade on the same U1 tint
  *    family; it is a deliberate step-down, not a widening.
+ *
+ * The business family widens all four of its tones (BU1), each still opaque and still derived from
+ * `--wsp-business`: tint 20%, tint-hi 26%, edge 70%, and the ink takes MORE `--on-surface` (65% hue),
+ * so every text pair on the mark clears the 7:1 §A.5 promises in high contrast. Measured (brand seed,
+ * theme-engine tones): ink on tint-hi 8.24:1 / on tint 9.19 / on surface-1 12.85, edge 4.29:1 against
+ * the card and `--on-tertiary` on the hue 10.05:1 in light; 7.34 / 8.94 / 15.69, edge 7.05 and 14.60
+ * in dark. The tint-hi step off the card widens 1.35 → 1.56 (light) and 1.64 → 2.14 (dark).
  */
 :root[data-contrast="high"] {
 	--wsp-team-tint: color-mix(in srgb, var(--primary) 20%, var(--surface-1));
 	--wsp-team-edge: color-mix(in oklab, var(--primary) 70%, var(--surface-1));
-	--wsp-business-tint: color-mix(in srgb, var(--secondary) 20%, var(--surface-1));
-	--wsp-business-edge: color-mix(in oklab, var(--secondary) 70%, var(--surface-1));
+	--wsp-business-tint: color-mix(in srgb, var(--wsp-business) 20%, var(--surface-1));
+	--wsp-business-tint-hi: color-mix(in srgb, var(--wsp-business) 26%, var(--surface-1));
+	--wsp-business-edge: color-mix(in oklab, var(--wsp-business) 70%, var(--surface-1));
+	--wsp-business-ink: color-mix(in srgb, var(--wsp-business) 65%, var(--on-surface));
 	--wsp-acting-ring: color-mix(in oklab, var(--wsp-kind) 85%, var(--surface-1));
 	--wsp-locked-hatch-mix: 26%;
 	--wsp-hatch: color-mix(in oklab, var(--on-surface) 30%, var(--wsp-conditional-tint));
@@ -353,27 +373,27 @@
 }
 
 /*
- * Colour-vision deficiency. Two adjacent-hue risks exist on this surface: business accent against
- * brand (the two entity kinds side by side on a mixed roster) and `allowed` against `conditional` in
- * the matrix. Under any CVD overlay the business side re-anchors to `--tertiary`, and the matrix
- * tri-state keeps its static GLYPH and HATCH-ANGLE channels — so separation survives on non-colour
- * channels even when hue collapses entirely.
+ * Colour-vision deficiency. Two adjacent-hue risks exist on this surface: the business hue against
+ * the brand (the two entity kinds side by side on a mixed roster) and `allowed` against `conditional`
+ * in the matrix. The matrix tri-state keeps its static GLYPH and HATCH-ANGLE channels — so separation
+ * survives on non-colour channels even when hue collapses entirely.
+ *
+ * The business side needs no re-anchor here: it is `--tertiary` in every mode (Decision #230 (j)).
+ * The block that used to swap it in under an overlay bought nothing measurable — simulated at full
+ * severity (Machado 2009), brand~tertiary and brand~secondary sit within ΔE_OK 0.01 of each other
+ * under protan, deutan and tritan alike — and it left the mark's ink and filled pair on the old hue.
+ * The split bar's stake tones now live in @projective/ui's SplitBar (Teams C4).
  *
  * VALUE-scoped, never `:root[data-cvd]`. `CvdMode` is `none | protan | deutan | tritan` and
  * `applyConfig` writes the attribute UNCONDITIONALLY, so every hydrated page carries
- * `data-cvd="none"` — which an attribute-PRESENCE selector matches. Bare `[data-cvd]` therefore held
- * this overlay permanently on for every user: a Business rendered `--tertiary` on every load and the
- * documented kind-identity rule above ("a team takes the BRAND tint, a business the ACCENT tint")
- * never shipped. Enumerate the real deficiencies, exactly as the sibling `[data-contrast="high"]`
- * block does; a fourth mode must be added here explicitly.
+ * `data-cvd="none"` — which an attribute-PRESENCE selector matches, and which would hold the overlay
+ * permanently on for every user. Enumerate the real deficiencies, exactly as the sibling
+ * `[data-contrast="high"]` block does; a fourth mode must be added here explicitly.
  */
 :root[data-cvd="protan"],
 :root[data-cvd="deutan"],
 :root[data-cvd="tritan"] {
-	--wsp-business: var(--tertiary);
-	--wsp-business-tint: color-mix(in srgb, var(--tertiary) 12%, var(--surface-1));
-	--wsp-business-tint-hi: color-mix(in srgb, var(--tertiary) 20%, var(--surface-1));
-	--wsp-business-edge: color-mix(in oklab, var(--tertiary) 46%, var(--surface-1));
+	/* Nothing re-anchors under an overlay today; the selector stays as the one place a future CVD tone goes. */
 }
 
 /* #region Shared primitives */

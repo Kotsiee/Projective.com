@@ -126,6 +126,44 @@
 }
 /* #endregion */
 
+/* #region The first run's points (BU1) */
+/*
+ * What a business does for the viewer, as a short BODY list inside the first-run `EmptyState`'s body
+ * slot — plain text, never a MetaLine and never chips (§B.11). The list is centred as a block but its
+ * lines read from the start edge, so a wrapped sentence never centres raggedly. Each line leads with a
+ * tick in the kind's ink (`--wsp-kind-ink`, the mark's own text tone, so it clears 4.5:1 on the
+ * `EmptyState`'s `--surface-1`), centred on the first line of its sentence.
+ */
+.wsp-roster__points {
+	display: grid;
+	gap: var(--space-2);
+	inline-size: fit-content;
+	max-inline-size: var(--wsp-prose);
+	margin: 0;
+	margin-inline: auto;
+	padding: 0;
+	list-style: none;
+	text-align: start;
+	font-size: var(--wsp-fs-body);
+	line-height: var(--leading-normal);
+	color: var(--on-surface);
+}
+
+.wsp-roster__point {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+}
+
+.wsp-roster__point-mark {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	block-size: 1lh;
+	color: var(--wsp-kind-ink);
+}
+/* #endregion */
+
 /* #region The invitation strip */
 /*
  * Somebody is waiting on the viewer, so this sits above the roster. It is a SECTION, not a plate: the
@@ -470,9 +508,9 @@ a pointer. */
 
 /*
  * The fill is the card's kind token, not a ProgressBar severity: `--wsp-kind` resolves under the card's
- * `[data-kind]`, so the meter keeps the team / business tone under every colour-vision overlay, where
- * the business side re-anchors to `--tertiary` (Decision #251). Doubled class, so the override never
- * depends on bundle order against the ProgressBar's own severity rule.
+ * `[data-kind]`, so the meter keeps the team / business tone under every colour-vision overlay
+ * (Decision #251) — the business side is `--tertiary` in every mode (Decision #230 (j)). Doubled class,
+ * so the override never depends on bundle order against the ProgressBar's own severity rule.
  */
 .ui-progressbar.wsp-card__setup-bar {
 	--pb-accent: var(--wsp-kind);
@@ -706,11 +744,68 @@ a pointer. */
 /*
  * Held for the screens that still borrow them — the billing and payout forms (`__label`, `__error`).
  * The create dialog uses neither; each goes when its last borrower moves onto FormControl (C4, BU).
+ * The `__kind*` option rules have no borrower since the invite dialog's mode chooser became a
+ * SelectButton (C2); they stay, on the kind token, while `business-hue.gate.test.ts` holds them (BU1).
  */
 .wsp-create__label {
 	font-size: var(--fld-label-fs);
 	font-weight: var(--fld-label-fw);
 	color: var(--fld-label-fg);
+}
+
+.wsp-create__kind {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	padding: var(--space-3);
+	border: var(--hairline-strong);
+	border-radius: var(--radius-container-lg);
+	background: none;
+	text-align: start;
+	font: inherit;
+	color: var(--on-surface);
+	cursor: pointer;
+	transition: background var(--dur-fast) var(--spring-standard),
+		border-color var(--dur-fast) var(--spring-standard);
+}
+
+.wsp-create__kind:hover {
+	background: var(--surface-1);
+}
+
+/*
+ * The selected option is marked by its kind's own tint, mixed against the dialog's solid `--surface`,
+ * never `transparent` (§B.4.2). The option carries `data-kind`, so the business rule reads the kind
+ * token it re-resolves there — `--tertiary`, never the ring's `--secondary` (Decision #230 (j)).
+ */
+.wsp-create__kind[data-on="true"][data-kind="team"] {
+	border-color: var(--primary);
+	background: color-mix(in oklab, var(--primary) 10%, var(--surface));
+}
+
+.wsp-create__kind[data-on="true"][data-kind="business"] {
+	border-color: var(--wsp-kind);
+	background: color-mix(in oklab, var(--wsp-kind) 10%, var(--surface));
+}
+
+.wsp-create__kind-name {
+	font-size: var(--wsp-fs-body);
+	font-weight: var(--fw-medium);
+}
+
+.wsp-create__kind-note {
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.wsp-create__kind {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .wsp-create__kind {
+	transition: none;
 }
 
 .wsp-create__error {

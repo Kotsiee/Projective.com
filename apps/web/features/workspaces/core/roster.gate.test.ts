@@ -98,6 +98,51 @@ Deno.test("roster gate: the canvas is built on the ui primitives R1 names", () =
 	assertEquals((EMPTY.match(/<EmptyState\b/g) ?? []).length, 2, "both empty states are EmptyState");
 });
 
+Deno.test("roster gate: a business's first-run points are a body list inside EmptyState (BU1)", () => {
+	const firstRun = EMPTY.slice(
+		EMPTY.indexOf("export function RosterFirstRun"),
+		EMPTY.indexOf("// #endregion", EMPTY.indexOf("export function RosterFirstRun")),
+	);
+	assert(firstRun.length > 200, "RosterFirstRun was not found");
+	// The list is EmptyState's body slot (its children), drawn only when the copy carries points.
+	const open = firstRun.indexOf("<EmptyState");
+	const list = firstRun.indexOf('<ul class="wsp-roster__points">');
+	const close = firstRun.indexOf("</EmptyState>");
+	assert(open >= 0 && list > open && close > list, "the points are not inside EmptyState");
+	assert(/points\.length > 0 &&/.test(firstRun), "the list renders without points");
+	assert(/copy\.points \?\? \[\]/.test(firstRun), "the points are not read from the copy");
+	// Body text: no MetaLine, no chip, no Tag, no second Button.
+	assert(!/<MetaLine\b|<Tag\b|<Badge\b/.test(firstRun), "the points borrow a container");
+	assertEquals(buttons(firstRun).length, 1, "the first run draws one Button — its create");
+	assert(
+		/\.wsp-roster__point-mark\s*\{[^}]*color:\s*var\(--wsp-kind-ink\)/.test(SHEET),
+		"the point's tick is not the kind's ink",
+	);
+});
+
+Deno.test("roster gate: the table draws the kind's columns and Spent as MoneyView, no delta (BU1)", () => {
+	assert(
+		/<WorkspaceTable\s+kind=\{props\.kind\}/.test(ISLAND),
+		"the island does not pass the kind",
+	);
+	assert(/rosterColumns\(kind\)\.map\(columnFor\)/.test(TABLE), "the table ignores the kind");
+	assert(!/ROSTER_COLUMNS\b/.test(TABLE), "the table hard-codes the team's columns");
+	const spent = TABLE.slice(
+		TABLE.indexOf("function SpentCell"),
+		TABLE.indexOf("\n}", TABLE.indexOf("function SpentCell")),
+	);
+	assert(spent.length > 100, "SpentCell was not found");
+	assert(/<MoneyView\b/.test(spent), "Spent is not MoneyView");
+	// Each figure pinned to its own currency: no conversion into the viewer's.
+	const views = spent.split(/<MoneyView\b/).slice(1);
+	assert(views.length >= 2, "one figure and several are not both drawn");
+	for (const view of views) {
+		assert(/displayCurrency=\{figure\.currency\}/.test(view), `a figure converts:${view}`);
+	}
+	assert(/ui-meta-line__sep/.test(spent), "several currencies are not one meta line");
+	assert(!/delta|sign=|tone=/.test(spent), "Spent carries a delta or a direction");
+});
+
 Deno.test("roster gate: the setup meter fills with the kind token, never a fixed severity", () => {
 	const meter = CARD.slice(
 		CARD.indexOf("<ProgressBar"),

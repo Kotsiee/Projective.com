@@ -488,6 +488,27 @@ function periodValue(amounts: RawRosterItem["money_30d"]): string {
 }
 
 /**
+ * The 30-day money as figures, one per currency that moved (`WorkspaceSummary.money30d`): non-positive
+ * and currency-less entries dropped, codes upper-cased, one figure per currency (the larger, should the
+ * read ever repeat one), ordered largest first in MAJOR units — the same comparison
+ * {@link largestAmount} makes for the card's figure — and each formatted in its own currency. Never a
+ * converted or summed figure; `[]` when nothing moved.
+ */
+export function rosterMoney(amounts: RawRosterItem["money_30d"] | null | undefined): MoneyView[] {
+	const byCurrency = new Map<string, number>();
+	for (const a of amounts ?? []) {
+		const minor = Math.trunc(Number(a?.minor) || 0);
+		const currency = (a?.currency ?? "").trim().toUpperCase();
+		if (minor <= 0 || !currency) continue;
+		byCurrency.set(currency, Math.max(minor, byCurrency.get(currency) ?? 0));
+	}
+	const major = (currency: string, minor: number) => minor / 10 ** currencyExponent(currency);
+	return [...byCurrency]
+		.sort(([ca, ma], [cb, mb]) => major(cb, mb) - major(ca, ma) || ca.localeCompare(cb))
+		.map(([currency, minor]) => moneyOf(minor, currency));
+}
+
+/**
  * The three stats a roster card carries, chosen per kind so each number means something: a team's
  * members · live projects · what it earned in 30 days; a business's members · live projects · what it
  * spent. `delta` is always `null` — no honest period-over-period comparison is recorded.

@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "@std/assert";
 import type { WorkspaceKind, WorkspaceSummary } from "@projective/types/workspace";
 import {
+	BUSINESS_ROSTER_COLUMNS,
 	cardFigure,
 	cardMeta,
 	cardPeople,
@@ -16,12 +17,14 @@ import {
 	type RosterCanvasInput,
 	type RosterCanvasState,
 	rosterCanvasState,
+	rosterColumns,
 	rosterCountLine,
 	rosterEmptyCopy,
 	rosterFirstRunCopy,
 	rosterHeadMeta,
 	rosterHref,
 	rosterSearch,
+	rosterSpent,
 	type RosterTab,
 	rosterTabBadge,
 	rosterTabCounts,
@@ -31,6 +34,7 @@ import {
 	rosterTrackWidth,
 	setupPercent,
 	setupUnfinished,
+	spentSortValue,
 	statusSortValue,
 	statusTag,
 	toRosterTab,
@@ -66,6 +70,7 @@ function summary(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary {
 			{ label: "Active projects", value: "2", delta: null },
 			{ label: "Earned (30d)", value: "US$28,500.00", delta: null },
 		],
+		money30d: [],
 		updatedAt: "2026-10-12T09:00:00.000Z",
 		hasUpdate: false,
 		isActing: false,
@@ -393,6 +398,37 @@ Deno.test("roster: first run sells in one sentence from PRODUCT_SPEC, per kind",
 	assertEquals(rosterFirstRunCopy("team", "  ").description, team.description);
 });
 
+Deno.test("roster: a business's first run lists three plain points; a team's lists none (BU1)", () => {
+	assertEquals(rosterFirstRunCopy("team").points, undefined);
+	const points = rosterFirstRunCopy("business").points ?? [];
+	assertEquals(points.length, 3);
+	for (const point of points) {
+		// One sentence each — body text, never a fragment or a paragraph.
+		assertEquals(point.split(/[.!?](\s|$)/).filter((s) => s.trim()).length, 1, point);
+		assert(point.endsWith("."), `a point is not a sentence: ${point}`);
+		// Plain words: no platform jargon in a pitch to somebody who has never made one.
+		assert(!/escrow/i.test(point), `a point says "escrow": ${point}`);
+	}
+	// Caps and the approval threshold are Business Pro (#230 (e)): the third point names the plan
+	// rather than promising them to a free business.
+	assert(points[2].includes("Business Pro"), points[2]);
+	// A withheld create keeps the points and still appends the plan's reason to the sentence.
+	const reason = "Your plan includes no business — upgrade to create one.";
+	const blocked = rosterFirstRunCopy("business", reason);
+	assertEquals(blocked.points, points);
+	assertEquals(blocked.description, `${rosterFirstRunCopy("business").description} ${reason}`);
+	// The points are body text, so the first run still draws exactly one filled control.
+	const controls = rosterCanvasControls({
+		kind: "business",
+		state: "first-run",
+		canCreate: true,
+		filtered: false,
+		readError: false,
+	});
+	assertEquals(controls.map((c) => [c.label, c.tier]), [["Create a business", 2]]);
+	assertEquals(filledCount(controls), 1);
+});
+
 Deno.test("roster: an empty partition explains itself, offers Clear only when filtered, never a create", () => {
 	const copy = (tab: RosterTab, search = "", archivedCount = 0, kind: WorkspaceKind = "team") =>
 		rosterEmptyCopy(kind, { tab, search, archivedCount, stripShown: true });
@@ -595,5 +631,59 @@ Deno.test("roster: status sorts in lifecycle order, not the alphabet", () => {
 	const order = (["archived", "active", "draft"] as const).slice()
 		.sort((a, b) => statusSortValue(a) - statusSortValue(b));
 	assertEquals(order, ["draft", "active", "archived"]);
+});
+
+Deno.test("roster: a business's table adds Spent (30d) before Status; a team's is unchanged (BU1)", () => {
+	assertEquals(rosterColumns("team"), ROSTER_COLUMNS);
+	assertEquals(rosterColumns("business"), BUSINESS_ROSTER_COLUMNS);
+	assertEquals(BUSINESS_ROSTER_COLUMNS.map((c) => c.header), [
+		"Name",
+		"Your role",
+		"Members",
+		"Live projects",
+		"Spent (30d)",
+		"Status",
+		"Updated",
+	]);
+	// Money sits right-aligned with the counts, in tabular figures.
+	assertEquals(
+		BUSINESS_ROSTER_COLUMNS.filter((c) => c.align === "end").map((c) => c.id),
+		["members", "projects", "spent"],
+	);
+	assert(!ROSTER_COLUMNS.some((c) => c.id === "spent"), "a team's table has no Spent column");
+});
+
+Deno.test("roster: a narrowing business table keeps Spent longest, Name and Status never hide", () => {
+	const hideOrder = BUSINESS_ROSTER_COLUMNS.filter((c) => c.priority !== undefined)
+		.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0))
+		.map((c) => c.id);
+	assertEquals(hideOrder, ["updated", "role", "projects", "members", "spent"]);
+	assertEquals(
+		BUSINESS_ROSTER_COLUMNS.filter((c) => c.priority === undefined).map((c) => c.id),
+		["name", "status"],
+	);
+});
+
+Deno.test("roster: Spent (30d) is the server's figures in its order, or nothing when nothing moved", () => {
+	const usd = { minor: 1_250_000, currency: "USD", display: "US$12,500.00", origin: null };
+	const gbp = { minor: 40_000, currency: "GBP", display: "£400.00", origin: null };
+	assertEquals(rosterSpent(summary({ money30d: [] })), null);
+	assertEquals(rosterSpent(summary({ money30d: [usd] })), [usd]);
+	// Several currencies stay several figures, in the server's (largest-first) order — never summed.
+	assertEquals(rosterSpent(summary({ money30d: [usd, gbp] })), [usd, gbp]);
+});
+
+Deno.test("roster: Spent sorts by the largest figure in major units; a row that spent nothing sorts last", () => {
+	const jpy = { minor: 90_000, currency: "JPY", display: "¥90,000", origin: null };
+	const usd = { minor: 100_000, currency: "USD", display: "US$1,000.00", origin: null };
+	// ¥90,000 is 90,000 major units, US$1,000.00 is 1,000 — the exponent, not the minor count, decides.
+	assertEquals(spentSortValue(summary({ money30d: [jpy] })), 90_000);
+	assertEquals(spentSortValue(summary({ money30d: [usd] })), 1_000);
+	assertEquals(spentSortValue(summary({ money30d: [usd, jpy] })), 90_000);
+	assertEquals(spentSortValue(summary({ money30d: [] })), -1);
+	const rows = [summary({ id: "none" }), summary({ id: "usd", money30d: [usd] })];
+	const ranked = rows.slice().sort((a, b) => spentSortValue(b) - spentSortValue(a))
+		.map((r) => r.id);
+	assertEquals(ranked, ["usd", "none"]);
 });
 // #endregion
