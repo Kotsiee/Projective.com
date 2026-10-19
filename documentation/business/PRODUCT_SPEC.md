@@ -238,8 +238,10 @@ are the database's, in
 [`database/org/Functions.md` §6](../database/org/Functions.md#6--the-permission-engines-sql-twin)
 (Decisions #228, #250). A Team adds **custom roles** on top of a preset. The role editor offers
 ready-made **role templates**, kept as data; the first is **Contributor**, a one-click custom role
-based on Member that adds analytics (Decision #250 (a)). Contributor is a template, not a fifth
-preset. Who may use the Teams workspace at all is the freelancer-only rule above (Decision #228 (A)).
+based on Member (Decision #250 (a)). Today it carries the team Member preset's capabilities under
+its own name and summary; whether it should add a grant is open (Decision #264 FLAG (a)).
+Contributor is a template, not a fifth preset. Who may use the Teams workspace at all is the
+freelancer-only rule above (Decision #228 (A)).
 
 ##### Resource Allocation Logic
 

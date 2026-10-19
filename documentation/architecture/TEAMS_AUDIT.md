@@ -45,7 +45,7 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | F4 | Payout-ready to create / join (#196) | `PRODUCT_SPEC.md:1288-1294` | `fn_assert_payout_ready('freelancer')` on create (F1020:978-980) and accept (:1412-1414). Not on `invite_workspace_member` or `save_team_split` (#196 flags b/d still open). | ⚠️ | Open (#196 (b), #234 (b)/(c) — a finance prompt): `save_team_split` / `save_split_rule` run neither gate |
 | F5 | Invitations (named only, 14-day, seat cap incl. pending) | `PRODUCT_MANAGEMENT.md:213` | `invite_* / respond_* / revoke_* / resend_*` (F1020:1229-1542). Join requests / share links cut by design. | ✅ | Compliant — no change |
 | F6 | Role hierarchy + rank (owner 4 · admin 3 · lead 2 · member 1) | `database/org/Functions.md:605` | `org.team_roles` presets + custom roles; `fn_member_role_sync` derives `role` from `base_preset`; removal needs strictly higher rank (F1020:1669-1671). | ✅ | Compliant — no change |
-| F7 | `contributor` role | `PRODUCT_SPEC.md:197` | Absent everywhere | 📄 → Decision #226 (a) | Fixed by #250 (a) — C3's Contributor template (#264); spec by Z1 |
+| F7 | `contributor` role | `PRODUCT_SPEC.md:197` | Absent everywhere | 📄 → Decision #226 (a) | Fixed by #250 (a) — C3's Contributor template (#264); spec by Z1; whether it adds a grant to Member is Open (#264 (a), product) |
 | F8 | Spec RBAC table vs preset bundles | `PRODUCT_SPEC.md:189-198` vs `Functions.md:604` | Bundles diverge (e.g. spec "Lead/Admin = manage splits" but lead lacks `manage_finances`; spec "Member = claim tickets" — not a workspace capability at all) | 📄 → #226 (a) | Fixed by Z1 — PRODUCT_SPEC links `database/org/Functions.md` §6 (#250) |
 | F9 | Team member preset effectively holds only `view_analytics` | (inference) | Member preset = `contribute_funds, view_analytics`; team kind filters `contribute_funds` out (F1020:497, :507-527) | ⚠️ intended? → #226 (f) | Ruled by #250 (f) — kept as built |
 | F10 | Automated split on escrow release | `PRODUCT_SPEC.md:183-185` | `fn_team_split_plan` / `fn_split_team_payout` (`00001200…:106-221`), credits pass the 7-day pending window (#191) | ✅ | Compliant — no change (B5 property probe) |
@@ -192,7 +192,7 @@ Severity: **G** = merge-gate violation (root `CLAUDE.md` §3) · **M** = matrix 
 | :-- | :-- | :-- | :-- | :-- |
 | D39 | G | Inline `style=` (custom properties only) in ~30 places (`--wsp-i` stagger; meter fills; `SplitBar.tsx:294` `${lift}px`) | Stagger: `:nth-child()` + `--wsp-i` set by CSS counter or a `data-i` attribute selector ladder; fills: `ProgressBar value` (ui owns its own style seam). ✅ the split bar's half fixed by C4: `components/SplitBar.tsx` deleted, the payouts module uses the ui `SplitBar` (U4), whose widths ride the package's own `styleVars` seam | Fixed — stagger by W1 (#251), fills by R1, C1, C2, C4, BU2: no `style=` is left in `wsp/` |
 | D40 | M | `useEffect` that only mirrors one signal into another (Spend/Payout/Billing `policyDirty`, `saveRequested`) | `useSignalEffect` / `computed`; keep `useEffect` only for DOM reads (`WorkspaceLane:157`, `SplitBar:163`, focus). ✅ the `policyDirty` / `saveRequested` half fixed by L2: Payouts, Spend and Billing answer the rig through one `usePolicyBridge` (`hooks/usePolicyBridge.ts`, `useSignalEffect` only), which also carries Discard | Fixed by L2 (#258 — `usePolicyBridge`) |
-| D41 | T | Dead CSS: `.wsp-footerrig__action[data-variant]` (chrome 807-818), `.wsp-lane__new` (~299), `.wsp-skel__*` (console ~944) | Delete. | Fixed by W1 (#251) + L2 (#258); the kept `.wsp-footerrig__action` is dead since BU2 — Open (a tidy) |
+| D41 | T | Dead CSS: `.wsp-footerrig__action[data-variant]` (chrome 807-818), `.wsp-lane__new` (~299), `.wsp-skel__*` (console ~944) | Delete. | Fixed by W1 (#251) + L2 (#258); the kept `.wsp-footerrig__action` is dead since BU2 — Open (a workspaces CSS tidy, #258 (g)) |
 | ✅ | — | No `backdrop-filter`; no hex/rgb; no Supabase in islands; no `useState` | Compliant. | Compliant — no change |
 
 ---
@@ -361,10 +361,10 @@ Each is logged under **Decision #226** with a proposal; items marked *needs ruli
 | P0 | P2/P3 persona gate on create menu + `/teams` routes | app | Fixed by B1 (#228 (A)) |
 | P0 | F11 `save_split_rule` + template UI wiring | DB + API + UI | Fixed by B4 (#234) + C4 (#262) |
 | P0 | §4.3 payout-ready assert on ownership transfer | DB | Fixed by B3 |
-| P0 | D1, D4-D6, D9, D11-D12, D17-D20, D25, D34-D35, D38 | UI gates | Fixed by W1 (#251) + R1–R3, L1–L2, C1–C4 (#253–#264) |
+| P0 | D1, D4-D6, D9, D11-D12, D17-D20, D25, D34-D35, D38 | UI gates | Fixed by W1 (#251) + U3/U4, R1–R3, L1–L2, C1–C6 (#253–#264) + BU2 (#246, D19); D1's ui lane controls' own press is Open (packages/ui, #255 — see §2) |
 | P1 | B8 vault-sync backstop triggers | DB | Fixed by B3 |
 | P1 | §4.1 308 canonicalisation split | app | Fixed by B6 (#228 (B)) |
-| P1 | D22-D30 button matrix; TabMenu / ActionMenu / LaneCreateButton parity | UI | Fixed by R1, R3, L1, L2, C3 + BU2 (D30) |
+| P1 | D22-D30 button matrix; TabMenu / ActionMenu / LaneCreateButton parity | UI | Fixed by R1, R2, R3, L1, L2, C3 + BU2 (D30) |
 | P1 | `MetaLine`, tier-2 `LaneCreateButton` in `packages/ui` (+ `DESIGN_SYSTEM.md` §C.1 roster) | ui | Fixed by U1 + U2 |
-| P2 | S3 escrow guard widening (#197 b); W3 dead team W_i column; D14-D16, D39-D41 tidy | DB / UI | Fixed by B5 + C6 (S3), B7 + #235 (W3), W1 (+ R1, C1, C2, C4, BU2 for D39) |
+| P2 | S3 escrow guard widening (#197 b); W3 dead team W_i column; D14-D16, D39-D41 tidy | DB / UI | Fixed by B5 + C6 (S3), B7 + #235 (W3), W1 (+ R1, C1, C2, C4, BU2 for D39; L2 for D40, D41); D15's unit convention (#251 (a), a human) and D41's kept `.wsp-footerrig__action` rule (a workspaces CSS tidy, #258 (g)) Open (see §2) |
 | P2 | Spec corrections once #226 is ruled (`PRODUCT_SPEC.md:189-198, 591, 2975-2981`; PM restore rule) | docs | Fixed by T0 (#228), P1 (#257), C6 (#261) and Z1 |
