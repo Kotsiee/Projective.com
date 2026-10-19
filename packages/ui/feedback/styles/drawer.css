@@ -90,7 +90,7 @@
 	margin: 0;
 	min-inline-size: 0;
 	font-size: var(--text-lg);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 	line-height: var(--leading-tight);
 }
 .ui-drawer__actions {
