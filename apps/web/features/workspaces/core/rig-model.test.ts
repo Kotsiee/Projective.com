@@ -1,7 +1,10 @@
 import { assert, assertEquals } from "@std/assert";
 import type { WorkspaceKind } from "@projective/types/workspace";
 import {
+	editorOpen,
+	inviteOpensInPlace,
 	POLICY_MODULES,
+	PROFILE_EDITOR_MODULE,
 	rigFilledCount,
 	type RigInput,
 	rigModel,
@@ -40,6 +43,7 @@ function inConsole(overrides: Partial<RigInput> = {}): RigInput {
 		canInvite: true,
 		canManageMoney: true,
 		canManageSettings: true,
+		canEditProfile: true,
 		dirty: false,
 		saveState: "idle",
 		...overrides,
@@ -65,6 +69,7 @@ Deno.test("rig: never more than one filled control, in any state", () => {
 							canInvite: allowed,
 							canManageMoney: allowed,
 							canManageSettings: allowed,
+							canEditProfile: allowed,
 						}));
 						assert(rigFilledCount(model) <= 1, `${kind}/${module}`);
 					}
@@ -88,11 +93,46 @@ Deno.test("rig: Save (tier 3) and Discard (tier 5) render only while the editor 
 	}
 });
 
-Deno.test("rig: no Save without the money right, nor outside a policy editor", () => {
+Deno.test("rig: no Save without the money right, nor outside an editor", () => {
 	assert(!keys(inConsole({ dirty: true, canManageMoney: false })).includes("save"));
-	for (const module of ["overview", "members", "roles", "settings"]) {
+	for (const module of ["overview", "members", "roles"]) {
 		assert(!keys(inConsole({ module, dirty: true })).includes("save"), module);
 	}
+});
+
+Deno.test("rig: Settings' name and visibility save through the same tier-3 Save (C6)", () => {
+	const settings = inConsole({ module: PROFILE_EDITOR_MODULE, dirty: true });
+	assertEquals(keys(settings), ["invite", "discard", "save"]);
+	assertEquals(rigFilledCount(rigModel(settings)), 1);
+	// The identity editor answers edit_profile — not the money right, not manage_settings.
+	const team = { kind: "team" } as const;
+	assert(editorOpen({ ...team, module: "settings", canManageMoney: false, canEditProfile: true }));
+	assert(!editorOpen({ ...team, module: "settings", canManageMoney: true, canEditProfile: false }));
+	assert(!editorOpen({ ...team, module: "payouts", canManageMoney: false, canEditProfile: true }));
+	assertEquals(keys(inConsole({ module: "settings", dirty: true, canEditProfile: false })), [
+		"invite",
+	]);
+});
+
+Deno.test("rig: a business's Settings is not an editor — only a team's mounts one (C6)", () => {
+	// /businesses/:handle/settings is still a placeholder: no status line, no Save, the utilities' fold.
+	assert(
+		!editorOpen({
+			kind: "business",
+			module: "settings",
+			canManageMoney: true,
+			canEditProfile: true,
+		}),
+	);
+	for (const dirty of [false, true]) {
+		const business = rigModel(inConsole({ kind: "business", module: "settings", dirty }));
+		assertEquals(business.statusLine, false);
+		assertEquals(business.status, null);
+		assertEquals(business.holds, "utilities");
+		assertEquals(business.actions.map((a) => a.key), ["invite"]);
+	}
+	// A business's money editors are unchanged.
+	assert(rigModel(inConsole({ kind: "business", module: "spend" })).statusLine);
 });
 
 Deno.test("rig: the commit is 'Save' beside 'Discard' — the status line already says 'changes'", () => {
@@ -108,7 +148,9 @@ Deno.test("rig: what the trailing side holds — the width its words need before
 		"create",
 	);
 	for (const module of MODULES) {
-		const holds = POLICY_MODULES.includes(module) ? "editor" : "utilities";
+		const holds = POLICY_MODULES.includes(module) || module === PROFILE_EDITOR_MODULE
+			? "editor"
+			: "utilities";
 		assertEquals(rigModel(inConsole({ module })).holds, holds, module);
 		// Outside a policy editor a dirty flag changes nothing the rig holds.
 		if (holds === "utilities") {
@@ -157,7 +199,9 @@ Deno.test("rig: the status line stays mounted for the whole life of a policy edi
 		}
 	}
 	assert(!rigModel(inConsole({ canManageMoney: false })).statusLine);
-	for (const module of ["overview", "members", "settings"]) {
+	assert(rigModel(inConsole({ module: "settings" })).statusLine, "Settings is an editor too");
+	assert(!rigModel(inConsole({ module: "settings", canEditProfile: false })).statusLine);
+	for (const module of ["overview", "members"]) {
 		assert(!rigModel(inConsole({ module })).statusLine, module);
 	}
 	assert(!rigModel(inConsole({ handle: null, module: null })).statusLine);
@@ -166,14 +210,41 @@ Deno.test("rig: the status line stays mounted for the whole life of a policy edi
 
 // #region Utilities and links
 Deno.test("rig: Invite opens in place where the modal is mounted, links to Members elsewhere", () => {
-	for (const module of ["members", "invitations"]) {
-		const invite = rigModel(inConsole({ module })).actions.find((a) => a.key === "invite");
-		assert(invite?.control === "button" && invite.tier === 4, module);
+	for (const kind of ["team", "business"] as WorkspaceKind[]) {
+		for (const module of ["members", "invitations"]) {
+			const invite = rigModel(inConsole({ kind, module })).actions.find((a) => a.key === "invite");
+			assert(invite?.control === "button" && invite.tier === 4, `${kind} ${module}`);
+		}
 	}
+	// A team's Projects mounts the modal (its allowance band invites a team short of members), so the
+	// rig's Invite there opens it too rather than leaving the page.
+	const projects = rigModel(inConsole({ module: "projects" })).actions.find((a) =>
+		a.key === "invite"
+	);
+	assert(projects?.control === "button" && projects.tier === 4);
 	const invite = rigModel(inConsole({ module: "payouts" })).actions.find((a) => a.key === "invite");
 	assert(invite?.control === "link");
 	assertEquals(invite.href, "/teams/north-loop/members?invite=1");
+	// A business's Projects hands off and mounts no modal.
+	const business = rigModel(inConsole({ kind: "business", handle: "acme", module: "projects" }))
+		.actions.find((a) => a.key === "invite");
+	assert(business?.control === "link");
+	assertEquals(business.href, "/businesses/acme/members?invite=1");
 	assert(!keys(inConsole({ canInvite: false })).includes("invite"));
+});
+
+Deno.test("rig: inviteOpensInPlace names exactly the screens that mount the invite modal", () => {
+	for (const kind of ["team", "business"] as WorkspaceKind[]) {
+		for (const module of [...MODULES, null]) {
+			const expected = module === "members" || module === "invitations" ||
+				(kind === "team" && module === "projects");
+			assertEquals(inviteOpensInPlace(kind, module), expected, `${kind} ${module}`);
+		}
+	}
+	// The screens that answer `true` really mount it.
+	const projects = source("../islands/TeamProjectsScreen.island.tsx");
+	assert(/<InviteModal\b/.test(projects), "TeamProjectsScreen mounts no InviteModal");
+	assert(/<InviteModal\b/.test(source("../islands/MembersScreen.island.tsx")));
 });
 
 Deno.test("rig: Settings is a link, never offered on Settings itself", () => {
@@ -190,6 +261,16 @@ Deno.test("rig: the roster index holds the zoom and New (tier 4) — or nothing 
 	assertEquals(roster.zoom, { label: "Teams view zoom" });
 	assertEquals(roster.actions, [{ key: "create", control: "button", tier: 4, label: "New team" }]);
 	assertEquals(rigModel(inConsole({ handle: null, module: null, canCreate: false })).actions, []);
+});
+
+Deno.test("rig: the roster's first run offers no New — the canvas's empty state carries the create", () => {
+	for (const kind of ["team", "business"] as WorkspaceKind[]) {
+		const first = rigModel(inConsole({ kind, handle: null, module: null, firstRun: true }));
+		assertEquals(first.actions, [], kind);
+		assertEquals(rigFilledCount(first), 0, kind);
+	}
+	// Inside a console the roster's first run means nothing.
+	assertEquals(keys(inConsole({ module: "members", firstRun: true })), ["invite", "settings"]);
 });
 // #endregion
 
@@ -315,6 +396,7 @@ Deno.test("policy editors answer Save and Discard through usePolicyBridge, never
 			"../islands/PayoutPolicyScreen.island.tsx",
 			"../islands/SpendPolicyScreen.island.tsx",
 			"../islands/BillingScreen.island.tsx",
+			"../islands/TeamSettingsScreen.island.tsx",
 		]
 	) {
 		const text = source(file);

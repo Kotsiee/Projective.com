@@ -1,7 +1,11 @@
 import { computed, signal } from "@preact/signals";
-import type { WorkspaceDetail, WorkspaceKind } from "@projective/types/workspace";
+import type {
+	ArchiveBlockerCode,
+	WorkspaceDetail,
+	WorkspaceKind,
+} from "@projective/types/workspace";
 import { peopleZoom, viewMode } from "./view-state.ts";
-import type { RosterTab } from "./workspace-model.ts";
+import type { RosterTab } from "./roster-model.ts";
 import type { ModuleCommit } from "./header-model.ts";
 import type { SaveState } from "./rig-model.ts";
 import { MEMBERS_CHART, type SubView, subViewSearch } from "./sub-views.ts";
@@ -54,6 +58,26 @@ export function clearDetail(): void {
 
 /** The published detail's viewer capabilities, or an empty set before anything is published. */
 export const liveCapabilities = computed(() => liveDetail.value?.viewerCapabilities ?? []);
+// #endregion
+
+// #region Archive refusal relay (Settings body → header band)
+/** What a refused archive named, and the entity it refused. */
+export interface ArchiveRefusal {
+	/** The entity the server refused to archive (`WorkspaceDetail.id`). */
+	id: string;
+	/** The blocker codes the refusal named, in the server's order — never empty. */
+	codes: readonly ArchiveBlockerCode[];
+}
+
+/**
+ * The blockers a refused archive named since the last read, or `null` — the server's own answer, not
+ * a local guess. Settings (Teams C6) publishes it the moment the archive door refuses: Settings shows
+ * the codes in the button's place, and the header band withholds its Archive… for that entity, so no
+ * root keeps offering a control the server has just refused, even when the re-read that would bring
+ * the counted blockers fails. Settings clears it when it adopts a re-read detail (which carries the
+ * blockers itself) and when it unmounts.
+ */
+export const archiveRefusal = signal<ArchiveRefusal | null>(null);
 // #endregion
 
 // #region Create modal (roster empty state · lane `＋` · header action)
@@ -171,19 +195,39 @@ export function membersViewFor(view: string | null): MembersView {
 export type RosterView = "grid" | "table";
 
 /**
- * The roster index's PARTITION (All · Owned · Member · Invitations · Archived) — one value for every
- * root that offers it: the lane's context controls and the roster canvas.
+ * The roster index's PARTITION (All · Owned · Member · Invitations · Archived) — ONE value for every
+ * root that offers it: the lane's segmented control and the canvas's TabMenu both write it through
+ * {@link selectRosterTab}, and each mirrors it into its own control's binding (the lane's segmented
+ * value, the TabMenu's active index), so the two controls always show the same partition.
  *
- * `null` until a control on either root picks one. Each root renders its server-resolved `?tab=` prop
- * until then, so the first painted byte and the first hydrated frame agree, and a module-level value
- * written during one request's SSR can never leak into the next request's render. A root that offers
- * the partition mirrors this value into its own control once it is set (`useSignalEffect`).
+ * `null` until a control on either root picks one. Each root renders its server-resolved `?view=`
+ * prop until then ({@link rosterTabOr}), so the first painted byte and the first hydrated frame agree,
+ * and a module-level value written during one request's SSR can never leak into the next request's
+ * render. The canvas keeps the address in step (`replaceState`, from a `useSignalEffect`).
  */
 export const rosterTab = signal<RosterTab | null>(null);
 
 /** Pick the roster partition on every root that shows it. */
 export function selectRosterTab(tab: RosterTab): void {
 	rosterTab.value = tab;
+}
+
+/** The partition a root renders: the one a control picked, else its own server-resolved value. */
+export function rosterTabOr(resolved: RosterTab): RosterTab {
+	return rosterTab.value ?? resolved;
+}
+
+/**
+ * Whether the roster index is in its FIRST RUN (`roster-model.ts` `isFirstRun`) — published by the
+ * canvas, which alone sees a retried read or an answered invitation change it, and read by the lane,
+ * whose footer withholds its create while the canvas's empty state carries it. `null` until the
+ * canvas publishes; the lane then reads the same rule over its own SSR roster.
+ */
+export const rosterFirstRun = signal<boolean | null>(null);
+
+/** Publish the canvas's first-run reading to the other roots. */
+export function publishRosterFirstRun(firstRun: boolean): void {
+	rosterFirstRun.value = firstRun;
 }
 
 /**

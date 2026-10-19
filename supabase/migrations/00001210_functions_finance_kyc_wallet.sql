@@ -685,6 +685,12 @@ BEGIN
         IF NOT finance.fn_can_move_wallet_funds(v_to.id) THEN
             RAISE EXCEPTION 'Not authorised to move funds into this wallet.' USING ERRCODE = '42501';
         END IF;
+
+        -- A simulation never reaches a state the real doors refuse: an archived business takes no
+        -- money in (Decision #248 (k)).
+        IF v_to.owner_type = 'business' THEN
+            PERFORM org.fn_assert_business_not_archived(v_to.owner_id);
+        END IF;
     END IF;
 
     v_reason := 'simulated_' || p_type;
@@ -770,7 +776,8 @@ $$;
 COMMENT ON FUNCTION finance.simulate_wallet_transaction(uuid, uuid, bigint, text, text) IS
 'DEVELOPER SIMULATOR — moves REAL money. Refuses unless security.platform_params
 finance_simulation_enabled is true (seeded false; flipping it needs human sign-off), refuses an
-unauthenticated caller, and requires finance.fn_can_move_wallet_funds on every wallet touched.
+unauthenticated caller, and requires finance.fn_can_move_wallet_funds on every wallet touched; never
+credits an archived business (55000 business_not_active).
 Writes genuine finance.transactions lines tagged reason = simulated_<type>, ref_table = simulation.
 Never converts currency. EXECUTE is granted to authenticated only.';
 -- #endregion
@@ -1954,6 +1961,11 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'You can only transfer between your own wallets' USING ERRCODE = '42501';
     END IF;
+    -- Money landing in a business wallet is a contribution: a draft takes it, an archived business
+    -- takes nothing in (Decision #248 (k)).
+    IF v_to.owner_type = 'business' THEN
+        PERFORM org.fn_assert_business_not_archived (v_to.owner_id);
+    END IF;
     IF v_from.currency <> v_to.currency THEN
         RAISE EXCEPTION 'Both wallets must hold % — a transfer is not a currency conversion', v_from.currency
             USING ERRCODE = 'PX409';
@@ -2002,9 +2014,10 @@ COMMENT ON FUNCTION finance.transfer_funds(uuid, uuid, bigint, text, text) IS
 'Move money between two of the caller''s own wallets (their personal wallet and the vaults they belong
 to), same currency only. Leaving a vault needs the withdraw capability and the member''s spending limit;
 leaving a business wallet passes finance.fn_assert_business_spend (KYB, the envelope, the approval
-threshold). Landing needs membership. Idempotent on the attempt key. Refusals: 42501 not allowed ·
-22023 bad input or key · PB404 wallet gone · PX409 different currencies · PK403 KYB · PA403 spending
-limit or approval · PF402 not enough.';
+threshold). Landing needs membership, and never lands in an archived business''s wallet. Idempotent on
+the attempt key. Refusals: 42501 not allowed · 22023 bad input or key · PB404 wallet gone · PX409
+different currencies · 55000 business_not_active (an archived destination, or a source the spend gate
+refuses) · PK403 KYB · PA403 spending limit or approval · PF402 not enough.';
 
 -- Distribute part of a TEAM vault to its members by their agreed stakes
 -- (`finance.contribution_agreements.percent_bp`, active members only). Each share is floored to the
@@ -2133,7 +2146,7 @@ PF402 not enough · PD422 no split agreed.';
 -- workspace capability of the same name, projected onto the vault — manage_members implies it) and
 -- not be the person who asked: approving one's own over-cap spend would make the cap decorative. A
 -- request past its expiry is marked expired rather than decided; a decided request — approved (spent
--- or not), rejected or expired — is never decided again. Approving does not move money: the spend is
+-- or not), rejected, expired or withdrawn by its requester — is never decided again. Approving does not move money: the spend is
 -- made by the door it was filed for, which redeems it (finance.fn_redeem_spend_approval). An approved
 -- ticket request is the one exception that is acted on at once — the auto-fund queue is retried.
 CREATE OR REPLACE FUNCTION finance.decide_spend_approval(p_approval uuid, p_decision text)
@@ -2171,6 +2184,9 @@ BEGIN
     IF v_row.status = 'expired'::finance.approval_status THEN
         RAISE EXCEPTION 'That request has expired' USING ERRCODE = 'PC409';
     END IF;
+    IF v_row.status = 'withdrawn'::finance.approval_status THEN
+        RAISE EXCEPTION 'That request was withdrawn' USING ERRCODE = 'PC409';
+    END IF;
     IF v_row.status <> 'pending'::finance.approval_status THEN
         RAISE EXCEPTION 'That request has already been decided' USING ERRCODE = 'PC409';
     END IF;
@@ -2205,7 +2221,7 @@ COMMENT ON FUNCTION finance.decide_spend_approval(uuid, text) IS
 'Approve or reject a pending over-cap spend request. The decider needs approve_spend on the account and
 may not be the requester; an expired request is marked expired. Notifies the requester; an approved
 ticket request retries the auto-fund queue. Refusals: 42501 · 22023 · PB404 · PC409 already decided,
-spent or expired.';
+spent, expired or withdrawn by its requester.';
 
 -- Spend an approval: the one way an approved request lets money move (BUSINESSES_AUDIT BF20 / §4.3).
 -- Called by the spend gate (finance.fn_assert_business_spend) on its over-cap and threshold paths,
@@ -2456,7 +2472,16 @@ $$;
 -- honest gross is the team's oldest escrow still held; a team with none has no projection (`gross`
 -- NULL) rather than an invented one. The fee is that escrow's payer's rate (fn_escrow_fee_bp), the one
 -- the release will charge, truncated as the release truncates (Decision #187).
-CREATE OR REPLACE FUNCTION finance.preview_team_split(p_team_id uuid)
+--
+-- With `p_gross_minor` (1 … 10^12 minor units) it prices a release of THAT size instead — the Payouts
+-- module's Preview: the platform's standard fee rate (no payer, so no negotiated rate), truncated the
+-- same way, then the team's stored rule and stakes through the same plan. Either answer carries the
+-- active rule's `finder_bp` beside the plan, so every cut can be labelled with its rate.
+--
+-- Either answer exposes the split rule (the vault and finder cuts, the finder) and every stake, which
+-- Decision #233 (b) answers only to a `manage_finances` holder — the detail's payout block, which calls
+-- this, is built for nobody else — so a member without it is refused (`42501 payout:`).
+CREATE OR REPLACE FUNCTION finance.preview_team_split(p_team_id uuid, p_gross_minor bigint DEFAULT NULL)
 RETURNS jsonb
 LANGUAGE plpgsql
 STABLE
@@ -2468,11 +2493,37 @@ DECLARE
     v_fee_bp integer;
     v_fee bigint;
     v_payout bigint;
+    v_finder_bp integer;
 BEGIN
     IF auth.uid() IS NULL OR NOT EXISTS (
         SELECT 1 FROM org.fn_member_seat('team', p_team_id, auth.uid())
     ) THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'workspace: you are not a member of this team';
+    END IF;
+    IF NOT org.fn_member_can('team', p_team_id, 'manage_finances') THEN
+        RAISE EXCEPTION USING ERRCODE = '42501',
+            MESSAGE = 'payout: only members who manage the team''s finances can preview its split';
+    END IF;
+    SELECT r.finder_bp INTO v_finder_bp
+      FROM finance.split_rules r
+     WHERE r.team_id = p_team_id AND r.active AND r.rule_type = 'finders_fee';
+    IF p_gross_minor IS NOT NULL THEN
+        IF p_gross_minor < 1 OR p_gross_minor > 1000000000000 THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = 'gross_minor: preview an amount from 1 to 1000000000000 minor units';
+        END IF;
+        v_fee_bp := finance.fn_escrow_fee_bp(NULL, NULL);
+        v_fee := (p_gross_minor * v_fee_bp) / 10000;
+        v_payout := GREATEST(p_gross_minor - v_fee, 0);
+        RETURN jsonb_build_object(
+            'escrow_id', NULL,
+            'gross_minor', p_gross_minor,
+            'currency', NULL,
+            'fee_minor', v_fee,
+            'fee_bp', v_fee_bp,
+            'finder_bp', v_finder_bp,
+            'plan', finance.fn_team_split_plan(p_team_id, v_payout)
+        );
     END IF;
     SELECT e.id, e.amount_cents, COALESCE(e.deadline_bonus_cents, 0) AS bonus, e.currency,
            e.payer_business_id, e.payer_user_id
@@ -2483,7 +2534,7 @@ BEGIN
      LIMIT 1;
     IF v_escrow.id IS NULL THEN
         RETURN jsonb_build_object('gross_minor', NULL, 'currency', NULL, 'fee_minor', NULL, 'fee_bp', NULL,
-            'plan', finance.fn_team_split_plan(p_team_id, 0));
+            'finder_bp', v_finder_bp, 'plan', finance.fn_team_split_plan(p_team_id, 0));
     END IF;
     v_fee_bp := finance.fn_escrow_fee_bp(v_escrow.payer_business_id, v_escrow.payer_user_id);
     v_fee := (v_escrow.amount_cents * v_fee_bp) / 10000;
@@ -2494,6 +2545,7 @@ BEGIN
         'currency', v_escrow.currency,
         'fee_minor', v_fee,
         'fee_bp', v_fee_bp,
+        'finder_bp', v_finder_bp,
         'plan', finance.fn_team_split_plan(p_team_id, v_payout)
     );
 END;
@@ -2507,7 +2559,13 @@ $$;
 --                              approver" is expressed with a per-transaction ceiling of 0 instead);
 --   approver_ids / contributor_ids   the members (by member id) who hold `approve_spend` /
 --                              `contribute_funds` — everyone else does not;
---   limits  [{member_id, can_spend, limit_minor, per_transaction_minor}]
+--   limits  [{member_id, can_spend?, limit_minor?, per_transaction_minor?, period?}] — each entry is
+--                              itself a patch: a key present is a change, so an editor sends only
+--                              what moved (restating a stored ceiling is a ceiling being SET, which
+--                              Business Free refuses). `period` is weekly · monthly · total; changing
+--                              it carries the spend counted in the current window over (none, once
+--                              that window has lapsed) and restarts the window at the new period's
+--                              next boundary — never a reset of what has been spent (BU2, #246).
 -- Every change to a member is subject to the same rules as the member drawer: never your own row,
 -- never the owner's, only somebody you outrank, and never a capability you do not hold yourself.
 CREATE OR REPLACE FUNCTION finance.save_spend_policy(p_business_id uuid, p_patch jsonb)
@@ -2533,6 +2591,9 @@ DECLARE
     v_key text;
     v_limit bigint;
     v_per_tx bigint;
+    v_period text;
+    v_stored_cap bigint;
+    v_stored_period text;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
@@ -2593,6 +2654,9 @@ BEGIN
     END LOOP;
 
     IF p_patch ? 'limits' THEN
+        IF jsonb_typeof(p_patch->'limits') <> 'array' THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'limits: expected a list';
+        END IF;
         FOR l IN SELECT * FROM jsonb_array_elements(p_patch->'limits') LOOP
             SELECT m.id, m.user_id, org.fn_preset_rank(m.role) AS rank INTO r
               FROM org.business_members m
@@ -2603,6 +2667,10 @@ BEGIN
             IF r.user_id = v_owner OR r.user_id = v_uid OR r.rank >= v_actor_rank THEN
                 RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'limits: you cannot change this member''s limit';
             END IF;
+            v_period := CASE WHEN l ? 'period' THEN COALESCE(l->>'period', '') END;
+            IF v_period IS NOT NULL AND v_period NOT IN ('weekly', 'monthly', 'total') THEN
+                RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'limits: a period is weekly, monthly or total';
+            END IF;
             IF l ? 'can_spend' THEN
                 v_want := (l->>'can_spend')::boolean;
                 IF v_want AND NOT ('spend_funds' = ANY (v_actor)) THEN
@@ -2610,20 +2678,44 @@ BEGIN
                 END IF;
                 PERFORM org.fn_set_member_capability('business', r.id, 'spend_funds', v_want);
             END IF;
-            IF l ? 'limit_minor' OR l ? 'per_transaction_minor' THEN
+            IF l ? 'limit_minor' OR l ? 'per_transaction_minor' OR v_period IS NOT NULL THEN
                 v_limit := NULLIF(l->>'limit_minor', '')::bigint;
                 v_per_tx := NULLIF(l->>'per_transaction_minor', '')::bigint;
                 IF (v_limit IS NOT NULL AND v_limit < 0) OR (v_per_tx IS NOT NULL AND v_per_tx < 0) THEN
                     RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'limits: a limit cannot be negative';
                 END IF;
-                IF v_limit IS NOT NULL OR v_per_tx IS NOT NULL THEN
+                v_stored_cap := NULL;
+                v_stored_period := NULL;
+                SELECT sl.cap_cents, sl.period_interval INTO v_stored_cap, v_stored_period
+                  FROM finance.spending_limits sl WHERE sl.wallet_id = v_wallet AND sl.member_user_id = r.user_id;
+                -- Setting a ceiling is Business Pro's; so is moving the window of a ceiling the row keeps.
+                -- Clearing one, or a period on a member with no ceiling, never is.
+                IF (l ? 'limit_minor' AND v_limit IS NOT NULL)
+                   OR (l ? 'per_transaction_minor' AND v_per_tx IS NOT NULL)
+                   OR (v_period IS NOT NULL AND v_period IS DISTINCT FROM COALESCE(v_stored_period, 'monthly')
+                       AND CASE WHEN l ? 'limit_minor' THEN v_limit ELSE v_stored_cap END IS NOT NULL) THEN
                     PERFORM finance.fn_assert_business_entitlement(p_business_id, 'pooled_wallet_full'::finance.entitlement_key);
                 END IF;
-                INSERT INTO finance.spending_limits (wallet_id, member_user_id, cap_cents, per_transaction_cents)
-                VALUES (v_wallet, r.user_id, v_limit, v_per_tx)
+                -- A changed period restarts the window at its next boundary (fn_check_spending_limit's);
+                -- what the current window counted carries over, unless that window has already lapsed.
+                INSERT INTO finance.spending_limits (wallet_id, member_user_id, cap_cents, per_transaction_cents, period_interval, resets_at)
+                VALUES (v_wallet, r.user_id, v_limit, v_per_tx, COALESCE(v_period, 'monthly'),
+                        CASE v_period
+                            WHEN 'weekly' THEN date_trunc('week', now()) + interval '1 week'
+                            WHEN 'monthly' THEN date_trunc('month', now()) + interval '1 month'
+                        END)
                 ON CONFLICT (wallet_id, member_user_id) DO UPDATE
                     SET cap_cents = CASE WHEN l ? 'limit_minor' THEN EXCLUDED.cap_cents ELSE finance.spending_limits.cap_cents END,
-                        per_transaction_cents = CASE WHEN l ? 'per_transaction_minor' THEN EXCLUDED.per_transaction_cents ELSE finance.spending_limits.per_transaction_cents END;
+                        per_transaction_cents = CASE WHEN l ? 'per_transaction_minor' THEN EXCLUDED.per_transaction_cents ELSE finance.spending_limits.per_transaction_cents END,
+                        period_interval = CASE WHEN v_period IS NOT NULL THEN EXCLUDED.period_interval ELSE finance.spending_limits.period_interval END,
+                        spent_cents = CASE
+                            WHEN v_period IS NULL OR v_period = finance.spending_limits.period_interval THEN finance.spending_limits.spent_cents
+                            WHEN finance.spending_limits.period_interval <> 'total' AND finance.spending_limits.resets_at IS NOT NULL
+                                 AND finance.spending_limits.resets_at <= now() THEN 0
+                            ELSE finance.spending_limits.spent_cents END,
+                        resets_at = CASE
+                            WHEN v_period IS NULL OR v_period = finance.spending_limits.period_interval THEN finance.spending_limits.resets_at
+                            ELSE EXCLUDED.resets_at END;
             END IF;
         END LOOP;
     END IF;
@@ -2648,8 +2740,9 @@ $$;
 -- and the same people — `manage_finances` or `approve_spend` holders — see every member's defaults.
 --
 -- `p_patch` is a finance.save_spend_policy patch (or NULL): its `limits` entries replace what they name
--- — `can_spend`, `limit_minor`, `per_transaction_minor`, each only when present — so a draft is priced
--- against the period's real spend. Read by org.get_workspace_detail and finance.preview_spend_envelope,
+-- — `can_spend`, `limit_minor`, `per_transaction_minor`, `period`, each only when present — so a draft
+-- is priced against the period's real spend (a draft period carries that spend over, as the save
+-- does). Read by org.get_workspace_detail and finance.preview_spend_envelope,
 -- so the console and the draft preview cannot disagree. Internal.
 CREATE OR REPLACE FUNCTION finance.fn_business_envelopes(p_business uuid, p_wallet uuid, p_patch jsonb DEFAULT NULL)
 RETURNS jsonb
@@ -2686,7 +2779,9 @@ BEGIN
                    CASE WHEN p.l ? 'limit_minor' THEN NULLIF(p.l->>'limit_minor', '')::bigint ELSE sl.cap_cents END AS cap,
                    CASE WHEN p.l ? 'per_transaction_minor' THEN NULLIF(p.l->>'per_transaction_minor', '')::bigint
                         ELSE sl.per_transaction_cents END AS per_tx,
-                   COALESCE(sl.period_interval, 'monthly') AS period,
+                   CASE WHEN p.l->>'period' IN ('weekly', 'monthly', 'total') THEN p.l->>'period'
+                        ELSE COALESCE(sl.period_interval, 'monthly') END AS period,
+                   -- A draft period carries the window's spend over, as the save does.
                    CASE WHEN sl.id IS NULL THEN 0
                         WHEN sl.period_interval <> 'total' AND sl.resets_at IS NOT NULL AND sl.resets_at <= now() THEN 0
                         ELSE sl.spent_cents END AS spent
@@ -2759,6 +2854,9 @@ BEGIN
             IF COALESCE(NULLIF(l->>'limit_minor', '')::bigint, 0) < 0
                OR COALESCE(NULLIF(l->>'per_transaction_minor', '')::bigint, 0) < 0 THEN
                 RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'limits: a limit cannot be negative';
+            END IF;
+            IF l ? 'period' AND COALESCE(l->>'period', '') NOT IN ('weekly', 'monthly', 'total') THEN
+                RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'limits: a period is weekly, monthly or total';
             END IF;
         END LOOP;
     END IF;
@@ -2898,6 +2996,131 @@ BEGIN
     RETURN jsonb_build_object('id', v_id, 'status', 'pending');
 END;
 $$;
+
+-- Take back one's own spend request while it waits (BU2, Decision #246). Only the member who filed it,
+-- only while it is pending: it becomes `withdrawn` — terminal, `decided_at` stamped as the moment it
+-- left pending, no approver — so it is never decided or redeemed, and its ref holds no open request any
+-- more (the checkout offers Request approval again). A request already past its expiry is marked
+-- `expired` instead, exactly as a decision would mark it. No money moves, and the approvers' earlier
+-- "a spend needs your approval" notifications are left as they are.
+CREATE OR REPLACE FUNCTION finance.withdraw_spend_approval(p_approval uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_row finance.spend_approvals;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+    END IF;
+    SELECT * INTO v_row FROM finance.spend_approvals WHERE id = p_approval FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION USING ERRCODE = 'PB404', MESSAGE = 'request: not found';
+    END IF;
+    IF v_row.requested_by <> v_uid THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'request: only the member who asked can withdraw it';
+    END IF;
+    IF v_row.status = 'withdrawn'::finance.approval_status THEN
+        RAISE EXCEPTION USING ERRCODE = 'PC409', MESSAGE = 'request: it has already been withdrawn';
+    END IF;
+    IF v_row.status <> 'pending'::finance.approval_status THEN
+        RAISE EXCEPTION USING ERRCODE = 'PC409', MESSAGE = 'request: it has already been decided';
+    END IF;
+    IF v_row.expires_at IS NOT NULL AND v_row.expires_at <= now() THEN
+        UPDATE finance.spend_approvals SET status = 'expired'::finance.approval_status WHERE id = v_row.id;
+        RETURN jsonb_build_object('id', v_row.id, 'status', 'expired');
+    END IF;
+    UPDATE finance.spend_approvals
+       SET status = 'withdrawn'::finance.approval_status, decided_at = now()
+     WHERE id = v_row.id;
+    INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
+    VALUES (v_uid, 'business.spend_request_withdrawn', 'finance.spend_approvals', v_row.id,
+            jsonb_build_object('wallet_id', v_row.wallet_id, 'ref_table', v_row.ref_table,
+                               'ref_id', v_row.ref_id, 'amount_minor', v_row.amount_cents));
+    RETURN jsonb_build_object('id', v_row.id, 'status', 'withdrawn');
+END;
+$$;
+
+COMMENT ON FUNCTION finance.withdraw_spend_approval(uuid) IS
+'The requester takes back their own pending spend request: status withdrawn, decided_at stamped, no
+approver (a lapsed one is marked expired instead). Audited; moves no money. Refusals: 42501 sign in /
+not the requester · PB404 not found · PC409 already withdrawn or decided.';
+
+-- What a spend request is for, as the Spend module names it (BU2, Decision #246): the row its ref points
+-- at, read here so the console's one read answers it. `opens` is whether the CALLER may open that thing —
+-- a project by the same predicates as the projects SELECT policies, a basket by its owner's visibility, an
+-- invoice by the billing right — so a screen links only what lands. Keys by ref table:
+--   baskets         title (the basket's name), item (its first live line), items (live lines)
+--   tickets         title, project_title, project_slug, ticket_slug
+--   project_stages  title (the stage), project_title, project_slug, stage_slug
+--   revisions       title (the round's ticket), stage_title, project_title, project_slug, stage_slug,
+--                   ticket_slug
+--   invoices        invoice_type, period_start, due_at, stage_title
+--   transfers       owner_type (the destination wallet's)
+-- `{}` when the row is gone. Internal: called by org.get_workspace_detail for requests the caller may read.
+CREATE OR REPLACE FUNCTION finance.fn_spend_ref(p_ref_table text, p_ref_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v jsonb;
+BEGIN
+    IF p_ref_table = 'baskets' THEN
+        SELECT jsonb_build_object(
+                   'title', b.name,
+                   'item', (SELECT bi.title FROM finance.basket_items bi
+                             WHERE bi.basket_id = b.id AND bi.removed_at IS NULL AND bi.purchased_at IS NULL
+                             ORDER BY bi.position, bi.created_at LIMIT 1),
+                   'items', (SELECT count(*) FROM finance.basket_items bi
+                              WHERE bi.basket_id = b.id AND bi.removed_at IS NULL AND bi.purchased_at IS NULL),
+                   'opens', finance.fn_owner_visible(b.owner_type, b.owner_id))
+          INTO v FROM finance.baskets b WHERE b.id = p_ref_id;
+    ELSIF p_ref_table = 'tickets' THEN
+        SELECT jsonb_build_object(
+                   'title', t.title, 'project_title', p.title, 'project_slug', p.slug, 'ticket_slug', t.slug,
+                   'opens', projects.can_review_project(p.id) OR projects.has_project_access(p.id))
+          INTO v FROM projects.tickets t JOIN projects.projects p ON p.id = t.project_id WHERE t.id = p_ref_id;
+    ELSIF p_ref_table = 'project_stages' THEN
+        SELECT jsonb_build_object(
+                   'title', ps.name, 'project_title', p.title, 'project_slug', p.slug, 'stage_slug', ps.slug,
+                   'opens', projects.can_review_project(p.id) OR projects.has_project_access(p.id))
+          INTO v FROM projects.project_stages ps JOIN projects.projects p ON p.id = ps.project_id WHERE ps.id = p_ref_id;
+    ELSIF p_ref_table = 'revisions' THEN
+        SELECT jsonb_build_object(
+                   'title', t.title, 'stage_title', ps.name, 'project_title', p.title, 'project_slug', p.slug,
+                   'stage_slug', ps.slug, 'ticket_slug', t.slug,
+                   'opens', projects.can_review_project(p.id) OR projects.has_project_access(p.id))
+          INTO v
+          FROM projects.stage_revision_requests rv
+          JOIN projects.project_stages ps ON ps.id = rv.project_stage_id
+          JOIN projects.projects p ON p.id = ps.project_id
+          JOIN projects.tickets t ON t.id = rv.ticket_id
+         WHERE rv.id = p_ref_id;
+    ELSIF p_ref_table = 'invoices' THEN
+        SELECT jsonb_build_object(
+                   'invoice_type', i.invoice_type, 'period_start', i.billing_period_start, 'due_at', i.due_date,
+                   'stage_title', ps.name,
+                   'opens', org.fn_member_can('business', i.issue_to_business_id, 'manage_billing'))
+          INTO v FROM finance.invoices i LEFT JOIN projects.project_stages ps ON ps.id = i.project_stage_id
+         WHERE i.id = p_ref_id;
+    ELSIF p_ref_table = 'transfers' THEN
+        SELECT jsonb_build_object('owner_type', w.owner_type, 'opens', true)
+          INTO v FROM finance.wallets w WHERE w.id = p_ref_id;
+    END IF;
+    RETURN COALESCE(v, '{}'::jsonb);
+END;
+$$;
+
+COMMENT ON FUNCTION finance.fn_spend_ref(text, uuid) IS
+'What a spend request''s ref names (a basket, ticket, stage, revision round, invoice or transfer) and
+whether the caller may open it. {} when the row is gone. Read by org.get_workspace_detail. Internal.';
 -- #endregion
 
 -- #region 14. The wallet ledger read — keyset pages and calendar buckets (Decision #150, 2026-10-06)

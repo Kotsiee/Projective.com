@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SplitRuleType } from "../finance/vault.ts";
+import { SpendRefTable, SplitRuleType, VaultCapability } from "../finance/vault.ts";
 import { MoneyViewSchema } from "../finance/wallet.ts";
 import { VerificationState } from "./common.ts";
 
@@ -29,14 +29,20 @@ export type SplitModel = z.infer<typeof SplitModel>;
 /** One member's slice of the split bar. */
 export const SplitStakeSchema = z.object({
 	memberId: z.string().max(64),
+	/**
+	 * The member's user id — what a finder's fee names (`finance.save_split_rule`'s
+	 * `p_finder_user_id`), so the Finder picker can offer the active members by it.
+	 */
+	userId: z.string().max(64),
 	handle: z.string().max(40),
 	name: z.string().max(120),
 	avatar: z.string().max(400),
 	/** Share in basis points. The stakes of a valid split sum to exactly 10 000. */
 	shareBp: z.number().int().min(0).max(10_000),
 	/**
-	 * Held back from automatic distribution — the amount stays in the vault for a manual decision
-	 * rather than being reassigned, so holding somebody's share never silently pays it to someone else.
+	 * An immovable stake (`finance.contribution_agreements.held`): the editor's dividers never move it,
+	 * and when a member leaves their basis points are redistributed across the UNHELD stakes only
+	 * (`org.fn_rebalance_departed_stake`). The release plan still pays it like any other stake.
 	 */
 	held: z.boolean().default(false),
 	/** What this stake would receive from the projected release (server-computed). */
@@ -137,8 +143,75 @@ export const TeamPayoutPolicySchema = z.object({
 	vaultCut: MoneyViewSchema.nullable(),
 	/** Who may withdraw from the vault — member ids. */
 	withdrawApprovers: z.array(z.string().max(64)),
+	/**
+	 * The templates the team's plan unlocks — one `split_template_<type>` entitlement flag each, the
+	 * gate `finance.save_split_rule` applies (Decision #234: co_op free; finders_fee and
+	 * benevolent_dictator Pro Team), in template order. The editor offers a locked template disabled
+	 * BEFORE a save, never as a 402 after one. The gate binds the write alone: a team keeps applying a
+	 * stored template its plan no longer unlocks.
+	 */
+	unlockedTemplates: z.array(SplitRuleType).default(["co_op"]),
+	/**
+	 * Who can move the vault's money: every active member's vault capabilities as
+	 * `org.fn_vault_capabilities_for` projects them from the workspace capabilities (the projection
+	 * `finance.vault_permissions` holds and every money door enforces), in roster order.
+	 */
+	vaultAccess: z.array(z.object({
+		memberId: z.string().max(64),
+		name: z.string().max(120),
+		capabilities: z.array(VaultCapability),
+	})).default([]),
 });
 export type TeamPayoutPolicy = z.infer<typeof TeamPayoutPolicySchema>;
+
+/** One member's row of {@link TeamPayoutPolicy.vaultAccess}. */
+export type VaultAccess = TeamPayoutPolicy["vaultAccess"][number];
+
+/**
+ * One cut of a previewed release, in the order the plan takes it (`finance.fn_team_split_plan`): the
+ * platform fee, the finder's fee, the vault's cut, each member's stake, then the dust the floors left,
+ * which also goes to the vault.
+ */
+export const SplitPreviewLineSchema = z.object({
+	/** Stable row key: `fee` · `finder` · `vault` · `member:<user id>` · `dust`. */
+	key: z.string().max(80),
+	kind: z.enum(["fee", "finder", "vault", "member", "dust"]),
+	/** The person a finder or member line pays; `null` for the platform's and the vault's lines. */
+	name: z.string().max(120).nullable(),
+	/** The rate the cut was taken at, in basis points — of the release, the payout or the pool; `null` for dust. */
+	bp: z.number().int().min(0).max(10_000).nullable(),
+	amount: MoneyViewSchema,
+});
+export type SplitPreviewLine = z.infer<typeof SplitPreviewLineSchema>;
+
+/**
+ * `finance.preview_team_split(team, gross)`'s answer for an amount the reader chose — what a release
+ * of that size would pay under the team's SAVED rule and stakes, by the plan the release itself runs.
+ * `total` is the lines' sum, which equals `gross` exactly (every floor's dust is a line).
+ */
+export const TeamSplitPreviewSchema = z.object({
+	currency: z.string().regex(/^[A-Z]{3}$/),
+	/** The amount priced, echoed by the server. */
+	gross: MoneyViewSchema,
+	/** The rule the plan applied (the team's stored one). */
+	ruleType: SplitRuleType,
+	lines: z.array(SplitPreviewLineSchema),
+	/** Σ lines — equal to {@link gross}. */
+	total: MoneyViewSchema,
+});
+export type TeamSplitPreview = z.infer<typeof TeamSplitPreviewSchema>;
+
+/**
+ * `GET /api/workspace/payout/preview` — price a release of `amountMinor` (integer minor units of
+ * `currency`, 1 … 10^12) for the team `workspaceId`. Query parameters arrive as text, so the amount is
+ * coerced.
+ */
+export const PayoutPreviewQuerySchema = z.object({
+	workspaceId: z.string().max(64),
+	amountMinor: z.coerce.number().int().min(1).max(1_000_000_000_000),
+	currency: z.string().regex(/^[A-Z]{3}$/),
+});
+export type PayoutPreviewQuery = z.infer<typeof PayoutPreviewQuerySchema>;
 
 /** Whether a set of stakes forms a valid split (sums to exactly 100%). */
 export function splitIsBalanced(stakes: readonly { shareBp: number }[]): boolean {
@@ -226,6 +299,38 @@ export const PoolEntrySchema = z.object({
 });
 export type PoolEntry = z.infer<typeof PoolEntrySchema>;
 
+/**
+ * What a spend request is for, as the Spend module names it (`finance.fn_spend_ref`, Decision #246):
+ * the basket, stage, ticket, paid revision round, invoice or transfer it was filed against. `href` is
+ * set only when the viewer may open that thing, so the link always lands (root CLAUDE.md §3.11); the
+ * label stands alone otherwise.
+ */
+export const SpendRequestRefSchema = z.object({
+	/** Which kind of thing it is (`finance.spend_approvals.ref_table`). */
+	table: SpendRefTable,
+	/** What it is — the stage, the ticket, the basket's name ("UX and flows"). */
+	label: z.string().max(160),
+	/** A supporting line — the project, or the basket's first line and how many more — or `null`. */
+	detail: z.string().max(160).nullable().default(null),
+	/** Where it opens for this viewer, or `null` when it does not. */
+	href: z.string().max(300).nullable().default(null),
+});
+export type SpendRequestRef = z.infer<typeof SpendRequestRefSchema>;
+
+/**
+ * A spend request's lifecycle as the Spend module shows it (`finance.approval_status`, with `rejected`
+ * read as `declined` and a lapsed pending request as `expired`): `withdrawn` is the requester taking it
+ * back while it waited (Decision #246).
+ */
+export const SpendRequestState = z.enum([
+	"pending",
+	"approved",
+	"declined",
+	"expired",
+	"withdrawn",
+]);
+export type SpendRequestState = z.infer<typeof SpendRequestState>;
+
 /** A spend request raised because a purchase exceeded the requester's limit. */
 export const SpendRequestSchema = z.object({
 	id: z.string().max(64),
@@ -235,13 +340,20 @@ export const SpendRequestSchema = z.object({
 	avatar: z.string().max(400),
 	amount: MoneyViewSchema,
 	reason: z.string().max(160),
-	state: z.enum(["pending", "approved", "declined", "expired"]),
+	state: SpendRequestState,
 	raisedAt: z.string().max(40),
 	/** Who must decide — resolved names, so the requester sees a person not an id. */
 	approvers: z.array(z.string().max(120)),
 	/** Set once decided. */
 	decidedBy: z.string().max(120).nullable().default(null),
+	/** When it was decided — or, for a withdrawn request, when its requester took it back. */
 	decidedAt: z.string().max(40).nullable().default(null),
+	/** When a pending request lapses ("Expires 24 Oct", UTC); `null` once it has left pending. */
+	expiresLabel: z.string().max(60).nullable().default(null),
+	/** What it is for; `null` when the thing it named no longer exists. */
+	ref: SpendRequestRefSchema.nullable().default(null),
+	/** Whether an approved request has been spent (`consumed_at`). */
+	consumed: z.boolean().default(false),
 });
 export type SpendRequest = z.infer<typeof SpendRequestSchema>;
 
@@ -278,17 +390,21 @@ export const SpendLimitSchema = z.object({
 	spent: MoneyViewSchema,
 	/** What is left of the ceiling this period (never below 0); `null` with no ceiling. */
 	remainingMinor: z.number().int().min(0).nullable().default(null),
+	/** What is left of the ceiling this period (server-formatted); `null` with no ceiling. */
+	remaining: MoneyViewSchema.nullable().default(null),
 	/** Fraction of the ceiling consumed, 0–1 — drives the envelope meter without client division. */
 	usedFraction: z.number().min(0).max(1),
 	/** Per-transaction ceiling, or `null`. */
 	perTransactionMinor: z.number().int().min(0).nullable(),
+	/** Per-transaction ceiling (server-formatted); `null` with none. */
+	perTransaction: MoneyViewSchema.nullable().default(null),
 });
 export type SpendLimit = z.infer<typeof SpendLimitSchema>;
 
 /**
  * The spend requests a viewer may see (their own; every request for an approver or a policy manager),
  * split so the queue and its history render without client filtering. `decided` is the 30 most
- * recent approved, declined or expired requests.
+ * recent approved, declined, expired or withdrawn requests.
  */
 export const SpendApprovalsSchema = z.object({
 	pending: z.array(SpendRequestSchema),
@@ -311,6 +427,24 @@ export const BusinessSpendPolicySchema = z.object({
 	 * {@link approvalThresholdMinor} is `null`; `null` when the platform sets none either.
 	 */
 	platformThresholdMinor: z.number().int().min(1).nullable().default(null),
+	/** The platform default, server-formatted in the policy currency; `null` when there is none. */
+	platformThreshold: MoneyViewSchema.nullable().default(null),
+	/**
+	 * The members whose limits and grants the viewer may change — `finance.save_spend_policy`'s own
+	 * rules (never the owner, never oneself, only somebody one outranks), decided in SQL. Empty for a
+	 * viewer who may not edit the policy.
+	 */
+	editableMemberIds: z.array(z.string().max(64)).default([]),
+	/**
+	 * Nobody besides the owner may approve spending, so the owner's own spend over the threshold or a
+	 * limit has nobody to decide it (nobody decides their own request — Decision #239 (e)).
+	 */
+	approverGap: z.boolean().default(false),
+	/**
+	 * Setting a threshold, a ceiling or a capped period would be refused right now by the Business Pro
+	 * plan gate (`pooled_wallet_full`, Decision #230 (e)); clearing one never is.
+	 */
+	limitsPlanGated: z.boolean().default(false),
 	/** Member ids who may approve (`approve_spend`). */
 	approverIds: z.array(z.string().max(64)),
 	/** The same approvers by `@handle`, in the same order. */

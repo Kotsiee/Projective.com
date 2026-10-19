@@ -254,15 +254,30 @@ export function planStripeEvent(event: Stripe.Event): StripePlan {
 export const SETTLEMENT_MISMATCH = "settlement_mismatch";
 
 /**
+ * The marker `settle_card_payment` puts on a card captured for a business that was archived by the
+ * time it settled: an archived business takes no money in (Decision #248 (k)), so nothing is credited
+ * and a human refunds it, or settles it by hand once the business is restored.
+ */
+export const BUSINESS_ARCHIVED = "business_archived";
+
+/** Every reconciliation marker the database acknowledges a settlement under without a ledger row. */
+const HELD_FOR_RECONCILIATION: ReadonlySet<unknown> = new Set([
+	SETTLEMENT_MISMATCH,
+	BUSINESS_ARCHIVED,
+]);
+
+/**
  * A settlement is acknowledged only once its ledger row exists (Decision #200): `settle_card_payment`
  * reports the `transaction_id` on every outcome it completes, and releases its event claim on the
  * ones it cannot credit YET. Anything without one throws, so the webhook answers 5xx and Stripe
  * redelivers the event instead of it being dropped.
  *
- * The one acknowledged outcome without a ledger row is a settlement whose amount / currency can NEVER
- * match its payment (`reconciliation: "settlement_mismatch"`, first delivery `unmatched`, redeliveries
- * `replayed`): every redelivery carries the same figures, so retrying for Stripe's three-day window
- * changes nothing. The database kept its event claim and wrote one ops row; the webhook answers 2xx.
+ * The acknowledged outcomes without a ledger row are the settlements the database handed to a human
+ * (first delivery `unmatched`, redeliveries `replayed`): one whose amount / currency can NEVER match
+ * its payment (`reconciliation: "settlement_mismatch"`) — every redelivery carries the same figures,
+ * so retrying for Stripe's three-day window changes nothing — and one for a business that is archived
+ * (`"business_archived"`), which a retry could only credit into a wallet nothing can spend from. The
+ * database kept its event claim and wrote one ops row; the webhook answers 2xx.
  */
 export function requireLedgerRow(outcome: EventOutcome): EventOutcome {
 	const tx = outcome.raw.transaction_id;
@@ -270,11 +285,14 @@ export function requireLedgerRow(outcome: EventOutcome): EventOutcome {
 	if (acknowledged && typeof tx === "string" && tx.length > 0) return outcome;
 	if (
 		(outcome.outcome === "unmatched" || outcome.outcome === "replayed") &&
-		outcome.raw.reconciliation === SETTLEMENT_MISMATCH
+		HELD_FOR_RECONCILIATION.has(outcome.raw.reconciliation)
 	) {
 		console.warn(
 			"[payments:webhook] settlement held for reconciliation:",
-			outcome.detail ?? "amount or currency mismatch",
+			outcome.detail ??
+				(outcome.raw.reconciliation === BUSINESS_ARCHIVED
+					? "the business is archived"
+					: "amount or currency mismatch"),
 		);
 		return outcome;
 	}

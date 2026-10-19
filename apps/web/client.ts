@@ -11,6 +11,19 @@ import "@web/utils/zod-jitless.ts";
 import "@projective/ui/styles";
 import "@ui/layout/styles/index.css";
 import "@ui/navigation/styles/index.css";
+/*
+ * The editorial reading family (DocumentLayout, Prose, ContentRenderer, the TOC, reading progress and
+ * the print layer). Most of it is SERVER-rendered, so its sheet cannot ride a component import; its
+ * two islands carry it too, but a document page that mounts neither (a short changelog entry, a hub
+ * without a table of contents) must still be styled.
+ */
+import "@ui/display/styles/editorial.css";
+/*
+ * EmptyState, for the root error page (`routes/_error.tsx`): it renders outside every group layout
+ * and mounts no island that imports `@projective/ui/utils`, so the sheet otherwise never reached it
+ * and the 404 / 500 card painted as unstyled, left-aligned text.
+ */
+import "@ui/utils/styles/empty-state.css";
 import "@web/styles/global.css";
 /*
  * The authenticated shell's own chrome sheet.

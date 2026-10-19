@@ -30,12 +30,13 @@ import {
 	missingBuyerFields,
 	PLATFORM_FEE_BP,
 } from "@projective/types/finance";
+import { BUSINESS_NOT_ACTIVE_REASON } from "@projective/types/workspace";
 import { businessAuthorityRefusal } from "../../core/business-authority.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import type { BasketQuery } from "./basket-query.ts";
-import { authorityBlocker, refusalBlocker } from "./checkout-refusal.ts";
+import { authorityBlocker, businessNotActiveBlocker, refusalBlocker } from "./checkout-refusal.ts";
 import type { MoneyProjector } from "./commerce-money.ts";
 import { listOwners, type ResolvedOwner, walletAvailableMinor } from "./commerce-owner.ts";
 import { type BasketView, promoMinorFor, readBasket } from "./live-basket.ts";
@@ -886,6 +887,11 @@ export class CheckoutBackendService {
 				}, actor);
 				if (!pay.ok || !pay.data) {
 					const message = pay.message ?? PROCESSOR_REASON;
+					// An archived business's card top-up is refused before anyone is charged (#248 (k)):
+					// the same gate as its wallet order's refusal, not a processor fault.
+					if (pay.details?.reason === BUSINESS_NOT_ACTIVE_REASON) {
+						return refusal(message, [businessNotActiveBlocker(message)]);
+					}
 					return refusal(message, [blocker("no_provider", message)]);
 				}
 				const result: CheckoutResult = {

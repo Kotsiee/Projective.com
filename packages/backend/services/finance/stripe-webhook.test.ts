@@ -1,7 +1,12 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import type { Stripe } from "../../core/stripe.ts";
 import type { EventOutcome } from "./live-payments.ts";
-import { planStripeEvent, requireLedgerRow, SETTLEMENT_MISMATCH } from "./stripe-webhook.ts";
+import {
+	BUSINESS_ARCHIVED,
+	planStripeEvent,
+	requireLedgerRow,
+	SETTLEMENT_MISMATCH,
+} from "./stripe-webhook.ts";
 
 /** A minimal event of a given type around a data object — the fields the planner reads, no more. */
 function event(type: string, object: Record<string, unknown>): Stripe.Event {
@@ -107,7 +112,36 @@ Deno.test("a settlement that can never match its payment is acknowledged into re
 	}
 });
 
-Deno.test("only the mismatch marker turns a ledgerless settlement into a 2xx", () => {
+Deno.test("a card captured for an archived business is acknowledged into reconciliation, not retried", () => {
+	const quiet = console.warn;
+	console.warn = () => {};
+	try {
+		const first = outcome({
+			outcome: "unmatched",
+			detail: "the business this payment is for is archived; held for reconciliation",
+			raw: { reconciliation: BUSINESS_ARCHIVED, transaction_id: null, payment_id: "p" },
+		});
+		assertEquals(requireLedgerRow(first), first);
+		const again = outcome({
+			outcome: "replayed",
+			raw: { reconciliation: BUSINESS_ARCHIVED, transaction_id: null, first: first.raw },
+		});
+		assertEquals(requireLedgerRow(again), again);
+		// The marker never makes an `applied` without a ledger row acceptable either.
+		assertThrows(() =>
+			requireLedgerRow(
+				outcome({
+					outcome: "applied",
+					raw: { reconciliation: BUSINESS_ARCHIVED, transaction_id: null },
+				}),
+			)
+		);
+	} finally {
+		console.warn = quiet;
+	}
+});
+
+Deno.test("only a reconciliation marker turns a ledgerless settlement into a 2xx", () => {
 	// An unbound success (transient — the bind is coming) still throws, so Stripe retries it.
 	assertThrows(() =>
 		requireLedgerRow(outcome({ outcome: "unmatched", raw: { transaction_id: null } }))

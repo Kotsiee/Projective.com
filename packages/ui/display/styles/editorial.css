@@ -1,0 +1,15 @@
+/*
+ * @projective/ui/display — editorial aggregate stylesheet: DocumentLayout, DocumentHeader,
+ * DocumentBody, Prose, ContentRenderer, AnchorHeading, TableOfContents, ReadingProgress and the print
+ * layer.
+ *
+ * Imported once from the app's client entry, because most of the family is SERVER-rendered and a
+ * server component's own `import "x.css"` never reaches a page under Fresh SSR (only an island's
+ * import graph does). The two islands import this sheet too, so the family travels with them into a
+ * project that has no client entry; the bundler dedupes the two paths.
+ */
+@import "./document-layout.css";
+@import "./prose.css";
+@import "./toc.css";
+@import "./reading-progress.css";
+@import "./editorial-print.css";

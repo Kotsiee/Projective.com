@@ -932,7 +932,9 @@ $$;
 -- be unreachable at /@handle forever. Every create path now asks the whole namespace, under an
 -- advisory lock on the handle so two creates racing for it cannot both see it free.
 
--- The SQL twin of @projective/types/profile RESERVED_HANDLES (pinned by workspace.contract.test.ts).
+-- The SQL twin of @projective/types/profile RESERVED_HANDLES (pinned by workspace.contract.test.ts,
+-- which also fails when a top-level segment under apps/web/routes/ is missing from the list — a new
+-- top-level route is reserved here AND in RESERVED_HANDLES in the same change, pr-checklist.md).
 CREATE OR REPLACE FUNCTION org.fn_is_reserved_handle(p_handle text)
 RETURNS boolean
 LANGUAGE sql
@@ -942,14 +944,15 @@ AS $$
     SELECT lower(btrim(COALESCE(p_handle, ''))) = ANY (ARRAY[
         'about', 'explore', 'help', 'view', 'join', 'login', 'register', 'signin', 'signup', 'logout',
         'forgot-password', 'reset-password', 'verify', 'index', 'home', 'pricing', 'terms', 'privacy',
-        'legal', 'contact', 'blog', 'careers', 'status', 'dashboard', 'projects', 'project', 'business',
+        'legal', 'contact', 'blog', 'careers', 'status', 'changelog', 'feedback', 'features',
+        'dashboard', 'projects', 'project', 'business',
         'businesses', 'teams', 'team', 'messages', 'inbox', 'files', 'file', 'inspect', 'share', 'exit', 'wallet', 'billing',
         'settings', 'services', 'service', 'products', 'portfolio', 'reviews', 'articles', 'members',
         'departments', 'education', 'experience', 'availability', 'become-partner', 'onboarding',
         'notifications', 'basket', 'cart', 'checkout', 'catalogue', 'orders', 'order', 'pay', 'payment',
         'payments', 'invoice', 'invoices', 'create', 'new', 'search', 'submissions', 'attachments',
-        'board', 'tasks', 'calendar', 'api', 'assets', 'static', 'public', '_app', '_middleware',
-        '_layout', 'favicon.ico', 'robots.txt', 'sitemap.xml', 'admin', 'internal'
+        'board', 'tasks', 'calendar', 'invite', 'saved', 'api', 'assets', 'static', 'public', '_app',
+        '_middleware', '_layout', 'favicon.ico', 'robots.txt', 'sitemap.xml', 'admin', 'internal'
     ]);
 $$;
 
@@ -1222,6 +1225,100 @@ COMMENT ON FUNCTION org.fn_assert_business_active(uuid) IS
 passes, P0002 when the business does not exist. Called by every door that spends, hires or bills for a
 business. Internal — not executable by clients.';
 
+-- Money INTO a business wallet (Decision #248 (k)): a draft may be funded before it publishes — its
+-- setup asks for money before Publish (#236 (f)) — but an archived business takes nothing in, since
+-- nothing can spend from it until it is restored. Every door that credits a business wallet calls this
+-- with the wallet's business; NULL passes. The row is locked FOR SHARE until the caller's transaction
+-- ends: org.set_workspace_status locks it FOR UPDATE before it counts the archive blockers, so an
+-- archive racing a credit either waits and then sees the money (`wallet_balance`), or wins and the
+-- credit sees `archived`.
+CREATE OR REPLACE FUNCTION org.fn_assert_business_not_archived(p_business uuid)
+RETURNS void
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_status text;
+BEGIN
+    IF p_business IS NULL THEN
+        RETURN;
+    END IF;
+    SELECT b.status INTO v_status FROM org.business_profiles b WHERE b.id = p_business FOR SHARE;
+    IF v_status IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'workspace: not found';
+    END IF;
+    IF v_status = 'archived' THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            MESSAGE = 'business_not_active: this business is archived — restore it first',
+            DETAIL = pg_catalog.jsonb_build_object('business_id', p_business, 'status', v_status)::text;
+    END IF;
+END;
+$$;
+
+COMMENT ON FUNCTION org.fn_assert_business_not_archived(uuid) IS
+'Refuse 55000 business_not_active (org.fn_assert_business_active''s archived wording, DETAIL
+{business_id, status}) when the business is archived; a draft or active business passes, NULL passes,
+P0002 when it does not exist. Locks the business row FOR SHARE. Called by every door that moves money
+into a business wallet. Internal — not executable by clients.';
+
+-- Everything that would be stranded if a team were archived now, in a business's {code, count} shape
+-- and a fixed order — `[]` when it may be archived. The archive door refuses on the first, and the
+-- console detail lists them all before the confirm (Teams C6; TEAMS_AUDIT S3, S4):
+--   escrow_held        held escrows for the team's work: owed to the team, or — on a stage the team is
+--                      (or was, to completion) assigned to — not bound yet (Decision #197's prepaid
+--                      escrow) or bound to one of its members (the team-seat payee rule). A non-member's
+--                      escrow on a shared stage is theirs, and a stage the team handed back (released ·
+--                      cancelled · declined) is its next assignee's.
+--   live_assignments   its stage assignments still live (not declined, cancelled, released or
+--                      completed) on an active or on-hold project
+CREATE OR REPLACE FUNCTION org.fn_team_archive_blockers(p_team uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_out jsonb := '[]'::jsonb;
+    v_count bigint;
+BEGIN
+    SELECT count(*) INTO v_count FROM finance.escrows e
+     WHERE e.status = 'held'
+       AND ((e.payee_type = 'team' AND e.payee_id = p_team)
+         OR ((e.payee_id IS NULL
+              OR (e.payee_type = 'freelancer' AND EXISTS (
+                    SELECT 1 FROM org.team_members tm
+                     WHERE tm.team_id = p_team AND tm.user_id = e.payee_id)))
+             AND EXISTS (
+                SELECT 1 FROM projects.stage_assignments sa
+                 WHERE sa.project_stage_id = e.project_stage_id
+                   AND sa.team_id = p_team
+                   AND sa.status NOT IN ('declined', 'cancelled', 'released'))));
+    IF v_count > 0 THEN
+        v_out := v_out || jsonb_build_array(jsonb_build_object('code', 'escrow_held', 'count', v_count));
+    END IF;
+
+    SELECT count(*) INTO v_count FROM projects.stage_assignments sa
+      JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+      JOIN projects.projects pr ON pr.id = ps.project_id
+     WHERE sa.team_id = p_team
+       AND sa.status NOT IN ('declined', 'cancelled', 'released', 'completed')
+       AND pr.status IN ('active', 'on_hold');
+    IF v_count > 0 THEN
+        v_out := v_out || jsonb_build_array(jsonb_build_object('code', 'live_assignments', 'count', v_count));
+    END IF;
+
+    RETURN v_out;
+END;
+$$;
+
+COMMENT ON FUNCTION org.fn_team_archive_blockers(uuid) IS
+'What stops a team being archived: [{code, count}] over escrow_held · live_assignments, in that order;
+[] when nothing does. Read by org.set_workspace_status and org.get_workspace_detail. Internal.';
+
 -- Everything that would be stranded if a business were archived now, one {code, count} per kind of
 -- blocker that applies, in a fixed order — `[]` when it may be archived. The archive door refuses on the
 -- first, and the console detail lists them all before the confirm (BUSINESSES_AUDIT BF8, BF9):
@@ -1302,11 +1399,42 @@ COMMENT ON FUNCTION org.fn_business_archive_blockers(uuid) IS
 pending_approvals · unpaid_invoices · on_account_owed · wallet_balance · pending_payouts, in that order;
 [] when nothing does. Read by org.set_workspace_status and org.get_workspace_detail. Internal.';
 
+-- Where a restore lands (Decision #250 (c); for a business, #236 (d) as the owner ruled it): `active`
+-- when the entity was ever published, else `draft` — so a published entity never returns to draft, and
+-- one that never was cannot skip the publish step by being archived and restored. "Ever published" is
+-- read from the trail org.set_workspace_status writes on every change (`{kind}.status_changed`,
+-- metadata {from, to}): a change to or from `active`. Active → draft is refused, so that is exactly "it
+-- was live once". An entity with no such trail (a seeded or hand-written row) has no evidence of ever
+-- being published and restores to `draft` — one Publish away from live, never listed without its
+-- owner's say.
+CREATE OR REPLACE FUNCTION org.fn_workspace_restore_target(p_kind text, p_id uuid)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT CASE WHEN EXISTS (
+        SELECT 1 FROM security.audit_logs a
+         WHERE a.entity_id = p_id
+           AND a.action = p_kind || '.status_changed'
+           AND a.entity_table = CASE p_kind WHEN 'team' THEN 'org.teams' ELSE 'org.business_profiles' END
+           AND 'active' IN (a.metadata->>'from', a.metadata->>'to')
+    ) THEN 'active' ELSE 'draft' END;
+$$;
+
+COMMENT ON FUNCTION org.fn_workspace_restore_target(text, uuid) IS
+'Where restoring an archived team or business lands: active if its status trail ever touched active,
+else draft (no trail at all = draft). Read by org.set_workspace_status and org.get_workspace_detail.
+Internal.';
+
 -- Publishing needs `manage_settings`; archiving or restoring needs `archive_entity`. An entity with
--- money in flight is not archived: a held escrow owed to (team) or funded by (business) the entity,
--- a held escrow for a team's assigned stage that is unbound or bound to a member, or a live stage
--- assignment, would otherwise be stranded against something that says it is gone. A business is held
--- to every blocker org.fn_business_archive_blockers lists, refused on the first with its code.
+-- money in flight is not archived: a team is held to every blocker org.fn_team_archive_blockers lists
+-- (money held for its work, a live stage assignment) and a business to every one
+-- org.fn_business_archive_blockers lists, each refused on the first with DETAIL {blockers}. A restore —
+-- `restore`, or its target named outright — lands where org.fn_workspace_restore_target says
+-- (Decision #250 (c)): naming the other status is refused `22023 restore_target:` with DETAIL {target},
+-- so nobody publishes an entity by restoring it, or sends a published one back to draft.
 CREATE OR REPLACE FUNCTION org.set_workspace_status(p_kind text, p_id uuid, p_status text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1316,13 +1444,15 @@ AS $$
 DECLARE
     v_uid uuid := auth.uid();
     v_current text;
+    v_to text := p_status;
+    v_target text;
     v_blockers jsonb;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
     END IF;
-    IF p_status IS NULL OR p_status NOT IN ('draft', 'active', 'archived') THEN
-        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'status: choose draft, active or archived';
+    IF p_status IS NULL OR p_status NOT IN ('draft', 'active', 'archived', 'restore') THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'status: choose draft, active, archived or restore';
     END IF;
     IF p_kind = 'team' THEN
         SELECT t.status INTO v_current FROM org.teams t WHERE t.id = p_id FOR UPDATE;
@@ -1337,6 +1467,9 @@ BEGIN
     IF v_current = p_status THEN
         RETURN jsonb_build_object('id', p_id, 'status', p_status);
     END IF;
+    IF p_status = 'restore' AND v_current <> 'archived' THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'status: only an archived ' || p_kind || ' is restored';
+    END IF;
 
     IF p_status = 'archived' OR v_current = 'archived' THEN
         IF NOT org.fn_member_can(p_kind, p_id, 'archive_entity') THEN
@@ -1345,70 +1478,58 @@ BEGIN
     ELSIF NOT org.fn_member_can(p_kind, p_id, 'manage_settings') THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'status: you cannot change this ' || p_kind || '''s settings';
     END IF;
-    IF p_status = 'draft' AND v_current = 'active' THEN
+
+    IF v_current = 'archived' THEN
+        v_target := org.fn_workspace_restore_target(p_kind, p_id);
+        IF p_status = 'restore' THEN
+            v_to := v_target;
+        ELSIF p_status <> v_target THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '22023',
+                MESSAGE = 'restore_target: ' || CASE v_target
+                    WHEN 'active' THEN 'this ' || p_kind || ' was published, so it is restored to active — a published '
+                                       || p_kind || ' never goes back to draft'
+                    ELSE 'this ' || p_kind || ' was never published, so it is restored as a draft — publish it from there' END,
+                DETAIL = jsonb_build_object('target', v_target)::text;
+        END IF;
+    END IF;
+    IF v_to = 'draft' AND v_current = 'active' THEN
         RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'status: a published ' || p_kind || ' cannot go back to draft';
     END IF;
 
-    IF p_status = 'archived' THEN
-        -- A team's money in flight is wider than what names it as payee: a held escrow on a stage the
-        -- team is (or was, to completion) assigned to is the team's work while it is not bound yet
-        -- (Decision #197's prepaid escrow) or bound to one of its members (the team-seat payee rule can
-        -- bind a member's claim to that member). A non-member's escrow on a shared stage is theirs, and
-        -- a stage the team handed back (released · cancelled · declined) is its next assignee's.
-        IF EXISTS (
-            SELECT 1 FROM finance.escrows e
-             WHERE e.status = 'held'
-               AND ((p_kind = 'team' AND e.payee_type = 'team' AND e.payee_id = p_id)
-                 OR (p_kind = 'team'
-                     AND (e.payee_id IS NULL
-                          OR (e.payee_type = 'freelancer' AND EXISTS (
-                                SELECT 1 FROM org.team_members tm
-                                 WHERE tm.team_id = p_id AND tm.user_id = e.payee_id)))
-                     AND EXISTS (
-                        SELECT 1 FROM projects.stage_assignments sa
-                         WHERE sa.project_stage_id = e.project_stage_id
-                           AND sa.team_id = p_id
-                           AND sa.status NOT IN ('declined', 'cancelled', 'released'))))
-        ) THEN
-            RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'status: money is held in escrow for this ' || p_kind || ' — let it release first';
-        END IF;
-        IF p_kind = 'business' THEN
-            v_blockers := org.fn_business_archive_blockers(p_id);
-            IF jsonb_array_length(v_blockers) > 0 THEN
-                RAISE EXCEPTION USING
-                    ERRCODE = '55000',
-                    MESSAGE = (v_blockers->0->>'code') || ': ' || CASE v_blockers->0->>'code'
+    IF v_to = 'archived' THEN
+        v_blockers := CASE p_kind
+            WHEN 'team' THEN org.fn_team_archive_blockers(p_id)
+            ELSE org.fn_business_archive_blockers(p_id) END;
+        IF jsonb_array_length(v_blockers) > 0 THEN
+            -- A team's two refusals keep their `status:` sentences; a business's MESSAGE leads with the
+            -- blocker's code. Both carry every blocker in DETAIL.
+            RAISE EXCEPTION USING
+                ERRCODE = '55000',
+                MESSAGE = CASE WHEN p_kind = 'team' THEN CASE v_blockers->0->>'code'
+                        WHEN 'escrow_held' THEN 'status: money is held in escrow for this team — let it release first'
+                        ELSE 'status: this team is still assigned to live work — finish or hand it back first' END
+                    ELSE (v_blockers->0->>'code') || ': ' || CASE v_blockers->0->>'code'
                         WHEN 'escrow_held' THEN 'money is held in escrow for this business — let it release first'
                         WHEN 'live_projects' THEN 'this business still has live projects — complete or archive them first'
                         WHEN 'pending_approvals' THEN 'spend requests are still waiting for a decision — decide them first'
                         WHEN 'unpaid_invoices' THEN 'this business has unpaid invoices — pay them first'
                         WHEN 'on_account_owed' THEN 'this business still owes on account — settle it first'
                         WHEN 'wallet_balance' THEN 'the business wallet still holds money — withdraw or move it first'
-                        ELSE 'a withdrawal from the business wallet is still in flight — let it settle first' END,
-                    DETAIL = jsonb_build_object('blockers', v_blockers)::text;
-            END IF;
-        END IF;
-        IF p_kind = 'team' AND EXISTS (
-            SELECT 1 FROM projects.stage_assignments sa
-              JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
-              JOIN projects.projects pr ON pr.id = ps.project_id
-             WHERE sa.team_id = p_id
-               AND sa.status NOT IN ('declined', 'cancelled', 'released', 'completed')
-               AND pr.status IN ('active', 'on_hold')
-        ) THEN
-            RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'status: this team is still assigned to live work — finish or hand it back first';
+                        ELSE 'a withdrawal from the business wallet is still in flight — let it settle first' END END,
+                DETAIL = jsonb_build_object('blockers', v_blockers)::text;
         END IF;
     END IF;
 
     IF p_kind = 'team' THEN
-        UPDATE org.teams SET status = p_status, updated_at = now() WHERE id = p_id;
+        UPDATE org.teams SET status = v_to, updated_at = now() WHERE id = p_id;
     ELSE
-        UPDATE org.business_profiles SET status = p_status, updated_at = now() WHERE id = p_id;
+        UPDATE org.business_profiles SET status = v_to, updated_at = now() WHERE id = p_id;
     END IF;
     INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
     VALUES (v_uid, p_kind || '.status_changed', CASE p_kind WHEN 'team' THEN 'org.teams' ELSE 'org.business_profiles' END, p_id,
-            jsonb_build_object('from', v_current, 'to', p_status));
-    RETURN jsonb_build_object('id', p_id, 'status', p_status);
+            jsonb_build_object('from', v_current, 'to', v_to));
+    RETURN jsonb_build_object('id', p_id, 'status', v_to);
 END;
 $$;
 
@@ -2584,11 +2705,11 @@ BEGIN
     END IF;
 
     WITH mine AS (
-        SELECT t.id, t.name, t.slug, t.avatar_file_id AS avatar, t.headline, t.status, t.owner_user_id, t.created_at, m.role
+        SELECT t.id, t.name, t.slug, t.avatar_file_id AS avatar, t.headline, t.status, t.owner_user_id, t.created_at, t.updated_at, m.role
           FROM org.team_members m JOIN org.teams t ON t.id = m.team_id
          WHERE p_kind = 'team' AND m.user_id = v_uid AND m.status = 'active'
         UNION ALL
-        SELECT b.id, b.name, b.slug, b.logo_file_id, b.headline, b.status, b.owner_user_id, b.created_at, m.role
+        SELECT b.id, b.name, b.slug, b.logo_file_id, b.headline, b.status, b.owner_user_id, b.created_at, b.updated_at, m.role
           FROM org.business_members m JOIN org.business_profiles b ON b.id = m.business_id
          WHERE p_kind = 'business' AND m.user_id = v_uid AND m.status = 'active'
     )
@@ -2602,6 +2723,7 @@ BEGIN
         'role', e.role,
         'is_owner', e.owner_user_id = v_uid,
         'created_at', e.created_at,
+        'updated_at', e.updated_at,
         'verification', org.fn_workspace_verification(p_kind, e.id),
         'member_count', (SELECT count(*) FROM (
             SELECT 1 FROM org.team_members x WHERE p_kind = 'team' AND x.team_id = e.id AND x.status = 'active'
@@ -2643,6 +2765,9 @@ BEGIN
                  WHERE w.owner_type = 'business' AND w.owner_id = e.id AND tx.direction = 'debit'
                    AND tx.reason <> 'transfer_out' AND tx.created_at > now() - interval '30 days'
                  GROUP BY tx.currency) s) END,
+        -- The Draft-First facts, the same as the console's (org.get_workspace_detail): a business's
+        -- `funded` (money was ever added to its pooled wallet) and `limits_offered` (its plan lets it
+        -- set a threshold or member limits — Business Pro's `pooled_wallet_full`, or the gates off).
         'setup', jsonb_build_object(
             'logo', e.avatar IS NOT NULL,
             'bio', COALESCE(e.headline, '') <> '',
@@ -2651,7 +2776,12 @@ BEGIN
                     JOIN org.team_members m3 ON m3.team_id = ca.team_id AND m3.user_id = ca.member_user_id AND m3.status = 'active'
                    WHERE ca.team_id = e.id AND ca.percent_bp > 0) > 1
                 ELSE EXISTS (SELECT 1 FROM finance.wallets w WHERE w.owner_type = 'business' AND w.owner_id = e.id
-                              AND COALESCE(w.approval_threshold_cents, 0) > 0) END),
+                              AND COALESCE(w.approval_threshold_cents, 0) > 0) END,
+            'funded', p_kind = 'business' AND EXISTS (SELECT 1 FROM finance.ledger_audit la
+                JOIN finance.wallets w ON w.id = la.wallet_id
+               WHERE w.owner_type = 'business' AND w.owner_id = e.id AND la.action = 'add_funds'),
+            'limits_offered', p_kind = 'business' AND NOT (finance.fn_business_plan_gates_enforced()
+                AND NOT finance.fn_business_gate_flag(e.id, 'pooled_wallet_full'::finance.entitlement_key))),
         'has_update', EXISTS (SELECT 1 FROM comms.notifications n
             WHERE n.user_id = v_uid AND n.context_type = p_kind AND n.context_id = e.id
               AND n.seen_at IS NULL AND n.archived_at IS NULL)
@@ -2715,11 +2845,22 @@ $$;
 --     policy wallet's threshold and the platform default, the approvers and contributors, the members'
 --     envelopes (finance.fn_business_envelopes — their own unless they read the wallet's), what each
 --     member contributed, the attributable ledger, and the spend requests they may read (their own
---     unless finance.fn_reads_wallet_envelopes) as `approvals {pending, decided (last 30)}`;
+--     unless finance.fn_reads_wallet_envelopes) as `approvals {pending, decided (last 30)}`, each with
+--     its `ref` (what it is for and whether the viewer may open it — finance.fn_spend_ref) and
+--     `consumed`; plus, for the editor (BU2), `editable_member_ids` (whose limits and grants the viewer
+--     may change), `approver_gap` (nobody besides the owner approves) and `limits_plan_gated`;
 --     `money_tiles` — for a viewer who may open Finance (contribute_funds · spend_funds ·
 --     manage_finances): per wallet currency, available · pending · committed · awaiting approval ·
 --     spent in 30 days; `viewer_can` — what the viewer may do, as the write doors decide it; and `kyb` —
---     the KYB status, the Connect account's presence and what is still due.
+--     the KYB status, the Connect account's presence and what is still due;
+--   * `setup` — the Draft-First facts the Overview's setup hero is decided on (the same as the
+--     roster's): mark, one-liner, invite, money (a team's split, a business's threshold) and, for a
+--     business (BU6), `funded` (any `add_funds` ledger row on its wallets) and `limits_offered` (its
+--     plan lets it set a threshold or member limits — NOT `limits_plan_gated`);
+--   * for either kind, the lifecycle Settings renders before anybody presses anything:
+--     `archive_blockers` — what would refuse an archive now (org.fn_team_archive_blockers /
+--     org.fn_business_archive_blockers), for an `archive_entity` holder only — and `restore_target` —
+--     where a restore would land (org.fn_workspace_restore_target), while the entity is archived.
 -- VOLATILE because the allowance read opens the week and pays out the lazy drip.
 CREATE OR REPLACE FUNCTION org.get_workspace_detail(p_kind text, p_handle text)
 RETURNS jsonb
@@ -2733,8 +2874,10 @@ DECLARE
     v_e record;
     v_caps org.workspace_capability[];
     v_member uuid;
+    v_rank integer;
     v_member_role_id uuid;
     v_cap_default numeric;
+    v_blockers jsonb := '[]'::jsonb;
     -- Business only (BB9).
     v_currency text;
     v_wallet uuid;
@@ -2743,7 +2886,6 @@ DECLARE
     v_spender boolean := false;
     v_sees_spend boolean := false;
     v_sees_money boolean := false;
-    v_blockers jsonb := '[]'::jsonb;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
@@ -2768,7 +2910,7 @@ BEGIN
     IF v_e.id IS NULL THEN
         RETURN jsonb_build_object('status', 'not_found');
     END IF;
-    SELECT s.member_id INTO v_member FROM org.fn_member_seat(p_kind, v_e.id, v_uid) s;
+    SELECT s.member_id, s.rank INTO v_member, v_rank FROM org.fn_member_seat(p_kind, v_e.id, v_uid) s;
     IF v_member IS NULL THEN
         RETURN jsonb_build_object('status', 'forbidden', 'id', v_e.id);
     END IF;
@@ -2792,9 +2934,12 @@ BEGIN
             ELSE 'spend_funds' = ANY (v_caps) END;
         v_sees_spend := v_caps && ARRAY['spend_funds', 'manage_finances', 'approve_spend']::org.workspace_capability[];
         v_sees_money := v_caps && ARRAY['contribute_funds', 'spend_funds', 'manage_finances']::org.workspace_capability[];
-        IF 'archive_entity' = ANY (v_caps) THEN
-            v_blockers := org.fn_business_archive_blockers(v_e.id);
-        END IF;
+    END IF;
+    -- The archive door's own blocker list, for the people it would refuse (Settings lists them first).
+    IF 'archive_entity' = ANY (v_caps) THEN
+        v_blockers := CASE p_kind
+            WHEN 'team' THEN org.fn_team_archive_blockers(v_e.id)
+            ELSE org.fn_business_archive_blockers(v_e.id) END;
     END IF;
 
     RETURN jsonb_build_object(
@@ -2973,12 +3118,25 @@ BEGIN
                 ) w ON true)
             ELSE '[]'::jsonb END,
         -- The split rule, the vault wallet (the treasury wallet, else the fullest) and the projected release
-        -- — the Payouts module's facts, for the people who run the team's money and nobody else.
+        -- — the Payouts module's facts, for the people who run the team's money and nobody else — plus the
+        -- templates the team's plan unlocks (one `split_template_<type>` flag each, the gate
+        -- finance.save_split_rule applies, Decision #234) and every active member's vault capabilities
+        -- (org.fn_vault_capabilities_for, the projection finance.vault_permissions holds).
         'payout', CASE WHEN p_kind = 'team' AND 'manage_finances' = ANY (v_caps) THEN jsonb_build_object(
                 'rule', (SELECT jsonb_build_object('rule_type', r.rule_type, 'vault_bp', r.vault_bp,
                                                    'finder_user_id', r.finder_user_id, 'finder_bp', r.finder_bp)
                            FROM finance.split_rules r WHERE r.team_id = v_e.id AND r.active
                           ORDER BY r.created_at DESC LIMIT 1),
+                'unlocked_templates', (SELECT COALESCE(jsonb_agg(t.rule_type ORDER BY t.rule_type), '[]'::jsonb)
+                    FROM unnest(enum_range(NULL::finance.split_rule_type)) AS t(rule_type)
+                   WHERE finance.fn_has_entitlement('team', v_e.id,
+                             ('split_template_' || t.rule_type::text)::finance.entitlement_key)),
+                'vault_capabilities', (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                        'user_id', m.user_id,
+                        'capabilities', to_jsonb(org.fn_vault_capabilities_for('team', v_e.id, m.user_id)))
+                        ORDER BY org.fn_preset_rank(m.role) DESC, m.joined_at, m.user_id), '[]'::jsonb)
+                    FROM org.team_members m
+                   WHERE m.team_id = v_e.id AND m.status = 'active'),
                 'wallet', (SELECT jsonb_build_object('id', w.id, 'currency', upper(w.currency),
                                 'available_minor', w.balance_cents,
                                 'pending_minor', COALESCE((
@@ -2993,8 +3151,10 @@ BEGIN
             ) END,
         'allowance', CASE WHEN p_kind = 'team' THEN finance.get_proposal_allowance(v_e.id) END,
         -- What would refuse an archive right now, for the people who may archive (Settings lists them
-        -- before the confirm); `[]` for everybody else and for a team.
+        -- before the confirm); `[]` for everybody else.
         'archive_blockers', v_blockers,
+        -- Where a restore would land, while the entity is archived (Settings names it on the control).
+        'restore_target', CASE WHEN v_e.status = 'archived' THEN org.fn_workspace_restore_target(p_kind, v_e.id) END,
         -- A business's pooled-wallet governance, for the people who may open Spend (BB9).
         'spend', CASE WHEN p_kind = 'business' AND v_sees_spend THEN jsonb_build_object(
                 'currency', v_currency,
@@ -3009,6 +3169,24 @@ BEGIN
                     FROM org.business_members m
                    WHERE m.business_id = v_e.id AND m.status = 'active'
                      AND 'contribute_funds' = ANY (org.fn_member_capabilities('business', v_e.id, m.user_id))),
+                -- The members whose limits and grants the viewer may change, by finance.save_spend_policy's
+                -- own rules — never the owner, never oneself, only somebody one outranks (BU2, #246).
+                'editable_member_ids', CASE WHEN 'manage_finances' = ANY (v_caps) THEN (
+                    SELECT COALESCE(jsonb_agg(m.id ORDER BY org.fn_preset_rank(m.role) DESC, m.joined_at), '[]'::jsonb)
+                      FROM org.business_members m
+                     WHERE m.business_id = v_e.id AND m.status = 'active'
+                       AND m.user_id <> v_e.owner_user_id AND m.user_id <> v_uid
+                       AND org.fn_preset_rank(m.role) < v_rank) ELSE '[]'::jsonb END,
+                -- Nobody besides the owner approves spending, so the owner's own spend over the threshold
+                -- or a limit has nobody to decide it (nobody decides their own request — #239 (e)).
+                'approver_gap', NOT EXISTS (
+                    SELECT 1 FROM org.business_members m
+                     WHERE m.business_id = v_e.id AND m.status = 'active' AND m.user_id <> v_e.owner_user_id
+                       AND 'approve_spend' = ANY (org.fn_member_capabilities('business', v_e.id, m.user_id))),
+                -- Setting a threshold, a ceiling or a capped period is Business Pro's (`pooled_wallet_full`)
+                -- and would be refused right now; clearing one never is.
+                'limits_plan_gated', finance.fn_business_plan_gates_enforced()
+                    AND NOT finance.fn_business_gate_flag(v_e.id, 'pooled_wallet_full'::finance.entitlement_key),
                 'limits', finance.fn_business_envelopes(v_e.id, v_wallet, NULL),
                 'contributed', (SELECT COALESCE(jsonb_agg(jsonb_build_object('user_id', c.actor_user_id, 'minor', c.total)), '[]'::jsonb)
                     FROM (SELECT la.actor_user_id, sum(la.amount_cents) AS total FROM finance.ledger_audit la
@@ -3029,18 +3207,23 @@ BEGIN
                              AND tx.reason <> 'transfer_out'
                            ORDER BY tx.created_at DESC LIMIT 40) d),
                 -- The requests the viewer may read, as the spend_approvals SELECT policy narrows them (BB6).
+                -- Each row names what it is for (`ref`, finance.fn_spend_ref) — resolved only for the rows
+                -- answered, never for the whole history.
                 'approvals', (SELECT jsonb_build_object(
-                        'pending', COALESCE(jsonb_agg(q.row ORDER BY q.created_at DESC) FILTER (WHERE q.open), '[]'::jsonb),
-                        'decided', COALESCE((jsonb_agg(q.row ORDER BY q.settled_at DESC) FILTER (WHERE NOT q.open)), '[]'::jsonb))
+                        'pending', COALESCE(jsonb_agg(q.row || jsonb_build_object('ref', finance.fn_spend_ref(q.ref_table, q.ref_id)) ORDER BY q.created_at DESC) FILTER (WHERE q.open), '[]'::jsonb),
+                        'decided', COALESCE((jsonb_agg(q.row || jsonb_build_object('ref', finance.fn_spend_ref(q.ref_table, q.ref_id)) ORDER BY q.settled_at DESC) FILTER (WHERE NOT q.open)), '[]'::jsonb))
                     FROM (
-                        SELECT r.row, r.created_at, r.open, r.settled_at,
+                        SELECT r.row, r.ref_table, r.ref_id, r.created_at, r.open, r.settled_at,
                                row_number() OVER (PARTITION BY r.open ORDER BY r.settled_at DESC) AS n
                           FROM (
                             SELECT jsonb_build_object(
                                        'id', sa.id, 'requested_by', sa.requested_by, 'amount_minor', sa.amount_cents,
                                        'currency', upper(sa.currency), 'reason', sa.reason, 'status', sa.status,
                                        'approver_user_id', sa.approver_user_id, 'decided_at', sa.decided_at,
-                                       'expires_at', sa.expires_at, 'created_at', sa.created_at) AS row,
+                                       'expires_at', sa.expires_at, 'created_at', sa.created_at,
+                                       'ref_table', sa.ref_table, 'ref_id', sa.ref_id,
+                                       'consumed', sa.consumed_at IS NOT NULL) AS row,
+                                   sa.ref_table, sa.ref_id,
                                    sa.created_at,
                                    sa.status = 'pending'::finance.approval_status
                                        AND (sa.expires_at IS NULL OR sa.expires_at > now()) AS open,
@@ -3132,7 +3315,16 @@ BEGIN
                     JOIN org.team_members m3 ON m3.team_id = ca.team_id AND m3.user_id = ca.member_user_id AND m3.status = 'active'
                    WHERE ca.team_id = v_e.id AND ca.percent_bp > 0) > 1
                 ELSE EXISTS (SELECT 1 FROM finance.wallets w WHERE w.owner_type = 'business' AND w.owner_id = v_e.id
-                              AND COALESCE(w.approval_threshold_cents, 0) > 0) END)
+                              AND COALESCE(w.approval_threshold_cents, 0) > 0) END,
+            -- Money was ever added to the business's pooled wallet (any `add_funds` row), so the
+            -- Overview's "Add money" step stays done once the wallet is spent.
+            'funded', p_kind = 'business' AND EXISTS (SELECT 1 FROM finance.ledger_audit la
+                JOIN finance.wallets w ON w.id = la.wallet_id
+               WHERE w.owner_type = 'business' AND w.owner_id = v_e.id AND la.action = 'add_funds'),
+            -- The plan lets the business set a threshold or member limits: the negation of the Spend
+            -- editor's `limits_plan_gated`. Without it the Overview leaves out "Set spending rules".
+            'limits_offered', p_kind = 'business' AND NOT (finance.fn_business_plan_gates_enforced()
+                AND NOT finance.fn_business_gate_flag(v_e.id, 'pooled_wallet_full'::finance.entitlement_key)))
     );
 END;
 $$;

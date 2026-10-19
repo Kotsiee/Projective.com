@@ -609,7 +609,9 @@ finance.simulate_wallet_transaction(
    `false` all mean refuse).
 2. `auth.uid()` is present, or `42501`.
 3. `finance.fn_can_move_wallet_funds` holds on **every** wallet touched — source **and**
-   destination.
+   destination. A destination owned by an **archived** business is refused `55000
+   business_not_active` (`org.fn_assert_business_not_archived`, Decision #248 (k)) — a simulation
+   never reaches a state the real doors refuse.
 4. `EXECUTE` is `authenticated` only (never `anon`; deliberately not `service_role`).
 
 **Direction matrix** — which side of a movement a type touches is not a caller decision:
@@ -837,7 +839,10 @@ only for a member holding `withdraw`; it lands only in the caller's own personal
 are a member of (`fn_owner_visible`). Same currency only (`PX409` — a transfer is not a conversion). A
 business source passes `fn_assert_business_spend(…, 'transfers', to_wallet)` — KYB (`PK403`), the
 mover's envelope and the approval threshold (`PA403`); a team or enterprise vault source clears the
-member's spending limit (`PA403`); the source must hold the amount (`PF402`). The ledger lines are `transfer_out` / `transfer_in`, each
+member's spending limit (`PA403`); the source must hold the amount (`PF402`). Money landing in a
+business wallet is a contribution, refused when the business is **archived** (`55000
+business_not_active`, `org.fn_assert_business_not_archived`, checked after the landing check —
+Decision #248 (k)); a draft's still lands. The ledger lines are `transfer_out` / `transfer_in`, each
 pointing at the OTHER wallet (`ref_table = 'wallets'`), and a vault on either side gets a
 `finance.ledger_audit` row carrying the note. Returns `{ amount_minor, currency, from_wallet,
 to_wallet, replayed }`.
@@ -862,7 +867,8 @@ vault; `manage_members` still implies it — changed 2026-09-28 from `manage_mem
 owner-level grant that also carries `withdraw`, so making someone an approver that way would have
 let them empty the pool) and may not be the requester — approving one's own over-cap spend would make
 the cap decorative (`42501`). A request already decided is `PC409` — "already been spent" for a
-consumed one, "has expired" for an expired one, so neither can be re-decided; one past its
+consumed one, "has expired" for an expired one, "was withdrawn" for one its requester took back
+(`finance.withdraw_spend_approval`, Decision #246), so none can be re-decided; one past its
 `expires_at` is marked `expired` instead of decided (expiry is applied lazily, at the next decision
 attempt — no sweep marks it). Approving moves no money: the charge for the request's ref spends it
 through `finance.fn_redeem_spend_approval`. The one exception acted on at once is an approved
@@ -880,7 +886,7 @@ hold redeems it. A decision notifies the requester through `comms.fn_notify` (`s
 | `PA403`  | over the member's spending limit, or (business) at/above the approval threshold with no approval |
 | `PF402`  | the wallet doesn't hold enough                           |
 | `PD422`  | the team has no agreed split                             |
-| `PC409`  | the spend request was already decided, spent or expired  |
+| `PC409`  | the spend request was already decided, spent, expired or withdrawn |
 
 > **Flagged, not decided.** A distribution follows the stakes as agreed, with no platform fee and no
 > vault retention taken at distribution time — the documented 5% fee → vault cut → stakes model
@@ -960,15 +966,29 @@ Under `pg_advisory_xact_lock(hashtext('split:' || team))` it retires the active 
 `previous_rule_id`, the cuts) and returns the new rule's id. `POST /api/workspace/payout` calls it
 before `save_team_split` when the request carries a `rule`. Probe: `supabase/probes/save_split_rule.sql`.
 
-### `finance.preview_team_split(p_team_id)` → jsonb
+### `finance.preview_team_split(p_team_id, p_gross_minor = NULL)` → jsonb
 
-What the team's NEXT release will pay, by `fn_team_split_plan`. Any active member may read it. The
-honest gross is the team's **oldest escrow still held** (principal + deadline bonus); the fee is that
-escrow's payer's rate, `fn_escrow_fee_bp(payer_business_id, payer_user_id)` (so a negotiated rate
-shows), on the principal, truncated — exactly what `fn_release_ticket_escrow` will charge (Decision
-#187). A team with nothing held has no projection — `gross_minor`, `currency`, `fee_minor` and
-`fee_bp` are `NULL` (never an invented figure) and the plan is the zero plan. Returns
-`{escrow_id?, gross_minor, currency, fee_minor, fee_bp, plan}`.
+What a team's release will pay, by `fn_team_split_plan` — the plan the release itself runs. Either
+answer carries the split rule (vault and finder cuts, the finder) and every stake, which Decision
+#233 (b) answers only to a `manage_finances` holder: a caller who is not an active member is refused
+`42501 workspace:`, a member without `manage_finances` `42501 payout:`. The detail's payout block,
+its other caller, is built for `manage_finances` holders alone. Returns
+`{escrow_id, gross_minor, currency, fee_minor, fee_bp, finder_bp, plan}`; `finder_bp` is the active
+`finders_fee` rule's cut (`NULL` under any other rule), carried so every cut can be labelled with its
+rate.
+
+- **No amount** (the console detail's `payout.preview`): the honest gross is the team's **oldest
+  escrow still held** (principal + deadline bonus); the fee is that escrow's payer's rate,
+  `fn_escrow_fee_bp(payer_business_id, payer_user_id)` (so a negotiated rate shows), on the principal,
+  truncated — exactly what `fn_release_ticket_escrow` will charge (Decision #187). A team with nothing
+  held has no projection — `gross_minor`, `currency`, `fee_minor` and `fee_bp` are `NULL` (never an
+  invented figure) and the plan is the zero plan.
+- **`p_gross_minor`** (1 … 10^12 minor units, `22023 gross_minor:` otherwise — the Payouts module's
+  Preview, `GET /api/workspace/payout/preview`, Teams C4): a release of THAT size, at the platform's
+  standard fee rate (`fn_escrow_fee_bp(NULL, NULL)` — there is no payer, so no negotiated rate),
+  truncated, then the team's stored rule and stakes. `escrow_id` and `currency` are `NULL` (the
+  caller prices in the vault's currency). Fee + finder + vault cut + Σ members + dust = the gross,
+  exactly. Probe: `supabase/probes/payout_preview_amount.sql`.
 
 ### `finance.save_spend_policy(p_business_id, p_patch)` → `{business_id, currency}`
 
@@ -981,7 +1001,7 @@ A business's spend policy as a PATCH (a key present is a change, so absent ≠ n
 | `approval_threshold_minor` | `finance.wallets.approval_threshold_cents`. `NULL` disables it; `0` is refused ("every spend needs a second approver" is a per-transaction ceiling of 0 instead). |
 | `approver_ids`             | The member ids who hold `approve_spend` — everyone else does not.                                                                                                     |
 | `contributor_ids`          | The member ids who hold `contribute_funds` — everyone else does not.                                                                                                  |
-| `limits`                   | `[{member_id, can_spend, limit_minor, per_transaction_minor}]` — `can_spend` moves the `spend_funds` override; the two limits upsert `finance.spending_limits`.    |
+| `limits`                   | `[{member_id, can_spend?, limit_minor?, per_transaction_minor?, period?}]` — each entry is itself a patch (a key present is a change, so an editor sends only what moved; restating a stored ceiling is a ceiling being SET). `can_spend` moves the `spend_funds` override; the limits and `period` upsert `finance.spending_limits`. |
 
 Every per-member change obeys the member drawer's rules: never the caller's own row, never the
 owner's (both are fixed points, not members of the lists), only someone the caller **outranks**, and
@@ -989,12 +1009,24 @@ never a capability the caller does not hold. Capability moves go through
 `org.fn_set_member_capability`, so "can spend" has one representation. Re-projects the whole vault;
 audits `business.spend_policy_changed`.
 
+**`period`** (BU2, Decision #246) is `weekly` · `monthly` · `total` (`22023 limits: a period is weekly,
+monthly or total`). Changing it **carries over** what the current window counted — never a reset of
+what has been spent — unless that window has already lapsed (then nothing carries), and restarts the
+window at the new period's next boundary (`date_trunc('week'|'month', now())` + one period; `NULL` for
+`total`), the boundary `fn_check_spending_limit` itself uses. A new row takes the period given (default
+`monthly`).
+
+**Business Pro** (`pooled_wallet_full`, `PK402`) is asserted only for what SETS a ceiling: a non-null
+`approval_threshold_minor`, `limit_minor` or `per_transaction_minor`, or a period change on a row that
+keeps a non-null cap. `can_spend`, a cleared ceiling and a period on a member with no cap never are.
+
 ### `finance.preview_spend_envelope(p_business_id, p_patch)` → `{currency, limits}`
 
 Read-only (`STABLE`): the envelopes a `save_spend_policy` patch WOULD produce, so the Spend editor
 never renders a draft ceiling against the stored figures it is about to replace (BUSINESSES_AUDIT
 BD2). Same authority (`manage_finances`, else `42501 policy:`) and the same limit validation (`22023
-limits:` — an inactive member, a negative limit); the rank rules stay the save's to refuse. The
+limits:` — an inactive member, a negative limit, a period other than weekly · monthly · total); the
+rank rules stay the save's to refuse. The
 wallet is looked up, never created — a currency with no wallet yet has spent nothing. `limits` is
 `fn_business_envelopes` with the patch applied. Backs `POST /api/workspace/spend/preview`.
 
@@ -1006,16 +1038,27 @@ Every active member's envelope on one business wallet, highest rank first: `memb
 `remaining_minor` (cap − spent, never below 0; `NULL` without a cap) and `used_fraction` (0–1, 4 dp; 0
 without a cap). Narrowed to the caller's own unless `fn_reads_wallet_envelopes(p_wallet)` (with no
 wallet yet: `manage_finances` or `approve_spend`). A patch's `limits` entries replace the keys they
-carry. The ONE envelope reader behind `org.get_workspace_detail` and `preview_spend_envelope`, so the
+carry — `period` included, priced against the current window's spend, which a period change carries
+over (Decision #246). The ONE envelope reader behind `org.get_workspace_detail` and `preview_spend_envelope`, so the
 console and the draft cannot disagree. Not executable by clients.
 
 ### `finance.get_billing_settings(p_business_id)` → `jsonb | NULL`
 
 The Billing module's settings for whoever may see the business's finances (`fn_owner_visible`; `NULL`
 for anyone else): `currency`, `invoicing_mode`, `billing_day`, `kyb_verified`, `auto_fund_mode`,
-`low_balance_floor_cents`, `can_manage` (vault `manage_billing`) and `can_pay` — `pay_invoice`'s own
-conditions (`manage_billing`, KYB verified, an `active` business), so Pay is offered only when it
-would be accepted (BUSINESSES_AUDIT BD15).
+`low_balance_floor_cents`, `can_manage` (vault `manage_billing`), `can_pay` — `manage_billing`, KYB
+verified and an `active` business, the same conditions as `org.get_workspace_detail`'s
+`viewer_can.pay_invoice` (BUSINESSES_AUDIT BD15) — and `plan_allows_monthly`: whether monthly
+invoicing is open to the business under the Business Pro gate, by `fn_assert_business_entitlement`'s
+own rule (`NOT fn_business_plan_gates_enforced() OR fn_business_gate_flag(business,
+'intervaled_invoicing')`, Decision #230 (e)); the `x-pj-dev-plan-gates` header can only make it
+stricter. The Billing module reads it to say "That's part of Business Pro" before a Save that
+`set_invoicing_terms` would refuse with `PK402` (BU3, Decision #247). `finance.pay_invoice` checks
+the same three, in this order — `manage_billing` (`42501`), an `active` business (`55000
+business_not_active`) and KYB (`PK403 kyb_required:`, DETAIL `{invoice_id, business_id}`) — then that
+something is due (`PC409`) and that the wallet in the invoice's currency covers it (`PF402`). Settling
+an invoice is not a spend: no envelope or approval threshold is read (Decision #240 leaves invoices
+out of the gate). Decision #247 (h); probe `supabase/probes/business_billing_screen.sql`.
 
 ### `finance.request_spend_approval(p_wallet, p_amount, p_reason, p_ref_table, p_ref_id)` → `{id, status}`
 
@@ -1039,6 +1082,42 @@ It is the ONLY way a request is filed: the client INSERT policy (`"Request a spe
 `00002013`) and the `INSERT` table grant to `authenticated` (`00002520`) were removed with it, so a
 direct PostgREST insert is refused and cannot skip the needs-approval check or choose its own
 `currency` and `expires_at`.
+
+### `finance.withdraw_spend_approval(p_approval)` → `{id, status}`
+
+The requester takes back their own **pending** request (BU2, Decision #246 — closes #243 flag (k)).
+`VOLATILE SECURITY DEFINER`, `search_path = ''`; the row is locked `FOR UPDATE`. It becomes
+`withdrawn`: terminal, `decided_at` stamped as the moment it left `pending`, `approver_user_id` left
+`NULL` (CHECK `spend_approvals_withdrawn_check`) — so it is never decided (`decide_spend_approval`
+refuses `PC409`) or redeemed (`fn_redeem_spend_approval` takes only `approved`), and its ref holds no
+open request any more: the checkout offers Request approval again (`live-buyer.latestRequest` — a
+withdrawn NEWEST request leaves no history to show, so an older declined or expired request is not read
+back as the answer; an approval that still covers the charge is still spent first).
+A request already past its expiry is marked `expired` instead, as a decision would, and answers
+`{status: 'expired'}`. Audited as `business.spend_request_withdrawn` (`{wallet_id, ref_table, ref_id,
+amount_minor}`). Moves no money; the approvers' earlier `spend_approval.requested` notifications are
+not retracted (Decision #246 flag). Granted to `authenticated` only. Backs `POST
+/api/workspace/spend-withdraw`.
+
+| SQLSTATE | Meaning                                                              |
+| :------- | :------------------------------------------------------------------- |
+| `42501`  | not signed in (`auth:`), or not the member who filed it (`request:`) |
+| `PB404`  | no such request (`request: not found`)                               |
+| `PC409`  | already withdrawn, or already decided / expired                      |
+
+### `finance.fn_spend_ref(p_ref_table, p_ref_id)` → `jsonb` (internal)
+
+What a spend request is for, read for `org.get_workspace_detail`'s request rows (BU2, Decision #246):
+`baskets` → `title` (the basket's name), `item` (its first live line), `items`; `tickets` → `title`,
+`project_title`, `project_slug`, `ticket_slug`; `project_stages` → `title` (the stage), `project_title`,
+`project_slug`, `stage_slug`; `revisions` → `title` (the round's ticket), `stage_title`, `project_title`,
+`project_slug`, `stage_slug`, `ticket_slug`; `invoices` → `invoice_type`, `period_start`, `due_at`,
+`stage_title`; `transfers` → the destination wallet's `owner_type`. Every answer carries `opens`:
+whether the CALLER may open that thing — a project by `projects.can_review_project` or
+`projects.has_project_access` (the projects SELECT policies), a basket by `fn_owner_visible`, an
+invoice by `manage_billing` — so the Spend module links only what lands. `{}` when the row is gone.
+`STABLE SECURITY DEFINER`, revoked from every client role: it reads any business's rows, so only the
+detail read calls it, for requests its caller may already read.
 
 ---
 
@@ -1112,10 +1191,11 @@ redelivered event returns the first outcome (`fn_stripe_event_replay`) and moves
 `unmatched` event (no row bound to it, or amounts that disagree) is recorded for reconciliation and
 never guessed at — except a card SETTLEMENT, which is acknowledged only with its ledger row
 (Decision #200): an unmatched `payment_intent.succeeded` releases its claim
-(`fn_release_stripe_event`) so Stripe's retry is processed, and the webhook answers 5xx. The one
-settlement acknowledged WITHOUT a ledger row is a deterministic mismatch (amount / currency that can
-never match the payment): it is completed with `reconciliation = 'settlement_mismatch'`, the webhook
-answers 2xx, and a human reconciles it from `finance.v_ops_unledgered_payments` (see
+(`fn_release_stripe_event`) so Stripe's retry is processed, and the webhook answers 5xx. The two
+settlements acknowledged WITHOUT a ledger row are a deterministic mismatch (amount / currency that can
+never match the payment, `reconciliation = 'settlement_mismatch'`) and a card captured for a business
+that is now archived (`reconciliation = 'business_archived'`, Decision #248 (k)): each is completed,
+the webhook answers 2xx, and a human reconciles it from `finance.v_ops_unledgered_payments` (see
 `settle_card_payment` below).
 
 ### Event bookkeeping (internal)
@@ -1136,10 +1216,16 @@ answers 2xx, and a human reconciles it from `finance.v_ops_unledgered_payments` 
 Opens (or replays) one `finance.inbound_payments` row and registers the attempt key
 (`card_payment:<uid>`, 7 days, hashed with the request — the same key with a different request is
 `22023`, a key still in flight for another request is `PX409`). A repeat of the same request returns
-the existing row with `replayed: true`.
+the existing row with `replayed: true` — except that a replay a card could still pay (the row is
+`requires_payment` or `failed`, either purpose) into the wallet of a business archived since it began
+is refused `55000 business_not_active:` as a new attempt is (Decision #248 (k)), so a replay charges
+nobody for money the business cannot take in.
 
 - **`wallet_topup`** — the caller's own wallet or a vault they may `add_funds` to; the currency must be
-  the wallet's; the amount is the caller's.
+  the wallet's; the amount is the caller's. A business wallet whose business is **archived** is
+  refused `55000 business_not_active: this business is archived — restore it first`
+  (`org.fn_assert_business_not_archived`, after the `add_funds` check — Decision #248 (k)); a draft's
+  is not (#236 (f)). A card checkout's top-up of a business wallet is this branch too.
 - **`escrow_lock`** — the caller must pass `projects.fn_can_fund_project`, the funder predicate
   `fund_stage` asks (`PK403 not_funder`, BB2; it replaced a `has_project_access` + payer check); the
   amount is **never the caller's**: it is `projects.fn_stage_funding_need`'s
@@ -1231,9 +1317,19 @@ is COMPLETED with `outcome = 'unmatched'`, `reconciliation = 'settlement_mismatc
 `transaction_id = NULL`, `amount_received_cents`, `currency_received`; ONE `error` row is written to
 `ops.log_entries` (`scope = 'finance.settle_card_payment'`, `client_id = 'stripe:<evt_id>'`, the
 figures in `data`; guarded so nothing writes it twice) plus a WARNING; nothing is credited and the
-payment stays `processing`; `finance.v_ops_unledgered_payments` lists it as `settlement_mismatch`
-until a human settles or closes the payment. A redelivery of that event replays the reconciliation
-outcome (still `reconciliation = 'settlement_mismatch'`) and writes nothing. A replayed event otherwise
+payment keeps its unsettled status — `requires_payment` (a browser top-up or lock), `processing` (a
+scheduled deposit, the only payment `bind_scheduled_payment` moves there) or `failed` (a declined
+attempt, not final); `finance.v_ops_unledgered_payments` lists it as `settlement_mismatch` in any of
+those until a human settles or closes the payment. A redelivery of that event replays the reconciliation
+outcome (still `reconciliation = 'settlement_mismatch'`) and writes nothing. **A card captured for an
+archived business** (archived after the payment began — either purpose; Decision #248 (k)) takes the
+same path, checked after the mismatch and before the credit with the business row locked `FOR SHARE`:
+nothing is credited — an archived business takes no money in, and the money is never parked silently
+in a wallet nothing can spend from — the claim is completed with `reconciliation =
+'business_archived'` (and `payment_id`, `amount_received_cents`, `currency_received`), one ops error
+row names the business, the payment keeps its unsettled status (as above), a redelivery replays it, and
+the ops view lists it as `business_archived` until a human refunds it or settles it by hand once the business is restored
+(probe `business_archived_topup.sql`). A replayed event otherwise
 answers with the payment's `transaction_id`; a completed claim whose payment has no ledger row and
 which is NOT a reconciliation is released and processed again (the payment's own status is what stops
 a second credit). Every other acknowledged outcome carries `transaction_id`, plus `status` and
@@ -1419,8 +1515,14 @@ Proven by `supabase/probes/pending_window.sql`.
 ### Recurring deposits
 
 - `finance.create_deposit_rule(p_wallet_id, p_amount, p_currency, p_interval, p_source_method_id)` (user)
-  — `add_funds` on the wallet; an ACTIVE Stripe funding card of the wallet's owner or the caller; the
-  wallet's currency; first charge one interval from now; stamps `created_by`.
+  — `add_funds` on the wallet; not an **archived** business's wallet (`55000 business_not_active`,
+  `org.fn_assert_business_not_archived`, Decision #248 (k) — a draft's is fine); an ACTIVE Stripe
+  funding card of the wallet's owner or the caller; the wallet's currency; first charge one interval
+  from now; stamps `created_by`.
+- `finance.fn_deposit_charge_target(p_rule)` (internal) — what a due run is charged to, re-authorised
+  now: the author AS THEM, the card still active on a Stripe Customer, and — for a business wallet —
+  the business not archived (`refusal` "Paused: this business is archived — …", Decision #248 (k)), so
+  `claim_due_deposit_rules` pauses that rule (or cancels an unbound retry) and charges nothing.
 - `finance.claim_due_deposit_rules(p_limit)` (processor, the scheduler) — `FOR UPDATE SKIP LOCKED`;
   re-authorises the author AS THEM; records the run as an inbound payment (key =
   `deposit:<rule>:<period>`, so a period is charged once); advances past `now()` — missed periods are
@@ -1516,6 +1618,36 @@ escrow, evidence access and immutability, the workspace fields, grants) and
 `supabase/probes/dispute_review_queue.sql` (30 checks — every door into review stamps `review_by`, the
 CHECK, the operator queue's gate / order / filter / counts, the overdue alert that never rules and
 repeats at most daily, grants).
+
+## 📊 Public metrics (`00001265`, Decision #277)
+
+### `finance.public_metrics()` → jsonb (service role)
+
+The public site's live platform figures (`/about`, the landing page; read by `PublicMetricsService`,
+cached an hour). `SECURITY DEFINER`, `STABLE`, `search_path = ''`; EXECUTE revoked from `PUBLIC`,
+`anon` and `authenticated` and granted to `service_role` only (`00002510` `[about_metrics]`).
+**Aggregates only** — no row of any table is returned — and the publication threshold is applied
+HERE, each figure by its OWN count: a figure resting on fewer than
+`security.platform_params.public_metrics_min_n` rows comes back `NULL` together with its count. The
+per-currency parts of the protected total are gated by the total's count only — they reach the
+service role alone, and the public payload carries only one converted total, floored to two
+significant figures (`coarsenPublishedTotal`).
+
+| Key | Meaning |
+| :-- | :-- |
+| `as_of` | `now()` of the read. |
+| `min_n` · `min_n_configured` | The threshold: the param when it is a number ≥ 1 (floored, capped at int4), else the literal 10 with `min_n_configured = false`. |
+| `platform_fee_bp` | The `platform_fee_bp` param (the public rate, never a negotiated one); `NULL` when missing or not an integer 0–10,000. |
+| `base_currency` | The `base_currency` param, upper case; `NULL` when not a three-letter code. |
+| `protected_count` · `protected_by_currency` | Escrows whose status is `funded` · `held` · `disputed` · `released`, and `[{currency, amount_minor}]` of their `amount_cents` per upper-cased currency. `refunded` is left out (refunded money can be escrowed again). Never summed across currencies. |
+| `stages_delivered` | `projects.project_stages` with status `approved` or `paid`, all time (archived included), in a non-personal project, with at least one escrow `released` to a payee — money evidence, because the project owner may write a stage's own `status` / `completed_at`. |
+| `approval_count` · `median_funding_to_approval_hours` | Over the same delivered stages: hours from the stage's first released escrow's `created_at` to its last release (`max(released_at)`, stamped by the release doors; the stage's `completed_at` only when no released escrow carries one); the count of such stages and their `percentile_cont(0.5)`. |
+
+Zod: `PublicMetricsAggregateSchema` (`@projective/types/marketing`). The service converts a
+multi-currency total into `base_currency` through `FxService` and withholds it if any currency has no
+rate. Probe: `supabase/probes/public_metrics.sql` (grants and definition, every threshold fallback,
+an independent recomputation of each figure, a refund lowering the protected figure by exactly its
+amount, a self-declared paid stage not counted, nothing below the threshold, malformed params).
 
 ## Under-18 accounts (Decision #208)
 

@@ -212,6 +212,22 @@ export type DevLowBalance = "auto" | "below" | "above";
 export type DevBusinessKyb = "auto" | "unverified" | "in_review" | "action_needed" | "verified";
 
 /**
+ * The simulated lifecycle on a team's Settings module (Teams C6): `auto` shows the server's read;
+ * `draft` (Publish in the header band), `active` (Archive…), `escrow_held` / `live_assignments` (the
+ * archive blockers in its place), `archived_published` / `archived_draft` (Restore as active / as a
+ * draft). Its own axis because every seeded team is active with nothing in flight. Client-side: the
+ * database and every lifecycle door are unchanged.
+ */
+export type DevTeamSettings =
+	| "auto"
+	| "draft"
+	| "active"
+	| "escrow_held"
+	| "live_assignments"
+	| "archived_published"
+	| "archived_draft";
+
+/**
  * The simulated notification inbox (DESIGN_SYSTEM §D.9): `empty` answers no notifications at all;
  * `many` answers a large unread set spread over every inbox category (tab counts, paging, bulk
  * select); `burst` keeps the real inbox and lands a run of new arrivals a second apart (the live
@@ -244,6 +260,21 @@ export type DevCheckoutGate =
 	| "no_approver"
 	| "pool_short"
 	| "kyb_required";
+
+/**
+ * The simulated spend-request queue on a business's Spend module (Decision #246): `empty` no requests,
+ * `others_pending` two waiting on the viewer, `own_pending` the viewer's own (Withdraw),
+ * `history` the decided tab in every terminal state (withdrawn included), `kyb_approver` the viewer as
+ * an approver of a business still in KYB. `auto` shows the server's queue. Client-side only: made-up
+ * rows offer no control, and every decision and withdrawal still goes to the server.
+ */
+export type DevSpendRequests =
+	| "auto"
+	| "empty"
+	| "others_pending"
+	| "own_pending"
+	| "history"
+	| "kyb_approver";
 
 /**
  * The simulated saved set (`/saved` and every star / save control, Decision #180): `empty` answers
@@ -487,6 +518,8 @@ export interface DevSeamState {
 	lowBalance?: DevLowBalance;
 	/** The simulated business KYB picture. Optional like `walletAurora`; absent reads as `auto`. */
 	businessKyb?: DevBusinessKyb;
+	/** The simulated team Settings lifecycle. Optional like `walletAurora`; absent reads as `auto`. */
+	teamSettings?: DevTeamSettings;
 	/** The simulated session state. Optional like `walletAurora`; absent reads as `auto`. */
 	sessionState?: DevSessionState;
 	/** The simulated no-show dispute. Optional like `walletAurora`; absent reads as `auto`. */
@@ -497,6 +530,8 @@ export interface DevSeamState {
 	basketScenario?: DevBasketScenario;
 	/** The simulated business checkout gate. Optional like `walletAurora`; absent reads as `auto`. */
 	checkoutGate?: DevCheckoutGate;
+	/** The simulated Spend request queue. Optional like `walletAurora`; absent reads as `auto`. */
+	spendRequests?: DevSpendRequests;
 	/** The simulated saved set. Optional like `walletAurora`; absent reads as `auto`. */
 	saved?: DevSaved;
 	/** The simulated promo dismissals. Optional like `walletAurora`; absent reads as `auto`. */
@@ -676,6 +711,15 @@ const BUSINESS_KYBS: readonly DevBusinessKyb[] = [
 	"action_needed",
 	"verified",
 ];
+const TEAM_SETTINGS_SIMS: readonly DevTeamSettings[] = [
+	"auto",
+	"draft",
+	"active",
+	"escrow_held",
+	"live_assignments",
+	"archived_published",
+	"archived_draft",
+];
 const NOTIFICATION_SIMS: readonly DevNotifications[] = ["auto", "empty", "many", "burst"];
 const BASKET_SCENARIOS: readonly DevBasketScenario[] = ["auto", "empty", "multi_owner", "unavailable"];
 const CHECKOUT_GATES: readonly DevCheckoutGate[] = [
@@ -687,6 +731,14 @@ const CHECKOUT_GATES: readonly DevCheckoutGate[] = [
 	"no_approver",
 	"pool_short",
 	"kyb_required",
+];
+const SPEND_REQUEST_SIMS: readonly DevSpendRequests[] = [
+	"auto",
+	"empty",
+	"others_pending",
+	"own_pending",
+	"history",
+	"kyb_approver",
 ];
 const SAVED_SIMS: readonly DevSaved[] = ["auto", "empty", "many"];
 const PROMO_DISMISSALS: readonly DevPromoDismissal[] = ["auto", "visible", "dismissed"];
@@ -767,11 +819,13 @@ export function readDevSeam(): DevSeamState | null {
 		autoFundMode: coerce(ds.devAutoFundMode, AUTO_FUND_MODES, "auto"),
 		lowBalance: coerce(ds.devLowBalance, LOW_BALANCES, "auto"),
 		businessKyb: coerce(ds.devBusinessKyb, BUSINESS_KYBS, "auto"),
+		teamSettings: coerce(ds.devTeamSettings, TEAM_SETTINGS_SIMS, "auto"),
 		sessionState: coerce(ds.devSessionState, SESSION_STATES, "auto"),
 		disputeState: coerce(ds.devDisputeState, DISPUTE_STATES, "auto"),
 		notifications: coerce(ds.devNotifications, NOTIFICATION_SIMS, "auto"),
 		basketScenario: coerce(ds.devBasketScenario, BASKET_SCENARIOS, "auto"),
 		checkoutGate: coerce(ds.devCheckoutGate, CHECKOUT_GATES, "auto"),
+		spendRequests: coerce(ds.devSpendRequests, SPEND_REQUEST_SIMS, "auto"),
 		saved: coerce(ds.devSaved, SAVED_SIMS, "auto"),
 		promoDismissal: coerce(ds.devPromoDismissal, PROMO_DISMISSALS, "auto"),
 		discoveryViewer: coerce(ds.devDiscoveryViewer, DISCOVERY_VIEWERS, "auto"),

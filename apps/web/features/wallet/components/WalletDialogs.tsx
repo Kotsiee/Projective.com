@@ -1,7 +1,8 @@
 import type { ComponentChildren, JSX, VNode } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { Alert, Dialog } from "@projective/ui/feedback";
+import { Alert, CommitReviewBody, Dialog } from "@projective/ui/feedback";
+import "@ui/feedback/styles/commit-review.css";
 import {
 	Button,
 	FormControl,
@@ -24,6 +25,7 @@ import {
 	walletDialog,
 } from "../core/wallet-state.ts";
 import { methodName, MOVEMENTS, type ResolvedAction } from "../core/wallet-home.ts";
+import { type WalletRefusalContext, walletRefusalSentence } from "../core/wallet-refusal.ts";
 import {
 	ACTION_LABEL,
 	categoryLabel,
@@ -42,6 +44,7 @@ import type {
 	WalletAction,
 	WalletActionResult,
 	WalletOverview,
+	WalletRef,
 	WalletScope,
 	WalletSwitcher,
 } from "../types/wallet-types.ts";
@@ -150,9 +153,24 @@ function refuse(found: object, form: HTMLElement | null): boolean {
 	return true;
 }
 
-function failureOf(res: Outcome | null): string {
-	return res?.message ?? Object.values(res?.errors ?? {})[0] ??
-		"We couldn't confirm this went through. Check the balance before trying again.";
+function failureOf(res: Outcome | null, ctx: WalletRefusalContext = {}): string {
+	return walletRefusalSentence(
+		res,
+		ctx,
+		"We couldn't confirm this went through. Check the balance before trying again.",
+	);
+}
+
+/**
+ * The business wallets among these — their names by business id, and the ones the reader owns — what a
+ * business refusal may name and whom its ask is for.
+ */
+function businessRefusalContext(refs: readonly WalletRef[]): WalletRefusalContext {
+	const businesses = refs.filter((r) => r.scope === "business");
+	return {
+		businesses: Object.fromEntries(businesses.map((r) => [r.id, r.name])),
+		owned: businesses.filter((r) => r.role === "owner").map((r) => r.id),
+	};
 }
 
 function refKey(scope: string, id: string): string {
@@ -382,7 +400,8 @@ function MoveDialog(
 			props.onChanged(res.data?.result?.overview ?? null);
 			return;
 		}
-		outcome.value = failureOf(res);
+		// The source and every destination it could have named: a business refusal names its business.
+		outcome.value = failureOf(res, businessRefusalContext([overview.ref, ...accounts]));
 		step.value = "error";
 	};
 
@@ -651,27 +670,18 @@ function MoveDialog(
 			)}
 
 			{(step.value === "review" || step.value === "sending" || step.value === "error") && (
-				<div class="wlt-review">
-					<p class="wlt-dlg__amount">{figure}</p>
-					<dl class="wlt-dlg__facts">
-						<div class="wlt-dlg__fact">
-							<dt>From</dt>
-							<dd>{fromLabel}</dd>
-						</div>
-						<div class="wlt-dlg__fact">
-							<dt>To</dt>
-							<dd>{toLabel}</dd>
-						</div>
-						{action === "transfer" && note.value.trim() && (
-							<div class="wlt-dlg__fact">
-								<dt>Note</dt>
-								<dd>{note.value.trim()}</dd>
-							</div>
-						)}
-					</dl>
-					<p class="wlt-dlg__warn">{CONSEQUENCE[action]}</p>
-					{step.value === "error" && <Alert severity="danger">{outcome.value}</Alert>}
-				</div>
+				<CommitReviewBody
+					total={figure}
+					rows={[
+						{ label: "From", value: fromLabel },
+						{ label: "To", value: toLabel },
+						...(action === "transfer" && note.value.trim()
+							? [{ label: "Note", value: note.value.trim() }]
+							: []),
+					]}
+					consequence={CONSEQUENCE[action]}
+					notice={step.value === "error" && <Alert severity="danger">{outcome.value}</Alert>}
+				/>
 			)}
 
 			{step.value === "card" && handoff.value && (
@@ -792,8 +802,11 @@ function ConfigDialog(
 			props.onChanged(res.data?.result?.overview ?? null);
 			return;
 		}
-		failure.value = res.message ?? Object.values(res.errors ?? {})[0] ??
-			"That didn't save. Nothing has changed.";
+		failure.value = walletRefusalSentence(
+			res,
+			businessRefusalContext([overview.ref]),
+			"That didn't save. Nothing has changed.",
+		);
 		phase.value = "form";
 	};
 

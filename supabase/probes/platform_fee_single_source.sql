@@ -166,7 +166,8 @@ BEGIN
     IF v_team IS NULL OR v_payer IS NULL THEN
         RAISE EXCEPTION 'FAIL fixture: no team whose oldest held escrow has a business payer';
     END IF;
-    SELECT m.user_id INTO v_member FROM org.team_members m WHERE m.team_id = v_team ORDER BY m.user_id LIMIT 1;
+    -- The owner: the projection is answered to manage_finances holders only (Decision #233 (b)).
+    SELECT t.owner_user_id INTO v_member FROM org.teams t WHERE t.id = v_team;
 
     IF NOT EXISTS (SELECT 1 FROM finance.negotiated_rates n WHERE n.subject_id = v_payer AND n.contract_ref = 'PROBE-187') THEN
         INSERT INTO finance.negotiated_rates (subject_type, subject_id, platform_fee_bp, contract_ref, starts_at)

@@ -479,7 +479,7 @@ labels, tiers and URLs are decided once, in TypeScript
 | :----------------------------------------- | :------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `fn_profile_manages(owner_type, owner_id)` | revoked from every client | May the caller EDIT this profile? A user their own; a team or a business whoever holds the `edit_profile` workspace capability there (`org.fn_member_can` — the owner and admin presets, or a custom role or override that grants it; since 2026-09-28); an enterprise its owner or an admin member; a platform admin any. Deliberately narrower than membership.                                                                                                   |
 | `can_manage_profile(owner_type, owner_id)` | `authenticated`           | The same predicate as an RPC, so the fat service can refuse an unauthorised media upload **before** it spends a decode on it.                                                                                                                                                                                         |
-| `fn_profile_visible(owner_type, owner_id)` | `anon` · `authenticated`  | May the caller SEE it? Whoever manages it, plus: a `public`/`unlisted` individual; an `active` team that is `public`/`unlisted`, or its active member; an `active` business that is `public`/`unlisted`, or its active member (BP1, Decision #244 — a draft, archived or `invite_only` business is missing to everyone outside it, on its profile, every section read, `get_profile_cards` and its public schedule); an `active` enterprise or its member. It is also the SELECT predicate on the profile ledgers (education, experience, languages, certifications, showcase, settings), and — through `scheduling.fn_schedule_is_public` (since 2026-09-28) — the reason a hidden profile's published schedule is not visitor-readable. |
+| `fn_profile_visible(owner_type, owner_id)` | `anon` · `authenticated`  | May the caller SEE it? Whoever manages it, plus: a `public`/`unlisted` individual; an `active` team that is `public`/`unlisted`, or its active member (Teams P1 pins it — a draft, archived or `invite_only` team is missing to everyone outside it on every reader, `supabase/probes/team_profile_visibility.sql`); an `active` business that is `public`/`unlisted`, or its active member (BP1, Decision #244 — a draft, archived or `invite_only` business is missing to everyone outside it, on its profile, every section read, `get_profile_cards` and its public schedule); an `active` enterprise or its member. It is also the SELECT predicate on the profile ledgers (education, experience, languages, certifications, showcase, settings), and — through `scheduling.fn_schedule_is_public` (since 2026-09-28) — the reason a hidden profile's published schedule is not visitor-readable. |
 | `fn_resolve_profile(handle)`               | revoked from every client | `@handle` → `(owner_type, owner_id)`. Leading `@`s and case are ignored. The four namespaces are separate `UNIQUE` columns, so the tie-break is fixed: a person, then a team, a business, an enterprise. It ignores visibility, which is why it is internal.                                                         |
 
 ### Reads (`anon` · `authenticated`)
@@ -491,10 +491,10 @@ so a private profile's existence is never disclosed by a different answer. The f
 | Function                             | Returns                                                                                                                                                                                                                                                                                                                  |
 | :----------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `get_profile_owner(handle)`          | `{owner_type, owner_id}` — the cheap resolution the scheduling readers use to find an owner's schedule without the whole document.                                                                                                                                                                                       |
-| `get_profile_view(handle)`           | The whole profile chrome in one call: identity, avatar and banner references, the showcase (slot order, alt, references), the context-bar facts, the metrics strip and earned Standing, the `verification_stamp` (a person's stored stamp; a business's or enterprise's `corporate_verified` derived from its own KYB; a team `none`) and a seller's unranked `adornments` (always `[]` for a buyer, business or enterprise — the service ranks and caps them), the owner's presentation switches, the seller's hire intake, and the **viewer's** relationship to the profile (owner, follows). A business also answers its real `visibility`, a `workspace` object — `hidden_reason` (`archived` · `draft` · `invite_only`, in that precedence; `NULL` while anybody may open it, so only a member is ever told) and `viewer_edits` / `viewer_settings` (the viewer's OWN seat's `edit_profile` / `manage_settings` through `fn_member_can`, never the platform-admin arm) — and `contact` (`handle`, `name`): its owner, whom a Message reaches because a DM is person-to-person (BP1, Decision #244). Other kinds carry neither key. |
+| `get_profile_view(handle)`           | The whole profile chrome in one call: identity, avatar and banner references, the showcase (slot order, alt, references), the context-bar facts, the metrics strip and earned Standing, the `verification_stamp` (a person's stored stamp; a business's or enterprise's `corporate_verified` derived from its own KYB; a team `none`) and a seller's unranked `adornments` (always `[]` for a buyer, business or enterprise — the service ranks and caps them), the owner's presentation switches, the seller's hire intake, and the **viewer's** relationship to the profile (owner, follows). A business also answers its real `visibility`, a `workspace` object — `hidden_reason` (`archived` · `draft` · `invite_only`, in that precedence; `NULL` while anybody may open it, so only a member is ever told) and `viewer_edits` / `viewer_settings` (the viewer's OWN seat's `edit_profile` / `manage_settings` through `fn_member_can`, never the platform-admin arm) — and `contact` (`handle`, `name`): its owner, whom a Message reaches because a DM is person-to-person (BP1, Decision #244). A team answers the same `workspace` (its own `hidden_reason` precedence over `org.teams`; `viewer_edits` = `edit_profile`, the owner and admin presets or a custom role that grants it, Decision #250 (b)) and `contact` (its owner) (Teams P1). A person and an enterprise carry neither key. A team's `standing` also carries `factors` — `stages_completed`, `completion_rate`, `on_time_rate`, `dispute_rate` from the team's own `org.entity_standing` row — once `stages_completed` reaches the volume floor of the ladder's first earned rung (`org.standing_levels` level 2's `min_completed_stages`, 5 in the seed), so one flawless engagement never publishes "100% on time"; absent below it, when the team has no row yet (its rung falls back to level 1), and always for a person, whose rates are not published (Teams P1). |
 | `get_profile_experience(handle)`     | Career, education and certifications (individuals only).                                                                                                                                                                                                                                                                 |
-| `get_profile_reviews(handle, limit)` | The latest reviews of the profile (default 60), each with its author's card.                                                                                                                                                                                                                                              |
-| `get_profile_roster(handle)`         | A team's, business's or enterprise's members. A team member's `role` label is their `title`, else the NAME of the role row they hold (was `initcap(role)`); a business member's is their `title`, else the base preset's label (`Owner` · `Admin` · `Member`) — never a custom role's name, which `org.business_roles` RLS keeps to members — and a business row carries `since` (the membership's `joined_at`) (BP1, Decision #244). Ordered by preset rank then join date.                                                                                                                  |
+| `get_profile_reviews(handle, limit)` | The latest reviews of the profile (default 60), each with its author's card. A team's are the reviews whose subject is the team (`target_entity_type = 'team'`) — never a member's personal reviews (Teams P1, probe D).                                                                                                                                                                                                                                              |
+| `get_profile_roster(handle)`         | A team's, business's or enterprise's members. A team member's row is PUBLIC facts only (Teams P1): `role` is the base preset's label (`Owner` · `Admin` · `Lead` · `Member`) — a custom role reads as its base preset, since its name is member-only under `org.team_roles` RLS and no role carries a "public" flag; never the member's `title` — plus `since` (`joined_at`) and `skills` (the member's first two `freelancer_profiles.skills`, by `org.skills` label — `[]` unless the member's own profile admits the caller, `fn_profile_visible('user', …)`, so a private member's skills stay off the team page as they are off their own); no stake, no workload. A business member's is their `title`, else the base preset's label (`Owner` · `Admin` · `Member`) — never a custom role's name, which `org.business_roles` RLS keeps to members — and a business row carries `since` (the membership's `joined_at`) (BP1, Decision #244). Ordered by preset rank then join date.                                                                                                                  |
 | `get_profile_portfolio(handle)`      | The "Selected work" pieces with their cover references; a piece with no picture is omitted, never drawn empty.                                                                                                                                                                                                          |
 | `get_profile_past_projects(handle)`  | Up to 24 **completed** projects the profile posted or delivered on (a delivery assignment that was not declined, cancelled or never funded), only where the project is `public` **and** its `portfolio_display_rights = 'allowed'`, newest first.                                                                        |
 
@@ -699,9 +699,12 @@ namespace under a `pg_advisory_xact_lock` on the handle.
 
 - **`fn_is_reserved_handle(handle)`** — `IMMUTABLE`; the SQL twin of `RESERVED_HANDLES`
   (`@projective/types/profile`), pinned by the contract test. The two lists change together, edited
-  in place in `00001020_functions_org_entities.sql`; the latest entry is `inspect`, the shell-free
-  file inspector's top-level segment (Decision #161(G); the reasons per entry are in `ROUTING.md`
-  §Reserved-handle precedence).
+  in place in `00001020_functions_org_entities.sql`; the latest entries are `invite` and `saved`
+  (Teams P1), found by the namespace guard — the same contract test fails when any top-level segment
+  under `apps/web/routes/` is missing from the list — and `changelog`, `feedback` and `features`,
+  the public editorial routes and the landing track's `/features` (2026-10-17, probed by
+  `supabase/probes/reserved_handles.sql`); the reasons per entry are in `ROUTING.md`
+  §Reserved-handle precedence.
 - **`fn_handle_taken(handle)`** — case-insensitively taken in any of the four tables, or **held**:
   given up by a person in the last 90 days (`org.handle_changes`, Decision #156), so nobody can step
   into a renamed person's old links. Only the previous owner may take it back (`org.change_username`).
@@ -753,6 +756,18 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   through the spend gate inherits it), `finance.place_wallet_order` (a business basket),
   `projects.fn_assert_business_actor` for `hire` (every hiring door), `finance.pay_invoice` and
   `finance.set_invoicing_terms`. Internal. Probe: `supabase/probes/business_lifecycle.sql`.
+- **`fn_assert_business_not_archived(business) → void`** — money INTO a business wallet (Decision
+  #248 (k)): an archived business takes nothing in, a draft or active one does (a draft's setup asks
+  for money before Publish, #236 (f)). Refuses `55000 business_not_active: this business is archived —
+  restore it first` (`fn_assert_business_active`'s archived wording) with DETAIL `{business_id,
+  status}`; `P0002` when the row does not exist; NULL passes. `VOLATILE`: it locks the business row
+  `FOR SHARE` until the caller's transaction ends, so an archive racing a credit
+  (`set_workspace_status` locks `FOR UPDATE` before counting blockers) either waits and then sees the
+  money (`wallet_balance`) or wins and the credit sees `archived`. Called by
+  `finance.begin_card_payment` (`wallet_topup`), `finance.transfer_funds` (a business destination),
+  `finance.create_deposit_rule` and `finance.simulate_wallet_transaction` (a business destination);
+  `finance.settle_card_payment` and `finance.fn_deposit_charge_target` read the same status inline
+  (`../finance/Functions.md`). Internal. Probe: `supabase/probes/business_archived_topup.sql`.
 - **`fn_business_archive_blockers(business) → jsonb`** — `[{code, count}]`, in this order, one entry
   per kind that applies (`[]` when none): `escrow_held` (held escrows it funded) · `live_projects`
   (`client_business_id`, `active`/`on_hold`) · `pending_approvals` (pending, unlapsed spend requests
@@ -760,22 +775,41 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   `finance.fn_on_account_owed > 0`) · `wallet_balance` (wallets with a positive balance) ·
   `pending_payouts` (`pending` payouts from its wallets). Read by `set_workspace_status` and
   `get_workspace_detail`. Internal.
-- **`set_workspace_status(kind, id, status) → {id, status}`** — `authenticated`. Publishing
-  (`draft → active`) needs `manage_settings`; archiving or restoring (to or from `archived`) needs
-  `archive_entity`. A published entity never goes back to `draft`. **Archive is refused (`55000`)**
-  while an escrow is `held` owed to the team (`payee_type = 'team'`) or funded by the business
-  (`payer_business_id`); for a team, also while a `held` escrow on a stage the team is assigned to
-  (`projects.stage_assignments.team_id`, joined on `escrows.project_stage_id`, assignment not
-  `declined`/`cancelled`/`released`) is **unbound** (a Decision #197 prepaid ticket escrow) or bound
-  to one of its **members** (`payee_type = 'freelancer'`, the team-seat payee rule of #197 flag (b)) —
-  the same `55000` "money is held in escrow" refusal (TEAMS_AUDIT S3; probe
-  `supabase/probes/team_archive_escrow_guard.sql`); a non-member's escrow on a shared stage does not
-  block. It is also refused while a team holds a live `projects.stage_assignments` row on an
-  `active`/`on_hold` project. A **business** is refused on every `fn_business_archive_blockers`
-  entry: `55000` whose MESSAGE leads with the first blocker's code (`escrow_held: …`,
-  `live_projects: …`, …) and whose DETAIL is `{"blockers": [...]}` — the API answers `409` with
-  `details {reason, blockers}` (`packages/backend/services/workspace/live-support.ts`). Audits
-  `{kind}.status_changed`.
+- **`fn_team_archive_blockers(team) → jsonb`** — a team's twin, in the same `[{code, count}]` shape
+  and order (`[]` when none): `escrow_held` — `held` escrows owed to the team (payee type `team`),
+  or on a stage the team is assigned to (`projects.stage_assignments.team_id`, joined on
+  `escrows.project_stage_id`, assignment not `declined`/`cancelled`/`released`) that are **unbound**
+  (a Decision #197 prepaid ticket escrow) or bound to one of its **members** (payee type
+  `freelancer`, the team-seat payee rule of #197 flag (b)); a non-member's escrow on a shared stage
+  does not count (TEAMS_AUDIT S3) — then `live_assignments` — its `projects.stage_assignments` rows
+  not `declined`/`cancelled`/`released`/`completed` on an `active`/`on_hold` project (S4). Read by
+  `set_workspace_status` and `get_workspace_detail`. Internal (Teams C6; probe
+  `supabase/probes/team_archive_blockers.sql`).
+- **`fn_workspace_restore_target(kind, id) → text`** — where restoring an archived entity lands
+  (Decision #250 (c); a business's by #236 (d)): `active` when its `security.audit_logs` trail
+  (`{kind}.status_changed` on `org.teams` / `org.business_profiles`, metadata `{from, to}`) ever
+  touched `active` — `active → draft` is refused, so that is exactly "it was published once" — else
+  `draft`. An entity with **no** status trail (a seeded or hand-written row) has no evidence of ever
+  being published and restores to `draft`. `STABLE`; read through `idx_audit_logs_entity`. Internal
+  (probe `supabase/probes/team_restore_target.sql`).
+- **`set_workspace_status(kind, id, status) → {id, status}`** — `authenticated`. `status` is `draft`
+  · `active` · `archived` · **`restore`**. Publishing (`draft → active`) needs `manage_settings`;
+  archiving or restoring (to or from `archived`) needs `archive_entity`. A published entity never
+  goes back to `draft`. **Restore** lands where `fn_workspace_restore_target` says: `restore`
+  resolves to it, naming that target outright is accepted, and naming the other is refused `22023`
+  with a `restore_target:` message and DETAIL `{"target": …}` (the API answers `409` with `details`
+  `{reason: "restore_target", target}`); `restore` on an entity that is not archived is refused
+  `22023` ("only an archived … is restored"). The answer's `status` is the one it landed on.
+  **Archive is refused (`55000`)** on every blocker the kind's list names — a team's
+  `fn_team_archive_blockers` (its two `status:` sentences kept: "money is held in escrow for this
+  team — let it release first" for `escrow_held`, "this team is still assigned to live work — finish
+  or hand it back first" for `live_assignments`; probes `team_archive_escrow_guard.sql`,
+  `team_archive_blockers.sql`), a business's `fn_business_archive_blockers` (the MESSAGE led by the
+  first blocker's code — `escrow_held:`, `live_projects:`, …) — refused on the first, with DETAIL
+  `{"blockers": [...]}` for both kinds. The API answers `409` with `details` `{reason, blockers}`,
+  `reason` the first code (`packages/backend/services/workspace/live-writes.ts` `statusRefusal` for
+  a team, `live-support.ts` `refusalFrom` for a business). Audits `{kind}.status_changed`
+  `{from, to}`, `to` the status it landed on.
 - **`update_workspace(kind, id, patch) → {id}`** — `authenticated`, needs `edit_profile`. Patch keys
   `name` (2–80), `headline` (≤ 160, refused as `tagline:`) and `visibility` (`public` · `unlisted` ·
   `invite_only`, either kind; else `22023 visibility:`; Decision #230 (h)). Pictures move through the
@@ -908,9 +942,11 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
   owner is the person accountable for the team. `unverified | pending | verified`.
 - **`get_workspace_roster(kind) → {items, invitations, create_limit, create_used}`** — the caller's
   ACTIVE memberships of that kind (owned first, then by name), each with its role, owner flag,
+  `created_at` and `updated_at` (the row's own; the roster table's Updated column, Teams R1),
   verification, member count, up to five face user ids (by rank, then join date), pending-invite
   count, active projects, 30-day money by currency (team: payout splits + vault retention credited;
-  business: debits other than `transfer_out`), the setup facts (`logo` · `bio` · `money`) and an
+  business: debits other than `transfer_out`), the setup facts (`logo` · `bio` · `money` · `funded` ·
+  `limits_offered` — the last two as `get_workspace_detail` answers them) and an
   unseen-notification flag; plus the caller's own PENDING, unexpired invitations to non-archived
   entities of that kind (via `fn_is_invitee`); plus the create entitlement's limit and usage.
 - **`get_workspace_detail(kind, handle_or_id) → jsonb`** — the console for one entity, addressed by
@@ -931,11 +967,17 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
   assignments, each with its client business's `client` face; business: as client, excluding
   `draft`/`archived`, each with `provider_user_ids` and `provider_teams` faces — faces are
   `org.profiles_index` name + avatar bucket/path), the 30 most recent activity events (joins and
-  `finance.ledger_audit` money movements), and the setup facts (`logo` · `bio` · `invite` · `money`).
-  Both kinds carry `visibility`. A **business** also answers `archive_blockers` —
-  `fn_business_archive_blockers` **only when the viewer holds `archive_entity`**, else `[]` (always
-  `[]` for a team) — so Settings lists what to clear before the archive confirm (BB5; `archiveBlockers`
-  in `WorkspaceDetail`).
+  `finance.ledger_audit` money movements), and the setup facts (`logo` · `bio` · `invite` · `money`,
+  plus for a business — `false` for a team — `funded`: any `add_funds` `finance.ledger_audit` row on
+  its wallets, so the Overview's Add money stays done once the wallet is spent; and
+  `limits_offered`: `NOT (fn_business_plan_gates_enforced() AND NOT fn_business_gate_flag(id,
+  'pooled_wallet_full'))`, the negation of the spend block's `limits_plan_gated` — Decision #248;
+  probe `supabase/probes/business_overview_setup.sql`).
+  Both kinds carry `visibility`, and `archive_blockers` — `fn_team_archive_blockers` /
+  `fn_business_archive_blockers` **only when the viewer holds `archive_entity`**, else `[]` — so
+  Settings lists what to clear before the archive confirm (BB5; Teams C6; `archiveBlockers` in
+  `WorkspaceDetail`), and `restore_target` — `fn_workspace_restore_target` while the entity is
+  `archived`, else `null` — so Restore says where it lands (`restoreTarget`).
   A **business** also answers, every flag and figure decided here so no screen recomputes policy
   (BB9; always `null` / `[]` for a team):
   - `spend` — **only when the viewer may open Spend** (`spend_funds` · `manage_finances` ·
@@ -947,7 +989,15 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
     member's all-time `add_funds` on the policy wallet), the 40 latest `contributions` and `debits`
     (`transfer_out` excluded), and `approvals {pending, decided}` — the requests the caller may read
     (their own unless `fn_reads_wallet_envelopes`): every open one, and the 30 latest approved /
-    rejected / expired.
+    rejected / expired / withdrawn — each with `ref_table`, `ref_id`, `ref` (what it is for and whether
+    the caller may open it, `finance.fn_spend_ref`, resolved only for the rows answered) and `consumed`.
+    For the Spend editor (BU2, Decision #246) the block also answers `editable_member_ids` — the active
+    members whose limits and grants the caller may change by `finance.save_spend_policy`'s own rules
+    (a `manage_finances` holder only; never the owner, never themselves, only somebody they outrank by
+    preset rank; `[]` otherwise) — `approver_gap` (no active member besides the owner holds
+    `approve_spend`, so the owner's own over-threshold or over-limit spend has nobody to decide it,
+    #239 (e)) and `limits_plan_gated` (`fn_business_plan_gates_enforced()` and no
+    `pooled_wallet_full` — setting a threshold or a ceiling would be refused `PK402` now).
   - `money_tiles` — **only when the viewer may open Finance** (`contribute_funds` · `spend_funds` ·
     `manage_finances`), else `[]`: one row per business wallet, the policy currency first —
     `available_minor` (balance), `pending_minor` (`pending_releases` still clearing), `committed_minor`
@@ -970,7 +1020,13 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
     `vault_bp`, `finder_user_id`, `finder_bp`, or `null`), `wallet` (the treasury wallet, else the
     fullest: `id`, `currency`, `available_minor` = `balance_cents`, `pending_minor` = Σ
     `amount_cents − recovered_cents` of its `pending` `finance.pending_releases`, both integer minor
-    units) and `preview` (`finance.preview_team_split`'s answer).
+    units), `preview` (`finance.preview_team_split`'s answer), `unlocked_templates` (the
+    `finance.split_rule_type`s whose `split_template_<type>` flag `finance.fn_has_entitlement` grants
+    the team, in enum order — the gate `finance.save_split_rule` applies, Decision #234, so the
+    Payouts module offers a locked template disabled before a save) and `vault_capabilities` (one
+    `{user_id, capabilities}` per ACTIVE member, `capabilities` = `fn_vault_capabilities_for('team',
+    team, user)` — the §7 projection `finance.vault_permissions` holds; the Payouts module's "Who can
+    move money", Teams C4).
   - `engagements` — the team's live `projects.stage_assignments` (status not `declined` /
     `cancelled` / `released` / `completed`; project `active` or `on_hold`), one per stage:
     `project_slug` (`prj-…`), `title`, `stage_slug` (`stg-…`), `stage_title`, `assignment_status`,

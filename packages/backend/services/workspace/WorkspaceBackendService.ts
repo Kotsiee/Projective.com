@@ -5,8 +5,10 @@ import type {
 	HandleCheck,
 	InviteActionInput,
 	InviteMemberInput,
+	PayoutPreviewQuery,
 	RespondInviteInput,
 	SpendEnvelopePreview,
+	TeamSplitPreview,
 	TransferOwnershipInput,
 	UpdateMemberInput,
 	UpdatePayoutInput,
@@ -24,7 +26,7 @@ import { readRoster } from "./live-roster.ts";
 import { checkHandle } from "./live-handle.ts";
 import { readDetail } from "./live-detail.ts";
 import { readBench } from "./live-bench.ts";
-import { previewSpendEnvelope } from "./live-money.ts";
+import { previewSpendEnvelope, previewTeamSplit } from "./live-money.ts";
 import * as writes from "./live-writes.ts";
 import { reembedInBackground } from "../search/embedding-sync.ts";
 
@@ -202,6 +204,20 @@ export class WorkspaceBackendService {
 		return guarded("payout", actor, (live) => writes.saveSplit(input, live));
 	}
 
+	/**
+	 * What a release of the reader's chosen size would pay under the team's SAVED split
+	 * (`finance.preview_team_split(team, gross)` — read-only, the plan the release runs), so the Payouts
+	 * module's Preview lists every cut from the server and never splits money on the client. Nothing is
+	 * written. The database answers only a `manage_finances` holder (Decision #233 (b)); anyone else is
+	 * refused `403`.
+	 */
+	static previewPayout(
+		query: PayoutPreviewQuery,
+		actor: ReadActor,
+	): Promise<ServiceResult<TeamSplitPreview>> {
+		return guarded("payout-preview", actor, (live) => previewTeamSplit(query, live));
+	}
+
 	/** Write a business's pooled-wallet governance (threshold, approvers, contributors, envelopes). */
 	static updateSpend(
 		input: UpdateSpendInput,
@@ -228,6 +244,17 @@ export class WorkspaceBackendService {
 		actor: ReadActor,
 	): Promise<ServiceResult<WorkspaceDetail>> {
 		return guarded("spend-decide", actor, (live) => writes.decideSpend(input, live));
+	}
+
+	/**
+	 * Withdraw the caller's own pending spend request (`finance.withdraw_spend_approval` — the requester
+	 * only, while it waits), and answer with the re-read detail.
+	 */
+	static withdrawSpend(
+		input: { workspaceId: string; requestId: string },
+		actor: ReadActor,
+	): Promise<ServiceResult<WorkspaceDetail>> {
+		return guarded("spend-withdraw", actor, (live) => writes.withdrawSpend(input, live));
 	}
 
 	// #endregion

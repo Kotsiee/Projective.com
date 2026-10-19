@@ -43,7 +43,7 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | F8 | Spec RBAC table vs preset bundles | `PRODUCT_SPEC.md:189-198` vs `Functions.md:604` | Bundles diverge (e.g. spec "Lead/Admin = manage splits" but lead lacks `manage_finances`; spec "Member = claim tickets" — not a workspace capability at all) | 📄 → #226 (a) |
 | F9 | Team member preset effectively holds only `view_analytics` | (inference) | Member preset = `contribute_funds, view_analytics`; team kind filters `contribute_funds` out (F1020:497, :507-527) | ⚠️ intended? → #226 (f) |
 | F10 | Automated split on escrow release | `PRODUCT_SPEC.md:183-185` | `fn_team_split_plan` / `fn_split_team_payout` (`00001200…:106-221`), credits pass the 7-day pending window (#191) | ✅ |
-| F11 | Split **template** selection (co_op · finders_fee · benevolent_dictator) | `finance-model.md:160-175` | `finance.split_rules` has **no writer** — only `supabase/seeds/03_entities.sql:61` inserts. `save_team_split` writes stakes only. Every live-created team is co_op with `vault_bp = 0`. The `wsp-split__template` buttons in `PayoutPolicyScreen.island.tsx:259` only re-shape stakes client-side. | ❌ |
+| F11 | Split **template** selection (co_op · finders_fee · benevolent_dictator) | `finance-model.md:160-175` | `finance.split_rules` has **no writer** — only `supabase/seeds/03_entities.sql:61` inserts. `save_team_split` writes stakes only. Every live-created team is co_op with `vault_bp = 0`. The `wsp-split__template` buttons in `PayoutPolicyScreen.island.tsx:259` only re-shape stakes client-side. **Fixed:** B4 added the writer `finance.save_split_rule` (#234); C4 wired the Payouts module to it — a SelectButton of the three templates with their cuts, a plan-locked template offered disabled beside "See plans" (the detail's `payout.unlocked_templates`), one Save sending `{ rule, stakes }`. | ✅ |
 | F12 | Per-engagement contribution agreements | `MVP_FLOW_AUDIT.md:267-270` | Not built (one team-wide agreement) | ❌ (known, post-MVP) |
 
 ### 1.2 Persona restriction
@@ -80,7 +80,7 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing · 📄 doc confl
 | A4 | Team status checked on apply | Neither path checks `org.teams.status` — a **draft or archived** team can apply | ✅ fixed by B2: `team_not_active` on both doors and in the pre-flight (#228 (E)) |
 | A5 | `team_too_small` / `missing_permission` refuse even meter-only | `SYSTEM_ARCHITECTURE.md:1985-1986`; pre-flight in `ProjectBackendService.apply` | ✅ |
 | A6 | Team pool vs members' pool | `finance-model.md:480` vs `database/finance/Tables.md:311` vs `PRODUCT_SPEC.md:1376` | 📄 (#154 flag b, still open) |
-| A7 | Apply modal defaults to "Yourself" in team context | #154 flag (c) | ⚠️ open |
+| A7 | Apply modal defaults to "Yourself" in team context | #154 flag (c) | ✅ fixed by C5: acting as a team the viewer may bind (`bind_seat`, read from the team's allowance), "Apply as" opens on the team; otherwise "Yourself" (`features/view/core/apply-as.ts`) |
 
 ### 1.5 Workload Intensity (W_i)
 
@@ -127,7 +127,7 @@ Severity: **G** = merge-gate violation (root `CLAUDE.md` §3) · **M** = matrix 
 | D5 | G | Title-register headings at `600`: `.wsp-pagehead__title` (console:177), `.wsp-headerband__name` (chrome:596), `.wsp-empty__title` (roster:658), `.wsp-checklist__title` (console:441), `.wsp-invitestrip__title` (roster:154), `.wsp-people__group-title` (people:154), `.wsp-mdrawer__name` / `__section-title` (people:695/743), `.wsp-roleeditor__group-title` (matrix:503) | `--fw-medium`; where a level must differ, change size/case/colour, never weight alone (§3.8). Section-header ones (uppercase label) keep `--fw-semibold` as a **token**. |
 | D6 | G | `700` on `.wsp-matrix__ovr` (matrix:352) | `--fw-semibold` at most. |
 | D7 | M | ~25 further literal `600`s (names, values, chips) | Replace with `var(--fw-*)`; names at `--fw-medium`. |
-| D8 | M | `tabular-nums` missing on `.wsp-card__stats / __stat / __stat-delta` (roster.css:500-549) | Add `.wsp-num` or `font-variant-numeric: tabular-nums`. |
+| D8 | M | `tabular-nums` missing on `.wsp-card__stats / __stat / __stat-delta` (roster.css:500-549) | Add `.wsp-num` or `font-variant-numeric: tabular-nums`. ✅ fixed by R1: the stat grid is gone — the card's counts are tabular `MetaLine` entries and its one money figure (`.wsp-card__figure` / `__figure-value`) is tabular, both held by `styles.gate.test.ts` |
 
 ### 2.3 Separation, anti-card & solid tones (§3.1, §3.6)
 
@@ -136,7 +136,7 @@ Severity: **G** = merge-gate violation (root `CLAUDE.md` §3) · **M** = matrix 
 | D9 | G | Translucent backgrounds via `color-mix(…, transparent)`: matrix cells (281, 291), legend marks (407, 412), preset hover (325), `.wsp-capchip[consequential]` (595); `.wsp-verdict[…]` (money 863-873); `.wsp-override[grant/revoke]` (people 395/400); `.wsp-create__kind[data-on]` (roster 821/826); `.wsp-chip[tone]` (tokens 608-618); tokens 66/87/109/134/136/148/149/176 + HC copies | Re-derive every `--wsp-*-tint` as an **opaque** mix against the region tone (`color-mix(in oklab, var(--success) 12%, var(--surface-1))`). |
 | D10 | M | `opacity` used as a state dim (chrome 829; matrix 549; money 206/212/235/627/781/982; people 204; roster 332) — lowers label contrast below 4.5:1 | Use `--text-secondary` / `--fld-disabled-mix` tokens instead of opacity. |
 | D11 | G | Inset rings reading as four-sided borders on static containers: `.wsp-mcard[data-self]` (people:193), `[data-state=requested]` (:200), `.wsp-card[data-acting]` (roster:327), `.wsp-lane__entity[data-acting]` (chrome:167) | Express "self / acting" with a leading `--hairline` accent rule or tonal step (`--surface-2`), not a box. ✅ Members half by W1 + C2: the card and the table row keep W1's leading rule in `--wsp-acting-ring` (the row's as a logical `::before` the table's hover and focus never reset — C2 review) and their MetaLine says "You"; the `[data-state]` rules are gone with the states (the roster holds active members only) |
-| D12 | G | Boxed static content: `.wsp-propose` (console:326), `.wsp-verdict` (money:858), `.wsp-split__drift` (money:407), `.wsp-lock[pending]` (money:921) | `InlineNotice` (a required disclosure may be contained) or unboxed Meta text. |
+| D12 | G | Boxed static content: `.wsp-propose` (console:326), `.wsp-verdict` (money:858), `.wsp-split__drift` (money:407), `.wsp-lock[pending]` (money:921) | `InlineNotice` (a required disclosure may be contained) or unboxed Meta text. ✅ `.wsp-verdict` (dead) and `.wsp-split__drift` deleted by C4 — split drift is an `InlineNotice` with a Rebalance action; `styles.gate.test.ts` keeps both deleted |
 | D13 | M | `.wsp-approvals__item` rows on `--surface-1` inside a band | Plain rows separated by one `--hairline`. |
 | D14 | T | `border: 1px solid` literals (chrome 79/227/787/865; money 433; people 561; roster 246/796/886) | `var(--hairline)` / `--hairline-strong`. |
 | D15 | T | Literal `@media (max-width: 767px \| 1100px)` across 6 sheets | Breakpoint tokens (`--bp-md` via the ui custom-media set). |
@@ -146,7 +146,7 @@ Severity: **G** = merge-gate violation (root `CLAUDE.md` §3) · **M** = matrix 
 
 | ID | Sev | Defect | Fix |
 | :-- | :-- | :-- | :-- |
-| D17 | G | Role label as `wsp-chip`: `WorkspaceCard.tsx:114,121`, `WorkspaceTable.tsx:157`, `WorkspaceLane.island.tsx:498` | Inline Meta: `Owner · 4 members · Active 2d ago`. |
+| D17 | G | Role label as `wsp-chip`: `WorkspaceCard.tsx:114,121`, `WorkspaceTable.tsx:157`, `WorkspaceLane.island.tsx:498` | Inline Meta: `Owner · 4 members · Active 2d ago`. ✅ fixed by R1 (the lane row by L1): the card's facts are one `MetaLine` (`cardMeta`, `core/roster-model.ts`: role · N members · N live projects · Acting), the table's role cell a `MetaLine`; `roster.gate.test.ts` fails on any `wsp-chip` in the roster |
 | D18 | G | Kind chip "Team" in `InvitationStrip.tsx:111` | Meta text. ✅ fixed by R2: the row's facts are one `MetaLine` (kind · as role · from @inviter · expires in N days, tabular); `.wsp-chip--kind` deleted. |
 | D19 | G | "Unlimited" / "Per purchase" chips (`SpendLimitRow.tsx:161,168`) | Meta text. |
 | D20 | G | `wsp-capchip` capability labels (`MemberCard.tsx:492`, `MemberTable.tsx:89`, `WorkspaceOverview:134` standing) | Meta text list; the sensitive count may stay a **count** badge. ✅ Members half fixed by C2: the card and the table say a member's overrides as one `MetaLine` and the sensitive grants as a ui `Badge` count (`OverrideLine` / `SensitiveCount`); `CapChip` is deleted. The Overview's Standing chip is C1's |
@@ -157,11 +157,11 @@ Severity: **G** = merge-gate violation (root `CLAUDE.md` §3) · **M** = matrix 
 
 | ID | Sev | Region · control | Current | Required |
 | :-- | :-- | :-- | :-- | :-- |
-| D22 | M | Roster empty · "Create a team" (`RosterEmpty.tsx:86`) | Tier 3 filled primary | **Tier 2** monochrome inverted (primary creation trigger) |
+| D22 | M | Roster empty · "Create a team" (`RosterEmpty.tsx:86`) | Tier 3 filled primary | **Tier 2** monochrome inverted (primary creation trigger) ✅ fixed by R1: the first run is the ui `EmptyState` with one tier-2 structural Create (`rosterCanvasControls`), and the lane footer withholds its own create in first run (`lane-model.ts` `firstRun`), so the page holds exactly one filled control (`roster-model.test.ts`) |
 | D23 | M | Roster lane · New (`WorkspaceLane.island.tsx:~308`), rail New (`WorkspaceRail.tsx:249`) | `LaneIconButton accent` / raw button | `LaneCreateButton` (tier 2) — parity with ProjectsLane:567, CatalogueLane:151 |
 | D24 | M | Create modal · "Create team" (`CreateWorkspaceModal.island.tsx:258`); Roles · "Create role" (`RolesMatrix.island.tsx:538`) | Tier 3 | Tier 2 (structural creation) |
 | D25 | G | Invitation strip · Accept ×N (`InvitationStrip.tsx:119`, `roster.css:254` `background: var(--wsp-kind)`) | Raw filled button **per row** → N filled in one region | `Button` tier 3 on the *first/focused* invite only, or all rows `variant="outlined"` with one filled "Accept" inside an expanded row; Decline `variant="text"` ✅ fixed by R2: `planInviteActions` (`core/invitation-strip-model.ts`, unit-tested) gives the first row's Accept tier 3 and every other tier 4 neutral outlined, Decline tier 5 on every row; the `.wsp-invitestrip__accept` fill is deleted |
-| D26 | M | Error · "Try again" (`WorkspaceRoster.island.tsx:355`) | Raw ghost | Tier 4 `severity="neutral" variant="outlined"` (B.8.1 names it) |
+| D26 | M | Error · "Try again" (`WorkspaceRoster.island.tsx:355`) | Raw ghost | Tier 4 `severity="neutral" variant="outlined"` (B.8.1 names it) ✅ fixed by R1: a failed read is an assertive `InlineNotice` with a danger mark and a tier-4 Try again (a failed act says so with no retry — the menu repeats it) |
 | D27 | M | Footer rig · Save (`WorkspaceFooterRig.island.tsx:183`) | Ghost with `data-active` tint | Tier 3 `Button` filled when dirty — the console's one workflow commit ✅ fixed by L2: `rigModel` (`core/rig-model.ts`, unit-tested) renders Save as a tier-3 `Button` ONLY while `policyDirty`, with a tier-5 Discard beside it and the save state said before them; the rig's one filled control |
 | D28 | M | Footer rig · Invite, Settings, Org chart; header band icon (`HeaderBand:197`) | Raw ghost `wsp-footerrig__action` | Tier 4 neutral outlined (Invite, Settings are named utilities); Org chart tier 5 ✅ fixed by L2: New and Invite (in place) are tier-4 neutral outlined `Button`s, Invite elsewhere and Settings are ui `Link`s (navigation), the Org chart toggle is a tier-5 text `Button` with `aria-pressed`, and the band's kebab is a tier-5 `Button iconOnly` (ui `Button` gained `triggerRef`) |
 | D29 | M | Header band actions (`HeaderBand.island.tsx:162,175`) | Popover + raw buttons | `ActionMenu` (as `WorkspaceCard` / `MemberCard` already do; Decision #222) ✅ fixed by L2: `headerMenu` (`core/header-model.ts`, unit-tested) builds the rows with `linkActionItems` / `composeMenu`; the band is the menu's `surface`, so right-click, the ContextMenu key and Shift+F10 open the kebab's rows; Archive… only with `archive_entity`, confirmed as a danger |
@@ -184,7 +184,7 @@ Severity: **G** = merge-gate violation (root `CLAUDE.md` §3) · **M** = matrix 
 
 | ID | Sev | Defect | Fix |
 | :-- | :-- | :-- | :-- |
-| D39 | G | Inline `style=` (custom properties only) in ~30 places (`--wsp-i` stagger; meter fills; `SplitBar.tsx:294` `${lift}px`) | Stagger: `:nth-child()` + `--wsp-i` set by CSS counter or a `data-i` attribute selector ladder; fills: `ProgressBar value` (ui owns its own style seam). |
+| D39 | G | Inline `style=` (custom properties only) in ~30 places (`--wsp-i` stagger; meter fills; `SplitBar.tsx:294` `${lift}px`) | Stagger: `:nth-child()` + `--wsp-i` set by CSS counter or a `data-i` attribute selector ladder; fills: `ProgressBar value` (ui owns its own style seam). ✅ the split bar's half fixed by C4: `components/SplitBar.tsx` deleted, the payouts module uses the ui `SplitBar` (U4), whose widths ride the package's own `styleVars` seam |
 | D40 | M | `useEffect` that only mirrors one signal into another (Spend/Payout/Billing `policyDirty`, `saveRequested`) | `useSignalEffect` / `computed`; keep `useEffect` only for DOM reads (`WorkspaceLane:157`, `SplitBar:163`, focus). ✅ the `policyDirty` / `saveRequested` half fixed by L2: Payouts, Spend and Billing answer the rig through one `usePolicyBridge` (`hooks/usePolicyBridge.ts`, `useSignalEffect` only), which also carries Discard |
 | D41 | T | Dead CSS: `.wsp-footerrig__action[data-variant]` (chrome 807-818), `.wsp-lane__new` (~299), `.wsp-skel__*` (console ~944) | Delete. |
 | ✅ | — | No `backdrop-filter`; no hex/rgb; no Supabase in islands; no `useState` | Compliant. |
@@ -219,8 +219,8 @@ Order: P0 = gate violations, P1 = matrix/parity, P2 = tidy. All paths under `wsp
 | `islands/InviteModal.island.tsx` | `RadioGroup`/`SelectButton` (:125) · `Select` (:171) · `FormControl` | | P0 |
 | `islands/CreateWorkspaceModal.island.tsx` | `RadioGroup`/`SelectButton` (:274) · `Button text` (suggestion :359) · `FormControl` · tier-2 Create | replace `setTimeout(60)` focus with Dialog `initialFocus` | P1 |
 | `islands/RolesMatrix.island.tsx` | `Select` (:509) · `Button text` (col buttons :358-385) · `FormControl` | matrix cell keeps custom control + press scale (D1); opaque tints (D9) | P0 |
-| `islands/PayoutPolicyScreen.island.tsx` | `SelectButton` (templates :259) | wire templates to the new `save_split_rule` RPC (§4.4) | P0 (functional) |
-| `components/SplitLegend.tsx`, `SplitBar.tsx` | `ToggleButton` (hold :149); SplitBar handle stays custom | remove `${lift}px` inline style | P1 |
+| `islands/PayoutPolicyScreen.island.tsx` | `SelectButton` (templates :259) | wire templates to the new `save_split_rule` RPC (§4.4) ✅ C4 | P0 (functional) |
+| `components/SplitLegend.tsx`, `SplitBar.tsx` | `ToggleButton` (hold :149); SplitBar handle stays custom | remove `${lift}px` inline style ✅ C4: the legend is a `MetaLine` + one hold toggle per member — a tier-5 text `Button` with `aria-pressed` (the unfilled two-state toggle, as the rig's Org chart toggle; a pressed `ToggleButton` is a `--primary` fill, so C4 review replaced it); the feature's `SplitBar.tsx` is replaced by the ui `SplitBar` | P1 |
 | `components/ApprovalQueue.tsx` (business) | `Button` tier 3 / 5 | | P1 |
 | `styles/*.css` | — | D2-D16, D38, D41; replace literal weights/durations/breakpoints with tokens | P0/P2 |
 | `apps/web/features/shell/core/actions-model.ts:43-45` | — | gate "Create Team" on `isFreelancer` (P2) | P0 |

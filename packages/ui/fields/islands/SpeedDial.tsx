@@ -149,9 +149,11 @@ const round = (n: number) => Math.round(n * 1000) / 1000;
  * `quarter-circle` distribute over an arc of `radius`), and each item's position is emitted as inline
  * `--sd-x`/`--sd-y` custom properties the CSS transforms. Opening staggers the items by
  * `transitionDelay` ms (collapsed to instant under reduced motion). The FAB carries
- * `aria-haspopup`/`aria-expanded`; the list is a `role="menu"` of `menuitem`s with tooltip labels.
- * Keyboard: Enter/Space/Arrow open and focus the first item, Arrow keys rove, Escape closes and
- * returns focus to the FAB.
+ * `aria-haspopup`/`aria-expanded`; the list is a `role="menu"` of `menuitem`s with tooltip labels,
+ * each `<li>` `role="none"` so the menu owns its items directly (an `<li>` under a menu is neither a
+ * list item nor a menu child), and each tooltip `aria-hidden` — it repeats the item's `aria-label`,
+ * and a `tooltip` is not a child a menu may own. Keyboard: Enter/Space/Arrow open and focus the
+ * first item, Arrow keys rove, Escape closes and returns focus to the FAB.
  */
 export function SpeedDial(props: SpeedDialProps): JSX.Element {
 	const {
@@ -304,6 +306,7 @@ export function SpeedDial(props: SpeedDialProps): JSX.Element {
 					return (
 						<li
 							class="ui-speed-dial__item"
+							role="none"
 							style={styleVars({ "--sd-x": x, "--sd-y": y, "--sd-delay": i })}
 						>
 							<Button
@@ -318,7 +321,8 @@ export function SpeedDial(props: SpeedDialProps): JSX.Element {
 								tabIndex={isOpen ? tabIndex : -1}
 								onClick={() => activate(i)}
 							/>
-							<span class="ui-speed-dial__tooltip" role="tooltip">{item.label}</span>
+							{/* For the eye only: the action's `aria-label` already speaks this text. */}
+							<span class="ui-speed-dial__tooltip" aria-hidden="true">{item.label}</span>
 						</li>
 					);
 				})}

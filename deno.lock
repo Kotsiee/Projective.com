@@ -77,6 +77,7 @@
     "npm:@types/babel__core@^7.20.5": "7.20.5",
     "npm:@types/node@*": "24.2.0",
     "npm:@types/three@0.186.0": "0.186.0",
+    "npm:axe-core@4.10.3": "4.10.3",
     "npm:d3-array@^3.2.4": "3.2.4",
     "npm:d3-scale@^4.0.2": "4.0.2",
     "npm:d3-shape@^3.2.0": "3.2.0",
@@ -1298,6 +1299,9 @@
     "@xmldom/xmldom@0.8.13": {
       "integrity": "sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==",
       "deprecated": true
+    },
+    "axe-core@4.10.3": {
+      "integrity": "sha512-Xm7bpRXnDSX2YE2YFfBk2FnF0ep6tmG7xPh8iHee8MIcrgq762Nkce856dYtJYLkuIoYZvGfTs/PbZhideTcEg=="
     },
     "baseline-browser-mapping@2.10.42": {
       "integrity": "sha512-c/jurFrDLyui7o1J86yLkRu4LMsTYcBohveus7/I2Hzdn9KIP2bdJPTue/lR1KH46enoPbD77GKeSYNdyPoD3Q==",

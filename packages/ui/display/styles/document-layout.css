@@ -1,0 +1,332 @@
+/*
+ * DocumentLayout + DocumentHeader — the editorial reading frame (DESIGN_SYSTEM.md §C.1, §A.4, §B.4).
+ *
+ * GEOMETRY FOLLOWS THE FRAME, NOT THE VIEWPORT. `.ui-doc` is a named inline-size container and every
+ * step below is a container query, because the same document renders full-bleed in the guest shell
+ * and beside a 64–224px rail in the authenticated one: at a 1024px viewport the signed-in reader has
+ * ~940px, where a three-column rule written against the viewport would crush the reading column.
+ * The steps are the breakpoint tokens' values (custom properties cannot appear in a query):
+ *
+ *   below 768px  (--bp-md)  one column; the table of contents is a bottom-sheet trigger
+ *   768–1023px   (--bp-lg)  one column; the table of contents is an "On this page" disclosure
+ *   1024px+      (--bp-lg)  TOC rail | reading column
+ *   1280px+      (--bp-xl)  TOC rail | reading column | meta rail (below it, the meta follows the body)
+ *
+ * The rail widths are reserved by the grid itself, from the first byte — never by a hydrated island —
+ * so nothing shifts when the table of contents wakes up.
+ *
+ * Separation (§B.4): spacing first, then type. Nothing here is boxed; the rails are text on the
+ * page's own ground.
+ *
+ * CONTAINMENT. `container-type: inline-size` applies layout containment, so `.ui-doc` is the
+ * containing block of any `position: fixed` descendant and opens its own stacking context. Anything
+ * a consumer means to pin to the VIEWPORT or float above the page from inside a document (a toast, a
+ * back-to-top control, a sheet) must portal out (`Portal` / `BodyPortal`); the bottom sheet already
+ * does (it is a `Drawer`). Sticky descendants are unaffected.
+ */
+
+/* #region Frame */
+.ui-doc {
+	container: ui-doc / inline-size;
+	/*
+	 * The viewport-pinned chrome above the document. Outside the authenticated shell it is the
+	 * package hook --chrome-pinned-h (0px by default, styles/index.css), which a host shell sets to
+	 * its pinned header's bottom edge — the guest shell sets it to the scrolled pill's. Inside the
+	 * L-shell it is re-pointed below. Sticky rails, the reading-progress bar and every heading's
+	 * scroll margin read this one value.
+	 */
+	--doc-chrome-h: var(--chrome-pinned-h, 0px);
+	--doc-sticky-top: calc(var(--doc-chrome-h) + var(--space-5));
+	--doc-rail-w: 14rem;
+	--doc-gap: var(--space-7);
+	--doc-pad-inline: var(--space-4);
+
+	position: relative;
+	inline-size: 100%;
+	min-inline-size: 0;
+	color: var(--on-surface);
+}
+
+/*
+ * The page canvas exists only inside the authenticated shell, where the pinned chrome is the frame's
+ * own block inset: the top bar, plus the middle-nav header band when the route mounts one (that band
+ * is sticky at the top bar, middle-nav.css), and 0 under bare chrome. Read here — at the document —
+ * because the inset is augmented on `.ui-middle-nav--has-header`, between the shell and this frame.
+ */
+.ui-page-canvas__body .ui-doc {
+	--doc-chrome-h: var(--shell-frame-inset-block, var(--shell-topbar-h, 0px));
+}
+
+.ui-doc__article {
+	display: grid;
+	grid-template-columns: minmax(0, var(--measure));
+	grid-template-areas:
+		"head"
+		"toc"
+		"body"
+		"meta"
+		"foot";
+	justify-content: center;
+	column-gap: var(--doc-gap);
+	padding-inline: var(--doc-pad-inline);
+	padding-block: var(--space-6) var(--space-8);
+	/* `--measure` is in `ch`: resolve it against the reading size, not an ancestor's dense UI size. */
+	font-size: var(--text-base);
+}
+
+.ui-doc__header {
+	grid-area: head;
+	min-inline-size: 0;
+}
+
+.ui-doc__toc {
+	grid-area: toc;
+	min-inline-size: 0;
+	margin-block-start: var(--space-5);
+}
+
+.ui-doc__body {
+	grid-area: body;
+	min-inline-size: 0;
+	margin-block-start: var(--space-6);
+}
+
+.ui-doc__meta {
+	grid-area: meta;
+	min-inline-size: 0;
+	margin-block-start: var(--space-7);
+	/* Secondary facts read in the sans face one step below the body; a consumer styles the rest. */
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--on-surface);
+}
+
+.ui-doc__meta a {
+	color: inherit;
+	text-decoration-color: var(--primary);
+	text-underline-offset: 0.2em;
+}
+
+.ui-doc__footer {
+	grid-area: foot;
+	min-inline-size: 0;
+	margin-block-start: var(--space-7);
+}
+
+.ui-doc__article > :first-child {
+	margin-block-start: 0;
+}
+
+/* The body column's own blocks (an introduction or cover figure, then the prose) stand apart. */
+.ui-doc__body > * + * {
+	margin-block-start: var(--space-6);
+}
+
+/* Every anchor target clears the pinned chrome, however it was scrolled to (hash, find, restore). */
+.ui-doc :is(h2, h3)[id] {
+	scroll-margin-block-start: var(--doc-sticky-top);
+}
+
+/* Smooth in-page jumps only for readers who have not asked for less motion, in either channel. */
+@media (prefers-reduced-motion: no-preference) {
+	:root:not([data-motion="reduced"]):has(.ui-doc) {
+		scroll-behavior: smooth;
+	}
+}
+/* #endregion */
+
+/* #region Rails */
+/* --bp-lg (1024px): the table of contents becomes a rail beside the reading column. */
+@container ui-doc (min-width: 1024px) {
+	.ui-doc__article--toc {
+		grid-template-columns: var(--doc-rail-w) minmax(0, var(--measure));
+		grid-template-areas:
+			"toc head"
+			"toc body"
+			"toc meta"
+			"toc foot";
+	}
+
+	.ui-doc__article--toc .ui-doc__toc {
+		margin-block-start: 0;
+	}
+}
+
+/* --bp-xl (1280px): the meta rail joins on the reading column's other side. */
+@container ui-doc (min-width: 1280px) {
+	.ui-doc__article--meta {
+		grid-template-columns: minmax(0, var(--measure)) var(--doc-rail-w);
+		grid-template-areas:
+			"head meta"
+			"body meta"
+			"foot meta";
+	}
+
+	.ui-doc__article--toc.ui-doc__article--meta {
+		grid-template-columns: var(--doc-rail-w) minmax(0, var(--measure)) var(--doc-rail-w);
+		grid-template-areas:
+			"toc head meta"
+			"toc body meta"
+			"toc foot meta";
+	}
+
+	.ui-doc__article--meta .ui-doc__meta {
+		margin-block-start: 0;
+	}
+
+	.ui-doc__article--meta .ui-doc__meta-inner {
+		position: sticky;
+		inset-block-start: var(--doc-sticky-top);
+	}
+}
+
+/*
+ * A numbered document hangs its clause numbers in the gutter from --bp-md (prose.css); beside the
+ * TOC rail the gutter is the column gap, widened so a `12.3` clears the rail.
+ */
+.ui-doc__article--toc:has(.ui-doc-body--numbered) {
+	--doc-gap: var(--space-8);
+}
+/* #endregion */
+
+/* #region Variants — modifier classes on the frame (DocumentLayout / DocumentPage `class`) */
+/*
+ * A surface scopes its look through a modifier on the frame (`class`) or the prose (`bodyClass`),
+ * declared HERE in the shared family, never in a per-feature sheet that would restyle these classes
+ * from outside. A new variant is one appended block.
+ */
+
+/* Clauses (legal): each section after the first opens on one hairline — the boundary IS the clause. */
+.ui-doc--clauses .ui-prose > .ui-doc-section + .ui-doc-section {
+	margin-block-start: var(--space-6);
+	padding-block-start: var(--space-6);
+	border-block-start: var(--hairline);
+}
+
+/* Article (editorial long reads): the body steps up to --text-lg once the frame is wide. */
+@container ui-doc (min-width: 1024px) {
+	.ui-doc--article .ui-prose {
+		font-size: var(--text-lg);
+	}
+}
+
+/*
+ * Feed (the changelog): from --bp-md of frame each entry sets a dated gutter beside its body, so the
+ * column widens by that gutter and its gap — the body still reads at --measure. The surface's own
+ * timeline reads --doc-feed-gutter for the gutter itself.
+ */
+.ui-doc--feed {
+	--doc-feed-gutter: 8.5rem;
+}
+
+@container ui-doc (min-width: 768px) {
+	.ui-doc--feed .ui-doc__article {
+		grid-template-columns: minmax(0, calc(var(--measure) + var(--doc-feed-gutter) +
+			var(--space-6)));
+	}
+}
+
+/*
+ * Article: a quotation is a pull quote in the display register (§A.4) — the sans face, one step above
+ * the prose, light weight so it never reads as a section heading of the same size, tight tracking —
+ * still on the one inline-start --hairline the prose gives every quote. Its attribution keeps the meta
+ * register.
+ */
+.ui-doc--article .ui-prose__quote {
+	font-family: var(--font-sans);
+	font-size: var(--text-xl);
+	font-weight: var(--fw-light);
+	line-height: var(--leading-snug);
+	letter-spacing: var(--tracking-tight);
+	text-wrap: balance;
+}
+/* #endregion */
+
+/* #region Header — display · lead · meta (§A.4's registers) */
+.ui-doc-header {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.ui-doc-header__eyebrow {
+	margin: 0 0 var(--space-2);
+	font-family: var(--font-sans);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-snug);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.ui-doc-header__title {
+	margin: 0;
+	font-family: var(--font-sans);
+	/* `rem + cqi`, never a bare container unit: the reader's own font size still moves the title. */
+	font-size: clamp(var(--text-2xl), 1rem + 3cqi, var(--text-3xl));
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+	text-wrap: balance;
+	color: var(--on-surface);
+}
+
+.ui-doc-header__summary {
+	margin: var(--space-3) 0 0;
+	font-family: var(--font-reading);
+	font-size: var(--text-lg);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+	text-wrap: pretty;
+}
+
+/*
+ * Non-actionable facts (§B.11.2): one Meta-register line, middot-separated, never chips. The facts
+ * wrap as whole units, and a fact that starts a line never shows its separator: each separator hangs
+ * in the column gap before its fact (below), and the gap before a line's first fact lies outside the
+ * list's own box, which clips it.
+ */
+.ui-doc-header__meta {
+	--doc-meta-gap: var(--space-5);
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	column-gap: var(--doc-meta-gap);
+	overflow: clip;
+	margin: var(--space-4) 0 0;
+	padding: 0;
+	list-style: none;
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-normal);
+	line-height: var(--leading-normal);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+/*
+ * Each fact is still a flex item of the list, but its own content is in flow, not a nested flex row:
+ * as flex items of an inline-flex fact, the text runs lost their edge spaces, so "Updated <time>"
+ * read "Updated17 October 2026". In flow the words and the <time> share one line box and baseline.
+ */
+.ui-doc-header__meta-item {
+	display: inline-block;
+	position: relative;
+}
+
+/* Out of flow, centred in the gap before its fact, on the fact's first line. */
+.ui-doc-header__sep {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-end: 100%;
+	inline-size: var(--doc-meta-gap);
+	text-align: center;
+	color: var(--on-surface-variant);
+}
+
+.ui-doc-header__extra {
+	margin-block-start: var(--space-5);
+}
+/* #endregion */

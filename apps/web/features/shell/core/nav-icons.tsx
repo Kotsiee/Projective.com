@@ -17,6 +17,10 @@ const PATHS: Record<IconName, VNode> = {
 	home: <path d="M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z" />,
 	// The /saved destination — a bookmark, so it never reads as a rating star.
 	saved: <path d="M6 4.5h12v15l-6-4-6 4z" />,
+	// The feedback board (/feedback) — a megaphone: speaking up, never `messages` (a conversation).
+	feedback: (
+		<path d="M3.5 10.5v3A1.5 1.5 0 0 0 5 15h2l8 4.5v-15L7 9H5a1.5 1.5 0 0 0-1.5 1.5zM7.5 15l1.5 4.5h2.5L10 15M18.5 9.5a3.5 3.5 0 0 1 0 5" />
+	),
 	explore: (
 		<>
 			<circle cx="12" cy="12" r="9" />

@@ -208,10 +208,12 @@ export const MEGA_MENUS: MegaMenu[] = [
 
 /**
  * Secondary utility links retained on the mobile drawer only (removed from the top-level desktop nav
- * in favour of the discovery pillars, but still reachable on small screens).
+ * in favour of the discovery pillars, but still reachable on small screens). Pricing is the help
+ * centre's fees article until the `/pricing` page ships (Decision #252); `footer-links.test.ts`
+ * resolves every href here against the route tree and the help content.
  */
 export const SECONDARY_LINKS: MegaLink[] = [
 	{ label: "How it works", href: "/#how-it-works" },
-	{ label: "Pricing", href: "/help" },
+	{ label: "Pricing", href: "/help/escrow-and-payments/fees" },
 ];
 // #endregion

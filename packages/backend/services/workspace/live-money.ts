@@ -1,22 +1,33 @@
-import type { FlowPoint } from "@projective/types/finance";
+import {
+	DEFAULT_LOCALE,
+	type FlowPoint,
+	SpendRefTable,
+	SplitRuleType,
+	VaultCapability,
+} from "@projective/types/finance";
 import {
 	type BusinessKyb,
 	type BusinessMoneyTile,
 	type BusinessSpendPolicy,
 	type BusinessViewerCan,
 	KybRequirement,
+	type PayoutPreviewQuery,
 	type PoolEntry,
 	type SpendEnvelopePreview,
 	type SpendLimit,
 	type SpendRequest,
+	type SpendRequestRef,
+	type SplitPreviewLine,
 	type SplitStake,
 	type SplitTemplate,
 	type TeamPayoutPolicy,
+	type TeamSplitPreview,
 	type UpdateSpendInput,
 	type VerificationState,
 	walletHrefFor,
 	type WorkspaceCapability,
 	type WorkspaceFinance,
+	workspaceHref,
 	type WorkspaceKind,
 } from "@projective/types/workspace";
 import { clamp, clampOr } from "../../core/text.ts";
@@ -25,7 +36,7 @@ import { overviewOf } from "../finance/live-wallet.ts";
 import { reasonMeta } from "../finance/wallet-ledger.ts";
 import { resolveWalletContext } from "../finance/wallet-scope.ts";
 import { fetchPartyCards, type PartyCard } from "../profile/party-cards.ts";
-import { badId, callRpc, clientFor, isUuid, type LiveActor } from "./live-support.ts";
+import { badId, callRpc, clientFor, isUuid, type LiveActor, unavailable } from "./live-support.ts";
 import { spendPatch } from "./live-writes.ts";
 import {
 	avatarOf,
@@ -97,7 +108,9 @@ export interface RawSplitPreview {
 	currency: string | null;
 	fee_minor: number | null;
 	fee_bp?: number | null;
-	escrow_id?: string;
+	/** The active finders_fee rule's cut, in basis points; `null` under any other rule. */
+	finder_bp?: number | null;
+	escrow_id?: string | null;
 	plan: {
 		payout_minor: number;
 		rule_type: string | null;
@@ -120,6 +133,10 @@ export interface TeamMoneyFacts {
 	rule: RawSplitRule | null;
 	/** The vault wallet the policy reports balances from; absent or `null` when the team has none. */
 	wallet?: RawVaultWallet | null;
+	/** The templates the team's plan unlocks, in template order; absent reads as co_op only. */
+	unlocked?: readonly SplitRuleType[];
+	/** Each active member's vault capabilities by user id; absent when the read did not answer them. */
+	vaultCaps?: ReadonlyMap<string, readonly VaultCapability[]> | null;
 }
 
 /** The vault wallet on the detail's payout block — the treasury wallet, else the fullest. */
@@ -132,12 +149,28 @@ export interface RawVaultWallet {
 
 /**
  * The payout block `org.get_workspace_detail` answers to a `manage_finances` holder (and to nobody
- * else): the active split rule, the vault wallet and `finance.preview_team_split`'s projection.
+ * else): the active split rule, the vault wallet, `finance.preview_team_split`'s projection, the
+ * templates the team's plan unlocks and each active member's vault capabilities.
  */
 export interface RawTeamPayout {
 	rule: RawSplitRule | null;
 	wallet: RawVaultWallet | null;
 	preview: RawSplitPreview | null;
+	unlocked_templates?: string[] | null;
+	vault_capabilities?: { user_id: string; capabilities: string[] | null }[] | null;
+}
+
+/** Template types the plan unlocks, in template order; an unknown type is dropped, an absent answer is co_op only. */
+export function unlockedTemplatesOf(raw: readonly string[] | null | undefined): SplitRuleType[] {
+	if (!Array.isArray(raw)) return ["co_op"];
+	const named = new Set(raw);
+	return SplitRuleType.options.filter((type) => named.has(type));
+}
+
+/** A member's vault capabilities in the enum's order, unknown values dropped. */
+export function vaultCapabilitiesOf(raw: readonly string[] | null | undefined): VaultCapability[] {
+	const held = new Set(raw ?? []);
+	return VaultCapability.options.filter((cap) => held.has(cap));
 }
 
 /**
@@ -153,12 +186,19 @@ export function teamMoneyFacts(
 		if (m.share_bp === null || m.share_bp === undefined) continue;
 		agreements.set(m.user_id, { bp: Number(m.share_bp) || 0, held: !!m.share_held });
 	}
+	const vaultCaps = Array.isArray(payout.vault_capabilities)
+		? new Map(
+			payout.vault_capabilities.map((row) => [row.user_id, vaultCapabilitiesOf(row.capabilities)]),
+		)
+		: null;
 	return {
 		agreements,
 		preview: payout.preview ?? null,
 		walletCurrency: (payout.wallet?.currency ?? "USD").toUpperCase(),
 		rule: payout.rule ?? null,
 		wallet: payout.wallet ?? null,
+		unlocked: unlockedTemplatesOf(payout.unlocked_templates),
+		vaultCaps,
 	};
 }
 
@@ -189,6 +229,7 @@ export function buildPayoutPolicy(
 		const agreement = facts.agreements.get(member.userId);
 		return {
 			memberId: member.memberId,
+			userId: member.userId,
 			...faceOf(member),
 			shareBp: Math.max(0, Math.min(10_000, agreement?.bp ?? 0)),
 			held: agreement?.held ?? false,
@@ -229,6 +270,7 @@ export function buildPayoutPolicy(
 				const member = members.find((m) => m.memberId === e.memberId)!;
 				return {
 					memberId: e.memberId,
+					userId: member.userId,
 					...faceOf(member),
 					shareBp: e.shareBp,
 					held: false,
@@ -260,7 +302,131 @@ export function buildPayoutPolicy(
 		withdrawApprovers: members.filter((m) => m.capabilities.includes("withdraw_funds")).map((m) =>
 			m.memberId
 		),
+		unlockedTemplates: [...(facts.unlocked ?? ["co_op"])],
+		vaultAccess: facts.vaultCaps
+			? members.map((member) => ({
+				memberId: member.memberId,
+				name: faceOf(member).name,
+				capabilities: [...(facts.vaultCaps?.get(member.userId) ?? [])],
+			}))
+			: [],
 	};
+}
+
+// #endregion
+
+// #region Team — the preview
+
+/**
+ * The ledger of a previewed release, in the order the plan cuts it: the platform fee, the finder's fee
+ * (under finders_fee), the vault's cut, each member's stake, and the dust the floors left (which the
+ * vault keeps; not drawn under benevolent_dictator, which floors nothing). `total` is the lines' sum,
+ * so a reader can check it against the amount they typed — the plan conserves the gross exactly
+ * (`supabase/probes/payout_preview_amount.sql`). Pure.
+ */
+export function toSplitPreview(
+	raw: RawSplitPreview,
+	people: ReadonlyMap<string, Person>,
+	currency: string,
+): TeamSplitPreview {
+	const code = (currency || "USD").toUpperCase();
+	const plan = raw.plan;
+	const parsedRule = SplitRuleType.safeParse(plan?.rule_type);
+	const ruleType = parsedRule.success ? parsedRule.data : "co_op";
+	const minor = (value: number | string | null | undefined) =>
+		Math.max(0, Math.trunc(Number(value) || 0));
+	const bpOrNull = (value: number | string | null | undefined) =>
+		value === null || value === undefined
+			? null
+			: Math.max(0, Math.min(10_000, Math.trunc(Number(value) || 0)));
+	const nameOf = (userId: string | null | undefined) =>
+		userId ? clampOr(people.get(userId)?.name, 120, "Member") : null;
+
+	const lines: SplitPreviewLine[] = [
+		{
+			key: "fee",
+			kind: "fee",
+			name: null,
+			bp: bpOrNull(raw.fee_bp),
+			amount: moneyOf(minor(raw.fee_minor), code),
+		},
+	];
+	if (ruleType === "finders_fee") {
+		lines.push({
+			key: "finder",
+			kind: "finder",
+			name: nameOf(plan?.finder_user_id),
+			bp: bpOrNull(raw.finder_bp),
+			amount: moneyOf(minor(plan?.finder_minor), code),
+		});
+	}
+	lines.push({
+		key: "vault",
+		kind: "vault",
+		name: null,
+		bp: bpOrNull(plan?.vault_bp),
+		amount: moneyOf(minor(plan?.vault_minor), code),
+	});
+	for (const m of plan?.members ?? []) {
+		lines.push({
+			key: `member:${m.member_user_id}`,
+			kind: "member",
+			name: nameOf(m.member_user_id),
+			bp: bpOrNull(m.percent_bp),
+			amount: moneyOf(minor(m.amount_minor), code),
+		});
+	}
+	if (ruleType !== "benevolent_dictator") {
+		lines.push({
+			key: "dust",
+			kind: "dust",
+			name: null,
+			bp: null,
+			amount: moneyOf(minor(plan?.dust_minor), code),
+		});
+	}
+	const total = lines.reduce((sum, line) => sum + line.amount.minor, 0);
+	return {
+		currency: code,
+		gross: moneyOf(minor(raw.gross_minor), code),
+		ruleType,
+		lines,
+		total: moneyOf(total, code),
+	};
+}
+
+/**
+ * What a release of the reader's chosen size would pay under the team's SAVED split
+ * (`finance.preview_team_split(team, gross)` — read-only, `manage_finances` holders only, Decision
+ * #233 (b)), with the finder and members named in one party-card batch. The amount is priced in the
+ * vault's currency the editor sends.
+ */
+export async function previewTeamSplit(
+	query: PayoutPreviewQuery,
+	actor: LiveActor,
+	io: {
+		rpc: typeof callRpc;
+		partyCards: (actor: LiveActor, ids: readonly string[]) => Promise<Map<string, PartyCard>>;
+	} = { rpc: callRpc, partyCards: (a, ids) => fetchPartyCards(clientFor(a), ids) },
+): Promise<ServiceResult<TeamSplitPreview>> {
+	if (!isUuid(query.workspaceId)) return badId("workspaceId", "team");
+	const res = await io.rpc<RawSplitPreview>(actor, "finance", "preview_team_split", {
+		p_team_id: query.workspaceId,
+		p_gross_minor: query.amountMinor,
+	});
+	if (!res.ok) return res.refusal;
+	const raw = res.data;
+	if (!raw || raw.gross_minor === null || raw.gross_minor === undefined) return unavailable();
+	const ids = [
+		raw.plan?.finder_user_id ?? "",
+		...(raw.plan?.members ?? []).map((m) => m.member_user_id),
+	].filter((id) => id.length > 0);
+	const cards = await io.partyCards(actor, ids);
+	const people = new Map<string, Person>();
+	for (const [id, card] of cards) {
+		people.set(id, { username: card.username, name: card.name, avatar: card.avatar });
+	}
+	return ok(toSplitPreview(raw, people, query.currency));
 }
 
 // #endregion
@@ -302,6 +468,26 @@ export interface RawDebit {
 	at: string;
 }
 
+/**
+ * What a request's ref names (`finance.fn_spend_ref`) — the keys present depend on the ref table —
+ * and whether the viewer may open it (`opens`).
+ */
+export interface RawSpendRef {
+	title?: string | null;
+	item?: string | null;
+	items?: number | string | null;
+	project_title?: string | null;
+	project_slug?: string | null;
+	stage_title?: string | null;
+	stage_slug?: string | null;
+	ticket_slug?: string | null;
+	invoice_type?: string | null;
+	period_start?: string | null;
+	due_at?: string | null;
+	owner_type?: string | null;
+	opens?: boolean | null;
+}
+
 /** A `finance.spend_approvals` row on the spend block. */
 export interface RawApproval {
 	id: string;
@@ -314,6 +500,13 @@ export interface RawApproval {
 	decided_at: string | null;
 	expires_at: string | null;
 	created_at: string;
+	/** What it was filed against (`finance.spend_approvals.ref_table` / `ref_id`). */
+	ref_table?: string | null;
+	ref_id?: string | null;
+	/** What that is, `{}` when the row is gone. */
+	ref?: RawSpendRef | null;
+	/** Whether an approved request has been spent. */
+	consumed?: boolean | null;
 }
 
 /**
@@ -333,6 +526,12 @@ export interface RawBusinessSpend {
 	contributions: RawContribution[] | null;
 	debits: RawDebit[] | null;
 	approvals: { pending: RawApproval[] | null; decided: RawApproval[] | null } | null;
+	/** The member ids whose limits and grants the viewer may change (`[]` for a non-editor). */
+	editable_member_ids?: string[] | null;
+	/** Nobody besides the owner approves spending. */
+	approver_gap?: boolean | null;
+	/** Setting a threshold or a ceiling is refused by the Business Pro gate right now. */
+	limits_plan_gated?: boolean | null;
 }
 
 /** One currency's money tiles, summed in SQL in that currency. */
@@ -394,6 +593,8 @@ export function toSpendLimit(
 ): SpendLimit {
 	const limitMinor = minorOrNull(raw.limit_minor);
 	const spentMinor = minorOf(raw.spent_minor);
+	const remainingMinor = limitMinor === null ? null : minorOf(raw.remaining_minor);
+	const perTransactionMinor = minorOrNull(raw.per_transaction_minor);
 	const fraction = Number(raw.used_fraction);
 	return {
 		memberId: raw.member_id,
@@ -406,9 +607,11 @@ export function toSpendLimit(
 		period: PERIODS.has(raw.period ?? "") ? raw.period as SpendLimit["period"] : "monthly",
 		spentMinor,
 		spent: moneyOf(spentMinor, currency),
-		remainingMinor: limitMinor === null ? null : minorOf(raw.remaining_minor),
+		remainingMinor,
+		remaining: remainingMinor === null ? null : moneyOf(remainingMinor, currency),
 		usedFraction: Number.isFinite(fraction) ? Math.max(0, Math.min(1, fraction)) : 0,
-		perTransactionMinor: minorOrNull(raw.per_transaction_minor),
+		perTransactionMinor,
+		perTransaction: perTransactionMinor === null ? null : moneyOf(perTransactionMinor, currency),
 	};
 }
 
@@ -433,11 +636,148 @@ export interface SpendMember {
 	person: Person | undefined;
 }
 
+/** The business a spend block belongs to — what a request's link needs to be built. */
+export interface SpendRefContext {
+	/** The business's id: a basket link's owner, a transfer's wallet scope. */
+	businessId: string;
+	/** The business's handle: the Billing module's address. */
+	handle: string;
+}
+
+const REF_TABLES = new Set<string>(SpendRefTable.options);
+
+const EXPIRY_DAY = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
+	day: "numeric",
+	month: "short",
+	timeZone: "UTC",
+});
+
+const INVOICE_MONTH = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
+	month: "long",
+	year: "numeric",
+	timeZone: "UTC",
+});
+
+/**
+ * When a pending request lapses, as the checkout words it ("Expires 24 Oct", UTC so SSR and a refetch
+ * agree); `null` with no expiry, or once it has passed.
+ */
+export function expiryLabel(iso: string | null | undefined, nowMs: number): string | null {
+	if (!iso) return null;
+	const at = Date.parse(iso);
+	if (!Number.isFinite(at) || at <= nowMs) return null;
+	return `Expires ${EXPIRY_DAY.format(new Date(at))}`;
+}
+
+/** A project page (`/projects/<prj>`), optionally deep into a stage room or a ticket. */
+function projectHref(
+	projectSlug: string,
+	at: { stageSlug?: string | null; ticketSlug?: string | null },
+): string {
+	const base = `/projects/${encodeURIComponent(projectSlug)}`;
+	if (at.stageSlug) return `${base}/${encodeURIComponent(at.stageSlug)}`;
+	if (at.ticketSlug) return `${base}?${new URLSearchParams({ tkv: at.ticketSlug })}`;
+	return base;
+}
+
+/**
+ * What a spend request is for, as the Spend module names it (`finance.fn_spend_ref`, Decision #246): a
+ * label, a supporting line, and an href set ONLY when the database said the viewer may open it — a
+ * project by the projects SELECT predicates, a basket by its owner's visibility, an invoice by the
+ * billing right — so a link always lands (root CLAUDE.md §3.11). `null` when the ref names nothing any
+ * more (the SQL answers `{}`) or its table is unknown.
+ */
+export function spendRefOf(
+	table: string | null | undefined,
+	refId: string | null | undefined,
+	raw: RawSpendRef | null | undefined,
+	ctx: SpendRefContext,
+	nowMs: number,
+): SpendRequestRef | null {
+	if (!table || !REF_TABLES.has(table) || !raw || Object.keys(raw).length === 0) return null;
+	const opens = raw.opens === true;
+	const project = clamp(raw.project_title, 120) || null;
+	const projectSlug = clamp(raw.project_slug, 64);
+	const ref = (label: string, detail: string | null, href: string | null): SpendRequestRef => ({
+		table: table as SpendRequestRef["table"],
+		label: clamp(label, 160),
+		detail: detail ? clamp(detail, 160) : null,
+		href: href ? clamp(href, 300) : null,
+	});
+	switch (table) {
+		case "baskets": {
+			const count = Math.max(0, Math.floor(Number(raw.items ?? 0)) || 0);
+			const first = clamp(raw.item, 120);
+			const detail = first ? (count > 1 ? `${first} and ${count - 1} more` : first) : null;
+			const href = opens && refId
+				? `/checkout?${new URLSearchParams({ basket: refId, owner: `business:${ctx.businessId}` })}`
+				: null;
+			return ref(clampOr(raw.title, 120, "Basket"), detail, href);
+		}
+		case "project_stages": {
+			const stageSlug = clamp(raw.stage_slug, 64);
+			const href = opens && projectSlug && stageSlug
+				? projectHref(projectSlug, { stageSlug })
+				: null;
+			return ref(clampOr(raw.title, 120, "Stage"), project, href);
+		}
+		case "tickets": {
+			const ticketSlug = clamp(raw.ticket_slug, 64);
+			const href = opens && projectSlug && ticketSlug
+				? projectHref(projectSlug, { ticketSlug })
+				: null;
+			return ref(clampOr(raw.title, 120, "Ticket"), project, href);
+		}
+		case "revisions": {
+			const ticketSlug = clamp(raw.ticket_slug, 64);
+			const href = opens && projectSlug && ticketSlug
+				? projectHref(projectSlug, { ticketSlug })
+				: null;
+			const stage = clamp(raw.stage_title, 120);
+			return ref(
+				`Revision of ${clampOr(raw.title, 120, "a ticket")}`,
+				[stage, project].filter(Boolean).join(" · ") || null,
+				href,
+			);
+		}
+		case "invoices": {
+			const start = raw.period_start ? Date.parse(raw.period_start) : NaN;
+			const stage = clamp(raw.stage_title, 120);
+			const label = raw.invoice_type === "consolidated_monthly"
+				? Number.isFinite(start)
+					? `Invoice for ${INVOICE_MONTH.format(new Date(start))}`
+					: "Monthly invoice"
+				: stage
+				? `Invoice for ${stage}`
+				: "Invoice";
+			const due = raw.due_at ? dateLabel(raw.due_at, nowMs) : "";
+			return ref(
+				label,
+				due ? `Due ${due}` : null,
+				opens ? workspaceHref("business", ctx.handle, "billing") : null,
+			);
+		}
+		default: {
+			const to = raw.owner_type === "team"
+				? "To a team wallet"
+				: raw.owner_type === "business"
+				? "To a business wallet"
+				: raw.owner_type
+				? "To a personal wallet"
+				: null;
+			return ref("Transfer", to, opens ? walletHrefFor("business", ctx.businessId) : null);
+		}
+	}
+}
+
 /**
  * A business's spend policy — the buyer-side editor's whole state, mapped from the detail's spend
  * block. The database decided who approves and contributes, which envelopes and requests the viewer
  * may read, and every figure on them; this only resolves faces and formats. The ledger is attributed
- * where the money path recorded an actor and left as the business itself where it did not.
+ * where the money path recorded an actor and left as the business itself where it did not. The
+ * editor's flags — whose rows the viewer may change, whether nobody but the owner approves, whether
+ * a ceiling is plan-gated — and what each request is for are the SQL's too (Decision #246); `ctx` only
+ * addresses the links.
  */
 export function buildSpendPolicy(
 	raw: RawBusinessSpend,
@@ -445,6 +785,7 @@ export function buildSpendPolicy(
 	people: ReadonlyMap<string, Person>,
 	verification: VerificationState,
 	nowMs: number,
+	ctx: SpendRefContext,
 ): BusinessSpendPolicy {
 	const currency = (raw.currency || "USD").toUpperCase();
 	const threshold = minorOrNull(raw.approval_threshold_minor);
@@ -496,6 +837,7 @@ export function buildSpendPolicy(
 	const requestOf = (row: RawApproval): SpendRequest => {
 		const requester = people.get(row.requested_by);
 		const decider = row.approver_user_id ? people.get(row.approver_user_id) : undefined;
+		const state = spendRequestState(row.status, row.expires_at, nowMs);
 		return {
 			id: row.id,
 			memberId: byUser.get(row.requested_by)?.memberId ?? row.requested_by,
@@ -504,21 +846,29 @@ export function buildSpendPolicy(
 			avatar: avatarOf(requester?.avatar),
 			amount: moneyOf(minorOf(row.amount_minor), row.currency),
 			reason: clampOr(row.reason, 160, "Spend request"),
-			state: spendRequestState(row.status, row.expires_at, nowMs),
+			state,
 			raisedAt: clamp(relativeLabel(row.created_at, nowMs), 40),
 			approvers: approvers
 				.filter((m) => m.userId !== row.requested_by)
 				.map((m) => clampOr(m.person?.name, 120, "Member")),
 			decidedBy: decider ? clampOr(decider.name, 120, "Member") : null,
 			decidedAt: row.decided_at ? clamp(relativeLabel(row.decided_at, nowMs), 40) || null : null,
+			expiresLabel: state === "pending" ? expiryLabel(row.expires_at, nowMs) : null,
+			ref: spendRefOf(row.ref_table, row.ref_id, row.ref, ctx, nowMs),
+			consumed: row.consumed === true,
 		};
 	};
+	const memberIds = new Set(members.map((m) => m.memberId));
 
 	return {
 		currency,
 		approvalThresholdMinor: threshold !== null && threshold > 0 ? threshold : null,
 		approvalThreshold: threshold !== null && threshold > 0 ? moneyOf(threshold, currency) : null,
 		platformThresholdMinor: platform !== null && platform > 0 ? platform : null,
+		platformThreshold: platform !== null && platform > 0 ? moneyOf(platform, currency) : null,
+		editableMemberIds: (raw.editable_member_ids ?? []).filter((id) => memberIds.has(id)),
+		approverGap: raw.approver_gap === true,
+		limitsPlanGated: raw.limits_plan_gated === true,
 		approverIds: approvers.map((m) => m.memberId),
 		approverHandles: approvers.map(handleOf),
 		limits: (raw.limits ?? []).map((l) => toSpendLimit(l, people.get(l.user_id), currency)),

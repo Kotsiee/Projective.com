@@ -10,6 +10,7 @@ import WebVitalsBridge from "@web/features/shell/islands/WebVitalsBridge.island.
 import ExploreHistoryTracker from "@web/features/explore/islands/ExploreHistoryTracker.island.tsx";
 import { DevMount } from "@web/features/devtools/components/DevMount.tsx";
 import { a11yRootAttributes, DEFAULT_A11Y } from "@web/utils/a11y-context.ts";
+import { PageMetaTags } from "@web/features/marketing/components/PageMetaTags.tsx";
 
 // Precompute the default light + dark token rules once (SSR). Injected as a <style> so the very
 // first paint is correctly themed for either mode with no flash; the DesignSystemRoot island then
@@ -112,6 +113,10 @@ export default define.page(function App({ Component, state }) {
 				<link rel="icon" href="/favicon.ico" sizes="48x48" />
 				<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
 				{state.description ? <meta name="description" content={state.description} /> : null}
+				{
+					/* A public page's canonical URL, robots and Open Graph block (`applyPageMeta`). */
+				}
+				{state.meta ? <PageMetaTags meta={state.meta} /> : null}
 				<style id="ds-tokens" dangerouslySetInnerHTML={{ __html: TOKENS_CSS }} />
 				<script
 					// Set data-theme before first paint (DESIGN_SYSTEM.md §A.5/§B.5).

@@ -7,8 +7,9 @@ import type { MediaRef } from "@projective/types/files";
 import {
 	type ArchiveBlocker,
 	ArchiveBlockerSchema,
-	canOpenVerification,
+	canOpenFinance,
 	effectivePermissions,
+	RestoreTarget,
 	type WorkspaceDetail,
 	type WorkspaceFinance,
 	type WorkspaceKind,
@@ -16,6 +17,7 @@ import {
 	type WorkspaceRoleDef,
 	type WorkspaceSeats,
 	WorkspaceSeatsSchema,
+	type WorkspaceStatus,
 	WorkspaceVisibility,
 } from "@projective/types/workspace";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
@@ -47,6 +49,7 @@ import {
 	parseStatus,
 	parseVerification,
 	type Person,
+	publishedFact,
 	type RawDetail,
 	type RawDetailAnswer,
 	type RawDirectoryFace,
@@ -59,6 +62,7 @@ import {
 	toProject,
 	toRoleDef,
 	verificationPrompt,
+	visibleActivity,
 	wiCapOf,
 	wiOf,
 	workloadPercent,
@@ -71,8 +75,9 @@ import {
  * session it answers the roster, roles, invitations, activity, every member's live W_i and stake, each
  * project's counterparty face, and — for a team — the payout block (`manage_finances` holders only), the
  * live engagements and the proposal allowance; for a business (BB9) the spend block, the per-currency
- * money tiles, the KYB picture, the archive blockers and the viewer's server-decided flags, each
- * narrowed in SQL to what the viewer may see. A non-member is `forbidden`, an unknown reference
+ * money tiles, the KYB picture and the viewer's server-decided flags; for either kind the archive
+ * blockers and, while archived, where a restore lands (Teams C6) — each narrowed in SQL to what the
+ * viewer may see. A non-member is `forbidden`, an unknown reference
  * `not_found`. This module then resolves only what the facts point at through the platform's shared
  * resolvers: the people (ONE `org.get_party_cards` batch), the entity's marks, and the finance tiles
  * (the `/wallet` projection, reused so the console and the wallet cannot disagree).
@@ -253,15 +258,25 @@ export function seatsOf(raw: unknown): WorkspaceSeats | null {
 }
 
 /**
- * A business's archive blockers from the read, dropping any row whose shape drifted rather than
- * inventing a blocker the database did not name.
+ * The archive blockers from the read (a team's or a business's), dropping any row whose shape drifted
+ * rather than inventing a blocker the database did not name.
  */
-function archiveBlockersOf(raw: unknown): ArchiveBlocker[] {
+export function archiveBlockersOf(raw: unknown): ArchiveBlocker[] {
 	if (!Array.isArray(raw)) return [];
 	return raw.flatMap((row) => {
 		const parsed = ArchiveBlockerSchema.safeParse(row);
 		return parsed.success ? [parsed.data] : [];
 	});
+}
+
+/**
+ * Where a restore would land, from the read — only while the entity is archived; `null` otherwise, and
+ * for an answer that is neither target (never a guess at which way a restore goes).
+ */
+export function restoreTargetOf(status: WorkspaceStatus, raw: unknown): RestoreTarget | null {
+	if (status !== "archived") return null;
+	const parsed = RestoreTarget.safeParse(raw);
+	return parsed.success ? parsed.data : null;
 }
 
 /** The raw detail, resolved and mapped onto the SSOT projection. */
@@ -304,6 +319,8 @@ async function assemble(
 	const mapped: WorkspaceMember[] = [];
 	const moneyMembers: MoneyMember[] = [];
 	const byUser = new Map<string, RawMember>();
+	/** Whether the viewer's own row is the owner's — a team's verification step is theirs alone. */
+	let viewerIsOwner = false;
 	for (const m of members) {
 		byUser.set(m.user_id, m);
 		const person = people.get(m.user_id);
@@ -319,6 +336,7 @@ async function assemble(
 			m.role_id,
 		);
 		const isOwner = m.user_id === raw.owner_user_id;
+		if (isOwner && m.is_self) viewerIsOwner = true;
 		moneyMembers.push({ memberId: m.id, userId: m.user_id, isOwner, person, capabilities });
 		// Only an envelope the viewer may read (their own, unless they read the wallet's) is shown.
 		const envelope = envelopeFor(spend, m.user_id);
@@ -368,6 +386,8 @@ async function assemble(
 	const viewerCaps = parseCapabilities(raw.viewer?.capabilities);
 	const viewerCan = toViewerCan(raw.viewer_can);
 	const active = mapped.length;
+	const status = parseStatus(raw.entity_status);
+	const restoreTarget = restoreTargetOf(status, raw.restore_target);
 	const avatarRef = raw.avatar_file_id ? media.get(raw.avatar_file_id) : undefined;
 	const bannerRef = raw.banner_file_id ? media.get(raw.banner_file_id) : undefined;
 
@@ -379,7 +399,7 @@ async function assemble(
 		avatar: avatarOf(mediaUrl(avatarRef, "md")),
 		banner: avatarOf(mediaUrl(bannerRef, "lg")),
 		tagline: clamp(raw.headline, 160),
-		status: parseStatus(raw.entity_status),
+		status,
 		visibility: WorkspaceVisibility.catch("invite_only").parse(raw.visibility),
 		verification,
 		verificationPrompt: verificationPrompt(kind, verification),
@@ -395,7 +415,12 @@ async function assemble(
 		),
 		seats: kind === "team" ? seatsOf(raw.seats) : null,
 		payout: teamMoney ? buildPayoutPolicy(moneyMembers, teamMoney) : null,
-		spend: spend ? buildSpendPolicy(spend, moneyMembers, people, verification, nowMs) : null,
+		spend: spend
+			? buildSpendPolicy(spend, moneyMembers, people, verification, nowMs, {
+				businessId: raw.id,
+				handle: clamp(raw.handle, 40),
+			})
+			: null,
 		finance,
 		moneyTiles: kind === "business" ? (raw.money_tiles ?? []).map(toMoneyTile) : [],
 		viewerCan: kind === "business" ? viewerCan : null,
@@ -403,17 +428,26 @@ async function assemble(
 		projects: projects.map((p) => toProject(p, counterpartyOf(p), nowMs)),
 		engagements: engagements.map((e) => toEngagement(e, people, byUser)),
 		allowance: kind === "team" ? allowanceOf(raw.allowance) : null,
-		archiveBlockers: kind === "business" ? archiveBlockersOf(raw.archive_blockers) : [],
-		activity: (raw.activity ?? []).map((a, i) =>
+		archiveBlockers: archiveBlockersOf(raw.archive_blockers),
+		restoreTarget,
+		activity: visibleActivity(raw.activity ?? [], canOpenFinance(kind, viewerCaps)).map((a, i) =>
 			toActivity(a, i, a.actor_user_id ? people.get(a.actor_user_id) : undefined, nowMs)
 		),
 		setup: setupSteps(kind, raw.handle, {
+			entityId: raw.id,
 			logo: !!raw.setup?.logo,
 			bio: !!raw.setup?.bio,
-			invite: !!raw.setup?.invite,
+			activeMembers: active,
+			// The read's `invite` fact is "more than one active member OR an invitation pending", so
+			// below two members it can only be true for a pending invitation.
+			invitePending: active < 2 && !!raw.setup?.invite,
 			money: !!raw.setup?.money,
-			verified: verification === "verified",
-			canVerify: canOpenVerification(kind, viewerCaps),
+			funded: !!raw.setup?.funded,
+			limitsOffered: !!raw.setup?.limits_offered,
+			verification,
+			published: publishedFact(status),
+			viewer: viewerCaps,
+			viewerIsOwner,
 		}),
 		standing: raw.standing ? clamp(raw.standing, 40) : null,
 		canPropose: kind === "business" || active >= 2,

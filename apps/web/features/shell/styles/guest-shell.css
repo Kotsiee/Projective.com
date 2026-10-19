@@ -31,6 +31,9 @@
 	--guest-aside-cur-w: var(--guest-aside-w-expanded);
 	/* Clearance from the viewport inline-start edge to the body content (aside + both gaps). */
 	--guest-body-inset-inline: calc(var(--guest-inset) + var(--guest-aside-cur-w) + var(--guest-inset));
+	/* The package's pinned-chrome hook (packages/ui styles/index.css): in-page sticky parts — the
+	   editorial TOC rail, reading progress, heading scroll margins — clear the SCROLLED header pill. */
+	--chrome-pinned-h: var(--site-header-pinned-h, 0px);
 }
 
 /* Collapsed rail width — from the pre-painted root attribute (no flash). */
@@ -60,7 +63,7 @@
  * a full-width footer. The footer is a sibling of that region (GuestShell.tsx), so it spans the whole
  * window instead of inheriting the aside's inline gutter, and `min-block-size: 100dvh` (from `.site`) +
  * the region's `flex: 1 0 auto` pin it to the bottom on short pages. Lane-less routes keep the plain
- * `.site` block flow (footer in-body, already full-width) — unchanged.
+ * `.site` block flow (the footer after `<main>`, already full-width).
  */
 .guest-shell[data-has-aside="true"] {
 	display: flex;

@@ -32,7 +32,10 @@ CREATE TYPE finance.vault_capability AS ENUM (
 
 CREATE TYPE finance.split_rule_type AS ENUM ('co_op', 'finders_fee', 'benevolent_dictator');
 
-CREATE TYPE finance.approval_status AS ENUM ('pending', 'approved', 'rejected', 'expired');
+-- A spend request's lifecycle (finance.spend_approvals): `pending` until an approver decides it
+-- (`approved` / `rejected`), it lapses (`expired`), or its requester takes it back (`withdrawn`,
+-- finance.withdraw_spend_approval — BU2, Decision #246). Every state but `pending` is terminal.
+CREATE TYPE finance.approval_status AS ENUM ('pending', 'approved', 'rejected', 'expired', 'withdrawn');
 
 CREATE TYPE finance.vault_action AS ENUM ('add_funds', 'spend', 'distribute', 'withdraw', 'transfer');
 
@@ -389,7 +392,10 @@ CREATE TYPE files.download_via AS ENUM ('hub', 'share', 'picker', 'preview', 'ap
 -- cropped, re-encoded and written into a public bucket with its WebP tiers. A rendition is never
 -- listed as a library asset: it is the answer to "what does the profile show", not a file anyone
 -- chose to keep, and listing it would put a second copy of every avatar in the picker.
-CREATE TYPE files.asset_purpose AS ENUM ('library', 'avatar', 'showcase');
+-- `contact` (Decision #276) is neither: a file attached to a /contact request, promoted by the upload
+-- pipeline into the private `contact` bucket for operators and, like a rendition, never listed in its
+-- uploader's library.
+CREATE TYPE files.asset_purpose AS ENUM ('library', 'avatar', 'showcase', 'contact');
 
 -- `variant_tier` — the derived WebP sizes the pipeline writes beside an image (or beside a video, as
 -- its poster stills). Three tiers rather than a width list so a reader asks for a ROLE — a card

@@ -45,6 +45,7 @@
 import { emitAssets } from "./gen/emit-assets.ts";
 import { emitCatalogue, emitMarketplace } from "./gen/emit-catalogue.ts";
 import { emitComms } from "./gen/emit-comms.ts";
+import { emitCommunity } from "./gen/emit-community.ts";
 import { emitEntities } from "./gen/emit-entities.ts";
 import { emitFinance } from "./gen/emit-finance.ts";
 import { emitIdentities } from "./gen/emit-identities.ts";
@@ -67,6 +68,7 @@ const files: Array<[string, string]> = [
 	["08_comms.sql", emitComms(world)],
 	["08_scheduling.sql", emitScheduling(world)],
 	["10_profiles.sql", emitProfiles(world)],
+	["12_community_feedback.sql", emitCommunity(world)],
 ];
 
 const dir = new URL(".", import.meta.url);

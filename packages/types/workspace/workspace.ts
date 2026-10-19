@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ProposalAllowanceStatusSchema } from "../finance/allowance.ts";
 import { MoneyViewSchema } from "../finance/wallet.ts";
 import { isReservedHandle } from "../profile/reserved.ts";
+import { canOpenVerification } from "./access.ts";
 import {
 	VerificationState,
 	WorkspaceCapability,
@@ -20,6 +21,7 @@ import {
 	BusinessMoneyTileSchema,
 	BusinessSpendPolicySchema,
 	BusinessViewerCanSchema,
+	SpendPeriod,
 	SplitRuleInputSchema,
 	TeamPayoutPolicySchema,
 } from "./policy.ts";
@@ -65,12 +67,22 @@ export const WorkspaceSummarySchema = z.object({
 	verification: VerificationState,
 	/** The viewer's role in this entity. */
 	role: WorkspaceRole,
-	/** Whether the viewer owns it — drives the `Owned` / `Member of` roster tabs. */
+	/** Whether the viewer owns it — drives the `Owned` / `Member` roster partitions. */
 	isOwner: z.boolean(),
 	memberCount: z.number().int().min(0),
-	/** Up to five faces for the stack; the card renders a `+N` for the remainder. */
+	/**
+	 * Live projects — a team's projects with a live stage assignment, a business's projects as client —
+	 * that are `active` or `on_hold`. The roster card's MetaLine and table count it.
+	 */
+	activeProjects: z.number().int().min(0).default(0),
+	/**
+	 * Up to five member faces — a SAMPLE of the membership. The roster card draws them as the ui
+	 * `AvatarStack` with a `+N` for the rest (`memberCount − faces`); its MetaLine states the count.
+	 */
 	faces: z.array(MemberFaceSchema),
 	stats: z.array(WorkspaceStatSchema),
+	/** When the entity's row last changed (ISO), or `null` when it is not known — the table's Updated. */
+	updatedAt: z.string().max(40).nullable().default(null),
 	/** Unseen activity — a pulsing dot, never a count (§D.1). */
 	hasUpdate: z.boolean().default(false),
 	/** Whether the session is currently ACTING as this entity. At most one summary may carry it. */
@@ -99,15 +111,43 @@ export type WorkspaceRoster = z.infer<typeof WorkspaceRosterSchema>;
 // #endregion
 
 // #region Setup checklist
-/** One row of the Draft-First "Finish setting up" checklist. */
+/**
+ * Which Draft-First step a row is. A team walks `invite` (a second active member — two are needed to
+ * apply) · `money` (the split) · `profile` (mark and one-liner) · `verification` (the owner's identity,
+ * Decision #196) · `publish`; a business walks `invite` (a colleague) · `verification` (KYB) · `fund`
+ * (money added to its pooled wallet) · `money` (its spending rules — only on a plan that lets it set
+ * them) · `publish` (BU6, Decision #248).
+ */
+export const SetupStepId = z.enum([
+	"invite",
+	"money",
+	"profile",
+	"fund",
+	"verification",
+	"publish",
+]);
+export type SetupStepId = z.infer<typeof SetupStepId>;
+
+/** One row of the Draft-First setup list — the Overview's setup hero. */
 export const SetupStepSchema = z.object({
-	id: z.enum(["logo", "bio", "invite", "money", "verification"]),
+	id: SetupStepId,
 	label: z.string().max(80),
 	/** What doing it gets them — never a bare instruction. */
 	note: z.string().max(160),
 	done: z.boolean(),
-	/** Where the step's action goes (a module route, or `""` for an in-place action). */
+	/**
+	 * Where the step's action goes: a console module, the public profile editor, the business's
+	 * pooled wallet (`fund`, which the Overview turns into the wallet's top-up intent), or — for a
+	 * team's owner verification — the owner's own `/settings/verification`.
+	 */
 	href: z.string().max(200),
+	/**
+	 * Whether the VIEWER may act on the step — decided by the read from their effective capabilities
+	 * (and, for a team's verification, whether they are its owner) through {@link canActOnSetupStep},
+	 * so a step they cannot finish never offers them a control. A verification already with the
+	 * reviewers (`pending`) is actionable for nobody: nothing is left to do.
+	 */
+	actionable: z.boolean().default(false),
 });
 export type SetupStep = z.infer<typeof SetupStepSchema>;
 // #endregion
@@ -209,12 +249,52 @@ export const BusinessArchiveBlockerCode = z.enum([
 ]);
 export type BusinessArchiveBlockerCode = z.infer<typeof BusinessArchiveBlockerCode>;
 
-/** One kind of blocker and how many of it there are (currencies, for `on_account_owed`; wallets, for `wallet_balance`). */
+/**
+ * What stops a team being archived (`org.fn_team_archive_blockers`), in the order the database checks
+ * them: money held in escrow for the team's work, then a live stage assignment. The archive refusal
+ * keeps its `status:` sentence and carries every blocker in DETAIL (Teams C6).
+ */
+export const TeamArchiveBlockerCode = z.enum(["escrow_held", "live_assignments"]);
+export type TeamArchiveBlockerCode = z.infer<typeof TeamArchiveBlockerCode>;
+
+/** Every archive blocker code either kind can be refused with. */
+export const ArchiveBlockerCode = z.enum([
+	...BusinessArchiveBlockerCode.options,
+	"live_assignments",
+]);
+export type ArchiveBlockerCode = z.infer<typeof ArchiveBlockerCode>;
+
+/**
+ * One kind of blocker and how many of it there are (escrows; stage assignments, for
+ * `live_assignments`; currencies, for `on_account_owed`; wallets, for `wallet_balance`).
+ */
 export const ArchiveBlockerSchema = z.object({
-	code: BusinessArchiveBlockerCode,
+	code: ArchiveBlockerCode,
 	count: z.number().int().positive(),
 });
 export type ArchiveBlocker = z.infer<typeof ArchiveBlockerSchema>;
+
+/**
+ * Where restoring an archived entity lands (`org.fn_workspace_restore_target`, Decision #250 (c); a
+ * business's by #236 (d)): `active` when it was ever published — a published entity never returns to
+ * draft — else `draft`, so one that never was cannot skip the publish step.
+ */
+export const RestoreTarget = z.enum(["draft", "active"]);
+export type RestoreTarget = z.infer<typeof RestoreTarget>;
+
+/**
+ * The lifecycle move a client asks for (`UpdateWorkspaceInput.status`): a {@link WorkspaceStatus}, or
+ * `restore` — leave `archived` for wherever the server's {@link RestoreTarget} says. Naming the other
+ * target outright is refused ({@link RESTORE_TARGET_REASON}), so a client never needs to know it.
+ */
+export const WorkspaceStatusChange = z.enum([...WorkspaceStatus.options, "restore"]);
+export type WorkspaceStatusChange = z.infer<typeof WorkspaceStatusChange>;
+
+/**
+ * The refusal reason (`details.reason`) for a restore that names the target the server did not
+ * decide; `details.target` carries the one it did.
+ */
+export const RESTORE_TARGET_REASON = "restore_target";
 
 /** The 55000 sub-code a draft or archived business's spend, hire or billing door refuses with. */
 export const BUSINESS_NOT_ACTIVE_REASON = "business_not_active";
@@ -309,10 +389,13 @@ export const WorkspaceDetailSchema = z.object({
 	 */
 	allowance: ProposalAllowanceStatusSchema.nullable().default(null),
 	/**
-	 * What would refuse archiving this business right now, so Settings can list it before the confirm.
-	 * Answered only to a viewer holding `archive_entity`; `[]` for everybody else and for a team.
+	 * What would refuse archiving the entity right now (`org.fn_team_archive_blockers` /
+	 * `org.fn_business_archive_blockers`), so Settings can list it before the confirm. Answered only to
+	 * a viewer holding `archive_entity`; `[]` for everybody else.
 	 */
 	archiveBlockers: z.array(ArchiveBlockerSchema).default([]),
+	/** Where a restore would land while the entity is `archived`; `null` otherwise. */
+	restoreTarget: RestoreTarget.nullable().default(null),
 	activity: z.array(ActivityEntrySchema),
 	setup: z.array(SetupStepSchema),
 
@@ -501,7 +584,11 @@ export const UpdateWorkspaceInputSchema = z.object({
 	tagline: z.string().max(160).optional(),
 	/** Directory visibility (`org.update_workspace`); the entity still has to be active to be listed. */
 	visibility: WorkspaceVisibility.optional(),
-	status: WorkspaceStatus.optional(),
+	/**
+	 * The lifecycle move (`org.set_workspace_status`): publish (`active`), archive, or `restore` — which
+	 * lands on the server's {@link RestoreTarget}.
+	 */
+	status: WorkspaceStatusChange.optional(),
 });
 export type UpdateWorkspaceInput = z.infer<typeof UpdateWorkspaceInputSchema>;
 
@@ -623,6 +710,33 @@ export const UpdatePayoutInputSchema = z.object({
 export type UpdatePayoutInput = z.infer<typeof UpdatePayoutInputSchema>;
 
 /**
+ * One member's entry in a spend-policy patch — itself a patch: a key present is a change, so an editor
+ * sends only what moved (restating a stored ceiling is a ceiling being SET, which Business Free refuses).
+ * At least one key besides the member. No key carries a default: a defaulted key would travel as a
+ * change nobody made (Decision #246).
+ */
+export const SpendLimitPatchSchema = z.object({
+	memberId: z.string().max(64),
+	/** Whether they may spend at all (`spend_funds`). */
+	canSpend: z.boolean().optional(),
+	/** The rolling ceiling in minor units; `null` clears it. */
+	limitMinor: z.number().int().min(0).nullable().optional(),
+	/** The per-purchase ceiling in minor units; `null` clears it. */
+	perTransactionMinor: z.number().int().min(0).nullable().optional(),
+	/**
+	 * The window the ceiling rolls over. Changing it carries what the current window counted over and
+	 * restarts the window at the new period's next boundary — never a reset of what has been spent.
+	 */
+	period: SpendPeriod.optional(),
+}).refine(
+	(entry) =>
+		entry.canSpend !== undefined || entry.limitMinor !== undefined ||
+		entry.perTransactionMinor !== undefined || entry.period !== undefined,
+	{ message: "Change something about this member's limit.", path: ["memberId"] },
+);
+export type SpendLimitPatch = z.infer<typeof SpendLimitPatchSchema>;
+
+/**
  * Write a business's spend policy — a patch; a key present is a change. The threshold is at least one
  * minor unit or `null` (off): `0` would read as "every spend needs approval" to one reader and as
  * "disabled" to another, so it is not a value this schema admits.
@@ -634,12 +748,7 @@ export const UpdateSpendInputSchema = z.object({
 	approvalThresholdMinor: z.number().int().min(1).nullable().optional(),
 	approverIds: z.array(z.string().max(64)).optional(),
 	contributorIds: z.array(z.string().max(64)).optional(),
-	limits: z.array(z.object({
-		memberId: z.string().max(64),
-		canSpend: z.boolean(),
-		limitMinor: z.number().int().min(0).nullable(),
-		perTransactionMinor: z.number().int().min(0).nullable(),
-	})).optional(),
+	limits: z.array(SpendLimitPatchSchema).optional(),
 });
 export type UpdateSpendInput = z.infer<typeof UpdateSpendInputSchema>;
 
@@ -686,6 +795,39 @@ export function setupProgress(steps: readonly SetupStep[]): number {
 	return steps.filter((s) => s.done).length / steps.length;
 }
 
+/**
+ * Whether a viewer holding `caps` may act on a setup step — the same right that opens the step's
+ * module (`module-registry-gates.test.ts` pins the agreement), or the right its in-place write checks:
+ * inviting needs `invite_members`; the split (a team's Payouts) and a business's threshold need
+ * `manage_finances`; the profile needs `edit_profile`; adding money to a business's pooled wallet needs
+ * `contribute_funds` (the vault's `add_funds`, which Finance opens on); publishing needs `manage_settings`
+ * (`org.set_workspace_status`). Verification differs by kind: a business's KYB follows
+ * {@link canOpenVerification} (the billing right), while a team's is its OWNER's own identity check
+ * (`org.fn_workspace_verification` reads the owner's `kyc_status`, Decision #196), finished in their
+ * personal settings — so only `viewerIsOwner` may act on it, whatever rights an admin holds.
+ */
+export function canActOnSetupStep(
+	kind: WorkspaceKind,
+	step: SetupStepId,
+	caps: readonly WorkspaceCapability[],
+	viewerIsOwner = false,
+): boolean {
+	switch (step) {
+		case "invite":
+			return caps.includes("invite_members");
+		case "money":
+			return caps.includes("manage_finances");
+		case "profile":
+			return caps.includes("edit_profile");
+		case "fund":
+			return kind === "business" && caps.includes("contribute_funds");
+		case "verification":
+			return kind === "team" ? viewerIsOwner : canOpenVerification(kind, caps);
+		case "publish":
+			return caps.includes("manage_settings");
+	}
+}
+
 /** The route base for an entity kind (`/teams` · `/businesses`). */
 export function workspaceBase(kind: WorkspaceKind): string {
 	return kind === "team" ? "/teams" : "/businesses";
@@ -709,8 +851,14 @@ export function workspaceHref(
  * The wallet deep link for an entity — the finance page hands off here rather than rendering a second
  * finance UI. Note the `?w=` scope param is a **page-local view filter** on `/wallet`, NOT a session
  * context switch (brief §6.1) — the two switchers stay distinct on purpose.
+ *
+ * `section` lands on one part of that wallet's overview: `"access"` is its spend approvals — the
+ * overview's Upcoming list, where pending requests sit with Review — which is where the retired
+ * `/wallet/access` page now answers (`TARGET_OF.access`), scoped to the entity rather than the
+ * personal wallet (Decision #246).
  */
-export function walletHrefFor(kind: WorkspaceKind, id: string): string {
-	return `/wallet?w=${kind}:${id}`;
+export function walletHrefFor(kind: WorkspaceKind, id: string, section?: "access"): string {
+	const href = `/wallet?w=${kind}:${id}`;
+	return section === "access" ? `${href}#upcoming` : href;
 }
 // #endregion

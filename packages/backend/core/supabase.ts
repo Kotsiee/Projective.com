@@ -57,6 +57,24 @@ export function isNewsletterBackendLive(): boolean {
 	return !useMocks() && serverEnv().newsletterBackendLive && isSupabaseConfigured();
 }
 
+/**
+ * True when LIVE editorial-backend behaviour is enabled AND Supabase is configured (Decision #274).
+ * Off, the editorial surfaces serve their content sources through the same row parse and mapping.
+ */
+export function isEditorialBackendLive(): boolean {
+	return !useMocks() && serverEnv().editorialBackendLive && isSupabaseConfigured();
+}
+
+/** True when LIVE community-backend behaviour is enabled AND Supabase is configured (Decision #274). */
+export function isCommunityBackendLive(): boolean {
+	return !useMocks() && serverEnv().communityBackendLive && isSupabaseConfigured();
+}
+
+/** True when LIVE `/contact` intake is enabled AND Supabase is configured (Decision #276). */
+export function isContactBackendLive(): boolean {
+	return !useMocks() && serverEnv().contactBackendLive && isSupabaseConfigured();
+}
+
 /** True when LIVE projects-backend behaviour is enabled AND Supabase is configured. */
 export function isProjectsBackendLive(): boolean {
 	return !useMocks() && serverEnv().projectsBackendLive && isSupabaseConfigured();

@@ -18,9 +18,12 @@ GROUP BY w.id, w.owner_type, w.owner_id, w.currency, w.balance_cents;
 -- transaction_id, or one that is not this payment's credit of what arrived into its wallet. Empty
 -- while finance.settle_card_payment and the inbound_payments CHECKs hold; service role only.
 -- Plus every payment Stripe settled in an amount / currency that does not match it
--- (`settlement_mismatch`): money that arrived and that settle_card_payment acknowledged for a human to
--- reconcile rather than credit. Read from the completed event claim, so the row stays listed until the
--- payment leaves `requires_payment` / `processing` (a human settles or closes it).
+-- (`settlement_mismatch`), or for a business that was archived by the time it settled
+-- (`business_archived`, Decision #248 (k)): money that arrived and that settle_card_payment
+-- acknowledged for a human to reconcile rather than credit — `problem` is the claim's reconciliation
+-- marker. Read from the completed event claim, so the row stays listed while the payment is unsettled —
+-- `requires_payment`, `processing`, or `failed` (not final: a success after a declined attempt is held
+-- with the row still reading `failed`) — until a human settles or closes it.
 CREATE OR REPLACE VIEW finance.v_ops_unledgered_payments AS
 SELECT
     p.id AS payment_id,
@@ -64,7 +67,7 @@ SELECT
     p.transaction_id,
     p.unapplied_reason,
     p.succeeded_at,
-    'settlement_mismatch' AS problem,
+    k.response ->> 'reconciliation' AS problem,
     substr(k.key, 8) AS stripe_event_id,
     (k.response ->> 'amount_received_cents')::bigint AS reported_amount_cents,
     k.response ->> 'currency_received' AS reported_currency
@@ -72,8 +75,8 @@ FROM finance.idempotency_keys k
 JOIN finance.inbound_payments p ON p.id::text = k.response ->> 'payment_id'
 WHERE k.scope = 'stripe.webhook'
   AND k.status = 'succeeded'
-  AND k.response ->> 'reconciliation' = 'settlement_mismatch'
-  AND p.status IN ('requires_payment', 'processing');
+  AND k.response ->> 'reconciliation' IN ('settlement_mismatch', 'business_archived')
+  AND p.status IN ('requires_payment', 'processing', 'failed');
 
 -- The ONLY connection shape a client sees: a definer view (runs as owner, reads the un-policied
 -- base table) filtered to the caller. It cannot project a token — the token vault

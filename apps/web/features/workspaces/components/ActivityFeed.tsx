@@ -1,6 +1,7 @@
 import type { JSX, VNode } from "preact";
-import { Tooltip } from "@projective/ui/feedback";
-import type { ActivityEntry } from "@projective/types/workspace";
+import { MetaLine } from "@projective/ui/display";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import type { ActivityRow } from "../core/overview-model.ts";
 import {
 	ApproveGlyph,
 	cloneGlyph,
@@ -10,22 +11,19 @@ import {
 	SettingsGlyph,
 	WalletGlyph,
 } from "../core/workspace-glyphs.tsx";
-import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
- * ActivityFeed — the overview's "what has happened here" list.
+ * ActivityFeed — the Overview's "what has happened here", one event per row.
  *
- * Each line answers one question in one glance: what kind of thing happened (the leading glyph), who
- * did it (a circular avatar — people are round, entities are square), what it was, and when. The kind
- * is carried by the GLYPH rather than a coloured badge or a word, so a reader scanning for money
- * movement can find it without reading a single sentence (§B.6).
- *
- * Rows are separated tonally and by spacing, never boxed (§B.4): a feed of forty bordered cards is a
- * ransom note. A row that has somewhere to go is a real anchor so it can be opened in a new tab.
+ * Each row is the person (a round avatar — people are round, entities square), one sentence in the body
+ * register, and a meta line of when and in which module. Rows part by ONE hairline and are never boxed or
+ * chipped (§B.4, §B.11); an event with nowhere to go is plain text, one with a destination is a real
+ * anchor. An event nobody performed (a system event) keeps the avatar's slot with its kind's glyph, so the
+ * sentences stay aligned.
  */
 
-/** The glyph per activity kind. Kept beside the component so a new kind cannot ship unillustrated. */
-const KIND_GLYPH: Record<ActivityEntry["kind"], VNode> = {
+/** The glyph an actor-less event shows in the avatar's slot. */
+const KIND_GLYPH: Record<ActivityRow["kind"], VNode> = {
 	member: MembersGlyph,
 	project: ProjectsGlyph,
 	money: WalletGlyph,
@@ -34,78 +32,53 @@ const KIND_GLYPH: Record<ActivityEntry["kind"], VNode> = {
 	system: SettingsGlyph,
 };
 
-/** What the glyph means, for its tooltip — the words live here, not in the row (§B.6). */
-const KIND_LABEL: Record<ActivityEntry["kind"], string> = {
-	member: "Membership",
-	project: "Project",
-	money: "Money",
-	role: "Roles and permissions",
-	listing: "Listing",
-	system: "System",
-};
-
 export interface ActivityFeedProps {
-	entries: readonly ActivityEntry[];
-	/** Cap the list; the overview shows a recent window rather than the whole history. */
-	limit?: number;
-	/** Rendered when there is nothing yet. A brand-new entity has an empty feed by definition. */
-	empty?: VNode | null;
+	rows: readonly ActivityRow[];
 }
 
-/** The overview's recent-activity list. */
-export function ActivityFeed(props: ActivityFeedProps): JSX.Element {
-	const entries = props.limit ? props.entries.slice(0, props.limit) : props.entries;
-
-	if (entries.length === 0) {
-		return (
-			<div class="wsp-activity">
-				{props.empty ?? (
-					<p class="wsp-activity__text">
-						Nothing has happened here yet — activity will appear as people join and work starts.
-					</p>
-				)}
-			</div>
-		);
-	}
-
-	return (
-		<ul class="wsp-activity" aria-label="Recent activity">
-			{entries.map((entry) => {
-				const glyph = KIND_GLYPH[entry.kind];
-				const body = (
-					<span class="wsp-activity__body">
-						<span class="wsp-activity__text">{entry.text}</span>
-						<span class="wsp-activity__at">
-							{entry.actor && <span class="wsp-activity__actor">{entry.actor}</span>}
-							{entry.actor ? " · " : ""}
-							{entry.at}
-						</span>
+/** One event. */
+function ActivityItem({ row }: { row: ActivityRow }): JSX.Element {
+	const body = (
+		<>
+			{row.actor
+				? (
+					<UserAvatar
+						class="wsp-activity__avatar"
+						image={row.avatar ?? undefined}
+						alt=""
+						label={row.actor}
+						shape="circle"
+						size="sm"
+					/>
+				)
+				: (
+					<span class="wsp-activity__mark" aria-hidden="true">
+						{cloneGlyph(KIND_GLYPH[row.kind])}
 					</span>
-				);
+				)}
+			<span class="wsp-activity__body">
+				<span class="wsp-activity__text">{row.text}</span>
+				<MetaLine as="span" size="xs" items={row.meta.map((text) => ({ text, tabular: true }))} />
+			</span>
+		</>
+	);
+	return (
+		<li class="wsp-activity__item">
+			{row.href
+				? <a class="wsp-activity__row wsp-activity__row--link" href={row.href}>{body}</a>
+				: <div class="wsp-activity__row">{body}</div>}
+		</li>
+	);
+}
 
-				return (
-					<li class="wsp-activity__item" key={entry.id}>
-						<span class="wsp-activity__row">
-							<Tooltip content={KIND_LABEL[entry.kind]} placement="right">
-								<span class="wsp-activity__glyph" aria-label={KIND_LABEL[entry.kind]} role="img">
-									{cloneGlyph(glyph)}
-								</span>
-							</Tooltip>
-							{entry.actor && (
-								<UserAvatar
-									class="wsp-activity__avatar"
-									image={entry.actorAvatar}
-									alt=""
-									label={entry.actor}
-									shape="circle"
-									size="sm"
-								/>
-							)}
-							{entry.href ? <a class="wsp-activity__link" href={entry.href}>{body}</a> : body}
-						</span>
-					</li>
-				);
-			})}
+/** The feed, or one Meta line when nothing has happened yet. */
+export function ActivityFeed(props: ActivityFeedProps): JSX.Element {
+	if (props.rows.length === 0) {
+		return <MetaLine class="wsp-activity__empty" items={["Nothing has happened here yet."]} />;
+	}
+	return (
+		<ul class="wsp-activity">
+			{props.rows.map((row) => <ActivityItem key={row.id} row={row} />)}
 		</ul>
 	);
 }

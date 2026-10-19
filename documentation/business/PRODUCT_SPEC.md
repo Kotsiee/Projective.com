@@ -183,13 +183,45 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
 - **Draft-First Creation:** Creating a Team is deliberately low-friction — a member supplies only a
   display **Name** (2–80 characters) and a unique **`@handle`** (3–40 lowercase letters, numbers
   and inner hyphens, never a reserved route word — the database's rule, TEAMS_AUDIT F2). The Team
-  is created instantly in a **Draft/Unverified** state; branding, contribution splits, roles, and
-  member invitations are completed afterwards on the Team's settings page.
+  is created instantly in a **Draft/Unverified** state; the rest is completed afterwards from the
+  console. Its Overview leads with a setup band of five steps, each DERIVED from stored facts:
+  invite a second member (two ACTIVE members are required to apply — an invitation still out does
+  not count, Decision #228 (E)), set the split, complete the public profile (mark and one-liner),
+  verify the owner (the payout-ready gate, Decision #196), and publish. A step's action is offered
+  only to a member who holds its right (the same right that opens its module), so a plain member
+  sees where the team stands and no control they cannot use. Verifying the owner is the owner's own
+  identity check, so only the owner is offered it — in their personal settings, never to an admin —
+  and once it is with the reviewers the step says so and offers nobody anything. The next open step
+  carries the band's one filled action; Publish is offered only once every step before it is done.
+  The band is dismissible per member, and the two-member rule and the verification lock still show
+  once it is hidden. The `/teams` roster card's "% set up" (and its needs-setup filter) counts the
+  same five steps.
 - **Automated Payment Splitting:** Payments are distributed at the moment of Escrow release. If a
   Stage payout is $1,000, Projective automatically routes percentages to individual member wallets
   based on predefined **Contribution Agreements**.
 - **Unified Identity:** Teams can create "Services" (Sessions) and bid on "Projects" as a single
   entity, building a collective reputation and portfolio.
+- **The public page:** a Team's storefront is its `/@handle` — showcase, services, the public
+  roster, its collective reviews and its own Standing — while `/teams/:teamHandle` is the members'
+  console. The page opens for anyone while the Team is **active** and **public** or **unlisted** (an
+  unlisted Team by its link only, never listed). While it is a **draft**, **archived** or
+  **invite-only** the page is missing to everyone outside it — worded exactly as an unknown handle —
+  and its members see it with a note saying why ("Only members can see this until the team is
+  published", and for a Team created invite-only, "…and no longer invite-only"); a member who may
+  open the Team's Settings also gets a link to them there (a business's note still stands alone). A
+  Team is created draft and invite-only (Teams P1).
+- **Settings and the lifecycle:** a Team's Settings (`/teams/:teamHandle/settings`, for members who
+  may change its settings) holds its display name (editable by whoever may edit the profile; the
+  `@handle` never changes), its visibility (public · unlisted · invite only), and its lifecycle. A
+  draft is **published** from there by anyone who may change its settings — which lists it as its
+  visibility allows and lets it apply once it has two active members; a published Team never returns
+  to draft. **Archiving** (the owner, or whoever holds the archive right) is refused while money is
+  held in escrow for the Team's work or while it is still assigned to live work, and Settings names
+  each of those before anybody presses Archive, with a link to where it is cleared (the wallet, or
+  the Projects module) — never an Archive button that would fail. **Restoring** an archived Team
+  brings it back **active if it was ever published, otherwise as a draft** (Decision #250 (c)); the
+  platform decides which, from the Team's own history, and the Restore control says which it will
+  be. A Business restores by the same rule (#236 (d)) (Teams C6).
 
 ##### Role-Based Access Control (RBAC)
 
@@ -273,6 +305,10 @@ a run of milestones (stages), visualised on the Timeline; and **Pipeline** — t
 engine for continuous work. Sessions (below) are a provider-side work flow, not a fourth project
 type. The three types are the Zod SSOT's `ProjectTypeChoice` (`task | one_off | pipeline`), stored
 as the `format` + `structure_variation` pair.
+
+**A seller offers one of exactly four service types** (owner ruling, Decision #275 (c)):
+**Deliverable**, **One-Off**, **Pipeline** and **Session** — a Session is either one-to-one or a
+group cohort, which is a kind of Session rather than a fifth type.
 
 #### The Three Work Flows
 
@@ -496,17 +532,29 @@ stranger's page is a discovery destination; the viewer's own profile lights noth
 team, business or enterprise — the roster. On a business the completed projects it commissioned
 (public ones whose client allows portfolio display) are its client proof and lead the section, and
 a roster row reads the member's title or role · "since" as plain text, never a chip
-(Decision #244). A portfolio tile whose piece is a video carries the
+(Decision #244). On a **team** the roster is a list of rows — avatar, name, and one line of plain
+text: the member's public role (a preset's name; a custom role reads as the preset it is based on,
+its own name being a members-only fact) · "since" the year they joined · their top two skills (only
+to a reader the member's own profile admits — a private member's skills stay off the team page as
+they are off their own) — each row linking to the member's own page; no payout stake and no
+workload is ever shown on the public page (Teams P1). A portfolio tile whose piece is a video carries the
 same control set's compact pair — play ⁄ pause and mute — in its top corner, revealed with the
 caption; it never starts on its own, and pressing a control never opens the piece. **Experience** shows a person's career history,
 education and verified certifications, and renders only for an individual (a company has no CV).
 **Reviews** is the dual-track reputation, filterable in place by the stance the profile held (all ·
-as freelancer · as client). **Posts** is what the entity has published. There is no fifth section;
+as freelancer · as client). A **team's** Reviews are its collective ones — the reviews whose subject
+is the team — under one aggregate star rating with the review count beside it, and no stance
+filter (a team is only ever the provider); a member's personal reviews stay on that member's own
+page and are never merged in (Teams P1). **Posts** is what the entity has published. There is no fifth section;
 a fact that fits none of the four does not get a tab, it gets a line in the context bar or nothing.
 
 **The hero states identity, proof and one conversion.** Avatar · name · `@handle` and entity kind ·
 the action rig · three inline metrics — the rating, completed stages, and the earned Standing rung
-(with delivered volume, when disclosed) — beside the **showcase**: a raised 16:10 frame carrying
+(with delivered volume, when disclosed; a **team's** rung — its own — carries the factors behind it
+beneath, as one line of text: on-time delivery · completion · disputes, once the team has the volume
+the ladder's first earned rung demands (Established's floor of signed-off stages, §Standing), so a
+single flawless engagement never reads "100% on time · No disputes"; a freelancer's rung is shown
+alone, their rates unpublished, Teams P1) — beside the **showcase**: a raised 16:10 frame carrying
 ONE primary still (the thumbnail every card and preview of the profile leads with, so it is never a
 video) and up to five further slides — six slots in all — each a still or a full-length video. The showcase advances
 on its own — a still dwells, a video plays through and then holds its last frame for the same
@@ -530,7 +578,10 @@ Follow as its secondary. On a **business** Message is the one filled control (th
 takes on a seller) with Follow as an icon beside it, and it opens a direct message with the
 business's **owner** — a direct message is between people; a member who may edit the business sees
 **Manage business** (its console) in Message's place, and there is no Hire, no Add to project and no
-price anywhere on the page (Decision #244). Both conversion controls open a popover **at the button**, never a scroll
+price anywhere on the page (Decision #244). On a **team** the rig is the seller's, and its Message
+likewise opens a direct message with the team's **owner**; a member who may edit the team's profile
+sees **Manage team** (its console, a utility link) in Hire's place, with Add to project still beside
+it (Teams P1). Both conversion controls open a popover **at the button**, never a scroll
 to the Services row. **Hire** lists the seller's listings (thumbnail · title · starting price ·
 rating) and, when the seller takes discovery calls, a "Book consultation" row carrying its price or
 the word Free; it renders only when there is something to list. Picking a listing opens the
@@ -600,13 +651,16 @@ A fact that is unmeasured or absent is omitted whole; nothing on the bar is infe
 neighbouring signal.
 
 **The owner manages the profile from three views of it.** When the person looking at a profile is
-the one who manages it — the individual, a team's owner or lead, a business's owner or an admin
-(whoever holds its profile right, Decision #244), an
+the one who manages it — the individual, a team's owner or an admin (whoever holds its profile
+right; a team gives a lead that right through a custom role, Decision #250 (b)), a business's owner
+or an admin (whoever holds its profile right, Decision #244), an
 enterprise's owner or admin — an owner header sits above the page with three tabs, each its own
 address:
 
 - **Preview** (`/[handle]`) is the profile as a visitor sees it, and its conversion controls say
-  they are inert here rather than acting on the owner's own account. The one thing the owner can
+  they are inert here rather than acting on the owner's own account — except that a team's or a
+  business's editor sees its console link (**Manage team** in Hire's place, **Manage business** in
+  Message's), and the Preview tab's note says so (Decision #244; Teams P1). The one thing the owner can
   change from it is the photo: hovering it reveals an edit overlay that opens the File Picker to
   upload a picture, choose one from their library or bring in their sign-in account's picture, then
   frame it (Decision #158).
@@ -678,7 +732,25 @@ team members.
 - **Draft-First Creation:** Creating a Business is low-friction — the owner supplies only a display
   **Name** and a unique alphanumeric **`@handle`**. The Business is created instantly in a
   **Draft/Unverified** state; legal name, logo, billing details, member roles, and financial setup
-  are completed afterwards on the Business settings page.
+  are completed afterwards on the Business settings page. The console's **Overview** walks the setup
+  in order (Decision #248): **Invite a colleague** · **Verify the business** (KYB) · **Add money**
+  (load the pooled wallet so members can fund work without a card each time — done once money has
+  ever been added) · **Set spending rules** (only on a plan that can set them, Business Pro; a
+  Business on Business Free walks four steps, never held at 80% by one it could not finish) ·
+  **Publish**. Each step offers a control only to a member who may act on it, and the setup band
+  carries ONE filled control — the viewer's next step; when that is **Add money**, the act that
+  starts a financial flow, it is the amber one and opens the wallet's top-up. **Publishing is not
+  held behind the earlier steps** — KYB waits on reviewers and a top-up on the payment processor —
+  so a member who may publish (`manage_settings`) publishes a draft from the Overview at any time:
+  the band's fill when it is their first open step, a quieter control otherwise. A draft Business
+  whose setup band the viewer has hidden states that it can't buy, hire or pay yet, with **Publish**
+  and the fact that publishing can't be undone (or, for anyone else, to ask the owner to publish
+  it). An **archived** Business shows no setup steps — nothing in its wallet can be spent until it
+  is restored, so it is never asked for money — and it **takes no money in**: a top-up, a recurring
+  deposit or a member's transfer into its wallet is refused until it is restored, and a card payment
+  that completes after it was archived is not added to the wallet but held for the platform to
+  refund (or to settle once the Business is restored). A **draft** Business still takes money in — Add money is one of its setup steps (Decision
+  #248 (k)). The roster's "% set up" counts the same steps.
 - **Visibility:** a Business takes the same visibility a team does — **public**, **unlisted** or
   **invite-only** — and only a public Business is listed in the directory (Decision #230 (h)). Its
   public page (`/@handle`) opens for anyone while the Business is active and public or unlisted (an
@@ -694,7 +766,12 @@ team members.
   wallet. Funds can be pre-loaded into the vault, allowing individual managers to initiate "Escrow
   Locks" without needing access to a primary corporate credit card for every transaction.
   Per-member spending caps and an approval threshold are **Business Pro** features; a free Business
-  has the shared wallet without caps (`finance-model.md` §16.1, Decision #230 (e)).
+  has the shared wallet without caps (`finance-model.md` §16.1, Decision #230 (e)). Whoever runs the
+  wallet's policy sets, in the Business's Spend module, the threshold, who may approve spending and
+  who may add money, and each member's limit — whether they may spend, a ceiling per week, per month
+  or in total, and a per-purchase cap — for the members they outrank; the owner always may do
+  everything. Changing a member's period keeps what they have already spent in the current one
+  (Decision #246).
 - **Legal Simplicity:** The Business entity handles the administrative side of hiring, ensuring all
   contracts and invoices are issued to the Business entity rather than individual employees.
 
@@ -1288,7 +1365,10 @@ To bridge the gap between "Marketplace Speed" and "Corporate Accounting," Busine
   those lines are already settled. The amount **due** is only what the Business bought **on
   account** in the period (below). An invoice with nothing on account is issued **Paid** — it is the
   month's tax document. A billing member pays an amount due from the Business wallet or by card
-  (**Pay**).
+  (**Pay**), always after a review of the amount, the wallet it leaves and the balance after; a
+  wallet that holds less than is due is topped up first (a card top-up of that wallet, Decision
+  #125), and the review hands off to it (Decision #247). Paying from the wallet is operating it, so
+  only a verified (KYB) Business pays (Decision #247 (h)).
 - **Paying on account:** a KYB-verified Business in intervaled invoicing mode may choose **Invoice**
   at checkout. The platform credits the Business wallet with the order's amount as an on-account
   credit and the order is paid from the wallet as usual — so every hold still comes from a wallet
@@ -1356,7 +1436,9 @@ Money enters and leaves the platform through two deliberately asymmetric paths:
   the member asks in place, saying what it is for; nobody is sent elsewhere to ask. The order then
   waits ("Waiting for approval", until the request expires 7 days after it was filed). Once
   approved, the next payment for that basket uses the approval, once — a second order needs a fresh
-  one; an order that has since dropped under every limit is not held by a request left waiting. If
+  one; an order that has since dropped under every limit is not held by a request left waiting. The
+  member can take a waiting request back from the business's Spend module (**Withdraw**); the
+  checkout then offers Request approval again (Decision #246). If
   nobody else in the business can approve, the member is told to ask the owner to add an approver
   (the owner, to give a member approval rights). An unverified business cannot buy: members with its
   billing right are sent to its verification, everyone else is told to ask the owner
@@ -2137,7 +2219,7 @@ more:
 | Field            | Notes                                                                                      |
 | :--------------- | :------------------------------------------------------------------------------------------ |
 | **Title**        | Required, at least 3 characters. Long enough to be a name, short enough not to be a brief. |
-| **Project type** | `pipeline` or `one_off`. Two options, not three — see below.                               |
+| **Project type** | **Task**, **One-Off** or **Pipeline** — three types, stored as two formats (see below).   |
 | **Currency**     | Seeded from the viewer's display preference, then **fixed to the project**.                |
 | **Baseline**     | ONE price: a pipeline's default ticket rate, or a one-off's escrow budget. Optional.       |
 
@@ -2150,13 +2232,16 @@ configuration workspace at the project's `prj-` address (Decision #195).
 before the client can look anything up, and a half-filled one loses everything on dismiss. A draft
 row loses nothing. So the modal's only job is to reach a URL, and the URL is where the work happens.
 
-**Why two project types.** `session` is excluded because a session is a **service a freelancer
-sells**, not a project a client posts — it is created provider-side from the catalogue composer, and
-a project only ever receives one by instantiation. Offering it here would let a buyer mint an
-engagement with no seller and no schedule. A **Direct Deliverable** can no longer be BORN here
-either: it was a third word a client had to choose between before writing a sentence, and it is a
-staffing distinction rather than a workflow one. It survives intact one level down as the project's
-structure, so an existing Direct Deliverable stays fully editable.
+**Why three project types, stored as two formats (owner ruling, Decision #275 (c)).** A client
+creates exactly three project types: **Task**, **One-Off** and **Pipeline**. A Task is the
+stage-less One-Off (Decision #86): the modal sends `format: one_off` with `hasStages: false`, which
+`createFormatToColumns` stores as the `single_task` structure, so the `format` column keeps two
+values and no third vocabulary exists. `session` is excluded because a session is a **service a
+freelancer sells**, not a project a client posts — it is created provider-side from the catalogue
+composer, and a project only ever receives one by instantiation. Offering it here would let a buyer
+mint an engagement with no seller and no schedule. The retired word **Direct Deliverable** is not
+offered either: the stage-less structure it named is what a Task now is, so an existing Direct
+Deliverable stays fully editable as a Task.
 
 **Currency is a stored origin, not a presentation choice** — it prices escrow. A viewer later
 switching how they prefer to READ money must never move what a project is priced in.
@@ -2824,8 +2909,9 @@ never accepted from a request body, never stored as a flag — and lifts on the 
    create **personal projects** (below).
 6. **Hidden, not refused.** Anything it cannot use is left out of the interface rather than shown and
    refused: Wallet, Businesses, the basket and checkout, the Catalogue (and creating services or
-   products), Teams, Analytics, Become a Freelancer, and Settings → Billing, Verification & payouts and
-   Scheduling & calls. A typed or stale link to one of these goes to Home. Where a listing or project
+   products), Teams, Analytics, Become a Freelancer, Settings → Billing, Verification & payouts and
+   Scheduling & calls, and the IP workspace (`/legal/workspace`, Decision #270). A typed or stale link
+   to one of these goes to Home. Where a listing or project
    page would offer Buy, Book, Hire or Apply, one line explains that buying services and selling work
    unlock on the 18th birthday; Settings → Account names it a "Limited account". Choosing "I want to
    work" at sign-up starts the account as a client.
@@ -3129,18 +3215,18 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               | `/forgot-password`        |                          | Password recovery                                                                              |
 | **Dashboard** | `/home`                   |                          | Persona-adaptive engagement feed (recommended work, reels, activity, profile-setup tracker)    |
 |               | `/become-partner`         |                          | Freelancer conversion funnel (Client/Operator → unlock freelancer suite)                       |
-|               | `/articles/[slug]`        |                          | Editorial reader for freelancer stories linked from `/become-partner`                          |
 |               | `/businesses`             | `index`                  | Show all businesses (any adult account — Decision #230 (a))                                   |
 |               | `/businesses/create`      |                          | Create a new business                                                                          |
-|               | `/businesses/[businessHandle]` | `index`             | The console's **Overview** — addressed by the business's `@handle` ([ROUTING.md](../architecture/ROUTING.md) business rows) |
+|               | `/businesses/[businessHandle]` | `index`             | The console's **Overview** — addressed by the business's `@handle` ([ROUTING.md](../architecture/ROUTING.md) business rows); the setup steps while any is open, and the money band (per currency: Available · Committed · Awaiting approval · Spent 30d) for whoever may open `finance` (Decision #248) |
 |               |                           | `members`                | Members                                                                                        |
 |               |                           | `projects`               | Projects the business has commissioned                                                         |
+|               |                           | `finance`                | The door to the pooled Business Wallet — the balance per currency and **Open the business wallet** (the wallet is the finance UI); opens for anyone who pays into, spends from or runs the wallet (Decision #248) |
 |               |                           | `spend`                  | Limits, approval thresholds, the approval queue and the attributable pool ledger                |
 |               |                           | `billing`                | Invoices (with **Pay**), statement PDFs, invoicing terms, auto-funding and the balance floor (§Escrow, Wallets & Finance #4) |
 |               |                           | `talent`                 | The bench — freelancers and teams the business has hired (Decision #230 (i))                    |
 |               |                           | `verification`           | Business verification (KYB) — where it stands, what is still due, what it unlocks, and the start of Stripe Connect onboarding for whoever holds the billing right (Decision #242) |
 |               |                           | `settings`               | Handle, defaults, ownership transfer and archiving                                             |
-|               |                           | _other modules_          | `roles` · `invitations` · `finance` (the Business Wallet) · `calendar` · `messages` · `analytics` · `standing` · `profile` — the rest of the kind-business module registry (`features/workspaces/core/module-registry.tsx`) |
+|               |                           | _other modules_          | `roles` · `invitations` · `calendar` · `messages` · `analytics` · `standing` · `profile` — the rest of the kind-business module registry (`features/workspaces/core/module-registry.tsx`) |
 |               | `/connections`            | `index`                  | View network connections                                                                       |
 |               | `/calendar`               | `index`                  | Personal agenda — the union of every engagement the account is on, over its own working hours, call windows and booked leave. The same occurrence as on `/projects/[project id]/calendar`, not a copy |
 |               | `/catalogue`              | `index`                  | Seller console — the listings (cards or rows by zoom, facets, a batch bar for the selection) and the Analytics and Clients views (`?view=`). A listing is created in the `?create=` Quick-Init modal, never on a page of its own |
@@ -3162,10 +3248,10 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               | `/teams/create`           |                          | Create a new team                                                                              |
 |               | `/teams/[teamHandle]`     | `index`                  | The console's **Overview** — addressed by the team's `@handle`; a uuid or wrong-case handle **308→** the handle ([ROUTING.md](../architecture/ROUTING.md) team rows, Decision #228 (B)) |
 |               |                           | `members`                | Members                                                                                        |
-|               |                           | `projects`               | Projects                                                                                       |
+|               |                           | `projects`               | Projects — the team's live engagements (each stage assignment with its assignees' Wᵢ against the stage cap, or each one's own workload cap on a stage that sets none) under its proposal allowance; `?view=proposals` the applications filed for the team, awaiting an answer ([ROUTING.md](../architecture/ROUTING.md) team rows) |
 |               |                           | `payouts`                | Payouts                                                                                        |
 |               |                           | `roles`                  | Roles                                                                                          |
-|               |                           | `settings`               | Settings                                                                                       |
+|               |                           | `settings`               | Name, visibility and the lifecycle — publish, archive (what blocks it named first), restore (Teams C6) |
 |               |                           | _secondary group_        | The other modules stay reachable in the lane's secondary group: `catalogue` · `calendar` · `messages` · `invitations` · `finance` (the Team Vault) · `analytics` · `standing` · `profile` · `verification` (Decision #228 (C)) |
 |               | `/analytics`              | `index`                  | Performance data                                                                               |
 |               | `/wallet`                 | `index`                  | **The command centre.** A balance hero (total · available · in escrow · clearing) with every money action, over a sheet of accounts, cash flow, upcoming obligations, recent transactions and payment methods. A middle-nav lane links the wallet's pages and carries every money action. The retired deep pages `activity` **308→** `analytics`; `payouts`, `funding`, `access`, `methods` **308→** overview sections |
@@ -3197,16 +3283,17 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               | `/disputes`               | `index`                  |                                                                                                |
 |               |                           | `[dispute id]`           |                                                                                                |
 |               | `/admin/disputes`         |                          | **Operator dispute desk** (Decision #212) — platform operators only (`ops.admin_users`); 404 for anyone else. The live queue by status (Under review · Awaiting response · Open), oldest-due first with overdue reviews flagged; a case opens in a dialog (never its own URL) to read the Evidence Vault and rule release · refund · split, with reasons both parties read |
-|               | `/legal`                  | `index`                  |                                                                                                |
-|               |                           | `audit-packs`            |                                                                                                |
-|               |                           | `transfers`              |                                                                                                |
+|               | `/legal/workspace`        | `index`                  | The IP chain-of-title workspace (signed in; moved from the bare `/legal`, which is now the public document hub — Decision #270). Not built yet |
+|               |                           | `audit-packs`            | A project's agreements, invoices and IP deeds in one verified bundle (§Identity, Taxes & Compliance 4) |
+|               |                           | `transfers`              | The deeds of transfer issued on escrow release (§Identity, Taxes & Compliance 4)               |
 |               | `/services`               | `index`                  |                                                                                                |
 |               |                           | `create`                 |                                                                                                |
 |               |                           | `availability`           |                                                                                                |
 | **Public**    | `/index`                  |                          | Landing Page                                                                                   |
-|               | `/about`                  |                          | Company information                                                                            |
+|               | `/about`                  |                          | The mission page (Decision #277): the shift from working alone to protected teamwork, the friction set against the model, live platform figures (money protected in escrow, stages delivered, median funding → approval, the platform fee — real aggregates only, each hidden below `public_metrics_min_n`, updated hourly), an interactive walkthrough of one stage's money (Fund → Prepaid escrow → Claim → In progress → Submit → Accept & release → 7-day clearing → Withdraw), the founders (once real ones are supplied; until then the band is not drawn), how it's built (no certification claims), and Start a project / Talk to sales |
 |               | `/explore`                |                          | Discovery/Search                                                                               |
 |               | `/pricing`                |                          | **Planned** (Decision #252) — every plan by audience (Individual · Team / Agency · Business / Enterprise) over the two payment planes, in the viewer's currency, with what no plan changes (§Escrow, Wallets & Finance 7 "Public pricing") |
+|               | `/contact`                |                          | **Contact intake** (Decision #276) — `?intent=` `sales` · `support` (default) · `dispute` · `security`, each a shareable link and its own form; every request gets a `CT-XXXX-XXXX` reference and reaches operators (`ops.contact_requests`, unified machine). Attachments for signed-in senders only; a signed-in dispute picks the reader's open engagement (a session goes to its Report no-show); an anonymous security report keeps no name, address or account. Works without JavaScript (`POST /api/contact`) |
 |               | `/[handle]`               | `index`                  | Public profile — the **Work** section (client proof · services · completed projects · portfolio · roster) under the split hero + context bar (§The Public Profile) |
 |               |                           | `experience`             | Career history · education · verified certifications (individuals only)                        |
 |               |                           | `reviews`                | Verified client and peer reviews                                                               |
@@ -3216,10 +3303,21 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `edit/availability`      | **Owner only.** Working hours, time zone, publishing and discovery-call terms                  |
 |               |                           | _retired_                | `services` · `products` · `projects` · `portfolio` · `teams` · `businesses` · `members` · `departments` · `about` · `education` · `articles` — each 308s into its consolidated section |
 |               | `/share/[slug]`           |                          | Share-link resolution. Renders the asset for a holder of the opaque slug; every dead state (missing / expired / revoked / exhausted) returns an identical 404 |
+|               | `/legal`                  | `index`                  | The legal hub — every legal document, in two groups, with its version in effect, its effective date and a plain-English line (Decision #270) |
+|               | `/legal/[slug]`           | `index`                  | One legal document: `terms` · `privacy` · `cookies` · `acceptable-use` · `escrow-terms` · `ip-transfer-deed`. Numbered clauses, each with a plain-English summary; `?v=` reads an earlier version, `?compare=` shows what changed clause by clause. A draft until a lawyer signs it off: a visible "Draft — pending legal review" disclosure and never indexed (Decision #270) |
+|               |                           | `pdf`                    | The same version as a PDF download                                                             |
+|               | `/changelog`              | `index`                  | The changelog (Decision #278): every published release, newest first, ten to a page (`?page=`), filterable by category (`?category=`, repeatable — a release in ANY selected category); a dated timeline with each release's pictures in a lightbox (`?image=`); an RSS link and the changelog newsletter list |
+|               |                           | `[version]`              | One release's canonical page (`/changelog/0.12.0`; `v0.12.0` redirects there) with the previous and next releases. A version that is unknown, withdrawn or dated in the future is a 404 |
+|               |                           | `rss.xml`                | The changelog as RSS 2.0 (`application/rss+xml`), one item per release with its canonical URL |
+|               | `/feedback`               | `index`                  | The feedback board & roadmap — suggest an idea, vote, follow it from Planned to Shipped. Ideas store unified-machine states (Under review = Backlog, visible to its author and operators until accepted; Planned · In progress · Shipped public), Decision #272. The same board opens over any page as a drawer with `?feedback=open` (`idea=` · `compose=1` · `status=` · `sort=`) |
 |               | `/inspect/[file]`         |                          | The File Inspector — one stored file full-window with no app chrome, the canvas that suits its type and a details panel (§Assets & Attachments → The File Inspector). Readable by exactly who can read the file, or with `?share=` by a share-link holder; every refusal is one identical not-found page; never indexed |
-|               | `/help/[...article path]` | `index`                  | Documentation / Help center                                                                    |
+|               | `/help/[...article path]` | `index`                  | The help centre (P2): the hub (search · Start here by role · the eight Topics · the FAQ · Still stuck?), `/help/<category>` and `/help/<category>/<article>` — readable, permanent slugs (Decision #274 (k)); a guessed or moved address redirects to the canonical one. Articles are platform-authored `editorial` rows; "Was this helpful?" votes are `community.help_feedback`. Search at `?q=` (an overlay; a server-rendered results list without JavaScript) |
 |               | `/view/[entity]`          | `index`                  | Public entity viewer — the evaluation & purchase surface. One page, six bodies (Pipeline · One-Off · Session · Cohort · Digital Product · Project) resolved from the listing's delivery model. The transaction lives in the contextual lane, never a third column (§The Entity View; DESIGN_SYSTEM §D.7–§D.8) |
 |               |                           | `schedule`               | Bookable availability leaf for Session / Group-Session archetypes — fills the content region itself (no lane) |
+|               | `/articles`               | `index`                  | Projective's own articles (Decision #271): a lead story, two features and the rest, filtered by topic (`?topic=`, repeatable, any of) and paged (`?page=`) |
+|               | `/articles/[slug]`        |                          | One Projective article on the shared document reader — its one canonical address, a readable slug that never changes. Member posts stay at `/view` and `/[handle]/posts` (Decision #271) |
+|               | `/sitemap.xml`            |                          | Every public page a search engine should index (Decision #279): the home page, Explore, About, Contact, Feedback, the help centre (hub, categories, articles), the changelog and its releases, Projective's articles, and a legal document only once a lawyer has reviewed it |
+|               | `/robots.txt`             |                          | What crawlers may fetch (Decision #279): never the signed-in app, the API or a page's `?feedback=open` drawer; names the sitemap |
 |               | `/[handle]/view/[item]`   | `index` / `schedule`     | Profile-scoped twin of the above; identical body, back-links scoped to the profile              |
 
 ---

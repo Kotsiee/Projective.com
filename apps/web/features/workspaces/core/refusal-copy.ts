@@ -67,10 +67,27 @@ export interface BusinessRefusalContext {
 	/** The business's KYB state (`pending`, `rejected`, …). */
 	kybStatus?: string | null;
 	/**
+	 * The business's own lifecycle status (`draft`, `active`, `archived`), where the reader knows it —
+	 * `business_not_active` then asks for the one act that clears it: publishing a draft, restoring
+	 * an archived business.
+	 */
+	businessStatus?: string | null;
+	/**
+	 * Whether the reader is the business's owner, who publishes and restores it — `business_not_active`
+	 * then names the act for them rather than sending them to themselves ("ask the owner").
+	 */
+	ownsBusiness?: boolean;
+	/**
 	 * Whether the reader manages the business's members (the owner): the one who adds an approver, so
 	 * "ask the owner" would send them to themselves.
 	 */
 	managesMembers?: boolean;
+	/**
+	 * Whether the reader is an approver deciding spend requests rather than a member paying — the
+	 * Spend module's queue (Decision #246). `kyb_required` then says what waits on verification for
+	 * THEM: deciding requests, not paying.
+	 */
+	deciding?: boolean;
 }
 
 /** One refusal's words. */
@@ -164,19 +181,19 @@ export const BUSINESS_REFUSAL_COPY: Readonly<Record<BusinessRefusalCode, Refusal
 	kyb_required: {
 		sentence: (ctx) => {
 			const name = nameOf(ctx);
+			const whose = name ? possessive(name) : "This business's";
 			if (ctx.kybStatus === "pending") {
-				return `${
-					name ? possessive(name) : "This business's"
-				} verification is still in review. You can pay once it clears.`;
+				return ctx.deciding
+					? `${whose} verification is still in review. You can decide spend requests once it clears.`
+					: `${whose} verification is still in review. You can pay once it clears.`;
 			}
+			const waits = ctx.deciding
+				? "spend requests can be decided"
+				: "its wallet can pay for anything";
 			if (ctx.kybStatus === "rejected" || ctx.kybStatus === "expired") {
-				return `${
-					name ? possessive(name) : "This business's"
-				} verification needs attention before its wallet can pay for anything.`;
+				return `${whose} verification needs attention before ${waits}.`;
 			}
-			return `${
-				name ?? "This business"
-			} needs to be verified before its wallet can pay for anything.`;
+			return `${name ?? "This business"} needs to be verified before ${waits}.`;
 		},
 		action: (ctx) => {
 			if (ctx.kybStatus === "pending") return "See verification";
@@ -214,7 +231,20 @@ export const BUSINESS_REFUSAL_COPY: Readonly<Record<BusinessRefusalCode, Refusal
 		sentence: (ctx) =>
 			`${nameOf(ctx) ?? "This business"} isn't active, so it can't buy, hire or pay yet.`,
 		action: null,
-		ask: () => "Ask the owner to publish or restore it in the business settings.",
+		// The business's Overview publishes a draft and the roster's archived tab restores one; Settings
+		// does neither, so the ask names the act, not a surface — the one act its status needs where the
+		// reader knows it, both where it does not (the checkout) (Decision #248). The owner is told the
+		// act itself, not to ask the owner (#248 (k): the wallet's refusal reaches the owner too).
+		ask: (ctx) => {
+			if (ctx.ownsBusiness) {
+				if (ctx.businessStatus === "draft") return "Publish it first.";
+				if (ctx.businessStatus === "archived") return "Restore it first.";
+				return "Publish or restore it first.";
+			}
+			if (ctx.businessStatus === "draft") return "Ask the owner to publish it.";
+			if (ctx.businessStatus === "archived") return "Ask the owner to restore it.";
+			return "Ask the owner to publish or restore it.";
+		},
 	},
 	entitlement: {
 		sentence: (ctx) =>

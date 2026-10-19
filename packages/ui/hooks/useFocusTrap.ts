@@ -50,6 +50,14 @@ export interface FocusTrapOptions {
 	/** Restore focus to the previously-focused element on deactivate (default true). */
 	restoreFocus?: boolean;
 	/**
+	 * Where focus goes on deactivate INSTEAD of the previously-focused element, when the ref holds a
+	 * connected element at that moment (read at deactivation, so a caller may set it just before it
+	 * closes). A sheet whose choice moved the reader elsewhere — a table of contents entry — points
+	 * it at the destination, so focus lands there once, after the trap has let go, rather than
+	 * bouncing to the trigger and racing a timer. Empty (or `restoreFocus: false`), the default holds.
+	 */
+	returnFocusRef?: RefObject<HTMLElement | null>;
+	/**
 	 * Mark every sibling of the trapped subtree `inert` + `aria-hidden` while active (default true).
 	 * Non-modal surfaces that trap focus for convenience only (an anchored popover) pass `false` —
 	 * the page beneath stays live for them, so hiding it from assistive tech would be a lie.
@@ -103,6 +111,7 @@ export function useFocusTrap(opts: FocusTrapOptions): void {
 		initialFocusRef,
 		initialFocusSelf = false,
 		restoreFocus = true,
+		returnFocusRef,
 		inertBackground = true,
 	} = opts;
 
@@ -177,9 +186,19 @@ export function useFocusTrap(opts: FocusTrapOptions): void {
 			const i = trapStack.lastIndexOf(container);
 			if (i >= 0) trapStack.splice(i, 1);
 			releaseInert?.();
-			if (restoreFocus && previouslyFocused?.isConnected) {
-				previouslyFocused.focus({ preventScroll: true });
+			const redirect = returnFocusRef?.current;
+			const target = redirect?.isConnected ? redirect : previouslyFocused;
+			if (restoreFocus && target?.isConnected) {
+				target.focus({ preventScroll: true });
 			}
 		};
-	}, [active, containerRef, initialFocusRef, initialFocusSelf, restoreFocus, inertBackground]);
+	}, [
+		active,
+		containerRef,
+		initialFocusRef,
+		initialFocusSelf,
+		restoreFocus,
+		returnFocusRef,
+		inertBackground,
+	]);
 }

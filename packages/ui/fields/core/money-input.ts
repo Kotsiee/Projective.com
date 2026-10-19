@@ -79,13 +79,17 @@ export function parseMoneyInput(text: string, currency: string, locale: string):
 	return negative && minor !== 0 ? -minor : minor;
 }
 
-/** Minor units as the field shows them at rest: grouped, the currency's own decimals, no mark. */
+/**
+ * Minor units as the field shows them at rest: the currency's own decimals, no mark, grouped by the
+ * locale's OWN rule — the `Intl` default, the one a `MoneyView` of the same amount is formatted with.
+ * Forcing grouping (`useGrouping: true` is "always") printed "1 000,00" in the box over a figure that
+ * pt-PT, es-ES and pl-PL write "1000,00", since those locales group only from five integer digits.
+ */
 export function formatMoneyInput(minor: number, currency: string, locale: string): string {
 	const exp = currencyExponent(currency);
 	return new Intl.NumberFormat(locale, {
 		minimumFractionDigits: exp,
 		maximumFractionDigits: exp,
-		useGrouping: true,
 	}).format(minor / 10 ** exp);
 }
 

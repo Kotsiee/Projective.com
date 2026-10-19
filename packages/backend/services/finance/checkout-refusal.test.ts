@@ -3,6 +3,7 @@ import { AGE_RESTRICTED } from "../../core/age-gate.ts";
 import {
 	authorityBlocker,
 	BLOCKER_FOR_SQLSTATE,
+	businessNotActiveBlocker,
 	orderRefusal,
 	refusalBlocker,
 } from "./checkout-refusal.ts";
@@ -42,6 +43,27 @@ Deno.test("55000 business_not_active: a refusal with its gate, never a throw", (
 	assertEquals(blocker.code, "not_authorised");
 	assertEquals(blocker.gate, "business_not_active");
 	assertEquals(blocker.message, "Publish the business first");
+});
+
+Deno.test("businessNotActiveBlocker: the card top-up's refusal is the wallet order's gate", () => {
+	assertEquals(businessNotActiveBlocker("This business is archived — restore it first."), {
+		code: "not_authorised",
+		message: "This business is archived — restore it first.",
+		itemId: null,
+		gate: "business_not_active",
+	});
+	assertEquals(
+		refusalBlocker(
+			{
+				code: "55000",
+				message: "business_not_active: this business is archived — restore it first",
+				details: null,
+			},
+			BASKET,
+			"business",
+		),
+		businessNotActiveBlocker("This business is archived — restore it first"),
+	);
 });
 
 Deno.test("55000 without the business prefix is still not a checkout refusal", () => {

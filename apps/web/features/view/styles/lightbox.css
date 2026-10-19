@@ -142,6 +142,27 @@
 	box-shadow: var(--elevation-low);
 }
 
+/*
+ * An item's caption (optional — the changelog's pictures carry one): a band of the tray's own tone
+ * between the stage and the tray, so caption and controls read as one bottom region; centred under
+ * the picture. With no tray below it, it clears the home indicator itself.
+ */
+.vw-lightbox__caption {
+	flex: none;
+	margin: 0;
+	padding: var(--space-3) var(--space-4) 0;
+	background: var(--surface-1);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--on-surface);
+	text-align: center;
+	text-wrap: pretty;
+}
+
+.vw-lightbox__caption:last-child {
+	padding-block-end: max(var(--space-3), env(safe-area-inset-bottom));
+}
+
 .vw-lightbox__tray {
 	flex: none;
 	display: flex;

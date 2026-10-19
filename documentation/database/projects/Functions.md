@@ -1586,7 +1586,7 @@ transaction; the anti-burst buffer token is deliberately not returned (Decision 
 (`application.withdrawn`, titled with the team's name for a team, deep-linked to the conversation with
 the applicant). Returns `{ id, status: 'withdrawn', refunded: 1 }`.
 
-### `projects.list_my_applications(p_project text DEFAULT NULL) → jsonb`
+### `projects.list_my_applications(p_project text DEFAULT NULL, p_team uuid DEFAULT NULL) → jsonb`
 
 `00001130` §6d, `SECURITY DEFINER`, `STABLE`; `EXECUTE`: `authenticated`, `service_role`. The
 proposals the caller
@@ -1595,7 +1595,11 @@ newest first (at most 200), as a JSON array of `{ id, status, applicantType, tea
 canWithdraw, projectSlug, projectTitle, stageSlug, stageName, roleTitle, createdAt }`. The rows are
 scoped to the caller; the names are read with the definer's rights, so a project that has since gone
 private still shows the title the caller applied to. `p_project` (slug or uuid) narrows to one
-project — the listing page's "have I applied here?". Backs `GET /api/projects/applications/mine`.
+project — the listing page's "have I applied here?". `p_team` narrows to the applications filed for
+that team, whoever filed them — the team console's Projects → Proposals view (Teams C5); it only
+narrows the caller's rows, never widens them, and applies before the 200-row cap, so a member's own
+proposals cannot push the team's out (`supabase/probes/team_proposals_filter.sql`). Backs
+`GET /api/projects/applications/mine`.
 
 ### `projects.assign_from_application(p_application_id uuid) → jsonb`
 

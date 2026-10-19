@@ -94,3 +94,45 @@ deleted.
 | `settled_at`    | When the outcome was copied; `NULL` while pending.                                            |
 | `status_code`   | The route's HTTP status; `NULL` on a transport error, a timeout or no response.               |
 | `error`         | pg_net's error, `timed out`, or `no response recorded within the pg_net TTL` (after 7 hours). |
+
+## `ops.contact_requests` — what `/contact` files (Decision #276)
+
+Migration [`00000013_tables_ops.sql`](../../../supabase/migrations/00000013_tables_ops.sql) (region
+`[contact]`); functions [Functions.md](Functions.md) (`00001655`); guard trigger `00001897`; RLS
+[Policies.md](Policies.md); indexes in `00004002`. Zod SSOT: `@projective/types/contact`
+(`ContactRequestRowSchema`, `ContactSubmissionSchema`, `CONTACT_PAYLOAD_KEYS`). Written only by
+`ops.submit_contact_request`, called by `ContactBackendService` as the caller (anon for a guest, the
+sender's own JWT when signed in) behind `CONTACT_BACKEND_LIVE`. A request is a record: never deleted,
+and nothing but `status` (and `updated_at`) changes after insert — `ops.fn_guard_contact_request`
+refuses every other change for every role, except `user_id → NULL` on account erasure. Its lifecycle
+is the unified machine ([PRODUCT_MANAGEMENT.md](../../PRODUCT_MANAGEMENT.md) §3.5, "Contact request").
+
+| Column       | Meaning                                                                                                                                                                                                                                                            |
+| :----------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`         | PK, `gen_random_uuid()`. Never a route (Decision #88).                                                                                                                                                                                                             |
+| `reference`  | UNIQUE. The human reference the sender is shown and quotes back: `CT-XXXX-XXXX` over Crockford base32 (CHECK `contact_requests_reference_check`), minted by `ops.fn_contact_reference()` and re-drawn on a collision.                                               |
+| `intent`     | CHECK `sales` · `support` · `dispute` · `security` (`CONTACT_INTENTS`).                                                                                                                                                                                            |
+| `status`     | CHECK `backlog` · `in_progress` · `complete` · `archived`, `DEFAULT 'backlog'`. Moves only along the guard's transitions (`CONTACT_STATUS_TRANSITIONS`).                                                                                                           |
+| `email`      | The reply address, lower-cased (CHECK: ≤ 254, address-shaped, lower case). `NULL` only on an anonymous report.                                                                                                                                                      |
+| `user_id`    | The signed-in sender (`auth.uid()` at write time), when not anonymous. FK `auth.users(id)` `ON DELETE SET NULL` — the identity, not the profile: an account that has not finished `/join` has no `org.users_public` row and is still a signed-in sender. |
+| `anonymous`  | `true` only for a security report with no address and no account (CHECK `contact_requests_anonymous_check`); otherwise `email` is required.                                                                                                                       |
+| `payload`    | The intent's own fields, as written: `name`, `message`, and per intent `company` · `companySize` · `budget` (sales), `accountEmail` · `topic` (support), `referenceId` · `engagement {slug,title,format}` (dispute), `reportType` (security). CHECK: an object with a 1–5,000-character `message`, ≤ 16 KB. Not masked through `comms.mask_pii` — only operators read it (Decision #147). |
+| `created_at` · `updated_at` | `updated_at` is stamped by the guard on every (status) change.                                                                                                                                                                                       |
+
+Indexes (`00004002`): `idx_contact_requests_status_created` (the operator queue) and four partial
+indexes behind the writer's hourly ceilings — `idx_contact_requests_email_created` (WHERE `email`
+IS NOT NULL), `idx_contact_requests_user_created` (WHERE `user_id` IS NOT NULL),
+`idx_contact_requests_guest_created` (WHERE `user_id` IS NULL AND NOT `anonymous`) and
+`idx_contact_requests_anonymous_created` (WHERE `anonymous`).
+
+## `ops.contact_request_attachments` — a request's files (Decision #276)
+
+Same migration and region. One row per attached file: PK `(request_id, file_id)`, UNIQUE `file_id`
+(a file is attached to one request at most), both FKs `ON DELETE RESTRICT` — `request_id` →
+`ops.contact_requests(id)`, `file_id` → `files.items(id)`. Linked only by
+`ops.submit_contact_request`, and only for the caller's own `files.items` rows with
+`purpose = 'contact'`, `status = 'uploaded'` and no `deleted_at` (the contact upload pipeline's
+output, in the private `contact` bucket — [files Storage.md](../files/Storage.md)). Never updated or
+deleted. A link is what lets operators read a file (`files.fn_can_read`, the `contact` bucket
+policy): an unsent contact upload has none, and is taken back by Remove
+(`ops.discard_contact_attachment`) or the hourly sweep (`ops.fn_claim_stale_contact_attachments`).

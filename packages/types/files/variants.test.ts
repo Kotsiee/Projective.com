@@ -30,7 +30,7 @@ Deno.test("variantObjectPath: a tier sits beside its parent object", () => {
 });
 
 Deno.test("vocabulary mirrors files.asset_purpose / files.variant_tier member-for-member", () => {
-	assertEquals(AssetPurpose.options, ["library", "avatar", "showcase"]);
+	assertEquals(AssetPurpose.options, ["library", "avatar", "showcase", "contact"]);
 	assertEquals(VariantTier.options, ["sm", "md", "lg"]);
 });
 

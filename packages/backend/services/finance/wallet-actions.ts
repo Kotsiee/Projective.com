@@ -16,6 +16,7 @@ import type {
 } from "@projective/types/finance";
 import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
 import { businessAuthorityRefusal } from "../../core/business-authority.ts";
+import { businessNotActiveRefusal } from "../../core/business-lifecycle.ts";
 import { spendGateRefusal } from "../../core/spend-gate.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
@@ -85,11 +86,17 @@ function refuse(status: number, message: string): Result {
 
 /**
  * A money RPC's refusal: the business spend gate's (`kyb_required` / `over_limit` / `needs_approval` —
- * a 403 whose details name the spend an approval request would bind to) or the function's own.
+ * a 403 whose details name the spend an approval request would bind to), a draft or archived
+ * business's (`business_not_active` — a 409 the business refusal map words; an archived business
+ * takes no money in, Decision #248 (k)) or the function's own.
  */
 function moneyRefusal(error: { code?: string; message: string; details?: string | null }): Result {
 	const gate = spendGateRefusal(error);
 	if (gate) return fail(gate.status, { message: gate.message, details: gate.details }) as Result;
+	const inactive = businessNotActiveRefusal(error);
+	if (inactive) {
+		return fail(inactive.status, { message: inactive.message, details: inactive.details }) as Result;
+	}
 	return refuse(statusFor(error.code), messageFor(error));
 }
 
@@ -150,9 +157,13 @@ async function after(
 	return ok({ result: { overview, message, ...extra } }, { message, status }) as Result;
 }
 
-/** A fat-service refusal, carried over unchanged. */
+/** A fat-service refusal, carried over unchanged — its `details` too, so a typed refusal stays typed. */
 function carried(result: ServiceResult<unknown>): Result {
-	return fail(result.status, { message: result.message, errors: result.errors }) as Result;
+	return fail(result.status, {
+		message: result.message,
+		errors: result.errors,
+		details: result.details,
+	}) as Result;
 }
 
 /** Guard + resolve the wallet an action targets. */
@@ -247,7 +258,11 @@ export async function addRecurring(input: DepositRuleInput, query: WalletQuery, 
 		sourceMethodId: input.sourceMethodId,
 	});
 	if (!rule.ok) {
-		return fail(rule.refusal.status, { message: rule.refusal.message, errors: rule.refusal.errors }) as Result;
+		return fail(rule.refusal.status, {
+			message: rule.refusal.message,
+			errors: rule.refusal.errors,
+			details: rule.refusal.details,
+		}) as Result;
 	}
 	return after(query, actor, account.key, "Recurring deposit set up.", {}, 201);
 }

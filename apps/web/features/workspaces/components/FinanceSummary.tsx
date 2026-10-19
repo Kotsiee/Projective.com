@@ -1,84 +1,87 @@
 import type { JSX } from "preact";
-import { kindCopy, type WorkspaceFinance, type WorkspaceKind } from "@projective/types/workspace";
-import { PolicyAmount } from "./PolicyAmount.tsx";
-import { StatTile, StatTileRow } from "@projective/ui/display";
-import { cloneGlyph, WalletGlyph } from "../core/workspace-glyphs.tsx";
+import type { BusinessMoneyTile } from "@projective/types/workspace";
+import { type MoneyValue, MoneyView, StatTile, StatTileRow } from "@projective/ui/display";
+import { possessive } from "../core/refusal-copy.ts";
 
 /**
- * FinanceSummary — the entity's money at a glance, and a door to the real thing.
+ * FinanceSummary — a business's money at a glance on its Overview, and a door to the real thing.
  *
  * **This is deliberately not a finance UI.** `/wallet` already ships context-scoped vaults, the
- * three-state balance projection, the team split projection, payouts, methods, invoices, spend
- * approvals, the verification lock and the RtL pass. Building a second one here would mean two
- * implementations of the same arithmetic drifting apart, and the one on this page would be the one
- * nobody maintained. So this renders three server-computed figures and hands off
- * (`walletHrefFor(kind, id)` → `/wallet?w=kind:id`).
+ * balance projection, payouts, methods, invoices, spend approvals, the verification lock and the RtL
+ * pass. Building a second one here would mean two implementations of the same arithmetic drifting
+ * apart, and the one on this page would be the one nobody maintained. So this renders BB9's
+ * server-computed tiles — per wallet currency, Available · Committed · Awaiting approval · Spent in
+ * 30 days — and hands off (`walletHrefFor("business", id)` → `/wallet?w=business:id`). Each figure is
+ * said once: the hand-off is a link, not a second Available beside it.
  *
  * Note the wallet link is a page-local VIEW scope, not a context switch (brief §6.1): following it
- * shows you this entity's figures, it does not make you act as the entity. The copy says "Open" and
- * "view", never "switch to", because those two controls must never be confused.
+ * shows you this business's figures, it does not make you act as the business. The copy says "Open",
+ * never "switch to", because those two controls must never be confused.
  *
- * Every figure arrives as a pre-formatted `MoneyView` — the client never totals, converts or
- * fee-adjusts money.
+ * Every figure arrives as a server-resolved `MoneyView` — the client never totals, converts or
+ * fee-adjusts money — and is drawn PINNED to its row's own currency: a row is "money in USD", so its
+ * figures are dollars, whatever currency the viewer browses in, and they read exactly as the Finance
+ * module's balance line does. A team has no band: its money is the Overview's vault tile.
+ *
+ * The band renders only for a viewer who may open Finance, and every such viewer may open the
+ * business wallet (`businessMoney`), so the hand-off has no gate of its own.
  */
 
 export interface FinanceSummaryProps {
-	kind: WorkspaceKind;
-	finance: WorkspaceFinance;
-	/** Whether the viewer may see the deep link at all — a member without finance rights does not. */
-	canOpen?: boolean;
+	/** BB9's tiles, one per wallet currency, the business's default currency first. */
+	tiles: readonly BusinessMoneyTile[];
+	/** The business wallet (`walletHrefFor("business", id)`). */
+	walletHref: string;
+	/** The business's name, for each tile row's accessible label. */
+	name: string;
 }
 
-/** The overview's money band: three tiles plus the wallet hand-off. */
+/** One tile's figure in its row's own currency — never converted into the viewer's. */
+function TileMoney(props: { value: MoneyValue; currency: string }): JSX.Element {
+	return <MoneyView value={props.value} displayCurrency={props.currency} size="body" />;
+}
+
+/** The Overview's money band: a row of four tiles per currency, then the wallet hand-off. */
 export function FinanceSummary(props: FinanceSummaryProps): JSX.Element {
-	const { finance, kind } = props;
-	const copy = kindCopy(kind);
-	// A team EARNS, so its second and third states are money on the way in; a business SPENDS, so the
-	// same two slots mean money already committed. Same projection, honestly different labels.
-	const lockedLabel = kind === "team" ? "In escrow" : "Committed";
-	const pendingLabel = kind === "team" ? "Clearing" : "Awaiting approval";
+	const { tiles, name } = props;
+	const several = tiles.length > 1;
 
 	return (
 		<div class="wsp-money-mod">
-			<StatTileRow label="Money" class="wsp-tiles">
-				<StatTile
-					label="Available"
-					value={finance.available.display}
-					delta={finance.delta}
-					trend={finance.trend}
-					caption={`Ready to ${kind === "team" ? "withdraw or distribute" : "spend"}`}
-					icon={cloneGlyph(WalletGlyph)}
-				/>
-				<StatTile
-					label={lockedLabel}
-					value={finance.locked.display}
-					caption={kind === "team"
-						? "Held against stages still in flight"
-						: "Allocated to work in progress"}
-				/>
-				<StatTile
-					label={pendingLabel}
-					value={finance.pending.display}
-					caption={kind === "team"
-						? "Released, inside the clearing window"
-						: "Requests waiting on a decision"}
-				/>
-			</StatTileRow>
+			{tiles.map((tile) => (
+				<StatTileRow
+					key={tile.currency}
+					label={several
+						? `${possessive(name)} money in ${tile.currency}`
+						: `${possessive(name)} money`}
+					class="wsp-tiles"
+				>
+					<StatTile
+						label="Available"
+						value={<TileMoney value={tile.available} currency={tile.currency} />}
+						caption="Ready to spend"
+					/>
+					<StatTile
+						label="Committed"
+						value={<TileMoney value={tile.committed} currency={tile.currency} />}
+						caption="Held in escrow for work in progress"
+					/>
+					<StatTile
+						label="Awaiting approval"
+						value={<TileMoney value={tile.awaitingApproval} currency={tile.currency} />}
+						caption="Requests waiting on a decision"
+					/>
+					<StatTile
+						label="Spent (30d)"
+						value={<TileMoney value={tile.spent30d} currency={tile.currency} />}
+						caption="Paid out in the last 30 days"
+					/>
+				</StatTileRow>
+			))}
 
-			{props.canOpen !== false && (
-				<p class="wsp-moneyhead">
-					<span class="wsp-moneyhead__figure">
-						<PolicyAmount
-							value={finance.available}
-							size="body"
-							srLabel={`Available in the ${copy.moneyNoun}`}
-						/>
-					</span>
-					<a class="wsp-moneyhead__link" href={finance.walletHref}>
-						Open the full {copy.moneyNoun}
-					</a>
-				</p>
-			)}
+			<p class="wsp-moneyhead">
+				<a class="wsp-moneyhead__link" href={props.walletHref}>Open the business wallet</a>
+			</p>
 		</div>
 	);
 }

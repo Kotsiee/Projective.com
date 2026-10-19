@@ -1,5 +1,6 @@
 import type { BusinessKyb, KybRequirement } from "@projective/types/workspace";
 import { ownerVerificationStamp, type VerificationStamp } from "@projective/types/org";
+import { BUSINESS_REFUSAL_COPY } from "./refusal-copy.ts";
 
 /**
  * kyb-model — the pure wording of a business's Verification module (BU4): the lifecycle Tag, the
@@ -134,7 +135,7 @@ const VERIFY_AGAIN: ReadonlySet<KybRequirement> = new Set<KybRequirement>([
  */
 export function kybAction(name: string, kyb: BusinessKyb, canStart: boolean): KybAction | null {
 	if (kyb.status === "verified") return null;
-	if (!canStart) return { kind: "ask", text: "Ask the owner to verify the business." };
+	if (!canStart) return { kind: "ask", text: BUSINESS_REFUSAL_COPY.kyb_required.ask({}) };
 	if (!kyb.processorConnected) return { kind: "unavailable", text: KYB_PROCESSOR_OFFLINE };
 	if (kyb.connectOnboardingUrl) {
 		const again = kyb.requirementsDue.some((code) => VERIFY_AGAIN.has(code));

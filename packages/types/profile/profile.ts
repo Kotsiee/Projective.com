@@ -148,6 +148,24 @@ export function showcaseSlides(showcase: ProfileShowcase): ProfileShowcaseItem[]
 }
 
 /**
+ * The client-valued inputs that moved a TEAM's rung (PRODUCT_SPEC §Standing "What moves a rung"),
+ * read from the team's own `org.entity_standing` row (Teams P1). Rates are fractions `0..1`. Absent
+ * below the volume floor of the ladder's first earned rung, when the team has no Standing row yet,
+ * and always for a person, whose rates are not published.
+ */
+export const ProfileStandingFactorsSchema = z.object({
+	/** Stages signed off — the evidence behind every rate below; `0` means there is none yet. */
+	stagesCompleted: z.number().int().min(0),
+	/** The completion rate (`org.entity_standing.completion_rate`). */
+	completionRate: z.number().min(0).max(1),
+	/** The on-time delivery rate (`on_time_rate`). */
+	onTimeRate: z.number().min(0).max(1),
+	/** The dispute rate (`dispute_rate`); the rung counts `1 - dispute_rate` as "dispute-free". */
+	disputeRate: z.number().min(0).max(1),
+});
+export type ProfileStandingFactors = z.infer<typeof ProfileStandingFactorsSchema>;
+
+/**
  * The hero's inline metrics strip — the three facts a visitor weighs before reading anything else.
  *
  * `standing` is the EARNED rung of the Reliability Index (`@projective/types/org/standing`,
@@ -160,6 +178,8 @@ export const ProfileStandingSchema = z.object({
 	level: z.number().int().min(1).max(5),
 	/** "New" · "Established" · "Trusted" · "Expert" · "Elite". */
 	label: z.string().max(40),
+	/** What a team's rung stands on — rendered as one MetaLine beneath it (Teams P1). */
+	factors: ProfileStandingFactorsSchema.optional(),
 });
 export type ProfileStanding = z.infer<typeof ProfileStandingSchema>;
 
@@ -257,21 +277,25 @@ export type ProfileHiddenReason = z.infer<typeof ProfileHiddenReason>;
 /**
  * A workspace profile's member-facing facts, decided by `org.get_profile_view` under the viewer's own
  * session from the viewer's OWN seat (a platform admin who may open the profile holds no console
- * door). BP1 fills it for a business; the team arm is Teams P1's.
+ * door). BP1 fills it for a business, Teams P1 for a team.
  */
 export const ProfileWorkspaceFactsSchema = z.object({
 	/** Why outsiders cannot open this page, or `null` while anybody may. */
 	hiddenReason: ProfileHiddenReason.nullable(),
-	/** `/businesses/:h` — the "Manage business" link, for a member holding `edit_profile`; else `null`. */
+	/**
+	 * The console — `/businesses/:h` ("Manage business") or `/teams/:h` ("Manage team") — for a member
+	 * holding `edit_profile`; else `null`.
+	 */
 	consoleHref: z.string().max(120).nullable(),
-	/** `/businesses/:h/settings`, when the viewer may open Settings (`manage_settings`); else `null`. */
+	/** The console's Settings, when the viewer may open it (`manage_settings`); else `null`. */
 	settingsHref: z.string().max(120).nullable(),
 });
 export type ProfileWorkspaceFacts = z.infer<typeof ProfileWorkspaceFactsSchema>;
 
 /**
- * Who a Message from this profile reaches when that is not the profile itself — a business's owner,
- * because a direct message is person-to-person (PRODUCT_SPEC §Direct & Group Conversations).
+ * Who a Message from this profile reaches when that is not the profile itself — a team's or a
+ * business's owner, because a direct message is person-to-person (PRODUCT_SPEC §Direct & Group
+ * Conversations).
  */
 export const ProfileMessageTargetSchema = z.object({
 	/** The person's canonical `@handle` (the `dm-{handle}` thread). */
@@ -401,8 +425,8 @@ export const ProfileViewSchema = z.object({
 	/** The owner's presentation switches; absent reads as {@link DEFAULT_PROFILE_SETTINGS}. */
 	settings: ProfileSettingsSchema.optional(),
 	/**
-	 * The profile's reach. A person's own three states; a business's `public` · `unlisted`, with its
-	 * `invite_only` (members only) read as `private`.
+	 * The profile's reach. A person's own three states; a team's or a business's `public` ·
+	 * `unlisted`, with its `invite_only` (members only) read as `private`.
 	 */
 	visibility: ProfileVisibility.optional(),
 	/** The polymorphic owner, which every owner write is addressed to. */
@@ -414,13 +438,14 @@ export const ProfileViewSchema = z.object({
 	 */
 	viewer: z.object({ isOwner: z.boolean(), follows: z.boolean() }).optional(),
 	/**
-	 * A business's member-facing facts — the reason it is hidden from outsiders and the viewer's
-	 * console doors (BP1, Decision #244). Absent for every other kind.
+	 * A team's or business's member-facing facts — the reason it is hidden from outsiders and the
+	 * viewer's console doors (BP1, Decision #244; Teams P1). Absent for every other kind.
 	 */
 	workspace: ProfileWorkspaceFactsSchema.optional(),
 	/**
-	 * Who the Message control reaches when it is not the profile itself — a business's owner. Absent
-	 * when the profile is its own recipient (a person) or has none.
+	 * Who the Message control reaches when it is not the profile itself — a team's or a business's
+	 * owner (BP1, Decision #244; Teams P1). Absent when the profile is its own recipient (a person) or
+	 * has none.
 	 */
 	messageTo: ProfileMessageTargetSchema.optional(),
 });
