@@ -1,20 +1,26 @@
 /*
- * lp-hero — the hero's layout below its copy (`documentation/flows/LANDING.md` §2.1–§2.4, §4.1):
- * the search group (the search island and the "Try:" chips), the two calls to action, and the slot
- * the product theatre mounts in. The copy column itself (eyebrow, h1, subline) is `lp-shell.css`'s
- * hero skeleton; the search bar is `lp-search.css`. Delivered by the HeroSearch island (a server
- * component's stylesheet reaches no page), which renders wherever these classes do.
+ * lp-hero — the hero's composition (`documentation/flows/LANDING.md` §2.1–§2.4, §2.8, §4.1): the
+ * Precision hero, "the product is the picture". The copy's type is `lp-shell.css`'s hero skeleton,
+ * the search bar `lp-search.css`, the window `lp-theatre.css`. Delivered by the HeroSearch island (a
+ * server component's stylesheet reaches no page), which renders wherever these classes do.
  *
- *   - `.lp-hero__find`: the search and its chips, ~640px at 768, ~760px at 1280, ~840px at 1600.
- *   - `.lp-chips`: a reserved-height row (no shift when it is or is not there — the server knows)
- *     that never wraps and never clips a chip out of reach: it scrolls sideways with snap and fades
- *     at its edges, bleeding to the screen edge below --bp-md; from --bp-lg it is one centred row
- *     that scrolls the same way only when the chips do not fit (Decision #287).
- *   - `.lp-hero__ctas`: neither filled (the submit owns the region's primary); stacked below --bp-md.
- *   - `.lp-hero__stage`: as wide as the viewport allows up to `--lp-maxw-wide`, past the content
- *     container, so the theatre reads as the hero's largest object (§2.4).
+ *   - One measure: from --bp-md `.lp-hero__top` is a grid whose first column is exactly as wide as
+ *     the headline's longer sentence (`fit-content`), so the search field ends where "team." ends.
+ *     The subline and the calls to action span the flexible track, so they never widen it.
+ *   - From 1280px the calls to action sit beside the field, centred on its height (`--lp-field-h`):
+ *     the row reads search first, then the quiet alternatives, and the trailing edge belongs to the
+ *     header's Get started alone. Below 1280px they sit under the "Try:" line.
+ *   - `.lp-hero__find`: the search and its "Try:" line.
+ *   - `.lp-chips`: the "Try:" line — underlined text links on one wrapping meta line, separated by
+ *     middots (§2.8, superseding #287's chip row): the search field stays the region's one
+ *     interactive contour, and a wrapping line hides nothing at any width. Three terms below --bp-md.
+ *   - `.lp-hero__ctas`: an outlined button and a text link; neither is filled (the search's submit is
+ *     the region's one fill).
+ *   - `.lp-hero__stage`: the theatre's window, outdented by its own padding so the board's frame
+ *     lands on the text's edge.
  *
- * Tokens only; press feedback is `scale()` alone, removed under both reduced-motion channels.
+ * Tokens only; no motion of its own (the headline's reveal and the press are the shared base's);
+ * press feedback is `scale()` alone, removed under both reduced-motion channels.
  */
 
 /* #region Search group */
@@ -24,173 +30,87 @@
 	align-items: stretch;
 	gap: var(--lp-stack-sm);
 	inline-size: 100%;
-}
-
-@media (min-width: 768px) {
-	.lp-hero__find {
-		inline-size: min(100%, clamp(40rem, 14rem + 40vw, 52.5rem));
-	}
+	min-inline-size: 0;
 }
 /* #endregion */
 
-/* #region Chips */
+/* #region "Try:" line */
 .lp-chips {
-	display: grid;
-	grid-template-rows: auto 2.25rem;
-	align-items: center;
-	gap: var(--lp-stack-2xs);
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	column-gap: var(--lp-stack-xs);
 	min-inline-size: 0;
-	text-align: start;
+	color: var(--lp-text-3);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body-sm);
+	line-height: 1.45;
 }
 
 .lp-chips__label {
 	margin: 0;
 	color: var(--lp-text-2);
-	font-family: var(--lp-font-body);
-	font-size: var(--lp-fs-body-sm);
-	font-weight: var(--fw-medium);
-	line-height: 1.2;
 }
 
 .lp-chips__list {
-	display: flex;
-	align-items: center;
-	gap: var(--lp-stack-xs);
-	block-size: 2.25rem;
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	min-inline-size: 0;
 	margin: 0;
-	/* Below --bp-md the row bleeds to the screen edge; its padding keeps the first chip aligned. */
-	margin-inline: calc(-1 * var(--lp-gutter));
-	padding: 0 var(--lp-gutter);
-	overflow-x: auto;
-	overflow-y: hidden;
+	padding: 0;
 	list-style: none;
-	scroll-padding-inline: var(--lp-gutter);
-	scroll-snap-type: x mandatory;
-	scrollbar-width: none;
-	-webkit-mask-image: linear-gradient(
-		to right,
-		transparent,
-		var(--lp-mask-ink) var(--lp-gutter),
-		var(--lp-mask-ink) calc(100% - var(--lp-gutter)),
-		transparent
-	);
-	mask-image: linear-gradient(
-		to right,
-		transparent,
-		var(--lp-mask-ink) var(--lp-gutter),
-		var(--lp-mask-ink) calc(100% - var(--lp-gutter)),
-		transparent
-	);
 }
 
-.lp-chips__list::-webkit-scrollbar {
-	display: none;
+.lp-chips__item + .lp-chips__item::before {
+	content: "·";
+	content: "·" / "";
+	padding-inline: 0.5em;
+	color: var(--lp-text-3);
 }
 
-.lp-chips__item {
-	flex: none;
-	scroll-snap-align: start;
+/* Three terms below --bp-md: one or two lines, never a sideways scroller. */
+@media (max-width: 767px) {
+	.lp-chips__item:nth-child(n + 4) {
+		display: none;
+	}
 }
 
 .lp-chip {
-	display: inline-flex;
-	align-items: center;
-	block-size: 2.25rem;
-	padding-inline: var(--lp-stack-sm);
-	border: 1px solid var(--lp-hair-strong);
-	border-radius: var(--lp-r-pill);
-	background: var(--lp-surface-1);
-	color: var(--lp-text-2);
-	font-family: var(--lp-font-body);
-	font-size: var(--lp-fs-body-sm);
-	font-weight: var(--fw-medium);
-	line-height: 1;
-	text-decoration: none;
+	display: inline-block;
+	padding-block: var(--lp-stack-2xs);
+	color: var(--lp-text);
+	font-weight: var(--fw-normal);
+	text-decoration-line: underline;
+	text-decoration-color: var(--lp-hair-strong);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.25em;
 	white-space: nowrap;
 	transition:
 		transform var(--lp-dur-press) var(--lp-ease-out),
-		color var(--dur-slow) var(--ease-standard),
-		background-color var(--dur-slow) var(--ease-standard),
-		border-color var(--dur-slow) var(--ease-standard);
+		text-decoration-color var(--dur-slow) var(--ease-standard);
 }
 
 .lp-chip:hover {
-	border-color: var(--lp-edge);
-	color: var(--lp-text);
+	text-decoration-color: currentColor;
 }
 
 .lp-chip:active {
 	transform: scale(var(--lp-press-scale));
-}
-
-/* From --bp-md the label sits inline before the chips, and the row stays inside the search's width. */
-@media (min-width: 768px) {
-	.lp-chips {
-		grid-template-columns: auto minmax(0, 1fr);
-		grid-template-rows: 2.25rem;
-		gap: var(--lp-stack-sm);
-	}
-
-	.lp-chips__list {
-		margin-inline: 0;
-		padding-inline: 0 var(--lp-stack-lg);
-		scroll-padding-inline: 0;
-		-webkit-mask-image: linear-gradient(
-			to right,
-			var(--lp-mask-ink) calc(100% - var(--lp-stack-lg)),
-			transparent
-		);
-		mask-image: linear-gradient(
-			to right,
-			var(--lp-mask-ink) calc(100% - var(--lp-stack-lg)),
-			transparent
-		);
-	}
-}
-
-/* From --bp-lg the chips are one centred row (§2.3 note 4). A chip that does not fit stays in
-   reach — the row scrolls, faded at both ends, rather than cutting a tabbable link in half; the
-   fades fall on the row's own padding, so a row that fits shows none of them. */
-@media (min-width: 1024px) {
-	.lp-chips {
-		justify-content: center;
-		grid-template-columns: auto minmax(0, max-content);
-		gap: 0;
-	}
-
-	.lp-chips__list {
-		padding-inline: var(--lp-stack-sm);
-		scroll-padding-inline: var(--lp-stack-sm);
-		-webkit-mask-image: linear-gradient(
-			to right,
-			transparent,
-			var(--lp-mask-ink) var(--lp-stack-sm),
-			var(--lp-mask-ink) calc(100% - var(--lp-stack-sm)),
-			transparent
-		);
-		mask-image: linear-gradient(
-			to right,
-			transparent,
-			var(--lp-mask-ink) var(--lp-stack-sm),
-			var(--lp-mask-ink) calc(100% - var(--lp-stack-sm)),
-			transparent
-		);
-	}
 }
 /* #endregion */
 
 /* #region Calls to action */
 .lp-hero__ctas {
 	display: flex;
-	flex-direction: column;
+	flex-wrap: wrap;
 	align-items: center;
-	gap: var(--lp-stack-sm);
-	inline-size: 100%;
+	gap: var(--lp-stack-sm) var(--lp-stack-lg);
+	margin-block-start: var(--lp-stack-lg);
 }
 
 .lp-hero__cta {
-	inline-size: 100%;
-	min-block-size: 3rem;
+	min-block-size: 2.75rem;
 	padding-inline: var(--lp-stack-lg);
 	font-size: var(--lp-fs-btn-lg);
 }
@@ -203,47 +123,91 @@
 	color: var(--lp-text);
 	font-family: var(--lp-font-body);
 	font-size: var(--lp-fs-btn-lg);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 	letter-spacing: var(--lp-track-body);
-	text-decoration: none;
-	transition: transform var(--lp-dur-press) var(--lp-ease-out);
+	text-decoration-line: underline;
+	text-decoration-color: var(--lp-hair-strong);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.25em;
+	transition:
+		transform var(--lp-dur-press) var(--lp-ease-out),
+		text-decoration-color var(--dur-slow) var(--ease-standard);
 }
 
 /* The trailing arrow: a drawn chevron, decorative. */
 .lp-hero__link::after {
 	content: "";
-	inline-size: 0.45em;
-	block-size: 0.45em;
-	border-block-start: 2px solid currentColor;
-	border-inline-end: 2px solid currentColor;
+	inline-size: 0.4em;
+	block-size: 0.4em;
+	border-block-start: 1.5px solid currentColor;
+	border-inline-end: 1.5px solid currentColor;
 	rotate: 45deg;
 }
 
 .lp-hero__link:hover {
-	color: var(--lp-teal-ink);
+	text-decoration-color: currentColor;
 }
 
 .lp-hero__link:active {
 	transform: scale(var(--lp-press-scale));
 }
+/* #endregion */
 
-@media (min-width: 768px) {
-	.lp-hero__ctas {
-		flex-direction: row;
-		justify-content: center;
-		gap: var(--lp-stack-xl);
-	}
-
-	.lp-hero__cta {
-		inline-size: auto;
-	}
+/* #region Theatre slot — the window */
+/* Outdented by the window's own padding (`lp-theatre.css`), so the board's frame lands on the
+   text's edge and the window's corners run concentric with the frame's. */
+.lp-hero__stage {
+	min-inline-size: 0;
+	margin-inline: calc(-1 * var(--lp-stack-xs));
 }
 /* #endregion */
 
-/* #region Theatre slot */
-.lp-hero__stage {
-	inline-size: min(100vw - 2 * var(--lp-gutter), var(--lp-maxw-wide));
-	max-inline-size: none;
+/* #region Composition — one measure for the headline and the search */
+/* After the parts' own rules, so a placement here wins over their defaults. */
+@media (min-width: 768px) {
+	.lp-hero__top {
+		display: grid;
+		grid-template-columns: fit-content(100%) minmax(0, 1fr);
+		column-gap: var(--lp-stack-xl);
+		align-items: start;
+	}
+
+	/* The copy block's children become grid items; their order (h1, subline) is unchanged. */
+	.lp-hero__copy {
+		display: contents;
+	}
+
+	.lp-hero__title {
+		grid-area: 1 / 1;
+	}
+
+	.lp-hero__lead {
+		grid-area: 2 / 1 / auto / -1;
+	}
+
+	.lp-hero__find {
+		grid-area: 3 / 1;
+	}
+
+	.lp-hero__ctas {
+		grid-area: 4 / 1 / auto / -1;
+	}
+}
+
+@media (min-width: 1280px) {
+	/* The measure stops at two thirds of the row, so the calls to action always have room beside
+	   it, even in the dyslexic face; its h1 then breaks between phrases. */
+	.lp-hero__top {
+		grid-template-columns: fit-content(calc(200% / 3)) minmax(0, 1fr);
+	}
+
+	/* Beside the search group (the field and its "Try:" line, one element), so focus finishes that
+	   group, then moves here; below 1280 the same order is the visual one (LANDING.md §2.8). */
+	.lp-hero__ctas {
+		grid-area: 3 / 2;
+		min-block-size: var(--lp-field-h);
+		margin-block-start: 0;
+	}
 }
 /* #endregion */
 

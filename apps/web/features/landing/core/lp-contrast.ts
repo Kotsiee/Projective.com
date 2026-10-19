@@ -6,21 +6,19 @@
  * in-app high-contrast overlay; the OS channel must declare the same values). {@link contrastTable}
  * evaluates every §3.3 pairing in each state against the worst ground of its family:
  *
- *   - **Grounds.** The canvas (and the pale wash that moves it furthest towards the ink), the three
- *     surfaces, the warm editorial pair; the hero stack — canvas, wash, spotlight peak, lit grid line —
- *     and that stack plus one of: the amber halo or the teal halo at half its `--lp-glow-*` alpha (the
- *     search field's edge; no text sits closer), a node at `--lp-node-alpha-quiet` (every copy zone,
- *     the header pill's band included) or a node at full `--lp-node-alpha` (outside copy).
+ *   - **Grounds.** The solid canvas, the three surfaces, the warm editorial pair, and the hero stack:
+ *     canvas, spotlight peak and lit grid line (the lit layer blends darken / lighten over the base
+ *     grid, so where the two cross the lit line is what paints). Decision #288 retired the
+ *     constellation and the B9 halo, so no other layer sits under hero text.
  *   - **Grain.** B10 grain at `--lp-grain-opacity` composited over the ground in both polarities
  *     (white and black), the worse kept — a conservative bound, since grain never paints over
  *     surfaces or fills. The high-contrast states carry no grain (`--lp-grain-opacity: 0`).
- *   - **Glass.** The pill's glass is `--lp-surface-1` at `--lp-glass-veil` over white or black content.
+ *   - **Glass.** The header bar's glass is `--lp-bg` at `--lp-glass-veil` over white or black content.
  *
  * Run it to print the table: `deno run --allow-read apps/web/features/landing/core/lp-contrast.ts`.
  * `lp-theme.contrast.test.ts` fails any cell below its floor and any published cell that differs from
  * this output by more than 0.01.
  */
-import { composite, relativeLuminance, type Rgb } from "./constellation.ts";
 
 // #region Sheet
 /** The four states the table reports, in column order. */
@@ -115,6 +113,9 @@ export function themeStates(sheet: string): Record<ThemeState, TokenSet> {
 // #endregion
 
 // #region Colour
+/** A straight sRGB colour, each channel 0–1. */
+export type Rgb = readonly [number, number, number];
+
 const WHITE: Rgb = [1, 1, 1];
 const BLACK: Rgb = [0, 0, 0];
 
@@ -143,53 +144,33 @@ export function parseColor(value: string): Rgba {
 	throw new Error(`lp-contrast: cannot read colour "${value}"`);
 }
 
+function linear(c: number): number {
+	return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+}
+
+/** WCAG relative luminance of an sRGB colour. */
+export function relativeLuminance(c: Rgb): number {
+	return 0.2126 * linear(c[0]) + 0.7152 * linear(c[1]) + 0.0722 * linear(c[2]);
+}
+
+/** `ink` at `alpha` over `bg`, blended the way the browser composites the canvas (sRGB). */
+export function composite(bg: Rgb, ink: Rgb, alpha: number): Rgb {
+	return [
+		bg[0] + (ink[0] - bg[0]) * alpha,
+		bg[1] + (ink[1] - bg[1]) * alpha,
+		bg[2] + (ink[2] - bg[2]) * alpha,
+	];
+}
+
 /** WCAG 2.x contrast ratio of two opaque colours. */
 export function contrastRatio(a: Rgb, b: Rgb): number {
 	const x = relativeLuminance(a);
 	const y = relativeLuminance(b);
 	return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
-
-function linear(c: number): number {
-	return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-}
-
-function gamma(c: number): number {
-	const v = c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055;
-	return Math.min(1, Math.max(0, v));
-}
-
-/** The `t` mix of `a` and `b` in OKLab — the B9 ring's `conic-gradient(in oklab, …)` midpoints. */
-export function mixOklab(a: Rgb, b: Rgb, t: number): Rgb {
-	const lab = (c: Rgb) => {
-		const [r, g, bl] = c.map(linear);
-		const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * bl);
-		const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * bl);
-		const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * bl);
-		return [
-			0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
-			1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
-			0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
-		];
-	};
-	const x = lab(a);
-	const y = lab(b);
-	const [L, A, B] = x.map((v, i) => v * (1 - t) + y[i] * t);
-	const l = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3;
-	const m = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3;
-	const s = (L - 0.0894841775 * A - 1.291485548 * B) ** 3;
-	return [
-		gamma(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
-		gamma(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
-		gamma(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s),
-	];
-}
 // #endregion
 
 // #region Grounds
-/** The share of `--lp-glow-*` alpha at the nearest text: the search field's edge (§3.3). */
-export const HALO_EDGE = 0.5;
-
 /** One state's resolved colours and grounds. */
 interface Palette {
 	color(token: string): Rgb;
@@ -200,27 +181,19 @@ interface Palette {
 
 type GroundKey =
 	| "bg"
-	| "wash"
 	| "surface-1"
 	| "surface-2"
 	| "surface-3"
 	| "warm-bg"
 	| "warm-surface"
-	| "hero"
-	| "hero+amber-halo"
-	| "hero+teal-halo"
-	| "hero+quiet-node"
-	| "hero+full-node";
+	| "hero";
 
 /** The ground families the table names. */
-const CANVAS: readonly GroundKey[] = ["bg", "wash", "surface-1", "surface-2", "surface-3"];
-const HERO: readonly GroundKey[] = ["hero", "hero+amber-halo", "hero+teal-halo", "hero+quiet-node"];
+const CANVAS: readonly GroundKey[] = ["bg", "surface-1", "surface-2", "surface-3"];
+const HERO: readonly GroundKey[] = ["hero"];
 const EDITORIAL: readonly GroundKey[] = ["warm-bg", "warm-surface"];
-const HALOS: readonly GroundKey[] = ["hero+amber-halo", "hero+teal-halo"];
-/** The header pill's band at the top of the page: the hero stack under the quiet constellation. */
-const PILL_BAND: readonly GroundKey[] = ["hero", "hero+quiet-node"];
 
-function palette(tokens: TokenSet, dark: boolean): Palette {
+function palette(tokens: TokenSet): Palette {
 	const raw = (token: string) => {
 		const v = tokens[token];
 		if (v === undefined) throw new Error(`lp-theme.css: ${token} is not declared`);
@@ -237,34 +210,23 @@ function palette(tokens: TokenSet, dark: boolean): Palette {
 		if (!Number.isFinite(n)) throw new Error(`${token} is not a number`);
 		return n;
 	};
-	const over = (under: Rgb, token: string, scale = 1) => {
+	const over = (under: Rgb, token: string) => {
 		const c = rgba(token);
-		return composite(under, c.rgb, c.alpha * scale);
+		return composite(under, c.rgb, c.alpha);
 	};
 	const bg = color("--lp-bg");
-	const pole = dark ? WHITE : BLACK;
-	const washes = [bg, over(bg, "--lp-wash-teal"), over(bg, "--lp-wash-amber")];
-	const toPole = (c: Rgb) => Math.abs(relativeLuminance(c) - relativeLuminance(pole));
-	const wash = washes.reduce((worst, c) => (toPole(c) < toPole(worst) ? c : worst));
-	const hero = over(over(wash, "--lp-spot"), "--lp-grid-line-lit");
-	const node = color("--lp-node");
 	return {
 		color,
 		number,
 		grain: number("--lp-grain-opacity"),
 		ground: {
 			bg,
-			wash,
 			"surface-1": color("--lp-surface-1"),
 			"surface-2": color("--lp-surface-2"),
 			"surface-3": color("--lp-surface-3"),
 			"warm-bg": color("--lp-warm-bg"),
 			"warm-surface": color("--lp-warm-surface"),
-			hero,
-			"hero+amber-halo": over(hero, "--lp-glow-amber", HALO_EDGE),
-			"hero+teal-halo": over(hero, "--lp-glow-teal", HALO_EDGE),
-			"hero+quiet-node": composite(hero, node, number("--lp-node-alpha-quiet")),
-			"hero+full-node": composite(hero, node, number("--lp-node-alpha")),
+			hero: over(over(bg, "--lp-spot"), "--lp-grid-line-lit"),
 		},
 	};
 }
@@ -313,7 +275,7 @@ const NON_TEXT = { normal: 3, hc: 4.5 };
 export function contrastTable(sheet: string): ContrastRow[] {
 	const states = themeStates(sheet);
 	const pals = Object.fromEntries(
-		STATES.map((s) => [s, palette(states[s], s.startsWith("dark"))]),
+		STATES.map((s) => [s, palette(states[s])]),
 	) as Record<ThemeState, Palette>;
 	const per = (fn: (p: Palette, state: ThemeState) => number[]) =>
 		Object.fromEntries(STATES.map((s) => [s, fn(pals[s], s)])) as Record<ThemeState, number[]>;
@@ -355,19 +317,9 @@ export function contrastTable(sheet: string): ContrastRow[] {
 		);
 	}
 	text(
-		"hero display (large) on full-alpha node (outside copy)",
-		["--lp-text"],
-		["hero+full-node"],
-		{
-			floor: NON_TEXT,
-			floorText: "3 (4.5)",
-			passText: "PASS — legal only because copy never leaves the quiet zone",
-		},
-	);
-	text(
-		"text · text-2 on the transparent pill (from --bp-lg at the top; its band is a copy zone)",
+		"text · text-2 on the transparent header bar (at the top of the page, once hydrated)",
 		["--lp-text", "--lp-text-2"],
-		PILL_BAND,
+		HERO,
 		{ join: " · " },
 	);
 
@@ -402,15 +354,33 @@ export function contrastTable(sheet: string): ContrastRow[] {
 		"--lp-teal-fill-hover",
 		"--lp-teal-fill-active",
 	]);
-	fill("text on surface-3 (tonal, ghost hover)", "--lp-text", ["--lp-surface-3"], false);
+	// The brand pair is the product's `--primary` pair, byte-identical in all four states (§A.1.1),
+	// so its floor is gate 12's 4.5:1 everywhere; it sits on the field's solid surface, which no grain
+	// reaches.
+	rows.push({
+		label: "on-brand on brand / hover / active (the hero Search; invariant in all four states)",
+		values: per((p) =>
+			["--lp-brand", "--lp-brand-hover", "--lp-brand-active"].map((f) =>
+				contrastRatio(p.color("--lp-on-brand"), p.color(f))
+			)
+		),
+		join: " / ",
+		floor: { normal: 4.5, hc: 4.5 },
+		floorText: "4.5 (gate 12)",
+		passText: "PASS",
+	});
+	fill("text on surface-2 / surface-3 (outlined and ghost hover)", "--lp-text", [
+		"--lp-surface-2",
+		"--lp-surface-3",
+	], false);
 
-	// The glass pill, once scrolled (and always below --bp-lg).
+	// The glass header bar, once scrolled.
 	rows.push({
 		label:
-			"text · text-2 · teal-ink on the glass pill (veil 82%, HC 88%, over white or black content)",
+			"text · text-2 · teal-ink on the glass bar (veil 82%, HC 88%, over white or black content)",
 		values: per((p) => {
 			const veil = p.number("--lp-glass-veil") / 100;
-			const grounds = [WHITE, BLACK].map((c) => composite(c, p.color("--lp-surface-1"), veil));
+			const grounds = [WHITE, BLACK].map((c) => composite(c, p.color("--lp-bg"), veil));
 			return ["--lp-text", "--lp-text-2", "--lp-teal-ink"].map((ink) =>
 				Math.min(...grounds.map((g) => contrastRatio(p.color(ink), g)))
 			);
@@ -479,7 +449,21 @@ export function contrastTable(sheet: string): ContrastRow[] {
 		(p) => p.color("--lp-amber-edge"),
 		[CANVAS, HERO, EDITORIAL],
 	);
+	boundary(
+		"field-edge vs canvas · field (the search's contour)",
+		(p) => p.color("--lp-field-edge"),
+		[
+			["bg"],
+			["surface-1"],
+		],
+	);
 	boundary("mono fill vs canvas + surfaces · hero", (p) => p.color("--lp-mono"), [CANVAS, HERO]);
+	boundary(
+		"brand fill vs canvas · field (at rest; its label names the control)",
+		(p) => p.color("--lp-brand"),
+		[["bg"], ["surface-1"]],
+		{ floor: { normal: 3, hc: 3 }, floorText: "3" },
+	);
 	boundary("teal-fill vs canvas + surfaces · hero · editorial", (p) => p.color("--lp-teal-fill"), [
 		CANVAS,
 		HERO,
@@ -493,14 +477,6 @@ export function contrastTable(sheet: string): ContrastRow[] {
 		floorText: "3 (4.5)",
 		passText: "PASS",
 	});
-	const ring = (label: string, stop: (p: Palette) => Rgb) =>
-		boundary(label, stop, [["surface-1"], HALOS]);
-	ring("B9 ring stop-a vs field · halo", (p) => p.color("--lp-glow-stop-a"));
-	ring("B9 ring stop-b vs field · halo", (p) => p.color("--lp-glow-stop-b"));
-	ring(
-		"B9 ring OKLab midpoint vs field · halo",
-		(p) => mixOklab(p.color("--lp-glow-stop-a"), p.color("--lp-glow-stop-b"), 0.5),
-	);
 	boundary("focus vs canvas + surfaces · hero · editorial", (p) => p.color("--lp-focus"), [
 		CANVAS,
 		HERO,

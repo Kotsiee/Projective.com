@@ -183,9 +183,10 @@ export interface HeroTheatreProps {
  * refresh" fixture through the work-board model (`core/demos/board-model.ts`) at its middle frame —
  * the still a visitor sees without JavaScript, below `--bp-md` and under either reduced-motion
  * channel. Below `--bp-md` it is a flat poster — once the demo stage exists, the whole block is the
- * "Try it yourself" link; from `--bp-md` it tilts, and on the hero timeline's board turns the
- * island's lazily loaded player steps it through the scripted loop: "Case study" is approved, the
- * team is paid, and the same task moves to its next stage, paid for from the wallet.
+ * "Try it yourself" link; from `--bp-md` it is a straight-on window (Decision #288: no tilt, no
+ * glow), and on the hero timeline's board turns the island's lazily loaded player steps it through
+ * the scripted loop: "Case study" is approved, the team is paid, and the same task moves to its next
+ * stage, paid for from the wallet.
  *
  * Under it: the island ("Pause the example", from `--bp-md`, outside the inert figure) and, with
  * {@link HeroTheatreProps.demo}, "Try it yourself" → `/?demo=board#demo`.
@@ -208,7 +209,8 @@ export default function HeroTheatre({ feeBp, demo = false }: HeroTheatreProps): 
 					<div class="lp-theatre__frame">
 						<div class="lp-theatre__bar">
 							<p class="lp-theatre__name">
-								<span class="lp-theatre__kicker">{THEATRE.kicker}</span> · {board.title}
+								{board.title}
+								<span class="lp-theatre__kicker">· {THEATRE.kicker}</span>
 							</p>
 							<p class="lp-theatre__needs" data-lp-needs="" hidden={needs === null}>
 								<span data-lp-needs-text="">{needs ?? ""}</span>

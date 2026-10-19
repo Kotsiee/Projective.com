@@ -207,8 +207,8 @@ Deno.test("the scanner catches a planted leak and honours the allowlist", () => 
 		findLeaks(sheet, ".ex-card {\n\tcolor: var(--lp-text);\n}"),
 		[{ path: sheet, line: 2, token: "--lp-text" }],
 	);
-	assertEquals(findLeaks(sheet, "@keyframes lp-ring-turn {}").map((l) => l.token), [
-		"lp-ring-turn",
+	assertEquals(findLeaks(sheet, "@keyframes lp-word-in {}").map((l) => l.token), [
+		"lp-word-in",
 	]);
 
 	// Inside the footer family: its BEM classes, its named ids and a same-file token are not leaks…

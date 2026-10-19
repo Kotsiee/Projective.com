@@ -333,7 +333,7 @@ export function HeroSearchForm(props: HeroSearchFormProps): JSX.Element {
 							{HERO_SEARCH_COPY.shortcutHint}
 						</span>
 					)}
-					<button type="submit" class="lp-btn lp-btn--primary lp-search__submit">
+					<button type="submit" class="lp-btn lp-btn--brand lp-search__submit">
 						<span class="lp-search__submit-icon" aria-hidden="true">{glyph("search")}</span>
 						<span class="lp-search__submit-text">{HERO_SEARCH_COPY.submit}</span>
 					</button>

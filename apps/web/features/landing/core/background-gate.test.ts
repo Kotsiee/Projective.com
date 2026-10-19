@@ -4,7 +4,6 @@
  */
 import { assertEquals } from "@std/assert";
 import {
-	type BackgroundFailure,
 	type BackgroundForce,
 	type BackgroundSnapshot,
 	type BackgroundVerdict,
@@ -13,7 +12,7 @@ import {
 } from "./background-gate.ts";
 
 // #region Fixtures
-/** A capable desktop with the hero on screen: the one state that runs WebGL. */
+/** A capable desktop with the hero on screen: the spotlight follows the pointer. */
 const DESKTOP: BackgroundSnapshot = {
 	reducedMotionMedia: false,
 	dataMotionReduced: false,
@@ -22,8 +21,6 @@ const DESKTOP: BackgroundSnapshot = {
 	hardwareConcurrency: 8,
 	finePointer: true,
 	forcedColors: false,
-	webgl2: null,
-	failure: null,
 	intersecting: true,
 	hidden: false,
 	force: "auto",
@@ -35,96 +32,70 @@ function decide(patch: Partial<BackgroundSnapshot>): BackgroundVerdict {
 // #endregion
 
 // #region Named rows
-Deno.test("gate: a capable desktop runs webgl, untested or tested webgl2 alike", () => {
-	assertEquals(decide({}), { mode: "webgl", reason: null, pause: null });
-	assertEquals(decide({ webgl2: true }), { mode: "webgl", reason: null, pause: null });
+Deno.test("gate: a capable desktop follows the pointer", () => {
+	assertEquals(decide({}), { mode: "spotlight", reason: null, pause: null });
 });
 
-Deno.test("gate: reduced motion on either channel ends every moving path", () => {
+Deno.test("gate: reduced motion on either channel keeps the SSR paint", () => {
 	const still: BackgroundVerdict = { mode: "static", reason: "reduced-motion", pause: null };
 	assertEquals(decide({ reducedMotionMedia: true }), still);
 	assertEquals(decide({ dataMotionReduced: true }), still);
-	assertEquals(decide({ dataMotionReduced: true, force: "webgl" }), still);
+	assertEquals(decide({ dataMotionReduced: true, force: "spotlight" }), still);
 	assertEquals(decide({ reducedMotionMedia: true, finePointer: false }), still);
 });
 
-Deno.test("gate: Save-Data, low memory and low cores fall back to the spotlight on a mouse", () => {
-	assertEquals(decide({ saveData: true }), {
-		mode: "spotlight",
-		reason: "save-data",
+Deno.test("gate: a touch pointer keeps the SSR paint", () => {
+	assertEquals(decide({ finePointer: false }), {
+		mode: "static",
+		reason: "coarse-pointer",
 		pause: null,
 	});
-	assertEquals(decide({ deviceMemory: 2 }), {
-		mode: "spotlight",
-		reason: "low-memory",
-		pause: null,
-	});
+});
+
+Deno.test("gate: Save-Data, low memory and low cores keep the SSR paint", () => {
+	assertEquals(decide({ saveData: true }), { mode: "static", reason: "save-data", pause: null });
+	assertEquals(decide({ deviceMemory: 2 }), { mode: "static", reason: "low-memory", pause: null });
 	assertEquals(decide({ hardwareConcurrency: 4 }), {
-		mode: "spotlight",
+		mode: "static",
 		reason: "low-cpu",
 		pause: null,
 	});
-	assertEquals(decide({ deviceMemory: 4, hardwareConcurrency: 5 }).mode, "webgl");
+	assertEquals(decide({ deviceMemory: 4, hardwareConcurrency: 5 }).mode, "spotlight");
 });
 
-Deno.test("gate: unknown memory passes on a fine pointer only", () => {
-	assertEquals(decide({ deviceMemory: null }).mode, "webgl");
-	assertEquals(decide({ deviceMemory: null, finePointer: false }), {
-		mode: "static",
-		reason: "unknown-memory",
-		pause: null,
-	});
-	assertEquals(decide({ deviceMemory: 8, finePointer: false }).mode, "webgl");
-});
-
-Deno.test("gate: a touch device without webgl is static (no spotlight on coarse pointers)", () => {
-	assertEquals(decide({ finePointer: false, deviceMemory: 2 }), {
-		mode: "static",
-		reason: "low-memory",
-		pause: null,
-	});
-});
-
-Deno.test("gate: a failed context or a latched failure ends webgl", () => {
-	assertEquals(decide({ webgl2: false }), {
-		mode: "spotlight",
-		reason: "no-webgl",
-		pause: null,
-	});
-	for (const failure of ["context-lost", "watchdog", "render-error", "no-tokens"] as const) {
-		assertEquals(decide({ failure }), { mode: "spotlight", reason: failure, pause: null });
-		assertEquals(decide({ failure, force: "webgl" }).reason, failure);
-	}
+Deno.test("gate: unknown hints pass", () => {
+	assertEquals(decide({ deviceMemory: null }).mode, "spotlight");
+	assertEquals(decide({ hardwareConcurrency: null }).mode, "spotlight");
 });
 
 Deno.test("gate: a hidden tab or an offscreen hero pauses, never changes the mode", () => {
-	assertEquals(decide({ hidden: true }), { mode: "webgl", reason: null, pause: "hidden" });
+	assertEquals(decide({ hidden: true }), { mode: "spotlight", reason: null, pause: "hidden" });
 	assertEquals(decide({ intersecting: false }), {
-		mode: "webgl",
+		mode: "spotlight",
 		reason: null,
 		pause: "offscreen",
 	});
 	assertEquals(decide({ hidden: true, intersecting: false }).pause, "hidden");
-	assertEquals(decide({ saveData: true, intersecting: false }), {
-		mode: "spotlight",
-		reason: "save-data",
-		pause: "offscreen",
-	});
-	assertEquals(decide({ finePointer: false, deviceMemory: 2, hidden: true }).pause, null);
+	assertEquals(decide({ saveData: true, intersecting: false }).pause, null);
 });
 
-Deno.test("gate: forced paths — static wins over all, webgl skips only the capability gates", () => {
+Deno.test("gate: forced paths — static wins over all, spotlight skips only the device gates", () => {
 	assertEquals(decide({ force: "static" }), {
 		mode: "static",
 		reason: "forced-static",
 		pause: null,
 	});
 	assertEquals(
-		decide({ force: "webgl", saveData: true, deviceMemory: 1, hardwareConcurrency: 2 }).mode,
-		"webgl",
+		decide({
+			force: "spotlight",
+			finePointer: false,
+			saveData: true,
+			deviceMemory: 1,
+			hardwareConcurrency: 2,
+		}),
+		{ mode: "spotlight", reason: null, pause: null },
 	);
-	assertEquals(decide({ force: "webgl", finePointer: false, deviceMemory: null }).mode, "webgl");
-	assertEquals(decide({ force: "webgl", webgl2: false }).reason, "no-webgl");
+	assertEquals(decide({ force: "spotlight", forcedColors: true }).reason, "forced-colors");
 });
 
 Deno.test("gate: forced colours paint no background layer at all", () => {
@@ -136,10 +107,11 @@ Deno.test("gate: forced colours paint no background layer at all", () => {
 });
 
 Deno.test("gate: parseBackgroundForce accepts only the two forced paths", () => {
-	assertEquals(parseBackgroundForce("webgl"), "webgl");
+	assertEquals(parseBackgroundForce("spotlight"), "spotlight");
 	assertEquals(parseBackgroundForce("static"), "static");
 	assertEquals(parseBackgroundForce("auto"), "auto");
-	assertEquals(parseBackgroundForce("WEBGL"), "auto");
+	assertEquals(parseBackgroundForce("webgl"), "auto");
+	assertEquals(parseBackgroundForce("SPOTLIGHT"), "auto");
 	assertEquals(parseBackgroundForce(undefined), "auto");
 	assertEquals(parseBackgroundForce(null), "auto");
 });
@@ -151,9 +123,7 @@ function* snapshots(): Generator<BackgroundSnapshot> {
 	const bools = [false, true];
 	const memories = [null, 2, 4, 8];
 	const cores = [null, 2, 4, 8];
-	const webgl = [null, false, true];
-	const failures: (BackgroundFailure | null)[] = [null, "context-lost", "watchdog"];
-	const forces: BackgroundForce[] = ["auto", "static", "webgl"];
+	const forces: BackgroundForce[] = ["auto", "static", "spotlight"];
 	for (const reducedMotionMedia of bools) {
 		for (const dataMotionReduced of bools) {
 			for (const saveData of bools) {
@@ -161,27 +131,21 @@ function* snapshots(): Generator<BackgroundSnapshot> {
 					for (const hardwareConcurrency of cores) {
 						for (const finePointer of bools) {
 							for (const forcedColors of bools) {
-								for (const webgl2 of webgl) {
-									for (const failure of failures) {
-										for (const intersecting of bools) {
-											for (const hidden of bools) {
-												for (const force of forces) {
-													yield {
-														reducedMotionMedia,
-														dataMotionReduced,
-														saveData,
-														deviceMemory,
-														hardwareConcurrency,
-														finePointer,
-														forcedColors,
-														webgl2,
-														failure,
-														intersecting,
-														hidden,
-														force,
-													};
-												}
-											}
+								for (const intersecting of bools) {
+									for (const hidden of bools) {
+										for (const force of forces) {
+											yield {
+												reducedMotionMedia,
+												dataMotionReduced,
+												saveData,
+												deviceMemory,
+												hardwareConcurrency,
+												finePointer,
+												forcedColors,
+												intersecting,
+												hidden,
+												force,
+											};
 										}
 									}
 								}
@@ -197,8 +161,7 @@ function* snapshots(): Generator<BackgroundSnapshot> {
 /** The spec's rules restated independently of the implementation's control flow. */
 function oracle(s: BackgroundSnapshot): BackgroundVerdict {
 	const reduced = s.reducedMotionMedia || s.dataMotionReduced;
-	const ending = s.force === "static" || s.forcedColors || reduced;
-	if (ending) {
+	if (s.force === "static" || s.forcedColors || reduced) {
 		const reason = s.force === "static"
 			? "forced-static"
 			: s.forcedColors
@@ -206,25 +169,25 @@ function oracle(s: BackgroundSnapshot): BackgroundVerdict {
 			: "reduced-motion";
 		return { mode: "static", reason, pause: null };
 	}
-	const memoryOk = s.deviceMemory === null ? s.finePointer : s.deviceMemory >= 4;
+	const memoryOk = s.deviceMemory === null || s.deviceMemory >= 4;
 	const coresOk = s.hardwareConcurrency === null || s.hardwareConcurrency > 4;
-	const capable = s.force === "webgl" || (!s.saveData && memoryOk && coresOk);
-	const webgl = s.failure === null && s.webgl2 !== false && capable;
-	const pause = s.hidden ? "hidden" : s.intersecting ? null : "offscreen";
-	if (webgl) return { mode: "webgl", reason: null, pause };
-	const reason = s.failure ??
-		(s.webgl2 === false
-			? "no-webgl"
-			: s.saveData
-			? "save-data"
-			: s.deviceMemory !== null && s.deviceMemory < 4
-			? "low-memory"
-			: s.deviceMemory === null && !s.finePointer
-			? "unknown-memory"
-			: "low-cpu");
-	return s.finePointer
-		? { mode: "spotlight", reason, pause }
-		: { mode: "static", reason, pause: null };
+	const capable = s.force === "spotlight" ||
+		(s.finePointer && !s.saveData && memoryOk && coresOk);
+	if (capable) {
+		return {
+			mode: "spotlight",
+			reason: null,
+			pause: s.hidden ? "hidden" : s.intersecting ? null : "offscreen",
+		};
+	}
+	const reason = !s.finePointer
+		? "coarse-pointer"
+		: s.saveData
+		? "save-data"
+		: !memoryOk
+		? "low-memory"
+		: "low-cpu";
+	return { mode: "static", reason, pause: null };
 }
 
 Deno.test("gate: every combination matches the spec's rules", () => {
@@ -233,24 +196,22 @@ Deno.test("gate: every combination matches the spec's rules", () => {
 		assertEquals(decideBackground(s), oracle(s), JSON.stringify(s));
 		count += 1;
 	}
-	assertEquals(count, 2 ** 7 * 4 * 4 * 3 * 3 * 3);
+	assertEquals(count, 2 ** 7 * 4 * 4 * 3);
 });
 
-Deno.test("gate: invariants — webgl never under reduced motion, spotlight only on a fine pointer", () => {
+Deno.test("gate: invariants — never moving under reduced motion, a fine pointer unless forced", () => {
 	for (const s of snapshots()) {
 		const v = decideBackground(s);
 		const reduced = s.reducedMotionMedia || s.dataMotionReduced;
-		if (reduced) assertEquals(v.mode, "static");
-		if (v.mode === "webgl") {
+		if (reduced || s.forcedColors) assertEquals(v.mode, "static");
+		if (v.mode === "spotlight") {
 			assertEquals(v.reason, null);
-			assertEquals(s.failure, null);
-			assertEquals(s.webgl2 === false, false);
+			assertEquals(s.finePointer || s.force === "spotlight", true);
+			assertEquals(v.pause !== null, s.hidden || !s.intersecting);
 		} else {
 			assertEquals(v.reason === null, false);
+			assertEquals(v.pause, null);
 		}
-		if (v.mode === "spotlight") assertEquals(s.finePointer, true);
-		if (v.mode === "static") assertEquals(v.pause, null);
-		else assertEquals(v.pause !== null, s.hidden || !s.intersecting);
 	}
 });
 // #endregion

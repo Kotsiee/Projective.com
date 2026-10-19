@@ -56,12 +56,20 @@ Deno.test("contrast: every pairing clears its floor in all four mode/contrast st
 	assertEquals(failures, [], "a token edit dropped a pairing below its floor (§3.3)");
 });
 
-Deno.test("contrast: the header pill is covered at the top of the page and once scrolled", () => {
+Deno.test("contrast: the header bar is covered at the top of the page and once scrolled", () => {
 	const labels = ROWS.map((r) => r.label);
-	assert(labels.some((l) => l.includes("transparent pill")), "the transparent-at-top state");
-	assert(labels.some((l) => l.includes("glass pill")), "the glass state");
-	assert(labels.some((l) => l.includes("surface-3 (tonal")), "the tonal Open app / ghost hover");
-	assert(labels.some((l) => l.startsWith("on-amber on amber")), "Get started");
+	assert(labels.some((l) => l.includes("transparent header bar")), "the transparent-at-top state");
+	assert(labels.some((l) => l.includes("glass bar")), "the glass state");
+	assert(labels.some((l) => l.includes("(outlined and ghost hover)")), "the tier 4 and 5 hovers");
+	assert(labels.some((l) => l.startsWith("on-mono on mono")), "Get started and Open app (tier 2)");
+});
+
+Deno.test("contrast: the hero search's contour and its tier-3 submit are audited", () => {
+	const labels = ROWS.map((r) => r.label);
+	assert(labels.some((l) => l.startsWith("field-edge vs canvas")), "the field's 1px edge");
+	assert(labels.some((l) => l.startsWith("on-brand on brand")), "the Search label");
+	assert(labels.some((l) => l.startsWith("brand fill vs canvas")), "the Search fill's boundary");
+	assert(labels.some((l) => l.startsWith("on-amber on amber")), "tier 1, kept for the demos");
 });
 
 Deno.test("contrast: the OS and in-app high-contrast channels declare the same values", () => {

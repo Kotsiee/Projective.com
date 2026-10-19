@@ -4920,43 +4920,53 @@ including to app components rendered inside the landing (the board mock keeps th
 and the exemption widens only by a new decision row.
 
 - **`LandingShell`** (`features/landing/components/LandingShell.tsx`) is the chrome of `/` and
-  `/features`, in place of GuestShell / UserShell (`ROUTING.md`, `(public)/_layout.tsx`): the
-  `.lp-root` canvas; a skip link to `PAGE_CANVAS_MAIN_ID` (#285 (C)); the floating header pill
-  (`LandingHeader` island — the brand, the "Main" links, the app's `ThemeToggle`, then "Sign in" +
-  the amber "Get started" for a guest or a tonal "Open app" for a signed-in visitor; below `--bp-md`
-  a menu button, rendered once hydrated (until then "Get started" stays in the pill), opens a top
-  sheet built on the overlay family's `Drawer`, re-skinned `lp-menu` and marked `lp-portal`, its
-  elevation on `::after` because the no-focus-ring layer strips a focused panel's `box-shadow`),
-  whose glass is a `::before` underlay with a solid fallback (no `backdrop-filter` support, either
-  high-contrast channel, reduced transparency, forced colours). The glass is the default; from
-  `--bp-lg` the hydrated pill sheds it at the top of the page only once `LandingBackground` has
-  measured its quiet zones, which include the pill's band;
-  the `<main>`; and the unchanged `PublicFooter` rendered after `.lp-root`, outside it, so neither
-  namespace's tokens reach the other (#285 (B)). The pill sets the package's `--chrome-pinned-h`
-  hook to its own bottom edge. `LandingHeader` also carries `lp-theme.css` and `lp-shell.css`, since
-  a stylesheet imported by a server component never reaches the page.
-- **`LandingBackground`** (`features/landing/islands/`) is the hero's background: the server paints
-  `BackgroundFallback` (grid, grain, still spotlight, static SVG constellation), and the client
-  upgrades it behind the §3.6 gate (`core/background-gate.ts`) to the pointer spotlight or the lazily
-  imported raw-WebGL2 constellation (`core/constellation-gl.ts`), which starts from and rests on the
-  SVG's own picture (`core/constellation.ts`).
-- **`LandingHero`** (`features/landing/components/`) is `#hero` (L2): the copy block
-  (`data-lp-quiet="copy"`; the page's one h1), then its islands as slots from the page controller —
-  the search, the "Try:" chips (`HeroChips`, server-derived, a reserved-height row), the two calls
-  to action (`HeroCtas`, per viewer; reused by the final call to action) and the product theatre.
-  **`HeroSearch`** (`islands/`) renders **`HeroSearchForm`**, the search's markup as a pure function
-  of its state: a real `GET /explore` form with `q` and a native `category` select (Explore's
-  categories minus Products), the input an ARIA combobox whose suggestions are the headless
-  `createSuggestController` over `ExploreService.suggest` grouped People & teams · Services ·
-  Projects (the active row kept in sight; each recent row's remove button, named for its term, sits
-  beside its option, since an option's content is presentational), recent searches from
-  `search-history`, `/` through `useSearchShortcut` (its "/ to search" hint and
-  `aria-keyshortcuts` shown only once bound), and an `aria-hidden` typewriter that runs only on the
-  hero timeline's typewriter turns (`core/hero-motion.ts`), its characters bound to one text node.
-  The field (`.lp-search`) wears the §3.6 B9 ring and one halo layer, which paints beneath the
-  field's surface; the ring rests while the suggestions are open, and the timeline holds while the
-  field is hovered or focused, so the ring never turns beside the hero's own motion. In forced
-  colours the panel gets an edge and the active row the system's selection colours. Below
+  `/features`, in place of GuestShell / UserShell (`ROUTING.md`, `(public)/_layout.tsx`): the solid
+  `.lp-root` canvas; a skip link to `PAGE_CANVAS_MAIN_ID` (#285 (C)); the full-width header bar
+  (`LandingHeader` island, its content on the page's container — the brand and the "Main" links at
+  the leading edge, then the app's `ThemeToggle`, "Sign in" (tier 5) and "Get started" (tier 2,
+  monochrome inverted) for a guest or "Open app" (tier 2) for a signed-in visitor at the trailing
+  edge, one fill per bar (#288 (E)); below `--bp-md` a menu button, server-rendered and shown in
+  "Get started"'s place from the first paint wherever scripting is enabled
+  (`@media (scripting: enabled)`, so hydration shifts nothing; with scripting off "Get started"
+  stays in the bar), opens a top sheet built on the overlay family's `Drawer`, re-skinned `lp-menu`
+  and marked `lp-portal`, its elevation on `::after` because the no-focus-ring layer strips a
+  focused panel's `box-shadow`), whose glass is a `::before` underlay with one bottom hairline and a
+  solid fallback (no `backdrop-filter` support, either high-contrast channel, reduced transparency,
+  forced colours). The glass is the default; the hydrated bar sheds it, and its hairline, at the top
+  of the page; the `<main>`; and the unchanged `PublicFooter` rendered after `.lp-root`, outside it,
+  so neither namespace's tokens reach the other (#285 (B)). The bar sets the package's
+  `--chrome-pinned-h` hook to its own bottom edge. `LandingHeader` also carries `lp-theme.css` and
+  `lp-shell.css`, since a stylesheet imported by a server component never reaches the page.
+- **`LandingBackground`** (`features/landing/islands/`) is the hero's background, the B7 spotlight
+  grid and B10 grain on a solid canvas: the server paints `BackgroundFallback` (the grid in integer
+  cells whose origin is the content container's edge, grain, a still neutral spotlight), and the
+  client lets the spotlight follow a fine pointer behind the §3.6 gate (`core/background-gate.ts`,
+  `static | spotlight`: either reduced-motion channel, forced colours, a coarse pointer, Save-Data,
+  memory and cores keep it still). The WebGL2 constellation, its SVG fallback and its quiet-zone
+  measurement were deleted by Decision #288.
+- **`LandingHero`** (`features/landing/components/`) is `#hero` (L2, restyled by #288): a
+  left-aligned column whose `.lp-hero__top` holds the copy block (the page's one h1, set word by
+  word for a CSS-only blur-fade that is not declared under either reduced-motion channel, its text
+  still the one sentence pair), then its islands as slots from the page controller — the search, the
+  "Try:" line (`HeroChips`, server-derived: underlined links on one wrapping meta line), the two
+  calls to action (`HeroCtas`, per viewer: "Hire a team" tier 4 outlined and a text link; reused by
+  the final call to action) — and, last, the product theatre. It is the Precision hero, kept by #288
+  (D)'s comparison (`flows/LANDING.md` §2.8): one measure for the headline and the search (a
+  `fit-content` grid column), the calls to action beside the field from 1280px, the real board in a
+  straight-on window rising into the first viewport, and no eyebrow. **`HeroSearch`** (`islands/`)
+  renders **`HeroSearchForm`**, the search's markup as a pure function of its state: a real
+  `GET /explore` form with `q` and a native `category` select (Explore's categories minus Products),
+  the input an ARIA combobox whose suggestions are the headless `createSuggestController` over
+  `ExploreService.suggest` grouped People & teams · Services · Projects (the active row kept in
+  sight; each recent row's remove button, named for its term, sits beside its option, since an
+  option's content is presentational), recent searches from `search-history`, `/` through
+  `useSearchShortcut` (its "/ to search" hint and `aria-keyshortcuts` shown only once bound), and an
+  `aria-hidden` typewriter that runs only on the hero timeline's typewriter turns
+  (`core/hero-motion.ts`), its characters bound to one text node. The field (`.lp-search`) is the
+  hero's one full contour — a 12px radius and a 1px `--lp-field-edge` whose states move only its
+  colour and its shadow (#288 retired the B9 ring) — and its submit the hero's one fill (tier 3, the
+  product's invariant `--primary` pair); the timeline holds while the field is hovered or focused.
+  In forced colours the panel gets an edge and the active row the system's selection colours. Below
   `--bp-md`, once hydrated, an icon button the select's width opens **`CategorySheet`** — the
   overlay family's `Drawer` docked to the bottom, re-skinned `lp-sheet`, marked `lp-portal`, its
   arrow keys moving the choice inside the sheet until a tap, Enter or Space takes it — loaded on
@@ -4974,9 +4984,11 @@ and the exemption widens only by a new decision row.
   reduced-motion channel or Save-Data. Its **`HeroTheatre`** island renders only "Pause the example"
   (from `--bp-md`, while the hero timeline has something to play) and, once the theatre is in view
   with motion allowed and Save-Data off, loads **`theatre-player`** (`core/`, a lazy chunk), which
-  writes the scripted loop's frames onto the server's board with `transform`-only moves. "Try it
-  yourself" renders only once the page renders the demo stage (`demo`; L3), so no link points at a
-  section that is not there. The island also carries `lp-theatre.css` and the kanban sheet.
+  writes the scripted loop's frames onto the server's board with `transform`-only moves. The figure
+  is a straight-on window (#288: no tilt, no glow; its board frame fixed at the loop's tallest
+  frame). "Try it yourself" renders only once the page renders the demo stage (`demo`; L3), so no
+  link points at a section that is not there. The island also carries `lp-theatre.css` and the
+  kanban sheet.
 - **`LazyChatHost`** (`features/landing/islands/`) is the landing paths' stand-in for the global
   `ChatPopoutHost` for a signed-in visitor (#286 (A)): it renders and loads nothing until the tab has
   a floating chat open, then imports the real host once and renders it with the same `path`.

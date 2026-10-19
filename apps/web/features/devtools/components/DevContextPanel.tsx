@@ -936,12 +936,12 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 
 				{
 					/* The landing hero's background (`flows/LANDING.md` §3.6). Its gates read device facts
-				    (memory, cores, Save-Data, the pointer, a GPU) no page control can change, so this is
-				    the only runtime route to the WebGL2 constellation on a machine that `auto` refuses, and
-				    to the static paint on one it allows. Reduced motion and forced colours still win.
-				    Applies live; `.lp-root` reflects the outcome on `data-lp-bg` / `data-lp-bg-reason`. */
+				    (the pointer, memory, cores, Save-Data) no page control can change, so this is the only
+				    runtime route to the following spotlight on a machine that `auto` refuses, and to the
+				    static paint on one it allows. Reduced motion and forced colours still win. Applies
+				    live; `.lp-root` reflects the outcome on `data-lp-bg` / `data-lp-bg-reason`. */
 				}
-				<Field label="Landing background" hint="hero constellation · applies live">
+				<Field label="Landing background" hint="hero spotlight grid · applies live">
 					<Segment
 						name="Landing background"
 						options={DEV_LANDING_BACKGROUNDS}

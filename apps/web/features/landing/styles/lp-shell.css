@@ -1,21 +1,25 @@
 /*
- * lp-shell — the LandingShell chrome and the hero's layout skeleton (Decision #280;
- * `documentation/flows/LANDING.md` §2, §3.4, §3.6).
+ * lp-shell — the LandingShell chrome and the hero's layout skeleton (Decisions #280, #288;
+ * `documentation/flows/LANDING.md` §2, §2.8, §3.4, §3.6).
  *
- *   - `.lp-root`: the full-bleed canvas `/` and `/features` render in. It also sets the package's
- *     pinned-chrome hook (`--chrome-pinned-h`, packages/ui styles/index.css) to the floating pill's
- *     bottom edge, so in-page sticky parts clear it.
+ *   - `.lp-root`: the full-bleed solid canvas `/` and `/features` render in. It also sets the
+ *     package's pinned-chrome hook (`--chrome-pinned-h`, packages/ui styles/index.css) to the header
+ *     bar's bottom edge, so in-page sticky parts clear it.
  *   - `.lp-skip`: the skip link, off-screen until it takes focus.
- *   - `.lp-header`: the floating header pill. Its glass is a `::before` underlay (a filter on the
- *     element itself would re-base fixed descendants), solid where backdrop-filter is unsupported,
- *     under either high-contrast channel, under reduced transparency and in forced colours. The glass
- *     is the default — without JavaScript, before hydration and once scrolled; going transparent at
- *     the top is the enhancement.
- *   - `.lp-btn`: the pill's buttons (amber primary, tonal, ghost). Press feedback is `scale()` only.
+ *   - `.lp-header`: the full-width header bar, its content on the page's container. Its glass is a
+ *     `::before` underlay (a filter on the element itself would re-base fixed descendants) with one
+ *     bottom hairline, solid where backdrop-filter is unsupported, under either high-contrast
+ *     channel, under reduced transparency and in forced colours. The glass is the default — without
+ *     JavaScript, before hydration and once scrolled; going transparent at the top is the
+ *     enhancement.
+ *   - `.lp-btn`: the button matrix (§B.8.1, Decision #288 (E)) — `--accent` tier 1 (amber, only
+ *     where money moves), `--structural` tier 2 (monochrome inverted), `--brand` tier 3 (the
+ *     product's teal), `--outlined` tier 4, `--ghost` tier 5. Press feedback is `scale()` only.
  *   - `.lp-menu`: the mobile menu sheet — the app's Drawer docked to the top, re-skinned here.
- *   - `.lp-hero`: the hero region's positioning context and copy column; the background layer
- *     fills it from beneath (`lp-background.css`).
- *   - The four typographic registers (§3.4): display, heading, body, meta.
+ *   - `.lp-hero`: the hero region's positioning context, inline-size container and left-aligned
+ *     column; the background layer fills it from beneath (`lp-background.css`).
+ *   - The four typographic registers (§3.4, §A.4): display, section header, body, meta; and the
+ *     headline's blur-fade reveal (§3.6).
  *
  * No focus ring anywhere (Decision #285 (A), the app-wide directive in `apps/web/styles/global.css`).
  * Every colour is a `--lp-*` token from `lp-theme.css`. Colour transitions keep the app's theme
@@ -29,9 +33,7 @@
 	position: relative;
 	min-block-size: 100dvh;
 	overflow-x: clip;
-	/* The airy wash is painted by the hero's background layer; the canvas below it continues the
-	   wash's end stop, so the fade has no seam where the hero ends. */
-	background-color: var(--lp-bg-end);
+	background-color: var(--lp-bg);
 	color: var(--lp-text);
 	font-family: var(--lp-font-body);
 	font-size: var(--lp-fs-body);
@@ -42,7 +44,7 @@
 	display: block;
 }
 
-/* In-page anchors land below the floating pill. */
+/* In-page anchors land below the header bar. */
 .lp-main :where(section[id]) {
 	scroll-margin-block-start: calc(var(--lp-header-h) + 2 * var(--lp-header-inset));
 }
@@ -51,7 +53,7 @@
 /* #region Skip link */
 .lp-skip {
 	position: fixed;
-	inset-block-start: var(--lp-header-inset);
+	inset-block-start: var(--lp-stack-xs);
 	inset-inline-start: var(--lp-gutter);
 	z-index: 20;
 	display: inline-flex;
@@ -62,9 +64,9 @@
 	background: var(--lp-mono);
 	color: var(--lp-on-mono);
 	font-size: var(--lp-fs-btn);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 	text-decoration: none;
-	transform: translateY(calc(-100% - 2 * var(--lp-header-inset)));
+	transform: translateY(calc(-100% - 2 * var(--lp-stack-xs)));
 }
 
 .lp-skip:focus,
@@ -73,7 +75,7 @@
 }
 /* #endregion */
 
-/* #region Header pill */
+/* #region Header bar */
 .lp-header {
 	position: sticky;
 	inset-block-start: var(--lp-header-inset);
@@ -83,15 +85,13 @@
 	/* Below --bp-md the nav is hidden: the brand takes the room the actions leave. */
 	grid-template-columns: minmax(0, 1fr) auto;
 	align-items: center;
-	gap: var(--lp-stack-sm);
-	inline-size: min(100% - 2 * var(--lp-gutter), var(--lp-maxw));
+	column-gap: var(--lp-stack-lg);
 	block-size: var(--lp-header-h);
-	/* The pill floats over the hero rather than pushing it down: the hero's top padding already
-	   reserves the pill's height and inset (`--lp-hero-pad`). */
+	/* The bar sits over the hero rather than pushing it down: the hero's top padding already
+	   reserves its height (`--lp-hero-pad`). */
 	margin-block: var(--lp-header-inset) calc(-1 * (var(--lp-header-h) + var(--lp-header-inset)));
-	margin-inline: auto;
-	padding-inline: var(--lp-stack-md) var(--lp-stack-xs);
-	border-radius: var(--lp-r-pill);
+	/* The bar spans the page; its content sits on the hero's container (`--lp-maxw`). */
+	padding-inline: max(var(--lp-gutter), (100% - var(--lp-maxw)) / 2);
 	color: var(--lp-text);
 }
 
@@ -100,23 +100,18 @@
 	position: absolute;
 	inset: 0;
 	z-index: -1;
-	border-radius: inherit;
-	background: color-mix(in srgb, var(--lp-surface-1) var(--lp-glass-veil), transparent);
+	background: color-mix(in srgb, var(--lp-bg) var(--lp-glass-veil), transparent);
 	-webkit-backdrop-filter: blur(var(--lp-glass-blur)) saturate(var(--lp-glass-saturate));
 	backdrop-filter: blur(var(--lp-glass-blur)) saturate(var(--lp-glass-saturate));
-	box-shadow: inset 0 0 0 1px var(--lp-hair-strong), var(--lp-shadow-header);
+	box-shadow: inset 0 -1px 0 var(--lp-hair);
 	transition:
 		opacity var(--lp-dur-fast) var(--lp-ease-standard),
 		background-color var(--dur-slow) var(--ease-standard);
 }
 
-/* From --bp-lg the pill sheds its glass at the top of the page — only once the island has marked it
-   `--top` and the background has measured its quiet zones, which include the pill's band, so its
-   text sits on the quiet constellation (§3.3). Without either, or without `:has()`, it keeps it. */
-@media (min-width: 1024px) {
-	.lp-root:has(.lp-bg[data-lp-zones]) .lp-header--top::before {
-		opacity: 0;
-	}
+/* At the top of the page the hydrated bar sheds its glass and its hairline (§2.8). */
+.lp-header--top::before {
+	opacity: 0;
 }
 
 .lp-header__brand {
@@ -141,15 +136,18 @@
 	color: var(--lp-teal-ink);
 }
 
+/* Its own leading, taller than the brand's 1: the clip that ellipsizes a squeezed wordmark would
+   otherwise cut the "j" descender. */
 .lp-header__wordmark {
 	overflow: hidden;
+	line-height: 1.35;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
 .lp-header__nav {
 	display: none;
-	justify-self: center;
+	justify-self: start;
 }
 
 .lp-header__links {
@@ -161,7 +159,7 @@
 	list-style: none;
 }
 
-/* A `wide` link joins the pill at --bp-lg (§2.2: below that the hero search stands in for Explore). */
+/* A `wide` link joins the bar at --bp-lg (§2.2: below that the hero search stands in for Explore). */
 .lp-header__item--wide {
 	display: none;
 }
@@ -171,13 +169,14 @@
 	align-items: center;
 	min-block-size: 2.5rem;
 	padding-inline: var(--lp-stack-sm);
-	border-radius: var(--lp-r-pill);
+	border-radius: var(--lp-r-sm);
 	color: var(--lp-text-2);
 	font-size: var(--lp-fs-btn);
 	font-weight: var(--fw-medium);
 	letter-spacing: var(--lp-track-body);
 	text-decoration: none;
 	white-space: nowrap;
+	transition: color var(--dur-slow) var(--ease-standard);
 }
 
 .lp-header__link:hover {
@@ -195,10 +194,8 @@
 	min-inline-size: 0;
 }
 
-/* Below --bp-md the theme control, and once hydrated "Get started", live in the menu sheet. The
-   compound selector outranks `.lp-btn`'s display, declared later in this sheet. */
-.lp-header__theme,
-.lp-header__actions .lp-header__start {
+/* Below --bp-md the theme control lives in the menu sheet. */
+.lp-header__theme {
 	display: none;
 }
 
@@ -211,7 +208,7 @@
 	block-size: 2.5rem;
 	padding: 0;
 	border: 1px solid transparent;
-	border-radius: var(--lp-r-pill);
+	border-radius: var(--lp-r-sm);
 	background: transparent;
 	color: var(--lp-text-2);
 	cursor: pointer;
@@ -238,8 +235,10 @@
 	display: block;
 }
 
+/* Ghost (tier 5): the bar's one fill is Get started, which the sheet holds below --bp-md. Hidden
+   until the swap below shows it. */
 .lp-header__menu-btn {
-	display: inline-flex;
+	display: none;
 	flex: none;
 	align-items: center;
 	justify-content: center;
@@ -247,8 +246,8 @@
 	block-size: 2.5rem;
 	padding: 0;
 	border: 1px solid transparent;
-	border-radius: var(--lp-r-pill);
-	background: var(--lp-surface-3);
+	border-radius: var(--lp-r-sm);
+	background: transparent;
 	color: var(--lp-text);
 	cursor: pointer;
 	transition:
@@ -259,18 +258,41 @@
 }
 
 .lp-header__menu-btn:hover {
-	border-color: var(--lp-edge);
+	background: var(--lp-surface-3);
 }
 
 .lp-header__menu-btn:active {
 	transform: scale(var(--lp-press-scale));
 }
 
+/* Below --bp-md the menu button takes "Get started"'s place (the sheet holds it). Where scripting is
+   enabled the swap is in the first paint, so hydration moves nothing in the bar; with scripting off
+   the button, whose sheet needs the client, stays hidden and "Get started" stays; an engine without
+   the media feature swaps once hydrated. The compound selectors outrank `.lp-btn`'s display. */
+@media (max-width: 767px) {
+	.lp-header--live .lp-header__menu-btn {
+		display: inline-flex;
+	}
+
+	.lp-header--live .lp-header__actions .lp-header__start {
+		display: none;
+	}
+}
+
+@media (max-width: 767px) and (scripting: enabled) {
+	.lp-header__menu-btn {
+		display: inline-flex;
+	}
+
+	.lp-header__actions .lp-header__start {
+		display: none;
+	}
+}
+
 @media (min-width: 768px) {
 	.lp-header {
-		/* Equal outer tracks, so the nav sits truly centred on the pill whatever the two sides hold. */
-		grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-		padding-inline: var(--lp-stack-lg) var(--lp-stack-xs);
+		/* Brand and nav at the leading edge, the actions at the trailing edge. */
+		grid-template-columns: auto minmax(0, 1fr) auto;
 	}
 
 	.lp-header__nav {
@@ -286,14 +308,6 @@
 	.lp-header__theme {
 		display: contents;
 	}
-
-	.lp-header__actions .lp-header__start {
-		display: inline-flex;
-	}
-
-	.lp-header__menu-btn {
-		display: none;
-	}
 }
 
 @media (min-width: 1024px) {
@@ -307,7 +321,7 @@
 }
 /* #endregion */
 
-/* #region Buttons */
+/* #region Buttons — the matrix (§B.8.1) */
 .lp-btn {
 	display: inline-flex;
 	flex: none;
@@ -316,12 +330,12 @@
 	gap: var(--lp-stack-xs);
 	min-block-size: 2.5rem;
 	padding-inline: var(--lp-stack-md);
-	/* A constant border: the primary's contour sits here, so hover never moves the box. */
+	/* A constant border: a tier's contour sits here, so hover never moves the box. */
 	border: 1px solid transparent;
 	border-radius: var(--lp-r-btn);
 	font-family: var(--lp-font-body);
 	font-size: var(--lp-fs-btn);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 	letter-spacing: var(--lp-track-body);
 	line-height: 1;
 	text-decoration: none;
@@ -338,31 +352,67 @@
 	transform: scale(var(--lp-press-scale));
 }
 
-/* The region's one filled primary. The light fill sits at 2.61:1 off the canvas, so its contour
+/* Tier 1 — terminal financial: only where money moves or checkout begins (the demos' Pay and
+   Approve and pay). The light fill sits at 2.61:1 off the canvas, so its contour
    (`--lp-amber-edge`, ≥ 3.24:1) carries the boundary in every state (#157 flag (b)). */
-.lp-btn--primary {
+.lp-btn--accent {
 	border-color: var(--lp-amber-edge);
+	border-radius: var(--lp-r-pill);
 	background: var(--lp-amber);
 	color: var(--lp-on-amber);
 }
 
-.lp-btn--primary:hover {
+.lp-btn--accent:hover {
 	background: var(--lp-amber-hover);
 }
 
-.lp-btn--primary:active {
+.lp-btn--accent:active {
 	background: var(--lp-amber-active);
 }
 
-.lp-btn--tonal {
-	background: var(--lp-surface-3);
+/* Tier 2 — structural commitment: monochrome inverted (§D.7.7). The header's Get started and Open
+   app. */
+.lp-btn--structural {
+	border-radius: var(--lp-r-pill);
+	background: var(--lp-mono);
+	color: var(--lp-on-mono);
+}
+
+.lp-btn--structural:hover {
+	background: var(--lp-mono-hover);
+}
+
+.lp-btn--structural:active {
+	background: var(--lp-mono-active);
+}
+
+/* Tier 3 — brand primary: the product's own teal pair, mode-invariant. The hero Search. */
+.lp-btn--brand {
+	background: var(--lp-brand);
+	color: var(--lp-on-brand);
+}
+
+.lp-btn--brand:hover {
+	background: var(--lp-brand-hover);
+}
+
+.lp-btn--brand:active {
+	background: var(--lp-brand-active);
+}
+
+/* Tier 4 — neutral outlined: a real alternative, never filled. */
+.lp-btn--outlined {
+	border-color: var(--lp-hair-strong);
+	background: transparent;
 	color: var(--lp-text);
 }
 
-.lp-btn--tonal:hover {
+.lp-btn--outlined:hover {
 	border-color: var(--lp-edge);
+	background: var(--lp-surface-2);
 }
 
+/* Tier 5 — ghost. */
 .lp-btn--ghost {
 	background: transparent;
 	color: var(--lp-text-2);
@@ -375,6 +425,12 @@
 
 .lp-btn--block {
 	inline-size: 100%;
+}
+
+@media (forced-colors: active) {
+	.lp-btn--outlined {
+		border-color: ButtonText;
+	}
 }
 /* #endregion */
 
@@ -479,64 +535,109 @@
 /* #endregion */
 
 /* #region Hero skeleton */
+/* An inline-size container: the background's grid origin (`--lp-grid-origin`) resolves against the
+   hero's content box. The composition (one measure for the headline and the search) is
+   `lp-hero.css`'s. */
 .lp-hero {
 	position: relative;
 	isolation: isolate;
+	container-type: inline-size;
 	padding-block: var(--lp-hero-pad) var(--lp-section-pad);
 	padding-inline: var(--lp-gutter);
 }
 
-/* The copy sits above the background layer (`.lp-bg`, z-index -1 inside this isolated region). */
+/* The copy sits above the background layer (`.lp-bg`, z-index -1 inside this isolated region).
+   Groups are separated by asymmetric space (§B.4.1): wide between groups (the theatre's window sits
+   `--space-7` under the "Try:" line, 40px from --bp-lg, where the window may crop at a laptop's
+   fold), `--space-3` to `--space-5` inside one. */
 .lp-hero__inner {
 	position: relative;
 	z-index: 1;
 	display: flex;
 	flex-direction: column;
-	align-items: center;
-	gap: var(--lp-stack-xl);
+	gap: var(--lp-stack-2xl);
 	max-inline-size: var(--lp-maxw);
 	margin-inline: auto;
-	text-align: center;
+	text-align: start;
+}
+
+@media (min-width: 1024px) {
+	.lp-hero__inner {
+		gap: calc(var(--lp-stack-xl) + var(--lp-stack-xs));
+	}
+}
+
+.lp-hero__top {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	min-inline-size: 0;
 }
 
 .lp-hero__copy {
 	display: flex;
 	flex-direction: column;
-	align-items: center;
-	gap: var(--lp-heading-gap);
+	align-items: flex-start;
 	max-inline-size: 100%;
 }
 
+/* The display face's capital H stands about 0.06em inside its box: the h1 hangs by that much, so
+   its stem — not its box — lands on the edge the subline, the search and the board share. The
+   dyslexic face has its own side bearing, so it does not hang. */
 .lp-hero__title {
-	max-inline-size: var(--lp-measure-display);
+	max-inline-size: 100%;
 	margin: 0;
+	margin-inline-start: -0.06em;
+	overflow-wrap: anywhere;
 	text-wrap: balance;
 }
 
-.lp-hero__lead {
-	max-inline-size: var(--lp-measure-lead);
-	margin: 0;
-	text-wrap: pretty;
+:root[data-font="dyslexic"] .lp-hero__title {
+	margin-inline-start: 0;
 }
 
-/* From --bp-md the headline sets as its two sentences, one per line. */
-@media (min-width: 768px) {
-	.lp-hero__title {
-		max-inline-size: none;
-	}
+/* Each sentence sets on its own line at every width, so no line carries a full stop mid-line.
+   Inside one, each phrase is an inline box: a sentence that does not fit breaks between its phrases
+   first ("Hire a / ready-made team."), and a phrase wider than the column — 320px reflow, 400% zoom,
+   text spacing, a longer translation — wraps inside itself instead of running off the page. */
+.lp-hero__line {
+	display: block;
+}
 
-	.lp-hero__line {
-		display: block;
+.lp-hero__phrase {
+	display: inline-block;
+	max-inline-size: 100%;
+}
+
+/* The subline sits an optical --space-4 under the display's descenders (24px once the display
+   passes 50px), in balanced lines; its foot is the gap to the search group (§B.4.1: wider between
+   groups than inside one). */
+.lp-hero__lead {
+	max-inline-size: var(--lp-measure-lead);
+	margin: var(--lp-stack-md) 0 var(--lp-stack-lg);
+	text-wrap: balance;
+}
+
+@media (min-width: 768px) {
+	.lp-hero__lead {
+		margin-block: var(--lp-stack-lg) var(--lp-stack-xl);
+	}
+}
+
+@media (min-width: 1024px) {
+	.lp-hero__lead {
+		margin-block-end: var(--lp-stack-2xl);
 	}
 }
 /* #endregion */
 
-/* #region Typographic registers (§3.4) — size, family, case and tracking; never weight alone */
+/* #region Typographic registers (§3.4, §A.4) — size, family, case and tracking; never weight alone */
+/* Display: the one thing the page is about, at --fw-medium; never bold (Decision #288). */
 .lp-display {
 	margin: 0;
 	color: var(--lp-text);
 	font-family: var(--lp-font-display);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 }
 
 .lp-display--hero {
@@ -551,17 +652,16 @@
 	line-height: var(--lp-lead-section);
 }
 
-/* The warm editorial voice: serif display at its one real weight. */
+/* The warm editorial voice: the serif face at the display's --fw-medium (#288, §A.4). A serif with
+   no 500 master renders its 400 by CSS weight matching, never a synthesized bold. */
 .lp-display--editorial {
 	color: var(--lp-warm-text);
 	font-family: var(--lp-font-serif);
-	font-weight: var(--fw-normal);
 	letter-spacing: var(--lp-track-serif);
 }
 
 .lp-display--figure {
 	font-size: var(--lp-fs-figure);
-	font-weight: var(--fw-medium);
 	font-variant-numeric: tabular-nums lining-nums;
 	letter-spacing: var(--lp-track-figure);
 	line-height: 1;
@@ -577,20 +677,20 @@
 	line-height: var(--lp-lead-h3);
 }
 
+/* Section header: the body sans at the label size, uppercase, wide tracking, no colour. */
 .lp-eyebrow {
 	margin: 0;
-	color: var(--lp-teal-ink);
-	font-family: var(--lp-font-mono);
+	color: var(--lp-text-2);
+	font-family: var(--lp-font-body);
 	font-size: var(--lp-fs-eyebrow);
-	font-variant-ligatures: none;
-	font-weight: var(--fw-medium);
+	font-weight: var(--fw-semibold);
 	letter-spacing: var(--lp-track-eyebrow);
-	line-height: 1.2;
+	line-height: 1.35;
 	text-transform: uppercase;
 }
 
 .lp-eyebrow--editorial {
-	color: var(--lp-amber-ink);
+	color: var(--lp-warm-text-2);
 }
 
 .lp-lead {
@@ -617,9 +717,8 @@
 
 .lp-meta {
 	color: var(--lp-text-3);
-	font-family: var(--lp-font-mono);
+	font-family: var(--lp-font-body);
 	font-size: var(--lp-fs-meta);
-	font-variant-ligatures: none;
 	font-variant-numeric: tabular-nums;
 	font-weight: var(--fw-normal);
 	letter-spacing: var(--lp-track-meta);
@@ -627,11 +726,83 @@
 }
 /* #endregion */
 
+/* #region Headline reveal (§3.6) — CSS only, from first paint */
+/* Each word is a box (`translate` needs one), which also keeps "ready-made" whole. The hidden start
+   state lives only in the `from` keyframe, declared only while BOTH reduced-motion channels allow
+   motion: otherwise no animation exists and the words paint final, with no blur. */
+.lp-word {
+	display: inline-block;
+}
+
+@keyframes lp-word-in {
+	from {
+		opacity: 0;
+		filter: blur(var(--lp-word-blur));
+		translate: 0 var(--lp-word-rise);
+	}
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	:root:not([data-motion="reduced"]) .lp-word {
+		animation: lp-word-in var(--lp-dur-word) var(--lp-ease-out) backwards;
+	}
+
+	:root:not([data-motion="reduced"]) .lp-word[data-lp-w="1"] {
+		animation-delay: calc(1 * var(--lp-stagger-word));
+	}
+
+	:root:not([data-motion="reduced"]) .lp-word[data-lp-w="2"] {
+		animation-delay: calc(2 * var(--lp-stagger-word));
+	}
+
+	:root:not([data-motion="reduced"]) .lp-word[data-lp-w="3"] {
+		animation-delay: calc(3 * var(--lp-stagger-word));
+	}
+
+	:root:not([data-motion="reduced"]) .lp-word[data-lp-w="4"] {
+		animation-delay: calc(4 * var(--lp-stagger-word));
+	}
+
+	:root:not([data-motion="reduced"]) .lp-word[data-lp-w="5"] {
+		animation-delay: calc(5 * var(--lp-stagger-word));
+	}
+
+	:root:not([data-motion="reduced"]) .lp-word[data-lp-w="6"] {
+		animation-delay: calc(6 * var(--lp-stagger-word));
+	}
+
+	:root:not([data-motion="reduced"]) .lp-word[data-lp-w="7"] {
+		animation-delay: calc(7 * var(--lp-stagger-word));
+	}
+
+	:root:not([data-motion="reduced"]) .lp-word[data-lp-w="8"] {
+		animation-delay: calc(8 * var(--lp-stagger-word));
+	}
+
+	:root:not([data-motion="reduced"]) .lp-word[data-lp-w="9"] {
+		animation-delay: calc(9 * var(--lp-stagger-word));
+	}
+
+	:root:not([data-motion="reduced"]) .lp-word[data-lp-w="10"] {
+		animation-delay: calc(10 * var(--lp-stagger-word));
+	}
+
+	:root:not([data-motion="reduced"]) .lp-word[data-lp-w="11"] {
+		animation-delay: calc(11 * var(--lp-stagger-word));
+	}
+}
+
+@media print {
+	.lp-word {
+		animation: none;
+	}
+}
+/* #endregion */
+
 /* #region Motion contract — both reduced-motion channels (§3.6) */
 /* End-state transforms go to none (the #174 (D) / gate-12 precedent); a hidden start state applies
    only while BOTH channels allow motion. */
 @media (prefers-reduced-motion: reduce) {
-	.lp-theatre,
 	.lp-reveal,
 	:is(.lp-btn, .lp-search__submit, .lp-chip, .lp-tab, .lp-header__menu-btn):active,
 	:is(.lp-header__theme, .lp-menu__theme) .theme-toggle.theme-toggle--icon:active {
@@ -639,7 +810,7 @@
 	}
 }
 
-:root[data-motion="reduced"] :is(.lp-theatre, .lp-reveal),
+:root[data-motion="reduced"] .lp-reveal,
 :root[data-motion="reduced"] :is(.lp-btn, .lp-search__submit, .lp-chip, .lp-tab, .lp-header__menu-btn):active,
 :root[data-motion="reduced"] :is(.lp-header__theme, .lp-menu__theme) .theme-toggle.theme-toggle--icon:active {
 	transform: none;
@@ -656,7 +827,7 @@
 /* #region Solid fallbacks for the glass */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
 	.lp-header::before {
-		background: var(--lp-surface-1);
+		background: var(--lp-bg);
 	}
 }
 
@@ -664,7 +835,7 @@
 	.lp-header::before {
 		-webkit-backdrop-filter: none;
 		backdrop-filter: none;
-		background: var(--lp-surface-1);
+		background: var(--lp-bg);
 	}
 }
 
@@ -672,14 +843,14 @@
 	:root:not([data-contrast="normal"]) .lp-header::before {
 		-webkit-backdrop-filter: none;
 		backdrop-filter: none;
-		background: var(--lp-surface-1);
+		background: var(--lp-bg);
 	}
 }
 
 :root[data-contrast="high"] .lp-header::before {
 	-webkit-backdrop-filter: none;
 	backdrop-filter: none;
-	background: var(--lp-surface-1);
+	background: var(--lp-bg);
 }
 
 @media (forced-colors: active) {

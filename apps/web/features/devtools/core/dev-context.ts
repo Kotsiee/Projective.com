@@ -282,11 +282,11 @@ export interface DevOverrides {
 	 */
 	walletAurora: DevWalletAurora;
 	/**
-	 * How the landing hero's background is chosen (`flows/LANDING.md` §3.6, §6): `auto` runs the
-	 * shipping gate, `static` keeps the SSR paint (no WebGL2 constellation, no moving spotlight),
-	 * `webgl` forces the constellation past the Save-Data, memory, core-count and pointer gates (still
-	 * honouring reduced motion and forced colours, and pausing offscreen or on a hidden tab). Its own
-	 * axis because those are device facts no page control can change. Applies live.
+	 * How the landing hero's background is chosen (`flows/LANDING.md` §3.6): `auto` runs the
+	 * shipping gate, `static` keeps the SSR paint (the spotlight never moves), `spotlight` follows the
+	 * pointer past the pointer, Save-Data, memory and core-count gates (still honouring reduced motion
+	 * and forced colours, and pausing offscreen or on a hidden tab). Its own axis because those are
+	 * device facts no page control can change. Applies live.
 	 */
 	landingBackground: DevLandingBackground;
 	/**
@@ -706,13 +706,13 @@ export const DEV_WALLET_AURORAS: ReadonlyArray<DevOption<DevWalletAurora>> = [
 ];
 
 /**
- * Landing-background options in display order (the hero's constellation and spotlight). `Force WebGL`
- * is the value worth having: it runs the constellation on a machine the device gates would refuse.
+ * Landing-background options in display order (the hero's spotlight grid). `Force spotlight` is the
+ * value worth having: it follows the pointer on a machine the device gates would refuse.
  */
 export const DEV_LANDING_BACKGROUNDS: ReadonlyArray<DevOption<DevLandingBackground>> = [
 	{ value: "auto", label: "Auto" },
 	{ value: "static", label: "Static only" },
-	{ value: "webgl", label: "Force WebGL" },
+	{ value: "spotlight", label: "Force spotlight" },
 ];
 
 /** Settings-attention options in display order (the `/settings` dashboard and the lane's marks). */

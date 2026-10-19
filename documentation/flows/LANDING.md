@@ -12,15 +12,16 @@
 
 ## 0. Status & links
 
-| Item            | Where                                                                                                                                                                                                                                                                                                                                                                                                       |
-| :-------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Work order      | [`PUBLIC_ROUTES_BUILD_PROMPTS.md`](PUBLIC_ROUTES_BUILD_PROMPTS.md) §0.1 (decisions g–k), §2 (the landing reference pack), L0–L6                                                                                                                                                                                                                                                                             |
-| Decisions       | [#280](../reference/decisions/decisions-122-126.md) exemption (g) · #281 claims (h) · #282 shortcut (i) · #283 vocabulary (j) · #284 direction · #285 L1 build rulings · #286 L1 review rulings and the initial-JS budget ruling · #287 L2 build and review rulings (FLAGS (B), (C) for the owner) — index in [`decisions/README.md`](../reference/decisions/README.md). #288–#289 stay reserved for L3–L6. |
-| Owner answers   | L0 STEP 0, all eight questions answered 2026-10-17 (§1)                                                                                                                                                                                                                                                                                                                                                     |
-| Off-system note | [`DESIGN_SYSTEM.md`](../design-system/DESIGN_SYSTEM.md) Part E "Off-system surfaces" · [`PRODUCT_SPEC.md`](../business/PRODUCT_SPEC.md) §Visual Identity                                                                                                                                                                                                                                                    |
-| L1 delivered    | 2026-10-17 — the shell, the scoped theme and the background; listed below the table                                                                                                                                                                                                                                                                                                                         |
-| L2 delivered    | 2026-10-18 — the hero search, chips, calls to action and theatre; listed below the table                                                                                                                                                                                                                                                                                                                    |
-| Next prompt     | L3 (visualizer engine + first demos), once the owner rules on #287 FLAGS (B) and (C)                                                                                                                                                                                                                                                                                                                        |
+| Item            | Where                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| :-------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Work order      | [`PUBLIC_ROUTES_BUILD_PROMPTS.md`](PUBLIC_ROUTES_BUILD_PROMPTS.md) §0.1 (decisions g–k), §2 (the landing reference pack), L0–L6                                                                                                                                                                                                                                                                                                              |
+| Decisions       | [#280](../reference/decisions/decisions-122-126.md) exemption (g) · #281 claims (h) · #282 shortcut (i) · #283 vocabulary (j) · #284 direction · #285 L1 build rulings · #286 L1 review rulings and the initial-JS budget ruling · #287 L2 build and review rulings (FLAGS (B), (C) for the owner) — index in [`decisions/README.md`](../reference/decisions/README.md). #288 is the owner's landing visual brief (the hero overhaul, §2.8). |
+| Owner answers   | L0 STEP 0, all eight questions answered 2026-10-17 (§1)                                                                                                                                                                                                                                                                                                                                                                                      |
+| Off-system note | [`DESIGN_SYSTEM.md`](../design-system/DESIGN_SYSTEM.md) Part E "Off-system surfaces" · [`PRODUCT_SPEC.md`](../business/PRODUCT_SPEC.md) §Visual Identity                                                                                                                                                                                                                                                                                     |
+| L1 delivered    | 2026-10-17 — the shell, the scoped theme and the background; listed below the table                                                                                                                                                                                                                                                                                                                                                          |
+| L2 delivered    | 2026-10-18 — the hero search, chips, calls to action and theatre; listed below the table                                                                                                                                                                                                                                                                                                                                                     |
+| Hero overhaul   | 2026-10-19 — the Precision hero won #288 (D)'s comparison of three variants and is the hero (§2.8)                                                                                                                                                                                                                                                                                                                                           |
+| Next prompt     | L3 (visualizer engine + first demos), once the owner rules on #287 FLAGS (B) and (C)                                                                                                                                                                                                                                                                                                                                                         |
 
 **L1 delivered (2026-10-17).**
 
@@ -28,19 +29,22 @@
   (`routes/(public)/_layout.tsx` `LANDING_PATHS`; `ROUTING.md`): the `.lp-root` canvas, the skip
   link to `#main-content`, the `LandingHeader` pill and its menu sheet, and `PublicFooter` outside
   `.lp-root`. Without JavaScript every header link works and the pill wears its glass; below
-  `--bp-md` the menu button renders once hydrated (until then "Get started" stays in the pill), and
-  from `--bp-lg` the pill sheds its glass at the top only over measured quiet zones, which include
-  its own band (#286 (B)).
+  `--bp-md` the menu button renders once hydrated (until then "Get started" stays in the pill; since
+  the 2026-10-19 review the server renders it and `@media (scripting: enabled)` shows it from the
+  first paint, §2.8), and from `--bp-lg` the pill sheds its glass at the top only over measured
+  quiet zones, which include its own band (#286 (B)).
 - **Theme.** `lp-theme.css` carries every §3 token (light, dark, both high-contrast channels,
   dyslexic, both reduced-motion channels); `lp-shell.css` the pill, buttons, sheet, hero skeleton
   and the §3.4 registers.
 - **Hero.** `#hero` renders the §4.1 option 1 eyebrow, h1 and subline over `LandingBackground`; L2
-  adds the search, the chips, the calls to action and the theatre ("L2 delivered" below).
+  adds the search, the chips, the calls to action and the theatre ("L2 delivered" below). The #288
+  overhaul keeps the h1 and subline and drops the eyebrow (§2.8).
 - **Background.** `LandingBackground` paints the static B7 grid, B10 grain and SVG constellation on
   the server and upgrades to the B1 WebGL2 constellation only behind the §3.6 gate; it reflects
   `data-lp-bg`, `data-lp-bg-reason` and `data-lp-bg-paused` on `.lp-root`. The canvas starts from,
   and settles back onto, the SVG's own picture (one 64-node reference layout, its two resting
-  teams).
+  teams). **Retired by #288:** the constellation, WebGL2 and SVG alike, is deleted; the background
+  is the B7 spotlight grid and B10 grain on a solid canvas (§2.8, §3.6).
 - **Head.** The §4.0 title, meta description and Open Graph copy; Organization + WebSite
   (SearchAction) JSON-LD. The old landing's `LANDING_META` and `landingJsonLd` are deleted from
   `seo.ts`, with their SoftwareApplication offer and FAQ answers (§9 row 15).
@@ -82,7 +86,8 @@
   yet is owed, not lost; hovering or focusing the field holds the timeline (the B9 ring may turn),
   using the search ends it; the ring rests while the suggestions are open; Save-Data and either
   reduced-motion channel keep the board a still poster, which goes back to its first frame whenever
-  reduced motion turns on.
+  reduced motion turns on. (#288 retired the ring; hovering or focusing the field still holds the
+  timeline.)
 - **Theatre.** `HeroTheatre` renders real kanban columns over the board model, whose tags read the
   way the product's card reads them (FLAGS #287 (B), (C)); "Try it yourself" waits for L3's `#demo`.
 - **Tests.** `core/hero-search.test.ts`, `core/hero-motion.test.ts`,
@@ -106,16 +111,16 @@ surface that needs one is hidden until it lands; it never renders a placeholder,
 
 ## 1. Direction (owner answers, 2026-10-17)
 
-| #  | Question                 | Answer                                                                                                                                                                                                                                                                                                                                                                                                        |
-| :- | :----------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1  | Layout                   | **A** search-first + **D** product theatre (a tilted live board mock built from real `@projective/ui` components playing the V1 board demo) + **F** live marketplace rails from `ExploreBackendService.landing()` under Ways to work                                                                                                                                                                          |
-| 2  | Style                    | **#1 Dark precision** base (near-black, hairlines, mono metadata, 1–2 glowing accents) + **#3 Warm fintech editorial** (serif display) for the trust and payments sections; **light mode is #8 light-airy** (pale gradients, soft shadows), not an inversion of dark                                                                                                                                          |
-| 3  | Background               | **B7** grid + cursor spotlight, **B9** glow border on the search bar and **B10** subtle grain now (the static SSR paint is the LCP-safe paint); **B1** constellation (freelancers gather into a team) as a lazy WebGL2 upgrade on capable devices; static SVG constellation as its fallback                                                                                                                   |
-| 4  | Demo stage               | Tabs **V1** Live board · **V2** Payment protection · **V4** Booking · **V5** Team pay (`?demo=board\|payments\|booking\|splits`, default `board`); **V8** matchmaker lives in the hero search; everything else goes to `/features` only                                                                                                                                                                       |
-| 5  | Exemption (g)            | Scoped: `features/landing/**`, the `/` route and the `/features` route only; `lp-` classes and `--lp-*` tokens scoped to `.lp-root`; a leak unit test. **Not exempt:** accessibility, both reduced-motion channels, islands never touch the DB, thin routes / fat services, security, SEO, the performance budget. **Raw WebGL2, zero new dependencies** (`three` is not used on the landing) — Decision #280 |
-| 6  | Shortcut (i)             | Show `/` only (focuses the hero search via `isFocusSearchShortcut`); `Cmd+K` stays reserved; no command palette in this track — Decision #282                                                                                                                                                                                                                                                                 |
-| 7  | Cool accent              | **Teal `#288690`** (tints and shades per pairing for contrast) paired with brand **amber `#D98216`** (Decision #157)                                                                                                                                                                                                                                                                                          |
-| 8  | Signed-in visitor at `/` | Show the landing page in its LandingShell with an **"Open app"** button in place of "Sign in"; never redirect; `/home` untouched                                                                                                                                                                                                                                                                              |
+| #  | Question                 | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| :- | :----------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1  | Layout                   | **A** search-first + **D** product theatre (a tilted live board mock built from real `@projective/ui` components playing the V1 board demo) + **F** live marketplace rails from `ExploreBackendService.landing()` under Ways to work                                                                                                                                                                                                                    |
+| 2  | Style                    | **#1 Dark precision** base (near-black, hairlines, mono metadata, 1–2 glowing accents) + **#3 Warm fintech editorial** (serif display) for the trust and payments sections; **light mode is #8 light-airy** (pale gradients, soft shadows), not an inversion of dark                                                                                                                                                                                    |
+| 3  | Background               | **B7** grid + cursor spotlight, **B9** glow border on the search bar and **B10** subtle grain now (the static SSR paint is the LCP-safe paint); **B1** constellation (freelancers gather into a team) as a lazy WebGL2 upgrade on capable devices; static SVG constellation as its fallback — **retired by #288 (2026-10-18):** B1 and B9 are gone; the background is B7 + B10 on a solid canvas, and the search field wears a plain 1px contour (§2.8) |
+| 4  | Demo stage               | Tabs **V1** Live board · **V2** Payment protection · **V4** Booking · **V5** Team pay (`?demo=board\|payments\|booking\|splits`, default `board`); **V8** matchmaker lives in the hero search; everything else goes to `/features` only                                                                                                                                                                                                                 |
+| 5  | Exemption (g)            | Scoped: `features/landing/**`, the `/` route and the `/features` route only; `lp-` classes and `--lp-*` tokens scoped to `.lp-root`; a leak unit test. **Not exempt:** accessibility, both reduced-motion channels, islands never touch the DB, thin routes / fat services, security, SEO, the performance budget. **Raw WebGL2, zero new dependencies** (`three` is not used on the landing) — Decision #280                                           |
+| 6  | Shortcut (i)             | Show `/` only (focuses the hero search via `isFocusSearchShortcut`); `Cmd+K` stays reserved; no command palette in this track — Decision #282                                                                                                                                                                                                                                                                                                           |
+| 7  | Cool accent              | **Teal `#288690`** (tints and shades per pairing for contrast) paired with brand **amber `#D98216`** (Decision #157)                                                                                                                                                                                                                                                                                                                                    |
+| 8  | Signed-in visitor at `/` | Show the landing page in its LandingShell with an **"Open app"** button in place of "Sign in"; never redirect; `/home` untouched                                                                                                                                                                                                                                                                                                                        |
 
 Claims rule (h) and vocabulary (j) were not STEP 0 questions; they are recorded as #281 and #283 on
 the work order's terms, with the corrections the claim research forced (§5, §9).
@@ -130,7 +135,7 @@ digits are live values, `<…>` payload rows. Vertical spacing is not to scale.
 **Legend**
 
 ```text
-[[ Label ]]  the region's one filled primary            [ Label ]   tonal or outline button
+[[ Label ]]  the region's one filled primary            [ Label ]   outlined button (tier 4)
 Label ->     text link                                  ( chip )    chip / link pill
 [x]          icon button ([=] menu, [*] theme, [#v] category picker, [..] card menu)
 [/]          kbd hint: "/" focuses the hero search (#282; never a Cmd+K hint)
@@ -142,10 +147,9 @@ voice P      #1 dark precision, mono metadata           voice E     #3 warm edit
 (n)          annotation number, listed under the block
 ```
 
-Light mode (#8) keeps every layout. The near-black field becomes a pale gradient wash
-(`--lp-canvas-paint`), glows become soft shadows, the grid drops to low contrast and the
-constellation is drawn as ink on paper. Under either reduced-motion channel every `~n~` item renders
-its static state (§2.7).
+Light mode (#8) keeps every layout. The near-black field becomes the pale solid canvas (#288 retired
+the wash and the constellation), shadows stay soft and the grid drops to low contrast. Under either
+reduced-motion channel every `~n~` item renders its static state (§2.7).
 
 ### 2.1 `/` at 375 (mobile)
 
@@ -154,41 +158,38 @@ its static state (§2.7).
 ```text
 +- / · 375 · guest · dark ---------------+
 |                                        |
-| +------------------------------------+ |
-| | (P) Projective       Sign in  [=]  | | (1)
-| +------------------------------------+ |
+| (P) Projective            Sign in  [=] | (1)
+|                                 .  :  .|
+| Hire a                         .  :  . | (2)
+| ready-made team.                       |
+| Pay one stage                          |
+| at a time.                             |
 |                                        |
-| READY-MADE TEAMS · PAYMENT PROTECTION  | (2)
-|                                        |
-|        Hire a ready-made team.         | (3)
-|        Pay one stage at a time.        |
-|                                        |
-|    Search for a team that's already    |
-|   formed. Work starts only once it's   |
-|    paid for. They're paid when you     |
-|                approve.                |
+| Search for a team that's already       | (3)
+| formed. Work starts only once it's     |
+| paid for. They're paid when you        |
+| approve.                               |
 |                                        |
 | +------------------------------------+ |
 | | [#v] | Try "brand identity"  [[>]] | | (4) ~2~
 | +------------------------------------+ |
-|  Try                                   | (5)
-|  ( brand identity ) ( landing page ) .:|
+| Try: UX · Design systems · Figma       | (5)
 |                                        |
-|  [           Hire a team            ]  | (6)
-|          Offer your skills ->          |
+| [ Hire a team ]   Offer your skills -> | (6)
 |                                        |
-|  .-----------------------------------.:| (7)
-|  | WORK BOARD · Website refresh      .:|
+|.-------------------------------------.:| (7)
+|| Website refresh · Work board        .:|
+|| 1 task needs £400 to start [Fund all]:|
+||-------------------------------------.:|
+|| Ready             1   In Progress   .:|
+|| .------------------.  .-----------  .:|
+|| | Logo v2          |  | Homepage    .:|
+|| | Design           |  | design      .:|
+|| | NEEDS FUNDING £400  | Design £2,0 .:|
 |============= fold @ 812px =============|
-|  | New         Ready         In Prog .:|
-|  | .---------. .---------.   .-------.:|
-|  | |Launch   | |Logo v2  |   |Homepa .:|
-|  | |emails   | |£400     |   |£2,000 .:|
-|  | |Draft    | |Needs    |   |Funded .:|
-|  | '---------' |funding  |   '-------.:|
-|  |             '---------'           .:|
-|  '-----------------------------------.:|
-|  Try it yourself ->                    |
+|| '------------------'  '-----------  .:|
+|'-------------------------------------.:|
+| Try it yourself ->  (after L3)         |
 |                                        |
 |  WHY IT'S DIFFERENT                    | (8)
 |  One team, not five strangers.         |
@@ -240,46 +241,56 @@ its static state (§2.7).
 +----------------------------------------+
 ```
 
-1. **Header pill** — LandingShell's own pill, not SiteHeader. Sticky, floating `--lp-header-inset`
-   (12px) from the top, glass on `::before`. A skip link to `#main-content` comes before it (the
-   app's `PAGE_CANVAS_MAIN_ID`, not the work order's `#main`; #284 flag). Below `--bp-md`: mark +
-   wordmark, "Sign in" (→ `/login`) and a menu button for the menu sheet (§2.1 overlays). A
-   signed-in visitor sees "Open app" (→ `/home`) instead; the page never redirects. No search in the
-   pill; the hero owns search.
-2. **Eyebrow** (optional) — mono, wide-tracked caps, `--lp-teal-ink`.
-3. **h1** — the page's only h1, SSR text, the LCP element at every width; centred, at most three
-   lines at 375.
+The hero is the Precision hero, chosen by #288 (D)'s comparison (§2.8). Fold positions are the
+measured ones (375 × 812).
+
+1. **Header bar** — LandingShell's own full-width bar (3.5rem), not SiteHeader: transparent at the
+   top once hydrated, glass on `::before` with one bottom hairline once scrolled. A skip link to
+   `#main-content` comes before it (the app's `PAGE_CANVAS_MAIN_ID`, not the work order's `#main`;
+   #284 flag). Below `--bp-md`: mark + wordmark, "Sign in" (ghost, → `/login`) and a menu button for
+   the menu sheet (§2.1 overlays). A signed-in visitor sees "Open app" (tier 2, → `/home`) instead;
+   the page never redirects. No search in the bar; the hero owns search.
+2. **h1** — the page's only h1, SSR text, left-aligned at y 80: 40px at `--fw-medium`, −0.035em,
+   leading 1.02, hung by the capital's side bearing so its stem lands on the text edge. Each
+   sentence is its own line; one that does not fit breaks between its phrases ("Hire a / ready-made
+   team. / Pay one stage / at a time."), and a phrase wider than the column wraps inside itself
+   (320px reflow, text spacing), so no line carries a full stop mid-line and nothing clips. The
+   blur-fade reveal plays once at first paint (§3.6); at this width the subline, painted at first
+   paint, is the LCP element. The B7 grid keeps to the corner beside "Hire a".
+3. **Subline** — body register, 17px at 1.7, balanced, `--lp-text-2`; 16px under the h1 and 24px
+   above the search. Eyebrow: none (§2.8).
 4. **Search** — `<form role="search" action="/explore" method="get">` with `q` and `category`, so it
-   works with no JS.
+   works with no JS. Full width, 56px (`--lp-field-h`), a 12px radius: the hero's one full contour,
+   at y 370.
    - The picker collapses into the leading **[#v]** icon button (current category glyph), opening
-     the category sheet; a hidden input carries the value.
-   - Full-width input; its typewriter placeholder is the hero's `~2~`.
-   - Submit **[[>]]** is icon-only (`aria-label="Search"`), the region's one filled primary, press
-     `scale(var(--lp-press-scale))`.
-   - B9 glow border static at rest, at most three turns on hover/focus.
+     the category sheet; the hidden select still carries the value.
+   - Its typewriter placeholder is the hero's `~2~`, capped at 5 seconds below `--bp-md` (§2.7).
+   - Submit **[[>]]** is icon-only (`aria-label="Search"`), tier 3 brand teal, the region's one
+     fill; press `scale(var(--lp-press-scale))`.
    - No `/` hint on `pointer: coarse`.
-5. **Suggested chips** ("Try:") — SSR from
-   `ExploreBackendService.suggest({q:"",scope:"all"}).trending`, each a real link to
-   `explorePath('all', term)`; one row, sideways scroll with snap, bleeds to the edge, mask fades;
-   the row's height is reserved so the suggestions panel overlays rather than pushes. Never labelled
-   "Popular": on a quiet platform the list falls back to the most-listed terms (§4.1).
-6. **CTAs** — neither filled (the submit owns the region's primary). "Hire a team" is tonal, full
-   width, a link to `explorePath('teams')`. "Offer your skills" follows the per-viewer mapping in
-   §4.1.
-7. **Board mock on mobile** — a static poster: the SSR `@projective/ui` kanban over fixtures, marked
-   `inert`, flat (no tilt), no loop, no JS, cropped to ~2.3 lanes with a trailing fade. The whole
-   block is one link, "Try it yourself" → `/?demo=board#demo` (the same label at every width). Below
-   the fold, so never the LCP element.
+5. **"Try:"** — three terms as underlined links on one meta line, separated by middots (SSR from
+   `ExploreBackendService.suggest({q:"",scope:"all"}).trending`, each → `explorePath('all', term)`;
+   §2.8 superseded #287's chip row). The suggestions panel overlays it rather than pushes it. Never
+   labelled "Popular": on a quiet platform the list falls back to the most-listed terms (§4.1).
+6. **CTAs** — neither filled (the submit owns the region's one fill): "Hire a team" (tier 4
+   outlined, → `explorePath('teams')`) and "Offer your skills" as a text link per the §4.1 viewer
+   mapping, on one row 24px under the Try line.
+7. **Board poster** — the SSR `@projective/ui` kanban over fixtures, `inert`, `role="img"`, in a
+   straight-on window outdented by its own 8px padding so the board's frame lands on the text edge.
+   Static (no loop, no JS below `--bp-md`): the board scrolled to its Ready lane, about 1.7 lanes so
+   a card's funding tag and price hold one line, with a trailing fade; the money line ("1 task needs
+   £400 to start", then Fund all) takes its own line under the board's name. The Ready card's tag
+   sits above the 812px fold. Once L3 renders `#demo` the whole block is one link, "Try it yourself"
+   → `/?demo=board#demo` (the same label at every width).
 8. **Why it's different** (voice P) — Before/Now pairs stacked; labels mono caps; "Before" in
    `--lp-text-2`. Compares ways of working, never named companies (#281).
 9. **How it works** (`id="how-it-works"`, the anchor the megamenu already targets) — a numbered
    vertical spine; illustrations hidden below `--bp-md`; each step may reveal once (`--lp-dur-base`,
    220ms, `~1~` while it runs) when motion is allowed.
 
-**Background at 375.** B7 grid and B10 grain are static; no pointer, so no spotlight. B1 runs as
-`~1~` only on a capable device (WebGL2, `deviceMemory ≥ 4`, `hardwareConcurrency > 4`, no Save-Data,
-neither reduced-motion channel) and only while the hero is on screen; it waits for idle after first
-paint. Every other device gets the static SVG constellation.
+**Background at 375.** B7 grid and B10 grain are static: no fine pointer, so the spotlight rests in
+the top-right corner and its lit grid is not drawn. The grid keeps to that corner, beside "Hire a",
+and never crosses the words (§3.6). #288 retired the B1 constellation.
 
 **Demo stage to Real numbers**
 
@@ -422,8 +433,8 @@ paint. Every other device gets the static SVG constellation.
       feature (#284 flag).
     - A refused move gets an over-damped shake (no bounce) and a live-region message.
     - The demo counts as `~1~` only while an interaction plays.
-13. **Below the viewport** — the caption (< 15 words, per tab), "Start again" (tonal, restores the
-    fixture) and "See everything Projective does ->" → `/features`.
+13. **Below the viewport** — the caption (< 15 words, per tab), "Start again" (tier 4 outlined,
+    restores the fixture) and "See everything Projective does ->" → `/features`.
 14. **Ways to work** — three full-width tiles (cards are allowed under #280). "A single job" posts a
     job: "Post a single job" → `/projects?create=1` (the Quick-Init modal; a guest signs in first
     and returns through `redirectTo`), because one-off service listings cannot be paid for at
@@ -612,8 +623,9 @@ paint. Every other device gets the static SVG constellation.
 | | ---------------------------------- | |
 | | Search Explore for "brand" ->      | |
 | +------------------------------------+ |
-|  overlays chips + CTAs; max-height =   |
-|  visual viewport above the keyboard    |
+|  overlays Try + CTAs; ends above the   |
+|  keyboard and scrolls, the "Search     |
+|  Explore for" row pinned at its foot   |
 +----------------------------------------+
 ```
 
@@ -631,10 +643,8 @@ paint. Every other device gets the static SVG constellation.
 | | [ Sign in ]   [[ Get started ]]    | |
 | +------------------------------------+ |
 |                                        |
-|  signed in: the pill reads             |
-| +------------------------------------+ |
-| | (P) Projective    [ Open app ] [=] | |
-| +------------------------------------+ |
+|  signed in: the bar reads              |
+| (P) Projective      [[ Open app ]] [=] |
 +----------------------------------------+
 ```
 
@@ -664,12 +674,14 @@ paint. Every other device gets the static SVG constellation.
   over the headless `suggest-controller`; the existing `SearchSuggest` sections are not grouped by
   entity). Enter submits, Esc closes; recent searches when empty; "No matches — search anyway";
   200ms debounce, superseded requests aborted.
-- **Menu sheet** — a top sheet: the four links, the theme control, "Sign in" (tonal) and "Get
-  started" (the one fill). Closes on Esc, a link or the scrim. "Features" is hidden until L5 ships.
-- **Signed in** — "Open app" (tonal) replaces "Sign in" and "Get started"; never a redirect.
+- **Menu sheet** — a top sheet: the four links, the theme control, "Sign in" (tier 4 outlined) and
+  "Get started" (tier 2, the one fill). Closes on Esc, a link or the scrim. "Features" is hidden
+  until L5 ships.
+- **Signed in** — "Open app" (tier 2 structural, the bar's one fill) replaces "Sign in" and "Get
+  started"; never a redirect.
 - **Reduced motion** — every demo becomes a labelled frame sequence with Previous/Next; the board
-  mock is its poster; the typewriter shows the static placeholder; the background is the static SVG;
-  nothing reveals on scroll.
+  mock is its poster; the typewriter shows the static placeholder; the background is the still grid
+  and grain (the spotlight at rest in its corner, no lit grid); nothing reveals on scroll.
 
 ### 2.2 `/` at 768 (tablet)
 
@@ -678,37 +690,33 @@ paint. Every other device gets the static SVG constellation.
 ```text
 +- / · 768 · guest · dark ---------------------------------------+
 |                                                                |
-| +------------------------------------------------------------+ |
-| | (P)  How it works  Pricing  Features   [*] Sign in [Start] | | (1)
-| +------------------------------------------------------------+ |
+| (P) Projective                [*]  Sign in  (( Get started ))  | (1)
+|                                               .  :  .  :  .  : |
+| Hire a ready-made team.                       .  :  .  :  .    |
+| Pay one stage at a time.                        .  :  .        |
 |                                                                |
-|             READY-MADE TEAMS · PAYMENT PROTECTION              | (2)
+| Search for a team that's already formed. Work starts           |
+| only once it's paid for. They're paid when you approve.        |
 |                                                                |
-|        Hire a ready-made team. Pay one stage at a time.        | (3)
+| +-------------------------------------------------+            |
+| | All v | Try "landing page"     [/] [[ Search ]] |            | (2) ~2~
+| +-------------------------------------------------+            |
+| Try: UX · Design systems · Figma · Prototyping · Branding      | (3)
 |                                                                |
-|      Search for a team that's already formed. Work starts      |
-|    only once it's paid for. They're paid when you approve.     |
+| [ Hire a team ]   Offer your skills ->                         | (4)
 |                                                                |
-|     +----------------------------------------------------+     |
-|     | All v | Try "landing page"       [/]  [[ Search ]] |     | (4) ~2~
-|     +----------------------------------------------------+     |
-|     Try ( brand identity ) ( landing page ) ( design.:         | (5)
-|                                                                |
-|            [ Hire a team ]     Offer your skills ->            | (6)
-|                                                                |
-|         .--------------------------------------------.         | (7) ~2~
-|        / WORK BOARD · Website refresh                 \        |
-|       /   New             Ready           In Progress  \       |
-|      /    .---------.     .---------.     .---------.   \      |
-|     /     |Launch   |     |Logo v2  |     |Homepage | .: \     |
-|    /      |emails   |     |£400     |     |£2,000   | .:  \    |
-|   /       |Draft    |     |Needs    |     |Funded   | .:   \   |
-|  /        '---------'     |funding  |     '---------' .:    \  |
+|.-------------------------------------------------------------.:| (5) ~2~
+|| Website refresh · Work board  1 task needs £400 [Fund all]  .:|
+|| New          1   Ready          1   In Progress     1    R  .:|
+|| .------------.   .-------------.   .---------------.    .-  .:|
+|| |Launch      |   |Logo v2      |   |Homepage       |    |C  .:|
+|| |emails      |   |Design       |   |design         |    |s  .:|
+|| |Launch DRAFT|   |NEEDS FUNDING|   |Design  £2,000 |    |D  .:|
+|| '------------'   |£400         |   '---------------'    '-  .:|
+||                  '-------------'                            .:|
+|'-------------------------------------------------------------':|
+| [ || Pause the example ]                                       |
 |======================== fold @ 1024px =========================|
-| /                         '---------'                        \ |
-| /         ~2~ approve -> team paid -> the task moves on      \ |
-|:      . . . fades into the page (mask-image) . . .            :|
-|   [ Pause the example ]                    Try it yourself ->  |
 |                                                                |
 |   WHY IT'S DIFFERENT                                           | (8)
 |   One team, not five strangers.                                |
@@ -750,23 +758,27 @@ paint. Every other device gets the static SVG constellation.
 
 What changes from 375:
 
-1. **Pill** — from `--bp-md`: "How it works · Pricing · Features"; "Explore" joins at `--bp-lg`
-   (below that the hero already is the search; until L2 renders that search, Explore shows from
-   `--bp-md`, #286 (B)). Right: theme [*], "Sign in", "Get started" (the pill's one fill). No menu
-   button.
-2. **Search** — the inline picker returns: a native `<select>` that reads "All v", named "Search in"
-   (it announces its own value), which is also the no-JavaScript picker and needs no portal (#287;
-   L0 drew a labelled button opening an anchored, portalled listbox). The "/ to search" hint shows
-   for `pointer: fine` once the key is bound. ~640px wide.
-3. **Chips** still scroll below `--bp-lg`.
-4. **CTAs** sit inline, centred.
-5. **Board mock** from `--bp-md` — tilted (`--lp-stage-tilt`), three lanes plus a fade. The V1 loop
-   plays as `~2~`, alternating with the typewriter on one hero timeline (§2.7); paused when < 50%
-   visible or the tab is hidden — a turn it misses is owed and plays once it is visible (#287); the
-   static poster under reduced motion or Save-Data. `role="img"` with a label describing the loop,
+1. **Bar** — 4rem; the nav sits at the leading edge beside the brand ("Explore" joins at `--bp-lg`,
+   where the hero is no longer the only search in view; How it works, Pricing and Features as they
+   ship, #286 (B)). Right: theme [*], "Sign in" (ghost), "Get started" (tier 2, the bar's one fill).
+   No menu button.
+2. **h1 and search on one measure** — the h1 sets as its two sentences, one per line, at 53px. From
+   here `.lp-hero__top` is a grid whose first column is exactly as wide as the longer sentence
+   (`fit-content`), so the 60px field ends where "team." ends (549px at 768). The inline picker
+   returns: a native `<select>` that reads "All v", named "Search in" (it announces its own value),
+   which is also the no-JavaScript picker and needs no portal (#287). The "/ to search" hint shows
+   for `pointer: fine` once the key is bound; the submit reads "Search".
+3. **Try:** — all five terms on one line.
+4. **CTAs** — under the Try line, left-aligned on the text edge (beside the field only from 1280).
+5. **Board** from `--bp-md` — a straight-on window (#288: no tilt, no glow), about 3.35 lanes with a
+   fade inside the window; the whole board and **Pause the example** sit above the 1024px fold. The
+   V1 loop plays as `~2~`, alternating with the typewriter on one hero timeline (§2.7); paused when
+   < 50% visible or the tab is hidden — a turn it misses is owed and plays once it is visible
+   (#287); the static board under reduced motion. `role="img"` with a label describing the loop,
    inside `inert`; "Try it yourself" → `/?demo=board#demo` once L3 renders `#demo` (until then the
-   theatre has no link, #287). A visible **Pause the example** toggle (`aria-pressed`, outside the
-   inert figure) sits beside it and stops both the typewriter and the board loop (WCAG 2.2.2, §2.7).
+   theatre has no link, #287). The **Pause the example** toggle (ghost, meta size, `aria-pressed`,
+   outside the inert figure) sits under the window's leading edge and stops both the typewriter and
+   the board loop (WCAG 2.2.2, §2.7).
 6. **Why** becomes a three-column table (label · old way · Projective), hairline rows.
 7. **How it works** becomes a 3×2 grid with `placehold.co` art (§8).
 
@@ -958,39 +970,33 @@ What changes from 375:
 
 ```text
 +- / · 1280 x 800 · guest · dark ------------------------------------------------------------+
-|         . . .   B7 grid · B10 grain · spotlight · B1 constellation   ~1~   . . .           |
-|    +----------------------------------------------------------------------------------+    |
-|    | (P) Projective   How it works  Explore  Pricing  Features   [*] Sign in [Start]  |    | (1)
-|    +----------------------------------------------------------------------------------+    |
+|   (P) Projective   Explore                                [*]   Sign in   (( Get started ))| (1)
+|                                                         .   :   .   :   .   :   .   :   .  |
+|   Hire a ready-made team.                                 .   :   .   :   .   :   .   :    | (2)
+|   Pay one stage at a time.                                  .   :   .   :   .   :          |
+|                                                               (B7 grid corner, fading)     |
+|   Search for a team that's already formed. Work starts                                     |
+|   only once it's paid for. They're paid when you approve.                                  |
 |                                                                                            |
-|                           READY-MADE TEAMS · PAYMENT PROTECTION                            | (2)
+|   +------------------------------------------------+                                       |
+|   | All v | Try "design system"   [/] [[ Search ]] |  [ Hire a team ]  Offer your skills ->| (3) ~2~ (4)
+|   +------------------------------------------------+                                       |
+|   Try: UX · Design systems · Figma · Prototyping · Branding                                |
 |                                                                                            |
-|                                  Hire a ready-made team.                                   | (3)
-|                                  Pay one stage at a time.                                  |
-|                                                                                            |
-|               Search for a team that's already formed. Work starts only once               |
-|                       it's paid for. They're paid when you approve.                        |
-|                                                                                            |
-|                 +--------------------------------------------------------+                 |
-|                 | All v | Try "design system"          [/]  [[ Search ]] |  ~2~            | (4)
-|                 +--------------------------------------------------------+                 |
-|                 Try  ( brand identity ) ( landing page ) ( design system )                 | (5)
-|                                                                                            |
-|                          [ Hire a team ]     Offer your skills ->                          | (6)
-|                                                                                            |
-|           .--------------------------------------------------------------------.  ~2~      | (7)
-|          /  WORK BOARD · Website refresh              1 task needs £400 to start \         |
-|         /      New           Ready         In Progress   Review        Completed \         |
-|        /       .---------.   .---------.   .---------.   .---------.   .---------.\        |
+|  .---------------------------------------------------------------------------------------. | (5) ~2~
+|  | Website refresh · Work board                    1 task needs £400 to start [Fund all] | |
+|  | New        1   Ready      1   In Progress 1   Review     1   Completed   1            | |
+|  | .----------.   .----------.   .-----------.   .----------.   .-----------.            | |
+|  | |Launch    |   |Logo v2   |   |Homepage   |   |Case study|   |Brand      |            | |
+|  | |emails    |   |Design    |   |design     |   |Design    |   |colours    |            | |
+|  | |Launch    |   |NEEDS     |   |Design     |   |£250      |   |TEAM PAID  |            | |
+|  | |DRAFT     |   |FUNDING   |   |£2,000     |   |[Approve  |   |£300       |            | |
+|  | '----------'   |£400      |   '-----------'   | and pay] |   '-----------'            | |
 |======================================= fold @ 800px =======================================|
-|       /        |Launch   |   |Logo v2  |   |Homepage |   |Case     |   |Brand    | \       |
-|      /         |emails   |   |£400     |   |design   |   |study    |   |colours  |  \      |
-|     /          |Draft    |   |Needs    |   |£2,000   |   |£250     |   |£300     |   \     |
-|    /           '---------'   |funding  |   |Funded   |   |[Approve]|   |Team paid|    \    |
-|   /                          '---------'   '---------'   '---------'   '---------'     \   |
-|  :   ~2~ loop: approve Case study -> Team paid -> it moves to its next stage, funded    :  |
-|  :        . . . . . . . bottom edge fades into the page (mask-image) . . . . . . .      :  |
-|    [ Pause the example ]                                             Try it yourself ->    |
+|  |                '----------'                   '----------'                            | |
+|  | ~2~ loop: approve Case study -> Team paid -> it moves to its next stage, funded       | |
+|  '---------------------------------------------------------------------------------------' |
+|   [ || Pause the example ]                                 (Try it yourself -> after L3)   |
 |                                                                                            |
 |    WHY IT'S DIFFERENT                                                           voice P    | (8)
 |    One team, not five strangers.                                                           |
@@ -1028,27 +1034,39 @@ What changes from 375:
 +--------------------------------------------------------------------------------------------+
 ```
 
-1. **Full pill** — the four links truly centred on three equal `minmax(0,1fr)` tracks. How it works
-   → `#how-it-works`, Explore → `/explore`, Pricing → `#pricing`, Features → `/features` (on
-   `/features` the anchors become `/#…`). Right: theme [*], "Sign in", "Get started" (shown as
-   [Start] for space). Transparent at the top, glass on `::before` once scrolled (48px, like
-   SiteHeader). The glass is the default: the pill sheds it only once hydrated and once the
-   background has measured its quiet zones, whose copy zones include the pill's band, so its text
-   never sits on a full-alpha node (§3.3 "transparent pill" row).
-2. **h1** at display size on two lines; the LCP element.
-3. **Search** ~760px, inline picker, `/` hint, B9 glow. The typewriter alternates with the board
-   loop (§2.7).
-4. **Chips** sit in one centred row from `--bp-lg` (3–5), never wrapped; a row that does not fit
-   scrolls sideways, faded at both ends, rather than cut a chip in half (#287).
-5. **Product theatre** — tilted (`--lp-stage-tilt`), all five lanes; ~30% above the fold; bottom
-   masked into the page. `role="img"`, `inert` inside. The loop shows Chain Reaction as the product
-   does it (#210): approving "Case study" pays the team and moves **the same task** to its next
-   stage, funded from the wallet — never "the next card". The header line mirrors the app's "{n}
-   tickets need {total} to start" in landing words. Pauses below 50% visibility and when the tab is
-   hidden; a board turn it misses is owed and plays once at least half of it is visible (#287), so a
-   visitor who scrolls to it still sees the loop. "Try it yourself" → `/?demo=board#demo` once L3
-   renders `#demo`; the **Pause the example** toggle sits at the theatre's leading edge (§2.2 note
-   5).
+Measured fold positions at 1280 × 800: h1 144–290, subline 314–380, field 429–489 with the calls to
+action beside it, Try 501–529, window from 569.
+
+1. **Bar** — full width (4rem), its content on `--lp-maxw`: the brand and the nav at the leading
+   edge (Explore → `/explore` now; How it works → `#how-it-works`, Pricing → `#pricing` and Features
+   → `/features` join as they ship, and on `/features` the anchors become `/#…`); theme [*], "Sign
+   in" (ghost) and "Get started" (tier 2 monochrome pill, the bar's one fill) at the trailing edge.
+   Transparent at the top once hydrated, glass on `::before` with one bottom hairline once scrolled
+   (§3.3 "transparent bar" row).
+2. **h1 and subline** — 72px on two lines, one sentence each, hung by the capital's side bearing so
+   its stem shares the text edge with the subline, the field and the board's frame. On desktop its
+   largest word is the LCP element, counted once its reveal ends (§2.8). The subline sets at 19.5px
+   in two balanced lines, 48px above the search. The B7 grid and the resting spotlight keep to the
+   top-right corner the headline leaves; no grid line crosses the words.
+3. **Search** — exactly as wide as "Hire a ready-made team." (739px; a `fit-content` column), 60px
+   tall, inline picker, `/` hint, tier 3 Search. The typewriter alternates with the board loop
+   (§2.7). The Try line (five terms) sits under it. The suggestions panel opens beneath at the
+   field's width, overlays the window (the loop holds), and ends above the viewport's foot,
+   scrolling with "Search Explore for …" pinned.
+4. **CTAs** — beside the field, 32px after it and centred on its height (`--lp-field-h`): "Hire a
+   team" (tier 4) then "Offer your skills" (link). The trailing edge belongs to the bar's Get
+   started alone. Focus order is unchanged: search → Try links → CTAs. Below 1280 they sit under the
+   Try line.
+5. **Product theatre** — a straight-on window (#288: no tilt, no glow, no ring) on the container,
+   outdented by its 8px padding so the board's frame lands on the text edge; 40px under the Try
+   line, all five lanes, its first card row above the 800px fold while the lanes' empty lower part
+   crops, as Linear's window does. `role="img"`, `inert` inside. The loop shows Chain Reaction as
+   the product does it (#210): approving "Case study" pays the team and moves **the same task** to
+   its next stage, funded from the wallet — never "the next card". The header line mirrors the app's
+   "{n} tickets need {total} to start" in landing words. Pauses below 50% visibility and when the
+   tab is hidden; a board turn it misses is owed and plays once at least half of it is visible
+   (#287). "Try it yourself" → `/?demo=board#demo` once L3 renders `#demo`; the **Pause the
+   example** toggle sits under the window's leading edge (§2.2 note 5).
 6. **Why** — one shared three-column grid; the H2 subtitle is the only place "team-as-a-service" may
    appear (#283).
 7. **How it works** — one six-step row on a hairline spine, `placehold.co/120x80` art; reveals once
@@ -1244,16 +1262,14 @@ What changes from 375:
 20. **The calculator panel** is the one raised object in the pricing band; the results column is
     right-aligned `tabular-nums`.
 21. **FAQ** — h2 in a narrow left column, the `<details>` list right; answers at `--lp-measure`.
-22. **Final CTA** — the B7 spotlight over the grid reacts to the pointer (`~1~`); the B9 glow stays
-    static until focus.
+22. **Final CTA** — the B7 spotlight over the grid follows a fine pointer (`~1~`), the only motion
+    (§2.7); the search keeps its one static contour (#288 retired the B9 glow).
 
 **1280 variants and the demo tabs**
 
 ```text
-+- header pill · signed-in visitor at / (shown the page, never redirected) ------------------+
-|       +----------------------------------------------------------------------------+       |
-|       | (P) Projective   How it works  Explore  Pricing  Features [*] [ Open app ] |       |
-|       +----------------------------------------------------------------------------+       |
++- header bar · signed-in visitor at / (shown the page, never redirected) -------------------+
+|   (P) Projective   How it works  Explore  Pricing  Features          [*]   [[ Open app ]]  |
 +--------------------------------------------------------------------------------------------+
 ```
 
@@ -1326,7 +1342,7 @@ What changes from 375:
 +--------------------------------------------------------------------------------------------+
 ```
 
-- **Signed-in pill** — "Open app" (tonal; the pill then has no fill) replaces "Sign in" and "Get
+- **Signed-in bar** — "Open app" (tier 2 structural, the bar's one fill) replaces "Sign in" and "Get
   started". `/home` is untouched.
 - **Suggestions** — absolutely positioned under the bar at the same width; `>` marks the
   `aria-activedescendant` row; thumbnails from payload or suggest URLs, falling back to
@@ -1350,37 +1366,32 @@ What changes from 375:
 
 ```text
 +- / · 1600 x 900 · guest · dark ------------------------------------------------------------------+
-| : . : . grid · grain · spotlight · constellation run full-bleed, past the container  ~1~ . : .   |
-|        +--------------------------------------------------------------------------------+        |
-|        | (P) Projective  How it works  Explore  Pricing  Features   [*] Sign in [Start] |        |
-|        +--------------------------------------------------------------------------------+        |
+|         (P) Projective   Explore                              [*]   Sign in   (( Get started ))  |
+|                                                                .  :  .  :  .  :  .  :  .  :  .   |
+|         Hire a ready-made team.                                 .  :  .  :  .  :  .  :  .  :     |
+|         Pay one stage at a time.                                  .  :  .  :  .  :  .  :         |
+|                                         grid corner and grain run full-bleed  .  :  .  :         |
+|         Search for a team that's already formed. Work starts                                     |
+|         only once it's paid for. They're paid when you approve.                                  |
 |                                                                                                  |
-|                              READY-MADE TEAMS · PAYMENT PROTECTION                               |
+|         +------------------------------------------------+                                       |
+|         | All v | Try "motion design"   [/] [[ Search ]] |  [ Hire a team ]  Offer your skills ->|
+|         +------------------------------------------------+                                       |
+|         Try: UX · Design systems · Figma · Prototyping · Branding                                |
 |                                                                                                  |
-|                                     Hire a ready-made team.                                      |
-|                                     Pay one stage at a time.                                     |
-|                                                                                                  |
-|                  Search for a team that's already formed. Work starts only once                  |
-|                          it's paid for. They're paid when you approve.                           |
-|                                                                                                  |
-|                     +------------------------------------------------------+                     |
-|                     | All v | Try "motion design"        [/]  [[ Search ]] |  ~2~                |
-|                     +------------------------------------------------------+                     |
-|                Try  ( brand identity ) ( landing page ) ( design system )                        |
-|                                                                                                  |
-|                             [ Hire a team ]     Offer your skills ->                             |
-|                                                                                                  |
-|            .-------------------------------------------------------------------------.  ~2~      |
-|           /  WORK BOARD · Website refresh                   1 task needs £400 to start \         |
-|          /    New            Ready          In Progress    Review         Completed     \        |
-|         /     .-----------.  .-----------.  .-----------.  .-----------.  .-----------. \        |
-|        /      |Launch     |  |Logo v2    |  |Homepage   |  |Case study |  |Brand      |  \       |
-|       /       |emails     |  |£400       |  |design     |  |£250       |  |colours    |   \      |
+|        .--------------------------------------------------------------------------------.  ~2~   |
+|        | Website refresh · Work board             1 task needs £400 to start [Fund all] |        |
+|        | New       1   Ready     1   In Progress 1   Review    1   Completed  1         |        |
+|        | .---------.   .---------.   .-----------.   .---------.   .----------.         |        |
+|        | |Launch   |   |Logo v2  |   |Homepage   |   |Case     |   |Brand     |         |        |
+|        | |emails   |   |Design   |   |design     |   |study    |   |colours   |         |        |
+|        | |DRAFT    |   |NEEDS    |   |£2,000     |   |£250     |   |TEAM PAID |         |        |
+|        | '---------'   |FUNDING  |   '-----------'   |[Approve |   |£300      |         |        |
+|        |               |£400     |                   | and pay]|   '----------'         |        |
+|        |               '---------'                   '---------'                        |        |
+|        '--------------------------------------------------------------------------------'        |
+|         [ || Pause the example ]                          (Try it yourself -> after L3)          |
 |========================================== fold @ 900px ==========================================|
-|      /        |Draft      |  |Needs      |  |£2,000     |  |[ Approve ]|  |Team paid  |    \     |
-|     /         '-----------'  '-----------'  '-----------'  '-----------'  '-----------'     \    |
-|    :          ~2~ same loop as 1280 · theatre capped at --lp-maxw-wide (90rem)               :   |
-|            [ Pause the example ]                                     Try it yourself ->          |
 |                                                                                                  |
 |         WHY IT'S DIFFERENT · HOW IT WORKS · SEE IT WORK (16/9 stage at --lp-maxw)                |
 |         as at 1280; text columns keep their 1280 measures                                        |
@@ -1414,14 +1425,13 @@ What changes from 375:
 
 What changes from 1280:
 
-- **Only the frame grows.** Content caps at `--lp-maxw`; the hero text column, the search
-  (~760–840px), the FAQ answers and the band text keep their 1280 maximums.
-- **Full-bleed layers** — the background (grid, grain, spotlight, constellation) and the solid band
-  tones. The WebGL canvas caps `devicePixelRatio` at 1.5, so a wide screen costs pixels, not
-  sharpness.
-- **The board mock** grows to `--lp-maxw-wide`, wider than the container, so the theatre reads as
-  the largest object; more of it sits above the 900px fold. Still one `~2~`, with the same **Pause
-  the example** toggle.
+- **Only the frame grows.** Content caps at `--lp-maxw`: the h1 stays at 72px, the field at its
+  measure (742px) with the calls to action beside it, and the FAQ answers and the band text keep
+  their 1280 maximums. Measured: h1 at y 159, field 446–506, window from 586, Pause at 858.
+- **Full-bleed layers** — the background (the grid's corner, grain, the resting spotlight) and the
+  solid band tones; the grid's corner grows with the hero's width.
+- **The board window** stays on the container (1232px with its outdent), so the whole board but its
+  foot, and **Pause the example**, sit above the 900px fold. Still one `~2~`.
 - **Rails** let their scroller bleed past the container's right edge (`.:`); ~4.5 cards; <| |> stay
   aligned to the container.
 
@@ -1623,13 +1633,13 @@ What changes from 1280:
    at `/#how-it-works`, `/#pricing` and `/explore`.
 2. **The page's one h1** with SSR description text. JSON-LD: WebPage plus an ItemList of the
    features.
-3. **Chapter nav** — anchor chips, sticky under the pill from `--bp-md`, one sideways row below it.
+3. **Chapter nav** — anchor chips, sticky under the bar from `--bp-md`, one sideways row below it.
    `?section=<slug>` scrolls to a chapter and focuses its h2. Real links, so they work with no JS.
 4. **Bento at 1280** — three columns, each chapter's lead tile spans two. Find & hire: V8 2×2 with
    V11 and V13 stacked. Run the work: V1 (2) + V3; then V4 · V9 · V6. Each tile: a poster
    (`placehold.co/800x500?text=<Feature>` until real captures), a title, one line from §4.12, "Try
-   it" (tonal) and "Learn more" (→ `/help` until P2's article exists). At 375 only each chapter's
-   first tile shows its poster.
+   it" (tier 4 outlined) and "Learn more" (→ `/help` until P2's article exists). At 375 only each
+   chapter's first tile shows its poster.
 5. **Money** (voice E) — V2 (2) + V12; V5 takes the full row because **V10 is held** (#281: rates
    are seed-only and "locked at funding" is false). Trust: V16 + V7; V7 never says "virus-checked".
 6. **Coming soon** — V14, V15 and the tax pot: static, muted, a "Coming soon" lifecycle label (a
@@ -1643,51 +1653,261 @@ What changes from 1280:
 **What changes at 768 and 1600** (no separate frames):
 
 - **768** — the bento drops to two columns; each chapter's lead tile takes the full row and the rest
-  pair up beneath it; the chapter nav turns sticky under the pill (from `--bp-md`); every tile keeps
+  pair up beneath it; the chapter nav turns sticky under the bar (from `--bp-md`); every tile keeps
   its poster; the DemoHost dialog is a centred panel at the 4/3 demo ratio.
 - **1600** — as at 1280: content capped at `--lp-maxw`, tile measures unchanged; the background runs
   full-bleed past the container, exactly as on `/` (§2.4).
 
 ### 2.7 Animation budget (at most two moving things in any viewport)
 
-| Viewport state                                         | `~1~`                                                                              | `~2~`                                                                   | Held still                                                                  |
-| :----------------------------------------------------- | :--------------------------------------------------------------------------------- | :---------------------------------------------------------------------- | :-------------------------------------------------------------------------- |
-| Hero at rest, ≥ `--bp-md`                              | Background: B1 WebGL constellation, or the B7 spotlight where WebGL is unavailable | The hero timeline: typewriter and board loop take turns, never together | B9 glow (static border)                                                     |
-| Hero, search focused                                   | Background                                                                         | B9 glow (≤ 3 turns)                                                     | Typewriter gone while typing; board loop paused                             |
-| Hero, suggestions open                                 | Background                                                                         | None                                                                    | Board loop paused under the panel                                           |
-| Hero, paused by the visitor (≥ `--bp-md`)              | Background only                                                                    | None                                                                    | Typewriter shows the static placeholder; board loop holds its current frame |
-| Hero at rest, < `--bp-md`                              | B1, capable devices only                                                           | Typewriter                                                              | Board poster (static by design)                                             |
-| How it works entering                                  | One-shot step reveal (`--lp-dur-base`, 220ms)                                      | None                                                                    | WebGL paused (hero offscreen); board loop paused (< 50% visible)            |
-| Demo stage                                             | The active demo, while an interaction plays                                        | "Team paid" burst, at most once per interaction                         | Background (static below the hero)                                          |
-| Ways to work, rails, protection, numbers, pricing, FAQ | None                                                                               | None                                                                    | No autoplay, no count-up; the calculator updates instantly                  |
-| Final CTA                                              | B7 spotlight (pointer only, from `--bp-md`)                                        | B9 glow on focus                                                        | Constellation (static SVG here)                                             |
-| `/features`, browsing                                  | None                                                                               | None                                                                    | Posters and chapter nav (static)                                            |
-| `/features`, dialog open                               | The open demo                                                                      | None                                                                    | The page behind (paused)                                                    |
-| Reduced motion (either channel)                        | None                                                                               | None                                                                    | Everything: static SVG, poster board, frame-stepped demos                   |
+| Viewport state                                         | `~1~`                                                                            | `~2~`                                                                   | Held still                                                                            |
+| :----------------------------------------------------- | :------------------------------------------------------------------------------- | :---------------------------------------------------------------------- | :------------------------------------------------------------------------------------ |
+| Hero, first paint (about 0.6s, once)                   | The headline's blur-fade (CSS, §3.6)                                             | The typewriter, if its first turn begins                                | Everything else is final at first paint                                               |
+| Hero at rest, ≥ `--bp-md`                              | Background: the B7 spotlight, following a fine pointer only (B1 retired by #288) | The hero timeline: typewriter and board loop take turns, never together | The search field (a static contour; B9 retired by #288)                               |
+| Hero, search focused                                   | Background                                                                       | None (the field's contour changes colour, never position)               | Typewriter gone while typing; board loop paused                                       |
+| Hero, suggestions open                                 | Background                                                                       | None                                                                    | Board loop paused under the panel                                                     |
+| Hero, paused by the visitor (≥ `--bp-md`)              | Background only                                                                  | None                                                                    | Typewriter shows the static placeholder; board loop holds its current frame           |
+| Hero at rest, < `--bp-md`                              | None (no fine pointer: the background is still)                                  | Typewriter                                                              | Board poster (static by design)                                                       |
+| How it works entering                                  | One-shot step reveal (`--lp-dur-base`, 220ms)                                    | None                                                                    | Spotlight paused (hero offscreen); board loop paused (< 50% visible)                  |
+| Demo stage                                             | The active demo, while an interaction plays                                      | "Team paid" burst, at most once per interaction                         | Background (static below the hero)                                                    |
+| Ways to work, rails, protection, numbers, pricing, FAQ | None                                                                             | None                                                                    | No autoplay, no count-up; the calculator updates instantly                            |
+| Final CTA                                              | B7 spotlight (pointer only, from `--bp-md`)                                      | None                                                                    | Grid and grain (static)                                                               |
+| `/features`, browsing                                  | None                                                                             | None                                                                    | Posters and chapter nav (static)                                                      |
+| `/features`, dialog open                               | The open demo                                                                    | None                                                                    | The page behind (paused)                                                              |
+| Reduced motion (either channel)                        | None                                                                             | None                                                                    | Everything: the headline paints final, static grid, poster board, frame-stepped demos |
 
-WCAG 2.2.2: the B9 ring runs at most three turns and only on hover/focus; B1's idle drift settles
-within 5 seconds and resumes only on pointer movement; the hero timeline stops after one cycle per
-example and on any interaction with the hero. That timeline (up to six typewriter examples taking
-turns with a board loop of `--lp-dur-demo` steps and `--lp-dur-demo-hold` pauses) runs well past 5
-seconds beside other content, so from `--bp-md` a visible **Pause the example** toggle
+WCAG 2.2.2: the headline's reveal runs once, for about 0.6 seconds, and never under either
+reduced-motion channel; the spotlight moves only with the pointer; the hero timeline stops after one
+cycle per example and on any interaction with the hero. That timeline (up to six typewriter examples
+taking turns with a board loop of `--lp-dur-demo` steps and `--lp-dur-demo-hold` pauses) runs well
+past 5 seconds beside other content, so from `--bp-md` a visible **Pause the example** toggle
 (`aria-pressed`, outside the inert theatre, drawn in the 768 / 1280 / 1600 frames) stops both the
 typewriter and the board loop until pressed again. Below `--bp-md` the theatre is a static poster
 and the typewriter is the only hero motion; its whole run is capped at 5 seconds, after which the
 static placeholder shows, so no control is needed there.
 
+### 2.8 Hero overhaul (#288)
+
+#288 (D) asked for competing hero variants, screenshotted and judged against the owner's brief and
+references, one kept and the comparison recorded here. **The Precision hero won and is the hero**
+(finalized 2026-10-19). The frames in §2.1–§2.4 are its frames.
+
+**The comparison.** Three compositions were built on one shared base (below) as server-chosen
+variants and shot at 320, 375, 768, 1024, 1280, 1366, 1440 and 1600 in both modes, with the
+suggestions open, in the dyslexic face, at high contrast, under both reduced-motion channels, under
+WCAG 1.4.12 text spacing, a German-length headline and 200% zoom. Three judges scored them 1–10
+against the brief, the seven references and the overhaul rubric (anti-slop, search primacy,
+hierarchy, product truth, fold composition, mode parity, robustness, distinctiveness).
+
+| Variant                                      | Thesis                                                                                                                                                                                   | Judge 1 (brief) | Judge 2 (conversion) | Judge 3 (robustness) | Tally           |
+| :------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------- | :------------------- | :------------------- | :-------------- |
+| Monumental — "the words are the picture"     | Patreon scale: a four-phrase stack, 44 → 110px at −0.04em and 0.96 leading; the search beneath it, the subline and calls to action beside the short last lines; the board below the fold | 6.5             | 5                    | 4                    | 15.5 · 0 wins   |
+| Editorial — "a calm first page"              | A 32 → 52px serif at 400 under a kicker, column guides behind, a 36rem search, the board peeking on a solid band                                                                         | 4.5             | 7                    | **8**                | 19.5 · 1 win    |
+| **Precision — "the product is the picture"** | A 40 → 72px sans at 500, the search under the subline, the real kanban straight-on in a window rising into the first viewport                                                            | **8**           | **8**                | 6                    | **22 · 2 wins** |
+
+**Why Precision.** It is the only variant whose first viewport shows what the platform is: at 1280,
+1366, 1440 and 1600 the real board, with its lifecycle statuses and "1 task needs £400 to start",
+arrives with the promise — the payment-protection proof beside the headline, as Linear and Attio
+stage their product. It puts the search first most consistently (the widest control, the region's
+one fill, nearest the headline, the typeahead whole above the fold at 1280 × 800), its scan path is
+a clean F with DOM, tab and visual order in agreement (as judged; from 1280 the finalized row reads
+as two groups, "Focus order from 1280" below), and its light mode is designed rather than inverted.
+Its weaknesses were fixable: sentences that shared a line at 320 and in the dyslexic face, calls to
+action floating 220px from the field, a hero compressed under the bar, a duplicated field height, a
+cramped 375 poster, and no production-build measurement.
+
+**Why not the others.** _Monumental_ is the most memorable and the truest answer to "extremely
+large", but at 1024 and up its first viewport holds no product, the search sits 74% down a 1280 ×
+800 screen (the typeahead clamps to one or two results), its cqi-only sizing fails text spacing, a
+longer translation and zoom, and its calls to action sit above-right of the search, so focus order
+and visual order disagree. _Editorial_ passed every robustness test, but its serif display was set
+at 400 against #288 / §A.4's 500 (the shared editorial register now follows #288: §3.4 sets it at
+`--fw-medium`), the serif stack renders a different face on each platform, the 52-over-20 scale
+reads as a docs page, the right half of the hero is empty, and its kicker repeats "ready-made team".
+Its robustness findings were shared-base defects, fixed here for the winner.
+
+**What finalizing changed** (the judges' must-fix items and the grafts taken):
+
+- **Sentences never share a line.** Each `.lp-hero__line` is a block at every width and each
+  `.lp-hero__phrase` an inline box, so a sentence that does not fit breaks between its phrases first
+  and a phrase wider than the column wraps inside itself (`overflow-wrap: anywhere`), replacing the
+  hard `nowrap` that clipped under 1.4.12 text spacing and translation. 320px reads "Hire a /
+  ready-made / team. / Pay one stage / at a time."; the dyslexic face at 375 "Hire a / ready-made
+  team. / Pay one stage / at a time." (from Monumental).
+- **One measure.** From `--bp-md` `.lp-hero__top` is a grid whose first column is `fit-content` to
+  the h1, so the field ends where "team." ends (549 / 644 / 739 / 742px at 768 / 1024 / 1280 /
+  1600); the subline and the calls to action span the flexible track and never widen it. From 1280
+  the calls to action sit beside the field, 32px after it and centred on its height; below 1280
+  under the Try line (Editorial's grouping), so the trailing edge belongs to the bar's Get started
+  alone. From 1280 the measure stops at two thirds of the row, so the dyslexic face still leaves
+  room.
+- **Focus order from 1280 (accepted, review 2026-10-19).** The row is two groups side by side: the
+  search with its Try line under it (one `.lp-hero__find` element), then the calls to action beside
+  the field. DOM and tab order finish the search group first — Search, the five Try links, then
+  "Hire a team" and "Offer your skills" up and to the right. Moving the calls to action between the
+  field and the Try line in the DOM would match a row-by-row reading at 1280 but break the order
+  below it, where the Try line sits directly under the field and the calls to action under the Try
+  line: one DOM order cannot match both, and the Try line belongs to the search it feeds. This
+  differs from Monumental's defect, whose calls to action sat above the search they followed in the
+  DOM.
+- **Air under the bar.** From `--bp-lg` the hero's top follows the viewport's height (80px under the
+  bar on an 800px screen, was 56; 95px at 900; never under 56px), the subline sits 48px above the
+  search, and the window crops at the fold on an 800px screen — only the lanes' empty lower part.
+- **Calm canvas.** The base grid keeps to the hero's top-right corner (it fades out before the
+  headline's longer line and before the window), the spotlight rests there (`--lp-spot-x: 88%`), and
+  the lit grid is drawn only while the spotlight follows a pointer — the one flourish across the
+  whole hero (from Monumental).
+- **One field height.** `--lp-field-h` (56px, 60px from `--bp-md`) sizes `.lp-search` and the calls
+  to action that centre beside it; no variant-local `--lp-*` token remains.
+- **Short screens.** The suggestions panel ends above the visual viewport's foot and scrolls, with
+  the "Search Explore for …" row pinned at its foot (1366 × 657: 176px of panel, the escape row in
+  view). The panel's `scroll-padding-block-end` is that row's height, so an option the arrow keys
+  bring into view stops above the pinned row rather than under it (WCAG 2.4.11; review 2026-10-19).
+  Its edge is `--lp-shadow-panel`, a `--lp-hair-strong` ring, so the white panel parts from the
+  white window it opens over.
+- **Dyslexic face.** The overlay's own display size (36 / 49 / 68 / 68px), no tracking, 1.2 leading,
+  no H hang, and the subline at `--measure`, balanced, so it never rags.
+- **The 375 poster.** The board scrolled to its Ready lane at about 1.7 lanes, so the "Needs
+  funding" tag and the price hold one line, and the money line takes its own line under the board's
+  name with Fund all after it, clear of the trailing fade.
+- **The wordmark.** Its clipped span gets its own 1.35 leading, so the "j" of "Projective" keeps its
+  descender at every width and zoom.
+- **No eyebrow.** The h1 already says "ready-made team"; the eyebrow is not rendered (§4.1 marks it
+  optional), so a screen reader no longer hears it twice.
+- **Mobile rhythm.** 24px under the bar at 375 (was 32) and 24px between the subline and the search:
+  the field sits at y 370 on a 375-wide phone.
+- **A shorter reveal.** Measured on the production build, the headline's largest word is the desktop
+  LCP element and counts once its blur-fade ends; at 700ms per word and a 45ms stagger LCP landed
+  0.97–1.05s after FCP. At 440ms and 20ms (the last word lands at 0.62s) it lands 0.52–0.72s after,
+  inside the 800ms gate.
+- **Scaffolding deleted.** `core/hero-variant.ts` (+ test), `styles/hero-variants/`,
+  `data-hero-variant` and the development-only `?hero=` switch are gone; the Precision rules live in
+  `lp-theme.css` (tokens), `lp-shell.css` (the copy's type) and `lp-hero.css` (the composition).
+
+**The final hero.**
+
+| Part              | Register / tier                                   | Spec                                                                                                                                                                                                                                                                               |
+| :---------------- | :------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| h1                | Display                                           | `--lp-fs-hero` `clamp(2.5rem, 1.6rem + 3.6vw, 4.5rem)`: 40 / 53 / 72 / 72px · `--lp-font-display` at `--fw-medium` · −0.035em · leading 1.02 · hung −0.06em · two sentences, one per line, broken between phrases first · dyslexic 36 / 49 / 68 / 68px at 1.2, tracking 0, no hang |
+| Subline           | Body                                              | `--lp-fs-body-lg` 17 / 18 / 19.5 / 20px at 1.7 · `--lp-text-2` · at most 56ch, balanced · 16px under the h1 (24 from `--bp-md`), 24 / 32 / 48px above the search (375 / 768 / 1024 up)                                                                                             |
+| Search field      | The hero's one full contour                       | `--lp-field-h` 56 / 60px · 12px radius · 1px `--lp-field-edge` · full width below `--bp-md`, the h1's measure from it                                                                                                                                                              |
+| Search submit     | Tier 3 brand (`lp-btn--brand`)                    | `#007680` on `#EBFDFF`, inset 4px, 8px corners · icon-only below `--bp-md`, "Search" from it · **the hero's one fill**                                                                                                                                                             |
+| Try line          | Meta                                              | 14px underlined links between middots · three terms below `--bp-md`, five from it · 12px under the field                                                                                                                                                                           |
+| Hire a team       | Tier 4 outlined                                   | 44px, `--lp-hair-strong` contour · beside the field from 1280, centred on `--lp-field-h`; under the Try line below                                                                                                                                                                 |
+| Offer your skills | Text link                                         | Underlined, drawn chevron · per-viewer label and target (§4.1)                                                                                                                                                                                                                     |
+| Window            | Static picture (no contour)                       | `--lp-window` · 8px padding · 12 / 16px radius, the frame's 4 / 8px concentric · `--lp-shadow-window` · outdented 8px so the board's frame lands on the text edge · 48px under the Try line (40 from `--bp-lg`) · frame fixed at `--lp-theatre-h`                                  |
+| Pause the example | Tier 5 ghost, meta size                           | Under the window's leading edge; "Try it yourself →" joins it at the trailing edge with L3                                                                                                                                                                                         |
+| Header            | Tier 2 structural (Get started), tier 5 (Sign in) | The bar's one fill; transparent at the top once hydrated, glass with one hairline once scrolled                                                                                                                                                                                    |
+| Background        | —                                                 | Solid `--lp-bg` · B7 grid ruled from the bar's bottom edge and kept to the top-right corner · the spotlight resting there · the lit grid only while a pointer leads it · B10 grain                                                                                                 |
+| Motion            | —                                                 | The h1's blur-fade (440ms a word, 20ms stagger, from first paint, none under either reduced-motion channel) · the typewriter and the board loop on one timeline · press `scale()`; nothing else moves                                                                              |
+
+**Measured fold positions** (dev server, the round-3 frames): 1280 × 800 — h1 144–290, subline
+314–380, field 429–489 with the calls to action beside it, Try 501–529, window from 569 (its bar,
+lane headers and first card row above the fold); 1600 × 900 — h1 159, field 446, window 586, Pause
+858; 1024 × 768 — field 402, calls to action 527, window 611; 768 × 1024 — h1 102, field 328, calls
+to action 452, window 544, Pause 816; 375 × 812 — h1 80 (four lines), field 370, calls to action
+490, poster 582 (the Ready card's tag above the fold); 1366 × 657 — field 409–469, the open panel
+477–653.
+
+**Production build** (`deno task build`, the built server answering in-process; Chrome headless; two
+runs each):
+
+| Viewport          | FCP       | LCP element                     | LCP − FCP | CLS |
+| :---------------- | :-------- | :------------------------------ | :-------- | :-- |
+| 1280 × 800, light | 236–292ms | the h1's "ready-made" (`#hero`) | 616–720ms | 0   |
+| 1280 × 800, dark  | 596–668ms | the h1's "ready-made"           | 552ms     | 0   |
+| 1366 × 768, light | 244–264ms | the h1's "ready-made"           | 652–668ms | 0   |
+| 375 × 812, light  | 248–252ms | the subline (`p.lp-lead`)       | 0         | 0   |
+| 375 × 812, dark   | 232–272ms | the subline                     | 0         | 0   |
+
+With the same reveal tokens 1440 × 900 and 1600 × 900 measured 632–720ms. The budget script on the
+same build: landing-owned initial JS 19.8 kB of 60 (25.2 kB at L2, before the constellation's code
+left), the hero island's own weight 19.3 of 20 kB, the theatre's 3.9 of 12, every landing lazy chunk
+under 35 kB; page totals 140.3 kB for a guest and 144.5 kB signed in. The app baseline reads 111.2
+kB against its 109.8 kB pin: over since main was merged into the track (`5494eafb` grew the client
+entry and `_app` islands); no landing file is in that graph (§9 row 32).
+
+No JavaScript: the same composition at first paint (the h1, the real `GET /explore` form, the calls
+to action beside the field at 1280, the board window, no "/" hint), no horizontal scroll at 1280 or
+375. The header's swap of "Get started" for the menu button below `--bp-md` used to shift
+`.lp-header__actions` by 0.0022 at 375 as the island hydrated (Chrome counts it with no input; only
+touch emulation marked it as following input). The server now renders the menu button and
+`@media (scripting: enabled)` shows it from the first paint, so the 2026-10-19 review measured no
+shift above 0.0001 at 375, with or without touch emulation (the session sum, 0.00001–0.00002, is the
+typewriter caret); without scripting the bar keeps "Get started" and no button. The LCP element is
+the h1's largest word on desktop and the subline on a phone (§2.1 and §2.3, note 2).
+
+**Flag for the owner — the amber family in the first viewport.** The overhaul's acceptance list said
+"no amber anywhere in the first viewport"; judge 2 measured the board's **Needs funding** tag (the
+product's `--warning` role mixed 70% toward `--on-surface`, about `rgb(149 99 9)` in light) inside
+the first viewport from 768 to 1600 (y ≈ 734 at 1280 × 800). It is a lifecycle status (§B.11.3)
+drawn the product's way by #288 (G), not a tier-1 amber control, and no `--lp-amber` renders on the
+page. The build keeps it and lists it in §9 row 31 rather than deciding silently; keeping it below
+the fold would push the window under the fold with it.
+
+**Shared base (delivered 2026-10-18).** Every variant built on it, so the judges compared only what
+differed:
+
+- **Retired** (#288 supersedes #284 (3)): the B1 constellation, WebGL2 and SVG alike
+  (`core/constellation*.ts`, `core/shaders/`), its quiet-zone measurement, the B9 glow ring, its
+  halo and `@property --lp-ring-angle`, the light canvas's alpha washes (`--lp-canvas-paint`), the
+  theatre's tilt and teal glow, the mono eyebrow, the chip row and the tonal button.
+- **Background.** A solid `--lp-bg`; the B7 grid in integer cells (48px, 64px from `--bp-md`) whose
+  origin is the content container's left edge (`--lp-grid-origin`, resolved in the hero's own
+  container units); a neutral spotlight (white at 3.5% in dark, none in light, where it shows only
+  as the lit grid); static grain. The gate is `static | spotlight` (§3.6).
+- **Search.** One honest contour, the hero's only one: a 12px radius, a solid surface and a 1px
+  `--lp-field-edge` (≥ 3:1 against the canvas and the field); rest, hover and focus move only the
+  border colour and the shadow, and the open panel keeps the focus state. The submit is tier 3
+  (`lp-btn--brand`: the product's `#007680` on `#EBFDFF`), inset 4px so its 8px corners run
+  concentric. A long typewriter example fades at the field's end. The panel's group labels take the
+  section-header register, its metadata the meta register.
+- **Registers** (§3.4, §A.4). Display at `--fw-medium`, never bold; the section header in the body
+  sans (12px, 600, uppercase, `--tracking-wide`, `--lp-text-2`); the lead at 1.7 leading on 56ch;
+  meta in the body face with `tabular-nums`; button labels at `--fw-medium`, so no control outweighs
+  the headline.
+- **Buttons** (§B.8.1, #288 (E)). Tier 1 `lp-btn--accent` (amber, only where money moves: L3's Pay
+  and Approve and pay), tier 2 `--structural` (Get started, Open app, the sheet's Get started), tier
+  3 `--brand` (the hero Search), tier 4 `--outlined` (Hire a team, the sheet's Sign in), tier 5
+  `--ghost` (Sign in, Pause the example). The hero holds one fill, the header one; no tier-1 amber
+  control renders on the page while L3 is unbuilt.
+- **Headline reveal.** The h1 is server-rendered word by word (`.lp-word[data-lp-w]` inside
+  `.lp-hero__phrase` inside `.lp-hero__line`) with real spaces between the spans, so its text stays
+  the one sentence pair, with no `aria-label` and nothing hidden. A CSS blur-fade (12px blur, 16px
+  rise) starts at first paint; under either reduced-motion channel no animation is declared, so the
+  words paint final.
+- **"Try:" line.** Underlined text links on one wrapping meta line, separated by middots; three
+  terms below `--bp-md`. It supersedes #287's chip-row geometry; the markup and the links are
+  unchanged.
+- **Layout.** `.lp-hero__top` wraps the copy, the search group and the calls to action; the theatre
+  stays the section's last child. Left-aligned at every width, with asymmetric gaps.
+- **Header.** A full-width bar (3.5rem, 4rem from `--bp-md`) with its content on the hero's
+  container: the brand and the nav at the leading edge, the actions at the trailing edge;
+  transparent at the top once hydrated, glass with one bottom hairline once scrolled.
+- **Theatre.** A straight-on window (`--lp-window`, `--lp-shadow-window`, no ring) whose board frame
+  is fixed at the loop's tallest frame plus `--space-2` (`--lp-theatre-h`: 236px measured, two cards
+  in a lane); the bar reads "Website refresh · Work board" in the product's type; Pause the example
+  is a ghost at the meta size under the window's leading edge, with a drawn pause or play glyph.
+- **Where the base departs from the overhaul spec.** (a) The gate keeps the Save-Data, memory and
+  core-count gates (and the coarse pointer) for the spotlight too, as the brief's device-throttling
+  rule lists them. (b) The brand fill's boundary is gated at 3:1 in all four states and its label at
+  4.5:1 (gate 12), since the pair is the product's invariant `--primary`: dark HC measures 3.55 and
+  5.13, under the landing's 4.5 / 7 HC floors. (The base's third departure, a wrapping card foot on
+  the poster, is fixed above.)
+
 ---
 
 ## 3. Token sheet (`--lp-*`)
 
-Lives in `features/landing/styles/lp-theme.css` (L1), scoped to `:is(.lp-root, .lp-portal)`. **35
-audited rows (244 measured values across the four mode/contrast states) pass; one row is info-only**
+Lives in `features/landing/styles/lp-theme.css` (L1), scoped to `:is(.lp-root, .lp-portal)`. **34
+audited rows (248 measured values across the four mode/contrast states) pass; one row is info-only**
 — dark, light, dark high-contrast (HC) and light HC, each measured against the worst case of the
-whole effect stack (pale wash, spotlight, lit grid line, glow halo, quiet-zone node and grain
-together; §3.3 states the grain and halo models). L0 counted 34 rows and 236 values; L1 adds the
-transparent header pill. The §3.3 table is generated from the stylesheet by
-`features/landing/core/lp-contrast.ts`, and `core/lp-theme.contrast.test.ts` fails any cell below
-its floor and any published cell that no longer matches the sheet (± 0.01), so the table cannot
-drift.
+effect stack (spotlight, lit grid line and grain together; §3.3 states the grain model). L0 counted
+34 rows and 236 values and L1 added the transparent header pill; #288 removed the wash, halo, node
+and ring rows and added the search field's edge and the brand pair. The §3.3 table is generated from
+the stylesheet by `features/landing/core/lp-contrast.ts`, and `core/lp-theme.contrast.test.ts` fails
+any cell below its floor and any published cell that no longer matches the sheet (± 0.01), so the
+table cannot drift.
 
 ### 3.1 Type families and font loading
 
@@ -1703,8 +1923,10 @@ swap, no CLS, no CSP change. A self-hosted OFL face is an owner decision not tak
 | `--lp-font-body`    | `var(--font-sans)`                                                                                                                         | The product UI's own face, so the board mock matches.                                                                         |
 | `--lp-font-mono`    | `ui-monospace, "SF Mono", "Cascadia Mono", var(--font-mono)`                                                                               | Cascadia Mono before Cascadia Code (no ligatures); always `font-variant-ligatures: none`.                                     |
 
-- Serif weight 400 only (a real master on every listed serif). No serif for figures (Georgia has
-  only old-style numerals): figures use the display sans with `tabular-nums lining-nums`.
+- The serif display is set at `--fw-medium` like every display (#288, §A.4); a listed serif with no
+  500 master renders its 400 by CSS weight matching, never a synthesized bold. No serif for figures
+  (Georgia has only old-style numerals): figures use the display sans with
+  `tabular-nums lining-nums`.
 - Weight fallbacks are acceptable: Android Roboto has no 600 (renders 700); Windows 10 static Segoe
   UI has no 500 (renders 400).
 
@@ -1712,15 +1934,13 @@ swap, no CLS, no CSP change. A self-hosted OFL face is an owner decision not tak
 
 **Canvas and surfaces** (all solid)
 
-| name              | dark          | light                   | purpose                                                               |
-| :---------------- | :------------ | :---------------------- | :-------------------------------------------------------------------- |
-| `--lp-bg`         | `#07090A`     | `#F6F8F8`               | Page canvas                                                           |
-| `--lp-bg-end`     | `#07090A`     | `#FFFFFF`               | Bottom stop of the light canvas's airy fade (dark stays flat)         |
-| `--lp-surface-1`  | `#0D1012`     | `#FFFFFF`               | Raised: search field, cards, stage frame, glass base, typeahead panel |
-| `--lp-surface-2`  | `#13171A`     | `#F2F5F6`               | Inside a raised surface: stage body, kanban column, rail tile         |
-| `--lp-surface-3`  | `#1A1F23`     | `#E9EDEF`               | Hover or selected fill, chips, active tab                             |
-| `--lp-wash-teal`  | `transparent` | `rgb(40 134 144 / .06)` | Light airy radial wash, top-left                                      |
-| `--lp-wash-amber` | `transparent` | `rgb(217 130 22 / .06)` | Light airy radial wash, top-right                                     |
+| name             | dark      | light     | purpose                                                              |
+| :--------------- | :-------- | :-------- | :------------------------------------------------------------------- |
+| `--lp-bg`        | `#07090A` | `#F6F8F8` | Page canvas                                                          |
+| `--lp-surface-1` | `#0D1012` | `#FFFFFF` | Raised: search field, cards, typeahead panel, sheets                 |
+| `--lp-surface-2` | `#13171A` | `#F2F5F6` | Inside a raised surface: stage body, kanban column, rail tile        |
+| `--lp-surface-3` | `#1A1F23` | `#E9EDEF` | Hover or selected fill, active tab                                   |
+| `--lp-window`    | `#13171A` | `#FFFFFF` | The theatre's window: one measurable tone step off the canvas (#288) |
 
 **Text**
 
@@ -1728,7 +1948,7 @@ swap, no CLS, no CSP change. A self-hosted OFL face is an owner decision not tak
 | :------------ | :-------- | :-------- | :---------------------------------------------------------------------- |
 | `--lp-text`   | `#EEF1F2` | `#101417` | Headings and primary text. Allowed on glass.                            |
 | `--lp-text-2` | `#C6CED2` | `#3E484D` | Sublines and paragraphs; dark ≥ 7:1 even in the hero. Allowed on glass. |
-| `--lp-text-3` | `#A1ABAF` | `#475156` | Mono metadata, placeholder, captions. **Never on glass.**               |
+| `--lp-text-3` | `#A1ABAF` | `#475156` | Metadata, placeholder, captions. **Never on glass.**                    |
 
 **Warm editorial voice** (payment protection, numbers, pricing bands)
 
@@ -1746,26 +1966,36 @@ so label contrast only rises.
 
 | name                | dark      | light     | purpose                                                                                                                                                      |
 | :------------------ | :-------- | :-------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--lp-amber`        | `#D98216` | `#D98216` | The **one filled primary per region**: the hero and final-CTA Search submit; "Offer your skills" in For freelancers; "Get started" in the pill               |
+| `--lp-amber`        | `#D98216` | `#D98216` | Tier 1 only, where money moves or checkout begins (#288 (E)): the demos' Pay and Approve and pay. Never in the hero or the header                            |
 | `--lp-amber-hover`  | `#E5953A` | `#E39433` | Hover fill                                                                                                                                                   |
 | `--lp-amber-active` | `#ECA457` | `#EAA453` | Press fill (press itself is `scale()` only)                                                                                                                  |
 | `--lp-on-amber`     | `#0A0C0D` | `#101417` | Label on the amber fill                                                                                                                                      |
 | `--lp-amber-edge`   | `#D98216` | `#A35F0C` | 1px inset contour in **every** state; the light fill is 2.61:1 off the canvas (1.88:1 pressed) and the contour holds ≥ 3.24:1 — #157 flag (b) solved locally |
-| `--lp-amber-ink`    | `#F5AD5E` | `#7D4303` | Amber as text: editorial eyebrow, figure accents                                                                                                             |
+| `--lp-amber-ink`    | `#F5AD5E` | `#7D4303` | Amber as text: figure accents                                                                                                                                |
+
+**Brand** — tier 3: the product's own `--primary` pair (`DESIGN_SYSTEM.md` §A.1.1), byte-identical
+in light, dark and both high-contrast states, so the hero's teal button is the product's (#288 (E)).
+
+| name                | dark      | light     | purpose                                                 |
+| :------------------ | :-------- | :-------- | :------------------------------------------------------ |
+| `--lp-brand`        | `#007680` | `#007680` | The hero Search submit; 5.13:1 with its label           |
+| `--lp-brand-hover`  | `#006A73` | `#006A73` | Hover fill, darker so the label gains contrast (6.05:1) |
+| `--lp-brand-active` | `#005F67` | `#005F67` | Press fill (7.07:1)                                     |
+| `--lp-on-brand`     | `#EBFDFF` | `#EBFDFF` | Label on the brand fill                                 |
 
 **Teal** — brand `#288690`, already the app seed (`apps/web/routes/_app.tsx:17`).
 
 | name                    | dark      | light     | purpose                                                                                                                                |
 | :---------------------- | :-------- | :-------- | :------------------------------------------------------------------------------------------------------------------------------------- |
-| `--lp-teal`             | `#288690` | `#288690` | Glow, constellation, structure. **Never text** (light 4.0:1 on the canvas, 4.3:1 on white).                                            |
-| `--lp-teal-ink`         | `#6CCDD5` | `#0A5A62` | Links, precision eyebrow, live and held labels                                                                                         |
+| `--lp-teal`             | `#288690` | `#288690` | Structure. **Never text** (light 4.0:1 on the canvas, 4.3:1 on white).                                                                 |
+| `--lp-teal-ink`         | `#6CCDD5` | `#0A5A62` | Links, live and held labels                                                                                                            |
 | `--lp-teal-fill`        | `#6CCDD5` | `#1F747D` | Filled control inside the demo stage; dark uses a light fill with dark ink so hover/press raise contrast and stay ≥ 3:1 off the canvas |
 | `--lp-teal-fill-hover`  | `#8ADDE3` | `#1B6870` | Hover fill                                                                                                                             |
 | `--lp-teal-fill-active` | `#9FE5EA` | `#175C63` | Press fill                                                                                                                             |
 | `--lp-on-teal`          | `#031214` | `#FFFFFF` | Label on the teal fill                                                                                                                 |
 
-**Monochrome** — secondary filled buttons ("Open app" never fills; it is tonal). Amber plus mono is
-the legal two-fill pair under #157.
+**Monochrome** — tier 2, structural (#288 (E)): the header's Get started and Open app, and the menu
+sheet's Get started.
 
 | name               | dark      | light     | purpose    |
 | :----------------- | :-------- | :-------- | :--------- |
@@ -1776,13 +2006,14 @@ the legal two-fill pair under #157.
 
 **Lines and focus**
 
-| name                                 | dark                     | light                 | purpose                                                          |
-| :----------------------------------- | :----------------------- | :-------------------- | :--------------------------------------------------------------- |
-| `--lp-hair`                          | `rgb(255 255 255 / .07)` | `rgb(16 20 23 / .08)` | Decorative single-edge separators                                |
-| `--lp-hair-strong`                   | `rgb(255 255 255 / .12)` | `rgb(16 20 23 / .12)` | Card and stage outline (decorative)                              |
-| `--lp-edge`                          | `#7A858A`                | `#646F75`             | Interactive boundary ≥ 3:1: inputs, outline buttons, chips, tabs |
-| `--lp-focus`                         | `#8ADDE3`                | `#0B5D65`             | Unused: no focus ring on the landing (#285 (A))                  |
-| `--lp-focus-w` / `--lp-focus-offset` | `2px` / `2px`            | `2px` / `2px`         | The offset keeps the ring against the canvas, never a fill       |
+| name                                 | dark                     | light                 | purpose                                                                                                   |
+| :----------------------------------- | :----------------------- | :-------------------- | :-------------------------------------------------------------------------------------------------------- |
+| `--lp-hair`                          | `rgb(255 255 255 / .07)` | `rgb(16 20 23 / .08)` | Decorative single-edge separators                                                                         |
+| `--lp-hair-strong`                   | `rgb(255 255 255 / .12)` | `rgb(16 20 23 / .12)` | The outlined button's border, the picker divider, link underlines                                         |
+| `--lp-edge`                          | `#7A858A`                | `#646F75`             | Interactive boundary ≥ 3:1: the field's hover edge, the outlined button's hover, tabs                     |
+| `--lp-field-edge`                    | `#5C666B`                | `#848E93`             | The search field's resting 1px contour, ≥ 3:1 against the canvas and the field (HC: `--lp-edge`'s values) |
+| `--lp-focus`                         | `#8ADDE3`                | `#0B5D65`             | Unused: no focus ring on the landing (#285 (A))                                                           |
+| `--lp-focus-w` / `--lp-focus-offset` | `2px` / `2px`            | `2px` / `2px`         | The offset keeps the ring against the canvas, never a fill                                                |
 
 **Demo-stage status** — always colour + icon + the app's word.
 
@@ -1792,60 +2023,51 @@ the legal two-fill pair under #157.
 | `--lp-ok-ink` / `-fill`               | `#6AD9A7` / `#0F2A21`             | `#126645` / `#E7F4EE`             | Approved: check + "Team paid"        |
 | `--lp-held-ink` / `-fill`             | `#6CCDD5` / `#0E2528`             | `#0A5A62` / `#E5F2F3`             | Money held: shield + "Funded"        |
 
-Status uses rose, green and teal; amber stays the CTA only, which avoids #157 (a)'s accent/warning
+Status uses rose, green and teal; amber stays tier 1 only, which avoids #157 (a)'s accent/warning
 collision.
 
-**Effects** (B7 grid + spotlight, B9 glow ring, B10 grain, B1 constellation, glass header)
+**Effects** (B7 grid + spotlight, B10 grain, glass header; #288 retired B1 and B9)
 
-| name                                      | dark                                  | light                   | purpose                                                                                                             |
-| :---------------------------------------- | :------------------------------------ | :---------------------- | :------------------------------------------------------------------------------------------------------------------ |
-| `--lp-spot`                               | `rgb(108 205 213 / .07)`              | `rgb(40 134 144 / .05)` | B7 spotlight centre                                                                                                 |
-| `--lp-spot-r`                             | `clamp(18rem, 36vw, 36rem)`           | same                    | Spotlight radius                                                                                                    |
-| `--lp-spot-x` / `--lp-spot-y`             | `50%` / `0%`                          | same                    | SSR static position; pointer-written in px only on fine pointers with neither reduced-motion channel on             |
-| `--lp-grid-size`                          | `clamp(2.5rem, 1.6rem + 2.4vw, 4rem)` | same                    | B7 grid cell                                                                                                        |
-| `--lp-grid-line`                          | `rgb(255 255 255 / .04)`              | `rgb(16 20 23 / .05)`   | Base grid line                                                                                                      |
-| `--lp-grid-line-lit`                      | `rgb(255 255 255 / .07)`              | `rgb(16 20 23 / .08)`   | Grid line under the spotlight (the audited value)                                                                   |
-| `--lp-glow-amber`                         | `rgb(217 130 22 / .28)`               | `rgb(217 130 22 / .22)` | B9 halo colour                                                                                                      |
-| `--lp-glow-teal`                          | `rgb(40 134 144 / .36)`               | `rgb(40 134 144 / .24)` | B9 halo colour                                                                                                      |
-| `--lp-halo-blur`                          | `32px`                                | `28px`                  | Blur only, spread 0                                                                                                 |
-| `--lp-ring-w`                             | `1px`                                 | `1px`                   | B9 ring width                                                                                                       |
-| `--lp-glow-stop-a` / `-b`                 | `#F5AD5E` / `#6CCDD5`                 | `#A35F0C` / `#1F747D`   | Conic ring stops; both stops and the OKLab midpoint ≥ 3:1 against field and halo                                    |
-| `--lp-grain-opacity`                      | `.04`                                 | `.035`                  | B10 grain; stays under reduced motion (static)                                                                      |
-| `--lp-grain-size`                         | `160px`                               | same                    | Grain tile                                                                                                          |
-| `--lp-node`                               | `#6CCDD5`                             | `#288690`               | B1 node colour                                                                                                      |
-| `--lp-node-alpha`                         | `.6`                                  | `.5`                    | Nodes outside the copy column                                                                                       |
-| `--lp-node-alpha-quiet`                   | `.08`                                 | `.10`                   | Ceiling for every node and link inside the copy column (+24px)                                                      |
-| `--lp-node-alpha-halo`                    | `0`                                   | `0`                     | Nothing drawn inside the search halo box (field rect + 1.5 × halo blur); nodes on the halo drop text-3 to 4.20:1    |
-| `--lp-bg-lum-max`                         | `0.040` (ceiling)                     | `0.57` (floor)          | Per-pixel luminance clamp for the live background under copy (the wallet aurora's rule, `DESIGN_SYSTEM.md:927-938`) |
-| `--lp-glass-veil` / `-blur` / `-saturate` | `82%` / `16px` / `1.4`                | same                    | Header pill glass on `::before` (text-2 needs 70–71%, teal-ink 74–77%)                                              |
+| name                                      | dark                                                                                    | light                 | purpose                                                                                                                                                 |
+| :---------------------------------------- | :-------------------------------------------------------------------------------------- | :-------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--lp-spot`                               | `rgb(255 255 255 / .035)`                                                               | `transparent`         | B7 spotlight centre, neutral; in light mode the spotlight shows only as the lit grid                                                                    |
+| `--lp-spot-r`                             | `clamp(18rem, 36vw, 36rem)`                                                             | same                  | Spotlight radius                                                                                                                                        |
+| `--lp-spot-x` / `--lp-spot-y`             | `88%` / `0%`                                                                            | same                  | SSR resting position, the hero's top-right corner over the grid (§2.8); pointer-written in px only on fine pointers with neither reduced-motion channel |
+| `--lp-grid-size` / `--lp-grid-size-wide`  | `48px` / `64px`                                                                         | same                  | B7 grid cell, integer px so every line lands on a whole pixel; the wide cell from `--bp-md`                                                             |
+| `--lp-grid-origin`                        | `round(nearest, calc(var(--lp-gutter) + max(0px, (100cqw - var(--lp-maxw)) / 2)), 1px)` | same                  | The grid's origin: the content container's left edge, in `.lp-hero`'s container units                                                                   |
+| `--lp-grid-line`                          | `rgb(255 255 255 / .04)`                                                                | `rgb(16 20 23 / .05)` | Base grid line                                                                                                                                          |
+| `--lp-grid-line-lit`                      | `rgb(255 255 255 / .09)`                                                                | `rgb(16 20 23 / .10)` | Grid line under the spotlight (the audited value); drawn only while the spotlight follows a pointer                                                     |
+| `--lp-grain-opacity`                      | `.04`                                                                                   | `.035`                | B10 grain; stays under reduced motion (static)                                                                                                          |
+| `--lp-grain-size`                         | `160px`                                                                                 | same                  | Grain tile                                                                                                                                              |
+| `--lp-glass-veil` / `-blur` / `-saturate` | `82%` / `16px` / `1.4`                                                                  | same                  | Header bar glass on `::before`, over `--lp-bg` (text-2 needs 70–71%, teal-ink 74–77%)                                                                   |
 
 **High-contrast overrides** (dark HC | light HC). Surfaces are deliberately not widened (as in the
 app engine); HC hairlines are decorative and not audited.
 
-| name                              | dark HC               | light HC       |    | name                         | dark HC                         | light HC                  |
-| :-------------------------------- | :-------------------- | :------------- | :- | :--------------------------- | :------------------------------ | :------------------------ |
-| `--lp-text`                       | `#FFFFFF`             | `#000000`      |    | `--lp-edge`                  | `#97A2A7`                       | `#4A555B`                 |
-| `--lp-text-2`                     | `#D9E0E3`             | `#252D32`      |    | `--lp-focus` / `-w`          | `#B0F1F5` / 3px                 | `#053F45` / 3px           |
-| `--lp-text-3`                     | `#BEC7CB`             | `#30393E`      |    | `--lp-glow-stop-a`           | `#FFBC70`                       | `#6E3E03`                 |
-| `--lp-warm-text`                  | `#FFFFFF`             | `#000000`      |    | `--lp-glow-stop-b`           | `#93E3EA`                       | `#06444A`                 |
-| `--lp-warm-text-2`                | `#E4DCD2`             | `#372E25`      |    | `--lp-refuse-ink` / `-edge`  | `#FFC1BB` / `#E0766C`           | `#781117` / `#9A2A2A`     |
-| `--lp-warm-text-3`                | `#CDC3B6`             | `#433A30`      |    | `--lp-ok-ink`                | `#8FEAC1`                       | `#0A4C33`                 |
-| `--lp-amber-ink`                  | `#FFBC70`             | `#663800`      |    | `--lp-held-ink`              | `#93E3EA`                       | `#06444A`                 |
-| `--lp-amber-edge`                 | `#D98216`             | `#6E3E03`      |    | `--lp-spot`                  | `transparent`                   | `transparent`             |
-| `--lp-on-amber`                   | `#000000`             | `#000000`      |    | `--lp-grid-line` (= lit)     | `rgb(255 255 255/.06)`          | `rgb(16 20 23/.08)`       |
-| `--lp-teal-ink`                   | `#93E3EA`             | `#06444A`      |    | `--lp-glow-amber` / `-teal`  | `.16` / `.20`                   | `.12` / `.12`             |
-| `--lp-teal-fill`                  | `#93E3EA`             | `#134F55`      |    | `--lp-wash-teal` / `-amber`  | `0` / `0`                       | `.04` / `.03`             |
-| `--lp-teal-fill-hover`, `-active` | `#AEEBF0`             | `#0F4247`      |    | `--lp-grain-opacity`         | `0`                             | `0`                       |
-| `--lp-on-teal`                    | `#031214`             | `#FFFFFF`      |    | `--lp-node-alpha` / `-quiet` | `.35` / `.06`                   | `.30` / `.05`             |
-| `--lp-mono` (+ hover, active)     | `#EEF1F2` / `#FFFFFF` | `#000000`      |    | `--lp-glass-veil`            | `88%`                           | `88%`                     |
-| `--lp-on-mono`                    | `#000000`             | `#FFFFFF`      |    | `--lp-hair` / `-strong`      | `rgb(255 255 255/.16)` / `/.24` | `rgb(0 0 0/.18)` / `/.28` |
-| `--lp-bg-lum-max`                 | `0.037`               | `0.70` (floor) |    |                              |                                 |                           |
+| name                              | dark HC               | light HC  |    | name                               | dark HC                         | light HC                  |
+| :-------------------------------- | :-------------------- | :-------- | :- | :--------------------------------- | :------------------------------ | :------------------------ |
+| `--lp-text`                       | `#FFFFFF`             | `#000000` |    | `--lp-edge`                        | `#97A2A7`                       | `#4A555B`                 |
+| `--lp-text-2`                     | `#D9E0E3`             | `#252D32` |    | `--lp-field-edge`                  | `#97A2A7`                       | `#4A555B`                 |
+| `--lp-text-3`                     | `#BEC7CB`             | `#30393E` |    | `--lp-focus` / `-w`                | `#B0F1F5` / 3px                 | `#053F45` / 3px           |
+| `--lp-warm-text`                  | `#FFFFFF`             | `#000000` |    | `--lp-refuse-ink` / `-edge`        | `#FFC1BB` / `#E0766C`           | `#781117` / `#9A2A2A`     |
+| `--lp-warm-text-2`                | `#E4DCD2`             | `#372E25` |    | `--lp-ok-ink`                      | `#8FEAC1`                       | `#0A4C33`                 |
+| `--lp-warm-text-3`                | `#CDC3B6`             | `#433A30` |    | `--lp-held-ink`                    | `#93E3EA`                       | `#06444A`                 |
+| `--lp-amber-ink`                  | `#FFBC70`             | `#663800` |    | `--lp-spot`                        | `transparent`                   | `transparent`             |
+| `--lp-amber-edge`                 | `#D98216`             | `#6E3E03` |    | `--lp-grid-line` (= lit)           | `rgb(255 255 255/.06)`          | `rgb(16 20 23/.08)`       |
+| `--lp-on-amber`                   | `#000000`             | `#000000` |    | `--lp-grain-opacity`               | `0`                             | `0`                       |
+| `--lp-teal-ink`                   | `#93E3EA`             | `#06444A` |    | `--lp-glass-veil`                  | `88%`                           | `88%`                     |
+| `--lp-teal-fill`                  | `#93E3EA`             | `#134F55` |    | `--lp-hair` / `-strong`            | `rgb(255 255 255/.16)` / `/.24` | `rgb(0 0 0/.18)` / `/.28` |
+| `--lp-teal-fill-hover`, `-active` | `#AEEBF0`             | `#0F4247` |    | `--lp-brand` (+ hover, active, on) | unchanged                       | unchanged                 |
+| `--lp-on-teal`                    | `#031214`             | `#FFFFFF` |    |                                    |                                 |                           |
+| `--lp-mono` (+ hover, active)     | `#EEF1F2` / `#FFFFFF` | `#000000` |    |                                    |                                 |                           |
+| `--lp-on-mono`                    | `#000000`             | `#FFFFFF` |    |                                    |                                 |                           |
 
 ### 3.3 Contrast table
 
-Each row is the worst ground in its family. Effect families stack canvas, wash peak, spotlight peak
-and lit grid line, then one of: amber halo, teal halo or quiet-zone node; grain sits on ink and
-ground in its worse polarity.
+Each row is the worst ground in its family. The hero family stacks the solid canvas, the spotlight
+peak and the lit grid line (the lit layer blends darken / lighten over the base grid, so where they
+cross the lit line is what paints); grain sits on ink and ground in its worse polarity. #288 retired
+the wash, the B9 halo and the constellation's nodes, so no other layer sits under hero text.
 
 **Grain model (normal-mode columns).** Normal-mode rows composite B10 grain at `--lp-grain-opacity`
 in sRGB over the ground in both polarities (white and black) and keep the worse, a conservative
@@ -1855,111 +2077,103 @@ table below is `lp-contrast.ts`'s output
 L0's uncommitted script by up to 0.3 (L0 also grained the ink), and no pairing fails AA under either
 model. HC columns carry no grain (`--lp-grain-opacity: 0`) and reproduce L0 exactly.
 
-**Halo geometry.** No text overlaps the search field box. The halo alpha at the nearest text is ≤ ½
-× `--lp-glow-*` (the field edge; Gaussian σ = `--lp-halo-blur`), and the "on hero effects" rows are
-evaluated there: at the peak alpha directly under text, dark text-3 drops to 3.74 and light text-3,
-teal-ink and amber-ink to 4.18 / 4.07 / 4.03, all below 4.5. The "Try:" label beside the chips uses
-`--lp-text-2`, not `--lp-text-3`. `lp-contrast.ts` evaluates the halo at that alpha (`HALO_EDGE`).
+**Header bar.** Wherever JavaScript has not run, and once the page is scrolled, the bar wears its
+glass (`--lp-bg` at `--lp-glass-veil`, the glass-bar row). Hydrated, within 48px of the top it sheds
+the glass and its hairline, so its text sits on the hero stack (the transparent-bar row).
 
-**Header pill.** Below `--bp-lg`, and wherever JavaScript has not run, the pill wears its glass (the
-glass-pill row). From `--bp-lg` the hydrated pill sheds it within 48px of the top only once
-`LandingBackground` has measured its quiet zones, which include the pill's band (its width, from its
-resting place down through that 48px), so its text sits on the hero stack under a quiet-alpha node
-(the transparent-pill row) — never on a full-alpha node, where `--lp-text-2` fails AA in both normal
-modes (the L1 review measured 2.29 dark and 3.65 light).
+**The search.** The field's 1px contour (`--lp-field-edge`) holds ≥ 3:1 against both the canvas and
+the field. The tier-3 submit is the product's invariant `--primary` pair: its label row and its
+boundary row are gated at gate 12's 4.5:1 and at 3:1 in all four states, not at the landing's HC
+floors (dark HC: 5.13 and 3.55).
 
-| pairing (worst ground)                                                                     |                  dark |                 light |               dark HC |              light HC | floor (HC floor)                      | pass                                                       |
-| :----------------------------------------------------------------------------------------- | --------------------: | --------------------: | --------------------: | --------------------: | :------------------------------------ | :--------------------------------------------------------- |
-| text on canvas + surface-1..3                                                              |                 13.11 |                 14.56 |                 16.61 |                 17.82 | 4.5 (7)                               | PASS                                                       |
-| text on hero effects                                                                       |                  9.68 |                 10.74 |                 16.05 |                 15.01 | 4.5 (7)                               | PASS                                                       |
-| text-2 on canvas + surface-1..3                                                            |                  9.33 |                  7.38 |                 12.44 |                 11.88 | 4.5 (7)                               | PASS                                                       |
-| text-2 on hero effects                                                                     |                  6.89 |                  5.44 |                 12.02 |                 10.01 | 4.5 (7); dark aim 7                   | PASS                                                       |
-| text-3 on canvas + surface-1..3                                                            |                  6.35 |                  6.41 |                  9.67 |                 10.01 | 4.5 (7)                               | PASS                                                       |
-| text-3 on hero effects                                                                     |                  4.69 |                  4.72 |                  9.34 |                  8.43 | 4.5 (7)                               | PASS                                                       |
-| amber-ink on canvas + surface-1..3                                                         |                  7.81 |                  6.17 |                 10.03 |                  8.37 | 4.5 (7)                               | PASS                                                       |
-| amber-ink on hero effects                                                                  |                  5.77 |                  4.55 |                  9.69 |                  7.04 | 4.5 (7)                               | PASS                                                       |
-| teal-ink on canvas + surface-1..3                                                          |                  8.03 |                  6.23 |                 11.40 |                  9.22 | 4.5 (7)                               | PASS                                                       |
-| teal-ink on hero effects                                                                   |                  5.93 |                  4.60 |                 11.02 |                  7.76 | 4.5 (7)                               | PASS                                                       |
-| hero display (large) on full-alpha node (outside copy)                                     |                  3.22 |                  7.20 |                  7.88 |                 11.56 | 3 (4.5)                               | PASS — legal only because copy never leaves the quiet zone |
-| text · text-2 on the transparent pill (from --bp-lg at the top; its band is a copy zone)   |          10.06 · 7.15 |          10.96 · 5.55 |         16.05 · 12.02 |         15.17 · 10.11 | 4.5 (7)                               | PASS                                                       |
-| warm-text on warm-bg / warm-surface                                                        |                 13.99 |                 14.41 |                 17.85 |                 18.68 | 4.5 (7)                               | PASS                                                       |
-| warm-text-2 on editorial                                                                   |                  8.53 |                  7.35 |                 13.15 |                 11.82 | 4.5 (7)                               | PASS                                                       |
-| warm-text-3 on editorial                                                                   |                  5.82 |                  5.82 |                 10.26 |                  9.90 | 4.5 (7)                               | PASS                                                       |
-| amber-ink / teal-ink on editorial                                                          |           8.48 / 8.72 |           6.47 / 6.53 |         10.78 / 12.25 |           8.77 / 9.66 | 4.5 (7)                               | PASS                                                       |
-| on-amber on amber / hover / active                                                         |    6.18 / 7.49 / 8.62 |    5.90 / 7.03 / 8.16 |   7.15 / 8.69 / 10.01 |    7.15 / 8.55 / 9.93 | 4.5 (7)                               | PASS                                                       |
-| on-mono on mono / hover / active                                                           | 16.11 / 18.27 / 18.27 | 15.86 / 18.10 / 18.10 | 18.50 / 21.00 / 21.00 | 21.00 / 21.00 / 21.00 | 4.5 (7)                               | PASS                                                       |
-| on-teal on teal-fill / hover / active                                                      |  9.48 / 11.30 / 12.40 |    5.08 / 5.95 / 7.01 | 13.10 / 14.49 / 14.49 |  9.22 / 11.11 / 11.11 | 4.5 (7)                               | PASS                                                       |
-| text on surface-3 (tonal, ghost hover)                                                     |                 14.63 |                 15.71 |                 16.61 |                 17.82 | 4.5 (7)                               | PASS                                                       |
-| text · text-2 · teal-ink on the glass pill (veil 82%, HC 88%, over white or black content) |    9.92 · 7.06 · 6.08 |   12.13 · 6.15 · 5.19 |  13.91 · 10.42 · 9.55 |  15.97 · 10.64 · 8.26 | 4.5 (7)                               | PASS                                                       |
-| refuse-ink on refuse-fill · text on refuse-fill                                            |          9.00 · 15.19 |          6.91 · 16.28 |         11.16 · 17.24 |          9.76 · 18.46 | 4.5 (7)                               | PASS                                                       |
-| ok-ink on ok-fill · held-ink on held-fill                                                  |           8.81 · 8.62 |           6.17 · 6.91 |         10.71 · 10.97 |           8.87 · 9.48 | 4.5 (7)                               | PASS                                                       |
-| refuse / ok / held ink on surface-1 and -2                                                 |   9.41 / 10.38 / 9.72 |    7.17 / 6.36 / 7.23 | 11.67 / 12.62 / 12.37 |   10.14 / 9.15 / 9.91 | 4.5 (7)                               | PASS                                                       |
-| edge vs canvas + surfaces · hero · editorial                                               |    4.39 · 3.28 · 4.72 |    4.38 · 3.22 · 4.59 |    6.36 · 6.15 · 6.84 |    6.50 · 5.47 · 6.81 | 3 (4.5)                               | PASS                                                       |
-| amber-edge vs canvas + surfaces · hero · editorial                                         |    5.66 · 4.22 · 6.08 |    4.24 · 3.12 · 4.45 |    5.66 · 5.47 · 6.08 |    7.57 · 6.38 · 7.94 | 3 (4.5)                               | PASS                                                       |
-| mono fill vs canvas + surfaces · hero                                                      |         14.63 · 10.92 |         14.74 · 10.84 |         14.63 · 14.14 |         17.82 · 15.01 | 3 (4.5)                               | PASS                                                       |
-| teal-fill vs canvas + surfaces · hero · editorial                                          |    8.96 · 6.69 · 9.63 |    4.63 · 3.40 · 4.85 | 11.40 · 11.02 · 12.25 |    7.83 · 6.59 · 8.20 | 3 (4.5)                               | PASS                                                       |
-| refuse-edge vs surface-2                                                                   |                  3.49 |                  4.40 |                  5.99 |                  7.00 | 3 (4.5)                               | PASS                                                       |
-| B9 ring stop-a vs field · halo                                                             |          10.02 · 6.51 |           5.00 · 3.12 |          11.53 · 9.73 |           8.92 · 6.38 | 3 (4.5)                               | PASS                                                       |
-| B9 ring stop-b vs field · halo                                                             |          10.30 · 6.69 |           5.45 · 3.40 |         13.11 · 11.06 |          10.86 · 7.76 | 3 (4.5)                               | PASS                                                       |
-| B9 ring OKLab midpoint vs field · halo                                                     |          10.19 · 6.62 |           5.20 · 3.25 |         12.33 · 10.40 |           9.82 · 7.02 | 3 (4.5)                               | PASS                                                       |
-| focus vs canvas + surfaces · hero · editorial                                              |  10.70 · 7.99 · 11.50 |    6.44 · 4.74 · 6.75 | 13.25 · 12.80 · 14.23 |   9.88 · 8.32 · 10.36 | 3 (4.5)                               | PASS                                                       |
-| focus vs amber / mono / teal fill (separated by the 2px gap)                               |    1.89 / 1.37 / 1.19 |    2.58 / 2.29 / 1.39 |    2.34 / 1.10 / 1.16 |    3.97 / 1.80 / 1.26 | info only                             | info                                                       |
-| hover/press boundary: teal-fill (all states) vs worst of bg, surface-1, -2, warm-bg        |                ≥ 9.72 |                ≥ 4.85 |               ≥ 12.37 |                ≥ 8.20 | 3                                     | PASS                                                       |
-| hover/press boundary: light amber fill (rest → press)                                      |                     — |           2.61 → 1.88 |                     — |           2.61 → 1.88 | carried by `--lp-amber-edge` (≥ 4.45) | PASS via contour                                           |
-
-**Halo stacking.** Two halo `box-shadow` layers on one point fail (dark text-3 4.12, edge 2.76). A
-single blurred conic halo passes: every point is a mix of the two single-colour composites, and the
-worst mix equals the worst single case (dark text-3 4.88, light 4.70). The recipe therefore uses one
-blurred conic layer; never stack the two halo colours at one point.
+| pairing (worst ground)                                                                    |                  dark |                 light |               dark HC |              light HC | floor (HC floor)                      | pass             |
+| :---------------------------------------------------------------------------------------- | --------------------: | --------------------: | --------------------: | --------------------: | :------------------------------------ | :--------------- |
+| text on canvas + surface-1..3                                                             |                 13.11 |                 14.56 |                 16.61 |                 17.82 | 4.5 (7)                               | PASS             |
+| text on hero effects                                                                      |                 11.74 |                 13.10 |                 17.85 |                 16.72 | 4.5 (7)                               | PASS             |
+| text-2 on canvas + surface-1..3                                                           |                  9.33 |                  7.38 |                 12.44 |                 11.88 | 4.5 (7)                               | PASS             |
+| text-2 on hero effects                                                                    |                  8.35 |                  6.64 |                 13.37 |                 11.15 | 4.5 (7); dark aim 7                   | PASS             |
+| text-3 on canvas + surface-1..3                                                           |                  6.35 |                  6.41 |                  9.67 |                 10.01 | 4.5 (7)                               | PASS             |
+| text-3 on hero effects                                                                    |                  5.69 |                  5.76 |                 10.39 |                  9.39 | 4.5 (7)                               | PASS             |
+| amber-ink on canvas + surface-1..3                                                        |                  7.81 |                  6.17 |                 10.03 |                  8.37 | 4.5 (7)                               | PASS             |
+| amber-ink on hero effects                                                                 |                  6.99 |                  5.55 |                 10.78 |                  7.85 | 4.5 (7)                               | PASS             |
+| teal-ink on canvas + surface-1..3                                                         |                  8.03 |                  6.23 |                 11.40 |                  9.22 | 4.5 (7)                               | PASS             |
+| teal-ink on hero effects                                                                  |                  7.19 |                  5.60 |                 12.26 |                  8.65 | 4.5 (7)                               | PASS             |
+| text · text-2 on the transparent header bar (at the top of the page, once hydrated)       |          11.74 · 8.35 |          13.10 · 6.64 |         17.85 · 13.37 |         16.72 · 11.15 | 4.5 (7)                               | PASS             |
+| warm-text on warm-bg / warm-surface                                                       |                 13.99 |                 14.41 |                 17.85 |                 18.68 | 4.5 (7)                               | PASS             |
+| warm-text-2 on editorial                                                                  |                  8.53 |                  7.35 |                 13.15 |                 11.82 | 4.5 (7)                               | PASS             |
+| warm-text-3 on editorial                                                                  |                  5.82 |                  5.82 |                 10.26 |                  9.90 | 4.5 (7)                               | PASS             |
+| amber-ink / teal-ink on editorial                                                         |           8.48 / 8.72 |           6.47 / 6.53 |         10.78 / 12.25 |           8.77 / 9.66 | 4.5 (7)                               | PASS             |
+| on-amber on amber / hover / active                                                        |    6.18 / 7.49 / 8.62 |    5.90 / 7.03 / 8.16 |   7.15 / 8.69 / 10.01 |    7.15 / 8.55 / 9.93 | 4.5 (7)                               | PASS             |
+| on-mono on mono / hover / active                                                          | 16.11 / 18.27 / 18.27 | 15.86 / 18.10 / 18.10 | 18.50 / 21.00 / 21.00 | 21.00 / 21.00 / 21.00 | 4.5 (7)                               | PASS             |
+| on-teal on teal-fill / hover / active                                                     |  9.48 / 11.30 / 12.40 |    5.08 / 5.95 / 7.01 | 13.10 / 14.49 / 14.49 |  9.22 / 11.11 / 11.11 | 4.5 (7)                               | PASS             |
+| on-brand on brand / hover / active (the hero Search; invariant in all four states)        |    5.13 / 6.05 / 7.07 |    5.13 / 6.05 / 7.07 |    5.13 / 6.05 / 7.07 |    5.13 / 6.05 / 7.07 | 4.5 (gate 12)                         | PASS             |
+| text on surface-2 / surface-3 (outlined and ghost hover)                                  |         15.88 / 14.63 |         16.90 / 15.71 |         18.02 / 16.61 |         19.17 / 17.82 | 4.5 (7)                               | PASS             |
+| text · text-2 · teal-ink on the glass bar (veil 82%, HC 88%, over white or black content) |   10.81 · 7.69 · 6.62 |   11.41 · 5.78 · 4.88 | 15.09 · 11.30 · 10.36 |  15.00 · 10.00 · 7.76 | 4.5 (7)                               | PASS             |
+| refuse-ink on refuse-fill · text on refuse-fill                                           |          9.00 · 15.19 |          6.91 · 16.28 |         11.16 · 17.24 |          9.76 · 18.46 | 4.5 (7)                               | PASS             |
+| ok-ink on ok-fill · held-ink on held-fill                                                 |           8.81 · 8.62 |           6.17 · 6.91 |         10.71 · 10.97 |           8.87 · 9.48 | 4.5 (7)                               | PASS             |
+| refuse / ok / held ink on surface-1 and -2                                                |   9.41 / 10.38 / 9.72 |    7.17 / 6.36 / 7.23 | 11.67 / 12.62 / 12.37 |   10.14 / 9.15 / 9.91 | 4.5 (7)                               | PASS             |
+| edge vs canvas + surfaces · hero · editorial                                              |    4.39 · 3.96 · 4.72 |    4.38 · 3.93 · 4.59 |    6.36 · 6.84 · 6.84 |    6.50 · 6.10 · 6.81 | 3 (4.5)                               | PASS             |
+| amber-edge vs canvas + surfaces · hero · editorial                                        |    5.66 · 5.11 · 6.08 |    4.24 · 3.82 · 4.45 |    5.66 · 6.08 · 6.08 |    7.57 · 7.10 · 7.94 | 3 (4.5)                               | PASS             |
+| field-edge vs canvas · field (the search's contour)                                       |           3.39 · 3.24 |           3.14 · 3.35 |           7.64 · 7.31 |           7.19 · 7.66 | 3 (4.5)                               | PASS             |
+| mono fill vs canvas + surfaces · hero                                                     |         14.63 · 13.22 |         14.74 · 13.25 |         14.63 · 15.73 |         17.82 · 16.72 | 3 (4.5)                               | PASS             |
+| brand fill vs canvas · field (at rest; its label names the control)                       |           3.71 · 3.55 |           5.05 · 5.38 |           3.71 · 3.55 |           5.05 · 5.38 | 3                                     | PASS             |
+| teal-fill vs canvas + surfaces · hero · editorial                                         |    8.96 · 8.09 · 9.63 |    4.63 · 4.16 · 4.85 | 11.40 · 12.26 · 12.25 |    7.83 · 7.34 · 8.20 | 3 (4.5)                               | PASS             |
+| refuse-edge vs surface-2                                                                  |                  3.49 |                  4.40 |                  5.99 |                  7.00 | 3 (4.5)                               | PASS             |
+| focus vs canvas + surfaces · hero · editorial                                             |  10.70 · 9.67 · 11.50 |    6.44 · 5.79 · 6.75 | 13.25 · 14.24 · 14.23 |   9.88 · 9.27 · 10.36 | 3 (4.5)                               | PASS             |
+| focus vs amber / mono / teal fill (separated by the 2px gap)                              |    1.89 / 1.37 / 1.19 |    2.58 / 2.29 / 1.39 |    2.34 / 1.10 / 1.16 |    3.97 / 1.80 / 1.26 | info only                             | info             |
+| hover/press boundary: teal-fill (all states) vs worst of bg, surface-1, -2, warm-bg       |                ≥ 9.72 |                ≥ 4.85 |               ≥ 12.37 |                ≥ 8.20 | 3                                     | PASS             |
+| hover/press boundary: light amber fill (rest → press)                                     |                     — |           2.61 → 1.88 |                     — |           2.61 → 1.88 | carried by `--lp-amber-edge` (≥ 4.45) | PASS via contour |
 
 ### 3.4 Type scale
 
 Sizes in px at 375 / 768 / 1280 / 1600; every clamp keeps max ≤ 2.5 × min, so 200% zoom works.
 
-| register  | token                              | value                                        | px                  | family              | weight               | tracking | leading                                                                |
-| :-------- | :--------------------------------- | :------------------------------------------- | :------------------ | :------------------ | :------------------- | :------- | :--------------------------------------------------------------------- |
-| 1 Display | `--lp-fs-hero`                     | `clamp(2.5rem, 1.5rem + 4vw, 4.75rem)`       | 40 / 55 / 75 / 76   | `--lp-font-display` | `var(--fw-semibold)` | -0.03em  | 1.04 · `text-wrap: balance` · `--lp-measure-display`                   |
-| 1 Display | `--lp-fs-section` (editorial)      | `clamp(2rem, 1.4rem + 2.5vw, 3.5rem)`        | 32 / 42 / 54 / 56   | `--lp-font-serif`   | `var(--fw-normal)`   | -0.012em | 1.08                                                                   |
-| 1 Display | `--lp-fs-section` (precision)      | same                                         | same                | `--lp-font-display` | `var(--fw-semibold)` | -0.022em | 1.08                                                                   |
-| 1 Display | `--lp-fs-figure`                   | `clamp(2.25rem, 1.6rem + 2.8vw, 4rem)`       | 36 / 47 / 61 / 64   | `--lp-font-display` | `var(--fw-medium)`   | -0.03em  | 1.0 · `tabular-nums lining-nums`                                       |
-| 2 Heading | `--lp-fs-h3`                       | `clamp(1.125rem, 1.02rem + .45vw, 1.375rem)` | 18 / 20 / 22 / 22   | display sans        | `var(--fw-semibold)` | -0.01em  | 1.3                                                                    |
-| 2 Heading | `--lp-fs-eyebrow`                  | `0.75rem`, uppercase                         | 12                  | `--lp-font-mono`    | `var(--fw-medium)`   | 0.1em    | 1.2 · teal-ink (precision) / amber-ink (editorial)                     |
-| 3 Body    | `--lp-fs-body-lg`                  | `clamp(1.0625rem, .98rem + .3vw, 1.25rem)`   | 17 / 18 / 19.5 / 20 | `--lp-font-body`    | 400                  | -0.005em | 1.55 · `--lp-measure-lead` · text-2                                    |
-| 3 Body    | `--lp-fs-body` / `--lp-fs-body-sm` | `1rem` / `.875rem`                           | 16 / 14             | body                | 400                  | 0        | 1.65 / 1.55 · `--lp-measure`                                           |
-| 3 Body    | `--lp-fs-search`                   | `clamp(1rem, .95rem + .25vw, 1.125rem)`      | 16 / 17 / 18 / 18   | body                | 400                  | 0        | 1.3 · never below 16px on coarse pointers (`DESIGN_SYSTEM.md:586-587`) |
-| 3 Body    | `--lp-fs-btn` / `-lg`              | `.9375rem` / `1rem`                          | 15 / 16             | body                | `var(--fw-semibold)` | -0.005em | 1                                                                      |
-| 4 Meta    | `--lp-fs-meta`                     | `clamp(.75rem, .72rem + .12vw, .8125rem)`    | 12 / 12.4 / 13 / 13 | `--lp-font-mono`    | 400                  | 0        | 1.45 · `tabular-nums` · ligatures off · text-3                         |
+| register         | token                              | value                                        | px                  | family              | weight               | tracking                        | leading                                                                                                               |
+| :--------------- | :--------------------------------- | :------------------------------------------- | :------------------ | :------------------ | :------------------- | :------------------------------ | :-------------------------------------------------------------------------------------------------------------------- |
+| 1 Display        | `--lp-fs-hero` (the hero's h1)     | `clamp(2.5rem, 1.6rem + 3.6vw, 4.5rem)`      | 40 / 53 / 72 / 72   | `--lp-font-display` | `var(--fw-medium)`   | -0.035em                        | 1.02 · each sentence its own line, broken between phrases first; dyslexic 36 / 49 / 68 / 68 at 1.2, tracking 0 (§2.8) |
+| 1 Display        | `--lp-fs-section` (editorial)      | `clamp(2rem, 1.4rem + 2.5vw, 3.5rem)`        | 32 / 42 / 54 / 56   | `--lp-font-serif`   | `var(--fw-medium)`   | -0.012em                        | 1.08                                                                                                                  |
+| 1 Display        | `--lp-fs-section` (precision)      | same                                         | same                | `--lp-font-display` | `var(--fw-medium)`   | -0.022em                        | 1.08                                                                                                                  |
+| 1 Display        | `--lp-fs-figure`                   | `clamp(2.25rem, 1.6rem + 2.8vw, 4rem)`       | 36 / 47 / 61 / 64   | `--lp-font-display` | `var(--fw-medium)`   | -0.03em                         | 1.0 · `tabular-nums lining-nums`                                                                                      |
+| 2 Heading        | `--lp-fs-h3`                       | `clamp(1.125rem, 1.02rem + .45vw, 1.375rem)` | 18 / 20 / 22 / 22   | display sans        | `var(--fw-semibold)` | -0.01em                         | 1.3                                                                                                                   |
+| 2 Section header | `--lp-fs-eyebrow`                  | `0.75rem`, uppercase                         | 12                  | `--lp-font-body`    | `var(--fw-semibold)` | `var(--tracking-wide)` (0.08em) | 1.35 · `--lp-text-2` (editorial: `--lp-warm-text-2`); no teal, no amber, no mono                                      |
+| 3 Body           | `--lp-fs-body-lg`                  | `clamp(1.0625rem, .98rem + .3vw, 1.25rem)`   | 17 / 18 / 19.5 / 20 | `--lp-font-body`    | 400                  | -0.005em                        | 1.7 (`--leading-relaxed`) · `--lp-measure-lead` · text-2                                                              |
+| 3 Body           | `--lp-fs-body` / `--lp-fs-body-sm` | `1rem` / `.875rem`                           | 16 / 14             | body                | 400                  | 0                               | 1.65 / 1.55 · `--lp-measure`                                                                                          |
+| 3 Body           | `--lp-fs-search`                   | `clamp(1rem, .95rem + .25vw, 1.125rem)`      | 16 / 17 / 18 / 18   | body                | 400                  | 0                               | 1.3 · never below 16px on coarse pointers (`DESIGN_SYSTEM.md:586-587`)                                                |
+| 3 Body           | `--lp-fs-btn` / `-lg`              | `.9375rem` / `1rem`                          | 15 / 16             | body                | `var(--fw-medium)`   | -0.005em                        | 1 · no control outweighs the headline                                                                                 |
+| 4 Meta           | `--lp-fs-meta`                     | `clamp(.75rem, .72rem + .12vw, .8125rem)`    | 12 / 12.4 / 13 / 13 | `--lp-font-body`    | 400                  | 0                               | 1.45 · `tabular-nums` · text-3; mono survives only in `kbd` and the Enter hint                                        |
 
-The four registers differ by size, family, case and tracking, never by weight alone; headings stay
-below `--fw-bold`. Weights alias `--fw-*`, so the dyslexic overlay collapses them automatically.
+The four registers follow `DESIGN_SYSTEM.md` §A.4 (#288): they differ by size, family, case and
+tracking, never by weight alone; the display is `--fw-medium` and no landing text is `--fw-bold`.
+Weights alias `--fw-*`, so the dyslexic overlay collapses them automatically.
 
 ### 3.5 Radii, shadows, layout, motion
 
 `si` means `var(--shadow-intensity)`.
 
-| name                                                                         | dark                                                                                                                                                             | light                                                                                                                                                         | purpose                                                                                                                                                                               |
-| :--------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--lp-r-xs` … `--lp-r-2xl`                                                   | `calc(4/8/12/16/24/32px * var(--radius-scale))`                                                                                                                  | same                                                                                                                                                          | Keyboard hint · small controls · cards and typeahead · rail media and stage inner · demo stage and search field · final CTA and bento                                                 |
-| `--lp-r-pill` / `--lp-r-search` / `--lp-r-btn`                               | `999px` / `var(--lp-r-xl)` / `var(--lp-r-pill)`                                                                                                                  | same                                                                                                                                                          | Header pill and chips · search field · CTAs                                                                                                                                           |
-| `--lp-shadow-1`                                                              | `inset 0 1px 0 rgb(255 255 255/.04), 0 1px 2px rgb(0 0 0/calc(.5*si))`                                                                                           | `0 1px 2px rgb(16 20 23/calc(.05*si)), 0 2px 6px -2px rgb(16 20 23/calc(.06*si))`                                                                             | Card at rest                                                                                                                                                                          |
-| `--lp-shadow-pop`                                                            | `0 0 0 1px var(--lp-hair-strong), 0 16px 40px -8px rgb(0 0 0/calc(.65*si))`                                                                                      | `0 0 0 1px var(--lp-hair), 0 12px 32px -6px rgb(16 20 23/calc(.14*si))`                                                                                       | Typeahead and category panels                                                                                                                                                         |
-| `--lp-shadow-stage`                                                          | `inset 0 1px 0 rgb(255 255 255/.06), 0 0 0 1px var(--lp-hair-strong), 0 24px 48px -12px rgb(0 0 0/calc(.7*si)), 0 64px 128px -32px rgb(40 134 144/calc(.28*si))` | `0 0 0 1px var(--lp-hair), 0 2px 4px rgb(16 20 23/calc(.04*si)), 0 12px 32px -8px rgb(16 20 23/calc(.10*si)), 0 48px 96px -24px rgb(40 134 144/calc(.20*si))` | Elevated demo stage                                                                                                                                                                   |
-| `--lp-shadow-header`                                                         | `0 8px 24px -8px rgb(0 0 0/calc(.6*si))`                                                                                                                         | `0 8px 24px -10px rgb(16 20 23/calc(.12*si))`                                                                                                                 | Glass header pill                                                                                                                                                                     |
-| `--lp-stage-tilt`                                                            | `perspective(2000px) rotateX(14deg) rotateZ(-1.5deg) scale(.94)`                                                                                                 | same                                                                                                                                                          | Hero theatre only; `none` below 768px, on `:focus-within`, and under both reduced-motion channels                                                                                     |
-| `--lp-gutter`                                                                | `clamp(1rem, .25rem + 3.5vw, 3rem)`                                                                                                                              | same                                                                                                                                                          | Side gutter: 17 / 31 / 48 / 48px                                                                                                                                                      |
-| `--lp-section-pad`                                                           | `clamp(4rem, 2.5rem + 6.5vw, 9rem)`                                                                                                                              | same                                                                                                                                                          | Section block padding: 64 / 90 / 123 / 144px                                                                                                                                          |
-| `--lp-hero-pad`                                                              | `calc(var(--lp-header-h) + var(--lp-header-inset) + clamp(2.5rem, .5rem + 8vw, 8rem))`                                                                           | same                                                                                                                                                          | Hero top                                                                                                                                                                              |
-| `--lp-header-h` / `--lp-header-inset`                                        | `3.5rem` / `.75rem`                                                                                                                                              | same                                                                                                                                                          | Floating pill height and top inset                                                                                                                                                    |
-| `--lp-gap` / `--lp-heading-gap`                                              | `clamp(.75rem, .5rem + 1vw, 1.5rem)` / `clamp(.75rem, .55rem + .8vw, 1.25rem)`                                                                                   | same                                                                                                                                                          | Grid and rail gap · eyebrow → display → lead                                                                                                                                          |
-| `--lp-stack-2xs` … `--lp-stack-3xl`                                          | `var(--space-1)` … `var(--space-8)`                                                                                                                              | same                                                                                                                                                          | Vertical rhythm                                                                                                                                                                       |
-| `--lp-maxw` / `--lp-maxw-wide` / `--lp-maxw-text`                            | `76rem` / `90rem` / `44rem`                                                                                                                                      | same                                                                                                                                                          | Content · hero theatre · text column                                                                                                                                                  |
-| `--lp-measure` / `--lp-measure-lead` / `--lp-measure-display`                | `var(--measure)` / `56ch` / `18ch`                                                                                                                               | same                                                                                                                                                          | Reading measures                                                                                                                                                                      |
-| `--lp-dur-press` / `-fast` / `-base` / `-slow`                               | `50ms` / `140ms` / `220ms` / `360ms`                                                                                                                             | same                                                                                                                                                          | Press-in · hover and colour · tabs, panels, stage swap, typeahead and the How it works step reveal (inside L3's 150–250ms) · the theatre's tilt release only                          |
-| `--lp-dur-reveal` / `-demo` / `-demo-hold` / `-ring` / `--lp-stagger`        | `600ms` / `900ms` / `1600ms` / `6000ms` / `50ms`                                                                                                                 | same                                                                                                                                                          | Section entrance only (never the step reveal) · one simulated step · pause between steps · one ring turn (≤ 3 turns, hover/focus only) · stagger                                      |
-| `--lp-ease-out` / `-standard` / `-in-out` / `-exit` / `-linear`              | `cubic-bezier(.16,1,.3,1)` / `cubic-bezier(.2,0,0,1)` / `cubic-bezier(.65,0,.35,1)` / `cubic-bezier(.4,0,1,1)` / `linear`                                        | same                                                                                                                                                          | No overshoot anywhere                                                                                                                                                                 |
-| `--lp-reveal-distance` / `--lp-press-scale`                                  | `12px` / `.96` (L2's `scale(0.96)`)                                                                                                                              | same                                                                                                                                                          | Both become `0px` / `1` under either reduced-motion channel                                                                                                                           |
-| `--lp-mask-ink` / `--lp-mask-keep` / `--lp-mask-clear`                       | `#000` / `#fff` / `#000`                                                                                                                                         | same                                                                                                                                                          | Mask stops, never painted: the opaque stop of every CSS alpha mask (grid fade, lit grid, bottom fade) and the keep / clear fills of the SVG luminance mask that draws the quiet zones |
-| `--lp-fade-mask` · `--lp-calm-half` / `--lp-calm-feather` · `--lp-calm-mask` | `linear-gradient(to bottom, ink 50%, transparent 92%)` · `min(50%, 30rem)` / `4rem` · a horizontal mask clearing the centre column (± half, feathered)           | same                                                                                                                                                          | The constellation layers' bottom fade; the conservative centre column the static constellation clears until the island has measured its quiet zones (no JS, before hydration)         |
+| name                                                                        | dark                                                                                                                                               | light                                                                                | purpose                                                                                                                                                      |
+| :-------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--lp-r-xs` … `--lp-r-2xl`                                                  | `calc(4/8/12/16/24/32px * var(--radius-scale))`                                                                                                    | same                                                                                 | Keyboard hint · small controls · cards and typeahead · rail media and stage inner · demo stage and search field · final CTA and bento                        |
+| `--lp-r-pill` / `--lp-r-search` / `--lp-r-btn`                              | `999px` / `var(--lp-r-md)` / `var(--lp-r-sm)`                                                                                                      | same                                                                                 | Tier 1 and tier 2 fills (§B.8.4, §D.7.7) · the search field · every other control                                                                            |
+| `--lp-shadow-1`                                                             | `inset 0 1px 0 rgb(255 255 255/.04), 0 1px 2px rgb(0 0 0/calc(.5*si))`                                                                             | `0 1px 2px rgb(16 20 23/calc(.05*si)), 0 2px 6px -2px rgb(16 20 23/calc(.06*si))`    | Card at rest                                                                                                                                                 |
+| `--lp-shadow-pop`                                                           | `0 0 0 1px var(--lp-hair-strong), 0 16px 40px -8px rgb(0 0 0/calc(.65*si))`                                                                        | `0 0 0 1px var(--lp-hair), 0 12px 32px -6px rgb(16 20 23/calc(.14*si))`              | The search field in use; the menu and category sheets                                                                                                        |
+| `--lp-shadow-panel`                                                         | `var(--lp-shadow-pop)`                                                                                                                             | `0 0 0 1px var(--lp-hair-strong), 0 16px 40px -8px rgb(16 20 23/calc(.16*si))`       | The suggestions panel: a firmer edge, since the white panel opens over the white window (§2.8)                                                               |
+| `--lp-shadow-window`                                                        | `inset 0 1px 0 rgb(255 255 255/.06), 0 32px 64px -24px rgb(0 0 0/calc(.7*si))`                                                                     | `0 1px 2px rgb(16 20 23/calc(.04*si)), 0 24px 48px -16px rgb(16 20 23/calc(.14*si))` | The theatre's window: one top highlight and depth, no ring and no coloured glow (#288)                                                                       |
+| `--lp-theatre-h` / `--lp-theatre-h-poster`                                  | `15.25rem` / `14.375rem`                                                                                                                           | same                                                                                 | The board frame's fixed height: the loop's tallest frame (236px) plus `--space-2`, or the poster's still frame (its two-line bar and the Ready lane's card)  |
+| `--lp-gutter`                                                               | `clamp(1rem, .25rem + 3.5vw, 3rem)`                                                                                                                | same                                                                                 | Side gutter: 17 / 31 / 48 / 48px                                                                                                                             |
+| `--lp-section-pad`                                                          | `clamp(4rem, 2.5rem + 6.5vw, 9rem)`                                                                                                                | same                                                                                 | Section block padding: 64 / 90 / 123 / 144px                                                                                                                 |
+| `--lp-hero-pad`                                                             | `calc(var(--lp-header-h) + var(--lp-header-inset) + clamp(1.5rem, 6vw - .5rem, 4.5rem))`; from `--bp-lg` `… + clamp(3.5rem, 15svh - 2.5rem, 7rem)` | same                                                                                 | Hero top: 24px under the bar at 375, 38 at 768; from `--bp-lg` it follows the viewport's height (80px at 800px tall, 95 at 900)                              |
+| `--lp-field-h`                                                              | `3.5rem` (`3.75rem` from `--bp-md`)                                                                                                                | same                                                                                 | The search field's height, which the calls to action beside it centre on                                                                                     |
+| `--lp-header-h` / `--lp-header-inset`                                       | `3.5rem` (`4rem` from `--bp-md`) / `0px`                                                                                                           | same                                                                                 | The full-width header bar's height; it sits flush at the top                                                                                                 |
+| `--lp-gap` / `--lp-heading-gap`                                             | `clamp(.75rem, .5rem + 1vw, 1.5rem)` / `clamp(.75rem, .55rem + .8vw, 1.25rem)`                                                                     | same                                                                                 | Grid and rail gap · eyebrow → display → lead                                                                                                                 |
+| `--lp-stack-2xs` … `--lp-stack-3xl`                                         | `var(--space-1)` … `var(--space-8)`                                                                                                                | same                                                                                 | Vertical rhythm                                                                                                                                              |
+| `--lp-maxw` / `--lp-maxw-wide` / `--lp-maxw-text`                           | `76rem` / `90rem` / `44rem`                                                                                                                        | same                                                                                 | Content (the hero and its window) · wide bands · text column                                                                                                 |
+| `--lp-measure` / `--lp-measure-lead` / `--lp-measure-display`               | `var(--measure)` / `56ch` / `18ch`                                                                                                                 | same                                                                                 | Reading measures                                                                                                                                             |
+| `--lp-dur-press` / `-fast` / `-base` / `-slow`                              | `50ms` / `140ms` / `220ms` / `360ms`                                                                                                               | same                                                                                 | Press-in · hover and colour · tabs, panels, stage swap, typeahead and the How it works step reveal (inside L3's 150–250ms) · the board loop's card highlight |
+| `--lp-dur-reveal` / `-demo` / `-demo-hold` / `--lp-stagger`                 | `600ms` / `900ms` / `1600ms` / `50ms`                                                                                                              | same                                                                                 | Section entrance only (never the step reveal) · one simulated step · pause between steps · stagger                                                           |
+| `--lp-dur-word` / `--lp-stagger-word` / `--lp-word-blur` / `--lp-word-rise` | `440ms` / `20ms` / `12px` / `16px`                                                                                                                 | same                                                                                 | The headline's blur-fade, per word (the last lands at 0.62s, inside the LCP gate, §2.8); all `0` under either reduced-motion channel                         |
+| `--lp-ease-out` / `-standard` / `-in-out` / `-exit` / `-linear`             | `cubic-bezier(.16,1,.3,1)` / `cubic-bezier(.2,0,0,1)` / `cubic-bezier(.65,0,.35,1)` / `cubic-bezier(.4,0,1,1)` / `linear`                          | same                                                                                 | No overshoot anywhere                                                                                                                                        |
+| `--lp-reveal-distance` / `--lp-press-scale`                                 | `12px` / `.96` (L2's `scale(0.96)`)                                                                                                                | same                                                                                 | Both become `0px` / `1` under either reduced-motion channel                                                                                                  |
+| `--lp-mask-ink`                                                             | `#000`                                                                                                                                             | same                                                                                 | The opaque stop of every CSS alpha mask (grid fade, lit grid, the poster's trailing fade, the typewriter's end), never painted                               |
 
 ### 3.6 Recipes
 
@@ -1969,27 +2183,16 @@ the root of any panel `BodyPortal` moves to `<body>` (the current hero search po
 mode and HC blocks; type, motion and layout tokens only in the base block.
 
 ```css
-@property --lp-ring-angle {
-	syntax: "<angle>";
-	inherits: false;
-	initial-value: 0deg;
-}
-
 /* LIGHT (#8 airy) — the app's :root default (no attribute, or data-theme="light") */
 .lp-root,
 .lp-portal {
 	color-scheme: light;
-	--lp-bg: #F6F8F8; /* …light column + type, radii, layout, motion… */
-	--lp-canvas-paint:
-		radial-gradient(60% 50% at 12% 0%, var(--lp-wash-teal), transparent 70%),
-    radial-gradient(50% 45% at 88% 4%, var(--lp-wash-amber), transparent 70%),
-    linear-gradient(var(--lp-bg), var(--lp-bg-end) 60%);
+	--lp-bg: #F6F8F8; /* …light column + type, radii, layout, motion; solid, no wash (#288) */
 }
 /* DARK (#1 precision) */
 :root[data-theme="dark"] :is(.lp-root, .lp-portal) {
 	color-scheme: dark;
 	--lp-bg: #07090A; /* …dark column… */
-	--lp-canvas-paint: var(--lp-bg);
 }
 /* HIGH CONTRAST — OS channel, mirrors _app.tsx:38-47 (mode-qualified so light can never override dark) */
 @media (prefers-contrast: more) {
@@ -2021,8 +2224,11 @@ mode and HC blocks; type, motion and layout tokens only in the base block.
 		--lp-dur-reveal: 0ms;
 		--lp-dur-demo: 0ms;
 		--lp-dur-demo-hold: 0ms;
-		--lp-dur-ring: 0ms;
 		--lp-stagger: 0ms;
+		--lp-dur-word: 0ms;
+		--lp-stagger-word: 0ms;
+		--lp-word-blur: 0px;
+		--lp-word-rise: 0px;
 		--lp-reveal-distance: 0px;
 		--lp-press-scale: 1;
 	}
@@ -2035,20 +2241,22 @@ mode and HC blocks; type, motion and layout tokens only in the base block.
 	--lp-dur-reveal: 0ms;
 	--lp-dur-demo: 0ms;
 	--lp-dur-demo-hold: 0ms;
-	--lp-dur-ring: 0ms;
 	--lp-stagger: 0ms;
+	--lp-dur-word: 0ms;
+	--lp-stagger-word: 0ms;
+	--lp-word-blur: 0px;
+	--lp-word-rise: 0px;
 	--lp-reveal-distance: 0px;
 	--lp-press-scale: 1;
 }
 /* end-state transforms go to none (the #174(D) / gate-12 precedent); hidden start states only when BOTH allow motion */
 @media (prefers-reduced-motion: reduce) {
-	.lp-theatre,
 	.lp-reveal,
 	:is(.lp-btn, .lp-search__submit, .lp-chip, .lp-tab):active {
 		transform: none;
 	}
 }
-:root[data-motion="reduced"] :is(.lp-theatre, .lp-reveal),
+:root[data-motion="reduced"] .lp-reveal,
 :root[data-motion="reduced"] :is(.lp-btn, .lp-search__submit, .lp-chip, .lp-tab):active {
 	transform: none;
 }
@@ -2060,15 +2268,53 @@ mode and HC blocks; type, motion and layout tokens only in the base block.
 }
 ```
 
-- **JS gate** (WebGL, spotlight follow, demo autoplay, typewriter):
+**Headline blur-fade (#288 (F)), CSS only.** The server renders each word of the h1 as
+`.lp-word[data-lp-w="n"]` with real spaces between (the h1's text is the one sentence pair; no
+`aria-label`, nothing hidden). The hidden start state exists only in the `from` keyframe, declared
+only while both channels allow motion, so under either reduced-motion channel the words paint final
+at first contentful paint, with no blur and no 0ms flash. `backwards` fill: once a word lands it
+carries no animation value, so no `filter` lingers. Each sentence is a block and each phrase an
+inline box (§2.8), so a line breaks between phrases before it breaks inside one. On desktop the
+largest word is the LCP element, counted once its animation ends, which is why the reveal is 440ms a
+word with a 20ms stagger.
+
+```css
+.lp-word {
+	display: inline-block; /* translate needs a box; keeps "ready-made" whole */
+}
+@keyframes lp-word-in {
+	from {
+		opacity: 0;
+		filter: blur(var(--lp-word-blur));
+		translate: 0 var(--lp-word-rise);
+	}
+}
+@media (prefers-reduced-motion: no-preference) {
+	:root:not([data-motion="reduced"]) .lp-word {
+		animation: lp-word-in var(--lp-dur-word) var(--lp-ease-out) backwards;
+	}
+	:root:not([data-motion="reduced"]) .lp-word[data-lp-w="1"] {
+		animation-delay: calc(1 * var(--lp-stagger-word));
+	}
+	/* … one rule per index up to data-lp-w="11" */
+}
+@media print {
+	.lp-word {
+		animation: none;
+	}
+}
+```
+
+- **JS gate** (spotlight follow, demo autoplay, typewriter):
   `matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "reduced"`,
   re-checked on the media query's `change` event and by a MutationObserver on `data-motion` /
   `data-theme` / `data-contrast` / `data-cvd` (as
   `apps/web/features/wallet/core/aurora-runtime.ts:80,405-406` does). The existing `SearchBar`
   typewriter checks only `matchMedia` — the landing must not copy that.
-- **WebGL gate**, in addition: WebGL2 available, `deviceMemory ≥ 4` (or unknown on desktop),
-  `hardwareConcurrency > 4`, no Save-Data, the hero intersecting, after first paint on
-  `requestIdleCallback`; a frame-time watchdog tears it down.
+- **Spotlight gate**, in addition (`core/background-gate.ts`, `static | spotlight`): a fine pointer,
+  no Save-Data, `deviceMemory ≥ 4` (unknown passes) and `hardwareConcurrency > 4`; forced colours
+  and a forced `static` keep the SSR paint; it holds still offscreen and on a hidden tab. #288
+  retired the WebGL gate with the constellation.
 
 **Dyslexic overlay inside `lp-`.**
 
@@ -2092,7 +2338,7 @@ mode and HC blocks; type, motion and layout tokens only in the base block.
 	--lp-lead-body-lg: 1.75;
 	--lp-lead-body: var(--leading-normal);
 	--lp-measure: var(--measure);
-	--lp-measure-lead: var(--measure-narrow);
+	--lp-measure-lead: var(--measure); /* the wide face sets the subline in balanced lines */
 }
 ```
 
@@ -2108,14 +2354,11 @@ and italic-to-weight still inherit from `index.css:995-1011`.
 		6px);
 }
 @media (forced-colors: active) {
-	.lp-bg,
-	.lp-bg__spot,
-	.lp-search::after,
-	.lp-constellation {
+	.lp-bg {
 		display: none;
 	}
-	.lp-search::before {
-		background: CanvasText;
+	.lp-search {
+		border-color: CanvasText;
 	}
 	.lp-header::before {
 		backdrop-filter: none;
@@ -2124,12 +2367,13 @@ and italic-to-weight still inherit from `index.css:995-1011`.
 }
 ```
 
-**B7 grid + spotlight, B10 grain** (background stack, under content).
+**B7 grid + spotlight, B10 grain** (background stack, under content; #288).
 
 ```css
 .lp-hero {
 	position: relative;
 	isolation: isolate;
+	container-type: inline-size; /* --lp-grid-origin resolves in the hero's container units */
 }
 .lp-bg {
 	position: absolute;
@@ -2138,17 +2382,25 @@ and italic-to-weight still inherit from `index.css:995-1011`.
 	overflow: clip;
 	contain: strict;
 	pointer-events: none;
-	background: var(--lp-canvas-paint);
+	background: var(--lp-bg); /* solid: no wash, no gradient (§B.4.2) */
+}
+.lp-bg::before,
+.lp-bg__lit {
+	background-size: var(--lp-grid-size) var(--lp-grid-size); /* --lp-grid-size-wide from --bp-md */
+	background-position: var(--lp-grid-origin) 0; /* a vertical line on the h1's edge */
 }
 .lp-bg::before {
 	content: "";
 	position: absolute;
-	inset: 0; /* base grid, faded to the edges */
+	inset: 0;
 	background-image: linear-gradient(to right, var(--lp-grid-line) 1px, transparent 1px),
 		linear-gradient(to bottom, var(--lp-grid-line) 1px, transparent 1px);
-	background-size: var(--lp-grid-size) var(--lp-grid-size);
-	background-position: center top;
-	mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%);
+	/* the top-right corner the words leave empty, ruled from the bar's bottom edge (a hard edge from
+	   --bp-md, where 64px cells sit under a 64px bar; a fade across the bar below it) */
+	mask-image: radial-gradient(ellipse 70% 12rem at 100% 0%, #000 15%, transparent 80%),
+		linear-gradient(to bottom, transparent, #000 calc(var(--lp-header-h) + var(--lp-header-inset)));
+	mask-composite: intersect;
+	/* from --bp-md: ellipse 50% 34rem */
 }
 .lp-bg::after {
 	content: "";
@@ -2156,147 +2408,120 @@ and italic-to-weight still inherit from `index.css:995-1011`.
 	inset: 0;
 	opacity: var(--lp-grain-opacity); /* B10, static */
 	background-size: var(--lp-grain-size);
-	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+	background-image: url("data:image/svg+xml,…feTurbulence…");
 }
-/* a sized layer moved by translate (compositor only); physical left/top because the pointer writes physical px */
+/* a host-sized origin moved by translate (compositor only), carrying a 2r disc */
 .lp-bg__spot {
 	position: absolute;
-	left: 0;
-	top: 0;
+	inset: 0;
+	translate: var(--lp-spot-x) var(--lp-spot-y);
+	transition: translate var(--lp-dur-fast) var(--lp-ease-out); /* over-damped follow; 0 under RM */
+}
+.lp-bg__spot::before {
+	content: "";
+	position: absolute;
+	left: calc(var(--lp-spot-r) * -1);
+	top: calc(var(--lp-spot-r) * -1);
 	inline-size: calc(var(--lp-spot-r) * 2);
 	aspect-ratio: 1;
-	translate: calc(var(--lp-spot-x) - var(--lp-spot-r)) calc(var(--lp-spot-y) - var(--lp-spot-r));
-	background: radial-gradient(closest-side, var(--lp-spot), transparent);
-	will-change: translate;
+	background: radial-gradient(closest-side, var(--lp-spot), transparent); /* neutral */
 }
 ```
 
-Pointer handling: a passive `pointermove`, applied once per animation frame through
-`host.style.setProperty('--lp-spot-x', x + 'px')`, only under `(hover: hover) and (pointer: fine)`
-with neither reduced-motion channel on. The spotlight stops following the pointer (and `--lp-spot-x`
-/ `--lp-spot-y` return to their SSR values) while the B1 canvas is mounted, so B1, the spotlight and
-the hero timeline never move at once (§2.7). Grain is a background layer below content (text pixels
-stay clean, no full-viewport `mix-blend-mode`; `img-src data:` allows it, `csp.ts:78`).
+Pointer handling: a passive `pointermove`, coalesced to one write per animation frame through
+`host.style.setProperty('--lp-spot-x', x + 'px')`, only when the gate says `spotlight`. The lit grid
+(`.lp-bg__lit`) is the same grid in `--lp-grid-line-lit`, masked to the spotlight's circle (and
+ruled from the bar like the base grid) and blended darken (light) / lighten (dark); it is drawn only
+while the spotlight follows a pointer (`.lp-bg[data-lp-spot="on"]`, set on the first pointer move
+and cleared when the gate pauses or stops the spotlight), so the hero at rest and the still paint —
+no JavaScript, touch, either reduced-motion channel, a forced static — keep the grid to its corner.
+Grain is a background layer below content (text pixels stay clean, no full-viewport
+`mix-blend-mode`; `img-src data:` allows it, `csp.ts:78`).
 
-**B9 glow ring and single-layer halo on the search field.**
+**The search field (B9 glow ring retired by #288).** One honest contour: the hero's only full
+outline (§B.4 tier 5), its states moving only the border colour and the shadow (no ring, #285 (A)).
 
 ```css
 .lp-search {
-	position: relative;
-	isolation: isolate;
-	border-radius: var(--lp-r-search);
+	min-block-size: var(--lp-field-h); /* 56px, 60px from --bp-md */
+	padding-inline-end: calc(var(--lp-stack-2xs) - 1px);
+	border: 1px solid var(--lp-field-edge); /* ≥ 3:1 against the canvas and the field */
+	border-radius: var(--lp-r-search); /* 12px */
 	background: var(--lp-surface-1);
 	box-shadow: var(--lp-shadow-1);
 }
-.lp-search::before {
-	content: "";
-	position: absolute;
-	inset: 0;
-	z-index: 1;
-	pointer-events: none; /* the ring */
-	padding: var(--lp-ring-w);
-	border-radius: inherit;
-	background: conic-gradient(from var(--lp-ring-angle), var(--lp-glow-stop-a),
-		var(--lp-glow-stop-b), var(--lp-glow-stop-a));
-	background: conic-gradient(from var(--lp-ring-angle) in oklab, var(--lp-glow-stop-a),
-		var(--lp-glow-stop-b), var(--lp-glow-stop-a));
-	-webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-	-webkit-mask-composite: xor;
-	mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-	mask-composite: exclude;
+.lp-search:hover {
+	border-color: var(--lp-edge);
 }
-.lp-search::after {
-	content: "";
-	position: absolute;
-	inset: 0;
-	z-index: -1;
-	pointer-events: none; /* ONE halo layer */
-	border-radius: inherit;
-	filter: blur(var(--lp-halo-blur));
-	background: conic-gradient(from var(--lp-ring-angle), var(--lp-glow-amber), var(--lp-glow-teal),
-		var(--lp-glow-amber));
+.lp-search:focus-within,
+.lp-hero-search--open .lp-search {
+	border-color: var(--lp-text-2);
+	box-shadow: var(--lp-shadow-pop);
 }
-@keyframes lp-ring-turn {
-	to {
-		--lp-ring-angle: 360deg;
-	}
-}
-@media (prefers-reduced-motion: no-preference) {
-	:root:not([data-motion="reduced"]) .lp-search:is(:hover, :focus-within) {
-		animation: lp-ring-turn var(--lp-dur-ring) var(--lp-ease-linear) 3;
-	}
+.lp-search__submit {
+	align-self: stretch;
+	margin-block: calc(var(--lp-stack-2xs) - 1px); /* inset 4px: 12 − 4 = 8, concentric */
+	border-radius: var(--lp-r-sm);
 }
 ```
 
-`@property` registers on the element, so the animation sits on `.lp-search`, not the pseudos. Under
-reduced motion the ring is a static gradient (the B9 fallback). The sRGB fallback midpoints also
-pass (dark ≈ `#B0BD99`, light ≈ `#616A44`).
-
-**Elevated stage and hero theatre.**
+**Hero theatre: a straight-on window** (#288: no tilt, no glow, no fade into the page).
 
 ```css
-.lp-stage {
-	border-radius: var(--lp-r-xl);
-	background: var(--lp-surface-1);
-	box-shadow: var(--lp-shadow-stage);
-	padding: clamp(.5rem, .25rem + 1vw, 1rem);
+.lp-theatre__stage {
+	padding: var(--lp-stack-xs);
+	border-radius: var(--lp-r-lg); /* --lp-r-md below --bp-md */
+	background: var(--lp-window); /* one tone step off the canvas */
+	box-shadow: var(--lp-shadow-window); /* a top highlight and depth; no four-sided ring */
 	container-type: inline-size;
 }
-.lp-stage__frame {
-	border-radius: var(--lp-r-lg);
-	background: var(--lp-surface-2);
+.lp-theatre__frame {
+	block-size: var(--lp-theatre-h); /* the loop's tallest frame + --space-2; fixed, so no shift */
+	border-radius: var(--lp-r-md);
+	background: var(--bg);
 	overflow: clip;
-}
-.lp-theatre {
-	transform: var(--lp-stage-tilt);
-	transform-origin: 50% 0;
-	transition: transform var(--lp-dur-slow) var(--lp-ease-out);
-}
-.lp-theatre:focus-within {
-	transform: none;
-}
-@media (max-width: 767px) {
-	.lp-theatre {
-		transform: none;
-	}
 }
 ```
 
 Inside the frame the real `@projective/ui` board keeps the app's own tokens so the mock matches the
-product (#280 flag c).
+product (#280 flag c). Below `--bp-md` the window is the poster (`--lp-theatre-h-poster`, a trailing
+fade over its last lanes).
 
-**Glass header pill** (glass on `::before`).
+**Glass header bar** (full width, glass on `::before`; #288).
 
 ```css
 .lp-header {
 	position: sticky;
-	inset-block-start: var(--lp-header-inset);
+	inset-block-start: var(--lp-header-inset); /* 0 */
 	z-index: 10;
 	isolation: isolate;
-	margin-inline: auto;
-	inline-size: min(100% - 2 * var(--lp-gutter), var(--lp-maxw));
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto; /* brand · nav (leading) · actions (trailing) */
 	block-size: var(--lp-header-h);
-	border-radius: var(--lp-r-pill);
+	padding-inline: max(var(--lp-gutter), (100% - var(--lp-maxw)) / 2); /* on the hero's container */
 }
 .lp-header::before {
 	content: "";
 	position: absolute;
 	inset: 0;
 	z-index: -1;
-	border-radius: inherit;
-	background: color-mix(in srgb, var(--lp-surface-1) var(--lp-glass-veil), transparent);
+	background: color-mix(in srgb, var(--lp-bg) var(--lp-glass-veil), transparent);
 	-webkit-backdrop-filter: blur(var(--lp-glass-blur)) saturate(var(--lp-glass-saturate));
 	backdrop-filter: blur(var(--lp-glass-blur)) saturate(var(--lp-glass-saturate));
-	box-shadow: inset 0 0 0 1px var(--lp-hair-strong), var(--lp-shadow-header);
+	box-shadow: inset 0 -1px 0 var(--lp-hair); /* one bottom hairline */
+}
+.lp-header--top::before {
+	opacity: 0; /* hydrated, within 48px of the top */
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
 	.lp-header::before {
-		background: var(--lp-surface-1);
+		background: var(--lp-bg);
 	}
 }
 ```
 
-Only `--lp-text`, `--lp-text-2` and `--lp-teal-ink` sit on glass; header buttons are opaque fills.
+Only `--lp-text`, `--lp-text-2` and `--lp-teal-ink` sit on glass; the bar's one fill is Get started
+(tier 2), or Open app.
 
 **Focus — two options; the owner chooses (#280 flag b). L1 ships neither until then.**
 
@@ -2318,13 +2543,9 @@ Only `--lp-text`, `--lp-text-2` and `--lp-teal-ink` sit on glass; header buttons
 }
 ```
 
-**Constellation (B1 WebGL2 and its static SVG fallback).** Colours read back from the tokens with
-`getComputedStyle` (no literals). Nodes and links ≤ `--lp-node-alpha-quiet` inside the copy column's
-box (+24px), 0 inside the search halo box, each pixel's luminance clamped to `--lp-bg-lum-max`. Fade
-in with `opacity` only. Never mounted under either reduced-motion channel, Save-Data,
-`deviceMemory < 4` or `hardwareConcurrency ≤ 4`. Shaders are tagged template strings in
-`features/landing/core/shaders/*.ts`; no dependency (#280). LandingBackground reflects its state as
-`data-lp-bg="webgl|static"` and `data-lp-bg-reason` on `.lp-root` (the wallet aurora's rule,
+**Constellation (B1) — retired by #288 (2026-10-18).** The WebGL2 canvas, its static SVG, the
+quiet-zone mask and their tokens are deleted. LandingBackground reflects
+`data-lp-bg="spotlight|static"` and `data-lp-bg-reason` on `.lp-root` (the wallet aurora's rule,
 `DESIGN_SYSTEM.md:927-938`), and the Dev Context Switcher's `landingBackground` axis forces either
 path (§6).
 
@@ -2345,6 +2566,9 @@ path (§6).
 | Colour-blind                                     | `:root[data-cvd="protan\|deutan\|tritan"]`, value-scoped                                          | `context.ts:142`; precedent `features/workspaces/styles/workspace-tokens.css:430-440` |
 | Theme crossfade (applies to `lp-` automatically) | `*, *::before, *::after { transition: color/background-color/border-color/fill var(--dur-slow) }` | `index.css:1296-1305`                                                                 |
 | Focus suppression                                | token overrides · element `outline/box-shadow: none !important` · field glow · portal ring        | `apps/web/styles/global.css:245-255` · `:263-282` · `:337-345` · `:356-367`           |
+| Spotlight following a pointer                    | `.lp-bg[data-lp-spot="on"]` (the lit grid is drawn only then)                                     | `islands/LandingBackground.island.tsx`; `styles/lp-background.css`                    |
+| Hero background state                            | `.lp-root[data-lp-bg="spotlight\|static"]`, `[data-lp-bg-reason]`, `[data-lp-bg-paused]`          | `islands/LandingBackground.island.tsx`                                                |
+| Headline words                                   | `.lp-word[data-lp-w="0…9"]` (the reveal's stagger delays)                                         | `components/LandingHero.tsx`; `styles/lp-shell.css`                                   |
 | Portal host                                      | `data-ui-portal` on the `<body>` child                                                            | `packages/ui/overlay/components/BodyPortal.tsx:35`                                    |
 | `/` search shortcut                              | `isFocusSearchShortcut` (+ skip `isEditableTarget`)                                               | `apps/web/features/shell/core/shortcuts.ts:32-38, 57-61`                              |
 
@@ -2396,7 +2620,8 @@ JSON-LD.
 
 ### 4.1 Hero (`id="hero"`)
 
-**Eyebrow (optional):** Ready-made teams · Payment protection `[A1]` `[B1]`
+**Eyebrow (optional):** Ready-made teams · Payment protection `[A1]` `[B1]` — not set: the h1
+already says "ready-made team", and a reader would hear it twice (§2.8).
 
 **Headline options**
 
@@ -3006,8 +3231,9 @@ DemoHost is the only island and `import()`s the active one (#284 flag).
 a `DevOption` list, a `DevContextPanel` control and `reflect()` set **and** delete in
 `apps/web/features/devtools/`, seam `apps/web/utils/dev-seam.ts`):
 
-- `landingBackground` — Auto · Static · WebGL. Forces LandingBackground's path; the page reflects
-  `data-lp-bg="webgl|static"` and `data-lp-bg-reason` on `.lp-root` (§3.6). Built in L1.
+- `landingBackground` — Auto · Static only · Force spotlight. Forces LandingBackground's path; the
+  page reflects `data-lp-bg="spotlight|static"` and `data-lp-bg-reason` on `.lp-root` (§3.6). Built
+  in L1; its WebGL value went with the constellation (#288).
 - `landingMetrics` — Auto · All hidden · All shown. Forces the numbers section's threshold result so
   both the omitted section and every tile can be seen without real data. Built in L4.
 
@@ -3023,9 +3249,13 @@ From the §2.0 addendum, verbatim numbers (mobile mid-tier):
   motion or Save-Data or with `deviceMemory < 4`.**
 - **It pauses when offscreen or when the tab is hidden.**
 
+#288 retired the landing's only WebGL (the constellation): no canvas loop runs on `/`, and the
+spotlight (one coalesced custom-property write per frame) keeps the same pauses. The WebGL rules
+above bind any future one.
+
 Prompt-level budgets carried with it: the hero island ≤ 20 KB gzip (L2); each demo chunk ≤ 35 KB
-gzip, only the active one loaded (L3); WebGL `devicePixelRatio` capped at 1.5 (L1); `/features`
-initial JS ≤ the landing budget, demo chunks on "Try it" (L5).
+gzip, only the active one loaded (L3); WebGL `devicePixelRatio` capped at 1.5 (L1, moot since #288);
+`/features` initial JS ≤ the landing budget, demo chunks on "Try it" (L5).
 
 **What the 60 KB counts (Decision #286 (A), ruled 2026-10-18: strip + defer + rescope).** The
 addendum's 60 KB is **landing-owned** initial JS: every chunk a landing island reaches beyond the
@@ -3049,12 +3279,12 @@ open in the tab.
 | :-------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Initial JS      | `deno task build && deno task budget:landing` (`scripts/landing-budget.ts` over `features/landing/core/js-budget.ts` and `core/island-graph.ts`, unit-tested by `js-budget.test.ts` and `island-graph.test.ts`): it reads `apps/web/_fresh/client/.vite/manifest.json`, warns on a build older than the landing's sources, walks the client entry plus every island each landing page renders for a guest and for a signed-in visitor, gzips each chunk with `CompressionStream`, puts each initial chunk in a group by the mount of the islands that reach it (app baseline · landing-owned · layout host · footer), reports each island's added and exclusive weight, and exits 1 when a failing line is over: the landing-owned 60 kB, the baseline's 110 kB growth cap, an island's own-weight cap (the hero's 20 kB), a landing-owned lazy chunk's 35 kB. Dev-server sizes are meaningless (unbundled). **L1, 2026-10-18, before the ruling: OVER** — 171.8 kB guest / 394.4 kB signed in against an all-in 60 kB: client entry 23.0, the `_app` islands 86.7 (CurrencyBridge 44.7, OfflineBridge 20.6, DesignSystemRoot 14.2, WebVitalsBridge 3.0, ImageFallbackBridge 2.0, ExploreHistoryTracker 1.9, ServiceWorkerBridge 0.3), `TicketDeepLinkHost` 47.2 (46.6 exclusive), the landing's islands 11.7, the footer's 3.1, `ChatPopoutHost` 222.6 signed in (§9 row 29). **L2, 2026-10-18, as ruled: within budget** — app baseline 109.8 / 110 kB (0.2 kB of headroom); landing-owned 24.3 / 60 kB (HeroSearch 10.9, LandingBackground 7.9, LandingHeader 4.1, HeroTheatre 1.0, SchemaInjector 0.4); own weight HeroSearch 18.2 / 20 kB, HeroTheatre 3.4 / 12 kB; lazy, each ≤ 35: the hero's `ExploreService.ts` 31.7 and `search-history.ts` 0.7, `constellation-gl.ts` 4.5, `theatre-player.ts` 1.4, `CategorySheet.tsx` 1.0. Reported: `LazyChatHost` 4.1 signed in, the footer 3.4, page totals 137.5 guest / 141.6 signed in, and `ChatPopoutHost` 259.7 (+55 lazy behind it), fetched only once a chat is open. |
 | LCP / INP / CLS | Playwright (`npm:playwright-core@1.56.1`, the `deno task test:e2e` harness) against `deno task start`, Chromium with CDP CPU throttling ×4 and a Slow-4G network profile, cold cache, five runs, median reported; `WebVitalsBridge` already reports CLS/LCP/INP to `/api/logs/vitals` and is read back                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| WebGL gates     | The same harness with `prefers-reduced-motion`, `data-motion="reduced"`, Save-Data, `deviceMemory` 2 and a forced `webglcontextlost`: assert no WebGL context is created or that it is torn down                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Background gate | The same harness with `prefers-reduced-motion`, `data-motion="reduced"`, a coarse pointer, Save-Data and `deviceMemory` 2: assert the spotlight never follows (`data-lp-bg="static"`); #288 retired the WebGL gates                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Pause rules     | Scroll the hero offscreen and toggle `document.visibilityState`; assert the rAF loop stops                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
-Security stays as is: CSP needs no change (`script-src 'self'`, no `unsafe-eval`; WebGL shader
-compilation is not eval; `img-src https:` admits placehold.co; `font-src 'self' data:`;
-`connect-src` blocks fetching external textures, so none are fetched).
+Security stays as is: CSP needs no change (`script-src 'self'`, no `unsafe-eval`; `img-src https:`
+admits placehold.co; `font-src 'self' data:`; `connect-src` blocks fetching external textures, so
+none are fetched).
 
 ---
 
@@ -3072,7 +3302,7 @@ No stock photography; every image has width/height or an `aspect-ratio`.
 | Demo fixture avatars                                        | `/test_images/profile_2.webp`, `profile_3.jpg` … `profile_6.jpg` copied from the root `/test_images/` into `apps/web/static/test_images/` (same filenames; P0 does this) | Seeded profile URLs from the payload win when available                |
 | Fallback avatar                                             | `DEFAULT_AVATAR_URL` `/test_images/profile_1.jpg` (already static)                                                                                                       | Rails and suggestions                                                  |
 | Rail covers, owner avatars, suggestion thumbnails           | Payload / suggest URLs (`publicObjectUrl`, seeded from `/test_images` by the seed pipeline)                                                                              | Never a second hard-coded copy                                         |
-| Money-flow diagram, static constellation, grain             | Inline SVG / data-URI SVG authored in `features/landing`                                                                                                                 | No file assets                                                         |
+| Money-flow diagram, grain                                   | Inline SVG / data-URI SVG authored in `features/landing`                                                                                                                 | No file assets                                                         |
 | og:image                                                    | none yet                                                                                                                                                                 | Owner follow-up (§9); no placehold.co in social cards                  |
 | `platform/marketing/hero.webp` (`LandingPayload.heroImage`) | seeded                                                                                                                                                                   | Unused by this direction; L1 may drop it from the payload              |
 
@@ -3082,35 +3312,37 @@ No stock photography; every image has width/height or an `aspect-ratio`.
 
 Each is also a FLAG in the decision row named; none is resolved silently.
 
-| #  | Item                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Needs                                                                   | Row           |
-| :- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------- | :------------ |
-| 1  | **RULED #285 (A): no ring.** Focus indicator — the owner chose the app-wide no-focus-ring directive over a landing-only ring                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Owner ruling before L1 styles focus                                     | #280 (b)      |
-| 2  | **RULED #285 (B): allowlisted.** `lp-` namespace collision with the footer family; it renders outside `.lp-root`; rename after P8                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Owner OK to rename to `.site-footer` / `--sf-*` in L1 (or an allowlist) | #280 (a)      |
-| 3  | Board mock tokens: keep app tokens (matches the product, inherits #183 (e) 3.57:1) vs L3's `.lp-demo` bridge                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Owner ruling                                                            | #280 (c)      |
-| 4  | Fonts: system stacks today; a self-hosted OFL serif/sans                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Owner approval if wanted                                                | #280 (f)      |
-| 5  | **Workload-report release path** — the assignee can file a report that releases the held escrow to themselves with no approval. Fixed on a peer branch as Decision #290 (`claude/workload-report-no-release`, pending merge); B1, B5 and B6 stay **Blocked** until then, and §5.1 row 1 drops this reason once #290 is on main                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Merge #290; then unblock B1 / B5 / B6                                   | #281 (f)      |
-| 6  | Stripe processing fees: docs, seed comment and invoice footer say "passed through"; code does not                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Ruling: change the docs or build pass-through                           | #281 (b)      |
-| 7  | "Flat 5%" vs admin-negotiated rates — "flat" is out of every page sentence until confirmed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Legal / owner confirmation                                              | #281 (j)      |
-| 8  | Legal review of the payment-protection copy (§4.6, FAQ) and of P1's escrow terms before the terms link renders                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Lawyer                                                                  | #281          |
-| 9  | Fair Exit time rule (`finance-model.md`) vs the client-chosen tier in code                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Doc fix                                                                 | #281 (d)      |
-| 10 | Disputes on project work promised in `PRODUCT_MANAGEMENT.md` / PRODUCT_SPEC vs sessions-only code                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Doc fix or build                                                        | #281 (e)      |
-| 11 | Deadline bonus promised in setup copy ("an extra 10%") and never paid                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Product fix (out of landing scope)                                      | #281 (g)      |
-| 12 | V10 currency view held until a live rate feed exists and the FX snapshot claim is fixed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Owner                                                                   | #281 (c)      |
-| 13 | One-off service listings cannot be paid at checkout; the "single job" tile now posts a job (`/projects?create=1`) instead of browsing them                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Owner may revert to browse once one-off checkout ships                  | #281 (q)      |
-| 14 | P4's `medianFundingToApprovalHours` definition — the tile's label must match it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | P4 author                                                               | #281          |
-| 15 | SoftwareApplication `offers {price:"0"}` — **removed in L1** with the old `landingJsonLd`; it returns only if the owner confirms "free to join" as a claim                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Owner                                                                   | #281, #286    |
-| 16 | og:image for `/` and `/features` (no placeholder in social cards)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Asset                                                                   | #284          |
-| 17 | Hero animation cap: typewriter and board loop alternate on one timeline, with a visible "Pause the example" toggle from `--bp-md` and a 5-second typewriter cap below it (WCAG 2.2.2)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Owner OK                                                                | #284 (a)      |
-| 18 | V1 twice (hero theatre + default stage tab) — kept: passive vs hands-on                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Owner may veto (default the stage to `payments`)                        | #284 (b)      |
-| 19 | Theme control in the pill (and the menu sheet), not in L1's pill spec                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Owner OK                                                                | #284 (c)      |
-| 20 | The hero picker's "Businesses" option vs `SEARCH_SCOPES` (People & businesses, Articles) site-wide; "Products" is left out until W2 ships                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Owner: follow L2 (as specced) or `SEARCH_SCOPES`                        | #284 (d)      |
-| 21 | PublicFooter copy ("micro-agency helper teams", "helpers") breaks #283 on every public page                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Owner: change the footer copy site-wide (Decision #13) or accept it     | #283 (a)      |
-| 22 | `/features` on `/` shortcut: its only search (the final CTA instance) takes `/`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Owner may veto                                                          | #282 (a)      |
-| 23 | Founder / about data, testimonials, customer logos: none on the landing until real (P4 owns the manifesto)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Owner supplies real data later                                          | #281          |
-| 24 | `.lp-portal` widens the owner's "scoped to `.lp-root`" for panels the overlay layer moves to `<body>`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Owner may veto                                                          | #280 (g)      |
-| 25 | "Open app" replaces "Get started" as well as "Sign in" for a signed-in visitor                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Owner may veto                                                          | #284 (n)      |
-| 26 | The theatre is a static poster below `--bp-md` (the V1 loop plays from `--bp-md` only)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Owner may veto                                                          | #284 (o)      |
-| 27 | A direct INSERT of a ticket already in a work state skips the work-start gate (AFTER UPDATE only); needs a BEFORE INSERT guard                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Product fix (out of landing scope)                                      | #281 (w)      |
-| 28 | L4's "build P4 if it hasn't landed" is overridden: P4 is in flight on a peer branch, so the numbers section waits                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Owner OK                                                                | #284 (e)      |
-| 29 | **RULED #286 (A): strip + defer + rescope.** Options (2), (3) and (4) together: `/` and `/features` strip `?tkv=` with a server 303, `LazyChatHost` defers `ChatPopoutHost` until a chat is open, and the 60 kB counts landing-owned JS while the app baseline is held at its measured 109,799 bytes (#287; §7 has the shape and the L2 measurement). The flag was: initial-JS budget OVER on the app baseline. §7's never-exempt 60 kB counts the global `_app.tsx` islands, which are 86.7 kB on their own (109.7 with the client entry); `/` measures 171.8 kB for a guest and 394.4 kB signed in (§7). Options: (1) trim or lazy-load the global islands on the landing paths (app-wide work); (2) swap `TicketDeepLinkHost` on `LANDING_PATHS` for a small `?tkv=` stripper (−46.6 kB, ~125 kB left); (3) defer `ChatPopoutHost` on `/` for a signed-in visitor (−222.6 kB); (4) rescope the 60 kB to landing-owned JS (11.7 kB today) and track the baseline separately | Ruled 2026-10-18, before L2; L6 enforces the ruled shape (§7)           | #286 (A)      |
-| 30 | **L2 board model vs the product (FLAGS #287 (B), (C)).** (B) §5 K2 and the V1 frame-1 draft say a described, priced, unbought ticket's tag reads Draft; the product's card reads Needs funding (`fundingTagState`), and the board model's own header count already counted it. The model now tags it the product's way. (C) §4.1 drew "Homepage design (Funded)" in In Progress; the product's card shows no tag in a work lane and #283 (B) keeps the tags verbatim ("In progress"). The model now leaves the work lanes untagged, as the card does. Either can be reversed by the owner before L3 builds V1 on the model                                                                                                                                                                                                                                                                                                                                                    | Owner ruling before L3                                                  | #287 (B), (C) |
+| #  | Item                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Needs                                                                   | Row                |
+| :- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------- | :----------------- |
+| 1  | **RULED #285 (A): no ring.** Focus indicator — the owner chose the app-wide no-focus-ring directive over a landing-only ring                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Owner ruling before L1 styles focus                                     | #280 (b)           |
+| 2  | **RULED #285 (B): allowlisted.** `lp-` namespace collision with the footer family; it renders outside `.lp-root`; rename after P8                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Owner OK to rename to `.site-footer` / `--sf-*` in L1 (or an allowlist) | #280 (a)           |
+| 3  | Board mock tokens: keep app tokens (matches the product, inherits #183 (e) 3.57:1) vs L3's `.lp-demo` bridge                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Owner ruling                                                            | #280 (c)           |
+| 4  | Fonts: system stacks today; a self-hosted OFL serif/sans                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Owner approval if wanted                                                | #280 (f)           |
+| 5  | **Workload-report release path** — the assignee can file a report that releases the held escrow to themselves with no approval. Fixed on a peer branch as Decision #290 (`claude/workload-report-no-release`, pending merge); B1, B5 and B6 stay **Blocked** until then, and §5.1 row 1 drops this reason once #290 is on main                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Merge #290; then unblock B1 / B5 / B6                                   | #281 (f)           |
+| 6  | Stripe processing fees: docs, seed comment and invoice footer say "passed through"; code does not                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Ruling: change the docs or build pass-through                           | #281 (b)           |
+| 7  | "Flat 5%" vs admin-negotiated rates — "flat" is out of every page sentence until confirmed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Legal / owner confirmation                                              | #281 (j)           |
+| 8  | Legal review of the payment-protection copy (§4.6, FAQ) and of P1's escrow terms before the terms link renders                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Lawyer                                                                  | #281               |
+| 9  | Fair Exit time rule (`finance-model.md`) vs the client-chosen tier in code                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Doc fix                                                                 | #281 (d)           |
+| 10 | Disputes on project work promised in `PRODUCT_MANAGEMENT.md` / PRODUCT_SPEC vs sessions-only code                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Doc fix or build                                                        | #281 (e)           |
+| 11 | Deadline bonus promised in setup copy ("an extra 10%") and never paid                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Product fix (out of landing scope)                                      | #281 (g)           |
+| 12 | V10 currency view held until a live rate feed exists and the FX snapshot claim is fixed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Owner                                                                   | #281 (c)           |
+| 13 | One-off service listings cannot be paid at checkout; the "single job" tile now posts a job (`/projects?create=1`) instead of browsing them                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Owner may revert to browse once one-off checkout ships                  | #281 (q)           |
+| 14 | P4's `medianFundingToApprovalHours` definition — the tile's label must match it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | P4 author                                                               | #281               |
+| 15 | SoftwareApplication `offers {price:"0"}` — **removed in L1** with the old `landingJsonLd`; it returns only if the owner confirms "free to join" as a claim                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Owner                                                                   | #281, #286         |
+| 16 | og:image for `/` and `/features` (no placeholder in social cards)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Asset                                                                   | #284               |
+| 17 | Hero animation cap: typewriter and board loop alternate on one timeline, with a visible "Pause the example" toggle from `--bp-md` and a 5-second typewriter cap below it (WCAG 2.2.2)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Owner OK                                                                | #284 (a)           |
+| 18 | V1 twice (hero theatre + default stage tab) — kept: passive vs hands-on                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Owner may veto (default the stage to `payments`)                        | #284 (b)           |
+| 19 | Theme control in the pill (and the menu sheet), not in L1's pill spec                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Owner OK                                                                | #284 (c)           |
+| 20 | The hero picker's "Businesses" option vs `SEARCH_SCOPES` (People & businesses, Articles) site-wide; "Products" is left out until W2 ships                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Owner: follow L2 (as specced) or `SEARCH_SCOPES`                        | #284 (d)           |
+| 21 | PublicFooter copy ("micro-agency helper teams", "helpers") breaks #283 on every public page, `/` included: §4.10 bans "micro-agency" in page copy while §4.11 keeps the footer unchanged (Decision #13), so the two rules conflict on the landing (re-confirmed by the 2026-10-19 review; not reworded silently)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Owner: change the footer copy site-wide (Decision #13) or accept it     | #283 (a)           |
+| 22 | `/features` on `/` shortcut: its only search (the final CTA instance) takes `/`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Owner may veto                                                          | #282 (a)           |
+| 23 | Founder / about data, testimonials, customer logos: none on the landing until real (P4 owns the manifesto)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Owner supplies real data later                                          | #281               |
+| 24 | `.lp-portal` widens the owner's "scoped to `.lp-root`" for panels the overlay layer moves to `<body>`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Owner may veto                                                          | #280 (g)           |
+| 25 | "Open app" replaces "Get started" as well as "Sign in" for a signed-in visitor                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Owner may veto                                                          | #284 (n)           |
+| 26 | The theatre is a static poster below `--bp-md` (the V1 loop plays from `--bp-md` only)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Owner may veto                                                          | #284 (o)           |
+| 27 | A direct INSERT of a ticket already in a work state skips the work-start gate (AFTER UPDATE only); needs a BEFORE INSERT guard                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Product fix (out of landing scope)                                      | #281 (w)           |
+| 28 | L4's "build P4 if it hasn't landed" is overridden: P4 is in flight on a peer branch, so the numbers section waits                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Owner OK                                                                | #284 (e)           |
+| 29 | **RULED #286 (A): strip + defer + rescope.** Options (2), (3) and (4) together: `/` and `/features` strip `?tkv=` with a server 303, `LazyChatHost` defers `ChatPopoutHost` until a chat is open, and the 60 kB counts landing-owned JS while the app baseline is held at its measured 109,799 bytes (#287; §7 has the shape and the L2 measurement). The flag was: initial-JS budget OVER on the app baseline. §7's never-exempt 60 kB counts the global `_app.tsx` islands, which are 86.7 kB on their own (109.7 with the client entry); `/` measures 171.8 kB for a guest and 394.4 kB signed in (§7). Options: (1) trim or lazy-load the global islands on the landing paths (app-wide work); (2) swap `TicketDeepLinkHost` on `LANDING_PATHS` for a small `?tkv=` stripper (−46.6 kB, ~125 kB left); (3) defer `ChatPopoutHost` on `/` for a signed-in visitor (−222.6 kB); (4) rescope the 60 kB to landing-owned JS (11.7 kB today) and track the baseline separately | Ruled 2026-10-18, before L2; L6 enforces the ruled shape (§7)           | #286 (A)           |
+| 30 | **L2 board model vs the product (FLAGS #287 (B), (C)).** (B) §5 K2 and the V1 frame-1 draft say a described, priced, unbought ticket's tag reads Draft; the product's card reads Needs funding (`fundingTagState`), and the board model's own header count already counted it. The model now tags it the product's way. (C) §4.1 drew "Homepage design (Funded)" in In Progress; the product's card shows no tag in a work lane and #283 (B) keeps the tags verbatim ("In progress"). The model now leaves the work lanes untagged, as the card does. Either can be reversed by the owner before L3 builds V1 on the model                                                                                                                                                                                                                                                                                                                                                    | Owner ruling before L3                                                  | #287 (B), (C)      |
+| 31 | **The amber family in the first viewport (§2.8).** The overhaul's acceptance list said "no amber anywhere in the first viewport"; the board's Needs funding tag (the product's `--warning` lifecycle status, about `rgb(149 99 9)` in light) sits in the first viewport from 768 to 1600. It is kept as the product draws it (#288 (G), §B.11.3) — no `--lp-amber` renders — until the owner rules whether lifecycle statuses are exempt from that line                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Owner ruling                                                            | #288 (G)           |
+| 32 | **The app baseline is over its pin.** `deno task budget:landing` reads the client entry and the `_app` islands at 111.2 kB gzip against the 109,799-byte pin (#287 (A)(12)); every pre-merge run measured 109.8 kB, and the growth arrived with main's merge into the track (`5494eafb`). No landing file is in that graph; the landing-owned 19.8 kB of 60 passes. The 2026-10-19 review re-ran it (111.2 kB, exit 1): nothing under `packages/` or `apps/web/islands/` changed after the merge, while the merge itself changed 54 files under `packages/types` and `packages/ui/display` (`git diff --stat f91f1faf 5494eafb`; CurrencyBridge's `@projective/types` closure grew from 44.7 to 46.0 kB). The pin may only go down (#286 (A), #287 (A)), so it is not re-pinned without the owner                                                                                                                                                                             | Engineering: trim the baseline or re-pin it with the owner              | #286 (A), #287 (A) |

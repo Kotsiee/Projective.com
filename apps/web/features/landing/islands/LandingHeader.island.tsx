@@ -11,26 +11,26 @@ import { withRedirect } from "@features/auth/core/redirect.ts";
 import { HEADER_TOP_BAND_PX } from "../core/header.ts";
 
 // #region Navigation
-/** One link in the pill's "Main" navigation. */
+/** One link in the bar's "Main" navigation. */
 interface LandingNavLink {
 	label: string;
 	href: string;
-	/** Shown in the pill from `--bp-lg` only (the hero is the search below that); always in the sheet. */
+	/** Shown in the bar from `--bp-lg` only (the hero is the search below that); always in the sheet. */
 	wide?: boolean;
 }
 
 /**
- * The pill's links (`flows/LANDING.md` §4.0). An entry is listed only once its destination exists:
+ * The bar's links (`flows/LANDING.md` §4.0). An entry is listed only once its destination exists:
  * "How it works" (`/#how-it-works`) and "Pricing" (`/#pricing`) join when those sections render on
  * `/`, and "Features" (`/features`) when that page ships — a link to an anchor the page does not
- * have would render and do nothing (root CLAUDE.md §3 gate 11). Explore joins the pill at
+ * have would render and do nothing (root CLAUDE.md §3 gate 11). Explore joins the bar at
  * `--bp-lg` (§2.2 note 1): below that the hero's own search stands in for it.
  */
 const NAV_LINKS: readonly LandingNavLink[] = [
 	{ label: "Explore", href: "/explore", wide: true },
 ];
 
-/** Every pill link waits for `--bp-lg`, so the pill's nav itself does too (no empty landmark). */
+/** Every bar link waits for `--bp-lg`, so the bar's nav itself does too (no empty landmark). */
 const NAV_WIDE_ONLY = NAV_LINKS.every((link) => link.wide === true);
 
 /** The menu sheet's body: the element the menu button controls. */
@@ -47,19 +47,22 @@ export interface LandingHeaderProps {
 }
 
 /**
- * LandingHeader — the landing's floating header pill (`flows/LANDING.md` §2.1–§2.3, §4.0): the brand
- * link, the "Main" navigation, and the actions — the app's {@link ThemeToggle}, then "Sign in" and
- * "Get started" for a guest or "Open app" for a signed-in visitor (never a redirect; Decision #284
- * (8)).
+ * LandingHeader — the landing's full-width header bar (`flows/LANDING.md` §2.1–§2.3, §2.8, §4.0):
+ * the brand link and the "Main" navigation at the leading edge, the actions at the trailing edge —
+ * the app's {@link ThemeToggle}, then "Sign in" (tier 5, ghost) and "Get started" (tier 2,
+ * monochrome inverted) for a guest, or "Open app" (tier 2) for a signed-in visitor (never a
+ * redirect; Decision #284 (8)). The bar holds one filled control (§B.8.2, Decision #288 (E)).
  *
- * The server markup works without JavaScript: every link is a real link, and the pill wears its
- * glass. Once hydrated, below `--bp-md` the pill keeps the brand, the first action and a menu button
- * — rendered only now, because the sheet it opens (the app's {@link Drawer}: portal, scrim, focus
- * trap, scroll lock, Escape) needs the client; before that, "Get started" stays in the pill instead.
- * The sheet carries the links, the theme control and both actions. From `--bp-lg` the hydrated pill
- * drops its glass while the page sits within {@link HEADER_TOP_BAND_PX} of the top, and only once
- * the background has measured its quiet zones (`lp-shell.css`), so its text never sits on a
- * full-alpha node.
+ * The server markup works without JavaScript: every link is a real link, and the bar wears its
+ * glass. Below `--bp-md` the bar keeps the brand, the first action and a menu button whose sheet
+ * (the app's {@link Drawer}: portal, scrim, focus trap, scroll lock, Escape) needs the client. The
+ * server renders that button, and the stylesheet shows it in place of "Get started" from the first
+ * paint wherever scripting is enabled (`@media (scripting: enabled)`), so hydration moves nothing in
+ * the bar; with scripting off it stays hidden and "Get started" stays in the bar, and an engine
+ * without the media feature makes the swap once hydrated (`lp-header--live`). The sheet carries the
+ * links, the theme control and both actions (Sign in tier 4, Get started tier 2). The hydrated bar
+ * drops its glass and its hairline while the page sits within {@link HEADER_TOP_BAND_PX} of the
+ * top.
  *
  * It is also the carrier of the landing's token sheet and shell stylesheet: a stylesheet imported
  * by a server component never reaches the page, and this island renders on every LandingShell page.
@@ -87,7 +90,11 @@ export default function LandingHeader(
 	};
 
 	return (
-		<header class={`lp-header${atTop.value ? " lp-header--top" : ""}`}>
+		<header
+			class={`lp-header${hydrated.value ? " lp-header--live" : ""}${
+				atTop.value ? " lp-header--top" : ""
+			}`}
+		>
 			<a class="lp-header__brand" href="/" aria-label="Projective home">
 				<Logo class="lp-header__mark" />
 				<span class="lp-header__wordmark" aria-hidden="true">Projective</span>
@@ -110,30 +117,23 @@ export default function LandingHeader(
 				<span class="lp-header__theme">
 					<ThemeToggle />
 				</span>
-				{authenticated ? <a class="lp-btn lp-btn--tonal" href="/home">Open app</a> : (
+				{authenticated ? <a class="lp-btn lp-btn--structural" href="/home">Open app</a> : (
 					<>
 						<a class="lp-btn lp-btn--ghost" href={signInHref}>Sign in</a>
-						<a
-							class={`lp-btn lp-btn--primary${hydrated.value ? " lp-header__start" : ""}`}
-							href="/join"
-						>
-							Get started
-						</a>
+						<a class="lp-btn lp-btn--structural lp-header__start" href="/join">Get started</a>
 					</>
 				)}
-				{hydrated.value && (
-					<button
-						type="button"
-						class="lp-header__menu-btn"
-						aria-label="Open menu"
-						aria-haspopup="dialog"
-						aria-expanded={menuOpen.value}
-						aria-controls={menuOpen.value ? MENU_ID : undefined}
-						onClick={() => (menuOpen.value = true)}
-					>
-						<Icon name="menu" />
-					</button>
-				)}
+				<button
+					type="button"
+					class="lp-header__menu-btn"
+					aria-label="Open menu"
+					aria-haspopup="dialog"
+					aria-expanded={menuOpen.value}
+					aria-controls={menuOpen.value ? MENU_ID : undefined}
+					onClick={() => (menuOpen.value = true)}
+				>
+					<Icon name="menu" />
+				</button>
 			</div>
 
 			<Drawer
@@ -152,21 +152,25 @@ export default function LandingHeader(
 					<div class="lp-menu__actions">
 						{authenticated
 							? (
-								<a class="lp-btn lp-btn--tonal lp-btn--block" href="/home" onClick={closeMenu}>
+								<a
+									class="lp-btn lp-btn--structural lp-btn--block"
+									href="/home"
+									onClick={closeMenu}
+								>
 									Open app
 								</a>
 							)
 							: (
 								<>
 									<a
-										class="lp-btn lp-btn--tonal lp-btn--block"
+										class="lp-btn lp-btn--outlined lp-btn--block"
 										href={signInHref}
 										onClick={closeMenu}
 									>
 										Sign in
 									</a>
 									<a
-										class="lp-btn lp-btn--primary lp-btn--block"
+										class="lp-btn lp-btn--structural lp-btn--block"
 										href="/join"
 										onClick={closeMenu}
 									>

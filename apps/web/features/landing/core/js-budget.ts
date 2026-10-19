@@ -55,7 +55,7 @@ export const LANDING_JS_BUDGET = {
 	/**
 	 * Each lazily loaded chunk the landing owns — its source under `features/landing/`, or loaded by
 	 * `import()` from a landing-owned chunk (the hero's lazily loaded Explore client too): the L3 demo
-	 * cap, applied to every such chunk, the WebGL constellation included.
+	 * cap, applied to every such chunk.
 	 */
 	lazyChunk: 35 * KB,
 } as const;
@@ -147,7 +147,7 @@ export const LANDING_LAYOUT_ISLANDS: readonly BudgetIsland[] = [
 	{ path: "apps/web/features/landing/islands/LazyChatHost.island.tsx", audience: "signed-in" },
 ];
 
-/** The islands `LandingShell` renders itself: the header pill. */
+/** The islands `LandingShell` renders itself: the header bar. */
 export const LANDING_SHELL_ISLANDS: readonly BudgetIsland[] = [
 	{ path: "apps/web/features/landing/islands/LandingHeader.island.tsx", audience: "everyone" },
 ];

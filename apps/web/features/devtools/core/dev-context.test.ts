@@ -108,7 +108,7 @@ Deno.test("landingBackground — the options are the landing gate's BackgroundFo
 	assertEquals(ctx.DEV_LANDING_BACKGROUNDS.map((o) => [o.value, o.label]), [
 		["auto", "Auto"],
 		["static", "Static only"],
-		["webgl", "Force WebGL"],
+		["spotlight", "Force spotlight"],
 	]);
 	for (const { value } of ctx.DEV_LANDING_BACKGROUNDS) {
 		assertEquals(parseBackgroundForce(value), value);
@@ -119,9 +119,9 @@ Deno.test("landingBackground — the options are the landing gate's BackgroundFo
 // #region reflect()
 Deno.test("reflect — writes data-dev-landing-background only while it overrides, and deletes it", async () => {
 	await withDocument((root) => {
-		ctx.patchDevContext({ enabled: true, landingBackground: "webgl" });
-		assertEquals(root.attributes.get(ATTR), "webgl");
-		assertEquals(seam.readDevSeam()?.landingBackground, "webgl");
+		ctx.patchDevContext({ enabled: true, landingBackground: "spotlight" });
+		assertEquals(root.attributes.get(ATTR), "spotlight");
+		assertEquals(seam.readDevSeam()?.landingBackground, "spotlight");
 
 		ctx.patchDevContext({ landingBackground: "static" });
 		assertEquals(root.attributes.get(ATTR), "static");
@@ -136,13 +136,13 @@ Deno.test("reflect — writes data-dev-landing-background only while it override
 
 Deno.test("reflect — switching simulation off deletes the attribute; switching it on restores it", async () => {
 	await withDocument((root) => {
-		ctx.patchDevContext({ enabled: true, landingBackground: "webgl" });
+		ctx.patchDevContext({ enabled: true, landingBackground: "spotlight" });
 		ctx.setDevEnabled(false);
 		assertFalse(root.attributes.has(ATTR));
 		assertEquals(seam.readDevSeam(), null);
 
 		ctx.setDevEnabled(true);
-		assertEquals(root.attributes.get(ATTR), "webgl");
+		assertEquals(root.attributes.get(ATTR), "spotlight");
 	});
 });
 
@@ -160,13 +160,13 @@ Deno.test("reflect — subscribers receive the decoded value on every change", a
 		const seen: Array<string | undefined> = [];
 		const stop = seam.subscribeDevSeam((state) => seen.push(state?.landingBackground));
 		try {
-			ctx.patchDevContext({ enabled: true, landingBackground: "webgl" });
+			ctx.patchDevContext({ enabled: true, landingBackground: "spotlight" });
 			ctx.patchDevContext({ landingBackground: "auto" });
 			ctx.setDevEnabled(false);
 		} finally {
 			stop();
 		}
-		assertEquals(seen, ["webgl", "auto", undefined]);
+		assertEquals(seen, ["spotlight", "auto", undefined]);
 	});
 });
 
@@ -188,7 +188,7 @@ Deno.test("hydrate — a blob saved before the axis existed reads as auto", asyn
 Deno.test("readDevSeam — an unknown attribute value reads as auto", async () => {
 	await withDocument((root) => {
 		root.dataset.devPersona = "client";
-		root.dataset.devLandingBackground = "shader";
+		root.dataset.devLandingBackground = "webgl";
 		assertEquals(seam.readDevSeam()?.landingBackground, "auto");
 	});
 });
@@ -196,7 +196,7 @@ Deno.test("readDevSeam — an unknown attribute value reads as auto", async () =
 Deno.test("readDevSeam — a production build never reads the axis or subscribes", async () => {
 	await withDocument((root) => {
 		root.dataset.devPersona = "client";
-		root.dataset.devLandingBackground = "webgl";
+		root.dataset.devLandingBackground = "spotlight";
 		assert(root.attributes.has(ATTR));
 		assertEquals(prodSeam.readDevSeam(), null);
 

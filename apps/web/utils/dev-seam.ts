@@ -392,19 +392,18 @@ export type DevAvailabilityConflict = "auto" | "call_outside_work" | "empty_hori
 export type DevWalletAurora = "auto" | "static" | "animated";
 
 /**
- * How the landing hero's background (`features/landing`, `flows/LANDING.md` §3.6, §6) is chosen.
- * `auto` runs the shipping gate (both reduced-motion channels, forced colours, Save-Data, device
- * memory, core count, a fine pointer, WebGL2 support, the hero on screen, a visible tab); `static`
- * never mounts the WebGL2 constellation or moves the spotlight, so the SSR paint is what shows;
- * `webgl` mounts the constellation past the Save-Data, memory, core-count and pointer gates (a
- * software renderer included) and clears a latched failure, while still honouring reduced motion and
- * forced colours, falling back when no WebGL2 context can be created, and pausing offscreen and on a
- * hidden tab. The outcome is reflected as `data-lp-bg` / `data-lp-bg-reason` on `.lp-root`.
+ * How the landing hero's background (`features/landing`, `flows/LANDING.md` §3.6) is chosen.
+ * `auto` runs the shipping gate (both reduced-motion channels, forced colours, a fine pointer,
+ * Save-Data, device memory, core count, the hero on screen, a visible tab); `static` never moves the
+ * spotlight, so the SSR paint is what shows; `spotlight` follows the pointer past the pointer,
+ * Save-Data, memory and core-count gates, while still honouring reduced motion and forced colours
+ * and pausing offscreen and on a hidden tab. The outcome is reflected as `data-lp-bg` /
+ * `data-lp-bg-reason` on `.lp-root`.
  *
- * Its own axis because every non-`auto` value is a DEVICE fact (memory, cores, GPU, pointer) a
- * developer cannot change from the page. The values are the landing gate's `BackgroundForce`.
+ * Its own axis because every non-`auto` value is a DEVICE fact (memory, cores, pointer) a developer
+ * cannot change from the page. The values are the landing gate's `BackgroundForce`.
  */
-export type DevLandingBackground = "auto" | "static" | "webgl";
+export type DevLandingBackground = "auto" | "static" | "spotlight";
 
 /**
  * The `/settings` attention dashboard and the lane's marks (Decision #150). `auto` shows the real
@@ -654,7 +653,7 @@ const PROJECT_ONBOARDINGS: readonly DevProjectOnboarding[] = [
 const LAYOUT_DIRECTIONS: readonly DevLayoutDirection[] = ["ltr", "rtl", "auto"];
 const PROFILE_SETUPS: readonly DevProfileSetup[] = ["auto", "new", "live", "complete"];
 const WALLET_AURORAS: readonly DevWalletAurora[] = ["auto", "static", "animated"];
-const LANDING_BACKGROUNDS: readonly DevLandingBackground[] = ["auto", "static", "webgl"];
+const LANDING_BACKGROUNDS: readonly DevLandingBackground[] = ["auto", "static", "spotlight"];
 const SETTINGS_ATTENTIONS: readonly DevSettingsAttention[] = ["auto", "clear", "all"];
 const ACCOUNT_LIFECYCLES: readonly DevAccountLifecycle[] = [
 	"auto",

@@ -22,8 +22,8 @@
  *     watched live), a hidden tab, and the search field hovered or holding focus hold the clock
  *     where it is; releasing them resumes the same turn. Using the search — typing, a key other
  *     than Tab, a press, a new category — or the viewport crossing `--bp-md` ends the timeline for
- *     good. So the field's B9 ring, which turns on hover and focus, never moves beside the hero's
- *     own motion, and a keyboard visitor can tab past the search to the toggle.
+ *     good. So nothing in the hero moves while the visitor is reaching for the search, and a
+ *     keyboard visitor can tab past the search to the toggle.
  *
  * {@link heroTurn} is the one thing a participant reads: it names who may move right now and reads
  * `"idle"` whenever nothing may — paused, held, reduced motion, a hidden tab, waiting for the
@@ -132,7 +132,7 @@ const WIDE_QUERY = "(min-width: 768px)";
 /** The hero search: focus resting in it holds the timeline, and using it ends the timeline. */
 const HERO_SEARCH_SELECTOR = '#hero [role="search"], #hero .lp-search';
 
-/** The field whose B9 ring turns on hover: the pointer over it holds the timeline. */
+/** The search field: the pointer over it holds the timeline. */
 const HERO_FIELD_SELECTOR = "#hero .lp-search";
 
 /** Keys that only move focus or modify another key: pressing them is not using the search. */

@@ -5,7 +5,7 @@ import LandingHeader from "@features/landing/islands/LandingHeader.island.tsx";
 
 /** Props for {@link LandingShell}. */
 export interface LandingShellProps {
-	/** Whether the visitor is signed in — the pill then offers "Open app" instead of signing in. */
+	/** Whether the visitor is signed in — the bar then offers "Open app" instead of signing in. */
 	authenticated: boolean;
 	/** The page the visitor is on (path + query), threaded into "Sign in" as its `redirectTo`. */
 	returnTo: string;
@@ -20,7 +20,7 @@ export interface LandingShellProps {
  *
  * `.lp-root` is the full-bleed canvas the `--lp-*` tokens are scoped to. Inside it: the skip link
  * "Skip to main content" (the first Tab stop) aimed at the app's one skip-link target,
- * `PAGE_CANVAS_MAIN_ID` (Decision #285 (C)); the floating header pill ({@link LandingHeader}); and
+ * `PAGE_CANVAS_MAIN_ID` (Decision #285 (C)); the header bar ({@link LandingHeader}); and
  * the `<main>` landmark. The unchanged {@link PublicFooter} (Decision #13) renders OUTSIDE
  * `.lp-root`, so no landing token reaches the footer and no footer-local `--lp-*` token reaches the
  * landing (Decision #285 (B)).

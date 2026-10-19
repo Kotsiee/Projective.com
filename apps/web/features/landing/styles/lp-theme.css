@@ -18,19 +18,12 @@
  *   - Reduced motion: every duration, the reveal distance and the press scale collapse under BOTH
  *     `prefers-reduced-motion: reduce` and `:root[data-motion="reduced"]`.
  *
- * Colour tokens are declared only in the mode and high-contrast blocks; the base block's mask stops
- * are alpha and luminance values a mask reads, never paint. Weights alias `--fw-*`, so
- * the dyslexic overlay collapses them with the rest of the app. `--lp-focus` is declared because
- * the sheet defines it, and is not used: the landing draws no focus ring (Decision #285 (A)).
+ * Colour tokens are declared only in the mode and high-contrast blocks; the base block's mask stop
+ * is an alpha a mask reads, never paint. A token the light block declares and no later block
+ * redeclares is mode-invariant (the brand pair, Decision #288 (E)). Weights alias `--fw-*`, so the
+ * dyslexic overlay collapses them with the rest of the app. `--lp-focus` is declared because the
+ * sheet defines it, and is not used: the landing draws no focus ring (Decision #285 (A)).
  */
-
-/* #region Registered properties */
-@property --lp-ring-angle {
-	syntax: "<angle>";
-	inherits: false;
-	initial-value: 0deg;
-}
-/* #endregion */
 
 /* #region Base — type, radii, layout, effects geometry, motion */
 :is(.lp-root, .lp-portal) {
@@ -42,8 +35,9 @@
 	--lp-font-body: var(--font-sans);
 	--lp-font-mono: ui-monospace, "SF Mono", "Cascadia Mono", var(--font-mono);
 
-	/* Type scale (§3.4): every clamp keeps max ≤ 2.5 × min, so 200% zoom holds. */
-	--lp-fs-hero: clamp(2.5rem, 1.5rem + 4vw, 4.75rem);
+	/* Type scale (§3.4): every clamp keeps max ≤ 2.5 × min, so 200% zoom holds. The hero's display
+	   runs 40px at 375 to 72px from 1280 (the Precision hero, §2.8). */
+	--lp-fs-hero: clamp(2.5rem, 1.6rem + 3.6vw, 4.5rem);
 	--lp-fs-section: clamp(2rem, 1.4rem + 2.5vw, 3.5rem);
 	--lp-fs-figure: clamp(2.25rem, 1.6rem + 2.8vw, 4rem);
 	--lp-fs-h3: clamp(1.125rem, 1.02rem + 0.45vw, 1.375rem);
@@ -58,21 +52,22 @@
 
 	/* Tracking and leading — named so the dyslexic overlay can remap them (§3.6). The serif
 	   section voice tracks tighter than the precision voice, so it carries its own token. */
-	--lp-track-hero: -0.03em;
+	--lp-track-hero: -0.035em;
 	--lp-track-section: -0.022em;
 	--lp-track-serif: -0.012em;
 	--lp-track-figure: -0.03em;
 	--lp-track-h3: -0.01em;
 	--lp-track-body: -0.005em;
 	--lp-track-meta: 0em;
-	--lp-track-eyebrow: 0.1em;
-	--lp-lead-hero: 1.04;
+	--lp-track-eyebrow: var(--tracking-wide);
+	--lp-lead-hero: 1.02;
 	--lp-lead-section: 1.08;
 	--lp-lead-h3: 1.3;
-	--lp-lead-body-lg: 1.55;
+	--lp-lead-body-lg: 1.7;
 	--lp-lead-body: 1.65;
 
-	/* Radii (§3.5): the scale knob still flows through; a pill is a shape, never scaled. */
+	/* Radii (§3.5): the scale knob still flows through; a pill is a shape, never scaled. The radius
+	   ramp is the default for controls; only the tier-1 and tier-2 fills are pills (§B.8.4, §D.7.7). */
 	--lp-r-xs: calc(4px * var(--radius-scale));
 	--lp-r-sm: calc(8px * var(--radius-scale));
 	--lp-r-md: calc(12px * var(--radius-scale));
@@ -80,18 +75,22 @@
 	--lp-r-xl: calc(24px * var(--radius-scale));
 	--lp-r-2xl: calc(32px * var(--radius-scale));
 	--lp-r-pill: 999px;
-	--lp-r-search: var(--lp-r-xl);
-	--lp-r-btn: var(--lp-r-pill);
+	--lp-r-search: var(--lp-r-md);
+	--lp-r-btn: var(--lp-r-sm);
 
-	/* Layout */
-	--lp-stage-tilt: perspective(2000px) rotateX(14deg) rotateZ(-1.5deg) scale(0.94);
+	/* Layout. The header is a full-width bar (§2.8): 3.5rem below --bp-md, 4rem from it. */
 	--lp-gutter: clamp(1rem, 0.25rem + 3.5vw, 3rem);
 	--lp-section-pad: clamp(4rem, 2.5rem + 6.5vw, 9rem);
 	--lp-header-h: 3.5rem;
-	--lp-header-inset: 0.75rem;
+	--lp-header-inset: 0px;
+	/* The hero's top: the bar, then 24px at 375 growing to 38px at 768; from --bp-lg it follows the
+	   viewport's height instead (§2.8), so a laptop's first screen holds the headline, the search
+	   and the board's first row. */
 	--lp-hero-pad: calc(
-		var(--lp-header-h) + var(--lp-header-inset) + clamp(2.5rem, 0.5rem + 8vw, 8rem)
+		var(--lp-header-h) + var(--lp-header-inset) + clamp(1.5rem, 6vw - 0.5rem, 4.5rem)
 	);
+	/* The search field's height: `.lp-search` and the calls to action centred beside it read it. */
+	--lp-field-h: 3.5rem;
 	--lp-gap: clamp(0.75rem, 0.5rem + 1vw, 1.5rem);
 	--lp-heading-gap: clamp(0.75rem, 0.55rem + 0.8vw, 1.25rem);
 	--lp-stack-2xs: var(--space-1);
@@ -108,35 +107,37 @@
 	--lp-measure: var(--measure);
 	--lp-measure-lead: 56ch;
 	--lp-measure-display: 18ch;
+	/* The theatre's board frame, fixed so the loop never shifts the page: the tallest frame of the
+	   scripted loop (two cards in a lane, measured 236px) plus --space-2, and below --bp-md the
+	   poster's still frame (its narrow cards wrap their foot, 222px) plus --space-2. */
+	--lp-theatre-h: 15.25rem;
+	--lp-theatre-h-poster: 14.375rem;
 
 	/* Effects geometry (mode-invariant; the colours live in the mode blocks) */
 	--lp-spot-r: clamp(18rem, 36vw, 36rem);
-	--lp-spot-x: 50%;
+	/* The spotlight's resting place: the hero's top-right corner, over the grid's quarter and away
+	   from the headline, so the words rest on calm canvas until a pointer moves (§2.8). */
+	--lp-spot-x: 88%;
 	--lp-spot-y: 0%;
-	--lp-grid-size: clamp(2.5rem, 1.6rem + 2.4vw, 4rem);
+	/* B7 grid: integer cells, so every line lands on a whole pixel. Its origin is the content
+	   container's left edge, so one vertical line runs down the h1's edge; it resolves in the hero's
+	   own container units (`.lp-hero` is an inline-size container), rounded to a pixel. */
+	--lp-grid-size: 48px;
+	--lp-grid-size-wide: 64px;
+	--lp-grid-origin: round(
+		nearest,
+		calc(var(--lp-gutter) + max(0px, (100cqw - var(--lp-maxw)) / 2)),
+		1px
+	);
 	--lp-grain-size: 160px;
-	--lp-ring-w: 1px;
 	--lp-glass-veil: 82%;
 	--lp-glass-blur: 16px;
 	--lp-glass-saturate: 1.4;
 	--lp-focus-w: 2px;
 	--lp-focus-offset: 2px;
 
-	/* Mask stops and geometry (§3.6). A mask reads only alpha (CSS) or luminance (the SVG quiet-zone
-	   mask), so these colours are never painted. */
+	/* The mask stop (§3.6). A mask reads only alpha, so this colour is never painted. */
 	--lp-mask-ink: #000;
-	--lp-mask-keep: #fff;
-	--lp-mask-clear: #000;
-	--lp-fade-mask: linear-gradient(to bottom, var(--lp-mask-ink) 50%, transparent 92%);
-	--lp-calm-half: min(50%, 30rem);
-	--lp-calm-feather: 4rem;
-	--lp-calm-mask: linear-gradient(
-		to right,
-		var(--lp-mask-ink) calc(50% - var(--lp-calm-half) - var(--lp-calm-feather)),
-		transparent calc(50% - var(--lp-calm-half)),
-		transparent calc(50% + var(--lp-calm-half)),
-		var(--lp-mask-ink) calc(50% + var(--lp-calm-half) + var(--lp-calm-feather))
-	);
 
 	/* Motion (§3.5): no overshoot anywhere. */
 	--lp-dur-press: 50ms;
@@ -146,8 +147,14 @@
 	--lp-dur-reveal: 600ms;
 	--lp-dur-demo: 900ms;
 	--lp-dur-demo-hold: 1600ms;
-	--lp-dur-ring: 6000ms;
 	--lp-stagger: 50ms;
+	/* The headline's blur-fade reveal (§3.6): each word rises and sharpens, staggered; the last word
+	   lands at 0.62s. The display's largest word is the desktop LCP element and counts once its
+	   animation ends, so the clock stays inside the 800ms LCP − FCP gate (§2.8). */
+	--lp-dur-word: 440ms;
+	--lp-stagger-word: 20ms;
+	--lp-word-blur: 12px;
+	--lp-word-rise: 16px;
 	--lp-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 	--lp-ease-standard: cubic-bezier(0.2, 0, 0, 1);
 	--lp-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
@@ -156,24 +163,35 @@
 	--lp-reveal-distance: 12px;
 	--lp-press-scale: 0.96;
 }
+
+@media (min-width: 768px) {
+	:is(.lp-root, .lp-portal) {
+		--lp-header-h: 4rem;
+		--lp-field-h: 3.75rem;
+	}
+}
+
+/* 80px under the bar on an 800px-tall screen, 95px on a 900px one, never under 56px. */
+@media (min-width: 1024px) {
+	:is(.lp-root, .lp-portal) {
+		--lp-hero-pad: calc(
+			var(--lp-header-h) + var(--lp-header-inset) + clamp(3.5rem, 15svh - 2.5rem, 7rem)
+		);
+	}
+}
 /* #endregion */
 
 /* #region Light — #8 light-airy (the app's :root default) */
 :is(.lp-root, .lp-portal) {
 	color-scheme: light;
 
-	/* Canvas and surfaces (all solid) */
+	/* Canvas and surfaces (all solid: §B.4.2, Decision #288) */
 	--lp-bg: #f6f8f8;
-	--lp-bg-end: #ffffff;
 	--lp-surface-1: #ffffff;
 	--lp-surface-2: #f2f5f6;
 	--lp-surface-3: #e9edef;
-	--lp-wash-teal: rgb(40 134 144 / 0.06);
-	--lp-wash-amber: rgb(217 130 22 / 0.06);
-	--lp-canvas-paint:
-		radial-gradient(60% 50% at 12% 0%, var(--lp-wash-teal), transparent 70%),
-		radial-gradient(50% 45% at 88% 4%, var(--lp-wash-amber), transparent 70%),
-		linear-gradient(var(--lp-bg), var(--lp-bg-end) 60%);
+	/* The theatre's window: one measurable tone step off the canvas in each mode. */
+	--lp-window: #ffffff;
 
 	/* Text */
 	--lp-text: #101417;
@@ -188,7 +206,7 @@
 	--lp-warm-text-3: #61574b;
 	--lp-warm-hair: rgb(29 25 19 / 0.1);
 
-	/* Amber — the one filled primary per region */
+	/* Amber — tier 1: only where money moves or checkout begins (§B.8.1, #288 (E)) */
 	--lp-amber: #d98216;
 	--lp-amber-hover: #e39433;
 	--lp-amber-active: #eaa453;
@@ -196,7 +214,7 @@
 	--lp-amber-edge: #a35f0c;
 	--lp-amber-ink: #7d4303;
 
-	/* Teal — glow and structure; never text */
+	/* Teal — structure and ink; the fill survives for the sheet radio's accent colour */
 	--lp-teal: #288690;
 	--lp-teal-ink: #0a5a62;
 	--lp-teal-fill: #1f747d;
@@ -204,7 +222,15 @@
 	--lp-teal-fill-active: #175c63;
 	--lp-on-teal: #ffffff;
 
-	/* Monochrome — the second legal fill */
+	/* Brand — tier 3, the hero Search: the product's own `--primary` pair (§A.1.1), mode-invariant in
+	   all four states, so no later block redeclares it. Hover and press darken, so the label only
+	   gains contrast. */
+	--lp-brand: #007680;
+	--lp-brand-hover: #006a73;
+	--lp-brand-active: #005f67;
+	--lp-on-brand: #ebfdff;
+
+	/* Monochrome — tier 2, structural: the header's Get started and Open app */
 	--lp-mono: #161b1e;
 	--lp-mono-hover: #0b0e10;
 	--lp-mono-active: #0b0e10;
@@ -214,6 +240,7 @@
 	--lp-hair: rgb(16 20 23 / 0.08);
 	--lp-hair-strong: rgb(16 20 23 / 0.12);
 	--lp-edge: #646f75;
+	--lp-field-edge: #848e93;
 	--lp-focus: #0b5d65;
 
 	/* Demo-stage status */
@@ -225,21 +252,12 @@
 	--lp-held-ink: #0a5a62;
 	--lp-held-fill: #e5f2f3;
 
-	/* Effects */
-	--lp-spot: rgb(40 134 144 / 0.05);
+	/* Effects. The spotlight is neutral: a disc is invisible on the pale canvas, so in light mode it
+	   shows only as the lit grid under it. */
+	--lp-spot: transparent;
 	--lp-grid-line: rgb(16 20 23 / 0.05);
-	--lp-grid-line-lit: rgb(16 20 23 / 0.08);
-	--lp-glow-amber: rgb(217 130 22 / 0.22);
-	--lp-glow-teal: rgb(40 134 144 / 0.24);
-	--lp-halo-blur: 28px;
-	--lp-glow-stop-a: #a35f0c;
-	--lp-glow-stop-b: #1f747d;
+	--lp-grid-line-lit: rgb(16 20 23 / 0.1);
 	--lp-grain-opacity: 0.035;
-	--lp-node: #288690;
-	--lp-node-alpha: 0.5;
-	--lp-node-alpha-quiet: 0.1;
-	--lp-node-alpha-halo: 0;
-	--lp-bg-lum-max: 0.57;
 
 	/* Shadows (`--shadow-intensity` is the app's global depth knob) */
 	--lp-shadow-1:
@@ -247,11 +265,13 @@
 		0 2px 6px -2px rgb(16 20 23 / calc(0.06 * var(--shadow-intensity)));
 	--lp-shadow-pop:
 		0 0 0 1px var(--lp-hair), 0 12px 32px -6px rgb(16 20 23 / calc(0.14 * var(--shadow-intensity)));
-	--lp-shadow-stage:
-		0 0 0 1px var(--lp-hair), 0 2px 4px rgb(16 20 23 / calc(0.04 * var(--shadow-intensity))),
-		0 12px 32px -8px rgb(16 20 23 / calc(0.1 * var(--shadow-intensity))),
-		0 48px 96px -24px rgb(40 134 144 / calc(0.2 * var(--shadow-intensity)));
-	--lp-shadow-header: 0 8px 24px -10px rgb(16 20 23 / calc(0.12 * var(--shadow-intensity)));
+	/* The suggestions panel: the pop's depth on a firmer edge, since it opens over the white window. */
+	--lp-shadow-panel:
+		0 0 0 1px var(--lp-hair-strong),
+		0 16px 40px -8px rgb(16 20 23 / calc(0.16 * var(--shadow-intensity)));
+	--lp-shadow-window:
+		0 1px 2px rgb(16 20 23 / calc(0.04 * var(--shadow-intensity))),
+		0 24px 48px -16px rgb(16 20 23 / calc(0.14 * var(--shadow-intensity)));
 }
 /* #endregion */
 
@@ -260,13 +280,10 @@
 	color-scheme: dark;
 
 	--lp-bg: #07090a;
-	--lp-bg-end: #07090a;
 	--lp-surface-1: #0d1012;
 	--lp-surface-2: #13171a;
 	--lp-surface-3: #1a1f23;
-	--lp-wash-teal: transparent;
-	--lp-wash-amber: transparent;
-	--lp-canvas-paint: var(--lp-bg);
+	--lp-window: #13171a;
 
 	--lp-text: #eef1f2;
 	--lp-text-2: #c6ced2;
@@ -301,6 +318,7 @@
 	--lp-hair: rgb(255 255 255 / 0.07);
 	--lp-hair-strong: rgb(255 255 255 / 0.12);
 	--lp-edge: #7a858a;
+	--lp-field-edge: #5c666b;
 	--lp-focus: #8adde3;
 
 	--lp-refuse-ink: #ffa39b;
@@ -311,31 +329,20 @@
 	--lp-held-ink: #6ccdd5;
 	--lp-held-fill: #0e2528;
 
-	--lp-spot: rgb(108 205 213 / 0.07);
+	--lp-spot: rgb(255 255 255 / 0.035);
 	--lp-grid-line: rgb(255 255 255 / 0.04);
-	--lp-grid-line-lit: rgb(255 255 255 / 0.07);
-	--lp-glow-amber: rgb(217 130 22 / 0.28);
-	--lp-glow-teal: rgb(40 134 144 / 0.36);
-	--lp-halo-blur: 32px;
-	--lp-glow-stop-a: #f5ad5e;
-	--lp-glow-stop-b: #6ccdd5;
+	--lp-grid-line-lit: rgb(255 255 255 / 0.09);
 	--lp-grain-opacity: 0.04;
-	--lp-node: #6ccdd5;
-	--lp-node-alpha: 0.6;
-	--lp-node-alpha-quiet: 0.08;
-	--lp-node-alpha-halo: 0;
-	--lp-bg-lum-max: 0.04;
 
 	--lp-shadow-1:
 		inset 0 1px 0 rgb(255 255 255 / 0.04),
 		0 1px 2px rgb(0 0 0 / calc(0.5 * var(--shadow-intensity)));
 	--lp-shadow-pop:
 		0 0 0 1px var(--lp-hair-strong), 0 16px 40px -8px rgb(0 0 0 / calc(0.65 * var(--shadow-intensity)));
-	--lp-shadow-stage:
-		inset 0 1px 0 rgb(255 255 255 / 0.06), 0 0 0 1px var(--lp-hair-strong),
-		0 24px 48px -12px rgb(0 0 0 / calc(0.7 * var(--shadow-intensity))),
-		0 64px 128px -32px rgb(40 134 144 / calc(0.28 * var(--shadow-intensity)));
-	--lp-shadow-header: 0 8px 24px -8px rgb(0 0 0 / calc(0.6 * var(--shadow-intensity)));
+	--lp-shadow-panel: var(--lp-shadow-pop);
+	--lp-shadow-window:
+		inset 0 1px 0 rgb(255 255 255 / 0.06),
+		0 32px 64px -24px rgb(0 0 0 / calc(0.7 * var(--shadow-intensity)));
 }
 /* #endregion */
 
@@ -361,12 +368,10 @@
 		--lp-mono-hover: #000000;
 		--lp-mono-active: #000000;
 		--lp-on-mono: #ffffff;
-		--lp-bg-lum-max: 0.7;
 		--lp-edge: #4a555b;
+		--lp-field-edge: #4a555b;
 		--lp-focus: #053f45;
 		--lp-focus-w: 3px;
-		--lp-glow-stop-a: #6e3e03;
-		--lp-glow-stop-b: #06444a;
 		--lp-refuse-ink: #781117;
 		--lp-refuse-edge: #9a2a2a;
 		--lp-ok-ink: #0a4c33;
@@ -374,13 +379,7 @@
 		--lp-spot: transparent;
 		--lp-grid-line: rgb(16 20 23 / 0.08);
 		--lp-grid-line-lit: rgb(16 20 23 / 0.08);
-		--lp-glow-amber: rgb(217 130 22 / 0.12);
-		--lp-glow-teal: rgb(40 134 144 / 0.12);
-		--lp-wash-teal: rgb(40 134 144 / 0.04);
-		--lp-wash-amber: rgb(217 130 22 / 0.03);
 		--lp-grain-opacity: 0;
-		--lp-node-alpha: 0.3;
-		--lp-node-alpha-quiet: 0.05;
 		--lp-glass-veil: 88%;
 		--lp-hair: rgb(0 0 0 / 0.18);
 		--lp-hair-strong: rgb(0 0 0 / 0.28);
@@ -405,12 +404,10 @@
 		--lp-mono-hover: #ffffff;
 		--lp-mono-active: #ffffff;
 		--lp-on-mono: #000000;
-		--lp-bg-lum-max: 0.037;
 		--lp-edge: #97a2a7;
+		--lp-field-edge: #97a2a7;
 		--lp-focus: #b0f1f5;
 		--lp-focus-w: 3px;
-		--lp-glow-stop-a: #ffbc70;
-		--lp-glow-stop-b: #93e3ea;
 		--lp-refuse-ink: #ffc1bb;
 		--lp-refuse-edge: #e0766c;
 		--lp-ok-ink: #8feac1;
@@ -418,13 +415,7 @@
 		--lp-spot: transparent;
 		--lp-grid-line: rgb(255 255 255 / 0.06);
 		--lp-grid-line-lit: rgb(255 255 255 / 0.06);
-		--lp-glow-amber: rgb(217 130 22 / 0.16);
-		--lp-glow-teal: rgb(40 134 144 / 0.2);
-		--lp-wash-teal: transparent;
-		--lp-wash-amber: transparent;
 		--lp-grain-opacity: 0;
-		--lp-node-alpha: 0.35;
-		--lp-node-alpha-quiet: 0.06;
 		--lp-glass-veil: 88%;
 		--lp-hair: rgb(255 255 255 / 0.16);
 		--lp-hair-strong: rgb(255 255 255 / 0.24);
@@ -452,12 +443,10 @@
 	--lp-mono-hover: #000000;
 	--lp-mono-active: #000000;
 	--lp-on-mono: #ffffff;
-	--lp-bg-lum-max: 0.7;
 	--lp-edge: #4a555b;
+	--lp-field-edge: #4a555b;
 	--lp-focus: #053f45;
 	--lp-focus-w: 3px;
-	--lp-glow-stop-a: #6e3e03;
-	--lp-glow-stop-b: #06444a;
 	--lp-refuse-ink: #781117;
 	--lp-refuse-edge: #9a2a2a;
 	--lp-ok-ink: #0a4c33;
@@ -465,13 +454,7 @@
 	--lp-spot: transparent;
 	--lp-grid-line: rgb(16 20 23 / 0.08);
 	--lp-grid-line-lit: rgb(16 20 23 / 0.08);
-	--lp-glow-amber: rgb(217 130 22 / 0.12);
-	--lp-glow-teal: rgb(40 134 144 / 0.12);
-	--lp-wash-teal: rgb(40 134 144 / 0.04);
-	--lp-wash-amber: rgb(217 130 22 / 0.03);
 	--lp-grain-opacity: 0;
-	--lp-node-alpha: 0.3;
-	--lp-node-alpha-quiet: 0.05;
 	--lp-glass-veil: 88%;
 	--lp-hair: rgb(0 0 0 / 0.18);
 	--lp-hair-strong: rgb(0 0 0 / 0.28);
@@ -496,12 +479,10 @@
 	--lp-mono-hover: #ffffff;
 	--lp-mono-active: #ffffff;
 	--lp-on-mono: #000000;
-	--lp-bg-lum-max: 0.037;
 	--lp-edge: #97a2a7;
+	--lp-field-edge: #97a2a7;
 	--lp-focus: #b0f1f5;
 	--lp-focus-w: 3px;
-	--lp-glow-stop-a: #ffbc70;
-	--lp-glow-stop-b: #93e3ea;
 	--lp-refuse-ink: #ffc1bb;
 	--lp-refuse-edge: #e0766c;
 	--lp-ok-ink: #8feac1;
@@ -509,13 +490,7 @@
 	--lp-spot: transparent;
 	--lp-grid-line: rgb(255 255 255 / 0.06);
 	--lp-grid-line-lit: rgb(255 255 255 / 0.06);
-	--lp-glow-amber: rgb(217 130 22 / 0.16);
-	--lp-glow-teal: rgb(40 134 144 / 0.2);
-	--lp-wash-teal: transparent;
-	--lp-wash-amber: transparent;
 	--lp-grain-opacity: 0;
-	--lp-node-alpha: 0.35;
-	--lp-node-alpha-quiet: 0.06;
 	--lp-glass-veil: 88%;
 	--lp-hair: rgb(255 255 255 / 0.16);
 	--lp-hair-strong: rgb(255 255 255 / 0.24);
@@ -544,7 +519,8 @@
 	--lp-lead-body-lg: 1.75;
 	--lp-lead-body: var(--leading-normal);
 	--lp-measure: var(--measure);
-	--lp-measure-lead: var(--measure-narrow);
+	/* The face's wide letters set the subline in two or three balanced lines, not three ragged ones. */
+	--lp-measure-lead: var(--measure);
 }
 /* #endregion */
 
@@ -558,8 +534,11 @@
 		--lp-dur-reveal: 0ms;
 		--lp-dur-demo: 0ms;
 		--lp-dur-demo-hold: 0ms;
-		--lp-dur-ring: 0ms;
 		--lp-stagger: 0ms;
+		--lp-dur-word: 0ms;
+		--lp-stagger-word: 0ms;
+		--lp-word-blur: 0px;
+		--lp-word-rise: 0px;
 		--lp-reveal-distance: 0px;
 		--lp-press-scale: 1;
 	}
@@ -573,8 +552,11 @@
 	--lp-dur-reveal: 0ms;
 	--lp-dur-demo: 0ms;
 	--lp-dur-demo-hold: 0ms;
-	--lp-dur-ring: 0ms;
 	--lp-stagger: 0ms;
+	--lp-dur-word: 0ms;
+	--lp-stagger-word: 0ms;
+	--lp-word-blur: 0px;
+	--lp-word-rise: 0px;
 	--lp-reveal-distance: 0px;
 	--lp-press-scale: 1;
 }
