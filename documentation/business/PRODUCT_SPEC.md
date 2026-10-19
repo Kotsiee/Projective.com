@@ -800,7 +800,15 @@ Every member holds one role — a preset, or a custom role the Business writes i
   submissions and releases Escrow payments; an **Observer** has view-only access to progress,
   analytics and chat logs and cannot approve payments or change project scope. The plan's manager
   cap counts Admins plus every member whose role may manage projects (`finance-model.md` §16.1,
-  Decision #230 (b)).
+  Decision #230 (b)). As built (Decision #249): the **Project Manager** template carries exactly the
+  remit above — it creates projects, hires and approves the work that releases escrow, and funds
+  escrow and buys from the pool within the spending cap set for it — on a Member rank, so an Admin
+  can set its limit; managing projects is what takes a manager seat. It manages no members, roles,
+  settings or money policy; whether it should is an open owner question (#249 (a)). The **Observer**
+  template ranks as a Member and carries viewing analytics alone. Either is an ordinary custom role
+  once created, editable like any other. The Members view shows the manager headroom ("1 of 2
+  managers"), counting open invitations, and says the cap — with who to ask, or that plans can't
+  change yet — before an invitation or a role change would pass it.
 - **One permission per act.** Every member of a Business sees its projects, reads their details
   and deliverables, and can comment and ask for a free revision. The acts that commit the Business
   each need their own permission: **hiring** (accepting or declining an applicant, inviting,
@@ -827,7 +835,10 @@ Every member holds one role — a preset, or a custom role the Business writes i
   such grant, so the new Owner grants afresh (Decision #238).
 - **Who sees whose spend envelope.** A member sees their own spending limit and their own spend
   requests. Every member's, and the whole request queue, are seen by those who manage finances or
-  approve spend, and by the Owner (Decision #238).
+  approve spend, and by the Owner (Decision #238). The Members view follows the same line: its
+  Spending column ("US$500.00 / month" · "No ceiling" · "Spending off") shows only to those who see
+  every envelope, and a member's panel shows their envelope with a way to their row on Spend
+  (Decision #249).
 - **Contracted project managers (post-MVP).** A Business will be able to hire a freelancer into a
   temporary or contractual project-management role, on Projective and on third-party tools. It is
   out of scope for the MVP — it needs third-party integrations and may need the Business to share

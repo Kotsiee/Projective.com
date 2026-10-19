@@ -717,7 +717,10 @@ namespace under a `pg_advisory_xact_lock` on the handle.
 ### §10 — Creating a team or business (Draft-First)
 
 - **`fn_seed_preset_roles(kind, entity)`** — inserts the preset rows (Owner · Admin · [Lead] ·
-  Member). Internal.
+  Member), each with its one-line summary. A business's Admin and Member are worded for a business:
+  the Admin "everything but withdrawing, billing and archiving, unless the owner grants them", the
+  Member buyer-side (Decision #249 (m); the seed's `emit-entities.ts` writes the same words).
+  Internal.
 - **`fn_refresh_membership_flags(user)`** — keeps `users_public.has_team` / `has_business` true to
   ACTIVE membership. Internal.
 - **`fn_assert_team_persona(user) → void`** — Teams are freelancer-only (Decision #228 (A)). Passes
@@ -1006,7 +1009,22 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
     preset rank; `[]` otherwise) — `approver_gap` (no active member besides the owner holds
     `approve_spend`, so the owner's own over-threshold or over-limit spend has nobody to decide it,
     #239 (e)) and `limits_plan_gated` (`fn_business_plan_gates_enforced()` and no
-    `pooled_wallet_full` — setting a threshold or a ceiling would be refused `PK402` now).
+    `pooled_wallet_full` — setting a threshold or a ceiling would be refused `PK402` now). For the
+    Members table (BU7, Decision #249) it answers `reads_all_envelopes` — whether `limits` holds every
+    member's envelope or only the caller's own: exactly `fn_business_envelopes`' own rule
+    (`fn_reads_wallet_envelopes(policy wallet)`, or `manage_finances` / `approve_spend` while the
+    business has no wallet in its currency), so the Spending column shows only where every envelope
+    arrived (pinned equal by `workspace.contract.test.ts`).
+  - `managers` — **to every member** (BU7, Decision #249; `null` for a team): `used`, the managers
+    `finance.fn_footprint_usage('business', id, 'business_managers')` counts — active members other
+    than the owner who sit as an admin or whose effective capabilities hold `manage_projects`
+    (`fn_business_member_is_manager`), plus pending, unexpired invitations to such a role
+    (`fn_business_role_is_manager`) — and `limit`, `finance.fn_business_gate_limit(id,
+    'business_managers')` while `fn_business_plan_gates_enforced()` (Business Free 2, Business Pro 15,
+    the development `free` header Business Free's), else `null` (the gates are off: nothing would
+    refuse). The two reads `fn_assert_business_entitlement` refuses `PK402 entitlement:
+    business_managers` on, so the Members header and the invite / drawer notices say the cap before
+    the press. Probe `supabase/probes/business_members_roles.sql`.
   - `money_tiles` — **only when the viewer may open Finance** (`contribute_funds` · `spend_funds` ·
     `manage_finances`), else `[]`: one row per business wallet, the policy currency first —
     `available_minor` (balance), `pending_minor` (`pending_releases` still clearing), `committed_minor`

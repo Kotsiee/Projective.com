@@ -12,7 +12,7 @@ import {
 	type WorkspaceKind,
 	type WorkspaceMember,
 } from "@projective/types/workspace";
-import { approverList, BUSINESS_REFUSAL_COPY } from "./refusal-copy.ts";
+import { approverList, BUSINESS_REFUSAL_COPY, PLANS_UNAVAILABLE } from "./refusal-copy.ts";
 
 /**
  * spend-model — the pure half of a business's Spend module (BU2, Decision #246): the editor's draft
@@ -302,6 +302,45 @@ export function envelopeLine(
 		facts.push({ text: `${limit.perTransaction.display} per purchase`, tabular: true });
 	}
 	return facts;
+}
+
+/**
+ * A member's envelope as ONE fact — the ceiling and its window ("US$500.00 / month"), "No ceiling" or
+ * "Spending off": {@link envelopeLine}'s first fact, for a cell or a card line with room for one.
+ */
+export function envelopeSummary(
+	limit: Pick<SpendLimit, "canSpend" | "limit" | "perTransaction" | "period">,
+): MetaFact {
+	return envelopeLine(limit)[0];
+}
+
+/**
+ * The id of a member's row on the Spend module's Member limits — what a deep link's fragment names
+ * (`#limit-<handle>`), so the Members drawer's "Edit in Spend" lands on that row and focuses it.
+ */
+export function spendLimitAnchor(handle: string): string {
+	return `limit-${handle.replace(/^@/, "")}`;
+}
+
+/**
+ * The limits row a location fragment names (`#limit-<handle>`, percent-encoded or not), or `null` for
+ * any other fragment — or one that does not decode.
+ */
+export function limitAnchorOf(hash: string): string | null {
+	let id: string;
+	try {
+		id = decodeURIComponent(hash.replace(/^#/, ""));
+	} catch {
+		return null;
+	}
+	return /^limit-[^\s]+$/.test(id) ? id : null;
+}
+
+/** The deep link to one member's limits row on a business's Spend module. */
+export function spendLimitHref(businessHandle: string, memberHandle: string): string {
+	return `${workspaceHref("business", businessHandle, "spend")}#${
+		encodeURIComponent(spendLimitAnchor(memberHandle))
+	}`;
 }
 
 /** A row's meter: the share of the ceiling used, its tone, and the two figures under it. */
@@ -745,7 +784,7 @@ export function planNotice(input: {
 	const copy = BUSINESS_REFUSAL_COPY.entitlement;
 	return {
 		sentence: copy.sentence({ business: input.business }),
-		meta: input.viewerIsOwner ? "Changing plans isn't available yet." : copy.ask({}),
+		meta: input.viewerIsOwner ? PLANS_UNAVAILABLE : copy.ask({}),
 		link: null,
 		ask: null,
 	};

@@ -267,7 +267,8 @@ the system role now) and team's `UNIQUE (team_id, name)` (replaced by the partia
 lets an archived role free its name).
 
 Every entity is created with its preset rows by `org.fn_seed_preset_roles`: **Owner** · **Admin** ·
-(team only) **Lead** · **Member**, each with a fixed one-line summary.
+(team only) **Lead** · **Member**, each with a fixed one-line summary — a business's Admin and
+Member worded for a business (Decision #249 (m)).
 
 ### `org.team_members` / `org.business_members`
 

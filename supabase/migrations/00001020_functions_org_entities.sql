@@ -1036,10 +1036,12 @@ BEGIN
             (p_entity, 'Lead', 'Binds the team to seats and runs delivery, without restructuring the roster.', 'lead', 'lead'),
             (p_entity, 'Member', 'Does the work and sees how the entity is performing.', 'member', 'member');
     ELSE
+        -- A business's own remits (PRODUCT_SPEC's role table): its Admin lacks the three owner-reserved
+        -- rights unless granted (Decision #230 (d), #238), and its Member is buyer-side (#249 (m)).
         INSERT INTO org.business_roles (business_id, name, summary, preset, base_preset) VALUES
             (p_entity, 'Owner', 'Full authority, including archiving and transferring ownership.', 'owner', 'owner'),
-            (p_entity, 'Admin', 'Runs the roster, the money and the settings — everything but archiving.', 'admin', 'admin'),
-            (p_entity, 'Member', 'Does the work and sees how the entity is performing.', 'member', 'member');
+            (p_entity, 'Admin', 'Runs the roster, the money and the settings — everything but withdrawing, billing and archiving, unless the owner grants them.', 'admin', 'admin'),
+            (p_entity, 'Member', 'Adds funds to the wallet and sees the analytics; anything more comes from a custom role.', 'member', 'member');
     END IF;
 END;
 $$;
@@ -2858,7 +2860,12 @@ $$;
 --     unless finance.fn_reads_wallet_envelopes) as `approvals {pending, decided (last 30)}`, each with
 --     its `ref` (what it is for and whether the viewer may open it — finance.fn_spend_ref) and
 --     `consumed`; plus, for the editor (BU2), `editable_member_ids` (whose limits and grants the viewer
---     may change), `approver_gap` (nobody besides the owner approves) and `limits_plan_gated`;
+--     may change), `approver_gap` (nobody besides the owner approves) and `limits_plan_gated`; and,
+--     for the Members table (BU7), `reads_all_envelopes` — whether `limits` is everyone's or only the
+--     viewer's own, fn_business_envelopes' own rule;
+--     `managers` — to every member (BU7): `used`, the managers finance.fn_footprint_usage counts for
+--     `business_managers` (invitations included), and `limit`, the ceiling the plan gate refuses past
+--     (finance.fn_business_gate_limit; NULL while the gates are off or the plan is unlimited);
 --     `money_tiles` — for a viewer who may open Finance (contribute_funds · spend_funds ·
 --     manage_finances): per wallet currency, available · pending · committed · awaiting approval ·
 --     spent in 30 days; `viewer_can` — what the viewer may do, as the write doors decide it; and `kyb` —
@@ -3045,6 +3052,16 @@ BEGIN
             'used', org.fn_team_seats_used(v_e.id),
             'limit', finance.fn_effective_limit('team', v_e.id, 'team_seats'::finance.entitlement_key)
         ) END,
+        -- A business's managers (Decision #230 (b), BU7) as finance.fn_assert_business_entitlement counts
+        -- them — admins and members whose role or grants manage projects, plus the pending, unexpired
+        -- invitations that offer such a seat — beside the ceiling it refuses past. `limit` is NULL while
+        -- the plan gates are off or the plan is unlimited (nothing would refuse). Answered to every
+        -- member, as a team's seats are; a team answers none.
+        'managers', CASE WHEN p_kind = 'business' THEN jsonb_build_object(
+            'used', finance.fn_footprint_usage('business', v_e.id, 'business_managers'::finance.entitlement_key),
+            'limit', CASE WHEN finance.fn_business_plan_gates_enforced()
+                THEN finance.fn_business_gate_limit(v_e.id, 'business_managers'::finance.entitlement_key) END
+        ) END,
         'standing', (SELECT l.label FROM org.entity_standing s JOIN org.standing_levels l ON l.level = s.level
                       WHERE p_kind = 'team' AND s.subject_type = 'team' AND s.subject_id = v_e.id),
         'projects', CASE p_kind
@@ -3203,6 +3220,12 @@ BEGIN
                 'limits_plan_gated', finance.fn_business_plan_gates_enforced()
                     AND NOT finance.fn_business_gate_flag(v_e.id, 'pooled_wallet_full'::finance.entitlement_key),
                 'limits', finance.fn_business_envelopes(v_e.id, v_wallet, NULL),
+                -- Whether `limits` holds every member's envelope or only the viewer's own — exactly
+                -- finance.fn_business_envelopes' own v_reads_all, so the Members table shows a Spending
+                -- column only to a viewer who reads everyone's (BU7).
+                'reads_all_envelopes', CASE WHEN v_wallet IS NOT NULL THEN finance.fn_reads_wallet_envelopes(v_wallet)
+                    ELSE org.fn_member_can('business', v_e.id, 'manage_finances')
+                      OR org.fn_member_can('business', v_e.id, 'approve_spend') END,
                 'contributed', (SELECT COALESCE(jsonb_agg(jsonb_build_object('user_id', c.actor_user_id, 'minor', c.total)), '[]'::jsonb)
                     FROM (SELECT la.actor_user_id, sum(la.amount_cents) AS total FROM finance.ledger_audit la
                            WHERE la.wallet_id = v_wallet AND la.action = 'add_funds' AND la.actor_user_id IS NOT NULL

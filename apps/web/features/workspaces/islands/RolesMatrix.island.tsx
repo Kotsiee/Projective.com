@@ -22,7 +22,10 @@ import {
 	cellLock,
 	dirtyRoleIds,
 	fixedCellReasons,
+	managerCapLock,
+	managerCapLocked,
 	pruneDraft,
+	roleCapContextOf,
 	roleCaps,
 	roleCellState,
 	roleCreatedNotice,
@@ -42,7 +45,9 @@ import {
 	roleWriteInput,
 	toggleRoleCap,
 } from "../core/roles-model.ts";
+import { managerCapContextOf, managerCapNotice, managerCapRefusal } from "../core/members-model.ts";
 import { KebabIcon } from "../components/MemberCard.tsx";
+import { ManagerCapNotice } from "../components/ManagerCapNotice.tsx";
 import { RoleEditor } from "../components/RoleEditor.tsx";
 import {
 	AllowedGlyph,
@@ -64,9 +69,11 @@ import {
  * edited — create a custom role". A custom role's column is the viewer's to edit, cell by cell, into a
  * local draft; Save and Discard are the footer rig's (tier 3 and tier 5, `usePolicyBridge`), so the
  * body never grows a Save of its own. A cell the server would refuse is LOCKED in place with the
- * server's reason — a grant the viewer does not hold, a business's owner-reserved right — and a
- * column that ranks above the viewer is locked whole. Anything a role allows may be taken away. While
- * a write is in flight every editable cell waits, saying so, rather than ignoring a press. The legend
+ * server's reason — a grant the viewer does not hold, a business's owner-reserved right, or a tick
+ * that would make a business role's holders managers past the plan's cap (BU7; the cap is then said
+ * once, in a `ManagerCapNotice` over the matrix) — and a column that ranks above the viewer is locked
+ * whole. Anything a role allows may be taken away. While a write is in flight every editable cell
+ * waits, saying so, rather than ignoring a press. The legend
  * (`rolesLegend`) is worded for what is on screen: the padlock line names a role ranking above the
  * viewer when one is padlocked, and a cell fixed for the viewer gets the line saying what its missing
  * box means. Under the matrix, each role's one-line remit — what a column header has no room for.
@@ -100,6 +107,7 @@ const LEGEND_GLYPH: Record<RolesLegendMark, (() => JSX.Element) | null> = {
 	conditional: ConditionalGlyph,
 	locked: LockedGlyph,
 	fixed: null,
+	capped: null,
 };
 
 export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
@@ -138,12 +146,18 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 
 	/**
 	 * The footer rig's Save: one write per edited custom role. A role the server would refuse (it still
-	 * allows something the viewer may not put on a role) is held back with its sentence; the rest save.
+	 * allows something the viewer may not put on a role, or — on a business — it would add managers
+	 * past the plan's cap) is held back with its sentence; the rest save.
 	 */
 	async function save(): Promise<void> {
 		if (busy.peek()) return;
 		const ws = detail.peek();
-		const plan = roleSavePlan(ws.roles, draft.peek(), rolesViewerOf(ws));
+		const plan = roleSavePlan(
+			ws.roles,
+			draft.peek(),
+			rolesViewerOf(ws),
+			roleCapContextOf(ws, Date.now()),
+		);
 		if (plan.writes.length === 0 && plan.problems.length === 0) return;
 		batch(() => {
 			busy.value = true;
@@ -158,7 +172,8 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 			if (!res.ok || !res.data) {
 				failures.push(
 					`${write.role.name}: ${
-						res.errors?.capabilities ?? res.errors?.basePreset ?? res.message ??
+						managerCapRefusal(res.details, managerCapContextOf(ws)) ??
+							res.errors?.capabilities ?? res.errors?.basePreset ?? res.message ??
 							"it could not be saved."
 					}`,
 				);
@@ -273,6 +288,9 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 	const byId = new Map(ws.roles.map((r) => [r.id, r]));
 	const rows = roleMatrixRows(ws.kind, ws);
 	const columns = roleMatrixColumns(ws.roles, viewer, draft.value);
+	/** A business's manager cap, judged against the draft (BU7): which cell it fixes, and whether any. */
+	const capCtx = roleCapContextOf(ws, Date.now());
+	const capped = managerCapLocked(ws.roles, viewer, draft.value, capCtx);
 	const conditional = ws.roles.some((role) =>
 		rows.some((row) =>
 			roleCellState(role, row.key as WorkspaceCapability, roleCaps(role, draft.value), ws) ===
@@ -284,6 +302,7 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 		conditional,
 		columnLocks: columns.map((column) => column.lockedHint),
 		fixedReasons: fixedCellReasons(ws.roles, viewer, draft.value),
+		capped,
 	});
 	const remits = roleRemits(ws.roles);
 	/** A role write is in flight: every editable cell waits, and says so. */
@@ -301,7 +320,9 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 	function cellFix(row: PermissionMatrixRow, column: PermissionMatrixColumn): string | null {
 		const role = roleOf(column);
 		if (!role || column.locked) return null;
-		return cellLock(capOf(row), roleCaps(role, draft.value).includes(capOf(row)), viewer, writing);
+		const on = roleCaps(role, draft.value).includes(capOf(row));
+		return cellLock(capOf(row), on, viewer, writing) ??
+			managerCapLock(role, capOf(row), on, ws.roles, draft.value, capCtx);
 	}
 
 	function toggle(row: PermissionMatrixRow, column: PermissionMatrixColumn): void {
@@ -369,6 +390,8 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 									);
 								})}
 							</ul>
+
+							{capped && <ManagerCapNotice notice={managerCapNotice(managerCapContextOf(ws))} />}
 
 							<PermissionMatrix
 								class="wsp-roles__matrix"

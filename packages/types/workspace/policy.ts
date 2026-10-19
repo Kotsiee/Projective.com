@@ -454,6 +454,12 @@ export const BusinessSpendPolicySchema = z.object({
 	 * (`finance.fn_reads_wallet_envelopes`) receives every member's; anybody else only their own.
 	 */
 	limits: z.array(SpendLimitSchema),
+	/**
+	 * Whether {@link limits} holds every member's envelope (`true`) or only the viewer's own — the
+	 * server's `finance.fn_business_envelopes` rule, answered beside it so no screen infers it from
+	 * the rows. The Members table shows its Spending column only when it is `true` (BU7).
+	 */
+	readsAllEnvelopes: z.boolean().default(false),
 	/** Who may top the pool up (`contribute_funds`) — member ids. */
 	contributorIds: z.array(z.string().max(64)),
 	/** The same contributors by `@handle`, in the same order. */

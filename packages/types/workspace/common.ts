@@ -204,6 +204,32 @@ export function isCoOwner(
 	return kind === "business" && role === "admin" &&
 		OWNER_RESERVED.every((c) => effective.includes(c));
 }
+
+/**
+ * Whether holding a business role makes its holder a MANAGER — a seat the plan's `business_managers`
+ * caps (Decision #230 (b)): an admin-ranked role, or one whose capabilities hold `manage_projects`;
+ * never the owner's, who is not counted. A NAMED MIRROR of `org.fn_business_role_is_manager`, pinned
+ * to its SQL text by `workspace.contract.test.ts`, so the console can say the cap before the press;
+ * the server still refuses past it on its own (`PK402 entitlement: business_managers`).
+ */
+export function isBusinessManagerRole(
+	role: { basePreset: WorkspaceRole; capabilities: readonly WorkspaceCapability[] },
+): boolean {
+	return role.basePreset !== "owner" &&
+		(role.basePreset === "admin" || role.capabilities.includes("manage_projects"));
+}
+
+/**
+ * Whether an active business member counts as a manager now — their seat ranks as an admin, or their
+ * EFFECTIVE capabilities (role and own grants) hold `manage_projects`; never the owner. The mirror of
+ * `org.fn_business_member_is_manager`, the predicate `finance.fn_footprint_usage` counts by.
+ */
+export function isBusinessManagerSeat(
+	rank: WorkspaceRole,
+	effective: readonly WorkspaceCapability[],
+): boolean {
+	return rank !== "owner" && (rank === "admin" || effective.includes("manage_projects"));
+}
 // #endregion
 
 // #region Role presets

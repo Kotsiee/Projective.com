@@ -88,7 +88,21 @@ export interface BusinessRefusalContext {
 	 * THEM: deciding requests, not paying.
 	 */
 	deciding?: boolean;
+	/**
+	 * Which Business Pro entitlement refused (`details.entitlement` — `business_managers`,
+	 * `intervaled_invoicing`, `pooled_wallet_full`). `entitlement` then names the cap it hit rather
+	 * than a generic "part of Business Pro".
+	 */
+	entitlement?: string | null;
+	/** The plan's ceiling for a limit-kind entitlement (`business_managers`: the managers allowed). */
+	limit?: number | null;
 }
+
+/**
+ * What the owner reads in place of an upgrade link: no surface lists Business Pro or changes a
+ * business's plan yet (Decisions #246 FLAG 1, #247 (d)), so "See plans" is withheld with its reason.
+ */
+export const PLANS_UNAVAILABLE = "Changing plans isn't available yet.";
 
 /** One refusal's words. */
 export interface RefusalCopy {
@@ -247,8 +261,17 @@ export const BUSINESS_REFUSAL_COPY: Readonly<Record<BusinessRefusalCode, Refusal
 		},
 	},
 	entitlement: {
-		sentence: (ctx) =>
-			`That's part of Business Pro, which ${nameOf(ctx) ?? "this business"} isn't on.`,
+		sentence: (ctx) => {
+			const name = nameOf(ctx);
+			if (ctx.entitlement === "business_managers") {
+				const plan = name ? `${possessive(name)} plan` : "This business's plan";
+				const allows = typeof ctx.limit === "number"
+					? `${ctx.limit} ${ctx.limit === 1 ? "manager" : "managers"}`
+					: "a set number of managers";
+				return `${plan} allows ${allows} — admins and roles that manage projects — and they're all taken or offered. More are part of Business Pro.`;
+			}
+			return `That's part of Business Pro, which ${name ?? "this business"} isn't on.`;
+		},
 		action: () => "See plans",
 		ask: () => "Ask the owner about upgrading to Business Pro.",
 	},

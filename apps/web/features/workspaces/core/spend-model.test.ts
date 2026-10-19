@@ -15,12 +15,14 @@ import {
 	draftOf,
 	draftPatch,
 	envelopeLine,
+	envelopeSummary,
 	fixedHint,
 	gapNotice,
 	grantView,
 	hasPickable,
 	holderNames,
 	isDirty,
+	limitAnchorOf,
 	limitsPatch,
 	mergeGrant,
 	meterOf,
@@ -38,9 +40,12 @@ import {
 	saveRefusal,
 	settledNote,
 	type SpendDraft,
+	spendLimitAnchor,
+	spendLimitHref,
 	thresholdDefault,
 	thresholdLine,
 } from "./spend-model.ts";
+import { PLANS_UNAVAILABLE } from "./refusal-copy.ts";
 
 /**
  * The Spend module's pure half (BU2, Decision #246): the draft saves only what moved and only for the
@@ -109,6 +114,7 @@ function policy(extra: Partial<BusinessSpendPolicy> = {}): BusinessSpendPolicy {
 		approverIds: ["m-priya", "m-hannah"],
 		approverHandles: [],
 		limits: [owner, hannah, unlimited],
+		readsAllEnvelopes: true,
 		contributorIds: ["m-priya"],
 		contributorHandles: [],
 		entries: [],
@@ -668,5 +674,41 @@ Deno.test("threshold: what an empty field means, and the read-only line", () => 
 		[{ text: "US$10,000.00", tabular: true }, "the platform's default"],
 	);
 	assertEquals(thresholdLine(policy({ approvalThreshold: null })), ["No threshold"]);
+});
+// #endregion
+
+// #region The Members drawer's deep link (BU7)
+Deno.test("a member's limits row is addressable: #limit-<handle>, landed on from Members", () => {
+	assertEquals(spendLimitAnchor("hannahcole"), "limit-hannahcole");
+	assertEquals(spendLimitAnchor("@hannahcole"), "limit-hannahcole");
+	assertEquals(
+		spendLimitHref("heliafinance", "hannahcole"),
+		"/businesses/heliafinance/spend#limit-hannahcole",
+	);
+	// A username may hold `.` or `_`; the fragment keeps them and decodes back to the row's id.
+	const dotted = spendLimitHref("heliafinance", "ravi.k").split("#")[1];
+	assertEquals(limitAnchorOf(dotted), "limit-ravi.k");
+	assertEquals(limitAnchorOf("#limit-hannahcole"), "limit-hannahcole");
+	assertEquals(limitAnchorOf("#limit-r%C3%A9my"), "limit-rémy");
+	assertStrictEquals(limitAnchorOf("#approvers"), null);
+	assertStrictEquals(limitAnchorOf(""), null);
+	assertStrictEquals(limitAnchorOf("#limit-%E0%A4%A"), null, "a fragment that does not decode");
+});
+
+Deno.test("envelopeSummary: the envelope's first fact — the ceiling and its window, or the state", () => {
+	assertEquals(envelopeSummary(hannah), { text: "US$25,000.00 / month", tabular: true });
+	assertEquals(envelopeSummary(unlimited), "No ceiling");
+	assertEquals(envelopeSummary({ ...hannah, canSpend: false }), "Spending off");
+	assertEquals(envelopeSummary(hannah), envelopeLine(hannah)[0]);
+});
+
+Deno.test("planNotice: the owner's meta is the refusal map's one PLANS_UNAVAILABLE line", () => {
+	const notice = planNotice({
+		gated: true,
+		editPolicy: true,
+		business: "Helia Finance",
+		viewerIsOwner: true,
+	});
+	assertEquals(notice?.meta, PLANS_UNAVAILABLE);
 });
 // #endregion

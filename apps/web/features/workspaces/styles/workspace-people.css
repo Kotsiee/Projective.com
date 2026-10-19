@@ -250,6 +250,13 @@ their role. */
 .wsp-mtable__value {
 	color: var(--on-surface);
 }
+
+/* A business member's envelope — one MetaLine fact, tabular from the entry (BU7). */
+.wsp-mtable__spending {
+	min-inline-size: 0;
+	overflow: hidden;
+	white-space: nowrap;
+}
 /* #endregion */
 
 /* #region Org chart — a CSS-only connector tree, logical properties throughout */
@@ -598,6 +605,58 @@ their role. */
 
 .wsp-mdrawer__terminal-act {
 	flex: none;
+}
+
+/*
+ * A business member's spend envelope (BU7): its MetaLine, then the tier-5 link to their row on the
+ * Spend module, left-aligned under it rather than stretched across the panel.
+ */
+.wsp-mdrawer__envelope {
+	align-items: flex-start;
+}
+
+.wsp-mdrawer__envelope-link {
+	flex: none;
+}
+
+/*
+ * A notice inside a drawer section (a reserved grant's warning, the manager cap) sits on the section's
+ * column, flush with its note and field, its glyph beside the sentence on a phone — InlineNotice pads
+ * itself for a list's foot, and the section already spaces it.
+ */
+.wsp-mdrawer__section .ui-inline-notice {
+	flex-wrap: nowrap;
+	align-items: flex-start;
+	padding: 0;
+}
+/* #endregion */
+
+/* #region Manager cap notice */
+/*
+ * A business's manager cap, said before the press (BU7) in the invite dialog and the member drawer:
+ * the sentence, then the way forward as a MetaLine under it.
+ */
+.wsp-capnotice {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.wsp-capnotice .ui-inline-notice {
+	flex-wrap: nowrap;
+	align-items: flex-start;
+	padding: 0;
+}
+
+.wsp-capnotice .ui-inline-notice__text {
+	flex: 1 1 auto;
+}
+
+/* Under the invite dialog's role and what it permits, a step apart from that MetaLine. */
+.wsp-dialog__field > .wsp-capnotice {
+	margin-block-start: var(--space-2);
 }
 /* #endregion */
 

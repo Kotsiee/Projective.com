@@ -7,6 +7,8 @@ import type { MediaRef } from "@projective/types/files";
 import {
 	type ArchiveBlocker,
 	ArchiveBlockerSchema,
+	type BusinessManagers,
+	BusinessManagersSchema,
 	canOpenFinance,
 	effectivePermissions,
 	RestoreTarget,
@@ -258,6 +260,20 @@ export function seatsOf(raw: unknown): WorkspaceSeats | null {
 }
 
 /**
+ * A business's manager headroom from the read, or `null` (a team, or an answer whose shape drifted —
+ * never a count or a ceiling the database did not give).
+ */
+export function managersOf(raw: unknown): BusinessManagers | null {
+	if (raw === null || raw === undefined) return null;
+	const parsed = BusinessManagersSchema.safeParse(raw);
+	if (!parsed.success) {
+		console.warn("[workspace:detail] managers shape drifted:", parsed.error.message);
+		return null;
+	}
+	return parsed.data;
+}
+
+/**
  * The archive blockers from the read (a team's or a business's), dropping any row whose shape drifted
  * rather than inventing a blocker the database did not name.
  */
@@ -414,6 +430,7 @@ async function assemble(
 			toOutgoingInvite(i, i.target_user_id ? people.get(i.target_user_id) : undefined, nowMs)
 		),
 		seats: kind === "team" ? seatsOf(raw.seats) : null,
+		managers: kind === "business" ? managersOf(raw.managers) : null,
 		payout: teamMoney ? buildPayoutPolicy(moneyMembers, teamMoney) : null,
 		spend: spend
 			? buildSpendPolicy(spend, moneyMembers, people, verification, nowMs, {

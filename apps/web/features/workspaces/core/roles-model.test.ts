@@ -2,7 +2,9 @@ import { assert, assertEquals, assertStrictEquals } from "@std/assert";
 import {
 	capabilitiesForKind,
 	CONSEQUENTIAL,
+	isBusinessManagerRole,
 	presetCapabilities,
+	roleRank,
 	type WorkspaceCapability,
 	WorkspaceCapability as CapabilityEnum,
 	type WorkspaceInvite,
@@ -21,13 +23,19 @@ import {
 	baseOptions,
 	BLANK_START,
 	BUSY_LOCK,
+	CAPPED_LEGEND,
 	cellLock,
 	clampBase,
 	columnLock,
 	dirtyRoleIds,
+	draftManagersUsed,
 	fixedCellReasons,
 	GRANT_LOCK,
 	invitesOffering,
+	managerCapLine,
+	managerCapLock,
+	managerCapLocked,
+	managerDelta,
 	mayGrantToRole,
 	orderedRoles,
 	pendingInvitesFor,
@@ -39,6 +47,7 @@ import {
 	RESERVED_LOCK,
 	ROLE_NAME_EXAMPLE,
 	ROLE_NAME_MAX,
+	type RoleCapContext,
 	roleCaps,
 	roleCellState,
 	roleColumnMeta,
@@ -614,13 +623,12 @@ Deno.test("templates: Contributor is data — base member, view_analytics, team 
 	// "manage_projects read-only" maps to no grant: reading projects is every member's already.
 	assert(!contributor?.capabilities.includes("manage_projects"));
 	assertEquals(templatesForKind("team").map((t) => t.key), ["contributor"]);
-	assertEquals(templatesForKind("business"), []);
 	// A further template is a row, not code.
 	const more: RoleTemplate[] = [
 		...ROLE_TEMPLATES,
 		{
-			key: "observer",
-			name: "Observer",
+			key: "reader",
+			name: "Reader",
 			summary: "Reads.",
 			basePreset: "member",
 			capabilities: ["view_analytics", "bind_seat"],
@@ -628,9 +636,158 @@ Deno.test("templates: Contributor is data — base member, view_analytics, team 
 		},
 	];
 	const points = startPoints("business", [], more);
-	assertEquals(points.map((p) => p.key), [BLANK_START, "template:observer"]);
+	assertEquals(points.map((p) => p.key), [
+		BLANK_START,
+		"template:project_manager",
+		"template:observer",
+		"template:reader",
+	]);
 	// Its capabilities are scoped to the kind (a business never carries bind_seat).
-	assertEquals(points[1].capabilities, ["view_analytics"]);
+	assertEquals(points[3].capabilities, ["view_analytics"]);
+});
+
+/** A business's admin preset, as the business kind renders it. */
+const BUSINESS_ADMIN = presetCapabilities("admin", "business");
+
+Deno.test("templates: a business offers Project Manager and Observer — data, never presets (#230 (b))", () => {
+	assertEquals(templatesForKind("business").map((t) => t.key), ["project_manager", "observer"]);
+	const pm = ROLE_TEMPLATES.find((t) => t.key === "project_manager")!;
+	const observer = ROLE_TEMPLATES.find((t) => t.key === "observer")!;
+	// Project Manager: PRODUCT_SPEC's remit on a Member rank (#249 (a)) — it creates projects, hires
+	// and approves the work, and funds it from the pool; it takes a manager seat by managing projects.
+	assertEquals(pm.basePreset, "member");
+	assertEquals(pm.kinds, ["business"]);
+	assert(pm.capabilities.every((c) => BUSINESS_ADMIN.includes(c)), "nothing past the admin set");
+	assertEquals(pm.capabilities, [
+		"manage_projects",
+		"purchase",
+		"hire",
+		"contribute_funds",
+		"spend_funds",
+		"view_analytics",
+	]);
+	assert(isBusinessManagerRole(pm), "a Project Manager takes a business_managers seat");
+	// No people, role, settings or audit rights, and nothing that runs the wallet's policy.
+	for (
+		const withheld of [
+			"invite_members",
+			"remove_members",
+			"manage_roles",
+			"edit_profile",
+			"manage_settings",
+			"view_audit",
+			"manage_finances",
+			"approve_spend",
+		] as const
+	) {
+		assert(!pm.capabilities.includes(withheld), `${withheld} is not the Project Manager's`);
+	}
+	// Never an owner-reserved right — the role door refuses any (#238).
+	for (const reserved of ["withdraw_funds", "manage_billing", "archive_entity"] as const) {
+		assert(!pm.capabilities.includes(reserved));
+	}
+	// Observer: base Member, View analytics alone — it drops the Member preset's Add funds.
+	assertEquals(observer.basePreset, "member");
+	assertEquals(observer.capabilities, ["view_analytics"]);
+	assertEquals(observer.kinds, ["business"]);
+	// Both summaries fit the role's 160-character summary column (upsert_workspace_role).
+	for (const t of [pm, observer]) assert(t.summary.length <= 160, `${t.key}: ${t.summary.length}`);
+	// Every listed capability is one the business kind renders.
+	const businessCaps = capabilitiesForKind("business");
+	assert([...pm.capabilities, ...observer.capabilities].every((c) => businessCaps.includes(c)));
+});
+
+/**
+ * The words a template's summary must use for each consequential capability it carries — the summary
+ * is written to the new role and read as its remit, so it says the rights that matter honestly.
+ */
+const SUMMARY_NAMES: Readonly<Record<string, RegExp>> = {
+	bind_seat: /\bseat/i,
+	spend_funds: /\bspend/i,
+	withdraw_funds: /\bwithdraw/i,
+	approve_spend: /\bapprov\w* spend/i,
+	manage_billing: /\bbill/i,
+	manage_roles: /\broles?\b/i,
+	archive_entity: /\barchiv/i,
+};
+
+Deno.test("templates: a summary names every consequential right its template carries", () => {
+	assertEquals(Object.keys(SUMMARY_NAMES).sort(), [...CONSEQUENTIAL].sort(), "one rule each");
+	for (const t of ROLE_TEMPLATES) {
+		for (const c of t.capabilities.filter((c) => CONSEQUENTIAL.includes(c))) {
+			assert(SUMMARY_NAMES[c].test(t.summary), `${t.key}: its summary never says ${c}`);
+		}
+	}
+	// And a summary that disclaims a right is not carrying it.
+	const pm = ROLE_TEMPLATES.find((t) => t.key === "project_manager")!;
+	assert(/no members, roles or policy/.test(pm.summary));
+	assert(!pm.capabilities.includes("manage_roles"));
+});
+
+Deno.test("templates: the business start points carry the template's list, labelled as a template", () => {
+	const points = startPoints("business", []);
+	const pm = startPointOf(points, "template:project_manager");
+	assertEquals(pm.label, "Project Manager template");
+	assertEquals(pm.name, "Project Manager");
+	assertEquals(pm.basePreset, "member");
+	const observer = startPointOf(points, "template:observer");
+	assertEquals(observer.label, "Observer template");
+	assertEquals(observer.capabilities, ["view_analytics"]);
+	// A team still offers only the Contributor template.
+	assertEquals(
+		startPoints("team", []).filter((p) => p.key.startsWith("template:")).map((p) => p.key),
+		["template:contributor"],
+	);
+});
+
+Deno.test("templates: a seed passes grant-what-you-hold — whole for an owner or admin, clamped below", () => {
+	const points = startPoints("business", []);
+	const pmPoint = startPointOf(points, "template:project_manager");
+	const pm = ROLE_TEMPLATES.find((t) => t.key === "project_manager")!;
+	// The owner and an admin hold every capability on the list, and member is within their rank.
+	for (const preset of ["owner", "admin"] as const) {
+		const author = viewer(preset, "business");
+		const seed = seedFrom(pmPoint, author);
+		assertEquals(seed.dropped, [], preset);
+		assertEquals([...seed.capabilities].sort(), [...pm.capabilities].sort(), preset);
+		assertEquals(seed.basePreset, "member", preset);
+		assert(seed.capabilities.every((c) => author.caps.includes(c)));
+	}
+	// A member author holding Change roles beside the Member preset: the seed keeps only what they
+	// hold and ranks the role as theirs — the set the probe writes through the real door (1j).
+	const memberAuthor = {
+		kind: "business" as const,
+		caps: [...presetCapabilities("member", "business"), "manage_roles"] as WorkspaceCapability[],
+		rank: roleRank("member"),
+	};
+	const clamped = seedFrom(pmPoint, memberAuthor);
+	assertEquals(clamped.capabilities, ["contribute_funds", "view_analytics"]);
+	assertEquals(clamped.basePreset, "member");
+	assertEquals(clamped.dropped, ["manage_projects", "purchase", "hire", "spend_funds"]);
+	assertEquals(
+		seedFrom(startPointOf(points, "template:observer"), memberAuthor),
+		{ capabilities: ["view_analytics"], dropped: [], basePreset: "member" },
+	);
+});
+
+Deno.test("templates: the probe's copies of the two business lists match role-templates.ts", () => {
+	const probe = Deno.readTextFileSync(
+		new URL("../../../../../supabase/probes/business_members_roles.sql", import.meta.url),
+	);
+	const listAfter = (marker: string) => {
+		const at = probe.indexOf(marker);
+		assert(at >= 0, `the probe has no ${marker} list`);
+		const array = /ARRAY\[([^\]]*)\]/.exec(probe.slice(at));
+		assert(array, `${marker}: no ARRAY`);
+		return [...array[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+	};
+	for (const key of ["project_manager", "observer"]) {
+		const template = ROLE_TEMPLATES.find((t) => t.key === key)!;
+		assertEquals(listAfter(`-- template:${key}`), [...template.capabilities], key);
+		// The marker names the rank the probe writes it with — the template's own.
+		const marker = probe.slice(probe.indexOf(`-- template:${key}`)).split("\n")[0];
+		assert(marker.includes(`(base ${template.basePreset})`), `${key}: ${marker}`);
+	}
 });
 
 Deno.test("start points: nothing, the kind's templates, then a copy of every role, presets first", () => {
@@ -833,6 +990,180 @@ Deno.test("viewer: rank from the viewer's own row, capabilities from the server"
 	assertEquals(
 		rolesViewerOf({ kind: "team", viewerCapabilities: [], members: [], viewerMemberId: "x" }).rank,
 		0,
+	);
+});
+// #endregion
+
+// #region Manager cap (BU7)
+/** A business's roles: two member-ranked custom roles somebody holds, and one nobody holds. */
+const B_ROLES: WorkspaceRoleDef[] = [
+	role("b-owner", "owner", "owner", presetCapabilities("owner", "business")),
+	role("b-admin", "admin", "admin", BUSINESS_ADMIN),
+	role("b-member", "member", "member", presetCapabilities("member", "business"), undefined, 2),
+	{ ...role("b-buyers", null, "member", ["purchase"], "Buyers", 2), pendingInvites: 1 },
+	role("b-scouts", null, "member", ["view_analytics"], "Scouts", 1),
+	role("b-empty", null, "member", ["view_analytics"], "Empty", 0),
+];
+
+const bRole = (id: string) => B_ROLES.find((r) => r.id === id)!;
+
+/** Helia at a headroom: the owner, an admin, two buyers (one granted Manage projects), one scout. */
+function capContext(used: number, limit: number | null, extra: Partial<RoleCapContext> = {}) {
+	const at = (
+		id: string,
+		roleId: string,
+		preset: WorkspaceRole,
+		granted: WorkspaceCapability[] = [],
+	) => ({
+		...member(id, preset),
+		roleId,
+		overrides: { granted, revoked: [] },
+	});
+	return {
+		kind: "business",
+		managers: { used, limit },
+		members: [
+			at("m-owner", "b-owner", "owner"),
+			at("m-admin", "b-admin", "admin"),
+			at("m-buyer", "b-buyers", "member"),
+			at("m-buyer-pm", "b-buyers", "member", ["manage_projects"]),
+			at("m-scout", "b-scouts", "member"),
+		],
+		queue: null,
+		now: 0,
+		text: "Helia Finance's plan allows 2 managers.",
+		...extra,
+	} satisfies RoleCapContext;
+}
+
+const B_OWNER_VIEWER = viewer("owner", "business");
+
+Deno.test("manager cap: a role edit counts the holders whose seat changes and the invitations offering it", () => {
+	const ctx = capContext(2, 3);
+	// Manage projects on Buyers: one holder becomes a manager (the other already is one, by a grant),
+	// and its pending invitation starts to count — two seats.
+	assertEquals(managerDelta(bRole("b-buyers"), ["manage_projects", "purchase"], ctx), 2);
+	// Taking it away again frees them.
+	const pmBuyers = {
+		...bRole("b-buyers"),
+		capabilities: ["manage_projects", "purchase"],
+	} as WorkspaceRoleDef;
+	assertEquals(managerDelta(pmBuyers, ["purchase"], ctx), -2);
+	// A role nobody holds or is offered takes no seat; a change that leaves manager-ness alone takes none.
+	assertEquals(managerDelta(bRole("b-empty"), ["manage_projects", "view_analytics"], ctx), 0);
+	assertEquals(managerDelta(bRole("b-buyers"), ["purchase", "hire"], ctx), 0);
+	// A revocation wins over the role: a holder who has Manage projects revoked never counts.
+	const revoked = capContext(2, 3, {
+		members: [{
+			...member("m-r", "member"),
+			roleId: "b-scouts",
+			overrides: { granted: [], revoked: ["manage_projects"] },
+		}],
+	});
+	assertEquals(managerDelta(bRole("b-scouts"), ["manage_projects", "view_analytics"], revoked), 0);
+	// The queue, when the viewer reads it, counts only unexpired invitations; a team never counts.
+	const lapsed = { ...invite("i-old", "b-buyers"), expiresAt: "2026-01-01T00:00:00Z" };
+	const queued = capContext(2, 3, { queue: [lapsed], now: Date.parse("2026-10-19T00:00:00Z") });
+	assertEquals(managerDelta(bRole("b-buyers"), ["manage_projects", "purchase"], queued), 1);
+	assertEquals(
+		managerDelta(bRole("b-buyers"), ["manage_projects", "purchase"], { ...ctx, kind: "team" }),
+		0,
+	);
+});
+
+Deno.test("manager cap: the cell that would pass the ceiling is locked with the cap's sentence", () => {
+	// 2 of 3: ticking Manage projects on Buyers would make it 4 — locked; on Scouts it makes 3 — free.
+	const ctx = capContext(2, 3);
+	assertEquals(
+		managerCapLock(bRole("b-buyers"), "manage_projects", false, B_ROLES, {}, ctx),
+		ctx.text,
+	);
+	assertStrictEquals(
+		managerCapLock(bRole("b-scouts"), "manage_projects", false, B_ROLES, {}, ctx),
+		null,
+	);
+	// Once Scouts is ticked in the draft, the headroom is spent — Buyers stays locked, and so would a
+	// second tick anywhere that adds a manager.
+	const draft = toggleRoleCap({}, bRole("b-scouts"), "manage_projects");
+	assertEquals(draftManagersUsed(B_ROLES, draft, ctx), 3);
+	assertEquals(
+		managerCapLock(bRole("b-buyers"), "manage_projects", false, B_ROLES, draft, ctx),
+		ctx.text,
+	);
+	// A role nobody holds is never locked; nor is a cell that adds no manager, nor taking one away.
+	assertStrictEquals(
+		managerCapLock(bRole("b-empty"), "manage_projects", false, B_ROLES, draft, ctx),
+		null,
+	);
+	assertStrictEquals(managerCapLock(bRole("b-buyers"), "hire", false, B_ROLES, draft, ctx), null);
+	assertStrictEquals(
+		managerCapLock(bRole("b-scouts"), "manage_projects", true, B_ROLES, draft, ctx),
+		null,
+	);
+	// Nothing caps managers (gates off, unlimited) or a team: never locked.
+	assertStrictEquals(
+		managerCapLock(bRole("b-buyers"), "manage_projects", false, B_ROLES, {}, capContext(2, null)),
+		null,
+	);
+	assertStrictEquals(draftManagersUsed(B_ROLES, draft, capContext(2, null)), null);
+	// The matrix knows a cell is capped, and the legend says what its missing box means.
+	assert(managerCapLocked(B_ROLES, B_OWNER_VIEWER, {}, ctx));
+	assert(!managerCapLocked(B_ROLES, B_OWNER_VIEWER, {}, capContext(0, 15)), "headroom to spare");
+	assert(!managerCapLocked(B_ROLES, { ...B_OWNER_VIEWER, canManage: false }, {}, ctx), "read-only");
+	const legend = (capped: boolean) =>
+		rolesLegend({
+			kind: "business",
+			conditional: false,
+			columnLocks: [],
+			fixedReasons: [],
+			capped,
+		});
+	assertEquals(legend(true).at(-1), { mark: "capped", text: CAPPED_LEGEND });
+	assertEquals(legend(false).map((i) => i.mark), ["allowed"]);
+	assertEquals(
+		rolesLegend({
+			kind: "team",
+			conditional: false,
+			columnLocks: [],
+			fixedReasons: [],
+			capped: true,
+		})
+			.map((i) => i.mark),
+		["allowed"],
+		"a team has no manager cap",
+	);
+});
+
+Deno.test("manager cap: Save holds back the write that would pass the ceiling, in Save's order", () => {
+	const ctx = capContext(2, 3);
+	// Buyers (+2) and Scouts (+1) ticked, saved in that order: Buyers would make it 4 of 3, so it is
+	// held back; Scouts still fits (3 of 3).
+	let draft = toggleRoleCap({}, bRole("b-buyers"), "manage_projects");
+	draft = toggleRoleCap(draft, bRole("b-scouts"), "manage_projects");
+	const plan = roleSavePlan(B_ROLES, draft, B_OWNER_VIEWER, ctx);
+	assertEquals(plan.writes.map((w) => w.role.id), ["b-scouts"]);
+	assertEquals(plan.problems, [{ roleId: "b-buyers", text: managerCapLine("Buyers", 2, ctx) }]);
+	assertEquals(
+		managerCapLine("Buyers", 2, ctx),
+		"Saving Buyers would add 2 managers. Helia Finance's plan allows 2 managers.",
+	);
+	// With headroom, or nothing capping managers, or without the context, both save.
+	assertEquals(roleSavePlan(B_ROLES, draft, B_OWNER_VIEWER, capContext(0, 15)).problems, []);
+	assertEquals(roleSavePlan(B_ROLES, draft, B_OWNER_VIEWER, capContext(2, null)).problems, []);
+	assertEquals(roleSavePlan(B_ROLES, draft, B_OWNER_VIEWER).writes.length, 2);
+	// A write that frees seats leaves them to the writes after it (the server judges each in turn).
+	const pmScouts: WorkspaceRoleDef = {
+		...bRole("b-scouts"),
+		capabilities: ["manage_projects", "view_analytics"],
+	};
+	const freeing = [pmScouts, ...B_ROLES.filter((r) => r.id !== "b-scouts")];
+	let swap = toggleRoleCap({}, freeing.find((r) => r.id === "b-scouts")!, "manage_projects");
+	swap = toggleRoleCap(swap, bRole("b-buyers"), "manage_projects");
+	const full = capContext(3, 4);
+	assertEquals(
+		roleSavePlan(freeing, swap, B_OWNER_VIEWER, full).problems.length,
+		0,
+		"3 - 1 + 2 = 4",
 	);
 });
 // #endregion

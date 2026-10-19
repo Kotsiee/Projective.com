@@ -238,6 +238,11 @@ export interface RawDetail {
 	invites: RawOutgoingInvite[];
 	/** A team's `{used, limit}` seats (`org.fn_team_seats_used` · `team_seats`); `null` for a business. */
 	seats?: unknown;
+	/**
+	 * A business's `{used, limit}` managers (`finance.fn_footprint_usage` · `business_managers`, the
+	 * limit NULL while the plan gates are off); `null` for a team.
+	 */
+	managers?: unknown;
 	standing: string | null;
 	projects: RawProject[];
 	activity: RawActivity[];

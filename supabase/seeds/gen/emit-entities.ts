@@ -18,8 +18,24 @@ const PRESETS: Array<[preset: string, name: string, summary: string]> = [
 	["lead", "Lead", "Binds the team to seats and runs delivery, without restructuring the roster."],
 	["member", "Member", "Does the work and sees how the entity is performing."],
 ];
-/** A business roster has no `lead` (seat-binding is seller-side authority). */
-const BUSINESS_PRESETS = PRESETS.filter(([preset]) => preset !== "lead");
+/**
+ * A business roster has no `lead` (seat-binding is seller-side authority), and its Admin and Member
+ * read as a business's: the Admin lacks the owner-reserved rights unless granted, and the Member is
+ * buyer-side (Decision #249 (m); the business branch of org.fn_seed_preset_roles, word for word).
+ */
+const BUSINESS_PRESETS: Array<[preset: string, name: string, summary: string]> = [
+	["owner", "Owner", "Full authority, including archiving and transferring ownership."],
+	[
+		"admin",
+		"Admin",
+		"Runs the roster, the money and the settings — everything but withdrawing, billing and archiving, unless the owner grants them.",
+	],
+	[
+		"member",
+		"Member",
+		"Adds funds to the wallet and sees the analytics; anything more comes from a custom role.",
+	],
+];
 
 export function teamRoleId(teamKey: string, role: string): string {
 	return uuidFor("team_role", `${teamKey}:${role.toLowerCase()}`);

@@ -7,6 +7,7 @@ import {
 	BUSINESS_REFUSAL_COPY,
 	type BusinessRefusalContext,
 	isBusinessRefusalCode,
+	PLANS_UNAVAILABLE,
 	possessive,
 	SPEND_REQUEST_COPY,
 	type SpendRequestCopyState,
@@ -237,4 +238,34 @@ Deno.test("every spend-request state reads as a plain sentence", () => {
 		SPEND_REQUEST_COPY.approved({ decidedBy: "Priya Raman" }),
 		"Approved by Priya Raman. Placing this order uses the approval.",
 	);
+});
+
+Deno.test("entitlement: the manager cap names the plan's ceiling and who counts (BU7)", () => {
+	const copy = BUSINESS_REFUSAL_COPY.entitlement;
+	assertEquals(
+		copy.sentence({ business: "Helia Finance", entitlement: "business_managers", limit: 2 }),
+		"Helia Finance's plan allows 2 managers — admins and roles that manage projects — and they're all taken or offered. More are part of Business Pro.",
+	);
+	assertEquals(
+		copy.sentence({ business: "Atlas Labs", entitlement: "business_managers", limit: 1 }),
+		"Atlas Labs' plan allows 1 manager — admins and roles that manage projects — and they're all taken or offered. More are part of Business Pro.",
+	);
+	assertEquals(
+		copy.sentence({ entitlement: "business_managers" }),
+		"This business's plan allows a set number of managers — admins and roles that manage projects — and they're all taken or offered. More are part of Business Pro.",
+	);
+	for (
+		const ctx of [
+			{ entitlement: "business_managers" },
+			{ entitlement: "business_managers", limit: 15 },
+		]
+	) {
+		assertPlain(copy.sentence(ctx), "entitlement.business_managers");
+	}
+	// Every other entitlement keeps the general sentence.
+	assertEquals(
+		copy.sentence({ business: "Helia Finance", entitlement: "pooled_wallet_full" }),
+		"That's part of Business Pro, which Helia Finance isn't on.",
+	);
+	assertEquals(PLANS_UNAVAILABLE, "Changing plans isn't available yet.");
 });
