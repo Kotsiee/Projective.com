@@ -3,7 +3,7 @@ import { useRef } from "preact/hooks";
 import { useSignalEffect } from "@preact/signals";
 import "../styles/splitter.css";
 import { styleVars } from "../../core/style.ts";
-import { useSplitter, type UseSplitterOptions } from "../hooks/useSplitter.ts";
+import { SPLITTER_RANGE, useSplitter, type UseSplitterOptions } from "../hooks/useSplitter.ts";
 
 export interface MiddleNavSplitterProps extends UseSplitterOptions {
 	/** The lane content (comms lists, filters, channels). */
@@ -32,7 +32,8 @@ export function MiddleNavSplitter(props: MiddleNavSplitterProps): JSX.Element {
 	const { children, publishWidthVar, publishWidthSelector = ".ui-app-shell", ...opts } = props;
 	// Persistence is opt-in: the consuming app passes a `storageKey` (its registered storage-keys
 	// dictionary value) so the package stays portable and never hardcodes an app key literal.
-	const { width, mode, dragging, onPointerDown, onPointerMove, onPointerUp } = useSplitter(opts);
+	const splitter = useSplitter(opts);
+	const { width, mode, dragging, onPointerDown, onPointerMove, onPointerUp } = splitter;
 	const rootRef = useRef<HTMLDivElement>(null);
 
 	// Opt-in width hoist: republish the live width onto the closest matching ancestor whenever it
@@ -59,10 +60,14 @@ export function MiddleNavSplitter(props: MiddleNavSplitterProps): JSX.Element {
 				role="separator"
 				aria-orientation="vertical"
 				aria-label="Resize navigation lane"
+				aria-valuenow={width.value}
+				aria-valuemin={opts.min ?? SPLITTER_RANGE.min}
+				aria-valuemax={opts.max ?? SPLITTER_RANGE.max}
 				tabIndex={0}
 				onPointerDown={onPointerDown}
 				onPointerMove={onPointerMove}
 				onPointerUp={onPointerUp}
+				onKeyDown={splitter.onKeyDown}
 			/>
 		</div>
 	);
