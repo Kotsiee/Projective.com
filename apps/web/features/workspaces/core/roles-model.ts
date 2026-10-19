@@ -230,17 +230,21 @@ export function memberCountText(count: number): string {
 }
 
 /**
- * A role column's meta line: who holds it, then — for a custom role — the preset it is based on (its
- * rank), then whether it holds unsaved edits.
+ * A role column's meta lines: who holds it — and "edited" while it holds unsaved edits — then, for a
+ * custom role, the preset it is based on (its rank) on a line of its own. The count leads the first
+ * line of every column, so it sits level with the presets' counts; "based on …" keeps its own line
+ * instead of breaking mid-phrase in a role-width column, and a custom column is two lines clean or
+ * edited, so a toggle never moves the header.
  */
 export function roleColumnMeta(
 	role: Pick<WorkspaceRoleDef, "preset" | "basePreset" | "memberCount">,
 	edited: boolean,
-): string {
-	const parts = [memberCountText(role.memberCount)];
-	if (!role.preset) parts.push(`based on ${roleLabel(role.basePreset)}`);
-	if (edited) parts.push("edited");
-	return parts.join(" · ");
+): string[] {
+	const held = [memberCountText(role.memberCount)];
+	if (edited) held.push("edited");
+	const lines = [held.join(" · ")];
+	if (!role.preset) lines.push(`based on ${roleLabel(role.basePreset)}`);
+	return lines;
 }
 
 /** The matrix columns, in {@link orderedRoles} order, each locked with its reason when it is. */

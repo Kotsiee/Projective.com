@@ -37,8 +37,12 @@ export interface PermissionMatrixColumn {
 	key: string;
 	/** The role's name; the column header and the second part of every cell's name. */
 	label: string;
-	/** One meta line under the label (e.g. "3 members"). */
-	meta?: string;
+	/**
+	 * The meta under the label: one line (e.g. "3 members"), or one line per entry. Every column's
+	 * first line shares a top across the header row, so lead with the fact every column has (a count)
+	 * and give a longer fact a line of its own rather than letting it break mid-phrase.
+	 */
+	meta?: string | readonly string[];
 	/** Every cell in a locked column is readable but never toggles (e.g. Owner). */
 	locked?: boolean;
 	/**

@@ -1,4 +1,4 @@
-import type { ComponentChildren, JSX } from "preact";
+import { type ComponentChildren, Fragment, type JSX } from "preact";
 import { useRef } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import { cx } from "../../core/cx.ts";
@@ -65,7 +65,9 @@ export interface PermissionMatrixProps {
 	/**
 	 * Controls for one column, rendered in its header beside the label (e.g. an `ActionMenu` kebab for
 	 * a role). They sit outside the grid's roving focus — each is its own tab stop — so keep them to
-	 * one compact control per column, and return `null` for a column that has none.
+	 * one compact control per column (a small icon-only `Button`, `--fld-h-sm`), and return `null` for
+	 * a column that has none. Once any column seats one, every column's label sits on a line that tall,
+	 * so the role names and their meta lines keep one top across the header row.
 	 */
 	columnActions?: (column: PermissionMatrixColumn, index: number) => ComponentChildren;
 	/** The inline word shown on a `sensitive` capability (default "Sensitive"). */
@@ -148,6 +150,19 @@ export function PermissionMatrixGrid(props: PermissionMatrixProps): JSX.Element 
 		const fact = facts[at.row][at.col];
 		return cellToggleable(fact.state, columns[at.col], interactive, fact.fixed);
 	};
+	// #endregion
+
+	// #region Header facts
+	/** Each column's header control, read once; `null` where the column seats none. */
+	const headerControls = columns.map((column, colIndex) => {
+		const actions = columnActions?.(column, colIndex);
+		return actions == null || actions === false ? null : actions;
+	});
+	/**
+	 * Once one column seats a control, every column's label takes the same control-tall line, so a
+	 * preset's name and count sit level with a custom role's beside its kebab.
+	 */
+	const seatsControls = headerControls.some((actions) => actions !== null);
 	// #endregion
 
 	// #region Keyboard
@@ -270,7 +285,10 @@ export function PermissionMatrixGrid(props: PermissionMatrixProps): JSX.Element 
 					<tr>
 						<th scope="col" class="ui-permission-matrix__corner">{rowHeaderLabel}</th>
 						{columns.map((column, colIndex) => {
-							const actions = columnActions?.(column, colIndex);
+							const actions = headerControls[colIndex];
+							const metaLines = typeof column.meta === "string"
+								? [column.meta]
+								: (column.meta ?? []).filter(Boolean);
 							const label = (
 								<span class="ui-permission-matrix__colhead-label">
 									{column.label}
@@ -290,15 +308,26 @@ export function PermissionMatrixGrid(props: PermissionMatrixProps): JSX.Element 
 										column.locked && "ui-permission-matrix__colhead--locked",
 									)}
 								>
-									{actions == null || actions === false
-										? label
-										: (
+									{seatsControls
+										? (
 											<span class="ui-permission-matrix__colhead-row">
 												{label}
-												<span class="ui-permission-matrix__colhead-actions">{actions}</span>
+												{actions !== null && (
+													<span class="ui-permission-matrix__colhead-actions">{actions}</span>
+												)}
 											</span>
-										)}
-									{column.meta && <span class="ui-permission-matrix__meta">{column.meta}</span>}
+										)
+										: label}
+									{metaLines.length > 0 && (
+										<span class="ui-permission-matrix__meta">
+											{metaLines.map((line, lineIndex) => (
+												<Fragment key={lineIndex}>
+													{lineIndex > 0 && <span class="ui-visually-hidden">,</span>}
+													<span class="ui-permission-matrix__meta-line">{line}</span>
+												</Fragment>
+											))}
+										</span>
+									)}
 								</th>
 							);
 						})}

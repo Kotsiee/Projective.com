@@ -17,6 +17,8 @@
 	--pm-cell-size: var(--fld-h-md);
 	--pm-col-size: calc(var(--fld-h-md) * 3);
 	--pm-head-size: calc(var(--fld-h-md) * 6);
+	/* The header control a role column may seat — a small icon-only Button. */
+	--pm-action-size: var(--fld-h-sm);
 	--pm-allowed: var(--primary-tint);
 	--pm-conditional: var(--warning-tint);
 	--pm-locked: var(--surface-2);
@@ -123,13 +125,16 @@
 	color: var(--text-secondary);
 }
 
-/* The label and a consumer's header control share one centred line; the label wraps first. */
+/* The label and a consumer's header control share one centred line; the label wraps first. Once any
+   column seats a control, every column's label sits on this line — the control's height, with or
+   without one — so the role names, and the meta lines under them, keep one top across the row. */
 .ui-permission-matrix__colhead-row {
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	gap: var(--space-1);
 	min-inline-size: 0;
+	min-block-size: var(--pm-action-size);
 }
 
 .ui-permission-matrix__colhead-row > .ui-permission-matrix__colhead-label {
@@ -168,6 +173,11 @@
 	color: var(--text-secondary);
 	font-variant-numeric: tabular-nums;
 	overflow-wrap: anywhere;
+}
+
+/* A column's meta lines stack; each wraps on its own, so a longer fact never splits the one above. */
+.ui-permission-matrix__meta-line {
+	display: block;
 }
 
 .ui-permission-matrix__sep {

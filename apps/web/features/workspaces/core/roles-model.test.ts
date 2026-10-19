@@ -250,17 +250,19 @@ Deno.test("columns: a custom role ranking above the viewer is locked whole, with
 	assertEquals(cols.find((c) => c.key === "r-designer")?.locked, undefined);
 });
 
-Deno.test("columns: the meta line counts holders, names a custom role's base and an unsaved edit", () => {
-	assertEquals(roleColumnMeta(byId("r-member"), false), "3 members");
-	assertEquals(roleColumnMeta(byId("r-owner"), false), "1 member");
-	assertEquals(roleColumnMeta(byId("r-designer"), false), "0 members · based on Lead");
-	assertEquals(roleColumnMeta(byId("r-designer"), true), "0 members · based on Lead · edited");
+Deno.test("columns: the meta counts holders first, names an unsaved edit and a custom role's base", () => {
+	assertEquals(roleColumnMeta(byId("r-member"), false), ["3 members"]);
+	assertEquals(roleColumnMeta(byId("r-owner"), false), ["1 member"]);
+	// The count leads line one in every column; "based on …" is a line of its own, clean or edited.
+	assertEquals(roleColumnMeta(byId("r-designer"), false), ["0 members", "based on Lead"]);
+	assertEquals(roleColumnMeta(byId("r-designer"), true), ["0 members · edited", "based on Lead"]);
 	const draft = toggleRoleCap({}, byId("r-designer"), "manage_projects");
 	const cols = roleMatrixColumns(ROLES, viewer("owner"), draft);
-	assertEquals(
-		cols.find((c) => c.key === "r-designer")?.meta,
-		"0 members · based on Lead · edited",
-	);
+	assertEquals(cols.find((c) => c.key === "r-designer")?.meta, [
+		"0 members · edited",
+		"based on Lead",
+	]);
+	assertEquals(cols.find((c) => c.key === "r-member")?.meta, ["3 members"]);
 });
 
 Deno.test("header: presets · custom roles, tabular", () => {
