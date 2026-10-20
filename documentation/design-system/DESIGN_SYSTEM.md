@@ -2398,6 +2398,28 @@ verbatim because every component depends only on the token contract (Part A) —
 > `SYSTEM_ARCHITECTURE.md` Restructure Change Log). Migration note: the former Fields/Data/Charts
 > package docs describe existing implementations now re-homed under these sub-paths.
 
+> **Off-system app components — deliberately not on this roster.** `LandingShell`, `LandingHeader`,
+> `LandingBackground` (with its server paint `BackgroundFallback`), `LandingHero` (with `HeroCtas` /
+> `HeroChips`), the `HeroSearch` island (with its markup `HeroSearchForm` and its lazily loaded
+> `CategorySheet`), `HeroTheatre` (the server figure, its `HeroTheatre` island and the lazily loaded
+> `theatre-player`), `MoneyFlowStage` (with its `MoneyFlow` island), `DemoStage` (with
+> `DemoStageHeader` / `DemoStageView`, its `DemoHost` island and the lazily loaded demos —
+> `BoardDemo` with `BoardPicture` / `BoardTicket`, `PaymentsDemo` with `PaymentsPicture`,
+> `BookingDemo` with `BookingPicture`, `TeamPayDemo` with `TeamPayPicture`), the `LazyChatHost`
+> island and L4's sections — `LandingPageView` (the page's composition), `WhyDifferent`,
+> `WaysToWork` (with `WaysToWorkView`, `LandingRail` / `RailCard` and its `RailScroll` island),
+> `PaymentProtection`, `LiveNumbers`, `ForTeams`, `Pricing` (with `PricingSection` /
+> `PricingCalculatorView` and its `PricingCalculator` island), `Faq` and `FinalCta` (with
+> `LandingBackground`'s `final` variant), and L5's `/features` — `FeaturesPage` (the page
+> controller) over `FeaturesPageView`, `FeatureIndex` (with `ChapterNav`, `FeatureChapterSection`,
+> `FeatureRow` / `ComingSoonRow` and `ChapterStill`) and the `FeatureDemoDialog` island, which
+> shares the demos' loader (`components/demos/demo-modules.ts`) and `useReducedMotion` with the
+> stage's `DemoHost` — live in `apps/web/features/landing/**` under the #280
+> exemption, outside `@projective/ui`; Part E, "Off-system surfaces", documents them, and gate 5 is
+> answered there (Decisions #286 (B), #287, #288, #301). The retired marketing landing components
+> (`Hero`, `HowItWorks`, the landing-only cards…) were app components too and were never roster
+> entries.
+
 > **Field validation statuses — two-tier creation gate.** Beyond the generic `invalid`/`success`/
 > `warning` `FieldStatus`es, `fields` (and `editor`) expose the platform's "quick to onboard, slow
 > to set up" gate as two explicit severities: **`required` (RED)** — needed _now_ to create the base
@@ -3603,7 +3625,9 @@ Preserve the functional shell architecture; modernize its execution.
 
 **Four navigation profiles (form-factor × auth).** The shell resolves to one of four configurations,
 selected by viewport and auth state (auth is resolved **site-wide** in the global middleware so
-Home/Explore render the user shell when signed in):
+Home/Explore render the user shell when signed in). The landing pages `/` and `/features` take none
+of the four: they render in `LandingShell` whatever the auth state (Part E, "Off-system surfaces";
+`ROUTING.md`):
 
 1. **Desktop Guest** (every guest-reachable route) — the unified floating `GuestShell`: the same
    full-width, scroll-adaptive glass `SiteHeader` (the four discovery megamenus — Helpers · Services
@@ -4250,8 +4274,10 @@ For **guests** the shell is not the nested L-frame — it is one floating compos
 (`apps/web/features/shell/`), used verbatim on every guest-reachable route (the `(public)` surfaces
 and `/[handle]`). It layers floating, glassmorphic panels over a **full-bleed body**, reusing the
 marketing `.site` / `.site__main` base (the fixed → pill-on-scroll `SiteHeader`, the reserved header
-band, and `overflow-x: clip`), so lane-less routes (`/`, both Explore states) are structurally
-unchanged:
+band, and `overflow-x: clip`), so lane-less routes (both Explore states, `/about`, `/help`) are
+structurally unchanged. `/` and `/features` are the exception: they render in `LandingShell`, the
+landing's off-system chrome, for guests and signed-in visitors alike (Part E, "Off-system surfaces";
+`ROUTING.md`, `(public)/_layout.tsx`).
 
 - **Floating pill header.** The unchanged `SiteHeader` (full-width, morphing to a glass pill on
   scroll, discovery megamenus intact) is the top chrome on **all** guest routes — replacing both the
@@ -5111,6 +5137,295 @@ A PR touching `@projective/ui` must satisfy (enforced via root `CLAUDE.md`):
 10. **Screen-sharing obscurity (§B.14).** Every sensitive value carries its `ui-obscure` tier under
     `data-screen-share="active"` from the first paint. No masked node keeps its raw value in an
     attribute, and blur never runs nested or on a dense surface.
+
+**Off-system surfaces (Decision #280).** The marketing home page and its extension page are the one
+sanctioned exception to items 1, 3 and 9, and to §B.9 (cards) within item 7 — never to items 2, 4,
+5, 6 or 8: `apps/web/features/landing/**`, the `/` route and the `/features` route may carry their
+own palette, type, radii, shadows, glass, glows, cards and motion — but only as `lp-` BEM classes
+and `--lp-*` tokens scoped to `.lp-root` (and `.lp-portal` on a portalled panel), with the token
+values declared once in `features/landing/styles/lp-theme.css`. What stays enforced there:
+accessibility (AA contrast on every text-over-effect, keyboard paths, ARIA; focus follows the
+app-wide no-focus-ring directive, so the landing draws no ring either — #285 (A)), both
+reduced-motion channels, islands never touching Supabase, thin routes over fat services, security,
+SEO and the landing's performance budget ([`flows/LANDING.md`](../flows/LANDING.md) §7).
+`apps/web/features/landing/core/lp-leak.test.ts` (part of `deno task test:unit`) fails, naming
+`file:line`, on any `lp-` name or `--lp-*` token outside those paths; its allowlist reaches only the
+seven footer files #285 (B) names — there, the `lp-footer` BEM family exactly (plus the block's three
+ids and one keyframes name), footer-local `--lp-*` tokens declared in the file that reads them, and
+`marketing/styles/hero-search.css`'s one `--lp-hair-strong` read — until that block is renamed
+after P8. `core/lp-theme.contrast.test.ts` recomputes every §3.3 contrast pairing of
+`flows/LANDING.md` from `lp-theme.css` and fails a cell below its floor or a published cell that
+no longer matches. Every gate in this document still applies everywhere else,
+including to app components rendered inside the landing (the board mock keeps the app's own tokens),
+and the exemption widens only by a new decision row.
+
+- **`LandingShell`** (`features/landing/components/LandingShell.tsx`) is the chrome of `/` and
+  `/features`, in place of GuestShell / UserShell (`ROUTING.md`, `(public)/_layout.tsx`): the solid
+  `.lp-root` canvas; a skip link to `PAGE_CANVAS_MAIN_ID` (#285 (C)); the full-width header bar
+  (`LandingHeader` island, its content on the page's container — the brand and the "Main" links
+  (How it works · Explore · Pricing · Features, `core/header.ts`; the link to the page being viewed
+  carries `aria-current="page"`, drawn in the stronger ink over a `--lp-teal-ink` underline, in the
+  bar and the sheet alike) at
+  the leading edge, then the app's `ThemeToggle`, "Sign in" (tier 5) and "Get started" (tier 2,
+  monochrome inverted) for a guest or "Open app" (tier 2) for a signed-in visitor at the trailing
+  edge, one fill per bar (#288 (E)); below `--bp-md` a menu button, server-rendered and shown in
+  "Get started"'s place from the first paint wherever scripting is enabled
+  (`@media (scripting: enabled)`, so hydration shifts nothing; with scripting off "Get started"
+  stays in the bar), opens a top sheet built on the overlay family's `Drawer`, re-skinned `lp-menu`
+  and marked `lp-portal`, its elevation on `::after` because the no-focus-ring layer strips a
+  focused panel's `box-shadow`), whose glass is a `::before` underlay with one bottom hairline and a
+  solid fallback (no `backdrop-filter` support, either high-contrast channel, reduced transparency,
+  forced colours). The glass is the default; the hydrated bar sheds it, and its hairline, at the top
+  of the page; the `<main>`; and the unchanged `PublicFooter` rendered after `.lp-root`, outside it,
+  so neither namespace's tokens reach the other (#285 (B)). The bar sets the package's
+  `--chrome-pinned-h` hook to its own bottom edge. `LandingHeader` also carries `lp-theme.css` and
+  `lp-shell.css`, since a stylesheet imported by a server component never reaches the page.
+- **`LandingBackground`** (`features/landing/islands/`) is the hero's background, the B7 spotlight
+  grid and B10 grain on a solid canvas: the server paints `BackgroundFallback` (the grid in integer
+  cells whose origin is the content container's edge, grain, a still neutral spotlight), and the
+  client lets the spotlight follow a fine pointer behind the §3.6 gate (`core/background-gate.ts`,
+  `static | spotlight`: either reduced-motion channel, forced colours, a coarse pointer, Save-Data,
+  memory and cores keep it still). The WebGL2 constellation, its SVG fallback and its quiet-zone
+  measurement were deleted by Decision #288.
+- **`LandingHero`** (`features/landing/components/`) is `#hero` (L2, restyled by #288): a
+  left-aligned column whose `.lp-hero__top` holds the copy block (the page's one h1, set word by
+  word for a CSS-only blur-fade that is not declared under either reduced-motion channel, its text
+  still the one sentence pair), then its islands as slots from the page controller — the search, the
+  "Try:" line (`HeroChips`, server-derived: underlined links on one wrapping meta line), the two
+  calls to action (`HeroCtas`, per viewer: "Hire a team" tier 4 outlined and a text link; reused by
+  the final call to action) — and, last, the product theatre. It is the Precision hero, kept by #288
+  (D)'s comparison (`flows/LANDING.md` §2.8): one measure for the headline and the search (a
+  `fit-content` grid column), the calls to action beside the field from 1280px, the real board in a
+  straight-on window rising into the first viewport, and no eyebrow. **`HeroSearch`** (`islands/`)
+  renders **`HeroSearchForm`**, the search's markup as a pure function of its state: a real
+  `GET /explore` form with `q` and a native `category` select (Explore's categories minus Products),
+  the input an ARIA combobox whose suggestions are the headless `createSuggestController` over
+  `ExploreService.suggest` grouped People & teams · Services · Projects (the active row kept in
+  sight; each recent row's remove button, named for its term, sits beside its option, since an
+  option's content is presentational), recent searches from `search-history`, `/` through
+  `useSearchShortcut` (its "/ to search" hint and `aria-keyshortcuts` shown only once bound), and an
+  `aria-hidden` typewriter that runs only on the hero timeline's typewriter turns
+  (`core/hero-motion.ts`), its characters bound to one text node. The field (`.lp-search`) is the
+  hero's one full contour — a 12px radius and a 1px `--lp-field-edge` whose states move only its
+  colour and its shadow (#288 retired the B9 ring) — and its submit the hero's one fill (tier 3, the
+  product's invariant `--primary` pair); the timeline holds while the field is hovered or focused.
+  In forced colours the panel gets an edge and the active row the system's selection colours. Below
+  `--bp-md`, once hydrated, an icon button the select's width opens **`CategorySheet`** — the
+  overlay family's `Drawer` docked to the bottom, re-skinned `lp-sheet`, marked `lp-portal`, its
+  arrow keys moving the choice inside the sheet until a tap, Enter or Space takes it — loaded on
+  first open (the native select comes back should it fail to load); the client service and the
+  history module also load on first focus, so the island's own weight stays inside its 20 kB cap.
+  The model behind all of it (categories, `explorePath` URLs, the typewriter and its turn length,
+  the calls to action, the suggestion groups) is `core/hero-search.ts`; the typewriter's terms and
+  the chips are derived on the server (`ExploreBackendService.landingHero`).
+- **`HeroTheatre`** (`features/landing/components/`) is the hero's product theatre: a
+  `<figure role="img">` named for its one claim whose board subtree is `inert`, rendering the real
+  `@projective/ui` `KanbanColumn`s (under a still `DndCtx` from the package-internal
+  `@ui/dnd/core/context.ts` and `store.ts`, since nothing is dragged) over the work-board model
+  (`core/demos/board-model.ts`, which reads funding tags the way the product's card does) at its
+  first frame — the still a visitor sees without JavaScript, below `--bp-md` and under either
+  reduced-motion channel or Save-Data. Its **`HeroTheatre`** island renders only "Pause the example"
+  (from `--bp-md`, while the hero timeline has something to play) and, once the theatre is in view
+  with motion allowed and Save-Data off, loads **`theatre-player`** (`core/`, a lazy chunk), which
+  writes the scripted loop's frames onto the server's board with `transform`-only moves. The figure
+  is a straight-on window (#288: no tilt, no glow; its board frame fixed at the loop's tallest
+  frame). "Try it yourself" renders only once the page renders the demo stage (`demo`; L3), so no
+  link points at a section that is not there. The island also carries `lp-theatre.css` and the
+  kanban sheet.
+- **`DemoStage`** (`features/landing/components/`) is `#demo`, the demo stage (L3): the server
+  renders the section header, the one h2, the always-visible stage note and the role note
+  (**`DemoStageHeader`**), then the **`DemoHost`** island over **`DemoStageView`**, the stage's
+  markup as a pure function of its state — a tablist of four links (`/?demo=…#demo`, which the thin
+  controller renders open with no JavaScript) with a roving tab stop and manual activation (beside
+  it, where the page asks — `/` does since L5 — the text link "See everything Projective does →" to
+  `/features`), one
+  `tabpanel` per tab (the closed ones `hidden`), each a straight-on window (`--lp-window`, the
+  section's one elevated object) whose viewport reserves its aspect ratio (3 / 4, 4 / 3 from
+  `--bp-sm`, 16 / 9 from `--bp-lg`, 2 / 1 from 1280px) around the tab's poster and crawlable
+  description, then the caption and "Start again" (named by its own words, #298 (D); it keeps its
+  room and shows only while a demo is live). Server-rendered, every tab is its own tab stop; the
+  roving tab stop starts once `DemoHost` hydrates (#298), and below `--bp-md` the host scrolls the
+  open tab into the strip's view. Each poster (`.lp-demo-poster`, one `role="img"`, `inert`) is a
+  server-rendered still of its demo's opening picture drawn by the demo's own parts, handed to the
+  island as JSX props (`children` for the board, `paymentsPoster` / `bookingPoster` /
+  `splitsPoster`); `DemoHost` carries every demo's stylesheet so a poster is styled with no
+  JavaScript. `DemoHost` opens tabs in place (`history.replaceState`, no scroll jump; same-page
+  `?demo=` links included), and once the stage nears the viewport imports only the open tab's demo
+  module (`components/demos/*.demo.tsx`, outside `islands/`, each its own lazy chunk) and renders it
+  with the `core/demos/demo-contract.ts` props: the server's fee, either reduced-motion channel read
+  live, the "Start again" count and the stage's one polite live region. Every demo's frame mode and
+  controls share `lp-demo.css`'s chrome (`.lp-demo-frames`, `.lp-demo-counter`, `.lp-demo-step`,
+  `.lp-demo-btn`, tier 1 `.lp-demo-btn--money` only where money moves, `.lp-demo-note`). The Work
+  board (**`BoardDemo`**, with **`BoardPicture`** for its poster and frames and **`BoardTicket`**
+  for its faces) is the real `@projective/ui` `KanbanBoard` over the work-board model: its pointer
+  drag and keyboard path where a fine pointer and `--bp-md` allow a drag, and otherwise each card's
+  own "Move to…" disclosure (lanes as buttons, one lane at a time with a pager below `--bp-md`),
+  lanes refusing a card exactly where the model does (`dropRefusalOf`, the product's column lock);
+  one filled money control on the board (`moneyLead`, #298 (C)); under either reduced-motion
+  channel, six labelled stills with Previous step / Next step. **`PaymentsDemo`** (Payment
+  protection, V2; its parts **`PaymentsPicture`**: the stages on the product's funding tag, the five
+  stops, the ledger, the Fair Exit results, and the server poster) is a native-range scrubber over
+  `payments-model.ts`'s SQL-mirrored release and Fair Exit, "Approve and pay" its one tier 1
+  control, "Try Fair Exit" a switch and the tiers native radios. **`BookingDemo`** (V4; its parts
+  **`BookingPicture`**: the slot list on the product's `SlotPicker` anatomy, the booked summary, the
+  group session's roster, ballot and ending, the frame stills and the poster) runs
+  `booking-model.ts` over the product's scheduling rules. **`TeamPayDemo`** (V5; its parts
+  **`TeamPayPicture`**: the release, the ledger rows and the poster) drives the product's `SplitBar`
+  over `split-model.ts`, the mirror of `fn_team_split_plan`. Each renders its six frames under
+  either reduced-motion channel; the money-moving control is tier 1 amber, everything else tier 4 or
+  native. Their status text uses the stage's audited `--lp-ok-*` / `--lp-refuse-*` inks inside the
+  viewport (§3.3, #298 (F)).
+- **`MoneyFlowStage`** (`features/landing/components/`) is "How it works", `#how-it-works` (#288
+  (F), #298 (B)): the six §4.3 steps on a numbered hairline spine beside ONE sticky window — the
+  real `@projective/ui` kanban columns (Ready · In Progress · Review) over a money rail (Your wallet
+  · Held safely · Team paid · Their bank, each a `MoneyView` figure and the product's `Tag`) — drawn
+  from `core/money-flow.ts`'s frames, every changing part rendered once per value and marked with
+  the steps it shows on (`data-mf-on`), so a step change swaps visibility and nothing reflows. Its
+  **`MoneyFlow`** island moves the window's `data-step` as each step reaches the reading line (one
+  IntersectionObserver; native scroll, never hijacked) and carries `lp-money-flow.css`,
+  `lp-theatre.css`, the kanban, `money-view` and `tag` sheets; where scroll-driven animations exist
+  the coins, fills and clearing days follow the scroll itself. Under either reduced-motion channel
+  the window changes instantly; with no JavaScript, and on a phone, each step shows its own
+  server-rendered still. Its fixture is its own project and task ("Shop relaunch · Product pages");
+  at the withdrawal the team's place is passed through and the bank holds the net, one sum moving.
+- **`LandingPageView`** (`features/landing/components/`) is the whole of `/` in the
+  `flows/LANDING.md` §2 order, inside LandingShell's `<main>` (L4): the structured data (the
+  organisation, the website's search and the FAQPage of the questions it prints — one list for
+  both), then the hero, Why it's different, How it works, the demo stage, Ways to work, Payment
+  protection, the numbers so far, For freelancers and teams, Pricing, the questions and the final
+  call to action. Every section after the hero is a landmark labelled by its one h2; every fee
+  figure reads one value, `platform_fee_bp` through `PublicMetricsService` (`null` drops every fee
+  clause and hides the calculator, §4); the island-bearing parts arrive as slots from the page
+  controller (`routes/LandingPage.tsx`), so the composition renders under `deno test`. The page's
+  rhythm: a canvas section pads more above its head than below its last element
+  (`--lp-section-pad` / `--lp-section-pad-end`), so two canvas sections never meet across a doubled
+  pad, and the regions step in solid tones only — the neutral `--lp-step-bg` once in the opening run
+  (Why it's different), the warm `--lp-warm-bg` band twice (Payment protection with the numbers,
+  Pricing) — never an alpha wash (#301 (H)). Nothing after the hero moves on its own (§2.7).
+- **`WhyDifferent`** (`features/landing/components/`) is `#why-different`: the section header, the
+  h2 and the glossary's one subtitle, then the old way and Projective compared as a real `<table>` of
+  plain text (a row label, the old way in the quieter ink, Projective's in the stronger one, one
+  hairline per row, the Projective column marked only by its header's teal rule), on the neutral
+  step. Below `--bp-md` each row stacks under its label, each way beside its own cue.
+- **`WaysToWork`** (`features/landing/components/`) is `#ways-to-work`: `WaysToWorkView`'s section
+  header, h2 and subline; the three ways as columns of text (a small decorative SVG mark, the title,
+  what it is, when the money moves one register quieter, and the column's one text link), never
+  cards; the small print; then the live rails (**`LandingRail`**): Services · Open projects ·
+  Ready-made teams · Freelancers from `LandingPayload.home.recommended`, each hidden below four
+  items and cut to eight, paid placements left out (no "Promoted" disclosure exists here), sliced on
+  the server (`core/rails.ts` `sliceRails`) so no island receives the feed. A rail is a native
+  scroller with scroll-snap and fade edges, named "{title}, {n} items" as a carousel region; each
+  `RailCard` is ONE link — the section's only contained object — with a 16 / 9 picture frame (or the
+  owner's initials) and inline meta text; a brief (project) card is text-forward and puts its title
+  first in the source so its link's name opens with it. The **`RailScroll`** island wires the scroll
+  buttons (tier 4 outlined, shown for a fine pointer at every width, once wired and while the rail
+  overflows), marks a picture that fails to load (a failed cover leaves the initials, a failed
+  avatar leaves the flow) and carries `lp-ways.css`. The rail of services is titled "Services": its
+  ranking is the marketplace's quality score, so nothing measures popularity (#301 (C)).
+- **`PaymentProtection`** (`features/landing/components/`) is `#payment-protection`, the first warm
+  band, in the editorial voice (the serif display at `--fw-medium`): the section header, the h2, the
+  page body's one "payment protection (escrow)" explainer, the eight points as ONE column of
+  labelled rows — a ledger, the h3 a label beside its body from `--bp-md` — and the money's five
+  stops as a rail (down the page on a phone, across it between `--bp-md` and 1279px, beside the
+  ledger and sticky from 1280px; its stop names in the body sans with lining figures), then the
+  Fair Exit example from the `fn_fair_exit_split` mirror, and the links: "Get help with payments"
+  and, only once a lawyer has reviewed the escrow terms in effect (`core/protection-terms.ts`, §9
+  row 8), "Read the payment protection terms".
+- **`LiveNumbers`** (`features/landing/components/`) is `#numbers`, on the same warm band: up to
+  three live figures from `PublicMetricsService` (money protected so far as the floor it is, stages
+  delivered, the median hours from funding to approval) in the display register with
+  `tabular-nums`, never boxed, each hidden when the service withheld it — and the protected total
+  also when it was CONVERTED across currencies (`totalValueProtected.converted`, #301 (A)); with no
+  figure left the section, h2 included, is omitted. Static: no count-up. The Dev Context
+  Switcher's `landingMetrics` axis (Auto · All hidden · All shown) forces its threshold result in
+  development.
+- **`ForTeams`** (`features/landing/components/`) is `#for-freelancers`, on the canvas in the
+  precision voice, and leads with its figure: the head with the team-pay figure beside it from
+  `--bp-lg` (a still of the Team pay example — the approved stage after the fee, the vault's 10%
+  first, a bar drawn from the amounts and the rows to the penny, amounts only, then the spare-penny
+  line), the eight points as a dense grid (two across from `--bp-md`, four from 1280px), the small
+  print and the calls to action ("Offer your skills" by the hero's per-viewer mapping as the
+  region's one tier-2 fill, never amber, and "Find open projects").
+- **`Pricing`** (`features/landing/components/`) is `#pricing`, the second warm band:
+  `PricingSection`'s serif h2 "A {fee} fee. You pay the price you see.", the lead and the worked and
+  rounding examples computed with `platformFeeFor` (truncating like SQL), beside the calculator
+  panel — the band's one raised object, since it holds controls. **`PricingCalculator`** (the
+  island) renders `PricingCalculatorView`: "Stage price" with its "£" prefix and two steppers in one
+  contour, three quick picks as underlined text buttons, then You pay · From the team's payment ·
+  Projective fee · The team receives, the rows and the empty / invalid message in one grid cell,
+  and a polite live region that speaks every state. Before hydration (and with no JavaScript) the
+  controls' cell shows the default price as text in the same cell, so the controls appear without a
+  shift and never render dead. Its notes end "Example only." (the figures are exact for a stage paid
+  as one payment at the standard rate). Without a fee the panel and the examples are omitted. The
+  island also carries `lp-numbers.css`.
+- **`Faq`** (`features/landing/components/`) is `#faq`: the section header and the h2, then the
+  eight questions as native `<details>` (the first open; the same text as the FAQPage JSON-LD, the
+  fee question asking "Who pays the fee?" when the fee is unavailable), one hairline between items,
+  a drawn plus that becomes a minus; "More answers in Help" follows the questions in the source and
+  on the page alike. No island.
+- **`FinalCta`** (`features/landing/components/`) is `#get-started`: the h2 "Find your team." and
+  its subline, a second `HeroSearch` instance (`idSuffix` `-final`: the static placeholder, no
+  typewriter, no `/` shortcut, its search landmark named by the h2 so it is told apart from the
+  hero's "Search Projective"), the hero's calls to action, over `LandingBackground variant="final"`
+  — the same gate as the hero's over its own region, its grid rising from the region's foot and its
+  state reflected on its own host.
+- **`FeaturesPage`** (`features/landing/routes/`) is the page controller of `/features` (L5;
+  `flows/LANDING.md` §2.5, §2.6, §4.12), behind the thin route `routes/(public)/features.tsx` (a
+  `?tkv=` 303 first, then the §4.12 head, the fee from `PublicMetricsService`, the final search's
+  terms from `ExploreBackendService.landingHero()` and the chapter `?section=` names). It builds the
+  island-bearing parts — each chapter's still, real components only (Find & hire the Booking demo's
+  opening picture, `BookingPoster`; Run the work the Work board's real kanban held still,
+  `BoardPicture`; Money the Payment protection demo's opening picture, `PaymentsPoster`; Trust and
+  Coming soon none, their rows beside their head — #302 (C) retired the placeholder stills), the
+  `FeatureDemoDialog`, the final background and the page's
+  only search (`-final`, which takes `/`, #282 FLAG (a)) — and hands them to
+  **`FeaturesPageView`**: the WebPage + ItemList JSON-LD of the printed rows, the page head (the
+  section header "Features", the one h1 "Everything Projective does" and the `[P9]` subline on the
+  static B7 grid), the chapter index, then `FinalCta`. Nothing on the page moves while browsing
+  (§2.7).
+- **`FeatureIndex`** (`features/landing/components/`) is the editorial chapter index that replaced
+  the work order's bento grid (#288: static content is never boxed). **`ChapterNav`** — numbered
+  in-page links, one sideways row below `--bp-md`, pinned under the bar from it on the canvas's
+  solid tone with one hairline; `aria-current="location"` marks the chapter `?section=` names, then
+  follows the chapter the reader is in (the island's `chapterAt`) — then five
+  **`FeatureChapterSection`**s (`#find-and-hire`, `#run-the-work`, `#money`, `#trust`,
+  `#coming-soon`), each a landmark labelled by its display h2 (weight 500; the serif on the warm
+  band for Money and Trust, their number `lp-eyebrow--editorial`) under its section-header number,
+  holding plain-text rows on one hairline each: **`FeatureRow`** — the h3, the §4.12 line word for
+  word, any small print, then "Try it" (tier 4 outlined; named by its visible words, then the title
+  visually hidden, "Try it: {title}", #302 (A)) only where L3 built the demo (Work board, Payment
+  protection, Booking, Team pay) and "Learn more" (a text link, "Learn more: {title}") only where
+  the help centre has the article; **`ComingSoonRow`** — static and muted, its "Coming soon:" lead in
+  the stronger ink, no control. From `--bp-lg` a chapter's still (**`ChapterStill`**: the demo
+  stage's own window and viewport around a real-component still, `role="img"`, `inert`) holds the
+  right column beside the rows. Every control under the pinned chrome keeps a `scroll-margin` that
+  clears it when focus scrolls the page (WCAG 2.4.11). The catalogue — chapters, rows, demos, help
+  slugs, V10 and V11 held — is `core/features-catalogue.ts`.
+- **`FeatureDemoDialog`** (`features/landing/islands/`) is `/features`' "Try it" and the page's
+  stylesheet carrier (`lp-features.css`, `lp-feature-dialog.css` and every demo sheet). Each "Try
+  it" is server-rendered as a link to the landing's demo stage on its demo (`/?demo=…#demo`), so it
+  works with no JavaScript; hydrated, the island makes it a button that opens the app's `Dialog`
+  (#171: portal, scrim, focus trap, Escape, focus back to the trigger; marked `lp-portal`) — the
+  feature's name and line, the stage note `[P9]` (the intro, which alone describes the dialog), the
+  demo in the stage's product viewport with its window flattened (the panel is the one elevated
+  surface), "Start again" and "Learn more"; a bottom sheet sized to the demo below `--bp-md` (#302
+  (D)), a centred panel from it — and imports only the pressed row's demo module, on the press, with
+  the `DemoProps` contract, through the loader it shares with `DemoHost`, falling back to the link's
+  address should the chunk fail. It also lands once on the chapter `?section=` names, focusing its
+  h2, and keeps the chapter navigation's marker on the chapter the reader is in.
+- **`LazyChatHost`** (`features/landing/islands/`) is the landing paths' stand-in for the global
+  `ChatPopoutHost` for a signed-in visitor (#286 (A)): it renders and loads nothing until the tab has
+  a floating chat open, then imports the real host once and renders it with the same `path`.
+- **The old marketing landing is retired.** `features/marketing/components/` `LandingPage`, `Hero`,
+  `HowItWorks`, `Testimonials`, `OpenProjectsGrid`, `ProductsMasonry`, `SectionHeading` and the
+  landing-only `ProfileCard` / `ProjectCard` / `ServiceCard` / `ProductCard` (the Explore cards of
+  the same names are separate files and stay), the `HeroParticles`, `MagneticField`,
+  `ProfilesCarousel` and `ServicesCarousel` islands, and `styles/landing.css` are deleted;
+  `core/landing-data.ts` keeps only the search-scope vocabulary, and the old landing's head copy and
+  graph (`seo.ts` `LANDING_META`, `landingJsonLd`), its `freelancerFloor` price string and the
+  `data-magnetic` hooks it read are gone. `SiteHeader`, `PublicFooter`, `SearchBar` (Explore Home's
+  hero search), `NewsletterForm`, `RecentlyViewed`, `SchemaInjector` (now always given its graph by
+  `JsonLd`) and the carousel helpers stay.
 
 ---
 

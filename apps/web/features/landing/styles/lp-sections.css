@@ -1,0 +1,742 @@
+/*
+ * lp-sections — the landing's three editorial text sections (Decisions #280, #288;
+ * `documentation/flows/LANDING.md` §2.1–§2.4, §3.4, §4.2, §4.6, §4.8):
+ *
+ *   - `.lp-section`: the shared rhythm. The block padding (`--lp-section-pad` above the head, the
+ *     shorter `--lp-section-pad-end` below the last element on the canvas, so two canvas sections
+ *     never meet across a doubled pad), the content on the page's container (`--lp-maxw`), the head
+ *     (section header → display → subline: tight inside the head, wide below it, §B.4.1), the points
+ *     (an h3 and its body on one hairline each), the figure (an exhibit: a rule, a section-header
+ *     caption, then its picture) and the text link. `--band` is the warm editorial band: a solid,
+ *     full-bleed region tone (`--lp-warm-bg`, §B.4.2 tier 2, never a wash) whose text reads the
+ *     warm inks; `--step` is the neutral step (`--lp-step-bg`, solid), the opening run's one tonal
+ *     change. Both keep the full pad inside their tone.
+ *   - `.lp-why`: "Why it's different", on the neutral step — the old way and Projective as a table
+ *     of plain text: a row label, then the two ways, one hairline between rows. The Projective column is marked by its
+ *     header's teal rule and its stronger ink, never by a box. Below --bp-md each row stacks, each
+ *     way under its own cue.
+ *   - `.lp-protect`: "Payment protection", in the band — the serif display, the one explainer
+ *     line, the eight points as ONE column of labelled rows (a ledger: the h3 a label beside its
+ *     body from --bp-md), and the money's five stops drawn as a rail (down the page on a phone and
+ *     beside the ledger from 1280px, across it in between), then the Fair Exit example.
+ *   - `.lp-teams`: "For freelancers and teams" — a different shape: it leads with its figure (the
+ *     Team pay example held still: the vault's cut, its bar and the rows to the penny) beside the
+ *     head, then the eight points as a dense grid (two across from --bp-md, four from 1280px), the
+ *     small print and the calls to action, of which only the first is filled (tier 2).
+ *
+ * Static content is never boxed (§B.4): spacing, then the band's solid tone, then the registers,
+ * then one hairline; the only outline is the outlined call to action's. Figures are tabular and
+ * never set in the serif (§3.1). No focus ring (Decision #285 (A)). Nothing here moves: like every
+ * section after the hero (§2.7), each paints final — no scroll-linked reveal can leave a head
+ * half-faded at rest.
+ *
+ * Delivered through `lp-shell.css`'s `@import` (the LandingHeader island carries that sheet to every
+ * landing page; a server component's own stylesheet import reaches no page). It is inlined ahead of
+ * lp-shell's rules, so a rule here that restyles one of its register classes (`.lp-heading`,
+ * `.lp-body`, `.lp-lead`, `.lp-meta`) is scoped to the section and outranks it.
+ */
+
+/* #region Section rhythm */
+.lp-section {
+	padding-block: var(--lp-section-pad) var(--lp-section-pad-end);
+	padding-inline: var(--lp-gutter);
+}
+
+.lp-section :where(p, h2, h3, ul, ol, dl, dd, figure, figcaption, table, caption) {
+	margin: 0;
+}
+
+/* The warm editorial band: one solid tone from edge to edge, its content on the container. */
+.lp-section--band {
+	padding-block-end: var(--lp-section-pad);
+	background-color: var(--lp-warm-bg);
+	color: var(--lp-warm-text);
+}
+
+/* The neutral step: the canvas's next solid tone, the precision inks unchanged (every text pairing
+   is already a §3.3 "on canvas + surface-1..3" row). */
+.lp-section--step {
+	padding-block-end: var(--lp-section-pad);
+	background-color: var(--lp-step-bg);
+}
+
+.lp-section__inner {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-2xl);
+	max-inline-size: var(--lp-maxw);
+	margin-inline: auto;
+}
+
+@media (min-width: 1024px) {
+	.lp-section__inner {
+		gap: var(--lp-stack-3xl);
+	}
+}
+
+/* Section header → display at --lp-heading-gap; the subline a step further, on its own measure. */
+.lp-section__head {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--lp-heading-gap);
+	min-inline-size: 0;
+}
+
+.lp-section__title {
+	max-inline-size: var(--lp-measure-title);
+	text-wrap: balance;
+}
+
+.lp-section__head .lp-section__lead {
+	max-inline-size: var(--lp-measure-lead);
+	margin-block-start: var(--lp-stack-2xs);
+	text-wrap: pretty;
+}
+
+.lp-section--band .lp-lead {
+	color: var(--lp-warm-text-2);
+}
+/* #endregion */
+
+/* #region Points — an h3 and its body, one hairline above each */
+.lp-section__points {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	column-gap: var(--lp-stack-xl);
+	padding: 0;
+	list-style: none;
+}
+
+/* Each point takes two of the list's rows (its h3, its body) as a subgrid, so in two columns the
+   bodies of one row start on one line even when a title wraps; a shorter title sits down on its
+   body, never adrift under the hairline. */
+.lp-section__point {
+	display: grid;
+	grid-row: span 2;
+	grid-template-rows: subgrid;
+	row-gap: var(--lp-stack-xs);
+	align-content: start;
+	padding-block: var(--lp-stack-lg) var(--lp-stack-xl);
+	border-block-start: 1px solid var(--lp-hair);
+}
+
+.lp-section__point > :first-child {
+	align-self: end;
+}
+
+.lp-section--band .lp-section__point {
+	border-block-start-color: var(--lp-warm-hair);
+}
+
+.lp-section__point-body {
+	max-inline-size: var(--lp-measure);
+	text-wrap: pretty;
+}
+
+.lp-section--band .lp-heading {
+	color: var(--lp-warm-text);
+}
+
+.lp-section--band .lp-body {
+	color: var(--lp-warm-text-2);
+}
+
+.lp-section--band .lp-meta {
+	color: var(--lp-warm-text-3);
+}
+/* #endregion */
+
+/* #region Figure — an exhibit: a rule, its caption, then the picture */
+.lp-section__figure {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-lg);
+	min-inline-size: 0;
+	padding-block-start: var(--lp-stack-md);
+	border-block-start: 1px solid var(--lp-hair-strong);
+}
+
+.lp-section--band .lp-section__figure {
+	border-block-start-color: color-mix(in srgb, var(--lp-warm-text) 22%, transparent);
+}
+/* #endregion */
+
+/* #region Text link — underlined, with a drawn chevron (the hero's recipe) */
+.lp-section__link {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--lp-stack-xs);
+	min-block-size: 2.75rem;
+	color: var(--lp-text);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-btn-lg);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--lp-track-body);
+	text-decoration-line: underline;
+	text-decoration-color: var(--lp-hair-strong);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.25em;
+	transition:
+		transform var(--lp-dur-press) var(--lp-ease-out),
+		color var(--dur-slow) var(--ease-standard),
+		text-decoration-color var(--dur-slow) var(--ease-standard);
+}
+
+.lp-section__link::after {
+	content: "";
+	flex: none;
+	inline-size: 0.4em;
+	block-size: 0.4em;
+	border-block-start: 1.5px solid currentColor;
+	border-inline-end: 1.5px solid currentColor;
+	rotate: 45deg;
+}
+
+.lp-section__link:hover {
+	text-decoration-color: currentColor;
+}
+
+.lp-section__link:active {
+	transform: scale(var(--lp-press-scale));
+}
+
+.lp-section--band .lp-section__link {
+	color: var(--lp-warm-text);
+	text-decoration-color: color-mix(in srgb, var(--lp-warm-text) 30%, transparent);
+}
+
+.lp-section--band .lp-section__link:hover {
+	text-decoration-color: currentColor;
+}
+/* #endregion */
+
+/* #region Why it's different — a table of plain text */
+.lp-why__table {
+	inline-size: 100%;
+	border-collapse: collapse;
+	table-layout: fixed;
+}
+
+.lp-why__table :is(th, td) {
+	padding: 0;
+	text-align: start;
+	vertical-align: top;
+}
+
+/* The old way in the quieter ink, Projective's in the stronger one: a register shift, never a box. */
+.lp-why__way {
+	color: var(--lp-text-3);
+	font-size: var(--lp-fs-body);
+	letter-spacing: var(--lp-track-body);
+	line-height: 1.6;
+	text-wrap: pretty;
+}
+
+.lp-why__way--ours {
+	color: var(--lp-text);
+}
+
+.lp-why__text {
+	text-wrap: pretty;
+}
+
+/* Below --bp-md: each row stacks under its label, each way beside its own cue. The header row
+   leaves the picture (the cues say it) but stays in the table for assistive technology, which the
+   explicit roles keep reading as a table whatever the display. */
+@media (max-width: 767px) {
+	.lp-why__table,
+	.lp-why__table :is(tbody, tr, th, td) {
+		display: block;
+	}
+
+	.lp-why__thead {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
+	.lp-why__table .lp-why__row {
+		display: flex;
+		flex-direction: column;
+		gap: var(--lp-stack-sm);
+		padding-block: var(--lp-stack-lg);
+		border-block-end: 1px solid var(--lp-hair);
+	}
+
+	.lp-why__row:first-child {
+		border-block-start: 1px solid var(--lp-hair-strong);
+	}
+
+	.lp-why__table .lp-why__way {
+		display: grid;
+		grid-template-columns: 6.75rem minmax(0, 1fr);
+		column-gap: var(--lp-stack-sm);
+		align-items: baseline;
+	}
+}
+
+@media (min-width: 768px) {
+	.lp-why__cue {
+		display: none;
+	}
+
+	.lp-why__corner {
+		inline-size: 19%;
+	}
+
+	.lp-why__col--old {
+		inline-size: 34%;
+	}
+
+	.lp-why__table .lp-why__col {
+		padding-block-end: var(--lp-stack-sm);
+		padding-inline-end: var(--lp-stack-xl);
+		border-block-end: 1px solid var(--lp-hair-strong);
+	}
+
+	.lp-why__table .lp-why__corner {
+		border-block-end: 1px solid var(--lp-hair-strong);
+	}
+
+	/* The Projective column's mark: its header's rule in the brand teal (structure, never text). */
+	.lp-why__table .lp-why__col--ours {
+		border-block-end-color: var(--lp-teal);
+	}
+
+	/* One baseline across the row: the label's capitals sit on the cells' first line. */
+	.lp-why__row > :is(th, td) {
+		padding-block: var(--lp-stack-lg);
+		padding-inline-end: var(--lp-stack-xl);
+		border-block-end: 1px solid var(--lp-hair);
+		vertical-align: baseline;
+	}
+
+	.lp-why__row > :last-child {
+		padding-inline-end: 0;
+	}
+}
+
+@media (min-width: 1024px) {
+	.lp-why__way {
+		font-size: var(--lp-fs-body-lg);
+		line-height: 1.55;
+	}
+}
+/* #endregion */
+
+/* #region Payment protection — the band, the ledger and the money's rail */
+/* The serif display keeps the editorial voice's own, narrower cap (its lines break by phrase). */
+.lp-protect__title {
+	max-inline-size: 20ch;
+}
+
+.lp-protect__layout {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	grid-template-areas:
+		"head"
+		"points"
+		"figure"
+		"links";
+}
+
+.lp-protect__head {
+	grid-area: head;
+	margin-block-end: var(--lp-stack-2xl);
+}
+
+.lp-protect__points {
+	grid-area: points;
+}
+
+.lp-protect__figure {
+	grid-area: figure;
+	margin-block-start: var(--lp-stack-xl);
+}
+
+.lp-protect__links {
+	grid-area: links;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0 var(--lp-stack-xl);
+	margin-block-start: var(--lp-stack-xl);
+}
+
+/* The ledger: one column of labelled rows, never a grid of features. From --bp-md each row is the
+   h3 as a label in a fixed column, its body beside it at the reading measure, on one hairline. */
+@media (min-width: 768px) {
+	.lp-protect__points .lp-section__point {
+		grid-row: auto;
+		grid-template-columns: minmax(0, 13rem) minmax(0, 1fr);
+		grid-template-rows: none;
+		column-gap: var(--lp-stack-xl);
+		align-items: baseline;
+		padding-block: var(--lp-stack-md) var(--lp-stack-lg);
+	}
+
+	.lp-protect__points .lp-section__point > :first-child {
+		align-self: baseline;
+	}
+
+	.lp-protect__points .lp-heading {
+		font-size: var(--lp-fs-body-lg);
+	}
+}
+
+/* The rail: five stops on one spine. A stop's dot sits on its name's first line; the spine runs
+   from one dot to the next under the dots, which carry the band's own tone. The names are the
+   body sans, one register quieter than the ledger's labels, and their figures line up ("Clears in
+   7 days": no old-style 7, §3.1). */
+.lp-protect__rail {
+	--protect-dot: 0.75rem;
+	--protect-lead: 1.4;
+	--protect-line: calc(var(--lp-fs-body-lg) * var(--protect-lead));
+
+	display: flex;
+	flex-direction: column;
+	padding: 0;
+	list-style: none;
+}
+
+.lp-protect__stop {
+	position: relative;
+	display: grid;
+	align-content: start;
+	grid-template-columns: var(--protect-dot) minmax(0, 1fr);
+	column-gap: var(--lp-stack-md);
+	row-gap: var(--lp-stack-2xs);
+	padding-block-end: var(--lp-stack-lg);
+}
+
+.lp-protect__stop:last-child {
+	padding-block-end: 0;
+}
+
+.lp-protect__stop:not(:last-child)::after {
+	content: "";
+	position: absolute;
+	inset-block: calc(var(--protect-line) / 2) calc(var(--protect-line) / -2);
+	inset-inline-start: calc(var(--protect-dot) / 2 - 0.5px);
+	inline-size: 1px;
+	background: color-mix(in srgb, var(--lp-warm-text) 28%, transparent);
+}
+
+.lp-protect__dot {
+	position: relative;
+	z-index: 1;
+	grid-column: 1;
+	grid-row: 1;
+	box-sizing: border-box;
+	inline-size: var(--protect-dot);
+	block-size: var(--protect-dot);
+	margin-block-start: calc((var(--protect-line) - var(--protect-dot)) / 2);
+	border: 1.5px solid var(--lp-warm-text-3);
+	border-radius: var(--lp-r-pill);
+	background: var(--lp-warm-bg);
+}
+
+/* Held safely: the one stop the section is about, in the held ink. */
+.lp-protect__stop--held .lp-protect__dot {
+	border-color: var(--lp-teal-ink);
+	background: var(--lp-teal-ink);
+}
+
+.lp-protect__stop-name {
+	grid-column: 2;
+	grid-row: 1;
+	color: var(--lp-warm-text);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body-lg);
+	font-weight: var(--fw-medium);
+	font-variant-numeric: tabular-nums lining-nums;
+	letter-spacing: var(--lp-track-body);
+	line-height: var(--protect-lead);
+}
+
+.lp-protect__stop-note {
+	grid-column: 2;
+	grid-row: 2;
+}
+
+/* The Fair Exit example: under its own hairline, after the rail. */
+.lp-protect__exit {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-xs);
+	padding-block-start: var(--lp-stack-md);
+	border-block-start: 1px solid var(--lp-warm-hair);
+}
+
+.lp-protect__exit-figures {
+	max-inline-size: var(--lp-measure);
+	font-variant-numeric: tabular-nums;
+	text-wrap: balance;
+}
+
+/* From --bp-md to 1279px the rail runs across the page under the ledger, each stop a column. */
+@media (min-width: 768px) and (max-width: 1279px) {
+	.lp-protect__rail {
+		--protect-line: var(--protect-dot);
+
+		flex-direction: row;
+	}
+
+	.lp-protect__stop {
+		flex: 1 1 0;
+		grid-template-columns: minmax(0, 1fr);
+		row-gap: var(--lp-stack-xs);
+		padding-block-end: 0;
+		padding-inline-end: var(--lp-stack-md);
+	}
+
+	.lp-protect__stop:not(:last-child)::after {
+		inset-block: calc(var(--protect-dot) / 2 - 0.5px) auto;
+		inset-inline: var(--protect-dot) 0;
+		inline-size: auto;
+		block-size: 1px;
+	}
+
+	.lp-protect__dot {
+		margin-block-start: 0;
+	}
+
+	.lp-protect__stop-name {
+		grid-column: 1;
+		grid-row: 2;
+		font-size: var(--lp-fs-body);
+	}
+
+	.lp-protect__stop-note {
+		grid-column: 1;
+		grid-row: 3;
+	}
+}
+
+/* From 1280px: the head and the ledger on the left, the rail beside them, held in view while the
+   rows scroll past it (sticky, never scroll-linked). */
+@media (min-width: 1280px) {
+	.lp-protect__layout {
+		grid-template-columns: minmax(0, 1fr) minmax(17rem, 22rem);
+		grid-template-rows: auto auto 1fr;
+		grid-template-areas:
+			"head figure"
+			"points figure"
+			"links figure";
+		column-gap: var(--lp-stack-3xl);
+		align-items: start;
+	}
+
+	.lp-protect__figure {
+		position: sticky;
+		inset-block-start: calc(var(--chrome-pinned-h) + var(--lp-stack-xl));
+		margin-block-start: 0;
+	}
+}
+/* #endregion */
+
+/* #region For freelancers and teams — the figure first, then the points and the calls to action */
+.lp-teams__top {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	row-gap: var(--lp-stack-2xl);
+	align-items: start;
+}
+
+/* From --bp-lg the figure stands beside the head, its rule level with the section header. */
+@media (min-width: 1024px) {
+	.lp-teams__top {
+		grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
+		column-gap: var(--lp-stack-3xl);
+	}
+
+	.lp-teams__top--text {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+/* The points: a dense grid of plain text, two across from --bp-md and four from 1280px. */
+@media (min-width: 768px) {
+	.lp-teams__points {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@media (min-width: 1280px) {
+	.lp-teams__points {
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		column-gap: var(--lp-stack-lg);
+	}
+
+	.lp-teams__points .lp-heading {
+		font-size: var(--lp-fs-body-lg);
+	}
+}
+
+.lp-teams__foot {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--lp-stack-lg);
+	margin-block-start: calc(var(--lp-stack-lg) - var(--lp-stack-2xl));
+}
+
+@media (min-width: 1024px) {
+	.lp-teams__foot {
+		margin-block-start: calc(var(--lp-stack-lg) - var(--lp-stack-3xl));
+	}
+}
+
+.lp-teams__ctas {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--lp-stack-sm) var(--lp-stack-xl);
+	inline-size: 100%;
+}
+
+/* The region's one fill (tier 2): a 44px target at the larger label size. */
+.lp-teams .lp-teams__cta {
+	min-block-size: 2.75rem;
+	padding-inline: var(--lp-stack-lg);
+	font-size: var(--lp-fs-btn-lg);
+}
+
+@media (max-width: 767px) {
+	.lp-teams .lp-teams__cta {
+		inline-size: 100%;
+	}
+}
+
+/* The figure: the Team pay example held still — the approved stage and the vault's cut, the bar
+   and each amount to the penny (amounts only: one base, so the rows and the bar agree). */
+.lp-teams__lines {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-2xs);
+}
+
+.lp-teams__lead {
+	color: var(--lp-text);
+	font-size: var(--lp-fs-body);
+	line-height: 1.55;
+	text-wrap: pretty;
+}
+
+.lp-teams__bar {
+	display: block;
+	inline-size: 100%;
+	block-size: 0.5rem;
+	overflow: visible;
+}
+
+.lp-teams__seg {
+	fill: var(--lp-text);
+}
+
+.lp-teams__seg[data-tone="2"] {
+	fill: color-mix(in srgb, var(--lp-text) 62%, var(--lp-bg));
+}
+
+.lp-teams__seg[data-tone="3"] {
+	fill: color-mix(in srgb, var(--lp-text) 34%, var(--lp-bg));
+}
+
+.lp-teams__seg[data-tone="vault"] {
+	fill: var(--lp-teal);
+}
+
+.lp-teams__rows {
+	inline-size: 100%;
+	border-collapse: collapse;
+	font-size: var(--lp-fs-body-sm);
+	font-variant-numeric: tabular-nums;
+	line-height: 1.45;
+}
+
+.lp-teams__rows :is(th, td) {
+	padding-block: var(--lp-stack-sm);
+	font-weight: var(--fw-normal);
+	text-align: start;
+	vertical-align: baseline;
+}
+
+.lp-teams__rows tr + tr :is(th, td) {
+	border-block-start: 1px solid var(--lp-hair);
+}
+
+.lp-teams__role {
+	color: var(--lp-text);
+}
+
+.lp-teams__swatch {
+	display: inline-block;
+	inline-size: 0.5rem;
+	block-size: 0.5rem;
+	margin-inline-end: var(--lp-stack-xs);
+	border-radius: var(--lp-r-pill);
+	background: var(--lp-text);
+	vertical-align: 0.05em;
+}
+
+.lp-teams__swatch[data-tone="2"] {
+	background: color-mix(in srgb, var(--lp-text) 62%, var(--lp-bg));
+}
+
+.lp-teams__swatch[data-tone="3"] {
+	background: color-mix(in srgb, var(--lp-text) 34%, var(--lp-bg));
+}
+
+.lp-teams__swatch[data-tone="vault"] {
+	background: var(--lp-teal);
+}
+
+.lp-teams__rows .lp-teams__amount {
+	color: var(--lp-text);
+	font-weight: var(--fw-medium);
+	text-align: end;
+	white-space: nowrap;
+}
+/* #endregion */
+
+/* #region Forced colours */
+@media (forced-colors: active) {
+	.lp-section--band {
+		background-color: Canvas;
+	}
+
+	.lp-protect__dot {
+		border-color: CanvasText;
+		background: Canvas;
+	}
+
+	.lp-protect__stop--held .lp-protect__dot {
+		background: CanvasText;
+	}
+
+	.lp-protect__stop:not(:last-child)::after {
+		background: CanvasText;
+	}
+
+	.lp-teams__seg {
+		fill: CanvasText;
+	}
+
+	.lp-teams__seg[data-tone="vault"] {
+		fill: Highlight;
+	}
+
+	.lp-teams__swatch {
+		forced-color-adjust: none;
+		background: CanvasText;
+	}
+
+	.lp-teams__swatch[data-tone="vault"] {
+		background: Highlight;
+	}
+}
+/* #endregion */

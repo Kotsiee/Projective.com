@@ -16,7 +16,7 @@ const FULL: PublicMetrics = {
 	asOf: "2026-10-17T21:07:08.982Z",
 	minN: 10,
 	platformFeeBp: 500,
-	totalValueProtected: { amountMinor: 15_100_000, currency: "USD" },
+	totalValueProtected: { amountMinor: 15_100_000, currency: "USD", converted: false },
 	stagesDelivered: 12,
 	medianFundingToApprovalHours: 396,
 };
@@ -131,6 +131,17 @@ Deno.test("AboutView: a failed read shows no figures and says so — never a sta
 	assertFalse(html.includes("Updated hourly"));
 	// The rest of the page still renders.
 	assert(html.includes("How delivery works"));
+});
+
+Deno.test("AboutView: the walkthrough's band ends with one plain link to the features index", () => {
+	const html = render(FULL);
+	assertEquals(count(html, 'href="/features"'), 1);
+	const tour = html.indexOf('id="tour-slot"');
+	const link = html.indexOf(
+		'<a class="abt__more" href="/features">See everything Projective does</a>',
+	);
+	assert(tour > 0 && link > tour, "after the walkthrough");
+	assert(link < html.indexOf('id="abt-creds-heading"'), "inside the walkthrough's band");
 });
 
 Deno.test("AboutView: the closing band — the escape first, the one filled action last", () => {

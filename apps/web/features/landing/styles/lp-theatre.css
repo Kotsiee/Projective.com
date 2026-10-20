@@ -1,0 +1,432 @@
+/*
+ * lp-theatre — the hero's product theatre (Decisions #280, #284 (1), #288; `documentation/flows/
+ * LANDING.md` §2.1 note 7, §2.2 note 5, §2.3 note 5, §2.4, §2.7, §2.8, §3.6 "Hero theatre", §4.1).
+ *
+ *   - `.lp-showcase`: the theatre and its controls row, filling the hero's stage slot.
+ *   - `.lp-theatre`: the `<figure role="img">`, a straight-on window at every width (#288: no tilt,
+ *     no glow, no fade into the page). Its edge is a tone step, one top highlight and depth
+ *     (`--lp-shadow-window`), never a four-sided ring: the window is a picture, not a control. Below
+ *     --bp-md it is a flat poster: the board scrolled to its Ready lane, about 1.7 lanes with a
+ *     trailing fade, and its money line on a line of its own; once the demo stage exists the whole
+ *     block is one link, "Try it yourself" stretched over it.
+ *   - `.lp-theatre__stage` (inert) → `__frame` → `__bar` and the real `@projective/ui` kanban
+ *     (`.ui-kanban`, rendered static) with `.lp-ticket` faces. Inside the frame the board keeps the
+ *     app's own tokens, so the mock reads as the product (#280 consequences; the stage around it is
+ *     the landing's). The frame has a fixed height (`--lp-theatre-h`, the loop's tallest frame plus
+ *     --space-2), so the loop moving a card between lanes never shifts the page.
+ *   - `.lp-showcase__controls`: "Pause the example" (from --bp-md, once hydrated, while there is
+ *     something to pause) directly under the window's leading edge and "Try it yourself" (once the
+ *     demo stage exists) at the trailing edge; `--still` marks a row with no link, which takes no
+ *     room below --bp-md.
+ *
+ * No focus ring (Decision #285 (A)). Press feedback is the `.lp-btn` recipe's `scale()` alone.
+ * Delivered by the HeroTheatre island, with the kanban sheet the static board needs.
+ */
+
+/* #region Showcase */
+.lp-showcase {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-sm);
+	inline-size: 100%;
+	text-align: start;
+}
+/* #endregion */
+
+/* #region Theatre — the window */
+/* A picture: nothing in it takes a pointer. Below --bp-md the poster fades at its trailing edge. */
+.lp-theatre {
+	margin: 0;
+	pointer-events: none;
+	-webkit-mask-image: linear-gradient(to right, var(--lp-mask-ink) 72%, transparent);
+	mask-image: linear-gradient(to right, var(--lp-mask-ink) 72%, transparent);
+}
+
+.lp-theatre__stage {
+	padding: var(--lp-stack-xs);
+	border-radius: var(--lp-r-md);
+	background: var(--lp-window);
+	box-shadow: var(--lp-shadow-window);
+	container-type: inline-size;
+}
+
+/* Concentric with the window: its radius less the window's --space-2 padding (12 − 8 = 4 on the
+   poster, 16 − 8 = 8 from --bp-md). */
+.lp-theatre__frame {
+	display: flex;
+	flex-direction: column;
+	block-size: var(--lp-theatre-h-poster);
+	overflow: clip;
+	border-radius: var(--lp-r-xs);
+	background: var(--bg);
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+}
+
+@media (min-width: 768px) {
+	.lp-theatre {
+		-webkit-mask-image: none;
+		mask-image: none;
+	}
+
+	.lp-theatre__stage {
+		border-radius: var(--lp-r-lg);
+	}
+
+	.lp-theatre__frame {
+		block-size: var(--lp-theatre-h);
+		border-radius: var(--lp-r-sm);
+	}
+}
+/* #endregion */
+
+/* #region Board bar — the board's name and its money line */
+.lp-theatre__bar {
+	display: flex;
+	flex: none;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	padding: var(--space-2) var(--space-3);
+	border-block-end: var(--hairline);
+	white-space: nowrap;
+}
+
+/* The board's name, then " · Work board" as meta: the product's own type, no mono kicker. */
+.lp-theatre__name {
+	flex: none;
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+}
+
+.lp-theatre__kicker {
+	margin-inline-start: 0.35em;
+	color: var(--text-secondary);
+	font-weight: var(--fw-normal);
+}
+
+/* On a narrow window the money line gives way with an ellipsis, never a cut glyph. */
+.lp-theatre__needs {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+}
+
+.lp-theatre__needs > [data-lp-needs-text] {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.lp-theatre__needs[hidden] {
+	display: none;
+}
+
+/* On the poster the money line wins the bar: it takes a line of its own under the board's name,
+   whole and followed by Fund all, rather than giving way to an ellipsis; both stay clear of the
+   poster's trailing fade. */
+@container (width < 40rem) {
+	.lp-theatre__bar {
+		flex-wrap: wrap;
+		row-gap: var(--space-1);
+	}
+
+	.lp-theatre__needs {
+		flex: 1 1 100%;
+		gap: var(--space-3);
+	}
+}
+
+/* Pictures of the board's two controls, tonal so the hero keeps its one filled primary. */
+:is(.lp-theatre__fund, .lp-ticket__approve) {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	block-size: 1.5rem;
+	padding-inline: var(--space-3);
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), var(--surface));
+	color: var(--on-surface);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	white-space: nowrap;
+}
+/* #endregion */
+
+/* #region Static kanban — the package's board, held still */
+.lp-theatre__board {
+	--kanban-col-w: calc((100cqi - 2 * var(--space-2) - var(--space-3)) / 1.7);
+
+	flex: 1 1 auto;
+	block-size: auto;
+	min-block-size: 0;
+}
+
+/* The lanes are the offset root the loop measures card moves in. */
+.lp-theatre__lanes.ui-kanban__board {
+	position: relative;
+	overflow: clip;
+	padding: var(--space-2);
+	scroll-snap-type: none;
+}
+
+/* The poster (a window under 40rem) shows the board as a phone does, scrolled one lane along to
+   Ready, where the task waiting for its money sits: 1.7 lanes, each wide enough for a card's
+   funding tag and price on one line, and the figure fades the rest. */
+@container (width < 40rem) {
+	.lp-theatre__lanes > .ui-kanban__column:first-child {
+		margin-inline-start: calc(-1 * (var(--kanban-col-w) + var(--space-3)));
+	}
+}
+
+/* Three lanes and a fade (the figure itself fades below --bp-md). */
+@container (40rem <= width < 60rem) {
+	.lp-theatre__board {
+		--kanban-col-w: calc((100cqi - 2 * var(--space-2) - 3 * var(--space-3)) / 3.35);
+	}
+
+	.lp-theatre__lanes.ui-kanban__board {
+		-webkit-mask-image: linear-gradient(to right, var(--lp-mask-ink) 80%, transparent);
+		mask-image: linear-gradient(to right, var(--lp-mask-ink) 80%, transparent);
+	}
+}
+
+/* Wide enough for all five lanes: nothing is cropped, so nothing fades. */
+@container (min-width: 60rem) {
+	.lp-theatre__board {
+		--kanban-col-w: calc((100cqi - 2 * var(--space-2) - 4 * var(--space-3)) / 5);
+	}
+}
+
+.lp-theatre .ui-kanban__col-body {
+	overflow: visible;
+}
+
+/* A lane the loop fills keeps no empty placeholder. */
+.lp-theatre .ui-kanban__col-body:has(> [role="listitem"]) > .ui-kanban__col-empty {
+	display: none;
+}
+/* #endregion */
+
+/* #region Ticket face — the product card's content, over fixtures */
+.lp-ticket {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-base);
+	transition: background-color var(--lp-dur-slow) var(--lp-ease-standard);
+}
+
+/* The card the loop has just changed. */
+.lp-ticket[data-lp-beat] {
+	background: color-mix(in srgb, var(--success) var(--tint-soft), var(--surface));
+}
+
+.lp-ticket__title {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+}
+
+.lp-ticket__foot {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1) var(--space-2);
+}
+
+.lp-ticket__stage {
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+.lp-ticket__end {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-1) var(--space-2);
+	min-inline-size: 0;
+	margin-inline-start: auto;
+}
+
+.lp-ticket__budget {
+	color: var(--on-surface);
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--fw-semibold);
+}
+
+.lp-ticket__avatar {
+	inline-size: 1.25rem;
+	block-size: 1.25rem;
+	border-radius: var(--radius-full);
+	object-fit: cover;
+}
+
+.lp-ticket__unassigned {
+	inline-size: 1.25rem;
+	block-size: 1.25rem;
+	border: 1px dashed var(--hairline-color);
+	border-radius: var(--radius-full);
+}
+
+/* The poster's lanes are too narrow for the empty assignee circle beside a tag and a price. */
+@media (max-width: 767px) {
+	.lp-ticket__unassigned {
+		display: none;
+	}
+}
+
+/* The funding tag: a lifecycle status, on the product's compact `.fst-tag` recipe — the role mixed
+   70% toward `--on-surface`, ink `--on-<role>`. */
+.lp-ticket__tag {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	padding: 0 var(--space-2);
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--info) 70%, var(--on-surface));
+	color: var(--on-info);
+	font-size: var(--text-2xs, var(--text-xs));
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-normal, 0.04em);
+	line-height: var(--leading-snug);
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.lp-ticket__tag[data-tone="success"] {
+	background: color-mix(in srgb, var(--success) 70%, var(--on-surface));
+	color: var(--on-success);
+}
+
+.lp-ticket__tag[data-tone="warning"] {
+	background: color-mix(in srgb, var(--warning) 70%, var(--on-surface));
+	color: var(--on-warning);
+}
+
+.lp-ticket__tag[data-tone="danger"] {
+	background: color-mix(in srgb, var(--danger) 70%, var(--on-surface));
+	color: var(--on-danger);
+}
+
+.lp-ticket__tag[data-tone="neutral"] {
+	background: color-mix(in srgb, var(--on-surface-variant) 80%, var(--surface));
+	color: var(--surface);
+}
+
+.lp-ticket__approve {
+	align-self: stretch;
+}
+
+:is(.lp-ticket__tag, .lp-ticket__approve)[hidden] {
+	display: none;
+}
+/* #endregion */
+
+/* #region Controls — Pause the example · Try it yourself */
+.lp-showcase__controls {
+	display: flex;
+	align-items: center;
+	gap: var(--lp-stack-sm);
+	min-block-size: 2rem;
+}
+
+.lp-showcase__toggle {
+	display: contents;
+}
+
+/* Tier 5 at the meta size, optically on the board's inner edge. */
+.lp-showcase__pause {
+	min-block-size: 2rem;
+	margin-inline-start: calc(var(--lp-stack-xs) - var(--lp-stack-sm));
+	padding-inline: var(--lp-stack-sm);
+	font-size: var(--lp-fs-body-sm);
+}
+
+/* The glyph: two bars while the example plays, a triangle once it is paused. Decorative. */
+.lp-showcase__pause::before {
+	content: "";
+	flex: none;
+	box-sizing: border-box;
+	inline-size: 0.625rem;
+	block-size: 0.75rem;
+	border-inline: 3px solid currentColor;
+}
+
+.lp-showcase__pause[aria-pressed="true"]::before {
+	inline-size: 0;
+	block-size: 0;
+	border-block: 6px solid transparent;
+	border-inline-start: 10px solid currentColor;
+	border-inline-end: 0;
+}
+
+.lp-showcase__pause[aria-pressed="true"] {
+	background: var(--lp-surface-3);
+	color: var(--lp-text);
+}
+
+.lp-showcase__try {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--lp-stack-2xs);
+	margin-inline-start: auto;
+	color: var(--lp-text);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body-sm);
+	font-weight: var(--fw-medium);
+	text-decoration: none;
+	transition: color var(--dur-slow) var(--ease-standard);
+}
+
+.lp-showcase__try:hover {
+	color: var(--lp-teal-ink);
+}
+
+/* Below --bp-md the poster and its label are one link, and nothing moves, so there is no toggle;
+   until the demo stage exists there is no link either, and the row takes no room. */
+@media (max-width: 767px) {
+	.lp-showcase__controls--still {
+		display: none;
+	}
+
+	.lp-showcase__try {
+		margin-inline-start: 0;
+	}
+
+	.lp-showcase__try::after {
+		content: "";
+		position: absolute;
+		inset: 0;
+		z-index: 1;
+	}
+
+	.lp-showcase__toggle {
+		display: none;
+	}
+}
+/* #endregion */
+
+/* #region Forced colours — the board drawn plainly */
+@media (forced-colors: active) {
+	.lp-theatre,
+	.lp-theatre__lanes.ui-kanban__board {
+		-webkit-mask-image: none;
+		mask-image: none;
+	}
+}
+/* #endregion */

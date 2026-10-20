@@ -61,6 +61,32 @@ Parenthesized folders group routes **without** adding a URL segment:
   pass, and the page's own read decides what they see.
 - `_layout.tsx` per group — shell chrome; `(dashboard)` mounts the dual-nav + Splitter. `(standalone)`
   deliberately has none — the only route group that renders no shell at all (Decision #161(C)).
+- `(public)/_layout.tsx` resolves the public shell by auth state — `GuestShell` for a guest,
+  `UserShell` for a signed-in visitor — with two path exemptions, checked in order:
+  - `AUTH_PATHS` (`/join`, `/login`, `/forgot-password`, `/verify`) render bare; the auth screens
+    own their full-window chrome.
+  - `LANDING_PATHS` (`/`, `/features`) render in **`LandingShell`**
+    (`features/landing/components/LandingShell.tsx`) for guests **and** signed-in visitors alike —
+    never a redirect; `/home` is untouched (Decision #284 (8)). The shell is the landing's
+    off-system canvas (`.lp-root`, Decision #280): a skip link to `#main-content`
+    (`PAGE_CANVAS_MAIN_ID`, Decision #285 (C)), its own header bar (the "Main" links, the theme
+    control, then "Sign in" + "Get started" for a guest or "Open app" → `/home` for a signed-in
+    visitor; below 768px a menu sheet), the `<main id="main-content">`, and the unchanged
+    `PublicFooter` (Decision #13) rendered after `.lp-root`, outside it (#285 (B)). Also mounted for
+    these paths, outside `.lp-root`, for a signed-in visitor only: `LazyChatHost`
+    (`features/landing/islands/`), which renders nothing and loads the global `ChatPopoutHost` only
+    once the tab has a floating chat open (its `sessionStorage` state, or `openPopout` on the page),
+    so a chat opened elsewhere stays open on the landing without the host's weight on every landing
+    view (Decision #286 (A)). No ticket host is mounted: the landing routes strip a `?tkv=` on the
+    server with a `303` before they render (below). **Not mounted** there, against the
+    shell a path would otherwise get: `SiteHeader` and its search, `ShareHost` and the guest aside
+    (GuestShell); the sidebar, middle nav, `NavSearchBar`, bottom nav, `ShareHost`,
+    `SettingsModalHost` (so `?settings=` opens nothing on `/`) and `MilestoneCelebration`
+    (UserShell). The bar's links are the ones whose destination exists
+    (`features/landing/core/header.ts`): "How it works" (`/#how-it-works`), "Explore" (from
+    1024px), "Pricing" (`/#pricing`) and, since L5, "Features" (`/features`); the anchors are
+    written from `/`, so they work from `/features` too, and the link to the page being viewed
+    carries `aria-current="page"` (on `/features`, "Features"; on `/`, none).
 
 ## Dynamic segments (examples in the skeleton)
 
@@ -104,8 +130,9 @@ Parenthesized folders group routes **without** adding a URL segment:
 | changelog release       | `(public)/changelog/[version].tsx`                            | `/changelog/:version` (re-exports `features/changelog/routes/release.tsx`) — one release's canonical page; `v0.12.0` / any upper case **308→** `/changelog/0.12.0`; a version that is not semver, unknown, withdrawn or dated in the future is one **404** notice (`noindex`) |
 | changelog RSS           | `(public)/changelog/rss.xml.ts`                              | `/changelog/rss.xml` (re-exports `features/changelog/routes/rss.ts`) — RSS 2.0, `application/rss+xml`, `public, max-age=900`; a failed read is a plain-text **503**, never an empty channel. The static route wins over `[version]` |
 | about                   | `(public)/about.tsx`                                         | `/about` — the mission page (Decision #277; re-exports `features/marketing/about/routes/AboutPage.tsx`): live platform figures read server-side from `PublicMetricsService` (a figure below its threshold has no tile), the delivery walkthrough. Public, indexable, no query |
+| features                | `(public)/features.tsx`                                      | `/features` — everything Projective does, the editorial chapter index (work order L5; `flows/LANDING.md` §2.5, §2.6, §4.12). In `LANDING_PATHS`, so it renders in `LandingShell` for guests and signed-in visitors alike. Thin: a `?tkv=` is answered first with a `303` to the same address without it (`tkvRedirect`), then it reads the fee (`PublicMetricsService`) and the final search's terms (`ExploreBackendService.landingHero()`) and renders `features/landing/routes/FeaturesPage.tsx`; a failed read withholds its part, never the page. `?section=find-and-hire\|run-the-work\|money\|trust\|coming-soon` (case and surrounding space forgiven; any other value opens nothing) marks that chapter, which the page lands on once and focuses; every chapter is also its own anchor (`#money`), and so is every feature row (`#work-board`). Canonical `/features` with no query; public, indexable, in the sitemap. A row's "Try it" is a link to `/?demo=<id>#demo` (the dialog opens in place once hydrated) |
 | feedback board          | `(public)/feedback.tsx`                                      | `/feedback` — the feedback board's own page (Decision #272; re-exports `features/feedback/routes/FeedbackPage.tsx`); its query and the `?feedback=open` drawer every other page carries are in "Feedback board" below. The footer's Feedback entry links here and, on a plain click, opens the drawer over the current page instead |
-| sitemap                 | `(public)/sitemap.xml.ts`                                    | `/sitemap.xml` (re-exports `features/marketing/routes/sitemap.ts`; Decision #279) — a sitemaps.org `<urlset>` on the site's public origin (`siteOrigin`): `/`, `/explore`, `/about`, `/contact`, `/feedback`, the help hub, every category with a visible article and every visible article (canonical `/help/<category>/<article>`), `/changelog` and every visible release, `/articles` and every visible article, and a legal document only once its version in effect is reviewed (`features/legal/core/sitemap.ts` — none today; the hub on the same rule). `lastmod` where a source dates it. `application/xml`, `public, max-age=3600`; an unreadable source is a plain-text **503** with `Retry-After`, never a partial sitemap. Pure builder `features/marketing/core/sitemap.ts` |
+| sitemap                 | `(public)/sitemap.xml.ts`                                    | `/sitemap.xml` (re-exports `features/marketing/routes/sitemap.ts`; Decision #279) — a sitemaps.org `<urlset>` on the site's public origin (`siteOrigin`): `/`, `/features`, `/explore`, `/about`, `/contact`, `/feedback`, the help hub, every category with a visible article and every visible article (canonical `/help/<category>/<article>`), `/changelog` and every visible release, `/articles` and every visible article, and a legal document only once its version in effect is reviewed (`features/legal/core/sitemap.ts` — none today; the hub on the same rule). `lastmod` where a source dates it. `application/xml`, `public, max-age=3600`; an unreadable source is a plain-text **503** with `Retry-After`, never a partial sitemap. Pure builder `features/marketing/core/sitemap.ts` |
 | robots                  | `(public)/robots.txt.ts`                                     | `/robots.txt` (re-exports `features/marketing/routes/robots.ts`; Decision #279) — one `User-agent: *` group: `Disallow` the API (`/api/`), every `(dashboard)` top-level segment and `/legal/workspace` (each as `/x$`, `/x/`, `/x?`, so a profile at `/homer` stays crawlable while `/home` does not), the owner-only `/*/edit`, and `?feedback=open` anywhere; then `Sitemap:` on the public origin. `text/plain`, `public, max-age=3600`. Pure builder `features/marketing/core/robots.ts`, whose test walks `routes/(dashboard)` so a new app segment cannot escape it. Replaces the old allow-all `static/robots.txt`, which the static-files middleware would have served first. Share links, `/exit`, the inspector and legal drafts stay crawlable on purpose — their `noindex` is only readable if a crawler may fetch them |
 | file inspector          | `(standalone)/inspect/[fileId].tsx`                          | `/inspect/:fileId` (`?share=<slug>` optional) — the shell-free, full-window inspector for ONE stored file: a top bar, the canvas that suits the file (image, SVG, video, audio, PDF, code, text, Markdown, table, 3D model, Word document, font, or the unsupported fallback — `resolveViewer`, `@projective/types/files`) and a details panel. Controller `features/inspector/routes/InspectScreen.tsx` (re-exported); the handler reads `FilesBackendService.inspect` under the viewer's own read rule (`fn_can_read`, or the live share slug) and every refusal is the SAME calm `404` page, whether the file is missing, private or the link is dead. Addressed by the `files.items.id` **uuid** — an explicit exception to Decision #88 (files carry no slug; flagged in Decision #161(B)). Headers: the inspector CSP profile (`cspHeaderFor("inspector")`, Decision #161(D)), `noindex, nofollow`, `no-referrer`, `private, no-store`. Its bytes come only from `/api/media/proxy/:fileId`; `fileInspectHref(id, { share })` builds the address. |
 | notifications           | `(dashboard)/notifications/index.tsx`                        | `/notifications` (`?category=` an inbox tab — `money · work · messages · schedule · discovery · account · system`, absent = All; `?view=` `unread · archived`, absent = All) — the full inbox: the header drawer's tabs and rows plus the views, keyset Load more and bulk mark-read / archive. Re-exports `features/notifications/routes/NotificationsScreen.tsx` (DESIGN_SYSTEM §D.9, Decision #173) |
@@ -310,6 +337,14 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   (`/login`, `/join`, `/forgot-password`, `/verify`), exactly `/checkout/details` and
   `/checkout/payment`, for a guest, for a malformed value, and for a ticket the read refuses — which
   answers "not found" and "not yours" with the same words, because the link is pasted from anywhere.
+
+  The two landing pages, `/` and `/features`, mount no `TicketDeepLinkHost` (Decision #286 (A)), so
+  they strip the parameter on the SERVER: each landing route's `GET` calls `tkvRedirect(ctx.url)`
+  (`apps/web/features/landing/core/strip-tkv.ts`) before it renders, and answers a URL carrying
+  `tkv` (empty, repeated or percent-encoded too) with a bodiless `303 See Other` to the same path and
+  query without it: every other parameter kept byte for byte and in order, the `Location` path and
+  query only (the browser carries the fragment over) and pinned to one leading slash. Every other
+  route keeps the in-browser strip.
 
 - **Conversations are addressed by their _entry surface_.** A thread keeps its stable `chatId` (so
   it stays **one continuous record** — `PRODUCT_SPEC.md` §Unified Messaging, Decision #21); only the
@@ -756,7 +791,7 @@ rolls its optimistic change back; the Dev Context Switcher's `saved` axis substi
 
 | Route | Method | Behaviour |
 | :-- | :-- | :-- |
-| `/api/public/metrics` | `GET` · `HEAD` · `OPTIONS` | The public site's live figures — `PublicMetricsService.get()` in the flat `{ ok, …PublicMetrics }` envelope (`@projective/types/marketing`): `asOf`, `minN`, `platformFeeBp`, `totalValueProtected` (`{ amountMinor, currency }`), `stagesDelivered`, `medianFundingToApprovalHours`; a `null` figure is below the threshold and its tile is hidden. No parameters, no session. `defineReadRoute` with the `public-metadata` cache policy and a strong `ETag`; a failure (503 / 502) is `no-store`. `/about` reads the same service server-side and never fetches this from the browser. |
+| `/api/public/metrics` | `GET` · `HEAD` · `OPTIONS` | The public site's live figures — `PublicMetricsService.get()` in the flat `{ ok, …PublicMetrics }` envelope (`@projective/types/marketing`): `asOf`, `minN`, `platformFeeBp`, `totalValueProtected` (`{ amountMinor, currency, converted }` — `converted` is `true` when several currencies were summed at reference rates, and the landing then hides it; Decision #301 (A)), `stagesDelivered`, `medianFundingToApprovalHours`; a `null` figure is below the threshold and its tile is hidden. No parameters, no session. `defineReadRoute` with the `public-metadata` cache policy and a strong `ETag`; a failure (503 / 502) is `no-store`. `/about` reads the same service server-side and never fetches this from the browser. |
 
 ### Workspace (Teams & Businesses) API
 

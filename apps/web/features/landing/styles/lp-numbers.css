@@ -1,0 +1,181 @@
+/*
+ * lp-numbers — "The numbers so far", `#numbers` (Decisions #277, #280, #288;
+ * `documentation/flows/LANDING.md` §2.1 note 18, §2.2 note 17, §2.3, §2.7, §4.7).
+ *
+ *   - `.lp-numbers`: the section, on the warm editorial band (`--lp-warm-bg`, solid). It continues
+ *     the Payment protection band in the wireframes, so directly after `#payment-protection` it
+ *     drops its own top padding: the band's rhythm is that section's bottom padding, once.
+ *   - `.lp-numbers__head`: the h2 in the section-header register (as "How it works" sets its own),
+ *     then the "as of" subline in the body register.
+ *   - `.lp-numbers__list`: up to three figures on the band itself — never boxed (§B.4). Below
+ *     --bp-md they stack, split by single hairlines; from it they sit in one row with hairline
+ *     dividers, and a hidden figure collapses its column (auto columns), never a gap. Each figure is
+ *     the display register with `tabular-nums lining-nums`; a word beside the digits ("At least",
+ *     "hours") steps down to the lead size so the digits carry the row. A subgrid keeps the digits
+ *     of every column on one line when only the first carries "At least" above it, and each
+ *     column's label (with its footnote) starts on one line below them.
+ *
+ * Static: no reveal, no count-up (§2.7). Tokens only; every text pairing is a §3.3 editorial row
+ * (warm-text, warm-text-2, warm-text-3 on warm-bg). Delivered by the PricingCalculator island,
+ * which `Pricing` always mounts (a server component's stylesheet reaches no page); the section
+ * renders only when the metrics read succeeded, which is exactly when the fee is known.
+ */
+
+/* #region Section */
+.lp-numbers {
+	padding-block: var(--lp-section-pad);
+	padding-inline: var(--lp-gutter);
+	background-color: var(--lp-warm-bg);
+	color: var(--lp-warm-text);
+}
+
+:where(#payment-protection) + .lp-numbers {
+	padding-block-start: 0;
+}
+
+.lp-numbers__inner {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-2xl);
+	max-inline-size: var(--lp-maxw);
+	margin-inline: auto;
+}
+
+.lp-numbers__head {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--lp-stack-xs);
+}
+
+.lp-numbers .lp-numbers__note {
+	margin: 0;
+	max-inline-size: var(--lp-measure);
+	color: var(--lp-warm-text-2);
+}
+
+.lp-numbers__note time {
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+/* #endregion */
+
+/* #region Figures */
+.lp-numbers__list {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	container-type: inline-size;
+}
+
+.lp-numbers__item {
+	display: grid;
+	grid-template-rows: auto auto auto;
+	align-content: start;
+	min-inline-size: 0;
+	padding-block: var(--lp-stack-lg);
+}
+
+.lp-numbers__item:first-child {
+	padding-block-start: 0;
+}
+
+.lp-numbers__item:last-child {
+	padding-block-end: 0;
+}
+
+.lp-numbers__item + .lp-numbers__item {
+	border-block-start: 1px solid var(--lp-warm-hair);
+}
+
+.lp-numbers__qualifier {
+	grid-row: 1;
+	margin-block-end: var(--lp-stack-2xs);
+	color: var(--lp-warm-text-2);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body-lg);
+	letter-spacing: var(--lp-track-body);
+	line-height: 1.3;
+}
+
+/* The display register. In a row its digits are held to a share of the row (the list is the size
+   container: an item cannot be one, since layout containment would undo its subgrid), so the
+   768 row of three never overflows, and they never grow past the figure size. */
+.lp-numbers .lp-numbers__figure {
+	grid-row: 2;
+	margin: 0;
+	color: var(--lp-warm-text);
+	white-space: nowrap;
+}
+
+.lp-numbers__unit {
+	color: var(--lp-warm-text-2);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body-lg);
+	letter-spacing: var(--lp-track-body);
+}
+
+.lp-numbers__words {
+	grid-row: 3;
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-2xs);
+	margin-block-start: var(--lp-stack-sm);
+}
+
+.lp-numbers .lp-numbers__label {
+	margin: 0;
+	max-inline-size: 34ch;
+	color: var(--lp-warm-text-2);
+}
+
+.lp-numbers .lp-numbers__foot {
+	margin: 0;
+	color: var(--lp-warm-text-3);
+}
+
+@media (min-width: 768px) {
+	.lp-numbers__list {
+		grid-auto-columns: minmax(0, 1fr);
+		grid-auto-flow: column;
+		grid-template-columns: none;
+		grid-template-rows: repeat(3, auto);
+	}
+
+	.lp-numbers__item,
+	.lp-numbers__item:first-child,
+	.lp-numbers__item:last-child {
+		grid-row: span 3;
+		grid-template-rows: subgrid;
+		padding-block: 0;
+		padding-inline: var(--lp-gap);
+	}
+
+	.lp-numbers__item:first-child {
+		padding-inline-start: 0;
+	}
+
+	.lp-numbers__item:last-child {
+		padding-inline-end: 0;
+	}
+
+	.lp-numbers__item + .lp-numbers__item {
+		border-block-start: 0;
+		border-inline-start: 1px solid var(--lp-warm-hair);
+	}
+
+	.lp-numbers .lp-numbers__figure {
+		font-size: min(var(--lp-fs-figure), 5.4cqi);
+	}
+}
+/* #endregion */
+
+/* #region Forced colours */
+@media (forced-colors: active) {
+	.lp-numbers__item + .lp-numbers__item {
+		border-color: CanvasText;
+	}
+}
+/* #endregion */

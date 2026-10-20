@@ -163,8 +163,6 @@ export default function SiteHeader(
 					class="site-header__brand"
 					href="/"
 					aria-label="Projective"
-					data-magnetic
-					data-magnetic-strength="0.2"
 				>
 					<Logo class="site-header__mark" />
 					<span class="site-header__brand-text">Projective</span>
@@ -314,14 +312,14 @@ export default function SiteHeader(
 									<span aria-hidden="true">◈</span>
 								</a>
 								<ThemeToggle />
-								<a class="site-header__cta" href="/projects" data-magnetic>Dashboard</a>
+								<a class="site-header__cta" href="/projects">Dashboard</a>
 							</>
 						)
 						: (
 							<>
 								<ThemeToggle />
 								<a class="site-header__signin" href={signInHref}>Sign in</a>
-								<a class="site-header__cta" href={joinHref} data-magnetic>Get started</a>
+								<a class="site-header__cta" href={joinHref}>Get started</a>
 							</>
 						)}
 				</div>

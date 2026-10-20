@@ -3,6 +3,7 @@ import {
 	type PublicMetrics,
 	type PublicMetricsAggregate,
 	type PublicMoneyTotal,
+	type PublicProtectedTotal,
 } from "@projective/types/marketing";
 import {
 	currencyExponent,
@@ -137,21 +138,27 @@ export const PUBLISHED_TOTAL_SIGNIFICANT_FIGURES = 2;
  * and grows coarser as the platform grows. Floored, never rounded: a public total may understate,
  * never overstate. `null` when less than one whole unit is left — too small to mean anything.
  */
-export function coarsenPublishedTotal(total: PublicMoneyTotal): PublicMoneyTotal | null {
+export function coarsenPublishedTotal<T extends PublicMoneyTotal>(total: T): T | null {
 	const unit = 10 ** currencyExponent(total.currency);
 	const major = Math.floor(Math.max(0, total.amountMinor) / unit);
 	if (major < 1) return null;
 	// The digit count from the integer's own text: `Math.log10` is not exact at every power of ten.
 	const digits = String(major).length;
 	const step = 10 ** Math.max(0, digits - PUBLISHED_TOTAL_SIGNIFICANT_FIGURES);
-	return { amountMinor: Math.floor(major / step) * step * unit, currency: total.currency };
+	return { ...total, amountMinor: Math.floor(major / step) * step * unit };
 }
 // #endregion
 
 // #region Fold
-/** Round hours to one decimal place — the precision the public figure is stated at. */
+/**
+ * Round hours UP to one decimal place — the precision the public figure is stated at. Up, never to
+ * the nearest: the landing prints the median as "within N hours", rounding the published tenth up to
+ * the hour (`withinHours`), and a median of 36.04 h published as 36.0 would print "within 36 hours"
+ * of stages that took longer. Published as 36.1 it prints 37. The `1e-9` keeps a value that is
+ * already a whole tenth, give or take float noise (`395.999978…` → 396.0), from gaining one.
+ */
 export function roundHours(hours: number): number {
-	return Math.round(hours * 10) / 10;
+	return Math.ceil(hours * 10 - 1e-9) / 10;
 }
 
 /** The aggregate's timestamp as UTC ISO 8601, or `fallback` when it does not parse. */
@@ -164,11 +171,12 @@ export function normaliseAsOf(raw: string, fallback: Date): string {
  * Fold the database aggregate and the already-resolved protected total into the public payload.
  * Every nullable figure is re-held to the threshold here even though the database applied it too,
  * so a fixture or a drifted function cannot publish a figure the rule forbids, and the total is
- * coarsened ({@link coarsenPublishedTotal}) — the only form in which it is ever published.
+ * coarsened ({@link coarsenPublishedTotal}) — the only form in which it is ever published — with
+ * its `converted` marker carried through unchanged.
  */
 export function foldPublicMetrics(
 	aggregate: PublicMetricsAggregate,
-	totalValueProtected: PublicMoneyTotal | null,
+	totalValueProtected: PublicProtectedTotal | null,
 	now: Date,
 ): PublicMetrics {
 	const minN = thresholdOf(aggregate);

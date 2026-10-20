@@ -5,52 +5,54 @@ import {
 	ACCOUNT_TYPES,
 	applyDevContext,
 	DEV_ACCOUNT_LIFECYCLES,
+	DEV_AGE_RESTRICTIONS,
+	DEV_AUTO_FUND_MODES,
+	DEV_AVAILABILITY_CONFLICTS,
+	DEV_BASKET_SCENARIOS,
+	DEV_BUSINESS_KYBS,
+	DEV_BUSINESS_PAGES,
+	DEV_BUSINESS_PLAN_GATES,
+	DEV_CATALOGUE_ANALYTICS,
+	DEV_CHECKOUT_GATES,
+	DEV_CLIENT_PIPELINES,
+	DEV_DISCOVERY_ACTIVITIES,
+	DEV_DISCOVERY_VIEWERS,
+	DEV_DISPUTE_STATES,
+	DEV_EMAIL_CONFIRMATIONS,
+	DEV_EMBEDDINGS,
+	DEV_FUNDING_STATES,
+	DEV_LANDING_BACKGROUNDS,
+	DEV_LANDING_METRICS,
 	DEV_LAYOUT_DIRECTIONS,
+	DEV_LOW_BALANCES,
 	DEV_MEMBER_CLIENTS,
 	DEV_MEMBER_ROLES,
 	DEV_MESSAGING_ROLES,
 	DEV_MIC_PERMISSIONS,
+	DEV_NOTIFICATIONS,
+	DEV_OPERATOR_DESKS,
+	DEV_OPERATOR_MODES,
+	DEV_PAYOUT_READINESS,
 	DEV_PROFILE_SETUPS,
 	DEV_PROJECT_ACCESSES,
 	DEV_PROJECT_ONBOARDINGS,
 	DEV_PROJECT_STATUSES,
 	DEV_PROJECT_TYPES,
+	DEV_PROMO_DISMISSALS,
 	DEV_PROPOSAL_ALLOWANCES,
 	DEV_REVISION_ALLOTMENTS,
-	DEV_AUTO_FUND_MODES,
-	DEV_LOW_BALANCES,
-	DEV_BUSINESS_KYBS,
-	DEV_BUSINESS_PAGES,
-	DEV_TEAM_PAGES,
-	DEV_TEAM_SETTINGS,
-	DEV_SESSION_STATES,
-	DEV_DISPUTE_STATES,
-	DEV_NOTIFICATIONS,
-	DEV_BASKET_SCENARIOS,
-	DEV_CHECKOUT_GATES,
-	DEV_SPEND_REQUESTS,
-	DEV_PROMO_DISMISSALS,
-	DEV_DISCOVERY_VIEWERS,
-	DEV_DISCOVERY_ACTIVITIES,
-	DEV_EMAIL_CONFIRMATIONS,
-	DEV_AGE_RESTRICTIONS,
-	DEV_PAYOUT_READINESS,
-	DEV_BUSINESS_PLAN_GATES,
-	DEV_OPERATOR_MODES,
-	DEV_OPERATOR_DESKS,
-	DEV_CATALOGUE_ANALYTICS,
-	DEV_CLIENT_PIPELINES,
-	DEV_AVAILABILITY_CONFLICTS,
-	DEV_EMBEDDINGS,
 	DEV_ROLES,
 	DEV_SAVED,
 	DEV_SERVICE_TYPES,
 	DEV_SESSION_BOOKINGS,
+	DEV_SESSION_STATES,
 	DEV_SETTINGS_ATTENTIONS,
+	DEV_SPEND_REQUESTS,
 	DEV_STAGE_ASSIGNMENTS,
 	DEV_SUBMISSION_STATES,
+	DEV_TEAM_PAGES,
+	DEV_TEAM_SETTINGS,
 	DEV_TRUST_ADORNMENTS,
-	DEV_FUNDING_STATES,
 	DEV_VERIFICATION_STAMPS,
 	DEV_WALLET_AURORAS,
 	type DevOption,
@@ -109,6 +111,14 @@ function reloadExplorePage(): void {
  */
 function reloadProfilePage(): void {
 	if (globalThis.location?.pathname.startsWith("/@")) globalThis.location.reload();
+}
+
+/**
+ * Reload when the open page is the landing (`/`), so a server-side landing-numbers simulation applies
+ * at once. Elsewhere nothing reads it until the next `/` request.
+ */
+function reloadLandingPage(): void {
+	if (globalThis.location?.pathname === "/") globalThis.location.reload();
 }
 
 function reloadDiscoveryPage(): void {
@@ -947,6 +957,42 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.walletAurora}
 						disabled={!o.enabled}
 						onChange={(walletAurora) => patchDevContext({ walletAurora })}
+					/>
+				</Field>
+
+				{
+					/* The landing hero's background (`flows/LANDING.md` §3.6). Its gates read device facts
+				    (the pointer, memory, cores, Save-Data) no page control can change, so this is the only
+				    runtime route to the following spotlight on a machine that `auto` refuses, and to the
+				    static paint on one it allows. Reduced motion and forced colours still win. Applies
+				    live; `.lp-root` reflects the outcome on `data-lp-bg` / `data-lp-bg-reason`. */
+				}
+				<Field label="Landing background" hint="hero spotlight grid · applies live">
+					<Segment
+						name="Landing background"
+						options={DEV_LANDING_BACKGROUNDS}
+						value={o.landingBackground}
+						disabled={!o.enabled}
+						onChange={(landingBackground) => patchDevContext({ landingBackground })}
+					/>
+				</Field>
+
+				{
+					/* The landing's "The numbers so far" (`flows/LANDING.md` §4.7). The public metrics hold every
+				    figure to a database threshold the seed never clears, so this is the only runtime route to
+				    the tiles — and to the omitted section where real data clears it. Server-side via
+				    `pj.dev.landing-metrics`, so a change reloads `/`. The fee is never simulated. */
+				}
+				<Field label="Landing numbers" hint="#numbers threshold · reloads">
+					<Segment
+						name="Landing numbers"
+						options={DEV_LANDING_METRICS}
+						value={o.landingMetrics}
+						disabled={!o.enabled}
+						onChange={(landingMetrics) => {
+							patchDevContext({ landingMetrics });
+							reloadLandingPage();
+						}}
 					/>
 				</Field>
 

@@ -3,7 +3,12 @@ import NewsletterForm from "../islands/NewsletterForm.island.tsx";
 import RecentlyViewed from "../islands/RecentlyViewed.island.tsx";
 import FooterLinkGroups from "../islands/FooterLinkGroups.island.tsx";
 import { DribbbleIcon, GitHubIcon, HelpIcon, LinkedInIcon, XIcon } from "./footer-icons.tsx";
-import { FOOTER_SETUP_LINKS, footerGroups, footerUtilityLinks } from "../core/footer-links.ts";
+import {
+	FOOTER_SETUP_LINKS,
+	footerGroups,
+	footerUtilityLinks,
+	newsletterNote,
+} from "../core/footer-links.ts";
 import { legalToday } from "@features/legal/core/registry.ts";
 import { Logo } from "@web/components/Logo.tsx";
 import "../styles/footer.css";
@@ -56,9 +61,27 @@ const SOCIAL_NETWORKS = {
 const SOCIAL_PROFILES: ReadonlyArray<{ network: keyof typeof SOCIAL_NETWORKS; href: string }> = [];
 // #endregion
 
-export function PublicFooter(): JSX.Element {
+/** Props for {@link PublicFooter}. */
+export interface PublicFooterProps {
+	/**
+	 * Name the Products marketplace in "Explore & learn" (default `true`); the landing pages pass
+	 * `false` until digital-product delivery ships (`FooterGroupOptions.products`, Decision #298).
+	 */
+	products?: boolean;
+	/**
+	 * Hold the footer to the landing pages' claims gate (default `false`;
+	 * `FooterGroupOptions.claimsGate`, `flows/LANDING.md` §5.2): the stacks' plain legal names and
+	 * "Ready-made teams", and the newsletter note without "Unsubscribe any time.", which no
+	 * unsubscribe path keeps yet. The landing pages pass `true`.
+	 */
+	claimsGate?: boolean;
+}
+
+export function PublicFooter(
+	{ products = true, claimsGate = false }: PublicFooterProps = {},
+): JSX.Element {
 	const today = legalToday();
-	const { legal, contactHelp } = footerUtilityLinks(today);
+	const { legal, contactHelp } = footerUtilityLinks(today, { claimsGate });
 	// Rendered on the server for every request, so the year turns over without a deploy.
 	const year = new Date().getUTCFullYear();
 	return (
@@ -73,7 +96,7 @@ export function PublicFooter(): JSX.Element {
 						<span class="lp-footer__brand-text">Projective</span>
 					</a>
 					<p class="lp-footer__tagline">
-						The friendly place to build, find, and hire micro-agency helper teams.
+						The place to find, hire and work with ready-made teams.
 					</p>
 					{SOCIAL_PROFILES.length > 0
 						? (
@@ -101,19 +124,17 @@ export function PublicFooter(): JSX.Element {
 				{/* #endregion */}
 
 				{/* #region Column 2 — the six quick-link stacks (accordions on mobile) */}
-				<FooterLinkGroups groups={footerGroups(today)} />
+				<FooterLinkGroups groups={footerGroups(today, { products, claimsGate })} />
 				{/* #endregion */}
 
 				{/* #region Column 3 — newsletter capture */}
 				<div class="lp-footer__news">
 					<span class="lp-footer__news-title">Stay updated</span>
 					<p class="lp-footer__news-lede">
-						Fresh helper teams, new features, and the odd good idea. No spam, ever.
+						New teams, new features, and the odd good idea. No spam, ever.
 					</p>
 					<NewsletterForm />
-					<p class="lp-footer__news-note">
-						We only use your email for updates. Unsubscribe any time.
-					</p>
+					<p class="lp-footer__news-note">{newsletterNote(claimsGate)}</p>
 				</div>
 				{/* #endregion */}
 

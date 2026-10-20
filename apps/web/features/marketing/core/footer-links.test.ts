@@ -14,6 +14,8 @@ import {
 	HELP_WHAT_IS_PROJECTIVE,
 	LIST_PRODUCT_HREF,
 	LIST_SERVICE_HREF,
+	newsletterNote,
+	PLAIN_LEGAL_LABELS,
 	POST_PROJECT_HREF,
 } from "./footer-links.ts";
 import { MEGA_MENUS, SECONDARY_LINKS } from "./megamenu-data.ts";
@@ -178,6 +180,84 @@ Deno.test("the footer's groups: three audience stacks, then Company, Help and Le
 	assertEquals(named("How it works"), HELP_WHAT_IS_PROJECTIVE);
 	assertEquals(named("Safe & easy payments"), HELP_WHAT_IS_ESCROW);
 	assertEquals(named("Contact Help"), "/contact?intent=support");
+});
+
+Deno.test("the landing pages' footer names no Products marketplace until delivery ships", () => {
+	const explore = (products?: boolean) =>
+		footerGroups(TODAY, products === undefined ? {} : { products })
+			.find((g) => g.title === "Explore & learn")!.links.map((l) => l.label);
+	assertEquals(explore(), [
+		"Features",
+		"Services directory",
+		"Products marketplace",
+		"Trending teams",
+		"Member articles",
+	]);
+	assertEquals(explore(false), [
+		"Features",
+		"Services directory",
+		"Trending teams",
+		"Member articles",
+	]);
+	const helpers = (products: boolean) =>
+		footerGroups(TODAY, { products }).find((g) => g.title === "For helpers")!.links
+			.map((l) => l.label);
+	assertEquals(helpers(true).includes("Sell your products"), true);
+	assertEquals(helpers(false), ["Find helper gigs", "Showcase your services", "How it works"]);
+	const shell = Deno.readTextFileSync(
+		new URL("../../landing/components/LandingShell.tsx", import.meta.url),
+	);
+	assertEquals(shell.includes("<PublicFooter products={false} claimsGate />"), true);
+});
+
+Deno.test("the landing pages' footer holds to their claims gate; every other page keeps #289 (B)'s words", () => {
+	const landing = footerGroups(TODAY, { products: false, claimsGate: true });
+	const utility = footerUtilityLinks(TODAY, { claimsGate: true });
+	const labels = [
+		...landing.flatMap((g) => g.links),
+		...utility.legal,
+		utility.contactHelp,
+	].map((l) => l.label);
+	// Decision #283 (C) keeps "escrow" to four slots and (D) bans "IP"; nothing measures a trend.
+	assertEquals(labels.filter((l) => /escrow|\bIP\b|trending/i.test(l)), []);
+	const legal = (groups: ReturnType<typeof footerGroups>) =>
+		groups.find((g) => g.title === "Legal")!.links;
+	const plain = legal(landing);
+	assertEquals(
+		plain.find((l) => l.href === "/legal/escrow-terms")?.label,
+		"Payment protection terms",
+	);
+	assertEquals(
+		plain.find((l) => l.href === "/legal/ip-transfer-deed")?.label,
+		"Ownership transfer deed",
+	);
+	assertEquals(plain.map((l) => l.href), legal(footerGroups(TODAY)).map((l) => l.href));
+	const titled = legal(footerGroups(TODAY));
+	assertEquals(titled.find((l) => l.href === "/legal/escrow-terms")?.label, "Escrow Terms");
+	assertEquals(titled.find((l) => l.href === "/legal/ip-transfer-deed")?.label, "IP Transfer Deed");
+	for (const slug of Object.keys(PLAIN_LEGAL_LABELS)) assertEquals(isLegalSlug(slug), true, slug);
+	const teams = (claimsGate: boolean) =>
+		footerGroups(TODAY, { claimsGate }).flatMap((g) => g.links)
+			.filter((l) => l.href === "/explore?category=teams" && l.label !== "Hire ready-made teams")
+			.map((l) => l.label);
+	assertEquals(teams(true), ["Ready-made teams"]);
+	assertEquals(teams(false), ["Trending teams"]);
+	assertEquals(newsletterNote(true), "We only use your email for updates.");
+	assertEquals(newsletterNote(), "We only use your email for updates. Unsubscribe any time.");
+	const footer = Deno.readTextFileSync(
+		new URL("../components/PublicFooter.tsx", import.meta.url),
+	);
+	assertEquals(footer.includes("footerUtilityLinks(today, { claimsGate })"), true);
+	assertEquals(footer.includes("newsletterNote(claimsGate)"), true);
+});
+
+Deno.test("the product overview leads Explore & learn on every page: Features → /features", () => {
+	for (const products of [true, false]) {
+		const [first] = footerGroups(TODAY, { products })
+			.find((g) => g.title === "Explore & learn")!.links;
+		assertEquals(first, { label: "Features", href: "/features" });
+	}
+	assertEquals(ALL_FOOTER_LINKS.filter((l) => l.href === "/features").length, 1);
 });
 
 Deno.test("no footer label points at the help hub in place of a page it names", () => {

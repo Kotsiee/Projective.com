@@ -1,8 +1,7 @@
 /*
  * Public marketing shell — native window scroll + a full-width header that morphs on scroll.
  * Token-only BEM. Scoped to the guest/public surface (the authenticated dashboard keeps the
- * DESIGN_SYSTEM.md Part D nested-frame shell). Loaded via the SiteHeader island import + an @import in
- * landing.css so delivery is reliable.
+ * DESIGN_SYSTEM.md Part D nested-frame shell). Loaded via the SiteHeader island import.
  */
 :root {
 	--site-bar-h: calc(var(--space-7) + var(--space-2)); /* 3.5rem */
@@ -81,7 +80,7 @@
 /*
  * Scrolled state: condense into a floating, rounded, glass shell with a hairline border.
  *
- * The veil is 85%, not 62%. This bar floats over the landing hero's full-bleed photograph, so its
+ * The veil is 85%, not 62%. This bar floats over page content, photography included, so its
  * backdrop is content rather than a theme surface, and 62% left `--on-surface` at 4.02:1 against a
  * bright image in dark mode — under AA on the site's own wordmark and nav. 85% measures 9.28:1 dark
  * and 12.11:1 light against the worst-case photo, and still reads unmistakably as glass: the blur

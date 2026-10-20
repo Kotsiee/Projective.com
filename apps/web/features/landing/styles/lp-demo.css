@@ -1,0 +1,534 @@
+/*
+ * lp-demo — the demo stage, `#demo` (Decisions #280, #288; `documentation/flows/LANDING.md` §2.1
+ * notes 10–13, §2.2 notes 11–12, §2.3 notes 11–12, §2.7, §4.4).
+ *
+ *   - `.lp-demo`: the section — its section header, h2, the always-visible stage note and the role
+ *     note, on the page's solid canvas (static content, never boxed).
+ *   - `.lp-demo__stage`: the tablist row ("See everything Projective does" at its trailing edge once
+ *     `/features` exists), the panels and the polite live region the host owns.
+ *   - `.lp-demo__window`: the section's ONE elevated object (#288): a straight-on window like the
+ *     hero's (`--lp-window`, one top highlight and depth, no ring). Inside it the viewport is the
+ *     product's own surface (`var(--bg)` and the app's tokens), so the real `@projective/ui`
+ *     components a demo renders read as the product. Its aspect ratio is reserved — 3 / 4 below
+ *     --bp-sm, 4 / 3 from it, 16 / 9 from --bp-lg, 2 / 1 from 1280px, where a 16 / 9 window is
+ *     taller than any demo needs — so swapping a poster for its demo, or one demo for another, never
+ *     shifts the page. A demo that outgrows it scrolls inside, and a swipe there chains to the page.
+ *   - `.lp-demo-poster`: a tab's poster, the server-rendered still of its demo's opening picture
+ *     (§8), one `role="img"`, `inert` and unmoving, cropped to the reserved box.
+ *   - `.lp-demo__desc`: a panel's crawlable description. Under its poster it is the poster's caption
+ *     band; once the demo is live it stays in the document as the panel's description, visually
+ *     hidden, so nothing moves.
+ *   - `.lp-demo__foot`: the caption (< 15 words) and "Start again".
+ *
+ * The shared demo chrome every demo module uses (the contract in `core/demos/demo-contract.ts`):
+ *   - `.lp-demo-frames` (+ `__head`, `__caption`, `__picture`, `__nav`): the FRAME MODE a demo
+ *     renders under either reduced-motion channel — a labelled sequence that fills the viewport.
+ *   - `.lp-demo-counter`: "Step {n} of {total}", the section-header register with tabular figures.
+ *   - `.lp-demo-step`: Previous step / Next step, tier 4 outlined.
+ *   - `.lp-demo-btn`: a demo's tier 4 outlined control; `.lp-demo-btn--money` is tier 1 amber, only
+ *     where money moves in the example ("Pay for this stage", "Approve and pay", "Fund all").
+ *   - `.lp-demo-note`: a demo's meta line.
+ * They sit inside the viewport, so their text reads the app's tokens there; the money fill keeps
+ * the landing's audited amber pair (§3.3).
+ *
+ * No focus ring (Decision #285 (A)). Press feedback is `scale()` alone, removed under both
+ * reduced-motion channels. Delivered by the DemoHost island (a server component's stylesheet
+ * reaches no page).
+ */
+
+/* #region Section */
+.lp-demo {
+	padding-block: var(--lp-section-pad) var(--lp-section-pad-end);
+	padding-inline: var(--lp-gutter);
+}
+
+.lp-demo__inner {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-xl);
+	max-inline-size: var(--lp-maxw);
+	margin-inline: auto;
+}
+
+/* Section header → display at --lp-heading-gap; the notes follow at --space-3 (§B.4.1). */
+.lp-demo__head {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--lp-heading-gap);
+	max-inline-size: var(--lp-maxw-text);
+}
+
+.lp-demo__title {
+	max-inline-size: var(--lp-measure-title);
+	text-wrap: balance;
+}
+
+.lp-demo__notes {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-2xs);
+	margin-block-start: calc(var(--lp-stack-sm) - var(--lp-heading-gap) + var(--lp-stack-xs));
+}
+
+.lp-demo__note {
+	margin: 0;
+	max-inline-size: var(--lp-measure-lead);
+}
+
+.lp-demo__role {
+	margin: 0;
+	max-inline-size: var(--lp-measure);
+}
+/* #endregion */
+
+/* #region Stage — tabs, panels */
+.lp-demo__stage {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-md);
+	min-inline-size: 0;
+}
+
+.lp-demo__bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--lp-stack-sm) var(--lp-stack-md);
+	min-inline-size: 0;
+}
+
+/* One row; below --bp-md it scrolls sideways under a trailing fade rather than wrapping. The host
+   scrolls the open tab into view and lifts the fade once the row is scrolled to its end. */
+.lp-demo__tabs {
+	display: flex;
+	flex: 1 1 auto;
+	gap: var(--lp-stack-2xs);
+	min-inline-size: 0;
+	margin: 0;
+	padding: 0;
+	overflow-x: auto;
+	scrollbar-width: none;
+	-webkit-mask-image: linear-gradient(to right, var(--lp-mask-ink) 85%, transparent);
+	mask-image: linear-gradient(to right, var(--lp-mask-ink) 85%, transparent);
+}
+
+.lp-demo__tabs::-webkit-scrollbar {
+	display: none;
+}
+
+.lp-demo__tabs[data-at-end] {
+	-webkit-mask-image: none;
+	mask-image: none;
+}
+
+/* With no JavaScript, a browser that supports it opens the strip on the selected tab (a deep link's
+   tab is never off-screen); only where the strip is the scroller, so the page itself never moves. */
+@media (max-width: 767px) {
+	.lp-tab[aria-selected="true"] {
+		scroll-initial-target: nearest;
+	}
+}
+
+@media (min-width: 768px) {
+	.lp-demo__tabs {
+		flex: 0 1 auto;
+		overflow-x: visible;
+		-webkit-mask-image: none;
+		mask-image: none;
+	}
+}
+
+/* A tab is a control: its contour is the only full outline in the row, on the selected tab. */
+.lp-tab {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	min-block-size: 2.5rem;
+	padding-inline: var(--lp-stack-md);
+	border: 1px solid transparent;
+	border-radius: var(--lp-r-btn);
+	background: transparent;
+	color: var(--lp-text-2);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-btn);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--lp-track-body);
+	line-height: 1;
+	text-decoration: none;
+	white-space: nowrap;
+	cursor: pointer;
+	transition:
+		transform var(--lp-dur-press) var(--lp-ease-out),
+		color var(--dur-slow) var(--ease-standard),
+		background-color var(--dur-slow) var(--ease-standard),
+		border-color var(--dur-slow) var(--ease-standard);
+}
+
+.lp-tab:hover {
+	background: var(--lp-surface-2);
+	color: var(--lp-text);
+}
+
+.lp-tab[aria-selected="true"] {
+	border-color: var(--lp-edge);
+	background: var(--lp-surface-3);
+	color: var(--lp-text);
+}
+
+.lp-tab:active {
+	transform: scale(var(--lp-press-scale));
+}
+
+.lp-demo__more {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	gap: var(--lp-stack-2xs);
+	color: var(--lp-text);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body-sm);
+	font-weight: var(--fw-medium);
+	text-decoration: none;
+	transition: color var(--dur-slow) var(--ease-standard);
+}
+
+.lp-demo__more:hover {
+	color: var(--lp-teal-ink);
+}
+
+.lp-demo__panel {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-sm);
+	min-inline-size: 0;
+}
+
+.lp-demo__panel[hidden] {
+	display: none;
+}
+/* #endregion */
+
+/* #region Window and viewport — the reserved product surface */
+.lp-demo__window {
+	padding: var(--lp-stack-xs);
+	border-radius: var(--lp-r-md);
+	background: var(--lp-window);
+	box-shadow: var(--lp-shadow-window);
+}
+
+@media (min-width: 768px) {
+	.lp-demo__window {
+		border-radius: var(--lp-r-lg);
+	}
+}
+
+/* The ratio holds because the viewport clips: a non-visible overflow sets its automatic minimum
+   size to zero, so taller content scrolls inside rather than growing the box. */
+.lp-demo__viewport {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	aspect-ratio: 3 / 4;
+	min-block-size: 0;
+	overflow: auto;
+	border-radius: var(--lp-r-xs);
+	background: var(--bg);
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	container-type: inline-size;
+}
+
+@media (min-width: 480px) {
+	.lp-demo__viewport {
+		aspect-ratio: 4 / 3;
+	}
+}
+
+@media (min-width: 768px) {
+	.lp-demo__viewport {
+		border-radius: var(--lp-r-sm);
+	}
+}
+
+@media (min-width: 1024px) {
+	.lp-demo__viewport {
+		aspect-ratio: 16 / 9;
+	}
+}
+
+@media (min-width: 1280px) {
+	.lp-demo__viewport {
+		aspect-ratio: 2 / 1;
+	}
+}
+
+.lp-demo__screen {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-block-size: 0;
+}
+
+/* A poster fills the screen above the description band, cropped to it: a still, never a scroller. */
+.lp-demo-poster {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-block-size: 0;
+	overflow: clip;
+}
+
+.lp-demo-poster__still {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-block-size: 0;
+	pointer-events: none;
+}
+
+/* A poster never moves: the demos' entrance animations are for their live pictures. */
+#demo .lp-demo-poster__still :where(*) {
+	animation: none;
+	transition: none;
+}
+
+.lp-demo__desc {
+	flex: none;
+	margin: 0;
+	padding: var(--space-3) var(--space-4);
+	border-block-start: var(--hairline);
+	background: var(--surface);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: var(--leading-relaxed);
+}
+
+/* Live: the description stays in the document as the panel's description, out of sight. */
+.lp-demo__desc--quiet {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	border: 0;
+	white-space: nowrap;
+}
+/* #endregion */
+
+/* #region Foot — caption and Start again */
+.lp-demo__foot {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--lp-stack-sm) var(--lp-stack-md);
+	min-block-size: 2.5rem;
+}
+
+/* "Start again" keeps its room from the first paint and shows only once a demo is live, so the
+   foot never grows when it appears and the control is never shown with nothing to reset. */
+.lp-demo__reset[data-ready="false"] {
+	visibility: hidden;
+}
+
+.lp-demo__caption {
+	flex: 1 1 18rem;
+	margin: 0;
+	max-inline-size: var(--lp-measure);
+	color: var(--lp-text);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body);
+	line-height: var(--lp-lead-body);
+}
+/* #endregion */
+
+/* #region Shared demo chrome — buttons */
+/* Tier 4 utility outlined (§B.8.1): a real alternative, never filled. */
+:is(.lp-demo-btn, .lp-demo-step) {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	min-block-size: 2.5rem;
+	padding-inline: var(--lp-stack-md);
+	border: 1px solid var(--lp-hair-strong);
+	border-radius: var(--lp-r-btn);
+	background: transparent;
+	color: var(--lp-text);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-btn);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--lp-track-body);
+	line-height: 1;
+	text-decoration: none;
+	white-space: nowrap;
+	cursor: pointer;
+	transition:
+		transform var(--lp-dur-press) var(--lp-ease-out),
+		color var(--dur-slow) var(--ease-standard),
+		background-color var(--dur-slow) var(--ease-standard),
+		border-color var(--dur-slow) var(--ease-standard);
+}
+
+:is(.lp-demo-btn, .lp-demo-step):hover {
+	border-color: var(--lp-edge);
+	background: var(--lp-surface-2);
+}
+
+:is(.lp-demo-btn, .lp-demo-step):active {
+	transform: scale(var(--lp-press-scale));
+}
+
+:is(.lp-demo-btn, .lp-demo-step):is(:disabled, [aria-disabled="true"]) {
+	border-color: var(--lp-hair);
+	background: transparent;
+	color: var(--lp-text-3);
+	cursor: default;
+	transform: none;
+}
+
+/* Inside the viewport the outlined controls sit on the product's surface. */
+.lp-demo__viewport :is(.lp-demo-btn, .lp-demo-step) {
+	min-block-size: 2.25rem;
+	border-color: var(--hairline-strong-color);
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+}
+
+.lp-demo__viewport :is(.lp-demo-btn, .lp-demo-step):hover {
+	border-color: var(--outline);
+	background: var(--surface-2);
+}
+
+.lp-demo__viewport :is(.lp-demo-btn, .lp-demo-step):is(:disabled, [aria-disabled="true"]) {
+	border-color: var(--hairline-color);
+	background: transparent;
+	color: var(--text-secondary);
+}
+
+/* Tier 1 terminal financial: only where money moves in the example. The light fill sits at 2.61:1
+   off a white ground, so its contour (`--lp-amber-edge`) carries the boundary in every state. */
+.lp-demo-btn.lp-demo-btn--money,
+.lp-demo__viewport .lp-demo-btn.lp-demo-btn--money {
+	border-color: var(--lp-amber-edge);
+	border-radius: var(--lp-r-pill);
+	background: var(--lp-amber);
+	color: var(--lp-on-amber);
+}
+
+.lp-demo-btn.lp-demo-btn--money:hover,
+.lp-demo__viewport .lp-demo-btn.lp-demo-btn--money:hover {
+	border-color: var(--lp-amber-edge);
+	background: var(--lp-amber-hover);
+}
+
+.lp-demo-btn.lp-demo-btn--money:active,
+.lp-demo__viewport .lp-demo-btn.lp-demo-btn--money:active {
+	background: var(--lp-amber-active);
+}
+
+@media (forced-colors: active) {
+	:is(.lp-demo-btn, .lp-demo-step) {
+		border-color: ButtonText;
+	}
+}
+/* #endregion */
+
+/* #region Shared demo chrome — frame mode */
+/* The labelled sequence a demo shows under either reduced-motion channel: the step and its
+   caption, the still, then Previous / Next. It fills the viewport, so its still takes what is left. */
+.lp-demo-frames {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-block-size: 0;
+	padding: var(--space-3);
+}
+
+@media (min-width: 768px) {
+	.lp-demo-frames {
+		gap: var(--space-4);
+		padding: var(--space-4);
+	}
+}
+
+.lp-demo-frames__head {
+	display: flex;
+	flex: none;
+	flex-direction: column;
+	gap: var(--space-1);
+	max-inline-size: var(--measure);
+}
+
+.lp-demo-frames__caption {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	text-wrap: pretty;
+}
+
+/* Its own inline-size container: a still sized in container units fits the picture's box, inside
+   the frame's padding, not the whole viewport. */
+.lp-demo-frames__picture {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-block-size: 0;
+	overflow: clip;
+	container-type: inline-size;
+}
+
+.lp-demo-frames__nav {
+	display: flex;
+	flex: none;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.lp-demo-counter {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--lp-fs-eyebrow);
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	line-height: 1.35;
+	text-transform: uppercase;
+}
+
+.lp-demo-note {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--lp-fs-meta);
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--fw-normal);
+	line-height: 1.45;
+}
+
+/* Outside the viewport (a demo's own row under it, if any), the chrome reads the landing's text. */
+.lp-demo__stage > .lp-demo-note,
+.lp-demo__foot .lp-demo-note {
+	color: var(--lp-text-3);
+}
+/* #endregion */
+
+/* #region Motion contract — both reduced-motion channels */
+@media (prefers-reduced-motion: reduce) {
+	:is(.lp-tab, .lp-demo-btn, .lp-demo-step):active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] :is(.lp-tab, .lp-demo-btn, .lp-demo-step):active {
+	transform: none;
+}
+/* #endregion */

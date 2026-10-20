@@ -1,0 +1,678 @@
+/*
+ * lp-ways — "Ways to work" and the live rails, `#ways-to-work` (Decisions #280, #288; layout F;
+ * `documentation/flows/LANDING.md` §2.1 notes 14–15, §2.2 notes 13–14, §2.3 notes 13–14, §2.4,
+ * §2.7, §4.5).
+ *
+ *   - `.lp-ways`: the section, on the page's solid canvas. An inline-size container, so the rails'
+ *     cards and their bleed resolve against the section's content box (`cqw`).
+ *   - `.lp-ways__head`: the section header, the h2 and the subline — static, never boxed.
+ *   - `.lp-ways__choices`: the three ways as COLUMNS OF TEXT (#288, §B.4): a small schematic, the
+ *     title, what it is, when the money moves (a quieter register) and the column's one link. Each
+ *     column is set off by one hairline above it and by space — no card, no outline; the link is
+ *     the only interactive element. Stacked below --bp-md, three across from it.
+ *   - `.lp-rail`: one live rail — its heading row (the title; the scroll buttons; "See all") and a
+ *     horizontal scroller of listing cards with scroll-snap and fade edges. The scroller bleeds to the
+ *     section's edges, so cards slide out past the content column while the controls stay on it.
+ *     Prev/next show only for a fine pointer (at every width), once the island has wired them and
+ *     only while the rail overflows; until then they hold their room, invisible, so nothing moves.
+ *   - `.lp-rail-card`: a listing card. It IS interactive — the whole card is one link — so it is the
+ *     section's one contained object: its media frame, then the title and inline meta text (never
+ *     pills). A listing prints "by {owner}" and its price; a profile its name and headline.
+ *
+ * Nothing here animates on its own (§2.7: no autoplay, no reveal). Press feedback is `scale()` only,
+ * removed under both reduced-motion channels. No focus ring (Decision #285 (A)); keyboard focus
+ * shows a card's hover state. Colour transitions keep the app's theme crossfade clock
+ * (`--dur-slow`). Delivered by the RailScroll island (a server component's stylesheet reaches no
+ * page).
+ */
+
+/* #region Section */
+.lp-ways {
+	container-type: inline-size;
+	padding-block: var(--lp-section-pad) var(--lp-section-pad-end);
+	padding-inline: var(--lp-gutter);
+}
+
+.lp-ways__inner {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-2xl);
+	max-inline-size: var(--lp-maxw);
+	margin-inline: auto;
+}
+
+@media (min-width: 1024px) {
+	.lp-ways__inner {
+		gap: var(--lp-stack-3xl);
+	}
+}
+
+/* Section header → display at --lp-heading-gap; the subline follows at --space-3 more. */
+.lp-ways__head {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--lp-heading-gap);
+	max-inline-size: var(--lp-maxw-text);
+}
+
+.lp-ways__title {
+	max-inline-size: var(--lp-measure-title);
+	text-wrap: balance;
+}
+
+.lp-ways__lead {
+	margin: calc(var(--lp-stack-sm) - var(--lp-heading-gap) + var(--lp-stack-xs)) 0 0;
+	max-inline-size: var(--lp-measure-lead);
+	text-wrap: pretty;
+}
+
+.lp-ways__anchor {
+	display: none;
+}
+/* #endregion */
+
+/* #region The three ways — columns of text */
+.lp-ways__choices {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	row-gap: var(--lp-stack-xl);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/* One hairline above, then space: the column's only separator (§B.4 tier 4). */
+.lp-ways__choice {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	min-inline-size: 0;
+	padding-block-start: var(--lp-stack-lg);
+	border-block-start: 1px solid var(--lp-hair-strong);
+	transition: border-color var(--dur-slow) var(--ease-standard);
+}
+
+@media (min-width: 768px) {
+	.lp-ways__choices {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		column-gap: calc(var(--lp-gap) * 1.5);
+	}
+}
+
+/* The schematic: decorative, drawn in the page's line and ink tones. */
+.lp-ways__mark {
+	display: block;
+	inline-size: 7.5rem;
+	block-size: 2rem;
+	margin-block-end: var(--lp-stack-md);
+	color: var(--lp-edge);
+	overflow: visible;
+}
+
+.lp-ways__mark-line {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1;
+	vector-effect: non-scaling-stroke;
+}
+
+.lp-ways__mark-faint {
+	fill: none;
+	stroke: var(--lp-hair-strong);
+	stroke-width: 1;
+	vector-effect: non-scaling-stroke;
+}
+
+.lp-ways__mark-paid {
+	fill: var(--lp-teal-ink);
+	stroke: none;
+}
+
+.lp-ways__choice-title {
+	margin: 0;
+}
+
+.lp-ways__body {
+	max-inline-size: var(--lp-measure);
+	margin: var(--lp-stack-xs) 0 0;
+	text-wrap: pretty;
+}
+
+/* When the money moves: the same column, one register quieter. */
+.lp-ways__money {
+	max-inline-size: var(--lp-measure);
+	margin: var(--lp-stack-xs) 0 0;
+	color: var(--lp-text-3);
+	text-wrap: pretty;
+}
+
+/* The column's one link sits at its foot, so the three line up across the row. */
+.lp-ways__go {
+	margin: auto 0 0;
+	padding-block-start: var(--lp-stack-md);
+}
+
+.lp-ways__note {
+	max-inline-size: var(--lp-measure);
+	margin: calc(var(--lp-stack-sm) - var(--lp-stack-2xl)) 0 0;
+	color: var(--lp-text-3);
+}
+
+@media (min-width: 1024px) {
+	.lp-ways__note {
+		margin-block-start: calc(var(--lp-stack-md) - var(--lp-stack-3xl));
+	}
+}
+/* #endregion */
+
+/* #region Text links — the hero's recipe: an underline in a hairline tone and a drawn chevron */
+.lp-ways__link {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--lp-stack-xs);
+	min-block-size: 2.75rem;
+	color: var(--lp-text);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--lp-track-body);
+	text-decoration-line: underline;
+	text-decoration-color: var(--lp-hair-strong);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.25em;
+	transition:
+		transform var(--lp-dur-press) var(--lp-ease-out),
+		color var(--dur-slow) var(--ease-standard),
+		text-decoration-color var(--dur-slow) var(--ease-standard);
+}
+
+.lp-ways__link::after {
+	content: "";
+	flex: none;
+	inline-size: 0.4em;
+	block-size: 0.4em;
+	border-block-start: 1.5px solid currentColor;
+	border-inline-end: 1.5px solid currentColor;
+	rotate: 45deg;
+}
+
+.lp-ways__link:hover {
+	text-decoration-color: currentColor;
+}
+
+.lp-ways__link:active {
+	transform: scale(var(--lp-press-scale));
+}
+/* #endregion */
+
+/* #region Rails */
+.lp-rails {
+	/* The content column's width, and the distance from its edge to the section's: the bleed. */
+	--rail-w: min(100cqw, var(--lp-maxw));
+	--rail-bleed: calc(var(--lp-gutter) + max(0px, (100cqw - var(--lp-maxw)) / 2));
+	/* About 260px with a peek below --bp-md; ~2.6 across at 768; four and a peek from 1280. */
+	--rail-card: min(16.25rem, calc((var(--rail-w) - var(--lp-gap)) * 0.8));
+	--rail-fade: clamp(1.25rem, 0.5rem + 3vw, 4rem);
+
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-2xl);
+}
+
+@media (min-width: 768px) {
+	.lp-rails {
+		--rail-card: calc((var(--rail-w) - 2 * var(--lp-gap)) / 2.6);
+	}
+}
+
+@media (min-width: 1024px) {
+	.lp-rails {
+		--rail-card: calc((var(--rail-w) - 3 * var(--lp-gap)) / 3.5);
+	}
+}
+
+@media (min-width: 1280px) {
+	.lp-rails {
+		--rail-card: calc((var(--rail-w) - 4 * var(--lp-gap)) / 4.3);
+	}
+}
+
+/* From 1440 the bleed itself shows the peek, so the column holds four whole cards. */
+@media (min-width: 1440px) {
+	.lp-rails {
+		--rail-card: calc((var(--rail-w) - 3 * var(--lp-gap)) / 4);
+	}
+}
+
+.lp-rail {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-md);
+	min-inline-size: 0;
+}
+
+/* The heading row: the title at the leading edge, the controls and "See all" at the trailing one. */
+.lp-rail__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--lp-stack-2xs) var(--lp-stack-md);
+}
+
+.lp-rail__title {
+	margin: 0;
+}
+
+.lp-rail__tools {
+	display: flex;
+	align-items: center;
+	gap: var(--lp-stack-md);
+}
+
+.lp-rail__all {
+	min-block-size: 2.5rem;
+	font-size: var(--lp-fs-body-sm);
+}
+/* #endregion */
+
+/* #region Scroll buttons — tier 4 outlined, a fine pointer only, and only once they work */
+/* At every width for a fine pointer: a mouse at a narrow window or at 200% zoom has no other way
+   along the rail (the scroller hides its scrollbar). Touch scrolls the rail itself. */
+.lp-rail__steps {
+	display: none;
+	gap: var(--lp-stack-xs);
+}
+
+@media (pointer: fine) {
+	.lp-rail__steps {
+		display: flex;
+		visibility: hidden;
+	}
+
+	.lp-rail[data-rail-ready][data-rail-overflow] .lp-rail__steps {
+		visibility: visible;
+	}
+}
+
+.lp-rail__step {
+	display: inline-grid;
+	flex: none;
+	place-items: center;
+	inline-size: 2.5rem;
+	block-size: 2.5rem;
+	padding: 0;
+	border: 1px solid var(--lp-hair-strong);
+	border-radius: var(--lp-r-btn);
+	background: transparent;
+	color: var(--lp-text);
+	cursor: pointer;
+	transition:
+		transform var(--lp-dur-press) var(--lp-ease-out),
+		color var(--dur-slow) var(--ease-standard),
+		background-color var(--dur-slow) var(--ease-standard),
+		border-color var(--dur-slow) var(--ease-standard);
+}
+
+/* The chevron, drawn: it points the way the rail will move. */
+.lp-rail__step::before {
+	content: "";
+	inline-size: 0.5rem;
+	block-size: 0.5rem;
+	border-block-start: 1.5px solid currentColor;
+	border-inline-end: 1.5px solid currentColor;
+	translate: -0.0625rem 0;
+	rotate: 45deg;
+}
+
+.lp-rail__step--back::before {
+	translate: 0.0625rem 0;
+	rotate: -135deg;
+}
+
+.lp-rail__step:hover:not([aria-disabled="true"]) {
+	border-color: var(--lp-edge);
+	background: var(--lp-surface-2);
+}
+
+.lp-rail__step:active {
+	transform: scale(var(--lp-press-scale));
+}
+
+/* At its end the rail cannot move that way: the button stays focusable (focus never drops to the
+   page) and reads as unavailable. */
+.lp-rail__step[aria-disabled="true"] {
+	border-color: var(--lp-hair);
+	color: var(--lp-text-3);
+	cursor: default;
+}
+
+.lp-rail__step[aria-disabled="true"]:active {
+	transform: none;
+}
+
+@media (forced-colors: active) {
+	.lp-rail__step {
+		border-color: ButtonText;
+	}
+
+	.lp-rail__step[aria-disabled="true"] {
+		border-color: GrayText;
+		color: GrayText;
+	}
+}
+/* #endregion */
+
+/* #region Scroller — scroll-snap, the bleed, fade edges */
+/* It runs from edge to edge of the section; its padding puts the first card on the content column,
+   and scroll-padding snaps every card to that same edge. The fades sit at the section's edges: the
+   trailing one shows there is more, the leading one appears once the rail has moved (the island's
+   `data-at-start` / `data-at-end`; without scripting only the trailing fade shows). */
+.lp-rail__track {
+	--rail-fade-start: 0px;
+	--rail-fade-end: var(--rail-fade);
+
+	margin-inline: calc(-1 * var(--rail-bleed));
+	padding-inline: var(--rail-bleed);
+	padding-block: var(--lp-stack-2xs) var(--lp-stack-xs);
+	overflow-x: auto;
+	overflow-y: hidden;
+	overscroll-behavior-inline: contain;
+	scroll-snap-type: x mandatory;
+	scroll-padding-inline: var(--rail-bleed);
+	scrollbar-width: none;
+	-webkit-mask-image: linear-gradient(
+		to right,
+		transparent,
+		var(--lp-mask-ink) var(--rail-fade-start),
+		var(--lp-mask-ink) calc(100% - var(--rail-fade-end)),
+		transparent
+	);
+	mask-image: linear-gradient(
+		to right,
+		transparent,
+		var(--lp-mask-ink) var(--rail-fade-start),
+		var(--lp-mask-ink) calc(100% - var(--rail-fade-end)),
+		transparent
+	);
+}
+
+.lp-rail__track::-webkit-scrollbar {
+	display: none;
+}
+
+.lp-rail__track[data-at-start="false"] {
+	--rail-fade-start: var(--rail-fade);
+}
+
+.lp-rail__track[data-at-end="true"] {
+	--rail-fade-end: 0px;
+}
+
+@media (forced-colors: active) {
+	.lp-rail__track {
+		-webkit-mask-image: none;
+		mask-image: none;
+	}
+}
+
+.lp-rail__list {
+	display: grid;
+	grid-auto-columns: var(--rail-card);
+	grid-auto-flow: column;
+	gap: var(--lp-gap);
+	inline-size: max-content;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.lp-rail__item {
+	display: flex;
+	min-inline-size: 0;
+	scroll-snap-align: start;
+}
+/* #endregion */
+
+/* #region Listing card — one link: media, title, inline meta */
+.lp-rail-card {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: var(--lp-stack-sm);
+	min-inline-size: 0;
+	color: var(--lp-text);
+	text-decoration: none;
+	transition: transform var(--lp-dur-press) var(--lp-ease-out);
+}
+
+.lp-rail-card:active {
+	transform: scale(var(--lp-press-scale));
+}
+
+/* The media frame: a reserved 16 / 9 on the surface tone, with one inner hairline so a pale picture
+   keeps its edge. A card without a picture shows its owner's avatar on the tone instead. */
+.lp-rail-card__cover {
+	position: relative;
+	display: grid;
+	place-items: center;
+	aspect-ratio: 16 / 9;
+	overflow: hidden;
+	border-radius: var(--lp-r-lg);
+	background: var(--lp-surface-2);
+	transition: background-color var(--dur-slow) var(--ease-standard);
+}
+
+.lp-rail-card__cover::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	box-shadow: inset 0 0 0 1px var(--lp-hair);
+	pointer-events: none;
+	transition: box-shadow var(--dur-slow) var(--ease-standard);
+}
+
+.lp-rail-card__img {
+	position: absolute;
+	inset: 0;
+	display: block;
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+}
+
+.lp-rail-card__mono {
+	display: block;
+	inline-size: 3.5rem;
+	block-size: 3.5rem;
+	border-radius: var(--lp-r-pill);
+	object-fit: cover;
+}
+
+/* No picture and no avatar of their own, or a picture that failed: the name's initials, in the
+   display face. Under a picture that shows they stay out of sight. */
+.lp-rail-card__initials {
+	color: var(--lp-text-2);
+	font-family: var(--lp-font-display);
+	font-size: var(--lp-fs-h3);
+	font-weight: var(--fw-medium);
+	letter-spacing: 0.06em;
+	line-height: 1;
+}
+
+.lp-rail-card__cover[data-picture]:not([data-failed]) .lp-rail-card__initials {
+	visibility: hidden;
+}
+
+/* A picture that failed to load (marked by the island) leaves the frame to the initials: the cover,
+   positioned over the frame, keeps its box hidden. A failed avatar leaves the flow entirely, so its
+   byline or name sits flush with the card's edge like its neighbours'. Never the browser's
+   broken-image glyph. */
+.lp-ways img[data-failed] {
+	visibility: hidden;
+}
+
+.lp-ways :is(.lp-rail-card__avatar, .lp-rail-card__mono)[data-failed] {
+	display: none;
+}
+
+.lp-rail-card__text {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-2xs);
+	min-inline-size: 0;
+}
+
+.lp-rail-card__title {
+	display: -webkit-box;
+	overflow: hidden;
+	color: var(--lp-text);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--lp-track-body);
+	line-height: 1.4;
+	text-decoration-line: underline;
+	text-decoration-color: transparent;
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.2em;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	transition: text-decoration-color var(--dur-slow) var(--ease-standard);
+}
+
+/* "by {owner}", a profile's headline: inline meta text beside a small avatar. */
+.lp-rail-card__by {
+	display: flex;
+	align-items: center;
+	gap: var(--lp-stack-xs);
+	min-inline-size: 0;
+}
+
+.lp-rail-card__avatar {
+	flex: none;
+	inline-size: 1.25rem;
+	block-size: 1.25rem;
+	border-radius: var(--lp-r-pill);
+	background: var(--lp-surface-2);
+	object-fit: cover;
+}
+
+.lp-rail-card__meta {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.lp-rail-card__price {
+	color: var(--lp-text);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body-sm);
+	font-variant-numeric: tabular-nums lining-nums;
+	line-height: 1.45;
+}
+
+/* A profile: its avatar (when the frame holds its cover) beside its name and headline. */
+.lp-rail-card__who {
+	display: flex;
+	align-items: center;
+	gap: var(--lp-stack-sm);
+	min-inline-size: 0;
+}
+
+.lp-rail-card__who .lp-rail-card__avatar {
+	inline-size: 2.5rem;
+	block-size: 2.5rem;
+}
+
+.lp-rail-card__who .lp-rail-card__text {
+	flex: 1;
+}
+
+.lp-rail-card__who .lp-rail-card__title {
+	-webkit-line-clamp: 1;
+	line-clamp: 1;
+}
+
+/* A brief: no media of its own, so the card is text on one raised tone inside one full outline (it
+   is a control). Its stages are inline meta text, its budget sits at the foot. */
+.lp-rail-card--brief {
+	gap: var(--lp-stack-xs);
+	padding: var(--lp-stack-lg);
+	border: 1px solid var(--lp-hair-strong);
+	border-radius: var(--lp-r-lg);
+	background: var(--lp-surface-1);
+	transition:
+		transform var(--lp-dur-press) var(--lp-ease-out),
+		background-color var(--dur-slow) var(--ease-standard),
+		border-color var(--dur-slow) var(--ease-standard);
+}
+
+/* The byline follows the title in the source (the link's name opens with the title) and is drawn
+   above it. */
+.lp-rail-card--brief .lp-rail-card__by {
+	order: -1;
+	margin-block-end: var(--lp-stack-xs);
+}
+
+.lp-rail-card--brief .lp-rail-card__title {
+	font-size: var(--lp-fs-body-lg);
+	line-height: 1.35;
+}
+
+.lp-rail-card__summary {
+	display: -webkit-box;
+	overflow: hidden;
+	color: var(--lp-text-2);
+	font-size: var(--lp-fs-body-sm);
+	line-height: 1.55;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 3;
+	line-clamp: 3;
+}
+
+.lp-rail-card__stages {
+	display: -webkit-box;
+	overflow: hidden;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+}
+
+.lp-rail-card--brief .lp-rail-card__price {
+	margin-block-start: auto;
+	padding-block-start: var(--lp-stack-sm);
+}
+
+.lp-rail-card--brief:is(:hover, :focus-visible) {
+	border-color: var(--lp-edge);
+	background: var(--lp-surface-2);
+}
+
+.lp-rail-card:is(:hover, :focus-visible) .lp-rail-card__title {
+	text-decoration-color: currentColor;
+}
+
+.lp-rail-card:is(:hover, :focus-visible) .lp-rail-card__cover::after {
+	box-shadow: inset 0 0 0 1px var(--lp-hair-strong);
+}
+
+.lp-rail-card:is(:hover, :focus-visible) .lp-rail-card__cover {
+	background: var(--lp-surface-3);
+}
+/* #endregion */
+
+/* #region Motion contract — both reduced-motion channels */
+@media (prefers-reduced-motion: reduce) {
+	:is(.lp-ways__link, .lp-rail__step, .lp-rail-card):active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] :is(.lp-ways__link, .lp-rail__step, .lp-rail-card):active {
+	transform: none;
+}
+/* #endregion */

@@ -1,4 +1,4 @@
-import { currencyExponent, toMinorUnits } from "@projective/types/finance";
+import { toMinorUnits } from "@projective/types/finance";
 import { INTENSITY_MULTIPLIER } from "@projective/types/projects";
 import type { ProfileItem, ProjectItem, ServiceItem } from "../types/explore-types.ts";
 
@@ -53,23 +53,6 @@ export function freelancerFloorAmount(item: ProfileItem): PriceAmount | null {
 	const low = lowestActivePrice(item.servicePrices);
 	const minor = low === null ? null : toMinorUnits(low, item.serviceCurrency);
 	return minor === null ? null : { minor, currency: item.serviceCurrency };
-}
-
-/**
- * The "from …" floor as a string in its own currency, for the server-rendered landing showcase that
- * has no `MoneyView` slot. `null` when {@link freelancerFloorAmount} has no figure.
- */
-export function freelancerFloor(item: ProfileItem): string | null {
-	const floor = freelancerFloorAmount(item);
-	if (!floor) return null;
-	const digits = currencyExponent(floor.currency);
-	const amount = new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: floor.currency,
-		minimumFractionDigits: 0,
-		maximumFractionDigits: digits,
-	}).format(floor.minor / 10 ** digits);
-	return `from ${amount}`;
 }
 
 /** A project's escrow budget as structured money, or `null` when the brief carries none. */

@@ -20,11 +20,11 @@ import {
 	documentTitle,
 	faqJsonLdItems,
 	faqPageJsonLd,
+	itemListId,
+	itemListJsonLd,
 	jsonLdAuthor,
 	jsonLdGraph,
 	type JsonLdNode,
-	LANDING_META,
-	landingJsonLd,
 	metaImage,
 	organizationJsonLd,
 	type PageMeta,
@@ -60,7 +60,8 @@ Deno.test("canonicalUrl gives one spelling per page", () => {
 Deno.test("documentTitle adds the brand once", () => {
 	assertEquals(documentTitle("Privacy Policy"), "Privacy Policy · Projective");
 	assertEquals(documentTitle("Privacy Policy · Projective"), "Privacy Policy · Projective");
-	assertEquals(documentTitle(LANDING_META.title), LANDING_META.title);
+	const landing = "Projective — Hire a ready-made team with payment protection";
+	assertEquals(documentTitle(landing), landing);
 	assertEquals(documentTitle("Projective"), "Projective");
 });
 // #endregion
@@ -356,15 +357,38 @@ Deno.test("FAQPage: every question carries one accepted answer, from content-mod
 		"Earned money clears a 7-day pending window before it reaches your available balance.",
 	);
 });
+// #endregion
 
-Deno.test("the landing graph is unchanged and still parses", () => {
-	const graph = JSON.parse(landingJsonLd());
-	assertEquals(graph["@context"], "https://schema.org");
-	assertEquals(graph["@graph"].map((n: { "@type": string }) => n["@type"]), [
-		"Organization",
-		"WebSite",
-		"SoftwareApplication",
-		"FAQPage",
+// #region Item list
+Deno.test("ItemList: positions from 1, each entry's visible name and description, absolute anchors", () => {
+	const list = itemListJsonLd({
+		origin: ORIGIN,
+		path: "/features?section=money",
+		name: "Features",
+		items: [
+			{
+				name: "Work board",
+				description: "Every job runs on a board.",
+				url: "/features#work-board",
+			},
+			{ name: "Tax pot" },
+		],
+	});
+	assertNode(list, "ItemList");
+	assertEquals(list["@id"], "https://projective.app/features#items");
+	assertEquals(itemListId(ORIGIN, "/features/"), "https://projective.app/features#items");
+	assertEquals(list.name, "Features");
+	assertEquals(list.numberOfItems, 2);
+	assertEquals(list.itemListElement, [
+		{
+			"@type": "ListItem",
+			position: 1,
+			name: "Work board",
+			description: "Every job runs on a board.",
+			url: "https://projective.app/features#work-board",
+		},
+		{ "@type": "ListItem", position: 2, name: "Tax pot" },
 	]);
+	assertFalse("name" in itemListJsonLd({ origin: ORIGIN, path: "/x", items: [] }));
 });
 // #endregion

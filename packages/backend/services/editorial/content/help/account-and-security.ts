@@ -165,7 +165,7 @@ const contactDetailsInMessages = helpArticle({
 	position: 2,
 	title: "Why contact details are hidden in messages",
 	summary:
-		"While a project is under way, email addresses, phone numbers, payment links and payment handles in its messages are replaced with placeholders such as [email hidden]; the restriction lifts once the project's final payment is released.",
+		"While a project is under way, new messages in it have email addresses, phone numbers, known payment links and payment handles replaced with placeholders such as [email hidden] as they are sent; the restriction lifts once the project's final payment is released.",
 	roles: ["client", "freelancer", "team", "business"],
 	related: ["what-is-escrow", "signing-in", "how-disputes-are-decided"],
 	sections: [

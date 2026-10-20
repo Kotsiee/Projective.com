@@ -1,0 +1,451 @@
+/*
+ * lp-features — `/features`, the editorial chapter index (Decisions #280, #288; `documentation/
+ * flows/LANDING.md` §2.5, §2.6, §4.12; work order L5, its bento grid superseded by #288):
+ *
+ *   - `.lp-features__head`: the page head — the section header, the one h1 in the display register
+ *     and its subline — over the landing's static B7 grid (`.lp-bg--hero` with no island: nothing on
+ *     this page moves while browsing, §2.7). An isolated inline-size container, as the hero is, so the
+ *     grid's origin resolves on the content's left edge.
+ *   - `.lp-features__nav`: the chapters as a numbered index of in-page links. One sideways row below
+ *     --bp-md; from --bp-md it pins under the bar on the canvas's solid tone with one hairline under
+ *     it, the chapter the reader is in (at first the one a `?section=` named) marked in the stronger
+ *     ink and a teal rule. Every control under the pinned chrome keeps clear of it when focus
+ *     scrolls the page (WCAG 2.4.11).
+ *   - `.lp-features__chapter`: one chapter on `.lp-section`'s rhythm. Its head is the two-digit number
+ *     (section header) over the display h2; its rows are plain text on one hairline each (an h3, the
+ *     §4.12 line, small print, then the controls); its picture is the demo stage's own window
+ *     holding a real still (the booking, the board, the payments demo). From --bp-lg the head and
+ *     the rows hold the left column and the picture the right, pinned beside the rows. Money and
+ *     Trust speak the warm editorial voice on `.lp-section--band`'s solid tone (the serif h2, the
+ *     warm inks), the two bands joined by one hairline. Trust (no capture of the verification flow
+ *     yet) and Coming soon (muted) have no picture: their rows sit beside their head.
+ *
+ * Static content is never boxed (§B.4): spacing, then the band's solid tone, then the registers, then
+ * one hairline. A row's only outline is its "Try it"'s; a chapter's still keeps the stage's window.
+ * No focus ring (Decision #285 (A)). Tokens only. Carried by the FeatureDemoDialog island (a server
+ * component's stylesheet reaches no page).
+ */
+
+/* #region Page */
+.lp-features {
+	position: relative;
+}
+
+.lp-features :where(p, h1, h2, h3, ul, ol, li) {
+	margin: 0;
+}
+/* #endregion */
+
+/* #region Head */
+.lp-features__head {
+	position: relative;
+	isolation: isolate;
+	container-type: inline-size;
+	padding-block: var(--lp-hero-pad) var(--lp-stack-2xl);
+	padding-inline: var(--lp-gutter);
+}
+
+.lp-features__head-inner {
+	position: relative;
+	z-index: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--lp-heading-gap);
+	max-inline-size: var(--lp-maxw);
+	margin-inline: auto;
+}
+
+/* The display face's capital stands inside its box: the h1 hangs by that much, so its stem lands on
+   the edge the subline, the index and the chapters share (as the hero's does). */
+.lp-features__title {
+	max-inline-size: 100%;
+	margin-inline-start: -0.06em;
+	overflow-wrap: anywhere;
+	text-wrap: balance;
+}
+
+:root[data-font="dyslexic"] .lp-features__title {
+	margin-inline-start: 0;
+}
+
+.lp-features__lead {
+	max-inline-size: var(--lp-measure-lead);
+	margin-block-start: var(--lp-stack-2xs);
+	text-wrap: pretty;
+}
+
+@media (min-width: 768px) {
+	.lp-features__head {
+		padding-block-end: var(--lp-stack-3xl);
+	}
+}
+/* #endregion */
+
+/* #region Chapter navigation */
+.lp-features__nav {
+	position: relative;
+	z-index: 2;
+	padding-inline: var(--lp-gutter);
+	border-block: 1px solid var(--lp-hair);
+	background-color: var(--lp-bg);
+}
+
+.lp-features__nav-list {
+	display: flex;
+	gap: var(--lp-stack-xl);
+	max-inline-size: var(--lp-maxw);
+	margin-inline: auto;
+	padding: 0;
+	overflow-x: auto;
+	list-style: none;
+	scrollbar-width: none;
+	overscroll-behavior-x: contain;
+}
+
+/* Below --bp-md the row scrolls edge to edge, its first link still on the gutter. */
+@media (max-width: 767px) {
+	.lp-features__nav-list {
+		margin-inline: calc(-1 * var(--lp-gutter));
+		padding-inline: var(--lp-gutter);
+		scroll-padding-inline: var(--lp-gutter);
+	}
+}
+
+.lp-features__nav-list::-webkit-scrollbar {
+	display: none;
+}
+
+.lp-features__nav-item {
+	flex: none;
+}
+
+/* A constant 2px foot: the marked link's rule sits in it, so marking it moves nothing. */
+.lp-features__nav-link {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--lp-stack-xs);
+	min-block-size: 3rem;
+	border-block: 2px solid transparent;
+	color: var(--lp-text-2);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body-sm);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--lp-track-body);
+	text-decoration: none;
+	white-space: nowrap;
+	transition: color var(--dur-slow) var(--ease-standard);
+}
+
+.lp-features__nav-link:hover {
+	color: var(--lp-text);
+}
+
+.lp-features__nav-link[aria-current="location"] {
+	border-block-end-color: var(--lp-teal-ink);
+	color: var(--lp-text);
+}
+
+.lp-features__nav-num {
+	color: var(--lp-text-3);
+	font-size: var(--lp-fs-meta);
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--fw-normal);
+}
+
+@media (min-width: 768px) {
+	.lp-features__nav {
+		position: sticky;
+		top: var(--chrome-pinned-h);
+	}
+
+	.lp-features__nav-list {
+		gap: var(--lp-stack-2xl);
+	}
+}
+/* #endregion */
+
+/* #region Chapter */
+/* The canvas chapters pad less than `/`'s sections: this is an index, read chapter by chapter. A
+   chapter lands under the bar, and from --bp-md under the pinned index too (3rem + its hairlines). */
+.lp-section.lp-features__chapter {
+	padding-block: calc(var(--lp-section-pad) * 0.75) var(--lp-section-pad-end);
+	scroll-margin-block-start: calc(var(--chrome-pinned-h) + var(--lp-stack-md));
+}
+
+.lp-section.lp-features__chapter.lp-section--band {
+	padding-block-end: calc(var(--lp-section-pad) * 0.75);
+}
+
+@media (min-width: 768px) {
+	.lp-features__chapter {
+		scroll-margin-block-start: calc(var(--chrome-pinned-h) + 3rem + 2px);
+	}
+}
+
+/* Money then Trust: one warm band, the second chapter joined to the first by one hairline. */
+.lp-section.lp-features__chapter.lp-section--band + .lp-features__chapter.lp-section--band {
+	padding-block-start: 0;
+}
+
+.lp-features__chapter.lp-section--band + .lp-features__chapter.lp-section--band .lp-features__chapter-inner {
+	padding-block-start: calc(var(--lp-section-pad) * 0.6);
+	border-block-start: 1px solid var(--lp-warm-hair);
+}
+
+.lp-features__chapter-inner {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--lp-stack-xl);
+	max-inline-size: var(--lp-maxw);
+	margin-inline: auto;
+}
+
+.lp-features__chapter-head {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--lp-heading-gap);
+	min-inline-size: 0;
+}
+
+.lp-features__num {
+	font-variant-numeric: tabular-nums;
+}
+
+.lp-features__chapter-title {
+	text-wrap: balance;
+}
+
+/* Four to seven: the still's window sits clearly on one side of the demos' 40rem container step at
+   every reference width — about 34rem at 1024px (the compact pictures), 44rem at 1280px and 46rem at
+   1600px (the whole booking frame, the payments stops over their rule, the board's lanes) — never
+   just over it, where a picture's parts are at their tightest. */
+@media (min-width: 1024px) {
+	.lp-features__chapter-inner {
+		grid-template-columns: minmax(0, 4fr) minmax(0, 7fr);
+		grid-template-rows: auto 1fr;
+		grid-template-areas:
+			"head still"
+			"rows still";
+		column-gap: clamp(2.5rem, 4vw, 5rem);
+		row-gap: var(--lp-stack-2xl);
+	}
+
+	.lp-features__chapter-head {
+		grid-area: head;
+	}
+
+	.lp-features__rows {
+		grid-area: rows;
+	}
+
+	/* The picture rides beside the rows, under the bar and the pinned index. */
+	.lp-features__still {
+		position: sticky;
+		top: calc(var(--chrome-pinned-h) + 3rem + var(--lp-stack-xl));
+		grid-area: still;
+		align-self: start;
+	}
+
+	/* No picture (Coming soon): the rows take the picture's column, beside the head. */
+	.lp-features__chapter--bare .lp-features__chapter-inner {
+		grid-template-rows: auto;
+		grid-template-areas: "head rows";
+	}
+}
+/* #endregion */
+
+/* #region Picture — the demo stage's window, held still */
+/* A still is never a scroller and never moves: cropped to its box, every animation off. Its ratio
+   is the window's own per width; from 1280px the picture column holds the stage's 40rem container
+   steps (the whole booking frame, the payments still's stops over its rule, the board's lanes),
+   and below 40rem each still keeps what that size would drop (the payments stops as a wrapped row,
+   the board's fade). */
+.lp-features__still .lp-demo__viewport {
+	aspect-ratio: 4 / 3;
+	overflow: clip;
+}
+
+.lp-features__still .lp-demo__screen :where(*) {
+	animation: none;
+	transition: none;
+}
+
+.lp-features__still .lp-demo__screen > * {
+	flex: 1 1 auto;
+	min-block-size: 0;
+}
+
+@media (min-width: 480px) and (max-width: 1023px) {
+	.lp-features__still .lp-demo__viewport {
+		aspect-ratio: 16 / 10;
+	}
+}
+
+@media (min-width: 1280px) {
+	.lp-features__still .lp-demo__viewport {
+		aspect-ratio: 16 / 11;
+	}
+}
+
+/* The board's lanes fade out under its cards, as the stage's wide board does, so a still shows the
+   work rather than empty columns; below 60rem, where the lanes run past the window, a trailing fade
+   too, so a lane the window cuts never ends in a sliced card. */
+.lp-features__still .lp-board-demo__board .ui-kanban__board {
+	-webkit-mask-image: linear-gradient(to bottom, var(--lp-mask-ink) 55%, transparent);
+	mask-image: linear-gradient(to bottom, var(--lp-mask-ink) 55%, transparent);
+}
+
+@container (width < 60rem) {
+	.lp-features__still .lp-board-demo__board .ui-kanban__board {
+		-webkit-mask-image:
+			linear-gradient(to bottom, var(--lp-mask-ink) 55%, transparent),
+			linear-gradient(to right, var(--lp-mask-ink) 86%, transparent);
+		mask-image:
+			linear-gradient(to bottom, var(--lp-mask-ink) 55%, transparent),
+			linear-gradient(to right, var(--lp-mask-ink) 86%, transparent);
+		-webkit-mask-composite: source-in;
+		mask-composite: intersect;
+	}
+}
+
+/* Below 40rem the live payments picture names only the current stop, under its slider, which a still
+   has not got: the still keeps all five stops instead, a wrapped row of ringed labels. */
+@container (width < 40rem) {
+	.lp-features__still .lp-pay[data-mode="live"] .lp-pay__stops {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-1) var(--space-3);
+	}
+}
+/* #endregion */
+
+/* #region Rows — an h3, its line, its small print, its controls; one hairline above each */
+.lp-features__rows {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	column-gap: var(--lp-stack-xl);
+	padding: 0;
+	list-style: none;
+}
+
+.lp-features__row {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--lp-stack-xs);
+	min-inline-size: 0;
+	padding-block: var(--lp-stack-lg) var(--lp-stack-xl);
+	border-block-start: 1px solid var(--lp-hair);
+	scroll-margin-block-start: calc(var(--chrome-pinned-h) + var(--lp-stack-md));
+}
+
+.lp-section--band .lp-features__row {
+	border-block-start-color: var(--lp-warm-hair);
+}
+
+.lp-features__row-desc {
+	max-inline-size: var(--lp-measure);
+	text-wrap: pretty;
+}
+
+.lp-features__row-small {
+	max-inline-size: var(--lp-measure);
+}
+
+/* The controls: tight under the words, the outlined "Try it" first, the text link after it. */
+.lp-features__row-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--lp-stack-xs) var(--lp-stack-lg);
+	margin-block-start: var(--lp-stack-xs);
+}
+
+.lp-features__more {
+	min-block-size: 2.5rem;
+	font-size: var(--lp-fs-btn);
+}
+
+/* On the warm band the outlined control reads the warm ink and keeps the tier-4 recipe's contour,
+   which widens under both high-contrast channels (at rest the label names the control, §3.3); on
+   hover it takes the edge (§3.3 "edge vs … editorial") over the warm surface. */
+.lp-section--band .lp-features__try {
+	color: var(--lp-warm-text);
+}
+
+.lp-section--band .lp-features__try:hover {
+	border-color: var(--lp-edge);
+	background: var(--lp-warm-surface);
+}
+
+/* Focus never lands under the pinned chrome (WCAG 2.4.11): a control the keyboard reaches scrolls
+   clear of the bar and, from --bp-md, of the chapter navigation, as a row's anchor does. */
+.lp-features :is(a[href], button) {
+	scroll-margin-block-start: calc(var(--chrome-pinned-h) + var(--lp-stack-md));
+}
+
+@media (min-width: 768px) {
+	.lp-features__row,
+	.lp-features :is(a[href], button) {
+		scroll-margin-block-start: calc(var(--chrome-pinned-h) + 3rem + 2px + var(--lp-stack-md));
+	}
+
+	/* The pinned navigation's own links sit in the chrome they would clear. */
+	.lp-features__nav .lp-features__nav-link[href] {
+		scroll-margin-block-start: 0;
+	}
+}
+
+/* Between --bp-md and --bp-lg the picture takes the full measure and the rows pair up under it. */
+@media (min-width: 768px) and (max-width: 1023px) {
+	.lp-features__rows {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+/* #endregion */
+
+/* #region Coming soon — static, muted, no control */
+.lp-features__chapter--muted .lp-features__chapter-title {
+	color: var(--lp-text-2);
+}
+
+.lp-features__row--soon .lp-features__row-title {
+	color: var(--lp-text-2);
+}
+
+.lp-features__row--soon .lp-features__row-desc {
+	color: var(--lp-text-3);
+}
+
+/* The description's own "Coming soon:" lead is the row's label: the stronger ink, never a pill. */
+.lp-features__soon {
+	color: var(--lp-text-2);
+	font-weight: var(--fw-medium);
+}
+/* #endregion */
+
+/* #region Motion contract — both reduced-motion channels */
+@media (prefers-reduced-motion: reduce) {
+	.lp-features__more:active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .lp-features__more:active {
+	transform: none;
+}
+/* #endregion */
+
+/* #region Forced colours */
+@media (forced-colors: active) {
+	.lp-features__nav-link[aria-current="location"] {
+		border-block-end-color: Highlight;
+	}
+
+	.lp-section--band .lp-features__try {
+		border-color: ButtonText;
+	}
+}
+/* #endregion */

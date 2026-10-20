@@ -1,7 +1,8 @@
 /*
- * PublicFooter (lp-footer) — the premium, minimal public footer attached to EVERY public surface via
- * the guest shell (Explore, /view, /@handle, the landing page). It carries local `--lp-*` fallbacks so
- * it renders correctly outside the landing `.lp` token scope. Token-only, strict BEM; theme-adaptive
+ * PublicFooter (lp-footer) — the premium, minimal public footer attached to EVERY public surface (the
+ * guest shell on Explore, /view and /@handle; LandingShell on `/`, where it renders outside
+ * `.lp-root`). Its `--lp-*` tokens are its own, declared on `.lp-footer` from app tokens — no landing
+ * token reaches it (Decision #285 (B); renamed after P8). Token-only, strict BEM; theme-adaptive
  * in light + dark via the shared surface/outline/on-surface tokens (no hardcoded palette). A
  * masthead + a secondary row over a thin utility bar; the nav stacks are native `<details>` (mobile
  * accordions, force-open on desktop) and the newsletter + recently-viewed rail are the two islands.
@@ -18,7 +19,7 @@
  */
 
 .lp-footer {
-	/* Local fallbacks so the footer is correct outside the landing `.lp` scope (Explore, /view, /@handle). */
+	/* The footer's own tokens, from app tokens: it never reads the landing's `.lp-root` sheet. */
 	--lp-pad-x: clamp(1.25rem, 5vw, 5rem);
 	--lp-hair: var(--hairline-color);
 	--lp-hair-strong: color-mix(in srgb, var(--outline) 32%, transparent);

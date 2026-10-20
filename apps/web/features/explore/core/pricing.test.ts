@@ -1,10 +1,5 @@
 import { assertEquals } from "@std/assert";
-import {
-	freelancerFloor,
-	freelancerFloorAmount,
-	projectBudgetAmount,
-	serviceStartingPrice,
-} from "./pricing.ts";
+import { freelancerFloorAmount, projectBudgetAmount, serviceStartingPrice } from "./pricing.ts";
 import type { ProfileItem, ProjectItem, ServiceItem } from "../types/explore-types.ts";
 
 /** The fields pricing reads; every other field is irrelevant to it. */
@@ -41,9 +36,7 @@ Deno.test("a freelancer's floor is structured, and absent across currencies", ()
 		serviceCurrency: "GBP",
 	} as ProfileItem;
 	assertEquals(freelancerFloorAmount(fl), { minor: 12000, currency: "GBP" });
-	assertEquals(freelancerFloor(fl), "from £120");
 	assertEquals(freelancerFloorAmount({ ...fl, serviceCurrency: undefined }), null);
-	assertEquals(freelancerFloor({ ...fl, serviceCurrency: undefined }), null);
 });
 
 Deno.test("a project budget is structured money, or nothing", () => {

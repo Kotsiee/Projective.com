@@ -254,8 +254,6 @@ export default function SearchBar({
 						key={t}
 						type="button"
 						class="hero-search__tag"
-						data-magnetic
-						data-magnetic-strength="0.4"
 						onClick={() => go(t)}
 					>
 						{t}

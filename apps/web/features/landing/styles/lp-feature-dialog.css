@@ -1,0 +1,162 @@
+/*
+ * lp-feature-dialog — `/features`' "Try it" dialog (Decisions #171, #280, #288; `documentation/
+ * flows/LANDING.md` §2.5 note 8, §2.6 note 8; work order L5): the app's `Dialog` re-skinned `lp-`.
+ *
+ *   - `.lp-fdemo` sits on the Dialog's panel beside `lp-portal`, so the landing's tokens resolve at
+ *     `<body>`, where the overlay layer moves it. The panel is the one elevated, interactive surface
+ *     here: a solid surface tone, one hairline contour and the window's depth (§B.4). The scrim stays
+ *     the app's `.ui-backdrop`.
+ *   - Its header names it with the feature's title in the display face at the h3 size, weight 500;
+ *     the body runs the §4.12 line and the stage note "Example only. No real money moves." (meta),
+ *     then the demo stage's product viewport (`lp-demo.css`) at its reserved ratio — its window
+ *     flattened, so the panel stays the one elevated surface and the viewport's own solid tone is
+ *     the one step in (gate 6: nothing framed inside an elevated panel) — then "Start again" (tier 4
+ *     outlined, shown once the demo is live) and "Learn more".
+ *   - Below --bp-md it is a bottom sheet sized to the demo, up to the screen's height (the Dialog's
+ *     sheet layout around the demo's 3 / 4 window, so nothing sits empty under it; Decision #302 (D)
+ *     records this departure from §2.5 frame 8's full-height sheet); from --bp-md a centred panel
+ *     whose width follows the screen's height, so the viewport's ratio — 4 / 3, 16 / 9 from --bp-lg,
+ *     2 / 1 from 1280px — fits with the header and the foot on one screen. A demo taller than its
+ *     window scrolls inside it, as on `/`.
+ *
+ * No focus ring (Decision #285 (A)); the Dialog's own transitions collapse under reduced motion.
+ * Tokens only. Carried by the FeatureDemoDialog island.
+ */
+
+/* #region Panel */
+.lp-fdemo.ui-dialog__panel {
+	inline-size: 100%;
+	max-inline-size: none;
+	max-block-size: calc(100dvh - 2 * var(--lp-stack-md));
+	border: 1px solid var(--lp-hair-strong);
+	border-radius: var(--lp-r-lg);
+	background: var(--lp-surface-1);
+	box-shadow: var(--lp-shadow-window);
+	color: var(--lp-text);
+	font-family: var(--lp-font-body);
+}
+
+/* The width that lets the viewport's ratio fit beside the panel's chrome (about 17rem of header,
+   words, foot and padding) on the screen's height, capped by the page's measure. */
+@media (min-width: 768px) {
+	.lp-fdemo.ui-dialog__panel {
+		inline-size: min(100%, 46rem, calc((100dvh - 17rem) * 4 / 3 + 3rem));
+	}
+}
+
+@media (min-width: 1024px) {
+	.lp-fdemo.ui-dialog__panel {
+		inline-size: min(100%, 64rem, calc((100dvh - 17rem) * 16 / 9 + 3rem));
+	}
+}
+
+@media (min-width: 1280px) {
+	.lp-fdemo.ui-dialog__panel {
+		inline-size: min(100%, var(--lp-maxw), calc((100dvh - 17rem) * 2 + 3rem));
+	}
+}
+
+/* The phone's sheet: as tall as the demo needs, up to the whole screen but a sliver of scrim, its
+   top corners rounded. */
+.ui-dialog--sheet .lp-fdemo.ui-dialog__panel {
+	max-block-size: calc(100dvh - var(--lp-stack-lg));
+	border-block-end: 0;
+	border-radius: var(--lp-r-lg) var(--lp-r-lg) 0 0;
+}
+/* #endregion */
+
+/* #region Header */
+.lp-fdemo .ui-dialog__header {
+	padding: var(--lp-stack-md) var(--lp-stack-md) var(--lp-stack-md) var(--lp-stack-lg);
+	border-block-end: 1px solid var(--lp-hair);
+}
+
+.lp-fdemo .ui-dialog__title {
+	color: var(--lp-text);
+	font-family: var(--lp-font-display);
+	font-size: var(--lp-fs-h3);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--lp-track-h3);
+	line-height: var(--lp-lead-h3);
+}
+
+.lp-fdemo .ui-dialog__action {
+	color: var(--lp-text-2);
+}
+
+.lp-fdemo .ui-dialog__action:hover {
+	background: var(--lp-surface-3);
+	color: var(--lp-text);
+}
+/* #endregion */
+
+/* #region Body */
+.lp-fdemo .ui-dialog__body {
+	padding: var(--lp-stack-md) var(--lp-stack-lg) var(--lp-stack-lg);
+	color: var(--lp-text);
+}
+
+.lp-fdemo__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-md);
+}
+
+.lp-fdemo__intro {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-2xs);
+}
+
+.lp-fdemo__desc {
+	margin: 0;
+	max-inline-size: var(--lp-measure);
+	color: var(--lp-text-2);
+	font-size: var(--lp-fs-body);
+	line-height: var(--lp-lead-body);
+	text-wrap: pretty;
+}
+
+.lp-fdemo__note {
+	margin: 0;
+	color: var(--lp-text-3);
+	font-size: var(--lp-fs-meta);
+	line-height: 1.45;
+}
+
+/* Flat in the panel: no bezel, no tone of its own, no depth. The viewport inside is the demo stage's
+   own, its solid product tone and its radius the one step in from the panel's surface. */
+.lp-fdemo .lp-fdemo__window {
+	flex: none;
+	padding: 0;
+	border-radius: 0;
+	background: none;
+	box-shadow: none;
+}
+
+/* The foot: "Start again" keeps its room from the first paint and shows once the demo is live, so
+   nothing moves when it appears; "Learn more" at the trailing edge. */
+.lp-fdemo__foot {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--lp-stack-sm) var(--lp-stack-md);
+}
+
+.lp-fdemo__reset[data-ready="false"] {
+	visibility: hidden;
+}
+
+.lp-fdemo__more {
+	min-block-size: 2.5rem;
+	font-size: var(--lp-fs-btn);
+}
+
+@media (max-width: 767px) {
+	.lp-fdemo .ui-dialog__body {
+		padding-inline: var(--lp-stack-md);
+		padding-block-end: max(var(--lp-stack-lg), env(safe-area-inset-bottom));
+	}
+}
+/* #endregion */

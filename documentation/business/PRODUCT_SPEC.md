@@ -3428,6 +3428,7 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `create`                 |                                                                                                |
 |               |                           | `availability`           |                                                                                                |
 | **Public**    | `/index`                  |                          | Landing Page                                                                                   |
+|               | `/features`               |                          | Everything Projective does (L5, [`flows/LANDING.md`](../flows/LANDING.md) §2.5–§2.6, §4.12): an editorial chapter index — Find & hire · Run the work · Money · Trust · Coming soon — where each feature is a row with its one-line description, "Try it" (the landing's example demo, example data, no real money moves) only where a demo exists, and "Learn more" only where a help article exists; the Coming soon rows are static. Off-system (`LandingShell`, Decision #280), indexable, listed in the sitemap, linked from the header, the demo stage, the footer and `/about` |
 |               | `/about`                  |                          | The mission page (Decision #277): the shift from working alone to protected teamwork, the friction set against the model, live platform figures (money protected in escrow, stages delivered, median funding → approval, the platform fee — real aggregates only, each hidden below `public_metrics_min_n`, updated hourly), an interactive walkthrough of one stage's money (Fund → Prepaid escrow → Claim → In progress → Submit → Accept & release → 7-day clearing → Withdraw), the founders (once real ones are supplied; until then the band is not drawn), how it's built (no certification claims), and Start a project / Talk to sales |
 |               | `/explore`                |                          | Discovery/Search                                                                               |
 |               | `/pricing`                |                          | **Planned** (Decision #252) — every plan by audience (Individual · Team / Agency · Business / Enterprise) over the two payment planes, in the viewer's currency, with what no plan changes (§Escrow, Wallets & Finance 7 "Public pricing") |
@@ -3454,7 +3455,7 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `schedule`               | Bookable availability leaf for Session / Group-Session archetypes — fills the content region itself (no lane) |
 |               | `/articles`               | `index`                  | Projective's own articles (Decision #271): a lead story, two features and the rest, filtered by topic (`?topic=`, repeatable, any of) and paged (`?page=`) |
 |               | `/articles/[slug]`        |                          | One Projective article on the shared document reader — its one canonical address, a readable slug that never changes. Member posts stay at `/view` and `/[handle]/posts` (Decision #271) |
-|               | `/sitemap.xml`            |                          | Every public page a search engine should index (Decision #279): the home page, Explore, About, Contact, Feedback, the help centre (hub, categories, articles), the changelog and its releases, Projective's articles, and a legal document only once a lawyer has reviewed it |
+|               | `/sitemap.xml`            |                          | Every public page a search engine should index (Decision #279): the home page, the features index, Explore, About, Contact, Feedback, the help centre (hub, categories, articles), the changelog and its releases, Projective's articles, and a legal document only once a lawyer has reviewed it |
 |               | `/robots.txt`             |                          | What crawlers may fetch (Decision #279): never the signed-in app, the API or a page's `?feedback=open` drawer; names the sitemap |
 |               | `/[handle]/view/[item]`   | `index` / `schedule`     | Profile-scoped twin of the above; identical body, back-links scoped to the profile              |
 
@@ -3652,6 +3653,9 @@ easily accessible.
 
 The Projective brand is built on a "Calm Tech" aesthetic, utilizing a teal-primary palette that
 invokes trust and clarity.
+
+**Off-system surfaces:** `/` and `/features` run under the scoped `lp-` exemption (Decision #280);
+their direction, tokens, copy and claims table live in [`flows/LANDING.md`](../flows/LANDING.md).
 
 #### Logo Specifications
 

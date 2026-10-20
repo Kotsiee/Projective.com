@@ -1,0 +1,652 @@
+/*
+ * lp-search — the landing's search bar (`documentation/flows/LANDING.md` §2.1–§2.4, §2.8, §4.1):
+ * the field, the category picker (a native select, and below --bp-md once hydrated an icon button of
+ * the same width opening the category sheet), the input with its aria-hidden typewriter overlay, the
+ * "/ to search" hint, the submit, the suggestions panel and the category sheet.
+ *
+ *   - `.lp-hero-search`: the island's root and the stacking context the panel (z-index 2) sits in,
+ *     so it overlays everything after it in the hero without moving it.
+ *   - `.lp-search`: the field — the hero's one full contour (§B.4 tier 5): a solid surface, a 1px
+ *     `--lp-field-edge` border at ≥ 3:1 against the canvas and the field, a calm elevation. Decision
+ *     #288 retired the B9 glow ring and its halo.
+ *   - `.lp-suggest`: the combobox's listbox panel, absolutely positioned under the field. A recent
+ *     search's row (`.lp-suggest__row`) lays its remove button over the end of its option.
+ *   - Modifiers on the root: `--hydrated` (the `/` shortcut is live), `--sheet` (below --bp-md the
+ *     icon button stands in for the select), `--open` (the panel shows, and the field keeps its
+ *     focus state).
+ *   - `.lp-sheet`: the category sheet — the app's Drawer docked to the bottom, re-skinned, marked
+ *     `lp-portal` so the tokens resolve after the portal moves it to `<body>`.
+ *
+ * No focus ring (Decision #285 (A)): the field's states move only its border colour and its shadow.
+ * Every colour is a `--lp-*` token; press feedback is `scale()` alone.
+ */
+
+/* #region Root */
+.lp-hero-search {
+	position: relative;
+	z-index: 3;
+	inline-size: 100%;
+	text-align: start;
+}
+
+.lp-hero-search__form {
+	margin: 0;
+}
+/* #endregion */
+
+/* #region Field */
+.lp-search {
+	position: relative;
+	display: flex;
+	align-items: center;
+	/* 56px, 60px from --bp-md: the one height the calls to action beside it centre on. */
+	min-block-size: var(--lp-field-h);
+	padding-inline-end: calc(var(--lp-stack-2xs) - 1px);
+	border: 1px solid var(--lp-field-edge);
+	border-radius: var(--lp-r-search);
+	background: var(--lp-surface-1);
+	box-shadow: var(--lp-shadow-1);
+	color: var(--lp-text);
+	transition:
+		border-color var(--dur-slow) var(--ease-standard),
+		box-shadow var(--dur-slow) var(--ease-standard),
+		background-color var(--dur-slow) var(--ease-standard);
+}
+
+.lp-search:hover {
+	border-color: var(--lp-edge);
+}
+
+/* In use — focused, or with its suggestions open — the edge darkens and the field lifts. */
+.lp-search:focus-within,
+.lp-hero-search--open .lp-search {
+	border-color: var(--lp-text-2);
+	box-shadow: var(--lp-shadow-pop);
+}
+
+@media (forced-colors: active) {
+	.lp-search {
+		border-color: CanvasText;
+	}
+}
+/* #endregion */
+
+/* #region Category picker */
+.lp-search__scope {
+	position: relative;
+	display: flex;
+	flex: none;
+	align-items: center;
+	align-self: stretch;
+	border-inline-end: 1px solid var(--lp-hair-strong);
+}
+
+.lp-search__select {
+	-webkit-appearance: none;
+	appearance: none;
+	inline-size: 6.5rem;
+	block-size: 100%;
+	margin: 0;
+	padding-inline: var(--lp-stack-md) calc(var(--lp-stack-md) + 1em);
+	border: 0;
+	border-start-start-radius: calc(var(--lp-r-search) - 1px);
+	border-end-start-radius: calc(var(--lp-r-search) - 1px);
+	background: transparent;
+	color: var(--lp-text);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body);
+	font-weight: var(--fw-medium);
+	text-overflow: ellipsis;
+	cursor: pointer;
+}
+
+.lp-search__select:hover {
+	color: var(--lp-teal-ink);
+}
+
+.lp-search__select option {
+	background: var(--lp-surface-1);
+	color: var(--lp-text);
+}
+
+.lp-search__chevron {
+	position: absolute;
+	inset-inline-end: var(--lp-stack-sm);
+	display: inline-flex;
+	color: var(--lp-text-3);
+	font-size: var(--lp-fs-body-sm);
+	pointer-events: none;
+}
+
+/* The hydrated mobile picker: the current category's glyph opening the sheet. */
+.lp-search__scope-btn {
+	display: none;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	gap: var(--lp-stack-2xs);
+	align-self: stretch;
+	min-inline-size: 3.25rem;
+	margin: 0;
+	padding-inline: var(--lp-stack-sm) var(--lp-stack-xs);
+	border: 0;
+	border-inline-end: 1px solid var(--lp-hair-strong);
+	border-start-start-radius: calc(var(--lp-r-search) - 1px);
+	border-end-start-radius: calc(var(--lp-r-search) - 1px);
+	background: transparent;
+	color: var(--lp-text);
+	font-size: var(--lp-fs-body-lg);
+	cursor: pointer;
+	transition: transform var(--lp-dur-press) var(--lp-ease-out);
+}
+
+.lp-search__scope-btn:active {
+	transform: scale(var(--lp-press-scale));
+}
+
+.lp-search__scope-caret {
+	display: inline-flex;
+	color: var(--lp-text-3);
+	font-size: var(--lp-fs-meta);
+}
+
+/* Below --bp-md, once hydrated, the icon button replaces the select. The select stays in the form,
+   hidden, so it still carries `category` on a native submit. The two share one box, so the swap at
+   hydration moves nothing: the input's edge stays where the server drew it. */
+@media (max-width: 767px) {
+	.lp-search__scope,
+	.lp-search__scope-btn {
+		inline-size: 4.5rem;
+		min-inline-size: 0;
+	}
+
+	.lp-search__select {
+		inline-size: 100%;
+		padding-inline: var(--lp-stack-sm) calc(var(--lp-stack-xs) + 1em);
+	}
+
+	.lp-search__chevron {
+		inset-inline-end: var(--lp-stack-xs);
+	}
+
+	.lp-hero-search--sheet .lp-search__scope {
+		display: none;
+	}
+
+	.lp-hero-search--sheet .lp-search__scope-btn {
+		display: inline-flex;
+	}
+}
+
+/* From --bp-md the picker reads "All v": sized to the chosen label where the browser can, else to
+   room for the longest. */
+@media (min-width: 768px) {
+	.lp-search__select {
+		inline-size: 12.5rem;
+	}
+
+	@supports (field-sizing: content) {
+		.lp-search__select {
+			field-sizing: content;
+			inline-size: auto;
+			min-inline-size: 5.5rem;
+			max-inline-size: 13rem;
+		}
+	}
+}
+/* #endregion */
+
+/* #region Input and typewriter */
+.lp-search__control {
+	position: relative;
+	display: flex;
+	flex: 1 1 auto;
+	align-items: center;
+	align-self: stretch;
+	min-inline-size: 0;
+}
+
+.lp-search__input {
+	inline-size: 100%;
+	block-size: 100%;
+	min-inline-size: 0;
+	margin: 0;
+	padding-inline: var(--lp-stack-md) var(--lp-stack-xs);
+	border: 0;
+	background: transparent;
+	color: var(--lp-text);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-search);
+	line-height: 1.3;
+	text-overflow: ellipsis;
+}
+
+.lp-search__input::placeholder {
+	color: var(--lp-text-3);
+	opacity: 1;
+}
+
+/* While the typewriter speaks, the static placeholder steps aside (it stays the accessible text). */
+.lp-search__input--quiet::placeholder {
+	color: transparent;
+}
+
+.lp-search__typewriter {
+	position: absolute;
+	inset-block: 0;
+	inset-inline: 0;
+	display: flex;
+	align-items: center;
+	padding-inline: var(--lp-stack-md) var(--lp-stack-xs);
+	overflow: hidden;
+	color: var(--lp-text-3);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-search);
+	line-height: 1.3;
+	white-space: pre;
+	pointer-events: none;
+	/* A long example fades out at the field's end rather than being cut mid-glyph. */
+	-webkit-mask-image: linear-gradient(
+		to left,
+		transparent,
+		var(--lp-mask-ink) var(--lp-stack-lg)
+	);
+	mask-image: linear-gradient(to left, transparent, var(--lp-mask-ink) var(--lp-stack-lg));
+}
+
+.lp-search__caret {
+	display: inline-block;
+	inline-size: 1px;
+	block-size: 1.2em;
+	margin-inline: 1px;
+	background: var(--lp-teal-ink);
+	vertical-align: middle;
+}
+/* #endregion */
+
+/* #region Hint and submit */
+/* "/ to search": its box is drawn on the server and shown only once the island has bound the key
+   (`--live`), so nothing moves and nothing is promised before the shortcut works. */
+.lp-search__hint {
+	display: none;
+	flex: none;
+	align-items: center;
+	gap: var(--lp-stack-2xs);
+	margin-inline-end: var(--lp-stack-sm);
+	color: var(--lp-text-3);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-meta);
+	line-height: 1;
+	white-space: nowrap;
+	visibility: hidden;
+}
+
+.lp-search__hint--live {
+	visibility: visible;
+}
+
+.lp-search__kbd {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: 1.5rem;
+	block-size: 1.5rem;
+	padding-inline: var(--lp-stack-2xs);
+	border: 1px solid var(--lp-hair-strong);
+	border-radius: var(--lp-r-xs);
+	font-family: var(--lp-font-mono);
+	font-size: var(--lp-fs-meta);
+	line-height: 1;
+}
+
+/* Only from --bp-md (below it the hint crowds the field, mouse or not) and for a fine pointer with
+   hover (never touch-only), and gone once the field is in use. `aria-keyshortcuts` stays declared
+   at every width: the key works where the hint is not drawn. */
+@media (hover: hover) and (pointer: fine) and (min-width: 768px) {
+	.lp-search__hint {
+		display: inline-flex;
+	}
+
+	.lp-search:focus-within .lp-search__hint {
+		display: none;
+	}
+}
+
+/* Tier 3 (`lp-btn--brand`), inset `--lp-stack-2xs` on every side so its corners run concentric
+   with the field's (12 − 4 = 8). */
+.lp-search__submit {
+	flex: none;
+	align-self: stretch;
+	min-inline-size: 3rem;
+	min-block-size: 2.75rem;
+	block-size: auto;
+	margin-block: calc(var(--lp-stack-2xs) - 1px);
+	padding-inline: 0;
+	border-radius: var(--lp-r-sm);
+	font-size: var(--lp-fs-btn-lg);
+}
+
+/* Icon-only below --bp-md; the text stays the accessible name. */
+.lp-search__submit-text {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+@media (min-width: 768px) {
+	.lp-search__submit {
+		padding-inline: var(--lp-stack-lg);
+	}
+
+	.lp-search__submit-icon {
+		display: none;
+	}
+
+	.lp-search__submit-text {
+		position: static;
+		inline-size: auto;
+		block-size: auto;
+		overflow: visible;
+		clip-path: none;
+	}
+}
+/* #endregion */
+
+/* #region Suggestions panel */
+.lp-suggest {
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: calc(100% + var(--lp-stack-xs));
+	z-index: 2;
+	display: flex;
+	flex-direction: column;
+	max-block-size: var(--lp-suggest-max, min(28rem, 60dvh));
+	padding: var(--lp-stack-xs);
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	/* The pinned "Search Explore for …" row's footprint (an option's 2.75rem, its margin, padding and
+	   hairline): the active option scrolled into view with `block: "nearest"` stops clear of the row
+	   instead of under it (WCAG 2.4.11). */
+	scroll-padding-block-end: calc(2.75rem + 2 * var(--lp-stack-2xs) + var(--lp-stack-xs) + 1px);
+	border-radius: var(--lp-r-md);
+	background: var(--lp-surface-1);
+	/* Its own edge, so the white panel still parts from the white window it opens over. */
+	box-shadow: var(--lp-shadow-panel);
+	color: var(--lp-text);
+}
+
+.lp-suggest[hidden] {
+	display: none;
+}
+
+.lp-suggest__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lp-stack-2xs);
+}
+
+.lp-suggest__group {
+	display: flex;
+	flex-direction: column;
+}
+
+.lp-suggest__label {
+	padding: var(--lp-stack-xs) var(--lp-stack-sm) var(--lp-stack-2xs);
+	color: var(--lp-text-3);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-eyebrow);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--lp-track-eyebrow);
+	line-height: 1.35;
+	text-transform: uppercase;
+}
+
+/* Its 2.75rem minimum also sizes the panel's scroll padding, above. */
+.lp-suggest__option {
+	display: flex;
+	align-items: center;
+	gap: var(--lp-stack-sm);
+	min-block-size: 2.75rem;
+	padding: var(--lp-stack-2xs) var(--lp-stack-sm);
+	border-radius: var(--lp-r-sm);
+	color: var(--lp-text);
+	cursor: pointer;
+	transition: background-color var(--lp-dur-fast) var(--lp-ease-standard);
+}
+
+.lp-suggest__option[aria-selected="true"] {
+	background: var(--lp-surface-3);
+}
+
+/* A recent search: its option, and its remove button laid over the option's end. */
+.lp-suggest__row {
+	position: relative;
+}
+
+.lp-suggest__row > .lp-suggest__option {
+	padding-inline-end: calc(var(--lp-stack-sm) + 2rem);
+}
+
+/* The trailing "Search Explore for …" row sits behind one hairline, pinned to the panel's foot: on
+   a short screen the panel ends above the fold and scrolls, and the way out of it stays in view. */
+.lp-suggest__group--search {
+	position: sticky;
+	inset-block-end: calc(-1 * var(--lp-stack-xs));
+	margin-block: var(--lp-stack-2xs) calc(-1 * var(--lp-stack-xs));
+	padding-block: var(--lp-stack-2xs) var(--lp-stack-xs);
+	border-block-start: 1px solid var(--lp-hair);
+	background: var(--lp-surface-1);
+}
+
+.lp-suggest__lead {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	overflow: hidden;
+	border-radius: var(--lp-r-xs);
+	background: var(--lp-surface-2);
+	color: var(--lp-text-3);
+	font-size: var(--lp-fs-body-sm);
+}
+
+.lp-suggest__lead--avatar {
+	border-radius: var(--lp-r-pill);
+}
+
+.lp-suggest__img {
+	display: block;
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+}
+
+.lp-suggest__text {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.lp-suggest__title {
+	overflow: hidden;
+	color: var(--lp-text);
+	font-size: var(--lp-fs-body);
+	line-height: 1.35;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.lp-suggest__meta {
+	overflow: hidden;
+	color: var(--lp-text-3);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-meta);
+	font-variant-numeric: tabular-nums;
+	line-height: 1.45;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.lp-suggest__action {
+	color: var(--lp-teal-ink);
+	font-size: var(--lp-fs-body-sm);
+	font-weight: var(--fw-medium);
+}
+
+.lp-suggest__enter {
+	display: none;
+	flex: none;
+	padding-inline: var(--lp-stack-2xs);
+	border: 1px solid var(--lp-hair-strong);
+	border-radius: var(--lp-r-xs);
+	color: var(--lp-text-3);
+	font-family: var(--lp-font-mono);
+	font-size: var(--lp-fs-meta);
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.lp-suggest__enter {
+		display: inline-flex;
+	}
+}
+
+.lp-suggest__remove {
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-end: var(--lp-stack-2xs);
+	translate: 0 -50%;
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: var(--lp-r-pill);
+	background: transparent;
+	color: var(--lp-text-3);
+	font-size: var(--lp-fs-body-sm);
+	cursor: pointer;
+	transition: transform var(--lp-dur-press) var(--lp-ease-out);
+}
+
+.lp-suggest__remove:hover {
+	background: var(--lp-surface-2);
+	color: var(--lp-text);
+}
+
+.lp-suggest__remove:active {
+	transform: scale(var(--lp-press-scale));
+}
+
+.lp-suggest__status {
+	margin: 0;
+	padding: var(--lp-stack-xs) var(--lp-stack-sm);
+	color: var(--lp-text-2);
+	font-size: var(--lp-fs-body-sm);
+}
+
+/* Forced colours drop the panel's shadow and repaint its tints: the panel gets an edge and the
+   active row the system's selection colours — the state of the choice, not a focus ring (#285 (A)). */
+@media (forced-colors: active) {
+	.lp-suggest {
+		border: 1px solid CanvasText;
+	}
+
+	.lp-suggest__option[aria-selected="true"] {
+		forced-color-adjust: none;
+		background: Highlight;
+		color: HighlightText;
+	}
+
+	.lp-suggest__option[aria-selected="true"] :is(.lp-suggest__title, .lp-suggest__meta, .lp-suggest__action, .lp-suggest__lead) {
+		color: HighlightText;
+	}
+}
+/* #endregion */
+
+/* #region Category sheet (below --bp-md) — the app Drawer, docked to the bottom */
+/* Elevation on `::after`: the panel holds focus while open, and the no-focus-ring layer strips a
+   focused panel's `box-shadow` (as on the menu sheet, `lp-shell.css`). */
+.lp-sheet.ui-drawer {
+	border-block-start: 1px solid var(--lp-hair);
+	border-start-start-radius: var(--lp-r-xl);
+	border-start-end-radius: var(--lp-r-xl);
+	background: var(--lp-surface-1);
+	box-shadow: none;
+	color: var(--lp-text);
+	font-family: var(--lp-font-body);
+}
+
+.lp-sheet.ui-drawer::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	box-shadow: var(--lp-shadow-pop);
+	pointer-events: none;
+}
+
+.lp-sheet .ui-drawer__title {
+	color: var(--lp-text);
+	font-family: var(--lp-font-display);
+	font-size: var(--lp-fs-h3);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--lp-track-h3);
+}
+
+.lp-sheet .ui-drawer__close {
+	color: var(--lp-text-2);
+}
+
+.lp-sheet__options {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+.lp-sheet__option {
+	display: flex;
+	align-items: center;
+	gap: var(--lp-stack-sm);
+	min-block-size: 3rem;
+	color: var(--lp-text);
+	font-size: var(--lp-fs-body-lg);
+	cursor: pointer;
+}
+
+.lp-sheet__radio {
+	flex: none;
+	inline-size: 1.125rem;
+	block-size: 1.125rem;
+	margin: 0;
+	accent-color: var(--lp-teal-fill);
+}
+
+.lp-sheet__glyph {
+	display: inline-flex;
+	color: var(--lp-text-3);
+}
+/* #endregion */
+
+/* #region Reduced motion — both channels */
+@media (prefers-reduced-motion: reduce) {
+	:is(.lp-search__scope-btn, .lp-suggest__remove):active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] :is(.lp-search__scope-btn, .lp-suggest__remove):active {
+	transform: none;
+}
+/* #endregion */

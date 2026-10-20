@@ -158,7 +158,7 @@ const reportASessionNoShow = helpArticle({
 	position: 2,
 	title: "Report a session no-show",
 	summary:
-		"If the freelancer didn't turn up, report a no-show from the session's sidebar; the sitting's payment is held while the room's attendance is checked, and a missed session is refunded automatically.",
+		"If the freelancer didn't turn up, report a no-show from the session's sidebar; the sitting's payment stays held while the claim is decided.",
 	roles: ["client"],
 	related: ["how-disputes-are-decided", "session-cancellations", "what-is-escrow"],
 	sections: [

@@ -1,0 +1,224 @@
+/*
+ * lp-hero — the hero's composition (`documentation/flows/LANDING.md` §2.1–§2.4, §2.8, §4.1): the
+ * Precision hero, "the product is the picture". The copy's type is `lp-shell.css`'s hero skeleton,
+ * the search bar `lp-search.css`, the window `lp-theatre.css`. Delivered by the HeroSearch island (a
+ * server component's stylesheet reaches no page), which renders wherever these classes do.
+ *
+ *   - One measure: from --bp-md `.lp-hero__top` is a grid whose first column is exactly as wide as
+ *     the headline's longer sentence (`fit-content`), so the search field ends where "team." ends.
+ *     The subline and the calls to action span the flexible track, so they never widen it.
+ *   - From 1280px the calls to action sit beside the field, centred on its height (`--lp-field-h`):
+ *     the row reads search first, then the quiet alternatives, and the trailing edge belongs to the
+ *     header's Get started alone. Below 1280px they sit under the "Try:" line.
+ *   - `.lp-hero__find`: the search and its "Try:" line.
+ *   - `.lp-chips`: the "Try:" line — underlined text links on one wrapping meta line, separated by
+ *     middots (§2.8, superseding #287's chip row): the search field stays the region's one
+ *     interactive contour, and a wrapping line hides nothing at any width. Three terms below --bp-md.
+ *   - `.lp-hero__ctas`: an outlined button and a text link; neither is filled (the search's submit is
+ *     the region's one fill).
+ *   - `.lp-hero__stage`: the theatre's window, outdented by its own padding so the board's frame
+ *     lands on the text's edge.
+ *
+ * Tokens only; no motion of its own (the headline's reveal and the press are the shared base's);
+ * press feedback is `scale()` alone, removed under both reduced-motion channels.
+ */
+
+/* #region Search group */
+.lp-hero__find {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: var(--lp-stack-sm);
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+/* #endregion */
+
+/* #region "Try:" line */
+.lp-chips {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	column-gap: var(--lp-stack-xs);
+	min-inline-size: 0;
+	color: var(--lp-text-3);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body-sm);
+	line-height: 1.45;
+}
+
+.lp-chips__label {
+	margin: 0;
+	color: var(--lp-text-2);
+}
+
+.lp-chips__list {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	min-inline-size: 0;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.lp-chips__item + .lp-chips__item::before {
+	content: "·";
+	content: "·" / "";
+	padding-inline: 0.5em;
+	color: var(--lp-text-3);
+}
+
+/* Three terms below --bp-md: one or two lines, never a sideways scroller. */
+@media (max-width: 767px) {
+	.lp-chips__item:nth-child(n + 4) {
+		display: none;
+	}
+}
+
+.lp-chip {
+	display: inline-block;
+	padding-block: var(--lp-stack-2xs);
+	color: var(--lp-text);
+	font-weight: var(--fw-normal);
+	text-decoration-line: underline;
+	text-decoration-color: var(--lp-hair-strong);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.25em;
+	white-space: nowrap;
+	transition:
+		transform var(--lp-dur-press) var(--lp-ease-out),
+		text-decoration-color var(--dur-slow) var(--ease-standard);
+}
+
+.lp-chip:hover {
+	text-decoration-color: currentColor;
+}
+
+.lp-chip:active {
+	transform: scale(var(--lp-press-scale));
+}
+/* #endregion */
+
+/* #region Calls to action */
+.lp-hero__ctas {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--lp-stack-sm) var(--lp-stack-lg);
+	margin-block-start: var(--lp-stack-lg);
+}
+
+.lp-hero__cta {
+	min-block-size: 2.75rem;
+	padding-inline: var(--lp-stack-lg);
+	font-size: var(--lp-fs-btn-lg);
+}
+
+.lp-hero__link {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--lp-stack-xs);
+	min-block-size: 2.75rem;
+	color: var(--lp-text);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-btn-lg);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--lp-track-body);
+	text-decoration-line: underline;
+	text-decoration-color: var(--lp-hair-strong);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.25em;
+	transition:
+		transform var(--lp-dur-press) var(--lp-ease-out),
+		text-decoration-color var(--dur-slow) var(--ease-standard);
+}
+
+/* The trailing arrow: a drawn chevron, decorative. */
+.lp-hero__link::after {
+	content: "";
+	inline-size: 0.4em;
+	block-size: 0.4em;
+	border-block-start: 1.5px solid currentColor;
+	border-inline-end: 1.5px solid currentColor;
+	rotate: 45deg;
+}
+
+.lp-hero__link:hover {
+	text-decoration-color: currentColor;
+}
+
+.lp-hero__link:active {
+	transform: scale(var(--lp-press-scale));
+}
+/* #endregion */
+
+/* #region Theatre slot — the window */
+/* Outdented by the window's own padding (`lp-theatre.css`), so the board's frame lands on the
+   text's edge and the window's corners run concentric with the frame's. */
+.lp-hero__stage {
+	min-inline-size: 0;
+	margin-inline: calc(-1 * var(--lp-stack-xs));
+}
+/* #endregion */
+
+/* #region Composition — one measure for the headline and the search */
+/* After the parts' own rules, so a placement here wins over their defaults. */
+@media (min-width: 768px) {
+	.lp-hero__top {
+		display: grid;
+		grid-template-columns: fit-content(100%) minmax(0, 1fr);
+		column-gap: var(--lp-stack-xl);
+		align-items: start;
+	}
+
+	/* The copy block's children become grid items; their order (h1, subline) is unchanged. */
+	.lp-hero__copy {
+		display: contents;
+	}
+
+	.lp-hero__title {
+		grid-area: 1 / 1;
+	}
+
+	.lp-hero__lead {
+		grid-area: 2 / 1 / auto / -1;
+	}
+
+	.lp-hero__find {
+		grid-area: 3 / 1;
+	}
+
+	.lp-hero__ctas {
+		grid-area: 4 / 1 / auto / -1;
+	}
+}
+
+@media (min-width: 1280px) {
+	/* The measure stops at two thirds of the row, so the calls to action always have room beside
+	   it, even in the dyslexic face; its h1 then breaks between phrases. */
+	.lp-hero__top {
+		grid-template-columns: fit-content(calc(200% / 3)) minmax(0, 1fr);
+	}
+
+	/* Beside the search group (the field and its "Try:" line, one element), so focus finishes that
+	   group, then moves here; below 1280 the same order is the visual one (LANDING.md §2.8). */
+	.lp-hero__ctas {
+		grid-area: 3 / 2;
+		min-block-size: var(--lp-field-h);
+		margin-block-start: 0;
+	}
+}
+/* #endregion */
+
+/* #region Reduced motion — both channels */
+@media (prefers-reduced-motion: reduce) {
+	:is(.lp-hero__link, .lp-chip):active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] :is(.lp-hero__link, .lp-chip):active {
+	transform: none;
+}
+/* #endregion */

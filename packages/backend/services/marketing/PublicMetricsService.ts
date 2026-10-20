@@ -4,7 +4,7 @@ import {
 	type PublicMetricsAggregate,
 	PublicMetricsAggregateSchema,
 	PublicMetricsSchema,
-	type PublicMoneyTotal,
+	type PublicProtectedTotal,
 } from "@projective/types/marketing";
 import { ArcCache, cacheKey, type CacheTenant } from "../../core/cache.ts";
 import { getServiceClient, isFinanceBackendLive } from "../../core/supabase.ts";
@@ -38,10 +38,12 @@ import {
  * ## Currencies
  *
  * Escrow is stored in the currency each stage was priced in. One currency → the exact total, never
- * converted. Several → each converted into the platform base (the `base_currency` param) at the
- * newest reference rate in `finance.fx_rates`, through {@link FxService} — the product's read-time
- * display rule (finance-model.md §11) — and summed; if any currency cannot be converted the total
- * is withheld rather than understated. The published total is then COARSENED — floored to two
+ * converted (`converted: false`). Several → each converted into the platform base (the
+ * `base_currency` param) at the newest reference rate in `finance.fx_rates`, through
+ * {@link FxService} — the product's read-time display rule (finance-model.md §11) — and summed,
+ * marked `converted: true` so a surface that may print only an unconverted total can hide it
+ * (Decision #277 flag (c)); if any currency cannot be converted the total is withheld rather than
+ * understated. The published total is then COARSENED — floored to two
  * significant figures of whole units (`coarsenPublishedTotal`) — so comparing two hourly reads never
  * gives one escrow's exact amount.
  *
@@ -108,11 +110,11 @@ export interface PublicMetricsReader {
 	invalidate(): void;
 }
 
-/** Resolve the protected total for an aggregate (exact, converted, or withheld). */
+/** Resolve the protected total for an aggregate (exact, converted, or withheld), marked by which. */
 async function protectedTotal(
 	aggregate: PublicMetricsAggregate,
 	deps: PublicMetricsDeps,
-): Promise<PublicMoneyTotal | null> {
+): Promise<PublicProtectedTotal | null> {
 	const plan = planProtectedTotal(aggregate);
 	if (plan.kind === "hidden") {
 		if (plan.malformed?.length) {
@@ -124,7 +126,7 @@ async function protectedTotal(
 		}
 		return null;
 	}
-	if (plan.kind === "single") return plan.total;
+	if (plan.kind === "single") return { ...plan.total, converted: false };
 	const converted = await deps.convert(plan.parts, plan.target);
 	const total = sumConvertedParts(plan.target, converted);
 	if (total === null) {
@@ -136,8 +138,9 @@ async function protectedTotal(
 			`no reference rate into ${plan.target} for ${missing || "a currency"}; ` +
 				"the value-protected total is withheld",
 		);
+		return null;
 	}
-	return total;
+	return { ...total, converted: true };
 }
 
 /** Build a {@link PublicMetricsReader} over `deps` (the default instance is {@link PublicMetricsService}). */

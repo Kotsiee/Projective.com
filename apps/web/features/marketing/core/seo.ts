@@ -12,86 +12,17 @@
  *    mounts the `SchemaInjector` island so the graph also survives hydration (root CLAUDE.md §5,
  *    "schema injections inside the live DOM"). Pages never hand-write a `<script>` tag.
  *
- * The landing page's own copy and graph ({@link LANDING_META}, {@link landingJsonLd}) are unchanged
- * and still plain-language ("team of helpers", "pay step by step") so the human and machine layers
- * agree on the same friendly description of the product.
+ * Every public page, the landing included, builds its head and graph from these primitives: the
+ * landing's copy lives with it (`features/landing/core/landing-seo.ts`, `flows/LANDING.md` §4.0),
+ * not here.
  *
- * Client-reachable: the `SchemaInjector` island imports this module, so it value-imports nothing
- * that builds schemas or reads the environment — the plain-text projection comes from the
- * schema-free `@projective/types/content/text` sub-path, the content types are type-only, and the
- * request-origin policy lives server-side (`site-origin.ts`).
+ * Kept client-safe: it value-imports nothing that builds schemas or reads the environment — the
+ * plain-text projection comes from the schema-free `@projective/types/content/text` sub-path, the
+ * content types are type-only, and the request-origin policy lives server-side (`site-origin.ts`) —
+ * so an island may import it without pulling either into the client bundle.
  */
 import type { ContentAuthor, ContentImage, FaqItem } from "@projective/types/content";
 import { nodesText } from "@projective/types/content/text";
-
-/** Page-level meta consumed by the route handler → `state.title` / `state.description`. */
-export const LANDING_META = {
-	title: "Projective — build the perfect team of helpers",
-	description:
-		"Tell Projective what you need and get a ready-made team of helpers. Pay safely, a little at a " +
-		"time, and only when you're happy with each step.",
-} as const;
-
-/**
- * schema.org JSON-LD graph for the landing page. Serialised into a `<script type="application/ld+json">`
- * so crawlers and answer engines read the company, the software product, and the primary FAQ
- * intents without scraping prose. Kept in one graph to avoid duplicate `@context` blocks.
- */
-export function landingJsonLd(origin = "https://projective.app"): string {
-	const graph = {
-		"@context": "https://schema.org",
-		"@graph": [
-			{
-				"@type": "Organization",
-				"@id": `${origin}/#org`,
-				name: "Projective",
-				url: origin,
-				description:
-					"A friendly place to hire a whole team of helpers and pay safely, a little at a time.",
-			},
-			{
-				"@type": "WebSite",
-				"@id": `${origin}/#site`,
-				url: origin,
-				name: "Projective",
-				publisher: { "@id": `${origin}/#org` },
-			},
-			{
-				"@type": "SoftwareApplication",
-				name: "Projective",
-				applicationCategory: "BusinessApplication",
-				operatingSystem: "Web",
-				description:
-					"Hire a team of helpers and pay safely, a little at a time — only when you're happy with each step.",
-				offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
-			},
-			{
-				"@type": "FAQPage",
-				mainEntity: [
-					{
-						"@type": "Question",
-						name: "How does hiring a team on Projective work?",
-						acceptedAnswer: {
-							"@type": "Answer",
-							text:
-								"Tell Projective what you need and it puts together the perfect team of helpers for you. You work with everyone as one friendly group, and pay through one simple, safe arrangement.",
-						},
-					},
-					{
-						"@type": "Question",
-						name: "How does paying step by step work?",
-						acceptedAnswer: {
-							"@type": "Answer",
-							text:
-								"The work is split into small steps. You pop the money for each step into a safe money box, and it's only handed over once that step is done and you're happy with it.",
-						},
-					},
-				],
-			},
-		],
-	};
-	return JSON.stringify(graph);
-}
 
 // #region Site & URLs
 /** The product name every document title and Open Graph block carries. */
@@ -581,6 +512,56 @@ export function faqPageJsonLd(
 			"@type": "Question",
 			name: item.question,
 			acceptedAnswer: { "@type": "Answer", text: item.answer },
+		})),
+	};
+}
+// #endregion
+
+// #region Item list
+/** One entry of an {@link itemListJsonLd}: what the page prints for it. */
+export interface ItemListEntry {
+	/** Its visible name. */
+	name: string;
+	/** Its visible description, when the page prints one. */
+	description?: string;
+	/** Where it is: a path (made absolute, its fragment kept — `/features#work-board`) or a URL. */
+	url?: string;
+}
+
+/** Input for {@link itemListJsonLd}. */
+export interface ItemListJsonLdInput {
+	origin: string;
+	/** The page the list is printed on; the list's `@id` hangs off its canonical URL. */
+	path: string;
+	/** The list's own name, when it has one. */
+	name?: string;
+	/** The entries, in the page's order. */
+	items: readonly ItemListEntry[];
+}
+
+/** The `@id` of the item list printed on the page at `path` (`https://…/features#items`). */
+export function itemListId(origin: string, path: string): string {
+	return `${canonicalUrl(origin, path)}#items`;
+}
+
+/**
+ * A standalone `ItemList` of the entries a page prints — each a `ListItem` with its position, name,
+ * and, when given, its description and its absolute URL — for a page node to name as its
+ * `mainEntity` by {@link itemListId}. A hub whose items are pages of their own uses
+ * {@link webPageJsonLd}'s `items` instead.
+ */
+export function itemListJsonLd(input: ItemListJsonLdInput): JsonLdNode {
+	return {
+		"@type": "ItemList",
+		"@id": itemListId(input.origin, input.path),
+		...(input.name ? { name: input.name } : {}),
+		numberOfItems: input.items.length,
+		itemListElement: input.items.map((item, i) => ({
+			"@type": "ListItem",
+			position: i + 1,
+			name: item.name,
+			...(item.description ? { description: item.description } : {}),
+			...(item.url ? { url: absoluteUrl(input.origin, item.url) } : {}),
 		})),
 	};
 }

@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { ExploreCategory, ExploreEntity, ExploreOwnerSchema } from "./items.ts";
+import { SUGGEST_QUERY_MAX } from "./limits.ts";
+
+export { SUGGEST_QUERY_MAX };
 
 /**
  * explore.suggest — the Zod SSOT for search-as-you-type: the `/api/explore/suggest` query and the
@@ -8,9 +11,6 @@ import { ExploreCategory, ExploreEntity, ExploreOwnerSchema } from "./items.ts";
  */
 
 // #region Query
-/** The longest query the suggest route accepts; anything longer is a paste, not a typeahead. */
-export const SUGGEST_QUERY_MAX = 80;
-
 /** `GET /api/explore/suggest?q=&scope=` — the typed prefix and the scope the bar is searching in. */
 export const SuggestQuerySchema = z.object({
 	q: z.string().trim().max(SUGGEST_QUERY_MAX, "Keep the search under 80 characters."),

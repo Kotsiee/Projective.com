@@ -1,0 +1,232 @@
+/*
+ * lp-faq — the common questions, `#faq` (`documentation/flows/LANDING.md` §2.1 note 23, §2.2,
+ * §2.3 note 21, §4.10; Decision #288).
+ *
+ *   - `.lp-faq`: the section, on the page's solid canvas (the warm pricing band ends above it).
+ *   - `.lp-faq__head`: the section header and the h2. From --bp-lg the section is two columns — the
+ *     head in a narrow leading column, the questions beside it with "More answers in Help" under
+ *     them — and below that one column, the link after the list. Either way the link is where it
+ *     sits in the source, after the questions, so the eye and the tab order agree.
+ *   - `.lp-faq__list`: native `<details>` disclosures, no island. Static text is never boxed: the
+ *     items part by one hairline each (§B.4 tier 4); the only interactive surface, the `<summary>`,
+ *     carries no outline either, since its whole row is the control and its glyph says so.
+ *   - `.lp-faq__icon`: a drawn plus that becomes a minus as its item opens (its vertical bar turns
+ *     flat); decorative, the `<summary>` announces its own expanded state.
+ *   - `.lp-faq__more`: "More answers in Help", an underlined text link with a drawn chevron.
+ *
+ * No animation of its own (§2.7: nothing moves in this section): the glyph's turn follows the
+ * visitor's press, at `--lp-dur-fast`, which both reduced-motion channels collapse to 0ms. Press
+ * feedback is `scale()` on the glyph alone, removed under both channels. No focus ring (Decision
+ * #285 (A)). Tokens only. Delivered by the LandingHeader island (a server component's stylesheet
+ * reaches no page).
+ */
+
+/* #region Section */
+.lp-faq {
+	padding-block: var(--lp-section-pad) var(--lp-section-pad-end);
+	padding-inline: var(--lp-gutter);
+}
+
+.lp-faq__inner {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	row-gap: var(--lp-stack-xl);
+	max-inline-size: var(--lp-maxw);
+	margin-inline: auto;
+}
+
+/* Section header → display at --lp-heading-gap (§B.4.1: tight inside a group). */
+.lp-faq__head {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--lp-heading-gap);
+	min-inline-size: 0;
+}
+
+.lp-faq__title {
+	max-inline-size: var(--lp-measure-title);
+	text-wrap: balance;
+}
+/* #endregion */
+
+/* #region Questions */
+.lp-faq__list {
+	min-inline-size: 0;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/* One hairline between items, none above the first or under the last (§B.4 tier 4). */
+.lp-faq__item + .lp-faq__item {
+	border-block-start: 1px solid var(--lp-hair);
+}
+
+.lp-faq__q {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--lp-stack-lg);
+	padding-block: var(--lp-stack-md);
+	color: var(--lp-text);
+	font-family: var(--lp-font-display);
+	font-size: var(--lp-fs-body-lg);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--lp-track-h3);
+	line-height: var(--lp-lead-h3);
+	list-style: none;
+	cursor: pointer;
+}
+
+.lp-faq__q::-webkit-details-marker {
+	display: none;
+}
+
+.lp-faq__q::marker {
+	content: "";
+}
+
+/* The plus: two drawn bars, centred on the question's first line. Opening the item lays the
+   vertical bar flat, so the glyph reads as a minus. */
+.lp-faq__icon {
+	position: relative;
+	flex: none;
+	inline-size: 1.25rem;
+	block-size: calc(1em * var(--lp-lead-h3));
+	color: var(--lp-text-2);
+	transition:
+		transform var(--lp-dur-press) var(--lp-ease-out),
+		color var(--dur-slow) var(--ease-standard);
+}
+
+.lp-faq__icon::before,
+.lp-faq__icon::after {
+	content: "";
+	position: absolute;
+	inset-inline: 0.1875rem;
+	inset-block-start: calc(50% - 0.75px);
+	block-size: 1.5px;
+	border-radius: var(--lp-r-xs);
+	background: currentColor;
+}
+
+.lp-faq__icon::after {
+	rotate: 90deg;
+	transition: rotate var(--lp-dur-fast) var(--lp-ease-out);
+}
+
+.lp-faq__item[open] .lp-faq__icon::after {
+	rotate: 0deg;
+}
+
+/* Hover raises the glyph to the question's ink (never lowers a label's contrast, gate 12). */
+.lp-faq__q:hover .lp-faq__icon {
+	color: var(--lp-text);
+}
+
+.lp-faq__q:active .lp-faq__icon {
+	transform: scale(var(--lp-press-scale));
+}
+
+/* The answer: the body register at its measure, under the question it opens from. */
+.lp-faq__a {
+	max-inline-size: var(--lp-measure);
+	margin: 0;
+	padding-block-end: var(--lp-stack-lg);
+	padding-inline-end: calc(1.25rem + var(--lp-stack-lg));
+	color: var(--lp-text-2);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-body);
+	font-weight: var(--fw-normal);
+	line-height: var(--lp-lead-body-lg);
+}
+
+@media (forced-colors: active) {
+	.lp-faq__icon::before,
+	.lp-faq__icon::after {
+		background: CanvasText;
+	}
+}
+/* #endregion */
+
+/* #region More answers */
+.lp-faq__more {
+	display: inline-flex;
+	align-items: center;
+	justify-self: start;
+	gap: var(--lp-stack-xs);
+	min-block-size: 2.75rem;
+	color: var(--lp-text);
+	font-family: var(--lp-font-body);
+	font-size: var(--lp-fs-btn-lg);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--lp-track-body);
+	text-decoration-line: underline;
+	text-decoration-color: var(--lp-hair-strong);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.25em;
+	transition:
+		transform var(--lp-dur-press) var(--lp-ease-out),
+		text-decoration-color var(--dur-slow) var(--ease-standard);
+}
+
+.lp-faq__more::after {
+	content: "";
+	inline-size: 0.4em;
+	block-size: 0.4em;
+	border-block-start: 1.5px solid currentColor;
+	border-inline-end: 1.5px solid currentColor;
+	rotate: 45deg;
+}
+
+.lp-faq__more:hover {
+	text-decoration-color: currentColor;
+}
+
+.lp-faq__more:active {
+	transform: scale(var(--lp-press-scale));
+}
+/* #endregion */
+
+/* #region Composition — two columns from --bp-lg */
+/* The head takes a narrow leading column; the questions take the rest, their answers at the
+   reading measure, and the link sits under them. The link follows the list in the DOM (it is the
+   list's way out) and on the page alike, so focus never jumps back across the section. */
+@media (min-width: 1024px) {
+	.lp-faq__inner {
+		grid-template-columns: minmax(14rem, 1fr) minmax(0, 2fr);
+		grid-template-rows: auto auto;
+		column-gap: var(--lp-stack-3xl);
+		row-gap: var(--lp-stack-lg);
+		align-items: start;
+	}
+
+	.lp-faq__head {
+		grid-area: 1 / 1;
+	}
+
+	.lp-faq__list {
+		grid-area: 1 / 2;
+		/* The first question's row sits on the h2's cap line rather than its box. */
+		margin-block-start: calc(-1 * var(--lp-stack-md));
+	}
+
+	.lp-faq__more {
+		grid-area: 2 / 2;
+	}
+}
+/* #endregion */
+
+/* #region Reduced motion — both channels */
+@media (prefers-reduced-motion: reduce) {
+	.lp-faq__q:active .lp-faq__icon,
+	.lp-faq__more:active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] :is(.lp-faq__q:active .lp-faq__icon, .lp-faq__more:active) {
+	transform: none;
+}
+/* #endregion */

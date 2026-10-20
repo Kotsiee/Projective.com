@@ -68,7 +68,11 @@ Deno.test("get: a live read is folded, validated and cached — the second call 
 	const first = await service.get();
 	assertEquals(first.ok, true);
 	assertEquals(first.status, 200);
-	assertEquals(first.data?.totalValueProtected, { amountMinor: 900_000, currency: "GBP" });
+	assertEquals(first.data?.totalValueProtected, {
+		amountMinor: 900_000,
+		currency: "GBP",
+		converted: false,
+	});
 	assertEquals(first.data?.stagesDelivered, 12);
 	const second = await service.get();
 	assertEquals(second.data, first.data);
@@ -162,7 +166,11 @@ Deno.test("get: several currencies convert into the base and sum; one unconverti
 		);
 	const ok = harness(() => Promise.resolve(several), { convert });
 	const result = await createPublicMetricsService(ok.deps).get();
-	assertEquals(result.data?.totalValueProtected, { amountMinor: 2000, currency: "GBP" });
+	assertEquals(result.data?.totalValueProtected, {
+		amountMinor: 2000,
+		currency: "GBP",
+		converted: true,
+	});
 
 	const noRate = (parts: readonly MoneyPart[]): Promise<ConvertedPart[]> =>
 		Promise.resolve(parts.map((p) => ({

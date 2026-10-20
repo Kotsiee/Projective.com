@@ -78,6 +78,19 @@
 	color: var(--text-secondary);
 }
 
+/* A band's closing text link, on its own line after the band's content, in the page's link style
+ * (`.abt-cred__link`). */
+.abt__more {
+	display: block;
+	inline-size: fit-content;
+	margin-block-start: var(--space-6);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--on-surface);
+	text-decoration-color: var(--primary);
+	text-underline-offset: 0.2em;
+}
+
 /*
  * The gutter steps on `.abt__inner`, which both declares and reads it: `.abt` is the `abt` container
  * itself, and an element can never match a query on its own container.
