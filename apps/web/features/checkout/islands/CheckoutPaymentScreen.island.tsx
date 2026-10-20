@@ -817,7 +817,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 									}}
 									canAddCard={view.cardsConnected}
 									onAccountNote={view.invoicing.mode === "intervaled_monthly"
-										? `Billed on your ${view.invoicing.nextStatementLabel ?? "next monthly invoice"}`
+										? view.invoicing.nextStatementLabel ?? "Billed on your next monthly invoice"
 										: null}
 								/>
 
@@ -1078,7 +1078,8 @@ function InvoicingAction(props: InvoicingActionProps): JSX.Element {
 			</a>
 			{active && (
 				<p class="cko-invact__reason" id={reasonId}>
-					On — this purchase joins your {invoicing.nextStatementLabel ?? "next monthly statement"}.
+					On — this purchase joins your next monthly invoice.
+					{invoicing.nextStatementLabel ? ` ${invoicing.nextStatementLabel}.` : ""}
 				</p>
 			)}
 		</div>

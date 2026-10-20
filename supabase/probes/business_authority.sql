@@ -138,7 +138,7 @@ SELECT 'maris_participant', pp.id FROM projects.project_participants pp
  WHERE pp.project_id = pg_temp.id('project') AND pp.profile_id = pg_temp.id('maris')
 UNION ALL
 SELECT 'basket', b.id FROM finance.baskets b
- WHERE b.owner_type = 'business' AND b.owner_id = pg_temp.id('helia');
+ WHERE b.owner_type = 'business' AND b.owner_id = pg_temp.id('helia') AND b.is_default;
 
 DO $$
 DECLARE

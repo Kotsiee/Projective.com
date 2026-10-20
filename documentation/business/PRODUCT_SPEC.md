@@ -774,10 +774,11 @@ team members.
   the Business's Settings, which is not built yet (Decision #244 (d), #261 (c)); until it is, a
   published Business stays invite-only.
 - **Only a published Business transacts, and it is archived only once nothing is left open.** A
-  draft or archived Business cannot create a project, buy, fund escrow, hire, pay an invoice or
-  change its invoicing terms (Decision #236). The Owner, or a co-owner holding the archive right,
-  archives it only once no money, work, request or debt is still open on it; a refused archive
-  names the first thing left, and the console's header withholds Archive while anything is.
+  draft or archived Business cannot create a project, buy, fund escrow, ask for a spend approval,
+  hire, pay an invoice or change its invoicing terms (Decision #236; the request, #299 (5)). The
+  Owner, or a co-owner holding the archive right, archives it only once no money, work, request or
+  debt is still open on it; a refused archive names the first thing left, and the console's header
+  withholds Archive while anything is.
   Restoring brings it back **active if it was ever published, otherwise as a draft**, by the team
   rule (Decision #236 (d)). The states and the seven archive blockers are `PRODUCT_MANAGEMENT.md`
   §3.5 (Workspace entity).

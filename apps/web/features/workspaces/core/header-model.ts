@@ -119,7 +119,8 @@ export interface HeaderBandInput {
 	viewerCanArchive?: boolean | null;
 	/**
 	 * Whether the read lists anything that would refuse an archive now (`WorkspaceDetail.archiveBlockers`
-	 * non-empty, Teams C6) — Archive… is then withheld, and Settings names what to clear instead.
+	 * non-empty, Teams C6) — a team's Archive… is then withheld, and its Settings names what to clear
+	 * instead. A business reads {@link viewerCanArchive}; its Settings is a placeholder (Decision #244 (d)).
 	 */
 	archiveBlocked?: boolean;
 	/** The module's sub-views for this viewer (`subViewsFor`). */

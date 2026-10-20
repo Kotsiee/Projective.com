@@ -1171,8 +1171,10 @@ BEGIN
         PERFORM finance.fn_assert_business_entitlement(p_owner_id, 'intervaled_invoicing'::finance.entitlement_key);
     END IF;
     IF p_mode = 'intervaled_monthly' AND v_kyb IS DISTINCT FROM 'verified' THEN
-        RAISE EXCEPTION 'Complete business verification (KYB) to settle on a monthly statement'
-            USING ERRCODE = '42501';
+        RAISE EXCEPTION USING
+            ERRCODE = 'PK403',
+            MESSAGE = 'kyb_required: complete business verification (KYB) to settle on a monthly statement',
+            DETAIL = pg_catalog.jsonb_build_object('business_id', p_owner_id)::text;
     END IF;
 
     UPDATE org.business_profiles
@@ -1192,7 +1194,7 @@ COMMENT ON FUNCTION finance.set_invoicing_terms(text, uuid, text, integer) IS
 'Set a business''s invoicing terms (per-transaction or a monthly statement on a day 1-28). Requires
 manage_billing on the business and an active business (55000 business_not_active); the monthly mode
 additionally requires the intervaled_invoicing entitlement (PK402, behind business_plan_gates_enforced)
-and KYB verification.';
+and KYB verification (PK403 kyb_required).';
 -- #endregion
 
 -- #region 11. Wallet orders — paying for a basket from the Projective wallet (2026-09-23)
@@ -2882,6 +2884,7 @@ POST /api/workspace/spend/preview.';
 -- the one thing it approves (BUSINESSES_AUDIT §4.3): the ref is required, must name a row of the
 -- wallet's business, and holds at most one open request — a pending one past its expiry is closed
 -- first. Business wallets only: a team never holds `approve_spend` for anyone to decide with (BF44).
+-- An active business's only (55000 business_not_active), since a draft or archived one spends nothing.
 -- The expiry (7 days from filing) bounds the whole request — deciding and spending.
 CREATE OR REPLACE FUNCTION finance.request_spend_approval(
     p_wallet uuid, p_amount bigint, p_reason text, p_ref_table text, p_ref_id uuid
@@ -2912,6 +2915,7 @@ BEGIN
     IF NOT finance.fn_has_vault_capability(p_wallet, v_uid, 'spend'::finance.vault_capability) THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'spend: you do not have permission to spend from this account';
     END IF;
+    PERFORM org.fn_assert_business_active(v_w.owner_id);
     IF p_amount IS NULL OR p_amount <= 0 THEN
         RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'amountMinor: enter an amount';
     END IF;
