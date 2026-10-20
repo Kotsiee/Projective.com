@@ -54,6 +54,11 @@ Deno.test("entries: the static pages, help, the changelog and the articles, each
 	assertEquals(new Set(entries.map((e) => e.path)).size, entries.length);
 });
 
+Deno.test("entries: the landing pages lead — the home page, then its features index", () => {
+	const entries = sitemapEntries(SOURCES);
+	assertEquals(entries.slice(0, 2), [{ path: "/" }, { path: "/features" }]);
+});
+
 Deno.test("entries: lastmod is the day each changed; a hub takes its newest, a static page none", () => {
 	const by = new Map(sitemapEntries(SOURCES).map((e) => [e.path, e.lastmod]));
 	assertEquals(by.get("/about"), undefined);

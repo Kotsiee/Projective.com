@@ -10,10 +10,10 @@ import { Icon } from "@projective/ui/icons";
 import { Logo } from "@web/components/Logo.tsx";
 import ThemeToggle from "@web/features/theme/islands/ThemeToggle.island.tsx";
 import { withRedirect } from "@features/auth/core/redirect.ts";
-import { HEADER_TOP_BAND_PX, LANDING_NAV_LINKS } from "../core/header.ts";
+import { HEADER_TOP_BAND_PX, isCurrentNavLink, LANDING_NAV_LINKS } from "../core/header.ts";
 
 // #region Navigation
-/** The bar's links (`core/header.ts`): How it works · Explore (from `--bp-lg`) · Pricing. */
+/** The bar's links (`core/header.ts`): How it works · Explore (`--bp-lg`) · Pricing · Features. */
 const NAV_LINKS = LANDING_NAV_LINKS;
 
 /** Every bar link waits for `--bp-lg`, so the bar's nav itself does too (no empty landmark). */
@@ -28,7 +28,10 @@ const MENU_ID = "lp-site-menu";
 export interface LandingHeaderProps {
 	/** A signed-in visitor sees "Open app" (`/home`) in place of "Sign in" and "Get started". */
 	authenticated: boolean;
-	/** The page the visitor is on, threaded into "Sign in" as a sanitised `redirectTo`. */
+	/**
+	 * The page the visitor is on (path + query), threaded into "Sign in" as a sanitised `redirectTo`;
+	 * its path also marks the link to this page `aria-current="page"` ("Features" on `/features`).
+	 */
 	returnTo: string;
 }
 
@@ -37,7 +40,9 @@ export interface LandingHeaderProps {
  * the brand link and the "Main" navigation at the leading edge, the actions at the trailing edge —
  * the app's {@link ThemeToggle}, then "Sign in" (tier 5, ghost) and "Get started" (tier 2,
  * monochrome inverted) for a guest, or "Open app" (tier 2) for a signed-in visitor (never a
- * redirect; Decision #284 (8)). The bar holds one filled control (§B.8.2, Decision #288 (E)).
+ * redirect; Decision #284 (8)). The bar holds one filled control (§B.8.2, Decision #288 (E)). The
+ * link to the page the visitor is on — "Features" on `/features` — carries `aria-current="page"`,
+ * in the bar and in the sheet alike.
  *
  * The server markup works without JavaScript: every link is a real link, and the bar wears its
  * glass. Below `--bp-md` the bar keeps the brand, the first action and a menu button whose sheet
@@ -95,7 +100,13 @@ export default function LandingHeader(
 				<ul class="lp-header__links">
 					{NAV_LINKS.map((link) => (
 						<li key={link.href} class={link.wide ? "lp-header__item--wide" : undefined}>
-							<a class="lp-header__link" href={link.href}>{link.label}</a>
+							<a
+								class="lp-header__link"
+								href={link.href}
+								aria-current={isCurrentNavLink(link, returnTo) ? "page" : undefined}
+							>
+								{link.label}
+							</a>
 						</li>
 					))}
 				</ul>
@@ -174,7 +185,14 @@ export default function LandingHeader(
 						<ul class="lp-menu__links">
 							{NAV_LINKS.map((link) => (
 								<li key={link.href}>
-									<a class="lp-menu__link" href={link.href} onClick={closeMenu}>{link.label}</a>
+									<a
+										class="lp-menu__link"
+										href={link.href}
+										aria-current={isCurrentNavLink(link, returnTo) ? "page" : undefined}
+										onClick={closeMenu}
+									>
+										{link.label}
+									</a>
 								</li>
 							))}
 						</ul>

@@ -1,18 +1,11 @@
 /// <reference lib="dom" />
-import "@ui/kanban/styles/kanban.css";
-import "@ui/display/styles/money-view.css";
-import "@features/projects/styles/funding-status.css";
-import "../styles/lp-theatre.css";
-import "../styles/lp-demo.css";
-import "../styles/demos/board.css";
-import "../styles/demos/payments.css";
-import "../styles/demos/booking.css";
-import "../styles/demos/splits.css";
 import type { ComponentChildren, JSX } from "preact";
 import { effect, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
+import { DEMO_MODULES } from "../components/demos/demo-modules.ts";
 import type { DemoComponent, DemoId } from "../core/demos/demo-contract.ts";
 import { motionAllowed } from "../core/hero-motion.ts";
+import { useReducedMotion } from "../hooks/useReducedMotion.ts";
 import {
 	DEMO_IDS,
 	DEMO_SECTION_ID,
@@ -22,26 +15,9 @@ import {
 } from "../core/demo-stage.ts";
 import { type DemoAnnouncement, DemoStageView } from "../components/DemoStageView.tsx";
 
-// #region Demos
-/** A demo module: its default export is the demo (`core/demos/demo-contract.ts`). */
-type DemoModule = { default: DemoComponent };
-
-/**
- * Each tab's demo, imported only when it is opened near the viewport: each is its own lazy chunk
- * (≤ 35 kB, `core/js-budget.ts`), outside `islands/`, so the server snapshot never evaluates one.
- */
-const DEMOS: Readonly<Record<DemoId, () => Promise<DemoModule>>> = {
-	board: () => import("../components/demos/BoardDemo.demo.tsx"),
-	payments: () => import("../components/demos/PaymentsDemo.demo.tsx"),
-	booking: () => import("../components/demos/BookingDemo.demo.tsx"),
-	splits: () => import("../components/demos/TeamPayDemo.demo.tsx"),
-};
-
+// #region Stage
 /** How far ahead of the viewport the stage starts loading its open demo. */
 const NEAR_MARGIN = "50% 0px";
-
-/** `prefers-reduced-motion`, the OS channel (the in-app one is `:root[data-motion]`). */
-const REDUCED_QUERY = "(prefers-reduced-motion: reduce)";
 
 /** The share of a scrolling tab strip its trailing fade covers (`lp-demo.css`, `.lp-demo__tabs`). */
 const TAB_FADE = 0.15;
@@ -82,7 +58,7 @@ export interface DemoHostProps {
 	initial: DemoId;
 	/** The platform fee in basis points from the server, or `null` when it is unavailable. */
 	feeBp: number | null;
-	/** Render "See everything Projective does" — only once `/features` exists (work order L5). */
+	/** Render "See everything Projective does" → `/features` (work order L5; `/` turns it on). */
 	features?: boolean;
 	/** The Work board's poster: the server-rendered still of its board. */
 	children?: ComponentChildren;
@@ -106,14 +82,15 @@ export interface DemoHostProps {
  *     same-page "see it work" link anywhere on the page (`/?demo=board#demo`, the hero's "Try it
  *     yourself") opens its tab here and scrolls the stage into view instead of reloading.
  *   - Loading: once the stage nears the viewport (an IntersectionObserver), it imports ONLY the
- *     open tab's demo module, and each further tab's when it is opened; until a module arrives the
- *     tab's poster stays, in the same reserved box.
+ *     open tab's demo module, and each further tab's when it is opened, through the demos' one
+ *     loader (`components/demos/demo-modules.ts`, shared with `/features`' dialog); until a module
+ *     arrives the tab's poster stays, in the same reserved box.
  *   - Props: the server's fee, either reduced-motion channel read live (`motionAllowed`, both the OS
  *     setting and `data-motion="reduced"`, watched), the "Start again" count, and `announce`, which
  *     speaks through the stage's one polite live region.
  *
- * It carries the stylesheets the stage and the board poster need: a stylesheet imported by a server
- * component never reaches the page.
+ * It carries the stylesheets the stage and the board poster need (through `demo-modules.ts`): a
+ * stylesheet imported by a server component never reaches the page.
  */
 export default function DemoHost(
 	{ initial, feeBp, features = false, children, paymentsPoster, bookingPoster, splitsPoster }:
@@ -123,12 +100,11 @@ export default function DemoHost(
 	const hydrated = useSignal(false);
 	const near = useSignal(false);
 	const modules = useSignal<Partial<Record<DemoId, DemoComponent>>>({});
-	const reduced = useSignal(false);
+	const reduced = useReducedMotion();
 	const resets = useSignal(0);
 	const said = useSignal<DemoAnnouncement>({ key: 0, text: "" });
 	const root = useRef<HTMLDivElement>(null);
 	const tabs = useRef<Array<HTMLAnchorElement | null>>([]);
-	const loading = useRef(new Set<DemoId>());
 
 	const announce = (text: string) => {
 		said.value = { key: said.peek().key + 1, text };
@@ -144,16 +120,14 @@ export default function DemoHost(
 	};
 
 	const load = (id: DemoId) => {
-		if (modules.peek()[id] || loading.current.has(id)) return;
-		loading.current.add(id);
-		DEMOS[id]()
+		if (modules.peek()[id]) return;
+		DEMO_MODULES.load(id)
 			.then((module) => {
-				modules.value = { ...modules.peek(), [id]: module.default };
+				if (!modules.peek()[id]) modules.value = { ...modules.peek(), [id]: module.default };
 			})
 			.catch(() => {
 				// The poster stays; opening the tab again tries once more.
-			})
-			.finally(() => loading.current.delete(id));
+			});
 	};
 
 	// Hydrated: the tablist becomes a roving tab stop, and its strip follows the open tab.
@@ -173,23 +147,6 @@ export default function DemoHost(
 		return () => {
 			strip.removeEventListener("scroll", sync);
 			stop();
-		};
-	}, []);
-
-	// Either reduced-motion channel, read live.
-	useEffect(() => {
-		const query = globalThis.matchMedia(REDUCED_QUERY);
-		const sync = () => (reduced.value = !motionAllowed());
-		sync();
-		query.addEventListener("change", sync);
-		const observer = new MutationObserver(sync);
-		observer.observe(document.documentElement, {
-			attributes: true,
-			attributeFilter: ["data-motion"],
-		});
-		return () => {
-			query.removeEventListener("change", sync);
-			observer.disconnect();
 		};
 	}, []);
 

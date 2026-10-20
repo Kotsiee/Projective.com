@@ -25,8 +25,8 @@ export interface DemoStageProps {
 	 */
 	feeBp: number | null;
 	/**
-	 * The page has `/features` (work order L5): only then does the stage link to it ("See everything
-	 * Projective does"). Absent until L5 ships that route.
+	 * Link to `/features` beside the tabs ("See everything Projective does", work order L5). `/`
+	 * turns it on; off, no link renders — a stage shown on `/features` itself would lead nowhere new.
 	 */
 	features?: boolean;
 }

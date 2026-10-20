@@ -107,6 +107,7 @@ export function AboutView(
 				<h2 class="abt__label" id="abt-tour-heading">{ABOUT_TOUR_COPY.label}</h2>
 				<p class="abt__lead">{ABOUT_TOUR_COPY.lead}</p>
 				{tour}
+				<a class="abt__more" href={ABOUT_TOUR_COPY.more.href}>{ABOUT_TOUR_COPY.more.label}</a>
 			</Band>
 
 			{hasFounders && (

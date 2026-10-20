@@ -7,6 +7,7 @@ import {
 	ABOUT_HERO,
 	ABOUT_META,
 	ABOUT_QUOTE,
+	ABOUT_TOUR_COPY,
 } from "./about-content.ts";
 
 /**
@@ -93,6 +94,13 @@ Deno.test("about-content: credentials link only to the fixed legal slugs, or not
 		const slug = cred.link.href.match(/^\/legal\/([a-z-]+)$/)?.[1];
 		assertEquals(slug !== undefined && LEGAL.has(slug), true, cred.link.href);
 	}
+});
+
+Deno.test("about-content: the walkthrough leads on to the features index", () => {
+	assertEquals(ABOUT_TOUR_COPY.more, {
+		label: "See everything Projective does",
+		href: "/features",
+	});
 });
 
 Deno.test("about-content: the closing band's actions", () => {

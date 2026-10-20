@@ -48,8 +48,8 @@ export interface DemoStageViewProps {
 	/** The platform fee in basis points from the server, or `null` (every fee clause drops). */
 	feeBp: number | null;
 	/**
-	 * The page has `/features` to link to (work order L5). Until it does, "See everything Projective
-	 * does" is not rendered: a link to a page that does not exist does nothing (gate 11).
+	 * Render "See everything Projective does" → `/features` beside the tabs (work order L5; `/` turns
+	 * it on). Off, the bar holds the tabs alone.
 	 */
 	features: boolean;
 	/** The open tab's live demo, or `null` while its poster shows. */

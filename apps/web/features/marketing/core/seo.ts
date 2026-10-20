@@ -516,3 +516,53 @@ export function faqPageJsonLd(
 	};
 }
 // #endregion
+
+// #region Item list
+/** One entry of an {@link itemListJsonLd}: what the page prints for it. */
+export interface ItemListEntry {
+	/** Its visible name. */
+	name: string;
+	/** Its visible description, when the page prints one. */
+	description?: string;
+	/** Where it is: a path (made absolute, its fragment kept — `/features#work-board`) or a URL. */
+	url?: string;
+}
+
+/** Input for {@link itemListJsonLd}. */
+export interface ItemListJsonLdInput {
+	origin: string;
+	/** The page the list is printed on; the list's `@id` hangs off its canonical URL. */
+	path: string;
+	/** The list's own name, when it has one. */
+	name?: string;
+	/** The entries, in the page's order. */
+	items: readonly ItemListEntry[];
+}
+
+/** The `@id` of the item list printed on the page at `path` (`https://…/features#items`). */
+export function itemListId(origin: string, path: string): string {
+	return `${canonicalUrl(origin, path)}#items`;
+}
+
+/**
+ * A standalone `ItemList` of the entries a page prints — each a `ListItem` with its position, name,
+ * and, when given, its description and its absolute URL — for a page node to name as its
+ * `mainEntity` by {@link itemListId}. A hub whose items are pages of their own uses
+ * {@link webPageJsonLd}'s `items` instead.
+ */
+export function itemListJsonLd(input: ItemListJsonLdInput): JsonLdNode {
+	return {
+		"@type": "ItemList",
+		"@id": itemListId(input.origin, input.path),
+		...(input.name ? { name: input.name } : {}),
+		numberOfItems: input.items.length,
+		itemListElement: input.items.map((item, i) => ({
+			"@type": "ListItem",
+			position: i + 1,
+			name: item.name,
+			...(item.description ? { description: item.description } : {}),
+			...(item.url ? { url: absoluteUrl(input.origin, item.url) } : {}),
+		})),
+	};
+}
+// #endregion

@@ -14,6 +14,7 @@ import {
 	BASELINE_WAIVED,
 	type BaselinePin,
 	baselineRule,
+	BUILD_ID_STANDIN,
 	type ChunkSize,
 	clientEntryKey,
 	type ClientManifest,
@@ -26,6 +27,7 @@ import {
 	MissingIslandsError,
 	MOUNT_GROUPS,
 	type MountedIslands,
+	normalizeBuildId,
 	parseBaselinePin,
 	planFiles,
 	planPage,
@@ -178,6 +180,21 @@ Deno.test("manifestKeyOf keys app modules from the Vite root and packages throug
 Deno.test("clientEntryKey finds Fresh's virtual entry, and refuses a manifest without one", () => {
 	assertEquals(clientEntryKey(MANIFEST), ENTRY);
 	assertThrows(() => clientEntryKey({ [HEADER]: MANIFEST[HEADER] }), Error, "fresh:client-entry");
+});
+
+Deno.test("normalizeBuildId: any commit's embedded build id reads as the one stand-in", () => {
+	const built = (sha: string) => `let a=1;let Me="${sha}";var mt="diffed";`;
+	const head = built("48304ff2f358a37896af081ff9e31b13d34a65d5");
+	const other = built("20c36095d519a73103f468b47d03e0e94330bac8");
+	assertEquals(normalizeBuildId(head), normalizeBuildId(other));
+	assertEquals(normalizeBuildId(head), built(BUILD_ID_STANDIN));
+	assertEquals(
+		normalizeBuildId("let id='0123456789abcdef0123456789abcdef01234567'"),
+		`let id='${BUILD_ID_STANDIN}'`,
+	);
+	const untouched = 'let short="48304ff2";let caps="48304FF2F358A37896AF081FF9E31B13D34A65D5";';
+	assertEquals(normalizeBuildId(untouched), untouched);
+	assert(/^[0-9a-f]{40}$/.test(BUILD_ID_STANDIN));
 });
 
 Deno.test("staticClosure counts a shared chunk once, credits the first root, skips stylesheets", () => {

@@ -306,6 +306,46 @@ export const LANDING_PAGES: readonly BudgetPage[] = [
 			},
 		],
 	},
+	{
+		path: "/features",
+		controller: "apps/web/features/landing/routes/FeaturesPage.tsx",
+		islands: [
+			{
+				// The final call to action's B7 grid: its spotlight follows a fine pointer only.
+				path: "apps/web/features/landing/islands/LandingBackground.island.tsx",
+				audience: "everyone",
+			},
+			{
+				path: "apps/web/features/marketing/islands/SchemaInjector.island.tsx",
+				audience: "everyone",
+			},
+			{
+				// The page's only search (the final call to action's), which takes `/` (#282 (a)).
+				path: "apps/web/features/landing/islands/HeroSearch.island.tsx",
+				audience: "everyone",
+				ownMax: LANDING_JS_BUDGET.heroIsland,
+			},
+			{
+				// "Try it": the delegated triggers, the app's Dialog, the `?section=` landing and the
+				// chapter marker. Own weight counts its closure beyond the client entry, so 16 kB of it is
+				// the Dialog's family (portal, scrim, focus trap, icons), which the app baseline already
+				// loads for OfflineBridge; what it adds to the page is its own ~3 kB chunk and the demos'
+				// shared loader (L5). No work order sets this cap: 22 kB is the L5 reading with headroom,
+				// FLAGGED for the owner with an exclusive-weight cap as the alternative (Decision #302
+				// (G), LANDING.md §7). Each demo is a lazy chunk it imports for the pressed row only, the
+				// same chunks the landing's stage loads, capped at LANDING_JS_BUDGET.lazyChunk.
+				path: "apps/web/features/landing/islands/FeatureDemoDialog.island.tsx",
+				audience: "everyone",
+				ownMax: 22 * KB,
+			},
+			{
+				// The Payment protection still's figures (`PaymentsPoster`): MoneyView renders as its
+				// island wherever it is drawn (`islandBindingsOf`).
+				path: "packages/ui/display/islands/MoneyView.island.tsx",
+				audience: "everyone",
+			},
+		],
+	},
 ];
 
 /** Every island `page` renders, by mount, in mount order: app, layout, shell, page, footer. */
@@ -365,6 +405,31 @@ export function clientEntryKey(manifest: ClientManifest): string {
 		if (chunk.isEntry && (chunk.src ?? key).endsWith(CLIENT_ENTRY_SUFFIX)) return key;
 	}
 	throw new Error(`js-budget: the manifest has no ${CLIENT_ENTRY_SUFFIX} entry`);
+}
+
+/**
+ * The build id the measurement writes into the client entry in place of the one the build embedded
+ * (Decision #302 (E)). Fresh writes `BUILD_ID` — the commit checked out at build time — into the
+ * client entry as a 40-hex string, and gzip of 40 random hex characters varies by up to about 11
+ * bytes from one commit to the next, so the held pin (Decision #289 (A), no headroom) would pass or
+ * fail on the commit's hash alone. This stand-in is the id the pin's own build carried (merge
+ * `1d90ea0b`: 110,845 bytes is exactly the client entry gzipped with it plus the other baseline
+ * chunks), so every reading is measured as the pin was.
+ */
+export const BUILD_ID_STANDIN = "1d90ea0b86fe53261305cdc0124e1b24899cda68";
+
+/** A quoted 40-hex string literal: the build id as the bundle writes it. */
+const BUILD_ID_LITERAL = /(["'`])[0-9a-f]{40}\1/g;
+
+/**
+ * The client entry's source with its embedded build id replaced by {@link BUILD_ID_STANDIN}, so its
+ * gzip size depends on the code alone. Applied to the client entry only (`scripts/landing-budget.ts`).
+ */
+export function normalizeBuildId(source: string): string {
+	return source.replace(
+		BUILD_ID_LITERAL,
+		(_literal, quote: string) => `${quote}${BUILD_ID_STANDIN}${quote}`,
+	);
 }
 
 /** True for a JavaScript chunk (manifest keys also name stylesheets and assets). */

@@ -185,16 +185,31 @@ Deno.test("the landing pages' footer names no Products marketplace until deliver
 		footerGroups(TODAY, products === undefined ? {} : { products })
 			.find((g) => g.title === "Explore & learn")!.links.map((l) => l.label);
 	assertEquals(explore(), [
+		"Features",
 		"Services directory",
 		"Products marketplace",
 		"Trending teams",
 		"Member articles",
 	]);
-	assertEquals(explore(false), ["Services directory", "Trending teams", "Member articles"]);
+	assertEquals(explore(false), [
+		"Features",
+		"Services directory",
+		"Trending teams",
+		"Member articles",
+	]);
 	const shell = Deno.readTextFileSync(
 		new URL("../../landing/components/LandingShell.tsx", import.meta.url),
 	);
 	assertEquals(shell.includes("<PublicFooter products={false} />"), true);
+});
+
+Deno.test("the product overview leads Explore & learn on every page: Features → /features", () => {
+	for (const products of [true, false]) {
+		const [first] = footerGroups(TODAY, { products })
+			.find((g) => g.title === "Explore & learn")!.links;
+		assertEquals(first, { label: "Features", href: "/features" });
+	}
+	assertEquals(ALL_FOOTER_LINKS.filter((l) => l.href === "/features").length, 1);
 });
 
 Deno.test("no footer label points at the help hub in place of a page it names", () => {

@@ -20,6 +20,8 @@ import {
 	documentTitle,
 	faqJsonLdItems,
 	faqPageJsonLd,
+	itemListId,
+	itemListJsonLd,
 	jsonLdAuthor,
 	jsonLdGraph,
 	type JsonLdNode,
@@ -354,5 +356,39 @@ Deno.test("FAQPage: every question carries one accepted answer, from content-mod
 		entities[1].acceptedAnswer.text,
 		"Earned money clears a 7-day pending window before it reaches your available balance.",
 	);
+});
+// #endregion
+
+// #region Item list
+Deno.test("ItemList: positions from 1, each entry's visible name and description, absolute anchors", () => {
+	const list = itemListJsonLd({
+		origin: ORIGIN,
+		path: "/features?section=money",
+		name: "Features",
+		items: [
+			{
+				name: "Work board",
+				description: "Every job runs on a board.",
+				url: "/features#work-board",
+			},
+			{ name: "Tax pot" },
+		],
+	});
+	assertNode(list, "ItemList");
+	assertEquals(list["@id"], "https://projective.app/features#items");
+	assertEquals(itemListId(ORIGIN, "/features/"), "https://projective.app/features#items");
+	assertEquals(list.name, "Features");
+	assertEquals(list.numberOfItems, 2);
+	assertEquals(list.itemListElement, [
+		{
+			"@type": "ListItem",
+			position: 1,
+			name: "Work board",
+			description: "Every job runs on a board.",
+			url: "https://projective.app/features#work-board",
+		},
+		{ "@type": "ListItem", position: 2, name: "Tax pot" },
+	]);
+	assertFalse("name" in itemListJsonLd({ origin: ORIGIN, path: "/x", items: [] }));
 });
 // #endregion

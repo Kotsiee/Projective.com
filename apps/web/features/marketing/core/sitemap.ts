@@ -4,7 +4,8 @@
  * their services and hands them here with the site's public origin.
  *
  * What is listed, and on whose rule:
- * - the home page, Explore, `/about`, `/contact` and `/feedback` (no `lastmod`: nothing dates them);
+ * - the home page, its features index (`/features`), Explore, `/about`, `/contact` and `/feedback`
+ *   (no `lastmod`: nothing dates them);
  * - the help hub, every category with a visible article and every visible article — at its canonical
  *   `/help/<category>/<article>` path, last modified on the article's `updatedAt` (a category and the
  *   hub on the latest of theirs);
@@ -58,6 +59,7 @@ export const SITEMAP_URL_LIMIT = 50_000;
 /** The public pages with no content source behind them. */
 export const STATIC_SITEMAP_PATHS: readonly string[] = [
 	"/",
+	"/features",
 	"/explore",
 	"/about",
 	"/contact",

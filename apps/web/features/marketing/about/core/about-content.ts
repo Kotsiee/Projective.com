@@ -84,6 +84,8 @@ export const ABOUT_METRICS_COPY = {
 export const ABOUT_TOUR_COPY = {
 	label: "How delivery works",
 	lead: "Follow one stage's money from the Client's wallet to the Freelancer's bank. Pick a step.",
+	/** After the walkthrough: the features index, where every other part of the product has its own. */
+	more: { label: "See everything Projective does", href: "/features" },
 } as const;
 // #endregion
 

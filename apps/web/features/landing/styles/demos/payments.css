@@ -479,6 +479,29 @@
 	}
 }
 
+/* Under the dyslexic face the labels outrun the room between their stops: each wraps within a sixth
+   of the rule (the outer two hold the ends, the inner three centre on their stops, so no two meet),
+   and the row keeps two lines of room from the first paint, so nothing shifts. */
+@container (min-width: 40rem) {
+	:root[data-font="dyslexic"] .lp-pay[data-mode="live"] .lp-pay__stops {
+		block-size: calc(2em * var(--leading-snug));
+	}
+
+	:root[data-font="dyslexic"] .lp-pay[data-mode="live"] .lp-pay__stop {
+		max-inline-size: 16%;
+		white-space: normal;
+		text-align: center;
+	}
+
+	:root[data-font="dyslexic"] .lp-pay[data-mode="live"] .lp-pay__stop:first-child {
+		text-align: start;
+	}
+
+	:root[data-font="dyslexic"] .lp-pay[data-mode="live"] .lp-pay__stop:last-child {
+		text-align: end;
+	}
+}
+
 /* The slider: a hairline track filled in the brand colour up to the thumb, which carries the
    control's contour. Its fill is a registered property, so it eases between stops. */
 @property --lp-pay-fill {

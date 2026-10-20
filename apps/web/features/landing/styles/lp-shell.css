@@ -188,6 +188,17 @@
 	color: var(--lp-text);
 }
 
+/* The link to the page the visitor is on ("Features" on /features): the stronger ink and a teal
+   underline, so the state is not carried by colour alone; the sheet's link wears the same. */
+.lp-header__link[aria-current="page"],
+.lp-menu__link[aria-current="page"] {
+	color: var(--lp-text);
+	text-decoration-line: underline;
+	text-decoration-color: var(--lp-teal-ink);
+	text-decoration-thickness: 2px;
+	text-underline-offset: 0.45em;
+}
+
 /* Always the last track, so a hidden nav never pulls the actions into the middle. */
 .lp-header__actions {
 	grid-column: -2 / -1;
@@ -322,6 +333,15 @@
 
 	.lp-header__item--wide {
 		display: list-item;
+	}
+}
+
+/* Under the dyslexic face the bar's links between --bp-md and --bp-lg (How it works · Pricing ·
+   Features) run wider than the room beside the brand and the actions: their inline padding takes
+   the next step down, so the last link never meets the theme control. */
+@media (min-width: 768px) and (max-width: 1023px) {
+	:root[data-font="dyslexic"] .lp-header__link {
+		padding-inline: var(--lp-stack-xs);
 	}
 }
 /* #endregion */

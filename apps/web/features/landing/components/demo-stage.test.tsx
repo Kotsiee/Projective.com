@@ -4,9 +4,10 @@
  * links with no JavaScript, a roving tab stop on the open tab, one panel per tab tied to its tab,
  * the closed ones hidden, every panel with its crawlable description and its poster inside a
  * reserved viewport (the Work board's being the real kanban, held still), the caption, "Start again"
- * holding its room but not shown until a demo is live, no "/features" link until that route exists,
- * and the host's polite live region. `DemoStage` itself mounts the island, whose stylesheets cannot
- * load under `deno test`, so the stage is rendered from the same parts it composes.
+ * holding its room but not shown until a demo is live, one "/features" link beside the tabs where the
+ * page asks for it (`/` does), and the host's polite live region. `DemoStage` itself mounts the
+ * island, whose stylesheets cannot load under `deno test`, so the stage is rendered from the same
+ * parts it composes.
  */
 import { assert, assertEquals, assertFalse, assertMatch } from "@std/assert";
 import { renderToString } from "npm:preact-render-to-string@^6.7.0";
@@ -176,11 +177,16 @@ Deno.test("hydrated, exactly the open tab holds the roving tab stop, deep links 
 	}
 });
 
-Deno.test("no link to /features until that route exists; then one, beside the tabs", () => {
+Deno.test("one link to /features beside the tabs where the page asks for it; none otherwise", () => {
 	assertFalse(render().includes('href="/features"'));
 	const html = render({ features: true });
 	assertEquals(count(html, 'href="/features"'), 1);
 	assert(html.includes(`${DEMO_STAGE_COPY.more}<span aria-hidden="true">→</span></a>`));
+});
+
+Deno.test("`/` asks for it: the page controller hands the stage `features`", () => {
+	const source = Deno.readTextFileSync(new URL("../routes/LandingPage.tsx", import.meta.url));
+	assert(source.includes("demo: <DemoStage demo={demo} feeBp={feeBp} features />,"));
 });
 // #endregion
 

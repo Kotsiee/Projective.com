@@ -141,6 +141,8 @@ export function footerGroups(
 		{
 			title: "Explore & learn",
 			links: [
+				// The product overview: every feature, chapter by chapter, each with its example (L5).
+				{ label: "Features", href: "/features" },
 				{ label: "Services directory", href: "/explore?category=services" },
 				...(products
 					? [{ label: "Products marketplace", href: "/explore?category=products" }]

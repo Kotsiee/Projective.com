@@ -133,6 +133,17 @@ Deno.test("AboutView: a failed read shows no figures and says so — never a sta
 	assert(html.includes("How delivery works"));
 });
 
+Deno.test("AboutView: the walkthrough's band ends with one plain link to the features index", () => {
+	const html = render(FULL);
+	assertEquals(count(html, 'href="/features"'), 1);
+	const tour = html.indexOf('id="tour-slot"');
+	const link = html.indexOf(
+		'<a class="abt__more" href="/features">See everything Projective does</a>',
+	);
+	assert(tour > 0 && link > tour, "after the walkthrough");
+	assert(link < html.indexOf('id="abt-creds-heading"'), "inside the walkthrough's band");
+});
+
 Deno.test("AboutView: the closing band — the escape first, the one filled action last", () => {
 	const guest = render(FULL);
 	const outlined = guest.indexOf("ui-button--neutral ui-button--outlined");

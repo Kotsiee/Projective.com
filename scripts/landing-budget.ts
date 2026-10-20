@@ -9,6 +9,10 @@
  * weight of each island, and the budget lines. No server is started. Development builds are
  * meaningless here: the dev server serves modules unbundled.
  *
+ * The client entry is gzipped with the build id Fresh embeds in it (the commit that was built)
+ * replaced by a fixed stand-in (`BUILD_ID_STANDIN`, Decision #302 (E)), so a reading never moves with
+ * the commit's hash.
+ *
  * The lines follow Decision #286 (A): the landing-owned initial JS fails past 60 kB, the hero's own
  * weight and each landing lazy chunk keep their caps; the layout hosts, the footer and the page
  * totals for a guest and a signed-in visitor are reported and never fail. The app baseline (client
@@ -35,11 +39,13 @@ import {
 	type BaselinePin,
 	baselineRule,
 	type ChunkSize,
+	clientEntryKey,
 	type ClientManifest,
 	formatKb,
 	formatPageReport,
 	LANDING_PAGES,
 	MissingIslandsError,
+	normalizeBuildId,
 	pageIslands,
 	pageMounts,
 	type PagePlan,
@@ -215,10 +221,16 @@ try {
 	Deno.exit(2);
 }
 
+// The client entry is gzipped with its embedded build id replaced by a fixed stand-in, so the
+// held baseline is measured on the code alone, never on the hash of the commit that was built.
+const entryFile = manifest[clientEntryKey(manifest)].file;
 const sizes = new Map<string, ChunkSize>();
 for (const file of planFiles(manifest, plans.flatMap((plan) => [plan.everyone, plan.signedIn]))) {
 	const bytes = await Deno.readFile(new URL(file, CLIENT_DIR));
-	sizes.set(file, { raw: bytes.byteLength, gzip: await gzipSize(bytes) });
+	const measured = file === entryFile
+		? new TextEncoder().encode(normalizeBuildId(new TextDecoder().decode(bytes)))
+		: bytes;
+	sizes.set(file, { raw: bytes.byteLength, gzip: await gzipSize(measured) });
 }
 
 const watched = [

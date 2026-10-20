@@ -2385,9 +2385,13 @@ verbatim because every component depends only on the token contract (Part A) —
 > `WaysToWork` (with `WaysToWorkView`, `LandingRail` / `RailCard` and its `RailScroll` island),
 > `PaymentProtection`, `LiveNumbers`, `ForTeams`, `Pricing` (with `PricingSection` /
 > `PricingCalculatorView` and its `PricingCalculator` island), `Faq` and `FinalCta` (with
-> `LandingBackground`'s `final` variant) — live in `apps/web/features/landing/**` under the #280
+> `LandingBackground`'s `final` variant), and L5's `/features` — `FeaturesPage` (the page
+> controller) over `FeaturesPageView`, `FeatureIndex` (with `ChapterNav`, `FeatureChapterSection`,
+> `FeatureRow` / `ComingSoonRow` and `ChapterStill`) and the `FeatureDemoDialog` island, which
+> shares the demos' loader (`components/demos/demo-modules.ts`) and `useReducedMotion` with the
+> stage's `DemoHost` — live in `apps/web/features/landing/**` under the #280
 > exemption, outside `@projective/ui`; Part E, "Off-system surfaces", documents them, and gate 5 is
-> answered there (Decisions #286 (B), #287, #301). The retired marketing landing components
+> answered there (Decisions #286 (B), #287, #288, #301). The retired marketing landing components
 > (`Hero`, `HowItWorks`, the landing-only cards…) were app components too and were never roster
 > entries.
 
@@ -5125,7 +5129,10 @@ and the exemption widens only by a new decision row.
 - **`LandingShell`** (`features/landing/components/LandingShell.tsx`) is the chrome of `/` and
   `/features`, in place of GuestShell / UserShell (`ROUTING.md`, `(public)/_layout.tsx`): the solid
   `.lp-root` canvas; a skip link to `PAGE_CANVAS_MAIN_ID` (#285 (C)); the full-width header bar
-  (`LandingHeader` island, its content on the page's container — the brand and the "Main" links at
+  (`LandingHeader` island, its content on the page's container — the brand and the "Main" links
+  (How it works · Explore · Pricing · Features, `core/header.ts`; the link to the page being viewed
+  carries `aria-current="page"`, drawn in the stronger ink over a `--lp-teal-ink` underline, in the
+  bar and the sheet alike) at
   the leading edge, then the app's `ThemeToggle`, "Sign in" (tier 5) and "Get started" (tier 2,
   monochrome inverted) for a guest or "Open app" (tier 2) for a signed-in visitor at the trailing
   edge, one fill per bar (#288 (E)); below `--bp-md` a menu button, server-rendered and shown in
@@ -5196,7 +5203,9 @@ and the exemption widens only by a new decision row.
   renders the section header, the one h2, the always-visible stage note and the role note
   (**`DemoStageHeader`**), then the **`DemoHost`** island over **`DemoStageView`**, the stage's
   markup as a pure function of its state — a tablist of four links (`/?demo=…#demo`, which the thin
-  controller renders open with no JavaScript) with a roving tab stop and manual activation, one
+  controller renders open with no JavaScript) with a roving tab stop and manual activation (beside
+  it, where the page asks — `/` does since L5 — the text link "See everything Projective does →" to
+  `/features`), one
   `tabpanel` per tab (the closed ones `hidden`), each a straight-on window (`--lp-window`, the
   section's one elevated object) whose viewport reserves its aspect ratio (3 / 4, 4 / 3 from
   `--bp-sm`, 16 / 9 from `--bp-lg`, 2 / 1 from 1280px) around the tab's poster and crawlable
@@ -5327,6 +5336,50 @@ and the exemption widens only by a new decision row.
   hero's "Search Projective"), the hero's calls to action, over `LandingBackground variant="final"`
   — the same gate as the hero's over its own region, its grid rising from the region's foot and its
   state reflected on its own host.
+- **`FeaturesPage`** (`features/landing/routes/`) is the page controller of `/features` (L5;
+  `flows/LANDING.md` §2.5, §2.6, §4.12), behind the thin route `routes/(public)/features.tsx` (a
+  `?tkv=` 303 first, then the §4.12 head, the fee from `PublicMetricsService`, the final search's
+  terms from `ExploreBackendService.landingHero()` and the chapter `?section=` names). It builds the
+  island-bearing parts — each chapter's still, real components only (Find & hire the Booking demo's
+  opening picture, `BookingPoster`; Run the work the Work board's real kanban held still,
+  `BoardPicture`; Money the Payment protection demo's opening picture, `PaymentsPoster`; Trust and
+  Coming soon none, their rows beside their head — #302 (C) retired the placeholder stills), the
+  `FeatureDemoDialog`, the final background and the page's
+  only search (`-final`, which takes `/`, #282 FLAG (a)) — and hands them to
+  **`FeaturesPageView`**: the WebPage + ItemList JSON-LD of the printed rows, the page head (the
+  section header "Features", the one h1 "Everything Projective does" and the `[P9]` subline on the
+  static B7 grid), the chapter index, then `FinalCta`. Nothing on the page moves while browsing
+  (§2.7).
+- **`FeatureIndex`** (`features/landing/components/`) is the editorial chapter index that replaced
+  the work order's bento grid (#288: static content is never boxed). **`ChapterNav`** — numbered
+  in-page links, one sideways row below `--bp-md`, pinned under the bar from it on the canvas's
+  solid tone with one hairline; `aria-current="location"` marks the chapter `?section=` names, then
+  follows the chapter the reader is in (the island's `chapterAt`) — then five
+  **`FeatureChapterSection`**s (`#find-and-hire`, `#run-the-work`, `#money`, `#trust`,
+  `#coming-soon`), each a landmark labelled by its display h2 (weight 500; the serif on the warm
+  band for Money and Trust, their number `lp-eyebrow--editorial`) under its section-header number,
+  holding plain-text rows on one hairline each: **`FeatureRow`** — the h3, the §4.12 line word for
+  word, any small print, then "Try it" (tier 4 outlined; named by its visible words, then the title
+  visually hidden, "Try it: {title}", #302 (A)) only where L3 built the demo (Work board, Payment
+  protection, Booking, Team pay) and "Learn more" (a text link, "Learn more: {title}") only where
+  the help centre has the article; **`ComingSoonRow`** — static and muted, its "Coming soon:" lead in
+  the stronger ink, no control. From `--bp-lg` a chapter's still (**`ChapterStill`**: the demo
+  stage's own window and viewport around a real-component still, `role="img"`, `inert`) holds the
+  right column beside the rows. Every control under the pinned chrome keeps a `scroll-margin` that
+  clears it when focus scrolls the page (WCAG 2.4.11). The catalogue — chapters, rows, demos, help
+  slugs, V10 and V11 held — is `core/features-catalogue.ts`.
+- **`FeatureDemoDialog`** (`features/landing/islands/`) is `/features`' "Try it" and the page's
+  stylesheet carrier (`lp-features.css`, `lp-feature-dialog.css` and every demo sheet). Each "Try
+  it" is server-rendered as a link to the landing's demo stage on its demo (`/?demo=…#demo`), so it
+  works with no JavaScript; hydrated, the island makes it a button that opens the app's `Dialog`
+  (#171: portal, scrim, focus trap, Escape, focus back to the trigger; marked `lp-portal`) — the
+  feature's name and line, the stage note `[P9]` (the intro, which alone describes the dialog), the
+  demo in the stage's product viewport with its window flattened (the panel is the one elevated
+  surface), "Start again" and "Learn more"; a bottom sheet sized to the demo below `--bp-md` (#302
+  (D)), a centred panel from it — and imports only the pressed row's demo module, on the press, with
+  the `DemoProps` contract, through the loader it shares with `DemoHost`, falling back to the link's
+  address should the chunk fail. It also lands once on the chapter `?section=` names, focusing its
+  h2, and keeps the chapter navigation's marker on the chapter the reader is in.
 - **`LazyChatHost`** (`features/landing/islands/`) is the landing paths' stand-in for the global
   `ChatPopoutHost` for a signed-in visitor (#286 (A)): it renders and loads nothing until the tab has
   a floating chat open, then imports the real host once and renders it with the same `path`.

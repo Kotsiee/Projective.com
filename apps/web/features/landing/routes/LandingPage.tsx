@@ -44,7 +44,8 @@ export interface LandingPageProps extends Omit<LandingPageViewProps, "islands"> 
  *     {@link HeroTheatre}, handed `demo` (its "Try it yourself" link, since the page renders the
  *     demo stage);
  *   - How it works ({@link MoneyFlowStage}) and the demo stage ({@link DemoStage}), each handed the
- *     server's fee; Ways to work ({@link WaysToWork}) with the rails sliced from the marketplace;
+ *     server's fee, the stage also `features` (its "See everything Projective does" link to
+ *     `/features`); Ways to work ({@link WaysToWork}) with the rails sliced from the marketplace;
  *     Pricing ({@link Pricing}) with its calculator;
  *   - the final call to action's background and its quiet second search — the same terms and
  *     trending rows, `idSuffix` `-final`, its landmark named by the section's h2 ("Find your
@@ -72,7 +73,7 @@ export function LandingPage({ landing, demo, ...view }: LandingPageProps): JSX.E
 				),
 				theatre: <HeroTheatre demo />,
 				howItWorks: <MoneyFlowStage feeBp={feeBp} />,
-				demo: <DemoStage demo={demo} feeBp={feeBp} />,
+				demo: <DemoStage demo={demo} feeBp={feeBp} features />,
 				waysToWork: <WaysToWork rails={sliceRails(landing)} />,
 				pricing: <Pricing feeBp={feeBp} />,
 				finalBackground: <LandingBackground variant="final" />,
