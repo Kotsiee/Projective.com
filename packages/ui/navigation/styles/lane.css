@@ -607,7 +607,7 @@
 .ui-lane-empty__title {
 	margin: 0;
 	font-size: 0.875rem;
-	font-weight: 600;
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 }
 

@@ -102,7 +102,8 @@ function moneyRefusal(error: { code?: string; message: string; details?: string 
 
 /**
  * A refusal from a governance RPC that raises `<field>: <reason>` (`finance.request_spend_approval`):
- * `22023` is a validation refusal keyed to its field, `42501` authority, `P0002` a missing wallet.
+ * `22023` is a validation refusal keyed to its field, `42501` authority, `P0002` a missing wallet, and
+ * a draft or archived business's `business_not_active` the 409 the business refusal map words.
  * Anything else is not a sentence for a reader and is answered generically.
  */
 function governedRefusal(error: { code?: string; message: string }): Result {
@@ -125,7 +126,7 @@ function governedRefusal(error: { code?: string; message: string }): Result {
 				errors: match && match[1] !== "auth" ? { [match[1]]: reason } : undefined,
 			}) as Result;
 		default:
-			return refuse(statusFor(error.code), messageFor(error));
+			return moneyRefusal(error);
 	}
 }
 

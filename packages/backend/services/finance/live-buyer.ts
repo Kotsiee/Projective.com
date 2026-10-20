@@ -362,8 +362,10 @@ export async function saveBuyerDetails(
 			p_billing_day: wantsDay,
 		});
 		if (terms.error) {
-			if (terms.error.code === "42501" || terms.error.code === "22023") {
-				return { ok: false, status: 403, message: terms.error.message.slice(0, 200) };
+			if (["42501", "22023", "PK403"].includes(terms.error.code)) {
+				const said = terms.error.message.replace(/^kyb_required:\s*/i, "").slice(0, 200);
+				const message = said.charAt(0).toUpperCase() + said.slice(1);
+				return { ok: false, status: 403, message };
 			}
 			// Monthly terms are Business Pro's (`intervaled_invoicing`): the upgrade, not a failure.
 			if (isPlanGateRefusal(terms.error)) {

@@ -729,7 +729,9 @@ client write policy). Business accounts only (`22023`); `p_mode` ∈ `per_transa
 right — [org §7b](../org/Functions.md); else `42501`) and an `active` business (`55000
 business_not_active`, BB5; an unknown business `P0002`). The monthly mode additionally needs Business
 Pro's `intervaled_invoicing` (`PK402`, behind `business_plan_gates_enforced`, BB7) and then KYB, the
-same gate the checkout's `invoice` provider applies (refused `42501`, not `PK403`). Returns
+same gate the checkout's `invoice` provider applies (refused `PK403 kyb_required:`, DETAIL
+`{business_id}`, as every other KYB door — Decision #299 (1); probe
+`supabase/probes/business_invoicing_terms_kyb.sql`). Returns
 `{ invoicing_mode, billing_day }`.
 
 ### `finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key)` → jsonb
@@ -1115,7 +1117,10 @@ out of the gate). Decision #247 (h); probe `supabase/probes/business_billing_scr
 
 Asks for approval of a spend the caller's envelope does not cover. The wallet must be a **business**
 wallet (`P0002` otherwise — a team never holds `approve_spend` for anyone to decide with, BF44); the
-caller needs the `spend` vault capability; `p_amount > 0`; a reason of 1–400 characters. The ref is
+caller needs the `spend` vault capability; the business must be `active` (`55000
+business_not_active`, `org.fn_assert_business_active` — a draft or archived one spends nothing, so
+nothing is filed for it; Decision #299 (5), probe `supabase/probes/business_spend_request_active.sql`);
+`p_amount > 0`; a reason of 1–400 characters. The ref is
 **required** (`22023 refTable:`): `p_ref_table` ∈ `baskets` · `tickets` · `project_stages` ·
 `revisions` · `invoices` · `transfers`, and `p_ref_id` must name a row this business pays for — its
 own basket; a ticket, stage or revision round on a project it is the client of; an invoice issued to

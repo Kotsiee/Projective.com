@@ -106,7 +106,7 @@ INSERT INTO finance.plan_entitlements (plan_id, entitlement_key, kind, limit_val
 SELECT p.id, v.k::finance.entitlement_key, v.kind::finance.entitlement_kind, v.lim, v.unl, v.flg, v.scal::finance.entitlement_scaling, v.mult, v.note
 FROM finance.plans p, (VALUES
     ('business_public_projects',  'limit', 3,             false, false, 'none',          10000, NULL),
-    ('business_managers',         'limit', 2,             false, false, 'none',          10000, 'Project Managers / Observers.'),
+    ('business_managers',         'limit', 2,             false, false, 'none',          10000, 'Admins and members who hold manage_projects; pending invitations count. Observers are not managers.'),
     ('private_drafts',            'limit', NULL,          true,  false, 'none',          10000, NULL),
     ('pooled_wallet_full',        'flag',  NULL,          false, false, 'none',          10000, 'Basic pooled wallet only. KYB verification remains a SEPARATE gate — never sold.'),
     ('intervaled_invoicing',      'flag',  NULL,          false, false, 'none',          10000, NULL),

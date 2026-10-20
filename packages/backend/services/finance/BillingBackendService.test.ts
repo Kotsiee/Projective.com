@@ -269,6 +269,18 @@ Deno.test("an unverified business's Pay is a 403 naming kyb_required; another 40
 	assertEquals([other.status, other.details], [403, undefined]);
 });
 
+Deno.test("an unverified business's monthly terms are a 403 naming kyb_required, as its Pay is", () => {
+	const res = billingRefusal({
+		code: "PK403",
+		message: "kyb_required: complete business verification (KYB) to settle on a monthly statement",
+	});
+	assertEquals([res.status, res.message, res.details], [
+		403,
+		"Complete business verification (KYB) to settle on a monthly statement.",
+		{ reason: "kyb_required" },
+	]);
+});
+
 Deno.test("a Business Pro refusal names the entitlement for the upgrade notice", () => {
 	const res = billingRefusal({
 		code: "PK402",
