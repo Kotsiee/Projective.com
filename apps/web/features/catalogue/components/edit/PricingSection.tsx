@@ -19,6 +19,7 @@ import {
 	withAskedPrice,
 } from "../../core/pricing-model.ts";
 import { EditSectionFrame } from "./EditSectionFrame.tsx";
+import { FieldHead } from "./FieldHead.tsx";
 
 const PRICE_ID = "cat-pricing-price";
 const PRICE_HINT_ID = "cat-pricing-price-hint";
@@ -49,7 +50,7 @@ export function PricingSection(props: { listing: ListingDetail }): JSX.Element {
 	return (
 		<EditSectionFrame section="pricing" intro="What buyers pay, as the card and the page show it.">
 			<div class="cat-sec__field">
-				<label class="cat-sec__label" for={PRICE_ID}>{ask.label}</label>
+				<FieldHead label={ask.label} htmlFor={PRICE_ID} hint={ask.hint} hintId={PRICE_HINT_ID} />
 				<NumberInput
 					{...MONEY_FIELD}
 					{...moneyDigits(listing.currency)}
@@ -64,13 +65,12 @@ export function PricingSection(props: { listing: ListingDetail }): JSX.Element {
 					status={asked === null ? "gate" : "default"}
 					aria-describedby={`${PRICE_HINT_ID} ${CURRENCY_HINT_ID}`}
 				/>
-				<p class="cat-sec__hint" id={PRICE_HINT_ID}>
-					{range
-						? `${ask.hint} That's ${formatMoney(range.low, listing.currency)} – ${
-							formatMoney(range.high, listing.currency)
-						} a ticket.`
-						: ask.hint}
-				</p>
+				{range && (
+					<p class="cat-sec__hint">
+						Buyers see {formatMoney(range.low, listing.currency)} –{" "}
+						{formatMoney(range.high, listing.currency)} a ticket.
+					</p>
+				)}
 			</div>
 
 			{display.mode !== "quote" && (
@@ -88,7 +88,12 @@ export function PricingSection(props: { listing: ListingDetail }): JSX.Element {
 				)
 				: (
 					<div class="cat-sec__field">
-						<label class="cat-sec__label" for={CURRENCY_ID}>Currency</label>
+						<FieldHead
+							label="Currency"
+							htmlFor={CURRENCY_ID}
+							hint="Every price on this listing is in this currency. It is fixed once the listing is published."
+							hintId={CURRENCY_HINT_ID}
+						/>
 						<div class="cat-offer__compact">
 							<CurrencySelect
 								id={CURRENCY_ID}
@@ -101,10 +106,6 @@ export function PricingSection(props: { listing: ListingDetail }): JSX.Element {
 								aria-describedby={CURRENCY_HINT_ID}
 							/>
 						</div>
-						<p class="cat-sec__hint" id={CURRENCY_HINT_ID}>
-							Every price on this listing is in this currency. It is fixed once the listing is
-							published.
-						</p>
 					</div>
 				)}
 		</EditSectionFrame>

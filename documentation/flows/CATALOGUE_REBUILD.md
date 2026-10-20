@@ -145,8 +145,8 @@ responsibility). **K** = keep (light edits).
 | `islands/CatalogueHeader.island.tsx` | X | C11 | Header band with the rollups and the view switch. |
 | `islands/CatalogueViewControlRig.island.tsx` | X | C11 | Footer: zoom and sort, which becomes the batch bar while a selection exists. |
 | `islands/CatalogueCreateModal.island.tsx` | X | C11 | Kept. Adds the archetype picker, CREATE category and currency; lands on `?tab=edit&section=media`. |
-| `islands/ListingHeader.island.tsx` | X | C12 | Header band: title, lifecycle status, the four tabs and save state. |
-| `islands/ListingActionRig.island.tsx` | X | C12 | Footer: publish gate and lifecycle actions. |
+| `islands/ListingHeader.island.tsx` | X | C12 | Header band: title, lifecycle status and the four tabs (the save state moved to the footer, #304). |
+| `islands/ListingActionRig.island.tsx` | X | C12 | Footer: save status, icon-only lifecycle actions and the locked/open Publish (#304). |
 | `islands/CatalogueUnavailable.island.tsx` | K | — | — |
 | `components/ListingCard.tsx` | X | C11 | Adds a selection affordance and moves to tokens. |
 | `components/ListingTable.tsx` | X | C11 | The inline `style=` becomes `--cat-vs-*` custom properties set from a ref. |
@@ -247,20 +247,20 @@ These need no ruling, because they follow existing rules:
 ```
 ┌ Lane ─────────────┬ Header band ─────────────────────────────────────────┬ Panel ──────────┐
 │ ← Back            │ Brand identity sprint                           (◫)  │ Edit tab:       │
-│ (every listing,   │ svc-… · [Live] · Saved   ⟨Edit|Preview|Analytics|…⟩  │  Live card      │
+│ (every listing,   │ [Live]                   ⟨Edit|Preview|Analytics|…⟩  │  Live card      │
 │  current marked)  ├──────────────────────────────────────────────────────┤  (real          │
-│ ── On this page ─ │ Edit: [Media showcase 3×2, slot 1 = cover]           │   ServiceCard)  │
-│ Media             │       Basics · Offer (archetype) · Pricing ·         │  Readiness ✓✓✗  │
-│ Basics            │       Availability · Buyer questions · SEO & reach   │ Clients tab:    │
+│ ── On this page ─ │ Edit: Basics · [Media showcase 3×2, slot 1 = cover]  │   ServiceCard)  │
+│ Basics            │       Offer (archetype) · Pricing ·                  │  Readiness ✓✓✗  │
+│ Media             │       Availability · Buyer questions · SEO & reach   │ Clients tab:    │
 │ Offer             │                                                      │  client drawer  │
 │ …                 ├──────────────────────────────────────────────────────┤                 │
-│                   │ Footer: publish gate sentence · Archive Pause Publish│                 │
+│                   │ Footer: ● save state · ◯◯◯◯ icon actions · Publish   │                 │
 └───────────────────┴──────────────────────────────────────────────────────┴─────────────────┘
 ```
 
 | Tab | Canvas | Panel (docked ≥1280; a `Drawer` from a header button below that) |
 | :-- | :-- | :-- |
-| `edit` | Media showcase first, then archetype-driven sections (§4.3). | Live feed card and publish-readiness list. |
+| `edit` | Basics first, then the media showcase, then archetype-driven sections (§4.3; Decision #304). | Live feed card and publish-readiness list. |
 | `preview` | `<iframe src="/catalogue/[id]/simulate?device=">` with a device toggle. | None; the canvas takes the full width. |
 | `analytics` | Per-item tiles, funnel, revenue area, keyword table, booking heatmap (sessions), churn. An empty window still draws every chart (axes, gridlines, zero baseline) under a centred `InlineNotice`; a failed read never does (Decision #220). | None. |
 | `clients` | This listing's pipeline lanes. | Client drawer (`?client=@handle`). |
@@ -309,8 +309,8 @@ features/catalogue/
     preview/PreviewCanvas.tsx                       device toggle + iframe + reload-on-saved
     analytics/AnalyticsCanvas.tsx (shared)
     clients/ClientPipelineBoard.tsx (shared)
-  islands/ListingHeader.island.tsx                  title · slug · status · save state · centred TabMenu · Card icon toggle
-  islands/ListingActionRig.island.tsx               readiness sentence · lifecycle actions
+  islands/ListingHeader.island.tsx                  title · status · centred TabMenu · Card icon toggle
+  islands/ListingActionRig.island.tsx               save status · icon-only lifecycle actions · Publish (lock + missing list)
   islands/ListingInspector.island.tsx               panel body: LiveCardPreview + ReadinessList | ClientDrawer
 ```
 
@@ -322,8 +322,8 @@ features/catalogue/
 
 | Section | product | one_off (+direct) | pipeline | session | cohort | Writes |
 | :-- | :-: | :-: | :-: | :-: | :-: | :-- |
-| Media showcase | ● | ● | ● | ● | ● | `catalogue.listing_media`, `blueprint.cover_file_id` |
 | Basics (title, description, CREATE, skills) | ● | ● | ● | ● | ● | `listings.*`, `listing_skills`, `create_category` |
+| Media showcase | ● | ● | ● | ● | ● | `catalogue.listing_media`, `blueprint.cover_file_id` |
 | Format, licence, attribution, attachments | ● | | | | | `products.format`, `licence`, `attribution_required`, `file_manifest` |
 | Milestones (StageFlow showcase, #45) | | ● | | | | `blueprint.stage_template` |
 | Turnaround (`MilestoneSlider`) | | ● | per stage | | | `blueprint.turnaround_days` (new) |
@@ -778,7 +778,7 @@ continuation mark (#56).
 ```ts
 export const ConsoleView = z.enum(["listings", "analytics", "clients"]);
 export const WorkspaceTab = z.enum(["edit", "preview", "analytics", "clients"]);
-export const EditSection = z.enum(["media", "basics", "offer", "pricing", "availability", "questions", "seo"]);
+export const EditSection = z.enum(["basics", "media", "offer", "pricing", "availability", "questions", "seo"]);
 export const PreviewDevice = z.enum(["desktop", "mobile"]);
 export const ConsoleScope = z.union([
 	z.literal("all"), z.literal("product"), z.literal("service"),

@@ -222,6 +222,7 @@ export function IdeaComposeForm(props: IdeaComposeFormProps): JSX.Element {
 					error={errors.title}
 					hint={piiHintFor(values.title) ??
 						`${values.title.length} of ${FEEDBACK_TITLE_MAX} characters`}
+						hintMode="inline"
 				>
 					{(a) => (
 						<InputText
@@ -320,6 +321,7 @@ export function IdeaComposeForm(props: IdeaComposeFormProps): JSX.Element {
 					status={errors.impact ? "invalid" : "default"}
 					error={errors.impact}
 					hint={piiHintFor(values.impact) ?? "Who it helps, and what is hard for them today."}
+					hintMode={piiHintFor(values.impact) ? "inline" : "popover"}
 				>
 					{(a) => (
 						<Textarea
@@ -343,6 +345,7 @@ export function IdeaComposeForm(props: IdeaComposeFormProps): JSX.Element {
 					status={errors.body ? "invalid" : "default"}
 					error={errors.body}
 					hint={piiHintFor(values.body) ?? "Anything else that would help us understand it."}
+					hintMode={piiHintFor(values.body) ? "inline" : "popover"}
 				>
 					{(a) => (
 						<Textarea

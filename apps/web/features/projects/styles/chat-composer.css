@@ -34,7 +34,8 @@
 	pointer-events: none;
 }
 
-.ui-shell-frame:has(.chan-tab[data-tab-key="chat"][data-active="true"]) .ui-page-canvas::before {
+.ui-shell-frame:has(.chan-tab[data-tab-key="chat"][data-active="true"]) .ui-page-canvas::before,
+.ui-shell-frame:has(.chan-tab[data-tab-key="chat"][data-active="true"]) .ui-page-canvas::after {
 	block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)) -
 		var(--shell-midnav-footer-h) + var(--space-1) - var(--space-5) - var(--space-5) + 2px);
 }

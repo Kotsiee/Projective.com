@@ -569,6 +569,7 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 											<FormControl
 												label="Threshold"
 												hint={thresholdLocked ? "Setting one is part of Business Pro." : undefined}
+												hintMode="inline"
 												error={thresholdError}
 												status={thresholdError ? "invalid" : "default"}
 												collapseHint={!thresholdLocked}

@@ -404,10 +404,10 @@
 	color: var(--fld-label-fg);
 }
 
-.cat-create__hint {
-	margin: 0;
-	font-size: var(--fld-hint-fs);
-	color: var(--fld-hint-fg);
+.cat-create__labelrow {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
 }
 
 .cat-create .cat-create__categories {

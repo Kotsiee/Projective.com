@@ -631,7 +631,7 @@ export default function BillingScreen(props: BillingScreenProps): JSX.Element {
 						</div>
 						<div class="wsp-band__body wsp-billing">
 							<div class="wsp-billing__settings">
-								<FormControl label="Invoicing" hint={terms.hint}>
+								<FormControl label="Invoicing" hint={terms.hint} hintMode="inline">
 									{({ id, describedBy }) => (
 										<div class="wsp-billing__stack">
 											<SelectButton

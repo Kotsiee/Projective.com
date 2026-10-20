@@ -724,11 +724,6 @@ frozen animation clock costs nothing. */
 /* #endregion */
 
 /* #region Utilities */
-/* Directional glyphs mirror under RtL; direction-agnostic ones are untouched (§A.6). */
-[dir="rtl"] .wsp-icon--dir {
-	transform: scaleX(-1);
-}
-
 /* Announced, never seen - the table captions.
    Visually hidden via the shared `.ui-visually-hidden` utility in `@projective/ui/styles`
    (this rule was a byte-for-byte reimplementation of it). */

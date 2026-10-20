@@ -83,8 +83,8 @@ export function hasTeamRoles(serviceType: ServiceType | null): boolean {
 // #region Edit sections
 /** The workspace Edit tab's sections, in page order (the `?section=` anchor). */
 export const EditSection = z.enum([
-	"media",
 	"basics",
+	"media",
 	"offer",
 	"pricing",
 	"availability",
@@ -93,18 +93,18 @@ export const EditSection = z.enum([
 ]);
 export type EditSection = z.infer<typeof EditSection>;
 
-const PRODUCT_SECTIONS: readonly EditSection[] = ["media", "basics", "offer", "pricing", "seo"];
+const PRODUCT_SECTIONS: readonly EditSection[] = ["basics", "media", "offer", "pricing", "seo"];
 const DELIVERY_SECTIONS: readonly EditSection[] = [
-	"media",
 	"basics",
+	"media",
 	"offer",
 	"pricing",
 	"questions",
 	"seo",
 ];
 const SESSION_SECTIONS: readonly EditSection[] = [
-	"media",
 	"basics",
+	"media",
 	"offer",
 	"pricing",
 	"availability",

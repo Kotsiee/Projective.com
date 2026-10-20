@@ -140,14 +140,14 @@ function blank(archetype: ListingOffer["archetype"]): ListingOffer {
 
 Deno.test("every archetype renders its matrix sections and its own offer form", () => {
 	const rows: [ServiceType | null, string[], boolean][] = [
-		[null, ["media", "basics", "offer", "pricing", "seo"], false],
-		["One-Off", ["media", "basics", "offer", "pricing", "questions", "seo"], false],
-		["Direct Deliverable", ["media", "basics", "offer", "pricing", "questions", "seo"], true],
-		["Pipeline", ["media", "basics", "offer", "pricing", "questions", "seo"], false],
-		["Session", ["media", "basics", "offer", "pricing", "availability", "questions", "seo"], false],
+		[null, ["basics", "media", "offer", "pricing", "seo"], false],
+		["One-Off", ["basics", "media", "offer", "pricing", "questions", "seo"], false],
+		["Direct Deliverable", ["basics", "media", "offer", "pricing", "questions", "seo"], true],
+		["Pipeline", ["basics", "media", "offer", "pricing", "questions", "seo"], false],
+		["Session", ["basics", "media", "offer", "pricing", "availability", "questions", "seo"], false],
 		[
 			"Group Session",
-			["media", "basics", "offer", "pricing", "availability", "questions", "seo"],
+			["basics", "media", "offer", "pricing", "availability", "questions", "seo"],
 			false,
 		],
 	];

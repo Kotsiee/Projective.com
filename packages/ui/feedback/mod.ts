@@ -71,6 +71,17 @@ export { HintPopover } from "./islands/HintPopover.tsx";
 export type { HintPopoverProps } from "./islands/HintPopover.tsx";
 // #endregion
 
+// #region Acknowledgement
+/**
+ * {@link ActionCelebration} — a one-shot spark burst around a control whose action just committed,
+ * triggered by {@link useActionCelebration}; nothing renders under either reduced-motion channel.
+ */
+export { ActionCelebration } from "./components/ActionCelebration.tsx";
+export type { ActionCelebrationProps } from "./components/ActionCelebration.tsx";
+export { CELEBRATION_MS, useActionCelebration } from "./hooks/useActionCelebration.ts";
+export type { ActionCelebrationApi } from "./hooks/useActionCelebration.ts";
+// #endregion
+
 // #region Progress & placeholders
 export { ProgressBar } from "./components/ProgressBar.tsx";
 export type { ProgressBarMode, ProgressBarProps } from "./components/ProgressBar.tsx";

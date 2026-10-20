@@ -438,9 +438,12 @@ export async function overwriteWithMine(): Promise<void> {
 // #endregion
 
 // #region Lifecycle status
-/** Move the listing through its lifecycle, after saving what the seller typed. */
-export async function requestStatus(next: ListingStatus): Promise<void> {
-	if (statusBusy.peek()) return;
+/**
+ * Move the listing through its lifecycle, after saving what the seller typed. Resolves `true` once
+ * the server has committed the change, so a caller acknowledges only what actually happened.
+ */
+export async function requestStatus(next: ListingStatus): Promise<boolean> {
+	if (statusBusy.peek()) return false;
 	statusBusy.value = next;
 	notice.value = null;
 	try {
@@ -448,17 +451,18 @@ export async function requestStatus(next: ListingStatus): Promise<void> {
 		const state = saveState.peek();
 		if (state === "conflict" || state === "error") {
 			notice.value = "Save your changes before changing the status.";
-			return;
+			return false;
 		}
 		const current = draft.peek();
-		if (!current) return;
+		if (!current) return false;
 		const res = await transport.setStatus(current.id, next);
 		if (res.ok && res.data) {
 			adopt(res.data.listing);
 			notice.value = res.message ?? null;
-			return;
+			return true;
 		}
 		notice.value = res.message ?? "The status couldn't be changed.";
+		return false;
 	} finally {
 		statusBusy.value = null;
 	}

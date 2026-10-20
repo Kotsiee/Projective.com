@@ -112,18 +112,19 @@ async function settle(page: Page): Promise<void> {
 	await page.waitForTimeout(400);
 }
 
-/** Wait out the 800 ms autosave; fail with what the header says if it settles on anything but saved. */
+/** Wait out the 800 ms autosave; fail with what the footer says if it settles on anything but saved. */
 async function saved(page: Page): Promise<void> {
-	const indicator = page.locator(".cat-ws-head__save");
+	const indicator = page.locator(".cat-ws-rig__pip");
 	const deadline = Date.now() + 20_000;
 	let state: string | null = null;
 	while (Date.now() < deadline) {
 		state = await indicator.getAttribute("data-state");
 		if (state === "saved") return;
-		if (state === "error" || state === "conflict") break;
+		if (state === "error" || state === "conflict" || state === "offline") break;
 		await page.waitForTimeout(250);
 	}
-	throw new Error(`autosave settled on "${state}": ${await indicator.textContent()}`);
+	const text = await page.locator(".cat-ws-rig__text").textContent();
+	throw new Error(`autosave settled on "${state}": ${text}`);
 }
 
 /**

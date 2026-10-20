@@ -1,13 +1,35 @@
 /* PageCanvas (Green zone) — the central stage. Flows in the native window scroll (Part D window-scroll
    model, Decision #31 — NOT a local scroll region; the window owns the single main scrollbar). The
    body panel carries the largest curvature in the shell (the luxury --radius-container-xl). */
+@property --canvas-cue-start-ink {
+    syntax: "<color>";
+    inherits: false;
+    initial-value: transparent;
+}
+
+@property --canvas-cue-end-ink {
+    syntax: "<color>";
+    inherits: false;
+    initial-value: transparent;
+}
+
 .ui-page-canvas {
     --frame-radius: var(--radius-container-xl);
+    --canvas-cue-w: 2px;
+    --canvas-cue-arc: max(var(--frame-radius), var(--space-3));
+    --canvas-cue-start: left;
+    --canvas-cue-end: right;
     display: flex;
     flex-direction: column;
 }
 
-.ui-page-canvas::before {
+.ui-page-canvas:dir(rtl) {
+    --canvas-cue-start: right;
+    --canvas-cue-end: left;
+}
+
+.ui-page-canvas::before,
+.ui-page-canvas::after {
     content: "";
     display: block;
     position: fixed;
@@ -17,22 +39,77 @@
     inline-size: calc(
         100% - var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w)) - var(--shell-panel-cur-w, 0px)
     );
-    border-block-start: var(--hairline);
-    border-inline-start: var(--hairline);
     border-start-start-radius: var(--frame-radius);
     z-index: 0;
     pointer-events: none;
+}
+
+.ui-page-canvas::before {
+    border-block-start: var(--hairline);
+    border-inline-start: var(--hairline);
     background: var(--frame-surface, var(--surface));
+}
+
+.ui-page-canvas::after {
+    border: 0 solid transparent;
+    border-block-start-width: var(--canvas-cue-w);
+    border-inline-start-width: var(--canvas-cue-w);
+    background-image:
+        linear-gradient(to var(--canvas-cue-end), var(--canvas-cue-start-ink) var(--canvas-cue-w), transparent),
+        linear-gradient(to var(--canvas-cue-start), var(--canvas-cue-end-ink) var(--canvas-cue-w), transparent);
+    background-origin: border-box;
+    background-position: var(--canvas-cue-start), var(--canvas-cue-end);
+    background-repeat: no-repeat;
+    background-size: var(--canvas-cue-arc) 100%;
+    mask:
+        linear-gradient(currentColor 0 0) content-box,
+        linear-gradient(currentColor 0 0);
+    mask-composite: exclude;
+    transition:
+        --canvas-cue-start-ink var(--dur-fast) var(--ease-standard),
+        --canvas-cue-end-ink var(--dur-fast) var(--ease-standard);
+}
+
+.ui-middle-nav:has(> .ui-middle-nav__lane .ui-splitter__handle:is(:hover, :focus-visible))
+    > .ui-middle-nav__content .ui-page-canvas::after,
+.ui-middle-nav:has(> .ui-middle-nav__lane .ui-splitter[data-dragging="true"])
+    > .ui-middle-nav__content .ui-page-canvas::after {
+    --canvas-cue-start-ink: var(--primary);
+}
+
+.ui-middle-nav:has(> .ui-middle-nav__panel .ui-midnav-panel__handle:is(:hover, :focus-visible))
+    > .ui-middle-nav__content .ui-page-canvas::after,
+.ui-middle-nav:has(> .ui-middle-nav__panel .ui-midnav-panel[data-dragging="true"])
+    > .ui-middle-nav__content .ui-page-canvas::after {
+    --canvas-cue-end-ink: var(--primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ui-page-canvas::after {
+        transition-duration: 0ms;
+    }
+}
+
+:root[data-motion="reduced"] .ui-page-canvas::after {
+    transition-duration: 0ms;
 }
 
 /* With a middle-nav footer band present (composer / View Control Rig), the frame surface must stop at
    the band's top edge instead of running behind it to the viewport bottom — so its bottom-inline-start
    corner rounds symmetrically with the top-inline-start corner. Shorten the fixed `::before` by the
    footer band's height (on top of the top-start inset) and round the matching corner. */
-.ui-shell-frame:has(.ui-middle-nav__footer) .ui-page-canvas::before {
+.ui-shell-frame:has(.ui-middle-nav__footer) .ui-page-canvas::before,
+.ui-shell-frame:has(.ui-middle-nav__footer) .ui-page-canvas::after {
     block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)) - var(--shell-midnav-footer-h));
     border-end-start-radius: var(--frame-radius);
+}
+
+.ui-shell-frame:has(.ui-middle-nav__footer) .ui-page-canvas::before {
     border-block-end: var(--hairline);
+}
+
+.ui-shell-frame:has(.ui-middle-nav__footer) .ui-page-canvas::after {
+    border-block-end-width: var(--canvas-cue-w);
 }
 
 /*
@@ -44,13 +121,23 @@
  * disagree about whether the panel is there.
  */
 @media (min-width: 1280px) {
-    .ui-middle-nav:has(> .ui-middle-nav__panel .ui-midnav-panel[data-open="true"]) .ui-page-canvas::before {
-        border-inline-end: var(--hairline);
+    .ui-middle-nav:has(> .ui-middle-nav__panel .ui-midnav-panel[data-open="true"]) .ui-page-canvas::before,
+    .ui-middle-nav:has(> .ui-middle-nav__panel .ui-midnav-panel[data-open="true"]) .ui-page-canvas::after {
         border-start-end-radius: var(--frame-radius);
     }
 
+    .ui-middle-nav:has(> .ui-middle-nav__panel .ui-midnav-panel[data-open="true"]) .ui-page-canvas::before {
+        border-inline-end: var(--hairline);
+    }
+
+    .ui-middle-nav:has(> .ui-middle-nav__panel .ui-midnav-panel[data-open="true"]) .ui-page-canvas::after {
+        border-inline-end-width: var(--canvas-cue-w);
+    }
+
     .ui-middle-nav:has(> .ui-middle-nav__footer):has(> .ui-middle-nav__panel .ui-midnav-panel[data-open="true"])
-        .ui-page-canvas::before {
+        .ui-page-canvas::before,
+    .ui-middle-nav:has(> .ui-middle-nav__footer):has(> .ui-middle-nav__panel .ui-midnav-panel[data-open="true"])
+        .ui-page-canvas::after {
         border-end-end-radius: var(--frame-radius);
     }
 }

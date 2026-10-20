@@ -1,4 +1,5 @@
 import {
+	type EditSection,
 	formArchetypeOf,
 	type ListingDetail,
 	type PublishReadiness,
@@ -13,6 +14,28 @@ export interface ReadinessItem {
 const CHOOSE_AVAILABILITY = "Choose availability";
 const BOOKABLE_SOON = "Open a bookable time in the next 30 days";
 
+const SECTION_OF: Readonly<Record<string, EditSection>> = {
+	"Add a title": "basics",
+	"Choose a delivery model": "basics",
+	"Add a cover image": "media",
+	"Set a price": "pricing",
+	"Add at least one stage": "offer",
+	[CHOOSE_AVAILABILITY]: "availability",
+	[BOOKABLE_SOON]: "availability",
+};
+
+/**
+ * The Edit section that fixes the first missing requirement, so a locked Publish can take the seller
+ * straight to it; `null` when nothing is missing or the gate names a requirement no section owns.
+ */
+export function firstMissingSection(missing: readonly string[]): EditSection | null {
+	for (const label of missing) {
+		const section = SECTION_OF[label];
+		if (section) return section;
+	}
+	return null;
+}
+
 /**
  * The publish checklist for a listing: every requirement the gate knows for its form archetype, in
  * page order, each done or still missing — a Pipeline's stage and a session's availability and
@@ -26,9 +49,9 @@ export function readinessItems(
 ): ReadinessItem[] {
 	const archetype = formArchetypeOf(listing.kind, listing.serviceType);
 	const required = [
-		"Add a cover image",
 		"Add a title",
 		...(listing.kind === "service" ? ["Choose a delivery model"] : []),
+		"Add a cover image",
 		"Set a price",
 		...(archetype === "pipeline" ? ["Add at least one stage"] : []),
 		...(archetype === "session" || archetype === "cohort"

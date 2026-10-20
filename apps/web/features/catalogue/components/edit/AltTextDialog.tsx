@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { type Signal, useSignal, useSignalEffect } from "@preact/signals";
 import { Dialog } from "@projective/ui/feedback";
 import { Button, Textarea } from "@projective/ui/fields";
+import { FieldHead } from "./FieldHead.tsx";
 
 const ALT_MAX = 200;
 const FIELD_ID = "cat-media-alt";
@@ -63,10 +64,14 @@ export function AltTextDialog(props: AltTextDialogProps): JSX.Element {
 			}
 		>
 			<div class="cat-sec__field">
-				<div class="cat-sec__labelrow">
-					<label class="cat-sec__label" for={FIELD_ID}>Alt text</label>
+				<FieldHead
+					label="Alt text"
+					htmlFor={FIELD_ID}
+					hint="What the picture shows, for buyers using a screen reader. Leave it empty for a purely decorative image."
+					hintId={HINT_ID}
+				>
 					<span class="cat-sec__count" id={COUNT_ID}>{text.value.length} / {ALT_MAX}</span>
-				</div>
+				</FieldHead>
 				<Textarea
 					id={FIELD_ID}
 					value={text}
@@ -77,10 +82,6 @@ export function AltTextDialog(props: AltTextDialogProps): JSX.Element {
 					aria-describedby={`${COUNT_ID} ${HINT_ID}`}
 					fluid
 				/>
-				<p class="cat-sec__hint" id={HINT_ID}>
-					What the picture shows, for buyers using a screen reader. Leave it empty for a purely
-					decorative image.
-				</p>
 			</div>
 		</Dialog>
 	);

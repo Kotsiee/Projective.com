@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { useSignal, useSignalEffect } from "@preact/signals";
 import "../styles/console.css";
-import { Dialog } from "@projective/ui/feedback";
+import { Dialog, HintPopover } from "@projective/ui/feedback";
 import {
 	Button,
 	CurrencySelect,
@@ -113,6 +113,9 @@ export default function CatalogueCreateModal(props: CatalogueCreateModalProps): 
 	}
 
 	const isService = kind.value === "service";
+	const kindHint = isService
+		? "A service is delivered as a pipeline, a one-off, a direct deliverable or a session."
+		: "A product is a ready-to-buy digital deliverable.";
 	const categoryHint = CREATE_CATEGORY_OPTIONS.find((c) => c.value === category.value)?.hint ??
 		"You can choose it later, before you publish.";
 
@@ -161,7 +164,10 @@ export default function CatalogueCreateModal(props: CatalogueCreateModalProps): 
 					aria-labelledby={KIND_LABEL_ID}
 					aria-describedby={KIND_HINT_ID}
 				>
-					<span class="cat-create__label" id={KIND_LABEL_ID}>Type</span>
+					<div class="cat-create__labelrow">
+						<span class="cat-create__label" id={KIND_LABEL_ID}>Type</span>
+						<HintPopover label="About type">{kindHint}</HintPopover>
+					</div>
 					<SelectButton
 						options={KIND_OPTIONS}
 						value={kind.value}
@@ -170,11 +176,7 @@ export default function CatalogueCreateModal(props: CatalogueCreateModalProps): 
 							if (parsed.success) kind.value = parsed.data;
 						}}
 					/>
-					<p class="cat-create__hint" id={KIND_HINT_ID}>
-						{isService
-							? "A service is delivered as a pipeline, a one-off, a direct deliverable or a session."
-							: "A product is a ready-to-buy digital deliverable."}
-					</p>
+					<span class="ui-visually-hidden" id={KIND_HINT_ID}>{kindHint}</span>
 				</div>
 
 				{isService && (
@@ -199,7 +201,10 @@ export default function CatalogueCreateModal(props: CatalogueCreateModalProps): 
 					aria-labelledby={CATEGORY_LABEL_ID}
 					aria-describedby={CATEGORY_HINT_ID}
 				>
-					<span class="cat-create__label" id={CATEGORY_LABEL_ID}>CREATE category</span>
+					<div class="cat-create__labelrow">
+						<span class="cat-create__label" id={CATEGORY_LABEL_ID}>CREATE category</span>
+						<HintPopover label="About CREATE category">{categoryHint}</HintPopover>
+					</div>
 					<SelectButton
 						class="cat-create__categories"
 						options={CATEGORY_OPTIONS}
@@ -208,7 +213,7 @@ export default function CatalogueCreateModal(props: CatalogueCreateModalProps): 
 							if (typeof v === "string") category.value = v;
 						}}
 					/>
-					<p class="cat-create__hint" id={CATEGORY_HINT_ID}>{categoryHint}</p>
+					<span class="ui-visually-hidden" id={CATEGORY_HINT_ID}>{categoryHint}</span>
 				</div>
 
 				<div class="cat-create__field">

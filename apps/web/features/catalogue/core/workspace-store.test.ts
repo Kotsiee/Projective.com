@@ -32,7 +32,9 @@ import {
 	hydrateWorkspace,
 	overwriteWithMine,
 	reloadTheirs,
+	notice,
 	removeMedia,
+	requestStatus,
 	resetWorkspace,
 	retry,
 	saved,
@@ -418,6 +420,17 @@ Deno.test("store: a failed save waits for Retry", async () => {
 	configureWorkspace();
 });
 
+Deno.test("store: requestStatus reports a commit, and refuses while a save has failed", async () => {
+	const { fake } = setup();
+	assertEquals(await requestStatus("published"), true);
+	fake.script({ ok: false, message: "Network error — please try again." });
+	edit("title", "Logo sprint");
+	assertEquals(await requestStatus("paused"), false);
+	assertEquals(notice.value, "Save your changes before changing the status.");
+	resetWorkspace();
+	configureWorkspace();
+});
+
 Deno.test("store: emptying the cover promotes the next still and sends the kept items", async () => {
 	const [cover, video, still] = [slot(1), slot(2, "video"), slot(3)];
 	const { fake } = setup(listing({ media: [cover, video, still] }));
@@ -434,9 +447,13 @@ Deno.test("store: emptying the cover promotes the next still and sends the kept 
 
 // #region Labels and panel
 Deno.test("saveLabel and readinessSentence read as meta text", () => {
-	assertEquals(saveLabel("saved", 1_000, 3_400), { text: "Saved · 2s ago", retry: false });
+	assertEquals(saveLabel("saved", 1_000, 3_400), { text: "Saved · 2s ago", action: null });
 	assertEquals(saveLabel("saving", null, 0).text, "Saving…");
-	assertEquals(saveLabel("error", null, 0), { text: "Couldn't save", retry: true });
+	assertEquals(saveLabel("dirty", null, 0), { text: "Unsaved changes", action: "save" });
+	assertEquals(saveLabel("error", null, 0), { text: "Couldn't save", action: "retry" });
+	assertEquals(saveLabel("conflict", null, 0).action, "resolve");
+	assertEquals(saveLabel("error", null, 0, true), { text: "Offline · not saved", action: null });
+	assertEquals(saveLabel("dirty", null, 0, true).action, null);
 	assertEquals(readinessSentence([]), "Ready to publish.");
 	assertEquals(readinessSentence(["Set a price"]), "Set a price to publish.");
 	assertEquals(

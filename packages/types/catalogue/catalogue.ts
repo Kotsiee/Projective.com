@@ -499,7 +499,7 @@ export function resolveListingPricing(
 /** The outcome of the publish-gate check — what (if anything) still blocks going live. */
 export interface PublishReadiness {
 	ready: boolean;
-	/** Short imperatives naming what is missing, in page order (`["Add a cover image", "Set a price"]`). */
+	/** Short imperatives naming what is missing, in page order (`["Add a title", "Set a price"]`). */
 	missing: string[];
 }
 
@@ -535,9 +535,9 @@ export function publishReadiness(
 ): PublishReadiness {
 	const missing: string[] = [];
 	const archetype = formArchetypeOf(detail.kind, detail.serviceType);
-	if (!coverOf(detail.media)) missing.push("Add a cover image");
 	if (!detail.title.trim()) missing.push("Add a title");
 	if (detail.kind === "service" && !detail.serviceType) missing.push("Choose a delivery model");
+	if (!coverOf(detail.media)) missing.push("Add a cover image");
 	const price = resolveListingPricing({
 		kind: detail.kind,
 		serviceType: detail.serviceType,

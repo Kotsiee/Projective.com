@@ -33,6 +33,7 @@ import {
 	watchAvailabilityConflict,
 } from "../../core/availability-conflict-store.ts";
 import { EditSectionFrame } from "./EditSectionFrame.tsx";
+import { FieldHead } from "./FieldHead.tsx";
 import { UpcomingStrip } from "./availability/UpcomingStrip.tsx";
 import { AvailabilityEditorDialog } from "./availability/AvailabilityEditorDialog.tsx";
 
@@ -127,7 +128,12 @@ export function AvailabilitySection(
 
 						{library.length > 1 && (
 							<div class="cat-sec__field">
-								<label class="cat-sec__label" for={PICK_ID}>Hours to use</label>
+								<FieldHead
+									label="Hours to use"
+									htmlFor={PICK_ID}
+									hint="A preset's changes reach every listing that uses it."
+									hintId={PICK_HINT_ID}
+								/>
 								<Select
 									id={PICK_ID}
 									options={pickOptions}
@@ -139,9 +145,6 @@ export function AvailabilitySection(
 									disabled={availabilityBusy.value}
 									aria-describedby={PICK_HINT_ID}
 								/>
-								<p class="cat-sec__hint" id={PICK_HINT_ID}>
-									A preset's changes reach every listing that uses it.
-								</p>
 							</div>
 						)}
 

@@ -4,6 +4,7 @@ import { cx } from "../../core/cx.ts";
 import { useId } from "../hooks/useId.ts";
 import { describedBy, fieldIds } from "../core/ids.ts";
 import { AlertMark } from "../components/field-marks.tsx";
+import { HintPopover } from "../../feedback/islands/HintPopover.tsx";
 import type { FieldStatus } from "../types/mod.ts";
 
 export interface FormControlRenderArgs {
@@ -25,8 +26,15 @@ export interface FormControlRenderArgs {
 export interface FormControlProps {
 	/** Visible label text. Rendered as a real `<label for>` bound to the control. */
 	label?: string;
-	/** Helper/description text under the control (id wired into `aria-describedby`). */
+	/** Helper/description text (id wired into `aria-describedby`); shown per {@link hintMode}. */
 	hint?: string;
+	/**
+	 * How the hint shows. `popover` (default, Decision #305): a `HintPopover` "?" beside the label,
+	 * the text kept visually hidden for `aria-describedby`. `inline`: a visible line under the
+	 * control — only for what the user must see without asking: a live counter, a warning, a reason a
+	 * control is locked or empty, an instruction the value must match. Without a label it is inline.
+	 */
+	hintMode?: "popover" | "inline";
 	/** Error message — when present with `status="invalid"` it replaces the hint and colours red. */
 	error?: string;
 	/** Validation status forwarded to the render child. */
@@ -50,7 +58,8 @@ export interface FormControlProps {
 /**
  * FormControl — the field wrapper. Owns the label ↔ control ↔ hint/error relationship and the ARIA
  * wiring (`for`, `aria-describedby`, required asterisk), so individual controls stay focused on their
- * own behaviour. Separation via spacing + type weight, never a bordering box (§B.4). Prefer the
+ * own behaviour. A hint sits behind a "?" beside the label unless `hintMode="inline"`; the error row
+ * stays reserved either way. Separation via spacing + type weight, never a bordering box (§B.4). Prefer the
  * render-function child so the ids are threaded automatically:
  *
  * ```tsx
@@ -65,6 +74,7 @@ export function FormControl(props: FormControlProps): JSX.Element {
 	const {
 		label,
 		hint,
+		hintMode = "popover",
 		error,
 		status = "default",
 		required,
@@ -77,7 +87,8 @@ export function FormControl(props: FormControlProps): JSX.Element {
 	// `required` is a real invalid state (the RED creation gate), so its message surfaces as an
 	// error too — otherwise the one status that most needs explaining is the one that stays silent.
 	const showError = (status === "invalid" || status === "required") && !!error;
-	const description = showError ? error : hint;
+	const behindHint = hintMode === "popover" && !!label && !!hint;
+	const description = showError ? error : behindHint ? undefined : hint;
 	const descId = showError ? ids.error : hint ? ids.hint : undefined;
 	// The row is rendered even when empty so its height is already accounted for.
 	const reserveHint = !collapseHint;
@@ -97,15 +108,19 @@ export function FormControl(props: FormControlProps): JSX.Element {
 			class={cx("ui-form-control", status !== "default" && `ui-form-control--${status}`, className)}
 		>
 			{label && (
-				<label class="ui-field-label" for={rootId} id={ids.label}>
-					{label}
-					{required && <span class="ui-field-label__required" aria-hidden="true">*</span>}
-				</label>
+				<div class="ui-form-control__labelrow">
+					<label class="ui-field-label" for={rootId} id={ids.label}>
+						{label}
+						{required && <span class="ui-field-label__required" aria-hidden="true">*</span>}
+					</label>
+					{behindHint && <HintPopover label={`About ${label.toLowerCase()}`}>{hint}</HintPopover>}
+				</div>
 			)}
 			<div class="ui-form-control__control">{rendered}</div>
+			{behindHint && !showError && <span id={ids.hint} class="ui-visually-hidden">{hint}</span>}
 			{(description || reserveHint) && (
 				<p
-					id={descId}
+					id={description ? descId : undefined}
 					class={cx("ui-field-hint", showError && "ui-field-hint--error")}
 					role={showError ? "alert" : undefined}
 				>

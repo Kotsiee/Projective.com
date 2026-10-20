@@ -11,6 +11,7 @@ import { draft, edit } from "../../core/workspace-store.ts";
 import { WorkspaceService } from "../../core/WorkspaceService.ts";
 import { EditSectionFrame } from "./EditSectionFrame.tsx";
 import { SerpPreview } from "./SerpPreview.tsx";
+import { FieldHead } from "./FieldHead.tsx";
 
 const SEO_TITLE_MAX = 70;
 const SEO_DESCRIPTION_MAX = 160;
@@ -93,7 +94,12 @@ export function SeoSection(props: { listing: ListingDetail }): JSX.Element {
 			</div>
 
 			<div class="cat-sec__field">
-				<label class="cat-sec__label" for={TAGS_ID}>Search tags</label>
+				<FieldHead
+					label="Search tags"
+					htmlFor={TAGS_ID}
+					hint="Words buyers search for that aren't already in your title. Tags rank below the title."
+					hintId={TAGS_HINT_ID}
+				/>
 				<TagCombobox
 					id={TAGS_ID}
 					value={listing.tags}
@@ -105,9 +111,6 @@ export function SeoSection(props: { listing: ListingDetail }): JSX.Element {
 					aria-describedby={TAGS_HINT_ID}
 					fluid
 				/>
-				<p class="cat-sec__hint" id={TAGS_HINT_ID}>
-					Words buyers search for that aren't already in your title. Tags rank below the title.
-				</p>
 			</div>
 		</EditSectionFrame>
 	);

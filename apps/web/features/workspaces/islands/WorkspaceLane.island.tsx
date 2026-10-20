@@ -3,13 +3,13 @@ import { useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import "../styles/workspace.css";
 import {
+	LaneBackLink,
 	LaneCollapseButton,
 	LaneCreateButton,
 	LaneEmpty,
 	LaneFooter,
 	LaneFooterActions,
 	LaneHead,
-	LaneIconButton,
 	LaneList,
 	type LaneMode,
 	LaneSearch,
@@ -76,7 +76,6 @@ import {
 import { isFirstRun } from "../core/roster-model.ts";
 import { MEMBERS_CHART, MEMBERS_PEOPLE, subViewsFor } from "../core/sub-views.ts";
 import {
-	BackGlyph,
 	cloneGlyph,
 	InviteGlyph,
 	MoreGlyph,
@@ -547,11 +546,7 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 				return (
 					<LaneHead key={id}>
 						<div class="wsp-lane__identrow">
-							<LaneIconButton
-								href={zones.header.back.href}
-								icon={<span class="wsp-icon--dir">{cloneGlyph(BackGlyph)}</span>}
-								label={zones.header.back.label}
-							/>
+							<LaneBackLink href={zones.header.back.href} label={zones.header.back.label} />
 							<div class="wsp-lane__ident" data-acting={detail.isActing ? "true" : undefined}>
 								<EntityMark
 									name={detail.name}

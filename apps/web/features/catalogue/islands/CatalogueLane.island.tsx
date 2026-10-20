@@ -5,6 +5,7 @@ import "../styles/lane.css";
 import { Popover } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import {
+	LaneBackLink,
 	LaneCollapseButton,
 	LaneCreateButton,
 	LaneEmpty,
@@ -274,12 +275,7 @@ function OutlineLane(props: OutlineLaneProps & LaneChrome): JSX.Element {
 
 			<div class="cat-lane__full">
 				<div class="cat-lane__head">
-					<a class="cat-lane__back" href={consoleHref({})} aria-label="Back to catalogue">
-						<span class="cat-lane__back-icon" aria-hidden="true">
-							<Icon name="arrow-left" />
-						</span>
-						<span class="cat-lane__back-label">Back</span>
-					</a>
+					<LaneBackLink href={consoleHref({})} label="Back to catalogue" />
 				</div>
 
 				<LaneList label="Listings">

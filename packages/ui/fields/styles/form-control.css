@@ -8,6 +8,15 @@
 	flex-direction: column;
 	inline-size: 100%;
 }
+.ui-form-control__labelrow {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	margin-block-end: var(--space-1);
+}
+.ui-form-control__labelrow > .ui-field-label {
+	margin-block-end: 0;
+}
 .ui-form-control__control {
 	display: flex;
 	inline-size: 100%;

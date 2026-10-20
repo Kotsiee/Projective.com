@@ -3,7 +3,7 @@ import { useSignal, useSignalEffect } from "@preact/signals";
 import type { RefObject } from "preact";
 import { headerCondensed } from "@features/shell/core/migrating-header.ts";
 import { Button } from "@projective/ui/fields";
-import { Popover, Tooltip } from "@projective/ui/feedback";
+import { ActionCelebration, Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import type { PublicCallOffer } from "@projective/types/scheduling";
 import { AddToProjectMenu } from "./hire/AddToProjectMenu.tsx";
@@ -90,8 +90,6 @@ export interface ProfileRigProps {
 	class?: string;
 }
 
-const BURST_DOTS = 6;
-
 /** The modifier a team's Manage team link carries, so the band can fold it to its glyph. */
 const FOLD_CLASS = " pf-rig__cta--manage";
 
@@ -148,17 +146,6 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 	const outlined =
 		`ui-button ui-button--neutral ui-button--outlined ui-button--size-${size} ui-button--rounded`;
 
-	const burst = celebrating
-		? (
-			<span class="pf-burst" aria-hidden="true">
-				{Array.from(
-					{ length: BURST_DOTS },
-					(_, i) => <i class="pf-burst__dot" key={i} style={`--pf-burst-i:${i}`} />,
-				)}
-			</span>
-		)
-		: null;
-
 	/** Who a Message reaches when it is not the profile itself — a team's or business's owner. */
 	const recipient = profile.messageTo;
 
@@ -186,7 +173,7 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 
 	/** The icon-only Follow — the seller's and the business's tier-4 secondary. */
 	const followIcon = (
-		<span class="pf-rig__follow" data-celebrate={celebrating ? "true" : undefined}>
+		<ActionCelebration active={celebrating} tone="neutral">
 			<Tooltip content={followText} placement="bottom">
 				<Button
 					rounded
@@ -201,8 +188,7 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 					onClick={() => toggleFollow(viewer)}
 				/>
 			</Tooltip>
-			{burst}
-		</span>
+		</ActionCelebration>
 	);
 
 	/**
@@ -396,7 +382,7 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 						>
 							Message
 						</Button>
-						<span class="pf-rig__follow" data-celebrate={celebrating ? "true" : undefined}>
+						<ActionCelebration active={celebrating} tone="neutral">
 							<Button
 								rounded
 								size={size}
@@ -410,8 +396,7 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 							>
 								{followText}
 							</Button>
-							{burst}
-						</span>
+						</ActionCelebration>
 					</>
 				)}
 			{

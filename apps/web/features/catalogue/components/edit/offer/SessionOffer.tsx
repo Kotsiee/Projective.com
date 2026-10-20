@@ -12,6 +12,7 @@ import { draft, edit } from "../../../core/workspace-store.ts";
 import { useGatedDraft } from "../../../hooks/useGatedDraft.ts";
 import { OfferGroup } from "./OfferGroup.tsx";
 import { ConferencingSelect } from "./ConferencingSelect.tsx";
+import { FieldHead } from "../FieldHead.tsx";
 
 type TimedOffer = SessionOfferValue | CohortListingOffer;
 
@@ -58,7 +59,13 @@ export function SessionOffer(props: { listing: ListingDetail; offer: TimedOffer 
 
 	return (
 		<>
-			<OfferGroup title="Format">
+			<OfferGroup
+				title="Format"
+				hintId={FORMAT_HINT_ID}
+				hint={isDraft
+					? "One buyer per sitting, or a group who book seats in the same sitting."
+					: "Fixed once published, because bookings depend on it."}
+			>
 				<div class="cat-sec__field">
 					{isDraft
 						? (
@@ -77,11 +84,6 @@ export function SessionOffer(props: { listing: ListingDetail; offer: TimedOffer 
 								{offer.archetype === "cohort" ? "Cohort" : "One-to-one"}
 							</p>
 						)}
-					<p class="cat-sec__hint" id={FORMAT_HINT_ID}>
-						{isDraft
-							? "One buyer per sitting, or a group who book seats in the same sitting."
-							: "Fixed once published, because bookings depend on it."}
-					</p>
 				</div>
 			</OfferGroup>
 
@@ -99,7 +101,12 @@ export function SessionOffer(props: { listing: ListingDetail; offer: TimedOffer 
 					/>
 				</div>
 				<div class="cat-sec__field">
-					<label class="cat-sec__label" for={COUNT_ID}>Sessions per booking</label>
+					<FieldHead
+						label="Sessions per booking"
+						htmlFor={COUNT_ID}
+						hint="More than one, and a buyer books them all at once, as a series."
+						hintId={COUNT_HINT_ID}
+					/>
 					<div class="cat-offer__compact">
 						<NumberStepper
 							id={COUNT_ID}
@@ -111,11 +118,6 @@ export function SessionOffer(props: { listing: ListingDetail; offer: TimedOffer 
 							aria-describedby={COUNT_HINT_ID}
 						/>
 					</div>
-					<p class="cat-sec__hint" id={COUNT_HINT_ID}>
-						{offer.count > 1
-							? "A buyer books all of them at once, as a series."
-							: "Each booking is a single sitting."}
-					</p>
 				</div>
 			</OfferGroup>
 

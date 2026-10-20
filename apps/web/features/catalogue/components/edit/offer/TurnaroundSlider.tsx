@@ -1,13 +1,13 @@
 import type { JSX } from "preact";
 import { MilestoneSlider, ToggleSwitch } from "@projective/ui/fields";
 import { nearestStop, TURNAROUND_STOPS } from "../../../core/offer-model.ts";
+import { FieldHead } from "../FieldHead.tsx";
 
 const STOPS = TURNAROUND_STOPS.map((days) => ({
 	value: days,
 	label: days === 1 ? "1 day" : `${days} days`,
 }));
 
-const LABEL_ID = "cat-offer-turnaround";
 const HINT_ID = "cat-offer-turnaround-hint";
 const DEFAULT_DAYS = 5;
 
@@ -27,14 +27,18 @@ export function TurnaroundSlider(props: TurnaroundSliderProps): JSX.Element {
 	const set = props.days !== null;
 	return (
 		<div class="cat-sec__field">
-			<div class="cat-sec__labelrow">
-				<span class="cat-sec__label" id={LABEL_ID}>Delivery time</span>
+			<FieldHead
+				label="Delivery time"
+				hint="From the buyer's go-ahead to the final hand-over; cards show it as the delivery time. Not stated, none is shown."
+				hintId={HINT_ID}
+			>
 				<ToggleSwitch
 					value={set}
 					onValueChange={(on) => props.onChange(on ? props.days ?? DEFAULT_DAYS : null)}
 					label="State a delivery time"
+					aria-describedby={HINT_ID}
 				/>
-			</div>
+			</FieldHead>
 			{set && (
 				<MilestoneSlider
 					milestones={STOPS}
@@ -44,11 +48,6 @@ export function TurnaroundSlider(props: TurnaroundSliderProps): JSX.Element {
 					aria-describedby={HINT_ID}
 				/>
 			)}
-			<p class="cat-sec__hint" id={HINT_ID}>
-				{set
-					? "From the buyer's go-ahead to the final hand-over. Cards show it as the delivery time."
-					: "No delivery time is shown to buyers."}
-			</p>
 		</div>
 	);
 }

@@ -211,10 +211,13 @@ export function beaconFlush(
 // #endregion
 
 // #region Labels
-/** The header's save meta text, and whether it offers Retry. */
+/** What the footer's save status offers beside its text. */
+export type SaveAction = "save" | "retry" | "resolve";
+
+/** The footer's save status text, and the one action it offers, if any. */
 export interface SaveLabel {
 	text: string;
-	retry: boolean;
+	action: SaveAction | null;
 }
 
 /** `2s ago` · `5m ago` · `3h ago`; `just now` under a second. */
@@ -226,19 +229,31 @@ export function ago(ms: number): string {
 	return m < 60 ? `${m}m ago` : `${Math.floor(m / 60)}h ago`;
 }
 
-/** What the header says about saving, as meta text. */
-export function saveLabel(state: SaveState, savedAt: number | null, now: number): SaveLabel {
+/**
+ * What the footer says about saving, as meta text. Offline, unsaved edits say so and offer nothing:
+ * writes are refused until the network returns, so a Save now would only fail.
+ */
+export function saveLabel(
+	state: SaveState,
+	savedAt: number | null,
+	now: number,
+	offline = false,
+): SaveLabel {
 	switch (state) {
 		case "saving":
-			return { text: "Saving…", retry: false };
+			return { text: "Saving…", action: null };
 		case "dirty":
-			return { text: "Unsaved changes", retry: false };
+			return offline
+				? { text: "Offline · not saved", action: null }
+				: { text: "Unsaved changes", action: "save" };
 		case "error":
-			return { text: "Couldn't save", retry: true };
+			return offline
+				? { text: "Offline · not saved", action: null }
+				: { text: "Couldn't save", action: "retry" };
 		case "conflict":
-			return { text: "Changed in another tab", retry: false };
+			return { text: "Changed in another tab", action: "resolve" };
 		case "saved":
-			return { text: savedAt === null ? "Saved" : `Saved · ${ago(now - savedAt)}`, retry: false };
+			return { text: savedAt === null ? "Saved" : `Saved · ${ago(now - savedAt)}`, action: null };
 	}
 }
 

@@ -190,6 +190,7 @@ function MessageField(props: { model: IntakeModel; label: string; hint: string }
 			<FormControl
 				label={label}
 				hint={`${hint} ${counterText(length, CONTACT_LIMITS.messageMax)}`}
+				hintMode="inline"
 				required
 				status={error ? "invalid" : "default"}
 				error={error}

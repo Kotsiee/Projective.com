@@ -293,7 +293,7 @@ export function laneZones(input: RosterLaneInput | ConsoleLaneInput): LaneZones 
 	return {
 		header: {
 			mode: "console",
-			back: { href: copy.base, label: `All ${copy.plural}` },
+			back: { href: copy.base, label: `Back to all ${copy.plural}` },
 			status: statusTag(input.status),
 			switchControl: contextSwitchCopy(input.kind, input.name, input.acting),
 		},

@@ -1,14 +1,15 @@
 import type { ComponentChildren, JSX, RefObject, VNode } from "preact";
 import "../styles/lane.css";
 import { cx } from "../../core/cx.ts";
+import { Icon } from "../../icons/mod.ts";
 import { Tooltip } from "../../feedback/islands/Tooltip.tsx";
 
 /**
  * Lane chrome — the shared control set every middle-nav lane is built from, so the `/projects` feed,
  * the `/projects/[id]` details sidebar, and the `/messages` inbox render ONE vocabulary rather than
  * three lookalikes: {@link LaneHead} / {@link LaneFooter} bands, {@link LaneTabs}, {@link LaneSearch},
- * {@link LaneIconButton}, {@link LaneToggleRow}, {@link LaneSection}, {@link LaneCollapseButton}, and
- * {@link LaneEmpty}.
+ * {@link LaneIconButton}, {@link LaneBackLink}, {@link LaneToggleRow}, {@link LaneSection},
+ * {@link LaneCollapseButton}, and {@link LaneEmpty}.
  *
  * Every control is icon-first and labelled by a portal {@link Tooltip} + `aria-label` — never a native
  * `title` (DESIGN_SYSTEM.md §B.6). Presentation lives entirely in `styles/lane.css` (`.ui-lane-*`), so
@@ -144,6 +145,43 @@ export function LaneTabs<T extends string = string>(props: LaneTabsProps<T>): JS
 				);
 			})}
 		</div>
+	);
+}
+// #endregion
+
+// #region Back link
+export interface LaneBackLinkProps {
+	/** The parent surface the lane returns to. */
+	href: string;
+	/** Accessible name naming the destination ("Back to all projects"); it must contain {@link text}. */
+	label: string;
+	/** The visible word (default `"Back"`). */
+	text?: string;
+	tooltipPlacement?: "top" | "bottom" | "left" | "right";
+	class?: string;
+	onClick?: (event: JSX.TargetedMouseEvent<HTMLAnchorElement>) => void;
+}
+
+/**
+ * LaneBackLink — the lane head's one way back to the parent surface: a quiet pill link of the
+ * `chevron-left` glyph and the word "Back", the destination spoken in its accessible name and shown
+ * in a portal {@link Tooltip}. In the compact and collapsed density bands the word folds away and the
+ * chevron stays. A link, never a button that assigns `location`, so it opens in a new tab and shows
+ * its URL.
+ */
+export function LaneBackLink(props: LaneBackLinkProps): JSX.Element {
+	return (
+		<Tooltip content={props.label} placement={props.tooltipPlacement ?? "bottom"}>
+			<a
+				class={cx("ui-lane-back", props.class)}
+				href={props.href}
+				aria-label={props.label}
+				onClick={props.onClick}
+			>
+				<Icon name="chevron-left" class="ui-lane-back__icon" />
+				<span class="ui-lane-back__label">{props.text ?? "Back"}</span>
+			</a>
+		</Tooltip>
 	);
 }
 // #endregion

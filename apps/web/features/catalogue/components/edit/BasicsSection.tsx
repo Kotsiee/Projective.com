@@ -9,6 +9,7 @@ import { CREATE_CATEGORY_OPTIONS, SERVICE_MODELS } from "../../core/catalogue-mo
 import { edit, editDescription } from "../../core/workspace-store.ts";
 import { WorkspaceService } from "../../core/WorkspaceService.ts";
 import { EditSectionFrame } from "./EditSectionFrame.tsx";
+import { FieldHead } from "./FieldHead.tsx";
 
 const SKILLS_MAX = 24;
 const NOT_YET = "none";
@@ -21,6 +22,11 @@ const SKILLS_ID = "cat-basics-skills";
 const SKILLS_HINT_ID = "cat-basics-skills-hint";
 const MODEL_LABEL = "Delivery model";
 const MODEL_HINT_ID = "cat-basics-model-hint";
+const CREATE_HINT =
+	"Which kind of work this is. It decides where the listing counts towards your standing.";
+const MODEL_DRAFT_HINT = "How buyers engage you. It can change only while this listing is a draft.";
+const MODEL_FIXED_HINT =
+	"Fixed once published, because bookings and projects depend on it. To offer this another way, archive it and create a new listing.";
 
 const CREATE_OPTIONS = [
 	...CREATE_CATEGORY_OPTIONS.map((c) => ({ label: c.label, value: c.value })),
@@ -34,9 +40,10 @@ function labelOf(item: Suggestion): string {
 }
 
 /**
- * BasicsSection — what the listing is: its title (whose visible label is its accessible name), the
- * rich description, the CREATE category, the skills it is found under (`org.skills`, through the
- * skills typeahead) and, for a service, its delivery model. The model can change only while the
+ * BasicsSection — what the listing is, in this order (Decision #305): its title (whose visible label
+ * is its accessible name), the CREATE category, for a service its delivery model, the rich
+ * description, and the skills it is found under (`org.skills`, through the skills typeahead). Each
+ * field's explanation sits behind a "?" beside its label. The model can change only while the
  * listing is a draft: once published, bookings and projects depend on it, so it shows as text with
  * the way to change it.
  */
@@ -84,7 +91,7 @@ export function BasicsSection(props: { listing: ListingDetail }): JSX.Element {
 	return (
 		<EditSectionFrame section="basics" intro="What buyers see first, and where they find it.">
 			<div class="cat-sec__field">
-				<label class="cat-sec__label" for={TITLE_ID}>Title</label>
+				<FieldHead label="Title" htmlFor={TITLE_ID} />
 				<InputText
 					id={TITLE_ID}
 					value={listing.title}
@@ -97,21 +104,12 @@ export function BasicsSection(props: { listing: ListingDetail }): JSX.Element {
 			</div>
 
 			<div class="cat-sec__field">
-				<span class="cat-sec__label" aria-hidden="true">Description</span>
-				<RichTextEditor
-					id={DESC_ID}
-					value={listing.description}
-					onValueChange={editDescription}
-					placeholder="What buyers get, how you work, and what's included."
-					status={listing.descriptionText.trim() ? "default" : "gate"}
-					minRows={6}
-					maxAutoHeight="28rem"
-					aria-label="Description"
+				<FieldHead
+					label={CREATE_LABEL}
+					decorative
+					hint={category?.hint ?? CREATE_HINT}
+					hintId={CREATE_HINT_ID}
 				/>
-			</div>
-
-			<div class="cat-sec__field">
-				<span class="cat-sec__label" aria-hidden="true">{CREATE_LABEL}</span>
 				<SelectButton
 					options={CREATE_OPTIONS}
 					value={listing.createCategory ?? NOT_YET}
@@ -123,39 +121,16 @@ export function BasicsSection(props: { listing: ListingDetail }): JSX.Element {
 					aria-label={CREATE_LABEL}
 					aria-describedby={CREATE_HINT_ID}
 				/>
-				<p class="cat-sec__hint" id={CREATE_HINT_ID}>
-					{category
-						? category.hint
-						: "Which kind of work this is. It decides where the listing counts towards your standing."}
-				</p>
-			</div>
-
-			<div class="cat-sec__field">
-				<label class="cat-sec__label" for={SKILLS_ID}>Skills</label>
-				<AutoComplete
-					id={SKILLS_ID}
-					multiple
-					forceSelection
-					value={listing.skills.map((s) => s.label)}
-					suggestions={skillOptions.value}
-					onComplete={(q) => void findSkills(q)}
-					onValueChange={setSkills}
-					loading={skillsLoading.value}
-					emptyMessage="No skill by that name"
-					placeholder="Search skills"
-					aria-describedby={SKILLS_HINT_ID}
-					fluid
-				/>
-				<p class="cat-sec__hint" id={SKILLS_HINT_ID} role="status">
-					{skillsNotice.value ?? "The skills this listing is found under in search."}
-				</p>
 			</div>
 
 			{listing.kind === "service" && (
 				<div class="cat-sec__field">
-					<span class="cat-sec__label" aria-hidden={isDraft ? "true" : undefined}>
-						{MODEL_LABEL}
-					</span>
+					<FieldHead
+						label={MODEL_LABEL}
+						decorative={isDraft}
+						hint={isDraft ? MODEL_DRAFT_HINT : MODEL_FIXED_HINT}
+						hintId={MODEL_HINT_ID}
+					/>
 					{isDraft
 						? (
 							<SelectButton
@@ -170,13 +145,46 @@ export function BasicsSection(props: { listing: ListingDetail }): JSX.Element {
 							/>
 						)
 						: <p class="cat-sec__value">{listing.serviceType ?? "Not set"}</p>}
-					<p class="cat-sec__hint" id={MODEL_HINT_ID}>
-						{isDraft
-							? "How buyers engage you. It can change only while this listing is a draft."
-							: "Fixed once published, because bookings and projects depend on it. To offer this another way, archive it and create a new listing."}
-					</p>
 				</div>
 			)}
+
+			<div class="cat-sec__field">
+				<FieldHead label="Description" decorative />
+				<RichTextEditor
+					id={DESC_ID}
+					value={listing.description}
+					onValueChange={editDescription}
+					placeholder="What buyers get, how you work, and what's included."
+					status={listing.descriptionText.trim() ? "default" : "gate"}
+					minRows={6}
+					maxAutoHeight="28rem"
+					aria-label="Description"
+				/>
+			</div>
+
+			<div class="cat-sec__field">
+				<FieldHead
+					label="Skills"
+					htmlFor={SKILLS_ID}
+					hint="The skills this listing is found under in search."
+					hintId={SKILLS_HINT_ID}
+				/>
+				<AutoComplete
+					id={SKILLS_ID}
+					multiple
+					forceSelection
+					value={listing.skills.map((s) => s.label)}
+					suggestions={skillOptions.value}
+					onComplete={(q) => void findSkills(q)}
+					onValueChange={setSkills}
+					loading={skillsLoading.value}
+					emptyMessage="No skill by that name"
+					placeholder="Search skills"
+					aria-describedby={SKILLS_HINT_ID}
+					fluid
+				/>
+				{skillsNotice.value && <p class="cat-sec__hint" role="status">{skillsNotice.value}</p>}
+			</div>
 		</EditSectionFrame>
 	);
 }

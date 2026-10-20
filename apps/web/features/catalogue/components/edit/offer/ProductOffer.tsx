@@ -7,6 +7,7 @@ import { checkOffer, commitOffer } from "../../../core/offer-commit.ts";
 import { useGatedDraft } from "../../../hooks/useGatedDraft.ts";
 import { OfferGroup } from "./OfferGroup.tsx";
 import { AttachmentList } from "./AttachmentList.tsx";
+import { FieldHead, ToggleHint } from "../FieldHead.tsx";
 
 const FORMAT_LABELS: Readonly<Record<ListingProductFormat, string>> = {
 	download: "Download",
@@ -59,7 +60,12 @@ export function ProductOffer(props: { offer: ProductOfferValue }): JSX.Element {
 					/>
 				</div>
 				<div class="cat-sec__field">
-					<span class="cat-sec__label" aria-hidden="true">Licence</span>
+					<FieldHead
+						label="Licence"
+						decorative
+						hint={LICENCE_SUMMARY[offer.licence]}
+						hintId={LICENCE_HINT_ID}
+					/>
 					<SelectButton
 						options={LICENCE_OPTIONS}
 						value={offer.licence}
@@ -70,20 +76,20 @@ export function ProductOffer(props: { offer: ProductOfferValue }): JSX.Element {
 						aria-label="Licence"
 						aria-describedby={LICENCE_HINT_ID}
 					/>
-					<p class="cat-sec__hint" id={LICENCE_HINT_ID}>{LICENCE_SUMMARY[offer.licence]}</p>
 				</div>
 				<div class="cat-sec__field">
-					<ToggleSwitch
-						value={offer.attributionRequired}
-						onValueChange={(attributionRequired) => update({ attributionRequired })}
+					<ToggleHint
 						label="Buyers must credit you"
-						aria-describedby={ATTRIBUTION_HINT_ID}
-					/>
-					<p class="cat-sec__hint" id={ATTRIBUTION_HINT_ID}>
-						{offer.attributionRequired
-							? "Anything made with this names you as its source."
-							: "Buyers may use it without naming you."}
-					</p>
+						hint="On, anything made with this names you as its source. Off, buyers may use it without naming you."
+						hintId={ATTRIBUTION_HINT_ID}
+					>
+						<ToggleSwitch
+							value={offer.attributionRequired}
+							onValueChange={(attributionRequired) => update({ attributionRequired })}
+							label="Buyers must credit you"
+							aria-describedby={ATTRIBUTION_HINT_ID}
+						/>
+					</ToggleHint>
 				</div>
 			</OfferGroup>
 

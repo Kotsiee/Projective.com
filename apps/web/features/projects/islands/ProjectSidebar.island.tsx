@@ -16,13 +16,9 @@ import { CreateStageModal } from "../components/CreateStageModal.tsx";
 import { BoardService } from "../core/BoardService.ts";
 import { stagesCreatedEpoch } from "../core/stage-events.ts";
 import { ArchiveProjectDialog } from "../components/ArchiveProjectDialog.tsx";
+import { DetailsIcon, projectViewLinks, viewLinkCurrent } from "../components/detail-glyphs.tsx";
 import {
-	BackIcon,
-	DetailsIcon,
-	projectViewLinks,
-	viewLinkCurrent,
-} from "../components/detail-glyphs.tsx";
-import {
+	LaneBackLink,
 	LaneCollapseButton,
 	LaneFooter,
 	LaneFooterActions,
@@ -300,10 +296,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 	if (!detail) {
 		return (
 			<div class="proj-detail proj-detail--empty">
-				<a class="proj-detail__back" href="/projects" aria-label="Back to all projects">
-					<span class="proj-detail__back-icon" aria-hidden="true">{BackIcon}</span>
-					<span class="proj-detail__back-label">Back</span>
-				</a>
+				<LaneBackLink href="/projects" label="Back to all projects" />
 				<div class="proj-detail__missing">
 					<p class="proj-detail__missing-title">Project not found</p>
 					<p class="proj-detail__missing-note">

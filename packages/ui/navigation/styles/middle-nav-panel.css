@@ -38,66 +38,21 @@
 	overscroll-behavior: contain;
 }
 
-/*
- * Resize handle — a transparent hit strip over the panel's LEADING edge. Its affordance mirrors the
- * lane handle (`.ui-splitter__handle`): a hairline track coincident with the canvas's end seam plus a
- * centred grab knob, both lighting to `--primary` on hover/focus.
- */
 .ui-midnav-panel__handle {
 	position: absolute;
 	inset-block: 0;
 	inset-inline-start: 0;
 	z-index: 1;
 	inline-size: 6px;
-	cursor: col-resize;
+	cursor: ew-resize;
 	background: transparent;
 	touch-action: none;
-}
-
-.ui-midnav-panel__handle::before {
-	content: "";
-	position: absolute;
-	inset-block: 0;
-	inset-inline-start: 0;
-	inline-size: 0;
-	border-radius: var(--radius-full);
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		inline-size var(--dur-fast) var(--ease-standard);
-}
-
-.ui-midnav-panel__handle::after {
-	content: "";
-	position: absolute;
-	inset-block-start: 50%;
-	inset-inline-start: 0;
-	inline-size: 4px;
-	block-size: 2.25rem;
-	transform: translateY(-50%);
-	border-radius: var(--radius-full);
-	background: var(--outline);
-	opacity: 0.5;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		opacity var(--dur-fast) var(--ease-standard);
-}
-
-.ui-midnav-panel__handle:hover::before,
-.ui-midnav-panel__handle:focus-visible::before,
-.ui-midnav-panel[data-dragging="true"] .ui-midnav-panel__handle::before {
-	inline-size: 2px;
-	background: color-mix(in srgb, var(--primary) 55%, transparent);
-}
-
-.ui-midnav-panel__handle:hover::after,
-.ui-midnav-panel__handle:focus-visible::after,
-.ui-midnav-panel[data-dragging="true"] .ui-midnav-panel__handle::after {
-	background: var(--primary);
-	opacity: 1;
+	user-select: none;
 }
 
 .ui-midnav-panel__handle:focus-visible {
 	outline: none;
+	box-shadow: none;
 }
 
 /* Mid-drag the panel's content must not catch the pointer or start a text selection. */
@@ -111,16 +66,4 @@
    because it carries no transition. */
 .ui-midnav-panel[data-collapse-pending="true"] .ui-midnav-panel__body {
 	opacity: var(--minor-fade);
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.ui-midnav-panel__handle::before,
-	.ui-midnav-panel__handle::after {
-		transition: none;
-	}
-}
-
-:root[data-motion="reduced"] .ui-midnav-panel__handle::before,
-:root[data-motion="reduced"] .ui-midnav-panel__handle::after {
-	transition: none;
 }

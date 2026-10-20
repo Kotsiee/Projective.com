@@ -100,6 +100,72 @@
 }
 /* #endregion */
 
+/* #region Back link */
+.ui-lane-back {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding: 0.3rem 0.5rem 0.3rem 0.35rem;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--text-secondary);
+	text-decoration: none;
+	background: transparent;
+	border-radius: var(--radius-full);
+	-webkit-tap-highlight-color: transparent;
+	touch-action: manipulation;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.ui-lane-back:hover,
+.ui-lane-back:focus-visible {
+	outline: none;
+	box-shadow: none;
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.ui-lane-back:active {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+.ui-lane-back__icon {
+	flex: none;
+	font-size: var(--icon-sm);
+}
+
+.ui-lane-back__icon:dir(rtl) {
+	transform: scaleX(-1);
+}
+
+.ui-splitter:is([data-mode="compact"], [data-mode="collapsed"]) .ui-lane-back {
+	padding: var(--space-2);
+}
+
+.ui-splitter:is([data-mode="compact"], [data-mode="collapsed"]) .ui-lane-back__label {
+	display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-lane-back,
+	.ui-lane-back:active {
+		transform: none;
+		transition-duration: 0ms;
+	}
+}
+
+:root[data-motion="reduced"] .ui-lane-back,
+:root[data-motion="reduced"] .ui-lane-back:active {
+	transform: none;
+	transition-duration: 0ms;
+}
+/* #endregion */
+
 .ui-lane-create {
 	flex: none;
 	display: inline-flex;

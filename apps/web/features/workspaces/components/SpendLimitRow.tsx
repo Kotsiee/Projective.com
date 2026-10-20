@@ -140,7 +140,11 @@ function LimitForm(props: LimitFormProps): JSX.Element {
 				)}
 			</FormControl>
 
-			<FormControl label="Spending limit" hint={capLocked ? PRO : "Empty means no ceiling."}>
+			<FormControl
+				label="Spending limit"
+				hint={capLocked ? PRO : "Empty means no ceiling."}
+				hintMode={capLocked ? "inline" : "popover"}
+			>
 				{({ id, describedBy }) => (
 					<MoneyInput
 						id={id}
@@ -155,7 +159,11 @@ function LimitForm(props: LimitFormProps): JSX.Element {
 				)}
 			</FormControl>
 
-			<FormControl label="Per purchase" hint={perLocked ? PRO : "Empty means any size."}>
+			<FormControl
+				label="Per purchase"
+				hint={perLocked ? PRO : "Empty means any size."}
+				hintMode={perLocked ? "inline" : "popover"}
+			>
 				{({ id, describedBy }) => (
 					<MoneyInput
 						id={id}

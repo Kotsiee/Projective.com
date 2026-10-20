@@ -297,13 +297,6 @@ export const CheckGlyph: VNode = (
  * drawing their own magnifier is how a nav starts looking assembled rather than designed.
  */
 
-/** Back — a leading arrow. Carries `.wsp-icon--dir` at the point of use so it mirrors under RtL. */
-export const BackGlyph: VNode = (
-	<Svg>
-		<path d="M19 12H5M10.5 6.5L5 12l5.5 5.5" />
-	</Svg>
-);
-
 /** Search — the magnifier the lane's `LaneSearch` and the header band's find control share. */
 export const SearchGlyph: VNode = (
 	<Svg>

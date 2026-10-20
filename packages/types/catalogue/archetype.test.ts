@@ -23,8 +23,8 @@ Deno.test("formArchetypeOf maps every delivery model onto its form", () => {
 
 Deno.test("sectionsFor follows the plan §4.3 matrix", () => {
 	const all: EditSection[] = [
-		"media",
 		"basics",
+		"media",
 		"offer",
 		"pricing",
 		"availability",
@@ -40,10 +40,10 @@ Deno.test("sectionsFor follows the plan §4.3 matrix", () => {
 	assertEquals(sectionsFor("cohort", "Group Session"), all);
 });
 
-Deno.test("every form opens on the media showcase and ends on SEO", () => {
+Deno.test("every form opens on Basics and ends on SEO", () => {
 	for (const type of ServiceType.options) {
 		const sections = sectionsFor(formArchetypeOf("service", type), type);
-		assertEquals([sections[0], sections.at(-1)], ["media", "seo"]);
+		assertEquals([sections[0], sections[1], sections.at(-1)], ["basics", "media", "seo"]);
 	}
 });
 

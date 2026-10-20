@@ -35,6 +35,8 @@ export { Link, type LinkProps } from "./components/Link.tsx";
 
 // #region Lane chrome — the shared control set every middle-nav lane composes
 export {
+	LaneBackLink,
+	type LaneBackLinkProps,
 	LaneBar,
 	LaneCollapseButton,
 	type LaneCollapseButtonProps,

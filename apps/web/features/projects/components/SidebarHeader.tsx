@@ -2,7 +2,7 @@ import type { JSX, RefObject, VNode } from "preact";
 import { useSignal } from "@preact/signals";
 import { requestShare } from "@web/features/share/core/share-request.ts";
 import { Popover } from "@projective/ui/feedback";
-import { BackIcon } from "./detail-glyphs.tsx";
+import { LaneBackLink } from "@projective/ui/navigation";
 import { ArchiveIcon, ExternalLinkIcon, KebabIcon, ShareIcon, StarIcon } from "./glyphs.tsx";
 
 /**
@@ -70,10 +70,7 @@ export function SidebarHeader(
 
 	return (
 		<div class="proj-detail__header">
-			<a class="proj-detail__back" href="/projects" aria-label="Back to all projects">
-				<span class="proj-detail__back-icon" aria-hidden="true">{BackIcon}</span>
-				<span class="proj-detail__back-label">Back</span>
-			</a>
+			<LaneBackLink href="/projects" label="Back to all projects" />
 
 			<div class="proj-detail__header-actions">
 				<button

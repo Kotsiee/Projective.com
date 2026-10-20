@@ -6,6 +6,7 @@ import type { ConnectionsView } from "@projective/types/integrations";
 import type { MeetingProvider } from "@projective/types/scheduling";
 import { IntegrationsService } from "@web/features/files/core/IntegrationsService.ts";
 import { DEFAULT_PROVIDER, providerChoices, providerOf } from "../../../core/conferencing-model.ts";
+import { FieldHead } from "../FieldHead.tsx";
 
 const SELECT_ID = "cat-offer-provider";
 const HINT_ID = "cat-offer-provider-hint";
@@ -37,7 +38,12 @@ export function ConferencingSelect(
 
 	return (
 		<div class="cat-sec__field">
-			<label class="cat-sec__label" for={SELECT_ID}>Meeting room</label>
+			<FieldHead
+				label="Meeting room"
+				htmlFor={SELECT_ID}
+				hint="Each booking gets a room from this tool."
+				hintId={HINT_ID}
+			/>
 			<Select
 				id={SELECT_ID}
 				options={choices?.options ?? [{ value: DEFAULT_PROVIDER, label: "My default" }]}
@@ -46,17 +52,16 @@ export function ConferencingSelect(
 				loading={view.value === null && failed.value === null}
 				aria-describedby={HINT_ID}
 			/>
-			<p class="cat-sec__hint" id={HINT_ID} role={failed.value ? "status" : undefined}>
-				{failed.value ??
-					(choices?.empty
-						? (
-							<>
-								No meeting tool is connected, so buyers get a room once you connect one.{" "}
-								<a class="cat-offer__link" href="/settings/integrations">Connect one</a>
-							</>
-						)
-						: "Each booking gets a room from this tool.")}
-			</p>
+			{(failed.value || choices?.empty) && (
+				<p class="cat-sec__hint" role={failed.value ? "status" : undefined}>
+					{failed.value ?? (
+						<>
+							No meeting tool is connected, so buyers get a room once you connect one.{" "}
+							<a class="cat-offer__link" href="/settings/integrations">Connect one</a>
+						</>
+					)}
+				</p>
+			)}
 		</div>
 	);
 }

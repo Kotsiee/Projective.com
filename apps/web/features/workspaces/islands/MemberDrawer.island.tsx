@@ -456,6 +456,7 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 								class="wsp-mdrawer__field"
 								label={confirmLabel(added)}
 								hint={`The word ${RESERVED_GRANT_CONFIRMATION}, in capitals. Taking a right away needs no confirmation.`}
+								hintMode="inline"
 							>
 								{({ id, describedBy }) => (
 									<InputText

@@ -17,6 +17,7 @@ import { STAGE_LIST_MAX, TRIGGER_OPTIONS } from "../../../core/offer-model.ts";
 import { ticketRange } from "../../../core/pricing-model.ts";
 import { ScopeChecklist } from "./ScopeChecklist.tsx";
 import { SkillTags } from "./SkillTags.tsx";
+import { ToggleHint } from "../FieldHead.tsx";
 
 /** The drag id of stage `index`. */
 export const stageDragId = (index: number) => `stage:${index}`;
@@ -196,16 +197,18 @@ export function StageRow(props: StageRowProps): JSX.Element {
 
 			{!first && (
 				<div class="cat-sec__field">
-					<ToggleSwitch
-						value={stage.chainReaction}
-						onValueChange={(chainReaction) => props.onPatch({ chainReaction })}
+					<ToggleHint
 						label="Fund on arrival"
-						aria-describedby={`${base}-chain-hint`}
-					/>
-					<p class="cat-sec__hint" id={`${base}-chain-hint`}>
-						When the previous stage is approved, the buyer's escrow for this stage is held straight
-						away so work carries on. Off, the ticket waits here until the buyer funds it.
-					</p>
+						hint="When the previous stage is approved, the buyer's escrow for this stage is held straight away so work carries on. Off, the ticket waits here until the buyer funds it."
+						hintId={`${base}-chain-hint`}
+					>
+						<ToggleSwitch
+							value={stage.chainReaction}
+							onValueChange={(chainReaction) => props.onPatch({ chainReaction })}
+							label="Fund on arrival"
+							aria-describedby={`${base}-chain-hint`}
+						/>
+					</ToggleHint>
 				</div>
 			)}
 		</div>
