@@ -27,10 +27,12 @@ import { type BandKind, readGridSource, type ScheduleOwner } from "./live-slots.
 import { readSchedulePage } from "./live-schedule-page.ts";
 import {
 	readCalendarEvent,
+	readEntityCalendar,
 	readOpenReschedules,
 	readPersonalCalendar,
 	readProjectCalendar,
 } from "./live-calendar.ts";
+import type { EntityCalendarParams } from "./entity-calendar.ts";
 import { type PlanRefusal, planReschedule, planRsvp } from "./coordination-plan.ts";
 import { writeReschedule, writeRsvp } from "./live-coordination-writes.ts";
 import { type Catalog, loadCatalog } from "../explore/live-catalog.ts";
@@ -54,7 +56,8 @@ import { COMPILE_HORIZON_DAYS } from "./preset-model.ts";
 
 /**
  * ScheduleBackendService — the FAT server-side service behind the Calendar & Schedule surfaces: an
- * engagement's calendar, the acting account's own agenda, a `@handle`'s availability, a session
+ * engagement's calendar, a team's or business's union of its engagements' calendars, the acting
+ * account's own agenda, a `@handle`'s availability, a session
  * listing's schedule, and the bookable slot grids. Thin routes under `apps/web/routes/api/scheduling/*`
  * do only HTTP parsing + guard, then delegate here and map the returned {@link ServiceResult} to a
  * `Response`; the calendar routes call these directly for SSR first paint. Islands never reach this —
@@ -158,6 +161,31 @@ export class ScheduleBackendService {
 		}
 		if (!page) return fail(404, { message: `No project found for "${params.projectId}".` });
 		return ok({ page: projectPage(page, viewerOf(actor)) });
+	}
+
+	/**
+	 * A team's or business's console Calendar (`/teams/:h/calendar`, `/businesses/:h/calendar`,
+	 * Decision #308): the union of the calendars of `params.projectIds`, each read as the reader under
+	 * RLS (`readEntityCalendar`), as one `entity` {@link CalendarPage} whose events each carry their
+	 * project. A project the reader may not see is left out rather than refused, so there is no 404: an
+	 * entity with no visible engagement has an empty calendar. `401` without a session; `503` when any
+	 * project's calendar could not be read.
+	 *
+	 * The ids are the console's own detail read's, never a request's — and RLS would refuse a project
+	 * the reader is not on even if they were.
+	 */
+	static async entityCalendar(
+		params: EntityCalendarParams,
+		actor: ReadActor,
+		now: number = Date.now(),
+	): Promise<ServiceResult<{ page: CalendarPage }>> {
+		if (!canReadLive(actor)) return signInRequired("view this calendar");
+		try {
+			const page = await readEntityCalendar(actor, params, now);
+			return ok({ page: projectPage(page, viewerOf(actor)) });
+		} catch (err) {
+			return calendarUnavailable(err);
+		}
 	}
 
 	/**

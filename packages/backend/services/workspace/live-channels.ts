@@ -2,6 +2,7 @@ import type {
 	ArchiveChannelInput,
 	CreateChannelInput,
 	EntityChannel,
+	UpdateChannelInput,
 	WorkspaceDetail,
 	WorkspaceKind,
 } from "@projective/types/workspace";
@@ -50,6 +51,26 @@ export async function archiveChannel(
 	if (!isUuid(input.channelId)) return badId("channelId", "channel");
 	const res = await callRpc(actor, "comms", "archive_entity_channel", {
 		p_channel_id: input.channelId,
+	});
+	if (!res.ok) return res.refusal;
+	return readDetail(input.kind, input.id, actor, { fresh: true });
+}
+
+/**
+ * Edit a channel's display name, topic and emoji (Decision #308); its creator or a `manage_settings`
+ * holder. Every field is replaced and a blank one cleared; the slug, and so the address, never moves.
+ */
+export async function updateChannel(
+	input: UpdateChannelInput,
+	actor: LiveActor,
+): Promise<ServiceResult<WorkspaceDetail>> {
+	if (!isUuid(input.id)) return badId("id", input.kind);
+	if (!isUuid(input.channelId)) return badId("channelId", "channel");
+	const res = await callRpc(actor, "comms", "update_entity_channel", {
+		p_channel_id: input.channelId,
+		p_name: input.name.length > 0 ? input.name : null,
+		p_topic: input.topic.length > 0 ? input.topic : null,
+		p_emoji: input.emoji.length > 0 ? input.emoji : null,
 	});
 	if (!res.ok) return res.refusal;
 	return readDetail(input.kind, input.id, actor, { fresh: true });

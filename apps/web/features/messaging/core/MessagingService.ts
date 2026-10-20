@@ -158,6 +158,14 @@ export const MessagingService = {
 		);
 	},
 
+	/** Mute or unmute a conversation for the viewer only (Decision #308). */
+	setMuted(id: string, muted: boolean): Promise<MessagingResult<{ muted: boolean }>> {
+		return postMessaging<{ muted: boolean }>(
+			`/api/messaging/conversations/${encodeURIComponent(id)}/mute`,
+			{ muted },
+		);
+	},
+
 	/**
 	 * The messages a `files.items` asset was posted in, newest first — the preview modal's source
 	 * message and its "Go to message" target. Narrowed to one conversation when `conversationId` is

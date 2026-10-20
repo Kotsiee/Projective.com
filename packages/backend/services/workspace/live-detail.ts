@@ -315,7 +315,11 @@ async function assemble(
 	// Wave 1 — the wallet-page tiles and the marks, in parallel.
 	const [finance, media] = await Promise.all([
 		detailIo.financeTiles(actor, kind, raw.id),
-		detailIo.publicMedia(actor, [raw.avatar_file_id, raw.banner_file_id]),
+		detailIo.publicMedia(actor, [
+			raw.avatar_file_id,
+			raw.banner_file_id,
+			...(raw.channels ?? []).map((c) => c.photo_file_id),
+		]),
 	]);
 
 	// Wave 2 — every person the page names, in one batch.
@@ -449,7 +453,7 @@ async function assemble(
 		allowance: kind === "team" ? allowanceOf(raw.allowance) : null,
 		archiveBlockers: archiveBlockersOf(raw.archive_blockers),
 		restoreTarget,
-		channels: toChannels(raw.channels),
+		channels: toChannels(raw.channels, (id) => mediaUrl(media.get(id), "sm")),
 		activity: visibleActivity(raw.activity ?? [], canOpenFinance(kind, viewerCaps)).map((a, i) =>
 			toActivity(a, i, a.actor_user_id ? people.get(a.actor_user_id) : undefined, nowMs)
 		),

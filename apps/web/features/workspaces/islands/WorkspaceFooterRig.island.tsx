@@ -5,6 +5,7 @@ import "../styles/workspace.css";
 import { Tooltip } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
 import { Link } from "@projective/ui/navigation";
+import { BodyPortal } from "@projective/ui/overlay";
 import type { WorkspaceCapability, WorkspaceKind } from "@projective/types/workspace";
 import { type ModuleKey } from "../core/module-registry.tsx";
 import { ViewZoomRig } from "@web/features/shell/components/ViewZoomRig.tsx";
@@ -20,7 +21,7 @@ import {
 	viewOr,
 } from "../core/workspace-state.ts";
 import { zoomStoreFor } from "../core/view-state.ts";
-import { type RigAction, rigLayouts, type RigModel } from "../core/rig-model.ts";
+import { type RigAction, rigBandEmpty, rigLayouts, type RigModel } from "../core/rig-model.ts";
 import { subViewsFor } from "../core/sub-views.ts";
 import { CardsViewIcon, ChartViewIcon, TableViewIcon } from "../components/MemberCard.tsx";
 import { cloneGlyph, InviteGlyph, PlusGlyph, SettingsGlyph } from "../core/workspace-glyphs.tsx";
@@ -61,7 +62,13 @@ import { cloneGlyph, InviteGlyph, PlusGlyph, SettingsGlyph } from "../core/works
  *
  * **Focus is never dropped.** Save goes inert while it saves and leaves with Discard once the editor is
  * clean, so a press that held focus would leave it on `<body>`; it lands on the status line, which
- * says what the press did, or on the last trailing control that stays.
+ * says what the press did, or on the last trailing control that stays, or — when the band hid because
+ * the editor has nothing left to say — on the page's `<main>` landmark, which is always mounted.
+ *
+ * **The band hides when it has nothing to say** (`rigBandEmpty`, Decision #308), an idle editor's
+ * included. So the save status is announced from a live region portalled to `<body>`, mounted for as
+ * long as the editor is: a region inside a hidden band leaves the accessibility tree, and one that
+ * appears with its first words is often not read. The visible status line is its sighted twin.
  *
  * Where their words do not fit, each utility and the toggle swap to their icon-only `Button` (named by
  * `aria-label` and a Tooltip) — two presentations, the stylesheet deciding which paints, so no rule
@@ -187,7 +194,12 @@ export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.
 	// #endregion
 
 	return (
-		<div ref={rigRef} class="wsp-footerrig" data-kind={props.kind}>
+		<div
+			ref={rigRef}
+			class="wsp-footerrig"
+			data-kind={props.kind}
+			data-band-empty={rigBandEmpty(layouts) ?? undefined}
+		>
 			{/* #region Leading — view switching */}
 			<div class="wsp-footerrig__group" role="group" aria-label="View">
 				{
@@ -224,11 +236,15 @@ export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.
 						ref={statusRef}
 						class="wsp-footerrig__status"
 						data-tone={rig.status?.tone}
-						role="status"
 						tabIndex={-1}
 					>
 						{rig.status?.text}
 					</span>
+				)}
+				{rig.statusLine && (
+					<BodyPortal>
+						<span class="ui-visually-hidden" role="status">{rig.status?.text ?? ""}</span>
+					</BodyPortal>
 				)}
 				{withoutLane
 					? (
@@ -270,15 +286,18 @@ export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.
  * still drawn, else the status line itself — it is mounted for as long as the editor is open.
  */
 function landFocus(actions: HTMLElement | null, status: HTMLElement | null): void {
-	if (status?.textContent?.trim()) {
+	const shown = (el: HTMLElement | null): el is HTMLElement =>
+		!!el && el.getClientRects().length > 0;
+	if (shown(status) && status.textContent?.trim()) {
 		status.focus({ preventScroll: true });
 		return;
 	}
 	const controls = actions
-		? [...actions.querySelectorAll<HTMLElement>("a[href], button:not(:disabled)")]
-			.filter((el) => el.getClientRects().length > 0)
+		? [...actions.querySelectorAll<HTMLElement>("a[href], button:not(:disabled)")].filter(shown)
 		: [];
-	(controls.at(-1) ?? status)?.focus({ preventScroll: true });
+	// A band with nothing left to say has hidden itself; the page's `<main>` is always there to hold it.
+	const main = globalThis.document.querySelector<HTMLElement>("main.ui-page-canvas__body");
+	(controls.at(-1) ?? (shown(status) ? status : main))?.focus({ preventScroll: true });
 }
 // #endregion
 

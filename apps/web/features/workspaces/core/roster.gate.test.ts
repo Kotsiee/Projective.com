@@ -81,7 +81,19 @@ Deno.test("roster gate: the card's kebab is an icon-only tier-5 Button that stop
 });
 
 Deno.test("roster gate: the canvas is built on the ui primitives R1 names", () => {
-	assert(/<TabMenu\b/.test(ISLAND), "the partitions are a TabMenu");
+	// The partitions are a bare Select beside the SortControl in the shared fx-toolbar (Decision #307),
+	// with no count in the bar.
+	assert(!/<TabMenu\b/.test(ISLAND), "the partitions are no longer a TabMenu");
+	assert(
+		/class="fx-toolbar wsp-roster__toolbar"/.test(ISLAND),
+		"the toolbar is the shared fx-toolbar",
+	);
+	const bar = ISLAND.slice(ISLAND.indexOf('class="fx-toolbar wsp-roster__toolbar"'));
+	assert(
+		/<Select\b[^]*?\/>\s*<SortControl\b/.test(bar),
+		"the partition filter sits directly beside the sort",
+	);
+	assert(!/__count\b/.test(ISLAND), "no count rides in the toolbar");
 	assert(/<MetaLine\b/.test(ISLAND) && /<MetaLine\b/.test(CARD), "facts are MetaLines");
 	assert(/<InlineNotice\b/.test(ISLAND), "notices and failures are InlineNotices");
 	assert(/<ProgressBar\b/.test(CARD), "the setup meter is the ui ProgressBar");

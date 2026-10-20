@@ -1242,6 +1242,10 @@ REVOKE ALL ON FUNCTION comms.set_dm_starred(uuid, boolean) FROM public, anon;
 
 GRANT EXECUTE ON FUNCTION comms.set_dm_starred(uuid, boolean) TO authenticated;
 
+REVOKE ALL ON FUNCTION comms.set_dm_muted(uuid, boolean) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION comms.set_dm_muted(uuid, boolean) TO authenticated;
+
 REVOKE ALL ON FUNCTION comms.send_request_message(uuid, text, uuid) FROM public, anon;
 
 GRANT EXECUTE ON FUNCTION comms.send_request_message(uuid, text, uuid) TO authenticated;
@@ -2033,6 +2037,9 @@ REVOKE ALL ON FUNCTION comms.create_entity_channel (text, uuid, text, text) FROM
 GRANT EXECUTE ON FUNCTION comms.create_entity_channel (text, uuid, text, text) TO authenticated, service_role;
 REVOKE ALL ON FUNCTION comms.archive_entity_channel (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION comms.archive_entity_channel (uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION comms.update_entity_channel (uuid, text, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION comms.update_entity_channel (uuid, text, text, text) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION comms.fn_can_manage_entity_channel (uuid, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION comms.fn_channel_slug (text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION comms.fn_channel_slug (text) TO authenticated, service_role;
 REVOKE ALL ON FUNCTION comms.fn_entity_member_ids (text, uuid) FROM PUBLIC, anon, authenticated;

@@ -100,12 +100,11 @@ export default function EntityFilesScreen(props: EntityFilesScreenProps): JSX.El
 	return (
 		<div class="wsp" data-kind={props.kind}>
 			<div class="wsp__stack">
-				<section class="wsp-band wsp-band--head" aria-labelledby="wsp-files-title">
-					<div class="wsp-band__inner">
-						<div class="wsp-pagehead">
-							<h1 class="wsp-pagehead__title" id="wsp-files-title">Files</h1>
-							{writable
-								? (
+				{(writable || view.readOnlyNote) && (
+					<section class="wsp-band wsp-band--head" aria-label={`${props.name}'s drive`}>
+						<div class="wsp-band__inner">
+							{writable && (
+								<div class="wsp-pagehead">
 									<Button
 										severity="neutral"
 										variant="outlined"
@@ -114,12 +113,12 @@ export default function EntityFilesScreen(props: EntityFilesScreenProps): JSX.El
 										label="Upload"
 										onClick={() => fileInput.current?.click()}
 									/>
-								)
-								: null}
+								</div>
+							)}
+							{view.readOnlyNote && <p class="wsp-pagehead__note">{view.readOnlyNote}</p>}
 						</div>
-						<p class="wsp-pagehead__note">{view.readOnlyNote ?? view.note}</p>
-					</div>
-				</section>
+					</section>
+				)}
 				<section class="wsp-band wsp-band--plain wsp-band--tail" aria-label={`${props.name}'s drive`}>
 					<div class="wsp-band__inner">
 						{boot.value

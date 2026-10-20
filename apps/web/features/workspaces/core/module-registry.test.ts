@@ -68,7 +68,7 @@ Deno.test("registry: a team owner's hubs, in lane order", () => {
 	]);
 	const vault = hubsForViewer("team", OWNER).find((h) => h.hub.key === "vault");
 	assertEquals(keys(vault?.modules ?? []), ["finance", "payouts"]);
-	assertEquals(vault?.label, "Vault & finances");
+	assertEquals(vault?.label, "Wallet");
 });
 
 Deno.test("registry: a business owner's hubs, in lane order", () => {
@@ -85,7 +85,7 @@ Deno.test("registry: a business owner's hubs, in lane order", () => {
 	]);
 	const vault = hubsForViewer("business", OWNER).find((h) => h.hub.key === "vault");
 	assertEquals(keys(vault?.modules ?? []), ["finance", "spend", "billing"]);
-	assertEquals(vault?.label, "Wallet & spending");
+	assertEquals(vault?.label, "Wallet");
 });
 
 Deno.test("registry: a hub lists only the modules the viewer may open", () => {

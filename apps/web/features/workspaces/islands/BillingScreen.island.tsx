@@ -473,17 +473,6 @@ export default function BillingScreen(props: BillingScreenProps): JSX.Element {
 	return (
 		<div class="wsp" data-kind="business">
 			<div class="wsp__stack">
-				<section class="wsp-band wsp-band--head" data-i={0}>
-					<div class="wsp-band__inner">
-						<div class="wsp-pagehead">
-							<h1 class="wsp-pagehead__title">Billing</h1>
-							<p class="wsp-pagehead__note">
-								What {ws.name} owes and has paid, its wallet statements, and how billing behaves — monthly
-								invoicing, auto-funding and the balance floor.
-							</p>
-						</div>
-					</div>
-				</section>
 
 				{belowFloor && (
 					<section class="wsp-band wsp-band--plain" data-i={1} aria-label="Wallet balance">

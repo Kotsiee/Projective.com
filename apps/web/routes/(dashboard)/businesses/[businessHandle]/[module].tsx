@@ -3,7 +3,7 @@ import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { consoleOutcome } from "@features/workspaces/core/workspace-route.tsx";
 import { consoleResponse } from "@features/workspaces/core/console-route.ts";
-import { resolveBench } from "@features/workspaces/core/workspace-ssr.ts";
+import { resolveBench, resolveEntityCalendar } from "@features/workspaces/core/workspace-ssr.ts";
 import { ModuleScreen } from "@features/workspaces/components/ModuleScreen.tsx";
 
 /**
@@ -27,9 +27,13 @@ export const handler = define.handlers({
 		const bench = outcome.data.module === "talent"
 			? await resolveBench(outcome.data.workspace.handle, actor, ctx.url)
 			: null;
+		// Calendar's union of the business's commissions is its own read too (Decision #308).
+		const calendar = outcome.data.module === "calendar"
+			? await resolveEntityCalendar(outcome.data.workspace, actor, ctx.url)
+			: null;
 
 		ctx.state.title = `${outcome.data.workspace.name} · Business`;
-		return page({ ...outcome.data, bench });
+		return page({ ...outcome.data, bench, calendar });
 	},
 });
 
@@ -42,6 +46,7 @@ export default define.page<typeof handler>(function BusinessModulePage({ data })
 			billing={data.billing}
 			bench={data.bench?.bench ?? null}
 			benchError={data.bench?.error ?? null}
+			calendar={data.calendar}
 		/>
 	);
 });

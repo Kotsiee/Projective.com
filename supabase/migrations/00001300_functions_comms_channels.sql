@@ -848,8 +848,17 @@ BEGIN
     FROM comms.dm_threads t WHERE t.id = p_thread_id
     FOR UPDATE;
 
-    IF v_kind IS DISTINCT FROM 'group'::comms.conversation_kind THEN
-        RAISE EXCEPTION 'Only a group conversation has its own photo' USING ERRCODE = '22023';
+    IF v_kind IS DISTINCT FROM 'group'::comms.conversation_kind
+       AND v_kind IS DISTINCT FROM 'entity_channel'::comms.conversation_kind THEN
+        RAISE EXCEPTION 'Only a group conversation or a channel has its own photo' USING ERRCODE = '22023';
+    END IF;
+
+    -- A channel's photo is part of its identity, so it follows the edit right (Decision #308) rather
+    -- than a group's any-participant rule.
+    IF v_kind = 'entity_channel'::comms.conversation_kind
+       AND NOT comms.fn_can_manage_entity_channel(p_thread_id, v_me) THEN
+        RAISE EXCEPTION USING ERRCODE = '42501',
+            MESSAGE = 'channel: only the person who added it, or someone who manages settings, can change it';
     END IF;
 
     IF p_file_id IS NOT NULL AND NOT EXISTS (
@@ -878,7 +887,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION comms.set_group_photo(uuid, uuid) IS
-'Set or clear (NULL) a group conversation''s photo. Any undeleted participant may; the file must be a processed public avatars-bucket rendition owned by the caller. SECURITY DEFINER because dm_threads carries no client UPDATE policy; the previous photo is soft-deleted.';
+'Set or clear (NULL) a group conversation''s or an entity channel''s photo. Any undeleted participant of a group may; a channel''s creator or a manage_settings holder for a channel (Decision #308); the file must be a processed public avatars-bucket rendition owned by the caller. SECURITY DEFINER because dm_threads carries no client UPDATE policy; the previous photo is soft-deleted.';
 
 COMMENT ON FUNCTION comms.add_dm_thread_members(uuid, uuid[]) IS
 'Add users to a thread the caller participates in; returns the number added (restored self-deletions included). Converts a plain DM with a third participant into a group. SECURITY DEFINER for the same reason as create_group_thread.';
@@ -964,6 +973,43 @@ $$;
 
 COMMENT ON FUNCTION comms.set_dm_starred(uuid, boolean) IS
 'Set the caller''s own star on a thread they are an undeleted participant of. SECURITY DEFINER because dm_participants carries no client UPDATE policy.';
+
+-- Mute or unmute a conversation for the caller only (Decision #308): the participant row's `is_muted`,
+-- which the inbox and the channel header read. Idempotent, as set_dm_starred is.
+CREATE OR REPLACE FUNCTION comms.set_dm_muted(
+    p_thread_id uuid,
+    p_muted boolean
+) RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, comms, auth
+AS $$
+DECLARE
+    v_me uuid := auth.uid();
+BEGIN
+    IF v_me IS NULL THEN
+        RAISE EXCEPTION 'set_dm_muted: no acting user' USING ERRCODE = '42501';
+    END IF;
+    IF p_muted IS NULL THEN
+        RAISE EXCEPTION 'muted: required' USING ERRCODE = '22023';
+    END IF;
+
+    UPDATE comms.dm_participants p
+    SET is_muted = p_muted
+    WHERE p.thread_id = p_thread_id
+      AND p.user_id = v_me
+      AND p.deleted_at IS NULL;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Not a participant of this conversation' USING ERRCODE = '42501';
+    END IF;
+
+    RETURN p_muted;
+END;
+$$;
+
+COMMENT ON FUNCTION comms.set_dm_muted(uuid, boolean) IS
+'Set the caller''s own mute on a thread they are an undeleted participant of (Decision #308). SECURITY DEFINER because dm_participants carries no client UPDATE policy.';
 
 -- Post the opening message of a hiring request into the pair's DM, opening the thread if there is
 -- none. The caller must hold an OPEN engagement with the recipient on `p_project_id` — a pending
@@ -1350,10 +1396,30 @@ AS $$
        AND EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = m.user_id);
 $$;
 
+-- Whether a person may edit or archive an entity channel (Decision #308): an active member who added it,
+-- or one holding `manage_settings`. FALSE for anything that is not a live channel. Internal.
+CREATE OR REPLACE FUNCTION comms.fn_can_manage_entity_channel(p_channel_id uuid, p_user uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE((
+        SELECT EXISTS (SELECT 1 FROM org.fn_member_seat(t.owner_type, t.owner_entity_id, p_user))
+           AND (t.created_by_user_id = p_user
+                OR 'manage_settings'::org.workspace_capability
+                   = ANY (org.fn_member_capabilities(t.owner_type, t.owner_entity_id, p_user)))
+          FROM comms.dm_threads t
+         WHERE t.id = p_channel_id AND t.kind = 'entity_channel' AND t.archived_at IS NULL
+    ), false);
+$$;
+
 -- An entity's live channels as the console lists them for one viewer: the default first, then by slug,
 -- each with the viewer's unread count (other people's messages after their read watermark; a NULL
--- watermark is "never opened", so every one) and the newest message's time. Internal — read by
--- org.get_workspace_detail, which has already decided the viewer is an active member.
+-- watermark is "never opened", so every one) and the newest message's time, its display name, emoji and
+-- photo, the viewer's own star and mute, and whether the viewer may edit it (Decision #308). Internal —
+-- read by org.get_workspace_detail, which has already decided the viewer is an active member.
 CREATE OR REPLACE FUNCTION comms.fn_entity_channel_list(p_kind text, p_entity uuid, p_viewer uuid)
 RETURNS jsonb
 LANGUAGE sql
@@ -1363,7 +1429,13 @@ AS $$
     SELECT COALESCE(jsonb_agg(jsonb_build_object(
             'id', t.id,
             'slug', t.slug,
+            'name', t.title,
             'topic', t.topic,
+            'emoji', t.emoji,
+            'photo_file_id', t.photo_file_id,
+            'starred', COALESCE(me.is_starred, false),
+            'muted', COALESCE(me.is_muted, false),
+            'can_manage', comms.fn_can_manage_entity_channel(t.id, p_viewer),
             'is_default', t.is_default,
             'unread', (SELECT count(*) FROM comms.dm_messages m
                         WHERE m.thread_id = t.id AND m.deleted_at IS NULL
@@ -1569,7 +1641,13 @@ BEGIN
     RETURN jsonb_build_object(
         'id', v_id,
         'slug', v_slug,
+        'name', NULL,
         'topic', v_topic,
+        'emoji', NULL,
+        'photo_file_id', NULL,
+        'starred', false,
+        'muted', false,
+        'can_manage', true,
         'is_default', false,
         'unread', 0,
         'last_activity_at', NULL
@@ -1624,6 +1702,81 @@ BEGIN
     );
 END;
 $$;
+
+-- Edit a channel's display name, topic and emoji (Decision #308): its creator, or a member holding
+-- `manage_settings`, on an entity that is not archived. Every field is replaced — NULL or blank clears
+-- it — and the slug is never touched, so the channel keeps its address. The default channel may be
+-- renamed like any other. A channel the caller cannot see is one answer, not found, as on archive.
+CREATE OR REPLACE FUNCTION comms.update_entity_channel(
+    p_channel_id uuid,
+    p_name text,
+    p_topic text,
+    p_emoji text
+) RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_t record;
+    v_status text;
+    v_name text := NULLIF(btrim(COALESCE(p_name, '')), '');
+    v_topic text := NULLIF(btrim(COALESCE(p_topic, '')), '');
+    v_emoji text := NULLIF(btrim(COALESCE(p_emoji, '')), '');
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+    END IF;
+    SELECT t.id, t.owner_type, t.owner_entity_id, t.slug, t.archived_at
+      INTO v_t
+      FROM comms.dm_threads t
+     WHERE t.id = p_channel_id AND t.kind = 'entity_channel'
+       FOR UPDATE;
+    IF v_t.id IS NULL OR v_t.archived_at IS NOT NULL
+       OR NOT EXISTS (SELECT 1 FROM org.fn_member_seat(v_t.owner_type, v_t.owner_entity_id, v_uid)) THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'channel: not found';
+    END IF;
+    IF NOT comms.fn_can_manage_entity_channel(v_t.id, v_uid) THEN
+        RAISE EXCEPTION USING ERRCODE = '42501',
+            MESSAGE = 'channel: only the person who added it, or someone who manages settings, can edit it';
+    END IF;
+    v_status := CASE v_t.owner_type
+        WHEN 'team' THEN (SELECT e.status FROM org.teams e WHERE e.id = v_t.owner_entity_id)
+        ELSE (SELECT e.status FROM org.business_profiles e WHERE e.id = v_t.owner_entity_id) END;
+    IF v_status = 'archived' THEN
+        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'workspace: restore it before editing a channel';
+    END IF;
+    IF v_name IS NOT NULL AND char_length(v_name) > 60 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'name: keep it to 60 characters';
+    END IF;
+    IF v_topic IS NOT NULL AND char_length(v_topic) > 200 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'topic: keep it to 200 characters';
+    END IF;
+    IF v_emoji IS NOT NULL AND char_length(v_emoji) > 16 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'emoji: choose a single emoji';
+    END IF;
+
+    UPDATE comms.dm_threads
+       SET title = v_name, topic = v_topic, emoji = v_emoji
+     WHERE id = v_t.id;
+
+    RETURN jsonb_build_object(
+        'id', v_t.id,
+        'slug', v_t.slug,
+        'name', v_name,
+        'topic', v_topic,
+        'emoji', v_emoji
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION comms.update_entity_channel(uuid, text, text, text) IS
+'Replace an entity channel''s display name (title, <= 60), topic (<= 200) and emoji (<= 16); blank clears. The creator or a manage_settings holder on a non-archived entity; the slug never changes. A channel the caller cannot see is P0002. SECURITY DEFINER because dm_threads carries no client UPDATE policy (Decision #308).';
+
+COMMENT ON FUNCTION comms.fn_can_manage_entity_channel(uuid, uuid) IS
+'Whether a user may edit or archive a live entity channel: an active member who created it, or one holding manage_settings (Decision #308). Internal.';
 
 COMMENT ON FUNCTION comms.create_entity_channel(text, uuid, text, text) IS
 'Create a channel (kind entity_channel) on a team or business the caller is an active member of. Name normalised by comms.fn_channel_slug and held to 2-40 of [a-z0-9-]; a duplicate live slug is 23505, more than 30 live channels 55000, an archived entity 55000. Participants are seeded by trigger. SECURITY DEFINER because dm_threads/dm_participants carry no client write policy (Decision #306).';

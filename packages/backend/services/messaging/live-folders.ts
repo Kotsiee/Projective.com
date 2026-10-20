@@ -58,3 +58,25 @@ export async function setLiveStarred(
 	}
 	return { data: { starred } };
 }
+
+/**
+ * Mute or unmute a conversation for the caller through `comms.set_dm_muted` (Decision #308). A
+ * conversation with no thread yet has nothing to mute and reads as a miss.
+ */
+export async function setLiveMuted(
+	actor: ReadActor & { accessToken: string },
+	conversationId: string,
+	muted: boolean,
+): Promise<WriteOutcome<{ muted: boolean }>> {
+	const ref = await resolveThreadRef(actor, conversationId);
+	if (!ref || ref.kind === "virtual") return null;
+	const { error } = await commsClient(actor).rpc("set_dm_muted", {
+		p_thread_id: ref.threadId,
+		p_muted: muted,
+	});
+	if (error) {
+		if (error.code === "42501") return null;
+		throw new Error(`comms.set_dm_muted failed: ${error.message}`);
+	}
+	return { data: { muted } };
+}

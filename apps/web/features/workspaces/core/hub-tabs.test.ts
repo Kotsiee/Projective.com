@@ -45,9 +45,9 @@ const strip = (
 	kind: WorkspaceKind = "team",
 ) => hubTabs({ kind, handle: "north-loop", capabilities, module, view });
 
-Deno.test("hub tabs: Roster & members is People · Invitations · Org chart · Roles, as links", () => {
+Deno.test("hub tabs: Members is People · Invitations · Org chart · Roles, as links", () => {
 	const roster = strip("members");
-	assertEquals(roster?.title, "Roster & members");
+	assertEquals(roster?.title, "Members");
 	assertEquals(roster?.tabs.map((t) => [t.label, t.href]), [
 		["People", "/teams/north-loop/members"],
 		["Invitations", "/teams/north-loop/members?view=pending"],
@@ -74,7 +74,7 @@ Deno.test("hub tabs: the vault, insights and settings hubs per kind", () => {
 	assertEquals(strip("payouts")?.tabs.map((t) => t.label), ["Finance", "Payouts"]);
 	assertEquals(strip("payouts")?.active, 1);
 	const business = strip("spend", null, OWNER, "business");
-	assertEquals(business?.title, "Wallet & spending");
+	assertEquals(business?.title, "Wallet");
 	assertEquals(business?.tabs.map((t) => t.module), ["finance", "spend", "billing"]);
 	assertEquals(business?.active, 1);
 	assertEquals(strip("standing")?.tabs.map((t) => t.label), ["Analytics", "Standing"]);

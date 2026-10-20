@@ -17,6 +17,7 @@ import type {
 	SwitchContextInput,
 	TeamSplitPreview,
 	TransferOwnershipInput,
+	UpdateChannelInput,
 	UpdateMemberInput,
 	UpdatePayoutInput,
 	UpdateSpendInput,
@@ -267,6 +268,14 @@ export const WorkspaceService = {
 	/** Archive a chat channel (never the default one); resolves to the re-read detail. */
 	archiveChannel(input: ArchiveChannelInput): Promise<WorkspaceResult<WorkspaceDetail>> {
 		return postWorkspace<WorkspaceDetail>("/api/workspace/channels/archive", input);
+	},
+
+	/**
+	 * Edit a chat channel's display name, topic and emoji (Decision #308); a blank field clears it and
+	 * the slug never changes. Resolves to the re-read detail.
+	 */
+	updateChannel(input: UpdateChannelInput): Promise<WorkspaceResult<WorkspaceDetail>> {
+		return postWorkspace<WorkspaceDetail>("/api/workspace/channels/update", input);
 	},
 
 	// #endregion

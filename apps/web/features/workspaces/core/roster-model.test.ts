@@ -6,12 +6,15 @@ import {
 	cardMeta,
 	cardPeople,
 	countLabel,
+	DEFAULT_ROSTER_SORT,
+	DEFAULT_ROSTER_SORT_DIR,
 	filledCount,
 	filterRoster,
 	isFiltered,
 	isFirstRun,
 	lifecycleTag,
 	ROSTER_COLUMNS,
+	ROSTER_SORTS,
 	ROSTER_TABS,
 	rosterCanvasControls,
 	type RosterCanvasInput,
@@ -24,19 +27,22 @@ import {
 	rosterHeadMeta,
 	rosterHref,
 	rosterSearch,
+	type RosterSort,
+	type RosterSortDir,
 	rosterSpent,
 	type RosterTab,
-	rosterTabBadge,
 	rosterTabCounts,
 	rosterTabFromSearch,
-	rosterTabIndex,
 	rosterToolsShown,
 	rosterTrackWidth,
 	setupPercent,
 	setupUnfinished,
+	sortRoster,
 	spentSortValue,
 	statusSortValue,
 	statusTag,
+	toRosterSort,
+	toRosterSortDir,
 	toRosterTab,
 } from "./roster-model.ts";
 import { rigFilledCount, rigModel } from "./rig-model.ts";
@@ -125,16 +131,19 @@ Deno.test("roster: the canvas partitions are All · Owned · Member · Invitatio
 		"Archived",
 	]);
 	assertEquals(ROSTER_TABS.map((t) => t.value), TABS);
-	// The lane offers the same words over the same partition, minus the canvas-only Archived.
-	assertEquals(lane.ROSTER_PARTITIONS, ROSTER_TABS.filter((t) => t.value !== "archived"));
+	// The lane's segments use the same words over the same partition, minus the canvas-only Archived
+	// and Invitations, which the lane draws as its own toggle beside the search (Decision #307).
+	assertEquals(
+		lane.ROSTER_PARTITIONS,
+		ROSTER_TABS.filter((t) => t.value !== "archived" && t.value !== "invitations"),
+	);
 });
 
-Deno.test("roster: a raw value coerces to a partition, and every partition has its own index", () => {
+Deno.test("roster: a raw value coerces to a partition", () => {
 	assertEquals(toRosterTab("owned"), "owned");
 	for (const raw of [null, undefined, "", "Owned", "teams", "member of"]) {
 		assertEquals(toRosterTab(raw), "all");
 	}
-	assertEquals(TABS.map(rosterTabIndex), [0, 1, 2, 3, 4]);
 });
 
 Deno.test("roster: archived entities appear only under Archived; Invitations lists no entities", () => {
@@ -158,14 +167,6 @@ Deno.test("roster: archived entities appear only under Archived; Invitations lis
 		invitations: 1,
 		archived: 1,
 	});
-});
-
-Deno.test("roster: every partition carries its count Badge, an empty one none", () => {
-	const counts = { all: 3, owned: 1, member: 2, invitations: 1, archived: 0 };
-	assertEquals(
-		TABS.map((tab) => rosterTabBadge(tab, counts)),
-		[3, 1, 2, 1, undefined],
-	);
 });
 
 Deno.test("roster: only a partition or a search term counts as filtered", () => {
@@ -245,7 +246,54 @@ Deno.test("roster: a partition that leaves nothing is empty, rows are populated"
 	assertEquals(rosterCanvasState(canvas()), "populated");
 });
 
-Deno.test("roster: the search and the TabMenu are drawn only when there is something to filter", () => {
+Deno.test("roster: the sort orders by recency, name, members or live projects, ties in server order", () => {
+	const rows = [
+		summary({
+			id: "a",
+			name: "bravo",
+			memberCount: 3,
+			activeProjects: 1,
+			updatedAt: "2026-10-01T00:00:00Z",
+		}),
+		summary({ id: "b", name: "Alpha", memberCount: 5, activeProjects: 1, updatedAt: null }),
+		summary({
+			id: "c",
+			name: "charlie",
+			memberCount: 3,
+			activeProjects: 4,
+			updatedAt: "2026-10-12T00:00:00Z",
+		}),
+	];
+	const ids = (by: RosterSort, dir: RosterSortDir) => sortRoster(rows, by, dir).map((r) => r.id);
+	// An unknown `updatedAt` sorts last in either direction — it never reads as newest or oldest.
+	assertEquals(ids("recent", "desc"), ["c", "a", "b"]);
+	assertEquals(ids("recent", "asc"), ["a", "c", "b"]);
+	assertEquals(ids("name", "asc"), ["b", "a", "c"]);
+	assertEquals(ids("members", "desc"), ["b", "a", "c"]);
+	assertEquals(ids("projects", "asc"), ["a", "b", "c"]);
+	// Pure: the input is never reordered in place.
+	assertEquals(rows.map((r) => r.id), ["a", "b", "c"]);
+	assertEquals(ROSTER_SORTS.map((s) => s.value), ["recent", "name", "members", "projects"]);
+	assertEquals([DEFAULT_ROSTER_SORT, DEFAULT_ROSTER_SORT_DIR], ["recent", "desc"]);
+	assertEquals(toRosterSort("members"), "members");
+	assertEquals(toRosterSort("price"), "recent");
+	assertEquals(toRosterSortDir("asc"), "asc");
+	assertEquals(toRosterSortDir(null), "desc");
+});
+
+Deno.test("roster: the address carries a non-resting sort and drops the resting one", () => {
+	const resting = { by: DEFAULT_ROSTER_SORT, dir: DEFAULT_ROSTER_SORT_DIR };
+	assertEquals(rosterSearch("?sort=name&dir=asc", "all", "", resting), "");
+	assertEquals(
+		rosterSearch("", "owned", "", { by: "name", dir: "asc" }),
+		"?view=owned&sort=name&dir=asc",
+	);
+	assertEquals(rosterSearch("", "all", "", { by: "members", dir: "desc" }), "?sort=members");
+	// Without a sort the parameters are left alone.
+	assertEquals(rosterSearch("?sort=name", "all", ""), "?sort=name");
+});
+
+Deno.test("roster: the toolbar is drawn only when there is something to filter", () => {
 	const shown = (["error", "first-run", "invitations", "empty", "populated"] as const)
 		.filter(rosterToolsShown);
 	assertEquals(shown, ["invitations", "empty", "populated"]);

@@ -1,16 +1,15 @@
 import type { JSX } from "preact";
 import { batch, useComputed, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
+import "@web/features/projects/styles/fx-toolbar.css";
 import "../styles/workspace.css";
-import { FormControl, MoneyInput } from "@projective/ui/fields";
+import { FormControl, MoneyInput, Select } from "@projective/ui/fields";
 import { InlineNotice } from "@projective/ui/feedback";
 import { MetaLine } from "@projective/ui/display";
-import { TabMenu } from "@projective/ui/navigation";
 import { Icon, type IconName } from "@projective/ui/icons";
 import {
 	type BusinessSpendPolicy,
 	canOpenVerification,
-	kindCopy,
 	walletHrefFor,
 	type WorkspaceDetail,
 	workspaceHref,
@@ -97,12 +96,15 @@ export interface SpendPolicyScreenProps {
 	policy: BusinessSpendPolicy;
 }
 
-/** The Requests tab panel's id (the TabMenu's `panelId`). */
+/** The Requests panel's id (the view toolbar's `aria-controls`). */
 const PANEL_ID = "wsp-requests-panel";
+/** The Requests views, as the toolbar's bare `Select` names them. */
+const REQUEST_VIEW_OPTIONS = [
+	{ value: "pending", label: "Pending" },
+	{ value: "decided", label: "Decided" },
+];
 /** The MetaLine under the threshold field — part of the field's description. */
 const THRESHOLD_DEFAULT_ID = "wsp-spend-threshold-default";
-/** The Requests TabMenu's root id (tab `i` is `${TABS_ID}-tab-${i}`). */
-const TABS_ID = "wsp-requests";
 /** How long a limits draft rests before it is priced. */
 const PREVIEW_DELAY_MS = 300;
 
@@ -131,7 +133,6 @@ function Notice(
 
 export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.Element {
 	const ws = props.workspace;
-	const copy = kindCopy(ws.kind);
 	const viewerCan = ws.viewerCan;
 	const editPolicy = viewerCan?.editPolicy === true;
 	const viewer = ws.members.find((m) => m.id === ws.viewerMemberId);
@@ -167,7 +168,8 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 	const queueError = useSignal<string | null>(null);
 	const planRefused = useSignal(false);
 	const announce = useSignal("");
-	const tab = useSignal(0);
+	/** The Requests view the toolbar shows — `pending` or `decided` (`REQUEST_TABS`). */
+	const requestView = useSignal<string>("pending");
 	const panelRef = useRef<HTMLDivElement>(null);
 	const sim = useSignal<SpendRequestsSimulation | undefined>(undefined);
 
@@ -522,18 +524,6 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 	return (
 		<div class="wsp" data-kind="business">
 			<div class="wsp__stack">
-				<section class="wsp-band wsp-band--head" data-i={0}>
-					<div class="wsp-band__inner">
-						<div class="wsp-pagehead">
-							<h1 class="wsp-pagehead__title">Spending and approvals</h1>
-							<p class="wsp-pagehead__note">
-								Several people fund the {copy.moneyNoun}{" "}
-								and several spend from it. Set who may do which, how much they may spend alone, and
-								what needs a second pair of eyes.
-							</p>
-						</div>
-					</div>
-				</section>
 
 				{
 					/*
@@ -676,31 +666,37 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 							<section class="wsp-spend__section" aria-labelledby="wsp-spend-requests">
 								<h2 class="wsp-band__title" id="wsp-spend-requests">Requests</h2>
 								{kyb && <Notice notice={kyb} icon="shield" />}
-								<TabMenu
-									id={TABS_ID}
-									class="wsp-requests__tabs"
+								{
+									/* The views are the shared fx-toolbar's bare Select, with no count in the bar
+									   (Decision #307); the lane's Spend row still counts what waits. */
+								}
+								<div
+									class="fx-toolbar wsp-requests__toolbar"
+									role="toolbar"
 									aria-label="Spend requests"
-									panelId={PANEL_ID}
-									activeIndex={tab}
-									model={[
-										{
-											key: "pending",
-											label: "Pending",
-											badge: approvals.pending.length || undefined,
-										},
-										{ key: "decided", label: "Decided" },
-									]}
-								/>
+									aria-controls={PANEL_ID}
+								>
+									<Select
+										class="ui-field--bare wsp-requests__view"
+										size="sm"
+										aria-label="Show requests"
+										options={REQUEST_VIEW_OPTIONS}
+										value={requestView}
+									/>
+								</div>
 								<div
 									id={PANEL_ID}
 									ref={panelRef}
-									role="tabpanel"
+									role="region"
 									class="wsp-requests__panel"
 									tabIndex={-1}
-									aria-labelledby={`${TABS_ID}-tab-${tab.value}`}
+									aria-label={`${
+										REQUEST_VIEW_OPTIONS.find((o) => o.value === requestView.value)?.label ??
+											"Pending"
+									} requests`}
 								>
 									<ApprovalQueue
-										view={REQUEST_TABS[tab.value] ?? "pending"}
+										view={REQUEST_TABS.find((t) => t === requestView.value) ?? "pending"}
 										rows={rows}
 										decided={approvals.decided}
 										busy={busy.value}

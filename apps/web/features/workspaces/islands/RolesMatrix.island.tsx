@@ -345,18 +345,13 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 	return (
 		<div class="wsp" data-kind={ws.kind}>
 			<div class="wsp__stack">
-				<section class="wsp-band wsp-band--head" data-i={0}>
+				<section class="wsp-band wsp-band--head" data-i={0} aria-label="Roles and permissions">
 					<div class="wsp-band__inner">
 						<div class="wsp-pagehead">
 							<div class="wsp-roles__head">
-								<h1 class="wsp-pagehead__title">Roles and permissions</h1>
 								<MetaLine items={rolesHeaderItems(ws.roles)} />
 							</div>
 						</div>
-						<p class="wsp-pagehead__note">
-							A role is a named bundle of permissions. The presets are fixed; a custom role is yours
-							to compose, cell by cell. An exception for one person lives on that member, not here.
-						</p>
 					</div>
 				</section>
 

@@ -317,16 +317,6 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 	return (
 		<div class="wsp" data-kind={ws.kind}>
 			<div class="wsp__stack">
-				<section class="wsp-band wsp-band--head" data-i={0} aria-labelledby="wsp-settings-title">
-					<div class="wsp-band__inner">
-						<div class="wsp-pagehead">
-							<h1 class="wsp-pagehead__title" id="wsp-settings-title">Settings</h1>
-						</div>
-						<p class="wsp-pagehead__note">
-							How {ws.name} is named, who can find it, and whether it is live.
-						</p>
-					</div>
-				</section>
 
 				<div class="wsp-band wsp-band--page wsp-band--tail" data-i={1}>
 					<div class="wsp-band__inner wsp-settings">

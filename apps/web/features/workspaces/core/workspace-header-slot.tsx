@@ -1,6 +1,11 @@
 import type { ComponentChildren } from "preact";
 import type { ReadActor } from "@server/services/read-actor.ts";
+import { workspaceHref } from "@projective/types/workspace";
+import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBackendService.ts";
 import WorkspaceHeaderBand from "../islands/WorkspaceHeaderBand.island.tsx";
+import WorkspaceChannelHeader from "../islands/WorkspaceChannelHeader.island.tsx";
+import { channelDetailsInfo } from "../components/ChannelDetails.tsx";
+import { channelHref, channelTabOfPath } from "./channel-model.ts";
 import { resolveWorkspaceConsole } from "./workspace-ssr.ts";
 import {
 	activeModuleOf,
@@ -32,9 +37,33 @@ export async function workspaceHeaderFor(url: URL, actor: ReadActor): Promise<Co
 	const bootstrap = await resolveWorkspaceConsole(kind, handle, requested, actor, url);
 	if (!bootstrap) return null;
 
-	// On a channel the band titles the room (`# delivery-sync`) over its topic (Decision #306).
+	// On a channel the band is the room's own header — identity, Chat · Files, and its actions — the
+	// twin of a project channel's and a conversation's (Decision #308).
 	const slug = bootstrap.activeModule === "channels" ? channelSlugOfPath(url.pathname) : null;
 	const channel = slug ? bootstrap.workspace.channels.find((c) => c.slug === slug) ?? null : null;
+	if (channel) {
+		const thread = await WorkspaceBackendService.channelThread(
+			kind,
+			bootstrap.workspace.handle,
+			channel.slug,
+			actor,
+		);
+		if (thread.ok && thread.data) {
+			const channelsBase = workspaceHref(kind, bootstrap.workspace.handle, "channels");
+			return (
+				<WorkspaceChannelHeader
+					kind={kind}
+					entityId={bootstrap.workspace.id}
+					channel={thread.data.channel}
+					conversationId={thread.data.conversationId}
+					channelsBase={channelsBase}
+					channelBase={channelHref(channelsBase, channel.slug)}
+					activeTab={channelTabOfPath(url.pathname)}
+					details={channelDetailsInfo(bootstrap.workspace, thread.data.channel)}
+				/>
+			);
+		}
+	}
 
 	return (
 		<WorkspaceHeaderBand

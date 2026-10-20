@@ -18,8 +18,8 @@ import { type SubView, subViewIndex } from "./sub-views.ts";
  *
  *   1. **Identity** — the module's title in the title register over one meta line (the entity's
  *      name and `@handle`, and the acting state), so whose console this is is never a guess.
- *   2. **Sub-views** — the module's `TabMenu`, centred, only when the module partitions its body
- *      (`sub-views.ts`).
+ *   2. **Sub-views** — the module's view toolbar (a bare `Select` in the shared `.fx-toolbar`,
+ *      Decision #307), centred, only when the module partitions its body (`sub-views.ts`).
  *   3. **Actions** — at most ONE filled control (the module's commit, which the module publishes
  *      through `workspace-state`). The entity's kebab lives in the lane head (Decision #306); the band
  *      draws the same menu only where the lane is not on screen — collapsed to its rail, or hidden
@@ -139,7 +139,7 @@ export interface HeaderBandModel {
 	title: string;
 	/** One meta line under the title. */
 	meta: MetaLineEntry[];
-	/** The centred TabMenu, or `null` when the module has nothing to partition. */
+	/** The centred view toolbar's options, or `null` when the module has nothing to partition. */
 	tabs: { views: SubView[]; active: number } | null;
 	/** The end region's one filled control. */
 	commit: ModuleCommit | null;

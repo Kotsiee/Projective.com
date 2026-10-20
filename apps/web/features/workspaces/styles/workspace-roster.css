@@ -1,7 +1,7 @@
 /*
  * workspace-roster — the `/teams` and `/businesses` INDEX: the page head, the entity cards, the
  * table's cells, the incoming-invitation strip and the Draft-First create dialog. The empty states are
- * the ui `EmptyState`, the notices the ui `InlineNotice`, the partitions the ui `TabMenu` — this sheet
+ * the ui `EmptyState`, the notices the ui `InlineNotice`, the toolbar the shared `.fx-toolbar` (Decision #307) — this sheet
  * only places them (Teams work order R1).
  *
  * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY.
@@ -26,14 +26,6 @@
 	min-inline-size: 0;
 }
 
-.wsp-roster__head {
-	display: flex;
-	align-items: flex-end;
-	justify-content: space-between;
-	gap: var(--space-4);
-	flex-wrap: wrap;
-}
-
 .wsp-roster__heading {
 	display: flex;
 	flex-direction: column;
@@ -51,23 +43,44 @@
 	color: var(--on-surface);
 }
 
-.wsp-roster__search {
-	inline-size: min(100%, 18rem);
+/*
+ * The canvas toolbar — the shared `.fx-toolbar` (`projects/styles/fx-toolbar.css`) the File Explorer and
+ * the Catalogue console draw, so the three read as one system (Decision #307). It rides in its own band
+ * so it can pin under the frame chrome for the whole stack: a sticky element is bound by its parent, and
+ * the head band ends with the title. The band pins; the bar inside it keeps its glass and stays put.
+ * Doubled class: `.wsp-band`'s own `position` and padding load later (`workspace-console.css`).
+ */
+.wsp-band.wsp-band--toolbar {
+	/* The index draws no frame header band, so the bar pins under the top bar alone. */
+	--fx-chrome: var(--shell-topbar-h);
+	--fx-toolbar-h: 3rem;
+	position: sticky;
+	inset-block-start: calc(var(--fx-chrome) + var(--space-2));
+	z-index: var(--z-sticky);
+	padding-block: 0;
 }
 
-/* The status line of a context switch, and the live count over a narrowed roster. */
-.wsp-roster__status,
-.wsp-roster__count {
+.wsp-roster__toolbar.fx-toolbar {
+	position: relative;
+	inset: auto;
+}
+
+/* The partition filter sits directly beside the sort, as `.cat-toolbar__type` does on the Catalogue. */
+.wsp-roster__filter {
+	flex: none;
+	inline-size: 8.5rem;
+}
+
+.wsp-roster__filter.ui-field {
+	border-radius: var(--radius-full);
+}
+
+/* The status line of a context switch. */
+.wsp-roster__status {
 	margin: 0;
 	margin-block-end: var(--space-3);
 	font-size: var(--wsp-fs-body);
-	font-variant-numeric: tabular-nums;
 	color: var(--text-secondary);
-}
-
-/* The count is a live region, so it stays mounted; it takes room only while it speaks. */
-.wsp-roster__count:empty {
-	margin-block-end: 0;
 }
 
 /*
@@ -744,14 +757,25 @@ a pointer. */
 
 /* #region Responsive */
 @media (max-width: 47.9375rem) {
-	/* The head stacks: the title over its facts, then the search across the full width. */
-	.wsp-roster__head {
-		align-items: stretch;
-		flex-direction: column;
+	/* The toolbar wraps as the Catalogue's does: the search on its own row, the filter and sort under it. */
+	.wsp-roster__toolbar.fx-toolbar {
+		flex-wrap: wrap;
+		border-radius: var(--radius-lg);
 	}
 
-	.wsp-roster__search {
-		inline-size: 100%;
+	.wsp-roster__toolbar .fx-toolbar__search {
+		flex: 1 1 100%;
+		max-inline-size: none;
+	}
+
+	.wsp-roster__toolbar .fx-toolbar__spacer {
+		display: none;
+	}
+
+	.wsp-roster__filter {
+		flex: 1 1 auto;
+		inline-size: auto;
+		min-inline-size: 7rem;
 	}
 
 	/* The invitation strip's actions drop below the text rather than squeezing a name to two words. */

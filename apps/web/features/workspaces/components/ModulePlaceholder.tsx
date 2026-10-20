@@ -1,6 +1,5 @@
 import type { JSX } from "preact";
 import type { WorkspaceKind } from "@projective/types/workspace";
-import { cloneGlyph } from "../core/workspace-glyphs.tsx";
 import type { WorkspaceModule } from "../core/module-registry.tsx";
 
 /**
@@ -8,17 +7,20 @@ import type { WorkspaceModule } from "../core/module-registry.tsx";
  *
  * Two genuinely different situations wear the same shape here, and the distinction is the whole point:
  *
- *   - **A module that DELEGATES.** Catalogue, Calendar, Messages and a business's Projects are already
- *     whole surfaces elsewhere; this entity's version of them is those surfaces scoped to the entity.
+ *   - **A module that DELEGATES.** A business's Projects, Profile and Settings are already whole
+ *     surfaces elsewhere; this entity's version of them is those surfaces scoped to the entity.
  *     The placeholder's job is to say so and hand off, because duplicating `/projects` inside
  *     `/businesses` would mean two feeds to keep in step. (A team's Projects is its own screen — its
- *     engagements' Wᵢ and its proposal allowance exist nowhere else.)
+ *     engagements' Wᵢ and its proposal allowance exist nowhere else — and Calendar and a team's
+ *     Catalogue embed the calendar engine and the catalogue's cards over the entity's own reads,
+ *     Decision #308.)
  *   - **A module that is NEXT.** Analytics, Standing and a team's Verification are near-term. Saying
  *     so plainly is better than an empty panel that reads as a bug, and far better than fabricating
  *     numbers to fill the space.
  *
- * What it must never be is a shrug. It names what belongs here and, where a real destination exists,
- * takes you there.
+ * What it must never be is a shrug. Where a real destination exists it takes you there, and a
+ * specific `note` (a state the module is in, "This entity has no payout policy.") is said. There is no
+ * in-body title or subtitle: the header band already names the module (Decision #308).
  */
 
 export interface ModulePlaceholderProps {
@@ -33,7 +35,7 @@ export interface ModulePlaceholderProps {
 	href?: string | null;
 	/** Call-to-action label for {@link href}. */
 	linkLabel?: string;
-	/** Overrides the module's own blurb when this instance needs to say something more specific. */
+	/** A state this instance needs to say ("This entity has no payout policy."). */
 	note?: string;
 }
 
@@ -45,16 +47,9 @@ export function ModulePlaceholder(props: ModulePlaceholderProps): JSX.Element {
 	return (
 		<div class="wsp" data-kind={props.kind}>
 			<div class="wsp__stack">
-				<section
-					class="wsp-band wsp-band--head wsp-band--tail"
-					aria-labelledby={`wsp-mod-${module.key}`}
-				>
+				<section class="wsp-band wsp-band--head wsp-band--tail" aria-label={module.label}>
 					<div class="wsp-band__inner">
-						<div class="wsp-pagehead">
-							<span class="wsp-activity__glyph" aria-hidden="true">{cloneGlyph(module.glyph)}</span>
-							<h1 class="wsp-pagehead__title" id={`wsp-mod-${module.key}`}>{module.label}</h1>
-						</div>
-						<p class="wsp-pagehead__note">{props.note ?? module.blurb}</p>
+						{props.note && <p class="wsp-pagehead__note">{props.note}</p>}
 						{delegating
 							? (
 								<p class="wsp-moneyhead">

@@ -5,7 +5,7 @@ import type { WorkspaceCapability, WorkspaceKind } from "@projective/types/works
  *
  * A module that partitions its body into readings (Members: People · Invitations · Org chart) lists
  * them here, once. Every root that offers or honours a sub-view reads this table: the header band's
- * centred `TabMenu`, the lane's context control (Z3), the footer rig's Org chart toggle, the slot
+ * view toolbar, the lane's context control (Z2), the footer rig's Org chart toggle, the slot
  * resolvers that turn `?view=` into a value, and the body that renders it. A later module prompt only
  * adds or consumes an entry — there is no second list to keep in step.
  *
@@ -177,18 +177,18 @@ export function isPeopleReading(view: string | null): boolean {
 }
 // #endregion
 
-// #region Tab ↔ panel ids
-/**
- * The header band's TabMenu root id. Tab `i` is `${SUB_VIEW_TABS_ID}-tab-${i}`, so the body — another
- * hydration root — can name its tab in `aria-labelledby`.
- */
-export const SUB_VIEW_TABS_ID = "wsp-subviews";
+// #region Toolbar ↔ panel ids
+/** The header band's view toolbar (Decision #307). */
+export const SUB_VIEW_TOOLBAR_ID = "wsp-subviews";
 
-/** The body's one `role="tabpanel"` the tabs control. */
+/**
+ * The body's one region the view toolbar controls (`aria-controls`). The body is another hydration
+ * root, so it names itself by the current view's label ({@link subViewLabel}).
+ */
 export const SUB_VIEW_PANEL_ID = "wsp-subview-panel";
 
-/** The id of the tab at `index`. */
-export function subViewTabId(index: number): string {
-	return `${SUB_VIEW_TABS_ID}-tab-${index}`;
+/** The current view's label — the panel's accessible name — or the first view's for an unknown value. */
+export function subViewLabel(views: readonly SubView[], value: string | null): string {
+	return views[subViewIndex(views, value)]?.label ?? "";
 }
 // #endregion

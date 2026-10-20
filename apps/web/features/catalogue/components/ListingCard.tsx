@@ -21,12 +21,19 @@ import type { ListingSummary } from "../types/catalogue-types.ts";
 
 export interface ListingCardProps {
 	listing: ListingSummary;
-	href: string;
+	/** Where the title links; `null` draws the title unlinked (a reader with nowhere to go). */
+	href: string | null;
 	selected: boolean;
 	/** A selection exists, so every card shows its checkbox. */
 	selecting: boolean;
 	onSelect: (listing: ListingSummary, range: boolean) => void;
 	onAction: (action: ListingAction, listing: ListingSummary) => void;
+	/**
+	 * Draw the card without its selection checkbox and its actions menu — for a host that shows the
+	 * listings but owns no selection and no listing writes (a team console's Catalogue module, Decision
+	 * #308). Every control the card draws must work, so the ones the host cannot honour are absent.
+	 */
+	readOnly?: boolean;
 }
 
 /** The meta line: what it is, then how it has done. */
@@ -78,20 +85,22 @@ export function ListingCard(props: ListingCardProps): JSX.Element {
 				</div>
 			</div>
 
-			<button
-				type="button"
-				role="checkbox"
-				class="cat-card__select"
-				aria-checked={selected}
-				aria-label={`Select ${listing.title}`}
-				onClick={(e) => onSelect(listing, e.shiftKey)}
-			>
-				<SelectionCheck checked={selected} />
-			</button>
+			{!props.readOnly && (
+				<button
+					type="button"
+					role="checkbox"
+					class="cat-card__select"
+					aria-checked={selected}
+					aria-label={`Select ${listing.title}`}
+					onClick={(e) => onSelect(listing, e.shiftKey)}
+				>
+					<SelectionCheck checked={selected} />
+				</button>
+			)}
 
 			<div class="cat-card__body">
 				<h3 class="cat-card__title">
-					<a class="cat-card__link" href={href}>{listing.title}</a>
+					{href ? <a class="cat-card__link" href={href}>{listing.title}</a> : listing.title}
 				</h3>
 				<span class="cat-card__price">{listing.price.display}</span>
 				<p class="cat-card__meta">
@@ -104,26 +113,28 @@ export function ListingCard(props: ListingCardProps): JSX.Element {
 				</p>
 			</div>
 
-			<ActionMenu
-				model={listingMenu(listing, onAction)}
-				surface={cardRef}
-				placement="bottom-end"
-				aria-label={`Actions for ${listing.title}`}
-				trigger={(api) => (
-					<button
-						type="button"
-						ref={api.ref as RefObject<HTMLButtonElement>}
-						class="cat-card__kebab"
-						aria-haspopup="menu"
-						aria-expanded={api.expanded}
-						aria-controls={api.panelId}
-						aria-label={`Actions for ${listing.title}`}
-						onClick={api.toggle}
-					>
-						<Icon name="kebab" />
-					</button>
-				)}
-			/>
+			{!props.readOnly && (
+				<ActionMenu
+					model={listingMenu(listing, onAction)}
+					surface={cardRef}
+					placement="bottom-end"
+					aria-label={`Actions for ${listing.title}`}
+					trigger={(api) => (
+						<button
+							type="button"
+							ref={api.ref as RefObject<HTMLButtonElement>}
+							class="cat-card__kebab"
+							aria-haspopup="menu"
+							aria-expanded={api.expanded}
+							aria-controls={api.panelId}
+							aria-label={`Actions for ${listing.title}`}
+							onClick={api.toggle}
+						>
+							<Icon name="kebab" />
+						</button>
+					)}
+				/>
+			)}
 		</article>
 	);
 }

@@ -43,13 +43,12 @@ interface SwitchCopy {
 
 interface Zones {
 	header:
-		| { mode: "roster"; title: string; meta: Meta[]; search: { label: string; placeholder: string } }
+		| { mode: "roster"; title: string; meta: Meta[] }
 		| {
 			mode: "console";
 			back: { href: string; label: string };
 			status: { label: string; severity: string };
 			menuLabel: string;
-			search: { label: string; placeholder: string };
 		};
 	views:
 		| { mode: "roster" }
@@ -66,11 +65,14 @@ interface Zones {
 			activeHub: string | null;
 		};
 	context: {
-		control: string;
-		label: string;
-		options: { value: string; label: string }[];
-		search: boolean;
-	} | null;
+		search: { label: string; placeholder: string };
+		partition: {
+			control: string;
+			label: string;
+			options: { value: string; label: string }[];
+		} | null;
+		invitations: { label: string; waiting: number } | null;
+	};
 	footer: {
 		create: Create | null;
 		note: string | null;
@@ -296,26 +298,22 @@ function everyComposition(): Zones[] {
 // #endregion
 
 // #region Zone composition per (kind, view, caps)
-Deno.test("lane: the team roster is title + count + search, the entity list, partition, New team", () => {
+Deno.test("lane: the team roster is title + count, then search · Invitations · partition, the list, New team", () => {
 	const zones = lane.laneZones(roster());
 	assertEquals(zones.header, {
 		mode: "roster",
 		title: "Teams",
 		meta: [{ text: "3 teams", tabular: true }, { text: "1 invitation", tabular: true }],
-		search: { label: "Search teams", placeholder: "Find a team…" },
 	});
 	assertEquals(zones.views, { mode: "roster" });
-	assertEquals(zones.context?.control, "roster");
-	assertEquals(zones.context?.options.map((o) => o.value), [
-		"all",
-		"owned",
-		"member",
-		"invitations",
-	]);
-	// The search sits at the top of the lane (Decision #306), never in the context band.
-	assertEquals(zones.context?.search, false);
+	// The search opens the context zone, which sits directly under the head (Decision #307).
+	assertEquals(zones.context.search, { label: "Search teams", placeholder: "Find a team…" });
+	assertEquals(zones.context.partition?.control, "roster");
+	assertEquals(zones.context.partition?.options.map((o) => o.value), ["all", "owned", "member"]);
+	// Invitations are their own toggle beside the search, set apart from the partition's segments.
+	assertEquals(zones.context.invitations, { label: "Invitations", waiting: 1 });
 	assertEquals(zones.footer.create, { action: "create", label: "New team" });
-	assertEquals(lane.laneZoneOrder(zones), ["header", "views", "context", "footer"]);
+	assertEquals(lane.laneZoneOrder(zones), ["header", "context", "views", "footer"]);
 });
 
 Deno.test("lane: the business roster speaks its own nouns", () => {
@@ -348,8 +346,9 @@ Deno.test("lane (R1): in the roster's first run the footer holds no create and n
 			);
 			assertEquals(zones.footer, { create: null, note: null });
 			// The rest of the lane is the roster's as ever: title, search, partition.
-			assertEquals(zones.context?.control, "roster");
-			assertEquals(lane.laneZoneOrder(zones), ["header", "views", "context", "footer"]);
+			assertEquals(zones.context.partition?.control, "roster");
+			assertEquals(zones.context.invitations?.waiting, 0);
+			assertEquals(lane.laneZoneOrder(zones), ["header", "context", "views", "footer"]);
 		}
 	}
 	// Outside first run the create is back, exactly as before.
@@ -384,7 +383,7 @@ Deno.test("lane: a withheld create leaves the plan's reason in its place, and on
 	}
 });
 
-Deno.test("lane (#306): a team console is Core operations · Channels · Governance, Settings in the footer", () => {
+Deno.test("lane (#306, #307): a team console is Core operations · Governance · Channels, Settings in the footer", () => {
 	const zones = lane.laneZones(inConsole());
 	const views = consoleViews(zones);
 	assertEquals(views.sections.map((s) => [s.id, s.label]), [
@@ -393,15 +392,15 @@ Deno.test("lane (#306): a team console is Core operations · Channels · Governa
 	]);
 	assertEquals(views.sections[0].rows.map((r) => [r.key, r.label]), [
 		["overview", "Overview"],
-		["projects", "Projects & work"],
-		["calendar", "Calendar & schedule"],
-		["files", "Files & docs"],
+		["projects", "Projects"],
+		["calendar", "Calendar"],
+		["files", "Files"],
 		["catalogue", "Catalogue"],
 	]);
 	assertEquals(views.sections[1].rows.map((r) => [r.key, r.label]), [
-		["roster", "Roster & members"],
-		["vault", "Vault & finances"],
-		["insights", "Analytics & standing"],
+		["roster", "Members"],
+		["vault", "Wallet"],
+		["insights", "Analytics"],
 	]);
 	assertEquals(views.channels, {
 		label: "Channels",
@@ -425,7 +424,7 @@ Deno.test("lane (#306): a business console speaks its own hubs", () => {
 		"talent",
 	]);
 	const vault = views.sections[1].rows.find((r) => r.key === "vault");
-	assertEquals(vault?.label, "Wallet & spending");
+	assertEquals(vault?.label, "Wallet");
 	assertEquals(keys(vault?.modules ?? []), ["finance", "spend", "billing"]);
 });
 
@@ -460,13 +459,15 @@ Deno.test("lane (#306): every module the viewer may open is reachable from exact
 });
 
 Deno.test("lane (#306): the row of the module being rendered is the active one", () => {
-	for (const [module, hub] of [
-		["roles", "roster"],
-		["invitations", "roster"],
-		["payouts", "vault"],
-		["standing", "insights"],
-		["verification", "settings"],
-	] as const) {
+	for (
+		const [module, hub] of [
+			["roles", "roster"],
+			["invitations", "roster"],
+			["payouts", "vault"],
+			["standing", "insights"],
+			["verification", "settings"],
+		] as const
+	) {
 		const zones = lane.laneZones(inConsole({ module }));
 		assertEquals(consoleViews(zones).activeHub, hub);
 		assertEquals(allRows(zones).filter((r) => r.active).map((r) => r.key), [hub]);
@@ -482,13 +483,17 @@ Deno.test("lane (#306): an archived entity offers no New channel", () => {
 	assertEquals(views.channels?.canCreate, false);
 });
 
-Deno.test("lane: the console header carries Back, the lifecycle Tag, the kebab and the search", () => {
+Deno.test("lane: the console header carries Back, the lifecycle Tag and the kebab; the search opens Z2", () => {
 	const draft = lane.laneZones(inConsole({ status: "draft" }));
 	assert(draft.header.mode === "console");
 	assertEquals(draft.header.back, { href: "/teams", label: "Back to all teams" });
 	assertEquals(draft.header.status, { label: "Draft", severity: "warning" });
 	assertEquals(draft.header.menuLabel, "Team actions");
-	assertEquals(draft.header.search.label, "Search North Loop");
+	assertEquals(draft.context.search, {
+		label: "Search North Loop",
+		placeholder: "Find views, channels, people…",
+	});
+	assertEquals(draft.context.invitations, null);
 
 	const acting = lane.laneZones(inConsole({ acting: true, kind: "business" }));
 	assert(acting.header.mode === "console");
@@ -514,29 +519,32 @@ Deno.test("lane (#306): the console footer is the acting pill, Invite member and
 Deno.test("lane: Members offers People · Org chart, and only on a people reading", () => {
 	for (const subView of [null, "people", "chart"]) {
 		const members = lane.laneZones(inConsole({ module: "members", subView }));
-		assertEquals(members.context?.control, "members");
-		assertEquals(members.context?.options, [
+		assertEquals(members.context.partition?.control, "members");
+		assertEquals(members.context.partition?.options, [
 			{ value: "people", label: "People" },
 			{ value: "chart", label: "Org chart" },
 		]);
-		assertEquals(members.context?.search, false);
 	}
-	assertEquals(lane.laneZones(inConsole({ module: "members", subView: "pending" })).context, null);
+	assertEquals(
+		lane.laneZones(inConsole({ module: "members", subView: "pending" })).context.partition,
+		null,
+	);
 });
 
 Deno.test("lane: the Members control's values ARE the module's sub-views (one state)", () => {
 	const members = lane.laneZones(inConsole({ module: "members", subView: "people" }));
 	assertEquals(
-		members.context?.options.map((o) => o.value),
+		members.context.partition?.options.map((o) => o.value),
 		MEMBERS_READINGS.map((v) => v.value),
 	);
 });
 
-Deno.test("lane: a view with nothing to partition draws no context band", () => {
+Deno.test("lane: a view with nothing to partition keeps the search and draws no segmented control", () => {
 	for (const module of ["overview", "projects", "invitations", "payouts", "settings", null]) {
 		const zones = lane.laneZones(inConsole({ module }));
-		assertEquals(zones.context, null, `${module} drew a context band`);
-		assertEquals(lane.laneZoneOrder(zones), ["header", "views", "footer"]);
+		assertEquals(zones.context.partition, null, `${module} drew a segmented control`);
+		assertEquals(zones.context.search.label, "Search North Loop");
+		assertEquals(lane.laneZoneOrder(zones), ["header", "context", "views", "footer"]);
 	}
 });
 // #endregion
@@ -582,12 +590,13 @@ Deno.test("lane: Invite member opens in place on Members and lands there from an
 // Model-only: the zone ORDER the island renders. That the rendered lane follows it — each zone's
 // controls inside its own zone, the zones emitted in this order — is the source scan further down.
 Deno.test("lane (model): the zone order is Z1 → Z2 → Z3 → Z4 in every composition", () => {
-	const rank = { header: 1, views: 2, context: 3, footer: 4 } as Record<string, number>;
+	const rank = { header: 1, context: 2, views: 3, footer: 4 } as Record<string, number>;
 	for (const zones of everyComposition()) {
 		const order = lane.laneZoneOrder(zones);
 		assertEquals(order[0], "header");
 		assertEquals(order.at(-1), "footer");
-		assertEquals(order.includes("context"), zones.context !== null);
+		// The context zone always exists: it carries the search (Decision #307).
+		assertEquals(order[1], "context");
 		assertEquals(order.map((z) => rank[z]), order.map((z) => rank[z]).toSorted((a, b) => a - b));
 	}
 });
@@ -599,10 +608,14 @@ Deno.test("lane: the canvas-only Archived partition reads as All in the lane", (
 	for (const tab of ["all", "owned", "member", "invitations"]) {
 		assertEquals(lane.lanePartition(tab), tab);
 	}
-	// Every partition the lane can read is one of its control's segments, so a segment is always selected.
-	const segments = lane.laneZones(roster()).context?.options.map((o) => o.value) ?? [];
+	// Every partition the lane can read is one of its segments or its Invitations toggle, so a control
+	// always shows the partition.
+	const context = lane.laneZones(roster()).context;
+	const segments = context.partition?.options.map((o) => o.value) ?? [];
+	assert(context.invitations !== null);
 	for (const tab of ["all", "owned", "member", "invitations", "archived"]) {
-		assert(segments.includes(lane.lanePartition(tab)), `${tab} has no lane segment`);
+		const read = lane.lanePartition(tab);
+		assert(segments.includes(read) || read === "invitations", `${tab} has no lane control`);
 	}
 	assertEquals(lane.rosterFiltered(lane.lanePartition("archived"), ""), false);
 });
@@ -733,15 +746,25 @@ Deno.test("lane (#306): a hub's mark folds its modules' — counts summed, else 
 Deno.test("lane (#306): the console search groups views, channels, projects and people", () => {
 	const sources = {
 		rows: [
-			{ key: "roster", label: "Roster & members", href: "/teams/n/members", blurb: "Members, roles" },
-			{ key: "files", label: "Files & docs", href: "/teams/n/files", blurb: "The shared drive" },
+			{
+				key: "roster",
+				label: "Members",
+				href: "/teams/n/members",
+				blurb: "Members, roles",
+			},
+			{ key: "files", label: "Files", href: "/teams/n/files", blurb: "The shared drive" },
 		],
 		channels: [
 			{ slug: "general", topic: null },
 			{ slug: "delivery-sync", topic: "Design to build handoffs" },
 		],
 		channelBase: "/teams/n/channels",
-		projects: [{ id: "prj-1", title: "Brand refresh", href: "/projects/prj-1", counterparty: "Acme" }],
+		projects: [{
+			id: "prj-1",
+			title: "Brand refresh",
+			href: "/projects/prj-1",
+			counterparty: "Acme",
+		}],
 		people: [{ id: "m-1", name: "Ravi Shah", handle: "ravi" }],
 		membersHref: "/teams/n/members",
 	};
@@ -770,7 +793,10 @@ Deno.test("lane (#306): the console search groups views, channels, projects and 
 	// Each group stops at the limit.
 	const many = {
 		...sources,
-		people: Array.from({ length: 9 }, (_, i) => ({ id: `m${i}`, name: `Ana ${i}`, handle: `a${i}` })),
+		people: Array.from(
+			{ length: 9 },
+			(_, i) => ({ id: `m${i}`, name: `Ana ${i}`, handle: `a${i}` }),
+		),
 	};
 	assertEquals(lane.consoleSearch("ana", many)?.[0].hits.length, lane.SEARCH_GROUP_LIMIT);
 });
@@ -854,38 +880,59 @@ Deno.test("lane: each zone's controls render inside their own zone, emitted in l
 	const { cases, rest } = zoneCases(text);
 	assertEquals(cases.map((c) => c.id), [
 		"header",
-		"views",
 		"context",
+		"views",
 		"footer",
 		"header",
-		"views",
 		"context",
+		"views",
 		"footer",
 	]);
 
 	// Where each zone-bearing tag may open — in its zone's case and nowhere else in the island.
-	const home: Record<string, string> = {
-		LaneHead: "header",
-		LaneBackLink: "header",
-		EntityMenu: "header",
-		LaneSearch: "header",
-		LaneList: "views",
-		LaneSections: "views",
-		LaneIconButton: "views",
-		HubList: "views",
-		ChannelList: "views",
-		LaneSearchResults: "views",
-		ChannelCreateDialog: "views",
-		ContextZone: "context",
-		SelectButton: "context",
-		LaneFooterRig: "footer",
-		ConsoleFooterRig: "footer",
+	const home: Record<string, string[]> = {
+		LaneHead: ["header"],
+		LaneBackLink: ["header"],
+		EntityMenu: ["header"],
+		LaneSearch: ["context"],
+		LaneBar: ["context"],
+		LaneList: ["views"],
+		LaneSections: ["views"],
+		// The views' New channel and the roster context's Invitations toggle.
+		LaneIconButton: ["views", "context"],
+		HubList: ["views"],
+		ChannelList: ["views"],
+		LaneSearchResults: ["views"],
+		ChannelCreateDialog: ["views"],
+		ContextZone: ["context"],
+		SelectButton: ["context"],
+		LaneFooterRig: ["footer"],
+		ConsoleFooterRig: ["footer"],
 	};
-	for (const [tag, zone] of Object.entries(home)) {
+	for (const [tag, zones] of Object.entries(home)) {
 		for (const c of cases) {
-			if (c.id !== zone) assertEquals(opens(c.body, tag), 0, `<${tag}> opens in the ${c.id} zone`);
+			if (!zones.includes(c.id)) {
+				assertEquals(opens(c.body, tag), 0, `<${tag}> opens in the ${c.id} zone`);
+			}
 		}
 	}
+	// The search is the first thing each context zone draws.
+	for (const c of cases.filter((c) => c.id === "context")) {
+		const first = c.body.match(/<(Lane\w+|SelectButton|Button)\b/g)?.filter((t) =>
+			t !== "<LaneBar"
+		);
+		assertEquals(
+			first?.[0],
+			"<LaneSearch",
+			"the context zone opens on something other than the search",
+		);
+	}
+	// Inside a console Channels is the LAST section, after Core operations and Governance.
+	const consoleViews = cases.filter((c) => c.id === "views")[1].body;
+	assert(
+		consoleViews.indexOf("<ChannelList") > consoleViews.indexOf("views.sections.map("),
+		"Channels is not the console lane's last section",
+	);
 	// Outside the cases only the zone components' own definitions may draw (the sections' builder, the
 	// footer rigs' collapse toggle, acting pill and utilities): no zone control rides in the wrapper.
 	for (

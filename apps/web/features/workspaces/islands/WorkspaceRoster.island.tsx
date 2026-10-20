@@ -1,12 +1,12 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { useRef } from "preact/hooks";
+import "@web/features/projects/styles/fx-toolbar.css";
 import "../styles/workspace.css";
 import { Grid } from "@projective/ui/layout";
 import { MetaLine } from "@projective/ui/display";
-import { Button, InputText } from "@projective/ui/fields";
+import { Button, InputText, Select, SortControl } from "@projective/ui/fields";
 import { InlineNotice } from "@projective/ui/feedback";
-import { TabMenu } from "@projective/ui/navigation";
 import {
 	type IncomingInvite,
 	kindCopy,
@@ -38,6 +38,7 @@ import {
 	filterRoster,
 	isFiltered,
 	isFirstRun,
+	ROSTER_SORTS,
 	ROSTER_TABS,
 	rosterCanvasControls,
 	rosterCanvasState,
@@ -46,12 +47,15 @@ import {
 	rosterFirstRunCopy,
 	rosterHeadMeta,
 	rosterSearch,
+	type RosterSort,
+	type RosterSortDir,
 	type RosterTab,
-	rosterTabBadge,
 	rosterTabCounts,
-	rosterTabIndex,
 	rosterToolsShown,
 	rosterTrackWidth,
+	sortRoster,
+	toRosterSort,
+	toRosterSortDir,
 	toRosterTab,
 } from "../core/roster-model.ts";
 import { restoredNotice } from "../core/settings-model.ts";
@@ -74,20 +78,22 @@ import CreateWorkspaceModal from "./CreateWorkspaceModal.island.tsx";
  * binds them.
  *
  *   - **Head** — the kind's title in the display register over ONE `MetaLine` (`3 teams · 1
- *     invitation waiting · Acting as North Loop`), the search field, and the partition `TabMenu`
- *     (All · Owned · Member · Invitations · Archived, each with its count `Badge`). No filled button:
- *     the index's one structural create is the lane footer's, and the canvas never duplicates it.
+ *     invitation waiting · Acting as North Loop`), then the shared sticky `.fx-toolbar` the File
+ *     Explorer and the Catalogue console draw (Decision #307): the search, then — side by side at the
+ *     end — the partition filter (All · Owned · Member · Invitations · Archived, a bare `Select`) and
+ *     the `SortControl`. No count rides in the toolbar. No filled button: the index's one structural
+ *     create is the lane footer's, and the canvas never duplicates it.
  *   - **Body** — the invitation strip, then the cards or the `DataTable`, whichever the shared zoom
  *     selects; a ui `EmptyState` in first run (with the create, which the lane and the footer band's
  *     rig then withhold) and
  *     when a filter leaves nothing (with a tier-5 Clear filters); a danger `InlineNotice` with a
  *     tier-4 Try again when the roster could not be read.
  *
- * **One partition across roots.** The TabMenu and the lane's segmented control write the ONE
+ * **One partition across roots.** The toolbar's filter and the lane's segmented control write the ONE
  * `rosterTab` signal (`workspace-state`); each renders its server-resolved `?view=` until a control
  * picks one, so the first painted byte and the hydrated frame agree. The address follows from a
- * `useSignalEffect` here — `?view=` and `?q=` through `replaceState`, the one-shot `?notice=` and the
- * pre-R1 `?tab=` dropped — so it tracks the lane's picks too.
+ * `useSignalEffect` here — `?view=`, `?q=`, `?sort=` and `?dir=` through `replaceState`, the one-shot
+ * `?notice=` and the pre-R1 `?tab=` dropped — so it tracks the lane's picks too.
  *
  * **Thin by construction.** The first paint comes from the SSR-resolved roster passed in as
  * `initial`; filtering is pure and local. Only answering an invitation, archiving, and switching the
@@ -112,6 +118,10 @@ export interface WorkspaceRosterProps {
 	initialTab?: string | null;
 	/** The free-text filter the URL carried (`?q=`). */
 	initialSearch?: string;
+	/** The sort property the URL carried (`?sort=`); anything else is the resting order. */
+	initialSort?: string | null;
+	/** The sort direction the URL carried (`?dir=`). */
+	initialDir?: string | null;
 	/**
 	 * Open the creation modal on mount — set by the `/teams/create` and `/businesses/create` addresses,
 	 * so a deep link lands on the same modal the lane's New opens rather than a separate page.
@@ -126,7 +136,6 @@ export interface WorkspaceRosterProps {
 // #endregion
 
 const BODY_ID = "wsp-roster-body";
-const TABS_ID = "wsp-roster-tabs";
 const SEARCH_ID = "wsp-roster-search";
 
 export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Element {
@@ -136,6 +145,9 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 	// #region State
 	const roster = useSignal<RosterPage>(props.initial);
 	const search = useSignal(props.initialSearch ?? "");
+	/** The toolbar's sort, bound to the `SortControl` (it writes raw strings; reads coerce). */
+	const sortBy = useSignal<string>(toRosterSort(props.initialSort));
+	const sortDir = useSignal<RosterSortDir>(toRosterSortDir(props.initialDir));
 	const stripDismissed = useSignal(false);
 	const noticeDismissed = useSignal(false);
 	/** Why the last roster READ failed — the danger notice with Try again. */
@@ -160,18 +172,25 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 	// #region Derived
 	/** The ONE shared partition, or this page's server-resolved one until a control picks one. */
 	const tab = useComputed<RosterTab>(() => rosterTabOr(resolvedTab));
-	/** The TabMenu binds a writable index; it follows the shared partition whichever root picked it. */
-	const tabIndex = useSignal(rosterTabIndex(resolvedTab));
+	/** The filter binds a writable value; it follows the shared partition whichever root picked it. */
+	const filter = useSignal<string>(resolvedTab);
 	useSignalEffect(() => {
-		tabIndex.value = rosterTabIndex(tab.value);
+		filter.value = tab.value;
 	});
+	const sort = useComputed<RosterSort>(() => toRosterSort(sortBy.value));
 
 	const invitations = useComputed(() => roster.value.invitations);
 	/** The strip's answers: optimistic, restored with their refusal; a landed one re-reads the roster. */
 	const answers = useInvitationAnswers(invitations, () => refresh());
 	const invites = answers.visible;
 	const counts = useComputed(() => rosterTabCounts(roster.value.items, invites.value));
-	const rows = useComputed(() => filterRoster(roster.value.items, tab.value, search.value));
+	const rows = useComputed(() =>
+		sortRoster(
+			filterRoster(roster.value.items, tab.value, search.value),
+			sort.value,
+			sortDir.value,
+		)
+	);
 	const filtered = useComputed(() => isFiltered(tab.value, search.value));
 
 	const stripVisible = useComputed(() =>
@@ -232,7 +251,7 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 
 	// #region URL memory
 	/**
-	 * Keep the partition and the search term in the address bar so a filtered roster is a shareable link
+	 * Keep the partition, the search term and the sort in the address bar so a filtered roster is a shareable link
 	 * and a reload lands where the reader was — whichever root picked the partition. `replaceState`, not
 	 * `pushState`: flicking between partitions is not a navigation, and making Back undo a tab click
 	 * would strand the reader inside the page instead of returning them to wherever they came from.
@@ -240,7 +259,10 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 	useSignalEffect(() => {
 		const location = globalThis.location;
 		const history = globalThis.history;
-		const next = rosterSearch(location.search, tab.value, search.value);
+		const next = rosterSearch(location.search, tab.value, search.value, {
+			by: sort.value,
+			dir: sortDir.value,
+		});
 		if (next === location.search) return;
 		try {
 			history.replaceState(history.state, "", `${location.pathname}${next}${location.hash}`);
@@ -385,54 +407,74 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 				<section class="wsp-band wsp-band--head" data-i={0}>
 					<div class="wsp-band__inner">
 						<div class="wsp-roster">
-							<div class="wsp-roster__head">
-								<div class="wsp-roster__heading">
-									<h1 class="wsp-roster__title">{copy.Plural}</h1>
-									<MetaLine
-										class="wsp-roster__meta"
-										items={rosterHeadMeta(props.kind, {
-											state: state.value,
-											liveCount: counts.value.all,
-											invitationCount: invites.value.length,
-											actingName: actingName.value,
-										})}
-									/>
-								</div>
-								{tools.value && (
+							<div class="wsp-roster__heading">
+								<h1 class="wsp-roster__title">{copy.Plural}</h1>
+								<MetaLine
+									class="wsp-roster__meta"
+									items={rosterHeadMeta(props.kind, {
+										state: state.value,
+										liveCount: counts.value.all,
+										invitationCount: invites.value.length,
+										actingName: actingName.value,
+									})}
+								/>
+							</div>
+						</div>
+					</div>
+				</section>
+				{/* #endregion */}
+
+				{
+					/* #region Toolbar — its own band, so it pins under the frame chrome across the whole stack
+					   (a sticky element is bound by its parent, and the head band ends with the title). */
+				}
+				{tools.value && (
+					<section class="wsp-band wsp-band--toolbar">
+						<div class="wsp-band__inner">
+							<div
+								class="fx-toolbar wsp-roster__toolbar"
+								role="toolbar"
+								aria-label={`${copy.Plural} controls`}
+								aria-controls={BODY_ID}
+							>
+								<div class="fx-toolbar__search">
 									<InputText
 										id={SEARCH_ID}
-										class="wsp-roster__search"
 										value={search}
 										type="search"
 										variant="bare"
 										size="sm"
+										block
 										placeholder={`Search ${copy.plural}`}
 										aria-label={`Search your ${copy.plural}`}
-										start={<span aria-hidden="true">{cloneGlyph(SearchGlyph)}</span>}
+										start={
+											<span class="fx-toolbar__searchicon" aria-hidden="true">
+												{cloneGlyph(SearchGlyph)}
+											</span>
+										}
 									/>
-								)}
-							</div>
-							{tools.value && (
-								<TabMenu
-									id={TABS_ID}
-									class="wsp-roster__tabs"
-									model={ROSTER_TABS.map((option) => ({
-										key: option.value,
-										label: option.label,
-										badge: rosterTabBadge(option.value, counts.value),
-									}))}
-									activeIndex={tabIndex}
-									onActiveIndexChange={(index) => {
-										const next = ROSTER_TABS[index];
-										if (next) selectRosterTab(next.value);
-									}}
-									panelId={BODY_ID}
+								</div>
+								<span class="fx-toolbar__spacer" />
+								<Select
+									class="ui-field--bare wsp-roster__filter"
+									size="sm"
 									aria-label={`Show ${copy.plural}`}
+									options={ROSTER_TABS.map(({ value, label }) => ({ value, label }))}
+									value={filter}
+									onValueChange={(value) => selectRosterTab(toRosterTab(value))}
 								/>
-							)}
+								<SortControl
+									class="wsp-roster__sort"
+									size="sm"
+									options={[...ROSTER_SORTS]}
+									value={sortBy}
+									direction={sortDir}
+									aria-label={`Sort ${copy.plural}`}
+								/>
+							</div>
 						</div>
-					</div>
-				</section>
+					</section>
+				)}
 				{/* #endregion */}
 
 				{stripVisible.value && (
@@ -504,13 +546,15 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 							ref={bodyRef}
 							id={BODY_ID}
 							class="wsp-roster__body"
-							role={tools.value ? "tabpanel" : undefined}
-							aria-labelledby={tools.value ? `${TABS_ID}-tab-${tabIndex.value}` : undefined}
 							aria-busy={refreshing.value ? "true" : undefined}
 							tabIndex={-1}
 						>
+							{
+								/* The toolbar carries no count (Decision #307); a narrowed roster's size is still
+								   spoken, through a live region nobody sees. */
+							}
 							{tools.value && (
-								<p class="wsp-roster__count" aria-live="polite">
+								<p class="ui-visually-hidden" aria-live="polite">
 									{rosterCountLine(props.kind, {
 										state: state.value,
 										tab: tab.value,

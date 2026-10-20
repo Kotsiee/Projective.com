@@ -85,17 +85,6 @@ export default function TalentScreen(props: TalentScreenProps): JSX.Element {
 	return (
 		<div class="wsp" data-kind="business">
 			<div class="wsp__stack">
-				<section class="wsp-band wsp-band--head" aria-labelledby="wsp-talent-title">
-					<div class="wsp-band__inner">
-						<div class="wsp-pagehead">
-							<h1 class="wsp-pagehead__title" id="wsp-talent-title">Talent</h1>
-							<p class="wsp-pagehead__note">
-								The freelancers and teams {props.businessName}{" "}
-								has hired — message them, or bring them onto another project.
-							</p>
-						</div>
-					</div>
-				</section>
 				<section
 					class="wsp-band wsp-band--plain wsp-band--tail"
 					aria-labelledby="wsp-bench-title"

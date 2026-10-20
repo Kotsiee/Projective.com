@@ -15,16 +15,15 @@
  * `.wsp-lane` the segmented control re-flows into rows by its zone's own width (an `@container`
  * query, so the lane's width is asked, never the viewport's), and the create action folds its words
  * away in a compact splitter exactly as the package already folds them in the collapsed one. The
- * header band (L2) takes the same licence for one treatment: its `TabMenu` gets Decision #220's
- * in-band underline (the catalogue's `.cat-band` treatment). Nothing else of a shared control is
- * touched. Where a band needs a control in two forms — Share profile, and wherever their words do not
+ * header band (L2) draws its views as the shared `.fx-toolbar` with a bare `Select` (Decision #307),
+ * fitted to the band's height. Nothing else of a shared control is touched. Where a band needs a control in two forms — Share profile, and wherever their words do not
  * fit the footer rig's utilities and Org chart toggle — it renders BOTH `Button`s (words, and
  * `iconOnly`) and this sheet only chooses which one paints; the Org chart toggle's engaged state is
  * `Button`'s own (`aria-pressed`).
  *
  * Press feedback (§B.12) is therefore split by owner:
  *   - From the package: `Button` (the acting switch, the Reset, every band and rig control), the
- *     `TabMenu` tabs and `LaneCreateButton` compress and drop the scale under both reduced-motion
+ *     `LaneCreateButton` compress and drop the scale under both reduced-motion
  *     channels. `NavItem`, the "More" `LaneSection` toggle, the Back `LaneIconButton`, the
  *     `SelectButton` segments and `LaneCollapseButton` carry NO press in the package today; that gap
  *     is the package's to close (it is shared by every lane), never this sheet's, because restyling
@@ -70,8 +69,8 @@
 
 /*
  * The lane is ONE solid `--surface-1` column, top to bottom. The shared bands (`LaneHead`,
- * `LaneFooter`) and zone 3 paint it already; the scroll body between them paints nothing, and the
- * shell ground beneath it is `--surface-2` — so zone 2 read as a second tone, and every `--surface-2`
+ * `LaneFooter`) and zone 2 paint it already; the scroll body between them paints nothing, and the
+ * shell ground beneath it is `--surface-2` — so zone 3 read as a second tone, and every `--surface-2`
  * hover and current fill drawn on it (the roster rows) matched the ground and vanished.
  */
 .wsp-lane {
@@ -156,11 +155,15 @@
 	flex: none;
 }
 
-/* The search sits at the head's foot, as in `/projects` and `/messages`. */
+/* The search opens the context zone, icon-first in a `LaneBar`, as `/projects` draws its own. */
 .wsp-lane__search {
 	display: flex;
 	min-inline-size: 0;
-	margin-block-start: var(--space-1);
+}
+
+.wsp-lane__search .ui-lane-bar {
+	flex: 1 1 auto;
+	min-inline-size: 0;
 }
 
 .wsp-lane__search .ui-lane-search {
@@ -255,7 +258,7 @@
 }
 /* #endregion */
 
-/* #region Zone 2 — primary views */
+/* #region Zone 3 — primary views */
 /*
  * The views fill the `LaneList` scroll body. Inside a console they are the registry's primary modules
  * as `NavItem` rows, then the "More" `LaneSection`; the rows share the lane's inline axis, so the list
@@ -352,14 +355,6 @@ row's accessible name. On the filled active row it takes the row's own ink. */
 	white-space: nowrap;
 }
 
-/* A section with nothing in it yet says so in the meta register, never a box. */
-.wsp-lane__channelnote {
-	margin: 0;
-	padding-block: var(--space-1);
-	font-size: var(--wsp-fs-label);
-	color: var(--text-secondary);
-}
-
 /*
  * The console search's hits replace the sections while a query is held: each group a section-register
  * header over plain link rows — label in the body ink, its context in the meta register beside it.
@@ -439,24 +434,43 @@ row's accessible name. On the filled active row it takes the row's own ink. */
 }
 /* #endregion */
 
-/* #region Zone 3 — context controls */
+/* #region Channel marks */
 /*
- * Drawn only when the view has something to partition. A docked band between the views and the
- * footer rig: the lane's `--surface-1`, one block-start hairline, the lane's inline inset — no box.
+ * The Channels rows are the project lane's `.proj-chan` (Decision #307). A channel with a photo draws it
+ * in the hash glyph's own 1em box, so a photo, an emoji and the hash all sit on one axis.
+ */
+.proj-chan__glyph > .wsp-chanmark__photo {
+	inline-size: 1em;
+	block-size: 1em;
+	border-radius: var(--radius-xs);
+	object-fit: cover;
+}
+/* #endregion */
+
+/* #region Zone 2 — context controls */
+/*
+ * Always drawn, directly under the header strip (Decision #307): the search first, then what the view
+ * offers to narrow it. With the head it reads as ONE band, as the `/projects` lane's head does — so the
+ * head gives up its block-end hairline to this zone, and the one hairline sits where the views begin.
+ * The lane's `--surface-1` and inline inset — no box.
  *
  * Its padding is the shared `.ui-lane-footer` band's (`--space-3` / `--space-4`), so the four zones
  * keep the band rhythm `LaneHead`, `LaneList` and `LaneFooter` already set in every reference lane.
  * The page-section rhythm (`--space-7` above a section) is not applied inside the lane: it would put
  * a 48px gap above every zone of a ~280px column and restyle the shared bands from feature CSS.
  */
+.wsp-lane > .ui-lane-head:has(+ .wsp-lane__context) {
+	border-block-end: 0;
+}
+
 .wsp-lane__context {
 	flex: none;
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-2);
-	padding: var(--space-3) var(--space-4);
+	padding: 0 var(--space-4) var(--space-3);
 	background: var(--surface-1);
-	border-block-start: var(--hairline);
+	border-block-end: var(--hairline);
 	/* The zone is the width the segmented control re-flows by (the narrow-lane rules below). Nothing in
 	it is positioned against an ancestor, so the containment moves nothing. */
 	container: wsp-lane-context / inline-size;
@@ -495,20 +509,14 @@ row's accessible name. On the filled active row it takes the row's own ink. */
 }
 
 /*
- * The roster's four segments need about 14.75rem of zone for one row; the lane's default width gives
- * 15.25rem. Below 15rem they sit two by two, so the partition reads as an even grid rather than ragged
- * rows; below 9.75rem — a compact lane — one per row, where "Invitations" still fits whole. The
- * Members pair needs no step of its own: it wraps to one per row only when the zone cannot hold both.
+ * The roster's three segments (All · Owned · Member — Invitations is the toggle beside the search) fit
+ * one row at the lane's default width. Below 9.75rem — a compact lane — they sit one per row rather
+ * than clip. The Members pair needs no step of its own: it wraps to one per row only when the zone
+ * cannot hold both.
  */
-@container wsp-lane-context (max-width: 14.9375rem) {
-	.wsp-lane__context[data-control="roster"] .ui-select-button {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-	}
-}
-
 @container wsp-lane-context (max-width: 9.6875rem) {
 	.wsp-lane__context[data-control="roster"] .ui-select-button {
+		display: grid;
 		grid-template-columns: minmax(0, 1fr);
 	}
 }
@@ -719,7 +727,7 @@ words — a ring colour on its own is not a channel. */
 	transition-duration: var(--dur-press);
 }
 
-/* Zone 2's boundary between the primary views and "More". */
+/* Zone 3's boundary between the primary views and "More". */
 .wsp-rail__group-sep {
 	inline-size: 60%;
 	block-size: 0;
@@ -754,8 +762,8 @@ words — a ring colour on its own is not a channel. */
  * The band contract, shared with the catalogue's `.cat-band` (Decision #220) and the reference
  * `.chan-header`: exactly `--shell-midnav-header-h` tall, `--space-4` inline padding, and TRANSPARENT —
  * the tonal surface is the shell band's own flush `--surface-1` underlay and the seam beneath it is
- * the canvas frame's single hairline. Identity at the start, the sub-view `TabMenu` centred between
- * two `flex: 1 1 0` regions, actions at the end.
+ * the canvas frame's single hairline. Identity at the start, the view toolbar (`.fx-toolbar`, Decision
+ * #307) centred between two `flex: 1 1 0` regions, actions at the end.
  */
 .wsp-headerband {
 	container: wsp-headerband / inline-size;
@@ -827,95 +835,54 @@ words — a ring colour on its own is not a channel. */
 }
 /* #endregion */
 
-/* #region Header band tabs — the in-band underline (Decision #220 (A)) */
+/* #region Header band view toolbar — the shared `.fx-toolbar` (Decision #307) */
 /*
- * Inside the band the TabMenu loses its own border and sliding ink; each tab draws a `--wsp-stroke`
- * underline that scales on the inline axis, one hairline below the band so it lands ON the canvas
- * frame's seam. The scroll box gets one hairline of padding and the matching negative margin so it
- * does not clip that line. No box, no background, no radius: the tab strip is text.
+ * The views are the `.fx-toolbar` the File Explorer and the Catalogue console draw, holding one bare
+ * `Select`, centred between the identity and the actions. The band is already the pinned chrome, so
+ * the bar does not pin again: it keeps the glass pill (its `::before` underlay) and fits the band's
+ * height instead of the bar's own `--fx-toolbar-h`.
  */
-.wsp-headerband__tabs.ui-tabmenu {
-	flex: 0 1 auto;
-	align-self: stretch;
-	min-inline-size: 0;
-	border-block-end: none;
-}
-
-.wsp-headerband__tabs .ui-tabmenu__scroll {
-	margin-block-end: calc(-1 * var(--wsp-hairline-w));
-	padding-block-end: var(--wsp-hairline-w);
-}
-
-.wsp-headerband__tabs .ui-tabmenu__list {
-	block-size: 100%;
-	gap: var(--space-4);
-}
-
-.wsp-headerband__tabs .ui-tabmenu__ink {
-	display: none;
-}
-
-.wsp-headerband__tabs .ui-tabmenu__tab {
+.wsp-headerband__toolbar.fx-toolbar {
 	position: relative;
-	block-size: 100%;
-	padding: 0 var(--space-1);
-	font-size: var(--text-sm);
-	font-weight: var(--fw-medium);
-	letter-spacing: 0;
+	inset: auto;
+	flex: 0 1 auto;
+	align-self: center;
+	min-inline-size: 0;
+	min-block-size: 0;
+	padding: var(--space-1);
 }
 
-.wsp-headerband__tabs .ui-tabmenu__tab--active {
-	color: var(--primary);
+.wsp-headerband__view {
+	flex: none;
+	inline-size: 11rem;
+	max-inline-size: 100%;
 }
 
-.wsp-headerband__tabs .ui-tabmenu__tab::after {
-	content: "";
-	position: absolute;
-	inset-inline: 0;
-	inset-block-end: calc(-1 * var(--wsp-hairline-w));
-	block-size: var(--wsp-stroke);
-	border-start-start-radius: var(--radius-xs);
-	border-start-end-radius: var(--radius-xs);
-	background: var(--outline);
-	transform: scaleX(0);
-	transform-origin: center;
-	transition: transform var(--dur-fast) var(--ease-standard);
+.wsp-headerband__view.ui-field {
+	border-radius: var(--radius-full);
 }
 
-.wsp-headerband__tabs .ui-tabmenu__tab:hover::after {
-	transform: scaleX(1);
-}
-
-.wsp-headerband__tabs .ui-tabmenu__tab--active::after,
-.wsp-headerband__tabs .ui-tabmenu__tab--active:hover::after {
-	background: var(--primary);
-	transform: scaleX(1);
-}
-
-.wsp-headerband__tabs .ui-tabmenu__chevron {
-	background: transparent;
-}
-
-/* A narrow band keeps every tab reachable: the regions yield first, then the meta line goes. */
+/* A narrow band keeps the view picker reachable: the regions yield first, then the meta line goes. */
 @container wsp-headerband (max-width: 48rem) {
 	.wsp-headerband__start,
 	.wsp-headerband__end {
 		flex: 0 1 auto;
 	}
 
-	.wsp-headerband__tabs.ui-tabmenu {
+	.wsp-headerband__toolbar.fx-toolbar {
 		flex: 1 1 auto;
 		min-inline-size: 7rem;
+	}
+
+	.wsp-headerband__view {
+		flex: 1 1 auto;
+		inline-size: auto;
 	}
 }
 
 @container wsp-headerband (max-width: 36rem) {
 	.wsp-headerband__meta {
 		display: none;
-	}
-
-	.wsp-headerband__tabs .ui-tabmenu__list {
-		gap: var(--space-3);
 	}
 }
 /* #endregion */
@@ -1288,7 +1255,6 @@ words — a ring colour on its own is not a channel. */
 
 /* #region Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-	.wsp-headerband__tabs .ui-tabmenu__tab::after,
 	.wsp-footerrig__action,
 	.wsp-footerrig__link {
 		transition: none;
@@ -1312,7 +1278,6 @@ words — a ring colour on its own is not a channel. */
 	}
 }
 
-:root[data-motion="reduced"] .wsp-headerband__tabs .ui-tabmenu__tab::after,
 :root[data-motion="reduced"] .wsp-footerrig__action,
 :root[data-motion="reduced"] .wsp-footerrig__link {
 	transition: none;

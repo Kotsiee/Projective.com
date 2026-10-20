@@ -14,9 +14,8 @@ import { openInvite, publishDetail, viewOr } from "../core/workspace-state.ts";
 import {
 	PROJECTS_PROPOSALS,
 	SUB_VIEW_PANEL_ID,
-	subViewIndex,
+	subViewLabel,
 	subViewsFor,
-	subViewTabId,
 } from "../core/sub-views.ts";
 import { cx } from "@ui/core/cx.ts";
 import {
@@ -50,8 +49,8 @@ import InviteModal from "./InviteModal.island.tsx";
  *   - **Proposals** (`?view=proposals`) — the team's pending applications, each with the tier-5
  *     Withdraw for its filer or a `bind_seat` holder (Decision #154).
  *
- * The two views are the header band's `TabMenu` (L2's sub-view registry); this island is their one
- * `tabpanel` and only READS the shared sub-view state. Every rule — the gate, the filled-control count,
+ * The two views are the header band's view toolbar (L2's sub-view registry, Decision #307); this
+ * island is the one region it controls and only READS the shared sub-view state. Every rule — the gate, the filled-control count,
  * the rows, who may withdraw — is `projects-model.ts`, pinned by its unit test; nothing here guesses a
  * fact the read did not answer. The engagements and the allowance arrive with the console's one read
  * (`org.get_workspace_detail`, B7 / Decision #233); the proposals are read on first opening their view,
@@ -179,8 +178,8 @@ export default function TeamProjectsScreen(props: TeamProjectsScreenProps): JSX.
 	const panel = views.length > 0
 		? {
 			id: SUB_VIEW_PANEL_ID,
-			role: "tabpanel" as const,
-			"aria-labelledby": subViewTabId(subViewIndex(views, view)),
+			role: "region" as const,
+			"aria-label": subViewLabel(views, view),
 		}
 		: {};
 	const onProposals = view === PROJECTS_PROPOSALS;

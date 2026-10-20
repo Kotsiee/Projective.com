@@ -1,6 +1,7 @@
 import { page } from "fresh";
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
+import { channelLabel } from "@projective/types/workspace";
 import { channelOutcome } from "@features/workspaces/core/channel-route.ts";
 import { consoleResponse } from "@features/workspaces/core/console-route.ts";
 import { ChannelScreen } from "@features/workspaces/components/ChannelScreen.tsx";
@@ -19,7 +20,7 @@ export const handler = define.handlers({
 			readActor(ctx),
 		);
 		if (outcome.kind !== "data") return consoleResponse(outcome);
-		ctx.state.title = `# ${outcome.data.channel?.slug ?? "channels"} · ${outcome.data.workspace.name}`;
+		ctx.state.title = `# ${outcome.data.channel ? channelLabel(outcome.data.channel) : "channels"} · ${outcome.data.workspace.name}`;
 		return page(outcome.data);
 	},
 });

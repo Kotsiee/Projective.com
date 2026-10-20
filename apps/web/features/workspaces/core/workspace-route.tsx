@@ -10,7 +10,7 @@ import { BillingBackendService } from "@server/services/finance/BillingBackendSe
 import type { ModuleKey } from "./module-registry.tsx";
 import { type ConsoleRedirect, routeConsole, toRosterNotice } from "./console-route.ts";
 import { resolveRoster, resolveWorkspaceConsole } from "./workspace-ssr.ts";
-import { rosterTabFromSearch } from "./roster-model.ts";
+import { ROSTER_DIR_PARAM, ROSTER_SORT_PARAM, rosterTabFromSearch } from "./roster-model.ts";
 import { resolveSubView } from "./sub-views.ts";
 import WorkspaceRoster from "../islands/WorkspaceRoster.island.tsx";
 
@@ -70,6 +70,8 @@ export async function rosterBody(
 			initialError={read.ok ? null : read.message}
 			initialTab={rosterTabFromSearch(url.searchParams)}
 			initialSearch={url.searchParams.get("q") ?? ""}
+			initialSort={url.searchParams.get(ROSTER_SORT_PARAM)}
+			initialDir={url.searchParams.get(ROSTER_DIR_PARAM)}
 			initialNotice={toRosterNotice(url.searchParams.get("notice"))}
 			autoCreate={autoCreate}
 		/>

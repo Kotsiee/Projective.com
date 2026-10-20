@@ -33,6 +33,13 @@ export interface ConversationFolderSet {
 	id: string;
 	folder: InboxFolder;
 }
+
+/**
+ * `POST /api/messaging/conversations/[id]/mute` — mute or unmute a conversation for the caller only
+ * (`comms.set_dm_muted`, Decision #308).
+ */
+export const SetConversationMutedSchema = z.object({ muted: z.boolean() });
+export type SetConversationMuted = z.infer<typeof SetConversationMutedSchema>;
 // #endregion
 
 // #region Rules

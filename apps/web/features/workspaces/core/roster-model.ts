@@ -37,14 +37,14 @@ import { type CreateTier, isFilled } from "./create-model.ts";
  */
 export type RosterTab = "all" | "owned" | "member" | "invitations" | "archived";
 
-/** One partition as the canvas's TabMenu and the lane's segmented control name it. */
+/** One partition as the canvas toolbar's filter and the lane's segmented control name it. */
 export interface RosterTabOption {
 	value: RosterTab;
 	label: string;
 }
 
 /**
- * The canvas's partitions, in TabMenu order. The lane's segmented control offers the same words minus
+ * The canvas's partitions, in filter order. The lane's segmented control offers the same words minus
  * Archived (`lane-model.ts`), so the two controls over the ONE shared partition never disagree on a
  * label.
  */
@@ -59,11 +59,6 @@ export const ROSTER_TABS: readonly RosterTabOption[] = [
 /** Coerce a raw query value to a partition, else `all`. */
 export function toRosterTab(raw: string | null | undefined): RosterTab {
 	return ROSTER_TABS.some((tab) => tab.value === raw) ? raw as RosterTab : "all";
-}
-
-/** A partition's position in {@link ROSTER_TABS} — the TabMenu's active index. */
-export function rosterTabIndex(tab: RosterTab): number {
-	return Math.max(0, ROSTER_TABS.findIndex((option) => option.value === tab));
 }
 
 /**
@@ -94,19 +89,6 @@ export function filterRoster(
 	});
 }
 
-/**
- * A partition's count `Badge` in the TabMenu — every partition carries its size, so Owned, Member and
- * Archived are counted somewhere (the head counts only the live total and the invitations waiting). A
- * count is one of the containers §B.11 allows; an empty partition carries none rather than a `0`.
- */
-export function rosterTabBadge(
-	tab: RosterTab,
-	counts: Readonly<Record<RosterTab, number>>,
-): number | undefined {
-	const count = counts[tab];
-	return count > 0 ? count : undefined;
-}
-
 /** How many rows each partition would show — computed once from one pass. */
 export function rosterTabCounts(
 	items: readonly WorkspaceSummary[],
@@ -132,9 +114,79 @@ export function isFiltered(tab: RosterTab, search: string): boolean {
 }
 // #endregion
 
+// #region Sort
+/** What the canvas toolbar's `SortControl` can order the roster by. */
+export type RosterSort = "recent" | "name" | "members" | "projects";
+
+/** The sort's direction — the `SortControl`'s own vocabulary. */
+export type RosterSortDir = "asc" | "desc";
+
+/** One sort property as the toolbar names it. */
+export interface RosterSortOption {
+	value: RosterSort;
+	label: string;
+}
+
+/** The sort properties, in dropdown order. */
+export const ROSTER_SORTS: readonly RosterSortOption[] = [
+	{ value: "recent", label: "Recently updated" },
+	{ value: "name", label: "Name" },
+	{ value: "members", label: "Members" },
+	{ value: "projects", label: "Live projects" },
+];
+
+/** The roster's resting order: most recently updated first. */
+export const DEFAULT_ROSTER_SORT: RosterSort = "recent";
+export const DEFAULT_ROSTER_SORT_DIR: RosterSortDir = "desc";
+
+/** Coerce a raw query value to a sort property, else {@link DEFAULT_ROSTER_SORT}. */
+export function toRosterSort(raw: string | null | undefined): RosterSort {
+	return ROSTER_SORTS.some((s) => s.value === raw) ? raw as RosterSort : DEFAULT_ROSTER_SORT;
+}
+
+/** Coerce a raw query value to a direction, else {@link DEFAULT_ROSTER_SORT_DIR}. */
+export function toRosterSortDir(raw: string | null | undefined): RosterSortDir {
+	return raw === "asc" || raw === "desc" ? raw : DEFAULT_ROSTER_SORT_DIR;
+}
+
+/**
+ * The rows in the picked order. Stable: ties keep the server's order, and an entity with no known
+ * `updatedAt` sorts after every dated one in either direction, so "unknown" never reads as "newest".
+ */
+export function sortRoster(
+	rows: readonly WorkspaceSummary[],
+	sort: RosterSort,
+	dir: RosterSortDir,
+): WorkspaceSummary[] {
+	const sign = dir === "asc" ? 1 : -1;
+	return rows
+		.map((row, index) => ({ row, index }))
+		.sort((a, b) => {
+			let delta = 0;
+			if (sort === "recent") {
+				const at = a.row.updatedAt ? Date.parse(a.row.updatedAt) : NaN;
+				const bt = b.row.updatedAt ? Date.parse(b.row.updatedAt) : NaN;
+				if (Number.isNaN(at) || Number.isNaN(bt)) {
+					delta = Number.isNaN(at) === Number.isNaN(bt) ? 0 : Number.isNaN(at) ? 1 : -1;
+					return delta || a.index - b.index;
+				}
+				delta = (at - bt) * sign;
+			} else if (sort === "name") {
+				delta = a.row.name.localeCompare(b.row.name, undefined, { sensitivity: "base" }) * sign;
+			} else if (sort === "members") {
+				delta = (a.row.memberCount - b.row.memberCount) * sign;
+			} else {
+				delta = (a.row.activeProjects - b.row.activeProjects) * sign;
+			}
+			return delta || a.index - b.index;
+		})
+		.map(({ row }) => row);
+}
+// #endregion
+
 // #region The address
 /**
- * The query key the partition rides in. It is the console's sub-view key too, so a TabMenu's choice
+ * The query key the partition rides in. It is the console's sub-view key too, so a partition's choice
  * is `?view=` everywhere on the surface.
  */
 export const ROSTER_VIEW_PARAM = "view";
@@ -144,6 +196,10 @@ export const LEGACY_ROSTER_TAB_PARAM = "tab";
 
 /** The canvas's search term. */
 export const ROSTER_SEARCH_PARAM = "q";
+
+/** The toolbar's sort property and direction — written only when they differ from the resting order. */
+export const ROSTER_SORT_PARAM = "sort";
+export const ROSTER_DIR_PARAM = "dir";
 
 /**
  * A one-shot flash a redirect leaves (`?notice=unavailable`, `console-route.ts`). The canvas shows it
@@ -159,10 +215,16 @@ export function rosterTabFromSearch(params: URLSearchParams): RosterTab {
 /**
  * The search string an address should carry for a partition and a search term, from the current one:
  * `?view=` set (dropped for All), `?q=` set (dropped when blank), the legacy `?tab=` and the one-shot
- * `?notice=` dropped, every other parameter kept. Returns `""` or `"?…"`, so a caller compares it with
- * `location.search` directly.
+ * `?notice=` dropped, every other parameter kept. With a `sort`, `?sort=` and `?dir=` are written when
+ * they differ from the resting order and dropped when they match it; without one they are left alone.
+ * Returns `""` or `"?…"`, so a caller compares it with `location.search` directly.
  */
-export function rosterSearch(current: string, tab: RosterTab, query: string): string {
+export function rosterSearch(
+	current: string,
+	tab: RosterTab,
+	query: string,
+	sort?: { by: RosterSort; dir: RosterSortDir },
+): string {
 	const params = new URLSearchParams(current);
 	params.delete(LEGACY_ROSTER_TAB_PARAM);
 	params.delete(ROSTER_NOTICE_PARAM);
@@ -171,6 +233,12 @@ export function rosterSearch(current: string, tab: RosterTab, query: string): st
 	const term = query.trim();
 	if (term) params.set(ROSTER_SEARCH_PARAM, term);
 	else params.delete(ROSTER_SEARCH_PARAM);
+	if (sort) {
+		if (sort.by === DEFAULT_ROSTER_SORT) params.delete(ROSTER_SORT_PARAM);
+		else params.set(ROSTER_SORT_PARAM, sort.by);
+		if (sort.dir === DEFAULT_ROSTER_SORT_DIR) params.delete(ROSTER_DIR_PARAM);
+		else params.set(ROSTER_DIR_PARAM, sort.dir);
+	}
 	const out = params.toString();
 	return out ? `?${out}` : "";
 }
@@ -253,7 +321,7 @@ export function rosterCanvasState(input: RosterCanvasInput): RosterCanvasState {
 }
 
 /**
- * Whether the head's search field and the partition TabMenu are drawn. Not in first run (there is
+ * Whether the canvas toolbar (search, partition filter, sort) is drawn. Not in first run (there is
  * nothing to partition) and not while nothing has loaded (there is nothing to filter).
  */
 export function rosterToolsShown(state: RosterCanvasState): boolean {

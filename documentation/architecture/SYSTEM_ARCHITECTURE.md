@@ -1921,6 +1921,25 @@ Every write returns the RE-READ console so an island adopts the server's state. 
   `role` is `admin` for the owner/admin presets, else `member`. After a switch the caller refreshes
   the session so the new claims are minted. The `/wallet?w=` scope stays a page-local view filter,
   distinct from this switch.
+- **Calendar and a team's Catalogue are other domains' reads over the console's own facts (Decision
+  #308).** The `[module]` route handler reads them server-side only for the module that shows one
+  (`features/workspaces/core/workspace-ssr.ts`), from the detail it already resolved — never from a
+  request. **Calendar** (both kinds): `ScheduleBackendService.entityCalendar({ projectIds, ref, title },
+  actor)` reads each of the detail's projects (a team's also its engagements' projects, capped at 40,
+  four at a time) through the same `readProjectCalendar` the project calendar uses, AS the viewer —
+  so RLS decides which projects, meetings and deadlines exist for them — and folds them in the pure
+  `scheduling/entity-calendar.ts` into one `CalendarPage` of the new read-only `entity` scope: events
+  de-duplicated by id, each stamped with its `projectId` and linked to its project, `canCreate:
+  false`. A project the viewer cannot see is absent; a project whose read fails fails the page (503),
+  never a silently partial grid. A write on one of its events (RSVP, reschedule) is addressed to the
+  event's own project scope, so the server re-resolves it exactly as on the project calendar.
+  **Catalogue** (team only): `CatalogueBackendService.list` is scoped by the actor's ACTING context,
+  so the resolver re-scopes the actor to the team (`contextType: "team"`, `contextId` = the team)
+  for that one read — only after the detail resolved (membership is the database's answer) and the
+  registry lets the viewer open the module (`publish_listings`). The token is unchanged, so RLS stays
+  authoritative (`catalogue.listings` admits an active member of the owning team). Editing and
+  creating stay on `/catalogue`, which resolve the seller from the acting context, so the module
+  offers them only to a member acting as the team and offers anyone else the acting switch.
 
 Refusals follow one convention: an RPC raises `22023 '<field>: <reason>'`, which the service maps to
 a 422 with `fieldErrors[field]`; `42501` → 403, `P0002` → 404, `23505` / `55000` → 409, `23514` →

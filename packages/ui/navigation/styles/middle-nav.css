@@ -306,6 +306,51 @@
     pointer-events: none;
 }
 
+/*
+ * AN EMPTY BAND IS NOT DRAWN (Decision #308). A route's slot can register a header or footer whose
+ * content turns out to hold nothing — an island that renders `null`, or a rig whose every control
+ * belongs to the lane on this layout — and the frame would otherwise paint a bar of nothing. A band
+ * hides when it is `:empty` (an island's comment markers do not count), or when its content root says so
+ * with `data-band-empty`: `"always"`, or `"beside-lane"` for content that only exists while the frame
+ * hides the lane (this file's own `767px` query). Everything that keys on a band's presence —
+ * `--has-header`'s offsets here, the canvas's footer corner in `page-canvas.css` — reverts with it.
+ */
+.ui-middle-nav__header:empty,
+.ui-middle-nav__header:has(> [data-band-empty="always"]),
+.ui-middle-nav__footer:empty,
+.ui-middle-nav__footer:has(> [data-band-empty="always"]) {
+    display: none;
+}
+
+.ui-middle-nav--has-header:has(> .ui-middle-nav__header:is(:empty, :has(> [data-band-empty="always"]))) {
+    --shell-frame-inset-block: var(--shell-topbar-h);
+}
+
+.ui-middle-nav--has-header:has(> .ui-middle-nav__header:is(:empty, :has(> [data-band-empty="always"])))
+    > .ui-middle-nav__panel {
+    grid-row: 1 / -1;
+    inset-block-start: var(--shell-topbar-h);
+    max-block-size: calc(100dvh - var(--shell-topbar-h));
+}
+
+@media (min-width: 768px) {
+    .ui-middle-nav__header:has(> [data-band-empty="beside-lane"]),
+    .ui-middle-nav__footer:has(> [data-band-empty="beside-lane"]) {
+        display: none;
+    }
+
+    .ui-middle-nav--has-header:has(> .ui-middle-nav__header > [data-band-empty="beside-lane"]) {
+        --shell-frame-inset-block: var(--shell-topbar-h);
+    }
+
+    .ui-middle-nav--has-header:has(> .ui-middle-nav__header > [data-band-empty="beside-lane"])
+        > .ui-middle-nav__panel {
+        grid-row: 1 / -1;
+        inset-block-start: var(--shell-topbar-h);
+        max-block-size: calc(100dvh - var(--shell-topbar-h));
+    }
+}
+
 /* Mobile viewport isolation (≤ --bp-md): remove the lane (a desktop side-panel layer) AND its content
    gutter, so the canvas is flush full-width with no nested track (Part D.3). The header + content +
    footer stack in the single column; the window-scroll model is shared with desktop. */

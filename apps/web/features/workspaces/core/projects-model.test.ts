@@ -625,9 +625,9 @@ Deno.test("projects screen: one filled control — the structural Invite member;
 	assert(/<ConfirmDialog\b[\s\S]*?acceptSeverity="danger"/.test(SCREEN), "no danger confirm");
 });
 
-Deno.test("projects screen: it is the header band tabs' panel and reads the shared sub-view", () => {
+Deno.test("projects screen: it is the header band toolbar's panel and reads the shared sub-view", () => {
 	assert(/subViewsFor\("projects", ws\.kind, ws\.viewerCapabilities\)/.test(SCREEN));
-	assert(/id: SUB_VIEW_PANEL_ID,\s*role: "tabpanel"/.test(SCREEN));
+	assert(/id: SUB_VIEW_PANEL_ID,\s*role: "region"/.test(SCREEN));
 	assert(/viewOr\(props\.view \?\? null\)/.test(SCREEN));
 	assert(!/selectModuleView|<TabMenu\b/.test(SCREEN), "the body draws or writes its own tabs");
 	assert(!/style=/.test(SCREEN), "an inline style");

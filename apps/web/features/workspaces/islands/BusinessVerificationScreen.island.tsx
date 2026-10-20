@@ -118,11 +118,8 @@ export default function BusinessVerificationScreen(
 		<div class="wsp" data-kind="business">
 			<div class="wsp__stack">
 				{/* #region Status */}
-				<section class="wsp-band wsp-band--head" data-i={next()} aria-labelledby="wsp-kyb-title">
+				<section class="wsp-band wsp-band--head" data-i={next()} aria-label="Verification status">
 					<div class="wsp-band__inner wsp-kyb">
-						<div class="wsp-pagehead">
-							<h1 class="wsp-pagehead__title" id="wsp-kyb-title">Verification</h1>
-						</div>
 						<div class="wsp-kyb__status">
 							<span class="wsp-kyb__badges">
 								<Tag value={tag.label} severity={tag.severity} variant="subtle" rounded />
@@ -130,11 +127,6 @@ export default function BusinessVerificationScreen(
 							</span>
 							<MetaLine as="span" items={kybMeta(kyb)} />
 						</div>
-						<p class="wsp-pagehead__note">
-							Business verification (KYB) checks{" "}
-							{props.name}'s registration details and the people who own it. Stripe collects the
-							details and runs the check.
-						</p>
 					</div>
 				</section>
 				{/* #endregion */}

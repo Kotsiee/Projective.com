@@ -233,7 +233,7 @@ person survives resolution.
 
 ### `comms.set_group_photo(p_thread_id uuid, p_file_id uuid) → jsonb`
 
-Sets — or, with `NULL`, clears — a **group** thread's `photo_file_id`. `SECURITY DEFINER`,
+Sets — or, with `NULL`, clears — a **group** thread's `photo_file_id`. Also an **entity channel's** (Decision #308), where only the channel's creator or a `manage_settings` holder may (`comms.fn_can_manage_entity_channel`; `42501 channel:` otherwise) — a channel's image is part of its identity, edited with its name. `SECURITY DEFINER`,
 `search_path = ''`, `EXECUTE` to `authenticated` only. Any undeleted participant may (a group's
 picture is shared furniture, like its name). Refuses `42501` for a stranger, `22023` for a thread that
 is not `kind = 'group'`, and `22023` unless the file is a processed public rendition the CALLER owns
@@ -437,6 +437,14 @@ that column. Idempotent. `42501` when there is no acting user or the caller is n
 Called by `MessagingBackendService.setStarred`, which `SavedBackendService` dispatches the
 conversation kind to; the inbox reads the star back through `is_starred` as before.
 
+### `comms.set_dm_muted(p_thread_id uuid, p_muted boolean) → boolean`
+
+The mute twin of `set_dm_starred` (Decision #308): writes exactly the caller's own undeleted
+participant row's `is_muted`. Idempotent. `42501` when there is no acting user or the caller is not
+a participant (the service answers 404); `22023 muted: required` for a `NULL`. Granted to
+`authenticated` only. Called by `MessagingBackendService.setMuted` (`POST
+/api/messaging/conversations/[id]/mute`); the entity channel header is its first caller.
+
 ## Message favourites and pins (Decision #180)
 
 No new function: `comms.message_favorites` (the caller's own, listed on `/saved`) and
@@ -493,13 +501,28 @@ answer, `P0002 channel: not found`, so the door cannot probe ids. `55000` for th
 `42501 channel:` for anybody else. Returns `{ id, owner_type, owner_entity_id, archived_at }`.
 `EXECUTE`: `authenticated`, `service_role`.
 
+### `comms.update_entity_channel(p_channel_id uuid, p_name text, p_topic text, p_emoji text) → jsonb`
+
+Decision #308. Replaces a channel's display name (`title`, ≤ 60), topic (≤ 200) and emoji (≤ 16); a
+blank or `NULL` field clears it. The **slug never changes**, so a rename breaks no link. The channel's
+creator or a `manage_settings` holder (`comms.fn_can_manage_entity_channel`), on an entity that is not
+archived; the default channel may be renamed like any other. Refusals: `42501 auth:` · `P0002 channel:
+not found` (not a member, archived, not a channel — one answer, as on archive) · `42501 channel:` (no
+edit right) · `55000 workspace: restore it before editing a channel` · `22023 name:` / `topic:` /
+`emoji:`. Returns `{ id, slug, name, topic, emoji }`. `EXECUTE`: `authenticated`, `service_role`.
+
+**Verified by execution** inside `BEGIN … ROLLBACK` as real roles (2026-10-20): the owner renames,
+sets a topic and an emoji, mutes and stars; the list projection carries all five; a member of another
+team is `P0002`; `anon` holds no `EXECUTE`; a 61-character name is `22023`; blanks clear every field.
+
 ### Internals (granted to no client)
 
 | Function | Role |
 | :------- | :--- |
 | `comms.fn_channel_slug(p_name text) → text` | IMMUTABLE normaliser; TS twin `channelSlugOf` (pinned by `workspace.contract.test.ts`). Granted to `authenticated` (pure). |
 | `comms.fn_entity_member_ids(p_kind text, p_entity uuid) → SETOF uuid` | The entity's active members who have an `org.users_public` row (the participant FK). |
-| `comms.fn_entity_channel_list(p_kind text, p_entity uuid, p_viewer uuid) → jsonb` | The live channels for one viewer — default first, then by slug — each `{ id, slug, topic, is_default, unread, last_activity_at }`: `unread` counts other people's undeleted messages after the viewer's `last_read_at` (all of them while it is NULL). Read only by `org.get_workspace_detail` (`channels`), which has already decided the viewer is an active member. |
+| `comms.fn_entity_channel_list(p_kind text, p_entity uuid, p_viewer uuid) → jsonb` | The live channels for one viewer — default first, then by slug — each `{ id, slug, topic, is_default, unread, last_activity_at, name, emoji, photo_file_id, starred, muted, can_manage }`: `unread` counts other people's undeleted messages after the viewer's `last_read_at` (all of them while it is NULL). Read only by `org.get_workspace_detail` (`channels`), which has already decided the viewer is an active member. |
+| `comms.fn_can_manage_entity_channel(p_channel_id uuid, p_user uuid) → boolean` | Decision #308. Whether a user may edit or archive a LIVE entity channel: an active member who created it, or one holding `manage_settings`. STABLE DEFINER; read by `update_entity_channel`, `set_group_photo` and `fn_entity_channel_list` (`can_manage`). |
 | `comms.fn_ensure_default_channel(p_kind, p_entity, p_creator) → uuid` | The entity's `general`, created when missing (DEFINER). NULL, creating nothing, when the creator has no `org.users_public` row — the entity's own insert is never refused for it. The seed backfill calls it for every entity. |
 | `comms.fn_sync_channel_member(p_kind, p_entity, p_user, p_active boolean)` | Joining: restores a soft-deleted participation and inserts the missing ones, on LIVE channels. Leaving: soft-deletes the participation on EVERY channel of the entity, archived included. |
 | `comms.tg_entity_channel_seed_members()` | `trg_entity_channel_seed_members` AFTER INSERT ON `comms.dm_threads` `WHEN (NEW.kind = 'entity_channel')`: every active member joins. |
@@ -514,5 +537,5 @@ answer, `P0002 channel: not found`, so the door cannot probe ids. `55000` for th
 | `comms.fn_promote_thread_on_reply` | Returns early for a channel (no request folder to promote). |
 | `comms.tg_dm_auto_reply` | Answers only `dm` / `service_inquiry` threads. |
 | `comms.trg_dm_shield` | Exempt (above). |
-| `comms.add_dm_thread_members` | Refuses a channel (`22023`) — joining the entity is the only way in. `comms.set_group_photo` already refuses anything but a group. |
+| `comms.add_dm_thread_members` | Refuses a channel (`22023`) — joining the entity is the only way in. `comms.set_group_photo` accepts a channel only from its editors (Decision #308). |
 | `comms.tg_mask_dm_message_pii` | **Unchanged**: a channel message is masked when the sender and another member share a protected engagement (`comms.fn_dm_protected_project`) — the same rule as a DM. Flagged on Decision #306. |

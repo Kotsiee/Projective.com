@@ -12,6 +12,7 @@ import type {
 	SpendEnvelopePreview,
 	TeamSplitPreview,
 	TransferOwnershipInput,
+	UpdateChannelInput,
 	UpdateMemberInput,
 	UpdatePayoutInput,
 	UpdateSpendInput,
@@ -286,6 +287,18 @@ export class WorkspaceBackendService {
 		actor: ReadActor,
 	): Promise<ServiceResult<WorkspaceDetail>> {
 		return guarded("channel-archive", actor, (live) => channels.archiveChannel(input, live));
+	}
+
+	/**
+	 * Edit a chat channel's display name, topic and emoji (`comms.update_entity_channel`, Decision #308)
+	 * — its creator or a `manage_settings` holder; the slug never changes — and answer with the re-read
+	 * detail.
+	 */
+	static updateChannel(
+		input: UpdateChannelInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<WorkspaceDetail>> {
+		return guarded("channel-update", actor, (live) => channels.updateChannel(input, live));
 	}
 
 	/**

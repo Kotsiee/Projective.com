@@ -10,12 +10,11 @@ import {
 	PROJECTS_ACTIVE,
 	PROJECTS_PROPOSALS,
 	resolveSubView,
-	SUB_VIEW_TABS_ID,
 	SUB_VIEWS,
 	subViewIndex,
+	subViewLabel,
 	subViewSearch,
 	subViewsFor,
-	subViewTabId,
 } from "./sub-views.ts";
 
 /**
@@ -120,8 +119,10 @@ Deno.test("sub-views: the default addresses the bare URL; others set ?view=, kee
 	assertEquals(subViewSearch("?q=ana&view=chart", views, MEMBERS_PEOPLE), "?q=ana");
 });
 
-Deno.test("sub-views: a tab id is the TabMenu's own `${id}-tab-${i}`", () => {
-	assertEquals(subViewTabId(0), `${SUB_VIEW_TABS_ID}-tab-0`);
-	assertEquals(subViewTabId(2), `${SUB_VIEW_TABS_ID}-tab-2`);
+Deno.test("sub-views: the panel is named by the current view, an unknown value by the first", () => {
+	const views = subViewsFor("members", "team", INVITER);
+	assertEquals(subViewLabel(views, MEMBERS_CHART), "Org chart");
+	assertEquals(subViewLabel(views, "nope"), views[0].label);
+	assertEquals(subViewLabel([], null), "");
 });
 // #endregion

@@ -423,7 +423,7 @@ export const NAV_HUBS: readonly NavHub[] = [
 	},
 	{
 		key: "projects",
-		label: same("Projects & work"),
+		label: same("Projects"),
 		glyph: ProjectsGlyph,
 		zone: "operations",
 		modules: ["projects"],
@@ -431,7 +431,7 @@ export const NAV_HUBS: readonly NavHub[] = [
 	},
 	{
 		key: "calendar",
-		label: same("Calendar & schedule"),
+		label: same("Calendar"),
 		glyph: CalendarGlyph,
 		zone: "operations",
 		modules: ["calendar"],
@@ -439,7 +439,7 @@ export const NAV_HUBS: readonly NavHub[] = [
 	},
 	{
 		key: "files",
-		label: same("Files & docs"),
+		label: same("Files"),
 		glyph: FilesGlyph,
 		zone: "operations",
 		modules: ["files"],
@@ -463,7 +463,7 @@ export const NAV_HUBS: readonly NavHub[] = [
 	},
 	{
 		key: "roster",
-		label: same("Roster & members"),
+		label: same("Members"),
 		glyph: MembersGlyph,
 		zone: "governance",
 		modules: ["members", "invitations", "roles"],
@@ -471,7 +471,7 @@ export const NAV_HUBS: readonly NavHub[] = [
 	},
 	{
 		key: "vault",
-		label: (kind) => kind === "team" ? "Vault & finances" : "Wallet & spending",
+		label: same("Wallet"),
 		glyph: FinanceGlyph,
 		zone: "governance",
 		modules: ["finance", "payouts", "spend", "billing"],
@@ -479,7 +479,7 @@ export const NAV_HUBS: readonly NavHub[] = [
 	},
 	{
 		key: "insights",
-		label: same("Analytics & standing"),
+		label: same("Analytics"),
 		glyph: AnalyticsGlyph,
 		zone: "governance",
 		modules: ["analytics", "standing"],
@@ -556,7 +556,7 @@ export interface ViewerHub {
 
 /**
  * The hubs a viewer may open, in {@link NAV_HUBS} order — each with exactly the modules
- * {@link modulesForViewer} admits, so a member without `manage_roles` sees Roster & members without
+ * {@link modulesForViewer} admits, so a member without `manage_roles` sees Members without
  * Roles, and one with no money capability sees no Vault at all.
  */
 export function hubsForViewer(

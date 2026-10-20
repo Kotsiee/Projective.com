@@ -120,6 +120,13 @@ export const CalendarEventSchema = z.object({
 	 */
 	sources: z.array(z.string().max(40)).max(8).optional(),
 	href: z.string().max(400).optional(),
+	/**
+	 * The engagement (its `prj-` slug) this entry belongs to, stamped on an AGGREGATE page — an
+	 * `entity` calendar draws several projects on one grid, so the surface reads here which project a
+	 * write targets and where the entry links. Absent on a single-project page, whose page envelope
+	 * already names it.
+	 */
+	projectId: z.string().max(120).optional(),
 
 	// #region Discovery-call projection (additive, all optional)
 	/**
@@ -241,6 +248,12 @@ export type CalendarAvailability = z.infer<typeof CalendarAvailabilitySchema>;
  * `personal` is the viewer's OWN agenda at `/calendar` — every engagement they are on, their working
  * hours, and whatever their connected external calendars contribute — as opposed to the three
  * surfaces that are a view onto somebody or something else.
+ *
+ * `entity` is a team's or business's console Calendar (`/teams/:h/calendar`, `/businesses/:h/calendar`,
+ * Decision #308): the union of the calendars of the entity's projects, each read as the viewer. It is a
+ * READ scope only — an event on it is answered or rescheduled through its own project's scope (the
+ * event's {@link CalendarEventSchema} `projectId`), so a write is re-resolved exactly as on the project
+ * calendar and an `entity` write target is refused as an unknown one.
  */
 export const CalendarScope = z.enum([
 	"project",
@@ -248,6 +261,7 @@ export const CalendarScope = z.enum([
 	"availability",
 	"schedule",
 	"personal",
+	"entity",
 ]);
 export type CalendarScope = z.infer<typeof CalendarScope>;
 
@@ -266,9 +280,15 @@ export const PageInstantSchema = z.number().int().nonnegative();
 /**
  * The project / channel calendar page (`/projects/[id]/calendar`, `/projects/[id]/[channel]/calendar`):
  * task deadlines, review milestones, and scheduled stage syncs derived from the engagement.
+ *
+ * Also the `entity` page — a team's or business's console Calendar, the union of its projects' pages
+ * (Decision #308). There `projectId` names the ENTITY the union was read for (its handle), `channelId`
+ * is `null`, every event carries its own `projectId`, and `canCreate` is `false`: an entry is created
+ * on its project's calendar, never on an aggregate with no single project to own it.
  */
 export const CalendarPageSchema = z.object({
 	scope: CalendarScope,
+	/** The engagement's slug — or, on an `entity` page, the entity's handle. */
 	projectId: z.string().min(1).max(120),
 	channelId: z.string().max(120).nullable(),
 	title: z.string().max(160),

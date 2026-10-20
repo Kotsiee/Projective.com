@@ -300,6 +300,28 @@ export function rigLayouts(input: RigInput): RigLayouts {
 }
 
 /**
+ * Whether one layout of the rig draws nothing at all — no zoom, toggle, control or reason, and no
+ * status to say. An idle editor's mounted status line says nothing, so it does not keep the band: the
+ * rig announces from a live region outside it, and a press whose band hides lands focus on `<main>`.
+ */
+export function rigIsEmpty(model: RigModel): boolean {
+	return !model.zoom && !model.chart && !model.status && model.actions.length === 0 && !model.note;
+}
+
+/**
+ * When the footer band has nothing to show (Decision #308), as the frame's `data-band-empty` contract
+ * reads it (`middle-nav.css`): `"always"` when no layout draws anything, `"beside-lane"` when only the
+ * layout without the lane does (a console's Invite member and Settings move onto the phone rig), else
+ * `null`. The frame then hides the band rather than draw an empty bar.
+ */
+export function rigBandEmpty(layouts: RigLayouts): "always" | "beside-lane" | null {
+	const besideLane = rigIsEmpty(layouts.withLane) &&
+		(layouts.withRail === null || rigIsEmpty(layouts.withRail));
+	if (!besideLane) return null;
+	return rigIsEmpty(layouts.withoutLane) ? "always" : "beside-lane";
+}
+
+/**
  * Whether the open module's body is an editor this viewer may save: a money-policy editor for the
  * money right, a team's Settings identity editor for `edit_profile`, the Roles matrix for
  * `manage_roles`. Only a team's Settings mounts the identity editor (`TeamSettingsScreen`); a

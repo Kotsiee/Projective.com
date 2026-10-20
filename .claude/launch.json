@@ -7,7 +7,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1] }; $env:PORT = '12974'; deno task dev"
+				"$env:PORT = '12974'; deno task dev"
 			],
 			"port": 12974
 		},
@@ -17,7 +17,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '12977'; deno task dev"
+				"$env:PORT = '12977'; deno task dev"
 			],
 			"port": 12977
 		},
@@ -27,7 +27,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '12981'; deno task dev"
+				"$env:PORT = '12981'; deno task dev"
 			],
 			"port": 12981
 		},
@@ -47,7 +47,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '12995'; deno task dev --port 12995 --strictPort"
+				"$env:PORT = '12995'; deno task dev --port 12995 --strictPort"
 			],
 			"port": 12995
 		},
@@ -57,7 +57,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '12997'; deno task dev --port 12997 --strictPort"
+				"$env:PORT = '12997'; deno task dev --port 12997 --strictPort"
 			],
 			"port": 12997
 		},
@@ -77,7 +77,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13003'; deno task dev --port 13003 --strictPort"
+				"$env:PORT = '13003'; deno task dev --port 13003 --strictPort"
 			],
 			"port": 13003
 		},
@@ -87,7 +87,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13005'; deno task dev --port 13005 --strictPort"
+				"$env:PORT = '13005'; deno task dev --port 13005 --strictPort"
 			],
 			"port": 13005
 		},
@@ -107,7 +107,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13011'; deno task dev --port 13011 --strictPort"
+				"$env:PORT = '13011'; deno task dev --port 13011 --strictPort"
 			],
 			"port": 13011
 		},
@@ -117,7 +117,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13041'; deno task dev --port 13041 --strictPort"
+				"$env:PORT = '13041'; deno task dev --port 13041 --strictPort"
 			],
 			"port": 13041
 		},
@@ -127,7 +127,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13050'; deno task dev --port 13050 --strictPort"
+				"$env:PORT = '13050'; deno task dev --port 13050 --strictPort"
 			],
 			"port": 13050
 		},
@@ -137,7 +137,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13060'; deno task dev --port 13060 --strictPort"
+				"$env:PORT = '13060'; deno task dev --port 13060 --strictPort"
 			],
 			"port": 13060
 		},
@@ -177,7 +177,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13091'; deno task dev --port 13091 --strictPort"
+				"$env:PORT = '13091'; deno task dev --port 13091 --strictPort"
 			],
 			"port": 13091
 		},
@@ -187,7 +187,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13100'; deno task dev --port 13100 --strictPort"
+				"$env:PORT = '13100'; deno task dev --port 13100 --strictPort"
 			],
 			"port": 13100
 		},
@@ -197,7 +197,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13210'; deno task dev --port 13210 --strictPort"
+				"$env:PORT = '13210'; deno task dev --port 13210 --strictPort"
 			],
 			"port": 13210
 		},
@@ -207,7 +207,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:CATALOGUE_BACKEND_LIVE = 'false'; $env:PORT = '13217'; deno task dev --port 13217 --strictPort"
+				"$env:CATALOGUE_BACKEND_LIVE = 'false'; $env:PORT = '13217'; deno task dev --port 13217 --strictPort"
 			],
 			"port": 13217
 		},
@@ -217,7 +217,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String \"^SUPABASE_SERVICE_ROLE_KEY=\"; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split(\"=\", 2)[1].Trim([char]34) }; $env:PORT = \"13011\"; deno task dev --port 13011 --strictPort"
+				"$env:PORT = \"13011\"; deno task dev --port 13011 --strictPort"
 			],
 			"port": 13011
 		},
@@ -227,7 +227,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13213'; deno task dev --port 13213 --strictPort"
+				"$env:PORT = '13213'; deno task dev --port 13213 --strictPort"
 			],
 			"port": 13213
 		},
@@ -237,7 +237,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13215'; deno task dev --port 13215 --strictPort"
+				"$env:PORT = '13215'; deno task dev --port 13215 --strictPort"
 			],
 			"port": 13215
 		},
@@ -247,7 +247,7 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13219'; deno task dev --port 13219 --strictPort"
+				"$env:PORT = '13219'; deno task dev --port 13219 --strictPort"
 			],
 			"port": 13219
 		},
@@ -257,9 +257,19 @@
 			"runtimeArgs": [
 				"-NoProfile",
 				"-Command",
-				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13214'; deno task dev --port 13214 --strictPort"
+				"$env:PORT = '13214'; deno task dev --port 13214 --strictPort"
 			],
 			"port": 13214
+		},
+		{
+			"name": "web-channels",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13230'; deno task dev --port 13230 --strictPort"
+			],
+			"port": 13230
 		}
 	]
 }

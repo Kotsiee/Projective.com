@@ -18,6 +18,14 @@ Deno.test("isChatRoute: a channel's Chat view is a chat route; its other tabs ar
 	assertEquals(isChatRoute("/projects/prj-atlas/stg-design/submissions/a/b"), false);
 });
 
+Deno.test("isChatRoute: a team or business channel's Chat is a chat route; its Files view is not (#308)", () => {
+	assertEquals(isChatRoute("/teams/north-loop/channels/general"), true);
+	assertEquals(isChatRoute("/businesses/acme/channels/delivery-sync"), true);
+	assertEquals(isChatRoute("/teams/north-loop/channels/general/files"), false);
+	assertEquals(isChatRoute("/teams/north-loop/channels"), false);
+	assertEquals(isChatRoute("/teams/north-loop/members"), false);
+});
+
 Deno.test("isChatRoute: project-level views and unrelated pages are not chat routes", () => {
 	for (
 		const view of ["board", "calendar", "edit", "files", "members", "preview", "timeline"]

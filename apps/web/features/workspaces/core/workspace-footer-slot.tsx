@@ -12,6 +12,8 @@ import { resolveSubView } from "./sub-views.ts";
 import { isFirstRun } from "./roster-model.ts";
 import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBackendService.ts";
 import ChatComposer from "@web/features/projects/islands/ChatComposer.island.tsx";
+import ViewControlRig from "@web/features/projects/islands/ViewControlRig.island.tsx";
+import { channelTabOfPath } from "./channel-model.ts";
 
 /**
  * workspace-footer-slot — the SSR-idiomatic resolver for the middle-nav FOOTER band across the
@@ -59,8 +61,10 @@ export async function workspaceFooterFor(url: URL, actor: ReadActor): Promise<Co
 	const bootstrap = await resolveWorkspaceConsole(kind, handle, requested, actor, url);
 	if (!bootstrap) return null;
 
-	// On a channel the band is the chat composer, as on a conversation (Decision #306).
+	// On a channel's Chat the band is the chat composer, as on a conversation (Decision #306); on its
+	// Files the File Explorer's zoom rig, as on a conversation's Files tab (Decision #308).
 	const slug = bootstrap.activeModule === "channels" ? channelSlugOfPath(url.pathname) : null;
+	if (slug && channelTabOfPath(url.pathname) === "files") return <ViewControlRig />;
 	if (slug) {
 		const thread = await WorkspaceBackendService.channelThread(
 			kind,

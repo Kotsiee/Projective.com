@@ -273,35 +273,30 @@ export default function PayoutPolicyScreen(props: PayoutPolicyScreenProps): JSX.
 	return (
 		<div class="wsp" data-kind="team">
 			<div class="wsp__stack">
-				<section class="wsp-band wsp-band--head" data-i={0}>
-					<div class="wsp-band__inner">
-						<div class="wsp-pagehead">
-							<h1 class="wsp-pagehead__title">Payouts</h1>
-							<p class="wsp-pagehead__note">
-								How a released stage payout divides — the platform fee, then the split rule's cuts,
-								then the members' stakes — and who can move what the Team Vault keeps.
-							</p>
+				{(!editable || notice.value) && (
+					<section class="wsp-band wsp-band--head" data-i={0} aria-label="Payouts">
+						<div class="wsp-band__inner">
+							{!editable && (
+								<p class="wsp-payout__meta">
+									{ws.status === "archived"
+										? "This team is archived. Restore it to change how it splits its payouts."
+										: "Only members who manage the team's finances can change its split."}
+								</p>
+							)}
+							{notice.value && (
+								<div class="wsp-payout__gate">
+									<InlineNotice
+										assertive
+										align="start"
+										class="wsp-payout__notice"
+										text={notice.value.text}
+									/>
+									{notice.value.plans && <PlansLink />}
+								</div>
+							)}
 						</div>
-						{!editable && (
-							<p class="wsp-payout__meta">
-								{ws.status === "archived"
-									? "This team is archived. Restore it to change how it splits its payouts."
-									: "Only members who manage the team's finances can change its split."}
-							</p>
-						)}
-						{notice.value && (
-							<div class="wsp-payout__gate">
-								<InlineNotice
-									assertive
-									align="start"
-									class="wsp-payout__notice"
-									text={notice.value.text}
-								/>
-								{notice.value.plans && <PlansLink />}
-							</div>
-						)}
-					</div>
-				</section>
+					</section>
+				)}
 
 				<div class="wsp-band wsp-band--page wsp-band--tail" data-i={1}>
 					<div class="wsp-band__inner">

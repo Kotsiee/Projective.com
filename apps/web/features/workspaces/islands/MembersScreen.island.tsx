@@ -20,13 +20,7 @@ import { UserAvatarStack } from "@web/components/UserAvatar.tsx";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import { membersViewFor, openInvite, publishDetail, viewOr } from "../core/workspace-state.ts";
-import {
-	MEMBERS_QUEUE,
-	SUB_VIEW_PANEL_ID,
-	subViewIndex,
-	subViewsFor,
-	subViewTabId,
-} from "../core/sub-views.ts";
+import { MEMBERS_QUEUE, SUB_VIEW_PANEL_ID, subViewLabel, subViewsFor } from "../core/sub-views.ts";
 import { bandHasHubStrip } from "../core/hub-tabs.ts";
 import { peopleZoom } from "../core/view-state.ts";
 import { filterMembers, sortMembers } from "../core/workspace-model.ts";
@@ -60,7 +54,7 @@ import InviteModal from "./InviteModal.island.tsx";
  * and an `AvatarStack` of the active members (five faces, then a count).
  *
  * **The sub-views are the registry's** (`core/sub-views.ts`): People · Invitations · Org chart render
- * as the header band's TabMenu, and this island is their one `tabpanel`. People is one dataset read
+ * as the header band's view toolbar, and this island is the one region it controls. People is one dataset read
  * two ways on the People zoom — the `DataTable` (the default, Decision #224) or the card grid — and
  * the org chart is a third reading of the same people.
  *
@@ -167,8 +161,8 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	const panel = subViews.length > 0
 		? {
 			id: SUB_VIEW_PANEL_ID,
-			role: "tabpanel" as const,
-			"aria-labelledby": subViewTabId(subViewIndex(subViews, view)),
+			role: "region" as const,
+			"aria-label": subViewLabel(subViews, view),
 		}
 		: {};
 
@@ -341,13 +335,14 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	return (
 		<div class="wsp" data-kind={ws.kind}>
 			<div class="wsp__stack" {...panel}>
-				<section class="wsp-band wsp-band--head" data-i={0}>
+				<section
+					class="wsp-band wsp-band--head"
+					data-i={0}
+					aria-label={props.module === "invitations" ? "Invitations" : "Members"}
+				>
 					<div class="wsp-band__inner">
 						<div class="wsp-pagehead">
 							<div class="wsp-mhead">
-								<h1 class="wsp-pagehead__title">
-									{props.module === "invitations" ? "Invitations" : "Members"}
-								</h1>
 								<MetaLine
 									items={membersHeaderItems({
 										seats: ws.seats,

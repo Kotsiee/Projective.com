@@ -5,6 +5,7 @@ import {
 	inviteOpensInPlace,
 	POLICY_MODULES,
 	PROFILE_EDITOR_MODULE,
+	rigBandEmpty,
 	rigFilledCount,
 	type RigInput,
 	type RigLane,
@@ -639,8 +640,17 @@ Deno.test("footer rig: a Save or Discard that held focus hands it on, signal-dri
 		/useSignalEffect\(\(\) => \{[\s\S]*?policyDirty\.value;[\s\S]*?saveState\.value;/.test(RIG),
 	);
 	assert(/landFocus\(actionsRef\.current, statusRef\.current\)/.test(RIG));
-	assert(/role="status"\s+tabIndex=\{-1\}/.test(RIG), "the status line can take focus");
+	assert(
+		/class="wsp-footerrig__status"[\s\S]{0,80}tabIndex=\{-1\}/.test(RIG),
+		"the status line can take focus",
+	);
 	assert(/\{rig\.statusLine && \(/.test(RIG), "the status line follows the model's statusLine");
+	// Decision #308: the band may hide, so the announcement lives outside it and focus has a home.
+	assert(
+		/<BodyPortal>\s*<span class="ui-visually-hidden" role="status">/.test(RIG),
+		"the save status is announced from a live region outside the band",
+	);
+	assert(/main\.ui-page-canvas__body/.test(RIG), "a press whose band hid lands focus on <main>");
 });
 
 Deno.test("policy editors answer Save and Discard through usePolicyBridge, never a useEffect", () => {
@@ -660,5 +670,48 @@ Deno.test("policy editors answer Save and Discard through usePolicyBridge, never
 	const bridge = source("../hooks/usePolicyBridge.ts");
 	assert(!/\buseEffect\b/.test(bridge), "the bridge keys an effect on a signal's value");
 	assertEquals(bridge.match(/useSignalEffect\(/g)?.length, 3);
+});
+// #endregion
+
+// #region The empty band (Decision #308)
+Deno.test("rig: a console page with nothing beside the lane hides the band there, keeping the phone rig", () => {
+	// Overview has no zoom, no editor and no create; its Invite member and Settings are the lane's.
+	const overview = rigLayouts(
+		inConsole({ kind: "business", module: "overview", canManageMoney: false }),
+	);
+	assertEquals(rigBandEmpty(overview), "beside-lane");
+	// Without invite or settings rights the phone rig has nothing either, so the band never draws.
+	const bare = rigLayouts(
+		inConsole({
+			kind: "business",
+			module: "overview",
+			canInvite: false,
+			canManageSettings: false,
+			canManageMoney: false,
+		}),
+	);
+	assertEquals(rigBandEmpty(bare), "always");
+});
+
+Deno.test("rig: a band with a zoom, an editor's status or a create is never hidden", () => {
+	// Members has the zoom; a dirty policy editor mounts its status line; the roster has its New.
+	assertEquals(rigBandEmpty(rigLayouts(inConsole({ module: "members" }))), null);
+	assertEquals(rigBandEmpty(rigLayouts(inConsole({ module: "payouts", dirty: true }))), null);
+	assertEquals(rigBandEmpty(rigLayouts(onRoster({ canCreate: true }))), null);
+});
+
+Deno.test("rig: an idle editor hides its band until it has something to say", () => {
+	for (const module of [...POLICY_MODULES, PROFILE_EDITOR_MODULE, ROLES_EDITOR_MODULE]) {
+		const kind: WorkspaceKind = module === "spend" || module === "billing" ? "business" : "team";
+		const at = (over: Partial<RigInput>) =>
+			rigBandEmpty(rigLayouts(inConsole({ kind, module, canManageRoles: true, ...over })));
+		// Open and untouched: the status line is mounted but silent, so beside the lane there is nothing.
+		assertEquals(at({}), "beside-lane", module);
+		// Unsaved, saving, saved or failed: the status speaks (and Save / Discard appear), so it draws.
+		assertEquals(at({ dirty: true }), null, module);
+		assertEquals(at({ dirty: true, saveState: "saving" }), null, module);
+		assertEquals(at({ saveState: "saved" }), null, module);
+		assertEquals(at({ dirty: true, saveState: "error" }), null, module);
+	}
 });
 // #endregion

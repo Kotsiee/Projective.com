@@ -22,12 +22,16 @@ export function normalisePath(pathname: string): string {
 
 /**
  * Whether a pathname is a full chat view the floating pop-out duplicates: a conversation
- * (`/messages/[conversationId]`) or a project channel's Chat tab (`/projects/[projectSlug]/[channelId]`
- * and its `/chat` alias, the discussion room included). A channel's other tabs are not.
+ * (`/messages/[conversationId]`), a project channel's Chat tab (`/projects/[projectSlug]/[channelId]`
+ * and its `/chat` alias, the discussion room included), or a team's or business's channel
+ * (`/teams/[handle]/channels/[channel]`, Decision #308). A channel's other tabs are not.
  */
 export function isChatRoute(pathname: string): boolean {
 	const parts = segments(pathname);
 	if (parts[0] === "messages") return parts.length === 2;
+	if (parts[0] === "teams" || parts[0] === "businesses") {
+		return parts.length === 4 && parts[2] === "channels";
+	}
 	if (parts[0] !== "projects" || parts.length < 3 || parts.length > 4) return false;
 	if (PROJECT_VIEWS.has(parts[2])) return false;
 	return parts.length === 3 || parts[3] === "chat";

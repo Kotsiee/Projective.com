@@ -97,19 +97,39 @@
 /* With a middle-nav footer band present (composer / View Control Rig), the frame surface must stop at
    the band's top edge instead of running behind it to the viewport bottom — so its bottom-inline-start
    corner rounds symmetrically with the top-inline-start corner. Shorten the fixed `::before` by the
-   footer band's height (on top of the top-start inset) and round the matching corner. */
-.ui-shell-frame:has(.ui-middle-nav__footer) .ui-page-canvas::before,
-.ui-shell-frame:has(.ui-middle-nav__footer) .ui-page-canvas::after {
+   footer band's height (on top of the top-start inset) and round the matching corner.
+
+   A band the frame hides for holding nothing (`data-band-empty`, middle-nav.css, Decision #308) is
+   not present: the canvas then runs to the viewport bottom as on a page with no footer. A
+   `beside-lane` band is drawn only below the frame's lane query, so it counts only there. */
+.ui-shell-frame:has(.ui-middle-nav__footer:not(:empty, :has(> [data-band-empty]))) .ui-page-canvas::before,
+.ui-shell-frame:has(.ui-middle-nav__footer:not(:empty, :has(> [data-band-empty]))) .ui-page-canvas::after {
     block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)) - var(--shell-midnav-footer-h));
     border-end-start-radius: var(--frame-radius);
 }
 
-.ui-shell-frame:has(.ui-middle-nav__footer) .ui-page-canvas::before {
+.ui-shell-frame:has(.ui-middle-nav__footer:not(:empty, :has(> [data-band-empty]))) .ui-page-canvas::before {
     border-block-end: var(--hairline);
 }
 
-.ui-shell-frame:has(.ui-middle-nav__footer) .ui-page-canvas::after {
+.ui-shell-frame:has(.ui-middle-nav__footer:not(:empty, :has(> [data-band-empty]))) .ui-page-canvas::after {
     border-block-end-width: var(--canvas-cue-w);
+}
+
+@media (max-width: 767px) {
+    .ui-shell-frame:has(.ui-middle-nav__footer > [data-band-empty="beside-lane"]) .ui-page-canvas::before,
+    .ui-shell-frame:has(.ui-middle-nav__footer > [data-band-empty="beside-lane"]) .ui-page-canvas::after {
+        block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)) - var(--shell-midnav-footer-h));
+        border-end-start-radius: var(--frame-radius);
+    }
+
+    .ui-shell-frame:has(.ui-middle-nav__footer > [data-band-empty="beside-lane"]) .ui-page-canvas::before {
+        border-block-end: var(--hairline);
+    }
+
+    .ui-shell-frame:has(.ui-middle-nav__footer > [data-band-empty="beside-lane"]) .ui-page-canvas::after {
+        border-block-end-width: var(--canvas-cue-w);
+    }
 }
 
 /*
@@ -134,9 +154,9 @@
         border-inline-end-width: var(--canvas-cue-w);
     }
 
-    .ui-middle-nav:has(> .ui-middle-nav__footer):has(> .ui-middle-nav__panel .ui-midnav-panel[data-open="true"])
+    .ui-middle-nav:has(> .ui-middle-nav__footer:not(:empty, :has(> [data-band-empty]))):has(> .ui-middle-nav__panel .ui-midnav-panel[data-open="true"])
         .ui-page-canvas::before,
-    .ui-middle-nav:has(> .ui-middle-nav__footer):has(> .ui-middle-nav__panel .ui-midnav-panel[data-open="true"])
+    .ui-middle-nav:has(> .ui-middle-nav__footer:not(:empty, :has(> [data-band-empty]))):has(> .ui-middle-nav__panel .ui-midnav-panel[data-open="true"])
         .ui-page-canvas::after {
         border-end-end-radius: var(--frame-radius);
     }

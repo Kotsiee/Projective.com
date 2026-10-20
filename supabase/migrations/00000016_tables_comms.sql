@@ -136,10 +136,13 @@ CREATE TABLE comms.dm_threads (
     kind comms.conversation_kind NOT NULL DEFAULT 'dm',
     -- A group's name, which nothing else can supply. NULL for a DM, where the counterparty's own
     -- name is the title — storing a copy there would go stale the moment they rename themselves.
+    -- An entity channel's display name (Decision #308), edited through comms.update_entity_channel;
+    -- NULL reads as its slug. Renaming never touches the slug, so a channel's address is stable.
     title text,
     -- A group's own photo: a processed public rendition in the `avatars` bucket, written only through
     -- comms.set_group_photo (no client UPDATE policy). NULL for a DM — its picture is the
-    -- counterparty's own, which a copy here would let go stale — and for a group that has none.
+    -- counterparty's own, which a copy here would let go stale — and for a group or channel that has
+    -- none. An entity channel's photo (Decision #308) wins over its emoji.
     photo_file_id uuid REFERENCES files.items (id) ON DELETE SET NULL,
     -- The listing a service inquiry was opened from (Decision #217(g)), so a seller can answer "new
     -- inquiries for this item". Only a `service_inquiry` carries one. Its FK is in 00000033, because
@@ -155,6 +158,8 @@ CREATE TABLE comms.dm_threads (
     slug text,
     -- One line saying what the channel is for; NULL when nobody wrote one.
     topic text,
+    -- The channel's emoji mark (Decision #308), drawn in place of the `#`; NULL draws the `#`.
+    emoji text,
     -- The room every member is in from the moment the entity exists (`general`). Never archivable, so
     -- an entity always has somewhere to talk; at most one per entity (00004006).
     is_default boolean NOT NULL DEFAULT false,
@@ -174,7 +179,7 @@ CREATE TABLE comms.dm_threads (
             (kind = 'entity_channel') = (owner_type IS NOT NULL)
             AND (kind = 'entity_channel') = (owner_entity_id IS NOT NULL)
             AND (kind = 'entity_channel') = (slug IS NOT NULL)
-            AND (kind = 'entity_channel' OR (topic IS NULL AND NOT is_default AND archived_at IS NULL))
+            AND (kind = 'entity_channel' OR (topic IS NULL AND emoji IS NULL AND NOT is_default AND archived_at IS NULL))
         ),
         CONSTRAINT ck_dm_threads_owner_type CHECK (owner_type IS NULL OR owner_type IN ('team', 'business')),
         -- The TS twin is CHANNEL_NAME_PATTERN / CHANNEL_NAME_MIN / CHANNEL_NAME_MAX
@@ -183,6 +188,11 @@ CREATE TABLE comms.dm_threads (
             slug IS NULL OR (char_length(slug) BETWEEN 2 AND 40 AND slug ~ '^[a-z0-9][a-z0-9-]*[a-z0-9]$')
         ),
         CONSTRAINT ck_dm_threads_channel_topic CHECK (topic IS NULL OR char_length(topic) <= 200),
+        -- The TS twins are CHANNEL_TITLE_MAX / CHANNEL_EMOJI_MAX (@projective/types/workspace channels.ts).
+        CONSTRAINT ck_dm_threads_channel_title CHECK (
+            kind <> 'entity_channel' OR title IS NULL OR char_length(title) BETWEEN 1 AND 60
+        ),
+        CONSTRAINT ck_dm_threads_channel_emoji CHECK (emoji IS NULL OR char_length(emoji) BETWEEN 1 AND 16),
         CONSTRAINT ck_dm_threads_default_live CHECK (NOT is_default OR archived_at IS NULL),
         CONSTRAINT dm_threads_created_by_user_id_fkey FOREIGN KEY (created_by_user_id) REFERENCES org.users_public (user_id)
 );

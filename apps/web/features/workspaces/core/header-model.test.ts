@@ -210,7 +210,9 @@ Deno.test("header: a member leaves; on Members the row is left to the viewer's o
 	assertEquals(biz.find((r) => r.key === "members")?.url, "/businesses/north-loop/members");
 	assertEquals(biz.find((r) => r.key === "members")?.label, "Leave business…");
 	assert(
-		!headerMenu(headerBand(input({ module: "members" })).menu, NOOP).some((r) => r.key === "members"),
+		!headerMenu(headerBand(input({ module: "members" })).menu, NOOP).some((r) =>
+			r.key === "members"
+		),
 	);
 });
 
@@ -241,7 +243,7 @@ Deno.test("header: identity is the module title over name · @handle (· acting)
 	assertEquals(headerBand(input({ kind: "business" })).menuLabel, "Business actions");
 });
 
-Deno.test("header: the centred TabMenu appears only when the module partitions its body", () => {
+Deno.test("header: the centred view toolbar appears only when the module partitions its body", () => {
 	const members = headerBand(input({ view: MEMBERS_CHART }));
 	assertEquals(members.tabs?.views.map((v) => v.value), ["people", "pending", "chart"]);
 	assertEquals(members.tabs?.active, 2);
@@ -275,22 +277,32 @@ const BAND = source("../islands/WorkspaceHeaderBand.island.tsx");
 const MENU = source("../components/EntityMenu.tsx");
 const LANE = source("../islands/WorkspaceLane.island.tsx");
 
-Deno.test("header band: no raw <button>, no action-styled anchor, no hand-rolled tab strip", () => {
+Deno.test("header band: no raw <button>, no action-styled anchor, no tab strip of any kind", () => {
 	assert(!/<button\b/.test(BAND), "the band renders a raw <button>");
 	assert(!/<a\b[^>]*class="[^"]*action/.test(BAND), "the band renders an action-styled <a>");
 	assert(!/<a\b/.test(BAND), "the band renders a raw <a>");
 	assert(!/wsp-headerband__tab\b|<nav\b/.test(BAND), "the hand-rolled tab strip is back");
 	assert(!/<Popover\b/.test(BAND), "the Popover menu is back");
-	// The hub's link strip, or the module's in-place sub-view tabs — never both.
-	assertEquals(BAND.match(/<TabMenu\b/g)?.length, 2);
-	assert(/\{strip && \(\s*<TabMenu/.test(BAND));
-	assert(/\{!strip && model\.tabs && \(\s*<TabMenu/.test(BAND));
+	// The views are ONE bare Select in the shared fx-toolbar (Decision #307): the hub's pages, or the
+	// module's in-place sub-views. Only a hub option navigates, as its link tab did.
+	assert(!/<TabMenu\b/.test(BAND), "the band draws a TabMenu");
+	assertEquals(BAND.match(/<Select\b/g)?.length, 1);
+	assert(
+		/class="fx-toolbar wsp-headerband__toolbar"/.test(BAND),
+		"the views are not the fx-toolbar",
+	);
+	assertEquals(BAND.match(/location\.assign\(/g)?.length, 1);
+	assert(/if \(strip\) \{[\s\S]*?location\.assign\(tab\.href\)/.test(BAND));
+	assert(/selectModuleView\(value, views\)/.test(BAND));
 });
 
 Deno.test("header band (#306): the lane head and the band draw the ONE EntityMenu", () => {
 	assertEquals(BAND.match(/<EntityMenu\b/g)?.length, 1);
 	assertEquals(LANE.match(/<EntityMenu\b/g)?.length, 1);
-	assert(/<span class="wsp-headerband__menu">\s*<EntityMenu\b/.test(BAND), "the band's copy is gated");
+	assert(
+		/<span class="wsp-headerband__menu">\s*<EntityMenu\b/.test(BAND),
+		"the band's copy is gated",
+	);
 	const menus = [...MENU.matchAll(/<ActionMenu\b[\s\S]*?\n\t\t\t\/>/g)].map((m) => m[0]);
 	assertEquals(menus.length, 1, "exactly one ActionMenu");
 	assert(/\bmodel=\{rows\}/.test(menus[0]));

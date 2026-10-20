@@ -864,7 +864,27 @@ the requester and the amount step down to the secondary register — never throu
 	color: var(--text-secondary);
 }
 
-/* The Requests tab panel, focusable by script so a decision hands focus here, not to <body>. */
+/*
+ * The Requests view toolbar — the shared `.fx-toolbar` (Decision #307) with one bare `Select`. It sits
+ * inside a section rather than under the frame chrome, so it does not pin; it keeps the glass pill.
+ */
+.wsp-requests__toolbar.fx-toolbar {
+	--fx-toolbar-h: 3rem;
+	position: relative;
+	inset: auto;
+	align-self: flex-start;
+}
+
+.wsp-requests__view {
+	flex: none;
+	inline-size: 8.5rem;
+}
+
+.wsp-requests__view.ui-field {
+	border-radius: var(--radius-full);
+}
+
+/* The Requests panel, focusable by script so a decision hands focus here, not to <body>. */
 .wsp-requests__panel {
 	min-inline-size: 0;
 }

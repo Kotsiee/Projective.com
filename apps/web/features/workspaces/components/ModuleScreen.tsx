@@ -19,16 +19,20 @@ import BillingScreen from "../islands/BillingScreen.island.tsx";
 import BusinessVerificationScreen from "../islands/BusinessVerificationScreen.island.tsx";
 import TeamSettingsScreen from "../islands/TeamSettingsScreen.island.tsx";
 import EntityFilesScreen from "../islands/EntityFilesScreen.island.tsx";
+import EntityCalendarScreen from "../islands/EntityCalendarScreen.island.tsx";
+import TeamCatalogueScreen from "../islands/TeamCatalogueScreen.island.tsx";
 import type { BusinessBillingView } from "@projective/types/finance";
+import type { EntityCalendarRead, TeamCatalogueRead } from "../core/workspace-ssr.ts";
 
 /**
  * ModuleScreen — the single dispatcher from a module key to its body.
  *
  * Every `/teams/[id]/[module]` and `/businesses/[id]/[module]` route funnels through here, so the two
  * kinds share one body table rather than two parallel switch statements that drift. A module with a
- * real screen gets it; a module that DELEGATES to an existing surface (`/projects`, `/catalogue`,
- * `/messages`, `/wallet`) gets a placeholder that hands off rather than a second implementation of
- * that surface; a module that is genuinely next says so plainly.
+ * real screen gets it — Calendar and a team's Catalogue embed the calendar engine and the catalogue's
+ * cards over the entity's own reads (Decision #308); a module that DELEGATES to an existing surface
+ * (a business's `/projects`, `/wallet`) gets a placeholder that hands off rather than a second
+ * implementation of that surface; a module that is genuinely next says so plainly.
  *
  * The dispatcher is deliberately dumb about permissions: `resolveWorkspaceConsole` has already
  * corrected the module key to one the viewer may open, so by the time we are here the question is
@@ -46,6 +50,10 @@ export interface ModuleScreenProps {
 	bench?: BusinessBench | null;
 	/** Why the bench could not be read, when it could not. */
 	benchError?: string | null;
+	/** The Calendar module's union of the entity's projects' calendars, read server-side (Decision #308). */
+	calendar?: EntityCalendarRead | null;
+	/** The Catalogue module's team listings, read server-side for a team's `catalogue` module (Decision #308). */
+	catalogue?: TeamCatalogueRead | null;
 }
 
 /** Render the body for one module. */
@@ -155,23 +163,29 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 				/>
 			);
 		case "catalogue":
-			return (
-				<ModulePlaceholder
-					kind={ws.kind}
-					module={mod!}
-					href="/catalogue"
-					linkLabel="Open catalogue"
-					note={`Services and products offered by ${ws.name}.`}
-				/>
-			);
+			// The team's listings, scoped to the team (Decision #308); a business sells nothing, so the
+			// registry never offers it this module.
+			return ws.kind === "team"
+				? (
+					<TeamCatalogueScreen
+						teamId={ws.id}
+						handle={ws.handle}
+						name={ws.name}
+						acting={ws.isActing}
+						initial={props.catalogue?.page ?? null}
+						initialError={props.catalogue?.error ?? null}
+					/>
+				)
+				: <ModulePlaceholder kind={ws.kind} module={mod!} />;
 		case "calendar":
+			// The union of the entity's projects' calendars, read as the viewer (Decision #308).
 			return (
-				<ModulePlaceholder
+				<EntityCalendarScreen
 					kind={ws.kind}
-					module={mod!}
-					href={`/@${ws.handle}/availability`}
-					linkLabel="Open the calendar"
-					note={`Sessions, deadlines and availability for ${ws.name}.`}
+					name={ws.name}
+					initial={props.calendar?.page ?? null}
+					initialError={props.calendar?.error ?? null}
+					projectCount={props.calendar?.projectCount ?? 0}
 				/>
 			);
 		case "profile":

@@ -36,17 +36,20 @@ import { inviteOpensInPlace, rosterCreateNote } from "./rig-model.ts";
  * lane-model — the workspace lane's composition as a pure function of what the viewer is looking at
  * (Teams work order L1; the console zones of Decision #306).
  *
- * The lane has exactly four zones, top to bottom, and the same order is its Tab order:
+ * The lane has exactly four zones, top to bottom, and the same order is its Tab order (Decision #307
+ * put the context controls above the views, as `/projects` puts its search and filters above its list):
  *
- *   1. **Header strip** — on the roster index the kind's title, a count line and the find-in-lane
- *      search; inside a console Back, the entity's mark, name, `@handle`, verification crest and
- *      lifecycle `Tag`, its kebab (`ActionMenu`), and the search over views, channels, projects and
- *      members — at the top, as `/projects` and `/messages` place theirs.
- *   2. **Views** — the viewer's entities (owned first) on the index; inside a console the registry's
- *      hubs in labelled sections: Core operations, Channels (the read's entity channels and a create),
- *      then Governance.
- *   3. **Context controls** — only when the current view has something to partition; otherwise the
- *      zone does not exist, so the lane never draws an empty band.
+ *   1. **Header strip** — on the roster index the kind's title and a count line; inside a console Back,
+ *      the entity's mark, name, `@handle`, verification crest and lifecycle `Tag`, and its kebab
+ *      (`ActionMenu`).
+ *   2. **Context controls** — always drawn, the find-in-lane search FIRST: on the index it filters the
+ *      lane's own list, beside it the Invitations toggle (the one partition that lists invitations
+ *      rather than entities, so it is set apart from the segmented control), then the All · Owned ·
+ *      Member segments; inside a console it searches views, channels, projects and members, then a
+ *      segmented control only where the view has something to partition.
+ *   3. **Views** — the viewer's entities (owned first) on the index; inside a console the registry's
+ *      hubs in labelled sections: Core operations, Governance, then Channels (the read's entity
+ *      channels and a create) last, as `/projects` closes its lane on its channel tree.
  *   4. **Docked footer rig** — on the index at most ONE create action (the tier-2 `LaneCreateButton`
  *      "New team"), never a control that cannot act; a roster the viewer may not add to says why in
  *      its place, as one line of meta text. In the roster's FIRST RUN the rig holds neither: the
@@ -82,14 +85,13 @@ export interface LaneSearchCopy {
 	placeholder: string;
 }
 
-/** Z1 on the roster index: the title register, a count line and the search. */
+/** Z1 on the roster index: the title register and a count line. */
 export interface RosterHeaderZone {
 	mode: "roster";
 	/** The kind's plural ("Teams") — set in the title register. */
 	title: string;
 	/** `3 teams · 1 invitation` — every figure tabular; the invitation part only when one is waiting. */
 	meta: MetaLineEntry[];
-	search: LaneSearchCopy;
 }
 
 /**
@@ -122,10 +124,9 @@ export interface ConsoleHeaderZone {
 	status: LaneStatusTag;
 	/** The kebab's accessible name ("Team actions"). */
 	menuLabel: string;
-	search: LaneSearchCopy;
 }
 
-/** Z2 on the roster index — its rows come from {@link laneRosterList}. */
+/** Z3 on the roster index — its rows come from {@link laneRosterList}. */
 export interface RosterViewsZone {
 	mode: "roster";
 }
@@ -166,28 +167,49 @@ export interface LaneChannelsZone {
 	canCreate: boolean;
 }
 
-/** Z2 inside a console. */
+/** Z3 inside a console. */
 export interface ConsoleViewsZone {
 	mode: "console";
 	/** Core operations, then Governance — sections with no row are left out. */
 	sections: LaneHubSection[];
-	/** `null` when the viewer may not open Channels (never, today — it is permissionless). */
+	/**
+	 * The Channels section, drawn LAST, after Governance. `null` when the viewer may not open Channels
+	 * (never, today — it is permissionless).
+	 */
 	channels: LaneChannelsZone | null;
 	/** The hub being rendered, or `null` on a channel or a path naming none. */
 	activeHub: HubKey | null;
 }
 
-/** Which view a Z3 control partitions. */
+/** Which view a Z2 segmented control partitions. */
 export type LaneContextControl = "roster" | "members";
 
-/** Z3 — a segmented control (and, on the roster, a search field) over the current view. */
-export interface LaneContextZone {
+/** A segmented control over the current view. */
+export interface LanePartitionControl {
 	control: LaneContextControl;
 	/** The control's accessible name. */
 	label: string;
 	options: LaneOption[];
-	/** Whether a `LaneSearch` rides with the control. */
-	search: boolean;
+}
+
+/**
+ * The roster's Invitations partition as its own icon-first toggle beside the search — set apart from
+ * the segmented control because it lists invitations addressed to the viewer, not entities.
+ */
+export interface LaneInvitationsToggle {
+	/** The toggle's accessible name and tooltip. */
+	label: string;
+	/** Invitations waiting on the viewer — drawn as the toggle's dot, never a count (§D.1). */
+	waiting: number;
+}
+
+/** Z2 — the search, first, then whatever the current view offers to narrow it. Always drawn. */
+export interface LaneContextZone {
+	search: LaneSearchCopy;
+	/** The view's segmented control, or `null` when it has nothing to partition. */
+	partition: LanePartitionControl | null;
+	/** The roster's Invitations toggle; `null` inside a console. */
+	invitations: LaneInvitationsToggle | null;
 }
 
 /** The one create action Z4 can hold. */
@@ -232,8 +254,7 @@ export interface ConsoleFooterZone extends LaneFooterZone {
 export interface LaneZones {
 	header: RosterHeaderZone | ConsoleHeaderZone;
 	views: RosterViewsZone | ConsoleViewsZone;
-	/** `null` when the view has no context controls — Z3 is then not drawn at all. */
-	context: LaneContextZone | null;
+	context: LaneContextZone;
 	footer: LaneFooterZone | ConsoleFooterZone;
 }
 
@@ -294,15 +315,17 @@ export interface ConsoleLaneInput {
 // #endregion
 
 // #region Zone composition
-/** The partitions the lane's roster control offers — the canvas's tab set minus Archived. */
+/** The partitions the lane can show — the canvas's set minus Archived. */
 export type LanePartition = Exclude<RosterTab, "archived">;
 
 /**
- * The roster partition control's segments — the canvas's own tab set (`ROSTER_TABS`) minus Archived,
- * which stays a canvas tab, so the two controls over the one partition use the same words.
+ * The roster's segmented control — the canvas's own partitions (`ROSTER_TABS`) minus Archived, which
+ * stays the canvas's, and minus Invitations, which the lane draws as its own toggle beside the search
+ * ({@link LaneInvitationsToggle}). The words are the canvas's, so the two controls over the one
+ * partition never disagree on a label.
  */
 export const ROSTER_PARTITIONS: readonly LaneOption[] = ROSTER_TABS
-	.filter((tab) => tab.value !== "archived")
+	.filter((tab) => tab.value !== "archived" && tab.value !== "invitations")
 	.map(({ value, label }) => ({ value, label }));
 
 /**
@@ -318,8 +341,8 @@ export function lanePartition(tab: RosterTab): LanePartition {
 }
 
 /**
- * The four zones for what the viewer is looking at. Total: every input yields a composition, and Z3 is
- * `null` rather than an empty band whenever the view has nothing to partition.
+ * The four zones for what the viewer is looking at. Total: every input yields a composition. Z2 always
+ * carries the search; its segmented control is `null` whenever the view has nothing to partition.
  */
 export function laneZones(input: RosterLaneInput): RosterLaneZones;
 export function laneZones(input: ConsoleLaneInput): ConsoleLaneZones;
@@ -343,14 +366,16 @@ export function laneZones(input: RosterLaneInput | ConsoleLaneInput): LaneZones 
 				mode: "roster",
 				title: copy.Plural,
 				meta,
-				search: { label: `Search ${copy.plural}`, placeholder: `Find a ${copy.noun}…` },
 			},
 			views: { mode: "roster" },
 			context: {
-				control: "roster",
-				label: `Show ${copy.plural}`,
-				options: [...ROSTER_PARTITIONS],
-				search: false,
+				search: { label: `Search ${copy.plural}`, placeholder: `Find a ${copy.noun}…` },
+				partition: {
+					control: "roster",
+					label: `Show ${copy.plural}`,
+					options: [...ROSTER_PARTITIONS],
+				},
+				invitations: { label: "Invitations", waiting: input.invitationCount },
 			},
 			footer: rosterFooter(input),
 		};
@@ -368,10 +393,6 @@ export function laneZones(input: RosterLaneInput | ConsoleLaneInput): LaneZones 
 			back: { href: copy.base, label: `Back to all ${copy.plural}` },
 			status: statusTag(input.status),
 			menuLabel: `${copy.Noun} actions`,
-			search: {
-				label: `Search ${input.name}`,
-				placeholder: "Find views, channels, people…",
-			},
 		},
 		views: {
 			mode: "console",
@@ -387,7 +408,11 @@ export function laneZones(input: RosterLaneInput | ConsoleLaneInput): LaneZones 
 				: null,
 			activeHub: onChannel ? null : hubOf(input.module)?.key ?? null,
 		},
-		context: consoleContext(input),
+		context: {
+			search: { label: `Search ${input.name}`, placeholder: "Find views, channels, people…" },
+			partition: consolePartition(input),
+			invitations: null,
+		},
 		footer: {
 			create: null,
 			note: null,
@@ -434,7 +459,7 @@ function rosterFooter(input: RosterLaneInput): LaneFooterZone {
 }
 
 /**
- * The context controls a console view offers. Members reads its people two ways — People and Org
+ * The segmented control a console view offers. Members reads its people two ways — People and Org
  * chart, the Members sub-views (`sub-views.ts`) that are not the invitation queue — so it gets a
  * segmented control over that ONE sub-view state, which the header band's tabs and the footer rig's
  * Org chart toggle also write. Only on a people reading: the queue (`?view=pending`) has no org chart
@@ -444,13 +469,12 @@ function rosterFooter(input: RosterLaneInput): LaneFooterZone {
  * (Teams C5), so the header band's tabs are their one switch — a second control here would only repeat
  * them.
  */
-function consoleContext(input: ConsoleLaneInput): LaneContextZone | null {
+function consolePartition(input: ConsoleLaneInput): LanePartitionControl | null {
 	if (input.module === "members" && isPeopleReading(input.subView)) {
 		return {
 			control: "members",
 			label: "Show members as",
 			options: MEMBERS_READINGS.map(({ value, label }) => ({ value, label })),
-			search: false,
 		};
 	}
 	return null;
@@ -496,17 +520,17 @@ export function contextSwitchCopy(
 }
 
 /**
- * The zones a composition draws, in render order — Z3 only when it exists. The island renders exactly
- * this list as the lane's children, one zone per entry, so it is also the Tab order (the source scan in
- * `lane-model.test.ts` pins that each zone's controls live in its own entry).
+ * The zones a composition draws, in render order. The island renders exactly this list as the lane's
+ * children, one zone per entry, so it is also the Tab order (the source scan in `lane-model.test.ts`
+ * pins that each zone's controls live in its own entry).
  */
-export function laneZoneOrder(zones: LaneZones): LaneZoneId[] {
-	return zones.context ? ["header", "views", "context", "footer"] : ["header", "views", "footer"];
+export function laneZoneOrder(_zones: LaneZones): LaneZoneId[] {
+	return ["header", "context", "views", "footer"];
 }
 // #endregion
 
 // #region Roster rows
-/** What Z2 lists on the roster index for a partition. */
+/** What Z3 lists on the roster index for a partition. */
 export type RosterList =
 	| { mode: "entities"; rows: WorkspaceSummary[] }
 	| { mode: "invitations"; rows: IncomingInvite[] };
@@ -564,7 +588,7 @@ export function laneInviteMeta(invite: IncomingInvite): MetaLineEntry[] {
 
 /**
  * The collapsed rail's entity marks on the roster index: the expanded list's order (owned first, then
- * the server's order) over the live entities, ignoring the partition and the search. Z3 folds away in
+ * the server's order) over the live entities, ignoring the partition and the search. Z2 folds away in
  * the rail, so a filter applied there would hide entities for a reason the reader cannot see — the rail
  * is the unfiltered switcher, in the same order as the expanded "All".
  */

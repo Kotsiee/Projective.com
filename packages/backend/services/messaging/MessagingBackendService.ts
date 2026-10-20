@@ -102,7 +102,7 @@ import {
 import { promoteStubOnSend, setStubFolder, withStubFolder } from "./folder-store.ts";
 import { inPartition } from "./partition.ts";
 import { resolveThreadRef, virtualSummary } from "./live-threads.ts";
-import { setLiveFolder, setLiveStarred } from "./live-folders.ts";
+import { setLiveFolder, setLiveMuted, setLiveStarred } from "./live-folders.ts";
 import { setMessagePin } from "./live-message-marks.ts";
 import { postRequestMessage, type RequestPosted } from "./live-requests.ts";
 import { fetchConversationContext } from "./live-context.ts";
@@ -535,6 +535,30 @@ export class MessagingBackendService {
 		} catch (error) {
 			liveFailed("setStarred", error);
 			return fail(502, { message: "That star could not be saved — please try again." });
+		}
+	}
+
+	/**
+	 * Mute or unmute a conversation for the viewer (`POST /api/messaging/conversations/[id]/mute`,
+	 * Decision #308). Live only, through `comms.set_dm_muted`, as starring is; a conversation with no
+	 * live thread is a 404 and the fixture backend a 503.
+	 */
+	static async setMuted(
+		conversationId: string,
+		muted: boolean,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ muted: boolean }>> {
+		if (!canReadLive(actor)) return fail(401, { message: "Sign in to mute conversations." });
+		if (!isMessagingBackendLive()) return fail(503, { message: "Muting needs the live backend." });
+		try {
+			const outcome = await setLiveMuted(actor, conversationId, muted);
+			if (outcome === null) return fail(404, { message: "No such conversation." });
+			if ("refusal" in outcome) return fail(outcome.refusal.status, { message: outcome.refusal.message });
+			invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
+			return ok(outcome.data, { message: muted ? "Muted." : "Unmuted." });
+		} catch (error) {
+			liveFailed("setMuted", error);
+			return fail(502, { message: "That mute could not be saved — please try again." });
 		}
 	}
 

@@ -8,6 +8,9 @@ import {
 import {
 	type ActivityEntry,
 	canActOnSetupStep,
+	CHANNEL_EMOJI_MAX,
+	CHANNEL_TITLE_MAX,
+	CHANNEL_TOPIC_MAX,
 	type EntityChannel,
 	type IncomingInvite,
 	isChannelSlug,
@@ -290,6 +293,13 @@ export interface RawChannel {
 	is_default: boolean;
 	unread: number | string | null;
 	last_activity_at: string | null;
+	/** Decision #308 — absent on a database that predates it. */
+	name?: string | null;
+	emoji?: string | null;
+	photo_file_id?: string | null;
+	starred?: boolean | null;
+	muted?: boolean | null;
+	can_manage?: boolean | null;
 }
 
 /** Every answer `org.get_workspace_detail` can give. */
@@ -431,17 +441,27 @@ export function toEngagement(
  * The read's channels, in the read's order (default first, then by slug). A row whose slug breaks the
  * name rule is dropped rather than shown under a name the database would not have stored.
  */
-export function toChannels(raw: readonly RawChannel[] | null | undefined): EntityChannel[] {
+export function toChannels(
+	raw: readonly RawChannel[] | null | undefined,
+	photoUrl: (fileId: string) => string | null = () => null,
+): EntityChannel[] {
 	return (raw ?? []).flatMap((c) => {
 		if (!c?.id || !isChannelSlug(c.slug ?? "")) return [];
 		const unread = Math.trunc(Number(c.unread) || 0);
+		const avatar = c.photo_file_id ? photoUrl(c.photo_file_id) : null;
 		return [{
 			id: clamp(c.id, 64),
 			slug: c.slug,
-			topic: c.topic ? clamp(c.topic, 200) : null,
+			topic: c.topic ? clamp(c.topic, CHANNEL_TOPIC_MAX) : null,
 			isDefault: !!c.is_default,
 			unreadCount: Math.max(0, unread),
 			lastActivityAt: isoOf(c.last_activity_at) || null,
+			name: c.name?.trim() ? clamp(c.name.trim(), CHANNEL_TITLE_MAX) : null,
+			emoji: c.emoji?.trim() && c.emoji.trim().length <= CHANNEL_EMOJI_MAX ? c.emoji.trim() : null,
+			avatar: avatar ? clamp(avatar, 400) : null,
+			starred: !!c.starred,
+			muted: !!c.muted,
+			canManage: !!c.can_manage,
 		}];
 	});
 }

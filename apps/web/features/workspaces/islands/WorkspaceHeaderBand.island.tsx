@@ -1,17 +1,17 @@
 import type { JSX } from "preact";
 import { useRef } from "preact/hooks";
 import { useSignal, useSignalEffect } from "@preact/signals";
+import "@web/features/projects/styles/fx-toolbar.css";
 import "../styles/workspace.css";
 import { MetaLine } from "@projective/ui/display";
-import { Button } from "@projective/ui/fields";
-import { TabMenu } from "@projective/ui/navigation";
+import { Button, Select } from "@projective/ui/fields";
 import { kindCopy, type WorkspaceDetail, type WorkspaceKind } from "@projective/types/workspace";
 import { moduleFor, type ModuleKey } from "../core/module-registry.tsx";
 import { headerBand, type ModuleCommit } from "../core/header-model.ts";
 import { hubTabs } from "../core/hub-tabs.ts";
 import {
 	SUB_VIEW_PANEL_ID,
-	SUB_VIEW_TABS_ID,
+	SUB_VIEW_TOOLBAR_ID,
 	subViewIndex,
 	subViewsFor,
 } from "../core/sub-views.ts";
@@ -31,9 +31,11 @@ import { EntityMenu } from "../components/EntityMenu.tsx";
  *
  *   - **Identity, start** — the hub's (or the module's) title in the title register over one
  *     `MetaLine` (the entity's name and `@handle`, and the acting state).
- *   - **Tabs, centred** — a multi-module hub's strip of LINK tabs (`hub-tabs.ts`, Decision #306:
- *     Roster & members is People · Invitations · Org chart · Roles), each a real address; otherwise
- *     the module's own in-place sub-view `TabMenu` (`sub-views.ts`), which writes the ONE sub-view state
+ *   - **View toolbar, centred** — the shared `.fx-toolbar` the File Explorer and the Catalogue console
+ *     draw, holding one bare `Select` (Decision #307). For a multi-module hub (`hub-tabs.ts`, Decision
+ *     #306: Members is People · Invitations · Org chart · Roles) each option is a real address and
+ *     picking one goes there, as the hub's link tabs did; otherwise the options are the module's own
+ *     in-place sub-views (`sub-views.ts`), and picking one writes the ONE sub-view state
  *     (`selectModuleView`) the lane's context control and the footer rig's Org chart toggle also write.
  *   - **Actions, end** — at most ONE filled control (the module's commit, published through
  *     `workspace-state`), then the entity kebab ({@link EntityMenu}) — drawn here only where the lane
@@ -100,10 +102,15 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 		commit: moduleCommit.value,
 	});
 
-	// The TabMenu binds a writable index; it follows the shared sub-view whichever root picked it.
-	const activeTab = useSignal(strip?.active ?? model.tabs?.active ?? 0);
+	// The Select binds a writable value; it follows the shared sub-view whichever root picked it.
+	const options = strip
+		? strip.tabs.map((t) => ({ value: t.key, label: t.label }))
+		: model.tabs?.views.map((v) => ({ value: v.value, label: v.label })) ?? [];
+	const picked = useSignal(
+		strip ? strip.tabs[strip.active]?.key ?? "" : options[model.tabs?.active ?? 0]?.value ?? "",
+	);
 	useSignalEffect(() => {
-		if (!strip) activeTab.value = subViewIndex(views, viewOr(props.view ?? null));
+		if (!strip) picked.value = views[subViewIndex(views, viewOr(props.view ?? null))]?.value ?? "";
 	});
 	// #endregion
 
@@ -123,29 +130,34 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 			</div>
 			{/* #endregion */}
 
-			{/* #region Centre — the hub's link tabs, or the module's sub-view tabs */}
-			{strip && (
-				<TabMenu
-					id={SUB_VIEW_TABS_ID}
-					class="wsp-headerband__tabs"
-					model={strip.tabs.map((t) => ({ key: t.key, label: t.label, url: t.href }))}
-					activeIndex={activeTab}
-					aria-label={`${strip.title} views`}
-				/>
-			)}
-			{!strip && model.tabs && (
-				<TabMenu
-					id={SUB_VIEW_TABS_ID}
-					class="wsp-headerband__tabs"
-					model={model.tabs.views.map((v) => ({ key: v.value, label: v.label }))}
-					activeIndex={activeTab}
-					onActiveIndexChange={(i) => {
-						const next = views[i];
-						if (next) selectModuleView(next.value, views);
-					}}
-					panelId={SUB_VIEW_PANEL_ID}
+			{/* #region Centre — the view toolbar: the hub's pages, or the module's sub-views */}
+			{options.length > 1 && (
+				<div
+					id={SUB_VIEW_TOOLBAR_ID}
+					class="fx-toolbar wsp-headerband__toolbar"
+					role="toolbar"
 					aria-label={`${model.title} views`}
-				/>
+					aria-controls={strip ? undefined : SUB_VIEW_PANEL_ID}
+				>
+					<Select
+						class="ui-field--bare wsp-headerband__view"
+						size="sm"
+						aria-label={`${model.title} view`}
+						options={options}
+						value={picked}
+						onValueChange={(value) => {
+							if (strip) {
+								// A hub option is another address, as its link tab was: go there.
+								const tab = strip.tabs.find((t) => t.key === value);
+								if (tab && tab.key !== strip.tabs[strip.active]?.key) {
+									globalThis.location.assign(tab.href);
+								}
+								return;
+							}
+							selectModuleView(value, views);
+						}}
+					/>
+				</div>
 			)}
 			{/* #endregion */}
 

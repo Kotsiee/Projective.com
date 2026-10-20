@@ -4075,6 +4075,14 @@ reserved space / no empty bar**. Crucially the band sits **flush against the lan
 `--surface-1` frame + top curve**, so it and the lane's own Back/kebab header (sized to the same
 `--shell-midnav-header-h`) read as **ONE connected strip across the whole middle-nav frame** — the
 header is attached to the same surface/curve as the sidebar, not floating inside the content pane.
+A band whose slot resolved to content that holds nothing is hidden too (Decision #308): `MiddleNav`'s
+CSS hides a band that is `:empty` (an island that rendered `null` leaves only comment markers) or
+whose content root carries `data-band-empty="always"`, and, beside the lane (the frame's `768px`
+query), one marked `data-band-empty="beside-lane"` — content that exists only while the lane is
+off-canvas, as a console footer rig's Invite member and Settings (`rigBandEmpty`). An idle
+policy editor's rig counts as empty too: it announces its save status from a `role="status"` region
+portalled to `<body>`, and a Save or Discard whose band hides lands focus on `<main>`. The header
+offset, the docked panel's top and the canvas's footer corner revert with it.
 The routed tab body + `ChatComposer` flow in the canvas beneath it:
 
 - **Configurable header band (top).** A single row pinned `position: sticky` at the top-bar offset,
@@ -5100,29 +5108,39 @@ announcement). Nothing is written to the server.
 `apps/web/features/workspaces/core/`. Those models and the decision rows are the source of truth,
 and this entry only points at them:
 
-- **The lane, in four zones** (Decision #255, Teams L1; the console zones are Decision #306's). The
-  zones are the header strip, the views, the context controls (only where a view partitions) and the
-  docked footer. `laneZones` (`lane-model.ts`) composes them, and the expanded lane and the collapsed
-  `WorkspaceRail` both read it. On the roster index the head carries the title, a count line and the
-  `LaneSearch`, and the footer holds the collapse toggle and at most one `LaneCreateButton` (§C.1).
-  Inside a console:
+- **The lane, in four zones** (Decision #255, Teams L1; the console zones are Decision #306's, their
+  order Decision #307's). Top to bottom: the header strip, the context controls, the views and the
+  docked footer, the `/projects` lane's order. `laneZones` (`lane-model.ts`) composes them, and the
+  expanded lane and the collapsed `WorkspaceRail` both read it. The context zone is always drawn and
+  opens on the find-in-lane `LaneSearch`, icon-first in a `LaneBar` as `/projects` draws it; the head
+  gives up its block-end hairline so head and context read as one band, closed by one hairline above
+  the views. On the roster index the head carries the title and a count line; the context zone holds
+  the search with the Invitations toggle beside it (a `LaneIconButton` with a dot while invitations
+  wait, set apart from the partition), then the All · Owned · Member `SelectButton`; the footer holds
+  the collapse toggle and at most one `LaneCreateButton` (§C.1). Inside a console:
   - **Head.** Back, the `EntityMark`, the name with its `VerificationStampBadge`, `@handle` and the
     lifecycle `Tag`, and the entity's one kebab (`EntityMenu`: View public profile · Open in new tab ·
     Copy profile link · Transfer ownership… / Leave… · Archive workspace…, the last a danger row).
-    Below that, the verification words while the entity is not yet verified, then a debounced console
-    search over views, channels, projects and people. The search sits at the top, as on `/projects` and
-    `/messages`.
-  - **Views.** Three `LaneSection`s. Core operations and Governance are hub rows (`NAV_HUBS`, each a
-    `NavItem` whose mark folds its modules' marks). Channels lists the entity channels (unread as a plain
-    tabular count) with a "+" opening the New channel dialog.
+    Below that, the verification words while the entity is not yet verified.
+  - **Context.** The debounced console search over views, channels, projects and people, then a
+    `SelectButton` only where the view partitions (Members: People · Org chart).
+  - **Views.** Three `LaneSection`s: Core operations, Governance (folded by default), then Channels
+    LAST. Core operations and Governance are hub rows (`NAV_HUBS`, each a `NavItem` whose mark folds
+    its modules' marks). Channels is drawn exactly as the Project Details lane draws its channels: the
+    `.proj-chan` rows (hash glyph · name · unread dot) and the `.proj-chan-group__plus` "+" that opens
+    the New channel dialog, from `projects/styles/project-sidebar.css`.
   - **Footer.** The collapse toggle, the acting switch as a compact outlined pill, then the circular
     icon-only Invite member and Settings: tier 5, each with an `aria-label`, a portal `Tooltip` and
     `.ui-hit`.
 - **The header band** (Decision #258, Teams L2) is #220's three-region band. It holds the title over
-  a `MetaLine`, the tabs, and at most one filled commit, which a module publishes through
-  `useModuleCommit`. The tabs are a multi-module hub's strip of link tabs (`hub-tabs.ts`, Decision
-  #306), or else the module's in-place sub-view `TabMenu`. On a channel the band reads `# slug` over
-  the channel's topic. The entity kebab is the lane head's: the band draws the same `EntityMenu` only
+  a `MetaLine`, the view toolbar, and at most one filled commit, which a module publishes through
+  `useModuleCommit`. The view toolbar (Decision #307) is the shared `.fx-toolbar` with one bare
+  `Select`, fitted to the band's height and not pinned again: for a multi-module hub (`hub-tabs.ts`,
+  Decision #306) its options are the hub's addresses and picking one goes there; otherwise they are
+  the module's in-place sub-views, and the body is the one region it controls (`aria-controls`,
+  named by the current view). Spend's Requests switch Pending · Decided the same way, with no count
+  in the bar. On a channel the band is the channel's own
+  header (`WorkspaceChannelHeader`, below). The entity kebab is the lane head's: the band draws the same `EntityMenu` only
   while the lane is collapsed or hidden below `--bp-md`, through `.wsp-headerband__menu`, which sits on
   the frame's lane mirror. The tier-4 Share profile is retired in favour of the kebab's Copy profile
   link. Sub-views are data (`sub-views.ts`). One `moduleView` signal keeps the band, the lane and the
@@ -5147,6 +5165,31 @@ and this entry only points at them:
   of links), Projects and Activity. A metric with no source is absent, never faked. The rules are
   `overview-deck.ts` / `overview-model.ts`, unit-tested; the deck adds no control, so the hero keeps
   the page's one fill.
+- **Calendar and a team's Catalogue** (Decision #308) embed other surfaces' bodies, never their
+  chrome — the console keeps its lane, header band and footer rig. `EntityCalendarScreen` draws the
+  union of the entity's projects' calendars on the `@projective/ui/calendar` engine and the
+  `EventModal`, at the bounded `cal-surface--schedule` height because the console canvas scrolls; it
+  creates nothing (an entry belongs to one project). `TeamCatalogueScreen` draws the team's listings
+  as the catalogue's own `ListingCard`, read-only (`readOnly`: no selection checkbox, no actions menu,
+  since the module owns neither), in an `auto-fill` grid that lays out by its own width, under a
+  status `Select` and a search field that narrow in place. New listing is the header band's tier-2
+  commit while the viewer acts as the team; otherwise the head offers the acting switch
+  (`ContextSwitchControl`) with one Meta sentence saying why. The rules are `calendar-module-model.ts`
+  / `catalogue-module-model.ts`, unit-tested.
+- **A channel** (Decision #308) is the project channel's room, not a lookalike: on a channel route the
+  header band is `WorkspaceChannelHeader` in the shared `.chan-header` chrome — the mark (image →
+  emoji → `#`, `channelMarkOf`) and the display name over the topic, Chat · Files as
+  `ChannelTabStrip` link tabs, then Favourite · Details · Pop out chat as `.chan-action`s and a
+  `.chan-menu` kebab of Mute · Edit channel · Copy link · Archive channel (Edit and Archive only for
+  the creator or a `manage_settings` holder; Archive never on the default; no Leave, every member is
+  in every channel). Details docks `ChannelDetails` in the frame's right panel on Chat from 1280px
+  and opens the same body in a `Drawer` elsewhere — name, address, topic, owner, then the members
+  with their roles as inline meta, in the `.chan-details` / `.chan-members` chrome. Files is the
+  shared `FilesView` with the `ViewControlRig` in the footer. `ChannelEditDialog` sets the image
+  (the `MediaCropPicker`, applied at once), the emoji (a 16-swatch radiogroup plus a free field;
+  each swatch a bordered control) and the name and description; Save is its one tier-2 fill, and the
+  hint says the address stays. Its sheet is `workspace-channel.css`; the rules are
+  `channel-model.ts`, unit-tested.
 
 The workspace sheets are token-only and policed by `styles.gate.test.ts` (Decision #251).
 

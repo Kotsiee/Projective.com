@@ -36,6 +36,7 @@ import { cataloguePanelFor } from "@web/features/catalogue/core/catalogue-panel-
 import { catalogueChromeFor } from "@web/features/catalogue/core/simulate-path.ts";
 import { workspaceLaneFor } from "@web/features/workspaces/core/workspace-lane-slot.tsx";
 import { workspaceHeaderFor } from "@web/features/workspaces/core/workspace-header-slot.tsx";
+import { workspaceChannelPanelFor } from "@web/features/workspaces/core/workspace-panel-slot.tsx";
 import { workspaceFooterFor } from "@web/features/workspaces/core/workspace-footer-slot.tsx";
 import { basketLaneFor } from "@web/features/checkout/core/basket-lane-slot.tsx";
 import { checkoutChromeFor } from "@web/features/checkout/core/checkout-chrome.ts";
@@ -168,8 +169,9 @@ async function middleNavHeaderFor(
 
 /**
  * Resolve the middle-nav frame's right panel: a one-to-one conversation's context panel on its Chat
- * tab, a project channel's details (Task · Stage · Channel) on its Chat view, or a catalogue listing's
- * live card and readiness (or its chosen buyer) in the item workspace. Exactly one owns the single
+ * tab, a project channel's details (Task · Stage · Channel) on its Chat view, a catalogue listing's
+ * live card and readiness (or its chosen buyer) in the item workspace, or a team's or business's
+ * channel details on its Chat view (Decision #308). Exactly one owns the single
  * panel slot per URL — the resolvers test disjoint path roots — and every other route registers none,
  * so the frame has no panel column.
  */
@@ -180,7 +182,8 @@ async function middleNavPanelFor(
 ): Promise<ComponentChildren> {
 	return await conversationPanelFor(url, context, actor) ??
 		(await channelPanelFor(url, context, actor)) ??
-		(await cataloguePanelFor(url, context, actor));
+		(await cataloguePanelFor(url, context, actor)) ??
+		(await workspaceChannelPanelFor(url, actor));
 }
 
 /**

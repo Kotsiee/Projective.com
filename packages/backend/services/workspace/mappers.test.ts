@@ -833,6 +833,7 @@ Deno.test("toChannels: the read's order; counts floored at 0; a bad slug or a mi
 			isDefault: true,
 			unreadCount: 3,
 			lastActivityAt: "2026-10-20T09:00:00.123Z",
+			...NO_EXTRAS,
 		},
 		{
 			id: "c-2",
@@ -841,9 +842,57 @@ Deno.test("toChannels: the read's order; counts floored at 0; a bad slug or a mi
 			isDefault: false,
 			unreadCount: 0,
 			lastActivityAt: null,
+			...NO_EXTRAS,
 		},
 	]);
 	assertEquals(toChannels(null), []);
+});
+
+/** What a row with no #308 fields maps to — a database that predates them reads as plain channels. */
+const NO_EXTRAS = { name: null, emoji: null, avatar: null, starred: false, muted: false, canManage: false };
+
+Deno.test("toChannels (#308): name, emoji, the photo's URL and the viewer's own star, mute and edit right", () => {
+	const urls: Record<string, string> = { "f-1": "https://cdn/x-sm.webp" };
+	const [row] = toChannels([{
+		id: "c-1",
+		slug: "general",
+		topic: null,
+		is_default: true,
+		unread: 0,
+		last_activity_at: null,
+		name: "  Team room ",
+		emoji: "🚀",
+		photo_file_id: "f-1",
+		starred: true,
+		muted: true,
+		can_manage: true,
+	}], (id) => urls[id] ?? null);
+	assertEquals(row, {
+		id: "c-1",
+		slug: "general",
+		topic: null,
+		isDefault: true,
+		unreadCount: 0,
+		lastActivityAt: null,
+		name: "Team room",
+		emoji: "🚀",
+		avatar: "https://cdn/x-sm.webp",
+		starred: true,
+		muted: true,
+		canManage: true,
+	});
+	// A blank name reads as the slug; an over-long emoji is dropped, never clipped mid-character.
+	const [blank] = toChannels([{
+		id: "c-2",
+		slug: "general",
+		topic: null,
+		is_default: false,
+		unread: 0,
+		last_activity_at: null,
+		name: "   ",
+		emoji: "🚀".repeat(9),
+	}]);
+	assertEquals([blank.name, blank.emoji], [null, null]);
 });
 
 // #endregion

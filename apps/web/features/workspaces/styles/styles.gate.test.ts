@@ -461,11 +461,11 @@ Deno.test("workspace styles: no four-sided inset ring on a card or row", () => {
 Deno.test("workspace styles: figure classes are tabular", () => {
 	const all = SHEETS.map((sheet) => sheet.css).join("\n");
 	const untabular = [
-		// The roster card's figure row and its setup percentage, and the roster's live count (R1).
+		// The roster card's figure row and its setup percentage (R1). The roster's visible count line is
+		// gone: its toolbar carries no count (Decision #307).
 		".wsp-card__figure",
 		".wsp-card__figure-value",
 		".wsp-card__setup-text",
-		".wsp-roster__count",
 		// The payout preview's rate and figure columns, and the payout notices' percentages.
 		".wsp-ledger__rate",
 		".wsp-ledger__amount",

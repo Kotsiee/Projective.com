@@ -48,6 +48,13 @@ import {
 } from "../projects/live-board.ts";
 import { ITEM_COLUMNS, type ItemRow, toAssetItem } from "../files/asset-row.ts";
 import { emptyReschedule } from "./coordination-plan.ts";
+import {
+	ENTITY_CALENDAR_CONCURRENCY,
+	type EntityCalendarParams,
+	entityProjectIds,
+	mapPooled,
+	mergeEntityCalendar,
+} from "./entity-calendar.ts";
 
 /**
  * live-calendar — the PRIVATE calendars, read as the signed-in user: an engagement's calendar
@@ -1057,6 +1064,30 @@ export async function readProjectCalendar(
 		events,
 		now,
 	};
+}
+// #endregion
+
+// #region Entity calendar
+/**
+ * A team's or business's console Calendar (Decision #308): every one of `params.projectIds` read as
+ * the reader through {@link readProjectCalendar} — so RLS decides which projects, meetings and
+ * deadlines exist for them — and folded into one page by {@link mergeEntityCalendar}. A project the
+ * reader may not see is simply absent; a project whose read FAILS fails the whole page, because a
+ * union missing one engagement without saying so would be passed off as the entity's schedule.
+ */
+export async function readEntityCalendar(
+	actor: ReadActor & { accessToken: string },
+	params: EntityCalendarParams,
+	now: number,
+): Promise<CalendarPage> {
+	const pages = await mapPooled(
+		entityProjectIds(params.projectIds),
+		ENTITY_CALENDAR_CONCURRENCY,
+		(projectId) => readProjectCalendar(actor, { projectId }, now),
+	);
+	const visible = pages.filter((p): p is CalendarPage => p !== null);
+	const timezone = visible[0]?.timezone ?? await readerZone(actor, await readOwnSchedule(actor));
+	return mergeEntityCalendar(visible, { ref: params.ref, title: params.title, timezone, now });
 }
 // #endregion
 

@@ -26,6 +26,15 @@ export const DEFAULT_CHANNEL_SLUG = "general";
 /** How many live (not archived) channels one entity may hold. */
 export const CHANNEL_LIVE_CAP = 30;
 
+/** The longest display name — `ck_dm_threads_channel_title` (Decision #308). */
+export const CHANNEL_TITLE_MAX = 60;
+
+/** The longest topic — `ck_dm_threads_channel_topic`. */
+export const CHANNEL_TOPIC_MAX = 200;
+
+/** The longest emoji mark, in UTF-16 code units — `ck_dm_threads_channel_emoji` (Decision #308). */
+export const CHANNEL_EMOJI_MAX = 16;
+
 /**
  * What a typed name becomes as a slug — trimmed, a leading `#` dropped, lowercased: the TS twin of
  * `comms.fn_channel_slug`, so a form can show the name the server will store.
@@ -53,8 +62,28 @@ export const EntityChannelSchema = z.object({
 	unreadCount: z.number().int().min(0),
 	/** ISO time of the newest message; `null` for a channel nobody has written in. */
 	lastActivityAt: z.string().max(40).nullable(),
+	/**
+	 * The display name (`dm_threads.title`, Decision #308); absent or `null` reads as the slug. The
+	 * slug stays the address however the channel is renamed.
+	 */
+	name: z.string().max(CHANNEL_TITLE_MAX).nullable().optional(),
+	/** The emoji drawn in place of `#`; absent or `null` draws the `#`. */
+	emoji: z.string().max(CHANNEL_EMOJI_MAX).nullable().optional(),
+	/** The channel photo's URL, which wins over the emoji; absent or `null` when it has none. */
+	avatar: z.string().max(400).nullable().optional(),
+	/** The viewer's own star (`dm_participants.is_starred`). */
+	starred: z.boolean().optional(),
+	/** The viewer's own mute (`dm_participants.is_muted`). */
+	muted: z.boolean().optional(),
+	/** Whether the viewer may edit or archive it — its creator or a `manage_settings` holder. */
+	canManage: z.boolean().optional(),
 });
 export type EntityChannel = z.infer<typeof EntityChannelSchema>;
+
+/** What a channel is called on screen: its display name, else its slug. */
+export function channelLabel(channel: Pick<EntityChannel, "slug" | "name">): string {
+	return channel.name?.trim() || channel.slug;
+}
 // #endregion
 
 // #region Inputs
@@ -79,4 +108,25 @@ export const ArchiveChannelInputSchema = z.object({
 	channelId: z.string().max(64),
 });
 export type ArchiveChannelInput = z.infer<typeof ArchiveChannelInputSchema>;
+
+/**
+ * Edit a channel's display name, topic and emoji (`comms.update_entity_channel`, Decision #308). Every
+ * field is replaced; an empty string clears it. The slug — the channel's address — never changes.
+ */
+export const UpdateChannelInputSchema = z.object({
+	kind: WorkspaceKind,
+	/** The entity's row id. */
+	id: z.string().max(64),
+	channelId: z.string().max(64),
+	name: z.string().trim().max(
+		CHANNEL_TITLE_MAX,
+		`Keep the name to ${CHANNEL_TITLE_MAX} characters.`,
+	),
+	topic: z.string().trim().max(
+		CHANNEL_TOPIC_MAX,
+		`Keep the topic to ${CHANNEL_TOPIC_MAX} characters.`,
+	),
+	emoji: z.string().trim().max(CHANNEL_EMOJI_MAX, "Choose a single emoji."),
+});
+export type UpdateChannelInput = z.infer<typeof UpdateChannelInputSchema>;
 // #endregion

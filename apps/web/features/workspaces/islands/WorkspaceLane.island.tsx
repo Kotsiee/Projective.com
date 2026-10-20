@@ -4,6 +4,7 @@ import { useEffect, useRef } from "preact/hooks";
 import "../styles/workspace.css";
 import {
 	LaneBackLink,
+	LaneBar,
 	LaneCollapseButton,
 	LaneCreateButton,
 	LaneEmpty,
@@ -92,25 +93,27 @@ import {
 } from "../components/ContextSwitchControl.tsx";
 import { type LaneCreateTarget, WorkspaceRail } from "../components/WorkspaceRail.tsx";
 import { HubList } from "../components/lane/HubList.tsx";
-import { ChannelList } from "../components/lane/ChannelList.tsx";
+import { ChannelAddButton, ChannelList } from "../components/lane/ChannelList.tsx";
 import { LaneSearchResults } from "../components/lane/LaneSearchResults.tsx";
 import { ChannelCreateDialog } from "../components/lane/ChannelCreateDialog.tsx";
 
 /**
  * WorkspaceLane — the middle-nav lane for the whole workspace surface (`/teams`, `/businesses` and
  * every console beneath them), built as **four zones** on `--surface-1` (Teams work order L1; the
- * console zones are Decision #306's):
+ * console zones are Decision #306's, their order Decision #307's — the `/projects` lane's):
  *
- *   1. **Header strip** (`LaneHead`) — on the roster index the kind's title, a count line and the
- *      find-in-lane `LaneSearch`; inside a console Back, the entity's mark, name, verification crest,
- *      `@handle` and lifecycle `Tag`, its kebab ({@link EntityMenu}), the verification state while it
- *      is not verified, and the console search — at the top, as `/projects` and `/messages` place it.
- *   2. **Views** — the viewer's entities (owned first) on the index; inside a console three
- *      `LaneSection`s: Core operations (hub rows), Channels (the read's entity channels and a "+" to
- *      add one), and Governance (hub rows). While the search holds a query, its grouped hits replace
- *      the sections (debounced typeahead over views, channels, projects and people).
- *   3. **Context controls** — a `SelectButton` over the current view, only where the view has
- *      something to partition; otherwise the zone is not drawn.
+ *   1. **Header strip** (`LaneHead`) — on the roster index the kind's title and a count line; inside a
+ *      console Back, the entity's mark, name, verification crest, `@handle` and lifecycle `Tag`, its
+ *      kebab ({@link EntityMenu}), and the verification state while it is not verified.
+ *   2. **Context controls** — the find-in-lane `LaneSearch` FIRST, icon-first as `/projects` draws it;
+ *      on the index the Invitations toggle beside it (an icon button, set apart from the partition)
+ *      and the All · Owned · Member `SelectButton` under it; inside a console a `SelectButton` only
+ *      where the view has something to partition.
+ *   3. **Views** — the viewer's entities (owned first) on the index; inside a console three
+ *      `LaneSection`s: Core operations (hub rows), Governance (hub rows), and Channels (the read's
+ *      entity channels and a "+" to add one) LAST, as `/projects` closes its lane on its channel tree.
+ *      While the search holds a query, its grouped hits replace the sections (debounced typeahead over
+ *      views, channels, projects and people).
  *   4. **Docked footer rig** (`LaneFooter`) — the collapse toggle, then on the index at most ONE
  *      tier-2 `LaneCreateButton`; inside a console the acting switch as a compact pill and the
  *      circular icon-only Invite member and Settings (tier 5: aria-label + portal Tooltip + `.ui-hit`).
@@ -266,8 +269,8 @@ interface RosterLaneProps {
 
 /**
  * The roster index lane — the viewer's entities, partitioned by the same value the canvas shows, with a
- * find-in-lane search at the top. The search filters this lane's own list in place; the partition is
- * shared.
+ * find-in-lane search at the top of the context zone. The search filters this lane's own list in place;
+ * the partition is shared.
  */
 function RosterLane(props: RosterLaneProps): JSX.Element {
 	const copy = kindCopy(props.kind);
@@ -307,6 +310,9 @@ function RosterLane(props: RosterLaneProps): JSX.Element {
 	const list = laneRosterList(items, invitations, current, search.value);
 	const create = createTarget(props.kind, zones.footer.create);
 
+	const invitationsToggle = zones.context.invitations;
+	const onInvitations = current === "invitations";
+
 	const zone = (id: LaneZoneId): JSX.Element | null => {
 		switch (id) {
 			case "header":
@@ -316,18 +322,67 @@ function RosterLane(props: RosterLaneProps): JSX.Element {
 							<p class="wsp-lane__title">{zones.header.title}</p>
 							<MetaLine items={zones.header.meta} size="xs" />
 						</div>
+					</LaneHead>
+				);
+			case "context":
+				return (
+					<ContextZone key={id} context={zones.context}>
 						<div class="wsp-lane__search">
-							<LaneSearch
-								value={search.value}
-								placeholder={zones.header.search.placeholder}
-								label={zones.header.search.label}
-								icon={cloneGlyph(SearchGlyph)}
-								onInput={(value) => {
-									search.value = value;
+							<LaneBar>
+								<LaneSearch
+									value={search.value}
+									placeholder={zones.context.search.placeholder}
+									label={zones.context.search.label}
+									icon={cloneGlyph(SearchGlyph)}
+									onInput={(value) => {
+										search.value = value;
+									}}
+								/>
+								{invitationsToggle && (
+									<LaneIconButton
+										class="wsp-lane__invitations"
+										icon={cloneGlyph(InviteGlyph)}
+										label={invitationsToggle.waiting > 0
+											? `${invitationsToggle.label} (${invitationsToggle.waiting} waiting)`
+											: invitationsToggle.label}
+										tooltip={invitationsToggle.label}
+										active={onInvitations}
+										pressed={onInvitations}
+										dot={invitationsToggle.waiting > 0}
+										onClick={() => selectRosterTab(onInvitations ? "all" : "invitations")}
+									/>
+								)}
+							</LaneBar>
+						</div>
+						{zones.context.partition && (
+							<SelectButton
+								options={zones.context.partition.options}
+								value={tab}
+								onValueChange={(value) => selectRosterTab(toRosterTab(value as string))}
+								size="sm"
+								fluid
+								aria-label={zones.context.partition.label}
+							/>
+						)}
+						{rosterFiltered(current, search.value) && (
+							<Button
+								variant="text"
+								size="sm"
+								label="Reset"
+								class="wsp-lane__reset"
+								onClick={(event) => {
+									// Nothing is left to clear once this runs, so the Reset unmounts: hand focus
+									// to the search field it just emptied first, so the keyboard path never
+									// drops to <body>.
+									event.currentTarget.closest(".wsp-lane")
+										?.querySelector<HTMLInputElement>(".wsp-lane__search input")
+										?.focus();
+									search.value = "";
+									selectRosterTab("all");
 								}}
 							/>
-						</div>
-					</LaneHead>
+						)}
+					</ContextZone>
 				);
 			case "views":
 				return (
@@ -363,39 +418,6 @@ function RosterLane(props: RosterLaneProps): JSX.Element {
 							))}
 					</LaneList>
 				);
-			case "context":
-				return zones.context
-					? (
-						<ContextZone key={id} context={zones.context}>
-							<SelectButton
-								options={zones.context.options}
-								value={tab}
-								onValueChange={(value) => selectRosterTab(toRosterTab(value as string))}
-								size="sm"
-								fluid
-								aria-label={zones.context.label}
-							/>
-							{rosterFiltered(current, search.value) && (
-								<Button
-									variant="text"
-									size="sm"
-									label="Reset"
-									class="wsp-lane__reset"
-									onClick={(event) => {
-										// Nothing is left to clear once this runs, so the Reset unmounts: hand focus
-										// to the search field it just emptied first, so the keyboard path never
-										// drops to <body>.
-										event.currentTarget.closest(".wsp-lane")
-											?.querySelector<HTMLInputElement>(".wsp-lane__search input")
-											?.focus();
-										search.value = "";
-										selectRosterTab("all");
-									}}
-								/>
-							)}
-						</ContextZone>
-					)
-					: null;
 			case "footer":
 				return (
 					<LaneFooterRig
@@ -512,7 +534,7 @@ const SECTION_GLYPH = {
 	governance: GovernanceGlyph,
 } as const;
 
-/** One entity's lane — identity, kebab and search; its zoned views; its controls; its footer rig. */
+/** One entity's lane — identity and kebab; its search and controls; its zoned views; its footer rig. */
 function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 	const { detail } = props;
 	const subView = viewOr(props.view);
@@ -535,7 +557,7 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 	const open = useSignal<Record<SectionId, boolean>>({
 		operations: true,
 		channels: true,
-		governance: true,
+		governance: false,
 	});
 	const toggle = (id: SectionId) => {
 		open.value = { ...open.value, [id]: !open.value[id] };
@@ -662,49 +684,61 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 						{detail.verification !== "verified" && (
 							<VerificationLine kind={props.kind} state={detail.verification} />
 						)}
-						<div class="wsp-lane__search">
-							<LaneSearch
-								value={query.value}
-								placeholder={zones.header.search.placeholder}
-								label={zones.header.search.label}
-								icon={cloneGlyph(SearchGlyph)}
-								onInput={onSearch}
-							/>
-						</div>
 					</LaneHead>
+				);
+			case "context":
+				return (
+					<ContextZone key={id} context={zones.context}>
+						<div class="wsp-lane__search">
+							<LaneBar>
+								<LaneSearch
+									value={query.value}
+									placeholder={zones.context.search.placeholder}
+									label={zones.context.search.label}
+									icon={cloneGlyph(SearchGlyph)}
+									onInput={onSearch}
+								/>
+							</LaneBar>
+						</div>
+						{zones.context.partition && (
+							<SelectButton
+								options={zones.context.partition.options}
+								value={reading}
+								onValueChange={(value) => {
+									if (typeof value === "string") selectModuleView(value, subViews);
+								}}
+								size="sm"
+								fluid
+								aria-label={zones.context.partition.label}
+							/>
+						)}
+					</ContextZone>
 				);
 			case "views":
 				return (
 					<LaneList key={id}>
 						<nav class="wsp-lane__nav" aria-label={`${detail.name} views`}>
-							{hits
-								? <LaneSearchResults groups={hits} query={term.value} />
-								: (
-									<LaneSections>
-										{views.sections.filter((s) => s.id === "operations").map((s) =>
-											section(s.id, s.label, <HubList rows={s.rows} signals={signals} />)
+							{hits ? <LaneSearchResults groups={hits} query={term.value} /> : (
+								<LaneSections>
+									{views.sections.map((s) =>
+										section(s.id, s.label, <HubList rows={s.rows} signals={signals} />)
+									)}
+									{views.channels &&
+										section(
+											"channels",
+											views.channels.label,
+											<ChannelList channels={detail.channels} zone={views.channels} />,
+											views.channels.canCreate
+												? (
+													<ChannelAddButton
+														label={views.channels.createLabel}
+														onClick={() => (creating.value = true)}
+													/>
+												)
+												: undefined,
 										)}
-										{views.channels &&
-											section(
-												"channels",
-												views.channels.label,
-												<ChannelList channels={detail.channels} zone={views.channels} />,
-												views.channels.canCreate
-													? (
-														<LaneIconButton
-															icon={cloneGlyph(PlusGlyph)}
-															label={views.channels.createLabel}
-															ariaHasPopup="dialog"
-															onClick={() => (creating.value = true)}
-														/>
-													)
-													: undefined,
-											)}
-										{views.sections.filter((s) => s.id === "governance").map((s) =>
-											section(s.id, s.label, <HubList rows={s.rows} signals={signals} />)
-										)}
-									</LaneSections>
-								)}
+								</LaneSections>
+							)}
 						</nav>
 						{views.channels && (
 							<ChannelCreateDialog
@@ -715,23 +749,6 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 						)}
 					</LaneList>
 				);
-			case "context":
-				return zones.context
-					? (
-						<ContextZone key={id} context={zones.context}>
-							<SelectButton
-								options={zones.context.options}
-								value={reading}
-								onValueChange={(value) => {
-									if (typeof value === "string") selectModuleView(value, subViews);
-								}}
-								size="sm"
-								fluid
-								aria-label={zones.context.label}
-							/>
-						</ContextZone>
-					)
-					: null;
 			case "footer":
 				return (
 					<ConsoleFooterRig
@@ -794,8 +811,8 @@ function VerificationLine(
 
 // #region Shared zones
 /**
- * Zone 3 — the context controls over the current view, set off by one hairline. The group is named for
- * what it holds; the segmented control inside it carries the zone's own label.
+ * Zone 2 — the search, then the controls over the current view, closed by one hairline above the views.
+ * The group is named for what it holds; the segmented control inside it carries the zone's own label.
  */
 function ContextZone(
 	props: { context: LaneContextZone; children: ComponentChildren },
@@ -805,7 +822,7 @@ function ContextZone(
 			class="wsp-lane__context"
 			role="group"
 			aria-label="View controls"
-			data-control={props.context.control}
+			data-control={props.context.partition?.control}
 		>
 			{props.children}
 		</div>

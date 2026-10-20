@@ -127,10 +127,10 @@ export function closeInvite(): void {
 }
 // #endregion
 
-// #region Module sub-view (header band tabs · lane context · footer rig → body)
+// #region Module sub-view (header band toolbar · lane context · footer rig → body)
 /**
  * The console module's sub-view (`sub-views.ts`) — ONE value for every root that offers or honours it:
- * the header band's TabMenu, the lane's context control, the footer rig's Org chart toggle and the
+ * the header band's view toolbar, the lane's context control, the footer rig's Org chart toggle and the
  * body. Each control writes it through {@link selectModuleView}; none keeps a copy of its own.
  *
  * `null` until a control picks one. Each root renders its server-resolved `?view=` prop until then
@@ -196,9 +196,9 @@ export type RosterView = "grid" | "table";
 
 /**
  * The roster index's PARTITION (All · Owned · Member · Invitations · Archived) — ONE value for every
- * root that offers it: the lane's segmented control and the canvas's TabMenu both write it through
- * {@link selectRosterTab}, and each mirrors it into its own control's binding (the lane's segmented
- * value, the TabMenu's active index), so the two controls always show the same partition.
+ * root that offers it: the lane's segmented control (and its Invitations toggle) and the canvas
+ * toolbar's filter all write it through {@link selectRosterTab}, and each mirrors it into its own
+ * control's binding, so the controls always show the same partition.
  *
  * `null` until a control on either root picks one. Each root renders its server-resolved `?view=`
  * prop until then ({@link rosterTabOr}), so the first painted byte and the first hydrated frame agree,

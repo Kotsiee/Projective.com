@@ -4,8 +4,12 @@ import type {
 	WorkspaceKind,
 	WorkspaceRoster,
 } from "@projective/types/workspace";
+import type { CalendarPage } from "@projective/types/scheduling";
+import type { CataloguePage } from "@projective/types/catalogue";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBackendService.ts";
+import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBackendService.ts";
+import { CatalogueBackendService } from "@server/services/catalogue/CatalogueBackendService.ts";
 import {
 	firstModuleFor,
 	mayViewModule,
@@ -13,6 +17,8 @@ import {
 	modulesForViewer,
 	type WorkspaceModule,
 } from "./module-registry.tsx";
+import { entityCalendarProjectIds } from "./calendar-module-model.ts";
+import { TEAM_CATALOGUE_PARAMS } from "./catalogue-module-model.ts";
 
 /**
  * workspace-ssr — the **server-only** bootstraps for the `/teams` and `/businesses` first paint.
@@ -169,6 +175,90 @@ export function resolveBench(handle: string, actor: ReadActor, url: URL): Promis
 		return {
 			bench: null,
 			error: res.message ?? "The bench couldn't be read just now. Try again in a moment.",
+		};
+	});
+}
+// #endregion
+
+// #region The Calendar module's union
+/**
+ * The Calendar module's first paint: the entity calendar, or why it could not be read. A failed read
+ * is never drawn as an empty grid — "nothing scheduled" said of an entity with meetings this week is
+ * false.
+ */
+export interface EntityCalendarRead {
+	page: CalendarPage | null;
+	error: string | null;
+	/** How many projects the union was read across. */
+	projectCount: number;
+}
+
+/**
+ * Read an entity's calendar (Decision #308) — the union of its projects' calendars, as the viewer —
+ * from the console's own detail, so the project list is the detail read's and never a request's. Only
+ * the Calendar module asks. Memoized per request.
+ */
+export function resolveEntityCalendar(
+	workspace: WorkspaceDetail,
+	actor: ReadActor,
+	url: URL,
+): Promise<EntityCalendarRead> {
+	const projectIds = entityCalendarProjectIds(workspace);
+	return once(url, actor, `calendar:${workspace.kind}:${workspace.id}`, async () => {
+		const res = await ScheduleBackendService.entityCalendar(
+			{ projectIds, ref: workspace.handle, title: workspace.name },
+			actor,
+		);
+		if (res.ok && res.data) {
+			return { page: res.data.page, error: null, projectCount: projectIds.length };
+		}
+		return {
+			page: null,
+			error: res.message ?? "The calendar couldn't be read just now. Try again in a moment.",
+			projectCount: projectIds.length,
+		};
+	});
+}
+// #endregion
+
+// #region The Catalogue module's listings
+/** The Catalogue module's first paint: the team's listings, or why they could not be read. */
+export interface TeamCatalogueRead {
+	page: CataloguePage | null;
+	error: string | null;
+}
+
+/**
+ * Read a team's listings for its console's Catalogue module (Decision #308), as the viewer acting AS
+ * that team for this one read.
+ *
+ * The catalogue's list scopes by the actor's acting context (`listing-scope.ts` `actingTeam`), so a
+ * member reading the console as themselves would otherwise be shown their personal listings. The
+ * re-scoped actor is built only after the guard below: the entity is a team, the console detail
+ * resolved (the database answered it only for an active member — `org.get_workspace_detail`), and the
+ * registry lets this viewer open the module (`publish_listings`). The token is unchanged, so RLS stays
+ * authoritative — `catalogue.listings` lets an active member of the owning team read its rows, and
+ * nothing in this read can see past that. Memoized per request.
+ */
+export function resolveTeamCatalogue(
+	workspace: WorkspaceDetail,
+	actor: ReadActor,
+	url: URL,
+	displayCurrency: string,
+): Promise<TeamCatalogueRead> {
+	if (
+		workspace.kind !== "team" ||
+		!mayViewModule("catalogue", workspace.kind, workspace.viewerCapabilities)
+	) {
+		return Promise.resolve({ page: null, error: "This catalogue isn't yours to open." });
+	}
+	return once(url, actor, `catalogue:${workspace.id}`, async (): Promise<TeamCatalogueRead> => {
+		const asTeam: ReadActor = { ...actor, contextType: "team", contextId: workspace.id };
+		const res = await CatalogueBackendService.list(TEAM_CATALOGUE_PARAMS, asTeam, displayCurrency);
+		if (res.ok && res.data) return { page: res.data.page, error: null };
+		return {
+			page: null,
+			error: res.message ?? `${workspace.name}'s listings couldn't be read just now.`,
 		};
 	});
 }

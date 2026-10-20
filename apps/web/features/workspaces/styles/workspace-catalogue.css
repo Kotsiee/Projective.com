@@ -1,0 +1,62 @@
+/*
+ * workspace-catalogue.css — a team console's Catalogue module (Decision #308): the narrowing controls
+ * (`.wsp-catalogue__controls`), the listing grid (`.wsp-catalogue__grid`) and its empty line
+ * (`.wsp-catalogue__empty`).
+ *
+ * The cards are the catalogue's own `ListingCard` (`listing-card.css`), drawn read-only; the grid also
+ * carries `.cat-grid` so a card's body takes the height the catalogue console gives it. The grid lays
+ * out by its OWN width (`auto-fill` over a minimum column), because the console's body narrows with the
+ * docked lane whatever the viewport. Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY. Nothing here
+ * is boxed: the controls sit on the band's ground, and the cards are the only surfaces.
+ */
+
+/* #region Controls */
+.wsp-catalogue__controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2) var(--space-3);
+	margin-block-end: var(--space-4);
+}
+
+.wsp-catalogue__status {
+	flex: none;
+}
+
+.wsp-catalogue__search {
+	--wsp-catalogue-search: 12rem;
+	flex: 1 1 var(--wsp-catalogue-search);
+	min-inline-size: 0;
+	max-inline-size: var(--wsp-field);
+}
+
+.wsp-catalogue__count {
+	color: var(--text-secondary);
+	font-size: var(--wsp-fs-label);
+	font-variant-numeric: tabular-nums;
+}
+/* #endregion */
+
+/* #region Grid */
+.wsp-catalogue__grid {
+	--wsp-catalogue-col: 15rem;
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--wsp-catalogue-col)), 1fr));
+	gap: var(--cat-grid-gap);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.wsp-catalogue__item {
+	min-inline-size: 0;
+}
+/* #endregion */
+
+/* #region Empty */
+.wsp-catalogue__empty {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--wsp-fs-body);
+}
+/* #endregion */
