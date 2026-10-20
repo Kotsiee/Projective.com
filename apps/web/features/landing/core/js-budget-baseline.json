@@ -1,6 +1,6 @@
 {
 	"$comment": "The app baseline's pin (client entry + _app islands, gzip bytes), Decision #289. Written by `deno task build && deno task budget:landing --repin` after each merge of main into the landing branch; never edited by hand. See flows/LANDING.md §7.",
 	"bytes": 110956,
-	"measuredAt": "2026-10-20T00:27:49.592Z",
-	"mainSha": "91948f2247419713eda13431ebe6c2018fe7e69f"
+	"measuredAt": "2026-10-20T06:56:03.396Z",
+	"mainSha": "7be5b9f4a5a1c3375aa048c56e819bdb624059bc"
 }
