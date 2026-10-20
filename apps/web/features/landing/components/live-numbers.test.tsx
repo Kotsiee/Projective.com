@@ -7,6 +7,7 @@
 import { assert, assertEquals, assertFalse, assertMatch } from "@std/assert";
 import { renderToString } from "npm:preact-render-to-string@^6.7.0";
 import type { PublicMetrics } from "@projective/types/marketing";
+import { roundHours } from "@server/services/marketing/public-metrics-model.ts";
 import {
 	asOfDate,
 	LIVE_NUMBERS_COPY,
@@ -171,6 +172,20 @@ Deno.test("the median rounds up to the whole hour, so 'within' stays true", () =
 	assertEquals(withinHours(36.000000001), { value: "36", unit: "hours" });
 	assertEquals(withinHours(1), { value: "1", unit: "hour" });
 	assertEquals(withinHours(1204.5), { value: "1,205", unit: "hours" });
+});
+
+Deno.test("a median just over the hour stays 'within' end to end: the service rounds it up, then the tile", () => {
+	// 36.04 h published to the nearest tenth would be 36.0 and print "36 hours", false of the
+	// stages that took 36.04; the service publishes 36.1, which prints 37.
+	const published = roundHours(36.04);
+	assertEquals(published, 36.1);
+	assertEquals(withinHours(published), { value: "37", unit: "hours" });
+	const tiles = liveNumberTiles({ ...NONE, medianFundingToApprovalHours: published });
+	assertEquals(tiles.map((t) => [t.key, t.figure.text, t.unit]), [["median", "37", "hours"]]);
+	for (const median of [0.01, 1.96, 12.3, 36.04, 47.999, 395.999978254167]) {
+		const shown = Number(withinHours(roundHours(median)).value.replace(/,/g, ""));
+		assert(shown >= median, `${median} h prints within ${shown} hours`);
+	}
 });
 
 Deno.test("asOf prints as a UTC date", () => {

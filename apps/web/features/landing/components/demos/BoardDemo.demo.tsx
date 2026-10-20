@@ -118,7 +118,10 @@ interface MoveMenuProps {
  * A card's "Move to…" menu, where a card cannot be dragged (below --bp-md, a coarse pointer, or a
  * zoomed window): a disclosure button that opens the card's lanes as buttons, so a move is only ever
  * made by activating one (Enter, Space or a tap) — never by arrowing through a list (WCAG 3.2.2).
- * Escape closes it and returns focus to the button; leaving it closes it.
+ * Escape closes it and returns focus to the button; leaving it closes it. Choosing a lane also
+ * hands focus back to the button before the move is tried, since the list hides with the chosen
+ * lane inside it: a lane the board refuses leaves the visitor on the card's "Move to…" (WCAG
+ * 2.4.3), and a move it makes redraws the card in its new lane, where `refocus` finds it.
  */
 function MoveMenu({ cardId, title, targets, onMove }: MoveMenuProps): JSX.Element {
 	const open = useSignal(false);
@@ -165,6 +168,7 @@ function MoveMenu({ cardId, title, targets, onMove }: MoveMenuProps): JSX.Elemen
 							class="lp-board-demo__move-option"
 							onClick={() => {
 								open.value = false;
+								toggle.current?.focus();
 								onMove(target);
 							}}
 						>

@@ -1,4 +1,3 @@
-import "@features/projects/styles/funding-status.css";
 import "../../styles/demos/payments.css";
 import type { JSX } from "preact";
 import { useEffect, useRef } from "preact/hooks";

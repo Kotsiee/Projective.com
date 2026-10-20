@@ -7,7 +7,10 @@
  *     is boxed (§B.4): the parts separate by space, one hairline and the type registers; the only
  *     outlines are on controls (the Fair Exit switch, the tier radios, the scrubber's thumb).
  *   - `__head`: "A £5,000 project in 3 stages" and the "Try Fair Exit" switch.
- *   - `__stages`: the three stages — name, price and the product's own funding tag (`.fst-tag`).
+ *   - `__stages`: the three stages — name, price and the product's own funding tag (`.fst-tag`),
+ *     whose sheet this file `@import`s, so Vite inlines it here. A JS import would share that CSS
+ *     module with the app's TicketView chunk and split it out of the app's own sheets, and the app's
+ *     routes must build byte-identical CSS (work order L6 step 4).
  *   - `__body`: the story (the scrubber and what happens at its stop, or Fair Exit's tiers and
  *     results) beside the ledger (the wallet and the team's money).
  *   - `[data-mode="frames"]`: the same parts held still inside the shared `.lp-demo-frames` chrome.
@@ -16,6 +19,7 @@
  * overshoot); "Approve and pay" plays the "Team paid" moment once. Both are absent under either
  * reduced-motion channel, where the demo is its frames. No focus ring (Decision #285 (A)).
  */
+@import "../../../projects/styles/funding-status.css";
 
 /* #region Root */
 .lp-pay {

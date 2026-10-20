@@ -11,7 +11,6 @@
  */
 import "@ui/kanban/styles/kanban.css";
 import "@ui/display/styles/money-view.css";
-import "@features/projects/styles/funding-status.css";
 import "../../styles/lp-theatre.css";
 import "../../styles/lp-demo.css";
 import "../../styles/demos/board.css";

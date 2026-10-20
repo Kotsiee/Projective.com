@@ -23,8 +23,11 @@ export interface LandingShellProps {
  * `PAGE_CANVAS_MAIN_ID` (Decision #285 (C)); the header bar ({@link LandingHeader}); and
  * the `<main>` landmark. The unchanged {@link PublicFooter} (Decision #13) renders OUTSIDE
  * `.lp-root`, so no landing token reaches the footer and no footer-local `--lp-*` token reaches the
- * landing (Decision #285 (B)). It names no Products marketplace: a product bought today is not
- * delivered, so the landing pages offer no Products surface until W2 (§4.1, Decisions #281 k, #298).
+ * landing (Decision #285 (B)). It names no Products surface: a product bought today is not
+ * delivered, so the landing pages offer neither the marketplace nor "Sell your products" until W2
+ * (§4.1, Decisions #281 k, #298). It is held to the landing's claims gate (`claimsGate`, §5.2): the
+ * legal documents by their plain names (#283 (C), (D)), "Ready-made teams" for a directory nothing
+ * orders by trend, and no unsubscribe promise until an unsubscribe path exists.
  */
 export function LandingShell(
 	{ authenticated, returnTo, children }: LandingShellProps,
@@ -38,7 +41,7 @@ export function LandingShell(
 					{children}
 				</main>
 			</div>
-			<PublicFooter products={false} />
+			<PublicFooter products={false} claimsGate />
 		</>
 	);
 }

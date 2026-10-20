@@ -14,7 +14,7 @@ const whatIsEscrow = helpArticle({
 	position: 0,
 	title: "What escrow means on Projective",
 	summary:
-		"Escrow is money Projective holds for a piece of work: the client pays it in before the work starts, and it is released to the freelancer only when the work is approved — or refunded if it never happens.",
+		"Escrow is money Projective holds for a piece of work: the client pays it in before the work starts, and it is released to the freelancer when the work is approved — or refunded if it never happens.",
 	roles: ["client", "freelancer", "team", "business"],
 	faq: { rank: 1, question: "Is my money safe before the work is done?" },
 	related: ["how-stage-funding-works", "accept-and-release-payment", "fees"],
@@ -26,7 +26,7 @@ const whatIsEscrow = helpArticle({
 				{
 					type: "p",
 					content:
-						"While money is in escrow it belongs to neither the client nor the freelancer: Projective's ledger holds it against one specific ticket or session. That protects both people — the freelancer knows the money exists before they start, and the client knows it only moves when they approve the work.",
+						"While money is in escrow it belongs to neither the client nor the freelancer: Projective's ledger holds it against one specific ticket or session. That protects both people — the freelancer knows the money exists before they start, and the client knows it is held for that work and nothing else.",
 				},
 			],
 		},

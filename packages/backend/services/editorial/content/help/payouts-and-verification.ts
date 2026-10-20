@@ -64,7 +64,7 @@ const getPayoutReady = helpArticle({
 				{
 					type: "p",
 					content:
-						"Projective checks this before you earn, not when you withdraw: you can't apply for paid work, accept an invitation, claim or be assigned a ticket, or create or join a team until both steps are done. That way, money held for you can always be paid out — it can never get stuck in escrow with nobody able to receive it.",
+						"Projective checks this before you take on project work, not only when you withdraw: you can't apply for paid work, accept an invitation, claim or be assigned a ticket, or create or join a team until both steps are done. That way, money held for project work can always be paid out — it can never get stuck in escrow with nobody able to receive it.",
 				},
 				{
 					type: "callout",

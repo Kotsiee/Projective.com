@@ -157,7 +157,7 @@ Deno.test("coarsenPublishedTotal: one escrow moving between two reads is seen on
 // #endregion
 
 // #region Fold
-Deno.test("foldPublicMetrics: every figure that clears the threshold is published, median to 0.1h", () => {
+Deno.test("foldPublicMetrics: every figure that clears the threshold is published, median up to 0.1h", () => {
 	const aggregate = rich();
 	const out = foldPublicMetrics(aggregate, planTotal(aggregate), NOW);
 	assertEquals(out, {
@@ -243,10 +243,22 @@ Deno.test("the frozen fixture parses and, at the default threshold, publishes on
 	assertEquals(lifted.medianFundingToApprovalHours, 396);
 });
 
-Deno.test("roundHours / normaliseAsOf", () => {
+Deno.test("roundHours rounds up to the tenth, so a 'within' figure stays true / normaliseAsOf", () => {
 	assertEquals(roundHours(395.999978254167), 396);
-	assertEquals(roundHours(0.04), 0);
+	assertEquals(roundHours(0.04), 0.1);
 	assertEquals(roundHours(12.35), 12.4);
+	assertEquals(roundHours(36.04), 36.1);
+	assertEquals(roundHours(36), 36);
+	assertEquals(roundHours(36.1), 36.1);
+	assertEquals(roundHours(0), 0);
+	for (const hours of [0.01, 1.96, 12.3, 36.04, 47.999, 51.26, 395.999978254167]) {
+		const published = roundHours(hours);
+		assertEquals(
+			published >= hours - 1e-9 && published - hours < 0.1,
+			true,
+			`${hours} → ${published}`,
+		);
+	}
 	assertEquals(normaliseAsOf("2026-10-17T21:07:08+01:00", NOW), "2026-10-17T20:07:08.000Z");
 });
 

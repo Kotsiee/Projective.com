@@ -150,9 +150,15 @@ export function coarsenPublishedTotal<T extends PublicMoneyTotal>(total: T): T |
 // #endregion
 
 // #region Fold
-/** Round hours to one decimal place — the precision the public figure is stated at. */
+/**
+ * Round hours UP to one decimal place — the precision the public figure is stated at. Up, never to
+ * the nearest: the landing prints the median as "within N hours", rounding the published tenth up to
+ * the hour (`withinHours`), and a median of 36.04 h published as 36.0 would print "within 36 hours"
+ * of stages that took longer. Published as 36.1 it prints 37. The `1e-9` keeps a value that is
+ * already a whole tenth, give or take float noise (`395.999978…` → 396.0), from gaining one.
+ */
 export function roundHours(hours: number): number {
-	return Math.round(hours * 10) / 10;
+	return Math.ceil(hours * 10 - 1e-9) / 10;
 }
 
 /** The aggregate's timestamp as UTC ISO 8601, or `fallback` when it does not parse. */
