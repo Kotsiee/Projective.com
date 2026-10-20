@@ -25,7 +25,6 @@ import {
 	heroDismissKey,
 	heroSteps,
 	liveProjectCount,
-	overviewMetrics,
 	overviewModel,
 	projectPreview,
 	readHeroDismissed,
@@ -33,6 +32,17 @@ import {
 	walletBalanceFacts,
 	writeHeroDismissed,
 } from "./overview-model.ts";
+import {
+	ATTENTION_PROJECT_LIMIT,
+	attentionItems,
+	cashFlowSource,
+	type DeckTile,
+	flowIsEmpty,
+	formatWi,
+	overviewRegions,
+	resetLabel,
+	telemetryDeck,
+} from "./overview-deck.ts";
 
 // #region Fixtures
 const TEAM_STEPS: SetupStepId[] = ["invite", "money", "profile", "verification", "publish"];
@@ -130,6 +140,70 @@ function teamDetail(
 
 const OWNER = presetCapabilities("owner", "team");
 const PLAIN: WorkspaceCapability[] = ["view_analytics"];
+
+/** A member carrying live W_i against their own cap. */
+const loaded = (id: string, wi: number, wiCap: number) => ({ ...member(id), wi, wiCap });
+
+/** A team's payout block — what the read sends a `manage_finances` holder. */
+const PAYOUT = {
+	walletId: "w-1",
+	currency: "GBP",
+	availableMinor: 12_345,
+	pendingMinor: 2_500,
+	model: "equal",
+	stakes: [],
+	templates: [],
+	projectedRelease: null,
+	platformFee: null,
+	vaultBp: 0,
+	rule: { ruleType: "co_op", vaultBp: 0, finderUserId: null, finderBp: null },
+	vaultCut: null,
+	withdrawApprovers: [],
+};
+
+/** A team's proposal allowance (B7), resetting Monday 19 October 00:00 UTC. */
+const ALLOWANCE = {
+	subjectType: "team",
+	subjectId: "00000000-0000-4000-8000-000000000001",
+	weeklyGranted: 10,
+	weeklyConsumed: 3,
+	weeklyRemaining: 7,
+	weeklyResetsAt: "2026-10-19T00:00:00Z",
+	bufferUnits: 3,
+	bufferCap: 6,
+	bufferDrip: 3,
+	bufferWindowHours: 24,
+	nextBufferRefillAt: null,
+	canApply: false,
+	enforced: true,
+	planCode: "team_free",
+	planLabel: "Team",
+	planTier: "free",
+	upgrade: null,
+	standingLevel: 1,
+	standingBonus: 0,
+	teamStatus: "draft",
+	teamMemberCount: 1,
+	canBindSeat: true,
+	serverNow: "2026-10-17T00:00:00Z",
+};
+
+/** One live stage assignment (B7), active unless overridden. */
+const engagement = (projectSlug: string, stageSlug: string) => ({
+	projectSlug,
+	title: projectSlug,
+	stageSlug,
+	stageTitle: stageSlug,
+	assignmentStatus: "accepted",
+	projectStatus: "active",
+	assignees: [],
+	stageWi: 0,
+	stageCap: null,
+});
+
+/** Whether any tile in the deck draws an amount — headline or fact. */
+const hasMoney = (deck: readonly DeckTile[]) =>
+	deck.some((t) => t.figure?.type === "money" || t.facts.some((f) => f.money !== null));
 
 /** Every step's control as `id:tier` (filled marked `*`), or `id:-` for none. */
 const controls = (steps: { id: string; action: { tier: number; filled: boolean } | null }[]) =>
@@ -300,10 +374,18 @@ Deno.test("plain member: no money tile and no money — the read answered none",
 		allowance: null,
 		members: [member("m-1"), member("m-2")],
 		canPropose: true,
+		// The read's `finance` tiles reach every member; without the payout block none is drawn.
+		finance: {
+			available: money(90_000),
+			locked: money(40_000),
+			pending: money(5_000),
+			walletHref: "/wallet?w=team:team-1",
+		},
 	});
-	const metrics = overviewMetrics(detail);
-	assertEquals(metrics.map((m) => m.key), ["members", "live"]);
-	assertEquals(metrics.some((m) => m.type === "money"), false);
+	const model = overviewModel(detail, { dismissed: false });
+	assertEquals(model.deck.map((t) => t.key), ["workload", "members"]);
+	assertEquals(hasMoney(model.deck), false);
+	assertStrictEquals(model.cashFlow, null);
 });
 
 Deno.test("partial rights: the fill goes to the first step the viewer can act on", () => {
@@ -757,85 +839,150 @@ Deno.test("zones: what the hero carries stands in behind the guard, and only tha
 });
 // #endregion
 
-// #region Metrics
-Deno.test("metrics: the vault from the payout block, the allowance from B7", () => {
+// #region Telemetry deck (Decision #306)
+const SAM_INVITE = {
+	id: "i-1",
+	handle: "sam",
+	name: "Sam",
+	avatar: "",
+	email: null,
+	roleId: "r",
+	note: null,
+	sentAt: "Today",
+	expiresAt: null,
+};
+
+Deno.test("deck: a finance holder's team — vault, workload, proposals, members, money first", () => {
 	const detail = teamDetail(OWNER, {
-		payout: {
-			walletId: "w-1",
-			currency: "GBP",
-			availableMinor: 12_345,
-			pendingMinor: 0,
-			model: "equal",
-			stakes: [],
-			templates: [],
-			projectedRelease: null,
-			platformFee: null,
-			vaultBp: 0,
-			rule: { ruleType: "co_op", vaultBp: 0, finderUserId: null, finderBp: null },
-			vaultCut: null,
-			withdrawApprovers: [],
+		payout: PAYOUT,
+		allowance: ALLOWANCE,
+		invites: [SAM_INVITE],
+		finance: {
+			available: money(90_000),
+			locked: money(40_000, "USD"),
+			pending: money(5_000),
+			walletHref: "/wallet?w=team:team-1",
 		},
-		allowance: {
-			subjectType: "team",
-			subjectId: "00000000-0000-4000-8000-000000000001",
-			weeklyGranted: 10,
-			weeklyConsumed: 3,
-			weeklyRemaining: 7,
-			weeklyResetsAt: "2026-10-19T00:00:00Z",
-			bufferUnits: 3,
-			bufferCap: 6,
-			bufferDrip: 3,
-			bufferWindowHours: 24,
-			nextBufferRefillAt: null,
-			canApply: false,
-			enforced: true,
-			planCode: "team_free",
-			planLabel: "Team",
-			planTier: "free",
-			upgrade: null,
-			standingLevel: 1,
-			standingBonus: 0,
-			teamStatus: "draft",
-			teamMemberCount: 1,
-			canBindSeat: true,
-			serverNow: "2026-10-17T00:00:00Z",
-		},
-		invites: [{
-			id: "i-1",
-			handle: "sam",
-			name: "Sam",
-			avatar: "",
-			email: null,
-			roleId: "r",
-			note: null,
-			sentAt: "Today",
-			expiresAt: null,
-		}],
 	});
-	const metrics = overviewMetrics(detail);
-	assertEquals(metrics.map((m) => [m.key, m.label]), [
+	const deck = overviewModel(detail, { dismissed: false }).deck;
+	assertEquals(deck.map((t) => [t.key, t.label]), [
+		["vault", "Vault"],
+		["workload", "Workload"],
+		["proposals", "Proposals"],
 		["members", "Members"],
-		["live", "Live projects"],
-		["vault", "Vault available"],
-		["allowance", "Proposals left"],
 	]);
-	const vault = metrics[2];
-	assert(vault.type === "money");
-	assertEquals(vault.money, { minor: 12_345, currency: "GBP" });
-	const allowance = metrics[3];
-	assert(allowance.type === "count");
-	assertEquals([allowance.value, allowance.caption], [7, "of 10 this week"]);
-	assertEquals(metrics[0].caption, "1 invitation out");
+	const [vault, , proposals, members] = deck;
+	// Available and pending settlement are the payout block's vault wallet; escrow held the read's
+	// `finance.locked` — each in its own currency, never converted.
+	assertEquals(vault.figure, { type: "money", money: { minor: 12_345, currency: "GBP" } });
+	assertEquals(vault.unit, "available");
+	assertEquals(vault.facts.map((f) => [f.text, f.money]), [
+		["Escrow held", { minor: 40_000, currency: "USD" }],
+		["Pending settlement", { minor: 2_500, currency: "GBP" }],
+	]);
+	assertEquals(proposals.figure, { type: "text", text: "7" });
+	assertEquals(proposals.unit, "of 10 left this week");
+	assertEquals(proposals.facts.map((f) => f.text), ["Resets Mon 19 Oct, 00:00 UTC"]);
+	assertEquals(members.figure, { type: "text", text: "1" });
+	assertEquals(members.facts.map((f) => f.text), ["1 invitation out"]);
+	// The deck is facts: no tile carries a control, so the page's fills are still the hero's.
+	assertEquals(filledControls(overviewModel(detail, { dismissed: false })), 1);
 });
 
-Deno.test("metrics: a business's money stays in its own band; its proposals out are a tile", () => {
+Deno.test("deck: workload is the members' summed W_i against the sum of their OWN caps", () => {
+	const detail = teamDetail(PLAIN, {
+		members: [loaded("m-1", 3, 10), loaded("m-2", 4.5, 8), {
+			...loaded("m-3", 9, 9),
+			state: "left",
+		}],
+		engagements: [
+			engagement("prj-a", "stg-a1"),
+			engagement("prj-a", "stg-a2"),
+			engagement("prj-b", "stg-b1"),
+		],
+	});
+	const workload = telemetryDeck(detail, null).find((t) => t.key === "workload")!;
+	// A member who left carries no load and no cap.
+	assertEquals(workload.figure, { type: "text", text: "7.5" });
+	assertEquals(workload.unit, "of 18 combined cap");
+	assertEquals(workload.gauge, {
+		percent: 42,
+		full: false,
+		label: "Workload: 7.5 of 18 Wi combined cap",
+	});
+	assertEquals(workload.facts.map((f) => f.text), ["3 live engagements", "2 projects"]);
+	// A member at their own cap is counted; the gauge clamps, the words do not.
+	const over = telemetryDeck(
+		teamDetail(PLAIN, { members: [loaded("m-1", 12, 10), loaded("m-2", 0, 10)] }),
+		null,
+	).find((t) => t.key === "workload")!;
+	assertEquals([over.gauge?.percent, over.gauge?.full], [60, false]);
+	assertEquals(over.facts.map((f) => f.text), ["0 live engagements", "1 member at their cap"]);
+	const full = telemetryDeck(teamDetail(PLAIN, { members: [loaded("m-1", 11, 10)] }), null)[0];
+	assertEquals([full.key, full.gauge?.percent, full.gauge?.full], ["workload", 100, true]);
+	// A business has no W_i tile.
+	assert(!telemetryDeck(bizDetail(BIZ_OWNER), null).some((t) => t.key === "workload"));
+});
+
+Deno.test("deck: standing is the earned rung — only once the ladder applies, never a business's", () => {
+	const ranked = teamDetail(PLAIN, {
+		standing: "Trusted",
+		allowance: { ...ALLOWANCE, standingLevel: 3, standingBonus: 20 },
+	});
+	const standing = telemetryDeck(ranked, null).find((t) => t.key === "standing")!;
+	assertEquals(standing.figure, { type: "text", text: "Trusted" });
+	assertEquals(standing.unit, "rung 3 of 5");
+	assertEquals(standing.rung, { level: 3, of: 5 });
+	assertEquals(standing.facts.map((f) => f.text), ["+20 proposals a week"]);
+	// Without the allowance the label stands alone; with no label there is no tile.
+	const unrated = telemetryDeck(teamDetail(PLAIN, { standing: "New" }), null)
+		.find((t) => t.key === "standing")!;
+	assertEquals([unrated.unit, unrated.rung, unrated.facts], [null, null, []]);
+	assert(!telemetryDeck(teamDetail(PLAIN), null).some((t) => t.key === "standing"));
+	// Buyers are not ranked: a business never has the tile, whatever the read says.
+	assert(
+		!telemetryDeck(bizDetail(BIZ_OWNER, { standing: "Trusted" }), null).some((t) =>
+			t.key === "standing"
+		),
+	);
+});
+
+Deno.test("deck: the allowance tile needs the allowance; an unparseable reset is left out", () => {
+	assert(!telemetryDeck(teamDetail(OWNER), null).some((t) => t.key === "proposals"));
+	assertStrictEquals(resetLabel("not a date"), null);
+});
+
+Deno.test("deck: members carry the invitations out and the plan headroom the read answered", () => {
+	const team = telemetryDeck(
+		teamDetail(PLAIN, {
+			members: [member("m-1"), member("m-2"), { ...member("m-3"), state: "left" }],
+			invites: [SAM_INVITE, { ...SAM_INVITE, id: "i-2" }],
+			seats: { used: 4, limit: 5 },
+		}),
+		null,
+	).find((t) => t.key === "members")!;
+	assertEquals(team.figure, { type: "text", text: "2" });
+	assertEquals(team.facts.map((f) => f.text), ["2 invitations out", "4 of 5 seats"]);
+	// Unlimited seats say nothing about a cap.
+	const unlimited = telemetryDeck(teamDetail(PLAIN, { seats: { used: 4, limit: null } }), null)
+		.find((t) => t.key === "members")!;
+	assertEquals(unlimited.facts, []);
+	const capped = telemetryDeck(bizDetail(BIZ_OWNER, { managers: { used: 2, limit: 3 } }), null)
+		.find((t) => t.key === "members")!;
+	assertEquals(capped.facts.map((f) => f.text), ["2 of 3 manager seats"]);
+	const open = telemetryDeck(bizDetail(BIZ_OWNER, { managers: { used: 1, limit: null } }), null)
+		.find((t) => t.key === "members")!;
+	assertEquals(open.facts.map((f) => f.text), ["1 manager"]);
+});
+
+Deno.test("deck: a business folds its money tiles in per currency, for Finance viewers only", () => {
 	const tile = (currency: string, minor: number) => ({
 		currency,
 		available: money(minor, currency),
 		pending: money(0, currency),
-		committed: money(0, currency),
-		awaitingApproval: money(0, currency),
-		spent30d: money(0, currency),
+		committed: money(300, currency),
+		awaitingApproval: money(200, currency),
+		spent30d: money(100, currency),
 	});
 	const project = (n: number, state: "active" | "proposal") => ({
 		id: `prj-b${n}`,
@@ -848,33 +995,261 @@ Deno.test("metrics: a business's money stays in its own band; its proposals out 
 		progress: 0,
 		due: null,
 	});
-	const biz = (caps: readonly WorkspaceCapability[], over: Record<string, unknown> = {}) =>
-		teamDetail(caps, { kind: "business", canPropose: true, ...over });
-	// The money tiles never become metric tiles — the band below carries the business's money.
-	const answered = biz(OWNER, { moneyTiles: [tile("GBP", 500), tile("EUR", 900)] });
-	assertEquals(overviewMetrics(answered).map((m) => m.key), ["members", "live"]);
-	// Proposals awaiting a reply are counted, and only when there are some.
-	const out = biz(OWNER, {
+	const answered = bizDetail(BIZ_OWNER, {
+		moneyTiles: [tile("GBP", 500), tile("EUR", 900)],
 		projects: [project(1, "proposal"), project(2, "proposal"), project(3, "active")],
 	});
-	const metrics = overviewMetrics(out);
-	assertEquals(metrics.map((m) => [m.key, m.label]), [
+	const model = overviewModel(answered, { dismissed: false });
+	assertEquals(model.deck.map((t) => [t.key, t.label]), [
+		["wallet-GBP", "Wallet · GBP"],
+		["wallet-EUR", "Wallet · EUR"],
+		["projects", "Projects"],
 		["members", "Members"],
-		["live", "Live projects"],
-		["proposals", "Proposals out"],
 	]);
-	const proposals = metrics[2];
-	assert(proposals.type === "count");
-	assertEquals([proposals.value, proposals.caption], [2, "Awaiting a reply"]);
-	// A team's proposals are its allowance, never this count.
+	const gbp = model.deck[0];
+	assertEquals(gbp.figure, { type: "money", money: { minor: 500, currency: "GBP" } });
+	assertEquals(gbp.facts.map((f) => [f.text, f.money?.minor, f.money?.currency]), [
+		["Committed", 300, "GBP"],
+		["Awaiting approval", 200, "GBP"],
+		["Spent (30d)", 100, "GBP"],
+	]);
+	const projects = model.deck[2];
+	assertEquals([projects.figure, projects.unit], [{ type: "text", text: "1" }, "in delivery"]);
+	assertEquals(projects.facts.map((f) => f.text), ["2 proposals out"]);
+	// One currency is just "Wallet"; an empty wallet says so instead of printing a zero.
+	const one = telemetryDeck(bizDetail(BIZ_OWNER, { moneyTiles: [tile("USD", 1)] }), {
+		tiles: [tile("USD", 1)],
+		walletHref: "/wallet?w=business:team-1",
+	});
+	assertEquals(one[0].label, "Wallet");
+	const empty = overviewModel(bizDetail(BIZ_OWNER, { moneyTiles: [] }), { dismissed: false });
+	assertEquals(empty.deck[0].key, "wallet");
+	assertStrictEquals(empty.deck[0].figure, null);
+	assertEquals(empty.deck[0].facts.map((f) => f.text), ["Nothing in the wallet yet"]);
+	// Analytics alone cannot open Finance: no wallet tile and no money anywhere in the deck.
+	const blind = overviewModel(bizDetail(PLAIN, { moneyTiles: [tile("GBP", 500)] }), {
+		dismissed: false,
+	});
+	assertEquals(blind.deck.map((t) => t.key), ["projects", "members"]);
+	assertEquals(hasMoney(blind.deck), false);
+	// A team never has wallet tiles: its money is the vault, from the payout block.
+	assert(!telemetryDeck(teamDetail(OWNER, { payout: PAYOUT }), null).some((t) =>
+		t.key.startsWith("wallet")
+	));
+});
+
+Deno.test("formatWi: one decimal at most, whole numbers bare", () => {
+	assertEquals([formatWi(0), formatWi(2), formatWi(2.25), formatWi(7.04), formatWi(-1)], [
+		"0",
+		"2",
+		"2.3",
+		"7",
+		"0",
+	]);
+});
+// #endregion
+
+// #region Needs attention (Decision #306)
+const request = (id: string, memberId: string) => ({
+	id,
+	memberId,
+	handle: memberId,
+	name: `Name ${memberId}`,
+	avatar: "",
+	amount: money(50_000),
+	reason: "Brand stage",
+	state: "pending",
+	raisedAt: "Today",
+	approvers: ["Owner"],
+	expiresLabel: "Expires 24 Oct",
+});
+
+const SPEND = {
+	currency: "USD",
+	approvalThresholdMinor: 10_000,
+	approvalThreshold: money(10_000),
+	approverIds: ["m-1"],
+	limits: [],
+	contributorIds: [],
+	entries: [],
+	approvals: { pending: [request("q-1", "m-2"), request("q-2", "m-1")], decided: [] },
+	verification: "verified",
+	verificationPrompt: null,
+};
+
+const VIEWER_CAN = {
+	editPolicy: true,
+	decide: true,
+	requestSpend: true,
+	payInvoice: true,
+	startKyb: true,
+	hire: true,
+	purchase: true,
+	manageProjects: true,
+	archive: false,
+};
+
+Deno.test("attention: spend requests for a viewer who may decide — never their own", () => {
+	const items = attentionItems(
+		bizDetail(BIZ_OWNER, { spend: SPEND, viewerCan: VIEWER_CAN, verification: "verified" }),
+	);
+	assertEquals(items.map((i) => [i.kind, i.text, i.href, i.module]), [[
+		"approvals",
+		"1 spend request awaiting your decision",
+		"/businesses/northloop/spend",
+		"Spend",
+	]]);
+	assertEquals(items[0].meta, ["Name m-2", "USD 50000", "Expires 24 Oct"]);
+	// A viewer who may not decide (or whose read carried no spend block) is not asked.
 	assertEquals(
-		overviewMetrics(teamDetail(OWNER, { projects: [project(1, "proposal")] })).some((m) =>
-			m.key === "proposals"
+		attentionItems(
+			bizDetail(BIZ_OWNER, {
+				spend: SPEND,
+				viewerCan: { ...VIEWER_CAN, decide: false },
+				verification: "verified",
+			}),
 		),
-		false,
+		[],
+	);
+	assertEquals(
+		attentionItems(bizDetail(BIZ_OWNER, { viewerCan: VIEWER_CAN, verification: "verified" })),
+		[],
 	);
 });
 
+Deno.test("attention: invitations for whoever may chase them; verification is never repeated here", () => {
+	const invites = [SAM_INVITE, { ...SAM_INVITE, id: "i-2", name: "", email: "ada@x.io" }, {
+		...SAM_INVITE,
+		id: "i-3",
+		name: "Kit",
+	}];
+	// The fixture is unverified: the hero's step or the lock says so, so attention does not.
+	const owner = attentionItems(teamDetail(OWNER, { invites }));
+	assertEquals(owner.map((i) => i.kind), ["invites"]);
+	assertEquals(owner[0].text, "3 invitations awaiting an answer");
+	assertEquals(owner[0].meta, ["Sam", "ada@x.io", "+1 more"]);
+	assertEquals(owner[0].href, "/teams/northloop/invitations");
+	// A plain member cannot chase an invitation.
+	assertEquals(attentionItems(teamDetail(PLAIN, { invites })), []);
+});
+
+Deno.test("attention: on-hold engagements once per project; next milestones as the read words them", () => {
+	const hold = (slug: string, stage: string) => ({
+		...engagement(slug, stage),
+		projectStatus: "on_hold",
+	});
+	const project = (n: number, due: string | null, state = "active") => ({
+		id: `prj-d${n}`,
+		title: `Delivery ${n}`,
+		href: `/projects/prj-d${n}`,
+		counterparty: "Atlas Labs",
+		counterpartyAvatar: "",
+		state,
+		statusLabel: "Active",
+		progress: 0.5,
+		due,
+	});
+	const items = attentionItems(teamDetail(PLAIN, {
+		verification: "verified",
+		verificationPrompt: null,
+		engagements: [hold("prj-h1", "stg-x1"), hold("prj-h1", "stg-x2"), engagement("prj-a", "stg-a")],
+		projects: [
+			project(1, "20–24 July"),
+			project(2, null),
+			project(3, "1 Aug", "completed"),
+			project(4, "3 Aug"),
+			project(5, "5 Aug"),
+			project(6, "9 Aug"),
+		],
+	}));
+	assertEquals(items.map((i) => [i.kind, i.href]), [
+		["on_hold", "/projects/prj-h1"],
+		["milestone", "/projects/prj-d1"],
+		["milestone", "/projects/prj-d4"],
+		["milestone", "/projects/prj-d5"],
+	]);
+	assertEquals(items[0].meta, ["On hold", "stg-x1"]);
+	// The date is the read's pre-formatted string, untouched.
+	assertEquals(items[1].meta, ["Next milestone 20–24 July", "Atlas Labs"]);
+	assertEquals(items.filter((i) => i.kind === "milestone").length, ATTENTION_PROJECT_LIMIT);
+	assert(items.every((i) => i.href.startsWith("/projects/prj-")));
+});
+// #endregion
+
+// #region Cash flow and layout (Decision #306)
+Deno.test("cash flow: a team's payout holders, a business's Finance viewers — nobody else", () => {
+	assertEquals(cashFlowSource(teamDetail(OWNER, { payout: PAYOUT })), {
+		wallet: "team:team-1",
+		walletHref: "/wallet?w=team:team-1",
+	});
+	// The payout block is the gate, not the capability list: no block, no money.
+	assertStrictEquals(cashFlowSource(teamDetail(OWNER)), null);
+	for (const right of ["contribute_funds", "spend_funds", "manage_finances"] as const) {
+		assertEquals(cashFlowSource(bizDetail([right]))?.wallet, "business:team-1");
+	}
+	assertStrictEquals(cashFlowSource(bizDetail(["withdraw_funds"])), null);
+	assertStrictEquals(cashFlowSource(bizDetail(PLAIN)), null);
+	assertEquals(flowIsEmpty([{ inMinor: 0, outMinor: 0 }]), true);
+	assertEquals(flowIsEmpty([{ inMinor: 0, outMinor: 1 }]), false);
+	assertEquals(flowIsEmpty([]), true);
+});
+
+Deno.test("layout: every grid row fills twelve columns; the chart leads only when it renders", () => {
+	for (const withFlow of [true, false]) {
+		const regions = overviewRegions(withFlow);
+		const rows = new Map<number, number>();
+		for (const r of regions) rows.set(r.row, (rows.get(r.row) ?? 0) + r.span);
+		assert([...rows.values()].every((cols) => cols === 12), `${withFlow}: ${[...rows]}`);
+		assertEquals(regions.some((r) => r.key === "cashflow"), withFlow);
+		assertEquals(regions.map((r) => r.key).includes("activity"), true);
+	}
+	assertEquals(overviewRegions(true).map((r) => [r.key, r.col]), [
+		["cashflow", "start"],
+		["attention", "end"],
+		["projects", "start"],
+		["activity", "end"],
+	]);
+	const model = overviewModel(teamDetail(OWNER, { payout: PAYOUT }), { dismissed: false });
+	assertEquals(model.regions[0].key, "cashflow");
+	assertEquals(overviewModel(teamDetail(PLAIN), { dismissed: false }).regions[0].key, "attention");
+});
+
+Deno.test("one fill: the command center adds none, in every setup state, for either kind", () => {
+	for (let mask = 0; mask < 1 << TEAM_STEPS.length; mask++) {
+		const team = overviewModel(
+			teamDetail(OWNER, {
+				setup: stepsOf(TEAM_STEPS, mask),
+				payout: PAYOUT,
+				allowance: ALLOWANCE,
+				standing: "New",
+				invites: [SAM_INVITE],
+				engagements: [{ ...engagement("prj-a", "stg-a"), projectStatus: "on_hold" }],
+			}),
+			{ dismissed: false },
+		);
+		assert(team.deck.length > 0 && team.attention.length > 0 && team.cashFlow);
+		assertEquals(filledControls(team), mask === 31 ? 0 : 1, `team mask ${mask}`);
+	}
+	for (let mask = 0; mask < 1 << BUSINESS_STEPS.length; mask++) {
+		for (const dismissed of [false, true]) {
+			// Publish is the last step: once it is done the business is active.
+			const published = (mask & (1 << (BUSINESS_STEPS.length - 1))) !== 0;
+			const biz = overviewModel(
+				bizDetail(BIZ_OWNER, {
+					status: published ? "active" : "draft",
+					setup: bizSteps(mask, BIZ_OWNER),
+					spend: SPEND,
+					viewerCan: VIEWER_CAN,
+				}),
+				{ dismissed },
+			);
+			assert(filledControls(biz) <= 1, `business mask ${mask} dismissed ${dismissed}`);
+		}
+	}
+});
+// #endregion
+
+// #region Money and counts
 Deno.test("money band: BB9's tiles for whoever may open Finance — and only them (BD18, BD19)", () => {
 	const tile = (currency: string, minor: number) => ({
 		currency,

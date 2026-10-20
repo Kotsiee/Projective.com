@@ -1,6 +1,8 @@
 import type {
+	ArchiveChannelInput,
 	ArchiveRoleInput,
 	BusinessBench,
+	CreateChannelInput,
 	CreateWorkspaceInput,
 	HandleCheck,
 	InviteActionInput,
@@ -28,13 +30,16 @@ import { readDetail } from "./live-detail.ts";
 import { readBench } from "./live-bench.ts";
 import { previewSpendEnvelope, previewTeamSplit } from "./live-money.ts";
 import * as writes from "./live-writes.ts";
+import * as channels from "./live-channels.ts";
+import type { ChannelThread } from "./live-channels.ts";
 import { reembedInBackground } from "../search/embedding-sync.ts";
 
 /**
  * WorkspaceBackendService — the FAT half of the multi-member entity console (`/teams`, `/businesses`),
  * per the thin-routes / fat-services contract (root CLAUDE.md §2). It owns the roster read, one
  * entity's full console projection, and every mutation (create · invite · membership · ownership ·
- * roles · payout split · spend governance), each returning a transport-agnostic {@link ServiceResult}.
+ * roles · payout split · spend governance · chat channels), each returning a transport-agnostic
+ * {@link ServiceResult}.
  * Thin routes under `apps/web/routes/api/workspace/*` parse + Zod-validate + delegate here; the console
  * pages call it directly for SSR. Islands never reach it.
  *
@@ -255,6 +260,45 @@ export class WorkspaceBackendService {
 		actor: ReadActor,
 	): Promise<ServiceResult<WorkspaceDetail>> {
 		return guarded("spend-withdraw", actor, (live) => writes.withdrawSpend(input, live));
+	}
+
+	// #endregion
+
+	// #region Channels
+
+	/**
+	 * Add a chat channel (`comms.create_entity_channel`, Decision #306) — any active member of a
+	 * non-archived entity — and answer with the re-read detail, whose `channels` now hold it.
+	 */
+	static createChannel(
+		input: CreateChannelInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<WorkspaceDetail>> {
+		return guarded("channel-create", actor, (live) => channels.createChannel(input, live));
+	}
+
+	/**
+	 * Archive a chat channel (`comms.archive_entity_channel`) — its creator or a `manage_settings`
+	 * holder; never the default one — and answer with the re-read detail.
+	 */
+	static archiveChannel(
+		input: ArchiveChannelInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<WorkspaceDetail>> {
+		return guarded("channel-archive", actor, (live) => channels.archiveChannel(input, live));
+	}
+
+	/**
+	 * One live channel of an entity, by its slug, with the conversation id the `/messages` chat stack
+	 * opens for it. A non-member, an unknown entity and an unknown or archived slug are one `404`.
+	 */
+	static channelThread(
+		kind: WorkspaceKind,
+		handle: string,
+		slug: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<ChannelThread>> {
+		return guarded("channel-thread", actor, (live) => channels.channelThread(kind, handle, slug, live));
 	}
 
 	// #endregion

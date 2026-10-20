@@ -2,7 +2,8 @@ import type { ComponentChildren, JSX, VNode } from "preact";
 import "../styles/form-control.css";
 import { cx } from "../../core/cx.ts";
 import { useId } from "../hooks/useId.ts";
-import { describedBy, fieldIds } from "../core/ids.ts";
+import { fieldIds } from "../core/ids.ts";
+import { formControlRows } from "../core/form-control-model.ts";
 import { AlertMark } from "../components/field-marks.tsx";
 import { HintPopover } from "../../feedback/islands/HintPopover.tsx";
 import type { FieldStatus } from "../types/mod.ts";
@@ -35,6 +36,8 @@ export interface FormControlProps {
 	 * control is locked or empty, an instruction the value must match. Without a label it is inline.
 	 */
 	hintMode?: "popover" | "inline";
+	/** Live text that always shows in the hint row (a character counter); an error replaces it. */
+	note?: string;
 	/** Error message — when present with `status="invalid"` it replaces the hint and colours red. */
 	error?: string;
 	/** Validation status forwarded to the render child. */
@@ -75,6 +78,7 @@ export function FormControl(props: FormControlProps): JSX.Element {
 		label,
 		hint,
 		hintMode = "popover",
+		note,
 		error,
 		status = "default",
 		required,
@@ -84,19 +88,15 @@ export function FormControl(props: FormControlProps): JSX.Element {
 	} = props;
 	const rootId = useId(undefined, "field");
 	const ids = fieldIds(rootId);
-	// `required` is a real invalid state (the RED creation gate), so its message surfaces as an
-	// error too — otherwise the one status that most needs explaining is the one that stays silent.
-	const showError = (status === "invalid" || status === "required") && !!error;
-	const behindHint = hintMode === "popover" && !!label && !!hint;
-	const description = showError ? error : behindHint ? undefined : hint;
-	const descId = showError ? ids.error : hint ? ids.hint : undefined;
+	const rows = formControlRows({ rootId, label, hint, hintMode, note, error, status });
+	const showError = rows.row?.error === true;
 	// The row is rendered even when empty so its height is already accounted for.
 	const reserveHint = !collapseHint;
 
 	const rendered = typeof children === "function"
 		? (children as (a: FormControlRenderArgs) => VNode)({
 			id: rootId,
-			describedBy: describedBy(descId),
+			describedBy: rows.describedBy,
 			status,
 			required,
 			labelId: label ? ids.label : undefined,
@@ -113,14 +113,18 @@ export function FormControl(props: FormControlProps): JSX.Element {
 						{label}
 						{required && <span class="ui-field-label__required" aria-hidden="true">*</span>}
 					</label>
-					{behindHint && <HintPopover label={`About ${label.toLowerCase()}`}>{hint}</HintPopover>}
+					{rows.behindHint && (
+						<HintPopover label={`About ${label.toLowerCase()}`}>{hint}</HintPopover>
+					)}
 				</div>
 			)}
 			<div class="ui-form-control__control">{rendered}</div>
-			{behindHint && !showError && <span id={ids.hint} class="ui-visually-hidden">{hint}</span>}
-			{(description || reserveHint) && (
+			{rows.behindHint && !showError && (
+				<span id={rows.aboutId} class="ui-visually-hidden">{hint}</span>
+			)}
+			{(rows.row || reserveHint) && (
 				<p
-					id={description ? descId : undefined}
+					id={rows.row?.id}
 					class={cx("ui-field-hint", showError && "ui-field-hint--error")}
 					role={showError ? "alert" : undefined}
 				>
@@ -129,7 +133,7 @@ export function FormControl(props: FormControlProps): JSX.Element {
 							<AlertMark />
 						</span>
 					)}
-					{description}
+					{rows.row?.text}
 				</p>
 			)}
 		</div>

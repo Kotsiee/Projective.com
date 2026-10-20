@@ -104,7 +104,9 @@ export type LinkScanStatus = z.infer<typeof LinkScanStatus>;
 /**
  * Which space is being read. `channel` / `project` are the engagement scopes and `conversation` the
  * global-inbox one (all three pre-existing, Decisions #32/#50); `hub` is the personal/entity library
- * at `/files`, `drive` a mounted connector, and `share` the public resolution of a `shareSlug`.
+ * at `/files`, `drive` a mounted connector, `share` the public resolution of a `shareSlug`, and
+ * `workspace` a team's or business's shared drive inside its console (`/teams/{handle}/files`),
+ * addressed by the entity id and answered only for an active member of it (Decision #306).
  */
 export const FileScope = z.enum([
 	"channel",
@@ -113,6 +115,7 @@ export const FileScope = z.enum([
 	"hub",
 	"drive",
 	"share",
+	"workspace",
 ]);
 export type FileScope = z.infer<typeof FileScope>;
 
@@ -334,7 +337,8 @@ export const AssetListParamsSchema = z.object({
 	scope: FileScope,
 	/**
 	 * The scope's subject: a project id (`project`/`channel`), a conversation id (`conversation`), an
-	 * owner id (`hub`), a connection id (`drive`), or a share slug (`share`).
+	 * owner id (`hub`), a connection id (`drive`), a share slug (`share`), or a team / business id
+	 * (`workspace` — a request the server answers only after confirming the caller's active seat).
 	 */
 	subjectId: z.string().max(120).nullable().optional(),
 	channelId: z.string().max(120).nullable().optional(),

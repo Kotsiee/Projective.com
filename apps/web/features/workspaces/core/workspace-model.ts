@@ -68,6 +68,16 @@ export function activeModuleOf(pathname: string): ModuleKey | null {
 }
 
 /**
+ * The channel a console path names — the `[channel]` segment of `/teams/:h/channels/:channel`
+ * (Decision #306) — or `null` off a channel.
+ */
+export function channelSlugOfPath(pathname: string): string | null {
+	if (activeModuleOf(pathname) !== "channels") return null;
+	const raw = pathname.split("/").filter(Boolean)[3];
+	return raw ? decodeSegment(raw) : null;
+}
+
+/**
  * Whether `path` is `base` itself or somewhere beneath it. A bare `startsWith` would count
  * `/teams/north-loop` as inside `/teams/north`, lighting two entity rows at once.
  */

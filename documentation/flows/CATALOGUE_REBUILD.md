@@ -322,7 +322,7 @@ features/catalogue/
 
 | Section | product | one_off (+direct) | pipeline | session | cohort | Writes |
 | :-- | :-: | :-: | :-: | :-: | :-: | :-- |
-| Basics (title, description, CREATE, skills) | ● | ● | ● | ● | ● | `listings.*`, `listing_skills`, `create_category` |
+| Basics (title, CREATE, delivery model, description, skills — #305) | ● | ● | ● | ● | ● | `listings.*`, `listing_skills`, `create_category` |
 | Media showcase | ● | ● | ● | ● | ● | `catalogue.listing_media`, `blueprint.cover_file_id` |
 | Format, licence, attribution, attachments | ● | | | | | `products.format`, `licence`, `attribution_required`, `file_manifest` |
 | Milestones (StageFlow showcase, #45) | | ● | | | | `blueprint.stage_template` |

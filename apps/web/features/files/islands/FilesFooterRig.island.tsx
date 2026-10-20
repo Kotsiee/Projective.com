@@ -27,11 +27,9 @@ import {
 	type AssetOwnerType,
 	type AssetSource,
 	type FileScope,
-	formatMib,
-	MIB,
 	sourceLabel,
-	type UploadTask,
 } from "../types/file-types.ts";
+import { uploadTasksOf } from "../core/upload-tasks.ts";
 
 /**
  * FilesFooterRig — the sticky action bar, and the only place on `/files` anything enters the library.
@@ -118,15 +116,6 @@ interface DriveOffer {
 	slug: string;
 	label: string;
 	source: AssetSource;
-}
-
-/** A client-minted queue key. `randomUUID` needs a secure context, so there is a plain fallback. */
-function queueKey(): string {
-	try {
-		return globalThis.crypto?.randomUUID?.() ?? `q-${Date.now()}-${Math.random().toString(36)}`;
-	} catch {
-		return `q-${Date.now()}-${Math.random().toString(36)}`;
-	}
 }
 
 /** Escape one CSV cell — quote it and double any embedded quote, per RFC 4180. */
@@ -221,24 +210,7 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 	 */
 	function onFilesPicked(list: FileList | null): void {
 		if (!list || list.length === 0) return;
-		const tasks: UploadTask[] = Array.from(list).map((file) => ({
-			id: queueKey(),
-			file,
-			name: file.name,
-			sizeBytes: file.size,
-			sizeLabel: formatMib(file.size / MIB),
-			mimeType: file.type || "application/octet-stream",
-			folderId: folderId.value,
-			phase: "queued",
-			progress: 0,
-			fingerprint: null,
-			verdict: null,
-			resolution: null,
-			assetId: null,
-			ticket: null,
-			error: null,
-		}));
-		enqueueUploads(tasks);
+		enqueueUploads(uploadTasksOf(Array.from(list), folderId.value));
 	}
 
 	async function createFolder(): Promise<void> {

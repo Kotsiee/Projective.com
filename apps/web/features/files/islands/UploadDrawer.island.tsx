@@ -416,6 +416,8 @@ export default function UploadDrawer(props: UploadDrawerProps): JSX.Element {
 			fingerprints,
 			names,
 			folderId: batched[0].folderId,
+			ownerType,
+			ownerId,
 		});
 
 		if (res.ok && res.data) {

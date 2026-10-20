@@ -8,7 +8,9 @@ import {
 import {
 	type ActivityEntry,
 	canActOnSetupStep,
+	type EntityChannel,
 	type IncomingInvite,
+	isChannelSlug,
 	kindCopy,
 	type MemberFace,
 	type SetupStep,
@@ -276,6 +278,18 @@ export interface RawDetail {
 	kyb?: RawKyb | null;
 	/** The viewer's server-decided flags on a business (`null` for a team). */
 	viewer_can?: RawViewerCan | null;
+	/** The live entity channels (`comms.fn_entity_channel_list`, Decision #306). */
+	channels?: RawChannel[] | null;
+}
+
+/** One live entity channel on the detail read (also `comms.create_entity_channel`'s answer). */
+export interface RawChannel {
+	id: string;
+	slug: string;
+	topic: string | null;
+	is_default: boolean;
+	unread: number | string | null;
+	last_activity_at: string | null;
 }
 
 /** Every answer `org.get_workspace_detail` can give. */
@@ -407,6 +421,29 @@ export function toEngagement(
 		stageWi: wiOf(raw.stage_wi),
 		stageCap: cap !== null && cap > 0 ? cap : null,
 	};
+}
+
+// #endregion
+
+// #region Channels
+
+/**
+ * The read's channels, in the read's order (default first, then by slug). A row whose slug breaks the
+ * name rule is dropped rather than shown under a name the database would not have stored.
+ */
+export function toChannels(raw: readonly RawChannel[] | null | undefined): EntityChannel[] {
+	return (raw ?? []).flatMap((c) => {
+		if (!c?.id || !isChannelSlug(c.slug ?? "")) return [];
+		const unread = Math.trunc(Number(c.unread) || 0);
+		return [{
+			id: clamp(c.id, 64),
+			slug: c.slug,
+			topic: c.topic ? clamp(c.topic, 200) : null,
+			isDefault: !!c.is_default,
+			unreadCount: Math.max(0, unread),
+			lastActivityAt: isoOf(c.last_activity_at) || null,
+		}];
+	});
 }
 
 // #endregion

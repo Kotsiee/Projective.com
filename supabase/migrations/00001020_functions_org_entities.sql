@@ -2877,7 +2877,8 @@ $$;
 --   * for either kind, the lifecycle Settings renders before anybody presses anything:
 --     `archive_blockers` — what would refuse an archive now (org.fn_team_archive_blockers /
 --     org.fn_business_archive_blockers), for an `archive_entity` holder only — and `restore_target` —
---     where a restore would land (org.fn_workspace_restore_target), while the entity is archived.
+--     where a restore would land (org.fn_workspace_restore_target), while the entity is archived;
+--   * `channels` — the live entity channels (comms.fn_entity_channel_list, Decision #306).
 -- VOLATILE because the allowance read opens the week and pays out the lazy drip.
 CREATE OR REPLACE FUNCTION org.get_workspace_detail(p_kind text, p_handle text)
 RETURNS jsonb
@@ -3182,6 +3183,9 @@ BEGIN
                 'preview', finance.preview_team_split(v_e.id)
             ) END,
         'allowance', CASE WHEN p_kind = 'team' THEN finance.get_proposal_allowance(v_e.id) END,
+        -- The entity's live channels (Decision #306), default first then by slug, with the viewer's
+        -- unread count and the last message's time — every active member reads them.
+        'channels', comms.fn_entity_channel_list(p_kind, v_e.id, v_uid),
         -- What would refuse an archive right now, for the people who may archive (Settings lists them
         -- before the confirm); `[]` for everybody else.
         'archive_blockers', v_blockers,

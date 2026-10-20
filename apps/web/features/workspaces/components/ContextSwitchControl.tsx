@@ -101,10 +101,11 @@ export interface ContextSwitchControlProps {
 	/** Where to land after switching in. Defaults to this entity's console. */
 	destination?: string;
 	/**
-	 * `block` — the expanded lane's labelled Button. `icon` — the collapsed rail's icon-only Button,
-	 * named by its `aria-label` and a portal Tooltip (§B.6).
+	 * `block` — a labelled Button with its error line beneath. `pill` — the console lane footer's compact
+	 * rounded Button (Decision #306), its error spoken as an alert. `icon` — the collapsed rail's
+	 * icon-only Button, named by its `aria-label` and a portal Tooltip (§B.6).
 	 */
-	variant?: "block" | "icon";
+	variant?: "block" | "pill" | "icon";
 }
 // #endregion
 
@@ -143,6 +144,26 @@ export function ContextSwitchControl(props: ContextSwitchControlProps): JSX.Elem
 						onClick={onClick}
 					/>
 				</Tooltip>
+				{error.value && <span class="ui-visually-hidden" role="alert">{error.value}</span>}
+			</span>
+		);
+	}
+
+	if (props.variant === "pill") {
+		return (
+			<span class="wsp-ctxswitch wsp-ctxswitch--pill" data-kind={props.kind} aria-live="polite">
+				<Button
+					class="ui-hit wsp-ctxswitch__pill"
+					severity="neutral"
+					variant="outlined"
+					size="sm"
+					rounded
+					icon={glyph}
+					loading={busy}
+					label={busy ? copy.busyLabel : copy.label}
+					aria-label={name}
+					onClick={onClick}
+				/>
 				{error.value && <span class="ui-visually-hidden" role="alert">{error.value}</span>}
 			</span>
 		);

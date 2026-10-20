@@ -34,8 +34,8 @@ import { canReadLive, type ReadActor } from "../read-actor.ts";
 /** An actor that can make a live, RLS-scoped call — narrowed by {@link canReadLive}. */
 export type LiveActor = ReadActor & { accessToken: string };
 
-/** The schemas the workspace RPCs live in. */
-export type RpcSchema = "org" | "finance" | "security";
+/** The schemas the workspace RPCs live in (`comms` holds the entity-channel doors, Decision #306). */
+export type RpcSchema = "org" | "finance" | "security" | "comms";
 
 /** The error shape `@supabase/supabase-js` hands back for a failed PostgREST call. */
 export interface DbError {

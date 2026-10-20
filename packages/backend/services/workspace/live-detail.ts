@@ -59,6 +59,7 @@ import {
 	type RawProject,
 	setupSteps,
 	toActivity,
+	toChannels,
 	toEngagement,
 	toOutgoingInvite,
 	toProject,
@@ -78,7 +79,8 @@ import {
  * project's counterparty face, and — for a team — the payout block (`manage_finances` holders only), the
  * live engagements and the proposal allowance; for a business (BB9) the spend block, the per-currency
  * money tiles, the KYB picture and the viewer's server-decided flags; for either kind the archive
- * blockers and, while archived, where a restore lands (Teams C6) — each narrowed in SQL to what the
+ * blockers, the live chat channels with the viewer's unread counts (Decision #306) and, while archived,
+ * where a restore lands (Teams C6) — each narrowed in SQL to what the
  * viewer may see. A non-member is `forbidden`, an unknown reference
  * `not_found`. This module then resolves only what the facts point at through the platform's shared
  * resolvers: the people (ONE `org.get_party_cards` batch), the entity's marks, and the finance tiles
@@ -447,6 +449,7 @@ async function assemble(
 		allowance: kind === "team" ? allowanceOf(raw.allowance) : null,
 		archiveBlockers: archiveBlockersOf(raw.archive_blockers),
 		restoreTarget,
+		channels: toChannels(raw.channels),
 		activity: visibleActivity(raw.activity ?? [], canOpenFinance(kind, viewerCaps)).map((a, i) =>
 			toActivity(a, i, a.actor_user_id ? people.get(a.actor_user_id) : undefined, nowMs)
 		),

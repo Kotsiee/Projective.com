@@ -10,12 +10,23 @@ import {
 	type WorkspaceKind,
 } from "@projective/types/workspace";
 import { walletIntentHref } from "@features/wallet/core/wallet-intent.ts";
+import {
+	type AttentionItem,
+	attentionItems,
+	type CashFlowSource,
+	cashFlowSource,
+	type DeckTile,
+	type OverviewRegion,
+	overviewRegions,
+	telemetryDeck,
+} from "./overview-deck.ts";
 
 /**
  * overview-model — every rule the console's Overview composes, as pure functions over the server's
- * {@link WorkspaceDetail}: the setup hero and its ONE filled control, which zones render, the metric
- * tiles, a business's money band, the projects preview and the activity rows — and the Finance
- * module's balance line, which reads the same tiles.
+ * {@link WorkspaceDetail}: the setup hero and its ONE filled control, which zones render, a business's
+ * money, the projects preview and the activity rows — and the Finance module's balance line, which
+ * reads the same tiles. The command-center regions (Decision #306: the telemetry deck, needs
+ * attention, the cash-flow source and the region layout) are `overview-deck.ts`, composed here.
  *
  * The island only paints what this returns, so the rules the Overview is judged by — exactly one filled
  * control whatever the setup state, no action a viewer cannot perform, no money for a viewer the read
@@ -194,28 +205,7 @@ function heroHasOpen(hero: SetupHeroModel | null, id: SetupStepId): boolean {
 }
 // #endregion
 
-// #region Metrics
-/** A count tile. */
-export interface CountMetric {
-	type: "count";
-	key: string;
-	label: string;
-	value: number;
-	caption: string | null;
-}
-
-/** A money tile — drawn through `MoneyView`, never formatted here. */
-export interface MoneyMetric {
-	type: "money";
-	key: string;
-	label: string;
-	money: { minor: number; currency: string };
-	caption: string | null;
-}
-
-/** One StatTile. */
-export type OverviewMetric = CountMetric | MoneyMetric;
-
+// #region Money and counts
 /**
  * How many projects are live: a team's distinct projects among its live engagements (B7 — assignments
  * not handed back, on an active or on-hold project); a business's commissioned projects in delivery.
@@ -223,64 +213,6 @@ export type OverviewMetric = CountMetric | MoneyMetric;
 export function liveProjectCount(detail: WorkspaceDetail): number {
 	if (detail.kind === "team") return new Set(detail.engagements.map((e) => e.projectSlug)).size;
 	return detail.projects.filter((p) => p.state === "active").length;
-}
-
-/**
- * The metric row. Members and live projects for everyone; a team's vault only where the read answered
- * it (the payout block, `manage_finances` holders — Decision #233) and its proposal allowance (B7); a
- * business's proposals still awaiting a reply. A business's money is not a tile here: it is its own
- * band ({@link businessMoney}), BB9's tiles per wallet currency.
- */
-export function overviewMetrics(detail: WorkspaceDetail): OverviewMetric[] {
-	const members = detail.members.filter((m) => m.state === "active").length;
-	const invites = detail.invites.length;
-	const metrics: OverviewMetric[] = [
-		{
-			type: "count",
-			key: "members",
-			label: "Members",
-			value: members,
-			caption: invites > 0 ? `${invites} invitation${invites === 1 ? "" : "s"} out` : null,
-		},
-		{
-			type: "count",
-			key: "live",
-			label: "Live projects",
-			value: liveProjectCount(detail),
-			caption: detail.kind === "team" ? "In delivery" : "Commissioned",
-		},
-	];
-	if (detail.payout) {
-		metrics.push({
-			type: "money",
-			key: "vault",
-			label: "Vault available",
-			money: { minor: detail.payout.availableMinor, currency: detail.payout.currency },
-			caption: "Ready to distribute or withdraw",
-		});
-	}
-	const proposals = detail.kind === "business"
-		? detail.projects.filter((p) => p.state === "proposal").length
-		: 0;
-	if (proposals > 0) {
-		metrics.push({
-			type: "count",
-			key: "proposals",
-			label: "Proposals out",
-			value: proposals,
-			caption: "Awaiting a reply",
-		});
-	}
-	if (detail.allowance) {
-		metrics.push({
-			type: "count",
-			key: "allowance",
-			label: "Proposals left",
-			value: detail.allowance.weeklyRemaining,
-			caption: `of ${detail.allowance.weeklyGranted} this week`,
-		});
-	}
-	return metrics;
 }
 
 /** A business's money band: BB9's tiles and the hand-off to its pooled wallet. */
@@ -466,9 +398,16 @@ export interface OverviewModel {
 	 * paint instead of popping in once the island has read their choice.
 	 */
 	standIn: { lock: boolean; propose: ProposeNotice | null; draft: DraftNotice | null };
-	metrics: OverviewMetric[];
-	/** A business's money band ({@link businessMoney}); `null` for a team or a viewer who cannot open Finance. */
+	/** The telemetry deck ({@link telemetryDeck}) — only tiles the read has a source for. */
+	deck: DeckTile[];
+	/** A business's money ({@link businessMoney}) — the deck's wallet tiles; `null` for a team or a viewer who cannot open Finance. */
 	money: BusinessMoneyBand | null;
+	/** What is waiting on somebody here ({@link attentionItems}). */
+	attention: AttentionItem[];
+	/** Where the 30-day cash flow is read from, or `null` for a viewer who may not see the money. */
+	cashFlow: CashFlowSource | null;
+	/** The regions under the deck, in reading order ({@link overviewRegions}). */
+	regions: OverviewRegion[];
 	projects: PreviewRow[];
 	/** The Projects module, for "See all". */
 	projectsHref: string;
@@ -537,6 +476,8 @@ export function overviewModel(
 	});
 	const shown = notices(detail, hero);
 	const away = hero ? notices(detail, null) : shown;
+	const money = businessMoney(detail);
+	const cashFlow = cashFlowSource(detail);
 	return {
 		hero,
 		lock: shown.lock,
@@ -547,8 +488,11 @@ export function overviewModel(
 			propose: shown.propose ? null : away.propose,
 			draft: shown.draft ? null : away.draft,
 		},
-		metrics: overviewMetrics(detail),
-		money: businessMoney(detail),
+		deck: telemetryDeck(detail, money),
+		money,
+		attention: attentionItems(detail),
+		cashFlow,
+		regions: overviewRegions(cashFlow !== null),
 		projects: projectPreview(detail),
 		projectsHref: workspaceHref(detail.kind, detail.handle, "projects"),
 		activity: activityRows(detail.activity),
@@ -558,9 +502,10 @@ export function overviewModel(
 /**
  * How many FILLED controls the Overview renders: the hero's one, or — only while no hero is showing
  * Publish — a draft business's notice's tier-3 Publish for a viewer who may publish. Everything else
- * is quieter: the other notices act through a link-weight control, the money band's wallet hand-off
- * is a link, the projects and activity rows are links, "See all" is tier 5 and the dismiss is an
- * icon-only text button. Held to at most one.
+ * is quieter: the other notices act through a link-weight control, the deck carries no control, the
+ * attention items, projects and activity rows are links, the cash flow's wallet hand-off is a link
+ * and its Try again a tier-4 utility, "See all" is tier 5 and the dismiss is an icon-only text
+ * button. Held to at most one.
  */
 export function filledControls(model: OverviewModel): number {
 	const hero = model.hero?.steps.filter((s) => s.action?.filled).length ?? 0;

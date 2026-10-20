@@ -20,7 +20,7 @@ import { downloadObject, removeObjects, signedUploadUrl, uploadObject } from "..
 import type { ReadActor } from "../read-actor.ts";
 import { imageEnvelope, objectName, writeTiers } from "../media/library.ts";
 import { MediaPipeline } from "../media/pipeline.ts";
-import { dedupVerdicts, type FilesOwner, mayFileInto, readAsset, readQuota } from "./live-library.ts";
+import { canFileInto, dedupVerdicts, type FilesOwner, readAsset, readQuota } from "./live-library.ts";
 
 /**
  * live-uploads — the `/files` hub's upload handshake, live: declare → PUT → complete.
@@ -80,14 +80,14 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
 // #region Init
 
 /**
- * Declare an upload into the acting library and answer with a scoped ticket.
+ * Declare an upload into a library the caller holds and answer with a scoped ticket.
  *
  * The allowance is METERED here: over it, the upload is refused only once the platform enforces
  * storage quotas (fail-open until a human flips `storage_quota_enforced`), and otherwise warned about.
  */
 export async function initUpload(actor: Actor, input: UploadInit): Promise<Result<UploadTicket>> {
 	const owner: FilesOwner = { ownerType: input.ownerType, ownerId: input.ownerId };
-	if (!mayFileInto(actor, owner)) return { ok: false, status: 403, message: DENIED_OWNER };
+	if (!(await canFileInto(actor, owner))) return { ok: false, status: 403, message: DENIED_OWNER };
 	const limit = maxBytesFor(owner);
 	if (input.sizeBytes > limit) {
 		return { ok: false, status: 422, message: `This file is larger than ${mib(limit)}.`, errors: { file: "too_large" } };

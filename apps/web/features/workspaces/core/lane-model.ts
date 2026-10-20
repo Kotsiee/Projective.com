@@ -1,3 +1,4 @@
+import type { VNode } from "preact";
 import type { MetaLineEntry } from "@ui/display/core/meta-line.tsx";
 import {
 	type IncomingInvite,
@@ -11,9 +12,12 @@ import {
 	type WorkspaceSummary,
 } from "@projective/types/workspace";
 import {
+	type HubKey,
+	hubOf,
+	hubsForViewer,
+	mayViewModule,
 	type ModuleKey,
-	primaryModules,
-	secondaryModules,
+	type ViewerHub,
 	type WorkspaceModule,
 } from "./module-registry.tsx";
 import {
@@ -30,34 +34,35 @@ import { inviteOpensInPlace, rosterCreateNote } from "./rig-model.ts";
 
 /**
  * lane-model — the workspace lane's composition as a pure function of what the viewer is looking at
- * (Teams work order L1).
+ * (Teams work order L1; the console zones of Decision #306).
  *
  * The lane has exactly four zones, top to bottom, and the same order is its Tab order:
  *
- *   1. **Header strip** — on the roster index the kind's title and a count line; inside a console the
- *      entity's mark, name, `@handle` and lifecycle `Tag`, and the acting switch.
- *   2. **Primary views** — the viewer's entities (owned first) on the index; inside a console the
- *      registry's primary modules in order, then a "More" section holding every other module the
- *      viewer may open.
+ *   1. **Header strip** — on the roster index the kind's title, a count line and the find-in-lane
+ *      search; inside a console Back, the entity's mark, name, `@handle`, verification crest and
+ *      lifecycle `Tag`, its kebab (`ActionMenu`), and the search over views, channels, projects and
+ *      members — at the top, as `/projects` and `/messages` place theirs.
+ *   2. **Views** — the viewer's entities (owned first) on the index; inside a console the registry's
+ *      hubs in labelled sections: Core operations, Channels (the read's entity channels and a create),
+ *      then Governance.
  *   3. **Context controls** — only when the current view has something to partition; otherwise the
  *      zone does not exist, so the lane never draws an empty band.
- *   4. **Docked footer rig** — at most ONE create action (the tier-2 `LaneCreateButton`): "New team"
- *      on the index, "Invite member" inside a console for an `invite_members` holder, and nothing at
- *      all for anybody else — never a control that cannot act. A roster the viewer may not add to says
- *      why in its place, as one line of meta text. In the roster's FIRST RUN the rig holds neither:
- *      the canvas's empty state carries the one structural create (and the plan's reason when there
- *      is none), so the page still has exactly one (Teams R1). Below `--bp-md` the frame hides the
- *      lane, and the roster's footer rig takes over this zone's create, or its reason; beside the
- *      collapsed rail, which draws the create but no reason, the rig says the reason
- *      (`rig-model.ts`, Decision #245 (k)).
+ *   4. **Docked footer rig** — on the index at most ONE create action (the tier-2 `LaneCreateButton`
+ *      "New team"), never a control that cannot act; a roster the viewer may not add to says why in
+ *      its place, as one line of meta text. In the roster's FIRST RUN the rig holds neither: the
+ *      canvas's empty state carries the one structural create (Teams R1). Below `--bp-md` the frame
+ *      hides the lane, and the roster's footer rig takes over this zone's create, or its reason
+ *      (`rig-model.ts`, Decision #245 (k)). Inside a console the rig is the acting switch as a pill,
+ *      then the circular icon-only Invite member (for an `invite_members` holder) and Settings (for a
+ *      viewer who may open a Settings hub module).
  *
  * Everything that decides those zones lives here and nowhere in the island, so the expanded lane, the
  * collapsed rail and the tests all read one answer. The capabilities are always the server-resolved
- * `viewerCapabilities`, and the module lists are the registry's own `primaryModules` /
- * `secondaryModules` — this file adds an order and a shape, never a second permission rule.
+ * `viewerCapabilities`, and the hubs are the registry's own `hubsForViewer` — this file adds an order
+ * and a shape, never a second permission rule.
  *
  * Pure: no signals, no DOM, no storage access. Teams and Businesses share it (Decision #61); the only
- * kind-specific facts are the registry's primary sets (Decision #228 (C) · #232) and the copy table.
+ * kind-specific facts are the registry's hubs and the copy table.
  */
 
 // #region Vocabulary
@@ -70,13 +75,21 @@ export interface LaneOption {
 	label: string;
 }
 
-/** Z1 on the roster index: the title register and a count line. */
+/** The find-in-lane field the header strip carries. */
+export interface LaneSearchCopy {
+	/** The field's accessible name. */
+	label: string;
+	placeholder: string;
+}
+
+/** Z1 on the roster index: the title register, a count line and the search. */
 export interface RosterHeaderZone {
 	mode: "roster";
 	/** The kind's plural ("Teams") — set in the title register. */
 	title: string;
 	/** `3 teams · 1 invitation` — every figure tabular; the invitation part only when one is waiting. */
 	meta: MetaLineEntry[];
+	search: LaneSearchCopy;
 }
 
 /**
@@ -107,7 +120,9 @@ export interface ConsoleHeaderZone {
 	/** The way back to the roster index. */
 	back: { href: string; label: string };
 	status: LaneStatusTag;
-	switchControl: ContextSwitchCopy;
+	/** The kebab's accessible name ("Team actions"). */
+	menuLabel: string;
+	search: LaneSearchCopy;
 }
 
 /** Z2 on the roster index — its rows come from {@link laneRosterList}. */
@@ -115,17 +130,51 @@ export interface RosterViewsZone {
 	mode: "roster";
 }
 
+/** One hub as a lane row: where it links, whether it is current, and the modules its signal folds. */
+export interface LaneHubRow {
+	key: HubKey;
+	label: string;
+	glyph: VNode;
+	/** The first module of the hub the viewer may open. */
+	href: string;
+	/** Whether the module being rendered belongs to it. */
+	active: boolean;
+	/** The modules the viewer may open in it — what {@link hubSignal} folds. */
+	modules: readonly Pick<WorkspaceModule, "key">[];
+	/** One line for the collapsed rail's tooltip. */
+	blurb: string;
+}
+
+/** A labelled section of hub rows. */
+export interface LaneHubSection {
+	id: "operations" | "governance";
+	/** The section header, in the lane's section register. */
+	label: string;
+	rows: LaneHubRow[];
+}
+
+/** The Channels section: the entity's channels come from the read; the zone says where they live. */
+export interface LaneChannelsZone {
+	label: string;
+	/** `/teams/:h/channels` — a channel's address is this plus `/<slug>`. */
+	base: string;
+	/** The channel being rendered, or `null`. */
+	active: string | null;
+	/** The create control's words — every active member of a live entity may add a channel. */
+	createLabel: string;
+	/** Whether a channel may be created here: not on an archived entity. */
+	canCreate: boolean;
+}
+
 /** Z2 inside a console. */
 export interface ConsoleViewsZone {
 	mode: "console";
-	/** The registry's primary views the viewer may open, in their order. */
-	primary: WorkspaceModule[];
-	/** Every other module the viewer may open, in registry order — the "More" section. */
-	more: WorkspaceModule[];
-	/** The module being rendered, or `null` when the path names none. */
-	active: ModuleKey | null;
-	/** Whether the active module sits in "More" — the section then opens so the reader can see where they are. */
-	activeInMore: boolean;
+	/** Core operations, then Governance — sections with no row are left out. */
+	sections: LaneHubSection[];
+	/** `null` when the viewer may not open Channels (never, today — it is permissionless). */
+	channels: LaneChannelsZone | null;
+	/** The hub being rendered, or `null` on a channel or a path naming none. */
+	activeHub: HubKey | null;
 }
 
 /** Which view a Z3 control partitions. */
@@ -169,25 +218,37 @@ export interface LaneFooterZone {
 	note: string | null;
 }
 
+/** Z4 inside a console: the acting switch, then the two circular utilities. */
+export interface ConsoleFooterZone extends LaneFooterZone {
+	/** The acting switch, drawn as a compact pill. */
+	actAs: ContextSwitchCopy;
+	/** Invite member, for an `invite_members` holder only. */
+	invite: Extract<LaneCreate, { action: "invite" }> | null;
+	/** The Settings hub, for a viewer who may open one of its modules. */
+	settings: LaneHubRow | null;
+}
+
 /** The whole lane. */
 export interface LaneZones {
 	header: RosterHeaderZone | ConsoleHeaderZone;
 	views: RosterViewsZone | ConsoleViewsZone;
 	/** `null` when the view has no context controls — Z3 is then not drawn at all. */
 	context: LaneContextZone | null;
-	footer: LaneFooterZone;
+	footer: LaneFooterZone | ConsoleFooterZone;
 }
 
 /** The roster index's lane. */
 export interface RosterLaneZones extends LaneZones {
 	header: RosterHeaderZone;
 	views: RosterViewsZone;
+	footer: LaneFooterZone;
 }
 
 /** A console's lane. */
 export interface ConsoleLaneZones extends LaneZones {
 	header: ConsoleHeaderZone;
 	views: ConsoleViewsZone;
+	footer: ConsoleFooterZone;
 }
 
 /** The roster index's lane inputs. */
@@ -227,6 +288,8 @@ export interface ConsoleLaneInput {
 	 * `chart`).
 	 */
 	subView: string | null;
+	/** The channel being rendered (its slug) on a `channels` route, else `null`/absent. */
+	channel?: string | null;
 }
 // #endregion
 
@@ -276,36 +339,85 @@ export function laneZones(input: RosterLaneInput | ConsoleLaneInput): LaneZones 
 			});
 		}
 		return {
-			header: { mode: "roster", title: copy.Plural, meta },
+			header: {
+				mode: "roster",
+				title: copy.Plural,
+				meta,
+				search: { label: `Search ${copy.plural}`, placeholder: `Find a ${copy.noun}…` },
+			},
 			views: { mode: "roster" },
 			context: {
 				control: "roster",
 				label: `Show ${copy.plural}`,
 				options: [...ROSTER_PARTITIONS],
-				search: true,
+				search: false,
 			},
 			footer: rosterFooter(input),
 		};
 	}
 
-	const primary = primaryModules(input.kind, input.capabilities);
-	const more = secondaryModules(input.kind, input.capabilities);
+	const rows = hubRows(input);
+	const sections: LaneHubSection[] = [
+		{ id: "operations" as const, label: "Core operations", rows: rows.operations },
+		{ id: "governance" as const, label: "Governance", rows: rows.governance },
+	].filter((s) => s.rows.length > 0);
+	const onChannel = input.module === "channels";
 	return {
 		header: {
 			mode: "console",
 			back: { href: copy.base, label: `Back to all ${copy.plural}` },
 			status: statusTag(input.status),
-			switchControl: contextSwitchCopy(input.kind, input.name, input.acting),
+			menuLabel: `${copy.Noun} actions`,
+			search: {
+				label: `Search ${input.name}`,
+				placeholder: "Find views, channels, people…",
+			},
 		},
 		views: {
 			mode: "console",
-			primary,
-			more,
-			active: input.module,
-			activeInMore: more.some((m) => m.key === input.module),
+			sections,
+			channels: mayViewModule("channels", input.kind, input.capabilities)
+				? {
+					label: "Channels",
+					base: workspaceHref(input.kind, input.handle, "channels"),
+					active: onChannel ? (input.channel ?? null) : null,
+					createLabel: "New channel",
+					canCreate: input.status !== "archived",
+				}
+				: null,
+			activeHub: onChannel ? null : hubOf(input.module)?.key ?? null,
 		},
 		context: consoleContext(input),
-		footer: { create: consoleCreate(input), note: null },
+		footer: {
+			create: null,
+			note: null,
+			actAs: contextSwitchCopy(input.kind, input.name, input.acting),
+			invite: consoleInvite(input),
+			settings: rows.settings,
+		},
+	};
+}
+
+/** The viewer's hubs as lane rows, split by zone; the footer's Settings is the one footer hub. */
+function hubRows(
+	input: ConsoleLaneInput,
+): { operations: LaneHubRow[]; governance: LaneHubRow[]; settings: LaneHubRow | null } {
+	const active = input.module === "channels" ? null : hubOf(input.module)?.key ?? null;
+	const toRow = (hub: ViewerHub): LaneHubRow => ({
+		key: hub.hub.key,
+		label: hub.label,
+		glyph: hub.hub.glyph,
+		href: workspaceHref(input.kind, input.handle, hub.modules[0].key),
+		active: hub.hub.key === active,
+		modules: hub.modules.map((m) => ({ key: m.key })),
+		blurb: hub.hub.blurb,
+	});
+	const hubs = hubsForViewer(input.kind, input.capabilities);
+	const settings = hubs.find((h) => h.hub.zone === "footer");
+	return {
+		operations: hubs.filter((h) => h.hub.zone === "operations").map(toRow),
+		governance: hubs.filter((h) => h.hub.zone === "governance").map(toRow),
+		settings: settings ? toRow(settings) : null,
 	};
 }
 
@@ -344,8 +456,8 @@ function consoleContext(input: ConsoleLaneInput): LaneContextZone | null {
 	return null;
 }
 
-/** The console's one create action — Invite member, for an `invite_members` holder only. */
-function consoleCreate(input: ConsoleLaneInput): LaneCreate | null {
+/** The footer's Invite member, for an `invite_members` holder only. */
+function consoleInvite(input: ConsoleLaneInput): Extract<LaneCreate, { action: "invite" }> | null {
 	if (!input.capabilities.includes("invite_members")) return null;
 	return {
 		action: "invite",
@@ -521,64 +633,130 @@ export function signalLabel(signal: ModuleSignal | undefined): string | null {
 	return signal.dot ? "needs attention" : null;
 }
 
-/** Whether any module in a group carries a mark — the collapsed "More" header shows a dot then. */
+/** Whether any module in a group carries a mark. */
 export function groupHasSignal(
 	modules: readonly Pick<WorkspaceModule, "key">[],
 	signals: ModuleSignals,
 ): boolean {
 	return modules.some((m) => signalLabel(signals[m.key]) !== null);
 }
+
+/**
+ * A hub row's mark — its modules' marks folded: the queues' counts summed, else a dot when any module
+ * wants attention, else none.
+ */
+export function hubSignal(
+	modules: readonly Pick<WorkspaceModule, "key">[],
+	signals: ModuleSignals,
+): ModuleSignal | undefined {
+	const count = modules.reduce((sum, m) => sum + (signals[m.key]?.count ?? 0), 0);
+	if (count > 0) return { count };
+	return modules.some((m) => signals[m.key]?.dot) ? { dot: true } : undefined;
+}
+
+/** A channel's unread mark — a plain count, folded into the row's accessible name. */
+export function channelUnreadLabel(unread: number): string | null {
+	if (unread <= 0) return null;
+	return `${unread} unread`;
+}
 // #endregion
 
-// #region "More" open state
-/**
- * The "More" memory is ONE `localStorage` value (`LocalKeys.WORKSPACE_LANE_MORE`) holding a JSON map
- * from a partition to `true` (open) or `false` (closed). The `StorageKey` union is closed, so a
- * per-viewer key literal cannot be minted; the partition lives inside the value instead (the projects
- * filter cache's pattern), and the island reads and writes it through the SSR-safe `readStored` /
- * `writeStored` accessors.
- */
-type MoreMemory = Record<string, boolean>;
-
-/**
- * The partition that remembers whether one viewer keeps "More" open on one kind's consoles. The viewer
- * is their `@handle` when the console carries it, else their member id.
- */
-export function laneMorePartition(kind: WorkspaceKind, viewer: string): string {
-	return `${kind}.${viewer}`;
+// #region Console search
+/** One search hit. */
+export interface LaneSearchHit {
+	key: string;
+	label: string;
+	/** One line of context in the meta register, or `null`. */
+	meta: string | null;
+	href: string;
 }
 
-/** The stored map, or an empty one for anything unset, unparsable or not a map of booleans. */
-function readMoreMemory(raw: string | null): MoreMemory {
-	if (!raw) return {};
-	try {
-		const parsed: unknown = JSON.parse(raw);
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-		const out: MoreMemory = {};
-		for (const [key, value] of Object.entries(parsed)) {
-			if (typeof value === "boolean") out[key] = value;
-		}
-		return out;
-	} catch {
-		return {};
-	}
+/** The hits by kind, in lane order; a group with no hit is left out. */
+export interface LaneSearchGroup {
+	id: "views" | "channels" | "projects" | "people";
+	label: string;
+	hits: LaneSearchHit[];
 }
 
-/** One partition's remembered "More" state from the stored value: open, closed, or unknown (`null`). */
-export function parseMoreOpen(raw: string | null, partition: string): boolean | null {
-	return readMoreMemory(raw)[partition] ?? null;
+/** What the console search reads — the lane's own rows and the console read's lists. */
+export interface LaneSearchSources {
+	rows: readonly Pick<LaneHubRow, "key" | "label" | "href" | "blurb">[];
+	channels: readonly { slug: string; topic: string | null }[];
+	channelBase: string | null;
+	projects: readonly { id: string; title: string; href: string; counterparty: string }[];
+	people: readonly { id: string; name: string; handle: string }[];
+	/** The Members module, where a person's hit opens their drawer; `null` when not openable. */
+	membersHref: string | null;
 }
 
-/** The stored value with one partition's "More" state set — every other partition kept as it was. */
-export function withMoreOpen(raw: string | null, partition: string, open: boolean): string {
-	return JSON.stringify({ ...readMoreMemory(raw), [partition]: open });
+/** How many hits a group shows. */
+export const SEARCH_GROUP_LIMIT = 5;
+
+/** How long the typeahead waits after the last keystroke before it filters, in ms. */
+export const SEARCH_DEBOUNCE_MS = 150;
+
+/** Whether `needle` occurs in any of `fields`, ignoring case. */
+function matches(needle: string, ...fields: (string | null | undefined)[]): boolean {
+	return fields.some((f) => !!f && f.toLowerCase().includes(needle));
 }
 
 /**
- * Whether "More" opens. Collapsed by default; a viewer's remembered choice wins; and it always opens
- * onto the module being rendered, so the current place is never hidden inside a closed section.
+ * The console search — views, channels, projects and people whose name (or handle, topic,
+ * counterparty) contains the query, each group capped at {@link SEARCH_GROUP_LIMIT}. `null` while the
+ * query is blank: the lane then shows its zones.
  */
-export function initialMoreOpen(stored: boolean | null, activeInMore: boolean): boolean {
-	return activeInMore || stored === true;
+export function consoleSearch(query: string, sources: LaneSearchSources): LaneSearchGroup[] | null {
+	const needle = query.trim().toLowerCase();
+	if (!needle) return null;
+	const cap = <T>(list: T[]): T[] => list.slice(0, SEARCH_GROUP_LIMIT);
+	const groups: LaneSearchGroup[] = [
+		{
+			id: "views",
+			label: "Views",
+			hits: cap(sources.rows.filter((r) => matches(needle, r.label, r.blurb))).map((r) => ({
+				key: `view:${r.key}`,
+				label: r.label,
+				meta: null,
+				href: r.href,
+			})),
+		},
+		{
+			id: "channels",
+			label: "Channels",
+			hits: sources.channelBase
+				? cap(sources.channels.filter((c) => matches(needle, c.slug, c.topic))).map((c) => ({
+					key: `channel:${c.slug}`,
+					label: `# ${c.slug}`,
+					meta: c.topic,
+					href: `${sources.channelBase}/${encodeURIComponent(c.slug)}`,
+				}))
+				: [],
+		},
+		{
+			id: "projects",
+			label: "Projects",
+			hits: cap(sources.projects.filter((p) => matches(needle, p.title, p.counterparty))).map((
+				p,
+			) => ({
+				key: `project:${p.id}`,
+				label: p.title,
+				meta: p.counterparty || null,
+				href: p.href,
+			})),
+		},
+		{
+			id: "people",
+			label: "People",
+			hits: sources.membersHref
+				? cap(sources.people.filter((m) => matches(needle, m.name, m.handle))).map((m) => ({
+					key: `person:${m.id}`,
+					label: m.name,
+					meta: `@${m.handle}`,
+					href: `${sources.membersHref}?member=${encodeURIComponent(m.handle)}`,
+				}))
+				: [],
+		},
+	];
+	return groups.filter((g) => g.hits.length > 0);
 }
 // #endregion

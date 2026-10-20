@@ -1,0 +1,398 @@
+/*
+ * workspace-overview — the Overview's command center (Decision #306): the telemetry deck, the
+ * needs-attention list, the 30-day cash flow and the twelve-column region grid they sit on.
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY. Nothing here is boxed: tiles part by one
+ * block-start hairline and spacing, regions by `--space-7` above a header and `--space-3` below it
+ * with one hairline where two regions meet (§B.4) — no fill, no border, no shadow on static content.
+ * Columns follow the grid's own width (`@container wsp-ovgrid`), because the lane decides how wide the
+ * canvas is, not the viewport.
+ */
+
+/* #region Telemetry deck */
+.wsp-deck {
+	--wsp-deck-rung-h: 4px;
+	margin: 0;
+}
+
+.wsp-deck__tile {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	padding-block-start: var(--space-3);
+	border-block-start: var(--hairline);
+}
+
+.wsp-deck__label {
+	margin: 0;
+	font-size: var(--wsp-fs-label);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--wsp-label-track);
+	text-transform: uppercase;
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+}
+
+.wsp-deck__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+	min-inline-size: 0;
+}
+
+.wsp-deck__readout {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.wsp-deck__gauge {
+	flex: none;
+}
+
+.wsp-deck__gauge .ui-progress-ring__label {
+	font-size: var(--text-2xs);
+	font-variant-numeric: tabular-nums;
+}
+
+.wsp-deck__line {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-1) var(--space-2);
+	margin: 0;
+	min-inline-size: 0;
+}
+
+.wsp-deck__figure {
+	font-size: var(--text-2xl);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
+	overflow-wrap: anywhere;
+}
+
+.wsp-deck__unit {
+	font-size: var(--text-sm);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.wsp-deck__rungs {
+	display: flex;
+	gap: var(--space-1);
+}
+
+.wsp-deck__rung {
+	inline-size: var(--space-6);
+	block-size: var(--wsp-deck-rung-h);
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+}
+
+.wsp-deck__rung[data-on] {
+	background: var(--wsp-kind);
+}
+
+.wsp-deck__facts {
+	font-variant-numeric: tabular-nums;
+}
+
+/* #endregion */
+
+/* #region The region grid */
+.wsp-ovgrid {
+	container: wsp-ovgrid / inline-size;
+	min-inline-size: 0;
+}
+
+.wsp-ovgrid__grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	column-gap: var(--space-7);
+}
+
+.wsp-ovgrid__region {
+	container: wsp-ovregion / inline-size;
+	grid-column: 1 / -1;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+	padding-block-start: var(--space-7);
+}
+
+.wsp-ovgrid__region:first-child {
+	padding-block-start: 0;
+}
+
+.wsp-ovgrid__region + .wsp-ovgrid__region {
+	border-block-start: var(--hairline);
+}
+
+.wsp-ovgrid__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-3);
+	min-block-size: var(--space-6);
+}
+
+.wsp-ovgrid__meta {
+	font-size: var(--wsp-fs-label);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.wsp-ovgrid__link {
+	margin-inline-start: auto;
+}
+
+@container wsp-ovgrid (min-width: 52rem) {
+	.wsp-ovgrid__grid {
+		grid-template-columns: repeat(12, minmax(0, 1fr));
+	}
+
+	.wsp-ovgrid__region[data-span="4"] {
+		grid-column: span 4;
+	}
+
+	.wsp-ovgrid__region[data-span="6"] {
+		grid-column: span 6;
+	}
+
+	.wsp-ovgrid__region[data-span="8"] {
+		grid-column: span 8;
+	}
+
+	.wsp-ovgrid__region[data-row="0"] {
+		padding-block-start: 0;
+		border-block-start: none;
+	}
+
+	.wsp-ovgrid__region[data-col="end"] {
+		margin-inline-start: calc(-1 * var(--space-7) / 2);
+		padding-inline-start: calc(var(--space-7) / 2);
+		border-inline-start: var(--hairline);
+	}
+}
+
+/* #endregion */
+
+/* #region Needs attention */
+.wsp-attn {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	min-inline-size: 0;
+	list-style: none;
+}
+
+.wsp-attn__item {
+	min-inline-size: 0;
+}
+
+.wsp-attn__item + .wsp-attn__item {
+	border-block-start: var(--hairline);
+}
+
+.wsp-attn__row {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: center;
+	gap: var(--space-3);
+	min-block-size: var(--wsp-rowh-dense);
+	padding: var(--space-2);
+	border-radius: var(--radius-base);
+	color: inherit;
+	text-decoration: none;
+	transform: scale(1);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.wsp-attn__row:hover {
+	background: var(--surface-2);
+}
+
+.wsp-attn__row:active {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+.wsp-attn__mark {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: var(--space-6);
+	block-size: var(--space-6);
+	color: var(--text-secondary);
+	line-height: 0;
+}
+
+.wsp-attn__row[data-kind="approvals"] .wsp-attn__mark {
+	color: var(--on-surface);
+}
+
+.wsp-attn__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	min-inline-size: 0;
+}
+
+.wsp-attn__text {
+	font-size: var(--wsp-fs-body);
+	line-height: var(--leading-snug);
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
+	overflow-wrap: anywhere;
+}
+
+/* #endregion */
+
+/* #region Cash flow */
+/*
+ * The panel reserves its block size before the read lands, so the skeleton, the chart, the empty
+ * sentence and a refusal all occupy the same box and nothing below it moves. The three series are the
+ * wallet's: money in on the success ramp, money out a neutral grey, net in full ink — told apart by
+ * lightness and by form (two washes, one line), never by hue alone.
+ */
+.wsp-flow {
+	--wsp-flow-in: var(--success);
+	--wsp-flow-out: var(--outline);
+	--wsp-flow-net: var(--on-surface);
+	--wsp-flow-chart-h: 12rem;
+	--wsp-flow-min: 21rem;
+	display: flex;
+	flex-direction: column;
+	min-block-size: var(--wsp-flow-min);
+	min-inline-size: 0;
+}
+
+.wsp-flow__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	min-inline-size: 0;
+}
+
+.wsp-flow__totals {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3) var(--space-6);
+	margin: 0;
+}
+
+.wsp-flow__total {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.wsp-flow__term {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.wsp-flow__figure {
+	margin: 0;
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
+}
+
+.wsp-flow__key {
+	flex: none;
+	inline-size: var(--space-3);
+	block-size: var(--space-3);
+	border-radius: var(--radius-xs);
+	background: var(--wsp-flow-in);
+}
+
+.wsp-flow__key--out {
+	background: var(--wsp-flow-out);
+}
+
+.wsp-flow__plot {
+	min-inline-size: 0;
+}
+
+.wsp-flow__plot .ui-chart {
+	--ui-chart-1: var(--wsp-flow-in);
+	--ui-chart-2: var(--wsp-flow-out);
+	--ui-chart-3: var(--wsp-flow-net);
+	--ui-chart-h: var(--wsp-flow-chart-h);
+}
+
+.wsp-flow__skeleton {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.wsp-flow__skeleton-totals {
+	display: flex;
+	gap: var(--space-6);
+}
+
+.wsp-flow__skeleton-figure {
+	--skeleton-width: var(--space-8);
+	--skeleton-height: var(--text-2xl);
+}
+
+.wsp-flow__skeleton-plot {
+	--skeleton-height: var(--wsp-flow-chart-h);
+	flex: 1 1 auto;
+}
+
+.wsp-flow__state {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	align-items: flex-start;
+	justify-content: center;
+	gap: var(--space-3);
+}
+
+/* A narrow region wraps the three totals onto more lines, so it reserves the taller block. */
+@container wsp-ovregion (max-width: 30rem) {
+	.wsp-flow {
+		--wsp-flow-min: 24rem;
+	}
+}
+
+/* #endregion */
+
+/* #region Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	.wsp-attn__row {
+		transition: none;
+	}
+
+	.wsp-attn__row:active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .wsp-attn__row {
+	transition: none;
+}
+
+:root[data-motion="reduced"] .wsp-attn__row:active {
+	transform: none;
+}
+
+/* #endregion */

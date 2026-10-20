@@ -29,8 +29,12 @@ import { InboxFolder } from "./folders.ts";
 export const MessagingRole = z.enum(["freelancer", "client", "business"]);
 export type MessagingRole = z.infer<typeof MessagingRole>;
 
-/** The structural kind of a conversation thread. */
-export const ConversationKind = z.enum(["dm", "group", "service_inquiry"]);
+/**
+ * The structural kind of a conversation thread — `comms.conversation_kind`, member for member.
+ * `entity_channel` is a team's or business's named room (Decision #306): opened from the workspace
+ * console, never listed in the personal inbox.
+ */
+export const ConversationKind = z.enum(["dm", "group", "service_inquiry", "entity_channel"]);
 export type ConversationKind = z.infer<typeof ConversationKind>;
 
 /**

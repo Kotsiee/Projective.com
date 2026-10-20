@@ -74,6 +74,37 @@ export const CalendarGlyph: VNode = (
 	</Svg>
 );
 
+/** Files — a folder, the entity's shared drive. */
+export const FilesGlyph: VNode = (
+	<Svg>
+		<path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" />
+	</Svg>
+);
+
+/** Operations — four tiles, the lane's Core operations section. */
+export const OperationsGlyph: VNode = (
+	<Svg>
+		<rect x="4" y="4" width="6.5" height="6.5" rx="1.5" />
+		<rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5" />
+		<rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5" />
+		<rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5" />
+	</Svg>
+);
+
+/** Governance — a shield, the lane's Governance section. */
+export const GovernanceGlyph: VNode = (
+	<Svg>
+		<path d="M12 3.5l7 2.6v5.4c0 4.3-2.9 7.9-7 9-4.1-1.1-7-4.7-7-9V6.1z" />
+	</Svg>
+);
+
+/** Channel — a hash, one workspace chat room. */
+export const ChannelGlyph: VNode = (
+	<Svg>
+		<path d="M9.5 4L7.5 20M16.5 4l-2 16M4.5 9h16M3.5 15h16" />
+	</Svg>
+);
+
 /** Messages — the entity's inbox. */
 export const MessagesGlyph: VNode = (
 	<Svg>

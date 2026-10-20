@@ -1,6 +1,7 @@
 /**
  * emit-comms.ts — `08_comms.sql`: project channels and their messages, direct-message threads
- * with read state, notifications, and a couple of auto-responses.
+ * with read state, the teams' and businesses' channels (Decision #306), notifications, and a couple
+ * of auto-responses.
  *
  * Notifications are inserted through a join onto `comms.notification_types`, so category, urgency
  * and the channel fan-out come from the catalog rather than being restated here — the one place a
@@ -9,12 +10,13 @@
 
 import { ago, HEADER, id, insert, q, uuidFor } from "./sql.ts";
 import { entity, party, persona, project, type World } from "./resolve.ts";
-import { DMS, NOTIFICATIONS } from "./world.ts";
+import { DMS, ENTITY_CHANNELS, NOTIFICATIONS } from "./world.ts";
+import { DEFAULT_CHANNEL_SLUG as DEFAULT_CHANNEL } from "@projective/types/workspace";
 
 export function emitComms(world: World): string {
 	const out: string[] = [
 		HEADER(
-			"08_comms.sql — project channels, direct messages and notifications",
+			"08_comms.sql — project channels, direct messages, entity channels and notifications",
 			"A project gets a Discussion room plus one `stage_all` room per stage (the rooms comms.get_stage_channels would otherwise provision lazily). DM read state is per participant: `last_read_at` before the last message means unread.",
 		),
 	];
@@ -174,6 +176,8 @@ export function emitComms(world: World): string {
 	);
 	// #endregion
 
+	out.push(emitEntityChannels(world));
+
 	// #region Notifications (category / urgency / channels from the catalog)
 	const notificationValues = NOTIFICATIONS.map((n, i) => {
 		const to = persona(world, n.to);
@@ -255,3 +259,92 @@ export function emitComms(world: World): string {
 
 	return out.join("\n");
 }
+
+// #region Entity channels (Decision #306)
+/**
+ * The teams' and businesses' channels. Every entity's `general` is created by the database when the
+ * entity is (comms.tg_entity_default_channel) — the backfill below only covers an entity inserted with
+ * triggers off — and every channel's participants are its entity's active members
+ * (comms.tg_entity_channel_seed_members). So this writes only what no trigger can: the extra channels,
+ * their messages, and who has read them. A `general` is addressed by its owner, since its id is minted.
+ */
+function emitEntityChannels(world: World): string {
+	const out: string[] = [
+		"-- Every entity's default channel (idempotent: the trigger has normally made it already).",
+		"SELECT count(comms.fn_ensure_default_channel('team', t.id, t.owner_user_id)) AS team_general FROM org.teams t;",
+		"SELECT count(comms.fn_ensure_default_channel('business', b.id, b.owner_user_id)) AS business_general FROM org.business_profiles b;\n",
+	];
+	const channelRows: string[][] = [];
+	const messageRows: string[][] = [];
+	const readState: string[] = [];
+	for (const spec of ENTITY_CHANNELS) {
+		const e = entity(world, spec.entity);
+		const thread = spec.slug === DEFAULT_CHANNEL
+			? `(SELECT t.id FROM comms.dm_threads t WHERE t.kind = 'entity_channel' AND t.owner_type = ${
+				q(e.kind)
+			} AND t.owner_entity_id = ${id(e.entityId)} AND t.is_default)`
+			: id(uuidFor("entity_channel", `${spec.entity}:${spec.slug}`));
+		if (spec.slug !== DEFAULT_CHANNEL) {
+			channelRows.push([
+				thread,
+				"'entity_channel'",
+				q(e.kind),
+				id(e.entityId),
+				q(spec.slug),
+				q(spec.topic ?? null),
+				id(persona(world, spec.createdBy).userId),
+				ago(spec.createdDaysAgo),
+			]);
+		}
+		spec.messages.forEach((m, i) => {
+			messageRows.push([
+				id(uuidFor("entity_channel_message", `${spec.entity}:${spec.slug}:${i}`)),
+				thread,
+				id(persona(world, m.from).userId),
+				q(m.body),
+				ago(m.daysAgo),
+			]);
+		});
+		const last = Math.min(...spec.messages.map((m) => m.daysAgo));
+		for (const member of e.members) {
+			const read = spec.readBy.includes(member.persona);
+			const lastOwn = Math.min(
+				...spec.messages.filter((m) => m.from === member.persona).map((m) => m.daysAgo),
+				Infinity,
+			);
+			const readAt = read ? last : lastOwn;
+			if (!Number.isFinite(readAt)) continue;
+			readState.push(
+				`UPDATE comms.dm_participants SET last_read_at = ${ago(readAt)} WHERE thread_id = ${thread} AND user_id = ${
+					id(persona(world, member.persona).userId)
+				};`,
+			);
+		}
+	}
+	out.push(
+		insert(
+			"comms.dm_threads",
+			[
+				"id",
+				"kind",
+				"owner_type",
+				"owner_entity_id",
+				"slug",
+				"topic",
+				"created_by_user_id",
+				"created_at",
+			],
+			channelRows,
+		),
+	);
+	out.push(
+		insert(
+			"comms.dm_messages",
+			["id", "thread_id", "sender_user_id", "body", "created_at"],
+			messageRows,
+		),
+	);
+	out.push(...readState, "");
+	return out.join("\n");
+}
+// #endregion

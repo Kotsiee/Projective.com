@@ -28,6 +28,19 @@ import {
 import { RESERVED_HANDLES } from "../profile/reserved.ts";
 import { EntitlementKey } from "../finance/entitlements.ts";
 import { SplitRuleType } from "../finance/vault.ts";
+import { ConversationKind } from "../messaging/conversations.ts";
+import {
+	ArchiveChannelInputSchema,
+	CHANNEL_LIVE_CAP,
+	CHANNEL_NAME_MAX,
+	CHANNEL_NAME_MIN,
+	CHANNEL_NAME_PATTERN,
+	channelSlugOf,
+	CreateChannelInputSchema,
+	DEFAULT_CHANNEL_SLUG,
+	EntityChannelSchema,
+	isChannelSlug,
+} from "./channels.ts";
 import {
 	BusinessSpendPolicySchema,
 	BusinessViewerCanSchema,
@@ -881,5 +894,91 @@ Deno.test("TeamPayoutPolicySchema: no plan answer is co_op only; no vault answer
 	assertEquals(shape.vaultAccess.parse(undefined), []);
 	assert(!shape.unlockedTemplates.safeParse(["by_role"]).success);
 });
+
+// #region Entity channels (Decision #306)
+
+const COMMS_TABLES_SQL = "supabase/migrations/00000016_tables_comms.sql";
+const COMMS_FUNCTIONS_SQL = "supabase/migrations/00001300_functions_comms_channels.sql";
+const commsFunctions = read(COMMS_FUNCTIONS_SQL);
+
+Deno.test("comms.conversation_kind declares ConversationKind.options, in order", () => {
+	const sql = read(ENUMS_SQL);
+	const start = sql.indexOf("CREATE TYPE comms.conversation_kind AS ENUM (");
+	assert(start >= 0, "comms.conversation_kind is no longer declared in 00000004_enums_domains.sql");
+	assertEquals(literals(sql.slice(start, sql.indexOf(");", start))), [...ConversationKind.options]);
+});
+
+Deno.test("the channel name rule is the SQL CHECK and create_entity_channel's refusal, exactly", () => {
+	const pattern = CHANNEL_NAME_PATTERN.source;
+	const bounds = `char_length(slug) BETWEEN ${CHANNEL_NAME_MIN} AND ${CHANNEL_NAME_MAX}`;
+	assert(
+		read(COMMS_TABLES_SQL).includes(`${bounds} AND slug ~ '${pattern}'`),
+		"ck_dm_threads_channel_slug no longer reads the TS name rule",
+	);
+	const create = functionBody(commsFunctions, "comms.create_entity_channel");
+	assert(
+		create.includes(
+			`char_length(v_slug) < ${CHANNEL_NAME_MIN} OR char_length(v_slug) > ${CHANNEL_NAME_MAX} OR v_slug !~ '${pattern}'`,
+		),
+		"create_entity_channel no longer refuses by the TS name rule",
+	);
+	assert(create.includes(`AND t.archived_at IS NULL) >= ${CHANNEL_LIVE_CAP} THEN`), "live cap drifted");
+	assert(
+		functionBody(commsFunctions, "comms.fn_ensure_default_channel").includes(
+			`'${DEFAULT_CHANNEL_SLUG}', true`,
+		),
+		"the default channel is no longer DEFAULT_CHANNEL_SLUG",
+	);
+	assert(
+		functionBody(commsFunctions, "comms.fn_channel_slug").includes(
+			"lower(regexp_replace(btrim(COALESCE(p_name, '')), '^#+\\s*', ''))",
+		),
+		"comms.fn_channel_slug no longer normalises as channelSlugOf does",
+	);
+});
+
+Deno.test("channelSlugOf + isChannelSlug: what the database would store, and whether it may", () => {
+	assertEquals(channelSlugOf("  # Delivery-Sync "), "delivery-sync");
+	assertEquals(channelSlugOf("##general"), "general");
+	for (const ok of ["general", "q4", "client-updates", "a".repeat(CHANNEL_NAME_MAX)]) {
+		assert(isChannelSlug(ok), ok);
+	}
+	for (const bad of ["g", "-general", "general-", "client updates", "Ünïcode", "a".repeat(41)]) {
+		assert(!isChannelSlug(bad), bad);
+	}
+});
+
+Deno.test("org.get_workspace_detail answers the channels the mapper reads", () => {
+	assert(
+		detailBody.includes("'channels', comms.fn_entity_channel_list(p_kind, v_e.id, v_uid)"),
+		"get_workspace_detail no longer answers channels from comms.fn_entity_channel_list",
+	);
+	const list = functionBody(commsFunctions, "comms.fn_entity_channel_list");
+	for (const key of ["'id'", "'slug'", "'topic'", "'is_default'", "'unread'", "'last_activity_at'"]) {
+		assert(list.includes(key), `fn_entity_channel_list no longer answers ${key}`);
+	}
+	assert(list.includes("ORDER BY t.is_default DESC, t.slug"), "default first, then by slug");
+	assert(list.includes("t.archived_at IS NULL"), "an archived channel is never listed");
+});
+
+Deno.test("EntityChannelSchema + the detail default; the channel inputs", () => {
+	const detail = WorkspaceDetailSchema.shape.channels;
+	assertEquals(detail.parse(undefined), []);
+	const row = {
+		id: "00000000-0000-4000-a000-000000000001",
+		slug: "general",
+		topic: null,
+		isDefault: true,
+		unreadCount: 0,
+		lastActivityAt: null,
+	};
+	assert(EntityChannelSchema.safeParse(row).success);
+	assert(!EntityChannelSchema.safeParse({ ...row, unreadCount: -1 }).success);
+	assert(CreateChannelInputSchema.safeParse({ kind: "team", id: "t1", name: "# general" }).success);
+	assert(!CreateChannelInputSchema.safeParse({ kind: "team", id: "t1", name: "   " }).success);
+	assert(ArchiveChannelInputSchema.safeParse({ kind: "business", id: "b1", channelId: "c1" }).success);
+});
+
+// #endregion
 
 // #endregion

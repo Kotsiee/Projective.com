@@ -13,9 +13,11 @@ import { FilesBackendService } from "@server/services/files/FilesBackendService.
  * breadcrumb trail, the location's `readOnly` fact and (on a `hub` read) the owner's allowance in one
  * payload. Islands never reach the backend; they fetch this through the dumb `FilesService`.
  *
- * The read runs under the caller's own session, so RLS decides whose files it can see; the library it
- * reads is the one the acting context owns, never one named in the query. A `share` read needs no
- * session — the slug is the credential. Signed out, everything else answers 401.
+ * The read runs under the caller's own session, so RLS decides whose files it can see; a `hub` read is
+ * the library the acting context owns, never one named in the query, and a `workspace` read is the
+ * team or business `subjectId` names only once the caller's active seat in it is confirmed (404
+ * otherwise). A `share` read needs no session — the slug is the credential. Signed out, everything
+ * else answers 401.
  */
 export const handler = define.handlers({
 	async GET(ctx) {

@@ -19,7 +19,7 @@ export type ThreadRef =
 	| { kind: "thread"; threadId: string }
 	| { kind: "virtual"; userId: string; party: PartyRow | undefined };
 
-/** The pair's existing non-group thread with `targetUserId`, or null. Never creates one. */
+/** The pair's existing DM or service inquiry with `targetUserId`, or null. Never creates one. */
 export async function findExistingDmThread(
 	actor: ReadActor & { accessToken: string },
 	targetUserId: string,
@@ -45,7 +45,7 @@ export async function findExistingDmThread(
 		.from("dm_threads")
 		.select("id, kind, created_at")
 		.in("id", shared)
-		.neq("kind", "group")
+		.in("kind", ["dm", "service_inquiry"])
 		.order("created_at", { ascending: true })
 		.limit(1);
 	if (threadErr) throw new Error(`comms.dm_threads read failed: ${threadErr.message}`);

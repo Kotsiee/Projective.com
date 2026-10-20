@@ -145,6 +145,22 @@ CREATE TABLE comms.dm_threads (
     -- inquiries for this item". Only a `service_inquiry` carries one. Its FK is in 00000033, because
     -- `catalogue.listings` is created after this file.
     subject_listing_id uuid,
+    -- An `entity_channel`'s owner (Decision #306): the (owner_type, owner_entity_id) pair files.items
+    -- uses, narrowed to the two console kinds. No FK — the id names a team OR a business, and Postgres
+    -- cannot point one column at two parents. Both NULL on every other kind.
+    owner_type text,
+    owner_entity_id uuid,
+    -- The channel's name as people type it after `#` (`general`, `delivery-sync`): the address of the
+    -- room within its entity, unique among the entity's live channels (00004006).
+    slug text,
+    -- One line saying what the channel is for; NULL when nobody wrote one.
+    topic text,
+    -- The room every member is in from the moment the entity exists (`general`). Never archivable, so
+    -- an entity always has somewhere to talk; at most one per entity (00004006).
+    is_default boolean NOT NULL DEFAULT false,
+    -- A retired channel (root CLAUDE.md §5: nothing is hard-deleted). It leaves the console's list and
+    -- refuses new messages; its history and participants stay.
+    archived_at timestamptz,
     created_by_user_id uuid NOT NULL,
     created_at timestamp
     with
@@ -153,6 +169,21 @@ CREATE TABLE comms.dm_threads (
         CONSTRAINT ck_dm_threads_subject_inquiry CHECK (
             subject_listing_id IS NULL OR kind = 'service_inquiry'
         ),
+        -- The channel columns are set exactly when the thread is an entity channel.
+        CONSTRAINT ck_dm_threads_entity_channel CHECK (
+            (kind = 'entity_channel') = (owner_type IS NOT NULL)
+            AND (kind = 'entity_channel') = (owner_entity_id IS NOT NULL)
+            AND (kind = 'entity_channel') = (slug IS NOT NULL)
+            AND (kind = 'entity_channel' OR (topic IS NULL AND NOT is_default AND archived_at IS NULL))
+        ),
+        CONSTRAINT ck_dm_threads_owner_type CHECK (owner_type IS NULL OR owner_type IN ('team', 'business')),
+        -- The TS twin is CHANNEL_NAME_PATTERN / CHANNEL_NAME_MIN / CHANNEL_NAME_MAX
+        -- (@projective/types/workspace channels.ts), pinned by workspace.contract.test.ts.
+        CONSTRAINT ck_dm_threads_channel_slug CHECK (
+            slug IS NULL OR (char_length(slug) BETWEEN 2 AND 40 AND slug ~ '^[a-z0-9][a-z0-9-]*[a-z0-9]$')
+        ),
+        CONSTRAINT ck_dm_threads_channel_topic CHECK (topic IS NULL OR char_length(topic) <= 200),
+        CONSTRAINT ck_dm_threads_default_live CHECK (NOT is_default OR archived_at IS NULL),
         CONSTRAINT dm_threads_created_by_user_id_fkey FOREIGN KEY (created_by_user_id) REFERENCES org.users_public (user_id)
 );
 

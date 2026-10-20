@@ -517,7 +517,7 @@ function MoveDialog(
 							hint={accounts.length === 0
 								? `You have no other ${held.currency} wallet.`
 								: undefined}
-								hintMode="inline"
+							hintMode="inline"
 							error={errorFor("to")}
 							status={errorFor("to") ? "invalid" : "default"}
 						>
@@ -569,7 +569,7 @@ function MoveDialog(
 								: fundable.length === 0
 								? "No stage is waiting for funding."
 								: undefined}
-								hintMode="inline"
+							hintMode="inline"
 							error={errorFor("stage")}
 							status={errorFor("stage") ? "invalid" : "default"}
 						>
@@ -864,7 +864,7 @@ function ConfigDialog(
 									hint={fundingMethods.length === 0
 										? "Save a card first — Add card, in the wallet's actions."
 										: "Charged automatically each time; the first charge is one interval from now."}
-										hintMode={fundingMethods.length === 0 ? "inline" : "popover"}
+									hintMode={fundingMethods.length === 0 ? "inline" : "popover"}
 								>
 									{({ id, describedBy }) => (
 										<Select

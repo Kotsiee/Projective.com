@@ -18,7 +18,7 @@ import { getServiceClient, getUserClient } from "../../core/supabase.ts";
 import { clamp } from "../../core/text.ts";
 import type { ReadActor } from "../read-actor.ts";
 import { FOLDER_COLUMNS, type FolderRow, fmtDateTime, toAssetFolder } from "./asset-row.ts";
-import { type FilesOwner, mayFileInto, ownerOfActor, readAsset } from "./live-library.ts";
+import { canFileInto, type FilesOwner, ownerOfActor, readAsset } from "./live-library.ts";
 import { resolveLinkPreview } from "./link-scan.ts";
 
 /**
@@ -44,7 +44,7 @@ type Result<T> = { ok: true; data: T; status?: number; message?: string } | {
 	errors?: Record<string, string>;
 };
 
-/** The one sentence an owner request outside the acting library answers with. */
+/** The one sentence an owner request outside the caller's libraries answers with. */
 const DENIED_OWNER = "You can't add files to that library.";
 
 function filesDb(actor: Actor): SupabaseClient {
@@ -63,13 +63,13 @@ function ownerColumns(actor: Actor, owner: FilesOwner) {
 // #region Folders
 
 /**
- * Create a folder in the acting library. An omitted visibility INHERITS the parent's — the only
+ * Create a folder in a library the caller holds. An omitted visibility INHERITS the parent's — the only
  * non-surprising default — and a sibling of the same name is refused, because the hub addresses a
  * folder by its name and two with one name would make an address ambiguous.
  */
 export async function createFolder(actor: Actor, input: CreateFolder): Promise<Result<AssetFolder>> {
 	const owner: FilesOwner = { ownerType: input.ownerType, ownerId: input.ownerId };
-	if (!mayFileInto(actor, owner)) return { ok: false, status: 403, message: DENIED_OWNER };
+	if (!(await canFileInto(actor, owner))) return { ok: false, status: 403, message: DENIED_OWNER };
 	const name = input.name.trim().replace(/[\\/]+/g, "-");
 	if (!name) return { ok: false, status: 422, message: "Name the folder.", errors: { name: "required" } };
 
@@ -167,20 +167,26 @@ export async function starAsset(actor: Actor, assetId: string, starred: boolean)
 }
 
 /**
- * Move assets into a folder of the SAME library (`null` = its root). Reports the count that actually
- * moved rather than failing the batch: a mixed selection with one read-only mount should move the rest.
+ * Move assets into a folder of the SAME library (`null` = the acting library's root). The library is
+ * the target folder's own, so a console drive moves within itself whatever context the caller acts in;
+ * it must still be one the caller holds. Reports the count that actually moved rather than failing the
+ * batch: a mixed selection with one read-only mount should move the rest.
  */
 export async function moveAssets(actor: Actor, input: MoveAssets): Promise<Result<{ moved: number }>> {
-	const owner = ownerOfActor(actor);
+	let owner: FilesOwner = ownerOfActor(actor);
 	const db = filesDb(actor);
 	if (input.targetFolderId) {
 		const target = await db.from("folders").select("id, owner_type, owner_user_id, owner_entity_id")
 			.eq("id", input.targetFolderId).is("deleted_at", null).maybeSingle();
 		if (target.error && target.error.code !== "22P02") throw new Error(`files.folders read failed: ${target.error.message}`);
-		const t = target.data as { owner_type: string; owner_user_id: string; owner_entity_id: string | null } | null;
-		if (!t || t.owner_type !== owner.ownerType || (t.owner_entity_id ?? t.owner_user_id) !== owner.ownerId) {
+		const t = target.data as { owner_type: FilesOwner["ownerType"]; owner_user_id: string; owner_entity_id: string | null } | null;
+		const targetOwner: FilesOwner | null = t
+			? { ownerType: t.owner_type, ownerId: t.owner_entity_id ?? t.owner_user_id }
+			: null;
+		if (!targetOwner || !(await canFileInto(actor, targetOwner))) {
 			return { ok: false, status: 404, message: "That folder isn't in this library." };
 		}
+		owner = targetOwner;
 	}
 	let q = db.from("items").update({ folder_id: input.targetFolderId ?? null })
 		.in("id", input.assetIds)
@@ -254,7 +260,7 @@ export async function setVisibility(actor: Actor, input: SetVisibility): Promise
 // #region Links
 
 /**
- * Store a web link as a first-class asset in the acting library.
+ * Store a web link as a first-class asset in a library the caller holds.
  *
  * A link stores no bytes, so it takes a synthesised object address (`link` / its own id) that the
  * registry's one-row-per-object constraint accepts. It is stored as never scanned (`pending`): no
@@ -262,7 +268,7 @@ export async function setVisibility(actor: Actor, input: SetVisibility): Promise
  */
 export async function attachLink(actor: Actor, input: LinkAttach): Promise<Result<AssetItem>> {
 	const owner: FilesOwner = { ownerType: input.ownerType, ownerId: input.ownerId };
-	if (!mayFileInto(actor, owner)) return { ok: false, status: 403, message: DENIED_OWNER };
+	if (!(await canFileInto(actor, owner))) return { ok: false, status: 403, message: DENIED_OWNER };
 	const preview = await resolveLinkPreview(input.url);
 	if (!preview) {
 		return {

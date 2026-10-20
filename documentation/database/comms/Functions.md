@@ -454,4 +454,65 @@ finds which message table holds the id, as the caller, so a message they cannot 
 | `comms.trg_dm_shield()` | `trg_dm_shield` BEFORE INSERT on `dm_participants` and `dm_messages` (`00001840`) | A participant joins a direct thread only if allowed with every participant already there; a message is sent only while its sender is allowed with every other participant, so an unfollow ends it. `PM403` otherwise — every thread-creating RPC (`get_or_create_dm_thread`, `create_group_thread`, `add_dm_thread_members`, `send_request_message`) and the direct insert alike. |
 
 All `SECURITY DEFINER`, `search_path = ''`, granted to no client. The services map `PM403` to
-`DM_SHIELD_REFUSAL` (403). Project and stage channels are a different table and unaffected.
+`DM_SHIELD_REFUSAL` (403). Project and stage channels are a different table and unaffected. An
+**entity channel** (Decision #306) is exempt: `trg_dm_shield` returns early for a thread of kind
+`entity_channel`, because its people are the entity's roster, decided when they joined the entity.
+
+## Entity channels (`00001300` / `00001840`, Decision #306)
+
+A team's or business's named rooms are `comms.dm_threads` rows of kind `entity_channel` (columns in
+[Tables.md](Tables.md#entity-channels-decision-306)). Every function below pins `search_path = ''`.
+The doors follow the workspace refusal convention (`'<field>: <reason>'`, mapped by `refusalFrom` in
+`packages/backend/services/workspace/live-support.ts`).
+
+**Why the two doors are `SECURITY DEFINER`.** `dm_threads` / `dm_participants` carry no client write
+policy on purpose (`00002012`), and creating a channel writes participant rows for OTHER people —
+every active member — which no `INSERT` policy may admit without becoming "anyone may add anyone to
+anything". The created row is also not readable to its creator (the `RETURNING` the door needs)
+until the participant trigger has run. So, like `create_group_thread`, the membership decision is
+made here, once: each door re-checks the caller's active seat (`org.fn_member_seat`).
+
+### `comms.create_entity_channel(p_entity_type text, p_entity_id uuid, p_name text, p_topic text DEFAULT NULL) → jsonb`
+
+Any **active member** of a team or business that is not archived. The name is normalised by
+`comms.fn_channel_slug` (trimmed, a leading `#` dropped, lowercased) and then held to the slug rule.
+Refusals, in order: `42501 auth:` (signed out) · `22023 kind:` · `P0002 workspace: not found` ·
+`42501 workspace: only its members can add a channel` · `55000 workspace: restore it before adding a
+channel` · `22023 name:` (the rule) · `22023 topic:` (> 200) · `23505 name: there is already a #… channel`
+(a live duplicate) · `55000 channel: a workspace holds at most 30 channels …` (`CHANNEL_LIVE_CAP`). The
+duplicate and cap checks run under `pg_advisory_xact_lock` on the entity, so two concurrent creates
+cannot both take the last place. Returns `{ id, slug, topic, is_default: false, unread: 0,
+last_activity_at: null }`. Participants come from `trg_entity_channel_seed_members`. `EXECUTE`:
+`authenticated`, `service_role`.
+
+### `comms.archive_entity_channel(p_channel_id uuid) → jsonb`
+
+Sets `archived_at`. The channel's **creator**, or a member holding `manage_settings`. A channel the
+caller cannot see — not an active member of its entity, already archived, or not a channel — is one
+answer, `P0002 channel: not found`, so the door cannot probe ids. `55000` for the default channel;
+`42501 channel:` for anybody else. Returns `{ id, owner_type, owner_entity_id, archived_at }`.
+`EXECUTE`: `authenticated`, `service_role`.
+
+### Internals (granted to no client)
+
+| Function | Role |
+| :------- | :--- |
+| `comms.fn_channel_slug(p_name text) → text` | IMMUTABLE normaliser; TS twin `channelSlugOf` (pinned by `workspace.contract.test.ts`). Granted to `authenticated` (pure). |
+| `comms.fn_entity_member_ids(p_kind text, p_entity uuid) → SETOF uuid` | The entity's active members who have an `org.users_public` row (the participant FK). |
+| `comms.fn_entity_channel_list(p_kind text, p_entity uuid, p_viewer uuid) → jsonb` | The live channels for one viewer — default first, then by slug — each `{ id, slug, topic, is_default, unread, last_activity_at }`: `unread` counts other people's undeleted messages after the viewer's `last_read_at` (all of them while it is NULL). Read only by `org.get_workspace_detail` (`channels`), which has already decided the viewer is an active member. |
+| `comms.fn_ensure_default_channel(p_kind, p_entity, p_creator) → uuid` | The entity's `general`, created when missing (DEFINER). NULL, creating nothing, when the creator has no `org.users_public` row — the entity's own insert is never refused for it. The seed backfill calls it for every entity. |
+| `comms.fn_sync_channel_member(p_kind, p_entity, p_user, p_active boolean)` | Joining: restores a soft-deleted participation and inserts the missing ones, on LIVE channels. Leaving: soft-deletes the participation on EVERY channel of the entity, archived included. |
+| `comms.tg_entity_channel_seed_members()` | `trg_entity_channel_seed_members` AFTER INSERT ON `comms.dm_threads` `WHEN (NEW.kind = 'entity_channel')`: every active member joins. |
+| `comms.tg_entity_member_channels()` | `trg_team_member_channels` / `trg_business_member_channels` AFTER INSERT OR UPDATE OF `status` on `org.team_members` / `org.business_members` (`TG_ARGV[0]` = the kind): a membership becoming active joins, one leaving active leaves. |
+| `comms.tg_entity_default_channel()` | `trg_team_default_channel` / `trg_business_default_channel` AFTER INSERT on `org.teams` / `org.business_profiles`: the `general` channel. |
+
+### What an entity channel is excluded from
+
+| Path | Change |
+| :--- | :----- |
+| `comms.get_or_create_dm_thread`, `comms.send_request_message` | The pair lookup reads `kind IN ('dm', 'service_inquiry')` (was `<> 'group'`), so two co-members' channel is never "their DM" and a hiring request never lands in a channel. |
+| `comms.fn_promote_thread_on_reply` | Returns early for a channel (no request folder to promote). |
+| `comms.tg_dm_auto_reply` | Answers only `dm` / `service_inquiry` threads. |
+| `comms.trg_dm_shield` | Exempt (above). |
+| `comms.add_dm_thread_members` | Refuses a channel (`22023`) — joining the entity is the only way in. `comms.set_group_photo` already refuses anything but a group. |
+| `comms.tg_mask_dm_message_pii` | **Unchanged**: a channel message is masked when the sender and another member share a protected engagement (`comms.fn_dm_protected_project`) — the same rule as a DM. Flagged on Decision #306. |

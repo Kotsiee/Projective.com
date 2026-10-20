@@ -27,6 +27,7 @@ import {
 	subViewsFor,
 	subViewTabId,
 } from "../core/sub-views.ts";
+import { bandHasHubStrip } from "../core/hub-tabs.ts";
 import { peopleZoom } from "../core/view-state.ts";
 import { filterMembers, sortMembers } from "../core/workspace-model.ts";
 import {
@@ -116,13 +117,19 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	useEffect(() => () => handoff.current?.(), []);
 
 	// `?invite=1` — the bands on modules that do not mount the invite dialog link here with it, so their
-	// Invite lands on the dialog rather than on a page the reader must search.
+	// Invite lands on the dialog rather than on a page the reader must search. `?member=<handle>` — the
+	// lane search's person hit — opens that member's drawer.
 	useEffect(() => {
 		const url = new URL(globalThis.location.href);
-		if (url.searchParams.get("invite") !== "1") return;
+		const invite = url.searchParams.get("invite") === "1";
+		const handle = url.searchParams.get("member");
+		if (!invite && !handle) return;
 		url.searchParams.delete("invite");
+		url.searchParams.delete("member");
 		globalThis.history.replaceState(null, "", `${url.pathname}${url.search}`);
-		if (detail.peek().viewerCapabilities.includes("invite_members")) openInvite();
+		if (invite && detail.peek().viewerCapabilities.includes("invite_members")) openInvite();
+		const member = handle ? detail.peek().members.find((m) => m.handle === handle) : undefined;
+		if (member) openDrawer(member);
 	}, []);
 
 	const ws = detail.value;
@@ -143,8 +150,20 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	/** The queue the viewer sees, split as the seat count splits it (lapsed ones hold no seat). */
 	const queue = inviteCounts(ws.invites, Date.now());
 	const presentation = membersViewFor(view);
-	/** The header band's tabs over this body — present on the Members module only. */
-	const subViews = props.module === "invitations" ? [] : subViewsFor("members", ws.kind, caps);
+	/**
+	 * The header band's in-place tabs over this body — on the Members module only, and not where the
+	 * band draws the Roster hub's link strip, which names no panel.
+	 */
+	const hubStrip = bandHasHubStrip({
+		kind: ws.kind,
+		handle: ws.handle,
+		capabilities: caps,
+		module: props.module ?? "members",
+		view,
+	});
+	const subViews = props.module === "invitations" || hubStrip
+		? []
+		: subViewsFor("members", ws.kind, caps);
 	const panel = subViews.length > 0
 		? {
 			id: SUB_VIEW_PANEL_ID,

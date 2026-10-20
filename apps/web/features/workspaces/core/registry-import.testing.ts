@@ -26,14 +26,13 @@ export interface RegistryApi {
 		kind: WorkspaceKind,
 		capabilities: readonly WorkspaceCapability[],
 	): boolean;
-	primaryModules(
+	hubsForViewer(
 		kind: WorkspaceKind,
 		capabilities: readonly WorkspaceCapability[],
-	): { key: string }[];
-	secondaryModules(
-		kind: WorkspaceKind,
-		capabilities: readonly WorkspaceCapability[],
-	): { key: string }[];
+	): { hub: { key: string; zone: string; modules: readonly string[] }; label: string; modules: { key: string }[] }[];
+	hubOf(module: string | null): { key: string } | null;
+	NAV_HUBS: readonly { key: string; zone: string; modules: readonly string[] }[];
+	MODULES: readonly { key: string; kinds: readonly WorkspaceKind[] }[];
 	modulesForViewer(
 		kind: WorkspaceKind,
 		capabilities: readonly WorkspaceCapability[],

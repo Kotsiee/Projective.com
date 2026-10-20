@@ -991,7 +991,11 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
   `fn_business_archive_blockers` **only when the viewer holds `archive_entity`**, else `[]` — so
   Settings lists what to clear before the archive confirm (BB5; Teams C6; `archiveBlockers` in
   `WorkspaceDetail`), and `restore_target` — `fn_workspace_restore_target` while the entity is
-  `archived`, else `null` — so Restore says where it lands (`restoreTarget`).
+  `archived`, else `null` — so Restore says where it lands (`restoreTarget`). Both kinds also carry
+  `channels` (Decision #306) — the entity's live chat channels from `comms.fn_entity_channel_list`,
+  default first then by slug, each `{ id, slug, topic, is_default, unread, last_activity_at }` with the
+  VIEWER's unread count — to every active member (`channels` in `WorkspaceDetail`; see
+  [comms/Functions.md](../comms/Functions.md#entity-channels-00001300--00001840-decision-306)).
   A **business** also answers, every flag and figure decided here so no screen recomputes policy
   (BB9; always `null` / `[]` for a team; probe `supabase/probes/business_console_read.sql` — narrowed
   per viewer, the draft preview priced against the real spend):

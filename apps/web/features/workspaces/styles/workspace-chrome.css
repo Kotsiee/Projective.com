@@ -119,10 +119,52 @@
 	white-space: nowrap;
 }
 
-.wsp-lane__identrow {
+/*
+ * The console head: Back and the entity kebab on one row, the identity on its own full-width row
+ * beneath, so a narrow lane never squeezes the name to an ellipsis to make room for the controls.
+ */
+.wsp-lane__identblock {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.wsp-lane__toprow {
 	display: flex;
 	align-items: center;
+	justify-content: space-between;
 	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+/* The console's name carries its verification crest; the words yield, the crest never does. */
+.wsp-lane__name {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+}
+
+.wsp-lane__name-text {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-lane__name .ui-stamp {
+	flex: none;
+}
+
+/* The search sits at the head's foot, as in `/projects` and `/messages`. */
+.wsp-lane__search {
+	display: flex;
+	min-inline-size: 0;
+	margin-block-start: var(--space-1);
+}
+
+.wsp-lane__search .ui-lane-search {
+	flex: 1 1 auto;
 	min-inline-size: 0;
 }
 
@@ -309,6 +351,92 @@ row's accessible name. On the filled active row it takes the row's own ink. */
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+
+/* A section with nothing in it yet says so in the meta register, never a box. */
+.wsp-lane__channelnote {
+	margin: 0;
+	padding-block: var(--space-1);
+	font-size: var(--wsp-fs-label);
+	color: var(--text-secondary);
+}
+
+/*
+ * The console search's hits replace the sections while a query is held: each group a section-register
+ * header over plain link rows — label in the body ink, its context in the meta register beside it.
+ */
+.wsp-lane__results {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.wsp-lane__resultgroup {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.wsp-lane__resulthead {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.wsp-lane__resultlist {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	margin-block: 0;
+	margin-inline: calc(-1 * var(--space-2));
+	padding: 0;
+	list-style: none;
+}
+
+.wsp-lane__result {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	min-block-size: var(--fld-hit);
+	padding: var(--space-2);
+	border-radius: var(--radius-base);
+	color: var(--on-surface);
+	text-decoration: none;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.wsp-lane__result:hover {
+	background: var(--surface-2);
+}
+
+.wsp-lane__result:active {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+.wsp-lane__result-label {
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--wsp-fs-body);
+}
+
+.wsp-lane__result-meta {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--wsp-fs-label);
+	color: var(--text-secondary);
+}
 /* #endregion */
 
 /* #region Zone 3 — context controls */
@@ -416,6 +544,58 @@ row's accessible name. On the filled active row it takes the row's own ink. */
 
 .ui-splitter[data-mode="compact"] .wsp-lane .ui-lane-create__label {
 	display: none;
+}
+
+/*
+ * A console's footer (Decision #306): the collapse toggle, the acting pill, then the circular
+ * utilities at the end. The pill yields its words before anything overflows; the circles never shrink.
+ */
+.wsp-lane__actas {
+	display: inline-flex;
+	flex: 0 1 auto;
+	align-items: center;
+	min-inline-size: 0;
+	overflow: hidden;
+}
+
+.wsp-lane__actas--narrow {
+	display: none;
+}
+
+.ui-splitter[data-mode="compact"] .wsp-lane__actas--wide {
+	display: none;
+}
+
+.ui-splitter[data-mode="compact"] .wsp-lane__actas--narrow {
+	display: inline-flex;
+}
+
+.wsp-ctxswitch--pill {
+	display: inline-flex;
+	align-items: center;
+	min-inline-size: 0;
+}
+
+.wsp-ctxswitch__pill {
+	min-inline-size: 0;
+	max-inline-size: 100%;
+}
+
+.wsp-lane__footer .ui-lane-footer__actions {
+	flex: none;
+	margin-inline-start: auto;
+}
+
+.wsp-lane__footicon {
+	position: relative;
+	flex: none;
+	text-decoration: none;
+}
+
+.wsp-lane__footdot {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-end: 0;
 }
 
 /*
@@ -632,18 +812,18 @@ words — a ring colour on its own is not a channel. */
 }
 
 /*
- * Share profile in two presentations — the words, or the glyph under a Tooltip — and the band's own
- * width (an `@container` query below) decides which paints, so SSR and hydration agree on the first
- * frame. The wrapper has no gap, so the hidden one leaves no space behind.
+ * The entity kebab's band copy (Decision #306). The lane head owns the menu; the band paints its copy
+ * only where the lane is off screen — collapsed to its rail (below), or hidden below `--bp-md` (the
+ * frame's lane mirror, under Responsive) — so exactly one menu is reachable in every layout.
  */
-.wsp-headerband__utility {
-	display: inline-flex;
+.wsp-headerband__menu {
+	display: none;
 	flex: none;
 	align-items: center;
 }
 
-.wsp-headerband .wsp-headerband__utility-narrow {
-	display: none;
+.ui-middle-nav:has(.ui-middle-nav__lane .ui-splitter[data-mode="collapsed"]) .wsp-headerband__menu {
+	display: inline-flex;
 }
 /* #endregion */
 
@@ -726,14 +906,6 @@ words — a ring colour on its own is not a channel. */
 	.wsp-headerband__tabs.ui-tabmenu {
 		flex: 1 1 auto;
 		min-inline-size: 7rem;
-	}
-
-	.wsp-headerband .wsp-headerband__utility-wide {
-		display: none;
-	}
-
-	.wsp-headerband .wsp-headerband__utility-narrow {
-		display: inline-flex;
 	}
 }
 
@@ -1060,6 +1232,10 @@ words — a ring colour on its own is not a channel. */
  * `styles.gate.test.ts` holds it to these selectors; the folds below stay in `rem`.
  */
 @media (max-width: 767px) {
+	.wsp-headerband__menu {
+		display: inline-flex;
+	}
+
 	.wsp-footerrig__layout[data-lane="shown"] {
 		display: none;
 	}
@@ -1125,6 +1301,8 @@ words — a ring colour on its own is not a channel. */
 
 	.wsp-lane__entity,
 	.wsp-lane__entity:active,
+	.wsp-lane__result,
+	.wsp-lane__result:active,
 	.wsp-rail__item,
 	.wsp-rail__item:active,
 	.wsp-rail__switch,
@@ -1147,6 +1325,8 @@ words — a ring colour on its own is not a channel. */
 
 :root[data-motion="reduced"] .wsp-lane__entity,
 :root[data-motion="reduced"] .wsp-lane__entity:active,
+:root[data-motion="reduced"] .wsp-lane__result,
+:root[data-motion="reduced"] .wsp-lane__result:active,
 :root[data-motion="reduced"] .wsp-rail__item,
 :root[data-motion="reduced"] .wsp-rail__item:active,
 :root[data-motion="reduced"] .wsp-rail__switch,

@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { Breadcrumb } from "@projective/ui/navigation";
 import "../styles/files-hub.css";
 import type { AssetCrumb } from "../types/file-types.ts";
+import { type FolderRouting, segmentsOfHref } from "../core/asset-model.ts";
 
 /**
  * AssetBreadcrumbs — the location trail above the hub workspace.
@@ -32,6 +33,8 @@ export interface AssetBreadcrumbsProps {
 	base: string;
 	/** Navigate to a path, in place. */
 	onNavigate: (path: string[]) => void;
+	/** Where the crumb hrefs carry the folder path: under `base` (the default) or in its query. */
+	routing?: FolderRouting;
 	/** Accessible name for the trail's `nav` landmark. */
 	"aria-label"?: string;
 }
@@ -42,25 +45,13 @@ export interface AssetBreadcrumbsProps {
  * Percent-decoded, because `folderHref` encodes each segment before joining — so a folder literally
  * named `a/b` survives the round trip as one segment instead of splitting into two.
  */
-export function segmentsOfCrumb(href: string, base: string): string[] {
-	const trimmedBase = base.replace(/\/+$/, "");
-	const path = href.split("?")[0].split("#")[0];
-	if (!path.startsWith(trimmedBase)) return [];
-	return path
-		.slice(trimmedBase.length)
-		.split("/")
-		.filter(Boolean)
-		.map((segment) => {
-			try {
-				return decodeURIComponent(segment);
-			} catch {
-				return segment;
-			}
-		});
+export function segmentsOfCrumb(href: string, base: string, routing: FolderRouting = "path"): string[] {
+	return segmentsOfHref(href, base, routing);
 }
 
 export function AssetBreadcrumbs(props: AssetBreadcrumbsProps): JSX.Element {
 	const { crumbs, base, onNavigate } = props;
+	const routing = props.routing ?? "path";
 
 	const model = crumbs.map((crumb, index) => {
 		const isLast = index === crumbs.length - 1;
@@ -68,7 +59,7 @@ export function AssetBreadcrumbs(props: AssetBreadcrumbsProps): JSX.Element {
 			key: crumb.id ?? `crumb-${index}`,
 			label: crumb.label,
 			url: isLast ? undefined : crumb.href,
-			command: isLast ? undefined : () => onNavigate(segmentsOfCrumb(crumb.href, base)),
+			command: isLast ? undefined : () => onNavigate(segmentsOfCrumb(crumb.href, base, routing)),
 		};
 	});
 

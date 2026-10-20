@@ -21,7 +21,9 @@ import { type SubView, subViewIndex } from "./sub-views.ts";
  *   2. **Sub-views** — the module's `TabMenu`, centred, only when the module partitions its body
  *      (`sub-views.ts`).
  *   3. **Actions** — at most ONE filled control (the module's commit, which the module publishes
- *      through `workspace-state`), then the tier-4 utilities, then the kebab, which carries the rest.
+ *      through `workspace-state`). The entity's kebab lives in the lane head (Decision #306); the band
+ *      draws the same menu only where the lane is not on screen — collapsed to its rail, or hidden
+ *      below `--bp-md` — so the page always holds exactly one reachable copy.
  *
  * The Button Interaction Matrix (§B.8.1) is enforced here, not in the island: the commit is the only
  * action that can take a filled tier, so {@link headerFilledCount} can never exceed one. Archive is
@@ -84,10 +86,10 @@ export interface HeaderMenuPlan {
 	name: string;
 	/** The public profile, `/@handle`. */
 	profileHref: string;
-	/** The text Copy handle writes: `@handle`. */
+	/** The `@handle`, shown as Copy profile link's hint. */
 	handleText: string;
 	/**
-	 * Where leaving (or, for the owner, handing the seat over) lives — the Members module — or `null`
+	 * Where leaving (or, for the owner, transferring ownership) lives — the Members module — or `null`
 	 * on Members itself, where the viewer's own row already offers it.
 	 */
 	members: { href: string; label: string } | null;
@@ -107,7 +109,7 @@ export interface HeaderBandInput {
 	status: WorkspaceStatus;
 	/** Whether the session is acting as this entity. */
 	acting: boolean;
-	/** Whether the viewer holds the owner seat — the Members row then reads "Hand over ownership…". */
+	/** Whether the viewer holds the owner seat — the Members row then reads "Transfer ownership…". */
 	owner: boolean;
 	/** The server-resolved effective capabilities (`WorkspaceDetail.viewerCapabilities`). */
 	capabilities: readonly WorkspaceCapability[];
@@ -154,7 +156,6 @@ export interface HeaderBandModel {
 /** The header band for what the viewer is looking at. Total: every input yields a model. */
 export function headerBand(input: HeaderBandInput): HeaderBandModel {
 	const copy = kindCopy(input.kind);
-	const profileHref = `/@${input.handle}`;
 	const meta: MetaLineEntry[] = [input.name, `@${input.handle}`];
 	if (input.acting) meta.push(`Acting as ${copy.noun}`);
 
@@ -165,18 +166,38 @@ export function headerBand(input: HeaderBandInput): HeaderBandModel {
 			? { views: [...input.subViews], active: subViewIndex(input.subViews, input.view) }
 			: null,
 		commit: input.commit,
-		utilities: [{ key: "share-profile", label: "Share profile", tier: 4, href: profileHref }],
-		menu: {
-			name: input.name,
-			profileHref,
-			handleText: `@${input.handle}`,
-			members: input.module === "members" ? null : {
-				href: workspaceHref(input.kind, input.handle, "members"),
-				label: input.owner ? "Hand over ownership…" : `Leave ${copy.noun}…`,
-			},
-			archive: canArchive(input),
-		},
+		utilities: [],
+		menu: entityMenuPlan(input),
 		menuLabel: `${copy.Noun} actions`,
+	};
+}
+
+/** What the entity kebab carries — shared by the lane head and the band's fallback copy. */
+export type EntityMenuInput = Pick<
+	HeaderBandInput,
+	| "kind"
+	| "module"
+	| "name"
+	| "handle"
+	| "status"
+	| "owner"
+	| "capabilities"
+	| "viewerCanArchive"
+	| "archiveBlocked"
+>;
+
+/** The kebab's plan for one viewer. */
+export function entityMenuPlan(input: EntityMenuInput): HeaderMenuPlan {
+	const copy = kindCopy(input.kind);
+	return {
+		name: input.name,
+		profileHref: `/@${input.handle}`,
+		handleText: `@${input.handle}`,
+		members: input.module === "members" ? null : {
+			href: workspaceHref(input.kind, input.handle, "members"),
+			label: input.owner ? "Transfer ownership…" : `Leave ${copy.noun}…`,
+		},
+		archive: canArchive(input),
 	};
 }
 
@@ -186,7 +207,7 @@ export function headerBand(input: HeaderBandInput): HeaderBandModel {
  * something that cannot happen. A team's rule is `archive_entity` on an entity not yet archived, with
  * nothing in the read's blocker list (a held escrow, a live assignment — Teams C6).
  */
-function canArchive(input: HeaderBandInput): boolean {
+function canArchive(input: EntityMenuInput): boolean {
 	if (input.kind === "business") return input.viewerCanArchive === true;
 	return input.capabilities.includes("archive_entity") && input.status !== "archived" &&
 		input.archiveBlocked !== true;
@@ -205,20 +226,20 @@ export function headerFilledCount(model: HeaderBandModel): number {
 // #region The kebab
 /** What the kebab's rows do when chosen. */
 export interface HeaderMenuHandlers {
-	/** Write `@handle` to the clipboard. */
-	copyHandle: () => void;
+	/** Write the public profile's absolute address to the clipboard. */
+	copyLink: () => void;
 	/** Ask to archive — the island confirms before anything changes. */
 	archive: () => void;
 }
 
 /**
- * The kebab's rows — the same rows a right-click, the ContextMenu key or Shift+F10 on the band opens
- * (Decision #222): the public profile (View, Open in new tab), Copy handle, the way to leave, and
- * Archive… for an `archive_entity` holder. The profile rows are the shared `linkActionItems`, so they
- * open, and open in a new tab, exactly as every other linkable entity's do.
+ * The kebab's rows — the same rows a right-click, the ContextMenu key or Shift+F10 on the lane head
+ * opens (Decision #222): the public profile (View, Open in new tab), Copy profile link, Transfer
+ * ownership… (the owner) or Leave… (anyone else), and Archive workspace… for an `archive_entity`
+ * holder, as a danger row. The profile rows are the shared `linkActionItems`, so they open, and open in
+ * a new tab, exactly as every other linkable entity's do. Nothing here deletes.
  */
-export function headerMenu(model: HeaderBandModel, handlers: HeaderMenuHandlers): MenuItem[] {
-	const { menu } = model;
+export function headerMenu(menu: HeaderMenuPlan, handlers: HeaderMenuHandlers): MenuItem[] {
 	const profile = linkActionItems({
 		href: menu.profileHref,
 		title: menu.name,
@@ -231,11 +252,11 @@ export function headerMenu(model: HeaderBandModel, handlers: HeaderMenuHandlers)
 	return composeMenu(
 		profile,
 		[{
-			key: "copy-handle",
-			label: "Copy handle",
+			key: "copy-link",
+			label: "Copy profile link",
 			hint: menu.handleText,
 			icon: "copy",
-			command: handlers.copyHandle,
+			command: handlers.copyLink,
 		}],
 		menu.members
 			? [{ key: "members", label: menu.members.label, icon: "members", url: menu.members.href }]
@@ -243,7 +264,7 @@ export function headerMenu(model: HeaderBandModel, handlers: HeaderMenuHandlers)
 		menu.archive
 			? [{
 				key: "archive",
-				label: "Archive…",
+				label: "Archive workspace…",
 				hint: "Hidden from your roster; restorable",
 				icon: "archive-box",
 				danger: true,

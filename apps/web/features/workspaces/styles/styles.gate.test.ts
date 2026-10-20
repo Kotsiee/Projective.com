@@ -243,6 +243,7 @@ const FRAME_MIRROR = {
 	sheet: "workspace-chrome.css",
 	prelude: /@media\s*\(max-width:\s*767px\)\s*\{/g,
 	selectors: [
+		".wsp-headerband__menu",
 		'.wsp-footerrig__layout[data-lane="shown"]',
 		'.wsp-footerrig__layout[data-lane="hidden"]',
 		'.wsp-footerrig:has(.wsp-footerrig__layout[data-lane="hidden"] > .wsp-footerrig__createnote)',

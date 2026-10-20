@@ -31,11 +31,12 @@ import type {
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import {
+	canFileInto,
 	dedupVerdicts,
-	isActingOwner,
 	listDrive,
 	listHub,
 	listShare,
+	listWorkspace,
 	ownerOfActor,
 	readAsset,
 	readDownloadGuard,
@@ -78,8 +79,9 @@ import { inspectAssetFor } from "./live-inspect.ts";
  * **`canManage` and `downloadedByViewer` are server-derived on every row** — the first is the UPDATE
  * policy's own predicate, the second the viewer's ledger, and neither is inferred client-side.
  *
- * **The library a write lands in is the acting context's**, resolved from the session. A payload's
- * owner is a REQUEST, honoured only when it names that library.
+ * **The library a write lands in is one the caller holds**: their own, the acting context's, or a team
+ * or business they hold an active seat in (the console drive, Decision #306). A payload's owner is a
+ * REQUEST, honoured only after that seat is confirmed under the caller's own session.
  *
  * **Quota enforcement is fail-open** until `storage_quota_enforced` is flipped by a human; until then
  * an upload over the allowance is metered and warned about, not refused.
@@ -147,6 +149,11 @@ export class FilesBackendService {
 					params.subjectId
 						? toResult(await listDrive(a, params.subjectId, params))
 						: fail(422, { message: "That view needs a connection." }) as Result<AssetListPage>);
+			case "workspace":
+				return signedIn("list-workspace", actor, async (a) =>
+					params.subjectId
+						? toResult(await listWorkspace(a, params.subjectId, params))
+						: fail(422, { message: "That view needs a team or business." }) as Result<AssetListPage>);
 			default:
 				return Promise.resolve(
 					fail(422, { message: "That view is read through its own workspace." }) as Result<AssetListPage>,
@@ -184,13 +191,14 @@ export class FilesBackendService {
 	}
 
 	/**
-	 * A library's storage allowance. `owner` defaults to the acting library; naming another is refused
-	 * (the database refuses it too — an allowance is a fact about someone's subscription).
+	 * A library's storage allowance. `owner` defaults to the acting library; naming one the caller does
+	 * not hold is refused (the database refuses it too — an allowance is a fact about someone's
+	 * subscription).
 	 */
 	static quota(actor: ReadActor, owner?: { ownerType: AssetOwnerType; ownerId: string }): Promise<Result<StorageQuota>> {
 		return signedIn("quota", actor, async (a) => {
 			const target = owner ?? ownerOfActor(a);
-			if (owner && !isActingOwner(a, owner)) {
+			if (owner && !(await canFileInto(a, owner))) {
 				return fail(403, { message: "That allowance isn't yours to read." }) as Result<StorageQuota>;
 			}
 			return toResult(await readQuota(a, target));
@@ -201,9 +209,19 @@ export class FilesBackendService {
 
 	// #region Upload handshake
 
-	/** Pre-flight content fingerprints against the acting library, before any bytes move. */
+	/**
+	 * Pre-flight content fingerprints, before any bytes move, against the library the drop is bound for
+	 * — the acting one unless the check names another the caller may file into.
+	 */
 	static dedupCheck(input: DedupCheck, actor: ReadActor): Promise<Result<DedupVerdict[]>> {
-		return signedIn("dedup", actor, async (a) => ok(await dedupVerdicts(a, input)));
+		return signedIn("dedup", actor, async (a) => {
+			if (!input.ownerType || !input.ownerId) return ok(await dedupVerdicts(a, input));
+			const owner = { ownerType: input.ownerType, ownerId: input.ownerId };
+			if (!(await canFileInto(a, owner))) {
+				return fail(403, { message: "You can't add files to that library." }) as Result<DedupVerdict[]>;
+			}
+			return ok(await dedupVerdicts(a, input, owner));
+		});
 	}
 
 	/** Declare an upload and receive a scoped, short-lived signed-URL ticket. */

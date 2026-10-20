@@ -17,8 +17,9 @@ import type {
 	ShareResolution,
 	StorageQuota,
 } from "@projective/types/files";
-import { fileObjectHref, PLAN_STORAGE_MIB } from "@projective/types/files";
+import { fileObjectHref, folderHref, folderQueryHref, PLAN_STORAGE_MIB } from "@projective/types/files";
 import type { PlanCode } from "@projective/types/finance";
+import { workspaceHref } from "@projective/types/workspace";
 import { getAnonClient, getServiceClient, getUserClient } from "../../core/supabase.ts";
 import { isPublicBucket } from "../../core/storage-url.ts";
 import { clamp } from "../../core/text.ts";
@@ -105,6 +106,56 @@ export function isActingOwner(actor: ReadActor, requested: FilesOwner): boolean 
 export function mayFileInto(actor: ReadActor, requested: FilesOwner): boolean {
 	if (requested.ownerType === "user") return requested.ownerId === actor.userId;
 	return isActingOwner(actor, requested);
+}
+
+/** A team or business the caller holds an active seat in, as its console drive names it. */
+export interface EntitySeat {
+	owner: FilesOwner & { ownerType: "team" | "business" };
+	name: string;
+	handle: string;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The caller's seat in one entity of one kind, through `org.get_acting_context_details` — the definer
+ * door that answers only for an entity the caller holds an ACTIVE seat in (and `NULL` otherwise), so
+ * the membership decision is the database's under the caller's own session, never this module's.
+ */
+async function seatOfKind(actor: Actor, kind: "team" | "business", entityId: string): Promise<EntitySeat | null> {
+	const { data, error } = await getUserClient(actor.accessToken).schema("org")
+		.rpc("get_acting_context_details", { p_context_type: kind, p_context_id: entityId });
+	if (error) throw new Error(`org.get_acting_context_details failed: ${error.message}`);
+	const row = data as { name?: string | null; handle?: string | null } | null;
+	if (!row?.handle) return null;
+	return { owner: { ownerType: kind, ownerId: entityId }, name: clamp(row.name ?? "", 120) || row.handle, handle: row.handle };
+}
+
+/**
+ * The team or business an id names, when the caller is an active member of it; `null` for a stranger,
+ * a departed member, a malformed id and an unknown one alike. The kind is learned from the seat rather
+ * than accepted, so a request cannot point a team id at the business arm.
+ */
+export async function entitySeatOf(actor: Actor, entityId: string): Promise<EntitySeat | null> {
+	if (!UUID.test(entityId)) return null;
+	const [team, business] = await Promise.all([
+		seatOfKind(actor, "team", entityId),
+		seatOfKind(actor, "business", entityId),
+	]);
+	return team ?? business;
+}
+
+/**
+ * Whether the caller may file into a library: {@link mayFileInto}'s own and acting libraries, or a
+ * team or business they hold an active seat in — the console drive (Decision #306). The write
+ * policies ask the same question (`files.fn_owns_library`), so this only decides which refusal a
+ * stranger gets, never whether one does.
+ */
+export async function canFileInto(actor: Actor, requested: FilesOwner): Promise<boolean> {
+	if (mayFileInto(actor, requested)) return true;
+	if (requested.ownerType !== "team" && requested.ownerType !== "business") return false;
+	if (!UUID.test(requested.ownerId)) return false;
+	return (await seatOfKind(actor, requested.ownerType, requested.ownerId)) !== null;
 }
 
 /**
@@ -211,8 +262,16 @@ function trails(folders: readonly FolderRow[]): Map<string, string[]> {
 	return new Map(folders.map((f) => [f.id, folderTrail(f)]));
 }
 
-/** The breadcrumb trail to a folder, root-first, as the hub addresses it. */
-function crumbsTo(lib: Library, folder: FolderRow | null, rootLabel: string, base: string): AssetCrumb[] {
+/**
+ * The breadcrumb trail to a folder, root-first, each crumb addressed by `hrefOf` over the chain of
+ * folder ids down to it (`[]` is the root).
+ */
+function crumbsTo(
+	lib: Library,
+	folder: FolderRow | null,
+	rootLabel: string,
+	hrefOf: (ids: string[]) => string,
+): AssetCrumb[] {
 	const chain: FolderRow[] = [];
 	const byId = new Map(lib.folders.map((f) => [f.id, f]));
 	let cursor: FolderRow | null | undefined = folder;
@@ -221,11 +280,11 @@ function crumbsTo(lib: Library, folder: FolderRow | null, rootLabel: string, bas
 		chain.unshift(cursor);
 		cursor = cursor.parent_folder_id ? byId.get(cursor.parent_folder_id) : null;
 	}
-	const crumbs: AssetCrumb[] = [{ id: null, label: rootLabel, href: base }];
-	let href = base;
+	const crumbs: AssetCrumb[] = [{ id: null, label: rootLabel, href: hrefOf([]) }];
+	const ids: string[] = [];
 	for (const f of chain) {
-		href = `${href}/${encodeURIComponent(f.id)}`;
-		crumbs.push({ id: f.id, label: clamp(f.name, 160) || "Folder", href });
+		ids.push(f.id);
+		crumbs.push({ id: f.id, label: clamp(f.name, 160) || "Folder", href: hrefOf([...ids]) });
 	}
 	return crumbs;
 }
@@ -386,8 +445,45 @@ export async function readQuota(actor: Actor, owner: FilesOwner): Promise<Result
 export async function listHub(actor: Actor, params: AssetListParams, base = "/files"): Promise<Result<AssetListPage>> {
 	const path = params.path ?? [];
 	if (path[0]?.startsWith(MOUNT_PREFIX)) return await listMounted(actor, path[0].slice(MOUNT_PREFIX.length), params, base);
+	return await listLibrary(actor, libraryFor(actor, params.subjectId), params, {
+		scope: "hub",
+		rootLabel: "My files",
+		hrefOf: (ids) => folderHref(base, ids),
+	});
+}
 
-	const owner = libraryFor(actor, params.subjectId);
+/**
+ * One location of a team's or business's console drive (Decision #306). The entity is the one
+ * `subjectId` names only once the caller's active seat in it is confirmed ({@link entitySeatOf});
+ * anybody else gets the same 404 as an unknown id, so the read cannot be used to learn that an entity
+ * exists. The crumbs address the console route, where a folder path rides in the query.
+ */
+export async function listWorkspace(actor: Actor, entityId: string, params: AssetListParams): Promise<Result<AssetListPage>> {
+	const seat = await entitySeatOf(actor, entityId);
+	if (!seat) return { ok: false, status: 404, message: "There's no drive here for you." };
+	const base = workspaceHref(seat.owner.ownerType, seat.handle, "files");
+	return await listLibrary(actor, seat.owner, params, {
+		scope: "workspace",
+		rootLabel: seat.name,
+		hrefOf: (ids) => folderQueryHref(base, ids),
+	});
+}
+
+/** How a library location is presented: the scope it answers as, its root crumb, its crumb addresses. */
+interface LibraryView {
+	scope: "hub" | "workspace";
+	rootLabel: string;
+	hrefOf: (ids: string[]) => string;
+}
+
+/** One folder of one library: its assets, its child folders, its crumbs and the owner's allowance. */
+async function listLibrary(
+	actor: Actor,
+	owner: FilesOwner,
+	params: AssetListParams,
+	view: LibraryView,
+): Promise<Result<AssetListPage>> {
+	const path = params.path ?? [];
 	const lib = await loadLibrary(actor, owner);
 	const folder = path.length > 0
 		? walk(lib.folders, path)
@@ -416,7 +512,7 @@ export async function listHub(actor: Actor, params: AssetListParams, base = "/fi
 	return {
 		ok: true,
 		data: {
-			scope: "hub",
+			scope: view.scope,
 			subjectId: owner.ownerId,
 			folderId,
 			items: page.items,
@@ -426,7 +522,7 @@ export async function listHub(actor: Actor, params: AssetListParams, base = "/fi
 					shareSlug: slugs.folders.get(f.id) ?? null,
 				})
 			),
-			crumbs: crumbsTo(lib, folder ?? null, "My files", base),
+			crumbs: crumbsTo(lib, folder ?? null, view.rootLabel, view.hrefOf),
 			hasMore: page.hasMore,
 			nextCursor: page.nextCursor,
 			total: page.total,

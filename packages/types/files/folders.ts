@@ -211,4 +211,47 @@ export function folderHref(base: string, segments: readonly string[]): string {
 	return `${trimmed}/${segments.map((s) => encodeURIComponent(s)).join("/")}`;
 }
 
+/**
+ * The query key a folder path rides in where the route cannot take a wildcard tail — a console
+ * drive at `/teams/{handle}/files?path=Brand/Logos`, whose `[module]` route is one segment deep.
+ */
+export const FOLDER_PATH_PARAM = "path";
+
+/** Percent-decode one segment, keeping it verbatim when it is not valid encoding. */
+function decodeSegment(segment: string): string {
+	try {
+		return decodeURIComponent(segment);
+	} catch {
+		return segment;
+	}
+}
+
+/**
+ * The deep-link URL for a tree path carried in the query rather than the path.
+ *
+ * The value is {@link pathKey} written raw, so each segment keeps its own encoding and a folder named
+ * `a/b` still cannot read back as the pair `["a", "b"]`. Every other parameter in `search` is kept in
+ * its order; an existing path parameter is replaced, and the root path drops it entirely.
+ */
+export function folderQueryHref(base: string, segments: readonly string[], search = ""): string {
+	const trimmed = base.replace(/\/+$/, "") || "/";
+	const kept = search.replace(/^\?/, "").split("&").filter((pair) =>
+		pair.length > 0 && pair.split("=")[0] !== FOLDER_PATH_PARAM
+	);
+	if (segments.length > 0) kept.push(`${FOLDER_PATH_PARAM}=${pathKey(segments)}`);
+	return kept.length > 0 ? `${trimmed}?${kept.join("&")}` : trimmed;
+}
+
+/**
+ * The folder path a query string addresses through {@link FOLDER_PATH_PARAM} — the inverse of
+ * {@link folderQueryHref}. Read from the RAW value, because a decoded one has already merged a
+ * segment's own encoded `/` into the separators. `[]` is the root.
+ */
+export function folderSegmentsOfQuery(search: string): string[] {
+	const pair = search.replace(/^\?/, "").split("&").find((p) => p.split("=")[0] === FOLDER_PATH_PARAM);
+	if (!pair) return [];
+	const raw = pair.slice(FOLDER_PATH_PARAM.length + 1);
+	return raw.split("/").filter((part) => part.length > 0).map(decodeSegment);
+}
+
 // #endregion

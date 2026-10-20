@@ -18,6 +18,7 @@ import SpendPolicyScreen from "../islands/SpendPolicyScreen.island.tsx";
 import BillingScreen from "../islands/BillingScreen.island.tsx";
 import BusinessVerificationScreen from "../islands/BusinessVerificationScreen.island.tsx";
 import TeamSettingsScreen from "../islands/TeamSettingsScreen.island.tsx";
+import EntityFilesScreen from "../islands/EntityFilesScreen.island.tsx";
 import type { BusinessBillingView } from "@projective/types/finance";
 
 /**
@@ -113,6 +114,18 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 				)
 				: <ModulePlaceholder kind={ws.kind} module={mod!} />;
 
+		case "files":
+			// The entity's shared drive (Decision #306): the `/files` hub's body, owned by this entity.
+			return (
+				<EntityFilesScreen
+					kind={ws.kind}
+					entityId={ws.id}
+					handle={ws.handle}
+					name={ws.name}
+					status={ws.status}
+				/>
+			);
+
 		// --- Modules that DELEGATE to a surface that already exists -----------------------------------
 		case "finance":
 			// A business's Finance is a real head on its pooled wallet (BU6); a team's still hands off.
@@ -149,16 +162,6 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 					href="/catalogue"
 					linkLabel="Open catalogue"
 					note={`Services and products offered by ${ws.name}.`}
-				/>
-			);
-		case "messages":
-			return (
-				<ModulePlaceholder
-					kind={ws.kind}
-					module={mod!}
-					href="/messages"
-					linkLabel="Open messages"
-					note={`Conversations involving ${ws.name}.`}
 				/>
 			);
 		case "calendar":

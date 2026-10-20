@@ -138,3 +138,15 @@ CREATE INDEX IF NOT EXISTS idx_channel_suppressions_user
 CREATE INDEX IF NOT EXISTS idx_dm_threads_subject_listing
     ON comms.dm_threads (subject_listing_id)
     WHERE subject_listing_id IS NOT NULL;
+-- Entity channels (Decision #306): one live channel per name per entity — an archived one frees its
+-- name — and one default per entity. The first also serves the console's list and the member sync,
+-- which read an entity's channels by (owner_type, owner_entity_id).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_dm_threads_channel_slug
+    ON comms.dm_threads (owner_type, owner_entity_id, slug)
+    WHERE kind = 'entity_channel' AND archived_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_dm_threads_channel_default
+    ON comms.dm_threads (owner_type, owner_entity_id)
+    WHERE is_default;
+CREATE INDEX IF NOT EXISTS idx_dm_threads_entity_channels
+    ON comms.dm_threads (owner_type, owner_entity_id)
+    WHERE kind = 'entity_channel';

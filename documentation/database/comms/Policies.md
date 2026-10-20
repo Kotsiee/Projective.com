@@ -194,7 +194,15 @@ is served by `comms.dm_thread_roster()` — three columns, none of them state.
 `comms.dm_messages` carries the inbox's one write (`send_dm_messages_if_participant`): a participant
 may post into their own thread, with `sender_user_id` pinned to `auth.uid()` for the same reason the
 `comms.project_messages` INSERT pins it — membership says who may post, not whose name goes on the
-row. The thread and both participant rows are minted by `comms.get_or_create_dm_thread` (SECURITY
+row. Its third arm refuses a thread with `archived_at` set — an archived **entity channel**
+(Decision #306) keeps its history readable to its participants but takes no new message. The arm
+reads `comms.dm_threads` as the caller, whose own participation already admits the row.
+
+Entity channels need no policy of their own: a channel's `dm_participants` rows ARE the entity's
+active members (trigger-maintained, [Functions.md](Functions.md#entity-channels-00001300--00001840-decision-306)),
+so `view_dm_threads_if_participant`, `view_dm_messages_if_participant`, the send policy and every
+`comms.can_read_message` policy already answer "is this person a member of the entity". A member who
+leaves has their participation soft-deleted, which `comms.is_dm_participant` reads as gone. The thread and both participant rows are minted by `comms.get_or_create_dm_thread` (SECURITY
 DEFINER), so a first message never has to insert into a thread the caller is not yet a member of.
 Joining, marking read, starring and archiving remain policy-less on purpose — nothing exercises them.
 

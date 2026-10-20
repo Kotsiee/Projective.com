@@ -39,12 +39,17 @@ const MODULES = [
 	"verification",
 ] as const;
 
+/**
+ * A console rig input. Its layout defaults to the lane off-canvas — the one layout that carries Invite
+ * member and Settings, which the lane footer carries beside the lane (Decision #306).
+ */
 function inConsole(overrides: Partial<RigInput> = {}): RigInput {
 	return {
 		kind: "team",
 		handle: "north-loop",
 		module: "payouts",
 		view: null,
+		lane: "off-canvas",
 		canCreate: true,
 		canInvite: true,
 		canManageMoney: true,
@@ -60,7 +65,7 @@ const keys = (input: RigInput) => rigModel(input).actions.map((a) => a.key);
 
 /** The roster index's rig input. */
 function onRoster(overrides: Partial<RigInput> = {}): RigInput {
-	return inConsole({ handle: null, module: null, ...overrides });
+	return inConsole({ handle: null, module: null, lane: undefined, ...overrides });
 }
 
 /** Every place the lane can be beside the rig. */
@@ -91,7 +96,7 @@ Deno.test("rig: never more than one filled control, in any state", () => {
 				}
 			}
 		}
-		assertEquals(rigFilledCount(rigModel(inConsole({ kind, handle: null, module: null }))), 0);
+		assertEquals(rigFilledCount(rigModel(onRoster({ kind }))), 0);
 		// The roster in every layout, every create state: at most one fill, and never beside the lane or
 		// its rail.
 		for (const canCreate of [true, false]) {
@@ -198,11 +203,8 @@ Deno.test("rig: the commit is 'Save' beside 'Discard' — the status line alread
 });
 
 Deno.test("rig: what the trailing side holds — the width its words need before they fold", () => {
-	assertEquals(rigModel(inConsole({ handle: null, module: null })).holds, "create");
-	assertEquals(
-		rigModel(inConsole({ handle: null, module: null, canCreate: false })).holds,
-		"create",
-	);
+	assertEquals(rigModel(onRoster()).holds, "create");
+	assertEquals(rigModel(onRoster({ canCreate: false })).holds, "create");
 	for (const module of MODULES) {
 		const holds = POLICY_MODULES.includes(module) || module === PROFILE_EDITOR_MODULE
 			? "editor"
@@ -260,7 +262,7 @@ Deno.test("rig: the status line stays mounted for the whole life of a policy edi
 	for (const module of ["overview", "members"]) {
 		assert(!rigModel(inConsole({ module })).statusLine, module);
 	}
-	assert(!rigModel(inConsole({ handle: null, module: null })).statusLine);
+	assert(!rigModel(onRoster()).statusLine);
 });
 // #endregion
 
@@ -313,15 +315,15 @@ Deno.test("rig: Settings is a link, never offered on Settings itself", () => {
 });
 
 Deno.test("rig: the roster index holds the zoom and New (tier 4) — or nothing to create", () => {
-	const roster = rigModel(inConsole({ handle: null, module: null }));
+	const roster = rigModel(onRoster());
 	assertEquals(roster.zoom, { label: "Teams view zoom" });
 	assertEquals(roster.actions, [{ key: "create", control: "button", tier: 4, label: "New team" }]);
-	assertEquals(rigModel(inConsole({ handle: null, module: null, canCreate: false })).actions, []);
+	assertEquals(rigModel(onRoster({ canCreate: false })).actions, []);
 });
 
 Deno.test("rig: the roster's first run offers no New — the canvas's empty state carries the create", () => {
 	for (const kind of ["team", "business"] as WorkspaceKind[]) {
-		const first = rigModel(inConsole({ kind, handle: null, module: null, firstRun: true }));
+		const first = rigModel(onRoster({ kind, firstRun: true }));
 		assertEquals(first.actions, [], kind);
 		assertEquals(rigFilledCount(first), 0, kind);
 	}
@@ -392,7 +394,7 @@ Deno.test("rig: the roster's first run holds no New and no note in any layout", 
 	}
 });
 
-Deno.test("rig: rigLayouts answers every layout on the roster and one in a console", () => {
+Deno.test("rig: rigLayouts answers every layout on the roster, and the lane and phone in a console", () => {
 	for (const kind of ["team", "business"] as WorkspaceKind[]) {
 		for (const canCreate of [true, false]) {
 			const input = { kind, canCreate, createBlockedReason: "Upgrade to add another." };
@@ -411,11 +413,16 @@ Deno.test("rig: rigLayouts answers every layout on the roster and one in a conso
 			assertEquals(rigFilledCount(roster.withRail!), 0);
 			assertEquals(rigFilledCount(roster.withoutLane!), canCreate ? 1 : 0);
 		}
-		// A console's lane holds Invite member, which the ruling leaves alone: one layout.
+		// A console's lane footer and its rail carry Invite member and Settings (Decision #306); the
+		// phone rig carries them where the frame hides the lane.
 		for (const module of MODULES) {
 			const inside = rigLayouts(inConsole({ kind, module }));
-			assertEquals([inside.withRail, inside.withoutLane], [null, null], `${kind}/${module}`);
-			assertEquals(inside.withLane, rigModel(inConsole({ kind, module, lane: "off-canvas" })));
+			assertEquals(inside.withRail, null, `${kind}/${module}`);
+			assertEquals(inside.withLane, rigModel(inConsole({ kind, module, lane: "expanded" })));
+			assertEquals(inside.withoutLane, rigModel(inConsole({ kind, module, lane: "off-canvas" })));
+			for (const key of ["invite", "settings"]) {
+				assert(!inside.withLane.actions.some((a) => a.key === key), `${kind}/${module}: ${key}`);
+			}
 			assertEquals(inside.withLane.note, null);
 		}
 	}

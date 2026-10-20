@@ -229,11 +229,14 @@ function matchesNeedle(contact: MessagingContact, needle: string): boolean {
 async function fetchViewerThreadIds(
 	actor: ReadActor & { accessToken: string },
 ): Promise<string[]> {
+	// Entity channels (Decision #306) are rooms of an entity's whole roster, not conversations the
+	// viewer had with anyone, so their members are not contacts by way of them.
 	const { data, error } = await commsDb(actor)
 		.from("dm_participants")
-		.select("thread_id, deleted_at")
+		.select("thread_id, deleted_at, dm_threads!inner(kind)")
 		.eq("user_id", actor.userId)
 		.is("deleted_at", null)
+		.neq("dm_threads.kind", "entity_channel")
 		.limit(THREAD_ID_CAP);
 
 	if (error) throw new Error(`comms.dm_participants read failed: ${error.message}`);

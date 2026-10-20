@@ -165,12 +165,12 @@ export interface RigModel {
  * The rig in each layout the frame can take: `withLane` beside the expanded lane, `withRail` beside
  * the collapsed rail, `withoutLane` below `--bp-md` with the lane off-canvas. `withRail` holds
  * `withLane`'s controls (the rail keeps the lane's create) and adds only the reason the rail cannot
- * say. Both are `null` where the lane's state changes nothing the rig holds, which is every console.
+ * say; it is `null` in a console, whose rail keeps the lane's Invite member and Settings.
  */
 export interface RigLayouts {
 	withLane: RigModel;
 	withRail: RigModel | null;
-	withoutLane: RigModel | null;
+	withoutLane: RigModel;
 }
 // #endregion
 
@@ -234,8 +234,11 @@ export function rigModel(input: RigInput): RigModel {
 	const editing = editorOpen(input);
 	const pending = editing && input.dirty;
 	const actions: RigAction[] = [];
+	// Beside the lane or its rail, the lane's footer carries Invite member and Settings (Decision #306);
+	// the rig carries them only where the frame has hidden the lane.
+	const laneCarries = (input.lane ?? "expanded") !== "off-canvas";
 
-	if (input.canInvite) {
+	if (input.canInvite && !laneCarries) {
 		actions.push(
 			inviteOpensInPlace(input.kind, input.module)
 				? { key: "invite", control: "button", tier: 4, label: "Invite members" }
@@ -247,7 +250,7 @@ export function rigModel(input: RigInput): RigModel {
 				},
 		);
 	}
-	if (input.canManageSettings && input.module !== "settings") {
+	if (input.canManageSettings && input.module !== "settings" && !laneCarries) {
 		actions.push({
 			key: "settings",
 			control: "link",
@@ -284,15 +287,15 @@ export function rigModel(input: RigInput): RigModel {
 
 /**
  * The rig for every layout of the page, for the island to draw them and the stylesheet to paint one.
- * Only the roster index differs between them. A console's lane holds Invite member, and moving that
- * onto the phone rig is not part of Decision #245 (k), so a console has one layout.
+ * On the roster index the create moves (Decision #245 (k)); in a console the lane footer's Invite
+ * member and Settings move onto the phone rig when the frame hides the lane (Decision #306).
  */
 export function rigLayouts(input: RigInput): RigLayouts {
 	const roster = !input.handle;
 	return {
 		withLane: rigModel({ ...input, lane: "expanded" }),
 		withRail: roster ? rigModel({ ...input, lane: "rail" }) : null,
-		withoutLane: roster ? rigModel({ ...input, lane: "off-canvas" }) : null,
+		withoutLane: rigModel({ ...input, lane: "off-canvas" }),
 	};
 }
 

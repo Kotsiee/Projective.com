@@ -8,9 +8,12 @@ import {
 	type FileSortDir,
 	type FileSortKey,
 	folderHref,
+	folderQueryHref,
+	folderSegmentsOfQuery,
 	SHARE_ROUTE_BASE,
 	sourceLabel,
 } from "../types/file-types.ts";
+import { type WorkspaceKind, workspaceHref } from "@projective/types/workspace";
 
 /**
  * asset-model — the PURE helper layer for the `/files` asset hub.
@@ -26,7 +29,14 @@ import {
  */
 
 // #region Path primitives (re-exported from the SSOT — never reimplemented)
-export { ancestorKeys, folderHref, pathKey } from "../types/file-types.ts";
+export {
+	ancestorKeys,
+	FOLDER_PATH_PARAM,
+	folderHref,
+	folderQueryHref,
+	folderSegmentsOfQuery,
+	pathKey,
+} from "../types/file-types.ts";
 // #endregion
 
 // #region Routing
@@ -42,10 +52,14 @@ export function assetHref(base: string, segments: readonly string[]): string {
 	return folderHref(base, segments);
 }
 
-/** Where a scope's file surface lives — the base every {@link assetHref} in that scope is built on. */
+/**
+ * Where a scope's file surface lives — the base every {@link assetHref} in that scope is built on. A
+ * `workspace` drive lives in its entity's console, addressed by `subjectId` as the entity's handle
+ * and `kind`; its folder path rides in the query ({@link folderQueryHref}), not under this base.
+ */
 export function filesHref(
 	scope: FileScope,
-	opts?: { subjectId?: string | null; channelId?: string | null },
+	opts?: { subjectId?: string | null; channelId?: string | null; kind?: WorkspaceKind | null },
 ): string {
 	const subject = opts?.subjectId ?? "";
 	const channel = opts?.channelId ?? "";
@@ -66,7 +80,49 @@ export function filesHref(
 			return subject ? `/messages/${encodeURIComponent(subject)}/files` : "/messages";
 		case "share":
 			return subject ? `${SHARE_ROUTE_BASE}/${encodeURIComponent(subject)}` : SHARE_ROUTE_BASE;
+		case "workspace":
+			return subject && opts?.kind ? workspaceHref(opts.kind, encodeURIComponent(subject), "files") : "/files";
 	}
+}
+
+/**
+ * How a host addresses a folder: under its base as path segments (`/files/Brand/Logos`, a wildcard
+ * route) or in the query (`/teams/{handle}/files?path=Brand/Logos`, a one-segment `[module]` route).
+ */
+export type FolderRouting = "path" | "query";
+
+/**
+ * The address of a folder path under `base` in a host's routing mode. `search` is the current query,
+ * kept as it is beside a path, and kept beside (and without) the old path parameter in the query mode.
+ */
+export function locationHref(
+	base: string,
+	segments: readonly string[],
+	routing: FolderRouting,
+	search = "",
+): string {
+	if (routing === "query") return folderQueryHref(base, segments, search);
+	return assetHref(base, segments) + search;
+}
+
+/**
+ * The folder path an address names under `base` — the inverse of {@link locationHref}, for the
+ * browser's own location (Back / Forward) and for a breadcrumb's href. An address outside `base`
+ * names the root, and a segment that will not decode is kept verbatim.
+ */
+export function segmentsOfHref(href: string, base: string, routing: FolderRouting): string[] {
+	const [beforeHash] = href.split("#");
+	const queryAt = beforeHash.indexOf("?");
+	const pathname = queryAt >= 0 ? beforeHash.slice(0, queryAt) : beforeHash;
+	const search = queryAt >= 0 ? beforeHash.slice(queryAt) : "";
+	const trimmedBase = base.replace(/\/+$/, "");
+	if (!pathname.startsWith(trimmedBase)) return [];
+	if (routing === "query") return folderSegmentsOfQuery(search);
+	return pathname
+		.slice(trimmedBase.length)
+		.split("/")
+		.filter(Boolean)
+		.map(safeDecode);
 }
 
 /** Human label for a space — the breadcrumb root and the picker's source tabs. */
@@ -84,6 +140,8 @@ export function scopeLabel(scope: FileScope): string {
 			return "Conversation files";
 		case "share":
 			return "Shared with you";
+		case "workspace":
+			return "Shared files";
 	}
 }
 // #endregion

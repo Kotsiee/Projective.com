@@ -50,7 +50,7 @@ import {
 	inspectable,
 } from "../types/file-types.ts";
 import { FilesService } from "../core/FilesService.ts";
-import { assetHref, shapeFolderAsNode } from "../core/asset-model.ts";
+import { type FolderRouting, locationHref, segmentsOfHref, shapeFolderAsNode } from "../core/asset-model.ts";
 import {
 	appendPage,
 	applyError,
@@ -152,6 +152,13 @@ export interface FilesHubProps {
 	path: string[];
 	/** The scope base every deep link hangs off (default the hub root). */
 	base?: string;
+	/**
+	 * Where a folder path lives in the address: under {@link base} (the default, for a wildcard route)
+	 * or in its `?path=` query (a console drive, whose `[module]` route is one segment deep).
+	 */
+	routing?: FolderRouting;
+	/** The empty library's sentence, when the host's library is not the person's own. */
+	emptyNote?: string;
 }
 // #endregion
 
@@ -367,7 +374,7 @@ function Workspace(p: WorkspaceProps): JSX.Element {
 // #endregion
 
 export default function FilesHub(props: FilesHubProps): JSX.Element {
-	const { initial, tree: initialTree, path, base = "/files" } = props;
+	const { initial, tree: initialTree, path, base = "/files", routing = "path" } = props;
 
 	// #region Local (view) state — never in `files-state`, because no other region reads it
 	/** The asset the preview modal is open on; `null` closes it. */
@@ -468,9 +475,11 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 	 * because both describe assets that are about to stop being listed.
 	 */
 	function navigate(next: string[]): void {
-		const href = assetHref(base, next);
-		if (typeof history !== "undefined" && globalThis.location?.pathname !== href) {
-			history.pushState({ filesPath: next }, "", href + globalThis.location.search);
+		const search = globalThis.location?.search ?? "";
+		const href = locationHref(base, next, routing, search);
+		const here = (globalThis.location?.pathname ?? "") + search;
+		if (typeof history !== "undefined" && here !== href) {
+			history.pushState({ filesPath: next }, "", href);
 		}
 		currentPath.value = next;
 		clearSelection();
@@ -630,17 +639,11 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		filesCommit.value = () => void reload();
 
 		const onPop = () => {
-			const next = globalThis.location.pathname
-				.slice(base.replace(/\/+$/, "").length)
-				.split("/")
-				.filter(Boolean)
-				.map((segment) => {
-					try {
-						return decodeURIComponent(segment);
-					} catch {
-						return segment;
-					}
-				});
+			const next = segmentsOfHref(
+				globalThis.location.pathname + globalThis.location.search,
+				base,
+				routing,
+			);
 			currentPath.value = next;
 			clearSelection();
 			inspectId.value = null;
@@ -727,7 +730,7 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 							? "No files or folders in this location match the current search and filters."
 							: readOnly.value
 							? "This location is empty. It is mounted here, so its contents are managed where they live."
-							: "Files you upload, and links you save, will appear here."}
+							: props.emptyNote ?? "Files you upload, and links you save, will appear here."}
 					</p>
 					{narrowed.value
 						? (
@@ -818,6 +821,7 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 				<AssetBreadcrumbs
 					crumbs={crumbs.value}
 					base={base}
+					routing={routing}
 					onNavigate={navigate}
 					aria-label="Folder path"
 				/>

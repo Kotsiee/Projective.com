@@ -449,7 +449,11 @@ CREATE TYPE marketplace.service_delivery_model AS ENUM (
 -- `service_inquiry` is deliberately distinct from `dm`: a first-contact enquiry from a listing has no
 -- prior relationship and different notification and auto-response rules, so collapsing it into `dm`
 -- would lose the only signal that says why the thread exists.
-CREATE TYPE comms.conversation_kind AS ENUM ('dm', 'group', 'service_inquiry');
+-- `entity_channel` (Decision #306) is a team's or business's named room (`# general`): its people are
+-- the entity's active members, kept in step by triggers, so it never takes part in the personal inbox,
+-- the DM shield, auto-replies or request routing — each of those reads a thread as a relationship
+-- between people, and a channel is a relationship between a person and an entity.
+CREATE TYPE comms.conversation_kind AS ENUM ('dm', 'group', 'service_inquiry', 'entity_channel');
 
 -- `ticket_priority` — mirrors @projective/types/projects TicketPriority.
 -- NOT the same axis as `workload_intensity`, which is the Architect's Override and moves both the

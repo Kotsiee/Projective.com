@@ -29,6 +29,7 @@ import {
 	setupSteps,
 	spendRequestState,
 	spentInPeriod,
+	toChannels,
 	toEngagement,
 	toIncomingInvite,
 	toOutgoingInvite,
@@ -808,6 +809,41 @@ Deno.test("toEngagement: faces from people, W_i from the member row; non-members
 		wiCap: 10,
 		stageWi: 3,
 	}]);
+});
+
+Deno.test("toChannels: the read's order; counts floored at 0; a bad slug or a missing id dropped", () => {
+	const channels = toChannels([
+		{
+			id: "c-1",
+			slug: "general",
+			topic: null,
+			is_default: true,
+			unread: "3",
+			last_activity_at: "2026-10-20T09:00:00.123456+00:00",
+		},
+		{ id: "c-2", slug: "delivery-sync", topic: "", is_default: false, unread: -2, last_activity_at: null },
+		{ id: "c-3", slug: "Not A Slug", topic: null, is_default: false, unread: 0, last_activity_at: null },
+		{ id: "", slug: "orphan", topic: null, is_default: false, unread: 0, last_activity_at: null },
+	]);
+	assertEquals(channels, [
+		{
+			id: "c-1",
+			slug: "general",
+			topic: null,
+			isDefault: true,
+			unreadCount: 3,
+			lastActivityAt: "2026-10-20T09:00:00.123Z",
+		},
+		{
+			id: "c-2",
+			slug: "delivery-sync",
+			topic: null,
+			isDefault: false,
+			unreadCount: 0,
+			lastActivityAt: null,
+		},
+	]);
+	assertEquals(toChannels(null), []);
 });
 
 // #endregion

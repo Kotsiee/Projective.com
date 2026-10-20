@@ -5,7 +5,7 @@ import { fetchPublicMedia, mediaUrl } from "../files/public-media.ts";
 import type { ReadActor } from "../read-actor.ts";
 import {
 	compactActivityLabel,
-	type ConversationKind,
+	ConversationKind,
 	type ConversationRelation,
 	type ConversationSummary,
 	InboxFolder,
@@ -104,7 +104,16 @@ interface ThreadRow {
 	photo_file_id: string | null;
 	created_by_user_id: string;
 	created_at: string;
+	/** An entity channel's owner kind (`team` · `business`); null on every other kind. */
+	owner_type?: string | null;
+	/** An entity channel's owning team or business id; null on every other kind. */
+	owner_entity_id?: string | null;
+	/** An entity channel's name (`general`); null on every other kind. */
+	slug?: string | null;
 }
+
+const THREAD_COLUMNS =
+	"id, kind, title, photo_file_id, created_by_user_id, created_at, owner_type, owner_entity_id, slug";
 
 /** One `comms.dm_participants` row — where all per-viewer conversation state lives. */
 interface ParticipantRow {
@@ -358,9 +367,8 @@ export function toConversationSummary(
 	row: ThreadRow,
 	ctx: ConversationContext,
 ): ConversationSummary {
-	const kind: ConversationKind = row.kind === "group" || row.kind === "service_inquiry"
-		? row.kind
-		: "dm";
+	const kind: ConversationKind = ConversationKind.catch("dm").parse(row.kind);
+	const channel = kind === "entity_channel";
 
 	const others = ctx.otherIds.map((id) => ({
 		id,
@@ -386,10 +394,18 @@ export function toConversationSummary(
 	return {
 		id: row.id,
 		kind,
-		relation: "dm" as ConversationRelation,
-		// A group's own name; a DM's title is the counterparty, because storing a copy of their name
-		// on the thread would go stale the moment they renamed themselves (the column's own comment).
-		title: clamp(row.title, 160) || others[0]?.name || "Conversation",
+		// An entity channel's one relationship is to its owner; every other thread stays neutral.
+		relation: (channel && row.owner_type === "business"
+			? "business"
+			: channel
+			? "team"
+			: "dm") as ConversationRelation,
+		// A channel is its `#name`; a group its own name; a DM's title is the counterparty, because
+		// storing a copy of their name on the thread would go stale the moment they renamed themselves
+		// (the column's own comment).
+		title: channel
+			? `#${clamp(row.slug, 40) || "channel"}`
+			: clamp(row.title, 160) || others[0]?.name || "Conversation",
 		// A DM is drawn with the counterparty's photo; a group with its OWN photo, when it has one — it
 		// has no single face to borrow.
 		avatar: kind === "dm"
@@ -415,7 +431,7 @@ export function toConversationSummary(
 		serviceName: null,
 		productId: null,
 		productName: null,
-		entityId: null,
+		entityId: channel ? row.owner_entity_id ?? null : null,
 		entityName: null,
 	};
 }
@@ -453,6 +469,7 @@ export async function fetchConversations(
 	const { summaries, unmeasured, startedByViewer } = await fetchParticipatingConversations(
 		actor,
 		now,
+		"inbox",
 	);
 	// The visibility rule applied at the source, exactly where the fixture path applies it — before
 	// any partition, filter or sort. A thread surfaces in a LIST once it holds a message, or at once
@@ -467,6 +484,13 @@ export async function fetchConversations(
 }
 
 /**
+ * Which threads a participation read covers: `inbox` is the personal inbox, which never lists an entity
+ * channel (Decision #306 — those are opened from the workspace console); `any` is every thread the
+ * viewer is in, for a read that addresses one thread directly.
+ */
+type ParticipationScope = "inbox" | "any";
+
+/**
  * Every thread the viewer participates in, mapped to the inbox projection, with NO visibility rule —
  * plus the ids whose message tail could not be read. {@link fetchConversations} gates the inbox list
  * on it; {@link fetchConversation} deliberately does not (see there).
@@ -474,16 +498,25 @@ export async function fetchConversations(
 async function fetchParticipatingConversations(
 	actor: ReadActor & { accessToken: string },
 	now: number,
+	scope: ParticipationScope,
 ): Promise<
 	{ summaries: ConversationSummary[]; unmeasured: Set<string>; startedByViewer: Set<string> }
 > {
 	const db = commsClient(actor);
 
-	const { data: mine, error: mineErr } = await db
-		.from("dm_participants")
-		.select(PARTICIPANT_COLUMNS)
-		.eq("user_id", actor.userId)
-		.is("deleted_at", null);
+	// The inbox filters on the thread's kind in the same request (an inner embed), so a member of many
+	// channels pays no per-channel tail read for rows it would then drop.
+	const participation = scope === "inbox"
+		? db.from("dm_participants")
+			.select(`${PARTICIPANT_COLUMNS}, dm_threads!inner(kind)`)
+			.eq("user_id", actor.userId)
+			.is("deleted_at", null)
+			.neq("dm_threads.kind", "entity_channel")
+		: db.from("dm_participants")
+			.select(PARTICIPANT_COLUMNS)
+			.eq("user_id", actor.userId)
+			.is("deleted_at", null);
+	const { data: mine, error: mineErr } = await participation;
 
 	if (mineErr) throw new Error(`comms.dm_participants read failed: ${mineErr.message}`);
 	const viewerRows = (mine ?? []) as ParticipantRow[];
@@ -495,7 +528,7 @@ async function fetchParticipatingConversations(
 
 	const [threadsRes, rosterRes, tailRes] = await Promise.all([
 		db.from("dm_threads")
-			.select("id, kind, title, photo_file_id, created_by_user_id, created_at")
+			.select(THREAD_COLUMNS)
 			.in("id", threadIds),
 		// Identity only. The SELECT policy on `comms.dm_participants` is own-row-only precisely so a
 		// co-participant's private state (`is_muted`, `is_archived`, `deleted_at`, `last_read_at`)
@@ -867,7 +900,7 @@ export async function fetchConversation(
 	threadId: string,
 	now: number,
 ): Promise<ConversationSummary | null> {
-	const { summaries } = await fetchParticipatingConversations(actor, now);
+	const { summaries } = await fetchParticipatingConversations(actor, now, "any");
 	return summaries.find((c) => c.id === threadId) ?? null;
 }
 

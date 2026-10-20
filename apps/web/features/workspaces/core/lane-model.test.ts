@@ -1,19 +1,20 @@
 import { assert, assertEquals } from "@std/assert";
-import type {
-	IncomingInvite,
-	WorkspaceCapability,
-	WorkspaceKind,
-	WorkspaceStatus,
-	WorkspaceSummary,
+import {
+	type IncomingInvite,
+	type WorkspaceCapability,
+	workspaceHref,
+	type WorkspaceKind,
+	type WorkspaceStatus,
+	type WorkspaceSummary,
 } from "@projective/types/workspace";
 import { importWithoutGlyphs, type RegistryApi } from "./registry-import.testing.ts";
 import { MEMBERS_READINGS } from "./sub-views.ts";
 
 /**
- * The workspace lane's four zones (Teams work order L1), pinned at the pure model the expanded lane
- * and the collapsed rail both render. The model reaches the registry, whose glyphs import CSS, so it
- * loads through {@link importWithoutGlyphs}; its surface is restated below because the real types
- * cannot be named here.
+ * The workspace lane's four zones (Teams work order L1; the console zones of Decision #306), pinned at
+ * the pure model the expanded lane and the collapsed rail both render. The model reaches the registry,
+ * whose glyphs import CSS, so it loads through {@link importWithoutGlyphs}; its surface is restated
+ * below because the real types cannot be named here.
  */
 
 // #region Surface under test
@@ -22,24 +23,47 @@ type Module = { key: string };
 type Create =
 	| { action: "create"; label: string }
 	| { action: "invite"; label: string; inPlace: boolean; href: string };
+type Invite = Extract<Create, { action: "invite" }>;
+
+interface HubRow {
+	key: string;
+	label: string;
+	href: string;
+	active: boolean;
+	modules: Module[];
+	blurb: string;
+}
+
+interface SwitchCopy {
+	action: string;
+	label: string;
+	ariaLabel: string;
+	busyLabel: string;
+}
 
 interface Zones {
 	header:
-		| { mode: "roster"; title: string; meta: Meta[] }
+		| { mode: "roster"; title: string; meta: Meta[]; search: { label: string; placeholder: string } }
 		| {
 			mode: "console";
 			back: { href: string; label: string };
 			status: { label: string; severity: string };
-			switchControl: { action: string; label: string; ariaLabel: string; busyLabel: string };
+			menuLabel: string;
+			search: { label: string; placeholder: string };
 		};
 	views:
 		| { mode: "roster" }
 		| {
 			mode: "console";
-			primary: Module[];
-			more: Module[];
-			active: string | null;
-			activeInMore: boolean;
+			sections: { id: string; label: string; rows: HubRow[] }[];
+			channels: {
+				label: string;
+				base: string;
+				active: string | null;
+				createLabel: string;
+				canCreate: boolean;
+			} | null;
+			activeHub: string | null;
 		};
 	context: {
 		control: string;
@@ -47,7 +71,19 @@ interface Zones {
 		options: { value: string; label: string }[];
 		search: boolean;
 	} | null;
-	footer: { create: Create | null; note: string | null };
+	footer: {
+		create: Create | null;
+		note: string | null;
+		actAs?: SwitchCopy;
+		invite?: Invite | null;
+		settings?: HubRow | null;
+	};
+}
+
+interface SearchGroup {
+	id: string;
+	label: string;
+	hits: { key: string; label: string; meta: string | null; href: string }[];
 }
 
 type RosterInput = {
@@ -70,6 +106,7 @@ type ConsoleInput = {
 	capabilities: readonly WorkspaceCapability[];
 	module: string | null;
 	subView: string | null;
+	channel?: string | null;
 };
 
 interface LaneModelApi {
@@ -98,20 +135,26 @@ interface LaneModelApi {
 		modules: readonly Module[],
 		signals: Record<string, { dot?: boolean; count?: number }>,
 	): boolean;
+	hubSignal(
+		modules: readonly Module[],
+		signals: Record<string, { dot?: boolean; count?: number }>,
+	): { dot?: boolean; count?: number } | undefined;
+	channelUnreadLabel(unread: number): string | null;
 	verificationWords(kind: WorkspaceKind, state: string): string;
-	contextSwitchCopy(
-		kind: WorkspaceKind,
-		name: string,
-		acting: boolean,
-	): { action: string; label: string; ariaLabel: string; busyLabel: string };
-	laneMorePartition(kind: WorkspaceKind, viewer: string): string;
-	parseMoreOpen(raw: string | null, partition: string): boolean | null;
-	withMoreOpen(raw: string | null, partition: string, open: boolean): string;
-	initialMoreOpen(stored: boolean | null, activeInMore: boolean): boolean;
+	contextSwitchCopy(kind: WorkspaceKind, name: string, acting: boolean): SwitchCopy;
+	consoleSearch(query: string, sources: {
+		rows: readonly { key: string; label: string; href: string; blurb: string }[];
+		channels: readonly { slug: string; topic: string | null }[];
+		channelBase: string | null;
+		projects: readonly { id: string; title: string; href: string; counterparty: string }[];
+		people: readonly { id: string; name: string; handle: string }[];
+		membersHref: string | null;
+	}): SearchGroup[] | null;
+	SEARCH_GROUP_LIMIT: number;
 }
 
 const lane = await importWithoutGlyphs<LaneModelApi>("./lane-model.ts");
-const { mayViewModule, primaryModules, secondaryModules } = await importWithoutGlyphs<RegistryApi>(
+const { mayViewModule, hubsForViewer, modulesForViewer } = await importWithoutGlyphs<RegistryApi>(
 	"./module-registry.tsx",
 );
 // #endregion
@@ -144,7 +187,19 @@ const MEMBER: readonly WorkspaceCapability[] = [];
 /** Everything but the invite right. */
 const NO_INVITE = OWNER.filter((c) => c !== "invite_members");
 
-const keys = (modules: Module[]): string[] => modules.map((m) => m.key);
+const keys = (modules: readonly { key: string }[]): string[] => modules.map((m) => m.key);
+
+/** A console's views, narrowed. */
+function consoleViews(zones: Zones): Extract<Zones["views"], { mode: "console" }> {
+	assert(zones.views.mode === "console");
+	return zones.views;
+}
+
+/** Every hub row a console lane draws, in lane order, then the footer's Settings. */
+function allRows(zones: Zones): HubRow[] {
+	const rows = consoleViews(zones).sections.flatMap((s) => s.rows);
+	return zones.footer.settings ? [...rows, zones.footer.settings] : rows;
+}
 
 function roster(overrides: Partial<RosterInput> = {}): RosterInput {
 	return {
@@ -241,12 +296,13 @@ function everyComposition(): Zones[] {
 // #endregion
 
 // #region Zone composition per (kind, view, caps)
-Deno.test("lane: the team roster is title + count, the entity list, partition + search, New team", () => {
+Deno.test("lane: the team roster is title + count + search, the entity list, partition, New team", () => {
 	const zones = lane.laneZones(roster());
 	assertEquals(zones.header, {
 		mode: "roster",
 		title: "Teams",
 		meta: [{ text: "3 teams", tabular: true }, { text: "1 invitation", tabular: true }],
+		search: { label: "Search teams", placeholder: "Find a team…" },
 	});
 	assertEquals(zones.views, { mode: "roster" });
 	assertEquals(zones.context?.control, "roster");
@@ -256,7 +312,8 @@ Deno.test("lane: the team roster is title + count, the entity list, partition + 
 		"member",
 		"invitations",
 	]);
-	assertEquals(zones.context?.search, true);
+	// The search sits at the top of the lane (Decision #306), never in the context band.
+	assertEquals(zones.context?.search, false);
 	assertEquals(zones.footer.create, { action: "create", label: "New team" });
 	assertEquals(lane.laneZoneOrder(zones), ["header", "views", "context", "footer"]);
 });
@@ -290,7 +347,7 @@ Deno.test("lane (R1): in the roster's first run the footer holds no create and n
 				}),
 			);
 			assertEquals(zones.footer, { create: null, note: null });
-			// The rest of the lane is the roster's as ever: title, partition, search.
+			// The rest of the lane is the roster's as ever: title, search, partition.
 			assertEquals(zones.context?.control, "roster");
 			assertEquals(lane.laneZoneOrder(zones), ["header", "views", "context", "footer"]);
 		}
@@ -327,77 +384,131 @@ Deno.test("lane: a withheld create leaves the plan's reason in its place, and on
 	}
 });
 
-Deno.test("lane: a team console leads with (C)'s primaries and puts every other module in More", () => {
+Deno.test("lane (#306): a team console is Core operations · Channels · Governance, Settings in the footer", () => {
 	const zones = lane.laneZones(inConsole());
-	assert(zones.views.mode === "console");
-	assertEquals(keys(zones.views.primary), keys(primaryModules("team", OWNER)));
-	assertEquals(keys(zones.views.primary), [
-		"overview",
-		"members",
-		"projects",
-		"payouts",
-		"roles",
-		"settings",
+	const views = consoleViews(zones);
+	assertEquals(views.sections.map((s) => [s.id, s.label]), [
+		["operations", "Core operations"],
+		["governance", "Governance"],
 	]);
-	assertEquals(keys(zones.views.more), keys(secondaryModules("team", OWNER)));
-	assertEquals(zones.views.active, "overview");
-	assertEquals(zones.views.activeInMore, false);
+	assertEquals(views.sections[0].rows.map((r) => [r.key, r.label]), [
+		["overview", "Overview"],
+		["projects", "Projects & work"],
+		["calendar", "Calendar & schedule"],
+		["files", "Files & docs"],
+		["catalogue", "Catalogue"],
+	]);
+	assertEquals(views.sections[1].rows.map((r) => [r.key, r.label]), [
+		["roster", "Roster & members"],
+		["vault", "Vault & finances"],
+		["insights", "Analytics & standing"],
+	]);
+	assertEquals(views.channels, {
+		label: "Channels",
+		base: "/teams/north-loop/channels",
+		active: null,
+		createLabel: "New channel",
+		canCreate: true,
+	});
+	assertEquals(zones.footer.settings?.label, "Team settings");
+	assertEquals(zones.footer.settings?.href, "/teams/north-loop/settings");
+	assertEquals(views.activeHub, "overview");
 });
 
-Deno.test("lane: a business console leads with Decision #232's primaries", () => {
-	const zones = lane.laneZones(inConsole({ kind: "business" }));
-	assert(zones.views.mode === "console");
-	assertEquals(keys(zones.views.primary), [
+Deno.test("lane (#306): a business console speaks its own hubs", () => {
+	const views = consoleViews(lane.laneZones(inConsole({ kind: "business", handle: "acme" })));
+	assertEquals(views.sections[0].rows.map((r) => r.key), [
 		"overview",
-		"members",
 		"projects",
-		"spend",
-		"billing",
-		"settings",
+		"calendar",
+		"files",
+		"talent",
 	]);
-	assert(keys(zones.views.more).includes("finance"));
+	const vault = views.sections[1].rows.find((r) => r.key === "vault");
+	assertEquals(vault?.label, "Wallet & spending");
+	assertEquals(keys(vault?.modules ?? []), ["finance", "spend", "billing"]);
 });
 
-Deno.test("lane: More lists only the secondaries the viewer may open", () => {
+Deno.test("lane (#306): every module the viewer may open is reachable from exactly one row", () => {
 	for (const kind of ["team", "business"] as const) {
 		for (const capabilities of [OWNER, NO_INVITE, MEMBER]) {
 			const zones = lane.laneZones(inConsole({ kind, capabilities }));
-			assert(zones.views.mode === "console");
-			const primary = keys(zones.views.primary);
-			for (const key of keys(zones.views.more)) {
-				assert(mayViewModule(key, kind, capabilities), `${kind}: ${key} is not permitted`);
-				assert(!primary.includes(key), `${kind}: ${key} is also primary`);
+			const listed = allRows(zones).flatMap((r) => keys(r.modules));
+			const channels = consoleViews(zones).channels ? ["channels"] : [];
+			assertEquals(
+				[...listed, ...channels].toSorted(),
+				keys(modulesForViewer(kind, capabilities)).toSorted(),
+				`${kind}: a visible module has no row, or a row lists a withheld one`,
+			);
+			for (const key of listed) assert(mayViewModule(key, kind, capabilities));
+			assertEquals(new Set(listed).size, listed.length, `${kind}: a module sits in two hubs`);
+			// A row links to its first module the viewer may open.
+			for (const row of allRows(zones)) {
+				assertEquals(row.href, workspaceHref(kind, "north-loop", row.modules[0].key));
 			}
-			assertEquals(keys(zones.views.more), keys(secondaryModules(kind, capabilities)));
 		}
 	}
+	// A plain member's governance is the roster (Members) and Standing — no money, no Roles.
 	const plain = lane.laneZones(inConsole({ capabilities: MEMBER }));
-	assert(plain.views.mode === "console");
-	for (const withheld of ["catalogue", "invitations", "finance", "analytics", "profile"]) {
-		assert(!keys(plain.views.more).includes(withheld), `a plain member sees ${withheld}`);
+	const governance = consoleViews(plain).sections.find((s) => s.id === "governance");
+	assertEquals(governance?.rows.map((r) => [r.key, keys(r.modules)]), [
+		["roster", ["members"]],
+		["insights", ["standing"]],
+	]);
+	assertEquals(plain.footer.settings, null);
+	assertEquals(hubsForViewer("team", MEMBER).some((h) => h.hub.key === "vault"), false);
+});
+
+Deno.test("lane (#306): the row of the module being rendered is the active one", () => {
+	for (const [module, hub] of [
+		["roles", "roster"],
+		["invitations", "roster"],
+		["payouts", "vault"],
+		["standing", "insights"],
+		["verification", "settings"],
+	] as const) {
+		const zones = lane.laneZones(inConsole({ module }));
+		assertEquals(consoleViews(zones).activeHub, hub);
+		assertEquals(allRows(zones).filter((r) => r.active).map((r) => r.key), [hub]);
 	}
-	assertEquals(keys(plain.views.primary), ["overview", "members", "projects"]);
+	const channel = lane.laneZones(inConsole({ module: "channels", channel: "general" }));
+	assertEquals(consoleViews(channel).activeHub, null);
+	assertEquals(consoleViews(channel).channels?.active, "general");
+	assertEquals(allRows(channel).filter((r) => r.active), []);
 });
 
-Deno.test("lane: a module in More is reported so the section opens onto it", () => {
-	const zones = lane.laneZones(inConsole({ module: "calendar" }));
-	assert(zones.views.mode === "console");
-	assertEquals(zones.views.activeInMore, true);
+Deno.test("lane (#306): an archived entity offers no New channel", () => {
+	const views = consoleViews(lane.laneZones(inConsole({ status: "archived" })));
+	assertEquals(views.channels?.canCreate, false);
 });
 
-Deno.test("lane: the console header carries Back, the lifecycle Tag and the acting switch", () => {
+Deno.test("lane: the console header carries Back, the lifecycle Tag, the kebab and the search", () => {
 	const draft = lane.laneZones(inConsole({ status: "draft" }));
 	assert(draft.header.mode === "console");
 	assertEquals(draft.header.back, { href: "/teams", label: "Back to all teams" });
 	assertEquals(draft.header.status, { label: "Draft", severity: "warning" });
-	assertEquals(draft.header.switchControl.label, "Act as team");
+	assertEquals(draft.header.menuLabel, "Team actions");
+	assertEquals(draft.header.search.label, "Search North Loop");
 
 	const acting = lane.laneZones(inConsole({ acting: true, kind: "business" }));
 	assert(acting.header.mode === "console");
 	assertEquals(acting.header.back, { href: "/businesses", label: "Back to all businesses" });
 	assertEquals(acting.header.status, { label: "Active", severity: "success" });
-	assertEquals(acting.header.switchControl.action, "exit");
-	assertEquals(acting.header.switchControl.label, "Stop acting");
+	assertEquals(acting.header.menuLabel, "Business actions");
+});
+
+Deno.test("lane (#306): the console footer is the acting pill, Invite member and Settings", () => {
+	const off = lane.laneZones(inConsole({ status: "draft" }));
+	assertEquals(off.footer.actAs?.label, "Act as team");
+	const acting = lane.laneZones(inConsole({ acting: true, kind: "business" }));
+	assertEquals(acting.footer.actAs?.action, "exit");
+	assertEquals(acting.footer.actAs?.label, "Stop acting");
+	// A console never draws the roster's create or its plan note.
+	for (const capabilities of [OWNER, NO_INVITE, MEMBER]) {
+		const zones = lane.laneZones(inConsole({ capabilities }));
+		assertEquals(zones.footer.create, null);
+		assertEquals(zones.footer.note, null);
+	}
 });
 
 Deno.test("lane: Members offers People · Org chart, and only on a people reading", () => {
@@ -430,13 +541,13 @@ Deno.test("lane: a view with nothing to partition draws no context band", () => 
 });
 // #endregion
 
-// #region The one create action
-Deno.test("lane: no create button inside a console without invite_members", () => {
+// #region The footer's Invite member
+Deno.test("lane: no Invite member inside a console without invite_members", () => {
 	for (const kind of ["team", "business"] as const) {
 		for (const capabilities of [NO_INVITE, MEMBER]) {
 			for (const module of ["overview", "members", "invitations", "projects"]) {
 				const zones = lane.laneZones(inConsole({ kind, capabilities, module }));
-				assertEquals(zones.footer.create, null, `${kind} ${module} offered a create`);
+				assertEquals(zones.footer.invite, null, `${kind} ${module} offered an invite`);
 			}
 		}
 	}
@@ -444,14 +555,14 @@ Deno.test("lane: no create button inside a console without invite_members", () =
 
 Deno.test("lane: Invite member opens in place on Members and lands there from anywhere else", () => {
 	for (const module of ["members", "invitations"]) {
-		assertEquals(lane.laneZones(inConsole({ module })).footer.create, {
+		assertEquals(lane.laneZones(inConsole({ module })).footer.invite, {
 			action: "invite",
 			label: "Invite member",
 			inPlace: true,
 			href: "/teams/north-loop/members?invite=1",
 		});
 	}
-	assertEquals(lane.laneZones(inConsole({ module: "payouts" })).footer.create, {
+	assertEquals(lane.laneZones(inConsole({ module: "payouts" })).footer.invite, {
 		action: "invite",
 		label: "Invite member",
 		inPlace: false,
@@ -459,20 +570,13 @@ Deno.test("lane: Invite member opens in place on Members and lands there from an
 	});
 	// A team's Projects mounts the modal too (its allowance band's Invite member), so the lane's
 	// Invite member opens it there instead of leaving the page; a business's Projects mounts none.
-	assertEquals(lane.laneZones(inConsole({ module: "projects" })).footer.create, {
-		action: "invite",
-		label: "Invite member",
-		inPlace: true,
-		href: "/teams/north-loop/members?invite=1",
-	});
+	assertEquals(lane.laneZones(inConsole({ module: "projects" })).footer.invite?.inPlace, true);
 	const businessProjects = lane.laneZones(
 		inConsole({ kind: "business", handle: "acme", module: "projects" }),
 	);
-	assert(businessProjects.footer.create?.action === "invite");
-	assertEquals(businessProjects.footer.create.inPlace, false);
+	assertEquals(businessProjects.footer.invite?.inPlace, false);
 	const business = lane.laneZones(inConsole({ kind: "business", handle: "acme", module: null }));
-	assert(business.footer.create?.action === "invite");
-	assertEquals(business.footer.create.href, "/businesses/acme/members?invite=1");
+	assertEquals(business.footer.invite?.href, "/businesses/acme/members?invite=1");
 });
 
 // Model-only: the zone ORDER the island renders. That the rendered lane follows it — each zone's
@@ -611,30 +715,64 @@ Deno.test("lane: the acting switch keeps its visible label at the start of its a
 	assertEquals(lane.contextSwitchCopy("business", "Acme", false).label, "Act as business");
 });
 
-Deno.test("lane: More is collapsed by default, remembered per viewer and kind, open onto the active module", () => {
-	const ada = lane.laneMorePartition("team", "ada");
-	assert(lane.laneMorePartition("business", "ada") !== ada);
-	assert(lane.laneMorePartition("team", "bo") !== ada);
+Deno.test("lane (#306): a hub's mark folds its modules' — counts summed, else a dot", () => {
+	const signals = { invitations: { count: 2 }, spend: { count: 1 }, verification: { dot: true } };
+	assertEquals(lane.hubSignal([{ key: "members" }, { key: "invitations" }], signals), { count: 2 });
+	assertEquals(
+		lane.hubSignal([{ key: "finance" }, { key: "spend" }, { key: "billing" }], signals),
+		{ count: 1 },
+	);
+	assertEquals(lane.hubSignal([{ key: "settings" }, { key: "verification" }], signals), {
+		dot: true,
+	});
+	assertEquals(lane.hubSignal([{ key: "calendar" }], signals), undefined);
+	assertEquals(lane.channelUnreadLabel(0), null);
+	assertEquals(lane.channelUnreadLabel(3), "3 unread");
+});
 
-	// One stored map, one entry per partition; writing one keeps the others.
-	const opened = lane.withMoreOpen(null, ada, true);
-	assertEquals(lane.parseMoreOpen(opened, ada), true);
-	assertEquals(lane.parseMoreOpen(opened, lane.laneMorePartition("team", "bo")), null);
-	const both = lane.withMoreOpen(opened, lane.laneMorePartition("business", "ada"), false);
-	assertEquals(lane.parseMoreOpen(both, ada), true);
-	assertEquals(lane.parseMoreOpen(both, lane.laneMorePartition("business", "ada")), false);
+Deno.test("lane (#306): the console search groups views, channels, projects and people", () => {
+	const sources = {
+		rows: [
+			{ key: "roster", label: "Roster & members", href: "/teams/n/members", blurb: "Members, roles" },
+			{ key: "files", label: "Files & docs", href: "/teams/n/files", blurb: "The shared drive" },
+		],
+		channels: [
+			{ slug: "general", topic: null },
+			{ slug: "delivery-sync", topic: "Design to build handoffs" },
+		],
+		channelBase: "/teams/n/channels",
+		projects: [{ id: "prj-1", title: "Brand refresh", href: "/projects/prj-1", counterparty: "Acme" }],
+		people: [{ id: "m-1", name: "Ravi Shah", handle: "ravi" }],
+		membersHref: "/teams/n/members",
+	};
+	assertEquals(lane.consoleSearch("   ", sources), null);
+	assertEquals(lane.consoleSearch("", sources), null);
 
-	// Anything unset or unreadable is unknown, never an error.
-	assertEquals(lane.parseMoreOpen(null, ada), null);
-	assertEquals(lane.parseMoreOpen("not json", ada), null);
-	assertEquals(lane.parseMoreOpen("[true]", ada), null);
-	assertEquals(lane.parseMoreOpen(JSON.stringify({ [ada]: "1" }), ada), null);
-	assertEquals(lane.parseMoreOpen(lane.withMoreOpen("not json", ada, false), ada), false);
+	const members = lane.consoleSearch("MEMB", sources);
+	assertEquals(members?.map((g) => g.id), ["views"]);
+	assertEquals(members?.[0].hits[0].href, "/teams/n/members");
 
-	assertEquals(lane.initialMoreOpen(null, false), false);
-	assertEquals(lane.initialMoreOpen(false, false), false);
-	assertEquals(lane.initialMoreOpen(true, false), true);
-	assertEquals(lane.initialMoreOpen(false, true), true);
+	const handoff = lane.consoleSearch("handoff", sources);
+	assertEquals(handoff?.[0].hits, [{
+		key: "channel:delivery-sync",
+		label: "# delivery-sync",
+		meta: "Design to build handoffs",
+		href: "/teams/n/channels/delivery-sync",
+	}]);
+
+	assertEquals(lane.consoleSearch("acme", sources)?.[0].hits[0].href, "/projects/prj-1");
+	assertEquals(
+		lane.consoleSearch("ravi", sources)?.[0].hits[0].href,
+		"/teams/n/members?member=ravi",
+	);
+	assertEquals(lane.consoleSearch("zzz", sources), []);
+
+	// Each group stops at the limit.
+	const many = {
+		...sources,
+		people: Array.from({ length: 9 }, (_, i) => ({ id: `m${i}`, name: `Ana ${i}`, handle: `a${i}` })),
+	};
+	assertEquals(lane.consoleSearch("ana", many)?.[0].hits.length, lane.SEARCH_GROUP_LIMIT);
 });
 // #endregion
 
@@ -728,29 +866,37 @@ Deno.test("lane: each zone's controls render inside their own zone, emitted in l
 	// Where each zone-bearing tag may open — in its zone's case and nowhere else in the island.
 	const home: Record<string, string> = {
 		LaneHead: "header",
-		ContextSwitchControl: "header",
-		LaneIconButton: "header",
+		LaneBackLink: "header",
+		EntityMenu: "header",
+		LaneSearch: "header",
 		LaneList: "views",
-		LaneSection: "views",
-		NavItem: "views",
+		LaneSections: "views",
+		LaneIconButton: "views",
+		HubList: "views",
+		ChannelList: "views",
+		LaneSearchResults: "views",
+		ChannelCreateDialog: "views",
 		ContextZone: "context",
 		SelectButton: "context",
-		LaneSearch: "context",
-		Button: "context",
 		LaneFooterRig: "footer",
+		ConsoleFooterRig: "footer",
 	};
 	for (const [tag, zone] of Object.entries(home)) {
 		for (const c of cases) {
 			if (c.id !== zone) assertEquals(opens(c.body, tag), 0, `<${tag}> opens in the ${c.id} zone`);
 		}
 	}
-	// Outside the cases only the zone components' own definitions may draw (ModuleList's NavItem rows,
-	// the footer rig's collapse toggle and create): no zone control rides in the wrapper.
+	// Outside the cases only the zone components' own definitions may draw (the sections' builder, the
+	// footer rigs' collapse toggle, acting pill and utilities): no zone control rides in the wrapper.
 	for (
-		const tag of ["LaneHead", "ContextSwitchControl", "LaneList", "SelectButton", "LaneSearch"]
+		const tag of ["LaneHead", "LaneList", "SelectButton", "LaneSearch", "EntityMenu", "HubList"]
 	) {
 		assertEquals(opens(rest, tag), 0, `<${tag}> opens outside its zone`);
 	}
+	// The acting switch is the console footer's — a pill, folded to its icon in a compact lane — and
+	// nowhere else in the lane.
+	assertEquals(opens(text, "ContextSwitchControl"), 1);
+	assert(/\(\["pill", "icon"\] as const\)\.map\(\(variant\)/.test(text));
 	for (const zone of ["header", "views", "footer"]) {
 		assert(cases.filter((c) => c.id === zone).every((c) => c.body.trim().length > 0));
 	}
@@ -768,11 +914,9 @@ Deno.test("lane: each zone's controls render inside their own zone, emitted in l
 	assert(!/(?<![-\w])order\s*:|-reverse\b/.test(css), "workspace-chrome.css reorders a flow");
 });
 
-Deno.test("lane: More's memory goes through the SSR-safe accessors, and no control assigns location", () => {
+Deno.test("lane: no raw storage access, and no control assigns location", () => {
 	const text = source(LANE);
 	assert(!/globalThis\.(localStorage|sessionStorage)/.test(text), "raw storage access");
-	assert(/readStored\("local", LocalKeys\.WORKSPACE_LANE_MORE\)/.test(text));
-	assert(/writeStored\(\s*"local",\s*LocalKeys\.WORKSPACE_LANE_MORE/.test(text));
 	for (const file of [LANE, RAIL]) {
 		assert(
 			!/location\.(assign|replace|href\s*=)/.test(source(file)),

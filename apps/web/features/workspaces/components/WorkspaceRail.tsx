@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { Tooltip } from "@projective/ui/feedback";
+import { Button } from "@projective/ui/fields";
 import { LaneCollapseButton, LaneCreateButton } from "@projective/ui/navigation";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import {
@@ -9,8 +10,9 @@ import {
 	type WorkspaceKind,
 	type WorkspaceSummary,
 } from "@projective/types/workspace";
-import type { WorkspaceModule } from "../core/module-registry.tsx";
 import {
+	hubSignal,
+	type LaneHubRow,
 	laneRailEntities,
 	type LaneZones,
 	type ModuleSignals,
@@ -18,7 +20,13 @@ import {
 	verificationWords,
 } from "../core/lane-model.ts";
 import { isWithinPath } from "../core/workspace-model.ts";
-import { cloneGlyph, InviteGlyph, PlusGlyph } from "../core/workspace-glyphs.tsx";
+import {
+	ChannelGlyph,
+	cloneGlyph,
+	InviteGlyph,
+	PlusGlyph,
+	SettingsGlyph,
+} from "../core/workspace-glyphs.tsx";
 import { EntityMark } from "./EntityMark.tsx";
 import { ContextSwitchControl, isActingEntity } from "./ContextSwitchControl.tsx";
 
@@ -28,14 +36,15 @@ import { ContextSwitchControl, isActingEntity } from "./ContextSwitchControl.tsx
  *
  *   1. **Header strip** → the entity's mark (its ring is the verification state) and the acting switch
  *      as an icon-only Button. The roster index has no identity to fold, so its rail starts at zone 2.
- *   2. **Primary views** → the primary modules' glyphs, a hairline, then every "More" module's glyph —
- *      or, on the roster index, the viewer's live entities as marks in the expanded list's order
- *      (owned first, {@link laneRailEntities}), so a collapsed lane is still a switcher.
+ *      The kebab folds into the header band's copy, which paints while the lane is collapsed.
+ *   2. **Views** → Core operations' hub glyphs, a hairline, the Channels glyph (the channels' home), a
+ *      hairline, then Governance's — or, on the roster index, the viewer's live entities as marks in the
+ *      expanded list's order (owned first, {@link laneRailEntities}), so a collapsed lane is a switcher.
  *   3. **Context controls** → none: a segmented control has no glyph form, and the expanded lane is one
  *      press away. For the same reason the roster rail ignores the partition and the search — a filter
  *      the reader cannot see would hide entities for no visible reason.
- *   4. **Footer rig** → the same `LaneCreateButton` (its label folds away in a collapsed splitter, its
- *      `aria-label` stays; a link when the action lands on another page) and the expand toggle.
+ *   4. **Footer rig** → on the index the same `LaneCreateButton`; inside a console the circular Invite
+ *      member and Settings; then the expand toggle.
  *
  * It is rendered **alongside** the expanded lane at all times and CSS reveals exactly one, keyed off
  * `.ui-splitter[data-mode="collapsed"]` (`workspace-chrome.css`). No client width observer: an
@@ -66,8 +75,10 @@ export interface WorkspaceRailProps {
 	path: string;
 	/** The lane's composition; the rail folds the same zones. */
 	zones: LaneZones;
-	/** Zone 4's create action — the same target the expanded lane's button takes. */
+	/** Zone 4's create action on the roster index — the same target the expanded lane's button takes. */
 	createTarget: LaneCreateTarget | null;
+	/** A console's Invite member — the same target the expanded footer's circle takes. */
+	inviteTarget?: LaneCreateTarget | null;
 
 	// --- Console ---
 	/** The entity's id, name, handle and mark. Present inside a console. */
@@ -122,6 +133,7 @@ export function WorkspaceRail(props: WorkspaceRailProps): JSX.Element {
 						/>
 					</Tooltip>
 				)}
+				{props.entity && <RailUtilities {...props} />}
 				<LaneCollapseButton
 					collapsed
 					icon={<SidebarToggleIcon />}
@@ -173,39 +185,109 @@ function RailIdentity(
 // #endregion
 
 // #region Zone 2 — views
-/** The primary modules, a hairline, then the "More" modules — the expanded zone 2 in glyphs. */
+/**
+ * Core operations' hubs, the Channels glyph, then Governance's — the expanded zone 2 in glyphs, each
+ * section set off by a hairline.
+ */
 function RailModules(props: WorkspaceRailProps): JSX.Element | null {
 	const views = props.zones.views;
 	const entity = props.entity;
 	if (views.mode !== "console" || !entity) return null;
 	const signals = props.signals ?? {};
 
-	const square = (module: WorkspaceModule) => {
-		const active = module.key === views.active;
-		const mark = signalLabel(signals[module.key]);
+	const square = (row: LaneHubRow) => {
+		const mark = signalLabel(hubSignal(row.modules, signals));
 		// The blurb is the tooltip's second half: with the label hidden, "what is this for" is exactly
 		// what a bare glyph cannot say.
 		return (
-			<Tooltip key={module.key} content={`${module.label} — ${module.blurb}`} placement="right">
+			<Tooltip key={row.key} content={`${row.label} — ${row.blurb}`} placement="right">
 				<a
 					class="wsp-rail__item"
-					href={workspaceHref(props.kind, entity.handle, module.key)}
-					data-active={active ? "true" : undefined}
-					aria-current={active ? "page" : undefined}
-					aria-label={mark ? `${module.label} — ${mark}` : module.label}
+					href={row.href}
+					data-active={row.active ? "true" : undefined}
+					aria-current={row.active ? "page" : undefined}
+					aria-label={mark ? `${row.label} — ${mark}` : row.label}
 				>
-					{cloneGlyph(module.glyph)}
+					{cloneGlyph(row.glyph)}
 					{mark && <span class="wsp-rail__dot wsp-pulse" aria-hidden="true" />}
 				</a>
 			</Tooltip>
 		);
 	};
+	const operations = views.sections.find((s) => s.id === "operations")?.rows ?? [];
+	const governance = views.sections.find((s) => s.id === "governance")?.rows ?? [];
+	const channels = views.channels;
 
 	return (
 		<>
-			{views.primary.map(square)}
-			{views.more.length > 0 && <span class="wsp-rail__group-sep" role="separator" />}
-			{views.more.map(square)}
+			{operations.map(square)}
+			{channels && (
+				<>
+					<span class="wsp-rail__group-sep" role="separator" />
+					<Tooltip content={`${channels.label} — workspace-wide chat`} placement="right">
+						<a
+							class="wsp-rail__item"
+							href={channels.base}
+							data-active={channels.active ? "true" : undefined}
+							aria-current={channels.active ? "page" : undefined}
+							aria-label={channels.label}
+						>
+							{cloneGlyph(ChannelGlyph)}
+						</a>
+					</Tooltip>
+				</>
+			)}
+			{governance.length > 0 && <span class="wsp-rail__group-sep" role="separator" />}
+			{governance.map(square)}
+		</>
+	);
+}
+
+/** A console's Invite member and Settings, as the rail's circular glyphs. */
+function RailUtilities(props: WorkspaceRailProps): JSX.Element | null {
+	const footer = props.zones.footer;
+	if (!("actAs" in footer)) return null;
+	const invite = footer.invite;
+	const target = props.inviteTarget ?? null;
+	return (
+		<>
+			{invite && target && (
+				<Tooltip content={invite.label} placement="right">
+					{"href" in target
+						? (
+							<a class="wsp-rail__item" href={target.href} aria-label={invite.label}>
+								{cloneGlyph(InviteGlyph)}
+							</a>
+						)
+						: (
+							<Button
+								class="ui-hit"
+								severity="neutral"
+								variant="outlined"
+								size="sm"
+								rounded
+								iconOnly
+								icon={cloneGlyph(InviteGlyph)}
+								aria-label={invite.label}
+								aria-haspopup="dialog"
+								onClick={target.onClick}
+							/>
+						)}
+				</Tooltip>
+			)}
+			{footer.settings && (
+				<Tooltip content={footer.settings.label} placement="right">
+					<a
+						class="wsp-rail__item"
+						href={footer.settings.href}
+						data-active={footer.settings.active ? "true" : undefined}
+						aria-current={footer.settings.active ? "page" : undefined}
+						aria-label={footer.settings.label}
+					>
+						{cloneGlyph(SettingsGlyph)}
+					</a>
+				</Tooltip>
+			)}
 		</>
 	);
 }

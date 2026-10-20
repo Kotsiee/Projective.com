@@ -1,5 +1,5 @@
 -- =============================================================================================
--- 08_comms.sql — project channels, direct messages and notifications
+-- 08_comms.sql — project channels, direct messages, entity channels and notifications
 --
 -- GENERATED FILE — do not edit by hand. Regenerate with:
 --   deno run --allow-read --allow-write --allow-env supabase/seeds/generate.ts
@@ -137,6 +137,56 @@ VALUES
   ('8ff2d0a5-c2ef-4650-a87f-650739b0101a', '06638739-a2a1-4bae-a5ce-346b81286ce0', '3fc3da04-549b-4239-aca3-fa82f713dbaf', 'Yes, recruiting now.', now() - interval '163 hours'),
   ('8cf2cbec-c5ef-4b09-a97f-669a38b00e87', '06638739-a2a1-4bae-a5ce-346b81286ce0', '0dd8da22-3fe7-4449-a6f6-df8cfd5ebfbb', 'I will start on illustration directions for route two once the interviews land.', now() - interval '144 hours')
 ON CONFLICT (id) DO NOTHING;
+
+-- Every entity's default channel (idempotent: the trigger has normally made it already).
+SELECT count(comms.fn_ensure_default_channel('team', t.id, t.owner_user_id)) AS team_general FROM org.teams t;
+SELECT count(comms.fn_ensure_default_channel('business', b.id, b.owner_user_id)) AS business_general FROM org.business_profiles b;
+
+INSERT INTO comms.dm_threads (id, kind, owner_type, owner_entity_id, slug, topic, created_by_user_id, created_at)
+VALUES
+  ('456a15e0-6694-4077-a4fd-38da89ef0591', 'entity_channel', 'team', '213dc9f8-3ad7-4f35-ac4b-baa674bf48b3', 'delivery-sync', 'What ships this week, and what is blocked', '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d', now() - interval '2880 hours'),
+  ('887507cc-1ca3-471d-a287-51322b79f683', 'entity_channel', 'team', '213dc9f8-3ad7-4f35-ac4b-baa674bf48b3', 'client-updates', 'Drafts of what we send clients, before we send it', '3fc3da04-549b-4239-aca3-fa82f713dbaf', now() - interval '2160 hours'),
+  ('40277905-ed3d-45c8-a2e8-3d730bfbd316', 'entity_channel', 'team', 'edc2d943-8062-426a-a6f2-29fdc6b4363c', 'delivery-sync', 'Atlas build — daily status', 'c7173d3f-8b15-4876-afbf-499d17513a44', now() - interval '720 hours'),
+  ('592ea44f-3b5a-4aa4-a358-197122afd4c6', 'entity_channel', 'team', 'edc2d943-8062-426a-a6f2-29fdc6b4363c', 'client-updates', 'Notes for the Atlas weekly', '5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', now() - interval '672 hours')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO comms.dm_messages (id, thread_id, sender_user_id, body, created_at)
+VALUES
+  ('89f0b7de-e764-4e0d-af4d-851c36dc71c3', (SELECT t.id FROM comms.dm_threads t WHERE t.kind = 'entity_channel' AND t.owner_type = 'team' AND t.owner_entity_id = '213dc9f8-3ad7-4f35-ac4b-baa674bf48b3' AND t.is_default), '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d', 'Studio is closed Friday afternoon — Porto team offsite.', now() - interval '216 hours'),
+  ('8af0b971-e664-4c7a-a04d-86af35dc7030', (SELECT t.id FROM comms.dm_threads t WHERE t.kind = 'entity_channel' AND t.owner_type = 'team' AND t.owner_entity_id = '213dc9f8-3ad7-4f35-ac4b-baa674bf48b3' AND t.is_default), '3fc3da04-549b-4239-aca3-fa82f713dbaf', 'Noted. I will move the Thursday review to the morning.', now() - interval '214 hours'),
+  ('87f0b4b8-e564-4ae7-a14d-884238dc74e9', (SELECT t.id FROM comms.dm_threads t WHERE t.kind = 'entity_channel' AND t.owner_type = 'team' AND t.owner_entity_id = '213dc9f8-3ad7-4f35-ac4b-baa674bf48b3' AND t.is_default), '0dd8da22-3fe7-4449-a6f6-df8cfd5ebfbb', 'New brush set is on the shared drive if anyone wants to try it.', now() - interval '48 hours'),
+  ('f7af0f2e-ac54-4715-ac4e-4bfc82fca753', '456a15e0-6694-4077-a4fd-38da89ef0591', '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d', 'Helia wallet: research synthesis goes to the client on Wednesday. Anything blocking?', now() - interval '72 hours'),
+  ('f8af10c1-ab54-4582-ad4e-4d8f81fca5c0', '456a15e0-6694-4077-a4fd-38da89ef0591', '3fc3da04-549b-4239-aca3-fa82f713dbaf', 'Two interview transcripts still need tagging. I will finish them tomorrow.', now() - interval '70 hours'),
+  ('f5af0c08-aa54-43ef-ae4e-4f2284fcaa79', '456a15e0-6694-4077-a4fd-38da89ef0591', '0dd8da22-3fe7-4449-a6f6-df8cfd5ebfbb', 'Onboarding illustrations are at 70%. I need the final copy for screen three.', now() - interval '29 hours'),
+  ('f6af0d9b-a954-425c-af4e-50b583fca8e6', '456a15e0-6694-4077-a4fd-38da89ef0591', '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d', 'Copy is in the brief now — page 4.', now() - interval '24 hours'),
+  ('2e397592-3f1b-493f-a93f-09accc49d711', '887507cc-1ca3-471d-a287-51322b79f683', '3fc3da04-549b-4239-aca3-fa82f713dbaf', 'Draft for Helia: synthesis is done, three problem statements, workshop proposed for next Tuesday. Edits welcome.', now() - interval '36 hours'),
+  ('2f397725-3e1b-47ac-aa3f-0b3fcb49d57e', '887507cc-1ca3-471d-a287-51322b79f683', '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d', 'Good. Lead with the second statement — it is the strongest.', now() - interval '34 hours'),
+  ('13620e43-e788-49b2-a767-ce9dd68a96fc', (SELECT t.id FROM comms.dm_threads t WHERE t.kind = 'entity_channel' AND t.owner_type = 'team' AND t.owner_entity_id = 'edc2d943-8062-426a-a6f2-29fdc6b4363c' AND t.is_default), 'c7173d3f-8b15-4876-afbf-499d17513a44', 'Welcome back, everyone. Planning is Monday at 10.', now() - interval '144 hours'),
+  ('12620cb0-e888-4b45-a667-cd0ad78a988f', (SELECT t.id FROM comms.dm_threads t WHERE t.kind = 'entity_channel' AND t.owner_type = 'team' AND t.owner_entity_id = 'edc2d943-8062-426a-a6f2-29fdc6b4363c' AND t.is_default), '2e4274fb-e76b-4640-ad31-c66d7fbea842', 'I will bring the warehouse cost numbers.', now() - interval '142 hours'),
+  ('e1715fd3-7623-4c82-a2c7-032520b6435c', '40277905-ed3d-45c8-a2e8-3d730bfbd316', '2e4274fb-e76b-4640-ad31-c66d7fbea842', 'Ingestion pipeline is green in staging. Backfill of last quarter runs tonight.', now() - interval '48 hours'),
+  ('e0715e40-7723-4e15-a1c7-019221b644ef', '40277905-ed3d-45c8-a2e8-3d730bfbd316', '5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', 'Companion screens are waiting on the events endpoint — any ETA?', now() - interval '26 hours'),
+  ('e37162f9-7423-495c-a0c6-ffff22b64682', '40277905-ed3d-45c8-a2e8-3d730bfbd316', '2e4274fb-e76b-4640-ad31-c66d7fbea842', 'Tomorrow morning. I will post here when it is live.', now() - interval '24 hours'),
+  ('e2716166-7523-4aef-afc6-fe6c23b64815', '40277905-ed3d-45c8-a2e8-3d730bfbd316', 'c7173d3f-8b15-4876-afbf-499d17513a44', 'Thanks both. I will tell Atlas on Thursday''s call.', now() - interval '10 hours'),
+  ('fe084891-3348-49ee-a9ef-71ef844fd68c', '592ea44f-3b5a-4aa4-a358-197122afd4c6', '5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', 'Weekly note: warehouse model signed off, dashboard shell next, mobile after that.', now() - interval '96 hours')
+ON CONFLICT (id) DO NOTHING;
+
+UPDATE comms.dm_participants SET last_read_at = now() - interval '48 hours' WHERE thread_id = (SELECT t.id FROM comms.dm_threads t WHERE t.kind = 'entity_channel' AND t.owner_type = 'team' AND t.owner_entity_id = '213dc9f8-3ad7-4f35-ac4b-baa674bf48b3' AND t.is_default) AND user_id = '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d';
+UPDATE comms.dm_participants SET last_read_at = now() - interval '48 hours' WHERE thread_id = (SELECT t.id FROM comms.dm_threads t WHERE t.kind = 'entity_channel' AND t.owner_type = 'team' AND t.owner_entity_id = '213dc9f8-3ad7-4f35-ac4b-baa674bf48b3' AND t.is_default) AND user_id = '3fc3da04-549b-4239-aca3-fa82f713dbaf';
+UPDATE comms.dm_participants SET last_read_at = now() - interval '48 hours' WHERE thread_id = (SELECT t.id FROM comms.dm_threads t WHERE t.kind = 'entity_channel' AND t.owner_type = 'team' AND t.owner_entity_id = '213dc9f8-3ad7-4f35-ac4b-baa674bf48b3' AND t.is_default) AND user_id = '0dd8da22-3fe7-4449-a6f6-df8cfd5ebfbb';
+UPDATE comms.dm_participants SET last_read_at = now() - interval '24 hours' WHERE thread_id = '456a15e0-6694-4077-a4fd-38da89ef0591' AND user_id = '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d';
+UPDATE comms.dm_participants SET last_read_at = now() - interval '70 hours' WHERE thread_id = '456a15e0-6694-4077-a4fd-38da89ef0591' AND user_id = '3fc3da04-549b-4239-aca3-fa82f713dbaf';
+UPDATE comms.dm_participants SET last_read_at = now() - interval '29 hours' WHERE thread_id = '456a15e0-6694-4077-a4fd-38da89ef0591' AND user_id = '0dd8da22-3fe7-4449-a6f6-df8cfd5ebfbb';
+UPDATE comms.dm_participants SET last_read_at = now() - interval '34 hours' WHERE thread_id = '887507cc-1ca3-471d-a287-51322b79f683' AND user_id = '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d';
+UPDATE comms.dm_participants SET last_read_at = now() - interval '34 hours' WHERE thread_id = '887507cc-1ca3-471d-a287-51322b79f683' AND user_id = '3fc3da04-549b-4239-aca3-fa82f713dbaf';
+UPDATE comms.dm_participants SET last_read_at = now() - interval '142 hours' WHERE thread_id = (SELECT t.id FROM comms.dm_threads t WHERE t.kind = 'entity_channel' AND t.owner_type = 'team' AND t.owner_entity_id = 'edc2d943-8062-426a-a6f2-29fdc6b4363c' AND t.is_default) AND user_id = 'c7173d3f-8b15-4876-afbf-499d17513a44';
+UPDATE comms.dm_participants SET last_read_at = now() - interval '142 hours' WHERE thread_id = (SELECT t.id FROM comms.dm_threads t WHERE t.kind = 'entity_channel' AND t.owner_type = 'team' AND t.owner_entity_id = 'edc2d943-8062-426a-a6f2-29fdc6b4363c' AND t.is_default) AND user_id = '5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd';
+UPDATE comms.dm_participants SET last_read_at = now() - interval '142 hours' WHERE thread_id = (SELECT t.id FROM comms.dm_threads t WHERE t.kind = 'entity_channel' AND t.owner_type = 'team' AND t.owner_entity_id = 'edc2d943-8062-426a-a6f2-29fdc6b4363c' AND t.is_default) AND user_id = '2e4274fb-e76b-4640-ad31-c66d7fbea842';
+UPDATE comms.dm_participants SET last_read_at = now() - interval '10 hours' WHERE thread_id = '40277905-ed3d-45c8-a2e8-3d730bfbd316' AND user_id = 'c7173d3f-8b15-4876-afbf-499d17513a44';
+UPDATE comms.dm_participants SET last_read_at = now() - interval '26 hours' WHERE thread_id = '40277905-ed3d-45c8-a2e8-3d730bfbd316' AND user_id = '5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd';
+UPDATE comms.dm_participants SET last_read_at = now() - interval '24 hours' WHERE thread_id = '40277905-ed3d-45c8-a2e8-3d730bfbd316' AND user_id = '2e4274fb-e76b-4640-ad31-c66d7fbea842';
+UPDATE comms.dm_participants SET last_read_at = now() - interval '96 hours' WHERE thread_id = '592ea44f-3b5a-4aa4-a358-197122afd4c6' AND user_id = 'c7173d3f-8b15-4876-afbf-499d17513a44';
+UPDATE comms.dm_participants SET last_read_at = now() - interval '96 hours' WHERE thread_id = '592ea44f-3b5a-4aa4-a358-197122afd4c6' AND user_id = '5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd';
+UPDATE comms.dm_participants SET last_read_at = now() - interval '96 hours' WHERE thread_id = '592ea44f-3b5a-4aa4-a358-197122afd4c6' AND user_id = '2e4274fb-e76b-4640-ad31-c66d7fbea842';
 
 INSERT INTO comms.notifications (id, user_id, type, title, body, category, urgency, channels, actor_user_id, context_type, context_id, action_url, read_at, seen_at, created_at)
 SELECT v.id::uuid, v.user_id::uuid, nt.key, v.title, v.body, nt.category, nt.urgency, nt.default_channels,

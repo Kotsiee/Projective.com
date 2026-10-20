@@ -224,12 +224,20 @@ SELECT TO authenticated USING (comms.is_dm_participant (thread_id));
 -- which is SECURITY DEFINER and writes both participant rows, so this policy
 -- never has to admit an insert into a thread the caller is not yet a member of:
 -- by the time a message is posted, the membership row exists.
+--
+-- An archived entity channel (Decision #306) takes no new message: its history stays readable to its
+-- participants, but a retired room that still accepted posts would not be retired. The thread read is
+-- the caller's own (they are a participant, so `view_dm_threads_if_participant` admits the row).
 CREATE POLICY "send_dm_messages_if_participant" ON comms.dm_messages FOR
 INSERT TO authenticated
 WITH
     CHECK (
         sender_user_id = auth.uid ()
         AND comms.is_dm_participant (thread_id)
+        AND NOT EXISTS (
+            SELECT 1 FROM comms.dm_threads t
+             WHERE t.id = dm_messages.thread_id AND t.archived_at IS NOT NULL
+        )
     );
 
 CREATE POLICY "view_channel_files_if_member" ON comms.channel_files FOR

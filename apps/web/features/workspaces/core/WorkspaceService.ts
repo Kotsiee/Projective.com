@@ -3,8 +3,10 @@ import type { UserContext } from "@projective/types/auth";
 import type { BusinessBillingView, UpdateBillingInput } from "@projective/types/finance";
 import type {
 	ActingEnterprise,
+	ArchiveChannelInput,
 	ArchiveRoleInput,
 	BusinessBench,
+	CreateChannelInput,
 	CreateWorkspaceInput,
 	HandleCheck,
 	InviteActionInput,
@@ -251,5 +253,22 @@ export const WorkspaceService = {
 			WORKSPACE_ENDPOINTS.contextEnterprises,
 		);
 	},
+
+	// #region Channels
+
+	/**
+	 * Add a chat channel to the entity (Decision #306). The server normalises the name and refuses a
+	 * bad one on `name`; resolves to the re-read detail, whose `channels` hold the new one.
+	 */
+	createChannel(input: CreateChannelInput): Promise<WorkspaceResult<WorkspaceDetail>> {
+		return postWorkspace<WorkspaceDetail>("/api/workspace/channels", input);
+	},
+
+	/** Archive a chat channel (never the default one); resolves to the re-read detail. */
+	archiveChannel(input: ArchiveChannelInput): Promise<WorkspaceResult<WorkspaceDetail>> {
+		return postWorkspace<WorkspaceDetail>("/api/workspace/channels/archive", input);
+	},
+
+	// #endregion
 };
 // #endregion

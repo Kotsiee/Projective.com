@@ -33,12 +33,12 @@ BEGIN
     -- A GROUP that happens to contain both people is not their DM: the join alone would return
     -- it (nothing requires the thread to hold ONLY these two), so a "message this person" from a
     -- profile would land in a group chat everyone else can read. A service inquiry IS the pair's
-    -- thread (unified messaging, one record per pair), so only `group` is excluded.
+    -- thread (unified messaging, one record per pair); a group and an entity channel are not.
     SELECT t.id INTO v_thread_id
     FROM comms.dm_threads t
     JOIN comms.dm_participants p1 ON p1.thread_id = t.id AND p1.user_id = v_current_user_id
     JOIN comms.dm_participants p2 ON p2.thread_id = t.id AND p2.user_id = target_user_id
-    WHERE t.kind <> 'group'
+    WHERE t.kind IN ('dm', 'service_inquiry')
     ORDER BY t.created_at
     LIMIT 1;
 
@@ -512,8 +512,11 @@ SECURITY DEFINER
 SET search_path = public, comms
 AS $$
 BEGIN
-    -- An automatic reply is not the person answering, so it never accepts a request.
-    IF NEW.auto_response_id IS NOT NULL THEN
+    -- An automatic reply is not the person answering, so it never accepts a request; an entity
+    -- channel never holds one.
+    IF NEW.auto_response_id IS NOT NULL OR EXISTS (
+        SELECT 1 FROM comms.dm_threads t WHERE t.id = NEW.thread_id AND t.kind = 'entity_channel'
+    ) THEN
         RETURN NEW;
     END IF;
 
@@ -776,6 +779,12 @@ BEGIN
         RAISE EXCEPTION 'Not a participant of this conversation' USING ERRCODE = '42501';
     END IF;
 
+    -- An entity channel's people are the entity's active members (comms.fn_sync_channel_member);
+    -- joining the entity is the only way in.
+    IF EXISTS (SELECT 1 FROM comms.dm_threads t WHERE t.id = p_thread_id AND t.kind = 'entity_channel') THEN
+        RAISE EXCEPTION 'A channel''s members are its workspace''s members' USING ERRCODE = '22023';
+    END IF;
+
     UPDATE comms.dm_participants p
     SET deleted_at = NULL
     WHERE p.thread_id = p_thread_id
@@ -1019,7 +1028,7 @@ BEGIN
     FROM comms.dm_threads t
     JOIN comms.dm_participants p1 ON p1.thread_id = t.id AND p1.user_id = v_me
     JOIN comms.dm_participants p2 ON p2.thread_id = t.id AND p2.user_id = p_recipient
-    WHERE t.kind <> 'group'
+    WHERE t.kind IN ('dm', 'service_inquiry')
     ORDER BY t.created_at
     LIMIT 1;
 
@@ -1164,7 +1173,7 @@ BEGIN
 
     BEGIN
         SELECT t.kind INTO v_kind FROM comms.dm_threads t WHERE t.id = NEW.thread_id;
-        IF NOT FOUND OR v_kind = 'group' THEN
+        IF NOT FOUND OR v_kind NOT IN ('dm', 'service_inquiry') THEN
             RETURN NULL;
         END IF;
         IF (SELECT count(*) FROM comms.dm_participants p WHERE p.thread_id = NEW.thread_id) <> 2 THEN
@@ -1282,6 +1291,11 @@ AS $$
 DECLARE
     v_person uuid := (pg_catalog.to_jsonb(NEW) ->> CASE WHEN TG_TABLE_NAME = 'dm_messages' THEN 'sender_user_id' ELSE 'user_id' END)::uuid;
 BEGIN
+    -- An entity channel is not a direct thread: who is in it is the entity's roster, decided when they
+    -- joined the entity, not a contact one person opened with another.
+    IF EXISTS (SELECT 1 FROM comms.dm_threads t WHERE t.id = NEW.thread_id AND t.kind = 'entity_channel') THEN
+        RETURN NEW;
+    END IF;
     IF EXISTS (
         SELECT 1 FROM comms.dm_participants p
          WHERE p.thread_id = NEW.thread_id AND p.user_id <> v_person
@@ -1293,4 +1307,327 @@ BEGIN
     RETURN NEW;
 END;
 $$;
+-- #endregion
+
+-- #region Entity channels (Decision #306)
+-- A team's or a business's named rooms (`# general`, `# delivery-sync`). A channel is a comms.dm_threads
+-- row of kind `entity_channel`, so the /messages chat stack — the feed, the send path, read state,
+-- attachments, reactions and every policy built on comms.is_dm_participant — serves it unchanged. What
+-- differs is who is in it: never somebody a person added, always the owner's ACTIVE members, kept in
+-- step by the triggers in 00001840. Leaving soft-deletes the participation (`deleted_at`), so the
+-- history stays and the access ends; rejoining restores it on every live channel.
+--
+-- The two doors are SECURITY DEFINER for the reason create_group_thread is: dm_threads and
+-- dm_participants carry no client write policy on purpose (00002012), and a channel's participant rows
+-- are written for OTHER people (every member), which no INSERT policy may admit. Each re-checks the
+-- caller's active membership itself. Refusals follow the workspace doors' '<field>: <reason>'
+-- convention (packages/backend/services/workspace/live-support.ts refusalFrom).
+
+-- The name a person typed, as a channel slug: trimmed, a leading `#` dropped, lowercased. The TS twin is
+-- channelSlugOf (@projective/types/workspace channels.ts).
+CREATE OR REPLACE FUNCTION comms.fn_channel_slug(p_name text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT lower(regexp_replace(btrim(COALESCE(p_name, '')), '^#+\s*', ''));
+$$;
+
+-- The user ids of an entity's active members who can hold a participant row (org.users_public).
+CREATE OR REPLACE FUNCTION comms.fn_entity_member_ids(p_kind text, p_entity uuid)
+RETURNS SETOF uuid
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT m.user_id FROM org.team_members m
+     WHERE p_kind = 'team' AND m.team_id = p_entity AND m.status = 'active'
+       AND EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = m.user_id)
+    UNION
+    SELECT m.user_id FROM org.business_members m
+     WHERE p_kind = 'business' AND m.business_id = p_entity AND m.status = 'active'
+       AND EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = m.user_id);
+$$;
+
+-- An entity's live channels as the console lists them for one viewer: the default first, then by slug,
+-- each with the viewer's unread count (other people's messages after their read watermark; a NULL
+-- watermark is "never opened", so every one) and the newest message's time. Internal — read by
+-- org.get_workspace_detail, which has already decided the viewer is an active member.
+CREATE OR REPLACE FUNCTION comms.fn_entity_channel_list(p_kind text, p_entity uuid, p_viewer uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT COALESCE(jsonb_agg(jsonb_build_object(
+            'id', t.id,
+            'slug', t.slug,
+            'topic', t.topic,
+            'is_default', t.is_default,
+            'unread', (SELECT count(*) FROM comms.dm_messages m
+                        WHERE m.thread_id = t.id AND m.deleted_at IS NULL
+                          AND m.sender_user_id <> p_viewer
+                          AND (me.last_read_at IS NULL OR m.created_at > me.last_read_at)),
+            'last_activity_at', (SELECT max(m.created_at) FROM comms.dm_messages m
+                                  WHERE m.thread_id = t.id AND m.deleted_at IS NULL)
+        ) ORDER BY t.is_default DESC, t.slug), '[]'::jsonb)
+      FROM comms.dm_threads t
+      LEFT JOIN comms.dm_participants me
+             ON me.thread_id = t.id AND me.user_id = p_viewer AND me.deleted_at IS NULL
+     WHERE t.kind = 'entity_channel' AND t.owner_type = p_kind AND t.owner_entity_id = p_entity
+       AND t.archived_at IS NULL;
+$$;
+
+-- The entity's default `general` channel, created when it is missing; its id either way. NULL when the
+-- creator has no org.users_public row to stand as the thread's author (the entity is still created).
+CREATE OR REPLACE FUNCTION comms.fn_ensure_default_channel(p_kind text, p_entity uuid, p_creator uuid)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_id uuid;
+BEGIN
+    SELECT t.id INTO v_id FROM comms.dm_threads t
+     WHERE t.kind = 'entity_channel' AND t.owner_type = p_kind AND t.owner_entity_id = p_entity
+       AND t.is_default;
+    IF v_id IS NOT NULL THEN
+        RETURN v_id;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = p_creator) THEN
+        RETURN NULL;
+    END IF;
+    INSERT INTO comms.dm_threads (kind, owner_type, owner_entity_id, slug, is_default, created_by_user_id)
+    VALUES ('entity_channel', p_kind, p_entity, 'general', true, p_creator)
+    RETURNING id INTO v_id;
+    RETURN v_id;
+END;
+$$;
+
+-- Put one person into, or take them out of, every channel of an entity. Joining restores a participation
+-- they had and adds the rest, on LIVE channels only; leaving soft-deletes it on every channel, archived
+-- ones included, so no channel of an entity they left stays readable.
+CREATE OR REPLACE FUNCTION comms.fn_sync_channel_member(
+    p_kind text,
+    p_entity uuid,
+    p_user uuid,
+    p_active boolean
+) RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF p_active THEN
+        UPDATE comms.dm_participants p
+           SET deleted_at = NULL
+          FROM comms.dm_threads t
+         WHERE p.thread_id = t.id AND p.user_id = p_user AND p.deleted_at IS NOT NULL
+           AND t.kind = 'entity_channel' AND t.owner_type = p_kind AND t.owner_entity_id = p_entity
+           AND t.archived_at IS NULL;
+        INSERT INTO comms.dm_participants (thread_id, user_id)
+        SELECT t.id, p_user FROM comms.dm_threads t
+         WHERE t.kind = 'entity_channel' AND t.owner_type = p_kind AND t.owner_entity_id = p_entity
+           AND t.archived_at IS NULL
+           AND EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = p_user)
+           AND NOT EXISTS (
+               SELECT 1 FROM comms.dm_participants p WHERE p.thread_id = t.id AND p.user_id = p_user
+           );
+    ELSE
+        UPDATE comms.dm_participants p
+           SET deleted_at = now()
+          FROM comms.dm_threads t
+         WHERE p.thread_id = t.id AND p.user_id = p_user AND p.deleted_at IS NULL
+           AND t.kind = 'entity_channel' AND t.owner_type = p_kind AND t.owner_entity_id = p_entity;
+    END IF;
+END;
+$$;
+
+-- AFTER INSERT on comms.dm_threads, entity channels only: every active member of the owner joins.
+CREATE OR REPLACE FUNCTION comms.tg_entity_channel_seed_members()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    INSERT INTO comms.dm_participants (thread_id, user_id)
+    SELECT NEW.id, m.user_id
+      FROM comms.fn_entity_member_ids(NEW.owner_type, NEW.owner_entity_id) AS m(user_id)
+     WHERE NOT EXISTS (
+         SELECT 1 FROM comms.dm_participants p WHERE p.thread_id = NEW.id AND p.user_id = m.user_id
+     );
+    RETURN NULL;
+END;
+$$;
+
+-- AFTER INSERT OR UPDATE OF status on org.team_members / org.business_members (TG_ARGV[0] = the kind):
+-- a membership that becomes active joins the entity's channels, one that stops being active leaves them.
+CREATE OR REPLACE FUNCTION comms.tg_entity_member_channels()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_kind text := TG_ARGV[0];
+    v_entity uuid := (to_jsonb(NEW) ->> CASE WHEN TG_ARGV[0] = 'team' THEN 'team_id' ELSE 'business_id' END)::uuid;
+    v_was boolean := false;
+    v_is boolean := NEW.status = 'active';
+BEGIN
+    IF TG_OP = 'UPDATE' THEN
+        v_was := OLD.status = 'active';
+    END IF;
+    IF v_is IS DISTINCT FROM v_was THEN
+        PERFORM comms.fn_sync_channel_member(v_kind, v_entity, NEW.user_id, v_is);
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+-- AFTER INSERT on org.teams / org.business_profiles (TG_ARGV[0] = the kind): the entity's `general`.
+CREATE OR REPLACE FUNCTION comms.tg_entity_default_channel()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    PERFORM comms.fn_ensure_default_channel(TG_ARGV[0], NEW.id, NEW.owner_user_id);
+    RETURN NULL;
+END;
+$$;
+
+-- A new channel, by an active member of a team or business that is not archived. Returns the channel as
+-- the console lists it. Caps an entity at 30 live channels (CHANNEL_LIVE_CAP); the count and the insert
+-- run under a per-entity advisory lock so two concurrent creates cannot both take the last place.
+CREATE OR REPLACE FUNCTION comms.create_entity_channel(
+    p_entity_type text,
+    p_entity_id uuid,
+    p_name text,
+    p_topic text DEFAULT NULL
+) RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_status text;
+    v_slug text := comms.fn_channel_slug(p_name);
+    v_topic text := NULLIF(btrim(COALESCE(p_topic, '')), '');
+    v_id uuid;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+    END IF;
+    IF p_entity_type IS NULL OR p_entity_type NOT IN ('team', 'business') THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'kind: choose a team or a business';
+    END IF;
+    v_status := CASE p_entity_type
+        WHEN 'team' THEN (SELECT t.status FROM org.teams t WHERE t.id = p_entity_id)
+        ELSE (SELECT b.status FROM org.business_profiles b WHERE b.id = p_entity_id) END;
+    IF v_status IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'workspace: not found';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM org.fn_member_seat(p_entity_type, p_entity_id, v_uid)) THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'workspace: only its members can add a channel';
+    END IF;
+    IF v_status = 'archived' THEN
+        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'workspace: restore it before adding a channel';
+    END IF;
+    IF char_length(v_slug) < 2 OR char_length(v_slug) > 40 OR v_slug !~ '^[a-z0-9][a-z0-9-]*[a-z0-9]$' THEN
+        RAISE EXCEPTION USING ERRCODE = '22023',
+            MESSAGE = 'name: use 2 to 40 lowercase letters, numbers or hyphens, starting and ending with a letter or number';
+    END IF;
+    IF v_topic IS NOT NULL AND char_length(v_topic) > 200 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'topic: keep it to 200 characters';
+    END IF;
+
+    PERFORM pg_advisory_xact_lock(hashtext('comms.entity_channels:' || p_entity_id::text));
+    IF EXISTS (
+        SELECT 1 FROM comms.dm_threads t
+         WHERE t.kind = 'entity_channel' AND t.owner_type = p_entity_type AND t.owner_entity_id = p_entity_id
+           AND t.archived_at IS NULL AND t.slug = v_slug
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE = '23505', MESSAGE = 'name: there is already a #' || v_slug || ' channel';
+    END IF;
+    IF (SELECT count(*) FROM comms.dm_threads t
+         WHERE t.kind = 'entity_channel' AND t.owner_type = p_entity_type AND t.owner_entity_id = p_entity_id
+           AND t.archived_at IS NULL) >= 30 THEN
+        RAISE EXCEPTION USING ERRCODE = '55000',
+            MESSAGE = 'channel: a workspace holds at most 30 channels — archive one to make room';
+    END IF;
+
+    INSERT INTO comms.dm_threads (kind, owner_type, owner_entity_id, slug, topic, created_by_user_id)
+    VALUES ('entity_channel', p_entity_type, p_entity_id, v_slug, v_topic, v_uid)
+    RETURNING id INTO v_id;
+
+    RETURN jsonb_build_object(
+        'id', v_id,
+        'slug', v_slug,
+        'topic', v_topic,
+        'is_default', false,
+        'unread', 0,
+        'last_activity_at', NULL
+    );
+END;
+$$;
+
+-- Archive a channel: its creator, or a member holding `manage_settings`. The default channel never is.
+-- A channel the caller cannot see (not an active member, already archived, not a channel at all) is one
+-- answer — not found — so the door cannot be used to probe ids.
+CREATE OR REPLACE FUNCTION comms.archive_entity_channel(p_channel_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_t record;
+    v_at timestamptz := now();
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+    END IF;
+    SELECT t.id, t.owner_type, t.owner_entity_id, t.is_default, t.created_by_user_id, t.archived_at
+      INTO v_t
+      FROM comms.dm_threads t
+     WHERE t.id = p_channel_id AND t.kind = 'entity_channel'
+       FOR UPDATE;
+    IF v_t.id IS NULL OR v_t.archived_at IS NOT NULL
+       OR NOT EXISTS (SELECT 1 FROM org.fn_member_seat(v_t.owner_type, v_t.owner_entity_id, v_uid)) THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'channel: not found';
+    END IF;
+    IF v_t.is_default THEN
+        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'channel: the default channel stays — every member is in it';
+    END IF;
+    IF v_t.created_by_user_id <> v_uid
+       AND NOT ('manage_settings'::org.workspace_capability
+                = ANY (org.fn_member_capabilities(v_t.owner_type, v_t.owner_entity_id, v_uid))) THEN
+        RAISE EXCEPTION USING ERRCODE = '42501',
+            MESSAGE = 'channel: only the person who added it, or someone who manages settings, can archive it';
+    END IF;
+
+    UPDATE comms.dm_threads SET archived_at = v_at WHERE id = v_t.id;
+
+    RETURN jsonb_build_object(
+        'id', v_t.id,
+        'owner_type', v_t.owner_type,
+        'owner_entity_id', v_t.owner_entity_id,
+        'archived_at', v_at
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION comms.create_entity_channel(text, uuid, text, text) IS
+'Create a channel (kind entity_channel) on a team or business the caller is an active member of. Name normalised by comms.fn_channel_slug and held to 2-40 of [a-z0-9-]; a duplicate live slug is 23505, more than 30 live channels 55000, an archived entity 55000. Participants are seeded by trigger. SECURITY DEFINER because dm_threads/dm_participants carry no client write policy (Decision #306).';
+
+COMMENT ON FUNCTION comms.archive_entity_channel(uuid) IS
+'Archive an entity channel (archived_at; never deleted). The creator or a manage_settings holder; the default channel is refused (55000); a channel the caller cannot see is P0002. SECURITY DEFINER because dm_threads carries no client UPDATE policy (Decision #306).';
 -- #endregion

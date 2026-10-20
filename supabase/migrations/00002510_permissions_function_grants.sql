@@ -2023,3 +2023,23 @@ GRANT EXECUTE ON FUNCTION catalogue.fn_seller_order_lines (uuid) TO authenticate
 REVOKE ALL ON FUNCTION catalogue.get_client_pipeline (uuid, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION catalogue.get_client_pipeline (uuid, integer) TO authenticated, service_role;
 -- #endregion
+
+-- #region Entity channels (00001300, Decision #306)
+-- The two doors are definers that write dm_threads / dm_participants (no client write policy), so the
+-- grant is the access decision: signed-in callers only, each re-checking membership itself. The rest
+-- are internals — the sync primitives write participant rows for whoever they are handed, and the list
+-- answers for any viewer id — reached only from the doors, the triggers and org.get_workspace_detail.
+REVOKE ALL ON FUNCTION comms.create_entity_channel (text, uuid, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION comms.create_entity_channel (text, uuid, text, text) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION comms.archive_entity_channel (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION comms.archive_entity_channel (uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION comms.fn_channel_slug (text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION comms.fn_channel_slug (text) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION comms.fn_entity_member_ids (text, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION comms.fn_entity_channel_list (text, uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION comms.fn_ensure_default_channel (text, uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION comms.fn_sync_channel_member (text, uuid, uuid, boolean) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION comms.tg_entity_channel_seed_members () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION comms.tg_entity_member_channels () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION comms.tg_entity_default_channel () FROM PUBLIC, anon, authenticated;
+-- #endregion

@@ -222,7 +222,7 @@ export function IdeaComposeForm(props: IdeaComposeFormProps): JSX.Element {
 					error={errors.title}
 					hint={piiHintFor(values.title) ??
 						`${values.title.length} of ${FEEDBACK_TITLE_MAX} characters`}
-						hintMode="inline"
+					hintMode="inline"
 				>
 					{(a) => (
 						<InputText

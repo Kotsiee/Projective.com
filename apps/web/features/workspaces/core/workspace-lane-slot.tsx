@@ -2,7 +2,12 @@ import type { ComponentChildren } from "preact";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import WorkspaceLane from "../islands/WorkspaceLane.island.tsx";
 import { resolveRoster, resolveWorkspaceConsole } from "./workspace-ssr.ts";
-import { activeModuleOf, kindFromPath, workspaceHandleOf } from "./workspace-model.ts";
+import {
+	activeModuleOf,
+	channelSlugOfPath,
+	kindFromPath,
+	workspaceHandleOf,
+} from "./workspace-model.ts";
 import { rosterTabFromSearch } from "./roster-model.ts";
 import { resolveSubView } from "./sub-views.ts";
 
@@ -69,6 +74,7 @@ export async function workspaceLaneFor(url: URL, actor: ReadActor): Promise<Comp
 				bootstrap.workspace.viewerCapabilities,
 				url.searchParams.get("view"),
 			)}
+			channel={bootstrap.activeModule === "channels" ? channelSlugOfPath(url.pathname) : null}
 		/>
 	);
 }

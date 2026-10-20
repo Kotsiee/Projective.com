@@ -3,6 +3,7 @@ import { ProposalAllowanceStatusSchema } from "../finance/allowance.ts";
 import { MoneyViewSchema } from "../finance/wallet.ts";
 import { isReservedHandle } from "../profile/reserved.ts";
 import { canOpenVerification } from "./access.ts";
+import { EntityChannelSchema } from "./channels.ts";
 import {
 	VerificationState,
 	WorkspaceCapability,
@@ -419,6 +420,11 @@ export const WorkspaceDetailSchema = z.object({
 	archiveBlockers: z.array(ArchiveBlockerSchema).default([]),
 	/** Where a restore would land while the entity is `archived`; `null` otherwise. */
 	restoreTarget: RestoreTarget.nullable().default(null),
+	/**
+	 * The entity's live chat channels (Decision #306) — the default first, then by name — with the
+	 * viewer's unread count on each. Every active member reads them.
+	 */
+	channels: z.array(EntityChannelSchema).default([]),
 	activity: z.array(ActivityEntrySchema),
 	setup: z.array(SetupStepSchema),
 

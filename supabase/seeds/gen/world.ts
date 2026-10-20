@@ -2416,6 +2416,134 @@ export const DMS: DmSpec[] = [
 		readBy: ["ines", "lena", "aiko"],
 	},
 ];
+
+/**
+ * An entity channel (Decision #306): a team's or business's named room. Its people are the entity's
+ * active members — the database adds them (comms.tg_entity_channel_seed_members), so a spec never
+ * lists participants. `general` names the default channel every entity is created with; any other slug
+ * is a channel this seed adds.
+ */
+export interface EntityChannelSpec {
+	/** The owning entity's key. */
+	entity: string;
+	slug: string;
+	topic?: string;
+	createdBy: string;
+	createdDaysAgo: number;
+	messages: Array<{ from: string; body: string; daysAgo: number }>;
+	/** Persona keys who have read everything (everyone else has unread messages). */
+	readBy: string[];
+}
+
+export const ENTITY_CHANNELS: EntityChannelSpec[] = [
+	{
+		entity: "nova",
+		slug: "general",
+		createdBy: "ines",
+		createdDaysAgo: 400,
+		messages: [
+			{ from: "ines", body: "Studio is closed Friday afternoon — Porto team offsite.", daysAgo: 9 },
+			{ from: "lena", body: "Noted. I will move the Thursday review to the morning.", daysAgo: 8.9 },
+			{
+				from: "aiko",
+				body: "New brush set is on the shared drive if anyone wants to try it.",
+				daysAgo: 2,
+			},
+		],
+		readBy: ["ines", "lena"],
+	},
+	{
+		entity: "nova",
+		slug: "delivery-sync",
+		topic: "What ships this week, and what is blocked",
+		createdBy: "ines",
+		createdDaysAgo: 120,
+		messages: [
+			{
+				from: "ines",
+				body: "Helia wallet: research synthesis goes to the client on Wednesday. Anything blocking?",
+				daysAgo: 3,
+			},
+			{
+				from: "lena",
+				body: "Two interview transcripts still need tagging. I will finish them tomorrow.",
+				daysAgo: 2.9,
+			},
+			{
+				from: "aiko",
+				body: "Onboarding illustrations are at 70%. I need the final copy for screen three.",
+				daysAgo: 1.2,
+			},
+			{ from: "ines", body: "Copy is in the brief now — page 4.", daysAgo: 1 },
+		],
+		readBy: ["ines"],
+	},
+	{
+		entity: "nova",
+		slug: "client-updates",
+		topic: "Drafts of what we send clients, before we send it",
+		createdBy: "lena",
+		createdDaysAgo: 90,
+		messages: [
+			{
+				from: "lena",
+				body:
+					"Draft for Helia: synthesis is done, three problem statements, workshop proposed for next Tuesday. Edits welcome.",
+				daysAgo: 1.5,
+			},
+			{ from: "ines", body: "Good. Lead with the second statement — it is the strongest.", daysAgo: 1.4 },
+		],
+		readBy: ["ines", "lena"],
+	},
+	{
+		entity: "north",
+		slug: "general",
+		createdBy: "kwame",
+		createdDaysAgo: 365,
+		messages: [
+			{ from: "kwame", body: "Welcome back, everyone. Planning is Monday at 10.", daysAgo: 6 },
+			{ from: "tomasz", body: "I will bring the warehouse cost numbers.", daysAgo: 5.9 },
+		],
+		readBy: ["kwame", "samuel", "tomasz"],
+	},
+	{
+		entity: "north",
+		slug: "delivery-sync",
+		topic: "Atlas build — daily status",
+		createdBy: "kwame",
+		createdDaysAgo: 30,
+		messages: [
+			{
+				from: "tomasz",
+				body: "Ingestion pipeline is green in staging. Backfill of last quarter runs tonight.",
+				daysAgo: 2,
+			},
+			{
+				from: "samuel",
+				body: "Companion screens are waiting on the events endpoint — any ETA?",
+				daysAgo: 1.1,
+			},
+			{ from: "tomasz", body: "Tomorrow morning. I will post here when it is live.", daysAgo: 1 },
+			{ from: "kwame", body: "Thanks both. I will tell Atlas on Thursday's call.", daysAgo: 0.4 },
+		],
+		readBy: ["kwame"],
+	},
+	{
+		entity: "north",
+		slug: "client-updates",
+		topic: "Notes for the Atlas weekly",
+		createdBy: "samuel",
+		createdDaysAgo: 28,
+		messages: [
+			{
+				from: "samuel",
+				body: "Weekly note: warehouse model signed off, dashboard shell next, mobile after that.",
+				daysAgo: 4,
+			},
+		],
+		readBy: ["kwame", "samuel", "tomasz"],
+	},
+];
 // #endregion
 
 // #region Notifications

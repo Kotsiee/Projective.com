@@ -12,12 +12,14 @@
  *   - `common`  — kinds, statuses, roles, the capability vocabulary, per-kind copy.
  *   - `access`  — which money and admin screens a viewer may open (one predicate per module).
  *   - `authority` — the business-project refusals (`hire`, `purchase`, `manage_projects`, funders).
+ *   - `channels` — the entity's chat channels (Decision #306): the name rule, the list row, the writes.
  *   - `members` — membership, invitations, and the three-layer permission engine.
  *   - `policy`  — team payout splits · business pooled-wallet spend governance.
  *   - `workspace` — the roster + console read projections and every mutation payload.
  */
 export * from "./access.ts";
 export * from "./authority.ts";
+export * from "./channels.ts";
 export * from "./common.ts";
 export * from "./members.ts";
 export * from "./policy.ts";

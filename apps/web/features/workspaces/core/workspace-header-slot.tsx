@@ -2,7 +2,12 @@ import type { ComponentChildren } from "preact";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import WorkspaceHeaderBand from "../islands/WorkspaceHeaderBand.island.tsx";
 import { resolveWorkspaceConsole } from "./workspace-ssr.ts";
-import { activeModuleOf, kindFromPath, workspaceHandleOf } from "./workspace-model.ts";
+import {
+	activeModuleOf,
+	channelSlugOfPath,
+	kindFromPath,
+	workspaceHandleOf,
+} from "./workspace-model.ts";
 import { resolveSubView } from "./sub-views.ts";
 
 /**
@@ -27,11 +32,16 @@ export async function workspaceHeaderFor(url: URL, actor: ReadActor): Promise<Co
 	const bootstrap = await resolveWorkspaceConsole(kind, handle, requested, actor, url);
 	if (!bootstrap) return null;
 
+	// On a channel the band titles the room (`# delivery-sync`) over its topic (Decision #306).
+	const slug = bootstrap.activeModule === "channels" ? channelSlugOfPath(url.pathname) : null;
+	const channel = slug ? bootstrap.workspace.channels.find((c) => c.slug === slug) ?? null : null;
+
 	return (
 		<WorkspaceHeaderBand
 			kind={kind}
 			workspace={bootstrap.workspace}
 			module={bootstrap.activeModule}
+			channel={channel ? { slug: channel.slug, topic: channel.topic } : null}
 			view={resolveSubView(
 				bootstrap.activeModule,
 				kind,

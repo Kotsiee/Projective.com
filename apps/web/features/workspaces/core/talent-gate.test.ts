@@ -41,9 +41,11 @@ interface SsrApi {
 const { consoleResponse, routeConsole } = await importWithoutGlyphs<ConsoleRouteApi>(
 	"./console-route.ts",
 );
-const { mayViewModule, primaryModules, secondaryModules } = await importWithoutGlyphs<RegistryApi>(
+const { mayViewModule, hubsForViewer } = await importWithoutGlyphs<RegistryApi>(
 	"./module-registry.tsx",
 );
+const hubKeys = (caps: readonly WorkspaceCapability[]) =>
+	hubsForViewer("business", caps).map((h) => h.hub.key);
 const { resolveWorkspaceConsole } = await importWithoutGlyphs<SsrApi>("./workspace-ssr.ts");
 
 // #region Fixtures
@@ -109,7 +111,7 @@ Deno.test("talent gate: hire opens the bench — owner, admin, and a member gran
 
 Deno.test("talent gate: a plain business member without hire does not see it", () => {
 	assertEquals(mayViewModule("talent", "business", MEMBER), false);
-	assertEquals(secondaryModules("business", MEMBER).some((m) => m.key === "talent"), false);
+	assertEquals(hubKeys(MEMBER).includes("talent"), false);
 });
 
 Deno.test("talent gate: a team never has the module, whatever the role", () => {
@@ -119,9 +121,10 @@ Deno.test("talent gate: a team never has the module, whatever the role", () => {
 	}
 });
 
-Deno.test("talent gate: Talent sits in a business's secondary group, not its primary views", () => {
-	assertEquals(secondaryModules("business", ADMIN).some((m) => m.key === "talent"), true);
-	assertEquals(primaryModules("business", ADMIN).some((m) => m.key === "talent"), false);
+Deno.test("talent gate: Talent is a business's Core operations hub (Decision #306)", () => {
+	const talent = hubsForViewer("business", ADMIN).find((h) => h.hub.key === "talent");
+	assertEquals(talent?.hub.zone, "operations");
+	assertEquals(hubKeys(ADMIN).includes("talent"), true);
 });
 
 Deno.test("talent gate: a holder of hire renders the page", async () => {

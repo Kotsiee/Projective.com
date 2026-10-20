@@ -152,6 +152,13 @@ The **entity-owned** counterpart of `personal` — the shared drive behind a tea
 enterprise library in the `/files` hub. Seeded alongside the other private buckets in `00005040`
 (private, **50 MiB**, any MIME); policies in `00002017`.
 
+The same drive is the console's **Files** module (`/teams/{handle}/files`,
+`/businesses/{handle}/files`, Decision #306), read as the `workspace` list scope: any active member
+reads it and uploads into it whatever context they act in — the server confirms the seat through
+`org.get_acting_context_details` before it reads a row, and the `files.items` / `files.folders` write
+policies (`files.fn_owns_library`) ask the same question again. Rename, move and delete stay the
+uploader's (`owner_user_id = auth.uid()`).
+
 ```text
 workspace/
 └── [entity_id]/          -- a team_id OR a business_id OR an enterprise_id

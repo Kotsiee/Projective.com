@@ -88,3 +88,28 @@ CREATE TRIGGER trg_dm_shield BEFORE INSERT ON comms.dm_participants
 CREATE TRIGGER trg_dm_shield BEFORE INSERT ON comms.dm_messages
     FOR EACH ROW EXECUTE FUNCTION comms.trg_dm_shield();
 -- #endregion
+
+-- #region Entity channels (Decision #306, 00001300)
+-- A channel's people are its entity's active members: seeded when the channel is created, joined and
+-- left as memberships become and stop being active. Every entity gets its `general` when it is created.
+CREATE TRIGGER trg_entity_channel_seed_members
+    AFTER INSERT ON comms.dm_threads
+    FOR EACH ROW WHEN (NEW.kind = 'entity_channel')
+    EXECUTE FUNCTION comms.tg_entity_channel_seed_members();
+
+CREATE TRIGGER trg_team_member_channels
+    AFTER INSERT OR UPDATE OF status ON org.team_members
+    FOR EACH ROW EXECUTE FUNCTION comms.tg_entity_member_channels('team');
+
+CREATE TRIGGER trg_business_member_channels
+    AFTER INSERT OR UPDATE OF status ON org.business_members
+    FOR EACH ROW EXECUTE FUNCTION comms.tg_entity_member_channels('business');
+
+CREATE TRIGGER trg_team_default_channel
+    AFTER INSERT ON org.teams
+    FOR EACH ROW EXECUTE FUNCTION comms.tg_entity_default_channel('team');
+
+CREATE TRIGGER trg_business_default_channel
+    AFTER INSERT ON org.business_profiles
+    FOR EACH ROW EXECUTE FUNCTION comms.tg_entity_default_channel('business');
+-- #endregion

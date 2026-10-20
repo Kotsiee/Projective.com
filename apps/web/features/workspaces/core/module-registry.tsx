@@ -12,10 +12,11 @@ import {
 	BillingGlyph,
 	CalendarGlyph,
 	CatalogueGlyph,
+	ChannelGlyph,
+	FilesGlyph,
 	FinanceGlyph,
 	InvitationsGlyph,
 	MembersGlyph,
-	MessagesGlyph,
 	OverviewGlyph,
 	PayoutsGlyph,
 	ProfileGlyph,
@@ -33,7 +34,7 @@ import {
  *
  * ONE array ({@link MODULES}) is the single source five separate mechanisms derive from:
  *
- *   1. **The entity lane's views** — the primary views, then the "More" section (Teams L1).
+ *   1. **The entity lane's views** — the modules gathered into {@link NAV_HUBS} (Decision #306).
  *   2. **The `[module]` route validator** — an unknown segment is not a module, so it 404s; a known one
  *      the viewer may not open redirects rather than refusing.
  *   3. **The permission gate** — what a given member is allowed to see at all.
@@ -65,17 +66,18 @@ import {
  * ### Why `permission` must be able to return `null`
  * `null` means *every active member may view this*. It is not a convenience — it is what guarantees the
  * invariant **"never 404 a user out of their own workspace."** A member with no granted capabilities at
- * all still belongs to the entity and must land somewhere real: Overview, Members, Calendar, Messages,
- * Projects and Standing are all permissionless, so {@link firstModuleFor} can always resolve a landing
- * module. If every module required a capability, the least-privileged member — exactly the person most
- * likely to be confused — would be bounced out of a workspace they are legitimately in.
+ * all still belongs to the entity and must land somewhere real: Overview, Members, Calendar, Files,
+ * Channels, Projects and Standing are all permissionless, so {@link firstModuleFor} can always resolve a
+ * landing module. If every module required a capability, the least-privileged member — exactly the
+ * person most likely to be confused — would be bounced out of a workspace they are legitimately in.
  *
- * ### Primary views
- * `primary` + `order` mark the views a console leads with (Decision #228 (C): a team's Overview ·
- * Members · Projects · Payouts · Roles · Settings; a business's Overview · Members · Projects ·
- * Spend · Billing · Settings, Decision #232).
- * {@link primaryModules} and {@link secondaryModules} split the viewer's visible set in two — the same
- * capability filter, so a primary module the viewer may not open is simply absent, never shown locked.
+ * ### Hubs (Decision #306, superseding #228 (C) and #232's primary views)
+ * The lane does not list modules one by one: {@link NAV_HUBS} gathers them into hubs ("Roster &
+ * members" is Members · Invitations · Roles), each placed in a lane zone (Core operations · Governance,
+ * and Settings in the footer). A hub is a navigation grouping only — every module keeps its own route,
+ * its own gate and its own screen, and the header band draws a multi-module hub's modules as link tabs.
+ * {@link hubsForViewer} applies the same capability filter as {@link modulesForViewer}, so a hub whose
+ * modules the viewer may not open is simply absent, never shown locked.
  *
  * ### Purity
  * This module is deliberately dependency-light: types, glyph VNodes, nothing else. No signals, no
@@ -94,7 +96,8 @@ export type ModuleKey =
 	| "projects"
 	| "catalogue"
 	| "calendar"
-	| "messages"
+	| "files"
+	| "channels"
 	| "members"
 	| "roles"
 	| "invitations"
@@ -145,17 +148,6 @@ export interface WorkspaceModule {
 	permission: (kind: WorkspaceKind) => ModuleGate;
 	/** One line for the rail tooltip's second row and the module's own header — what it is FOR. */
 	blurb: string;
-	/**
-	 * The kinds whose console leads with this module as a **primary view** (Decision #228 (C) for a
-	 * team). Absent means secondary on every kind. Primary is an ordering, never a permission: a primary
-	 * module is still filtered by {@link permission} exactly like any other.
-	 */
-	primary?: readonly WorkspaceKind[];
-	/**
-	 * Position among the primary views — the lane order (L1) and the header band order (L2). Set exactly
-	 * when {@link primary} is; no two modules primary on the same kind share a value.
-	 */
-	order?: number;
 }
 // #endregion
 
@@ -188,8 +180,6 @@ export const MODULES: readonly WorkspaceModule[] = [
 		// The guaranteed landing module. This one is permissionless by contract, not by judgement.
 		permission: OPEN,
 		blurb: "What is happening across the whole entity right now.",
-		primary: BOTH,
-		order: 1,
 	},
 	{
 		key: "projects",
@@ -201,8 +191,6 @@ export const MODULES: readonly WorkspaceModule[] = [
 		// enforced inside the module, not by hiding the module.
 		permission: OPEN,
 		blurb: "Engagements the entity is delivering or has commissioned.",
-		primary: BOTH,
-		order: 3,
 	},
 	{
 		key: "catalogue",
@@ -223,13 +211,22 @@ export const MODULES: readonly WorkspaceModule[] = [
 		blurb: "The shared schedule — sessions, milestones and deadlines.",
 	},
 	{
-		key: "messages",
-		label: "Messages",
+		key: "files",
+		label: "Files",
 		group: "Workspace",
-		glyph: MessagesGlyph,
+		glyph: FilesGlyph,
 		kinds: BOTH,
 		permission: OPEN,
-		blurb: "Conversations addressed to the entity rather than to a person.",
+		blurb: "The shared drive the entity owns — briefs, assets and deliverables.",
+	},
+	{
+		key: "channels",
+		label: "Channels",
+		group: "Workspace",
+		glyph: ChannelGlyph,
+		kinds: BOTH,
+		permission: OPEN,
+		blurb: "Workspace-wide chat rooms every active member is in.",
 	},
 
 	// --- People -----------------------------------------------------------------------------------
@@ -242,8 +239,6 @@ export const MODULES: readonly WorkspaceModule[] = [
 		// Knowing who else is in the entity is basic membership information; acting on them is not.
 		permission: OPEN,
 		blurb: "Who belongs, what they may do, and how loaded they are.",
-		primary: BOTH,
-		order: 2,
 	},
 	{
 		key: "roles",
@@ -253,8 +248,6 @@ export const MODULES: readonly WorkspaceModule[] = [
 		kinds: BOTH,
 		permission: () => "manage_roles",
 		blurb: "Preset and custom roles, and the capability matrix behind them.",
-		primary: TEAM,
-		order: 5,
 	},
 	{
 		key: "invitations",
@@ -290,8 +283,6 @@ export const MODULES: readonly WorkspaceModule[] = [
 		kinds: TEAM,
 		permission: () => "manage_finances",
 		blurb: "How a released payout splits across the people who did the work.",
-		primary: TEAM,
-		order: 4,
 	},
 	{
 		key: "spend",
@@ -303,8 +294,6 @@ export const MODULES: readonly WorkspaceModule[] = [
 		// which sections render is `spendAccess`, and every write is enforced by its RPC.
 		permission: (kind) => (caps) => canOpenSpend(kind, caps),
 		blurb: "Limits, approval thresholds and the attributable pool ledger.",
-		primary: BUSINESS,
-		order: 4,
 	},
 	{
 		key: "billing",
@@ -316,8 +305,6 @@ export const MODULES: readonly WorkspaceModule[] = [
 		// the same right every billing write checks, so nobody opens a screen they cannot act on.
 		permission: (kind) => (caps) => canOpenBilling(kind, caps),
 		blurb: "Invoices to pay, statements, auto-funding and the balance floor.",
-		primary: BUSINESS,
-		order: 5,
 	},
 
 	// --- Growth -----------------------------------------------------------------------------------
@@ -378,9 +365,133 @@ export const MODULES: readonly WorkspaceModule[] = [
 		glyph: SettingsGlyph,
 		kinds: BOTH,
 		permission: () => "manage_settings",
-		blurb: "Handle, defaults, ownership transfer and archiving.",
-		primary: BOTH,
-		order: 6,
+		blurb: "Handle, defaults and archiving.",
+	},
+];
+// #endregion
+
+// #region Hubs
+/**
+ * The lane zone a hub sits in: Core operations and Governance as labelled lane sections, or the footer
+ * rig's Settings control. Channels are their own zone, drawn from the read, not from a hub.
+ */
+export type LaneZoneKey = "operations" | "governance" | "footer";
+
+/** Every hub key. */
+export type HubKey =
+	| "overview"
+	| "projects"
+	| "calendar"
+	| "files"
+	| "catalogue"
+	| "talent"
+	| "roster"
+	| "vault"
+	| "insights"
+	| "settings";
+
+/** One lane entry gathering one or more modules. */
+export interface NavHub {
+	key: HubKey;
+	/** The lane row's label, per kind. */
+	label: (kind: WorkspaceKind) => string;
+	glyph: VNode;
+	zone: LaneZoneKey;
+	/**
+	 * The modules it gathers, in tab order. A module a kind does not render is skipped for that kind.
+	 * The first one the viewer may open is where the row links.
+	 */
+	modules: readonly ModuleKey[];
+	/** One line for the collapsed rail's tooltip — what the hub is FOR. */
+	blurb: string;
+}
+
+const same = (label: string) => (): string => label;
+
+/**
+ * The hubs, in lane order within each zone. Every registered module except `channels` belongs to
+ * exactly one hub (`module-registry.test.ts` pins it), so nothing becomes unreachable.
+ */
+export const NAV_HUBS: readonly NavHub[] = [
+	{
+		key: "overview",
+		label: same("Overview"),
+		glyph: OverviewGlyph,
+		zone: "operations",
+		modules: ["overview"],
+		blurb: "What is happening across the whole entity right now.",
+	},
+	{
+		key: "projects",
+		label: same("Projects & work"),
+		glyph: ProjectsGlyph,
+		zone: "operations",
+		modules: ["projects"],
+		blurb: "Active stages, boards and deliverables.",
+	},
+	{
+		key: "calendar",
+		label: same("Calendar & schedule"),
+		glyph: CalendarGlyph,
+		zone: "operations",
+		modules: ["calendar"],
+		blurb: "Schedules, deadlines and booked calls.",
+	},
+	{
+		key: "files",
+		label: same("Files & docs"),
+		glyph: FilesGlyph,
+		zone: "operations",
+		modules: ["files"],
+		blurb: "The shared drive the entity owns.",
+	},
+	{
+		key: "catalogue",
+		label: same("Catalogue"),
+		glyph: CatalogueGlyph,
+		zone: "operations",
+		modules: ["catalogue"],
+		blurb: "The services and products the team offers as one seller.",
+	},
+	{
+		key: "talent",
+		label: same("Talent"),
+		glyph: TalentGlyph,
+		zone: "operations",
+		modules: ["talent"],
+		blurb: "The freelancers and teams this business works with.",
+	},
+	{
+		key: "roster",
+		label: same("Roster & members"),
+		glyph: MembersGlyph,
+		zone: "governance",
+		modules: ["members", "invitations", "roles"],
+		blurb: "Members, pending invitations and roles.",
+	},
+	{
+		key: "vault",
+		label: (kind) => kind === "team" ? "Vault & finances" : "Wallet & spending",
+		glyph: FinanceGlyph,
+		zone: "governance",
+		modules: ["finance", "payouts", "spend", "billing"],
+		blurb: "Balances, splits, spending and invoices.",
+	},
+	{
+		key: "insights",
+		label: same("Analytics & standing"),
+		glyph: AnalyticsGlyph,
+		zone: "governance",
+		modules: ["analytics", "standing"],
+		blurb: "Performance over time and the earned Standing rung.",
+	},
+	{
+		key: "settings",
+		label: (kind) => kind === "team" ? "Team settings" : "Business settings",
+		glyph: SettingsGlyph,
+		zone: "footer",
+		modules: ["settings", "profile", "verification"],
+		blurb: "Handle, profile, verification and archiving.",
 	},
 ];
 // #endregion
@@ -434,29 +545,35 @@ export function modulesForViewer(
 	return modulesForKind(kind).filter((m) => gateAllows(m.permission(kind), capabilities));
 }
 
-/**
- * The viewer's **primary views**, in their {@link WorkspaceModule.order} — the lane's top group (L1)
- * and the header band (L2). Filtered by capability exactly like {@link modulesForViewer}, so a member
- * without `manage_roles` never sees Roles here (and `/roles` still 303s for them).
- */
-export function primaryModules(
-	kind: WorkspaceKind,
-	capabilities: readonly WorkspaceCapability[],
-): WorkspaceModule[] {
-	return modulesForViewer(kind, capabilities)
-		.filter((m) => m.primary?.includes(kind))
-		.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+/** A hub as one viewer sees it: the modules of it they may open, in the hub's order. */
+export interface ViewerHub {
+	hub: NavHub;
+	/** The hub's label for this kind. */
+	label: string;
+	/** Never empty — a hub with nothing the viewer may open is not listed. */
+	modules: WorkspaceModule[];
 }
 
 /**
- * Every other module the viewer may open, in registry order — the lane's secondary group. Together with
- * {@link primaryModules} it partitions {@link modulesForViewer}: nothing real becomes unreachable.
+ * The hubs a viewer may open, in {@link NAV_HUBS} order — each with exactly the modules
+ * {@link modulesForViewer} admits, so a member without `manage_roles` sees Roster & members without
+ * Roles, and one with no money capability sees no Vault at all.
  */
-export function secondaryModules(
+export function hubsForViewer(
 	kind: WorkspaceKind,
 	capabilities: readonly WorkspaceCapability[],
-): WorkspaceModule[] {
-	return modulesForViewer(kind, capabilities).filter((m) => !m.primary?.includes(kind));
+): ViewerHub[] {
+	const visible = new Set(modulesForViewer(kind, capabilities).map((m) => m.key));
+	return NAV_HUBS.flatMap((hub) => {
+		const modules = hub.modules.filter((key) => visible.has(key)).map((key) => BY_KEY[key]);
+		return modules.length > 0 ? [{ hub, label: hub.label(kind), modules }] : [];
+	});
+}
+
+/** The hub a module belongs to, or `null` for `channels`, which the lane draws from the read. */
+export function hubOf(module: ModuleKey | null): NavHub | null {
+	if (!module) return null;
+	return NAV_HUBS.find((hub) => hub.modules.includes(module)) ?? null;
 }
 
 /** Whether a viewer may open a specific module. The route gate and the lane use the same predicate. */

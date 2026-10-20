@@ -257,11 +257,40 @@ Containers for 1:1 or group conversations separate from project work.
 
 | Column               | Type                     | Notes |
 | :------------------- | :----------------------- | :---- |
-| `kind`               | `comms.conversation_kind` | `dm` · `group` · `service_inquiry`. |
+| `kind`               | `comms.conversation_kind` | `dm` · `group` · `service_inquiry` · `entity_channel` (Decision #306 — a team's or business's named room; see [Entity channels](#entity-channels-decision-306) below). |
 | `title`              | text                     | A group's name; NULL for a DM (the counterparty's own name is the title). |
 | `photo_file_id`      | uuid                     | FK → `files.items.id` `ON DELETE SET NULL`. A **group's** own photo — a processed public `avatars` rendition, written only through `comms.set_group_photo` (no client `UPDATE` policy). NULL for a DM (its picture is the counterparty's) and for a group with none; the inbox then paints the group fallback. |
 | `created_by_user_id` | uuid                     | The starter. The inbox LIST shows an empty thread to its starter only (everyone else once it holds a message). |
 | `subject_listing_id` | uuid                     | The listing a service inquiry was opened from (Decision #217(g)) — "new inquiries for this item". FK → `catalogue.listings.id` `ON DELETE SET NULL`, added in the trailing `00000033_tables_fk_comms_catalogue.sql` (the listings table is created after this file). `ck_dm_threads_subject_inquiry`: only a `service_inquiry` carries one. Written by `comms.get_or_create_dm_thread(…, p_subject_listing)`. Partial index `idx_dm_threads_subject_listing`. |
+| `owner_type`         | text                     | An entity channel's owner kind: `team` · `business` (`ck_dm_threads_owner_type`). NULL on every other kind. |
+| `owner_entity_id`    | uuid                     | The owning `org.teams.id` / `org.business_profiles.id` — the `(owner_type, owner_entity_id)` pair `files.items` uses. **No FK**: one column cannot point at two parents. NULL on every other kind. |
+| `slug`               | text                     | An entity channel's name as typed after `#` (`general`, `delivery-sync`). `ck_dm_threads_channel_slug`: 2–40 of `[a-z0-9-]`, no hyphen at either end (TS twin `CHANNEL_NAME_PATTERN`, pinned by `workspace.contract.test.ts`). Unique among the entity's LIVE channels (`uq_dm_threads_channel_slug`), so an archived channel frees its name. |
+| `topic`              | text                     | One line saying what the channel is for; ≤ 200 (`ck_dm_threads_channel_topic`). |
+| `is_default`         | boolean                  | The `general` channel every entity is created with (`comms.tg_entity_default_channel`). One per entity (`uq_dm_threads_channel_default`), never archivable (`ck_dm_threads_default_live`, and `comms.archive_entity_channel` refuses it). |
+| `archived_at`        | timestamptz              | A retired channel (nothing is hard-deleted): out of the console list, refuses new messages (`send_dm_messages_if_participant`); history and participants stay. |
+
+`ck_dm_threads_entity_channel`: `owner_type`, `owner_entity_id` and `slug` are set **exactly when**
+`kind = 'entity_channel'`, and every other kind carries no topic, no default flag and no archive
+stamp.
+
+#### Entity channels (Decision #306)
+
+A team's or business's named rooms reuse the DM thread machinery, so the `/messages` chat stack (the
+feed, `/api/messaging/messages/send`, read state, attachments, reactions, every policy built on
+`comms.is_dm_participant`) serves them with no second implementation. What differs is membership:
+a channel's `dm_participants` are **the entity's active members**, kept equal by triggers
+(`00001840`): a channel created → every active member joins; a membership becoming `active` → joins
+every live channel (a prior participation is restored); a membership leaving `active` → its
+participation on every channel of the entity is soft-deleted (`deleted_at`), so history stays and
+access ends. Channels are excluded from the personal inbox list and contact picker
+(`live-queries.ts` / `live-contacts.ts`), from the DM lookup (`get_or_create_dm_thread`,
+`send_request_message`, `findExistingDmThread`), the under-18 shield, auto-replies and request
+promotion, and from add-members. Indexes (`00004006`): `uq_dm_threads_channel_slug (owner_type,
+owner_entity_id, slug) WHERE kind = 'entity_channel' AND archived_at IS NULL`,
+`uq_dm_threads_channel_default (owner_type, owner_entity_id) WHERE is_default`,
+`idx_dm_threads_entity_channels (owner_type, owner_entity_id) WHERE kind = 'entity_channel'`.
+Zod: `EntityChannelSchema` (`@projective/types/workspace` `channels.ts`); `ConversationKind` gains
+`entity_channel`.
 
 ### `comms.dm_participants`
 

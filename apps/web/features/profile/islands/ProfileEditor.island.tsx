@@ -276,8 +276,8 @@ export default function ProfileEditor({ model, userId, restricted }: ProfileEdit
 							<FormControl
 								label="Headline"
 								class="pf-edit__wide"
-								hint={`${d.headline.length} / ${PROFILE_LIMITS.headline} — what you do, in a line.`}
-								hintMode="inline"
+								hint="What you do, in a line."
+								note={`${d.headline.length} / ${PROFILE_LIMITS.headline}`}
 								error={fieldError("headline")}
 								status={fieldError("headline") ? "invalid" : "default"}
 							>
@@ -307,8 +307,7 @@ export default function ProfileEditor({ model, userId, restricted }: ProfileEdit
 					>
 						<FormControl
 							label="About"
-							hint={`${d.story.length} / ${PROFILE_LIMITS.story}`}
-							hintMode="inline"
+							note={`${d.story.length} / ${PROFILE_LIMITS.story}`}
 							error={fieldError("story")}
 							status={fieldError("story") ? "invalid" : "default"}
 						>

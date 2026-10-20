@@ -843,6 +843,9 @@ export class MessagingBackendService {
 		if (!base) {
 			return fail(404, { message: `No conversation found for "${input.conversationId}".` });
 		}
+		if (base.kind === "entity_channel") {
+			return fail(422, { message: "A channel's members are its workspace's members." });
+		}
 		const members = uniqueContactIds(input.contactIds)
 			.map((id) => findContact(id))
 			.filter((c): c is MessagingContact => c !== null);
@@ -1050,7 +1053,7 @@ export class MessagingBackendService {
  */
 function toDetail(summary: ConversationSummaryLike): ConversationDetail {
 	const other = summary.participants[0];
-	const sub = summary.kind === "group"
+	const sub = summary.kind === "group" || summary.kind === "entity_channel"
 		? `${summary.participants.length + 1} members`
 		: other?.handle
 		? `@${other.handle}`

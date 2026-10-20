@@ -2,9 +2,16 @@ import type { ComponentChildren } from "preact";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import WorkspaceFooterRig from "../islands/WorkspaceFooterRig.island.tsx";
 import { resolveRoster, resolveWorkspaceConsole } from "./workspace-ssr.ts";
-import { activeModuleOf, kindFromPath, workspaceHandleOf } from "./workspace-model.ts";
+import {
+	activeModuleOf,
+	channelSlugOfPath,
+	kindFromPath,
+	workspaceHandleOf,
+} from "./workspace-model.ts";
 import { resolveSubView } from "./sub-views.ts";
 import { isFirstRun } from "./roster-model.ts";
+import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBackendService.ts";
+import ChatComposer from "@web/features/projects/islands/ChatComposer.island.tsx";
 
 /**
  * workspace-footer-slot — the SSR-idiomatic resolver for the middle-nav FOOTER band across the
@@ -51,6 +58,26 @@ export async function workspaceFooterFor(url: URL, actor: ReadActor): Promise<Co
 	const requested = activeModuleOf(url.pathname) ?? "overview";
 	const bootstrap = await resolveWorkspaceConsole(kind, handle, requested, actor, url);
 	if (!bootstrap) return null;
+
+	// On a channel the band is the chat composer, as on a conversation (Decision #306).
+	const slug = bootstrap.activeModule === "channels" ? channelSlugOfPath(url.pathname) : null;
+	if (slug) {
+		const thread = await WorkspaceBackendService.channelThread(
+			kind,
+			bootstrap.workspace.handle,
+			slug,
+			actor,
+		);
+		if (!thread.ok || !thread.data) return null;
+		return (
+			<ChatComposer
+				scope="conversation"
+				projectId={thread.data.conversationId}
+				channelId={thread.data.conversationId}
+				autoFocus
+			/>
+		);
+	}
 
 	const capabilities = bootstrap.workspace.viewerCapabilities;
 	const held = new Set(capabilities);

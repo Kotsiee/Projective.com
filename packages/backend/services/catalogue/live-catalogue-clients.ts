@@ -149,7 +149,7 @@ async function pairThread(
 	const both = ((mine.data ?? []) as Array<{ thread_id: string }>).map((p) => p.thread_id);
 	if (both.length === 0) return null;
 	const thread = await comms.from("dm_threads").select("id")
-		.in("id", both).neq("kind", "group")
+		.in("id", both).in("kind", ["dm", "service_inquiry"])
 		.order("created_at", { ascending: true }).limit(1).maybeSingle();
 	if (thread.error) throw new Error(`comms.dm_threads read failed: ${thread.error.message}`);
 	return (thread.data as { id: string } | null)?.id ?? null;

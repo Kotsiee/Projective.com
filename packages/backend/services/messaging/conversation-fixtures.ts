@@ -14,6 +14,7 @@ import { mockAvatar, mockCover } from "../../mocks/assets.ts";
 import { findProfile } from "../profile/profile-fixtures.ts";
 import { findCreatedConversation } from "./conversation-store.ts";
 import { inPartition } from "./partition.ts";
+import { type FixtureChannelRef, parseFixtureChannelConversationId } from "./channel-ref.ts";
 
 /**
  * messaging conversation fixtures — the fat {@link MessagingBackendService}'s in-memory answer for the
@@ -508,6 +509,8 @@ export function findConversationSummary(id: string): ConversationSummary | null 
 		if (contact) return synthesizeDm(id, contact);
 	}
 	if (id.startsWith("grp-new-")) return synthesizeGroup(id);
+	const channel = parseFixtureChannelConversationId(id);
+	if (channel) return synthesizeChannel(id, channel);
 	return null;
 }
 
@@ -615,6 +618,42 @@ function synthesizeGroup(id: string): ConversationSummary {
 	};
 }
 
+/**
+ * An entity channel's room (Decision #306), for the console's chat while messaging serves fixtures. A
+ * fixed slice of the cast stands in for the entity's members, so the feed has voices to replay; the
+ * room is never in the inbox list (it is not in {@link ALL}).
+ */
+function synthesizeChannel(id: string, ref: FixtureChannelRef): ConversationSummary {
+	return {
+		id,
+		kind: "entity_channel",
+		relation: ref.kind,
+		title: `#${ref.slug}`,
+		avatar: null,
+		participants: [
+			person("lena", "Lena Fischer", LENA, "lena", null),
+			person("omar", "Omar Haddad", OMAR, "omar", null),
+			person("priya", "Priya Nair", PRIYA, "priya", null),
+		],
+		preview: "",
+		lastActivityLabel: fmtActivity(NOW - 2 * 60 * 60 * 1000),
+		lastActivityShort: compactActivityLabel(new Date(NOW - 2 * 60 * 60 * 1000).toISOString(), NOW),
+		updatedAt: new Date(NOW - 2 * 60 * 60 * 1000).toISOString(),
+		unread: false,
+		starred: false,
+		folder: "primary",
+		archived: false,
+		muted: false,
+		messageCount: 12,
+		serviceId: null,
+		serviceName: null,
+		productId: null,
+		productName: null,
+		entityId: null,
+		entityName: null,
+	};
+}
+
 /** The single-conversation metadata for the conversation view header + Members tab, or `null`. */
 export function findConversationDetail(
 	id: string,
@@ -624,7 +663,7 @@ export function findConversationDetail(
 	if (!found) return null;
 	const c = overlay(found);
 	const memberCount = c.participants.length + 1; // + the viewer
-	const sub = c.kind === "group"
+	const sub = c.kind === "group" || c.kind === "entity_channel"
 		? `${memberCount} members`
 		: c.participants[0]?.handle
 		? `@${c.participants[0].handle}`
@@ -641,8 +680,9 @@ export function findConversationDetail(
 		muted: c.muted,
 		archived: c.archived,
 		folder: c.folder,
-		// Anyone may add members to a group; either party of a DM may spin one up (task §2B).
-		canAddMembers: true,
+		// Anyone may add members to a group; either party of a DM may spin one up (task §2B). A
+		// channel's members are its workspace's, so nobody adds anyone to it.
+		canAddMembers: c.kind !== "entity_channel",
 		serviceId: c.serviceId,
 		serviceName: c.serviceName,
 	};

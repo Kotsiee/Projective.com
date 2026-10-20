@@ -89,6 +89,7 @@ export const KIND_LABEL: Record<ConversationKind, string> = {
 	dm: "Direct message",
 	group: "Group",
 	service_inquiry: "Service inquiry",
+	entity_channel: "Channel",
 };
 
 /**

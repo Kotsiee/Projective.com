@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AssetItemSchema } from "./assets.ts";
+import { AssetItemSchema, AssetOwnerType } from "./assets.ts";
 
 /**
  * files.dedup — the Zod SSOT for content-addressed duplicate detection.
@@ -117,6 +117,15 @@ export const DedupCheckSchema = z.object({
 	folderId: z.string().max(120).nullable().optional(),
 	/** The filenames being uploaded, positionally aligned with `fingerprints`. */
 	names: z.array(z.string().min(1).max(200)).max(DEDUP_BATCH_MAX).optional(),
+	/**
+	 * The library the drop is bound for, when it is not the acting one (a console drive). Both or
+	 * neither; honoured only for a library the caller may file into, refused otherwise.
+	 */
+	ownerType: AssetOwnerType.optional(),
+	ownerId: z.string().min(1).max(80).optional(),
+}).refine((v) => (v.ownerType === undefined) === (v.ownerId === undefined), {
+	message: "Name both an owner type and an owner, or neither.",
+	path: ["ownerId"],
 });
 export type DedupCheck = z.infer<typeof DedupCheckSchema>;
 
