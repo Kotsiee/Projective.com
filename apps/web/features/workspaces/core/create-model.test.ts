@@ -19,14 +19,12 @@ import {
 	createFooterActions,
 	type CreateGateInput,
 	createGateOpen,
-	createKindMode,
 	HANDLE_CHECKING,
 	type HandleFieldPhase,
 	handleFromName,
 	handleLiveLine,
 	isFilled,
 	isPlainEnter,
-	KIND_CHOICES,
 	liveLineExplains,
 	nameProblem,
 	normalizeHandleInput,
@@ -72,31 +70,22 @@ const phase = (over: Partial<HandleFieldPhase> = {}): HandleFieldPhase => ({
 });
 // #endregion
 
-// #region Kind
-Deno.test("kind: a committed route fixes it; only a neutral surface (or a forced prop) asks", () => {
-	assertEquals(createKindMode("team"), "fixed");
-	assertEquals(createKindMode("business"), "fixed");
-	assertEquals(createKindMode(undefined), "choice");
-	assertEquals(createKindMode("team", true), "choice");
-	assertEquals(createKindMode(undefined, false), "fixed");
-	assertEquals(KIND_CHOICES.map((c) => c.value), ["team", "business"]);
-});
-
-Deno.test("copy: the title and the commit name the kind; a neutral title names both", () => {
-	assertEquals(createCopy("team", "fixed").header, "Create a team");
-	assertEquals(createCopy("team", "fixed").submit, "Create team");
-	assertEquals(createCopy("business", "fixed").submit, "Create business");
-	assertEquals(createCopy("business", "choice").header, "Create a team or business");
-	assert(createCopy("team", "fixed").intro.includes("draft"));
+// #region Copy
+Deno.test("copy: the title and the commit name the route's kind — the dialog never asks (BU1)", () => {
+	assertEquals(createCopy("team").header, "Create a team");
+	assertEquals(createCopy("team").submit, "Create team");
+	assertEquals(createCopy("business").header, "Create a business");
+	assertEquals(createCopy("business").submit, "Create business");
+	assert(createCopy("team").intro.includes("draft"));
 });
 
 Deno.test("copy: a business's placeholders are neutral and agree; a team's are unchanged (BU1)", () => {
-	const business = createCopy("business", "fixed");
+	const business = createCopy("business");
 	assertEquals(business.namePlaceholder, "Acme Studio");
 	assertEquals(business.handlePlaceholder, "acme-studio");
 	// The handle placeholder is the name placeholder's own handle, as the field would mirror it.
 	assertEquals(handleFromName(business.namePlaceholder), business.handlePlaceholder);
-	const team = createCopy("team", "fixed");
+	const team = createCopy("team");
 	assertEquals(team.namePlaceholder, "Northern Grid Collective");
 	assertEquals(team.handlePlaceholder, "northern-grid");
 	// The intro claims nothing a free business lacks: caps and approvals are Business Pro (#230 (e)).
@@ -168,23 +157,21 @@ Deno.test("actions: exactly ONE filled control in every state, and it is the tie
 		gate({ submitting: true }),
 	];
 	for (const kind of kinds) {
-		for (const mode of ["fixed", "choice"] as const) {
-			for (const state of states) {
-				for (const suggestions of [[], ["grid-hq", "grid-co", "grid-2"]]) {
-					const actions = createDialogActions(kind, mode, state, suggestions);
-					const filled = actions.filter((a) => isFilled(a.tier));
-					assertEquals(filled.length, 1, `${kind}/${mode}`);
-					assertEquals([filled[0].key, filled[0].tier], ["create", 2]);
-					assert(
-						actions.filter((a) => a.key.startsWith("suggest:")).every((a) => a.tier === 5),
-						"suggestions are text buttons",
-					);
-					assertEquals(
-						actions.filter((a) => a.key === "recheck").map((a) => a.tier),
-						state.handle.failed ? [4] : [],
-						"the retry is a tier-4 utility, present only after an unanswered probe",
-					);
-				}
+		for (const state of states) {
+			for (const suggestions of [[], ["grid-hq", "grid-co", "grid-2"]]) {
+				const actions = createDialogActions(kind, state, suggestions);
+				const filled = actions.filter((a) => isFilled(a.tier));
+				assertEquals(filled.length, 1, kind);
+				assertEquals([filled[0].key, filled[0].tier], ["create", 2]);
+				assert(
+					actions.filter((a) => a.key.startsWith("suggest:")).every((a) => a.tier === 5),
+					"suggestions are text buttons",
+				);
+				assertEquals(
+					actions.filter((a) => a.key === "recheck").map((a) => a.tier),
+					state.handle.failed ? [4] : [],
+					"the retry is a tier-4 utility, present only after an unanswered probe",
+				);
 			}
 		}
 	}
@@ -202,10 +189,10 @@ Deno.test("retry: 'Check again' only after an unanswered probe, as a tier-4 util
 });
 
 Deno.test("footer: Cancel is tier 5 and always live; the commit is gated and says when it is working", () => {
-	const [cancel, create] = createFooterActions("team", "fixed", gate({ handle: at("checking") }));
+	const [cancel, create] = createFooterActions("team", gate({ handle: at("checking") }));
 	assertEquals([cancel.label, cancel.tier, cancel.disabled], ["Cancel", 5, false]);
 	assertEquals([create.label, create.tier, create.disabled], ["Create team", 2, true]);
-	const busy = createFooterActions("business", "fixed", gate({ submitting: true }))[1];
+	const busy = createFooterActions("business", gate({ submitting: true }))[1];
 	assertEquals([busy.label, busy.disabled], ["Creating…", true]);
 });
 // #endregion

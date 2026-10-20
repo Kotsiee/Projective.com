@@ -1,14 +1,21 @@
-import { Fragment, type JSX } from "preact";
+import { type ComponentChildren, Fragment, type JSX } from "preact";
 import { cx } from "../../core/cx.ts";
 
 // #region Types
-/** One fact on a MetaLine: plain text, or text with a figure / hover-title flag. */
+/** One fact on a MetaLine: plain text, or text with a figure / hover-title flag / rendered form. */
 export type MetaLineEntry = string | {
 	text: string;
 	/** A figure that can change (a count, a price, a duration) — `tabular-nums`, §A.4. */
 	tabular?: boolean;
 	/** Native `title` for a fact whose full form does not fit inline (a full date, a path). */
 	title?: string;
+	/**
+	 * What the item renders IN PLACE of `text`, when a fact is phrasing content rather than a string —
+	 * a `MoneyView` pinned to its own currency, a figure in its own isolating span. Inline content
+	 * only, never a control (§B.11). `text` stays the fact's plain form, so an entry with no words is
+	 * still dropped.
+	 */
+	node?: ComponentChildren;
 };
 
 /** Element a MetaLine renders as. */
@@ -54,7 +61,7 @@ export function MetaLineMarkup(props: MetaLineProps): JSX.Element | null {
 						class={cx("ui-meta-line__item", entry.tabular && "ui-meta-line__item--tabular")}
 						title={entry.title}
 					>
-						{entry.text}
+						{entry.node ?? entry.text}
 					</span>
 				</Fragment>
 			))}

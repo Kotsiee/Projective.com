@@ -40,14 +40,18 @@ import {
 	toRosterTab,
 } from "./roster-model.ts";
 import { rigFilledCount, rigModel } from "./rig-model.ts";
+import { filledAcceptCount, planInviteActions } from "./invitation-strip-model.ts";
+import { sortRowsBy } from "@ui/display/core/table-sort.ts";
 import { importWithoutGlyphs } from "./registry-import.testing.ts";
 
 /**
  * The roster canvas (Teams work order R1), pinned at the pure model the island, its cards and its
  * table bind: the partitions and the address that remembers them, the five canvas states, the
- * controls each state draws at their Button-matrix tiers — and, composed with the lane's footer and
- * the footer rig, exactly ONE filled control on the page in first run, populated, empty and error —
- * the head's facts, each card's facts as metadata (never chips), and the table's column contract.
+ * controls each state draws at their Button-matrix tiers — and, composed with the lane's footer, the
+ * footer rig and the invitation strip, exactly ONE filled control on the page in first run,
+ * populated, empty and error while no invitation waits, and one per decision region once one does
+ * (Decision #245 (j)), beside the lane or its rail and with the lane off-canvas (#245 (k)) — the head's facts, each card's facts as metadata (never chips), and the
+ * table's column contract.
  */
 
 // #region Fixtures
@@ -281,13 +285,15 @@ Deno.test("roster: each state's canvas controls, at their tiers", () => {
 	);
 });
 
-Deno.test("roster: exactly one filled control on the page in every state, one create in first run", () => {
+Deno.test("roster: one filled control per decision region in every state, beside the lane and without it — one on the page until an invitation waits — and one create in first run", () => {
 	type Scene = {
 		state: RosterCanvasState;
 		/** What the lane's SSR roster would hold; `null` when the read failed and the lane got none. */
 		lane: { entities: number; invitations: number } | null;
 		filtered: boolean;
 		readError: boolean;
+		/** Rows the invitation strip draws — its own decision region (#253, TEAMS_AUDIT D25). */
+		invites: number;
 	};
 	const scenes: Scene[] = [
 		{
@@ -295,84 +301,159 @@ Deno.test("roster: exactly one filled control on the page in every state, one cr
 			lane: { entities: 0, invitations: 0 },
 			filtered: false,
 			readError: false,
+			invites: 0,
 		},
 		{
 			state: "populated",
 			lane: { entities: 3, invitations: 0 },
 			filtered: false,
 			readError: false,
+			invites: 0,
 		},
-		{ state: "populated", lane: { entities: 3, invitations: 0 }, filtered: false, readError: true },
-		{ state: "empty", lane: { entities: 3, invitations: 0 }, filtered: true, readError: false },
-		{ state: "error", lane: null, filtered: false, readError: true },
+		{
+			state: "populated",
+			lane: { entities: 3, invitations: 0 },
+			filtered: false,
+			readError: true,
+			invites: 0,
+		},
+		{
+			state: "empty",
+			lane: { entities: 3, invitations: 0 },
+			filtered: true,
+			readError: false,
+			invites: 0,
+		},
+		{ state: "error", lane: null, filtered: false, readError: true, invites: 0 },
+		// An invitation and no entity: the strip IS the list.
+		{
+			state: "invitations",
+			lane: { entities: 0, invitations: 2 },
+			filtered: false,
+			readError: false,
+			invites: 2,
+		},
+		// An invitation over a roster: the strip sits above the list.
+		{
+			state: "populated",
+			lane: { entities: 3, invitations: 1 },
+			filtered: false,
+			readError: false,
+			invites: 1,
+		},
 	];
+	const REASON = "Your plan includes 1 team — archive one or upgrade to create another.";
 	for (const kind of KINDS) {
 		for (const canCreate of [true, false]) {
-			for (const scene of scenes) {
-				// A failed read leaves the chrome without the plan's answer, so the lane and the rig offer
-				// the create (the server re-checks it on submit) — the slots' own fallback.
-				const chromeCanCreate = scene.lane ? canCreate : true;
-				const canvasFills = filledCount(
-					rosterCanvasControls({
+			// Below --bp-md the frame hides the lane, and the rig takes over its create or its reason; the
+			// collapsed rail keeps the create and leaves the reason to the rig (Decision #245 (k)).
+			for (const place of ["expanded", "rail", "off-canvas"] as const) {
+				for (const scene of scenes) {
+					// A failed read leaves the chrome without the plan's answer, so the lane and the rig offer
+					// the create (the server re-checks it on submit) — the slots' own fallback.
+					const chromeCanCreate = scene.lane ? canCreate : true;
+					const canvasFills = filledCount(
+						rosterCanvasControls({
+							kind,
+							state: scene.state,
+							canCreate,
+							filtered: scene.filtered,
+							readError: scene.readError,
+						}),
+					);
+					// The lane reads the same first-run rule over its own roster (none when the read failed).
+					const firstRun = scene.lane
+						? isFirstRun({
+							loaded: true,
+							entityCount: scene.lane.entities,
+							invitationCount: scene.lane.invitations,
+						})
+						: false;
+					const laneFooter = lane.laneZones({
+						view: "roster",
 						kind,
-						state: scene.state,
-						canCreate,
-						filtered: scene.filtered,
-						readError: scene.readError,
-					}),
-				);
-				// The lane reads the same first-run rule over its own roster (none when the read failed).
-				const firstRun = scene.lane
-					? isFirstRun({
-						loaded: true,
-						entityCount: scene.lane.entities,
-						invitationCount: scene.lane.invitations,
-					})
-					: false;
-				const laneCreate = lane.laneZones({
-					view: "roster",
-					kind,
-					liveCount: scene.lane?.entities ?? 0,
-					invitationCount: scene.lane?.invitations ?? 0,
-					canCreate: chromeCanCreate,
-					firstRun,
-				}).footer.create;
-				const laneFills = laneCreate ? 1 : 0; // LaneCreateButton is tier 2 — filled
-				// The footer band's rig reads the same first-run rule (the slot's SSR read, then the
-				// canvas's published reading).
-				const rig = rigModel({
-					kind,
-					handle: null,
-					module: null,
-					view: null,
-					canCreate: chromeCanCreate,
-					firstRun,
-					canInvite: false,
-					canManageMoney: false,
-					canManageSettings: false,
-					canEditProfile: false,
-					dirty: false,
-					saveState: "idle",
-				});
-				const rigFills = rigFilledCount(rig);
-				const total = canvasFills + laneFills + rigFills;
-				const where = `${kind} ${scene.state} canCreate=${canCreate} readError=${scene.readError}`;
-				// A plan that admits no entity draws no create anywhere; otherwise exactly one fills.
-				assertEquals(total, chromeCanCreate ? 1 : 0, where);
-				// In first run the one fill is the canvas's, never the lane's — and it is the page's ONLY
-				// create at any tier: the rig's tier-4 New is withheld too.
-				if (scene.state === "first-run") {
-					assertEquals(laneFills, 0, where);
-					const creates = rosterCanvasControls({
+						liveCount: scene.lane?.entities ?? 0,
+						invitationCount: scene.lane?.invitations ?? 0,
+						canCreate: chromeCanCreate,
+						createBlockedReason: chromeCanCreate ? null : REASON,
+						firstRun,
+					}).footer;
+					// What the reader sees of the lane: the rail draws its create but no reason
+					// (`WorkspaceRail`), and nothing is left once the frame hides it.
+					const laneCreate = place === "off-canvas" ? null : laneFooter.create;
+					const laneNote = place === "expanded" ? laneFooter.note : null;
+					const laneFills = laneCreate ? 1 : 0; // LaneCreateButton is tier 2 — filled
+					// The footer band's rig reads the same first-run rule (the slot's SSR read, then the
+					// canvas's published reading).
+					const rig = rigModel({
 						kind,
-						state: scene.state,
-						canCreate,
-						filtered: scene.filtered,
-						readError: scene.readError,
-					}).filter((c) => c.key === "create").length +
-						(laneCreate ? 1 : 0) +
-						rig.actions.filter((a) => a.key === "create").length;
-					assertEquals(creates, canCreate ? 1 : 0, where);
+						handle: null,
+						module: null,
+						view: null,
+						canCreate: chromeCanCreate,
+						createBlockedReason: chromeCanCreate ? null : REASON,
+						firstRun,
+						lane: place,
+						canInvite: false,
+						canManageMoney: false,
+						canManageSettings: false,
+						canEditProfile: false,
+						dirty: false,
+						saveState: "idle",
+					});
+					const rigFills = rigFilledCount(rig);
+					const stripFills = filledAcceptCount(
+						planInviteActions(
+							Array.from({ length: scene.invites }, (_, i) => ({ id: `inv-${i}` })),
+						),
+					);
+					const total = canvasFills + stripFills + laneFills + rigFills;
+					const where =
+						`${kind} ${scene.state} canCreate=${canCreate} readError=${scene.readError} invites=${scene.invites} lane=${place}`;
+					// Each decision region holds at most one fill (§B.8.1): the canvas with its strip, and the
+					// chrome — the lane's footer and the footer band's rig.
+					assert(canvasFills + stripFills <= 1, `the canvas holds two fills: ${where}`);
+					assert(laneFills + rigFills <= 1, `the chrome holds two fills: ${where}`);
+					if (scene.invites === 0) {
+						// A plan that admits no entity draws no create anywhere; otherwise exactly one fills.
+						assertEquals(total, chromeCanCreate ? 1 : 0, where);
+					} else {
+						// An invitation waiting: the strip's tier-3 Accept AND the lane's tier-2 create — one per
+						// region, two on the page. Measured on noor's page; left to the owner, Decision #245 (j).
+						assertEquals(stripFills, 1, where);
+						assertEquals(total, 1 + (chromeCanCreate ? 1 : 0), where);
+					}
+					// Outside first run the chrome's fill is the lane's (or its rail's) beside it and the rig's
+					// without it, never both, and never neither while the plan admits one.
+					if (scene.state !== "first-run") {
+						const bare = place === "off-canvas";
+						assertEquals(laneFills, !bare && chromeCanCreate ? 1 : 0, where);
+						assertEquals(rigFills, bare && chromeCanCreate ? 1 : 0, where);
+					}
+					// A plan that refuses the create says why exactly once on screen: the lane's line beside
+					// the expanded lane, the rig's same line beside the rail or without the lane — the
+					// canvas's empty state in first run.
+					const notes = [laneNote, rig.note].filter((n) => n !== null);
+					if (!chromeCanCreate && scene.state !== "first-run") {
+						assertEquals(notes, [REASON], where);
+					} else {
+						assertEquals(notes, [], where);
+					}
+					// In first run the one fill is the canvas's, never the lane's — and it is the page's ONLY
+					// create at any tier: the rig's New is withheld too, in either layout.
+					if (scene.state === "first-run") {
+						assertEquals(laneFills, 0, where);
+						const creates = rosterCanvasControls({
+							kind,
+							state: scene.state,
+							canCreate,
+							filtered: scene.filtered,
+							readError: scene.readError,
+						}).filter((c) => c.key === "create").length +
+							(laneCreate ? 1 : 0) +
+							rig.actions.filter((a) => a.key === "create").length;
+						assertEquals(creates, canCreate ? 1 : 0, where);
+					}
 				}
 			}
 		}
@@ -409,8 +490,21 @@ Deno.test("roster: a business's first run lists three plain points; a team's lis
 		// Plain words: no platform jargon in a pitch to somebody who has never made one.
 		assert(!/escrow/i.test(point), `a point says "escrow": ${point}`);
 	}
-	// Caps and the approval threshold are Business Pro (#230 (e)): the third point names the plan
-	// rather than promising them to a free business.
+	// No point claims what a free business lacks. Caps and the approval threshold are Business Pro
+	// (#230 (e)): a point that names them names the plan. Hiring is a permission the Member preset
+	// does not hold and a free business caps its managers, so no point gives it to "everyone".
+	for (const point of points) {
+		if (/limit|cap\b|approv|how much/i.test(point)) {
+			assert(
+				point.includes("Business Pro"),
+				`a point promises Pro governance to a free business: ${point}`,
+			);
+		}
+		assert(
+			!/whole staff|everyone|every member|all your/i.test(point),
+			`a point promises every member a right the plan or the role withholds: ${point}`,
+		);
+	}
 	assert(points[2].includes("Business Pro"), points[2]);
 	// A withheld create keeps the points and still appends the plan's reason to the sentence.
 	const reason = "Your plan includes no business — upgrade to create one.";
@@ -673,17 +767,36 @@ Deno.test("roster: Spent (30d) is the server's figures in its order, or nothing 
 	assertEquals(rosterSpent(summary({ money30d: [usd, gbp] })), [usd, gbp]);
 });
 
-Deno.test("roster: Spent sorts by the largest figure in major units; a row that spent nothing sorts last", () => {
+Deno.test("roster: Spent sorts by amount within a currency, claims no rank across currencies, and an empty cell sorts last", () => {
 	const jpy = { minor: 90_000, currency: "JPY", display: "¥90,000", origin: null };
 	const usd = { minor: 100_000, currency: "USD", display: "US$1,000.00", origin: null };
-	// ¥90,000 is 90,000 major units, US$1,000.00 is 1,000 — the exponent, not the minor count, decides.
-	assertEquals(spentSortValue(summary({ money30d: [jpy] })), 90_000);
-	assertEquals(spentSortValue(summary({ money30d: [usd] })), 1_000);
-	assertEquals(spentSortValue(summary({ money30d: [usd, jpy] })), 90_000);
-	assertEquals(spentSortValue(summary({ money30d: [] })), -1);
-	const rows = [summary({ id: "none" }), summary({ id: "usd", money30d: [usd] })];
-	const ranked = rows.slice().sort((a, b) => spentSortValue(b) - spentSortValue(a))
-		.map((r) => r.id);
-	assertEquals(ranked, ["usd", "none"]);
+	const usd99 = { minor: 99_999, currency: "USD", display: "US$999.99", origin: null };
+	const usdBig = { minor: 250_000, currency: "USD", display: "US$2,500.00", origin: null };
+	// The key is the cell's lead figure, its currency first: no rate, so no cross-currency magnitude.
+	assertEquals(spentSortValue(summary({ money30d: [jpy] })), "JPY 90000");
+	assertEquals(spentSortValue(summary({ money30d: [usd, jpy] })), "USD 100000");
+	// Nothing to show — nothing moved, or the figure was withheld — is no key at all.
+	assertEquals(spentSortValue(summary({ money30d: [] })), null);
+	// Sorted the way DataTable sorts it (its own comparator, numeric-aware, empties last both ways).
+	const column = {
+		id: "spent",
+		header: "Spent (30d)",
+		type: "custom" as const,
+		render: () => null,
+		sortValue: spentSortValue,
+	};
+	const rows = [
+		summary({ id: "none" }),
+		summary({ id: "jpy", money30d: [jpy] }),
+		summary({ id: "usd", money30d: [usd] }),
+		summary({ id: "usd99", money30d: [usd99] }),
+		summary({ id: "usdBig", money30d: [usdBig] }),
+	];
+	const order = (dir: "asc" | "desc") =>
+		sortRowsBy(rows, [{ key: "spent", dir }], [column]).map((row) => row.id);
+	// Within USD by amount (US$999.99 below US$1,000.00 — numeric, not textual); the ¥90,000 row is
+	// grouped by its currency, never ranked above US$1,000.00 for being the bigger number.
+	assertEquals(order("desc"), ["usdBig", "usd", "usd99", "jpy", "none"]);
+	assertEquals(order("asc"), ["jpy", "usd99", "usd", "usdBig", "none"]);
 });
 // #endregion

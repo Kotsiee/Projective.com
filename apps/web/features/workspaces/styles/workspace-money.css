@@ -513,6 +513,12 @@
 	border-block-start: none;
 }
 
+/* The row a deep link landed on (`#limit-<handle>`, the Members drawer's "Edit in Spend") takes the
+next SOLID ramp tone — the landing mark, since focus rings are off app-wide (Decision #249 (j)). */
+.wsp-spend__limit:target {
+	background: var(--surface-1);
+}
+
 .wsp-spend__limit-avatar {
 	flex: none;
 	border-radius: 50%;

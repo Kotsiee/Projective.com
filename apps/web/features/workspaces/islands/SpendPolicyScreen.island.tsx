@@ -30,6 +30,7 @@ import {
 	hasPickable,
 	holderNames,
 	isDirty,
+	limitAnchorOf,
 	type LimitDraft,
 	limitPatchOf,
 	limitsPatch,
@@ -203,6 +204,16 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 		return subscribeDevSeam((s) => {
 			sim.value = s?.spendRequests;
 		});
+	}, []);
+
+	// A deep link to one member's limits row (`#limit-<handle>` — the Members drawer's "Edit in Spend")
+	// lands on it: scrolled into view and focused once the rows are on the page (an external DOM act).
+	useEffect(() => {
+		const id = limitAnchorOf(globalThis.location?.hash ?? "");
+		const row = id ? globalThis.document.getElementById(id) : null;
+		if (!row) return;
+		row.scrollIntoView({ block: "center" });
+		row.focus({ preventScroll: true });
 	}, []);
 
 	// The footer rig's Save and Discard are pulses, not callbacks: `usePolicyBridge` publishes this

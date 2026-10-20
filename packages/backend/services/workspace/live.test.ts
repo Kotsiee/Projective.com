@@ -1452,10 +1452,40 @@ Deno.test("readDetail (business): a member who may spend reads only their own en
 	assert(detail.viewerCan?.requestSpend && !detail.viewerCan.decide);
 });
 
+Deno.test("readDetail (business): the manager headroom and the envelope flag are the read's (BU7)", async () => {
+	const owner = rawBusinessDetail("owner");
+	const read = await readStubbed({
+		...owner,
+		managers: { used: 1, limit: 2 },
+		spend: { ...owner.spend!, reads_all_envelopes: true },
+	}, "business");
+	assertEquals(read.detail?.managers, { used: 1, limit: 2 });
+	assertStrictEquals(read.detail?.spend?.readsAllEnvelopes, true);
+	// Gates off: the count without a ceiling.
+	const off = await readStubbed({ ...owner, managers: { used: 3, limit: null } }, "business");
+	assertEquals(off.detail?.managers, { used: 3, limit: null });
+	// A spender's flag says their limits are only their own; a missing flag never widens it.
+	const spender = rawBusinessDetail("spender");
+	const own = await readStubbed({
+		...spender,
+		spend: { ...spender.spend!, reads_all_envelopes: false },
+	}, "business");
+	assertStrictEquals(own.detail?.spend?.readsAllEnvelopes, false);
+	const absent = await readStubbed(spender, "business");
+	assertStrictEquals(absent.detail?.spend?.readsAllEnvelopes, false);
+	// A drifted or absent headroom is none, never a guess.
+	const drifted = await readStubbed({ ...owner, managers: { used: "two" } }, "business");
+	assertStrictEquals(drifted.detail?.managers, null);
+	assertStrictEquals((await readStubbed(owner, "business")).detail?.managers, null);
+});
+
 Deno.test("readDetail (team): no business blocks", async () => {
 	const { detail } = await readStubbed(rawTeamDetail(true));
 	assert(detail);
 	assertEquals([detail.moneyTiles, detail.viewerCan, detail.kyb], [[], null, null]);
+	// A team has no manager cap, whatever the answer carries.
+	const stray = await readStubbed({ ...rawTeamDetail(true), managers: { used: 1, limit: 2 } });
+	assertStrictEquals(stray.detail?.managers, null);
 });
 
 Deno.test("readDetail (team): seats map as the read gives them; a drifted or absent shape is null", async () => {

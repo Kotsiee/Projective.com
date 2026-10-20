@@ -11,14 +11,18 @@
  *   - no `--wsp-business*` declaration in any workspace sheet reads `--secondary` or `transparent`
  *     (W1: every mix is opaque);
  *   - high contrast widens the tint, the tint-hi, the edge AND the ink;
- *   - no colour-vision overlay re-anchors the business side (it is already `--tertiary` everywhere);
- *   - the invite dialog's selected business option paints the kind token, never `--secondary`.
+ *   - no colour-vision overlay re-anchors the business side (it is already `--tertiary` everywhere).
  *
  * And, measurably: the percentages are PARSED from the sheet and re-computed over the theme engine's
  * own scheme (`buildScheme`, the `projects/core/status-fill.test.ts` precedent) in all four
- * mode/contrast states for three seeds, so a change to a mix or to the engine fails here. Normal
- * contrast owes 4.5:1 for the mark's ink on its tints and for `--on-tertiary` on the solid hue; high
- * contrast owes 7:1 for each, a 3:1 edge against the card, and a wider tint-hi step than normal.
+ * mode/contrast states. For three seeds each pair is held to its FLOOR: normal contrast owes 4.5:1
+ * for the mark's ink on its tints and for `--on-tertiary` on the solid hue; high contrast owes 7:1 for
+ * each, a 3:1 edge against the card, and a wider tint-hi step than normal; the ring's ink and the hue
+ * must not be one colour (a non-identity floor — they still share a tone, flag (a)). For the brand
+ * seed every figure the docs PUBLISH (DESIGN_SYSTEM §A.1.3's table — ink on tint-hi, on tint and on
+ * `--surface-1`, `--on-tertiary` on the hue, the edge — plus the high-contrast tint-hi step and the
+ * ring residual) is pinned to its two printed decimals, so a drift fails here rather than leaving
+ * the docs stale.
  */
 import { assert, assertEquals } from "@std/assert";
 import { buildScheme } from "@projective/ui/system";
@@ -39,7 +43,6 @@ const SHEET_NAMES = [...Deno.readDirSync(STYLES_DIR)]
 	.sort();
 const SHEETS = SHEET_NAMES.map((name) => ({ name, css: readSheet(name) }));
 const TOKENS = readSheet("workspace-tokens.css");
-const ROSTER = readSheet("workspace-roster.css");
 
 /** One innermost rule: its selector list (whitespace collapsed) and its declaration block. */
 interface Rule {
@@ -188,21 +191,76 @@ Deno.test("business hue: no colour-vision overlay re-anchors the business side",
 		);
 	}
 });
-
-Deno.test("business hue: the invite dialog's selected business option paints the kind token", () => {
-	const body = block(ROSTER, '.wsp-create__kind[data-on="true"][data-kind="business"]');
-	assert(!/--secondary\b/.test(body), "the business option still paints --secondary");
-	assert(/var\(--wsp-kind\)/.test(body), "the business option does not read the kind token");
-});
 // #endregion
 
 // #region Measured
-const SEEDS = ["#288690", "#7b2cbf", "#D98216"];
+const BRAND_SEED = "#288690";
+const SEEDS = [BRAND_SEED, "#7b2cbf", "#D98216"];
 const AA = 4.5;
 const AAA = 7;
 const EDGE_FLOOR = 3;
-/** The ring's ink (`--secondary`) and the business hue must not be the same colour (it was ΔE 0.00). */
-const RING_FLOOR = 0.025;
+/**
+ * A NON-IDENTITY floor, not a visibility guarantee: the ring's ink (`--secondary`) and the business
+ * hue must not be the same colour (they were ΔE_OK 0.00). They still share a tone — 1.00–1.01:1 in
+ * luminance, ΔE_OK 0.03–0.05 (pinned below) — so a ring would not show against a business mark by
+ * its ink alone; rings are off by directive, Decision #245 flag (a).
+ */
+const RING_DISTINCT_FLOOR = 0.025;
+
+/**
+ * The figures DESIGN_SYSTEM §A.1.3 and `workspace-tokens.css` publish for the brand seed, per state,
+ * pinned to the two decimals they are printed with — so a change to a mix or to the engine that moves
+ * one fails here instead of leaving the docs stale. `step` is the tint-hi step off the card, the
+ * normal mix then the high-contrast one, both on the high-contrast tones; `ring` is the residual the
+ * docs state: ΔE_OK and luminance contrast between the ring's ink and the hue.
+ */
+const PUBLISHED: Record<string, {
+	inkOnTintHi: number;
+	inkOnTint: number;
+	inkOnSurface: number;
+	onHue: number;
+	edge: number;
+	step?: [number, number];
+	ring: { deltaE: number; contrast: number };
+}> = {
+	"light": {
+		inkOnTintHi: 5.62,
+		inkOnTint: 6.30,
+		inkOnSurface: 7.21,
+		onHue: 6.18,
+		edge: 1.86,
+		ring: { deltaE: 0.05, contrast: 1.01 },
+	},
+	"dark": {
+		inkOnTintHi: 7.41,
+		inkOnTint: 9.05,
+		inkOnSurface: 11.09,
+		onHue: 7.72,
+		edge: 2.45,
+		ring: { deltaE: 0.05, contrast: 1.00 },
+	},
+	"light + high contrast": {
+		inkOnTintHi: 8.24,
+		inkOnTint: 9.19,
+		inkOnSurface: 12.85,
+		onHue: 10.05,
+		edge: 4.29,
+		step: [1.35, 1.56],
+		ring: { deltaE: 0.05, contrast: 1.00 },
+	},
+	"dark + high contrast": {
+		inkOnTintHi: 7.34,
+		inkOnTint: 8.94,
+		inkOnSurface: 15.69,
+		onHue: 14.60,
+		edge: 7.05,
+		step: [1.64, 2.14],
+		ring: { deltaE: 0.03, contrast: 1.00 },
+	},
+};
+
+/** A ratio as the docs print it. */
+const dp2 = (n: number) => Number(n.toFixed(2));
 
 for (const dark of [false, true]) {
 	for (const highContrast of [false, true]) {
@@ -244,10 +302,50 @@ for (const dark of [false, true]) {
 				}
 				const ring = deltaE(rgb(s["--focus-ring"]), hue);
 				assert(
-					ring >= RING_FLOOR,
-					`the ring and the business hue are ΔE ${ring.toFixed(3)} ${where}`,
+					ring >= RING_DISTINCT_FLOOR,
+					`the ring's ink and the business hue are the same colour (ΔE ${
+						ring.toFixed(3)
+					}) ${where}`,
 				);
 			}
+		});
+
+		Deno.test(`business hue: the published brand-seed figures still hold to 2 dp — ${label}`, () => {
+			const at = (token: string) =>
+				highContrast && valueOf(HIGH, `--wsp-business-${token}`)
+					? mixOf(HIGH, `--wsp-business-${token}`)
+					: mixOf(ROOT, `--wsp-business-${token}`);
+			const s = buildScheme({ seed: BRAND_SEED, dark, highContrast });
+			const tone = (name: string) => rgb(s[`--${name}`]);
+			const hue = tone("tertiary");
+			const card = tone("surface-1");
+			const paint = (token: string) => {
+				const m = at(token);
+				return mix(hue, m, tone(m.base));
+			};
+			const [tint, tintHi, edge, ink] = ["tint", "tint-hi", "edge", "ink"].map(paint);
+			const ringInk = rgb(s["--focus-ring"]);
+			const published = PUBLISHED[label];
+			assertEquals(
+				{
+					inkOnTintHi: dp2(contrast(ink, tintHi)),
+					inkOnTint: dp2(contrast(ink, tint)),
+					inkOnSurface: dp2(contrast(ink, card)),
+					onHue: dp2(contrast(tone("on-tertiary"), hue)),
+					edge: dp2(contrast(edge, card)),
+					...(published.step
+						? {
+							step: [
+								dp2(contrast(mix(hue, mixOf(ROOT, "--wsp-business-tint-hi"), card), card)),
+								dp2(contrast(tintHi, card)),
+							] as [number, number],
+						}
+						: {}),
+					ring: { deltaE: dp2(deltaE(ringInk, hue)), contrast: dp2(contrast(ringInk, hue)) },
+				},
+				published,
+				`a published figure moved (${label}) — re-measure and update workspace-tokens.css and DESIGN_SYSTEM §A.1.3`,
+			);
 		});
 	}
 }

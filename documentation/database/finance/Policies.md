@@ -236,7 +236,10 @@ wallet with any amount. So (`00002510`):
 - **The primitives are stated per function as well** — `fn_wallet_credit`, `fn_wallet_debit`, the
   three escrow hold/release/refund functions, `fn_fair_exit_release`, `fn_split_team_payout` (now the
   5-arg signature), `fn_generate_consolidated_invoice`, `fn_check_spending_limit` (and, until it was
-  removed 2026-09-28, `fn_seed_business_wallet`) — so no
+  removed 2026-09-28, `fn_seed_business_wallet`), and the business spend gate's internals —
+  `fn_business_threshold`, `fn_assert_business_spend`, `fn_close_spend_cover`,
+  `fn_redeem_spend_approval`, `fn_business_envelopes` (BB3 / BB4 / BB9; revoked from `PUBLIC`, `anon`
+  and `authenticated`) — so no
   client role can be found holding one even if a broad grant lands later. Every SQL caller of them is
   `SECURITY DEFINER`, so revoking them changed nothing that worked.
 - **`fn_reconcile_wallets` is service-role only** (Decision #186) — it reads every wallet's figures
@@ -253,18 +256,21 @@ wallet with any amount. So (`00002510`):
   any signed-in account another person's KYC readiness, plan, usage and negotiated rates. A surface
   that needs the viewer's own figures should get a self-scoped wrapper.
 - **`authenticated` keeps exactly** the predicates the policies call (`fn_owner_visible`,
-  `fn_can_view_wallet`, `fn_can_manage_basket`, `fn_can_move_wallet_funds`, `fn_owner_capability` —
-  a policy expression runs as the invoking role, so these must stay executable), the two public
+  `fn_can_view_wallet`, `fn_can_manage_basket`, `fn_can_move_wallet_funds`, `fn_owner_capability`,
+  `fn_reads_wallet_envelopes` (BB6 — the `spending_limits` / `spend_approvals` SELECT policies ask it)
+  — a policy expression runs as the invoking role, so these must stay executable), the two public
   resolvers (`fn_audience_for`, `fn_subject_standing_level`), the param-gated
   `simulate_wallet_transaction`, the five commerce doors — `get_purchase_owner`,
   `list_purchase_owners`, `resolve_promo_code`, `set_invoicing_terms`, `place_wallet_order`
   ([Functions.md § Commerce doors](Functions.md#-commerce-doors-00001210)) — the three wallet
   movements, `transfer_funds`, `distribute_vault`, `decide_spend_approval`
-  ([Functions.md § Wallet movements](Functions.md#-wallet-movements-00001210-12)), and the four
-  workspace money RPCs, `save_team_split`, `preview_team_split`, `save_spend_policy`,
-  `request_spend_approval` ([Functions.md § Workspace money governance](Functions.md#-workspace-money-governance-00001210-13),
+  ([Functions.md § Wallet movements](Functions.md#-wallet-movements-00001210-12)), the workspace
+  money RPCs, `save_team_split`, `save_split_rule`, `preview_team_split`, `save_spend_policy`,
+  `preview_spend_envelope` (BB9), `request_spend_approval` ([Functions.md § Workspace money governance](Functions.md#-workspace-money-governance-00001210-13),
   2026-09-28), and the requester's `withdraw_spend_approval` (BU2, Decision #246 — revoked from
-  `PUBLIC` and `anon`). Each checks the caller itself; none takes a subject it does not re-authorise.
+  `PUBLIC` and `anon`), and the billing doors `get_billing_settings`, `set_billing_controls`,
+  `place_on_account_order`, `get_on_account_standing`, `pay_invoice` (`00001250`). Each checks the
+  caller itself; none takes a subject it does not re-authorise.
   `fn_spend_ref` (what a request is for) is revoked from every client role: it reads any business's
   rows, so only `org.get_workspace_detail` calls it.
 - **`fn_has_vault_capability` lost its `authenticated` grant** (2026-09-28): it answers for an

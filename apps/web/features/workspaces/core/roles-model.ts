@@ -11,9 +11,13 @@ import type {
 	PermissionMatrixRow,
 } from "@ui/display/core/permission-matrix-nav.ts";
 import {
+	type BusinessManagers,
 	capabilitiesForKind,
 	CAPABILITY_LABEL,
 	CONSEQUENTIAL,
+	effectivePermissions,
+	isBusinessManagerRole,
+	isBusinessManagerSeat,
 	kindCopy,
 	reservedCapabilities,
 	roleLabel,
@@ -24,6 +28,7 @@ import {
 	type WorkspaceDetail,
 	type WorkspaceInvite,
 	type WorkspaceKind,
+	type WorkspaceMember,
 	type WorkspaceRole,
 	type WorkspaceRoleDef,
 } from "@projective/types/workspace";
@@ -33,7 +38,12 @@ import {
 	conditionalRuleFor,
 	type PolicyContext,
 } from "./capabilities.ts";
-import { sensitiveWarning } from "./members-model.ts";
+import {
+	inviteLapsed,
+	managerCapContextOf,
+	managerCapText,
+	sensitiveWarning,
+} from "./members-model.ts";
 import { ROLE_TEMPLATES, type RoleTemplate, templatesForKind } from "./role-templates.ts";
 import { type ButtonTier, isFilledTier } from "./header-model.ts";
 
@@ -52,6 +62,8 @@ import { type ButtonTier, isFilledTier } from "./header-model.ts";
  * role somebody holds or a pending invitation offers. Each refusal here is a LOCK with its sentence —
  * a cell, a column or a menu row that stays visible and says why — never a control that fails on
  * press. Anything a role already allows may be taken away (the drawer's rule, `capabilityToggleable`).
+ * On a business, an edit that would make a role's holders managers past the plan's cap is the same
+ * kind of lock (`managerCapLock`, BU7): the server refuses it `PK402 business_managers`.
  *
  * Teams and Businesses share it (Decision #61): the rows are the kind's own capability list
  * (`capabilitiesForKind`, the `fn_kind_capabilities` mirror), and a team-only rule is gated on
@@ -286,8 +298,14 @@ export function roleRemits(
 // #endregion
 
 // #region Legend
-/** What one legend line explains: one of the matrix's three glyphs, or a cell drawn without its box. */
-export type RolesLegendMark = "allowed" | "conditional" | "locked" | "fixed";
+/**
+ * What one legend line explains: one of the matrix's three glyphs, a cell drawn without its box, or
+ * a cell without its box because ticking it would pass a business's manager cap.
+ */
+export type RolesLegendMark = "allowed" | "conditional" | "locked" | "fixed" | "capped";
+
+/** The legend's line for a cell the manager cap fixes ({@link managerCapLock}). */
+export const CAPPED_LEGEND = "No box: ticking it would add managers past the plan's limit";
 
 /** One line of the legend over the matrix. */
 export interface RolesLegendItem {
@@ -324,7 +342,8 @@ export function fixedCellReasons(
  * cell is conditional; the padlock line naming every kind of read-only column on screen — a preset,
  * and a custom role ranking above the viewer when there is one, since both carry the padlock; and,
  * when a cell the viewer could otherwise edit is fixed, the line saying what its missing box means
- * and why (a grant they do not hold; a business's owner-reserved right).
+ * and why (a grant they do not hold; a business's owner-reserved right) — and, when the manager cap
+ * fixes a cell ({@link managerCapLocked}), the line saying so.
  */
 export function rolesLegend(input: {
 	kind: WorkspaceKind;
@@ -334,6 +353,8 @@ export function rolesLegend(input: {
 	columnLocks: readonly (string | null | undefined)[];
 	/** {@link fixedCellReasons}. */
 	fixedReasons: readonly string[];
+	/** {@link managerCapLocked} — a business only. */
+	capped?: boolean;
 }): RolesLegendItem[] {
 	const items: RolesLegendItem[] = [{ mark: "allowed", text: "Allowed" }];
 	if (input.conditional) {
@@ -365,6 +386,9 @@ export function rolesLegend(input: {
 				? "No box: you don't hold it yourself, so you can't grant it"
 				: "No box: owner-reserved — given to a named admin, never to a role",
 		});
+	}
+	if (input.capped && input.kind === "business") {
+		items.push({ mark: "capped", text: CAPPED_LEGEND });
 	}
 	return items;
 }
@@ -418,6 +442,155 @@ export function pruneDraft(draft: RoleDraft, roles: readonly WorkspaceRoleDef[])
 }
 // #endregion
 
+// #region Manager cap (BU7)
+/**
+ * What a business's manager cap needs from the console read to judge a role edit before the press
+ * (Decision #230 (b), #249): the headroom, who holds which role, and the invitations offering each.
+ */
+export interface RoleCapContext {
+	kind: WorkspaceKind;
+	/** The headroom (`WorkspaceDetail.managers`) — `null` for a team. */
+	managers: BusinessManagers | null;
+	/** Every member, for whose seat a role edit starts or stops counting. */
+	members: readonly Pick<WorkspaceMember, "roleId" | "rolePreset" | "state" | "overrides">[];
+	/**
+	 * The outgoing queue, when the viewer reads it (`invite_members`): its unexpired invitations are
+	 * what the cap counts. Without it the role's own `pendingInvites` count stands in.
+	 */
+	queue: readonly WorkspaceInvite[] | null;
+	/** Epoch ms the queue's windows are judged at. */
+	now: number;
+	/** The cap's sentence, as the refusal map words it (`managerCapText`). */
+	text: string;
+}
+
+/** The manager-cap context a console read gives, judged at `now` (epoch ms). */
+export function roleCapContextOf(ws: WorkspaceDetail, now: number): RoleCapContext {
+	return {
+		kind: ws.kind,
+		managers: ws.managers ?? null,
+		members: ws.members,
+		queue: ws.viewerCapabilities.includes("invite_members") ? ws.invites : null,
+		now,
+		text: managerCapText(managerCapContextOf(ws)),
+	};
+}
+
+/** The ceiling a role edit is judged against, or `null` while nothing caps managers (or a team). */
+function capLimit(ctx: Pick<RoleCapContext, "kind" | "managers">): number | null {
+	return ctx.kind === "business" ? ctx.managers?.limit ?? null : null;
+}
+
+/** How many invitations offering a role the cap counts: the queue's unexpired ones, else the count. */
+function offeredSeats(
+	role: Pick<WorkspaceRoleDef, "id" | "pendingInvites">,
+	ctx: Pick<RoleCapContext, "queue" | "now">,
+): number {
+	if (ctx.queue) {
+		return ctx.queue.filter((i) => i.roleId === role.id && !inviteLapsed(i, ctx.now)).length;
+	}
+	return role.pendingInvites ?? 0;
+}
+
+/**
+ * How many manager seats saving a business role with `caps` takes — negative when it frees some. It
+ * is the count `org.upsert_workspace_role` compares before and after the edit
+ * (`finance.fn_footprint_usage('business_managers')`): each active holder whose seat starts or stops
+ * counting (`isBusinessManagerSeat` over the role and their own grants and revocations), and the
+ * invitations offering the role when the role itself starts or stops being a manager's
+ * (`isBusinessManagerRole`). A team's edit takes none.
+ */
+export function managerDelta(
+	role: WorkspaceRoleDef,
+	caps: readonly WorkspaceCapability[],
+	ctx: Pick<RoleCapContext, "kind" | "members" | "queue" | "now">,
+): number {
+	if (ctx.kind !== "business") return 0;
+	const before: WorkspaceRoleDef[] = [role];
+	const after: WorkspaceRoleDef[] = [{ ...role, capabilities: [...caps] }];
+	let delta = 0;
+	for (const m of ctx.members) {
+		if (m.roleId !== role.id || m.state !== "active") continue;
+		const was = isBusinessManagerSeat(
+			m.rolePreset,
+			effectivePermissions(m, "business", before, role.id),
+		);
+		const is = isBusinessManagerSeat(
+			m.rolePreset,
+			effectivePermissions(m, "business", after, role.id),
+		);
+		delta += Number(is) - Number(was);
+	}
+	const wasRole = isBusinessManagerRole(role);
+	const isRole = isBusinessManagerRole({ basePreset: role.basePreset, capabilities: caps });
+	if (wasRole !== isRole) delta += (isRole ? 1 : -1) * offeredSeats(role, ctx);
+	return delta;
+}
+
+/**
+ * The managers the draft would leave counted once every edited role is saved — the headroom's `used`
+ * plus each dirty role's {@link managerDelta} — or `null` while nothing caps them.
+ */
+export function draftManagersUsed(
+	roles: readonly WorkspaceRoleDef[],
+	draft: RoleDraft,
+	ctx: RoleCapContext,
+): number | null {
+	if (capLimit(ctx) === null || !ctx.managers) return null;
+	let used = ctx.managers.used;
+	for (const id of dirtyRoleIds(roles, draft)) {
+		const role = roles.find((r) => r.id === id);
+		if (role) used += managerDelta(role, canonical(draft[id]), ctx);
+	}
+	return used;
+}
+
+/**
+ * Why switching an off cell on would pass a business's manager cap, or `null`. The server refuses a
+ * role edit that ADDS managers past the plan's ceiling, so the cell that would do it — in practice
+ * Manage projects on a member-ranked role somebody holds or is offered — is locked with the cap's
+ * sentence while the rest of the draft stands. Anything a role allows may still be taken away, and a
+ * toggle that adds no manager (nobody holds the role) is never locked.
+ */
+export function managerCapLock(
+	role: WorkspaceRoleDef,
+	capability: WorkspaceCapability,
+	on: boolean,
+	roles: readonly WorkspaceRoleDef[],
+	draft: RoleDraft,
+	ctx: RoleCapContext,
+): string | null {
+	const limit = capLimit(ctx);
+	if (on || limit === null || role.preset) return null;
+	const before = draftManagersUsed(roles, draft, ctx) ?? 0;
+	const after = draftManagersUsed(roles, toggleRoleCap(draft, role, capability), ctx) ?? 0;
+	return after > before && after > limit ? ctx.text : null;
+}
+
+/**
+ * Whether any cell of a column the viewer may edit is locked by the manager cap — the matrix then says
+ * the cap in an InlineNotice and the legend explains the missing box. `false` without `manage_roles`.
+ */
+export function managerCapLocked(
+	roles: readonly WorkspaceRoleDef[],
+	viewer: RolesViewer,
+	draft: RoleDraft,
+	ctx: RoleCapContext,
+): boolean {
+	if (!viewer.canManage || capLimit(ctx) === null) return false;
+	const rows = capabilitiesForKind(viewer.kind);
+	return roles.some((role) => {
+		if (columnLock(role, viewer) !== null) return false;
+		const held = roleCaps(role, draft);
+		return rows.some((capability) => {
+			const on = held.includes(capability);
+			return cellLock(capability, on, viewer) === null &&
+				managerCapLock(role, capability, on, roles, draft, ctx) !== null;
+		});
+	});
+}
+// #endregion
+
 // #region Save
 /** One role write the footer rig's Save sends. */
 export interface RoleWrite {
@@ -449,13 +622,21 @@ function labelList(caps: readonly WorkspaceCapability[]): string {
  * something the viewer may not put on a role (a capability they lack, or a business's reserved right
  * a legacy role carries), which the server refuses for the whole role; that role is held back with
  * the sentence naming what to switch off, and the others still save.
+ *
+ * On a business (`cap`), the writes are judged in Save's order against the manager cap the way the
+ * server judges each one: a write that adds managers ({@link managerDelta}) past the plan's ceiling is
+ * held back with the cap's sentence ({@link managerCapLine}); one that frees seats leaves them to the
+ * writes after it.
  */
 export function roleSavePlan(
 	roles: readonly WorkspaceRoleDef[],
 	draft: RoleDraft,
 	viewer: Pick<RolesViewer, "kind" | "caps">,
+	cap?: RoleCapContext,
 ): RoleSavePlan {
 	const plan: RoleSavePlan = { writes: [], problems: [] };
+	const limit = cap ? capLimit(cap) : null;
+	let used = cap?.managers?.used ?? 0;
 	for (const id of dirtyRoleIds(roles, draft)) {
 		const role = roles.find((r) => r.id === id);
 		if (!role) continue;
@@ -467,11 +648,26 @@ export function roleSavePlan(
 				text: `${role.name} still allows ${labelList(blocked)}, which you can't give a role — ` +
 					`switch ${blocked.length === 1 ? "it" : "them"} off to save it.`,
 			});
-		} else {
-			plan.writes.push({ role, capabilities });
+			continue;
 		}
+		const delta = cap ? managerDelta(role, capabilities, cap) : 0;
+		if (cap && limit !== null && delta > 0 && used + delta > limit) {
+			plan.problems.push({ roleId: id, text: managerCapLine(role.name, delta, cap) });
+			continue;
+		}
+		used += delta;
+		plan.writes.push({ role, capabilities });
 	}
 	return plan;
+}
+
+/** A role held back by the manager cap: how many managers it would add, then the cap's sentence. */
+export function managerCapLine(
+	name: string,
+	added: number,
+	cap: Pick<RoleCapContext, "text">,
+): string {
+	return `Saving ${name} would add ${added} ${added === 1 ? "manager" : "managers"}. ${cap.text}`;
 }
 
 /** The custom-role write for a role's new capabilities, keeping its name, summary and rank. */

@@ -16,6 +16,8 @@
 import { assert, assertEquals } from "@std/assert";
 import {
 	capabilitiesForKind,
+	isBusinessManagerRole,
+	isBusinessManagerSeat,
 	kindCopy,
 	presetCapabilities,
 	roleRank,
@@ -27,6 +29,7 @@ import { RESERVED_HANDLES } from "../profile/reserved.ts";
 import { EntitlementKey } from "../finance/entitlements.ts";
 import { SplitRuleType } from "../finance/vault.ts";
 import {
+	BusinessSpendPolicySchema,
 	BusinessViewerCanSchema,
 	KybRequirement,
 	PayoutPreviewQuerySchema,
@@ -37,6 +40,7 @@ import {
 import {
 	ArchiveBlockerSchema,
 	BusinessArchiveBlockerCode,
+	BusinessManagersSchema,
 	CreateWorkspaceInputSchema,
 	HANDLE_REFUSALS,
 	handleAlternatives,
@@ -727,7 +731,90 @@ Deno.test("WorkspaceDetailSchema: the business blocks default to absent for a te
 	assertEquals(shape.moneyTiles.parse(undefined), []);
 	assertEquals(shape.viewerCan.parse(undefined), null);
 	assertEquals(shape.kyb.parse(undefined), null);
+	assertEquals(shape.managers.parse(undefined), null);
+	assertEquals(BusinessSpendPolicySchema.shape.readsAllEnvelopes.parse(undefined), false);
 });
+
+// #region Members and Roles: business specifics (BU7)
+
+const ENTITLEMENTS_SQL = "supabase/migrations/00001220_functions_finance_billing_entitlements.sql";
+
+Deno.test("org.get_workspace_detail answers a business's managers as the plan gate counts and caps them", () => {
+	const start = detailBody.indexOf("'managers', CASE WHEN p_kind = 'business'");
+	assert(start >= 0, "get_workspace_detail no longer answers 'managers' for a business only");
+	const block = detailBody.slice(
+		start,
+		detailBody.indexOf("END,", detailBody.indexOf("END", start) + 3),
+	);
+	assert(
+		block.includes(
+			"finance.fn_footprint_usage('business', v_e.id, 'business_managers'::finance.entitlement_key)",
+		),
+		"`used` must be fn_footprint_usage's own count — the one fn_assert_business_entitlement checks",
+	);
+	assert(
+		/'limit', CASE WHEN finance\.fn_business_plan_gates_enforced\(\)\s+THEN finance\.fn_business_gate_limit\(v_e\.id, 'business_managers'::finance\.entitlement_key\) END/
+			.test(block),
+		"`limit` is the gate's own ceiling, and NULL while the gates are off",
+	);
+	// The door it mirrors refuses on exactly those two reads.
+	const assertBody = functionBody(read(ENTITLEMENTS_SQL), "finance.fn_assert_business_entitlement");
+	assert(assertBody.includes("IF NOT finance.fn_business_plan_gates_enforced() THEN"));
+	assert(assertBody.includes("v_limit := finance.fn_business_gate_limit(p_business, p_key);"));
+	assert(assertBody.includes("finance.fn_footprint_usage('business', p_business, p_key)"));
+	assertEquals(BusinessManagersSchema.parse({ used: 2, limit: null }), { used: 2, limit: null });
+	assert(!BusinessManagersSchema.safeParse({ used: -1, limit: 2 }).success);
+});
+
+Deno.test("the detail's reads_all_envelopes is fn_business_envelopes' own v_reads_all", () => {
+	const flag = /'reads_all_envelopes', (CASE WHEN v_wallet IS NOT NULL[\s\S]*?END),/.exec(
+		detailBody,
+	);
+	assert(flag, "get_workspace_detail no longer answers 'reads_all_envelopes'");
+	const helper = functionBody(wallet, "finance.fn_business_envelopes");
+	const rule = /v_reads_all := (CASE WHEN p_wallet IS NOT NULL[\s\S]*?END);/.exec(helper);
+	assert(rule, "fn_business_envelopes no longer decides v_reads_all");
+	/** The two expressions with their own variable names folded together. */
+	const norm = (s: string) =>
+		s.replace(/\s+/g, " ").replace(/v_wallet|p_wallet/g, "W").replace(/v_e\.id|p_business/g, "B");
+	assertEquals(
+		norm(flag[1]),
+		norm(rule[1]),
+		"the Spending column's flag drifted from the envelopes",
+	);
+	assert(
+		detailBody.indexOf("'reads_all_envelopes'") > detailBody.indexOf("'spend', CASE WHEN"),
+		"the flag rides the spend block (a viewer who may open Spend)",
+	);
+});
+
+Deno.test("isBusinessManagerRole / isBusinessManagerSeat mirror the SQL predicates the cap counts by", () => {
+	const role = functionBody(entities, "org.fn_business_role_is_manager");
+	assert(
+		/r\.base_preset <> 'owner'\s+AND \(r\.base_preset = 'admin' OR 'manage_projects'::org\.workspace_capability = ANY \(r\.capabilities\)\)/
+			.test(role),
+		"org.fn_business_role_is_manager changed — update isBusinessManagerRole with it",
+	);
+	const seat = functionBody(entities, "org.fn_business_member_is_manager");
+	assert(
+		/m\.role <> 'owner'\s+AND \(m\.role = 'admin'\s+OR 'manage_projects'::org\.workspace_capability\s+= ANY \(org\.fn_member_capabilities\('business', p_business, p_user\)\)\)/
+			.test(seat),
+		"org.fn_business_member_is_manager changed — update isBusinessManagerSeat with it",
+	);
+	assert(isBusinessManagerRole({ basePreset: "admin", capabilities: [] }));
+	assert(isBusinessManagerRole({ basePreset: "member", capabilities: ["manage_projects"] }));
+	assert(!isBusinessManagerRole({ basePreset: "member", capabilities: ["view_analytics"] }));
+	assert(!isBusinessManagerRole({ basePreset: "owner", capabilities: ["manage_projects"] }));
+	assert(isBusinessManagerSeat("admin", []));
+	assert(isBusinessManagerSeat("member", ["manage_projects"]));
+	assert(!isBusinessManagerSeat("member", ["hire"]));
+	assert(!isBusinessManagerSeat("owner", ["manage_projects"]), "the owner is never counted");
+	// The count the header shows is the predicate's: members by the seat rule, invitations by the role's.
+	const usage = functionBody(read(ENTITLEMENTS_SQL), "finance.fn_footprint_usage");
+	assert(usage.includes("org.fn_business_member_is_manager(p_subject_id, m.user_id)"));
+	assert(usage.includes("org.fn_business_role_is_manager(p_subject_id, i.business_role_id)"));
+});
+// #endregion
 
 // #endregion
 

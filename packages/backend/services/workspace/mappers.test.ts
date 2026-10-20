@@ -70,6 +70,14 @@ Deno.test("rosterStats: team earns, business spends, members and projects are pl
 		],
 	});
 	assertEquals(multi[2].value, "US$28,500.00 +2");
+	// A business viewer who may not open Finance gets the money WITHHELD (`null`): the stat is dropped,
+	// never drawn as "—", which would say nothing was spent.
+	const withheld = rosterStats("business", {
+		member_count: 2,
+		active_projects: 1,
+		money_30d: null,
+	});
+	assertEquals(withheld.map((s) => s.label), ["Members", "Active projects"]);
 });
 
 Deno.test("rosterActivity: live projects as a count, the row's last change as ISO or null", () => {

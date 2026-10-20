@@ -106,9 +106,14 @@ Deno.test("roster gate: a business's first-run points are a body list inside Emp
 	assert(firstRun.length > 200, "RosterFirstRun was not found");
 	// The list is EmptyState's body slot (its children), drawn only when the copy carries points.
 	const open = firstRun.indexOf("<EmptyState");
-	const list = firstRun.indexOf('<ul class="wsp-roster__points">');
+	// `role="list"`: the sheet strips the markers (`list-style: none`), and WebKit then reads an
+	// unmarked `<ul>` as loose text — VoiceOver would announce neither the list nor its count.
+	const list = firstRun.indexOf('<ul class="wsp-roster__points" role="list">');
 	const close = firstRun.indexOf("</EmptyState>");
-	assert(open >= 0 && list > open && close > list, "the points are not inside EmptyState");
+	assert(
+		open >= 0 && list > open && close > list,
+		"the points are not a role=list inside EmptyState",
+	);
 	assert(/points\.length > 0 &&/.test(firstRun), "the list renders without points");
 	assert(/copy\.points \?\? \[\]/.test(firstRun), "the points are not read from the copy");
 	// Body text: no MetaLine, no chip, no Tag, no second Button.
@@ -139,8 +144,17 @@ Deno.test("roster gate: the table draws the kind's columns and Spent as MoneyVie
 	for (const view of views) {
 		assert(/displayCurrency=\{figure\.currency\}/.test(view), `a figure converts:${view}`);
 	}
-	assert(/ui-meta-line__sep/.test(spent), "several currencies are not one meta line");
+	// Several currencies are ONE MetaLine (node entries), never a hand-built copy of its markup.
+	assert(/<MetaLine\b/.test(spent), "several currencies are not one MetaLine");
+	assert(!/ui-meta-line/.test(TABLE), "the table hand-builds MetaLine's markup");
 	assert(!/delta|sign=|tone=/.test(spent), "Spent carries a delta or a direction");
+	// The empty cell is the TABLE's mark: DataTable draws it only when `render` itself returns null
+	// (`column.render(row) ?? <Empty />`); a component returning null inside it would draw a blank.
+	assert(
+		/render: \(row\) => \{\s*const spent = rosterSpent\(row\);\s*return spent \? <SpentCell spent=\{spent\} \/> : null;/
+			.test(TABLE),
+		"the Spent column's render does not return null itself for an empty cell",
+	);
 });
 
 Deno.test("roster gate: the setup meter fills with the kind token, never a fixed severity", () => {

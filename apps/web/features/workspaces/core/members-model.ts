@@ -2,29 +2,40 @@ import type { MetaLineEntry } from "@ui/display/core/meta-line.tsx";
 import type { MenuItem } from "@ui/types/mod.ts";
 import { composeMenu, linkActionItems } from "@ui/navigation/core/link-actions.ts";
 import type { ButtonSemanticTone } from "@ui/fields/types/button.ts";
-import { readPayoutGateDetails } from "@projective/types/finance";
+import { readPayoutGateDetails, readPlanGateDetails } from "@projective/types/finance";
 import {
+	type BusinessManagers,
+	canOpenSpend,
 	CAPABILITY_LABEL,
 	CONSEQUENTIAL,
 	handleRefusalOf,
+	isBusinessManagerRole,
+	isBusinessManagerSeat,
+	isCoOwner,
 	kindCopy,
 	type PermissionFacet,
 	permissionFacets,
 	readTeamPersonaDetails,
 	readTeamSeatCapDetails,
+	RESERVED_GRANT_CONFIRMATION,
 	reservedCapabilities,
 	roleLabel,
 	roleRank,
+	type SpendLimit,
 	TEAM_FULL_REFUSAL,
 	type WorkspaceCapability,
+	type WorkspaceDetail,
 	type WorkspaceInvite,
 	type WorkspaceKind,
 	type WorkspaceMember,
+	type WorkspaceRole,
 	type WorkspaceRoleDef,
 	type WorkspaceSeats,
 } from "@projective/types/workspace";
 import { HANDLE_CHECK_FAILED, type HandleCheckState } from "./handle-check.ts";
 import { capabilityGroupsFor } from "./capabilities.ts";
+import { BUSINESS_REFUSAL_COPY, PLANS_UNAVAILABLE } from "./refusal-copy.ts";
+import { envelopeLine, envelopeSummary, type MetaFact, spendLimitHref } from "./spend-model.ts";
 
 /**
  * members-model — every rule the Members module renders, as pure functions (Teams work order C2).
@@ -455,15 +466,22 @@ export function lapsedItem(counts: InviteCounts): MetaLineEntry | null {
 	};
 }
 
-/** The Members header's MetaLine: seats, then the pending invitations, then any lapsed ones. */
+/**
+ * The Members header's MetaLine: seats (a business: the head-count, then its manager headroom), then
+ * the pending invitations, then any lapsed ones.
+ */
 export function membersHeaderItems(input: {
 	seats: WorkspaceSeats | null;
 	activeCount: number;
 	invites: InviteCounts;
 	/** The viewer holds `invite_members` — the only viewer the console read shows the queue to. */
 	seesQueue: boolean;
+	/** A business's manager headroom (`WorkspaceDetail.managers`); absent or `null` for a team. */
+	managers?: BusinessManagers | null;
 }): MetaLineEntry[] {
 	const items: MetaLineEntry[] = [seatsItem(input.seats, input.activeCount, input.seesQueue)];
+	const managers = managersItem(input.managers ?? null);
+	if (managers) items.push(managers);
 	const pending = pendingItem(input.invites.live);
 	if (pending) items.push(pending);
 	const lapsed = lapsedItem(input.invites);
@@ -595,15 +613,33 @@ export interface InviteGateInput {
 	kind: WorkspaceKind;
 	/** The entity's own handle — never an invitee. */
 	ownHandle?: string;
+	/** A business's manager headroom — an invitation to a manager's role takes one (BU7). */
+	managers?: BusinessManagers | null;
+	/** The roles on offer, to judge whether the chosen one is a manager's. */
+	roles?: readonly WorkspaceRoleDef[];
+}
+
+/**
+ * Whether the chosen role would pass a business's manager cap: it is a manager's role
+ * ({@link inviteAddsManager}) and every manager seat is taken or offered ({@link managersFull}).
+ * The server refuses it anyway (`PK402 entitlement: business_managers`); this says so first.
+ */
+export function inviteOverManagerCap(
+	input: Pick<InviteGateInput, "kind" | "roleId" | "managers" | "roles">,
+): boolean {
+	const role = (input.roles ?? []).find((r) => r.id === input.roleId) ?? null;
+	return inviteAddsManager(input.kind, role) && managersFull(input.managers ?? null);
 }
 
 /**
  * Whether Send opens: a role, a seat to offer, and an addressee the dialog has no reason to refuse —
  * a handle somebody holds or that only the server can judge (the server decides whether it is a
- * person's); a well-formed email.
+ * person's); a well-formed email. On a business, a manager's role while every manager seat is taken
+ * or offered closes it too.
  */
 export function inviteGateOpen(input: InviteGateInput): boolean {
 	if (input.sending || input.roleId === "" || seatsFull(input.seats)) return false;
+	if (inviteOverManagerCap(input)) return false;
 	if (input.mode === "email") return inviteEmailProblem(input.email) === null;
 	const state = input.handle;
 	if (state.status === "checking") return false;
@@ -647,11 +683,17 @@ export function inviteSeatItems(
 	return items;
 }
 
-/** A refused invitation's sentence — by the envelope's typed `details`, never by its wording. */
+/**
+ * A refused invitation's sentence — by the envelope's typed `details`, never by its wording. A
+ * business's manager cap reads the refusal map's `entitlement` sentence ({@link managerCapRefusal}).
+ */
 export function inviteRefusalText(
 	result: { message?: string; errors?: Record<string, string>; details?: unknown },
 	addressee: string,
+	ctx: ManagerCapContext = {},
 ): string {
+	const cap = managerCapRefusal(result.details, ctx);
+	if (cap) return cap;
 	if (readTeamSeatCapDetails(result.details)) {
 		return `${TEAM_FULL_REFUSAL} Withdraw an invitation or upgrade the plan to offer another seat.`;
 	}
@@ -821,18 +863,28 @@ export interface DrawerContext {
 	viewerCaps: readonly WorkspaceCapability[];
 	/** The viewer holds the owner seat. */
 	viewerIsOwner: boolean;
+	/**
+	 * The rank the DRAFT role gives the member (its base preset). A business's billing right lives only
+	 * on an admin seat, so it is offered only while the draft ranks as one.
+	 */
+	draftRank?: WorkspaceRole;
 }
 
 /**
  * Whether the viewer may flip one capability from where it stands: anything on may be taken away; an
  * off capability may be switched on only by a viewer who holds it (offering is granting), or — when
  * the role grants it — by clearing the revocation. A business's owner-reserved rights move only at
- * the owner's hand (Decision #230 (d)).
+ * the owner's hand (Decision #230 (d)), and its billing right goes only to an admin seat
+ * (`org.update_workspace_member`: "the billing right goes only to an admin").
  */
 export function capabilityToggleable(facet: PermissionFacet, ctx: DrawerContext): boolean {
 	if (!ctx.editable) return false;
 	if (reservedCapabilities(ctx.kind).includes(facet.capability) && !ctx.viewerIsOwner) return false;
 	if (facet.effective) return true;
+	if (
+		ctx.kind === "business" && facet.capability === "manage_billing" &&
+		ctx.draftRank !== undefined && ctx.draftRank !== "admin"
+	) return false;
 	return facet.fromRole || ctx.viewerCaps.includes(facet.capability);
 }
 
@@ -943,6 +995,8 @@ export interface MemberPatch {
 	revoked?: WorkspaceCapability[];
 	title?: string | null;
 	reportsTo?: string | null;
+	/** The typed answer to a reserved grant's warning (`RESERVED_GRANT_CONFIRMATION`), when one is owed. */
+	confirm?: string;
 }
 
 /** The patch from the saved member to the draft, or `null` when nothing changed. */
@@ -982,11 +1036,16 @@ export function managerOptions(
 	];
 }
 
-/** The drawer's footer: Close (tier 5), and Save (tier 3) only where the viewer may edit. */
+/**
+ * The drawer's footer: Close (tier 5), and Save (tier 3) only where the viewer may edit. Save stays
+ * closed while the draft owes something the server would refuse without (`blocked`): the typed
+ * confirmation of a reserved grant, or a manager seat the plan has none left of.
+ */
 export function drawerFooter(input: {
 	editable: boolean;
 	dirty: boolean;
 	saving: boolean;
+	blocked?: boolean;
 }): MembersAction[] {
 	const close: MembersAction = { key: "close", label: "Close", tier: 5 };
 	if (!input.editable) return [close];
@@ -994,7 +1053,7 @@ export function drawerFooter(input: {
 		key: "save",
 		label: input.saving ? "Saving…" : "Save changes",
 		tier: 3,
-		disabled: !input.dirty || input.saving,
+		disabled: !input.dirty || input.saving || input.blocked === true,
 		busy: input.saving,
 	}];
 }
@@ -1037,5 +1096,316 @@ export function drawerTerminal(
 		};
 	}
 	return null;
+}
+// #endregion
+
+// #region Business specifics (BU7)
+/**
+ * The Title field's example, per kind. "Design lead" is a team's vocabulary; a business has no Lead
+ * preset, and its console never says "lead" (BU7).
+ */
+export const TITLE_EXAMPLE: Readonly<Record<WorkspaceKind, string>> = {
+	team: "Design lead",
+	business: "Head of marketing",
+};
+
+/**
+ * Whether the People reading shows each member's Spending: a business whose read gave the viewer
+ * EVERY member's envelope (`spend.readsAllEnvelopes` — the server's `fn_business_envelopes` rule,
+ * Decision #238 (E)), never inferred from which rows arrived.
+ */
+export function showsSpending(ws: Pick<WorkspaceDetail, "kind" | "spend">): boolean {
+	return ws.kind === "business" && ws.spend?.readsAllEnvelopes === true;
+}
+
+/** A member's envelope as the read answered it to the viewer, or `null`. */
+export function envelopeOf(
+	ws: Pick<WorkspaceDetail, "spend">,
+	memberId: string,
+): SpendLimit | null {
+	return ws.spend?.limits.find((l) => l.memberId === memberId) ?? null;
+}
+
+/**
+ * The Spending column's sort key: spending off first, then the ceilings low to high, then no
+ * ceiling (an ascending sort reads from the most to the least constrained).
+ */
+export function spendingSortValue(limit: SpendLimit | null): number {
+	if (!limit || !limit.canSpend) return -1;
+	return limit.limitMinor ?? Number.MAX_SAFE_INTEGER;
+}
+
+/** A member's envelope as ONE table or card fact, or `null` when the viewer does not read everyone's. */
+export function spendingFact(
+	ws: Pick<WorkspaceDetail, "kind" | "spend">,
+	memberId: string,
+): MetaFact | null {
+	if (!showsSpending(ws)) return null;
+	const limit = envelopeOf(ws, memberId);
+	return limit ? envelopeSummary(limit) : null;
+}
+
+/** The member drawer's spend envelope section. */
+export interface EnvelopeSection {
+	/** The envelope in one line (`envelopeLine`): "US$500.00 / month · …" · "No ceiling" · "Spending off". */
+	facts: MetaFact[];
+	/** Where the envelope is set, as the section's note. */
+	note: string;
+	/** The tier-5 link to this member's row on the Spend module, or `null` where Spend does not open. */
+	link: { label: string; href: string } | null;
+}
+
+/**
+ * The drawer's spend envelope section, or `null`. It renders for the policy's editors
+ * (`viewerCan.editPolicy`) — linked "Edit in Spend" to the member's row when their limits are the
+ * viewer's to change (`spend.editableMemberIds`), "Open in Spend" otherwise — read-only for anyone
+ * else who reads every envelope, and on the viewer's own row (their own envelope is theirs to read —
+ * PRODUCT_SPEC "a member sees their own spending limit"; FLAG #249 (q)). Nothing for the rest, and
+ * nothing for a team. The owner's row is set by nobody (`finance.save_spend_policy` skips the owner),
+ * so its note says so rather than naming who sets it.
+ */
+export function envelopeSection(
+	ws: Pick<WorkspaceDetail, "kind" | "handle" | "spend" | "viewerCan" | "viewerCapabilities">,
+	member: Pick<WorkspaceMember, "id" | "handle" | "isSelf" | "rolePreset">,
+): EnvelopeSection | null {
+	if (ws.kind !== "business" || !ws.spend) return null;
+	const editor = ws.viewerCan?.editPolicy === true;
+	if (!editor && !ws.spend.readsAllEnvelopes && !member.isSelf) return null;
+	const limit = envelopeOf(ws, member.id);
+	if (!limit) return null;
+	const editable = editor && ws.spend.editableMemberIds.includes(member.id);
+	return {
+		facts: envelopeLine(limit),
+		note: editable
+			? "Set on the spend policy, beside everyone else's — a limit only means something relative to the others."
+			: member.rolePreset === "owner"
+			? member.isSelf
+				? "As the owner, your limit isn't set on the spend policy — nobody changes it there."
+				: "The owner's limit isn't set on the spend policy — nobody changes it there."
+			: member.isSelf
+			? "Your limit, as the spend policy sets it."
+			: "Set on the spend policy by the people who run it.",
+		link: canOpenSpend(ws.kind, ws.viewerCapabilities)
+			? {
+				label: editable ? "Edit in Spend" : "Open in Spend",
+				href: spendLimitHref(ws.handle, member.handle),
+			}
+			: null,
+	};
+}
+
+/**
+ * The manager headroom as a header fact — "1 of 2 managers", tabular — or `null` while nothing caps
+ * it (the plan gates are off, or the plan is unlimited) and for a team.
+ */
+export function managersItem(
+	managers: BusinessManagers | null,
+): { text: string; tabular: true; title: string } | null {
+	if (!managers || managers.limit === null) return null;
+	return {
+		text: `${managers.used} of ${managers.limit} ${managers.limit === 1 ? "manager" : "managers"}`,
+		tabular: true,
+		title: "Admins and roles that manage projects, with the invitations that offer one",
+	};
+}
+
+/** Whether every manager seat is taken or offered — `false` when nothing caps them. */
+export function managersFull(managers: BusinessManagers | null): boolean {
+	return managers !== null && managers.limit !== null && managers.used >= managers.limit;
+}
+
+/**
+ * Whether inviting somebody to a role takes a manager seat (Decision #230 (b)): a business role
+ * ranked as an admin or holding `manage_projects` (`isBusinessManagerRole`, the mirror of
+ * `org.fn_business_role_is_manager`).
+ */
+export function inviteAddsManager(
+	kind: WorkspaceKind,
+	role: Pick<WorkspaceRoleDef, "basePreset" | "capabilities"> | null,
+): boolean {
+	return kind === "business" && role !== null && isBusinessManagerRole(role);
+}
+
+/** The rank a draft role gives a member — its base preset, or where they stand now. */
+export function draftRankOf(
+	member: Pick<WorkspaceMember, "rolePreset">,
+	roles: readonly WorkspaceRoleDef[],
+	roleId: string,
+): WorkspaceRole {
+	return roles.find((r) => r.id === roleId)?.basePreset ?? member.rolePreset;
+}
+
+/** The capabilities a set of facets ends with. */
+function heldOf(facets: readonly PermissionFacet[]): WorkspaceCapability[] {
+	return facets.filter((f) => f.effective).map((f) => f.capability);
+}
+
+/**
+ * Whether a drawer change makes a business member a manager who is not one now — the change
+ * `org.update_workspace_member` checks against the cap: a role or a `manage_projects` grant that
+ * makes them admin-ranked or a project manager (`isBusinessManagerSeat`). A change that leaves a
+ * manager a manager is never refused.
+ */
+export function changeAddsManager(input: {
+	kind: WorkspaceKind;
+	member: Pick<WorkspaceMember, "rolePreset">;
+	saved: readonly PermissionFacet[];
+	draftRank: WorkspaceRole;
+	draft: readonly PermissionFacet[];
+}): boolean {
+	if (input.kind !== "business") return false;
+	return !isBusinessManagerSeat(input.member.rolePreset, heldOf(input.saved)) &&
+		isBusinessManagerSeat(input.draftRank, heldOf(input.draft));
+}
+
+/** What the manager-cap notice may name. */
+export interface ManagerCapContext {
+	/** The business's name. */
+	business?: string;
+	/** The plan's manager ceiling (`managers.limit`). */
+	limit?: number | null;
+	/** The viewer owns the business — they are told plans can't change yet, not to ask the owner. */
+	viewerIsOwner?: boolean;
+}
+
+/** The manager-cap context a console read gives: the business, its ceiling, whether the viewer owns it. */
+export function managerCapContextOf(
+	ws: Pick<WorkspaceDetail, "name" | "managers" | "members" | "viewerMemberId">,
+): ManagerCapContext {
+	return {
+		business: ws.name,
+		limit: ws.managers?.limit ?? null,
+		viewerIsOwner: ws.members.some((m) => m.id === ws.viewerMemberId && m.rolePreset === "owner"),
+	};
+}
+
+/** The manager-cap notice: what happened, and the way forward the viewer has. */
+export interface ManagerCapNotice {
+	sentence: string;
+	meta: string;
+}
+
+/**
+ * The manager cap, worded from the refusal map's `entitlement` (Decision #243). "See plans" is
+ * withheld — no surface lists Business Pro or changes a business's plan (Decisions #246 FLAG 1,
+ * #247 (d)) — so the owner reads that changing plans isn't available yet, anyone else whom to ask.
+ */
+export function managerCapNotice(ctx: ManagerCapContext): ManagerCapNotice {
+	const copy = BUSINESS_REFUSAL_COPY.entitlement;
+	return {
+		sentence: copy.sentence({
+			business: ctx.business,
+			entitlement: "business_managers",
+			limit: ctx.limit,
+		}),
+		meta: ctx.viewerIsOwner ? PLANS_UNAVAILABLE : copy.ask({}),
+	};
+}
+
+/** The manager-cap notice as one line of text (a refusal said in an InlineNotice). */
+export function managerCapText(ctx: ManagerCapContext): string {
+	const notice = managerCapNotice(ctx);
+	return `${notice.sentence} ${notice.meta}`;
+}
+
+/**
+ * A refusal's manager-cap sentence, by its typed `details` (`PK402` → 402 `{reason: "entitlement",
+ * entitlement: "business_managers"}`), or `null` for any other refusal.
+ */
+export function managerCapRefusal(details: unknown, ctx: ManagerCapContext): string | null {
+	return readPlanGateDetails(details)?.entitlement === "business_managers"
+		? managerCapText(ctx)
+		: null;
+}
+
+/** A refused drawer save's sentence: the manager cap in the map's words, else the field's own. */
+export function memberSaveRefusal(
+	result: { message?: string; errors?: Record<string, string>; details?: unknown },
+	ctx: ManagerCapContext,
+): string {
+	const e = result.errors;
+	return managerCapRefusal(result.details, ctx) ?? e?.title ?? e?.reportsTo ?? e?.roleId ??
+		e?.granted ?? e?.revoked ?? e?.confirm ?? result.message ?? "Could not save those changes.";
+}
+
+/**
+ * The overrides a draft can hold at its rank: on a business the billing right lives only on an admin
+ * seat, so a draft that moves a member off one drops it — the server would strip it, and refuse a
+ * patch that kept it ("the billing right goes only to an admin").
+ */
+export function overridesAtRank(
+	kind: WorkspaceKind,
+	draft: OverrideDraft,
+	rank: WorkspaceRole,
+): OverrideDraft {
+	if (kind !== "business" || rank === "admin" || !draft.granted.includes("manage_billing")) {
+		return draft;
+	}
+	return { granted: draft.granted.filter((c) => c !== "manage_billing"), revoked: draft.revoked };
+}
+
+/**
+ * The owner-reserved rights a draft newly gives a member (Decision #230 (d), #238) — each needs the
+ * owner's typed confirmation (`org.fn_assert_reserved_change`). Taking one away needs none.
+ */
+export function reservedAdded(
+	kind: WorkspaceKind,
+	saved: readonly PermissionFacet[],
+	draft: readonly PermissionFacet[],
+): WorkspaceCapability[] {
+	const before = new Set(heldOf(saved));
+	const after = new Set(heldOf(draft));
+	return reservedCapabilities(kind).filter((c) => after.has(c) && !before.has(c));
+}
+
+/** What holding each owner-reserved right lets an admin do, as a clause. */
+const RESERVED_ACT: Readonly<Partial<Record<WorkspaceCapability, string>>> = {
+	withdraw_funds: "move money out of the wallet to a bank account",
+	manage_billing: "pay the plan and the invoices and run the business's verification",
+	archive_entity: "archive the whole business",
+};
+
+/** "a", "a and b", "a, b and c". */
+function clauseList(items: readonly string[]): string {
+	if (items.length <= 1) return items[0] ?? "";
+	return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+/**
+ * The warning a reserved grant shows before it is confirmed, or `null` when the draft grants none: a
+ * co-owner (the draft holds the owner's whole set on an admin seat — `isCoOwner`) is told so; any
+ * other grant says what it lets them do. Only the owner takes it away, and the holder can't pass it on
+ * (#238 (b), (c)).
+ */
+export function reservedGrantWarning(
+	name: string,
+	added: readonly WorkspaceCapability[],
+	coOwner: boolean,
+): string | null {
+	if (added.length === 0) return null;
+	if (coOwner) {
+		return `${name} becomes a co-owner: they can withdraw from the wallet, pay the plan and the invoices, and archive the business — everything you can but hand ownership over. Only you can take it away, and they can't pass it on.`;
+	}
+	const acts = clauseList(added.map((c) => RESERVED_ACT[c] ?? CAPABILITY_LABEL[c].toLowerCase()));
+	return `${name} can then ${acts}. Only you can take it away, and they can't pass it on.`;
+}
+
+/** Whether a draft's reserved grant makes the member a co-owner (the owner's whole set, admin seat). */
+export function becomesCoOwner(
+	kind: WorkspaceKind,
+	draftRank: WorkspaceRole,
+	draft: readonly PermissionFacet[],
+): boolean {
+	return isCoOwner(kind, draftRank, heldOf(draft));
+}
+
+/** The confirmation field's label — what to type, and for what. */
+export function confirmLabel(added: readonly WorkspaceCapability[]): string {
+	return `Type ${RESERVED_GRANT_CONFIRMATION} to grant ${added.length === 1 ? "it" : "them"}`;
+}
+
+/** Whether the typed confirmation is the word the server takes (spaces around it ignored). */
+export function confirmAnswered(typed: string): boolean {
+	return typed.trim() === RESERVED_GRANT_CONFIRMATION;
 }
 // #endregion

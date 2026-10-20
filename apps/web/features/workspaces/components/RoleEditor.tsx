@@ -30,12 +30,14 @@ import {
 	startPointOf,
 	startPoints,
 } from "../core/roles-model.ts";
+import { managerCapContextOf, managerCapRefusal } from "../core/members-model.ts";
 
 /**
  * RoleEditor — create a custom role, or rename one (Teams work order C3).
  *
  * **Create** asks three things, each a `FormControl` over a ui field: the role's Name, where it
- * Starts from — nothing, a TEMPLATE (`core/role-templates.ts`, data: Contributor on a team) or a copy
+ * Starts from — nothing, a TEMPLATE (`core/role-templates.ts`, data: Contributor on a team, Project
+ * Manager and Observer on a business) or a copy
  * of an existing role, presets included, which is how a preset is "edited" — and the preset it is
  * Based on (its rank: who may manage the people holding it). The starting point's capabilities are
  * filtered to what the author may grant before anything is sent, and what was left out is said, so the
@@ -142,7 +144,8 @@ export function RoleEditor(props: RoleEditorProps): JSX.Element {
 		if (!res.ok || !res.data) {
 			batch(() => {
 				saving.value = false;
-				refusal.value = res.errors?.name ?? res.errors?.basePreset ?? res.errors?.capabilities ??
+				refusal.value = managerCapRefusal(res.details, managerCapContextOf(ws)) ??
+					res.errors?.name ?? res.errors?.basePreset ?? res.errors?.capabilities ??
 					res.message ??
 					(mode === "create" ? "Could not create that role." : "Could not rename that role.");
 			});

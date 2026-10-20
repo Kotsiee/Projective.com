@@ -37,7 +37,9 @@ import {
 	memberMenu,
 	memberProfileHref,
 	membersHeaderItems,
+	showsSpending,
 	showsStake,
+	spendingFact,
 } from "../core/members-model.ts";
 import { afterPanelLeaves } from "../core/overlay-handoff.ts";
 import { MemberCard, SearchIcon } from "../components/MemberCard.tsx";
@@ -52,8 +54,9 @@ import InviteModal from "./InviteModal.island.tsx";
  * MembersScreen — the Members module (Teams work order C2): who is in the entity, what they may do,
  * how loaded they are, and the invitations waiting on an answer.
  *
- * **The head** is the section title, a MetaLine of the plan's seats and the pending invitations
- * (tabular), and an `AvatarStack` of the active members (five faces, then a count).
+ * **The head** is the section title, a MetaLine of the plan's seats (a business: its head-count and
+ * its manager headroom against the plan, "1 of 2 managers") and the pending invitations (tabular),
+ * and an `AvatarStack` of the active members (five faces, then a count).
  *
  * **The sub-views are the registry's** (`core/sub-views.ts`): People · Invitations · Org chart render
  * as the header band's TabMenu, and this island is their one `tabpanel`. People is one dataset read
@@ -127,6 +130,8 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	const caps = ws.viewerCapabilities;
 	const canInvite = caps.includes("invite_members");
 	const stake = showsStake(ws.kind, caps);
+	/** A business's Spending column — only for a viewer the read gave every envelope (BU7). */
+	const spending = showsSpending(ws);
 
 	/** The viewer's own row — the actor the rank rule is evaluated against. */
 	const actor = ws.members.find((m) => m.id === ws.viewerMemberId) ??
@@ -330,6 +335,7 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 										activeCount: active.length,
 										invites: queue,
 										seesQueue: canInvite,
+										managers: ws.managers,
 									})}
 								/>
 							</div>
@@ -416,6 +422,7 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 															facets={facetsById[m.id] ?? []}
 															menu={menuFor(m)}
 															showStake={stake}
+															envelope={spendingFact(ws, m.id)}
 															onOpen={() => openDrawer(m)}
 														/>
 													))}
@@ -423,11 +430,14 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 											)
 											: (
 												<MemberTable
+													kind={ws.kind}
 													members={people}
 													roles={ws.roles}
 													facetsById={facetsById}
 													menuFor={menuFor}
 													showStake={stake}
+													showSpending={spending}
+													envelopes={ws.spend?.limits}
 													onOpen={openDrawer}
 												/>
 											)}

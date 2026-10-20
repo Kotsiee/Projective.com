@@ -43,6 +43,29 @@ Deno.test("element, size, class and title pass through", () => {
 	);
 });
 
+Deno.test("a node entry renders in place of its text, in the same item and separators", () => {
+	const html = renderToString(
+		<MetaLine
+			as="span"
+			size="xs"
+			items={[
+				{ text: "US$1.00", tabular: true, node: <b class="fig">US$1.00</b> },
+				{ text: "£2.00", node: <b class="fig">£2.00</b> },
+			]}
+		/>,
+	);
+	assertEquals(
+		html,
+		'<span class="ui-meta-line ui-meta-line--xs">' +
+			'<span class="ui-meta-line__item ui-meta-line__item--tabular"><b class="fig">US$1.00</b></span>' +
+			'<span class="ui-meta-line__sep" aria-hidden="true">·</span>' +
+			'<span class="ui-meta-line__item"><b class="fig">£2.00</b></span>' +
+			"</span>",
+	);
+	// The plain form still decides whether a fact exists: a node with no words is dropped.
+	assertEquals(renderToString(<MetaLine items={[{ text: "", node: <b>x</b> }]} />), "");
+});
+
 Deno.test("nothing renders when every entry is falsy", () => {
 	assertEquals(renderToString(<MetaLine items={[null, "", { text: "" }]} />), "");
 });

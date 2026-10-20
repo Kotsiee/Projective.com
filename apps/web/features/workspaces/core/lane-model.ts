@@ -26,7 +26,7 @@ import {
 	statusTag,
 } from "./roster-model.ts";
 import { isPeopleReading, MEMBERS_READINGS } from "./sub-views.ts";
-import { inviteOpensInPlace } from "./rig-model.ts";
+import { inviteOpensInPlace, rosterCreateNote } from "./rig-model.ts";
 
 /**
  * lane-model — the workspace lane's composition as a pure function of what the viewer is looking at
@@ -46,7 +46,10 @@ import { inviteOpensInPlace } from "./rig-model.ts";
  *      all for anybody else — never a control that cannot act. A roster the viewer may not add to says
  *      why in its place, as one line of meta text. In the roster's FIRST RUN the rig holds neither:
  *      the canvas's empty state carries the one structural create (and the plan's reason when there
- *      is none), so the page still has exactly one (Teams R1).
+ *      is none), so the page still has exactly one (Teams R1). Below `--bp-md` the frame hides the
+ *      lane, and the roster's footer rig takes over this zone's create, or its reason; beside the
+ *      collapsed rail, which draws the create but no reason, the rig says the reason
+ *      (`rig-model.ts`, Decision #245 (k)).
  *
  * Everything that decides those zones lives here and nowhere in the island, so the expanded lane, the
  * collapsed rail and the tests all read one answer. The capabilities are always the server-resolved
@@ -316,16 +319,6 @@ function rosterFooter(input: RosterLaneInput): LaneFooterZone {
 	return input.canCreate
 		? { create: { action: "create", label: `New ${kindCopy(input.kind).noun}` }, note: null }
 		: { create: null, note: rosterCreateNote(input.kind, input.createBlockedReason) };
-}
-
-/**
- * Z4's line when the roster may not grow: the server's reason (it carries the plan's number), or the
- * kind's own words when the projection sent none — the reader is never left with a footer that is
- * silently missing its action.
- */
-function rosterCreateNote(kind: WorkspaceKind, reason: string | null | undefined): string {
-	const text = reason?.trim();
-	return text ? text : `Your plan does not include another ${kindCopy(kind).noun}.`;
 }
 
 /**

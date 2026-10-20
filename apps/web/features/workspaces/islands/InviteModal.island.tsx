@@ -29,15 +29,19 @@ import {
 	inviteHandleLine,
 	inviteHandleProblem,
 	type InviteMode,
+	inviteOverManagerCap,
 	inviteRefusalText,
 	inviteRoleSeed,
 	inviteSeatItems,
+	managerCapContextOf,
+	managerCapNotice,
 	membersTierProps,
 	normalizeInviteHandle,
 	roleOptions,
 	seatsFull,
 } from "../core/members-model.ts";
 import { useHandleCheck } from "../hooks/useHandleCheck.ts";
+import { ManagerCapNotice } from "../components/ManagerCapNotice.tsx";
 
 /**
  * InviteModal — bring somebody in, by handle or by email.
@@ -57,7 +61,9 @@ import { useHandleCheck } from "../hooks/useHandleCheck.ts";
  * **The role list holds only roles the inviter may grant** — never the owner seat, never one carrying
  * a capability they lack (`grantableRoles`, the mirror of `org.invite_workspace_member`) — and what the
  * chosen role permits is said before the invitation goes out. The plan's free seats and the pending
- * count are a MetaLine; a full plan closes Send and says why.
+ * count are a MetaLine; a full plan closes Send and says why. On a business, a role that takes a
+ * manager seat (an admin's, or one that manages projects) while every manager seat is taken or
+ * offered closes Send too, with the manager-cap notice (BU7, `inviteOverManagerCap`).
  *
  * Every field is a `FormControl` (§A.7 rest-only validation paint); "Send invitation" is the dialog's
  * one filled control (tier 3), Cancel tier 5. Its trigger in the lane footer rig, "Invite members", is
@@ -116,6 +122,8 @@ export default function InviteModal(props: InviteModalProps): JSX.Element {
 		memberHandles,
 		kind: ws.kind,
 		ownHandle: ws.handle,
+		managers: ws.managers,
+		roles: grantable,
 	};
 	const [cancel, send] = inviteFooter(gate);
 	const line = mode.value === "handle"
@@ -123,6 +131,9 @@ export default function InviteModal(props: InviteModalProps): JSX.Element {
 		: null;
 	const role = grantable.find((r) => r.id === roleId.value) ?? null;
 	const full = seatsFull(ws.seats);
+	/** A business's manager cap, for the chosen role (BU7): the owner is told plans can't change yet. */
+	const capContext = managerCapContextOf(ws);
+	const overCap = inviteOverManagerCap(gate);
 
 	// #region Handlers
 	/** Clear every field and verdict, so a dismissed draft never reappears half-filled. */
@@ -183,7 +194,7 @@ export default function InviteModal(props: InviteModalProps): JSX.Element {
 		if (!res.ok || !res.data) {
 			batch(() => {
 				sending.value = false;
-				refusal.value = inviteRefusalText(res, addressee);
+				refusal.value = inviteRefusalText(res, addressee, capContext);
 			});
 			return;
 		}
@@ -350,6 +361,8 @@ export default function InviteModal(props: InviteModalProps): JSX.Element {
 								: role.capabilities.map((c) => CAPABILITY_LABEL[c])}
 						/>
 					)}
+					{/* A manager's role past the plan's cap — said at the field that chose it (BU7). */}
+					{overCap && <ManagerCapNotice notice={managerCapNotice(capContext)} />}
 				</div>
 
 				<FormControl label="Note" hint="Optional. They read it with the invitation.">

@@ -823,6 +823,54 @@ words — a ring colour on its own is not a channel. */
 }
 
 /*
+ * The roster's create in the frame's two layouts (Decision #245 (k)). Beside the lane, its
+ * `LaneCreateButton` is the region's tier-2 create and the rig's New a tier-4 utility. Below `--bp-md`
+ * the frame hides the lane (`middle-nav.css`), and its duty moves here: the tier-2 New, or the plan's
+ * reason in its place. The island draws both and this sheet paints one with the frame's own query
+ * (The frame's lane mirror, under Responsive), so SSR and hydration agree on the first frame and the
+ * page never holds two tier-2 creates. A layout takes no box of its own, so its controls sit on the
+ * trailing side's row and gap.
+ */
+.wsp-footerrig__layout {
+	display: contents;
+}
+
+.wsp-footerrig__layout[data-lane="hidden"] {
+	display: none;
+}
+
+/* The promoted New keeps its words, as the lane's create does: it never folds or shrinks. */
+.wsp-footerrig__create {
+	flex: none;
+}
+
+/*
+ * The plan's reason in the lane's place: meta text, never a box, on up to two lines. The phone's
+ * paints with its layout, on a line of its own under the zoom (Responsive). The rail's rides in the
+ * lane's layout and paints only while the splitter is collapsed: `WorkspaceRail` keeps the lane's
+ * create but has no room for its reason, and the expanded lane says it itself.
+ */
+.wsp-footerrig__createnote {
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	color: var(--text-secondary);
+	font-size: var(--wsp-fs-label);
+	line-height: var(--leading-snug);
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.wsp-footerrig__createnote[data-lane="rail"] {
+	display: none;
+}
+
+.ui-middle-nav:has(.ui-middle-nav__lane .ui-splitter[data-mode="collapsed"]) .ui-middle-nav__footer .wsp-footerrig__createnote[data-lane="rail"] {
+	display: -webkit-box;
+}
+
+/*
  * A navigation in the rig: the ui `Link`'s ink and hover, laid on the rig's row beside its glyph. Its
  * press adds `transform` to the global theme crossfade rather than replacing it, so the link's ink
  * changes theme on the same clock as the band around it (§B.5).
@@ -999,6 +1047,39 @@ words — a ring colour on its own is not a channel. */
 
 	.wsp-footerrig__density + .wsp-footerrig__utility .wsp-footerrig__narrow {
 		display: inline-flex;
+	}
+}
+
+/*
+ * The frame's lane mirror (Decision #245 (k)): the roster's rig swaps to its layout without the lane,
+ * the tier-2 New or the plan's reason (`rig-model.ts` `rigLayouts`), exactly where the frame hides the
+ * lane. So this is the frame's own query, copied as `middle-nav.css` writes it, as the checkout's rig
+ * mirrors it (`basket-bands.css`). A `rem` query resolves against the browser's default font size and
+ * the frame's `px` one does not, so at any default but 16px a `rem` swap would paint the rig's tier-2
+ * New beside the lane's, or neither with the lane gone. It is the one `px` query on this surface, and
+ * `styles.gate.test.ts` holds it to these selectors; the folds below stay in `rem`.
+ */
+@media (max-width: 767px) {
+	.wsp-footerrig__layout[data-lane="shown"] {
+		display: none;
+	}
+
+	.wsp-footerrig__layout[data-lane="hidden"] {
+		display: contents;
+	}
+
+	/*
+	 * Beside the zoom at its floor the reason has about 9rem, which cuts the server's sentence short. So
+	 * the band wraps, and the reason takes the full width under the zoom.
+	 */
+	.wsp-footerrig:has(.wsp-footerrig__layout[data-lane="hidden"] > .wsp-footerrig__createnote) {
+		flex-wrap: wrap;
+		row-gap: var(--space-1);
+	}
+
+	.wsp-footerrig:has(.wsp-footerrig__layout[data-lane="hidden"] > .wsp-footerrig__createnote) .wsp-footerrig__actions {
+		flex-basis: 100%;
+		justify-content: flex-start;
 	}
 }
 

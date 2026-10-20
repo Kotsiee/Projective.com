@@ -521,6 +521,8 @@ export interface RawBusinessSpend {
 	approver_user_ids: string[] | null;
 	contributor_user_ids: string[] | null;
 	limits: RawEnvelope[] | null;
+	/** Whether `limits` is every member's envelope or only the viewer's (fn_business_envelopes' rule). */
+	reads_all_envelopes?: boolean | null;
 	/** What each member has put into the policy wallet, all time. */
 	contributed: { user_id: string; minor: number | string }[] | null;
 	contributions: RawContribution[] | null;
@@ -872,6 +874,7 @@ export function buildSpendPolicy(
 		approverIds: approvers.map((m) => m.memberId),
 		approverHandles: approvers.map(handleOf),
 		limits: (raw.limits ?? []).map((l) => toSpendLimit(l, people.get(l.user_id), currency)),
+		readsAllEnvelopes: raw.reads_all_envelopes === true,
 		contributorIds: contributors.map((m) => m.memberId),
 		contributorHandles: contributors.map(handleOf),
 		entries: entries.slice(0, ENTRY_LIMIT).map(({ sortAt: _sortAt, ...entry }) => entry),

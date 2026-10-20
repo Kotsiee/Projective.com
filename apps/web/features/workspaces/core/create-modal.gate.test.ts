@@ -53,10 +53,17 @@ Deno.test("create dialog: every Button takes its tone from the tier model; the f
 	}
 	assertEquals(
 		(ISLAND.match(/<FormControl\b/g) ?? []).length,
-		3,
-		"kind (choice only), name, handle",
+		2,
+		"name, handle — the kind is the route's (BU1)",
 	);
 	assert(!/<label\b/.test(ISLAND), "a hand-rolled label — FormControl owns the label");
+});
+
+Deno.test("create dialog: the kind is never asked — it is the route's", () => {
+	assert(
+		!/<SelectButton\b|KIND_CHOICES|allowKindChoice|createKindMode/.test(ISLAND),
+		"a kind choice — the dialog's kind is its route's (BU1, #245)",
+	);
 });
 
 Deno.test("create dialog: the handle rule is the SSOT's, never a copied pattern or list", () => {

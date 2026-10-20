@@ -8,7 +8,6 @@ import {
 	FieldLegend,
 	FormControl,
 	InputText,
-	SelectButton,
 	useFieldValidation,
 } from "@projective/ui/fields";
 import { Link } from "@projective/ui/navigation";
@@ -32,14 +31,12 @@ import {
 	createCopy,
 	createFooterActions,
 	createGateOpen,
-	createKindMode,
 	type CreateRefusal,
 	type HandleFieldPhase,
 	handleFromName,
 	handleLiveLine,
 	type HandleLiveTone,
 	isPlainEnter,
-	KIND_CHOICES,
 	nameProblem,
 	normalizeHandleInput,
 	recheckAction,
@@ -72,9 +69,9 @@ import { useHandleCheck } from "../hooks/useHandleCheck.ts";
  * handle the namespace has just called available. Every button takes its tone from `tierProps` and
  * every rule the dialog renders lives in `core/create-model.ts`, where it is unit-tested.
  *
- * Shared by `/teams` and `/businesses` (Decision #61): the kind is fixed by the route that mounts it,
- * and asked (a `SelectButton`) only when a neutral surface mounts it without one. `Dialog` portals to
- * `document.body`, so the lane's glass chrome cannot clip it.
+ * Shared by `/teams` and `/businesses` (Decision #61): the kind is fixed by the route that mounts it
+ * and is never asked (BU1). `Dialog` portals to `document.body`, so the lane's glass chrome cannot
+ * clip it.
  */
 
 /** The form's id — the footer's commit sits outside the body and submits it by reference. */
@@ -85,19 +82,14 @@ const PLAN_HREF = settingsHref("billing", "plan");
 
 export interface CreateWorkspaceModalProps {
 	/**
-	 * The kind to create. A route that already commits to one (`/teams`, `/businesses`) passes it and
-	 * the dialog never asks; a neutral surface omits it and the dialog offers both.
+	 * The route's kind (`/teams`, `/businesses`). Omitted, the dialog creates the kind its trigger
+	 * seeded (`openCreate(kind)`) — it never asks.
 	 */
 	kind?: WorkspaceKind;
-	/** Ask for the kind even inside a committed route. */
-	allowKindChoice?: boolean;
 }
 
 export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): JSX.Element {
-	const mode = createKindMode(props.kind, props.allowKindChoice);
-	const kind: WorkspaceKind = mode === "fixed"
-		? props.kind ?? createSeedKind.value
-		: createSeedKind.value;
+	const kind: WorkspaceKind = props.kind ?? createSeedKind.value;
 
 	const name = useSignal("");
 	const handle = useSignal("");
@@ -116,8 +108,8 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 	const handleScope = useRef<HTMLDivElement>(null);
 
 	const check = checker.state.value;
-	const copy = createCopy(kind, mode);
-	const [cancelAction, createAction] = createFooterActions(kind, mode, {
+	const copy = createCopy(kind);
+	const [cancelAction, createAction] = createFooterActions(kind, {
 		name: name.value,
 		handle: check,
 		submitting: submitting.value,
@@ -282,24 +274,6 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 				}}
 			>
 				<p class="wsp-create__intro">{copy.intro}</p>
-
-				{mode === "choice" && (
-					<FormControl
-						label="Kind"
-						hint={KIND_CHOICES.find((c) => c.value === kind)?.note}
-					>
-						{({ id, describedBy }) => (
-							<SelectButton
-								id={id}
-								aria-label="Kind"
-								aria-describedby={describedBy}
-								options={KIND_CHOICES.map(({ value, label }) => ({ value, label }))}
-								value={createSeedKind}
-								onValueChange={() => (refusal.value = null)}
-							/>
-						)}
-					</FormControl>
-				)}
 
 				<div ref={nameScope}>
 					<FormControl

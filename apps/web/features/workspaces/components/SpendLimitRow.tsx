@@ -5,7 +5,13 @@ import { ProgressBar, Tooltip } from "@projective/ui/feedback";
 import { MetaLine } from "@projective/ui/display";
 import { Icon } from "@projective/ui/icons";
 import type { SpendLimit, SpendPeriod } from "@projective/types/workspace";
-import { type LimitDraft, PERIOD_OPTIONS, rowFace, type RowView } from "../core/spend-model.ts";
+import {
+	type LimitDraft,
+	PERIOD_OPTIONS,
+	rowFace,
+	type RowView,
+	spendLimitAnchor,
+} from "../core/spend-model.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
@@ -29,6 +35,11 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  * ### A member who may not spend keeps their row
  * `canSpend: false` reads "Spending off" rather than removing the row: absence would hide a decision
  * somebody made about this person.
+ *
+ * ### A row is a deep link's landing
+ * The row's id is `limit-<handle>` (`spendLimitAnchor`) and it takes programmatic focus
+ * (`tabIndex={-1}`, never a tab stop), so the Members drawer's "Edit in Spend" — `#limit-<handle>` —
+ * lands on this member's row; the screen scrolls it into view and focuses it once it renders.
  *
  * ### Grid arithmetic
  * `.wsp-spend__limit` defines four tracks (avatar · identity · meter · action). The inline editor is a
@@ -210,6 +221,8 @@ export function SpendLimitRow(props: SpendLimitRowProps): JSX.Element {
 
 	return (
 		<li
+			id={spendLimitAnchor(limit.handle)}
+			tabIndex={-1}
 			class="wsp-spend__limit"
 			data-can={(shown ?? limit).canSpend ? "true" : "false"}
 			data-draft={view.draft ? "true" : undefined}

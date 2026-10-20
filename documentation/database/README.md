@@ -47,25 +47,22 @@ Each domain below gets its own folder with up to four files: `Tables.md`, `Polic
 | `marketplace`  |   ◐    |    ◐     |    ◐     | Blueprints (address, intake, stage template), paid placements, quote requests — partial; Functions: service instantiation (`00001175`, Decision #209), 2026-10-13 |
 | `ops`          |   ◐    |    ◐     |     ◐     | Log ingestion (`log_entries`), the job registry (`scheduled_jobs`, `http_job_dispatches`, Decision #203) and the `/contact` intake (`contact_requests`, `contact_request_attachments`, Decision #276); `admin_users` not yet documented |
 | `org`          |   ✅   |    ✅    |    ✅     | Identity/teams/enterprises, the 2026-07-24 Standing ladder, the live public profile (showcase, settings, certifications, definer read/write door), 2026-09-23, and the Teams & Businesses console (roles, members, invitations, the permission twin + vault projection), 2026-09-28 |
-| `projects`     |   ✅   |    —     |     —     |                                                                                                    |
+| `projects`     |   ✅   |    ✅    |    ✅     | Projects, stages, tickets, escrow settlement doors, the BB2 business-authority predicates and the funding doors' spend gate |
 | `reviews`      |   ✅   |    ✅    |    ✅     | One table, two reputation tracks; no client write path yet, 2026-09-23                             |
 | `scheduling`   |   ✅   |    ✅    |    ✅     | Availability, calendar events & discovery calls, 2026-07-24                                        |
 | `search`       |   ◐    |    —     |     —     | `platform_stats` documented; the index tables are not yet                                          |
 | `security`     |   ✅   |    ◐     |     ◐     | `session_context` (one-slot CHECK, SELECT-only to clients, switch RPCs) and the access-token hook, 2026-09-28; column guards; route slugs |
 
 ✅ = populated with real schema detail. ◐ = the sections a recent change touched are documented, the rest is not. `—` = stub file stamped `_Not yet documented._` — this is an
-intentional placeholder, not a deletion or accident. `comms/`, `files/`, `finance/`, `integrations/`
-and `scheduling/` have populated `Functions.md` (the notification engine; the asset hub's read
-predicate, quota gate, usage rollup and share resolver; the escrow engine + the Wallet & Finance
-foundation; the OAuth capability predicates; the discovery-call booking gate); the remaining
-`Functions.md` files are still stubs — populate them as RPCs are implemented.
+intentional placeholder, not a deletion or accident. Which `Functions.md` files are populated is the
+Functions column above; a `—` there is a stub to populate as that domain's RPCs land.
 
 > **A `—` in the Policies column is a documentation gap, not a statement that the schema is
 > unpoliced — and the two were recently shown to diverge.** `files/Policies.md` was a stub while
 > `files.items` carried a live `USING (true)` `SELECT` policy and `files.folders` had no RLS at all
 > (both now closed, both written up in that file). Treat a stub Policies column as _unknown_, and
-> read the migration before assuming a table is safe. `projects/` is the remaining stub;
-> `security/Policies.md` documents `session_context` only.
+> read the migration before assuming a table is safe. `security/Policies.md` documents
+> `session_context` only.
 
 ## For Future Agents
 

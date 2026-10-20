@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { useRef } from "preact/hooks";
-import { type AvatarSize, Badge, MetaLine } from "@projective/ui/display";
+import { type AvatarSize, Badge, MetaLine, type MetaLineEntry } from "@projective/ui/display";
 import { ProgressBar, Tooltip } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
 import { ActionMenu, type ContextSurfaceSource, type MenuItem } from "@projective/ui/navigation";
@@ -320,6 +320,11 @@ export interface MemberCardProps {
 	menu: MenuItem[];
 	/** Whether the viewer reads payout stakes (`showsStake`). */
 	showStake: boolean;
+	/**
+	 * A business member's envelope as one fact (`spendingFact`) — present only for a viewer the read
+	 * gave every envelope; `null` draws nothing.
+	 */
+	envelope?: MetaLineEntry | null;
 	/** Open the member drawer. */
 	onOpen: () => void;
 	/** Server-resolved reference year, so an SSR date and its hydration agree across a New Year. */
@@ -328,9 +333,12 @@ export interface MemberCardProps {
 
 /**
  * One member, at card density: who (avatar, name, handle, "You"), what they may do (role, and the
- * override counts whenever their effective set differs from it), how loaded they are (a `ProgressBar`
- * over their W_i against their cap), and — for a viewer who reads payouts — their stake. The viewer's
- * own card keeps W1's leading rule as well as saying "You".
+ * override counts whenever their effective set differs from it), and when they joined. A team's card
+ * adds how loaded they are (a `ProgressBar` over their W_i against their cap) and — for a viewer who
+ * reads payouts — their stake; a business's adds their envelope for a viewer who reads everyone's
+ * (BU7). Whether somebody is free to take work is a seller's fact, so the availability dot is a
+ * team's alone — a business is buyer-side. The viewer's own card keeps W1's leading rule as well as
+ * saying "You".
  */
 export function MemberCard(props: MemberCardProps): JSX.Element {
 	const { member, kind, roles, facets, menu, showStake, onOpen, referenceYear } = props;
@@ -348,12 +356,24 @@ export function MemberCard(props: MemberCardProps): JSX.Element {
 			aria-label={`${member.name}, ${role}`}
 		>
 			<div class="wsp-mcard__top">
-				<Tooltip content={`${member.name} — ${availabilityPhrase(member.availability)}`}>
-					<span class="wsp-mcard__avatarwrap">
-						<PersonAvatar member={member} size="lg" />
-						<span class="wsp-mcard__avail" data-avail={member.availability} aria-hidden="true" />
-					</span>
-				</Tooltip>
+				{kind === "team"
+					? (
+						<Tooltip content={`${member.name} — ${availabilityPhrase(member.availability)}`}>
+							<span class="wsp-mcard__avatarwrap">
+								<PersonAvatar member={member} size="lg" />
+								<span
+									class="wsp-mcard__avail"
+									data-avail={member.availability}
+									aria-hidden="true"
+								/>
+							</span>
+						</Tooltip>
+					)
+					: (
+						<span class="wsp-mcard__avatarwrap">
+							<PersonAvatar member={member} size="lg" />
+						</span>
+					)}
 
 				<div class="wsp-mcard__ident">
 					<h3 class="wsp-mcard__name">
@@ -381,20 +401,22 @@ export function MemberCard(props: MemberCardProps): JSX.Element {
 				</div>
 			</div>
 
-			<div class="wsp-mcard__load">
-				<ProgressBar
-					class="wsp-mcard__meter"
-					value={member.workload}
-					severity={member.workload >= 90 ? "warning" : "primary"}
-					aria-label={`Workload ${formatWi(member.wi)} of ${formatWi(member.wiCap)}`}
-				/>
-				<MetaLine
-					as="span"
-					size="xs"
-					class="wsp-mcard__figure"
-					items={["Workload", { text: load, tabular: true }]}
-				/>
-			</div>
+			{kind === "team" && (
+				<div class="wsp-mcard__load">
+					<ProgressBar
+						class="wsp-mcard__meter"
+						value={member.workload}
+						severity={member.workload >= 90 ? "warning" : "primary"}
+						aria-label={`Workload ${formatWi(member.wi)} of ${formatWi(member.wiCap)}`}
+					/>
+					<MetaLine
+						as="span"
+						size="xs"
+						class="wsp-mcard__figure"
+						items={["Workload", { text: load, tabular: true }]}
+					/>
+				</div>
+			)}
 
 			<MetaLine
 				size="xs"
@@ -403,8 +425,7 @@ export function MemberCard(props: MemberCardProps): JSX.Element {
 						text: `Stake ${stakePercent(member.shareBp)}${member.shareHeld ? " (held)" : ""}`,
 						tabular: true,
 					},
-					kind === "business" &&
-					(member.spendLimitMinor === null ? "No personal spend ceiling" : "Spend ceiling set"),
+					kind === "business" && props.envelope,
 					{ text: `Joined ${shortDate(member.joinedAt, referenceYear)}`, tabular: true },
 				]}
 			/>

@@ -1,6 +1,7 @@
-import { Fragment, type JSX } from "preact";
+import type { JSX } from "preact";
 import { useMemo } from "preact/hooks";
 import { type DataColumn, DataTable, MetaLine, MoneyView, Tag } from "@projective/ui/display";
+import type { MoneyView as MoneyValue } from "@projective/types/finance";
 import {
 	roleLabel,
 	roleRank,
@@ -31,9 +32,9 @@ import { EntityMark } from "./EntityMark.tsx";
  *
  * Spent (30d) draws the server's figures, one `MoneyView` per currency PINNED to that currency (the
  * FinanceSummary precedent), so a figure reads exactly as it was spent whatever currency the viewer
- * browses in — no conversion, no total, no period delta. Several currencies are MetaLine's markup
- * (`ui-meta-line`, middot separators) built here because MetaLine takes text only, as the business
- * Finance head's balance line does.
+ * browses in — no conversion, no total, no period delta. Several currencies are one `MetaLine` whose
+ * entries carry the `MoneyView` as their `node`. Where nothing moved, or the server withheld the
+ * figure from a viewer who may not open that business's Finance, the cell is the table's empty mark.
  *
  * Dumb: no fetching, no permission decisions, no arithmetic.
  */
@@ -119,9 +120,14 @@ function columnFor(column: RosterColumn): DataColumn<WorkspaceSummary> {
 				...base,
 				type: "custom",
 				width: 176,
-				// Most spent first on the first press — the reader sorting money wants the biggest.
+				// Most spent first on the first press (within a currency — `spentSortValue`).
 				firstSortDir: "desc",
-				render: (row) => <SpentCell summary={row} />,
+				// `null` from `render` itself — not from inside a component — is what lets the table draw
+				// its own empty mark where nothing moved or the figure is withheld.
+				render: (row) => {
+					const spent = rosterSpent(row);
+					return spent ? <SpentCell spent={spent} /> : null;
+				},
 				sortValue: spentSortValue,
 			};
 		case "status":
@@ -196,33 +202,32 @@ function IdentityCell({ summary }: { summary: WorkspaceSummary }): JSX.Element {
 }
 
 /**
- * What a business spent in 30 days: one figure, or several on one meta line, each in its own currency
- * and never converted (`displayCurrency` pinned to the figure's own). `null` when nothing moved, so
- * the table draws its own empty mark.
+ * What a business spent in 30 days: one figure, or several on one `MetaLine` (each a node entry), each
+ * in its own currency and never converted (`displayCurrency` pinned to the figure's own). Only drawn
+ * when there is a figure — the column's `render` leaves the empty cell to the table.
  */
-function SpentCell({ summary }: { summary: WorkspaceSummary }): JSX.Element | null {
-	const spent = rosterSpent(summary);
-	if (!spent) return null;
+function SpentCell({ spent }: { spent: readonly MoneyValue[] }): JSX.Element {
 	if (spent.length === 1) {
 		const [figure] = spent;
 		return <MoneyView value={figure} displayCurrency={figure.currency} size="micro" hideOrigin />;
 	}
 	return (
-		<span class="ui-meta-line ui-meta-line--xs">
-			{spent.map((figure, i) => (
-				<Fragment key={figure.currency}>
-					{i > 0 && <span class="ui-meta-line__sep" aria-hidden="true">·</span>}
-					<span class="ui-meta-line__item">
-						<MoneyView
-							value={figure}
-							displayCurrency={figure.currency}
-							size="micro"
-							hideOrigin
-						/>
-					</span>
-				</Fragment>
-			))}
-		</span>
+		<MetaLine
+			as="span"
+			size="xs"
+			items={spent.map((figure) => ({
+				text: figure.display,
+				tabular: true,
+				node: (
+					<MoneyView
+						value={figure}
+						displayCurrency={figure.currency}
+						size="micro"
+						hideOrigin
+					/>
+				),
+			}))}
+		/>
 	);
 }
 

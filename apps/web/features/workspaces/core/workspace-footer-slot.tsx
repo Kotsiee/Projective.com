@@ -10,7 +10,8 @@ import { isFirstRun } from "./roster-model.ts";
  * workspace-footer-slot — the SSR-idiomatic resolver for the middle-nav FOOTER band across the
  * workspace surface (mirrors `catalogueFooterFor` / `walletFooterFor`).
  *
- * The band is resolved on BOTH the index (density + New) and inside a console (view switching +
+ * The band is resolved on BOTH the index (density + New, or below `--bp-md` and beside the collapsed
+ * rail the plan's reason in New's place, Decision #245 (k)) and inside a console (view switching +
  * Invite / Settings / Discard + Save), because in each case the controls belong to the chrome rather
  * than the body. `/teams/create` is the index — its create modal opens over the roster — so it gets the index rig.
  *
@@ -41,6 +42,7 @@ export async function workspaceFooterFor(url: URL, actor: ReadActor): Promise<Co
 			<WorkspaceFooterRig
 				kind={kind}
 				canCreate={read.ok ? read.roster.canCreate : true}
+				createBlockedReason={read.ok ? read.roster.createBlockedReason : null}
 				firstRun={firstRun}
 			/>
 		);

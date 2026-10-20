@@ -74,11 +74,11 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO org.business_roles (id, business_id, name, summary, preset, base_preset)
 VALUES
   ('a5c8ecb0-e4a4-42b7-a877-783685bd4765', 'edb582e0-25d2-48a3-a0db-4a96f1d1a8d1', 'Owner', 'Full authority, including archiving and transferring ownership.', 'owner', 'owner'),
-  ('b81329b8-3cd9-43d7-a7b5-c3d203102799', 'edb582e0-25d2-48a3-a0db-4a96f1d1a8d1', 'Admin', 'Runs the roster, the money and the settings — everything but archiving.', 'admin', 'admin'),
-  ('492da7d7-9559-4762-a385-ca81eb4fcc54', 'edb582e0-25d2-48a3-a0db-4a96f1d1a8d1', 'Member', 'Does the work and sees how the entity is performing.', 'member', 'member'),
+  ('b81329b8-3cd9-43d7-a7b5-c3d203102799', 'edb582e0-25d2-48a3-a0db-4a96f1d1a8d1', 'Admin', 'Runs the roster, the money and the settings — everything but withdrawing, billing and archiving, unless the owner grants them.', 'admin', 'admin'),
+  ('492da7d7-9559-4762-a385-ca81eb4fcc54', 'edb582e0-25d2-48a3-a0db-4a96f1d1a8d1', 'Member', 'Adds funds to the wallet and sees the analytics; anything more comes from a custom role.', 'member', 'member'),
   ('43f39a68-9049-43d3-ae54-8db27c9689e5', '4cfa4f66-9aa2-496b-a93d-994caac019c1', 'Owner', 'Full authority, including archiving and transferring ownership.', 'owner', 'owner'),
-  ('84da9d80-b426-49cb-aacb-43c6f9e96a19', '4cfa4f66-9aa2-496b-a93d-994caac019c1', 'Admin', 'Runs the roster, the money and the settings — everything but archiving.', 'admin', 'admin'),
-  ('eb72e8ff-2b7b-4d46-a77a-3d3503537bd4', '4cfa4f66-9aa2-496b-a93d-994caac019c1', 'Member', 'Does the work and sees how the entity is performing.', 'member', 'member')
+  ('84da9d80-b426-49cb-aacb-43c6f9e96a19', '4cfa4f66-9aa2-496b-a93d-994caac019c1', 'Admin', 'Runs the roster, the money and the settings — everything but withdrawing, billing and archiving, unless the owner grants them.', 'admin', 'admin'),
+  ('eb72e8ff-2b7b-4d46-a77a-3d3503537bd4', '4cfa4f66-9aa2-496b-a93d-994caac019c1', 'Member', 'Adds funds to the wallet and sees the analytics; anything more comes from a custom role.', 'member', 'member')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO org.business_members (id, business_id, user_id, role_id, role, status, invited_by, title, granted_capabilities, joined_at, created_at)

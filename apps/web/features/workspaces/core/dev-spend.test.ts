@@ -36,6 +36,7 @@ const policy: BusinessSpendPolicy = {
 		perTransactionMinor: null,
 		perTransaction: null,
 	}],
+	readsAllEnvelopes: true,
 	contributorIds: [],
 	contributorHandles: [],
 	entries: [],

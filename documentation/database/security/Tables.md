@@ -139,7 +139,7 @@ Finance-relevant keys:
 | `income_smoother_min_months`       | `3`     | **Additive.** Minimum earnings-history months for smoother eligibility.            |
 | `income_smoother_min_volume_cents` | `0`     | **Additive.** Minimum lifetime earnings volume for eligibility (pending sign-off). |
 | `tax_pot_default_bp`               | `0`     | **Additive.** Suggested default tax-pot auto-set-aside percentage (opt-in).        |
-| `vault_approval_threshold_cents`   | `0`     | **Additive.** Spend amount at/above which a second approver is required (0 = off). |
+| `vault_approval_threshold_cents`   | `0`     | **Additive.** Spend amount at/above which a second approver is required (0 = off). The fallback for any business wallet whose `approval_threshold_cents` is NULL (no local override). The gates read it only through `finance.fn_business_threshold` (BB3): the spend gate, `request_spend_approval`, the redeemer's DETAIL and the auto-fund drain; `org.get_workspace_detail` shows it to the Spend screen as `spend.platform_threshold_minor`. |
 | `business_plan_gates_enforced`     | `true`  | Business Pro gates refuse `PK402` (managers, spending caps, monthly invoicing); **seeded on**, set per environment (Decision #230 (e); `finance/Functions.md` § Business plan gates). |
 | `session_payout_hours`             | `24`    | Negative-consent window before a session payout auto-releases — per sitting on a 1-1 (Decision #211).|
 | `set_session_schedule_hours`       | `72`    | Hours after a set-session block is paid for to agree each remaining sitting's time before the pencilled-in weekly time stands (capped at `session_cancel_notice_hours` before it; Decision #211). |

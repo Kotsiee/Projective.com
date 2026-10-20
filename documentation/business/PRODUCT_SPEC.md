@@ -736,12 +736,14 @@ team members.
   (Services, Products, Teams), and the person's own persona returns when they switch back. How many
   Businesses an account may own is metered by its personal plan (`finance-model.md` §16.1); joining
   one is never capped (Decision #230 (a)). The navigation offers **Create Business** while that
-  allowance has room, and the **Businesses** entry to anyone who may create one or already belongs
-  to one.
+  allowance has room (never inside an enterprise context), and the **Businesses** entry to anyone
+  who may create one, belongs to one, or is acting as one.
 - **Draft-First Creation:** Creating a Business is low-friction — the owner supplies only a display
   **Name** and a unique alphanumeric **`@handle`**. The Business is created instantly in a
-  **Draft/Unverified** state; legal name, logo, billing details, member roles, and financial setup
-  are completed afterwards on the Business settings page. The console's **Overview** walks the setup
+  **Draft/Unverified** state. The rest is completed afterwards in its console: its name, logo and
+  banner on its profile editor (`/@handle/edit`), member roles on Members and Roles, spending rules
+  on Spend, billing and invoicing terms on Billing, and its verification (KYB) on Verification. The
+  console's **Overview** walks the setup
   in order (Decision #248): **Invite a colleague** · **Verify the business** (KYB) · **Add money**
   (load the pooled wallet so members can fund work without a card each time — done once money has
   ever been added) · **Set spending rules** (only on a plan that can set them, Business Pro; a
@@ -763,12 +765,22 @@ team members.
 - **Visibility:** a Business takes the same visibility a team does — **public**, **unlisted** or
   **invite-only** — and only a public Business is listed in the directory (Decision #230 (h)). Its
   public page (`/@handle`) opens for anyone while the Business is active and public or unlisted (an
-  unlisted one by its link only, as an unlisted person's or team's does — **pending the owner's
-  confirmation**: the BP1 work order worded an unlisted Business as missing to strangers, Decision
-  #244 (a)); while it is a draft, archived or invite-only the page is missing to everyone outside it
-  — worded exactly as an unknown handle — and its members see it with a note saying why. The note
-  gains a link to the Business's Settings once Settings can publish it or change its visibility
-  (Decision #244 (d)).
+  unlisted one by its link only and never listed, as an unlisted person's or team's — ruled by the
+  owner 2026-10-17, Decision #244 (a)); while it is a draft, archived or invite-only the page is
+  missing to everyone outside it — worded exactly as an unknown handle — and its members see it with
+  a note saying why. The note gains a link to the Business's Settings once Settings can publish it
+  or change its visibility (Decision #244 (d)). A Business is created draft and **invite-only**, as
+  a team is, so publishing alone neither opens its page nor lists it. Its visibility is changed from
+  the Business's Settings, which is not built yet (Decision #244 (d), #261 (c)); until it is, a
+  published Business stays invite-only.
+- **Only a published Business transacts, and it is archived only once nothing is left open.** A
+  draft or archived Business cannot create a project, buy, fund escrow, hire, pay an invoice or
+  change its invoicing terms (Decision #236). The Owner, or a co-owner holding the archive right,
+  archives it only once no money, work, request or debt is still open on it; a refused archive
+  names the first thing left, and the console's header withholds Archive while anything is.
+  Restoring brings it back **active if it was ever published, otherwise as a draft**, by the team
+  rule (Decision #236 (d)). The states and the seven archive blockers are `PRODUCT_MANAGEMENT.md`
+  §3.5 (Workspace entity).
 - **Unified Management:** Instead of isolated projects, a Business can manage "Sets" of projects,
   allowing for cross-project visibility.
 - **Shared Capital (The Business Wallet):** Much like Freelancer Teams, Businesses utilise a shared
@@ -800,7 +812,15 @@ Every member holds one role — a preset, or a custom role the Business writes i
   submissions and releases Escrow payments; an **Observer** has view-only access to progress,
   analytics and chat logs and cannot approve payments or change project scope. The plan's manager
   cap counts Admins plus every member whose role may manage projects (`finance-model.md` §16.1,
-  Decision #230 (b)).
+  Decision #230 (b)). As built (Decision #249): the **Project Manager** template carries exactly the
+  remit above — it creates projects, hires and approves the work that releases escrow, and funds
+  escrow and buys from the pool within the spending cap set for it — on a Member rank, so an Admin
+  can set its limit; managing projects is what takes a manager seat. It manages no members, roles,
+  settings or money policy, and the owner ruled it stays so (#249 (a), 2026-10-19). The **Observer**
+  template ranks as a Member and carries viewing analytics alone. Either is an ordinary custom role
+  once created, editable like any other. The Members view shows the manager headroom ("1 of 2
+  managers"), counting open invitations, and says the cap — with who to ask, or that plans can't
+  change yet — before an invitation or a role change would pass it.
 - **One permission per act.** Every member of a Business sees its projects, reads their details
   and deliverables, and can comment and ask for a free revision. The acts that commit the Business
   each need their own permission: **hiring** (accepting or declining an applicant, inviting,
@@ -817,8 +837,9 @@ Every member holds one role — a preset, or a custom role the Business writes i
 - **Billing and verification are the Owner's.** Invoices, payment instruments, invoicing terms and
   the Business's verification (KYB) need the billing right, and the Billing and Verification views
   open only to its holders. Only the Owner holds it unless the Owner grants it explicitly to a named
-  Admin, after a warning. The Owner may also grant an Admin their own exact permissions — a
-  co-owner in all but name — after an explicit warning of what that Admin can then do. The Business
+  Admin, after a warning they confirm by typing CONFIRM. The Owner may also grant an Admin their own
+  exact permissions — a co-owner in all but name — after an explicit warning of what that Admin can
+  then do, confirmed the same way (Decisions #238, #249). The Business
   still has one Owner (Decision #230 (d)). A co-owner holds the three rights the Admin preset lacks —
   withdrawal, billing and archiving; only transferring ownership stays the Owner's. Only the Owner
   grants or takes away any of the three, to anyone: a co-owner or billing Admin cannot pass them on,
@@ -827,7 +848,11 @@ Every member holds one role — a preset, or a custom role the Business writes i
   such grant, so the new Owner grants afresh (Decision #238).
 - **Who sees whose spend envelope.** A member sees their own spending limit and their own spend
   requests. Every member's, and the whole request queue, are seen by those who manage finances or
-  approve spend, and by the Owner (Decision #238).
+  approve spend, and by the Owner (Decision #238). The Members view follows the same line: its
+  Spending column ("US$500.00 / month" · "No ceiling" · "Spending off") shows only to those who see
+  every envelope, and a member's panel shows their envelope with a way to their row on Spend
+  (Decision #249). The Businesses roster shows a Business's spend over the last 30 days, per
+  currency, only to members who may open its Finance (Decision #245).
 - **Contracted project managers (post-MVP).** A Business will be able to hire a freelancer into a
   temporary or contractual project-management role, on Projective and on third-party tools. It is
   out of scope for the MVP — it needs third-party integrations and may need the Business to share
@@ -1266,10 +1291,10 @@ or personal funds for hiring.
 
 Designed for companies managing multiple projects and teams.
 
-- **Centralized Capital:** Funds are held at the Business level. Individual Project Managers use
-  this shared pool to fund Escrow tickets.
-- **Hierarchy Controls:** Owners can set "Spending Caps" for Project Managers to prevent
-  unauthorized budget depletion.
+- **Centralized capital, governed per member:** funds are held at the Business level. Any member
+  holding the right to spend from the wallet funds escrow from it (and, with the purchasing
+  permission, buys from it), within the limit set for them. Who sets limits, and on which plan, is
+  §Clients & Businesses (Shared Capital; One permission per act).
 - **Analytics:** Provides a macro-view of company-wide burn-rate across all departments, read
   under the member's own RLS by the wallet surface and summarised on the business console
   (`/businesses/[businessHandle]`). (The former `org.get_business_finance` wrapper and its
@@ -1373,10 +1398,10 @@ To bridge the gap between "Marketplace Speed" and "Corporate Accounting," Busine
 - **What an invoice asks for:** escrow held from the Business wallet was paid when it was held, so
   those lines are already settled. The amount **due** is only what the Business bought **on
   account** in the period (below). An invoice with nothing on account is issued **Paid** — it is the
-  month's tax document. A billing member pays an amount due from the Business wallet or by card
-  (**Pay**), always after a review of the amount, the wallet it leaves and the balance after; a
-  wallet that holds less than is due is topped up first (a card top-up of that wallet, Decision
-  #125), and the review hands off to it (Decision #247). Paying from the wallet is operating it, so
+  month's tax document. A billing member pays an amount due from the Business wallet (**Pay**),
+  always after a review of the amount, the wallet it leaves and the balance after; a wallet that
+  holds less than is due is topped up first, by card (Decision #125), and the review hands off to
+  it (Decision #247). Paying from the wallet is operating it, so
   only a verified (KYB) Business pays (Decision #247 (h)).
 - **Paying on account:** a KYB-verified Business in intervaled invoicing mode may choose **Invoice**
   at checkout. The platform credits the Business wallet with the order's amount as an on-account
@@ -1384,9 +1409,10 @@ To bridge the gap between "Marketplace Speed" and "Corporate Accounting," Busine
   (no hold, no work) — and the amount is added to that period's invoice as due. On-account spend is
   capped per Business (`finance-model.md` §15), and an Overdue invoice withdraws the Invoice option
   until it is paid.
-- **Over-Budget Safeguards:** If a Business attempts to lock Escrow for a project that exceeds their
-  pre-approved monthly credit or current Wallet balance, the system prompts for a "Top-Up" or a
-  budget increase before work can proceed.
+- **Over-Budget Safeguards:** a payment the Business Wallet cannot cover is refused with a
+  one-click Add money, and one over a member's limit or at/above the approval threshold needs a
+  sign-off. See §5 below ("A short pool is refused…", "A purchase that needs a sign-off…"); the
+  on-account cap is `finance-model.md` §15.
 - **Auto-funding:** a Business chooses what happens when one of its projects' tickets cannot start
   for want of money — when the ticket enters **Needs funding** (`PRODUCT_MANAGEMENT.md` §3.6):
   - **Off** (the default) — the project owner is told and funds it by hand.
@@ -1451,7 +1477,11 @@ Money enters and leaves the platform through two deliberately asymmetric paths:
   nobody else in the business can approve, the member is told to ask the owner to add an approver
   (the owner, to give a member approval rights). An unverified business cannot buy: members with its
   billing right are sent to its verification, everyone else is told to ask the owner
-  (`finance-model.md` §14, Decision #243).
+  (`finance-model.md` §14, Decision #243). Away from the checkout — funding a stage, a ticket or a
+  paid revision by hand, or a transfer out — a spend over the member's limit or at or above the
+  threshold is refused with the reason. Approvals bind to those things too and are spent once
+  (`finance-model.md` §14), but no screen asks for one yet (Decision #239 (c)). A ticket the
+  auto-fund queue holds asks for its own (§4, Auto-funding).
 - **An individual client funds escrow like a business does.** A project with no client business is
   funded by its owner — by card, or from their own wallet — and every release, refund and fair-exit
   split returns money to that person. Only the project's owner may fund it.
@@ -1490,7 +1520,8 @@ Money enters and leaves the platform through two deliberately asymmetric paths:
   KYC/KYB Gating.)
 - **Whoever spends the pool answers for it.** Every way a Business's money moves — a checkout,
   paying on account, a transfer out, funding a stage, a ticket or a paid revision, a card escrow
-  lock — checks KYB, the **acting member's** own spending limit and the approval threshold, and
+  lock — checks that the Business is active (published and not archived — Decision #236), KYB, the
+  **acting member's** own spending limit and the approval threshold, and
   counts the spend once, against that member (a ticket bought in a basket is not counted again when
   its escrow is held). Only when no person acts — a claim, the Chain Reaction, the auto-fund queue —
   does the spend count against the project owner. (Concrete rules: `finance-model.md` §14.)
@@ -1676,8 +1707,9 @@ There are two primary ways an engagement begins:
 
   > **Managing what you sent.** The project's Members page has three sections — **Members** (the
   > roster), **Requests** (open applications) and **Invitations** — each addressable
-  > (`?view=requests` · `?view=invitations`) and offered only to whoever staffs the project: the
-  > owner, the client business, or an **admin** or **manager** they appointed (Decision #145).
+  > (`?view=requests` · `?view=invitations`) and offered only to whoever staffs the project: its
+  > owner, a member of the client business who holds the hiring permission (§Clients & Businesses,
+  > Decision #237), or an **admin** or **manager** they appointed (Decision #145).
   > Its Invitations section — and each stage's, which lists only the
   > invitations addressed to THAT stage — shows every invitation with its state (`Pending` ·
   > `Accepted` · `Declined` · `Expired`) and the one thing the client may do about it: **cancel** an
@@ -2035,7 +2067,7 @@ a Business Wallet incrementally, or partial pre-authorization on Maintenance-cyc
 | :------------------ | :------------------------------------------------------------------------------------------------------------------ |
 | **Buy Now**         | Immediate, single-ticket purchase and escrow lock.                                                                  |
 | **Basket Checkout** | Batch-purchase multiple tickets across one or more stages/projects in a single checkout flow.                       |
-| **Invoicing**       | For verified Business accounts (KYB Level 3) — routes through Intervaled Invoicing rather than an immediate charge. |
+| **Invoicing**       | For an active, KYB-verified Business on intervaled invoicing (Business Pro) with on-account headroom — routes through Intervaled Invoicing rather than an immediate charge (§Escrow, Wallets & Finance #4). |
 | **Paid revision**   | One extra revision round on a ticket once its free rounds are used, at the source listing's extra-revision price.   |
 
 - **Buy Now funds one ticket, not its stage (Decision #166).** When the ticket already has a payee
@@ -2723,8 +2755,10 @@ security.
 - **Level 2: Verified (Freelancer/Client):** Requires Government ID and biometric "liveness" checks
   (via Stripe Identity). Necessary for significant payouts and appearing in the "Explore" rankings.
 - **Level 3: Business (KYB):** Requires corporate registration documents and "Ultimate Beneficial
-  Owner" (UBO) verification. Necessary to open a **Business Wallet** and utilise **Intervaled
-  Invoicing**.
+  Owner" (UBO) verification. Necessary to **spend from** a Business Wallet — buy, fund escrow,
+  transfer out, pay an invoice, withdraw — and to pay on account under **Intervaled Invoicing**.
+  Adding money needs none: a Business has its wallet from creation, and a draft or unverified one
+  takes top-ups (Decision #248 (k)).
 
 > **Where each gate applies (refinement, 2026-07-23 — logged in root `CLAUDE.md` §8):** Level-2
 > verification is a **freelancer onboarding gate** (an earner is verified _before_ landing a gig,
@@ -3324,11 +3358,11 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `members`                | Members                                                                                        |
 |               |                           | `projects`               | Projects the business has commissioned                                                         |
 |               |                           | `finance`                | The door to the pooled Business Wallet — the balance per currency and **Open the business wallet** (the wallet is the finance UI); opens for anyone who pays into, spends from or runs the wallet (Decision #248) |
-|               |                           | `spend`                  | Limits, approval thresholds, the approval queue and the attributable pool ledger                |
+|               |                           | `spend`                  | The approval threshold, who may approve and who may add money, each member's limit (priced before it is saved), the request queue (Pending · Decided — Approve, Decline, the requester's Withdraw) and the attributable pool ledger (Decision #246) |
 |               |                           | `billing`                | Invoices (with **Pay**), statement PDFs, invoicing terms, auto-funding and the balance floor (§Escrow, Wallets & Finance #4) |
 |               |                           | `talent`                 | The bench — freelancers and teams the business has hired (Decision #230 (i))                    |
 |               |                           | `verification`           | Business verification (KYB) — where it stands, what is still due, what it unlocks, and the start of Stripe Connect onboarding for whoever holds the billing right (Decision #242) |
-|               |                           | `settings`               | Handle, defaults, ownership transfer and archiving                                             |
+|               |                           | `settings`               | A hand-off to the profile editor (name, pictures). The Business's own Settings (visibility, archive with its blockers named, restore) is not built yet (Decision #244 (d), #261 (c)). It is published from the Overview, ownership moves from Members, archive from the console header and the roster, and restore from the roster |
 |               |                           | _other modules_          | `roles` · `invitations` · `calendar` · `messages` · `analytics` · `standing` · `profile` — the rest of the kind-business module registry (`features/workspaces/core/module-registry.tsx`) |
 |               | `/connections`            | `index`                  | View network connections                                                                       |
 |               | `/calendar`               | `index`                  | Personal agenda — the union of every engagement the account is on, over its own working hours, call windows and booked leave. The same occurrence as on `/projects/[project id]/calendar`, not a copy |

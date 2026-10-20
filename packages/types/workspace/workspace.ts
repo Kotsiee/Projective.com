@@ -82,10 +82,11 @@ export const WorkspaceSummarySchema = z.object({
 	faces: z.array(MemberFaceSchema),
 	stats: z.array(WorkspaceStatSchema),
 	/**
-	 * The kind's 30-day money, one figure per currency — what a team earned, what a business spent —
-	 * each server-formatted in its OWN currency, largest first (compared in major units), never summed
-	 * or converted; `[]` when nothing moved. The business roster table's Spent (30d) column draws it
-	 * (BU1); the card keeps the pre-formatted `stats[2]`.
+	 * A business's 30-day spend, one figure per currency, each server-formatted in its OWN currency,
+	 * largest first (compared in major units), never summed or converted. `[]` when nothing moved, when
+	 * the viewer may not open Finance (the roster read withholds it, as it withholds the console's
+	 * money tiles), and always for a team. The business roster table's Spent (30d) column draws it
+	 * (BU1); the card keeps the pre-formatted `stats[2]`, which the server drops when withheld.
 	 */
 	money30d: z.array(MoneyViewSchema).default([]),
 	/** When the entity's row last changed (ISO), or `null` when it is not known — the table's Updated. */
@@ -331,6 +332,19 @@ export const WorkspaceSeatsSchema = z.object({
 });
 export type WorkspaceSeats = z.infer<typeof WorkspaceSeatsSchema>;
 
+/**
+ * A business's managers (`get_workspace_detail`'s `managers`, Decision #230 (b)): `used` is what
+ * `finance.fn_assert_business_entitlement` counts for `business_managers` — admins, and members whose
+ * role or own grants hold `manage_projects` (never the owner), plus the pending, unexpired invitations
+ * that offer such a seat — and `limit` the ceiling it refuses past, `null` while the plan gates are
+ * off or the plan is unlimited (nothing would refuse). A team has none.
+ */
+export const BusinessManagersSchema = z.object({
+	used: z.number().int().min(0),
+	limit: z.number().int().min(0).nullable(),
+});
+export type BusinessManagers = z.infer<typeof BusinessManagersSchema>;
+
 /** The full console projection for one entity. */
 export const WorkspaceDetailSchema = z.object({
 	id: z.string().max(64),
@@ -366,6 +380,8 @@ export const WorkspaceDetailSchema = z.object({
 	invites: z.array(WorkspaceInviteSchema),
 	/** A team's seats against its plan's cap; `null` for a business (never seat-capped). */
 	seats: WorkspaceSeatsSchema.nullable().default(null),
+	/** A business's manager headroom against its plan's `business_managers`; `null` for a team. */
+	managers: BusinessManagersSchema.nullable().default(null),
 
 	// Money — at most one is present, matching {@link kind}; a team's payout only for `manage_finances`,
 	// a business's spend only for a viewer who may open Spend (`spend_funds` · `manage_finances` ·

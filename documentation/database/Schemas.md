@@ -108,6 +108,7 @@ CREATE TYPE org.workspace_capability AS ENUM (
     'bind_seat', 'manage_projects', 'publish_listings',
     'purchase', 'hire',
     'contribute_funds', 'spend_funds', 'withdraw_funds', 'manage_finances', 'approve_spend',
+    'manage_billing',   -- business only: the owner's, granted to a named admin as an override (Decision #230 (d), BB6); never a role's
     'view_analytics', 'view_audit',
     'archive_entity'
 );

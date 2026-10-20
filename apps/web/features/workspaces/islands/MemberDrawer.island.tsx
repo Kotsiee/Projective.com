@@ -12,9 +12,11 @@ import "../styles/workspace.css";
 import { MetaLine } from "@projective/ui/display";
 import { Drawer, InlineNotice } from "@projective/ui/feedback";
 import { Button, FormControl, InputText, Select, ToggleSwitch } from "@projective/ui/fields";
+import { Icon } from "@projective/ui/icons";
 import {
 	capabilitiesForKind,
 	kindCopy,
+	RESERVED_GRANT_CONFIRMATION,
 	type WorkspaceCapability,
 	type WorkspaceDetail,
 	type WorkspaceMember,
@@ -24,28 +26,43 @@ import { shortDate } from "../core/workspace-model.ts";
 import {
 	actionInputFor,
 	assignableRoles,
+	becomesCoOwner,
+	changeAddsManager,
+	confirmAnswered,
+	confirmLabel,
 	draftFacets,
+	draftRankOf,
 	drawerFooter,
 	drawerTerminal,
+	envelopeSection,
+	managerCapContextOf,
+	managerCapNotice,
 	managerOptions,
+	managersFull,
 	memberAbilities,
 	type MemberDraft,
 	memberDraftOf,
 	memberPatch,
+	memberSaveRefusal,
 	membersTierProps,
 	NOBODY,
 	type OverrideDraft,
+	overridesAtRank,
 	permissionGroups,
 	type PermissionRow,
+	reservedAdded,
+	reservedGrantWarning,
 	roleName,
 	roleOptions,
 	roleText,
 	showsStake,
 	stakePercent,
+	TITLE_EXAMPLE,
 	toggleCapability,
 	workloadText,
 } from "../core/members-model.ts";
 import { ConsequenceIcon, PersonAvatar } from "../components/MemberCard.tsx";
+import { ManagerCapNotice } from "../components/ManagerCapNotice.tsx";
 
 /**
  * MemberDrawer — one person's place in the entity: their role, their title and reporting line, and
@@ -65,6 +82,14 @@ import { ConsequenceIcon, PersonAvatar } from "../components/MemberCard.tsx";
  * too. The owner's row never offers Leave or Remove: to the owner it offers "Transfer ownership" as a
  * tier-5 link; anybody else's own row offers Leave, and a row the viewer outranks offers Remove — each
  * confirmed in its own dialog by the screen.
+ *
+ * **A business's specifics** (BU7, Decision #249): the member's spend envelope — its MetaLine and a
+ * tier-5 "Edit in Spend" link to their row on the Spend module for the policy's editors, read-only for
+ * anyone else who reads every envelope (`envelopeSection`); the manager cap said before Save when the
+ * change would make them a manager past the plan (`changeAddsManager` · `managersFull`); and, when the
+ * owner's draft grants an owner-reserved right, the warning and a typed CONFIRM field the save sends
+ * (`reservedAdded`, `org.fn_assert_reserved_change`). No Workload on a business, and the Title example
+ * is never "lead".
  *
  * Controlled by the screen through `visible`, so Escape and Close animate it out and the ui focus trap
  * returns focus to the table row (or card) that opened it.
@@ -103,23 +128,56 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 	const reports = useSignal(start.reportsTo === "" ? NOBODY : start.reportsTo);
 	const saving = useSignal(false);
 	const error = useSignal<string | null>(null);
+	/** The typed answer to a reserved grant's warning — owed only while the draft grants one. */
+	const confirmText = useSignal("");
 
+	/** The rank the draft role gives them — a business's billing right lives only on an admin seat. */
+	const rank = useComputed(() => draftRankOf(member, ws.roles, roleId.value));
+	/** The overrides the draft can hold at that rank (`overridesAtRank`). */
+	const fitted = useComputed(() => overridesAtRank(ws.kind, overrides.value, rank.value));
 	const draft = useComputed<MemberDraft>(() => ({
 		roleId: roleId.value,
-		overrides: overrides.value,
+		overrides: fitted.value,
 		title: title.value,
 		reportsTo: reports.value === NOBODY ? "" : reports.value,
 	}));
 	const patch = useComputed(() => memberPatch(member, draft.value));
+	/** The member as saved — what the reserved grant and the manager cap are measured from. */
+	const savedFacets = useMemo(
+		() => draftFacets(member, ws.kind, ws.roles, member.roleId, member.overrides),
+		[],
+	);
 	const facets = useComputed(() =>
-		draftFacets(member, ws.kind, ws.roles, roleId.value, overrides.value)
+		draftFacets(member, ws.kind, ws.roles, roleId.value, fitted.value)
 	);
 	const role = roleName({ roleId: roleId.value, rolePreset: member.rolePreset }, ws.roles);
 	const groups = permissionGroups(
 		facets.value,
-		{ kind: ws.kind, editable, viewerCaps: caps, viewerIsOwner },
+		{ kind: ws.kind, editable, viewerCaps: caps, viewerIsOwner, draftRank: rank.value },
 		role,
 	);
+
+	// #region Business: the reserved grant, the manager cap, the envelope (BU7)
+	const added = editable ? reservedAdded(ws.kind, savedFacets, facets.value) : [];
+	const warning = reservedGrantWarning(
+		member.name,
+		added,
+		becomesCoOwner(ws.kind, rank.value, facets.value),
+	);
+	const confirmOwed = added.length > 0;
+	const confirmed = !confirmOwed || confirmAnswered(confirmText.value);
+	const overCap = editable && managersFull(ws.managers) && changeAddsManager({
+		kind: ws.kind,
+		member,
+		saved: savedFacets,
+		draftRank: rank.value,
+		draft: facets.value,
+	});
+	const capContext = managerCapContextOf(ws);
+	/** Said beside its cause: under Role when the role change passes the cap, else before Save. */
+	const capByRole = overCap && roleId.value !== member.roleId;
+	const envelope = envelopeSection(ws, member);
+	// #endregion
 
 	/**
 	 * One writable signal per capability switch, kept in step with the draft's facets. A switch must be
@@ -156,7 +214,7 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 
 	async function save(): Promise<void> {
 		const changes = patch.peek();
-		if (!changes || saving.peek()) return;
+		if (!changes || saving.peek() || !confirmed || overCap) return;
 		batch(() => {
 			saving.value = true;
 			error.value = null;
@@ -166,12 +224,11 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 			workspaceId: ws.id,
 			memberId: member.id,
 			...changes,
+			...(confirmOwed ? { confirm: RESERVED_GRANT_CONFIRMATION } : {}),
 		});
 		saving.value = false;
 		if (!res.ok || !res.data) {
-			error.value = res.errors?.title ?? res.errors?.reportsTo ?? res.errors?.roleId ??
-				res.errors?.granted ?? res.errors?.revoked ?? res.errors?.confirm ?? res.message ??
-				"Could not save those changes.";
+			error.value = memberSaveRefusal(res, capContext);
 			return;
 		}
 		props.onUpdated(res.data);
@@ -194,6 +251,7 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 		editable,
 		dirty: patch.value !== null,
 		saving: saving.value,
+		blocked: !confirmed || overCap,
 	});
 	const terminal = drawerTerminal(abilities, member, ws.kind);
 	const managers = managerOptions(ws.members, member);
@@ -228,6 +286,7 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 						size="xs"
 						items={[
 							{ text: `Joined ${shortDate(member.joinedAt)}`, tabular: true },
+							ws.kind === "team" &&
 							{ text: `Workload ${workloadText(member)}`, tabular: true },
 							showsStake(ws.kind, caps) &&
 							{ text: `Stake ${stakePercent(member.shareBp)}`, tabular: true },
@@ -260,6 +319,7 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 									/>
 								)}
 							</FormControl>
+							{capByRole && <ManagerCapNotice notice={managerCapNotice(capContext)} />}
 							<FormControl
 								class="wsp-mdrawer__field"
 								label="Title"
@@ -271,7 +331,7 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 										aria-describedby={describedBy}
 										value={title}
 										onValueChange={() => (error.value = null)}
-										placeholder="Design lead"
+										placeholder={TITLE_EXAMPLE[ws.kind]}
 										maxLength={80}
 										block
 									/>
@@ -379,15 +439,67 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 			</section>
 			{/* #endregion */}
 
-			{ws.kind === "business" && member.spendLimitMinor !== null && (
-				<section class="wsp-mdrawer__section">
-					<h3 class="wsp-mdrawer__section-title">Spend envelope</h3>
-					<p class="wsp-mdrawer__section-note">
-						Their ceiling and contributions are edited on the spend policy, beside everyone else's —
-						a limit only means something relative to the others.
-					</p>
+			{/* #region Before Save: a reserved grant's confirmation, the manager cap (business) */}
+			{(warning || (overCap && !capByRole)) && (
+				<section
+					class="wsp-mdrawer__section"
+					aria-labelledby={`wsp-mdrawer-confirm-${member.id}`}
+				>
+					<h3 class="wsp-mdrawer__section-title" id={`wsp-mdrawer-confirm-${member.id}`}>
+						Before you save
+					</h3>
+					{overCap && !capByRole && <ManagerCapNotice notice={managerCapNotice(capContext)} />}
+					{warning && (
+						<>
+							<InlineNotice align="start" icon={<Icon name="warning" />} text={warning} />
+							<FormControl
+								class="wsp-mdrawer__field"
+								label={confirmLabel(added)}
+								hint={`The word ${RESERVED_GRANT_CONFIRMATION}, in capitals. Taking a right away needs no confirmation.`}
+							>
+								{({ id, describedBy }) => (
+									<InputText
+										id={id}
+										aria-describedby={describedBy}
+										value={confirmText}
+										onValueChange={() => (error.value = null)}
+										placeholder={RESERVED_GRANT_CONFIRMATION}
+										maxLength={16}
+										autoCapitalize="characters"
+										autoComplete="off"
+										spellcheck={false}
+										block
+									/>
+								)}
+							</FormControl>
+						</>
+					)}
 				</section>
 			)}
+			{/* #endregion */}
+
+			{/* #region Spend envelope (business) */}
+			{envelope && (
+				<section
+					class="wsp-mdrawer__section wsp-mdrawer__envelope"
+					aria-labelledby={`wsp-mdrawer-envelope-${member.id}`}
+				>
+					<h3 class="wsp-mdrawer__section-title" id={`wsp-mdrawer-envelope-${member.id}`}>
+						Spend envelope
+					</h3>
+					<MetaLine items={envelope.facts} />
+					<p class="wsp-mdrawer__section-note">{envelope.note}</p>
+					{envelope.link && (
+						<a
+							class="ui-button ui-button--primary ui-button--text ui-button--size-sm wsp-mdrawer__envelope-link"
+							href={envelope.link.href}
+						>
+							<span class="ui-button__label">{envelope.link.label}</span>
+						</a>
+					)}
+				</section>
+			)}
+			{/* #endregion */}
 
 			{/* #region Terminal act */}
 			{terminal && (

@@ -65,7 +65,8 @@ export function RosterFirstRun(props: RosterFirstRunProps): JSX.Element {
 			)}
 		>
 			{points.length > 0 && (
-				<ul class="wsp-roster__points">
+				// `role="list"` because the sheet removes the markers, and WebKit then drops the list role.
+				<ul class="wsp-roster__points" role="list">
 					{points.map((point) => (
 						<li key={point} class="wsp-roster__point">
 							<span class="wsp-roster__point-mark" aria-hidden="true">

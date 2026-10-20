@@ -80,7 +80,7 @@ projects).
 | `plan`             | text                 | Subscription tier (default: `free`).                                                                                      |
 | `billing_email`    | text                 | Primary contact for invoices.                                                                                             |
 | `default_currency` | text                 | Origin currency for the pooled fund (default `USD`).                                                                      |
-| `kyb_status`       | `finance.kyc_status` | **Additive (`20260723091000`).** `unverified` (default) → `verified`. **Required to OPERATE the pooled Business Wallet.** |
+| `kyb_status`       | `finance.kyc_status` | **Additive (`20260723091000`).** `unverified` (default) → `verified`. **Required to spend from, pay invoices from or withdraw from the pooled Business Wallet** (`finance.fn_assert_business_spend`, `place_wallet_order`, `pay_invoice`, `place_on_account_order`, `begin_payout`; monthly invoicing terms too) — never to add money to it (Decision #248 (k)). |
 | `kyb_verified_at`  | timestamptz          | **Additive.** When KYB was granted.                                                                                       |
 | `kyb_provider_ref` | text                 | **Additive.** Stripe Connect account id (placeholder; **no PII**).                                                        |
 | `slug`             | text                 | The business's `@handle` — one namespace with people, teams and enterprises (see `org.fn_handle_refusal`, [Functions.md](Functions.md#-the-workspace-console-00001020)). The console is addressed by it (`/businesses/[businessHandle]`). |
@@ -90,6 +90,13 @@ projects).
 > A business is created by **`org.create_workspace`** (Decision #61) — never a client INSERT, and
 > the retired `org.create_business` no longer exists. Its members, roles and invitations are the
 > tables in [§ Workspace membership](#-workspace-membership-teams--businesses) below.
+
+> **A business has no `treasury_wallet_id`** (only `org.teams` carries one). Its pooled wallets are
+> the `finance.wallets` rows with `owner_type = 'business'` and `owner_id` = the business's `id` —
+> one per currency (`uq_wallet_owner_currency`), always found by `(owner_type, owner_id, currency)`.
+> `org.create_workspace` inserts the first, in `default_currency`; any other currency's wallet is
+> created on first use by `finance.fn_ensure_wallet` (a top-up, `save_spend_policy`, an on-account
+> credit). Audit BF10.
 
 > KYB verification for **businesses** is the new `kyb_*` cache here; **enterprises** keep their
 > own `org.enterprise_verification_level` (migration 0314). Reconciles with the tiered KYC/KYB
@@ -267,7 +274,8 @@ the system role now) and team's `UNIQUE (team_id, name)` (replaced by the partia
 lets an archived role free its name).
 
 Every entity is created with its preset rows by `org.fn_seed_preset_roles`: **Owner** · **Admin** ·
-(team only) **Lead** · **Member**, each with a fixed one-line summary.
+(team only) **Lead** · **Member**, each with a fixed one-line summary — a business's Admin and
+Member worded for a business (Decision #249 (m)).
 
 ### `org.team_members` / `org.business_members`
 
@@ -829,7 +837,8 @@ billing details. The view runs as its owner and projects only public facts — t
 answer.
 
 **Visibility is the view's own job.** Users appear when `visibility IN ('public','unlisted')`,
-businesses when `status = 'active'`, teams when `status = 'active'` and public or unlisted; anything
+businesses when `status = 'active'` and `visibility IN ('public','unlisted')` (BB5, Decision #230 (h);
+`invite_only` is absent), teams when `status = 'active'` and public or unlisted; anything
 else is absent. `listed` separates the two: `public` rows are ranked and shown by discovery,
 `unlisted` rows resolve by handle (the profile page) but are never listed.
 
@@ -838,7 +847,7 @@ may only add trailing columns):
 
 | Column                              | Meaning                                                                                              |
 | :---------------------------------- | :--------------------------------------------------------------------------------------------------- |
-| `listed`                            | Shown by discovery (public), versus reachable by handle only (unlisted).                             |
+| `listed`                            | Shown by discovery (public), versus reachable by handle only (unlisted). For a business, `visibility = 'public'` (it was always `true` before BB5). |
 | `city`                              | The location line's city.                                                                            |
 | `avatar_bucket` / `avatar_path`     | The avatar's storage object — only for a file that is itself `public`. Never a URL: the URL is a deployment fact built by `packages/backend/core/storage-url.ts`. |
 | `banner_bucket` / `banner_path`     | Same, for the banner.                                                                               |

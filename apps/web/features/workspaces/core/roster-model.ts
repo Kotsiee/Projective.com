@@ -1,5 +1,5 @@
 import type { MetaLineEntry } from "@ui/display/core/meta-line.tsx";
-import { currencyExponent, type MoneyView } from "@projective/types/finance";
+import type { MoneyView } from "@projective/types/finance";
 import {
 	kindCopy,
 	roleLabel,
@@ -284,8 +284,11 @@ export interface RosterFirstRunCopy {
  *
  * The business's three points restate the same section's pillars (one buying identity, a pooled
  * wallet several people fund and spend from, governed spending) and claim nothing a free business
- * lacks: per-member caps and an approval threshold are Business Pro (Decision #230 (e)), so the third
- * point says so rather than promising "limits you set" to everyone.
+ * lacks. Hiring is a permission the Member preset does not hold and a free business caps its
+ * managers (PRODUCT_SPEC §"One permission per act", finance-model), so the first point promises the
+ * identity to whoever the owner lets hire — not to "your whole staff"; per-member caps and an approval
+ * threshold are Business Pro (Decision #230 (e)), so the third point says so rather than promising
+ * "limits you set" to everyone.
  */
 const FIRST_RUN: Record<WorkspaceKind, RosterFirstRunCopy> = {
 	team: {
@@ -300,7 +303,7 @@ const FIRST_RUN: Record<WorkspaceKind, RosterFirstRunCopy> = {
 			"A business acts as the employer of record for the work your colleagues request, and gives you one central place to manage it.",
 		action: "Create a business",
 		points: [
-			"One company identity your whole staff hires under.",
+			"The people you let hire do it under one company identity.",
 			"Several people can add money to one pooled wallet and spend from it.",
 			"You decide who may spend from it — and, on Business Pro, how much each person may spend and what needs approval first.",
 		],
@@ -621,8 +624,8 @@ export interface RosterColumn {
 
 /**
  * A team's table columns, in order: Name · Your role · Members · Live projects · Status · Updated (a
- * business adds Spent (30d), {@link BUSINESS_ROSTER_COLUMNS}). Every one sorts; Status shows a `Tag` only for a non-active entity ({@link lifecycleTag}); selection is
- * none — a row opens its console.
+ * business adds Spent (30d), {@link BUSINESS_ROSTER_COLUMNS}). Every one sorts; Status shows a `Tag`
+ * only for a non-active entity ({@link lifecycleTag}); selection is none — a row opens its console.
  *
  * A narrowing table gives up the least essential column first: Updated, then Your role (the acting
  * row keeps its tint), then Live projects, then Members. Name and Status never hide, so a Draft or
@@ -641,10 +644,14 @@ export const ROSTER_COLUMNS: readonly RosterColumn[] = [
  * A business's columns (BU1): Name · Your role · Members · Live projects · Spent (30d) · Status ·
  * Updated. Spent is what the business spent in the last 30 days, one server-formatted figure per
  * currency (never summed, never converted, no period delta); it sits right-aligned in tabular figures
- * beside the other counts. Updated stays, as R1 made it for both kinds, and still leaves first.
+ * beside the other counts, and shows the table's empty mark where nothing moved or where the viewer
+ * may not open that business's Finance (the server withholds the figure). Updated stays, as R1 made
+ * it for both kinds, and still leaves first.
  *
  * A narrowing table gives up Updated, then Your role, then Live projects, then Members, and Spent
- * last: on a phone a business row still says what it spent, and Name and Status never hide.
+ * last of all; Name and Status never hide. Beside those two and the row menu, Spent needs a table
+ * about 570px wide (`WorkspaceTable`'s widths), so a phone-width table shows Name and Status only and
+ * the card presentation carries the figure there (its third stat).
  */
 export const BUSINESS_ROSTER_COLUMNS: readonly RosterColumn[] = [
 	{ id: "name", header: "Name", align: "start" },
@@ -656,15 +663,20 @@ export const BUSINESS_ROSTER_COLUMNS: readonly RosterColumn[] = [
 	{ id: "updated", header: "Updated", align: "start", priority: 1 },
 ];
 
-/** The table's columns for a kind — a team's {@link ROSTER_COLUMNS}, a business's {@link BUSINESS_ROSTER_COLUMNS}. */
+/**
+ * The table's columns for a kind — a team's {@link ROSTER_COLUMNS}, a business's
+ * {@link BUSINESS_ROSTER_COLUMNS}.
+ */
 export function rosterColumns(kind: WorkspaceKind): readonly RosterColumn[] {
 	return kind === "business" ? BUSINESS_ROSTER_COLUMNS : ROSTER_COLUMNS;
 }
 
 /**
  * The Spent (30d) cell's figures: the server's per-currency `money30d`, in its order (largest first),
- * or `null` when nothing moved — the table then draws its own empty mark. Each figure is drawn in its
- * own currency; the client never totals or converts them (Decision #55).
+ * or `null` when there are none — nothing moved, or the server withheld the figure from a viewer who
+ * may not open Finance. The column's `render` returns that `null` itself, so the table draws its own
+ * empty mark. Each figure is drawn in its own currency; the client never totals or converts them
+ * (Decision #55).
  */
 export function rosterSpent(
 	summary: Pick<WorkspaceSummary, "money30d">,
@@ -673,18 +685,18 @@ export function rosterSpent(
 }
 
 /**
- * The Spent column's SORT KEY: the row's largest figure in major units, compared across currencies
- * the way the backend picks the card's figure (`largestAmount`) so a JPY total is not read as a
- * hundred times a USD one. It only orders rows — it is never shown, never converted and never summed —
- * and a row that spent nothing sorts below every row that did (`-1`).
+ * The Spent column's SORT KEY — `"<CUR> <minor>"` of the figure the cell shows first (the server's
+ * lead figure), or `null` when the cell is empty, which `DataTable` sorts last in both directions.
+ *
+ * Rows group by that figure's currency and order by amount WITHIN it (the table's comparison is
+ * numeric-aware, so `USD 100000` follows `USD 99999`). Across currencies it claims no magnitude:
+ * ¥90,000 and US$1,000.00 cannot be ranked without a rate, and the client converts nothing (Decision
+ * #55), so a JPY row is never placed above a USD one for being a bigger number. The key only orders
+ * rows; it is never shown.
  */
-export function spentSortValue(summary: Pick<WorkspaceSummary, "money30d">): number {
-	let best = -1;
-	for (const figure of summary.money30d) {
-		const major = figure.minor / 10 ** currencyExponent(figure.currency);
-		if (major > best) best = major;
-	}
-	return best;
+export function spentSortValue(summary: Pick<WorkspaceSummary, "money30d">): string | null {
+	const lead = summary.money30d.find((figure) => figure.minor > 0);
+	return lead ? `${lead.currency.toUpperCase()} ${Math.trunc(lead.minor)}` : null;
 }
 
 /**
