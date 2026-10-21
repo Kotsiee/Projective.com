@@ -34,6 +34,7 @@ import {
 } from "@projective/ui/dnd";
 
 import { FileKindIcon } from "@web/features/projects/components/file-glyphs.tsx";
+import { linkHref } from "@web/features/projects/components/preview/preview-model.ts";
 
 import { FilesService } from "../core/FilesService.ts";
 import { IntegrationsService } from "../core/IntegrationsService.ts";
@@ -1007,7 +1008,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 	function openRaw(asset: AssetItem): void {
 		const target = inspectable(asset)
 			? fileInspectHref(asset.id)
-			: asset.link?.url ?? asset.external?.externalWebUrl ?? asset.url;
+			: linkHref(asset) ?? asset.external?.externalWebUrl ?? asset.url;
 		if (!target || target === "#") return;
 		globalThis.open(target, "_blank", "noopener,noreferrer");
 	}
@@ -1020,7 +1021,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 	 * exactly the audit it matters for.
 	 */
 	async function download(asset: AssetItem): Promise<void> {
-		const target = asset.link?.url ?? asset.url;
+		const target = linkHref(asset) ?? asset.url;
 		if (!target || target === "#") return;
 		await FilesService.recordDownload({ assetId: asset.id, via: "picker" });
 		globalThis.open(target, "_blank", "noopener,noreferrer");

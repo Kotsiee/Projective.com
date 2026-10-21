@@ -3,7 +3,7 @@ import { useEffect, useRef } from "preact/hooks";
 import type { ModalStack } from "@projective/ui/overlay";
 import type { AssetItem } from "../types/projects-types.ts";
 import { fileOpenIntent, takeFileTrigger, type TileClick } from "../core/file-frame.ts";
-import { previewInspectHref } from "../components/preview/preview-model.ts";
+import { linkHref, previewInspectHref } from "../components/preview/preview-model.ts";
 
 /**
  * useFileTiles — what a grid or list of file tiles does when a tile is clicked inside a modal:
@@ -58,7 +58,7 @@ function tilesIn(container: HTMLElement | null): HTMLElement[] {
 export function fileTabHref(file: AssetItem): string | null {
 	const inspect = previewInspectHref(file);
 	if (inspect) return inspect;
-	const own = (file.link?.url ?? file.url).trim();
+	const own = (linkHref(file) ?? file.url).trim();
 	return own === "" || own === "#" ? null : own;
 }
 

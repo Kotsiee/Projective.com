@@ -7,6 +7,8 @@ import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts"
 import { ListingsCanvas } from "../components/listings/ListingsCanvas.tsx";
 import { ClientsCanvas } from "../components/clients/ClientsCanvas.tsx";
 import { CatalogueToolbar } from "../components/CatalogueToolbar.tsx";
+import { CatalogueFilterDialog, useFilterDialog } from "../components/CatalogueFilterDialog.tsx";
+import { appliedFilterCount, facetsOf } from "../core/filter-dialog-model.ts";
 import { AnalyticsCanvas } from "../components/analytics/AnalyticsCanvas.tsx";
 import { consoleAnalyticsTarget } from "../core/analytics-view.ts";
 import CatalogueCreateModal from "./CatalogueCreateModal.island.tsx";
@@ -21,8 +23,6 @@ import {
 	listingsError,
 	listingsPage,
 	listQueryKey,
-	NO_QUICK_FILTERS,
-	quickFilters,
 	selectAll,
 	selection,
 	setConsoleUrl,
@@ -46,6 +46,10 @@ import {
  * deliberate change, debounced while the search is being typed. It also owns the selection keys:
  * Ctrl/Cmd-A selects every listing shown, Escape clears the selection. The Analytics and Clients
  * views are placeholders until their builds land.
+ *
+ * A team's console (`/teams/:handle/catalogue`, Decision #312) is drawn beside the team's own rail
+ * rather than the catalogue lane, so the lane's facets move into the toolbar's Filter dialog
+ * ({@link CatalogueFilterDialog}); everything else is the same canvas, read as the team.
  */
 
 export interface CatalogueConsoleProps {
@@ -81,8 +85,8 @@ function inOverlay(target: EventTarget | null): boolean {
 export default function CatalogueConsole(props: CatalogueConsoleProps): JSX.Element {
 	const hydrated = useSignal(false);
 	const canvasRef = useRef<HTMLDivElement>(null);
-	const lastKey = useRef(listQueryKey(props.url, NO_QUICK_FILTERS));
-	const lastBase = useRef(listQueryKey({ ...props.url, search: "" }, NO_QUICK_FILTERS));
+	const lastKey = useRef(listQueryKey(props.url));
+	const lastBase = useRef(listQueryKey({ ...props.url, search: "" }));
 	const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => {
@@ -101,11 +105,10 @@ export default function CatalogueConsole(props: CatalogueConsoleProps): JSX.Elem
 
 	useSignalEffect(() => {
 		const state = consoleUrl.value;
-		const quick = quickFilters.value;
 		if (!consoleReady.value || !hydrated.value) return;
-		const key = listQueryKey(state, quick);
+		const key = listQueryKey(state);
 		if (key === lastKey.current) return;
-		const base = listQueryKey({ ...state, search: "" }, quick);
+		const base = listQueryKey({ ...state, search: "" });
 		const typing = base === lastBase.current;
 		lastKey.current = key;
 		lastBase.current = base;
@@ -132,9 +135,13 @@ export default function CatalogueConsole(props: CatalogueConsoleProps): JSX.Elem
 
 	useCtrlWheelZoom(canvasRef, catalogueZoom);
 
+	const filterDialog = useFilterDialog();
 	const state = consoleView(props.url);
 	const page = listingsPage.value ?? props.initial;
 	const error = hydrated.value ? listingsError.value : props.initialError;
+	const filters = state.team
+		? { control: filterDialog, applied: appliedFilterCount(facetsOf(state)) }
+		: undefined;
 
 	return (
 		<div
@@ -144,7 +151,7 @@ export default function CatalogueConsole(props: CatalogueConsoleProps): JSX.Elem
 			role="tabpanel"
 			aria-label={VIEW_LABEL[state.view]}
 		>
-			<CatalogueToolbar state={state} initialTotal={props.initial.total} />
+			<CatalogueToolbar state={state} initialTotal={props.initial.total} filters={filters} />
 			{state.view === "listings"
 				? <ListingsCanvas state={state} page={page} error={error} />
 				: state.view === "analytics"
@@ -154,6 +161,7 @@ export default function CatalogueConsole(props: CatalogueConsoleProps): JSX.Elem
 						period={state.period}
 						onPeriod={(period) => setConsoleUrl({ period })}
 						idBase="cat-an-console"
+						team={state.team}
 					/>
 				)
 				: (
@@ -169,6 +177,14 @@ export default function CatalogueConsole(props: CatalogueConsoleProps): JSX.Elem
 					/>
 				)}
 			<CatalogueCreateModal defaultCurrency={props.defaultCurrency} />
+			{filters && (
+				<CatalogueFilterDialog
+					control={filterDialog}
+					state={state}
+					statusCounts={page.statusCounts}
+					facetCounts={page.facetCounts}
+				/>
+			)}
 		</div>
 	);
 }

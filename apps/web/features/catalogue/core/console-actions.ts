@@ -12,7 +12,6 @@ import {
 	listingsError,
 	listingsPage,
 	listParamsOf,
-	quickFilters,
 	selection,
 } from "./console-store.ts";
 
@@ -38,7 +37,7 @@ export type PageLoad = "loaded" | "failed" | "superseded" | "idle";
 export async function reloadListings(): Promise<void> {
 	const seq = ++readSeq;
 	listingsBusy.value = true;
-	const res = await CatalogueService.list(listParamsOf(consoleUrl.peek(), quickFilters.peek()));
+	const res = await CatalogueService.list(listParamsOf(consoleUrl.peek()));
 	if (seq !== readSeq) return;
 	batch(() => {
 		listingsBusy.value = false;
@@ -60,9 +59,7 @@ export async function loadMoreListings(): Promise<PageLoad> {
 	}
 	const seq = readSeq;
 	listingsLoadingMore.value = true;
-	const res = await CatalogueService.list(
-		listParamsOf(consoleUrl.peek(), quickFilters.peek(), page.nextCursor),
-	);
+	const res = await CatalogueService.list(listParamsOf(consoleUrl.peek(), page.nextCursor));
 	listingsLoadingMore.value = false;
 	if (seq !== readSeq) return "superseded";
 	if (!res.ok || !res.data) return "failed";
@@ -141,11 +138,12 @@ export async function runListingAction(
 	action: ListingAction,
 	listing: ListingSummary,
 ): Promise<ActionOutcome> {
-	if (action === "edit") return { navigate: workspaceHref(listing.id, {}) };
+	const team = consoleUrl.peek().team;
+	if (action === "edit") return { navigate: workspaceHref(listing.id, { team }) };
 	if (action === "preview") return { openTab: publicListingHref(listing) };
 	if (action === "duplicate") {
 		const res = await CatalogueService.duplicate(listing.id);
-		if (res.ok && res.data) return { navigate: workspaceHref(res.data.listing.id, {}) };
+		if (res.ok && res.data) return { navigate: workspaceHref(res.data.listing.id, { team }) };
 		return { notice: res.message ?? "Couldn't duplicate the listing." };
 	}
 	if (action === "delete") {

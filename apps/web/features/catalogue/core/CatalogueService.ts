@@ -1,3 +1,4 @@
+import { teamScopedApiPath } from "@projective/types/catalogue";
 import { deleteCatalogue, getCatalogue, postCatalogue } from "./api.ts";
 import type {
 	BatchInput,
@@ -42,10 +43,18 @@ export function buildListQuery(params: CatalogueListParams): string {
 }
 
 export const CatalogueService = {
-	/** Fetch a filtered, sorted, paged page of the seller's listings. */
-	list(params: CatalogueListParams): Promise<CatalogueResult<{ page: CataloguePage }>> {
+	/**
+	 * Fetch a filtered, sorted, paged page of the seller's listings. `team` reads one team's catalogue
+	 * from a page outside it (the team lane's Catalogue section); a team catalogue page scopes its own.
+	 */
+	list(
+		params: CatalogueListParams,
+		team?: string,
+	): Promise<CatalogueResult<{ page: CataloguePage }>> {
 		const qs = buildListQuery(params);
-		return getCatalogue<{ page: CataloguePage }>(`/api/catalogue/list${qs ? `?${qs}` : ""}`);
+		return getCatalogue<{ page: CataloguePage }>(
+			teamScopedApiPath(`/api/catalogue/list${qs ? `?${qs}` : ""}`, team),
+		);
 	},
 
 	/** Fetch the analytics read for a console scope or one listing (`query` from `analyticsQuery`). */

@@ -109,7 +109,7 @@ export function seal(_plaintext: string, _kind: SecretKind): Promise<SealedSecre
  *
  * The plaintext must never be returned to a route, echoed into a `ServiceResult`, written to a log line,
  * or attached to an error. The only legitimate consumer is a {@link StorageAdapter} construction, which
- * takes it as `accessToken` and holds it for the duration of one request.
+ * takes it as its `credential` (`adapters/StorageAdapter.ts`) and holds it for one request.
  */
 export function unseal(_secret: SealedSecret): Promise<string> {
 	if (!isIntegrationsBackendLive()) {

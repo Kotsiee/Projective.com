@@ -91,6 +91,9 @@ export function buildListQuery(params: AssetListParams): string {
 	if (params.sort) qs.set("sort", params.sort);
 	if (params.dir) qs.set("dir", params.dir);
 	if (params.kinds && params.kinds.length > 0) qs.set("kinds", params.kinds.join(","));
+	if (params.categories && params.categories.length > 0) {
+		qs.set("categories", params.categories.join(","));
+	}
 	if (params.sources && params.sources.length > 0) qs.set("sources", params.sources.join(","));
 	if (params.visibility && params.visibility.length > 0) {
 		qs.set("visibility", params.visibility.join(","));

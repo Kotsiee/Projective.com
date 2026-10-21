@@ -155,6 +155,8 @@ export function sourceForProvider(providerSlug: string): AssetSource | null {
 			return "google_drive";
 		case "dropbox":
 			return "dropbox";
+		case "onedrive":
+			return "onedrive";
 		case "frameio":
 			return "frameio";
 		case "s3":

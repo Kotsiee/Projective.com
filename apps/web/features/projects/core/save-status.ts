@@ -22,9 +22,13 @@
  */
 export type SaveTone = "saved" | "pending" | "offline" | "archived";
 
+/** The finer state the shared `SaveStatus` pip draws; `pending` splits into saving and dirty. */
+export type SavePip = "saved" | "saving" | "dirty" | "offline" | "archived";
+
 /** What the footer band should say, and how to mark it. */
 export interface SaveStatus {
 	tone: SaveTone;
+	pip: SavePip;
 	/** The sentence itself, already phrased for display. */
 	label: string;
 }
@@ -41,8 +45,6 @@ export interface SaveStatusInput {
 	online: boolean;
 	/** The engagement is archived, so every write is refused. */
 	archived: boolean;
-	/** Auto-save is on, so there is no Save control to point at. */
-	autoSave: boolean;
 	/** When this device last watched a save land, or `null`. */
 	savedAt: number | null;
 	/** The current instant. */
@@ -56,27 +58,20 @@ const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
 /**
- * How long ago `at` was, in words — or the local clock time once "ago" stops being useful.
- *
- * The switch to an absolute time at a day old is the point of the function. "3 days ago" is a
- * quantity somebody has to convert before it means anything, where "Tuesday 14:32" is the thing they
- * were going to convert it into. Under a day, the relative form is genuinely easier to read.
+ * How long ago `at` was, in the catalogue workspace's compact form ("12s ago", "5m ago", "3h ago")
+ * so both editors' save lines read alike — or the local clock time once a day has passed, where
+ * "Tuesday 14:32" says more than "3 days ago".
  *
  * A future instant is reported as "just now" rather than as a negative interval: the only way to get
- * one is a clock that has been corrected, and "in 4 minutes" describes a save that has not happened.
+ * one is a clock that has been corrected.
  */
 export function relativeTime(at: number, now: number): string {
 	const elapsed = now - at;
 
-	if (elapsed < 45 * 1000) return "just now";
-	if (elapsed < HOUR) {
-		const minutes = Math.round(elapsed / MINUTE);
-		return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
-	}
-	if (elapsed < DAY) {
-		const hours = Math.round(elapsed / HOUR);
-		return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-	}
+	if (elapsed < 1000) return "just now";
+	if (elapsed < MINUTE) return `${Math.floor(elapsed / 1000)}s ago`;
+	if (elapsed < HOUR) return `${Math.floor(elapsed / MINUTE)}m ago`;
+	if (elapsed < DAY) return `${Math.floor(elapsed / HOUR)}h ago`;
 
 	// The viewer's own locale and zone, resolved by the platform. A saved-at stamp is a fact about
 	// this device, so the device's own formatting is the correct one — unlike a money figure, which
@@ -109,33 +104,30 @@ export function relativeTime(at: number, now: number): string {
  *     safe.
  *  4. **Offline while dirty** is reported as offline rather than as unsaved, because the reason the
  *     edit has not gone is not something the owner can fix by pressing Save.
- *  5. Only then the ordinary pair, and only then the auto-save "last updated" line — which is the
- *     answer for a form with nothing outstanding and no control to press.
+ *  5. Only then the ordinary pair. "Saved" carries a timestamp only once this device has watched a
+ *     save land; inventing one from the page load would be a claim about the server.
  */
 export function resolveSaveStatus(input: SaveStatusInput): SaveStatus {
 	if (input.archived) {
-		return { tone: "archived", label: "Archived — changes can no longer be saved" };
+		return { tone: "archived", pip: "archived", label: "Archived · changes can't be saved" };
 	}
-	if (input.saving) return { tone: "pending", label: "Saving…" };
+	if (input.saving) return { tone: "pending", pip: "saving", label: "Saving…" };
 	if (input.queued) {
-		return { tone: "offline", label: "Saved on this device — will sync when you reconnect" };
+		return { tone: "offline", pip: "offline", label: "Saved on this device · syncs when online" };
 	}
 	if (!input.online) {
-		return input.dirty
-			? { tone: "offline", label: "Offline — your changes are held on this device" }
-			: { tone: "offline", label: "Offline" };
+		return {
+			tone: "offline",
+			pip: "offline",
+			label: input.dirty ? "Offline · not saved" : "Offline",
+		};
 	}
-	if (input.dirty) return { tone: "pending", label: "Unsaved changes" };
+	if (input.dirty) return { tone: "pending", pip: "dirty", label: "Unsaved changes" };
 
-	if (input.autoSave && input.savedAt !== null) {
-		return { tone: "saved", label: `Last updated ${relativeTime(input.savedAt, input.now)}` };
-	}
-	if (input.autoSave) {
-		// Auto-save is on and this device has not yet watched a save land — a form opened and not yet
-		// touched. There is no timestamp to report and inventing one from the page load would be a
-		// claim about the server nothing here can make.
-		return { tone: "saved", label: "Auto-save on — edits save as you go" };
-	}
-	return { tone: "saved", label: "All changes saved" };
+	return {
+		tone: "saved",
+		pip: "saved",
+		label: input.savedAt === null ? "Saved" : `Saved · ${relativeTime(input.savedAt, input.now)}`,
+	};
 }
 // #endregion

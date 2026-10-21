@@ -32,7 +32,7 @@ combination unrepresentable.
 
 | Type                     | Members                                                              |
 | :----------------------- | :------------------------------------------------------------------- |
-| `files.file_source`      | `supabase` · `google_drive` · `dropbox` · `frameio` · `s3` · `link`  |
+| `files.file_source`      | `supabase` · `google_drive` · `dropbox` · `onedrive` · `frameio` · `s3` · `link` |
 | `files.file_visibility`  | `private` · `link` · `public`                                        |
 | `files.file_status`      | `pending_upload` · `scanning` · `uploaded` · `error` · `quarantined` |
 | `files.link_scan_status` | `pending` · `safe` · `suspicious` · `blocked` · `unscannable`        |
@@ -42,8 +42,17 @@ combination unrepresentable.
 | `files.asset_purpose`    | `library` · `avatar` · `showcase` · `contact` (Decision #276)        |
 | `files.variant_tier`     | `sm` · `md` · `lg`                                                   |
 
-Each mirrors a Zod enum in `@projective/types/files` (`assets.ts`; the last two in `variants.ts` as
-`AssetPurpose` / `VariantTier`) **member-for-member, in the same order**. `owner_kind` deliberately omits the `freelancer` pseudo-owner that `scheduling.owner_type`
+Each mirrors a Zod enum in `@projective/types/files` **member-for-member, in the same order**:
+`file_source`, `file_visibility`, `file_status`, `link_scan_status` and `owner_kind` in `assets.ts`
+(as `AssetSource`, `AssetVisibility`, `FileStatus`, `LinkScanStatus`, `AssetOwnerType`),
+`download_via` in `downloads.ts` (`DownloadVia`), `file_category` in `categories.ts`
+(`FileCategory`), and the last two in `variants.ts` as `AssetPurpose` / `VariantTier`.
+
+The five `file_source` members between `supabase` and `link` are the mounted connectors; `onedrive`
+also covers SharePoint libraries, since both are Microsoft Graph drives (Decision #313). See
+[Mounted (virtual) external assets](#mounted-virtual-external-assets).
+
+`owner_kind` deliberately omits the `freelancer` pseudo-owner that `scheduling.owner_type`
 carries: a freelancer's bytes are their user's bytes, and a second quota key for the same human
 would double-count.
 
@@ -83,18 +92,25 @@ Hierarchical grouping of assets. Carries the same ownership / provenance / visib
 | `owner_type`           | `files.owner_kind`      | The owning principal's class. Default `'user'`.                       |
 | `owner_entity_id`      | uuid                    | NULL when `owner_type = 'user'`.                                      |
 | `source`               | `files.file_source`     | Default `'supabase'`.                                                 |
-| `source_connection_id` | uuid                    | FK → `integrations.user_connections` (added in `00000030`).           |
+| `source_connection_id` | uuid                    | FK → `integrations.user_connections`, `ON DELETE SET NULL`.           |
 | `external_folder_id`   | text                    | The provider's directory id.                                          |
 | `external_parent_id`   | text                    | The provider's parent id.                                             |
 | `visibility`           | `files.file_visibility` | Default `'private'`.                                                  |
-| `share_slug`           | text                    | UNIQUE; server-minted.                                                |
+| `share_slug`           | text                    | UNIQUE. No writer today (share links live in `share_links`).          |
 | `path`                 | text[]                  | **Materialised** ancestor names, root-first. `NOT NULL DEFAULT '{}'`. |
 | `created_at`           | timestamptz             |                                                                       |
 | `updated_at`           | timestamptz             | Maintained by `files.fn_touch_updated_at`.                            |
 | `deleted_at`           | timestamptz             | Soft delete — nothing here is hard-deleted.                           |
 
+**Constraints:** `UNIQUE (share_slug)` · `UNIQUE (source_connection_id, external_folder_id)` ·
+`CHECK (owner_type = 'user' OR owner_entity_id IS NOT NULL)`; the connection FK is added in
+`00000030`. Neither `owner_user_id` nor `parent_folder_id` carries an `ON DELETE` action.
+
 `path` is materialised so the breadcrumb renders without a recursive CTE per row — that is what
-makes the hub's tree cheap at depth.
+makes the hub's tree cheap at depth. Because the hub addresses a folder by it, a client may not
+write a `path` that is not the parent's `path` plus the parent's `name`, nor hang a folder under a
+parent of another library, a deleted parent or its own subtree (`files.fn_guard_folder_columns`,
+Decision #314). Nothing cascades a rename into descendants' `path` yet; no service renames a folder.
 
 **Indexes:** `owner_user_id`, `parent_folder_id`. Before this pass the table had **no index at
 all**, not even on its foreign keys, so every tree render and every cascade check was a sequential
@@ -107,7 +123,10 @@ scan.
 ### `files.items`
 
 The central registry for all files uploaded to the platform. It tracks the relationship between the
-database entry and the actual Supabase Storage object.
+database entry and the actual Supabase Storage object. It is **the** primary asset registry —
+`org.attachments` never existed — and the engagement tables only link to its rows:
+`projects.project_attachments`, `comms.message_attachments`, `comms.channel_files` and
+`projects.submission_files`.
 
 | Column                                                                              | Type                                   | Notes                                                                                                                                                                                                                                                              |
 | :---------------------------------------------------------------------------------- | :------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -131,18 +150,20 @@ database entry and the actual Supabase Storage object.
 | `source_connection_id`                                                              | uuid                                   | FK → `integrations.user_connections`, `ON DELETE SET NULL` (added in `00000030`).                                                                                                                                                                                  |
 | `external_file_id` / `external_parent_id` / `external_web_url` / `external_etag`    | text                                   | Mounted-connector provenance. `external_etag` is the provider's change token, so a delta sync can tell "unchanged" from "not re-read".                                                                                                                             |
 | `link_url` / `link_domain` / `link_title` / `link_description` / `link_favicon_url` | text                                   | Link assets (`source = 'link'`).                                                                                                                                                                                                                                   |
-| `link_scan_status` / `link_scanned_at`                                              | `files.link_scan_status` / timestamptz | NULL until the safety pipeline has run **at all** — distinct from `pending` (queued) and `unscannable` (reached for, refused inspection).                                                                                                                          |
+| `link_scan_status` / `link_scanned_at`                                              | `files.link_scan_status` / timestamptz | NULL until the safety pipeline has run **at all** — distinct from `pending` (queued) and `unscannable` (reached for, refused inspection). Set at INSERT by `attachLink` (caller's JWT); a client UPDATE is refused (Decision #313), the INSERT still is not — see [Functions.md](Functions.md). |
 | `purpose`                                                                           | `files.asset_purpose`                  | `NOT NULL DEFAULT 'library'`. `library` is an upload a person can pick again from the media picker; `avatar` / `showcase` are **renditions** — a cropped, re-encoded copy the media pipeline cut from a library asset for one public surface. A rendition is never listed in the picker. `contact` (Decision #276) is a file attached to a `/contact` request, promoted by the contact pipeline into the private `contact` bucket; it is never listed either, and `files.fn_can_read` lets operators read it. |
 | `derived_from_id`                                                                   | uuid                                   | FK → `files.items.id`, `ON DELETE SET NULL`: the library asset a rendition was cut from. SET NULL because a rendition must outlive its source — deleting the original must not blank the profile photo everyone is looking at.                                    |
-| `share_slug`                                                                        | text                                   | UNIQUE; minted by `files.fn_mint_share_slug`. NULL while private.                                                                                                                                                                                                  |
-| `download_count`                                                                    | integer                                | `NOT NULL DEFAULT 0`.                                                                                                                                                                                                                                              |
-| `starred`                                                                           | boolean                                | `NOT NULL DEFAULT false`. The OWNER's shelf mark — a non-owner always reads `false`. Written only by `FilesBackendService.star` (via `/api/saved`, Decision #180) under the owner-only `UPDATE` policy; listed on `/saved` → Files.                                |
+| `share_slug`                                                                        | text                                   | UNIQUE. No writer today: share-link slugs live in `files.share_links.slug`, `fn_mint_share_slug` has no caller, and a client UPDATE is refused by the pipeline guard (Decision #313).                                                                               |
+| `download_count`                                                                    | integer                                | `NOT NULL DEFAULT 0`. Moved by `files.fn_record_download` (service role), the only writer in code; a client UPDATE is refused by the pipeline guard (Decision #313).                                                                                               |
+| `starred`                                                                           | boolean                                | `NOT NULL DEFAULT false`. The OWNER's shelf mark — the database does not mask it; some projections do. Written by `FilesBackendService.star` (via `/api/saved`, Decision #180) under the owner-only `UPDATE` policy; listed on `/saved` → Files.                   |
 | `deleted_at`                                                                        | timestamptz                            | Soft delete.                                                                                                                                                                                                                                                       |
 
 **Constraints:** `UNIQUE (source_connection_id, external_file_id)` (a re-run sync UPSERTs instead of
 duplicating) · `UNIQUE (bucket_id, storage_path)` · `UNIQUE (share_slug)` ·
 `CHECK (source <> 'link' OR link_url IS NOT NULL)` ·
-`CHECK (owner_type = 'user' OR owner_entity_id IS NOT NULL)`.
+`CHECK (owner_type = 'user' OR owner_entity_id IS NOT NULL)` ·
+`CHECK (hash_algo IS NULL OR hash_algo IN ('sha-256', 'sampled-sha-256'))` (`items_hash_algo_check`;
+`hash_sampled` is `NOT NULL DEFAULT false`).
 
 > ⚠️ **Consequence of `UNIQUE (bucket_id, storage_path)` for non-stored assets — flagged.**
 > `bucket_id` and `storage_path` are `NOT NULL` and predate this pass, but a `link` or mounted asset
@@ -185,15 +206,58 @@ does not restate it verbatim.
 **The bytes and their processing are the server's.** `files.fn_guard_pipeline_columns`
 (`BEFORE INSERT OR UPDATE`, see [Functions.md](Functions.md#-filesfn_guard_pipeline_columns)) refuses
 a client write that would claim processing it never went through: a client INSERT must be a
-`library` row with no `derived_from_id`, and a stored upload must start `pending_upload` in
-`quarantine`; a client UPDATE may not change `status`, `bucket_id`, `storage_path`,
-`target_bucket`/`target_path`, `mime_type`, `size_bytes`, `metadata`, `content_hash`/`hash_algo`,
-`source`, `purpose` or `derived_from_id`. The presentational columns the hub edits — name, folder,
-visibility, star, archive flag, soft-delete stamp — stay the owner's.
+`library` row with no `derived_from_id`, a stored upload must start `pending_upload` in
+`quarantine`, and a client never inserts a mounted row; a client UPDATE may not change `status`,
+`bucket_id`, `storage_path`, `target_bucket`/`target_path`, `mime_type`, `size_bytes`, `metadata`,
+`content_hash`/`hash_algo`, `source`, `purpose` or `derived_from_id` — nor, since Decision #313,
+what the server attests: a link's target and verdict, `share_slug`, `download_count` and a mount's
+provenance. Decision #314 adds:
+
+- a link is inserted `pending`, with no scan facts; the service role writes the verdict.
+- `original_name`, `category`, `hash_sampled` and a link's title and description are fixed once
+  written.
+- a `folder_id` must be a live native folder of the row's own library, never a mount.
+- a client never hard-deletes a row of either table (`files.fn_guard_hard_delete`).
+- an archived entity's library is read-only.
+- a mounted row's name, folder, visibility and library are the connector service's.
+
+The presentational columns the hub edits on a native row (name, folder, visibility, star, archive
+flag, soft-delete stamp) stay the owner's. `files.folders` has its own guard,
+`files.fn_guard_folder_columns`. It enforces native-only client writes, a same-library parent, no
+cycles, and a `path` equal to the real ancestry. See [Functions.md](Functions.md#-filesfn_guard_folder_columns).
 
 **Indexes (`00004011`):** `idx_files_items_library` — `(owner_user_id, created_at DESC)` partial on
 live `library` rows, exactly what the media picker lists; `idx_files_items_derived_from` —
-`derived_from_id`, partial on non-null (the FK's cascade check and the pipeline's reuse probe).
+`derived_from_id`, partial on non-null (the FK's cascade check and the pipeline's reuse probe);
+`idx_files_items_owner_category` — `(owner_user_id, category)` partial on `is_archived = false`;
+`idx_files_items_category` — `(category)`; `idx_files_items_folder` — `(folder_id)`;
+`idx_files_items_pending_upload` — `(status)` partial on `pending_upload` (the sweeper's worklist);
+`idx_files_items_dedup` — `(content_hash, owner_type, owner_entity_id)` partial on live rows;
+`idx_files_items_external` — `(source_connection_id, external_file_id)`;
+`idx_files_items_share_slug` — partial on non-null; `idx_files_items_owner_entity` —
+`(owner_type, owner_entity_id)` partial on live rows (the rollup's key).
+
+#### Mounted (virtual) external assets
+
+A mounted row holds **no bytes**: it points at a file a third party stores. It is identified by
+`source` (the provider family: `google_drive` · `dropbox` · `onedrive` · `frameio` · `s3`),
+`source_connection_id` (FK → `integrations.user_connections`, `ON DELETE SET NULL`) and
+`external_file_id`, with `UNIQUE (source_connection_id, external_file_id)` so a re-run sync UPSERTs.
+`external_parent_id`, `external_web_url` and `external_etag` are provenance and the provider's change
+token.
+
+**There is no `external_provider_id` column.** The provider is `source` (and the connection's
+`provider_slug`); a third copy would be a second place for the same fact to drift.
+
+- **Read-only in the hub, whoever owns it.** The asset projections return `canManage: false` for a
+  mounted source — `isMountedSource` in `services/files/asset-row.ts`, used by
+  `services/projects/live-files.ts` and `services/messaging/live-workspace.ts` — because a rename
+  here would silently rename a file in someone's system of record. That is a service rule: RLS still
+  lets the row's creator update its presentational columns.
+- **Never metered.** `fn_recompute_usage` and `fn_check_storage_quota` count `source = 'supabase'`
+  only; the provider meters its own bytes.
+- **Its object address is synthesised** — `bucket_id` / `storage_path` carry no stored object; see
+  the `UNIQUE (bucket_id, storage_path)` flag above.
 
 ---
 
@@ -251,6 +315,9 @@ without an account. No upload/replace/delete path exists through a slug, and rev
 
 `CHECK (num_nonnulls(item_id, folder_id) = 1)` — exactly one target, never both and never neither.
 
+**Indexes:** `slug` through its `UNIQUE`; `idx_files_share_links_creator` —
+`(created_by, created_at DESC)`; `idx_files_share_links_item` — `(item_id)`, partial on non-null.
+
 The slug — not the item id — is the credential, which is why `files.fn_can_read` does **not** return
 true for a `link`-visibility asset, and why this table has no visitor grant. See
 [Policies.md](Policies.md).
@@ -264,11 +331,14 @@ as `comms.notifications`).
 | :------------------- | :------------------- | :-------------------------------------------------------------------------------------------------- |
 | `id`                 | uuid                 | PK.                                                                                                 |
 | `item_id`            | uuid                 | FK → `files.items.id`, `ON DELETE CASCADE`.                                                         |
-| `actor_user_id`      | uuid                 | NULL for an anonymous share download.                                                               |
+| `actor_user_id`      | uuid                 | FK → `auth.users.id`; NULL for an anonymous share download.                                         |
 | `device_fingerprint` | text                 | Answers the duplicate-download prompt server-side, so the client never guesses from `localStorage`. |
-| `via`                | `files.download_via` | `hub` · `share` · `picker` · `preview` · `api`.                                                     |
+| `via`                | `files.download_via` | `NOT NULL DEFAULT 'hub'`; `hub` · `share` · `picker` · `preview` · `api`.                           |
 | `share_slug`         | text                 | Denormalised so an anonymous download stays attributable after the grant is revoked.                |
 | `downloaded_at`      | timestamptz          |                                                                                                     |
+
+**Indexes:** `idx_files_download_events_item` — `(item_id, downloaded_at DESC)`;
+`idx_files_download_events_actor` — `(actor_user_id, downloaded_at DESC)`.
 
 ## 📊 `files.storage_usage`
 
@@ -297,16 +367,18 @@ row — whose bytes were never kept — does not. See
     nothing here is hard-deleted (root CLAUDE.md §5), so the sweep keys off `deleted_at`, not
     `DELETE`.
 - **Overlap with the engagement attachment tables.** `files.items` coexists with
-  **`projects.project_attachments`** and **`comms.message_attachments`**, and the boundary is
-  deliberate rather than redundant: those two remain the SSOT for _which engagement an object
-  belongs to_, while `files.items` is the asset registry the hub renders. That is why this table
-  carries **no** `channel_id`/`message_id` columns — see [Scope of the hub](#scope-of-the-hub).
+  **`projects.project_attachments`**, **`comms.message_attachments`**, **`comms.channel_files`** and
+  **`projects.submission_files`**, and the boundary is deliberate rather than redundant: those four
+  remain the SSOT for _which engagement an object belongs to_, while `files.items` is the asset
+  registry the hub renders. That is why this table carries **no** `channel_id`/`message_id`
+  columns — see [Scope of the hub](#scope-of-the-hub).
   > **Corrected.** This note previously described an overlap with **`org.attachments`**. **No such
   > table exists** — no migration creates it, in `org` or anywhere else. The real attachment tables
-  > are the two named above. (`org/Tables.md`, `org/Policies.md` and `comms/Tables.md` still carry
-  > the same stale reference; those are other domains' docs and are flagged rather than edited
-  > here.)
-- **Target bucket fields.** `target_bucket` / `target_path` describe the **quarantine → destination
-  promotion**: a client upload always lands in `quarantine`, and a clean file is moved to the bucket
-  and path these columns name. The promoting Edge Function is **not yet implemented** — see
+  > are the four named above. (`org/Tables.md` and `org/Policies.md` carried the same stale
+  > reference; both were corrected 2026-10-21, Decision #313.)
+- **Target bucket fields.** `target_bucket` / `target_path` name a declared destination for the
+  **quarantine → destination promotion**. Today only `target_bucket` is in use, as a marker: a
+  `/contact` upload is declared with `target_bucket = 'contact'`, which
+  `ops.discard_contact_attachment` and `ops.fn_claim_stale_contact_attachments` read. No Edge
+  Function or SQL function performs the promotion; it runs in-process as the service role — see
   [Storage.md](Storage.md#-deferred--live-path-todos).

@@ -2,8 +2,9 @@ import { page } from "fresh";
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { isRestrictedRequest } from "@web/utils/age-gate.ts";
-import { isListingSlug, parseWorkspaceUrl } from "@projective/types/catalogue";
+import { consoleHref, isListingSlug, parseWorkspaceUrl } from "@projective/types/catalogue";
 import { resolveListing } from "../core/catalogue-ssr.ts";
+import { routeSellerScope } from "../core/seller-scope.ts";
 
 /**
  * `/catalogue/[id]`'s handler — kept apart from the page so it loads without an island or a
@@ -18,19 +19,27 @@ import { resolveListing } from "../core/catalogue-ssr.ts";
  *   paints the right tab.
  * - Whether the seller is a restricted (13–17) account is resolved here too (Decision #208): the
  *   islands cannot read it, and the Availability section hides behind a notice for one.
+ * - `/teams/[teamHandle]/catalogue/[id]` re-exports this page (Decision #312): the team console
+ *   decides the address first, the listing is read as the team, and both 303s stay in the team's
+ *   catalogue.
  */
 export const handler = define.handlers({
 	async GET(ctx) {
+		const scope = await routeSellerScope(ctx.params.teamHandle, ctx.url, readActor(ctx));
+		if (scope instanceof Response) return scope;
+		const team = scope.team?.handle;
+
 		if (!isListingSlug(ctx.params.id)) {
-			return new Response(null, { status: 303, headers: { location: "/catalogue?create=1" } });
+			const location = consoleHref({ team, createOpen: true });
+			return new Response(null, { status: 303, headers: { location } });
 		}
-		const { listing, error } = await resolveListing(ctx.params.id, ctx.url, readActor(ctx));
+		const { listing, error } = await resolveListing(ctx.params.id, ctx.url, scope.actor);
 		if (error) {
 			ctx.state.title = "Catalogue · Projective";
 			return page({ listing: null, url: null, restricted: false, error }, { status: 503 });
 		}
 		if (!listing) {
-			return new Response(null, { status: 303, headers: { location: "/catalogue" } });
+			return new Response(null, { status: 303, headers: { location: consoleHref({ team }) } });
 		}
 		ctx.state.title = `${listing.title} · Catalogue`;
 		return page({

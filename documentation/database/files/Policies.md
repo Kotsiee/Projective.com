@@ -2,9 +2,11 @@
 
 RLS enablement:
 [`00002001_policies_enable_rls.sql`](../../../supabase/migrations/00002001_policies_enable_rls.sql).
-Policies: the tail of
-[`00002011_policies_projects.sql`](../../../supabase/migrations/00002011_policies_projects.sql)
-(there is deliberately no `policies_files` file — the files policies have always lived there).
+Policies: the `from 0208_files.sql` region of
+[`00002011_policies_projects.sql`](../../../supabase/migrations/00002011_policies_projects.sql) —
+mid-file, between the projects and the `0303_projects_lifecycle_rls` policies (there is deliberately
+no `policies_files` file — the files policies have always lived there). The one exception is
+`files.item_variants`, whose RLS and two policies sit in `00002017` (see below).
 Grants: [`00002500`](../../../supabase/migrations/00002500_permissions_schema_grants.sql) ·
 [`00002510`](../../../supabase/migrations/00002510_permissions_function_grants.sql) ·
 [`00002520`](../../../supabase/migrations/00002520_permissions_table_grants.sql). Storage-object
@@ -54,15 +56,18 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA files TO authentica
 With no `ENABLE ROW LEVEL SECURITY`, a grant is the _whole_ access decision — there is no policy
 layer left to filter it. So every signed-in user could **read, rename, re-parent and delete every
 other user's folder tree**, including re-parenting a stranger's folder into their own
-(`parent_folder_id` was writable) and cascading a `DELETE` through it.
+(`parent_folder_id` was writable) and deleting it leaf-first. Nothing cascades: neither
+`folders_parent_fkey` nor `files_folder_fkey` carries an `ON DELETE` action, so a folder that still
+holds folders or items is refused by the FK (only `files.share_links.folder_id` cascades).
 
 This is the more instructive of the two: the `files.items` hole at least required someone to write a
 wrong predicate. This one required only that a table be **forgotten**, and a blanket schema grant
 then made the omission maximally expensive. It is the reason `00002001` now carries an explicit
-comment beside each `files` table rather than a bare list.
+comment beside `files.folders` (and beside the audit and rollup tables) rather than a bare list.
 
-`RLS` is now enabled on all five `files` tables (`items`, `folders`, `share_links`,
-`download_events`, `storage_usage`), and `folders` has the full four-policy set below.
+`RLS` is now enabled on all six `files` tables — `items`, `folders`, `share_links`,
+`download_events` and `storage_usage` in `00002001`, and `item_variants` beside its policies in
+`00002017` — and `folders` has the full four-policy set below.
 
 ### 3. A signed-in user could file things into a library they do not belong to
 
@@ -88,20 +93,34 @@ behaviour differ only in row count.
 
 ## `files.items`
 
-| Command  | Role            | Predicate                                                   |
-| :------- | :-------------- | :---------------------------------------------------------- |
-| `SELECT` | `authenticated` | `files.fn_can_read(id)` — see [Functions.md](Functions.md)  |
-| `SELECT` | `anon`          | `visibility = 'public' AND deleted_at IS NULL`              |
-| `INSERT` | `authenticated` | `WITH CHECK (owner_user_id = auth.uid() AND files.fn_owns_library(owner_type, owner_entity_id))` |
-| `UPDATE` | `authenticated` | `USING (owner_user_id = auth.uid())` · `WITH CHECK` the INSERT predicate |
-| `DELETE` | `authenticated` | `owner_user_id = auth.uid()`                                |
+| Policy                                  | Command  | Role            | Predicate                                                   |
+| :-------------------------------------- | :------- | :-------------- | :---------------------------------------------------------- |
+| "Users can view permitted files"        | `SELECT` | `authenticated` | `files.fn_can_read(id)` — see [Functions.md](Functions.md)  |
+| "Public files are viewable by everyone" | `SELECT` | `anon`          | `visibility = 'public' AND deleted_at IS NULL`              |
+| "Users can insert own files"            | `INSERT` | `authenticated` | `WITH CHECK (owner_user_id = auth.uid() AND files.fn_owns_library(owner_type, owner_entity_id))` |
+| "Users can update own files"            | `UPDATE` | `authenticated` | `USING (owner_user_id = auth.uid())` · `WITH CHECK` the INSERT predicate |
+| "Users can delete own files"            | `DELETE` | `authenticated` | `owner_user_id = auth.uid()`                                |
 
-**The `UPDATE` `WITH CHECK` arm is new.** The shipped policy had `USING` only, and an `UPDATE`
-policy without a `WITH CHECK` validates the row you **started** from, never the row you are
-**writing**. A user could take their own row and set `owner_user_id` to someone else (donating a row
-into another tenancy), or repoint `bucket_id`/`storage_path` at another tenant's stored object and
-read it back through their own now-legitimate row. Re-asserting ownership on the post-image closes
-both.
+**The DELETE policy is unreachable by design (Decision #314).** A client's hard delete on
+`files.items` — and likewise on `files.folders`, whose "Users can delete own folders" has the same
+shape — is refused `BEFORE DELETE` by
+[`files.fn_guard_hard_delete`](Functions.md#-filesfn_guard_hard_delete): nothing here is
+hard-deleted, and an erase would otherwise slip past the archived-library and mounted-row rules. A
+delete is the `deleted_at` stamp the hub writes. Dropping the two policies would say the same thing
+in RLS; it is left for the change that next touches `00002011`.
+
+**The `UPDATE` `WITH CHECK` arm is explicit, not corrective.** Postgres reuses an `UPDATE` policy's
+`USING` as its `WITH CHECK` when none is written, so the shipped `USING`-only policy already held
+the post-image to `owner_user_id = auth.uid()` — donating a row into another tenancy by rewriting
+`owner_user_id` was never open. What the written-out arm adds is the `fn_owns_library` clause
+(hole 3 above).
+
+> ⚠️ **No `WITH CHECK` here stops a repoint.** Both forms test ownership only, so an owner moving
+> their own row's `bucket_id` / `storage_path` onto another tenant's stored object passes the policy.
+> What refuses it is `files.fn_guard_pipeline_columns`, which rejects any client change to either
+> column (`42501`), with `UNIQUE (bucket_id, storage_path)` refusing a path another row already
+> holds. The comment beside this policy in `00002011` over-states what the `WITH CHECK` stops —
+> flagged (Decision #313).
 
 **Note on cost:** the `SELECT` predicate is a per-row function call. It is correct first; if the
 hub's list queries ever need it, the owner-scoped arms are index-backed
@@ -110,30 +129,55 @@ hub's list queries ever need it, the owner-scoped arms are index-backed
 **What the INSERT/UPDATE policies cannot say, a trigger does.** A row-level policy cannot tell a
 rename from a forgery, so an owner's own-row write could otherwise claim processing it never went
 through — `status = 'uploaded'`, a public bucket, `purpose = 'avatar'`. `files.fn_guard_pipeline_columns`
-(`BEFORE INSERT OR UPDATE`) refuses exactly those columns to `anon`/`authenticated`; see
-[Functions.md](Functions.md#-filesfn_guard_pipeline_columns).
+(`BEFORE INSERT OR UPDATE`) refuses exactly those columns to `anon`/`authenticated`, and since
+Decision #314 also a link inserted with a verdict, a `folder_id` outside the row's own library, any
+write into or out of an archived entity's library, and a rename, move or re-share of a mounted row;
+see [Functions.md](Functions.md#-filesfn_guard_pipeline_columns).
 
 ## `files.item_variants`
 
-| Command  | Role            | Predicate                                                                              |
-| :------- | :-------------- | :------------------------------------------------------------------------------------- |
-| `SELECT` | `authenticated` | `files.fn_can_read(item_id)` — the parent asset's own read predicate                   |
-| `SELECT` | `anon`          | the parent is `visibility = 'public'` and not deleted                                  |
-| write    | —               | **none** — the media pipeline writes as the service role                               |
+| Policy                                     | Command  | Role            | Predicate                                                                              |
+| :----------------------------------------- | :------- | :-------------- | :------------------------------------------------------------------------------------- |
+| "Variants follow their asset"              | `SELECT` | `authenticated` | `files.fn_can_read(item_id)` — the parent asset's own read predicate                   |
+| "Public variants are viewable by everyone" | `SELECT` | `anon`          | the parent is `visibility = 'public'` and not deleted                                  |
+| —                                          | write    | —               | **none** — the media pipeline writes as the service role                               |
 
 A tier can never be readable when its original is not, because the read is the parent's through the
 same predicate the `files.items` policy uses. RLS is enabled beside these policies in
 [`00002017`](../../../supabase/migrations/00002017_policies_storage.sql), which also holds the
 storage-object rules, because every row here names a stored object.
 
+> ⚠️ **The `anon` policy is unreachable.** `anon` holds no privilege on `files.item_variants` — the
+> schema's only anon table grant is `SELECT ON files.items` (`00002520`) — so a signed-out direct
+> read is refused with `permission denied` before the policy is consulted. Visitors get tiers only
+> through `files.get_public_media` / `fn_public_media_ref`, which are definers. Making the policy
+> live is a `GRANT SELECT ON files.item_variants TO anon` beside the `files.items` one — flagged
+> (Decision #313).
+
 ## `files.folders`
 
-Same INSERT/UPDATE/DELETE shape as `files.items` (including the `WITH CHECK` arm and its
-`fn_owns_library` clause, so a folder can be neither created in nor re-parented **into** another
-tenant's tree). `SELECT` mirrors `fn_can_read`'s ownership arms
+Same INSERT/UPDATE/DELETE shape as `files.items` — "Users can insert own folders", "Users can update
+own folders", "Users can delete own folders" — including the `WITH CHECK` arm and its
+`fn_owns_library` clause, so a folder can be neither created in nor moved **into** another tenant's
+library. `SELECT` ("Users can view permitted folders") mirrors `fn_can_read`'s ownership arms
 inline — creator, `public`, or active member of the owning team / business / enterprise. Folders
 carry no project-mount case: a mounted connector directory is reached through its connection, and a
-project's tree is the channel tree, not a folder.
+project's tree is the channel tree, not a folder. Unlike `fn_can_read`, the `SELECT` carries no
+`deleted_at IS NULL` term, so a soft-deleted folder stays readable to its creator, the entity's
+members and, if `public`, any signed-in user.
+
+**The parent is enforced by the guards, not the policies (Decision #314).** Both `WITH CHECK`s test
+only the row's own `owner_user_id` / `owner_type` / `owner_entity_id`, and a foreign-key check does
+not consult RLS, so the policies alone would let a folder or an item be parented under any existing
+folder id. The two guard triggers close it: `files.fn_guard_folder_columns` requires a folder's
+parent, and `files.fn_guard_pipeline_columns` an item's `folder_id`, to be a live folder of the
+row's **own** library ([`fn_folder_in_library`](Functions.md#-filesfn_folder_in_library--boolean) —
+the same library, not the same creator, so team members file into each other's folders). The folder
+guard also refuses a cycle, a `path` that is not the real ancestry, a client-set share slug or
+mount, and any client edit of a mounted folder. The hub's write service checks the same rule first
+(`services/files/live-library-writes.ts`) so a refusal reads in words; the database is the gate.
+The comment beside these policies in `00002011` over-states what the `WITH CHECK` alone enforces —
+still flagged (Decision #313).
 
 ## `files.share_links`
 
@@ -218,15 +262,19 @@ publish.
 
 ## `files.download_events`
 
-`SELECT` for the actor or the item's owner. **No `INSERT` policy anywhere** — that absence is the
-point: _"this asset was downloaded"_ is a server observation, not a claim a browser gets to make
-(the same discipline as `comms.notifications`). The schema-wide `INSERT` grant in `00002500` is
+`SELECT` for the actor or the item's owner ("Actors and owners can read download events"). The
+owner arm reads `files.items` under the caller's own `SELECT` policy (`fn_can_read`), so once an item
+is soft-deleted its owner, unless they are also the actor, no longer sees its download events.
+**No `INSERT` policy anywhere** — that absence is the point: _"this asset was downloaded"_ is a
+server observation, not a claim a browser gets to make (the same discipline as
+`comms.notifications`). The schema-wide `INSERT` grant in `00002500` is
 harmless precisely because RLS is on and no `INSERT` policy exists.
 
 ## `files.storage_usage`
 
-`SELECT` for the owning user or an active member of the owning entity, so the hub can render _"12.4
-GB of 25 GB used"_ without a round trip. **No write policy at all** — the rollup is maintained
+`SELECT` ("Owners can read their storage usage") for the owning user or an active member of the
+owning entity, so the hub can render _"12.4 GB of 25 GB used"_ without a round trip. **No write
+policy at all** — the rollup is maintained
 exclusively by `files.fn_usage_trigger` (a `SECURITY DEFINER` trigger) and the service role. A
 client that could write it could write itself unlimited storage.
 
@@ -237,11 +285,13 @@ client that could write it could write itself unlimited storage.
 | Grant                                   | Where      | Why                                                              |
 | :-------------------------------------- | :--------- | :--------------------------------------------------------------- |
 | `USAGE ON SCHEMA files TO anon`         | `00002500` | Pre-existing.                                                    |
+| `ALL` and `SELECT, INSERT, UPDATE, DELETE` `ON ALL TABLES IN SCHEMA files` | `00002500` | To `authenticated` + `service_role`, and again in default privileges. RLS is what bounds `authenticated`. |
 | `SELECT ON files.items TO anon`         | `00002520` | The schema's **only** anon table grant — the `public` tier.      |
 | `EXECUTE ON files.fn_resolve_share`     | `00002510` | To `anon`; the one visitor door into `share_links`.              |
-| `REVOKE` on the four internal functions | `00002510` | `fn_recompute_usage`, the two trigger fns, `fn_mint_share_slug`. |
+| `REVOKE` on the five internal functions | `00002510` | `fn_recompute_usage`, the three trigger fns (`fn_usage_trigger`, `fn_check_storage_quota`, `fn_touch_updated_at`), `fn_mint_share_slug`. |
 | `EXECUTE ON files.get_public_media`     | `00002510` | To `anon` + `authenticated`: returns only world-readable refs.   |
-| `REVOKE` on `fn_public_media_ref` · `fn_guard_pipeline_columns` | `00002510` | Reached only through definers / as a trigger.       |
+| `REVOKE` on `fn_public_media_ref` · `fn_guard_pipeline_columns` · `fn_guard_folder_columns` · `fn_guard_hard_delete` | `00002510` | Reached only through definers / as a trigger. |
+| `EXECUTE ON files.fn_folder_in_library` · `fn_library_archived` | `00002510` | To `anon` + `authenticated` + svc: the guards call them as the client's own role (Decision #314). |
 | `REVOKE TRUNCATE … SCHEMA files`        | `00002500` | From `anon` + `authenticated`, and from default privileges. TRUNCATE is not row-level, so RLS never bounded it. |
 | `EXECUTE ON files.fn_owns_library`      | `00002510` | To `anon` + `authenticated` + svc: it is called by the write policies themselves. |
 | `EXECUTE ON files.get_storage_quota`    | `00002510` | To `authenticated` + svc, `REVOKE`d from `PUBLIC`/`anon`; it authorises its own caller. |

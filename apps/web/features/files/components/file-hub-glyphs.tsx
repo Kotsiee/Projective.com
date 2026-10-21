@@ -15,11 +15,11 @@ import "../styles/files-hub.css";
  *
  * Two populations live here and they follow different contracts on purpose:
  *
- *  1. **Brand marks** (Google Drive · Dropbox · Frame.io · Amazon S3). §B.7 quarantines these OUT of
- *     the shared `@projective/ui/icons` registry: a brand mark is not an icon in the design system's
- *     sense — it cannot be restyled, re-weighted or recoloured without ceasing to be the mark — so it
- *     must not inherit `--icon-stroke`. They are therefore plain filled `<svg>`s inheriting
- *     `currentColor` only, exactly like `marketing/components/footer-icons.tsx`.
+ *  1. **Brand marks** (Google Drive · Dropbox · OneDrive · Frame.io · Amazon S3). §B.7 quarantines
+ *     these OUT of the shared `@projective/ui/icons` registry: a brand mark is not an icon in the
+ *     design system's sense — it cannot be restyled, re-weighted or recoloured without ceasing to be
+ *     the mark — so it must not inherit `--icon-stroke`. They are therefore plain filled `<svg>`s
+ *     inheriting `currentColor` only, exactly like `marketing/components/footer-icons.tsx`.
  *  2. **Semantic marks** (visibility · link-safety · file status · tree node kind). These are ordinary
  *     icons and route through the shared {@link Icon} registry, so one stylesheet governs their weight
  *     and a call site cannot opt one into a different one.
@@ -69,6 +69,23 @@ export function DropboxMark({ size = 16, class: c }: BrandProps): JSX.Element {
 			aria-hidden="true"
 		>
 			<path d="M6.4 2.7 0.9 6.3l5.5 3.6L12 6.3 6.4 2.7Zm11.2 0L12 6.3l5.6 3.6 5.5-3.6-5.5-3.6ZM0.9 13.4l5.5 3.6 5.6-3.6-5.6-3.5-5.5 3.5Zm22.2 0-5.5-3.5-5.6 3.5 5.6 3.6 5.5-3.6ZM6.4 18.2l5.6 3.6 5.6-3.6L12 14.7l-5.6 3.5Z" />
+		</svg>
+	);
+}
+
+/** OneDrive — the layered cloud. */
+export function OneDriveMark({ size = 16, class: c }: BrandProps): JSX.Element {
+	return (
+		<svg
+			class={c}
+			width={size}
+			height={size}
+			viewBox="0 0 24 24"
+			fill="currentColor"
+			aria-hidden="true"
+		>
+			<path d="M4.5 14a3 3 0 1 1 .5-5.96 4.5 4.5 0 1 1 8.4 2.21L12 14H4.5Z" opacity="0.5" />
+			<path d="M6 19.5a4 4 0 1 1 1.01-7.87 5.5 5.5 0 1 1 10.95 1.03 3.5 3.5 0 1 1 1.04 6.84H6Z" />
 		</svg>
 	);
 }
@@ -126,6 +143,8 @@ export function SourceMark(
 			return <GoogleDriveMark size={size} class={c} />;
 		case "dropbox":
 			return <DropboxMark size={size} class={c} />;
+		case "onedrive":
+			return <OneDriveMark size={size} class={c} />;
 		case "frameio":
 			return <FrameioMark size={size} class={c} />;
 		case "amazon-s3":

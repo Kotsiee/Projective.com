@@ -139,7 +139,13 @@ const PAGE_LIMIT = 60;
  * serves both the consent call and `sourceLabel`. That coincidence is not guaranteed for a future
  * connector — `sourceForProvider` is the mapping that survives it.
  */
-const STORAGE_PROVIDERS: readonly AssetSource[] = ["google_drive", "dropbox", "frameio", "s3"];
+const STORAGE_PROVIDERS: readonly AssetSource[] = [
+	"google_drive",
+	"dropbox",
+	"onedrive",
+	"frameio",
+	"s3",
+];
 
 /** Storage connectors only: a calendar or a conferencing grant has no files to browse. */
 function isBrowsable(connection: UserConnection): boolean {

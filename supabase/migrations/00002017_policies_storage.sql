@@ -9,7 +9,7 @@
 --   quarantine    - own upload only (INSERT + own SELECT); promotion is a definer/service move
 --   project       - projects.has_project_access({project_id}) for read AND write
 --   messages       - comms.dm_participants membership on {thread_id} for read AND write
---   personal      - owner = auth.uid()
+--   personal      - owner = auth.uid() under users/{auth.uid()}
 --   workspace     - active membership of the {entity_id} anchor (team OR business OR enterprise)
 --   invoices      - owner read on {owner_id}; NO authenticated write (service-role generates)
 --   verification  - NO authenticated policy at all → service-role ONLY (RLS-bypass)
@@ -135,14 +135,21 @@ CREATE POLICY "DM uploaders can delete their message attachments" ON storage.obj
 
 -- #region personal — owner-only private drive
 
+-- The uploader AND the path anchor (Decision #314). Owner alone let a person write under another
+-- person's prefix: never over their objects, but squatting the address their own write would take.
+-- `personalLocation` keys the bucket `users/{userId}/…`, so the anchor is the SECOND segment.
 CREATE POLICY "Users manage own personal files" ON storage.objects FOR ALL TO authenticated USING (
     bucket_id = 'personal'
     AND auth.uid () = owner
+    AND (storage.foldername (name)) [1] = 'users'
+    AND (storage.foldername (name)) [2] = auth.uid ()::text
 )
 WITH
     CHECK (
         bucket_id = 'personal'
         AND auth.uid () = owner
+        AND (storage.foldername (name)) [1] = 'users'
+        AND (storage.foldername (name)) [2] = auth.uid ()::text
     );
 
 -- #endregion
@@ -296,14 +303,19 @@ SELECT TO authenticated USING (
 CREATE POLICY "Public Assets are viewable by everyone" ON storage.objects FOR
 SELECT TO public USING (bucket_id = 'public_assets');
 
+-- Anchored on {owner_id} as well as the uploader (Decision #314): this bucket is world-readable, so a
+-- write under someone else's prefix would publish content at an address that reads as theirs.
+-- Platform-owned prefixes (`platform/…`, re-hosted link favicons) are written by the service role.
 CREATE POLICY "Owners can write their public assets" ON storage.objects FOR ALL TO authenticated USING (
     bucket_id = 'public_assets'
     AND auth.uid () = owner
+    AND (storage.foldername (name)) [1] = auth.uid ()::text
 )
 WITH
     CHECK (
         bucket_id = 'public_assets'
         AND auth.uid () = owner
+        AND (storage.foldername (name)) [1] = auth.uid ()::text
     );
 
 -- #endregion
@@ -358,14 +370,18 @@ SELECT TO anon USING (
 CREATE POLICY "Catalogue media is viewable by everyone" ON storage.objects FOR
 SELECT TO public USING (bucket_id = 'catalogue');
 
+-- Anchored on {seller_id} = the caller (Decision #314), for the same reason as public_assets. A seller
+-- writing as an ENTITY has no client write here: that media goes through the service role.
 CREATE POLICY "Sellers can write their catalogue media" ON storage.objects FOR ALL TO authenticated USING (
     bucket_id = 'catalogue'
     AND auth.uid () = owner
+    AND (storage.foldername (name)) [1] = auth.uid ()::text
 )
 WITH
     CHECK (
         bucket_id = 'catalogue'
         AND auth.uid () = owner
+        AND (storage.foldername (name)) [1] = auth.uid ()::text
     );
 
 -- #endregion

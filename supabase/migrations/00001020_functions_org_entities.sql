@@ -222,13 +222,14 @@ DECLARE
     v_uid uuid := auth.uid();
     v_name text;
     v_handle text;
+    v_status text;
 BEGIN
     IF v_uid IS NULL OR p_context_id IS NULL THEN
         RETURN NULL;
     END IF;
 
     IF p_context_type = 'team' THEN
-        SELECT t.name, t.slug INTO v_name, v_handle
+        SELECT t.name, t.slug, t.status INTO v_name, v_handle, v_status
         FROM org.teams t
         WHERE t.id = p_context_id
           AND EXISTS (
@@ -236,7 +237,7 @@ BEGIN
               WHERE m.team_id = t.id AND m.user_id = v_uid AND m.status = 'active'
           );
     ELSIF p_context_type = 'business' THEN
-        SELECT b.name, b.slug INTO v_name, v_handle
+        SELECT b.name, b.slug, b.status INTO v_name, v_handle, v_status
         FROM org.business_profiles b
         WHERE b.id = p_context_id
           AND EXISTS (
@@ -244,8 +245,8 @@ BEGIN
               WHERE m.business_id = b.id AND m.user_id = v_uid AND m.status = 'active'
           );
     ELSIF p_context_type = 'enterprise' THEN
-        SELECT COALESCE(NULLIF(btrim(o.trading_name), ''), o.legal_name), o.handle
-          INTO v_name, v_handle
+        SELECT COALESCE(NULLIF(btrim(o.trading_name), ''), o.legal_name), o.handle, o.status::text
+          INTO v_name, v_handle, v_status
         FROM org.enterprises o
         WHERE o.id = p_context_id
           AND (
@@ -267,7 +268,8 @@ BEGIN
         'context_type', p_context_type,
         'context_id', p_context_id,
         'name', NULLIF(btrim(v_name), ''),
-        'handle', v_handle
+        'handle', v_handle,
+        'status', v_status
     );
 END;
 $$;

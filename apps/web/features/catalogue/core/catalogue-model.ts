@@ -25,9 +25,9 @@ export function isSeller(context: UserContext): boolean {
 /** The console canvas's id — the region the header's view tabs control. */
 export const CONSOLE_CANVAS_ID = "cat-canvas";
 
-/** The item workspace for a listing (its default tab). */
-export function listingHref(id: string): string {
-	return workspaceHref(id, {});
+/** The item workspace for a listing (its default tab), in `team`'s catalogue when given. */
+export function listingHref(id: string, team?: string): string {
+	return workspaceHref(id, { team });
 }
 
 /** The public Entity View for a listing (the "View public page" link). */

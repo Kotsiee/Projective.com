@@ -28,19 +28,17 @@ import {
 	consoleView,
 	listingsPage,
 	openCreate,
-	quickFilters,
+	quickFiltersOf,
 	setConsoleUrl,
 	setQuickFilter,
 	startConsoleSync,
 } from "../core/console-store.ts";
-import { laneOutline, type LaneOutlineSection, outlineAnchor } from "../core/lane-outline.ts";
 import {
 	type CatalogueFacetCounts,
 	type CatalogueKind,
 	type CatalogueStatusCounts,
 	consoleHref,
 	type ConsoleUrlState,
-	type EditSection,
 	type ListingSummary,
 	type ServiceType,
 } from "../types/catalogue-types.ts";
@@ -55,9 +53,9 @@ import {
  * The footer's New listing menu opens the quick-create modal in place (`?create=`).
  *
  * **Outline** (`/catalogue/[id]`): a head row with Back to the console (the `/projects/[slug]` lane
- * head's shape), the workspace's "On this page" sections (published by the workspace through
- * `lane-outline`), and every one of the seller's listings in one section, the current one marked.
- * Its New listing menu links to the console's `?create=` deep links.
+ * head's shape) and every one of the seller's listings in one section, the current one marked. The
+ * listing's own sections are the Edit canvas's rail (`EditSectionNav`), not the lane's. Its New
+ * listing menu links to the console's `?create=` deep links.
  *
  * Both render the collapsed {@link CatalogueRail} beside the expanded stack and let
  * `.ui-splitter[data-mode="collapsed"]` reveal one.
@@ -200,7 +198,7 @@ function ConsoleLane(props: ConsoleLaneProps & LaneChrome): JSX.Element {
 						state={state}
 						statusCounts={counts}
 						facetCounts={facets}
-						highlights={quickFilters.value}
+						highlights={quickFiltersOf(state.highlights)}
 						onChange={(patch) => setConsoleUrl(patch)}
 						onHighlight={setQuickFilter}
 						onClearHighlights={clearQuickFilters}
@@ -224,41 +222,9 @@ function ConsoleLane(props: ConsoleLaneProps & LaneChrome): JSX.Element {
 // #endregion
 
 // #region Outline mode
-function OutlineRow(
-	{ section, active, onSelect }: {
-		section: LaneOutlineSection;
-		active: boolean;
-		onSelect?: (id: EditSection) => void;
-	},
-): JSX.Element {
-	const cls = active ? "cat-outline__row cat-outline__row--active" : "cat-outline__row";
-	if (onSelect) {
-		return (
-			<button
-				type="button"
-				class={cls}
-				aria-current={active ? "location" : undefined}
-				onClick={() => onSelect(section.id)}
-			>
-				{section.label}
-			</button>
-		);
-	}
-	return (
-		<a
-			class={cls}
-			href={`#${outlineAnchor(section.id)}`}
-			aria-current={active ? "location" : undefined}
-		>
-			{section.label}
-		</a>
-	);
-}
-
 function OutlineLane(props: OutlineLaneProps & LaneChrome): JSX.Element {
 	const menuOpen = useSignal(false);
-	const open = useSignal({ page: true, listings: true });
-	const outline = laneOutline.value;
+	const listingsOpen = useSignal(true);
 	const model = newListingMenu({
 		href: (kind, serviceType) =>
 			consoleHref({ createOpen: true, createKind: kind, createModel: serviceType }),
@@ -280,32 +246,12 @@ function OutlineLane(props: OutlineLaneProps & LaneChrome): JSX.Element {
 
 				<LaneList label="Listings">
 					<LaneSections>
-						{outline && outline.sections.length > 0 && (
-							<LaneSection
-								id="cat-outline"
-								icon={<Icon name="list" />}
-								label="On this page"
-								open={open.value.page}
-								onToggle={() => (open.value = { ...open.value, page: !open.value.page })}
-							>
-								<nav class="cat-outline" aria-label="On this page">
-									{outline.sections.map((s) => (
-										<OutlineRow
-											key={s.id}
-											section={s}
-											active={outline.active === s.id}
-											onSelect={outline.onSelect}
-										/>
-									))}
-								</nav>
-							</LaneSection>
-						)}
 						<LaneSection
 							id="cat-listings"
 							icon={<Icon name="catalogue" />}
 							label="Your listings"
-							open={open.value.listings}
-							onToggle={() => (open.value = { ...open.value, listings: !open.value.listings })}
+							open={listingsOpen.value}
+							onToggle={() => (listingsOpen.value = !listingsOpen.value)}
 						>
 							{props.listings.length === 0
 								? <LaneEmpty title="No listings yet" />

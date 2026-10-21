@@ -15,6 +15,7 @@ import "../styles/share-view.css";
 import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { FilePreview } from "@web/features/projects/components/FilePreview.tsx";
+import { linkHref } from "@web/features/projects/components/preview/preview-model.ts";
 import { FilesService } from "../core/FilesService.ts";
 import { type AssetItem, sourceLabel } from "../types/file-types.ts";
 
@@ -103,7 +104,7 @@ function LiveLink({ asset, slug }: { asset: AssetItem; slug: string }): JSX.Elem
 	const failed = useSignal<string | null>(null);
 
 	/** The bytes, or the link's target. `"#"` is the stub marker and is never navigated to. */
-	const target = asset.link?.url ?? asset.url;
+	const target = linkHref(asset) ?? asset.url;
 	const downloadable = Boolean(target) && target !== "#";
 
 	async function download(): Promise<void> {

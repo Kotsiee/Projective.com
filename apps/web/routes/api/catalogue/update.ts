@@ -1,5 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
+import { apiSellerActor } from "@features/catalogue/core/seller-scope.ts";
 import { UpdateListingInputSchema } from "@projective/types/catalogue";
 import {
 	invalid,
@@ -20,7 +21,8 @@ import { CatalogueBackendService } from "@server/services/catalogue/CatalogueBac
  */
 export const handler = define.handlers({
 	async POST(ctx) {
-		const actor = readActor(ctx);
+		const actor = await apiSellerActor(ctx.url, readActor(ctx));
+		if (actor instanceof Response) return actor;
 		if (!actor.userId) return signedOut();
 		const parsed = UpdateListingInputSchema.safeParse(await readJsonBody(ctx.req));
 		if (!parsed.success) return invalid(parsed.error);

@@ -8,6 +8,7 @@ import type {
 } from "@projective/types/services";
 import type { CallType, SlotGrid, SlotPurpose } from "@projective/types/scheduling";
 import { type BuyNowTarget, requestBuyNow } from "@web/features/checkout/core/buy-now-state.ts";
+import { catalogueApiPath } from "@web/features/catalogue/core/api-scope.ts";
 import { BookingService } from "./BookingService.ts";
 import { getBooking } from "./api.ts";
 import { toggleBasket } from "./basket-state.ts";
@@ -105,6 +106,8 @@ export function readSlots(params: SlotRead) {
 	if (params.from !== undefined) qs.set("from", String(params.from));
 	if (params.days !== undefined) qs.set("days", String(params.days));
 	if (params.callType) qs.set("callType", params.callType);
-	return getBooking<{ grid: SlotGrid }>(`/api/catalogue/simulate/slots?${qs.toString()}`);
+	return getBooking<{ grid: SlotGrid }>(
+		catalogueApiPath(`/api/catalogue/simulate/slots?${qs.toString()}`),
+	);
 }
 // #endregion

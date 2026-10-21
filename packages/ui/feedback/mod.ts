@@ -1,7 +1,7 @@
 /**
  * @projective/ui/feedback — status & transient surfaces.
  *
- * Inline status (Message, Messages, Alert/Banner, InlineNotice, ErrorBoundary), the session-wide Ribbon, transient
+ * Inline status (Message, Messages, Alert/Banner, InlineNotice, SaveStatus, ErrorBoundary), the session-wide Ribbon, transient
  * overlays (Toast, Dialog, DynamicDialog,
  * ConfirmDialog, ConfirmPopup, CommitReview, Drawer/Sidebar, Tooltip, Popover/OverlayPanel), and progress
  * indicators (ProgressBar, ProgressSpinner, ProgressRing, Spinner/Loader, Skeleton). Modal overlays
@@ -18,6 +18,13 @@ export { Alert, Banner } from "./components/Alert.tsx";
 export type { AlertProps, AlertVariant } from "./components/Alert.tsx";
 export { InlineNotice } from "./components/InlineNotice.tsx";
 export type { InlineNoticeProps } from "./components/InlineNotice.tsx";
+export { SaveStatus } from "./components/SaveStatus.tsx";
+export type {
+	SaveStatusAction,
+	SaveStatusAutoSave,
+	SaveStatusProps,
+	SaveStatusState,
+} from "./components/SaveStatus.tsx";
 export { ErrorBoundary } from "./components/ErrorBoundary.tsx";
 export type { ErrorBoundaryProps } from "./components/ErrorBoundary.tsx";
 // #endregion

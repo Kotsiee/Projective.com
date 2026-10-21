@@ -149,7 +149,6 @@ export default function SetupSectionNav({ setup }: SetupSectionNavProps): JSX.El
 
 	return (
 		<nav class="psu-nav" aria-label="Project setup sections">
-			<p class="psu-nav__title">Sections</p>
 			<ul class="psu-nav__list" role="list">
 				{sections.map((section) => {
 					const isActive = active === section.key;

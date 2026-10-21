@@ -78,6 +78,16 @@ export function channelSlugOfPath(pathname: string): string | null {
 }
 
 /**
+ * The listing a team catalogue path names — the `[id]` segment of `/teams/:h/catalogue/:id` and of
+ * its `/simulate` (Decision #312) — or `null` on the console and off the catalogue.
+ */
+export function listingSlugOfPath(pathname: string): string | null {
+	if (activeModuleOf(pathname) !== "catalogue") return null;
+	const raw = pathname.split("/").filter(Boolean)[3];
+	return raw ? decodeSegment(raw) : null;
+}
+
+/**
  * Whether `path` is `base` itself or somewhere beneath it. A bare `startsWith` would count
  * `/teams/north-loop` as inside `/teams/north`, lighting two entity rows at once.
  */

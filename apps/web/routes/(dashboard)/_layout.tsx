@@ -228,7 +228,7 @@ async function laneFor(
 	// The multi-member entity console (`/teams`, `/businesses`) hosts either the entity roster or, inside
 	// one entity, that entity's capability-filtered management rail.
 	if (url.pathname.startsWith("/teams") || url.pathname.startsWith("/businesses")) {
-		return await workspaceLaneFor(url, actor);
+		return await workspaceLaneFor(url, context, actor);
 	}
 
 	// The Settings console (`/settings*`): the search field and the section tree, with each section's

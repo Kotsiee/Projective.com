@@ -1416,238 +1416,29 @@
 /* #endregion */
 
 /* #region Footer rig */
-/*
- * `container-type: inline-size` so the rig adapts to the width it ACTUALLY has, not the viewport's.
- * The content region is the viewport minus the global rail and the lane — on a laned surface those
- * differ by ~344px, so a viewport media query here would be reading the wrong box.
- *
- * Every action stays reachable at every tier: the labels collapse to glyphs and the menu holds the
- * full set, so nothing is ever removed from the surface. A rig that deletes its own controls at a
- * breakpoint is how `/wallet` lost three actions on four pages.
- */
 .psu-rig {
 	container-type: inline-size;
 	display: flex;
 	align-items: center;
-	gap: var(--space-3);
+	gap: var(--space-4);
 	inline-size: 100%;
 	block-size: 100%;
-	padding-inline: var(--space-6);
-}
-
-.psu-rig__status {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	margin: 0;
-	flex: 1 1 auto;
-	min-inline-size: 0;
-	overflow: hidden;
-	white-space: nowrap;
-	text-overflow: ellipsis;
-	font-size: var(--text-sm);
-	color: var(--text-secondary);
-}
-
-/*
- * The status tones.
- *
- * Two channels for the two that matter, never hue alone (§A.5): `offline` and `archived` each draw a
- * MARK as well as a tint, and the sentence beside them states the fact in full regardless — so the
- * colour is the third channel rather than the only one. `pending` and `saved` deliberately get no
- * mark: they are the two ordinary states of a form, and a glyph on each would put a permanent
- * decoration in a band whose job is to be quiet until something is worth saying.
- */
-.psu-rig__status[data-tone="offline"] {
-	color: var(--warning);
-}
-
-.psu-rig__status[data-tone="archived"] {
-	color: var(--text-disabled);
-}
-
-.psu-rig__statusmark {
-	display: inline-flex;
-	flex: none;
-	align-items: center;
+	padding-inline: var(--space-4);
 }
 
 .psu-rig__actions {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	flex: none;
-}
-
-/*
- * The auto-save switch — a MODE, so it reads with the status rather than with the actions, and it
- * carries no border of its own: the switch track already draws the only contour this needs, and a box
- * around a control inside a band is the second separation device on one boundary (§B.4).
- */
-.psu-rig__autosave {
-	display: inline-flex;
-	align-items: center;
-	flex: none;
-}
-
-.psu-rig__autosave .ui-switch__label {
-	font-size: var(--text-sm);
-	color: var(--text-secondary);
-	white-space: nowrap;
-}
-
-.psu-rig__action,
-.psu-rig__more {
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-2);
 	flex: none;
-	min-block-size: 2rem;
-	padding-inline: var(--space-3);
-	border: var(--hairline);
-	border-radius: var(--radius-full);
-	background: transparent;
-	font-size: var(--text-sm);
-	font-weight: var(--fw-medium);
-	color: var(--on-surface);
-	cursor: pointer;
-	transition: background var(--dur-fast) var(--ease-standard);
+	margin-inline-start: auto;
 }
 
-.psu-rig__action:hover,
-.psu-rig__more:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-}
-
-.psu-rig__action:focus-visible,
-.psu-rig__more:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
-
-/*
- * Press feedback (§B.12.1). These are pressable controls and had a hover and a focus ring but no
- * `:active` at all, so the most consequential presses on the surface — Save, Publish, Archive —
- * acknowledged nothing, which is what invites a second press on a control that is already working.
- *
- * `transform` only (§B.12.3): the row is a flex line of pill controls, so anything that resized a box
- * would shift every sibling under the cursor that is trying to hit one of them. The resting `scale(1)`
- * is declared so the return has something to interpolate from.
- */
-.psu-rig__action,
-.psu-rig__more {
-	transform: scale(1);
-	transition:
-		transform var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
-}
-
-.psu-rig__action:not([data-locked="true"]):active,
-.psu-rig__more:active {
-	transform: scale(var(--btn-press-scale));
-	transition-duration: var(--dur-press);
-}
-
-/*
- * A locked action must not compress. It refuses on press (`control` returns early), and a control
- * that gives the tactile acknowledgement of a press and then does nothing is worse than one that
- * gives none — it reports success for a refusal. The tooltip carries the reason instead.
- */
-@media (prefers-reduced-motion: reduce) {
-	.psu-rig__action,
-	.psu-rig__more,
-	.psu-rig__action:not([data-locked="true"]):active,
-	.psu-rig__more:active {
-		transform: none !important;
-	}
-}
-
-:root[data-motion="reduced"] .psu-rig__action,
-:root[data-motion="reduced"] .psu-rig__more,
-:root[data-motion="reduced"] .psu-rig__action:not([data-locked="true"]):active,
-:root[data-motion="reduced"] .psu-rig__more:active {
-	transform: none !important;
-}
-
-/*
- * At most one leading emphasis on the row (§B.8.2) — the rig emits exactly one `primary` action.
- *
- * The ink is `--on-primary`, not `--surface`. `--surface` was the workaround for a `--primary` /
- * `--on-primary` pair that measured 3.57:1 in dark, and that pair is now mode-invariant and pinned by
- * test at 5.13:1 in every state (§A.1.1), so the correct token is available again. It also has to
- * change: with the brand fill no longer lightening in dark mode, `--surface` on `--primary` measures
- * **3.58:1** there — under the AA floor — where it used to clear 5.15:1 against the lighter fill.
- */
-.psu-rig__action[data-tone="primary"] {
-	background: var(--primary);
-	border-color: var(--primary);
-	color: var(--on-primary);
-}
-
-/*
- * Hover on the brand tone moves the BORDER, not the fill (§B.12.4).
- *
- * The 12% lightening this replaces measured 4.29:1 against `--on-primary` in dark — under the AA
- * floor — because the brand fill is mode-invariant and has no luminance headroom in either direction:
- * lightening walks it into the near-white ink, darkening walks it into the near-black page. The border
- * width is already reserved by the resting rule, so recolouring it costs neither ratio and shifts
- * nothing.
- */
-.psu-rig__action[data-tone="primary"]:hover {
-	border-color: color-mix(in srgb, var(--on-primary) 65%, var(--primary));
-}
-
-.psu-rig__action[data-tone="danger"] {
-	color: var(--danger);
-	border-color: transparent;
-}
-
-.psu-rig__action[data-tone="danger"]:hover {
-	background: color-mix(in srgb, var(--danger) var(--tint-soft), transparent);
-}
-
-/*
- * A locked action keeps its cursor affordance and its tooltip, so the reason is reachable. Ink and
- * border recede together rather than the whole box being washed out, which is what keeps the label
- * legible enough to read the state from.
- */
-.psu-rig__action[data-locked="true"] {
-	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
-	border-color: color-mix(in srgb, var(--outline) var(--fld-disabled-mix), transparent);
-	background: transparent;
-	cursor: not-allowed;
-}
-
-.psu-rig__glyph {
-	display: inline-flex;
+.ui-button.psu-rig__icon {
 	flex: none;
 }
 
-.psu-rig__menu {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-	min-inline-size: 12rem;
-}
-
-/* Inside the menu a name is always visible and the row spans the panel. */
-.psu-rig__menu .psu-rig__action {
-	inline-size: 100%;
-	justify-content: flex-start;
-	border-color: transparent;
-	border-radius: var(--radius-sm);
-}
-
-/*
- * The publish confirmation's body.
- *
- * Unboxed (§B.4, §B.9.7): the dialog panel already draws the only contour this content gets, so the
- * lead and the notices are separated by spacing alone. The notices are static prose the owner reads
- * once — never chips (§B.11), because none of them can be pressed and containment would promise
- * otherwise.
- */
+/* The publish confirmation's body — unboxed; the dialog panel draws the only contour (§B.4, §B.9.7). */
 .psu-rig__publish {
 	display: flex;
 	flex-direction: column;
@@ -1659,13 +1450,8 @@
 }
 
 /*
- * Markers stay ON. This is the one place the three sentences are counted rather than read as a
- * paragraph — the owner is being told how MANY terms freeze, not just that some do — and the marker
- * carries that without a second device.
- *
- * Left as a plain flow list on purpose. `display: flex` is the usual way to reach for a gap between
- * rows, and on a `<ul>` it costs the list its semantics in Safari/VoiceOver and its markers in more
- * than one engine — so the rhythm comes from a margin between items, which nothing has to survive.
+ * Markers stay ON — the owner is being told how MANY terms freeze — and the rhythm comes from a
+ * margin between items, because `display: flex` on a `<ul>` costs it its semantics in Safari.
  */
 .psu-rig__publish-notices {
 	margin: 0;
@@ -1678,62 +1464,14 @@
 	margin-block-start: var(--space-2);
 }
 
-@container (max-width: 620px) {
-	/*
-	* Glyph-only: the NAME moves to the tooltip and the `aria-label` each control already carries, so
-	* it is relocated rather than lost (§B.6.3).
-	*/
-	.psu-rig__actions .psu-rig__label,
-	.psu-rig__more-label,
-	.psu-rig__autosave .ui-switch__label {
-		position: absolute;
-		inline-size: 1px;
-		block-size: 1px;
-		margin: -1px;
-		padding: 0;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
+@media (max-width: 767.98px) {
+	.psu-rig {
+		gap: var(--space-2);
+		padding-inline: var(--space-3);
 	}
 
-	.psu-rig__actions .psu-rig__action,
-	.psu-rig__more {
-		padding-inline: var(--space-2);
-	}
-}
-
-/*
- * The status line STAYS at the narrow tier, and this rule is what it costs.
- *
- * It used to be `display: none` here, on the reasoning that it was redundant with the controls beside
- * it — which was true while it only ever said "Unsaved changes" or "All changes saved" next to a Save
- * button that said the same thing by existing. It is no longer true. Under auto-save there is no Save
- * button, so this line is the band's ONLY report; and it now carries the offline and queued states,
- * which nothing else on the surface says at all. Removing it at a breakpoint would leave a phone with
- * an editor that has quietly stopped reaching the server and no way to find that out — the `/wallet`
- * failure exactly.
- *
- * So it yields width rather than presence: the actions are already glyph-only at this tier and the
- * label ellipsises, which leaves the leading words — and the leading words are the ones that carry
- * the state ("Offline …", "Saved on this device …", "Last updated …").
- */
-@container (max-width: 400px) {
-	.psu-rig__status {
-		font-size: var(--text-xs);
-	}
-}
-
-@media (hover: none) {
-	.psu-rig__action,
-	.psu-rig__more {
-		min-block-size: 2.5rem;
-	}
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.psu-rig__action,
-	.psu-rig__more {
-		transition: none;
+	.psu-rig__actions {
+		gap: var(--space-1);
 	}
 }
 

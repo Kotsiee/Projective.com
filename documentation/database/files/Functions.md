@@ -12,39 +12,49 @@ raw predicate inline in each policy, which is precisely how a read rule and a sh
 apart. **There are now thirteen**, plus one `finance` branch that reads this schema.
 
 Every function pins `SET search_path = ''` and fully qualifies every identifier. `SECURITY DEFINER`
-is used **only** where a function must read a table the caller cannot: the membership tables, the
-item row itself, or `security.platform_params`.
+is used **only** where a function must read or write a table the caller cannot: the membership
+tables, the item row itself, `security.platform_params`, the `finance` plan and grant tables
+(`get_storage_quota`), and the server-written `storage_usage` / `download_events` / `share_links`
+counters (`fn_recompute_usage`, `fn_record_download`).
 
 ## The thirteen
 
-| Function                               | Kind       | Definer | Reachable by                    | Purpose                                                     |
-| :------------------------------------- | :--------- | :------ | :------------------------------ | :---------------------------------------------------------- |
-| `fn_touch_updated_at()`                | trigger    | —       | trigger only (`REVOKE`d)        | `updated_at` maintenance on `items` + `folders`.            |
-| `fn_recompute_usage(owner_kind, uuid)` | `void`     | ✅      | `service_role`                  | Rebuilds one owner's `storage_usage` row from scratch.      |
-| `fn_usage_trigger()`                   | trigger    | ✅      | trigger only (`REVOKE`d)        | Adapter — recomputes **both** sides of an ownership change. |
-| `fn_can_read(uuid) → boolean`          | `STABLE`   | ✅      | `PUBLIC` (it **is** the policy) | **The** read predicate for `files.items`.                   |
-| `fn_check_storage_quota()`             | trigger    | ✅      | trigger only (`REVOKE`d)        | The **fail-open** quota gate.                               |
-| `fn_resolve_share(text) → TABLE`       | `STABLE`   | ✅      | `anon` · `authenticated` · svc  | The **only** door from a slug into `share_links`.           |
-| `fn_mint_share_slug() → text`          | `VOLATILE` | —       | `service_role`                  | Mints the opaque capability token.                          |
-| `fn_public_media_ref(uuid) → jsonb`    | `STABLE`   | ✅      | `service_role` (+ definers)     | One PUBLIC stored image as a storage reference + its tiers. |
-| `get_public_media(uuid[]) → TABLE`     | `STABLE`   | ✅      | `anon` · `authenticated` · svc  | The batch door onto `fn_public_media_ref` (≤ 500 ids).      |
-| `fn_guard_pipeline_columns()`          | trigger    | —       | trigger only (`REVOKE`d)        | Only the server may claim an asset was processed.           |
-| `fn_owns_library(owner_kind, uuid)`    | `STABLE`   | —       | `PUBLIC` (it **is** the policy) | The WRITE twin of `fn_can_read`'s ownership arms.           |
-| `get_storage_quota(owner_kind, uuid)`  | `STABLE`   | ✅      | `authenticated` · svc           | One principal's allowance, for that principal only.         |
-| `fn_record_download(…)`                | `VOLATILE` | ✅      | `service_role`                  | The download ledger's only writer.                          |
+| Function                                             | Kind       | Definer | Reachable by                    | Purpose                                                     |
+| :--------------------------------------------------- | :--------- | :------ | :------------------------------ | :---------------------------------------------------------- |
+| `fn_touch_updated_at()`                              | trigger    | —       | trigger only (`REVOKE`d)        | `updated_at` maintenance on `items` + `folders`.            |
+| `fn_recompute_usage(owner_kind, uuid)`               | `void`     | ✅      | `service_role`                  | Rebuilds one owner's `storage_usage` row from scratch.      |
+| `fn_usage_trigger()`                                 | trigger    | ✅      | trigger only (`REVOKE`d)        | Adapter — recomputes **both** sides of an ownership change. |
+| `fn_can_read(uuid) → boolean`                        | `STABLE`   | ✅      | `PUBLIC` (it **is** the policy) | **The** read predicate for `files.items`.                   |
+| `fn_check_storage_quota()`                           | trigger    | ✅      | trigger only (`REVOKE`d)        | The **fail-open** quota gate.                               |
+| `fn_resolve_share(text) → TABLE`                     | `STABLE`   | ✅      | `anon` · `authenticated` · svc  | The only **visitor** door from a slug into `share_links`.   |
+| `fn_mint_share_slug() → text`                        | `VOLATILE` | —       | `service_role`                  | Mints the opaque capability token.                          |
+| `fn_public_media_ref(uuid) → jsonb`                  | `STABLE`   | ✅      | `service_role` (+ definers)     | One PUBLIC stored image as a storage reference + its tiers. |
+| `get_public_media(uuid[]) → TABLE`                   | `STABLE`   | ✅      | `anon` · `authenticated` · svc  | The batch door onto `fn_public_media_ref` (≤ 500 ids).      |
+| `fn_guard_pipeline_columns()`                        | trigger    | —       | trigger only (`REVOKE`d)        | Only the server may claim an asset was processed.           |
+| `fn_folder_in_library(uuid, owner_kind, uuid, uuid)` | `STABLE`   | —       | `PUBLIC` (the guards call it)   | Is this a live folder of that library?                      |
+| `fn_guard_folder_columns()`                          | trigger    | —       | trigger only (`REVOKE`d)        | A folder's provenance and true ancestry are the server's.   |
+| `fn_library_archived(owner_kind, uuid)`              | `STABLE`   | ✅      | `anon` · `authenticated` · svc  | Is this an archived entity's library (for a member)?        |
+| `fn_guard_hard_delete()`                             | trigger    | —       | trigger only (`REVOKE`d)        | A client never hard-deletes a file or a folder.             |
+| `fn_owns_library(owner_kind, uuid)`                  | `STABLE`   | —       | `PUBLIC` (it **is** the policy) | The WRITE twin of `fn_can_read`'s ownership arms.           |
+| `get_storage_quota(owner_kind, uuid)`                | `STABLE`   | ✅      | `authenticated` · svc           | One principal's allowance, for that principal only.         |
+| `fn_record_download(…)`                              | `VOLATILE` | ✅      | `service_role`                  | The download ledger's only writer.                          |
 
 Grants are in [`00002510`](../../../supabase/migrations/00002510_permissions_function_grants.sql);
 the reasoning for each `REVOKE` / `GRANT` is in [Policies.md](Policies.md#grants).
 
 ### Triggers bound in `00001880`
 
-| Trigger                   | Timing                                                                                            | Function                 |
-| :------------------------ | :------------------------------------------------------------------------------------------------ | :----------------------- |
-| `trg_files_items_touch`   | `BEFORE UPDATE ON files.items`                                                                    | `fn_touch_updated_at`    |
-| `trg_files_folders_touch` | `BEFORE UPDATE ON files.folders`                                                                  | `fn_touch_updated_at`    |
-| `trg_files_items_usage`   | `AFTER INSERT OR UPDATE OF size_bytes, deleted_at, source, owner_type, owner_entity_id, status OR DELETE` | `fn_usage_trigger`       |
-| `trg_files_items_quota`   | `BEFORE INSERT OR UPDATE OF size_bytes ON files.items`                                            | `fn_check_storage_quota` |
-| `trg_files_items_guard_pipeline` | `BEFORE INSERT OR UPDATE ON files.items` — before the quota gate, so a forged row is refused for what it claims rather than metered for what it weighs | `fn_guard_pipeline_columns` |
+| Trigger                          | Timing                                                                                                                                                 | Function                                      |
+| :------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------- |
+| `trg_files_items_touch`          | `BEFORE UPDATE ON files.items`                                                                                                                         | `fn_touch_updated_at`                         |
+| `trg_files_folders_touch`        | `BEFORE UPDATE ON files.folders`                                                                                                                       | `fn_touch_updated_at`                         |
+| `trg_files_items_usage`          | `AFTER INSERT OR UPDATE OF size_bytes, deleted_at, source, owner_type, owner_entity_id, status OR DELETE`                                              | `fn_usage_trigger`                            |
+| `trg_files_items_quota`          | `BEFORE INSERT OR UPDATE OF size_bytes ON files.items`                                                                                                 | `fn_check_storage_quota`                      |
+| `trg_files_items_guard_pipeline` | `BEFORE INSERT OR UPDATE ON files.items` — before the quota gate, so a forged row is refused for what it claims rather than metered for what it weighs | `fn_guard_pipeline_columns`                   |
+| `trg_files_items_guard_delete`   | `BEFORE DELETE ON files.items` — a client's hard delete is refused (Decision #314)                                                                     | `fn_guard_hard_delete`                        |
+| `trg_files_folders_guard_delete` | `BEFORE DELETE ON files.folders` — likewise                                                                                                            | `fn_guard_hard_delete`                        |
+| `trg_files_folders_guard`        | `BEFORE INSERT OR UPDATE ON files.folders` (Decision #314)                                                                                             | `fn_guard_folder_columns`                     |
+| `trg_files_items_guard_evidence` | `BEFORE UPDATE OF deleted_at ON files.items` — refuses (`PS409`) a soft delete while the file is evidence in an open dispute (Decision #212)           | `finance.fn_guard_evidence_file` (`00001260`) |
 
 > **The usage trigger's `UPDATE OF` list is deliberately wider than `size_bytes, deleted_at`.**
 > `source` decides whether a row counts **at all** (a hub-native upload that becomes a mounted
@@ -76,7 +86,8 @@ Recomputes one owner's stored-byte total from scratch and upserts `files.storage
   a write path is missed, and a storage total that is quietly wrong is worse than one that is
   momentarily expensive.
 - Counts **only what we actually store**: `source = 'supabase'` and `deleted_at IS NULL`. A mounted
-  Drive/Dropbox/S3/Frame.io file consumes the **provider's** quota; a `link` consumes none.
+  Drive/Dropbox/OneDrive (SharePoint included)/S3/Frame.io file consumes the **provider's** quota;
+  a `link` consumes none.
 - **An in-flight upload reserves; a refused one releases.** A `pending_upload` / `scanning` row
   counts at its **declared** size — `fn_check_storage_quota` charges a promotion only the delta
   between declared and measured size, so parallel declarations must each see the others. A
@@ -99,8 +110,9 @@ permanently overstated.
 ## 🔐 `files.fn_can_read(p_item_id uuid) → boolean`
 
 `STABLE` · `SECURITY DEFINER`. **The** read predicate — one function, called by the RLS `SELECT`
-policy on `files.items` and by the share route, so a read rule cannot be tightened in one place and
-left open in the other (the `scheduling` refusal-function precedent).
+policy on `files.items`, the `files.item_variants` read policy, the `comms.message_attachments`
+INSERT check and the share route, so a read rule cannot be tightened in one place and left open in
+the other (the `scheduling` refusal-function precedent).
 
 **Grants a read:**
 
@@ -115,6 +127,12 @@ left open in the other (the `scheduling` refusal-function precedent).
 | attached (`comms.message_attachments`) to a message `comms.can_read_message()` admits |
 | filed as dispute evidence (`finance.dispute_evidence`) and the reader is a party (`finance.fn_dispute_party`) or `security.is_admin()` |
 | `purpose = 'contact'` (a `/contact` attachment, Decision #276), linked to a request (`ops.contact_request_attachments`), and the reader is `security.is_admin()` — a file its sender removed or never sent is not readable |
+
+**The arms run top to bottom, and two of them end the evaluation.** An entity-owned row (`team` /
+`business` / `enterprise`) returns the membership answer itself, and a row in the `project` bucket
+returns `has_project_access` itself — neither falls through. So the message, dispute-evidence and
+contact arms only ever decide `owner_type = 'user'` rows outside the `project` bucket, and the
+project arm only ever decides user-owned rows.
 
 The message arm (Decision #132) is what lets the person a chat file was SENT to read it: a chat
 upload lands in the sender's own `personal` library, private, so no other arm admits the recipient
@@ -199,7 +217,7 @@ Same structural discipline as `integrations.connection_secrets`: RLS on, **no** 
 **no** visitor table grant, and one sanctioned operation exposed as a definer function. `EXECUTE` to
 `anon` grants nothing on its own, because holding it without holding a slug returns zero rows.
 
-### The whole liveness predicate lives here, in one place
+### The visitor-facing liveness predicate lives here
 
 ```sql
 WHERE s.slug = p_slug
@@ -213,6 +231,10 @@ WHERE s.slug = p_slug
 so a route that forgets to check **cannot resurrect a revoked link**. The last clause is easy to
 miss and matters: a share of a **soft-deleted** asset resolves to nothing, because a link outliving
 its target would otherwise present as a broken download rather than an honest 404.
+
+It has exactly one other copy: `fn_record_download`'s guarded `UPDATE` (service role only, below)
+re-tests revoked / expired / exhausted in the same statement that spends the download, and checks the
+file's own liveness separately rather than through the last clause.
 
 ### What it does not do
 
@@ -276,7 +298,8 @@ Otherwise:
 
 **Storage REFERENCES, never URLs.** A URL is a deployment fact (the public storage host), built
 once in `packages/backend/core/storage-url.ts`; the database stays portable across environments. The
-numbers are read defensively (`^[0-9]{1,6}$` before the cast) because `metadata` on older rows is a
+numbers are read defensively (`^[0-9]{1,6}$` before the `integer` cast for width / height,
+`^[0-9]{1,10}$` before the `bigint` cast for `duration_ms`) because `metadata` on older rows is a
 client-extracted document and one malformed value must cost that field, not the whole profile read.
 Definer because the caller may be anonymous and the item row is not theirs to read — the
 visibility test is what makes that safe: nothing it returns is not already world-readable. Not
@@ -305,18 +328,129 @@ scan, and every reader that trusts "uploaded" would serve it. So the columns tha
 **bytes and their processing** belong to the server. It decides by `current_user` — `anon` and
 `authenticated` are judged; the service role (the upload pipeline) and definer functions pass.
 
+- **Either operation — the library** (Decision #314): an **archived** team, business or enterprise
+  library is read-only, so no row is written into it or out of it (`42501` "an archived library is
+  read-only", [`fn_library_archived`](#-filesfn_library_archivedp_owner_type-filesowner_kind-p_owner_entity_id-uuid--boolean),
+  closing #306 (h)); and a row's `folder_id`, when set on INSERT or changed with its library on
+  UPDATE, must be a live native folder of the row's **own** library (`42501` "a file is filed only
+  into a live native folder of its own library", [`fn_folder_in_library`](#-filesfn_folder_in_library--boolean)).
 - **INSERT:** a client row must be `purpose = 'library'` with no `derived_from_id`
-  (`42501` "renditions are written by the media pipeline only"), and a `supabase`-sourced row must
-  start `pending_upload` in `quarantine` (`42501` "an upload starts pending in quarantine"). A link
-  (no bytes) is unaffected.
-- **UPDATE:** a client may not change `status`, `bucket_id`, `storage_path`, `target_bucket`,
-  `target_path`, `mime_type`, `size_bytes`, `metadata`, `content_hash`, `hash_algo`, `source`,
-  `purpose` or `derived_from_id` (`42501`). The presentational columns — name, folder, visibility,
+  (`42501` "renditions are written by the media pipeline only"); a `supabase`-sourced row must
+  start `pending_upload` in `quarantine` (`42501` "an upload starts pending in quarantine"); and a
+  client never inserts a **mounted** row — a connector `source`, or any row carrying
+  `source_connection_id` / `external_file_id`, is refused (`42501` "a mounted asset is written by
+  the connector service only", Decision #313). A **link** starts `link_scan_status = 'pending'` with
+  no `link_scanned_at`, `link_favicon_url`, `link_title` or `link_description` — what the scan
+  concluded and read from the page is the scan's to write (`42501` "a link starts pending",
+  Decision #314) — and a non-link row carries no `link_*` column at all (`42501` "only a link
+  carries a link facet").
+- **UPDATE — the bytes:** a client may not change `status`, `bucket_id`, `storage_path`,
+  `target_bucket`, `target_path`, `mime_type`, `size_bytes`, `metadata`, `content_hash`,
+  `hash_algo`, `hash_sampled`, `original_name`, `category`, `source`, `purpose` or
+  `derived_from_id` (`42501`; the middle three since Decision #314 — what the pipeline derived from
+  the bytes is fixed once written).
+- **UPDATE — what the server attests** (Decisions #313, #314): nor `link_url`, `link_domain`,
+  `link_title`, `link_description`, `link_favicon_url`, `link_scan_status`, `link_scanned_at`
+  (re-pointing a scanned link, calling one `safe`, or rewriting what its page said would launder a
+  URL past the scan), `share_slug`, `download_count`, or a mount's `source_connection_id` /
+  `external_file_id` / `external_parent_id` / `external_web_url` / `external_etag` — the ids a
+  future sync job will act on with a stored credential (`42501`).
+- **UPDATE — a mounted row** (Decision #314): it mirrors its provider, so its `display_name`,
+  `folder_id`, `visibility`, `owner_type` and `owner_entity_id` are the connector service's
+  (`42501` "a mounted asset mirrors its provider"); its owner keeps the star, the archive flag and
+  the soft-delete stamp. On a native row the presentational columns — name, folder, visibility,
   star, archive flag, soft-delete stamp — stay editable.
+
+Who writes the guarded columns, which is why the guard can refuse them without breaking a flow
+(verified by a 52-case rolled-back probe as real seed members of a live team, 2026-10-21, then by
+the real `attachLink` against the shared DB): `attachLink` (`services/files/live-library-writes.ts`)
+inserts the link `pending` under the caller's session and the **service role** then writes the
+verdict, scan time, favicon, title and description onto that one still-`pending` row;
+`original_name` / `category` / `hash_sampled` are declared at the upload INSERT and re-derived only
+by the service-role promotion; `download_count` moves only inside `fn_record_download`, called with
+the service-role client; nothing writes `files.items.share_slug` at all (share slugs are minted
+app-side into `files.share_links.slug`, and `fn_mint_share_slug` has no caller); no mount is written
+yet. Every SQL function that writes `files.items` (`org.set_profile_avatar`, `org.save_showcase`,
+`comms.set_group_photo`, `ops.discard_contact_attachment`, `ops.fn_claim_stale_contact_attachments`,
+`fn_record_download`) is a definer and passes.
 
 The media pipeline that DOES write those columns is `packages/backend/services/media/` (quarantine
 claim → magic-byte sniff → decode → WebP tiers → promote), running as the service role; see
 [Storage.md](Storage.md#the-upload-pipeline).
+
+---
+
+## 🧭 `files.fn_folder_in_library(…) → boolean`
+
+`(p_folder_id uuid, p_owner_type files.owner_kind, p_owner_entity_id uuid, p_owner_user_id uuid)` ·
+`STABLE` · `SQL` · **not** definer · `EXECUTE` to `PUBLIC` (both guards call it as the client's own
+role) · Decision #314.
+
+True when `p_folder_id` is a live (`deleted_at IS NULL`), **native** (`source = 'supabase'`) folder
+of the named library: same `owner_type`, same `owner_entity_id`, and — for a personal library only —
+the same `owner_user_id`. The rule is **library, not creator**: in a team, business or enterprise
+library any member's folder qualifies, so members file into each other's folders, while a personal
+library is its one owner's. **Native**, because a mounted folder mirrors a provider directory: a
+client row filed into it would be a local file posing as the provider's (only the connector service,
+as the service role, parents rows under a mount).
+INVOKER, so a client only ever matches a folder its own `files.folders` read policy shows it; a
+foreign public folder is visible but is another library, and fails.
+
+## 🗂 `files.fn_guard_folder_columns()`
+
+`RETURNS trigger` · not definer · bound `BEFORE INSERT OR UPDATE ON files.folders`
+(`trg_files_folders_guard`) · Decision #314.
+
+The folders policies check who writes a row and which library it names, never what it says. Like
+the items guard it judges only `anon` / `authenticated`; the service role (a future connector sync)
+and definers pass. For a client:
+
+- **Archived library:** as on `files.items`, nothing is written into or out of one.
+- **INSERT:** only native folders — `source = 'supabase'` with no `source_connection_id`,
+  `external_folder_id` or `external_parent_id` (`42501` "a mounted folder is written by the connector
+  service only") — and no `share_slug` (`42501` "a share slug is minted by the server only").
+- **UPDATE:** `source`, `source_connection_id`, `external_folder_id`, `external_parent_id` and
+  `share_slug` never change (`42501`). A **mounted** folder's `name`, `parent_folder_id`, `path`,
+  `visibility` and library are the connector service's (`42501` "a mounted folder mirrors its
+  provider").
+- **Shape, on INSERT and whenever the parent, path or library changes:** a root folder has
+  `path = '{}'`; any other's parent must pass `fn_folder_in_library` (`42501` "a folder sits only
+  inside a live native folder of its own library" — which also refuses a deleted or mounted parent);
+  a re-parent may
+  not land inside the folder's own subtree (`42501` "a folder cannot be moved inside itself"; the
+  ancestor walk is a `UNION` recursion, so it terminates even on a pre-existing loop); and `path`
+  must equal the parent's `path` plus the parent's `name` (`42501`) — exactly what `createFolder`
+  computes, so the breadcrumb trail and `/files/*` addresses are the real ancestry.
+
+A rename of a native folder alone is not a reshape and is allowed; nothing cascades a rename into
+descendants' `path` today (no service renames a folder yet).
+
+## 🗄 `files.fn_library_archived(p_owner_type files.owner_kind, p_owner_entity_id uuid) → boolean`
+
+`STABLE` · `SQL` · **definer** · `EXECUTE` to `anon` · `authenticated` · `service_role` ·
+Decision #314 (closes #306 (h)).
+
+True when the library is a team, business or enterprise whose `status` is `archived` **and** the
+caller is an active member of it (`org.is_active_team_member` · `org.is_active_business_member` ·
+`org.is_enterprise_member`); a personal library is never archived. Definer because
+`org.business_profiles` has no member read policy; the membership arm means it says nothing about
+an entity the caller is not part of — a non-member is refused by `fn_owns_library` regardless. Both
+guards call it for the row's new library and, on UPDATE, its old one, so an archived library keeps
+its rows readable and accepts no new or changed row from a client.
+
+## 🧱 `files.fn_guard_hard_delete()`
+
+`RETURNS trigger` · not definer · bound `BEFORE DELETE` on `files.items`
+(`trg_files_items_guard_delete`) and `files.folders` (`trg_files_folders_guard_delete`) ·
+Decision #314.
+
+Nothing in this schema is hard-deleted by the app (root `CLAUDE.md` §5): a delete stamps
+`deleted_at`, so a restore, an audit and the quota rollup stay coherent. The owner-only DELETE
+policies ("Users can delete own files" / "… folders", `00002011`) would still let a direct PostgREST
+call erase a row outright — including a row of an archived library or a mounted row, both of which
+the guards above hold read-only. So a client's DELETE raises `42501` "nothing is hard-deleted; a
+delete sets deleted_at"; the service role and definer functions pass (`RETURN OLD`). No app path
+issues one: no service, route or SQL function hard-deletes either table.
 
 ---
 
@@ -361,8 +495,9 @@ subscription, not public.
 
 Appends one download and moves the counters it moves, in one transaction:
 
-1. **Settled files only.** A `pending_upload`, `quarantined` or `error` row has no bytes; refused with
-   `PB404` **before** any count moves, so a refusal never spends a share link's allowance.
+1. **Settled, live files only.** Anything but `status = 'uploaded'` — `pending_upload`, `scanning`,
+   `quarantined`, `error` — or a soft-deleted row is refused with `PB404` **before** any count
+   moves, so a refusal never spends a share link's allowance.
 2. **A share download is counted against its link first**, by one guarded `UPDATE` that only succeeds
    while the link is unrevoked, unexpired and under its `download_limit` — so a link with one
    download left cannot serve two concurrent requests. The link must also reach the file (the file

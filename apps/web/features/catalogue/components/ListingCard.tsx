@@ -4,7 +4,7 @@ import { Tooltip } from "@projective/ui/feedback";
 import { SelectionCheck } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { ActionMenu } from "@projective/ui/navigation";
-import { statusMeta } from "../core/catalogue-model.ts";
+import { listingHref, statusMeta } from "../core/catalogue-model.ts";
 import type { ListingAction } from "../core/console-actions.ts";
 import { listingMenu } from "../core/listing-menu.ts";
 import type { ListingSummary } from "../types/catalogue-types.ts";
@@ -115,7 +115,7 @@ export function ListingCard(props: ListingCardProps): JSX.Element {
 
 			{!props.readOnly && (
 				<ActionMenu
-					model={listingMenu(listing, onAction)}
+					model={listingMenu(listing, onAction, href ?? listingHref(listing.id))}
 					surface={cardRef}
 					placement="bottom-end"
 					aria-label={`Actions for ${listing.title}`}

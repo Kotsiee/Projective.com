@@ -17,6 +17,7 @@ import {
 	type WorkspaceUrlState,
 } from "../types/catalogue-types.ts";
 import { flattenRichText } from "@projective/types/richtext";
+import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import type { CatalogueResult } from "../types/results.ts";
 import { CatalogueService } from "./CatalogueService.ts";
 import { WorkspaceService } from "./WorkspaceService.ts";
@@ -41,8 +42,8 @@ import {
  * they coordinate through these module signals. `ListingWorkspace` hydrates them from the SSR read;
  * the other islands paint from their own SSR props until it has.
  *
- * The store is the ONE network owner for the listing: it autosaves 800 ms after the last edit with
- * a section-scoped patch against `expectedUpdatedAt`, flushes through a beacon when the page is
+ * The store is the ONE network owner for the listing: while auto-save is on (the default, a
+ * per-device preference) it saves 800 ms after the last edit with a section-scoped patch against `expectedUpdatedAt`, flushes through a beacon when the page is
  * hidden, serialises the showcase writes and lifecycle changes behind any pending save, and turns a
  * 409 into either a silent retry (our own beacon or showcase write moved `updatedAt`) or a conflict
  * the seller resolves. The rules are pure, in `workspace-model.ts`.
@@ -159,6 +160,8 @@ export const workspaceReady = signal(false);
  * Whether the conflict choice is being offered (raised by a stale save, reopened from the header).
  */
 export const conflictPrompt = signal(false);
+/** Whether edits save on their own; off, nothing is written until the seller asks. */
+export const autoSaveEnabled = signal(true);
 /** The patch fields the draft holds unsaved. */
 export const dirtyFields = computed<PatchField[]>(() =>
 	saved.value && draft.value ? diffFields(saved.value, draft.value) : []
@@ -193,7 +196,7 @@ function cancelTimer(): void {
 
 function schedule(): void {
 	cancelTimer();
-	if (saveState.peek() === "conflict") return;
+	if (!autoSaveEnabled.peek() || saveState.peek() === "conflict") return;
 	timer = clock.set(() => {
 		timer = null;
 		void flush();
@@ -380,7 +383,7 @@ export function retry(): Promise<void> {
 export function flushBeacon(send: BeaconSender): boolean {
 	const base = saved.peek();
 	const current = draft.peek();
-	if (!base || !current) return false;
+	if (!base || !current || !autoSaveEnabled.peek()) return false;
 	const flushed = beaconFlush(base, current, saveState.peek());
 	if (!flushed) return false;
 	cancelTimer();
@@ -392,6 +395,25 @@ export function flushBeacon(send: BeaconSender): boolean {
 /** The page is visible again: resume the save a beacon flush interrupted. */
 export function resume(): void {
 	if (saveState.peek() === "dirty") schedule();
+}
+
+/** Set the auto-save preference for this device; switching it on saves whatever is pending. */
+export function setAutoSave(enabled: boolean): void {
+	autoSaveEnabled.value = enabled;
+	writeStored("local", LocalKeys.CATALOGUE_AUTOSAVE, enabled ? "1" : "0");
+	if (enabled) resume();
+	else cancelTimer();
+}
+
+/** Adopt the stored auto-save preference; called after mount, never during render. */
+export function hydrateAutoSave(): void {
+	autoSaveEnabled.value = readStored("local", LocalKeys.CATALOGUE_AUTOSAVE) !== "0";
+}
+
+/** Whether leaving now would lose edits: auto-save is off and something is unsaved. */
+export function holdsUnsavedEdits(): boolean {
+	const state = saveState.peek();
+	return !autoSaveEnabled.peek() && (state === "dirty" || state === "error");
 }
 // #endregion
 

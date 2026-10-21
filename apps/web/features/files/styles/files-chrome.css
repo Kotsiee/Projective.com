@@ -216,6 +216,8 @@
  * beneath it is the canvas frame's single hairline — painting a plate and a hairline here doubles both.
  */
 .fh-headerband {
+	container-type: inline-size;
+	container-name: fhband;
 	display: flex;
 	align-items: center;
 	gap: var(--space-3);
@@ -251,7 +253,56 @@
 	align-items: center;
 	gap: var(--space-2);
 	margin-inline-start: auto;
-	flex: none;
+	flex: 0 1 auto;
+}
+
+.fh-headerband__search {
+	display: block;
+	flex: 0 1 16rem;
+	min-inline-size: 10rem;
+}
+
+.fh-headerband__search .ui-field {
+	--field-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	border-radius: var(--radius-full);
+}
+
+.fh-headerband__search .ui-field:focus-within {
+	box-shadow: none;
+}
+
+.fh-headerband__searchicon {
+	display: inline-flex;
+	color: var(--text-secondary);
+}
+
+.fh-headerband__searchtoggle {
+	display: none;
+}
+
+@container fhband (max-width: 34rem) {
+	.fh-headerband__search {
+		display: none;
+	}
+
+	.fh-headerband__searchtoggle {
+		display: inline-flex;
+	}
+
+	.fh-headerband__controls {
+		gap: var(--space-1);
+	}
+
+	.fh-headerband__browse-trigger {
+		justify-content: center;
+		inline-size: var(--fh-row);
+		padding-inline: 0;
+	}
+
+	.fh-headerband__browse-name,
+	.fh-headerband__caret {
+		display: none;
+	}
 }
 
 .fh-headerband__icon {
@@ -298,106 +349,14 @@
 	padding: var(--space-2);
 }
 
-.fh-headerband__panel--filter {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	min-inline-size: 15rem;
-	max-block-size: 60vh;
-	overflow-y: auto;
-}
-
-.fh-headerband__panel-note {
-	margin: var(--space-2) 0 var(--space-1);
-	padding-inline: var(--space-2);
-	font-size: var(--fh-fs-micro);
-	letter-spacing: 0.04em;
-	text-transform: uppercase;
-	color: var(--text-secondary);
-}
-
-.fh-headerband__panel-note:first-child {
-	margin-block-start: 0;
-}
-
-/* A filter row is an interactive control, so the engaged contour is earned (§B.4). */
-.fh-headerband__option {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	inline-size: 100%;
-	font: inherit;
-	font-size: var(--fh-fs-body);
-	text-align: start;
-	padding-inline: var(--space-2);
-	padding-block: var(--space-2);
-	border: 1px solid transparent;
-	border-radius: var(--radius-base);
-	background: none;
-	color: var(--on-surface);
-	cursor: pointer;
-}
-
-.fh-headerband__option:hover {
-	background: var(--surface-3);
-}
-
-.fh-headerband__option[aria-pressed="true"] {
-	border-color: var(--border-subtle);
-	background: var(--surface-2);
-}
-
-.fh-headerband__option:focus-visible {
-	outline: none;
-}
-
-/*
- * The check is a SHAPE channel, revealed only when the row is engaged — so "selected" is carried by
- * the mark, the border and the surface together, and survives a colour-blindness overlay.
- */
-.fh-headerband__option-mark {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	color: var(--text-secondary);
-}
-
-.fh-headerband__option-mark > .ui-icon[data-icon="check"] {
-	opacity: 0;
-}
-
-.fh-headerband__option[aria-pressed="true"] .fh-headerband__option-mark {
-	color: var(--primary);
-}
-
-.fh-headerband__option[aria-pressed="true"] .fh-headerband__option-mark > .ui-icon[data-icon="check"] {
-	opacity: 1;
-}
-
-.fh-headerband__clear {
-	margin-block-start: var(--space-2);
-	font: inherit;
-	font-size: var(--fh-fs-micro);
-	text-align: start;
-	padding: var(--space-2);
-	border: none;
-	border-radius: var(--radius-base);
-	background: none;
-	color: var(--primary);
-	cursor: pointer;
-}
-
-.fh-headerband__clear:hover {
-	background: var(--surface-3);
-}
-
-.fh-headerband__clear:focus-visible {
-	outline: none;
+.fh-headerband__panel .ui-field:focus-within {
+	box-shadow: none;
 }
 
 .fh-headerband__sort {
 	display: inline-flex;
 	align-items: center;
+	white-space: nowrap;
 }
 
 /*
@@ -505,6 +464,135 @@
 		min-inline-size: 0;
 	}
 }
+
+@media (max-width: 22rem) {
+	.fh-headerband {
+		gap: var(--space-2);
+		padding-inline: var(--space-3);
+	}
+}
+/* #endregion */
+
+/* #region Header band — filter panel */
+.fh-filter {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	inline-size: 26rem;
+	max-inline-size: calc(100vw - var(--space-6));
+	padding: var(--space-3);
+}
+
+.fh-filter__section {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+	margin: 0;
+	padding: 0;
+	border: none;
+}
+
+.fh-filter__heading {
+	padding: 0 var(--space-2) var(--space-1);
+	color: var(--text-secondary);
+	font-size: var(--fh-fs-micro);
+	font-weight: var(--fw-medium);
+}
+
+.fh-filter__grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+	gap: 2px;
+}
+
+.fh-filter__wrap {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px;
+}
+
+.fh-filter__wrap .fh-filter__option {
+	inline-size: auto;
+}
+
+.fh-filter__option {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	inline-size: 100%;
+	min-inline-size: 0;
+	min-block-size: 2rem;
+	padding: var(--space-1) var(--space-2);
+	border: 1px solid transparent;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: var(--text-sm);
+	text-align: start;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.fh-filter__option:hover {
+	background: var(--surface-3);
+}
+
+.fh-filter__option[aria-pressed="true"] {
+	border-color: var(--border-subtle);
+	background: var(--surface-2);
+}
+
+.fh-filter__option:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.fh-filter__check {
+	display: inline-flex;
+	flex: none;
+	color: var(--primary);
+	opacity: 0;
+}
+
+.fh-filter__option[aria-pressed="true"] .fh-filter__check {
+	opacity: 1;
+}
+
+.fh-filter__mark {
+	display: inline-flex;
+	flex: none;
+	color: var(--text-secondary);
+}
+
+.fh-filter__label {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fh-filter__clear {
+	align-self: flex-start;
+	padding: var(--space-2);
+	border: none;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--primary);
+	font: inherit;
+	font-size: var(--text-sm);
+	cursor: pointer;
+}
+
+.fh-filter__clear:hover {
+	background: var(--surface-3);
+}
+
+.fh-filter__clear:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
 /* #endregion */
 
 /* #region Footer rig */
@@ -514,9 +602,7 @@
  * (1) INLINE-SIZE CONTAINMENT. Without it, this `nowrap` cluster contributes its full min-content to
  *     the middle-nav content column — a `1fr` grid track whose automatic minimum is `auto` — and the
  *     band starves the nav lane at narrow viewports (measured on `/wallet`: 739px min-content collapsed
- *     a 280px lane to 2px at 820px, and overflowed the frame's `clip` by 50px at 768px). The band may
- *     not bid for the lane's space. (`middle-nav.css` carries the matching `minmax(0, 1fr)`; either
- *     alone leaves the other's failure reachable.)
+ *     a 280px lane to 2px at 820px). The band may not bid for the lane's space.
  *
  * (2) It makes the tier switch a CONTAINER QUERY on the band's real width, so the collapse is
  *     deterministic CSS rather than a client width observer.
@@ -528,17 +614,24 @@
 	container-name: fhrig;
 	display: flex;
 	align-items: center;
-	gap: var(--space-3);
+	gap: var(--space-4);
 	padding: var(--space-2) var(--space-4);
 	min-inline-size: 0;
 }
 
-.fh-rig__actions,
-.fh-rig__menu {
+.fh-rig__status {
 	display: flex;
+	flex: 1 1 auto;
+	align-items: center;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.fh-rig__actions {
+	display: inline-flex;
+	flex: none;
 	align-items: center;
 	gap: var(--space-2);
-	min-inline-size: 0;
 }
 
 /* The Tooltip anchor is an inline span; in the flex row it must carry the button's box, not wrap it. */
@@ -547,99 +640,9 @@
 	min-inline-size: 0;
 }
 
-/*
- * The menu is pinned to the trailing edge, and the auto margin has to sit on the ANCHOR, not on the
- * button: every rig control is wrapped in a `Tooltip`, so the span is the flex item and a margin on
- * the button inside it moves nothing. `:has` is the only selector that can name "the anchor holding
- * the more button" without the package exposing a hook for it, and it survives every tier — including
- * the narrowest, where the inline cluster is gone and there is no sibling left to push against.
- */
-.fh-rig > .ui-tooltip__anchor:has(.fh-rig__more) {
-	margin-inline-start: auto;
-}
-
-.fh-rig__menu {
-	flex-direction: column;
-	align-items: stretch;
-	min-inline-size: 13rem;
-	padding: var(--space-1);
-}
-
-/* A full contour here is correct: these are interactive controls (§B.4). */
-.fh-rig__action {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: var(--space-2);
-	font: inherit;
-	font-size: var(--fh-fs-body);
-	white-space: nowrap;
-	block-size: var(--fh-rig-row);
-	padding-inline: var(--space-3);
-	padding-block: 0;
-	border: 1px solid transparent;
-	border-radius: var(--radius-base);
-	background: none;
-	color: var(--on-surface);
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.fh-rig__action:hover:not(:disabled) {
-	background: var(--surface-3);
-}
-
-.fh-rig__action:focus-visible {
-	outline: none;
-}
-
-/*
- * The primary action is TONAL, not filled.
- *
- * `--on-primary` on `--primary` measures 3.57:1 in dark mode — a theme-engine pairing flagged against
- * every filled primary control in the product (Decisions #64 / #65) and still unresolved at the token
- * layer. This band's label is small text, which is exactly the case that pairing fails, so the control
- * is routed around it rather than patched: a `--primary`-tinted surface with `--primary` ink and a
- * `--primary` contour reads as unambiguously primary against four bare-tonal siblings, and every
- * channel it uses (fill, border, ink) is one the theme already ships at text contrast.
- */
-.fh-rig__action[data-variant="primary"] {
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
-	border-color: color-mix(in srgb, var(--primary) 55%, transparent);
-	color: var(--primary);
-}
-
-.fh-rig__action[data-variant="primary"]:hover:not(:disabled) {
-	background: color-mix(in srgb, var(--primary) 22%, transparent);
-	border-color: var(--primary);
-}
-
-/*
- * Disabled steps DOWN to a tonal control rather than washing out a filled primary: a 0.4-alpha
- * `--primary` plate reads as a broken button, and the reason a control is unavailable is carried by
- * the state, not by a colour nobody can name.
- */
-.fh-rig__action:disabled {
-	cursor: not-allowed;
-	background: none;
-	border-color: var(--border-subtle);
-	color: var(--text-secondary);
-	opacity: 0.72;
-}
-
-/* The menu lists every action at one weight — a filled row inside a list of five is a recommendation. */
-.fh-rig__menu .fh-rig__action {
-	justify-content: flex-start;
-	inline-size: 100%;
-	block-size: auto;
-	padding-block: var(--space-2);
-	background: none;
-	color: var(--on-surface);
-}
-
-.fh-rig__glyph {
-	display: inline-flex;
-	align-items: center;
+.ui-button.fh-rig__icon,
+.ui-button.fh-rig__upload {
+	flex: none;
 }
 
 /*
@@ -653,52 +656,34 @@
 	flex: none;
 }
 
-.fh-rig__more {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	font: inherit;
-	font-size: var(--fh-fs-body);
-	block-size: var(--fh-rig-row);
-	padding-inline: var(--space-3);
-	border: 1px solid var(--border-subtle);
-	border-radius: var(--radius-base);
-	background: none;
-	color: var(--on-surface);
-	cursor: pointer;
-	margin-inline-start: auto;
-	flex: none;
-}
-
-.fh-rig__more:hover {
-	background: var(--surface-3);
-}
-
-.fh-rig__more:focus-visible {
-	outline: none;
-}
-
 .fh-rig__note,
 .fh-rig__uploads {
-	font-size: var(--fh-fs-micro);
-	color: var(--text-secondary);
-	white-space: nowrap;
 	min-inline-size: 0;
 	overflow: hidden;
+	color: var(--text-secondary);
+	font-size: var(--fh-fs-micro);
 	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
-/* The picker is driven entirely by the Upload button; it must never take focus or paint. */
-.fh-rig__file {
-	position: absolute;
-	inline-size: 1px;
-	block-size: 1px;
-	padding: 0;
-	margin: -1px;
-	overflow: hidden;
-	clip-path: inset(50%);
-	white-space: nowrap;
-	border: 0;
+.fh-rig__uploads {
+	padding: var(--space-1) var(--space-2);
+	border: none;
+	border-radius: var(--radius-base);
+	background: none;
+	font-family: inherit;
+	text-decoration: underline;
+	text-underline-offset: 0.15em;
+	cursor: pointer;
+}
+
+.fh-rig__uploads:hover {
+	color: var(--on-surface);
+}
+
+.fh-rig__uploads:focus-visible {
+	outline: none;
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -786,16 +771,29 @@
 /* #endregion */
 
 /* #region Footer rig — tiers */
-/*
- * Three tiers, and the MENU HOLDS EVERY ACTION AT EVERY TIER. Hiding the inline cluster can therefore
- * never remove a path to getting a file into the library — which is precisely what `/wallet`'s old
- * `nth-child(n + 3) { display: none }` mobile rule did on four pages with no menu to recover from.
- */
+@container fhrig (max-width: 36rem) {
+	.fh-rig__note {
+		display: none;
+	}
+}
 
-/* Tier 2 — the labels go, the glyphs stay; the name is relocated to the Tooltip, never deleted (§B.6.3). */
-@container fhrig (max-width: 44rem) {
-	.fh-rig__actions .fh-rig__label,
-	.fh-rig__more-label {
+@container fhrig (max-width: 28rem) {
+	.fh-rig {
+		gap: var(--space-2);
+	}
+
+	.fh-rig .fh-rig__density {
+		min-inline-size: 6rem;
+	}
+
+	.ui-button.fh-rig__upload {
+		--btn-px: 0;
+		inline-size: var(--btn-height);
+		padding: 0;
+		border-radius: var(--radius-full);
+	}
+
+	.ui-button.fh-rig__upload .ui-button__label {
 		position: absolute;
 		inline-size: 1px;
 		block-size: 1px;
@@ -806,71 +804,37 @@
 		white-space: nowrap;
 		border: 0;
 	}
+}
 
-	.fh-rig__actions .fh-rig__action,
-	.fh-rig__more {
-		inline-size: var(--fh-rig-row);
-		padding-inline: 0;
-	}
-
-	/* The menu's rows keep their labels — that is what the menu is for. */
-	.fh-rig__menu .fh-rig__action {
-		inline-size: 100%;
+@media (max-width: 767.98px) {
+	.fh-rig {
 		padding-inline: var(--space-3);
 	}
 
-	.fh-rig__menu .fh-rig__label {
-		position: static;
-		inline-size: auto;
-		block-size: auto;
-		margin: 0;
-		clip-path: none;
-	}
-}
-
-/* Tier 2 also drops the standing notes before it drops any control. */
-@container fhrig (max-width: 36rem) {
-	.fh-rig__note {
-		display: none;
-	}
-}
-
-/* Tier 3 — the inline cluster collapses entirely into the menu, which already holds all of it. */
-@container fhrig (max-width: 26rem) {
 	.fh-rig__actions {
-		display: none;
-	}
-
-	.fh-rig .fh-rig__density {
-		min-inline-size: 6rem;
-	}
-
-	.fh-rig__more {
-		margin-inline-start: auto;
+		gap: var(--space-1);
 	}
 }
 /* #endregion */
 
-/* #region Coarse pointer + the mobile band offset */
+/* #region Coarse pointer */
 /*
  * A finger needs a bigger target than a cursor (WCAG 2.5.8). Applied on the POINTER, not the viewport:
  * a touch laptop at 1440px needs it and a narrow desktop window does not.
  */
 @media (pointer: coarse) {
-	.fh-rig__action,
-	.fh-rig__more {
-		block-size: 2.5rem;
+	.fh-headerband {
+		--fh-row: 2.5rem;
 	}
 
-	.fh-headerband__icon {
-		inline-size: 2.5rem;
-		block-size: 2.5rem;
+	.fh-filter__option {
+		min-block-size: 2.5rem;
 	}
 }
 
 @media (prefers-reduced-motion: reduce) {
 	.fh-rail__item,
-	.fh-rig__action,
+	.fh-filter__option,
 	.fh-rig__provider,
 	.fh-headerband__icon {
 		transition: none;

@@ -73,11 +73,14 @@ re-issues the session after it returns so the hook stamps `active_context.isFree
 
 The acting entity's display name for the account popover (`UserBackendService.me` →
 `workspace.name`). `p_context_type` is `team` · `business` · `enterprise`; answers
-`{ context_type, context_id, name, handle }` only when the caller holds an **active** seat in that
+`{ context_type, context_id, name, handle, status }` only when the caller holds an **active** seat in that
 entity (an enterprise's owner counts), else `NULL` — so it can never read an entity the caller is
 not acting inside. It exists because `org.business_profiles` has no client SELECT policy: the
 previous RLS read returned nothing for a business member and the header fell back to the slug. An
-enterprise's `name` is its trading name, else its legal name.
+enterprise's `name` is its trading name, else its legal name. `status` is the entity's lifecycle
+(`draft` · `active` · `archived`, an enterprise's also `suspended`): the console drive's read
+(`files/live-library.ts` `listWorkspace`) answers an archived entity's drive read-only from it
+(Decision #315).
 
 ## `org.update_enterprise(p_enterprise_id uuid, p_payload jsonb) → jsonb`
 

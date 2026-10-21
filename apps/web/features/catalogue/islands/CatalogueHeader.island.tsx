@@ -14,8 +14,7 @@ import type { CatalogueStats, ConsoleUrlState, ConsoleView } from "../types/cata
  * the workspace's, {@link ListingHeader}): identity at the start (the title over the catalogue's
  * health — how much is live, how it is rated), the view switch (Listings · Analytics · Clients)
  * centred, and the sales figures for the window at the end. Search, the type, sort and New listing
- * live in the canvas's sticky toolbar (`CatalogueToolbar`), which also counts what the filters match
- * (Decision #221).
+ * live in the canvas's sticky toolbar (`CatalogueToolbar`) (Decisions #221, #309).
  */
 
 // #region Props
@@ -23,6 +22,8 @@ export interface CatalogueHeaderProps {
 	url: ConsoleUrlState;
 	/** The server's rollups, for the first byte. */
 	initialStats: CatalogueStats;
+	/** The band's title; a team's catalogue names the team (Decision #312). */
+	title?: string;
 }
 // #endregion
 
@@ -49,7 +50,7 @@ export default function CatalogueHeader(props: CatalogueHeaderProps): JSX.Elemen
 		<header class="cat-band cat-hdr">
 			<div class="cat-band__start">
 				<div class="cat-band__idblock">
-					<h1 class="cat-band__title">Catalogue</h1>
+					<h1 class="cat-band__title">{props.title ?? "Catalogue"}</h1>
 					<p class="cat-band__meta">
 						<CatalogueHealth stats={stats} />
 					</p>

@@ -1,11 +1,13 @@
 import type { ComponentChildren } from "preact";
+import type { UserContext } from "@projective/types/auth";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import WorkspaceLane from "../islands/WorkspaceLane.island.tsx";
-import { resolveRoster, resolveWorkspaceConsole } from "./workspace-ssr.ts";
+import { resolveLaneListings, resolveRoster, resolveWorkspaceConsole } from "./workspace-ssr.ts";
 import {
 	activeModuleOf,
 	channelSlugOfPath,
 	kindFromPath,
+	listingSlugOfPath,
 	workspaceHandleOf,
 } from "./workspace-model.ts";
 import { rosterTabFromSearch } from "./roster-model.ts";
@@ -24,9 +26,16 @@ import { resolveSubView } from "./sub-views.ts";
  * Both reads go through `workspace-ssr`'s request memo, so the lane shares them with the page handler
  * and the other two bands rather than reading the database again.
  *
+ * On a team's catalogue routes the lane's Catalogue section opens with its listings in the first byte
+ * (`resolveLaneListings`); everywhere else it starts folded and reads them when it is opened.
+ *
  * Server-only — it reaches `@server/services` through `workspace-ssr`; never import it from an island.
  */
-export async function workspaceLaneFor(url: URL, actor: ReadActor): Promise<ComponentChildren> {
+export async function workspaceLaneFor(
+	url: URL,
+	context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
 	const kind = kindFromPath(url.pathname);
 	if (!kind) return null;
 
@@ -62,6 +71,11 @@ export async function workspaceLaneFor(url: URL, actor: ReadActor): Promise<Comp
 		);
 	}
 
+	const onCatalogue = bootstrap.activeModule === "catalogue";
+	const listings = onCatalogue
+		? await resolveLaneListings(bootstrap.workspace, context, actor, url)
+		: null;
+
 	return (
 		<WorkspaceLane
 			kind={kind}
@@ -75,6 +89,8 @@ export async function workspaceLaneFor(url: URL, actor: ReadActor): Promise<Comp
 				url.searchParams.get("view"),
 			)}
 			channel={bootstrap.activeModule === "channels" ? channelSlugOfPath(url.pathname) : null}
+			listing={onCatalogue ? listingSlugOfPath(url.pathname) : null}
+			listings={listings}
 		/>
 	);
 }

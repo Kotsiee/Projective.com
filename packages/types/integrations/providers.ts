@@ -98,6 +98,7 @@ export const PROVIDER_SLUGS = [
 	"discord",
 	"google_drive",
 	"dropbox",
+	"onedrive",
 	"frameio",
 	"s3",
 	"notion",
@@ -150,6 +151,8 @@ export const PROVIDER_LABEL: Record<ProviderSlug, string> = {
 	discord: "Discord",
 	google_drive: "Google Drive",
 	dropbox: "Dropbox",
+	/** One Microsoft Graph connector: a person's OneDrive, or a SharePoint library by `config.driveId`. */
+	onedrive: "OneDrive & SharePoint",
 	frameio: "Frame.io",
 	/** The vendor-neutral label: the connector speaks the S3 API, which is not only Amazon's. */
 	s3: "S3-compatible storage",

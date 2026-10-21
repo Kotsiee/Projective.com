@@ -38,7 +38,12 @@ import {
 	fileExtension,
 	messageAttachmentFacets,
 } from "@projective/types/files";
-import { assetAddress, withMediaFacts } from "../files/asset-row.ts";
+import {
+	assetAddress,
+	isMountedSource,
+	toAssetSource,
+	withMediaFacts,
+} from "../files/asset-row.ts";
 
 /**
  * live-workspace — the RLS-scoped Postgres read path for a DM thread's **Files** and **Members**
@@ -357,19 +362,12 @@ function sizeLabelOf(bytes: number): string {
 // #region Column coercion
 
 /**
- * The four `files.*` enums align member-for-member with their Zod counterparts today, so the
- * coercers below are guards against a future member reaching a client as an unparseable row rather
- * than translations. Each lands on the reading that misleads least when it cannot recognise a value.
+ * The `files.*` enums align member-for-member with their Zod counterparts today, so the coercers
+ * below are guards against a future member reaching a client as an unparseable row rather than
+ * translations. Each lands on the reading that misleads least when it cannot recognise a value. The
+ * source coercer is the registry's own (`toAssetSource`), so a new connector is recognised here the
+ * moment the enum learns it.
  */
-
-const SOURCES: ReadonlySet<string> = new Set([
-	"supabase",
-	"google_drive",
-	"dropbox",
-	"frameio",
-	"s3",
-	"link",
-]);
 
 const STATUSES: ReadonlySet<string> = new Set([
 	"pending_upload",
@@ -421,11 +419,6 @@ const CATEGORIES: ReadonlySet<string> = new Set([
 	"Package",
 	"Other",
 ]);
-
-/** `files.file_source` → {@link AssetSource}. An unknown source is the platform's own storage. */
-function toSource(raw: string | null): AssetSource {
-	return (raw && SOURCES.has(raw) ? raw : "supabase") as AssetSource;
-}
 
 /**
  * `files.file_status` → {@link FileStatus}.
@@ -576,7 +569,7 @@ interface FileContext {
  */
 function toFileItem(row: ItemRow, attachmentId: string, ctx: FileContext): FileItem {
 	const name = clampOr(row.display_name ?? row.original_name, MAX.name, UNTITLED_ASSET);
-	const source = toSource(row.source);
+	const source = toAssetSource(row.source);
 	const category = categoryOf(row, row.original_name ?? name);
 	// A link has no category that maps to `link` — the DB taxonomy has no such member — so the
 	// rendering bucket is overridden from the source, which is the only column that knows.
@@ -640,7 +633,7 @@ function toFileItem(row: ItemRow, attachmentId: string, ctx: FileContext): FileI
 		// later arrives here for free, and a field this row genuinely answers always wins.
 		...messageAttachmentFacets(clamp(ownerId, MAX.ownerId), {
 			visibility: toVisibility(row.visibility),
-			canManage: isOwner,
+			canManage: isOwner && !isMountedSource(source),
 			shareSlug: row.share_slug ? clamp(row.share_slug, MAX.shareSlug) : null,
 			downloadCount: Math.max(0, Math.floor(row.download_count ?? 0)),
 		}),

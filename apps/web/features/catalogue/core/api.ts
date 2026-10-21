@@ -1,5 +1,6 @@
 import type { CatalogueResult } from "../types/results.ts";
 import { apiFetch } from "@web/utils/api-client.ts";
+import { catalogueApiPath } from "./api-scope.ts";
 
 /**
  * Catalogue transport primitives — the `fetch` helpers the thin {@link CatalogueService} composes over.
@@ -10,13 +11,14 @@ import { apiFetch } from "@web/utils/api-client.ts";
  * Requests go through {@link apiFetch}, so an expired access token on a `/api/catalogue/*` call is
  * silently refreshed and retried (or routed to `/login` with the current path preserved) instead of
  * surfacing as a bare failure or a surprise logout (Decision #46) — important on a write surface where
- * a lost session mid-edit must not silently drop a mutation.
+ * a lost session mid-edit must not silently drop a mutation. A page under `/teams/:handle/catalogue`
+ * scopes every catalogue call to its team ({@link catalogueApiPath}, Decision #312).
  */
 
 /** GET a catalogue endpoint, folding the response into a soft {@link CatalogueResult}. */
 export async function getCatalogue<T>(path: string): Promise<CatalogueResult<T>> {
 	try {
-		const res = await apiFetch(path, { headers: { accept: "application/json" } });
+		const res = await apiFetch(catalogueApiPath(path), { headers: { accept: "application/json" } });
 		const body = await res.json().catch(() => null);
 		if (body && typeof body.ok === "boolean") return body as CatalogueResult<T>;
 		return { ok: false, message: "Unexpected response from the catalogue service." };
@@ -46,7 +48,7 @@ async function sendCatalogue<T>(
 	payload: unknown,
 ): Promise<CatalogueResult<T>> {
 	try {
-		const res = await apiFetch(path, {
+		const res = await apiFetch(catalogueApiPath(path), {
 			method,
 			headers: payload === undefined
 				? { accept: "application/json" }

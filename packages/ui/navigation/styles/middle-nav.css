@@ -322,12 +322,13 @@
     display: none;
 }
 
-.ui-middle-nav--has-header:has(> .ui-middle-nav__header:is(:empty, :has(> [data-band-empty="always"]))) {
+.ui-middle-nav--has-header:has(> .ui-middle-nav__header:empty),
+.ui-middle-nav--has-header:has(> .ui-middle-nav__header > [data-band-empty="always"]) {
     --shell-frame-inset-block: var(--shell-topbar-h);
 }
 
-.ui-middle-nav--has-header:has(> .ui-middle-nav__header:is(:empty, :has(> [data-band-empty="always"])))
-    > .ui-middle-nav__panel {
+.ui-middle-nav--has-header:has(> .ui-middle-nav__header:empty) > .ui-middle-nav__panel,
+.ui-middle-nav--has-header:has(> .ui-middle-nav__header > [data-band-empty="always"]) > .ui-middle-nav__panel {
     grid-row: 1 / -1;
     inset-block-start: var(--shell-topbar-h);
     max-block-size: calc(100dvh - var(--shell-topbar-h));

@@ -516,17 +516,68 @@ $$;
 -- definer functions (whose current_user is their owner) pass; the two roles PostgREST runs a
 -- client's request as do not.
 --
+-- The same holds for what the server ATTESTS about a row (Decision #313): a link's target and safety
+-- verdict (re-pointing a scanned link, or calling one `safe`, would launder a URL past the scan), the
+-- share slug and download count, and a mounted row's provenance. A mount's connection and external
+-- ids are what a sync job will act on with a stored credential, so a client able to set them could
+-- aim that job at someone else's connection; a client therefore never inserts a mounted row at all —
+-- mounting is the connector service's act.
+--
 -- What a client may still do, deliberately: DECLARE an upload (a `pending_upload` row in
 -- `quarantine`), attach a link (no bytes), and edit the presentational columns the hub edits — the
--- name, folder, visibility, star, archive flag and soft-delete stamp.
+-- name, folder, visibility, star, archive flag and soft-delete stamp. Decision #314 narrows each:
+--   * A link is inserted `pending`, with no scan time, favicon, title or description. Those are what
+--     the scan concluded and read from the page, so the scan's service-role write fills them; a
+--     client that could insert `safe` would launder a URL past the scan. A non-link row carries no
+--     link facet at all.
+--   * A file is filed only into a live folder of its own library (files.fn_folder_in_library).
+--   * An archived entity's library is read-only: no row is written into or out of it
+--     (files.fn_library_archived, closing #306 (h)).
+--   * A mounted row mirrors its provider: its name, folder, visibility and library are the connector
+--     service's to change; its owner keeps the shelf marks (star, archive) and the soft-delete stamp.
+--   * What the pipeline derived from the bytes (`original_name`, `category`, `hash_sampled`) and what
+--     the scan read from a page (`link_title`, `link_description`) are fixed once written.
 CREATE OR REPLACE FUNCTION files.fn_guard_pipeline_columns ()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = ''
 AS $$
+DECLARE
+    v_refiled boolean;
 BEGIN
     IF current_user NOT IN ('authenticated', 'anon') THEN
         RETURN NEW;
+    END IF;
+
+    IF files.fn_library_archived (NEW.owner_type, NEW.owner_entity_id) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '42501',
+            MESSAGE = 'files: an archived library is read-only';
+    END IF;
+    IF TG_OP = 'UPDATE' THEN
+        IF files.fn_library_archived (OLD.owner_type, OLD.owner_entity_id) THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'files: an archived library is read-only';
+        END IF;
+    END IF;
+
+    IF NEW.folder_id IS NOT NULL THEN
+        IF TG_OP = 'INSERT' THEN
+            v_refiled := true;
+        ELSE
+            v_refiled := NEW.folder_id IS DISTINCT FROM OLD.folder_id
+                OR NEW.owner_type IS DISTINCT FROM OLD.owner_type
+                OR NEW.owner_entity_id IS DISTINCT FROM OLD.owner_entity_id;
+        END IF;
+        IF v_refiled
+           AND NOT files.fn_folder_in_library (
+               NEW.folder_id, NEW.owner_type, NEW.owner_entity_id, NEW.owner_user_id
+           ) THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'files: a file is filed only into a live native folder of its own library';
+        END IF;
     END IF;
 
     IF TG_OP = 'INSERT' THEN
@@ -541,6 +592,31 @@ BEGIN
                 ERRCODE = '42501',
                 MESSAGE = 'files: an upload starts pending in quarantine; only the upload pipeline promotes it';
         END IF;
+        IF NEW.source NOT IN ('supabase'::files.file_source, 'link'::files.file_source)
+           OR NEW.source_connection_id IS NOT NULL
+           OR NEW.external_file_id IS NOT NULL THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'files: a mounted asset is written by the connector service only';
+        END IF;
+        IF NEW.source = 'link'::files.file_source
+           AND (NEW.link_scan_status IS DISTINCT FROM 'pending'::files.link_scan_status
+                OR num_nonnulls (
+                    NEW.link_scanned_at, NEW.link_favicon_url, NEW.link_title, NEW.link_description
+                ) > 0) THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'files: a link starts pending; only the link scan writes its verdict and what it read';
+        END IF;
+        IF NEW.source <> 'link'::files.file_source
+           AND num_nonnulls (
+               NEW.link_url, NEW.link_domain, NEW.link_title, NEW.link_description,
+               NEW.link_favicon_url, NEW.link_scan_status, NEW.link_scanned_at
+           ) > 0 THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'files: only a link carries a link facet';
+        END IF;
         RETURN NEW;
     END IF;
 
@@ -554,6 +630,9 @@ BEGIN
        OR NEW.metadata IS DISTINCT FROM OLD.metadata
        OR NEW.content_hash IS DISTINCT FROM OLD.content_hash
        OR NEW.hash_algo IS DISTINCT FROM OLD.hash_algo
+       OR NEW.hash_sampled IS DISTINCT FROM OLD.hash_sampled
+       OR NEW.original_name IS DISTINCT FROM OLD.original_name
+       OR NEW.category IS DISTINCT FROM OLD.category
        OR NEW.source IS DISTINCT FROM OLD.source
        OR NEW.purpose IS DISTINCT FROM OLD.purpose
        OR NEW.derived_from_id IS DISTINCT FROM OLD.derived_from_id THEN
@@ -561,7 +640,254 @@ BEGIN
             ERRCODE = '42501',
             MESSAGE = 'files: an asset''s bytes and processing state are written by the upload pipeline only';
     END IF;
+
+    IF NEW.link_url IS DISTINCT FROM OLD.link_url
+       OR NEW.link_domain IS DISTINCT FROM OLD.link_domain
+       OR NEW.link_title IS DISTINCT FROM OLD.link_title
+       OR NEW.link_description IS DISTINCT FROM OLD.link_description
+       OR NEW.link_favicon_url IS DISTINCT FROM OLD.link_favicon_url
+       OR NEW.link_scan_status IS DISTINCT FROM OLD.link_scan_status
+       OR NEW.link_scanned_at IS DISTINCT FROM OLD.link_scanned_at
+       OR NEW.share_slug IS DISTINCT FROM OLD.share_slug
+       OR NEW.download_count IS DISTINCT FROM OLD.download_count
+       OR NEW.source_connection_id IS DISTINCT FROM OLD.source_connection_id
+       OR NEW.external_file_id IS DISTINCT FROM OLD.external_file_id
+       OR NEW.external_parent_id IS DISTINCT FROM OLD.external_parent_id
+       OR NEW.external_web_url IS DISTINCT FROM OLD.external_web_url
+       OR NEW.external_etag IS DISTINCT FROM OLD.external_etag THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '42501',
+            MESSAGE = 'files: a link''s target and verdict, its sharing counters and a mount''s provenance are written by the server only';
+    END IF;
+
+    IF NEW.source NOT IN ('supabase'::files.file_source, 'link'::files.file_source)
+       AND (NEW.display_name IS DISTINCT FROM OLD.display_name
+            OR NEW.folder_id IS DISTINCT FROM OLD.folder_id
+            OR NEW.visibility IS DISTINCT FROM OLD.visibility
+            OR NEW.owner_type IS DISTINCT FROM OLD.owner_type
+            OR NEW.owner_entity_id IS DISTINCT FROM OLD.owner_entity_id) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '42501',
+            MESSAGE = 'files: a mounted asset mirrors its provider; only the connector service changes it';
+    END IF;
     RETURN NEW;
+END;
+$$;
+-- #endregion
+
+-- #region 7b. files.fn_folder_in_library — is this a live folder of that library?
+-- The one same-library rule both guards apply (Decision #314): a file's folder and a folder's parent
+-- must be live NATIVE folders of the row's OWN library. Library, not creator: in an entity library any
+-- member's folder qualifies, while a personal library is its one owner's. Native, because a mounted
+-- folder mirrors a provider directory and a client row filed into it would be a local file posing as
+-- the provider's. INVOKER, so a client only ever matches a folder its own read policy shows it.
+CREATE OR REPLACE FUNCTION files.fn_folder_in_library (
+    p_folder_id uuid,
+    p_owner_type files.owner_kind,
+    p_owner_entity_id uuid,
+    p_owner_user_id uuid
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT EXISTS (
+        SELECT 1
+        FROM files.folders f
+        WHERE f.id = p_folder_id
+          AND f.deleted_at IS NULL
+          AND f.source = 'supabase'::files.file_source
+          AND f.owner_type = p_owner_type
+          AND f.owner_entity_id IS NOT DISTINCT FROM p_owner_entity_id
+          AND (p_owner_type <> 'user'::files.owner_kind OR f.owner_user_id = p_owner_user_id)
+    );
+$$;
+-- #endregion
+
+-- #region 7c. files.fn_guard_folder_columns — the folder tree's provenance and shape
+-- BEFORE INSERT OR UPDATE on files.folders (Decision #314).
+--
+-- The folders policies check WHO writes a row and WHICH library it names, never what it says. Without
+-- this a client could insert a folder that claims to be a provider directory (aiming a future sync at
+-- someone else's connection), set its own share slug, hang it under another library's folder, loop
+-- the tree back on itself, or write a breadcrumb trail that is not its ancestry. So a client writes
+-- only native folders, under a live parent of the same library, whose `path` is exactly the parent's
+-- path plus the parent's name. A mounted folder mirrors its provider and is the connector service's
+-- to change. The service role and definer functions pass, as on files.items.
+CREATE OR REPLACE FUNCTION files.fn_guard_folder_columns ()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+DECLARE
+    v_reshaped boolean;
+    v_parent_path text[];
+    v_parent_name text;
+BEGIN
+    IF current_user NOT IN ('authenticated', 'anon') THEN
+        RETURN NEW;
+    END IF;
+
+    IF files.fn_library_archived (NEW.owner_type, NEW.owner_entity_id) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '42501',
+            MESSAGE = 'files: an archived library is read-only';
+    END IF;
+    IF TG_OP = 'UPDATE' THEN
+        IF files.fn_library_archived (OLD.owner_type, OLD.owner_entity_id) THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'files: an archived library is read-only';
+        END IF;
+    END IF;
+
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.source <> 'supabase'::files.file_source
+           OR num_nonnulls (NEW.source_connection_id, NEW.external_folder_id, NEW.external_parent_id) > 0 THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'files: a mounted folder is written by the connector service only';
+        END IF;
+        IF NEW.share_slug IS NOT NULL THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'files: a share slug is minted by the server only';
+        END IF;
+        v_reshaped := true;
+    ELSE
+        IF NEW.source IS DISTINCT FROM OLD.source
+           OR NEW.source_connection_id IS DISTINCT FROM OLD.source_connection_id
+           OR NEW.external_folder_id IS DISTINCT FROM OLD.external_folder_id
+           OR NEW.external_parent_id IS DISTINCT FROM OLD.external_parent_id
+           OR NEW.share_slug IS DISTINCT FROM OLD.share_slug THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'files: a folder''s provenance and share slug are written by the server only';
+        END IF;
+        IF NEW.source <> 'supabase'::files.file_source
+           AND (NEW.name IS DISTINCT FROM OLD.name
+                OR NEW.parent_folder_id IS DISTINCT FROM OLD.parent_folder_id
+                OR NEW.path IS DISTINCT FROM OLD.path
+                OR NEW.visibility IS DISTINCT FROM OLD.visibility
+                OR NEW.owner_type IS DISTINCT FROM OLD.owner_type
+                OR NEW.owner_entity_id IS DISTINCT FROM OLD.owner_entity_id) THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'files: a mounted folder mirrors its provider; only the connector service changes it';
+        END IF;
+        v_reshaped := NEW.parent_folder_id IS DISTINCT FROM OLD.parent_folder_id
+            OR NEW.path IS DISTINCT FROM OLD.path
+            OR NEW.owner_type IS DISTINCT FROM OLD.owner_type
+            OR NEW.owner_entity_id IS DISTINCT FROM OLD.owner_entity_id;
+    END IF;
+
+    IF NOT v_reshaped THEN
+        RETURN NEW;
+    END IF;
+
+    IF NEW.parent_folder_id IS NULL THEN
+        IF NEW.path IS DISTINCT FROM '{}'::text[] THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'files: a folder at the library root has an empty path';
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    IF NOT files.fn_folder_in_library (
+        NEW.parent_folder_id, NEW.owner_type, NEW.owner_entity_id, NEW.owner_user_id
+    ) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '42501',
+            MESSAGE = 'files: a folder sits only inside a live native folder of its own library';
+    END IF;
+
+    IF TG_OP = 'UPDATE' AND EXISTS (
+        WITH RECURSIVE up (id) AS (
+            SELECT NEW.parent_folder_id
+            UNION
+            SELECT f.parent_folder_id
+            FROM files.folders f
+            JOIN up ON f.id = up.id
+            WHERE f.parent_folder_id IS NOT NULL
+        )
+        SELECT 1 FROM up WHERE up.id = NEW.id
+    ) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '42501',
+            MESSAGE = 'files: a folder cannot be moved inside itself';
+    END IF;
+
+    SELECT f.path, f.name INTO v_parent_path, v_parent_name
+    FROM files.folders f
+    WHERE f.id = NEW.parent_folder_id;
+    IF NEW.path IS DISTINCT FROM v_parent_path || v_parent_name THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '42501',
+            MESSAGE = 'files: a folder''s path is its parent''s path and name';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+-- #endregion
+
+-- #region 7d. files.fn_library_archived — is this an archived entity's library?
+-- Both guards refuse a client's every write into or out of an archived team, business or enterprise
+-- library (Decision #314, closing #306 (h)): its rows stay readable and nothing new lands in it. DEFINER
+-- because `org.business_profiles` has no member read policy, and gated on the caller's ACTIVE
+-- membership so it answers nothing about an entity they are not part of — a non-member is refused by
+-- files.fn_owns_library regardless.
+CREATE OR REPLACE FUNCTION files.fn_library_archived (
+    p_owner_type files.owner_kind,
+    p_owner_entity_id uuid
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT CASE p_owner_type
+        WHEN 'team'::files.owner_kind THEN EXISTS (
+            SELECT 1 FROM org.teams t
+            WHERE t.id = p_owner_entity_id AND t.status = 'archived' AND org.is_active_team_member (t.id)
+        )
+        WHEN 'business'::files.owner_kind THEN EXISTS (
+            SELECT 1 FROM org.business_profiles b
+            WHERE b.id = p_owner_entity_id AND b.status = 'archived' AND org.is_active_business_member (b.id)
+        )
+        WHEN 'enterprise'::files.owner_kind THEN EXISTS (
+            SELECT 1 FROM org.enterprises e
+            WHERE e.id = p_owner_entity_id
+              AND e.status = 'archived'::org.enterprise_status
+              AND org.is_enterprise_member (e.id)
+        )
+        ELSE false
+    END;
+$$;
+-- #endregion
+
+-- #region 7e. files.fn_guard_hard_delete — a client never hard-deletes a file or a folder
+-- BEFORE DELETE on files.items and files.folders (Decision #314).
+--
+-- Nothing in this schema is hard-deleted by the app (root CLAUDE.md §5): a delete stamps `deleted_at`,
+-- so a restore, an audit and the quota rollup stay coherent. The owner-only DELETE policies in 00002011
+-- would still let a direct PostgREST call erase a row outright — including a row of an archived
+-- library or a mounted row, both of which the guards above hold read-only. So a client's hard delete
+-- is refused here; the service role and definer functions pass. No app path issues one.
+CREATE OR REPLACE FUNCTION files.fn_guard_hard_delete ()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    IF current_user IN ('authenticated', 'anon') THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '42501',
+            MESSAGE = 'files: nothing is hard-deleted; a delete sets deleted_at';
+    END IF;
+    RETURN OLD;
 END;
 $$;
 -- #endregion

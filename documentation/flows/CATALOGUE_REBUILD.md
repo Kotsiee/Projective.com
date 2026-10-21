@@ -141,7 +141,7 @@ responsibility). **K** = keep (light edits).
 | :-- | :-: | :-: | :-- |
 | `islands/ListingEditor.island.tsx` | R | C12 | Replaced by `ListingWorkspace` and its tab islands. |
 | `islands/CatalogueScreen.island.tsx` | X | C11 | Becomes `CatalogueConsole.island.tsx`, a router for the three views. |
-| `islands/CatalogueLane.island.tsx` | X | C11 | Same lane, plus the CREATE and model facets, selection-aware, and a section outline on `[id]`. |
+| `islands/CatalogueLane.island.tsx` | X | C11 | Same lane, plus the CREATE and model facets, selection-aware; on `[id]` Back and every listing (the sections are the Edit canvas's rail, #309). |
 | `islands/CatalogueHeader.island.tsx` | X | C11 | Header band with the rollups and the view switch. |
 | `islands/CatalogueViewControlRig.island.tsx` | X | C11 | Footer: zoom and sort, which becomes the batch bar while a selection exists. |
 | `islands/CatalogueCreateModal.island.tsx` | X | C11 | Kept. Adds the archetype picker, CREATE category and currency; lands on `?tab=edit&section=media`. |
@@ -230,8 +230,9 @@ These need no ruling, because they follow existing rules:
     a `tabular-nums` figure over its label, unboxed (a `<dl>`, never tiles — the tiles live in the
     Analytics view). Below a 64rem band only gross stays; below 48rem the group goes.
 - **Toolbar** (`CatalogueToolbar`, the shared sticky `.fx-toolbar` of the File, Submissions and
-  Members explorers, pinned under the band): the type as a bare `Select` (every view); on Listings
-  also search, the match count (`aria-live`), and the sort; New listing below `--bp-md`.
+  Members explorers, pinned under the band): on Listings the search docked at the start; at the end
+  the type as a bare `Select` (every view) directly beside the sort (Listings); New listing below
+  `--bp-md`. No visible count; the match count is a visually hidden `role="status"` (Decision #309).
 - **Canvas.** `?view=listings|analytics|clients`.
 - **Footer band.** Zoom. While a selection exists it becomes the batch bar: Publish, Pause,
   Archive, Delete (while any selected listing has no buyer history), Add to collection, Duplicate,
@@ -246,21 +247,25 @@ These need no ruling, because they follow existing rules:
 
 ```
 ┌ Lane ─────────────┬ Header band ─────────────────────────────────────────┬ Panel ──────────┐
-│ ← Back            │ Brand identity sprint                           (◫)  │ Edit tab:       │
-│ (every listing,   │ [Live]                   ⟨Edit|Preview|Analytics|…⟩  │  Live card      │
+│ ← Back            │ Brand identity sprint                      ◔ 60% (◫) │ Edit tab:       │
+│ (every listing,   │ [Draft]                  ⟨Edit|Preview|Analytics|…⟩  │  Live card      │
 │  current marked)  ├──────────────────────────────────────────────────────┤  (real          │
-│ ── On this page ─ │ Edit: Basics · [Media showcase 3×2, slot 1 = cover]  │   ServiceCard)  │
-│ Basics            │       Offer (archetype) · Pricing ·                  │  Readiness ✓✓✗  │
-│ Media             │       Availability · Buyer questions · SEO & reach   │ Clients tab:    │
-│ Offer             │                                                      │  client drawer  │
-│ …                 ├──────────────────────────────────────────────────────┤                 │
+│                   │ Edit: ┃ Basics    Basics · [Media showcase 3×2,      │   ServiceCard)  │
+│                   │         Media       slot 1 = cover] · Offer          │  Readiness ✓✓✗  │
+│                   │         Offer       (archetype) · Pricing · …        │ Clients tab:    │
+│                   │         …           (sticky section rail, #309)      │  client drawer  │
+│                   ├──────────────────────────────────────────────────────┤                 │
 │                   │ Footer: ● save state · ◯◯◯◯ icon actions · Publish   │                 │
 └───────────────────┴──────────────────────────────────────────────────────┴─────────────────┘
 ```
 
+The header band's tabs lead with their glyphs, and a draft carries the publish checklist's progress
+ring before the Card toggle: a Tooltip of what is left, a press to the section that fixes the first
+missing line (Decision #310).
+
 | Tab | Canvas | Panel (docked ≥1280; a `Drawer` from a header button below that) |
 | :-- | :-- | :-- |
-| `edit` | Basics first, then the media showcase, then archetype-driven sections (§4.3; Decision #304). | Live feed card and publish-readiness list. |
+| `edit` | Basics first, then the media showcase, then archetype-driven sections (§4.3; Decision #304), beside the sticky `EditSectionNav` rail, laid out as the project setup shell: the rail flush at the start, the stack centred at 44rem (a scrolling tab strip below a 52rem canvas; Decisions #309, #310). | Live feed card and publish-readiness list. |
 | `preview` | `<iframe src="/catalogue/[id]/simulate?device=">` with a device toggle. | None; the canvas takes the full width. |
 | `analytics` | Per-item tiles, funnel, revenue area, keyword table, booking heatmap (sessions), churn. An empty window still draws every chart (axes, gridlines, zero baseline) under a centred `InlineNotice`; a failed read never does (Decision #220). | None. |
 | `clients` | This listing's pipeline lanes. | Client drawer (`?client=@handle`). |
@@ -294,7 +299,7 @@ routes/(dashboard)/catalogue/[id].tsx               → features/catalogue/route
 routes/(dashboard)/catalogue/[id]/simulate.tsx      → features/catalogue/routes/simulate.tsx (chrome:"bare")
 features/catalogue/
   islands/ListingWorkspace.island.tsx               tab router; owns workspace-store hydration
-    edit/EditCanvas.tsx                             section stack + scroll-spy → lane outline
+    edit/EditCanvas.tsx                             section rail + stack + scroll-spy → `?section=`
       edit/MediaShowcaseSection.tsx                 ShowcaseGrid + MediaCropPicker (§4.4)
       edit/BasicsSection.tsx                        title · RichTextEditor · CREATE category · skills
       edit/offer/ProductOffer.tsx                   format · licence · attribution · AttachmentList
@@ -500,7 +505,8 @@ slug }` and calls `/api/catalogue/analytics`. The console shows catalogue totals
 - `listing-card.css` (`cat-card`)
 - `listing-table.css` (`cat-table`)
 - `workspace.css` (`cat-ws`)
-- `edit-sections.css` (`cat-sec`)
+- `edit-sections.css` (`cat-sec`, `cat-edit`)
+- `section-nav.css` (`cat-secnav`)
 - `offer.css` (`cat-offer`)
 - `seo.css` (`cat-seo`)
 - `preview.css` (`cat-preview`)

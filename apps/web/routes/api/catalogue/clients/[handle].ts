@@ -1,6 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { readActor } from "@web/utils/api-session.ts";
+import { apiSellerActor } from "@features/catalogue/core/seller-scope.ts";
 import { signedOut, toCatalogueResponse } from "@features/catalogue/core/respond.ts";
 import {
 	clientKeyFromPath,
@@ -17,7 +18,8 @@ import { CatalogueClientsBackendService } from "@server/services/catalogue/Catal
  */
 export const handler = define.handlers({
 	async GET(ctx) {
-		const actor = readActor(ctx);
+		const actor = await apiSellerActor(ctx.url, readActor(ctx));
+		if (actor instanceof Response) return actor;
 		if (!actor.userId) return signedOut();
 		const handle = clientKeyFromPath(ctx.params.handle);
 		const parsed = parseReadQuery(ctx.url.searchParams);

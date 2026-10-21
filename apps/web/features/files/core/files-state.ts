@@ -6,7 +6,8 @@ import type {
 	AssetPageLike,
 	AssetSource,
 	AssetTreeNode,
-	FileKind,
+	AssetVisibility,
+	FileCategory,
 	FileScope,
 	FileSortDir,
 	FileSortKey,
@@ -20,7 +21,7 @@ import type {
  * composed from four independently-hydrated regions that must agree on one query:
  *
  *  - the **lane** (the folder / drive tree + the scope switch),
- *  - the **header band** (identity, breadcrumbs, search, the sort + kind/source refinements),
+ *  - the **header band** (identity, breadcrumbs, search, the sort + type/sharing/source refinements),
  *  - the **body** (the asset grid ⁄ table — the only region that owns data and fetches),
  *  - the **footer rig** (zoom, upload, the selection action bar).
  *
@@ -124,16 +125,22 @@ export const sortKey = signal<FileSortKey>(DEFAULT_SORT.key);
 /** Sort direction. */
 export const sortDir = signal<FileSortDir>(DEFAULT_SORT.dir);
 
-/** Restrict to these kinds; empty = every kind. */
-export const kindFilter = signal<FileKind[]>([]);
+/** Restrict to these file categories; empty = every category. */
+export const categoryFilter = signal<FileCategory[]>([]);
 
 /** Restrict to these storage sources; empty = every source. */
 export const sourceFilter = signal<AssetSource[]>([]);
 
-/** Whether anything is currently narrowing the set — drives the empty state's copy and its reset. */
-export const narrowed = computed(() =>
-	query.value.trim().length > 0 || kindFilter.value.length > 0 || sourceFilter.value.length > 0
+/** Restrict to these privacy scopes; empty = every scope. */
+export const visibilityFilter = signal<AssetVisibility[]>([]);
+
+/** How many facet filters are engaged — the header's filter dot and its accessible name. */
+export const facetCount = computed(() =>
+	categoryFilter.value.length + sourceFilter.value.length + visibilityFilter.value.length
 );
+
+/** Whether anything is currently narrowing the set — drives the empty state's copy and its reset. */
+export const narrowed = computed(() => query.value.trim().length > 0 || facetCount.value > 0);
 // #endregion
 
 // #region Selection
@@ -396,8 +403,9 @@ export function resetFilesState(): void {
 	query.value = "";
 	sortKey.value = "date";
 	sortDir.value = "desc";
-	kindFilter.value = [];
+	categoryFilter.value = [];
 	sourceFilter.value = [];
+	visibilityFilter.value = [];
 	selection.value = [];
 	anchorId.value = null;
 	inspectId.value = null;
@@ -420,8 +428,9 @@ export function commitFiles(): void {
 /** Reset every narrowing control back to the whole folder, then refetch. */
 export function clearFilesFilters(): void {
 	query.value = "";
-	kindFilter.value = [];
+	categoryFilter.value = [];
 	sourceFilter.value = [];
+	visibilityFilter.value = [];
 	commitFiles();
 }
 // #endregion

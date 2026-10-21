@@ -2,6 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { AnalyticsPeriod } from "@projective/types/catalogue";
 import { readActor } from "@web/utils/api-session.ts";
+import { apiSellerActor } from "@features/catalogue/core/seller-scope.ts";
 import { toCatalogueResponse } from "@features/catalogue/core/respond.ts";
 import { toSort, toTypeFilter } from "@features/catalogue/core/catalogue-model.ts";
 import { CatalogueBackendService } from "@server/services/catalogue/CatalogueBackendService.ts";
@@ -14,7 +15,9 @@ import type { z } from "zod";
  * `GET /api/catalogue/list?type=&status=…&model=…&createCategory=…&search=&sort=&period=&attention=1&promoted=1&bestSelling=1&cursor=&limit=`
  * — thin route: parse the console/lane filters, then delegate to the fat
  * {@link CatalogueBackendService.list} for a filtered, sorted, paged page + the KPI roll-up for the
- * window. Read as the signed-in seller; the catalogue policies are the gate, and a guest gets a 401.
+ * window. Read as the signed-in seller, or as the team `?team=` names once the caller is verified as
+ * a member who may manage its listings (Decision #312); the catalogue policies are the gate, and a
+ * guest gets a 401.
  * Islands never reach the backend — they fetch this via the dumb `CatalogueService`.
  */
 
@@ -25,6 +28,8 @@ function listOf<T>(schema: z.ZodType<T>, raw: string[]): T[] | undefined {
 
 export const handler = define.handlers({
 	async GET(ctx) {
+		const actor = await apiSellerActor(ctx.url, readActor(ctx));
+		if (actor instanceof Response) return actor;
 		const context = asAuthenticatedContext(ctx.state.userContext);
 		const sp = ctx.url.searchParams;
 		const period = AnalyticsPeriod.safeParse(sp.get("period"));
@@ -50,7 +55,7 @@ export const handler = define.handlers({
 		};
 
 		return toCatalogueResponse(
-			await CatalogueBackendService.list(params, readActor(ctx), context.displayCurrency),
+			await CatalogueBackendService.list(params, actor, context.displayCurrency),
 		);
 	},
 });

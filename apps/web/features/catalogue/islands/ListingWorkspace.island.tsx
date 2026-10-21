@@ -15,6 +15,8 @@ import { AnalyticsCanvas } from "../components/analytics/AnalyticsCanvas.tsx";
 import { PreviewCanvas } from "../components/preview/PreviewCanvas.tsx";
 import {
 	flushBeacon,
+	holdsUnsavedEdits,
+	hydrateAutoSave,
 	hydrateWorkspace,
 	liveListing,
 	resume,
@@ -25,6 +27,7 @@ import {
 	workspaceUrl,
 } from "../core/workspace-store.ts";
 import { WORKSPACE_PANEL_ID, workspaceTabId } from "../core/workspace-model.ts";
+import { catalogueApiPath } from "../core/api-scope.ts";
 
 /** Props for {@link ListingWorkspace}. */
 export interface ListingWorkspaceProps {
@@ -37,29 +40,38 @@ export interface ListingWorkspaceProps {
 }
 
 function sendBeacon(url: string, body: string): boolean {
-	return navigator.sendBeacon?.(url, new Blob([body], { type: "text/plain" })) ?? false;
+	const blob = new Blob([body], { type: "text/plain" });
+	return navigator.sendBeacon?.(catalogueApiPath(url), blob) ?? false;
 }
 
 /**
  * ListingWorkspace — the item workspace's canvas: the tab router for Edit · Preview · Analytics ·
  * Clients, rendered as the one `role="tabpanel"` the header's tab strip controls (named by that tab
  * across hydration roots). It owns the workspace store's hydration and the page's persistence:
- * unsaved edits are flushed through a beacon when the page is hidden or left, and a stale save
- * raises the conflict choice.
+ * under auto-save, unsaved edits are flushed through a beacon when the page is hidden or left; with
+ * it off, leaving with unsaved edits asks first. A stale save raises the conflict choice.
  */
 export default function ListingWorkspace(props: ListingWorkspaceProps): JSX.Element {
 	useEffect(() => {
 		hydrateWorkspace(props.initial, props.url);
+		hydrateAutoSave();
 		startWorkspaceSync();
 		const onHide = () => void flushBeacon(sendBeacon);
+		const onBeforeUnload = (e: BeforeUnloadEvent) => {
+			if (!holdsUnsavedEdits()) return;
+			e.preventDefault();
+			e.returnValue = "";
+		};
 		const onVisibility = () => {
 			if (document.visibilityState === "hidden") onHide();
 			else resume();
 		};
 		globalThis.addEventListener("pagehide", onHide);
+		globalThis.addEventListener("beforeunload", onBeforeUnload);
 		document.addEventListener("visibilitychange", onVisibility);
 		return () => {
 			globalThis.removeEventListener("pagehide", onHide);
+			globalThis.removeEventListener("beforeunload", onBeforeUnload);
 			document.removeEventListener("visibilitychange", onVisibility);
 		};
 	}, []);
@@ -84,6 +96,7 @@ export default function ListingWorkspace(props: ListingWorkspaceProps): JSX.Elem
 							listing={listing}
 							restricted={props.restricted}
 							initialSection={generation === 0 ? props.url.section : undefined}
+							team={props.url.team}
 						/>
 					)
 					: tab === "preview"
@@ -92,6 +105,7 @@ export default function ListingWorkspace(props: ListingWorkspaceProps): JSX.Elem
 							slug={listing.id}
 							title={listing.title}
 							device={workspaceReady.value ? workspaceUrl.value.device : props.url.device}
+							team={props.url.team}
 						/>
 					)
 					: tab === "analytics"
@@ -109,7 +123,8 @@ export default function ListingWorkspace(props: ListingWorkspaceProps): JSX.Elem
 							surface="workspace"
 							scope={{ listing: listing.id }}
 							chosen={workspaceReady.value ? workspaceUrl.value.client : props.url.client}
-							hrefFor={(client) => workspaceHref(listing.id, { tab: "clients", client })}
+							hrefFor={(client) =>
+								workspaceHref(listing.id, { team: props.url.team, tab: "clients", client })}
 							emptyAction={{
 								label: "Back to Edit",
 								onPress: () => setWorkspaceUrl({ tab: "edit" }, "push"),

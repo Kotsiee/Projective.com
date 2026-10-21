@@ -91,7 +91,7 @@ function fieldSelectors(step: ProjectSetupStep, section: SetupSectionKey | null)
 		case "roles":
 			return [`${scope} .psu-add`];
 		case "publish":
-			return ['.psu-rig__actions .psu-rig__action[aria-label="Publish"]'];
+			return [".psu-rig__commit"];
 		default:
 			return [];
 	}

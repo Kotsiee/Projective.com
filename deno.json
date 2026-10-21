@@ -105,5 +105,9 @@
 	},
 	"lint": {
 		"rules": { "tags": ["recommended"] }
+	},
+	"allowScripts": {
+		"allow": ["npm:esbuild@0.25.10"],
+		"deny": ["npm:esbuild@0.25.7"]
 	}
 }

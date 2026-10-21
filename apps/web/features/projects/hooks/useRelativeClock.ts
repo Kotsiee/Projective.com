@@ -5,7 +5,7 @@ import type { Signal } from "@preact/signals";
 /**
  * useRelativeClock — a coarse "now" that advances on its own, for a label that ages.
  *
- * The setup footer's auto-save line reads "Last updated 4 minutes ago". Rendered once from
+ * The setup footer's save line reads "Saved · 4m ago". Rendered once from
  * `Date.now()` it would say "just now" for the rest of the session, which is not a stale number so
  * much as a false statement — an owner who stepped away for an hour would come back to a form
  * telling them their work had saved a moment ago.

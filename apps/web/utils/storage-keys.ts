@@ -265,6 +265,11 @@ export const LocalKeys = {
 	/** The catalogue list's column arrangement (DataTable `ColumnLayout`: order, widths, hidden). */
 	CATALOGUE_COLUMNS: "pj.local.catalogue.columns",
 	/**
+	 * Whether the listing workspace saves edits on its own — `"1"` or `"0"`. Absent reads as ON, the
+	 * workspace's long-standing behaviour; a per-device preference read only after hydration.
+	 */
+	CATALOGUE_AUTOSAVE: "pj.local.catalogue.autoSave",
+	/**
 	 * The workspace console's zoom-driven view density (a `0`–`1` float) — the same list⇄grid model as
 	 * the File Explorer, shared cross-island (the footer rig ↔ the roster body). One key across
 	 * `/teams` and `/businesses`: they are one surface parameterised by kind, so a reader who set a

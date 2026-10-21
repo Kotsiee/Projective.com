@@ -3,11 +3,7 @@ import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { consoleOutcome } from "@features/workspaces/core/workspace-route.tsx";
 import { consoleResponse } from "@features/workspaces/core/console-route.ts";
-import { asAuthenticatedContext } from "@projective/types/auth";
-import {
-	resolveEntityCalendar,
-	resolveTeamCatalogue,
-} from "@features/workspaces/core/workspace-ssr.ts";
+import { resolveEntityCalendar, resolveEntityDrive } from "@features/workspaces/core/workspace-ssr.ts";
 import { ModuleScreen } from "@features/workspaces/components/ModuleScreen.tsx";
 
 /**
@@ -20,6 +16,9 @@ import { ModuleScreen } from "@features/workspaces/components/ModuleScreen.tsx";
  * returned from one is ignored and the reader gets an empty body. So a real module the viewer may not
  * open 303s to the one they can, while an unregistered segment falls back to the console (a bad link
  * should not silently resolve somewhere plausible).
+ *
+ * `catalogue` never reaches this segment: `/teams/[teamHandle]/catalogue` is a static route, the
+ * team's catalogue console (Decision #312).
  */
 export const handler = define.handlers({
 	async GET(ctx) {
@@ -34,23 +33,16 @@ export const handler = define.handlers({
 
 		if (outcome.kind !== "data") return consoleResponse(outcome);
 
-		// Calendar's union and Catalogue's listings are their own reads (Decision #308) — only the
-		// module that shows one pays for it.
+		// Calendar's union is its own read (Decision #308) — only the module that shows it pays for it.
 		const { workspace, module } = outcome.data;
 		const calendar = module === "calendar"
 			? await resolveEntityCalendar(workspace, actor, ctx.url)
 			: null;
-		const catalogue = module === "catalogue"
-			? await resolveTeamCatalogue(
-				workspace,
-				actor,
-				ctx.url,
-				asAuthenticatedContext(ctx.state.userContext).displayCurrency,
-			)
-			: null;
+		// Files reads its first drive location the same way (Decision #315).
+		const drive = module === "files" ? await resolveEntityDrive(workspace, actor, ctx.url) : null;
 
 		ctx.state.title = `${workspace.name} · Team`;
-		return page({ ...outcome.data, calendar, catalogue });
+		return page({ ...outcome.data, calendar, drive });
 	},
 });
 
@@ -61,7 +53,7 @@ export default define.page<typeof handler>(function TeamModulePage({ data }) {
 			module={data.module}
 			view={data.view}
 			calendar={data.calendar}
-			catalogue={data.catalogue}
+			drive={data.drive}
 		/>
 	);
 });

@@ -36,6 +36,8 @@ import {
 	toAssetFolder,
 	toAssetItem,
 } from "./asset-row.ts";
+import { assetMatches, nameMatches, needleOf } from "./list-filter.ts";
+import { sealArchivedPage } from "./archived-drive.ts";
 
 /**
  * live-library — the `/files` hub's reads, live against `files.*` under the caller's own session.
@@ -113,6 +115,8 @@ export interface EntitySeat {
 	owner: FilesOwner & { ownerType: "team" | "business" };
 	name: string;
 	handle: string;
+	/** An archived entity's drive stays readable and takes nothing new (Decisions #306 (h), #314). */
+	archived: boolean;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -126,9 +130,14 @@ async function seatOfKind(actor: Actor, kind: "team" | "business", entityId: str
 	const { data, error } = await getUserClient(actor.accessToken).schema("org")
 		.rpc("get_acting_context_details", { p_context_type: kind, p_context_id: entityId });
 	if (error) throw new Error(`org.get_acting_context_details failed: ${error.message}`);
-	const row = data as { name?: string | null; handle?: string | null } | null;
+	const row = data as { name?: string | null; handle?: string | null; status?: string | null } | null;
 	if (!row?.handle) return null;
-	return { owner: { ownerType: kind, ownerId: entityId }, name: clamp(row.name ?? "", 120) || row.handle, handle: row.handle };
+	return {
+		owner: { ownerType: kind, ownerId: entityId },
+		name: clamp(row.name ?? "", 120) || row.handle,
+		handle: row.handle,
+		archived: row.status === "archived",
+	};
 }
 
 /**
@@ -346,15 +355,17 @@ async function shareSlugsOf(
 
 // #region Filter, sort, page
 
-function matches(item: AssetItem, params: AssetListParams): boolean {
-	if (params.kinds?.length && !params.kinds.includes(item.kind)) return false;
-	if (params.sources?.length && !params.sources.includes(item.source)) return false;
-	if (params.visibility?.length && !params.visibility.includes(item.visibility)) return false;
-	if (params.query) {
-		const q = params.query.trim().toLowerCase();
-		if (q && !item.name.toLowerCase().includes(q)) return false;
+function projectMatching(
+	rows: readonly ItemRow[],
+	params: AssetListParams,
+	project: (row: ItemRow) => AssetItem,
+): AssetItem[] {
+	const kept: AssetItem[] = [];
+	for (const row of rows) {
+		const item = project(row);
+		if (assetMatches(item, params, row.original_name)) kept.push(item);
 	}
-	return true;
+	return kept;
 }
 
 const SORTERS: Record<FileSortKey, (a: AssetItem, b: AssetItem) => number> = {
@@ -456,17 +467,19 @@ export async function listHub(actor: Actor, params: AssetListParams, base = "/fi
  * One location of a team's or business's console drive (Decision #306). The entity is the one
  * `subjectId` names only once the caller's active seat in it is confirmed ({@link entitySeatOf});
  * anybody else gets the same 404 as an unknown id, so the read cannot be used to learn that an entity
- * exists. The crumbs address the console route, where a folder path rides in the query.
+ * exists. The crumbs address the console route, where a folder path rides in the query. An archived
+ * entity's drive answers read-only, nothing in it managed ({@link sealArchivedPage}, Decision #315).
  */
 export async function listWorkspace(actor: Actor, entityId: string, params: AssetListParams): Promise<Result<AssetListPage>> {
 	const seat = await entitySeatOf(actor, entityId);
 	if (!seat) return { ok: false, status: 404, message: "There's no drive here for you." };
 	const base = workspaceHref(seat.owner.ownerType, seat.handle, "files");
-	return await listLibrary(actor, seat.owner, params, {
+	const res = await listLibrary(actor, seat.owner, params, {
 		scope: "workspace",
 		rootLabel: seat.name,
 		hrefOf: (ids) => folderQueryHref(base, ids),
 	});
+	return seat.archived && res.ok && res.data ? { ...res, data: sealArchivedPage(res.data) } : res;
 }
 
 /** How a library location is presented: the scope it answers as, its root crumb, its crumb addresses. */
@@ -507,8 +520,9 @@ async function listLibrary(
 		shareSlugs: slugs.items,
 		now: Date.now(),
 	};
-	const page = pageOf(here.map((row) => toAssetItem(row, ctx)).filter((it) => matches(it, params)), params);
+	const page = pageOf(projectMatching(here, params, (row) => toAssetItem(row, ctx)), params);
 	const sizes = rollups(lib);
+	const needle = needleOf(params);
 	return {
 		ok: true,
 		data: {
@@ -516,7 +530,7 @@ async function listLibrary(
 			subjectId: owner.ownerId,
 			folderId,
 			items: page.items,
-			folders: childRows.map((f) =>
+			folders: childRows.filter((f) => nameMatches(needle, f.name)).map((f) =>
 				toAssetFolder(f, sizes.get(f.id) ?? { itemCount: 0, sizeBytes: 0 }, {
 					viewerId: actor.userId,
 					shareSlug: slugs.folders.get(f.id) ?? null,
@@ -568,8 +582,14 @@ async function listMounted(
 		shareSlugs: new Map(),
 		now: Date.now(),
 	};
-	const projected = items.map((row) => ({ ...toAssetItem(row, ctx), canManage: false, shareSlug: null }));
-	const page = pageOf(projected.filter((it) => matches(it, params)), params);
+	const page = pageOf(
+		projectMatching(
+			items,
+			params,
+			(row) => ({ ...toAssetItem(row, ctx), canManage: false, shareSlug: null }),
+		),
+		params,
+	);
 	const mount = `${MOUNT_PREFIX}${p.slug}`;
 	return {
 		ok: true,
@@ -614,7 +634,10 @@ export async function listDrive(actor: Actor, connectionId: string, params: Asse
 		shareSlugs: new Map(),
 		now: Date.now(),
 	};
-	const page = pageOf(items.map((row) => ({ ...toAssetItem(row, ctx), canManage: false })).filter((it) => matches(it, params)), params);
+	const page = pageOf(
+		projectMatching(items, params, (row) => ({ ...toAssetItem(row, ctx), canManage: false })),
+		params,
+	);
 	return {
 		ok: true,
 		data: {
@@ -978,8 +1001,14 @@ export async function listShare(slug: string, params: AssetListParams): Promise<
 			.limit(LIBRARY_WINDOW);
 	if (rows.error) throw new Error(`files.items read failed: ${rows.error.message}`);
 	const now = Date.now();
-	const items = ((rows.data ?? []) as unknown as ItemRow[]).map((row) => asShared(row, slug, now));
-	const page = pageOf(items.filter((it) => matches(it, params)), params);
+	const page = pageOf(
+		projectMatching(
+			(rows.data ?? []) as unknown as ItemRow[],
+			params,
+			(row) => asShared(row, slug, now),
+		),
+		params,
+	);
 	return {
 		ok: true,
 		data: {

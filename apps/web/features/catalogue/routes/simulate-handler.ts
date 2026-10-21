@@ -6,6 +6,7 @@ import { isListingSlug } from "@projective/types/catalogue";
 import { CatalogueBackendService } from "@server/services/catalogue/CatalogueBackendService.ts";
 import { resolveEntityCommerce } from "@features/view/core/booking-ssr.ts";
 import { viewerFromState } from "@features/calendar/core/viewer.ts";
+import { routeSellerScope } from "../core/seller-scope.ts";
 
 /**
  * `/catalogue/[id]/simulate`'s handler — the owner's buyer simulation (Decision #217 (j), plan §4.6
@@ -23,13 +24,18 @@ import { viewerFromState } from "@features/calendar/core/viewer.ts";
  *   it, and a not-found inside the frame still renders as a page rather than a refused frame.
  * - The view is never recorded as an interest event: the owner looking at their own listing is not
  *   a buyer's view.
+ * - `/teams/[teamHandle]/catalogue/[id]/simulate` re-exports this page (Decision #312), read as the
+ *   team. A non-canonical handle still 308s; any other refusal of the team console (not a member,
+ *   no `publish_listings`) is the same framed 404, so the frame never paints another page.
  */
 const FRAMED_HEADERS = (): HeadersInit => ({ "content-security-policy": cspHeaderFor("framed") });
 
 export const handler = define.handlers({
 	async GET(ctx) {
 		const slug = ctx.params.id;
-		if (!isListingSlug(slug)) {
+		const scope = await routeSellerScope(ctx.params.teamHandle, ctx.url, readActor(ctx));
+		if (scope instanceof Response && scope.status === 308) return scope;
+		if (!isListingSlug(slug) || scope instanceof Response) {
 			ctx.state.title = "Preview · Catalogue";
 			return page({ view: null, offer: null, schedule: null, unavailable: false }, {
 				status: 404,
@@ -37,7 +43,7 @@ export const handler = define.handlers({
 			});
 		}
 
-		const actor = readActor(ctx);
+		const { actor } = scope;
 		const read = await CatalogueBackendService.previewView(slug, actor);
 		if (!read.ok || !read.data) {
 			const unavailable = read.status >= 500;

@@ -1,7 +1,13 @@
 import { assertEquals, assertFalse } from "@std/assert";
 import { AssetItemSchema, type AssetMetadata } from "@projective/types/files";
 import { type FileItem, FileItemSchema } from "@projective/types/projects";
-import { assetAddress, type ItemRow, toAssetItem, withMediaFacts } from "./asset-row.ts";
+import {
+	assetAddress,
+	type ItemRow,
+	toAssetFolder,
+	toAssetItem,
+	withMediaFacts,
+} from "./asset-row.ts";
 
 const ID = "f3f21bc4-161f-4c1a-94d9-d1d0376bc346";
 
@@ -132,6 +138,40 @@ Deno.test("toAssetItem: a library row's assetId is its own id", () => {
 Deno.test("toAssetItem: a key that is not a files.items id carries no assetId", () => {
 	const item = AssetItemSchema.parse(toAssetItem(row({ id: "fixture-1" }), CTX));
 	assertEquals(item.assetId, null);
+});
+
+Deno.test("toAssetItem: a mounted connector row is read-only even to its owner; a link stays manageable", () => {
+	const mounted = toAssetItem(
+		row({ source: "onedrive", external_web_url: "https://contoso.sharepoint.com/f" }),
+		CTX,
+	);
+	const link = toAssetItem(row({ source: "link", link_url: "https://figma.com/file/x" }), CTX);
+	const stored = toAssetItem(row(), CTX);
+	assertEquals([mounted.source, mounted.canManage], ["onedrive", false]);
+	assertEquals([link.canManage, stored.canManage], [true, true]);
+});
+
+Deno.test("toAssetFolder: a mounted folder is read-only even to its owner", () => {
+	const folder = (source: string) =>
+		toAssetFolder(
+			{
+				id: "a5f0c0de-0000-4000-8000-000000000001",
+				name: "Clients",
+				parent_folder_id: null,
+				path: [],
+				owner_type: "user",
+				owner_user_id: CTX.viewerId,
+				owner_entity_id: null,
+				source,
+				external_folder_id: source === "supabase" ? null : "0AbcFolder",
+				visibility: "private",
+				created_at: "2026-10-09T12:00:00.000Z",
+				updated_at: "2026-10-09T12:00:00.000Z",
+			},
+			{ itemCount: 0, sizeBytes: 0 },
+			{ viewerId: CTX.viewerId, shareSlug: null },
+		);
+	assertEquals([folder("google_drive").canManage, folder("supabase").canManage], [false, true]);
 });
 
 Deno.test("withMediaFacts keeps a FileItem a FileItem and overlays the envelope", () => {

@@ -29,6 +29,15 @@ import {
 	type RosterTab,
 	statusTag,
 } from "./roster-model.ts";
+import {
+	type CatalogueKind,
+	type CatalogueListParams,
+	type CataloguePage,
+	consoleHref,
+	DEFAULT_CONSOLE_STATUSES,
+	type ListingStatus,
+	workspaceHref as listingWorkspaceHref,
+} from "@projective/types/catalogue";
 import { isPeopleReading, MEMBERS_READINGS } from "./sub-views.ts";
 import { inviteOpensInPlace, rosterCreateNote } from "./rig-model.ts";
 
@@ -167,11 +176,39 @@ export interface LaneChannelsZone {
 	canCreate: boolean;
 }
 
+/**
+ * The Catalogue section (a team's, Decision #316): its title is the Catalogue hub's link, its rows are
+ * the team's listings from a catalogue read, and its "+" opens the create modal.
+ */
+export interface LaneCatalogueZone {
+	/** The Catalogue hub as a row — the title's link, the collapsed rail's square and a search hit. */
+	row: LaneHubRow;
+	/** The team's handle — scopes the listings read and every listing's address. */
+	team: string;
+	/** The listing being rendered (its slug) on `/teams/:h/catalogue/:slug…`, else `null`. */
+	listing: string | null;
+	/** Whether the console itself is being rendered, so the title is the current page. */
+	current: boolean;
+	/** The create control's words. */
+	createLabel: string;
+	/** Whether the create modal is mounted on this page (the console), so "+" opens it in place. */
+	createInPlace: boolean;
+	/** Where "+" links from every other page: the console with the create modal open. */
+	createHref: string;
+	/** Whether a listing may be created here: not on an archived team. */
+	canCreate: boolean;
+}
+
 /** Z3 inside a console. */
 export interface ConsoleViewsZone {
 	mode: "console";
 	/** Core operations, then Governance — sections with no row are left out. */
 	sections: LaneHubSection[];
+	/**
+	 * The Catalogue section, drawn after Governance and before Channels. `null` for a business and for
+	 * a member without the catalogue gate (`catalogue-gate.ts`).
+	 */
+	catalogue: LaneCatalogueZone | null;
 	/**
 	 * The Channels section, drawn LAST, after Governance. `null` when the viewer may not open Channels
 	 * (never, today — it is permissionless).
@@ -311,6 +348,8 @@ export interface ConsoleLaneInput {
 	subView: string | null;
 	/** The channel being rendered (its slug) on a `channels` route, else `null`/absent. */
 	channel?: string | null;
+	/** The listing being rendered (its slug) on a `catalogue` route, else `null`/absent. */
+	listing?: string | null;
 }
 // #endregion
 
@@ -397,6 +436,7 @@ export function laneZones(input: RosterLaneInput | ConsoleLaneInput): LaneZones 
 		views: {
 			mode: "console",
 			sections,
+			catalogue: rows.catalogue ? catalogueZone(input, rows.catalogue) : null,
 			channels: mayViewModule("channels", input.kind, input.capabilities)
 				? {
 					label: "Channels",
@@ -423,10 +463,15 @@ export function laneZones(input: RosterLaneInput | ConsoleLaneInput): LaneZones 
 	};
 }
 
-/** The viewer's hubs as lane rows, split by zone; the footer's Settings is the one footer hub. */
+/** The viewer's hubs as lane rows, split by zone; Catalogue and Settings are one hub each. */
 function hubRows(
 	input: ConsoleLaneInput,
-): { operations: LaneHubRow[]; governance: LaneHubRow[]; settings: LaneHubRow | null } {
+): {
+	operations: LaneHubRow[];
+	governance: LaneHubRow[];
+	catalogue: LaneHubRow | null;
+	settings: LaneHubRow | null;
+} {
 	const active = input.module === "channels" ? null : hubOf(input.module)?.key ?? null;
 	const toRow = (hub: ViewerHub): LaneHubRow => ({
 		key: hub.hub.key,
@@ -438,11 +483,33 @@ function hubRows(
 		blurb: hub.hub.blurb,
 	});
 	const hubs = hubsForViewer(input.kind, input.capabilities);
+	const catalogue = hubs.find((h) => h.hub.zone === "catalogue");
 	const settings = hubs.find((h) => h.hub.zone === "footer");
 	return {
 		operations: hubs.filter((h) => h.hub.zone === "operations").map(toRow),
 		governance: hubs.filter((h) => h.hub.zone === "governance").map(toRow),
+		catalogue: catalogue ? toRow(catalogue) : null,
 		settings: settings ? toRow(settings) : null,
+	};
+}
+
+/**
+ * The Catalogue section for the hub row the viewer may open. "+" opens the create modal in place on
+ * the console, where it is mounted, and links to the console with it open (`?create=1`) everywhere
+ * else — a destination is an `<a>`, never a button that assigns `location`.
+ */
+function catalogueZone(input: ConsoleLaneInput, row: LaneHubRow): LaneCatalogueZone {
+	const listing = input.module === "catalogue" ? input.listing ?? null : null;
+	const current = input.module === "catalogue" && listing === null;
+	return {
+		row,
+		team: input.handle,
+		listing,
+		current,
+		createLabel: "New listing",
+		createInPlace: current,
+		createHref: consoleHref({ team: input.handle, createOpen: true }),
+		canCreate: input.status !== "archived",
 	};
 }
 
@@ -682,6 +749,99 @@ export function hubSignal(
 export function channelUnreadLabel(unread: number): string | null {
 	if (unread <= 0) return null;
 	return `${unread} unread`;
+}
+// #endregion
+
+// #region Catalogue listings
+/** One listing as the Catalogue section lists it — the lane's projection of a `ListingSummary`. */
+export interface LaneListing {
+	/** The listing's `svc-…` / `prd-…` slug — its address. */
+	id: string;
+	title: string;
+	kind: CatalogueKind;
+	status: ListingStatus;
+	cover: string | null;
+	needsAttention: boolean;
+}
+
+/** The team's listings as the lane holds them: the first page, and how many the console lists. */
+export interface LaneListings {
+	items: LaneListing[];
+	total: number;
+}
+
+/**
+ * The Catalogue section's read. A failure is never drawn as an empty catalogue: "no listings yet" is a
+ * claim about the team's work, and a false one when the truth is that it could not be read.
+ */
+export type LaneListingsRead =
+	| { ok: true; listings: LaneListings }
+	| { ok: false; message: string };
+
+/** How many listings the section lists before it hands the rest to the console. */
+export const LANE_LISTING_LIMIT = 20;
+
+/**
+ * The section's read: the console's resting statuses (everything but Archived), newest first, one
+ * lane's worth — so its "View all" count is the count the console opens on.
+ */
+export const LANE_LISTING_PARAMS: CatalogueListParams = {
+	type: "all",
+	status: [...DEFAULT_CONSOLE_STATUSES],
+	sort: "recent",
+	limit: LANE_LISTING_LIMIT,
+};
+
+/** Project a catalogue page onto the section's listings, keeping the lane's first page. */
+export function laneListingsOf(page: Pick<CataloguePage, "items" | "total">): LaneListings {
+	return {
+		items: page.items.slice(0, LANE_LISTING_LIMIT).map((l) => ({
+			id: l.id,
+			title: l.title,
+			kind: l.kind,
+			status: l.status,
+			cover: l.cover,
+			needsAttention: l.needsAttention,
+		})),
+		total: page.total,
+	};
+}
+
+/** One listing row as the section draws it. */
+export interface LaneListingRow extends LaneListing {
+	href: string;
+	/** Whether this listing is the one being rendered. */
+	active: boolean;
+	/** The lifecycle word for a listing that is not live ("Draft" · "Paused"), else `null`. */
+	state: string | null;
+}
+
+/** The section's rows, and the console link that stands in for the listings it leaves out. */
+export interface LaneListingRows {
+	rows: LaneListingRow[];
+	/** "View all 34 listings" when the console lists more than the lane, else `null`. */
+	more: { label: string; href: string } | null;
+}
+
+const LISTING_STATE: Record<ListingStatus, string | null> = {
+	published: null,
+	draft: "Draft",
+	paused: "Paused",
+	archived: "Archived",
+};
+
+/** The section's rows for a read, each linking to its listing in the team's item workspace. */
+export function laneListingRows(listings: LaneListings, zone: LaneCatalogueZone): LaneListingRows {
+	const rows = listings.items.map((l) => ({
+		...l,
+		href: listingWorkspaceHref(l.id, { team: zone.team }),
+		active: l.id === zone.listing,
+		state: LISTING_STATE[l.status],
+	}));
+	const more = listings.total > rows.length
+		? { label: `View all ${listings.total} listings`, href: zone.row.href }
+		: null;
+	return { rows, more };
 }
 // #endregion
 

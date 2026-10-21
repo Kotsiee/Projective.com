@@ -208,6 +208,10 @@ here and there must never be one. */
     color: var(--text-secondary);
 }
 
+.wsp-drive__quota {
+    max-inline-size: var(--wsp-field);
+}
+
 /* #endregion */
 
 /* #region The identity band */

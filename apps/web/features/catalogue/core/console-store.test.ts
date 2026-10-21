@@ -12,11 +12,13 @@ import {
 	clearSelection,
 	consoleLocation,
 	consoleUrl,
+	highlightsWith,
 	listingsPage,
 	listParamsOf,
 	listQueryKey,
 	mergeConsoleUrl,
 	NO_QUICK_FILTERS,
+	quickFiltersOf,
 	rangeBetween,
 	reduceSelection,
 	selectAll,
@@ -117,18 +119,19 @@ Deno.test("the address keeps parameters the console does not own", () => {
 // #endregion
 
 // #region Listings query
-Deno.test("list params follow the URL and the quick filters", () => {
+Deno.test("list params follow the URL, its highlights included", () => {
 	const state = mergeConsoleUrl(BASE, {
 		type: "service",
 		model: ["Pipeline"],
 		create: ["run"],
+		highlights: ["best-selling", "attention"],
 		status: ["published"],
 		search: "logo",
 		sort: "price",
 		period: "12m",
 	});
 	assertEquals(
-		listParamsOf(state, { attention: true, promoted: false, bestSelling: true }, "svc-x"),
+		listParamsOf(state, "svc-x"),
 		{
 			type: "service",
 			status: ["published"],
@@ -153,7 +156,29 @@ Deno.test("the read key ignores what does not change the listings read", () => {
 	assertEquals(listQueryKey(mergeConsoleUrl(BASE, { view: "analytics" })), key);
 	assertEquals(listQueryKey(mergeConsoleUrl(BASE, { createOpen: true })), key);
 	assertNotEquals(listQueryKey(mergeConsoleUrl(BASE, { status: ["draft"] })), key);
-	assertNotEquals(listQueryKey(BASE, { ...NO_QUICK_FILTERS, promoted: true }), key);
+	assertNotEquals(listQueryKey(mergeConsoleUrl(BASE, { highlights: ["promoted"] })), key);
+	assertEquals(listQueryKey(mergeConsoleUrl(BASE, { team: "north-loop" })), key);
+});
+
+Deno.test("the quick filters are the highlight facet, toggled one at a time", () => {
+	assertEquals(quickFiltersOf([]), NO_QUICK_FILTERS);
+	assertEquals(quickFiltersOf(["best-selling"]), { ...NO_QUICK_FILTERS, bestSelling: true });
+	assertEquals(highlightsWith(["attention"], "bestSelling", true), ["attention", "best-selling"]);
+	assertEquals(highlightsWith(["attention", "promoted"], "attention", false), ["promoted"]);
+	assertEquals(highlightsWith(["promoted"], "promoted", true), ["promoted"]);
+	assertEquals(
+		canonicalConsoleUrl({ highlights: highlightsWith([], "bestSelling", true) }).highlights,
+		["best-selling"],
+	);
+});
+
+Deno.test("a team console keeps its team through every merge", () => {
+	const team = canonicalConsoleUrl({ team: "north-loop" });
+	assertEquals(mergeConsoleUrl(team, { view: "clients", status: ["draft"] }).team, "north-loop");
+	assertEquals(
+		consoleLocation(mergeConsoleUrl(team, { highlights: ["promoted"] }), "?tkv=tkt-1"),
+		"/teams/north-loop/catalogue?highlight=promoted&tkv=tkt-1",
+	);
 });
 // #endregion
 

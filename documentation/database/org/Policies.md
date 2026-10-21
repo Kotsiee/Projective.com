@@ -219,7 +219,12 @@ primary email**; under the caller's own rights the roster is their own businesse
 
 ## 🛠 Asset & Skill Policies
 
-### `org.attachments`
+### `org.attachments` — never existed (corrected 2026-10-21, Decision #313)
+
+> No migration creates `org.attachments`, so it has no policies. File access is governed by the
+> [`files.items` policies](../files/Policies.md#filesitems) and the engagement link tables
+> `projects.project_attachments`, `comms.message_attachments`, `comms.channel_files` and
+> `projects.submission_files`. The note below is the original stale entry.
 
 (Referencing common security patterns in codebase) Access is typically linked to the
 `owner_profile_id` or visibility within a project context.

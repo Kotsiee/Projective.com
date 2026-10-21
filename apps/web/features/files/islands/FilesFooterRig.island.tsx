@@ -2,17 +2,14 @@ import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/files-chrome.css";
-import { Dialog, Popover, Tooltip } from "@projective/ui/feedback";
-import { InputText } from "@projective/ui/fields";
+import { Dialog, Tooltip } from "@projective/ui/feedback";
+import { Button, InputText } from "@projective/ui/fields";
 import { Icon, type IconName } from "@projective/ui/icons";
 import { ViewZoomRig } from "@web/features/shell/components/ViewZoomRig.tsx";
 import { filesZoom } from "@web/features/projects/core/view-state.ts";
-import { SourceMark } from "../components/file-hub-glyphs.tsx";
 import UploadDrawer from "./UploadDrawer.island.tsx";
+import { ConnectDriveDialog } from "../components/ConnectDriveDialog.tsx";
 import { FilesService } from "../core/FilesService.ts";
-import { IntegrationsService } from "../core/IntegrationsService.ts";
-import { providerSource } from "../core/asset-model.ts";
-import { postFiles } from "../core/api.ts";
 import { openUploadDrawer, uploadDrawerOpen } from "../core/upload-drawer-state.ts";
 import {
 	commitFiles,
@@ -23,54 +20,36 @@ import {
 	uploadQueue,
 	uploadsActive,
 } from "../core/files-state.ts";
-import {
-	type AssetOwnerType,
-	type AssetSource,
-	type FileScope,
-	sourceLabel,
-} from "../types/file-types.ts";
+import { type AssetOwnerType, type FileScope, sourceLabel } from "../types/file-types.ts";
 import { uploadTasksOf } from "../core/upload-tasks.ts";
 
 /**
- * FilesFooterRig — the sticky action bar, and the only place on `/files` anything enters the library.
+ * FilesFooterRig — the sticky action bar, and the only place on `/files` a file enters the library
+ * from the chrome (the body's empty state and its drop target are the other two doors).
  *
- * ## Adaptation is by CONTAINER WIDTH, and no action is ever lost to it
+ * ## Drawn like the catalogue workspace rig (Decision #311)
  *
- * `container-type: inline-size` on the rig root is load-bearing twice over, and both reasons are
- * failures this codebase has already shipped:
+ * The density control and the upload queue's status sit at the start; the actions sit at the end:
+ * the secondaries — New folder · Attach link · Connect drive · Export — as neutral outlined circles,
+ * each with a portal `Tooltip` and an `aria-label`, then **Upload**, the region's one filled action,
+ * last in the inline direction (§B.8.2 / §B.8.6). There is no overflow menu: every action stays on
+ * the bar at every width, and the narrowest container tier folds Upload's label into its Tooltip
+ * rather than removing anything.
  *
- *  1. **It stops the band bidding for the lane's space.** The middle-nav content column is a `1fr`
- *     grid track whose automatic minimum is `auto`, so one `nowrap` row of labelled buttons exports
- *     its full min-content to the whole frame — on `/wallet` that was 739px, which starved the nav
- *     lane to 2px at an 820px viewport and overflowed the frame's `clip` at 768px. Inline-size
- *     containment makes this band's width a function of the band, never of its contents.
- *  2. **It makes the tier switch a container query** keyed on the band's real width, so the collapse
- *     is deterministic CSS rather than a client width observer — the same "render both, reveal one"
- *     technique the collapsed rail uses.
- *
- * The three tiers are glyph + label · glyph only (§B.6.3's icon-only sticky footer, the name relocated
- * to the `Tooltip` every control already carries) · one menu. **The menu holds every action at every
- * tier**, so no width can remove a path to getting a file in — which is exactly what `/wallet`'s old
- * `nth-child(n + 3) { display: none }` mobile rule did on four pages that had no menu to recover from.
+ * `container-type: inline-size` on the root still stops the band bidding for the lane's space (the
+ * `/wallet` 739px min-content defect) and makes that tier switch a container query.
  *
  * ## The action layer mounts HERE
  *
- * Not in a body screen. `/wallet` learned this the hard way: its layer lived in one of eight route
- * bodies while the rig that opens it renders on all eight, so seven routes had actions that opened
- * nothing. The trigger owns the layer.
- *
- * That includes the {@link UploadDrawer}, which is mounted UNCONDITIONALLY rather than while the
- * queue is non-empty. A conditionally-rendered island is absent from the page's island graph until
- * its condition flips, and that graph is what carries component CSS — a drawer mounted only once a
- * file was picked would paint its first frame unstyled. It renders nothing while closed.
+ * The trigger owns the layer, so every `/files` route gets the same dialogs. That includes the
+ * {@link UploadDrawer}, mounted UNCONDITIONALLY: a conditionally-rendered island is absent from the
+ * page's island graph until its condition flips, and that graph is what carries component CSS.
  *
  * ## Two gates, told apart on purpose
  *
- * A **read-only LOCATION** (a mounted channel, a connected drive — `AssetListPage.readOnly`) withholds
- * Upload, New folder and Attach link by ABSENCE, because the surface is not a second write path into
- * someone else's system of record and offering a target it will refuse teaches nothing. `Connect
- * drive` survives: it is an account-level action that happens to be reachable from here, not a write
- * into the place being viewed. Export and density survive because reading is never gated.
+ * A **read-only LOCATION** (a mounted channel, a connected drive) withholds Upload, New folder and
+ * Attach link by ABSENCE. `Connect drive` survives: it is an account-level action, not a write into the
+ * place being viewed. Export and density survive because reading is never gated.
  *
  * Dumb island: everything goes through the thin `FilesService` / `/api/*`; no database, no fixtures.
  */
@@ -85,13 +64,22 @@ export interface FilesFooterRigProps {
 	segments: string[];
 	ownerType: AssetOwnerType;
 	ownerId: string;
+	/**
+	 * Whether Connect drive is offered (default `true`). A connection belongs to the person's acting
+	 * context, so a team's or business's drive withholds it.
+	 */
+	connectDrive?: boolean;
+	/**
+	 * Why the whole library takes nothing new, when the host knows it does not (an archived entity's
+	 * drive). Set, it withholds every write action as a read-only location does and is the rig's note.
+	 */
+	lockedNote?: string | null;
 }
 
-/** Everything the rig can do. The order is the reading order of the inline cluster and the menu. */
-type RigAction = "upload" | "new_folder" | "attach_link" | "connect_drive" | "export";
+type SecondaryAction = "new_folder" | "attach_link" | "connect_drive" | "export";
 
 interface ActionSpec {
-	key: RigAction;
+	key: SecondaryAction;
 	label: string;
 	icon: IconName;
 	/** Withheld at a read-only location — see the module note on the two gates. */
@@ -100,23 +88,13 @@ interface ActionSpec {
 // #endregion
 
 // #region Action model
-const ACTIONS: readonly ActionSpec[] = [
-	{ key: "upload", label: "Upload", icon: "upload", writes: true },
+const SECONDARY: readonly ActionSpec[] = [
 	{ key: "new_folder", label: "New folder", icon: "folder", writes: true },
 	{ key: "attach_link", label: "Attach link", icon: "link", writes: true },
-	// `box` is the SAME glyph the tree's `NodeMark` gives a connected drive, so the action and the
-	// thing it produces are one vocabulary rather than two.
+	// `box` is the glyph the tree's `NodeMark` gives a connected drive: the action and its result match.
 	{ key: "connect_drive", label: "Connect drive", icon: "box", writes: false },
-	{ key: "export", label: "Export", icon: "download", writes: false },
+	{ key: "export", label: "Export list", icon: "download", writes: false },
 ];
-
-/** The storage connectors a drive can be mounted from, in the order the tree lists them. */
-/** One storage provider this account can connect right now, as the catalogue describes it. */
-interface DriveOffer {
-	slug: string;
-	label: string;
-	source: AssetSource;
-}
 
 /** Escape one CSV cell — quote it and double any embedded quote, per RFC 4180. */
 function csvCell(value: string): string {
@@ -124,9 +102,32 @@ function csvCell(value: string): string {
 }
 // #endregion
 
+interface RigIconProps {
+	spec: ActionSpec;
+	disabled?: boolean;
+	onClick: () => void;
+}
+
+function RigIcon({ spec, disabled, onClick }: RigIconProps): JSX.Element {
+	return (
+		<Tooltip content={spec.label} placement="top">
+			<Button
+				rounded
+				iconOnly
+				size="sm"
+				severity="neutral"
+				variant="outlined"
+				class="fh-rig__icon ui-hit"
+				aria-label={spec.label}
+				icon={<Icon name={spec.icon} size="sm" />}
+				disabled={disabled}
+				onClick={onClick}
+			/>
+		</Tooltip>
+	);
+}
+
 export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element {
-	const menuOpen = useSignal(false);
-	const menuRef = useRef<HTMLButtonElement>(null);
 	const fileInput = useRef<HTMLInputElement>(null);
 
 	const folderOpen = useSignal(false);
@@ -134,56 +135,24 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 	const linkOpen = useSignal(false);
 	const linkUrl = useSignal("");
 	const driveOpen = useSignal(false);
-	/**
-	 * What "Connect a drive" can offer: `null` until the catalogue has answered, then the enabled
-	 * storage providers not already connected, plus whether the catalogue offers ANY — an empty list
-	 * means "all connected" or "none offered", and the dialog must not say one when the other is true.
-	 */
-	const drives = useSignal<{ offers: DriveOffer[]; anyOffered: boolean } | null>(null);
-	/** The last action's outcome, shown inside the dialog that produced it. Never swallowed. */
+	/** The last write's outcome, shown inside the dialog that produced it. Never swallowed. */
 	const notice = useSignal<string | null>(null);
 	const busy = useSignal(false);
 
 	useEffect(() => filesZoom.restoreZoom(), []);
 
-	// Read on OPEN, not on mount: the rig renders on every /files route, and reading someone's stored
-	// authorizations to fill a dialog they may never open is a request nobody asked for.
-	useEffect(() => {
-		if (!driveOpen.value || drives.value) return;
-		let cancelled = false;
-		void (async () => {
-			const res = await IntegrationsService.connections();
-			if (cancelled) return;
-			if (!res.ok || !res.data) {
-				notice.value = res.message ?? "The drives you can connect could not be loaded.";
-				return;
-			}
-			const connected = new Set(
-				res.data.connections.filter((c) => c.status !== "revoked" && c.status !== "disconnected")
-					.map((c) => c.providerSlug),
-			);
-			const storage = res.data.providers.filter((p) => p.isEnabled && p.capabilities.includes("storage"));
-			drives.value = {
-				anyOffered: storage.length > 0,
-				offers: storage.filter((p) => !connected.has(p.slug))
-					.sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label))
-					.map((p) => ({ slug: p.slug, label: p.label, source: providerSource(p.slug) })),
-			};
-		})();
-		return () => {
-			cancelled = true;
-		};
-	}, [driveOpen.value]);
-
-	const available = useComputed(() => ACTIONS.filter((a) => (readOnly.value ? !a.writes : true)));
+	const connectDrive = props.connectDrive ?? true;
+	const lockedNote = props.lockedNote ?? null;
+	const locked = readOnly.value || lockedNote !== null;
+	const secondaries = SECONDARY.filter((a) =>
+		(locked ? !a.writes : true) && (connectDrive || a.key !== "connect_drive")
+	);
 
 	/**
-	 * The queue affordance's label, or `null` when there is no queue to describe.
-	 *
-	 * Keyed on the WHOLE queue rather than on `uploadsActive`, because a failed upload is not active:
-	 * gating on activity alone would take the affordance away at the exact moment the last file of a
-	 * drop failed, and with it the only route back to the reason. The queue empties when the person
-	 * clears it, not when it stops moving.
+	 * The queue affordance's label, or `null` when there is no queue to describe. Keyed on the WHOLE
+	 * queue rather than on `uploadsActive`: a failed upload is not active, and gating on activity
+	 * would take the affordance away at the moment the last file of a drop failed — and with it the
+	 * only route back to the reason.
 	 */
 	const queueLabel = useComputed<string | null>(() => {
 		const rows = uploadQueue.value;
@@ -201,12 +170,9 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 
 	// #region Actions
 	/**
-	 * Enqueue a drop for the pipeline that owns hashing, dedup and the upload handshake.
-	 *
-	 * The rig deliberately stops at the QUEUE: `files-state.uploadQueue` is the shared contract, and a
-	 * second implementation of the three-step handshake living in the action bar is how the two would
-	 * drift. Every task lands in `queued` with its own client-minted key, because a task exists from
-	 * the moment a file is picked — before the server has minted anything to key it on.
+	 * Enqueue the picked files for the pipeline that owns hashing, dedup and the upload handshake. The
+	 * rig stops at the QUEUE (`files-state.uploadQueue`, the shared contract): a second implementation of
+	 * the handshake in the action bar is how the two would drift.
 	 */
 	function onFilesPicked(list: FileList | null): void {
 		if (!list || list.length === 0) return;
@@ -257,35 +223,8 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 	}
 
 	/**
-	 * Begin an OAuth consent for a storage connector.
-	 *
-	 * This is a SEPARATE grant from signing in with Google (`features/auth/`): GoTrue's sign-in retains
-	 * no third-party API token, so a person who signed in with Google has granted the platform no
-	 * access to their Drive. `returnTo` is a same-origin PATH and is validated server-side — an
-	 * attacker-chosen return URL would turn a consent screen into an open redirect wearing this
-	 * domain's credibility.
-	 */
-	async function connect(slug: string): Promise<void> {
-		if (busy.value) return;
-		busy.value = true;
-		const res = await postFiles<{ state: string; authorizeUrl: string; expiresAt: string }>(
-			"/api/integrations/start",
-			{ providerSlug: slug, returnTo: props.base },
-		);
-		busy.value = false;
-		if (res.ok && res.data?.authorizeUrl) {
-			globalThis.location.assign(res.data.authorizeUrl);
-		} else {
-			notice.value = res.message ?? "That drive could not be connected right now.";
-		}
-	}
-
-	/**
-	 * Export what is LOADED, and say so.
-	 *
-	 * There is no `/api/files/export` endpoint, and inventing a link to one would ship a control that
-	 * 404s. A client-side CSV of the rows currently in view is honest, complete for what it claims, and
-	 * needs no server work; the label names the scope so nobody mistakes it for a whole-library dump.
+	 * Export what is LOADED, and say so. There is no export endpoint; a client-side CSV of the rows in
+	 * view is honest and complete for what it claims, and the label names the scope ("Export list").
 	 */
 	function exportCsv(): void {
 		const rows = items.value;
@@ -302,23 +241,17 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 			].join(",")
 		);
 		const csv = [header.map(csvCell).join(","), ...body].join("\r\n");
-		try {
-			const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-			const a = document.createElement("a");
-			a.href = url;
-			a.download = `files-${props.segments.at(-1) ?? "library"}.csv`;
-			a.click();
-			URL.revokeObjectURL(url);
-		} catch { /* no DOM / blocked download — non-fatal */ }
+		const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = `files-${props.segments.at(-1) ?? "library"}.csv`;
+		a.click();
+		URL.revokeObjectURL(url);
 	}
 
-	function activate(action: RigAction): void {
-		menuOpen.value = false;
+	function activate(action: SecondaryAction): void {
 		notice.value = null;
 		switch (action) {
-			case "upload":
-				fileInput.current?.click();
-				return;
 			case "new_folder":
 				folderOpen.value = true;
 				return;
@@ -335,132 +268,75 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 	}
 	// #endregion
 
-	// #region Controls
-	/**
-	 * `primary` is granted to **Upload specifically**, not to whatever happens to lead the row.
-	 *
-	 * Position is the wrong rule here: at a read-only mount the writing actions are absent, so the first
-	 * inline control becomes `Connect drive` — and dressing an account-level setup step as the page's
-	 * primary action tells a reader that connecting a drive is what this screen is for. The menu is its
-	 * own decision region and lists everything at one weight; a filled row inside a list of five reads
-	 * as a recommendation the surface has no business making.
-	 */
-	function button(spec: ActionSpec, _index: number, inMenu: boolean): JSX.Element {
-		const disabled = spec.key === "export" && items.value.length === 0;
-		const control = (
-			<button
-				type="button"
-				class="fh-rig__action"
-				data-variant={spec.key === "upload" && !inMenu ? "primary" : "tonal"}
-				disabled={disabled}
-				aria-label={spec.label}
-				role={inMenu ? "menuitem" : undefined}
-				onClick={() => activate(spec.key)}
-			>
-				<span class="fh-rig__glyph" aria-hidden="true">
-					<Icon name={spec.icon} />
-				</span>
-				<span class="fh-rig__label">{spec.label}</span>
-			</button>
-		);
-		// In the menu the label is always visible, so a tooltip would only repeat it.
-		if (inMenu) return <span key={spec.key}>{control}</span>;
-		return <Tooltip key={spec.key} content={spec.label} placement="top">{control}</Tooltip>;
-	}
-	// #endregion
-
 	return (
-		<div class="fh-rig" data-readonly={readOnly.value ? "true" : undefined}>
-			{
-				/*
-				 * The density control. One continuous zoom drives list ⇄ grid AND the density within each,
-				 * so there is deliberately no view toggle beside it — the SAME store the projects File
-				 * Explorer uses, because a person who set their file density in one place has set it.
-				 */
-			}
-			<ViewZoomRig
-				store={filesZoom}
-				label="File view zoom"
-				class="fh-rig__density"
-				listIcon={<Icon name="list" />}
-				gridIcon={<Icon name="grid" />}
-			/>
+		<div class="fh-rig" data-readonly={locked ? "true" : undefined}>
+			<div class="fh-rig__status">
+				<ViewZoomRig
+					store={filesZoom}
+					label="File view zoom"
+					class="fh-rig__density"
+					listIcon={<Icon name="list" />}
+					gridIcon={<Icon name="grid" />}
+				/>
 
-			<div class="fh-rig__actions">
-				{available.value.map((spec, i) => button(spec, i, false))}
+				{locked && (
+					<span class="fh-rig__note">
+						{lockedNote ?? "Read-only here — this location is mounted, not stored in your library."}
+					</span>
+				)}
+
+				{
+					/*
+					 * The way back into the queue: while it runs, the only path to cancelling a transfer;
+					 * once it stops, the only path to what went wrong. No live-region role — `role="status"`
+					 * on a button REPLACES the button role. The open flag is read from the shared module,
+					 * because a `Signal` prop does not survive the island boundary as the same instance.
+					 */
+				}
+				{queueLabel.value !== null && (
+					<button
+						type="button"
+						class="fh-rig__uploads"
+						aria-haspopup="dialog"
+						aria-expanded={uploadDrawerOpen.value ? "true" : "false"}
+						onClick={openUploadDrawer}
+					>
+						{queueLabel.value}
+					</button>
+				)}
 			</div>
 
-			{readOnly.value && (
-				<span class="fh-rig__note">
-					Read-only here — this location is mounted, not stored in your library.
-				</span>
-			)}
+			<div class="fh-rig__actions">
+				{secondaries.map((spec) => (
+					<RigIcon
+						key={spec.key}
+						spec={spec}
+						disabled={spec.key === "export" && items.value.length === 0}
+						onClick={() => activate(spec.key)}
+					/>
+				))}
+				{!locked && (
+					<Tooltip content="Upload files" placement="top">
+						<Button
+							size="sm"
+							label="Upload"
+							icon={<Icon name="upload" size="sm" />}
+							class="fh-rig__upload"
+							onClick={() => fileInput.current?.click()}
+						/>
+					</Tooltip>
+				)}
+			</div>
 
-			{
-				/*
-				 * The way back into the queue. A real button rather than a status line: while it is
-				 * running it is the only path to cancelling a transfer, and once it has stopped it is the
-				 * only path to what went wrong. It carries no live-region role — `role="status"` on a
-				 * button REPLACES the button role, so the control would announce as a status and stop
-				 * reading as something you can press. The queue announces its own progress from inside
-				 * the drawer, which opens itself the moment work starts.
-				 *
-				 * The open flag is read from the shared module, not from a signal handed to the drawer:
-				 * a `Signal` prop does not survive the island boundary as the same instance, so this
-				 * button reported `aria-expanded="false"` over a drawer that was open.
-				 */
-			}
-			{queueLabel.value !== null && (
-				<button
-					type="button"
-					class="fh-rig__uploads"
-					aria-haspopup="dialog"
-					aria-expanded={uploadDrawerOpen.value ? "true" : "false"}
-					onClick={openUploadDrawer}
-				>
-					{queueLabel.value}
-				</button>
-			)}
-
-			<Tooltip content="All file actions" placement="top">
-				<button
-					type="button"
-					class="fh-rig__more"
-					ref={menuRef}
-					aria-label="All file actions"
-					aria-haspopup="menu"
-					aria-expanded={menuOpen.value ? "true" : "false"}
-					onClick={() => {
-						menuOpen.value = !menuOpen.value;
-					}}
-				>
-					<span class="fh-rig__glyph" aria-hidden="true">
-						<Icon name="kebab-horizontal" />
-					</span>
-					<span class="fh-rig__more-label">Actions</span>
-				</button>
-			</Tooltip>
-			<Popover open={menuOpen} targetRef={menuRef} placement="top-end">
-				<div class="fh-rig__menu" role="menu">
-					{available.value.map((spec, i) => button(spec, i, true))}
-				</div>
-			</Popover>
-
-			{
-				/*
-				 * The action layer. Mounted beside the controls that open it, so every `/files` route gets
-				 * the same dialogs rather than only the one route that happened to host them.
-				 */
-			}
 			<input
 				ref={fileInput}
-				class="fh-rig__file"
+				class="ui-visually-hidden"
 				type="file"
 				multiple
 				tabIndex={-1}
 				aria-hidden="true"
 				onChange={(e) => {
-					const el = e.currentTarget as HTMLInputElement;
+					const el = e.currentTarget;
 					onFilesPicked(el.files);
 					// Reset, or picking the same file twice in a row fires no change event at all.
 					el.value = "";
@@ -473,33 +349,20 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 				width="26rem"
 				footer={
 					<div class="fh-rig__dialogfoot">
-						<button
-							type="button"
-							class="fh-rig__action"
-							data-variant="tonal"
-							onClick={() => (folderOpen.value = false)}
-						>
-							<span class="fh-rig__label">Cancel</span>
-						</button>
-						<button
-							type="button"
-							class="fh-rig__action"
-							data-variant="primary"
+						<Button variant="text" label="Cancel" onClick={() => (folderOpen.value = false)} />
+						<Button
+							label="Create folder"
+							loading={busy.value}
 							disabled={busy.value || folderName.value.trim().length === 0}
 							onClick={() => void createFolder()}
-						>
-							<span class="fh-rig__label">Create folder</span>
-						</button>
+						/>
 					</div>
 				}
 			>
 				{
 					/*
-					 * The visible label is ASSOCIATED by id, not replaced by an `aria-label`. An
-					 * `aria-label` on a control that already has visible text overrides that text for
-					 * assistive technology, so the name a screen-reader user hears stops matching the
-					 * words a speech-control user has to say (WCAG 2.5.3 — the defect Decision #62 fixed
-					 * in the catalogue modal).
+					 * The visible label is ASSOCIATED by id, not replaced by an `aria-label`, so the name a
+					 * screen-reader user hears matches the words a speech-control user says (WCAG 2.5.3).
 					 */
 				}
 				<label class="fh-rig__fieldlabel" for="fh-folder-name">Folder name</label>
@@ -519,23 +382,13 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 				width="28rem"
 				footer={
 					<div class="fh-rig__dialogfoot">
-						<button
-							type="button"
-							class="fh-rig__action"
-							data-variant="tonal"
-							onClick={() => (linkOpen.value = false)}
-						>
-							<span class="fh-rig__label">Cancel</span>
-						</button>
-						<button
-							type="button"
-							class="fh-rig__action"
-							data-variant="primary"
+						<Button variant="text" label="Cancel" onClick={() => (linkOpen.value = false)} />
+						<Button
+							label="Attach link"
+							loading={busy.value}
 							disabled={busy.value || linkUrl.value.trim().length === 0}
 							onClick={() => void attachLink()}
-						>
-							<span class="fh-rig__label">Attach link</span>
-						</button>
+						/>
 					</div>
 				}
 			>
@@ -555,51 +408,8 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 				{notice.value && <p class="fh-rig__error" role="status">{notice.value}</p>}
 			</Dialog>
 
-			<Dialog visible={driveOpen} header="Connect a drive" width="28rem">
-				<p class="fh-rig__hint">
-					Connecting is a separate permission from signing in — signing in with Google grants no
-					access to your Drive. A connected drive is browsable here and stays read-only.
-				</p>
-				{drives.value && drives.value.offers.length > 0
-					? (
-						<div class="fh-rig__providers">
-							{drives.value.offers.map((p) => (
-								<button
-									key={p.slug}
-									type="button"
-									class="fh-rig__provider"
-									disabled={busy.value}
-									onClick={() => void connect(p.slug)}
-								>
-									<span class="fh-rig__provider-mark" aria-hidden="true">
-										<SourceMark source={p.source} size={20} />
-									</span>
-									<span class="fh-rig__provider-label">{p.label}</span>
-									<Icon name="chevron-right" class="fh-rig__provider-caret" />
-								</button>
-							))}
-						</div>
-					)
-					: (
-						<p class="fh-rig__hint" role="status">
-							{drives.value === null
-								? notice.value ? null : "Loading the drives you can connect…"
-								: drives.value.anyOffered
-								? "Every drive this account can connect is already connected."
-								: "No drives can be connected yet."}
-						</p>
-					)}
-				{notice.value && <p class="fh-rig__error" role="status">{notice.value}</p>}
-			</Dialog>
+			{connectDrive && <ConnectDriveDialog visible={driveOpen} returnTo={props.base} />}
 
-			{
-				/*
-				 * The upload pipeline: fingerprint → duplicate check → init/PUT/complete, plus the queue
-				 * that reports on it. Mounted always (see the module note on the island graph and CSS); it
-				 * opens itself when the queue gains work, and stays reachable from the affordance above
-				 * once the person has closed it.
-				 */
-			}
 			<UploadDrawer ownerType={props.ownerType} ownerId={props.ownerId} />
 		</div>
 	);

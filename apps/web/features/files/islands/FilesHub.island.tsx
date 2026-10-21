@@ -34,6 +34,7 @@ import {
 import { FileTable } from "@web/features/projects/components/FileTable.tsx";
 import { SubmissionNodeList } from "@web/features/projects/components/SubmissionNodeList.tsx";
 import { AttachmentPreviewModal } from "@web/features/projects/components/AttachmentPreviewModal.tsx";
+import { linkHref } from "@web/features/projects/components/preview/preview-model.ts";
 import { filesZoom, gridColWidth, viewMode, displayZoom } from "@web/features/projects/core/view-state.ts";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 
@@ -57,6 +58,7 @@ import {
 	anchorId,
 	applyPage,
 	beginLoad,
+	categoryFilter,
 	channelId,
 	clearFilesFilters,
 	clearSelection,
@@ -64,13 +66,14 @@ import {
 	currentPath,
 	currentScope,
 	DEFAULT_SORT,
+	enqueueUploads,
 	error,
 	filesCommit,
+	folderId,
 	folders,
 	hasMore,
 	inspectId,
 	items,
-	kindFilter,
 	loading,
 	narrowed,
 	nextCursor,
@@ -88,10 +91,15 @@ import {
 	toggleSelect,
 	tree,
 	viewerId,
+	visibilityFilter,
 } from "../core/files-state.ts";
+import { uploadTasksOf } from "../core/upload-tasks.ts";
+import { useFileDrop } from "../hooks/use-file-drop.ts";
 import { AssetBreadcrumbs } from "../components/AssetBreadcrumbs.tsx";
 import { type AssetActivation, AssetCard } from "../components/AssetCard.tsx";
 import { AssetFolderCard } from "../components/AssetFolderCard.tsx";
+import { FileDropOverlay } from "../components/FileDropOverlay.tsx";
+import { FilesEmptyState } from "../components/FilesEmptyState.tsx";
 import { InspectPanel } from "../components/InspectPanel.tsx";
 import { starFile } from "@features/files/core/star-file.ts";
 
@@ -104,12 +112,14 @@ import { starFile } from "@features/files/core/star-file.ts";
  *
  * ## What the body deliberately does NOT contain
  *
- * No tabs, no filter dropdowns, no primary CTA (the region contract `/wallet` established and
- * `/messages` was rebuilt to match). The body views and selects; the LANE navigates and scopes, the
- * HEADER carries identity and the global controls, the FOOTER carries every action. The one recovery
- * affordance that does live here is the empty state's "Clear filters" — it is not a CTA, it is the way
- * out of a state the body is currently rendering, and hiding it in a band the reader is not looking at
- * would be a puzzle rather than a layout.
+ * No tabs and no filter dropdowns (the region contract `/wallet` established and `/messages` was rebuilt
+ * to match). The body views and selects; the LANE navigates and scopes, the HEADER carries identity and
+ * the global controls, the FOOTER carries every standing action. Two doors in are the body's own
+ * (Decision #311, amending #67 (B)): an empty writable folder's "Upload files", because the empty
+ * state is where a first-time reader is looking, and the body as a DROP target for files from the
+ * operating system — the highlight is drawn inside the hub, so it can never spill over the sidebar or
+ * the lane. Both feed the same upload queue the footer does. A narrowed empty state offers "Clear
+ * filters" instead: the way out of a state the body is currently rendering.
  *
  * ## Density is borrowed, never re-instantiated
  *
@@ -159,6 +169,14 @@ export interface FilesHubProps {
 	routing?: FolderRouting;
 	/** The empty library's sentence, when the host's library is not the person's own. */
 	emptyNote?: string;
+	/** Why a read-only location takes nothing, when the host knows (an archived entity's drive). */
+	readOnlyNote?: string | null;
+	/**
+	 * Whether this viewer may upload into the library at all (default `true`). A host that mounts no
+	 * `UploadDrawer` for the viewer must pass `false`, or a dropped file would queue with nothing to
+	 * drain it.
+	 */
+	canUpload?: boolean;
 }
 // #endregion
 
@@ -374,7 +392,8 @@ function Workspace(p: WorkspaceProps): JSX.Element {
 // #endregion
 
 export default function FilesHub(props: FilesHubProps): JSX.Element {
-	const { initial, tree: initialTree, path, base = "/files", routing = "path" } = props;
+	const { initial, tree: initialTree, path, base = "/files", routing = "path", canUpload = true } =
+		props;
 
 	// #region Local (view) state — never in `files-state`, because no other region reads it
 	/** The asset the preview modal is open on; `null` closes it. */
@@ -395,6 +414,7 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 
 	const reqId = useRef(0);
 	const workspaceRef = useRef<HTMLDivElement>(null);
+	const fileInput = useRef<HTMLInputElement>(null);
 	// #endregion
 
 	// #region Query
@@ -414,8 +434,9 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 			path: currentPath.value.length > 0 ? currentPath.value : undefined,
 			sort: sortKey.value,
 			dir: sortDir.value,
-			kinds: kindFilter.value.length > 0 ? kindFilter.value : undefined,
+			categories: categoryFilter.value.length > 0 ? categoryFilter.value : undefined,
 			sources: sourceFilter.value.length > 0 ? sourceFilter.value : undefined,
+			visibility: visibilityFilter.value.length > 0 ? visibilityFilter.value : undefined,
 			query: query.value.trim() || undefined,
 			cursor,
 		};
@@ -516,7 +537,7 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 	 * file at its own address. `noopener` so the opened page cannot reach back.
 	 */
 	function openRaw(asset: AssetItem): void {
-		const target = inspectable(asset) ? fileInspectHref(asset.id) : asset.link?.url ?? asset.url;
+		const target = inspectable(asset) ? fileInspectHref(asset.id) : linkHref(asset) ?? asset.url;
 		if (!target || target === "#") return;
 		globalThis.open(target, "_blank", "noopener,noreferrer");
 	}
@@ -579,7 +600,7 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 
 	/** Download: record the copy, then hand the bytes over. The guard/ledger is the server's business. */
 	async function download(asset: AssetItem): Promise<void> {
-		const target = asset.link?.url ?? asset.url;
+		const target = linkHref(asset) ?? asset.url;
 		if (!target || target === "#") return;
 		await FilesService.recordDownload({ assetId: asset.id, via: "hub" });
 		globalThis.open(target, "_blank", "noopener,noreferrer");
@@ -609,6 +630,19 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 	}
 	// #endregion
 
+	// #region Uploads into the body
+	function takesFiles(): boolean {
+		return canUpload && seeded.value && !readOnly.value;
+	}
+
+	function uploadFiles(files: readonly File[]): void {
+		if (files.length === 0 || !takesFiles()) return;
+		enqueueUploads(uploadTasksOf(files, folderId.value));
+	}
+
+	const drop = useFileDrop(takesFiles, uploadFiles);
+	// #endregion
+
 	// #region Drag and drop
 	function onDragEnd(e: DragEndEvent): void {
 		if (e.canceled) return;
@@ -617,7 +651,8 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		const dragged = String(e.active.id);
 		// A drag that started on a selected asset carries the whole selection; a drag from an unselected
 		// one carries only itself, which is what a person who never selected anything means by it.
-		const payload = selection.value.includes(dragged) ? [...selection.value] : [dragged];
+		const carried = selection.value.includes(dragged) ? selection.value : [dragged];
+		const payload = carried.filter((id) => items.value.some((a) => a.id === id && a.canManage));
 		void moveInto(payload, target);
 	}
 	// #endregion
@@ -693,7 +728,7 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 	];
 
 	const isEmpty = seeded.value && cells.length === 0;
-	const dragCount = selection.value.length;
+	const dragCount = items.value.filter((a) => a.canManage && selection.value.includes(a.id)).length;
 	// #endregion
 
 	// #region Body
@@ -721,28 +756,14 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 
 		if (isEmpty) {
 			return (
-				<div class="fh-state" role="status">
-					<p class="fh-state__title">
-						{narrowed.value ? "Nothing matches" : "Nothing here yet"}
-					</p>
-					<p class="fh-state__note">
-						{narrowed.value
-							? "No files or folders in this location match the current search and filters."
-							: readOnly.value
-							? "This location is empty. It is mounted here, so its contents are managed where they live."
-							: props.emptyNote ?? "Files you upload, and links you save, will appear here."}
-					</p>
-					{narrowed.value
-						? (
-							<Button
-								variant="text"
-								size="sm"
-								label="Clear filters"
-								onClick={() => clearFilesFilters()}
-							/>
-						)
-						: null}
-				</div>
+				<FilesEmptyState
+					narrowed={narrowed.value}
+					readOnly={readOnly.value}
+					canUpload={canUpload}
+					note={props.emptyNote}
+					onUpload={() => fileInput.current?.click()}
+					onClearFilters={clearFilesFilters}
+				/>
 			);
 		}
 
@@ -786,7 +807,8 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 					<p class="fh-hub__readonly">
 						<Icon name="lock" size="2xs" aria-hidden="true" />
 						<span>
-							You can browse and attach from here. Changes are made where these files live.
+							{props.readOnlyNote ??
+								"You can browse and attach from here. Changes are made where these files live."}
 						</span>
 					</p>
 				)
@@ -815,8 +837,34 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		</div>
 	);
 
+	const here = currentPath.value.length > 0
+		? crumbs.value.at(-1)?.label ?? currentPath.value.at(-1)
+		: null;
+
 	return (
-		<div class="fh-hub" data-scope={currentScope.value} data-busy={busy.value || undefined}>
+		<div
+			class="fh-hub"
+			data-scope={currentScope.value}
+			data-busy={busy.value || undefined}
+			data-drop={drop.active.value || undefined}
+			{...drop.handlers}
+		>
+			{drop.active.value && <FileDropOverlay destination={here ?? "this library"} />}
+			{canUpload && (
+				<input
+					ref={fileInput}
+					class="ui-visually-hidden"
+					type="file"
+					multiple
+					tabIndex={-1}
+					aria-hidden="true"
+					onChange={(e) => {
+						const el = e.currentTarget;
+						uploadFiles(Array.from(el.files ?? []));
+						el.value = "";
+					}}
+				/>
+			)}
 			<div class="fh-hub__crumbbar">
 				<AssetBreadcrumbs
 					crumbs={crumbs.value}

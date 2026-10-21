@@ -93,7 +93,7 @@ export const AssetFolderSchema = z.object({
 	ownerId: z.string().min(1).max(80),
 	source: AssetSource,
 	/** The connector's own folder id when `source !== "supabase"`; `null` for a hub-native folder. */
-	externalFolderId: z.string().max(200).nullable(),
+	externalFolderId: z.string().max(1024).nullable(),
 	visibility: AssetVisibility,
 	/** Assets directly inside this folder (not the whole subtree) — the muted card count. */
 	itemCount: z.number().int().min(0),

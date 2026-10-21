@@ -28,6 +28,7 @@ import {
 	TalentGlyph,
 	VerificationGlyph,
 } from "./workspace-glyphs.tsx";
+import { CATALOGUE_CAPABILITY } from "./catalogue-gate.ts";
 
 /**
  * module-registry — **the extensibility core of the workspace surface.**
@@ -198,7 +199,7 @@ export const MODULES: readonly WorkspaceModule[] = [
 		group: "Workspace",
 		glyph: CatalogueGlyph,
 		kinds: TEAM,
-		permission: () => "publish_listings",
+		permission: () => CATALOGUE_CAPABILITY,
 		blurb: "The services and products the team offers as one seller.",
 	},
 	{
@@ -372,10 +373,11 @@ export const MODULES: readonly WorkspaceModule[] = [
 
 // #region Hubs
 /**
- * The lane zone a hub sits in: Core operations and Governance as labelled lane sections, or the footer
- * rig's Settings control. Channels are their own zone, drawn from the read, not from a hub.
+ * The lane zone a hub sits in: Core operations and Governance as labelled lane sections, the team's
+ * Catalogue as its own section (its title the hub's link, its listings beneath — Decision #316), or the
+ * footer rig's Settings control. Channels are their own zone, drawn from the read, not from a hub.
  */
-export type LaneZoneKey = "operations" | "governance" | "footer";
+export type LaneZoneKey = "operations" | "governance" | "catalogue" | "footer";
 
 /** Every hub key. */
 export type HubKey =
@@ -449,7 +451,7 @@ export const NAV_HUBS: readonly NavHub[] = [
 		key: "catalogue",
 		label: same("Catalogue"),
 		glyph: CatalogueGlyph,
-		zone: "operations",
+		zone: "catalogue",
 		modules: ["catalogue"],
 		blurb: "The services and products the team offers as one seller.",
 	},

@@ -21,6 +21,20 @@ Deno.test("AssetListQuerySchema: drops unknown filter members and treats empty v
 	assertEquals(parsed.cursor, null);
 });
 
+Deno.test("AssetListQuerySchema: keeps known categories and visibility scopes, dropping the rest", () => {
+	const parsed = AssetListQuerySchema.parse({
+		scope: "hub",
+		categories: "Image,3D, Folder ,Document",
+		visibility: "public,secret",
+	});
+	assertEquals(parsed.categories, ["Image", "3D", "Document"]);
+	assertEquals(parsed.visibility, ["public"]);
+	assertEquals(
+		AssetListQuerySchema.parse({ scope: "hub", categories: "nope" }).categories,
+		undefined,
+	);
+});
+
 Deno.test("AssetListQuerySchema: decodes each path segment on its own, keeping a malformed one", () => {
 	const parsed = AssetListQuerySchema.parse({ scope: "hub", path: "/a%2Fb//%E0%A4%A/c" });
 	assertEquals(parsed.path, ["a/b", "%E0%A4%A", "c"]);

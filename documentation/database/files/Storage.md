@@ -10,9 +10,11 @@ typed map — the bucket registry and the path builders that emit each RLS ancho
 [`@projective/types/files`](../../../packages/types/files/storage.ts); app and backend code should
 build storage paths through it rather than hardcoding bucket ids or path strings.
 
-> **The RLS anchor is the first path segment.** Every object's `name` begins with the id that its
-> policy checks — `(storage.foldername(name))[1]`. Keep the conventions below exactly, or RLS will
-> not resolve.
+> **The RLS anchor is the first path segment — in five buckets.** `quarantine` (upload), `project`,
+> `messages` (read and upload), `workspace` and `invoices` (read) check
+> `(storage.foldername(name))[1]`; keep their conventions exactly, or RLS will not resolve. In every
+> other bucket the first segment is a naming convention the builders keep, not a check — see
+> [§Security Enforcement](#-security-enforcement).
 
 ## 🪣 Bucket Overview
 
@@ -21,11 +23,11 @@ build storage paths through it rather than hardcoding bucket ids or path strings
 | `quarantine`    | Private     | 50 MiB · any     | `{user_id}`        | Virus-scan / MIME-validation landing zone for all uploads.                            |
 | `project`       | Private     | 50 MiB · any     | `{project_id}`     | Project / channel / stage collaboration files.                                        |
 | `messages`      | Private     | 50 MiB · any     | `{thread_id}`      | Global DM / inbox attachments (not project-scoped).                                   |
-| `personal`      | Private     | 50 MiB · any     | owner (`auth.uid`) | Owner-only drive: drafts, personal templates, WIP.                                    |
+| `personal`      | Private     | 50 MiB · any     | `users/{user_id}`  | Owner-only drive: drafts, personal templates, WIP.                                    |
 | `workspace`     | Private     | 50 MiB · any     | `{entity_id}`      | **Entity-owned** drive: the team / business / enterprise counterpart of `personal`. |
 | `invoices`      | Private     | 20 MiB · pdf     | `{owner_id}`       | Wallet statements / invoices / receipts.                                              |
 | `verification`  | **Service** | 20 MiB · img,pdf | `{subject_id}`     | KYC / KYB identity documents — service-role only.                                     |
-| `public_assets` | Public      | 10 MiB · img     | `{owner_id}`       | Misc public assets (general/legacy).                                                  |
+| `public_assets` | Public      | 10 MiB · img,svg | `{owner_id}`       | Misc public assets (general/legacy).                                                  |
 | `avatars`       | Public      | 5 MiB · img      | `{entity_id}`      | Profile photos (user / team / business / enterprise) and group-conversation photos (under the uploader's id). **Service-role write only.** |
 | `showcase`      | Public      | 50 MiB · img,vid | `{entity_id}`      | A profile's six-slot showcase — stills and full-length videos. **Service-role write.** |
 | `catalogue`     | Public      | 10 MiB · img     | `{seller_id}`      | Marketplace storefront media (products, service showcase).                            |
@@ -85,7 +87,14 @@ showcase/
 
 ### `catalogue` (Public)
 
-Marketplace storefront media. Public read; the seller writes under their own id.
+Marketplace storefront media. Public read; the seller writes it under their own id.
+
+**The write policy checks the path (Decision #314).** "Sellers can write their catalogue media" is
+`FOR ALL … auth.uid() = owner AND (storage.foldername(name))[1] = auth.uid()::text`, so a client
+writes only under its own `{seller_id}/`. Before #314 it tested the uploader alone, and anyone could
+create an object under another seller's prefix in a world-readable bucket. `public_assets`
+("Owners can write their public assets") is anchored the same way on `{owner_id}`. A seller acting
+as an **entity** has no client write here; that media goes through the service role.
 
 ```text
 catalogue/
@@ -107,7 +116,8 @@ public_assets/
 
 ### `project` (Private)
 
-Collaboration files. Read **and** write are governed by `projects.has_project_access({project_id})`.
+Collaboration files. Read **and** write are governed by `projects.has_project_access({project_id})`;
+delete is also limited to the uploader (`auth.uid() = owner`).
 
 ```text
 project/
@@ -120,8 +130,10 @@ project/
 ### `messages` (Private)
 
 Global DM / inbox attachments — these are **not** project-scoped, so the `project` ACL cannot gate
-them and `personal` (single-owner) cannot either. Read/write is gated by `comms.dm_participants`
-membership on the `{thread_id}` anchor, so both parties in a DM can read what either uploads.
+them and `personal` (single-owner) cannot either. Read and upload are gated by
+`comms.dm_participants` membership on the `{thread_id}` anchor (upload also by
+`auth.uid() = owner`), so both parties in a DM can read what either uploads. Delete is the
+uploader's alone (`auth.uid() = owner`, with no participant check), and there is no update policy.
 
 ```text
 messages/
@@ -201,6 +213,12 @@ charged to the **entity's** `storage_megabytes` allowance, never to the uploader
 
 Wallet statements, invoices, receipts. Owner read on the `{owner_id}` anchor; **no** authenticated
 write — documents are generated and written by the service role.
+
+> ⚠️ **Only a personal folder is readable.** The one read policy compares the anchor to
+> `auth.uid()::text`, so a user reads `invoices/{their user_id}/…` and nothing else. A team /
+> business / enterprise wallet-scope folder matches no JWT: it is service-role only, and no member
+> can read their entity's statements through Storage. The fix is an entity-membership arm on the
+> read policy (the `workspace` shape) — flagged (Decision #313).
 
 ```text
 invoices/
@@ -377,8 +395,9 @@ smuggle — and written to `avatars` or `showcase` with its tiers. It is then at
 
 Never hardcode a bucket id or hand-build an object path. Every path is emitted by a builder in
 [`@projective/types/files/storage.ts`](../../../packages/types/files/storage.ts), and each one
-**emits the RLS anchor as its first segment** — so a path produced there is guaranteed to satisfy
-the matching policy's `WITH CHECK`. `BUCKETS` / `bucketMeta()` mirror the `00005040` seed
+**emits the bucket's anchor as its first segment** (except `personalLocation`, which interposes
+`users/` — see below) — so a path produced there satisfies the matching policy's `WITH CHECK`
+wherever a policy reads the path. `BUCKETS` / `bucketMeta()` mirror the `00005040` seed
 field-for-field (access tier, `maxBytes`, `allowedMime`, anchor), and `rlsAnchor(path)` reads back
 what a policy would check.
 
@@ -402,10 +421,10 @@ what a policy would check.
 > asset nobody else can ever see).
 >
 > The two also differ in shape, and the reason is worth knowing: `personalLocation()` interposes a
-> literal `users/` segment (`personal/users/{userId}/…`) — harmless, because that bucket's policy
-> reads `storage.objects.owner` and never looks at the path — whereas `workspaceLocation()` puts the
-> entity id **first**, because `workspace` **is** path-anchored and `(storage.foldername(name))[1]`
-> is exactly what its four policies check.
+> literal `users/` segment (`personal/users/{userId}/…`), and since Decision #314 that bucket's
+> policy checks exactly that shape — segment 1 is `users`, segment 2 is `auth.uid()` — whereas
+> `workspaceLocation()` puts the entity id **first**, because `(storage.foldername(name))[1]` is
+> what `workspace`'s four policies check.
 
 ## 🔗 Database Integration
 
@@ -414,31 +433,44 @@ Storage paths are mapped to the database through:
 - **[`files.items`](Tables.md)** — the virtualized path (folders/items) for a user's file library.
   Carries `bucket_id` + `storage_path` for the current location and `target_bucket` + `target_path`
   for the quarantine → destination promotion.
-- **`projects.project_attachments`** — links project/stage/channel deliverables to their storage
-  object.
+- **`projects.project_attachments`** — a project's reference attachments (`project_id`,
+  `attachment_id` → `files.items`). Stage deliverables link through **`projects.submission_files`**
+  and channel files through **`comms.channel_files`**.
 - **`comms.message_attachments`** — links DM / channel message attachments to their storage object.
 
 ### Example: resolving a stage-submission path
 
 ```sql
--- The storage object for a stage submission deliverable
-SELECT
-  'project/' || ps.project_id || '/stages/' || ps.id
-    || '/submissions/' || ss.id || '/' || fi.storage_path AS storage_path
-FROM projects.stage_submissions ss
-JOIN projects.project_stages ps ON ps.id = ss.project_stage_id
-JOIN files.items fi ON fi.id = ss.file_item_id
-WHERE ss.id = :submission_id;
+-- The storage objects behind a stage submission's deliverables
+SELECT fi.bucket_id, fi.storage_path
+FROM projects.submission_files sf
+JOIN files.items fi ON fi.id = sf.file_id
+WHERE sf.submission_id = :submission_id
+  AND fi.deleted_at IS NULL;
 ```
+
+`storage_path` is already the object's full name inside `bucket_id`, so it is never re-prefixed.
 
 ## 🔐 Security Enforcement
 
-- **Path anchor = RLS anchor.** Each policy checks `(storage.foldername(name))[1]` against the id in
-  the table above. Uploading to the wrong prefix fails the `WITH CHECK`.
+- **Path anchor = RLS anchor — in eight buckets.** `(storage.foldername(name))[1]` is checked by
+  `quarantine` (upload: `= auth.uid()::text`), `project` (all four: `::uuid` →
+  `projects.has_project_access`), `messages` (read and upload: `::uuid` must be a
+  `comms.dm_participants.thread_id` of the caller's), `workspace` (all four: `::uuid` → active team /
+  business / enterprise membership), `invoices` (read: `= auth.uid()::text`), and since Decision
+  #314 `public_assets` and `catalogue` (all four: `= auth.uid()::text`, beside `auth.uid() = owner`)
+  and `personal` (all four: segment 1 `users`, segment 2 `= auth.uid()::text`). In those buckets,
+  uploading to the wrong prefix fails the `WITH CHECK`; the anchor shuts the squat where one user
+  claims the address another user's later write would take.
+  > Elsewhere the first segment is a convention, not a check: the `quarantine` read and the
+  > `messages` delete are owner-only; `avatars` and `showcase` are a public read on `bucket_id` with
+  > no write policy; `contact` matches its `files.items` row by `storage_path = name`;
+  > `verification` has no policy. Platform-owned `public_assets` prefixes (`platform/…`, re-hosted
+  > link favicons) are written by the service role, which RLS does not bound.
 - **Signed URLs.** All private buckets (`quarantine`, `project`, `messages`, `personal`,
-  `workspace`, `invoices`, `verification`) are downloaded via short-lived signed URLs; the public
-  buckets (`avatars`, `catalogue`, `public_assets`) serve directly from the edge cache. A signed URL
-  is a **bearer capability**: it is minted per request by the fat service, never cached onto a row,
+  `workspace`, `invoices`, `verification`, `contact`) are downloaded via short-lived signed URLs; the
+  public buckets (`avatars`, `showcase`, `catalogue`, `public_assets`) serve directly from the edge
+  cache. A signed URL is a **bearer capability**: it is minted per request by the fat service, never cached onto a row,
   and never persisted into a projection the client reads. The one exception to "via signed URLs" is
   the streaming proxy `/api/media/proxy/[fileId]` (Decision #161(A), §The upload pipeline above): it
   re-checks the same read and streams the bytes itself with the service key, so no signed URL — and
@@ -446,7 +478,9 @@ WHERE ss.id = :submission_id;
   (Decision #162(A): hub rows from the public buckets go through it as well; profile avatars read
   through `org.get_party_cards` still carry a public-bucket URL, flag (i)).
 - **Per-bucket limits.** Each bucket sets its own `file_size_limit` and `allowed_mime_types` in the
-  seed — nothing inherits the global 50 MiB / any-MIME default.
+  seed rather than inheriting the global default. For `quarantine`, `project`, `messages`,
+  `personal` and `workspace` that explicit value is 50 MiB with `allowed_mime_types = NULL` (any
+  MIME).
 - **Promote, don't cross.** Moving a file from `quarantine` to any destination bucket is an atomic
   operation performed by a `SECURITY DEFINER` function or the service role, so a user can never
   bypass a project-access, DM-membership, or verification check by writing straight to a restricted
@@ -464,14 +498,17 @@ WHERE ss.id = :submission_id;
   moderation is a user report against the file or message that carries it.
 - ⚠️ **Two public buckets accept direct client writes.** `"Owners can write their public assets"`
   (`public_assets`) and `"Sellers can write their catalogue media"` (`catalogue`) in `00002017` are
-  `FOR ALL TO authenticated` on `auth.uid() = owner` — a signed-in user can PUT an unscanned,
-  unscreened file straight into a public bucket, skipping quarantine and any publication gate. This is
-  the hole closed for `avatars` on 2026-09-22; closing it here (service-role write only, behind the
-  pipeline) is a migration and is flagged in Decision #148 (b).
+  `FOR ALL TO authenticated` on `auth.uid() = owner` and, since Decision #314, the caller's own
+  first segment — a signed-in user can still PUT an unscanned, unscreened file straight into a
+  public bucket under their own prefix, skipping quarantine and any publication gate. This is the
+  hole closed for `avatars` on 2026-09-22; closing it here (service-role write only, behind the
+  pipeline) is a migration and is still flagged in Decision #148 (b). No product path writes either
+  bucket with a user session (on 2026-10-21 neither held one user-owned object), so that change
+  would break nothing live.
 
 ## 🏷️ File classification
 
-On upload, a file is classified into a rich, searchable **`FileCategory`** (~27 categories:
+On upload, a file is classified into a rich, searchable **`FileCategory`** (28 categories:
 `Document`, `Image`, `Vector`, `Audio`, `Video`, `Code`, `3D`, `CAD`, `Data`, `Database`, …) by the
 Zod SSOT at [`@projective/types/files`](../../../packages/types/files/categories.ts) —
 `categorizeFile(name,
@@ -501,7 +538,9 @@ an island can classify identically for instant UI.
 - **There is no malware scanner.** Promotion out of quarantine is wired, in-process, as the service
   role (`live-uploads.ts`, `media/library.ts`) — but `scanning` is only the magic-byte sniff that
   refuses programs and executable markup. A real AV scan belongs between the sniff and the promote.
-  `files.items.target_bucket` / `target_path` still describe a move nothing writes.
+  `files.items.target_bucket` is written only as the contact pipeline's destination marker
+  (`'contact'` at declare, cleared on promotion — `services/contact/live-attachments.ts`), and
+  nothing writes `target_path`.
 - **Abandoned uploads are never swept.** A `pending_upload` row whose browser went away before the
   `PUT` finished keeps its quarantine row (and any partial object) and **reserves its declared size**
   in `files.storage_usage` (see [Functions.md](Functions.md)). Harmless while
@@ -526,7 +565,7 @@ an island can classify identically for instant UI.
 - **Image transformation is off.** `[storage.image_transformation]` is commented out in
   `supabase/config.toml`; enable it (imgproxy) before relying on server-side avatar/thumbnail
   resizing.
-- **Public vs. signed for branding/catalogue.** `avatars`, `catalogue`, and `public_assets` are true
-  **public** buckets (fast CDN, but object URLs are enumerable). Whether profile/storefront media
-  should instead be private-with-signed-URLs is a product privacy call flagged for a human, not a
-  technical default.
+- **Public vs. signed for branding/catalogue.** `avatars`, `showcase`, `catalogue`, and
+  `public_assets` are true **public** buckets (fast CDN, but object URLs are enumerable). Whether
+  profile/storefront media should instead be private-with-signed-URLs is a product privacy call
+  flagged for a human, not a technical default.

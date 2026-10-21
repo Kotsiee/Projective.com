@@ -14,6 +14,7 @@ import {
 import ShellSidebar from "@web/features/shell/islands/ShellSidebar.island.tsx";
 import MiddleNavSplitter from "@web/features/shell/islands/MiddleNavSplitter.island.tsx";
 import MiddleNavPanel from "@web/features/shell/islands/MiddleNavPanel.island.tsx";
+import FooterBandBridge from "@web/features/shell/islands/FooterBandBridge.island.tsx";
 import NavSearchBar from "@web/features/shell/islands/NavSearchBar.island.tsx";
 import UserActions from "@web/features/shell/islands/UserActions.island.tsx";
 import ShareHost from "@web/features/share/islands/ShareHost.island.tsx";
@@ -224,6 +225,7 @@ export function UserShell(
 					)
 					: canvas}
 			</AppShell>
+			{framed && middleNavFooter ? <FooterBandBridge /> : null}
 			{
 				/* Ergonomic mobile thumb-nav (Part D.3) — fixed, mobile-only (hidden ≥ --bp-md by CSS).
 				   Withheld in focus chrome: on mobile it IS the side navigation, so leaving it would

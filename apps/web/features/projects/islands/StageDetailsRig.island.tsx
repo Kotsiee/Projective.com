@@ -130,7 +130,6 @@ export default function StageDetailsRig({ setup }: StageDetailsRigProps): JSX.El
 		queued: setupQueued.value,
 		online,
 		archived: live.archivedAt !== null,
-		autoSave,
 		savedAt: setupSavedAt.value,
 		now: now.value,
 	});

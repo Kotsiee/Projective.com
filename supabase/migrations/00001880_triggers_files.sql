@@ -52,6 +52,26 @@ CREATE TRIGGER trg_files_items_guard_pipeline
     FOR EACH ROW EXECUTE FUNCTION files.fn_guard_pipeline_columns ();
 -- #endregion
 
+-- #region folder guard (Decision #314)
+-- BEFORE, and on every INSERT/UPDATE: see files.fn_guard_folder_columns (00001160) — a client writes
+-- only native folders, under a live parent of the same library, carrying their true ancestry.
+CREATE TRIGGER trg_files_folders_guard
+    BEFORE INSERT OR UPDATE ON files.folders
+    FOR EACH ROW EXECUTE FUNCTION files.fn_guard_folder_columns ();
+-- #endregion
+
+-- #region hard-delete guard (Decision #314)
+-- A client's DELETE is refused on both tables (files.fn_guard_hard_delete, 00001160): a delete is a
+-- soft delete, so an archived library or a mounted row cannot be erased past the guards above.
+CREATE TRIGGER trg_files_items_guard_delete
+    BEFORE DELETE ON files.items
+    FOR EACH ROW EXECUTE FUNCTION files.fn_guard_hard_delete ();
+
+CREATE TRIGGER trg_files_folders_guard_delete
+    BEFORE DELETE ON files.folders
+    FOR EACH ROW EXECUTE FUNCTION files.fn_guard_hard_delete ();
+-- #endregion
+
 -- #region dispute evidence guard (00001260, Decision #212)
 -- A file filed as evidence in a live dispute is not deleted until the case is resolved.
 CREATE TRIGGER trg_files_items_guard_evidence

@@ -2,6 +2,11 @@ import { z } from "zod";
 import { ServiceType } from "../explore/items.ts";
 import { CreateCategory } from "../org/standing.ts";
 import { isSlug } from "../slugs/slug.ts";
+import {
+	WORKSPACE_HANDLE_MAX,
+	WORKSPACE_HANDLE_MIN,
+	WORKSPACE_HANDLE_PATTERN,
+} from "../workspace/workspace.ts";
 import { DeliveryModel, deliveryModelOf, EditSection, serviceTypeOf } from "./archetype.ts";
 import {
 	AnalyticsPeriod,
@@ -15,12 +20,14 @@ import {
 
 /**
  * catalogue.url — the URL contract for `/catalogue` (the console) and `/catalogue/[id]` (the item
- * workspace), plan §6.2.
+ * workspace), plan §6.2, and for their team-scoped twins under `/teams/:handle/catalogue`
+ * (Decision #312), which address one team's catalogue whatever context the viewer is acting in.
  *
  * Every screen state that matters lives in the URL, so a reload or a shared link restores the same
  * screen. The parsers are TOTAL: an unknown or malformed value falls back to its default and never
  * throws. The builders emit params in one canonical order and omit defaults, so one state has
- * exactly one href and `parse(href(x))` returns `x`.
+ * exactly one href and `parse(href(x))` returns `x`. The team is part of the state ({@link
+ * ConsoleUrlState.team}), read from the path, so every href built from a parsed state keeps it.
  *
  * Two params share the word "create" and must not be confused: `?category=` is the CREATE-category
  * facet ({@link ConsoleUrlState.create}); `?create=` opens the quick-create modal
@@ -60,11 +67,80 @@ export type ClientKey = z.infer<typeof ClientKey>;
 
 /** The longest search string the console carries in its URL. */
 export const CONSOLE_SEARCH_MAX = 160;
+
+/** The console's highlight facet (`?highlight=`): needs attention · promoted · best-selling. */
+export const ConsoleHighlight = z.enum(["attention", "promoted", "best-selling"]);
+export type ConsoleHighlight = z.infer<typeof ConsoleHighlight>;
+// #endregion
+
+// #region Seller scope
+/** Whether `raw` is a team handle in its canonical, lower-case spelling. */
+export function isTeamHandle(raw: string): boolean {
+	return raw.length >= WORKSPACE_HANDLE_MIN && raw.length <= WORKSPACE_HANDLE_MAX &&
+		WORKSPACE_HANDLE_PATTERN.test(raw);
+}
+
+/** The root of a catalogue: the acting seller's `/catalogue`, or one team's. */
+export function catalogueBase(team?: string): string {
+	return team ? `/teams/${encodeURIComponent(team)}/catalogue` : "/catalogue";
+}
+
+/** Where a path sits in the catalogue surface: whose catalogue, and the segments below its root. */
+export interface CataloguePath {
+	/** The team handle of a `/teams/:handle/catalogue` path; absent on `/catalogue`. */
+	team?: string;
+	/** The decoded segments after the catalogue root (`["svc-…", "simulate"]`). */
+	rest: string[];
+}
+
+function decodeSegment(raw: string): string | null {
+	try {
+		return decodeURIComponent(raw);
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Read a pathname against the catalogue surface, or `null` when it is not a catalogue path. A team
+ * path whose handle is not canonical (upper case, a row id) is not a catalogue path: the console
+ * route answers it with a 308 before anything renders.
+ */
+export function parseCataloguePath(pathname: string): CataloguePath | null {
+	const raw = pathname.split("/").filter(Boolean);
+	const segs = raw.map(decodeSegment);
+	if (segs.some((s) => s === null)) return null;
+	const parts = segs as string[];
+	if (parts[0] === "catalogue") return { rest: parts.slice(1) };
+	if (parts[0] === "teams" && parts[2] === "catalogue" && isTeamHandle(parts[1] ?? "")) {
+		return { team: parts[1], rest: parts.slice(3) };
+	}
+	return null;
+}
+
+/** The team a catalogue pathname is scoped to, or `undefined` for the acting seller's own. */
+export function teamOfCataloguePath(pathname: string): string | undefined {
+	return parseCataloguePath(pathname)?.team;
+}
+
+/**
+ * An `/api/catalogue/*` path carrying the team scope (`?team=`), which the route verifies before
+ * reading or writing as that team. Unchanged when there is no team, or when the path already names
+ * one — a caller that scoped its own call keeps its team.
+ */
+export function teamScopedApiPath(path: string, team: string | undefined): string {
+	if (!team) return path;
+	const at = path.indexOf("?");
+	if (at >= 0 && new URLSearchParams(path.slice(at + 1)).has("team")) return path;
+	return `${path}${at >= 0 ? "&" : "?"}team=${encodeURIComponent(team)}`;
+}
 // #endregion
 
 // #region Console
 /** The console's screen state, as its URL encodes it. */
 export interface ConsoleUrlState {
+	/** The team whose catalogue this is (`/teams/:handle/catalogue`); absent on `/catalogue`. */
+	team?: string;
 	view: ConsoleView;
 	type: CatalogueTypeFilter;
 	/** Lifecycle facet (`?status=draft,paused`), canonical order; never empty. */
@@ -73,6 +149,8 @@ export interface ConsoleUrlState {
 	model: ServiceType[];
 	/** CREATE-category facet (`?category=`); empty = every category. */
 	create: CreateCategory[];
+	/** Highlight facet (`?highlight=`); the chosen highlights combine, empty = no narrowing. */
+	highlights: ConsoleHighlight[];
 	sort: CatalogueSort;
 	dir: CatalogueSortDir;
 	search: string;
@@ -98,6 +176,7 @@ export const CONSOLE_DEFAULTS: Readonly<ConsoleUrlState> = {
 	status: [...DEFAULT_CONSOLE_STATUSES],
 	model: [],
 	create: [],
+	highlights: [],
 	sort: "recent",
 	dir: defaultSortDir("recent"),
 	search: "",
@@ -194,8 +273,15 @@ export function parseConsoleUrl(url: URL): ConsoleUrlState {
 		),
 		model: pickList(ServiceType.options, q.get("model"), modelFromSlug),
 		create: pickList(CreateCategory.options, q.get("category"), (s) => pick(CreateCategory, s)),
+		highlights: pickList(
+			ConsoleHighlight.options,
+			q.get("highlight"),
+			(s) => pick(ConsoleHighlight, s),
+		),
 		...parseCreate(q.get("create")),
 	};
+	const team = teamOfCataloguePath(url.pathname);
+	if (team) state.team = team;
 	const client = pick(ClientKey, q.get("client"));
 	if (client) state.client = client;
 	return state;
@@ -226,12 +312,14 @@ export function consoleHref(state: Partial<ConsoleUrlState>): string {
 	const status = normaliseStatuses(state.status ?? []);
 	const models = canonicalSet(ServiceType.options, state.model ?? []);
 	const creates = canonicalSet(CreateCategory.options, state.create ?? []);
-	return "/catalogue" + query([
+	const highlights = canonicalSet(ConsoleHighlight.options, state.highlights ?? []);
+	return catalogueBase(state.team) + query([
 		["view", view === CONSOLE_DEFAULTS.view ? null : view],
 		["type", type === CONSOLE_DEFAULTS.type ? null : type],
 		["status", isDefaultStatuses(status) ? null : status.join(",")],
 		["model", models.map(deliveryModelOf).join(",")],
 		["category", creates.join(",")],
+		["highlight", highlights.join(",")],
 		["scope", scope === CONSOLE_DEFAULTS.scope ? null : scope],
 		["search", search],
 		["sort", sort === CONSOLE_DEFAULTS.sort ? null : sort],
@@ -246,6 +334,8 @@ export function consoleHref(state: Partial<ConsoleUrlState>): string {
 // #region Workspace
 /** The item workspace's screen state, as its URL encodes it. */
 export interface WorkspaceUrlState {
+	/** The team whose listing this is (`/teams/:handle/catalogue/:slug`); absent under `/catalogue`. */
+	team?: string;
 	tab: WorkspaceTab;
 	/** The Edit section scrolled to. */
 	section?: EditSection;
@@ -272,6 +362,8 @@ export function parseWorkspaceUrl(url: URL): WorkspaceUrlState {
 	};
 	const section = pick(EditSection, q.get("section"));
 	if (section) state.section = section;
+	const team = teamOfCataloguePath(url.pathname);
+	if (team) state.team = team;
 	const client = pick(ClientKey, q.get("client"));
 	if (client) state.client = client;
 	return state;
@@ -282,7 +374,7 @@ export function workspaceHref(slug: string, state: Partial<WorkspaceUrlState>): 
 	const tab = state.tab ?? WORKSPACE_DEFAULTS.tab;
 	const device = state.device ?? WORKSPACE_DEFAULTS.device;
 	const period = state.period ?? WORKSPACE_DEFAULTS.period;
-	return `/catalogue/${encodeURIComponent(slug)}` + query([
+	return `${catalogueBase(state.team)}/${encodeURIComponent(slug)}` + query([
 		["tab", tab === WORKSPACE_DEFAULTS.tab ? null : tab],
 		["section", state.section],
 		["device", device === WORKSPACE_DEFAULTS.device ? null : device],
@@ -306,7 +398,8 @@ const VIEW_TAB: Record<ConsoleView, WorkspaceTab> = {
 
 /**
  * Where a console URL scoped to ONE listing belongs (Decision #217(l)): the workspace tab matching
- * the console view, keeping the window and the client. `null` when `?scope=` is not a listing slug.
+ * the console view, keeping the window, the client and the team. `null` when `?scope=` is not a
+ * listing slug.
  */
 export function scopeRedirect(url: URL): string | null {
 	const scope = url.searchParams.get("scope");
@@ -314,6 +407,7 @@ export function scopeRedirect(url: URL): string | null {
 	const q = url.searchParams;
 	const view = pick(ConsoleView, q.get("view")) ?? CONSOLE_DEFAULTS.view;
 	const state: Partial<WorkspaceUrlState> = {
+		team: teamOfCataloguePath(url.pathname),
 		tab: VIEW_TAB[view],
 		period: pick(AnalyticsPeriod, q.get("period")),
 	};

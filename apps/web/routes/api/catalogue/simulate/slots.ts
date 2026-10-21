@@ -1,5 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
+import { apiSellerActor } from "@features/catalogue/core/seller-scope.ts";
 import { SlotQuerySchema } from "@projective/types/scheduling";
 import { BookingBackendService } from "@server/services/booking/BookingBackendService.ts";
 import { invalidPayload, toBookingResponse } from "@features/view/core/respond.ts";
@@ -29,8 +30,8 @@ export const handler = define.handlers({
 		});
 		if (!parsed.success) return invalidPayload(parsed.error);
 
-		return toBookingResponse(
-			await BookingBackendService.simulatedSlots(parsed.data, readActor(ctx)),
-		);
+		const actor = await apiSellerActor(ctx.url, readActor(ctx));
+		if (actor instanceof Response) return actor;
+		return toBookingResponse(await BookingBackendService.simulatedSlots(parsed.data, actor));
 	},
 });

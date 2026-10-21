@@ -215,10 +215,13 @@ export function breadcrumbsFor(
 		rootLabel?: string;
 		/** The navigation tree, when available — turns segments into real folder names. */
 		tree?: readonly AssetTreeNode[];
+		/** Where the crumb hrefs carry the folder path: under `base` (the default) or in its query. */
+		routing?: FolderRouting;
 	},
 ): AssetCrumb[] {
 	const base = opts?.base ?? "/files";
 	const tree = opts?.tree;
+	const routing = opts?.routing ?? "path";
 	const crumbs: AssetCrumb[] = [
 		{ id: null, label: opts?.rootLabel ?? scopeLabel("hub"), href: base },
 	];
@@ -228,7 +231,7 @@ export function breadcrumbsFor(
 		crumbs.push({
 			id: node?.folderId ?? null,
 			label: node?.label ?? safeDecode(path[i]),
-			href: assetHref(base, prefix),
+			href: locationHref(base, prefix, routing),
 		});
 	}
 	return crumbs;
@@ -295,13 +298,14 @@ export function shapeFolderAsNode(
  * `link` resolves to the shared `@projective/ui/icons` registry key of the same name; the four
  * connector keys are BRAND marks, which §B.7 quarantines out of the shared registry (a brand mark is
  * not an icon in the design system's sense — it cannot be restyled, recoloured or re-weighted), so
- * the feature's own glyph module owns those four. Returning a typed key rather than a component keeps
+ * the feature's own glyph module owns those five. Returning a typed key rather than a component keeps
  * this module pure and SSR-safe.
  */
 export type AssetSourceGlyph =
 	| "library"
 	| "google-drive"
 	| "dropbox"
+	| "onedrive"
 	| "frameio"
 	| "amazon-s3"
 	| "link";
@@ -315,6 +319,8 @@ export function sourceGlyphKey(source: AssetSource): AssetSourceGlyph {
 			return "google-drive";
 		case "dropbox":
 			return "dropbox";
+		case "onedrive":
+			return "onedrive";
 		case "frameio":
 			return "frameio";
 		case "s3":
@@ -332,6 +338,7 @@ export function providerSource(slug: string): AssetSource {
 	switch (slug) {
 		case "google_drive":
 		case "dropbox":
+		case "onedrive":
 		case "frameio":
 		case "s3":
 			return slug;

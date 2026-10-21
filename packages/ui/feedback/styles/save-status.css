@@ -1,0 +1,121 @@
+.ui-save-status {
+	display: flex;
+	flex: 0 1 auto;
+	align-items: center;
+	gap: var(--space-4);
+	min-inline-size: 0;
+}
+
+.ui-save-status__switch {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+}
+
+.ui-save-status__switch .ui-switch__label {
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	white-space: nowrap;
+}
+
+.ui-save-status__line {
+	display: inline-flex;
+	flex: 0 1 auto;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	min-inline-size: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+	line-height: var(--leading-tight);
+}
+
+.ui-save-status__pip {
+	flex: none;
+	inline-size: var(--space-2);
+	block-size: var(--space-2);
+	border-radius: var(--radius-full);
+	background: var(--success);
+	transition: background-color var(--dur-medium) var(--spring-standard);
+}
+
+.ui-save-status__pip[data-state="saving"] {
+	background: var(--primary);
+}
+
+.ui-save-status__pip[data-state="dirty"] {
+	background: var(--text-secondary);
+}
+
+.ui-save-status__pip[data-state="offline"],
+.ui-save-status__pip[data-state="conflict"] {
+	background: var(--warning);
+}
+
+.ui-save-status__pip[data-state="error"] {
+	background: var(--danger);
+}
+
+.ui-save-status__pip[data-state="archived"] {
+	background: var(--text-disabled);
+}
+
+.ui-save-status__text {
+	overflow: hidden;
+	min-inline-size: 0;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ui-save-status__action {
+	flex: none;
+	padding: 0;
+	border: none;
+	background: none;
+	color: var(--primary);
+	font: inherit;
+	font-weight: var(--fw-medium);
+	text-decoration: underline;
+	text-underline-offset: 0.15em;
+	cursor: pointer;
+}
+
+.ui-save-status__action:disabled {
+	color: var(--text-disabled);
+	cursor: default;
+}
+
+.ui-save-status__action:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-save-status__pip {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .ui-save-status__pip {
+	transition: none;
+}
+
+@container (max-width: 620px) {
+	.ui-save-status__switch .ui-switch__label {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+}
+
+@media (max-width: 767.98px) {
+	.ui-save-status {
+		gap: var(--space-2);
+	}
+}

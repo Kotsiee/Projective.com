@@ -1488,10 +1488,28 @@ GRANT EXECUTE ON FUNCTION files.get_public_media(uuid[]) TO anon, authenticated,
 
 REVOKE ALL ON FUNCTION files.fn_guard_pipeline_columns () FROM public;
 
+REVOKE ALL ON FUNCTION files.fn_guard_folder_columns () FROM public;
+
+REVOKE ALL ON FUNCTION files.fn_guard_hard_delete () FROM public;
+
 -- files.fn_owns_library is a POLICY predicate (the items/folders INSERT and UPDATE checks), so like
 -- fn_can_read it must stay executable by the roles those policies run as.
 GRANT
 EXECUTE ON FUNCTION files.fn_owns_library (files.owner_kind, uuid) TO anon,
+authenticated,
+service_role;
+
+-- files.fn_folder_in_library and files.fn_library_archived are called from inside both guards, which
+-- run as the client's own role.
+GRANT
+EXECUTE ON FUNCTION files.fn_folder_in_library (uuid, files.owner_kind, uuid, uuid) TO anon,
+authenticated,
+service_role;
+
+REVOKE ALL ON FUNCTION files.fn_library_archived (files.owner_kind, uuid) FROM public;
+
+GRANT
+EXECUTE ON FUNCTION files.fn_library_archived (files.owner_kind, uuid) TO anon,
 authenticated,
 service_role;
 

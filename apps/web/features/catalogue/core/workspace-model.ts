@@ -330,7 +330,7 @@ export function workspacePanelOf(url: Pick<WorkspaceUrlState, "tab" | "client">)
 // #endregion
 
 // #region Sections
-/** The heading each Edit section shows, and the lane outline lists. */
+/** The heading each Edit section shows, and the section rail lists. */
 export const SECTION_LABELS: Readonly<Record<EditSection, string>> = {
 	media: "Media",
 	basics: "Basics",
@@ -367,7 +367,7 @@ export function activeSectionOf(
 	return active;
 }
 
-/** The DOM id of a section's heading, which `?section=` focuses and the outline links to. */
+/** The DOM id of a section's heading, which `?section=` and the section rail focus. */
 export function sectionHeadingId(section: EditSection): string {
 	return `cat-sec-${section}-h`;
 }

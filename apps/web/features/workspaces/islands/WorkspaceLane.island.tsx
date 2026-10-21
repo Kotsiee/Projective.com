@@ -50,6 +50,7 @@ import {
 	laneEntityMeta,
 	type LaneFooterZone,
 	laneInviteMeta,
+	type LaneListingsRead,
 	lanePartition,
 	laneRosterList,
 	laneSignals,
@@ -75,6 +76,7 @@ import {
 import { isFirstRun } from "../core/roster-model.ts";
 import { MEMBERS_CHART, MEMBERS_PEOPLE, subViewsFor } from "../core/sub-views.ts";
 import {
+	CatalogueGlyph,
 	ChannelGlyph,
 	cloneGlyph,
 	GovernanceGlyph,
@@ -94,6 +96,8 @@ import {
 import { type LaneCreateTarget, WorkspaceRail } from "../components/WorkspaceRail.tsx";
 import { HubList } from "../components/lane/HubList.tsx";
 import { ChannelAddButton, ChannelList } from "../components/lane/ChannelList.tsx";
+import { CatalogueAddButton, CatalogueList } from "../components/lane/CatalogueList.tsx";
+import { useLaneListings } from "../hooks/useLaneListings.ts";
 import { LaneSearchResults } from "../components/lane/LaneSearchResults.tsx";
 import { ChannelCreateDialog } from "../components/lane/ChannelCreateDialog.tsx";
 
@@ -109,9 +113,11 @@ import { ChannelCreateDialog } from "../components/lane/ChannelCreateDialog.tsx"
  *      on the index the Invitations toggle beside it (an icon button, set apart from the partition)
  *      and the All · Owned · Member `SelectButton` under it; inside a console a `SelectButton` only
  *      where the view has something to partition.
- *   3. **Views** — the viewer's entities (owned first) on the index; inside a console three
- *      `LaneSection`s: Core operations (hub rows), Governance (hub rows), and Channels (the read's
- *      entity channels and a "+" to add one) LAST, as `/projects` closes its lane on its channel tree.
+ *   3. **Views** — the viewer's entities (owned first) on the index; inside a console the
+ *      `LaneSection`s Core operations (hub rows), Governance (hub rows), a team's Catalogue (its title
+ *      the console's link, its listings beneath and a "+" to create one — Decision #316) and Channels
+ *      (the read's entity channels and a "+" to add one) LAST, as `/projects` closes its lane on its
+ *      channel tree.
  *      While the search holds a query, its grouped hits replace the sections (debounced typeahead over
  *      views, channels, projects and people).
  *   4. **Docked footer rig** (`LaneFooter`) — the collapse toggle, then on the index at most ONE
@@ -160,6 +166,10 @@ export interface WorkspaceLaneProps {
 	view?: string | null;
 	/** The channel being rendered (its name) on a `channels` route. */
 	channel?: string | null;
+	/** The listing being rendered (its slug) on a team `catalogue` route. */
+	listing?: string | null;
+	/** The Catalogue section's listings, read server-side on a team `catalogue` route only. */
+	listings?: LaneListingsRead | null;
 }
 
 /** The collapse state both presentations share. */
@@ -222,6 +232,8 @@ export default function WorkspaceLane(props: WorkspaceLaneProps): JSX.Element {
 				activeModule={props.activeModule ?? activeModuleOf(props.path)}
 				view={props.view ?? null}
 				channel={props.channel ?? null}
+				listing={props.listing ?? null}
+				listings={props.listings ?? null}
 				chrome={chrome}
 			/>
 		)
@@ -521,18 +533,28 @@ interface ConsoleLaneProps {
 	activeModule: ModuleKey | null;
 	view: string | null;
 	channel: string | null;
+	listing: string | null;
+	listings: LaneListingsRead | null;
 	chrome: LaneChrome;
 }
 
-/** The zones' sections, open by default; a reader may fold one away for this visit. */
-type SectionId = "operations" | "channels" | "governance";
+/** The zones' sections; a reader may fold one away, or open a folded one, for this visit. */
+type SectionId = "operations" | "catalogue" | "channels" | "governance";
 
 /** The section header glyphs. */
 const SECTION_GLYPH = {
 	operations: OperationsGlyph,
+	catalogue: CatalogueGlyph,
 	channels: ChannelGlyph,
 	governance: GovernanceGlyph,
 } as const;
+
+/** A section whose title is its own page, with the chevron as the separate toggle. */
+interface SectionLink {
+	href: string;
+	current: boolean;
+	toggleLabel: string;
+}
 
 /** One entity's lane — identity and kebab; its search and controls; its zoned views; its footer rig. */
 function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
@@ -549,18 +571,23 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 		module: props.activeModule,
 		subView,
 		channel: props.channel,
+		listing: props.listing,
 	});
 	const views = zones.views;
 	const signals = laneSignals(detail);
 	const identRef = useRef<HTMLDivElement>(null);
+	const listings = useLaneListings(views.catalogue?.team ?? null, props.listings);
 
 	const open = useSignal<Record<SectionId, boolean>>({
 		operations: true,
+		catalogue: views.catalogue?.row.active ?? false,
 		channels: true,
 		governance: false,
 	});
 	const toggle = (id: SectionId) => {
-		open.value = { ...open.value, [id]: !open.value[id] };
+		const next = !open.value[id];
+		open.value = { ...open.value, [id]: next };
+		if (id === "catalogue" && next) listings.ensure();
 	};
 	const creating = useSignal(false);
 
@@ -585,6 +612,7 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 
 	const allRows = [
 		...views.sections.flatMap((s) => s.rows),
+		...(views.catalogue ? [views.catalogue.row] : []),
 		...(zones.footer.settings ? [zones.footer.settings] : []),
 	];
 	const hits = consoleSearch(term.value, {
@@ -621,7 +649,13 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 	});
 	const stamp = stampForVerifiedOwner(detail.verification === "verified", props.kind);
 
-	const section = (id: SectionId, label: string, body: ComponentChildren, action?: JSX.Element) => (
+	const section = (
+		id: SectionId,
+		label: string,
+		body: ComponentChildren,
+		action?: JSX.Element,
+		link?: SectionLink,
+	) => (
 		<LaneSection
 			key={id}
 			id={`wsp-${id}-${props.kind}`}
@@ -630,6 +664,9 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 			open={open.value[id]}
 			onToggle={() => toggle(id)}
 			action={action}
+			href={link?.href}
+			current={link?.current}
+			toggleLabel={link?.toggleLabel}
 		>
 			{body}
 		</LaneSection>
@@ -723,6 +760,24 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 									{views.sections.map((s) =>
 										section(s.id, s.label, <HubList rows={s.rows} signals={signals} />)
 									)}
+									{views.catalogue &&
+										section(
+											"catalogue",
+											views.catalogue.row.label,
+											<CatalogueList
+												state={listings.state.value}
+												zone={views.catalogue}
+												onRetry={listings.reload}
+											/>,
+											views.catalogue.canCreate
+												? <CatalogueAddButton zone={views.catalogue} />
+												: undefined,
+											{
+												href: views.catalogue.row.href,
+												current: views.catalogue.current,
+												toggleLabel: `${views.catalogue.row.label} listings`,
+											},
+										)}
 									{views.channels &&
 										section(
 											"channels",

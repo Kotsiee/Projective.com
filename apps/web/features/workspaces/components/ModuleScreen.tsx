@@ -18,19 +18,19 @@ import SpendPolicyScreen from "../islands/SpendPolicyScreen.island.tsx";
 import BillingScreen from "../islands/BillingScreen.island.tsx";
 import BusinessVerificationScreen from "../islands/BusinessVerificationScreen.island.tsx";
 import TeamSettingsScreen from "../islands/TeamSettingsScreen.island.tsx";
-import EntityFilesScreen from "../islands/EntityFilesScreen.island.tsx";
+import EntityFilesScreen, { type EntityDriveBoot } from "../islands/EntityFilesScreen.island.tsx";
 import EntityCalendarScreen from "../islands/EntityCalendarScreen.island.tsx";
-import TeamCatalogueScreen from "../islands/TeamCatalogueScreen.island.tsx";
 import type { BusinessBillingView } from "@projective/types/finance";
-import type { EntityCalendarRead, TeamCatalogueRead } from "../core/workspace-ssr.ts";
+import type { EntityCalendarRead } from "../core/workspace-ssr.ts";
 
 /**
  * ModuleScreen — the single dispatcher from a module key to its body.
  *
  * Every `/teams/[id]/[module]` and `/businesses/[id]/[module]` route funnels through here, so the two
  * kinds share one body table rather than two parallel switch statements that drift. A module with a
- * real screen gets it — Calendar and a team's Catalogue embed the calendar engine and the catalogue's
- * cards over the entity's own reads (Decision #308); a module that DELEGATES to an existing surface
+ * real screen gets it — Calendar embeds the calendar engine over the entity's own read (Decision
+ * #308); a team's Catalogue never reaches here, its static `/teams/[teamHandle]/catalogue` routes
+ * being the catalogue console itself (Decision #312); a module that DELEGATES to an existing surface
  * (a business's `/projects`, `/wallet`) gets a placeholder that hands off rather than a second
  * implementation of that surface; a module that is genuinely next says so plainly.
  *
@@ -52,8 +52,8 @@ export interface ModuleScreenProps {
 	benchError?: string | null;
 	/** The Calendar module's union of the entity's projects' calendars, read server-side (Decision #308). */
 	calendar?: EntityCalendarRead | null;
-	/** The Catalogue module's team listings, read server-side for a team's `catalogue` module (Decision #308). */
-	catalogue?: TeamCatalogueRead | null;
+	/** The Files module's first drive location, read server-side (Decision #315). */
+	drive?: EntityDriveBoot | null;
 }
 
 /** Render the body for one module. */
@@ -123,7 +123,7 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 				: <ModulePlaceholder kind={ws.kind} module={mod!} />;
 
 		case "files":
-			// The entity's shared drive (Decision #306): the `/files` hub's body, owned by this entity.
+			// The entity's shared drive (Decisions #306, #315): the `/files` hub, owned by this entity.
 			return (
 				<EntityFilesScreen
 					kind={ws.kind}
@@ -131,6 +131,11 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 					handle={ws.handle}
 					name={ws.name}
 					status={ws.status}
+					drive={props.drive ?? {
+						page: null,
+						error: `${ws.name}'s files couldn't be loaded just now.`,
+						path: [],
+					}}
 				/>
 			);
 
@@ -162,21 +167,6 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 					note={`Engagements ${ws.name} has commissioned, in the projects surface.`}
 				/>
 			);
-		case "catalogue":
-			// The team's listings, scoped to the team (Decision #308); a business sells nothing, so the
-			// registry never offers it this module.
-			return ws.kind === "team"
-				? (
-					<TeamCatalogueScreen
-						teamId={ws.id}
-						handle={ws.handle}
-						name={ws.name}
-						acting={ws.isActing}
-						initial={props.catalogue?.page ?? null}
-						initialError={props.catalogue?.error ?? null}
-					/>
-				)
-				: <ModulePlaceholder kind={ws.kind} module={mod!} />;
 		case "calendar":
 			// The union of the entity's projects' calendars, read as the viewer (Decision #308).
 			return (

@@ -1,9 +1,11 @@
 import { assertEquals } from "@std/assert";
+import { LinkScanStatus } from "@projective/types/files";
 import type { AttachmentSource } from "@projective/types/projects";
 import {
 	canRenameFile,
 	clampPage,
 	goToMessageMode,
+	linkHref,
 	pickSource,
 	previewAssetId,
 	previewDownloadHref,
@@ -104,6 +106,28 @@ Deno.test("previewDownloadHref falls back to the row's own file, never a stub or
 	assertEquals(previewDownloadHref(file({ id: "fx-1", assetId: undefined, url: "#" })), null);
 	assertEquals(previewDownloadHref(file({ source: "link", url: "https://x.test" })), null);
 	assertEquals(previewInspectHref(fixture), null);
+});
+
+Deno.test("linkHref opens a stored link directly only once its scan is safe", () => {
+	const target = "https://figma.com/f?a=1&b=2";
+	const link = (scanStatus: LinkScanStatus) =>
+		file({
+			source: "link",
+			link: {
+				url: target,
+				domain: "figma.com",
+				title: "F",
+				description: null,
+				faviconUrl: null,
+				scanStatus,
+				scannedAt: null,
+			},
+		});
+	assertEquals(linkHref(link("safe")), target);
+	for (const verdict of LinkScanStatus.options.filter((v) => v !== "safe")) {
+		assertEquals(linkHref(link(verdict)), `/exit?url=${encodeURIComponent(target)}`);
+	}
+	assertEquals(linkHref(file()), null);
 });
 // #endregion
 

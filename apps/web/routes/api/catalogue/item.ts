@@ -1,5 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
+import { apiSellerActor } from "@features/catalogue/core/seller-scope.ts";
 import { toCatalogueResponse } from "@features/catalogue/core/respond.ts";
 import { CatalogueBackendService } from "@server/services/catalogue/CatalogueBackendService.ts";
 
@@ -23,12 +24,16 @@ export const handler = define.handlers({
 	async GET(ctx) {
 		const id = idOf(ctx.url);
 		if (!id) return MISSING_ID();
-		return toCatalogueResponse(await CatalogueBackendService.detail(id, readActor(ctx)));
+		const actor = await apiSellerActor(ctx.url, readActor(ctx));
+		if (actor instanceof Response) return actor;
+		return toCatalogueResponse(await CatalogueBackendService.detail(id, actor));
 	},
 
 	async DELETE(ctx) {
 		const id = idOf(ctx.url);
 		if (!id) return MISSING_ID();
-		return toCatalogueResponse(await CatalogueBackendService.remove(id, readActor(ctx)));
+		const actor = await apiSellerActor(ctx.url, readActor(ctx));
+		if (actor instanceof Response) return actor;
+		return toCatalogueResponse(await CatalogueBackendService.remove(id, actor));
 	},
 });

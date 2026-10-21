@@ -73,6 +73,14 @@ Deno.test("a crumb trail over the lifted tree names folders, not their ids", () 
 	assertEquals(crumbs.map((c) => c.href), ["/files", "/files/f-1", "/files/f-1/f-1a"]);
 });
 
+Deno.test("a query-routed crumb trail addresses each folder through ?path= under the console base", () => {
+	const base = "/teams/atelier-nova/files";
+	const crumbs = breadcrumbsFor(["Brand", "Logos"], { base, rootLabel: "Atelier Nova", routing: "query" });
+	assertEquals(crumbs.map((c) => c.label), ["Atelier Nova", "Brand", "Logos"]);
+	assertEquals(crumbs.map((c) => c.href), [base, `${base}?path=Brand`, `${base}?path=Brand/Logos`]);
+	assertEquals(crumbs.map((c) => segmentsOfHref(c.href, base, "query")), [[], ["Brand"], ["Brand", "Logos"]]);
+});
+
 // #region Console drive routing
 Deno.test("a console drive lives in its entity's console, by kind and handle", () => {
 	assertEquals(filesHref("workspace", { subjectId: "atelier-nova", kind: "team" }), "/teams/atelier-nova/files");

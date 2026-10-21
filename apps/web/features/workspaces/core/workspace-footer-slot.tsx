@@ -14,6 +14,9 @@ import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBac
 import ChatComposer from "@web/features/projects/islands/ChatComposer.island.tsx";
 import ViewControlRig from "@web/features/projects/islands/ViewControlRig.island.tsx";
 import { channelTabOfPath } from "./channel-model.ts";
+import FilesFooterRig from "@features/files/islands/FilesFooterRig.island.tsx";
+import { folderSegmentsOfQuery } from "@projective/types/files";
+import { entityDriveView } from "./files-module-model.ts";
 
 /**
  * workspace-footer-slot — the SSR-idiomatic resolver for the middle-nav FOOTER band across the
@@ -79,6 +82,25 @@ export async function workspaceFooterFor(url: URL, actor: ReadActor): Promise<Co
 				projectId={thread.data.conversationId}
 				channelId={thread.data.conversationId}
 				autoFocus
+			/>
+		);
+	}
+
+	// On Files the band is the `/files` hub's rig, which also mounts the drive's upload queue (Decision
+	// #315). A connection is the person's, never the entity's, so the drive offers no Connect drive.
+	if (bootstrap.activeModule === "files") {
+		const ws = bootstrap.workspace;
+		const view = entityDriveView(ws);
+		return (
+			<FilesFooterRig
+				base={view.base}
+				scope="workspace"
+				subjectId={ws.id}
+				segments={folderSegmentsOfQuery(url.search)}
+				ownerType={ws.kind}
+				ownerId={ws.id}
+				connectDrive={false}
+				lockedNote={view.readOnlyNote}
 			/>
 		);
 	}

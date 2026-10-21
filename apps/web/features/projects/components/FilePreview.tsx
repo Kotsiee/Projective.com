@@ -11,7 +11,7 @@ import {
 	assetPlaceholder,
 } from "@features/files/core/asset-media.ts";
 import type { AssetItem } from "../types/projects-types.ts";
-import { previewDownloadHref, previewIconName } from "./preview/preview-model.ts";
+import { linkHref, previewDownloadHref, previewIconName } from "./preview/preview-model.ts";
 import { LEGACY_TEXT_LINES, useLegacyText } from "./preview/use-legacy-text.ts";
 
 /** Props for {@link FilePreview}. */
@@ -75,6 +75,7 @@ function Placeholder(
 	{ file, reason }: { file: AssetItem; reason?: string },
 ): JSX.Element {
 	const isLink = file.source === "link" && file.link !== null;
+	const openHref = isLink ? linkHref(file) : null;
 	const download = previewDownloadHref(file);
 	return (
 		<div class="fx-preview fx-preview--doc">
@@ -87,11 +88,11 @@ function Placeholder(
 					.join(" · ")}
 			</p>
 			{reason ? <p class="fx-preview__note">{reason}</p> : null}
-			{isLink && file.link
+			{openHref
 				? (
 					<a
 						class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm fx-preview__action"
-						href={file.link.url}
+						href={openHref}
 						target="_blank"
 						rel="noopener noreferrer"
 					>

@@ -16,6 +16,9 @@ import { isFetchableUrl, isForbiddenAddress, isIpLiteral } from "./link-guards.t
  *   has none — and no cookie, credential or Authorization header is ever sent.
  *
  * The transport is injectable so the redirect and rebinding rules are tested without a network.
+ *
+ * {@link pinnedRequest} is the same pinned socket for a caller that has ALREADY checked the address —
+ * a custom S3 endpoint (Decision #314) — and sends exactly that caller's headers, signed ones included.
  */
 
 // #region Limits
@@ -58,6 +61,18 @@ export type FetchFailure =
 
 export type FetchOutcome = { ok: true; page: FetchedPage } | { ok: false; failure: FetchFailure };
 
+/** One request for {@link pinnedRequest}: no body, and the caller's own headers. */
+export interface PinnedRequest {
+	method: "GET" | "HEAD";
+	/** An `https:` URL; its host is the `Host` header and the TLS name, its port the socket's. */
+	url: URL;
+	/**
+	 * Sent as given after `Host`. `host`, `connection`, `content-length` and `transfer-encoding` belong
+	 * to the transport and are dropped.
+	 */
+	headers: Headers;
+}
+
 /** The two network operations a fetch needs; the default speaks to the real network. */
 export interface LinkTransport {
 	resolve(hostname: string, deadline: number): Promise<string[]>;
@@ -87,6 +102,20 @@ export function requestHead(url: URL, accept: string): string {
 		"",
 		"",
 	].join("\r\n");
+}
+
+const TRANSPORT_HEADERS = new Set(["host", "connection", "content-length", "transfer-encoding"]);
+
+/** The request head for one {@link PinnedRequest}. */
+export function pinnedRequestHead(request: PinnedRequest): string {
+	const lines = [
+		`${request.method} ${request.url.pathname || "/"}${request.url.search} HTTP/1.1`,
+		`Host: ${request.url.host}`,
+	];
+	for (const [name, value] of request.headers) {
+		if (!TRANSPORT_HEADERS.has(name)) lines.push(`${name}: ${value}`);
+	}
+	return [...lines, "Accept-Encoding: identity", "Connection: close", "", ""].join("\r\n");
 }
 
 function indexOfSequence(bytes: Uint8Array, seq: number[], from = 0): number {
@@ -195,8 +224,15 @@ async function writeAll(conn: Deno.Conn, bytes: Uint8Array): Promise<void> {
 	while (written < bytes.length) written += await conn.write(bytes.subarray(written));
 }
 
-/** Read one HTTP/1.1 response from a connection, at most `maxBytes` of body. */
-async function readResponse(conn: Deno.Conn, maxBytes: number): Promise<RawResponse> {
+/**
+ * Read one HTTP/1.1 response from a connection, at most `maxBytes` of body. A response `bodyless`
+ * says carries none (a `HEAD` answer) ends at its head, whatever its `Content-Length` claims.
+ */
+async function readResponse(
+	conn: Deno.Conn,
+	maxBytes: number,
+	bodyless: (status: number) => boolean = () => false,
+): Promise<RawResponse> {
 	const chunk = new Uint8Array(16 * 1024);
 	let buffer = new Uint8Array(0);
 	let head: ReturnType<typeof parseResponseHead> = null;
@@ -213,13 +249,66 @@ async function readResponse(conn: Deno.Conn, maxBytes: number): Promise<RawRespo
 			if (!head && buffer.length > MAX_HEAD_BYTES) throw new Error("Response headers too large.");
 			if (!head) continue;
 		}
+		if (bodyless(head.status)) break;
 		const body = buffer.subarray(head.bodyStart);
 		if (body.length >= maxBytes + slack || bodyComplete(head.headers, body)) break;
 	}
 	if (!head) head = parseResponseHead(buffer);
 	if (!head) throw new Error("The connection closed before a response arrived.");
+	if (bodyless(head.status)) {
+		return {
+			status: head.status,
+			headers: head.headers,
+			body: new Uint8Array(0),
+			truncated: false,
+		};
+	}
 	const { body, truncated } = finishBody(head.headers, buffer.subarray(head.bodyStart), maxBytes);
 	return { status: head.status, headers: head.headers, body, truncated };
+}
+
+/**
+ * One request/response over TCP opened to `address` — never to a name — upgraded with TLS verified
+ * against `hostname`, under one deadline enforced by closing the socket.
+ */
+async function exchange(
+	hostname: string,
+	address: string,
+	port: number,
+	head: string,
+	deadline: number,
+	maxBytes: number,
+	bodyless?: (status: number) => boolean,
+): Promise<RawResponse> {
+	const remaining = deadline - Date.now();
+	if (remaining <= 0) throw new Error("timed out");
+	let conn: Deno.Conn | null = null;
+	let closed = false;
+	const close = () => {
+		if (closed) return;
+		closed = true;
+		try {
+			conn?.close();
+		} catch {
+			// Already closed by the peer.
+		}
+	};
+	const timer = setTimeout(close, remaining);
+	try {
+		const tcp = await Deno.connect({ hostname: address, port, transport: "tcp" });
+		conn = tcp;
+		if (closed) throw new Error("timed out");
+		const tls = await Deno.startTls(tcp, { hostname });
+		conn = tls;
+		await writeAll(tls, encoder.encode(head));
+		return await readResponse(tls, maxBytes, bodyless);
+	} catch (error) {
+		if (closed) throw new Error("timed out");
+		throw error;
+	} finally {
+		clearTimeout(timer);
+		close();
+	}
 }
 
 /** The default transport: real DNS, real sockets. */
@@ -235,38 +324,38 @@ export const networkTransport: LinkTransport = {
 			...(aaaa.status === "fulfilled" ? aaaa.value : []),
 		];
 	},
-	async request(url, address, deadline, maxBytes, accept) {
-		const remaining = deadline - Date.now();
-		if (remaining <= 0) throw new Error("timed out");
-		let conn: Deno.Conn | null = null;
-		let closed = false;
-		const close = () => {
-			if (closed) return;
-			closed = true;
-			try {
-				conn?.close();
-			} catch {
-				// Already closed by the peer.
-			}
-		};
-		const timer = setTimeout(close, remaining);
-		try {
-			const tcp = await Deno.connect({ hostname: address, port: 443, transport: "tcp" });
-			conn = tcp;
-			if (closed) throw new Error("timed out");
-			const tls = await Deno.startTls(tcp, { hostname: url.hostname });
-			conn = tls;
-			await writeAll(tls, encoder.encode(requestHead(url, accept)));
-			return await readResponse(tls, maxBytes);
-		} catch (error) {
-			if (closed) throw new Error("timed out");
-			throw error;
-		} finally {
-			clearTimeout(timer);
-			close();
-		}
+	request(url, address, deadline, maxBytes, accept) {
+		return exchange(url.hostname, address, 443, requestHead(url, accept), deadline, maxBytes);
 	},
 };
+
+/**
+ * Send one request to an address the CALLER has already resolved and checked, over TLS verified
+ * against the URL's own hostname — the rebinding-proof half of {@link guardedFetch}, without its URL
+ * rules or redirects (a redirect is returned, never followed). Throws on any network failure,
+ * `"timed out"` once `deadline` passes.
+ */
+export function pinnedRequest(
+	request: PinnedRequest,
+	address: string,
+	deadline: number,
+	maxBytes: number,
+): Promise<RawResponse> {
+	if (request.url.protocol !== "https:") {
+		return Promise.reject(new Error("A pinned request is https only."));
+	}
+	const hostname = request.url.hostname.replace(/^\[|\]$/g, "");
+	const port = request.url.port ? Number(request.url.port) : 443;
+	return exchange(
+		hostname,
+		address,
+		port,
+		pinnedRequestHead(request),
+		deadline,
+		maxBytes,
+		(status) => request.method === "HEAD" || status === 204 || status === 304,
+	);
+}
 
 /** The `Accept` a page fetch sends. */
 export const PAGE_ACCEPT = "text/html,application/xhtml+xml;q=0.9,*/*;q=0.1";

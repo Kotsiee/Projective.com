@@ -15,13 +15,16 @@ import type { UserConnection } from "@projective/types/integrations";
  * one into the other loses rows silently at the boundary.
  *
  * **A location is addressed two ways because the two families genuinely differ.** Object stores (Drive,
- * Dropbox, Frame.io) have folder objects with ids; key-prefix stores (S3) have no folder objects at all,
- * only a delimiter convention. {@link DrivePath} carries both rather than forcing one into the other,
- * which would either invent ids or discard the prefix.
+ * Dropbox, OneDrive, Frame.io) have folder objects with ids; key-prefix stores (S3) have no folder
+ * objects at all, only a delimiter convention. {@link DrivePath} carries both rather than forcing one
+ * into the other, which would either invent ids or discard the prefix.
  *
- * No connector is implemented in this deployment: a real one needs its provider's OAuth client and the
- * token vault's envelope key (`../token-vault.ts`). This interface is the seam it plugs into, and the
- * connections service refuses browsing and mounting in words until one exists.
+ * **Every connector is a real client of its provider's API, never a fixture corpus** (Decision #313):
+ * it is handed one connection's unsealed credential for one request and speaks only to that provider's
+ * fixed origin. None is reachable yet — no provider is enabled, consents are refused and the vault seals
+ * nothing until its KMS envelope exists — so the connections service still refuses browsing and
+ * mounting in words. `./mod.ts` is the one door that constructs an adapter, and it refuses while
+ * `INTEGRATIONS_BACKEND_LIVE` is off.
  */
 
 // #region Contract
@@ -31,7 +34,7 @@ import type { UserConnection } from "@projective/types/integrations";
  * `null` addresses the root.
  */
 export interface DrivePath {
-	/** The provider's own folder id (a Drive file id, a Frame.io asset id). */
+	/** The provider's own folder id (a Drive file id, a Frame.io folder id). */
 	folderId: string | null;
 	/** A key prefix, for providers that address by prefix rather than by folder object (S3). */
 	path: string | null;
@@ -68,19 +71,92 @@ export interface StorageAdapter {
 	thumbnailUrl(id: string): Promise<string | null>;
 }
 
+/**
+ * The unsealed credential an adapter acts under — held for one request, never logged, returned or
+ * attached to an error. `bearer` is an OAuth access token; `aws_sigv4` is the key pair an `s3`
+ * connection signs every request with, because S3 has no authorization server to mint a token.
+ */
+export type StorageCredential =
+	| { scheme: "bearer"; accessToken: string }
+	| {
+		scheme: "aws_sigv4";
+		accessKeyId: string;
+		secretAccessKey: string;
+		sessionToken: string | null;
+	};
+
+/** The network an adapter speaks through. Injectable so every request it builds is testable offline. */
+export interface StorageNet {
+	fetch(url: string, init: RequestInit): Promise<Response>;
+	/**
+	 * `fetch`, but over a connection opened to `address` — one the adapter already resolved and checked
+	 * — with TLS verified against the URL's hostname. A host a person chose (a custom S3 endpoint) is
+	 * reached only this way: `fetch` would resolve the name again, after the check.
+	 */
+	pinned(url: string, init: RequestInit, address: string): Promise<Response>;
+	/** Every address a hostname resolves to — the custom-endpoint guard refuses a private one. */
+	resolve(hostname: string): Promise<string[]>;
+	now(): Date;
+}
+
 /** What an adapter is constructed with — the connection whose consent it acts under. */
 export interface StorageAdapterContext {
 	connection: UserConnection;
 	/**
-	 * The decrypted provider access token.
+	 * The connection's unsealed credential, or `null` when none is stored.
 	 *
-	 * An adapter that reads a token it was not given is an adapter that will one day fetch with someone
-	 * else's. Retrieved through `../token-vault.ts`, service-role only, and never logged.
+	 * An adapter that reads a credential it was not given is an adapter that will one day fetch with
+	 * someone else's. Retrieved through `../token-vault.ts`, service-role only.
 	 */
-	accessToken: string | null;
+	credential: StorageCredential | null;
+	/** Network overrides for tests; production leaves this unset. */
+	net?: Partial<StorageNet>;
 }
 
 /** Constructs an adapter for a connection. */
 export type StorageAdapterFactory = (ctx: StorageAdapterContext) => StorageAdapter;
+
+// #endregion
+
+// #region Errors
+
+/**
+ * Why a provider call failed, in the terms a refusal is worded in: `unauthorized` (reconnect) ·
+ * `forbidden` (the grant does not reach it) · `not_found` · `rate_limited` · `misconfigured` (the
+ * connection's config or credential cannot address the provider) · `unavailable` (the integrations gate
+ * is off, or no client exists) · `provider_error` (the provider failed).
+ */
+export type StorageAdapterErrorCode =
+	| "unauthorized"
+	| "forbidden"
+	| "not_found"
+	| "rate_limited"
+	| "misconfigured"
+	| "unavailable"
+	| "provider_error";
+
+/**
+ * A failed provider call. The message names the provider and the status and never carries a request
+ * URL, a header or a response body verbatim, so no credential can ride an error into a log line.
+ */
+export class StorageAdapterError extends Error {
+	readonly code: StorageAdapterErrorCode;
+	/** The provider's HTTP status, when it answered at all. */
+	readonly status: number | null;
+	/** The provider's `Retry-After`, in seconds, for a `rate_limited` refusal. */
+	readonly retryAfterSeconds: number | null;
+
+	constructor(
+		code: StorageAdapterErrorCode,
+		message: string,
+		options: { status?: number | null; retryAfterSeconds?: number | null; cause?: unknown } = {},
+	) {
+		super(message, options.cause === undefined ? undefined : { cause: options.cause });
+		this.name = "StorageAdapterError";
+		this.code = code;
+		this.status = options.status ?? null;
+		this.retryAfterSeconds = options.retryAfterSeconds ?? null;
+	}
+}
 
 // #endregion

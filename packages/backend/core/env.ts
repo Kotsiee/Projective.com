@@ -301,6 +301,15 @@ export interface ServerEnv {
 	 * placeholder, the route refuses every delivery rather than trusting an unsigned one.
 	 */
 	zoomWebhookSecret: string | undefined;
+	/**
+	 * The platform's own AWS principal, from `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` (Decision #314).
+	 * Server-only. It reaches no bucket itself: it only calls STS `AssumeRole` on the IAM role an AWS
+	 * `s3` connection names, with that connection's external id. The `XXXX-XXXX` placeholder counts as
+	 * absent, and absent leaves AWS buckets unreachable while S3-compatible endpoints keep working.
+	 */
+	s3AccessKeyId: string | undefined;
+	/** The secret half of {@link ServerEnv.s3AccessKeyId}, from `S3_SECRET_ACCESS_KEY`. */
+	s3SecretAccessKey: string | undefined;
 }
 
 /** Resolve the current server environment from the canonical Environment Variable Contract names. */
@@ -345,5 +354,7 @@ export function serverEnv(): ServerEnv {
 		contactCronSecret: firstEnv("CONTACT_CRON_SECRET"),
 		linkSafetyApiKey: firstEnv("LINK_SAFETY_API_KEY"),
 		zoomWebhookSecret: firstEnv("ZOOM_WEBHOOK_SECRET"),
+		s3AccessKeyId: firstEnv("S3_ACCESS_KEY_ID"),
+		s3SecretAccessKey: firstEnv("S3_SECRET_ACCESS_KEY"),
 	};
 }

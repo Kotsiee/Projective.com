@@ -23,6 +23,7 @@ import {
 	workspacePanelOf,
 } from "./workspace-model.ts";
 import {
+	autoSaveEnabled,
 	configureWorkspace,
 	conflictCopy,
 	draft,
@@ -39,6 +40,7 @@ import {
 	retry,
 	saved,
 	saveState,
+	setAutoSave,
 	UPDATE_URL,
 	type WorkspaceTransport,
 } from "./workspace-store.ts";
@@ -338,6 +340,29 @@ Deno.test("store: an edit saves after the debounce with a section patch", async 
 	assertEquals(fake.updates[0].expectedUpdatedAt, T0);
 	assertEquals(saveState.value, "saved");
 	assertEquals(saved.value?.updatedAt, T2);
+	resetWorkspace();
+	configureWorkspace();
+});
+
+Deno.test("store: with auto-save off an edit waits for Save now, and switching it on saves", async () => {
+	const { fake, clock } = setup();
+	setAutoSave(false);
+	edit("title", "Logo sprint");
+	assertEquals(saveState.value, "dirty");
+	assertEquals(clock.pending, 0);
+	assertEquals(flushBeacon(() => true), false);
+	setAutoSave(true);
+	assertEquals(clock.pending, 1);
+	clock.fire();
+	await flush();
+	assertEquals(fake.updates.length, 1);
+	assertEquals(saveState.value, "saved");
+	setAutoSave(false);
+	edit("title", "Logo sprint II");
+	await flush();
+	assertEquals(fake.updates.length, 2);
+	assertEquals(saveState.value, "saved");
+	autoSaveEnabled.value = true;
 	resetWorkspace();
 	configureWorkspace();
 });

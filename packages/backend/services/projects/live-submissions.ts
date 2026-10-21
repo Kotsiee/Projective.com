@@ -47,6 +47,7 @@ import type {
 } from "@projective/types/projects";
 import { formatMoney } from "@projective/types/finance";
 import { isDiscussionRef, isTaskProject, rootStageOf } from "@projective/types/projects";
+import { isMountedSource } from "../files/asset-row.ts";
 import { UUID_RE } from "./live-support.ts";
 
 /**
@@ -500,8 +501,9 @@ function toFileItem(
 		downloadCount: Math.max(0, Math.trunc(row.download_count ?? 0)),
 		downloadedByViewer: false,
 		// A server decision, never inferred client-side. The `files.items` UPDATE and DELETE policies
-		// are both `owner_user_id = auth.uid()`, so this mirrors what Postgres would actually permit.
-		canManage: isOwner,
+		// are both `owner_user_id = auth.uid()`, so this mirrors what Postgres would actually permit —
+		// except a mounted connector row, which is read-only in the hub by product rule.
+		canManage: isOwner && !isMountedSource(source),
 	};
 }
 

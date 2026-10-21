@@ -1,5 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
+import { apiSellerActor } from "@features/catalogue/core/seller-scope.ts";
 import { CreateListingInputSchema } from "@projective/types/catalogue";
 import { toCatalogueResponse, toFieldErrors } from "@features/catalogue/core/respond.ts";
 import { CatalogueBackendService } from "@server/services/catalogue/CatalogueBackendService.ts";
@@ -13,6 +14,8 @@ import { CatalogueBackendService } from "@server/services/catalogue/CatalogueBac
  */
 export const handler = define.handlers({
 	async POST(ctx) {
+		const actor = await apiSellerActor(ctx.url, readActor(ctx));
+		if (actor instanceof Response) return actor;
 		const raw = await ctx.req.json().catch(() => null);
 		const parsed = CreateListingInputSchema.safeParse(raw);
 		if (!parsed.success) {
@@ -25,6 +28,6 @@ export const handler = define.handlers({
 				{ status: 422 },
 			);
 		}
-		return toCatalogueResponse(await CatalogueBackendService.create(parsed.data, readActor(ctx)));
+		return toCatalogueResponse(await CatalogueBackendService.create(parsed.data, actor));
 	},
 });

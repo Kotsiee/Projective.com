@@ -33,7 +33,7 @@ import { AssetMetadataSchema } from "./metadata.ts";
 
 /**
  * Where an asset physically lives. `supabase` is the platform's own storage (the only source that
- * consumes quota); the four connector sources are MOUNTED — browsable and attachable in place,
+ * consumes quota); the five connector sources are MOUNTED — browsable and attachable in place,
  * counted against the provider's quota, not ours — and `link` is a URL stored as a first-class
  * asset with no bytes at all.
  */
@@ -41,6 +41,7 @@ export const AssetSource = z.enum([
 	"supabase",
 	"google_drive",
 	"dropbox",
+	"onedrive",
 	"frameio",
 	"s3",
 	"link",
@@ -178,8 +179,9 @@ export const ExternalRefSchema = z.object({
 	/** The `integrations.user_connections` row this asset was mounted through. */
 	connectionId: z.string().min(1).max(80),
 	providerSlug: z.string().min(1).max(40),
-	externalFileId: z.string().min(1).max(200),
-	externalParentId: z.string().max(200).nullable(),
+	/** The provider's own object id — an S3 key can run to 1,024 bytes, so it is bounded like one. */
+	externalFileId: z.string().min(1).max(1024),
+	externalParentId: z.string().max(1024).nullable(),
 	/** The provider's own "open in Drive/Dropbox" URL — the only safe way to hand off. */
 	externalWebUrl: z.string().max(600).nullable(),
 	externalEtag: z.string().max(120).nullable(),
@@ -350,10 +352,12 @@ export const AssetListParamsSchema = z.object({
 	dir: FileSortDir.optional(),
 	/** Restrict to these kinds (the Attachment-Types filter); empty/absent = all kinds. */
 	kinds: z.array(FileKind).max(9).optional(),
+	/** Restrict to these {@link FileCategory} members (the hub's type filter); empty/absent = all. */
+	categories: z.array(FileCategory).max(FileCategory.options.length).optional(),
 	/** Restrict to these sources (the connector filter); empty/absent = all sources. */
-	sources: z.array(AssetSource).max(6).optional(),
+	sources: z.array(AssetSource).max(AssetSource.options.length).optional(),
 	visibility: z.array(AssetVisibility).max(3).optional(),
-	/** Free-text filename match. */
+	/** Free-text name match — an asset's display name or the name it was uploaded under. */
 	query: z.string().max(120).optional(),
 	/** Opaque paging cursor (the id of the last item of the previous page). */
 	cursor: z.string().max(120).nullable().optional(),
@@ -405,6 +409,7 @@ export const AssetListQuerySchema = z.object({
 	sort: FileSortKey.optional().catch(undefined),
 	dir: FileSortDir.optional().catch(undefined),
 	kinds: csvOf(FileKind.options),
+	categories: csvOf(FileCategory.options),
 	sources: csvOf(AssetSource.options),
 	visibility: csvOf(AssetVisibility.options),
 	query: queryText,
@@ -429,6 +434,8 @@ export function sourceLabel(source: AssetSource): string {
 			return "Google Drive";
 		case "dropbox":
 			return "Dropbox";
+		case "onedrive":
+			return "OneDrive";
 		case "frameio":
 			return "Frame.io";
 		case "s3":

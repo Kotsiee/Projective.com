@@ -117,6 +117,10 @@ export {
 } from "./hooks/useSplitter.ts";
 // #endregion
 
+// #region Frame measurement
+export { FOOTER_BAND_HEIGHT_VAR, publishFooterBandHeight } from "./core/footer-band.ts";
+// #endregion
+
 // #region Types
 export type { FrameSurface, LaneMode, Persona } from "./types/mod.ts";
 // #endregion

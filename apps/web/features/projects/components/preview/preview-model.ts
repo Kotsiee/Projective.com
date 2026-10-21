@@ -8,6 +8,7 @@ import {
 	type InspectViewer,
 	mediaProxyHref,
 } from "@projective/types/files";
+import { externalLinkHref } from "@projective/types/links";
 import { type AttachmentSource, attachmentSourceExcerpt } from "@projective/types/projects";
 
 /**
@@ -118,6 +119,11 @@ export function previewDownloadHref(
 	if (file.source === "link") return null;
 	const own = file.url.trim();
 	return own === "" || own === "#" ? null : own;
+}
+
+/** A stored link's address, via `/exit` until its scan verdict is `safe`; null for other rows. */
+export function linkHref(file: Pick<AssetItem, "link">): string | null {
+	return file.link ? externalLinkHref(file.link.url, file.link.scanStatus) : null;
 }
 
 // #endregion

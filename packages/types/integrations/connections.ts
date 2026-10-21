@@ -178,14 +178,24 @@ export type ConnectionsView = z.infer<typeof ConnectionsViewSchema>;
  * {@link UserConnectionSchema} deliberately does not encode these keys, because a second provider's
  * config would then have to satisfy them too.
  *
+ * The credential is tiered by where the bucket lives (Decision #314): an AWS bucket (no `endpoint`) is
+ * reached ONLY by assuming the customer's IAM role (`roleArn`) through STS, so no long-lived AWS key
+ * is ever stored; an S3-compatible endpoint (R2, MinIO, B2, Wasabi — none has STS) signs with the key
+ * pair sealed in the vault, and names no role.
+ *
  * ⚠️ There is no access key or secret here. Those are `integrations.connection_secrets` and never
  * cross to a client.
  */
 export const S3ConnectionConfigSchema = z.object({
-	/** Custom endpoint for an S3-compatible provider (R2, MinIO, Wasabi); `null` = AWS. */
-	endpoint: z.string().max(400).nullable(),
-	region: z.string().min(1).max(40),
-	bucket: z.string().min(1).max(200),
+	/**
+	 * Custom endpoint for an S3-compatible provider (R2, MinIO, Wasabi); absent or `null` = AWS. Absent
+	 * is the form a projected config actually takes — `config` is a flat scalar record with no `null`.
+	 */
+	endpoint: z.string().max(400).nullish(),
+	/** A region id; for AWS it is part of the hostname, so nothing but `a–z 0–9 -` is accepted. */
+	region: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/),
+	/** A bucket name — never `/ ? # @ :`, which would change the host a virtual-hosted request reaches. */
+	bucket: z.string().min(3).max(63).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*[A-Za-z0-9]$/),
 	/** Key prefix the connection is scoped to — the tenant boundary within a shared bucket. */
 	prefix: z.string().max(400),
 	/**
@@ -193,8 +203,62 @@ export const S3ConnectionConfigSchema = z.object({
 	 * self-hosted S3-compatible servers, where the virtual-host form has no DNS to resolve.
 	 */
 	pathStyle: z.boolean(),
+	/**
+	 * The customer's IAM role Projective assumes for an AWS bucket — required exactly when there is no
+	 * `endpoint`. Its trust policy names Projective's account and this connection's external id.
+	 */
+	roleArn: z.string().max(600).regex(
+		/^arn:aws(?:-cn|-us-gov)?:iam::\d{12}:role\/(?:[\w+=,.@-]+\/)*[\w+=,.@-]{1,64}$/,
+	).nullish(),
+}).refine((c) => !!c.endpoint || !!c.roleArn, {
+	path: ["roleArn"],
+	message: "An AWS bucket is reached by assuming an IAM role: name the role's ARN.",
+}).refine((c) => !c.endpoint || !c.roleArn, {
+	path: ["roleArn"],
+	message: "A role ARN is AWS-only; an S3-compatible endpoint signs with its own key pair.",
 });
 export type S3ConnectionConfig = z.infer<typeof S3ConnectionConfigSchema>;
+
+/**
+ * The `config` a `google_drive` connection carries. `driveId` scopes it to one shared drive (whose id
+ * is also its root folder's); absent = the person's My Drive.
+ */
+export const GoogleDriveConnectionConfigSchema = z.object({
+	driveId: z.string().min(1).max(200).optional(),
+});
+export type GoogleDriveConnectionConfig = z.infer<typeof GoogleDriveConnectionConfigSchema>;
+
+/**
+ * The `config` a `dropbox` connection carries. `rootNamespaceId` points it at a team space's root
+ * (sent as `Dropbox-API-Path-Root`); absent = the member's own root.
+ */
+export const DropboxConnectionConfigSchema = z.object({
+	rootNamespaceId: z.string().regex(/^[0-9]{1,20}$/).optional(),
+});
+export type DropboxConnectionConfig = z.infer<typeof DropboxConnectionConfigSchema>;
+
+/**
+ * The `config` an `onedrive` connection carries. `driveId` addresses a SharePoint document library, or
+ * any other drive the grant reaches; absent = the person's own OneDrive.
+ */
+export const OneDriveConnectionConfigSchema = z.object({
+	driveId: z.string().min(1).max(200).optional(),
+});
+export type OneDriveConnectionConfig = z.infer<typeof OneDriveConnectionConfigSchema>;
+
+/**
+ * The `config` a `frameio` connection carries. Frame.io V4 addresses everything under an account and
+ * roots a tree at a project's root folder, so a connection names its account and either ONE project
+ * (whose root is the connection's root) or a workspace (whose projects become the root's folders).
+ */
+export const FrameIoConnectionConfigSchema = z.object({
+	accountId: z.string().min(1).max(80),
+	workspaceId: z.string().min(1).max(80).optional(),
+	projectId: z.string().min(1).max(80).optional(),
+}).refine((c) => c.workspaceId !== undefined || c.projectId !== undefined, {
+	message: "A Frame.io connection names a workspace or a project.",
+});
+export type FrameIoConnectionConfig = z.infer<typeof FrameIoConnectionConfigSchema>;
 // #endregion
 
 // #region Drive browsing

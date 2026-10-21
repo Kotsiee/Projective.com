@@ -101,3 +101,12 @@ Deno.test("simulate path: bare chrome on the simulation only, and the href round
 	assertEquals(simulatedSlugOf(simulateHref(PRODUCT)), PRODUCT);
 	assertEquals(simulatedSlugOf("/catalogue/new/simulate"), null);
 });
+
+Deno.test("simulate path: a team's simulation is bare too, and keeps its team", () => {
+	const at = (path: string) => catalogueChromeFor(new URL(`https://app.example.test${path}`));
+	assertEquals(at(`/teams/north-loop/catalogue/${SERVICE}/simulate`), "bare");
+	assertEquals(at(`/teams/north-loop/catalogue/${SERVICE}`), null);
+	assertEquals(at("/teams/north-loop/simulate"), null);
+	assertEquals(simulateHref(SERVICE, "north-loop"), `/teams/north-loop/catalogue/${SERVICE}/simulate`);
+	assertEquals(simulatedSlugOf(simulateHref(PRODUCT, "north-loop")), PRODUCT);
+});

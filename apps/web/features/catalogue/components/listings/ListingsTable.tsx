@@ -32,6 +32,8 @@ export interface ListingsTableProps {
 	onAction: (action: ListingAction, listing: ListingSummary) => void;
 	onReachEnd?: () => void;
 	loading?: boolean;
+	/** The team whose catalogue this is, so each row opens in it (Decision #312). */
+	team?: string;
 }
 
 const STATUS_SEVERITY: Record<ReturnType<typeof statusMeta>["tone"], Severity> = {
@@ -157,8 +159,8 @@ export function ListingsTable(props: ListingsTableProps): JSX.Element {
 			selectionMode="multiple"
 			selection={props.selection}
 			selectionAnchor={props.selectionAnchor}
-			rowHref={(l) => listingHref(l.id)}
-			rowActions={(l) => listingMenu(l, props.onAction)}
+			rowHref={(l) => listingHref(l.id, props.team)}
+			rowActions={(l) => listingMenu(l, props.onAction, listingHref(l.id, props.team))}
 			rowHeight={ROW_HEIGHT}
 			thumbnailMinRowHeight={0}
 			onReachEnd={props.onReachEnd}

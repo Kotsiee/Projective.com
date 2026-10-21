@@ -346,11 +346,12 @@ CREATE TYPE files.file_category AS ENUM (
 -- it describes, and `file_category` in `categories.ts` with its classifier.
 
 -- `file_source` — WHERE the bytes live. `supabase` is the only source we store and therefore the
--- only one that consumes our quota; the four connector sources are MOUNTED (browsable and
+-- only one that consumes our quota; the five connector sources are MOUNTED (browsable and
 -- attachable in place, counted against the provider's quota); `link` is a URL stored as a
--- first-class asset with no bytes at all.
+-- first-class asset with no bytes at all. `onedrive` covers SharePoint libraries too — both are
+-- Microsoft Graph drives (Decision #313).
 CREATE TYPE files.file_source AS ENUM (
-    'supabase', 'google_drive', 'dropbox', 'frameio', 's3', 'link'
+    'supabase', 'google_drive', 'dropbox', 'onedrive', 'frameio', 's3', 'link'
 );
 
 -- `file_visibility` — the privacy scope hierarchy. `link` means "reachable by anyone holding the

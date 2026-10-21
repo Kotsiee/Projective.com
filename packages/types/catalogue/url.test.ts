@@ -12,16 +12,22 @@ import {
 	ListingStatus,
 } from "./catalogue.ts";
 import {
+	catalogueBase,
+	ConsoleHighlight,
 	consoleHref,
 	type ConsoleUrlState,
 	ConsoleView,
 	isDefaultStatuses,
 	isListingSlug,
+	isTeamHandle,
 	normaliseStatuses,
+	parseCataloguePath,
 	parseConsoleUrl,
 	parseWorkspaceUrl,
 	PreviewDevice,
 	scopeRedirect,
+	teamOfCataloguePath,
+	teamScopedApiPath,
 	workspaceHref,
 	WorkspaceTab,
 	type WorkspaceUrlState,
@@ -61,6 +67,7 @@ const SCOPES = [
 ];
 const SEARCHES = ["", "logo", "brand identity", "café & co", "50% off", "a/b test?", "#1 pick"];
 const CLIENTS = ["@maris", "@north_studio", "@ab"];
+const TEAMS = ["north-loop", "abc", "studio-9"];
 
 function consoleState(next: () => number): ConsoleUrlState {
 	const sort = oneOf(next, CatalogueSort.options);
@@ -76,7 +83,10 @@ function consoleState(next: () => number): ConsoleUrlState {
 		status: normaliseStatuses(subset(next, ListingStatus.options)),
 		model: subset(next, ServiceType.options),
 		create: subset(next, CreateCategory.options),
+		highlights: subset(next, ConsoleHighlight.options),
 	};
+	const team = maybe(next, () => oneOf(next, TEAMS));
+	if (team) state.team = team;
 	const client = maybe(next, () => oneOf(next, CLIENTS));
 	if (client) state.client = client;
 	if (state.createOpen) {
@@ -98,6 +108,8 @@ function workspaceState(next: () => number): WorkspaceUrlState {
 	};
 	const section = maybe(next, () => oneOf(next, EditSection.options));
 	if (section) state.section = section;
+	const team = maybe(next, () => oneOf(next, TEAMS));
+	if (team) state.team = team;
 	const client = maybe(next, () => oneOf(next, CLIENTS));
 	if (client) state.client = client;
 	return state;
@@ -109,6 +121,7 @@ const KEYS = [
 	"status",
 	"model",
 	"category",
+	"highlight",
 	"scope",
 	"search",
 	"sort",
@@ -172,6 +185,7 @@ Deno.test("an empty URL parses to the defaults", () => {
 		status: ["draft", "published", "paused"],
 		model: [],
 		create: [],
+		highlights: [],
 		sort: "recent",
 		dir: "desc",
 		search: "",
@@ -180,6 +194,15 @@ Deno.test("an empty URL parses to the defaults", () => {
 		createOpen: false,
 	});
 	assertEquals(parseWorkspaceUrl(url), { tab: "edit", device: "desktop", period: "30d" });
+});
+
+Deno.test("a team catalogue path parses its team into both states", () => {
+	const slug = mintSlug("service");
+	const at = (path: string) => new URL(`https://projective.test${path}`);
+	assertEquals(parseConsoleUrl(at("/teams/north-loop/catalogue")).team, "north-loop");
+	assertEquals(parseWorkspaceUrl(at(`/teams/north-loop/catalogue/${slug}`)).team, "north-loop");
+	assertEquals(parseConsoleUrl(at("/catalogue")).team, undefined);
+	assertEquals(parseConsoleUrl(at("/teams/North-Loop/catalogue")).team, undefined);
 });
 
 Deno.test("a bad value falls back to its default without disturbing the others", () => {
@@ -210,7 +233,7 @@ Deno.test("parse(workspaceHref(slug, x)) deep-equals x", () => {
 	for (let i = 0; i < 300; i++) {
 		const state = workspaceState(next);
 		const href = workspaceHref(slug, state);
-		assertEquals(href.startsWith(`/catalogue/${slug}`), true);
+		assertEquals(href.startsWith(`${catalogueBase(state.team)}/${slug}`), true);
 		assertEquals(parseWorkspaceUrl(new URL(href, "https://projective.test")), state, href);
 	}
 });
@@ -242,6 +265,17 @@ Deno.test("consoleHref emits params in canonical order and omits defaults", () =
 			"&scope=model:session&search=brand%20kit&sort=title&dir=desc&period=90d&client=@maris" +
 			"&create=service:group_session",
 	);
+	assertEquals(
+		consoleHref({ team: "north-loop", highlights: ["best-selling", "attention"] }),
+		"/teams/north-loop/catalogue?highlight=attention,best-selling",
+	);
+});
+
+Deno.test("the highlight facet reads a list and drops what it does not know", () => {
+	const at = (q: string) => parseConsoleUrl(new URL(`https://projective.test/catalogue?${q}`));
+	assertEquals(at("highlight=promoted,attention,nope").highlights, ["attention", "promoted"]);
+	assertEquals(at("highlight=").highlights, []);
+	assertEquals(consoleHref({ highlights: [] }), "/catalogue");
 });
 
 Deno.test("the status facet opens on everything but Archived, and that set is omitted", () => {
@@ -310,6 +344,12 @@ Deno.test("scopeRedirect sends a listing scope to its workspace tab", () => {
 		`/catalogue/${product}?tab=clients&period=7d&client=@maris`,
 	);
 	assertEquals(at(`scope=${slug}`), `/catalogue/${slug}`);
+	assertEquals(
+		scopeRedirect(
+			new URL(`https://projective.test/teams/north-loop/catalogue?scope=${slug}&view=clients`),
+		),
+		`/teams/north-loop/catalogue/${slug}?tab=clients`,
+	);
 });
 
 Deno.test("scopeRedirect leaves a catalogue scope alone", () => {
@@ -326,5 +366,44 @@ Deno.test("isListingSlug accepts service and product slugs only", () => {
 	assertEquals(isListingSlug(mintSlug("product")), true);
 	assertEquals(isListingSlug(mintSlug("project")), false);
 	assertEquals(isListingSlug("new"), false);
+});
+// #endregion
+
+// #region Seller scope
+Deno.test("parseCataloguePath reads whose catalogue a path addresses", () => {
+	assertEquals(parseCataloguePath("/catalogue"), { rest: [] });
+	assertEquals(parseCataloguePath("/catalogue/svc-x/simulate"), { rest: ["svc-x", "simulate"] });
+	assertEquals(parseCataloguePath("/teams/north-loop/catalogue"), { team: "north-loop", rest: [] });
+	assertEquals(parseCataloguePath("/teams/north-loop/catalogue/prd-y/"), {
+		team: "north-loop",
+		rest: ["prd-y"],
+	});
+	assertEquals(parseCataloguePath("/teams/North-Loop/catalogue"), null);
+	assertEquals(parseCataloguePath("/teams/north-loop/members"), null);
+	assertEquals(parseCataloguePath("/catalogue/%E0%A4%A"), null);
+	assertEquals(parseCataloguePath("/projects"), null);
+	assertEquals(teamOfCataloguePath("/teams/abc/catalogue/svc-x"), "abc");
+	assertEquals(teamOfCataloguePath("/catalogue"), undefined);
+});
+
+Deno.test("isTeamHandle accepts canonical handles only", () => {
+	assertEquals(isTeamHandle("north-loop"), true);
+	assertEquals(isTeamHandle("ab"), false);
+	assertEquals(isTeamHandle("North"), false);
+	assertEquals(isTeamHandle("-lead"), false);
+	assertEquals(isTeamHandle("a".repeat(41)), false);
+});
+
+Deno.test("teamScopedApiPath appends the team to an API path, or leaves it", () => {
+	assertEquals(teamScopedApiPath("/api/catalogue/update", undefined), "/api/catalogue/update");
+	assertEquals(teamScopedApiPath("/api/catalogue/update", "abc"), "/api/catalogue/update?team=abc");
+	assertEquals(
+		teamScopedApiPath("/api/catalogue/list?type=all", "north-loop"),
+		"/api/catalogue/list?type=all&team=north-loop",
+	);
+	assertEquals(
+		teamScopedApiPath("/api/catalogue/list?team=studio-fern&limit=20", "north-loop"),
+		"/api/catalogue/list?team=studio-fern&limit=20",
+	);
 });
 // #endregion

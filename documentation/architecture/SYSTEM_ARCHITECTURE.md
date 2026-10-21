@@ -1410,9 +1410,10 @@ have different trust models.
 | The hub          | `FilesService`        | `/api/files/*` (20)       | `services/files/FilesBackendService.ts`   | **`FILES_BACKEND_LIVE`**    |
 | The connectors   | `IntegrationsService` | `/api/integrations/*` (7) | `services/integrations/IntegrationsBackendService.ts` | **`INTEGRATIONS_BACKEND_LIVE`** |
 
-Both default **off** (`isFilesBackendLive()` / `isIntegrationsBackendLive()` in `core/supabase.ts`),
-both answer from deterministic fixtures, and both write into an in-module session store so every flow
-is exercisable with the gates down. Cross-boundary shapes are the Zod SSOT at
+Both default **off** (`isFilesBackendLive()` / `isIntegrationsBackendLive()` in `core/supabase.ts`).
+Neither answers from fixtures any more: the mock corpora went in the 2026-09-23 mock removal, and
+Decision #313 rules that the connectors never return to one — `packages/backend/mocks/registry.ts`
+records what each gate governs today. Cross-boundary shapes are the Zod SSOT at
 **`@projective/types/files`** (`assets` · `folders` · `listing` · `upload` · `dedup` · `sharing` ·
 `downloads` · `quota` · `storage` · `categories` · `kinds` · `sim`) and
 **`@projective/types/integrations`**. Surfaces: `/files` + `/files/[...path]` (dashboard) and the
@@ -1554,9 +1555,21 @@ cache (ETag); the client is `MessagingService.attachmentSource`.
 #### The connector adapter interface
 
 `StorageAdapter` (`services/integrations/adapters/StorageAdapter.ts`) is the seam that stops a
-connected Drive from becoming a second file model. Implementations ship for `google_drive`, `dropbox`,
-`frameio` and `s3`, each stub-first behind `INTEGRATIONS_BACKEND_LIVE` and each documenting the exact
-provider API surface its live branch will call.
+connected Drive from becoming a second file model. Every implementation is a **real client of its
+provider's API, never a fixture corpus** (Decision #313, owner ruling 2026-10-21): it receives one
+connection's unsealed credential for one request and speaks only to that provider's fixed origin.
+`adapters/mod.ts` → `createStorageAdapter(ctx)` is the one door that constructs one, and it refuses
+(`unavailable`) while `INTEGRATIONS_BACKEND_LIVE` is off. None is reachable yet: no provider is
+enabled, consents are refused and the vault seals nothing, so `browse` / `importAsset` still refuse in
+words.
+
+| Source         | Client                         | Paging cursor              | Download                       | Thumbnail               |
+| :------------- | :----------------------------- | :------------------------- | :----------------------------- | :---------------------- |
+| `google_drive` | Drive v3 (`supportsAllDrives`) | `nextPageToken`            | `webContentLink` / PDF export  | `thumbnailLink`         |
+| `dropbox`      | API v2 RPC                     | `list_folder` cursor       | `get_temporary_link` (4 h)     | none (bytes only)       |
+| `onedrive`     | Microsoft Graph v1.0           | `@odata.nextLink` **path** | `@microsoft.graph.downloadUrl` | `…/thumbnails` `medium` |
+| `frameio`      | Frame.io **V4** (Adobe IMS)    | `after`                    | `media_links.original`         | `media_links.thumbnail` |
+| `s3`           | ListObjectsV2 + SigV4          | `NextContinuationToken`    | pre-signed `GET` (15 min)      | none                    |
 
 ```ts
 interface StorageAdapter {
@@ -1567,10 +1580,23 @@ interface StorageAdapter {
   downloadUrl(id: string): Promise<string | null>;
   thumbnailUrl(id: string): Promise<string | null>;
 }
-interface StorageAdapterContext { connection: UserConnection; accessToken: string | null; }
+type StorageCredential =
+  | { scheme: "bearer"; accessToken: string }
+  | { scheme: "aws_sigv4"; accessKeyId: string; secretAccessKey: string; sessionToken: string | null };
+interface StorageAdapterContext {
+  connection: UserConnection;
+  credential: StorageCredential | null;
+  net?: Partial<StorageNet>;             // fetch · resolve · now — injectable for tests only
+}
 ```
 
-Four decisions in that shape carry weight:
+A failed call is a `StorageAdapterError` whose `code` is the refusal vocabulary (`unauthorized` ·
+`forbidden` · `not_found` · `rate_limited` · `misconfigured` · `unavailable` · `provider_error`); its
+message names the provider and status and never carries a URL, header or body. Each provider's
+per-connection `config` is parsed against its own Zod schema in `@projective/types/integrations`
+(`GoogleDrive…` · `Dropbox…` · `OneDrive…` · `FrameIo…` · `S3ConnectionConfigSchema`).
+
+Seven decisions in that shape carry weight:
 
 1. **It returns `AssetItem` / `AssetFolder`, never a provider row.** The picker, the grid, the table
    and the preview modal are then *literally the same components* for a mounted Drive file and a
@@ -1579,17 +1605,78 @@ Four decisions in that shape carry weight:
    a connector that pages by token cannot be resumed from an id we invented, and normalising one into
    the other loses rows silently at the boundary.
 3. **A location is addressed two ways because the families genuinely differ.** Object stores (Drive,
-   Dropbox, Frame.io) have folder objects with ids; key-prefix stores (S3) have no folder objects at
-   all, only a delimiter convention. `DrivePath { folderId, path }` carries both rather than inventing
-   ids or discarding the prefix.
+   Dropbox, OneDrive, Frame.io) have folder objects with ids; key-prefix stores (S3) have no folder
+   objects at all, only a delimiter convention. `DrivePath { folderId, path }` carries both rather than
+   inventing ids or discarding the prefix.
 4. **`downloadUrl` / `thumbnailUrl` are async and per-call.** Caching one on the asset row would
    persist a credential-bearing URL into a projection the client reads, and a signed URL that outlives
    its purpose is a leaked capability.
+5. **The credential is a typed union, not a token string.** S3 signs every request with a key pair
+   (or an STS session from an assumed role) and has no bearer token to hold; an adapter handed the
+   wrong scheme refuses at construction. Which of the two an S3 connection uses is decided by where
+   the bucket lives (Decision #314):
+   - **An AWS bucket (no `endpoint`) is reached only by cross-account role assumption.**
+     `config.roleArn` names an IAM role in the customer's account. Its trust policy names Projective's
+     AWS account with the condition `sts:ExternalId = projective-{user_connection_id}`
+     (`s3ExternalIdOf`). That id is derived and immutable and never typed by the customer, which
+     guards against the confused deputy.
+   - **The platform principal (`S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY`) has no bucket access of
+     its own.** It signs one STS `AssumeRole` call (regional `sts.{region}.amazonaws.com`,
+     `DurationSeconds=3600`, `RoleSessionName=projective-{connection id}`). Every bucket request is
+     then signed with the temporary credentials returned.
+   - **Sessions are cached in-process per connection and role.** A cached session is reused only
+     while at least 60 s remain for a request, and 16 min for a pre-signed download, so a 15-minute
+     URL never outlives its session. Concurrent callers share one call, and a failure is never
+     cached.
+   - **A stored key pair on an AWS connection is refused (`misconfigured`), never used**, so a
+     customer's long-lived AWS secret never enters the vault.
+   - **An S3-compatible endpoint (R2, MinIO, B2, Wasabi) signs with the key pair sealed in
+     `integrations.connection_secrets` and names no role.** None of those services has STS. The
+     schema refines `roleArn` to be present exactly when `endpoint` is absent.
+   - **Failures:** a role that does not trust Projective is `misconfigured`; a refused or absent
+     platform principal is `unavailable`, and S3-compatible connections keep working.
+6. **A cursor is never a URL the server will follow.** Graph pages by a full `@odata.nextLink`; echoed
+   back from a client, a URL would let a forged cursor carry the person's bearer token to any host. The
+   OneDrive cursor is the link's PATH, followed only against Graph's fixed origin and only into a drive
+   path. Every other cursor is an opaque token sent as a parameter. A token longer than the browse
+   contract's 600 characters is refused, never cut.
+7. **A custom S3 endpoint is a server-side fetch to a host a person chose, so it is pinned**
+   (Decision #314, closing #313 (d)). It must be `https:` and not a local name or a private literal.
+   Before every request its hostname is resolved, and the request is refused if any answer is
+   private. The request then goes over a connection opened to the checked address:
+   `StorageNet.pinned`, backed by `link-fetch.ts`'s `pinnedRequest`, the same `Deno.connect` +
+   `Deno.startTls` socket the link scanner uses (`exchange()`). On that socket:
+   - TLS is verified against the hostname.
+   - Redirects are returned, never followed.
+   - Chunked bodies are decoded.
+   - One 15 s deadline covers the whole request.
+   - The body is capped at `PINNED_RESPONSE_MAX_BYTES` (4 MiB); a larger answer is refused, not cut.
+
+   An IP-literal endpoint connects to that literal. AWS's own hostnames use ordinary `fetch`.
+   Their `region` (partitions aws / aws-cn / aws-us-gov) and `bucket` are validated as names, so
+   a config cannot rewrite the host. Before #314 a bucket such as `evil.example#` would have sent
+   a signed request, session token included, to `evil.example`. Redirects are never followed for
+   any provider.
 
 Mounted rows are **read-only in the hub, always** (`canManage: false`) and **never consume our quota**
-— the provider meters them. The hub shows a connected drive so a person can find and attach what they
-already have, not so it becomes a second write path into someone else's system of record, where a
-rename here would silently rename a file their whole team depends on.
+— the provider meters them. Both are enforced where the row is drawn, not only promised: every
+connector row an adapter returns carries `canManage: false`, and the registry projections
+(`services/files/asset-row.ts` `toAssetItem` / `toAssetFolder`, `projects/live-files.ts`,
+`messaging/live-workspace.ts`) refuse it for any `isMountedSource` row whoever owns it; quota counts
+`source = 'supabase'` only (`files.fn_recompute_usage`, `fn_check_storage_quota`). Since
+Decision #314 the write side holds the same line: `moveAssets` / `removeAssets` / `setVisibility`
+(`services/files/live-library-writes.ts`) act only on `MANAGED_SOURCES` rows, and the database
+guards refuse a client's rename, move, re-share or re-owning of a mounted item or folder, any
+client-inserted mount, any client row filed under a mounted folder, and any client hard delete
+(`files.fn_guard_pipeline_columns`, `files.fn_guard_folder_columns`, `files.fn_guard_hard_delete`),
+so a mount is written by the connector service as the service role. The hub UI withholds every write
+affordance on such a row by absence (Decision #311). The hub shows a connected drive so a person can
+find and attach what they already have, not so it becomes a second write path into someone else's
+system of record, where a rename here would silently rename a file their whole team depends on.
+When browsing is wired, a connector location is addressed by the provider's opaque `folderId` (an S3
+prefix included), never by splitting it into `/files/*` segments: those segments are the hub's own
+folder names, each percent-encoded independently (`ROUTING.md`), and a prefix holding `/` would read
+back as a different tree.
 
 #### Link ingest is the most dangerous path, and it is gated shut
 
@@ -1614,6 +1701,18 @@ every viewer's IP to a host the link's author chose. Verdicts are cached per URL
 24 h, unscannable 10 min) and concurrent scans of one URL share one promise. The verdict axis keeps
 `unscannable` distinct from `suspicious`: *"we could not reach it"* is not *"we found something"*.
 Pinned by `link-scan.test.ts` (guards, rebinding, redirects, caps, deadline, favicon).
+
+**The client never writes the verdict (Decision #314).** `attachLink` inserts the link under the
+caller's session as `pending`, with no scan time, favicon, title or description. The **service role**
+then writes the scan's verdict and what it read from the page onto that still-`pending` row.
+`files.fn_guard_pipeline_columns` refuses a client INSERT of any other shape and a client UPDATE of any
+of those columns, so a direct PostgREST call cannot assert `safe`. Until the verdict is `safe`, every
+open of a stored link goes through the `/exit` interstitial: `externalLinkHref`
+(`@projective/types/links`), applied on every files surface by `linkHref(file)`
+(`features/projects/components/preview/preview-model.ts`). That covers the hub, the asset picker,
+the public share page, the preview modal's "Open link" and the channel grids' new-tab. A row the
+server write never reached reads `pending` and stays behind `/exit`, which rescans on a signed-in
+visit.
 
 #### The token vault
 
@@ -1921,8 +2020,9 @@ Every write returns the RE-READ console so an island adopts the server's state. 
   `role` is `admin` for the owner/admin presets, else `member`. After a switch the caller refreshes
   the session so the new claims are minted. The `/wallet?w=` scope stays a page-local view filter,
   distinct from this switch.
-- **Calendar and a team's Catalogue are other domains' reads over the console's own facts (Decision
-  #308).** The `[module]` route handler reads them server-side only for the module that shows one
+- **Calendar is another domain's read over the console's own facts (Decision #308); a team's
+  Catalogue is the catalogue surface itself, scoped to the team (Decision #312).** The `[module]`
+  route handler reads the Calendar server-side only for the module that shows one
   (`features/workspaces/core/workspace-ssr.ts`), from the detail it already resolved — never from a
   request. **Calendar** (both kinds): `ScheduleBackendService.entityCalendar({ projectIds, ref, title },
   actor)` reads each of the detail's projects (a team's also its engagements' projects, capped at 40,
@@ -1933,13 +2033,25 @@ Every write returns the RE-READ console so an island adopts the server's state. 
   false`. A project the viewer cannot see is absent; a project whose read fails fails the page (503),
   never a silently partial grid. A write on one of its events (RSVP, reschedule) is addressed to the
   event's own project scope, so the server re-resolves it exactly as on the project calendar.
-  **Catalogue** (team only): `CatalogueBackendService.list` is scoped by the actor's ACTING context,
-  so the resolver re-scopes the actor to the team (`contextType: "team"`, `contextId` = the team)
-  for that one read — only after the detail resolved (membership is the database's answer) and the
-  registry lets the viewer open the module (`publish_listings`). The token is unchanged, so RLS stays
-  authoritative (`catalogue.listings` admits an active member of the owning team). Editing and
-  creating stay on `/catalogue`, which resolve the seller from the acting context, so the module
-  offers them only to a member acting as the team and offers anyone else the acting switch.
+  **Catalogue** (team only, Decision #312): `/teams/:teamHandle/catalogue`, `…/:slug` and
+  `…/:slug/simulate` are static routes that re-export the `/catalogue` controllers. Every catalogue
+  read and write scopes and checks ownership by the actor's context (`listing-scope.ts`
+  `actingTeam`, `ownership.ts` `ownsListing`), so the team surface re-scopes the actor to the team
+  (`teamSellerActor` in `workspace-ssr.ts`: `contextType: "team"`, `contextId` = the team), whatever
+  context the session acts in, and only after the detail resolved (membership is the database's
+  answer) and the registry lets the viewer open the Catalogue (`publish_listings`). Pages decide this
+  through the team console's own `routeConsole` (`features/catalogue/core/seller-scope.ts`
+  `routeSellerScope`: a non-canonical handle 308s with the path below the catalogue root kept, a
+  withheld module 303s, a non-member 303s to the roster notice); the bands through the request
+  memo (`pathSellerScope`); and every `/api/catalogue/*` route through `apiSellerActor`, which honours
+  `?team=<handle>` only once `WorkspaceBackendService.detail` answers for the caller and the gate
+  holds — a 401 stays a 401 so the client refreshes the session, a missing team and a non-member are
+  one 404, a member without `publish_listings` a 403. The client adds `?team=` to every catalogue
+  call a team page makes (`features/catalogue/core/api-scope.ts`, read from the tab's address at
+  call time, the editor's beacon and the simulation's slot read included). The team is a hint the
+  server verifies, never an identity: the token is unchanged, so RLS stays authoritative, and a
+  listing write still answers to `catalogue.listings`' policies (an UPDATE only by the listing's
+  creator).
 
 Refusals follow one convention: an RPC raises `22023 '<field>: <reason>'`, which the service maps to
 a 422 with `fieldErrors[field]`; `42501` → 403, `P0002` → 404, `23505` / `55000` → 409, `23514` →
@@ -3496,14 +3608,20 @@ ZOOM_WEBHOOK_SECRET=XXXX-XXXX
 
 # Storage connectors (asset management) — each is a SEPARATE consent from sign-in and from the
 # calendar/conferencing grants above. Google Drive reuses GOOGLE_INTEGRATION_* (one connection,
-# two capabilities: `storage` + `calendar`); the rest need their own app credentials.
+# two capabilities: `storage` + `calendar`); OneDrive / SharePoint reuses MICROSOFT_INTEGRATION_*
+# (the same Entra app, consenting to `Files.Read.All`); the rest need their own app credentials.
+# FRAMEIO_* is an Adobe Developer Console OAuth credential — the V4 API authorizes through Adobe IMS,
+# and the legacy developer.frame.io app stops working on 2026-12-01 (Decision #313).
 DROPBOX_CLIENT_ID=XXXX-XXXX
 DROPBOX_CLIENT_SECRET=XXXX-XXXX
 FRAMEIO_CLIENT_ID=XXXX-XXXX
 FRAMEIO_CLIENT_SECRET=XXXX-XXXX
-# S3-compatible (AWS S3, R2, B2, MinIO …) — the one connector with NO authorization server, so the
-# credential is a static key pair. Endpoint / region / bucket / prefix are NOT secrets and are stored
-# per connection in integrations.user_connections.config, never here.
+# S3 — the PLATFORM principal (Decision #314). It holds no bucket access of its own: it only signs
+# sts:AssumeRole into a customer's role (AWS buckets; external id `projective-{connection id}`), so its
+# IAM policy should allow sts:AssumeRole and nothing else. An S3-compatible endpoint (R2, B2, MinIO …)
+# signs with its own key pair from integrations.connection_secrets instead. XXXX-XXXX = absent: AWS
+# buckets answer `unavailable`. Endpoint / region / bucket / prefix / roleArn are NOT secrets and are
+# stored per connection in integrations.user_connections.config, never here.
 S3_ACCESS_KEY_ID=XXXX-XXXX
 S3_SECRET_ACCESS_KEY=XXXX-XXXX
 

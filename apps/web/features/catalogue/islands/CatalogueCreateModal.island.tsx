@@ -103,9 +103,10 @@ export default function CatalogueCreateModal(props: CatalogueCreateModalProps): 
 		});
 		submitting.value = false;
 		if (res.ok && res.data) {
+			const team = consoleUrl.peek().team;
 			closeCreate();
 			globalThis.location.assign(
-				workspaceHref(res.data.listing.id, { tab: "edit", section: "media" }),
+				workspaceHref(res.data.listing.id, { team, tab: "edit", section: "media" }),
 			);
 			return;
 		}

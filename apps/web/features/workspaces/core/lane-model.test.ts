@@ -41,6 +41,31 @@ interface SwitchCopy {
 	busyLabel: string;
 }
 
+interface CatalogueZone {
+	row: HubRow;
+	team: string;
+	listing: string | null;
+	current: boolean;
+	createLabel: string;
+	createInPlace: boolean;
+	createHref: string;
+	canCreate: boolean;
+}
+
+interface LaneListing {
+	id: string;
+	title: string;
+	kind: "service" | "product";
+	status: "draft" | "published" | "paused" | "archived";
+	cover: string | null;
+	needsAttention: boolean;
+}
+
+interface LaneListings {
+	items: LaneListing[];
+	total: number;
+}
+
 interface Zones {
 	header:
 		| { mode: "roster"; title: string; meta: Meta[] }
@@ -55,6 +80,7 @@ interface Zones {
 		| {
 			mode: "console";
 			sections: { id: string; label: string; rows: HubRow[] }[];
+			catalogue: CatalogueZone | null;
 			channels: {
 				label: string;
 				base: string;
@@ -109,6 +135,7 @@ type ConsoleInput = {
 	module: string | null;
 	subView: string | null;
 	channel?: string | null;
+	listing?: string | null;
 };
 
 interface LaneModelApi {
@@ -153,6 +180,13 @@ interface LaneModelApi {
 		membersHref: string | null;
 	}): SearchGroup[] | null;
 	SEARCH_GROUP_LIMIT: number;
+	laneListingsOf(page: { items: readonly Record<string, unknown>[]; total: number }): LaneListings;
+	laneListingRows(listings: LaneListings, zone: CatalogueZone): {
+		rows: (LaneListing & { href: string; active: boolean; state: string | null })[];
+		more: { label: string; href: string } | null;
+	};
+	LANE_LISTING_LIMIT: number;
+	LANE_LISTING_PARAMS: { type?: string; status?: string[]; sort?: string; limit?: number };
 }
 
 const lane = await importWithoutGlyphs<LaneModelApi>("./lane-model.ts");
@@ -197,10 +231,31 @@ function consoleViews(zones: Zones): Extract<Zones["views"], { mode: "console" }
 	return zones.views;
 }
 
-/** Every hub row a console lane draws, in lane order, then the footer's Settings. */
+/** Every hub row a console lane draws, in lane order — Catalogue's title included — then Settings. */
 function allRows(zones: Zones): HubRow[] {
-	const rows = consoleViews(zones).sections.flatMap((s) => s.rows);
+	const views = consoleViews(zones);
+	const rows = views.sections.flatMap((s) => s.rows);
+	if (views.catalogue) rows.push(views.catalogue.row);
 	return zones.footer.settings ? [...rows, zones.footer.settings] : rows;
+}
+
+/** A team console's Catalogue zone, asserted present. */
+function catalogueOf(zones: Zones): CatalogueZone {
+	const zone = consoleViews(zones).catalogue;
+	assert(zone, "the team console has no Catalogue section");
+	return zone;
+}
+
+function listing(overrides: Partial<LaneListing> = {}): LaneListing {
+	return {
+		id: "svc-brand-sprint",
+		title: "Brand sprint",
+		kind: "service",
+		status: "published",
+		cover: null,
+		needsAttention: false,
+		...overrides,
+	};
 }
 
 function roster(overrides: Partial<RosterInput> = {}): RosterInput {
@@ -383,7 +438,7 @@ Deno.test("lane: a withheld create leaves the plan's reason in its place, and on
 	}
 });
 
-Deno.test("lane (#306, #307): a team console is Core operations · Governance · Channels, Settings in the footer", () => {
+Deno.test("lane (#306, #307, #316): a team console is Core operations · Governance · Catalogue · Channels, Settings in the footer", () => {
 	const zones = lane.laneZones(inConsole());
 	const views = consoleViews(zones);
 	assertEquals(views.sections.map((s) => [s.id, s.label]), [
@@ -395,7 +450,12 @@ Deno.test("lane (#306, #307): a team console is Core operations · Governance ·
 		["projects", "Projects"],
 		["calendar", "Calendar"],
 		["files", "Files"],
-		["catalogue", "Catalogue"],
+	]);
+	const catalogue = catalogueOf(zones);
+	assertEquals([catalogue.row.key, catalogue.row.label, catalogue.row.href], [
+		"catalogue",
+		"Catalogue",
+		"/teams/north-loop/catalogue",
 	]);
 	assertEquals(views.sections[1].rows.map((r) => [r.key, r.label]), [
 		["roster", "Members"],
@@ -476,11 +536,125 @@ Deno.test("lane (#306): the row of the module being rendered is the active one",
 	assertEquals(consoleViews(channel).activeHub, null);
 	assertEquals(consoleViews(channel).channels?.active, "general");
 	assertEquals(allRows(channel).filter((r) => r.active), []);
+
+	for (const slug of [null, "svc-brand-sprint"]) {
+		const zones = lane.laneZones(inConsole({ module: "catalogue", listing: slug }));
+		assertEquals(consoleViews(zones).activeHub, "catalogue");
+		assertEquals(allRows(zones).filter((r) => r.active).map((r) => r.key), ["catalogue"]);
+	}
 });
 
 Deno.test("lane (#306): an archived entity offers no New channel", () => {
 	const views = consoleViews(lane.laneZones(inConsole({ status: "archived" })));
 	assertEquals(views.channels?.canCreate, false);
+});
+
+Deno.test("lane (#316): only a team member holding the catalogue gate gets the Catalogue section", () => {
+	assertEquals(
+		consoleViews(lane.laneZones(inConsole({ kind: "business", handle: "acme" }))).catalogue,
+		null,
+	);
+	assertEquals(consoleViews(lane.laneZones(inConsole({ capabilities: MEMBER }))).catalogue, null);
+	assertEquals(
+		consoleViews(lane.laneZones(inConsole({ capabilities: ["publish_listings"] }))).catalogue?.team,
+		"north-loop",
+	);
+	for (const capabilities of [OWNER, NO_INVITE, MEMBER, ["publish_listings"] as const]) {
+		const zones = lane.laneZones(inConsole({ capabilities }));
+		assertEquals(
+			consoleViews(zones).catalogue !== null,
+			mayViewModule("catalogue", "team", capabilities),
+			"the section and the module gate disagree",
+		);
+	}
+});
+
+Deno.test("lane (#316): on the console the title is the current page and + opens the modal in place", () => {
+	const zone = catalogueOf(lane.laneZones(inConsole({ module: "catalogue", listing: null })));
+	assertEquals(zone.current, true);
+	assertEquals(zone.listing, null);
+	assertEquals(zone.createInPlace, true);
+	assertEquals(zone.createLabel, "New listing");
+	assertEquals(zone.canCreate, true);
+});
+
+Deno.test("lane (#316): off the console + links to the console with the create modal open", () => {
+	for (
+		const input of [
+			inConsole(),
+			inConsole({ module: "members" }),
+			inConsole({ module: "catalogue", listing: "svc-brand-sprint" }),
+		]
+	) {
+		const zone = catalogueOf(lane.laneZones(input));
+		assertEquals(zone.current, false);
+		assertEquals(zone.createInPlace, false);
+		assertEquals(zone.createHref, "/teams/north-loop/catalogue?create=1");
+	}
+	const onListing = catalogueOf(
+		lane.laneZones(inConsole({ module: "catalogue", listing: "svc-brand-sprint" })),
+	);
+	assertEquals(onListing.listing, "svc-brand-sprint");
+	assertEquals(
+		catalogueOf(lane.laneZones(inConsole({ module: "overview", listing: "svc-brand-sprint" })))
+			.listing,
+		null,
+		"a listing slug off the catalogue marks nothing",
+	);
+});
+
+Deno.test("lane (#316): an archived team offers no New listing", () => {
+	assertEquals(catalogueOf(lane.laneZones(inConsole({ status: "archived" }))).canCreate, false);
+});
+
+Deno.test("lane (#316): the section reads the console's resting statuses, newest first, one lane's worth", () => {
+	assertEquals(lane.LANE_LISTING_PARAMS, {
+		type: "all",
+		status: ["draft", "published", "paused"],
+		sort: "recent",
+		limit: lane.LANE_LISTING_LIMIT,
+	});
+});
+
+Deno.test("lane (#316): a catalogue page projects to the lane's first page and the console's total", () => {
+	const items = Array.from({ length: lane.LANE_LISTING_LIMIT + 5 }, (_, i) => ({
+		...listing({ id: `svc-item-${i}`, title: `Item ${i}` }),
+		price: { kind: "fixed" },
+		updatedLabel: "Edited today",
+	}));
+	const listings = lane.laneListingsOf({ items, total: 41 });
+	assertEquals(listings.total, 41);
+	assertEquals(listings.items.length, lane.LANE_LISTING_LIMIT);
+	assertEquals(listings.items[0], listing({ id: "svc-item-0", title: "Item 0" }));
+});
+
+Deno.test("lane (#316): listing rows link into the team's item workspace, the rendered one marked", () => {
+	const zone = catalogueOf(
+		lane.laneZones(inConsole({ module: "catalogue", listing: "prd-type-kit" })),
+	);
+	const { rows, more } = lane.laneListingRows({
+		items: [
+			listing(),
+			listing({ id: "prd-type-kit", title: "Type kit", kind: "product", status: "draft" }),
+			listing({ id: "svc-retainer", title: "Retainer", status: "paused", needsAttention: true }),
+		],
+		total: 3,
+	}, zone);
+	assertEquals(rows.map((r) => [r.href, r.active, r.state]), [
+		["/teams/north-loop/catalogue/svc-brand-sprint", false, null],
+		["/teams/north-loop/catalogue/prd-type-kit", true, "Draft"],
+		["/teams/north-loop/catalogue/svc-retainer", false, "Paused"],
+	]);
+	assertEquals(rows[2].needsAttention, true);
+	assertEquals(more, null);
+});
+
+Deno.test("lane (#316): a catalogue larger than the lane hands the rest to the console", () => {
+	const zone = catalogueOf(lane.laneZones(inConsole()));
+	const { rows, more } = lane.laneListingRows({ items: [listing()], total: 34 }, zone);
+	assertEquals(rows.length, 1);
+	assertEquals(more, { label: "View all 34 listings", href: "/teams/north-loop/catalogue" });
+	assertEquals(lane.laneListingRows({ items: [], total: 0 }, zone), { rows: [], more: null });
 });
 
 Deno.test("lane: the console header carries Back, the lifecycle Tag and the kebab; the search opens Z2", () => {
@@ -902,6 +1076,8 @@ Deno.test("lane: each zone's controls render inside their own zone, emitted in l
 		LaneIconButton: ["views", "context"],
 		HubList: ["views"],
 		ChannelList: ["views"],
+		CatalogueList: ["views"],
+		CatalogueAddButton: ["views"],
 		LaneSearchResults: ["views"],
 		ChannelCreateDialog: ["views"],
 		ContextZone: ["context"],
@@ -932,6 +1108,12 @@ Deno.test("lane: each zone's controls render inside their own zone, emitted in l
 	assert(
 		consoleViews.indexOf("<ChannelList") > consoleViews.indexOf("views.sections.map("),
 		"Channels is not the console lane's last section",
+	);
+	const catalogueAt = consoleViews.indexOf("<CatalogueList");
+	assert(
+		catalogueAt > consoleViews.indexOf("views.sections.map(") &&
+			catalogueAt < consoleViews.indexOf("<ChannelList"),
+		"Catalogue is not between the hub sections and Channels",
 	);
 	// Outside the cases only the zone components' own definitions may draw (the sections' builder, the
 	// footer rigs' collapse toggle, acting pill and utilities): no zone control rides in the wrapper.

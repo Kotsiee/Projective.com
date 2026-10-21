@@ -4,18 +4,19 @@ import { useSignal, useSignalEffect } from "@preact/signals";
 import "../styles/workspace.css";
 import { Button } from "@projective/ui/fields";
 import { Icon, type IconName } from "@projective/ui/icons";
-import { ActionCelebration, Tooltip, useActionCelebration } from "@projective/ui/feedback";
-import { motionReduced } from "@projective/ui/display";
 import {
-	consoleHref,
-	type EditSection,
-	type ListingStatus,
-	workspaceHref,
-} from "../types/catalogue-types.ts";
+	ActionCelebration,
+	SaveStatus,
+	Tooltip,
+	useActionCelebration,
+} from "@projective/ui/feedback";
+import { consoleHref, type ListingStatus, workspaceHref } from "../types/catalogue-types.ts";
 import { ListingRemovalDialog, type RemovalKind } from "../components/ListingRemovalDialog.tsx";
-import { sectionDomId } from "../components/edit/EditSectionFrame.tsx";
+import { goToSection } from "../components/edit/EditSectionFrame.tsx";
 import { CatalogueService } from "../core/CatalogueService.ts";
+import { pageCatalogueTeam } from "../core/api-scope.ts";
 import {
+	autoSaveEnabled,
 	conflictPrompt,
 	draft,
 	flush,
@@ -25,17 +26,15 @@ import {
 	retry,
 	savedAt,
 	saveState,
-	setWorkspaceUrl,
+	setAutoSave,
 	statusBusy,
 	workspaceReady,
-	workspaceUrl,
 } from "../core/workspace-store.ts";
 import {
 	readinessSentence,
 	type SaveAction,
 	saveLabel,
 	type SaveState,
-	sectionHeadingId,
 } from "../core/workspace-model.ts";
 import { firstMissingSection } from "../core/readiness-items.ts";
 
@@ -79,24 +78,6 @@ function publishIcon(status: ListingStatus): IconName {
 	return status === "paused" ? "play" : "send";
 }
 
-function reveal(section: EditSection): void {
-	document.getElementById(sectionDomId(section))?.scrollIntoView({
-		block: "start",
-		behavior: motionReduced() ? "auto" : "smooth",
-	});
-	document.getElementById(sectionHeadingId(section))?.focus({ preventScroll: true });
-}
-
-function goToSection(section: EditSection): void {
-	if (workspaceUrl.peek().tab === "edit") {
-		setWorkspaceUrl({ section }, "replace");
-		reveal(section);
-		return;
-	}
-	setWorkspaceUrl({ tab: "edit", section }, "push");
-	setTimeout(() => requestAnimationFrame(() => reveal(section)), 0);
-}
-
 function RigIcon(props: {
 	label: string;
 	icon: IconName;
@@ -125,9 +106,9 @@ function RigIcon(props: {
 
 /**
  * ListingActionRig — the workspace's middle-nav FOOTER band (Decision #304, amending #220). At the
- * start, the save status in the meta register: a pip and "Saved · 2s ago" · "Saving…" · "Unsaved
- * changes" · "Couldn't save" · "Offline · not saved", with Save now, Retry or Resolve beside it; a
- * lifecycle outcome replaces the text for a few seconds. At the end, the secondaries as neutral
+ * start, the shared {@link SaveStatus}: the Auto-save switch, then a pip and "Saved · 2s ago" ·
+ * "Saving…" · "Unsaved changes" · "Couldn't save" · "Offline · not saved", with Save now, Retry or
+ * Resolve beside it; a lifecycle outcome replaces the text for a few seconds. At the end, the secondaries as neutral
  * outlined circles, each with a portal Tooltip — Duplicate, Delete (only while no buyer has engaged,
  * #221), Archive, and Pause while live — then Publish, the one filled commit, icon and text.
  *
@@ -194,7 +175,7 @@ export default function ListingActionRig(props: ListingActionRigProps): JSX.Elem
 		deleting.value = true;
 		const res = await CatalogueService.remove(props.slug);
 		if (res.ok) {
-			globalThis.location.assign(consoleHref({}));
+			globalThis.location.assign(consoleHref({ team: pageCatalogueTeam() }));
 			return;
 		}
 		deleting.value = false;
@@ -206,7 +187,7 @@ export default function ListingActionRig(props: ListingActionRigProps): JSX.Elem
 		await flush();
 		const res = await CatalogueService.duplicate(props.slug);
 		if (res.ok && res.data) {
-			globalThis.location.assign(workspaceHref(res.data.listing.id, {}));
+			globalThis.location.assign(workspaceHref(res.data.listing.id, { team: pageCatalogueTeam() }));
 			return;
 		}
 		duplicating.value = false;
@@ -266,20 +247,21 @@ export default function ListingActionRig(props: ListingActionRigProps): JSX.Elem
 
 	return (
 		<div class="cat-ws-rig">
-			<p class="cat-ws-rig__status">
-				<span class="cat-ws-rig__pip" data-state={pip} aria-hidden="true" />
-				<span class="cat-ws-rig__text" aria-hidden="true">{shown.value ?? label.text}</span>
-				{saveAction && (
-					<button
-						type="button"
-						class="cat-ws-rig__link"
-						onClick={() => runSaveAction(saveAction)}
-					>
-						{ACTION_LABEL[saveAction]}
-					</button>
-				)}
-			</p>
-			<span class="ui-visually-hidden" role="status">{shown.value ?? ANNOUNCE[state]}</span>
+			<SaveStatus
+				state={pip}
+				text={shown.value ?? label.text}
+				announce={shown.value ?? ANNOUNCE[state]}
+				actions={saveAction
+					? [{ label: ACTION_LABEL[saveAction], onAction: () => runSaveAction(saveAction) }]
+					: []}
+				autoSave={{
+					value: autoSaveEnabled,
+					onChange: setAutoSave,
+					hint: autoSaveEnabled.value
+						? "Auto-save is on — edits save as you type"
+						: "Auto-save is off — save with Save now",
+				}}
+			/>
 			<span class="ui-visually-hidden" id={GATE_ID} data-ready={open ? "true" : undefined}>
 				{readinessSentence(missing)}
 			</span>

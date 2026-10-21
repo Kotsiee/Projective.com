@@ -14,7 +14,9 @@ import type {
  * catalogue-ssr — the server-only bootstraps for the Catalogue surface's first paint. They call the fat
  * {@link CatalogueBackendService} directly (no HTTP hop), as the signed-in seller, so the console, the
  * lane and the header and footer bands ship their first page in the initial byte; the islands then
- * refine via the thin `CatalogueService`. Never imported by an island.
+ * refine via the thin `CatalogueService`. On a team catalogue the actor is the team's
+ * (`seller-scope.ts`, Decision #312), so the memo keys on the context as well as the user. Never
+ * imported by an island.
  *
  * A read that fails is reported as a failure (`error`), never as an empty catalogue: "you have no
  * listings" is a claim about the seller's work, and a false one when the truth is that it could not be
@@ -101,7 +103,7 @@ export function resolveCataloguePage(
 	actor: ReadActor,
 	params: CatalogueListParams = {},
 ): Promise<CatalogueBootstrap> {
-	return once(url, `page|${actor.userId}|${JSON.stringify(params)}`, async () => {
+	return once(url, `page|${actor.userId}|${actor.contextId}|${JSON.stringify(params)}`, async () => {
 		const res = await CatalogueBackendService.list(params, actor, context.displayCurrency);
 		return {
 			page: res.ok && res.data ? res.data.page : EMPTY_PAGE,
@@ -120,7 +122,7 @@ export interface ListingRead {
 
 /** Resolve a single listing's editable detail (the manage page), as the acting seller. */
 export function resolveListing(id: string, url: URL, actor: ReadActor): Promise<ListingRead> {
-	return once(url, `listing|${actor.userId}|${id}`, async () => {
+	return once(url, `listing|${actor.userId}|${actor.contextId}|${id}`, async () => {
 		const res = await CatalogueBackendService.detail(id, actor);
 		if (res.ok && res.data) return { listing: res.data.listing, error: null };
 		return {

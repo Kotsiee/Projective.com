@@ -477,6 +477,15 @@ export interface LaneSectionProps {
 	action?: ComponentChildren;
 	/** Live-state dot when something inside is unread (§D.1 — a dot, never a count). */
 	hasUnread?: boolean;
+	/**
+	 * The section's own page. The title becomes a link to it and the chevron a separate toggle, so
+	 * following the title never folds the section and folding it never navigates.
+	 */
+	href?: string;
+	/** With `href`: the section's page is the one being rendered (`aria-current="page"`). */
+	current?: boolean;
+	/** With `href`: the chevron toggle's accessible name (default "<label> contents"). */
+	toggleLabel?: string;
 	children: ComponentChildren;
 }
 
@@ -484,27 +493,57 @@ export interface LaneSectionProps {
  * LaneSection — one collapsible group of a lane accordion (channels, stages, teams, conversations).
  * Reveals via a `grid-template-rows: 0fr → 1fr` transition so the height animates; the panel stays in
  * the DOM and is marked `inert` while closed, keeping its links out of the tab order and the a11y
- * tree. Reduced motion jumps straight to the final state.
+ * tree. Reduced motion jumps straight to the final state. With `href` the title is a link and only
+ * the chevron toggles.
  */
 export function LaneSection(props: LaneSectionProps): JSX.Element {
 	const panelId = `ui-lane-section-${props.id}`;
+	const title = (
+		<>
+			<span class="ui-lane-section__icon" aria-hidden="true">{props.icon}</span>
+			<span class="ui-lane-section__label">{props.label}</span>
+			{props.hasUnread && (
+				<span class="ui-lane-section__dot" role="status" aria-label="has unread items" />
+			)}
+		</>
+	);
 	return (
 		<div class="ui-lane-section" data-open={props.open ? "true" : undefined}>
-			<div class="ui-lane-section__head">
-				<button
-					type="button"
-					class="ui-lane-section__toggle"
-					aria-expanded={props.open}
-					aria-controls={panelId}
-					onClick={props.onToggle}
-				>
-					<span class="ui-lane-section__chevron" aria-hidden="true">{CHEVRON}</span>
-					<span class="ui-lane-section__icon" aria-hidden="true">{props.icon}</span>
-					<span class="ui-lane-section__label">{props.label}</span>
-					{props.hasUnread && (
-						<span class="ui-lane-section__dot" role="status" aria-label="has unread items" />
+			<div class={cx("ui-lane-section__head", props.href && "ui-lane-section__head--linked")}>
+				{props.href
+					? (
+						<>
+							<button
+								type="button"
+								class="ui-lane-section__toggle ui-lane-section__toggle--chevron"
+								aria-expanded={props.open}
+								aria-controls={panelId}
+								aria-label={props.toggleLabel ?? `${props.label} contents`}
+								onClick={props.onToggle}
+							>
+								<span class="ui-lane-section__chevron" aria-hidden="true">{CHEVRON}</span>
+							</button>
+							<a
+								class="ui-lane-section__link"
+								href={props.href}
+								aria-current={props.current ? "page" : undefined}
+							>
+								{title}
+							</a>
+						</>
+					)
+					: (
+						<button
+							type="button"
+							class="ui-lane-section__toggle"
+							aria-expanded={props.open}
+							aria-controls={panelId}
+							onClick={props.onToggle}
+						>
+							<span class="ui-lane-section__chevron" aria-hidden="true">{CHEVRON}</span>
+							{title}
+						</button>
 					)}
-				</button>
 				{props.action && <span class="ui-lane-section__action">{props.action}</span>}
 			</div>
 			<div

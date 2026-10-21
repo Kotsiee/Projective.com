@@ -1,7 +1,27 @@
+.cat-edit {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	gap: var(--space-7);
+}
+
 .cat-sec-stack {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-8);
+}
+
+.cat-edit .cat-sec-stack {
+	inline-size: 100%;
+	max-inline-size: 44rem;
+	min-inline-size: 0;
+	margin-inline: auto;
+}
+
+@container cat-edit (max-width: 52rem) {
+	.cat-edit {
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-5);
+	}
 }
 
 .cat-sec {

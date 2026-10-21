@@ -11,9 +11,7 @@ import { viewMode } from "../../core/view-state.ts";
 import {
 	listingsBusy,
 	listingsError,
-	NO_QUICK_FILTERS,
 	openCreate,
-	quickFilters,
 	selection,
 	selectionAnchor,
 	setConsoleUrl,
@@ -52,9 +50,8 @@ export interface ListingsCanvasProps {
 }
 
 function isFiltered(state: ConsoleUrlState): boolean {
-	const quick = quickFilters.value;
 	return !!state.search || !isDefaultStatuses(state.status) || state.model.length > 0 ||
-		state.create.length > 0 || quick.attention || quick.promoted || quick.bestSelling;
+		state.create.length > 0 || state.highlights.length > 0;
 }
 
 interface PendingRemoval {
@@ -116,8 +113,13 @@ export function ListingsCanvas({ state, page, error }: ListingsCanvasProps): JSX
 	}
 
 	function clearFilters(): void {
-		quickFilters.value = { ...NO_QUICK_FILTERS };
-		setConsoleUrl({ search: "", status: [...DEFAULT_CONSOLE_STATUSES], model: [], create: [] });
+		setConsoleUrl({
+			search: "",
+			status: [...DEFAULT_CONSOLE_STATUSES],
+			model: [],
+			create: [],
+			highlights: [],
+		});
 	}
 
 	const busy = listingsBusy.value;
@@ -145,6 +147,7 @@ export function ListingsCanvas({ state, page, error }: ListingsCanvasProps): JSX
 				onSelect={onSelect}
 				onAction={requestAction}
 				onReachEnd={() => void loadMore()}
+				team={state.team}
 			/>
 		);
 	} else {
@@ -159,6 +162,7 @@ export function ListingsCanvas({ state, page, error }: ListingsCanvasProps): JSX
 				onAction={requestAction}
 				onReachEnd={() => void loadMore()}
 				loading={listingsLoadingMore.value}
+				team={state.team}
 			/>
 		);
 	}

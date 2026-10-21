@@ -103,6 +103,70 @@
 	transition-duration: var(--dur-press);
 }
 
+.cat-band__progress {
+	display: flex;
+	flex: none;
+	align-items: center;
+	min-inline-size: 0;
+}
+
+.cat-band__progress-button {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: 2rem;
+	padding-inline: var(--space-2);
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	font: inherit;
+	cursor: pointer;
+	transform: scale(1);
+	transition:
+		transform var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.cat-band__progress-button:hover {
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+
+.cat-band__progress-button:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.cat-band__progress-button:not([aria-disabled="true"]):active {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+.cat-band__progress-button[aria-disabled="true"] {
+	cursor: default;
+}
+
+.cat-band__progress-button[aria-disabled="true"]:hover {
+	background: transparent;
+	color: var(--text-secondary);
+}
+
+.cat-band__progress-ring .ui-progress-ring__arc {
+	transition: none;
+}
+
+.cat-band__progress-ring .ui-progress-ring__track {
+	stroke: var(--surface-3);
+}
+
+.cat-band__progress-value {
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	font-variant-numeric: tabular-nums;
+}
+
 .cat-band__tabs.ui-tabmenu {
 	flex: 0 1 auto;
 	min-inline-size: 0;
@@ -178,6 +242,10 @@
 		flex: 1 1 auto;
 		min-inline-size: 7rem;
 	}
+
+	.cat-band__progress-value {
+		display: none;
+	}
 }
 
 @container cat-band (max-width: 36rem) {
@@ -198,7 +266,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.cat-band__action:active {
+	.cat-band__action:active,
+	.cat-band__progress-button:not([aria-disabled="true"]):active {
 		transform: none;
 	}
 
@@ -207,7 +276,8 @@
 	}
 }
 
-:root[data-motion="reduced"] .cat-band__action:active {
+:root[data-motion="reduced"] .cat-band__action:active,
+:root[data-motion="reduced"] .cat-band__progress-button:not([aria-disabled="true"]):active {
 	transform: none;
 }
 

@@ -1,6 +1,5 @@
 import type { ComponentType, JSX } from "preact";
 import { useEffect, useRef } from "preact/hooks";
-import { useSignalEffect } from "@preact/signals";
 import "../../styles/edit-sections.css";
 import {
 	type EditSection,
@@ -8,10 +7,10 @@ import {
 	type ListingDetail,
 	sectionsFor,
 } from "../../types/catalogue-types.ts";
-import { laneOutline } from "../../core/lane-outline.ts";
-import { activeSectionOf, SECTION_LABELS } from "../../core/workspace-model.ts";
-import { setWorkspaceUrl, workspaceUrl } from "../../core/workspace-store.ts";
+import { activeSectionOf } from "../../core/workspace-model.ts";
+import { setWorkspaceUrl, workspaceReady, workspaceUrl } from "../../core/workspace-store.ts";
 import { revealSection, sectionDomId } from "./EditSectionFrame.tsx";
+import { EditSectionNav } from "./EditSectionNav.tsx";
 import { MediaShowcaseSection } from "./MediaShowcaseSection.tsx";
 import { BasicsSection } from "./BasicsSection.tsx";
 import { OfferSection } from "./OfferSection.tsx";
@@ -71,12 +70,17 @@ function whenLaidOut(run: () => void): () => void {
 
 /**
  * EditCanvas — the Edit tab: the listing's sections in page order for its form archetype, one
- * column, separated by spacing. A scroll-spy keeps `?section=` (replaced, never pushed) and the
- * lane's "On this page" outline on the section being read; `?section=` on load scrolls to that
- * section and focuses its heading.
+ * column, separated by spacing, beside the sticky {@link EditSectionNav}. A scroll-spy keeps
+ * `?section=` (replaced, never pushed), and with it the rail's active row, on the section being
+ * read; `?section=` on load scrolls to that section and focuses its heading.
  */
 export function EditCanvas(
-	props: { listing: ListingDetail; restricted: boolean; initialSection?: EditSection },
+	props: {
+		listing: ListingDetail;
+		restricted: boolean;
+		initialSection?: EditSection;
+		team?: string;
+	},
 ): JSX.Element {
 	const { listing } = props;
 	const sections = sectionsFor(
@@ -98,26 +102,6 @@ export function EditCanvas(
 	}, []);
 
 	useEffect(() => {
-		laneOutline.value = {
-			sections: sections.map((id) => ({ id, label: SECTION_LABELS[id] })),
-			active: workspaceUrl.peek().section ?? sections[0] ?? null,
-			onSelect: (id) => {
-				revealSection(id);
-				setWorkspaceUrl({ section: id }, "replace");
-			},
-		};
-		return () => {
-			laneOutline.value = null;
-		};
-	}, [key]);
-
-	useSignalEffect(() => {
-		const active = workspaceUrl.value.section ?? null;
-		const outline = laneOutline.peek();
-		if (outline && active && outline.active !== active) laneOutline.value = { ...outline, active };
-	});
-
-	useEffect(() => {
 		const observer = new IntersectionObserver(() => {
 			if (revealing.current) return;
 			const active = sectionInView(sections);
@@ -132,12 +116,18 @@ export function EditCanvas(
 		return () => observer.disconnect();
 	}, [key]);
 
+	const requested = workspaceReady.value ? workspaceUrl.value.section : props.initialSection;
+	const active = requested && sections.includes(requested) ? requested : sections[0] ?? null;
+
 	return (
-		<div class="cat-sec-stack">
-			{sections.map((section) => {
-				const View = SECTION_VIEWS[section];
-				return <View key={section} listing={listing} restricted={props.restricted} />;
-			})}
+		<div class="cat-edit">
+			<EditSectionNav slug={listing.id} team={props.team} sections={sections} active={active} />
+			<div class="cat-sec-stack">
+				{sections.map((section) => {
+					const View = SECTION_VIEWS[section];
+					return <View key={section} listing={listing} restricted={props.restricted} />;
+				})}
+			</div>
 		</div>
 	);
 }

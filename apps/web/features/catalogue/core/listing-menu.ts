@@ -1,11 +1,10 @@
 import { composeMenu, linkActionItems, type MenuItem } from "@projective/ui/navigation";
-import { listingHref } from "./catalogue-model.ts";
 import type { ListingAction } from "./console-actions.ts";
 import type { ListingSummary } from "../types/catalogue-types.ts";
 
 /**
- * A listing's actions as menu rows: Open in new tab · Copy link (the workspace link; Edit is the plain
- * open), then Edit · Duplicate · View public page
+ * A listing's actions as menu rows: Open in new tab · Copy link (`href`, the workspace link the card
+ * opens; Edit is the plain open), then Edit · Duplicate · View public page
  * (published) · then the lifecycle step (Pause / Publish / Restore to draft) · Archive (not archived)
  * · Delete (only when the server allows it). Archive and Delete go through `onAction`, which is the
  * canvas's `requestAction`, so both confirm before anything runs.
@@ -13,6 +12,7 @@ import type { ListingSummary } from "../types/catalogue-types.ts";
 export function listingMenu(
 	listing: ListingSummary,
 	onAction: (action: ListingAction, listing: ListingSummary) => void,
+	href: string,
 ): MenuItem[] {
 	const run = (action: ListingAction) => () => onAction(action, listing);
 	const rows: MenuItem[] = [
@@ -35,7 +35,7 @@ export function listingMenu(
 		rows.push({ label: "Delete", icon: "trash", danger: true, command: run("delete") });
 	}
 	const links = linkActionItems({
-		href: listingHref(listing.id),
+		href,
 		title: listing.title,
 		include: ["open-new-tab", "copy-link"],
 	});

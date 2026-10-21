@@ -5,7 +5,7 @@ import {
 	type AssetMetadata,
 	AssetMetadataSchema,
 	type AssetOwnerType,
-	type AssetSource,
+	AssetSource,
 	type AssetVisibility,
 	categoryToKind,
 	describeFile,
@@ -191,18 +191,22 @@ export function bytesOf(raw: number | string | null | undefined): number {
  * being wrong is quiet rather than misleading.
  */
 
-const ASSET_SOURCES: ReadonlySet<string> = new Set([
-	"supabase",
-	"google_drive",
-	"dropbox",
-	"frameio",
-	"s3",
-	"link",
-]);
+const ASSET_SOURCES: ReadonlySet<string> = new Set(AssetSource.options);
 
 /** Unknown → `supabase`: an asset we cannot place is one of ours until something says otherwise. */
 export function toAssetSource(raw: string | null | undefined): AssetSource {
 	return (raw && ASSET_SOURCES.has(raw) ? raw : "supabase") as AssetSource;
+}
+
+/** The sources a library owns outright — every other source is a mount (Decision #314). */
+export const MANAGED_SOURCES: readonly AssetSource[] = ["supabase", "link"];
+
+/**
+ * A connector source: bytes a third party holds, mounted here by reference. Such a row is read-only in
+ * the hub whoever owns it — a rename here would silently rename a file in someone's system of record.
+ */
+export function isMountedSource(source: AssetSource): boolean {
+	return !MANAGED_SOURCES.includes(source);
 }
 
 const FILE_STATUSES: ReadonlySet<string> = new Set([
@@ -417,9 +421,10 @@ export interface AssetContext {
  * no channel, message or sender provenance.
  *
  * `canManage` is `owner_user_id === viewerId`, exactly the predicate the UPDATE and DELETE policies
- * enforce, so the affordance and the write agree by construction. The share slug is disclosed only to
- * someone who may manage the asset: the slug IS the credential, and handing it to every reader would
- * give them a way to propagate it and no way to revoke it.
+ * enforce, so the affordance and the write agree by construction — and never for a mounted connector
+ * row ({@link isMountedSource}), which is read-only in the hub by product rule. The share slug is
+ * disclosed only to someone who may manage the asset: the slug IS the credential, and handing it to
+ * every reader would give them a way to propagate it and no way to revoke it.
  */
 export function toAssetItem(row: ItemRow, ctx: AssetContext): AssetItem {
 	const rawName = (row.display_name ?? row.original_name ?? "").trim();
@@ -427,7 +432,9 @@ export function toAssetItem(row: ItemRow, ctx: AssetContext): AssetItem {
 	const sizeBytes = bytesOf(row.size_bytes);
 	const createdMs = Date.parse(row.created_at);
 	const created = Number.isNaN(createdMs) ? ctx.now : createdMs;
-	const canManage = ctx.viewerId.length > 0 && row.owner_user_id === ctx.viewerId;
+	const source = toAssetSource(row.source);
+	const canManage = !isMountedSource(source) && ctx.viewerId.length > 0 &&
+		row.owner_user_id === ctx.viewerId;
 	const address = assetAddress(row, kind);
 
 	const item: AssetItem = {
@@ -459,7 +466,7 @@ export function toAssetItem(row: ItemRow, ctx: AssetContext): AssetItem {
 		dateLabel: clamp(fmtDateTime(created), 28),
 		starred: row.starred === true,
 
-		source: toAssetSource(row.source),
+		source,
 		status: toFileStatus(row.status),
 		visibility: toAssetVisibility(row.visibility),
 		ownerType: toAssetOwnerType(row.owner_type),
@@ -494,7 +501,9 @@ export function toAssetFolder(
 	rollup: { itemCount: number; sizeBytes: number },
 	ctx: { viewerId: string; shareSlug: string | null },
 ): AssetFolder {
-	const canManage = ctx.viewerId.length > 0 && row.owner_user_id === ctx.viewerId;
+	const source = toAssetSource(row.source);
+	const canManage = !isMountedSource(source) && ctx.viewerId.length > 0 &&
+		row.owner_user_id === ctx.viewerId;
 	return {
 		id: row.id,
 		name: clampOr(row.name, 200, "Untitled folder"),
@@ -502,8 +511,8 @@ export function toAssetFolder(
 		path: (row.path ?? []).map((s) => clamp(s, 120)).filter((s) => s.length > 0).slice(0, 24),
 		ownerType: toAssetOwnerType(row.owner_type),
 		ownerId: clampOr(ownerIdOf(row), 80, "unknown"),
-		source: toAssetSource(row.source),
-		externalFolderId: row.external_folder_id ? clamp(row.external_folder_id, 200) : null,
+		source,
+		externalFolderId: row.external_folder_id ? clamp(row.external_folder_id, 1024) : null,
 		visibility: toAssetVisibility(row.visibility),
 		itemCount: rollup.itemCount,
 		sizeBytes: rollup.sizeBytes,

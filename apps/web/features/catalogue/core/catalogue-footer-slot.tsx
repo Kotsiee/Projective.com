@@ -4,6 +4,7 @@ import type { ReadActor } from "@server/services/read-actor.ts";
 import CatalogueFooterRig from "../islands/CatalogueFooterRig.island.tsx";
 import ListingActionRig from "../islands/ListingActionRig.island.tsx";
 import { resolveListing } from "./catalogue-ssr.ts";
+import { pathSellerScope } from "./seller-scope.ts";
 import { isListingSlug, publishReadiness } from "../types/catalogue-types.ts";
 
 /**
@@ -18,20 +19,23 @@ import { isListingSlug, publishReadiness } from "../types/catalogue-types.ts";
  *    (Delete only while no buyer has engaged with the listing), which used to sit in a
  *    `position: static` strip at the top of the editor body.
  *
- * Composed after the projects/messaging footer resolvers so exactly one owns the band per URL.
+ * The same two bodies serve `/teams/:handle/catalogue*`, read as the team (Decision #312). Composed
+ * after the projects/messaging footer resolvers and before the workspace one, so exactly one owns
+ * the band per URL.
  */
 export async function catalogueFooterFor(
 	url: URL,
 	_context: UserContext,
 	actor: ReadActor,
 ): Promise<ComponentChildren> {
-	const segs = url.pathname.split("/").filter(Boolean); // ["catalogue", id?]
-	if (segs[0] !== "catalogue") return null;
+	const scope = await pathSellerScope(url, actor);
+	if (!scope) return null;
+	const [id] = scope.rest;
 
-	if (segs.length >= 2) {
-		if (!isListingSlug(segs[1])) return null;
+	if (id !== undefined) {
+		if (!isListingSlug(id)) return null;
 		// The same read the page and the header band make — one query through the request memo.
-		const { listing } = await resolveListing(segs[1], url, actor);
+		const { listing } = await resolveListing(id, url, scope.actor);
 		if (!listing) return null;
 		return (
 			<ListingActionRig

@@ -19,7 +19,6 @@ import {
 } from "@projective/types/projects";
 import type {
 	AssetOwnerType,
-	AssetSource,
 	AssetVisibility,
 	FileCategory,
 	FileStatus,
@@ -35,9 +34,11 @@ import {
 import type { ReadActor } from "../read-actor.ts";
 import {
 	assetAddress,
+	isMountedSource,
 	ITEM_COLUMNS as ASSET_ITEM_COLUMNS,
 	type ItemRow as AssetItemRow,
 	toAssetItem,
+	toAssetSource,
 	withMediaFacts,
 } from "../files/asset-row.ts";
 import {
@@ -345,28 +346,15 @@ function fmtSize(bytes: number): string {
 // #region Enum coercion
 
 /*
- * `files.file_source`, `file_visibility`, `file_status`, `owner_kind` and `file_category` mirror
- * their Zod counterparts member-for-member and in the same order (`00000004_enums_domains.sql` says
- * so explicitly). These coercions are therefore guards against a FUTURE member reaching a client as
- * an unparseable row, not translations — unlike the reconciliations in `./live-support.ts`, where
- * the two vocabularies genuinely disagree today.
+ * `files.file_visibility`, `file_status`, `owner_kind` and `file_category` mirror their Zod
+ * counterparts member-for-member and in the same order (`00000004_enums_domains.sql` says so
+ * explicitly). These coercions are therefore guards against a FUTURE member reaching a client as an
+ * unparseable row, not translations — unlike the reconciliations in `./live-support.ts`, where the
+ * two vocabularies genuinely disagree today. `files.file_source` is coerced by the registry's own
+ * `toAssetSource`, so a new connector is recognised here the moment the enum learns it.
  *
  * Each fallback is chosen so that being wrong is quiet rather than misleading.
  */
-
-const ASSET_SOURCES: ReadonlySet<string> = new Set([
-	"supabase",
-	"google_drive",
-	"dropbox",
-	"frameio",
-	"s3",
-	"link",
-]);
-
-/** Unknown → `supabase`: an asset we cannot place is one of ours until something says otherwise. */
-function toAssetSource(raw: string | null | undefined): AssetSource {
-	return (raw && ASSET_SOURCES.has(raw) ? raw : "supabase") as AssetSource;
-}
 
 const FILE_STATUSES: ReadonlySet<string> = new Set([
 	"pending_upload",
@@ -639,7 +627,8 @@ interface AssemblyContext {
  *    file gives them a way to propagate it outside the project and no way to revoke it. Narrower
  *    than the schema's "present when not private", and deliberately so.
  *  - **`canManage`.** `owner_user_id === viewerId`, which is exactly the predicate the `files.items`
- *    UPDATE and DELETE policies enforce, so the affordance and the write agree by construction.
+ *    UPDATE and DELETE policies enforce, so the affordance and the write agree by construction —
+ *    and never for a mounted connector row, which is read-only in the hub by product rule.
  *  - **`createdAt`.** The MESSAGE's timestamp, not the asset's. `files.items.created_at` is when the
  *    bytes were uploaded and can long predate a re-attachment; the explorer's date column means
  *    "when did this appear in this channel". Siblings of one message therefore share an instant, and
@@ -669,7 +658,9 @@ function toFileItem(
 	// than emitting "Invalid Date" into three label fields.
 	const created = Number.isNaN(createdMs) ? ctx.now : createdMs;
 
-	const canManage = ctx.viewerId.length > 0 && item.owner_user_id === ctx.viewerId;
+	const source = toAssetSource(item.source);
+	const canManage = !isMountedSource(source) && ctx.viewerId.length > 0 &&
+		item.owner_user_id === ctx.viewerId;
 	const stored = toAssetVisibility(item.visibility);
 	const address = assetAddress(item, kind);
 
@@ -717,7 +708,7 @@ function toFileItem(
 			downloadCount: Math.max(0, Math.floor(item.download_count ?? 0)),
 			downloadedByViewer: ctx.downloaded.has(item.id),
 		}),
-		source: toAssetSource(item.source),
+		source,
 		status: toFileStatus(item.status),
 		ownerType: toAssetOwnerType(item.owner_type),
 		folderId: item.folder_id,

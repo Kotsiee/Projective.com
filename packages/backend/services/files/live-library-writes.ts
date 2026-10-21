@@ -17,7 +17,13 @@ import type {
 import { getServiceClient, getUserClient } from "../../core/supabase.ts";
 import { clamp } from "../../core/text.ts";
 import type { ReadActor } from "../read-actor.ts";
-import { FOLDER_COLUMNS, type FolderRow, fmtDateTime, toAssetFolder } from "./asset-row.ts";
+import {
+	FOLDER_COLUMNS,
+	type FolderRow,
+	fmtDateTime,
+	MANAGED_SOURCES,
+	toAssetFolder,
+} from "./asset-row.ts";
 import { canFileInto, type FilesOwner, ownerOfActor, readAsset } from "./live-library.ts";
 import { resolveLinkPreview } from "./link-scan.ts";
 
@@ -29,7 +35,8 @@ import { resolveLinkPreview } from "./link-scan.ts";
  * created it, and only into a library they belong to (`files.fn_owns_library`). What this module adds
  * is the RULES a row policy cannot state — a new folder inherits its parent's privacy, a rename keeps
  * the extension, a move stays inside one library, a delete is a soft delete that also closes the
- * asset's share links — and the refusals in words.
+ * asset's share links, a mounted row is never moved, deleted or re-shared here (it mirrors its
+ * provider, so `canManage` is false on it everywhere) — and the refusals in words.
  *
  * `files.items` INSERT never uses `RETURNING`: its SELECT policy is `files.fn_can_read(id)`, a stable
  * lookup that cannot see a row inserted by the same statement, so a returning insert would be refused
@@ -77,7 +84,7 @@ export async function createFolder(actor: Actor, input: CreateFolder): Promise<R
 	let parent: FolderRow | null = null;
 	if (input.parentId) {
 		const found = await db.from("folders").select(FOLDER_COLUMNS)
-			.eq("id", input.parentId).is("deleted_at", null).maybeSingle();
+			.eq("id", input.parentId).eq("source", "supabase").is("deleted_at", null).maybeSingle();
 		if (found.error && found.error.code !== "22P02") throw new Error(`files.folders read failed: ${found.error.message}`);
 		parent = found.data as unknown as FolderRow | null;
 		if (
@@ -144,7 +151,10 @@ export async function renameAsset(actor: Actor, input: RenameAsset): Promise<Res
 	const { error } = await filesDb(actor).from("items")
 		.update({ display_name: clamp(name, 200) })
 		.eq("id", input.assetId).eq("owner_user_id", actor.userId).is("deleted_at", null);
-	if (error) throw new Error(`files.items update failed: ${error.message}`);
+	if (error) {
+		if (error.code === "42501") return { ok: false, status: 403, message: "You can't rename this file." };
+		throw new Error(`files.items update failed: ${error.message}`);
+	}
 	const renamed = await readAsset(actor, input.assetId);
 	return renamed ? { ok: true, data: renamed, message: "Renamed." } : { ok: false, status: 404, message: "No such file." };
 }
@@ -160,6 +170,7 @@ export async function starAsset(actor: Actor, assetId: string, starred: boolean)
 		.select("id");
 	if (error) {
 		if (error.code === "22P02") return { ok: false, status: 404, message: "No such file." };
+		if (error.code === "42501") return { ok: false, status: 403, message: "You can't star this file." };
 		throw new Error(`files.items star failed: ${error.message}`);
 	}
 	if ((data ?? []).length === 0) return { ok: false, status: 404, message: "Only a file's owner can star it." };
@@ -177,7 +188,7 @@ export async function moveAssets(actor: Actor, input: MoveAssets): Promise<Resul
 	const db = filesDb(actor);
 	if (input.targetFolderId) {
 		const target = await db.from("folders").select("id, owner_type, owner_user_id, owner_entity_id")
-			.eq("id", input.targetFolderId).is("deleted_at", null).maybeSingle();
+			.eq("id", input.targetFolderId).eq("source", "supabase").is("deleted_at", null).maybeSingle();
 		if (target.error && target.error.code !== "22P02") throw new Error(`files.folders read failed: ${target.error.message}`);
 		const t = target.data as { owner_type: FilesOwner["ownerType"]; owner_user_id: string; owner_entity_id: string | null } | null;
 		const targetOwner: FilesOwner | null = t
@@ -190,6 +201,7 @@ export async function moveAssets(actor: Actor, input: MoveAssets): Promise<Resul
 	}
 	let q = db.from("items").update({ folder_id: input.targetFolderId ?? null })
 		.in("id", input.assetIds)
+		.in("source", MANAGED_SOURCES)
 		.eq("owner_user_id", actor.userId)
 		.eq("owner_type", owner.ownerType)
 		.is("deleted_at", null);
@@ -197,6 +209,7 @@ export async function moveAssets(actor: Actor, input: MoveAssets): Promise<Resul
 	const { data, error } = await q.select("id");
 	if (error) {
 		if (error.code === "22P02") return { ok: false, status: 404, message: "Nothing could be moved there." };
+		if (error.code === "42501") return { ok: false, status: 403, message: "Nothing could be moved there." };
 		throw new Error(`files.items update failed: ${error.message}`);
 	}
 	const moved = (data ?? []).length;
@@ -212,9 +225,11 @@ export async function moveAssets(actor: Actor, input: MoveAssets): Promise<Resul
 export async function removeAssets(actor: Actor, input: DeleteAssets): Promise<Result<{ removed: number }>> {
 	const db = filesDb(actor);
 	const { data, error } = await db.from("items").update({ deleted_at: new Date().toISOString() })
-		.in("id", input.assetIds).eq("owner_user_id", actor.userId).is("deleted_at", null).select("id");
+		.in("id", input.assetIds).in("source", MANAGED_SOURCES).eq("owner_user_id", actor.userId)
+		.is("deleted_at", null).select("id");
 	if (error) {
 		if (error.code === "22P02") return { ok: false, status: 404, message: "Nothing could be deleted." };
+		if (error.code === "42501") return { ok: false, status: 403, message: "Nothing could be deleted." };
 		throw new Error(`files.items update failed: ${error.message}`);
 	}
 	const removed = ((data ?? []) as Array<{ id: string }>).map((r) => r.id);
@@ -237,14 +252,18 @@ export async function setVisibility(actor: Actor, input: SetVisibility): Promise
 	let touchedItems: string[] = [];
 	if (input.assetIds.length > 0) {
 		const res = await db.from("items").update({ visibility: input.visibility })
-			.in("id", input.assetIds).eq("owner_user_id", actor.userId).is("deleted_at", null).select("id");
+			.in("id", input.assetIds).in("source", MANAGED_SOURCES).eq("owner_user_id", actor.userId)
+			.is("deleted_at", null).select("id");
+		if (res.error?.code === "42501") return { ok: false, status: 403, message: "Nothing could be changed." };
 		if (res.error && res.error.code !== "22P02") throw new Error(`files.items update failed: ${res.error.message}`);
 		touchedItems = ((res.data ?? []) as Array<{ id: string }>).map((r) => r.id);
 	}
 	let touchedFolders = 0;
 	if (input.folderIds.length > 0) {
 		const res = await db.from("folders").update({ visibility: input.visibility })
-			.in("id", input.folderIds).eq("owner_user_id", actor.userId).is("deleted_at", null).select("id");
+			.in("id", input.folderIds).eq("source", "supabase").eq("owner_user_id", actor.userId)
+			.is("deleted_at", null).select("id");
+		if (res.error?.code === "42501") return { ok: false, status: 403, message: "Nothing could be changed." };
 		if (res.error && res.error.code !== "22P02") throw new Error(`files.folders update failed: ${res.error.message}`);
 		touchedFolders = (res.data ?? []).length;
 	}
@@ -263,8 +282,11 @@ export async function setVisibility(actor: Actor, input: SetVisibility): Promise
  * Store a web link as a first-class asset in a library the caller holds.
  *
  * A link stores no bytes, so it takes a synthesised object address (`link` / its own id) that the
- * registry's one-row-per-object constraint accepts. It is stored as never scanned (`pending`): no
- * reputation feed is configured, and a verdict nobody computed must not be asserted.
+ * registry's one-row-per-object constraint accepts. The caller's session inserts it `pending`, bare
+ * of everything the scan concluded; the scan's verdict, favicon, title and description are then
+ * written by the service role (Decision #314), because a verdict a client could set would launder a
+ * URL past the scan. Until that write lands the link reads `pending`, which every open routes
+ * through `/exit`.
  */
 export async function attachLink(actor: Actor, input: LinkAttach): Promise<Result<AssetItem>> {
 	const owner: FilesOwner = { ownerType: input.ownerType, ownerId: input.ownerId };
@@ -281,7 +303,7 @@ export async function attachLink(actor: Actor, input: LinkAttach): Promise<Resul
 	const db = filesDb(actor);
 	if (input.folderId) {
 		const target = await db.from("folders").select("id, owner_type, owner_user_id, owner_entity_id")
-			.eq("id", input.folderId).is("deleted_at", null).maybeSingle();
+			.eq("id", input.folderId).eq("source", "supabase").is("deleted_at", null).maybeSingle();
 		const t = target.data as { owner_type: string; owner_user_id: string; owner_entity_id: string | null } | null;
 		if (!t || t.owner_type !== owner.ownerType || (t.owner_entity_id ?? t.owner_user_id) !== owner.ownerId) {
 			return { ok: false, status: 404, message: "That folder isn't in this library." };
@@ -303,15 +325,22 @@ export async function attachLink(actor: Actor, input: LinkAttach): Promise<Resul
 		visibility: "private",
 		link_url: preview.url,
 		link_domain: preview.domain,
+		link_scan_status: "pending",
+	});
+	if (error) {
+		if (error.code === "42501") return { ok: false, status: 403, message: DENIED_OWNER };
+		throw new Error(`files.items insert failed: ${error.message}`);
+	}
+	const verdict = await getServiceClient().schema("files").from("items").update({
 		link_title: preview.title,
 		link_description: preview.description,
 		link_favicon_url: preview.faviconUrl,
 		link_scan_status: preview.scanStatus,
 		link_scanned_at: preview.scannedAt,
-	});
-	if (error) {
-		if (error.code === "42501") return { ok: false, status: 403, message: DENIED_OWNER };
-		throw new Error(`files.items insert failed: ${error.message}`);
+	}).eq("id", id).eq("source", "link").eq("owner_user_id", actor.userId)
+		.eq("link_scan_status", "pending");
+	if (verdict.error) {
+		throw new Error(`files.items link verdict write failed: ${verdict.error.message}`);
 	}
 	const item = await readAsset(actor, id);
 	return item ? { ok: true, status: 201, data: item, message: "Link saved." } : { ok: false, status: 503, message: "The link was saved but could not be read back." };

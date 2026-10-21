@@ -431,7 +431,8 @@
 	gap: var(--space-1);
 }
 
-.ui-lane-section__toggle {
+.ui-lane-section__toggle,
+.ui-lane-section__link {
 	flex: 1 1 auto;
 	display: flex;
 	align-items: center;
@@ -443,6 +444,7 @@
 	letter-spacing: var(--tracking-wide);
 	text-transform: uppercase;
 	color: var(--text-secondary);
+	text-decoration: none;
 	background: transparent;
 	border: none;
 	border-radius: var(--radius-sm);
@@ -450,13 +452,34 @@
 	transition: color var(--dur-fast) var(--ease-standard);
 }
 
-.ui-lane-section__toggle:hover {
+.ui-lane-section__toggle:hover,
+.ui-lane-section__link:hover,
+.ui-lane-section__link[aria-current="page"] {
 	color: var(--on-surface);
 }
 
-.ui-lane-section__toggle:focus-visible {
+.ui-lane-section__toggle:focus-visible,
+.ui-lane-section__link:focus-visible {
 	outline: none;
 	box-shadow: none;
+}
+
+.ui-lane-section__head--linked {
+	gap: 0;
+}
+
+.ui-lane-section__toggle--chevron {
+	flex: none;
+	padding-inline-end: var(--space-1);
+}
+
+.ui-lane-section__head--linked > .ui-lane-section__link {
+	min-inline-size: 0;
+	padding-inline-start: var(--space-1);
+}
+
+.ui-lane-section__head--linked > .ui-lane-section__action {
+	margin-inline-start: var(--space-1);
 }
 
 .ui-lane-section__chevron {
@@ -690,6 +713,7 @@
 	.ui-lane-iconbtn,
 	.ui-lane-toggle,
 	.ui-lane-section__toggle,
+	.ui-lane-section__link,
 	.ui-lane-section__chevron,
 	.ui-lane-section__body,
 	.ui-lane-collapse,

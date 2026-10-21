@@ -43,9 +43,6 @@
 	inset-block-start: var(--psu-nav-top);
 	/* A stretched grid/flex item would fill its track and stop being sticky at all. */
 	align-self: start;
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
 	inline-size: 100%;
 	max-inline-size: 15rem;
 	/*
@@ -61,24 +58,6 @@
 	 * indicator that exists and cannot be seen.
 	 */
 	padding: var(--space-1);
-}
-
-/*
- * A `<p>`, not a heading: the form owns this document's outline and an `<h2>` minted here would
- * inject a level into it from a component that cannot see the levels around it. The nav's accessible
- * name is carried by `aria-label` on the element itself.
- *
- * Section-header register (§A.4) — small, uppercase, tracked — matching `.psu-section__title` so the
- * rail and the headings it addresses read as one type system.
- */
-.psu-nav__title {
-	margin: 0;
-	padding-inline: var(--space-2);
-	font-size: var(--text-xs);
-	font-weight: var(--fw-semibold);
-	text-transform: uppercase;
-	letter-spacing: 0.06em;
-	color: var(--text-secondary);
 }
 
 .psu-nav__list {
@@ -191,10 +170,6 @@
 		scrollbar-width: none;
 	}
 	.psu-nav::-webkit-scrollbar {
-		display: none;
-	}
-
-	.psu-nav__title {
 		display: none;
 	}
 

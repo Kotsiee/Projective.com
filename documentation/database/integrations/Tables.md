@@ -79,8 +79,12 @@ adapter interface**, so it stays an implementation detail we can replace.
 
 All ship `is_enabled = false` — enabling one is an operator decision requiring credentials first.
 Calendars/conferencing (`google`, `outlook`, `apple`, `samsung`, `calendly`, `zoom`,
-`microsoft_teams`, `discord`), storage/docs (`google_drive`, `dropbox`, `notion`), developer/CRM
-(`github`, `slack`, `monday`, `google_contacts`). The calendar sources match
+`microsoft_teams`, `discord`), storage/docs (`google_drive`, `dropbox`, `onedrive`, `frameio`, `s3`,
+`notion`), developer/CRM (`github`, `slack`, `monday`, `google_contacts`). `onedrive` ("OneDrive &
+SharePoint", `Files.Read.All` · `offline_access`) and the `frameio` row's Frame.io V4 / Adobe IMS
+scopes (`openid` · `email` · `profile` · `offline_access` · `additional_info.roles`) are Decision #313.
+Every storage row has a real client in `services/integrations/adapters/` — the five connector
+`files.file_source` values, one each. The calendar sources match
 `@projective/types/scheduling` `INTEGRATION_SOURCES` — one vocabulary, not two.
 
 ## 2. `integrations.user_connections`
@@ -112,11 +116,30 @@ policy, no `authenticated` grant); clients read
 OAuth returns a **credential**, not a **configuration**. Several storage connectors need per-user
 settings the token does not carry and the provider catalogue cannot hold:
 
-| Provider       | What `config` carries                                                                         |
-| :------------- | :-------------------------------------------------------------------------------------------- |
-| `s3`           | `endpoint` (R2 / MinIO / Wasabi; `null` = AWS) · `region` · `bucket` · `prefix` · `pathStyle` |
-| `google_drive` | the shared-drive or root folder id the mount is scoped to                                     |
-| `frameio`      | the team / project id                                                                         |
+| Provider       | What `config` carries (each parsed by its own schema in `@projective/types/integrations`)                                                                    |
+| :------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `s3`           | `endpoint` (R2 / MinIO / Wasabi; absent = AWS) · `region` · `bucket` · `prefix` (the tenant boundary) · `pathStyle` · `roleArn` — `S3ConnectionConfigSchema` |
+| `google_drive` | `driveId` — a shared drive (its id is its root folder's); absent = My Drive — `GoogleDriveConnectionConfigSchema`                                            |
+| `dropbox`      | `rootNamespaceId` — a team space's root, sent as `Dropbox-API-Path-Root`; absent = the member's root — `DropboxConnectionConfigSchema`                       |
+| `onedrive`     | `driveId` — a SharePoint document library; absent = the person's OneDrive — `OneDriveConnectionConfigSchema`                                                 |
+| `frameio`      | `accountId` plus `projectId` (its root folder is the root) or `workspaceId` (its projects are the root) — `FrameIoConnectionConfigSchema`                    |
+
+`config` is a flat scalar record with no `null` (`v_my_connections` projects scalars only), so an
+optional key is **absent**, never `null` — which is why `S3ConnectionConfigSchema.endpoint` is
+`.nullish()`: an AWS connection's projected config has no endpoint key at all.
+
+**S3 credentials follow the endpoint (Decision #314).** The schema requires `roleArn` exactly when
+`endpoint` is absent:
+
+- **AWS bucket:** `roleArn` is an IAM role ARN in the aws, aws-cn or aws-us-gov partition, and
+  `region` must be a real AWS region whose partition matches the ARN's. The connection stores **no
+  secret**: the platform principal assumes that role through STS with the external id
+  `projective-{connection id}`.
+- **S3-compatible endpoint:** `roleArn` is refused, and the connection's key pair is sealed in
+  `connection_secrets`.
+
+`region` (`a–z 0–9 -`) and `bucket` (3–63 characters of `A–Z a–z 0–9 . _ -`) are validated as names
+in both cases, because on AWS they form the request's hostname.
 
 None of this is **catalogue** config — `providers.auth_config` is global to a provider, while a
 bucket and a prefix are per _connection_, and two users of the same provider will have different

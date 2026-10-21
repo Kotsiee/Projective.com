@@ -5,11 +5,11 @@ import type {
 	WorkspaceRoster,
 } from "@projective/types/workspace";
 import type { CalendarPage } from "@projective/types/scheduling";
-import type { CataloguePage } from "@projective/types/catalogue";
+import { type AssetListPage, folderSegmentsOfQuery } from "@projective/types/files";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBackendService.ts";
 import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBackendService.ts";
-import { CatalogueBackendService } from "@server/services/catalogue/CatalogueBackendService.ts";
+import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
 import {
 	firstModuleFor,
 	mayViewModule,
@@ -17,8 +17,13 @@ import {
 	modulesForViewer,
 	type WorkspaceModule,
 } from "./module-registry.tsx";
+import type { UserContext } from "@projective/types/auth";
+import { catalogueBase } from "@projective/types/catalogue";
+import { teamSellerActor } from "@features/catalogue/core/seller-scope.ts";
+import { consoleParamsOf, resolveCataloguePage } from "@features/catalogue/core/catalogue-ssr.ts";
 import { entityCalendarProjectIds } from "./calendar-module-model.ts";
-import { TEAM_CATALOGUE_PARAMS } from "./catalogue-module-model.ts";
+import { laneListingsOf, type LaneListingsRead } from "./lane-model.ts";
+import { once, resolveWorkspaceDetail } from "./workspace-memo.ts";
 
 /**
  * workspace-ssr — the **server-only** bootstraps for the `/teams` and `/businesses` first paint.
@@ -29,36 +34,11 @@ import { TEAM_CATALOGUE_PARAMS } from "./catalogue-module-model.ts";
  *
  * **Never import this from an island.** It reaches `@server/services`, which would drag the backend
  * package into a client bundle and break the islands-are-dumb boundary (root CLAUDE.md §2). The `*-slot`
- * resolvers and route handlers are its only legitimate callers.
+ * resolvers and route handlers are its only legitimate callers. Every read shares one request memo
+ * (`workspace-memo.ts`), which also holds the console detail read.
  */
 
-// #region Request-scoped memo
-/**
- * One read per question per request, however many regions ask.
- *
- * A console page is resolved by its route handler AND by the lane, header and footer slots; without this
- * the detail would be read from Postgres four times for one page (the roster three times on the index).
- * Keyed on the `URL` OBJECT, the wallet precedent: Fresh hands the handler and every slot resolver of one
- * request the same instance and the next request a new one, so an entry can never outlive the request
- * that made it — which matters, because the read after a mutation must see the mutation. The stored
- * value is the PROMISE, so the three bands, resolved concurrently, share one read in flight.
- */
-const READS = new WeakMap<URL, Map<string, Promise<unknown>>>();
-
-function once<T>(url: URL, actor: ReadActor, key: string, run: () => Promise<T>): Promise<T> {
-	let reads = READS.get(url);
-	if (!reads) {
-		reads = new Map();
-		READS.set(url, reads);
-	}
-	const slot = `${key}|${actor.userId}|${actor.contextId}`;
-	const hit = reads.get(slot) as Promise<T> | undefined;
-	if (hit) return hit;
-	const promise = run();
-	reads.set(slot, promise);
-	return promise;
-}
-// #endregion
+export { resolveWorkspaceDetail };
 
 // #region Roster
 /**
@@ -83,29 +63,6 @@ export function resolveRoster(
 			ok: false,
 			message: res.message ?? "We couldn't load your workspaces just now. Try again in a moment.",
 		};
-	});
-}
-// #endregion
-
-// #region Console detail
-/**
- * Resolve one entity's console projection by its handle (or row id), or `null` when it does not exist,
- * the viewer is not a member, or it could not be read.
- *
- * **`null` deliberately does NOT degrade to an empty detail.** A fabricated console would show a real
- * name, an empty roster and a zeroed wallet — which reads as "your team lost its members and its money",
- * the single worst lie this surface could tell. Memoized per request.
- */
-export function resolveWorkspaceDetail(
-	kind: WorkspaceKind,
-	ref: string,
-	actor: ReadActor,
-	url: URL,
-): Promise<WorkspaceDetail | null> {
-	if (!ref) return Promise.resolve(null);
-	return once(url, actor, `detail:${kind}:${ref.toLowerCase()}`, async () => {
-		const res = await WorkspaceBackendService.detail(kind, ref, actor);
-		return res.ok && res.data ? res.data : null;
 	});
 }
 // #endregion
@@ -221,45 +178,64 @@ export function resolveEntityCalendar(
 }
 // #endregion
 
-// #region The Catalogue module's listings
-/** The Catalogue module's first paint: the team's listings, or why they could not be read. */
-export interface TeamCatalogueRead {
-	page: CataloguePage | null;
+// #region The Files module's drive
+/**
+ * The Files module's first paint: one location of the entity's drive, or why it could not be read,
+ * and the folder path `?path=` addressed. A failed read is never drawn as an empty drive.
+ */
+export interface EntityDriveRead {
+	page: AssetListPage | null;
 	error: string | null;
+	path: string[];
 }
 
 /**
- * Read a team's listings for its console's Catalogue module (Decision #308), as the viewer acting AS
- * that team for this one read.
- *
- * The catalogue's list scopes by the actor's acting context (`listing-scope.ts` `actingTeam`), so a
- * member reading the console as themselves would otherwise be shown their personal listings. The
- * re-scoped actor is built only after the guard below: the entity is a team, the console detail
- * resolved (the database answered it only for an active member — `org.get_workspace_detail`), and the
- * registry lets this viewer open the module (`publish_listings`). The token is unchanged, so RLS stays
- * authoritative — `catalogue.listings` lets an active member of the owning team read its rows, and
- * nothing in this read can see past that. Memoized per request.
+ * Read the entity's drive at the folder `?path=` names (Decision #306 (D)), as the viewer — the
+ * server confirms the viewer's active seat before it reads a row. Only the Files module asks, and the
+ * header band and footer rig read the same path from the same URL. Memoized per request.
  */
-export function resolveTeamCatalogue(
-	workspace: WorkspaceDetail,
+export function resolveEntityDrive(
+	workspace: Pick<WorkspaceDetail, "kind" | "id" | "name">,
 	actor: ReadActor,
 	url: URL,
-	displayCurrency: string,
-): Promise<TeamCatalogueRead> {
-	if (
-		workspace.kind !== "team" ||
-		!mayViewModule("catalogue", workspace.kind, workspace.viewerCapabilities)
-	) {
-		return Promise.resolve({ page: null, error: "This catalogue isn't yours to open." });
-	}
-	return once(url, actor, `catalogue:${workspace.id}`, async (): Promise<TeamCatalogueRead> => {
-		const asTeam: ReadActor = { ...actor, contextType: "team", contextId: workspace.id };
-		const res = await CatalogueBackendService.list(TEAM_CATALOGUE_PARAMS, asTeam, displayCurrency);
-		if (res.ok && res.data) return { page: res.data.page, error: null };
+): Promise<EntityDriveRead> {
+	const path = folderSegmentsOfQuery(url.search);
+	return once(url, actor, `drive:${workspace.kind}:${workspace.id}`, async () => {
+		const res = await FilesBackendService.list({
+			scope: "workspace",
+			subjectId: workspace.id,
+			path: path.length > 0 ? path : undefined,
+			sort: "date",
+			dir: "desc",
+		}, actor);
+		if (res.ok && res.data) return { page: res.data, error: null, path };
 		return {
 			page: null,
-			error: res.message ?? `${workspace.name}'s listings couldn't be read just now.`,
+			error: res.status === 404 && path.length > 0
+				? "That folder doesn't exist — it may have been moved or deleted."
+				: res.message ?? `${workspace.name}'s files couldn't be loaded just now.`,
+			path,
 		};
 	});
+}
+// #endregion
+
+// #region The lane's Catalogue section
+/**
+ * The team lane's Catalogue listings (Decision #316), read as the team, or why they could not be read;
+ * `null` when the viewer may not open the team's catalogue. Read with the console's resting params
+ * through the catalogue's request memo, so the console on its resting view shares this one read.
+ */
+export async function resolveLaneListings(
+	workspace: WorkspaceDetail,
+	context: UserContext,
+	actor: ReadActor,
+	url: URL,
+): Promise<LaneListingsRead | null> {
+	const seller = teamSellerActor(workspace, actor);
+	if (!seller) return null;
+	const resting = consoleParamsOf(new URL(catalogueBase(workspace.handle), url));
+	const { page, error } = await resolveCataloguePage(context, url, seller, resting);
+	return error ? { ok: false, message: error } : { ok: true, listings: laneListingsOf(page) };
 }
 // #endregion

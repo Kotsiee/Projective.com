@@ -22,6 +22,8 @@ export interface PreviewCanvasProps {
 	title: string;
 	/** The device the frame is drawn as (`?device=`). */
 	device: PreviewDevice;
+	/** The team whose catalogue the listing is in, so the frame simulates it as the team. */
+	team?: string;
 }
 
 const DEVICE_OPTIONS = [
@@ -48,7 +50,7 @@ export function PreviewCanvas(props: PreviewCanvasProps): JSX.Element {
 	const stage = useRef<HTMLDivElement>(null);
 	const frame = useRef<HTMLIFrameElement>(null);
 	const lastY = useRef(0);
-	const src = simulateHref(props.slug);
+	const src = simulateHref(props.slug, props.team);
 
 	// #region Scale
 	useEffect(() => {

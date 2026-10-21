@@ -447,6 +447,50 @@ row's accessible name. On the filled active row it takes the row's own ink. */
 }
 /* #endregion */
 
+.wsp-lane__catload {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+}
+
+.proj-chan.wsp-lane__catskel {
+	cursor: default;
+}
+
+.proj-chan.wsp-lane__catskel:hover {
+	background: transparent;
+}
+
+.wsp-lane__catfail {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-1);
+}
+
+.proj-chan.wsp-lane__catcreate {
+	inline-size: 100%;
+	font-family: inherit;
+	line-height: inherit;
+	text-align: start;
+	color: var(--primary);
+	cursor: pointer;
+	border-block: 0;
+	border-inline-end: 0;
+}
+
+.proj-chan.wsp-lane__catcreate .proj-chan__glyph {
+	color: currentColor;
+}
+
+.proj-chan.wsp-lane__catmore {
+	color: var(--text-secondary);
+}
+
+.proj-chan.wsp-lane__catmore:hover {
+	color: var(--on-surface);
+}
+
 /* #region Zone 2 — context controls */
 /*
  * Always drawn, directly under the header strip (Decision #307): the search first, then what the view

@@ -144,11 +144,22 @@ VALUES
     ('dropbox', 'Dropbox', 'storage',
         ARRAY['storage']::integrations.provider_kind[], 'oauth2',
         false, 'direct', true, ARRAY['files.content.read']),
+    -- OneDrive & SharePoint — ONE Microsoft Graph connector: a person's OneDrive, or a SharePoint
+    -- document library addressed by the connection's `config.driveId` (Decision #313). Direct;
+    -- Graph change notifications for webhooks. `Files.Read.All` reaches libraries shared with the
+    -- user; `offline_access` is what returns a refresh token.
+    ('onedrive', 'OneDrive & SharePoint', 'storage',
+        ARRAY['storage', 'docs']::integrations.provider_kind[], 'oauth2',
+        false, 'direct', true, ARRAY['Files.Read.All', 'offline_access']),
     -- Frame.io — review-and-approval storage for video/creative deliverables. Direct (no unified
-    -- broker models its comment/version graph), webhooks for asset + comment events.
+    -- broker models its comment/version graph), webhooks for asset + comment events. The V4 API
+    -- authorizes through Adobe IMS; these are its user-auth scopes (`offline_access` = refresh
+    -- token, `additional_info.roles` = the product entitlement Frame.io checks). The legacy V2 API
+    -- and its scopes end on 2026-12-01 (Decision #313).
     ('frameio', 'Frame.io', 'storage',
         ARRAY['storage']::integrations.provider_kind[], 'oauth2',
-        false, 'direct', true, ARRAY['offline', 'asset.read']),
+        false, 'direct', true,
+        ARRAY['openid', 'email', 'profile', 'offline_access', 'additional_info.roles']),
     -- S3-compatible object storage (AWS S3, R2, Backblaze B2, MinIO …). The ONE provider that is
     -- not OAuth: there is no consent dance and no bearer token to refresh — the connection holds an
     -- access-key pair and every request is REQUEST-SIGNED, which is why `aws_sigv4` exists as its

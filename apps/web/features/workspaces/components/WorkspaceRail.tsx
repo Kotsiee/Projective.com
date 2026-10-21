@@ -37,9 +37,10 @@ import { ContextSwitchControl, isActingEntity } from "./ContextSwitchControl.tsx
  *   1. **Header strip** → the entity's mark (its ring is the verification state) and the acting switch
  *      as an icon-only Button. The roster index has no identity to fold, so its rail starts at zone 2.
  *      The kebab folds into the header band's copy, which paints while the lane is collapsed.
- *   2. **Views** → Core operations' hub glyphs, a hairline, the Channels glyph (the channels' home), a
- *      hairline, then Governance's — or, on the roster index, the viewer's live entities as marks in the
- *      expanded list's order (owned first, {@link laneRailEntities}), so a collapsed lane is a switcher.
+ *   2. **Views** → Core operations' hub glyphs, a hairline, a team's Catalogue glyph and the Channels
+ *      glyph (the two sections' homes), a hairline, then Governance's — or, on the roster index, the
+ *      viewer's live entities as marks in the expanded list's order (owned first,
+ *      {@link laneRailEntities}), so a collapsed lane is a switcher.
  *   3. **Context controls** → none: a segmented control has no glyph form, and the expanded lane is one
  *      press away. For the same reason the roster rail ignores the partition and the search — a filter
  *      the reader cannot see would hide entities for no visible reason.
@@ -186,8 +187,8 @@ function RailIdentity(
 
 // #region Zone 2 — views
 /**
- * Core operations' hubs, the Channels glyph, then Governance's — the expanded zone 2 in glyphs, each
- * section set off by a hairline.
+ * Core operations' hubs, a team's Catalogue and the Channels glyph, then Governance's — the expanded
+ * zone 2 in glyphs, each group set off by a hairline.
  */
 function RailModules(props: WorkspaceRailProps): JSX.Element | null {
 	const views = props.zones.views;
@@ -216,26 +217,26 @@ function RailModules(props: WorkspaceRailProps): JSX.Element | null {
 	};
 	const operations = views.sections.find((s) => s.id === "operations")?.rows ?? [];
 	const governance = views.sections.find((s) => s.id === "governance")?.rows ?? [];
+	const catalogue = views.catalogue;
 	const channels = views.channels;
 
 	return (
 		<>
 			{operations.map(square)}
+			{(catalogue || channels) && <span class="wsp-rail__group-sep" role="separator" />}
+			{catalogue && square(catalogue.row)}
 			{channels && (
-				<>
-					<span class="wsp-rail__group-sep" role="separator" />
-					<Tooltip content={`${channels.label} — workspace-wide chat`} placement="right">
-						<a
-							class="wsp-rail__item"
-							href={channels.base}
-							data-active={channels.active ? "true" : undefined}
-							aria-current={channels.active ? "page" : undefined}
-							aria-label={channels.label}
-						>
-							{cloneGlyph(ChannelGlyph)}
-						</a>
-					</Tooltip>
-				</>
+				<Tooltip content={`${channels.label} — workspace-wide chat`} placement="right">
+					<a
+						class="wsp-rail__item"
+						href={channels.base}
+						data-active={channels.active ? "true" : undefined}
+						aria-current={channels.active ? "page" : undefined}
+						aria-label={channels.label}
+					>
+						{cloneGlyph(ChannelGlyph)}
+					</a>
+				</Tooltip>
 			)}
 			{governance.length > 0 && <span class="wsp-rail__group-sep" role="separator" />}
 			{governance.map(square)}

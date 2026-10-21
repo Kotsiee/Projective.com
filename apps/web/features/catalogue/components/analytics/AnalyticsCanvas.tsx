@@ -107,7 +107,7 @@ function PlotFrame(
 
 // #region Body
 function AnalyticsBody(
-	{ data, idBase }: { data: CatalogueAnalytics; idBase: string },
+	{ data, idBase, team }: { data: CatalogueAnalytics; idBase: string; team?: string },
 ): JSX.Element {
 	const revenue = toRevenue(data.revenue, data.bucket);
 	const funnel = toFunnel(data.funnel);
@@ -117,7 +117,7 @@ function AnalyticsBody(
 	const top = consoleScope
 		? toTopListings(
 			data.topListings,
-			(slug) => workspaceHref(slug, { tab: "analytics", period: data.period }),
+			(slug) => workspaceHref(slug, { team, tab: "analytics", period: data.period }),
 		)
 		: [];
 	const id = (name: string) => `${idBase}-${name}`;
@@ -226,6 +226,8 @@ export interface AnalyticsCanvasProps {
 	onPeriod: (period: AnalyticsPeriod) => void;
 	/** A prefix for the region heading ids, unique on the page. */
 	idBase?: string;
+	/** The team whose catalogue this is, so the top listings open in it (Decision #312). */
+	team?: string;
 }
 
 /** The dual-scope analytics canvas. */
@@ -292,7 +294,9 @@ export function AnalyticsCanvas(props: AnalyticsCanvasProps): JSX.Element {
 					align="start"
 				/>
 			)}
-			{state.status === "ready" && <AnalyticsBody data={state.data} idBase={idBase} />}
+			{state.status === "ready" && (
+				<AnalyticsBody data={state.data} idBase={idBase} team={props.team} />
+			)}
 		</div>
 	);
 }

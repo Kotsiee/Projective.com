@@ -3,7 +3,11 @@ import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { consoleOutcome } from "@features/workspaces/core/workspace-route.tsx";
 import { consoleResponse } from "@features/workspaces/core/console-route.ts";
-import { resolveBench, resolveEntityCalendar } from "@features/workspaces/core/workspace-ssr.ts";
+import {
+	resolveBench,
+	resolveEntityCalendar,
+	resolveEntityDrive,
+} from "@features/workspaces/core/workspace-ssr.ts";
 import { ModuleScreen } from "@features/workspaces/components/ModuleScreen.tsx";
 
 /**
@@ -31,9 +35,13 @@ export const handler = define.handlers({
 		const calendar = outcome.data.module === "calendar"
 			? await resolveEntityCalendar(outcome.data.workspace, actor, ctx.url)
 			: null;
+		// And Files its first drive location (Decision #315).
+		const drive = outcome.data.module === "files"
+			? await resolveEntityDrive(outcome.data.workspace, actor, ctx.url)
+			: null;
 
 		ctx.state.title = `${outcome.data.workspace.name} · Business`;
-		return page({ ...outcome.data, bench, calendar });
+		return page({ ...outcome.data, bench, calendar, drive });
 	},
 });
 
@@ -47,6 +55,7 @@ export default define.page<typeof handler>(function BusinessModulePage({ data })
 			bench={data.bench?.bench ?? null}
 			benchError={data.bench?.error ?? null}
 			calendar={data.calendar}
+			drive={data.drive}
 		/>
 	);
 });

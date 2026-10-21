@@ -355,7 +355,13 @@ CREATE TABLE org.skills (
 );
 ```
 
-### `org.attachments`
+### `org.attachments` — never existed (corrected 2026-10-21, Decision #313)
+
+> No migration creates `org.attachments`. File metadata lives in
+> [`files.items`](../files/Tables.md#filesitems), the platform's asset registry, and the engagement
+> link tables are `projects.project_attachments`, `comms.message_attachments`,
+> `comms.channel_files` and `projects.submission_files`. The description and columns below are the
+> original stale entry and match no table.
 
 Centralized metadata for files associated with profiles or portfolios.
 

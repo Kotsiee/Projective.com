@@ -5,6 +5,7 @@ import {
 	type CatalogueListParams,
 	type CataloguePage,
 	CONSOLE_DEFAULTS,
+	type ConsoleHighlight,
 	consoleHref,
 	type ConsoleUrlState,
 	defaultSortDir,
@@ -31,6 +32,7 @@ const CONSOLE_PARAMS: ReadonlySet<string> = new Set([
 	"status",
 	"model",
 	"category",
+	"highlight",
 	"scope",
 	"search",
 	"sort",
@@ -85,7 +87,7 @@ export function consoleLocation(state: Partial<ConsoleUrlState>, currentSearch =
 // #endregion
 
 // #region Pure — listings query
-/** The console's icon-only quick filters (session state, not URL state). */
+/** The console's highlight facet as on/off toggles, keyed as the lane and the list read name them. */
 export interface QuickFilters {
 	attention: boolean;
 	promoted: boolean;
@@ -99,15 +101,41 @@ export const NO_QUICK_FILTERS: Readonly<QuickFilters> = {
 	bestSelling: false,
 };
 
+const HIGHLIGHT_OF: Readonly<Record<keyof QuickFilters, ConsoleHighlight>> = {
+	attention: "attention",
+	promoted: "promoted",
+	bestSelling: "best-selling",
+};
+
+/** The toggles a highlight set (`?highlight=`) engages. */
+export function quickFiltersOf(highlights: readonly ConsoleHighlight[]): QuickFilters {
+	return {
+		attention: highlights.includes("attention"),
+		promoted: highlights.includes("promoted"),
+		bestSelling: highlights.includes("best-selling"),
+	};
+}
+
+/** The highlight set with one toggle engaged or released. */
+export function highlightsWith(
+	current: readonly ConsoleHighlight[],
+	key: keyof QuickFilters,
+	on: boolean,
+): ConsoleHighlight[] {
+	const value = HIGHLIGHT_OF[key];
+	const rest = current.filter((h) => h !== value);
+	return on ? [...rest, value] : rest;
+}
+
 /** How many listings one console page fetches. */
 export const LISTINGS_PAGE_SIZE = 60;
 
-/** The `/api/catalogue/list` params a console state and its quick filters ask for. */
+/** The `/api/catalogue/list` params a console state asks for. */
 export function listParamsOf(
 	state: ConsoleUrlState,
-	quick: QuickFilters = NO_QUICK_FILTERS,
 	cursor: string | null = null,
 ): CatalogueListParams {
+	const quick = quickFiltersOf(state.highlights);
 	return {
 		type: state.type,
 		status: [...state.status],
@@ -126,11 +154,8 @@ export function listParamsOf(
 }
 
 /** A stable key for the listings read a state asks for — equal keys need no refetch. */
-export function listQueryKey(
-	state: ConsoleUrlState,
-	quick: QuickFilters = NO_QUICK_FILTERS,
-): string {
-	return JSON.stringify(listParamsOf(state, quick));
+export function listQueryKey(state: ConsoleUrlState): string {
+	return JSON.stringify(listParamsOf(state));
 }
 // #endregion
 
@@ -201,8 +226,8 @@ export const consoleReady = signal(false);
 /** The search field's raw text; {@link consoleUrl} holds its normalised form. */
 export const searchDraft = signal("");
 
-/** The engaged quick filters. */
-export const quickFilters = signal<QuickFilters>({ ...NO_QUICK_FILTERS });
+/** The engaged quick filters — the URL's highlight facet, as toggles. */
+export const quickFilters = computed(() => quickFiltersOf(consoleUrl.value.highlights));
 
 /** The listings read so far: the latest page's facts with every loaded page's items. */
 export const listingsPage = signal<CataloguePage | null>(null);
@@ -354,14 +379,14 @@ export function setSearch(value: string): void {
 	writeLocation(next, "replace");
 }
 
-/** Engage or release one quick filter. */
+/** Engage or release one quick filter (`?highlight=`). */
 export function setQuickFilter(key: keyof QuickFilters, on: boolean): void {
-	quickFilters.value = { ...quickFilters.peek(), [key]: on };
+	setConsoleUrl({ highlights: highlightsWith(consoleUrl.peek().highlights, key, on) });
 }
 
 /** Release every quick filter in one write. */
 export function clearQuickFilters(): void {
-	quickFilters.value = { ...NO_QUICK_FILTERS };
+	setConsoleUrl({ highlights: [] });
 }
 
 function applySelection(action: SelectionAction): void {

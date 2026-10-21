@@ -24,6 +24,8 @@ export interface ListingsGridProps {
 	onSelect: (listing: ListingSummary, range: boolean) => void;
 	onAction: (action: ListingAction, listing: ListingSummary) => void;
 	onReachEnd: () => void;
+	/** The team whose catalogue this is, so each card opens in it (Decision #312). */
+	team?: string;
 }
 
 const METRIC_RETRY_MS = 100;
@@ -84,7 +86,7 @@ export function ListingsGrid(props: ListingsGridProps): JSX.Element {
 						itemTemplate={(l) => (
 							<ListingCard
 								listing={l}
-								href={listingHref(l.id)}
+								href={listingHref(l.id, props.team)}
 								selected={props.selected.has(l.id)}
 								selecting={selecting}
 								onSelect={props.onSelect}

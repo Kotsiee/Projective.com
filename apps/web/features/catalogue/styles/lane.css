@@ -134,52 +134,6 @@
 	box-shadow: var(--focus-ring-shadow);
 }
 
-.cat-outline {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-px);
-}
-
-.cat-outline__row {
-	--cat-press-scale: var(--btn-press-scale);
-	display: block;
-	inline-size: 100%;
-	padding: var(--space-1) var(--space-2) var(--space-1) var(--space-6);
-	border: none;
-	border-radius: var(--radius-base);
-	background: transparent;
-	color: var(--text-secondary);
-	font: inherit;
-	font-size: var(--text-sm);
-	text-align: start;
-	text-decoration: none;
-	cursor: pointer;
-	transition:
-		color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard),
-		transform var(--dur-fast) var(--ease-standard);
-}
-
-.cat-outline__row:hover {
-	background: var(--surface-2);
-	color: var(--on-surface);
-}
-
-.cat-outline__row:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring-shadow);
-}
-
-.cat-outline__row:active {
-	transform: scale(var(--cat-press-scale));
-	transition-duration: var(--dur-press);
-}
-
-.cat-outline__row--active {
-	color: var(--on-surface);
-	font-weight: var(--fw-semibold);
-}
-
 .cat-newmenu {
 	min-inline-size: 13rem;
 }
@@ -370,7 +324,6 @@
 
 @media (prefers-reduced-motion: reduce) {
 	.cat-facet__row:active,
-	.cat-outline__row:active,
 	.cat-rail__brand:active,
 	.cat-rail__new:active,
 	.cat-rail__item:active {
@@ -379,7 +332,6 @@
 }
 
 :root[data-motion="reduced"] .cat-facet__row:active,
-:root[data-motion="reduced"] .cat-outline__row:active,
 :root[data-motion="reduced"] .cat-rail__brand:active,
 :root[data-motion="reduced"] .cat-rail__new:active,
 :root[data-motion="reduced"] .cat-rail__item:active {
