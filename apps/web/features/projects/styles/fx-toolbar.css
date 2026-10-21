@@ -62,3 +62,19 @@
 .fx-toolbar__spacer {
 	flex: 1 1 auto;
 }
+
+/*
+ * The same toolbar inside the middle-nav header band (Decision #317): the band is already the pinned
+ * glass chrome, so the bar neither pins nor paints a second pill — it is the band's trailing cluster.
+ */
+.fx-toolbar--band {
+	position: static;
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	min-block-size: 0;
+	padding: 0;
+}
+
+.fx-toolbar--band::before {
+	content: none;
+}

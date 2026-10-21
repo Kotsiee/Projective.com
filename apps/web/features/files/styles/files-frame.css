@@ -1,0 +1,84 @@
+/*
+ * files-frame — the ONE layout every file surface draws its body in: the folder panel on the left
+ * inside the canvas, the toolbar (where the header band is someone else's) and the listing beside it,
+ * and an optional trailing column (the Submissions explorer's Tasks panel). The team and business
+ * drive, the project · stage · conversation File Explorer and the Submissions explorer all render it,
+ * so the column, the seam and the mobile fold cannot drift between them.
+ *
+ * §B.4: the panel and the listing are separated by ONE hairline, never a box. Native WINDOW scroll
+ * (Decision #31): the panel pins with `position: sticky` below the chrome the host names in
+ * `--fx-chrome` (the top bar, plus the middle-nav header band where one is mounted), and stops short
+ * of the footer band. Breakpoints are the explorers' own viewport query — a container query here
+ * would make the frame a containing block and re-base the fields' `position: fixed` overlay panels
+ * (the glass-blur fixed-overlay trap). Token-only, strict BEM.
+ */
+.ffr {
+	--ffr-chrome: var(--fx-chrome, var(--shell-topbar-h));
+	--ffr-aside-w: 15rem;
+	--ffr-trailing-w: 17.5rem;
+
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--space-5);
+	align-items: start;
+}
+
+.ffr[data-aside="true"] {
+	grid-template-columns: var(--ffr-aside-w) minmax(0, 1fr);
+}
+
+.ffr[data-trailing="true"] {
+	grid-template-columns: minmax(0, 1fr) var(--ffr-trailing-w);
+}
+
+.ffr[data-aside="true"][data-trailing="true"] {
+	grid-template-columns: var(--ffr-aside-w) minmax(0, 1fr) var(--ffr-trailing-w);
+}
+
+/* #region The folder panel */
+.ffr__aside {
+	position: sticky;
+	inset-block-start: var(--ffr-chrome);
+	align-self: start;
+	block-size: calc(100dvh - var(--ffr-chrome) - var(--shell-midnav-footer-h));
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding-block: var(--space-2);
+	padding-inline-end: var(--space-3);
+	/* The single hairline between the panel and the listing (§B.4 — never a four-sided box). */
+	border-inline-end: var(--hairline);
+}
+
+.ffr__main {
+	min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+/* The panel's own note under its tree: an empty library, or a tree that could not be read. */
+.ffr__note {
+	margin: var(--space-2) 0 0;
+	padding-inline: var(--space-2);
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	line-height: var(--leading-relaxed);
+}
+/* #endregion */
+
+@media (max-width: 768px) {
+	.ffr,
+	.ffr[data-aside="true"],
+	.ffr[data-trailing="true"],
+	.ffr[data-aside="true"][data-trailing="true"] {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.ffr__aside {
+		position: static;
+		block-size: auto;
+		max-block-size: 18rem;
+		border-inline-end: none;
+		border-block-end: var(--hairline);
+		padding-inline-end: 0;
+	}
+}

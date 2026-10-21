@@ -240,6 +240,7 @@ import type {
 	RejectApplication,
 	RespondToInvitation,
 } from "@projective/types/projects";
+import { recipientAddress } from "@projective/types/invites";
 import type {
 	ArchiveProject,
 	AssignableMemberRole,
@@ -2145,14 +2146,21 @@ export class ProjectBackendService {
 				const issued: string[] = [];
 				const refused: InviteRefusal[] = [];
 				let first: WriteRefusal | null = null;
-				for (const address of input.addresses) {
+				for (const recipient of input.recipients) {
+					const address = recipientAddress(recipient);
 					const slot = hireLimiter.peek(owner);
 					if (!slot.allowed) {
 						first ??= rateLimitRefusal(slot.retryAfterMs);
 						refused.push({ address, message: HIRE_RATE_LIMIT_MESSAGE, code: "rate_limited" });
 						continue;
 					}
-					const outcome = await issueInvitation(a, target, address, input.role, input.stageId);
+					const outcome = await issueInvitation(
+						a,
+						target,
+						address,
+						recipient.roleId as AssignableMemberRole,
+						input.stageId,
+					);
 					if ("refusal" in outcome) {
 						first ??= outcome.refusal;
 						refused.push({
@@ -2194,7 +2202,8 @@ export class ProjectBackendService {
 		const sent: MemberInvite[] = [];
 		const refused: InviteRefusal[] = [];
 		let first: { status: number; message: string; code: string } | null = null;
-		for (const address of input.addresses) {
+		for (const recipient of input.recipients) {
+			const address = recipientAddress(recipient);
 			const refusal = stubInviteRefusal(page, history, address, input.stageId, nowMs, owner);
 			if (refusal) {
 				first ??= refusal;
@@ -2209,7 +2218,7 @@ export class ProjectBackendService {
 				id: `${page.projectId}-sent-${base + sent.length + 1}`,
 				email: address,
 				handle,
-				role: input.role,
+				role: recipient.roleId as AssignableMemberRole,
 				stageId: stage?.id ?? null,
 				stageName: stage?.name ?? null,
 				invitedBy: "You",
@@ -2219,7 +2228,7 @@ export class ProjectBackendService {
 			});
 		}
 		if (sent.length === 0 && first) {
-			return fail(first.status, { message: first.message, errors: { addresses: first.code } });
+			return fail(first.status, { message: first.message, errors: { recipients: first.code } });
 		}
 		appendHireInvites(owner, page.projectId, sent);
 		invalidateProjects(actor);

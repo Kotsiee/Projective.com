@@ -270,6 +270,36 @@
 				"$env:PORT = '13230'; deno task dev --port 13230 --strictPort"
 			],
 			"port": 13230
+		},
+		{
+			"name": "web-invites",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13250'; deno task dev --port 13250 --strictPort"
+			],
+			"port": 13250
+		},
+		{
+			"name": "web-roles",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13260'; deno task dev --port 13260 --strictPort"
+			],
+			"port": 13260
+		},
+		{
+			"name": "web-files",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13240'; deno task dev --port 13240 --strictPort"
+			],
+			"port": 13240
 		}
 	]
 }

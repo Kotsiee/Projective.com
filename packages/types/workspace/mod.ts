@@ -21,6 +21,7 @@ export * from "./access.ts";
 export * from "./authority.ts";
 export * from "./channels.ts";
 export * from "./common.ts";
+export * from "./invite-links.ts";
 export * from "./members.ts";
 export * from "./policy.ts";
 export * from "./workspace.ts";

@@ -13,7 +13,7 @@ import {
 	isFilledTier,
 	type ModuleCommit,
 } from "./header-model.ts";
-import { MEMBERS_CHART, subViewsFor } from "./sub-views.ts";
+import { bandSubViewsFor, MEMBERS_CHART } from "./sub-views.ts";
 
 /**
  * The workspace header band (Teams work order L2): Decision #220's three regions, at most one filled
@@ -75,7 +75,7 @@ function input(overrides: Partial<HeaderBandInput> = {}): HeaderBandInput {
 		acting: false,
 		owner: true,
 		capabilities,
-		subViews: subViewsFor(module, kind, capabilities),
+		subViews: bandSubViewsFor(module, kind, capabilities),
 		view: null,
 		commit: null,
 		...overrides,
@@ -243,21 +243,19 @@ Deno.test("header: identity is the module title over name · @handle (· acting)
 	assertEquals(headerBand(input({ kind: "business" })).menuLabel, "Business actions");
 });
 
-Deno.test("header: the centred view toolbar appears only when the module partitions its body", () => {
-	const members = headerBand(input({ view: MEMBERS_CHART }));
-	assertEquals(members.tabs?.views.map((v) => v.value), ["people", "pending", "chart"]);
-	assertEquals(members.tabs?.active, 2);
-	// A team's Projects partitions its body too (Teams C5); a business's hands off and draws none.
+Deno.test("header: the centred view toolbar appears only when the module leaves its views to it", () => {
+	// A team's Projects partitions its body (Teams C5); a business's hands off and draws none.
 	const projects = headerBand(input({ module: "projects", view: "proposals" }));
 	assertEquals(projects.tabs?.views.map((v) => v.value), ["active", "proposals"]);
 	assertEquals(projects.tabs?.active, 1);
 	assertEquals(headerBand(input({ module: "projects", kind: "business" })).tabs, null);
-	for (const module of MODULES.filter((m) => m !== "members" && m !== "projects")) {
+	for (const module of MODULES.filter((m) => m !== "projects")) {
 		assertEquals(headerBand(input({ module })).tabs, null, `${module} drew tabs`);
 	}
-	// Without the invite right the queue is not a tab.
-	const plain = headerBand(input({ capabilities: MEMBER }));
-	assertEquals(plain.tabs?.views.map((v) => v.value), ["people", "chart"]);
+	// Members draws its own (Decision #319): the sections in the body, the org chart in the footer.
+	for (const capabilities of [OWNER, MEMBER]) {
+		assertEquals(headerBand(input({ view: MEMBERS_CHART, capabilities })).tabs, null);
+	}
 });
 // #endregion
 
@@ -277,23 +275,25 @@ const BAND = source("../islands/WorkspaceHeaderBand.island.tsx");
 const MENU = source("../components/EntityMenu.tsx");
 const LANE = source("../islands/WorkspaceLane.island.tsx");
 
-Deno.test("header band: no raw <button>, no action-styled anchor, no tab strip of any kind", () => {
+Deno.test("header band: no raw <button>, no action-styled anchor, no hand-rolled tab strip", () => {
 	assert(!/<button\b/.test(BAND), "the band renders a raw <button>");
 	assert(!/<a\b[^>]*class="[^"]*action/.test(BAND), "the band renders an action-styled <a>");
 	assert(!/<a\b/.test(BAND), "the band renders a raw <a>");
 	assert(!/wsp-headerband__tab\b|<nav\b/.test(BAND), "the hand-rolled tab strip is back");
 	assert(!/<Popover\b/.test(BAND), "the Popover menu is back");
-	// The views are ONE bare Select in the shared fx-toolbar (Decision #307): the hub's pages, or the
-	// module's in-place sub-views. Only a hub option navigates, as its link tab did.
 	assert(!/<TabMenu\b/.test(BAND), "the band draws a TabMenu");
+});
+
+Deno.test("header band (#319): a hub is link tabs; only in-place sub-views are a Select", () => {
+	// The hub's pages are addresses, so they are the channel header's link tabs — real anchors, never a
+	// picker that navigates (#307 (d)). The Select is left to a module's in-place sub-views, and the
+	// band offers none for a module that draws its own (Members).
+	assertEquals(BAND.match(/<ChannelTabStrip\b/g)?.length, 1);
+	assert(/strip\s*\?\s*\(?\s*<ChannelTabStrip\b/.test(BAND), "the hub strip is not the tab strip");
 	assertEquals(BAND.match(/<Select\b/g)?.length, 1);
-	assert(
-		/class="fx-toolbar wsp-headerband__toolbar"/.test(BAND),
-		"the views are not the fx-toolbar",
-	);
-	assertEquals(BAND.match(/location\.assign\(/g)?.length, 1);
-	assert(/if \(strip\) \{[\s\S]*?location\.assign\(tab\.href\)/.test(BAND));
+	assert(!/location\.assign\(/.test(BAND), "a band control navigates by script");
 	assert(/selectModuleView\(value, views\)/.test(BAND));
+	assert(/bandSubViewsFor\(/.test(BAND), "the band offers views a module draws itself");
 });
 
 Deno.test("header band (#306): the lane head and the band draw the ONE EntityMenu", () => {

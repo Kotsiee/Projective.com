@@ -8,7 +8,6 @@ import {
 	type WorkspaceSummary,
 } from "@projective/types/workspace";
 import { importWithoutGlyphs, type RegistryApi } from "./registry-import.testing.ts";
-import { MEMBERS_READINGS } from "./sub-views.ts";
 
 /**
  * The workspace lane's four zones (Teams work order L1; the console zones of Decision #306), pinned at
@@ -22,7 +21,7 @@ type Meta = string | { text: string; tabular?: boolean };
 type Module = { key: string };
 type Create =
 	| { action: "create"; label: string }
-	| { action: "invite"; label: string; inPlace: boolean; href: string };
+	| { action: "invite"; label: string };
 type Invite = Extract<Create, { action: "invite" }>;
 
 interface HubRow {
@@ -133,7 +132,6 @@ type ConsoleInput = {
 	acting: boolean;
 	capabilities: readonly WorkspaceCapability[];
 	module: string | null;
-	subView: string | null;
 	channel?: string | null;
 	listing?: string | null;
 };
@@ -279,7 +277,6 @@ function inConsole(overrides: Partial<ConsoleInput> = {}): ConsoleInput {
 		acting: false,
 		capabilities: OWNER,
 		module: "overview",
-		subView: null,
 		...overrides,
 	};
 }
@@ -338,12 +335,8 @@ function everyComposition(): Zones[] {
 		}
 		for (const capabilities of [OWNER, NO_INVITE, MEMBER]) {
 			for (const module of ["overview", "members", "invitations", "projects", "settings", null]) {
-				for (const subView of [null, "people", "pending", "chart"]) {
-					for (const acting of [true, false]) {
-						out.push(
-							lane.laneZones(inConsole({ kind, capabilities, module, subView, acting })),
-						);
-					}
+				for (const acting of [true, false]) {
+					out.push(lane.laneZones(inConsole({ kind, capabilities, module, acting })));
 				}
 			}
 		}
@@ -690,31 +683,11 @@ Deno.test("lane (#306): the console footer is the acting pill, Invite member and
 	}
 });
 
-Deno.test("lane: Members offers People · Org chart, and only on a people reading", () => {
-	for (const subView of [null, "people", "chart"]) {
-		const members = lane.laneZones(inConsole({ module: "members", subView }));
-		assertEquals(members.context.partition?.control, "members");
-		assertEquals(members.context.partition?.options, [
-			{ value: "people", label: "People" },
-			{ value: "chart", label: "Org chart" },
-		]);
-	}
-	assertEquals(
-		lane.laneZones(inConsole({ module: "members", subView: "pending" })).context.partition,
-		null,
-	);
-});
-
-Deno.test("lane: the Members control's values ARE the module's sub-views (one state)", () => {
-	const members = lane.laneZones(inConsole({ module: "members", subView: "people" }));
-	assertEquals(
-		members.context.partition?.options.map((o) => o.value),
-		MEMBERS_READINGS.map((v) => v.value),
-	);
-});
-
-Deno.test("lane: a view with nothing to partition keeps the search and draws no segmented control", () => {
-	for (const module of ["overview", "projects", "invitations", "payouts", "settings", null]) {
+Deno.test("lane (#319): a console keeps the search and draws no segmented control", () => {
+	// Members' People · Org chart moved to the footer rig, beside the zoom it shares a reading with.
+	for (
+		const module of ["overview", "members", "projects", "invitations", "payouts", "settings", null]
+	) {
 		const zones = lane.laneZones(inConsole({ module }));
 		assertEquals(zones.context.partition, null, `${module} drew a segmented control`);
 		assertEquals(zones.context.search.label, "Search North Loop");
@@ -735,30 +708,16 @@ Deno.test("lane: no Invite member inside a console without invite_members", () =
 	}
 });
 
-Deno.test("lane: Invite member opens in place on Members and lands there from anywhere else", () => {
-	for (const module of ["members", "invitations"]) {
-		assertEquals(lane.laneZones(inConsole({ module })).footer.invite, {
-			action: "invite",
-			label: "Invite member",
-			inPlace: true,
-			href: "/teams/north-loop/members?invite=1",
-		});
+Deno.test("lane: Invite member is the same in-place action on every module (Decision #318)", () => {
+	for (const kind of ["team", "business"] as const) {
+		for (const module of ["members", "invitations", "payouts", "projects", "settings", null]) {
+			assertEquals(
+				lane.laneZones(inConsole({ kind, handle: "acme", module })).footer.invite,
+				{ action: "invite", label: "Invite member" },
+				`${kind} ${module}`,
+			);
+		}
 	}
-	assertEquals(lane.laneZones(inConsole({ module: "payouts" })).footer.invite, {
-		action: "invite",
-		label: "Invite member",
-		inPlace: false,
-		href: "/teams/north-loop/members?invite=1",
-	});
-	// A team's Projects mounts the modal too (its allowance band's Invite member), so the lane's
-	// Invite member opens it there instead of leaving the page; a business's Projects mounts none.
-	assertEquals(lane.laneZones(inConsole({ module: "projects" })).footer.invite?.inPlace, true);
-	const businessProjects = lane.laneZones(
-		inConsole({ kind: "business", handle: "acme", module: "projects" }),
-	);
-	assertEquals(businessProjects.footer.invite?.inPlace, false);
-	const business = lane.laneZones(inConsole({ kind: "business", handle: "acme", module: null }));
-	assertEquals(business.footer.invite?.href, "/businesses/acme/members?invite=1");
 });
 
 // Model-only: the zone ORDER the island renders. That the rendered lane follows it — each zone's

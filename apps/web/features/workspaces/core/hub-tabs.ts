@@ -4,20 +4,21 @@ import {
 	type WorkspaceKind,
 } from "@projective/types/workspace";
 import { hubOf, hubsForViewer, type ModuleKey, type ViewerHub } from "./module-registry.tsx";
-import { MEMBERS_QUEUE, subViewSearch, subViewsFor } from "./sub-views.ts";
+import { MEMBERS_CHART, subViewSearch, subViewsFor } from "./sub-views.ts";
 
 /**
- * hub-tabs — the header band's tab strip for a multi-module hub (Decision #306).
+ * hub-tabs — the header band's tab strip for a multi-module hub (Decision #306, drawn as link tabs
+ * since Decision #319).
  *
- * A hub gathers modules ("Roster & members" is Members · Invitations · Roles); each keeps its own route
- * and gate, and the band draws the hub as ONE strip of link tabs: a module with sub-views contributes one
- * tab per sub-view (Members → People · Invitations · Org chart), any other module one tab of its own.
- * Every tab is a real address the server resolves and guards, so a tab never switches state the URL
- * does not carry.
+ * A hub gathers modules ("Members" is Members · Invitations · Roles); each keeps its own route and
+ * gate, and the band draws the hub as ONE strip of link tabs, one per module. A module's sub-views are
+ * not tabs here: they are the module's own business (Members draws its sections in the body and its
+ * org chart in the footer rig). Every tab is a real address the server resolves and guards, so a tab
+ * never switches state the URL does not carry.
  *
- * The Invitations module is the Members queue under a second address: where Members is offered, its
- * Invitations sub-view stands for it, and `/invitations` marks that tab. A hub the viewer reaches only
- * one module of draws no hub strip — the module's own in-place sub-view tabs stay (`sub-views.ts`).
+ * The Invitations module is the Members queue under a second address: where Members is offered, the
+ * Members tab stands for it and is current on `/invitations`. A hub the viewer reaches only one module
+ * of draws no hub strip.
  *
  * Pure: no signals, no DOM. It reaches the registry, so tests load it through `importWithoutGlyphs`.
  */
@@ -29,8 +30,6 @@ export interface HubTab {
 	label: string;
 	href: string;
 	module: ModuleKey;
-	/** The sub-view the tab selects, or `null` for a module tab. */
-	view: string | null;
 }
 
 /** A hub's strip and which tab is current. */
@@ -49,6 +48,11 @@ export interface HubTabsInput {
 	module: ModuleKey;
 	/** The module's resolved sub-view, or `null`. */
 	view: string | null;
+	/**
+	 * The reader's last reading of the Members people (`people` · `chart`), when the client knows it —
+	 * the Members tab then returns them to the org chart they left. `null` on the server.
+	 */
+	reading?: string | null;
 }
 // #endregion
 
@@ -71,8 +75,8 @@ function stripModules(hub: ViewerHub): ModuleKey[] {
 }
 
 /**
- * The hub strip for the module being rendered, or `null` when the band keeps the module's own sub-view
- * tabs: no hub, or a hub of which the viewer may open one module only.
+ * The hub strip for the module being rendered, or `null` when the hub would be a single tab: no hub,
+ * or a hub of which the viewer may open one module only.
  */
 export function hubTabs(input: HubTabsInput): HubTabStrip | null {
 	const hub = viewerHubOf(input.kind, input.capabilities, input.module);
@@ -80,40 +84,25 @@ export function hubTabs(input: HubTabsInput): HubTabStrip | null {
 	const modules = stripModules(hub);
 	if (modules.length < 2) return null;
 
-	const tabs: HubTab[] = modules.flatMap((module): HubTab[] => {
+	const tabs: HubTab[] = modules.map((module) => {
 		const base = workspaceHref(input.kind, input.handle, module);
-		const views = subViewsFor(module, input.kind, input.capabilities);
-		if (views.length === 0) {
-			const label = hub.modules.find((m) => m.key === module)?.label ?? module;
-			return [{ key: module, label, href: base, module, view: null }];
-		}
-		return views.map((v) => ({
-			key: `${module}:${v.value}`,
-			label: v.label,
-			href: `${base}${subViewSearch("", views, v.value)}`,
-			module,
-			view: v.value,
-		}));
+		const label = hub.modules.find((m) => m.key === module)?.label ?? module;
+		return { key: module, label, href: `${base}${readingSearch(input, module)}`, module };
 	});
 
-	return { title: hub.label, tabs, active: activeTab(tabs, input) };
+	return { title: hub.label, tabs, active: activeTab(tabs, input.module) };
 }
 
-/** The current tab: the rendered module at its sub-view — `/invitations` reads as the Members queue. */
-function activeTab(tabs: readonly HubTab[], input: HubTabsInput): number {
-	const aliased = input.module === "invitations" && tabs.some((t) => t.module === "members");
-	const module = aliased ? "members" : input.module;
-	const view = aliased ? MEMBERS_QUEUE : input.view;
-	const own = tabs.map((t, i) => ({ t, i })).filter(({ t }) => t.module === module);
-	if (own.length === 0) return 0;
-	return (own.find(({ t }) => t.view === view) ?? own[0]).i;
+/** The query a tab's address carries: the Members org chart the reader left, else nothing. */
+function readingSearch(input: HubTabsInput, module: ModuleKey): string {
+	if (module !== "members" || input.reading !== MEMBERS_CHART) return "";
+	return subViewSearch("", subViewsFor("members", input.kind, input.capabilities), MEMBERS_CHART);
 }
 
-/**
- * Whether the band draws a hub strip over `module` — the body then drops its `tabpanel` wiring, since a
- * strip of links names no panel.
- */
-export function bandHasHubStrip(input: HubTabsInput): boolean {
-	return hubTabs(input) !== null;
+/** The current tab: the rendered module — `/invitations` reads as the Members tab. */
+function activeTab(tabs: readonly HubTab[], module: ModuleKey): number {
+	const aliased = module === "invitations" && tabs.some((t) => t.module === "members");
+	const at = tabs.findIndex((t) => t.module === (aliased ? "members" : module));
+	return at < 0 ? 0 : at;
 }
 // #endregion

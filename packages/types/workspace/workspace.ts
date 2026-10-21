@@ -4,6 +4,8 @@ import { MoneyViewSchema } from "../finance/wallet.ts";
 import { isReservedHandle } from "../profile/reserved.ts";
 import { canOpenVerification } from "./access.ts";
 import { EntityChannelSchema } from "./channels.ts";
+import { InviteRecipientRefusalSchema } from "../invites/recipients.ts";
+import { OrgInviteLinkSchema, WorkspaceJoinRequestSchema } from "./invite-links.ts";
 import {
 	VerificationState,
 	WorkspaceCapability,
@@ -383,6 +385,10 @@ export const WorkspaceDetailSchema = z.object({
 	seats: WorkspaceSeatsSchema.nullable().default(null),
 	/** A business's manager headroom against its plan's `business_managers`; `null` for a team. */
 	managers: BusinessManagersSchema.nullable().default(null),
+	/** The active ask-to-join link — only for an `invite_members` holder (Decision #318). */
+	inviteLink: OrgInviteLinkSchema.nullable().default(null),
+	/** Pending requests to join, oldest first — only for an `invite_members` holder (Decision #318). */
+	joinRequests: z.array(WorkspaceJoinRequestSchema).default([]),
 
 	// Money — at most one is present, matching {@link kind}; a team's payout only for `manage_finances`,
 	// a business's spend only for a viewer who may open Spend (`spend_funds` · `manage_finances` ·
@@ -438,6 +444,18 @@ export const WorkspaceDetailSchema = z.object({
 	canPropose: z.boolean().default(true),
 });
 export type WorkspaceDetail = z.infer<typeof WorkspaceDetailSchema>;
+
+/**
+ * What a multi-recipient send (`InviteMembersInput`) answers: the re-read detail, the addresses it
+ * issued, and the ones it refused with the database's own sentence. Only when NOTHING was issued is
+ * the whole send a failure, carrying the first refusal's status.
+ */
+export const InviteMembersResultSchema = z.object({
+	detail: WorkspaceDetailSchema,
+	sent: z.array(z.string().max(161)),
+	refused: z.array(InviteRecipientRefusalSchema),
+});
+export type InviteMembersResult = z.infer<typeof InviteMembersResultSchema>;
 // #endregion
 
 // #region Handles — the claim rule of the one shared namespace

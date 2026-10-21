@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ProjectFormat, ProjectPartySchema } from "./summary.ts";
 import { ChannelKind } from "./detail.ts";
+import { classifyInviteToken, InviteRecipientsSchema } from "../invites/recipients.ts";
 
 /**
  * projects.members — the Zod SSOT for the Members roster read (`/projects/[projectId]/members` and the
@@ -715,19 +716,55 @@ export const InviteAddressSchema = z.string().trim().min(3).max(160).transform((
 	);
 
 /**
- * `POST /api/projects/[id]/invites` — invite people to the engagement (or one stage of it). The
- * project is the route segment. Each address is one invitation; the fat service sends them in order
- * and reports which landed, because a refusal on the fourth (a cooldown, a duplicate) must not
- * unsend the first three.
+ * The pre-batch payload (`addresses` + one `role`) read as recipients, so a caller that has not moved
+ * to {@link InviteRecipientsSchema} keeps working. An address neither kind of recipient is passed on
+ * as an email, which the recipient schema then refuses with its own sentence.
  */
-export const InviteProjectMemberInputSchema = z.object({
-	addresses: z.array(InviteAddressSchema).min(1, "Add at least one person.").max(INVITE_BATCH_MAX)
-		.transform((list) => [...new Set(list)]),
-	role: AssignableMemberRole.default("freelancer"),
-	/** The stage the invitee is seated on when they accept, or `null` for a whole-project invitation. */
-	stageId: z.string().max(120).nullable().default(null),
-});
+function legacyInvitePayload(raw: unknown): unknown {
+	if (!raw || typeof raw !== "object" || "recipients" in raw || !("addresses" in raw)) return raw;
+	const { addresses, role, ...rest } = raw as { addresses?: unknown; role?: unknown };
+	if (!Array.isArray(addresses)) return raw;
+	const roleId = typeof role === "string" ? role : "freelancer";
+	return {
+		...rest,
+		recipients: addresses.map((address) => {
+			const text = typeof address === "string" ? address : "";
+			return { ...(classifyInviteToken(text) ?? { type: "email", value: text }), roleId };
+		}),
+	};
+}
+
+/**
+ * `POST /api/projects/[id]/invites` — invite people to the engagement (or one stage of it). The
+ * project is the route segment. Each recipient is one invitation at its OWN role (the invite modal's
+ * per-row role, Decision #318), addressed as the field read it (`type: "handle" | "email"`); the fat
+ * service sends them in order and reports which landed, because a refusal on the fourth (a cooldown,
+ * a duplicate) must not unsend the first three.
+ */
+export const InviteProjectMemberInputSchema = z.preprocess(
+	legacyInvitePayload,
+	z.object({
+		recipients: InviteRecipientsSchema,
+		/** The stage the invitee is seated on when they accept, or `null` for a whole-project invitation. */
+		stageId: z.string().max(120).nullable().default(null),
+	}).superRefine((input, ctx) => {
+		input.recipients.forEach((r, i) => {
+			if (!AssignableMemberRole.safeParse(r.roleId).success) {
+				ctx.addIssue({
+					code: "custom",
+					path: ["recipients", i, "roleId"],
+					message: "Choose a role they can join as.",
+				});
+			}
+		});
+	}),
+);
 export type InviteProjectMemberInput = z.infer<typeof InviteProjectMemberInputSchema>;
+/** What the invite modal sends: the recipient batch and the stage. */
+export interface InviteProjectMemberPayload {
+	recipients: { type: "handle" | "email"; value: string; roleId: AssignableMemberRole }[];
+	stageId: string | null;
+}
 
 /** One address the send did NOT issue, with the database's (or the service's) own sentence. */
 export const InviteRefusalSchema = z.object({

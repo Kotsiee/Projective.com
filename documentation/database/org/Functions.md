@@ -823,7 +823,7 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   `invite_only`, either kind; else `22023 visibility:`; Decision #230 (h)). Pictures move through the
   media pipeline (`org.set_profile_avatar`), status through `set_workspace_status`.
 
-### §12 — Invitations: named people only
+### §12 — Invitations: named people, plus the ask-to-join link (§12b)
 
 - **`fn_role_of_entity(kind, entity, role)`** — the role row, resolved capabilities and `archived`
   flag, scoped to the entity. Internal.
@@ -862,18 +862,77 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   persona_not_freelancer`, Decision #228 (A) — and then be payout-ready — `PK403 payout_not_ready`,
   Decision #196; declining is never gated)
   — `authenticated`, invitee only (anyone else gets `P0002`). Refuses an answered (`55000`) or expired
-  (`55000`) invitation. Decline → `declined` + `responded_at`. Accept additionally refuses an archived
-  entity, an account with no profile, and an archived role; re-checks the seat cap (the invitation
-  already holds a counted seat, so it adds none); inserts or **reactivates** the membership at the
-  offered role with cleared overrides; for a team seeds a **0 bp** contribution stake; marks the row
-  `accepted`; re-projects the vault and the membership flags; notifies the inviter with
-  `{kind}.member_joined`.
+  (`55000`) invitation. Decline → `declined` + `responded_at`. Accept seats through
+  **`fn_admit_workspace_member`** with **0** seats added (the invitation already holds a counted
+  seat), marks the row `accepted` and notifies the inviter with `{kind}.member_joined`.
+- **`fn_admit_workspace_member(kind, entity, user, role, by, extra, subject) → member_id`** — the ONE
+  admission (Decision #318): an accepted invitation and an approved join request both seat through it,
+  so the two cannot apply different guards. In order: `fn_assert_adult`, an entity that is not
+  archived (`55000`), a finished account (`42501`), for a team `fn_assert_team_persona` and
+  `finance.fn_assert_payout_ready`, a live role (`55000`), `fn_assert_seat(…, extra)` and a business's
+  manager cap (`fn_assert_business_entitlement(…, 'business_managers', extra)`). Inserts or
+  **reactivates** the membership at the role with cleared overrides (for a team, a **0 bp** stake),
+  then re-projects the vault and the membership flags. `extra` is 0 for an invitation, 1 for a
+  request (which holds no seat); `subject` (`invitation` · `request`) words the refusals. Internal.
 - **`revoke_workspace_invitation(invitation) → {id, status}`** — `authenticated`, needs
   `invite_members` on the inviting entity (else `P0002`, the same as not found). Pending only →
   `revoked` + `revoked_at` / `revoked_by`.
 - **`resend_workspace_invitation(invitation) → {id, status}`** — same gate; pending only. Re-mints
   the token and **renews `expires_at` to now + 14 days** (a lapsed pending row is resendable — expiry
   is derived, not a status); re-notifies a platform invitee.
+
+### §12b — Invite links & join requests (Decision #318)
+
+The 2026-09-28 cut of workspace share links and join requests is reversed on a **stage invite link's
+terms** (Decision #145): a link only lets its holder ASK. Tables:
+[`org_invite_links`](Tables.md#orgorg_invite_links) · [`org_join_requests`](Tables.md#orgorg_join_requests).
+
+- **`fn_new_invite_link_token() → text`** — `w-` + 18 random bytes as unpadded base64url
+  (`extensions.gen_random_bytes`, schema-qualified). Internal.
+- **`fn_org_invite_link_state(link, actor) → text`** — the ONE rule for what a link means to a
+  person, read by both `resolve_workspace_invite_link` and `redeem_workspace_invite_link`, so the page
+  never offers a request the redeem would refuse: `revoked` (turned off, or its role retired) ·
+  `archived` (the entity) · `member` · `invited` (an open, unexpired invitation addressed to them by
+  identity, handle or a verified address) · `requested` (a pending request) · `persona` (a team takes
+  freelancers only — `fn_assert_team_persona`'s predicate, answered rather than raised) · `open`.
+  `STABLE`, internal.
+- **`fn_invite_link_json(link) → {id, token, role_id, created_at}`** — the console's shape. Internal.
+- **`get_workspace_invite_link(kind, entity, role = NULL, rotate = false) → {id, token, role_id,
+  created_at}`** — `authenticated`, needs `invite_members` (`42501`); refused on an archived entity
+  (`55000`). Mints on first use at `role` (default the **Member** preset); with an active link, a
+  different `role` **re-points** it (same URL — the "Anyone with the link can ask to join as …"
+  picker) and `rotate` revokes it and mints a replacement in one transaction ("Reset link"), keeping
+  its role unless `role` names another. The role must be a live role of the entity, never owner-ranked
+  (`22023`), and carry nothing the caller lacks (`42501`, `mayGrant` — offering it is granting it).
+  A concurrent first mint that loses `uq_org_invite_links_active` re-reads the winner. Audits
+  `{kind}.invite_link_created` · `.invite_link_role_changed` · `.invite_link_revoked`.
+- **`revoke_workspace_invite_link(kind, entity) → boolean`** — `authenticated`, `invite_members`.
+  TRUE when a link was active; FALSE when there was nothing to revoke (not an error). Audits.
+- **`resolve_workspace_invite_link(token) → jsonb`** — `authenticated` (the landing page is a
+  signed-in route). `{state, kind, workspaceName, workspaceHandle, workspaceAvatarFileId, roleName,
+  sharedByName, sharedByHandle}`; an unknown token answers `{"state":"invalid"}` only (a 144-bit
+  token is not guessable).
+- **`redeem_workspace_invite_link(token, message = NULL) → {id, kind, workspaceHandle, status}`** —
+  `authenticated`. Advisory-locked per entity + person, so a double-press cannot stack requests. Every
+  state but `open` is refused with its sentence and `DETAIL 'state=…'` — `23505` for `member` ·
+  `invited` · `requested`, `23514` otherwise; an unknown token `P0002`. Then `fn_assert_adult` and, for
+  a team, `finance.fn_assert_payout_ready` (asked up front, as a stage link does). Inserts a
+  `pending` request at the link's role carrying `invite_link_id`, notifies every active member holding
+  `invite_members` with `{kind}.join_request` (action URL `…/members?view=pending`), audits
+  `{kind}.join_requested`. Seats nobody.
+- **`respond_to_join_request(request, accept, role = NULL) → {id, status, kind, entity,
+  member_id?}`** — `authenticated`, needs `invite_members` on the request's entity (anyone else
+  `P0002`, the same as not found); pending only (`55000`). Decline → `declined` + `responded_at` /
+  `responded_by`, notifies the requester `{kind}.join_request_declined`. Approve seats them at `role`
+  (default the role they asked for) — the role passes the invitation test for the APPROVER (live,
+  never owner, nothing they lack) — through `fn_admit_workspace_member` with **1** seat added (a
+  request holds none, so a full team refuses `55000 plan:`); records the seated role, notifies
+  `{kind}.join_request_accepted`, audits `{kind}.member_joined` (`via: join_request`).
+- **`withdraw_join_request(request) → {id, status}`** — `authenticated`, the requester only (anyone
+  else `P0002`); pending only → `withdrawn`.
+
+`archive_workspace_role` additionally refuses (`55000`) while the active link offers the role; a
+pending request that asked for it is not a blocker (the approval picks a live role).
 
 ### §13 — Changing a member
 
@@ -979,8 +1038,10 @@ opens the week) and return RAW facts (ids, file refs, codes, instants); the fat
   how many PENDING invitations offer it, counted exactly as `archive_workspace_role`'s refusal counts
   them, **only when the viewer holds `manage_roles`** (else `null`), so a role manager without
   `invite_members` still sees that refusal before pressing Archive (Teams C3 review; probe
-  `supabase/probes/workspace_role_pending_invites.sql`) — the outgoing pending invitations **only
-  when the viewer holds `invite_members`**, a team's Standing label, the projects (team: via its stage
+  `supabase/probes/workspace_role_pending_invites.sql`) — the outgoing pending invitations, the
+  active ask-to-join link (`invite_link`, `fn_invite_link_json`) and the pending join requests
+  (`join_requests`, oldest first: `id` · `requester_user_id` · `role_id` · `message` · `via_link` ·
+  `created_at`; Decision #318) **only when the viewer holds `invite_members`**, a team's Standing label, the projects (team: via its stage
   assignments, each with its client business's `client` face; business: as client, excluding
   `draft`/`archived`, each with `provider_user_ids` and `provider_teams` faces — faces are
   `org.profiles_index` name + avatar bucket/path), the 30 most recent activity events (joins and

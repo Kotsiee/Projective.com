@@ -9,6 +9,7 @@ import { ViewZoomRig } from "@web/features/shell/components/ViewZoomRig.tsx";
 import { filesZoom } from "@web/features/projects/core/view-state.ts";
 import UploadDrawer from "./UploadDrawer.island.tsx";
 import { ConnectDriveDialog } from "../components/ConnectDriveDialog.tsx";
+import { QuotaRing } from "../components/QuotaRing.tsx";
 import { FilesService } from "../core/FilesService.ts";
 import { openUploadDrawer, uploadDrawerOpen } from "../core/upload-drawer-state.ts";
 import {
@@ -16,11 +17,18 @@ import {
 	enqueueUploads,
 	folderId,
 	items,
+	quota,
 	readOnly,
+	seeded,
 	uploadQueue,
 	uploadsActive,
 } from "../core/files-state.ts";
-import { type AssetOwnerType, type FileScope, sourceLabel } from "../types/file-types.ts";
+import {
+	type AssetOwnerType,
+	type FileScope,
+	sourceLabel,
+	type StorageQuota,
+} from "../types/file-types.ts";
 import { uploadTasksOf } from "../core/upload-tasks.ts";
 
 /**
@@ -34,7 +42,8 @@ import { uploadTasksOf } from "../core/upload-tasks.ts";
  * each with a portal `Tooltip` and an `aria-label`, then **Upload**, the region's one filled action,
  * last in the inline direction (§B.8.2 / §B.8.6). There is no overflow menu: every action stays on
  * the bar at every width, and the narrowest container tier folds Upload's label into its Tooltip
- * rather than removing anything.
+ * rather than removing anything. A host that hands the rig an allowance (`quota`) gets the storage
+ * {@link QuotaRing} truly centred between the two, on equal side tracks.
  *
  * `container-type: inline-size` on the root still stops the band bidding for the lane's space (the
  * `/wallet` 739px min-content defect) and makes that tier switch a container query.
@@ -74,6 +83,14 @@ export interface FilesFooterRigProps {
 	 * drive). Set, it withholds every write action as a read-only location does and is the rig's note.
 	 */
 	lockedNote?: string | null;
+	/**
+	 * The library's allowance as the server read it, when the rig carries it as the {@link QuotaRing}
+	 * in its centre (a console drive, whose allowance has no other home). Painted until the body seeds,
+	 * then the live `files-state` figure after every re-read. Omitted, the rig has no centre.
+	 */
+	quota?: StorageQuota | null;
+	/** Whose allowance it is — the ring's popover title. */
+	quotaOwner?: string;
 }
 
 type SecondaryAction = "new_folder" | "attach_link" | "connect_drive" | "export";
@@ -144,6 +161,8 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 	const connectDrive = props.connectDrive ?? true;
 	const lockedNote = props.lockedNote ?? null;
 	const locked = readOnly.value || lockedNote !== null;
+	const centred = props.quota !== undefined;
+	const allowance = seeded.value ? quota.value : props.quota ?? null;
 	const secondaries = SECONDARY.filter((a) =>
 		(locked ? !a.writes : true) && (connectDrive || a.key !== "connect_drive")
 	);
@@ -269,7 +288,11 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 	// #endregion
 
 	return (
-		<div class="fh-rig" data-readonly={locked ? "true" : undefined}>
+		<div
+			class="fh-rig"
+			data-readonly={locked ? "true" : undefined}
+			data-centred={centred ? "true" : undefined}
+		>
 			<div class="fh-rig__status">
 				<ViewZoomRig
 					store={filesZoom}
@@ -305,6 +328,16 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 					</button>
 				)}
 			</div>
+
+			{
+				/* The centre is a grid cell of its own, present even while it is empty, so a scope with no
+				   allowance leaves the status and the actions exactly where they were. */
+			}
+			{centred && (
+				<div class="fh-rig__centre">
+					<QuotaRing quota={allowance} ownerLabel={props.quotaOwner} />
+				</div>
+			)}
 
 			<div class="fh-rig__actions">
 				{secondaries.map((spec) => (

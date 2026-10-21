@@ -15,6 +15,7 @@ import {
 	channelPanelFor,
 } from "@web/features/projects/core/channel-header-slot.tsx";
 import { projectHeaderFor } from "@web/features/projects/core/project-header-slot.tsx";
+import { explorerHeaderFor } from "@web/features/projects/core/explorer-header-slot.tsx";
 import { projectFooterFor } from "@web/features/projects/core/project-footer-slot.tsx";
 import { channelFooterFor } from "@web/features/projects/core/channel-footer-slot.tsx";
 import { stageDetailsFooterFor } from "@web/features/projects/core/stage-details-footer-slot.tsx";
@@ -148,9 +149,10 @@ async function middleNavFooterFor(
 
 /**
  * Resolve the middle-nav header band: the project channel header on a channel route, the engagement's
- * Overview header or the owner's Details ⇄ Preview header on the engagement's own pages, or the
- * global-inbox conversation header on a `/messages/[conversationId]` route. Exactly one owns the single
- * header slot per URL.
+ * Overview header or the owner's Details ⇄ Preview header on the engagement's own pages, the File
+ * and Submissions explorers' title + toolbar on the project's own Files and Submissions routes (Decision
+ * #317), or the global-inbox conversation header on a `/messages/[conversationId]` route. Exactly one
+ * owns the single header slot per URL.
  */
 async function middleNavHeaderFor(
 	url: URL,
@@ -160,6 +162,7 @@ async function middleNavHeaderFor(
 ): Promise<ComponentChildren> {
 	return await channelHeaderFor(url, context, actor) ??
 		(await projectHeaderFor(url, context, actor, state)) ??
+		(await explorerHeaderFor(url, actor)) ??
 		(await conversationHeaderFor(url, context, actor)) ??
 		(await catalogueHeaderFor(url, context, actor)) ??
 		(await workspaceHeaderFor(url, actor)) ??

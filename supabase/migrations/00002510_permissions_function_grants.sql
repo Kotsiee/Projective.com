@@ -1749,6 +1749,14 @@ GRANT EXECUTE ON FUNCTION org.invite_workspace_member (text, uuid, text, text, u
 GRANT EXECUTE ON FUNCTION org.respond_to_workspace_invitation (uuid, boolean) TO authenticated;
 GRANT EXECUTE ON FUNCTION org.revoke_workspace_invitation (uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION org.resend_workspace_invitation (uuid) TO authenticated;
+-- The ask-to-join link and its requests (00001020 §12b, Decision #318). The state rule, the token
+-- minter, the link projection and the shared admission stay internal (the org region's blanket revoke).
+GRANT EXECUTE ON FUNCTION org.get_workspace_invite_link (text, uuid, uuid, boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.revoke_workspace_invite_link (text, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.resolve_workspace_invite_link (text) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.redeem_workspace_invite_link (text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.respond_to_join_request (uuid, boolean, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.withdraw_join_request (uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION org.update_workspace_member (text, uuid, jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION org.transfer_workspace_ownership (text, uuid, uuid, boolean) TO authenticated;
 GRANT EXECUTE ON FUNCTION org.upsert_workspace_role (text, uuid, uuid, text, text, org.workspace_capability[], text) TO authenticated;

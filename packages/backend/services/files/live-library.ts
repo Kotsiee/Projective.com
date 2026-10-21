@@ -38,6 +38,7 @@ import {
 } from "./asset-row.ts";
 import { assetMatches, nameMatches, needleOf } from "./list-filter.ts";
 import { sealArchivedPage } from "./archived-drive.ts";
+import { libraryTree } from "./library-tree.ts";
 
 /**
  * live-library — the `/files` hub's reads, live against `files.*` under the caller's own session.
@@ -661,6 +662,21 @@ export async function listDrive(actor: Actor, connectionId: string, params: Asse
 
 // #region Tree
 
+/**
+ * A team's or business's drive as a tree: its root and every live folder, for the Files module's
+ * folder panel. The seat check is {@link listWorkspace}'s, so a stranger, a departed member and an
+ * unknown id all get the same 404; an archived entity's nodes are read-only.
+ */
+export async function readWorkspaceTree(
+	actor: Actor,
+	entityId: string,
+): Promise<Result<AssetTreeNode[]>> {
+	const seat = await entitySeatOf(actor, entityId);
+	if (!seat) return { ok: false, status: 404, message: "There's no drive here for you." };
+	const lib = await loadLibrary(actor, seat.owner);
+	return { ok: true, data: [libraryTree(lib, seat.name, seat.archived)] };
+}
+
 /** The `/files` navigation tree: the acting library, the mounted engagements, the connected drives. */
 export async function readTree(actor: Actor): Promise<AssetTreeNode[]> {
 	const owner = ownerOfActor(actor);
@@ -676,39 +692,7 @@ export async function readTree(actor: Actor): Promise<AssetTreeNode[]> {
 	]);
 	if (mounts.error) throw new Error(`files.items read failed: ${mounts.error.message}`);
 
-	const counts = new Map<string, number>();
-	for (const f of lib.folders) counts.set(f.id, 0);
-	const parent = new Map(lib.folders.map((f) => [f.id, f.parent_folder_id]));
-	for (const it of lib.items) {
-		let cursor: string | null | undefined = it.folder_id;
-		let guard = 0;
-		while (cursor && guard++ < 32) {
-			counts.set(cursor, (counts.get(cursor) ?? 0) + 1);
-			cursor = parent.get(cursor);
-		}
-	}
-	const node = (f: FolderRow): AssetTreeNode => ({
-		segment: f.id,
-		kind: "dir",
-		nodeKind: "folder",
-		label: clamp(f.name, 200) || "Folder",
-		sublabel: null,
-		folderId: f.id,
-		readOnly: false,
-		fileCount: counts.get(f.id) ?? 0,
-		children: lib.folders.filter((c) => c.parent_folder_id === f.id).map(node),
-	});
-	const root: AssetTreeNode = {
-		segment: "root",
-		kind: "stage",
-		nodeKind: "root",
-		label: "My files",
-		sublabel: null,
-		folderId: null,
-		readOnly: false,
-		fileCount: lib.items.length,
-		children: lib.folders.filter((f) => f.parent_folder_id === null).map(node),
-	};
+	const root = libraryTree(lib, "My files");
 
 	const perProject = new Map<string, number>();
 	for (const row of (mounts.data ?? []) as Array<{ storage_path: string }>) {

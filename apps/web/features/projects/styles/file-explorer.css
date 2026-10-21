@@ -1,5 +1,7 @@
 /*
- * File Explorer — the workspace layout, sticky toolbar, project-scope channels tree, and empty state.
+ * File Explorer — the explorer's own pieces: the project tree's rows, the workspace and the empty
+ * state. The layout (the tree panel on the left, its sticky pin, the single hairline seam and the
+ * mobile fold) is the shared `FilesFrame` (`@features/files/styles/files-frame.css`, Decision #317).
  * §B.4: non-interactive containers separated by spacing + tonal tint + a single hairline (never a
  * four-sided box); interactive rows/inputs carry their own affordance. Native WINDOW scroll model
  * (Decision #31) — the toolbar + tree pin via `position: sticky` at the chrome offset, not a local
@@ -7,9 +9,10 @@
  */
 .fx-explorer {
 	position: relative;
-	/* The viewport offset the sticky toolbar/tree pin below: top bar (project scope) OR top bar +
-	channel-header band (channel scope). */
-	--fx-chrome: var(--shell-topbar-h);
+	/* Every scope sits under a middle-nav header band — a channel's, a conversation's, or on the
+	project's own Files route the explorer's band (title + toolbar) — so the toolbar and the tree pin
+	below the top bar + that band. */
+	--fx-chrome: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
 	--fx-toolbar-h: 3rem;
 	display: flex;
 	flex-direction: column;
@@ -18,54 +21,30 @@
 	padding-block: var(--space-3) var(--space-6);
 }
 
-/* Channel AND conversation scopes both sit under the middle-nav header band (the channel/conversation
-   header the shell mounts), so the sticky toolbar/tree pin below the top bar + that band — the
-   `/messages/[id]/files` toolbar therefore pins identically to the projects channel Files toolbar. */
-.fx-explorer[data-scope="channel"],
-.fx-explorer[data-scope="conversation"] {
-	--fx-chrome: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
-}
-
-/* Project scope — the channels tree + the main column. */
-.fx-layout {
-	display: grid;
-	grid-template-columns: 13rem minmax(0, 1fr);
-	gap: var(--space-5);
-	align-items: start;
-}
-
-.fx-main {
-	min-inline-size: 0;
-	display: flex;
-	flex-direction: column;
+/* The project's own Files route draws its toolbar in the header band, so nothing pins in the body and
+   the list header sticks directly below the band. */
+.fx-explorer[data-scope="project"] {
+	--fx-toolbar-h: 0px;
 }
 
 /* The sticky, glass `.fx-toolbar` itself is shared chrome — see `./fx-toolbar.css` (imported by the
-   island) — so the File Explorer and the Catalogue console render ONE toolbar. Only `--fx-chrome` /
+   toolbar) — so the File Explorer and the Catalogue console render ONE toolbar. Only `--fx-chrome` /
    `--fx-toolbar-h` (set on `.fx-explorer` above) localise where it pins. */
 
-/* #region Channels tree (project scope) */
-.fx-aside-tree {
-	position: sticky;
-	inset-block-start: var(--fx-chrome);
-	align-self: start;
-	max-block-size: calc(100dvh - var(--fx-chrome) - var(--space-4));
-	overflow-y: auto;
-	padding-block: var(--space-4);
-}
-
+/* #region Project tree (project and channel scope) */
 .fx-tree {
 	display: flex;
 	flex-direction: column;
 	gap: 1px;
 }
 
+/* The section-header register (§A.4): `--text-xs`, uppercase, `--fw-semibold`, `--tracking-wide`. */
 .fx-tree__group {
 	margin-block: var(--space-3) var(--space-1);
 	padding-inline: var(--space-2);
-	font-size: 0.6875rem;
-	font-weight: 700;
-	letter-spacing: 0.06em;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
 	text-transform: uppercase;
 	color: var(--text-secondary);
 }
@@ -88,6 +67,8 @@
 	font-family: var(--font-sans);
 	font-size: 0.8125rem;
 	text-align: start;
+	/* On a channel's own Files route the rows are links to each node's address. */
+	text-decoration: none;
 	cursor: pointer;
 	transition:
 		background-color var(--dur-fast) var(--ease-standard),
@@ -170,16 +151,6 @@
 /* #endregion */
 
 @media (max-width: 768px) {
-	.fx-layout {
-		grid-template-columns: 1fr;
-	}
-
-	.fx-aside-tree {
-		position: static;
-		max-block-size: none;
-		overflow: visible;
-	}
-
 	.fx-tree {
 		flex-flow: row wrap;
 	}

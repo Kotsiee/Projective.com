@@ -1,0 +1,57 @@
+/*
+ * explorer-header — the middle-nav header band on a project's own Files and Submissions routes
+ * (Decision #317): the folder in view's title, then the explorer's toolbar (search · type · sort) as
+ * the band's trailing cluster. The band's glass and pin are the frame's (`.ui-middle-nav__header`);
+ * this only lays the row out at the band's height. Token-only, strict BEM.
+ */
+.fxh {
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	inline-size: 100%;
+	min-inline-size: 0;
+	block-size: var(--shell-midnav-header-h);
+	padding-inline: var(--space-4);
+}
+
+.fxh__title {
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	margin: 0;
+	overflow: hidden;
+	color: var(--on-surface);
+	font-size: var(--text-base);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-tight);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* The search caps itself (`.fx-toolbar__search`), so the cluster sits at the band's inline end. */
+.fxh .fx-toolbar--band {
+	justify-content: flex-end;
+}
+
+.fxh .fx-toolbar--band .fx-toolbar__spacer {
+	display: none;
+}
+
+@media (max-width: 767.98px) {
+	.fxh {
+		gap: var(--space-2);
+		padding-inline: var(--space-3);
+	}
+
+	/* A phone keeps the title whole first, then the type and sort controls; the search gives way
+	   down to its own icon and still takes a tap and typing. */
+	.fxh__title {
+		flex: 0 0 auto;
+		max-inline-size: 40%;
+	}
+
+	.fxh .fx-toolbar__search {
+		flex: 0 1 auto;
+		min-inline-size: var(--fld-h-sm);
+		max-inline-size: 7rem;
+	}
+}

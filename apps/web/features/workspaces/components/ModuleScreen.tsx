@@ -12,7 +12,7 @@ import WorkspaceOverview from "../islands/WorkspaceOverview.island.tsx";
 import TalentScreen from "../islands/TalentScreen.island.tsx";
 import TeamProjectsScreen from "../islands/TeamProjectsScreen.island.tsx";
 import MembersScreen from "../islands/MembersScreen.island.tsx";
-import RolesMatrix from "../islands/RolesMatrix.island.tsx";
+import WorkspaceRolesMasterDetail from "../islands/WorkspaceRoles.island.tsx";
 import PayoutPolicyScreen from "../islands/PayoutPolicyScreen.island.tsx";
 import SpendPolicyScreen from "../islands/SpendPolicyScreen.island.tsx";
 import BillingScreen from "../islands/BillingScreen.island.tsx";
@@ -74,7 +74,7 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 			return <MembersScreen workspace={ws} view={props.view ?? null} module={module} />;
 
 		case "roles":
-			return <RolesMatrix workspace={ws} />;
+			return <WorkspaceRolesMasterDetail workspace={ws} />;
 
 		case "payouts":
 			return ws.payout
@@ -135,6 +135,7 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 						page: null,
 						error: `${ws.name}'s files couldn't be loaded just now.`,
 						path: [],
+						tree: [],
 					}}
 				/>
 			);

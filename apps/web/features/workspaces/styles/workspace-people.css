@@ -12,50 +12,57 @@
  * here draws a chip, a pill or a field: these rules only lay the regions out. The one container left
  * on a person is the sensitive-grant COUNT (a ui Badge, §B.11).
  *
- * The org chart is a CSS-only connector tree built entirely from logical properties, so it mirrors
- * under `dir="rtl"` with no script and no second layout.
+ * The org chart is an SVG canvas (Decision #319): its geometry is the layout's, its look is here.
  */
 
-/* #region Head */
-/* The section title over its MetaLine (seats · pending); the avatar stack sits at the row's end. */
-.wsp-mhead {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-	min-inline-size: 0;
-}
-/* #endregion */
-
-/* #region People */
-.wsp-people {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-4);
-	inline-size: 100%;
-	min-inline-size: 0;
-}
-
+/* #region The roster frame — the project roster's anatomy (Decision #319) */
 /*
- * The reading's own bar holds ORIENTATION only — the search. The views live in the header band, the
- * density in the footer rig, and the actions in the rows, so this bar never grows a CTA.
+ * The body is the project roster's `.mem-explorer` (`projects/styles/members.css`): the sticky bar
+ * group, then the zoom-driven workspace. These rules only fit it into the console: the bar pins under
+ * the console's header band as well as the top bar (the frame's own top inset), and the section bar's
+ * end holds the seats line and the faces side by side.
  */
-.wsp-people__bar {
-	display: flex;
+.wsp-members {
+	--fx-chrome: var(--shell-frame-inset-block, var(--shell-topbar-h));
+}
+
+.wsp-members__meta {
+	display: inline-flex;
 	align-items: center;
 	gap: var(--space-3);
 	min-inline-size: 0;
 }
 
-.wsp-people__search {
-	inline-size: 100%;
-	max-inline-size: var(--wsp-field);
+/*
+ * The org chart reading: the whole region becomes the canvas, sized to the page canvas's own sum
+ * (`page-canvas.css`) — the viewport less the frame's top inset (top bar and header band), the footer
+ * band's measured height and any ribbon — so it fills the body exactly and nothing scrolls or spills.
+ * The bar group floats over the canvas's top edge on its own glass, and the chart fits clear of it.
+ */
+.wsp-members[data-reading="chart"] {
+	block-size: calc(
+		100dvh - var(--shell-frame-inset-block, var(--shell-topbar-h)) -
+		var(--shell-midnav-footer-cur-h, var(--shell-midnav-footer-h)) - var(--ribbon-inset, 0px)
+	);
+	min-block-size: 0;
+	padding: 0;
+	overflow: clip;
 }
 
-.wsp-people__body {
-	inline-size: 100%;
-	min-inline-size: 0;
+.wsp-members[data-reading="chart"] .wsp-members__bar {
+	position: absolute;
+	inset-block-start: var(--space-3);
+	inset-inline: var(--space-4);
 }
 
+.wsp-members[data-reading="chart"] .wsp-members__body {
+	position: absolute;
+	inset: 0;
+	padding: 0;
+}
+/* #endregion */
+
+/* #region People */
 .wsp-people__empty {
 	margin: 0;
 	font-size: var(--wsp-fs-body);
@@ -64,136 +71,19 @@
 /* #endregion */
 
 /* #region Member card */
-.wsp-mcard {
-	position: relative;
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	inline-size: 100%;
-	min-inline-size: 0;
-	padding: var(--space-4);
-	/* One leading edge, reserved transparent at rest: the self state recolours it rather than adding
-	a box (§B.4, §B.12.3). */
-	border-inline-start: var(--hairline-strong);
-	border-inline-start-width: var(--wsp-acting-line-h);
-	border-inline-start-color: transparent;
-	border-radius: var(--radius-container-lg);
-	background: var(--surface-1);
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.wsp-mcard:hover {
-	background: var(--surface-2);
-}
-
-/* The viewer's own card keeps one leading rule in the kind's opaque edge tone beside the "You" its
-MetaLine says — orientation, not emphasis, and never a four-sided ring around static content. */
-.wsp-mcard[data-self="true"] {
-	border-inline-start-color: var(--wsp-acting-ring);
-}
-
-.wsp-mcard__top {
-	display: grid;
-	grid-template-columns: auto minmax(0, 1fr) auto;
-	align-items: start;
-	gap: var(--space-3);
-}
-
-.wsp-mcard__ident {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-px);
-	min-inline-size: 0;
-}
-
-.wsp-mcard__name {
-	margin: 0;
-	min-inline-size: 0;
-	font-size: var(--wsp-fs-body);
-	font-weight: var(--fw-medium);
-	color: var(--on-surface);
-}
-
-.wsp-mcard__name-link {
-	display: block;
-	color: inherit;
-	text-decoration: none;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.wsp-mcard__name-link:hover {
-	text-decoration: underline;
-}
-
-.wsp-mcard__flags {
-	display: flex;
+/*
+ * The card is the project roster's `.mem-card` (`projects/styles/members.css`, Decision #319); these
+ * rules only lay out the workspace's own slots in it: the corner's Message and kebab side by side, and
+ * the override counts beside the sensitive-grant badge.
+ */
+.wsp-mcard__actions {
+	display: inline-flex;
 	align-items: center;
 	gap: var(--space-1);
-	justify-self: end;
-}
-
-/* Availability is a dot on the avatar's corner, with the word in its Tooltip (§B.6). */
-.wsp-mcard__avatarwrap {
-	position: relative;
-	display: inline-flex;
-	flex: none;
-}
-
-.wsp-mcard__avail {
-	position: absolute;
-	inset-block-end: 0;
-	inset-inline-end: 0;
-	inline-size: var(--wsp-swatch);
-	block-size: var(--wsp-swatch);
-	border-radius: 50%;
-	background: var(--wsp-unverified);
-	box-shadow: 0 0 0 var(--space-px) var(--surface-1);
-}
-
-.wsp-mcard__avail[data-avail="available"] {
-	background: var(--success);
-}
-
-.wsp-mcard__avail[data-avail="limited"] {
-	background: var(--warning);
-}
-
-.wsp-mcard__avail[data-avail="unavailable"] {
-	background: transparent;
-	box-shadow: 0 0 0 var(--space-px) var(--surface-1), inset 0 0 0 var(--wsp-stroke) var(--outline);
-}
-
-/* Workload: the ui ProgressBar over the member's live W_i against their cap, the figure beside it. */
-.wsp-mcard__load {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	min-inline-size: 0;
-}
-
-.wsp-mcard__meter {
-	flex: 1 1 auto;
-	min-inline-size: 0;
-}
-
-/* The figure keeps its own width on one line: the bar is what gives way, never "Workload · 2 / 5". */
-.wsp-mcard__figure {
-	flex: none;
-	white-space: nowrap;
-}
-
-/* The override counts close the card behind one hairline — present only when the person departs from
-their role. */
-.wsp-mcard__overrides {
-	padding-block-start: var(--space-3);
-	border-block-start: var(--hairline);
 }
 
 /* The override MetaLine and the sensitive count beside it, on one line. */
 .wsp-overrides,
-.wsp-mcard__overrides,
 .wsp-mtable__overrides {
 	display: flex;
 	align-items: center;
@@ -259,184 +149,186 @@ their role. */
 }
 /* #endregion */
 
-/* #region Org chart — a CSS-only connector tree, logical properties throughout */
+/* #region Org chart — the canvas (Decision #319) */
 /*
- * Geometry: each nested level reserves `2 × --wsp-connector` of block-start padding. The parent's
- * down-stem occupies the first half, the sibling bar sits at the midpoint, and each child's up-stem
- * occupies the second half. Every stem is centred with `inset-inline: 0; margin-inline: auto` — never
- * `translateX` — and each sibling half-bar is placed with `inset-inline-start` / `inset-inline-end`, so
- * the whole tree mirrors under RtL without a single physical property.
+ * An SVG viewport over an endless dotted ground (`OrgChart.tsx`). The chart's geometry is SVG
+ * attributes from `org-chart-layout.ts`; everything here is its look, on tokens. Strokes keep their
+ * screen width at every zoom (`non-scaling-stroke`), and the dots are re-spaced by the component so
+ * the ground never turns to noise.
+ *
+ * A filter recedes everyone it did not pick out by a colour step and a desaturated face — never
+ * opacity, which this surface keeps for motion (§B.4).
  */
-.wsp-chart {
+.wsp-orgchart {
+	position: relative;
 	inline-size: 100%;
-	min-inline-size: 0;
-	overflow-x: auto;
-	padding-block: var(--space-4);
+	block-size: 100%;
+	min-block-size: 0;
 }
 
-.wsp-chart__level {
-	list-style: none;
-	margin: 0;
-	padding: 0;
-	display: flex;
-	align-items: flex-start;
-	justify-content: center;
-	gap: var(--space-4);
-	position: relative;
+.wsp-orgchart__canvas {
+	display: block;
+	inline-size: 100%;
+	block-size: 100%;
+	touch-action: none;
+	user-select: none;
+	cursor: grab;
 }
 
-/* A nested level opens the connector corridor and drops the parent's stem into its first half. */
-.wsp-chart__level:not(.wsp-chart__level--root) {
-	padding-block-start: calc(var(--wsp-connector) * 2);
+.wsp-orgchart__canvas:active {
+	cursor: grabbing;
 }
 
-.wsp-chart__level:not(.wsp-chart__level--root)::before {
-	content: "";
-	position: absolute;
-	inset-block-start: 0;
-	inset-inline: 0;
-	margin-inline: auto;
-	inline-size: 0;
-	block-size: var(--wsp-connector);
-	border-inline-start: var(--hairline);
+/* The server frame cannot measure the viewport, so the scene waits for the first fit to show. */
+.wsp-orgchart:not([data-ready]) .wsp-orgchart__scene {
+	visibility: hidden;
 }
 
-.wsp-chart__node {
-	position: relative;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	min-inline-size: 0;
+.wsp-orgchart__ground {
+	pointer-events: all;
 }
 
-/* The child's up-stem, rising from the node into the corridor. */
-.wsp-chart__level:not(.wsp-chart__level--root) > .wsp-chart__node::before {
-	content: "";
-	position: absolute;
-	inset-block-end: 100%;
-	inset-inline: 0;
-	margin-inline: auto;
-	inline-size: 0;
-	block-size: var(--wsp-connector);
-	border-inline-start: var(--hairline);
+.wsp-orgchart__dot {
+	fill: var(--hairline-strong-color);
 }
 
-/* The sibling bar. A first child spans from its own centre outward; a last child spans inward. */
-.wsp-chart__level:not(.wsp-chart__level--root) > .wsp-chart__node::after {
-	content: "";
-	position: absolute;
-	inset-block-end: calc(100% + var(--wsp-connector));
-	inset-inline: 0;
-	block-size: 0;
-	border-block-start: var(--hairline);
+.wsp-orgchart__edge {
+	fill: none;
+	stroke: var(--hairline-strong-color);
+	stroke-width: var(--wsp-stroke-thin);
+	vector-effect: non-scaling-stroke;
+	transition: stroke var(--dur-fast) var(--ease-standard);
 }
 
-.wsp-chart__level:not(.wsp-chart__level--root) > .wsp-chart__node:first-child::after {
-	inset-inline-start: 50%;
+.wsp-orgchart__edge[data-dim="true"] {
+	stroke: var(--hairline-color);
 }
 
-.wsp-chart__level:not(.wsp-chart__level--root) > .wsp-chart__node:last-child::after {
-	inset-inline-end: 50%;
-}
-
-/* An only child needs no bar at all — the two stems already meet. */
-.wsp-chart__level:not(.wsp-chart__level--root) > .wsp-chart__node:only-child::after {
-	display: none;
-}
-
-.wsp-chart__card {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	inline-size: var(--wsp-node-w);
-	min-inline-size: 0;
-	padding: var(--space-2) var(--space-3);
-	border: var(--hairline-strong);
-	border-radius: var(--radius-lg);
-	background: var(--surface-1);
-	color: inherit;
-	font: inherit;
-	text-align: start;
-	text-decoration: none;
+/* A card opens its member — an interactive control, so it carries a full contour (§B.4). */
+.wsp-orgchart__node {
 	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		transform var(--dur-fast) var(--ease-standard);
 }
 
-.wsp-chart__card:hover {
-	background: var(--surface-2);
+.wsp-orgchart__press {
+	transform-box: fill-box;
+	transform-origin: center;
+	transition: transform var(--dur-fast) var(--ease-standard);
 }
 
-/* A node opens its member, so it compresses on press like the package controls around it (§B.12). */
-.wsp-chart__card:active {
+/* It compresses on press like the package controls around it (§B.12) — scale only. */
+.wsp-orgchart__node:active .wsp-orgchart__press {
 	transform: scale(var(--btn-press-scale));
 	transition-duration: var(--dur-press);
 }
 
-.wsp-chart__card[data-self="true"] {
-	border-color: var(--wsp-kind-edge);
-	background: var(--wsp-kind-tint);
+.wsp-orgchart__card {
+	fill: var(--surface-1);
+	stroke: var(--hairline-strong-color);
+	stroke-width: var(--wsp-hairline-w);
+	vector-effect: non-scaling-stroke;
+	rx: var(--radius-lg);
+	ry: var(--radius-lg);
+	transition:
+		fill var(--dur-fast) var(--ease-standard),
+		stroke var(--dur-fast) var(--ease-standard);
 }
 
-.wsp-chart__avatar {
-	flex: none;
-	border-radius: 50%;
+.wsp-orgchart__node:hover .wsp-orgchart__card {
+	fill: var(--surface-2);
 }
 
-.wsp-chart__body {
-	display: flex;
-	flex-direction: column;
-	gap: 0;
-	min-inline-size: 0;
+.wsp-orgchart__node[data-self="true"] .wsp-orgchart__card {
+	fill: var(--wsp-kind-tint);
+	stroke: var(--wsp-kind-edge);
 }
 
-.wsp-chart__name {
+/* The card last opened, and the cards a search or filter picked out. */
+.wsp-orgchart__node[data-active="true"] .wsp-orgchart__card,
+.wsp-orgchart__node[data-match="true"] .wsp-orgchart__card {
+	stroke: var(--primary);
+	stroke-width: var(--wsp-stroke);
+}
+
+.wsp-orgchart__node[data-match="true"] .wsp-orgchart__card {
+	fill: var(--primary-tint);
+}
+
+.wsp-orgchart__node[data-dim="true"] .wsp-orgchart__card {
+	stroke: var(--hairline-color);
+}
+
+.wsp-orgchart__face {
+	fill: var(--surface-2);
+}
+
+.wsp-orgchart__initials {
+	fill: var(--text-secondary);
+	font-size: var(--wsp-fs-label);
+	font-weight: var(--fw-medium);
+	text-anchor: middle;
+	dominant-baseline: central;
+}
+
+.wsp-orgchart__node[data-dim="true"] .wsp-orgchart__photo {
+	filter: grayscale(1);
+}
+
+.wsp-orgchart__name {
+	fill: var(--on-surface);
 	font-size: var(--wsp-fs-body);
 	font-weight: var(--fw-medium);
-	color: var(--on-surface);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
-.wsp-chart__role {
+.wsp-orgchart__role {
+	fill: var(--text-secondary);
+	font-size: var(--wsp-fs-label);
+}
+
+.wsp-orgchart__node[data-dim="true"] .wsp-orgchart__name {
+	fill: var(--text-secondary);
+}
+
+.wsp-orgchart__node[data-dim="true"] .wsp-orgchart__role,
+.wsp-orgchart__node[data-dim="true"] .wsp-orgchart__initials {
+	fill: color-mix(in srgb, var(--text-secondary) 55%, var(--surface-1));
+}
+
+/* The fold under a manager's card: how many people sit below, or a minus while they show. */
+.wsp-orgchart__fold {
+	cursor: pointer;
+}
+
+.wsp-orgchart__foldmark {
+	fill: var(--surface-1);
+	stroke: var(--hairline-strong-color);
+	stroke-width: var(--wsp-hairline-w);
+	vector-effect: non-scaling-stroke;
+	transition: fill var(--dur-fast) var(--ease-standard);
+}
+
+.wsp-orgchart__fold:hover .wsp-orgchart__foldmark {
+	fill: var(--surface-2);
+}
+
+.wsp-orgchart__foldcount {
+	fill: var(--text-secondary);
 	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-/* The disclosure is a ui icon Button (tier 5); this only pushes it to the card's inline end. */
-.wsp-chart__toggle {
-	flex: none;
-	margin-inline-start: auto;
-}
-
-/* The caret rotates on the BLOCK axis, so its meaning does not invert under RtL. */
-.wsp-chart__toggle-glyph {
-	display: inline-flex;
-	line-height: 0;
-	transition: transform var(--dur-fast) var(--ease-standard);
-}
-
-.wsp-chart__node[data-open="true"] > .wsp-chart__card .wsp-chart__toggle-glyph {
-	transform: rotate(180deg);
-}
-
-.wsp-chart__count {
-	flex: none;
-	font-size: var(--wsp-fs-micro);
+	font-weight: var(--fw-medium);
 	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
+	text-anchor: middle;
+	dominant-baseline: central;
 }
 
-/* Somebody with no `reportsTo` and no manager above them — surfaced, never silently orphaned. */
-.wsp-chart__unassigned {
-	margin-block-start: var(--space-5);
-	padding-block-start: var(--space-4);
-	border-block-start: var(--hairline);
+/* "Not placed": a section header over its one line of why, in the meta register. */
+.wsp-orgchart__grouptitle {
+	fill: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+}
+
+.wsp-orgchart__groupnote {
+	fill: var(--text-secondary);
+	font-size: var(--wsp-fs-label);
 }
 /* #endregion */
 
@@ -806,46 +698,14 @@ their role. */
 /* #endregion */
 
 /* #region Responsive */
-@media (max-width: 79.9375rem) {
-	/* Narrower nodes so more siblings sit side by side, still leaving a short name its room beside the
-	32px disclosure Button and its count. */
-	.wsp-chart {
-		--wsp-node-w: 11.75rem;
-		--wsp-connector: var(--space-4);
-	}
-}
-
 @media (max-width: 47.9375rem) {
-	/*
-	 * The chart becomes an indented list: a horizontal tree on a phone is a horizontal scroller, and a
-	 * reporting line read sideways is not a reporting line. One `border-inline-start` rail replaces
-	 * every stem and bar, so it still mirrors under RtL.
-	 */
-	.wsp-chart__level {
-		flex-direction: column;
-		align-items: stretch;
-		justify-content: flex-start;
-		gap: var(--space-2);
-	}
-
-	.wsp-chart__level:not(.wsp-chart__level--root) {
-		padding-block-start: var(--space-2);
-		padding-inline-start: var(--wsp-tree-indent);
-		border-inline-start: var(--hairline);
-	}
-
-	.wsp-chart__level:not(.wsp-chart__level--root)::before,
-	.wsp-chart__level:not(.wsp-chart__level--root) > .wsp-chart__node::before,
-	.wsp-chart__level:not(.wsp-chart__level--root) > .wsp-chart__node::after {
-		display: none;
-	}
-
-	.wsp-chart__node {
-		align-items: stretch;
-	}
-
-	.wsp-chart__card {
-		inline-size: 100%;
+	/* The fixed BottomNav takes the viewport's foot as well (`page-canvas.css` reserves it the same way). */
+	.wsp-members[data-reading="chart"] {
+		block-size: calc(
+			100dvh - var(--shell-frame-inset-block, var(--shell-topbar-h)) -
+			var(--shell-midnav-footer-cur-h, var(--shell-midnav-footer-h)) - var(--shell-bottomnav-h) -
+			env(safe-area-inset-bottom, 0px) - var(--ribbon-inset, 0px)
+		);
 	}
 
 	/* The invitation's actions drop below the row rather than crushing the name. */
@@ -862,24 +722,26 @@ their role. */
 
 /* #region Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-	.wsp-mcard,
-	.wsp-chart__card,
-	.wsp-chart__toggle-glyph {
+	.wsp-orgchart__press,
+	.wsp-orgchart__card,
+	.wsp-orgchart__edge,
+	.wsp-orgchart__foldmark {
 		transition: none;
 	}
 
-	.wsp-chart__card:active {
+	.wsp-orgchart__node:active .wsp-orgchart__press {
 		transform: none;
 	}
 }
 
-:root[data-motion="reduced"] .wsp-mcard,
-:root[data-motion="reduced"] .wsp-chart__card,
-:root[data-motion="reduced"] .wsp-chart__toggle-glyph {
+:root[data-motion="reduced"] .wsp-orgchart__press,
+:root[data-motion="reduced"] .wsp-orgchart__card,
+:root[data-motion="reduced"] .wsp-orgchart__edge,
+:root[data-motion="reduced"] .wsp-orgchart__foldmark {
 	transition: none;
 }
 
-:root[data-motion="reduced"] .wsp-chart__card:active {
+:root[data-motion="reduced"] .wsp-orgchart__node:active .wsp-orgchart__press {
 	transform: none;
 }
 /* #endregion */

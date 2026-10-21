@@ -16,6 +16,8 @@ import {
 	isChannelSlug,
 	kindCopy,
 	type MemberFace,
+	type OrgInviteLink,
+	orgInviteLinkPath,
 	type SetupStep,
 	type SpendRequestState,
 	type SplitModel,
@@ -26,6 +28,7 @@ import {
 	type WorkspaceCapability,
 	WorkspaceCapability as WorkspaceCapabilityEnum,
 	workspaceHref,
+	type WorkspaceJoinRequest,
 	type WorkspaceKind,
 	type WorkspaceProject,
 	type WorkspaceRole,
@@ -190,6 +193,24 @@ export interface RawOutgoingInvite {
 	expires_at: string | null;
 }
 
+/** The active invite link on the detail read (`invite_members` holders only; Decision #318). */
+export interface RawInviteLink {
+	id: string;
+	token: string;
+	role_id: string;
+	created_at: string;
+}
+
+/** One pending join request on the detail read (`invite_members` holders only; Decision #318). */
+export interface RawJoinRequest {
+	id: string;
+	requester_user_id: string;
+	role_id: string;
+	message: string | null;
+	via_link: boolean;
+	created_at: string;
+}
+
 /** One project on the detail read. */
 export interface RawProject {
 	slug: string;
@@ -241,6 +262,10 @@ export interface RawDetail {
 	members: RawMember[];
 	roles: RawRole[];
 	invites: RawOutgoingInvite[];
+	/** The active ask-to-join link, or `null` (Decision #318). */
+	invite_link?: RawInviteLink | null;
+	/** Pending join requests, oldest first (Decision #318). */
+	join_requests?: RawJoinRequest[] | null;
 	/** A team's `{used, limit}` seats (`org.fn_team_seats_used` · `team_seats`); `null` for a business. */
 	seats?: unknown;
 	/**
@@ -913,6 +938,37 @@ export function toOutgoingInvite(
 		note: raw.note ? clamp(raw.note, 400) : null,
 		sentAt: clamp(relativeLabel(raw.created_at, nowMs), 40),
 		expiresAt: raw.expires_at ? isoOf(raw.expires_at) || null : null,
+	};
+}
+
+/** The active invite link, with its path, or `null` for a malformed or absent row. */
+export function toInviteLink(raw: RawInviteLink | null | undefined): OrgInviteLink | null {
+	if (!raw?.id || !raw.token || !raw.role_id) return null;
+	return {
+		id: raw.id,
+		token: raw.token,
+		path: orgInviteLinkPath(raw.token),
+		roleId: raw.role_id,
+		createdAt: isoOf(raw.created_at),
+	};
+}
+
+/** One pending request to join, with the requester's face. */
+export function toJoinRequest(
+	raw: RawJoinRequest,
+	person: Person | undefined,
+	nowMs: number,
+): WorkspaceJoinRequest {
+	const handle = person?.username ?? "";
+	return {
+		id: raw.id,
+		handle: clamp(handle, 40),
+		name: clampOr(person?.name ?? (handle ? `@${handle}` : ""), 120, "Someone"),
+		avatar: avatarOf(person?.avatar),
+		roleId: raw.role_id,
+		message: raw.message?.trim() ? clamp(raw.message.trim(), 400) : null,
+		sentAt: clamp(relativeLabel(raw.created_at, nowMs), 40),
+		viaLink: raw.via_link !== false,
 	};
 }
 

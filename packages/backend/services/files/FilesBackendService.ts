@@ -43,6 +43,7 @@ import {
 	readHistory,
 	readQuota,
 	readTree,
+	readWorkspaceTree,
 	resolveShareSlug,
 } from "./live-library.ts";
 import {
@@ -161,8 +162,23 @@ export class FilesBackendService {
 		}
 	}
 
-	/** The `/files` navigation tree: the acting library, the mounted engagements, the connected drives. */
-	static tree(actor: ReadActor): Promise<Result<AssetTreeNode[]>> {
+	/**
+	 * A navigation tree. With no scope, the `/files` hub's: the acting library, the mounted engagements,
+	 * the connected drives. With `workspace`, one team's or business's drive, read only through the
+	 * caller's active seat in it — anybody else gets the same 404 as its listing.
+	 */
+	static tree(
+		actor: ReadActor,
+		opts?: { scope: "workspace"; subjectId: string },
+	): Promise<Result<AssetTreeNode[]>> {
+		if (opts?.scope === "workspace") {
+			const entityId = opts.subjectId;
+			return signedIn(
+				"tree-workspace",
+				actor,
+				async (a) => toResult(await readWorkspaceTree(a, entityId)),
+			);
+		}
 		return signedIn("tree", actor, async (a) => ok(await readTree(a)));
 	}
 

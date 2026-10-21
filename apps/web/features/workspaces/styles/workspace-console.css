@@ -40,16 +40,6 @@
     min-inline-size: 0;
 }
 
-/*
- * A matrix needs every pixel of horizontal room the region can give, so a page hosting one tightens
- * the band inset. NOTE for the mobile block below: a `:has()` rule that SETS a custom property
- * outranks a plain class rule even inside a media query, so this selector is REPEATED in the
- * below-`--bp-md` block — dropping it there would leave the desktop inset in force on a phone.
- */
-.wsp:has(.wsp-roles__matrix) {
-    --wsp-band-pad: var(--space-5);
-}
-
 /* #endregion */
 
 /* #region The band */
@@ -208,8 +198,9 @@ here and there must never be one. */
     color: var(--text-secondary);
 }
 
-.wsp-drive__quota {
-    max-inline-size: var(--wsp-field);
+/* The drive's folder panel pins below the top bar AND the Files header band the console mounts. */
+.wsp-drive {
+    --fx-chrome: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
 }
 
 /* #endregion */
@@ -850,15 +841,6 @@ here and there must never be one. */
         --wsp-band-pad: var(--space-4);
         --wsp-band-pad-b: var(--space-5);
         --wsp-band-pad-b-lg: var(--space-5);
-    }
-
-    /*
-	 * REPEATED from the desktop rule above. A `:has()` selector that sets a custom property outranks
-	 * the plain `.wsp` class rule even from inside a media query, so without this the matrix page would
-	 * keep its desktop `--space-5` inset on a phone.
-	 */
-    .wsp:has(.wsp-roles__matrix) {
-        --wsp-band-pad: var(--space-4);
     }
 
     .wsp-band--ledger,

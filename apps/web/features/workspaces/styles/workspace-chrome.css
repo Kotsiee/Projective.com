@@ -1120,6 +1120,23 @@ words — a ring colour on its own is not a channel. */
 }
 
 /*
+ * The org chart's own zoom (Decision #319) takes the density zoom's slot on the chart, at the same
+ * floor and cap, with Fit after the slider as the zoom rig's mode glyph sits before it.
+ */
+.wsp-footerrig__chartzoom {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 9rem;
+}
+
+.wsp-footerrig__chartzoom .ui-zoom {
+	inline-size: 14rem;
+	max-inline-size: 100%;
+}
+
+/*
  * Held for the spend approval queue's Approve / Decline (`ApprovalQueue`, Teams audit D30), which
  * still borrow the rig's former ghost action; it goes when that queue moves onto `Button`. A full
  * contour is correct here: these are interactive controls (§B.4).
@@ -1219,21 +1236,6 @@ words — a ring colour on its own is not a channel. */
 }
 
 /*
- * The Org chart toggle beside the zoom: the zoom (14rem) + the toggle's words + the trailing glyphs
- * need 26.1rem of rig (26.6rem in the overlay), so under 27rem the toggle folds too. Alone on the
- * chart it keeps its words.
- */
-@container wsp-footerrig (max-width: 26.9375rem) {
-	.wsp-footerrig__density + .wsp-footerrig__utility .wsp-footerrig__wide {
-		display: none;
-	}
-
-	.wsp-footerrig__density + .wsp-footerrig__utility .wsp-footerrig__narrow {
-		display: inline-flex;
-	}
-}
-
-/*
  * The frame's lane mirror (Decision #245 (k)): the roster's rig swaps to its layout without the lane,
  * the tier-2 New or the plan's reason (`rig-model.ts` `rigLayouts`), exactly where the frame hides the
  * lane. So this is the frame's own query, copied as `middle-nav.css` writes it, as the checkout's rig
@@ -1291,8 +1293,13 @@ words — a ring colour on its own is not a channel. */
 		display: inline-flex;
 	}
 
-	.wsp-footerrig__density {
+	.wsp-footerrig__density,
+	.wsp-footerrig__chartzoom {
 		min-inline-size: 6rem;
+	}
+
+	.wsp-footerrig__chartzoom .ui-zoom {
+		inline-size: 8rem;
 	}
 }
 /* #endregion */

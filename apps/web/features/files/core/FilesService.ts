@@ -131,10 +131,14 @@ export const FilesService = {
 
 	/**
 	 * The navigation tree — the acting library, the mounted engagements and the drives. Whose tree it is
-	 * comes from the session, so nothing is sent.
+	 * comes from the session, so nothing is sent. With `workspace`, one team's or business's drive,
+	 * which the server reads only through the caller's seat in it.
 	 */
-	tree(): Promise<FilesResult<AssetTreeNode[]>> {
-		return getFiles<AssetTreeNode[]>("/api/files/tree");
+	tree(workspace?: { subjectId: string }): Promise<FilesResult<AssetTreeNode[]>> {
+		const qs = workspace
+			? `?${new URLSearchParams({ scope: "workspace", subjectId: workspace.subjectId })}`
+			: "";
+		return getFiles<AssetTreeNode[]>(`/api/files/tree${qs}`);
 	},
 
 	/** One asset's full row (the preview modal's deep link, and a refresh after a mutation). */

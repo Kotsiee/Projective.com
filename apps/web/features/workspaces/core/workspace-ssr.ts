@@ -5,7 +5,11 @@ import type {
 	WorkspaceRoster,
 } from "@projective/types/workspace";
 import type { CalendarPage } from "@projective/types/scheduling";
-import { type AssetListPage, folderSegmentsOfQuery } from "@projective/types/files";
+import {
+	type AssetListPage,
+	type AssetTreeNode,
+	folderSegmentsOfQuery,
+} from "@projective/types/files";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBackendService.ts";
 import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBackendService.ts";
@@ -181,12 +185,14 @@ export function resolveEntityCalendar(
 // #region The Files module's drive
 /**
  * The Files module's first paint: one location of the entity's drive, or why it could not be read,
- * and the folder path `?path=` addressed. A failed read is never drawn as an empty drive.
+ * the folder path `?path=` addressed, and the drive's folder tree (`[]` when it could not be read — the
+ * folder panel then reads it again in the browser). A failed read is never drawn as an empty drive.
  */
 export interface EntityDriveRead {
 	page: AssetListPage | null;
 	error: string | null;
 	path: string[];
+	tree: AssetTreeNode[];
 }
 
 /**
@@ -201,20 +207,25 @@ export function resolveEntityDrive(
 ): Promise<EntityDriveRead> {
 	const path = folderSegmentsOfQuery(url.search);
 	return once(url, actor, `drive:${workspace.kind}:${workspace.id}`, async () => {
-		const res = await FilesBackendService.list({
-			scope: "workspace",
-			subjectId: workspace.id,
-			path: path.length > 0 ? path : undefined,
-			sort: "date",
-			dir: "desc",
-		}, actor);
-		if (res.ok && res.data) return { page: res.data, error: null, path };
+		const [res, folders] = await Promise.all([
+			FilesBackendService.list({
+				scope: "workspace",
+				subjectId: workspace.id,
+				path: path.length > 0 ? path : undefined,
+				sort: "date",
+				dir: "desc",
+			}, actor),
+			FilesBackendService.tree(actor, { scope: "workspace", subjectId: workspace.id }),
+		]);
+		const tree = folders.ok && folders.data ? folders.data : [];
+		if (res.ok && res.data) return { page: res.data, error: null, path, tree };
 		return {
 			page: null,
 			error: res.status === 404 && path.length > 0
 				? "That folder doesn't exist — it may have been moved or deleted."
 				: res.message ?? `${workspace.name}'s files couldn't be loaded just now.`,
 			path,
+			tree,
 		};
 	});
 }

@@ -18,8 +18,11 @@ import { type SubView, subViewIndex } from "./sub-views.ts";
  *
  *   1. **Identity** — the module's title in the title register over one meta line (the entity's
  *      name and `@handle`, and the acting state), so whose console this is is never a guess.
- *   2. **Sub-views** — the module's view toolbar (a bare `Select` in the shared `.fx-toolbar`,
- *      Decision #307), centred, only when the module partitions its body (`sub-views.ts`).
+ *   2. **Views, centred** — a multi-module hub's link tabs (`hub-tabs.ts`, drawn by the island as the
+ *      channel header's tab strip, Decision #319); otherwise the module's in-place view toolbar (a
+ *      bare `Select` in the shared `.fx-toolbar`, Decision #307) when the module partitions its body
+ *      and leaves its views to the band (`bandSubViewsFor`). {@link HeaderBandModel.tabs} is that
+ *      toolbar.
  *   3. **Actions** — at most ONE filled control (the module's commit, which the module publishes
  *      through `workspace-state`). The entity's kebab lives in the lane head (Decision #306); the band
  *      draws the same menu only where the lane is not on screen — collapsed to its rail, or hidden
@@ -125,7 +128,7 @@ export interface HeaderBandInput {
 	 * instead. A business reads {@link viewerCanArchive}; its Settings is a placeholder (Decision #244 (d)).
 	 */
 	archiveBlocked?: boolean;
-	/** The module's sub-views for this viewer (`subViewsFor`). */
+	/** The module's sub-views the band offers this viewer (`bandSubViewsFor`). */
 	subViews: readonly SubView[];
 	/** The current sub-view, or `null` when the module has none. */
 	view: string | null;

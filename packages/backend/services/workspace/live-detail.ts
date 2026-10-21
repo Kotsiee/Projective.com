@@ -61,6 +61,8 @@ import {
 	toActivity,
 	toChannels,
 	toEngagement,
+	toInviteLink,
+	toJoinRequest,
 	toOutgoingInvite,
 	toProject,
 	toRoleDef,
@@ -326,6 +328,7 @@ async function assemble(
 	const userIds = [
 		...members.map((m) => m.user_id),
 		...(raw.invites ?? []).map((i) => i.target_user_id ?? ""),
+		...(raw.join_requests ?? []).map((r) => r.requester_user_id ?? ""),
 		...(raw.activity ?? []).map((a) => a.actor_user_id ?? ""),
 		...projects.map((p) => p.owner_user_id ?? ""),
 		...projects.flatMap((p) => p.provider_user_ids ?? []),
@@ -437,6 +440,10 @@ async function assemble(
 		),
 		seats: kind === "team" ? seatsOf(raw.seats) : null,
 		managers: kind === "business" ? managersOf(raw.managers) : null,
+		inviteLink: toInviteLink(raw.invite_link),
+		joinRequests: (raw.join_requests ?? []).map((r) =>
+			toJoinRequest(r, people.get(r.requester_user_id), nowMs)
+		),
 		payout: teamMoney ? buildPayoutPolicy(moneyMembers, teamMoney) : null,
 		spend: spend
 			? buildSpendPolicy(spend, moneyMembers, people, verification, nowMs, {

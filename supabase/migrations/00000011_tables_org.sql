@@ -834,6 +834,87 @@ CREATE TABLE org.org_invitations (
 	)
 );
 
+-- #region Invite links & join requests (Decision #318)
+-- A team's or business's ask-to-join link. Holding it lets a signed-in person ASK to join at the role
+-- it names — org.redeem_workspace_invite_link files an org_join_requests row — and nothing more: no
+-- seat or capability moves until an invite_members holder approves the request. At most ONE active
+-- link per entity (uq_org_invite_links_active, 00004001); a reset revokes it and mints a new token in
+-- one transaction. Lifecycle active → revoked (terminal); nothing is deleted. No client policy: every
+-- read and write is a definer door (00001020 §12b).
+CREATE TABLE org.org_invite_links (
+	id uuid NOT NULL DEFAULT gen_random_uuid(),
+	team_id uuid REFERENCES org.teams (id) ON DELETE CASCADE,
+	business_id uuid REFERENCES org.business_profiles (id) ON DELETE CASCADE,
+	-- The role a request through this link asks for, as a real FK into the entity's own role table.
+	team_role_id uuid,
+	business_role_id uuid,
+	-- The capability to ask: `w-` + 18 random bytes as unpadded base64url. The prefix keeps it apart
+	-- from a stage link's bare 24 characters on the shared /invite/:token landing route.
+	token text NOT NULL UNIQUE,
+	status text NOT NULL DEFAULT 'active'::text,
+	created_by uuid NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
+	created_at timestamptz NOT NULL DEFAULT now(),
+	revoked_at timestamptz,
+	revoked_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
+	CONSTRAINT org_invite_links_pkey PRIMARY KEY (id),
+	CONSTRAINT org_invite_links_team_role_fkey FOREIGN KEY (team_role_id, team_id)
+		REFERENCES org.team_roles (id, team_id) ON DELETE RESTRICT,
+	CONSTRAINT org_invite_links_business_role_fkey FOREIGN KEY (business_role_id, business_id)
+		REFERENCES org.business_roles (id, business_id) ON DELETE RESTRICT,
+	CONSTRAINT ck_org_invite_links_entity CHECK (
+		(team_id IS NOT NULL AND business_id IS NULL) OR (team_id IS NULL AND business_id IS NOT NULL)
+	),
+	CONSTRAINT ck_org_invite_links_role CHECK (
+		(team_id IS NOT NULL) = (team_role_id IS NOT NULL)
+		AND (business_id IS NOT NULL) = (business_role_id IS NOT NULL)
+	),
+	CONSTRAINT ck_org_invite_links_status CHECK (status IN ('active', 'revoked')),
+	CONSTRAINT ck_org_invite_links_revoked CHECK ((status = 'revoked') = (revoked_at IS NOT NULL)),
+	CONSTRAINT ck_org_invite_links_token CHECK (token ~ '^w-[A-Za-z0-9_-]{24}$')
+);
+
+-- A request to join a team or business, filed through its invite link. pending → accepted (an
+-- invite_members holder seated them — org.respond_to_join_request) | declined (they turned it down)
+-- | withdrawn (the requester took it back). All three are terminal. A pending request holds NO seat
+-- and no manager seat: asking is free, and the approval checks both caps. At most one pending
+-- request per entity per person (uq_org_join_requests_pending, 00004001).
+CREATE TABLE org.org_join_requests (
+	id uuid NOT NULL DEFAULT gen_random_uuid(),
+	team_id uuid REFERENCES org.teams (id) ON DELETE CASCADE,
+	business_id uuid REFERENCES org.business_profiles (id) ON DELETE CASCADE,
+	requester_user_id uuid NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
+	-- The link the request arrived through. Provenance only; a revoked link leaves its requests standing.
+	invite_link_id uuid REFERENCES org.org_invite_links (id) ON DELETE SET NULL,
+	-- The role the link offered when they asked — the approval's default, never a promise.
+	team_role_id uuid,
+	business_role_id uuid,
+	-- Their optional note to the admins, plain text.
+	message text,
+	status text NOT NULL DEFAULT 'pending'::text,
+	responded_at timestamptz,
+	responded_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
+	created_at timestamptz NOT NULL DEFAULT now(),
+	CONSTRAINT org_join_requests_pkey PRIMARY KEY (id),
+	CONSTRAINT org_join_requests_team_role_fkey FOREIGN KEY (team_role_id, team_id)
+		REFERENCES org.team_roles (id, team_id) ON DELETE RESTRICT,
+	CONSTRAINT org_join_requests_business_role_fkey FOREIGN KEY (business_role_id, business_id)
+		REFERENCES org.business_roles (id, business_id) ON DELETE RESTRICT,
+	CONSTRAINT ck_org_join_requests_entity CHECK (
+		(team_id IS NOT NULL AND business_id IS NULL) OR (team_id IS NULL AND business_id IS NOT NULL)
+	),
+	CONSTRAINT ck_org_join_requests_role CHECK (
+		(team_id IS NOT NULL) = (team_role_id IS NOT NULL)
+		AND (business_id IS NOT NULL) = (business_role_id IS NOT NULL)
+	),
+	CONSTRAINT ck_org_join_requests_message CHECK (message IS NULL OR char_length(message) <= 400),
+	CONSTRAINT ck_org_join_requests_status CHECK (status IN ('pending', 'accepted', 'declined', 'withdrawn')),
+	CONSTRAINT ck_org_join_requests_lifecycle CHECK (
+		(status = 'pending' AND responded_at IS NULL)
+		OR (status <> 'pending' AND responded_at IS NOT NULL)
+	)
+);
+-- #endregion
+
 -- #region Enterprises (0314_enterprises.sql) — the client/buyer-only entity
 CREATE TABLE org.enterprises (
     id uuid NOT NULL DEFAULT gen_random_uuid (),

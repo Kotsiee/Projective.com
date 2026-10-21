@@ -536,6 +536,23 @@ Deno.test("workspace styles: the dead rules stay deleted", () => {
 		),
 		"a deleted dead selector is back:",
 	);
+	// The Roles matrix of Teams C3, rebuilt as a master-detail by Decision #320: the matrix frame and its
+	// tightened band inset, the glyph legend and the list of remits under it.
+	assertNone(
+		offences(
+			/\.wsp-roles__(matrix|legend|legend-item|legend-glyph|remits|remit|remit-list|remit-name|remit-summary)\b/,
+		),
+		"a deleted dead selector is back:",
+	);
+	// The Roles master-detail's clutter, removed by Decision #321: the roster's remit line, its run
+	// counts and selected-row rule, the canvas's notice stack, header actions and their refusal line,
+	// and the inline capability and domain descriptions (now behind a "?").
+	assertNone(
+		offences(
+			/\.wsp-roles__(row-summary|section-count|notices|actions|action-note|cap-desc|domain-desc)\b|\.wsp-roles__row[^{,]*::before/,
+		),
+		"a deleted dead selector is back:",
+	);
 	// The roster before Teams R1: the hand-rolled tab strip, the role chip's flag stack, the three-stat
 	// grid, the face stack, the hand-drawn meter fill and kebab, and the hand-built empty state — each
 	// replaced by a ui primitive (TabMenu, MetaLine, ProgressBar, Button, EmptyState) — and the acting

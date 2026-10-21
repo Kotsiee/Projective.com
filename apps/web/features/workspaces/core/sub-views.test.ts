@@ -1,11 +1,15 @@
 import { assert, assertEquals } from "@std/assert";
 import type { WorkspaceCapability } from "@projective/types/workspace";
 import {
+	bandSubViewsFor,
 	isPeopleReading,
 	MEMBERS_CHART,
 	MEMBERS_PEOPLE,
 	MEMBERS_QUEUE,
-	MEMBERS_READINGS,
+	MEMBERS_REQUESTS,
+	membersSectionOf,
+	membersSectionsFor,
+	membersSectionView,
 	pickSubView,
 	PROJECTS_ACTIVE,
 	PROJECTS_PROPOSALS,
@@ -27,11 +31,11 @@ const MEMBER: readonly WorkspaceCapability[] = [];
 const values = (views: readonly { value: string }[]) => views.map((v) => v.value);
 
 // #region Members
-Deno.test("sub-views: Members offers People · Invitations · Org chart on both kinds", () => {
+Deno.test("sub-views: Members offers People · Requests · Invitations · Org chart on both kinds", () => {
 	for (const kind of ["team", "business"] as const) {
 		const views = subViewsFor("members", kind, INVITER);
-		assertEquals(values(views), [MEMBERS_PEOPLE, MEMBERS_QUEUE, MEMBERS_CHART]);
-		assertEquals(views.map((v) => v.label), ["People", "Invitations", "Org chart"]);
+		assertEquals(values(views), [MEMBERS_PEOPLE, MEMBERS_REQUESTS, MEMBERS_QUEUE, MEMBERS_CHART]);
+		assertEquals(views.map((v) => v.label), ["People", "Requests", "Invitations", "Org chart"]);
 	}
 });
 
@@ -42,12 +46,57 @@ Deno.test("sub-views: the invitation queue is offered only to an invite_members 
 	assertEquals(resolveSubView("members", "team", INVITER, MEMBERS_QUEUE), MEMBERS_QUEUE);
 });
 
-Deno.test("sub-views: the lane's readings are the Members views that are not the queue", () => {
-	assertEquals(values(MEMBERS_READINGS), [MEMBERS_PEOPLE, MEMBERS_CHART]);
+Deno.test("sub-views: the people readings are the Members section; the queues are not", () => {
 	assert(isPeopleReading(MEMBERS_PEOPLE));
 	assert(isPeopleReading(MEMBERS_CHART));
 	assert(isPeopleReading(null));
 	assert(!isPeopleReading(MEMBERS_QUEUE));
+	assert(!isPeopleReading(MEMBERS_REQUESTS));
+});
+
+Deno.test("sub-views (#318): Requests is offered to an invite_members holder only", () => {
+	assert(values(subViewsFor("members", "team", INVITER)).includes(MEMBERS_REQUESTS));
+	assertEquals(resolveSubView("members", "team", INVITER, MEMBERS_REQUESTS), MEMBERS_REQUESTS);
+	assert(!values(subViewsFor("members", "team", MEMBER)).includes(MEMBERS_REQUESTS));
+	assertEquals(resolveSubView("members", "team", MEMBER, MEMBERS_REQUESTS), MEMBERS_PEOPLE);
+});
+
+Deno.test("sub-views (#319): the band leaves Members' views to the body and the footer rig", () => {
+	assertEquals(bandSubViewsFor("members", "team", INVITER), []);
+	assertEquals(bandSubViewsFor("members", "business", INVITER), []);
+	// A module that leaves them to the band keeps them there.
+	assertEquals(values(bandSubViewsFor("projects", "team", MEMBER)), [
+		PROJECTS_ACTIVE,
+		PROJECTS_PROPOSALS,
+	]);
+});
+
+Deno.test("sub-views (#319): the Members sections are the project roster's, one ?view= each", () => {
+	assertEquals(membersSectionsFor(subViewsFor("members", "team", INVITER)), [
+		"members",
+		"requests",
+		"invitations",
+	]);
+	assertEquals(membersSectionsFor(subViewsFor("members", "team", MEMBER)), ["members"]);
+	// A Requests view, once offered, sits between them as on a project.
+	assertEquals(
+		membersSectionsFor([
+			{ value: MEMBERS_PEOPLE, label: "People" },
+			{ value: MEMBERS_REQUESTS, label: "Requests" },
+			{ value: MEMBERS_QUEUE, label: "Invitations" },
+		]),
+		["members", "requests", "invitations"],
+	);
+	assertEquals(membersSectionOf(MEMBERS_CHART), "members");
+	assertEquals(membersSectionOf(null), "members");
+	assertEquals(membersSectionOf(MEMBERS_QUEUE), "invitations");
+	assertEquals(membersSectionOf(MEMBERS_REQUESTS), "requests");
+	// Members returns to the reading the reader left; a queue is its own value.
+	assertEquals(membersSectionView("members", MEMBERS_CHART), MEMBERS_CHART);
+	assertEquals(membersSectionView("members", MEMBERS_PEOPLE), MEMBERS_PEOPLE);
+	assertEquals(membersSectionView("members", null), MEMBERS_PEOPLE);
+	assertEquals(membersSectionView("invitations", MEMBERS_CHART), MEMBERS_QUEUE);
+	assertEquals(membersSectionView("requests", MEMBERS_CHART), MEMBERS_REQUESTS);
 });
 // #endregion
 
@@ -95,6 +144,7 @@ Deno.test("sub-views: every entry is well formed", () => {
 		assertEquals(new Set(own).size, own.length, `${entry.module} repeats a value`);
 		assert(entry.views.length > 1, `${entry.module} has a single view`);
 		assert(!entry.views[0].gate, `${entry.module}'s default is gated`);
+		assert(entry.views[0].live !== false, `${entry.module}'s default is not built`);
 		assert(entry.kinds.length > 0);
 	}
 });
@@ -107,7 +157,7 @@ Deno.test("sub-views: a raw value resolves to itself when offered, else the defa
 	assertEquals(pickSubView(views, null), MEMBERS_PEOPLE);
 	assertEquals(pickSubView(views, "all"), MEMBERS_PEOPLE);
 	assertEquals(pickSubView([], MEMBERS_CHART), null);
-	assertEquals(subViewIndex(views, MEMBERS_CHART), 2);
+	assertEquals(subViewIndex(views, MEMBERS_CHART), 3);
 	assertEquals(subViewIndex(views, "nope"), 0);
 });
 

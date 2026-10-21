@@ -57,9 +57,16 @@ export function RoleText(
  * The authority crown beside an owner's or client's name — the roster's one distinct accent, so the
  * person with final say is found at a glance. Renders nothing for any other role.
  */
-export function AuthorityMark({ role }: { role: MemberRole }): JSX.Element | null {
+export function AuthorityMark(
+	{ role, label: given }: {
+		role: MemberRole;
+		/** The crown's words where the roster is not a project's ("Team owner"). */
+		label?: string;
+	},
+): JSX.Element | null {
 	if (!holdsAuthority(role)) return null;
-	const label = role === "owner" ? "Project owner" : "Client — commissioned this project";
+	const label = given ??
+		(role === "owner" ? "Project owner" : "Client — commissioned this project");
 	return (
 		<Tooltip content={label} placement="top">
 			<span class="mem-hint mem-crown" role="img" aria-label={label}>
@@ -72,15 +79,21 @@ export function AuthorityMark({ role }: { role: MemberRole }): JSX.Element | nul
 
 // #region Presence
 /** A tonal presence dot (icon-only) — the label lives only in its hover Tooltip. */
-export function PresenceDot({ presence }: { presence: MemberPresence }): JSX.Element {
-	const meta = PRESENCE_META[presence];
+export function PresenceDot(
+	{ presence, label: given }: {
+		presence: MemberPresence;
+		/** The dot's words where its tone means something else (a team member's availability). */
+		label?: string;
+	},
+): JSX.Element {
+	const label = given ?? PRESENCE_META[presence].label;
 	return (
-		<Tooltip content={meta.label} placement="top">
+		<Tooltip content={label} placement="top">
 			<span
 				class="mem-hint mem-presence"
 				data-presence={presence}
 				role="img"
-				aria-label={meta.label}
+				aria-label={label}
 			/>
 		</Tooltip>
 	);

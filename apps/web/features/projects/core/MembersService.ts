@@ -5,7 +5,7 @@ import type {
 	InviteDecisionInput,
 	InviteLinkAction,
 	InviteLinkResult,
-	InviteProjectMemberInput,
+	InviteProjectMemberPayload,
 	InvitesSent,
 	MemberInvite,
 	MemberRoleChanged,
@@ -97,12 +97,12 @@ export const MembersService = {
 	},
 
 	/**
-	 * Invite people — each `@handle` or email one invitation. The answer lists what was issued (as the
+	 * Invite people — each recipient (`@handle` or email, at its own role) one invitation. The answer lists what was issued (as the
 	 * queue will read back) and what was refused, with the server's own sentence per address.
 	 */
 	invite(
 		projectId: string,
-		input: Pick<InviteProjectMemberInput, "addresses" | "role" | "stageId">,
+		input: InviteProjectMemberPayload,
 	): Promise<ProjectsResult<InvitesSent>> {
 		return postProjects<InvitesSent>(
 			`/api/projects/${encodeURIComponent(projectId)}/invites`,

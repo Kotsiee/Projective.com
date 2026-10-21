@@ -89,6 +89,15 @@
 	background: var(--primary);
 	border-color: var(--primary);
 }
+/*
+ * A disabled switch reads as disabled in BOTH states. The checked fill above shares the disabled
+ * track's specificity and comes later, so without this a disabled "on" switch kept the live brand fill
+ * and looked pressable; the fill now fades by the same mix as the ink.
+ */
+.ui-switch--disabled .ui-switch__track[aria-checked="true"] {
+	background: color-mix(in srgb, var(--primary) var(--fld-disabled-mix), var(--surface));
+	border-color: color-mix(in srgb, var(--primary) var(--fld-disabled-mix), var(--surface));
+}
 /* #endregion */
 
 /* #region Knob */

@@ -1609,11 +1609,12 @@ END;
 $$;
 -- #endregion
 
--- #region 12. Invitations — named people only
--- A workspace invitation addresses one person (by handle) or one address (by email). Join requests
--- and share links were CUT (product decision 2026-09-28): the table's own CHECK forbids an
--- addressee-less row, and nothing could redeem one. org_invitations carries no client policy at all
--- — the token IS the accept capability — so every read and write below is a definer.
+-- #region 12. Invitations — named people, plus the ask-to-join link (§12b)
+-- A workspace invitation addresses one person (by handle) or one address (by email); the table's own
+-- CHECK forbids an addressee-less row. The 2026-09-28 cut of share links and join requests is
+-- REVERSED by Decision #318 on a stage invite link's terms: a link only lets its holder ASK
+-- (§12b, org_join_requests), and an invite_members holder answers. org_invitations carries no client
+-- policy at all — the token IS the accept capability — so every read and write below is a definer.
 CREATE OR REPLACE FUNCTION org.fn_role_of_entity(p_kind text, p_entity uuid, p_role uuid)
 RETURNS TABLE (id uuid, preset text, base_preset text, capabilities org.workspace_capability[], name text, archived boolean)
 LANGUAGE sql
@@ -1828,6 +1829,88 @@ BEGIN
 END;
 $$;
 
+-- The ONE way somebody becomes an active member: an accepted invitation and an approved join request
+-- (§12b) both seat through here, so the two can never apply different guards. In order: an adult
+-- (Decision #208), an entity that is not archived, a finished account, a team's freelancer persona
+-- and payout readiness (Decision #228 (A) / #196), a live role, the seat cap and a business's manager
+-- cap. `p_extra` is how many seats the admission ADDS: 0 when a pending invitation already holds one,
+-- 1 for a join request, which holds none. `p_subject` words the refusals for the door that called.
+-- A former member is reactivated, never inserted twice (UNIQUE (entity, user)). Internal only.
+CREATE OR REPLACE FUNCTION org.fn_admit_workspace_member(
+    p_kind text,
+    p_entity uuid,
+    p_user uuid,
+    p_role uuid,
+    p_by uuid,
+    p_extra integer,
+    p_subject text
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_status text;
+    v_member uuid;
+    v_self boolean := p_user = auth.uid();
+BEGIN
+    PERFORM org.fn_assert_adult(p_user);
+    SELECT x.status INTO v_status FROM (
+        SELECT t.status FROM org.teams t WHERE p_kind = 'team' AND t.id = p_entity
+        UNION ALL
+        SELECT b.status FROM org.business_profiles b WHERE p_kind = 'business' AND b.id = p_entity
+    ) x;
+    IF v_status = 'archived' THEN
+        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = p_subject || ': this ' || p_kind || ' has been archived';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = p_user) THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = CASE WHEN v_self
+            THEN 'auth: finish setting up your account first'
+            ELSE p_subject || ': they have not finished setting up their account' END;
+    END IF;
+    IF p_kind = 'team' THEN
+        PERFORM org.fn_assert_team_persona(p_user);
+        PERFORM finance.fn_assert_payout_ready('freelancer', p_user);
+    END IF;
+    IF EXISTS (SELECT 1 FROM org.fn_role_of_entity(p_kind, p_entity, p_role) r WHERE r.archived) THEN
+        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = CASE p_subject
+            WHEN 'invitation' THEN 'invitation: the role offered no longer exists — ask for a new invitation'
+            ELSE 'roleId: that role no longer exists — choose another' END;
+    END IF;
+    PERFORM org.fn_assert_seat(p_kind, p_entity, p_extra);
+    -- A manager's role takes one of the plan's manager seats (Decision #230 (b)); a pending invitation
+    -- is already counted, so with p_extra 0 this refuses only a business already past its plan.
+    IF p_kind = 'business' AND org.fn_business_role_is_manager(p_entity, p_role) THEN
+        PERFORM finance.fn_assert_business_entitlement(p_entity, 'business_managers'::finance.entitlement_key, p_extra);
+    END IF;
+
+    IF p_kind = 'team' THEN
+        INSERT INTO org.team_members (team_id, user_id, role_id, status, invited_by, joined_at)
+        VALUES (p_entity, p_user, p_role, 'active', p_by, now())
+        ON CONFLICT (team_id, user_id) DO UPDATE
+            SET role_id = EXCLUDED.role_id, status = 'active', left_at = NULL,
+                invited_by = EXCLUDED.invited_by, joined_at = now(),
+                granted_capabilities = '{}', revoked_capabilities = '{}'
+        RETURNING id INTO v_member;
+        INSERT INTO finance.contribution_agreements (team_id, member_user_id, percent_bp, held)
+        VALUES (p_entity, p_user, 0, false)
+        ON CONFLICT (team_id, member_user_id) DO NOTHING;
+    ELSE
+        INSERT INTO org.business_members (business_id, user_id, role_id, status, invited_by, joined_at)
+        VALUES (p_entity, p_user, p_role, 'active', p_by, now())
+        ON CONFLICT (business_id, user_id) DO UPDATE
+            SET role_id = EXCLUDED.role_id, status = 'active', left_at = NULL,
+                invited_by = EXCLUDED.invited_by, joined_at = now(),
+                granted_capabilities = '{}', revoked_capabilities = '{}'
+        RETURNING id INTO v_member;
+    END IF;
+    PERFORM org.fn_sync_vault_permissions(p_kind, p_entity, p_user);
+    PERFORM org.fn_refresh_membership_flags(p_user);
+    RETURN v_member;
+END;
+$$;
+
 -- Is the caller the addressee of this invitation? By identity, by handle, or by one of their
 -- VERIFIED email addresses — never by an unverified one, or registering somebody else's address would
 -- be a way to intercept their invitations.
@@ -1892,60 +1975,17 @@ BEGIN
         UPDATE org.org_invitations SET status = 'declined', responded_at = now() WHERE id = p_invitation;
         RETURN jsonb_build_object('status', 'declined', 'kind', v_kind, 'id', v_entity);
     END IF;
-    -- Declining stays open to anyone; joining a team or business is an adult's (Decision #208).
-    PERFORM org.fn_assert_adult(v_uid);
 
     SELECT x.slug, x.status, x.name INTO v_handle, v_status, v_name FROM (
         SELECT t.slug, t.status, t.name FROM org.teams t WHERE t.id = v_inv.team_id
         UNION ALL
         SELECT b.slug, b.status, b.name FROM org.business_profiles b WHERE b.id = v_inv.business_id
     ) x;
-    IF v_status = 'archived' THEN
-        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'invitation: this ' || v_kind || ' has been archived';
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = v_uid) THEN
-        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: finish setting up your account first';
-    END IF;
-    IF v_kind = 'team' THEN
-        PERFORM org.fn_assert_team_persona(v_uid);
-        PERFORM finance.fn_assert_payout_ready('freelancer', v_uid);
-    END IF;
-    IF EXISTS (SELECT 1 FROM org.fn_role_of_entity(v_kind, v_entity, v_role) r WHERE r.archived) THEN
-        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'invitation: the role offered no longer exists — ask for a new invitation';
-    END IF;
-    -- This invitation already holds one of the counted seats, so it adds none.
-    PERFORM org.fn_assert_seat(v_kind, v_entity, 0);
-    -- Likewise a manager's role: the pending invitation is counted, so the check adds nothing — it
-    -- refuses only when the business is already past its plan's managers (a downgrade, a role edit).
-    IF v_kind = 'business' AND org.fn_business_role_is_manager(v_entity, v_role) THEN
-        PERFORM finance.fn_assert_business_entitlement(v_entity, 'business_managers'::finance.entitlement_key, 0);
-    END IF;
-
-    -- A former member is reactivated, never inserted twice (UNIQUE (entity, user)).
-    IF v_kind = 'team' THEN
-        INSERT INTO org.team_members (team_id, user_id, role_id, status, invited_by, joined_at)
-        VALUES (v_entity, v_uid, v_role, 'active', v_inv.inviter_user_id, now())
-        ON CONFLICT (team_id, user_id) DO UPDATE
-            SET role_id = EXCLUDED.role_id, status = 'active', left_at = NULL,
-                invited_by = EXCLUDED.invited_by, joined_at = now(),
-                granted_capabilities = '{}', revoked_capabilities = '{}'
-        RETURNING id INTO v_member;
-        INSERT INTO finance.contribution_agreements (team_id, member_user_id, percent_bp, held)
-        VALUES (v_entity, v_uid, 0, false)
-        ON CONFLICT (team_id, member_user_id) DO NOTHING;
-    ELSE
-        INSERT INTO org.business_members (business_id, user_id, role_id, status, invited_by, joined_at)
-        VALUES (v_entity, v_uid, v_role, 'active', v_inv.inviter_user_id, now())
-        ON CONFLICT (business_id, user_id) DO UPDATE
-            SET role_id = EXCLUDED.role_id, status = 'active', left_at = NULL,
-                invited_by = EXCLUDED.invited_by, joined_at = now(),
-                granted_capabilities = '{}', revoked_capabilities = '{}'
-        RETURNING id INTO v_member;
-    END IF;
+    -- This invitation already holds one of the counted seats (and, for a manager's role, one of the
+    -- counted manager seats), so the admission adds none.
+    v_member := org.fn_admit_workspace_member(v_kind, v_entity, v_uid, v_role, v_inv.inviter_user_id, 0, 'invitation');
 
     UPDATE org.org_invitations SET status = 'accepted', responded_at = now() WHERE id = p_invitation;
-    PERFORM org.fn_sync_vault_permissions(v_kind, v_entity, v_uid);
-    PERFORM org.fn_refresh_membership_flags(v_uid);
     PERFORM comms.fn_notify(
         v_inv.inviter_user_id, v_kind || '.member_joined', 'Someone joined ' || v_name,
         (SELECT COALESCE(NULLIF(btrim(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''), u.username)
@@ -2035,6 +2075,556 @@ BEGIN
     RETURN jsonb_build_object('id', p_invitation, 'status', 'pending');
 END;
 $$;
+-- #endregion
+
+-- #region 12b. Invite links & join requests (Decision #318)
+-- A team's or business's ask-to-join link, on a stage invite link's terms (Decision #145): sharing,
+-- resetting and turning it off are invite_members acts; redeeming files a pending org_join_requests
+-- row and nothing more; an invite_members holder approves it — seating through
+-- fn_admit_workspace_member, the same admission an accepted invitation runs — or declines it.
+--
+-- fn_org_invite_link_state is the ONE rule for what a link means to a given person, read by both the
+-- landing page (resolve_workspace_invite_link) and the redeem door, so the page never offers a
+-- request the redeem would refuse.
+
+-- A fresh link token: `w-` + 18 random bytes as unpadded base64url (24 characters).
+CREATE OR REPLACE FUNCTION org.fn_new_invite_link_token()
+RETURNS text
+LANGUAGE sql
+VOLATILE
+SET search_path = ''
+AS $$
+    -- Schema-qualified: pgcrypto lives in `extensions`.
+    SELECT 'w-' || translate(encode(extensions.gen_random_bytes(18), 'base64'), '+/', '-_');
+$$;
+
+CREATE OR REPLACE FUNCTION org.fn_org_invite_link_state(p_link org.org_invite_links, p_actor uuid)
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_kind text := CASE WHEN p_link.team_id IS NOT NULL THEN 'team' ELSE 'business' END;
+    v_entity uuid := COALESCE(p_link.team_id, p_link.business_id);
+    v_status text;
+BEGIN
+    IF p_link.status <> 'active' THEN
+        RETURN 'revoked';
+    END IF;
+    SELECT x.status INTO v_status FROM (
+        SELECT t.status FROM org.teams t WHERE t.id = p_link.team_id
+        UNION ALL
+        SELECT b.status FROM org.business_profiles b WHERE b.id = p_link.business_id
+    ) x;
+    IF v_status IS NULL OR v_status = 'archived' THEN
+        RETURN 'archived';
+    END IF;
+    -- A link whose role was retired does not work (archive_workspace_role refuses while a link is
+    -- active, so this is a belt over that brace).
+    IF EXISTS (SELECT 1 FROM org.fn_role_of_entity(v_kind, v_entity, COALESCE(p_link.team_role_id, p_link.business_role_id)) r
+                WHERE r.archived) THEN
+        RETURN 'revoked';
+    END IF;
+    IF EXISTS (SELECT 1 FROM org.fn_member_seat(v_kind, v_entity, p_actor)) THEN
+        RETURN 'member';
+    END IF;
+    -- An open, unexpired invitation addressed to them — by identity, handle or a verified address.
+    IF EXISTS (
+        SELECT 1 FROM org.org_invitations i
+         WHERE COALESCE(i.team_id, i.business_id) = v_entity
+           AND i.status = 'pending'
+           AND (i.expires_at IS NULL OR i.expires_at > now())
+           AND (
+               i.target_user_id = p_actor
+               OR (i.target_user_id IS NULL AND i.target_handle IS NOT NULL
+                   AND EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = p_actor AND lower(u.username) = lower(i.target_handle)))
+               OR (i.target_email IS NOT NULL
+                   AND EXISTS (SELECT 1 FROM org.user_emails e
+                                WHERE e.user_id = p_actor AND e.verified_at IS NOT NULL
+                                  AND lower(e.email) = lower(i.target_email)))
+           )
+    ) THEN
+        RETURN 'invited';
+    END IF;
+    IF EXISTS (SELECT 1 FROM org.org_join_requests r
+                WHERE COALESCE(r.team_id, r.business_id) = v_entity
+                  AND r.requester_user_id = p_actor AND r.status = 'pending') THEN
+        RETURN 'requested';
+    END IF;
+    -- A team takes freelancers only — fn_assert_team_persona's predicate, answered rather than raised.
+    IF v_kind = 'team' AND NOT EXISTS (
+        SELECT 1 FROM org.users_public u
+         WHERE u.user_id = p_actor AND u.is_freelancer IS TRUE AND u.is_operator IS NOT TRUE
+           AND EXISTS (SELECT 1 FROM org.freelancer_profiles fp WHERE fp.user_id = u.user_id)
+    ) THEN
+        RETURN 'persona';
+    END IF;
+    RETURN 'open';
+END;
+$$;
+
+COMMENT ON FUNCTION org.fn_org_invite_link_state(org.org_invite_links, uuid) IS
+'What a workspace invite link means to one person: revoked · archived · member · invited · requested · persona · open. Internal — read by resolve_workspace_invite_link and redeem_workspace_invite_link only.';
+
+-- The link's shape as the console reads it.
+CREATE OR REPLACE FUNCTION org.fn_invite_link_json(p_link org.org_invite_links)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT jsonb_build_object('id', p_link.id, 'token', p_link.token,
+                              'role_id', COALESCE(p_link.team_role_id, p_link.business_role_id),
+                              'created_at', p_link.created_at);
+$$;
+
+-- org.get_workspace_invite_link(kind, entity, role, rotate) -> jsonb
+--
+-- The entity's active link, minted on first use at `p_role` (default: the Member preset). With an
+-- active link, `p_role` re-points it at another role ("Anyone with the link can ask to join as …");
+-- `p_rotate` revokes it and mints a replacement in the same transaction ("Reset link"), keeping its
+-- role unless `p_role` names another. The role is offered to whoever holds the URL, so it passes the
+-- same test invite_workspace_member applies: never the owner seat, never a capability the caller
+-- lacks.
+CREATE OR REPLACE FUNCTION org.get_workspace_invite_link(
+    p_kind text,
+    p_entity uuid,
+    p_role uuid DEFAULT NULL,
+    p_rotate boolean DEFAULT false
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_status text;
+    v_caller org.workspace_capability[];
+    v_link org.org_invite_links;
+    v_had boolean;
+    v_role_id uuid;
+    v_role record;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+    END IF;
+    IF p_kind NOT IN ('team', 'business') THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'kind: choose a team or a business';
+    END IF;
+    SELECT x.status INTO v_status FROM (
+        SELECT t.status FROM org.teams t WHERE p_kind = 'team' AND t.id = p_entity
+        UNION ALL
+        SELECT b.status FROM org.business_profiles b WHERE p_kind = 'business' AND b.id = p_entity
+    ) x;
+    IF v_status IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'workspace: not found';
+    END IF;
+    v_caller := org.fn_member_capabilities(p_kind, p_entity, v_uid);
+    IF NOT ('invite_members' = ANY (v_caller)) THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'invite: you cannot share an invite link for this ' || p_kind;
+    END IF;
+    IF v_status = 'archived' THEN
+        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'workspace: restore it before sharing an invite link';
+    END IF;
+
+    SELECT * INTO v_link FROM org.org_invite_links l
+     WHERE COALESCE(l.team_id, l.business_id) = p_entity AND l.status = 'active'
+     FOR UPDATE;
+    v_had := FOUND;
+
+    -- Reading the link is all a keep-as-is open asks for.
+    IF v_had AND NOT COALESCE(p_rotate, false)
+       AND (p_role IS NULL OR p_role = COALESCE(v_link.team_role_id, v_link.business_role_id)) THEN
+        RETURN org.fn_invite_link_json(v_link);
+    END IF;
+
+    v_role_id := COALESCE(p_role,
+        CASE WHEN v_had THEN COALESCE(v_link.team_role_id, v_link.business_role_id) END,
+        (SELECT x.id FROM (
+            SELECT r.id FROM org.team_roles r WHERE p_kind = 'team' AND r.team_id = p_entity AND r.preset = 'member' AND r.archived_at IS NULL
+            UNION ALL
+            SELECT r.id FROM org.business_roles r WHERE p_kind = 'business' AND r.business_id = p_entity AND r.preset = 'member' AND r.archived_at IS NULL
+        ) x LIMIT 1));
+    SELECT * INTO v_role FROM org.fn_role_of_entity(p_kind, p_entity, v_role_id);
+    IF NOT FOUND OR v_role.archived THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'roleId: choose one of this ' || p_kind || '''s roles';
+    END IF;
+    IF v_role.base_preset = 'owner' THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'roleId: ownership moves only by transfer';
+    END IF;
+    IF EXISTS (SELECT 1 FROM unnest(v_role.capabilities) c WHERE NOT (c = ANY (v_caller))) THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'roleId: that role carries permissions you do not hold';
+    END IF;
+
+    -- Re-pointing the live link: the URL stays the same.
+    IF v_had AND NOT COALESCE(p_rotate, false) THEN
+        UPDATE org.org_invite_links
+           SET team_role_id = CASE p_kind WHEN 'team' THEN v_role_id END,
+               business_role_id = CASE p_kind WHEN 'business' THEN v_role_id END
+         WHERE id = v_link.id
+        RETURNING * INTO v_link;
+        INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
+        VALUES (v_uid, p_kind || '.invite_link_role_changed', 'org.org_invite_links', v_link.id,
+                jsonb_build_object('entity', p_entity, 'role', v_role_id));
+        RETURN org.fn_invite_link_json(v_link);
+    END IF;
+
+    IF v_had THEN
+        UPDATE org.org_invite_links SET status = 'revoked', revoked_at = now(), revoked_by = v_uid WHERE id = v_link.id;
+        INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
+        VALUES (v_uid, p_kind || '.invite_link_revoked', 'org.org_invite_links', v_link.id,
+                jsonb_build_object('entity', p_entity, 'reset', true));
+    END IF;
+
+    BEGIN
+        INSERT INTO org.org_invite_links (team_id, business_id, team_role_id, business_role_id, token, created_by)
+        VALUES (
+            CASE p_kind WHEN 'team' THEN p_entity END, CASE p_kind WHEN 'business' THEN p_entity END,
+            CASE p_kind WHEN 'team' THEN v_role_id END, CASE p_kind WHEN 'business' THEN v_role_id END,
+            org.fn_new_invite_link_token(), v_uid
+        )
+        RETURNING * INTO v_link;
+    EXCEPTION WHEN unique_violation THEN
+        -- A concurrent first open minted the link a moment earlier; that one is the answer.
+        SELECT * INTO v_link FROM org.org_invite_links l
+         WHERE COALESCE(l.team_id, l.business_id) = p_entity AND l.status = 'active';
+        RETURN org.fn_invite_link_json(v_link);
+    END;
+
+    INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
+    VALUES (v_uid, p_kind || '.invite_link_created', 'org.org_invite_links', v_link.id,
+            jsonb_build_object('entity', p_entity, 'role', v_role_id));
+    RETURN org.fn_invite_link_json(v_link);
+END;
+$$;
+
+COMMENT ON FUNCTION org.get_workspace_invite_link(text, uuid, uuid, boolean) IS
+'The entity''s active ask-to-join link, minted on first use at p_role (default the Member preset); p_role re-points a live link, p_rotate revokes it and mints a replacement in one transaction. invite_members only; the role must be grantable by the caller and never the owner''s. Refused on an archived entity. Records security.audit_logs (Decision #318).';
+
+-- Turns the entity's link off. TRUE when a link was active; FALSE when there was nothing to revoke,
+-- which is not an error — the caller asked for "no working link" and that is the state.
+CREATE OR REPLACE FUNCTION org.revoke_workspace_invite_link(p_kind text, p_entity uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_link uuid;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+    END IF;
+    IF p_kind NOT IN ('team', 'business') THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'kind: choose a team or a business';
+    END IF;
+    IF NOT org.fn_member_can(p_kind, p_entity, 'invite_members') THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'invite: you cannot turn off this ' || p_kind || '''s invite link';
+    END IF;
+    UPDATE org.org_invite_links l
+       SET status = 'revoked', revoked_at = now(), revoked_by = v_uid
+     WHERE COALESCE(l.team_id, l.business_id) = p_entity AND l.status = 'active'
+    RETURNING l.id INTO v_link;
+    IF v_link IS NULL THEN
+        RETURN false;
+    END IF;
+    INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
+    VALUES (v_uid, p_kind || '.invite_link_revoked', 'org.org_invite_links', v_link,
+            jsonb_build_object('entity', p_entity, 'reset', false));
+    RETURN true;
+END;
+$$;
+
+COMMENT ON FUNCTION org.revoke_workspace_invite_link(text, uuid) IS
+'Turns off the entity''s active invite link. invite_members only. TRUE when a link was active. Records security.audit_logs (Decision #318).';
+
+-- org.resolve_workspace_invite_link(token) -> jsonb
+--
+-- What the landing page shows the signed-in holder of a link: which entity, at which role, who
+-- shared it, and what this person can do with it (fn_org_invite_link_state). An unknown token
+-- answers {"state":"invalid"} and nothing else — a 144-bit token is not guessable.
+CREATE OR REPLACE FUNCTION org.resolve_workspace_invite_link(p_token text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_link org.org_invite_links;
+    v_kind text;
+    v_entity uuid;
+    v_e record;
+    v_role_name text;
+    v_name text;
+    v_handle text;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+    END IF;
+    SELECT * INTO v_link FROM org.org_invite_links WHERE token = p_token;
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('state', 'invalid');
+    END IF;
+    v_kind := CASE WHEN v_link.team_id IS NOT NULL THEN 'team' ELSE 'business' END;
+    v_entity := COALESCE(v_link.team_id, v_link.business_id);
+    SELECT x.name, x.slug, x.avatar INTO v_e FROM (
+        SELECT t.name, t.slug, t.avatar_file_id AS avatar FROM org.teams t WHERE t.id = v_link.team_id
+        UNION ALL
+        SELECT b.name, b.slug, b.logo_file_id FROM org.business_profiles b WHERE b.id = v_link.business_id
+    ) x;
+    SELECT r.name INTO v_role_name
+      FROM org.fn_role_of_entity(v_kind, v_entity, COALESCE(v_link.team_role_id, v_link.business_role_id)) r;
+    SELECT NULLIF(btrim(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''), u.username
+      INTO v_name, v_handle
+      FROM org.users_public u WHERE u.user_id = v_link.created_by;
+    RETURN jsonb_build_object(
+        'state', org.fn_org_invite_link_state(v_link, v_uid),
+        'kind', v_kind,
+        'workspaceName', v_e.name,
+        'workspaceHandle', v_e.slug,
+        'workspaceAvatarFileId', v_e.avatar,
+        'roleName', v_role_name,
+        'sharedByName', COALESCE(v_name, v_handle),
+        'sharedByHandle', v_handle
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION org.resolve_workspace_invite_link(text) IS
+'The landing-page answer for a workspace invite link: the entity, the role offered, who shared it and the caller''s state (fn_org_invite_link_state). An unknown token answers {"state":"invalid"}. Signed-in callers only (Decision #318).';
+
+-- org.redeem_workspace_invite_link(token, message) -> jsonb
+--
+-- The holder asks to join: a pending org_join_requests row at the link's role, and every active
+-- member who may answer it (invite_members) told (`team.join_request` / `business.join_request`).
+-- Every refusal is a state fn_org_invite_link_state already names, so the landing page and this door
+-- cannot disagree. A team asks for payout readiness up front, as a stage link does: approving
+-- somebody who could not be paid would only be refused at the admission.
+CREATE OR REPLACE FUNCTION org.redeem_workspace_invite_link(p_token text, p_message text DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_link org.org_invite_links;
+    v_kind text;
+    v_entity uuid;
+    v_state text;
+    v_message text := NULLIF(btrim(COALESCE(p_message, '')), '');
+    v_request uuid;
+    v_e record;
+    v_name text;
+    v_admins uuid[];
+    v_admin uuid;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+    END IF;
+    IF v_message IS NOT NULL AND char_length(v_message) > 400 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'message: keep the note to 400 characters';
+    END IF;
+    SELECT * INTO v_link FROM org.org_invite_links WHERE token = p_token;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'This invite link doesn''t work.';
+    END IF;
+    v_kind := CASE WHEN v_link.team_id IS NOT NULL THEN 'team' ELSE 'business' END;
+    v_entity := COALESCE(v_link.team_id, v_link.business_id);
+
+    -- One request per person per entity, even when the same link is pressed twice at once.
+    PERFORM pg_advisory_xact_lock(hashtext('org-invite-link:' || v_entity::text || ':' || v_uid::text));
+
+    v_state := org.fn_org_invite_link_state(v_link, v_uid);
+    IF v_state <> 'open' THEN
+        RAISE EXCEPTION '%', CASE v_state
+            WHEN 'revoked' THEN 'This invite link has been turned off.'
+            WHEN 'archived' THEN 'This ' || v_kind || ' has been archived — nobody can join it.'
+            WHEN 'member' THEN 'You are already a member of this ' || v_kind || '.'
+            WHEN 'invited' THEN 'You already have an invitation to this ' || v_kind || ' — answer it from your invitations.'
+            WHEN 'requested' THEN 'You have already asked to join this ' || v_kind || '.'
+            WHEN 'persona' THEN 'Teams are for freelancer accounts — set up your freelancer profile to ask to join.'
+            ELSE 'This invite link can''t be used.'
+        END
+        USING ERRCODE = CASE WHEN v_state IN ('member', 'invited', 'requested')
+                             THEN 'unique_violation' ELSE 'check_violation' END,
+              DETAIL = 'state=' || v_state;
+    END IF;
+    PERFORM org.fn_assert_adult(v_uid);
+    IF v_kind = 'team' THEN
+        PERFORM finance.fn_assert_payout_ready('freelancer', v_uid);
+    END IF;
+
+    INSERT INTO org.org_join_requests (team_id, business_id, requester_user_id, invite_link_id,
+                                       team_role_id, business_role_id, message)
+    VALUES (v_link.team_id, v_link.business_id, v_uid, v_link.id,
+            v_link.team_role_id, v_link.business_role_id, v_message)
+    RETURNING id INTO v_request;
+
+    SELECT x.name, x.slug INTO v_e FROM (
+        SELECT t.name, t.slug FROM org.teams t WHERE t.id = v_link.team_id
+        UNION ALL
+        SELECT b.name, b.slug FROM org.business_profiles b WHERE b.id = v_link.business_id
+    ) x;
+    SELECT COALESCE(NULLIF(btrim(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''), u.username)
+      INTO v_name FROM org.users_public u WHERE u.user_id = v_uid;
+    SELECT array_agg(m.user_id) INTO v_admins FROM (
+        SELECT x.user_id FROM org.team_members x WHERE v_kind = 'team' AND x.team_id = v_entity AND x.status = 'active'
+        UNION
+        SELECT x.user_id FROM org.business_members x WHERE v_kind = 'business' AND x.business_id = v_entity AND x.status = 'active'
+    ) m
+     WHERE 'invite_members' = ANY (org.fn_member_capabilities(v_kind, v_entity, m.user_id));
+    -- One fn_notify per answerer (fn_notify_many carries no action URL), grouped per request.
+    FOREACH v_admin IN ARRAY COALESCE(v_admins, '{}'::uuid[]) LOOP
+        PERFORM comms.fn_notify(
+            v_admin, v_kind || '.join_request',
+            COALESCE(v_name, 'Someone') || ' asked to join ' || v_e.name,
+            COALESCE(left(v_message, 140), 'Through your invite link.'),
+            'org_join_requests', v_request, '{}'::jsonb, v_uid, v_kind, v_entity, 'join_request:' || v_request::text,
+            CASE v_kind WHEN 'team' THEN '/teams/' ELSE '/businesses/' END || v_e.slug || '/members?view=pending'
+        );
+    END LOOP;
+    INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
+    VALUES (v_uid, v_kind || '.join_requested', 'org.org_join_requests', v_request,
+            jsonb_build_object('entity', v_entity, 'invite_link_id', v_link.id));
+    RETURN jsonb_build_object('id', v_request, 'kind', v_kind, 'workspaceHandle', v_e.slug, 'status', 'pending');
+END;
+$$;
+
+COMMENT ON FUNCTION org.redeem_workspace_invite_link(text, text) IS
+'The holder of an active workspace invite link asks to join: a pending org_join_requests row at the link''s role, and <kind>.join_request to every invite_members holder. Refused with the fn_org_invite_link_state sentence (DETAIL state=…) for every state but open. Seats nobody (Decision #318).';
+
+-- org.respond_to_join_request(request, accept, role) -> jsonb
+--
+-- The inviting side answers a request. Approving seats the requester at `p_role` (default: the role
+-- they asked for) through fn_admit_workspace_member with ONE seat added — a request holds none — after
+-- the role passes the invitation test for the approver. Declining only records the answer. Both
+-- notify the requester.
+CREATE OR REPLACE FUNCTION org.respond_to_join_request(p_request uuid, p_accept boolean, p_role uuid DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_req org.org_join_requests;
+    v_kind text;
+    v_entity uuid;
+    v_caller org.workspace_capability[];
+    v_role_id uuid;
+    v_role record;
+    v_member uuid;
+    v_e record;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+    END IF;
+    SELECT * INTO v_req FROM org.org_join_requests WHERE id = p_request FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'request: not found';
+    END IF;
+    v_kind := CASE WHEN v_req.team_id IS NOT NULL THEN 'team' ELSE 'business' END;
+    v_entity := COALESCE(v_req.team_id, v_req.business_id);
+    v_caller := org.fn_member_capabilities(v_kind, v_entity, v_uid);
+    IF NOT ('invite_members' = ANY (v_caller)) THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'request: not found';
+    END IF;
+    IF v_req.status <> 'pending' THEN
+        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'request: this request has already been answered';
+    END IF;
+    SELECT x.name, x.slug INTO v_e FROM (
+        SELECT t.name, t.slug FROM org.teams t WHERE t.id = v_req.team_id
+        UNION ALL
+        SELECT b.name, b.slug FROM org.business_profiles b WHERE b.id = v_req.business_id
+    ) x;
+
+    IF NOT p_accept THEN
+        UPDATE org.org_join_requests SET status = 'declined', responded_at = now(), responded_by = v_uid
+         WHERE id = p_request;
+        PERFORM comms.fn_notify(
+            v_req.requester_user_id, v_kind || '.join_request_declined',
+            'Your request to join ' || v_e.name,
+            'Your request to join ' || v_e.name || ' was declined.',
+            'org_join_requests', p_request, '{}'::jsonb, v_uid, v_kind, v_entity, NULL,
+            CASE v_kind WHEN 'team' THEN '/teams' ELSE '/businesses' END
+        );
+        INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
+        VALUES (v_uid, v_kind || '.join_request_declined', 'org.org_join_requests', p_request,
+                jsonb_build_object('entity', v_entity));
+        RETURN jsonb_build_object('id', p_request, 'status', 'declined', 'kind', v_kind, 'entity', v_entity);
+    END IF;
+
+    v_role_id := COALESCE(p_role, v_req.team_role_id, v_req.business_role_id);
+    SELECT * INTO v_role FROM org.fn_role_of_entity(v_kind, v_entity, v_role_id);
+    IF NOT FOUND THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'roleId: choose one of this ' || v_kind || '''s roles';
+    END IF;
+    IF v_role.base_preset = 'owner' THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'roleId: ownership moves only by transfer';
+    END IF;
+    IF EXISTS (SELECT 1 FROM unnest(v_role.capabilities) c WHERE NOT (c = ANY (v_caller))) THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'roleId: that role carries permissions you do not hold';
+    END IF;
+    -- A request holds no seat, so admitting it adds one (and a manager's role, one manager seat).
+    v_member := org.fn_admit_workspace_member(v_kind, v_entity, v_req.requester_user_id, v_role_id, v_uid, 1, 'request');
+
+    UPDATE org.org_join_requests SET status = 'accepted', responded_at = now(), responded_by = v_uid,
+           team_role_id = CASE v_kind WHEN 'team' THEN v_role_id END,
+           business_role_id = CASE v_kind WHEN 'business' THEN v_role_id END
+     WHERE id = p_request;
+    PERFORM comms.fn_notify(
+        v_req.requester_user_id, v_kind || '.join_request_accepted',
+        'Welcome to ' || v_e.name,
+        'Your request to join ' || v_e.name || ' was approved — you joined as ' || v_role.name || '.',
+        'org_join_requests', p_request, '{}'::jsonb, v_uid, v_kind, v_entity, NULL,
+        CASE v_kind WHEN 'team' THEN '/teams/' ELSE '/businesses/' END || v_e.slug
+    );
+    INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
+    VALUES (v_uid, v_kind || '.member_joined', 'org.org_join_requests', p_request,
+            jsonb_build_object('entity', v_entity, 'role', v_role_id, 'via', 'join_request'));
+    RETURN jsonb_build_object('id', p_request, 'status', 'accepted', 'kind', v_kind, 'entity', v_entity, 'member_id', v_member);
+END;
+$$;
+
+COMMENT ON FUNCTION org.respond_to_join_request(uuid, boolean, uuid) IS
+'Approve (seat through fn_admit_workspace_member, one seat added) or decline a pending join request. invite_members only (anyone else reads not found); the approval role must be grantable by the caller and never the owner''s. Notifies the requester (Decision #318).';
+
+-- The requester takes a pending request back.
+CREATE OR REPLACE FUNCTION org.withdraw_join_request(p_request uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_req org.org_join_requests;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+    END IF;
+    SELECT * INTO v_req FROM org.org_join_requests WHERE id = p_request FOR UPDATE;
+    IF NOT FOUND OR v_req.requester_user_id <> v_uid THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'request: not found';
+    END IF;
+    IF v_req.status <> 'pending' THEN
+        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'request: this request has already been answered';
+    END IF;
+    UPDATE org.org_join_requests SET status = 'withdrawn', responded_at = now(), responded_by = v_uid
+     WHERE id = p_request;
+    RETURN jsonb_build_object('id', p_request, 'status', 'withdrawn');
+END;
+$$;
+
+COMMENT ON FUNCTION org.withdraw_join_request(uuid) IS
+'The requester withdraws their own pending join request (status withdrawn). Anyone else reads not found (Decision #318).';
 -- #endregion
 
 -- #region 13. Changing a member — role, overrides, spend envelope, title, org chart, removal
@@ -2650,6 +3240,12 @@ BEGIN
                 WHERE (i.team_role_id = p_role OR i.business_role_id = p_role) AND i.status = 'pending') THEN
         RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'role: a pending invitation offers this role — revoke it first';
     END IF;
+    -- The invite link offers it to whoever holds the URL (Decision #318); a pending join request that
+    -- asked for it is NOT a blocker — the approval picks a live role, or refuses an archived one.
+    IF EXISTS (SELECT 1 FROM org.org_invite_links l
+                WHERE (l.team_role_id = p_role OR l.business_role_id = p_role) AND l.status = 'active') THEN
+        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'role: the invite link offers this role — change the link''s role or turn it off first';
+    END IF;
     IF p_kind = 'team' THEN
         UPDATE org.team_roles SET archived_at = now(), updated_at = now() WHERE id = p_role;
     ELSE
@@ -3049,6 +3645,22 @@ BEGIN
             ) ORDER BY i.created_at DESC), '[]'::jsonb)
             FROM org.org_invitations i
             WHERE COALESCE(i.team_id, i.business_id) = v_e.id AND i.status = 'pending') ELSE '[]'::jsonb END,
+        -- The ask-to-join link and the requests it filed (Decision #318), for the same people as the
+        -- queue: the link is a capability, so nobody else reads its token.
+        'invite_link', CASE WHEN 'invite_members' = ANY (v_caps) THEN (
+            SELECT org.fn_invite_link_json(l) FROM org.org_invite_links l
+             WHERE COALESCE(l.team_id, l.business_id) = v_e.id AND l.status = 'active') END,
+        'join_requests', CASE WHEN 'invite_members' = ANY (v_caps) THEN (
+            SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                'id', r.id,
+                'requester_user_id', r.requester_user_id,
+                'role_id', COALESCE(r.team_role_id, r.business_role_id),
+                'message', r.message,
+                'via_link', r.invite_link_id IS NOT NULL,
+                'created_at', r.created_at
+            ) ORDER BY r.created_at), '[]'::jsonb)
+            FROM org.org_join_requests r
+            WHERE COALESCE(r.team_id, r.business_id) = v_e.id AND r.status = 'pending') ELSE '[]'::jsonb END,
         -- A team's seats as fn_assert_seat counts them, beside its plan's cap (NULL = unlimited). A
         -- business is not seat-capped, so it answers none.
         'seats', CASE WHEN p_kind = 'team' THEN jsonb_build_object(

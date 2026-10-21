@@ -1,20 +1,12 @@
-import type { MenuItem } from "@ui/types/mod.ts";
-import type { MetaLineEntry } from "@ui/display/core/meta-line.tsx";
 import type {
 	ButtonNeutralTone,
 	ButtonSemanticTone,
 	ButtonStructuralTone,
 } from "@ui/fields/types/button.ts";
-import type {
-	PermissionCellState,
-	PermissionMatrixColumn,
-	PermissionMatrixRow,
-} from "@ui/display/core/permission-matrix-nav.ts";
 import {
 	type BusinessManagers,
 	capabilitiesForKind,
 	CAPABILITY_LABEL,
-	CONSEQUENTIAL,
 	effectivePermissions,
 	isBusinessManagerRole,
 	isBusinessManagerSeat,
@@ -33,9 +25,10 @@ import {
 	type WorkspaceRoleDef,
 } from "@projective/types/workspace";
 import {
+	type CapabilityDomain,
 	capabilityGroupsFor,
-	cellStateFor,
 	conditionalRuleFor,
+	isConsequential,
 	type PolicyContext,
 } from "./capabilities.ts";
 import {
@@ -48,22 +41,26 @@ import { ROLE_TEMPLATES, type RoleTemplate, templatesForKind } from "./role-temp
 import { type ButtonTier, isFilledTier } from "./header-model.ts";
 
 /**
- * roles-model — every rule the Roles module renders, as pure functions (Teams work order C3).
+ * roles-model — every rule the Roles module renders, as pure functions (Decision #320, rebuilding
+ * Teams work order C3's matrix as a master-detail screen).
  *
- * `RolesMatrix.island.tsx` is a binding over this file: which columns the `PermissionMatrix` draws
- * and in what order, what each cell says, which cells and columns are locked and WHY, how a toggle
- * moves the local draft, what the footer rig's Save writes (and what it refuses before the server
- * would), what a role column's menu offers, what the role editor seeds from a template or a copy,
- * which ranks it offers, how a name is judged and which buttons each region holds.
+ * `WorkspaceRoles.island.tsx` is a binding over this file: which roles the roster lists and under
+ * which heading, which role is selected first, what the capability canvas draws for the selected role
+ * (its four domains, each capability's line, whether it is on, the rule bounding it, and why it cannot
+ * change), how a toggle moves the local draft, what the footer rig's Save writes (and what it refuses
+ * before the server would), which actions a role's header offers, what the New role dialog clones
+ * from, which ranks the Edit dialog offers, how a name and a description are judged and which buttons
+ * each region holds.
  *
  * **The server's refusals, said before the press.** `org.upsert_workspace_role` refuses a role that
  * carries a capability its author does not hold, one that ranks above its author, a business role
  * carrying an owner-reserved right, and any edit of a preset; `org.archive_workspace_role` refuses a
  * role somebody holds or a pending invitation offers. Each refusal here is a LOCK with its sentence —
- * a cell, a column or a menu row that stays visible and says why — never a control that fails on
- * press. Anything a role already allows may be taken away (the drawer's rule, `capabilityToggleable`).
- * On a business, an edit that would make a role's holders managers past the plan's cap is the same
- * kind of lock (`managerCapLock`, BU7): the server refuses it `PK402 business_managers`.
+ * a whole role, one capability row or one action that stays visible and says why — never a control
+ * that fails on press. Anything a role already allows may be taken away (the drawer's rule,
+ * `capabilityToggleable`). On a business, an edit that would make a role's holders managers past the
+ * plan's cap is the same kind of lock (`managerCapLock`, BU7): the server refuses it
+ * `PK402 business_managers`.
  *
  * Teams and Businesses share it (Decision #61): the rows are the kind's own capability list
  * (`capabilitiesForKind`, the `fn_kind_capabilities` mirror), and a team-only rule is gated on
@@ -81,7 +78,7 @@ export interface RolesViewer {
 	caps: readonly WorkspaceCapability[];
 	/** `roleRank` of the viewer's seat (a custom role ranks as its base); `0` for no seat. */
 	rank: number;
-	/** Whether the viewer holds `manage_roles` — without it the matrix is read-only. */
+	/** Whether the viewer holds `manage_roles` — without it every role is read-only. */
 	canManage: boolean;
 }
 
@@ -107,14 +104,34 @@ export function mayGrantToRole(
 	return viewer.caps.includes(capability) &&
 		!reservedCapabilities(viewer.kind).includes(capability);
 }
+
+/** "View audit log", "View audit log and Archive entity", "A, B and C". */
+function labelList(caps: readonly WorkspaceCapability[]): string {
+	const labels = caps.map((c) => CAPABILITY_LABEL[c]);
+	if (labels.length <= 1) return labels.join("");
+	return `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+}
+
+/** "3 members", tabular wherever it is drawn. */
+export function memberCountText(count: number): string {
+	return count === 1 ? "1 member" : `${count} members`;
+}
 // #endregion
 
 // #region Locks
-/** Why a preset column's cells cannot change — every preset, the owner's included. */
-export const PRESET_LOCK = "Preset roles can't be edited — create a custom role.";
+/**
+ * Why a preset's permissions cannot change — every preset, the owner's included. Said once, calmly, over
+ * the canvas, where the Clone action that is the way out sits beside it.
+ */
+export const PRESET_LOCK =
+	"Preset roles are fixed, so everyone's baseline stays predictable. Clone it to make a custom role you can change.";
 
 /** Why a custom role that ranks above the viewer is theirs to read, not to change. */
 export const RANK_LOCK = "This role ranks above yours, so only someone of its rank can change it.";
+
+/** Why a viewer without `manage_roles` reads every role and changes none. */
+export const VIEW_LOCK =
+	"You can read what every role may do. Changing it needs the Change roles permission.";
 
 /** Why the viewer cannot switch on a capability they do not hold themselves. */
 export const GRANT_LOCK = "You can't grant a permission you don't hold yourself.";
@@ -124,30 +141,32 @@ export const RESERVED_LOCK =
 	"Billing, withdrawals and archiving go to a named admin by the owner — never to a role.";
 
 /**
- * Why an editable cell waits while a role write (the footer rig's Save, or an archive) is in flight —
- * the screen takes no toggle meanwhile, so the cell says so rather than ignoring the press.
+ * Why an editable row waits while a role write (the footer rig's Save, or an archive) is in flight —
+ * the screen takes no toggle meanwhile, so the row says so rather than ignoring the press.
  */
 export const BUSY_LOCK = "Saving — this can change again once the save lands.";
 
 /**
- * Why a whole role column is locked, or `null` when its cells are the viewer's to change: a preset
- * is read-only (the server refuses any edit of one), and a custom role that ranks above the viewer
- * cannot be saved by them (`basePreset: a role cannot rank above you`).
+ * Why a whole role is read-only for the viewer, or `null` when its permissions are theirs to change: a
+ * preset is fixed (the server refuses any edit of one), a viewer without `manage_roles` changes no role,
+ * and a custom role that ranks above the viewer cannot be saved by them (`basePreset: a role cannot
+ * rank above you`).
  */
-export function columnLock(
+export function roleLock(
 	role: Pick<WorkspaceRoleDef, "preset" | "basePreset">,
-	viewer: Pick<RolesViewer, "rank">,
+	viewer: Pick<RolesViewer, "rank" | "canManage">,
 ): string | null {
 	if (role.preset) return PRESET_LOCK;
+	if (!viewer.canManage) return VIEW_LOCK;
 	if (roleRank(role.basePreset) > viewer.rank) return RANK_LOCK;
 	return null;
 }
 
 /**
- * Why one cell of an editable custom-role column cannot change, or `null` when it can. Anything the
- * role allows may be taken away; an off cell may be switched on only for a capability the viewer
- * holds, and never for a business's owner-reserved rights, which no role may carry. While a role
- * write is in flight (`busy`) every such cell waits, with {@link BUSY_LOCK}.
+ * Why one capability of an editable custom role cannot change, or `null` when it can. Anything the
+ * role allows may be taken away; an off capability may be switched on only when the viewer holds it,
+ * and never for a business's owner-reserved rights, which no role may carry. While a role write is in
+ * flight (`busy`) every such row waits, with {@link BUSY_LOCK}.
  */
 export function cellLock(
 	capability: WorkspaceCapability,
@@ -163,11 +182,11 @@ export function cellLock(
 }
 // #endregion
 
-// #region Cells
+// #region Draft
 /** A role's draft: capability lists per custom role id, only for roles the viewer has edited. */
 export type RoleDraft = Readonly<Record<string, readonly WorkspaceCapability[]>>;
 
-/** The capabilities a role column shows — the draft's when the viewer has edited it. */
+/** The capabilities a role shows — the draft's when the viewer has edited it. */
 export function roleCaps(
 	role: Pick<WorkspaceRoleDef, "id" | "capabilities">,
 	draft: RoleDraft,
@@ -175,226 +194,6 @@ export function roleCaps(
 	return draft[role.id] ?? role.capabilities;
 }
 
-/**
- * The state a cell draws. The owner column is all-allowed (the owner holds every capability the kind
- * renders); elsewhere a granted capability is `conditional` when a rule the entity configured bounds
- * it (`conditionalRuleFor` — the rule is the row's hint), else `allowed`; anything not granted is
- * `off`. Locks never change the state drawn — the `PermissionMatrix` fixes the cell and keeps it.
- */
-export function roleCellState(
-	role: Pick<WorkspaceRoleDef, "preset">,
-	capability: WorkspaceCapability,
-	caps: readonly WorkspaceCapability[],
-	policy: PolicyContext,
-): PermissionCellState {
-	if (role.preset === "owner") return "allowed";
-	const state = cellStateFor(caps.includes(capability), capability, policy);
-	return state === "denied" ? "off" : state;
-}
-// #endregion
-
-// #region Rows and columns
-/**
- * The matrix rows: the capabilities the kind renders (`capabilityGroupsFor` over the kind-filtered
- * SSOT list — never re-listed here), grouped People · Work · Money · Admin. A consequential capability
- * is flagged `sensitive` and says what holding it lets a person do; a capability bounded by a rule
- * the entity configured says the rule instead, since that rule is what its half glyph means.
- */
-export function roleMatrixRows(kind: WorkspaceKind, policy: PolicyContext): PermissionMatrixRow[] {
-	return capabilityGroupsFor(kind).flatMap((group) =>
-		group.capabilities.map((capability) => {
-			const sensitive = CONSEQUENTIAL.includes(capability);
-			const hint = conditionalRuleFor(capability, policy) ??
-				(sensitive ? sensitiveWarning(capability, kind) : null);
-			return {
-				key: capability,
-				label: CAPABILITY_LABEL[capability],
-				group: group.title,
-				...(sensitive ? { sensitive: true } : {}),
-				...(hint ? { hint } : {}),
-			};
-		})
-	);
-}
-
-/** Presets first, most- to least-privileged, then the custom roles in the server's order. */
-export function orderedRoles(roles: readonly WorkspaceRoleDef[]): WorkspaceRoleDef[] {
-	const presets = roles.filter((r) => r.preset !== null)
-		.sort((a, b) => roleRank(b.preset ?? "member") - roleRank(a.preset ?? "member"));
-	return [...presets, ...roles.filter((r) => r.preset === null)];
-}
-
-/** The page head's MetaLine: how many presets and how many custom roles the entity has. */
-export function rolesHeaderItems(
-	roles: readonly Pick<WorkspaceRoleDef, "preset">[],
-): MetaLineEntry[] {
-	const presets = roles.filter((r) => r.preset !== null).length;
-	const custom = roles.length - presets;
-	return [
-		{ text: `${presets} ${presets === 1 ? "preset" : "presets"}`, tabular: true },
-		{ text: `${custom} custom ${custom === 1 ? "role" : "roles"}`, tabular: true },
-	];
-}
-
-/** "3 members", tabular in the column's meta line. */
-export function memberCountText(count: number): string {
-	return count === 1 ? "1 member" : `${count} members`;
-}
-
-/**
- * A role column's meta lines: who holds it — and "edited" while it holds unsaved edits — then, for a
- * custom role, the preset it is based on (its rank) on a line of its own. The count leads the first
- * line of every column, so it sits level with the presets' counts; "based on …" keeps its own line
- * instead of breaking mid-phrase in a role-width column, and a custom column is two lines clean or
- * edited, so a toggle never moves the header.
- */
-export function roleColumnMeta(
-	role: Pick<WorkspaceRoleDef, "preset" | "basePreset" | "memberCount">,
-	edited: boolean,
-): string[] {
-	const held = [memberCountText(role.memberCount)];
-	if (edited) held.push("edited");
-	const lines = [held.join(" · ")];
-	if (!role.preset) lines.push(`based on ${roleLabel(role.basePreset)}`);
-	return lines;
-}
-
-/** The matrix columns, in {@link orderedRoles} order, each locked with its reason when it is. */
-export function roleMatrixColumns(
-	roles: readonly WorkspaceRoleDef[],
-	viewer: Pick<RolesViewer, "rank">,
-	draft: RoleDraft,
-): PermissionMatrixColumn[] {
-	const edited = new Set(dirtyRoleIds(roles, draft));
-	return orderedRoles(roles).map((role) => {
-		const lock = columnLock(role, viewer);
-		return {
-			key: role.id,
-			label: role.name,
-			meta: roleColumnMeta(role, edited.has(role.id)),
-			...(lock ? { locked: true, lockedHint: lock } : {}),
-		};
-	});
-}
-
-/** One line of the Roles screen's list of what each role is for. */
-export interface RoleRemit {
-	key: string;
-	name: string;
-	summary: string;
-}
-
-/**
- * Every role with a written remit, in the matrix's column order — the one-line summary a column
- * header has no room for, said beside the role's name under the matrix.
- */
-export function roleRemits(
-	roles: readonly WorkspaceRoleDef[],
-): RoleRemit[] {
-	return orderedRoles(roles)
-		.filter((r) => r.summary.trim() !== "")
-		.map((r) => ({ key: r.id, name: r.name, summary: r.summary.trim() }));
-}
-// #endregion
-
-// #region Legend
-/**
- * What one legend line explains: one of the matrix's three glyphs, a cell drawn without its box, or
- * a cell without its box because ticking it would pass a business's manager cap.
- */
-export type RolesLegendMark = "allowed" | "conditional" | "locked" | "fixed" | "capped";
-
-/** The legend's line for a cell the manager cap fixes ({@link managerCapLock}). */
-export const CAPPED_LEGEND = "No box: ticking it would add managers past the plan's limit";
-
-/** One line of the legend over the matrix. */
-export interface RolesLegendItem {
-	mark: RolesLegendMark;
-	text: string;
-}
-
-/**
- * Every reason a cell of a column the viewer may edit is fixed for them (`cellLock`, never the
- * transient {@link BUSY_LOCK}), in first-seen order — what the legend's no-box line must explain.
- * Empty without `manage_roles`: a read-only matrix fixes no cell of its own.
- */
-export function fixedCellReasons(
-	roles: readonly WorkspaceRoleDef[],
-	viewer: RolesViewer,
-	draft: RoleDraft,
-): string[] {
-	if (!viewer.canManage) return [];
-	const reasons = new Set<string>();
-	const rows = capabilitiesForKind(viewer.kind);
-	for (const role of roles) {
-		if (columnLock(role, viewer) !== null) continue;
-		const held = roleCaps(role, draft);
-		for (const capability of rows) {
-			const reason = cellLock(capability, held.includes(capability), viewer);
-			if (reason) reasons.add(reason);
-		}
-	}
-	return [...reasons];
-}
-
-/**
- * The legend, worded for what the matrix actually draws: Allowed; the conditional line only when a
- * cell is conditional; the padlock line naming every kind of read-only column on screen — a preset,
- * and a custom role ranking above the viewer when there is one, since both carry the padlock; and,
- * when a cell the viewer could otherwise edit is fixed, the line saying what its missing box means
- * and why (a grant they do not hold; a business's owner-reserved right) — and, when the manager cap
- * fixes a cell ({@link managerCapLocked}), the line saying so.
- */
-export function rolesLegend(input: {
-	kind: WorkspaceKind;
-	/** Whether any cell on screen is drawn conditional. */
-	conditional: boolean;
-	/** Each column's lock (`columnLock` / `lockedHint`), or nothing for an editable column. */
-	columnLocks: readonly (string | null | undefined)[];
-	/** {@link fixedCellReasons}. */
-	fixedReasons: readonly string[];
-	/** {@link managerCapLocked} — a business only. */
-	capped?: boolean;
-}): RolesLegendItem[] {
-	const items: RolesLegendItem[] = [{ mark: "allowed", text: "Allowed" }];
-	if (input.conditional) {
-		items.push({
-			mark: "conditional",
-			text: `Allowed within a rule this ${kindCopy(input.kind).noun} set`,
-		});
-	}
-	const presets = input.columnLocks.includes(PRESET_LOCK);
-	const ranked = input.columnLocks.includes(RANK_LOCK);
-	if (presets || ranked) {
-		items.push({
-			mark: "locked",
-			text: presets && ranked
-				? "Read-only — a preset, or a role ranking above yours"
-				: presets
-				? "Preset — read-only"
-				: "Read-only — the role ranks above yours",
-		});
-	}
-	const grant = input.fixedReasons.includes(GRANT_LOCK);
-	const reserved = input.fixedReasons.includes(RESERVED_LOCK);
-	if (grant || reserved) {
-		items.push({
-			mark: "fixed",
-			text: grant && reserved
-				? "No box: you can't grant it — you don't hold it, or the owner reserves it"
-				: grant
-				? "No box: you don't hold it yourself, so you can't grant it"
-				: "No box: owner-reserved — given to a named admin, never to a role",
-		});
-	}
-	if (input.capped && input.kind === "business") {
-		items.push({ mark: "capped", text: CAPPED_LEGEND });
-	}
-	return items;
-}
-// #endregion
-
-// #region Draft
 /** A capability list in the SSOT's canonical order, each capability once. */
 function canonical(caps: Iterable<WorkspaceCapability>): WorkspaceCapability[] {
 	const set = new Set(caps);
@@ -412,8 +211,8 @@ export function sameCaps(
 }
 
 /**
- * The draft after one toggle of a custom role's cell. A toggle that returns the role to its saved
- * capabilities drops it from the draft, so flipping a cell twice leaves nothing to save.
+ * The draft after one toggle of a custom role's capability. A toggle that returns the role to its
+ * saved capabilities drops it from the draft, so flipping a switch twice leaves nothing to save.
  */
 export function toggleRoleCap(
 	draft: RoleDraft,
@@ -439,6 +238,300 @@ export function dirtyRoleIds(roles: readonly WorkspaceRoleDef[], draft: RoleDraf
 export function pruneDraft(draft: RoleDraft, roles: readonly WorkspaceRoleDef[]): RoleDraft {
 	const live = new Set(dirtyRoleIds(roles, draft));
 	return Object.fromEntries(Object.entries(draft).filter(([id]) => live.has(id)));
+}
+// #endregion
+
+// #region Roster (the master pane)
+/** Presets first, most- to least-privileged, then the custom roles in the server's order. */
+export function orderedRoles(roles: readonly WorkspaceRoleDef[]): WorkspaceRoleDef[] {
+	const presets = roles.filter((r) => r.preset !== null)
+		.sort((a, b) => roleRank(b.preset ?? "member") - roleRank(a.preset ?? "member"));
+	return [...presets, ...roles.filter((r) => r.preset === null)];
+}
+
+/** What a role allows on a kind: the owner holds everything the kind renders. */
+function heldOnKind(
+	role: Pick<WorkspaceRoleDef, "preset" | "capabilities">,
+	caps: readonly WorkspaceCapability[],
+	kind: WorkspaceKind,
+): WorkspaceCapability[] {
+	const rows = capabilitiesForKind(kind);
+	return role.preset === "owner" ? rows : rows.filter((c) => caps.includes(c));
+}
+
+/** "invite members" — a capability label read inside a sentence. */
+function inSentence(capability: WorkspaceCapability): string {
+	const label = CAPABILITY_LABEL[capability];
+	return label.charAt(0).toLowerCase() + label.slice(1);
+}
+
+/**
+ * A role's one-sentence remit: its written summary, else a sentence read off what it allows — "Can
+ * invite members, manage projects and 3 more." — so a custom role created without a description still
+ * says something true under its name.
+ */
+export function roleSummaryLine(
+	role: Pick<WorkspaceRoleDef, "summary" | "preset" | "capabilities">,
+	kind: WorkspaceKind,
+): string {
+	const written = role.summary.trim();
+	if (written !== "") return written;
+	const held = heldOnKind(role, role.capabilities, kind);
+	if (held.length === 0) return "No permissions yet — a seat and nothing more.";
+	const named = held.slice(0, 2).map(inSentence);
+	const rest = held.length - named.length;
+	if (rest === 0) return `Can ${named.join(" and ")}.`;
+	return `Can ${named.join(", ")} and ${rest} more.`;
+}
+
+/** One row of the roster. */
+export interface RosterRow {
+	id: string;
+	name: string;
+	/** The preset this row IS, or `null` for a custom role. */
+	preset: WorkspaceRole | null;
+	memberCount: number;
+	/** {@link memberCountText} — the count's accessible name. */
+	countText: string;
+	/** Whether the role holds unsaved permission changes. */
+	edited: boolean;
+}
+
+/** One headed run of the roster. */
+export interface RosterSection {
+	key: "preset" | "custom";
+	title: string;
+	rows: RosterRow[];
+	/** What an empty run says, or `null` for a run that is never empty. */
+	empty: string | null;
+}
+
+/** What the Custom roles run says while the entity has none. */
+export const CUSTOM_EMPTY = "None yet.";
+
+/**
+ * The roster: **Preset roles** (most-privileged first) over **Custom roles** (the server's order). Each
+ * row is the role's name, its holders' count and whether it holds unsaved changes — its remit is the
+ * canvas's to say (Decision #321); the custom run says "None yet." while it is empty, so the heading
+ * never sits over nothing.
+ */
+export function rosterSections(
+	roles: readonly WorkspaceRoleDef[],
+	draft: RoleDraft,
+): RosterSection[] {
+	const edited = new Set(dirtyRoleIds(roles, draft));
+	const row = (role: WorkspaceRoleDef): RosterRow => ({
+		id: role.id,
+		name: role.name,
+		preset: role.preset,
+		memberCount: role.memberCount,
+		countText: memberCountText(role.memberCount),
+		edited: edited.has(role.id),
+	});
+	const ordered = orderedRoles(roles);
+	return [
+		{
+			key: "preset",
+			title: "Preset roles",
+			rows: ordered.filter((r) => r.preset !== null).map(row),
+			empty: null,
+		},
+		{
+			key: "custom",
+			title: "Custom roles",
+			rows: ordered.filter((r) => r.preset === null).map(row),
+			empty: CUSTOM_EMPTY,
+		},
+	];
+}
+
+/**
+ * The role the screen opens on: the first custom role — the ones a reader comes here to change — else
+ * the first preset below the owner (whose canvas is simply everything), else whatever there is.
+ */
+export function initialRoleId(roles: readonly WorkspaceRoleDef[]): string | null {
+	const ordered = orderedRoles(roles);
+	return (ordered.find((r) => r.preset === null) ??
+		ordered.find((r) => r.preset !== null && r.preset !== "owner") ??
+		ordered[0])?.id ?? null;
+}
+
+/** The selection after the roles changed: the same role while it still exists, else the opening one. */
+export function keepSelection(
+	roles: readonly Pick<WorkspaceRoleDef, "id">[],
+	current: string | null,
+	fallback: () => string | null,
+): string | null {
+	return current !== null && roles.some((r) => r.id === current) ? current : fallback();
+}
+
+/** The role a write created: the one id the re-read detail has that the previous one did not. */
+export function createdRoleId(
+	before: readonly Pick<WorkspaceRoleDef, "id">[],
+	after: readonly Pick<WorkspaceRoleDef, "id">[],
+): string | null {
+	const known = new Set(before.map((r) => r.id));
+	return after.find((r) => !known.has(r.id))?.id ?? null;
+}
+// #endregion
+
+// #region Canvas (the detail pane)
+/**
+ * What a capability lets its holder do, in one line (meta register). A consequential capability says
+ * its consequence instead — the member drawer's `sensitiveWarning`, the same sentence on both surfaces —
+ * since that is the line a reader most needs before switching it on.
+ */
+export function capabilityLine(capability: WorkspaceCapability, kind: WorkspaceKind): string {
+	const warning = sensitiveWarning(capability, kind);
+	if (warning) return warning;
+	const copy = kindCopy(kind);
+	switch (capability) {
+		case "invite_members":
+			return `Invites people to the ${copy.noun} and approves requests to join.`;
+		case "remove_members":
+			return `Removes people from the ${copy.noun}.`;
+		case "edit_profile":
+			return `Edits the ${copy.noun}'s public profile — name, story, logo and banner.`;
+		case "manage_settings":
+			return `Changes the ${copy.noun}'s settings.`;
+		case "manage_projects":
+			return kind === "team"
+				? "Creates the team's projects and runs their stages."
+				: "Creates projects billed to the business and runs their stages.";
+		case "publish_listings":
+			return "Publishes and edits the team's catalogue listings.";
+		case "purchase":
+			return "Buys services and assets for the business.";
+		case "hire":
+			return "Hires freelancers and teams, and approves the work they deliver.";
+		case "contribute_funds":
+			return `Adds money to the ${copy.moneyNoun}.`;
+		case "manage_finances":
+			return kind === "team"
+				? "Sets how earnings are split and reads the vault's figures."
+				: "Sets spending limits and the wallet's policy.";
+		case "view_analytics":
+			return `Reads the ${copy.noun}'s analytics and standing.`;
+		case "view_audit":
+			return "Reads the log of who changed what, and when.";
+		default:
+			return CAPABILITY_LABEL[capability];
+	}
+}
+
+/** One capability row of the canvas. */
+export interface CanvasRow {
+	capability: WorkspaceCapability;
+	label: string;
+	/** {@link capabilityLine}. */
+	description: string;
+	/** Whether the role allows it (the switch's value) — the draft's when the viewer has edited it. */
+	on: boolean;
+	/** A consequential capability (`CONSEQUENTIAL`) — flagged beside its label. */
+	sensitive: boolean;
+	/** The configured rule bounding it while it is on (`conditionalRuleFor`), else `null`. */
+	rule: string | null;
+	/**
+	 * Why this one row cannot change on a role the viewer may otherwise edit (a grant they do not hold,
+	 * an owner-reserved right, the manager cap), else `null`. A whole-role lock is the canvas's
+	 * {@link RoleCanvas.lock}, said once, never repeated on every row.
+	 */
+	lock: string | null;
+}
+
+/** One domain of the canvas. */
+export interface CanvasDomain {
+	key: CapabilityDomain;
+	title: string;
+	description: string;
+	rows: CanvasRow[];
+	/** How many of its rows are on. */
+	allowed: number;
+}
+
+/** What the canvas draws for the selected role. */
+export interface RoleCanvas {
+	/** {@link roleLock}: why the whole role is read-only, or `null` when its switches are live. */
+	lock: string | null;
+	domains: CanvasDomain[];
+	/** How many capabilities the role allows, of how many the kind renders. */
+	allowed: number;
+	total: number;
+	/** Whether any row is locked by a business's manager cap — the canvas then says the cap once. */
+	capped: boolean;
+}
+
+/**
+ * The capability canvas for one role: the kind's domains, every capability with its line, whether the
+ * role allows it (the owner holds everything), the rule bounding it while on — never on the owner's,
+ * whose authority no configured rule narrows on this screen (#264 (f)) — and, on a role the viewer may
+ * edit, why a row cannot change.
+ */
+export function roleCanvas(input: {
+	role: WorkspaceRoleDef;
+	roles: readonly WorkspaceRoleDef[];
+	draft: RoleDraft;
+	viewer: RolesViewer;
+	policy: PolicyContext;
+	cap: RoleCapContext;
+}): RoleCanvas {
+	const { role, roles, draft, viewer, policy, cap } = input;
+	const lock = roleLock(role, viewer);
+	const held = new Set(heldOnKind(role, roleCaps(role, draft), viewer.kind));
+	let capped = false;
+	const domains = capabilityGroupsFor(viewer.kind).map((group): CanvasDomain => {
+		const rows = group.capabilities.map((capability): CanvasRow => {
+			const on = held.has(capability);
+			const rowLock = lock !== null ? null : cellLock(capability, on, viewer) ??
+				managerCapLock(role, capability, on, roles, draft, cap);
+			if (rowLock !== null && rowLock === cap.text) capped = true;
+			return {
+				capability,
+				label: CAPABILITY_LABEL[capability],
+				description: capabilityLine(capability, viewer.kind),
+				on,
+				sensitive: isConsequential(capability),
+				rule: on && role.preset !== "owner" ? conditionalRuleFor(capability, policy) : null,
+				lock: rowLock,
+			};
+		});
+		return {
+			key: group.key,
+			title: group.title,
+			description: group.description,
+			rows,
+			allowed: rows.filter((r) => r.on).length,
+		};
+	});
+	return {
+		lock,
+		domains,
+		allowed: held.size,
+		total: capabilitiesForKind(viewer.kind).length,
+		capped,
+	};
+}
+
+/** "12 of 17 permissions" — a domain's or a role's count. */
+export function allowedText(allowed: number, total: number): string {
+	return `${allowed} of ${total} ${total === 1 ? "permission" : "permissions"}`;
+}
+
+/**
+ * The canvas header's meta line: what kind of role it is (and, for a custom role, the preset it ranks
+ * as), who holds it, how much it allows, and "Unsaved changes" while the draft holds edits to it.
+ */
+export function canvasMeta(
+	role: Pick<WorkspaceRoleDef, "preset" | "basePreset" | "memberCount">,
+	canvas: Pick<RoleCanvas, "allowed" | "total">,
+	edited: boolean,
+): string[] {
+	return [
+		role.preset ? "Preset role" : `Custom role · ranks as ${roleLabel(role.basePreset)}`,
+		memberCountText(role.memberCount),
+		allowedText(canvas.allowed, canvas.total),
+		...(edited ? ["Unsaved changes"] : []),
+	];
 }
 // #endregion
 
@@ -493,21 +586,22 @@ function offeredSeats(
 }
 
 /**
- * How many manager seats saving a business role with `caps` takes — negative when it frees some. It
- * is the count `org.upsert_workspace_role` compares before and after the edit
- * (`finance.fn_footprint_usage('business_managers')`): each active holder whose seat starts or stops
- * counting (`isBusinessManagerSeat` over the role and their own grants and revocations), and the
- * invitations offering the role when the role itself starts or stops being a manager's
- * (`isBusinessManagerRole`). A team's edit takes none.
+ * How many manager seats saving a business role with `caps` — and, when its rank changes, as
+ * `basePreset` — takes; negative when it frees some. It is the count `org.upsert_workspace_role`
+ * compares before and after the edit (`finance.fn_footprint_usage('business_managers')`): each active
+ * holder whose seat starts or stops counting (`isBusinessManagerSeat` over the role's rank and their own
+ * grants and revocations), and the invitations offering the role when the role itself starts or stops
+ * being a manager's (`isBusinessManagerRole`). A team's edit takes none.
  */
 export function managerDelta(
 	role: WorkspaceRoleDef,
 	caps: readonly WorkspaceCapability[],
 	ctx: Pick<RoleCapContext, "kind" | "members" | "queue" | "now">,
+	basePreset: WorkspaceRole = role.basePreset,
 ): number {
 	if (ctx.kind !== "business") return 0;
 	const before: WorkspaceRoleDef[] = [role];
-	const after: WorkspaceRoleDef[] = [{ ...role, capabilities: [...caps] }];
+	const after: WorkspaceRoleDef[] = [{ ...role, basePreset, capabilities: [...caps] }];
 	let delta = 0;
 	for (const m of ctx.members) {
 		if (m.roleId !== role.id || m.state !== "active") continue;
@@ -516,13 +610,13 @@ export function managerDelta(
 			effectivePermissions(m, "business", before, role.id),
 		);
 		const is = isBusinessManagerSeat(
-			m.rolePreset,
+			basePreset === role.basePreset ? m.rolePreset : basePreset,
 			effectivePermissions(m, "business", after, role.id),
 		);
 		delta += Number(is) - Number(was);
 	}
 	const wasRole = isBusinessManagerRole(role);
-	const isRole = isBusinessManagerRole({ basePreset: role.basePreset, capabilities: caps });
+	const isRole = isBusinessManagerRole({ basePreset, capabilities: caps });
 	if (wasRole !== isRole) delta += (isRole ? 1 : -1) * offeredSeats(role, ctx);
 	return delta;
 }
@@ -546,11 +640,11 @@ export function draftManagersUsed(
 }
 
 /**
- * Why switching an off cell on would pass a business's manager cap, or `null`. The server refuses a
- * role edit that ADDS managers past the plan's ceiling, so the cell that would do it — in practice
- * Manage projects on a member-ranked role somebody holds or is offered — is locked with the cap's
- * sentence while the rest of the draft stands. Anything a role allows may still be taken away, and a
- * toggle that adds no manager (nobody holds the role) is never locked.
+ * Why switching an off capability on would pass a business's manager cap, or `null`. The server
+ * refuses a role edit that ADDS managers past the plan's ceiling, so the switch that would do it — in
+ * practice Manage projects on a member-ranked role somebody holds or is offered — is locked with the
+ * cap's sentence while the rest of the draft stands. Anything a role allows may still be taken away,
+ * and a toggle that adds no manager (nobody holds the role) is never locked.
  */
 export function managerCapLock(
 	role: WorkspaceRoleDef,
@@ -567,27 +661,30 @@ export function managerCapLock(
 	return after > before && after > limit ? ctx.text : null;
 }
 
+/** A role held back by the manager cap: how many managers it would add, then the cap's sentence. */
+export function managerCapLine(
+	name: string,
+	added: number,
+	cap: Pick<RoleCapContext, "text">,
+): string {
+	return `Saving ${name} would add ${added} ${added === 1 ? "manager" : "managers"}. ${cap.text}`;
+}
+
 /**
- * Whether any cell of a column the viewer may edit is locked by the manager cap — the matrix then says
- * the cap in an InlineNotice and the legend explains the missing box. `false` without `manage_roles`.
+ * Why re-ranking a saved business role would pass the manager cap, or `null` — the Edit dialog's
+ * Ranks as field, judged as the server judges the write (an admin rank makes every holder a manager).
  */
-export function managerCapLocked(
-	roles: readonly WorkspaceRoleDef[],
-	viewer: RolesViewer,
-	draft: RoleDraft,
+export function rankCapProblem(
+	role: WorkspaceRoleDef,
+	basePreset: WorkspaceRole,
 	ctx: RoleCapContext,
-): boolean {
-	if (!viewer.canManage || capLimit(ctx) === null) return false;
-	const rows = capabilitiesForKind(viewer.kind);
-	return roles.some((role) => {
-		if (columnLock(role, viewer) !== null) return false;
-		const held = roleCaps(role, draft);
-		return rows.some((capability) => {
-			const on = held.includes(capability);
-			return cellLock(capability, on, viewer) === null &&
-				managerCapLock(role, capability, on, roles, draft, ctx) !== null;
-		});
-	});
+): string | null {
+	const limit = capLimit(ctx);
+	if (limit === null || !ctx.managers || basePreset === role.basePreset) return null;
+	const delta = managerDelta(role, role.capabilities, ctx, basePreset);
+	return delta > 0 && ctx.managers.used + delta > limit
+		? managerCapLine(role.name, delta, ctx)
+		: null;
 }
 // #endregion
 
@@ -608,13 +705,6 @@ export interface RoleSaveProblem {
 export interface RoleSavePlan {
 	writes: RoleWrite[];
 	problems: RoleSaveProblem[];
-}
-
-/** "View audit log", "View audit log and Archive entity", "A, B and C". */
-function labelList(caps: readonly WorkspaceCapability[]): string {
-	const labels = caps.map((c) => CAPABILITY_LABEL[c]);
-	if (labels.length <= 1) return labels.join("");
-	return `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
 }
 
 /**
@@ -661,15 +751,6 @@ export function roleSavePlan(
 	return plan;
 }
 
-/** A role held back by the manager cap: how many managers it would add, then the cap's sentence. */
-export function managerCapLine(
-	name: string,
-	added: number,
-	cap: Pick<RoleCapContext, "text">,
-): string {
-	return `Saving ${name} would add ${added} ${added === 1 ? "manager" : "managers"}. ${cap.text}`;
-}
-
 /** The custom-role write for a role's new capabilities, keeping its name, summary and rank. */
 export function roleWriteInput(
 	ws: Pick<WorkspaceDetail, "kind" | "id">,
@@ -687,9 +768,9 @@ export function roleWriteInput(
 }
 // #endregion
 
-// #region Column menu
-/** What a role column's menu can ask for. */
-export type RoleMenuAction = "rename" | "duplicate" | "archive";
+// #region Role actions (the canvas header)
+/** What a custom role's header can ask for. */
+export type RoleActionKey = "edit" | "duplicate" | "archive";
 
 /** How many pending invitations in an outgoing queue offer a role. */
 export function invitesOffering(roleId: string, invites: readonly WorkspaceInvite[]): number {
@@ -730,14 +811,12 @@ export function archiveBlock(
 	return null;
 }
 
-/** The Archive row's visible line when nothing refuses it. */
+/** What the Archive action's line says when nothing refuses it. */
 export const ARCHIVE_HINT = "Kept on record, never deleted.";
 
 /**
- * The Archive row's visible second line: the refusal's count and its remedy, short enough for a menu
- * row (the full sentence, {@link archiveBlock}, is the row's tooltip and description) — or, when
- * nothing refuses it, {@link ARCHIVE_HINT}. The count is on the row itself, so a touch reader, or one
- * who never hovers, still sees why the row is dead.
+ * The short form of an archive refusal — the count and its remedy — or, when nothing refuses it,
+ * {@link ARCHIVE_HINT}. The full sentence ({@link archiveBlock}) is the action's description.
  */
 export function archiveHint(
 	role: Pick<WorkspaceRoleDef, "memberCount">,
@@ -756,15 +835,15 @@ export function archiveHint(
 	return ARCHIVE_HINT;
 }
 
-/** The Rename row's visible second line when {@link renameBlock} refuses it. */
-export const RENAME_BLOCKED_HINT = "It allows what you can't grant.";
+/** The short form of an edit refusal ({@link editBlock}). */
+export const EDIT_BLOCKED_HINT = "It allows what you can't grant.";
 
 /**
- * Why the viewer cannot rename a role they may otherwise edit, or `null`: a rename re-writes the
- * role's saved capabilities, so one that still allows something the viewer may not put on a role is
- * refused whole by the server.
+ * Why the viewer cannot edit a role's details though they may otherwise change it, or `null`: an edit
+ * re-writes the role's saved capabilities, so one that still allows something the viewer may not put
+ * on a role is refused whole by the server.
  */
-export function renameBlock(
+export function editBlock(
 	role: Pick<WorkspaceRoleDef, "name" | "capabilities">,
 	viewer: Pick<RolesViewer, "kind" | "caps">,
 ): string | null {
@@ -774,94 +853,65 @@ export function renameBlock(
 		: `${role.name} allows ${labelList(blocked)}, which you can't give a role.`;
 }
 
-/** One row of a role column's menu, before it is bound to the screen. */
-export interface RoleMenuRow {
-	action: RoleMenuAction;
-	/** Why the row is refused — its tooltip and description — or `null` when it acts. */
+/** One action of a role's header, before it is bound to the screen. */
+export interface RoleActionRow {
+	action: RoleActionKey;
+	/** Why the action is refused — said beside it and as its description — or `null` when it acts. */
 	disabledReason: string | null;
-	/** The row's visible second line (a refused row's count and remedy), or `null` for none. */
+	/** The refusal's short form, or `null` for none. */
 	hint: string | null;
 }
 
 /**
- * The menu rows a role column offers, in order — none on a preset (a preset is copied through New
- * role's "Start from") and none without `manage_roles`. Rename only on a column the viewer may edit,
+ * The actions a custom role's header offers, in order — none on a preset (its canvas notice offers
+ * Clone instead) and none without `manage_roles`. Edit details only on a role the viewer may change,
  * refused in place when the role carries what they cannot grant; Duplicate always; Archive always,
  * refused in place while anybody holds the role or an invitation offers it ({@link pendingInvitesFor})
- * — never hidden, and the count and remedy on the row itself, so the reader learns why.
+ * — never hidden, so the reader learns why.
  */
-export function roleMenuRows(
+export function roleActionRows(
 	role: WorkspaceRoleDef,
 	viewer: RolesViewer,
 	invites: readonly WorkspaceInvite[],
-): RoleMenuRow[] {
+): RoleActionRow[] {
 	if (!viewer.canManage || role.preset) return [];
-	const rows: RoleMenuRow[] = [];
-	if (columnLock(role, viewer) === null) {
-		const blocked = renameBlock(role, viewer);
+	const rows: RoleActionRow[] = [];
+	if (roleLock(role, viewer) === null) {
+		const blocked = editBlock(role, viewer);
 		rows.push({
-			action: "rename",
+			action: "edit",
 			disabledReason: blocked,
-			hint: blocked ? RENAME_BLOCKED_HINT : null,
+			hint: blocked ? EDIT_BLOCKED_HINT : null,
 		});
 	}
 	rows.push({ action: "duplicate", disabledReason: null, hint: null });
 	const offered = pendingInvitesFor(role, invites);
+	const blocked = archiveBlock(role, offered);
 	rows.push({
 		action: "archive",
-		disabledReason: archiveBlock(role, offered),
-		hint: archiveHint(role, offered),
+		disabledReason: blocked,
+		hint: blocked ? archiveHint(role, offered) : null,
 	});
 	return rows;
 }
-
-/** A role column's kebab menu, bound to the screen's handler. */
-export function roleMenu(
-	role: WorkspaceRoleDef,
-	viewer: RolesViewer,
-	invites: readonly WorkspaceInvite[],
-	onAction: (action: RoleMenuAction, role: WorkspaceRoleDef) => void,
-): MenuItem[] {
-	const items: MenuItem[] = [];
-	for (const row of roleMenuRows(role, viewer, invites)) {
-		const command = () => onAction(row.action, role);
-		const act = {
-			...(row.hint ? { hint: row.hint } : {}),
-			...(row.disabledReason
-				? { disabled: true, disabledReason: row.disabledReason }
-				: { command }),
-		};
-		if (row.action === "rename") {
-			items.push({ key: "rename", label: "Rename…", icon: "edit", ...act });
-		} else if (row.action === "duplicate") {
-			items.push({ key: "duplicate", label: "Duplicate…", icon: "copy", ...act });
-		} else {
-			if (items.length > 0) items.push({ separator: true });
-			items.push({
-				key: "archive",
-				label: "Archive role…",
-				icon: "archive-box",
-				danger: true,
-				...act,
-			});
-		}
-	}
-	return items;
-}
 // #endregion
 
-// #region Role editor
-/** Where a new role starts: nothing, a template, or a copy of an existing role. */
+// #region Role dialogs
+/** Which run of the Clone from list a starting point sits in. */
+export type StartGroup = "start" | "template" | "preset" | "custom";
+
+/** Where a new role starts: a clean slate, a template, or a copy of an existing role. */
 export interface StartPoint {
-	/** The editor's option value: `blank`, `template:<key>` or `role:<id>`. */
+	/** The option value: `blank`, `template:<key>` or `role:<id>`. */
 	key: string;
+	group: StartGroup;
 	/** The option's label. */
 	label: string;
-	/** What it carries, as the option's description and the field's hint. */
+	/** What it carries, as the option's second line. */
 	description: string;
 	/** The name it suggests ("" for nothing). */
 	name: string;
-	/** The summary the new role is written with. */
+	/** The description it suggests. */
 	summary: string;
 	/** The rank it suggests (clamped to what the author may create by {@link clampBase}). */
 	basePreset: WorkspaceRole;
@@ -869,20 +919,22 @@ export interface StartPoint {
 	capabilities: readonly WorkspaceCapability[];
 }
 
-/** The starting point that carries nothing — the editor's default. */
+/** The starting point that carries nothing — the dialog's default. */
 export const BLANK_START = "blank";
 
-/** "View analytics, Invite members" — or a sentence when there is nothing. */
+/** "View analytics, Invite members." — or a sentence when there is nothing. */
 function capsDescription(caps: readonly WorkspaceCapability[]): string {
 	return caps.length === 0
-		? "No special permissions."
+		? "No permissions."
 		: `${caps.map((c) => CAPABILITY_LABEL[c]).join(", ")}.`;
 }
 
 /**
- * Every starting point the editor offers, in order: nothing, then the kind's templates (data —
- * `role-templates.ts`), then a copy of each existing role, presets first. Copying is how a preset is
- * "edited": its column is locked, and its copy is a custom role the author owns.
+ * Every starting point the New role dialog's ONE "Clone permissions from" field offers, in order: a
+ * clean slate, then the kind's templates (data — `role-templates.ts`), then each existing role, presets
+ * first. Cloning is how a preset is "edited": the preset stays fixed, and its clone is a custom role the
+ * author owns. The clone also brings its rank (who may manage the role's holders), so the dialog asks
+ * nothing more; Edit details changes the rank later.
  */
 export function startPoints(
 	kind: WorkspaceKind,
@@ -894,33 +946,37 @@ export function startPoints(
 	return [
 		{
 			key: BLANK_START,
-			label: "Nothing yet",
-			description: "No permissions — tick what it may do in its column afterwards.",
+			group: "start",
+			label: "None — clean slate",
+			description: "No permissions; ranks as Member.",
 			name: "",
 			summary: "",
 			basePreset: "member",
 			capabilities: [],
 		},
-		...templatesForKind(kind, templates).map((t) => ({
+		...templatesForKind(kind, templates).map((t): StartPoint => ({
 			key: `template:${t.key}`,
+			group: "template",
 			label: `${t.name} template`,
-			description: `${t.summary} ${capsDescription(inKind(t.capabilities))}`,
+			description: capsDescription(inKind(t.capabilities)),
 			name: t.name,
 			summary: t.summary,
 			basePreset: t.basePreset,
 			capabilities: inKind(t.capabilities),
 		})),
-		...orderedRoles(roles).map((r) => ({
-			key: `role:${r.id}`,
-			label: `Same as ${r.name}`,
-			description: capsDescription(
-				inKind(r.preset === "owner" ? capabilitiesForKind(kind) : r.capabilities),
-			),
-			name: `${r.name} copy`,
-			summary: r.summary,
-			basePreset: r.basePreset,
-			capabilities: inKind(r.preset === "owner" ? capabilitiesForKind(kind) : r.capabilities),
-		})),
+		...orderedRoles(roles).map((r): StartPoint => {
+			const caps = inKind(r.preset === "owner" ? capabilitiesForKind(kind) : r.capabilities);
+			return {
+				key: `role:${r.id}`,
+				group: r.preset ? "preset" : "custom",
+				label: r.name,
+				description: capsDescription(caps),
+				name: `${r.name} copy`,
+				summary: r.summary,
+				basePreset: r.basePreset,
+				capabilities: caps,
+			};
+		}),
 	];
 }
 
@@ -929,14 +985,47 @@ export function startPointOf(points: readonly StartPoint[], key: string | null):
 	return points.find((p) => p.key === key) ?? points[0];
 }
 
+/** One option of the Clone from field (the ui `Option` shape). */
+export interface CloneOption {
+	value: string;
+	label: string;
+	description: string;
+}
+
+/** One headed run of the Clone from field (the ui `OptionGroup` shape). */
+export interface CloneOptionGroup {
+	label: string;
+	items: CloneOption[];
+}
+
+/** The Clone from field's options, in headed runs — a run with nothing in it is left out. */
+export function cloneOptionGroups(points: readonly StartPoint[]): CloneOptionGroup[] {
+	const runs: { group: StartGroup; label: string }[] = [
+		{ group: "start", label: "Start" },
+		{ group: "template", label: "Templates" },
+		{ group: "preset", label: "Preset roles" },
+		{ group: "custom", label: "Custom roles" },
+	];
+	return runs
+		.map((run) => ({
+			label: run.label,
+			items: points.filter((p) => p.group === run.group).map((p) => ({
+				value: p.key,
+				label: p.label,
+				description: p.description,
+			})),
+		}))
+		.filter((run) => run.items.length > 0);
+}
+
 /** The `owner` rank folds to `admin` — the highest a custom role may name. */
 function asCustomBase(role: WorkspaceRole): CustomRoleBase {
 	return role === "owner" ? "admin" : role;
 }
 
 /**
- * The ranks a new custom role may take: the kind's presets (no `lead` on a business), never `owner`,
- * and never above the author's own rank — the database refuses the rest, so they are not offered.
+ * The ranks a custom role may take: the kind's presets (no `lead` on a business), never `owner`, and
+ * never above the author's own rank — the database refuses the rest, so they are not offered.
  * Most-privileged first.
  */
 export function baseOptions(kind: WorkspaceKind, viewerRank: number): CustomRoleBase[] {
@@ -946,9 +1035,8 @@ export function baseOptions(kind: WorkspaceKind, viewerRank: number): CustomRole
 }
 
 /**
- * The rank to start the editor on: the one wanted when it is offered, else the highest offered rank
- * below it, else `member` (which the server will refuse for an author without a seat, with its own
- * sentence).
+ * The rank to start on: the one wanted when it is offered, else the highest offered rank below it,
+ * else `member` (which the server will refuse for an author without a seat, with its own sentence).
  */
 export function clampBase(
 	wanted: WorkspaceRole,
@@ -959,7 +1047,7 @@ export function clampBase(
 	return offered.find((r) => roleRank(r) <= roleRank(target)) ?? offered.at(-1) ?? "member";
 }
 
-/** What the editor starts a new role with. */
+/** What the dialog starts a new role with. */
 export interface RoleSeed {
 	/** The capabilities the new role is written with — only what the author may grant. */
 	capabilities: WorkspaceCapability[];
@@ -981,7 +1069,7 @@ export function seedFrom(
 	};
 }
 
-/** The editor's line about what a starting point lost on the way in, or `null` when it lost nothing. */
+/** The dialog's line about what a clone lost on the way in, or `null` when it lost nothing. */
 export function seedNote(
 	dropped: readonly WorkspaceCapability[],
 	kind: WorkspaceKind,
@@ -1022,32 +1110,44 @@ function startsWith(caps: readonly WorkspaceCapability[]): string {
 	return caps.length <= 3 ? labelList(caps) : `${caps.length} permissions`;
 }
 
+/** Which job a role dialog is doing. */
+export type RoleEditorMode = "create" | "edit";
+
 /**
- * The editor's opening line. Creating, it follows the starting point: a role that starts with
- * nothing is told to tick its column once it exists; one a template or a copy seeded says what it
- * starts with. Renaming keeps everything but the name and rank.
+ * The dialog's opening line. Creating, it follows the clone source: a role that starts with nothing is
+ * told to switch on what it may do once it exists; one a template or a clone seeded says what it
+ * starts with. Editing keeps the permissions and the people holding it.
  */
 export function roleEditorIntro(
 	mode: RoleEditorMode,
 	kind: WorkspaceKind,
 	seeded: readonly WorkspaceCapability[],
 ): string {
-	if (mode === "rename") return "Its permissions and the people holding it stay as they are.";
-	const lead = `A custom role is a named bundle of permissions for this ${kindCopy(kind).noun}.`;
+	if (mode === "edit") return "Its permissions and the people holding it stay as they are.";
+	const lead = `A custom role is a named set of permissions for this ${kindCopy(kind).noun}.`;
 	return seeded.length === 0
-		? `${lead} Tick what it may do in its column once it exists.`
-		: `${lead} It starts with ${startsWith(seeded)} — change its column any time.`;
+		? `${lead} Switch on what it may do once it exists.`
+		: `${lead} It starts with ${startsWith(seeded)} — change any of it afterwards.`;
 }
 
-/** What the screen says once the editor created a role, by what the role was created with. */
+/** The Clone from field's hint for the chosen source: what the new role starts with, and its rank. */
+export function cloneHint(seed: Pick<RoleSeed, "capabilities" | "basePreset">): string {
+	const rank = roleLabel(seed.basePreset);
+	return seed.capabilities.length === 0
+		? `Starts with no permissions and ranks as ${rank}.`
+		: `Starts with ${startsWith(seed.capabilities)} and ranks as ${rank}. Change either later.`;
+}
+
+/** What the screen says once the dialog created a role, by what the role was created with. */
 export function roleCreatedNotice(name: string, caps: readonly WorkspaceCapability[]): string {
-	return caps.length === 0
-		? `${name} is created. Tick what it may do in its column, then save.`
-		: `${name} is created with ${startsWith(caps)}. Change its column any time, then save.`;
+	return caps.length === 0 ? `${name} created` : `${name} created with ${startsWith(caps)}`;
 }
 
 /** The longest role name the database takes (`WorkspaceRoleDef.name`). */
 export const ROLE_NAME_MAX = 48;
+
+/** The longest description the database takes (`WorkspaceRoleDef.summary`). */
+export const ROLE_SUMMARY_MAX = 160;
 
 /**
  * What is wrong with a role name, or `null`: it is required, at most {@link ROLE_NAME_MAX}
@@ -1068,19 +1168,24 @@ export function roleNameProblem(
 	return clash ? `There is already a role called ${clash.name}.` : null;
 }
 
-/** Which job the editor is doing. */
-export type RoleEditorMode = "create" | "rename";
+/** What is wrong with a role description, or `null`: optional, at most {@link ROLE_SUMMARY_MAX}. */
+export function roleSummaryProblem(summary: string): string | null {
+	return summary.trim().length > ROLE_SUMMARY_MAX
+		? `Keep the description to ${ROLE_SUMMARY_MAX} characters.`
+		: null;
+}
 
-/** The custom-role write the editor sends. */
+/** The custom-role write a dialog sends. */
 export function roleEditorInput(
 	ws: Pick<WorkspaceDetail, "kind" | "id">,
 	input: {
 		mode: RoleEditorMode;
 		name: string;
+		summary: string;
 		basePreset: CustomRoleBase;
-		/** Create: the seed's capabilities and the starting point's summary. */
-		seed?: { capabilities: readonly WorkspaceCapability[]; summary: string };
-		/** Rename: the role being renamed, whose saved capabilities and summary are kept. */
+		/** Create: the seed's capabilities. */
+		seed?: { capabilities: readonly WorkspaceCapability[] };
+		/** Edit: the role being edited, whose saved capabilities are kept. */
 		role?: WorkspaceRoleDef;
 	},
 ): UpsertRoleInput {
@@ -1088,21 +1193,13 @@ export function roleEditorInput(
 		kind: ws.kind,
 		workspaceId: ws.id,
 		name: input.name.trim(),
+		summary: input.summary.trim(),
 		basePreset: input.basePreset,
 	};
-	if (input.mode === "rename" && input.role) {
-		return {
-			...base,
-			roleId: input.role.id,
-			summary: input.role.summary,
-			capabilities: [...input.role.capabilities],
-		};
+	if (input.mode === "edit" && input.role) {
+		return { ...base, roleId: input.role.id, capabilities: [...input.role.capabilities] };
 	}
-	return {
-		...base,
-		summary: input.seed?.summary ?? "",
-		capabilities: [...(input.seed?.capabilities ?? [])],
-	};
+	return { ...base, capabilities: [...(input.seed?.capabilities ?? [])] };
 }
 // #endregion
 
@@ -1136,8 +1233,8 @@ export function rolesFilledCount(actions: readonly { tier: ButtonTier }[]): numb
 }
 
 /**
- * The editor's footer: Cancel (tier 5) and its one filled commit — "Create role" at tier 2 (a
- * structural creation) or, renaming, "Save role" at tier 3 (a workflow commit). The commit stays
+ * A role dialog's footer: Cancel (tier 5) and its one filled commit — "Create role" at tier 2 (a
+ * structural creation) or, editing, "Save changes" at tier 3 (a workflow commit). The commit stays
  * pressable while the form has a problem: the press reveals the problem beside its field.
  */
 export function roleEditorFooter(mode: RoleEditorMode, saving: boolean): RolesAction[] {
@@ -1145,17 +1242,128 @@ export function roleEditorFooter(mode: RoleEditorMode, saving: boolean): RolesAc
 		{ key: "cancel", label: "Cancel", tier: 5, disabled: saving },
 		mode === "create"
 			? { key: "commit", label: saving ? "Creating…" : "Create role", tier: 2, busy: saving }
-			: { key: "commit", label: saving ? "Saving…" : "Save role", tier: 3, busy: saving },
+			: { key: "commit", label: saving ? "Saving…" : "Save changes", tier: 3, busy: saving },
 	];
 }
 
 /**
- * The header band's commit on the Roles module — "New role", tier 2 structural (it opens the
- * editor) — for a `manage_roles` holder only; `null` otherwise, so the band shows none.
+ * The roster's "New role" — a slim tier-5 list affordance under the Custom roles it adds to (§B.8.1:
+ * text weight for list affordances; Decision #321) — for a `manage_roles` holder only; `null`
+ * otherwise, so the roster shows none. The header band carries no second copy (Decision #320).
  */
-export function rolesCommit(
+export function newRoleAction(
 	viewer: Pick<RolesViewer, "canManage">,
-): { key: "new-role"; label: string; tier: 2 } | null {
-	return viewer.canManage ? { key: "new-role", label: "New role", tier: 2 } : null;
+): { key: "new-role"; label: string; tier: 5 } | null {
+	return viewer.canManage ? { key: "new-role", label: "New role", tier: 5 } : null;
+}
+// #endregion
+
+// #region Footer rig (Decision #321)
+/** Where the Roles screen's permission edits stand — the footer rig's `SaveStatus` pip. */
+export type RolesSaveState = "saved" | "dirty" | "saving" | "error";
+
+/** A text action the footer's save line offers. */
+export type RolesSaveAction = "save" | "discard" | "retry";
+
+/** "just now", "12s ago", "4 min ago", "2 h ago" — how long ago a save landed. */
+export function savedAgo(ms: number): string {
+	const s = Math.max(0, Math.round(ms / 1000));
+	if (s < 5) return "just now";
+	if (s < 60) return `${s}s ago`;
+	const m = Math.round(s / 60);
+	if (m < 60) return `${m} min ago`;
+	return `${Math.round(m / 60)} h ago`;
+}
+
+/**
+ * The footer's save line, the catalogue rig's contract (Decision #304): with auto-save on, a switch
+ * saves itself a moment after it moves, so "Unsaved changes" offers nothing to press; with it off, the
+ * line offers Save now and Discard; a failed save offers Retry and Discard.
+ */
+export function rolesSaveLabel(
+	state: RolesSaveState,
+	savedAt: number | null,
+	now: number,
+	autoSave: boolean,
+): { text: string; actions: RolesSaveAction[] } {
+	switch (state) {
+		case "saving":
+			return { text: "Saving…", actions: [] };
+		case "dirty":
+			return { text: "Unsaved changes", actions: autoSave ? [] : ["save", "discard"] };
+		case "error":
+			return { text: "Couldn't save", actions: ["retry", "discard"] };
+		case "saved":
+			return {
+				text: savedAt === null ? "All changes saved" : `Saved · ${savedAgo(now - savedAt)}`,
+				actions: [],
+			};
+	}
+}
+
+/** How long auto-save waits after the last switch moved, so a run of toggles is one write per role. */
+export const ROLES_AUTOSAVE_MS = 800;
+
+/** One icon action of the footer rig, for the selected role. */
+export interface RigAction {
+	key: "edit" | "duplicate" | "archive";
+	/** The tooltip and accessible name. */
+	label: string;
+	/** Why it is refused — said in its tooltip, the control staying focusable — or `null`. */
+	disabledReason: string | null;
+}
+
+/**
+ * The footer rig's actions for the selected role, in order. A custom role: Edit role details,
+ * Duplicate role, Archive role — each refused in place ({@link roleActionRows}). A preset: Clone as
+ * custom role alone (its permissions are fixed). Nothing without `manage_roles`. "Delete" in a brief
+ * is Archive here: nothing is hard-deleted (root CLAUDE.md §5), and `org.archive_workspace_role` is
+ * the role's only exit.
+ */
+export function rigActions(
+	role: WorkspaceRoleDef,
+	viewer: RolesViewer,
+	invites: readonly WorkspaceInvite[],
+): RigAction[] {
+	if (!viewer.canManage) return [];
+	if (role.preset) {
+		return [{ key: "duplicate", label: "Clone as custom role", disabledReason: null }];
+	}
+	const label = { edit: "Edit role details", duplicate: "Duplicate role", archive: "Archive role" };
+	return roleActionRows(role, viewer, invites).map((row) => ({
+		key: row.action,
+		label: label[row.action],
+		disabledReason: row.disabledReason,
+	}));
+}
+// #endregion
+
+// #region Copy sweep
+/**
+ * Every fixed sentence the Roles screen can give a kind — the roster's headings and empty line, each
+ * domain's heading and remit, each capability's line and rule, every lock, the dialogs' intros and
+ * hints. A sweep reads it (`members-screen.gate.test.ts`: a business's copy never says "lead").
+ */
+export function rolesScreenCopy(kind: WorkspaceKind, policy: PolicyContext): string[] {
+	const caps = capabilitiesForKind(kind);
+	return [
+		...rosterSections([], {}).flatMap((s) => [s.title, s.empty ?? ""]),
+		roleSummaryLine({ summary: "", preset: null, capabilities: [] }, kind),
+		...capabilityGroupsFor(kind).flatMap((g) => [g.title, g.description]),
+		...caps.map((c) => capabilityLine(c, kind)),
+		...caps.map((c) => conditionalRuleFor(c, policy) ?? ""),
+		PRESET_LOCK,
+		RANK_LOCK,
+		VIEW_LOCK,
+		GRANT_LOCK,
+		RESERVED_LOCK,
+		BUSY_LOCK,
+		CUSTOM_EMPTY,
+		EDIT_BLOCKED_HINT,
+		ARCHIVE_HINT,
+		cloneHint({ capabilities: [], basePreset: "member" }),
+		roleEditorIntro("edit", kind, []),
+		...cloneOptionGroups(startPoints(kind, [])).map((g) => g.label),
+	].filter((s) => s !== "");
 }
 // #endregion

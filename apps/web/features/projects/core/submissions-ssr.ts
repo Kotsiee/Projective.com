@@ -31,3 +31,32 @@ export async function resolveSubmissionPage(
 	}, actor);
 	return { page: res.ok && res.data ? res.data.page : null };
 }
+
+const READS = new WeakMap<URL, Map<string, Promise<SubmissionBootstrap>>>();
+
+/**
+ * {@link resolveSubmissionPage}, read once per request: the route and the header band slot both ask
+ * (Decision #317 — the band titles the node the body shows), keyed on the request's own URL object as
+ * the workspace console's memo is.
+ */
+export function resolveSubmissionPageOnce(
+	url: URL,
+	projectId: string,
+	actor: ReadActor,
+	channelId?: string | null,
+	path?: string[],
+): Promise<SubmissionBootstrap> {
+	let reads = READS.get(url);
+	if (!reads) {
+		reads = new Map();
+		READS.set(url, reads);
+	}
+	const key = `${projectId}|${channelId ?? ""}|${
+		(path ?? []).join("/")
+	}|${actor.userId}|${actor.contextId}`;
+	const hit = reads.get(key);
+	if (hit) return hit;
+	const read = resolveSubmissionPage(projectId, actor, channelId, path);
+	reads.set(key, read);
+	return read;
+}

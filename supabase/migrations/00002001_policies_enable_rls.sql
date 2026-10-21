@@ -81,6 +81,12 @@ ALTER TABLE org.freelancer_profiles ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE org.org_invitations ENABLE ROW LEVEL SECURITY;
 
+-- Decision #318: no client policy on either — every read and write is a definer door, as for
+-- org_invitations (the token is the capability to ask).
+ALTER TABLE org.org_invite_links ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE org.org_join_requests ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE org.portfolios ENABLE ROW LEVEL SECURITY;
 
 -- Added with the ranked contact picker (which reads follows in both directions). The table had RLS

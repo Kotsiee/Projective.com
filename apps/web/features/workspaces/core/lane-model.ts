@@ -38,8 +38,7 @@ import {
 	type ListingStatus,
 	workspaceHref as listingWorkspaceHref,
 } from "@projective/types/catalogue";
-import { isPeopleReading, MEMBERS_READINGS } from "./sub-views.ts";
-import { inviteOpensInPlace, rosterCreateNote } from "./rig-model.ts";
+import { rosterCreateNote } from "./rig-model.ts";
 
 /**
  * lane-model — the workspace lane's composition as a pure function of what the viewer is looking at
@@ -54,8 +53,8 @@ import { inviteOpensInPlace, rosterCreateNote } from "./rig-model.ts";
  *   2. **Context controls** — always drawn, the find-in-lane search FIRST: on the index it filters the
  *      lane's own list, beside it the Invitations toggle (the one partition that lists invitations
  *      rather than entities, so it is set apart from the segmented control), then the All · Owned ·
- *      Member segments; inside a console it searches views, channels, projects and members, then a
- *      segmented control only where the view has something to partition.
+ *      Member segments; inside a console it searches views, channels, projects and members, and holds
+ *      nothing else — a console view's readings are switched in its footer rig (Decision #319).
  *   3. **Views** — the viewer's entities (owned first) on the index; inside a console the registry's
  *      hubs in labelled sections: Core operations, Governance, then Channels (the read's entity
  *      channels and a create) last, as `/projects` closes its lane on its channel tree.
@@ -218,8 +217,8 @@ export interface ConsoleViewsZone {
 	activeHub: HubKey | null;
 }
 
-/** Which view a Z2 segmented control partitions. */
-export type LaneContextControl = "roster" | "members";
+/** Which view a Z2 segmented control partitions — the roster's alone (Decision #319). */
+export type LaneContextControl = "roster";
 
 /** A segmented control over the current view. */
 export interface LanePartitionControl {
@@ -243,7 +242,7 @@ export interface LaneInvitationsToggle {
 /** Z2 — the search, first, then whatever the current view offers to narrow it. Always drawn. */
 export interface LaneContextZone {
 	search: LaneSearchCopy;
-	/** The view's segmented control, or `null` when it has nothing to partition. */
+	/** The roster's segmented control; `null` inside a console. */
 	partition: LanePartitionControl | null;
 	/** The roster's Invitations toggle; `null` inside a console. */
 	invitations: LaneInvitationsToggle | null;
@@ -253,17 +252,12 @@ export interface LaneContextZone {
 export type LaneCreate =
 	| { action: "create"; label: string }
 	| {
+		/**
+		 * Invite member — always a button that opens the invite modal in place: the module's screen or
+		 * the lane mounts it on every console page (`screenHostsInvite`, Decision #318).
+		 */
 		action: "invite";
 		label: string;
-		/**
-		 * Whether the invite modal is mounted on this page (`inviteOpensInPlace`: Members, and a team's
-		 * Projects), so the action is a button that opens it. Elsewhere the action is a LINK to Members
-		 * with the modal open (`?invite=1`) — a destination is an `<a>`, never a button that assigns
-		 * `location`.
-		 */
-		inPlace: boolean;
-		/** Where the action links when it is not in place. */
-		href: string;
 	};
 
 /** Z4 — the docked footer rig. The collapse toggle is always there; the create action may not be. */
@@ -341,11 +335,6 @@ export interface ConsoleLaneInput {
 	capabilities: readonly WorkspaceCapability[];
 	/** The module being rendered. */
 	module: ModuleKey | null;
-	/**
-	 * The module's current sub-view (`sub-views.ts`), when it has one (Members: `people` · `pending` ·
-	 * `chart`).
-	 */
-	subView: string | null;
 	/** The channel being rendered (its slug) on a `channels` route, else `null`/absent. */
 	channel?: string | null;
 	/** The listing being rendered (its slug) on a `catalogue` route, else `null`/absent. */
@@ -450,7 +439,7 @@ export function laneZones(input: RosterLaneInput | ConsoleLaneInput): LaneZones 
 		},
 		context: {
 			search: { label: `Search ${input.name}`, placeholder: "Find views, channels, people…" },
-			partition: consolePartition(input),
+			partition: null,
 			invitations: null,
 		},
 		footer: {
@@ -525,37 +514,10 @@ function rosterFooter(input: RosterLaneInput): LaneFooterZone {
 		: { create: null, note: rosterCreateNote(input.kind, input.createBlockedReason) };
 }
 
-/**
- * The segmented control a console view offers. Members reads its people two ways — People and Org
- * chart, the Members sub-views (`sub-views.ts`) that are not the invitation queue — so it gets a
- * segmented control over that ONE sub-view state, which the header band's tabs and the footer rig's
- * Org chart toggle also write. Only on a people reading: the queue (`?view=pending`) has no org chart
- * to switch to.
- *
- * A team's Projects gets none: Active and Proposals are two different lists, not two readings of one
- * (Teams C5), so the header band's tabs are their one switch — a second control here would only repeat
- * them.
- */
-function consolePartition(input: ConsoleLaneInput): LanePartitionControl | null {
-	if (input.module === "members" && isPeopleReading(input.subView)) {
-		return {
-			control: "members",
-			label: "Show members as",
-			options: MEMBERS_READINGS.map(({ value, label }) => ({ value, label })),
-		};
-	}
-	return null;
-}
-
 /** The footer's Invite member, for an `invite_members` holder only. */
 function consoleInvite(input: ConsoleLaneInput): Extract<LaneCreate, { action: "invite" }> | null {
 	if (!input.capabilities.includes("invite_members")) return null;
-	return {
-		action: "invite",
-		label: "Invite member",
-		inPlace: inviteOpensInPlace(input.kind, input.module),
-		href: `${workspaceHref(input.kind, input.handle, "members")}?invite=1`,
-	};
+	return { action: "invite", label: "Invite member" };
 }
 
 /** The lifecycle status as a `Tag`'s words and tone (`roster-model.ts`). */

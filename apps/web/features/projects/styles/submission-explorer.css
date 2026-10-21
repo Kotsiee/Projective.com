@@ -1,20 +1,23 @@
 /*
- * Submissions explorer — the File Explorer canvas plus a full-height navigation TREE (left, separated
- * by a single vertical hairline) and an interactive BREADCRUMBS bar atop the workspace (Part 2/3). It
- * reuses the File Explorer's toolbar/workspace/empty (`fx-*`, imported alongside) and adds only the
- * submissions-specific layout. §B.4: the tree/workspace separation is a single hairline, never a box.
- * Native WINDOW scroll model (Decision #31) — the tree + header pin via `position: sticky`. Token-only.
+ * Submissions explorer — the File Explorer canvas plus the navigation TREE and an interactive
+ * BREADCRUMBS bar atop the workspace (Part 2/3). The layout — the tree in the left panel behind one
+ * hairline, the listing, and the Tasks panel as the trailing column when it is open — is the shared
+ * `FilesFrame` (`@features/files/styles/files-frame.css`, Decision #317); this sheet adds only the
+ * submissions-specific bars. It reuses the File Explorer's toolbar/workspace/empty (`fx-*`, imported
+ * alongside). Native WINDOW scroll model (Decision #31) — the tree + header pin via `position: sticky`.
+ * Token-only.
  *
  * The control bar is the SHARED `.fx-toolbar` (`./fx-toolbar.css`) rendered unchanged — this surface and
  * the File Explorer draw ONE toolbar, not lookalikes. The single difference is the breadcrumb pill this
  * sheet stacks ABOVE it: `.subm-bar` is the sticky group, and the two pills inside it carry the same
- * glass wash, so the toolbar keeps its own pill instead of being absorbed into a taller block.
+ * glass wash, so the toolbar keeps its own pill instead of being absorbed into a taller block. On the
+ * project's own route the toolbar is in the header band instead, and the group is the trail alone.
  */
 .subm-explorer {
 	position: relative;
-	/* The viewport offset the sticky tree/header pin below (project scope = top bar; channel scope also
-	clears the channel-header band). */
-	--fx-chrome: var(--shell-topbar-h);
+	/* Every scope sits under a middle-nav header band — a channel's, or on the project's own route the
+	explorer's band (title + toolbar) — so the tree and the bars pin below the top bar + that band. */
+	--fx-chrome: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
 	--subm-crumb-h: 2.5rem;
 	/* The combined pinned height (breadcrumb pill + gap + toolbar) — the offset the FileTable header
 	sticks below. */
@@ -24,45 +27,10 @@
 	padding-block: var(--space-3) var(--space-6);
 }
 
-.subm-explorer[data-scope="channel"] {
-	--fx-chrome: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
+/* The project's own route: the toolbar is in the header band, so the pinned group is the trail alone. */
+.subm-explorer[data-scope="project"] {
+	--fx-toolbar-h: calc(var(--subm-crumb-h) + var(--space-2));
 }
-
-/* #region Layout — tree + main (+ optional Tasks panel column) */
-.subm-layout {
-	display: grid;
-	grid-template-columns: 15rem minmax(0, 1fr);
-	gap: var(--space-5);
-	align-items: start;
-}
-
-/* When the Tasks drawer is open, a sticky right column joins the grid (root task §6). */
-.subm-layout[data-tasks="open"] {
-	grid-template-columns: 15rem minmax(0, 1fr) 17.5rem;
-}
-
-.subm-main {
-	min-inline-size: 0;
-	display: flex;
-	flex-direction: column;
-}
-
-/* #endregion */
-
-/* #region Tree panel (sticky, full viewport height, single vertical divider) */
-.subm-aside-tree {
-	position: sticky;
-	inset-block-start: var(--fx-chrome);
-	align-self: start;
-	block-size: calc(100dvh - var(--fx-chrome));
-	overflow-y: auto;
-	padding-block: var(--space-2);
-	padding-inline-end: var(--space-3);
-	/* The single hairline that separates the tree from the workspace (§B.4 — not a four-sided box). */
-	border-inline-end: var(--hairline);
-}
-
-/* #endregion */
 
 /* #region Sticky bar group — breadcrumb pill above the shared toolbar pill */
 
@@ -148,19 +116,3 @@
 }
 
 /* #endregion */
-
-@media (max-width: 768px) {
-	.subm-layout,
-	.subm-layout[data-tasks="open"] {
-		grid-template-columns: 1fr;
-	}
-
-	.subm-aside-tree {
-		position: static;
-		block-size: auto;
-		max-block-size: 18rem;
-		border-inline-end: none;
-		border-block-end: var(--hairline);
-		padding-inline-end: 0;
-	}
-}

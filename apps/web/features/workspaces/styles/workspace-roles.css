@@ -1,0 +1,452 @@
+/*
+ * workspace-roles — the Roles module as a master-detail screen (Decisions #320, #321): the role roster
+ * on the inline-start side (sticky while the canvas scrolls), the selected role's capability canvas
+ * beside it, the drill-down they become when the region is narrow, and the footer band's rig.
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY.
+ *
+ * Nothing here is a card. The roster is a list of one-line pressable rows (a tonal step on hover, a
+ * solid `--surface-2` fill on the selected one — no leading rule, no edge); the canvas sits beside it
+ * behind ONE hairline on its inline-start edge, and inside it every domain is a section-header label
+ * over unboxed capability rows separated by spacing and a hairline between them (§B.4, §B.9). The
+ * switches, buttons, hints and the save line are `@projective/ui`'s, and nothing here reaches inside
+ * them.
+ *
+ * The narrow layout is a CONTAINER query on `.wsp-roles`, never the viewport: the console's lane takes
+ * its share of the width at every viewport, so the region's own width decides (§B.13's rule).
+ */
+
+/* #region The frame */
+.wsp-roles {
+	container: wsp-roles / inline-size;
+	min-inline-size: 0;
+}
+
+.wsp-roles__frame {
+	display: grid;
+	grid-template-columns: minmax(14rem, 17rem) minmax(0, 1fr);
+	align-items: start;
+	min-inline-size: 0;
+}
+/* #endregion */
+
+/* #region The roster (master) */
+/*
+ * Sticky beside the canvas: it holds its place while the role's capabilities scroll past, bounded by
+ * the visible region (the top bar, the header band and the live footer band height the shell
+ * publishes), and scrolls on its own only when an entity has more roles than that fits.
+ */
+.wsp-roles__master {
+	position: sticky;
+	inset-block-start: var(--space-4);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	min-inline-size: 0;
+	max-block-size: calc(
+		100dvh - var(--shell-topbar-h) - var(--shell-midnav-header-h) -
+		var(--shell-midnav-footer-cur-h, var(--shell-midnav-footer-h)) - var(--space-8)
+	);
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding-inline-end: var(--space-5);
+}
+
+.wsp-roles__section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+/* The section-header register (§A.4): an uppercase micro-label, nothing beside it. */
+.wsp-roles__section-head {
+	margin: 0;
+	padding-inline: var(--space-3);
+	font-size: var(--wsp-fs-label);
+	letter-spacing: var(--wsp-label-track);
+	text-transform: uppercase;
+	font-weight: var(--fw-semibold);
+	color: var(--text-secondary);
+}
+
+.wsp-roles__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.wsp-roles__empty {
+	margin: 0;
+	padding-inline: var(--space-3);
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+}
+
+/* The slim New role under the custom run, aligned with the rows' text. */
+.wsp-roles__create {
+	display: flex;
+	padding-inline: var(--space-1);
+}
+
+/*
+ * One role: a full-width, one-line pressable row — its name, then its holders' count as a plain
+ * figure. No border at rest; told by its hover step and, once selected, by its solid fill.
+ */
+.wsp-roles__row {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	inline-size: 100%;
+	padding: var(--space-2) var(--space-3);
+	border: 0;
+	border-radius: var(--radius-md);
+	background: transparent;
+	color: var(--on-surface);
+	font: inherit;
+	text-align: start;
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--spring-snappy);
+}
+
+.wsp-roles__row:hover {
+	background: var(--surface-1);
+}
+
+.wsp-roles__row:active {
+	transform: scale(var(--btn-press-scale));
+}
+
+.wsp-roles__row:focus-visible {
+	outline: none;
+	background: var(--surface-1);
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.wsp-roles__row[aria-current="true"] {
+	background: var(--surface-2);
+}
+
+.wsp-roles__row-name {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	font-size: var(--wsp-fs-body);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+}
+
+.wsp-roles__row-label {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* The preset's padlock, quieter than the name — it qualifies the name, it is not a control. */
+.wsp-roles__row-lock {
+	flex: none;
+	color: var(--text-secondary);
+}
+
+/* A role holding unsaved changes: a dot in the warning tone (its words are visually hidden beside it). */
+.wsp-roles__row-dot {
+	flex: none;
+	inline-size: var(--wsp-dot-sm);
+	block-size: var(--wsp-dot-sm);
+	border-radius: var(--radius-full);
+	background: var(--warning);
+}
+
+/* The holders' count: a bare tabular figure in the meta register — no pill, no circle (§B.11). */
+.wsp-roles__row-count {
+	flex: none;
+	font-size: var(--text-sm);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region The canvas (detail) */
+.wsp-roles__detail {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	min-inline-size: 0;
+	padding-inline-start: var(--space-7);
+	border-inline-start: var(--hairline);
+}
+
+/* The drill-down's way back — only the narrow layout draws it. */
+.wsp-roles__back {
+	display: none;
+}
+
+.wsp-roles__head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+/* The name, and beside it the "?" that says why a role is read-only. */
+.wsp-roles__heading {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+/* The display register's figure step, never heavier than medium (§A.4). */
+.wsp-roles__title {
+	margin: 0;
+	font-size: var(--wsp-fs-figure);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-tight);
+	line-height: var(--leading-tight);
+	color: var(--on-surface);
+	overflow-wrap: anywhere;
+}
+
+.wsp-roles__title:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.wsp-roles__meta {
+	font-variant-numeric: tabular-nums;
+}
+
+.wsp-roles__summary {
+	margin: var(--space-2) 0 0;
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-body);
+	line-height: var(--leading-relaxed);
+	color: var(--text-secondary);
+}
+
+/* One domain: its section-header label, its "?" and its count, then its capability rows. */
+.wsp-roles__domain {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+	padding-block-start: var(--space-4);
+}
+
+.wsp-roles__domain-head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.wsp-roles__domain-title {
+	margin: 0;
+	font-size: var(--wsp-fs-label);
+	letter-spacing: var(--wsp-label-track);
+	text-transform: uppercase;
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface);
+}
+
+.wsp-roles__domain-count {
+	margin-inline-start: auto;
+	font-size: var(--text-sm);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+
+.wsp-roles__caps {
+	display: flex;
+	flex-direction: column;
+	margin: var(--space-2) 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+/*
+ * One capability: its words on the inline-start side, its switch on the inline-end edge, the switch
+ * level with the label. Rows are separated by spacing and one hairline between them — never a box.
+ */
+.wsp-roles__cap {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: start;
+	gap: var(--space-4);
+	padding-block: var(--space-3);
+}
+
+.wsp-roles__cap + .wsp-roles__cap {
+	border-block-start: var(--hairline);
+}
+
+.wsp-roles__cap-text {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+	max-inline-size: var(--wsp-prose);
+}
+
+.wsp-roles__cap-label {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--wsp-fs-body);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+}
+
+/* A consequential capability's mark: the warning glyph, in the warning tone, beside the label. */
+.wsp-roles__cap-flag {
+	display: inline-flex;
+	flex: none;
+	color: var(--warning);
+}
+
+/* The rule bounding a granted capability, and why a row is fixed — glyph-led meta lines. */
+.wsp-roles__cap-rule,
+.wsp-roles__cap-lock {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-2);
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+}
+
+.wsp-roles__cap-glyph {
+	display: inline-flex;
+	flex: none;
+	align-self: center;
+}
+
+/* The switch sits level with the label's line, never centred on a multi-line row. */
+.wsp-roles__cap-switch {
+	display: flex;
+	align-items: center;
+	min-block-size: calc(var(--wsp-fs-body) * var(--leading-snug));
+}
+/* #endregion */
+
+/* #region The drill-down (a narrow region) */
+@container wsp-roles (inline-size < 48rem) {
+	.wsp-roles__frame {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.wsp-roles__master {
+		position: static;
+		max-block-size: none;
+		overflow-y: visible;
+		padding-inline-end: 0;
+	}
+
+	.wsp-roles__detail {
+		position: relative;
+		padding-inline-start: 0;
+		border-inline-start: 0;
+	}
+
+	.wsp-roles__back {
+		display: flex;
+		margin-inline-start: calc(-1 * var(--space-3));
+	}
+
+	.wsp-roles[data-pane="list"] .wsp-roles__detail,
+	.wsp-roles[data-pane="detail"] .wsp-roles__master {
+		display: none;
+	}
+}
+
+/*
+ * The canvas slides in from the inline-end edge on an over-damped spring — `inset-inline-start`, so it
+ * comes from the left under `dir="rtl"` without a physical axis anywhere.
+ */
+@keyframes wsp-roles-drill {
+	from {
+		inset-inline-start: var(--space-7);
+		opacity: 0;
+	}
+
+	to {
+		inset-inline-start: 0;
+		opacity: 1;
+	}
+}
+
+@container wsp-roles (inline-size < 48rem) {
+	.wsp-roles[data-pane="detail"] .wsp-roles__detail {
+		animation: wsp-roles-drill var(--dur-medium) var(--spring-standard);
+	}
+}
+/* #endregion */
+
+/* #region The footer rig (RolesFooterRig) */
+/*
+ * The catalogue workspace's rig (`.cat-ws-rig`, Decision #304): the save line at the start, the
+ * selected role's icon actions pushed to the end. A container, so a narrow band tightens itself.
+ */
+.wsp-roles-rig {
+	container: wsp-roles-rig / inline-size;
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	inline-size: 100%;
+	min-inline-size: 0;
+	block-size: 100%;
+	padding-inline: var(--space-4);
+}
+
+.wsp-roles-rig__actions {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	gap: var(--space-2);
+	margin-inline-start: auto;
+}
+
+@container wsp-roles-rig (inline-size < 30rem) {
+	.wsp-roles-rig__actions {
+		gap: var(--space-1);
+	}
+}
+/* #endregion */
+
+/* #region Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	.wsp-roles__row {
+		transition: none;
+	}
+
+	.wsp-roles__row:active {
+		transform: none;
+	}
+
+	.wsp-roles[data-pane="detail"] .wsp-roles__detail {
+		animation: none;
+	}
+}
+
+:root[data-motion="reduced"] .wsp-roles__row {
+	transition: none;
+}
+
+:root[data-motion="reduced"] .wsp-roles__row:active {
+	transform: none;
+}
+
+:root[data-motion="reduced"] .wsp-roles[data-pane="detail"] .wsp-roles__detail {
+	animation: none;
+}
+/* #endregion */

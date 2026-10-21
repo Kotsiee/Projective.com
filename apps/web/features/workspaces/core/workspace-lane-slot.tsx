@@ -11,7 +11,6 @@ import {
 	workspaceHandleOf,
 } from "./workspace-model.ts";
 import { rosterTabFromSearch } from "./roster-model.ts";
-import { resolveSubView } from "./sub-views.ts";
 
 /**
  * workspace-lane-slot — the SSR-idiomatic resolver for the middle-nav lane on any `/teams*` or
@@ -82,12 +81,6 @@ export async function workspaceLaneFor(
 			path={url.pathname}
 			workspace={bootstrap.workspace}
 			activeModule={bootstrap.activeModule}
-			view={resolveSubView(
-				bootstrap.activeModule,
-				kind,
-				bootstrap.workspace.viewerCapabilities,
-				url.searchParams.get("view"),
-			)}
 			channel={bootstrap.activeModule === "channels" ? channelSlugOfPath(url.pathname) : null}
 			listing={onCatalogue ? listingSlugOfPath(url.pathname) : null}
 			listings={listings}

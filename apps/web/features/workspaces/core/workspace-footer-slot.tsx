@@ -1,7 +1,8 @@
 import type { ComponentChildren } from "preact";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import WorkspaceFooterRig from "../islands/WorkspaceFooterRig.island.tsx";
-import { resolveRoster, resolveWorkspaceConsole } from "./workspace-ssr.ts";
+import RolesFooterRig from "../islands/RolesFooterRig.island.tsx";
+import { resolveEntityDrive, resolveRoster, resolveWorkspaceConsole } from "./workspace-ssr.ts";
 import {
 	activeModuleOf,
 	channelSlugOfPath,
@@ -87,10 +88,13 @@ export async function workspaceFooterFor(url: URL, actor: ReadActor): Promise<Co
 	}
 
 	// On Files the band is the `/files` hub's rig, which also mounts the drive's upload queue (Decision
-	// #315). A connection is the person's, never the entity's, so the drive offers no Connect drive.
+	// #315). A connection is the person's, never the entity's, so the drive offers no Connect drive. The
+	// entity's allowance is the ring in its centre (Decision #317) — the handler's own drive read, from
+	// the request memo, so the ring paints in the first byte at no second read.
 	if (bootstrap.activeModule === "files") {
 		const ws = bootstrap.workspace;
 		const view = entityDriveView(ws);
+		const drive = await resolveEntityDrive(ws, actor, url);
 		return (
 			<FilesFooterRig
 				base={view.base}
@@ -101,12 +105,19 @@ export async function workspaceFooterFor(url: URL, actor: ReadActor): Promise<Co
 				ownerId={ws.id}
 				connectDrive={false}
 				lockedNote={view.readOnlyNote}
+				quota={drive.page?.quota ?? null}
+				quotaOwner={ws.name}
 			/>
 		);
 	}
 
 	const capabilities = bootstrap.workspace.viewerCapabilities;
 	const held = new Set(capabilities);
+
+	// On Roles, a viewer who may change roles gets the catalogue workspace's rig (Decision #321): the
+	// save line with Auto-save, and the selected role's actions. Anyone else keeps the console's rig.
+	if (bootstrap.activeModule === "roles" && held.has("manage_roles")) return <RolesFooterRig />;
+
 	return (
 		<WorkspaceFooterRig
 			kind={kind}

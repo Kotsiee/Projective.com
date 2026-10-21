@@ -12,7 +12,7 @@ import "../styles/attachment-modal.css";
 import { VirtualGrid } from "@projective/ui/display";
 import { createModalStack } from "@projective/ui/overlay";
 import { InlineNotice, Message } from "@projective/ui/feedback";
-import { InputText, MultiSelect, SortControl } from "@projective/ui/fields";
+import { FilesFrame } from "@features/files/components/FilesFrame.tsx";
 import { OFFLINE_NOTICE_TEXT } from "@web/utils/offline.ts";
 import { useOfflineStall } from "@web/utils/use-offline-stall.ts";
 import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
@@ -33,7 +33,15 @@ import type {
 	SubmissionUnit,
 } from "../types/projects-types.ts";
 import { SubmissionsService } from "../core/SubmissionsService.ts";
-import { FILE_KIND_OPTIONS, FILE_SORT_OPTIONS, messageGroup } from "../core/file-model.ts";
+import { messageGroup } from "../core/file-model.ts";
+import {
+	explorerKinds,
+	explorerQuery,
+	explorerSortDir,
+	explorerSortKey,
+	explorerTitle,
+	registerExplorer,
+} from "../core/explorer-state.ts";
 import {
 	FILE_FRAME_TRIGGER,
 	type FrameSnapshot,
@@ -107,7 +115,7 @@ import { UploadFilesModal } from "../components/UploadFilesModal.tsx";
 import { DeleteSubmissionDialog } from "../components/DeleteSubmissionDialog.tsx";
 import { PRESUBMIT_LIBRARY_TRIGGER, PreSubmitModal } from "../components/PreSubmitModal.tsx";
 import { TasksPanel } from "../components/TasksPanel.tsx";
-import { SearchIcon } from "../components/file-glyphs.tsx";
+import { ExplorerToolbar } from "../components/ExplorerToolbar.tsx";
 
 /**
  * SubmissionExplorer — the Submissions workspace: the single island the `/submissions` routes mount. It
@@ -333,10 +341,12 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 		new Set([ROOT_KEY, ...ancestorKeys(initial?.path ?? [])]),
 	);
 
-	const query = useSignal("");
-	const sortKey = useSignal<string>("date");
-	const sortDir = useSignal<FileSortDir>("desc");
-	const filterKinds = useSignal<string[]>([]);
+	// The query intent is shared with the header band, where it carries the toolbar on the project's own
+	// Submissions route (Decision #317).
+	const query = explorerQuery;
+	const sortKey = explorerSortKey;
+	const sortDir: Signal<FileSortDir> = explorerSortDir;
+	const filterKinds = explorerKinds;
 
 	const loading = useSignal(false);
 	const loadingMore = useSignal(false);
@@ -404,7 +414,6 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	/** The workspace a dismissed review left (draft feedback), restored when that unit reopens. */
 	const reviewDraft = useRef<{ unit: string; snapshot: FrameSnapshot } | null>(null);
 	const reqId = useRef(0);
-	const searchTimer = useRef<number | null>(null);
 	const workspaceRef = useRef<HTMLDivElement>(null);
 	// #endregion
 
@@ -530,11 +539,15 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	// #endregion
 
 	// #region Toolbar handlers
-	function onSearch(v: string): void {
-		query.value = v;
-		if (searchTimer.current) clearTimeout(searchTimer.current);
-		searchTimer.current = setTimeout(() => void reload(path.value), 300) as unknown as number;
-	}
+	// The toolbar — in the header band or above the grid — writes the shared intent and asks for a
+	// re-read of the node in view through here; unmounting resets that intent.
+	useEffect(() => registerExplorer(() => void reload(path.peek())), []);
+
+	// The header band titles the node in view; publishing the SSR node on mount is a no-op repaint.
+	useEffect(() => {
+		explorerTitle.value = nodeAt(tree.value, path.value)?.label ?? rootLabel;
+	}, [path.value, tree.value]);
+
 	// 3-state single-column sort: asc → desc → none (multi-column sort stays disabled for Submissions).
 	function applySort(key: FileSortKey): void {
 		if (sortKey.value === key) {
@@ -544,10 +557,6 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 			sortKey.value = key;
 			sortDir.value = "asc";
 		}
-		void reload(path.value);
-	}
-	function onFilter(kinds: string[]): void {
-		filterKinds.value = kinds;
 		void reload(path.value);
 	}
 	// #endregion
@@ -1007,53 +1016,11 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 		/>
 	);
 
-	function toolbar(): JSX.Element {
-		return (
-			<div class="fx-toolbar">
-				<div class="fx-toolbar__search">
-					<InputText
-						type="search"
-						variant="bare"
-						size="sm"
-						block
-						placeholder="Search submissions…"
-						aria-label="Search submissions"
-						value={query}
-						onValueChange={onSearch}
-						start={
-							<span class="fx-toolbar__searchicon" aria-hidden="true">
-								<SearchIcon size={16} />
-							</span>
-						}
-					/>
-				</div>
-				<span class="fx-toolbar__spacer" />
-				<MultiSelect
-					class="ui-field--bare"
-					size="sm"
-					display="chip"
-					placeholder="All types"
-					aria-label="Filter by type"
-					options={FILE_KIND_OPTIONS}
-					value={filterKinds}
-					onValueChange={onFilter}
-				/>
-				<SortControl
-					size="sm"
-					options={FILE_SORT_OPTIONS}
-					value={sortKey}
-					direction={sortDir}
-					onValueChange={() => void reload(path.value)}
-					onDirectionChange={() => void reload(path.value)}
-				/>
-			</div>
-		);
-	}
-
 	return (
 		<div class="subm-explorer" data-scope={scope}>
-			<div class="subm-layout" data-tasks={tasksPanelOpen.value ? "open" : undefined}>
-				<aside class="subm-aside-tree" aria-label="Submission navigator">
+			<FilesFrame
+				asideLabel="Submission navigator"
+				aside={
 					<SubmissionTree
 						tree={tree.value}
 						rootLabel={rootLabel}
@@ -1062,71 +1029,8 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 						expanded={expanded}
 						onNavigate={(p) => navigate(p)}
 					/>
-				</aside>
-				<div class="subm-main">
-					<div class="subm-bar">
-						<div class="subm-crumbbar">
-							<div class="subm-crumbbar__trail">
-								<SubmissionBreadcrumbs
-									crumbs={breadcrumbs.value}
-									base={base}
-									onNavigate={(p) => navigate(p)}
-								/>
-							</div>
-							<SubmissionActionBar
-								actions={workflow}
-								onReview={openReview}
-								onCreate={() => (createOpen.value = true)}
-								onUpload={() => (uploadOpen.value = true)}
-								onDelete={() => (deleteOpen.value = true)}
-								onSubmit={openPreSubmit}
-								onApproveStage={() => (approveOpen.value = true)}
-								approveBusy={approveBusy.value}
-								onEndStage={() => (endStageOpen.value = true)}
-							/>
-						</div>
-						{toolbar()}
-						{workflowError.value && (
-							<Message
-								severity="danger"
-								variant="subtle"
-								size="sm"
-								closable
-								onClose={() => (workflowError.value = null)}
-							>
-								{workflowError.value}
-							</Message>
-						)}
-						{paidRoundOpen && (
-							<Message severity="success" variant="subtle" size="sm">
-								Paid revision, funded, you can start.
-							</Message>
-						)}
-						{!workflowError.value && workflowNotice.value && (
-							<Message
-								severity="success"
-								variant="subtle"
-								size="sm"
-								closable
-								onClose={() => (workflowNotice.value = null)}
-							>
-								{workflowNotice.value}
-							</Message>
-						)}
-					</div>
-					<div class="fx-workspace" ref={workspaceRef}>
-						{workspaceView}
-						{stall.stalled.value && (
-							<InlineNotice
-								text={OFFLINE_NOTICE_TEXT}
-								actionLabel="Retry"
-								onAction={stall.retry}
-								busy={stall.retrying.value}
-							/>
-						)}
-					</div>
-				</div>
-				{tasksPanelOpen.value
+				}
+				trailing={tasksPanelOpen.value
 					? (
 						<TasksPanel
 							checklist={checklist.value}
@@ -1135,7 +1039,73 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 						/>
 					)
 					: null}
-			</div>
+			>
+				<div class="subm-bar">
+					<div class="subm-crumbbar">
+						<div class="subm-crumbbar__trail">
+							<SubmissionBreadcrumbs
+								crumbs={breadcrumbs.value}
+								base={base}
+								onNavigate={(p) => navigate(p)}
+							/>
+						</div>
+						<SubmissionActionBar
+							actions={workflow}
+							onReview={openReview}
+							onCreate={() => (createOpen.value = true)}
+							onUpload={() => (uploadOpen.value = true)}
+							onDelete={() => (deleteOpen.value = true)}
+							onSubmit={openPreSubmit}
+							onApproveStage={() => (approveOpen.value = true)}
+							approveBusy={approveBusy.value}
+							onEndStage={() => (endStageOpen.value = true)}
+						/>
+					</div>
+					{
+						/* The project's own route carries the toolbar in its header band (Decision #317); a
+						   channel's band is its header, so there the toolbar stays under the trail. */
+					}
+					{scope === "channel" && <ExplorerToolbar noun="submissions" />}
+					{workflowError.value && (
+						<Message
+							severity="danger"
+							variant="subtle"
+							size="sm"
+							closable
+							onClose={() => (workflowError.value = null)}
+						>
+							{workflowError.value}
+						</Message>
+					)}
+					{paidRoundOpen && (
+						<Message severity="success" variant="subtle" size="sm">
+							Paid revision, funded, you can start.
+						</Message>
+					)}
+					{!workflowError.value && workflowNotice.value && (
+						<Message
+							severity="success"
+							variant="subtle"
+							size="sm"
+							closable
+							onClose={() => (workflowNotice.value = null)}
+						>
+							{workflowNotice.value}
+						</Message>
+					)}
+				</div>
+				<div class="fx-workspace" ref={workspaceRef}>
+					{workspaceView}
+					{stall.stalled.value && (
+						<InlineNotice
+							text={OFFLINE_NOTICE_TEXT}
+							actionLabel="Retry"
+							onAction={stall.retry}
+							busy={stall.retrying.value}
+						/>
+					)}
+				</div>
+			</FilesFrame>
 
 			{modalTop?.kind === "file"
 				? (

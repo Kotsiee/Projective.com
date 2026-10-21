@@ -5,7 +5,6 @@ import "../styles/fx-toolbar.css";
 import "../styles/file-explorer.css";
 import "../styles/members.css";
 import "../styles/member-stages.css";
-import "../styles/invite-share.css";
 import "@features/share/styles/share-people.css";
 import { Toast, useToast } from "@projective/ui/feedback";
 import { useIsMobile } from "@projective/ui/hooks";
@@ -58,6 +57,8 @@ import { MessageButton } from "../components/MemberSectionCards.tsx";
 import { MemberActionsMenu } from "../components/MemberActionsMenu.tsx";
 import { MemberEditDialog } from "../components/MemberEditDialog.tsx";
 import { InviteShareModal } from "../components/InviteShareModal.tsx";
+import type { InviteRecipient } from "@projective/types/invites";
+import type { InviteSendOutcome } from "@features/invites/core/invite-queue.ts";
 import { RemoveMemberDialog } from "../components/RemoveMemberDialog.tsx";
 import { MemberStagePanel } from "../components/MemberStagePanel.tsx";
 import { PendingStageInvites } from "../components/PendingStageInvites.tsx";
@@ -523,34 +524,35 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 	}
 
 	/**
-	 * Send invitations, then fold the rows the SERVER issued into the Invitations section — the queue a
-	 * reload reads back. Addresses the server refused (a cooldown, a duplicate, the outbound ceiling)
-	 * are reported once, by count and first reason; a send refused outright returns its sentence to the
-	 * modal, which keeps the draft open.
+	 * Send the invite modal's batch (each recipient at its own role), then fold the rows the SERVER
+	 * issued into the invitation queue — the one a reload reads back. The viewer stays on the section
+	 * they were reading (Decision #318: inviting never navigates). Refused addresses go back to the
+	 * modal, which keeps those rows with the server's sentence; a send refused outright keeps them all.
 	 */
 	async function invite(
-		addresses: string[],
-		role: AssignableMemberRole,
+		recipients: InviteRecipient[],
 		stageId: string | null,
-	): Promise<string | null> {
-		const res = await MembersService.invite(projectId, { addresses, role, stageId });
-		if (!res.ok || !res.data) return res.message ?? "Those invitations could not be sent.";
+	): Promise<InviteSendOutcome> {
+		const res = await MembersService.invite(projectId, {
+			recipients: recipients.map((r) => ({
+				type: r.type,
+				value: r.value,
+				roleId: r.roleId as AssignableMemberRole,
+			})),
+			stageId,
+		});
+		if (!res.ok || !res.data) {
+			return {
+				refused: [],
+				error: res.message ?? "Those invitations could not be sent.",
+				message: null,
+			};
+		}
 		const issued = res.data.invites;
 		const fresh = new Set(issued.map((inv) => inv.id));
 		invites.value = [...issued, ...invites.value.filter((inv) => !fresh.has(inv.id))];
-		selectSection("invitations");
-		const refused = res.data.refused;
-		if (refused.length > 0) {
-			say(
-				"warning",
-				`${res.message ?? "Some invitations were sent."} ${refused[0].address}: ${
-					refused[0].message
-				}`,
-			);
-		} else {
-			say("success", res.message ?? "Invitation sent.");
-		}
-		return null;
+		if (issued.length > 0) say("success", res.message ?? "Invitation sent.");
+		return { refused: res.data.refused, error: null, message: res.message ?? null };
 	}
 	// #endregion
 

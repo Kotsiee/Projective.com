@@ -9,38 +9,89 @@ import {
 
 /**
  * capabilities — the ONE capability grouping and the conditional-rule reading every permission surface
- * shares: the member drawer's switch groups, the roles matrix's row groups and the role editor's
- * columns. Six copies of a grouping is how a matrix and a drawer start teaching two different mental
- * models of the same permission system, so it lives here once.
+ * shares: the member drawer's switch groups and the Roles screen's capability domains. Two copies of a
+ * grouping is how a roles screen and a drawer start teaching two different mental models of the same
+ * permission system, so it lives here once.
  *
  * Pure: no preact, no CSS, no network — `deno test` reads it directly.
  */
 
 // #region Grouping
-/** A named run of capabilities — the matrix's row groups, the role editor's columns, the drawer's groups. */
-export interface CapabilityGroup {
+/** Which domain a capability group is — stable across kinds, whatever the heading says. */
+export type CapabilityDomain = "people" | "work" | "money" | "admin";
+
+/** A domain's heading and one-line remit, worded for one kind. */
+export interface DomainCopy {
 	/** Heading, sentence case. */
 	title: string;
+	/** What the domain governs, in one line (meta register). */
+	description: string;
+}
+
+/** A named run of capabilities — the Roles screen's domains, the drawer's switch groups. */
+export interface CapabilityGroup extends DomainCopy {
+	key: CapabilityDomain;
+	capabilities: readonly WorkspaceCapability[];
+}
+
+/** One domain of {@link CAPABILITY_GROUPS}: its capabilities and its copy per kind. */
+interface DomainDef {
+	key: CapabilityDomain;
+	copy: Readonly<Record<WorkspaceKind, DomainCopy>>;
 	capabilities: readonly WorkspaceCapability[];
 }
 
 /**
- * Every capability, grouped by what it governs — People · Work · Money · Admin (Teams work order C3).
- * Four groups a reader can hold in their head, in the order a role is usually reasoned about: who it
- * may bring in or move, what work it may commit the entity to (delivery on a team, buying on a
- * business), what money it may move, and the entity-level administration that remains.
- * {@link capabilityGroupsFor} scopes them to a kind, which is why the union covers every capability
- * although neither kind renders all of them. A capability added to the SSOT enum must be added to
- * exactly one group here (`roles-model.test.ts` holds that).
+ * Every capability, grouped by what it governs (Decision #320, refining #264 (b)'s People · Work ·
+ * Money · Admin): **People & access**, then the work the entity commits to (**Projects & delivery** on
+ * a team, **Projects & purchasing** on a business), then the money it may move (**Vault** or
+ * **Wallet & financial governance**), then the entity-level administration that remains
+ * (**Workspace & oversight**). Four domains a reader can hold in their head, in the order a role is
+ * usually reasoned about. {@link capabilityGroupsFor} scopes them to a kind, which is why the union
+ * covers every capability although neither kind renders all of them. A capability added to the SSOT
+ * enum must be added to exactly one domain here (`roles-model.test.ts` holds that).
  */
-export const CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
-	{ title: "People", capabilities: ["invite_members", "remove_members", "manage_roles"] },
+const DOMAINS: readonly DomainDef[] = [
 	{
-		title: "Work",
+		key: "people",
+		copy: {
+			team: {
+				title: "People & access",
+				description: "Who joins the team, who leaves, and who decides what everyone may do.",
+			},
+			business: {
+				title: "People & access",
+				description: "Who joins the business, who leaves, and who decides what everyone may do.",
+			},
+		},
+		capabilities: ["invite_members", "remove_members", "manage_roles"],
+	},
+	{
+		key: "work",
+		copy: {
+			team: {
+				title: "Projects & delivery",
+				description: "The work the team commits to and what it puts on sale.",
+			},
+			business: {
+				title: "Projects & purchasing",
+				description: "The projects the business commissions, and who it hires and buys from.",
+			},
+		},
 		capabilities: ["bind_seat", "manage_projects", "publish_listings", "purchase", "hire"],
 	},
 	{
-		title: "Money",
+		key: "money",
+		copy: {
+			team: {
+				title: "Vault & financial governance",
+				description: "How money leaves the vault and how earnings are split.",
+			},
+			business: {
+				title: "Wallet & financial governance",
+				description: "How money enters and leaves the pooled wallet, and who signs it off.",
+			},
+		},
 		capabilities: [
 			"contribute_funds",
 			"spend_funds",
@@ -51,7 +102,17 @@ export const CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
 		],
 	},
 	{
-		title: "Admin",
+		key: "admin",
+		copy: {
+			team: {
+				title: "Workspace & oversight",
+				description: "The team's public identity, its settings and its records.",
+			},
+			business: {
+				title: "Workspace & oversight",
+				description: "The business's public identity, its settings and its records.",
+			},
+		},
 		capabilities: [
 			"edit_profile",
 			"manage_settings",
@@ -62,16 +123,24 @@ export const CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
 	},
 ];
 
+/** Every domain with its team wording — the kind-free list a test walks for coverage. */
+export const CAPABILITY_GROUPS: readonly CapabilityGroup[] = DOMAINS.map((d) => ({
+	key: d.key,
+	...d.copy.team,
+	capabilities: d.capabilities,
+}));
+
 /**
- * The capability groups a kind renders, kind-excluded capabilities dropped and empty groups removed —
- * a heading over nothing tells the reader something is being withheld.
+ * The capability groups a kind renders, worded for that kind, kind-excluded capabilities dropped and
+ * empty groups removed — a heading over nothing tells the reader something is being withheld.
  */
 export function capabilityGroupsFor(kind: WorkspaceKind): CapabilityGroup[] {
 	const allowed = new Set(capabilitiesForKind(kind));
-	return CAPABILITY_GROUPS
-		.map((group) => ({
-			title: group.title,
-			capabilities: group.capabilities.filter((c) => allowed.has(c)),
+	return DOMAINS
+		.map((d) => ({
+			key: d.key,
+			...d.copy[kind],
+			capabilities: d.capabilities.filter((c) => allowed.has(c)),
 		}))
 		.filter((group) => group.capabilities.length > 0);
 }

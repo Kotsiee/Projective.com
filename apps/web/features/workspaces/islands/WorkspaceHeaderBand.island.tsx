@@ -1,20 +1,23 @@
 import type { JSX } from "preact";
-import { useRef } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import { useSignal, useSignalEffect } from "@preact/signals";
 import "@web/features/projects/styles/fx-toolbar.css";
+import "@web/features/projects/styles/channel-header.css";
 import "../styles/workspace.css";
 import { MetaLine } from "@projective/ui/display";
 import { Button, Select } from "@projective/ui/fields";
 import { kindCopy, type WorkspaceDetail, type WorkspaceKind } from "@projective/types/workspace";
+import { ChannelTabStrip } from "@web/features/projects/components/ChannelTabStrip.tsx";
 import { moduleFor, type ModuleKey } from "../core/module-registry.tsx";
 import { headerBand, type ModuleCommit } from "../core/header-model.ts";
 import { hubTabs } from "../core/hub-tabs.ts";
 import {
+	bandSubViewsFor,
 	SUB_VIEW_PANEL_ID,
 	SUB_VIEW_TOOLBAR_ID,
 	subViewIndex,
-	subViewsFor,
 } from "../core/sub-views.ts";
+import { peopleReading, restorePeopleReading } from "../core/view-state.ts";
 import {
 	archiveRefusal,
 	liveDetail,
@@ -31,12 +34,14 @@ import { EntityMenu } from "../components/EntityMenu.tsx";
  *
  *   - **Identity, start** — the hub's (or the module's) title in the title register over one
  *     `MetaLine` (the entity's name and `@handle`, and the acting state).
- *   - **View toolbar, centred** — the shared `.fx-toolbar` the File Explorer and the Catalogue console
- *     draw, holding one bare `Select` (Decision #307). For a multi-module hub (`hub-tabs.ts`, Decision
- *     #306: Members is People · Invitations · Org chart · Roles) each option is a real address and
- *     picking one goes there, as the hub's link tabs did; otherwise the options are the module's own
- *     in-place sub-views (`sub-views.ts`), and picking one writes the ONE sub-view state
- *     (`selectModuleView`) the lane's context control and the footer rig's Org chart toggle also write.
+ *   - **Views, centred** — for a multi-module hub (`hub-tabs.ts`, Decisions #306, #319: Members is
+ *     Members · Roles), the channel header's link tabs (`ChannelTabStrip`): each module is a real
+ *     address, an anchor, never a picker that navigates by script. The Members tab points at the
+ *     reading the reader last had (`peopleReading`), so leaving the org chart for Roles and coming
+ *     back lands on the org chart. Without a hub strip, a module that leaves its in-place sub-views to
+ *     the band (`bandSubViewsFor` — a team's Projects) gets the shared `.fx-toolbar` holding one bare
+ *     `Select` (Decision #307), whose pick writes the ONE sub-view state (`selectModuleView`). Members
+ *     draws its own: its sections in the body, its org chart in the footer rig.
  *   - **Actions, end** — at most ONE filled control (the module's commit, published through
  *     `workspace-state`), then the entity kebab ({@link EntityMenu}) — drawn here only where the lane
  *     that owns it is off screen (collapsed to its rail, or hidden below `--bp-md`); the stylesheet
@@ -47,7 +52,9 @@ import { EntityMenu } from "../components/EntityMenu.tsx";
  *
  * The band reads the live-detail relay when the published detail is this entity, so an archive or a
  * role change elsewhere on the page re-renders it from the same truth as the lane. It is mounted into
- * a shell slot, so it must not export its intrinsic width; `workspace-chrome.css` clamps it.
+ * a shell slot, so it must not export its intrinsic width; `workspace-chrome.css` clamps it. The root
+ * and the end region also carry the channel header's `.chan-header` / `.chan-header__actions`: the tab
+ * strip measures itself against them to fold into its compact stepper when the band runs short.
  */
 
 export interface WorkspaceHeaderBandProps {
@@ -70,6 +77,9 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 	const ws = published && published.id === props.workspace.id ? published : props.workspace;
 	const copy = kindCopy(kind);
 	const bandRef = useRef<HTMLDivElement>(null);
+
+	// The Members tab's reading is the reader's own, so it is restored after the first frame.
+	useEffect(() => restorePeopleReading(), []);
 	// #endregion
 
 	// #region The model
@@ -80,8 +90,9 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 		capabilities: ws.viewerCapabilities,
 		module,
 		view,
+		reading: peopleReading.value,
 	});
-	const views = strip ? [] : subViewsFor(module, kind, ws.viewerCapabilities);
+	const views = strip ? [] : bandSubViewsFor(module, kind, ws.viewerCapabilities);
 	const self = ws.members.find((m) => m.id === ws.viewerMemberId);
 	const room = props.channel ?? null;
 	const model = headerBand({
@@ -103,19 +114,15 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 	});
 
 	// The Select binds a writable value; it follows the shared sub-view whichever root picked it.
-	const options = strip
-		? strip.tabs.map((t) => ({ value: t.key, label: t.label }))
-		: model.tabs?.views.map((v) => ({ value: v.value, label: v.label })) ?? [];
-	const picked = useSignal(
-		strip ? strip.tabs[strip.active]?.key ?? "" : options[model.tabs?.active ?? 0]?.value ?? "",
-	);
+	const options = model.tabs?.views.map((v) => ({ value: v.value, label: v.label })) ?? [];
+	const picked = useSignal(options[model.tabs?.active ?? 0]?.value ?? "");
 	useSignalEffect(() => {
-		if (!strip) picked.value = views[subViewIndex(views, viewOr(props.view ?? null))]?.value ?? "";
+		picked.value = views[subViewIndex(views, viewOr(props.view ?? null))]?.value ?? "";
 	});
 	// #endregion
 
 	return (
-		<div ref={bandRef} class="wsp-headerband" data-kind={kind}>
+		<div ref={bandRef} class="wsp-headerband chan-header" data-kind={kind}>
 			{/* #region Start — identity */}
 			<div class="wsp-headerband__start">
 				<div class="wsp-headerband__id">
@@ -130,39 +137,42 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 			</div>
 			{/* #endregion */}
 
-			{/* #region Centre — the view toolbar: the hub's pages, or the module's sub-views */}
-			{options.length > 1 && (
-				<div
-					id={SUB_VIEW_TOOLBAR_ID}
-					class="fx-toolbar wsp-headerband__toolbar"
-					role="toolbar"
-					aria-label={`${model.title} views`}
-					aria-controls={strip ? undefined : SUB_VIEW_PANEL_ID}
-				>
-					<Select
-						class="ui-field--bare wsp-headerband__view"
-						size="sm"
-						aria-label={`${model.title} view`}
-						options={options}
-						value={picked}
-						onValueChange={(value) => {
-							if (strip) {
-								// A hub option is another address, as its link tab was: go there.
-								const tab = strip.tabs.find((t) => t.key === value);
-								if (tab && tab.key !== strip.tabs[strip.active]?.key) {
-									globalThis.location.assign(tab.href);
-								}
-								return;
-							}
-							selectModuleView(value, views);
-						}}
+			{/* #region Centre — the hub's pages as link tabs, or the module's in-place sub-views */}
+			{strip
+				? (
+					<ChannelTabStrip
+						tabs={strip.tabs.map((tab) => ({
+							key: tab.key,
+							label: tab.label,
+							href: tab.href,
+							icon: moduleFor(tab.module)?.glyph ?? <span />,
+						}))}
+						activeKey={strip.tabs[strip.active]?.key ?? ""}
+						label={`${strip.title} pages`}
 					/>
-				</div>
-			)}
+				)
+				: options.length > 1 && (
+					<div
+						id={SUB_VIEW_TOOLBAR_ID}
+						class="fx-toolbar wsp-headerband__toolbar"
+						role="toolbar"
+						aria-label={`${model.title} views`}
+						aria-controls={SUB_VIEW_PANEL_ID}
+					>
+						<Select
+							class="ui-field--bare wsp-headerband__view"
+							size="sm"
+							aria-label={`${model.title} view`}
+							options={options}
+							value={picked}
+							onValueChange={(value) => selectModuleView(value, views)}
+						/>
+					</div>
+				)}
 			{/* #endregion */}
 
 			{/* #region End — actions */}
-			<div class="wsp-headerband__end">
+			<div class="wsp-headerband__end chan-header__actions">
 				{model.commit && <CommitButton commit={model.commit} />}
 
 				<span class="wsp-headerband__menu">

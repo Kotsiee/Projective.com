@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import FileExplorer from "../islands/FileExplorer.island.tsx";
+import FileExplorer, { type FileExplorerTree } from "../islands/FileExplorer.island.tsx";
 import MemberRoster from "../islands/MemberRoster.island.tsx";
 import { memberSectionsFor, resolveMemberSection } from "../core/member-sections.ts";
 import type {
@@ -35,11 +35,21 @@ export interface FilesViewProps {
 	channelId?: string;
 	/** The SSR-resolved first page; `null` renders the island's own not-found/empty state. */
 	initial: FileListPage | null;
+	/** The project tree the route resolved (project and channel scope); a conversation has none. */
+	tree?: FileExplorerTree | null;
 }
 
 /** FilesView — the Files tab body for every scope. */
-export function FilesView({ scope, id, channelId, initial }: FilesViewProps): JSX.Element {
-	return <FileExplorer scope={scope} projectId={id} channelId={channelId} initial={initial} />;
+export function FilesView({ scope, id, channelId, initial, tree }: FilesViewProps): JSX.Element {
+	return (
+		<FileExplorer
+			scope={scope}
+			projectId={id}
+			channelId={channelId}
+			initial={initial}
+			tree={tree}
+		/>
+	);
 }
 // #endregion
 

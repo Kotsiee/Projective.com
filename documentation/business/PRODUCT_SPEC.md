@@ -196,6 +196,26 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   The band is dismissible per member, and the two-member rule and the verification lock still show
   once it is hidden. The `/teams` roster card's "% set up" (and its needs-setup filter) counts the
   same five steps.
+- **Bringing people in (a Team or a Business alike):** a member who may invite opens **Invite**
+  from anywhere in the console, and it opens in place — it never takes them to Members. One field
+  takes `@handles` and email addresses together (the text decides which; a paste of many is read
+  whole), each person is staged at the default role and may be given their own, and one send issues
+  up to ten invitations — each still names one person or one address that only they can accept, for
+  14 days. Only roles the inviter may grant are offered; the plan's free seats ("3 of 4 seats free")
+  cap the batch, and on a Business, rows past the plan's manager headroom close the send. A refusal
+  stays on its row and never unsends the others (Decision #318).
+
+  > **An invite link asks; it never seats.** Whoever may invite can make the entity's **invite
+  > link** — one at a time, naming the role a request asks for — copy it, share it, **reset** it
+  > (the old URL stops at once) or **turn it off**. Opening the link asks the person to sign in,
+  > shows the Team or Business, the role and who shared it, and offers **Ask to join** with an
+  > optional note. Asking files a **join request** in Members › **Requests**, and whoever may invite
+  > is notified; they **approve** it (at that role or another they may grant) or **decline** it, and
+  > the asker may withdraw it. A request holds no seat and grants nothing: approving runs every check
+  > an accepted invitation runs — the seats, a Business's manager cap, a Team's freelancer-only and
+  > payout-ready rules — and is refused with the reason when one fails. A link is refused to a
+  > member, to someone already invited or already asking, and on an archived entity (Decision #318,
+  > reversing the 2026-09-28 cut of share links and join requests).
 - **Automated Payment Splitting:** Payments are distributed at the moment of Escrow release. If a
   Stage payout is $1,000, Projective automatically routes percentages to individual member wallets
   based on predefined **Contribution Agreements**. A Team chooses its **split template** (Co-op ·
@@ -1756,12 +1776,15 @@ There are two primary ways an engagement begins:
   > person already on the stage, already invited to it, already asking, or without a freelancer
   > profile; a link to a finished stage or a closed project does not work (Decision #145).
 
-  > **Inviting is one click per person.** The Invite modal and the Share modal share one layout: the
-  > link at the top, a search whose matches open beneath it, and a **Quick add** rail of the people
-  > the viewer already works with — shared workspaces first, then mutual follows, follows, past
-  > collaborators and recent conversations. People already on the roster are not suggested, and
-  > anyone holding an open invitation to the chosen stage reads _Invited_ rather than offering a
-  > duplicate. An email address typed into the search can be invited directly (Decision #145).
+  > **Inviting is staged, then sent.** The Invite modal is the same one a Team or a Business uses:
+  > one field for `@handles` and emails (the text decides which; a pasted list is read whole), with
+  > the people the viewer already works with suggested as they type; each person is staged at the
+  > default role and may be given their own; one send issues up to ten invitations to the chosen
+  > scope (the whole project or one stage), and a refusal — a cooldown, a duplicate, the outbound
+  > ceiling — stays on its row without unsending the rest. People already on the roster cannot be
+  > staged, and anyone holding an open invitation to the chosen scope reads _Already invited_. The
+  > stage's invite link sits beneath, with its share shortcuts. Opening or sending never leaves the
+  > page (Decision #318, superseding #145's one-click layout; the Share modal keeps it).
 
 ##### Discovery & Courtesy Calls (the third path)
 

@@ -310,9 +310,10 @@ entity's `owner_user_id`, refuses the owner holding any other role, and refuses 
 
 A workspace invitation — **named people only**. It addresses one person (`target_user_id`, with
 `target_handle` kept so the queue can still render who was invited after an account is gone) or one
-address (`target_email`). Join requests and share links were **cut** (product decision 2026-09-28):
-the table's own `org_invitations_target_identity_check` forbids an addressee-less row, and nothing
-could redeem one.
+address (`target_email`); the table's own `org_invitations_target_identity_check` forbids an
+addressee-less row. The 2026-09-28 cut of share links and join requests is **reversed by Decision
+#318** on a stage link's terms — but not here: a link holder ASKS, through
+[`org.org_invite_links`](#orgorg_invite_links) and [`org.org_join_requests`](#orgorg_join_requests).
 
 | Column                                  | Type        | Notes                                                                                                                                                                                               |
 | :-------------------------------------- | :---------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -337,6 +338,54 @@ violation to "they already have a pending invitation"); the invitee inbox
 
 RLS is on with **no client policy** — the token IS the accept capability, so every read and write is
 a definer ([Policies.md](Policies.md#orgorg_invitations)).
+
+### `org.org_invite_links`
+
+A team's or business's **ask-to-join link** (Decision #318). Holding it lets a signed-in person ASK
+to join at the role it names — `org.redeem_workspace_invite_link` files an
+[`org.org_join_requests`](#orgorg_join_requests) row — and nothing more: no seat, capability or money
+moves until an `invite_members` holder approves. Lifecycle `active → revoked` (**terminal**); a reset
+revokes the active row and mints a new one in one transaction. Nothing is deleted.
+
+| Column                              | Type               | Notes                                                                                                                                         |
+| :---------------------------------- | :----------------- | :-------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                                | uuid               | PK.                                                                                                                                           |
+| `team_id` / `business_id`           | uuid               | Exactly one (`ck_org_invite_links_entity`). FK `ON DELETE CASCADE`.                                                                           |
+| `team_role_id` / `business_role_id` | uuid               | The role a request through the link asks for — composite FKs into the entity's own role table (`ON DELETE RESTRICT`), `ck_org_invite_links_role` as on invitations. Never the owner's (the door refuses it). |
+| `token`                             | text `UNIQUE`      | NOT NULL. **The capability to ask.** `w-` + 18 random bytes as unpadded base64url (`ck_org_invite_links_token`: `^w-[A-Za-z0-9_-]{24}$`); the prefix keeps it apart from a stage link's bare 24 characters on the shared `/invite/:token` route. |
+| `status`                            | text               | `CHECK IN ('active','revoked')` (`ck_org_invite_links_status`).                                                                               |
+| `created_by`                        | uuid               | NOT NULL, FK → `auth.users.id`. Shown on the landing page as "shared by".                                                                     |
+| `created_at`                        | timestamptz        |                                                                                                                                               |
+| `revoked_at` / `revoked_by`         | timestamptz / uuid | Set iff `revoked` (`ck_org_invite_links_revoked`).                                                                                            |
+
+Indexes (`00004001`): `uq_org_invite_links_active` — ONE active link per entity
+(`COALESCE(team_id, business_id) WHERE status = 'active'`; a concurrent first mint that loses it
+re-reads the winner). RLS on, **no client policy** — every read and write is a definer
+([Policies.md](Policies.md#orgorg_invite_links--orgorg_join_requests)).
+
+### `org.org_join_requests`
+
+A request to join a team or business, filed through its invite link (Decision #318). Lifecycle
+`pending → accepted` (an `invite_members` holder seated them, `org.respond_to_join_request`) /
+`declined` (they turned it down) / `withdrawn` (the requester took it back, `org.withdraw_join_request`)
+— all three **terminal**. A pending request holds **no seat and no manager seat**: asking is free, and
+the approval checks both caps (`fn_admit_workspace_member` with one seat added).
+
+| Column                              | Type               | Notes                                                                                                                      |
+| :---------------------------------- | :----------------- | :------------------------------------------------------------------------------------------------------------------------- |
+| `id`                                | uuid               | PK.                                                                                                                        |
+| `team_id` / `business_id`           | uuid               | Exactly one (`ck_org_join_requests_entity`).                                                                               |
+| `requester_user_id`                 | uuid               | NOT NULL, FK → `auth.users.id`. A minor is refused by `trg_workspace_member_adult` (`00001810`), as on members and invitations. |
+| `invite_link_id`                    | uuid               | FK → `org.org_invite_links.id` (`ON DELETE SET NULL`). Provenance only — a revoked link leaves its requests standing.      |
+| `team_role_id` / `business_role_id` | uuid               | The role the link offered when they asked — the approval's default, never a promise; on approval it records the role seated. Composite FKs as above. |
+| `message`                           | text               | Optional note to the admins, ≤ 400 (`ck_org_join_requests_message`).                                                       |
+| `status`                            | text               | `CHECK IN ('pending','accepted','declined','withdrawn')`.                                                                  |
+| `responded_at` / `responded_by`     | timestamptz / uuid | `ck_org_join_requests_lifecycle`: `pending` ⇔ `responded_at IS NULL`. `responded_by` is the answerer (the requester for a withdrawal). |
+| `created_at`                        | timestamptz        |                                                                                                                            |
+
+Indexes (`00004001`): `uq_org_join_requests_pending` — one pending request per person per entity;
+`idx_org_join_requests_entity` (the queue, oldest first), `idx_org_join_requests_requester`,
+`idx_org_join_requests_link`. RLS on, **no client policy**.
 
 ---
 

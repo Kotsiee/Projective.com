@@ -270,6 +270,11 @@ export const LocalKeys = {
 	 */
 	CATALOGUE_AUTOSAVE: "pj.local.catalogue.autoSave",
 	/**
+	 * Whether the workspace Roles screen saves a permission switch on its own — `"1"` or `"0"`.
+	 * Absent reads as ON; a per-device preference read only after hydration (Decision #321).
+	 */
+	WORKSPACE_ROLES_AUTOSAVE: "pj.local.workspaceRoles.autoSave",
+	/**
 	 * The workspace console's zoom-driven view density (a `0`–`1` float) — the same list⇄grid model as
 	 * the File Explorer, shared cross-island (the footer rig ↔ the roster body). One key across
 	 * `/teams` and `/businesses`: they are one surface parameterised by kind, so a reader who set a
@@ -282,6 +287,12 @@ export const LocalKeys = {
 	 * one should not find the other moved. One key across `/teams` and `/businesses`, like the roster's.
 	 */
 	WORKSPACE_PEOPLE_ZOOM: "pj.local.workspace.peopleZoom",
+	/**
+	 * The workspace Members module's last reading of its people (`people` | `chart`), so the header
+	 * band's Members tab returns a reader who left the org chart for Roles to the org chart. One key
+	 * across `/teams` and `/businesses`, like the People density.
+	 */
+	WORKSPACE_PEOPLE_READING: "pj.local.workspace.peopleReading",
 	/**
 	 * The workspace lane's "More" section memory — ONE JSON map from `<kind>.<viewer>` to `true` (open)
 	 * | `false` (closed), so the choice is kept per viewer and kind without minting a key per viewer

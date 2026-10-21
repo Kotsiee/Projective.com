@@ -157,9 +157,9 @@ export type WorkspaceMember = z.infer<typeof WorkspaceMemberSchema>;
 
 // #region Invitations
 /**
- * A pending invitation this entity has sent. Join requests and shareable links were cut
- * (Decision #122): an invitation always names one person or one address, and only the invitee can
- * accept it.
+ * A pending invitation this entity has sent. An invitation always names one person or one address,
+ * and only the invitee can accept it. Somebody who holds the entity's invite link ASKS instead — a
+ * `WorkspaceJoinRequest` (`invite-links.ts`, Decision #318), answered by the inviting side.
  */
 export const WorkspaceInviteSchema = z.object({
 	id: z.string().max(64),

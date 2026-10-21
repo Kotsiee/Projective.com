@@ -5,9 +5,10 @@ import type { WorkspaceCapability, WorkspaceKind } from "@projective/types/works
  *
  * A module that partitions its body into readings (Members: People · Invitations · Org chart) lists
  * them here, once. Every root that offers or honours a sub-view reads this table: the header band's
- * view toolbar, the lane's context control (Z2), the footer rig's Org chart toggle, the slot
- * resolvers that turn `?view=` into a value, and the body that renders it. A later module prompt only
- * adds or consumes an entry — there is no second list to keep in step.
+ * view toolbar (for a module that leaves its views to the band — {@link bandSubViewsFor}), the Members
+ * body's section tabs, the footer rig's Org chart toggle, the slot resolvers that turn `?view=` into a
+ * value, and the body that renders it. A later module prompt only adds or consumes an entry — there is
+ * no second list to keep in step.
  *
  * **One state.** The value lives in the URL as `?view=` (absent for the default) and, inside a
  * document, in the `moduleView` signal of `workspace-state`, which every control writes and every root
@@ -34,6 +35,11 @@ export interface SubView {
 	 * server withholds from the viewer would render an empty queue under a live control.
 	 */
 	gate?: WorkspaceCapability;
+	/**
+	 * `false` records a view whose body is not built yet: it is never offered and its address resolves
+	 * to the default, so the table can name it without shipping a tab that reaches nothing.
+	 */
+	live?: boolean;
 }
 
 /** A module's sub-views. */
@@ -49,6 +55,12 @@ export interface ModuleSubViews {
 	 * drawing it — a tab over a body that ignores it would be a dead control.
 	 */
 	live: boolean;
+	/**
+	 * Whether the header band's view toolbar offers them. `false` for a module whose own chrome draws
+	 * them: Members puts its sections in the body's section bar and its org chart in the footer rig,
+	 * so the band over it carries the hub's tabs only (Decision #319).
+	 */
+	band: boolean;
 }
 // #endregion
 
@@ -59,6 +71,11 @@ export const MEMBERS_PEOPLE = "people";
 export const MEMBERS_QUEUE = "pending";
 /** The org chart — a different reading of the same people. */
 export const MEMBERS_CHART = "chart";
+/**
+ * The requests to join the entity, awaiting an answer — the twin of a project's Requests section.
+ * Recorded `live: false` until its queue is built.
+ */
+export const MEMBERS_REQUESTS = "requests";
 
 /** A team's Projects module: its live engagements (the default). */
 export const PROJECTS_ACTIVE = "active";
@@ -77,8 +94,10 @@ export const SUB_VIEWS: readonly ModuleSubViews[] = [
 		module: "members",
 		kinds: BOTH,
 		live: true,
+		band: false,
 		views: [
 			{ value: MEMBERS_PEOPLE, label: "People" },
+			{ value: MEMBERS_REQUESTS, label: "Requests", gate: "invite_members" },
 			{ value: MEMBERS_QUEUE, label: "Invitations", gate: "invite_members" },
 			{ value: MEMBERS_CHART, label: "Org chart" },
 		],
@@ -87,6 +106,7 @@ export const SUB_VIEWS: readonly ModuleSubViews[] = [
 		module: "payouts",
 		kinds: TEAM,
 		live: false,
+		band: true,
 		views: [
 			{ value: "split", label: "Split" },
 			{ value: "ledger", label: "Ledger" },
@@ -96,6 +116,7 @@ export const SUB_VIEWS: readonly ModuleSubViews[] = [
 		module: "projects",
 		kinds: TEAM,
 		live: true,
+		band: true,
 		views: [
 			{ value: PROJECTS_ACTIVE, label: "Active" },
 			{ value: PROJECTS_PROPOSALS, label: "Proposals" },
@@ -116,8 +137,23 @@ export function subViewsFor(
 ): SubView[] {
 	const entry = SUB_VIEWS.find((e) => e.module === module);
 	if (!entry || !entry.live || !entry.kinds.includes(kind)) return [];
-	const views = entry.views.filter((v) => !v.gate || capabilities.includes(v.gate));
+	const views = entry.views.filter((v) =>
+		v.live !== false && (!v.gate || capabilities.includes(v.gate))
+	);
 	return views.length > 1 ? views : [];
+}
+
+/**
+ * The sub-views the header band's view toolbar offers — {@link subViewsFor}, or none for a module
+ * whose own chrome draws them (`band: false`).
+ */
+export function bandSubViewsFor(
+	module: string | null,
+	kind: WorkspaceKind,
+	capabilities: readonly WorkspaceCapability[],
+): SubView[] {
+	const entry = SUB_VIEWS.find((e) => e.module === module);
+	return entry?.band === false ? [] : subViewsFor(module, kind, capabilities);
 }
 
 /**
@@ -158,22 +194,49 @@ export function subViewSearch(search: string, views: readonly SubView[], value: 
 }
 // #endregion
 
-// #region Members readings
+// #region Members sections and readings
 /**
- * The readings of the people — every Members view but the invitation queue — which the lane's
- * context control and the footer rig's Org chart toggle offer. Their values are the sub-view values,
- * so every control writes the one state.
+ * The Members body's sections, the project roster's three (Decision #319): Members is the people,
+ * read as the table ⇄ cards or as the org chart; Requests and Invitations are the queues. The values
+ * match the project roster's `MemberSection`, so the body draws the project's own section bar.
+ *
+ * A section is not a second state: each one IS one or two sub-view values, so the section tabs, the
+ * footer rig's Org chart toggle and the address all write the one `?view=`.
  */
-export const MEMBERS_READINGS: readonly SubView[] =
-	SUB_VIEWS.find((e) => e.module === "members")?.views.filter((v) => v.value !== MEMBERS_QUEUE) ??
-		[];
+export type MembersSection = "members" | "requests" | "invitations";
+
+/** The section a Members sub-view belongs to. */
+export function membersSectionOf(view: string | null): MembersSection {
+	if (view === MEMBERS_QUEUE) return "invitations";
+	if (view === MEMBERS_REQUESTS) return "requests";
+	return "members";
+}
+
+/** The sections a viewer is offered, in tab order — read off the sub-views they are offered. */
+export function membersSectionsFor(views: readonly SubView[]): MembersSection[] {
+	const offered = new Set(views.map((v) => v.value));
+	const out: MembersSection[] = ["members"];
+	if (offered.has(MEMBERS_REQUESTS)) out.push("requests");
+	if (offered.has(MEMBERS_QUEUE)) out.push("invitations");
+	return out;
+}
+
+/**
+ * The sub-view a section tab selects: a queue's own value, or — for Members — the reading the reader
+ * last had, so leaving the org chart for a queue and coming back lands on the org chart.
+ */
+export function membersSectionView(section: MembersSection, reading: string | null): string {
+	if (section === "invitations") return MEMBERS_QUEUE;
+	if (section === "requests") return MEMBERS_REQUESTS;
+	return reading === MEMBERS_CHART ? MEMBERS_CHART : MEMBERS_PEOPLE;
+}
 
 /**
  * Whether a Members view is a reading of the people, and so carries the Org chart toggle (the People
- * reading also carries the zoom; the chart has no density to zoom).
+ * reading also carries the zoom; the chart carries its own viewport zoom instead).
  */
 export function isPeopleReading(view: string | null): boolean {
-	return view !== MEMBERS_QUEUE;
+	return membersSectionOf(view) === "members";
 }
 // #endregion
 

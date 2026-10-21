@@ -67,14 +67,12 @@ import {
 	liveDetail,
 	openCreate,
 	openInvite,
+	publishDetail,
 	rosterFirstRun,
 	rosterTab,
-	selectModuleView,
 	selectRosterTab,
-	viewOr,
 } from "../core/workspace-state.ts";
 import { isFirstRun } from "../core/roster-model.ts";
-import { MEMBERS_CHART, MEMBERS_PEOPLE, subViewsFor } from "../core/sub-views.ts";
 import {
 	CatalogueGlyph,
 	ChannelGlyph,
@@ -100,6 +98,8 @@ import { CatalogueAddButton, CatalogueList } from "../components/lane/CatalogueL
 import { useLaneListings } from "../hooks/useLaneListings.ts";
 import { LaneSearchResults } from "../components/lane/LaneSearchResults.tsx";
 import { ChannelCreateDialog } from "../components/lane/ChannelCreateDialog.tsx";
+import InviteModal from "./InviteModal.island.tsx";
+import { screenHostsInvite } from "../core/rig-model.ts";
 
 /**
  * WorkspaceLane — the middle-nav lane for the whole workspace surface (`/teams`, `/businesses` and
@@ -111,8 +111,8 @@ import { ChannelCreateDialog } from "../components/lane/ChannelCreateDialog.tsx"
  *      kebab ({@link EntityMenu}), and the verification state while it is not verified.
  *   2. **Context controls** — the find-in-lane `LaneSearch` FIRST, icon-first as `/projects` draws it;
  *      on the index the Invitations toggle beside it (an icon button, set apart from the partition)
- *      and the All · Owned · Member `SelectButton` under it; inside a console a `SelectButton` only
- *      where the view has something to partition.
+ *      and the All · Owned · Member `SelectButton` under it; inside a console the search alone (a
+ *      view's readings are switched in its footer rig, Decision #319).
  *   3. **Views** — the viewer's entities (owned first) on the index; inside a console the
  *      `LaneSection`s Core operations (hub rows), Governance (hub rows), a team's Catalogue (its title
  *      the console's link, its listings beneath and a "+" to create one — Decision #316) and Channels
@@ -162,8 +162,6 @@ export interface WorkspaceLaneProps {
 	workspace?: WorkspaceDetail;
 	/** The module being rendered, already corrected server-side. Falls back to the path. */
 	activeModule?: ModuleKey | null;
-	/** The module's resolved `?view=` sub-view (Members: `people` · `pending` · `chart`), when it has one. */
-	view?: string | null;
 	/** The channel being rendered (its name) on a `channels` route. */
 	channel?: string | null;
 	/** The listing being rendered (its slug) on a team `catalogue` route. */
@@ -230,7 +228,6 @@ export default function WorkspaceLane(props: WorkspaceLaneProps): JSX.Element {
 				detail={detail}
 				path={props.path}
 				activeModule={props.activeModule ?? activeModuleOf(props.path)}
-				view={props.view ?? null}
 				channel={props.channel ?? null}
 				listing={props.listing ?? null}
 				listings={props.listings ?? null}
@@ -255,18 +252,15 @@ export default function WorkspaceLane(props: WorkspaceLaneProps): JSX.Element {
 function createTarget(kind: WorkspaceKind, create: LaneCreate | null): LaneCreateTarget | null {
 	if (!create) return null;
 	if (create.action === "create") return { onClick: () => openCreate(kind) };
-	if (create.inPlace) return { onClick: () => openInvite() };
-	return { href: create.href };
+	return { onClick: () => openInvite() };
 }
 
 /**
- * The console footer's Invite member: a button where the invite modal is mounted on this page, else a
- * LINK to Members with the modal open (`?invite=1`) — a destination is an `<a>`, never a button that
- * assigns `location`.
+ * The console footer's Invite member: always a button that opens the invite modal in place — the
+ * module's screen or this lane mounts it (`screenHostsInvite`, Decision #318).
  */
 function inviteTarget(invite: ConsoleFooterZone["invite"]): LaneCreateTarget | null {
-	if (!invite) return null;
-	return invite.inPlace ? { onClick: () => openInvite() } : { href: invite.href };
+	return invite ? { onClick: () => openInvite() } : null;
 }
 // #endregion
 
@@ -531,7 +525,6 @@ interface ConsoleLaneProps {
 	detail: WorkspaceDetail;
 	path: string;
 	activeModule: ModuleKey | null;
-	view: string | null;
 	channel: string | null;
 	listing: string | null;
 	listings: LaneListingsRead | null;
@@ -559,7 +552,6 @@ interface SectionLink {
 /** One entity's lane — identity and kebab; its search and controls; its zoned views; its footer rig. */
 function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 	const { detail } = props;
-	const subView = viewOr(props.view);
 	const zones: ConsoleLaneZones = laneZones({
 		view: "console",
 		kind: props.kind,
@@ -569,7 +561,6 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 		acting: detail.isActing,
 		capabilities: detail.viewerCapabilities,
 		module: props.activeModule,
-		subView,
 		channel: props.channel,
 		listing: props.listing,
 	});
@@ -624,15 +615,6 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 		membersHref: mayViewModule("members", props.kind, detail.viewerCapabilities)
 			? workspaceHref(props.kind, detail.handle, "members")
 			: null,
-	});
-
-	// The Members reading mirrors the module's one sub-view state, whichever root last picked it.
-	const subViews = subViewsFor(props.activeModule, props.kind, detail.viewerCapabilities);
-	const readingOf = (view: string | null) =>
-		view === MEMBERS_CHART ? MEMBERS_CHART : MEMBERS_PEOPLE;
-	const reading = useSignal<string>(readingOf(subView));
-	useSignalEffect(() => {
-		reading.value = readingOf(viewOr(props.view));
 	});
 
 	const self = detail.members.find((m) => m.id === detail.viewerMemberId);
@@ -737,18 +719,6 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 								/>
 							</LaneBar>
 						</div>
-						{zones.context.partition && (
-							<SelectButton
-								options={zones.context.partition.options}
-								value={reading}
-								onValueChange={(value) => {
-									if (typeof value === "string") selectModuleView(value, subViews);
-								}}
-								size="sm"
-								fluid
-								aria-label={zones.context.partition.label}
-							/>
-						)}
 					</ContextZone>
 				);
 			case "views":
@@ -843,6 +813,16 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 				onExpand={() => props.chrome.onCollapse(false)}
 			/>
 			<div class="wsp-lane">{laneZoneOrder(zones).map(zone)}</div>
+			{
+				/*
+				 * The invite modal, where this module's screen does not mount its own — so Invite opens in
+				 * place on every console page (Decision #318). Its writes reach the other roots through the
+				 * live-detail relay.
+				 */
+			}
+			{zones.footer.invite && !screenHostsInvite(props.kind, props.activeModule) && (
+				<InviteModal workspace={detail} onUpdated={publishDetail} />
+			)}
 		</div>
 	);
 }

@@ -1226,6 +1226,23 @@ export function inviteAddsManager(
 	return kind === "business" && role !== null && isBusinessManagerRole(role);
 }
 
+/**
+ * How many of a staged batch's manager seats are past a business's headroom (Decision #318): each
+ * row offered a manager's role takes one (`inviteAddsManager`), against `limit − used`. `0` for a
+ * team, an uncapped plan, or a batch that fits — the per-row twin of {@link inviteOverManagerCap}.
+ */
+export function inviteManagerOverflow(
+	kind: WorkspaceKind,
+	managers: BusinessManagers | null,
+	roles: readonly Pick<WorkspaceRoleDef, "id" | "basePreset" | "capabilities">[],
+	roleIds: readonly string[],
+): number {
+	if (kind !== "business" || managers === null || managers.limit === null) return 0;
+	const byId = new Map(roles.map((r) => [r.id, r]));
+	const asked = roleIds.filter((id) => inviteAddsManager(kind, byId.get(id) ?? null)).length;
+	return Math.max(0, asked - Math.max(0, managers.limit - managers.used));
+}
+
 /** The rank a draft role gives a member — its base preset, or where they stand now. */
 export function draftRankOf(
 	member: Pick<WorkspaceMember, "rolePreset">,

@@ -208,6 +208,16 @@ queue would show them the tokens. Every read and write is a definer: the invitee
 writes are `invite_workspace_member` / `respond_to_workspace_invitation` /
 `revoke_workspace_invitation` / `resend_workspace_invitation`.
 
+### `org.org_invite_links` / `org.org_join_requests`
+
+**RLS on, NO policy on either** (Decision #318), for the same reason: the link's `token` is the
+capability to ask. The inviting side reads the active link and the pending requests through
+`org.get_workspace_detail`'s `invite_link` / `join_requests` (served only to an `invite_members`
+holder); the holder reads a link only through `org.resolve_workspace_invite_link(token)`. Every write
+is a definer door — `get_workspace_invite_link` · `revoke_workspace_invite_link` ·
+`redeem_workspace_invite_link` · `respond_to_join_request` · `withdraw_join_request`
+([Functions.md](Functions.md) §12b).
+
 ### `org.view_business_staff` (view)
 
 `security_invoker = true` since 2026-09-28 (`00003001`), and `REVOKE ALL … FROM anon` (`00003005`).

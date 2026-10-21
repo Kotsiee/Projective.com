@@ -1,11 +1,14 @@
 import type { JSX } from "preact";
 import { batch, useSignal } from "@preact/signals";
 import { useEffect, useMemo, useRef } from "preact/hooks";
+import "@web/features/projects/styles/fx-toolbar.css";
+import "@web/features/projects/styles/file-explorer.css";
+import "@web/features/projects/styles/members.css";
 import "../styles/workspace.css";
 import { Grid } from "@projective/ui/layout";
 import { MetaLine } from "@projective/ui/display";
-import { Button, InputText } from "@projective/ui/fields";
-import { ConfirmDialog, InlineNotice } from "@projective/ui/feedback";
+import { Button } from "@projective/ui/fields";
+import { ConfirmDialog, Toast, useToast } from "@projective/ui/feedback";
 import {
 	activeMembers,
 	kindCopy,
@@ -13,19 +16,38 @@ import {
 	permissionFacets,
 	workspaceBase,
 	type WorkspaceDetail,
+	workspaceHref,
 	type WorkspaceInvite,
+	type WorkspaceJoinRequest,
 	type WorkspaceMember,
 } from "@projective/types/workspace";
 import { UserAvatarStack } from "@web/components/UserAvatar.tsx";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
+import { MemberSectionBar } from "@web/features/projects/components/MemberSectionBar.tsx";
+import { MemberToolbar } from "@web/features/projects/components/MemberToolbar.tsx";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
-import { membersViewFor, openInvite, publishDetail, viewOr } from "../core/workspace-state.ts";
-import { MEMBERS_QUEUE, SUB_VIEW_PANEL_ID, subViewLabel, subViewsFor } from "../core/sub-views.ts";
-import { bandHasHubStrip } from "../core/hub-tabs.ts";
-import { peopleZoom } from "../core/view-state.ts";
+import {
+	membersViewFor,
+	openInvite,
+	publishDetail,
+	selectModuleView,
+	viewOr,
+} from "../core/workspace-state.ts";
+import {
+	MEMBERS_CHART,
+	MEMBERS_PEOPLE,
+	type MembersSection,
+	membersSectionOf,
+	membersSectionsFor,
+	membersSectionView,
+	subViewSearch,
+	subViewsFor,
+} from "../core/sub-views.ts";
+import { peopleReading, peopleZoom, rememberPeopleReading } from "../core/view-state.ts";
 import { filterMembers, sortMembers } from "../core/workspace-model.ts";
 import {
 	actionInputFor,
+	grantableRoles,
 	inviteCounts,
 	memberAbilities,
 	type MemberAction,
@@ -37,10 +59,11 @@ import {
 	spendingFact,
 } from "../core/members-model.ts";
 import { afterPanelLeaves } from "../core/overlay-handoff.ts";
-import { MemberCard, SearchIcon } from "../components/MemberCard.tsx";
+import { MemberCard } from "../components/MemberCard.tsx";
 import { MemberTable } from "../components/MemberTable.tsx";
 import { OrgChart } from "../components/OrgChart.tsx";
 import { type InviteAction, InviteQueue } from "../components/InviteQueue.tsx";
+import { JoinRequestQueue } from "../components/JoinRequestQueue.tsx";
 import { OwnershipTransfer } from "../components/OwnershipTransfer.tsx";
 import MemberDrawer from "./MemberDrawer.island.tsx";
 import InviteModal from "./InviteModal.island.tsx";
@@ -49,14 +72,21 @@ import InviteModal from "./InviteModal.island.tsx";
  * MembersScreen — the Members module (Teams work order C2): who is in the entity, what they may do,
  * how loaded they are, and the invitations waiting on an answer.
  *
- * **The head** is the section title, a MetaLine of the plan's seats (a business: its head-count and
- * its manager headroom against the plan, "1 of 2 managers") and the pending invitations (tabular),
- * and an `AvatarStack` of the active members (five faces, then a count).
+ * **It is the project roster's anatomy** (Decision #319, `MemberRoster` on `/projects/:p/members`):
+ * a sticky bar group — the project's own `MemberSectionBar` (the section tabs, and on its end the
+ * seats line — a business also its manager headroom — and the members' faces) over its own
+ * `MemberToolbar` (search and a role filter over this entity's roles; the table sorts by its own
+ * header, Decision #224) — then the body, then the footer rig owning the view controls.
  *
- * **The sub-views are the registry's** (`core/sub-views.ts`): People · Invitations · Org chart render
- * as the header band's view toolbar, and this island is the one region it controls. People is one dataset read
- * two ways on the People zoom — the `DataTable` (the default, Decision #224) or the card grid — and
- * the org chart is a third reading of the same people.
+ * **Sections, one address each** (`core/sub-views.ts`): Members is the bare URL; Invitations is
+ * `?view=pending` and is offered to an `invite_members` holder only; Requests is recorded for its
+ * queue. A section is a sub-view value, so a tab switch writes the one `?view=` in place.
+ *
+ * **Members is read three ways.** The People zoom (the footer rig's `ViewZoomRig`) reads it as the
+ * `DataTable` (the default, Decision #224) or the card grid; the rig's Org chart toggle (`?view=chart`)
+ * turns the whole body into the org chart canvas, with this bar floating over it — its search and role
+ * filter then pick people out on the chart. Leaving Members for a queue and coming back returns to the
+ * reading the reader left, and so does the header band's Members tab (`peopleReading`).
  *
  * **The rank rule decides every action** (`core/members-model.ts`): a row's menu and the drawer offer
  * only what the viewer may do — an action they cannot perform is absent, not disabled. Removing and
@@ -77,17 +107,20 @@ export interface MembersScreenProps {
 	module?: "members" | "invitations";
 }
 
-/** A line the screen says about the last thing that happened. */
-interface ScreenNotice {
-	tone: "error" | "info";
-	text: string;
-}
+/** The body region the section tabs control. */
+const PANEL_ID = "wsp-members-panel";
 
 export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	const detail = useSignal<WorkspaceDetail>(props.workspace);
 	const search = useSignal("");
+	/** The role filter — role ids; empty filters nothing. */
+	const roleFilter = useSignal<string[]>([]);
 	const busyId = useSignal<string | null>(null);
-	const notice = useSignal<ScreenNotice | null>(null);
+	/** A refused approval or decline, by join request id — shown under its row. */
+	const requestErrors = useSignal<Record<string, string>>({});
+	/** Mounted only once there is something to say, and never beside a stack another island put up. */
+	const toastMounted = useSignal(false);
+	const toast = useToast();
 	/** The member whose drawer is open (kept while it animates out). */
 	const openMember = useSignal<WorkspaceMember | null>(null);
 	const drawerOpen = useSignal(false);
@@ -99,6 +132,8 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	const confirmRemove = useSignal(false);
 	const removing = useSignal<WorkspaceMember | null>(null);
 	const peopleRef = useRef<HTMLDivElement>(null);
+	/** The bar group — it floats over the org chart, which fits the chart clear of it. */
+	const barRef = useRef<HTMLDivElement>(null);
 	/** What had focus when the drawer opened — where a drawer → dialog hand-off parks focus. */
 	const opener = useRef<HTMLElement | null>(null);
 	/** Cancels a hand-off still waiting for the drawer to leave. */
@@ -140,33 +175,43 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	const active = activeMembers(ws.members);
 
 	const view = viewOr(props.view ?? null);
-	const showPending = view === MEMBERS_QUEUE || props.module === "invitations";
+	/** Every Members sub-view this viewer is offered — the sections, and the address each writes. */
+	const subViews = subViewsFor("members", ws.kind, caps);
+	const sections = membersSectionsFor(subViews);
+	/** The dedicated `/invitations` module is the Invitations section under its own address. */
+	const section: MembersSection = props.module === "invitations"
+		? "invitations"
+		: membersSectionOf(view);
 	/** The queue the viewer sees, split as the seat count splits it (lapsed ones hold no seat). */
 	const queue = inviteCounts(ws.invites, Date.now());
 	const presentation = membersViewFor(view);
-	/**
-	 * The header band's in-place tabs over this body — on the Members module only, and not where the
-	 * band draws the Roster hub's link strip, which names no panel.
-	 */
-	const hubStrip = bandHasHubStrip({
-		kind: ws.kind,
-		handle: ws.handle,
-		capabilities: caps,
-		module: props.module ?? "members",
-		view,
-	});
-	const subViews = props.module === "invitations" || hubStrip
-		? []
-		: subViewsFor("members", ws.kind, caps);
-	const panel = subViews.length > 0
-		? {
-			id: SUB_VIEW_PANEL_ID,
-			role: "region" as const,
-			"aria-label": subViewLabel(subViews, view),
-		}
-		: {};
+	const charted = section === "members" && presentation === "chart";
+	const tabs = sections.length > 1;
 
-	const people = filterMembers(active, { search: search.value });
+	// The reading on screen is the one the header band's Members tab returns to (Decision #319).
+	useEffect(() => {
+		if (props.module === "invitations" || section !== "members") return;
+		rememberPeopleReading(charted ? MEMBERS_CHART : MEMBERS_PEOPLE);
+	}, [section, charted]);
+
+	const roleIds = roleFilter.value;
+	const people = filterMembers(active, { search: search.value })
+		.filter((m) => roleIds.length === 0 || roleIds.includes(m.roleId));
+	/** Who the bar picks out on the org chart — `null` while it filters nothing. */
+	const peopleKey = people.map((m) => m.id).join(",");
+	const filtering = search.value.trim() !== "" || roleIds.length > 0;
+	const matches = useMemo(
+		() => (filtering ? new Set(people.map((m) => m.id)) : null),
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+		[filtering, peopleKey],
+	);
+	/** The chart's people, in the order its siblings read: by authority, then name. */
+	const chartPeople = useMemo(() => sortMembers(active, "role"), [ws]);
+	/** The role filter offers the roles somebody holds — a filter that can only empty the list is noise. */
+	const roleOptions = useMemo(() => {
+		const held = new Set(active.map((m) => m.roleId));
+		return ws.roles.filter((r) => held.has(r.id)).map((r) => ({ label: r.name, value: r.id }));
+	}, [ws]);
 
 	/** Per-member facets from the SSOT, resolved once per detail rather than per presentation. */
 	const facetsById = useMemo(() => {
@@ -199,11 +244,14 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 		});
 	}
 
+	/** Say what the last thing did — the project roster's toast, at the bottom of the page. */
+	function say(severity: "success" | "danger", summary: string): void {
+		if (!globalThis.document.querySelector(".ui-toast")) toastMounted.value = true;
+		toast.show({ severity, summary, life: 4000 });
+	}
+
 	async function removeMember(member: WorkspaceMember): Promise<void> {
-		batch(() => {
-			busyId.value = member.id;
-			notice.value = null;
-		});
+		busyId.value = member.id;
 		const res = await WorkspaceService.updateMember({
 			kind: ws.kind,
 			workspaceId: ws.id,
@@ -212,10 +260,7 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 		});
 		busyId.value = null;
 		if (!res.ok) {
-			notice.value = {
-				tone: "error",
-				text: res.errors?.member ?? res.message ?? "Could not update that member.",
-			};
+			say("danger", res.errors?.member ?? res.message ?? "Could not update that member.");
 			return;
 		}
 		// `null` means the caller removed themselves — there is no console left for them to see.
@@ -224,7 +269,7 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 			return;
 		}
 		adopt(res.data);
-		notice.value = { tone: "info", text: `${member.name} is no longer in ${ws.name}.` };
+		say("success", `${member.name} is no longer in ${ws.name}.`);
 	}
 
 	function onAction(action: MemberAction, member: WorkspaceMember): void {
@@ -289,18 +334,45 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	function menuFor(member: WorkspaceMember) {
 		return memberMenu(member, memberAbilities(actionInputFor(actor, member, caps)), onAction, {
 			onCopied: (ok) => {
-				notice.value = ok
-					? { tone: "info", text: `Link to ${member.name}'s profile copied.` }
-					: { tone: "error", text: "Could not copy the link." };
+				if (ok) say("success", `Link to ${member.name}'s profile copied.`);
+				else say("danger", "Could not copy the link.");
 			},
 		});
 	}
 
-	async function onInviteAction(action: InviteAction, invite: WorkspaceInvite): Promise<void> {
-		batch(() => {
-			busyId.value = invite.id;
-			notice.value = null;
+	/**
+	 * Approve (seat them, at the chosen role) or decline a request that arrived through the invite link
+	 * (Decision #318). A refused approval — the seats, the manager cap, a team's freelancer-only rule —
+	 * keeps the row with the server's sentence under it.
+	 */
+	async function onJoinRequest(
+		request: WorkspaceJoinRequest,
+		accept: boolean,
+		roleId: string,
+	): Promise<void> {
+		busyId.value = request.id;
+		const res = await WorkspaceService.respondJoinRequest({
+			kind: ws.kind,
+			workspaceId: ws.id,
+			requestId: request.id,
+			accept,
+			roleId: accept ? roleId : undefined,
 		});
+		busyId.value = null;
+		const who = request.name || `@${request.handle}`;
+		if (!res.ok || !res.data) {
+			const text = res.message ?? `Could not ${accept ? "approve" : "decline"} ${who}'s request.`;
+			requestErrors.value = { ...requestErrors.value, [request.id]: text };
+			return;
+		}
+		const { [request.id]: _gone, ...rest } = requestErrors.value;
+		requestErrors.value = rest;
+		adopt(res.data);
+		say("success", accept ? `${who} joined ${ws.name}.` : `${who}'s request was declined.`);
+	}
+
+	async function onInviteAction(action: InviteAction, invite: WorkspaceInvite): Promise<void> {
+		busyId.value = invite.id;
 		const res = await WorkspaceService.inviteAction({
 			kind: ws.kind,
 			workspaceId: ws.id,
@@ -309,21 +381,36 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 		});
 		busyId.value = null;
 		if (!res.ok || !res.data) {
-			notice.value = {
-				tone: "error",
-				text: res.message ??
-					`Could not ${action === "revoke" ? "withdraw" : "resend"} that invitation.`,
-			};
+			say(
+				"danger",
+				res.message ?? `Could not ${action === "revoke" ? "withdraw" : "resend"} that invitation.`,
+			);
 			return;
 		}
 		adopt(res.data);
 		const who = invite.name || invite.email || `@${invite.handle}`;
-		notice.value = {
-			tone: "info",
-			text: action === "revoke"
+		say(
+			"success",
+			action === "revoke"
 				? `The invitation to ${who} was withdrawn.`
 				: `The invitation to ${who} was sent again.`,
-		};
+		);
+	}
+
+	/**
+	 * Switch section in place — a queue's own `?view=`, or Members at the reading the reader left. On
+	 * the dedicated `/invitations` address, Members is another module, so the tab goes there.
+	 */
+	function selectSection(next: MembersSection): void {
+		const value = membersSectionView(next, peopleReading.peek());
+		if (props.module !== "invitations") {
+			selectModuleView(value, subViews);
+			return;
+		}
+		if (next === "invitations") return;
+		globalThis.location.assign(
+			`${workspaceHref(ws.kind, ws.handle, "members")}${subViewSearch("", subViews, value)}`,
+		);
 	}
 	// #endregion
 
@@ -332,135 +419,151 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 		? ws.members.find((m) => m.id === openMember.value?.id) ?? null
 		: null;
 
+	/** The section bar's end: the seats line (and a business's manager headroom), then the faces. */
+	const meta = (
+		<span class="wsp-members__meta">
+			<MetaLine
+				as="span"
+				size="sm"
+				items={membersHeaderItems({
+					seats: ws.seats,
+					activeCount: active.length,
+					invites: queue,
+					seesQueue: canInvite,
+					managers: ws.managers,
+				})}
+			/>
+			<UserAvatarStack
+				people={active.map((m) => ({ name: m.name, avatar: m.avatar || null }))}
+				max={5}
+				size="sm"
+				aria-label={`${active.length} ${active.length === 1 ? "member" : "members"}: ${
+					active.map((m) => m.name).join(", ")
+				}`}
+			/>
+		</span>
+	);
+
 	return (
 		<div class="wsp" data-kind={ws.kind}>
-			<div class="wsp__stack" {...panel}>
-				<section
-					class="wsp-band wsp-band--head"
-					data-i={0}
-					aria-label={props.module === "invitations" ? "Invitations" : "Members"}
+			<section
+				class="mem-explorer wsp-members"
+				data-reading={charted ? MEMBERS_CHART : undefined}
+				aria-label={props.module === "invitations" ? "Invitations" : "Members"}
+			>
+				{/* #region The bar group — the project roster's section bar over its toolbar */}
+				<div class="mem-bar wsp-members__bar" ref={barRef}>
+					<MemberSectionBar
+						sections={sections}
+						active={section}
+						onSelect={selectSection}
+						openRequests={ws.joinRequests.length}
+						panelId={PANEL_ID}
+						meta={meta}
+					/>
+					{section === "members" && (
+						<MemberToolbar
+							query={search}
+							placeholder="Search by name, handle or title…"
+							roleFilter={roleFilter}
+							showRoles={roleOptions.length > 1}
+							roleOptions={roleOptions}
+						/>
+					)}
+				</div>
+				{/* #endregion */}
+
+				{/* #region The body — a queue, the people, or the org chart canvas */}
+				<div
+					ref={peopleRef}
+					class="fx-workspace mem-workspace wsp-members__body"
+					id={PANEL_ID}
+					role={tabs ? "tabpanel" : "region"}
+					aria-labelledby={tabs ? `${PANEL_ID}-tab-${section}` : undefined}
+					aria-label={tabs ? undefined : "Members"}
 				>
-					<div class="wsp-band__inner">
-						<div class="wsp-pagehead">
-							<div class="wsp-mhead">
-								<MetaLine
-									items={membersHeaderItems({
-										seats: ws.seats,
-										activeCount: active.length,
-										invites: queue,
-										seesQueue: canInvite,
-										managers: ws.managers,
-									})}
-								/>
-							</div>
-							<UserAvatarStack
-								people={active.map((m) => ({ name: m.name, avatar: m.avatar || null }))}
-								max={5}
-								size="sm"
-								aria-label={`${active.length} ${active.length === 1 ? "member" : "members"}: ${
-									active.map((m) => m.name).join(", ")
-								}`}
+					{section === "invitations"
+						? (
+							<InviteQueue
+								invites={ws.invites}
+								roles={ws.roles}
+								canManage={canInvite}
+								busyId={busyId.value}
+								onAction={(a, i) => void onInviteAction(a, i)}
 							/>
-						</div>
-					</div>
-				</section>
-
-				{notice.value && (
-					<section class="wsp-band wsp-band--plain">
-						<div class="wsp-band__inner">
-							<InlineNotice
-								align="start"
-								assertive={notice.value.tone === "error"}
-								text={notice.value.text}
+						)
+						: section === "requests"
+						? (
+							<JoinRequestQueue
+								requests={ws.joinRequests}
+								roles={grantableRoles(ws.roles, ws.viewerCapabilities)}
+								busyId={busyId.value}
+								errors={requestErrors.value}
+								onRespond={(r, accept, roleId) => void onJoinRequest(r, accept, roleId)}
 							/>
-						</div>
-					</section>
-				)}
-
-				<section class="wsp-band wsp-band--page wsp-band--tail">
-					<div class="wsp-band__inner">
-						{showPending
-							? (
-								<InviteQueue
-									invites={ws.invites}
-									roles={ws.roles}
-									canManage={canInvite}
-									busyId={busyId.value}
-									onAction={(a, i) => void onInviteAction(a, i)}
-								/>
-							)
-							: presentation === "chart"
-							? <OrgChart members={active} roles={ws.roles} onAction={onAction} />
-							: (
-								<div class="wsp-people">
-									<div class="wsp-people__bar">
-										<InputText
-											class="wsp-people__search"
-											value={search}
-											placeholder={`Search ${copy.noun} members`}
-											aria-label="Search members"
-											start={<SearchIcon />}
-											block
-										/>
-									</div>
-
-									<div class="wsp-people__body" ref={peopleRef}>
-										{people.length === 0
-											? (
-												<p class="wsp-people__empty">
-													Nobody matches that. {canInvite && (
-														<Button
-															variant="link"
-															label="Invite someone"
-															onClick={() => openInvite()}
-														/>
-													)}
-												</p>
-											)
-											: presentation === "cards"
-											? (
-												<Grid
-													minChildWidth={`${
-														peopleZoom.gridColWidth(peopleZoom.displayZoom.value)
-													}px`}
-													fit="exact"
-													maxCols={4}
-													gap="var(--space-4)"
-												>
-													{sortMembers(people, "role").map((m) => (
-														<MemberCard
-															key={m.id}
-															member={m}
-															kind={ws.kind}
-															roles={ws.roles}
-															facets={facetsById[m.id] ?? []}
-															menu={menuFor(m)}
-															showStake={stake}
-															envelope={spendingFact(ws, m.id)}
-															onOpen={() => openDrawer(m)}
-														/>
-													))}
-												</Grid>
-											)
-											: (
-												<MemberTable
-													kind={ws.kind}
-													members={people}
-													roles={ws.roles}
-													facetsById={facetsById}
-													menuFor={menuFor}
-													showStake={stake}
-													showSpending={spending}
-													envelopes={ws.spend?.limits}
-													onOpen={openDrawer}
-												/>
-											)}
-									</div>
-								</div>
-							)}
-					</div>
-				</section>
-			</div>
+						)
+						: charted
+						? (
+							<OrgChart
+								members={chartPeople}
+								roles={ws.roles}
+								matches={matches}
+								onAction={onAction}
+								overlayRef={barRef}
+							/>
+						)
+						: people.length === 0
+						? (
+							<p class="wsp-people__empty">
+								Nobody matches that. {canInvite && (
+									<Button
+										variant="link"
+										label="Invite someone"
+										onClick={() => openInvite()}
+									/>
+								)}
+							</p>
+						)
+						: presentation === "cards"
+						? (
+							<Grid
+								minChildWidth={`${peopleZoom.gridColWidth(peopleZoom.displayZoom.value)}px`}
+								fit="exact"
+								maxCols={4}
+								gap="var(--space-4)"
+							>
+								{sortMembers(people, "role").map((m) => (
+									<MemberCard
+										key={m.id}
+										member={m}
+										kind={ws.kind}
+										roles={ws.roles}
+										facets={facetsById[m.id] ?? []}
+										menu={menuFor(m)}
+										showStake={stake}
+										envelope={spendingFact(ws, m.id)}
+										onOpen={() => openDrawer(m)}
+										onMessage={() => onAction("message", m)}
+									/>
+								))}
+							</Grid>
+						)
+						: (
+							<MemberTable
+								kind={ws.kind}
+								members={people}
+								roles={ws.roles}
+								facetsById={facetsById}
+								menuFor={menuFor}
+								showStake={stake}
+								showSpending={spending}
+								envelopes={ws.spend?.limits}
+								onOpen={openDrawer}
+							/>
+						)}
+				</div>
+				{/* #endregion */}
+			</section>
 
 			{/* Overlays — all BodyPortal-mounted by their own components (the glass-blur fixed trap). */}
 			{drawerMember && (
@@ -518,6 +621,8 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 					}}
 				/>
 			)}
+
+			{toastMounted.value ? <Toast position="bottom-center" /> : null}
 		</div>
 	);
 }

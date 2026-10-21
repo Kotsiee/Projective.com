@@ -1,4 +1,4 @@
-import type { JSX } from "preact";
+import type { ComponentChildren, JSX } from "preact";
 import { type LaneTabOption, LaneTabs } from "@projective/ui/navigation";
 import type { MemberSection } from "../core/member-sections.ts";
 
@@ -19,8 +19,11 @@ export interface MemberSectionBarProps {
 	openRequests: number;
 	/** The id of the section panel the tabs control. */
 	panelId: string;
-	/** The muted context line ("12 people · 8 of 12 seats"). */
-	meta: string | null;
+	/**
+	 * The muted context line ("12 people · 8 of 12 seats") — words, or phrasing content such as the
+	 * team and business roster's `MetaLine` and its faces (Decision #319).
+	 */
+	meta: ComponentChildren;
 }
 
 const LABELS: Record<MemberSection, string> = {
@@ -54,7 +57,7 @@ export function MemberSectionBar(props: MemberSectionBarProps): JSX.Element | nu
 				/>
 			)}
 			<span class="mem-sectionbar__spacer" />
-			{props.meta && <p class="mem-sectionbar__meta">{props.meta}</p>}
+			{props.meta && <div class="mem-sectionbar__meta">{props.meta}</div>}
 		</div>
 	);
 }

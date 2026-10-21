@@ -49,4 +49,7 @@ CREATE TRIGGER trg_workspace_member_adult BEFORE INSERT OR UPDATE OF user_id ON 
     FOR EACH ROW EXECUTE FUNCTION org.trg_workspace_member_adult('user_id');
 CREATE TRIGGER trg_workspace_member_adult BEFORE INSERT OR UPDATE OF target_user_id ON org.org_invitations
     FOR EACH ROW EXECUTE FUNCTION org.trg_workspace_member_adult('target_user_id');
+-- Asking through an invite link is a way in too (Decision #318).
+CREATE TRIGGER trg_workspace_member_adult BEFORE INSERT OR UPDATE OF requester_user_id ON org.org_join_requests
+    FOR EACH ROW EXECUTE FUNCTION org.trg_workspace_member_adult('requester_user_id');
 -- #endregion

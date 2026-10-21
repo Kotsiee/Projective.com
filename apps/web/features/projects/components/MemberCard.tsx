@@ -25,7 +25,8 @@ import { AuthorityMark, PresenceDot } from "./MemberBadges.tsx";
  * ({@link isModifiedClick}, the explore card's guard). The corner actions, the foot's buttons and
  * every tooltip target sit above the link, so they act on their own.
  *
- * Presentation only — every section composes it with its own slots (`MemberSectionCards`).
+ * Presentation only — every section composes it with its own slots (`MemberSectionCards`), and the
+ * team and business Members cards compose the same shell (Decision #319, the workspace `MemberCard`).
  */
 export interface MemberCardPerson {
 	name: string;
@@ -42,9 +43,13 @@ export interface MemberCardProps {
 	seed: string;
 	/** The role, when known — drives the authority crown and accent ring. */
 	role?: MemberRole;
+	/** The crown's words where the roster is not a project's (a team's or business's owner). */
+	authorityLabel?: string;
 	/** The acting viewer's own card. */
 	viewer?: boolean;
 	presence?: MemberPresence;
+	/** The presence dot's words, where its tone carries another fact (a team member's availability). */
+	presenceLabel?: string;
 	/** A lifecycle tag pinned top-left on the banner (invitation status · attendance). */
 	status?: VNode | null;
 	/** The corner actions (Message · kebab), pinned top-right. */
@@ -127,11 +132,11 @@ export function MemberCard(props: MemberCardProps): JSX.Element {
 									class="mem-card__face"
 								/>
 							)}
-						{presence && <PresenceDot presence={presence} />}
+						{presence && <PresenceDot presence={presence} label={props.presenceLabel} />}
 					</span>
 					<span class="mem-card__name">
 						<span class="mem-card__nametext">{person.name}</span>
-						{role && <AuthorityMark role={role} />}
+						{role && <AuthorityMark role={role} label={props.authorityLabel} />}
 					</span>
 					{(handle || youMark) && (
 						<span class="mem-card__handle">

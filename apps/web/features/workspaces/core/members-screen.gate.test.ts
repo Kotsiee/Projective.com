@@ -30,8 +30,7 @@ import {
 	BLANK_START,
 	managerCapLine,
 	roleEditorIntro,
-	roleMatrixRows,
-	rolesLegend,
+	rolesScreenCopy,
 	seedNote,
 	startPoints,
 } from "./roles-model.ts";
@@ -89,12 +88,9 @@ Deno.test("members: facts are MetaLines — no capability or override chips, no 
 
 Deno.test("members: every field of the drawer and the dialogs is a FormControl", () => {
 	const count = (rel: string) => (FILES[rel].match(/<FormControl\b/g) ?? []).length;
-	assertEquals(count("islands/InviteModal.island.tsx"), 5, "mode, handle, email, role, note");
 	// The fourth is BU7's typed CONFIRM for an owner-reserved grant (Decision #238 (b), #249 (k)).
 	assertEquals(count("islands/MemberDrawer.island.tsx"), 4, "role, title, reports to, confirm");
 	assertEquals(count("components/OwnershipTransfer.tsx"), 2, "successor, leave");
-	assert(FILES["islands/InviteModal.island.tsx"].includes("<SelectButton"));
-	assert(FILES["islands/InviteModal.island.tsx"].includes("<Textarea"));
 	assert(FILES["components/OwnershipTransfer.tsx"].includes("<Checkbox"));
 	assert(FILES["islands/MemberDrawer.island.tsx"].includes("<ToggleSwitch"));
 });
@@ -102,7 +98,6 @@ Deno.test("members: every field of the drawer and the dialogs is a FormControl",
 Deno.test("members: the dialogs' and drawer's buttons take their tone from the tier model", () => {
 	for (
 		const rel of [
-			"islands/InviteModal.island.tsx",
 			"components/OwnershipTransfer.tsx",
 			"islands/MemberDrawer.island.tsx",
 		]
@@ -118,11 +113,14 @@ Deno.test("members: the dialogs' and drawer's buttons take their tone from the t
 	}
 });
 
-Deno.test("members: the invite lookup is the shared handle check, and the role list the model's", () => {
+Deno.test("members: Invite is the Universal Invite modal — one field, no tabs, the model's roles (#318)", () => {
 	const invite = FILES["islands/InviteModal.island.tsx"];
-	assert(invite.includes('from "../hooks/useHandleCheck.ts"'), "the R3 hook");
+	assert(invite.includes("<UniversalInviteModal"), "the shared modal");
+	assert(invite.includes("<InviteLinkPanel"), "the ask-to-join link");
+	assert(!invite.includes("<SelectButton"), "the By handle / By email tabs are gone");
 	assert(invite.includes("grantableRoles("), "the role list mirrors the server");
-	assert(!/\bsetTimeout\s*\(/.test(invite), "a timer — the hook debounces");
+	assert(invite.includes("inviteManagerOverflow("), "the batch honours the manager cap");
+	assert(!/location\.(assign|href)|\?invite=1/.test(invite), "inviting never navigates");
 });
 
 Deno.test("members: the native sort select is gone; the table sorts by its own header", () => {
@@ -155,14 +153,7 @@ function businessCopy(): string[] {
 		...baseOptions(kind, 4).map(roleLabel),
 		...rolesForKind(kind).map(roleLabel),
 		...templatesForKind(kind).flatMap((t) => [t.name, t.summary]),
-		...roleMatrixRows(kind, policy).flatMap((r) => [r.label, r.group ?? "", r.hint ?? ""]),
-		...rolesLegend({
-			kind,
-			conditional: true,
-			columnLocks: ["Preset roles can't be edited — create a custom role.", null],
-			fixedReasons: [],
-			capped: true,
-		}).map((i) => i.text),
+		...rolesScreenCopy(kind, policy),
 		managerCapLine("Buyers", 2, { text: "" }),
 		roleEditorIntro("create", kind, []),
 		roleEditorIntro("create", kind, ["view_analytics"]),
@@ -199,15 +190,16 @@ Deno.test("members and roles: a business console's copy never says lead (BU7)", 
 });
 
 Deno.test("members: the availability dot is a team's alone — a business is buyer-side (BU7)", () => {
+	// The card is the project roster's shell (Decision #319): availability is its presence dot, and
+	// both the dot and its words are given only on a team's card.
 	const card = FILES["components/MemberCard.tsx"];
-	assertEquals(card.match(/"wsp-mcard__avail"/g)?.length, 1, "one availability dot");
-	const dot = card.indexOf('"wsp-mcard__avail"');
-	const guard = card.lastIndexOf('kind === "team"', dot);
-	assert(guard > 0, "the dot sits in a kind branch");
+	assert(card.includes('const team = kind === "team";'), "the card names its team branch");
 	assert(
-		!card.slice(guard, dot).includes(": ("),
-		"the dot is in the team branch, not the business one",
+		/presence=\{team \? AVAILABILITY_TONE\[member\.availability\] : undefined\}/.test(card),
+		"the availability dot is drawn for a business",
 	);
+	assert(/presenceLabel=\{team \?/.test(card), "the dot's words are given for a business");
+	assertEquals(card.match(/presence=\{/g)?.length, 1, "one availability dot");
 });
 
 Deno.test("members: the drawer's Title example is the kind's, never a literal", () => {

@@ -87,7 +87,10 @@ Deno.test("invitations land in the queue a re-read returns; a duplicate is refus
 	reset();
 	const sent = await ProjectBackendService.inviteMember(
 		PROJECT,
-		{ addresses: ["ada@example.org", "@newcomer"], role: "member", stageId: null },
+		InviteProjectMemberInputSchema.parse({
+			addresses: ["ada@example.org", "@newcomer"],
+			role: "member",
+		}),
 		CLIENT,
 	);
 	assertEquals(sent.status, 201);
@@ -99,7 +102,10 @@ Deno.test("invitations land in the queue a re-read returns; a duplicate is refus
 
 	const partial = await ProjectBackendService.inviteMember(
 		PROJECT,
-		{ addresses: ["ada@example.org", "grace@example.org"], role: "member", stageId: null },
+		InviteProjectMemberInputSchema.parse({
+			addresses: ["ada@example.org", "grace@example.org"],
+			role: "member",
+		}),
 		CLIENT,
 	);
 	assert(partial.ok && partial.data);
@@ -112,13 +118,13 @@ Deno.test("the outbound ceiling is shared with the Hire flow and answers 429 onc
 	const addresses = Array.from({ length: INVITE_BATCH_MAX }, (_, i) => `p${i}@example.org`);
 	const first = await ProjectBackendService.inviteMember(
 		PROJECT,
-		{ addresses, role: "guest", stageId: null },
+		InviteProjectMemberInputSchema.parse({ addresses, role: "guest" }),
 		CLIENT,
 	);
 	assertEquals(first.data?.invites.length, INVITE_BATCH_MAX);
 	const over = await ProjectBackendService.inviteMember(
 		PROJECT,
-		{ addresses: ["one-more@example.org"], role: "guest", stageId: null },
+		InviteProjectMemberInputSchema.parse({ addresses: ["one-more@example.org"], role: "guest" }),
 		CLIENT,
 	);
 	assertEquals(over.status, 429);
@@ -128,12 +134,32 @@ Deno.test("the invite schema normalises case, drops repeats and refuses a non-ad
 	const parsed = InviteProjectMemberInputSchema.parse({
 		addresses: ["Ada@Example.org", "ada@example.org", "@Juno"],
 	});
-	assertEquals(parsed.addresses, ["ada@example.org", "@juno"]);
-	assertEquals(parsed.role, "freelancer");
+	assertEquals(parsed.recipients, [
+		{ type: "email", value: "ada@example.org", roleId: "freelancer" },
+		{ type: "handle", value: "juno", roleId: "freelancer" },
+	]);
 	assertEquals(
 		InviteProjectMemberInputSchema.safeParse({ addresses: ["not an address"] }).success,
 		false,
 	);
+});
+
+Deno.test("the invite schema takes a per-recipient role and refuses one nobody may be granted", () => {
+	const parsed = InviteProjectMemberInputSchema.parse({
+		recipients: [
+			{ type: "handle", value: "Ravi", roleId: "manager" },
+			{ type: "email", value: "ana@example.org", roleId: "guest" },
+		],
+	});
+	assertEquals(parsed.recipients.map((r) => [r.value, r.roleId]), [["ravi", "manager"], [
+		"ana@example.org",
+		"guest",
+	]]);
+	assertEquals(parsed.stageId, null);
+	const owner = InviteProjectMemberInputSchema.safeParse({
+		recipients: [{ type: "handle", value: "ravi", roleId: "owner" }],
+	});
+	assertEquals(owner.success, false);
 });
 
 Deno.test("a ticket-management grant needs an admin/manager seat, persists, and ends with the seat (Decision #294)", async () => {

@@ -1,0 +1,387 @@
+/*
+ * invite-modal.css — the Universal Invite modal (Decision #318): `.inv-modal` (header caption, body,
+ * actions), `.inv-composer` (the one address field with its embedded role and Add), `.inv-suggest`
+ * (the people listbox under it), `.inv-queue` (the staged rows) and `.inv-link` (the ask-to-join link).
+ *
+ * Token-only, strict BEM, logical properties. The dialog is the one elevated surface, so nothing in
+ * it is boxed (§3 gate 6): the queue's rows are spaced and tinted on hover, the link sits under one
+ * hairline, and only controls carry a border. Every figure that changes is `tabular-nums`; every press
+ * is a `transform: scale()` (§B.12), removed under reduced motion.
+ */
+
+/* #region Modal */
+.inv-modal__header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-1) var(--space-3);
+	min-inline-size: 0;
+}
+.inv-modal__title {
+	min-inline-size: 0;
+	overflow-wrap: anywhere;
+}
+.inv-modal__seats {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-normal);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+.inv-modal__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+.inv-modal__scope {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+.inv-modal__notice {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--warning);
+}
+.inv-modal__note-toggle {
+	align-self: flex-start;
+}
+.inv-modal__actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-2);
+}
+.inv-modal__status {
+	flex: 1;
+	min-inline-size: 0;
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+.inv-modal__link {
+	padding-block-start: var(--space-3);
+	border-block-start: var(--hairline);
+}
+/* #endregion */
+
+/* #region Composer */
+.inv-composer {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+.inv-composer__box {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	min-inline-size: 0;
+	padding-inline-end: var(--space-1);
+	background: var(--surface-2);
+	border: 1px solid transparent;
+	border-radius: var(--radius-lg);
+	transition: border-color var(--dur-fast) var(--ease-standard);
+}
+.inv-composer__box:focus-within {
+	border-color: var(--primary);
+}
+.inv-composer[data-invalid] .inv-composer__box {
+	border-color: var(--danger);
+}
+.inv-composer__field {
+	flex: 1;
+	min-inline-size: 0;
+	padding: var(--space-2) var(--space-3);
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+	background: transparent;
+	border: none;
+}
+.inv-composer__field::placeholder {
+	color: var(--text-secondary);
+}
+.inv-composer__field:focus,
+.inv-composer__field:focus-visible {
+	outline: none;
+}
+.inv-composer__role {
+	flex: 0 0 auto;
+	max-inline-size: 10rem;
+}
+.inv-composer__add {
+	flex: 0 0 auto;
+}
+.inv-composer__error {
+	margin: calc(-1 * var(--space-2)) 0 0;
+	font-size: var(--text-sm);
+	color: var(--danger);
+}
+.inv-composer__error:empty {
+	display: none;
+}
+/* #endregion */
+
+/* #region Suggestions */
+.inv-suggest {
+	position: absolute;
+	inset-block-start: calc(100% + var(--space-1));
+	inset-inline: 0;
+	z-index: var(--z-popover);
+	margin: 0;
+	padding: var(--space-1);
+	list-style: none;
+	background: var(--surface-1);
+	border-radius: var(--radius-lg);
+	box-shadow: var(--elevation-medium);
+}
+.inv-suggest[hidden] {
+	display: none;
+}
+.inv-suggest__item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-1) var(--space-2);
+	border-radius: var(--radius-md);
+	font-size: var(--text-sm);
+	cursor: pointer;
+}
+.inv-suggest__item:hover,
+.inv-suggest__item[data-active] {
+	background: var(--surface-2);
+}
+.inv-suggest__name {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--on-surface);
+}
+.inv-suggest__handle {
+	flex-shrink: 0;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Queue */
+.inv-queue {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	max-block-size: 15rem;
+	margin: 0;
+	padding: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	list-style: none;
+}
+.inv-queue__row {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto auto;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
+	border-radius: var(--radius-md);
+}
+.inv-queue__row:hover {
+	background: var(--surface-2);
+}
+.inv-queue__who {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+.inv-queue__title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+}
+.inv-queue__meta {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+.inv-queue__row[data-refused] .inv-queue__meta {
+	color: var(--danger);
+	white-space: normal;
+}
+.inv-queue__role {
+	max-inline-size: 9rem;
+}
+/* #endregion */
+
+/* #region Link */
+.inv-link {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+.inv-link__row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+.inv-link__glyph {
+	display: inline-flex;
+	flex-shrink: 0;
+	color: var(--text-secondary);
+}
+.inv-link__lead {
+	flex: 1;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1) var(--space-2);
+	min-inline-size: 0;
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+}
+.inv-link__lead strong {
+	font-weight: var(--fw-medium);
+}
+.inv-link__role {
+	max-inline-size: 10rem;
+}
+.inv-link__url {
+	flex: 1;
+	min-inline-size: 0;
+	padding: var(--space-1) var(--space-3);
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	background: var(--surface-2);
+	border: 1px solid transparent;
+	border-radius: var(--radius-lg);
+	text-overflow: ellipsis;
+}
+.inv-link__url:focus,
+.inv-link__url:focus-visible {
+	outline: none;
+	border-color: var(--primary);
+}
+.inv-link__copy {
+	flex-shrink: 0;
+}
+.inv-link__share {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+}
+.inv-link__targets {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.inv-link__target {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+	color: var(--on-surface);
+	cursor: pointer;
+	transform: scale(1);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-press) var(--ease-standard);
+}
+.inv-link__target:hover {
+	background: var(--surface-3, var(--surface-1));
+}
+.inv-link__target:active {
+	transform: scale(var(--btn-press-scale));
+}
+.inv-link__target:focus-visible {
+	outline: none;
+}
+.inv-link__mark {
+	inline-size: 1rem;
+	block-size: 1rem;
+}
+.inv-link__controls {
+	display: flex;
+	gap: var(--space-1);
+}
+.inv-link__hint,
+.inv-link__status {
+	margin: 0;
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+.inv-link__status:empty {
+	display: none;
+}
+.inv-link__error {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--danger);
+}
+/* #endregion */
+
+/* #region Reduced motion — both channels */
+@media (prefers-reduced-motion: reduce) {
+	.inv-link__target,
+	.inv-link__target:active {
+		transform: none;
+		transition: none;
+	}
+}
+:root[data-motion="reduced"] .inv-link__target,
+:root[data-motion="reduced"] .inv-link__target:active {
+	transform: none;
+	transition: none;
+}
+/* #endregion */
+
+/* #region Narrow */
+/*
+ * A phone: the field keeps its room — Add steps aside (a separator, Enter, a paste or Send all stage
+ * what was typed) and the role pickers narrow; the footnote takes its own line above the actions.
+ */
+@media (max-width: 30rem) {
+	.inv-composer__add {
+		display: none;
+	}
+	.inv-composer__field {
+		min-inline-size: 7rem;
+	}
+	.inv-composer__role,
+	.inv-link__role,
+	.inv-queue__role {
+		max-inline-size: 7rem;
+	}
+	.inv-modal__actions {
+		flex-wrap: wrap;
+	}
+	.inv-modal__status {
+		flex-basis: 100%;
+	}
+	.inv-modal__status:empty {
+		display: none;
+	}
+}
+/* #endregion */

@@ -11,21 +11,28 @@ import { SearchIcon } from "./file-glyphs.tsx";
  * surfaces read as one system rather than lookalikes. The role filter is offered where a role exists
  * on the rows (Members, Invitations), the stage filter only where stages are a dimension of the
  * engagement (a pipeline); the sort choices follow the section.
+ *
+ * The team and business Members screen draws the same bar (Decision #319) over its own roles, with no
+ * stage filter and no sort: its table sorts by its own header (Decision #224).
  */
 export interface MemberToolbarProps {
 	query: Signal<string>;
 	placeholder: string;
 	roleFilter: Signal<string[]>;
 	showRoles: boolean;
-	stageFilter: Signal<string>;
-	stages: readonly MemberStageRef[];
-	showStages: boolean;
-	sortKey: Signal<string>;
-	sortDir: Signal<"asc" | "desc">;
-	sortOptions: ReadonlyArray<{ value: string; label: string }>;
+	/** The role filter's choices — the engagement's roles unless a roster passes its own. */
+	roleOptions?: ReadonlyArray<{ label: string; value: string }>;
+	stageFilter?: Signal<string>;
+	stages?: readonly MemberStageRef[];
+	showStages?: boolean;
+	/** The sort; the control is drawn only with all three. */
+	sortKey?: Signal<string>;
+	sortDir?: Signal<"asc" | "desc">;
+	sortOptions?: ReadonlyArray<{ value: string; label: string }>;
 }
 
 export function MemberToolbar(props: MemberToolbarProps): JSX.Element {
+	const { stages = [], stageFilter, sortKey, sortDir, sortOptions } = props;
 	return (
 		<div class="fx-toolbar">
 			<div class="fx-toolbar__search">
@@ -52,11 +59,14 @@ export function MemberToolbar(props: MemberToolbarProps): JSX.Element {
 					display="chip"
 					placeholder="All roles"
 					aria-label="Filter by role"
-					options={ROLE_FILTER_OPTIONS.map((r) => ({ label: r.label, value: r.value }))}
+					options={[
+						...(props.roleOptions ??
+							ROLE_FILTER_OPTIONS.map((r) => ({ label: r.label, value: r.value }))),
+					]}
 					value={props.roleFilter}
 				/>
 			)}
-			{props.showStages && props.stages.length > 0 && (
+			{props.showStages && stageFilter && stages.length > 0 && (
 				<Select
 					class="ui-field--bare"
 					size="sm"
@@ -64,17 +74,14 @@ export function MemberToolbar(props: MemberToolbarProps): JSX.Element {
 					aria-label="Filter by stage"
 					options={[
 						{ label: "All stages", value: "" },
-						...props.stages.map((s) => ({ label: s.name, value: s.name })),
+						...stages.map((s) => ({ label: s.name, value: s.name })),
 					]}
-					value={props.stageFilter}
+					value={stageFilter}
 				/>
 			)}
-			<SortControl
-				size="sm"
-				options={[...props.sortOptions]}
-				value={props.sortKey}
-				direction={props.sortDir}
-			/>
+			{sortKey && sortDir && sortOptions && (
+				<SortControl size="sm" options={[...sortOptions]} value={sortKey} direction={sortDir} />
+			)}
 		</div>
 	);
 }

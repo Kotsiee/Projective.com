@@ -8,7 +8,8 @@ import { isPeopleReading, MEMBERS_CHART, MEMBERS_PEOPLE } from "./sub-views.ts";
  *
  * The rig's division of labour: **view switching on the leading side, actions on the trailing side.**
  * The leading side is the shared zoom (the roster, and the Members People reading) with the Org chart
- * toggle riding beside it — and the toggle alone on the chart, which has no density to zoom. The
+ * toggle riding beside it — and, on the chart, which has no density to zoom, the chart's own viewport
+ * zoom in its place (Decision #319). The
  * trailing side is the Button Interaction Matrix (§B.8.1) in one row:
  * tier-4 utilities (New, Invite, Settings), then the open editor's Discard (tier 5) and Save
  * (tier 3) — both present ONLY while the editor holds unsaved changes, so the rig never shows a
@@ -105,7 +106,6 @@ export interface RigInput {
 export type RigAction =
 	| { key: "create"; control: "button"; tier: 2 | 4; label: string }
 	| { key: "invite"; control: "button"; tier: 4; label: string }
-	| { key: "invite"; control: "link"; label: string; href: string }
 	| { key: "settings"; control: "link"; label: string; href: string }
 	| { key: "discard"; control: "button"; tier: 5; label: string; disabled: boolean }
 	| { key: "save"; control: "button"; tier: 3; label: string; busy: boolean };
@@ -136,8 +136,14 @@ export interface RigModel {
 	 */
 	zoom: { label: string } | null;
 	/**
-	 * The Org chart toggle (tier 5), or `null`: beside the zoom on People, alone on the chart (where it
-	 * is pressed, and a press returns to People). `next` is the view a press selects.
+	 * The org chart's own viewport zoom (a `ZoomSlider` and Fit, Decision #319), in the zoom's place
+	 * while the chart is drawn — the chart's scale is a different axis from the people's density.
+	 */
+	chartZoom: { label: string } | null;
+	/**
+	 * The Org chart toggle (tier 5, an icon-only ghost `Button`), or `null`: beside the zoom on People,
+	 * beside the chart's zoom on the chart (where it is pressed, and a press returns to People). `next`
+	 * is the view a press selects.
 	 */
 	chart: { label: string; pressed: boolean; next: string } | null;
 	/**
@@ -176,14 +182,14 @@ export interface RigLayouts {
 
 // #region Composition
 /**
- * Whether a console module's screen mounts the invite modal, so an Invite there opens in place: the
- * Members screen (and its invitation queue), and a team's Projects, whose allowance band offers Invite
- * member to a team short of members (Teams C5). A business's Projects hands off and mounts none.
- * Everywhere else an Invite is a link that lands on Members with the modal open. The footer rig and the
- * lane's create action both ask this, so the controls on one page never disagree.
+ * Whether a console module's SCREEN mounts the invite modal itself: the Overview (its setup steps),
+ * the Members screen (and its invitation queue), and a team's Projects, whose allowance band offers
+ * Invite member to a team short of members (Teams C5). On every other module the console LANE mounts
+ * it, so exactly one modal exists per page and an Invite always opens in place — nothing navigates to
+ * Members to open it (Decision #318).
  */
-export function inviteOpensInPlace(kind: WorkspaceKind, module: string | null): boolean {
-	return module === "members" || module === "invitations" ||
+export function screenHostsInvite(kind: WorkspaceKind, module: string | null): boolean {
+	return module === "overview" || module === "members" || module === "invitations" ||
 		(kind === "team" && module === "projects");
 }
 
@@ -208,6 +214,7 @@ export function rigModel(input: RigInput): RigModel {
 		const offered = !input.firstRun;
 		return {
 			zoom: { label: `${copy.Plural} view zoom` },
+			chartZoom: null,
 			chart: null,
 			statusLine: false,
 			status: null,
@@ -239,16 +246,8 @@ export function rigModel(input: RigInput): RigModel {
 	const laneCarries = (input.lane ?? "expanded") !== "off-canvas";
 
 	if (input.canInvite && !laneCarries) {
-		actions.push(
-			inviteOpensInPlace(input.kind, input.module)
-				? { key: "invite", control: "button", tier: 4, label: "Invite members" }
-				: {
-					key: "invite",
-					control: "link",
-					label: "Invite members",
-					href: `${workspaceHref(input.kind, input.handle, "members")}?invite=1`,
-				},
-		);
+		// Always in place: the screen or the lane mounts the modal on every module (`screenHostsInvite`).
+		actions.push({ key: "invite", control: "button", tier: 4, label: "Invite members" });
 	}
 	if (input.canManageSettings && input.module !== "settings" && !laneCarries) {
 		actions.push({
@@ -270,6 +269,7 @@ export function rigModel(input: RigInput): RigModel {
 
 	return {
 		zoom: people && !charted ? { label: "People view zoom" } : null,
+		chartZoom: charted ? { label: "Org chart zoom" } : null,
 		chart: people
 			? {
 				label: "Org chart",
@@ -305,7 +305,8 @@ export function rigLayouts(input: RigInput): RigLayouts {
  * rig announces from a live region outside it, and a press whose band hides lands focus on `<main>`.
  */
 export function rigIsEmpty(model: RigModel): boolean {
-	return !model.zoom && !model.chart && !model.status && model.actions.length === 0 && !model.note;
+	return !model.zoom && !model.chartZoom && !model.chart && !model.status &&
+		model.actions.length === 0 && !model.note;
 }
 
 /**

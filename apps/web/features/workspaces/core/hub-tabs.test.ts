@@ -3,13 +3,13 @@ import type { WorkspaceCapability, WorkspaceKind } from "@projective/types/works
 import { importWithoutGlyphs } from "./registry-import.testing.ts";
 
 /**
- * The header band's hub strip (Decision #306): a multi-module hub is ONE strip of link tabs, a module
- * with sub-views contributing one tab per sub-view; a single-module hub keeps the module's own tabs.
+ * The header band's hub strip (Decisions #306, #319): a multi-module hub is ONE strip of link tabs, one
+ * per module; a hub the viewer reaches one module of draws none.
  */
 
 interface Strip {
 	title: string;
-	tabs: { key: string; label: string; href: string; module: string; view: string | null }[];
+	tabs: { key: string; label: string; href: string; module: string }[];
 	active: number;
 }
 
@@ -20,6 +20,7 @@ interface HubTabsApi {
 		capabilities: readonly WorkspaceCapability[];
 		module: string;
 		view: string | null;
+		reading?: string | null;
 	}): Strip | null;
 }
 
@@ -45,23 +46,39 @@ const strip = (
 	kind: WorkspaceKind = "team",
 ) => hubTabs({ kind, handle: "north-loop", capabilities, module, view });
 
-Deno.test("hub tabs: Members is People · Invitations · Org chart · Roles, as links", () => {
+Deno.test("hub tabs (#319): Members is Members · Roles, as links, whatever the sub-view", () => {
 	const roster = strip("members");
 	assertEquals(roster?.title, "Members");
 	assertEquals(roster?.tabs.map((t) => [t.label, t.href]), [
-		["People", "/teams/north-loop/members"],
-		["Invitations", "/teams/north-loop/members?view=pending"],
-		["Org chart", "/teams/north-loop/members?view=chart"],
+		["Members", "/teams/north-loop/members"],
 		["Roles", "/teams/north-loop/roles"],
 	]);
 	assertEquals(roster?.active, 0);
-	assertEquals(strip("members", "chart")?.active, 2);
-	assertEquals(strip("roles")?.active, 3);
+	assertEquals(strip("members", "chart")?.active, 0);
+	assertEquals(strip("members", "pending")?.active, 0);
+	assertEquals(strip("roles")?.active, 1);
 	// The Invitations module is the Members queue under a second address.
-	assertEquals(strip("invitations")?.active, 1);
+	assertEquals(strip("invitations")?.active, 0);
 });
 
-Deno.test("hub tabs: a hub the viewer reaches one module of keeps the module's own tabs", () => {
+Deno.test("hub tabs (#319): the Members tab returns a reader to the org chart they left", () => {
+	const href = (reading: string | null) =>
+		hubTabs({
+			kind: "business",
+			handle: "helia",
+			capabilities: OWNER,
+			module: "roles",
+			view: null,
+			reading,
+		})?.tabs[0].href;
+	assertEquals(href("chart"), "/businesses/helia/members?view=chart");
+	assertEquals(href("people"), "/businesses/helia/members");
+	assertEquals(href(null), "/businesses/helia/members");
+	// Only the Members tab carries a reading.
+	assertEquals(strip("finance")?.tabs.every((t) => !t.href.includes("?")), true);
+});
+
+Deno.test("hub tabs: a hub the viewer reaches one module of draws no strip", () => {
 	// Without manage_roles the roster is Members (+ its Invitations alias): no hub strip.
 	const noRoles = OWNER.filter((c) => c !== "manage_roles");
 	assertEquals(strip("members", null, noRoles), null);

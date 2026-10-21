@@ -185,7 +185,6 @@ body {
  */ .evp-lane__full,
 .evp-canvas__stage,
 .evp-canvas__code,
-.wsp-chart__card,
 .vw-lightbox__stage {
 	--scrollbar-track: var(--surface-1);
 }

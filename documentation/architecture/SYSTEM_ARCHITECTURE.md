@@ -2752,7 +2752,9 @@ PostgreSQL RLS.
   `UserContext.isOperator`, which the access-token hook stamps from `users_public.is_operator`. The
   database refuses on its own: `org.fn_assert_team_persona` (`PK403 persona_not_freelancer`) in
   `create_workspace`, `invite_workspace_member` (by handle), `respond_to_workspace_invitation` and
-  `transfer_workspace_ownership`, ahead of the earning gate; the workspace `refusalFrom` maps it to a
+  `respond_to_join_request` (both through `org.fn_admit_workspace_member`, Decision #318) and
+  `transfer_workspace_ownership`, ahead of the earning gate (an invite link answers the persona as a
+  `persona` state instead of raising); the workspace `refusalFrom` maps it to a
   `403` with `details.reason = 'persona'` (`packages/backend/core/team-persona-gate.ts`). The Dev
   Context Switcher's **Operator mode** axis (`data-dev-operator`) drives the chrome live and the guard
   plus the team create route's mirror through the `pj.dev.operator-mode` cookie, honoured only when
@@ -2777,7 +2779,7 @@ PostgreSQL RLS.
   only) and `/api/auth/join` clears its session cookies; nothing about the attempt is logged; the
   browser session is locked (`SessionKeys.JOIN_AGE_LOCK` client-side, the data-less HttpOnly
   `pj_join_age_lock` cookie server-side). **13–17**: `trg_workspace_member_adult` refuses a minor on
-  `team_members` / `business_members` / `enterprise_members` / `org_invitations`, and
+  `team_members` / `business_members` / `enterprise_members` / `org_invitations` / `org_join_requests`, and
   `create_workspace`, `respond_to_workspace_invitation` and `finance.record_payout_account` assert an
   adult; `scheduling.trg_schedule_age_gate` refuses published hours and accepted calls, and
   `request_discovery_call` / `reserve_seat` assert an adult; `comms.trg_dm_shield` (on

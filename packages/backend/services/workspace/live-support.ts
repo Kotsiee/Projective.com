@@ -85,6 +85,7 @@ const SUBJECT_PREFIXES: ReadonlySet<string> = new Set([
 	"member",
 	"invitation",
 	"invite",
+	"request",
 	"role",
 	"policy",
 	"plan",

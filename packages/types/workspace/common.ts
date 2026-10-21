@@ -58,9 +58,9 @@ export type WorkspaceRole = z.infer<typeof WorkspaceRole>;
  * `status` CHECK: `active` (holds a seat and their role's capabilities) or `left` (removed or departed,
  * `left_at` stamped; kept on record, never deleted). Somebody asked to join is not a member yet: a
  * pending invitation is its own row (`org.org_invitations`, projected as `WorkspaceInvite`) until it is
- * accepted — which seats an `active` member — declined, revoked or lapsed. There is no "requested"
- * state: nobody asks an entity to let them in; every invitation names one person or one address, and
- * only that invitee can accept it.
+ * accepted — which seats an `active` member — declined, revoked or lapsed. Nor is somebody who asked
+ * through an invite link: their join request is its own row (`org.org_join_requests`, projected as
+ * `WorkspaceJoinRequest`) until an `invite_members` holder approves it (Decision #318).
  */
 export const MembershipState = z.enum(["active", "left"]);
 export type MembershipState = z.infer<typeof MembershipState>;

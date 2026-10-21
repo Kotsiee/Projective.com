@@ -1,13 +1,13 @@
 import type { JSX } from "preact";
 import { type Signal, useSignal } from "@preact/signals";
-import { useRef } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import "../styles/fx-toolbar.css";
 import "../styles/file-explorer.css";
 import "../styles/file-card.css";
 import "../styles/attachment-modal.css";
 import { VirtualGrid } from "@projective/ui/display";
 import { InlineNotice, Toast, useToast } from "@projective/ui/feedback";
-import { InputText, MultiSelect, SortControl } from "@projective/ui/fields";
+import { FilesFrame } from "@features/files/components/FilesFrame.tsx";
 import { OFFLINE_NOTICE_TEXT } from "@web/utils/offline.ts";
 import { offlineOr, useOfflineStall } from "@web/utils/use-offline-stall.ts";
 import { logger } from "@web/utils/logger.ts";
@@ -22,12 +22,22 @@ import type {
 	FileSortKey,
 } from "../types/projects-types.ts";
 import { FilesService } from "../core/FilesService.ts";
+import { groupIndexOf, messageGroup } from "../core/file-model.ts";
 import {
-	FILE_KIND_OPTIONS,
-	FILE_SORT_OPTIONS,
-	groupIndexOf,
-	messageGroup,
-} from "../core/file-model.ts";
+	explorerKinds,
+	explorerQuery,
+	explorerSortDir,
+	explorerSortKey,
+	explorerTitle,
+	registerExplorer,
+} from "../core/explorer-state.ts";
+import {
+	type FileChannelRoutes,
+	searchWithSelection,
+	selectionHref,
+	selectionOfSearch,
+	selectionTitle,
+} from "../core/file-tree-route.ts";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 import {
 	filesZoom,
@@ -42,21 +52,40 @@ import { FileCard } from "../components/FileCard.tsx";
 import { FileTable } from "../components/FileTable.tsx";
 import { FileChannelTree, type FileTreeSelection } from "../components/FileChannelTree.tsx";
 import { AttachmentPreviewModal } from "../components/AttachmentPreviewModal.tsx";
-import { SearchIcon } from "../components/file-glyphs.tsx";
+import { ExplorerToolbar } from "../components/ExplorerToolbar.tsx";
 import { starFile } from "@features/files/core/star-file.ts";
 
 /**
  * FileExplorer — the File Explorer workspace: the single island the `/files` routes mount, hosting the
- * toolbar (borderless search · Attachment-Types filter · SortControl), the zoom-driven workspace, and
- * the universal preview modal (one hydration boundary, root CLAUDE.md §2). The grid⇄list presentation
- * is selected by the shared {@link viewMode} (there is no toggle button); `Ctrl`+wheel over the
- * workspace drives {@link zoom} (default-prevented so the browser never page-zooms). Both viewports are
- * window-virtualized with infinite scroll. Project scope prepends the {@link FileChannelTree} navigator.
+ * project tree, the zoom-driven workspace, and the universal preview modal (one hydration boundary,
+ * root CLAUDE.md §2), all drawn in the shared {@link FilesFrame} (Decision #317). The grid⇄list
+ * presentation is selected by the shared {@link viewMode} (there is no toggle button); `Ctrl`+wheel over
+ * the workspace drives {@link zoom} (default-prevented so the browser never page-zooms). Both viewports
+ * are window-virtualized with infinite scroll.
+ *
+ * The tree is the project's (All files · Project files · the channels) in the frame's left panel. On
+ * the project's own Files route a node scopes the workspace in place and rides in `?in=`; on a
+ * channel's own Files route the same tree is drawn with the channel selected and its rows link to each
+ * node's address. A conversation has one implicit room and no hierarchy, so it draws no panel.
+ *
+ * The toolbar (search · Attachment-Types filter · sort) is drawn ONCE: in the middle-nav header band
+ * where the band is free (the project's own Files route, `ExplorerHeaderBand`), above the grid where a
+ * channel or a conversation owns the band. Both write the shared `explorer-state` intent and this
+ * island — the single fetch owner — re-reads.
  *
  * THIN: first paint is the SSR-resolved page; the island owns view state and refines (sort/filter/
  * search/scope/scroll-load) via the thin {@link FilesService}. Rename/star are optimistic — persistence
  * lands with the files backend behind `PROJECTS_BACKEND_LIVE`.
  */
+
+/** The project tree as the route resolved it: the node shown, its index, and the rooms' addresses. */
+export interface FileExplorerTree {
+	selection: FileTreeSelection;
+	routes: FileChannelRoutes;
+	/** The project-scope index — on a channel's own route, the rooms the tree links between. */
+	index: { channels: FileChannelRef[]; projectFileCount: number; task: boolean } | null;
+}
+
 export interface FileExplorerProps {
 	/**
 	 * Which space is being read. `channel`/`project` are the engagement scopes; `conversation` is the
@@ -70,6 +99,8 @@ export interface FileExplorerProps {
 	/** The channel id in channel scope (the conversation id in conversation scope); unused for project. */
 	channelId?: string;
 	initial: FileListPage | null;
+	/** The project tree (project and channel scope); absent for a conversation, which draws none. */
+	tree?: FileExplorerTree | null;
 }
 
 const GRID_GAP = 16;
@@ -172,22 +203,28 @@ function WorkspaceView(p: WorkspaceViewProps): JSX.Element {
 
 export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 	const { scope, projectId, channelId, initial } = props;
+	const routes = props.tree?.routes ?? {};
+	/** On a channel's own route the tree is the project's index, not the page's one-room answer. */
+	const index = scope === "channel" ? props.tree?.index ?? null : null;
 
 	// #region State
 	const items = useSignal<ExplorerFileItem[]>(initial?.items ?? []);
-	const channels = useSignal<FileChannelRef[]>(initial?.channels ?? []);
-	const projectFileCount = useSignal<number>(initial?.projectFileCount ?? 0);
+	const channels = useSignal<FileChannelRef[]>(index?.channels ?? initial?.channels ?? []);
+	const projectFileCount = useSignal<number>(
+		index?.projectFileCount ?? initial?.projectFileCount ?? 0,
+	);
 	const cursor = useSignal<string | null>(initial?.nextCursor ?? null);
 	const hasMore = useSignal<boolean>(initial?.hasMore ?? false);
 	const total = useSignal<number>(initial?.total ?? 0);
 	const viewerId = initial?.viewerId ?? "viewer";
-	const task = initial?.task ?? false;
+	const task = index?.task ?? initial?.task ?? false;
 
-	const query = useSignal("");
-	const sortKey = useSignal<string>("date");
-	const sortDir = useSignal<FileSortDir>("desc");
-	const filterKinds = useSignal<string[]>([]);
-	const treeSelection = useSignal<FileTreeSelection>({ kind: "all" });
+	// The query intent is shared with the header band, where it carries the toolbar (Decision #317).
+	const query = explorerQuery;
+	const sortKey = explorerSortKey;
+	const sortDir: Signal<FileSortDir> = explorerSortDir;
+	const filterKinds = explorerKinds;
+	const treeSelection = useSignal<FileTreeSelection>(props.tree?.selection ?? { kind: "all" });
 
 	const loading = useSignal(false);
 	const loadingMore = useSignal(false);
@@ -209,7 +246,6 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 	const skeleton = useSkeletonDelay();
 
 	const reqId = useRef(0);
-	const searchTimer = useRef<number | null>(null);
 	const workspaceRef = useRef<HTMLDivElement>(null);
 	// #endregion
 
@@ -265,8 +301,9 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 		items.value = page.items;
 		// The tree's channel index is the project's FULL channel set. When the workspace is filtered
 		// to ONE channel the backend returns only that channel's index (it infers scope from the
-		// channelId), so keep the existing full index rather than collapsing the tree to the selection.
-		if (!(scope === "project" && treeSelection.value.kind === "channel")) {
+		// channelId), so keep the existing full index rather than collapsing the tree to the selection —
+		// always on a channel's own route, whose tree is the project index the route read.
+		if (scope === "project" && treeSelection.value.kind !== "channel") {
 			channels.value = page.channels;
 			projectFileCount.value = page.projectFileCount;
 		}
@@ -303,12 +340,11 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 	const stall = useOfflineStall(() => loadMore());
 	// #endregion
 
-	// #region Toolbar handlers
-	function onSearch(v: string): void {
-		query.value = v;
-		if (searchTimer.current) clearTimeout(searchTimer.current);
-		searchTimer.current = setTimeout(() => void reload(), 300) as unknown as number;
-	}
+	// #region Toolbar + tree handlers
+	// The toolbar — in the header band or above the grid — writes the shared intent and asks for a
+	// re-read through here; unmounting resets that intent for the next explorer in this tab.
+	useEffect(() => registerExplorer(() => void reload()), []);
+
 	// 3-state single-column sort: asc → desc → none (multi-column sort stays disabled for Files).
 	function applySort(key: FileSortKey): void {
 		if (sortKey.value === key) {
@@ -320,14 +356,36 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 		}
 		void reload();
 	}
-	function onFilter(kinds: string[]): void {
-		filterKinds.value = kinds;
-		void reload();
-	}
+
+	/**
+	 * Scope the project's own Files route to a node, in place: the node rides in `?in=` (pushed, so
+	 * Back walks it), the band's title follows, and the workspace re-reads.
+	 */
 	function onSelectNode(selection: FileTreeSelection): void {
 		treeSelection.value = selection;
+		explorerTitle.value = selectionTitle(selection, channels.value);
+		if (typeof history !== "undefined") {
+			const search = searchWithSelection(globalThis.location?.search ?? "", selection, routes);
+			const href = `${globalThis.location?.pathname ?? ""}${search}`;
+			if (href !== `${globalThis.location?.pathname ?? ""}${globalThis.location?.search ?? ""}`) {
+				history.pushState({ filesIn: selection }, "", href);
+			}
+		}
 		void reload();
 	}
+
+	// Back / Forward over `?in=` re-scopes without pushing a new entry.
+	useEffect(() => {
+		if (scope !== "project") return;
+		const onPop = () => {
+			const selection = selectionOfSearch(globalThis.location.search, routes);
+			treeSelection.value = selection;
+			explorerTitle.value = selectionTitle(selection, channels.value);
+			void reload();
+		};
+		globalThis.addEventListener("popstate", onPop);
+		return () => globalThis.removeEventListener("popstate", onPop);
+	}, []);
 	// #endregion
 
 	// #region Preview modal
@@ -396,82 +454,35 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 		)
 		: null;
 
-	function toolbar(): JSX.Element {
-		return (
-			<div class="fx-toolbar">
-				<div class="fx-toolbar__search">
-					<InputText
-						type="search"
-						variant="bare"
-						size="sm"
-						block
-						placeholder="Search files…"
-						aria-label="Search files"
-						value={query}
-						onValueChange={onSearch}
-						start={
-							<span class="fx-toolbar__searchicon" aria-hidden="true">
-								<SearchIcon size={16} />
-							</span>
-						}
-					/>
-				</div>
-				<span class="fx-toolbar__spacer" />
-				<MultiSelect
-					class="ui-field--bare"
-					size="sm"
-					display="chip"
-					placeholder="All types"
-					aria-label="Filter by type"
-					options={FILE_KIND_OPTIONS}
-					value={filterKinds}
-					onValueChange={onFilter}
-				/>
-				<SortControl
-					size="sm"
-					options={FILE_SORT_OPTIONS}
-					value={sortKey}
-					direction={sortDir}
-					onValueChange={() => void reload()}
-					onDirectionChange={() => void reload()}
-				/>
-			</div>
-		);
-	}
+	// A conversation is one implicit room with no hierarchy, so it draws no panel; a channel's own route
+	// draws the project tree with the channel selected, its rows links to each node's address.
+	const tree = scope === "conversation" ? null : (
+		<FileChannelTree
+			channels={channels.value}
+			active={treeSelection}
+			onSelect={onSelectNode}
+			total={channels.value.reduce((s, c) => s + c.count, projectFileCount.value)}
+			projectFileCount={projectFileCount.value}
+			task={task}
+			hrefOf={scope === "channel"
+				? (selection) => selectionHref(projectId, selection, routes)
+				: undefined}
+		/>
+	);
 
 	return (
 		<div class="fx-explorer" data-scope={scope}>
-			{scope === "project"
-				? (
-					<div class="fx-layout">
-						<aside class="fx-aside-tree">
-							<FileChannelTree
-								channels={channels.value}
-								active={treeSelection}
-								onSelect={onSelectNode}
-								total={channels.value.reduce((s, c) => s + c.count, projectFileCount.value)}
-								projectFileCount={projectFileCount.value}
-								task={task}
-							/>
-						</aside>
-						<div class="fx-main">
-							{toolbar()}
-							<div class="fx-workspace" ref={workspaceRef}>
-								{workspaceView}
-								{stallNotice}
-							</div>
-						</div>
-					</div>
-				)
-				: (
-					<>
-						{toolbar()}
-						<div class="fx-workspace" ref={workspaceRef}>
-							{workspaceView}
-							{stallNotice}
-						</div>
-					</>
-				)}
+			<FilesFrame aside={tree} asideLabel="Project files tree">
+				{
+					/* The project's own route carries the toolbar in its header band; elsewhere the band is
+					   the channel's or the conversation's, so the toolbar sits above the grid. */
+				}
+				{scope !== "project" && <ExplorerToolbar noun="files" />}
+				<div class="fx-workspace" ref={workspaceRef}>
+					{workspaceView}
+					{stallNotice}
+				</div>
+			</FilesFrame>
 
 			<AttachmentPreviewModal
 				open={!!openFile}

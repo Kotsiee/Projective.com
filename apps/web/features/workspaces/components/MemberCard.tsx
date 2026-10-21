@@ -1,33 +1,35 @@
 import type { JSX } from "preact";
 import { useRef } from "preact/hooks";
 import { type AvatarSize, Badge, MetaLine, type MetaLineEntry } from "@projective/ui/display";
-import { ProgressBar, Tooltip } from "@projective/ui/feedback";
+import { Tooltip } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
 import { ActionMenu, type ContextSurfaceSource, type MenuItem } from "@projective/ui/navigation";
-import type {
-	PermissionFacet,
-	WorkspaceKind,
-	WorkspaceMember,
-	WorkspaceRoleDef,
+import {
+	kindCopy,
+	type PermissionFacet,
+	type WorkspaceKind,
+	type WorkspaceMember,
+	type WorkspaceRoleDef,
 } from "@projective/types/workspace";
+import type { MemberPresence } from "@projective/types/projects";
 import { shortDate } from "../core/workspace-model.ts";
 import {
-	formatWi,
-	memberProfileHref,
 	overrideItems,
 	overrideSummary,
 	overrideTitle,
-	roleMetaText,
 	roleText,
 	sensitiveLabel,
 	stakePercent,
 	workloadText,
 } from "../core/members-model.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import { MemberCard as ProjectMemberCard } from "@web/features/projects/components/MemberCard.tsx";
+import { MessageButton } from "@web/features/projects/components/MemberSectionCards.tsx";
 
 /**
- * MemberCard — one person in an entity at card density (the People reading's grid half), **and** the
- * small set of person atoms and glyphs the members surface composes.
+ * MemberCard — one person in an entity at card density (the People reading's grid half), drawn in the
+ * project roster's card (Decision #319), **and** the small set of person atoms and glyphs the members
+ * surface composes.
  *
  * **Facts are a MetaLine, never chips** (§B.11): handle, "You", role, title, stake, joined date and the
  * override counts are inline `--text-secondary` text joined by middots. The only containers left are
@@ -83,16 +85,6 @@ export function ConsequenceIcon(): JSX.Element {
 		<Svg>
 			<path d="M12 4.5l8.5 15H3.5z" />
 			<path d="M12 10v4.2M12 17.2v.1" />
-		</Svg>
-	);
-}
-
-/** A shield with a tick — the permissions view of one member. */
-export function PermissionsIcon(): JSX.Element {
-	return (
-		<Svg>
-			<path d="M12 3l7.5 3v5.5c0 4.4-3 8-7.5 9.5-4.5-1.5-7.5-5.1-7.5-9.5V6z" />
-			<path d="M8.8 12l2.4 2.4 4-4.4" />
 		</Svg>
 	);
 }
@@ -327,111 +319,96 @@ export interface MemberCardProps {
 	envelope?: MetaLineEntry | null;
 	/** Open the member drawer. */
 	onOpen: () => void;
+	/** Open the viewer's conversation with them — the corner Message button; absent draws none. */
+	onMessage?: () => void;
 	/** Server-resolved reference year, so an SSR date and its hydration agree across a New Year. */
 	referenceYear?: number;
 }
 
+/** A team member's availability in the presence dot's three tones. */
+const AVAILABILITY_TONE: Record<WorkspaceMember["availability"], MemberPresence> = {
+	available: "online",
+	limited: "away",
+	unavailable: "offline",
+};
+
+/** One MetaLine entry's words. */
+function entryText(entry: MetaLineEntry | null | undefined): string | null {
+	if (!entry) return null;
+	return typeof entry === "string" ? entry : entry.text;
+}
+
 /**
- * One member, at card density: who (avatar, name, handle, "You"), what they may do (role, and the
- * override counts whenever their effective set differs from it), and when they joined. A team's card
- * adds how loaded they are (a `ProgressBar` over their W_i against their cap) and — for a viewer who
- * reads payouts — their stake; a business's adds their envelope for a viewer who reads everyone's
- * (BU7). Whether somebody is free to take work is a seller's fact, so the availability dot is a
- * team's alone — a business is buyer-side. The viewer's own card keeps W1's leading rule as well as
- * saying "You".
+ * One member at card density — the project roster's card (Decision #319): the shared `MemberCard`
+ * shell from `features/projects` (a banner seam in the card's accent, the large avatar centred on it,
+ * the name and `@handle`, then left-aligned facts and a foot), filled with this entity's facts. The
+ * headline is the role; the meta line their title and, for a viewer who reads payouts, a team
+ * member's stake, or a business member's envelope (BU7); the overrides line says how their effective
+ * permissions differ from the role. The foot states a team member's workload and when they joined.
+ *
+ * The owner wears the shell's authority crown, named for the kind. Whether somebody is free to take
+ * work is a seller's fact, so the availability dot — the shell's presence dot, in its three tones — is
+ * a team's alone; a business is buyer-side. A plain click opens the member drawer, a modified click
+ * their profile in a new tab (the shell's click matrix); the corner holds Message and the kebab, which
+ * a right-click on the card also opens (#222).
  */
 export function MemberCard(props: MemberCardProps): JSX.Element {
-	const { member, kind, roles, facets, menu, showStake, onOpen, referenceYear } = props;
-	const role = roleText(member, roles);
-	/** The role as ONE MetaLine item — its own middot would read as the line's separator. */
-	const roleMeta = roleMetaText(member, roles);
-	const cardRef = useRef<HTMLElement>(null);
-	const load = workloadText(member);
+	const { member, kind, roles, facets, menu, showStake, referenceYear } = props;
+	const actionsRef = useRef<HTMLSpanElement>(null);
+	const owner = member.rolePreset === "owner";
+	const team = kind === "team";
 
 	return (
-		<article
-			ref={cardRef}
-			class="wsp-mcard"
-			data-self={member.isSelf ? "true" : undefined}
-			aria-label={`${member.name}, ${role}`}
-		>
-			<div class="wsp-mcard__top">
-				{kind === "team"
-					? (
-						<Tooltip content={`${member.name} — ${availabilityPhrase(member.availability)}`}>
-							<span class="wsp-mcard__avatarwrap">
-								<PersonAvatar member={member} size="lg" />
-								<span
-									class="wsp-mcard__avail"
-									data-avail={member.availability}
-									aria-hidden="true"
-								/>
-							</span>
-						</Tooltip>
-					)
-					: (
-						<span class="wsp-mcard__avatarwrap">
-							<PersonAvatar member={member} size="lg" />
-						</span>
-					)}
-
-				<div class="wsp-mcard__ident">
-					<h3 class="wsp-mcard__name">
-						<a class="wsp-mcard__name-link" href={memberProfileHref(member.handle)}>
-							{member.name}
-						</a>
-					</h3>
-					<MetaLine size="xs" items={[`@${member.handle}`, member.isSelf && "You"]} />
-					<MetaLine size="xs" items={[roleMeta, member.title]} />
-				</div>
-
-				<div class="wsp-mcard__flags">
-					<Tooltip content={`Role and permissions for ${member.name}`}>
-						<Button
-							variant="text"
-							severity="secondary"
-							size="sm"
-							iconOnly
-							icon={<PermissionsIcon />}
-							aria-label={`Role and permissions for ${member.name}`}
-							onClick={onOpen}
+		<ProjectMemberCard
+			person={{ name: member.name, handle: member.handle, avatar: member.avatar || null }}
+			seed={member.id}
+			role={owner ? "owner" : undefined}
+			authorityLabel={owner ? `${kindCopy(kind).Noun} owner` : undefined}
+			viewer={member.isSelf}
+			presence={team ? AVAILABILITY_TONE[member.availability] : undefined}
+			presenceLabel={team ? capitalise(availabilityPhrase(member.availability)) : undefined}
+			actions={
+				<span class="wsp-mcard__actions" ref={actionsRef}>
+					{!member.isSelf && props.onMessage && (
+						<MessageButton
+							target={{ name: member.name, handle: member.handle, avatar: member.avatar || null }}
+							onMessage={() => props.onMessage?.()}
 						/>
-					</Tooltip>
-					<MemberActionsMenu member={member} menu={menu} surface={cardRef} />
-				</div>
-			</div>
-
-			{kind === "team" && (
-				<div class="wsp-mcard__load">
-					<ProgressBar
-						class="wsp-mcard__meter"
-						value={member.workload}
-						severity={member.workload >= 90 ? "warning" : "primary"}
-						aria-label={`Workload ${formatWi(member.wi)} of ${formatWi(member.wiCap)}`}
+					)}
+					<MemberActionsMenu
+						member={member}
+						menu={menu}
+						surface={() => actionsRef.current?.closest<HTMLElement>(".mem-card") ?? null}
 					/>
-					<MetaLine
-						as="span"
-						size="xs"
-						class="wsp-mcard__figure"
-						items={["Workload", { text: load, tabular: true }]}
-					/>
-				</div>
-			)}
-
-			<MetaLine
-				size="xs"
-				items={[
-					showStake && kind === "team" && {
-						text: `Stake ${stakePercent(member.shareBp)}${member.shareHeld ? " (held)" : ""}`,
-						tabular: true,
-					},
-					kind === "business" && props.envelope,
-					{ text: `Joined ${shortDate(member.joinedAt, referenceYear)}`, tabular: true },
-				]}
-			/>
-
-			<OverrideLine facets={facets} class="wsp-mcard__overrides" />
-		</article>
+				</span>
+			}
+			headline={roleText(member, roles)}
+			meta={[
+				member.title,
+				showStake && team
+					? `Stake ${stakePercent(member.shareBp)}${member.shareHeld ? " (held)" : ""}`
+					: null,
+				team ? null : entryText(props.envelope),
+			]}
+			pending={<OverrideLine facets={facets} />}
+			foot={[
+				team
+					? (
+						<span class="mem-stat" data-has={member.wi > 0 ? "true" : undefined} key="load">
+							Workload {workloadText(member)}
+						</span>
+					)
+					: null,
+				<span class="mem-stat" key="joined">
+					Joined {shortDate(member.joinedAt, referenceYear)}
+				</span>,
+			]}
+			onOpen={props.onOpen}
+		/>
 	);
+}
+
+function capitalise(text: string): string {
+	return text.charAt(0).toUpperCase() + text.slice(1);
 }
 // #endregion

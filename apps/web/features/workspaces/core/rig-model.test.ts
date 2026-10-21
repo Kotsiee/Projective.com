@@ -2,7 +2,6 @@ import { assert, assertEquals } from "@std/assert";
 import type { WorkspaceKind } from "@projective/types/workspace";
 import {
 	editorOpen,
-	inviteOpensInPlace,
 	POLICY_MODULES,
 	PROFILE_EDITOR_MODULE,
 	rigBandEmpty,
@@ -15,6 +14,7 @@ import {
 	rosterCreateNote,
 	type SaveState,
 	saveStatus,
+	screenHostsInvite,
 } from "./rig-model.ts";
 import { MEMBERS_CHART, MEMBERS_PEOPLE, MEMBERS_QUEUE } from "./sub-views.ts";
 
@@ -268,42 +268,35 @@ Deno.test("rig: the status line stays mounted for the whole life of a policy edi
 // #endregion
 
 // #region Utilities and links
-Deno.test("rig: Invite opens in place where the modal is mounted, links to Members elsewhere", () => {
+Deno.test("rig: Invite is an in-place button on every module — it never navigates (Decision #318)", () => {
 	for (const kind of ["team", "business"] as WorkspaceKind[]) {
-		for (const module of ["members", "invitations"]) {
+		for (const module of [...MODULES, null]) {
 			const invite = rigModel(inConsole({ kind, module })).actions.find((a) => a.key === "invite");
 			assert(invite?.control === "button" && invite.tier === 4, `${kind} ${module}`);
 		}
 	}
-	// A team's Projects mounts the modal (its allowance band invites a team short of members), so the
-	// rig's Invite there opens it too rather than leaving the page.
-	const projects = rigModel(inConsole({ module: "projects" })).actions.find((a) =>
-		a.key === "invite"
-	);
-	assert(projects?.control === "button" && projects.tier === 4);
-	const invite = rigModel(inConsole({ module: "payouts" })).actions.find((a) => a.key === "invite");
-	assert(invite?.control === "link");
-	assertEquals(invite.href, "/teams/north-loop/members?invite=1");
-	// A business's Projects hands off and mounts no modal.
-	const business = rigModel(inConsole({ kind: "business", handle: "acme", module: "projects" }))
-		.actions.find((a) => a.key === "invite");
-	assert(business?.control === "link");
-	assertEquals(business.href, "/businesses/acme/members?invite=1");
 	assert(!keys(inConsole({ canInvite: false })).includes("invite"));
 });
 
-Deno.test("rig: inviteOpensInPlace names exactly the screens that mount the invite modal", () => {
+Deno.test("rig: exactly one host mounts the invite modal on every module — the screen or the lane", () => {
 	for (const kind of ["team", "business"] as WorkspaceKind[]) {
 		for (const module of [...MODULES, null]) {
-			const expected = module === "members" || module === "invitations" ||
+			const expected = module === "overview" || module === "members" || module === "invitations" ||
 				(kind === "team" && module === "projects");
-			assertEquals(inviteOpensInPlace(kind, module), expected, `${kind} ${module}`);
+			assertEquals(screenHostsInvite(kind, module), expected, `${kind} ${module}`);
 		}
 	}
-	// The screens that answer `true` really mount it.
-	const projects = source("../islands/TeamProjectsScreen.island.tsx");
-	assert(/<InviteModal\b/.test(projects), "TeamProjectsScreen mounts no InviteModal");
+	// The screens that answer `true` really mount it, and the lane mounts it only where they do not.
+	assert(/<InviteModal\b/.test(source("../islands/TeamProjectsScreen.island.tsx")));
 	assert(/<InviteModal\b/.test(source("../islands/MembersScreen.island.tsx")));
+	assert(/<InviteModal\b/.test(source("../islands/WorkspaceOverview.island.tsx")));
+	const lane = source("../islands/WorkspaceLane.island.tsx");
+	assert(
+		/!screenHostsInvite\(props\.kind, props\.activeModule\)[\s\S]{0,40}<InviteModal\b/.test(lane),
+	);
+	// Nothing links to Members to open the modal any more.
+	assert(!/\?invite=1/.test(source("./rig-model.ts")));
+	assert(!/\?invite=1/.test(source("./lane-model.ts")));
 });
 
 Deno.test("rig: Settings is a link, never offered on Settings itself", () => {
@@ -434,17 +427,20 @@ Deno.test("rig: rigLayouts answers every layout on the roster, and the lane and 
 Deno.test("rig: the zoom and the Org chart toggle ride the Members people readings only", () => {
 	const people = rigModel(inConsole({ module: "members", view: MEMBERS_PEOPLE }));
 	assertEquals(people.zoom, { label: "People view zoom" });
+	assertEquals(people.chartZoom, null);
 	assertEquals(people.chart, { label: "Org chart", pressed: false, next: MEMBERS_CHART });
-	// The chart ignores the table⇄cards axis, so it carries no zoom — only the toggle back to People.
+	// The chart ignores the table⇄cards axis, so it carries its own viewport zoom in the zoom's place
+	// (Decision #319), beside the toggle back to People.
 	const chart = rigModel(inConsole({ module: "members", view: MEMBERS_CHART }));
 	assertEquals(chart.zoom, null);
+	assertEquals(chart.chartZoom, { label: "Org chart zoom" });
 	assertEquals(chart.chart, { label: "Org chart", pressed: true, next: MEMBERS_PEOPLE });
 	// The invitation queue has no density and no chart; nor does any other module.
 	const queue = rigModel(inConsole({ module: "members", view: MEMBERS_QUEUE }));
-	assertEquals([queue.zoom, queue.chart], [null, null]);
+	assertEquals([queue.zoom, queue.chartZoom, queue.chart], [null, null, null]);
 	for (const module of ["overview", "payouts", "invitations"]) {
 		const model = rigModel(inConsole({ module }));
-		assertEquals([model.zoom, model.chart], [null, null], module);
+		assertEquals([model.zoom, model.chartZoom, model.chart], [null, null, null], module);
 	}
 });
 // #endregion
@@ -513,18 +509,28 @@ Deno.test("footer rig: the filled Buttons are Save and the roster's promoted New
 	assert(buttons.some((b) => /variant="text"[\s\S]*onClick=\{props\.onDiscard\}/.test(b)));
 	assert(/onDiscard=\{\(event\) => pressPending\(event, requestDiscard\)\}/.test(RIG));
 	assert(buttons.some((b) => /severity="neutral"\s+variant="outlined"/.test(b)));
+	// The Org chart toggle is ONE icon-only ghost Button (Decision #319), named by its label.
 	const toggles = buttons.filter((b) => /aria-pressed=\{chart\.pressed\}/.test(b));
-	assertEquals(toggles.length, 2, "the toggle's two presentations");
-	assert(toggles.every((b) => /variant="text"/.test(b)));
+	assertEquals(toggles.length, 1, "the toggle is one icon-only Button");
+	assert(toggles.every((b) => /variant="text"/.test(b) && /\biconOnly\b/.test(b)));
+	assert(toggles.every((b) => /aria-label=\{chart\.label\}/.test(b)));
+});
+
+Deno.test("footer rig (#319): the chart's zoom is the shared ZoomSlider, asking the canvas", () => {
+	assert(/<ZoomSlider\b/.test(RIG), "the chart zoom is not the ui ZoomSlider");
+	assert(/requestChartZoom\(/.test(RIG), "the slider writes the canvas instead of asking it");
+	assert(/requestChartFit\(\)/.test(RIG), "no Fit");
+	assert(/rig\.chartZoom\s*\?/.test(RIG), "the chart zoom is drawn off the model");
 });
 
 Deno.test("footer rig: below --bp-md a control swaps to its icon-only Button, never a restyled one", () => {
-	// Two presentations per utility and per toggle; the stylesheet picks one by viewport and never
-	// reaches inside the shared Button (no `.ui-button__label`, no `--btn-*` override).
+	// Two presentations per utility; the stylesheet picks one by viewport and never reaches inside the
+	// shared Button (no `.ui-button__label`, no `--btn-*` override). The Org chart toggle is icon-only
+	// in every layout (Decision #319), so it has one.
 	const buttons = buttonElements(RIG);
 	const narrow = buttons.filter((b) => /class="wsp-footerrig__narrow"/.test(b));
 	const wide = buttons.filter((b) => /class="wsp-footerrig__wide"/.test(b));
-	assertEquals([narrow.length, wide.length], [2, 2]);
+	assertEquals([narrow.length, wide.length], [1, 1]);
 	assert(narrow.every((b) => /\biconOnly\b/.test(b) && /aria-label=/.test(b)));
 	assert(!/wsp-footerrig__(fold|toggle)\b/.test(RIG), "the folded-label hack is back");
 });
@@ -660,7 +666,6 @@ Deno.test("policy editors answer Save and Discard through usePolicyBridge, never
 			"../islands/SpendPolicyScreen.island.tsx",
 			"../islands/BillingScreen.island.tsx",
 			"../islands/TeamSettingsScreen.island.tsx",
-			"../islands/RolesMatrix.island.tsx",
 		]
 	) {
 		const text = source(file);

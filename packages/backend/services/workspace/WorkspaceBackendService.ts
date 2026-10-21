@@ -7,8 +7,16 @@ import type {
 	HandleCheck,
 	InviteActionInput,
 	InviteMemberInput,
+	InviteMembersInput,
+	InviteMembersResult,
+	OrgInviteLinkActionInput,
+	OrgInviteLinkRedeemed,
+	OrgInviteLinkResult,
+	OrgInviteLinkView,
 	PayoutPreviewQuery,
+	RedeemOrgInviteLink,
 	RespondInviteInput,
+	RespondJoinRequestInput,
 	SpendEnvelopePreview,
 	TeamSplitPreview,
 	TransferOwnershipInput,
@@ -32,6 +40,7 @@ import { readBench } from "./live-bench.ts";
 import { previewSpendEnvelope, previewTeamSplit } from "./live-money.ts";
 import * as writes from "./live-writes.ts";
 import * as channels from "./live-channels.ts";
+import * as links from "./live-invite-links.ts";
 import type { ChannelThread } from "./live-channels.ts";
 import { reembedInBackground } from "../search/embedding-sync.ts";
 
@@ -136,6 +145,69 @@ export class WorkspaceBackendService {
 		actor: ReadActor,
 	): Promise<ServiceResult<WorkspaceDetail>> {
 		return guarded("invite", actor, (live) => writes.inviteMember(input, live));
+	}
+
+	/**
+	 * Invite up to ten people in one send, each at their own role (Decision #318): one
+	 * `invite_workspace_member` per recipient, in order, so a refusal never unsends the others. Answers
+	 * the re-read detail with what was sent and what was refused; `201`, or the first refusal's status
+	 * when nothing was sent.
+	 */
+	static inviteMany(
+		input: InviteMembersInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<InviteMembersResult>> {
+		return guarded("invite-many", actor, (live) => links.inviteMany(input, live));
+	}
+
+	/**
+	 * Read-or-mint, reset, re-point or turn off the entity's ask-to-join link (Decision #318).
+	 * `invite_members` only; the role it offers must be one the caller may grant.
+	 */
+	static inviteLinkAction(
+		input: OrgInviteLinkActionInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<OrgInviteLinkResult>> {
+		return guarded("invite-link", actor, (live) => links.actOnInviteLink(input, live));
+	}
+
+	/** What a workspace invite link means to the signed-in person holding it (the landing page). */
+	static resolveInviteLink(
+		token: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<OrgInviteLinkView>> {
+		return guarded("invite-link-resolve", actor, (live) => links.resolveInviteLink(token, live));
+	}
+
+	/**
+	 * The holder asks to join through the link: a pending join request, `201`. Refused states keep
+	 * their status — `409` already a member / invited / asking, `422` turned off / archived / persona.
+	 */
+	static redeemInviteLink(
+		input: RedeemOrgInviteLink,
+		actor: ReadActor,
+	): Promise<ServiceResult<OrgInviteLinkRedeemed>> {
+		return guarded("invite-link-redeem", actor, (live) => links.redeemInviteLink(input, live));
+	}
+
+	/** Approve (seating them, one seat added) or decline a pending join request; the re-read detail. */
+	static respondJoinRequest(
+		input: RespondJoinRequestInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<WorkspaceDetail>> {
+		return guarded("join-request", actor, (live) => links.respondToJoinRequest(input, live));
+	}
+
+	/** The requester withdraws their own pending join request. */
+	static withdrawJoinRequest(
+		requestId: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ id: string; status: "withdrawn" }>> {
+		return guarded(
+			"join-request-withdraw",
+			actor,
+			(live) => links.withdrawJoinRequest(requestId, live),
+		);
 	}
 
 	/** Revoke or resend a pending invitation (the inviting side's two queue actions). */

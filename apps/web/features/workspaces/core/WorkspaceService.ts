@@ -11,7 +11,14 @@ import type {
 	HandleCheck,
 	InviteActionInput,
 	InviteMemberInput,
+	InviteMembersInput,
+	InviteMembersResult,
+	OrgInviteLinkActionInput,
+	OrgInviteLinkResult,
 	PayoutPreviewQuery,
+	RedeemOrgInviteLink,
+	OrgInviteLinkRedeemed,
+	RespondJoinRequestInput,
 	RespondInviteInput,
 	SpendEnvelopePreview,
 	SwitchContextInput,
@@ -64,6 +71,9 @@ export const WORKSPACE_ENDPOINTS = {
 	invite: "/api/workspace/invite",
 	inviteAction: "/api/workspace/invite-action",
 	inviteRespond: "/api/workspace/invite-respond",
+	inviteLink: "/api/workspace/invite-link",
+	inviteLinkRedeem: "/api/workspace/invite-links/redeem",
+	joinRequest: "/api/workspace/join-request",
 	member: "/api/workspace/member",
 	transferOwnership: "/api/workspace/transfer-ownership",
 	role: "/api/workspace/role",
@@ -132,6 +142,29 @@ export const WorkspaceService = {
 	/** Invite somebody by handle or email, to one of the entity's roles. */
 	invite(input: InviteMemberInput): Promise<WorkspaceResult<WorkspaceDetail>> {
 		return postWorkspace<WorkspaceDetail>(WORKSPACE_ENDPOINTS.invite, input);
+	},
+
+	/**
+	 * Invite up to ten people in one send, each at their own role (Decision #318). The answer is the
+	 * re-read detail plus which addresses went out and which were refused, with the server's sentence.
+	 */
+	inviteMany(input: InviteMembersInput): Promise<WorkspaceResult<InviteMembersResult>> {
+		return postWorkspace<InviteMembersResult>(WORKSPACE_ENDPOINTS.invite, input);
+	},
+
+	/** Mint-or-read, reset, turn off, or re-role the entity's ask-to-join link (Decision #318). */
+	inviteLink(input: OrgInviteLinkActionInput): Promise<WorkspaceResult<OrgInviteLinkResult>> {
+		return postWorkspace<OrgInviteLinkResult>(WORKSPACE_ENDPOINTS.inviteLink, input);
+	},
+
+	/** The holder of an entity's invite link asks to join it. */
+	redeemInviteLink(input: RedeemOrgInviteLink): Promise<WorkspaceResult<OrgInviteLinkRedeemed>> {
+		return postWorkspace<OrgInviteLinkRedeemed>(WORKSPACE_ENDPOINTS.inviteLinkRedeem, input);
+	},
+
+	/** Approve or decline a pending join request (the inviting side). */
+	respondJoinRequest(input: RespondJoinRequestInput): Promise<WorkspaceResult<WorkspaceDetail>> {
+		return postWorkspace<WorkspaceDetail>(WORKSPACE_ENDPOINTS.joinRequest, input);
 	},
 
 	/** Revoke or resend a pending invitation the entity sent. */

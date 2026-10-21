@@ -3,7 +3,8 @@ import { useRef } from "preact/hooks";
 import { useSignalEffect } from "@preact/signals";
 import "../styles/workspace.css";
 import { Tooltip } from "@projective/ui/feedback";
-import { Button } from "@projective/ui/fields";
+import { Button, ZoomSlider } from "@projective/ui/fields";
+import { Icon } from "@projective/ui/icons";
 import { Link } from "@projective/ui/navigation";
 import { BodyPortal } from "@projective/ui/overlay";
 import type { WorkspaceCapability, WorkspaceKind } from "@projective/types/workspace";
@@ -20,7 +21,15 @@ import {
 	selectModuleView,
 	viewOr,
 } from "../core/workspace-state.ts";
-import { zoomStoreFor } from "../core/view-state.ts";
+import {
+	CHART_ZOOM_MAX,
+	CHART_ZOOM_MIN,
+	CHART_ZOOM_STEP,
+	chartZoom,
+	requestChartFit,
+	requestChartZoom,
+	zoomStoreFor,
+} from "../core/view-state.ts";
 import { type RigAction, rigBandEmpty, rigLayouts, type RigModel } from "../core/rig-model.ts";
 import { subViewsFor } from "../core/sub-views.ts";
 import { CardsViewIcon, ChartViewIcon, TableViewIcon } from "../components/MemberCard.tsx";
@@ -37,9 +46,11 @@ import { cloneGlyph, InviteGlyph, PlusGlyph, SettingsGlyph } from "../core/works
  * `rig-model.ts`, which decides what the rig holds and is pinned by its unit test:
  *
  *   - Leading — the shared zoom (`ViewZoomRig`) on the roster and the Members People reading, and the
- *     Org chart toggle (tier 5, `aria-pressed`) beside it, which selects the `chart` sub-view — the
- *     same state the header band's tabs and the lane's context control write. On the chart the toggle
- *     stands alone: the chart has no density, so a zoom there would do nothing.
+ *     Org chart toggle (tier 5, an icon-only ghost `Button` with `aria-pressed`) beside it, which
+ *     selects the `chart` sub-view — the same state the Members body's section tabs write. On the
+ *     chart, which has no density, the density zoom gives way to the chart's own viewport zoom: the
+ *     shared `ZoomSlider` and a Fit button, which ASK the canvas (`requestChartZoom` ·
+ *     `requestChartFit`) and read back the zoom it settled on (`chartZoom`), Decision #319.
  *   - Trailing — tier-4 utilities (New — not in the roster's first run, whose empty state carries the
  *     one create — and Invite), Settings as a ui `Link` (a navigation is a link,
  *     never a button-styled anchor), then the policy editor's Discard (tier 5) and Save (tier 3, the
@@ -207,19 +218,24 @@ export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.
 					 * The persistent zoom rig, the same control the File Explorer, Submissions, Catalogue and
 					 * Wallet carry: crossing its centre marker IS the table⇄cards switch. The org chart sits
 					 * BESIDE it rather than on it, because a chart is a different reading of the people, not
-					 * a different density — and it keeps its place whether the zoom is drawn or not, so a
-					 * press that hides the zoom never drops the toggle from under the reader's focus.
+					 * a different density. On the chart the chart's own zoom takes the same slot, so the
+					 * toggle keeps its place and a press never moves it from under the reader's pointer or
+					 * focus.
 					 */
 				}
-				{rig.zoom && (
-					<ViewZoomRig
-						store={zoomStoreFor(module)}
-						label={rig.zoom.label}
-						class="wsp-footerrig__density"
-						listIcon={<TableViewIcon />}
-						gridIcon={<CardsViewIcon />}
-					/>
-				)}
+				{rig.zoom
+					? (
+						<ViewZoomRig
+							store={zoomStoreFor(module)}
+							label={rig.zoom.label}
+							class="wsp-footerrig__density"
+							listIcon={<TableViewIcon />}
+							gridIcon={<CardsViewIcon />}
+						/>
+					)
+					: rig.chartZoom
+					? <ChartZoom label={rig.chartZoom.label} />
+					: null}
 				{chart && (
 					<ChartToggle
 						chart={chart}
@@ -329,9 +345,7 @@ function RigControl(
 				)
 				: <Utility label={action.label} glyph={PlusGlyph} onClick={props.onCreate} />;
 		case "invite":
-			return action.control === "button"
-				? <Utility label={action.label} glyph={InviteGlyph} onClick={() => openInvite()} />
-				: <RigLink label={action.label} href={action.href} glyph={cloneGlyph(InviteGlyph)} />;
+			return <Utility label={action.label} glyph={InviteGlyph} onClick={() => openInvite()} />;
 		case "settings":
 			return <RigLink label={action.label} href={action.href} glyph={cloneGlyph(SettingsGlyph)} />;
 		case "discard":
@@ -394,36 +408,64 @@ function Utility(
 }
 
 /**
- * The Org chart toggle — a tier-5 text Button whose engaged state is the Button's own
- * (`aria-pressed`), in the same two presentations as a utility.
+ * The Org chart toggle — a tier-5 icon-only ghost Button (Decision #319), drawn as the zoom rig's own
+ * mode glyph is, whose engaged state is the Button's own (`aria-pressed`). Its name stays "Org chart"
+ * either way; the pressed state says whether the chart is showing, and the Tooltip says what a press
+ * does.
  */
 function ChartToggle(
 	props: { chart: NonNullable<RigModel["chart"]>; onToggle: () => void },
 ): JSX.Element {
 	const { chart } = props;
 	return (
-		<span class="wsp-footerrig__utility">
+		<Tooltip content={chart.pressed ? "Back to the list" : "Show the org chart"} placement="top">
 			<Button
-				class="wsp-footerrig__wide"
+				class="ui-hit"
 				variant="text"
 				severity="secondary"
 				size="sm"
+				rounded
+				iconOnly
 				icon={<ChartViewIcon />}
-				label={chart.label}
+				aria-label={chart.label}
 				aria-pressed={chart.pressed}
 				onClick={props.onToggle}
 			/>
-			<Tooltip content={chart.label} placement="top">
+		</Tooltip>
+	);
+}
+
+/**
+ * The org chart's viewport zoom: the shared `ZoomSlider` (lens ± · muted track · 100% marker) over the
+ * zoom the canvas settled on, and Fit. Neither writes the view — each asks the canvas, the one
+ * authority on its transform, so a wheel on the canvas and a press here can never disagree.
+ */
+function ChartZoom(props: { label: string }): JSX.Element {
+	return (
+		<span class="wsp-footerrig__chartzoom">
+			<ZoomSlider
+				value={chartZoom}
+				onValueChange={(value, source) => requestChartZoom(value, source !== "drag")}
+				min={CHART_ZOOM_MIN}
+				max={CHART_ZOOM_MAX}
+				step={CHART_ZOOM_STEP}
+				segments={7}
+				center={1}
+				size="sm"
+				formatValue={(value) => `${Math.round(value * 100)}%`}
+				aria-label={props.label}
+			/>
+			<Tooltip content="Fit to screen" placement="top">
 				<Button
-					class="wsp-footerrig__narrow"
+					class="ui-hit"
 					variant="text"
 					severity="secondary"
 					size="sm"
+					rounded
 					iconOnly
-					icon={<ChartViewIcon />}
-					aria-label={chart.label}
-					aria-pressed={chart.pressed}
-					onClick={props.onToggle}
+					icon={<Icon name="zoom-fit" />}
+					aria-label="Fit the whole chart on screen"
+					onClick={() => requestChartFit()}
 				/>
 			</Tooltip>
 		</span>

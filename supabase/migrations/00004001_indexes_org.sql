@@ -68,6 +68,19 @@ CREATE INDEX idx_org_invitations_target_user ON org.org_invitations (target_user
 CREATE INDEX idx_org_invitations_team ON org.org_invitations (team_id) WHERE team_id IS NOT NULL;
 CREATE INDEX idx_org_invitations_business ON org.org_invitations (business_id) WHERE business_id IS NOT NULL;
 
+-- Invite links & join requests (Decision #318). ONE active link per entity: a concurrent first mint
+-- that loses this re-reads the winner. ONE pending request per person per entity, so a double-press of
+-- Ask to join cannot stack requests.
+CREATE UNIQUE INDEX uq_org_invite_links_active ON org.org_invite_links (COALESCE(team_id, business_id))
+    WHERE status = 'active';
+CREATE UNIQUE INDEX uq_org_join_requests_pending ON org.org_join_requests (COALESCE(team_id, business_id), requester_user_id)
+    WHERE status = 'pending';
+-- The entity's queue (oldest first) and the requester's own pending asks.
+CREATE INDEX idx_org_join_requests_entity ON org.org_join_requests (COALESCE(team_id, business_id), created_at)
+    WHERE status = 'pending';
+CREATE INDEX idx_org_join_requests_requester ON org.org_join_requests (requester_user_id) WHERE status = 'pending';
+CREATE INDEX idx_org_join_requests_link ON org.org_join_requests (invite_link_id) WHERE invite_link_id IS NOT NULL;
+
 -- Foreign keys a role archive or a manager removal has to scan.
 CREATE INDEX idx_team_members_role ON org.team_members (role_id);
 CREATE INDEX idx_business_members_role ON org.business_members (role_id);

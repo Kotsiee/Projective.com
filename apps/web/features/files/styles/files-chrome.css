@@ -634,6 +634,32 @@
 	gap: var(--space-2);
 }
 
+/*
+ * With the allowance ring the rig becomes three tracks: the ring is TRULY centred only between two
+ * equal side tracks (`minmax(0, 1fr)` — the three-region header rule), and the actions' floor is
+ * their own width, so a narrow band moves the ring a little before it ever clips Upload.
+ */
+.fh-rig[data-centred="true"] {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
+}
+
+.fh-rig[data-centred="true"] > .fh-rig__status {
+	grid-area: 1 / 1;
+}
+
+.fh-rig[data-centred="true"] > .fh-rig__actions {
+	grid-area: 1 / 3;
+	justify-self: end;
+}
+
+.fh-rig__centre {
+	grid-area: 1 / 2;
+	display: inline-flex;
+	justify-content: center;
+	min-inline-size: 0;
+}
+
 /* The Tooltip anchor is an inline span; in the flex row it must carry the button's box, not wrap it. */
 .fh-rig .ui-tooltip__anchor {
 	display: inline-flex;
@@ -773,6 +799,11 @@
 /* #region Footer rig — tiers */
 @container fhrig (max-width: 36rem) {
 	.fh-rig__note {
+		display: none;
+	}
+
+	/* The ring alone still says how full the library is; its figure moves into the tooltip. */
+	.fh-rig__centre .fh-qring__figure {
 		display: none;
 	}
 }
