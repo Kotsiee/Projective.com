@@ -43,6 +43,7 @@ import {
 	ComposerLeadingAction,
 	ComposerTrailingAction,
 } from "../components/composer/ComposerActions.tsx";
+import { ComposerEmojiAction } from "../components/composer/ComposerEmojiAction.tsx";
 import {
 	ComposerCaptureNotice,
 	ComposerSendNotice,
@@ -72,6 +73,8 @@ import {
  *   - type-anywhere: with the field unfocused, ordinary typing on the page focuses it and appends the
  *     characters at the end of the draft (never stealing a key from another field, a menu, a dialog,
  *     or the other chat surface — see `chat-keyboard.ts`);
+ *   - an emoji picker beside it ({@link ComposerEmojiAction}, also ⌘E / Ctrl+E) that inserts at the
+ *     caret saved when it opened, replacing a highlighted range, and stays open for several picks;
  *   - a dynamic right control — Mic when empty, Send once there's a draft, Pause + Stop while capturing;
  *   - a voice engine ({@link useAudioRecorder}) with click-to-toggle, hold-to-talk, and `Ctrl+Space`,
  *     a live scrolling waveform, a `mm:ss` clock, pause/resume, and static equal-width bars once
@@ -541,6 +544,10 @@ export default function ChatComposer(
 						</div>
 						{hasVoice && <ComposerAudioRecorder rec={rec} canvasRef={canvasRef} />}
 					</div>
+
+					{!hasVoice && (
+						<ComposerEmojiAction editor={editor} surface={surface} composerRef={rootRef} />
+					)}
 
 					<ComposerTrailingAction
 						rec={rec}
