@@ -199,6 +199,22 @@ export {
 	type TagComboState,
 	tagCount,
 } from "./core/tag-combobox.ts";
+export { EmojiPicker, type EmojiPickerProps } from "./islands/EmojiPicker.tsx";
+export {
+	buildEmojiDataset,
+	EMOJI_CATEGORIES,
+	type EmojiCategory,
+	type EmojiCategoryId,
+	type EmojiDataset,
+	type EmojiEntry,
+} from "./core/emoji-data.ts";
+export { normaliseEmojiQuery, searchEmoji } from "./core/emoji-search.ts";
+export {
+	EMOJIBASE_DATA_URL,
+	EMOJIBASE_SHORTCODES_URL,
+	EMOJIBASE_VENDOR,
+	EMOJIBASE_VERSION,
+} from "./core/emoji-vendor.ts";
 export {
 	type TreeNode,
 	TreeSelect,

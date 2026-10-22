@@ -73,6 +73,14 @@ export interface PopoverProps {
 	 * choice rather than on whichever item happens to be listed first.
 	 */
 	initialFocusRef?: RefObject<HTMLElement>;
+	/** Focus `initialFocusRef` itself even when it is not tabbable (a `tabindex="-1"` panel root). */
+	initialFocusSelf?: boolean;
+	/**
+	 * Return focus to the element focused before opening when the panel closes (default `true`).
+	 * `false` for a panel whose owner places focus itself — an emoji picker hands it back to the
+	 * message field at its caret, and an outside click leaves it where the click put it.
+	 */
+	restoreFocus?: boolean;
 	/** Fired whenever the open state changes. */
 	onOpenChange?: (open: boolean) => void;
 	/** Extra class(es) merged onto the panel. */
@@ -109,6 +117,8 @@ export function Popover(props: PopoverProps): JSX.Element {
 		dismissable = true,
 		closeOnEscape = true,
 		initialFocusRef,
+		initialFocusSelf = false,
+		restoreFocus = true,
 		onOpenChange,
 		class: className,
 		children,
@@ -145,6 +155,8 @@ export function Popover(props: PopoverProps): JSX.Element {
 		active: mounted,
 		containerRef: panelRef,
 		initialFocusRef,
+		initialFocusSelf,
+		restoreFocus,
 		inertBackground: false,
 	});
 	useDismiss({

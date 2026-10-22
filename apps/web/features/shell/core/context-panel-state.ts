@@ -20,6 +20,23 @@ export const contextPanelDocked = signal(true);
 /** The slide-over drawer is open (narrow viewports). */
 export const contextDrawerOpen = signal(false);
 
+/**
+ * How the docked panel decides it is open: `remembered` follows the viewer's Details toggle
+ * ({@link contextPanelDocked}); `selection` is an inspector over a list, open only while something is
+ * selected ({@link selectionPanelOpen}) and never written to the remembered choice.
+ */
+export type ContextPanelDock = "remembered" | "selection";
+
+/** The frame panel's dock mode and, for `selection`, whether the server rendered it open. */
+export interface ContextPanelDockOptions {
+	dock: ContextPanelDock;
+	/** The address names a selection, so the first byte paints the panel open. */
+	open?: boolean;
+}
+
+/** A `selection` panel stands docked — its owner opens it on a pick and closes it on a dismissal. */
+export const selectionPanelOpen = signal(false);
+
 /** Re-apply the viewer's remembered docked choice after hydration. */
 export function restoreContextPanel(): void {
 	const raw = readStored("local", LocalKeys.CONTEXT_PANEL_DOCKED);

@@ -6,7 +6,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import process from "node:process";
-import { VENDOR_TREES } from "./apps/web/features/inspector/core/vendor-paths.ts";
+import { VENDOR_TREES, type VendorTree } from "./apps/web/features/inspector/core/vendor-paths.ts";
+import { EMOJI_VENDOR_TREES } from "./packages/ui/fields/core/emoji-vendor.ts";
 
 // #region Helper Functions
 const ROOT = process.cwd();
@@ -497,7 +498,11 @@ const VENDOR_CONTENT_TYPES: Readonly<Record<string, string>> = {
 	".pfb": "application/x-font-type1",
 	".ttf": "font/ttf",
 	".icc": "application/octet-stream",
+	".json": "application/json; charset=utf-8",
 };
+
+/** Every vendored tree the app fetches at runtime: the inspector's engines and the emoji dataset. */
+const ALL_VENDOR_TREES: readonly VendorTree[] = [...VENDOR_TREES, ...EMOJI_VENDOR_TREES];
 
 /** One vendored file: where it is served, where it is read from, and as what. */
 interface VendorFile {
@@ -516,7 +521,8 @@ function errorText(error: unknown): string {
 }
 
 /**
- * Lists every file of every {@link VENDOR_TREES} entry from the repo's `node_modules`, plus the
+ * Lists every file of every {@link ALL_VENDOR_TREES} entry (or only its `include` list) from the
+ * repo's `node_modules`, plus the
  * reasons a tree could not be listed (package missing, installed version differs from the version
  * baked into its public path, directory missing or empty).
  */
@@ -524,7 +530,7 @@ function collectVendorFiles(): { files: VendorFile[]; problems: string[] } {
 	const files: VendorFile[] = [];
 	const problems: string[] = [];
 
-	for (const tree of VENDOR_TREES) {
+	for (const tree of ALL_VENDOR_TREES) {
 		const packageRoot = path.join(ROOT, "node_modules", tree.packageName);
 
 		let installed: string | undefined;
@@ -554,12 +560,25 @@ function collectVendorFiles(): { files: VendorFile[]; problems: string[] } {
 		}
 
 		let listed = 0;
-		for (const entry of walkSync(sourceDir, { includeDirs: false, followSymlinks: true })) {
-			const contentType = vendorContentType(entry.name);
-			if (contentType === null) continue;
-			const relative = path.relative(sourceDir, entry.path).split(path.sep).join("/");
-			files.push({ publicPath: tree.publicPath + relative, filePath: entry.path, contentType });
-			listed++;
+		if (tree.include) {
+			for (const relative of tree.include) {
+				const filePath = path.join(sourceDir, ...relative.split("/"));
+				const contentType = vendorContentType(path.basename(relative));
+				if (contentType === null || !fs.existsSync(filePath)) {
+					problems.push(`${tree.packageName}/${tree.source}/${relative} is missing or unservable.`);
+					continue;
+				}
+				files.push({ publicPath: tree.publicPath + relative, filePath, contentType });
+				listed++;
+			}
+		} else {
+			for (const entry of walkSync(sourceDir, { includeDirs: false, followSymlinks: true })) {
+				const contentType = vendorContentType(entry.name);
+				if (contentType === null) continue;
+				const relative = path.relative(sourceDir, entry.path).split(path.sep).join("/");
+				files.push({ publicPath: tree.publicPath + relative, filePath: entry.path, contentType });
+				listed++;
+			}
 		}
 		if (listed === 0) problems.push(`${tree.packageName}/${tree.source} has no servable files.`);
 	}
@@ -570,7 +589,8 @@ function collectVendorFiles(): { files: VendorFile[]; problems: string[] } {
 /**
  * Publishes the file inspector's engine assets — pdf.js `wasm/`, `cmaps/`, `standard_fonts/` and
  * `iccs/`, three's Draco (`draco/gltf`) and Basis decoders — at the fixed, versioned public paths
- * in `apps/web/features/inspector/core/vendor-paths.ts`, without committing ~5 MB of vendor files.
+ * in `apps/web/features/inspector/core/vendor-paths.ts`, and the emoji picker's `emojibase-data`
+ * JSON (`packages/ui/fields/core/emoji-vendor.ts`), without committing ~5 MB of vendor files.
  *
  * These are runtime fetches by URL (pdf.js resolves `${cMapUrl}${name}.bcmap`, DRACOLoader
  * `${decoderPath}draco_decoder.wasm`), not imports, so no module graph ever reaches them and Vite

@@ -1,7 +1,7 @@
 import type { MetaLineEntry } from "@ui/display/core/meta-line.tsx";
 import type { MenuItem } from "@ui/types/mod.ts";
 import { composeMenu, linkActionItems } from "@ui/navigation/core/link-actions.ts";
-import type { ButtonSemanticTone } from "@ui/fields/types/button.ts";
+import type { ButtonNeutralTone, ButtonSemanticTone } from "@ui/fields/types/button.ts";
 import { readPayoutGateDetails, readPlanGateDetails } from "@projective/types/finance";
 import {
 	type BusinessManagers,
@@ -33,7 +33,7 @@ import {
 	type WorkspaceSeats,
 } from "@projective/types/workspace";
 import { HANDLE_CHECK_FAILED, type HandleCheckState } from "./handle-check.ts";
-import { capabilityGroupsFor } from "./capabilities.ts";
+import { type CapabilityDomain, capabilityGroupsFor } from "./capabilities.ts";
 import { BUSINESS_REFUSAL_COPY, PLANS_UNAVAILABLE } from "./refusal-copy.ts";
 import { envelopeLine, envelopeSummary, type MetaFact, spendLimitHref } from "./spend-model.ts";
 
@@ -57,8 +57,11 @@ import { envelopeLine, envelopeSummary, type MetaFact, spendLimitHref } from "./
  */
 
 // #region Buttons
-/** A button's place on the Interaction Matrix (§B.8.1): tier 3 commit · tier 5 escape · a text link. */
-export type MembersTier = 3 | 5 | "link";
+/**
+ * A button's place on the Interaction Matrix (§B.8.1): tier 3 commit · tier 4 utility · tier 5
+ * escape · a text link.
+ */
+export type MembersTier = 3 | 4 | 5 | "link";
 
 /** One button a Members surface renders. */
 export interface MembersAction {
@@ -73,8 +76,12 @@ export interface MembersAction {
 }
 
 /** The Button props a tier draws with — every Members button takes its tone from here. */
-export function membersTierProps(tier: MembersTier, danger = false): ButtonSemanticTone {
+export function membersTierProps(
+	tier: MembersTier,
+	danger = false,
+): ButtonSemanticTone | ButtonNeutralTone {
 	if (tier === 3) return danger ? { variant: "filled", severity: "danger" } : { variant: "filled" };
+	if (tier === 4) return { variant: "outlined", severity: "neutral" };
 	if (tier === 5) return danger ? { variant: "text", severity: "danger" } : { variant: "text" };
 	return { variant: "link" };
 }
@@ -1046,8 +1053,10 @@ export function drawerFooter(input: {
 	dirty: boolean;
 	saving: boolean;
 	blocked?: boolean;
+	/** The escape's word — "Close" on a drawer, "Cancel" on the inspector's edit form. */
+	closeLabel?: string;
 }): MembersAction[] {
-	const close: MembersAction = { key: "close", label: "Close", tier: 5 };
+	const close: MembersAction = { key: "close", label: input.closeLabel ?? "Close", tier: 5 };
 	if (!input.editable) return [close];
 	return [close, {
 		key: "save",
@@ -1096,6 +1105,110 @@ export function drawerTerminal(
 		};
 	}
 	return null;
+}
+// #endregion
+
+// #region Member dossier (Decision #322)
+/** One capability the dossier lists as held. */
+export interface DossierGrant {
+	capability: WorkspaceCapability;
+	label: string;
+	/** Held through an override on this person rather than through their role. */
+	granted: boolean;
+	/** What holding it lets them do, when that is severe — said inline beside it, or `null`. */
+	warning: string | null;
+}
+
+/** One capability domain of the dossier: what the member holds in it, and what was taken away. */
+export interface DossierDomain {
+	key: CapabilityDomain;
+	title: string;
+	grants: DossierGrant[];
+	/** The labels their role grants that were revoked from this person. */
+	revoked: string[];
+}
+
+/**
+ * The dossier's capability domains (People & access · Projects · Vault · Workspace), each listing
+ * only what the member effectively holds — the readable counterpart of the edit form's switches.
+ */
+export function dossierDomains(
+	facets: readonly PermissionFacet[],
+	kind: WorkspaceKind,
+): DossierDomain[] {
+	const byCap = new Map(facets.map((f) => [f.capability, f]));
+	return capabilityGroupsFor(kind).map((group) => {
+		const held = group.capabilities.map((cap) => byCap.get(cap)).filter((f) => f !== undefined);
+		return {
+			key: group.key,
+			title: group.title,
+			grants: held.filter((f) => f.effective).map((f) => ({
+				capability: f.capability,
+				label: CAPABILITY_LABEL[f.capability],
+				granted: f.override === "grant",
+				warning: CONSEQUENTIAL.includes(f.capability)
+					? sensitiveWarning(f.capability, kind)
+					: null,
+			})),
+			revoked: held.filter((f) => f.override === "revoke").map((f) =>
+				CAPABILITY_LABEL[f.capability]
+			),
+		};
+	});
+}
+
+/** One figure of a meta line, set in tabular numerals. */
+export interface MemberFigure {
+	text: string;
+	tabular: true;
+}
+
+/** The dossier head's figures: when they joined, a team member's workload, and the stake when seen. */
+export function dossierFacts(
+	member: Pick<WorkspaceMember, "wi" | "wiCap" | "shareBp">,
+	kind: WorkspaceKind,
+	showStake: boolean,
+	joined: string,
+): MemberFigure[] {
+	const out: MemberFigure[] = [];
+	if (joined !== "") out.push({ text: `Joined ${joined}`, tabular: true });
+	if (kind === "team") out.push({ text: `Workload ${workloadText(member)}`, tabular: true });
+	if (showStake) out.push({ text: `Stake ${stakePercent(member.shareBp)}`, tabular: true });
+	return out;
+}
+
+/**
+ * The org chart node's foot: a team member's workload and, for a viewer who sees stakes, their stake;
+ * where neither applies (a business), when they joined — so the row is never empty.
+ */
+export function orgNodeMetrics(
+	member: Pick<WorkspaceMember, "wi" | "wiCap" | "shareBp">,
+	kind: WorkspaceKind,
+	showStake: boolean,
+	joined: string,
+): MemberFigure[] {
+	const figures = dossierFacts(member, kind, showStake, "");
+	return figures.length > 0 ? figures : dossierFacts(member, kind, false, joined);
+}
+
+/** Who a member reports to and who reports to them, among the active members. */
+export interface ReportingLine {
+	manager: WorkspaceMember | null;
+	reports: WorkspaceMember[];
+}
+
+/** The member's reporting line — a manager who left reads as nobody; reports read by name. */
+export function reportingLine(
+	members: readonly WorkspaceMember[],
+	member: Pick<WorkspaceMember, "id" | "reportsTo">,
+): ReportingLine {
+	const active = members.filter((m) => m.state === "active" && m.id !== member.id);
+	return {
+		manager: active.find((m) => m.id === member.reportsTo) ?? null,
+		reports: active
+			.filter((m) => m.reportsTo === member.id)
+			.sort((a, b) => a.name.localeCompare(b.name)),
+	};
 }
 // #endregion
 

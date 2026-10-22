@@ -20,9 +20,9 @@ import type { WorkspaceMember } from "@projective/types/workspace";
  */
 
 // #region Geometry constants
-/** A card's size at zoom 1 — wide enough for a long name beside a 2.5rem avatar. */
-export const NODE_W = 240;
-export const NODE_H = 72;
+/** A card's size at zoom 1 — the `OrgChartNode`'s three rows: avatar and role, name and handle, figures. */
+export const NODE_W = 220;
+export const NODE_H = 136;
 /** The room between two sibling subtrees. */
 export const GAP_X = 24;
 /** The room between a manager's card and their reports' — the connector's run. */

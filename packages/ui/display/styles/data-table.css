@@ -421,6 +421,10 @@
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
+.ui-dt__th:where(:hover) .ui-dt__resize::after {
+	background: var(--hairline-strong-color);
+}
+
 .ui-dt__resize:hover::after,
 .ui-dt__resize:focus-visible::after {
 	background: var(--primary);

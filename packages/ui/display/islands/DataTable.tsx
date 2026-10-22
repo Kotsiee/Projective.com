@@ -23,7 +23,6 @@ import type {
 import { loadState, saveState } from "../core/collection.ts";
 import {
 	alignOf,
-	clampWidth,
 	defaultWidthOf,
 	gridTemplate,
 	isHideable,
@@ -431,23 +430,29 @@ export function DataTable<T>(props: DataTableProps<T>): JSX.Element {
 		filterCtl.set(next);
 	};
 
+	const resizeContext = () => ({
+		columns: visible,
+		slack: (headRef.current?.clientWidth ?? width.value) - minWidth,
+	});
+
 	const onResize = (columnId: string, w: number, commit: boolean) => {
 		const column = columns.find((c) => c.id === columnId);
 		if (!column) return;
+		const next = resizeColumn(layout, column, w, resizeContext());
 		if (commit) {
-			setLayout(resizeColumn(layout, column, w));
+			setLayout(next);
 			return;
 		}
-		const preview = { ...layout.widths, [columnId]: clampWidth(column, w) };
 		const root = rootRef.current;
-		root?.style.setProperty("--dt-cols", gridTemplate(visible, preview, tracks));
-		root?.style.setProperty("--dt-min-w", `${minContentWidth(visible, preview, reserved)}px`);
+		root?.style.setProperty("--dt-cols", gridTemplate(visible, next.widths, tracks));
+		root?.style.setProperty("--dt-min-w", `${minContentWidth(visible, next.widths, reserved)}px`);
 	};
 
 	const onAutoFit = (columnId: string) => {
 		const column = columns.find((c) => c.id === columnId);
 		if (column && rootRef.current) {
-			setLayout(resizeColumn(layout, column, naturalWidth(rootRef.current, columnId)));
+			const natural = naturalWidth(rootRef.current, columnId);
+			setLayout(resizeColumn(layout, column, natural, resizeContext()));
 		}
 	};
 

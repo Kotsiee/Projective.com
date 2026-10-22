@@ -42,7 +42,10 @@ const read = (rel: string) => Deno.readTextFileSync(new URL(rel, FEATURE));
 const FILES: Record<string, string> = Object.fromEntries(
 	[
 		"islands/MembersScreen.island.tsx",
-		"islands/MemberDrawer.island.tsx",
+		"islands/MemberInspector.island.tsx",
+		"components/MemberEditForm.tsx",
+		"components/MemberDetailPanel.tsx",
+		"components/OrgChartNode.tsx",
 		"islands/InviteModal.island.tsx",
 		"components/MemberCard.tsx",
 		"components/MemberTable.tsx",
@@ -89,17 +92,19 @@ Deno.test("members: facts are MetaLines — no capability or override chips, no 
 Deno.test("members: every field of the drawer and the dialogs is a FormControl", () => {
 	const count = (rel: string) => (FILES[rel].match(/<FormControl\b/g) ?? []).length;
 	// The fourth is BU7's typed CONFIRM for an owner-reserved grant (Decision #238 (b), #249 (k)).
-	assertEquals(count("islands/MemberDrawer.island.tsx"), 4, "role, title, reports to, confirm");
+	assertEquals(count("components/MemberEditForm.tsx"), 4, "role, title, reports to, confirm");
 	assertEquals(count("components/OwnershipTransfer.tsx"), 2, "successor, leave");
 	assert(FILES["components/OwnershipTransfer.tsx"].includes("<Checkbox"));
-	assert(FILES["islands/MemberDrawer.island.tsx"].includes("<ToggleSwitch"));
+	assert(FILES["components/MemberEditForm.tsx"].includes("<ToggleSwitch"));
 });
 
-Deno.test("members: the dialogs' and drawer's buttons take their tone from the tier model", () => {
+Deno.test("members: the dialogs' and inspector's buttons take their tone from the tier model", () => {
 	for (
 		const rel of [
 			"components/OwnershipTransfer.tsx",
-			"islands/MemberDrawer.island.tsx",
+			"islands/MemberInspector.island.tsx",
+			"components/MemberEditForm.tsx",
+			"components/MemberDetailPanel.tsx",
 		]
 	) {
 		const buttons = FILES[rel].split(/<Button\b/).slice(1).map((chunk) =>
@@ -111,6 +116,20 @@ Deno.test("members: the dialogs' and drawer's buttons take their tone from the t
 			assert(!/\b(variant|severity)=/.test(props), `${rel}: a tone beside the tier model:${props}`);
 		}
 	}
+});
+
+Deno.test("members: the inspector docks in the panel, its quick actions tier 4, nothing boxed (#322)", () => {
+	const dossier = FILES["components/MemberDetailPanel.tsx"];
+	assertEquals((dossier.match(/membersTierProps\(4\)/g) ?? []).length, 2, "Message, Edit member");
+	assert(!/<Card\b|ui-card|wsp-[a-z-]*(chip|pill|tag)\b/.test(dossier), "a box or pill in the panel");
+	const inspector = FILES["islands/MemberInspector.island.tsx"];
+	assert(inspector.includes("CONTEXT_PANEL_INFLOW_QUERY"), "docks from the shell's 1280px query");
+	assert(inspector.includes("<Drawer"), "a slide-over below it");
+	assert(inspector.includes('position="right"'));
+	const node = FILES["components/OrgChartNode.tsx"];
+	assert(node.includes("<foreignObject"), "the node's body is HTML over the SVG box");
+	assert(node.includes("size={36}"), "a 36px avatar");
+	assert(!FILES["islands/MembersScreen.island.tsx"].includes("MemberDrawer"), "the drawer is gone");
 });
 
 Deno.test("members: Invite is the Universal Invite modal — one field, no tabs, the model's roles (#318)", () => {
@@ -203,7 +222,7 @@ Deno.test("members: the availability dot is a team's alone — a business is buy
 });
 
 Deno.test("members: the drawer's Title example is the kind's, never a literal", () => {
-	const drawer = FILES["islands/MemberDrawer.island.tsx"];
+	const drawer = FILES["components/MemberEditForm.tsx"];
 	assert(drawer.includes("placeholder={TITLE_EXAMPLE[ws.kind]}"), "the Title example by kind");
 	assert(!/placeholder="[^"]*\blead\b/i.test(drawer), "a hard-coded lead placeholder");
 });

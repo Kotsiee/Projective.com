@@ -26,6 +26,11 @@ import {
 	draftRankOf,
 	drawerFooter,
 	drawerTerminal,
+	dossierDomains,
+	dossierFacts,
+	orgNodeMetrics,
+	reportingLine,
+	sensitiveWarning,
 	envelopeSection,
 	filledCount,
 	grantableRoles,
@@ -743,6 +748,68 @@ Deno.test("transfer: one filled control — the danger confirm — beside Cancel
 	assertEquals(membersTierProps(3, true), { variant: "filled", severity: "danger" });
 	assertEquals(membersTierProps(5), { variant: "text" });
 	assertEquals(membersTierProps("link"), { variant: "link" });
+	assertEquals(membersTierProps(4), { variant: "outlined", severity: "neutral" });
+});
+// #endregion
+
+// #region Member dossier (Decision #322)
+Deno.test("dossier: each domain lists only what the member holds, overrides said", () => {
+	const lead = member("lena", "lead", {
+		overrides: { granted: ["withdraw_funds"], revoked: ["invite_members"] },
+	});
+	const facets = draftFacets(lead, "team", ROLES, lead.roleId, lead.overrides);
+	const domains = dossierDomains(facets, "team");
+	assertEquals(domains.map((d) => d.key), capabilityGroupsFor("team").map((g) => g.key));
+	for (const domain of domains) {
+		for (const grant of domain.grants) {
+			assert(facets.find((f) => f.capability === grant.capability)?.effective, grant.capability);
+		}
+	}
+	const money = domains.find((d) => d.key === "money");
+	const withdraw = money?.grants.find((g) => g.capability === "withdraw_funds");
+	assert(withdraw?.granted, "a grant on top of the role is said");
+	assertEquals(withdraw?.warning, sensitiveWarning("withdraw_funds", "team"));
+	const people = domains.find((d) => d.key === "people");
+	assert(!people?.grants.some((g) => g.capability === "invite_members"), "revoked is not held");
+	assert(people?.revoked.length === 1, "the revocation is named");
+});
+
+Deno.test("dossier: figures — joined, a team's workload, the stake only when seen", () => {
+	const m = member("ana", "member", { wi: 0, wiCap: 10, shareBp: 10000 });
+	assertEquals(dossierFacts(m, "team", true, "1 Sept").map((f) => f.text), [
+		"Joined 1 Sept",
+		"Workload 0 / 10",
+		"Stake 100%",
+	]);
+	assertEquals(dossierFacts(m, "business", false, "1 Sept").map((f) => f.text), ["Joined 1 Sept"]);
+	assert(dossierFacts(m, "team", true, "").every((f) => f.tabular));
+});
+
+Deno.test("org node: workload and stake, else the joined date — the foot is never empty", () => {
+	const m = member("ana", "member", { wi: 2, wiCap: 10, shareBp: 5000 });
+	assertEquals(orgNodeMetrics(m, "team", true, "1 Sept").map((f) => f.text), [
+		"Workload 2 / 10",
+		"Stake 50%",
+	]);
+	assertEquals(orgNodeMetrics(m, "team", false, "1 Sept").map((f) => f.text), ["Workload 2 / 10"]);
+	assertEquals(orgNodeMetrics(m, "business", false, "1 Sept").map((f) => f.text), [
+		"Joined 1 Sept",
+	]);
+});
+
+Deno.test("reporting line: an active manager, direct reports by name, leavers ignored", () => {
+	const boss = member("boss", "admin");
+	const gone = member("gone", "lead", { state: "left" });
+	const zed = member("zed", "member", { reportsTo: "boss" });
+	const amy = member("amy", "member", { reportsTo: "boss" });
+	const left = member("left", "member", { reportsTo: "boss", state: "left" });
+	const orphan = member("orphan", "member", { reportsTo: "gone" });
+	const all = [boss, gone, zed, amy, left, orphan];
+	const line = reportingLine(all, boss);
+	assertEquals(line.manager, null);
+	assertEquals(line.reports.map((m) => m.id), ["amy", "zed"]);
+	assertEquals(reportingLine(all, zed).manager?.id, "boss");
+	assertEquals(reportingLine(all, orphan).manager, null, "a manager who left reads as nobody");
 });
 // #endregion
 

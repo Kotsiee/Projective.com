@@ -3,9 +3,7 @@ import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "preact/hooks";
 import { createSpring } from "@ui/core/motion.ts";
 import { useId } from "@projective/ui/hooks";
-import { DEFAULT_AVATAR_URL } from "@projective/types/user";
-import type { WorkspaceMember, WorkspaceRoleDef } from "@projective/types/workspace";
-import { initialsOf } from "../core/workspace-model.ts";
+import type { WorkspaceKind, WorkspaceMember, WorkspaceRoleDef } from "@projective/types/workspace";
 import { type MemberAction, roleText } from "../core/members-model.ts";
 import {
 	type ChartBox,
@@ -29,14 +27,15 @@ import {
 	chartCommand,
 	chartZoom,
 } from "../core/view-state.ts";
+import { FOLD_H, OrgChartNode } from "./OrgChartNode.tsx";
 
 /**
  * OrgChart — the Members roster read as a reporting structure, on an interactive canvas (Decision
  * #319): the body's whole region becomes an SVG viewport over an endless dotted ground, and the chart
  * is panned by dragging, zoomed by the wheel, a pinch or the footer rig's zoom, and walked by keyboard.
  *
- * **What it draws** is `org-chart-layout.ts`'s geometry: a card per person (avatar, name, title or
- * role), an elbow connector from each manager to each report, and a "Not placed" group for everyone a
+ * **What it draws** is `org-chart-layout.ts`'s geometry: an `OrgChartNode` card per person (avatar and
+ * role, name and handle, workload and stake), an elbow connector from each manager to each report, and a "Not placed" group for everyone a
  * reporting line cannot place — a manager who left, a cycle, a roster with nobody at the top. A
  * manager's card carries a fold under it with the number of people below them; folding a branch keeps
  * the card where it was on screen.
@@ -65,6 +64,11 @@ export interface OrgChartProps {
 	/** The active members, in the order siblings should read (the toolbar's sort). */
 	members: readonly WorkspaceMember[];
 	roles: readonly WorkspaceRoleDef[];
+	kind: WorkspaceKind;
+	/** The viewer sees payout stakes — the cards carry each person's. */
+	showStake: boolean;
+	/** The member the inspector shows, marked on the chart; `null` while nobody is selected. */
+	selectedId: string | null;
 	/** Who the toolbar's search and role filter pick out, or `null` when nothing is filtered. */
 	matches: ReadonlySet<string> | null;
 	onAction: (action: MemberAction, member: WorkspaceMember) => void;
@@ -82,33 +86,21 @@ const FIT_PAD = 48;
 const REVEAL_PAD = 32;
 /** The ground's dot spacing on screen, kept within [MIN, 2 × MIN) as the zoom changes. */
 const GRID_MIN = 20;
-/** The card's inner geometry, at zoom 1. */
-const AVATAR = 40;
-const INSET = 16;
-const TEXT_X = INSET + AVATAR + 12;
-const FOLD_R = 12;
-/** Characters a line holds before it is cut — the card is fixed-width, and SVG text does not wrap. */
-const NAME_CHARS = 21;
-const LINE_CHARS = 27;
 /** A pointer must travel this far before a press becomes a drag (so a click stays a click). */
 const DRAG_SLOP = 4;
 /** A wheel step at least this large is a mouse notch, and eases; smaller ones are a trackpad's. */
 const NOTCH = 40;
-
-const clip = (text: string, max: number) =>
-	text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
 // #endregion
 
 export function OrgChart(props: OrgChartProps): JSX.Element {
-	const { members, roles, matches, onAction } = props;
+	const { members, roles, kind, showStake, selectedId, matches, onAction } = props;
 	const uid = useId(undefined, "org");
 
 	// #region State
 	/** Managers the reader folded. A search opens the ones hiding a match without forgetting them. */
 	const closed = useSignal<ReadonlySet<string>>(new Set<string>());
-	/** The card holding the tab stop, and the card last opened (its "active" state). */
+	/** The card holding the tab stop. */
 	const focusId = useSignal<string | null>(null);
-	const activeId = useSignal<string | null>(null);
 	/** The transform drawn this frame, and the measured viewport. */
 	const view = useSignal<ChartView>({ x: 0, y: 0, k: 1 });
 	const ready = useSignal(false);
@@ -217,7 +209,7 @@ export function OrgChart(props: OrgChartProps): JSX.Element {
 	}
 
 	function nodeBox(node: ChartNode): ChartBox {
-		return { x: node.x, y: node.y, width: NODE_W, height: NODE_H + FOLD_R };
+		return { x: node.x, y: node.y, width: NODE_W, height: NODE_H + FOLD_H / 2 };
 	}
 
 	// Measure the viewport; fit on the first measure, and again on a resize until the reader steers.
@@ -412,7 +404,6 @@ export function OrgChart(props: OrgChartProps): JSX.Element {
 	}
 
 	function open(member: WorkspaceMember): void {
-		activeId.value = member.id;
 		focusId.value = member.id;
 		onAction("open", member);
 	}
@@ -525,9 +516,6 @@ export function OrgChart(props: OrgChartProps): JSX.Element {
 					>
 						<circle class="wsp-orgchart__dot" cx="1" cy="1" r="1" />
 					</pattern>
-					<clipPath id={`${uid}-avatar`} clipPathUnits="objectBoundingBox">
-						<circle cx="0.5" cy="0.5" r="0.5" />
-					</clipPath>
 				</defs>
 				<rect
 					class="wsp-orgchart__ground"
@@ -566,15 +554,16 @@ export function OrgChart(props: OrgChartProps): JSX.Element {
 					</g>
 
 					{layout.nodes.map((node) => (
-						<ChartCard
+						<OrgChartNode
 							key={node.member.id}
 							node={node}
 							role={roleText(node.member, roles)}
-							clipId={`${uid}-avatar`}
+							kind={kind}
+							showStake={showStake}
 							tabbable={node.member.id === tabStop}
 							place={siblingPlace.get(node.member.id) ?? { pos: 1, size: 1 }}
 							match={filtering ? matches.has(node.member.id) : null}
-							active={activeId.value === node.member.id}
+							selected={selectedId === node.member.id}
 							onOpen={() => {
 								if (swallowClick.current) return;
 								open(node.member);
@@ -596,99 +585,3 @@ export function OrgChart(props: OrgChartProps): JSX.Element {
 	);
 	// #endregion
 }
-
-// #region Card
-/** One person's card: avatar, name, title or role, and — for a manager — the fold under it. */
-function ChartCard(props: {
-	node: ChartNode;
-	role: string;
-	clipId: string;
-	tabbable: boolean;
-	place: { pos: number; size: number };
-	/** `true` picked out by the filter, `false` filtered out, `null` when nothing is filtered. */
-	match: boolean | null;
-	active: boolean;
-	onOpen: () => void;
-	onToggle: () => void;
-	onKeyDown: (event: JSX.TargetedKeyboardEvent<SVGGElement>) => void;
-	onFocus: () => void;
-}): JSX.Element {
-	const { node, role } = props;
-	const { member } = node;
-	const line = member.title ? `${member.title} · ${role}` : role;
-	const cy = NODE_H / 2;
-	const label = [
-		member.name,
-		line,
-		member.isSelf ? "you" : "",
-		node.reports > 0
-			? `${node.descendants} ${node.descendants === 1 ? "person" : "people"} below${
-				node.open ? "" : ", folded"
-			}`
-			: "",
-		node.unplaced ? "not placed" : "",
-	].filter(Boolean).join(", ");
-
-	return (
-		<g
-			class="wsp-orgchart__node"
-			transform={`translate(${node.x} ${node.y})`}
-			role="treeitem"
-			// Lower-case: an SVG element keeps an attribute's case, and only `tabindex` makes it focusable.
-			tabindex={props.tabbable ? 0 : -1}
-			aria-level={node.level}
-			aria-posinset={props.place.pos}
-			aria-setsize={props.place.size}
-			aria-expanded={node.reports > 0 ? node.open : undefined}
-			aria-label={label}
-			data-id={member.id}
-			data-self={member.isSelf ? "true" : undefined}
-			data-match={props.match === true ? "true" : undefined}
-			data-dim={props.match === false ? "true" : undefined}
-			data-active={props.active ? "true" : undefined}
-			onClick={props.onOpen}
-			onKeyDown={props.onKeyDown}
-			onFocus={props.onFocus}
-		>
-			<title>{`${member.name} — ${line}`}</title>
-			{/* The card's own group, so its press scale never touches the placing transform above. */}
-			<g class="wsp-orgchart__press">
-				<rect class="wsp-orgchart__card" width={NODE_W} height={NODE_H} />
-				<circle class="wsp-orgchart__face" cx={INSET + AVATAR / 2} cy={cy} r={AVATAR / 2} />
-				<text class="wsp-orgchart__initials" x={INSET + AVATAR / 2} y={cy}>
-					{initialsOf(member.name, member.handle)}
-				</text>
-				<image
-					class="wsp-orgchart__photo"
-					href={member.avatar || DEFAULT_AVATAR_URL}
-					x={INSET}
-					y={cy - AVATAR / 2}
-					width={AVATAR}
-					height={AVATAR}
-					clip-path={`url(#${props.clipId})`}
-					preserveAspectRatio="xMidYMid slice"
-				/>
-				<text class="wsp-orgchart__name" x={TEXT_X} y={cy - 6}>
-					{clip(member.name, NAME_CHARS)}
-				</text>
-				<text class="wsp-orgchart__role" x={TEXT_X} y={cy + 14}>{clip(line, LINE_CHARS)}</text>
-			</g>
-			{node.reports > 0 && (
-				<g
-					class="wsp-orgchart__fold"
-					transform={`translate(${NODE_W / 2} ${NODE_H})`}
-					data-open={node.open ? "true" : undefined}
-					aria-hidden="true"
-					onClick={(event) => {
-						event.stopPropagation();
-						props.onToggle();
-					}}
-				>
-					<circle class="wsp-orgchart__foldmark" r={FOLD_R} />
-					<text class="wsp-orgchart__foldcount">{node.open ? "−" : node.descendants}</text>
-				</g>
-			)}
-		</g>
-	);
-}
-// #endregion

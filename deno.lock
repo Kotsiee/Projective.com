@@ -84,6 +84,7 @@
     "npm:d3-time@^3.1.0": "3.1.0",
     "npm:docx-preview@0.3.7": "0.3.7",
     "npm:dompurify@3.4.15": "3.4.15",
+    "npm:emojibase-data@17.0.0": "17.0.0_emojibase@18.0.0",
     "npm:esbuild-wasm@~0.25.11": "0.25.12",
     "npm:esbuild@0.25.10": "0.25.10",
     "npm:esbuild@0.25.7": "0.25.7",
@@ -1409,6 +1410,15 @@
     "electron-to-chromium@1.5.387": {
       "integrity": "sha512-TaxwufTFDufvPEoXdhwVrA3UdFWBeWGkYoJ1K8ldF1xe6gKfth6iRNS5lTQ5JPNOHdGQm8PT1QYKUqFLCiUefQ=="
     },
+    "emojibase-data@17.0.0_emojibase@18.0.0": {
+      "integrity": "sha512-Yvgb5AWoHViHV/gq1qr5ZAarcBip+B27/ZLRsUJkbgAEaLlZ/fof9g882LTpmEpyhBNEC0m2SEmItljHsTygjA==",
+      "dependencies": [
+        "emojibase"
+      ]
+    },
+    "emojibase@18.0.0": {
+      "integrity": "sha512-5PG+EEt5zQ9qvqdHZw61+T9iz96g+r621QS/w8jEzPg+3mjzAdjl8LPLc+e9ABv/yboNfMwEair7aK9qKnwAbQ=="
+    },
     "esbuild-wasm@0.25.12": {
       "integrity": "sha512-rZqkjL3Y6FwLpSHzLnaEy8Ps6veCNo1kZa9EOfJvmWtBq5dJH4iVjfmOO6Mlkv9B0tt9WFPFmb/VxlgJOnueNg==",
       "bin": true
@@ -1988,6 +1998,7 @@
       "npm:d3-time@^3.1.0",
       "npm:docx-preview@0.3.7",
       "npm:dompurify@3.4.15",
+      "npm:emojibase-data@17.0.0",
       "npm:highlight.js@11.11.1",
       "npm:marked@^17.0.5",
       "npm:omggif@^1.0.10",

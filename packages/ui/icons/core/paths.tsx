@@ -505,6 +505,14 @@ const PEOPLE = {
 			<path d="M7 9.5v.01M7 13v.01M7 16.5v.01" />
 		</>
 	),
+	/** A smiling face — an emoji or an expression, not `user`, a person. */
+	"smile": () => (
+		<>
+			<circle cx="12" cy="12" r="8.5" />
+			<path d="M9 10h.01M15 10h.01" />
+			<path d="M8.5 14a4.5 4.5 0 0 0 7 0" />
+		</>
+	),
 	/** A chat bubble — a direct message. */
 	"message": () => <path d="M5 5h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H9l-4 3.5V7a2 2 0 0 1 2-2z" />,
 	/** An envelope. */
@@ -519,6 +527,39 @@ const PEOPLE = {
 
 // #region Objects & work
 const OBJECTS = {
+	/** A leaf with its midrib — nature, the outdoors. */
+	"leaf": () => (
+		<>
+			<path d="M5 19c0-8 5-14 14-14 0 9-6 14-14 14z" />
+			<path d="M5 19 14 10" />
+		</>
+	),
+	/** A cup with a handle — food and drink, not `box`, a product. */
+	"coffee": () => (
+		<>
+			<path d="M5 9h11v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4z" />
+			<path d="M16 10.5h1.5a2.5 2.5 0 0 1 0 5H16M8.5 3.5v2.5M12 3.5v2.5" />
+		</>
+	),
+	/** A sports ball — activities and play. */
+	"ball": () => (
+		<>
+			<circle cx="12" cy="12" r="8.5" />
+			<path d="M5.5 6.5a12 12 0 0 1 0 11M18.5 6.5a12 12 0 0 0 0 11" />
+		</>
+	),
+	/** A car seen from the side — travel and places, not `send`, a delivery. */
+	"car": () => (
+		<>
+			<path d="M5.2 17H3.5v-4l2-5h11l3 5v4h-1.7M8.8 17h6.4M3.5 13h17" />
+			<circle cx="7" cy="17" r="1.8" />
+			<circle cx="17" cy="17" r="1.8" />
+		</>
+	),
+	/** A heart — symbols and feelings, not `star`, a favourite. */
+	"heart": () => (
+		<path d="M12 19.5s-7.5-4.4-7.5-9.7A4.2 4.2 0 0 1 12 7.4a4.2 4.2 0 0 1 7.5 2.4c0 5.3-7.5 9.7-7.5 9.7z" />
+	),
 	"calendar": () => (
 		<>
 			<rect x="4" y="5" width="16" height="15" rx="2" />

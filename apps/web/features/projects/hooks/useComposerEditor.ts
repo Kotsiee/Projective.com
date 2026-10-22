@@ -68,6 +68,16 @@ export interface ComposerEditor {
 	focusEnd(): void;
 	/** Append typed characters at the end and leave the caret after them. */
 	appendTyped(chars: string): void;
+	/** Remember the field's last selection (or caret) as the insertion point for {@link insertAtCaret}. */
+	saveCaret(): void;
+	/**
+	 * Replace the saved selection with `chars` (at the end when nothing was saved) and advance the
+	 * saved caret past them, WITHOUT focusing the field — a picker keeps focus between inserts.
+	 * Fires `input` and `change` on the editable root for listeners outside Quill.
+	 */
+	insertAtCaret(chars: string): void;
+	/** Focus the field with the caret at the saved insertion point. */
+	focusAtCaret(): void;
 	/** Toggle a mark across the selection (or for the next characters at the caret). */
 	toggleMark(mark: MessageMark): void;
 	/** The editor contents as raw Delta ops (normalise before sending). */
@@ -96,6 +106,10 @@ export function useComposerEditor(options: UseComposerEditorOptions): ComposerEd
 	const pendingTyped = useRef("");
 	/** A click or a focus request made before Quill arrived, honoured on mount. */
 	const focusWhenReady = useRef(false);
+	/** The selection as it last stood while the field had focus; survives the blur. */
+	const lastRange = useRef<EditorRange | null>(null);
+	/** Where {@link insertAtCaret} writes; null means the end of the text. */
+	const savedCaret = useRef<EditorRange | null>(null);
 	/** The latest callbacks, for the bindings Quill captured once at construction. */
 	const live = useRef(options);
 	live.current = options;
@@ -117,6 +131,7 @@ export function useComposerEditor(options: UseComposerEditorOptions): ComposerEd
 
 	function readSelection(quill: QuillInstance): void {
 		const sel = quill.hasFocus() ? quill.getSelection() : null;
+		if (sel) lastRange.current = { index: sel.index, length: sel.length };
 		range.value = sel && sel.length > 0 ? { index: sel.index, length: sel.length } : null;
 		readMarks(quill);
 		layoutTick.value++;
@@ -255,6 +270,46 @@ export function useComposerEditor(options: UseComposerEditorOptions): ComposerEd
 		quill.setSelection(end + chars.length, 0, "user");
 	}
 
+	function saveCaret(): void {
+		const quill = quillRef.current;
+		const live = quill?.hasFocus() ? quill.getSelection() : null;
+		savedCaret.current = live ? { index: live.index, length: live.length } : lastRange.current;
+	}
+
+	function insertAtCaret(chars: string): void {
+		const quill = quillRef.current;
+		if (!quill) {
+			pendingTyped.current += chars;
+			return;
+		}
+		const end = quill.getLength() - 1;
+		const target = savedCaret.current ?? { index: end, length: 0 };
+		const index = Math.min(target.index, end);
+		const length = Math.min(target.length, end - index);
+		if (length > 0) quill.deleteText(index, length, "user");
+		quill.insertText(index, chars, "user");
+		const caret = { index: index + chars.length, length: 0 };
+		savedCaret.current = caret;
+		lastRange.current = caret;
+		quill.root.dispatchEvent(
+			new InputEvent("input", { bubbles: true, inputType: "insertText", data: chars }),
+		);
+		quill.root.dispatchEvent(new Event("change", { bubbles: true }));
+	}
+
+	function focusAtCaret(): void {
+		const quill = quillRef.current;
+		if (!quill) {
+			focusWhenReady.current = true;
+			return;
+		}
+		const caret = savedCaret.current;
+		quill.focus();
+		if (caret) {
+			quill.setSelection(Math.min(caret.index, quill.getLength() - 1), caret.length, "user");
+		}
+	}
+
 	function toggleMark(mark: MessageMark): void {
 		const quill = quillRef.current;
 		if (!quill) return;
@@ -302,6 +357,9 @@ export function useComposerEditor(options: UseComposerEditorOptions): ComposerEd
 		focus,
 		focusEnd,
 		appendTyped,
+		saveCaret,
+		insertAtCaret,
+		focusAtCaret,
 		toggleMark,
 		ops,
 		clear,

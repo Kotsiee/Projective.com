@@ -204,7 +204,6 @@
 	stroke: var(--hairline-color);
 }
 
-/* A card opens its member — an interactive control, so it carries a full contour (§B.4). */
 .wsp-orgchart__node {
 	cursor: pointer;
 }
@@ -215,7 +214,6 @@
 	transition: transform var(--dur-fast) var(--ease-standard);
 }
 
-/* It compresses on press like the package controls around it (§B.12) — scale only. */
 .wsp-orgchart__node:active .wsp-orgchart__press {
 	transform: scale(var(--btn-press-scale));
 	transition-duration: var(--dur-press);
@@ -223,11 +221,11 @@
 
 .wsp-orgchart__card {
 	fill: var(--surface-1);
-	stroke: var(--hairline-strong-color);
+	stroke: var(--hairline-color);
 	stroke-width: var(--wsp-hairline-w);
 	vector-effect: non-scaling-stroke;
-	rx: var(--radius-lg);
-	ry: var(--radius-lg);
+	rx: var(--radius-base);
+	ry: var(--radius-base);
 	transition:
 		fill var(--dur-fast) var(--ease-standard),
 		stroke var(--dur-fast) var(--ease-standard);
@@ -235,6 +233,7 @@
 
 .wsp-orgchart__node:hover .wsp-orgchart__card {
 	fill: var(--surface-2);
+	stroke: var(--hairline-strong-color);
 }
 
 .wsp-orgchart__node[data-self="true"] .wsp-orgchart__card {
@@ -242,7 +241,6 @@
 	stroke: var(--wsp-kind-edge);
 }
 
-/* The card last opened, and the cards a search or filter picked out. */
 .wsp-orgchart__node[data-active="true"] .wsp-orgchart__card,
 .wsp-orgchart__node[data-match="true"] .wsp-orgchart__card {
 	stroke: var(--primary);
@@ -257,43 +255,88 @@
 	stroke: var(--hairline-color);
 }
 
-.wsp-orgchart__face {
-	fill: var(--surface-2);
+.wsp-orgnode {
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	gap: var(--space-2);
+	inline-size: 100%;
+	block-size: 100%;
+	padding: var(--space-3);
+	overflow: hidden;
+	color: var(--on-surface);
+	pointer-events: none;
 }
 
-.wsp-orgchart__initials {
-	fill: var(--text-secondary);
-	font-size: var(--wsp-fs-label);
+.wsp-orgnode__top {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.wsp-orgnode__avatar {
+	flex: none;
+}
+
+.wsp-orgnode__role {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.wsp-orgnode__ident {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	min-inline-size: 0;
+}
+
+.wsp-orgnode__name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--text-sm);
 	font-weight: var(--fw-medium);
-	text-anchor: middle;
-	dominant-baseline: central;
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
 }
 
-.wsp-orgchart__node[data-dim="true"] .wsp-orgchart__photo {
+.wsp-orgnode__handle,
+.wsp-orgnode__metrics {
+	display: block;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-orgnode__metrics {
+	font-variant-numeric: tabular-nums;
+}
+
+.wsp-orgchart__node[data-dim="true"] .wsp-orgnode__avatar {
 	filter: grayscale(1);
 }
 
-.wsp-orgchart__name {
-	fill: var(--on-surface);
-	font-size: var(--wsp-fs-body);
-	font-weight: var(--fw-medium);
+.wsp-orgchart__node[data-dim="true"] .wsp-orgnode__name {
+	color: var(--text-secondary);
 }
 
-.wsp-orgchart__role {
-	fill: var(--text-secondary);
-	font-size: var(--wsp-fs-label);
+.wsp-orgchart__node[data-dim="true"] .wsp-orgnode__role,
+.wsp-orgchart__node[data-dim="true"] .wsp-orgnode__handle,
+.wsp-orgchart__node[data-dim="true"] .wsp-orgnode__metrics {
+	color: color-mix(in srgb, var(--text-secondary) 55%, var(--surface-1));
 }
 
-.wsp-orgchart__node[data-dim="true"] .wsp-orgchart__name {
-	fill: var(--text-secondary);
-}
-
-.wsp-orgchart__node[data-dim="true"] .wsp-orgchart__role,
-.wsp-orgchart__node[data-dim="true"] .wsp-orgchart__initials {
-	fill: color-mix(in srgb, var(--text-secondary) 55%, var(--surface-1));
-}
-
-/* The fold under a manager's card: how many people sit below, or a minus while they show. */
 .wsp-orgchart__fold {
 	cursor: pointer;
 }
@@ -303,11 +346,22 @@
 	stroke: var(--hairline-strong-color);
 	stroke-width: var(--wsp-hairline-w);
 	vector-effect: non-scaling-stroke;
+	rx: var(--radius-full);
+	ry: var(--radius-full);
 	transition: fill var(--dur-fast) var(--ease-standard);
 }
 
 .wsp-orgchart__fold:hover .wsp-orgchart__foldmark {
 	fill: var(--surface-2);
+}
+
+.wsp-orgchart__foldglyph {
+	fill: none;
+	stroke: var(--text-secondary);
+	stroke-width: var(--wsp-stroke);
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	vector-effect: non-scaling-stroke;
 }
 
 .wsp-orgchart__foldcount {
@@ -332,120 +386,269 @@
 }
 /* #endregion */
 
-/* #region Member drawer */
-/* `wsp-mdrawer` is the `Drawer`'s `class`, so it lands on the panel: the column belongs to the body,
-   and the panel keeps the shared `--drawer-size` (Decision #171). Compound, so it outranks
-   `.ui-drawer__body` whatever the stylesheet order. */
-.ui-drawer.wsp-mdrawer .ui-drawer__body {
+/* #region Member inspector */
+.wsp-inspector {
+	--wsp-inspector-bg: var(--surface-1);
 	display: flex;
+	flex: 1 1 auto;
 	flex-direction: column;
-	gap: var(--space-5);
+	min-block-size: 0;
+	min-inline-size: 0;
 }
 
-.wsp-mdrawer__head {
+.ui-drawer.wsp-inspector-sheet {
+	--wsp-inspector-bg: var(--surface);
+}
+
+.ui-drawer.wsp-inspector-sheet .ui-drawer__body {
+	display: flex;
+	flex-direction: column;
+}
+
+.wsp-inspector__bar {
+	position: sticky;
+	inset-block-start: 0;
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+	padding-block: var(--space-2);
+	padding-inline: var(--space-4) var(--space-2);
+	background: var(--wsp-inspector-bg);
+}
+
+.wsp-inspector__bar-title,
+.wsp-inspector__heading {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.wsp-inspector__dossier,
+.wsp-inspector__form {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: var(--space-5);
+	min-inline-size: 0;
+	padding-block: var(--space-2) var(--space-5);
+	padding-inline: var(--space-4);
+}
+
+.wsp-inspector__form {
+	padding-block-end: 0;
+}
+
+.ui-drawer.wsp-inspector-sheet .wsp-inspector__dossier,
+.ui-drawer.wsp-inspector-sheet .wsp-inspector__form {
+	padding: 0;
+}
+
+.wsp-inspector__head {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr);
 	align-items: center;
 	gap: var(--space-3);
 }
 
-.wsp-mdrawer__ident {
+.wsp-inspector__ident {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-px);
 	min-inline-size: 0;
 }
 
-.wsp-mdrawer__section {
+.wsp-inspector__ident .ui-meta-line__item--tabular {
+	white-space: nowrap;
+}
+
+.wsp-inspector__name {
+	margin: 0;
+	overflow-wrap: anywhere;
+	font-size: var(--text-lg);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+}
+
+.wsp-inspector__quick {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	margin-block-start: calc(var(--space-2) - var(--space-5));
+}
+
+.wsp-inspector__section {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-3);
 	min-inline-size: 0;
 }
 
-.wsp-mdrawer__section + .wsp-mdrawer__section {
-	padding-block-start: var(--space-4);
-	border-block-start: var(--hairline);
-}
-
-.wsp-mdrawer__section-title {
-	margin: 0;
-	font-size: var(--wsp-fs-micro);
-	letter-spacing: var(--wsp-label-track);
-	text-transform: uppercase;
-	font-weight: var(--fw-semibold);
-	color: var(--text-secondary);
-}
-
-/* Role, Title and Reports to: fluid inside the field measure, never stretched across a wide panel. */
-.wsp-mdrawer__field {
-	inline-size: 100%;
-	max-inline-size: var(--wsp-field);
-	min-inline-size: 0;
-}
-
-.wsp-mdrawer__section-note {
+.wsp-inspector__note {
 	margin: 0;
 	max-inline-size: var(--wsp-prose);
-	font-size: var(--wsp-fs-micro);
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 
-/* A viewer who may not change this person reads their role and reporting line as facts. */
-.wsp-mdrawer__facts {
+.wsp-inspector__muted {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.wsp-inspector__facts {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr);
-	gap: var(--space-2) var(--space-4);
+	align-items: start;
+	gap: var(--space-3) var(--space-4);
 	margin: 0;
-	font-size: var(--wsp-fs-body);
+	font-size: var(--text-sm);
 }
 
-.wsp-mdrawer__fact-label {
+.wsp-inspector__fact-label,
+.wsp-inspector__fact-value > .wsp-inspector__muted {
+	padding-block: var(--space-1);
+}
+
+.wsp-inspector__fact-label {
 	color: var(--text-secondary);
+	white-space: nowrap;
 }
 
-.wsp-mdrawer__fact-value {
+.wsp-inspector__fact-value {
 	margin: 0;
 	min-inline-size: 0;
 	color: var(--on-surface);
 }
 
-/*
- * One capability group. Its title takes the section-header register — micro, uppercase, tracked — as
- * the PermissionMatrix's `th[scope=rowgroup]` group rows do (§C.1), so it differs from the switch rows
- * under it by size, case and tracking, never by weight alone (§A.4). The drawer's section title above
- * it is set apart by the note between them and the section's hairline, not by a second weight.
- */
-.wsp-mdrawer__group {
+.wsp-inspector__count {
+	margin-inline-start: var(--space-1);
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
+}
+
+.wsp-inspector__people {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-1);
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.wsp-inspector__person {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
 	min-inline-size: 0;
 }
 
-.wsp-mdrawer__group + .wsp-mdrawer__group {
-	margin-block-start: var(--space-3);
+.wsp-inspector__domain {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
 }
 
-.wsp-mdrawer__group-title {
+.wsp-inspector__domain + .wsp-inspector__domain {
+	margin-block-start: var(--space-2);
+}
+
+.wsp-inspector__domain-title {
 	margin: 0;
-	font-size: var(--wsp-fs-micro);
-	letter-spacing: var(--wsp-label-track);
-	text-transform: uppercase;
-	font-weight: var(--fw-semibold);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.wsp-inspector__grants {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.wsp-inspector__grant {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: start;
+	gap: var(--space-2);
+}
+
+.wsp-inspector__grant-mark {
+	display: inline-flex;
+	padding-block-start: var(--space-px);
+	color: var(--primary);
+	line-height: 0;
+}
+
+.wsp-inspector__grant-body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	min-inline-size: 0;
+}
+
+.wsp-inspector__grant-label {
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+}
+
+.wsp-inspector__grant-note {
+	margin: 0;
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 
-.wsp-mdrawer__perms {
-	list-style: none;
-	margin: 0;
-	padding: 0;
-	display: flex;
-	flex-direction: column;
+.wsp-inspector__warning {
+	display: inline-flex;
+	align-items: flex-start;
+	gap: var(--space-1);
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
 }
 
-/* A switch (or, where the viewer may not flip it, the capability as text) over where it comes from. */
-.wsp-mdrawer__perm {
+.wsp-inspector__warning-mark {
+	display: inline-flex;
+	flex: none;
+	padding-block-start: var(--space-px);
+	color: var(--warning);
+	line-height: 0;
+}
+
+.wsp-inspector__terminal {
+	align-items: flex-start;
+}
+
+.wsp-inspector__link {
+	flex: none;
+	align-self: flex-start;
+	text-decoration: none;
+}
+
+.wsp-inspector__field {
+	inline-size: 100%;
+	max-inline-size: var(--wsp-field);
+	min-inline-size: 0;
+}
+
+.wsp-inspector__switches {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.wsp-inspector__switch {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-1);
@@ -454,69 +657,40 @@
 	border-block-start: var(--hairline);
 }
 
-.wsp-mdrawer__perm:first-child {
+.wsp-inspector__switch:first-child {
 	border-block-start: none;
 }
 
-.wsp-mdrawer__perm-label {
-	font-size: var(--wsp-fs-body);
+.wsp-inspector__switch-label {
+	font-size: var(--text-sm);
 	color: var(--on-surface);
 }
 
-.wsp-mdrawer__perm[data-on="false"] .wsp-mdrawer__perm-label {
+.wsp-inspector__switch[data-on="false"] .wsp-inspector__switch-label {
 	color: var(--text-secondary);
 }
 
-.wsp-mdrawer__perm-note {
+.wsp-inspector__switch-note {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-px);
 	min-inline-size: 0;
 }
 
-/* A sensitive capability's consequence: meta text behind a warning glyph that carries the hue. */
-.wsp-mdrawer__warning {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
+.wsp-inspector__commit {
+	position: sticky;
+	inset-block-end: 0;
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--space-2);
+	margin-block-start: auto;
+	padding-block: var(--space-3);
+	border-block-start: var(--hairline);
+	background: var(--wsp-inspector-bg);
 }
 
-.wsp-mdrawer__warning-mark {
-	display: inline-flex;
-	flex: none;
-	color: var(--warning);
-	line-height: 0;
-}
-
-/* The row's one terminal act — Transfer ownership, Leave or Remove — under the sentence it follows. */
-.wsp-mdrawer__terminal {
-	align-items: flex-start;
-}
-
-.wsp-mdrawer__terminal-act {
-	flex: none;
-}
-
-/*
- * A business member's spend envelope (BU7): its MetaLine, then the tier-5 link to their row on the
- * Spend module, left-aligned under it rather than stretched across the panel.
- */
-.wsp-mdrawer__envelope {
-	align-items: flex-start;
-}
-
-.wsp-mdrawer__envelope-link {
-	flex: none;
-}
-
-/*
- * A notice inside a drawer section (a reserved grant's warning, the manager cap) sits on the section's
- * column, flush with its note and field, its glyph beside the sentence on a phone — InlineNotice pads
- * itself for a list's foot, and the section already spaces it.
- */
-.wsp-mdrawer__section .ui-inline-notice {
+.wsp-inspector .ui-inline-notice,
+.ui-drawer.wsp-inspector-sheet .ui-inline-notice {
 	flex-wrap: nowrap;
 	align-items: flex-start;
 	padding: 0;

@@ -51,6 +51,8 @@ export interface VendorTree {
 	readonly source: string;
 	/** Public path prefix with a trailing slash. */
 	readonly publicPath: string;
+	/** Publish only these files (POSIX paths relative to `source`) instead of the whole tree. */
+	readonly include?: readonly string[];
 }
 
 /** Every vendored tree the inspector reads at runtime. */

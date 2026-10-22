@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { batch, useSignal } from "@preact/signals";
+import { batch, useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useMemo, useRef } from "preact/hooks";
 import "@web/features/projects/styles/fx-toolbar.css";
 import "@web/features/projects/styles/file-explorer.css";
@@ -27,12 +27,21 @@ import { MemberSectionBar } from "@web/features/projects/components/MemberSectio
 import { MemberToolbar } from "@web/features/projects/components/MemberToolbar.tsx";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import {
+	liveDetail,
 	membersViewFor,
 	openInvite,
 	publishDetail,
 	selectModuleView,
 	viewOr,
 } from "../core/workspace-state.ts";
+import {
+	clearSelectedMember,
+	memberActRequest,
+	refocusMemberOpener,
+	selectedMember,
+	selectMember,
+} from "../core/member-inspector-state.ts";
+import { MEMBER_SHEET_CLASS } from "../core/member-inspector-model.ts";
 import {
 	MEMBERS_CHART,
 	MEMBERS_PEOPLE,
@@ -65,7 +74,6 @@ import { OrgChart } from "../components/OrgChart.tsx";
 import { type InviteAction, InviteQueue } from "../components/InviteQueue.tsx";
 import { JoinRequestQueue } from "../components/JoinRequestQueue.tsx";
 import { OwnershipTransfer } from "../components/OwnershipTransfer.tsx";
-import MemberDrawer from "./MemberDrawer.island.tsx";
 import InviteModal from "./InviteModal.island.tsx";
 
 /**
@@ -88,12 +96,17 @@ import InviteModal from "./InviteModal.island.tsx";
  * filter then pick people out on the chart. Leaving Members for a queue and coming back returns to the
  * reading the reader left, and so does the header band's Members tab (`peopleReading`).
  *
- * **The rank rule decides every action** (`core/members-model.ts`): a row's menu and the drawer offer
- * only what the viewer may do — an action they cannot perform is absent, not disabled. Removing and
- * leaving are confirmed; the owner steps back only through the ownership transfer. When the drawer
- * asks for one of those dialogs, the screen waits for the drawer to leave and puts focus back on the
- * row (or card) that opened it before the dialog opens (`core/overlay-handoff.ts`), so closing the
- * dialog returns the keyboard reader to their place rather than to the page's top.
+ * **A pick opens the member inspector** (Decision #322): a row, a card or a chart node selects the
+ * member (`core/member-inspector-state.ts`), and the inspector — another hydration root, in the
+ * middle-nav panel from 1280px and a slide-over below — shows them. The address carries the pick as
+ * `?member=<handle>`.
+ *
+ * **The rank rule decides every action** (`core/members-model.ts`): a row's menu and the inspector
+ * offer only what the viewer may do — an action they cannot perform is absent, not disabled. Removing
+ * and leaving are confirmed here, whichever root asked; the owner steps back only through the
+ * ownership transfer. When the slide-over asks for one of those dialogs, the screen waits for it to
+ * leave and puts focus back on the row (or card) that opened it before the dialog opens
+ * (`core/overlay-handoff.ts`), so closing the dialog returns the keyboard reader to their place.
  *
  * Every mutation resolves to the re-read `WorkspaceDetail` and replaces the whole projection, so a
  * change the server clamped or refused cannot survive on screen as something the reader believes.
@@ -121,11 +134,6 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	/** Mounted only once there is something to say, and never beside a stack another island put up. */
 	const toastMounted = useSignal(false);
 	const toast = useToast();
-	/** The member whose drawer is open (kept while it animates out). */
-	const openMember = useSignal<WorkspaceMember | null>(null);
-	const drawerOpen = useSignal(false);
-	/** Bumped on every open, so a reopened drawer starts from the saved member, never a stale draft. */
-	const drawerSeq = useSignal(0);
 	/** Set while the owner is handing the owner seat over. */
 	const transferFor = useSignal<WorkspaceMember | null>(null);
 	const confirmLeave = useSignal(false);
@@ -134,10 +142,9 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	const peopleRef = useRef<HTMLDivElement>(null);
 	/** The bar group — it floats over the org chart, which fits the chart clear of it. */
 	const barRef = useRef<HTMLDivElement>(null);
-	/** What had focus when the drawer opened — where a drawer → dialog hand-off parks focus. */
-	const opener = useRef<HTMLElement | null>(null);
-	/** Cancels a hand-off still waiting for the drawer to leave. */
+	/** Cancels a hand-off still waiting for the slide-over to leave. */
 	const handoff = useRef<(() => void) | null>(null);
+	const handledAct = useRef(memberActRequest.peek()?.seq ?? 0);
 
 	// `Ctrl`+wheel / pinch over the people scales them on People's own zoom; it also restores it.
 	useCtrlWheelZoom(peopleRef, peopleZoom);
@@ -146,20 +153,34 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	useEffect(() => () => handoff.current?.(), []);
 
 	// `?invite=1` — the bands on modules that do not mount the invite dialog link here with it, so their
-	// Invite lands on the dialog rather than on a page the reader must search. `?member=<handle>` — the
-	// lane search's person hit — opens that member's drawer.
+	// Invite lands on the dialog rather than on a page the reader must search.
 	useEffect(() => {
 		const url = new URL(globalThis.location.href);
-		const invite = url.searchParams.get("invite") === "1";
-		const handle = url.searchParams.get("member");
-		if (!invite && !handle) return;
+		if (url.searchParams.get("invite") !== "1") return;
 		url.searchParams.delete("invite");
-		url.searchParams.delete("member");
 		globalThis.history.replaceState(null, "", `${url.pathname}${url.search}`);
-		if (invite && detail.peek().viewerCapabilities.includes("invite_members")) openInvite();
-		const member = handle ? detail.peek().members.find((m) => m.handle === handle) : undefined;
-		if (member) openDrawer(member);
+		if (detail.peek().viewerCapabilities.includes("invite_members")) openInvite();
 	}, []);
+
+	useSignalEffect(() => {
+		const live = liveDetail.value;
+		if (live && live.id === detail.peek().id && live !== detail.peek()) detail.value = live;
+	});
+
+	useSignalEffect(() => {
+		const request = memberActRequest.value;
+		if (!request || request.seq === handledAct.current) return;
+		handledAct.current = request.seq;
+		const member = detail.peek().members.find((m) => m.id === request.memberId);
+		if (!member) return;
+		const open = () => {
+			if (request.act === "transfer") transferFor.value = member;
+			else if (request.act === "leave") confirmLeave.value = true;
+			else onAction("remove", member);
+		};
+		if (request.fromSheet) fromSheet(open);
+		else open();
+	});
 
 	const ws = detail.value;
 	const copy = kindCopy(ws.kind);
@@ -187,6 +208,10 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	const presentation = membersViewFor(view);
 	const charted = section === "members" && presentation === "chart";
 	const tabs = sections.length > 1;
+
+	useEffect(() => {
+		if (section !== "members" && selectedMember.peek() !== null) clearSelectedMember(false);
+	}, [section]);
 
 	// The reading on screen is the one the header band's Members tab returns to (Decision #319).
 	useEffect(() => {
@@ -232,18 +257,6 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 		globalThis.location.assign(workspaceBase(ws.kind));
 	}
 
-	function openDrawer(member: WorkspaceMember): void {
-		const active = globalThis.document?.activeElement;
-		opener.current = active instanceof HTMLElement && active !== globalThis.document.body
-			? active
-			: null;
-		batch(() => {
-			openMember.value = member;
-			drawerSeq.value = drawerSeq.peek() + 1;
-			drawerOpen.value = true;
-		});
-	}
-
 	/** Say what the last thing did — the project roster's toast, at the bottom of the page. */
 	function say(severity: "success" | "danger", summary: string): void {
 		if (!globalThis.document.querySelector(".ui-toast")) toastMounted.value = true;
@@ -275,7 +288,7 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	function onAction(action: MemberAction, member: WorkspaceMember): void {
 		switch (action) {
 			case "open":
-				openDrawer(member);
+				selectMember(member);
 				return;
 			case "profile":
 				globalThis.location.assign(memberProfileHref(member.handle));
@@ -299,30 +312,15 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	}
 
 	/**
-	 * Focus what opened the drawer — the element focused when it opened, else the member's table row (a
-	 * menu item that opened it is gone by now).
-	 */
-	function refocusOpener(member: WorkspaceMember): void {
-		const before = opener.current;
-		if (before?.isConnected) {
-			before.focus();
-			return;
-		}
-		peopleRef.current?.querySelector<HTMLElement>(
-			`.ui-dt__row[data-key="${CSS.escape(member.id)}"]`,
-		)?.focus();
-	}
-
-	/**
-	 * Open a dialog the drawer asked for once the drawer has left (Decision #123's hand-off): the drawer
+	 * Open a dialog the slide-over inspector asked for once it has left (Decision #123's hand-off): it
 	 * closed itself on the press, so wait for its panel to leave the DOM, park focus on its opener, then
 	 * open — the dialog then hands focus back to that opener when it closes.
 	 */
-	function fromDrawer(member: WorkspaceMember, open: () => void): void {
+	function fromSheet(open: () => void): void {
 		handoff.current?.();
 		handoff.current = afterPanelLeaves({
-			gone: () => !globalThis.document.querySelector(".wsp-mdrawer"),
-			refocus: () => refocusOpener(member),
+			gone: () => !globalThis.document.querySelector(`.${MEMBER_SHEET_CLASS}`),
+			refocus: refocusMemberOpener,
 			then: () => {
 				handoff.current = null;
 				open();
@@ -414,10 +412,7 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	}
 	// #endregion
 
-	/** The open member as the latest detail holds them — gone when they left. */
-	const drawerMember = openMember.value
-		? ws.members.find((m) => m.id === openMember.value?.id) ?? null
-		: null;
+	const selectedId = active.find((m) => m.handle === selectedMember.value)?.id ?? null;
 
 	/** The section bar's end: the seats line (and a business's manager headroom), then the faces. */
 	const meta = (
@@ -507,6 +502,9 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 							<OrgChart
 								members={chartPeople}
 								roles={ws.roles}
+								kind={ws.kind}
+								showStake={stake}
+								selectedId={selectedId}
 								matches={matches}
 								onAction={onAction}
 								overlayRef={barRef}
@@ -542,7 +540,7 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 										menu={menuFor(m)}
 										showStake={stake}
 										envelope={spendingFact(ws, m.id)}
-										onOpen={() => openDrawer(m)}
+										onOpen={() => selectMember(m)}
 										onMessage={() => onAction("message", m)}
 									/>
 								))}
@@ -558,7 +556,7 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 								showStake={stake}
 								showSpending={spending}
 								envelopes={ws.spend?.limits}
-								onOpen={openDrawer}
+								onOpen={selectMember}
 							/>
 						)}
 				</div>
@@ -566,20 +564,6 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 			</section>
 
 			{/* Overlays — all BodyPortal-mounted by their own components (the glass-blur fixed trap). */}
-			{drawerMember && (
-				<MemberDrawer
-					key={`${drawerMember.id}:${drawerSeq.value}`}
-					workspace={ws}
-					member={drawerMember}
-					actor={actor}
-					visible={drawerOpen}
-					onUpdated={adopt}
-					onTransfer={(m) => fromDrawer(m, () => (transferFor.value = m))}
-					onLeave={(m) => fromDrawer(m, () => (confirmLeave.value = true))}
-					onRemove={(m) => fromDrawer(m, () => onAction("remove", m))}
-				/>
-			)}
-
 			{canInvite && <InviteModal workspace={ws} onUpdated={adopt} />}
 
 			<ConfirmDialog

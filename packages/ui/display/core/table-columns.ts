@@ -101,13 +101,44 @@ export function moveColumn(order: readonly string[], id: string, toIndex: number
 	return next;
 }
 
-/** Set a column's width (clamped). */
+/** The shown columns around a resize, for {@link resizeColumn}. */
+export interface ResizeContext<T> {
+	/** The shown columns in display order. */
+	columns: readonly DataColumn<T>[];
+	/** Px the row has beyond the columns' minimum layout width; negative when the table overflows. */
+	slack: number;
+}
+
+/**
+ * Set a column's width (clamped) from the handle on its trailing edge, keeping every column before
+ * the handle still. A `fill` column before it would otherwise absorb the change and move the
+ * column's leading edge instead, so the resizable columns after the handle give or take the
+ * difference, nearest first, within their bounds. A fill already at its minimum absorbs nothing, so
+ * that part is free (the table scrolls); only what the later columns cannot cover reaches the fill.
+ */
 export function resizeColumn<T>(
 	layout: ColumnLayout,
 	column: DataColumn<T>,
 	width: number,
+	context?: ResizeContext<T>,
 ): ColumnLayout {
-	return { ...layout, widths: { ...layout.widths, [column.id]: clampWidth(column, width) } };
+	const next = clampWidth(column, width);
+	const widths = { ...layout.widths, [column.id]: next };
+	const at = context ? context.columns.findIndex((c) => c.id === column.id) : -1;
+	if (!context || at < 0 || !context.columns.slice(0, at).some((c) => c.fill)) {
+		return { ...layout, widths };
+	}
+	const delta = next - layout.widths[column.id];
+	const free = context.slack > 0 ? 0 : delta > 0 ? delta : Math.max(delta, context.slack);
+	let owed = delta - free;
+	for (const later of context.columns.slice(at + 1)) {
+		if (owed === 0) break;
+		if (later.fill || later.resizable === false) continue;
+		const was = layout.widths[later.id];
+		widths[later.id] = clampWidth(later, was - owed);
+		owed -= was - widths[later.id];
+	}
+	return { ...layout, widths };
 }
 
 /** Show or hide a column. */

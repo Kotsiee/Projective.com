@@ -21,6 +21,7 @@ import ShareHost from "@web/features/share/islands/ShareHost.island.tsx";
 import SettingsModalHost from "@web/features/settings/islands/SettingsModalHost.island.tsx";
 import MilestoneCelebration from "@web/features/shell/islands/MilestoneCelebration.island.tsx";
 import { bottomNavItems } from "@web/features/shell/core/bottom-nav-model.tsx";
+import type { ContextPanelDockOptions } from "@web/features/shell/core/context-panel-state.ts";
 import { BrandMark } from "./BrandMark.tsx";
 
 export interface UserShellProps {
@@ -93,6 +94,12 @@ export interface UserShellProps {
 	 * Requires the middle-nav frame; withheld in `focus` chrome with the lane.
 	 */
 	middleNavPanel?: ComponentChildren;
+	/**
+	 * How the {@link middleNavPanel} opens — the viewer's remembered Details choice (default), or a
+	 * selection an inspector holds (`selection`, painted open when the address names one). Resolved per
+	 * route beside the panel itself.
+	 */
+	middleNavPanelDock?: ContextPanelDockOptions | null;
 	/**
 	 * Chrome density (DESIGN_SYSTEM.md Part D.6). `full` is the standard L-shell; `focus` is the
 	 * distraction-free mode for a linear, committing flow (checkout's Details and Payment steps).
@@ -170,6 +177,7 @@ export function UserShell(
 		middleNavHeader,
 		middleNavFooter,
 		middleNavPanel,
+		middleNavPanelDock,
 		chrome = "full",
 		pageFooter,
 		children,
@@ -217,7 +225,14 @@ export function UserShell(
 							header={middleNavHeader}
 							footer={middleNavFooter}
 							panel={activePanel
-								? <MiddleNavPanel>{activePanel}</MiddleNavPanel>
+								? (
+									<MiddleNavPanel
+										dock={middleNavPanelDock?.dock}
+										open={middleNavPanelDock?.open}
+									>
+										{activePanel}
+									</MiddleNavPanel>
+								)
 								: undefined}
 						>
 							{canvas}

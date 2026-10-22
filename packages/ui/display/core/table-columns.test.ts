@@ -7,6 +7,7 @@ import {
 	orderedColumns,
 	pinnedOffsets,
 	priorityHidden,
+	resizeColumn,
 	resolveLayout,
 	toggleHidden,
 } from "./table-columns.ts";
@@ -81,6 +82,52 @@ Deno.test("the grid template fills, reserves lead/tail tracks and pads a fill-le
 	assertEquals(
 		gridTemplate(columns.slice(1, 2), widths, { lead: false, tail: false }),
 		"180px minmax(0, 1fr)",
+	);
+});
+
+Deno.test("resizing after a fill column moves only the handle's edge", () => {
+	const layout = resolveLayout(columns, null);
+	const grow = resizeColumn(layout, columns[1], 240, { columns, slack: 100 });
+	assertEquals(grow.widths, { name: 200, owner: 240, date: 100, size: 100 });
+	const shrink = resizeColumn(layout, columns[1], 150, { columns, slack: 100 });
+	assertEquals(shrink.widths, { name: 200, owner: 150, date: 190, size: 100 });
+});
+
+Deno.test("compensation cascades within bounds and leaves the rest to the fill", () => {
+	const layout = resolveLayout(columns, null);
+	const ctx = { columns, slack: 100 };
+	assertEquals(resizeColumn(layout, columns[1], 380, ctx).widths, {
+		name: 200,
+		owner: 380,
+		date: 72,
+		size: 80,
+	});
+	assertEquals(resizeColumn(layout, columns[2], 40, ctx).widths.size, 160);
+	const fixed = columns.map((c) => c.id === "date" ? { ...c, resizable: false } : c);
+	assertEquals(resizeColumn(layout, fixed[1], 200, { columns: fixed, slack: 100 }).widths, {
+		name: 200,
+		owner: 200,
+		date: 160,
+		size: 80,
+	});
+});
+
+Deno.test("an overflowing table grows freely and only compensates past its overflow", () => {
+	const layout = resolveLayout(columns, null);
+	const grow = resizeColumn(layout, columns[1], 260, { columns, slack: -40 });
+	assertEquals(grow.widths, { name: 200, owner: 260, date: 160, size: 100 });
+	const shrink = resizeColumn(layout, columns[1], 120, { columns, slack: -40 });
+	assertEquals(shrink.widths, { name: 200, owner: 120, date: 180, size: 100 });
+});
+
+Deno.test("without a fill before the handle the later columns just shift", () => {
+	const layout = resolveLayout(columns, null);
+	const ctx = { columns, slack: 100 };
+	assertEquals(resizeColumn(layout, columns[1], 240).widths.date, 160);
+	const trailing = [columns[1], columns[2], columns[0]];
+	assertEquals(
+		resizeColumn(layout, columns[1], 240, { ...ctx, columns: trailing }).widths.date,
+		160,
 	);
 });
 
