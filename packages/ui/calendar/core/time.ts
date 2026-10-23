@@ -279,6 +279,11 @@ export function fmtMonthYearShort(ms: number, tz: string): string {
 	return `${MONTHS_SHORT[p.month - 1]} ${p.year}`;
 }
 
+/** `Jul` — the short month name of `ms` in `tz`. */
+export function fmtShortMonth(ms: number, tz: string): string {
+	return MONTHS_SHORT[zonedParts(ms, tz).month - 1];
+}
+
 /** `Thu, Jul 17` — a short weekday + day. */
 export function fmtDayLabel(ms: number, tz: string): string {
 	const p = zonedParts(ms, tz);

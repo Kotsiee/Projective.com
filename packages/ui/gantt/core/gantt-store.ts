@@ -147,6 +147,11 @@ export interface GanttStore {
 	zoomBy(factor: number, now?: number): void;
 	/** Set the zoom so `range` fills the viewport, and scroll to it. */
 	fitRange(range: GanttRange, padFrac?: number): void;
+	/**
+	 * Re-pin after a HOST wrote the zoom signal directly (a slider elsewhere): the instant at the
+	 * viewport centre stays at the centre. A no-op when the store itself made the last write.
+	 */
+	adoptZoom(): void;
 	/** Multiply the row scale by a factor, clamped to {@link ROW_SCALE_RANGE}. */
 	scaleRows(factor: number): void;
 	/** Leave fly mode. */
@@ -203,6 +208,8 @@ export function createGanttStore(opts: GanttStoreOptions): GanttStore {
 
 	/** The instant at the viewport centre — held so a centre-pinned zoom re-pins in place. */
 	let centerMs = originMs;
+	/** The zoom the store itself last wrote, so a host's direct write can be told apart. */
+	let applied = pxPerDay.peek();
 	/** The live cursor anchor, or null. */
 	let anchor: { ms: number; viewX: number; expiresAt: number } | null = null;
 
@@ -235,6 +242,7 @@ export function createGanttStore(opts: GanttStoreOptions): GanttStore {
 		const ppd = clampZoom(next, zoomRange);
 		const w = viewportW.peek();
 		batch(() => {
+			applied = ppd;
 			if (anchor && now <= anchor.expiresAt) {
 				anchor.expiresAt = now + ZOOM_ANCHOR_HOLD_MS;
 				pxPerDay.value = ppd;
@@ -330,10 +338,26 @@ export function createGanttStore(opts: GanttStoreOptions): GanttStore {
 			if (w <= 0) return;
 			const ppd = fitZoom(range, w, padFrac, zoomRange);
 			anchor = null;
+			applied = ppd;
 			batch(() => {
 				pxPerDay.value = ppd;
 				const mid = range.start + (range.end - range.start) / 2;
 				write(xOfMs(mid, originMs, ppd) - w / 2, undefined);
+			});
+		},
+		adoptZoom: () => {
+			const raw = pxPerDay.peek();
+			if (raw === applied) return;
+			const ppd = clampZoom(raw, zoomRange);
+			const w = viewportW.peek();
+			batch(() => {
+				applied = ppd;
+				anchor = null;
+				if (ppd !== raw) pxPerDay.value = ppd;
+				const pinned = centerMs;
+				const x = xOfMs(pinned, originMs, ppd) - w / 2;
+				scrollX.value = Math.min(axisMax(), Math.max(axisMin(), x));
+				centerMs = pinned;
 			});
 		},
 		scaleRows: (factor) => {

@@ -217,6 +217,8 @@ export default function Gantt(props: GanttProps): JSX.Element {
 		store.laneCount.value = lanes.length;
 	}, [store, lanes.length]);
 
+	useLayoutEffect(() => store.pxPerDay.subscribe(() => store.adoptZoom()), [store]);
+
 	// Restore a persisted zoom once, only while the engine owns it.
 	useEffect(() => {
 		if (props.zoom || !props.storageKey || typeof localStorage === "undefined") return;

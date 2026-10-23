@@ -1,6 +1,14 @@
 import { signal } from "@preact/signals";
-import { calendarTime } from "@projective/ui/calendar";
-import type { CalendarViewMode } from "@projective/ui/calendar";
+import {
+	CALENDAR_ZOOM_DEFAULT,
+	calendarStateAt,
+	calendarTime,
+	calendarZoomFor,
+	DEFAULT_PPH,
+	MONTH_WEEKS_DEFAULT,
+} from "@projective/ui/calendar";
+import type { CalendarViewMode, CalendarZoomMode } from "@projective/ui/calendar";
+import { PX_PER_DAY_DEFAULT } from "@projective/ui/gantt";
 import type { CalendarEvent, CalendarEventKind, SchedulePage } from "@projective/types/scheduling";
 import { LocalKeys } from "@web/utils/storage-keys.ts";
 
@@ -32,31 +40,26 @@ export const calendarPage = signal<SchedulePage | null>(null);
 // #endregion
 
 // #region Navigation
-/** Day · Week · Month. Owned by the middle-nav FOOTER rig, which renders at every width. */
+/** Day · Week · Month · Timeline. Driven by the footer rig's view control, at every width. */
 export const calendarView = signal<CalendarViewMode>("week");
 
 /**
- * The four view modes and the words for them.
- *
- * Shared rather than declared twice because the switch and its collapsed-rail equivalent now live in
- * two REGIONS — the footer band owns the control, the lane's icon rail still offers the same three —
- * and two hydration roots naming one vocabulary in two places is how a label drifts. Only the words
- * are shared; each region keeps whatever glyph it draws them with.
+ * Where the calendar axis sits: 0 is Month at its widest, 1 is Day at its deepest (`@projective/ui/
+ * calendar` `core/zoom.ts`). The footer's slider and the grid's Ctrl+wheel move it; the engine
+ * writes every zoom it makes back here, so the two never disagree.
  */
-export const CALENDAR_VIEWS: readonly { value: CalendarViewMode; label: string }[] = [
-	{ value: "day", label: "Day" },
-	{ value: "week", label: "Week" },
-	{ value: "month", label: "Month" },
-	{ value: "timeline", label: "Timeline" },
-];
+export const calendarZoom = signal<number>(CALENDAR_ZOOM_DEFAULT);
+
+/** The timeline's scale, px per day — the slider's axis while the Timeline is showing. */
+export const timelineZoom = signal<number>(PX_PER_DAY_DEFAULT);
 
 /**
- * Restore the reader's last view choice, and remember the current one.
+ * Restore the reader's last view and zoom.
  *
- * The APP owns this, not the engine. `/calendar` hoists the view switch into the lane footer and the
- * header band, so it drives the engine through its `view` prop — and an engine that also restored a
- * view from its own `storageKey` would be a second owner writing over the first on the very next
- * effect. So the engine persists only the zoom it still owns, and the choice lives here.
+ * The APP owns these, not the engine: `/calendar` drives the engine through its `view` and `zoom`
+ * props, and an engine that also restored them from its own `storageKey` would be a second owner
+ * writing over the first on the very next effect. A calendar view is re-derived from the zoom, so
+ * the two stored values can never name different views.
  *
  * Client only, and deliberately not read at module scope: this module is imported during SSR, where
  * `localStorage` does not exist and where module state is shared across every request in the
@@ -66,9 +69,22 @@ export function restoreCalendarView(): void {
 	if (typeof localStorage === "undefined") return;
 	try {
 		const stored = localStorage.getItem(LocalKeys.CALENDAR_VIEW);
-		if (stored === "day" || stored === "week" || stored === "month" || stored === "timeline") {
-			calendarView.value = stored;
+		const zoom = localStorage.getItem(LocalKeys.CALENDAR_ZOOM);
+		const timeline = Number(localStorage.getItem(LocalKeys.CALENDAR_TIMELINE_ZOOM));
+		const u = zoom === null ? NaN : Number(zoom);
+		if (Number.isFinite(u) && u >= 0 && u <= 1) {
+			calendarZoom.value = u;
+		} else if (stored === "day" || stored === "week" || stored === "month") {
+			calendarZoom.value = calendarZoomFor({
+				view: stored,
+				pph: DEFAULT_PPH,
+				weeks: MONTH_WEEKS_DEFAULT,
+			});
 		}
+		if (timeline > 0) timelineZoom.value = timeline;
+		calendarView.value = stored === "timeline"
+			? "timeline"
+			: calendarStateAt(calendarZoom.value).view;
 	} catch { /* storage unavailable — the default view is a fine answer */ }
 }
 
@@ -78,6 +94,26 @@ export function persistCalendarView(view: CalendarViewMode): void {
 	try {
 		localStorage.setItem(LocalKeys.CALENDAR_VIEW, view);
 	} catch { /* no-op */ }
+}
+
+let zoomPersist: ReturnType<typeof setTimeout> | null = null;
+
+/** Remember both zoom axes, on a trailing debounce: a drag or a wheel burst writes dozens a second. */
+export function persistCalendarZoom(): void {
+	if (typeof localStorage === "undefined") return;
+	if (zoomPersist !== null) clearTimeout(zoomPersist);
+	zoomPersist = setTimeout(() => {
+		zoomPersist = null;
+		try {
+			localStorage.setItem(LocalKeys.CALENDAR_ZOOM, String(calendarZoom.peek()));
+			localStorage.setItem(LocalKeys.CALENDAR_TIMELINE_ZOOM, String(timelineZoom.peek()));
+		} catch { /* no-op */ }
+	}, 200);
+}
+
+/** Switch between the calendar and the timeline; the calendar returns at the view its zoom names. */
+export function setCalendarMode(mode: CalendarZoomMode): void {
+	calendarView.value = mode === "timeline" ? "timeline" : calendarStateAt(calendarZoom.peek()).view;
 }
 
 /**
@@ -259,17 +295,23 @@ export function kindsOnPage(events: readonly CalendarEvent[]): CalendarEventKind
 // #endregion
 
 // #region Overlays the bands open
+/** The id of the middle-nav panel's month navigator — the header band's toggle controls it. */
+export const CALENDAR_PANEL_ID = "cal-panel";
+
 /** The unified Connect-a-calendar consent modal. */
 export const connectOpen = signal(false);
 
-/** The `.ics` import modal. */
-export const importOpen = signal(false);
+/**
+ * The export modal. Opened by the footer rig's Export and mounted once, by the rig. Import needs no
+ * counterpart: its popover is anchored to the trigger that opened it, so the trigger owns it.
+ */
+export const exportOpen = signal(false);
 
 /**
  * A create request raised by a BAND.
  *
  * The event modal is mounted by the body island — it is the only region that holds the page's
- * timezone, the viewer's access and the modal stack — so "＋ New event" in the footer rig (and its
+ * timezone, the viewer's access and the modal stack — so New event in the footer rig (and its
  * counterpart on the lane's collapsed rail) cannot open it directly. It raises this instead and the
  * body answers, which is the same footer↔body handshake the board's Create Ticket uses.
  */
@@ -283,12 +325,13 @@ export function requestCreate(): void {
 
 // #region Imported entries
 /**
- * Entries read out of an uploaded `.ics`, held CLIENT-SIDE only.
+ * Entries read out of an imported `.ics`, `.ical` or `.vcs`, held CLIENT-SIDE only.
  *
  * They are not posted anywhere: persisting an import needs the `scheduling.*` write path, which is
  * still behind the backend gate. Keeping them in a signal beside the fetched page means the grid can
  * draw them immediately and honestly — they carry the `ics` source mark, so nothing on screen claims
- * they are synced with anything.
+ * they are synced with anything. A second import of the same file replaces the first
+ * (`mergeImported`).
  */
 export const importedEvents = signal<readonly CalendarEvent[]>([]);
 // #endregion

@@ -21,6 +21,15 @@ import type { Signal } from "@preact/signals";
  */
 export type CalendarViewMode = "day" | "week" | "month" | "timeline";
 
+/**
+ * One occurrence per day across a range, each from `startMinute` to `endMinute` of its own day in
+ * the display timezone (minutes from local midnight; `endMinute > startMinute`).
+ */
+export interface CalendarDailyRepeat {
+	startMinute: number;
+	endMinute: number;
+}
+
 /** A time range the user selected (drag-to-select) or clicked (an empty cell → a zero/slot range). */
 export interface CalendarRange {
 	/** Epoch ms (UTC) of the range start. */
@@ -29,6 +38,11 @@ export interface CalendarRange {
 	end: number;
 	/** Whether the range was made in an all-day lane / month cell. */
 	allDay?: boolean;
+	/**
+	 * Set when a multi-day selection was asked for as a DAILY series rather than one event spanning
+	 * it. The range still names the days; `dailyOccurrences` expands it into one timed range per day.
+	 */
+	daily?: CalendarDailyRepeat;
 }
 
 /**
@@ -239,6 +253,15 @@ export interface CalendarProps {
 	view?: CalendarViewMode;
 	/** The focus instant, epoch ms (UTC). Seeded and tracked exactly like {@link view}. */
 	focus?: number;
+	/**
+	 * The calendar axis position (0 = Month at its widest … 1 = Day at its deepest, `core/zoom.ts`) as
+	 * a HOST-owned signal, for a host that renders its own zoom slider outside the engine. The engine
+	 * writes every zoom it makes back into it and moves wherever the host writes it; it then persists
+	 * neither the hour scale nor the Month view's weeks itself.
+	 */
+	zoom?: Signal<number>;
+	/** The timeline's scale (px per day) as a host-owned signal, on the same terms as {@link zoom}. */
+	timelineZoom?: Signal<number>;
 	/** A heading shown in the header (e.g. the project title / "Availability"). */
 	title?: string;
 	/**

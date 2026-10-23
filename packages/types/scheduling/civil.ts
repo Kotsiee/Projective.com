@@ -272,4 +272,11 @@ export function zonedSpan(
 export function dateInZone(ms: number, tz: string): IsoDate {
 	return fromDayNumber(Math.floor((ms + offsetAt(ms, tz)) / DAY_MS));
 }
+
+/** The civil date and minute-of-day an instant reads as on a wall clock in `tz`. */
+export function wallClockInZone(ms: number, tz: string): { date: IsoDate; minute: number } {
+	const local = ms + offsetAt(ms, tz);
+	const day = Math.floor(local / DAY_MS);
+	return { date: fromDayNumber(day), minute: Math.floor((local - day * DAY_MS) / 60_000) };
+}
 // #endregion

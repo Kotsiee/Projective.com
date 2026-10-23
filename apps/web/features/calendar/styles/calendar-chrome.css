@@ -1,6 +1,6 @@
 /*
  * calendar-chrome — the `/calendar` hub's lane (expanded + collapsed rail), header band, footer rig,
- * and the three modals the rig opens.
+ * month navigator panel, the connect modal, the import popover and the export modal.
  *
  * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY — the surface mirrors under `dir="rtl"`.
  *
@@ -486,14 +486,8 @@
  * together in the 767px block below, so the transfer is one rule rather than two that can drift
  * apart. `Tooltip` renders a `<span>` wrapper, so the hide has to reach that too — otherwise an empty
  * inline anchor keeps its gap in the row.
- *
- * `.cal-band__views` is in the hide list and NOT in the reveal: the view switch now lives in the
- * footer rig, which renders at every width, so there is no width at which the duty transfers here.
- * Revealing it would put two switches for one fact on the same phone screen — the pair of Starred
- * controls `/messages` shipped. The band's markup for it is dead and belongs in the same delete.
  */
 .cal-band__search,
-.cal-band__views,
 .cal-band__iconbtn--mobile,
 .ui-tooltip__anchor:has(.cal-band__iconbtn--mobile) {
 	display: none;
@@ -526,51 +520,6 @@
 	min-inline-size: 0;
 }
 
-/*
- * Retained only so the band's own markup keeps a definition while it is being removed; nothing
- * reveals it (see the hide block above — the footer rig owns the view switch at every width).
- */
-.cal-band__views {
-	background: var(--surface-2);
-	border-radius: var(--radius-base);
-	padding: var(--space-px);
-}
-
-.cal-band__view {
-	appearance: none;
-	border: none;
-	background: none;
-	font: inherit;
-	font-size: var(--cal-hub-fs-micro);
-	color: var(--text-secondary);
-	inline-size: var(--cal-hub-hit);
-	block-size: var(--cal-hub-hit);
-	border-radius: var(--radius-xs);
-	cursor: pointer;
-	text-transform: uppercase;
-}
-
-.cal-band__view[data-on="true"] {
-	background: var(--surface);
-	color: var(--on-surface);
-}
-
-.cal-band__view:focus-visible {
-	outline: none;
-}
-
-/* The full word is the accessible name; the letter is what is drawn (§B.6.3). */
-.cal-band__viewname {
-	position: absolute;
-	inline-size: 1px;
-	block-size: 1px;
-	margin: -1px;
-	padding: 0;
-	overflow: hidden;
-	clip-path: inset(50%);
-	white-space: nowrap;
-}
-
 /* Below 1100px the timezone yields; the calendar's own grid still labels every column. */
 @media (max-width: 1100px) {
 	.cal-band__tz {
@@ -582,8 +531,6 @@
  * The lane is removed at exactly this width (middle-nav.css), so the band inherits the two duties
  * that lived ONLY there: find-in-calendar, and the way into working hours and leave. `/wallet` proved
  * the transfer is mandatory; `/messages` proved what a surface looks like when it does not happen.
- * The view switch is deliberately absent — the footer rig holds it at this width too, so it has
- * nothing to inherit.
  */
 @media (max-width: 767px) {
 	.cal-band__search,
@@ -681,90 +628,22 @@
 /* #endregion */
 
 /* #region Footer rig */
-/*
- * `container-type: inline-size` is load-bearing twice over.
- *
- * (1) It gives the rig INLINE-SIZE CONTAINMENT, so its width is computed without regard to its
- *     contents. Without it the labelled `nowrap` cluster contributes its full min-content to the
- *     middle-nav content column — a `1fr` grid track whose automatic minimum is `auto` — which is
- *     what starved the `/wallet` lane to 2px at an 820px viewport and overflowed the frame's clip at
- *     768px. `middle-nav.css` carries the matching `minmax(0, 1fr)`; either alone leaves the other's
- *     failure reachable.
- * (2) It makes the tier switch a real CONTAINER QUERY keyed on the band's own width, so the collapse
- *     is deterministic CSS rather than a client width observer.
- *
- * THE TIERS RELOCATE NAMES, THEY NEVER REMOVE A CONTROL. There is no overflow menu on this rig to
- * recover one from, so a width that hid an action would destroy it: `/wallet`'s
- * `nth-child(n + 3) { display: none }` deleted three money actions on four pages, and that is the
- * failure this arrangement has to make unreachable rather than merely survivable. The three tiers are
- * glyph + label · glyph only, action names on their Tooltips (§B.6.3's icon-only sticky footer) ·
- * plus the view names down to their initials, the full word staying in the accessibility tree.
- *
- * There is deliberately NO row `gap`: the trailing cluster is placed by an auto margin, so the only
- * separation a gap would buy is around the notice — which is empty most of the time and would then be
- * charging the row two gutters for a sentence that does not exist. The notice pads itself when it has
- * something to say (`[data-said]`) instead. It cannot simply be removed while empty: a `role="status"`
- * that is `display: none` until it has content is not reliably announced when it gets it.
- */
 .cal-rig {
 	container-type: inline-size;
 	container-name: calrig;
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
+	gap: var(--space-2) var(--space-3);
 	padding: var(--space-3) var(--space-4);
 	min-inline-size: 0;
 }
 
-/*
- * Leading: the view switch. `flex: none`, because a segmented control that shrinks clips its own
- * labels — when the row runs out of room the notice is what yields, and below that the tiers narrow
- * the controls deliberately rather than by squeezing.
- */
-.cal-rig__views {
-	display: inline-flex;
-	flex: none;
-	background: var(--surface-2);
-	border-radius: var(--radius-base);
-	padding: var(--space-px);
+.cal-rig__zoom {
+	flex: 0 1 auto;
+	min-inline-size: 0;
 }
 
-.cal-rig__view {
-	appearance: none;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	border: none;
-	background: none;
-	font: inherit;
-	font-size: var(--cal-hub-fs-micro);
-	color: var(--text-secondary);
-	padding-inline: var(--space-2);
-	block-size: var(--cal-hub-row);
-	border-radius: var(--radius-xs);
-	cursor: pointer;
-}
-
-.cal-rig__view[data-on="true"] {
-	background: var(--surface);
-	color: var(--on-surface);
-	box-shadow: var(--elevation-low);
-}
-
-.cal-rig__view:focus-visible {
-	outline: none;
-}
-
-/* The initial is drawn only in the narrowest tier; the word is the name at every width. */
-.cal-rig__viewletter {
-	display: none;
-	text-transform: uppercase;
-}
-
-/*
- * Trailing: the actions. An auto margin rather than `justify-content`, so the notice between them
- * keeps its own place in the flow — and logical, so the cluster lands on the inline-end under
- * `dir="rtl"` too. `flex: none` for the same reason the switch carries it.
- */
 .cal-rig__actions {
 	display: flex;
 	align-items: center;
@@ -773,80 +652,29 @@
 	flex: none;
 }
 
-.cal-rig__action {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	font: inherit;
-	font-size: var(--cal-hub-fs-body);
-	block-size: var(--cal-hub-row);
-	padding-inline: var(--space-3);
-	border: 1px solid transparent;
-	border-radius: var(--radius-base);
-	background: none;
-	color: var(--on-surface);
-	cursor: pointer;
-	white-space: nowrap;
-}
-
-.cal-rig__action:hover {
-	background: var(--surface-3);
-}
-
-.cal-rig__action:focus-visible {
-	outline: none;
-}
-
-.cal-rig__action[data-variant="primary"] {
-	background: var(--primary);
-	color: var(--on-primary);
-}
-
-.cal-rig__action[data-variant="primary"]:hover {
-	filter: brightness(1.05);
-}
-
-.cal-rig__glyph {
+.ui-button.cal-rig__icon {
 	flex: none;
 }
 
-/*
- * The rig's own answer back — a refusal, or a confirmation that a file was written.
- *
- * `flex: 0 1 auto` with a zero minimum and an ellipsis, so a long sentence can never widen the band
- * (the containment above stops the row driving the middle-nav's `1fr` track, and this stops the
- * notice driving the row) — and it is the ONLY shrinkable item in the row, so a squeezed band gives
- * up a message before it gives up a millimetre of any control. Empty it costs nothing: no padding,
- * no minimum, and no `gap` charged around it.
- */
-.cal-rig__notice {
-	flex: 0 1 auto;
-	min-inline-size: 0;
-	margin: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	font-size: var(--cal-hub-fs-body);
-	color: var(--text-secondary);
+.ui-button.cal-rig__create {
+	flex: none;
+	margin-inline-start: var(--space-1);
 }
 
-.cal-rig__notice[data-said] {
-	padding-inline: var(--space-3);
+@container calrig (max-width: 30rem) {
+	.cal-rig .cal-zoom__stop {
+		display: none;
+	}
 }
 
-/*
- * TIER 2 — the action labels drop, glyphs stay. `clip-path`, never `display: none`: the box collapses
- * but the accessible name survives in the tree, so a control drawn as a glyph is never announced as
- * nameless, and voice control can still say it.
- *
- * THE BUDGET, measured rather than guessed (a container query is asked about the CONTENT box, so
- * these are inner widths). Fully labelled the row draws 612.62px — views 129.99 + the four actions
- * 470.63 + their three 4px gaps — against a 640px trigger, so the labelled tier is never narrower
- * than its own contents and has 27px in hand for font-metric variance. An action added to this rig
- * must fit inside that margin or bring the trigger down with it; it may not be hidden instead.
- */
-@container calrig (max-width: 40rem) {
-	.cal-rig__label {
+@container calrig (max-width: 26rem) {
+	.ui-button.cal-rig__create {
+		--btn-px: 0;
+		inline-size: var(--btn-height);
+		padding: 0;
+	}
+
+	.ui-button.cal-rig__create .ui-button__label {
 		position: absolute;
 		inline-size: 1px;
 		block-size: 1px;
@@ -855,54 +683,6 @@
 		overflow: hidden;
 		clip-path: inset(50%);
 		white-space: nowrap;
-	}
-
-	.cal-rig__action {
-		gap: 0;
-		inline-size: var(--cal-hub-row);
-		padding-inline: 0;
-		justify-content: center;
-	}
-}
-
-/*
- * TIER 3 — the view names step down to their initials, which is the same trade one tier lower: the
- * word stays in the accessibility tree and on the Tooltip, only the drawing changes.
- *
- * 22rem is where the row genuinely runs out, not where it looks tight. A 390px phone gives this
- * container 366px and needs 254px (labelled views + glyph actions), so it keeps whole words; the
- * binding case is a COARSE pointer, which lifts every control to 2.5rem and takes the row to 302px —
- * still inside 352px, and inside the 296px a 320px handset leaves once the initials are drawn.
- */
-@container calrig (max-width: 22rem) {
-	.cal-rig__viewletter {
-		display: inline;
-	}
-
-	.cal-rig__viewname {
-		position: absolute;
-		inline-size: 1px;
-		block-size: 1px;
-		margin: -1px;
-		padding: 0;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
-	}
-
-	.cal-rig__view {
-		inline-size: var(--cal-hub-row);
-		padding-inline: 0;
-	}
-}
-
-/*
- * An action under a thumb. The rig row clears WCAG 2.5.8's 24px floor but is not a comfortable
- * target, and in the icon-only tier the box IS the target.
- */
-@media (pointer: coarse) {
-	.cal-rig {
-		--cal-hub-row: 2.5rem;
 	}
 }
 
@@ -915,9 +695,28 @@
 
 /* #endregion */
 
-/* #region Connect + import modals */
-.cal-connect__hint,
-.cal-import__hint {
+/* #region Month navigator panel */
+.cal-panel {
+	display: flex;
+	flex-direction: column;
+	flex: 1 0 auto;
+	min-block-size: 100%;
+	padding: var(--space-4);
+}
+
+.cal-panel__mini:only-child {
+	margin-block: auto;
+}
+
+.cal-panel--drawer {
+	min-block-size: auto;
+	padding: 0;
+}
+
+/* #endregion */
+
+/* #region Connect modal, import popover, export modal */
+.cal-connect__hint {
 	margin: 0 0 var(--space-3);
 	font-size: var(--cal-hub-fs-body);
 	color: var(--text-secondary);
@@ -1085,30 +884,63 @@
 	color: var(--danger);
 }
 
-/* The import file well. A label wrapping a visually-hidden input, so the whole area is the target. */
-.cal-import__drop {
+.cal-importpop {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	inline-size: min(20rem, calc(100vw - 2 * var(--space-4)));
+	padding: var(--space-3);
+}
+
+.cal-importpop__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-2);
+}
+
+.cal-importpop__title {
+	margin: 0;
+	font-size: var(--cal-hub-fs-body);
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface);
+}
+
+.cal-importpop__formats {
+	margin: 0;
+	font-size: var(--cal-hub-fs-micro);
+	color: var(--text-secondary);
+}
+
+.cal-importpop__drop {
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	justify-content: center;
-	gap: var(--space-2);
-	padding: var(--space-6);
+	gap: var(--space-1);
+	padding: var(--space-5) var(--space-3);
 	border: 1px dashed var(--border-subtle);
 	border-radius: var(--radius-lg);
 	color: var(--text-secondary);
+	text-align: center;
 	cursor: pointer;
 }
 
-.cal-import__drop:hover {
+.cal-importpop__drop:hover,
+.cal-importpop__drop[data-over="true"] {
 	background: var(--surface-2);
 	border-color: var(--primary);
 }
 
-.cal-import__drop:focus-within {
+.cal-importpop__drop:focus-within {
 	outline: none;
 }
 
-.cal-import__input {
+.cal-importpop__drop[aria-busy="true"] {
+	cursor: progress;
+}
+
+.cal-importpop__input {
 	position: absolute;
 	inline-size: 1px;
 	block-size: 1px;
@@ -1118,31 +950,33 @@
 	clip-path: inset(50%);
 }
 
-.cal-import__droplabel {
+.cal-importpop__droplabel {
 	font-size: var(--cal-hub-fs-body);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	max-inline-size: 100%;
+	color: var(--on-surface);
 }
 
-.cal-import__msg {
-	margin-block-start: var(--space-3);
+.cal-importpop__droplimit,
+.cal-importpop__more,
+.cal-importpop__morenotes,
+.cal-importpop__note {
+	margin: 0;
+	font-size: var(--cal-hub-fs-micro);
+	color: var(--text-secondary);
 }
 
-.cal-import__result {
-	margin-block-start: var(--space-3);
+.cal-importpop__result {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-2);
 }
 
-.cal-import__count {
+.cal-importpop__count {
 	margin: 0;
 	font-size: var(--cal-hub-fs-body);
 	color: var(--on-surface);
 }
 
-.cal-import__preview {
+.cal-importpop__list {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-1);
@@ -1151,7 +985,7 @@
 	list-style: none;
 }
 
-.cal-import__row {
+.cal-importpop__row {
 	display: flex;
 	align-items: baseline;
 	justify-content: space-between;
@@ -1159,33 +993,97 @@
 	font-size: var(--cal-hub-fs-micro);
 }
 
-.cal-import__rowtitle {
-	color: var(--on-surface);
+.cal-importpop__rowtitle {
+	min-inline-size: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	color: var(--on-surface);
 }
 
-.cal-import__rowwhen {
-	color: var(--text-secondary);
+.cal-importpop__rowwhen {
 	flex: none;
-}
-
-.cal-import__more {
-	margin: 0;
-	font-size: var(--cal-hub-fs-micro);
 	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
 }
 
-.cal-import__warnings {
-	margin: 0;
-	padding-inline-start: var(--space-4);
+.cal-importpop__notes {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-1);
+	margin: 0;
+	padding-inline-start: var(--space-4);
 }
 
-.cal-import__foot {
+.cal-importpop__foot {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-2);
+}
+
+.cal-importpop__foot--sync {
+	justify-content: space-between;
+}
+
+.cal-importpop__foot--sync .cal-importpop__note {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+.cal-importpop__sync {
+	flex: none;
+	white-space: nowrap;
+}
+
+.cal-export {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+}
+
+.cal-export__section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.cal-export__head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+}
+
+.cal-export__label {
+	margin: 0;
+	font-size: var(--cal-hub-fs-micro);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--cal-hub-label-track);
+	line-height: inherit;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.cal-export__range {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr));
+	gap: var(--space-3);
+}
+
+.cal-export__count {
+	margin: 0;
+	font-size: var(--cal-hub-fs-body);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.cal-export__figure {
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.cal-export__foot {
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;

@@ -1,9 +1,8 @@
 import type { JSX, VNode } from "preact";
-import { useComputed, useSignal } from "@preact/signals";
+import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import "../styles/calendar-chrome.css";
-import { MiniMonth } from "@projective/ui/calendar";
-import { CALENDAR_KIND_LABEL, calendarTime, useNowTick } from "@projective/ui/calendar";
+import { CALENDAR_KIND_LABEL, calendarTime } from "@projective/ui/calendar";
 import {
 	LaneBar,
 	LaneCollapseButton,
@@ -20,7 +19,6 @@ import {
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import type { IconName } from "@projective/ui/icons";
-import type { CalendarViewMode } from "@projective/ui/calendar";
 import type { CalendarEvent, CalendarEventKind, SchedulePage } from "@projective/types/scheduling";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
@@ -28,12 +26,10 @@ import { AvailabilityBlock } from "../components/AvailabilityManager.tsx";
 import { openSettings } from "@features/settings/core/settings-bridge.ts";
 import { providerMarkFor } from "../components/provider-marks.tsx";
 import {
-	CALENDAR_VIEWS,
 	calendarFocus,
 	focusedAt,
 	calendarPage,
 	calendarQuery,
-	calendarView,
 	importedEvents,
 	kindsOnPage,
 	requestCreate,
@@ -44,8 +40,7 @@ import {
 } from "../core/calendar-state.ts";
 
 /**
- * CalendarLane — the middle-nav lane for `/calendar`: where in time am I, what is coming, and when
- * am I available.
+ * CalendarLane — the middle-nav lane for `/calendar`: what is coming, and when am I available.
  *
  * Built from the shared `@projective/ui/navigation` lane chrome, so it reads as the same control set
  * as the `/projects` feed, the `/messages` inbox and the `/wallet` rail rather than a fourth
@@ -53,11 +48,8 @@ import {
  * DOM and CSS reveals exactly one, keyed off the splitter's `data-mode`. A client width observer
  * would paint the wrong one for a frame on every load.
  *
- * The mini-month is the package's own {@link MiniMonth}, not a bespoke redraw. Decisions #48 and #53
- * both hand-rolled one because `calendar.css` ships only through the calendar ISLAND's bundle and
- * those surfaces did not mount it — here the grid is on the very same route, and this island imports
- * the package barrel besides, so the sheet is in the graph twice over and the real control is
- * simply reusable.
+ * The month navigator is not here: it is the middle-nav PANEL's (`CalendarPanel`), opened from the
+ * header band, so the lane's height goes to the list it exists for.
  *
  * It fetches NOTHING. The body island owns the read and publishes it to {@link calendarPage}; this
  * lane renders whatever is in there, so the upcoming list and the grid can never be built from two
@@ -96,22 +88,6 @@ const KIND_ICON: Record<CalendarEventKind, IconName> = {
 	general: "tag",
 };
 
-/**
- * The registry glyph each view mode is drawn with on the collapsed rail.
- *
- * The registry carries no day/week/month trio, and the calendar package's own three glyphs are not
- * exported from its barrel — so rather than authoring a fourth icon family (§B.7, the whole point of
- * the registry), these borrow three shapes that already mean the right thing: a day is one column of
- * hours (`list`), a week is a grid of them (`grid`), a month is the calendar page itself. The words
- * come from {@link CALENDAR_VIEWS}, which the footer rig's switch reads too.
- */
-const VIEW_ICON: Record<CalendarViewMode, IconName> = {
-	day: "list",
-	week: "grid",
-	month: "calendar",
-	timeline: "timeline",
-};
-
 /** Which half of the lane the tab strip is showing. */
 type LanePanel = "events" | "availability";
 
@@ -130,45 +106,6 @@ const LANE_TABS: readonly LaneTabOption<LanePanel>[] = [
 export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 	const collapsed = useSignal(false);
 	/**
-	 * The wall clock, live.
-	 *
-	 * The engine's own ticker, for the two reasons it exists: `mounted` keeps the marker off the SSR
-	 * paint (`Date.now()` on the server and again on the client are two different instants, and a
-	 * mini-month marking a different day in each is a hydration mismatch on the one cell a reader
-	 * looks for first), and the interval means the marker actually moves at midnight. Computed ONCE in
-	 * a `[]` effect it never did — a calendar left open overnight kept yesterday circled.
-	 */
-	const { now, mounted } = useNowTick();
-	/**
-	 * "Today", QUANTISED to a day and resolved in the PAGE's zone.
-	 *
-	 * A computed rather than a render-body expression for the reason the engine gives for its own: a
-	 * computed notifies only when its VALUE changes, so the minute tick is silent until midnight
-	 * instead of re-rendering the 42-cell mini-month, the upcoming list and the availability block
-	 * once a minute to move nothing.
-	 *
-	 * The zone is read INSIDE the computed, from the same `calendarPage ?? props.initial` pair every
-	 * other read in this component uses. Reading it outside would close over a stale zone: the page is
-	 * published by the BODY island and mount order between two hydration roots is not guaranteed, so
-	 * the lane resolved "today" in UTC when it mounted first — the wrong day for the hours UTC and the
-	 * page's zone disagree — and, with no signal of its own to invalidate on, never corrected it.
-	 */
-	const todayMs = useComputed(() =>
-		mounted.value
-			? calendarTime.startOfDay(
-				now.value,
-				calendarPage.value?.timezone ?? props.initial?.timezone ?? "UTC",
-			)
-			: null
-	);
-	/**
-	 * Which month the mini-map is SHOWING, which is not the same as which instant is focused.
-	 *
-	 * Stepping the mini-map browses ahead without moving the grid — the same separation the engine's
-	 * own side panel makes. Collapsing the two would make every glance at next month a navigation.
-	 */
-	const monthMs = useSignal<number>(calendarFocus.peek() || props.initial?.now || Date.now());
-	/**
 	 * Which panel the tab strip is showing.
 	 *
 	 * A signal on this island rather than a module one in `calendar-state`: it is one region's own view
@@ -185,11 +122,6 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 		const el = document.querySelector(".ui-splitter") as HTMLElement | null;
 		if (el) collapsed.value = el.dataset.mode === "collapsed";
 	}, []);
-
-	// A pick, a nav step or a scroll that lands in another month brings the mini-map with it.
-	useEffect(() => {
-		if (calendarFocus.value) monthMs.value = calendarFocus.value;
-	}, [calendarFocus.value]);
 
 	const setCollapsed = (next: boolean) => {
 		collapsed.value = next;
@@ -248,20 +180,6 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 							<Icon name="calendar" />
 						</button>
 					</Tooltip>
-					{CALENDAR_VIEWS.map((v) => (
-						<Tooltip content={`${v.label} view`} placement="right" key={v.value}>
-							<button
-								type="button"
-								class="cal-rail__item"
-								data-active={calendarView.value === v.value ? "true" : "false"}
-								aria-label={`${v.label} view`}
-								aria-pressed={calendarView.value === v.value ? "true" : "false"}
-								onClick={() => (calendarView.value = v.value)}
-							>
-								<Icon name={VIEW_ICON[v.value]} />
-							</button>
-						</Tooltip>
-					))}
 					<Tooltip content="Working hours and leave" placement="right">
 						<button
 							type="button"
@@ -298,16 +216,6 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 			{/* Expanded presentation. */}
 			<div class="cal-lane">
 				<LaneHead class="cal-lane__head">
-					<MiniMonth
-						monthMs={monthMs.value}
-						focusMs={focusedAt(page)}
-						tz={tz}
-						view={calendarView.value}
-						todayMs={todayMs.value}
-						onPick={(day) => (calendarFocus.value = day)}
-						onMonthStep={(d) => (monthMs.value = calendarTime.addZonedMonths(monthMs.value, d, tz))}
-					/>
-
 					<LaneBar>
 						<LaneSearch
 							value={calendarQuery.value}

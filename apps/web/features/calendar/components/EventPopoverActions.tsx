@@ -31,8 +31,8 @@ import { eventStack } from "../core/event-view.ts";
  * A privacy-masked entry says "Busy" and nothing else — no title, no location, no agenda, no
  * provenance. Every control here would either hand that block to a third party, write it into a file
  * that leaves the application, or open a surface that has nothing to show; so a masked event returns
- * `null` and the popover draws no actions. That is the same rule the footer rig's export applies
- * (it drops masked entries before writing) expressed as absence rather than as a filter.
+ * `null` and the popover draws no actions. That is the same rule the export modal applies (it never
+ * writes a masked entry, whatever the filters say) expressed as absence rather than as a filter.
  */
 
 // #region iCalendar handoff
@@ -47,8 +47,8 @@ import { eventStack } from "../core/event-view.ts";
  * property of the export format, and never written back onto the event.
  *
  * The strapline ({@link CalendarEvent.meta}) is used as the description rather than the event's rich
- * agenda body, matching the footer rig's export exactly: the agenda is rich text, and the writer's
- * TEXT escaping would carry its markup into the file verbatim.
+ * agenda body, matching the export modal exactly: the agenda is rich text, and the writer's TEXT
+ * escaping would carry its markup into the file verbatim.
  */
 function icsInputFor(event: CalendarEvent): CalendarEventInput {
 	return {
@@ -73,9 +73,10 @@ export interface IcsDownloadResult {
  * Write `events` to a `.ics` file and hand it to the reader.
  *
  * There is no `/api/scheduling/export` endpoint, and inventing a link to one would ship a control
- * that 404s — so the document is built client-side and handed over as a Blob, which is the approach
- * `CalendarFooterRig` settled. It is extracted here so the rig and this header cannot drift: the
- * masked filter, the one-minute floor and the anchor lifecycle are stated once.
+ * that 404s — so the document is built client-side and handed over as a Blob, with the anchor
+ * lifecycle `calendar-download.ts` uses for the page's export. It stays on `buildIcsCalendar` rather
+ * than the page export's `export-formats.ts` writer because the engine's popover context carries no
+ * timezone, and that writer needs one to place an all-day entry on its dates.
  *
  * **Masked entries are dropped inside this function, not by its callers.** Filtering at the call
  * site is a rule every future caller has to remember, and forgetting it puts somebody's private

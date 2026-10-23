@@ -1,0 +1,27 @@
+.cal-zoom {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.ui-button.cal-zoom__mode {
+	flex: none;
+}
+
+.cal-zoom__slider {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+.cal-zoom__slider .ui-zoom__track {
+	min-inline-size: 5.5rem;
+}
+
+.cal-zoom__stop {
+	flex: none;
+	min-inline-size: 3.5rem;
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+	white-space: nowrap;
+}

@@ -51,6 +51,7 @@ import {
 	calendarFooterFor,
 	calendarHeaderFor,
 	calendarLaneFor,
+	calendarPanelFor,
 } from "@web/features/calendar/core/calendar-slots.tsx";
 import { filesLaneFor } from "@web/features/files/core/files-lane-slot.tsx";
 import { filesHeaderFor } from "@web/features/files/core/files-header-slot.tsx";
@@ -178,10 +179,10 @@ async function middleNavHeaderFor(
  * Resolve the middle-nav frame's right panel: a one-to-one conversation's context panel on its Chat
  * tab, a project channel's details (Task · Stage · Channel) on its Chat view, a catalogue listing's
  * live card and readiness (or its chosen buyer) in the item workspace, or a team's or business's
- * channel details on its Chat view (Decision #308), or the member inspector on a team's or business's
- * Members module (Decision #322). Exactly one owns the single
- * panel slot per URL — the resolvers test disjoint path roots — and every other route registers none,
- * so the frame has no panel column.
+ * channel details on its Chat view (Decision #308), the member inspector on a team's or business's
+ * Members module (Decision #322), or the month navigator on `/calendar` (Decision #326). Exactly one
+ * owns the single panel slot per URL — the resolvers test disjoint path roots — and every other route
+ * registers none, so the frame has no panel column.
  */
 async function middleNavPanelFor(
 	url: URL,
@@ -192,7 +193,8 @@ async function middleNavPanelFor(
 		(await channelPanelFor(url, context, actor)) ??
 		(await cataloguePanelFor(url, context, actor)) ??
 		(await workspaceChannelPanelFor(url, actor)) ??
-		(await workspaceMembersPanelFor(url, actor));
+		(await workspaceMembersPanelFor(url, actor)) ??
+		(await calendarPanelFor(url, context, actor));
 }
 
 /**

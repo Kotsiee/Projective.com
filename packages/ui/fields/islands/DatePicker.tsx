@@ -836,6 +836,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 		const y = monthDate.getFullYear();
 		const m = monthDate.getMonth();
 		const weeks = monthMatrix(y, m, firstDayOfWeek);
+		const now = new Date();
 		return (
 			<div class="ui-datepicker__month" key={`${y}-${m}`}>
 				<div class="ui-datepicker__month-title" aria-hidden="true">
@@ -860,13 +861,20 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 						))}
 					</div>
 					{weeks.map((week, wi) => (
-						<div class="ui-datepicker__week" role="row" key={`${gridIndex}-${wi}`}>
+						<div
+							class={cx(
+								"ui-datepicker__week",
+								week.some((day) => isSameDay(day, now)) && "ui-datepicker__week--current",
+							)}
+							role="row"
+							key={`${gridIndex}-${wi}`}
+						>
 							{week.map((day) => {
 								const inMonth = day.getMonth() === m;
 								const dis = isDisabledDate(day);
 								const sel = isSelected(day);
 								const focused = isSameDay(day, focusedDate.value);
-								const today = isSameDay(day, new Date());
+								const today = isSameDay(day, now);
 								return (
 									<button
 										type="button"

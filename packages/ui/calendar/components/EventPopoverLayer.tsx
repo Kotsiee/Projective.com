@@ -64,7 +64,8 @@ import {
 	onAccentFor,
 } from "../core/kinds.ts";
 import { AVATAR_MAX, initialsOf } from "../core/scene-build.ts";
-import { fmtFullDate, fmtRange } from "../core/time.ts";
+import { fmtDayLabel, fmtFullDate, fmtRange } from "../core/time.ts";
+import { DAILY_REPEAT_DEFAULT, dailyOccurrences, rangeDays } from "../core/series.ts";
 import { ChevronLeftIcon, ClockIcon, ExpandIcon, GlobeIcon, PlusIcon } from "./glyphs.tsx";
 import { EventBlock } from "./EventBlock.tsx";
 
@@ -190,6 +191,19 @@ const ANCHOR_OFFSET = 8;
 
 /** Inset the panel keeps from the viewport edge, px — comfort, not layout, so it is its own number. */
 const VIEWPORT_PAD = 12;
+
+function clockOf(minute: number): string {
+	const m = Math.max(0, Math.min(24 * 60 - 1, Math.round(minute)));
+	return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+function minuteOf(clock: string): number | null {
+	const match = /^(\d{1,2}):(\d{2})$/.exec(clock.trim());
+	if (!match) return null;
+	const h = Number(match[1]);
+	const m = Number(match[2]);
+	return h < 24 && m < 60 ? h * 60 + m : null;
+}
 // #endregion
 
 // #region Marks
@@ -609,6 +623,9 @@ export function EventPopoverLayer(props: EventPopoverLayerProps): JSX.Element | 
 	const [detail, setDetail] = useState<CalendarEvent | null>(null);
 	const [slide, setSlide] = useState<"forward" | "back" | null>(null);
 	const [title, setTitle] = useState("");
+	const [spread, setSpread] = useState<"span" | "daily">("span");
+	const [fromClock, setFromClock] = useState(clockOf(DAILY_REPEAT_DEFAULT.startMinute));
+	const [toClock, setToClock] = useState(clockOf(DAILY_REPEAT_DEFAULT.endMinute));
 	const listScrollRef = useRef(0);
 	const returnToRef = useRef<string | null>(null);
 
@@ -631,10 +648,14 @@ export function EventPopoverLayer(props: EventPopoverLayerProps): JSX.Element | 
 	 * the grid re-publishing the state sixty times a second during a drag cannot type over them.
 	 */
 	const seedTitle = shown?.kind === "create" ? (shown.title ?? "") : "";
+	const seedDaily = shown?.kind === "create" ? shown.range.daily : undefined;
 	useLayoutEffect(() => {
 		setDetail(null);
 		setSlide(null);
 		setTitle(seedTitle);
+		setSpread(seedDaily ? "daily" : "span");
+		setFromClock(clockOf(seedDaily?.startMinute ?? DAILY_REPEAT_DEFAULT.startMinute));
+		setToClock(clockOf(seedDaily?.endMinute ?? DAILY_REPEAT_DEFAULT.endMinute));
 		listScrollRef.current = 0;
 		returnToRef.current = null;
 		// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -768,7 +789,20 @@ export function EventPopoverLayer(props: EventPopoverLayerProps): JSX.Element | 
 		: null;
 
 	const range = shown.kind === "create" ? shown.range : null;
-	const canSubmit = title.trim().length > 0 && typeof onQuickCreate === "function";
+	const days = range ? rangeDays(range, tz) : [];
+	const multiDay = range !== null && range.allDay === true && days.length > 1;
+	const daily = multiDay && spread === "daily";
+	const fromMinute = minuteOf(fromClock);
+	const toMinute = minuteOf(toClock);
+	const timesValid = fromMinute !== null && toMinute !== null && toMinute > fromMinute;
+	const planned: CalendarRange | null = range && daily && timesValid
+		? { ...range, daily: { startMinute: fromMinute, endMinute: toMinute } }
+		: range && !daily
+		? { start: range.start, end: range.end, allDay: range.allDay }
+		: range;
+	const firstOccurrence = planned?.daily ? dailyOccurrences(planned, tz)[0] : null;
+	const canSubmit = title.trim().length > 0 && typeof onQuickCreate === "function" &&
+		(!daily || timesValid);
 	// #endregion
 
 	return (
@@ -818,27 +852,113 @@ export function EventPopoverLayer(props: EventPopoverLayerProps): JSX.Element | 
 							: null}
 
 						<div class={cx("cal-pop__pane", slideClass)} key={paneKey}>
-							{shown.kind === "create" && range
+							{shown.kind === "create" && range && planned
 								? (
 									<form
 										class="cal-pop__form"
 										onSubmit={(e) => {
 											e.preventDefault();
 											const t = title.trim();
-											if (!t || !onQuickCreate) return;
-											onQuickCreate(range, t);
+											if (!t || !onQuickCreate || !canSubmit) return;
+											onQuickCreate(planned, t);
 											close();
 										}}
 									>
 										<p class="cal-pop__range">
 											<ClockIcon size={14} class="cal-pop__facticon" />
 											<span class="cal-pop__facttext">
-												{fmtFullDate(range.start, tz)}
+												{multiDay
+													? `${fmtDayLabel(days[0], tz)} – ${
+														fmtDayLabel(days[days.length - 1], tz)
+													}`
+													: fmtFullDate(range.start, tz)}
 												<span class="cal-pop__facttime">
-													{range.allDay ? "All day" : fmtRange(range.start, range.end, tz, hour12)}
+													{daily
+														? firstOccurrence
+															? `Every day · ${
+																fmtRange(firstOccurrence.start, firstOccurrence.end, tz, hour12)
+															}`
+															: "Every day"
+														: multiDay
+														? `${days.length} days · All day`
+														: range.allDay
+														? "All day"
+														: fmtRange(range.start, range.end, tz, hour12)}
 												</span>
 											</span>
 										</p>
+										{multiDay
+											? (
+												<fieldset class="cal-pop__spread">
+													<legend class="cal-pop__label">Create as</legend>
+													<label class="cal-pop__spreadopt">
+														<input
+															type="radio"
+															class="cal-pop__radio"
+															name={`${panelId}-spread`}
+															value="span"
+															checked={spread === "span"}
+															onChange={() => setSpread("span")}
+														/>
+														<span class="cal-pop__spreadtext">
+															<span class="cal-pop__spreadname">Multi-day event</span>
+															<span class="cal-pop__spreadmeta">Spans all {days.length} days</span>
+														</span>
+													</label>
+													<label class="cal-pop__spreadopt">
+														<input
+															type="radio"
+															class="cal-pop__radio"
+															name={`${panelId}-spread`}
+															value="daily"
+															checked={spread === "daily"}
+															onChange={() => setSpread("daily")}
+														/>
+														<span class="cal-pop__spreadtext">
+															<span class="cal-pop__spreadname">Daily event</span>
+															<span class="cal-pop__spreadmeta">
+																Repeats each day at a set time
+															</span>
+														</span>
+													</label>
+												</fieldset>
+											)
+											: null}
+										{daily
+											? (
+												<div class="cal-pop__times">
+													<label class="cal-pop__timefield">
+														<span class="cal-pop__label">From</span>
+														<input
+															class="cal-pop__input cal-pop__input--time"
+															type="time"
+															step={900}
+															value={fromClock}
+															aria-invalid={timesValid ? undefined : "true"}
+															onInput={(e) =>
+																setFromClock((e.currentTarget as HTMLInputElement).value)}
+														/>
+													</label>
+													<label class="cal-pop__timefield">
+														<span class="cal-pop__label">To</span>
+														<input
+															class="cal-pop__input cal-pop__input--time"
+															type="time"
+															step={900}
+															value={toClock}
+															aria-invalid={timesValid ? undefined : "true"}
+															onInput={(e) =>
+																setToClock((e.currentTarget as HTMLInputElement).value)}
+														/>
+													</label>
+													{timesValid ? null : (
+														<p class="cal-pop__timenote" role="alert">
+															It has to end after it starts.
+														</p>
+													)}
+												</div>
+											)
+											: null}
 										{onQuickCreate
 											? (
 												<>
@@ -880,7 +1000,7 @@ export function EventPopoverLayer(props: EventPopoverLayerProps): JSX.Element | 
 													type="button"
 													class="cal-pop__expand"
 													onClick={() => {
-														onExpandCreate(range, title.trim());
+														onExpandCreate(planned, title.trim());
 														close();
 													}}
 												>

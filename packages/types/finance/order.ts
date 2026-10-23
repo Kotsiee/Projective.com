@@ -406,11 +406,27 @@ export function icsEscape(value: string): string {
  * Folded continuation lines begin with a single space. Clients that ignore folding still parse a
  * short line, so this only ever matters on long descriptions — which is exactly where an unfolded
  * line silently truncates in some desktop clients.
+ *
+ * The limit is counted in UTF-8 OCTETS and a break never lands inside a character: counting UTF-16
+ * units let a line of accented or CJK text run to three times the limit, and slicing by unit could
+ * split a surrogate pair across two lines.
  */
 export function icsFold(line: string): string {
-	if (line.length <= 75) return line;
-	const parts: string[] = [line.slice(0, 75)];
-	for (let i = 75; i < line.length; i += 74) parts.push(" " + line.slice(i, i + 74));
+	const parts: string[] = [];
+	let current = "";
+	let octets = 0;
+	for (const ch of line) {
+		const code = ch.codePointAt(0) ?? 0;
+		const size = code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
+		if (octets + size > 75) {
+			parts.push(current);
+			current = " ";
+			octets = 1;
+		}
+		current += ch;
+		octets += size;
+	}
+	parts.push(current);
 	return parts.join("\r\n");
 }
 

@@ -16,6 +16,7 @@
  * the status word the mask permits, exactly as in the other three views (§Part 1.4).
  */
 import type { JSX, VNode } from "preact";
+import type { Signal } from "@preact/signals";
 import { useMemo } from "preact/hooks";
 import Gantt from "../../gantt/islands/Gantt.tsx";
 import type {
@@ -65,6 +66,8 @@ export interface TimelineViewProps {
 	canCreate?: boolean;
 	/** localStorage key the engine persists its own zoom under (already suffixed by the caller). */
 	storageKey?: string;
+	/** The time scale (px per day) as a host-owned signal, so a slider elsewhere drives the axis. */
+	zoom?: Signal<number>;
 	renderEventActions?: (ctx: EventPopoverActionContext) => VNode | null;
 	onSelectRange?: (range: CalendarRange) => void;
 	onQuickCreate?: (range: CalendarRange, title: string) => void;
@@ -146,6 +149,7 @@ export function TimelineView(props: TimelineViewProps): JSX.Element {
 			hour12={props.hour12}
 			now={props.todayMs ?? undefined}
 			focus={props.focusMs}
+			zoom={props.zoom}
 			storageKey={props.storageKey}
 			readOnly={!canCreate && !onMoveEvent}
 			canCreate={canCreate}

@@ -12,6 +12,20 @@ import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/calendar.css";
 import { cx } from "../../core/cx.ts";
+import { clampZoom, PX_PER_DAY_DEFAULT } from "../../gantt/core/time-scale.ts";
+import {
+	calendarStateAt,
+	calendarZoomFor,
+	type CalendarZoomMode,
+	DEFAULT_PPH,
+	MAX_PPH,
+	MIN_PPH,
+	MONTH_WEEKS_DEFAULT,
+	MONTH_WEEKS_MAX,
+	MONTH_WEEKS_MIN,
+	timelinePxPerDayAt,
+	timelineZoomFor,
+} from "../core/zoom.ts";
 import type {
 	CalendarEvent,
 	CalendarEventKind,
@@ -41,9 +55,6 @@ import { TimelineView } from "../components/TimelineView.tsx";
 import { EventPopoverLayer } from "../components/EventPopoverLayer.tsx";
 import type { EventPopoverState } from "../components/EventPopoverLayer.tsx";
 
-const DEFAULT_PPH = 48;
-const MIN_PPH = 26;
-const MAX_PPH = 168;
 /** One wheel notch's scale factor. Small enough that a trackpad reads as continuous. */
 const ZOOM_STEP = 1.12;
 /**
@@ -81,6 +92,17 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 	const focusMs = useSignal<number>(props.focus ?? Date.now());
 	const monthMs = useSignal<number>(props.focus ?? Date.now());
 	const pph = useSignal<number>(DEFAULT_PPH);
+	/** Week rows the Month view shows — its own zoom, between six and ten. */
+	const weeks = useSignal<number>(MONTH_WEEKS_DEFAULT);
+	/** A one-shot request for the Month view to centre a day rather than frame its month. */
+	const monthCenter = useSignal<number | null>(null);
+	/** The timeline's scale (px per day), the host's signal when it owns one. */
+	const ownTimelineZoom = useSignal<number>(PX_PER_DAY_DEFAULT);
+	const timelineZoom = props.timelineZoom ?? ownTimelineZoom;
+	/** The calendar view to come back to from the timeline. */
+	const lastCalendarView = useRef<"day" | "week" | "month">(
+		props.view && props.view !== "timeline" ? props.view : "week",
+	);
 	const query = useSignal("");
 	const filtersOpen = useSignal(false);
 	const hiddenKinds = useSignal<Set<CalendarEventKind>>(new Set());
@@ -235,6 +257,8 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 	 * effect keeps dutifully saving it. Zoom has no such competing owner and is always persisted.
 	 */
 	const hostOwnsView = props.view !== undefined;
+	const hostOwnsZoom = props.zoom !== undefined;
+	const hostOwnsTimeline = props.timelineZoom !== undefined;
 
 	useEffect(() => {
 		if (!props.storageKey || typeof localStorage === "undefined") return;
@@ -243,8 +267,16 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 				const v = localStorage.getItem(`${props.storageKey}:view`);
 				if (v === "day" || v === "week" || v === "month" || v === "timeline") view.value = v;
 			}
-			const z = localStorage.getItem(`${props.storageKey}:zoom`);
-			if (z) pph.value = Math.max(MIN_PPH, Math.min(MAX_PPH, Number(z)));
+			if (!hostOwnsZoom) {
+				const z = Number(localStorage.getItem(`${props.storageKey}:zoom`));
+				if (z > 0) pph.value = Math.max(MIN_PPH, Math.min(MAX_PPH, z));
+				const w = Number(localStorage.getItem(`${props.storageKey}:weeks`));
+				if (w > 0) weeks.value = Math.max(MONTH_WEEKS_MIN, Math.min(MONTH_WEEKS_MAX, w));
+			}
+			if (!hostOwnsTimeline) {
+				const t = Number(localStorage.getItem(`${props.storageKey}:timeline:zoom`));
+				if (t > 0) ownTimelineZoom.value = clampZoom(t);
+			}
 		} catch { /* storage unavailable */ }
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
@@ -252,9 +284,27 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 		if (!props.storageKey || typeof localStorage === "undefined") return;
 		try {
 			if (!hostOwnsView) localStorage.setItem(`${props.storageKey}:view`, view.value);
-			localStorage.setItem(`${props.storageKey}:zoom`, String(Math.round(pph.value)));
+			if (!hostOwnsZoom) {
+				localStorage.setItem(`${props.storageKey}:zoom`, String(Math.round(pph.value)));
+				localStorage.setItem(`${props.storageKey}:weeks`, String(Math.round(weeks.value)));
+			}
 		} catch { /* no-op */ }
-	}, [view.value, pph.value, props.storageKey, hostOwnsView]);
+	}, [view.value, pph.value, weeks.value, props.storageKey, hostOwnsView, hostOwnsZoom]);
+
+	const timelinePersist = useRef<ReturnType<typeof setTimeout> | null>(null);
+	useSignalEffect(() => {
+		const ppd = ownTimelineZoom.value;
+		if (hostOwnsTimeline || !props.storageKey || typeof localStorage === "undefined") return;
+		if (timelinePersist.current !== null) clearTimeout(timelinePersist.current);
+		timelinePersist.current = setTimeout(() => {
+			try {
+				localStorage.setItem(`${props.storageKey}:timeline:zoom`, String(ppd));
+			} catch { /* no-op */ }
+		}, 200);
+	});
+	useEffect(() => () => {
+		if (timelinePersist.current !== null) clearTimeout(timelinePersist.current);
+	}, []);
 	// #endregion
 
 	// #region Host-driven view state
@@ -334,11 +384,24 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 	 * and there is no continuous scale to travel along: a week grid at 168px/hour and a day grid at
 	 * 26px/hour are not two points on one ramp.
 	 */
-	function zoom(dir: "in" | "out"): void {
+	function zoom(dir: "in" | "out", dayMs?: number | null): void {
 		const v = view.value;
 		// The Gantt owns its own scale (and its own Ctrl+wheel, which it stops before it reaches
 		// here); the hour continuum has no meaning on a day-per-pixel axis.
 		if (v === "timeline") return;
+		if (v === "month") {
+			const w = weeks.peek();
+			if (dir === "in") {
+				if (w <= MONTH_WEEKS_MIN + 1e-3) {
+					if (dayMs != null) setFocus(dayMs);
+					return crossTo("week", MIN_PPH);
+				}
+				weeks.value = Math.max(MONTH_WEEKS_MIN, Math.ceil(w - 1e-3) - 1);
+			} else if (w < MONTH_WEEKS_MAX - 1e-3) {
+				weeks.value = Math.min(MONTH_WEEKS_MAX, Math.floor(w + 1e-3) + 1);
+			}
+			return;
+		}
 		/*
 		 * The PENDING scale, not the live one.
 		 *
@@ -350,16 +413,90 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 		 */
 		const cur = pendingPph.current ?? pph.value;
 		if (dir === "in") {
-			if (v === "month") return crossTo("week", MIN_PPH);
-			if (v === "week" && cur >= MAX_PPH - 1) return crossTo("day", MIN_PPH);
+			if (v === "week" && cur >= MAX_PPH - 1) {
+				if (dayMs != null) setFocus(dayMs);
+				return crossTo("day", MIN_PPH);
+			}
 			zoomTo(Math.min(MAX_PPH, cur * ZOOM_STEP));
 		} else {
 			if (v === "day" && cur <= MIN_PPH + 1) return crossTo("week", MAX_PPH);
-			if (v === "week" && cur <= MIN_PPH + 1) return crossTo("month", cur);
-			if (v === "month") return;
+			if (v === "week" && cur <= MIN_PPH + 1) {
+				const anchor = dayMs ?? focusMs.peek();
+				setFocus(anchor);
+				monthCenter.value = anchor;
+				weeks.value = MONTH_WEEKS_MIN;
+				return crossTo("month", cur);
+			}
 			zoomTo(Math.max(MIN_PPH, cur / ZOOM_STEP));
 		}
 	}
+
+	/**
+	 * Move to a position on the calendar axis — the slider's path. Crossing into Month centres the
+	 * focused day, the same landing a Ctrl+wheel out of Week makes.
+	 */
+	function applyCalendarZoom(u: number): void {
+		const next = calendarStateAt(u);
+		const prev = view.peek();
+		if (prev === "timeline") return;
+		if (next.view === "month" && prev !== "month") monthCenter.value = focusMs.peek();
+		weeks.value = next.weeks;
+		const sameTimed = next.view === prev && prev !== "month";
+		if (sameTimed && zoomRef.current && Math.abs(Math.log(next.pph / pph.peek())) > 0.2) {
+			zoomTo(next.pph);
+		} else {
+			cancelZoom.current?.();
+			cancelZoom.current = null;
+			pendingPph.current = null;
+			pph.value = next.pph;
+		}
+		if (prev !== next.view) {
+			view.value = next.view;
+			props.onViewChange?.(next.view);
+		}
+	}
+
+	/** Switch between the calendar and the timeline, keeping each axis where the reader left it. */
+	function setMode(mode: CalendarZoomMode): void {
+		const cur = view.peek();
+		if (mode === "timeline") {
+			if (cur === "timeline") return;
+			view.value = "timeline";
+			props.onViewChange?.("timeline");
+			return;
+		}
+		if (cur !== "timeline") return;
+		const back = props.zoom ? calendarStateAt(props.zoom.peek()).view : lastCalendarView.current;
+		if (back === "month") monthCenter.value = focusMs.peek();
+		view.value = back;
+		props.onViewChange?.(back);
+	}
+
+	useSignalEffect(() => {
+		const v = view.value;
+		if (v !== "timeline") lastCalendarView.current = v;
+	});
+
+	/** A host's write to its signal — its own slider — moves the engine there. */
+	useSignalEffect(() => {
+		const host = props.zoom;
+		if (!host) return;
+		const u = host.value;
+		const v = view.peek();
+		if (v === "timeline") return;
+		const cur = calendarZoomFor({ view: v, pph: pph.peek(), weeks: weeks.peek() });
+		if (calendarStateAt(u).view !== v || Math.abs(cur - u) > 1e-5) applyCalendarZoom(u);
+	});
+
+	/** The calendar axis position the engine is at, published into a host's signal. */
+	useSignalEffect(() => {
+		const host = props.zoom;
+		const v = view.value;
+		if (!host || v === "timeline") return;
+		const u = calendarZoomFor({ view: v, pph: pph.value, weeks: weeks.value });
+		const was = host.peek();
+		if (calendarStateAt(was).view !== v || Math.abs(was - u) > 1e-5) host.value = u;
+	});
 
 	/**
 	 * Animate the scale toward `target`, through the live view's own viewport so the cursor anchor is
@@ -430,6 +567,20 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 		s.has(k) ? s.delete(k) : s.add(k);
 		hiddenKinds.value = s;
 	}
+
+	/** Where the header's slider sits: on the timeline axis in the Gantt, the calendar axis otherwise. */
+	const zoomPosition = useComputed(() => {
+		const v = view.value;
+		return v === "timeline"
+			? timelineZoomFor(timelineZoom.value)
+			: calendarZoomFor({ view: v, pph: pph.value, weeks: weeks.value });
+	});
+
+	function setZoomPosition(u: number): void {
+		if (view.peek() === "timeline") timelineZoom.value = timelinePxPerDayAt(u);
+		else if (props.zoom) props.zoom.value = u;
+		else applyCalendarZoom(u);
+	}
 	// #endregion
 
 	// #region Derived
@@ -493,11 +644,15 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 					<CalendarHeader
 						title={props.title}
 						periodLabel={periodLabel}
-						view={v}
 						query={query}
 						actions={props.headerActions}
 						filtersActive={filtersOpen.value || hidden.size > 0}
-						onView={setView}
+						zoom={{
+							mode: v === "timeline" ? "timeline" : "calendar",
+							position: zoomPosition,
+							onPosition: setZoomPosition,
+							onMode: setMode,
+						}}
 						onPrev={() => step(-1)}
 						onNext={() => step(1)}
 						onToday={goToday}
@@ -541,6 +696,7 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 								todayMs={todayMs.value}
 								canCreate={props.canCreate}
 								storageKey={props.storageKey ? `${props.storageKey}:timeline` : undefined}
+								zoom={timelineZoom}
 								renderEventActions={props.renderEventActions}
 								onSelectRange={props.onSelectRange}
 								onQuickCreate={props.onQuickCreate}
@@ -560,15 +716,20 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 								events={events}
 								availability={props.availability}
 								todayMs={todayMs.value}
+								weeks={weeks.value}
 								canCreate={props.canCreate}
 								renderSource={props.renderSource}
 								onSelectRange={props.onSelectRange}
 								onOpenEvent={props.onOpenEvent}
-								onPage={step}
 								onOpenDay={(d) => {
 									setFocus(d);
 									setView("day");
 								}}
+								onFocusChange={setFocus}
+								onZoom={zoom}
+								center={monthCenter}
+								popover={popover}
+								draft={draft}
 							/>
 						)
 						: v === "day"

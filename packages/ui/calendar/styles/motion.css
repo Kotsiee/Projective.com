@@ -19,7 +19,7 @@
 /* #region Reduced motion (jump-to-final; transforms/transitions only — theme crossfade stays global) */
 @media (prefers-reduced-motion: reduce) {
 	.cal__filterchip,
-	.cal-header__view,
+	.cal-mini__week,
 	.cal-mini__day,
 	.cal-event,
 	.cal-daycol__event,
@@ -35,6 +35,7 @@
 	.cal-pop__input,
 	.cal-pop__submit,
 	.cal-pop__expand,
+	.cal-pop__spreadopt,
 	.cal-pop__pane--forward,
 	.cal-pop__pane--back {
 		transition: none;

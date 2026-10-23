@@ -5,6 +5,7 @@ import type { ReadActor } from "@server/services/read-actor.ts";
 import CalendarLane from "../islands/CalendarLane.island.tsx";
 import CalendarHeaderBand from "../islands/CalendarHeaderBand.island.tsx";
 import CalendarFooterRig from "../islands/CalendarFooterRig.island.tsx";
+import CalendarPanel from "../islands/CalendarPanel.island.tsx";
 import { resolvePersonalCalendar } from "./calendar-ssr.ts";
 
 /**
@@ -52,7 +53,7 @@ function resolveOnce(url: URL, actor: ReadActor): Promise<SchedulePage | null> {
 	return page;
 }
 
-/** The lane: mini-month · search · kind filters, over an Events ⁄ Availability tab pair. */
+/** The lane: search · kind filters, over an Events ⁄ Availability tab pair. */
 export async function calendarLaneFor(
 	url: URL,
 	_context: UserContext,
@@ -72,7 +73,17 @@ export async function calendarHeaderFor(
 	return <CalendarHeaderBand initial={await resolveOnce(url, actor)} />;
 }
 
-/** The footer band: the view switch, Export · Import · Connect · New event, and the action layer. */
+/** The right panel: the month navigator, toggled from the header band. */
+export async function calendarPanelFor(
+	url: URL,
+	_context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
+	if (!isCalendar(url)) return null;
+	return <CalendarPanel initial={await resolveOnce(url, actor)} />;
+}
+
+/** The footer band: the view control, Import · Export · Connect · New event, and the action layer. */
 export async function calendarFooterFor(
 	url: URL,
 	_context: UserContext,

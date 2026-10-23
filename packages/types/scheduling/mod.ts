@@ -22,9 +22,12 @@
  *   discovery-call handshake: the read side of `availability_rules` + `fn_slot_is_free`, flattened
  *   for a picker rather than for a calendar grid, with every instant absolute and both zone names
  *   carried so the client formats in the viewer's zone without re-interpreting a wall clock.
- * - {@link ./ics.ts} — the iCalendar (RFC 5545) READER, the exact inverse of the writer in
- *   `@projective/types/finance` `order.ts`. Pure: no clock, no IO, so the fat service and the
- *   browser call one implementation and a `.ics` import cannot be parsed two different ways.
+ * - {@link ./ics.ts} — the iCalendar (RFC 5545) and vCalendar 1.0 READER, the exact inverse of the
+ *   writers in `@projective/types/finance` `order.ts` and {@link ./export-formats.ts}. Pure: no
+ *   clock, no IO, so the fat service and the browser call one implementation and a `.ics` import
+ *   cannot be parsed two different ways. {@link ./ics-recurrence.ts} expands a repeating entry and
+ *   {@link ./vcal.ts} holds the 1.0 differences. {@link ./export-formats.ts} writes a set of entries
+ *   as one `.ics` document, as jCal (RFC 7265) from the same component tree, or as CSV.
  * - {@link ./civil.ts}, {@link ./rrule.ts}, {@link ./recurrence.ts}, {@link ./evaluate.ts} — the
  *   availability RECURRENCE ENGINE (Decision #217 (d)): timezone-free civil dates, an RFC 5545 RRULE
  *   subset, the authored rule/preset shapes and the one pure evaluator that compiles a preset into
@@ -48,6 +51,9 @@ export * from "./rows.ts";
 export * from "./calls.ts";
 export * from "./booking.ts";
 export * from "./ics.ts";
+export * from "./ics-recurrence.ts";
+export * from "./vcal.ts";
+export * from "./export-formats.ts";
 export * from "./owner-availability.ts";
 export * from "./civil.ts";
 export * from "./rrule.ts";

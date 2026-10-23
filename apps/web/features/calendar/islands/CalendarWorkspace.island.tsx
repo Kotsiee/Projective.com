@@ -1,16 +1,15 @@
 import type { JSX } from "preact";
-import { useSignal } from "@preact/signals";
+import { useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import "../styles/calendar-page.css";
 import "../styles/calendar-chrome.css";
 import { Calendar } from "@projective/ui/calendar";
 import { Message } from "@projective/ui/feedback";
-import type { CalendarComposeRequest, CalendarRange } from "@projective/ui/calendar";
 import type { CalendarEvent, CalendarEventKind, SchedulePage } from "@projective/types/scheduling";
 import { LocalKeys } from "@web/utils/storage-keys.ts";
 import { EventModal } from "../components/EventModal.tsx";
 import { renderCalendarSource } from "../components/provider-marks.tsx";
-import { blankEvent, type EventMode, eventStack } from "../core/event-view.ts";
+import { type EventMode, eventStack } from "../core/event-view.ts";
 import { deepLinkedEvent, EVENT_PARAM, withoutEventParam } from "../core/event-deep-link.ts";
 import {
 	type DevSeamState,
@@ -21,16 +20,20 @@ import {
 } from "../core/event-access.ts";
 import { ScheduleService } from "../core/ScheduleService.ts";
 import { frameProbe } from "../core/frame-cost.ts";
+import { useCalendarComposer } from "../hooks/useCalendarComposer.ts";
 import {
 	calendarFocus,
 	calendarPage,
 	calendarView,
+	calendarZoom,
 	createRequest,
 	focusedAt,
 	importedEvents,
 	persistCalendarView,
+	persistCalendarZoom,
 	restoreCalendarView,
 	sourceIsVisible,
+	timelineZoom,
 	visibleEvents,
 } from "../core/calendar-state.ts";
 
@@ -72,16 +75,16 @@ function accessFor(event: CalendarEvent | null, seam: DevSeamState | null): Even
 /**
  * CalendarWorkspace — the BODY of the `/calendar` hub, and nothing but the grid.
  *
- * Every piece of chrome the engine can draw is suppressed here: the side panel is the middle-nav
- * lane's job and the header row is the header band's, so `hideSidePanel` + `hideHeader` leave
- * `.cal__view` alone in the content region. That is the region contract as `/wallet` and `/messages`
- * settled it — the body views and selects data, and owns no navigation, no filter entry and no
- * primary action.
+ * Every piece of chrome the engine can draw is suppressed here: the mini-month is the middle-nav
+ * panel's, the header row is the header band's and the view control the footer band's, so
+ * `hideSidePanel` + `hideHeader` leave `.cal__view` alone in the content region. That is the region
+ * contract as `/wallet` and `/messages` settled it — the body views and selects data, and owns no
+ * navigation, no filter entry and no primary action.
  *
- * It is the ONE reader on the surface. The lane and both bands render in the frame, outside this
- * tree, and read the page through {@link calendarPage} rather than fetching their own: a lane that
- * fetched separately would draw an upcoming list from a different response than the grid beside it,
- * and the two would disagree the moment a write landed.
+ * It is the ONE reader on the surface. The lane, the panel and both bands render in the frame,
+ * outside this tree, and read the page through {@link calendarPage} rather than fetching their own:
+ * a lane that fetched separately would draw an upcoming list from a different response than the
+ * grid beside it, and the two would disagree the moment a write landed.
  */
 export interface CalendarWorkspaceProps {
 	initial: SchedulePage | null;
@@ -89,22 +92,24 @@ export interface CalendarWorkspaceProps {
 
 export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.Element {
 	const page = useSignal<SchedulePage | null>(props.initial);
-	const events = useSignal<CalendarEvent[]>(props.initial?.events ?? []);
-	/** The entry being composed — it is not on the grid yet, so it cannot be resolved from it. */
-	const draft = useSignal<CalendarEvent | null>(null);
-	/**
-	 * The way BACK into the calendar's lightweight composer, for a full modal being minimised.
-	 *
-	 * A one-shot request the engine consumes and clears. It exists because the composer's popover is
-	 * the engine's own state and this island is its sibling, not its parent — so "re-open it, here,
-	 * with this title" has to travel as a message rather than as a prop the host keeps holding.
-	 */
-	const compose = useSignal<CalendarComposeRequest | null>(null);
 	/** The developer persona override, tracked so a flip moves the surface without a reload. */
 	const seam = useSignal<DevSeamState | null>(null);
 	const loadError = useSignal<string | null>(null);
 
-	/** Publish for the lane and the bands. One reader, one refetch, one answer. */
+	const composer = useCalendarComposer({
+		initial: props.initial?.events ?? [],
+		kind: "sync",
+		timezone: () => page.peek()?.timezone ?? "UTC",
+		onClose: () => {
+			const loc = globalThis.location;
+			if (loc && new URLSearchParams(loc.search).has(EVENT_PARAM)) {
+				history.replaceState(history.state, "", withoutEventParam(loc.pathname, loc.search));
+			}
+		},
+	});
+	const { events } = composer;
+
+	/** Publish for the lane, the panel and the bands. One reader, one refetch, one answer. */
 	function publish(next: SchedulePage): void {
 		page.value = next;
 		events.value = next.events;
@@ -127,9 +132,9 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 
 	useEffect(() => {
 		if (props.initial) calendarPage.value = props.initial;
-		// The view is the APP's to remember here (the switch lives in the lane footer and the header
-		// band, so the engine is driven rather than deciding) — restored after mount, never at module
-		// scope, because this module is also imported during SSR where storage does not exist.
+		// The view and zoom are the APP's to remember here (the control lives in the footer band, so
+		// the engine is driven rather than deciding) — restored after mount, never at module scope,
+		// because this module is also imported during SSR where storage does not exist.
 		restoreCalendarView();
 		const apply = () => {
 			seam.value = readDevSeam();
@@ -146,7 +151,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		return subscribeDevSeam(apply);
 	}, []);
 
-	// The page is a module signal shared with three other trees, so it has to be released when this
+	// The page is a module signal shared with four other trees, so it has to be released when this
 	// one goes: leaving the previous surface's agenda in it would let a later mount of the lane paint
 	// a week the grid is not showing.
 	useEffect(() => () => {
@@ -169,13 +174,22 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		persistCalendarView(calendarView.value);
 	}, [calendarView.value]);
 
-	/** A band asked for a blank entry (the lane footer's ＋ New event, or the rig's). */
+	const zoomSettled = useSignal(false);
+	useSignalEffect(() => {
+		calendarZoom.value;
+		timelineZoom.value;
+		if (!zoomSettled.peek()) {
+			zoomSettled.value = true;
+			return;
+		}
+		persistCalendarZoom();
+	});
+
+	/** A band asked for a blank entry (the footer's New event, or the lane rail's). */
 	useEffect(() => {
 		if (createRequest.value === 0) return;
 		const start = focusedAt(page.value);
-		const blank = blankEvent({ start, end: start + 3_600_000 }, "sync");
-		draft.value = blank;
-		eventStack.open("event", blank.id, { mode: "create" });
+		composer.expandCreate({ start, end: start + 3_600_000 }, "");
 	}, [createRequest.value]);
 
 	const p = page.value;
@@ -196,20 +210,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	const shown = visibleEvents(all);
 
 	const open = eventStack.top.value;
-	const framed = open
-		? draft.value && draft.value.id === open.id
-			? draft.value
-			: all.find((e) => e.id === open.id) ?? null
-		: null;
-
-	function close(): void {
-		eventStack.close();
-		draft.value = null;
-		const loc = globalThis.location;
-		if (loc && new URLSearchParams(loc.search).has(EVENT_PARAM)) {
-			history.replaceState(history.state, "", withoutEventParam(loc.pathname, loc.search));
-		}
-	}
+	const framed = composer.resolve(open, importedEvents.value);
 
 	/*
 	 * A withdrawn calendar leaves no trace: an entry another calendar still holds up survives, but it
@@ -236,6 +237,8 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 				availability={p.availability}
 				timezone={p.timezone}
 				view={calendarView.value}
+				zoom={calendarZoom}
+				timelineZoom={timelineZoom}
 				focus={focusedAt(p)}
 				hideSidePanel
 				hideHeader
@@ -244,37 +247,18 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 				storageKey={LocalKeys.CALENDAR_DENSITY}
 				onViewChange={(v) => (calendarView.value = v)}
 				onFocusChange={(ms) => (calendarFocus.value = ms)}
-				compose={compose}
+				compose={composer.compose}
 				/*
-				 * `onSelectRange` no longer opens the full modal, and that is the whole shape of the new
-				 * flow: a drag on the grid leaves a DRAFT block and a lightweight composer beside it, and
-				 * the full surface is one deliberate press away (`onExpandCreate`). Jumping straight to a
-				 * modal made every stray click on empty grid a six-tab dialog.
+				 * `onSelectRange` no longer opens the full modal, and that is the whole shape of the
+				 * flow: a drag on the grid — or a click or a drag across Month cells — leaves a DRAFT
+				 * and a lightweight composer beside it, and the full surface is one deliberate press
+				 * away (`onExpandCreate`).
 				 */
 				onSelectRange={() => {}}
-				onQuickCreate={(range: CalendarRange, title: string) => {
-					// Enter in the composer: the event is created with the defaults every other field
-					// already has. `blankEvent` is the SAME factory the full modal mints from, so the two
-					// paths cannot disagree about what a new entry starts as.
-					const made = { ...blankEvent(range, "sync"), title };
-					draft.value = null;
-					events.value = [...events.value, made];
-				}}
-				onExpandCreate={(range: CalendarRange, title: string) => {
-					const blank = { ...blankEvent(range, "sync"), title };
-					draft.value = blank;
-					eventStack.open("event", blank.id, { mode: "create" });
-				}}
-				onMoveEvent={(ev, range) => {
-					// Optimistic and per-session, like every sibling calendar mutation — the scheduling
-					// write path is still deferred. Supplying the handler is what ENABLES the drag at all.
-					const moved = { ...(ev as CalendarEvent), start: range.start, end: range.end };
-					events.value = events.value.map((e) => (e.id === moved.id ? moved : e));
-				}}
-				onOpenEvent={(ev) => {
-					draft.value = null;
-					eventStack.open("event", (ev as CalendarEvent).id, { mode: "view" });
-				}}
+				onQuickCreate={composer.quickCreate}
+				onExpandCreate={composer.expandCreate}
+				onMoveEvent={(ev, range) => composer.moveEvent(ev as CalendarEvent, range)}
+				onOpenEvent={(ev) => composer.openEvent(ev as CalendarEvent)}
 			/>
 
 			{open && framed
@@ -291,22 +275,9 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 						target={{ scope: "personal" }}
 						createKinds={CREATE_KINDS}
 						canBook={false}
-						onClose={close}
-						onMinimise={(ev) => {
-							// The full surface folds back into the composer carrying its STAGED contents, and
-							// the draft block returns to the grid where the reader left it. `close()` clears
-							// the modal's own draft, so the composer's copy is the only one left.
-							compose.value = { range: { start: ev.start, end: ev.end }, title: ev.title };
-							close();
-						}}
-						onSubmit={(ev) => {
-							const existing = events.value.some((e) => e.id === ev.id);
-							events.value = existing
-								? events.value.map((e) => (e.id === ev.id ? ev : e))
-								: [...events.value, ev];
-							draft.value = null;
-							if (!existing) close();
-						}}
+						onClose={composer.close}
+						onMinimise={composer.minimise}
+						onSubmit={composer.submit}
 						onBook={() => {
 							/*
 							 * Unreachable: `canBook` is false on this surface. A personal agenda is the
@@ -314,9 +285,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 							 * flow belongs to the schedule it would be bought from.
 							 */
 						}}
-						onServerUpdate={(ev) => {
-							events.value = events.value.map((e) => (e.id === ev.id ? ev : e));
-						}}
+						onServerUpdate={composer.serverUpdate}
 					/>
 				)
 				: null}

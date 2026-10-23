@@ -322,14 +322,18 @@ export const LocalKeys = {
 	/** The project timeline's zoom, in px per day (the Gantt footer rig + the `Ctrl`+wheel gesture). */
 	TIMELINE_ZOOM: "pj.local.timeline.zoom",
 	/**
-	 * The `/calendar` hub's view mode (`day` | `week` | `month`).
+	 * The `/calendar` hub's view mode (`day` | `week` | `month` | `timeline`).
 	 *
-	 * Owned by the APP, not by the calendar engine: the hub hoists the view switch into the lane
-	 * footer and the header band, so it passes `view` to the engine and the engine therefore persists
-	 * only the zoom density it still owns (`CALENDAR_DENSITY`). Two owners for one value is how the
-	 * reader's choice came to be written on every change and read back never.
+	 * Owned by the APP, not by the calendar engine: the hub hoists the view control into its footer
+	 * band, so it passes `view` (and `zoom`) to the engine and the engine persists neither. Two
+	 * owners for one value is how the reader's choice came to be written on every change and read
+	 * back never.
 	 */
 	CALENDAR_VIEW: "pj.local.calendar.view",
+	/** The `/calendar` hub's position on the calendar zoom axis (0 Month … 1 Day), set by its footer slider. */
+	CALENDAR_ZOOM: "pj.local.calendar.zoom",
+	/** The `/calendar` hub's timeline scale, in px per day. */
+	CALENDAR_TIMELINE_ZOOM: "pj.local.calendar.timelineZoom",
 	/**
 	 * Prefix for the calendar engine's own density persistence — it writes `…:zoom` beneath this.
 	 * Registered rather than left as a literal at the call site so every client key on the platform is

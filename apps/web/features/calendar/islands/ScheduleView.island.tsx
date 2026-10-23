@@ -3,12 +3,12 @@ import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import "../styles/calendar-page.css";
 import { Calendar } from "@projective/ui/calendar";
-import type { CalendarComposeRequest, CalendarRange } from "@projective/ui/calendar";
+import type { CalendarRange } from "@projective/ui/calendar";
 import { Message } from "@projective/ui/feedback";
 import type { CalendarEvent, CalendarEventKind, SchedulePage } from "@projective/types/scheduling";
 import { EventModal } from "../components/EventModal.tsx";
 import { renderCalendarSource } from "../components/provider-marks.tsx";
-import { blankEvent, type EventMode, eventStack } from "../core/event-view.ts";
+import { type EventMode, eventStack } from "../core/event-view.ts";
 import {
 	type EventAccess,
 	readDevSeam,
@@ -16,6 +16,7 @@ import {
 	subscribeDevSeam,
 } from "../core/event-access.ts";
 import { ScheduleService } from "../core/ScheduleService.ts";
+import { useCalendarComposer } from "../hooks/useCalendarComposer.ts";
 
 /** What a schedule surface can create. */
 const CREATE_KINDS: { value: CalendarEventKind; label: string }[] = [
@@ -49,16 +50,17 @@ export interface ScheduleViewProps {
 
 export default function ScheduleView(props: ScheduleViewProps): JSX.Element {
 	const page = useSignal<SchedulePage | null>(props.initial);
-	const events = useSignal<CalendarEvent[]>(props.initial?.events ?? []);
-	/** The entry being composed — it is not on the grid yet, so it cannot be resolved from it. */
-	const draft = useSignal<CalendarEvent | null>(null);
-	/** The way back into the engine's lightweight composer — see `CalendarProps.compose`. */
-	const composeReq = useSignal<CalendarComposeRequest | null>(null);
 	// A schedule page is somebody else's: the viewer is on the buying side of it unless the dev seam
 	// says otherwise, which is exactly what `viewerIsClient: true` means to the access resolver.
 	const access = useSignal<EventAccess>(resolveEventAccess({ viewerIsClient: true }, null));
 	/** A refetch that failed. Held so the stale page on screen is never passed off as the new one. */
 	const loadError = useSignal<string | null>(null);
+	const composer = useCalendarComposer({
+		initial: props.initial?.events ?? [],
+		kind: "session",
+		timezone: () => page.peek()?.timezone ?? "UTC",
+	});
+	const { events } = composer;
 
 	/**
 	 * Pull the page fresh.
@@ -109,16 +111,7 @@ export default function ScheduleView(props: ScheduleViewProps): JSX.Element {
 	}
 
 	const open = eventStack.top.value;
-	const framed = open
-		? draft.value && draft.value.id === open.id
-			? draft.value
-			: events.value.find((e) => e.id === open.id) ?? null
-		: null;
-
-	function close(): void {
-		eventStack.close();
-		draft.value = null;
-	}
+	const framed = composer.resolve(open);
 
 	return (
 		<div class={`cal-surface ${surfaceMod}`}>
@@ -141,7 +134,7 @@ export default function ScheduleView(props: ScheduleViewProps): JSX.Element {
 				canCreate={p.viewerCanBook}
 				renderSource={renderCalendarSource}
 				storageKey="pj.calendar.schedule"
-				compose={composeReq}
+				compose={composer.compose}
 				/*
 				 * A drag leaves a DRAFT block and the lightweight composer beside it; the full surface is
 				 * one deliberate press away. There is deliberately no `onQuickCreate` HERE, unlike the
@@ -151,15 +144,9 @@ export default function ScheduleView(props: ScheduleViewProps): JSX.Element {
 				 */
 				onSelectRange={() => {}}
 				onExpandCreate={(range: CalendarRange, title: string) => {
-					if (!p.viewerCanBook) return;
-					const blank = { ...blankEvent(range, "session"), title };
-					draft.value = blank;
-					eventStack.open("event", blank.id, { mode: "create" });
+					if (p.viewerCanBook) composer.expandCreate(range, title);
 				}}
-				onOpenEvent={(ev) => {
-					draft.value = null;
-					eventStack.open("event", (ev as CalendarEvent).id, { mode: "view" });
-				}}
+				onOpenEvent={(ev) => composer.openEvent(ev as CalendarEvent)}
 			/>
 			{open && framed
 				? (
@@ -179,19 +166,9 @@ export default function ScheduleView(props: ScheduleViewProps): JSX.Element {
 						}}
 						createKinds={CREATE_KINDS}
 						canBook={p.viewerCanBook}
-						onClose={close}
-						onMinimise={(ev) => {
-							composeReq.value = { range: { start: ev.start, end: ev.end }, title: ev.title };
-							close();
-						}}
-						onSubmit={(ev) => {
-							const existing = events.value.some((e) => e.id === ev.id);
-							events.value = existing
-								? events.value.map((e) => (e.id === ev.id ? ev : e))
-								: [...events.value, ev];
-							draft.value = null;
-							if (!existing) close();
-						}}
+						onClose={composer.close}
+						onMinimise={composer.minimise}
+						onSubmit={composer.submit}
 						onBook={(ev) => {
 							/*
 							 * A booked slot is a NEW entry over the same span; the open block it came from is
@@ -207,11 +184,9 @@ export default function ScheduleView(props: ScheduleViewProps): JSX.Element {
 								status: "confirmed",
 								masked: false,
 							}];
-							close();
+							composer.close();
 						}}
-						onServerUpdate={(ev) => {
-							events.value = events.value.map((e) => (e.id === ev.id ? ev : e));
-						}}
+						onServerUpdate={composer.serverUpdate}
 					/>
 				)
 				: null}

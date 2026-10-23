@@ -17,7 +17,8 @@ export type ZoomChangeSource = "drag" | "step";
 
 /**
  * ZoomSlider — the ONE zoom control on the platform: a zoom-out lens button, a muted track (no
- * progress fill) with optional segment markers and an optional centre transition marker, a neutral
+ * progress fill) with optional segment markers and optional transition markers (`center`, or several
+ * `marks` for a track cut into more than two zones), a neutral
  * draggable handle, and a zoom-in lens button. The buttons are ghost circles that step once on a
  * press and repeat while held (`useHoldRepeat`), stopping at a bound or on release; a held `Ctrl` /
  * `Cmd` at press asks for a fine step.
@@ -42,6 +43,11 @@ export interface ZoomSliderProps {
 	segments?: number;
 	/** Position of the distinct centre "transition" marker; `null` draws none (default the midpoint). */
 	center?: number | null;
+	/**
+	 * Positions of several transition markers, drawn like {@link center} — the boundaries of a track
+	 * cut into more than two zones. Given, it replaces the centre marker.
+	 */
+	marks?: readonly number[];
 	/**
 	 * Replaces the ± button step. Answers whether the value moved, so a held button stops at a bound.
 	 * `fine` is true while `Ctrl` / `Cmd` was held at press.
@@ -106,6 +112,7 @@ export function ZoomSlider(props: ZoomSliderProps): JSX.Element {
 		step = (max - min) / 10,
 		segments = 8,
 		center = (min + max) / 2,
+		marks,
 		onStep,
 		size = "sm",
 		disabled,
@@ -192,6 +199,7 @@ export function ZoomSlider(props: ZoomSliderProps): JSX.Element {
 	const ticks = segments > 0
 		? Array.from({ length: segments + 1 }, (_, i) => (i / segments) * 100)
 		: [];
+	const transitions = marks ?? (center !== null ? [center] : []);
 
 	return (
 		<div
@@ -235,15 +243,14 @@ export function ZoomSlider(props: ZoomSliderProps): JSX.Element {
 						</div>
 					)
 					: null}
-				{center !== null
-					? (
-						<span
-							class="ui-zoom__center"
-							style={styleVars({ "--tick": `${pct(center)}%` })}
-							aria-hidden="true"
-						/>
-					)
-					: null}
+				{transitions.map((t, i) => (
+					<span
+						key={`m${i}`}
+						class="ui-zoom__center"
+						style={styleVars({ "--tick": `${pct(t)}%` })}
+						aria-hidden="true"
+					/>
+				))}
 				<span
 					class="ui-zoom__handle"
 					style={styleVars({ "--zoom-pct": `${pct(v)}%` })}

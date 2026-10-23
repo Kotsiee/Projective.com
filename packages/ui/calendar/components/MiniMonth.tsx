@@ -1,10 +1,15 @@
 /**
- * @projective/ui/calendar — the left-panel mini-month mini-map (§Part 1.1). Hovering a day subtly
- * highlights the ENTIRE week it belongs to (a soft ~15% tint); clicking a day jumps the primary
- * calendar to it. The currently-focused day/week is marked so the mini-map reflects the main view.
+ * @projective/ui/calendar — the left-panel mini-month mini-map (§Part 1.1). Each week is one row, and
+ * the row itself carries the week band: a single continuous pill under all seven days, lit on the
+ * ACTIVE week at rest (the week the main view shows in Week view, else the week containing today)
+ * and on whichever row the pointer is over. Today is the one solid mark; the main view's focus day
+ * in Day view is a strong tint, so the two never read alike. Clicking a day jumps the primary
+ * calendar to it.
+ *
+ * The hover band is CSS `:hover` on the row, not a signal: crossing a day no longer re-renders 42
+ * buttons, and the band clears on its own over the row gap and when the pointer leaves.
  */
 import type { JSX } from "preact";
-import { useSignal } from "@preact/signals";
 import { cx } from "../../core/cx.ts";
 import type { CalendarViewMode } from "../core/types.ts";
 import {
@@ -37,9 +42,10 @@ export interface MiniMonthProps {
 
 export function MiniMonth(props: MiniMonthProps): JSX.Element {
 	const { tz, view, todayMs } = props;
-	const hoverIdx = useSignal<number | null>(null);
 	const days = monthMatrix(props.monthMs, tz);
-	const focusWeekStart = startOfWeek(props.focusMs, tz);
+	const weeks = Array.from({ length: days.length / 7 }, (_, r) => days.slice(r * 7, r * 7 + 7));
+	const anchorMs = view === "week" ? props.focusMs : todayMs;
+	const activeWeekStart = anchorMs == null ? null : startOfWeek(anchorMs, tz);
 
 	return (
 		<div class="cal-mini">
@@ -69,35 +75,39 @@ export function MiniMonth(props: MiniMonthProps): JSX.Element {
 				{weekdayLabels(true).map((w, i) => <span key={i} class="cal-mini__wd">{w}</span>)}
 			</div>
 
-			<div class="cal-mini__grid" onPointerLeave={() => (hoverIdx.value = null)}>
-				{days.map((d, i) => {
-					const row = Math.floor(i / 7);
-					const hoveredRow = hoverIdx.value != null && Math.floor(hoverIdx.value / 7) === row;
-					const outside = !sameZonedMonth(d, props.monthMs, tz);
-					const today = todayMs != null && sameZonedDay(d, todayMs, tz);
-					const selectedDay = view === "day" && sameZonedDay(d, props.focusMs, tz);
-					const selectedWeek = view === "week" && startOfWeek(d, tz) === focusWeekStart;
-					return (
-						<button
-							key={d}
-							type="button"
-							class={cx(
-								"cal-mini__day",
-								hoveredRow && "cal-mini__day--weekhover",
-								outside && "cal-mini__day--outside",
-								today && "cal-mini__day--today",
-								selectedDay && "cal-mini__day--selected",
-								selectedWeek && "cal-mini__day--inweek",
-							)}
-							onPointerEnter={() => (hoverIdx.value = i)}
-							onClick={() => props.onPick(d)}
-							aria-label={`Jump to ${zonedDayNum(d, tz)}`}
-							aria-current={today ? "date" : undefined}
-						>
-							{zonedDayNum(d, tz)}
-						</button>
-					);
-				})}
+			<div class="cal-mini__grid">
+				{weeks.map((week) => (
+					<div
+						key={week[0]}
+						class={cx(
+							"cal-mini__week",
+							startOfWeek(week[0], tz) === activeWeekStart && "cal-mini__week--active",
+						)}
+					>
+						{week.map((d) => {
+							const outside = !sameZonedMonth(d, props.monthMs, tz);
+							const today = todayMs != null && sameZonedDay(d, todayMs, tz);
+							const selectedDay = view === "day" && sameZonedDay(d, props.focusMs, tz);
+							return (
+								<button
+									key={d}
+									type="button"
+									class={cx(
+										"cal-mini__day",
+										outside && "cal-mini__day--outside",
+										selectedDay && "cal-mini__day--selected",
+										today && "cal-mini__day--today",
+									)}
+									onClick={() => props.onPick(d)}
+									aria-label={`Jump to ${zonedDayNum(d, tz)}`}
+									aria-current={today ? "date" : undefined}
+								>
+									{zonedDayNum(d, tz)}
+								</button>
+							);
+						})}
+					</div>
+				))}
 			</div>
 		</div>
 	);

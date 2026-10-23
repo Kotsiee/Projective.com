@@ -5,11 +5,19 @@ import "../styles/calendar-chrome.css";
 import { CALENDAR_KIND_LABEL, calendarTime } from "@projective/ui/calendar";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
+import { useMediaQuery } from "@projective/ui/navigation";
 import type { SchedulePage } from "@projective/types/scheduling";
 import { integrationLabel } from "@projective/types/scheduling";
 import { ProviderMark } from "../components/provider-marks.tsx";
 import { openSettings } from "@features/settings/core/settings-bridge.ts";
 import {
+	CONTEXT_PANEL_INFLOW_QUERY,
+	contextDrawerOpen,
+	contextPanelDocked,
+	toggleContextPanel,
+} from "@web/features/shell/core/context-panel-state.ts";
+import {
+	CALENDAR_PANEL_ID,
 	calendarFocus,
 	focusedAt,
 	calendarPage,
@@ -44,11 +52,15 @@ import {
  * Next would be two controls for one fact.
  *
  * **Below 767px the band inherits the lane's duties.** `middle-nav.css` removes the lane at exactly
- * that width, and it is the only place the search and the view switch live — `/wallet` proved the
+ * that width, and it is the only place the search and working hours live — `/wallet` proved the
  * duty must TRANSFER (a phone with no route to a section is a surface with no navigation), and
  * `/messages` proved what happens when it does not. The transfer is a viewport media query, not a
  * container query, precisely because it is keyed on the shell removing the lane rather than on this
  * band's own width.
+ *
+ * **The trailing toggle opens the month navigator** — the middle-nav panel from 1280px, a drawer
+ * below it — through the shell's shared panel state, the control `/messages` and `/catalogue/[id]`
+ * put in the same place. Import, Export and Connect are the footer rig's, at every width.
  */
 export interface CalendarHeaderBandProps {
 	/** The SSR page, so the band's identity and filter options paint in the first byte. */
@@ -58,6 +70,8 @@ export interface CalendarHeaderBandProps {
 export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.Element {
 	const filterOpen = useSignal(false);
 	const filterRef = useRef<HTMLButtonElement>(null);
+	const docked = useMediaQuery(CONTEXT_PANEL_INFLOW_QUERY);
+	const panelOpen = docked ? contextPanelDocked.value : contextDrawerOpen.value;
 
 	const page = calendarPage.value ?? props.initial;
 	const events = [...(page?.events ?? []), ...importedEvents.value];
@@ -226,28 +240,19 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 					</button>
 				</Tooltip>
 
-				{
-					/*
-					 * The view switch, inherited from the lane footer below 767px. Hidden above it by CSS
-					 * rather than rendered conditionally, so there is no frame in which both are drawn and no
-					 * client width observer deciding which.
-					 */
-				}
-				<div class="cal-band__views" role="group" aria-label="Calendar view">
-					{(["day", "week", "month", "timeline"] as const).map((v) => (
-						<button
-							key={v}
-							type="button"
-							class="cal-band__view"
-							data-on={calendarView.value === v ? "true" : undefined}
-							aria-pressed={calendarView.value === v ? "true" : "false"}
-							onClick={() => (calendarView.value = v)}
-						>
-							{v === "day" ? "D" : v === "week" ? "W" : v === "month" ? "M" : "T"}
-							<span class="cal-band__viewname">{v}</span>
-						</button>
-					))}
-				</div>
+				<Tooltip content={panelOpen ? "Hide month navigator" : "Show month navigator"}>
+					<button
+						type="button"
+						class="cal-band__iconbtn"
+						data-on={panelOpen ? "true" : undefined}
+						aria-label="Month navigator"
+						aria-expanded={panelOpen}
+						aria-controls={docked ? CALENDAR_PANEL_ID : undefined}
+						onClick={toggleContextPanel}
+					>
+						<Icon name="panel-right" size="xs" />
+					</button>
+				</Tooltip>
 			</div>
 		</div>
 	);

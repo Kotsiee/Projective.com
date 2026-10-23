@@ -296,9 +296,10 @@ export interface TimeGridProps {
 	 *
 	 * The zoom scale is the island's to own — it is persisted and it drives the view continuum — but
 	 * only this component can map a pointer into its own scene, so the anchoring happens here and the
-	 * scale change is asked for.
+	 * scale change is asked for, with the day column under the cursor (`null` over the gutter) so a
+	 * zoom past the deepest Week scale opens THAT day.
 	 */
-	onZoom?: (dir: "in" | "out") => void;
+	onZoom?: (dir: "in" | "out", dayMs: number | null) => void;
 	/**
 	 * Hand the island this viewport's own zoom INTERPOLATOR.
 	 *
@@ -934,8 +935,10 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 			e.preventDefault();
 			// Stopped here so the island's own ancestor listener does not zoom a second time for one notch.
 			e.stopPropagation();
-			viewport.zoomAnchor(viewport.pointerAt(e).y);
-			props.onZoom(e.deltaY < 0 ? "in" : "out");
+			const at = viewport.pointerAt(e);
+			viewport.zoomAnchor(at.y);
+			const day = at.x >= liveGeo().gutter ? slotAt(at.x, at.y).dayStart : null;
+			props.onZoom(e.deltaY < 0 ? "in" : "out", day);
 		};
 		el.addEventListener("wheel", onWheel, { passive: false });
 		return () => el.removeEventListener("wheel", onWheel);

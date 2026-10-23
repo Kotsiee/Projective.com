@@ -497,32 +497,29 @@
 		color var(--dur-fast) var(--ease-standard);
 }
 /*
- * Three tints on one ramp, and the ordering is the point: the week band is the faintest (it is
- * ambient — it follows the pointer and means nothing), the cell under the cursor is a step up so the
- * actual target stays identifiable inside its own band, and a committed range is stronger still
- * because it is a decision rather than a hint.
+ * The week band lives on the ROW, so seven days read as one continuous pill rather than seven tiles
+ * with seams. It is lit on today's week at rest and on any week under the pointer. `:hover` is
+ * resolved by hit-testing rather than by event dispatch, so it keeps matching over a DISABLED day and
+ * cannot survive the panel closing — the two places a JS `pointerenter` band went stale.
  *
- * The band is an ancestor `:hover`, not state. `:hover` is resolved by hit-testing rather than by
- * event dispatch, so it keeps matching over a DISABLED day — which is most of the month in a
- * date-of-birth picker bounded by `maxDate`, and precisely where a JS `pointerenter` band went stale.
- * It also cannot survive the panel closing, and it clears correctly over the weekday strip and the
- * row gap, both of which are inside the grid and so fire no `pointerleave` on it.
- *
- * `:where()` holds the band at the specificity of a single class, so the rules BELOW it — which are
- * all single-class too — win on document order rather than needing to out-specify a descendant
- * selector. Without it a hovered week would repaint a committed range's own band.
+ * Cell fills sit on top of it in one order: the hovered day layers a step over the band, a committed
+ * range and the selected day are OPAQUE mixes against the panel surface so they read the same in a
+ * banded row and an unbanded one, and today is the single solid mark.
  */
-:where(.ui-datepicker__week:hover) .ui-datepicker__day {
-	background: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
+.ui-datepicker__week {
+	border-radius: var(--radius-sm);
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.ui-datepicker__week:hover,
+.ui-datepicker__week--current {
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 /* The in-range case is excluded HERE rather than out-specified below. `:not()` contributes its
-   argument's specificity, so this selector already weighs (0,4,0) against the in-range hover rule's
-   (0,3,0) — leaving that rule dead, and a hovered interior day painting the lighter generic tint it
-   was written to prevent. Naming the exclusion is what actually hands the day over. */
-.ui-datepicker__day:hover:not(.ui-datepicker__day--disabled):not(.ui-datepicker__day--selected):not(
-	.ui-datepicker__day--in-range
-) {
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+   argument's specificity, so this selector outweighs the in-range hover rule — leaving that rule
+   dead, and a hovered interior day painting the lighter generic tint it was written to prevent.
+   Naming the exclusion is what actually hands the day over. */
+.ui-datepicker__day:hover:not(.ui-datepicker__day--disabled):not(.ui-datepicker__day--selected):not(.ui-datepicker__day--in-range):not(.ui-datepicker__day--today) {
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
 }
 .ui-datepicker__day:focus-visible {
 	outline: none;
@@ -534,12 +531,8 @@
 .ui-datepicker__day--outside {
 	color: var(--text-secondary);
 }
-.ui-datepicker__day--today {
-	font-weight: var(--fw-bold);
-	box-shadow: inset 0 0 0 var(--fld-bw) var(--outline);
-}
 .ui-datepicker__day--in-range {
-	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), var(--surface));
 	/* Square, so consecutive days fuse into one continuous band instead of a row of lozenges. The
 	   `--dp-gap` seam still separates them; that is the honest reading of "these days, individually". */
 	border-radius: 0;
@@ -547,19 +540,28 @@
 /* A day already inside the range must step UP under the pointer, not down. The generic hover tint is
    lighter than the band, so without this rule hovering an interior day dimmed the range it is part
    of — the one place a hover said "less" instead of "more". */
-.ui-datepicker__day--in-range:hover:not(.ui-datepicker__day--disabled) {
-	background: color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
+.ui-datepicker__day--in-range:hover:not(.ui-datepicker__day--disabled):not(.ui-datepicker__day--today) {
+	background: color-mix(in srgb, var(--primary) var(--tint-heavy), var(--surface));
 }
 .ui-datepicker__day--selected {
+	background: color-mix(in srgb, var(--primary) var(--tint-heavy), var(--surface));
+	color: var(--on-surface);
+	font-weight: var(--fw-semibold);
+}
+.ui-datepicker__day--today {
 	background: var(--primary);
 	color: var(--on-primary);
 	font-weight: var(--fw-semibold);
+	border-radius: var(--radius-sm);
 }
 /* Was `--text-secondary` at `opacity: 0.4` — 2.30:1, the least legible thing in the taxonomy, on the
    one control where reading the greyed-out dates is how you understand the booking window. */
 .ui-datepicker__day--disabled {
 	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
 	cursor: not-allowed;
+}
+.ui-datepicker__day--today.ui-datepicker__day--disabled {
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), var(--surface));
 }
 /* #endregion */
 

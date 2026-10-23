@@ -1,7 +1,8 @@
 /**
  * @projective/ui/calendar — the header controls (§Part 1.1): the period label + prev/next/today
- * navigation, the Day/Week/Month view switch (also reachable via Ctrl+wheel), a search box, a filter
- * toggle, and a consumer-owned action slot. Icon-first (§B.6): every icon control carries an
+ * navigation, the view control ({@link CalendarZoom}: one zoom slider across Month · Week · Day, the
+ * same continuum Ctrl+wheel moves along, and the timeline toggle), a search box, a filter toggle,
+ * and a consumer-owned action slot. Icon-first (§B.6): every icon control carries an
  * `aria-label` + `Tooltip`, never a native `title`.
  *
  * The header used to carry a fixed row of external-calendar STATUS chips (Google · Outlook · Apple ·
@@ -12,42 +13,30 @@
  * controls, so the package carries no provider vocabulary at all.
  */
 import type { ComponentChildren, JSX } from "preact";
-import type { Signal } from "@preact/signals";
+import type { ReadonlySignal, Signal } from "@preact/signals";
 import { cx } from "../../core/cx.ts";
 import { Tooltip } from "../../feedback/mod.ts";
-import type { CalendarViewMode } from "../core/types.ts";
-import {
-	ChevronLeftIcon,
-	ChevronRightIcon,
-	DayViewIcon,
-	FilterIcon,
-	MonthViewIcon,
-	TimelineViewIcon,
-	SearchIcon,
-	TodayIcon,
-	WeekViewIcon,
-} from "./glyphs.tsx";
+import type { CalendarZoomMode } from "../core/zoom.ts";
+import { CalendarZoom } from "./CalendarZoom.tsx";
+import { ChevronLeftIcon, ChevronRightIcon, FilterIcon, SearchIcon, TodayIcon } from "./glyphs.tsx";
 
-const VIEWS: {
-	key: CalendarViewMode;
-	label: string;
-	icon: (p: { size?: number }) => JSX.Element;
-}[] = [
-	{ key: "day", label: "Day", icon: DayViewIcon },
-	{ key: "week", label: "Week", icon: WeekViewIcon },
-	{ key: "month", label: "Month", icon: MonthViewIcon },
-	{ key: "timeline", label: "Timeline", icon: TimelineViewIcon },
-];
+/** The header's view control: which axis the slider drives, and where on it the engine is. */
+export interface CalendarHeaderZoom {
+	mode: CalendarZoomMode;
+	position: ReadonlySignal<number>;
+	onPosition: (u: number) => void;
+	onMode: (mode: CalendarZoomMode) => void;
+}
 
 export interface CalendarHeaderProps {
 	title?: string;
 	periodLabel: string;
-	view: CalendarViewMode;
 	query: Signal<string>;
-	/** Consumer-owned controls, rendered between the filter toggle and the view switch. */
+	/** Consumer-owned controls, rendered between the filter toggle and the view control. */
 	actions?: ComponentChildren;
 	filtersActive?: boolean;
-	onView: (v: CalendarViewMode) => void;
+	/** The view control — the zoom slider across Month · Week · Day, and the timeline toggle. */
+	zoom: CalendarHeaderZoom;
 	onPrev: () => void;
 	onNext: () => void;
 	onToday: () => void;
@@ -127,25 +116,13 @@ export function CalendarHeader(props: CalendarHeaderProps): JSX.Element {
 
 				{props.actions ? <div class="cal-header__actions">{props.actions}</div> : null}
 
-				<div class="cal-header__views" role="group" aria-label="View">
-					{VIEWS.map((v) => {
-						const Icon = v.icon;
-						return (
-							<Tooltip key={v.key} content={`${v.label} view`}>
-								<button
-									type="button"
-									class={cx("cal-header__view", props.view === v.key && "cal-header__view--on")}
-									onClick={() => props.onView(v.key)}
-									aria-pressed={props.view === v.key ? "true" : "false"}
-									aria-label={`${v.label} view`}
-								>
-									<Icon size={16} />
-									<span class="cal-header__view-label">{v.label}</span>
-								</button>
-							</Tooltip>
-						);
-					})}
-				</div>
+				<CalendarZoom
+					class="cal-header__zoom"
+					mode={props.zoom.mode}
+					value={props.zoom.position.value}
+					onValueChange={props.zoom.onPosition}
+					onModeChange={props.zoom.onMode}
+				/>
 			</div>
 		</header>
 	);

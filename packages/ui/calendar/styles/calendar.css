@@ -34,10 +34,6 @@
 	.cal {
 		--cal-side-w: 13rem;
 	}
-
-	.cal-header__view-label {
-		display: none;
-	}
 }
 
 @media (max-width: 768px) {

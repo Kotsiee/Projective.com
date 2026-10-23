@@ -1,10 +1,28 @@
 import { icsEscape, icsFold } from "../finance/order.ts";
-import { addDays, type DateRange, eachDate, type IsoDate, zonedSpan } from "./civil.ts";
+import {
+	addDays,
+	civilParts,
+	type DateRange,
+	dateInZone,
+	eachDate,
+	fromDayNumber,
+	type IsoDate,
+	isoDateOf,
+	zonedSpan,
+} from "./civil.ts";
 import { layerBandsFor, occursOn, type PresetLike, unionBands } from "./evaluate.ts";
+import { expandIcsSeries } from "./ics-recurrence.ts";
 import { type Band, compileRecurrence } from "./recurrence.ts";
 import type { AvailabilityKind } from "./rows.ts";
 import { expandRRule, serialiseRRule } from "./rrule.ts";
 import type { CalendarEvent, CalendarEventKind } from "./scheduling.ts";
+import {
+	decodeQuotedPrintable,
+	joinQuotedPrintableLines,
+	parseVcalOffset,
+	vcalRuleToRRule,
+	vcalUnescape,
+} from "./vcal.ts";
 
 /**
  * scheduling.ics — the iCalendar (RFC 5545) READER.
@@ -34,6 +52,13 @@ import type { CalendarEvent, CalendarEventKind } from "./scheduling.ts";
  * Malformed input is REFUSED rather than quietly yielding nothing: a file with no calendar in it, or
  * one whose every entry is unusable, throws {@link IcsParseError}. Silently importing zero events
  * looks identical to importing an empty calendar, and the reader cannot tell which happened.
+ *
+ * A REPEATING entry (`RRULE`, `RDATE`, `EXDATE`, and `RECURRENCE-ID` overrides) is expanded into its
+ * occurrences across {@link IcsParseOptions.recurrenceWindow} by `ics-recurrence.ts`. A rule the
+ * engine cannot expand keeps its first occurrence and says so; it never fails the file.
+ *
+ * vCalendar 1.0 (`.vcs`) shares the envelope and is read by the same scan; its three differences —
+ * quoted-printable text, a calendar-wide `TZ` offset and its own repeat grammar — live in `vcal.ts`.
  *
  * The module also holds one WRITER with no reader counterpart: {@link toVAvailability}, an
  * availability preset exported as an RFC 7953 `VAVAILABILITY` (plan §5.3).
@@ -107,7 +132,7 @@ export type IcsRefusalCode =
 /** The refusal copy, written once so the parser and every surface say the same thing. */
 export const ICS_REFUSAL_COPY: Record<IcsRefusalCode, string> = {
 	empty: "That file is empty.",
-	not_a_calendar: "That is not an iCalendar file — it has no BEGIN:VCALENDAR line.",
+	not_a_calendar: "That is not a calendar file — it has no BEGIN:VCALENDAR line.",
 	unterminated: "That calendar file is truncated: an event begins but never ends.",
 	no_events: "That calendar file contains no events that could be read.",
 	too_large: "That calendar file is too large to read.",
@@ -115,7 +140,7 @@ export const ICS_REFUSAL_COPY: Record<IcsRefusalCode, string> = {
 // #endregion
 
 // #region Parsed shapes
-/** One `VEVENT`, decoded but not yet projected onto a surface. */
+/** One occurrence of a `VEVENT`, decoded but not yet projected onto a surface. */
 export interface IcsEvent {
 	/** The `UID` — stable across re-exports, so re-importing a file updates rather than duplicates. */
 	uid: string;
@@ -136,6 +161,9 @@ export interface IcsEvent {
 export interface IcsImport {
 	/** The `X-WR-CALNAME` a producer usually writes, or `null`. */
 	calendarName: string | null;
+	/** `vcalendar` for a vCalendar 1.0 (`VERSION:1.0`) file, otherwise `icalendar`. */
+	format: "icalendar" | "vcalendar";
+	/** Every occurrence, repeating entries expanded, in file order. */
 	events: IcsEvent[];
 	/**
 	 * Everything that was skipped or assumed, in reading order.
@@ -145,6 +173,18 @@ export interface IcsImport {
 	 * between a successful import and one that quietly lost two meetings.
 	 */
 	warnings: string[];
+}
+
+/** How a file is read. */
+export interface IcsParseOptions {
+	/** The zone a FLOATING time is resolved in (see {@link IcsProjection.timezone}). Defaults to UTC. */
+	timezone?: string;
+	/**
+	 * The span, epoch ms, a REPEATING entry is expanded across. A series without an end is unbounded,
+	 * so only occurrences overlapping this window are returned, and a warning says how many series
+	 * were clipped. Defaults to the first year of each series, which keeps the reader clock-free.
+	 */
+	recurrenceWindow?: { from: number; to: number };
 }
 
 /** How the parsed entries are projected onto the calendar's own event shape. */
@@ -259,7 +299,12 @@ function parseIcsLine(line: string): IcsLine | null {
 	const params: Record<string, string> = {};
 	for (const segment of segments) {
 		const eq = segment.indexOf("=");
-		if (eq <= 0) continue;
+		if (eq === 0) continue;
+		if (eq < 0) {
+			const flag = segment.trim().toUpperCase();
+			if (flag) params[flag] = "";
+			continue;
+		}
 		params[segment.slice(0, eq).trim().toUpperCase()] = segment.slice(eq + 1).trim();
 	}
 	return { name, params, value };
@@ -345,12 +390,42 @@ function wallClockToEpoch(
 	return epoch;
 }
 
+type IcsZone = { kind: "utc" } | { kind: "tz"; tz: string } | { kind: "offset"; ms: number };
+
+interface WallClock {
+	date: IsoDate;
+	h: number;
+	mi: number;
+	s: number;
+}
+
 /** A decoded `DTSTART`/`DTEND`/`RECURRENCE-ID` value. */
 interface IcsInstant {
 	ms: number;
 	allDay: boolean;
 	/** True when the value carried neither `Z` nor a usable `TZID` and had to be resolved somewhere. */
 	floating: boolean;
+	wall: WallClock;
+	zone: IcsZone;
+}
+
+interface IcsTimeContext {
+	fallbackTz: string;
+	fixedOffset: number | null;
+}
+
+function resolveWall(wall: WallClock, zone: IcsZone): number {
+	const { year, month, day } = civilParts(wall.date);
+	const utc = Date.UTC(year, month - 1, day, wall.h, wall.mi, wall.s);
+	if (zone.kind === "utc") return utc;
+	if (zone.kind === "offset") return utc - zone.ms;
+	return wallClockToEpoch(year, month, day, wall.h, wall.mi, wall.s, zone.tz) ?? utc;
+}
+
+function dateOfInstant(ms: number, zone: IcsZone): IsoDate {
+	if (zone.kind === "tz") return dateInZone(ms, zone.tz);
+	const shift = zone.kind === "offset" ? zone.ms : 0;
+	return fromDayNumber(Math.floor((ms + shift) / DAY_MS));
 }
 
 const DATE_RE = /^(\d{4})(\d{2})(\d{2})$/;
@@ -363,59 +438,60 @@ const DATE_TIME_RE = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/;
  * time in it, a trailing `Z` is an absolute instant, and everything else is a wall-clock reading that
  * only becomes an instant once a zone is chosen.
  */
-function parseIcsInstant(line: IcsLine, fallbackTz: string): IcsInstant | null {
-	const raw = line.value.trim();
+function parseIcsInstant(
+	raw: string,
+	params: Record<string, string>,
+	time: IcsTimeContext,
+): IcsInstant | null {
+	const value = raw.trim();
 
-	if (line.params.VALUE === "DATE" || DATE_RE.test(raw)) {
-		const m = DATE_RE.exec(raw);
+	if (params.VALUE === "DATE" || DATE_RE.test(value)) {
+		const m = DATE_RE.exec(value);
 		if (!m) return null;
-		const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+		const wall = { date: isoDateOf(Number(m[1]), Number(m[2]), Number(m[3])), h: 0, mi: 0, s: 0 };
 		// Anchored at LOCAL midnight in the display zone, like every timed value on this path — a
 		// `Date.UTC` anchor is midnight somewhere else, and `MonthGrid` tests a cell with
 		// `start < dayMidnight + DAY && end > dayMidnight` against ZONED midnights, so an all-day
 		// entry imported in any zone behind UTC matched two cells and drew itself on two days.
-		return {
-			ms: wallClockToEpoch(y, mo, d, 0, 0, 0, fallbackTz) ?? Date.UTC(y, mo - 1, d),
-			allDay: true,
-			floating: false,
-		};
+		const zone: IcsZone = { kind: "tz", tz: time.fallbackTz };
+		return { ms: resolveWall(wall, zone), allDay: true, floating: false, wall, zone };
 	}
 
-	const m = DATE_TIME_RE.exec(raw);
+	const m = DATE_TIME_RE.exec(value);
 	if (!m) return null;
-	const [, y, mo, d, h, mi, s, zulu] = m;
-	const parts = [Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s)] as const;
-
-	if (zulu) return { ms: Date.UTC(...parts), allDay: false, floating: false };
-
-	const tzid = line.params.TZID;
-	if (tzid) {
-		const resolved = wallClockToEpoch(
-			Number(y),
-			Number(mo),
-			Number(d),
-			Number(h),
-			Number(mi),
-			Number(s),
-			tzid,
-		);
-		if (resolved !== null) return { ms: resolved, allDay: false, floating: false };
-	}
-
-	const resolved = wallClockToEpoch(
-		Number(y),
-		Number(mo),
-		Number(d),
-		Number(h),
-		Number(mi),
-		Number(s),
-		fallbackTz,
-	);
-	return {
-		ms: resolved ?? Date.UTC(...parts),
-		allDay: false,
-		floating: true,
+	const wall = {
+		date: isoDateOf(Number(m[1]), Number(m[2]), Number(m[3])),
+		h: Number(m[4]),
+		mi: Number(m[5]),
+		s: Number(m[6]),
 	};
+
+	let zone: IcsZone | null = null;
+	if (m[7]) zone = { kind: "utc" };
+	else if (params.TZID && zoneFormatter(params.TZID)) zone = { kind: "tz", tz: params.TZID };
+	else if (time.fixedOffset !== null) zone = { kind: "offset", ms: time.fixedOffset };
+	const floating = zone === null;
+	const resolvedZone: IcsZone = zone ?? { kind: "tz", tz: time.fallbackTz };
+	return { ms: resolveWall(wall, resolvedZone), allDay: false, floating, wall, zone: resolvedZone };
+}
+
+function parseIcsUntil(raw: string, zone: IcsZone): { ms: number; date: IsoDate } | null {
+	const value = raw.trim();
+	const day = DATE_RE.exec(value);
+	if (day) {
+		const date = isoDateOf(Number(day[1]), Number(day[2]), Number(day[3]));
+		return { ms: resolveWall({ date: addDays(date, 1), h: 0, mi: 0, s: 0 }, zone) - 1, date };
+	}
+	const m = DATE_TIME_RE.exec(value);
+	if (!m) return null;
+	const wall = {
+		date: isoDateOf(Number(m[1]), Number(m[2]), Number(m[3])),
+		h: Number(m[4]),
+		mi: Number(m[5]),
+		s: Number(m[6]),
+	};
+	const ms = resolveWall(wall, m[7] ? { kind: "utc" } : zone);
+	return { ms, date: dateOfInstant(ms, zone) };
 }
 
 const DURATION_RE = /^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/;
@@ -435,8 +511,30 @@ export function parseIcsDuration(value: string): number | null {
 // #endregion
 
 // #region Parse
+type IcsProps = Map<string, IcsLine[]>;
+
+interface IcsReadContext extends IcsTimeContext {
+	vcal: boolean;
+	window: { from: number; to: number } | null;
+	warnings: string[];
+}
+
+function first(props: IcsProps, name: string): IcsLine | undefined {
+	return props.get(name)?.[0];
+}
+
+function textOf(line: IcsLine | undefined, vcal: boolean): string | null {
+	if (!line) return null;
+	const qp = line.params.ENCODING?.toUpperCase() === "QUOTED-PRINTABLE" ||
+		Object.hasOwn(line.params, "QUOTED-PRINTABLE");
+	const value = qp
+		? decodeQuotedPrintable(line.value, line.params.CHARSET).replace(/\r\n?/g, "\n")
+		: line.value;
+	return vcal ? vcalUnescape(value) : icsUnescape(value);
+}
+
 /**
- * Read one `.ics` document.
+ * Read one `.ics` or `.vcs` document.
  *
  * Throws {@link IcsParseError} when the file is not a calendar or yields nothing usable; an
  * individual entry that cannot be read is skipped with a warning, because one broken `VEVENT` in a
@@ -445,24 +543,27 @@ export function parseIcsDuration(value: string): number | null {
  * `VTIMEZONE`, `VTODO`, `VJOURNAL`, `VALARM` and `VFREEBUSY` components are stepped over rather than
  * parsed — a `VALARM` in particular nests INSIDE a `VEVENT` and carries its own `DESCRIPTION`, which
  * a flat scanner would happily overwrite the event's with.
+ *
+ * Entries are built only once the whole file is scanned: a vCalendar `TZ` may follow the first event,
+ * and a `RECURRENCE-ID` override may come before the series it amends.
  */
-export function parseIcsCalendar(text: string, options: { timezone?: string } = {}): IcsImport {
+export function parseIcsCalendar(text: string, options: IcsParseOptions = {}): IcsImport {
 	if (exceedsUtf8Bytes(text, ICS_MAX_BYTES)) {
 		throw new IcsParseError("too_large", ICS_REFUSAL_COPY.too_large);
 	}
 	if (!text.trim()) throw new IcsParseError("empty", ICS_REFUSAL_COPY.empty);
 
-	const fallbackTz = options.timezone ?? "UTC";
-	const lines = unfoldIcsLines(text);
-	const warnings: string[] = [];
-	const events: IcsEvent[] = [];
+	const lines = joinQuotedPrintableLines(unfoldIcsLines(text));
+	const components: IcsProps[] = [];
 	let calendarName: string | null = null;
+	let version: string | null = null;
+	let fixedOffset: number | null = null;
+	let daylight = false;
 	let sawCalendar = false;
-	let truncated = false;
 
 	/** The component nesting, so a nested `VALARM` never writes into the event around it. */
 	const stack: string[] = [];
-	let current: Partial<Record<string, IcsLine>> | null = null;
+	let current: IcsProps | null = null;
 
 	for (const raw of lines) {
 		const line = parseIcsLine(raw);
@@ -472,22 +573,17 @@ export function parseIcsCalendar(text: string, options: { timezone?: string } = 
 			const component = line.value.trim().toUpperCase();
 			stack.push(component);
 			if (component === "VCALENDAR") sawCalendar = true;
-			if (component === "VEVENT" && stack.length === 2) current = {};
+			if (component === "VEVENT" && stack.length === 2) current = new Map();
 			continue;
 		}
 
 		if (line.name === "END") {
 			const component = line.value.trim().toUpperCase();
-			const open = stack.pop();
-			if (open !== component) {
+			if (stack.pop() !== component) {
 				throw new IcsParseError("unterminated", ICS_REFUSAL_COPY.unterminated);
 			}
 			if (component === "VEVENT" && current) {
-				if (events.length >= ICS_MAX_EVENTS) truncated = true;
-				else {
-					const built = buildEvent(current, fallbackTz, warnings, events.length);
-					if (built) events.push(built);
-				}
+				components.push(current);
 				current = null;
 			}
 			continue;
@@ -496,81 +592,241 @@ export function parseIcsCalendar(text: string, options: { timezone?: string } = 
 		// Only properties DIRECTLY on the VEVENT are collected — `stack` is [VCALENDAR, VEVENT] there,
 		// and anything deeper belongs to a nested component.
 		if (current && stack.length === 2) {
-			// First occurrence wins: a repeated property is invalid, and taking the first keeps the
-			// result stable rather than dependent on file order.
-			if (!current[line.name]) current[line.name] = line;
+			const list = current.get(line.name);
+			if (list) list.push(line);
+			else current.set(line.name, [line]);
 			continue;
 		}
-		if (!current && line.name === "X-WR-CALNAME") calendarName = icsUnescape(line.value).trim();
+		if (stack.length !== 1) continue;
+		if (line.name === "X-WR-CALNAME") calendarName = icsUnescape(line.value).trim();
+		else if (line.name === "VERSION") version = line.value.trim();
+		else if (line.name === "TZ") fixedOffset = parseVcalOffset(line.value);
+		else if (line.name === "DAYLIGHT") daylight = /^TRUE/i.test(line.value.trim());
 	}
 
 	if (!sawCalendar) throw new IcsParseError("not_a_calendar", ICS_REFUSAL_COPY.not_a_calendar);
 	if (stack.length > 0) throw new IcsParseError("unterminated", ICS_REFUSAL_COPY.unterminated);
+
+	const vcal = version === "1.0";
+	const ctx: IcsReadContext = {
+		fallbackTz: options.timezone ?? "UTC",
+		fixedOffset: vcal ? fixedOffset : null,
+		vcal,
+		window: options.recurrenceWindow ?? null,
+		warnings: [],
+	};
+	if (ctx.fixedOffset !== null && daylight) {
+		ctx.warnings.push(
+			"The file observes daylight saving; its times were read at its standard offset.",
+		);
+	}
+
+	const events: IcsEvent[] = [];
+	const overrides: [IcsProps, number][] = [];
+	let clippedSeries = 0;
+	let truncated = false;
+
+	for (const [index, props] of components.entries()) {
+		if (truncated) break;
+		if (first(props, "RECURRENCE-ID")) {
+			overrides.push([props, index]);
+			continue;
+		}
+		const built = buildOccurrences(props, ctx, index);
+		if (built.clipped) clippedSeries++;
+		for (const occurrence of built.events) {
+			if (events.length >= ICS_MAX_EVENTS) {
+				truncated = true;
+				break;
+			}
+			events.push(occurrence);
+		}
+	}
+
+	for (const [props, index] of overrides) {
+		const entry = readEntry(props, ctx, index);
+		const idLine = first(props, "RECURRENCE-ID");
+		if (!entry || !idLine) continue;
+		const original = parseIcsInstant(idLine.value, idLine.params, ctx)?.ms;
+		const at = events.findIndex((e) => e.uid === entry.base.uid && e.start === original);
+		if (at >= 0) events[at] = entry.base;
+		else if (events.length < ICS_MAX_EVENTS) events.push(entry.base);
+		else truncated = true;
+	}
+
 	if (truncated) {
-		warnings.push(
+		ctx.warnings.push(
 			`Only the first ${ICS_MAX_EVENTS} events were read — the file contains more.`,
 		);
 	}
+	if (clippedSeries > 0) ctx.warnings.push(clippedCopy(clippedSeries, ctx.window));
 	if (events.length === 0) throw new IcsParseError("no_events", ICS_REFUSAL_COPY.no_events);
 
-	return { calendarName: calendarName || null, events, warnings };
+	return {
+		calendarName: calendarName || null,
+		format: vcal ? "vcalendar" : "icalendar",
+		events,
+		warnings: ctx.warnings,
+	};
 }
 
-/** Turn one collected `VEVENT`'s properties into an {@link IcsEvent}, or `null` when unusable. */
-function buildEvent(
-	props: Partial<Record<string, IcsLine>>,
-	fallbackTz: string,
-	warnings: string[],
-	index: number,
-): IcsEvent | null {
-	const summaryLine = props.SUMMARY;
-	const label = summaryLine ? icsUnescape(summaryLine.value).trim() : "";
-	const named = label || `Event ${index + 1}`;
+interface IcsEntry {
+	base: IcsEvent;
+	start: IcsInstant;
+}
 
-	const startLine = props.DTSTART;
+function readEntry(props: IcsProps, ctx: IcsReadContext, index: number): IcsEntry | null {
+	const named = textOf(first(props, "SUMMARY"), ctx.vcal)?.trim() || `Event ${index + 1}`;
+
+	const startLine = first(props, "DTSTART");
 	if (!startLine) {
-		warnings.push(`“${named}” was skipped: it has no start time.`);
+		ctx.warnings.push(`“${named}” was skipped: it has no start time.`);
 		return null;
 	}
-	const start = parseIcsInstant(startLine, fallbackTz);
+	const start = parseIcsInstant(startLine.value, startLine.params, ctx);
 	if (!start) {
-		warnings.push(`“${named}” was skipped: its start time could not be read.`);
+		ctx.warnings.push(`“${named}” was skipped: its start time could not be read.`);
 		return null;
 	}
 	if (start.floating) {
-		warnings.push(`“${named}” had no timezone; it was read in ${fallbackTz}.`);
+		ctx.warnings.push(`“${named}” had no timezone; it was read in ${ctx.fallbackTz}.`);
 	}
 
 	let endMs: number | null = null;
-	const endLine = props.DTEND;
+	const endLine = first(props, "DTEND");
+	const durationLine = first(props, "DURATION");
 	if (endLine) {
-		const end = parseIcsInstant(endLine, fallbackTz);
-		if (end) endMs = end.ms;
-	} else if (props.DURATION) {
-		const ms = parseIcsDuration(props.DURATION.value);
+		endMs = parseIcsInstant(endLine.value, endLine.params, ctx)?.ms ?? null;
+	} else if (durationLine) {
+		const ms = parseIcsDuration(durationLine.value);
 		if (ms !== null && ms > 0) endMs = start.ms + ms;
 	}
-	if (endMs === null) {
-		// §3.6.1: an entry with neither DTEND nor DURATION lasts one day when it is a DATE, and is
-		// instantaneous otherwise. A zero-width block cannot be drawn, so a timed one takes an hour —
-		// the same assumption every calendar client makes, stated rather than hidden.
-		endMs = start.allDay ? start.ms + DAY_MS : start.ms + 3_600_000;
+	// §3.6.1: an entry with neither DTEND nor DURATION lasts one day when it is a DATE, and is
+	// instantaneous otherwise. A zero-width block cannot be drawn, so a timed one takes an hour —
+	// the same assumption every calendar client makes, stated rather than hidden.
+	if (endMs === null || endMs <= start.ms) {
+		endMs = start.ms + (start.allDay ? DAY_MS : 3_600_000);
 	}
-	if (endMs <= start.ms) endMs = start.ms + (start.allDay ? DAY_MS : 3_600_000);
 
-	const uidLine = props.UID;
-	const uid = uidLine ? icsUnescape(uidLine.value).trim() : "";
-
+	const uid = icsUnescape(first(props, "UID")?.value ?? "").trim();
+	const status = first(props, "STATUS")?.value.trim().toUpperCase() ?? null;
 	return {
-		uid: uid || `${start.ms}-${index}@imported`,
-		summary: named,
-		description: props.DESCRIPTION ? icsUnescape(props.DESCRIPTION.value) : null,
-		location: props.LOCATION ? icsUnescape(props.LOCATION.value) : null,
-		start: start.ms,
-		end: endMs,
-		allDay: start.allDay,
-		status: props.STATUS ? props.STATUS.value.trim().toUpperCase() : null,
+		start,
+		base: {
+			uid: uid || `${start.ms}-${index}@imported`,
+			summary: named,
+			description: textOf(first(props, "DESCRIPTION"), ctx.vcal),
+			location: textOf(first(props, "LOCATION"), ctx.vcal),
+			start: start.ms,
+			end: endMs,
+			allDay: start.allDay,
+			status,
+		},
 	};
+}
+
+function ruleOf(props: IcsProps, ctx: IcsReadContext, named: string): string | null {
+	const value = first(props, "RRULE")?.value.trim();
+	if (!value) return null;
+	if (!ctx.vcal || /FREQ=/i.test(value)) return value;
+	const translated = vcalRuleToRRule(value);
+	if (translated.ok) return translated.rrule;
+	ctx.warnings.push(`“${named}” repeats, but ${translated.reason}; only its first occurrence was added.`);
+	return null;
+}
+
+function buildOccurrences(
+	props: IcsProps,
+	ctx: IcsReadContext,
+	index: number,
+): { events: IcsEvent[]; clipped: boolean } {
+	const entry = readEntry(props, ctx, index);
+	if (!entry) return { events: [], clipped: false };
+	const { base, start } = entry;
+
+	const rule = ruleOf(props, ctx, base.summary);
+	const rdates = props.get("RDATE") ?? [];
+	if (!rule && rdates.length === 0) return { events: [base], clipped: false };
+
+	const window = ctx.window ?? { from: base.start, to: base.start + 366 * DAY_MS };
+	let starts: number[] = [];
+	let clipped = false;
+	let windowed = true;
+
+	if (rule) {
+		const expansion = expandIcsSeries({
+			rule,
+			startsOn: start.wall.date,
+			instantOn: (date) => resolveWall({ ...start.wall, date }, start.zone),
+			until: (raw) => parseIcsUntil(raw, start.zone),
+			window: {
+				from: addDays(dateOfInstant(window.from, start.zone), -1),
+				to: addDays(dateOfInstant(window.to, start.zone), 1),
+			},
+		});
+		if (expansion.ok) {
+			starts = expansion.starts;
+			clipped = expansion.clipped;
+		} else {
+			ctx.warnings.push(
+				`“${base.summary}” repeats in a way that can’t be expanded (${expansion.message}) — only its first occurrence was added.`,
+			);
+			starts = [base.start];
+			windowed = false;
+		}
+	} else starts = [base.start];
+
+	let periods = false;
+	for (const line of rdates) {
+		for (const piece of line.value.split(",")) {
+			if (line.params.VALUE === "PERIOD" || piece.includes("/")) {
+				periods = true;
+				continue;
+			}
+			const at = parseIcsInstant(piece, line.params, ctx);
+			if (at) starts.push(at.ms);
+		}
+	}
+	if (periods) {
+		ctx.warnings.push(`“${base.summary}” lists extra occurrences as periods, which were skipped.`);
+	}
+
+	const exMs = new Set<number>();
+	const exDates = new Set<IsoDate>();
+	for (const line of props.get("EXDATE") ?? []) {
+		for (const piece of line.value.split(",")) {
+			const at = parseIcsInstant(piece, line.params, ctx);
+			if (!at) continue;
+			if (at.allDay) exDates.add(at.wall.date);
+			else exMs.add(at.ms);
+		}
+	}
+
+	const duration = base.end - base.start;
+	const days = Math.max(1, Math.round(duration / DAY_MS));
+	const occurrences = [...new Set(starts)]
+		.sort((a, b) => a - b)
+		.filter((ms) => !exMs.has(ms) && !exDates.has(dateOfInstant(ms, start.zone)))
+		.map((ms): IcsEvent => {
+			if (!base.allDay) return { ...base, start: ms, end: ms + duration };
+			const next = addDays(dateOfInstant(ms, start.zone), days);
+			return { ...base, start: ms, end: resolveWall({ date: next, h: 0, mi: 0, s: 0 }, start.zone) };
+		})
+		.filter((e) => !windowed || (e.end > window.from && e.start < window.to));
+	return { events: occurrences, clipped };
+}
+
+function clippedCopy(count: number, window: { from: number; to: number } | null): string {
+	const subject = count === 1
+		? "1 repeating event continues"
+		: `${count} repeating events continue`;
+	if (!window) {
+		return `${subject} past ${count === 1 ? "its" : "their"} first year; only that year was added.`;
+	}
+	const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+	return `${subject} outside ${day(window.from)} – ${
+		day(window.to)
+	}; only occurrences inside those dates were added.`;
 }
 // #endregion
 

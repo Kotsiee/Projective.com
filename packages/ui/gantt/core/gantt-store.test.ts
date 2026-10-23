@@ -109,6 +109,25 @@ Deno.test("a host-owned zoom signal is written back into, and respected on const
 	assertEquals(s.pxPerDay, zoom, "the store holds the host's signal, not a copy");
 });
 
+Deno.test("adoptZoom — a host's direct write scales the axis about the viewport centre", () => {
+	const zoom = signal(40);
+	const s = createGanttStore({ originMs: ORIGIN, timezone: "UTC", pxPerDay: zoom });
+	s.viewportW.value = 800;
+	const centre = ORIGIN + 45 * DAY;
+	s.centerOn(centre);
+	zoom.value = 160;
+	s.adoptZoom();
+	const range = s.visibleRange.value;
+	assertAlmostEquals((range.start + range.end) / 2, centre, 1);
+	assertAlmostEquals((range.end - range.start) / DAY, 5, 1e-9);
+	const x = s.scrollX.value;
+	s.adoptZoom();
+	assertEquals(s.scrollX.value, x, "a second call with nothing new written moves nothing");
+	zoom.value = 1e9;
+	s.adoptZoom();
+	assertEquals(zoom.value, PX_PER_DAY_MAX, "a write past the bounds is clamped");
+});
+
 Deno.test("scaleRows — bounded, and the vertical offset stays inside the shorter content", () => {
 	const s = make();
 	s.scrollTo(undefined, 200);

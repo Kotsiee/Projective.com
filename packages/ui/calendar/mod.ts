@@ -47,7 +47,9 @@ export * from "./islands/availability-scheduler/index.ts";
 
 // #region Components (composable parts for bespoke layouts)
 export { CalendarHeader } from "./components/CalendarHeader.tsx";
-export type { CalendarHeaderProps } from "./components/CalendarHeader.tsx";
+export type { CalendarHeaderProps, CalendarHeaderZoom } from "./components/CalendarHeader.tsx";
+export { CalendarZoom } from "./components/CalendarZoom.tsx";
+export type { CalendarZoomProps } from "./components/CalendarZoom.tsx";
 export { MiniMonth } from "./components/MiniMonth.tsx";
 export type { MiniMonthProps } from "./components/MiniMonth.tsx";
 export { AvailabilityPanel } from "./components/AvailabilityPanel.tsx";
@@ -106,6 +108,7 @@ export type {
 	CalendarAttendee,
 	CalendarAvailability,
 	CalendarComposeRequest,
+	CalendarDailyRepeat,
 	CalendarEvent,
 	CalendarEventKind,
 	CalendarEventStatus,
@@ -203,6 +206,36 @@ export {
 	onAccentFor,
 } from "./core/kinds.ts";
 export * as calendarTime from "./core/time.ts";
+export {
+	CALENDAR_STOPS,
+	CALENDAR_ZOOM_DEFAULT,
+	calendarStateAt,
+	calendarZoomFor,
+	DEFAULT_PPH,
+	MAX_PPH,
+	MIN_PPH,
+	MONTH_WEEKS_DEFAULT,
+	MONTH_WEEKS_MAX,
+	MONTH_WEEKS_MIN,
+	stopAt,
+	stopsFor,
+	TIMELINE_EDGES,
+	TIMELINE_STOPS,
+	timelinePxPerDayAt,
+	timelineZoomFor,
+	ZOOM_STOP_LABEL,
+	zoomMarks,
+	zoomStep,
+} from "./core/zoom.ts";
+export type { CalendarZoomMode, CalendarZoomState, ZoomStop } from "./core/zoom.ts";
+export {
+	DAILY_REPEAT_DEFAULT,
+	dailyOccurrences,
+	isMultiDay,
+	minuteOfDay,
+	rangeDays,
+	SERIES_MAX_DAYS,
+} from "./core/series.ts";
 // #endregion
 export { sceneCost } from "./core/scene-paint.ts";
 export type { FrameStats } from "./core/scene-paint.ts";

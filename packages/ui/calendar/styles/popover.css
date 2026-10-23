@@ -612,4 +612,100 @@
 	box-shadow: none;
 }
 
+.cal-pop__spread {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: var(--space-2);
+	min-inline-size: 0;
+	margin: 0;
+	padding: 0;
+	border: none;
+}
+
+.cal-pop__spread > legend {
+	padding: 0;
+	margin-block-end: var(--space-1);
+}
+
+.cal-pop__spreadopt {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	padding: var(--space-2);
+	border: var(--hairline);
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast)
+		var(--ease-standard);
+}
+
+.cal-pop__spreadopt:hover {
+	background: var(--surface-2);
+}
+
+.cal-pop__spreadopt:has(.cal-pop__radio:checked) {
+	border-color: color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), var(--surface));
+}
+
+.cal-pop__radio {
+	flex: none;
+	margin: 2px 0 0;
+	accent-color: var(--primary);
+}
+
+.cal-pop__radio:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.cal-pop__spreadtext {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+}
+
+.cal-pop__spreadname {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.cal-pop__spreadmeta {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+
+.cal-pop__times {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: var(--space-2);
+}
+
+.cal-pop__timefield {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.cal-pop__input--time {
+	inline-size: 100%;
+	min-inline-size: 0;
+	font-variant-numeric: tabular-nums;
+}
+
+.cal-pop__input[aria-invalid="true"] {
+	border-color: var(--danger);
+}
+
+.cal-pop__timenote {
+	grid-column: 1 / -1;
+	margin: 0;
+	font-size: var(--text-xs);
+	color: var(--danger);
+}
+
 /* #endregion */
