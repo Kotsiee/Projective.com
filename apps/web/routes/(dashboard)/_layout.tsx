@@ -206,6 +206,7 @@ async function laneFor(
 	context: UserContext,
 	actor: ReadActor,
 	state: State,
+	req: Request,
 ): Promise<ComponentChildren> {
 	// The asset hub (`/files`) hosts its directory tree, its scope map (library ⁄ mounted ⁄ drives) and
 	// the storage allowance. Resolved BEFORE the `/projects` fall-through — `/files` is its own
@@ -226,7 +227,9 @@ async function laneFor(
 	if (url.pathname.startsWith("/messages")) return await messagesLaneFor(url, context, actor);
 
 	// The seller Catalogue (`/catalogue`) hosts its navigation lane (status sections · filters · ＋ New).
-	if (url.pathname.startsWith("/catalogue")) return await catalogueLaneFor(url, context, actor);
+	if (url.pathname.startsWith("/catalogue")) {
+		return await catalogueLaneFor(url, context, actor, req);
+	}
 
 	// The Wallet (`/wallet*`): its pages, verification gate and money actions. It registers no header band
 	// — the currency and settings tools sit in the hero's corner and the range ruler pins in the page.
@@ -316,7 +319,7 @@ export default define.page(async function DashboardLayout(ctx) {
 	const [lane, middleNavHeader, middleNavFooter, middleNavPanel] = chrome === "bare"
 		? [null, null, null, null]
 		: await Promise.all([
-			laneFor(ctx.url, context, actor, ctx.state),
+			laneFor(ctx.url, context, actor, ctx.state, ctx.req),
 			middleNavHeaderFor(ctx.url, context, actor, ctx.state),
 			middleNavFooterFor(ctx.url, context, actor, ctx.state),
 			middleNavPanelFor(ctx.url, context, actor),

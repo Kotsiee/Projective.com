@@ -201,6 +201,7 @@ function openFeed(view: ProjectFeedParams["view"]): ProjectFeedParams {
 		view,
 		involvement: "all",
 		sort: "recent",
+		dir: "desc",
 		scope: "global",
 		scopeType: null,
 		scopeId: "",

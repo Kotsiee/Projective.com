@@ -283,8 +283,6 @@ export const TAB_LABELS: Readonly<Record<WorkspaceTab, string>> = {
 	clients: "Clients",
 };
 
-/** The header tab strip's root id; tab `i` is `${WORKSPACE_TABS_ID}-tab-${i}`. */
-export const WORKSPACE_TABS_ID = "cat-ws-tabs";
 /** The one `role="tabpanel"` the canvas renders for the active tab. */
 export const WORKSPACE_PANEL_ID = "cat-ws-panel";
 /** The docked panel body the header's Card button controls. */
@@ -292,7 +290,7 @@ export const INSPECTOR_ID = "cat-ws-inspector";
 
 /** The id of a tab in the header strip, which names the canvas panel across hydration roots. */
 export function workspaceTabId(tab: WorkspaceTab): string {
-	return `${WORKSPACE_TABS_ID}-tab-${WORKSPACE_TABS.indexOf(tab)}`;
+	return `${WORKSPACE_PANEL_ID}-tab-${tab}`;
 }
 // #endregion
 

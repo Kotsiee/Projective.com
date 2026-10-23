@@ -1,4 +1,5 @@
 import {
+	defaultProjectSortDir,
 	EngagementKind,
 	ProjectFormat,
 	ProjectInvolvement,
@@ -6,6 +7,7 @@ import {
 	ProjectRequestFilter,
 	ProjectScope,
 	ProjectSort,
+	ProjectSortDir,
 	ProjectStatus,
 	ProjectView,
 	ProjectViewerRole,
@@ -35,6 +37,7 @@ export const DEFAULT_PROJECT_PARAMS: ProjectFeedParams = {
 	view: "projects",
 	involvement: "all",
 	sort: DEFAULT_SORT,
+	dir: defaultProjectSortDir(DEFAULT_SORT),
 	scope: "context",
 	scopeType: null,
 	scopeId: "",
@@ -88,11 +91,13 @@ function idList(sp: URLSearchParams, key: string): string[] {
 export function parseProjectParams(search: string | URLSearchParams): ProjectFeedParams {
 	const sp = typeof search === "string" ? new URLSearchParams(search) : search;
 	const scopeTypeRaw = sp.get("scopeType");
+	const sort = one(sp.get("sort"), ProjectSort.options, DEFAULT_SORT);
 	return {
 		q: (sp.get("q") ?? "").trim(),
 		view: one(sp.get("view"), ProjectView.options, "projects"),
 		involvement: one(sp.get("involvement"), ProjectInvolvement.options, "all"),
-		sort: one(sp.get("sort"), ProjectSort.options, DEFAULT_SORT),
+		sort,
+		dir: one(sp.get("dir"), ProjectSortDir.options, defaultProjectSortDir(sort)),
 		scope: one(sp.get("scope"), ProjectScope.options, "context"),
 		scopeType: scopeTypeRaw && (ContextType.options as readonly string[]).includes(scopeTypeRaw)
 			? scopeTypeRaw as ProjectFeedParams["scopeType"]
@@ -118,6 +123,7 @@ export function toSearchParams(p: ProjectFeedParams): URLSearchParams {
 	if (p.view !== "projects") sp.set("view", p.view);
 	if (p.involvement !== "all") sp.set("involvement", p.involvement);
 	if (p.sort !== DEFAULT_SORT) sp.set("sort", p.sort);
+	if (p.dir !== defaultProjectSortDir(p.sort)) sp.set("dir", p.dir);
 	if (p.scope !== "context") sp.set("scope", p.scope);
 	if (p.scopeType) sp.set("scopeType", p.scopeType);
 	if (p.scopeId) sp.set("scopeId", p.scopeId);
@@ -142,7 +148,7 @@ export function serializeProjectParams(p: ProjectFeedParams): string {
 // #region Derive
 /**
  * Count the refinements that live inside the Smart Filter popover — workspaces, role/format/status,
- * clients-by-service, and a non-default sort. Drives the filter trigger's subtle active dot so the
+ * clients-by-service, a non-default sort, and a sort reversed from its natural direction. Drives the filter trigger's subtle active dot so the
  * user knows the feed is narrowed even while the popover is closed.
  */
 export function popoverActiveCount(p: ProjectFeedParams): number {
@@ -151,7 +157,8 @@ export function popoverActiveCount(p: ProjectFeedParams): number {
 		p.formats.length +
 		p.statuses.length +
 		(p.serviceId ? 1 : 0) +
-		(p.sort !== DEFAULT_SORT ? 1 : 0);
+		(p.sort !== DEFAULT_SORT ? 1 : 0) +
+		(p.dir !== defaultProjectSortDir(p.sort) ? 1 : 0);
 }
 
 /**

@@ -433,6 +433,33 @@
 	overflow-wrap: anywhere;
 }
 
+.msg-bubble[data-emoji-only] {
+	padding: 0;
+	color: var(--on-surface);
+	background: transparent;
+}
+
+.msg-bubble[data-emoji-only] .msg-bubble__text {
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-normal);
+}
+
+.msg-bubble[data-emoji-only="1"] .msg-bubble__text {
+	font-size: calc(var(--text-3xl) * 4 / 3);
+}
+
+.msg-bubble[data-emoji-only="2"] .msg-bubble__text {
+	font-size: var(--text-3xl);
+}
+
+.msg-bubble[data-emoji-only="3"] .msg-bubble__text {
+	font-size: var(--text-2xl);
+}
+
+.msg-bubble[data-emoji-only="4"] .msg-bubble__text {
+	font-size: var(--text-xl);
+}
+
 /*
  * A long message, collapsed to four lines (`message-length.ts`). The clamp is CSS only, so the whole
  * text stays in the DOM — copy, find-in-page and assistive technology reach all of it.

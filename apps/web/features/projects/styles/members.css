@@ -62,16 +62,13 @@
 }
 
 .mem-sectionbar__tabs {
+	flex: 1 1 0;
 	align-self: stretch;
 	align-items: center;
-	min-inline-size: 0;
-	overflow-x: auto;
-	scrollbar-width: none;
 }
 
-.mem-sectionbar__tabs .ui-lane-tabs__tab {
-	font-size: var(--text-sm);
-	white-space: nowrap;
+.mem-sectionbar__tabs + .mem-sectionbar__spacer {
+	display: none;
 }
 
 .mem-sectionbar__spacer {

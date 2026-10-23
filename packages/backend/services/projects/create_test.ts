@@ -97,6 +97,7 @@ function feedParams(): ProjectFeedParams {
 		view: "projects",
 		involvement: "all",
 		sort: "recent",
+		dir: "desc",
 		scope: "global",
 		scopeType: null,
 		scopeId: "",

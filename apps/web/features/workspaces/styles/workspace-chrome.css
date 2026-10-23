@@ -515,55 +515,12 @@ row's accessible name. On the filled active row it takes the row's own ink. */
 	padding: 0 var(--space-4) var(--space-3);
 	background: var(--surface-1);
 	border-block-end: var(--hairline);
-	/* The zone is the width the segmented control re-flows by (the narrow-lane rules below). Nothing in
-	it is positioned against an ancestor, so the containment moves nothing. */
-	container: wsp-lane-context / inline-size;
 }
 
 .wsp-lane__reset {
 	align-self: flex-start;
 }
 
-/*
- * A narrow lane re-flows the segmented control; it never runs it past the lane's edge. The control
- * wraps rather than overflows whatever the type (a wider face, a larger text step), and each segment
- * keeps the control's own row height when it lands on a row of its own. A label clips to an ellipsis
- * only in the last resort — a single segment wider than the whole zone.
- *
- * The track's inline inset goes: its ground is this zone's own `--surface-1`, so the track draws
- * nothing there, and without the inset the first segment's pill lands on the search field's edge.
- */
-.wsp-lane__context .ui-select-button {
-	flex-wrap: wrap;
-	block-size: auto;
-	min-block-size: var(--sb-height);
-	padding-inline: 0;
-}
-
-.wsp-lane__context .ui-select-button__option {
-	min-inline-size: 0;
-	min-block-size: calc(var(--sb-height) - 2 * var(--space-1));
-}
-
-.wsp-lane__context .ui-select-button__label {
-	min-inline-size: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	line-height: var(--leading-tight);
-}
-
-/*
- * The roster's three segments (All · Owned · Member — Invitations is the toggle beside the search) fit
- * one row at the lane's default width. Below 9.75rem — a compact lane — they sit one per row rather
- * than clip. The Members pair needs no step of its own: it wraps to one per row only when the zone
- * cannot hold both.
- */
-@container wsp-lane-context (max-width: 9.6875rem) {
-	.wsp-lane__context[data-control="roster"] .ui-select-button {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr);
-	}
-}
 /* #endregion */
 
 /* #region Zone 4 — docked footer rig */

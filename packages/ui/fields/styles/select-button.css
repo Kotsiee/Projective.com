@@ -24,6 +24,7 @@
 	--sb-px: var(--space-3);
 	--sb-font: var(--fld-fs-sm);
 	--sb-radius: var(--radius-full);
+	--sb-ink-selected: var(--primary);
 
 	display: inline-flex;
 	align-items: stretch;
@@ -34,6 +35,9 @@
 	border-radius: var(--sb-radius);
 	background: var(--surface-1);
 	overflow: visible;
+}
+:root[data-theme="dark"] .ui-select-button {
+	--sb-ink-selected: color-mix(in oklab, var(--on-surface) var(--tint-heavy), var(--primary));
 }
 /*
  * The size ramp drives height, inline padding and type ONLY. Radius stays `--radius-full` at every step:
@@ -114,12 +118,12 @@
  * Selected (both the single-mode `aria-checked` and the multi-mode `aria-pressed`).
  *
  * Ink first — that is the channel a contrast checker and a colour-blind viewer both read. `--primary`
- * on `--surface` measures 5.13:1 in light and clears AA in dark, and it widens under the
- * high-contrast overlay because `--primary` goes through `fg()`.
+ * on `--surface` measures 5.13:1 in light; dark pales the ink toward `--on-surface`, and it widens
+ * under the high-contrast overlay because `--on-surface` goes through `fg()`.
  */
 .ui-select-button__option[aria-pressed="true"],
 .ui-select-button__option[aria-checked="true"] {
-	color: var(--primary);
+	color: var(--sb-ink-selected);
 	background: var(--surface);
 	box-shadow: var(--elevation-low);
 	font-weight: var(--fw-semibold);
@@ -165,7 +169,7 @@ a.ui-select-button__option {
 	text-decoration: none;
 }
 .ui-select-button__option[aria-current="true"] {
-	color: var(--primary);
+	color: var(--sb-ink-selected);
 	background: var(--surface);
 	box-shadow: var(--elevation-low);
 	font-weight: var(--fw-semibold);

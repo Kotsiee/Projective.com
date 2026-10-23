@@ -31,6 +31,15 @@ export { PAGE_CANVAS_MAIN_ID, PageCanvas, type PageCanvasProps } from "./compone
 export { NavItem, type NavItemProps } from "./components/NavItem.tsx";
 export { BottomNav, type BottomNavItem, type BottomNavProps } from "./components/BottomNav.tsx";
 export { Link, type LinkProps } from "./components/Link.tsx";
+export {
+	TabStrip,
+	type TabStripItem,
+	type TabStripLinkItem,
+	type TabStripLinkProps,
+	type TabStripProps,
+	type TabStripSelectProps,
+	type TabStripTone,
+} from "./components/TabStrip.tsx";
 // #endregion
 
 // #region Lane chrome — the shared control set every middle-nav lane composes
@@ -62,6 +71,29 @@ export {
 	LaneToggleRow,
 	type LaneToggleRowProps,
 } from "./components/LaneChrome.tsx";
+export {
+	LaneCreateMenu,
+	type LaneCreateMenuItem,
+	type LaneCreateMenuProps,
+} from "./components/LaneCreateMenu.tsx";
+export {
+	type LaneFilterChoice,
+	LaneFilterChoices,
+	type LaneFilterChoicesProps,
+	LaneFilterFacet,
+	type LaneFilterIconOption,
+	LaneFilterIcons,
+	type LaneFilterIconsProps,
+	LaneFilterPopover,
+	type LaneFilterPopoverProps,
+	type LaneFilterSortOption,
+	type LaneFilterSortSpec,
+} from "./components/LaneFilter.tsx";
+export {
+	LaneFilterCombo,
+	type LaneFilterComboOption,
+	type LaneFilterComboProps,
+} from "./islands/LaneFilterCombo.tsx";
 // #endregion
 
 // #region Islands (interactive — hydrate via app wrappers)

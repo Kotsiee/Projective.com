@@ -7,8 +7,6 @@ import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts"
 import { ListingsCanvas } from "../components/listings/ListingsCanvas.tsx";
 import { ClientsCanvas } from "../components/clients/ClientsCanvas.tsx";
 import { CatalogueToolbar } from "../components/CatalogueToolbar.tsx";
-import { CatalogueFilterDialog, useFilterDialog } from "../components/CatalogueFilterDialog.tsx";
-import { appliedFilterCount, facetsOf } from "../core/filter-dialog-model.ts";
 import { AnalyticsCanvas } from "../components/analytics/AnalyticsCanvas.tsx";
 import { consoleAnalyticsTarget } from "../core/analytics-view.ts";
 import CatalogueCreateModal from "./CatalogueCreateModal.island.tsx";
@@ -48,8 +46,8 @@ import {
  * views are placeholders until their builds land.
  *
  * A team's console (`/teams/:handle/catalogue`, Decision #312) is drawn beside the team's own rail
- * rather than the catalogue lane, so the lane's facets move into the toolbar's Filter dialog
- * ({@link CatalogueFilterDialog}); everything else is the same canvas, read as the team.
+ * rather than the catalogue lane, so its toolbar keeps the search and the shared Filter popover at
+ * every width; everything else is the same canvas, read as the team.
  */
 
 export interface CatalogueConsoleProps {
@@ -135,13 +133,9 @@ export default function CatalogueConsole(props: CatalogueConsoleProps): JSX.Elem
 
 	useCtrlWheelZoom(canvasRef, catalogueZoom);
 
-	const filterDialog = useFilterDialog();
 	const state = consoleView(props.url);
 	const page = listingsPage.value ?? props.initial;
 	const error = hydrated.value ? listingsError.value : props.initialError;
-	const filters = state.team
-		? { control: filterDialog, applied: appliedFilterCount(facetsOf(state)) }
-		: undefined;
 
 	return (
 		<div
@@ -151,7 +145,7 @@ export default function CatalogueConsole(props: CatalogueConsoleProps): JSX.Elem
 			role="tabpanel"
 			aria-label={VIEW_LABEL[state.view]}
 		>
-			<CatalogueToolbar state={state} initialTotal={props.initial.total} filters={filters} />
+			<CatalogueToolbar state={state} initialTotal={props.initial.total} laned={!state.team} />
 			{state.view === "listings"
 				? <ListingsCanvas state={state} page={page} error={error} />
 				: state.view === "analytics"
@@ -177,14 +171,6 @@ export default function CatalogueConsole(props: CatalogueConsoleProps): JSX.Elem
 					/>
 				)}
 			<CatalogueCreateModal defaultCurrency={props.defaultCurrency} />
-			{filters && (
-				<CatalogueFilterDialog
-					control={filterDialog}
-					state={state}
-					statusCounts={page.statusCounts}
-					facetCounts={page.facetCounts}
-				/>
-			)}
 		</div>
 	);
 }

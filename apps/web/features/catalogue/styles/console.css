@@ -163,6 +163,18 @@
 	display: none;
 }
 
+.cat-toolbar__filter {
+	flex: none;
+	display: inline-flex;
+}
+
+@media (min-width: 768px) {
+	.cat-toolbar--laned .fx-toolbar__search,
+	.cat-toolbar--laned .cat-toolbar__filter {
+		display: none;
+	}
+}
+
 .cat-sales {
 	display: flex;
 	align-items: center;

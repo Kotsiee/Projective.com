@@ -6,7 +6,7 @@ import type {
 	ScopeOption,
 	ServiceOption,
 } from "@projective/types/projects";
-import { matchesInvolvement } from "@projective/types/projects";
+import { defaultProjectSortDir, matchesInvolvement } from "@projective/types/projects";
 import { allProjects, allScopes, allServices } from "./fixtures.ts";
 import { matchesProjectKey } from "./project-identity.ts";
 
@@ -117,19 +117,24 @@ function countIncoming(rows: readonly ProjectSummary[], p: ProjectFeedParams): n
 // #endregion
 
 // #region Sort
-/** Sort the matched rows by the chosen key (deterministic tie-break on id). */
-function applySort(rows: ProjectSummary[], sort: ProjectFeedParams["sort"]): ProjectSummary[] {
-	const byRecent = (a: ProjectSummary, b: ProjectSummary) =>
-		b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id);
-
-	if (sort === "alphabetical") {
-		return [...rows].sort((a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
-	}
-	if (sort === "priority") {
-		const weight = (r: ProjectSummary) => (r.unread ? 0 : 2) + (r.status === "active" ? 0 : 1);
-		return [...rows].sort((a, b) => weight(a) - weight(b) || byRecent(a, b));
-	}
-	return [...rows].sort(byRecent);
+/**
+ * Sort the matched rows by the chosen key in the chosen direction. The key's natural order is
+ * reversed when `dir` departs from it; the id tie-break stays ascending either way.
+ */
+export function applySort(
+	rows: readonly ProjectSummary[],
+	sort: ProjectFeedParams["sort"],
+	dir: ProjectFeedParams["dir"] = defaultProjectSortDir(sort),
+): ProjectSummary[] {
+	const sign = dir === defaultProjectSortDir(sort) ? 1 : -1;
+	const byRecent = (a: ProjectSummary, b: ProjectSummary) => b.updatedAt.localeCompare(a.updatedAt);
+	const weight = (r: ProjectSummary) => (r.unread ? 0 : 2) + (r.status === "active" ? 0 : 1);
+	const natural = sort === "alphabetical"
+		? (a: ProjectSummary, b: ProjectSummary) => a.title.localeCompare(b.title)
+		: sort === "priority"
+		? (a: ProjectSummary, b: ProjectSummary) => weight(a) - weight(b) || byRecent(a, b)
+		: byRecent;
+	return [...rows].sort((a, b) => sign * natural(a, b) || a.id.localeCompare(b.id));
 }
 // #endregion
 
@@ -197,7 +202,7 @@ export function getFeedFrom(
 	rows: readonly ProjectSummary[],
 	params: ProjectFeedParams,
 ): ProjectSummary[] {
-	return applySort(applyFilters(rows, params), params.sort);
+	return applySort(applyFilters(rows, params), params.sort, params.dir);
 }
 
 /** Run the feed query over the fixture corpus. */

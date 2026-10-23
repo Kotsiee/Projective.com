@@ -62,8 +62,8 @@
 }
 
 /*
- * Underlined view-mode tabs — the same treatment as the channel header's `.chan-header__tabs` /
- * `.chan-tab` (§B.4: no pills; the 2px underline lands on the band's bottom hairline), so the two
+ * Underlined view-mode tabs — the same treatment as the shared header `TabStrip` (`.ui-tabstrip--header`,
+ * §B.4: no pills; the 2px underline lands on the band's bottom hairline), so the two
  * middle-nav headers read as one family. The one deliberate difference is the leading glyph: the
  * channel header keeps its glyph for the compact mobile row, while these tabs show it at every width.
  */
@@ -126,6 +126,10 @@
 
 .proj-pvtab[data-active="true"] {
     color: var(--primary);
+}
+
+:root[data-theme="dark"] .proj-pvtab[data-active="true"] {
+    color: var(--on-surface);
 }
 
 .proj-pvtab[data-active="true"]::after {

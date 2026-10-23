@@ -8,9 +8,8 @@ import "../styles/workspace.css";
 import { Avatar } from "@projective/ui/display";
 import { ConfirmDialog, Drawer, Popover, Toast, Tooltip, useToast } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
-import { useMediaQuery } from "@projective/ui/navigation";
+import { TabStrip, useMediaQuery } from "@projective/ui/navigation";
 import { channelLabel, type EntityChannel, type WorkspaceKind } from "@projective/types/workspace";
-import { ChannelTabStrip } from "@web/features/projects/components/ChannelTabStrip.tsx";
 import { MessagingIcon } from "@web/features/messaging/components/messaging-glyphs.tsx";
 import { MessagingService } from "@web/features/messaging/core/MessagingService.ts";
 import { openPopout } from "@web/features/messaging/core/popout-state.ts";
@@ -40,7 +39,7 @@ import { ChannelEditDialog } from "../components/ChannelEditDialog.tsx";
  * `.chan-header` chrome, so the three rooms read as one product.
  *
  *   - **Identity** — the channel's mark (image → emoji → `#`), its name and its topic.
- *   - **Views** — Chat · Files as link tabs ({@link ChannelTabStrip}); each view is an address.
+ *   - **Views** — Chat · Files as link tabs ({@link TabStrip}); each view is an address.
  *   - **Actions** — Favourite (the viewer's own star, `comms.dm_participants.is_starred` through the
  *     saved system), Details (the docked right panel on Chat from 1280px, else a drawer), Pop out chat
  *     (the shell's floating messenger) and a kebab: Mute, Edit channel, Archive channel and Copy link.
@@ -190,10 +189,10 @@ export default function WorkspaceChannelHeader(props: WorkspaceChannelHeaderProp
 			{/* #endregion */}
 
 			{/* #region Views */}
-			<ChannelTabStrip
+			<TabStrip
 				label="Channel views"
 				activeKey={activeTab}
-				tabs={CHANNEL_TABS.map((tab) => ({
+				items={CHANNEL_TABS.map((tab) => ({
 					key: tab.key,
 					label: tab.label,
 					href: channelTabHref(channelBase, tab.key),

@@ -1,24 +1,24 @@
 /**
- * Pure geometry + stepping for the channel header's view-tab strip (`ChannelTabStrip`). No DOM: the
- * component measures, these decide — so the collapse threshold and the circular step are unit-tested
- * without a layout engine.
+ * Pure geometry + stepping for {@link TabStrip} (`components/TabStrip.tsx`). No DOM: the component
+ * measures, these decide — so the collapse thresholds and the circular step are unit-tested without a
+ * layout engine.
  */
 
 // #region Collapse decision
 /** The measured inputs to {@link shouldCollapseTabs}, all in CSS pixels. */
 export interface TabStripGeometry {
-	/** The header's content-box inline size (its width minus inline padding). */
+	/** The host row's content-box inline size (its width minus inline padding). */
 	headerInner: number;
 	/** The tab strip's natural (max-content) width at the current breakpoint's tab styling. */
 	tabsNatural: number;
 	/** The width the trailing action tray's visible controls actually occupy. */
 	actionsContent: number;
-	/** The header's flex column gap. */
+	/** The host row's flex column gap. */
 	gap: number;
 }
 
 /**
- * Whether the full tab strip would collide with the trailing actions, so the compact single-tab
+ * Whether a CENTRED strip (the `header` tone) would collide with the trailing actions, so the compact
  * layout must take over.
  *
  * The header centres its tab strip between two equal flex tracks, so each side keeps
@@ -33,6 +33,19 @@ export function shouldCollapseTabs(g: TabStripGeometry, tabCount: number): boole
 	if (tabCount < 2) return false;
 	const side = (g.headerInner - g.tabsNatural) / 2 - g.gap;
 	return side < g.actionsContent + g.gap;
+}
+
+/** Sub-pixel slack between a fractional natural width and a rounded track width. */
+export const TRACK_SLACK_PX = 1;
+
+/**
+ * Whether a strip that FILLS its own track (the `lane` tone) no longer fits it. The track is the
+ * strip's own content box, which the host sizes independently of the strip's contents, so the compact
+ * layout cannot feed back here either.
+ */
+export function overflowsTrack(track: number, tabsNatural: number, tabCount: number): boolean {
+	if (tabCount < 2 || track <= 0) return false;
+	return tabsNatural - track > TRACK_SLACK_PX;
 }
 // #endregion
 

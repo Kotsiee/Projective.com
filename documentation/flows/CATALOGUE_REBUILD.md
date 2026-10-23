@@ -209,18 +209,22 @@ These need no ruling, because they follow existing rules:
 └───────────────────┴───────────────────────────────────────────────────────┴────────────────┘
 ```
 
-- **Lane** (Decision #221: no head; the type moved to the toolbar).
-  - Collapsible facet sections in the section-header register: Status, Highlights (needs
-    attention, promoted, best-selling), Delivery model (services only) and CREATE category
-    (`org.create_category`). Each row is its glyph (the CREATE glyphs are the `category-*`
-    icons), its label, its count as plain `tabular-nums` meta text (Decision #220 — the §B.6.2
-    facet exception, from `CataloguePage.facetCounts`) and a `SelectionCheck` while on.
-  - Status, Delivery model and CREATE category are **multi-select** on the file explorer's model
-    (`core/facet-select.ts`): a press selects only that row (pressed again, the facet returns to its
-    default), Ctrl/Cmd toggles one row, Shift selects the run from the last row pressed,
-    Ctrl/Cmd+Shift adds that run. Status opens on Published · Drafts · Paused (Archived off);
-    its header action is Reset, the others' Clear. Highlights combine as before.
-  - The collapse toggle and the quick-create menu in the lane footer.
+- **Lane** (Decision #323: one layout on `/catalogue` and `/catalogue/[id]`, the `/projects`
+  lane's anatomy).
+  - Head: `LaneSearch` and the shared Filter popover (`CatalogueFilterPopover`: sort + direction,
+    Status, Highlights, Delivery model (services only), CREATE category as icon-only multi-select
+    toggles, and the Teams selector), then a `LaneToggleRow` quick bar of the Status ⟷ Highlights
+    icons. No facet carries a count. The last status cannot be released (an empty set reads as
+    the default).
+  - Body: `LaneSection`s — Your listings (its title links to the console), then one per team whose
+    Catalogue the viewer may open, less the acting team ("<team> listings", linked to
+    `/teams/:h/catalogue`, rows to the team's listing routes). Rows are `ListingLaneRow`; past one
+    page a section ends on "View all N listings".
+  - Footer: the collapse toggle and the quick-create menu.
+  - On `/catalogue` the filter is the console URL; on `/catalogue/[id]` the lane holds it and reads
+    `/api/catalogue/list`. Filter, team choice and open sections persist in the `pj_catalogue_lane`
+    cookie so the server paints the next page's lane as it was left; the scroll offset rides in
+    session storage.
 - **Header band** (`.cat-band`, shared with the workspace): identity at the start, the view
   switch centred, the sales figures at the end.
   - Title over the catalogue's health (`CatalogueHealth`): "9 of 14 live · Rated 4.8", inline
@@ -230,9 +234,11 @@ These need no ruling, because they follow existing rules:
     a `tabular-nums` figure over its label, unboxed (a `<dl>`, never tiles — the tiles live in the
     Analytics view). Below a 64rem band only gross stays; below 48rem the group goes.
 - **Toolbar** (`CatalogueToolbar`, the shared sticky `.fx-toolbar` of the File, Submissions and
-  Members explorers, pinned under the band): on Listings the search docked at the start; at the end
-  the type as a bare `Select` (every view) directly beside the sort (Listings); New listing below
-  `--bp-md`. No visible count; the match count is a visually hidden `role="status"` (Decision #309).
+  Members explorers, pinned under the band): on Listings the search docked at the start, then the
+  shared Filter popover (which carries the sort), then the type as a bare `Select` (every view); New
+  listing below `--bp-md`. Beside the lane the search and Filter show only below `--bp-md` (the lane
+  carries them above it, Decision #323). No visible count; the match count is a visually hidden
+  `role="status"` (Decision #309).
 - **Canvas.** `?view=listings|analytics|clients`.
 - **Footer band.** Zoom. While a selection exists it becomes the batch bar: Publish, Pause,
   Archive, Delete (while any selected listing has no buyer history), Add to collection, Duplicate,
@@ -247,9 +253,9 @@ These need no ruling, because they follow existing rules:
 
 ```
 ┌ Lane ─────────────┬ Header band ─────────────────────────────────────────┬ Panel ──────────┐
-│ ← Back            │ Brand identity sprint                      ◔ 60% (◫) │ Edit tab:       │
-│ (every listing,   │ [Draft]                  ⟨Edit|Preview|Analytics|…⟩  │  Live card      │
-│  current marked)  ├──────────────────────────────────────────────────────┤  (real          │
+│ Search · Filter   │ Brand identity sprint                      ◔ 60% (◫) │ Edit tab:       │
+│ Your listings ▾   │ [Draft]                  ⟨Edit|Preview|Analytics|…⟩  │  Live card      │
+│ <team> listings ▸ ├──────────────────────────────────────────────────────┤  (real          │
 │                   │ Edit: ┃ Basics    Basics · [Media showcase 3×2,      │   ServiceCard)  │
 │                   │         Media       slot 1 = cover] · Offer          │  Readiness ✓✓✗  │
 │                   │         Offer       (archetype) · Pricing · …        │ Clients tab:    │
@@ -816,7 +822,8 @@ export function scopeRedirect(url: URL): string | null;
 
 ### 6.3 Slot resolver additions (`_layout.tsx`)
 
-- `catalogueLaneFor(url, context, actor)`: console mode or outline mode, chosen by path depth.
+- `catalogueLaneFor(url, context, actor, req)`: one lane; the filter comes from the URL on the console
+  and from the `pj_catalogue_lane` cookie on a listing, chosen by path depth (Decision #323).
 - `catalogueHeaderFor` and `catalogueFooterFor`: extended for tabs and the batch bar.
 - **New** `cataloguePanelFor(url, context, actor)`, added to the panel ladder:
   `conversationPanelFor ?? channelPanelFor ?? cataloguePanelFor`.

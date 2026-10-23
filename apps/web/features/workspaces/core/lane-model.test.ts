@@ -1040,7 +1040,7 @@ Deno.test("lane: each zone's controls render inside their own zone, emitted in l
 		LaneSearchResults: ["views"],
 		ChannelCreateDialog: ["views"],
 		ContextZone: ["context"],
-		SelectButton: ["context"],
+		LaneTabs: ["context"],
 		LaneFooterRig: ["footer"],
 		ConsoleFooterRig: ["footer"],
 	};
@@ -1053,7 +1053,7 @@ Deno.test("lane: each zone's controls render inside their own zone, emitted in l
 	}
 	// The search is the first thing each context zone draws.
 	for (const c of cases.filter((c) => c.id === "context")) {
-		const first = c.body.match(/<(Lane\w+|SelectButton|Button)\b/g)?.filter((t) =>
+		const first = c.body.match(/<(Lane\w+|Button)\b/g)?.filter((t) =>
 			t !== "<LaneBar"
 		);
 		assertEquals(
@@ -1077,7 +1077,7 @@ Deno.test("lane: each zone's controls render inside their own zone, emitted in l
 	// Outside the cases only the zone components' own definitions may draw (the sections' builder, the
 	// footer rigs' collapse toggle, acting pill and utilities): no zone control rides in the wrapper.
 	for (
-		const tag of ["LaneHead", "LaneList", "SelectButton", "LaneSearch", "EntityMenu", "HubList"]
+		const tag of ["LaneHead", "LaneList", "LaneTabs", "LaneSearch", "EntityMenu", "HubList"]
 	) {
 		assertEquals(opens(rest, tag), 0, `<${tag}> opens outside its zone`);
 	}

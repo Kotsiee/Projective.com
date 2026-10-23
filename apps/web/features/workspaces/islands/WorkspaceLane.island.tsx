@@ -17,10 +17,11 @@ import {
 	LaneSearch,
 	LaneSection,
 	LaneSections,
+	LaneTabs,
 } from "@projective/ui/navigation";
 import { MetaLine, Tag, VerificationStampBadge } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
-import { Button, SelectButton } from "@projective/ui/fields";
+import { Button } from "@projective/ui/fields";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import {
@@ -111,7 +112,7 @@ import { screenHostsInvite } from "../core/rig-model.ts";
  *      kebab ({@link EntityMenu}), and the verification state while it is not verified.
  *   2. **Context controls** — the find-in-lane `LaneSearch` FIRST, icon-first as `/projects` draws it;
  *      on the index the Invitations toggle beside it (an icon button, set apart from the partition)
- *      and the All · Owned · Member `SelectButton` under it; inside a console the search alone (a
+ *      and the All · Owned · Member `LaneTabs` under it; inside a console the search alone (a
  *      view's readings are switched in its footer rig, Decision #319).
  *   3. **Views** — the viewer's entities (owned first) on the index; inside a console the
  *      `LaneSection`s Core operations (hub rows), Governance (hub rows), a team's Catalogue (its title
@@ -361,13 +362,12 @@ function RosterLane(props: RosterLaneProps): JSX.Element {
 							</LaneBar>
 						</div>
 						{zones.context.partition && (
-							<SelectButton
+							<LaneTabs
+								label={zones.context.partition.label}
+								class="wsp-lane__partition"
+								value={tab.value}
 								options={zones.context.partition.options}
-								value={tab}
-								onValueChange={(value) => selectRosterTab(toRosterTab(value as string))}
-								size="sm"
-								fluid
-								aria-label={zones.context.partition.label}
+								onSelect={(value) => selectRosterTab(toRosterTab(value))}
 							/>
 						)}
 						{rosterFiltered(current, search.value) && (

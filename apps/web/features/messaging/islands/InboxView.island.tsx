@@ -37,11 +37,19 @@ import {
 	inboxRelation,
 	inboxRole,
 	inboxSeeded,
+	inboxSort,
+	inboxSortDir,
 	inboxTotal,
 	inboxUnreadOnly,
 	inboxView,
 	visibleConversations,
 } from "../core/inbox-state.ts";
+import {
+	defaultConversationSortDir,
+	isConversationSort,
+	isConversationSortDir,
+	isDefaultConversationSort,
+} from "../core/conversation-filters.ts";
 import {
 	type ConversationListPage,
 	InboxFolder,
@@ -166,6 +174,8 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 				unread: inboxUnreadOnly.value,
 				relation: inboxRelation.value,
 				filter: inboxFilter.value,
+				sort: inboxSort.value,
+				dir: inboxSortDir.value,
 			}),
 		);
 	}
@@ -197,6 +207,12 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 				if (typeof saved.relation === "string") inboxRelation.value = saved.relation as never;
 				if (saved.filter && typeof saved.filter === "object") {
 					inboxFilter.value = saved.filter as never;
+				}
+				if (isConversationSort(saved.sort)) {
+					inboxSort.value = saved.sort;
+					inboxSortDir.value = isConversationSortDir(saved.dir)
+						? saved.dir
+						: defaultConversationSortDir(saved.sort);
 				}
 				restored = true;
 			} catch { /* ignore */ }
@@ -241,7 +257,11 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 	// through a signal instead left the header one interaction behind the list it was counting.
 	const rows = useComputed(() => visibleConversations());
 
-	const groups = useComputed(() => groupByDay(rows.value));
+	const groups = useComputed(() =>
+		isDefaultConversationSort(inboxSort.value, inboxSortDir.value)
+			? groupByDay(rows.value)
+			: [{ key: "all", label: "", items: rows.value }]
+	);
 	const compact = useComputed(() => inboxDensity.value === "compact");
 	// #endregion
 

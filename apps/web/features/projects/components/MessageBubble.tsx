@@ -5,6 +5,7 @@ import { useRef } from "preact/hooks";
 import type { MessageRow } from "../core/message-model.ts";
 import type { RowBinding } from "../hooks/useMessageSelection.ts";
 import { profileHref } from "../core/routing.ts";
+import { emojiOnly } from "../core/emoji-only.ts";
 import { MessageMedia } from "./MessageMedia.tsx";
 import { MessageAudioPlayer } from "./MessageAudioPlayer.tsx";
 import { MessageActions } from "./MessageActions.tsx";
@@ -32,7 +33,8 @@ import { MessageLinkPreviews } from "@web/features/links/components/MessageLinks
  *     ({@link MessageBody} — inline, collapsed to four lines with Show more, or a card that opens a
  *     dialog, by length) and a preview row per link, a {@link MessageMedia} attachment layout,
  *     a {@link MessageAudioPlayer} memo, an emoji reaction row, and — when favourited — the custom
- *     "wonky star" mark on the bubble border.
+ *     "wonky star" mark on the bubble border. A standalone body of only emoji ({@link emojiOnly})
+ *     drops the bubble fill and draws the emoji large, stepping down as the count grows.
  *   - **Selection** — when its surface runs `useMessageSelection`, the row carries that binding's
  *     state (`data-selected` / `data-focused`, which the surface CSS turns into the highlight-mode
  *     glow and blur), its click / context-menu / touch-gesture handlers, and — while it holds the
@@ -74,6 +76,8 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
 	const bubbleRef = useRef<HTMLDivElement>(null);
 
 	const hasText = m.text.trim().length > 0;
+	const standalone = !m.replyTo && m.attachments.length === 0 && !m.audio;
+	const emoji = hasText && standalone ? emojiOnly(m.text) : null;
 	const who = own ? "You" : sender?.name ?? "Unknown";
 
 	return (
@@ -123,6 +127,7 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
 						class="msg-bubble"
 						data-own={own ? "true" : undefined}
 						data-pos={row.groupPos}
+						data-emoji-only={emoji ? String(emoji.tier) : undefined}
 					>
 						{m.replyTo && <MessageReplyQuote reply={m.replyTo} onJump={props.onJump} />}
 						{hasText && (

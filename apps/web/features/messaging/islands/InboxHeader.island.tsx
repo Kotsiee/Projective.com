@@ -1,14 +1,17 @@
-import type { JSX, RefObject } from "preact";
+import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import "../styles/inbox.css";
-import { Popover } from "@projective/ui/feedback";
-import { LaneIconButton, type LaneTabOption, LaneTabs } from "@projective/ui/navigation";
+import { LaneFilterPopover, TabStrip, type TabStripItem } from "@projective/ui/navigation";
 import { MessagingIcon } from "../components/messaging-glyphs.tsx";
 import { MessagesFilterPanel } from "../components/MessagesFilterPanel.tsx";
 import {
 	activeFilterCount,
+	CONVERSATION_SORT_OPTIONS,
+	DEFAULT_CONVERSATION_SORT,
+	defaultConversationSortDir,
 	entityOptions,
+	isDefaultConversationSort,
 	productOptions,
 	serviceOptions,
 } from "../core/conversation-filters.ts";
@@ -26,6 +29,8 @@ import {
 	inboxRelation,
 	inboxRole,
 	inboxSeeded,
+	inboxSort,
+	inboxSortDir,
 	inboxUnreadOnly,
 	inboxView,
 	visibleConversations,
@@ -43,6 +48,8 @@ import {
  * contract. It carries the surface's name, an honest live count of what the body is showing, the
  * free-text search, the id-based refinements (service · product · team/business) that are too long
  * to live as lane rows, and the folder tabs (Primary · Requests · Archived) the lane carries on desktop.
+ * The tabs take the centre slot every middle-nav header gives its {@link TabStrip}, so they collapse to
+ * the same stepped dropdown when the band narrows.
  *
  * The root had **no header band at all** before this — `conversationHeaderFor` returned `null` off a
  * specific conversation — which is why search and filters had piled into the lane head.
@@ -59,7 +66,6 @@ export interface InboxHeaderProps {
 }
 // #endregion
 
-const SHELL_AVOID = [".ui-app-shell__sidebar"] as const;
 const SEARCH_SETTLE_MS = 220;
 
 export default function InboxHeader(props: InboxHeaderProps): JSX.Element {
@@ -69,7 +75,17 @@ export default function InboxHeader(props: InboxHeaderProps): JSX.Element {
 	const services = useComputed(() => serviceOptions(inboxAll.value));
 	const products = useComputed(() => productOptions(inboxAll.value));
 	const entities = useComputed(() => entityOptions(inboxAll.value));
-	const filterCount = useComputed(() => activeFilterCount({ filter: inboxFilter.value }));
+	const filterCount = useComputed(() =>
+		activeFilterCount({ filter: inboxFilter.value }) +
+		(isDefaultConversationSort(inboxSort.value, inboxSortDir.value) ? 0 : 1)
+	);
+
+	function resetFilters(): void {
+		inboxFilter.value = {};
+		inboxSort.value = DEFAULT_CONVERSATION_SORT;
+		inboxSortDir.value = defaultConversationSortDir(DEFAULT_CONVERSATION_SORT);
+		commitInbox();
+	}
 
 	/**
 	 * What the body is actually showing. DERIVED from the same shared signals the body renders from,
@@ -92,11 +108,11 @@ export default function InboxHeader(props: InboxHeaderProps): JSX.Element {
 	}
 
 	const unreadByFolder = useComputed(() => folderUnreadCounts(inboxMerged.value));
-	const folderTabs = useComputed<LaneTabOption<InboxFolder>[]>(() =>
+	const folderTabs = useComputed<TabStripItem<InboxFolder>[]>(() =>
 		INBOX_FOLDERS.map((f) => {
 			const count = f === "requests" ? unreadByFolder.value.requests : 0;
 			return {
-				value: f,
+				key: f,
 				label: INBOX_FOLDER_LABELS[f],
 				dot: count > 0,
 				hint: count > 0 ? `${count} unread` : undefined,
@@ -130,6 +146,15 @@ export default function InboxHeader(props: InboxHeaderProps): JSX.Element {
 				</p>
 			</div>
 
+			<TabStrip<InboxFolder>
+				tone="header"
+				label="Inbox folders"
+				class="inbox-head__folders"
+				activeKey={inboxFolder.value}
+				items={folderTabs.value}
+				onSelect={(next) => (inboxFolder.value = next)}
+			/>
+
 			<div class="inbox-head__controls">
 				<div class="inbox-head__search">
 					<span class="inbox-head__search-icon" aria-hidden="true">
@@ -145,26 +170,26 @@ export default function InboxHeader(props: InboxHeaderProps): JSX.Element {
 					/>
 				</div>
 
-				<Popover
+				<LaneFilterPopover
 					open={filterOpen}
-					placement="bottom-end"
-					avoid={SHELL_AVOID}
-					allowOverflow={["bottom"]}
-					class="msg-filter-pop"
-					trigger={(api) => (
-						<LaneIconButton
-							triggerRef={api.ref as RefObject<HTMLElement>}
-							icon={<MessagingIcon name="filter" />}
-							label={filterCount.value > 0 ? `Filters (${filterCount.value} active)` : "Filters"}
-							tooltip="Refine by service, product or team"
-							active={filterCount.value > 0}
-							dot={filterCount.value > 0}
-							ariaHasPopup="dialog"
-							ariaExpanded={api.expanded}
-							ariaControls={api.panelId}
-							onClick={api.toggle}
-						/>
-					)}
+					active={filterCount.value}
+					icon={<MessagingIcon name="filter" />}
+					onReset={resetFilters}
+					sort={{
+						options: CONVERSATION_SORT_OPTIONS,
+						value: inboxSort.value,
+						direction: inboxSortDir.value,
+						onSort: (next) => {
+							if (next === inboxSort.value) return;
+							inboxSort.value = next;
+							inboxSortDir.value = defaultConversationSortDir(next);
+							commitInbox();
+						},
+						onDirection: (next) => {
+							inboxSortDir.value = next;
+							commitInbox();
+						},
+					}}
 				>
 					<MessagesFilterPanel
 						role={inboxRole.value || props.role}
@@ -176,12 +201,8 @@ export default function InboxHeader(props: InboxHeaderProps): JSX.Element {
 							inboxFilter.value = next.filter ?? {};
 							commitInbox();
 						}}
-						onReset={() => {
-							inboxFilter.value = {};
-							commitInbox();
-						}}
 					/>
-				</Popover>
+				</LaneFilterPopover>
 
 				{inboxNarrowed.value && (
 					<button type="button" class="inbox-head__clear" onClick={clearInboxFilters}>
@@ -189,14 +210,6 @@ export default function InboxHeader(props: InboxHeaderProps): JSX.Element {
 					</button>
 				)}
 			</div>
-
-			<LaneTabs<InboxFolder>
-				label="Inbox folders"
-				class="inbox-head__folders"
-				value={inboxFolder.value}
-				options={folderTabs.value}
-				onSelect={(next) => (inboxFolder.value = next)}
-			/>
 		</header>
 	);
 }

@@ -105,3 +105,65 @@ export function toggleRelation(
 	return [...set];
 }
 // #endregion
+
+// #region Sort
+/** The inbox's sort keys: last activity, conversation title, or unread conversations first. */
+export type ConversationSort = "recent" | "name" | "unread";
+
+/** A sort direction. */
+export type ConversationSortDir = "asc" | "desc";
+
+/** The sort keys the filter popover offers, in display order. */
+export const CONVERSATION_SORT_OPTIONS: readonly { value: ConversationSort; label: string }[] = [
+	{ value: "recent", label: "Recent" },
+	{ value: "name", label: "Name" },
+	{ value: "unread", label: "Unread first" },
+];
+
+/** The resting sort: most recent activity first. */
+export const DEFAULT_CONVERSATION_SORT: ConversationSort = "recent";
+
+/** Whether a raw value is one of the {@link ConversationSort} keys. */
+export function isConversationSort(value: unknown): value is ConversationSort {
+	return CONVERSATION_SORT_OPTIONS.some((o) => o.value === value);
+}
+
+/** Whether a raw value is a {@link ConversationSortDir}. */
+export function isConversationSortDir(value: unknown): value is ConversationSortDir {
+	return value === "asc" || value === "desc";
+}
+
+/** The direction a sort key opens in: newest and unread first, names A–Z. */
+export function defaultConversationSortDir(sort: ConversationSort): ConversationSortDir {
+	return sort === "name" ? "asc" : "desc";
+}
+
+/** Whether a sort differs from the resting recent / descending order. */
+export function isDefaultConversationSort(
+	sort: ConversationSort,
+	dir: ConversationSortDir,
+): boolean {
+	return sort === DEFAULT_CONVERSATION_SORT && dir === defaultConversationSortDir(sort);
+}
+
+function compareBy(sort: ConversationSort, a: ConversationSummary, b: ConversationSummary): number {
+	if (sort === "name") return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+	if (sort === "unread") {
+		return Number(a.unread) - Number(b.unread) || a.updatedAt.localeCompare(b.updatedAt);
+	}
+	return a.updatedAt.localeCompare(b.updatedAt);
+}
+
+/**
+ * The conversations in a new array ordered by `sort` in `dir`; ties fall back to the id so the order
+ * is stable across reads.
+ */
+export function sortConversations(
+	list: readonly ConversationSummary[],
+	sort: ConversationSort,
+	dir: ConversationSortDir,
+): ConversationSummary[] {
+	const sign = dir === "asc" ? 1 : -1;
+	return [...list].sort((a, b) => sign * compareBy(sort, a, b) || a.id.localeCompare(b.id));
+}
+// #endregion

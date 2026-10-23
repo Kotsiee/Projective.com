@@ -8,6 +8,13 @@ import type {
 	MessagingRole,
 } from "../types/messaging-types.ts";
 import { folderOverrides, withFolder } from "./folder-moves.ts";
+import {
+	type ConversationSort,
+	type ConversationSortDir,
+	DEFAULT_CONVERSATION_SORT,
+	defaultConversationSortDir,
+	sortConversations,
+} from "./conversation-filters.ts";
 
 /**
  * inbox-state — the cross-island signal bridge for the `/messages` ROOT, where the inbox is composed
@@ -49,6 +56,14 @@ export const inboxFilter = signal<ConversationFilter>({});
 
 /** The free-text query from the header band. */
 export const inboxQuery = signal("");
+
+/** The sort key from the header-band filter popover (client-side, like the folder partition). */
+export const inboxSort = signal<ConversationSort>(DEFAULT_CONVERSATION_SORT);
+
+/** The sort direction paired with {@link inboxSort}. */
+export const inboxSortDir = signal<ConversationSortDir>(
+	defaultConversationSortDir(DEFAULT_CONVERSATION_SORT),
+);
 
 /** Row density — the footer band's control. `comfortable` shows a two-line preview. */
 export const inboxDensity = signal<InboxDensity>("comfortable");
@@ -151,10 +166,14 @@ export function narrow(
  * cannot be kept in step by copying it between them, only by deriving it from the same inputs.
  */
 export function visibleConversations(): ConversationSummary[] {
-	return narrow(
-		partitionOf(inboxMerged.value, inboxFolder.value, inboxView.value),
-		inboxRelation.value,
-		inboxUnreadOnly.value,
+	return sortConversations(
+		narrow(
+			partitionOf(inboxMerged.value, inboxFolder.value, inboxView.value),
+			inboxRelation.value,
+			inboxUnreadOnly.value,
+		),
+		inboxSort.value,
+		inboxSortDir.value,
 	);
 }
 // #endregion

@@ -372,6 +372,7 @@ const OPEN_OWNED_FEED: ProjectFeedParams = {
 	view: "projects",
 	involvement: "owner",
 	sort: "recent",
+	dir: "desc",
 	scope: "global",
 	scopeType: null,
 	scopeId: "",

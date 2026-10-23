@@ -3,6 +3,7 @@ import "../styles/lane.css";
 import { cx } from "../../core/cx.ts";
 import { Icon } from "../../icons/mod.ts";
 import { Tooltip } from "../../feedback/islands/Tooltip.tsx";
+import { TabStrip } from "./TabStrip.tsx";
 
 /**
  * Lane chrome — the shared control set every middle-nav lane is built from, so the `/projects` feed,
@@ -91,60 +92,23 @@ export interface LaneTabsProps<T extends string = string> {
 }
 
 /**
- * LaneTabs — the plain-language tab strip at the peak of a lane. A quiet sliding underline marks the
- * active tab; no filled pill, no count (§B.4 — no boxes on non-interactive chrome). A tab may carry an
- * unseen-activity dot, with the count it stands for spoken in its name. Arrow keys, Home and End move
- * between tabs (roving tab stop), per the ARIA tabs pattern.
+ * LaneTabs — the plain-language tab strip at the peak of a lane: the {@link TabStrip} `lane` tone in
+ * its in-place (`role="tablist"`) form. A quiet monochrome underline marks the active tab; no filled
+ * pill, no count (§B.4). A tab may carry an unseen-activity dot, with the count it stands for spoken
+ * in its name. When the lane is too narrow for the strip it collapses to the shared ghost dropdown
+ * between step chevrons.
  */
 export function LaneTabs<T extends string = string>(props: LaneTabsProps<T>): JSX.Element {
-	const onKeyDown = (event: KeyboardEvent) => {
-		const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
-		if (!keys.includes(event.key)) return;
-		const tabs = Array.from(
-			(event.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>("[role='tab']"),
-		);
-		const at = tabs.indexOf(event.target as HTMLButtonElement);
-		if (at < 0) return;
-		event.preventDefault();
-		const rtl = getComputedStyle(event.currentTarget as HTMLElement).direction === "rtl";
-		const forward = (event.key === "ArrowRight") !== rtl;
-		const next = event.key === "Home"
-			? 0
-			: event.key === "End"
-			? tabs.length - 1
-			: (at + (forward ? 1 : -1) + tabs.length) % tabs.length;
-		tabs[next].focus();
-		props.onSelect(props.options[next].value);
-	};
 	return (
-		<div
-			class={cx("ui-lane-tabs", props.class)}
-			role="tablist"
-			aria-label={props.label}
-			onKeyDown={onKeyDown}
-		>
-			{props.options.map((tab) => {
-				const selected = props.value === tab.value;
-				return (
-					<button
-						key={tab.value}
-						type="button"
-						role="tab"
-						id={props.panelId ? `${props.panelId}-tab-${tab.value}` : undefined}
-						aria-controls={props.panelId}
-						aria-selected={selected}
-						tabIndex={selected ? 0 : -1}
-						class="ui-lane-tabs__tab"
-						data-selected={selected ? "true" : undefined}
-						onClick={() => props.onSelect(tab.value)}
-					>
-						{tab.label}
-						{tab.dot && <span class="ui-lane-tabs__dot" aria-hidden="true" />}
-						{tab.hint && <span class="ui-visually-hidden">{`, ${tab.hint}`}</span>}
-					</button>
-				);
-			})}
-		</div>
+		<TabStrip<T>
+			tone="lane"
+			label={props.label}
+			activeKey={props.value}
+			items={props.options.map((o) => ({ key: o.value, label: o.label, dot: o.dot, hint: o.hint }))}
+			onSelect={props.onSelect}
+			panelId={props.panelId}
+			class={props.class}
+		/>
 	);
 }
 // #endregion

@@ -51,13 +51,6 @@
 
 /* #endregion */
 
-.msg-sidebar .msg-sidebar__folders {
-    gap: var(--space-4);
-    overflow-x: auto;
-    padding-block-end: var(--space-px);
-    scrollbar-width: none;
-}
-
 /*
  * The lane's header band, tab strip, search field, icon buttons, quick-filter toggles, scrolling
  * list, empty state, footer band, and collapse toggle are ALL the shared lane chrome (`.ui-lane-*`,
@@ -378,137 +371,6 @@
 
 /* #endregion */
 
-/* #region Advanced filter panel */
-.msg-filter-pop {
-    inline-size: 18rem;
-    max-inline-size: calc(100vw - var(--space-5));
-}
-
-.msg-filter {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    padding: var(--space-1);
-}
-
-.msg-filter__head {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-}
-
-.msg-filter__title {
-    font-family: var(--font-sans);
-    font-size: var(--text-md);
-    font-weight: var(--fw-semibold);
-    color: var(--on-surface);
-}
-
-.msg-filter__count {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-inline-size: 1.25rem;
-    padding: 0 var(--space-1);
-    font-size: var(--text-xs);
-    font-weight: var(--fw-semibold);
-    color: var(--on-primary);
-    background: var(--primary);
-    border-radius: var(--radius-full);
-}
-
-.msg-filter__reset {
-    margin-inline-start: auto;
-    /* Was a bare text button with no padding — 15.6px tall, well under the 24px target floor. */
-    min-block-size: var(--fld-hit);
-    padding-inline: var(--space-2);
-    font-family: var(--font-sans);
-    font-size: var(--text-sm);
-    color: var(--primary);
-    background: none;
-    border: none;
-    border-radius: var(--radius-base);
-    cursor: pointer;
-}
-
-.msg-filter__reset:hover {
-    background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
-}
-
-.msg-filter__reset:focus-visible {
-    outline: none;
-    box-shadow: none;
-}
-
-.msg-filter__facet {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-}
-
-.msg-filter__label {
-    font-size: var(--text-xs);
-    font-weight: var(--fw-semibold);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-wide);
-    color: var(--text-secondary);
-}
-
-.msg-matrix {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
-}
-
-.msg-matrix__opt {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    min-block-size: var(--fld-hit);
-    padding: var(--space-1) var(--space-3);
-    font-family: var(--font-sans);
-    font-size: var(--text-sm);
-    font-weight: var(--fw-normal);
-    color: var(--text-secondary);
-    background: var(--surface-2);
-    border: 1px solid transparent;
-    border-radius: var(--radius-full);
-    cursor: pointer;
-    transition:
-        background-color var(--dur-fast) var(--ease-standard),
-        color var(--dur-fast) var(--ease-standard),
-        border-color var(--dur-fast) var(--ease-standard);
-}
-
-.msg-matrix__opt:focus-visible {
-    outline: none;
-    box-shadow: none;
-}
-
-/*
- * Selected. Measured, the previous rule differed from unselected by a 1.003:1 LUMINANCE ratio — a
- * hue-only state, invisible under greyscale or a CVD overlay — and it dropped the label's own
- * contrast from 7.14:1 to 4.36:1, so choosing a facet made it harder to read. Three non-hue channels
- * now carry it: the label steps to semibold, the ink goes to full `--on-surface`, and a leading
- * check mark appears. The tint is the fourth channel, not the only one.
- */
-.msg-matrix__opt[data-on="true"] {
-    color: var(--on-surface);
-    font-weight: var(--fw-semibold);
-    background: color-mix(in srgb, var(--primary) var(--tint), transparent);
-    border-color: color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
-}
-
-.msg-matrix__opt[data-on="true"]::before {
-    content: "";
-    inline-size: 0.5rem;
-    block-size: 0.5rem;
-    border-radius: var(--radius-full);
-    background: var(--primary);
-}
-
-/* #endregion */
-
 /*
  * The `.msg-btn` family is GONE. It reimplemented `@projective/ui` `Button` — base, ghost, primary,
  * hover, focus and disabled — inside a feature stylesheet, and in doing so shipped the only raw hex
@@ -641,7 +503,6 @@
 @media (prefers-reduced-motion: reduce) {
 
     .msg-conv,
-    .msg-matrix__opt,
     .msg-btn {
         transition: none;
     }

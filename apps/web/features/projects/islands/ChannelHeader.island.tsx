@@ -26,7 +26,7 @@ import { ChatIcon, FilesIcon, PanelIcon } from "../components/channel-glyphs.tsx
 import { KebabIcon, StarIcon, TicketIcon } from "../components/glyphs.tsx";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import { openPopout } from "@web/features/messaging/core/popout-state.ts";
-import { useMediaQuery } from "@projective/ui/navigation";
+import { TabStrip, useMediaQuery } from "@projective/ui/navigation";
 import {
 	CONTEXT_PANEL_INFLOW_QUERY,
 	contextPanelDocked,
@@ -37,7 +37,6 @@ import {
 	ChannelDetailBody,
 	type ChannelDetailInfo,
 } from "../components/ChannelDetailBody.tsx";
-import { ChannelTabStrip } from "../components/ChannelTabStrip.tsx";
 import { toggleSaved } from "@features/saved/core/saved-state.ts";
 import { channelStarOverrides } from "../core/channel-stars.ts";
 
@@ -61,8 +60,8 @@ import { channelStarOverrides } from "../core/channel-stars.ts";
  * The three-region flow is a left identity block (flex 1) · centred underlined view tabs · right icon
  * actions (flex 1) so the tab strip stays visually centred. Tabs are real anchors — the active underline
  * is URL-driven (`data-active`), so it survives refresh and deep-links (§B.4 underlined tabs, no pills).
- * When the strip would meet the actions, {@link ChannelTabStrip} collapses it to the active tab between
- * circular prev/next chevrons (DESIGN_SYSTEM.md §D.4 "Compact tab strip").
+ * When the strip would meet the actions, the shared {@link TabStrip} collapses it to the active tab as a
+ * ghost dropdown between circular prev/next chevrons (DESIGN_SYSTEM.md §D.4 "Compact tab strip").
  */
 
 // #region Tab icons (mapped from the pure tab keys in channel-view.ts, which stays JSX-free)
@@ -77,7 +76,7 @@ const TAB_ICONS: Record<string, JSX.Element> = {
 	submissions: SubmissionsIcon,
 	calendar: CalendarIcon,
 	tasks: TicketIcon,
-	// Not optional. Below the label tier `.chan-tab__label` is hidden and the glyph is the whole
+	// Not optional. Below the label tier `.ui-tabstrip__label` is hidden and the glyph is the whole
 	// control, and `cloneElement` throws on an absent entry — so a tab key with no icon here does not
 	// degrade, it takes the header island down on every channel route the tab is visible on.
 	details: SettingsIcon,
@@ -298,10 +297,10 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 				/* Centre — underlined view tabs (URL-driven active state; stage/session-gated set), collapsing
 			    to a single stepped tab when the strip would meet the actions */
 			}
-			<ChannelTabStrip
+			<TabStrip
 				label="Channel views"
 				activeKey={activeTab}
-				tabs={shownTabs.map((tab) => ({
+				items={shownTabs.map((tab) => ({
 					key: tab.key,
 					label: tab.label,
 					href: tab.seg ? `${base}/${tab.seg}` : base,

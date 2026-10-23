@@ -100,6 +100,11 @@ export const SessionKeys = {
 	 * navigation, never a reload.
 	 */
 	PROFILE_TAB_SCROLL: "pj.session.profile.tabScroll",
+	/**
+	 * The `/catalogue*` lane list's scroll offset, restored when the lane mounts on the next
+	 * `/catalogue` or `/catalogue/[id]` page so moving between them keeps the reader's place.
+	 */
+	CATALOGUE_LANE_SCROLL: "pj.session.catalogue.laneScroll",
 } as const;
 // #endregion
 
@@ -460,6 +465,12 @@ export const CookieKeys = {
 	CSRF_TOKEN: "pj_csrf",
 	/** The acting profile/context id for the current dashboard session. */
 	ACTIVE_CONTEXT: "pj_active_context",
+	/**
+	 * The `/catalogue*` lane's memory — its filter, team selection and open sections
+	 * (`features/catalogue/core/lane-model.ts`). Readable, not HttpOnly: the lane writes it and the
+	 * server paints the lane from it on the next catalogue page. Carries no identifiers.
+	 */
+	CATALOGUE_LANE: "pj_catalogue_lane",
 } as const;
 // #endregion
 

@@ -1,5 +1,12 @@
 import { assertEquals } from "@std/assert";
-import { shouldCollapseTabs, stepIndex, SWIPE_THRESHOLD_PX, swipeStep } from "./tab-strip.ts";
+import {
+	overflowsTrack,
+	shouldCollapseTabs,
+	stepIndex,
+	SWIPE_THRESHOLD_PX,
+	swipeStep,
+	TRACK_SLACK_PX,
+} from "./tab-strip.ts";
 
 // #region shouldCollapseTabs
 Deno.test("shouldCollapseTabs — a strip with room either side for the actions stays expanded", () => {
@@ -30,6 +37,26 @@ Deno.test("shouldCollapseTabs — a single tab never collapses (nothing to step 
 		shouldCollapseTabs({ headerInner: 100, tabsNatural: 400, actionsContent: 140, gap: 12 }, 1),
 		false,
 	);
+});
+// #endregion
+
+// #region overflowsTrack
+Deno.test("overflowsTrack — a strip that fits its track stays expanded", () => {
+	assertEquals(overflowsTrack(240, 180, 3), false);
+});
+
+Deno.test("overflowsTrack — collapses once the natural strip is wider than its track", () => {
+	assertEquals(overflowsTrack(240, 260, 3), true);
+});
+
+Deno.test("overflowsTrack — sub-pixel rounding between the two widths is not an overflow", () => {
+	assertEquals(overflowsTrack(240, 240 + TRACK_SLACK_PX, 3), false);
+	assertEquals(overflowsTrack(240, 240 + TRACK_SLACK_PX + 0.5, 3), true);
+});
+
+Deno.test("overflowsTrack — a single tab, or a track not laid out yet, never collapses", () => {
+	assertEquals(overflowsTrack(100, 400, 1), false);
+	assertEquals(overflowsTrack(0, 400, 3), false);
 });
 // #endregion
 

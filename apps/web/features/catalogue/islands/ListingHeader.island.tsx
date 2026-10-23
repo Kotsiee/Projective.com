@@ -6,7 +6,7 @@ import "../styles/header-band.css";
 import { Icon, type IconName } from "@projective/ui/icons";
 import { Tag } from "@projective/ui/display";
 import { ProgressRing, Tooltip } from "@projective/ui/feedback";
-import { TabMenu, useMediaQuery } from "@projective/ui/navigation";
+import { TabStrip, type TabStripItem, useMediaQuery } from "@projective/ui/navigation";
 import type {
 	ListingDetail,
 	ListingStatus,
@@ -30,7 +30,6 @@ import {
 	TAB_LABELS,
 	WORKSPACE_PANEL_ID,
 	WORKSPACE_TABS,
-	WORKSPACE_TABS_ID,
 	workspacePanelOf,
 } from "../core/workspace-model.ts";
 import {
@@ -76,20 +75,23 @@ const TONE_SEVERITY: Readonly<Record<StatusMeta["tone"], "success" | "secondary"
  * ListingHeader — the workspace's middle-nav HEADER band, laid out like the console's
  * ({@link CatalogueHeader}) and the channel headers: at the start the identity block — the listing's
  * live title over its lifecycle status (a permitted status container) — the save state lives in the
- * footer rig beside Publish (Decision #304); the Edit · Preview · Analytics · Clients tab strip centred (Clients carries the count
- * of buyers waiting on the seller); and at the end the icon-only Card toggle that shows the live card
- * and readiness panel (a drawer below 1280px), preceded while the listing is a draft by the publish
- * checklist's progress ring, the project setup band's (Decision #310): hovering or focusing it lists
- * what is left, pressing it goes to the section that fixes the first missing line. Each tab leads
- * with its glyph, as the project band's Details · Preview do. The way back to the console is the
- * lane head's.
+ * footer rig beside Publish (Decision #304); the Edit · Preview · Analytics · Clients tab strip
+ * centred (the shared `TabStrip`, Decision #324; Clients carries a dot while buyers wait on the
+ * seller, the count spoken in its name); and at the end the icon-only Card toggle that shows the live
+ * card and readiness panel (a drawer below 1280px), preceded while the listing is a draft by the
+ * publish checklist's progress ring, the project setup band's (Decision #310): hovering or focusing it
+ * lists what is left, pressing it goes to the section that fixes the first missing line. Each tab's
+ * glyph stands in for its label on mobile and leads the collapsed dropdown, as the channel headers'
+ * do. The way back to the console is the lane head's.
  *
  * The tabs are a WAI-ARIA tablist whose one panel is the canvas in another hydration root;
  * switching pushes a history entry, so Back returns to the previous tab.
  */
 export default function ListingHeader(props: ListingHeaderProps): JSX.Element {
 	const waiting = useSignal(0);
-	const tabIndex = useSignal(Math.max(0, WORKSPACE_TABS.indexOf(props.url.tab)));
+	const activeTab = useSignal<WorkspaceTab>(
+		WORKSPACE_TABS.includes(props.url.tab) ? props.url.tab : WORKSPACE_TABS[0],
+	);
 	const docked = useMediaQuery(CONTEXT_PANEL_INFLOW_QUERY);
 
 	useEffect(() => {
@@ -101,8 +103,8 @@ export default function ListingHeader(props: ListingHeaderProps): JSX.Element {
 
 	useSignalEffect(() => {
 		if (!workspaceReady.value) return;
-		const index = WORKSPACE_TABS.indexOf(workspaceUrl.value.tab);
-		if (index >= 0 && index !== tabIndex.peek()) tabIndex.value = index;
+		const tab = workspaceUrl.value.tab;
+		if (WORKSPACE_TABS.includes(tab) && tab !== activeTab.peek()) activeTab.value = tab;
 	});
 
 	const ready = workspaceReady.value;
@@ -128,11 +130,16 @@ export default function ListingHeader(props: ListingHeaderProps): JSX.Element {
 		? "Everything publishing needs is in place."
 		: `Remaining: ${remaining.map((item) => item.label).join(", ")}.`;
 
-	const model = WORKSPACE_TABS.map((tab) => ({
-		key: tab,
-		label: TAB_LABELS[tab],
-		badge: tab === "clients" && waiting.value > 0 ? waiting.value : undefined,
-	}));
+	const items: TabStripItem<WorkspaceTab>[] = WORKSPACE_TABS.map((tab) => {
+		const pending = tab === "clients" && waiting.value > 0;
+		return {
+			key: tab,
+			label: TAB_LABELS[tab],
+			icon: <Icon name={TAB_ICONS[tab]} size="sm" />,
+			dot: pending,
+			hint: pending ? `${waiting.value} waiting` : undefined,
+		};
+	});
 
 	return (
 		<header class="cat-band cat-ws-head">
@@ -150,26 +157,12 @@ export default function ListingHeader(props: ListingHeaderProps): JSX.Element {
 				</div>
 			</div>
 
-			<TabMenu
-				id={WORKSPACE_TABS_ID}
-				class="cat-band__tabs"
-				model={model}
-				activeIndex={tabIndex}
-				onActiveIndexChange={(i) => {
-					const tab = WORKSPACE_TABS[i];
-					if (tab) setWorkspaceUrl({ tab }, "push");
-				}}
+			<TabStrip<WorkspaceTab>
+				label="Listing workspace"
+				activeKey={activeTab.value}
+				items={items}
+				onSelect={(tab) => setWorkspaceUrl({ tab }, "push")}
 				panelId={WORKSPACE_PANEL_ID}
-				itemTemplate={(item) => (
-					<>
-						<span class="ui-tabmenu__icon" aria-hidden="true">
-							<Icon name={TAB_ICONS[item.key as WorkspaceTab]} size="sm" />
-						</span>
-						<span class="ui-tabmenu__label">{item.label}</span>
-						{item.badge != null && <span class="ui-tabmenu__badge">{item.badge}</span>}
-					</>
-				)}
-				aria-label="Listing workspace"
 			/>
 
 			<div class="cat-band__end">

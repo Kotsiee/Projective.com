@@ -1,9 +1,8 @@
 import type { JSX } from "preact";
-import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import "../styles/console.css";
 import "../styles/header-band.css";
-import { TabMenu } from "@projective/ui/navigation";
+import { TabStrip, type TabStripItem } from "@projective/ui/navigation";
 import { CatalogueHealth, CatalogueSales } from "../components/CatalogueRollups.tsx";
 import { CONSOLE_CANVAS_ID } from "../core/catalogue-model.ts";
 import { consoleView, rollups, setConsoleUrl, startConsoleSync } from "../core/console-store.ts";
@@ -27,8 +26,7 @@ export interface CatalogueHeaderProps {
 }
 // #endregion
 
-const VIEWS: readonly ConsoleView[] = ["listings", "analytics", "clients"];
-const VIEW_TABS = [
+const VIEW_TABS: readonly TabStripItem<ConsoleView>[] = [
 	{ key: "listings", label: "Listings" },
 	{ key: "analytics", label: "Analytics" },
 	{ key: "clients", label: "Clients" },
@@ -36,13 +34,8 @@ const VIEW_TABS = [
 
 export default function CatalogueHeader(props: CatalogueHeaderProps): JSX.Element {
 	const state = consoleView(props.url);
-	const tab = useSignal(VIEWS.indexOf(props.url.view));
 
 	useEffect(() => startConsoleSync(), []);
-
-	useEffect(() => {
-		tab.value = VIEWS.indexOf(state.view);
-	}, [state.view]);
 
 	const stats = rollups.value ?? props.initialStats;
 
@@ -57,16 +50,12 @@ export default function CatalogueHeader(props: CatalogueHeaderProps): JSX.Elemen
 				</div>
 			</div>
 
-			<TabMenu
-				class="cat-band__tabs"
-				model={VIEW_TABS}
-				activeIndex={tab}
-				onActiveIndexChange={(i) => {
-					const view = VIEWS[i];
-					if (view) setConsoleUrl({ view });
-				}}
+			<TabStrip<ConsoleView>
+				label="Catalogue view"
+				activeKey={state.view}
+				items={VIEW_TABS}
+				onSelect={(view) => setConsoleUrl({ view })}
 				panelId={CONSOLE_CANVAS_ID}
-				aria-label="Catalogue view"
 			/>
 
 			<div class="cat-band__end">

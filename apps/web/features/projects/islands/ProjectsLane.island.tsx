@@ -1,17 +1,17 @@
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import type { JSX, RefObject } from "preact";
+import type { JSX } from "preact";
 import "../styles/projects-lane.css";
-import { Popover, Toast, useToast } from "@projective/ui/feedback";
+import { Toast, useToast } from "@projective/ui/feedback";
 import {
 	LaneBar,
 	LaneCollapseButton,
-	LaneCreateButton,
 	LaneEmpty,
+	LaneFilterPopover,
+	type LaneFilterSortOption,
 	LaneFooter,
 	LaneFooterActions,
 	LaneHead,
-	LaneIconButton,
 	LaneList,
 	LaneSearch,
 } from "@projective/ui/navigation";
@@ -29,6 +29,7 @@ import { PlusIcon, SearchIcon, SlidersIcon } from "../components/glyphs.tsx";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { ProjectSidebarService } from "../core/ProjectSidebarService.ts";
+import { defaultProjectSortDir } from "../types/projects-types.ts";
 import { readCachedParams, writeCachedParams } from "../core/filter-cache.ts";
 import {
 	DEFAULT_PROJECT_PARAMS,
@@ -41,6 +42,8 @@ import type {
 	ProjectFeedPayload,
 	ProjectInvolvement,
 	ProjectQuickFilter,
+	ProjectSort,
+	ProjectSortDir,
 	ProjectSummary,
 	ProjectTypeChoice,
 	ProjectView,
@@ -67,7 +70,7 @@ import {
  * The header is deliberately calm: friendly `Projects | Services` tabs at the peak (shown only for
  * accounts that can offer services — a client/business account has no Services side, so the tabs are
  * hidden and the feed stays on `projects`), then a growing search with a single Filter action (the
- * heavy facet surface lives in a glassmorphic Smart Filter popover, so the list keeps its breathing
+ * facets, sort and direction live in the shared `LaneFilterPopover`, so the list keeps its breathing
  * room). A permanent service-queue modifier appears on the Services tab. Below sits the **involvement
  * row**: a prominent ownership toggle (All · Owner · Working — owner/client/admin vs. worker engagements)
  * paired with the permanent quick-filter shortcuts (Starred · Unread · New tickets · Revision requested
@@ -86,6 +89,12 @@ const SEARCH_DEBOUNCE_MS = 220;
  * collapsed/expanded sidebar stays honoured.
  */
 const SHELL_AVOID = [".ui-app-shell__sidebar"] as const;
+
+const SORT_OPTS: readonly LaneFilterSortOption<ProjectSort>[] = [
+	{ value: "recent", label: "Recent" },
+	{ value: "priority", label: "Priority" },
+	{ value: "alphabetical", label: "A–Z" },
+];
 
 /**
  * DEV-ONLY. The default feed scope/filtering a simulated {@link DevPersona} lands on — the "Initial
@@ -349,6 +358,14 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 		} catch { /* SSR / no window — non-fatal */ }
 	}
 
+	function onSort(sort: ProjectSort): void {
+		apply({ ...params.value, sort, dir: defaultProjectSortDir(sort) });
+	}
+
+	function onDirection(dir: ProjectSortDir): void {
+		apply({ ...params.value, dir });
+	}
+
 	function onServiceQueue(serviceId: string): void {
 		apply({ ...params.value, serviceId });
 	}
@@ -467,26 +484,19 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 						onInput={onSearch}
 					/>
 
-					<Popover
+					<LaneFilterPopover
 						open={filterOpen}
-						placement="bottom-end"
+						active={filterCount}
+						icon={SlidersIcon}
 						avoid={SHELL_AVOID}
-						allowOverflow={["bottom"]}
-						class="proj-filter-pop"
-						trigger={(api) => (
-							<LaneIconButton
-								triggerRef={api.ref as RefObject<HTMLElement>}
-								icon={SlidersIcon}
-								label={filterCount > 0 ? `Filters (${filterCount} active)` : "Filters"}
-								tooltip="Filters"
-								active={filterCount > 0}
-								dot={filterCount > 0}
-								ariaHasPopup="dialog"
-								ariaExpanded={api.expanded}
-								ariaControls={api.panelId}
-								onClick={api.toggle}
-							/>
-						)}
+						onReset={resetFilters}
+						sort={{
+							options: SORT_OPTS,
+							value: active.sort,
+							direction: active.dir,
+							onSort,
+							onDirection,
+						}}
 					>
 						<FilterPanel
 							view={active.view}
@@ -494,9 +504,8 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 							scopes={feed.scopes}
 							services={feed.services}
 							onApply={apply}
-							onReset={resetFilters}
 						/>
-					</Popover>
+					</LaneFilterPopover>
 				</LaneBar>
 
 				{isServices && (
@@ -557,26 +566,7 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 						onToggle={onToggleIncoming}
 					/>
 
-					<Popover
-						open={createOpen}
-						placement="top-end"
-						avoid={SHELL_AVOID}
-						allowOverflow={["top"]}
-						class="proj-menu-pop"
-						trigger={(api) => (
-							<LaneCreateButton
-								triggerRef={api.ref as RefObject<HTMLElement>}
-								label="Create project"
-								icon={PlusIcon}
-								ariaHasPopup="menu"
-								ariaExpanded={api.expanded}
-								ariaControls={api.panelId}
-								onClick={api.toggle}
-							/>
-						)}
-					>
-						<CreateMenu onPick={openCreate} />
-					</Popover>
+					<CreateMenu open={createOpen} icon={PlusIcon} onPick={openCreate} />
 				</LaneFooterActions>
 			</LaneFooter>
 

@@ -288,8 +288,8 @@ Deno.test("header band (#319): a hub is link tabs; only in-place sub-views are a
 	// The hub's pages are addresses, so they are the channel header's link tabs — real anchors, never a
 	// picker that navigates (#307 (d)). The Select is left to a module's in-place sub-views, and the
 	// band offers none for a module that draws its own (Members).
-	assertEquals(BAND.match(/<ChannelTabStrip\b/g)?.length, 1);
-	assert(/strip\s*\?\s*\(?\s*<ChannelTabStrip\b/.test(BAND), "the hub strip is not the tab strip");
+	assertEquals(BAND.match(/<TabStrip\b/g)?.length, 1);
+	assert(/strip\s*\?\s*\(?\s*<TabStrip\b/.test(BAND), "the hub strip is not the tab strip");
 	assertEquals(BAND.match(/<Select\b/g)?.length, 1);
 	assert(!/location\.assign\(/.test(BAND), "a band control navigates by script");
 	assert(/selectModuleView\(value, views\)/.test(BAND));

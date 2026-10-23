@@ -9,8 +9,7 @@ import { Avatar } from "@projective/ui/display";
 import { Popover, Toast, Tooltip, useToast } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { MediaCropPicker } from "@web/features/files/components/media-crop/MediaCropPicker.tsx";
-import { ChannelTabStrip } from "@web/features/projects/components/ChannelTabStrip.tsx";
-import { useMediaQuery } from "@projective/ui/navigation";
+import { TabStrip, useMediaQuery } from "@projective/ui/navigation";
 import { MessagingIcon } from "../components/messaging-glyphs.tsx";
 import {
 	CONVERSATION_TABS,
@@ -181,10 +180,10 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 			</div>
 
 			{/* Centre — underlined view tabs (Chat · Files · Members only). */}
-			<ChannelTabStrip
+			<TabStrip
 				label="Conversation views"
 				activeKey={activeTab}
-				tabs={CONVERSATION_TABS.map((tab) => ({
+				items={CONVERSATION_TABS.map((tab) => ({
 					key: tab.key,
 					label: tab.label,
 					href: tab.seg ? `${base}/${tab.seg}` : base,

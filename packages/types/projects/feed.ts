@@ -30,6 +30,15 @@ export type ProjectScope = z.infer<typeof ProjectScope>;
 export const ProjectSort = z.enum(["recent", "priority", "alphabetical"]);
 export type ProjectSort = z.infer<typeof ProjectSort>;
 
+/** Sort direction for the feed; each {@link ProjectSort} key has a natural one. */
+export const ProjectSortDir = z.enum(["asc", "desc"]);
+export type ProjectSortDir = z.infer<typeof ProjectSortDir>;
+
+/** The direction a sort key reads in by default: newest / most urgent first, names A–Z. */
+export function defaultProjectSortDir(sort: ProjectSort): ProjectSortDir {
+	return sort === "alphabetical" ? "asc" : "desc";
+}
+
 /**
  * The permanent high-frequency quick-filters in the utility row. `starred`/`unread` narrow on the
  * boolean flags; the three `*_ticket`/`*_requested`/`*_review` keys narrow on {@link ProjectActivity}
@@ -105,6 +114,8 @@ export const ProjectFeedParamsSchema = z.object({
 	/** Ownership axis — owner/client/admin engagements vs. worker/contributor engagements. */
 	involvement: ProjectInvolvement,
 	sort: ProjectSort,
+	/** Direction of {@link sort}; its natural direction when the URL names none. */
+	dir: ProjectSortDir,
 	scope: ProjectScope,
 	/**
 	 * When scoping to a SPECIFIC tenant (a Team/Business/Enterprise toggle) rather than the active

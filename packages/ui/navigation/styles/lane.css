@@ -1,6 +1,5 @@
 /*
- * Lane chrome (`ui-lane-*`) — the shared control vocabulary of a middle-nav lane: the underline tab
- * strip, the pill search, circular icon buttons, the icon-only quick-filter row, collapsible section
+ * Lane chrome (`ui-lane-*`) — the shared control vocabulary of a middle-nav lane: the pill search, circular icon buttons, the icon-only quick-filter row, collapsible section
  * groups, and the pinned footer with its collapse toggle.
  *
  * This is the SINGLE SOURCE OF TRUTH for lane chrome. Every lane surface (the `/projects` feed, the
@@ -40,63 +39,6 @@
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-2);
-}
-/* #endregion */
-
-/* #region Tabs — quiet sliding underline, never a filled pill */
-.ui-lane-tabs {
-	display: flex;
-	gap: var(--space-5);
-}
-
-.ui-lane-tabs__tab {
-	appearance: none;
-	position: relative;
-	padding: 0.1rem 0 0.35rem;
-	font: inherit;
-	font-size: 1rem;
-	font-weight: 500;
-	letter-spacing: -0.01em;
-	color: var(--text-secondary);
-	background: none;
-	border: none;
-	cursor: pointer;
-	transition: color var(--dur-fast) var(--ease-standard);
-}
-
-.ui-lane-tabs__tab:hover {
-	color: var(--on-surface);
-}
-
-.ui-lane-tabs__tab[data-selected="true"] {
-	color: var(--on-surface);
-	font-weight: 600;
-}
-
-.ui-lane-tabs__tab[data-selected="true"]::after {
-	content: "";
-	position: absolute;
-	inset-inline: 0;
-	inset-block-end: -1px;
-	block-size: 2px;
-	border-radius: 2px;
-	background: var(--primary);
-}
-
-.ui-lane-tabs__tab:focus-visible {
-	outline: none;
-	box-shadow: none;
-	border-radius: var(--radius-xs);
-}
-
-.ui-lane-tabs__dot {
-	display: inline-block;
-	inline-size: 6px;
-	block-size: 6px;
-	margin-inline-start: var(--space-1);
-	vertical-align: 0.2em;
-	border-radius: var(--radius-full);
-	background: var(--primary);
 }
 /* #endregion */
 
@@ -708,7 +650,6 @@
 
 /* Motion — jump straight to the final state (DESIGN_SYSTEM.md §Motion / a11y). */
 @media (prefers-reduced-motion: reduce) {
-	.ui-lane-tabs__tab,
 	.ui-lane-search__input,
 	.ui-lane-iconbtn,
 	.ui-lane-toggle,

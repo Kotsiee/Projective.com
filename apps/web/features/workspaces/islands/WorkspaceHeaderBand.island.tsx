@@ -6,8 +6,8 @@ import "@web/features/projects/styles/channel-header.css";
 import "../styles/workspace.css";
 import { MetaLine } from "@projective/ui/display";
 import { Button, Select } from "@projective/ui/fields";
+import { TabStrip } from "@projective/ui/navigation";
 import { kindCopy, type WorkspaceDetail, type WorkspaceKind } from "@projective/types/workspace";
-import { ChannelTabStrip } from "@web/features/projects/components/ChannelTabStrip.tsx";
 import { moduleFor, type ModuleKey } from "../core/module-registry.tsx";
 import { headerBand, type ModuleCommit } from "../core/header-model.ts";
 import { hubTabs } from "../core/hub-tabs.ts";
@@ -35,7 +35,7 @@ import { EntityMenu } from "../components/EntityMenu.tsx";
  *   - **Identity, start** — the hub's (or the module's) title in the title register over one
  *     `MetaLine` (the entity's name and `@handle`, and the acting state).
  *   - **Views, centred** — for a multi-module hub (`hub-tabs.ts`, Decisions #306, #319: Members is
- *     Members · Roles), the channel header's link tabs (`ChannelTabStrip`): each module is a real
+ *     Members · Roles), the channel header's link tabs (`TabStrip`): each module is a real
  *     address, an anchor, never a picker that navigates by script. The Members tab points at the
  *     reading the reader last had (`peopleReading`), so leaving the org chart for Roles and coming
  *     back lands on the org chart. Without a hub strip, a module that leaves its in-place sub-views to
@@ -140,8 +140,8 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 			{/* #region Centre — the hub's pages as link tabs, or the module's in-place sub-views */}
 			{strip
 				? (
-					<ChannelTabStrip
-						tabs={strip.tabs.map((tab) => ({
+					<TabStrip
+						items={strip.tabs.map((tab) => ({
 							key: tab.key,
 							label: tab.label,
 							href: tab.href,

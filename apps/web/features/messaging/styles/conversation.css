@@ -1,6 +1,6 @@
 /*
  * conversation.css — the `/messages/[conversationId]` view's messaging-specific chrome. The header
- * itself (`.chan-header*`, `.chan-tab*`, `.chan-action*`, `.chan-menu*`, `.chan-view`) is reused
+ * itself (`.chan-header*`, `.chan-action*`, `.chan-menu*`, `.chan-view`, and the shared `TabStrip`) is reused
  * VERBATIM from the projects `channel-header.css` (bundled by the ConversationHeader island), so the
  * conversation view is a byte-identical mirror of a project channel.
  *

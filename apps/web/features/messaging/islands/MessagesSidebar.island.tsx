@@ -1,14 +1,14 @@
-import type { JSX, RefObject } from "preact";
+import type { JSX } from "preact";
 import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/messages.css";
 import "../styles/inbox.css";
-import { Popover } from "@projective/ui/feedback";
 import {
 	LaneBar,
 	LaneCollapseButton,
 	LaneCreateButton,
 	LaneEmpty,
+	LaneFilterPopover,
 	LaneFooter,
 	LaneFooterActions,
 	LaneHead,
@@ -41,9 +41,18 @@ import { openSettings } from "@features/settings/core/settings-bridge.ts";
 import { liveMessagingRole, readDevSeam, subscribeDevSeam } from "../core/messaging-view.ts";
 import {
 	activeFilterCount,
+	CONVERSATION_SORT_OPTIONS,
+	type ConversationSort,
+	type ConversationSortDir,
+	DEFAULT_CONVERSATION_SORT,
+	defaultConversationSortDir,
 	entityOptions,
+	isConversationSort,
+	isConversationSortDir,
+	isDefaultConversationSort,
 	productOptions,
 	serviceOptions,
+	sortConversations,
 } from "../core/conversation-filters.ts";
 import {
 	type ConversationFilter,
@@ -96,7 +105,6 @@ interface ConvPref {
 // #endregion
 
 const SEARCH_DEBOUNCE_MS = 220;
-const SHELL_AVOID = [".ui-app-shell__sidebar"] as const;
 
 /**
  * How long a refine must stay in flight before the placeholder replaces the list.
@@ -154,6 +162,8 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 	const q = useSignal("");
 	const unread = useSignal(false);
 	const filter = useSignal<ConversationFilter>({});
+	const sort = useSignal<ConversationSort>(DEFAULT_CONVERSATION_SORT);
+	const dir = useSignal<ConversationSortDir>(defaultConversationSortDir(DEFAULT_CONVERSATION_SORT));
 	const filterOpen = useSignal(false);
 	const loading = useSignal(false);
 	const error = useSignal<string | null>(null);
@@ -210,8 +220,29 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 				view: view.value,
 				unread: unread.value,
 				filter: filter.value,
+				sort: sort.value,
+				dir: dir.value,
 			}),
 		);
+	}
+
+	function onSort(next: ConversationSort): void {
+		if (next === sort.value) return;
+		sort.value = next;
+		dir.value = defaultConversationSortDir(next);
+		persistFilters();
+	}
+
+	function onDirection(next: ConversationSortDir): void {
+		dir.value = next;
+		persistFilters();
+	}
+
+	function resetFilters(): void {
+		filter.value = {};
+		sort.value = DEFAULT_CONVERSATION_SORT;
+		dir.value = defaultConversationSortDir(DEFAULT_CONVERSATION_SORT);
+		void apply();
 	}
 
 	function onSearch(value: string): void {
@@ -240,6 +271,8 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 					view?: ConversationView;
 					unread?: boolean;
 					filter?: ConversationFilter;
+					sort?: unknown;
+					dir?: unknown;
 				};
 				if (saved.q) q.value = saved.q;
 				const savedFolder = InboxFolder.safeParse(saved.folder);
@@ -248,6 +281,12 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 				else if (saved.view) view.value = saved.view;
 				if (saved.unread) unread.value = saved.unread;
 				if (saved.filter) filter.value = saved.filter;
+				if (isConversationSort(saved.sort)) {
+					sort.value = saved.sort;
+					dir.value = isConversationSortDir(saved.dir)
+						? saved.dir
+						: defaultConversationSortDir(saved.sort);
+				}
 			} catch { /* ignore */ }
 		}
 		// Seed the collapse toggle from the splitter's persisted density (matches the projects lane).
@@ -287,9 +326,13 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 			);
 	});
 	const displayed = useComputed<ConversationSummary[]>(() =>
-		merged.value.filter((c) =>
-			c.folder === folder.value && (view.value !== "starred" || c.starred) &&
-			(!unread.value || c.unread)
+		sortConversations(
+			merged.value.filter((c) =>
+				c.folder === folder.value && (view.value !== "starred" || c.starred) &&
+				(!unread.value || c.unread)
+			),
+			sort.value,
+			dir.value,
 		)
 	);
 	const unreadByFolder = useComputed(() => folderUnreadCounts(merged.value));
@@ -309,6 +352,9 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 	const products = useComputed(() => productOptions(optionSource.value));
 	const entities = useComputed(() => entityOptions(optionSource.value));
 	const filterCount = useComputed(() => activeFilterCount({ filter: filter.value }));
+	const popoverCount = useComputed(() =>
+		filterCount.value + (isDefaultConversationSort(sort.value, dir.value) ? 0 : 1)
+	);
 	const activeQuick = useComputed<QuickKey[]>(() => (unread.value ? ["unread"] : []));
 	// #endregion
 
@@ -423,28 +469,18 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 							onInput={onSearch}
 						/>
 
-						<Popover
+						<LaneFilterPopover
 							open={filterOpen}
-							placement="bottom-end"
-							avoid={SHELL_AVOID}
-							allowOverflow={["bottom"]}
-							class="msg-filter-pop"
-							trigger={(api) => (
-								<LaneIconButton
-									triggerRef={api.ref as RefObject<HTMLElement>}
-									icon={<MessagingIcon name="filter" />}
-									label={filterCount.value > 0
-										? `Filters (${filterCount.value} active)`
-										: "Filters"}
-									tooltip="Filters"
-									active={filterCount.value > 0}
-									dot={filterCount.value > 0}
-									ariaHasPopup="dialog"
-									ariaExpanded={api.expanded}
-									ariaControls={api.panelId}
-									onClick={api.toggle}
-								/>
-							)}
+							active={popoverCount.value}
+							icon={<MessagingIcon name="filter" />}
+							onReset={resetFilters}
+							sort={{
+								options: CONVERSATION_SORT_OPTIONS,
+								value: sort.value,
+								direction: dir.value,
+								onSort,
+								onDirection,
+							}}
 						>
 							<MessagesFilterPanel
 								role={role.value}
@@ -456,12 +492,8 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 									filter.value = next.filter ?? {};
 									void apply();
 								}}
-								onReset={() => {
-									filter.value = {};
-									void apply();
-								}}
 							/>
-						</Popover>
+						</LaneFilterPopover>
 					</LaneBar>
 
 					<LaneToggleRow

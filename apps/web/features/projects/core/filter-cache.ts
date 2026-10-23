@@ -1,4 +1,5 @@
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
+import { defaultProjectSortDir, ProjectSortDir } from "../types/projects-types.ts";
 import type { ProjectFeedParams } from "../types/projects-types.ts";
 
 /**
@@ -30,9 +31,15 @@ function readMap(): FilterMap {
 	}
 }
 
-/** The cached feed params for a context, or `null` when none were stored. */
+/**
+ * The cached feed params for a context, or `null` when none were stored. A cache written before the
+ * feed had a sort direction reads in its sort's natural one.
+ */
 export function readCachedParams(contextId: string): ProjectFeedParams | null {
-	return readMap()[partition(contextId)] ?? null;
+	const cached = readMap()[partition(contextId)];
+	if (!cached) return null;
+	const dir = ProjectSortDir.safeParse(cached.dir);
+	return { ...cached, dir: dir.success ? dir.data : defaultProjectSortDir(cached.sort) };
 }
 
 /** Persist the applied feed params for a context (merged into the partition map). */

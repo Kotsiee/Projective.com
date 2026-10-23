@@ -1,13 +1,11 @@
-import type { JSX } from "preact";
+import type { JSX, VNode } from "preact";
+import type { Signal } from "@preact/signals";
 import { Icon, type IconName } from "@projective/ui/icons";
-import {
-	PROJECT_TYPE_HINT,
-	PROJECT_TYPE_LABEL,
-	ProjectTypeChoice,
-} from "../types/projects-types.ts";
+import { LaneCreateMenu, type LaneCreateMenuItem } from "@projective/ui/navigation";
+import { PROJECT_TYPE_LABEL, ProjectTypeChoice } from "../types/projects-types.ts";
 
 /**
- * CreateMenu — the contents of the lane's Create (`+`) popover.
+ * CreateMenu — the lane's Create project trigger and the {@link LaneCreateMenu} it opens.
  *
  * Every option launches the same {@link ProjectCreateModal} and differs only in which type it
  * preselects, so `kind` is the {@link ProjectTypeChoice} SSOT enum rather than a free string. That is
@@ -39,31 +37,19 @@ const TYPE_ICON: Record<ProjectTypeChoice, IconName> = {
 const CREATE_OPTIONS: readonly ProjectTypeChoice[] = ProjectTypeChoice.options;
 
 export interface CreateMenuProps {
+	open: Signal<boolean>;
+	/** The trigger's glyph. */
+	icon: VNode;
 	onPick: (kind: ProjectTypeChoice) => void;
 }
 
-/** Render the create choices; each picks a preselected type for the create modal. */
-export function CreateMenu({ onPick }: CreateMenuProps): JSX.Element {
-	return (
-		<div class="proj-create" role="menu" aria-label="Create">
-			<span class="proj-create__head">Create</span>
-			{CREATE_OPTIONS.map((kind) => (
-				<button
-					key={kind}
-					type="button"
-					role="menuitem"
-					class="proj-create__item"
-					onClick={() => onPick(kind)}
-				>
-					<span class="proj-create__icon" aria-hidden="true">
-						<Icon name={TYPE_ICON[kind]} size="md" />
-					</span>
-					<span class="proj-create__text">
-						<span class="proj-create__label">{PROJECT_TYPE_LABEL[kind]}</span>
-						<span class="proj-create__hint">{PROJECT_TYPE_HINT[kind]}</span>
-					</span>
-				</button>
-			))}
-		</div>
-	);
+/** Render the Create project trigger; each choice picks a preselected type for the create modal. */
+export function CreateMenu({ open, icon, onPick }: CreateMenuProps): JSX.Element {
+	const items: LaneCreateMenuItem[] = CREATE_OPTIONS.map((kind) => ({
+		key: kind,
+		label: PROJECT_TYPE_LABEL[kind],
+		icon: <Icon name={TYPE_ICON[kind]} size="md" />,
+		onSelect: () => onPick(kind),
+	}));
+	return <LaneCreateMenu open={open} label="Create project" icon={icon} items={items} />;
 }
