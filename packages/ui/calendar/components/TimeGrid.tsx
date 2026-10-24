@@ -274,6 +274,10 @@ export interface TimeGridProps {
 	 * card the row the reader just reached stands for.
 	 */
 	highlight?: Signal<string | null>;
+	/** The host's spotlight (`CalendarProps.spotlight`): centred in the view, then ringed. */
+	spotlight?: Signal<string | null>;
+	/** A single card opens straight through `onOpenEvent` (`CalendarProps.directOpen`). */
+	directOpen?: boolean;
 	/**
 	 * The live DRAFT — a range the reader has begun creating and has not committed, drawn as a dashed
 	 * block they can still drag and resize while its quick-create popover is open.
@@ -438,6 +442,25 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 	});
 	// #endregion
 
+	// #region Spotlight (the host points at an entry → centre it)
+	/*
+	 * Declared BEFORE the nav jump on purpose: a host that spotlights an entry also moves the focus
+	 * onto it, and claiming the block here first makes the jump below a no-op, so the view travels once
+	 * — to the entry's own hour — rather than to the block's noon and then on to the entry.
+	 */
+	const spotId = props.spotlight?.value ?? null;
+	useEffect(() => {
+		const ev = spotId ? props.events.find((e) => e.id === spotId) : undefined;
+		if (!ev) return;
+		const block = blockIndexOf(ev.start);
+		lastBlock.current = block;
+		const mid = Math.min(ev.end - ev.start, 4 * 3_600_000) / 2;
+		const m = block * BLOCK_MIN + minutesFromDayStart(ev.start + mid, startOfDay(ev.start, tz));
+		viewport.scrollTo(yFor(m) - viewport.viewportH.peek() / 2, scrollBehaviorFor());
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [spotId]);
+	// #endregion
+
 	// #region Nav jumps (focus changed externally → scroll to it; ignore our own echo)
 	useEffect(() => {
 		if (focusBlock === lastBlock.current) return;
@@ -552,7 +575,7 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 	 * key keeps `SceneEvent.recede` a property the scene actually carries, which is what lets the
 	 * accessible layer and the hit test see the same scene the painter does.
 	 */
-	const highlightId = props.highlight?.value ?? null;
+	const highlightId = props.spotlight?.value ?? props.highlight?.value ?? null;
 	const draftRange = props.draft?.value ?? null;
 	const gestureNow = gesture.value;
 	const dragging = gestureNow !== null && gestureNow.kind !== "bar";
@@ -1012,6 +1035,11 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 				layer.value = { kind: "stack", events, anchor, clusterId: card.clusterId };
 				return;
 			}
+		}
+		if (props.directOpen && props.onOpenEvent) {
+			layer.value = null;
+			props.onOpenEvent(source);
+			return;
 		}
 		layer.value = { kind: "event", event: source, anchor };
 	}

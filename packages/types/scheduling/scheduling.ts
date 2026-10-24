@@ -90,12 +90,8 @@ export const CalendarEventSchema = z.object({
 	 * therefore has to say what it does about zero: {@link CalendarEvent} carries the fact, and the
 	 * SURFACE decides the mark.
 	 *
-	 * ⚠️ **Flagged, not resolved: the live path cannot store one yet.**
-	 * `supabase/migrations/00000022_tables_scheduling.sql` carries
-	 * `CONSTRAINT ck_event_span CHECK (ends_at > starts_at)` on `scheduling.events`, so a persisted
-	 * deadline would be refused by the database the moment the backend gate is switched on. Relaxing
-	 * that CHECK to `>=` is a schema decision on a table this projection reads, and it is recorded here
-	 * rather than made in passing.
+	 * The database agrees: `ck_event_span` on `scheduling.events` is `ends_at >= starts_at`, so a
+	 * deadline persists as the instant it is.
 	 */
 	end: z.number().int(),
 	allDay: z.boolean().optional(),
@@ -410,6 +406,43 @@ export const RescheduleInputSchema = SchedulingTargetSchema.extend({
 	note: z.string().max(280).optional(),
 });
 export type RescheduleInput = z.infer<typeof RescheduleInputSchema>;
+// #endregion
+
+// #region Write payloads (a host's own entries, Decision #328 (a))
+/** The most entries one create carries — a daily series laid across a Month view's six weeks. */
+export const ENTRY_BATCH_MAX = 42;
+
+/**
+ * The fields a host writes on one of their own `/calendar` entries, on the composer's epoch-ms
+ * footing. Only what the row stores: the agenda (`description`) has no column yet, and the room has
+ * its own door (`scheduling.get_event_rooms`). `end >= start` is the service's check, as everywhere
+ * in this file, so the schema stays primitive-only.
+ */
+export const EntryFieldsSchema = z.object({
+	title: z.string().trim().max(200),
+	kind: CalendarEventKind,
+	start: z.number().int().min(0).max(SLOT_EPOCH_MAX_MS),
+	end: z.number().int().min(0).max(SLOT_EPOCH_MAX_MS),
+	allDay: z.boolean().optional(),
+	location: z.string().max(160).optional(),
+});
+export type EntryFields = z.infer<typeof EntryFieldsSchema>;
+
+/** Create entries on the caller's own calendar — a daily series is written together or not at all. */
+export const CreateEntriesInputSchema = z.object({
+	entries: z.array(EntryFieldsSchema).min(1).max(ENTRY_BATCH_MAX),
+});
+export type CreateEntriesInput = z.infer<typeof CreateEntriesInputSchema>;
+
+/** Edit one of the caller's own entries, past or not. */
+export const UpdateEntryInputSchema = EntryFieldsSchema.extend({
+	eventId: z.string().min(1).max(120),
+});
+export type UpdateEntryInput = z.infer<typeof UpdateEntryInputSchema>;
+
+/** Take one of the caller's own entries off the calendar. Soft: the row is archived, never deleted. */
+export const RemoveEntryInputSchema = z.object({ eventId: z.string().min(1).max(120) });
+export type RemoveEntryInput = z.infer<typeof RemoveEntryInputSchema>;
 // #endregion
 
 // #region Shared helpers

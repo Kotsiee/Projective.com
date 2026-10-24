@@ -27,14 +27,19 @@ export async function getScheduling<T>(path: string): Promise<CalendarResult<T>>
  * A calendar WRITE. Uses {@link apiFetch}, so an access token that expired while somebody had a
  * calendar open is silently renewed and the request retried rather than surfacing as a lost RSVP
  * (Decision #46). Here the sign-in redirect is the CORRECT outcome: the route already requires a
- * session, so a genuinely gone one has nowhere else to go.
+ * session, so a genuinely gone one has nowhere else to go. A `DELETE` carries its target in the
+ * path and sends no body.
  */
-export async function postScheduling<T>(path: string, body: unknown): Promise<CalendarResult<T>> {
+export async function postScheduling<T>(
+	path: string,
+	body?: unknown,
+	method: "POST" | "PATCH" | "DELETE" = "POST",
+): Promise<CalendarResult<T>> {
 	try {
 		const res = await apiFetch(path, {
-			method: "POST",
+			method,
 			headers: { "content-type": "application/json", accept: "application/json" },
-			body: JSON.stringify(body),
+			body: body === undefined ? undefined : JSON.stringify(body),
 		});
 		const parsed = await res.json().catch(() => null);
 		if (parsed && typeof parsed.ok === "boolean") return parsed as CalendarResult<T>;

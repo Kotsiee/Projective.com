@@ -203,6 +203,8 @@ export const SchedulingEventRowSchema = z.object({
 	createdBy: uuid.nullable(),
 	createdAt: timestamp,
 	updatedAt: timestamp,
+	/** Taken off the calendar by its host (never deleted); `status` is `cancelled` alongside it. */
+	archivedAt: timestamp.nullable(),
 });
 export type SchedulingEventRow = z.infer<typeof SchedulingEventRowSchema>;
 

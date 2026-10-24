@@ -906,16 +906,33 @@ async function settleDecidedVotes(
 // #endregion
 
 // #region Event reads
-/** The events for a set of ids, as the reader, in a window. */
+/** The events for a set of ids, as the reader, in a window. An archived entry is not on any calendar. */
 async function readEventsByIds(
 	actor: ReadActor & { accessToken: string },
 	ids: readonly string[],
 ): Promise<EventRow[]> {
 	return await readIn<EventRow>(
 		ids,
-		(chunk) => db(actor, "scheduling").from("events").select(EVENT_COLUMNS).in("id", chunk).order("id"),
+		(chunk) =>
+			db(actor, "scheduling").from("events").select(EVENT_COLUMNS).in("id", chunk)
+				.is("archived_at", null).order("id"),
 		"scheduling.events",
 	);
+}
+
+/**
+ * The caller's entries among `ids`, assembled exactly as their agenda draws them — what a write on
+ * `/calendar` answers with, so the entry a host just saved is the entry a reload shows.
+ */
+export async function readEntries(
+	actor: ReadActor & { accessToken: string },
+	ids: readonly string[],
+	now: number,
+): Promise<CalendarEvent[]> {
+	const rows = await readEventsByIds(actor, ids);
+	if (rows.length === 0) return [];
+	const tz = await readerZone(actor, await readOwnSchedule(actor));
+	return (await assemble(actor, rows, tz, now)).events;
 }
 
 /** Assemble event rows into settled projections — the one path every calendar event takes. */
@@ -1191,7 +1208,7 @@ export async function readPersonalCalendar(
 			own
 				? paged(() =>
 					sched.from("events").select(EVENT_COLUMNS).eq("schedule_id", own.id)
-						.gte("ends_at", from).lte("starts_at", to).order("starts_at").order("id"), "scheduling.events")
+						.is("archived_at", null).gte("ends_at", from).lte("starts_at", to).order("starts_at").order("id"), "scheduling.events")
 				: Promise.resolve({ data: [], error: null }),
 			paged(
 				() => sched.from("event_attendees").select("event_id").eq("user_id", actor.userId).order("event_id"),

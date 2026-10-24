@@ -98,6 +98,10 @@ CREATE TABLE scheduling.events (
     created_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
+    -- Taken off the calendar by its host (Decision #328 (a)) — the row is never deleted (root
+    -- CLAUDE.md §5). The same write sets `status = 'cancelled'`, which is what releases the time from
+    -- free/busy and the booking gate; this column is what takes the entry off the agenda.
+    archived_at timestamptz,
     -- `>=`, not `>`: a DEADLINE is a point in time and has no duration to record. The UI engine has
     -- always drawn `end === start` as a pin rather than as a box, precisely so a due date is not
     -- asserted to be a plausible half-hour meeting, and a `>` check here would refuse to persist the

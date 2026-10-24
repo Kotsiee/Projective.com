@@ -751,8 +751,9 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 								onFocusDayChange={setFocus}
 								unfolded={unfolded.value}
 								onUnfold={toggleUnfold}
-								highlightEventId={highlight.value}
-								recede={highlight.value === null ? "none" : "focus"}
+								directOpen={props.directOpen}
+								highlightEventId={props.spotlight?.value ?? highlight.value}
+								recede={(props.spotlight?.value ?? highlight.value) === null ? "none" : "focus"}
 								popover={popover}
 								onZoom={zoom}
 								zoomRange={ZOOM_RANGE}
@@ -783,6 +784,8 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 								onUnfold={toggleUnfold}
 								popover={popover}
 								highlight={highlight}
+								spotlight={props.spotlight}
+								directOpen={props.directOpen}
 								draft={draft}
 								pointerGuard={pointerGuard}
 								onZoom={zoom}

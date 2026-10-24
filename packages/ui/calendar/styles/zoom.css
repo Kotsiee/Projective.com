@@ -9,19 +9,97 @@
 	flex: none;
 }
 
-.cal-zoom__slider {
+/*
+ * The ruler. Names above, the scale below, one marker across the scale. Every position is a
+ * logical inset (`inset-inline-start`), so a right-to-left page mirrors the whole instrument —
+ * Day at the right — without a single direction-specific rule.
+ */
+.cal-zoom__ruler {
+	--ruler-h: 1.75rem;
+	--ruler-scale-h: 0.625rem;
+	--ruler-minor-h: 0.25rem;
+	--ruler-major-h: 0.5rem;
+	position: relative;
 	flex: 1 1 auto;
-	min-inline-size: 0;
+	min-inline-size: 9rem;
+	block-size: var(--ruler-h);
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	cursor: ew-resize;
+	touch-action: none;
+	user-select: none;
+	border-radius: var(--radius-xs);
 }
 
-.cal-zoom__slider .ui-zoom__track {
-	min-inline-size: 5.5rem;
+.cal-zoom__names {
+	position: relative;
+	block-size: calc(var(--ruler-h) - var(--ruler-scale-h));
 }
 
-.cal-zoom__stop {
-	flex: none;
-	min-inline-size: 3.5rem;
+/* Each name owns its zone's width and centres in it — no translate, so nothing to mirror by hand. */
+.cal-zoom__name {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: calc(var(--tick-at) * 100%);
+	inline-size: calc(100% / var(--ruler-stops));
+	text-align: center;
 	font-size: var(--text-xs);
+	line-height: 1;
 	color: var(--text-secondary);
 	white-space: nowrap;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.cal-zoom__name[data-on="true"] {
+	color: var(--on-surface);
+}
+
+.cal-zoom__scale {
+	position: relative;
+	block-size: var(--ruler-scale-h);
+	border-block-end: var(--hairline);
+}
+
+.cal-zoom__tick {
+	position: absolute;
+	inset-block-end: 0;
+	inset-inline-start: calc(var(--tick-at) * 100%);
+	margin-inline-start: -0.5px;
+	inline-size: 1px;
+	block-size: var(--ruler-minor-h);
+	background: color-mix(in srgb, var(--outline) 45%, transparent);
+}
+
+.cal-zoom__tick[data-major="true"] {
+	block-size: var(--ruler-major-h);
+	background: var(--text-secondary);
+}
+
+/* The marker glides onto the stop it settled on, and is held exactly under the pointer while dragged. */
+.cal-zoom__marker {
+	position: absolute;
+	inset-block: calc(var(--ruler-scale-h) * -0.25) 0;
+	inset-inline-start: calc(var(--ruler-at) * 100%);
+	margin-inline-start: -1px;
+	inline-size: 2px;
+	border-radius: var(--radius-full);
+	background: var(--primary);
+	transition: inset-inline-start var(--dur-medium) var(--spring-standard);
+}
+
+.cal-zoom__ruler[data-held="true"] .cal-zoom__marker {
+	transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cal-zoom__marker,
+	.cal-zoom__name {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .cal-zoom__marker,
+:root[data-motion="reduced"] .cal-zoom__name {
+	transition: none;
 }

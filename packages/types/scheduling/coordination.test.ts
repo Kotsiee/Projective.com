@@ -6,6 +6,7 @@ import {
 	canOpenVote,
 	canReschedule,
 	counterpartyAcceptRefusal,
+	createRefusal,
 	eligibleVoterCount,
 	type EventAttendee,
 	EventAttendeeSchema,
@@ -343,6 +344,16 @@ Deno.test("eventLiveStatus — after the end it has passed, and nothing counts d
 	assertStrictEquals(s.state, "passed");
 	assertStrictEquals(s.msUntilStart, 0);
 	assertStrictEquals(s.msUntilEnd, 0);
+});
+
+Deno.test("createRefusal — a timed entry may not start in the past; an all-day one may run today", () => {
+	assertStrictEquals(createRefusal(NOW, { start: NOW, end: NOW + HOUR }), null);
+	assert(createRefusal(NOW, { start: NOW - MINUTE, end: NOW + HOUR }));
+	assertStrictEquals(
+		createRefusal(NOW, { start: NOW - HOUR, end: NOW + HOUR, allDay: true }),
+		null,
+	);
+	assert(createRefusal(NOW, { start: NOW - 2 * HOUR, end: NOW, allDay: true }));
 });
 
 Deno.test("eventLiveStatus — an all-day span runs for its whole day", () => {

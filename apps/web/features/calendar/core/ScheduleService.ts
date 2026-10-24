@@ -2,6 +2,7 @@ import { getScheduling, postScheduling } from "./api.ts";
 import type {
 	CalendarEvent,
 	CalendarPage,
+	EntryFields,
 	RescheduleInput,
 	RsvpInput,
 	SchedulePage,
@@ -54,5 +55,29 @@ export const ScheduleService = {
 	/** Apply one move to an event's reschedule negotiation; resolves with the refreshed event. */
 	reschedule(input: RescheduleInput): Promise<CalendarResult<{ event: CalendarEvent }>> {
 		return postScheduling<{ event: CalendarEvent }>("/api/scheduling/reschedule", input);
+	},
+
+	/** Create entries on the caller's own calendar; resolves with them as the agenda draws them. */
+	create(entries: EntryFields[]): Promise<CalendarResult<{ events: CalendarEvent[] }>> {
+		return postScheduling<{ events: CalendarEvent[] }>("/api/scheduling/events", { entries });
+	},
+
+	/** Edit one of the caller's own entries; resolves with it re-read. */
+	update(eventId: string, fields: EntryFields): Promise<CalendarResult<{ event: CalendarEvent }>> {
+		return postScheduling<{ event: CalendarEvent }>(
+			"/api/scheduling/events",
+			{ ...fields, eventId },
+			"PATCH",
+		);
+	},
+
+	/** Take one of the caller's own entries off the calendar. */
+	remove(eventId: string): Promise<CalendarResult<{ eventId: string }>> {
+		const qs = new URLSearchParams({ eventId });
+		return postScheduling<{ eventId: string }>(
+			`/api/scheduling/events?${qs.toString()}`,
+			undefined,
+			"DELETE",
+		);
 	},
 };

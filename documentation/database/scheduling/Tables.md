@@ -119,6 +119,7 @@ One positioned calendar entry — the persisted backing for the `CalendarEvent` 
 | `external_event_id`               | text                      | The provider's own id.                                                                |
 | `source_session_event_id`         | uuid                      | → `projects.session_events` (CASCADE) when mirroring a delivered session.             |
 | `created_by`                      | uuid                      | → `auth.users` (SET NULL).                                                            |
+| `archived_at`                     | timestamptz               | Taken off the calendar by its host (Decision #328 (a)); never a delete. The same write sets `status = 'cancelled'`, which releases the time from free/busy and the booking gate. Readers skip archived rows. |
 | CHECK                             | —                         | `schedule_id IS NOT NULL OR project_id IS NOT NULL` (always anchored).                |
 | UNIQUE                            | —                         | `(source_connection_id, external_event_id)` — the re-sync upsert key.                 |
 
@@ -132,6 +133,14 @@ that has any `event_attendees` row, or changing its `starts_at`, `ends_at`, `sta
 `schedule_id` (`55000`) — so a schedule owner cannot step round the 12-hour lockout and the
 majority rule, or cascade a roster, its rounds and its log away (root `CLAUDE.md` §5). The service
 role is not refused. See [Functions.md](Functions.md) §9.
+
+**A host's own entries are written as the host.** `/calendar` creates, edits and removes the
+caller's entries through `POST` · `PATCH` · `DELETE /api/scheduling/events`
+(`packages/backend/services/scheduling/live-entries.ts`), under the caller's JWT and the `Manage
+scheduling events` policy — never the service role. A new entry may not start in the past
+(`createRefusal`, `@projective/types/scheduling`); an edit or a removal may (Decision #328 (A)). A
+removal is `status = 'cancelled'` + `archived_at = now()`; the first create on an account with no
+schedule opens an unpublished one in the profile's zone.
 
 ---
 

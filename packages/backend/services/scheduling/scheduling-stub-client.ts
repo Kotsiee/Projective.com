@@ -42,10 +42,15 @@ type Row = Record<string, unknown>;
 
 const value = (row: Row, column: string) => row[column] ?? null;
 
-/** A stub client over `store`, answering RPCs with `rpc`. */
+/**
+ * A stub client over `store`, answering RPCs with `rpc`. `writePolicy` stands in for a table's RLS
+ * write policy: an update leaves a row it refuses untouched (no error, no row — as PostgREST does),
+ * and an insert of one is refused `42501`.
+ */
 export function stubSchedulingClient(
 	store: StubStore,
 	rpc: Record<string, StubRpc> = {},
+	writePolicy: Record<string, (row: Row) => boolean> = {},
 ): { client: SupabaseClient; calls: StubCall[]; updates: StubUpdate[] } {
 	const calls: StubCall[] = [];
 	const updates: StubUpdate[] = [];
@@ -53,13 +58,24 @@ export function stubSchedulingClient(
 	const query = (table: string) => {
 		const filters: Array<(row: Row) => boolean> = [];
 		let patch: Row | null = null;
-		const run = () => {
-			const rows = (store[table] ?? []).filter((r) => filters.every((f) => f(r)));
+		let inserted: Row[] | null = null;
+		const allowed = (r: Row) => writePolicy[table]?.(r) ?? true;
+		const run = (): { data: Row[] | null; error: StubError | null } => {
+			if (inserted) {
+				if (!inserted.every(allowed)) {
+					return { data: null, error: { code: "42501", message: "row-level security" } };
+				}
+				(store[table] ??= []).push(...inserted);
+				return { data: inserted, error: null };
+			}
+			const rows = (store[table] ?? []).filter((r) =>
+				filters.every((f) => f(r)) && (!patch || allowed(r))
+			);
 			if (patch) {
 				for (const r of rows) Object.assign(r, patch);
 				updates.push({ table, patch, rows: rows.length });
 			}
-			return rows;
+			return { data: rows, error: null };
 		};
 		const chain: Record<string, unknown> = {
 			select: () => chain,
@@ -76,10 +92,21 @@ export function stubSchedulingClient(
 				patch = p;
 				return chain;
 			},
-			maybeSingle: () => Promise.resolve({ data: run()[0] ?? null, error: null }),
+			insert: (rows: Row | Row[]) => {
+				inserted = (Array.isArray(rows) ? rows : [rows]).map((r) => ({
+					id: crypto.randomUUID(),
+					...r,
+				}));
+				return chain;
+			},
+			maybeSingle: () => {
+				const { data, error } = run();
+				return Promise.resolve(error ? { data: null, error } : { data: data?.[0] ?? null, error });
+			},
 			then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
-				Promise.resolve({ data: run(), error: null }).then(resolve, reject),
+				Promise.resolve(run()).then(resolve, reject),
 		};
+		chain.single = chain.maybeSingle;
 		return chain;
 	};
 
