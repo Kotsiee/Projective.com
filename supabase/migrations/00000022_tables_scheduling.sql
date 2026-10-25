@@ -65,6 +65,10 @@ CREATE TABLE scheduling.events (
     -- A CSS custom-property NAME (e.g. '--primary'), never a literal colour (root CLAUDE.md §3).
     accent text,
     location text,
+    -- The agenda: rich-text HTML its host writes for attendees to read, so it is stored only after
+    -- `sanitizeRichText` (@projective/types/richtext) reduces it to the editor's own vocabulary, and
+    -- rendered only through it again (Decision #72 (a)).
+    description text,
     -- The online room (packages/types/scheduling/meeting.ts). Held on the occurrence rather than in
     -- a child table because an event has exactly one, and the adjacent homes cover only adjacent
     -- cases: projects.session_events carries a COHORT session's join URLs and

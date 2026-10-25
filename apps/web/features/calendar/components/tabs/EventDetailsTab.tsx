@@ -11,6 +11,7 @@ import type {
 	MeetingProvider,
 } from "@projective/types/scheduling";
 import { MEETING_PROVIDER_LABEL } from "@projective/types/scheduling";
+import { sanitizeRichText } from "@projective/types/richtext";
 import { durationLabel, type EventMode } from "../../core/event-view.ts";
 
 /**
@@ -135,26 +136,10 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 					? (
 						<div
 							class="evm-rich"
-							/*
-							 * ⚠️ UNSANITISED, and the reason it is currently safe is a fact about the SYSTEM, not
-							 * about this line.
-							 *
-							 * The claim this comment used to make — "the only HTML that can reach here is what the
-							 * shared editor emits" — is an assertion about a write path that does not exist. What
-							 * is actually true today: `description` reaches this branch only from a SERVER-derived
-							 * payload (the fixtures), it is withheld from non-parties by the privacy allow-list,
-							 * and the editor branch above is the only writer — staged in the frame cache, never
-							 * persisted, and only ever re-read by the same browser through the editor, not through
-							 * here. So no author's markup can currently reach another viewer.
-							 *
-							 * That stops being true the moment an update write path lands (`description` is a
-							 * `z.string().max(8000)` on the eventual payload, and a host writes it for an audience
-							 * of attendees). This is a PLATFORM gap, not a local one — the ticket modal renders
-							 * two more of these and the repo has no sanitiser — so it is flagged for a shared
-							 * allow-list sanitiser rather than half-solved with a regex here, which is how a
-							 * sanitiser that looks like protection ships without being any.
-							 */
-							dangerouslySetInnerHTML={{ __html: event.description }}
+							// A host writes this for attendees to read. The write path already sanitised it;
+							// rendering through the same allow-list again means a row written any other way
+							// (a seed, a service-role job, a call's agenda) cannot reach the DOM as markup.
+							dangerouslySetInnerHTML={{ __html: sanitizeRichText(event.description) }}
 						/>
 					)
 					: <p class="evm-empty evm-empty--inline">No agenda was written for this one.</p>}

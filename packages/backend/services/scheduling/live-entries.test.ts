@@ -117,6 +117,28 @@ Deno.test("create: a series is one insert on the caller's own schedule, answered
 	assertEquals(res.data?.events.map((e) => e.id), made.map((r) => r.id));
 });
 
+Deno.test("create: the agenda is stored sanitised — script and handlers gone, the editor's tags kept", async () => {
+	const s = store();
+	const { deps } = stack(s);
+	const agenda = "<p>Bring <strong>notes</strong></p><script>alert(1)</script>" +
+		'<img src=x onerror="alert(1)"><p onclick="alert(1)">Q&amp;A</p>';
+	const res = await createEntries(
+		{
+			entries: [
+				fields(NOW + HOUR, { description: agenda }),
+				fields(NOW + 2 * HOUR, { description: "<p><br></p>" }),
+			],
+		},
+		HOST,
+		deps,
+	);
+	assert(res.ok, res.message);
+	const [made, blank] = s.events.slice(1);
+	assertEquals(made.description, "<p>Bring <strong>notes</strong></p><p>Q&amp;A</p>");
+	// An emptied editor's markup is no agenda at all.
+	assertEquals(blank.description, null);
+});
+
 Deno.test("create: the first entry opens an unpublished schedule in the profile's zone", async () => {
 	const s = store();
 	s.schedules = s.schedules.filter((x) => x.owner_id !== HOST.userId);
@@ -143,6 +165,17 @@ Deno.test("edit: the host edits their own entry even though it is in the past", 
 	assert(res.ok, res.message);
 	assertEquals(s.events[0].title, "Dentist (moved)");
 	assertEquals(s.events[0].starts_at, new Date(NOW - 72 * HOUR).toISOString());
+});
+
+Deno.test("edit: a new agenda is written sanitised, and an edit without one clears it", async () => {
+	const s = store();
+	const { deps } = stack(s);
+	const edit = (description?: string) =>
+		updateEntry({ eventId: ENTRY, ...fields(NOW + HOUR, { description }) }, HOST, deps);
+	assert((await edit('<h2 style="x">Plan</h2><iframe src="//evil"></iframe>')).ok);
+	assertEquals(s.events[0].description, "<h2>Plan</h2>");
+	assert((await edit()).ok);
+	assertEquals(s.events[0].description, null);
 });
 
 Deno.test("edit / delete: an entry on somebody else's schedule is a 403, and nothing is written", async () => {

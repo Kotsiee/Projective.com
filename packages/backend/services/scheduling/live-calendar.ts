@@ -113,6 +113,7 @@ const EVENT_COLUMNS = [
 	"is_masked",
 	"accent",
 	"location",
+	"description",
 	"meeting_provider",
 	"meeting_provider_label",
 	"meeting_pending",
@@ -138,6 +139,8 @@ interface EventRow {
 	is_masked: boolean;
 	accent: string | null;
 	location: string | null;
+	/** Sanitised on write (`live-entries.ts`); rendered only through `sanitizeRichText` again. */
+	description: string | null;
 	meeting_provider: string | null;
 	meeting_provider_label: string | null;
 	/**
@@ -792,6 +795,7 @@ function toCalendarEvent(row: EventRow, ctx: AssemblyContext): CalendarEvent {
 	if (row.is_masked) event.masked = true;
 	if (row.accent) event.accent = clamp(row.accent, 60);
 	if (row.location) event.location = clamp(row.location, 160);
+	if (row.description) event.description = clamp(row.description, 8000);
 	if (row.meta) event.meta = clamp(row.meta, 160);
 	if (row.attendee_count !== null) event.attendees = Math.max(0, row.attendee_count);
 	if (row.capacity !== null) event.capacity = Math.max(0, row.capacity);

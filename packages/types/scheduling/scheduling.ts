@@ -414,9 +414,9 @@ export const ENTRY_BATCH_MAX = 42;
 
 /**
  * The fields a host writes on one of their own `/calendar` entries, on the composer's epoch-ms
- * footing. Only what the row stores: the agenda (`description`) has no column yet, and the room has
- * its own door (`scheduling.get_event_rooms`). `end >= start` is the service's check, as everywhere
- * in this file, so the schema stays primitive-only.
+ * footing. Only what the row stores: the room has its own door (`scheduling.get_event_rooms`).
+ * `end >= start` is the service's check, as everywhere in this file, so the schema stays
+ * primitive-only; so is sanitising the agenda, which is HTML another person will read.
  */
 export const EntryFieldsSchema = z.object({
 	title: z.string().trim().max(200),
@@ -425,6 +425,8 @@ export const EntryFieldsSchema = z.object({
 	end: z.number().int().min(0).max(SLOT_EPOCH_MAX_MS),
 	allDay: z.boolean().optional(),
 	location: z.string().max(160).optional(),
+	/** The agenda — the editor's rich-text HTML; absent or empty clears it. */
+	description: z.string().max(8000).optional(),
 });
 export type EntryFields = z.infer<typeof EntryFieldsSchema>;
 

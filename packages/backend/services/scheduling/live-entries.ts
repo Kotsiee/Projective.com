@@ -7,6 +7,7 @@ import type {
 	UpdateEntryInput,
 } from "@projective/types/scheduling";
 import { createRefusal, uuid } from "@projective/types/scheduling";
+import { hasRichTextProse, sanitizeRichText } from "@projective/types/richtext";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
 
@@ -56,8 +57,12 @@ function sched(db: SupabaseClient): SupabaseClient {
 	return db.schema("scheduling") as unknown as SupabaseClient;
 }
 
-/** The columns an entry's own fields write. */
+/**
+ * The columns an entry's own fields write. The agenda is HTML its attendees will render, so it is
+ * stored only as {@link sanitizeRichText} rebuilt it, and an agenda with no prose is no agenda.
+ */
 function columns(f: EntryFields): Record<string, unknown> {
+	const agenda = sanitizeRichText(f.description ?? "");
 	return {
 		title: f.title,
 		kind: f.kind,
@@ -65,6 +70,7 @@ function columns(f: EntryFields): Record<string, unknown> {
 		ends_at: new Date(f.end).toISOString(),
 		all_day: f.allDay ?? false,
 		location: f.location?.trim() || null,
+		description: hasRichTextProse(agenda) ? agenda : null,
 	};
 }
 

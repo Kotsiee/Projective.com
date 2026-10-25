@@ -452,9 +452,9 @@ GRANT ALL ON TABLE integrations.plugin_audit TO service_role;
 -- reads no event row at all (no policy): a visitor's free/busy is scheduling.get_free_busy.
 GRANT SELECT (
     id, schedule_id, project_id, channel_id, kind, status, title, starts_at, ends_at, all_day,
-    is_masked, accent, location, meeting_provider, meeting_provider_label, meeting_pending, meta,
-    attendee_count, capacity, href, source_connection_id, external_event_id, source_session_event_id,
-    created_by, created_at, updated_at, archived_at
+    is_masked, accent, location, description, meeting_provider, meeting_provider_label,
+    meeting_pending, meta, attendee_count, capacity, href, source_connection_id, external_event_id,
+    source_session_event_id, created_by, created_at, updated_at, archived_at
 ) ON TABLE scheduling.events TO authenticated;
 
 GRANT

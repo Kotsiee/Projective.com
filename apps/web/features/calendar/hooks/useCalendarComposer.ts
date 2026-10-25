@@ -16,6 +16,7 @@ function fieldsOf(e: CalendarEvent): EntryFields {
 		end: e.end,
 		allDay: e.allDay,
 		location: e.location,
+		description: e.description,
 	};
 }
 

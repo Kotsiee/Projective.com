@@ -289,9 +289,14 @@ provenance answers exactly the question the mask refuses. **Process note worth k
 repair closed the ANONYMOUS leak and its own test asserted exactly that, so the suite stayed green
 while the surface still leaked to anyone with an account — a test written against the case you just
 fixed cannot see the case you did not. **Flagged, NOT resolved (needs a human):** (a)
-`dangerouslySetInnerHTML` on `event.description` is unreachable today (server-derived only, withheld
+~~`dangerouslySetInnerHTML` on `event.description` is unreachable today (server-derived only, withheld
 from non-parties, never persisted) but becomes stored XSS the moment an update write path lands, and
-this repo has no sanitiser; (b) the 12-hour reschedule lockout sits INSIDE `PRODUCT_SPEC.md`'s
+this repo has no sanitiser~~ — RESOLVED 2026-10-25: `sanitizeRichText` (`@projective/types/richtext`,
+no dependency) rebuilds the HTML from the editor's attribute-free tags (`p br h1–h6 strong em u s ul
+ol li`), dropping every attribute, script-like elements with their content, comments and any other
+tag; `live-entries.ts` stores the agenda (`scheduling.events.description`) only through it, and
+`EventDetailsTab` renders only through it again. The ticket modal's two renders
+(`TicketDetailsTab` `Prose`, `StageInspector` stage brief) are still unsanitised; (b) the 12-hour reschedule lockout sits INSIDE `PRODUCT_SPEC.md`'s
 24-hour cancellation window, so between T-24h and T-12h rescheduling is a documented route around
 the escrow-forfeit rule (also logged on #71); (c) `CommandPalette` is `role="dialog" aria-modal`
 with `lockScroll` but claims the `popover` band (1100), and moving it to `modal` would change paint
