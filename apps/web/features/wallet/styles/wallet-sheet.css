@@ -1,15 +1,9 @@
 /*
  * #region The sheet
  *
- * The dashboard sheet slides up over the pinned hero. Its top edge is TRANSLUCENT for its first
- * `--wlt-sheet-fade`: the sheet's own background starts only below that band, and a `::before` underlay
- * fills the band with a veil that runs from `--wlt-sheet-veil` to opaque `--surface`, blurring the
- * gradient beneath it. So the hero's light reads through the sheet's rim and nothing past it — by the
- * time any content sits on the sheet, the canvas under it is solid.
- *
- * The blur is on the underlay, never on the sheet itself: a `backdrop-filter` on the sheet would make
- * it the containing block for every fixed-position descendant it renders (§B.4.3), and the underlay
- * ends in a fully opaque stop, so its blur has no edge to show.
+ * The dashboard sheet slides up over the pinned hero on one solid `--surface`: the hero's light ends
+ * at the sheet's rounded edge rather than reading through a translucent rim, so every heading and
+ * figure on it sits on a measurable ground.
  */
 .wlt-sheet {
 	position: relative;
@@ -21,38 +15,8 @@
 	padding-inline: var(--wlt-pad-x);
 	border-start-start-radius: var(--radius-container-xl);
 	border-start-end-radius: var(--radius-container-xl);
-	/* The opaque body starts a step INSIDE the rim, under the rim's own opaque end: two hard stops at the
-	   same offset leave an anti-aliased, half-transparent pixel row between them, which read as a dark
-	   hairline across the sheet with the hero behind it. */
-	background: linear-gradient(
-		to bottom,
-		transparent calc(var(--wlt-sheet-fade) - var(--space-1)),
-		var(--surface) calc(var(--wlt-sheet-fade) - var(--space-1))
-	);
+	background: var(--surface);
 	box-shadow: var(--elevation-low-up), var(--wlt-sheet-shadow);
-}
-
-.wlt-sheet::before {
-	content: "";
-	position: absolute;
-	inset-block-start: 0;
-	inset-inline: 0;
-	z-index: -1;
-	block-size: var(--wlt-sheet-fade);
-	border-start-start-radius: inherit;
-	border-start-end-radius: inherit;
-	background: linear-gradient(to bottom, var(--wlt-sheet-veil), var(--surface));
-	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	pointer-events: none;
-}
-
-/* Without backdrop filtering the veil would be a see-through strip with sharp gradient detail behind
-   it; an opaque rim is the honest fallback. */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-	.wlt-sheet::before {
-		background: var(--surface);
-	}
 }
 /* #endregion */
 
@@ -231,7 +195,7 @@
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-2);
-	color: var(--primary);
+	color: var(--wlt-link-ink);
 	font-size: var(--text-sm);
 	font-weight: var(--fw-medium);
 	text-decoration: none;
@@ -241,6 +205,17 @@
 .wlt-textlink:hover {
 	text-decoration: underline;
 	text-underline-offset: 0.2em;
+}
+
+:root[data-theme="dark"] .wlt-textlink {
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+}
+
+/* A selected segment reads in full ink in dark mode, where the wallet draws no teal text — on the page
+   and in the chart inspector, which portals out of it. */
+:root[data-theme="dark"] :is(.wlt, .wlt-lane, .wlt-inspect-dlg) .ui-select-button {
+	--sb-ink-selected: var(--on-surface);
 }
 
 .wlt-dot {

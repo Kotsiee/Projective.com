@@ -60,6 +60,15 @@ export const ProfileService = {
 		return sendProfile<ProfileMediaState>(`${base(handle)}/showcase`, "PUT", input);
 	},
 
+	/** The owner's schedule + call settings, as the editor is seeded (a draft included). */
+	availability(
+		handle: string,
+	): Promise<ProfileResult<{ availability: OwnerAvailability; takesCalls: boolean }>> {
+		return getProfile<{ availability: OwnerAvailability; takesCalls: boolean }>(
+			`${base(handle)}/availability`,
+		);
+	},
+
 	/** Save the owner's schedule + call settings. */
 	saveAvailability(
 		handle: string,

@@ -483,6 +483,8 @@ export interface DayTimelineProps {
 	renderSource?: (source: string) => VNode | null;
 	onSelectRange?: (range: CalendarRange) => void;
 	onOpenEvent?: (event: CalendarEvent) => void;
+	/** A single card opens straight through `onOpenEvent` (`CalendarProps.directOpen`). */
+	directOpen?: boolean;
 	/** Fired (day-granular) as the scroll centre crosses into a new day, so the header + mini-map track it. */
 	onFocusDayChange?: (dayMs: number) => void;
 	/**
@@ -751,6 +753,11 @@ export function DayTimeline(props: DayTimelineProps): JSX.Element {
 				layer.value = { kind: "stack", events: members, anchor, clusterId: slot.clusterId };
 				return;
 			}
+		}
+		if (props.directOpen && props.onOpenEvent) {
+			layer.value = null;
+			props.onOpenEvent(slot.event);
+			return;
 		}
 		layer.value = { kind: "event", event: slot.event, anchor };
 	}

@@ -4,7 +4,13 @@ import { useEffect } from "preact/hooks";
 import "../styles/wallet.css";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
-import { LaneCollapseButton, LaneFooter, LaneHead, LaneList } from "@projective/ui/navigation";
+import {
+	LaneCollapseButton,
+	LaneFooter,
+	LaneHead,
+	LaneIconButton,
+	LaneList,
+} from "@projective/ui/navigation";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import type { WalletAction, WalletOverview } from "../types/wallet-types.ts";
@@ -18,6 +24,7 @@ import {
 import { openWalletDialog, walletFlowLive, walletOverviewLive } from "../core/wallet-state.ts";
 import { ActionIcon } from "../components/wallet-glyphs.tsx";
 import { VerificationGate } from "../components/VerificationGate.tsx";
+import { LedgerTools } from "../components/WalletTools.tsx";
 import { VIEW_ICON, WalletPageNav, walletViewsFor } from "../components/WalletPageNav.tsx";
 
 /** Props for {@link WalletLane}. */
@@ -59,29 +66,6 @@ function laneActions(overview: WalletOverview): ResolvedAction[] {
 /** Opens an action's dialog; a locked one opens the dialog that explains why. */
 function run(action: WalletAction): void {
 	openWalletDialog({ kind: "action", action });
-}
-
-/**
- * One action as a lane row — the same icon-led row as the page links above it (§B.6), but a button,
- * because it opens a dialog rather than going anywhere. A locked action keeps its lock glyph, is named
- * "…, unavailable", and still opens: pressing it explains why (the Tooltip says so on hover/focus).
- */
-function ActionRow({ item }: { item: ResolvedAction }): JSX.Element {
-	return (
-		<button
-			type="button"
-			class="wlt-link-row"
-			data-locked={item.locked ? "true" : undefined}
-			aria-label={item.locked ? `${item.label}, unavailable` : undefined}
-			onClick={() => run(item.action)}
-		>
-			<span class="wlt-link-row__icon" aria-hidden="true">
-				<ActionIcon action={item.action} size="sm" />
-				{item.locked && <Icon name="lock" class="wlt-link-row__lock" />}
-			</span>
-			<span class="wlt-link-row__label">{item.label}</span>
-		</button>
-	);
 }
 
 // #region Collapsed rail
@@ -142,11 +126,13 @@ function WalletRail(
 // #endregion
 
 /**
- * The `/wallet` middle-nav lane: the wallet's pages as real links, the verification gate when one is
- * open (one pip-led line), and every money action the viewer is offered as an icon-led row in the
- * same row pattern as the page links — no tiles, no boxes (§B.6, §B.9.7). It renders both
- * presentations and lets `.ui-splitter[data-mode="collapsed"]` reveal one — the expanded stack or an
- * icon rail — like every other lane.
+ * The `/wallet` middle-nav lane, in three bands: the head carries every money action the viewer is
+ * offered as the lanes' icon-only `LaneIconButton`s; the body centres the wallet's pages as the lanes'
+ * shared `NavItem` rows; and the foot pins the standing facts — the Transactions page's window ruler
+ * and download, the verification gate (one pip-led line), and why there is nothing to press. No tiles,
+ * no boxes (§B.6, §B.9.7). It renders both presentations and lets
+ * `.ui-splitter[data-mode="collapsed"]` reveal one — the expanded stack or an icon rail — like every
+ * other lane.
  *
  * An action opens its dialog in place: the page body on every wallet route hosts the dialogs, so the
  * lane only names which one. It follows the overview the page publishes after a money movement rather
@@ -186,11 +172,31 @@ export default function WalletLane(props: WalletLaneProps): JSX.Element {
 			/>
 
 			<div class="wlt-lane__full">
-				<LaneHead>
+				<LaneHead class="wlt-lane__head">
 					<p class="wlt-lane__title">Wallet</p>
+					{actions.length > 0 && (
+						<div class="wlt-lane__actions" role="group" aria-label="Wallet actions">
+							{actions.map((item) => (
+								<LaneIconButton
+									key={item.action}
+									icon={
+										<span class="wlt-lane__actionicon" aria-hidden="true">
+											<ActionIcon action={item.action} size="sm" />
+											{item.locked && <Icon name="lock" class="wlt-lane__lock" />}
+										</span>
+									}
+									label={item.locked ? `${item.label}, unavailable` : item.label}
+									tooltip={item.locked
+										? `${item.label} — ${item.reason ?? "unavailable right now"}`
+										: item.label}
+									onClick={() => run(item.action)}
+								/>
+							))}
+						</div>
+					)}
 				</LaneHead>
 
-				<LaneList label="Wallet">
+				<LaneList label="Wallet" class="wlt-lane__list">
 					<div class="wlt-lane__body">
 						<WalletPageNav
 							variant="lane"
@@ -200,44 +206,24 @@ export default function WalletLane(props: WalletLaneProps): JSX.Element {
 							flow={flow}
 							business={overview?.business ?? null}
 						/>
-
-						{overview && (
-							<VerificationGate overview={overview} class="wlt-lane__gate" />
-						)}
-
-						{overview && (
-							<section class="wlt-lane__group" aria-labelledby="wlt-lane-actions">
-								<h2 id="wlt-lane-actions" class="wlt-lane__heading">Actions</h2>
-								{actions.length > 0
-									? (
-										<ul class="wlt-lane__actions">
-											{actions.map((item) => (
-												<li key={item.action}>
-													{item.locked
-														? (
-															<Tooltip
-																content={item.reason ?? "This isn't available right now."}
-																placement="right"
-															>
-																<ActionRow item={item} />
-															</Tooltip>
-														)
-														: <ActionRow item={item} />}
-												</li>
-											))}
-										</ul>
-									)
-									: (
-										<p class="wlt-lane__note">
-											{aggregate
-												? "A read-only total. Choose an account to move money."
-												: "You can view this vault. Money actions belong to its owners and admins."}
-										</p>
-									)}
-							</section>
-						)}
 					</div>
 				</LaneList>
+
+				{
+					/* Standing facts about this wallet, pinned above the footer band: the Transactions page's
+					   window and download, the verification gate, and why there is nothing to press. */
+				}
+				<div class="wlt-lane__foot">
+					{props.view === "transactions" && <LedgerTools fallback={flow ?? "all"} />}
+					{overview && <VerificationGate overview={overview} />}
+					{overview && actions.length === 0 && (
+						<p class="wlt-lane__note">
+							{aggregate
+								? "A read-only total. Choose an account to move money."
+								: "You can view this vault. Money actions belong to its owners and admins."}
+						</p>
+					)}
+				</div>
 
 				<LaneFooter>
 					<LaneCollapseButton

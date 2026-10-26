@@ -1,12 +1,13 @@
 import type { JSX, VNode } from "preact";
 import { useSignal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import "../styles/calendar-chrome.css";
-import { CALENDAR_KIND_LABEL, calendarTime } from "@projective/ui/calendar";
+import { CALENDAR_KIND_LABEL, calendarTime, scrollBehaviorFor } from "@projective/ui/calendar";
 import {
 	LaneBar,
 	LaneCollapseButton,
 	LaneEmpty,
+	LaneFilterPopover,
 	LaneFooter,
 	LaneHead,
 	LaneList,
@@ -22,17 +23,22 @@ import type { IconName } from "@projective/ui/icons";
 import type { CalendarEvent, CalendarEventKind, SchedulePage } from "@projective/types/scheduling";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
-import { AvailabilityBlock } from "../components/AvailabilityManager.tsx";
-import { openSettings } from "@features/settings/core/settings-bridge.ts";
+import { AvailabilityBlock, AvailabilityTemplates } from "../components/AvailabilityManager.tsx";
+import { CalendarFilterFacets } from "../components/CalendarFilterFacets.tsx";
+import { openStudio } from "@features/catalogue/core/availability-store.ts";
 import { providerMarkFor } from "../components/provider-marks.tsx";
 import {
+	activeFilterCount,
 	calendarFocus,
-	focusedAt,
 	calendarPage,
 	calendarQuery,
 	importedEvents,
 	kindsOnPage,
+	laneSpotlight,
 	requestCreate,
+	resetFilters,
+	selectedEventId,
+	selectEvent,
 	showOnlyKind,
 	soleVisibleKind,
 	sourceIsVisible,
@@ -60,6 +66,14 @@ import {
  * control the `/projects` feed and the `/catalogue` console use, so a reader who has switched tabs
  * once on this product has switched them everywhere.
  *
+ * **The list scrolls on its own.** It is every entry the filters leave, in order, rather than a window
+ * that followed the grid's focus — a list that re-anchored whenever the grid scrolled was the grid
+ * scrolling it by proxy. The two views meet only on a pick: a row moves the grid onto its entry, and
+ * an entry picked on the grid brings its row to the middle of the list ({@link selectEvent}).
+ *
+ * **Filter sits beside the search**, the `/projects` anatomy: the shared {@link LaneFilterPopover} over
+ * {@link CalendarFilterFacets}, narrowing the grid and this list together.
+ *
  * **The lane offers no New event and no view switch.** Both live in the middle-nav footer band, which
  * renders at every width — including the widths where the shell removes this lane entirely — and two
  * triggers for one action inside one region is the duplication the region contract exists to prevent
@@ -69,11 +83,6 @@ export interface CalendarLaneProps {
 	/** The SSR page, so the lane paints its first frame with the same data the grid has. */
 	initial: SchedulePage | null;
 }
-
-/** How far ahead the upcoming list looks. Beyond a fortnight the list stops being a list. */
-const UPCOMING_WINDOW_MS = 14 * 86_400_000;
-/** How many entries the list shows before it becomes a wall rather than a glance. */
-const UPCOMING_MAX = 12;
 
 /** The registry glyph each kind is drawn with in the quick row. */
 const KIND_ICON: Record<CalendarEventKind, IconName> = {
@@ -116,6 +125,8 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 	 * page, a filter move — where a plain local would be reset by each of them.
 	 */
 	const panel = useSignal<LanePanel>("events");
+	const filterOpen = useSignal(false);
+	const laneRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		// The splitter owns the width; the lane mirrors its state only so the toggle glyph is right.
@@ -134,21 +145,32 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 	const page = calendarPage.value ?? props.initial;
 	const tz = page?.timezone ?? "UTC";
 	const all: CalendarEvent[] = [...(page?.events ?? []), ...importedEvents.value];
-	const shown = visibleEvents(all);
+	const listed = visibleEvents(all).sort((a, b) => a.start - b.start);
+	const selected = selectedEventId.value;
 
-	/*
-	 * The upcoming list is anchored on the FOCUSED instant, not on the wall clock.
-	 *
-	 * Anchoring it on "now" would leave the lane describing this afternoon while the grid beside it
-	 * showed a week in September — two regions answering the same question differently. It follows
-	 * the reader's own position instead, which is what makes it a companion to the grid rather than a
-	 * second, competing agenda.
-	 */
-	const from = focusedAt(page);
-	const upcoming = shown
-		.filter((e) => e.end > from && e.start < from + UPCOMING_WINDOW_MS)
-		.sort((a, b) => a.start - b.start)
-		.slice(0, UPCOMING_MAX);
+	/** Bring one row to the middle of the list — the list's own scroll, never the page's. */
+	function centreRow(id: string, behavior: ScrollBehavior): void {
+		const list = laneRef.current?.querySelector<HTMLElement>(".cal-lane__list");
+		const row = list?.querySelector<HTMLElement>(`[data-event-id="${CSS.escape(id)}"]`);
+		if (!list || !row) return;
+		list.scrollTo({ top: row.offsetTop - (list.clientHeight - row.offsetHeight) / 2, behavior });
+	}
+
+	// The list opens on what is next rather than on the oldest entry the page carries.
+	useEffect(() => {
+		const now = page?.now ?? Date.now();
+		const next = listed.find((e) => e.end > now);
+		if (next) centreRow(next.id, "auto");
+	}, []);
+
+	// A pick on the grid: bring the row into view and let it glow once.
+	const flashing = laneSpotlight.value;
+	useEffect(() => {
+		if (!flashing) return;
+		if (panel.peek() !== "events") panel.value = "events";
+		// A task, so a tab switch above has rendered the list before it is measured.
+		setTimeout(() => centreRow(flashing, scrollBehaviorFor()), 0);
+	}, [flashing]);
 
 	/*
 	 * The quick row offers only the kinds actually ON the page, so it never presents a filter that
@@ -180,13 +202,13 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 							<Icon name="calendar" />
 						</button>
 					</Tooltip>
-					<Tooltip content="Working hours and leave" placement="right">
+					<Tooltip content="Availability" placement="right">
 						<button
 							type="button"
 							class="cal-rail__item"
-							aria-label="Working hours and leave"
+							aria-label="Availability"
 							aria-haspopup="dialog"
-							onClick={() => openSettings("scheduling")}
+							onClick={() => void openStudio(tz)}
 						>
 							<Icon name="clock" />
 						</button>
@@ -214,7 +236,7 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 			</div>
 
 			{/* Expanded presentation. */}
-			<div class="cal-lane">
+			<div class="cal-lane" ref={laneRef}>
 				<LaneHead class="cal-lane__head">
 					<LaneBar>
 						<LaneSearch
@@ -224,6 +246,14 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 							icon={<Icon name="search" />}
 							onInput={(v) => (calendarQuery.value = v)}
 						/>
+						<LaneFilterPopover
+							open={filterOpen}
+							active={activeFilterCount()}
+							icon={<Icon name="filter" />}
+							onReset={resetFilters}
+						>
+							<CalendarFilterFacets events={all} tz={tz} />
+						</LaneFilterPopover>
 					</LaneBar>
 
 					{kindToggles.length > 1
@@ -257,23 +287,32 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 				{panel.value === "events"
 					? (
 						<LaneList label="Events" role="tabpanel" class="cal-lane__list">
-							{upcoming.length === 0
+							{listed.length === 0
 								? (
 									<LaneEmpty
-										title="Nothing coming up"
-										note="Nothing in the next fortnight from where you are looking."
+										title="No events"
+										note="Nothing matches the search and filters you have set."
 									/>
 								)
-								: upcoming.map((e) => <UpcomingRow key={e.id} event={e} tz={tz} />)}
+								: listed.map((e) => (
+									<UpcomingRow
+										key={e.id}
+										event={e}
+										tz={tz}
+										selected={e.id === selected}
+										flashing={e.id === flashing}
+									/>
+								))}
 						</LaneList>
 					)
 					: (
 						<div class="cal-lane__panel" role="tabpanel" aria-label="Availability">
+							<AvailabilityTemplates timezone={page?.availability?.timezone ?? tz} />
 							{page?.availability
 								? (
 									<AvailabilityBlock
 										availability={page.availability}
-										onConfigure={() => openSettings("scheduling")}
+										onConfigure={() => void openStudio(page.availability?.timezone ?? tz)}
 									/>
 								)
 								: (
@@ -304,7 +343,14 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
  * recognisable in the grid. A masked block shows its privacy-safe status instead of a title, exactly
  * as it does everywhere else — the lane is not a way around the projection.
  */
-function UpcomingRow({ event, tz }: { event: CalendarEvent; tz: string }): JSX.Element {
+function UpcomingRow(
+	{ event, tz, selected, flashing }: {
+		event: CalendarEvent;
+		tz: string;
+		selected: boolean;
+		flashing: boolean;
+	},
+): JSX.Element {
 	const title = event.masked
 		? event.status === "available"
 			? "Available"
@@ -343,9 +389,26 @@ function UpcomingRow({ event, tz }: { event: CalendarEvent; tz: string }): JSX.E
 		</span>
 	);
 
+	/*
+	 * The row is a PICK, not a link: it opens the entry beside the grid and moves the grid onto it.
+	 * Where the entry lives (its engagement, `href`) is one step further, from the details it opens.
+	 */
 	return (
-		<div class="cal-up" data-kind={event.kind}>
-			{event.href ? <a class="cal-up__link" href={event.href}>{row}</a> : row}
+		<div
+			class="cal-up"
+			data-kind={event.kind}
+			data-event-id={event.id}
+			data-selected={selected ? "true" : undefined}
+			data-flash={flashing ? "true" : undefined}
+		>
+			<button
+				type="button"
+				class="cal-up__link"
+				aria-current={selected ? "true" : undefined}
+				onClick={() => selectEvent(event, "list")}
+			>
+				{row}
+			</button>
 			{marks.length > 0
 				? (
 					<span class="cal-up__sources" aria-hidden="true">

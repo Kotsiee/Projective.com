@@ -195,6 +195,8 @@ export function blankEvent(
 		start: range.start,
 		end: range.end,
 		...(range.allDay ? { allDay: true } : {}),
+		// Whoever composes an entry hosts it, so it stays theirs to edit and delete after it is saved.
+		viewerIsHost: true,
 	};
 }
 

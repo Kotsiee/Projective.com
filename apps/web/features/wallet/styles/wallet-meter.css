@@ -14,13 +14,23 @@
  */
 
 .wlt-alloc {
-	gap: var(--space-3);
+	gap: var(--space-7);
 }
 
-/* The meter's heading sits on the sheet's translucent rim, so it takes the ink the veil was computed
-   for rather than `--text-secondary`. */
-.wlt-alloc .wlt-section__title {
-	color: var(--on-surface-variant);
+/* Each row: its track, then its keys centred beneath it. */
+.wlt-alloc__row {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+/* A secondary row says what it divides, in the meta register — it is not the balance above it. */
+.wlt-alloc__caption {
+	margin: 0;
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+	text-align: center;
 }
 
 .wlt-alloc__bar {
@@ -101,32 +111,61 @@
 	}
 }
 
-/* #region Legend — a <dl>: each term with its figure and share beneath */
+/* #region Keys — a <dl>, centred under the track: a vertical pill beside the name over the figure */
 .wlt-alloc__legend {
 	margin: 0;
 	display: flex;
 	flex-wrap: wrap;
-	gap: var(--space-3) var(--space-7);
+	justify-content: center;
+	gap: var(--space-4) var(--space-7);
 }
 
 .wlt-alloc__item {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-px);
+	display: grid;
+	grid-template-columns: auto minmax(0, auto);
+	grid-template-rows: auto auto;
+	column-gap: var(--space-3);
+	row-gap: var(--space-px);
+	align-items: center;
 	min-inline-size: 0;
 }
 
-.wlt-alloc__dt {
+.wlt-alloc__item::before {
+	content: "";
+	grid-row: 1 / 3;
+	align-self: stretch;
+	inline-size: var(--space-1);
+	min-block-size: 2.25rem;
+	border-radius: var(--radius-full);
+	background: var(--wlt-alloc-fill);
+}
+
+/* Clearing's pill is hatched like its segment: the non-colour channel between the two teals. */
+.wlt-alloc__item[data-state="pending"]::before {
+	background: repeating-linear-gradient(
+		-45deg,
+		var(--wlt-fund-clearing) 0 var(--space-1),
+		var(--wlt-fund-clearing-soft) var(--space-1) calc(var(--space-1) * 2)
+	);
+}
+
+.wlt-alloc__label,
+.wlt-alloc__figure {
+	grid-column: 2;
 	margin: 0;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wlt-alloc__label {
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
 }
 
 .wlt-alloc__term {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	font-size: var(--text-sm);
-	line-height: var(--leading-snug);
-	color: var(--on-surface-variant);
 	border-radius: var(--radius-sm);
 	cursor: default;
 }
@@ -136,6 +175,18 @@
 	box-shadow: var(--focus-ring-shadow);
 }
 
+.wlt-alloc__figure {
+	font-size: var(--text-md);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+	font-variant-numeric: tabular-nums;
+}
+
+.wlt-alloc__figure .ui-money__amount {
+	font-weight: var(--fw-medium);
+}
+
+/* The popover's own state marks. */
 .wlt-alloc__dot {
 	flex: none;
 	inline-size: var(--pip-dot);
@@ -149,36 +200,18 @@
 	color: var(--wlt-alloc-fill);
 }
 
-/* A sliver's pip: the share is real but too thin to point at on the track, so the legend marks it. */
-.wlt-alloc__pip {
-	flex: none;
-	inline-size: var(--space-1);
-	block-size: var(--space-1);
-	border-radius: 50%;
-	background: var(--wlt-alloc-fill);
-	box-shadow: 0 0 0 var(--space-px) var(--surface), 0 0 0 calc(var(--space-px) * 2)
-		var(--wlt-alloc-fill);
-}
-
-.wlt-alloc__dd {
-	margin: 0;
-	display: inline-flex;
-	align-items: baseline;
-	gap: var(--space-2);
-	padding-inline-start: calc(var(--pip-dot) + var(--space-2));
-	color: var(--on-surface);
-}
-
-.wlt-alloc__pct {
-	font-size: var(--text-sm);
-	color: var(--text-secondary);
-	font-variant-numeric: tabular-nums;
-}
-
 .wlt-alloc__empty {
 	margin: 0;
 	font-size: var(--text-sm);
-	color: var(--on-surface-variant);
+	color: var(--text-secondary);
+	text-align: center;
+}
+
+/* A secondary row's parts: one neutral ramp, darkest for the largest, so no hue competes with the
+   fund states above. */
+.wlt-alloc__cell--part,
+.wlt-alloc__item--part {
+	--wlt-alloc-fill: color-mix(in oklab, var(--on-surface) var(--wlt-shade), var(--surface));
 }
 /* #endregion */
 

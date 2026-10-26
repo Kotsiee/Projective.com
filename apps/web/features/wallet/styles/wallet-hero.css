@@ -62,6 +62,45 @@
 }
 
 /*
+ * #region Tint from a team's or a business's picture (hero-tint.ts)
+ *
+ * The script writes the five `--wlt-aurora-*` stops onto the hero itself, clamped to the luminance its
+ * white ink needs. The four layer tokens are mixed from those stops HERE, on the hero, so they resolve
+ * against the tint rather than against the `:root` palette they would otherwise inherit computed; and
+ * the stops are registered colours, so a tint eases in rather than snapping, and drops the ease under
+ * either reduced-motion channel.
+ */
+@property --wlt-aurora-cyan { syntax: "<color>"; inherits: true; initial-value: transparent; }
+@property --wlt-aurora-cobalt { syntax: "<color>"; inherits: true; initial-value: transparent; }
+@property --wlt-aurora-violet { syntax: "<color>"; inherits: true; initial-value: transparent; }
+@property --wlt-aurora-indigo-deep { syntax: "<color>"; inherits: true; initial-value: transparent; }
+@property --wlt-aurora-base { syntax: "<color>"; inherits: true; initial-value: transparent; }
+
+.wlt-hero {
+	--wlt-hero-cyan: color-mix(in oklab, var(--wlt-aurora-cyan) 85%, transparent);
+	--wlt-hero-cobalt: color-mix(in oklab, var(--wlt-aurora-cobalt) 60%, transparent);
+	--wlt-hero-violet: color-mix(in oklab, var(--wlt-aurora-violet) 70%, transparent);
+	--wlt-hero-deep: var(--wlt-aurora-indigo-deep);
+	transition:
+		--wlt-aurora-cyan var(--dur-slow) var(--ease-standard),
+		--wlt-aurora-cobalt var(--dur-slow) var(--ease-standard),
+		--wlt-aurora-violet var(--dur-slow) var(--ease-standard),
+		--wlt-aurora-indigo-deep var(--dur-slow) var(--ease-standard),
+		--wlt-aurora-base var(--dur-slow) var(--ease-standard);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.wlt-hero {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .wlt-hero {
+	transition: none;
+}
+/* #endregion */
+
+/*
  * Pinned from the viewport top — its box now starts there — while the sheet slides over it. Only where
  * the viewport is tall enough for the whole hero: on a shorter one a pinned hero would hold its own
  * lower half, and the actions in it, permanently out of reach.

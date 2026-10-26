@@ -21,7 +21,8 @@ export interface PresetBarProps {
 // #endregion
 
 // #region Binding
-function BindingLine({ binding }: { binding: PresetBinding }): JSX.Element {
+/** The binding line: whose hours these are, with the actions the binding supplies. */
+export function BindingLine({ binding }: { binding: PresetBinding }): JSX.Element {
 	const linked = binding.mode === "linked";
 	const actions = linked
 		? [

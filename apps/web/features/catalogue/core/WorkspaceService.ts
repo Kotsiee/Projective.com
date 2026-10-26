@@ -1,6 +1,7 @@
 import type {
-	AvailabilityPreset,
+	ArchivePresetResult,
 	BindListingAvailability,
+	PresetListResult,
 	SavePresetInput,
 	SavePresetResult,
 } from "@projective/types/scheduling";
@@ -52,9 +53,14 @@ export const WorkspaceService = {
 		);
 	},
 
-	/** The seller's live availability presets: library presets first, then service forks. */
-	presets(): Promise<CatalogueResult<{ presets: AvailabilityPreset[] }>> {
-		return getCatalogue<{ presets: AvailabilityPreset[] }>("/api/scheduling/presets");
+	/** The seller's live availability presets (library first, then service forks) and who follows each. */
+	presets(): Promise<CatalogueResult<PresetListResult>> {
+		return getCatalogue<PresetListResult>("/api/scheduling/presets");
+	},
+
+	/** Archive a preset; the listings bound to it fall back to the default. */
+	archivePreset(id: string): Promise<CatalogueResult<ArchivePresetResult>> {
+		return postCatalogue<ArchivePresetResult>("/api/scheduling/presets/archive", { id });
 	},
 
 	/** Save a preset whole; it is compiled for the booking gate on the way. */

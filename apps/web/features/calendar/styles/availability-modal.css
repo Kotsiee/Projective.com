@@ -1,0 +1,38 @@
+/* AvailabilityModal — the overlay family's full-width tier, because three side-by-side panes do not
+   fit the default 48rem cap. The panes fill the body edge to edge and own their padding, so the body
+   gives none and never scrolls itself. */
+.ui-dialog__panel.av-modal {
+	max-inline-size: var(--overlay-w-full);
+}
+
+.av-modal .ui-dialog__body {
+	display: flex;
+	flex-direction: column;
+	padding: 0;
+	overflow: hidden;
+}
+
+.av-modal .ui-dialog__body > .ui-avsched-scope {
+	flex: 1 1 auto;
+	min-block-size: 0;
+}
+
+.av-modal__foot {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-2);
+	inline-size: 100%;
+}
+
+.av-modal__status {
+	margin: 0;
+	margin-inline-end: auto;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+/* Ghost actions in the footer read in the surface ink, not the brand teal. */
+.av-modal__foot .ui-button--text {
+	--btn-accent: var(--on-surface);
+}

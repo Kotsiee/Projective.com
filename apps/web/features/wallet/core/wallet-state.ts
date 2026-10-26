@@ -26,6 +26,21 @@ export const walletOverviewLive = signal<WalletOverview | null>(null);
  * other page that draws one; `null` until they pick.
  */
 export const walletFlowLive = signal<FlowPeriod | null>(null);
+
+/** The Transactions page's window and download, as the lane footer drives them. */
+export interface WalletLedgerTools {
+	period: FlowPeriod;
+	canExport: boolean;
+	choose: (next: FlowPeriod) => void;
+	/** Downloads the ledger as filtered; resolves with the refusal's sentence, or `null` once saved. */
+	exportCsv: () => Promise<string | null>;
+}
+
+/**
+ * The Transactions page's ledger tools, published by the page body once it has hydrated, so the
+ * lane footer's ruler and download act on the page's own filters; `null` until then.
+ */
+export const walletLedgerTools = signal<WalletLedgerTools | null>(null);
 // #endregion
 
 // #region Saved cards

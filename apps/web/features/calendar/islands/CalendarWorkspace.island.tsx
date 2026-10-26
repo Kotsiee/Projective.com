@@ -1,12 +1,14 @@
 import type { JSX } from "preact";
 import { useSignal, useSignalEffect } from "@preact/signals";
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import "../styles/calendar-page.css";
 import "../styles/calendar-chrome.css";
 import { Calendar } from "@projective/ui/calendar";
 import { Message } from "@projective/ui/feedback";
 import type { CalendarEvent, CalendarEventKind, SchedulePage } from "@projective/types/scheduling";
 import { LocalKeys } from "@web/utils/storage-keys.ts";
+import { AvailabilityModal } from "../components/AvailabilityModal.tsx";
+import { presetsSaved } from "@features/catalogue/core/availability-store.ts";
 import { EventModal } from "../components/EventModal.tsx";
 import { renderCalendarSource } from "../components/provider-marks.tsx";
 import { type EventMode, eventStack } from "../core/event-view.ts";
@@ -24,20 +26,31 @@ import { useCalendarComposer } from "../hooks/useCalendarComposer.ts";
 import {
 	calendarFocus,
 	calendarPage,
+	calendarPreset,
 	calendarView,
 	calendarZoom,
 	createRequest,
 	focusedAt,
+	gridSpotlight,
 	importedEvents,
 	persistCalendarView,
 	persistCalendarZoom,
+	removeRequest,
 	restoreCalendarView,
+	selectedEventId,
+	selectEvent,
 	sourceIsVisible,
 	timelineZoom,
 	visibleEvents,
 } from "../core/calendar-state.ts";
 
 /** What the personal agenda can create. */
+/** How long a refused create stays on screen before it clears itself. */
+const NOTICE_MS = 5_000;
+
+/** A new entry opens on the next half hour, never at a ragged minute. */
+const SLOT_MS = 30 * 60_000;
+
 const CREATE_KINDS: { value: CalendarEventKind; label: string }[] = [
 	{ value: "sync", label: "Meeting" },
 	{ value: "session", label: "Session" },
@@ -95,11 +108,30 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	/** The developer persona override, tracked so a flip moves the surface without a reload. */
 	const seam = useSignal<DevSeamState | null>(null);
 	const loadError = useSignal<string | null>(null);
+	/** A refused create, in the refusal's own words. */
+	const notice = useSignal<string | null>(null);
+	const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	/**
+	 * The surface's clock: the page's own `now`, advanced at wall rate since it was read — the same
+	 * frame the event modal reasons in (`useEventClock`), so the composer and the modal's Create can
+	 * never disagree about whether a slot is in the past.
+	 */
+	const clockOrigin = useRef({ page: props.initial?.now ?? 0, wall: Date.now() });
+	const clock = () =>
+		(clockOrigin.current.page || clockOrigin.current.wall) +
+		(Date.now() - clockOrigin.current.wall);
 
 	const composer = useCalendarComposer({
 		initial: props.initial?.events ?? [],
 		kind: "sync",
 		timezone: () => page.peek()?.timezone ?? "UTC",
+		now: clock,
+		onRefuse: (message) => {
+			notice.value = message;
+			if (noticeTimer.current !== null) clearTimeout(noticeTimer.current);
+			noticeTimer.current = setTimeout(() => (notice.value = null), NOTICE_MS);
+		},
 		onClose: () => {
 			const loc = globalThis.location;
 			if (loc && new URLSearchParams(loc.search).has(EVENT_PARAM)) {
@@ -111,9 +143,35 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 
 	/** Publish for the lane, the panel and the bands. One reader, one refetch, one answer. */
 	function publish(next: SchedulePage): void {
+		clockOrigin.current = { page: next.now, wall: Date.now() };
 		page.value = next;
 		events.value = next.events;
 		calendarPage.value = next;
+	}
+
+	/*
+	 * The session's own writes travel too. An entry created, moved or deleted here changes `events`,
+	 * not the fetched page, and the lane's list and the right panel read the page — so without this a
+	 * new entry was on the grid and nowhere in the list beside it, and a list pick could not find it.
+	 */
+	useSignalEffect(() => {
+		const list = events.value;
+		const current = page.peek();
+		if (current) calendarPage.value = { ...current, events: list };
+	});
+
+	/** A band asked for a delete (the right panel's Delete). */
+	useSignalEffect(() => {
+		const id = removeRequest.value;
+		if (!id) return;
+		removeRequest.value = null;
+		remove(id);
+	});
+
+	function remove(id: string): void {
+		composer.remove(id);
+		importedEvents.value = importedEvents.peek().filter((e) => e.id !== id);
+		if (selectedEventId.peek() === id) selectedEventId.value = null;
 	}
 
 	/**
@@ -151,12 +209,19 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		return subscribeDevSeam(apply);
 	}, []);
 
+	// A saved availability template re-mirrors the weekly hours the grid shades and the lane lists.
+	useSignalEffect(() => {
+		if (presetsSaved.value > 0) void load();
+	});
+
 	// The page is a module signal shared with four other trees, so it has to be released when this
 	// one goes: leaving the previous surface's agenda in it would let a later mount of the lane paint
 	// a week the grid is not showing.
 	useEffect(() => () => {
 		calendarPage.value = null;
+		selectedEventId.value = null;
 		eventStack.close();
+		if (noticeTimer.current !== null) clearTimeout(noticeTimer.current);
 	}, []);
 
 	/**
@@ -188,7 +253,9 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	/** A band asked for a blank entry (the footer's New event, or the lane rail's). */
 	useEffect(() => {
 		if (createRequest.value === 0) return;
-		const start = focusedAt(page.value);
+		// On the reader's focus, but never behind the clock: a blank entry in the past is one that
+		// could only be refused.
+		const start = Math.max(focusedAt(page.value), Math.ceil(clock() / SLOT_MS) * SLOT_MS);
 		composer.expandCreate({ start, end: start + 3_600_000 }, "");
 	}, [createRequest.value]);
 
@@ -231,10 +298,21 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 					</Message>
 				)
 				: null}
+			{notice.value
+				? (
+					<Message severity="warning" size="sm" class="cal-surface__notice">
+						{notice.value}
+					</Message>
+				)
+				: null}
 			<Calendar
 				onFrame={frameProbe()}
 				events={shown}
-				availability={p.availability}
+				// "Hide availability" withdraws the working-hours shading with the open slots.
+				availability={calendarPreset.value === "events" ? undefined : p.availability}
+				spotlight={gridSpotlight}
+				// The entry opens beside the grid (panel or modal), so the engine's popover would repeat it.
+				directOpen
 				timezone={p.timezone}
 				view={calendarView.value}
 				zoom={calendarZoom}
@@ -258,7 +336,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 				onQuickCreate={composer.quickCreate}
 				onExpandCreate={composer.expandCreate}
 				onMoveEvent={(ev, range) => composer.moveEvent(ev as CalendarEvent, range)}
-				onOpenEvent={(ev) => composer.openEvent(ev as CalendarEvent)}
+				onOpenEvent={(ev) => selectEvent(ev as CalendarEvent, "grid")}
 			/>
 
 			{open && framed
@@ -286,9 +364,13 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 							 */
 						}}
 						onServerUpdate={composer.serverUpdate}
+						onDelete={(ev) => remove(ev.id)}
 					/>
 				)
 				: null}
+
+			{/* One mount for the lane's and the header band's availability controls. */}
+			<AvailabilityModal />
 		</div>
 	);
 }

@@ -31,29 +31,48 @@
 }
 
 /*
- * An account tile follows the card contract (§A.3 · §B.9): a `--surface-1` tonal step, the card rhythm's
- * padding and radius, and no resting border — the tone is the boundary. A tile that is a link lifts on
- * hover; the tax pot is static content and does not. The only contour is the current account's, and
- * only because the tile is a control whose state it names.
+ * An account as a physical card (ID-1 proportions): a solid neutral ground, a soft resting shadow, no
+ * outline and no pattern. The current account is the inverted card — `--on-surface` ground, `--surface`
+ * ink — so its state reads by tone alone; every other card sits on `--surface-2`. Its secondary ink is
+ * a SOLID mix of the card's own two tones, never a translucent one. A card that is a link lifts on
+ * hover and compresses by scale on press; the tax pot is static and does neither.
  */
 .wlt-account {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-	inline-size: 12.5rem;
-	block-size: 100%;
-	padding: var(--card-pad);
-	border: 1px solid transparent;
-	border-radius: var(--card-radius);
-	background: var(--surface-1);
-	color: var(--on-surface);
+	--wlt-card-ground: var(--surface-2);
+	--wlt-card-ink: var(--on-surface);
+	--wlt-card-ink-soft: var(--on-surface-variant);
+	--wlt-card-mark: var(--surface-3);
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	grid-template-rows: auto auto 1fr auto auto;
+	grid-template-areas:
+		"name mark"
+		"meta mark"
+		". ."
+		"unit unit"
+		"amount code";
+	column-gap: var(--space-3);
+	inline-size: 14rem;
+	aspect-ratio: 1.586;
+	padding: var(--space-4);
+	border-radius: var(--radius-lg);
+	background: var(--wlt-card-ground);
+	color: var(--wlt-card-ink);
 	text-decoration: none;
+	box-shadow: var(--elevation-low);
 	transform: translateY(0) scale(1);
 	transition:
 		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
 		box-shadow var(--dur-fast) var(--ease-standard),
 		transform var(--dur-fast) var(--ease-standard);
+}
+
+.wlt-account[aria-current="page"] {
+	--wlt-card-ground: var(--on-surface);
+	--wlt-card-ink: var(--surface);
+	--wlt-card-ink-soft: color-mix(in srgb, var(--surface) 72%, var(--on-surface));
+	--wlt-card-mark: color-mix(in srgb, var(--surface) 16%, var(--on-surface));
 }
 
 @media (hover: hover) {
@@ -69,72 +88,71 @@ a.wlt-account:active {
 	transition-duration: var(--dur-press);
 }
 
-.wlt-account[aria-current="page"] {
-	border-color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 7%, var(--surface-1));
-}
-
-.wlt-account__head {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	margin-block-end: var(--space-2);
-}
-
-.wlt-account__all {
-	display: grid;
-	place-items: center;
-	inline-size: 2rem;
-	block-size: 2rem;
-	border-radius: 50%;
-	background: var(--surface-2);
-	color: var(--on-surface-variant);
-}
-
-.wlt-account__current {
-	inline-size: var(--pip-dot);
-	block-size: var(--pip-dot);
-	border-radius: 50%;
-	background: var(--primary);
-}
-
 .wlt-account__name,
 .wlt-account__meta {
+	min-inline-size: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
 .wlt-account__name {
+	grid-area: name;
 	font-size: var(--text-md);
 	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
 }
 
 .wlt-account__meta {
+	grid-area: meta;
 	font-size: var(--text-xs);
-	color: var(--text-secondary);
+	line-height: var(--leading-snug);
+	color: var(--wlt-card-ink-soft);
 }
 
-.wlt-account__foot {
-	display: flex;
-	align-items: baseline;
-	gap: var(--space-1);
-	margin-block-start: auto;
-	padding-block-start: var(--space-2);
-	min-inline-size: 0;
+.wlt-account__mark {
+	grid-area: mark;
+	align-self: start;
 }
 
-.wlt-account__amount {
-	font-size: var(--text-base);
+.wlt-account__all {
+	display: grid;
+	place-items: center;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	border-radius: 50%;
+	background: var(--wlt-card-mark);
+	color: var(--wlt-card-ink);
 }
 
 .wlt-account__unit {
+	grid-area: unit;
 	font-size: var(--text-xs);
-	color: var(--text-secondary);
+	line-height: var(--leading-snug);
+	color: var(--wlt-card-ink-soft);
+}
+
+.wlt-account__amount {
+	grid-area: amount;
+	min-inline-size: 0;
+	font-size: var(--text-lg);
+	line-height: var(--leading-tight);
+	font-variant-numeric: tabular-nums;
 }
 
 .wlt-account__amount .ui-money__amount {
 	font-weight: var(--fw-medium);
+	color: var(--wlt-card-ink);
+}
+
+.wlt-account__code {
+	grid-area: code;
+	align-self: end;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	line-height: var(--leading-tight);
+	color: var(--wlt-card-ink-soft);
 }
 
 .wlt-account--pot {
@@ -143,42 +161,19 @@ a.wlt-account:active {
 
 @container wlt-sheet (max-width: 30rem) {
 	.wlt-account {
-		inline-size: 10.5rem;
-		padding: var(--card-pad-tight);
+		inline-size: 12rem;
+		padding: var(--space-3);
 	}
 }
 
 /*
- * #region Glass popovers — the scope switcher, the More menu and the hero's currency list
+ * #region Anchored popovers — the scope switcher, the More menu and the hero's currency list
  *
- * Anchored panels over live content (§B.4.3's floating-panel case): the package panel's opaque fill
- * gives way to a `--glass-veil-panel` veil blurred on a `::before` underlay — never on the panel, which
- * would become the containing block for anything fixed it renders. The panel keeps one hairline and a
- * larger radius; its rows hover as soft pills. Secondary ink on the veil is `--on-surface-variant`,
- * because `--text-secondary` does not clear a veil's worst-case backdrop.
+ * The package panel's own opaque surface with one hairline and a larger radius; its rows hover as soft
+ * pills on a solid tonal step, never a translucent wash.
  */
 .ui-popover.wlt-glass-pop {
-	background: transparent;
-	border: var(--hairline);
 	border-radius: var(--radius-xl);
-}
-
-.ui-popover.wlt-glass-pop::before {
-	content: "";
-	position: absolute;
-	inset: 0;
-	z-index: -1;
-	border-radius: inherit;
-	background: color-mix(in srgb, var(--surface) var(--glass-veil-panel), transparent);
-	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	pointer-events: none;
-}
-
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-	.ui-popover.wlt-glass-pop::before {
-		background: var(--surface);
-	}
 }
 
 .ui-popover.wlt-glass-pop .ui-popover__content {
@@ -212,7 +207,7 @@ a.wlt-account:active {
 }
 
 .wlt-scope-menu__item:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	background: var(--surface-2);
 }
 
 .wlt-scope-menu__item:active {
@@ -221,7 +216,7 @@ a.wlt-account:active {
 }
 
 .wlt-scope-menu__item[aria-current="page"] {
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	background: var(--surface-2);
 }
 
 .wlt-scope-menu__all {
@@ -230,7 +225,7 @@ a.wlt-account:active {
 	inline-size: 1.75rem;
 	block-size: 1.75rem;
 	border-radius: 50%;
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	background: var(--surface-2);
 	color: var(--on-surface-variant);
 }
 
@@ -262,7 +257,7 @@ a.wlt-account:active {
 }
 
 .wlt-scope-menu__check {
-	color: var(--primary);
+	color: var(--on-surface);
 }
 
 .wlt-menu {
@@ -292,7 +287,7 @@ a.wlt-account:active {
 }
 
 .wlt-menu__item:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	background: var(--surface-2);
 }
 
 .wlt-menu__item:active {

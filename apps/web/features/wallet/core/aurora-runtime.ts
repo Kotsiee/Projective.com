@@ -404,6 +404,15 @@ export function createAuroraRuntime(options: AuroraRuntimeOptions): AuroraRuntim
 	};
 	const themeObserver = new MutationObserver(onThemeMutation);
 	themeObserver.observe(root, { attributes: true, attributeFilter: THEME_ATTRIBUTES });
+	// A team's or a business's tint is written on the hero itself (hero-tint.ts) and eases in, so the
+	// palette is read again when it lands and once more when its transition settles.
+	themeObserver.observe(host, { attributes: true, attributeFilter: ["style"] });
+	const onTintSettled = (event: TransitionEvent) => {
+		if (event.target !== host || !event.propertyName.startsWith("--wlt-aurora-")) return;
+		colorsDirty = true;
+		evaluate();
+	};
+	host.addEventListener("transitionend", onTintSettled);
 
 	const visibilityObserver = typeof IntersectionObserver === "function"
 		? new IntersectionObserver((entries) => {
@@ -439,6 +448,7 @@ export function createAuroraRuntime(options: AuroraRuntimeOptions): AuroraRuntim
 			globalThis.removeEventListener("load", settle);
 			cancelSettle?.();
 			themeObserver.disconnect();
+			host.removeEventListener("transitionend", onTintSettled);
 			visibilityObserver?.disconnect();
 			sizeObserver?.disconnect();
 			motionQuery?.removeEventListener?.("change", evaluate);

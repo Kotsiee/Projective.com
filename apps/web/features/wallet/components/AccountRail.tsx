@@ -6,7 +6,7 @@ import { Icon } from "@projective/ui/icons";
 import { Avatar } from "@projective/ui/display";
 import { MoneyView } from "@projective/ui/display/money";
 import type { WalletPotView, WalletRef, WalletSwitcher } from "../types/wallet-types.ts";
-import { walletHref, walletParam } from "../core/wallet-model.ts";
+import { heldIn, walletHref, walletParam } from "../core/wallet-model.ts";
 import { accountKind, showsAggregate } from "./WalletHero.tsx";
 import { WalletGlyph } from "./wallet-glyphs.tsx";
 import { personFallbackImage } from "@web/components/UserAvatar.tsx";
@@ -20,6 +20,12 @@ export interface AccountRailProps {
 	reducedMotion: () => boolean;
 }
 
+/**
+ * An account as a physical card: the name and the wallet's mark across the top, who it belongs to
+ * beneath, and the Available figure over the held currency's code along the bottom, like a card's
+ * number and network. Solid neutral tones only — the current account is the inverted card, so it is
+ * told apart by tone and never by an outline.
+ */
 function AccountTile(
 	{ account, display, current }: { account: WalletRef; display: string; current: boolean },
 ) {
@@ -31,7 +37,10 @@ function AccountTile(
 			href={walletHref(param, display)}
 			aria-current={current ? "page" : undefined}
 		>
-			<span class="wlt-account__head" aria-hidden="true">
+			<span class="wlt-account__name">
+				{account.scope === "personal" ? "Personal" : account.name}
+			</span>
+			<span class="wlt-account__mark" aria-hidden="true">
 				{aggregate
 					? (
 						<span class="wlt-account__all">
@@ -43,18 +52,15 @@ function AccountTile(
 							image={account.avatar ?? undefined}
 							fallbackImage={personFallbackImage(account.scope)}
 							label={account.name}
-							size={32}
+							size={28}
 						/>
 					)}
-				{current && <span class="wlt-account__current" />}
-			</span>
-			<span class="wlt-account__name">
-				{account.scope === "personal" ? "Personal" : account.name}
 			</span>
 			<span class="wlt-account__meta">{aggregate ? "Read-only total" : accountKind(account)}</span>
-			<span class="wlt-account__foot">
-				<MoneyView value={account.available} size="body" hideOrigin class="wlt-account__amount" />
-				<span class="wlt-account__unit">available</span>
+			<span class="wlt-account__unit">Available</span>
+			<MoneyView value={account.available} size="body" hideOrigin class="wlt-account__amount" />
+			<span class="wlt-account__code">
+				{aggregate ? display : heldIn(account.available).currency}
 			</span>
 		</a>
 	);
@@ -64,18 +70,18 @@ function PotTile({ pot }: { pot: WalletPotView }): JSX.Element {
 	const share = pot.autoAllocateBp / 100;
 	return (
 		<div class="wlt-account wlt-account--pot">
-			<span class="wlt-account__head" aria-hidden="true">
+			<span class="wlt-account__name">{pot.name}</span>
+			<span class="wlt-account__mark" aria-hidden="true">
 				<span class="wlt-account__all">
 					<WalletGlyph name="escrow" size="sm" />
 				</span>
 			</span>
-			<span class="wlt-account__name">{pot.name}</span>
 			<span class="wlt-account__meta">
 				{share > 0 ? `Sets aside ${share.toLocaleString("en-GB")}% of income` : "Set aside"}
 			</span>
-			<span class="wlt-account__foot">
-				<MoneyView value={pot.balance} size="body" hideOrigin class="wlt-account__amount" />
-			</span>
+			<span class="wlt-account__unit">Balance</span>
+			<MoneyView value={pot.balance} size="body" hideOrigin class="wlt-account__amount" />
+			<span class="wlt-account__code">{heldIn(pot.balance).currency}</span>
 		</div>
 	);
 }

@@ -10,6 +10,10 @@ const PARTS = [
 	"RuleEditor.tsx",
 	"Issues.tsx",
 	"ShortcutSheet.tsx",
+	"Studio.tsx",
+	"Library.tsx",
+	"Details.tsx",
+	"CalendarView.tsx",
 ];
 const INTERACTIVE = [
 	"button",

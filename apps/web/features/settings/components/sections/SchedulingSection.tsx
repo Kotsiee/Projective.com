@@ -1,14 +1,16 @@
 import type { JSX } from "preact";
-import { useSignal } from "@preact/signals";
-import { NumberInput, Select, ToggleSwitch } from "@projective/ui/fields";
+import { useSignal, useSignalEffect } from "@preact/signals";
+import { Button, NumberInput, Select, ToggleSwitch } from "@projective/ui/fields";
 import { InlineNotice } from "@projective/ui/feedback";
+import { Icon } from "@projective/ui/icons";
 import type { OwnerAvailability, OwnerCallSettings } from "@projective/types/scheduling";
 import type { SettingsSectionDataOf } from "@projective/types/settings";
 import { ProfileService } from "@features/profile/core/ProfileService.ts";
+import { openStudio, presetsSaved } from "@features/catalogue/core/availability-store.ts";
+import { AvailabilityModal } from "@features/calendar/components/AvailabilityModal.tsx";
 import {
 	FormFooter,
 	IDLE,
-	OutLink,
 	type SaveState,
 	SectionHead,
 	SettingsBlock,
@@ -24,8 +26,9 @@ import { sectionMeta } from "../../core/settings-registry.ts";
  * call's length, weekly cap and per-person cooldown, and the buffers and notice around every call.
  *
  * A `page-only` section — the contextual modal shows its status and escalates here. The weekly hours
- * themselves are a matrix and stay in the Availability editor, which this page summarises and links
- * to. Saved through the editor's own route (`PUT /api/profile/[handle]/availability`, one
+ * come from the default availability template, which this page summarises and opens in the shared
+ * availability modal; a template save re-reads them, so a later save here never writes stale hours
+ * back. Saved through the editor's own route (`PUT /api/profile/[handle]/availability`, one
  * transaction in `scheduling.save_owner_availability`): the bands and timezone travel back exactly as
  * they were read, only `call` changes.
  */
@@ -148,6 +151,13 @@ export function SchedulingSection(props: SchedulingSectionProps): JSX.Element {
 	const a = availability.value;
 	const editorHref = handle ? `/${handle}/edit/availability` : "/settings";
 
+	useSignalEffect(() => {
+		if (presetsSaved.value === 0 || !handle) return;
+		void ProfileService.availability(handle).then((res) => {
+			if (res.ok && res.data) availability.value = res.data.availability;
+		});
+	});
+
 	if (!a || !handle) {
 		return (
 			<div class="stg-section">
@@ -199,7 +209,18 @@ export function SchedulingSection(props: SchedulingSectionProps): JSX.Element {
 						</ul>
 					)
 					: <p class="stg-note">You haven't set any working hours yet.</p>}
-				<OutLink href={editorHref}>Edit working hours</OutLink>
+				<div>
+					<Button
+						label="Availability templates"
+						severity="neutral"
+						variant="outlined"
+						size="sm"
+						icon={<Icon name="calendar" size="xs" />}
+						aria-haspopup="dialog"
+						onClick={() => void openStudio(a.timezone)}
+					/>
+				</div>
+				<AvailabilityModal />
 			</SettingsBlock>
 
 			{c === null

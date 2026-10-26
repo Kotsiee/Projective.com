@@ -116,6 +116,7 @@ export type SchedulerAction =
 	| { type: "addRule" }
 	| { type: "upsertRule"; rule: RuleDraft }
 	| { type: "deleteRule"; ruleId: string; name?: string }
+	| { type: "setDetails"; name?: string; isDefault?: boolean }
 	| { type: "setLayer"; layer: Layer }
 	| { type: "undo" }
 	| { type: "redo" }
@@ -531,6 +532,12 @@ export function reduce(state: SchedulerState, action: SchedulerAction): Schedule
 			const rules = state.draft.rules.filter((r) => r.id !== action.ruleId);
 			const next = selectionOk(withDraft(state, { ...state.draft, rules }));
 			return say(next, `Deleted ${action.name ? `rule “${action.name}”` : "the rule"}.`);
+		}
+		case "setDetails": {
+			const name = action.name ?? state.draft.name;
+			const isDefault = action.isDefault ?? state.draft.isDefault;
+			if (name === state.draft.name && isDefault === state.draft.isDefault) return state;
+			return withDraft(state, { ...state.draft, name, isDefault });
 		}
 		case "setLayer":
 			if (state.layer === action.layer) return state;

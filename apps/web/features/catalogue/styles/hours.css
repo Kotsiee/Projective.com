@@ -53,17 +53,3 @@
 	overflow-wrap: anywhere;
 }
 
-.cat-hours__dialog-foot {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--space-3);
-	inline-size: 100%;
-}
-
-.cat-hours__consequence {
-	margin: 0;
-	color: var(--text-secondary);
-	font-size: var(--text-sm);
-}

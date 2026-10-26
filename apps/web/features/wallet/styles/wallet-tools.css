@@ -1,7 +1,7 @@
 /*
  * The wallet's two floating controls: the range ruler, pinned under the top bar while the page scrolls
  * beneath it, and the hero's corner tools (display currency · settings). The ruler floats over both the
- * aurora and the sheet, so it carries its own glass ground and a slight drop shadow; the tools only ever
+ * aurora and the sheet, so it carries its own solid ground and a slight drop shadow; the tools only ever
  * sit on the aurora, so they take the hero's glass and ink.
  */
 
@@ -65,22 +65,14 @@
 	pointer-events: auto;
 }
 
-/* The ruler's glass ground, on an underlay so the blur never re-bases a fixed overlay (§B.4.3). */
+/* The ruler's ground, on an underlay beneath the sliding thumb: a solid tonal step, never glass. */
 .wlt-ruler::before {
 	content: "";
 	position: absolute;
 	inset: 0;
 	z-index: -2;
 	border-radius: inherit;
-	background: var(--wlt-ruler-ground);
-	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-}
-
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-	.wlt-ruler::before {
-		background: var(--surface-2);
-	}
+	background: var(--surface-2);
 }
 
 [dir="rtl"] .wlt-ruler {
@@ -297,7 +289,7 @@
 }
 
 .wlt-currency__item:hover:not(:disabled) {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	background: var(--surface-2);
 }
 
 .wlt-currency__item:active:not(:disabled) {
@@ -306,7 +298,7 @@
 }
 
 .wlt-currency__item[aria-checked="true"] {
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	background: var(--surface-2);
 }
 
 .wlt-currency__item:disabled {
@@ -314,7 +306,7 @@
 }
 
 .wlt-currency__check {
-	color: var(--primary);
+	color: var(--on-surface);
 }
 /* #endregion */
 

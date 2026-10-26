@@ -7,7 +7,7 @@ import {
 	SCHEDULE_TEMPLATES,
 } from "@projective/types/scheduling";
 import type { ReadActor } from "../read-actor.ts";
-import { savePreset } from "./live-presets.ts";
+import { listPresets, savePreset } from "./live-presets.ts";
 import { bindListing } from "./live-preset-binding.ts";
 import { compilePreset } from "./live-occurrences.ts";
 import { presetPayload } from "./preset-model.ts";
@@ -201,6 +201,59 @@ Deno.test("compile: an archived preset is not compiled", async () => {
 	const { client, calls } = stack(s);
 	assertEquals(await compilePreset("gone", { now: NOW, db: client }), null);
 	assertEquals(calls.length, 0);
+});
+// #endregion
+
+// #region listPresets
+Deno.test("listPresets: usage names the timed services on each preset and the owner on the default", async () => {
+	const s = store();
+	const { deps } = stack(s);
+	const doors = fakePresetDoors();
+	const general = doors.save_availability_preset({
+		p_schedule: SCHEDULE,
+		p_preset: presetPayload({
+			...input([rule({ id: "rule-1" })]),
+			name: "General",
+			isDefault: true,
+		}),
+	}, s).data as string;
+	const evenings = doors.save_availability_preset({
+		p_schedule: SCHEDULE,
+		p_preset: presetPayload({ ...input([rule({ id: "rule-2" })]), name: "Evenings" }),
+	}, s).data as string;
+	const bp = { freelancer_profile_id: OWNER.userId, owner_team_id: null };
+	s.service_blueprints = [
+		{
+			...bp,
+			id: "bp-1",
+			title: "Coaching",
+			delivery_model: "session",
+			availability_preset_id: null,
+		},
+		{
+			...bp,
+			id: "bp-2",
+			title: "Workshop",
+			delivery_model: "group_session",
+			availability_preset_id: evenings,
+		},
+		{ ...bp, id: "bp-3", title: "Logo", delivery_model: "one_off", availability_preset_id: null },
+		{
+			...bp,
+			id: "bp-4",
+			title: "Team's",
+			delivery_model: "session",
+			owner_team_id: "t-1",
+			availability_preset_id: null,
+		},
+	];
+
+	const result = await listPresets(OWNER, deps);
+	assert(result.ok, result.message);
+	assertEquals(result.data?.usage, {
+		[general]: [{ kind: "profile", name: "" }, { kind: "service", name: "Coaching" }],
+		[evenings]: [{ kind: "service", name: "Workshop" }],
+	});
 });
 // #endregion
 

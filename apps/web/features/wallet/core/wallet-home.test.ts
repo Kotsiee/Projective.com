@@ -13,6 +13,7 @@ import {
 import {
 	defaultPeriodFor,
 	FLOW_PERIODS,
+	hasTrend,
 	heldIn,
 	isElsewhere,
 	ledgerApiParams,
@@ -481,4 +482,18 @@ Deno.test("a pathname names a wallet page, or none", () => {
 	assertEquals(viewOfPath("/wallet/"), "overview");
 	assertEquals(viewOfPath("/wallet/analytics"), "analytics");
 	assertEquals(viewOfPath("/wallet/payouts"), null);
+});
+
+Deno.test("a cash-flow trend needs money moving in at least two buckets", () => {
+	const point = (inMinor: number, outMinor: number) => ({
+		label: "x",
+		start: "2026-10-01",
+		inMinor,
+		outMinor,
+		netMinor: inMinor - outMinor,
+	});
+	assertFalse(hasTrend([]));
+	assertFalse(hasTrend([point(0, 0), point(0, 0), point(0, 0)]));
+	assertFalse(hasTrend([point(0, 0), point(5000, 0), point(0, 0)]));
+	assert(hasTrend([point(5000, 0), point(0, 0), point(0, 1200)]));
 });

@@ -1,6 +1,7 @@
 import type { UserContext } from "@projective/types/auth";
 import type {
 	ActivityRange,
+	FlowPoint,
 	FundState,
 	LedgerKind,
 	LedgerSettlement,
@@ -228,6 +229,14 @@ export function periodPhrase(period: FlowPeriod): string {
 /** Whether a period's chart slices span more than a day, so a bar is read as "from" its start date. */
 export function periodSlicesAreSpans(period: FlowPeriod): boolean {
 	return period !== "7d" && period !== "1m";
+}
+
+/**
+ * Whether a cash-flow series can be drawn as a trend: money moved in at least two of its buckets.
+ * Fewer is a flat line or a single spike, which reads as a trend it is not.
+ */
+export function hasTrend(points: readonly FlowPoint[]): boolean {
+	return points.filter((p) => p.inMinor > 0 || p.outMinor > 0).length >= 2;
 }
 
 /**

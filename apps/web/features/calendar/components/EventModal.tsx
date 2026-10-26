@@ -15,7 +15,7 @@ import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks"
 import { Splitter, SplitterPanel } from "@projective/ui/layout";
 import { MoneyView } from "@projective/ui/display/money";
 import { Button, InlineEdit, InputText } from "@projective/ui/fields";
-import { Message, Tooltip } from "@projective/ui/feedback";
+import { ConfirmPopup, Message, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { calendarTime } from "@projective/ui/calendar";
 import type {
@@ -25,7 +25,7 @@ import type {
 	RsvpResponse,
 	SchedulingTarget,
 } from "@projective/types/scheduling";
-import { eventLiveStatus } from "@projective/types/scheduling";
+import { createRefusal, eventLiveStatus } from "@projective/types/scheduling";
 import { ScheduleService } from "../core/ScheduleService.ts";
 import type { EventAccess } from "../core/event-access.ts";
 import {
@@ -129,6 +129,11 @@ export interface EventModalProps {
 	onBook: (event: CalendarEvent) => void;
 	/** A server write returned a refreshed event — replace it on the grid. */
 	onServerUpdate: (event: CalendarEvent) => void;
+	/**
+	 * Take the entry off the calendar. Offered to its host only, past or not — an entry the reader
+	 * created stays theirs to remove after it has happened. Absent -> no Delete is drawn.
+	 */
+	onDelete?: (event: CalendarEvent) => void;
 }
 
 const tabId = (t: EventTab) => `evm-tab-${t}`;
@@ -251,6 +256,8 @@ export function EventModal(props: EventModalProps): JSX.Element {
 	const live = eventLiveStatus(nowMs, event.start, event.end);
 	const money = eventMoney(event, access);
 	const view = rescheduleView(event, nowMs);
+	/** A new entry may not start in the past; editing an existing one is never gated by time. */
+	const pastRefusal = creating ? createRefusal(nowMs, event) : null;
 
 	const panelKind = panelFor(activeTab);
 	const sidePanel = panelKind === "attendees" && showPanel.value && party && event.roster
@@ -272,7 +279,7 @@ export function EventModal(props: EventModalProps): JSX.Element {
 	function commit(): void {
 		if (!canEdit) return;
 		const title = draft.value.title.trim();
-		if (creating && !title) return;
+		if (creating && (!title || pastRefusal)) return;
 		const committed: CalendarEvent = { ...draft.value, title: title || draft.value.title };
 		draft.value = committed;
 		baseline.value = eventFingerprint(committed);
@@ -666,10 +673,10 @@ export function EventModal(props: EventModalProps): JSX.Element {
 								: null}
 						</div>
 
-						{refusal.value
+						{refusal.value || pastRefusal
 							? (
 								<Message severity="warning" class="evm__refusal">
-									{refusal.value}
+									{refusal.value ?? pastRefusal}
 								</Message>
 							)
 							: <span class="evm__gate evm__gate--spacer" />}
@@ -718,7 +725,7 @@ export function EventModal(props: EventModalProps): JSX.Element {
 										<Button
 											variant="filled"
 											size="sm"
-											disabled={!event.title.trim()}
+											disabled={!event.title.trim() || !!pastRefusal}
 											onClick={commit}
 										>
 											Create
@@ -731,6 +738,33 @@ export function EventModal(props: EventModalProps): JSX.Element {
 										<Button variant="text" size="sm" onClick={discard}>Discard changes</Button>
 										<Button variant="filled" size="sm" onClick={commit}>Save changes</Button>
 									</>
+								)
+								: null}
+
+							{!creating && canEdit && props.onDelete
+								? (
+									<ConfirmPopup
+										label="Delete this event"
+										message="Delete this event from your calendar?"
+										acceptLabel="Delete"
+										rejectLabel="Keep"
+										acceptSeverity="danger"
+										placement="top-end"
+										onAccept={() => props.onDelete?.(event)}
+										trigger={(api) => (
+											<Button
+												triggerRef={api.ref}
+												variant="text"
+												severity="danger"
+												size="sm"
+												aria-expanded={api.expanded ? "true" : "false"}
+												aria-controls={api.panelId}
+												onClick={api.toggle}
+											>
+												Delete
+											</Button>
+										)}
+									/>
 								)
 								: null}
 						</div>

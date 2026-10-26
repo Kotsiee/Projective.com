@@ -2,14 +2,13 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import "../styles/calendar-chrome.css";
-import { CALENDAR_KIND_LABEL, calendarTime } from "@projective/ui/calendar";
+import { calendarTime } from "@projective/ui/calendar";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { useMediaQuery } from "@projective/ui/navigation";
 import type { SchedulePage } from "@projective/types/scheduling";
-import { integrationLabel } from "@projective/types/scheduling";
-import { ProviderMark } from "../components/provider-marks.tsx";
-import { openSettings } from "@features/settings/core/settings-bridge.ts";
+import { CalendarFilterFacets } from "../components/CalendarFilterFacets.tsx";
+import { openStudio } from "@features/catalogue/core/availability-store.ts";
 import {
 	CONTEXT_PANEL_INFLOW_QUERY,
 	contextDrawerOpen,
@@ -17,21 +16,17 @@ import {
 	toggleContextPanel,
 } from "@web/features/shell/core/context-panel-state.ts";
 import {
+	activeFilterCount,
 	CALENDAR_PANEL_ID,
 	calendarFocus,
-	focusedAt,
 	calendarPage,
 	calendarQuery,
 	calendarView,
 	filtersEngaged,
-	hiddenKinds,
-	hiddenSources,
+	focusedAt,
 	importedEvents,
-	kindsOnPage,
 	periodLabelFor,
-	sourcesOnPage,
-	toggleKind,
-	toggleSource,
+	resetFilters,
 } from "../core/calendar-state.ts";
 
 /**
@@ -75,8 +70,6 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 
 	const page = calendarPage.value ?? props.initial;
 	const events = [...(page?.events ?? []), ...importedEvents.value];
-	const sources = sourcesOnPage(events);
-	const kinds = kindsOnPage(events);
 	const tz = page?.timezone ?? "UTC";
 
 	// Derived here, from the engine's own matrix, so the trail is right in the FIRST byte. Reading a
@@ -164,11 +157,17 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 					/>
 				</label>
 
+				{
+					/*
+					 * The filter is the LANE's above 767px (beside its search, the `/projects` anatomy) and
+					 * this band's below it, with the same facets — one control that moves, never two.
+					 */
+				}
 				<Tooltip content="Filter what is shown">
 					<button
 						type="button"
 						ref={filterRef}
-						class="cal-band__iconbtn"
+						class="cal-band__iconbtn cal-band__iconbtn--mobile"
 						data-on={filtersEngaged() ? "true" : undefined}
 						aria-label="Filter what is shown"
 						aria-haspopup="dialog"
@@ -184,57 +183,34 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 					placement="bottom-end"
 					avoid={[".ui-app-shell__sidebar"]}
 				>
-					<div class="cal-filters">
-						<fieldset class="cal-filters__group">
-							<legend class="cal-filters__legend">Calendars</legend>
-							{sources.length === 0
-								? <p class="cal-filters__none">Nothing on this week names a calendar.</p>
-								: sources.map((slug) => (
-									<label class="cal-filters__option" key={slug}>
-										<input
-											type="checkbox"
-											class="cal-filters__box"
-											checked={!hiddenSources.value.includes(slug)}
-											onChange={() => toggleSource(slug)}
-										/>
-										<span class="cal-filters__mark" aria-hidden="true">
-											<ProviderMark source={slug} size={14} />
-										</span>
-										<span class="cal-filters__label">{integrationLabel(slug)}</span>
-									</label>
-								))}
-						</fieldset>
-
-						<fieldset class="cal-filters__group">
-							<legend class="cal-filters__legend">Event types</legend>
-							{kinds.map((kind) => (
-								<label class="cal-filters__option" key={kind}>
-									<input
-										type="checkbox"
-										class="cal-filters__box"
-										checked={!hiddenKinds.value.includes(kind)}
-										onChange={() => toggleKind(kind)}
-									/>
-									<span class="cal-filters__label">{CALENDAR_KIND_LABEL[kind]}</span>
-								</label>
-							))}
-						</fieldset>
+					<div class="ui-lane-filter">
+						<header class="ui-lane-filter__head">
+							<span class="ui-lane-filter__title">Filters</span>
+							{activeFilterCount() > 0
+								? (
+									<button type="button" class="ui-lane-filter__reset" onClick={resetFilters}>
+										Reset
+									</button>
+								)
+								: null}
+						</header>
+						<CalendarFilterFacets events={events} tz={tz} />
 					</div>
 				</Popover>
 
 				{
 					/*
-					 * Working hours, inherited from the lane below 767px. It opens Settings → Scheduling & calls
-					 * in the contextual modal (Decision #150), the same destination as the lane's control.
+					 * Availability, inherited from the lane below 767px: it opens the availability modal, the
+					 * same destination as the lane's controls.
 					 */
 				}
-				<Tooltip content="Working hours and leave">
+				<Tooltip content="Availability">
 					<button
 						type="button"
 						class="cal-band__iconbtn cal-band__iconbtn--mobile"
-						aria-label="Working hours and leave"
+						aria-label="Availability"
 						aria-haspopup="dialog"
-						onClick={() => openSettings("scheduling")}
+						onClick={() => void openStudio(tz)}
 					>
 						<Icon name="clock" size="xs" />
 					</button>

@@ -1,12 +1,21 @@
 import { computed, signal } from "@preact/signals";
-import type { Preset as SchedulerPreset } from "@ui/calendar/islands/availability-scheduler/types.ts";
-import type { AvailabilityPreset, BindListingAvailability } from "@projective/types/scheduling";
+import type {
+	Preset as SchedulerPreset,
+	SchedulerTemplate,
+} from "@ui/calendar/islands/availability-scheduler/types.ts";
+import type {
+	AvailabilityPreset,
+	BindListingAvailability,
+	PresetUser,
+} from "@projective/types/scheduling";
 import type { BindListingAvailabilityResult } from "../types/catalogue-types.ts";
 import type { CatalogueResult } from "../types/results.ts";
 import { WorkspaceService } from "./WorkspaceService.ts";
 import { draft, setAvailabilityBinding } from "./workspace-store.ts";
 import {
+	defaultPreset,
 	effectivePreset,
+	libraryPresets,
 	saveInputOf,
 	type SaveInputPatch,
 	schedulerPresetOf,
@@ -14,16 +23,25 @@ import {
 } from "./availability-model.ts";
 
 /**
- * availability-store — the Availability section's state and its two writes (plan §5.5–§5.6). A
- * preset is saved whole through `PUT /api/scheduling/presets` (which compiles it for the booking
- * gate), and the listing's binding through `POST /api/catalogue/availability`. Neither is a listing
- * patch field, so neither marks the listing unsaved; the binding lands on the workspace draft
- * directly. The rules for what is sent are pure, in `availability-model.ts`.
+ * availability-store — the availability modal's state and its writes (plan §5.5–§5.6). A preset is
+ * saved whole through `PUT /api/scheduling/presets` (which compiles it for the booking gate) and
+ * archived through `POST /api/scheduling/presets/archive`. Inside a listing workspace a save also
+ * writes the listing's binding through `POST /api/catalogue/availability`; neither is a listing patch
+ * field, so neither marks the listing unsaved, and the binding lands on the workspace draft directly.
+ * With no listing loaded (`/calendar`, Settings, the profile editor) the modal manages the owner's
+ * templates alone and stays open across saves. The rules for what is sent are pure, in
+ * `availability-model.ts`.
  */
 
 // #region Signals
 /** The seller's live presets; `null` until read. */
 export const presets = signal<AvailabilityPreset[] | null>(null);
+/** Who follows each library preset, keyed by preset id. */
+export const usage = signal<Record<string, PresetUser[]>>({});
+/** Unsaved edits to templates other than the open one, keyed by preset id; Cancel drops them. */
+export const drafts = signal<Record<string, SchedulerPreset>>({});
+/** Bumped by every preset save or archive, so a page holding the mirrored weekly hours re-reads them. */
+export const presetsSaved = signal(0);
 /** Why the presets could not be read, if they could not. */
 export const presetsError = signal<string | null>(null);
 /** Whether the scheduler dialog is open. */
@@ -53,6 +71,7 @@ export async function loadPresets(): Promise<void> {
 	const res = await WorkspaceService.presets();
 	if (res.ok && res.data) {
 		presets.value = res.data.presets;
+		usage.value = res.data.usage ?? {};
 		presetsError.value = null;
 		return;
 	}
@@ -70,9 +89,62 @@ export function openEditor(timezone: string): void {
 	editorOpen.value = true;
 }
 
-/** Close the scheduler without saving. */
+/**
+ * Open the modal with no listing: the owner's default template, read first if the presets are not
+ * in yet. `timezone` seeds a first template when there are none.
+ */
+export async function openStudio(timezone: string): Promise<void> {
+	if (presets.peek() === null) await loadPresets();
+	openEditor(presets.peek()?.[0]?.timezone ?? timezone);
+}
+
+/** Close the scheduler without saving; unsaved templates are dropped. */
 export function closeEditor(): void {
 	editorOpen.value = false;
+	drafts.value = {};
+}
+
+/** The stored preset a scheduler value was opened from, if it has been saved. */
+export function storedOf(value: SchedulerPreset | null): AvailabilityPreset | null {
+	return value ? presets.peek()?.find((p) => p.id === value.id) ?? null : null;
+}
+
+/** Whether `value` differs from what is stored (a template never saved always does). */
+export function isUnsaved(value: SchedulerPreset): boolean {
+	const stored = storedOf(value);
+	return !stored || JSON.stringify(schedulerPresetOf(stored)) !== JSON.stringify(value);
+}
+
+function stash(): void {
+	const current = working.peek();
+	if (current && isUnsaved(current)) drafts.value = { ...drafts.peek(), [current.id]: current };
+}
+
+/** Open another template, keeping the open one's unsaved edits to come back to. */
+export function selectPreset(id: string): void {
+	if (working.peek()?.id === id) return;
+	const stored = presets.peek()?.find((p) => p.id === id);
+	const next = drafts.peek()[id] ?? (stored ? schedulerPresetOf(stored) : null);
+	if (!next) return;
+	stash();
+	working.value = next;
+	intent.value = "linked";
+	availabilityNotice.value = null;
+}
+
+/** Start a new template from a starting point, in the schedule's zone. */
+export function newPreset(template: SchedulerTemplate, timezone: string): void {
+	stash();
+	const library = libraryPresets(presets.peek() ?? []);
+	working.value = {
+		...starterPreset(library[0]?.timezone ?? timezone),
+		name: template.name,
+		description: template.description,
+		isDefault: library.length === 0,
+		rules: template.rules.map((rule) => ({ ...rule, condition: { ...rule.condition } })),
+	};
+	intent.value = "linked";
+	availabilityNotice.value = null;
 }
 
 function failure<T>(res: CatalogueResult<T>, fallback: string): string {
@@ -111,7 +183,10 @@ async function run(task: () => Promise<string | null>): Promise<boolean> {
 	try {
 		const problem = await task();
 		availabilityNotice.value = problem;
-		if (!problem) await loadPresets();
+		if (!problem) {
+			await loadPresets();
+			presetsSaved.value += 1;
+		}
 		return problem === null;
 	} finally {
 		availabilityBusy.value = false;
@@ -119,16 +194,25 @@ async function run(task: () => Promise<string | null>): Promise<boolean> {
 }
 
 /**
- * Save the dialog. A linked listing saves the preset it follows and keeps following it; a listing
- * being overridden is forked first (the server copies the preset it followed) and the edits are
- * saved into the fork; a forked listing saves its fork. Each save ends with the binding written, so
- * the listing's binding always matches the preset just saved.
+ * Save the open template. With no listing loaded that is all, and the modal stays open on the saved
+ * template. In a listing workspace a listing being overridden is forked first (the server copies the
+ * preset it followed) and the edits are saved into the fork; otherwise the template is saved and the
+ * listing bound to it — its fork, the default, or a library preset — so the binding always matches
+ * the preset just saved, and the dialog closes.
  */
 export function saveEditor(): Promise<boolean> {
 	return run(async () => {
 		const value = working.peek();
-		const binding = draft.peek()?.availabilityBinding ?? null;
+		const listing = draft.peek();
+		const binding = listing?.availabilityBinding ?? null;
 		if (!value) return null;
+
+		if (!listing) {
+			const saved = await save(value);
+			if (typeof saved === "string") return saved;
+			working.value = schedulerPresetOf(saved);
+			return null;
+		}
 
 		if (intent.peek() === "override" && binding?.mode !== "override") {
 			const source = boundPreset.peek();
@@ -147,11 +231,26 @@ export function saveEditor(): Promise<boolean> {
 		} else {
 			const saved = await save(value);
 			if (typeof saved === "string") return saved;
-			const mode = binding?.mode ?? "default";
+			const mode = saved.scope === "service" ? "override" : saved.isDefault ? "default" : "preset";
 			const bound = await bind(mode, mode === "default" ? null : saved.id);
 			if (typeof bound === "string") return bound;
 		}
-		editorOpen.value = false;
+		closeEditor();
+		return null;
+	});
+}
+
+/** Archive the open template; services on it fall back to the default, which opens in its place. */
+export function archiveWorking(): Promise<boolean> {
+	return run(async () => {
+		const value = working.peek();
+		if (!value || !storedOf(value)) return null;
+		const res = await WorkspaceService.archivePreset(value.id);
+		if (!res.ok) return failure(res, "This template couldn't be archived.");
+		const { [value.id]: _archived, ...rest } = drafts.peek();
+		drafts.value = rest;
+		const fallback = defaultPreset((presets.peek() ?? []).filter((p) => p.id !== value.id));
+		working.value = fallback ? schedulerPresetOf(fallback) : starterPreset(value.timezone);
 		return null;
 	});
 }
@@ -199,6 +298,8 @@ export function chooseLibraryPreset(presetId: string | null): Promise<boolean> {
 /** Forget everything (tests, or leaving the workspace). */
 export function resetAvailability(): void {
 	presets.value = null;
+	usage.value = {};
+	drafts.value = {};
 	presetsError.value = null;
 	editorOpen.value = false;
 	working.value = null;

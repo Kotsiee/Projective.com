@@ -3,6 +3,8 @@ import {
 	type ArchivePresetResult,
 	type AvailabilityPreset,
 	dateInZone,
+	type PresetListResult,
+	type PresetUser,
 	type SavePresetInput,
 	SavePresetInputSchema,
 	type SavePresetResult,
@@ -128,14 +130,59 @@ export async function readPresets(
 		}));
 }
 
-/** The acting owner's live presets. A schedule never saved has none. */
+const OWNER_USER: Record<string, PresetUser["kind"]> = {
+	user: "profile",
+	freelancer: "profile",
+	team: "team",
+	business: "business",
+	enterprise: "business",
+};
+
+/**
+ * Who follows each library preset: the timed services the schedule's owner sells (a service bound to
+ * nothing follows the default), and the owner itself on the default, whose weekly hours mirror it.
+ */
+export async function presetUsage(
+	db: SupabaseClient,
+	schedule: ScheduleRow,
+	presets: readonly StoredPreset[],
+): Promise<Record<string, PresetUser[]>> {
+	const library = presets.filter((p) => p.row.scope === "library");
+	const usage: Record<string, PresetUser[]> = Object.fromEntries(
+		library.map((p) => [p.row.id, []]),
+	);
+	const fallback = library.find((p) => p.row.is_default)?.row.id;
+	const owner = OWNER_USER[schedule.owner_type] ?? "profile";
+	if (fallback) usage[fallback].push({ kind: owner, name: "" });
+
+	let query = db.schema("marketplace").from("service_blueprints")
+		.select("title, availability_preset_id").in("delivery_model", ["session", "group_session"]);
+	query = owner === "profile"
+		? query.eq("freelancer_profile_id", schedule.owner_id).is("owner_team_id", null)
+		: query.eq("owner_team_id", schedule.owner_id);
+	const { data, error } = await query;
+	if (error) throw new Error(`service_blueprints read failed: ${error.message}`);
+	for (
+		const bp of (data ?? []) as Array<{ title: string; availability_preset_id: string | null }>
+	) {
+		const id = bp.availability_preset_id ?? fallback;
+		if (id && usage[id]) usage[id].push({ kind: "service", name: bp.title });
+	}
+	return usage;
+}
+
+/** The acting owner's live presets, and who follows each. A schedule never saved has none. */
 export async function listPresets(
 	actor: LiveActor,
 	deps: PresetDeps,
-): Promise<Result<{ presets: AvailabilityPreset[] }>> {
+): Promise<Result<PresetListResult>> {
 	const schedule = await scheduleOf(deps.db, actorScheduleOwner(actor));
-	if (!schedule) return ok({ presets: [] });
-	return ok({ presets: (await readPresets(deps.db, schedule)).map((p) => p.preset) });
+	if (!schedule) return ok({ presets: [], usage: {} });
+	const stored = await readPresets(deps.db, schedule);
+	return ok({
+		presets: stored.map((p) => p.preset),
+		usage: await presetUsage(deps.db, schedule, stored),
+	});
 }
 // #endregion
 

@@ -300,6 +300,16 @@
 				"$env:PORT = '13240'; deno task dev --port 13240 --strictPort"
 			],
 			"port": 13240
+		},
+		{
+			"name": "web-calendar",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13282'; deno task dev --port 13282 --strictPort"
+			],
+			"port": 13282
 		}
 	]
 }

@@ -3,23 +3,41 @@ import { Tooltip } from "@projective/ui/feedback";
 import { MoneyView } from "@projective/ui/display/money";
 import { styleVars } from "@ui/core/style.ts";
 import type {
+	ActivityView,
 	AllocationSlice,
 	FundState,
 	IncomingItem,
+	LedgerKind,
+	MoneyView as Money,
 	WalletOverview,
+	WalletSwitcher,
 } from "../types/wallet-types.ts";
 import { fundStateHint } from "../core/wallet-home.ts";
-import { fundStateLabel } from "../core/wallet-model.ts";
+import {
+	type FlowPeriod,
+	fundStateLabel,
+	ledgerKindLabel,
+	periodPhrase,
+	walletParam,
+} from "../core/wallet-model.ts";
 import { FundStateIcon } from "./wallet-glyphs.tsx";
 
 /** Props for {@link AllocationMeter}. */
 export interface AllocationMeterProps {
 	/** The overview whose server-computed `allocation` the meter draws, and whose stages it names. */
 	overview: WalletOverview;
+	/** Every wallet the viewer can see, for the across-accounts row. */
+	switcher: WalletSwitcher;
+	/** The cash-flow window's activity, for a freelancer's earnings by line; `null` while it loads. */
+	activity: ActivityView | null;
+	period: FlowPeriod;
 }
 
 /** How many of a state's own items a detail popover lists before summarising the rest. */
 const DETAIL_ITEMS = 3;
+
+/** The line families a freelancer earns through: project stages, services and products. */
+const EARNING_LINES: readonly LedgerKind[] = ["escrow_release", "service_sale", "product_sale"];
 
 /** The state's mark: a dot for spendable cash, the fund state's own shape glyph for the rest. */
 function StateMark({ state }: { state: FundState }): JSX.Element {
@@ -80,29 +98,185 @@ function SliceDetail(
 }
 
 /**
- * The allocation meter at the head of the dashboard sheet: one track divided between what is spendable,
- * what is clearing its 7-day safety window, what is held in escrow and what is reserved — after the
- * balance summary bar a payments dashboard draws.
- *
- * **Every width is the server's.** Each segment is `flex: 0 0 var(--seg)` with `--seg` the slice's
- * `widthBp` from the overview (`allocationSlices`), the same four figures summed into the total above
- * it; nothing grows, shrinks or animates, so a frozen animation clock cannot draw a share at a width it
- * does not have. A slice under 1.5% is a SLIVER: drawn at a visible floor (the difference taken from the
- * largest slice, so the track still sums to 100%), marked `data-sliver`, and given a pip in the legend
- * so a share that is not nothing never reads as nothing.
- *
- * Pointing at a segment — or focusing its legend entry — opens a popover with the figure, the share,
- * what the state means for this wallet and the stages or releases behind it. Identity never rides on
- * colour alone: clearing is hatched, every entry carries its shape mark and its name, and the legend is
- * a `<dl>` whose terms and figures read in order without the track.
+ * One key's two lines — the name over the figure; its item draws the vertical pill (`::before`) in the
+ * segment's own fill. A key with a `detail` popover is a tab stop that opens it, above the key: below,
+ * the popover would cover the very figure it explains.
  */
-export function AllocationMeter({ overview }: AllocationMeterProps): JSX.Element {
+function Key(
+	{ label, value, hint, detail }: {
+		label: string;
+		value: Money;
+		hint?: string;
+		detail?: JSX.Element;
+	},
+): JSX.Element {
+	const term = <span class="wlt-alloc__term" tabIndex={detail ? 0 : undefined}>{label}</span>;
+	return (
+		<>
+			<dt class="wlt-alloc__label">
+				{detail
+					? (
+						<Tooltip content={detail} placement="top" class="wlt-alloc__tip">
+							{term}
+						</Tooltip>
+					)
+					: term}
+				{hint && <span class="ui-visually-hidden">. {hint}</span>}
+			</dt>
+			<dd class="wlt-alloc__figure">
+				<MoneyView value={value} size="body" hideOrigin />
+			</dd>
+		</>
+	);
+}
+
+// #region Server-figure rows
+/** One part of a secondary breakdown — every figure the server's own `MoneyView`. */
+interface Part {
+	key: string;
+	label: string;
+	value: Money;
+}
+
+interface Row {
+	id: string;
+	/** What the row divides, in the meta register: these rows are not the balance above them. */
+	caption: string;
+	parts: Part[];
+}
+
+/**
+ * The rows under the fund-state meter, each only where this wallet has the figures and more than one
+ * part holds something (a zero, or a figure in another currency than the page's, is left out):
+ *
+ * - **Across your accounts** — every wallet the viewer can see, by its Available (the switcher's own
+ *   figures), so money held in a team or a business vault sits beside this one.
+ * - **By member** — a team vault: its last release divided by each member's agreed stake, as the
+ *   server previewed it; a business vault: what each member has spent against their envelope.
+ * - **Earned by line** — a freelancer's own wallet: what the window brought in through project stages,
+ *   services and products.
+ *
+ * Segment widths are display ratios of figures already shown; no total is computed or printed.
+ */
+function rowsOf(props: AllocationMeterProps): Row[] {
+	const { overview: o, switcher, activity } = props;
+	const currency = o.capital.currency;
+	const active = walletParam(switcher.active.scope, switcher.active.id);
+	const rows: Row[] = [
+		{
+			id: "accounts",
+			caption: "Across your accounts",
+			parts: switcher.accounts.map((a) => {
+				const param = walletParam(a.scope, a.id);
+				const name = a.scope === "personal" ? "Personal" : a.name;
+				return {
+					key: param,
+					label: param === active ? `${name} (this wallet)` : name,
+					value: a.available,
+				};
+			}),
+		},
+	];
+	if (o.team) {
+		rows.push({
+			id: "members",
+			caption: "Last release, split by member",
+			parts: o.team.splitRule.previewShares.map((s) => ({
+				key: s.handle ?? s.name,
+				label: s.name,
+				value: s.amount,
+			})),
+		});
+	}
+	if (o.business) {
+		rows.push({
+			id: "members",
+			caption: "Spent by member",
+			parts: o.business.caps.map((c) => ({ key: c.id, label: c.memberName, value: c.spent })),
+		});
+	}
+	if (o.verification.subject === "freelancer" && o.ref.scope === "personal" && activity) {
+		rows.push({
+			id: "lines",
+			caption: `Earned by line over ${periodPhrase(props.period)}`,
+			parts: activity.byKind
+				.filter((k) => EARNING_LINES.includes(k.kind))
+				.map((k) => ({ key: k.kind, label: ledgerKindLabel(k.kind), value: k.amountIn })),
+		});
+	}
+	return rows
+		.map((row) => ({
+			...row,
+			parts: row.parts
+				.filter((p) => p.value.minor > 0 && p.value.currency === currency)
+				.sort((a, b) => b.value.minor - a.value.minor),
+		}))
+		.filter((row) => row.parts.length > 1);
+}
+
+/** A neutral shade per rank, darkest first, so a row's identity is its labels and never a hue. */
+function shadeOf(rank: number): string {
+	return `${Math.max(22, 86 - rank * 16)}%`;
+}
+
+function PartsRow({ row }: { row: Row }): JSX.Element {
+	const whole = row.parts.reduce((sum, p) => sum + p.value.minor, 0);
+	return (
+		<div class="wlt-alloc__row" role="group" aria-labelledby={`wlt-alloc-${row.id}`}>
+			<p id={`wlt-alloc-${row.id}`} class="wlt-alloc__caption">{row.caption}</p>
+			<div class="wlt-alloc__bar" aria-hidden="true">
+				{row.parts.map((part, rank) => (
+					<div
+						key={part.key}
+						class="wlt-alloc__cell wlt-alloc__cell--part"
+						style={styleVars({
+							"--seg": `${(part.value.minor / whole) * 100}%`,
+							"--wlt-shade": shadeOf(rank),
+						})}
+					>
+						<span class="wlt-alloc__seg" />
+					</div>
+				))}
+			</div>
+			<dl class="wlt-alloc__legend">
+				{row.parts.map((part, rank) => (
+					<div
+						key={part.key}
+						class="wlt-alloc__item wlt-alloc__item--part"
+						style={styleVars({ "--wlt-shade": shadeOf(rank) })}
+					>
+						<Key label={part.label} value={part.value} />
+					</div>
+				))}
+			</dl>
+		</div>
+	);
+}
+// #endregion
+
+/**
+ * The balance breakdown at the head of the dashboard sheet: one track divided between what is
+ * spendable, what is clearing its 7-day safety window, what is held in escrow and what is reserved —
+ * after the balance summary bar a payments dashboard draws — with its keys centred beneath, each a
+ * vertical pill in its segment's fill beside the state's name over its figure. Beneath it, where this
+ * wallet has the figures, the same money seen across sources ({@link rowsOf}).
+ *
+ * **Every fund-state width is the server's.** Each segment is `flex: 0 0 var(--seg)` with `--seg` the
+ * slice's `widthBp` from the overview (`allocationSlices`), the same four figures summed into the
+ * total above it; nothing grows, shrinks or animates, so a frozen animation clock cannot draw a share
+ * at a width it does not have. A slice under 1.5% is a SLIVER, drawn at a visible floor, and a state
+ * holding nothing has no slice and no key.
+ *
+ * Pointing at a segment — or focusing its key — opens a popover with the figure, the share, what the
+ * state means for this wallet and the stages or releases behind it. Identity never rides on colour
+ * alone: clearing is hatched, every key carries its name, and the legend is a `<dl>` whose terms and
+ * figures read in order without the track.
+ */
+export function AllocationMeter(props: AllocationMeterProps): JSX.Element {
+	const { overview } = props;
 	const slices = overview.allocation;
 	return (
-		<section class="wlt-section wlt-alloc" aria-labelledby="wlt-alloc-title">
-			<header class="wlt-section__head">
-				<h2 id="wlt-alloc-title" class="wlt-section__title">Balance breakdown</h2>
-			</header>
+		<section class="wlt-section wlt-alloc" aria-label="Balance breakdown">
 			{slices.length === 0
 				? (
 					<>
@@ -111,7 +285,7 @@ export function AllocationMeter({ overview }: AllocationMeterProps): JSX.Element
 					</>
 				)
 				: (
-					<>
+					<div class="wlt-alloc__row">
 						<div class="wlt-alloc__bar" aria-hidden="true">
 							{slices.map((slice) => (
 								<div
@@ -133,43 +307,19 @@ export function AllocationMeter({ overview }: AllocationMeterProps): JSX.Element
 						</div>
 						<dl class="wlt-alloc__legend">
 							{slices.map((slice) => (
-								<div
-									key={slice.state}
-									class="wlt-alloc__item"
-									data-state={slice.state}
-									data-sliver={slice.sliver ? "true" : undefined}
-								>
-									<dt class="wlt-alloc__dt">
-										{/* Above the term: below it, the popover would cover the very figure it explains. */}
-										<Tooltip
-											content={<SliceDetail slice={slice} overview={overview} />}
-											placement="top"
-											class="wlt-alloc__tip"
-										>
-											<span class="wlt-alloc__term" tabIndex={0}>
-												<StateMark state={slice.state} />
-												<span class="wlt-alloc__label">{fundStateLabel(slice.state)}</span>
-												{slice.sliver && <span class="wlt-alloc__pip" aria-hidden="true" />}
-											</span>
-										</Tooltip>
-										<span class="ui-visually-hidden">
-											. {fundStateHint(slice.state, overview)}
-										</span>
-									</dt>
-									<dd class="wlt-alloc__dd">
-										<MoneyView
-											value={slice.value}
-											size="body"
-											hideOrigin
-											class="wlt-alloc__figure"
-										/>
-										<span class="wlt-alloc__pct">{slice.percent}</span>
-									</dd>
+								<div key={slice.state} class="wlt-alloc__item" data-state={slice.state}>
+									<Key
+										label={fundStateLabel(slice.state)}
+										value={slice.value}
+										hint={`${slice.percent}. ${fundStateHint(slice.state, overview)}`}
+										detail={<SliceDetail slice={slice} overview={overview} />}
+									/>
 								</div>
 							))}
 						</dl>
-					</>
+					</div>
 				)}
+			{rowsOf(props).map((row) => <PartsRow key={row.id} row={row} />)}
 		</section>
 	);
 }

@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { cx } from "../../../core/cx.ts";
+import { Tooltip } from "../../../feedback/islands/Tooltip.tsx";
 import { Button } from "../../../fields/components/Button.tsx";
 import { Icon } from "../../../icons/components/Icon.tsx";
 import { ruleName } from "./announce.ts";
@@ -15,30 +16,33 @@ export function RuleList(): JSX.Element {
 	const active = draft.rules.filter((r) => r.active).length;
 
 	return (
-		<div class="ui-avsched__rules">
-			<div class="ui-avsched__rules-head">
+		<section class="ui-avsched__rules" aria-label="Rules">
+			<div class="ui-avsched__section-head">
 				<h3 class="ui-avsched__heading">Rules</h3>
-				<span class="ui-avsched__count">
-					{active} of {draft.rules.length} active
-				</span>
-				<Button
-					variant="text"
-					size="sm"
-					label="Add rule"
-					icon={<Icon name="plus" />}
-					onClick={() => store.dispatch({ type: "addRule" })}
-				/>
+				{draft.rules.length > 0 && (
+					<span class="ui-avsched__count" aria-label={`${active} of ${draft.rules.length} active`}>
+						{active}/{draft.rules.length}
+					</span>
+				)}
+				<Tooltip content="Add rule">
+					<Button
+						variant="text"
+						size="sm"
+						iconOnly
+						class="ui-hit"
+						icon={<Icon name="plus" />}
+						aria-label="Add rule"
+						onClick={() => store.dispatch({ type: "addRule" })}
+					/>
+				</Tooltip>
 			</div>
 			{draft.rules.length === 0
-				? (
-					<p class="ui-avsched__meta">
-						No rules yet. Drag on the week to add working hours, or start from a template.
-					</p>
-				)
+				? <p class="ui-avsched__meta">Drag on the calendar to add hours.</p>
 				: (
 					<ul class="ui-avsched__rule-list">
 						{draft.rules.map((rule) => {
 							const name = ruleName(rule, describe);
+							const verb = rule.active ? "Pause" : "Resume";
 							return (
 								<li
 									key={rule.id}
@@ -61,27 +65,34 @@ export function RuleList(): JSX.Element {
 											</span>
 										)}
 									</button>
-									<Button
-										variant="text"
-										size="sm"
-										label={rule.active ? "Pause" : "Resume"}
-										aria-label={`${rule.active ? "Pause" : "Resume"} rule ${name}`}
-										onClick={() => store.upsertRule({ ...rule, active: !rule.active })}
-									/>
-									<Button
-										variant="text"
-										severity="danger"
-										size="sm"
-										iconOnly
-										icon={<Icon name="trash" />}
-										aria-label={`Delete rule ${name}`}
-										onClick={() => store.deleteRule(rule.id, name)}
-									/>
+									<Tooltip content={verb}>
+										<Button
+											variant="text"
+											size="sm"
+											iconOnly
+											class="ui-hit"
+											icon={<Icon name={rule.active ? "pause" : "play"} />}
+											aria-label={`${verb} rule ${name}`}
+											onClick={() => store.upsertRule({ ...rule, active: !rule.active })}
+										/>
+									</Tooltip>
+									<Tooltip content="Delete">
+										<Button
+											variant="text"
+											severity="danger"
+											size="sm"
+											iconOnly
+											class="ui-hit"
+											icon={<Icon name="trash" />}
+											aria-label={`Delete rule ${name}`}
+											onClick={() => store.deleteRule(rule.id, name)}
+										/>
+									</Tooltip>
 								</li>
 							);
 						})}
 					</ul>
 				)}
-		</div>
+		</section>
 	);
 }

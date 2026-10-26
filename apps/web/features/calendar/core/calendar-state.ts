@@ -11,6 +11,11 @@ import type { CalendarViewMode, CalendarZoomMode } from "@projective/ui/calendar
 import { PX_PER_DAY_DEFAULT } from "@projective/ui/gantt";
 import type { CalendarEvent, CalendarEventKind, SchedulePage } from "@projective/types/scheduling";
 import { LocalKeys } from "@web/utils/storage-keys.ts";
+import {
+	contextPanelDocked,
+	contextPanelInflow,
+} from "@web/features/shell/core/context-panel-state.ts";
+import { eventStack } from "./event-view.ts";
 
 /**
  * calendar-state — the cross-island bridge for the `/calendar` hub.
@@ -242,13 +247,105 @@ export function soleVisibleKind(
 	return visible.length === 1 ? visible[0] : null;
 }
 
-/** Whether any narrowing is engaged — drives the filter control's engaged state. */
-export function filtersEngaged(): boolean {
-	return hiddenSources.value.length > 0 || hiddenKinds.value.length > 0;
+/**
+ * Toggle one kind in the lane filter's Event type facet, read the `/projects` way: no chip pressed
+ * means every kind is shown, and pressing chips narrows to exactly the pressed set. Written onto the
+ * same {@link hiddenKinds} deny list, so the quick row and this facet stay one axis.
+ */
+export function toggleShownKind(
+	kind: CalendarEventKind,
+	present: readonly CalendarEventKind[],
+): void {
+	const shown = shownKinds(present);
+	const next = shown.includes(kind) ? shown.filter((k) => k !== kind) : [...shown, kind];
+	hiddenKinds.value = next.length === 0 || next.length === present.length
+		? []
+		: present.filter((k) => !next.includes(k));
+}
+
+/** The kinds the Event type facet shows as pressed — none while nothing is narrowed. */
+export function shownKinds(present: readonly CalendarEventKind[]): CalendarEventKind[] {
+	const hidden = hiddenKinds.value;
+	return hidden.length === 0 ? [] : present.filter((k) => !hidden.includes(k));
 }
 
 /**
- * The events a surface should draw, after search and both deny lists.
+ * Owner keys the reader has narrowed to — an ALLOW list, empty for everyone. Unlike the two deny
+ * lists above, an owner is a person rather than a layer, and "only mine" is the question asked.
+ */
+export const shownOwners = signal<readonly string[]>([]);
+
+/** The owner key of the entries the reader hosts. */
+export const OWNER_SELF = "self";
+/** The owner key of entries with no organiser on the payload (deadlines, external busy blocks). */
+export const OWNER_NONE = "none";
+
+/** Whose entry this is: the reader's own, an organiser's handle or name, or nobody named. */
+export function ownerKeyOf(e: CalendarEvent): string {
+	if (e.viewerIsHost === true) return OWNER_SELF;
+	return e.organiser ? e.organiser.handle ?? e.organiser.name : OWNER_NONE;
+}
+
+/** Every owner on the page, the reader first, in first-seen order — the Owner facet's options. */
+export function ownersOnPage(events: readonly CalendarEvent[]): { value: string; label: string }[] {
+	const seen = new Map<string, string>();
+	for (const e of events) {
+		const key = ownerKeyOf(e);
+		if (seen.has(key)) continue;
+		seen.set(
+			key,
+			key === OWNER_SELF ? "You" : key === OWNER_NONE ? "No organiser" : e.organiser?.name ?? key,
+		);
+	}
+	return [...seen].map(([value, label]) => ({ value, label }))
+		.sort((a, b) => Number(b.value === OWNER_SELF) - Number(a.value === OWNER_SELF));
+}
+
+/** Toggle one owner in the allow list. */
+export function toggleOwner(key: string): void {
+	shownOwners.value = toggle(shownOwners.value, key);
+}
+
+/** The start · end date window as `[fromMs, toMs)`, or `null` for all time. */
+export const dateRange = signal<readonly [number, number] | null>(null);
+
+/**
+ * The display preset the footer's left control picks: everything, only the open slots, only what is
+ * scheduled (availability hidden, working-hours shading included), or only booked leave. A lens over
+ * the agenda rather than a filter the reader assembles, so the Filter trigger does not count it.
+ */
+export type CalendarPreset = "all" | "availability" | "events" | "holidays";
+export const calendarPreset = signal<CalendarPreset>("all");
+
+/** The preset menu's options, in the order they are offered. */
+export const PRESET_OPTIONS: readonly { value: CalendarPreset; label: string }[] = [
+	{ value: "all", label: "Everything" },
+	{ value: "availability", label: "Availability only" },
+	{ value: "events", label: "Hide availability" },
+	{ value: "holidays", label: "Booked holidays only" },
+];
+
+/** How many filter facets are narrowing — the Filter trigger's count. */
+export function activeFilterCount(): number {
+	return Number(hiddenSources.value.length > 0) + Number(hiddenKinds.value.length > 0) +
+		Number(shownOwners.value.length > 0) + Number(dateRange.value !== null);
+}
+
+/** Whether any narrowing is engaged — drives the filter control's engaged state. */
+export function filtersEngaged(): boolean {
+	return activeFilterCount() > 0;
+}
+
+/** Clear every filter facet. The search and the display preset are their own controls and stay. */
+export function resetFilters(): void {
+	hiddenSources.value = [];
+	hiddenKinds.value = [];
+	shownOwners.value = [];
+	dateRange.value = null;
+}
+
+/**
+ * The events a surface should draw, after search, every filter facet and the display preset.
  *
  * Pure and exported so the grid and the lane's upcoming list narrow IDENTICALLY. When they each held
  * their own predicate, a search term that matched a location narrowed one and not the other.
@@ -262,8 +359,16 @@ export function visibleEvents(events: readonly CalendarEvent[]): CalendarEvent[]
 	const q = calendarQuery.value.trim().toLowerCase();
 	const kinds = hiddenKinds.value;
 	const sources = hiddenSources.value;
+	const owners = shownOwners.value;
+	const range = dateRange.value;
+	const preset = calendarPreset.value;
 	return events.filter((e) => {
 		if (kinds.includes(e.kind)) return false;
+		if (preset === "availability" && e.kind !== "availability") return false;
+		if (preset === "events" && e.kind === "availability") return false;
+		if (preset === "holidays" && e.kind !== "holiday") return false;
+		if (owners.length > 0 && !owners.includes(ownerKeyOf(e))) return false;
+		if (range && (e.end < range[0] || e.start >= range[1])) return false;
 		if (sources.length > 0 && e.sources && e.sources.length > 0) {
 			if (e.sources.every((s) => sources.includes(s))) return false;
 		}
@@ -291,6 +396,74 @@ export function kindsOnPage(events: readonly CalendarEvent[]): CalendarEventKind
 	const seen: CalendarEventKind[] = [];
 	for (const e of events) if (!seen.includes(e.kind)) seen.push(e.kind);
 	return seen;
+}
+// #endregion
+
+// #region Selection and the cross-view flash
+/**
+ * The entry the reader picked — from the grid or from the lane's list. The right panel's Event tab
+ * describes it, and the lane marks its row.
+ */
+export const selectedEventId = signal<string | null>(null);
+
+/** One flash pulse aimed at the GRID: the engine centres and rings this entry while it is set. */
+export const gridSpotlight = signal<string | null>(null);
+/** One flash pulse aimed at the LANE: the list centres this row and glows it once. */
+export const laneSpotlight = signal<string | null>(null);
+
+/** How long a flash holds — the platform's `--dur-highlight`, so both views pulse for one beat. */
+const FLASH_MS = 1800;
+
+function pulse(target: typeof gridSpotlight, id: string): void {
+	// Cleared first so the same entry picked twice still re-fires its subscribers.
+	target.value = null;
+	target.value = id;
+	setTimeout(() => {
+		if (target.peek() === id) target.value = null;
+	}, FLASH_MS);
+}
+
+/** Which tab the right panel shows. */
+export const panelTab = signal<"event" | "month">("month");
+
+/**
+ * Pick an entry, from either view, and show it in the OTHER one.
+ *
+ * A pick in the list moves the grid onto the entry and flashes it there; a pick on the grid scrolls
+ * the list to its row and flashes that. Neither view's scroll is otherwise driven by the other. The
+ * details then open where there is room for them: the docked right panel from 1280px, the event modal
+ * below it, where the panel would only arrive as a drawer over the grid the reader just used.
+ */
+export function selectEvent(event: CalendarEvent, from: "grid" | "list"): void {
+	selectedEventId.value = event.id;
+	if (from === "list") {
+		calendarFocus.value = event.start;
+		pulse(gridSpotlight, event.id);
+	} else {
+		pulse(laneSpotlight, event.id);
+	}
+	if (contextPanelInflow()) {
+		panelTab.value = "event";
+		contextPanelDocked.value = true;
+	} else {
+		openEventModal(event.id);
+	}
+}
+
+/** Open an entry in the event modal (`.evm__panel`), where reading turns into editing. */
+export function openEventModal(id: string): void {
+	eventStack.open("event", id, { mode: "view" });
+}
+
+/**
+ * A delete raised outside the body island — the right panel's Delete. The body owns the session's
+ * entries and answers it: the same band↔body handshake as {@link createRequest}.
+ */
+export const removeRequest = signal<string | null>(null);
+
+/** Ask the body to take an entry off the calendar. */
+export function requestRemove(id: string): void {
+	removeRequest.value = id;
 }
 // #endregion
 

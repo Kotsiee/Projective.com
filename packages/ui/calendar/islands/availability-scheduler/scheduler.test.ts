@@ -361,6 +361,15 @@ Deno.test("reduce: view-only actions never enter the history", () => {
 	assertEquals(s.announcement, "November 2026.");
 });
 
+Deno.test("reduce: renaming and making default are undoable draft edits; a no-op is not", () => {
+	let s = start();
+	assertStrictEquals(reduce(s, { type: "setDetails", name: "Default" }), s);
+	s = reduce(s, { type: "setDetails", name: "Evenings", isDefault: false });
+	assertEquals([s.draft.name, s.draft.isDefault, s.past.length], ["Evenings", false, 1]);
+	s = reduce(s, { type: "undo" });
+	assertEquals([s.draft.name, s.draft.isDefault], ["Default", true]);
+});
+
 Deno.test("reduce: loading a template mints fresh ids and re-anchors to this week's Monday", () => {
 	const s = reduce(start([weekly("rule-1", [1], [[0, 60]])]), {
 		type: "loadTemplate",

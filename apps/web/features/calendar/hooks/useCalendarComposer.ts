@@ -2,6 +2,7 @@ import { type Signal, useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import type { CalendarComposeRequest, CalendarRange } from "@projective/ui/calendar";
 import type { CalendarEvent, CalendarEventKind } from "@projective/types/scheduling";
+import { createRefusal } from "@projective/types/scheduling";
 import { blankEvent, eventStack } from "../core/event-view.ts";
 import { eventsForRange, firstOccurrence, spreadDaily } from "../core/event-series.ts";
 
@@ -15,6 +16,13 @@ export interface CalendarComposerOptions {
 	timezone: () => string;
 	/** Runs after the modal stack closes (e.g. to strip a deep-link parameter). */
 	onClose?: () => void;
+	/**
+	 * The surface's clock. Present, every create path refuses a range that starts before it
+	 * ({@link createRefusal}); absent, nothing is gated.
+	 */
+	now?: () => number;
+	/** Told the refusal's own words when a create is refused. */
+	onRefuse?: (message: string) => void;
 }
 
 /** One calendar body's entries, draft, composer round trip and modal handlers. */
@@ -39,6 +47,8 @@ export interface CalendarComposer {
 	/** `EventModal.onSubmit` — a new daily entry is laid onto every day of its series. */
 	submit(event: CalendarEvent): void;
 	serverUpdate(event: CalendarEvent): void;
+	/** Take an entry off the calendar, closing it if it is the one open. */
+	remove(id: string): void;
 }
 
 /**
@@ -58,6 +68,14 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 	optsRef.current = opts;
 
 	const mint = (range: CalendarRange) => blankEvent(range, optsRef.current.kind);
+
+	/** The create guard: `true` when the range may be created, else the refusal is reported. */
+	function creatable(range: { start: number; end: number; allDay?: boolean }): boolean {
+		const { now, onRefuse } = optsRef.current;
+		const refusal = now ? createRefusal(now(), range) : null;
+		if (refusal) onRefuse?.(refusal);
+		return !refusal;
+	}
 
 	function close(): void {
 		eventStack.close();
@@ -79,12 +97,14 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 		},
 		quickCreate(range, title) {
 			draft.value = null;
+			if (!creatable(range)) return;
 			const made = eventsForRange(range, title, optsRef.current.timezone(), mint);
 			events.value = [...events.value, ...made];
 		},
 		expandCreate(range, title) {
 			const daily = range.daily ? range : null;
 			const at = daily ? firstOccurrence(range, optsRef.current.timezone()) : range;
+			if (!creatable(at)) return;
 			const blank = { ...mint(at), title };
 			series.current = daily;
 			draft.value = blank;
@@ -112,6 +132,7 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 				draft.value = null;
 				return;
 			}
+			if (!creatable(event)) return;
 			const made = series.current
 				? spreadDaily(event, series.current, optsRef.current.timezone())
 				: [event];
@@ -120,6 +141,10 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 		},
 		serverUpdate(event) {
 			events.value = events.value.map((e) => (e.id === event.id ? event : e));
+		},
+		remove(id) {
+			if (eventStack.top.peek()?.id === id) close();
+			events.value = events.value.filter((e) => e.id !== id);
 		},
 	};
 }

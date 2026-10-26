@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { AreaChart, type AreaChartSeries, compactMoney } from "@projective/ui/display";
 import { MoneyView } from "@projective/ui/display/money";
+import { styleVars } from "@ui/core/style.ts";
 import type { FlowPoint } from "../types/wallet-types.ts";
 
 /** Props for {@link FlowAreaChart}. */
@@ -11,7 +12,16 @@ export interface FlowAreaChartProps {
 	phrase: string;
 	/** Whether a bucket spans more than a day, so its row reads "From 5 Oct". */
 	spans: boolean;
+	/** The series drawn (`in` · `out` · `net`); every one when absent. */
+	show?: readonly string[];
 }
+
+/** Each series' ink, so a series keeps its colour when another is hidden (wallet-analytics.css). */
+const SERIES_INK: Readonly<Record<string, string>> = {
+	in: "var(--wlt-chart-in)",
+	out: "var(--wlt-chart-out-ink)",
+	net: "var(--wlt-chart-net)",
+};
 
 function Signed({ minor, currency }: { minor: number; currency: string }): JSX.Element {
 	return minor < 0
@@ -26,7 +36,7 @@ function Signed({ minor, currency }: { minor: number; currency: string }): JSX.E
  */
 export function FlowAreaChart(props: FlowAreaChartProps): JSX.Element {
 	const { points, currency } = props;
-	const series: AreaChartSeries[] = [
+	const all: AreaChartSeries[] = [
 		{ id: "in", label: "Money in", shortLabel: "in", values: points.map((p) => p.inMinor) },
 		{
 			id: "out",
@@ -43,7 +53,8 @@ export function FlowAreaChart(props: FlowAreaChartProps): JSX.Element {
 			mark: "line",
 		},
 	];
-	return (
+	const series = props.show ? all.filter((s) => props.show!.includes(s.id)) : all;
+	const chart = (
 		<AreaChart
 			class="wlt-area"
 			caption={`Money in, money out and net over ${props.phrase}`}
@@ -58,4 +69,7 @@ export function FlowAreaChart(props: FlowAreaChartProps): JSX.Element {
 			formatTick={(value) => compactMoney(value, currency)}
 		/>
 	);
+	if (series.length === all.length) return chart;
+	const inks = Object.fromEntries(series.map((s, i) => [`--wlt-area-${i + 1}`, SERIES_INK[s.id]]));
+	return <div style={styleVars(inks)}>{chart}</div>;
 }

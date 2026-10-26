@@ -1,10 +1,26 @@
 import type { JSX } from "preact";
-import type { AvailabilityRule, CalendarAvailability } from "@projective/types/scheduling";
+import { useEffect } from "preact/hooks";
+import { Tooltip } from "@projective/ui/feedback";
+import { Icon } from "@projective/ui/icons";
+import type {
+	AvailabilityRule,
+	CalendarAvailability,
+	PresetUser,
+} from "@projective/types/scheduling";
+import { libraryPresets } from "@features/catalogue/core/availability-model.ts";
+import {
+	loadPresets,
+	openStudio,
+	presets,
+	presetsError,
+	selectPreset,
+	usage,
+} from "@features/catalogue/core/availability-store.ts";
 import "../styles/calendar-chrome.css";
 
 /**
- * AvailabilityManager — the lane's availability block. Its configure trigger opens Settings →
- * Scheduling & calls (Decision #150), which replaced the read-only "Working hours and leave" dialog.
+ * AvailabilityManager — the lane's availability tab: the owner's templates ({@link
+ * AvailabilityTemplates}) above this week's block, both opening the availability modal (Decision #329).
  *
  * Three facts, in the order a person asks for them: WHEN AM I WORKING (the weekly bands), WHEN AM I
  * INTERRUPTIBLE (the narrower call windows inside them), and WHEN AM I AWAY (booked leave). They are
@@ -72,17 +88,20 @@ export function AvailabilityBlock(props: AvailabilityBlockProps): JSX.Element {
 	return (
 		<div class="cal-avail-block">
 			<div class="cal-avail-block__head">
-				<h3 class="cal-avail-block__title">Availability</h3>
+				<h3 class="cal-avail-block__title">This week</h3>
 				{props.onConfigure
 					? (
-						<button
-							type="button"
-							class="cal-avail-block__configure"
-							onClick={props.onConfigure}
-							aria-haspopup="dialog"
-						>
-							Configure
-						</button>
+						<Tooltip content="Edit availability">
+							<button
+								type="button"
+								class="cal-avail-block__configure ui-hit"
+								onClick={props.onConfigure}
+								aria-label="Edit availability"
+								aria-haspopup="dialog"
+							>
+								<Icon name="edit" size="xs" />
+							</button>
+						</Tooltip>
 					)
 					: null}
 			</div>
@@ -124,6 +143,88 @@ export function AvailabilityBlock(props: AvailabilityBlockProps): JSX.Element {
 						</ul>
 					)}
 			</div>
+		</div>
+	);
+}
+
+/** A follower as one muted word: the service's title, or the owner the default mirrors into. */
+function followerLabel(user: PresetUser): string {
+	return user.kind === "service"
+		? user.name
+		: user.kind === "profile"
+		? "Profile"
+		: user.kind === "team"
+		? "Team"
+		: "Business";
+}
+
+export interface AvailabilityTemplatesProps {
+	/** The zone a first template is made in when the owner has none. */
+	timezone: string;
+}
+
+/**
+ * The lane's availability templates: each named, with the default and who follows it as muted meta,
+ * and opening it in the availability modal. The modal itself is mounted once, by the grid's island,
+ * so the header band's control can open it at widths where this lane is gone.
+ */
+export function AvailabilityTemplates(props: AvailabilityTemplatesProps): JSX.Element {
+	useEffect(() => {
+		if (presets.peek() === null) void loadPresets();
+	}, []);
+
+	const library = libraryPresets(presets.value ?? []);
+	const followers = usage.value;
+	const open = async (id?: string) => {
+		await openStudio(props.timezone);
+		if (id) selectPreset(id);
+	};
+
+	return (
+		<div class="cal-avail-block cal-avail-tpl">
+			<div class="cal-avail-block__head">
+				<h3 class="cal-avail-block__title">Templates</h3>
+				<Tooltip content="Manage templates">
+					<button
+						type="button"
+						class="cal-avail-block__configure ui-hit"
+						onClick={() => void open()}
+						aria-label="Manage templates"
+						aria-haspopup="dialog"
+					>
+						<Icon name="settings" size="xs" />
+					</button>
+				</Tooltip>
+			</div>
+			{presetsError.value
+				? <p class="cal-avail-block__none">{presetsError.value}</p>
+				: presets.value === null
+				? <p class="cal-avail-block__none">Loading…</p>
+				: library.length === 0
+				? <p class="cal-avail-block__none">No templates yet.</p>
+				: (
+					<ul class="cal-avail-tpl__list">
+						{library.map((p) => {
+							const meta = [
+								p.isDefault ? "Default" : "",
+								...(followers[p.id] ?? []).map(followerLabel),
+							].filter(Boolean);
+							return (
+								<li key={p.id}>
+									<button
+										type="button"
+										class="cal-avail-tpl__row"
+										aria-haspopup="dialog"
+										onClick={() => void open(p.id)}
+									>
+										<span class="cal-avail-tpl__name">{p.name}</span>
+										{meta.length > 0 && <span class="cal-avail-tpl__meta">{meta.join(" · ")}</span>}
+									</button>
+								</li>
+							);
+						})}
+					</ul>
+				)}
 		</div>
 	);
 }

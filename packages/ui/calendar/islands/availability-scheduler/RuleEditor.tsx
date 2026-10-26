@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import { type Signal, useSignal } from "@preact/signals";
+import { Tooltip } from "../../../feedback/islands/Tooltip.tsx";
 import { Button } from "../../../fields/components/Button.tsx";
 import { InputMask } from "../../../fields/islands/InputMask.tsx";
 import { InputText } from "../../../fields/islands/InputText.tsx";
@@ -171,16 +172,19 @@ function TimeRangeField(props: TimeRangeFieldProps): JSX.Element {
 				step={step}
 				onCommit={(end) => onChange({ start: band.start, end })}
 			/>
-			<Button
-				variant="text"
-				size="sm"
-				iconOnly
-				icon={<Icon name="close" />}
-				aria-label={`Remove time ${index + 1}, ${fmtMinutes(band.start)} to ${
-					fmtMinutes(band.end)
-				}`}
-				onClick={onRemove}
-			/>
+			<Tooltip content="Remove">
+				<Button
+					variant="text"
+					size="sm"
+					iconOnly
+					class="ui-hit"
+					icon={<Icon name="close" />}
+					aria-label={`Remove time ${index + 1}, ${fmtMinutes(band.start)} to ${
+						fmtMinutes(band.end)
+					}`}
+					onClick={onRemove}
+				/>
+			</Tooltip>
 		</li>
 	);
 }
@@ -503,13 +507,17 @@ function RuleForm({ rule }: RuleFormProps): JSX.Element {
 						</p>
 					)}
 				{rule.bands.length < MAX_BANDS && (
-					<Button
-						variant="text"
-						size="sm"
-						label="Add time"
-						icon={<Icon name="plus" />}
-						onClick={addBand}
-					/>
+					<Tooltip content="Add time">
+						<Button
+							variant="text"
+							size="sm"
+							iconOnly
+							class="ui-hit"
+							aria-label="Add time"
+							icon={<Icon name="plus" />}
+							onClick={addBand}
+						/>
+					</Tooltip>
 				)}
 			</div>
 
@@ -602,15 +610,20 @@ export function RuleEditor(): JSX.Element {
 
 	return (
 		<div class="ui-avsched__editor">
-			<div class="ui-avsched__rules-head">
+			<div class="ui-avsched__section-head">
 				<h3 class="ui-avsched__heading">{rule ? "Edit rule" : "Rule"}</h3>
 				{rule && (
-					<Button
-						variant="text"
-						size="sm"
-						label="Done"
-						onClick={() => store.dispatch({ type: "edit", ruleId: null })}
-					/>
+					<Tooltip content="Close">
+						<Button
+							variant="text"
+							size="sm"
+							iconOnly
+							class="ui-hit"
+							icon={<Icon name="close" />}
+							aria-label="Close rule"
+							onClick={() => store.dispatch({ type: "edit", ruleId: null })}
+						/>
+					</Tooltip>
 				)}
 			</div>
 			{rule ? <RuleForm key={rule.id} rule={rule} /> : (

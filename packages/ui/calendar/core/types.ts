@@ -262,6 +262,20 @@ export interface CalendarProps {
 	zoom?: Signal<number>;
 	/** The timeline's scale (px per day) as a host-owned signal, on the same terms as {@link zoom}. */
 	timelineZoom?: Signal<number>;
+	/**
+	 * An entry the HOST wants the reader's eye on — a pick in a list beside the grid. While it names an
+	 * entry, the Week grid scrolls it to the middle of the view and the timed grids ring it and step
+	 * the rest back, exactly as an overlap-list row does. The host sets it and clears it; the engine
+	 * only reads it.
+	 */
+	spotlight?: Signal<string | null>;
+	/**
+	 * A click on a single entry goes straight to {@link onOpenEvent} instead of the engine's summary
+	 * popover — for a host that shows the entry itself, beside the grid, where a popover would say the
+	 * same thing twice. A card standing for a folded cluster still opens its list first: it cannot
+	 * honestly resolve to one of its members.
+	 */
+	directOpen?: boolean;
 	/** A heading shown in the header (e.g. the project title / "Availability"). */
 	title?: string;
 	/**

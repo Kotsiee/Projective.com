@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { useSignal } from "@preact/signals";
+import { useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { Tooltip } from "@projective/ui/feedback";
 import {
@@ -31,6 +31,8 @@ import {
 } from "../core/availability-model.ts";
 import { errorsFromIssues } from "../core/edit-model.ts";
 import { ProfileService } from "../core/ProfileService.ts";
+import { openStudio, presetsSaved } from "@features/catalogue/core/availability-store.ts";
+import { AvailabilityModal } from "@features/calendar/components/AvailabilityModal.tsx";
 
 /**
  * AvailabilityEditor — the owner's **Availability** page (`/[handle]/edit/availability`): the weekly
@@ -43,7 +45,9 @@ import { ProfileService } from "../core/ProfileService.ts";
  * each start, a fee before a paid call) so a refusal is shown where it applies.
  *
  * Only WORKING hours are edited here. Narrower "call window" bands, when a schedule has any, are
- * kept exactly as they are.
+ * kept exactly as they are. The same hours are the default availability template's weekly part, so
+ * the templates open from here in the shared availability modal — only while nothing here is unsaved,
+ * and a template save re-reads the hours, so this page never writes stale ones back.
  */
 export interface AvailabilityEditorProps {
 	handle: string;
@@ -129,6 +133,16 @@ export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.
 		status.value = "Changes discarded.";
 	}
 
+	useSignalEffect(() => {
+		if (presetsSaved.value === 0) return;
+		void ProfileService.availability(handle).then((res) => {
+			if (!res.ok || !res.data || dirtyRef.current) return;
+			baseline.value = res.data.availability;
+			value.value = res.data.availability;
+			formKey.value += 1;
+		});
+	});
+
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
@@ -194,6 +208,20 @@ export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.
 								/>
 							</div>
 						</div>
+
+						<Tooltip content={dirty ? "Save or discard your changes first" : "Reusable hours for your services"}>
+							<Button
+								size="sm"
+								severity="neutral"
+								variant="outlined"
+								icon={<Icon name="calendar" size="sm" />}
+								aria-haspopup="dialog"
+								disabled={dirty}
+								onClick={() => void openStudio(v.timezone)}
+							>
+								Availability templates
+							</Button>
+						</Tooltip>
 
 						<ol class="pf-week" role="list">
 							{WEEK.map((day) => {
@@ -503,6 +531,7 @@ export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.
 					</Button>
 				</div>
 			</div>
+			<AvailabilityModal />
 		</div>
 	);
 }

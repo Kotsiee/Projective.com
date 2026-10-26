@@ -784,4 +784,22 @@ export function eventLiveStatus(
 		msUntilEnd: untilEnd,
 	};
 }
+
+/**
+ * Why a NEW entry cannot be created at this time, or `null` when it can.
+ *
+ * The one rule and the one wording for every create path — the grid's quick composer, the event
+ * modal's Create, and the create route once the scheduling write path lands — so a refusal never
+ * reads two ways. Editing and deleting an existing entry are not gated by time at all.
+ *
+ * An all-day entry is judged by its END, because it starts at the zone's midnight: an all-day entry
+ * for today is legitimate all day long, and one that has already ended is in the past.
+ */
+export function createRefusal(
+	nowMs: number,
+	range: { start: number; end: number; allDay?: boolean },
+): string | null {
+	const past = range.allDay ? range.end <= nowMs : range.start < nowMs;
+	return past ? "New events can’t start in the past." : null;
+}
 // #endregion

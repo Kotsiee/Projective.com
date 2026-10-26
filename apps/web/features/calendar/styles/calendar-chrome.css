@@ -173,13 +173,48 @@
 	display: block;
 	min-inline-size: 0;
 	flex: 1 1 auto;
+	padding: 0;
+	border: none;
+	background: none;
+	font: inherit;
+	text-align: start;
 	color: inherit;
-	text-decoration: none;
+	cursor: pointer;
 }
 
 .cal-up__link:focus-visible {
 	outline: none;
 	border-radius: var(--radius-xs);
+}
+
+.cal-up[data-selected="true"] {
+	background: var(--surface-2);
+}
+
+/* The cross-view flash: one glow on, then off — the same beat as the chat feed's jump-to. */
+.cal-up[data-flash="true"] {
+	animation: cal-up-flash var(--dur-highlight) var(--ease-standard);
+}
+
+@keyframes cal-up-flash {
+	0%,
+	100% {
+		box-shadow: 0 0 0 0 transparent;
+	}
+
+	18% {
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cal-up[data-flash="true"] {
+		animation: none;
+	}
+}
+
+:root[data-motion="reduced"] .cal-up[data-flash="true"] {
+	animation: none;
 }
 
 .cal-up__body {
@@ -288,18 +323,93 @@
 
 .cal-avail-block__configure {
 	appearance: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 	border: none;
+	border-radius: var(--radius-xs);
 	background: none;
 	font: inherit;
-	font-size: var(--cal-hub-fs-micro);
-	color: var(--primary);
+	color: var(--text-secondary);
 	padding: 0;
 	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard), transform var(--dur-fast)
+		var(--spring-snappy);
 }
 
+.cal-avail-block__configure:hover,
 .cal-avail-block__configure:focus-visible {
-	outline: none;
-	border-radius: var(--radius-xs);
+	color: var(--on-surface);
+}
+
+.cal-avail-block__configure:active {
+	transform: scale(var(--btn-press-scale));
+}
+
+/* The lane's template list: a name and one muted meta line per row, a solid tonal step on hover. */
+.cal-avail-tpl__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.cal-avail-tpl__row {
+	appearance: none;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-px);
+	inline-size: 100%;
+	padding: var(--space-1) var(--space-2);
+	margin-inline: calc(-1 * var(--space-2));
+	border: none;
+	border-radius: var(--radius-sm);
+	background: none;
+	color: var(--on-surface);
+	font: inherit;
+	text-align: start;
+	cursor: pointer;
+	transition: background var(--dur-fast) var(--ease-standard), transform var(--dur-fast)
+		var(--spring-snappy);
+}
+
+.cal-avail-tpl__row:hover,
+.cal-avail-tpl__row:focus-visible {
+	background: var(--surface-2);
+}
+
+.cal-avail-tpl__row:active {
+	transform: scale(var(--btn-press-scale));
+}
+
+.cal-avail-tpl__name {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+}
+
+.cal-avail-tpl__meta {
+	font-size: var(--cal-hub-fs-micro);
+	color: var(--text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cal-avail-block__configure,
+	.cal-avail-tpl__row {
+		transition: none;
+	}
+
+	.cal-avail-block__configure:active,
+	.cal-avail-tpl__row:active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .cal-avail-block__configure:active,
+:root[data-motion="reduced"] .cal-avail-tpl__row:active {
+	transform: none;
 }
 
 .cal-avail-block__tz,
@@ -350,7 +460,7 @@
 }
 
 .cal-avail-block__band[data-kind="call_window"] {
-	color: var(--primary);
+	color: var(--text-secondary);
 	font-weight: var(--fw-medium);
 }
 
@@ -557,99 +667,41 @@
 
 /* #endregion */
 
-/* #region Filter panel */
-.cal-filters {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	min-inline-size: 14rem;
-	padding: var(--space-2);
-}
-
-.cal-filters__group {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-	margin: 0;
-	padding: 0;
-	border: none;
-}
-
-.cal-filters__legend {
-	padding: 0;
-	font-size: var(--cal-hub-fs-micro);
-	font-weight: var(--fw-semibold);
-	letter-spacing: var(--cal-hub-label-track);
-	text-transform: uppercase;
-	color: var(--text-secondary);
-}
-
-.cal-filters__option {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	/* The row IS the target, so it carries the floor rather than the 12px checkbox inside it. */
-	min-block-size: var(--cal-hub-hit);
-	padding-inline: var(--space-1);
-	border-radius: var(--radius-xs);
-	font-size: var(--cal-hub-fs-body);
-	color: var(--on-surface);
-	cursor: pointer;
-}
-
-.cal-filters__option:hover {
-	background: var(--surface-2);
-}
-
-.cal-filters__option:focus-within {
-	outline: none;
-}
-
-.cal-filters__mark {
-	display: inline-flex;
-	align-items: center;
-	color: var(--text-secondary);
-	flex: none;
-}
-
-.cal-filters__label {
-	min-inline-size: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.cal-filters__none {
-	margin: 0;
-	font-size: var(--cal-hub-fs-micro);
-	color: var(--text-secondary);
-}
-
-/* #endregion */
-
 /* #region Footer rig */
 .cal-rig {
 	container-type: inline-size;
 	container-name: calrig;
-	display: flex;
-	flex-wrap: wrap;
+	display: grid;
+	/* The edges never shrink below their controls; the ruler gives way first, then wraps (below). */
+	grid-template-columns: minmax(max-content, 1fr) minmax(0, 22rem) minmax(max-content, 1fr);
+	grid-template-areas: "preset zoom actions";
 	align-items: center;
 	gap: var(--space-2) var(--space-3);
 	padding: var(--space-3) var(--space-4);
 	min-inline-size: 0;
 }
 
+.cal-rig > .ui-tooltip__anchor:has(.cal-rig__preset) {
+	grid-area: preset;
+	justify-self: start;
+}
+
 .cal-rig__zoom {
-	flex: 0 1 auto;
+	grid-area: zoom;
+	inline-size: 100%;
 	min-inline-size: 0;
 }
 
 .cal-rig__actions {
+	grid-area: actions;
+	justify-self: end;
 	display: flex;
 	align-items: center;
 	gap: var(--space-1);
-	margin-inline-start: auto;
-	flex: none;
+}
+
+.ui-button.cal-rig__preset[data-on="true"] {
+	color: var(--primary);
 }
 
 .ui-button.cal-rig__icon {
@@ -661,9 +713,13 @@
 	margin-inline-start: var(--space-1);
 }
 
-@container calrig (max-width: 30rem) {
-	.cal-rig .cal-zoom__stop {
-		display: none;
+/* Too narrow for three parts on one row: the ruler takes the second row, full width. */
+@container calrig (max-width: 34rem) {
+	.cal-rig {
+		grid-template-columns: auto minmax(0, 1fr);
+		grid-template-areas:
+			"preset actions"
+			"zoom zoom";
 	}
 }
 
@@ -704,8 +760,70 @@
 	padding: var(--space-4);
 }
 
+.cal-panel__tabs {
+	flex: none;
+	margin-block-end: var(--space-3);
+}
+
+.cal-panel__view {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-block-size: 0;
+}
+
 .cal-panel__mini:only-child {
 	margin-block: auto;
+}
+
+/* The picked event, read. Spacing and type registers only — nothing here is boxed (§B.4). */
+.cal-sum {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.cal-sum__when {
+	margin: 0;
+	font-size: var(--cal-hub-fs-micro);
+	letter-spacing: var(--cal-hub-label-track);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.cal-sum__title {
+	margin: 0 0 var(--space-1);
+	font-size: var(--text-lg);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-tight);
+	color: var(--on-surface);
+	overflow-wrap: anywhere;
+}
+
+.cal-sum__meta {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.cal-sum__body {
+	margin: var(--space-2) 0 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface);
+}
+
+.cal-sum__acts {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+	margin-block-start: var(--space-4);
+}
+
+.cal-sum__link {
+	font-size: var(--text-sm);
+	color: var(--primary);
 }
 
 .cal-panel--drawer {

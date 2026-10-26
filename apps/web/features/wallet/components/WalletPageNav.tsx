@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { Icon, type IconName } from "@projective/ui/icons";
+import { NavItem } from "@projective/ui/navigation";
 import {
 	type FlowPeriod,
 	hasInvoices,
@@ -38,8 +39,9 @@ export function walletViewsFor(business: unknown): WalletView[] {
 }
 
 /**
- * The wallet's page links — real addresses, each carrying the wallet and the currency — as lane rows
- * on a wide screen and as a horizontal strip on a phone, where the shell removes the lane.
+ * The wallet's page links — real addresses, each carrying the wallet and the currency — as the lanes'
+ * shared `NavItem` rows on a wide screen and as a horizontal strip on a phone, where the shell removes
+ * the lane.
  */
 export function WalletPageNav(props: WalletPageNavProps): JSX.Element {
 	const views = walletViewsFor(props.business);
@@ -56,16 +58,12 @@ export function WalletPageNav(props: WalletPageNavProps): JSX.Element {
 						<li key={view}>
 							{props.variant === "lane"
 								? (
-									<a
-										class="wlt-link-row"
+									<NavItem
 										href={href}
-										aria-current={current ? "page" : undefined}
-									>
-										<span class="wlt-link-row__icon" aria-hidden="true">
-											<Icon name={VIEW_ICON[view]} size="sm" />
-										</span>
-										<span class="wlt-link-row__label">{viewLabel(view)}</span>
-									</a>
+										label={viewLabel(view)}
+										icon={<Icon name={VIEW_ICON[view]} size="md" />}
+										active={current}
+									/>
 								)
 								: (
 									<a

@@ -93,7 +93,7 @@
 }
 
 .wlt-chart__col[data-active="true"] {
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: var(--surface-1);
 }
 
 .wlt-chart__up,

@@ -26,12 +26,17 @@ import {
 	ledgerFiltersFrom,
 	ledgerParamsOf,
 	periodRange,
-	viewShowsRuler,
 	walletPageHref,
 	type WalletView,
 	withLedgerFilters,
 } from "../core/wallet-model.ts";
-import { openWalletDialog, walletFlowLive, walletOverviewLive } from "../core/wallet-state.ts";
+import {
+	openWalletDialog,
+	walletFlowLive,
+	walletLedgerTools,
+	walletOverviewLive,
+} from "../core/wallet-state.ts";
+import { tintHero } from "../core/hero-tint.ts";
 import { backLabelFor, WALLET_INTENT_PARAM, walletIntentOf } from "../core/wallet-intent.ts";
 import type {
 	ActivityView,
@@ -56,7 +61,7 @@ import { WalletDialogs } from "../components/WalletDialogs.tsx";
 import { AllocationMeter } from "../components/AllocationMeter.tsx";
 import { AnalyticsView } from "../components/AnalyticsView.tsx";
 import { InvoicesPanel } from "../components/InvoicesPanel.tsx";
-import { RangeRuler } from "../components/WalletTools.tsx";
+import { LedgerTools, RangeRuler } from "../components/WalletTools.tsx";
 import { VerificationGate } from "../components/VerificationGate.tsx";
 import { WalletPageNav } from "../components/WalletPageNav.tsx";
 
@@ -338,6 +343,30 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 		walletOverviewLive.value = overview.value;
 	}, [overview.value]);
 
+	// The lane's foot drives the Transactions page's window and download.
+	const canExport = lines.value.length > 0;
+	useEffect(() => {
+		if (view !== "transactions") return;
+		walletLedgerTools.value = {
+			period: period.value,
+			canExport,
+			choose: choosePeriod,
+			exportCsv: exportLedger,
+		};
+	}, [period.value, canExport]);
+
+	// A team's or a business's hero takes its colour from the vault's picture.
+	useEffect(() => {
+		const host = heroRef.current;
+		const { scope, avatar } = switcher.peek().active;
+		if (!host || !avatar || scope === "personal" || scope === "aggregate") return;
+		let live = true;
+		void tintHero(host, avatar, () => live);
+		return () => {
+			live = false;
+		};
+	}, []);
+
 	/*
 	 * A link INTO an action (`?do=top_up&back=/checkout/…` — the checkout's "Add money", Decision #243)
 	 * opens that action's dialog once. Only an action this wallet draws for the viewer opens — offered,
@@ -457,7 +486,11 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 
 	return (
 		<section class="wlt" data-view={view} aria-labelledby="wlt-title">
-			{viewShowsRuler(view) && (
+			{
+				/* The overview's cash-flow window. Transactions keeps its ruler in the lane's foot and
+				   Analytics in its own toolbar. */
+			}
+			{view === "overview" && (
 				<div class="wlt-rulebar">
 					<div class="wlt-rulebar__slot">
 						<RangeRuler value={period.value} onChange={choosePeriod} />
@@ -487,12 +520,20 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 						flow={period.value}
 						business={o.business}
 					/>
+					{view === "transactions" && <LedgerTools fallback={period.value} />}
 					<VerificationGate overview={o} />
 				</div>
 
 				{view === "overview" && (
 					<div class="wlt-sheet__grid" data-methods={methods.value ? "true" : undefined}>
-						{!aggregate && <AllocationMeter overview={o} />}
+						{!aggregate && (
+							<AllocationMeter
+								overview={o}
+								switcher={switcher.value}
+								activity={activity}
+								period={period.value}
+							/>
+						)}
 						<AccountRail
 							switcher={switcher.value}
 							display={display.value}
@@ -541,20 +582,8 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 
 				{view === "transactions" && (
 					<div class="wlt-sheet__page wlt-sheet__page--ledger">
-						<section
-							class="wlt-section wlt-ledger"
-							id="transactions"
-							aria-labelledby="wlt-ledger-title"
-						>
-							<header class="wlt-section__head">
-								<h2 id="wlt-ledger-title" class="wlt-section__title">Transactions</h2>
-							</header>
-							<LedgerFilters
-								filters={filters.value}
-								onChange={applyFilters}
-								onExport={exportLedger}
-								canExport={lines.value.length > 0}
-							/>
+						<section class="wlt-section wlt-ledger" id="transactions" aria-label="Transactions">
+							<LedgerFilters filters={filters.value} onChange={applyFilters} />
 							<LedgerFeed
 								lines={lines.value}
 								hasMore={hasMore.value}
@@ -582,6 +611,8 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 					<div class="wlt-sheet__page wlt-sheet__page--analytics">
 						<AnalyticsView
 							period={period.value}
+							onPeriod={choosePeriod}
+							periodHref={(p) => walletPageHref("analytics", data.wallet, display.value, p)}
 							activity={activity}
 							loading={flowBusy.value}
 							error={flowError.value}

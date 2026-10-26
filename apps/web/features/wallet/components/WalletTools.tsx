@@ -1,14 +1,23 @@
 import type { JSX, RefObject } from "preact";
 import { useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
-import { Popover, Tooltip } from "@projective/ui/feedback";
+import { InlineNotice, Popover, Tooltip } from "@projective/ui/feedback";
+import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { CurrencyLabel, Flag } from "@projective/ui/display";
 import { styleVars } from "@ui/core/style.ts";
 import { DISPLAY_CURRENCIES } from "@projective/types/finance";
 import { commitDisplayCurrency } from "@web/features/shell/core/currency-state.ts";
 import { openSettings } from "@features/settings/core/settings-bridge.ts";
-import { FLOW_PERIODS, type FlowPeriod, periodLabel, periodPhrase } from "../core/wallet-model.ts";
+import {
+	FLOW_PERIODS,
+	type FlowPeriod,
+	ledgerFiltersFrom,
+	periodLabel,
+	periodPhrase,
+	withLedgerFilters,
+} from "../core/wallet-model.ts";
+import { walletLedgerTools } from "../core/wallet-state.ts";
 
 // #region Range ruler
 /**
@@ -74,6 +83,65 @@ export function RangeRuler(
 					</button>
 				);
 			})}
+		</div>
+	);
+}
+// #endregion
+
+// #region Ledger tools
+/**
+ * The Transactions page's window ruler and CSV download, in the lane footer on a wide screen and at
+ * the top of the sheet on a phone. Both drive the page body through {@link walletLedgerTools}; until
+ * the page has hydrated the ruler is an address like any other and the download waits.
+ *
+ * The download is a request, not a link: only a CSV answer becomes a file, and a refusal is shown here
+ * in its own words — never saved to disk as `export.csv`.
+ */
+export function LedgerTools({ fallback }: { fallback: FlowPeriod }): JSX.Element {
+	const tools = walletLedgerTools.value;
+	const exporting = useSignal(false);
+	const error = useSignal<string | null>(null);
+
+	const choose = (next: FlowPeriod) => {
+		if (tools) return tools.choose(next);
+		const url = new URL(location.href);
+		const filters = { ...ledgerFiltersFrom(url.searchParams), period: next };
+		url.search = withLedgerFilters(url.searchParams, filters).toString();
+		location.assign(url);
+	};
+
+	const run = async () => {
+		if (!tools || exporting.value) return;
+		exporting.value = true;
+		error.value = null;
+		error.value = await tools.exportCsv();
+		exporting.value = false;
+	};
+
+	return (
+		<div class="wlt-ledgertools">
+			<RangeRuler value={tools?.period ?? fallback} onChange={choose} />
+			<Button
+				variant="outlined"
+				severity="neutral"
+				size="sm"
+				fluid
+				icon={<Icon name="download" size="sm" />}
+				label="Download CSV"
+				loading={exporting.value}
+				disabled={exporting.value || !tools?.canExport}
+				onClick={() => void run()}
+			/>
+			{error.value && (
+				<InlineNotice
+					text={error.value}
+					assertive
+					align="start"
+					actionLabel="Try again"
+					onAction={() => void run()}
+					busy={exporting.value}
+				/>
+			)}
 		</div>
 	);
 }

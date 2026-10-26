@@ -62,6 +62,25 @@ export interface SavePresetResult {
 }
 // #endregion
 
+// #region Usage
+/**
+ * Who follows a library preset: a Session or Group Session that books against it (by binding, or by
+ * falling back to the default), or — for the default — the owner whose weekly hours mirror it.
+ * `name` is the service's title; an owner carries none, its `kind` is its name.
+ */
+export interface PresetUser {
+	kind: "service" | "profile" | "team" | "business";
+	name: string;
+}
+
+/** What `GET /api/scheduling/presets` answers: the live presets, and who follows each library one. */
+export interface PresetListResult {
+	presets: AvailabilityPreset[];
+	/** Keyed by library preset id; a preset nothing follows has an empty list. */
+	usage: Record<string, PresetUser[]>;
+}
+// #endregion
+
 // #region Archive
 /** `POST /api/scheduling/presets/archive`. Presets are archived, never deleted. */
 export const ArchivePresetInputSchema = z.object({

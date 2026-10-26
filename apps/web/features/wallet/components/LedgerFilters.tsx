@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
-import { InlineNotice } from "@projective/ui/feedback";
+import "@web/features/projects/styles/fx-toolbar.css";
 import { Button, InputText, MultiSelect, SelectButton } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import type { LedgerKind } from "../types/wallet-types.ts";
@@ -17,10 +17,6 @@ import {
 export interface LedgerFiltersProps {
 	filters: Filters;
 	onChange: (next: Filters) => void;
-	/** Download the ledger as filtered; resolves with the refusal's sentence, or `null` on success. */
-	onExport: () => Promise<string | null>;
-	/** Whether there is anything to export. */
-	canExport: boolean;
 }
 
 /** How long typing rests before the search is applied (ms). */
@@ -38,19 +34,15 @@ const KIND_OPTIONS = LEDGER_KIND_CHOICES.map((kind) => ({
 }));
 
 /**
- * The Transactions page's filter bar, one row above the ledger it scopes: a text search (counterparty,
- * project, description), the direction toggle, the category selector, and the CSV download — with the
- * window on the pinned range ruler above. Every change is the caller's to apply and to write into the
- * URL; the search applies once typing rests, or at once on Enter.
- *
- * The download is a request, not a link: only a CSV answer becomes a file, and a refusal is shown here
- * as an alert in its own words — never saved to disk as `export.csv`.
+ * The Transactions page's filter bar, as the SHARED `.fx-toolbar` the File Explorer, the member
+ * rosters and the Catalogue console draw (borderless search · bare filter fields): a text search
+ * (counterparty, project, description), the direction toggle and the category selector. The window
+ * ruler and the CSV download live in the lane's foot (`LedgerTools`). Every change is the caller's to
+ * apply and to write into the URL; the search applies once typing rests, or at once on Enter.
  */
 export function LedgerFilters(props: LedgerFiltersProps): JSX.Element {
 	const { filters } = props;
 	const draft = useSignal(filters.q);
-	const exporting = useSignal(false);
-	const exportError = useSignal<string | null>(null);
 	const rest = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	const commitSearch = (q: string) => {
@@ -60,29 +52,26 @@ export function LedgerFilters(props: LedgerFiltersProps): JSX.Element {
 	};
 
 	const onType = (q: string) => {
-		draft.value = q;
 		if (rest.current) clearTimeout(rest.current);
 		rest.current = setTimeout(() => commitSearch(q), SEARCH_REST_MS);
 	};
 
-	const runExport = async () => {
-		if (exporting.value) return;
-		exporting.value = true;
-		exportError.value = null;
-		exportError.value = await props.onExport();
-		exporting.value = false;
-	};
-
 	return (
-		<div class="wlt-filters">
-			<div class="wlt-filters__row" role="search" aria-label="Filter transactions">
+		<div class="fx-toolbar wlt-filters" role="search" aria-label="Filter transactions">
+			<div class="fx-toolbar__search">
 				<InputText
 					type="search"
-					class="wlt-filters__search"
-					value={draft.value}
+					variant="bare"
+					size="sm"
+					block
+					value={draft}
 					placeholder="Search people, projects, descriptions"
 					aria-label="Search transactions"
-					start={<Icon name="search" size="sm" />}
+					start={
+						<span class="fx-toolbar__searchicon" aria-hidden="true">
+							<Icon name="search" size="sm" />
+						</span>
+					}
 					maxLength={160}
 					enterKeyHint="search"
 					onValueChange={onType}
@@ -93,59 +82,39 @@ export function LedgerFilters(props: LedgerFiltersProps): JSX.Element {
 						}
 					}}
 				/>
-				<SelectButton
-					class="wlt-filters__dir"
-					aria-label="Direction"
-					options={DIRECTIONS}
-					value={filters.dir}
-					onValueChange={(v) => {
-						if (typeof v === "string" && v !== filters.dir) {
-							props.onChange({ ...filters, dir: v as LedgerDirection });
-						}
-					}}
-				/>
-				<MultiSelect
-					class="wlt-filters__kinds"
-					aria-label="Category"
-					options={KIND_OPTIONS}
-					value={filters.kinds}
-					placeholder="All categories"
-					maxSelectedLabels={1}
-					showClear
-					onValueChange={(v) => props.onChange({ ...filters, kinds: v as LedgerKind[] })}
-				/>
-				<span class="wlt-filters__end">
-					{ledgerFiltered(filters) && (
-						<Button
-							variant="text"
-							size="sm"
-							label="Clear"
-							onClick={() => {
-								draft.value = "";
-								props.onChange({ ...filters, q: "", dir: "all", kinds: [] });
-							}}
-						/>
-					)}
-					<Button
-						variant="outlined"
-						size="sm"
-						icon={<Icon name="download" size="sm" />}
-						label="Download CSV"
-						loading={exporting.value}
-						disabled={exporting.value || !props.canExport}
-						onClick={() => void runExport()}
-					/>
-				</span>
 			</div>
-			{exportError.value && (
-				<InlineNotice
-					text={exportError.value}
-					assertive
-					align="start"
-					actionLabel="Try again"
-					onAction={() => void runExport()}
-					busy={exporting.value}
-					class="wlt-filters__notice"
+			<span class="fx-toolbar__spacer" />
+			<SelectButton
+				class="wlt-filters__dir"
+				aria-label="Direction"
+				options={DIRECTIONS}
+				value={filters.dir}
+				onValueChange={(v) => {
+					if (typeof v === "string" && v !== filters.dir) {
+						props.onChange({ ...filters, dir: v as LedgerDirection });
+					}
+				}}
+			/>
+			<MultiSelect
+				class="ui-field--bare wlt-filters__kinds"
+				size="sm"
+				display="chip"
+				aria-label="Category"
+				options={KIND_OPTIONS}
+				value={filters.kinds}
+				placeholder="All categories"
+				maxSelectedLabels={1}
+				onValueChange={(v) => props.onChange({ ...filters, kinds: v as LedgerKind[] })}
+			/>
+			{ledgerFiltered(filters) && (
+				<Button
+					variant="text"
+					size="sm"
+					label="Clear"
+					onClick={() => {
+						draft.value = "";
+						props.onChange({ ...filters, q: "", dir: "all", kinds: [] });
+					}}
 				/>
 			)}
 		</div>

@@ -35,7 +35,7 @@ import {
 import { EditSectionFrame } from "./EditSectionFrame.tsx";
 import { FieldHead } from "./FieldHead.tsx";
 import { UpcomingStrip } from "./availability/UpcomingStrip.tsx";
-import { AvailabilityEditorDialog } from "./availability/AvailabilityEditorDialog.tsx";
+import { AvailabilityModal } from "@features/calendar/components/AvailabilityModal.tsx";
 
 const CUSTOM = "custom";
 const DEFAULT = "default";
@@ -53,7 +53,7 @@ function browserZone(): string {
 /**
  * AvailabilitySection — when a Session or Group Session can be booked (plan §5.5): which hours it
  * books against (the schedule's default, a library preset, or its own copy), the next fortnight of
- * those hours at a glance, and the scheduler, opened in a full-height dialog. It feeds the publish
+ * those hours at a glance, and the shared availability modal. It feeds the publish
  * gate the number of bookable windows in the next 30 days. A restricted (13–17) account books
  * nothing (#208), so for one the whole section is a single notice.
  */
@@ -176,7 +176,7 @@ export function AvailabilitySection(
 						</div>
 					</>
 				)}
-			<AvailabilityEditorDialog listing={listing} />
+			<AvailabilityModal listing={listing} />
 		</EditSectionFrame>
 	);
 }

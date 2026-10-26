@@ -15,7 +15,6 @@
 	--wlt-tool-gap: var(--space-3);
 	--wlt-tools-reserve: 8.5rem;
 	--wlt-tools-reserve-narrow: 6rem;
-	--wlt-ruler-ground: color-mix(in srgb, var(--surface-2) var(--glass-veil-chrome), transparent);
 	--wlt-ruler-shadow: 0 var(--space-1) var(--space-4) color-mix(in srgb, var(--scrim) 14%, transparent);
 
 	--wlt-aurora-cyan: #06b6d4;
@@ -39,13 +38,6 @@
 	--wlt-glass-bubble: color-mix(in srgb, var(--on-scrim) 14%, transparent);
 	--wlt-pill-lift: 0 var(--space-2) var(--space-5) color-mix(in srgb, var(--scrim) 30%, transparent);
 
-	/*
-	 * The sheet's translucent upper boundary: the first `--wlt-sheet-fade` of the sheet runs from the
-	 * chrome veil to opaque `--surface`, blurred, so the hero's gradient reads through its top edge and
-	 * the canvas is solid by the time any content sits on it (wallet-sheet.css).
-	 */
-	--wlt-sheet-fade: var(--space-7);
-	--wlt-sheet-veil: color-mix(in srgb, var(--surface) var(--glass-veil-chrome), transparent);
 	--wlt-sheet-shadow: 0 calc(-1 * var(--space-3)) var(--space-7) color-mix(in srgb, var(--scrim) 16%, transparent);
 
 	/*
@@ -62,6 +54,10 @@
 	--wlt-fund-escrow: var(--warning);
 	--wlt-fund-reserved: var(--wlt-aurora-violet);
 
+	/* A text link: the brand teal in light mode, an intentional accent; full ink in dark mode, where the
+	   wallet draws no teal text or icons — there the link is told apart by its underline instead. */
+	--wlt-link-ink: var(--primary);
+
 	--wlt-credit-ink: color-mix(in srgb, var(--success) 72%, var(--on-surface));
 	--wlt-chart-in: var(--success);
 	--wlt-chart-out: color-mix(in srgb, var(--outline) 60%, var(--surface));
@@ -70,6 +66,7 @@
 }
 
 :root[data-theme="dark"] {
+	--wlt-link-ink: var(--on-surface);
 	--wlt-ruler-shadow: 0 var(--space-1) var(--space-4) color-mix(in srgb, var(--scrim) 36%, transparent);
 	--wlt-sheet-shadow: 0 calc(-1 * var(--space-3)) var(--space-7) color-mix(in srgb, var(--scrim) 40%, transparent);
 }

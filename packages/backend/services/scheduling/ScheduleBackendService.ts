@@ -43,8 +43,8 @@ import { isBearerAuthorised } from "../../core/bearer.ts";
 import { serverEnv } from "../../core/env.ts";
 import type {
 	ArchivePresetResult,
-	AvailabilityPreset,
 	BindListingAvailability,
+	PresetListResult,
 	SavePresetInput,
 	SavePresetResult,
 } from "@projective/types/scheduling";
@@ -438,11 +438,11 @@ export class ScheduleBackendService {
 	}
 
 	// #region Availability presets (Decision #217)
-	/** The acting owner's live availability presets — library presets first, then service forks. */
+	/** The acting owner's live presets (library first, then service forks) and who follows each. */
 	static presets(
 		actor: ReadActor,
 		deps: Partial<PresetDeps> = {},
-	): Promise<ServiceResult<{ presets: AvailabilityPreset[] }>> {
+	): Promise<ServiceResult<PresetListResult>> {
 		return asOwner("presets", actor, deps, listPresets);
 	}
 
