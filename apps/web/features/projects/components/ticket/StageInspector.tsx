@@ -4,6 +4,7 @@ import { Select } from "@projective/ui/fields";
 import { RichTextEditor } from "@projective/ui/editor";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
+import { sanitizeRichText } from "@projective/types/richtext";
 import {
 	ASSIGNMENT_MODE_LABEL,
 	type BoardCard,
@@ -178,7 +179,7 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 										class="tkc-insp__prose tkv-rich"
 										aria-labelledby="tkc-stage-brief-label"
 										dangerouslySetInnerHTML={{
-											__html: ref.brief ||
+											__html: sanitizeRichText(ref.brief) ||
 												"<p>No brief was written for this stage on this ticket.</p>",
 										}}
 									/>

@@ -193,7 +193,7 @@ import {
 	stageInviteRefusal,
 } from "@projective/types/projects";
 import { intakeRefusal, normaliseIntakeAnswers } from "@projective/types/services";
-import { plainTextToHtml } from "@projective/types/richtext";
+import { plainTextToHtml, sanitizeRichText } from "@projective/types/richtext";
 import { isDisplayCurrency, toDisplayCurrency } from "@projective/types/finance";
 import { allowanceRefusal } from "./apply-gate.ts";
 import {
@@ -2924,11 +2924,19 @@ export class ProjectBackendService {
 	 * Two of `projects.tickets`' eleven triggers are mirrored here so the stub refuses exactly what
 	 * the database refuses. A rule enforced on only one side of the gate is a rule whose violations
 	 * appear the day the gate flips, in a save that was working the day before.
+	 *
+	 * The description and every stage brief are HTML the other party reads, so both paths store them
+	 * only as `sanitizeRichText` rebuilt them.
 	 */
 	static async commitTicket(
-		input: CommitTicket,
+		raw: CommitTicket,
 		actor: ReadActor,
 	): Promise<ServiceResult<{ card: BoardCard }>> {
+		const input: CommitTicket = {
+			...raw,
+			description: sanitizeRichText(raw.description),
+			stages: raw.stages.map((s) => ({ ...s, brief: sanitizeRichText(s.brief) })),
+		};
 		const denied = requireIdentity<{ card: BoardCard }>(actor, "save a ticket");
 		if (denied) return denied;
 

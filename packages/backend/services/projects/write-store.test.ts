@@ -147,6 +147,24 @@ Deno.test("a committed ticket is given a server id, never the client's optimisti
 	assertNotEquals(written.data!.card.id, "optimistic-42");
 });
 
+Deno.test("a committed ticket's description and stage briefs are stored sanitised", async () => {
+	resetWriteStore();
+	const base = commitOf();
+	const written = await ProjectBackendService.commitTicket(
+		commitOf({
+			description: '<p onclick="alert(1)">Done means <strong>shipped</strong></p>' +
+				"<script>alert(1)</script><img src=x onerror=alert(1)>",
+			stages: [{ ...base.stages[0], brief: '<p>Brief</p><iframe src="//evil"></iframe>' }],
+		}),
+		ALICE,
+	);
+	assert(written.ok, written.message);
+	const board = await ProjectBackendService.board({ projectId: SLUG, view: "stages" }, ALICE);
+	const card = board.data!.page.cards.find((c) => c.id === written.data!.card.id)!;
+	assertEquals(card.description, "<p>Done means <strong>shipped</strong></p>");
+	assertEquals(card.stages[0].brief, "<p>Brief</p>");
+});
+
 Deno.test("a moved ticket keeps its new column across a fresh board read", async () => {
 	resetWriteStore();
 	const board = await ProjectBackendService.board({ projectId: SLUG, view: "stages" }, ALICE);

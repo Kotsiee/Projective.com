@@ -295,8 +295,11 @@ this repo has no sanitiser~~ — RESOLVED 2026-10-25: `sanitizeRichText` (`@proj
 no dependency) rebuilds the HTML from the editor's attribute-free tags (`p br h1–h6 strong em u s ul
 ol li`), dropping every attribute, script-like elements with their content, comments and any other
 tag; `live-entries.ts` stores the agenda (`scheduling.events.description`) only through it, and
-`EventDetailsTab` renders only through it again. The ticket modal's two renders
-(`TicketDetailsTab` `Prose`, `StageInspector` stage brief) are still unsanitised; (b) the 12-hour reschedule lockout sits INSIDE `PRODUCT_SPEC.md`'s
+`EventDetailsTab` renders only through it again. The ticket modal likewise:
+`ProjectBackendService.commitTicket` sanitises the description and every stage brief before either
+the live or the stub write, and `TicketDetailsTab` `Prose` and the `StageInspector` stage brief render
+only through it. Stage, project and submission descriptions are written by their own paths and are
+not sanitised on write yet (the ticket modal's stage-description fallback is, at render); (b) the 12-hour reschedule lockout sits INSIDE `PRODUCT_SPEC.md`'s
 24-hour cancellation window, so between T-24h and T-12h rescheduling is a documented route around
 the escrow-forfeit rule (also logged on #71); (c) `CommandPalette` is `role="dialog" aria-modal`
 with `lockScroll` but claims the `popover` band (1100), and moving it to `modal` would change paint
