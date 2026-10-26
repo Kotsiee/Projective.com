@@ -27,7 +27,7 @@ export const walletOverviewLive = signal<WalletOverview | null>(null);
  */
 export const walletFlowLive = signal<FlowPeriod | null>(null);
 
-/** The Transactions page's window and download, as the lane footer drives them. */
+/** The Transactions and Analytics pages' window and download, as the footer band drives them. */
 export interface WalletLedgerTools {
 	period: FlowPeriod;
 	canExport: boolean;
@@ -37,8 +37,9 @@ export interface WalletLedgerTools {
 }
 
 /**
- * The Transactions page's ledger tools, published by the page body once it has hydrated, so the
- * lane footer's ruler and download act on the page's own filters; `null` until then.
+ * The Transactions and Analytics pages' ledger tools, published by the page body once it has
+ * hydrated, so the footer band's ruler and download act on the page's own window and filters; `null`
+ * until then.
  */
 export const walletLedgerTools = signal<WalletLedgerTools | null>(null);
 // #endregion

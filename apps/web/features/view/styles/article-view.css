@@ -424,15 +424,12 @@
 .art-toc__link {
 	display: block;
 	padding: 0.4rem var(--space-3);
-	margin-inline-start: -1px;
-	border-inline-start: 2px solid transparent;
 	font-size: var(--text-md);
 	line-height: var(--leading-snug);
 	color: var(--text-secondary);
 	text-decoration: none;
 	transition:
-		color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard);
+		color var(--dur-fast) var(--ease-standard);
 }
 .art-toc__item[data-level="3"] .art-toc__link {
 	font-size: var(--text-sm);
@@ -443,7 +440,6 @@
 .art-toc__item[data-active="true"] .art-toc__link {
 	color: var(--primary);
 	font-weight: var(--fw-semibold);
-	border-inline-start-color: var(--primary);
 }
 
 /* Collapsed dot rail. */

@@ -14,12 +14,10 @@ import type {
 	ReleaseItem,
 } from "../types/wallet-types.ts";
 import {
-	FLOW_PERIODS,
 	type FlowPeriod,
 	hasTrend,
 	isElsewhere,
 	ledgerKindLabel,
-	periodLabel,
 	periodPhrase,
 } from "../core/wallet-model.ts";
 import { timeAxis } from "@projective/ui/display";
@@ -27,10 +25,8 @@ import { FlowAreaChart } from "./FlowAreaChart.tsx";
 
 /** Props for {@link AnalyticsView}. */
 export interface AnalyticsViewProps {
+	/** The window on screen; the footer band's ruler picks it (`walletFooterFor`). */
 	period: FlowPeriod;
-	/** Picks the window in place; each range chip is also a link to its window's address. */
-	onPeriod: (next: FlowPeriod) => void;
-	periodHref: (period: FlowPeriod) => string;
 	activity: ActivityView | null;
 	loading: boolean;
 	error: string | null;
@@ -55,8 +51,6 @@ const SHOW_OPTIONS = [
 	{ label: "All charts", value: "all" },
 	...CHARTS.map((chart) => ({ label: CHART_TITLE[chart], value: chart })),
 ];
-
-const RANGE_OPTIONS = FLOW_PERIODS.map((p) => ({ label: periodLabel(p), value: p }));
 
 /** A share in basis points as the whole percent a reader compares, with `<1%` for a sliver. */
 function percentOf(shareBp: number): string {
@@ -563,8 +557,7 @@ function ChartInspector(
 
 /**
  * `/wallet/analytics` — an uncarded 12-column grid of regions (DESIGN_SYSTEM §B.4 / §B.9.7) under the
- * shared `.fx-toolbar`: the window as range chips (each a link to its address) and which charts to
- * show. A KPI strip across the top; cash flow (8) beside the category volume (4); the release schedule
+ * shared `.fx-toolbar` holding which charts to show; the window is the footer band's ruler. A KPI strip across the top; cash flow (8) beside the category volume (4); the release schedule
  * (8) beside the top projects (4). Regions are separated by generous asymmetric whitespace and ONE
  * hairline per boundary — no region is boxed, nothing is nested, and the columns collapse by CONTAINER
  * width, not the viewport's, because the lane and the panel decide how wide the canvas is.
@@ -597,16 +590,6 @@ export function AnalyticsView(props: AnalyticsViewProps): JSX.Element {
 			data-loading={props.loading ? "true" : undefined}
 		>
 			<div class="fx-toolbar wlt-an__toolbar" role="group" aria-label="Analytics view">
-				<SelectButton
-					class="wlt-an__range"
-					aria-label="Window"
-					options={RANGE_OPTIONS}
-					value={props.period}
-					hrefFor={(p) => props.periodHref(p as FlowPeriod)}
-					onValueChange={(v) => {
-						if (typeof v === "string" && v !== props.period) props.onPeriod(v as FlowPeriod);
-					}}
-				/>
 				<span class="fx-toolbar__spacer" />
 				<Select
 					class="ui-field--bare wlt-an__show"

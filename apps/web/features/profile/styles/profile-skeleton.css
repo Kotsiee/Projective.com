@@ -716,12 +716,10 @@
 	text-decoration: none;
 	background: transparent;
 	border: none;
-	border-inline-start: 2px solid transparent;
 	border-radius: var(--radius-base);
 	cursor: pointer;
 	transition:
 		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard),
 		color var(--dur-fast) var(--ease-standard);
 }
 
@@ -738,7 +736,6 @@
 .pf-laneitem[data-on="true"] {
 	color: var(--on-surface);
 	background: var(--surface-2);
-	border-inline-start-color: var(--on-surface);
 }
 
 .pf-laneitem--primary {
@@ -872,7 +869,6 @@
 	block-size: var(--shell-nav-block);
 	padding: 0;
 	border: none;
-	border-inline: 2px solid transparent;
 	border-radius: var(--radius-base);
 	color: var(--on-surface-variant, var(--text-secondary));
 	background: transparent;
@@ -880,8 +876,7 @@
 	cursor: pointer;
 	transition:
 		color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard);
+		background-color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-railbtn:hover {
@@ -893,7 +888,6 @@
 .pf-railbtn[data-active="true"],
 .pf-railbtn[data-on="true"] {
 	background: var(--surface-2);
-	border-inline-start-color: var(--on-surface);
 	color: var(--on-surface);
 }
 

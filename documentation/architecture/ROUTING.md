@@ -319,11 +319,13 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   remaining retired deep pages answer `(dashboard)/wallet/[section].tsx` with a **308**, keeping `w`
   and `display`: `activity` → `/wallet/analytics`, `payouts` · `funding` · `access` →
   `/wallet#upcoming`, `methods` → `/wallet#methods`. Any other `/wallet/<segment>` is a 404.
-  `(dashboard)/_layout.tsx` resolves ONE slot for every wallet page — the middle-nav LANE
-  (`walletLaneFor`: page links · the verification gate · the money-action grid, reading the overview
-  itself so it paints in the first byte) — and no header band and no footer rig: the display-currency
-  and settings tools sit in the hero's corner and the range ruler pins inside the page. Below 767px
-  the shell removes the lane, and its page links and gate move to the top of the sheet.
+  `(dashboard)/_layout.tsx` resolves the middle-nav LANE for every wallet page (`walletLaneFor`:
+  page links · the verification gate · the money actions, Top up and Withdraw in its footer, reading
+  the overview itself so it paints in the first byte) and no header band: the display-currency and
+  settings tools sit in the hero's corner and the overview's range ruler pins inside the page.
+  `/wallet/transactions` and `/wallet/analytics` also register the FOOTER band (`walletFooterFor`,
+  keyed on `?flow=`): the period ruler and the CSV download (Decision #331). Below 767px the shell
+  removes the lane, and its page links and gate move to the top of the sheet; the footer band stays.
 
 - **A ticket is addressed by `?tkv=<ticket-slug>`, on whatever page the viewer is on.** A ticket
   has no route of its own: its modal (`tkv`, the View Ticket surface) is opened by a QUERY parameter

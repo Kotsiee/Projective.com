@@ -310,6 +310,17 @@
 				"$env:PORT = '13282'; deno task dev --port 13282 --strictPort"
 			],
 			"port": 13282
+		},
+		{
+			"name": "web-wallet-footer",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13311'; deno task dev --port 13311 --strictPort"
+			],
+			"port": 13311,
+			"autoPort": false
 		}
 	]
 }

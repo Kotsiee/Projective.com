@@ -38,7 +38,10 @@
 	color: var(--text-secondary);
 	text-decoration: none;
 	background: transparent;
-	transition: color var(--dur-fast) var(--ease-standard);
+	border-radius: var(--radius-base);
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
 }
 
 .cat-secnav__link:hover {
@@ -47,28 +50,18 @@
 
 .cat-secnav__link:focus-visible {
 	outline: none;
-	border-radius: var(--radius-base);
 	box-shadow: none;
 }
 
+/* The column states the active section by ink plus the NavItem tint step — no leading mark
+   (Decision #330). The narrow strip swaps the fill for its tab underline below. */
 .cat-secnav__link[data-active="true"] {
 	color: var(--primary);
+	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
 }
 
 .cat-secnav__mark {
-	flex: none;
-	align-self: stretch;
-	inline-size: 2px;
-	min-block-size: 1rem;
-	border-radius: var(--radius-full);
-	background: var(--primary);
-	transform: scaleY(0);
-	transform-origin: center;
-	transition: transform var(--dur-fast) var(--ease-standard);
-}
-
-.cat-secnav__link[data-active="true"] .cat-secnav__mark {
-	transform: scaleY(1);
+	display: none;
 }
 
 .cat-secnav__icon {
@@ -117,15 +110,21 @@
 		padding-block-end: var(--space-3);
 	}
 
+	.cat-secnav__link[data-active="true"] {
+		background: transparent;
+	}
+
 	.cat-secnav__mark {
 		position: absolute;
 		inset-inline: var(--space-2);
 		inset-block-end: 0;
-		align-self: auto;
-		inline-size: auto;
+		display: block;
 		block-size: 2px;
-		min-block-size: 0;
+		border-radius: var(--radius-full);
+		background: var(--primary);
 		transform: scaleX(0);
+		transform-origin: center;
+		transition: transform var(--dur-fast) var(--ease-standard);
 	}
 
 	.cat-secnav__link[data-active="true"] .cat-secnav__mark {

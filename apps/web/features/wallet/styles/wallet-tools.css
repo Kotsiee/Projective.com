@@ -1,8 +1,9 @@
 /*
- * The wallet's two floating controls: the range ruler, pinned under the top bar while the page scrolls
- * beneath it, and the hero's corner tools (display currency · settings). The ruler floats over both the
- * aurora and the sheet, so it carries its own solid ground and a slight drop shadow; the tools only ever
- * sit on the aurora, so they take the hero's glass and ink.
+ * The wallet's tools: the overview's range ruler, pinned under the top bar while the page scrolls
+ * beneath it; the Transactions and Analytics footer rig (period ruler · Download); and the hero's
+ * corner tools (display currency · settings). The pinned ruler floats over both the aurora and the
+ * sheet, so it carries its own solid ground and a slight drop shadow; the tools only ever sit on the
+ * aurora, so they take the hero's glass and ink.
  */
 
 /* #region The pinned ruler bar */
@@ -139,6 +140,138 @@
 		grid-template-columns: repeat(var(--wlt-ruler-n), minmax(1.875rem, 1fr));
 		min-inline-size: calc(var(--wlt-ruler-n) * 1.875rem + 2 * var(--wlt-ruler-pad));
 	}
+}
+/* #endregion */
+
+/*
+ * #region Footer rig — the Transactions and Analytics footer band
+ *
+ * The `/calendar` rig's grid (calendar-chrome.css `.cal-rig`): an empty leading edge, the ruler in a
+ * centre track capped at 22rem that gives way first, and the actions on the trailing edge. Contained,
+ * so its `nowrap` row never widens the middle-nav's content track.
+ */
+.wlt-ledgertools {
+	container: wlt-rig / inline-size;
+	display: grid;
+	grid-template-columns: minmax(max-content, 1fr) minmax(0, 22rem) minmax(max-content, 1fr);
+	grid-template-areas: ". ruler actions";
+	align-items: center;
+	gap: var(--space-2) var(--space-3);
+	padding: var(--space-3) var(--space-4);
+	min-inline-size: 0;
+}
+
+.wlt-ledgertools > .wlt-scale {
+	grid-area: ruler;
+}
+
+.wlt-ledgertools__actions {
+	grid-area: actions;
+	justify-self: end;
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+}
+
+.ui-button.wlt-ledgertools__icon {
+	flex: none;
+}
+
+.wlt-ledgertools > .ui-inline-notice {
+	grid-column: 1 / -1;
+}
+
+/* Too narrow for a centred ruler: it takes the leading edge and the full remaining width. */
+@container wlt-rig (max-width: 30rem) {
+	.wlt-ledgertools {
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas: "ruler actions";
+	}
+}
+/* #endregion */
+
+/*
+ * #region Period ruler — the `/calendar` view ruler's instrument (`@projective/ui/calendar` zoom.css)
+ *
+ * Names above, the scale below, one marker across the scale; every position a logical inset, so a
+ * right-to-left page mirrors the whole instrument without a direction-specific rule.
+ */
+.wlt-scale {
+	--wlt-scale-h: 1.75rem;
+	--wlt-scale-track-h: 0.625rem;
+	--wlt-scale-minor-h: 0.25rem;
+	--wlt-scale-major-h: 0.5rem;
+	position: relative;
+	inline-size: 100%;
+	min-inline-size: calc(var(--wlt-scale-n) * 2rem);
+	block-size: var(--wlt-scale-h);
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	cursor: ew-resize;
+	touch-action: none;
+	user-select: none;
+	border-radius: var(--radius-xs);
+}
+
+.wlt-scale__names {
+	position: relative;
+	block-size: calc(var(--wlt-scale-h) - var(--wlt-scale-track-h));
+}
+
+/* Each name owns its zone's width and centres in it — no translate, so nothing to mirror by hand. */
+.wlt-scale__name {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: calc(var(--wlt-tick-at) * 100%);
+	inline-size: calc(100% / var(--wlt-scale-n));
+	text-align: center;
+	font-size: var(--text-xs);
+	line-height: 1;
+	color: var(--text-secondary);
+	white-space: nowrap;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.wlt-scale__name[data-on="true"] {
+	color: var(--on-surface);
+}
+
+.wlt-scale__track {
+	position: relative;
+	block-size: var(--wlt-scale-track-h);
+	border-block-end: var(--hairline);
+}
+
+.wlt-scale__tick {
+	position: absolute;
+	inset-block-end: 0;
+	inset-inline-start: calc(var(--wlt-tick-at) * 100%);
+	margin-inline-start: -0.5px;
+	inline-size: 1px;
+	block-size: var(--wlt-scale-minor-h);
+	background: color-mix(in srgb, var(--outline) 45%, transparent);
+}
+
+.wlt-scale__tick[data-major="true"] {
+	block-size: var(--wlt-scale-major-h);
+	background: var(--text-secondary);
+}
+
+/* The marker glides onto the window it settled on, and is held exactly under the pointer while dragged. */
+.wlt-scale__marker {
+	position: absolute;
+	inset-block: calc(var(--wlt-scale-track-h) * -0.25) 0;
+	inset-inline-start: calc(var(--wlt-scale-at) * 100%);
+	margin-inline-start: -1px;
+	inline-size: 2px;
+	border-radius: var(--radius-full);
+	background: var(--primary);
+	transition: inset-inline-start var(--dur-medium) var(--spring-standard);
+}
+
+.wlt-scale[data-held="true"] .wlt-scale__marker {
+	transition: none;
 }
 /* #endregion */
 
@@ -311,7 +444,9 @@
 /* #endregion */
 
 @media (prefers-reduced-motion: reduce) {
-	.wlt-ruler__thumb {
+	.wlt-ruler__thumb,
+	.wlt-scale__marker,
+	.wlt-scale__name {
 		transition: none;
 	}
 
@@ -322,7 +457,9 @@
 	}
 }
 
-:root[data-motion="reduced"] .wlt-ruler__thumb {
+:root[data-motion="reduced"] .wlt-ruler__thumb,
+:root[data-motion="reduced"] .wlt-scale__marker,
+:root[data-motion="reduced"] .wlt-scale__name {
 	transition: none;
 }
 

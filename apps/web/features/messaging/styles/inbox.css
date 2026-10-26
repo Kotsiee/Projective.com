@@ -63,11 +63,9 @@
 	position: relative;
 	display: flex;
 	align-items: stretch;
-	border-inline-start: 2px solid transparent;
 	border-radius: var(--radius-lg);
 	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard);
+		background-color var(--dur-fast) var(--ease-standard);
 }
 .inbox-row + .inbox-row {
 	margin-block-start: var(--space-1);
@@ -79,7 +77,6 @@
 }
 .inbox-row[data-active="true"] {
 	background: var(--surface-2);
-	border-inline-start-color: var(--on-surface);
 }
 
 /*

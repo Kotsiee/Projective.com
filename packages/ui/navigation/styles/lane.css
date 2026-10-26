@@ -213,12 +213,11 @@
 	font: inherit;
 	font-size: 0.8125rem;
 	color: var(--on-surface);
-	background: var(--surface-2);
+	/* No fill in any state: the glyph and placeholder name the field, the focus edge marks it live. */
+	background: transparent;
 	border: 1px solid transparent;
 	border-radius: var(--radius-full);
-	transition:
-		border-color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard);
+	transition: border-color var(--dur-fast) var(--ease-standard);
 }
 
 .ui-lane-search__input::placeholder {
@@ -227,7 +226,6 @@
 
 .ui-lane-search__input:focus-visible {
 	outline: none;
-	background: var(--surface);
 	border-color: var(--primary);
 	box-shadow: none;
 }

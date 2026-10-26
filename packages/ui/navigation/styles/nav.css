@@ -17,19 +17,32 @@
 	outline: none;
 }
 
+/*
+ * One row anatomy with the project lane's channel rows (`.proj-chan`, Decision #330): the same
+ * padding, type size and 0.9rem glyph, so a lane that stacks NavItem views over channel rows reads as
+ * one list. Rest ink is muted, hover is the soft `--on-surface` tint, and active steps that tint up
+ * one tier and inks label and glyph black (`--on-surface`) in light, pure white (`--on-scrim`,
+ * tone 100) in dark. Active is fill + ink only — no leading bar (§B.4.2).
+ */
 .ui-nav-item {
+	--ui-nav-item-active-ink: var(--on-surface);
 	position: relative;
 	display: flex;
 	align-items: center;
-	gap: var(--space-3);
-	block-size: 40px;
+	gap: var(--space-2);
 	margin-inline: var(--space-2);
-	padding-inline: var(--space-2);
-	border-radius: var(--radius-base);
+	padding: 0.4rem 0.5rem;
+	border-radius: var(--radius-sm);
+	font-size: 0.8rem;
 	color: var(--text-secondary);
 	text-decoration: none;
 	white-space: nowrap;
 	overflow: hidden;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+:root[data-theme="dark"] .ui-nav-item {
+	--ui-nav-item-active-ink: var(--on-scrim);
 }
 
 .ui-nav-item:hover:not(.ui-nav-item--active) {
@@ -37,6 +50,13 @@
 }
 
 .ui-nav-item--active {
+	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
+	color: var(--ui-nav-item-active-ink);
+}
+
+/* The global site rail keeps the tier-3 "major navigation" active fill (§B.8.1): solid `--primary`
+   with `--on-primary` label and glyph, the mode-invariant pair. Every other NavItem takes the tint. */
+.ui-app-shell__sidebar .ui-nav-item--active {
 	background: var(--primary);
 	color: var(--on-primary);
 }
@@ -50,23 +70,19 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: 24px;
-	block-size: 24px;
-	flex: 0 0 auto;
+	flex: none;
+	font-size: 0.9rem;
 }
 
 .ui-nav-item__icon svg {
-	inline-size: 22px;
-	block-size: 22px;
+	inline-size: 1em;
+	block-size: 1em;
 }
 
 .ui-nav-item__label {
 	min-inline-size: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
-	/* Medium-weight labels beside the oversized icons — readable, high-end (Part D.1). The active
-	destination steps up once more so the current page reads at a glance. */
-	font-weight: 500;
 }
 
 .ui-nav-item--active .ui-nav-item__label {
@@ -82,12 +98,14 @@
 }
 
 /* Collapsed rail: square blocks (--shell-nav-block) with one large centered icon, labels hidden,
-   icons on the shared vertical axis (Part D.1). Driven by the root attribute (FOUC-safe). */
+   icons on the shared vertical axis (Part D.1). Driven by the root attribute (FOUC-safe). The square
+   keeps `--radius-base`, the radius every feature rail square mirrors. */
 :root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item {
 	inline-size: var(--shell-nav-block);
 	block-size: var(--shell-nav-block);
 	margin-inline: auto;
 	padding-inline: 0;
+	border-radius: var(--radius-base);
 	justify-content: center;
 }
 

@@ -60,7 +60,6 @@
 	inline-size: 100%;
 	padding: var(--space-2);
 	border: none;
-	border-inline-start: 2px solid transparent;
 	border-radius: var(--radius-sm);
 	background: transparent;
 	color: var(--on-surface);
@@ -71,8 +70,7 @@
 	text-decoration: none;
 	cursor: pointer;
 	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard);
+		background-color var(--dur-fast) var(--ease-standard);
 }
 
 .fx-tree__node:hover {
@@ -86,7 +84,6 @@
 
 .fx-tree__node[data-active="true"] {
 	background: var(--surface-2);
-	border-inline-start-color: var(--on-surface);
 	color: var(--on-surface);
 	font-weight: 600;
 }

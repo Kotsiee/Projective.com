@@ -4,9 +4,12 @@ import { useEffect } from "preact/hooks";
 import "../styles/wallet.css";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
+import { Button } from "@projective/ui/fields";
 import {
 	LaneCollapseButton,
+	LaneCreateButton,
 	LaneFooter,
+	LaneFooterActions,
 	LaneHead,
 	LaneIconButton,
 	LaneList,
@@ -24,7 +27,6 @@ import {
 import { openWalletDialog, walletFlowLive, walletOverviewLive } from "../core/wallet-state.ts";
 import { ActionIcon } from "../components/wallet-glyphs.tsx";
 import { VerificationGate } from "../components/VerificationGate.tsx";
-import { LedgerTools } from "../components/WalletTools.tsx";
 import { VIEW_ICON, WalletPageNav, walletViewsFor } from "../components/WalletPageNav.tsx";
 
 /** Props for {@link WalletLane}. */
@@ -63,9 +65,31 @@ function laneActions(overview: WalletOverview): ResolvedAction[] {
 	);
 }
 
+/** The two actions the footer band carries as words; the head keeps the rest as icons. */
+const FOOTER_ACTIONS: readonly WalletAction[] = ["top_up", "withdraw"];
+
 /** Opens an action's dialog; a locked one opens the dialog that explains why. */
 function run(action: WalletAction): void {
 	openWalletDialog({ kind: "action", action });
+}
+
+/** A footer action's glyph: its own, or the lock while it is unavailable (pressing still explains). */
+function FooterIcon({ item }: { item: ResolvedAction }): JSX.Element {
+	return item.locked
+		? <Icon name="lock" size="sm" />
+		: <ActionIcon action={item.action} size="sm" />;
+}
+
+/** A worded footer action needs no tooltip to name it; a locked one gets one carrying the reason. */
+function LockReason(
+	{ item, children }: { item: ResolvedAction; children: JSX.Element },
+): JSX.Element {
+	if (!item.locked) return children;
+	return (
+		<Tooltip content={`${item.label} — ${item.reason ?? "unavailable right now"}`}>
+			{children}
+		</Tooltip>
+	);
 }
 
 // #region Collapsed rail
@@ -126,11 +150,12 @@ function WalletRail(
 // #endregion
 
 /**
- * The `/wallet` middle-nav lane, in three bands: the head carries every money action the viewer is
- * offered as the lanes' icon-only `LaneIconButton`s; the body centres the wallet's pages as the lanes'
- * shared `NavItem` rows; and the foot pins the standing facts — the Transactions page's window ruler
- * and download, the verification gate (one pip-led line), and why there is nothing to press. No tiles,
- * no boxes (§B.6, §B.9.7). It renders both presentations and lets
+ * The `/wallet` middle-nav lane, identical on every wallet page, in four bands: the head carries the
+ * money actions other than Top up and Withdraw as the lanes' icon-only `LaneIconButton`s; the body
+ * centres the wallet's pages as the lanes' shared `NavItem` rows; the foot pins the standing facts —
+ * the verification gate (one pip-led line) and why there is nothing to press; and the footer band
+ * carries Withdraw (tier-4 outlined) beside Top up (the lane's one `LaneCreateButton`), the `/projects`
+ * Create project pattern. No tiles, no boxes (§B.6, §B.9.7). It renders both presentations and lets
  * `.ui-splitter[data-mode="collapsed"]` reveal one — the expanded stack or an icon rail — like every
  * other lane.
  *
@@ -160,6 +185,9 @@ export default function WalletLane(props: WalletLaneProps): JSX.Element {
 	const overview = walletOverviewLive.value ?? props.overview;
 	const flow = walletFlowLive.value ?? props.flow;
 	const actions = overview ? laneActions(overview) : [];
+	const headActions = actions.filter((item) => !FOOTER_ACTIONS.includes(item.action));
+	const topUp = actions.find((item) => item.action === "top_up");
+	const withdraw = actions.find((item) => item.action === "withdraw");
 	const aggregate = overview?.ref.scope === "aggregate";
 
 	return (
@@ -172,11 +200,10 @@ export default function WalletLane(props: WalletLaneProps): JSX.Element {
 			/>
 
 			<div class="wlt-lane__full">
-				<LaneHead class="wlt-lane__head">
-					<p class="wlt-lane__title">Wallet</p>
-					{actions.length > 0 && (
+				{headActions.length > 0 && (
+					<LaneHead class="wlt-lane__head">
 						<div class="wlt-lane__actions" role="group" aria-label="Wallet actions">
-							{actions.map((item) => (
+							{headActions.map((item) => (
 								<LaneIconButton
 									key={item.action}
 									icon={
@@ -193,8 +220,8 @@ export default function WalletLane(props: WalletLaneProps): JSX.Element {
 								/>
 							))}
 						</div>
-					)}
-				</LaneHead>
+					</LaneHead>
+				)}
 
 				<LaneList label="Wallet" class="wlt-lane__list">
 					<div class="wlt-lane__body">
@@ -210,11 +237,10 @@ export default function WalletLane(props: WalletLaneProps): JSX.Element {
 				</LaneList>
 
 				{
-					/* Standing facts about this wallet, pinned above the footer band: the Transactions page's
-					   window and download, the verification gate, and why there is nothing to press. */
+					/* Standing facts about this wallet, pinned above the footer band: the verification gate,
+					   and why there is nothing to press. */
 				}
 				<div class="wlt-lane__foot">
-					{props.view === "transactions" && <LedgerTools fallback={flow ?? "all"} />}
 					{overview && <VerificationGate overview={overview} />}
 					{overview && actions.length === 0 && (
 						<p class="wlt-lane__note">
@@ -231,6 +257,34 @@ export default function WalletLane(props: WalletLaneProps): JSX.Element {
 						icon={<SidebarToggleIcon />}
 						onToggle={() => setCollapsed(!collapsed.value)}
 					/>
+
+					{(topUp || withdraw) && (
+						<LaneFooterActions>
+							{withdraw && (
+								<LockReason item={withdraw}>
+									<Button
+										variant="outlined"
+										severity="neutral"
+										size="sm"
+										rounded
+										icon={<FooterIcon item={withdraw} />}
+										label={withdraw.label}
+										aria-label={withdraw.locked ? `${withdraw.label}, unavailable` : withdraw.label}
+										onClick={() => run("withdraw")}
+									/>
+								</LockReason>
+							)}
+							{topUp && (
+								<LockReason item={topUp}>
+									<LaneCreateButton
+										label={topUp.label}
+										icon={<FooterIcon item={topUp} />}
+										onClick={() => run("top_up")}
+									/>
+								</LockReason>
+							)}
+						</LaneFooterActions>
+					)}
 				</LaneFooter>
 			</div>
 		</div>

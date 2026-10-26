@@ -76,14 +76,12 @@
 	place-items: center;
 	inline-size: var(--shell-nav-block);
 	block-size: var(--shell-nav-block);
-	border-inline: 2px solid transparent;
 	border-radius: var(--radius-base);
 	color: var(--text-secondary);
 	text-decoration: none;
 	transform: scale(1);
 	transition:
 		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard),
 		color var(--dur-fast) var(--ease-standard),
 		transform var(--dur-fast) var(--ease-standard);
 }
@@ -100,7 +98,6 @@
 
 .stg-rail__item[aria-current="page"] {
 	background: var(--surface-2);
-	border-inline-start-color: var(--on-surface);
 	color: var(--on-surface);
 }
 

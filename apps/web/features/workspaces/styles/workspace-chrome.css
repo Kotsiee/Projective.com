@@ -281,7 +281,7 @@
 }
 
 /* A queue's size at the row's end — plain tabular text, never a pill (§B.6); its words are in the
-row's accessible name. On the filled active row it takes the row's own ink. */
+row's accessible name. On the active row it takes the row's own ink. */
 .wsp-lane__navcount {
 	font-size: var(--wsp-fs-micro);
 	font-weight: var(--fw-semibold);
@@ -293,8 +293,8 @@ row's accessible name. On the filled active row it takes the row's own ink. */
 	color: currentColor;
 }
 
-/* An attention dot on the filled active row takes the row's ink too: the kind hue is a team's
-`--primary`, the very fill it would sit on. */
+/* An attention dot on the active row takes the row's ink too, so the mark reads as part of the
+current destination rather than a second signal beside it. */
 .wsp-lane__navlist .ui-nav-item--active .wsp-pulse {
 	background: currentColor;
 }
@@ -475,8 +475,7 @@ row's accessible name. On the filled active row it takes the row's own ink. */
 	text-align: start;
 	color: var(--primary);
 	cursor: pointer;
-	border-block: 0;
-	border-inline-end: 0;
+	border: 0;
 }
 
 .proj-chan.wsp-lane__catcreate .proj-chan__glyph {
@@ -630,8 +629,9 @@ row's accessible name. On the filled active row it takes the row's own ink. */
 /*
  * The same four zones folded to glyphs. Every rail square takes the global sidebar's collapsed
  * `.ui-nav-item` geometry — a `--shell-nav-block` square at `--radius-base` — and `NavItem`'s ACTIVE
- * pair (`--primary` / `--on-primary`), so the expanded zone-2 row and its folded square mark the
- * current module identically. Hover is the solid `--surface-3` step (a feature sheet carries no
+ * pair (the `--tint` `--on-surface` step, inked `--on-surface` black in light and `--on-scrim` white
+ * in dark, Decision #330), so the expanded zone-2 row and its folded square mark the current module
+ * identically. Hover is the solid `--surface-3` step (a feature sheet carries no
  * translucent wash). Every control carries a portal `Tooltip` plus an `aria-label`, never a native
  * `title` (§B.6).
  */
@@ -710,8 +710,12 @@ words — a ring colour on its own is not a channel. */
 }
 
 .wsp-rail__item[data-active="true"] {
-	background: var(--primary);
-	color: var(--on-primary);
+	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
+	color: var(--on-surface);
+}
+
+:root[data-theme="dark"] .wsp-rail__item[data-active="true"] {
+	color: var(--on-scrim);
 }
 
 /* The rail's squares and mark are icon-only links: the icon press step (§B.12). */
@@ -743,7 +747,7 @@ words — a ring colour on its own is not a channel. */
 	inset-inline-end: var(--space-2);
 }
 
-/* On the filled active square the dot takes the square's ink, as the expanded row's mark does. */
+/* On the active square the dot takes the square's ink, as the expanded row's mark does. */
 .wsp-rail__item[data-active="true"] .wsp-rail__dot {
 	background: currentColor;
 }

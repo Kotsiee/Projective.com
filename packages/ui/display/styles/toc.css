@@ -49,17 +49,14 @@
 .ui-toc__link {
 	display: flex;
 	gap: var(--space-2);
-	margin-inline-start: -1px;
 	padding-block: var(--space-1);
 	padding-inline: var(--space-3) var(--space-2);
-	border-inline-start: 2px solid transparent;
 	font-size: var(--text-md);
 	line-height: var(--leading-snug);
 	color: var(--text-secondary);
 	text-decoration: none;
 	transition:
-		color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard);
+		color var(--dur-fast) var(--ease-standard);
 }
 
 .ui-toc__list--nested .ui-toc__link {
@@ -74,10 +71,9 @@
 .ui-toc__link[aria-current="location"] {
 	color: var(--on-surface);
 	font-weight: var(--fw-medium);
-	border-inline-start-color: var(--primary);
 }
 
-/* A cross-page entry for the document being read: full ink, no bar — the bar marks the SECTION. */
+/* A cross-page entry for the document being read: full ink only — the weight step marks the SECTION. */
 .ui-toc__link[aria-current="page"] {
 	color: var(--on-surface);
 }

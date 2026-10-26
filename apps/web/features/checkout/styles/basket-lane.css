@@ -131,21 +131,11 @@
 	box-shadow: none;
 }
 
-/* The open destination: a raised tonal surface plus a leading accent — two channels, so the state
-   survives a monochrome or colour-blind rendering (§B.6 / §C.3). */
+/* The open destination: a raised tonal surface plus a weight step — two channels, so the state
+   survives a monochrome or colour-blind rendering (§B.6 / §C.3). No leading bar (Decision #330). */
 .bsk-lane__row[data-active="true"] {
 	background: var(--surface-2);
 	font-weight: var(--fw-medium);
-}
-
-.bsk-lane__row[data-active="true"]::before {
-	content: "";
-	position: absolute;
-	inset-inline-start: 0;
-	inset-block: var(--space-2);
-	inline-size: 3px;
-	border-radius: var(--radius-full);
-	background: var(--primary);
 }
 
 /*
@@ -257,15 +247,13 @@
 	inline-size: var(--shell-nav-block);
 	block-size: var(--shell-nav-block);
 	border: 0;
-	border-inline: 2px solid transparent;
 	border-radius: var(--radius-base);
 	background: transparent;
 	color: var(--on-surface);
 	text-decoration: none;
 	cursor: pointer;
 	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard);
+		background-color var(--dur-fast) var(--ease-standard);
 }
 
 .bsk-lane__railbtn:hover {
@@ -279,7 +267,6 @@
 
 .bsk-lane__railbtn[data-active="true"] {
 	background: var(--surface-2);
-	border-inline-start-color: var(--on-surface);
 	color: var(--on-surface);
 }
 

@@ -106,7 +106,8 @@
 
 /*
  * Rail buttons mirror the global collapsed `.ui-nav-item` exactly: an `--shell-nav-block` (48px)
- * square, zero inline padding, `--radius-base`, the same hover/active tints and 24px icon.
+ * square, zero inline padding, `--radius-base`, the same hover/active tints and 24px icon. Active is
+ * fill + ink only — no leading bar (Decision #330).
  */
 .proj-railbtn {
 	position: relative;
@@ -117,7 +118,6 @@
 	block-size: var(--shell-nav-block);
 	padding: 0;
 	border: none;
-	border-inline: 2px solid transparent;
 	border-radius: var(--radius-base);
 	color: var(--on-surface-variant, var(--text-secondary));
 	background: transparent;
@@ -125,8 +125,7 @@
 	cursor: pointer;
 	transition:
 		color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard);
+		background-color var(--dur-fast) var(--ease-standard);
 }
 
 .proj-railbtn:hover {
@@ -136,14 +135,12 @@
 
 .proj-railbtn[data-active="true"] {
 	background: var(--surface-2);
-	border-inline-start-color: var(--on-surface);
 	color: var(--on-surface);
 }
 
 .proj-railbtn--edit[data-active="true"],
 .proj-railbtn--edit[data-active="true"]:hover {
 	background: var(--primary);
-	border-inline-start-color: transparent;
 	color: var(--on-primary);
 }
 
@@ -500,7 +497,7 @@
 	color: var(--primary);
 }
 
-/* On the filled active row a mark takes the row's own ink, so it never vanishes into the fill. */
+/* On the active row a mark takes the row's own ink, so it reads as part of the current destination. */
 .proj-nav .ui-nav-item--active .proj-nav__dot {
 	background: currentColor;
 }
@@ -574,34 +571,41 @@
 /* #endregion */
 
 /* #region Channel rows */
+/*
+ * The same row as the package `NavItem` (`.ui-nav-item`, Decision #330): muted ink at rest, the soft
+ * `--on-surface` hover tint, and an active that steps the tint up one tier and inks name and glyph
+ * black (`--on-surface`) in light, pure white (`--on-scrim`) in dark. No leading bar.
+ */
 .proj-chan {
+	--proj-chan-active-ink: var(--on-surface);
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
 	padding: 0.4rem 0.5rem;
 	font-size: 0.8rem;
-	color: var(--on-surface);
+	color: var(--text-secondary);
 	text-decoration: none;
 	background: transparent;
-	border-inline-start: 2px solid transparent;
 	border-radius: var(--radius-sm);
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard);
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+:root[data-theme="dark"] .proj-chan {
+	--proj-chan-active-ink: var(--on-scrim);
 }
 
 .proj-chan:hover {
-	background: var(--surface-2);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
+/* After `:hover` at equal specificity, so pointing at the open channel keeps its active fill. */
 .proj-chan[data-active="true"] {
-	background: var(--surface-2);
-	border-inline-start-color: var(--on-surface);
-	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
+	color: var(--proj-chan-active-ink);
 }
 
 .proj-chan[data-active="true"] .proj-chan__glyph {
-	color: var(--on-surface);
+	color: currentColor;
 }
 
 .proj-chan[data-active="true"] .proj-chan__name {

@@ -61,7 +61,7 @@ import { WalletDialogs } from "../components/WalletDialogs.tsx";
 import { AllocationMeter } from "../components/AllocationMeter.tsx";
 import { AnalyticsView } from "../components/AnalyticsView.tsx";
 import { InvoicesPanel } from "../components/InvoicesPanel.tsx";
-import { LedgerTools, RangeRuler } from "../components/WalletTools.tsx";
+import { RangeRuler } from "../components/WalletTools.tsx";
 import { VerificationGate } from "../components/VerificationGate.tsx";
 import { WalletPageNav } from "../components/WalletPageNav.tsx";
 
@@ -343,10 +343,12 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 		walletOverviewLive.value = overview.value;
 	}, [overview.value]);
 
-	// The lane's foot drives the Transactions page's window and download.
-	const canExport = lines.value.length > 0;
+	// The footer band drives the Transactions and Analytics pages' window and download.
+	const canExport = view === "analytics"
+		? flows.value[period.value] != null
+		: lines.value.length > 0;
 	useEffect(() => {
-		if (view !== "transactions") return;
+		if (view !== "transactions" && view !== "analytics") return;
 		walletLedgerTools.value = {
 			period: period.value,
 			canExport,
@@ -446,8 +448,10 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 		if (!flows.peek()[next]) void loadActivity(next);
 	}
 
+	// Analytics downloads every line in the window it charts; Transactions, the ledger as filtered.
 	const exportLedger = async (): Promise<string | null> => {
-		const res = await WalletService.exportLedger(query(), ledgerParamsOf(filters.peek()));
+		const scope = view === "analytics" ? { ...UNFILTERED, period: period.peek() } : filters.peek();
+		const res = await WalletService.exportLedger(query(), ledgerParamsOf(scope));
 		if (!res.ok) return res.message;
 		saveBlob(res.blob, res.filename);
 		return null;
@@ -487,8 +491,8 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 	return (
 		<section class="wlt" data-view={view} aria-labelledby="wlt-title">
 			{
-				/* The overview's cash-flow window. Transactions keeps its ruler in the lane's foot and
-				   Analytics in its own toolbar. */
+				/* The overview's cash-flow window. Transactions and Analytics carry theirs in the footer
+				   band (`walletFooterFor`). */
 			}
 			{view === "overview" && (
 				<div class="wlt-rulebar">
@@ -520,7 +524,6 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 						flow={period.value}
 						business={o.business}
 					/>
-					{view === "transactions" && <LedgerTools fallback={period.value} />}
 					<VerificationGate overview={o} />
 				</div>
 
@@ -611,8 +614,6 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 					<div class="wlt-sheet__page wlt-sheet__page--analytics">
 						<AnalyticsView
 							period={period.value}
-							onPeriod={choosePeriod}
-							periodHref={(p) => walletPageHref("analytics", data.wallet, display.value, p)}
 							activity={activity}
 							loading={flowBusy.value}
 							error={flowError.value}

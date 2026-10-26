@@ -35,10 +35,6 @@
 	flex-wrap: wrap;
 }
 
-.wlt-an__range {
-	flex: none;
-}
-
 .wlt-an__show {
 	flex: 0 1 12rem;
 	min-inline-size: 9rem;

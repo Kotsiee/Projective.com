@@ -39,7 +39,6 @@
 	min-block-size: 1.875rem;
 	padding: var(--space-1) var(--space-2);
 	border: none;
-	border-inline-start: 2px solid transparent;
 	border-radius: var(--radius-sm);
 	background: transparent;
 	color: var(--on-surface);
@@ -48,8 +47,7 @@
 	text-align: start;
 	cursor: pointer;
 	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard);
+		background-color var(--dur-fast) var(--ease-standard);
 }
 .ui-treenav__row:hover {
 	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
@@ -60,7 +58,6 @@
 }
 .ui-treenav__row--active {
 	background: var(--surface-2);
-	border-inline-start-color: var(--on-surface);
 	color: var(--on-surface);
 	font-weight: 600;
 }

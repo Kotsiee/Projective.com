@@ -2,8 +2,8 @@
  * The `/wallet` middle-nav lane. It renders an expanded stack and a collapsed icon rail and lets
  * `.ui-splitter[data-mode="collapsed"]` reveal one, like every other lane. Density follows §B.6: the
  * money actions as the lanes' icon-only buttons in the head, the pages as the lanes' `NavItem` rows
- * centred in the body, the standing facts (ruler, gate) pinned in the foot — no card or tile around
- * any of them.
+ * centred in the body, the standing facts (gate, note) pinned in the foot, and Withdraw · Top up in
+ * the shared footer band — no card or tile around any of them.
  */
 
 /* #region Dual presentation */
@@ -29,14 +29,6 @@
 /* #endregion */
 
 /* #region Expanded stack — head (actions) · body (pages, centred) · foot (standing facts) */
-.wlt-lane__title {
-	margin: 0;
-	font-size: var(--text-md);
-	font-weight: var(--fw-medium);
-	line-height: var(--leading-snug);
-	color: var(--on-surface);
-}
-
 /* The head's icon-only actions; the row wraps rather than hiding one behind a kebab. */
 .wlt-lane__actions {
 	display: flex;
@@ -103,20 +95,6 @@
 	font-size: var(--text-sm);
 	line-height: var(--leading-normal);
 	color: var(--text-secondary);
-}
-
-/* The ruler takes the lane's width: seven equal cells, however narrow the lane is dragged. */
-.wlt-ledgertools {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-}
-
-.wlt-ledgertools .wlt-ruler {
-	inline-size: 100%;
-	min-inline-size: 0;
-	grid-template-columns: repeat(var(--wlt-ruler-n), minmax(0, 1fr));
-	box-shadow: none;
 }
 /* #endregion */
 
@@ -204,7 +182,6 @@
 	block-size: var(--shell-nav-block);
 	padding: 0;
 	border: 0;
-	border-inline: 2px solid transparent;
 	border-radius: var(--radius-base);
 	background: transparent;
 	color: var(--text-secondary);
@@ -213,7 +190,6 @@
 	transform: scale(1);
 	transition:
 		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard),
 		color var(--dur-fast) var(--ease-standard),
 		transform var(--dur-fast) var(--ease-standard);
 }
@@ -230,7 +206,6 @@
 
 .wlt-rail__item[aria-current="page"] {
 	background: var(--surface-2);
-	border-inline-start-color: var(--on-surface);
 	color: var(--on-surface);
 }
 

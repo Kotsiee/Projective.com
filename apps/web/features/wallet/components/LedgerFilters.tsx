@@ -37,7 +37,7 @@ const KIND_OPTIONS = LEDGER_KIND_CHOICES.map((kind) => ({
  * The Transactions page's filter bar, as the SHARED `.fx-toolbar` the File Explorer, the member
  * rosters and the Catalogue console draw (borderless search · bare filter fields): a text search
  * (counterparty, project, description), the direction toggle and the category selector. The window
- * ruler and the CSV download live in the lane's foot (`LedgerTools`). Every change is the caller's to
+ * ruler and the CSV download live in the footer band (`LedgerTools`). Every change is the caller's to
  * apply and to write into the URL; the search applies once typing rests, or at once on Enter.
  */
 export function LedgerFilters(props: LedgerFiltersProps): JSX.Element {
