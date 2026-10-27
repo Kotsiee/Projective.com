@@ -431,29 +431,26 @@ Deno.test("lane: a withheld create leaves the plan's reason in its place, and on
 	}
 });
 
-Deno.test("lane (#306, #307, #316): a team console is Core operations · Governance · Catalogue · Channels, Settings in the footer", () => {
+Deno.test("lane (#306, #307, #316, #332): a team console is Core operations · Catalogue · Channels, Settings in the footer", () => {
 	const zones = lane.laneZones(inConsole());
 	const views = consoleViews(zones);
 	assertEquals(views.sections.map((s) => [s.id, s.label]), [
 		["operations", "Core operations"],
-		["governance", "Governance"],
 	]);
 	assertEquals(views.sections[0].rows.map((r) => [r.key, r.label]), [
 		["overview", "Overview"],
 		["projects", "Projects"],
 		["calendar", "Calendar"],
 		["files", "Files"],
+		["roster", "Members"],
+		["vault", "Wallet"],
+		["insights", "Analytics"],
 	]);
 	const catalogue = catalogueOf(zones);
 	assertEquals([catalogue.row.key, catalogue.row.label, catalogue.row.href], [
 		"catalogue",
 		"Catalogue",
 		"/teams/north-loop/catalogue",
-	]);
-	assertEquals(views.sections[1].rows.map((r) => [r.key, r.label]), [
-		["roster", "Members"],
-		["vault", "Wallet"],
-		["insights", "Analytics"],
 	]);
 	assertEquals(views.channels, {
 		label: "Channels",
@@ -475,8 +472,11 @@ Deno.test("lane (#306): a business console speaks its own hubs", () => {
 		"calendar",
 		"files",
 		"talent",
+		"roster",
+		"vault",
+		"insights",
 	]);
-	const vault = views.sections[1].rows.find((r) => r.key === "vault");
+	const vault = views.sections[0].rows.find((r) => r.key === "vault");
 	assertEquals(vault?.label, "Wallet");
 	assertEquals(keys(vault?.modules ?? []), ["finance", "spend", "billing"]);
 });
@@ -500,10 +500,11 @@ Deno.test("lane (#306): every module the viewer may open is reachable from exact
 			}
 		}
 	}
-	// A plain member's governance is the roster (Members) and Standing — no money, no Roles.
+	// A plain member sees the roster (Members) and Standing — no money, no Roles.
 	const plain = lane.laneZones(inConsole({ capabilities: MEMBER }));
-	const governance = consoleViews(plain).sections.find((s) => s.id === "governance");
-	assertEquals(governance?.rows.map((r) => [r.key, keys(r.modules)]), [
+	const people = consoleViews(plain).sections[0].rows
+		.filter((r) => ["roster", "vault", "insights"].includes(r.key));
+	assertEquals(people.map((r) => [r.key, keys(r.modules)]), [
 		["roster", ["members"]],
 		["insights", ["standing"]],
 	]);
@@ -1062,7 +1063,7 @@ Deno.test("lane: each zone's controls render inside their own zone, emitted in l
 			"the context zone opens on something other than the search",
 		);
 	}
-	// Inside a console Channels is the LAST section, after Core operations and Governance.
+	// Inside a console Channels is the LAST section, after Core operations and Catalogue.
 	const consoleViews = cases.filter((c) => c.id === "views")[1].body;
 	assert(
 		consoleViews.indexOf("<ChannelList") > consoleViews.indexOf("views.sections.map("),

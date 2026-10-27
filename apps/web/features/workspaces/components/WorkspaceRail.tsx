@@ -38,7 +38,7 @@ import { ContextSwitchControl, isActingEntity } from "./ContextSwitchControl.tsx
  *      as an icon-only Button. The roster index has no identity to fold, so its rail starts at zone 2.
  *      The kebab folds into the header band's copy, which paints while the lane is collapsed.
  *   2. **Views** → Core operations' hub glyphs, a hairline, a team's Catalogue glyph and the Channels
- *      glyph (the two sections' homes), a hairline, then Governance's — or, on the roster index, the
+ *      glyph (the two sections' homes) — or, on the roster index, the
  *      viewer's live entities as marks in the expanded list's order (owned first,
  *      {@link laneRailEntities}), so a collapsed lane is a switcher.
  *   3. **Context controls** → none: a segmented control has no glyph form, and the expanded lane is one
@@ -187,7 +187,7 @@ function RailIdentity(
 
 // #region Zone 2 — views
 /**
- * Core operations' hubs, a team's Catalogue and the Channels glyph, then Governance's — the expanded
+ * Core operations' hubs, a team's Catalogue and the Channels glyph — the expanded
  * zone 2 in glyphs, each group set off by a hairline.
  */
 function RailModules(props: WorkspaceRailProps): JSX.Element | null {
@@ -216,7 +216,6 @@ function RailModules(props: WorkspaceRailProps): JSX.Element | null {
 		);
 	};
 	const operations = views.sections.find((s) => s.id === "operations")?.rows ?? [];
-	const governance = views.sections.find((s) => s.id === "governance")?.rows ?? [];
 	const catalogue = views.catalogue;
 	const channels = views.channels;
 
@@ -238,8 +237,6 @@ function RailModules(props: WorkspaceRailProps): JSX.Element | null {
 					</a>
 				</Tooltip>
 			)}
-			{governance.length > 0 && <span class="wsp-rail__group-sep" role="separator" />}
-			{governance.map(square)}
 		</>
 	);
 }

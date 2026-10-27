@@ -5317,8 +5317,8 @@ and this entry only points at them:
   - **Context.** The debounced console search over views, channels, projects and people — alone: a
     view's readings are switched in its footer rig (Decision #319 moved Members' People · Org chart
     there).
-  - **Views.** `LaneSection`s: Core operations, Governance (folded by default), a team's Catalogue
-    (Decision #316), then Channels LAST. Core operations and Governance are hub rows (`NAV_HUBS`, each
+  - **Views.** `LaneSection`s: Core operations (Governance folded into it, Decision #332), a team's
+    Catalogue (Decision #316), then Channels LAST. Core operations is hub rows (`NAV_HUBS`, each
     a `NavItem` whose mark folds its modules' marks). Channels is drawn exactly as the Project Details
     lane draws its channels: the `.proj-chan` rows (hash glyph · name · unread dot) and the
     `.proj-chan-group__plus` "+" that opens the New channel dialog, from

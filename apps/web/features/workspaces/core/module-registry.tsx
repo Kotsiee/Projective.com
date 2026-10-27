@@ -74,8 +74,9 @@ import { CATALOGUE_CAPABILITY } from "./catalogue-gate.ts";
  *
  * ### Hubs (Decision #306, superseding #228 (C) and #232's primary views)
  * The lane does not list modules one by one: {@link NAV_HUBS} gathers them into hubs ("Roster &
- * members" is Members · Invitations · Roles), each placed in a lane zone (Core operations · Governance,
- * and Settings in the footer). A hub is a navigation grouping only — every module keeps its own route,
+ * members" is Members · Invitations · Roles), each placed in a lane zone (Core operations — Governance folded in by
+ * Decision #332 — a team's Catalogue, and Settings in the footer). A hub is a navigation grouping
+ * only — every module keeps its own route,
  * its own gate and its own screen, and the header band draws a multi-module hub's modules as link tabs.
  * {@link hubsForViewer} applies the same capability filter as {@link modulesForViewer}, so a hub whose
  * modules the viewer may not open is simply absent, never shown locked.
@@ -373,11 +374,11 @@ export const MODULES: readonly WorkspaceModule[] = [
 
 // #region Hubs
 /**
- * The lane zone a hub sits in: Core operations and Governance as labelled lane sections, the team's
+ * The lane zone a hub sits in: Core operations as the labelled lane section, the team's
  * Catalogue as its own section (its title the hub's link, its listings beneath — Decision #316), or the
  * footer rig's Settings control. Channels are their own zone, drawn from the read, not from a hub.
  */
-export type LaneZoneKey = "operations" | "governance" | "catalogue" | "footer";
+export type LaneZoneKey = "operations" | "catalogue" | "footer";
 
 /** Every hub key. */
 export type HubKey =
@@ -467,7 +468,7 @@ export const NAV_HUBS: readonly NavHub[] = [
 		key: "roster",
 		label: same("Members"),
 		glyph: MembersGlyph,
-		zone: "governance",
+		zone: "operations",
 		modules: ["members", "invitations", "roles"],
 		blurb: "Members, pending invitations and roles.",
 	},
@@ -475,7 +476,7 @@ export const NAV_HUBS: readonly NavHub[] = [
 		key: "vault",
 		label: same("Wallet"),
 		glyph: FinanceGlyph,
-		zone: "governance",
+		zone: "operations",
 		modules: ["finance", "payouts", "spend", "billing"],
 		blurb: "Balances, splits, spending and invoices.",
 	},
@@ -483,7 +484,7 @@ export const NAV_HUBS: readonly NavHub[] = [
 		key: "insights",
 		label: same("Analytics"),
 		glyph: AnalyticsGlyph,
-		zone: "governance",
+		zone: "operations",
 		modules: ["analytics", "standing"],
 		blurb: "Performance over time and the earned Standing rung.",
 	},

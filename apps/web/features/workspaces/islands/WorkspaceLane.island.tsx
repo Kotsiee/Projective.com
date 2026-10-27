@@ -78,7 +78,6 @@ import {
 	CatalogueGlyph,
 	ChannelGlyph,
 	cloneGlyph,
-	GovernanceGlyph,
 	InviteGlyph,
 	OperationsGlyph,
 	PlusGlyph,
@@ -115,7 +114,7 @@ import { screenHostsInvite } from "../core/rig-model.ts";
  *      and the All · Owned · Member `LaneTabs` under it; inside a console the search alone (a
  *      view's readings are switched in its footer rig, Decision #319).
  *   3. **Views** — the viewer's entities (owned first) on the index; inside a console the
- *      `LaneSection`s Core operations (hub rows), Governance (hub rows), a team's Catalogue (its title
+ *      `LaneSection`s Core operations (hub rows), a team's Catalogue (its title
  *      the console's link, its listings beneath and a "+" to create one — Decision #316) and Channels
  *      (the read's entity channels and a "+" to add one) LAST, as `/projects` closes its lane on its
  *      channel tree.
@@ -532,14 +531,13 @@ interface ConsoleLaneProps {
 }
 
 /** The zones' sections; a reader may fold one away, or open a folded one, for this visit. */
-type SectionId = "operations" | "catalogue" | "channels" | "governance";
+type SectionId = "operations" | "catalogue" | "channels";
 
 /** The section header glyphs. */
 const SECTION_GLYPH = {
 	operations: OperationsGlyph,
 	catalogue: CatalogueGlyph,
 	channels: ChannelGlyph,
-	governance: GovernanceGlyph,
 } as const;
 
 /** A section whose title is its own page, with the chevron as the separate toggle. */
@@ -573,7 +571,6 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 		operations: true,
 		catalogue: views.catalogue?.row.active ?? false,
 		channels: true,
-		governance: false,
 	});
 	const toggle = (id: SectionId) => {
 		const next = !open.value[id];

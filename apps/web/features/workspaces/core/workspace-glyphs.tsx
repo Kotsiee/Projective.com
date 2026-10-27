@@ -91,13 +91,6 @@ export const OperationsGlyph: VNode = (
 	</Svg>
 );
 
-/** Governance — a shield, the lane's Governance section. */
-export const GovernanceGlyph: VNode = (
-	<Svg>
-		<path d="M12 3.5l7 2.6v5.4c0 4.3-2.9 7.9-7 9-4.1-1.1-7-4.7-7-9V6.1z" />
-	</Svg>
-);
-
 /** Channel — a hash, one workspace chat room. */
 export const ChannelGlyph: VNode = (
 	<Svg>

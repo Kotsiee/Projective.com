@@ -56,7 +56,7 @@ import { rosterCreateNote } from "./rig-model.ts";
  *      Member segments; inside a console it searches views, channels, projects and members, and holds
  *      nothing else — a console view's readings are switched in its footer rig (Decision #319).
  *   3. **Views** — the viewer's entities (owned first) on the index; inside a console the registry's
- *      hubs in labelled sections: Core operations, Governance, then Channels (the read's entity
+ *      hubs in labelled sections: Core operations (Decision #332), then Channels (the read's entity
  *      channels and a create) last, as `/projects` closes its lane on its channel tree.
  *   4. **Docked footer rig** — on the index at most ONE create action (the tier-2 `LaneCreateButton`
  *      "New team"), never a control that cannot act; a roster the viewer may not add to says why in
@@ -156,7 +156,7 @@ export interface LaneHubRow {
 
 /** A labelled section of hub rows. */
 export interface LaneHubSection {
-	id: "operations" | "governance";
+	id: "operations";
 	/** The section header, in the lane's section register. */
 	label: string;
 	rows: LaneHubRow[];
@@ -201,15 +201,15 @@ export interface LaneCatalogueZone {
 /** Z3 inside a console. */
 export interface ConsoleViewsZone {
 	mode: "console";
-	/** Core operations, then Governance — sections with no row are left out. */
+	/** Core operations (Members · Wallet · Analytics included, Decision #332) — left out with no row. */
 	sections: LaneHubSection[];
 	/**
-	 * The Catalogue section, drawn after Governance and before Channels. `null` for a business and for
+	 * The Catalogue section, drawn after Core operations and before Channels. `null` for a business and for
 	 * a member without the catalogue gate (`catalogue-gate.ts`).
 	 */
 	catalogue: LaneCatalogueZone | null;
 	/**
-	 * The Channels section, drawn LAST, after Governance. `null` when the viewer may not open Channels
+	 * The Channels section, drawn LAST, after Catalogue. `null` when the viewer may not open Channels
 	 * (never, today — it is permissionless).
 	 */
 	channels: LaneChannelsZone | null;
@@ -412,7 +412,6 @@ export function laneZones(input: RosterLaneInput | ConsoleLaneInput): LaneZones 
 	const rows = hubRows(input);
 	const sections: LaneHubSection[] = [
 		{ id: "operations" as const, label: "Core operations", rows: rows.operations },
-		{ id: "governance" as const, label: "Governance", rows: rows.governance },
 	].filter((s) => s.rows.length > 0);
 	const onChannel = input.module === "channels";
 	return {
@@ -457,7 +456,6 @@ function hubRows(
 	input: ConsoleLaneInput,
 ): {
 	operations: LaneHubRow[];
-	governance: LaneHubRow[];
 	catalogue: LaneHubRow | null;
 	settings: LaneHubRow | null;
 } {
@@ -476,7 +474,6 @@ function hubRows(
 	const settings = hubs.find((h) => h.hub.zone === "footer");
 	return {
 		operations: hubs.filter((h) => h.hub.zone === "operations").map(toRow),
-		governance: hubs.filter((h) => h.hub.zone === "governance").map(toRow),
 		catalogue: catalogue ? toRow(catalogue) : null,
 		settings: settings ? toRow(settings) : null,
 	};
