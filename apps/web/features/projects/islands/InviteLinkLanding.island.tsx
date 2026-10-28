@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import "../styles/invite-landing.css";
-import { Button } from "@projective/ui/fields";
+import { Button, ResizeFrame } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import type { InviteLinkView } from "../types/projects-types.ts";
 import { RequestService } from "../core/RequestService.ts";
@@ -63,15 +63,17 @@ export default function InviteLinkLanding(props: InviteLinkLandingProps): JSX.El
 					<label class="invite-landing__label" for="invite-landing-note">
 						A note to the managers (optional)
 					</label>
-					<textarea
-						id="invite-landing-note"
-						class="invite-landing__note"
-						rows={3}
-						maxLength={4000}
-						placeholder="What would you bring to this stage?"
-						value={note.value}
-						onInput={(e) => (note.value = (e.target as HTMLTextAreaElement).value)}
-					/>
+					<ResizeFrame>
+						<textarea
+							id="invite-landing-note"
+							class="invite-landing__note"
+							rows={3}
+							maxLength={4000}
+							placeholder="What would you bring to this stage?"
+							value={note.value}
+							onInput={(e) => (note.value = (e.target as HTMLTextAreaElement).value)}
+						/>
+					</ResizeFrame>
 					<Button
 						label="Ask to join"
 						icon={<Icon name="send" size="sm" />}

@@ -260,7 +260,7 @@
 }
 
 .fh-headerband__search .ui-field {
-	--field-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	--field-rest-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 	border-radius: var(--radius-full);
 }
 

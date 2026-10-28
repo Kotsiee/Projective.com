@@ -39,6 +39,7 @@ import {
 	TicketGlyph,
 } from "./submission-glyphs.tsx";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import { ResizeFrame } from "@projective/ui/fields";
 
 /**
  * SubmissionReviewModal — the full-screen client review workspace (Part 4). A `.ui-splitter` divides a
@@ -496,16 +497,19 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 																<label class="subm-work__notelabel" for="subm-note">
 																	Client feedback on this file
 																</label>
-																<textarea
-																	id="subm-note"
-																	class="subm-work__notefield"
-																	rows={2}
-																	placeholder="Add a note or annotation for the freelancer…"
-																	value={draftNote.value}
-																	onInput={(
-																		e,
-																	) => (draftNote.value = (e.target as HTMLTextAreaElement).value)}
-																/>
+																<ResizeFrame>
+																	<textarea
+																		id="subm-note"
+																		class="subm-work__notefield"
+																		rows={2}
+																		placeholder="Add a note or annotation for the freelancer…"
+																		value={draftNote.value}
+																		onInput={(
+																			e,
+																		) => (draftNote.value =
+																			(e.target as HTMLTextAreaElement).value)}
+																	/>
+																</ResizeFrame>
 																<div class="subm-work__noteactions">
 																	<button
 																		type="button"
@@ -567,16 +571,19 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 																<label class="subm-work__notelabel" for="subm-guides">
 																	Overall revision guidelines
 																</label>
-																<textarea
-																	id="subm-guides"
-																	class="subm-work__notefield"
-																	rows={3}
-																	placeholder="Global guidance for this revision (required unless you annotate files)…"
-																	value={guidelines.value}
-																	onInput={(
-																		e,
-																	) => (guidelines.value = (e.target as HTMLTextAreaElement).value)}
-																/>
+																<ResizeFrame>
+																	<textarea
+																		id="subm-guides"
+																		class="subm-work__notefield"
+																		rows={3}
+																		placeholder="Global guidance for this revision (required unless you annotate files)…"
+																		value={guidelines.value}
+																		onInput={(
+																			e,
+																		) => (guidelines.value =
+																			(e.target as HTMLTextAreaElement).value)}
+																	/>
+																</ResizeFrame>
 															</div>
 															<ul class="subm-notes__list">
 																{review.notes.map((n) => (

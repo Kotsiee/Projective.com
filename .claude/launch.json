@@ -72,6 +72,17 @@
 			"port": 12998
 		},
 		{
+			"name": "web-resize-mock",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13391'; deno task dev:mock --port 13391 --strictPort"
+			],
+			"port": 13391,
+			"autoPort": false
+		},
+		{
 			"name": "web-step3",
 			"runtimeExecutable": "powershell",
 			"runtimeArgs": [
@@ -320,6 +331,28 @@
 				"$env:PORT = '13311'; deno task dev --port 13311 --strictPort"
 			],
 			"port": 13311,
+			"autoPort": false
+		},
+		{
+			"name": "web-projhdr-mock",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13401'; deno task dev:mock --port 13401 --strictPort"
+			],
+			"port": 13401,
+			"autoPort": false
+		},
+		{
+			"name": "web-rail-mock",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13404'; deno task dev:mock --port 13404 --strictPort"
+			],
+			"port": 13404,
 			"autoPort": false
 		}
 	]

@@ -2,6 +2,7 @@ import type { ComponentChildren, JSX, VNode } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import "../styles/draggable-popover.css";
+import "../../editor/styles/resize.css";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
 import { inlineDelta } from "../../editor/core/resize.ts";
@@ -472,7 +473,7 @@ export function DraggablePopover(props: DraggablePopoverProps): JSX.Element | nu
 				)}
 				{resizable && (
 					<div
-						class="ui-draggable-popover__resize-cue"
+						class="ui-resize-cue"
 						data-grip={cue.value.grip}
 						data-visible={cue.value.visible ? "true" : undefined}
 						aria-hidden="true"

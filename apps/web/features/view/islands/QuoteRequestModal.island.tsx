@@ -17,6 +17,7 @@ import { SimulationOutcome } from "../components/SimulationNotices.tsx";
 import { announce, closeBookingPanel, currentOffer, openPanel } from "../core/booking-state.ts";
 import type { ServiceBookingOffer } from "@projective/types/services";
 import { toMinorUnits } from "@projective/types/finance";
+import { ResizeFrame } from "@projective/ui/fields";
 
 /**
  * QuoteRequestModal — the Contact menu's **Request a custom quote**.
@@ -152,14 +153,16 @@ export default function QuoteRequestModal(
 					<span class="sbk__notelabel">
 						What do you need? <span class="sbk__req" aria-hidden="true">*</span>
 					</span>
-					<textarea
-						class="sbk__notefield"
-						rows={5}
-						required
-						value={scope.value}
-						maxLength={4000}
-						onInput={(e) => (scope.value = (e.target as HTMLTextAreaElement).value)}
-					/>
+					<ResizeFrame>
+						<textarea
+							class="sbk__notefield"
+							rows={5}
+							required
+							value={scope.value}
+							maxLength={4000}
+							onInput={(e) => (scope.value = (e.target as HTMLTextAreaElement).value)}
+						/>
+					</ResizeFrame>
 				</label>
 
 				<div class="sbk__row">

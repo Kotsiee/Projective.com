@@ -16,7 +16,7 @@ import { CreateStageModal } from "../components/CreateStageModal.tsx";
 import { BoardService } from "../core/BoardService.ts";
 import { stagesCreatedEpoch } from "../core/stage-events.ts";
 import { ArchiveProjectDialog } from "../components/ArchiveProjectDialog.tsx";
-import { DetailsIcon, projectViewLinks, viewLinkCurrent } from "../components/detail-glyphs.tsx";
+import { projectViewLinks, viewLinkCurrent } from "../components/detail-glyphs.tsx";
 import {
 	LaneBackLink,
 	LaneCollapseButton,
@@ -25,6 +25,7 @@ import {
 	LaneIconButton,
 } from "@projective/ui/navigation";
 import { Toast, useToast } from "@projective/ui/feedback";
+import { Icon } from "@projective/ui/icons";
 import { logger } from "@web/utils/logger.ts";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import {
@@ -536,7 +537,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 						<LaneFooterActions>
 							<LaneIconButton
 								href={`${base}/details`}
-								icon={DetailsIcon}
+								icon={<Icon name="square-pen" />}
 								label="Edit project"
 								tooltipPlacement="top"
 								active={detailsCurrent}

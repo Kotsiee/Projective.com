@@ -226,6 +226,13 @@ const CONTROLS = {
 			<path d="M14.5 7.5l2.6 2.6" />
 		</>
 	),
+	/** Pen over a rounded square — editing a whole entity (project configuration, a name). */
+	"square-pen": () => (
+		<>
+			<path d="M12 3.5H6a2.5 2.5 0 0 0-2.5 2.5v12A2.5 2.5 0 0 0 6 20.5h12a2.5 2.5 0 0 0 2.5-2.5v-6" />
+			<path d="M18.4 3.1a2 2 0 0 1 2.8 2.8L12.5 14.6 9 15.5l.9-3.5z" />
+		</>
+	),
 	"trash": () => (
 		<>
 			<path d="M4.5 6.5h15M9.5 6.5V4.8a1.3 1.3 0 0 1 1.3-1.3h2.4a1.3 1.3 0 0 1 1.3 1.3v1.7" />

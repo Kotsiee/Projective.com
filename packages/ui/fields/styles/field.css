@@ -16,7 +16,11 @@
 	--field-gap: var(--space-2);
 	--field-radius: var(--fld-r-md);
 	--field-border: var(--fld-rest-bd);
-	--field-bg: var(--fld-rest-bg);
+	/* A variant sets the REST fill; hover and focus mix into it, so a filled field darkens from its own
+	   fill and a transparent one stays a wash over whatever it sits on. */
+	--field-rest-bg: var(--fld-rest-bg);
+	--field-bg: var(--field-rest-bg);
+	--field-hover-bg: color-mix(in srgb, var(--on-surface) var(--fld-hover-mix), var(--field-rest-bg));
 	--field-fg: var(--fld-rest-fg);
 	--field-accent: var(--primary);
 	--field-on-accent: var(--on-primary);
@@ -59,12 +63,12 @@
 
 /* #region Variants */
 .ui-field--filled {
-	--field-bg: var(--surface-2);
+	--field-rest-bg: var(--surface-2);
 	--field-border: transparent;
 }
 
 .ui-field--transparent {
-	--field-bg: transparent;
+	--field-rest-bg: transparent;
 	--field-border: transparent;
 }
 
@@ -76,7 +80,7 @@
  * focus rules, otherwise a border reappears — this is why `--transparent` alone is not truly bare.
  */
 .ui-field--bare {
-	--field-bg: transparent;
+	--field-rest-bg: transparent;
 	--field-border: transparent;
 	--field-radius: var(--fld-r-sm);
 	padding-inline: var(--space-2);
@@ -101,14 +105,14 @@
 
 /* #region Interaction states */
 .ui-field:hover:not(.ui-field--disabled):not(.ui-field--readonly) {
-	--field-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	--field-bg: var(--field-hover-bg);
 }
 
 .ui-field--focused,
 .ui-field:focus-within {
 	box-shadow: none;
 	outline: none;
-	--field-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	--field-bg: var(--field-hover-bg);
 	--field-border: var(--fld-focus-bd);
 }
 
@@ -244,6 +248,7 @@
 .ui-field--invalid:not(.ui-field--focused):not(:focus-within) {
 	--field-border: var(--fld-invalid-bd);
 	--field-accent: var(--fld-invalid-bd);
+	--field-bg: var(--fld-invalid-bg);
 }
 
 .ui-field--success:not(.ui-field--focused):not(:focus-within) {
@@ -275,6 +280,23 @@
 	--field-border: var(--fld-gate-bd);
 	--field-accent: var(--fld-gate-bd);
 	--field-bg: var(--fld-gate-bg);
+}
+
+/*
+ * Hover on a red or amber status steps its OWN tint up one ramp step (`--tint-subtle` → `--tint-soft`,
+ * the recipe of the `--fld-*-bg` tokens) instead of trading it for the neutral hover wash, which out-
+ * ranked every rule above and dropped the hue for as long as the pointer rested. The border deepens
+ * toward `--on-surface` in the same move, and that half is a contrast fix, not decoration: `--warning`
+ * and `--danger` already sit at 2.96:1 on their own tint in light, so a deeper fill alone would take
+ * the outline further under SC 1.4.11. Both read `--field-accent`, which every status above sets to
+ * its own border hue; success has no fill at rest and keeps the neutral hover.
+ */
+.ui-field--invalid:hover:not(.ui-field--disabled):not(.ui-field--readonly):not(.ui-field--focused):not(:focus-within),
+.ui-field--required:hover:not(.ui-field--disabled):not(.ui-field--readonly):not(.ui-field--focused):not(:focus-within),
+.ui-field--warning:hover:not(.ui-field--disabled):not(.ui-field--readonly):not(.ui-field--focused):not(:focus-within),
+.ui-field--gate:hover:not(.ui-field--disabled):not(.ui-field--readonly):not(.ui-field--focused):not(:focus-within) {
+	--field-bg: color-mix(in srgb, var(--field-accent) var(--tint-soft), var(--fld-rest-bg));
+	--field-border: color-mix(in srgb, var(--on-surface) var(--tint-strong), var(--field-accent));
 }
 
 /*

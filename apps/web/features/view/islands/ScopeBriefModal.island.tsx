@@ -20,6 +20,7 @@ import type { StageFundingScope } from "@projective/types/services";
 import type { ServiceBookingOffer } from "@projective/types/services";
 import type { ProjectStage } from "@projective/types/explore";
 import { toMinorUnits } from "@projective/types/finance";
+import { ResizeFrame } from "@projective/ui/fields";
 
 /**
  * ScopeBriefModal — the **Continue** panel for the two scoped formats.
@@ -238,15 +239,17 @@ export default function ScopeBriefModal(
 							This is the specification the work is delivered against — the clearer it is, the
 							faster the first submission lands.
 						</span>
-						<textarea
-							class="sbk__notefield"
-							rows={6}
-							required
-							value={requirements.value}
-							maxLength={8000}
-							aria-describedby="sbk-req-hint"
-							onInput={(e) => (requirements.value = (e.target as HTMLTextAreaElement).value)}
-						/>
+						<ResizeFrame>
+							<textarea
+								class="sbk__notefield"
+								rows={6}
+								required
+								value={requirements.value}
+								maxLength={8000}
+								aria-describedby="sbk-req-hint"
+								onInput={(e) => (requirements.value = (e.target as HTMLTextAreaElement).value)}
+							/>
+						</ResizeFrame>
 					</label>
 					<p id="sbk-req-hint" class="ui-visually-hidden">
 						Required. Up to 8000 characters.

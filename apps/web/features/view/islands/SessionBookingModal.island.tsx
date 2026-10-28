@@ -20,6 +20,7 @@ import { announce, closeBookingPanel, currentOffer, openPanel } from "../core/bo
 import type { SlotGrid, SlotPurpose } from "@projective/types/scheduling";
 import { addDaysInZone, firstOpenDay } from "@projective/types/scheduling";
 import { plural, type ServiceBookingOffer } from "@projective/types/services";
+import { ResizeFrame } from "@projective/ui/fields";
 
 /**
  * SessionBookingModal — the date-rail + slot-picker panel behind **Book session**, **Book *n*
@@ -383,13 +384,15 @@ export default function SessionBookingModal({ offer: ssrOffer }: SessionBookingM
 							? call?.agendaRequired ? "What is the call about?" : "What is the call about? (optional)"
 							: "Anything the provider should know? (optional)"}
 					</span>
-					<textarea
-						class="sbk__notefield"
-						rows={3}
-						value={note.value}
-						maxLength={2000}
-						onInput={(e) => (note.value = (e.target as HTMLTextAreaElement).value)}
-					/>
+					<ResizeFrame>
+						<textarea
+							class="sbk__notefield"
+							rows={3}
+							value={note.value}
+							maxLength={2000}
+							onInput={(e) => (note.value = (e.target as HTMLTextAreaElement).value)}
+						/>
+					</ResizeFrame>
 				</label>
 
 				{error.value && <p class="sbk__error" role="alert">{error.value}</p>}

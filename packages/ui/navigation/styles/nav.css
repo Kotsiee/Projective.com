@@ -97,16 +97,29 @@
 	margin-inline-start: auto;
 }
 
-/* Collapsed rail: square blocks (--shell-nav-block) with one large centered icon, labels hidden,
-   icons on the shared vertical axis (Part D.1). Driven by the root attribute (FOUC-safe). The square
-   keeps `--radius-base`, the radius every feature rail square mirrors. */
-:root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item {
-	inline-size: var(--shell-nav-block);
-	block-size: var(--shell-nav-block);
-	margin-inline: auto;
-	padding-inline: 0;
+/*
+ * Global rail: one `--ui-shell-sidebar-link` (40px) height at both widths. The glyph sits in a leading
+ * square cell inset so the cell is centred in the collapsed rail; collapsing only narrows the link to
+ * that cell (1:1), so no row moves vertically and no glyph moves sideways (Part D.1). Driven by the
+ * root attribute (FOUC-safe).
+ */
+.ui-shell-sidebar .ui-nav-item {
+	block-size: var(--ui-shell-sidebar-link);
+	margin-inline: calc((var(--shell-sidebar-w) - var(--ui-shell-sidebar-link)) / 2);
+	padding-block: 0;
+	padding-inline: 0 var(--space-2);
+	gap: 0;
 	border-radius: var(--radius-base);
-	justify-content: center;
+}
+
+.ui-shell-sidebar .ui-nav-item__icon {
+	inline-size: var(--ui-shell-sidebar-link);
+	font-size: var(--icon-md);
+}
+
+:root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item {
+	inline-size: var(--ui-shell-sidebar-link);
+	padding-inline: 0;
 }
 
 /* Collapsed: hide the visible label (the anchor's `aria-label` carries the accessible name). The
@@ -115,9 +128,4 @@
 :root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item__trailing,
 .ui-splitter[data-mode="collapsed"] .ui-nav-item__trailing {
 	display: none;
-}
-
-:root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item__icon svg {
-	inline-size: 24px;
-	block-size: 24px;
 }

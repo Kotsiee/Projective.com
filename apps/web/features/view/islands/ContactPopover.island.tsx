@@ -15,6 +15,7 @@ import { SimulationOutcome } from "../components/SimulationNotices.tsx";
 import { announce, currentOffer, openBookingPanel } from "../core/booking-state.ts";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
 import type { ContactActionKind, ServiceBookingOffer } from "@projective/types/services";
+import { ResizeFrame } from "@projective/ui/fields";
 
 /**
  * ContactPopover — the **Contact Me** secondary control and its context-sensitive menu.
@@ -195,18 +196,20 @@ export default function ContactPopover(
 								<label class="ui-visually-hidden" for="sbk-contact-msg">
 									Your question for {contact.value.sellerName}
 								</label>
-								<textarea
-									id="sbk-contact-msg"
-									class="sbk-contact__field"
-									rows={4}
-									autoFocus
-									placeholder={`Hi ${
-										contact.value.sellerName.split(/\s+/)[0] ?? contact.value.sellerName
-									}, before I buy…`}
-									value={draft.value}
-									disabled={cta.busy}
-									onInput={(e) => (draft.value = (e.target as HTMLTextAreaElement).value)}
-								/>
+								<ResizeFrame>
+									<textarea
+										id="sbk-contact-msg"
+										class="sbk-contact__field"
+										rows={4}
+										autoFocus
+										placeholder={`Hi ${
+											contact.value.sellerName.split(/\s+/)[0] ?? contact.value.sellerName
+										}, before I buy…`}
+										value={draft.value}
+										disabled={cta.busy}
+										onInput={(e) => (draft.value = (e.target as HTMLTextAreaElement).value)}
+									/>
+								</ResizeFrame>
 								<p class="sbk-contact__hint">
 									This starts a conversation, not a project.
 								</p>

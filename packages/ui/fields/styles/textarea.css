@@ -5,6 +5,8 @@
  */
 
 .ui-textarea {
+	--resize-radius: var(--field-radius);
+	position: relative;
 	block-size: auto;
 	align-items: stretch;
 	min-block-size: var(--field-height);
@@ -17,6 +19,16 @@
 	resize: vertical;
 	line-height: 1.5;
 	overflow-y: auto;
+}
+
+/* The native grip stays until the `ResizeGrip` replacing it has mounted (styles/resize.css). */
+.ui-textarea:has(> .ui-resize-grip) .ui-textarea__input {
+	resize: none;
+}
+
+/* `useEditorResize` pins a dragged height in `--rte-h`. */
+.ui-textarea[data-resized-y="true"] .ui-textarea__input {
+	block-size: var(--rte-h, auto);
 }
 
 /* Auto-resizing textareas are sized imperatively; the user handle would fight that. */

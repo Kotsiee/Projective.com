@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import "@features/projects/styles/invite-landing.css";
-import { Button } from "@projective/ui/fields";
+import { Button, ResizeFrame } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { JOIN_REQUEST_MESSAGE_MAX, type OrgInviteLinkView } from "@projective/types/workspace";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
@@ -78,15 +78,17 @@ export default function OrgInviteLanding(props: OrgInviteLandingProps): JSX.Elem
 					<label class="invite-landing__label" for="org-invite-landing-note">
 						A note to the admins (optional)
 					</label>
-					<textarea
-						id="org-invite-landing-note"
-						class="invite-landing__note"
-						rows={3}
-						maxLength={JOIN_REQUEST_MESSAGE_MAX}
-						placeholder={`Why you'd like to join ${view.value.workspaceName ?? "them"}`}
-						value={note.value}
-						onInput={(e) => (note.value = (e.target as HTMLTextAreaElement).value)}
-					/>
+					<ResizeFrame>
+						<textarea
+							id="org-invite-landing-note"
+							class="invite-landing__note"
+							rows={3}
+							maxLength={JOIN_REQUEST_MESSAGE_MAX}
+							placeholder={`Why you'd like to join ${view.value.workspaceName ?? "them"}`}
+							value={note.value}
+							onInput={(e) => (note.value = (e.target as HTMLTextAreaElement).value)}
+						/>
+					</ResizeFrame>
 					<Button
 						label="Ask to join"
 						icon={<Icon name="send" size="sm" />}

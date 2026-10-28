@@ -33,8 +33,9 @@
     --rte-h-min: 2.5rem;
     --rte-h-max: none;
     --rte-w-min: 12rem;
-    /* Hit width of a resize handle, and the gutter the inline one needs to clear the scrollbar. */
-    --rte-handle: 10px;
+    /* Hit width of a resize grip, and the gutter the inline one needs to clear the scrollbar. */
+    --resize-grip: 10px;
+    --resize-radius: var(--radius-lg);
 
     position: relative;
     display: flex;
@@ -53,32 +54,73 @@
         background-color var(--dur-fast) var(--ease-standard);
 }
 
-.ui-rte:hover {
-    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+/* The fields' own hover step (`--fld-hover-mix` into the rest fill), so an editor and an input beside
+   it shift by the same amount. */
+.ui-rte:hover,
+.ui-rte:focus-within {
+    background: color-mix(in srgb, var(--on-surface) var(--fld-hover-mix), var(--fld-rest-bg));
 }
 
+/*
+ * The focus treatment is `.ui-field`'s, channel for channel: any focus moves the contour to
+ * `--fld-focus-bd`, and `:has(:focus-visible)` adds the `--fld-focus-glow` halo. The glow rule MUST
+ * stay below this one — they tie at (0,2,0), and only source order lets it re-open the `box-shadow`.
+ */
 .ui-rte:focus-within {
     box-shadow: none;
     outline: none;
-    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+    border-color: var(--fld-focus-bd);
 }
 
-/* Two-tier creation gate, mirroring the fields' `required` (RED) / `gate` (AMBER) statuses. */
-.ui-rte--required {
-    --rte-accent: var(--danger);
-    border-color: var(--danger);
-    background: color-mix(in srgb, var(--danger) var(--tint-subtle), var(--surface));
+.ui-rte:has(:focus-visible) {
+    box-shadow: var(--fld-focus-glow);
 }
 
-.ui-rte--gate {
-    --rte-accent: var(--warning);
-    border-color: var(--warning);
-    background: color-mix(in srgb, var(--warning) var(--tint-subtle), var(--surface));
+/*
+ * Statuses mirror the fields': `required` / `invalid` RED, `gate` / `warning` AMBER (the two-tier
+ * creation gate plus plain validation). Like the fields they paint only at REST — on focus they stand
+ * down and the focus treatment owns the contour alone (DESIGN_SYSTEM.md §A.7.3).
+ */
+.ui-rte--required:not(:focus-within) {
+    --rte-accent: var(--fld-required-bd);
+    border-color: var(--fld-required-bd);
+    background: var(--fld-required-bg);
 }
 
-.ui-rte--invalid {
-    --rte-accent: var(--danger);
-    border-color: var(--danger);
+.ui-rte--invalid:not(:focus-within) {
+    --rte-accent: var(--fld-invalid-bd);
+    border-color: var(--fld-invalid-bd);
+    background: var(--fld-invalid-bg);
+}
+
+.ui-rte--gate:not(:focus-within) {
+    --rte-accent: var(--fld-gate-bd);
+    border-color: var(--fld-gate-bd);
+    background: var(--fld-gate-bg);
+}
+
+.ui-rte--warning:not(:focus-within) {
+    --rte-accent: var(--fld-warning-bd);
+    border-color: var(--fld-warning-bd);
+    background: var(--fld-warning-bg);
+}
+
+/* Hover steps the status tint up and deepens the border, as `.ui-field` does and for the same
+   contrast reason (fields/styles/field.css). */
+.ui-rte--required:hover:not(:focus-within),
+.ui-rte--invalid:hover:not(:focus-within),
+.ui-rte--gate:hover:not(:focus-within),
+.ui-rte--warning:hover:not(:focus-within) {
+    background: color-mix(in srgb, var(--rte-accent) var(--tint-soft), var(--fld-rest-bg));
+    border-color: color-mix(in srgb, var(--on-surface) var(--tint-strong), var(--rte-accent));
+}
+
+/* Under a status the toolbar paints nothing, so it carries the shell's tint and its hover step. */
+.ui-rte--required:not(:focus-within) .ui-rte__toolbar,
+.ui-rte--invalid:not(:focus-within) .ui-rte__toolbar,
+.ui-rte--gate:not(:focus-within) .ui-rte__toolbar,
+.ui-rte--warning:not(:focus-within) .ui-rte__toolbar {
+    background: transparent;
 }
 
 /* #endregion */
@@ -172,7 +214,7 @@
 .ui-rte__editor,
 .ui-rte .ql-container,
 .ui-rte .ql-editor {
-    /* The native grip is unstylable, unthemeable and keyboard-inert; `.ui-rte__handle` replaces it. */
+    /* The native grip is unstylable, unthemeable and keyboard-inert; `ResizeGrip` replaces it. */
     resize: none;
 }
 
@@ -186,9 +228,9 @@
     font-size: 0.9375rem;
 }
 
-/* The inline handle would otherwise sit on top of the scrollbar it needs to be reachable beside. */
+/* The inline grip would otherwise sit on top of the scrollbar it needs to be reachable beside. */
 .ui-rte--hresize .ui-rte__editor {
-    padding-inline-end: var(--rte-handle);
+    padding-inline-end: var(--resize-grip);
 }
 
 .ui-rte .ql-editor {
@@ -387,160 +429,11 @@
 
 /* #endregion */
 
-/* #region Resize handles */
-/*
- * Custom grips, because the native one cannot be styled, cannot be themed, cannot be keyboard
- * operated and only ever appears at one corner. `resize: none` on the container and the editing
- * surface suppresses it; these three replace it.
- *
- * Invisible at rest — a permanent grip on every editor on a page is chrome nobody asked for — and
- * revealed on container hover, on focus (a keyboard user cannot hover, and these ARE arrow-key
- * operable), and for the duration of a drag, which is the one time the pointer is nowhere near them.
- */
-.ui-rte__handle {
-    position: absolute;
-    z-index: 1;
-    opacity: 0;
-    /* Claims the gesture from the browser's own pan/zoom, which would otherwise eat the drag. */
-    touch-action: none;
-    transition: opacity var(--dur-fast) var(--ease-standard);
-}
-
-.ui-rte:hover .ui-rte__handle,
-.ui-rte__handle:focus-visible,
-.ui-rte[data-resizing="true"] .ui-rte__handle {
-    opacity: 1;
-}
-
-/*
- * The mark is a short centred pill, not a filled bar: the bar is the HIT AREA, and painting all of
- * it would put a second horizontal rule against the container's own border (§B.4 — one device per
- * boundary). Centred with `margin: auto` between two zero insets rather than a translate, so it
- * stays centred under `dir="rtl"` where `inset-inline-start` resolves to the opposite edge.
- */
-.ui-rte__handle::after {
-    content: "";
-    position: absolute;
-    border-radius: var(--radius-full);
-    background: var(--outline);
-    transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-/*
- * The engaged mark steps toward the INK, not toward `--primary`.
- *
- * Measured: `--primary` on this surface is 7.82:1 in dark and 2.97:1 in LIGHT — under the 3:1 floor
- * a graphical UI object owes (WCAG 1.4.11), and lower than the 4.21:1 the rest state already had, so
- * hovering the grip would have made it harder to see. `--on-surface` is the one token that cannot
- * fail here by construction: it is near-black on a light ground and near-white on a dark one, so it
- * moves AWAY from the surface in both directions. Same device as the status chips (§B.11) and the
- * inverted conversion CTA (§D.7.7), and it keeps this component off the known `--primary` pairing.
- */
-.ui-rte__handle:hover::after,
-.ui-rte__handle:focus-visible::after {
-    background: var(--on-surface);
-}
-
-.ui-rte__handle:focus-visible {
-    outline: none;
-    border-radius: var(--radius-sm);
-    box-shadow: none;
-}
-
-.ui-rte__handle--block {
-    inset-inline: 0;
-    inset-block-end: 0;
-    block-size: 8px;
-    cursor: ns-resize;
-}
-
-.ui-rte__handle--block::after {
-    inset-inline: 0;
-    inset-block-end: 3px;
-    margin-inline: auto;
-    inline-size: 2.5rem;
-    block-size: 2px;
-}
-
-.ui-rte__handle--inline {
-    inset-block: 0;
-    inset-inline-end: 0;
-    inline-size: var(--rte-handle);
-    cursor: ew-resize;
-}
-
-.ui-rte__handle--inline::after {
-    inset-block: 0;
-    inset-inline-end: 4px;
-    margin-block: auto;
-    inline-size: 2px;
-    block-size: 2.5rem;
-}
-
-/* Above the other two: the corner is where they overlap, and it drives both axes. */
-.ui-rte__handle--corner {
-    z-index: 2;
-    inset-block-end: 0;
-    inset-inline-end: 0;
-    inline-size: 1rem;
-    block-size: 1rem;
-    cursor: nwse-resize;
-}
-
-/*
- * In a right-to-left document the corner sits at the LEFT edge, so the diagonal it runs along is the
- * other one. A physical cursor keyword has no logical form; this is the only honest way to mirror it.
- */
-[dir="rtl"] .ui-rte__handle--corner {
-    cursor: nesw-resize;
-}
-
-.ui-rte__handle--corner::after {
-    inset-block-end: 3px;
-    inset-inline-end: 3px;
-    inline-size: 6px;
-    block-size: 6px;
-    border-radius: 2px;
-}
-
-/*
- * Page-wide for the duration of a drag, set on the document root by `useEditorResize`.
- *
- * Scoped to the editor it would not be enough: the pointer spends most of a resize outside the box,
- * and a selection begun out there tears across the document behind the gesture. `user-select`
- * inherits, so one declaration on the root reaches everything — no `!important`, and nothing in this
- * repo re-declares it to `text`. The cursor is pinned per axis so it does not flicker back to an
- * I-beam the instant the pointer leaves the handle.
- */
-.ui-rte-resizing {
-    user-select: none;
-}
-
-.ui-rte-resizing--block {
-    cursor: ns-resize;
-}
-
-.ui-rte-resizing--inline {
-    cursor: ew-resize;
-}
-
-.ui-rte-resizing--both {
-    cursor: nwse-resize;
-}
-
-.ui-rte-resizing--both[dir="rtl"] {
-    cursor: nesw-resize;
-}
-
-/* #endregion */
-
 /* #region Reduced motion */
 @media (prefers-reduced-motion: reduce) {
 
     .ui-rte,
-    .ui-rte__btn,
-    .ui-rte__handle,
-    .ui-rte__handle::after {
+    .ui-rte__btn {
         transition: none;
     }
 }

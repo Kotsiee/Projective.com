@@ -43,11 +43,11 @@ import {
  * Marks the document while a drag is live, so selection is suppressed page-wide and the cursor holds
  * its axis instead of flickering back to an I-beam every time the pointer crosses another element.
  */
-const DRAGGING_CLASS = "ui-rte-resizing";
+const DRAGGING_CLASS = "ui-resizing";
 const AXIS_CLASS: Record<ResizeAxis, string> = {
-	block: "ui-rte-resizing--block",
-	inline: "ui-rte-resizing--inline",
-	both: "ui-rte-resizing--both",
+	block: "ui-resizing--block",
+	inline: "ui-resizing--inline",
+	both: "ui-resizing--both",
 };
 
 /** Floors used when the consumer named none. Small enough to be a real choice, big enough to grab. */
@@ -91,6 +91,8 @@ export function useEditorResize(options: EditorResizeOptions): EditorResize {
 	const optionsRef = useRef(options);
 	optionsRef.current = options;
 	const dragRef = useRef<DragState | null>(null);
+	/** The pressed grip, marked `data-active` so its cue holds while the pointer is elsewhere. */
+	const gripRef = useRef<Element | null>(null);
 	const stopRef = useRef<() => void>(() => {});
 	const moveRef = useRef<(event: PointerEvent) => void>(() => {});
 
@@ -173,8 +175,9 @@ export function useEditorResize(options: EditorResizeOptions): EditorResize {
 		globalThis.removeEventListener("pointerup", onStopStable);
 		globalThis.removeEventListener("pointercancel", onStopStable);
 		globalThis.removeEventListener("blur", onStopStable);
+		gripRef.current?.removeAttribute("data-active");
+		gripRef.current = null;
 		const container = optionsRef.current.containerRef.current;
-		container?.removeAttribute("data-resizing");
 		const root = container?.ownerDocument?.documentElement;
 		root?.classList.remove(DRAGGING_CLASS, ...Object.values(AXIS_CLASS));
 		dragRef.current = null;
@@ -229,7 +232,10 @@ export function useEditorResize(options: EditorResizeOptions): EditorResize {
 			...bounds,
 		};
 		dragging.value = true;
-		container.setAttribute("data-resizing", "true");
+		if (event.currentTarget instanceof Element) {
+			gripRef.current = event.currentTarget;
+			gripRef.current.setAttribute("data-active", "true");
+		}
 		// Page-wide, not element-scoped: the pointer spends most of a drag outside the editor, and a
 		// selection started out there would still tear across the document behind it.
 		container.ownerDocument?.documentElement.classList.add(

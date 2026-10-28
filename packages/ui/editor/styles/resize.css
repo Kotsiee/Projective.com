@@ -1,0 +1,197 @@
+/*
+ * Resize kit — one look for every resizable surface. The `--primary` frame cue DraggablePopover
+ * introduced, the in-frame grips the rich-text editor and the textareas share (`ResizeGrip`), the
+ * frame a caller-styled `<textarea>` sits in (`ResizeFrame`), and the page-wide drag state
+ * `useEditorResize` sets. Token-only, BEM.
+ */
+
+/* #region Cue */
+/*
+ * One element masked to a 2px ring inside its host's frame: the grabbed edge solid `--primary`, the
+ * edges beside it fading out over `--resize-arc`, so the light wraps the rounded corners rather than
+ * stopping at them. The host is positioned and rounded (the ring inherits its radius) and names that
+ * radius in `--resize-radius`, which keeps the fade longer than the corner arc. Drawn as paint on a
+ * pointer-transparent layer, so lighting it never moves a pixel of layout.
+ */
+.ui-resize-cue {
+	--resize-cue-w: 2px;
+	--resize-arc: max(var(--resize-radius, 0px), var(--space-3));
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	border: var(--resize-cue-w) solid transparent;
+	border-radius: inherit;
+	background-origin: border-box;
+	background-repeat: no-repeat;
+	mask:
+		linear-gradient(currentColor 0 0) content-box,
+		linear-gradient(currentColor 0 0);
+	mask-composite: exclude;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+.ui-resize-cue:dir(rtl) {
+	transform: scaleX(-1);
+}
+/* Lit by the host's own state (the popover's signal), or by the grip right before it. */
+.ui-resize-cue[data-visible="true"],
+.ui-resize-grip:is(:hover, :focus-visible, [data-active="true"]) + .ui-resize-cue {
+	opacity: 1;
+}
+.ui-resize-cue[data-grip="block-start"] {
+	background-image: linear-gradient(to bottom, var(--primary) var(--resize-cue-w), transparent);
+	background-position: top;
+	background-size: 100% var(--resize-arc);
+}
+.ui-resize-cue[data-grip="block-end"] {
+	background-image: linear-gradient(to top, var(--primary) var(--resize-cue-w), transparent);
+	background-position: bottom;
+	background-size: 100% var(--resize-arc);
+}
+.ui-resize-cue[data-grip="inline-start"] {
+	background-image: linear-gradient(to right, var(--primary) var(--resize-cue-w), transparent);
+	background-position: left;
+	background-size: var(--resize-arc) 100%;
+}
+.ui-resize-cue[data-grip="inline-end"] {
+	background-image: linear-gradient(to left, var(--primary) var(--resize-cue-w), transparent);
+	background-position: right;
+	background-size: var(--resize-arc) 100%;
+}
+.ui-resize-cue[data-grip="start-start"] {
+	background-image:
+		linear-gradient(to right, var(--primary) var(--resize-arc), transparent 50%),
+		linear-gradient(to bottom, var(--primary) var(--resize-arc), transparent 50%);
+	background-position: top, left;
+	background-size: 100% var(--resize-arc), var(--resize-arc) 100%;
+}
+.ui-resize-cue[data-grip="start-end"] {
+	background-image:
+		linear-gradient(to left, var(--primary) var(--resize-arc), transparent 50%),
+		linear-gradient(to bottom, var(--primary) var(--resize-arc), transparent 50%);
+	background-position: top, right;
+	background-size: 100% var(--resize-arc), var(--resize-arc) 100%;
+}
+.ui-resize-cue[data-grip="end-start"] {
+	background-image:
+		linear-gradient(to right, var(--primary) var(--resize-arc), transparent 50%),
+		linear-gradient(to top, var(--primary) var(--resize-arc), transparent 50%);
+	background-position: bottom, left;
+	background-size: 100% var(--resize-arc), var(--resize-arc) 100%;
+}
+.ui-resize-cue[data-grip="end-end"] {
+	background-image:
+		linear-gradient(to left, var(--primary) var(--resize-arc), transparent 50%),
+		linear-gradient(to top, var(--primary) var(--resize-arc), transparent 50%);
+	background-position: bottom, right;
+	background-size: 100% var(--resize-arc), var(--resize-arc) 100%;
+}
+/* #endregion */
+
+/* #region Grips */
+/*
+ * Transparent hit strips on the host's end edges, inside its frame: nothing is drawn at rest, and the
+ * cue that follows each grip is its whole hover, focus and drag state, exactly as on the popover. A
+ * strip spans the edge it moves; the corner sits above both and drives both axes. The host may widen
+ * the strips with `--resize-grip`.
+ */
+.ui-resize-grip {
+	--resize-grip-hit: var(--resize-grip, var(--space-2));
+	position: absolute;
+	z-index: 2;
+	/* Claims the gesture from the browser's own pan/zoom, which would otherwise eat the drag. */
+	touch-action: none;
+	user-select: none;
+}
+.ui-resize-grip:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+.ui-resize-grip--block-end {
+	inset-inline: 0;
+	inset-block-end: 0;
+	block-size: var(--resize-grip-hit);
+	cursor: ns-resize;
+}
+.ui-resize-grip--inline-end {
+	inset-block: 0;
+	inset-inline-end: 0;
+	inline-size: var(--resize-grip-hit);
+	cursor: ew-resize;
+}
+.ui-resize-grip--end-end {
+	z-index: 3;
+	inset-block-end: 0;
+	inset-inline-end: 0;
+	inline-size: calc(2 * var(--resize-grip-hit));
+	block-size: calc(2 * var(--resize-grip-hit));
+	cursor: nwse-resize;
+}
+/* A physical cursor keyword has no logical form; under RTL the corner runs the other diagonal. */
+.ui-resize-grip--end-end:dir(rtl) {
+	cursor: nesw-resize;
+}
+/* #endregion */
+
+/* #region Frame (ResizeFrame) */
+/*
+ * A box around one caller-styled `<textarea>` so the grip and cue have a frame to sit in. The full
+ * width of its container, even under `align-items: flex-start`, with the textarea stretched across
+ * it as a full-width field expects; rounded by the radius `ResizeFrame` copies off the textarea.
+ */
+.ui-resize-frame {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	min-inline-size: 0;
+	border-radius: var(--resize-radius, 0px);
+}
+/* The native grip stays until the custom one mounts, so a frame that never hydrates still resizes. */
+.ui-resize-frame:has(> .ui-resize-grip) > textarea {
+	resize: none;
+}
+/* `useEditorResize` pins a dragged height in `--rte-h`. */
+.ui-resize-frame[data-resized-y="true"] > textarea {
+	block-size: var(--rte-h, auto);
+}
+/* #endregion */
+
+/* #region Page-wide drag state */
+/*
+ * Set on the document root by `useEditorResize` for the length of a drag. The pointer spends most of
+ * a resize outside the box: with every descendant out of hit-testing, no selection can start behind
+ * the gesture, nothing under the path flickers its hover, and the axis cursor below holds instead of
+ * turning into an I-beam over text. The drag's listeners are on `window`, so they still hear it.
+ */
+.ui-resizing {
+	user-select: none;
+}
+.ui-resizing * {
+	pointer-events: none;
+}
+.ui-resizing--block {
+	cursor: ns-resize;
+}
+.ui-resizing--inline {
+	cursor: ew-resize;
+}
+.ui-resizing--both {
+	cursor: nwse-resize;
+}
+.ui-resizing--both:dir(rtl) {
+	cursor: nesw-resize;
+}
+/* #endregion */
+
+/* #region Reduced motion — both channels */
+@media (prefers-reduced-motion: reduce) {
+	.ui-resize-cue {
+		transition: none;
+	}
+}
+:root[data-motion="reduced"] .ui-resize-cue {
+	transition: none;
+}
+/* #endregion */

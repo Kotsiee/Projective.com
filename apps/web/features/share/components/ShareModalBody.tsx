@@ -10,6 +10,7 @@ import type { PersonActionState } from "../core/people-picker.ts";
 import { ShareLinkBar } from "./ShareLinkBar.tsx";
 import { QuickAddRail } from "./QuickAddRail.tsx";
 import { UserSearchPopover } from "./UserSearchPopover.tsx";
+import { ResizeFrame } from "@projective/ui/fields";
 
 /**
  * ShareModalBody — the unified share surface, in the layout the invite modal shares (Decision #145):
@@ -103,15 +104,17 @@ function SendToPeople({ request }: { request: ShareRequest }): JSX.Element {
 	return (
 		<section class="share__section" aria-labelledby="share-internal-title">
 			<h3 class="share__heading" id="share-internal-title">Send to people on Projective</h3>
-			<textarea
-				class="share__note"
-				rows={2}
-				maxLength={1000}
-				placeholder="Add a note (optional) — it goes with every send"
-				aria-label="Note to send with the link"
-				value={note.value}
-				onInput={(e) => (note.value = (e.target as HTMLTextAreaElement).value)}
-			/>
+			<ResizeFrame>
+				<textarea
+					class="share__note"
+					rows={2}
+					maxLength={1000}
+					placeholder="Add a note (optional) — it goes with every send"
+					aria-label="Note to send with the link"
+					value={note.value}
+					onInput={(e) => (note.value = (e.target as HTMLTextAreaElement).value)}
+				/>
+			</ResizeFrame>
 			<UserSearchPopover
 				label="Search people to send this to"
 				placeholder="Search by name or @handle"

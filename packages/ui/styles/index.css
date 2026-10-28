@@ -408,6 +408,8 @@
 	* `color-mix(in srgb, red var(--t), blue)` computes byte-identically to the literal. That is NOT
 	* true of a percentage delivered into `opacity`, which is why --minor-fade is unitless.
 	*/
+    --tint-faint: 4%;
+    /* the gentlest step: a form control's hover over its own fill (`--fld-hover-mix`) */
     --tint-subtle: 6%;
     /* barely-there wash: hover on a quiet row */
     --tint-soft: 8%;
@@ -767,6 +769,16 @@
     --fld-rest-bg: var(--surface);
     --fld-rest-fg: var(--on-surface);
     --fld-hover-bd: var(--on-surface-variant);
+    /*
+	* How much `--on-surface` a hovered or focused control mixes into its OWN rest fill (Decision #334).
+	* Mixed over the fill rather than `transparent`: an alpha wash composites onto the page behind the
+	* control, so a white field on a grey page dropped to the page tone before the tint even landed —
+	* 1.18:1 against rest in light, while the same 6% fell onto a DARKER page in dark and read 1.05:1.
+	* Over the fill it is exactly one step, and 4% is the same step in both modes: 1.08:1 / ΔL* 3.2 in
+	* light, 1.07:1 / ΔL* 3.5 in dark. 6% in dark measured 1.12:1 / ΔL* 5.7 — nearly the jump this
+	* replaced — so dark does not take a larger mix. A per-mode retune belongs on this one token.
+	*/
+    --fld-hover-mix: var(--tint-faint);
     --fld-focus-bd: var(--primary);
     /*
 	* The accent as TEXT beside a focused control — a floated / in-field label. `--primary` is a

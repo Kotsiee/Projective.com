@@ -8,19 +8,24 @@
  * `border-inline-end` would be on the wrong side the moment the nav is ordered after the form, and a
  * contour drawn on the wrong edge is worse than a gutter that reads cleanly from either.
  *
- * THE ACTIVE ROW IS INK PLUS ONE MORE CHANNEL, CHOSEN BY AXIS. The ink is `--primary`, a distinct hue
- * from both the `--text-secondary` rest and the `--on-surface` hover. Above 720px the rail is a
- * vertical column and the second channel is the `--tint` `--on-surface` step the package `NavItem`
- * uses — never a leading bar, which no active state draws (Decision #330). Below it the rail is a
- * horizontal strip and the second channel is the 2px `--primary` underline the tab idiom actually
- * means, revealed with `scaleX`. Two channels either way, so the row still reads for a viewer who
- * cannot tell the ink's hue from the rest ink's.
+ * THE ROW IS A TAB, NOT A FILLED LIST ITEM. It carries no background in any state: the active row is
+ * stated by INK (`--primary`, a distinct hue from both the `--text-secondary` rest and the
+ * `--on-surface` hover) and by the 2px `--primary` mark. Two independent channels, neither of them a
+ * tonal fill — which is what lets the row read correctly for a viewer who cannot separate two tints of
+ * the same neutral.
  *
- * MOTION IS DECORATION ONLY, and that is load-bearing rather than a stylistic note. The underline is
- * painted `--primary` at all times and only its TRANSFORM changes, so a frozen animation clock can
- * leave the reveal mid-flight without ever leaving the active section unidentifiable — the ink still
- * states it. Reduced motion needs no block here: `packages/ui/styles/index.css` zeroes `--dur-fast`
- * and forces `transition-duration: 0ms !important` globally, so the mark jumps to its final state.
+ * THE MARK'S AXIS FOLLOWS THE RAIL'S. Above 720px the rail is a vertical column, so the mark is a
+ * LEADING vertical rule revealed with `scaleY`; below it the rail is a horizontal strip and the mark
+ * becomes the underline the tab idiom actually means, revealed with `scaleX`. An underline drawn under
+ * a row of a VERTICAL list lands in the inter-row gutter, equidistant from the row above and the row
+ * below, and identifies neither — so the indicator is rotated to match the axis rather than copied
+ * across it.
+ *
+ * MOTION IS DECORATION ONLY, and that is load-bearing rather than a stylistic note. The mark is painted
+ * `--primary` at all times and only its TRANSFORM changes, so a frozen animation clock can leave the
+ * reveal mid-flight without ever leaving the active section unidentifiable — the ink still states it.
+ * Reduced motion needs no block here: `packages/ui/styles/index.css` zeroes `--dur-fast` and forces
+ * `transition-duration: 0ms !important` globally, so the mark jumps to its final state.
  */
 
 /* #region Rail */
@@ -83,10 +88,7 @@
 	color: var(--text-secondary);
 	text-decoration: none;
 	background: transparent;
-	border-radius: var(--radius-base);
-	transition:
-		color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard);
+	transition: color var(--dur-fast) var(--ease-standard);
 }
 
 .psu-nav__link:hover {
@@ -95,18 +97,33 @@
 
 .psu-nav__link:focus-visible {
 	outline: none;
+	border-radius: var(--radius-base);
 	box-shadow: none;
 }
 
-/* Ink plus the NavItem tint step — the column's two channels (header note). */
+/* The ink channel — independent of the mark, and the one that survives a frozen clock. */
 .psu-nav__link[data-active="true"] {
 	color: var(--primary);
-	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
 }
 
-/* The underline exists only on the narrow strip (below); the column draws no leading mark. */
+/*
+ * The mark is painted at full strength always; only its transform reveals it. Vertical here, because
+ * the rail is a column — see the header note on why an underline is wrong on this axis.
+ */
 .psu-nav__mark {
-	display: none;
+	flex: none;
+	align-self: stretch;
+	inline-size: 2px;
+	min-block-size: 1rem;
+	border-radius: var(--radius-full);
+	background: var(--primary);
+	transform: scaleY(0);
+	transform-origin: center;
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.psu-nav__link[data-active="true"] .psu-nav__mark {
+	transform: scaleY(1);
 }
 
 .psu-nav__icon {
@@ -170,11 +187,6 @@
 		padding-block-end: var(--space-3);
 	}
 
-	/* A tab takes its underline, not a fill. */
-	.psu-nav__link[data-active="true"] {
-		background: transparent;
-	}
-
 	.psu-nav__label {
 		white-space: nowrap;
 	}
@@ -188,13 +200,11 @@
 		position: absolute;
 		inset-inline: var(--space-2);
 		inset-block-end: 0;
-		display: block;
+		align-self: auto;
+		inline-size: auto;
 		block-size: 2px;
-		border-radius: var(--radius-full);
-		background: var(--primary);
+		min-block-size: 0;
 		transform: scaleX(0);
-		transform-origin: center;
-		transition: transform var(--dur-fast) var(--ease-standard);
 	}
 
 	.psu-nav__link[data-active="true"] .psu-nav__mark {

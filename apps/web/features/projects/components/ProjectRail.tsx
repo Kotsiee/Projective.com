@@ -2,7 +2,8 @@ import { cloneElement, type JSX } from "preact";
 import { Tooltip } from "@projective/ui/feedback";
 import { LaneCollapseButton } from "@projective/ui/navigation";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
-import { BackIcon, DetailsIcon, type ProjectViewLink, viewLinkCurrent } from "./detail-glyphs.tsx";
+import { Icon } from "@projective/ui/icons";
+import { BackIcon, type ProjectViewLink, viewLinkCurrent } from "./detail-glyphs.tsx";
 import { PlusIcon } from "./glyphs.tsx";
 import { profileHref } from "../core/routing.ts";
 import { isTaskDetail } from "../core/task-project.ts";
@@ -150,7 +151,7 @@ export function ProjectRail(
 							aria-current={detailsCurrent ?? undefined}
 							aria-label="Edit project"
 						>
-							{cloneElement(DetailsIcon)}
+							<Icon name="square-pen" />
 						</a>
 					</Tooltip>
 				)}

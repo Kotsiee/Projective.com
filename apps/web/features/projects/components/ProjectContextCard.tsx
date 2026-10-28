@@ -1,7 +1,6 @@
 import type { JSX } from "preact";
 import { useEffect, useId, useRef } from "preact/hooks";
 import { useSignal } from "@preact/signals";
-import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { boardView } from "./detail-glyphs.tsx";
 import { profileHref } from "../core/routing.ts";
@@ -10,7 +9,7 @@ import type { ProjectDetail } from "../types/projects-types.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
- * The type the lone glyph names. A Task is a `one_off`, which {@link boardView} calls a Timeline — true
+ * The type the header names and badges. A Task is a `one_off`, which {@link boardView} calls a Timeline — true
  * of a milestone one-off and false of a Task, which has no timeline at all — so it is named for what it
  * is, with the glyph the create menu offers it under.
  */
@@ -27,9 +26,10 @@ function typeMark(detail: ProjectDetail): { label: string; icon: JSX.Element } {
  *
  * Layout: the leading party's LARGE avatar on the left (a **project** leads with its owner, a
  * **service** with the client it's delivered for), the engagement's name + a single clickable
- * owner/client name stacked to its right, and — pinned top-right — a lone icon-only project-type glyph
- * (Pipeline · Timeline · Calendar) whose portal {@link Tooltip} names the engagement type. Beneath sits
- * the description, clamped to three lines with an in-place **Show details** disclosure.
+ * owner/client name stacked to its right. The engagement type (Pipeline · Timeline · Calendar · Task) is
+ * named in an uppercase meta line above the name, and its glyph sits as a small filled badge on the
+ * avatar's bottom-right corner, tinted by the type's role pair. Beneath sits the description, clamped
+ * to three lines with an in-place **Show details** disclosure.
  *
  * Decision #144 changed two things. The name is a paragraph, not an `<h1>`: the page beside the lane
  * owns the document's one title, and two level-one headings told assistive technology the page was
@@ -75,9 +75,14 @@ export function ProjectContextCard({ detail }: ProjectContextCardProps): JSX.Ele
 						size={48}
 						shape="circle"
 					/>
+					{/* Decorative: the type line beside it already names the type. */}
+					<span class="proj-ctx__type" data-type={board.label.toLowerCase()} aria-hidden="true">
+						{board.icon}
+					</span>
 				</span>
 
 				<div class="proj-ctx__idblock">
+					<p class="proj-ctx__kind">{typeTip}</p>
 					<p class="proj-ctx__title">{detail.title}</p>
 					{lead.handle
 						? (
@@ -95,11 +100,6 @@ export function ProjectContextCard({ detail }: ProjectContextCardProps): JSX.Ele
 							</span>
 						)}
 				</div>
-
-				{/* Lone project-type glyph — the written badge is retired; the type reads on hover only. */}
-				<Tooltip content={typeTip} placement="bottom-end">
-					<span class="proj-ctx__type" aria-label={typeTip}>{board.icon}</span>
-				</Tooltip>
 			</div>
 
 			{detail.description && (

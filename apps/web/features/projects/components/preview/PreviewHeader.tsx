@@ -163,7 +163,7 @@ export function PreviewHeader(props: PreviewHeaderProps): JSX.Element {
 							>
 								<span class="fx-modal__nametext">{file.name}</span>
 								<span class="fx-modal__nameedit" aria-hidden="true">
-									<Icon name="edit" size="xs" />
+									<Icon name="square-pen" size="xs" />
 								</span>
 							</button>
 						)

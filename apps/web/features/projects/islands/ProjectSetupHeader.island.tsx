@@ -126,7 +126,7 @@ export default function ProjectSetupHeader(
 					aria-current={active === "details" ? "page" : undefined}
 				>
 					<span class="proj-pvtab__icon" aria-hidden="true">
-						<Icon name="edit" />
+						<Icon name="square-pen" />
 					</span>
 					<span class="proj-pvtab__label">Details</span>
 				</a>

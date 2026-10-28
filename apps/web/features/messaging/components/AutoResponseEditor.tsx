@@ -2,7 +2,7 @@ import type { JSX } from "preact";
 import { useLayoutEffect } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import "../styles/auto-response.css";
-import { Select, ToggleSwitch } from "@projective/ui/fields";
+import { ResizeFrame, Select, ToggleSwitch } from "@projective/ui/fields";
 import type { OptionGroup } from "@projective/ui/fields";
 import { MessagingIcon } from "./messaging-glyphs.tsx";
 import type { AutoResponseRule, AutoResponseStatus } from "../types/messaging-types.ts";
@@ -274,14 +274,17 @@ export function AutoResponseEditor(props: AutoResponseEditorProps): JSX.Element 
 							</p>
 						</fieldset>
 
-						<textarea
-							class="msg-ar__message"
-							rows={3}
-							placeholder="Automated reply…"
-							value={rule.message}
-							aria-label="Auto-response message"
-							onInput={(e) => update(rule.id, { message: (e.target as HTMLTextAreaElement).value })}
-						/>
+						<ResizeFrame>
+							<textarea
+								class="msg-ar__message"
+								rows={3}
+								placeholder="Automated reply…"
+								value={rule.message}
+								aria-label="Auto-response message"
+								onInput={(e) =>
+									update(rule.id, { message: (e.target as HTMLTextAreaElement).value })}
+							/>
+						</ResizeFrame>
 
 						<label class="msg-ar__ai">
 							<ToggleSwitch

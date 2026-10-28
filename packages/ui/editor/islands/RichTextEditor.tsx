@@ -7,6 +7,7 @@ import type { Bindable, FieldStatus, ValueChange } from "../../fields/types/mod.
 import { markdownToHtml, shouldParseMarkdown } from "../core/markdown.ts";
 import { cssLength } from "../core/resize.ts";
 import { useEditorResize } from "../hooks/useEditorResize.ts";
+import { ResizeGrip } from "../components/ResizeGrip.tsx";
 import {
 	loadedQuill,
 	loadQuill,
@@ -439,39 +440,16 @@ export function RichTextEditor(props: RichTextEditorProps): JSX.Element {
 			/>
 			{
 				/*
-				 * Resize handles. Focusable and arrow-key operable, not mouse-only: a native `resize` grip
+				 * Resize grips. Focusable and arrow-key operable, not mouse-only: a native `resize` grip
 				 * excludes keyboard users from a capability the design is offering, and the ARIA
 				 * window-splitter pattern is exactly a focusable `separator`.
 				 */
 			}
-			<div
-				class="ui-rte__handle ui-rte__handle--block"
-				role="separator"
-				aria-orientation="horizontal"
-				aria-label="Resize editor height"
-				tabIndex={0}
-				onPointerDown={(e) => resize.start("block", e)}
-				onKeyDown={(e) => resize.onKeyDown("block", e)}
-			/>
+			<ResizeGrip grip="block-end" resize={resize} label="Resize editor height" />
 			{enableHorizontalResize && (
 				<>
-					<div
-						class="ui-rte__handle ui-rte__handle--inline"
-						role="separator"
-						aria-orientation="vertical"
-						aria-label="Resize editor width"
-						tabIndex={0}
-						onPointerDown={(e) => resize.start("inline", e)}
-						onKeyDown={(e) => resize.onKeyDown("inline", e)}
-					/>
-					<div
-						class="ui-rte__handle ui-rte__handle--corner"
-						role="separator"
-						aria-label="Resize editor width and height"
-						tabIndex={0}
-						onPointerDown={(e) => resize.start("both", e)}
-						onKeyDown={(e) => resize.onKeyDown("both", e)}
-					/>
+					<ResizeGrip grip="inline-end" resize={resize} label="Resize editor width" />
+					<ResizeGrip grip="end-end" resize={resize} label="Resize editor width and height" />
 				</>
 			)}
 		</div>

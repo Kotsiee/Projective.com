@@ -41,7 +41,7 @@ export function ProjectOverviewHeader(props: ProjectOverviewHeaderProps): JSX.El
 				<nav class="pjd-head__links" aria-label="Project configuration">
 					<a class="pjd-head__link" href={projectDetailsHref(slug)}>
 						<span class="pjd-head__icon" aria-hidden="true">
-							<Icon name="edit" size="sm" />
+							<Icon name="square-pen" size="sm" />
 						</span>
 						<span>Details</span>
 					</a>

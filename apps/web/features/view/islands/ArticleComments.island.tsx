@@ -6,6 +6,7 @@ import { Icon } from "@projective/ui/icons";
 import { ViewIcon } from "../components/view-glyphs.tsx";
 import type { ArticleComment } from "@projective/types/explore";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import { ResizeFrame } from "@projective/ui/fields";
 
 /**
  * ArticleComments — the discussion section at the foot of the Articles view. Renders the composed
@@ -81,14 +82,16 @@ export default function ArticleComments(
 			<div class="art-composer">
 				<UserAvatar image="" label={authed ? "You" : "Guest"} size={40} shape="circle" />
 				<div class="art-composer__field">
-					<textarea
-						class="art-composer__input"
-						placeholder={authed ? "Add to the discussion…" : "Sign in to join the discussion…"}
-						value={draft.value}
-						rows={2}
-						aria-label="Write a comment"
-						onInput={(e) => (draft.value = (e.target as HTMLTextAreaElement).value)}
-					/>
+					<ResizeFrame>
+						<textarea
+							class="art-composer__input"
+							placeholder={authed ? "Add to the discussion…" : "Sign in to join the discussion…"}
+							value={draft.value}
+							rows={2}
+							aria-label="Write a comment"
+							onInput={(e) => (draft.value = (e.target as HTMLTextAreaElement).value)}
+						/>
+					</ResizeFrame>
 					<div class="art-composer__foot">
 						<button
 							type="button"

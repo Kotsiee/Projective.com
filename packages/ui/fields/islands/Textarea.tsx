@@ -4,6 +4,8 @@ import "../styles/field.css";
 import "../styles/textarea.css";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
+import { ResizeGrip } from "../../editor/components/ResizeGrip.tsx";
+import { useEditorResize } from "../../editor/hooks/useEditorResize.ts";
 import { useControllable } from "../hooks/useControllable.ts";
 import { useId } from "../hooks/useId.ts";
 import { ariaInvalid, fieldModifiers } from "../core/field.ts";
@@ -39,6 +41,8 @@ export interface TextareaProps extends BaseFieldProps {
  * Textarea — the multiline text control. Signal-first, composing the shared `.ui-field` geometry with
  * a relaxed (auto) block-size so the field can grow. With `autoResize` the element's height is
  * recomputed imperatively on every input to hug its content, capped at `maxRows` before it scrolls.
+ * Without it the height is the reader's: a `ResizeGrip` on the bottom edge replaces the native grip
+ * and lights DraggablePopover's `--primary` frame cue.
  * Supports outlined/filled/transparent variants, `fluid` sizing, validation status, and the shared
  * disabled/read-only/required semantics.
  */
@@ -69,6 +73,8 @@ export function Textarea(props: TextareaProps): JSX.Element {
 	const ctrl = useControllable<string>(value, "", onValueChange);
 	const inputId = useId(id, "textarea");
 	const ref = useRef<HTMLTextAreaElement>(null);
+	const rootRef = useRef<HTMLSpanElement>(null);
+	const drag = useEditorResize({ containerRef: rootRef, surfaceRef: ref, horizontal: false });
 
 	// #region Auto-resize
 	const resize = () => {
@@ -104,6 +110,7 @@ export function Textarea(props: TextareaProps): JSX.Element {
 
 	return (
 		<span
+			ref={rootRef}
 			class={cx(
 				"ui-field",
 				"ui-textarea",
@@ -131,6 +138,9 @@ export function Textarea(props: TextareaProps): JSX.Element {
 				onInput={onInput}
 				{...aria}
 			/>
+			{!autoResize && !disabled && (
+				<ResizeGrip grip="block-end" resize={drag} label="Resize text area height" />
+			)}
 		</span>
 	);
 }

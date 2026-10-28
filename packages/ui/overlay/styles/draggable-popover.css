@@ -35,11 +35,12 @@
 }
 .ui-draggable-popover--resizable {
 	--ddp-grip: var(--space-2);
+	--resize-radius: var(--overlay-radius-lg);
 	min-inline-size: 16rem;
 	min-block-size: 8rem;
 }
 
-/* --- Resize grips + cue --- */
+/* --- Resize grips (the cue is the shared `.ui-resize-cue`, editor/styles/resize.css) --- */
 .ui-draggable-popover__resize {
 	position: absolute;
 	z-index: 2;
@@ -108,79 +109,6 @@
 .ui-draggable-popover__resize--start-end:dir(rtl),
 .ui-draggable-popover__resize--end-start:dir(rtl) {
 	cursor: nwse-resize;
-}
-
-.ui-draggable-popover__resize-cue {
-	--ddp-cue-w: 2px;
-	--ddp-arc: max(var(--overlay-radius-lg), var(--space-3));
-	position: absolute;
-	inset: 0;
-	z-index: 1;
-	border: var(--ddp-cue-w) solid transparent;
-	border-radius: inherit;
-	background-origin: border-box;
-	background-repeat: no-repeat;
-	mask:
-		linear-gradient(currentColor 0 0) content-box,
-		linear-gradient(currentColor 0 0);
-	mask-composite: exclude;
-	opacity: 0;
-	pointer-events: none;
-	transition: opacity var(--dur-fast) var(--ease-standard);
-}
-.ui-draggable-popover__resize-cue:dir(rtl) {
-	transform: scaleX(-1);
-}
-.ui-draggable-popover__resize-cue[data-visible="true"] {
-	opacity: 1;
-}
-.ui-draggable-popover__resize-cue[data-grip="block-start"] {
-	background-image: linear-gradient(to bottom, var(--primary) var(--ddp-cue-w), transparent);
-	background-position: top;
-	background-size: 100% var(--ddp-arc);
-}
-.ui-draggable-popover__resize-cue[data-grip="block-end"] {
-	background-image: linear-gradient(to top, var(--primary) var(--ddp-cue-w), transparent);
-	background-position: bottom;
-	background-size: 100% var(--ddp-arc);
-}
-.ui-draggable-popover__resize-cue[data-grip="inline-start"] {
-	background-image: linear-gradient(to right, var(--primary) var(--ddp-cue-w), transparent);
-	background-position: left;
-	background-size: var(--ddp-arc) 100%;
-}
-.ui-draggable-popover__resize-cue[data-grip="inline-end"] {
-	background-image: linear-gradient(to left, var(--primary) var(--ddp-cue-w), transparent);
-	background-position: right;
-	background-size: var(--ddp-arc) 100%;
-}
-.ui-draggable-popover__resize-cue[data-grip="start-start"] {
-	background-image:
-		linear-gradient(to right, var(--primary) var(--ddp-arc), transparent 50%),
-		linear-gradient(to bottom, var(--primary) var(--ddp-arc), transparent 50%);
-	background-position: top, left;
-	background-size: 100% var(--ddp-arc), var(--ddp-arc) 100%;
-}
-.ui-draggable-popover__resize-cue[data-grip="start-end"] {
-	background-image:
-		linear-gradient(to left, var(--primary) var(--ddp-arc), transparent 50%),
-		linear-gradient(to bottom, var(--primary) var(--ddp-arc), transparent 50%);
-	background-position: top, right;
-	background-size: 100% var(--ddp-arc), var(--ddp-arc) 100%;
-}
-.ui-draggable-popover__resize-cue[data-grip="end-start"] {
-	background-image:
-		linear-gradient(to right, var(--primary) var(--ddp-arc), transparent 50%),
-		linear-gradient(to top, var(--primary) var(--ddp-arc), transparent 50%);
-	background-position: bottom, left;
-	background-size: 100% var(--ddp-arc), var(--ddp-arc) 100%;
-}
-.ui-draggable-popover__resize-cue[data-grip="end-end"] {
-	background-image:
-		linear-gradient(to left, var(--primary) var(--ddp-arc), transparent 50%),
-		linear-gradient(to top, var(--primary) var(--ddp-arc), transparent 50%);
-	background-position: bottom, right;
-	background-size: 100% var(--ddp-arc), var(--ddp-arc) 100%;
 }
 
 /* --- Header / drag handle --- */
@@ -284,7 +212,6 @@
    first frame, which is already this element's static state (transform: none, opacity: 1). */
 @media (prefers-reduced-motion: reduce) {
 	.ui-draggable-popover,
-	.ui-draggable-popover__resize-cue,
 	.ui-draggable-popover__close {
 		transition-duration: 0ms;
 	}

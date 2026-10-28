@@ -341,6 +341,7 @@
 
 /* The single LARGE identity avatar (owner for a project, client for a service). */
 .proj-ctx__avatar {
+	position: relative;
 	display: inline-flex;
 	flex: none;
 }
@@ -352,6 +353,16 @@
 	flex: 1 1 auto;
 	min-inline-size: 0;
 	padding-block-start: 0.1rem;
+}
+
+/* The engagement type, in the section-header register above the name. */
+.proj-ctx__kind {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
 }
 
 /*
@@ -393,18 +404,46 @@
 	box-shadow: none;
 }
 
-/* Lone project-type glyph, pinned top-right; the type is named by its Tooltip only (no text badge). */
+/*
+ * Project-type glyph as a filled badge on the avatar's bottom-right corner. Each type takes one filled
+ * role pair; a ring in the lane's surface cuts it out of the avatar edge.
+ */
 .proj-ctx__type {
+	--proj-type-bg: var(--primary);
+	--proj-type-fg: var(--on-primary);
+	position: absolute;
+	inset-block-end: -0.2rem;
+	inset-inline-end: -0.2rem;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	flex: none;
-	inline-size: 1.85rem;
-	block-size: 1.85rem;
-	font-size: 1.05rem;
-	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	inline-size: 1.25rem;
+	block-size: 1.25rem;
+	font-size: 0.75rem;
+	color: var(--proj-type-fg);
+	background: var(--proj-type-bg);
+	/* The lane is transparent over the shell's `--surface-2`. */
+	border: 0.125rem solid var(--surface-2);
 	border-radius: var(--radius-full);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard);
+}
+
+.proj-ctx__type[data-type="timeline"] {
+	--proj-type-bg: var(--secondary);
+	--proj-type-fg: var(--on-secondary);
+}
+
+.proj-ctx__type[data-type="calendar"] {
+	--proj-type-bg: var(--tertiary);
+	--proj-type-fg: var(--on-tertiary);
+}
+
+.proj-ctx__type[data-type="task"] {
+	--proj-type-bg: var(--accent);
+	--proj-type-fg: var(--on-accent);
 }
 
 /*

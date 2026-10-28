@@ -14,6 +14,7 @@ import {
 import type { ViewerProps } from "../viewer.ts";
 import { type FontTools, SAMPLE_TEXT } from "./font-tools.ts";
 import { plainKey, scrollForKey, useStageKeys } from "./stage-keys.ts";
+import { ResizeFrame } from "@projective/ui/fields";
 
 /** Largest font file the canvas reads into the page. */
 const FONT_PREVIEW_MAX_BYTES = 30_000_000;
@@ -161,15 +162,17 @@ export function FontStage({ shell, tools }: ViewerProps<FontTools>): JSX.Element
 				</header>
 
 				<label class="ui-visually-hidden" for={sampleId}>Sample text</label>
-				<textarea
-					id={sampleId}
-					class="ins-font__sample"
-					rows={lines}
-					spellcheck={false}
-					autocomplete="off"
-					value={sample}
-					onInput={(e) => (tools.sample.value = e.currentTarget.value)}
-				/>
+				<ResizeFrame>
+					<textarea
+						id={sampleId}
+						class="ins-font__sample"
+						rows={lines}
+						spellcheck={false}
+						autocomplete="off"
+						value={sample}
+						onInput={(e) => (tools.sample.value = e.currentTarget.value)}
+					/>
+				</ResizeFrame>
 
 				<section class="ins-font__section" aria-labelledby={sizesId}>
 					<h3 id={sizesId} class="ins-font__heading">Sizes</h3>

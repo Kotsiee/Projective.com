@@ -1,7 +1,7 @@
 import type { JSX, Ref } from "preact";
 import type { Signal } from "@preact/signals";
 import { useRef } from "preact/hooks";
-import { Button } from "@projective/ui/fields";
+import { Button, ResizeFrame } from "@projective/ui/fields";
 import { useId } from "@projective/ui/hooks";
 import {
 	InspectorEmbedControls,
@@ -76,20 +76,22 @@ function Notes({ notes }: { notes: PreviewNotesState }): JSX.Element {
 				)
 				: null}
 			<label class="ui-visually-hidden" for={fieldId}>Note for the upcoming review</label>
-			<textarea
-				id={fieldId}
-				class="fx-notes__input"
-				rows={3}
-				placeholder="Leave a note for the upcoming review…"
-				value={draft.value}
-				onInput={(e) => (draft.value = e.currentTarget.value)}
-				onKeyDown={(e) => {
-					if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-						e.preventDefault();
-						onSave();
-					}
-				}}
-			/>
+			<ResizeFrame>
+				<textarea
+					id={fieldId}
+					class="fx-notes__input"
+					rows={3}
+					placeholder="Leave a note for the upcoming review…"
+					value={draft.value}
+					onInput={(e) => (draft.value = e.currentTarget.value)}
+					onKeyDown={(e) => {
+						if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+							e.preventDefault();
+							onSave();
+						}
+					}}
+				/>
+			</ResizeFrame>
 			<div class="fx-notes__actions">
 				<Button
 					size="sm"

@@ -198,16 +198,6 @@ export function ChevronLeftIcon({ size = 22, class: c }: GlyphProps): JSX.Elemen
 export function ChevronRightIcon({ size = 22, class: c }: GlyphProps): JSX.Element {
 	return svg(size, c, <path d="M9.5 5l7 7-7 7" />);
 }
-export function EditIcon({ size = 16, class: c }: GlyphProps): JSX.Element {
-	return svg(
-		size,
-		c,
-		<>
-			<path d="M4 20h4l10-10-4-4L4 16v4z" />
-			<path d="M13.5 6.5l4 4" />
-		</>,
-	);
-}
 export function ChannelHashIcon({ size = 18, class: c }: GlyphProps): JSX.Element {
 	return svg(size, c, <path d="M9 4L7 20M17 4l-2 16M5 9h14M4 15h14" />);
 }
