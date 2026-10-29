@@ -3550,6 +3550,18 @@ Testing is mandatory and must use the native Deno test runner (`Deno.test`).
   splits) and Workload Intensity ($W_i$) algorithms are flawless.
 - **Islands (UI):** DOM testing using Preact Testing Library to verify that signal changes correctly
   update the DOM without full re-renders.
+- **Database (SQL probes):** every `supabase/probes/*.sql` asserts a database invariant (RLS, grants,
+  money doors, lifecycle guards) and raises `PROBE FAIL: …` when it breaks. `deno task test:probes`
+  (`scripts/probes.ts`) runs them all, one at a time, through
+  `docker exec supabase_db_Projective psql` with `ON_ERROR_STOP=1` forced. It prints PASS / FAIL /
+  SKIP per probe and exits 1 if any probe fails. Probes roll back, so the task is safe against a
+  shared local database. The concurrency probes commit (they are gated on `-v disposable=1` or
+  `probe.allow_commit`), so they are skipped unless `--disposable` is passed.
+  `deno task test:probes:fresh` is the full gate: `db:reset`, then every probe including the
+  committing ones. Run it before merging a migration, RPC or policy change. It is not part of
+  `deno task test`, because it needs Docker and a seeded stack. There is no CI pipeline yet; when
+  one exists, it runs `test:probes:fresh` against a throwaway stack. `name` arguments filter by
+  probe file, and `--verbose` prints a failing probe's full output.
 
 ---
 
