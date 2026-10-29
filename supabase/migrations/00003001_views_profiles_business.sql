@@ -272,7 +272,7 @@ t.active_project_count,
         SELECT round(sum(tk.workload_intensity))::int
           FROM org.team_members tm
           JOIN projects.tickets tk ON tk.current_assignee_id = tm.user_id
-                                  AND tk.status::text IN ('claimed', 'in_progress', 'in_review')
+                                  AND tk.status::text IN ('claimed', 'in_progress', 'in_review', 'reported_hidden')
          WHERE tm.team_id = t.id AND tm.status = 'active'
     ), 0) as workload,
     t.created_at as joined_at,

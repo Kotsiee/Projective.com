@@ -242,7 +242,8 @@ BEGIN
     SELECT id INTO v_stage FROM projects.project_stages
     WHERE project_id = v_project ORDER BY sort_order, id LIMIT 1;
 
-    UPDATE projects.projects SET structure_variation = 'single_task' WHERE id = v_project;
+    -- A Task is one_off + single_task (ck_projects_format_structure).
+    UPDATE projects.projects SET format = 'one_off', structure_variation = 'single_task' WHERE id = v_project;
     INSERT INTO projects.stage_assignments (project_stage_id, assignee_type, freelancer_profile_id, assigned_by, is_client_managed, status)
     VALUES (v_stage, 'freelancer', current_setting('probe.freelancer')::uuid, v_owner, false, 'assigned');
 

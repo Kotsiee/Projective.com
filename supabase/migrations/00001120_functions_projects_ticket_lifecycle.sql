@@ -267,7 +267,34 @@ AS $$
 DECLARE
     v_number integer;
 BEGIN
-    -- Only act on the transition *into* Review.
+    -- Leaving Review closes whatever was still awaiting review on the ticket (DL S4). The verdict
+    -- doors (`review_submission`, the paid-revision funding) settle their submission BEFORE they move
+    -- the ticket, so what is still `pending_review` here was left behind by a move, `complete_ticket`
+    -- or a stage settlement, and would otherwise sit in the explorer and in
+    -- `get_project_card_summary.pending_submissions` as "awaiting review" forever. Into Done it was
+    -- accepted (the client confirmed the delivery); anywhere else it was sent back.
+    -- As with `review_submission`, a verdict makes a paid round raised on the submission and never
+    -- paid moot, so it is cancelled with it (PRODUCT_MANAGEMENT §3.7).
+    IF OLD.status = 'in_review'::ticket_status AND NEW.status <> 'in_review'::ticket_status THEN
+        WITH closed AS (
+            UPDATE projects.stage_submissions ss
+            SET status = CASE WHEN NEW.status = 'completed'::ticket_status
+                              THEN 'accepted' ELSE 'revisions_requested' END,
+                reviewed_by = COALESCE(ss.reviewed_by, auth.uid()),
+                reviewed_at = COALESCE(ss.reviewed_at, now()),
+                updated_at = now()
+            WHERE ss.ticket_id = NEW.id
+                AND ss.status = 'pending_review'
+            RETURNING ss.id
+        )
+        UPDATE projects.stage_revision_requests r
+           SET status = 'cancelled'
+          FROM closed
+         WHERE r.submission_id = closed.id AND r.status = 'awaiting_payment';
+        RETURN NULL;
+    END IF;
+
+    -- Otherwise only act on the transition *into* Review.
     IF NEW.status <> 'in_review'::ticket_status OR OLD.status = 'in_review'::ticket_status THEN
         RETURN NULL;
     END IF;
@@ -330,11 +357,17 @@ $$;
 -- only for a move into `backlog`: projects.fn_ticket_ordering_guard RAISES on any sort_order change
 -- outside that lane, because every other column is ordered by updated_at rather than by hand, so
 -- forwarding a position there would turn an ordinary drag into an error the board cannot explain.
+--
+-- p_expected_updated_at is the ticket's `updated_at` as the mover's board last read it (DL S8). When
+-- it is given and the row has changed since, the move is refused with SQLSTATE 'PS409' — a drag made
+-- on a stale board must not silently overwrite a move made elsewhere. NULL keeps last-writer-wins for
+-- callers that hold no reading of the row.
 CREATE OR REPLACE FUNCTION projects.move_ticket(
     p_ticket_id   uuid,
     p_to_status   ticket_status,
     p_to_stage_id uuid DEFAULT NULL,
-    p_sort_order  integer DEFAULT NULL
+    p_sort_order  integer DEFAULT NULL,
+    p_expected_updated_at timestamptz DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -348,14 +381,15 @@ DECLARE
     v_from_status ticket_status;
     v_from_stage uuid;
     v_to_stage   uuid;
+    v_updated_at timestamptz;
     v_result     jsonb;
     v_started_at timestamptz := clock_timestamp();
 BEGIN
     RAISE LOG '[KANBAN_API] move_ticket begin ts=% actor=% ticket=% target=% stage=%',
         v_started_at, v_actor, p_ticket_id, p_to_status, p_to_stage_id;
 
-    SELECT t.project_id, t.current_assignee_id, t.status, t.current_stage_id
-        INTO v_project, v_assignee, v_from_status, v_from_stage
+    SELECT t.project_id, t.current_assignee_id, t.status, t.current_stage_id, t.updated_at
+        INTO v_project, v_assignee, v_from_status, v_from_stage, v_updated_at
     FROM projects.tickets t WHERE t.id = p_ticket_id
     FOR UPDATE;
 
@@ -364,6 +398,14 @@ BEGIN
     END IF;
     IF NOT projects.has_project_access(v_project) THEN
         RAISE EXCEPTION 'You do not have access to this ticket.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+
+    -- After the access check, so a stranger learns nothing about when the row last changed. Compared
+    -- to the millisecond: the board carries the timestamp through JSON, which keeps three places.
+    IF p_expected_updated_at IS NOT NULL
+        AND date_trunc('milliseconds', v_updated_at) <> date_trunc('milliseconds', p_expected_updated_at) THEN
+        RAISE EXCEPTION 'This ticket changed since your board loaded it. Refresh and try again.'
+            USING ERRCODE = 'PS409';
     END IF;
 
     -- Milestone-delivery authority: only the client/owner may drop a card into Done (releases escrow).
@@ -472,14 +514,7 @@ BEGIN
     -- project access alone would let a freelancer hired on one stage claim, and hold the client's
     -- money for, work on another. A live seat is the claimant's own or an accepted team's they are
     -- an active member of; a released, completed or unfunded seat is not one.
-    IF v_stage IS NULL OR NOT EXISTS (
-        SELECT 1 FROM projects.stage_assignments sa
-        WHERE sa.project_stage_id = v_stage
-          AND sa.status IN ('assigned', 'accepted')
-          AND ((sa.assignee_type = 'freelancer' AND sa.freelancer_profile_id = v_actor)
-            OR (sa.assignee_type = 'team' AND sa.team_id IS NOT NULL
-                AND org.is_active_team_member(sa.team_id)))
-    ) THEN
+    IF NOT projects.fn_holds_live_seat(v_stage, v_actor) THEN
         RAISE EXCEPTION 'You are not hired on this ticket''s stage, so you cannot claim it.'
             USING ERRCODE = '42501';
     END IF;

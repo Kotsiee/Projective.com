@@ -411,7 +411,8 @@ grant. Unknown ticket → `P0001`; then `has_project_access` → `42501` — the
 ### `projects.get_workload_capacity(p_user_id uuid DEFAULT auth.uid(), p_project_id uuid DEFAULT NULL) → jsonb`
 
 `00001140` §4. The Workload Capacity Gauge: `{user_id, current, cap, ratio, ticket_count,
-project_current}` from live claimed / in-progress / in-review intensity. `STABLE`, `SECURITY DEFINER`,
+project_current}` from live claimed / in-progress / in-review / reported-hidden intensity (a suspended
+ticket is still held — audit X4, DL W7). `STABLE`, `SECURITY DEFINER`,
 `search_path = public, projects, org, security, auth`; `EXECUTE`: `service_role` only — no client
 grant. Returns `NULL` for a `NULL` user. **No caller check** — moot for clients, because no client
 role holds `EXECUTE`; `p_user_id` is caller-supplied, so a caller can read any user's workload
@@ -494,9 +495,10 @@ _lazily_, on first open, and the channel tree the app renders is built from the 
 already exist — so a stage created without one is a stage nobody can see or navigate to. Opening the
 General room here is what makes a newly-created stage reachable the moment it exists.
 
-`sort_order` is `COALESCE(MAX(sort_order) + 1, 0)`. The `COALESCE` covers the first stage, where
-`MAX` over an empty set is `NULL` and a bare `+1` would make the whole expression `NULL` against a
-`NOT NULL` column.
+`sort_order` is `COALESCE(MAX(sort_order) + 1, 0)` over **every** stage of the project, archived ones
+included — they keep their slot under `project_stages_project_sort_order_key`. The `COALESCE` covers
+the first stage, where `MAX` over an empty set is `NULL` and a bare `+1` would make the whole
+expression `NULL` against a `NOT NULL` column.
 
 `SECURITY DEFINER`, `search_path = public, projects, comms, auth`, because it writes through
 `comms.project_channels` whose RLS the caller does not otherwise satisfy. **The authority check is
@@ -520,8 +522,16 @@ Decision #163), not `has_project_access`: an assigned freelancer legitimately re
 must not be able to rewrite the client's sequencing. `search_path` includes `auth` so `auth.uid()` resolves.
 
 The check is now in place: `SECURITY DEFINER`, `search_path = public, projects, auth`, `EXECUTE`:
-`authenticated`, `service_role`; `auth.uid() IS NULL` → `42501`, not `can_review_project(p_project_id)` → `42501`. Ids that are
-not stages of `p_project_id` are silently skipped. `trg_stage_reorder_lock` (below) raises if any
+`authenticated`, `service_role`; `auth.uid() IS NULL` → `42501`, not `can_review_project(p_project_id)` → `42501`.
+
+**A full permutation only (audit X17).** The project's stages are locked `FOR UPDATE`, then
+`p_ordered_ids` must name every live (unarchived) stage of the project exactly once and nothing else —
+otherwise `check_violation` "A reorder must list every stage of this project exactly once." (A partial
+list used to renumber the named stages from 0 and leave two stages at one position; a foreign id was
+skipped silently.) The live stages are permuted **within the slots they already hold** — the i-th id
+takes the i-th smallest live `sort_order` — so an archived stage keeps its slot and only rows whose
+position actually changes are written. `project_stages_project_sort_order_key` is deferred, so the
+loop's intermediate collisions are judged at commit. `trg_stage_reorder_lock` (below) raises if any
 stage whose position actually changes has already started.
 
 ### `projects.delete_stage(p_project_id uuid, p_stage_id uuid) → void`
@@ -578,8 +588,10 @@ ticket outside `backlog`, or has any `stage_assignments` row at all. `SECURITY I
 ### `projects.fn_stage_delete_cascade() → trigger`
 
 `trg_stage_delete_cascade` — `BEFORE DELETE ON projects.project_stages` (`00001850`). Calls
-`finance.fn_release_ticket_escrow` for every ticket whose `current_stage_id` is the stage, then strips
-the stage from every ticket's `required_stages`. `SECURITY DEFINER`, `search_path = public, projects,
+`finance.fn_release_ticket_escrow` for every ticket whose `current_stage_id` is the stage, strips
+the stage from every ticket's `required_stages`, then nulls `start_dependency_stage_id` on every sibling
+stage that waited on it (audit C4) — so a direct `DELETE` of a depended-on stage no longer fails on
+`project_stages_start_dependency_stage_id_fkey`. `SECURITY DEFINER`, `search_path = public, projects,
 finance, org, auth`; no caller check (a trigger), `EXECUTE` moot. Reached through `delete_stage`
 (which has already detached the tickets, so the release loop finds none) or a direct `DELETE` under
 the review-authority _Users can manage stages of own projects_ policy, where it **does** release the
@@ -594,6 +606,20 @@ projects.project_stages`). Caps by `projects.structure_variation`: `one_off` ≤
 (`archived_at`) are not counted (Decision #163). Raises `P0001`.
 `SECURITY INVOKER`, no `search_path`, so the counts are taken under the inserting role's RLS.
 `EXECUTE` moot (a trigger).
+
+### `projects.fn_enforce_structure_variation_switch() → trigger`
+
+`00001130` (audit F2, DL S6). The same caps, held when the **shape** changes rather than when a row is
+added: `trg_enforce_structure_variation_switch` (`00001850`) is a `CONSTRAINT TRIGGER AFTER UPDATE OF
+structure_variation ON projects.projects`, `DEFERRABLE INITIALLY DEFERRED`, `WHEN (OLD.structure_variation
+IS DISTINCT FROM NEW.structure_variation)` — judged at commit, because a setup save switches the shape
+first and retires the extra stages after it (`sanitize_single_room_topology`, through
+[`apply_write_batch`](#projectsapply_write_batchp_ops-jsonb--jsonb)) in the same transaction. It
+re-reads the row's variation at commit; `standard` passes. Then `one_off` with > 1 ticket, `single_task`
+with > 1 live stage or > 1 ticket, `single_stage` with > 1 live stage → `check_violation` (`23514`).
+Tickets are never trimmed, so a switch the remaining tickets would break is refused. `SECURITY
+DEFINER`, `search_path = public, projects`, so the counts see every row. `EXECUTE` moot (a trigger).
+The trigger is dropped and re-created (a constraint trigger cannot be `OR REPLACE`d).
 
 ### `projects.fn_stage_window(p_stage_id uuid) → tstzrange`
 
@@ -614,15 +640,62 @@ team holds a live assignment (not `released` / `cancelled` / `declined` / `compl
 
 ---
 
+## Transactional write batch (`00001130`, DL S7)
+
+A setup save and a ticket commit used to be several PostgREST requests (the project row, its status,
+visibility, attachments, the stage reconcile through `create_stage` / `delete_stage` /
+`reorder_stages`, staffing roles, `sanitize_single_room_topology`; a ticket row then `move_ticket`),
+each its own transaction, so a refusal part-way left the earlier writes committed under a form that
+said nothing was saved. The services still PLAN those writes as before
+(`packages/backend/services/projects/live-writes.ts`, `write-batch.ts`) and send them here as one
+ordered list that lands whole or not at all; the project budget roll-up runs after the batch.
+Regression probe: `supabase/probes/write_batch_and_stale_moves.sql`.
+
+### `projects.apply_write_batch(p_ops jsonb) → jsonb`
+
+**`SECURITY INVOKER`**, `search_path = public, projects, auth`; `EXECUTE`: `authenticated`
+(`00002510`). Every statement runs as the caller under the same RLS and column grants the individual
+requests met, and every RPC keeps its own authority check — the batch grants nothing a caller could
+not already do one request at a time; it only removes the gaps between them. `auth.uid() IS NULL` →
+`42501`; `p_ops` not an array → `invalid_parameter_value`.
+
+`p_ops` is an array of ops, run in order:
+
+| Kind | Shape | Allowlist |
+| :--- | :---- | :-------- |
+| `update` | `{table, id, patch:{col:value}, field?, ref?}` — by `id`, columns from `jsonb_populate_record` | `projects`, `project_stages`, `stage_staffing_roles`, `tickets` |
+| `insert` | `{table, row:{col:value}, field?, ref?}` — stores the new `id` | `stage_staffing_roles`, `project_attachments`, `tickets` |
+| `delete` | `{table, match:{col:value}, expect?, field?}` | `stage_staffing_roles`, `project_attachments` |
+| `rpc` | `{fn, args:{…}, field?, ref?}` | `set_project_status`, `create_stage`, `delete_stage`, `reorder_stages`, `sanitize_single_room_topology`, `move_ticket` (with `p_expected_updated_at`) |
+
+Any other table or function → `42501`; an unknown kind or an empty `patch` / `row` / `match` →
+`invalid_parameter_value`. Before each op runs, every value of the exact shape `{"$ref": name}` is
+replaced (`fn_batch_resolve`) by what an earlier op stored under `ref`, so a stage created in the batch
+can be patched, given roles and ordered in the same batch. An `UPDATE` that touches no row (RLS
+filtered it, or the id names nothing), an `INSERT` that writes none, and a `DELETE` marked `expect`
+that removes none raise SQLSTATE **`PW403`** `not_written`. Any failure is re-raised with its own
+code, message and detail and `HINT field:<field>`, so the service attributes it to the form section
+the op came from. Returns `{"refs": {name: value}}`.
+
+### `projects.fn_batch_resolve(p_value jsonb, p_refs jsonb) → jsonb`
+
+The batch's reference binder. Walks objects and arrays and replaces every single-key `{"$ref": name}`
+with `p_refs -> name`; an unknown name → `invalid_parameter_value` "Write batch: unknown reference …".
+Pure: `IMMUTABLE`, `SECURITY INVOKER`, `search_path = ''`. `EXECUTE`: `authenticated` (`00002510`),
+because the invoker batch calls it as the caller.
+
+---
+
 ## Tickets
 
-### `projects.move_ticket(p_ticket_id uuid, p_to_status ticket_status, p_to_stage_id uuid DEFAULT NULL, p_sort_order integer DEFAULT NULL) → jsonb`
+### `projects.move_ticket(p_ticket_id uuid, p_to_status ticket_status, p_to_stage_id uuid DEFAULT NULL, p_sort_order integer DEFAULT NULL, p_expected_updated_at timestamptz DEFAULT NULL) → jsonb`
 
 The guarded column transition the board calls. Returns the updated ticket row as `jsonb`.
 
 | Guard               | Rule                                                    |
 | :------------------ | :------------------------------------------------------ |
 | Any transition      | `projects.has_project_access(project)`                  |
+| Stale board         | when `p_expected_updated_at` is given, it must equal the row's `updated_at` to the millisecond, else `PS409` (DL S8) |
 | → `completed`       | **additionally** `projects.can_review_project(project)` |
 | Cross-project stage | `p_to_stage_id` must belong to the ticket's project.    |
 | → `claimed` / `in_progress` / `in_review` from outside work | an escrow must be held — the no-hold-no-work gate in `trg_ticket_escrow_sync` raises `PF402` (Decision #165) |
@@ -640,14 +713,22 @@ the three-argument call sites that predate it keep resolving to this same functi
 change outside that lane, because every other column is ordered by `updated_at` rather than by hand,
 so forwarding a position there would turn an ordinary drag into an error the board cannot explain.
 
+`p_expected_updated_at` (DL S8) is the ticket's `updated_at` as the mover's board last read it. When
+it is given and the row has changed since, the move is refused with SQLSTATE `PS409` "This ticket
+changed since your board loaded it. Refresh and try again." — a drag on a stale board must not
+silently overwrite a move made elsewhere. Compared after the access check (a stranger learns nothing
+about when the row changed) and truncated to milliseconds, because the board carries the timestamp
+through JSON. `NULL` keeps last-writer-wins for callers that hold no reading of the row. Adding it
+changed the signature, so the `00002510` grant names the five-argument form.
+
 Every move writes a `projects.ticket_history` row, which is why that table has no client write
 policy (see [Policies.md](Policies.md)).
 
 `SECURITY DEFINER`, `search_path = public, projects, finance, org, auth`; `EXECUTE`: `authenticated`,
 `service_role`. The ticket row is read `FOR UPDATE`, so the move is judged on the row it writes.
 Refusals: unknown ticket `no_data_found` (`P0002`); the authority guards `insufficient_privilege`
-(`42501`); a foreign stage `check_violation` (`23514`); entering work with no held escrow `PF402`
-("Needs funding — …", from the trigger).
+(`42501`); a stale `p_expected_updated_at` `PS409`; a foreign stage `check_violation` (`23514`);
+entering work with no held escrow `PF402` ("Needs funding — …", from the trigger).
 
 ### `projects.fn_assert_ticket_move(p_project_id uuid, p_assignee_id uuid, p_from_status ticket_status, p_to_status ticket_status, p_from_stage uuid, p_to_stage uuid) → void`
 
@@ -681,9 +762,8 @@ probe: `supabase/probes/ticket_move_authority.sql`.
 `assign_ticket_manual`); unknown ticket → `no_data_found` (`P0002`); not
 `has_project_access(ticket's project)` → `42501`; the ticket's stage not in `open_pull` assignment
 mode (a ticket with no stage counts as `open_pull`) → `check_violation`; the caller holds no live
-seat on the ticket's stage — a `stage_assignments` row in `assigned` / `accepted`, their own
-(`assignee_type = 'freelancer'`) or an accepted team's they are an active member of — or the ticket has
-no stage → `42501` "You are not hired on this ticket's stage, so you cannot claim it." (Decision #338
+seat on the ticket's stage ([`fn_holds_live_seat`](#projectsfn_holds_live_seatp_stage_id-uuid-p_user_id-uuid--boolean))
+or the ticket has no stage → `42501` "You are not hired on this ticket's stage, so you cannot claim it." (Decision #338
 (i): project access alone let a freelancer seated on one stage hold the client's money for work on
 another). Then delegates to
 `fn_assign_ticket_core(p_ticket_id, p_assignee_id, true)` and returns its answer: the held escrow's id,
@@ -705,6 +785,16 @@ so always meets `PF402` from the escrow sync. `claimRefusal` words each refusal:
 sentence; a lost race → 409 `already_claimed`; no description → 422; not `open_pull` → 422; no seat
 → 403 `not_permitted` in the database's sentence; a ticket not open to claim → `refusalFrom`'s answer.
 `supabase/probes/claim_seat_and_price_lock.sql` is the regression check for the seat and status rules.
+
+### `projects.fn_holds_live_seat(p_stage_id uuid, p_user_id uuid) → boolean`
+
+`00001130`. The roster rule behind both the self-claim (`claim_ticket`) and the owner's pin
+(`assign_ticket_manual`): true when `p_user_id` holds a `stage_assignments` row on `p_stage_id` in
+`assigned` / `accepted` — their own (`assignee_type = 'freelancer'`) or a team's they are an `active`
+`org.team_members` member of. A released, completed or unfunded seat is not one; a `NULL` stage or
+user is `false`. `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`, `search_path = ''`; no caller check
+(called by the two definer doors). Regression probes: `claim_seat_and_price_lock.sql`,
+`seat_lock_and_capacity.sql`.
 
 **Ticket triggers** (`00001110`, bound in `00001850`). The settlement guard is under
 [Escrow settlement doors](#escrow-settlement-doors). The rest below are all `FOR EACH ROW` on
@@ -813,7 +903,16 @@ ticket has an assignee or a `held` escrow, then lets the delete proceed. `SECURI
 (defined in `00001120`). On the transition **into** `in_review`, files a `pending_review`
 `stage_submissions` row for the current stage attributed to `current_assignee_id`, unless one is
 already pending (the idempotency pair of `submit_deliverable`); skips with a log line when there is no
-stage or assignee. `SECURITY DEFINER`, `search_path = public, projects, org, auth`.
+stage or assignee.
+
+On the transition **out of** `in_review` (DL S4) it closes every submission on the ticket still
+`pending_review`: `accepted` when the ticket went to `completed` (the client confirmed the delivery),
+else `revisions_requested`, stamping `reviewed_by = auth.uid()` / `reviewed_at = now()` where unset.
+The verdict doors (`review_submission`, the paid-revision funding) settle their submission before
+they move the ticket, so what is still pending here was left behind by a move, `complete_ticket` or a
+stage settlement — and would otherwise sit in the explorer and `get_project_card_summary
+.pending_submissions` as "awaiting review" forever. `SECURITY DEFINER`, `search_path = public,
+projects, org, auth`.
 
 ---
 
@@ -979,10 +1078,25 @@ loop. Every function here is `SECURITY DEFINER` except `file_workload_report`; e
 
 `00001140` §4. The concurrency-cap verdict `{allowed, scope, reason, ticket_intensity,
 global_current, global_projected, global_cap, stage_current, stage_projected, stage_cap}`: the user's
-live (claimed / in-progress / in-review) intensity excluding this ticket, plus this ticket's, against
-`org.freelancer_profiles.max_workload_intensity` (default `security.platform_params
-.global_workload_cap_default`, else `10`) and the stage's `max_concurrent_intensity`. Unknown ticket →
-`P0001`. `STABLE`, `search_path = public, projects, org, security, auth`; `EXECUTE`: `service_role`
+held (claimed / in-progress / in-review / reported-hidden) intensity excluding this ticket, plus this
+ticket's, against `org.freelancer_profiles.max_workload_intensity` (default `security.platform_params
+.global_workload_cap_default`, else `10`) and the stage's `max_concurrent_intensity`. A breach of the
+first reports `scope: 'global'`, of the second `scope: 'stage'` (was `'project'`). Unknown ticket →
+`P0001`.
+
+**`reported_hidden` counts (audit X4, DL W7).** A suspended ticket is still the reporter's — payee,
+escrow and all — so leaving it out let a freelancer free their own capacity by filing a workload
+report and claim more during the window. Every other $W_i$ sum uses the same four statuses: the
+profile counter (`fn_sync_workload_intensity`), the gauge (`get_workload_capacity`), the routing load
+(`auto_assign_round_robin` / `assign_parallel_stream`), the workspace and team roster sums
+(`00001020`), the business view (`00003001`) and the team search row (`00001400`).
+
+**Serialised per user.** `VOLATILE` (was `STABLE`): it takes `pg_advisory_xact_lock` on
+`'projects.check_ticket_capacity:' || p_user_id` before summing, then locks the user's other held
+tickets `FOR UPDATE`, so two claims by one person on different tickets cannot both read the same
+pre-claim sum and together break the cap — the second waits for the first to commit and sums the
+ticket it took. The advisory lock covers a user who holds nothing yet, which a row lock alone could
+not. `search_path = public, projects, org, security, auth`; `EXECUTE`: `service_role`
 only — no client grant. **No caller check** — moot for clients, because no client role holds
 `EXECUTE`; a caller can evaluate any user against any ticket.
 
@@ -1044,9 +1158,13 @@ ticket and notify its owner at will.
 ### `projects.assign_ticket_manual(p_ticket_id uuid, p_assignee_id uuid) → uuid`
 
 `00001140` §6, manual mode: the paying side pins an assignee. Unknown ticket → `P0001`; guard
-`can_review_project(ticket's project)` → `42501`; then `fn_assign_ticket_core(…, true)` — capacity
-still enforced, and the same work-start gate: `NULL` when the hold was refused (the ticket is then
-`needs_funding`). Does not check that the assignee is on the roster. `search_path = public, projects,
+`can_review_project(ticket's project)` → `42501`; the assignee holds no live seat on the ticket's
+stage ([`fn_holds_live_seat`](#projectsfn_holds_live_seatp_stage_id-uuid-p_user_id-uuid--boolean)) →
+`check_violation` "That person is not hired on this ticket's stage, so it cannot be assigned to them."
+(audit X8 / P0 4 — the same roster rule the self-claim meets, so a pin cannot hand the client's money
+to someone never hired on the stage; skipped on a personal project, which has no roster); then
+`fn_assign_ticket_core(…, true)` — capacity still enforced, and the same work-start gate: `NULL` when
+the hold was refused (the ticket is then `needs_funding`). `search_path = public, projects,
 finance, org, security, auth`; `EXECUTE`: `authenticated`, `service_role`.
 
 ### `projects.auto_assign_round_robin(p_stage_id uuid) → jsonb`
@@ -1072,7 +1190,8 @@ guards as `auto_assign_round_robin` (`can_review_project`, then `get_project_ros
 
 `trg_sync_workload_intensity` — `AFTER INSERT OR DELETE OR UPDATE OF current_assignee_id, status,
 workload_intensity ON projects.tickets` (`00001850`). Recomputes
-`org.freelancer_profiles.current_workload_intensity` (rounded live sum) for the old and new assignee,
+`org.freelancer_profiles.current_workload_intensity` (rounded sum over `claimed` / `in_progress` /
+`in_review` / `reported_hidden` tickets) for the old and new assignee,
 then re-sums the search row of every team either holder is an active member of
 (`search.fn_refresh_team_workload`, Decision #235 — [search/Functions.md](../search/Functions.md)).
 `search_path = public, projects, org`; `EXECUTE` moot (a trigger).
@@ -1368,6 +1487,23 @@ the same deny-list. `00001130`, bound in `00001850` / `00001820`; `SECURITY DEFI
   rewrites, so it is not locked here.
 
 `supabase/probes/claim_seat_and_price_lock.sql` is the regression check.
+
+### `projects.fn_stage_assignment_lock_guard() → trigger`
+
+The seat half of the three locks above (audit X8). Each asks "has a seat been taken?" over
+`stage_assignments`, and the owner may write that table directly (_Owner manage assignments_, `FOR
+ALL` — [Policies.md](Policies.md)); without this, flipping a taken seat back, re-pointing it or
+deleting it would lift the shape and price locks on demand. `trg_stage_assignment_lock_guard` —
+`BEFORE UPDATE OR DELETE ON projects.stage_assignments` (`00001850`). A seat whose `OLD.status` is
+`declined` / `pending_funding` (never taken) passes untouched. A taken seat: a `DELETE` →
+`check_violation` "A seat a freelancer has taken cannot be deleted; release it instead."; an
+`UPDATE` to `declined` / `pending_funding` → `check_violation` "A seat a freelancer has taken cannot
+be returned to …"; a change of `project_stage_id`, `assignee_type`, `freelancer_profile_id` or
+`team_id` → `check_violation` "A seat a freelancer has taken stays on its stage and with its holder."
+So a taken seat only moves forward through the taken states (`assigned` → `accepted` → `completed` /
+`released` / `cancelled`). No caller is exempt — no RPC un-takes a seat. `SECURITY INVOKER`,
+`search_path = public, projects`; `EXECUTE` moot (a trigger). Regression probe:
+`supabase/probes/seat_lock_and_capacity.sql`.
 
 ### `projects.fn_guard_project_ownership() → trigger`
 

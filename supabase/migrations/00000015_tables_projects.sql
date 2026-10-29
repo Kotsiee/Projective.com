@@ -197,6 +197,17 @@ archived_at timestamptz,
   -- can disagree, and the row then answers "is this archived?" differently depending on which column
   -- the reader happens to look at.
   CONSTRAINT ck_projects_archived_at CHECK ((status = 'archived') = (archived_at IS NOT NULL)),
+  -- The engagement's shape is a PAIR, and only these pairs mean anything (PROJECT_MANAGEMENT
+  -- §Project types; `STORED_SHAPE_PAIRS` in @projective/types/projects/setup.ts): a Task is
+  -- `one_off` + `single_task`, a milestone One-off `one_off` + `one_off`, a Pipeline `pipeline` +
+  -- `standard`, a Session `session` + `standard`, and `single_stage` is the legacy flat form of
+  -- either work format. Without it `pipeline` + `one_off` is storable and every reader resolves it
+  -- differently.
+  CONSTRAINT ck_projects_format_structure CHECK (
+    (format = 'one_off' AND structure_variation IN ('one_off', 'single_task', 'single_stage'))
+    OR (format = 'pipeline' AND structure_variation IN ('standard', 'single_stage'))
+    OR (format = 'session' AND structure_variation = 'standard')
+  ),
   -- The exact shape `security.mint_slug('prj')` produces, and nothing else.
   --
   -- Tight rather than permissive, deliberately. The previous form allowed any lowercase URL-safe
@@ -383,6 +394,13 @@ capacity text NOT NULL DEFAULT 'unlimited'
     CHECK (slug ~ '^stg-[23456789abcdefghjkmnopqrstuvwxyz]{10}$'),
   CONSTRAINT project_stages_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects(id),
   CONSTRAINT project_stages_start_dependency_stage_id_fkey FOREIGN KEY (start_dependency_stage_id) REFERENCES projects.project_stages(id),
+  -- One stage per position (audit X17). Stage order IS the execution sequence, so two stages at one
+  -- position leave "which runs first" to the planner. Archived stages keep their slot, which is why
+  -- `create_stage` appends after MAX over every stage and `reorder_stages` permutes the live stages
+  -- within the slots they already hold. DEFERRABLE so a reorder can pass through a collision inside
+  -- its own transaction and is judged at commit.
+  CONSTRAINT project_stages_project_sort_order_key UNIQUE (project_id, sort_order)
+    DEFERRABLE INITIALLY DEFERRED,
   -- A `limited` stage carries a count and an `unlimited` one does not. Bidirectional, so the two
   -- halves cannot disagree — without it the row answers "how many seats?" differently depending on
   -- which column the reader happens to look at, and an unlimited stage carrying a stale 3 would draw
@@ -449,11 +467,16 @@ priority projects.ticket_priority NOT NULL DEFAULT 'normal'::projects.ticket_pri
 tasks jsonb NOT NULL DEFAULT '[]'::jsonb,
 
     due_date timestamp with time zone NULL,
-    workload_intensity numeric(4,2) NOT NULL DEFAULT 1.00,
+-- Strictly positive: W_i is summed against the caps in `projects.check_ticket_capacity`, so a zero or
+-- negative figure would LOWER a freelancer's load and let them hold more than their cap (audit X4).
+    workload_intensity numeric(4,2) NOT NULL DEFAULT 1.00
+        CONSTRAINT ck_tickets_workload_intensity CHECK (workload_intensity > 0),
     payment_status payment_status NOT NULL DEFAULT 'unpaid'::payment_status,
 
--- Escrow / installment tracking (minor units, e.g. cents)
-unit_price_cents bigint,
+-- Escrow / installment tracking (minor units, e.g. cents). NULL inherits the stage price; a set price
+-- is never negative, matching `project_stages.unit_price_cents`.
+unit_price_cents bigint
+    CONSTRAINT ck_tickets_unit_price_cents CHECK (unit_price_cents IS NULL OR unit_price_cents >= 0),
 total_amount_paid bigint NOT NULL DEFAULT 0 CHECK (total_amount_paid >= 0),
 
 -- Ordering: manual only while in the backlog ("New") stage; else ordered by updated_at DESC
@@ -462,6 +485,9 @@ sort_order integer,
 -- Lifecycle markers
 claimed_at timestamp with time zone,
     hidden_until timestamp with time zone,
+-- The open workload report suspending this ticket. Its FOREIGN KEY is in the trailing
+-- `00000034_tables_fk_projects_workload.sql`: the report table references this one, so the pair is
+-- circular and cannot both be declared inline.
     workload_report_id uuid,
 
     created_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -558,6 +584,14 @@ CREATE TABLE projects.stage_assignments (
     with
         time zone NOT NULL DEFAULT now(),
         CONSTRAINT stage_assignments_pkey PRIMARY KEY (id),
+        -- The seat vocabulary every writer uses (audit X8; `StageAssignmentStatus` in
+        -- @projective/types/projects/setup.ts). `pending_funding` is a seat parked on an unpublished
+        -- draft; `assigned` and `accepted` are live; `completed`, `released` and `cancelled` are ended
+        -- after work began; `declined` was never taken. The shape and price locks read this column,
+        -- and `trg_stage_assignment_lock_guard` keeps a taken seat from being flipped back.
+        CONSTRAINT ck_stage_assignments_status CHECK (status IN (
+            'pending_funding', 'assigned', 'accepted', 'completed', 'released', 'cancelled', 'declined'
+        )),
         CONSTRAINT stage_assignments_project_stage_id_fkey FOREIGN KEY (project_stage_id) REFERENCES projects.project_stages (id),
         CONSTRAINT stage_assignments_freelancer_profile_id_fkey FOREIGN KEY (freelancer_profile_id) REFERENCES org.freelancer_profiles (user_id),
         CONSTRAINT stage_assignments_team_id_fkey FOREIGN KEY (team_id) REFERENCES org.teams (id),
@@ -573,7 +607,7 @@ CREATE TABLE projects.stage_submissions (
   notes text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   title text NOT NULL,
-  status text DEFAULT 'pending_review'::text,
+  status text NOT NULL DEFAULT 'pending_review'::text,
   -- Folded (0120): enrich stage_submissions into a real, reviewable ledger.
   description      jsonb NOT NULL DEFAULT '{}'::jsonb,
   checked_item_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
@@ -589,7 +623,10 @@ CREATE TABLE projects.stage_submissions (
   CONSTRAINT stage_submissions_ticket_id_fkey FOREIGN KEY (ticket_id) REFERENCES projects.tickets(id),
   CONSTRAINT stage_submissions_submitted_by_fkey FOREIGN KEY (submitted_by) REFERENCES org.users_public(user_id),
   -- Folded (0120): constrain the status vocabulary to the four frontend states.
-  CONSTRAINT stage_submissions_status_check CHECK (status IN ('draft', 'pending_review', 'accepted', 'revisions_requested'))
+  CONSTRAINT stage_submissions_status_check CHECK (status IN ('draft', 'pending_review', 'accepted', 'revisions_requested')),
+  -- A submission's per-stage ordinal is its address inside the stage ("Submission 3"), so it names
+  -- one row. NULL (an unnumbered row) stays repeatable.
+  CONSTRAINT stage_submissions_stage_number_key UNIQUE (project_stage_id, number)
 );
 
 CREATE TABLE projects.project_attachments (

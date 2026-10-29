@@ -29,12 +29,15 @@ CREATE FUNCTION pg_temp.balance() RETURNS bigint LANGUAGE sql AS $$
     SELECT balance_cents FROM finance.wallets WHERE id = pg_temp.s('wallet')::uuid;
 $$;
 
+-- The submission is filed BEFORE the ticket enters Review, as the review door does, so the ledger
+-- trigger finds it pending and files no placeholder of its own (whose number would collide with it).
 CREATE FUNCTION pg_temp.submission(p_number int) RETURNS uuid LANGUAGE sql AS $$
-    UPDATE projects.tickets SET status = 'in_review' WHERE id = pg_temp.s('ticket')::uuid;
     INSERT INTO projects.stage_submissions (project_stage_id, ticket_id, submitted_by, title, status, number)
     VALUES (pg_temp.s('stage')::uuid, pg_temp.s('ticket')::uuid, pg_temp.s('assignee')::uuid,
-            'Probe v' || p_number, 'pending_review', p_number)
-    RETURNING id;
+            'Probe v' || p_number, 'pending_review', p_number);
+    UPDATE projects.tickets SET status = 'in_review' WHERE id = pg_temp.s('ticket')::uuid;
+    SELECT ss.id FROM projects.stage_submissions ss
+     WHERE ss.project_stage_id = pg_temp.s('stage')::uuid AND ss.number = p_number;
 $$;
 GRANT EXECUTE ON FUNCTION pg_temp.s(text), pg_temp.ok(boolean, text) TO authenticated;
 -- #endregion

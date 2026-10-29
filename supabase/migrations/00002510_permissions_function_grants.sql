@@ -74,7 +74,12 @@ GRANT EXECUTE ON FUNCTION projects.delete_stage (uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION projects.reorder_stages (uuid, uuid[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION projects.set_project_status (uuid, public.project_status, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION projects.sanitize_single_room_topology (uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION projects.move_ticket (uuid, public.ticket_status, uuid, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.move_ticket (uuid, public.ticket_status, uuid, integer, timestamptz) TO authenticated;
+-- The transactional write batch (DL S7) is SECURITY INVOKER: every statement it runs meets the
+-- caller's own RLS and grants, and every RPC it calls is one of the doors above. Its reference
+-- resolver is pure and is called by it as the caller, so the caller needs it too.
+GRANT EXECUTE ON FUNCTION projects.apply_write_batch (jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.fn_batch_resolve (jsonb, jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION projects.submit_deliverable (uuid, uuid, text, jsonb, jsonb, uuid[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION projects.send_submission_draft (uuid, jsonb, uuid[]) TO authenticated;
 -- The review door's steps: called directly they would link any file or flip any ticket into Review.

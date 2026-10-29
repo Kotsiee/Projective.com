@@ -153,7 +153,7 @@ Deno.test("dismiss hides a declined record and KEEPS the cooldown it started", a
 		assertEquals(declined.data?.invite?.status, "declined");
 	});
 
-	const before = await ProjectBackendService.hireCooldowns("@juno", CLIENT);
+	const before = (await ProjectBackendService.hireCooldowns("@juno", CLIENT)).data ?? {};
 	assert(before[slug], "the fresh decline locks the pair");
 
 	const dismissed = await ProjectBackendService.inviteAction(
@@ -168,7 +168,7 @@ Deno.test("dismiss hides a declined record and KEEPS the cooldown it started", a
 		"the dismissed record leaves the list",
 	);
 
-	const still = await ProjectBackendService.hireCooldowns("@juno", CLIENT);
+	const still = (await ProjectBackendService.hireCooldowns("@juno", CLIENT)).data ?? {};
 	assertEquals(still[slug], before[slug], "dismissing a decline does not lift its cooldown");
 });
 

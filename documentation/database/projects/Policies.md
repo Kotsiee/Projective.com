@@ -340,7 +340,7 @@ none, and a direct `INSERT` is refused.
 
 | Table                                     | Read                                                     | Write                                       |
 | :---------------------------------------- | :------------------------------------------------------- | :------------------------------------------ |
-| `projects.stage_assignments`              | Owner, public-active project, or `can_review_project` (Decision #163). | Owner (`FOR ALL`).            |
+| `projects.stage_assignments`              | Owner, public-active project, or `can_review_project` (Decision #163). | Owner (`FOR ALL`), bounded by `trg_stage_assignment_lock_guard`: a taken seat cannot be deleted, un-taken or re-pointed. |
 | `projects.stage_open_seats`               | Owner, or public-active project.                         | Owner (`FOR ALL`).                          |
 | `projects.stage_open_seat_skills`         | Project access, or any `active` project.                 | Definer RPCs only.                          |
 | `projects.stage_staffing_roles`           | Owner, or public-active project.                         | `can_review_project` (`FOR ALL`, Decision #163). |
@@ -372,7 +372,12 @@ _View own attendance_; _View waitlists_ / _Join waitlist_ / _Manage waitlists_
 attachment policies below. The public-active read arms are `status = 'active' AND visibility =
 'public'`; _View seat skills_ is wider — project access **or any `active` project** whatever its
 visibility. _View assignments_ gained its review-authority arm so the setup write path's onboarding
-lock sees the seats that freeze prices (Decision #163). `project_activity`'s `INSERT` checks only `auth.uid() = actor_user_id`, with no project
+lock sees the seats that freeze prices (Decision #163). _Owner manage assignments_ is `FOR ALL`, so
+on its own it let the owner flip a taken seat to `declined` / `pending_funding`, re-point it, or
+delete it — lifting the shape and price locks that read this table on demand (audit X8). The policy
+is unchanged; `trg_stage_assignment_lock_guard` (BEFORE UPDATE OR DELETE,
+[Functions.md](Functions.md#projectsfn_stage_assignment_lock_guard--trigger)) refuses those writes
+for every caller, and `ck_stage_assignments_status` bounds the vocabulary. `project_activity`'s `INSERT` checks only `auth.uid() = actor_user_id`, with no project
 predicate (see Findings).
 
 ### `projects.project_attachments`
@@ -541,3 +546,9 @@ Everything above, along with the unwired routing RPCs, read models, `create_stag
 `apply_to_seat`, is now `service_role` only. A function gets a client grant when the app first calls
 it. `claim_ticket` is a self-claim: a signed-in caller who is the assignee and has project access
 (`42501` otherwise). Verified by `supabase/probes/function_grants.sql`.
+
+`move_ticket`'s grant names its five-argument signature `(uuid, ticket_status, uuid, integer,
+timestamptz)` since `p_expected_updated_at` was added (DL S8). The transactional write batch (DL S7)
+adds two `authenticated` grants: `apply_write_batch(jsonb)` — `SECURITY INVOKER`, so every statement
+meets the caller's own RLS and grants and every RPC it calls is one of the doors above — and its pure
+reference resolver `fn_batch_resolve(jsonb, jsonb)`, which the invoker batch calls as the caller.

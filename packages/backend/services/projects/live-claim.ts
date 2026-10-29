@@ -37,6 +37,11 @@ export const CLAIM_REFUSAL = {
 		message: "Tickets on this stage are assigned by the project owner, not claimed.",
 		errors: { ticket: "not_open_pull" },
 	},
+	notOpen: {
+		status: 422,
+		message: "This ticket isn't open to claim yet.",
+		errors: { ticket: "not_open" },
+	},
 } as const satisfies Record<string, WriteRefusal>;
 
 /**
