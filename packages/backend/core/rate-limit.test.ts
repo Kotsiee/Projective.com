@@ -1,5 +1,5 @@
 import { assertEquals, assertThrows } from "@std/assert";
-import { SlidingWindowLimiter } from "./rate-limit.ts";
+import { SlidingWindowLimiter, takeAll } from "./rate-limit.ts";
 
 const RULE = { max: 3, windowMs: 1_000 } as const;
 
@@ -58,4 +58,31 @@ Deno.test("reset forgets every counter, and a degenerate rule is refused at cons
 	limiter.reset();
 	assertEquals(limiter.take("a", 3).allowed, true);
 	assertThrows(() => new SlidingWindowLimiter({ max: 0, windowMs: 1 }), RangeError);
+});
+
+Deno.test("takeAll counts against every bucket when all have room", () => {
+	const byClient = new SlidingWindowLimiter({ max: 5, windowMs: 1_000 });
+	const byIdentifier = new SlidingWindowLimiter(RULE);
+	const decision = takeAll([
+		{ limiter: byClient, key: "ip" },
+		{ limiter: byIdentifier, key: "a@b.c" },
+	], 0);
+	assertEquals(decision.allowed, true);
+	assertEquals(decision.remaining, 2);
+	assertEquals(byClient.peek("ip", 0).remaining, 4);
+	assertEquals(byIdentifier.peek("a@b.c", 0).remaining, 2);
+});
+
+Deno.test("takeAll refuses when ANY bucket is full, and then counts against none", () => {
+	const byClient = new SlidingWindowLimiter({ max: 5, windowMs: 1_000 });
+	const byIdentifier = new SlidingWindowLimiter(RULE);
+	for (let i = 0; i < 3; i++) byIdentifier.take("a@b.c", i);
+	const decision = takeAll([
+		{ limiter: byClient, key: "ip" },
+		{ limiter: byIdentifier, key: "a@b.c" },
+	], 100);
+	assertEquals(decision.allowed, false);
+	assertEquals(decision.retryAfterMs, 900);
+	// The refused identifier did not spend the client address's allowance.
+	assertEquals(byClient.peek("ip", 100).remaining, 5);
 });

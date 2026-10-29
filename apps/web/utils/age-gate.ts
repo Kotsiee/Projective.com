@@ -6,29 +6,22 @@ import {
 	type UserContext,
 } from "@projective/types/auth";
 import { readCookies } from "@web/utils/auth-cookies.ts";
+import { isDevelopmentEnv } from "@web/utils/app-env.ts";
 
 /**
  * Whether a request acts as a restricted (13–17) account: the token's `isRestricted` claim, or — when
- * `DENO_ENV` is `development` (the backend's default when unset) — the Dev Context Switcher's
+ * `DENO_ENV` is `development` (never when unset) — the Dev Context Switcher's
  * `pj.dev.age` override.
  */
 export function isRestrictedRequest(
 	req: Request,
 	context: UserContext | null | undefined,
 ): boolean {
-	if (isDevelopment()) {
+	if (isDevelopmentEnv()) {
 		const override = parseAgeOverride(readCookies(req)[AGE_OVERRIDE_COOKIE]);
 		if (override) return override === "minor";
 	}
 	return context?.restricted === true;
-}
-
-function isDevelopment(): boolean {
-	try {
-		return (Deno.env.get("DENO_ENV") ?? "development").toLowerCase() === "development";
-	} catch {
-		return false;
-	}
 }
 
 /**

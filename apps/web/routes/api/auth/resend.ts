@@ -1,6 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { ResendSchema } from "@features/auth/core/schema.ts";
 import { toAuthResponse } from "@features/auth/core/respond.ts";
+import { authSubject, refuseIfThrottled } from "@features/auth/core/throttle.ts";
 import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
 
 /**
@@ -12,11 +13,17 @@ export const handler = define.handlers({
 	async POST(ctx) {
 		const body = await ctx.req.json().catch(() => ({}));
 		const parsed = ResendSchema.safeParse(body);
+		const email = parsed.success ? parsed.data.email : undefined;
+		const refused = refuseIfThrottled(
+			ctx.req,
+			"resend",
+			authSubject(ctx.req, ctx.info.remoteAddr, email),
+		);
+		if (refused) return refused;
+
 		return toAuthResponse(
 			ctx.req,
-			await AuthBackendService.resendVerification({
-				email: parsed.success ? parsed.data.email : undefined,
-			}),
+			await AuthBackendService.resendVerification({ email }),
 		);
 	},
 });

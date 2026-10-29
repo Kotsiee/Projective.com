@@ -1,6 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { readCookies, SB_ACCESS_COOKIE, sessionClearCookies } from "@web/utils/auth-cookies.ts";
 import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
+import { authSubject, refuseIfThrottled } from "@features/auth/core/throttle.ts";
 
 /**
  * `POST /api/auth/logout` — end the session.
@@ -15,7 +16,10 @@ import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts"
 export const handler = define.handlers({
 	async POST(ctx) {
 		const accessToken = readCookies(ctx.req)[SB_ACCESS_COOKIE];
-		await AuthBackendService.signOut({ accessToken });
+		// A throttled sign-out skips only the GoTrue revocation; the cookies below still clear.
+		if (!refuseIfThrottled(ctx.req, "logout", authSubject(ctx.req, ctx.info.remoteAddr))) {
+			await AuthBackendService.signOut({ accessToken });
+		}
 
 		const res = Response.json({ ok: true }, { status: 200 });
 		for (const cookie of sessionClearCookies(ctx.req)) res.headers.append("set-cookie", cookie);

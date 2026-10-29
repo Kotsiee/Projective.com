@@ -13,6 +13,7 @@
  */
 
 import type { SessionTokens } from "@server/services/ServiceResult.ts";
+import { isProductionEnv } from "@web/utils/app-env.ts";
 
 export type { SessionTokens };
 
@@ -32,22 +33,14 @@ const REFRESH_MAX_AGE = 60 * 60 * 24 * 30;
 /** Fallback access-token lifetime when GoTrue doesn't report `expires_in` (1 hour). */
 const DEFAULT_ACCESS_MAX_AGE = 3600;
 
-function isProduction(): boolean {
-	try {
-		const env = (Deno.env.get("DENO_ENV") ?? "").toLowerCase();
-		return env === "production";
-	} catch {
-		return false;
-	}
-}
-
 /**
- * Whether cookies minted for this request must carry `Secure`: always in production, otherwise
- * whenever the browser reached us over HTTPS — directly, or through a TLS-terminating proxy that
- * reports it in `X-Forwarded-Proto` (first hop wins). Plain `http://localhost` stays insecure.
+ * Whether cookies minted for this request must carry `Secure`: always in production (`DENO_ENV`
+ * unset included), otherwise whenever the browser reached us over HTTPS — directly, or through a
+ * TLS-terminating proxy that reports it in `X-Forwarded-Proto` (first hop wins). Plain
+ * `http://localhost` under `DENO_ENV=development` stays insecure.
  */
 export function isSecureRequest(req: Request): boolean {
-	if (isProduction()) return true;
+	if (isProductionEnv()) return true;
 	if (new URL(req.url).protocol === "https:") return true;
 	const forwarded = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
 	return forwarded === "https";

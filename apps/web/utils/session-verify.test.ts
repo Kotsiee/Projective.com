@@ -261,11 +261,30 @@ Deno.test("auth-screen guard: a tampered or expired token reaches /login as a gu
 // #endregion
 
 // #region Stub mode
-Deno.test("stub auth outside production: an opaque dev session is still admitted by presence", async () => {
-	const req = request("/projects", { "sb-access-token": "opaque-dev-session" });
-	const { res, state, reached } = await chain(dashboardGuard, req);
-	assert(reached);
-	assertEquals(res.status, 200);
-	assertEquals(state.isAuthenticated, true);
+Deno.test("stub auth in development: an opaque dev session is still admitted by presence", async () => {
+	const prior = Deno.env.get("DENO_ENV");
+	Deno.env.set("DENO_ENV", "development");
+	try {
+		const req = request("/projects", { "sb-access-token": "opaque-dev-session" });
+		const { res, state, reached } = await chain(dashboardGuard, req);
+		assert(reached);
+		assertEquals(res.status, 200);
+		assertEquals(state.isAuthenticated, true);
+	} finally {
+		if (prior === undefined) Deno.env.delete("DENO_ENV");
+		else Deno.env.set("DENO_ENV", prior);
+	}
+});
+
+Deno.test("stub auth with DENO_ENV unset: production, so an opaque session is not trusted", async () => {
+	const prior = Deno.env.get("DENO_ENV");
+	Deno.env.delete("DENO_ENV");
+	try {
+		const req = request("/projects", { "sb-access-token": "opaque-dev-session" });
+		const { reached } = await chain(dashboardGuard, req);
+		assertEquals(reached, false);
+	} finally {
+		if (prior !== undefined) Deno.env.set("DENO_ENV", prior);
+	}
 });
 // #endregion

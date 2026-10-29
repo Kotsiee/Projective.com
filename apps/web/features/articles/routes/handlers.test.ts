@@ -25,11 +25,17 @@ async function call(
 	state: State = {},
 ): Promise<Answer> {
 	const url = new URL(`https://projective.test${path}`);
-	const res = await (routeHandler as Record<string, Handler>).GET({
+	// Development: the canonical origin is the request's own (production reads `APP_URL`).
+	const prior = Deno.env.get("DENO_ENV");
+	Deno.env.set("DENO_ENV", "development");
+	const res = await Promise.resolve((routeHandler as Record<string, Handler>).GET({
 		req: new Request(url),
 		url,
 		params,
 		state,
+	})).finally(() => {
+		if (prior === undefined) Deno.env.delete("DENO_ENV");
+		else Deno.env.set("DENO_ENV", prior);
 	});
 	if (res instanceof Response) {
 		return { status: res.status, location: res.headers.get("location") };

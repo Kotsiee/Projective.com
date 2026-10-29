@@ -150,6 +150,8 @@ async function signIn(browser: Browser, who: string): Promise<Session> {
 	});
 	const res = await context.request.post("/api/auth/login", {
 		data: { identifier: `${who}@projective.dev`, password: await password() },
+		// The `/api` write guard wants this site's Origin, which a browser would send.
+		headers: { origin: new URL(BASE).origin },
 	});
 	assertEquals(res.status(), 200, `sign-in as ${who} failed (${res.status()})`);
 	const page = await context.newPage();

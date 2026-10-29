@@ -2,6 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { fieldErrors, LoginSchema } from "@features/auth/core/schema.ts";
 import { safeRedirect } from "@features/auth/core/redirect.ts";
 import { toAuthResponse } from "@features/auth/core/respond.ts";
+import { authSubject, noteAuthOutcome, refuseIfThrottled } from "@features/auth/core/throttle.ts";
 import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
 
 /**
@@ -22,14 +23,17 @@ export const handler = define.handlers({
 			return Response.json({ ok: false, errors: fieldErrors(parsed.error) }, { status: 422 });
 		}
 
-		return toAuthResponse(
-			ctx.req,
-			await AuthBackendService.authenticate({
-				identifier: parsed.data.identifier,
-				password: parsed.data.password,
-				remember: parsed.data.remember,
-				redirectTo: safeRedirect(parsed.data.redirectTo),
-			}),
-		);
+		const subject = authSubject(ctx.req, ctx.info.remoteAddr, parsed.data.identifier);
+		const refused = refuseIfThrottled(ctx.req, "login", subject);
+		if (refused) return refused;
+
+		const result = await AuthBackendService.authenticate({
+			identifier: parsed.data.identifier,
+			password: parsed.data.password,
+			remember: parsed.data.remember,
+			redirectTo: safeRedirect(parsed.data.redirectTo),
+		});
+		noteAuthOutcome("login", subject, result);
+		return toAuthResponse(ctx.req, result);
 	},
 });

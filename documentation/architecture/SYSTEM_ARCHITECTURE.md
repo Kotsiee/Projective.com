@@ -2195,7 +2195,7 @@ the command palette.
   `WeakMap` on the `Request`), shared by the global middleware (`resolveRequestViewer`: a tampered or
   expired cookie paints guest chrome and `isAuthenticated: false`, so the auth-screen guard bounces
   only a valid session) and `ensureSession`. **Stub mode** — the auth backend not live, outside
-  `DENO_ENV=production` — trusts presence (`verified: false`): `dev:mock` and stub sessions are opaque
+  `DENO_ENV=production` (an unset `DENO_ENV` counts as production, so it verifies) — trusts presence (`verified: false`): `dev:mock` and stub sessions are opaque
   or hand-made tokens with no issuer to check. Production always verifies. **Residual:** local
   verification cannot see revocation — an access token whose session was revoked elsewhere (a global
   sign-out, a copied cookie) passes until its `exp` (≤ 1 h); its refresh token is dead, so the
@@ -2609,6 +2609,31 @@ Deno 2.x provides a hardened environment that we strictly configure through perm
   real peer. **No forwarded header is trusted:** behind a reverse proxy every caller is the proxy
   and a per-IP limit becomes one bucket per proxy, so such a deployment must wire the proxy's own
   client-address header into this one function (Decision #296 (F)).
+- **Auth rate limits (IW-H3):** every `POST /api/auth/*` (login, join, verify, resend,
+  forgot-password, reset, sso, refresh, logout) is counted by
+  `packages/backend/services/auth/auth-throttle.ts` before it reaches GoTrue, on the sliding-window
+  limiter in `packages/backend/core/rate-limit.ts` (`takeAll` counts a request against every bucket
+  or none). Two buckets per action: per client address (`clientKey`) and per identifier (the email,
+  username or SSO domain, lowercased). Credential guesses (login, verify, reset) count every attempt
+  per address but only **failed** attempts per identifier (10 in 15 minutes), so a correct sign-in is
+  never slowed by its own history; mail senders (join, resend, forgot-password) count every attempt
+  per identifier, so one address cannot be mail-bombed; refresh, logout and sso count per address
+  only. A refusal is a uniform `429` with `Retry-After` and the same copy whether or not the account
+  exists; a throttled sign-out still clears the cookies (it skips only the GoTrue revocation). The
+  `/api/auth/*` middleware also forwards the same client address to GoTrue as `X-Forwarded-For`
+  (`runWithClientAddress` in `core/supabase.ts`, read by the anon and OAuth clients), so GoTrue's own
+  per-IP limits count the client, not this server. Per process, like every limiter here.
+- **Cross-site write guard (IW-M2):** `routes/api/_middleware.ts` runs `apps/web/utils/csrf.ts`
+  `refuseCrossSiteWrite` on every `/api/*` POST, PUT, PATCH and DELETE before a handler reads the
+  body. The `Origin` must be the request's own origin or `APP_URL`'s (a browser that sends no
+  `Origin` must send `Sec-Fetch-Site: same-origin`), else `403`; a body must be declared
+  `application/json`, else `415` (a bodiless write passes). That is what stops login CSRF: another
+  site can post a form or a `text/plain` body without a preflight, but not JSON, and it cannot forge
+  `Origin`. Exempt: webhooks (`/api/…/webhooks/…`) and scheduler endpoints (`/api/…/cron/…`), which
+  are server-to-server and authenticate with a signature or a bearer secret; `/api/contact` and
+  `/api/help/feedback` additionally accept their no-JavaScript form bodies, still same-origin only.
+  The `pj_csrf` double-submit cookie in `utils/storage-keys.ts` is unnecessary under this check and
+  stays unset.
 - **Content Security Policy (CSP):** every response gets one policy, built by the pure
   `apps/web/utils/csp.ts` and set by the global `routes/_middleware.ts` (only when the response has
   none of its own). Third-party origins are exactly the ones a page talks to: **Stripe** —
@@ -2743,7 +2768,7 @@ PostgreSQL RLS.
   `@projective/types/auth` `JoinSchema`, which refuses an under-13 or implausible `dob` with the
   form's own copy; a client-sent `restricted` flag is stripped and never read. The Dev Context
   Switcher's **Age** axis drives the mirror through the `pj.dev.age` cookie, honoured only when
-  `DENO_ENV` is `development`.
+  `DENO_ENV` is explicitly `development` (unset means production; `apps/web/utils/app-env.ts`).
 - **Teams are freelancer-only (Decision #228 (A)).** One predicate, `canUseTeams`
   (`apps/web/features/shell/core/restricted-surfaces.ts`): a freelancer outside operator mode, or a
   member acting as a team, never a restricted account. It gates the Teams rail entry (`globalNav`),
@@ -2759,7 +2784,7 @@ PostgreSQL RLS.
   `403` with `details.reason = 'persona'` (`packages/backend/core/team-persona-gate.ts`). The Dev
   Context Switcher's **Operator mode** axis (`data-dev-operator`) drives the chrome live and the guard
   plus the team create route's mirror through the `pj.dev.operator-mode` cookie, honoured only when
-  `DENO_ENV` is `development`.
+  `DENO_ENV` is explicitly `development` (unset means production; `apps/web/utils/app-env.ts`).
 - **Restricted accounts see only what they can use (Decision #192).** Ages are counted on today's date
   in the person's own IANA zone — `computeAge(dob, timeZone)` in `@projective/types/auth` and
   `org.fn_age_years(dob, zone)` in Postgres apply one rule; the join form sends the browser's zone,
@@ -3583,9 +3608,16 @@ The application relies on a strict set of environment variables. The canonical s
 > `APP_URL` builds the link, so it must be the public origin anywhere deployed. A provider lands as a
 > key in this contract plus `core/env.ts`, returned from `configuredTransport()`.
 
+> **`DENO_ENV` — unset means production (IW-M1 / K10).** `serverEnv().appEnv` and the web layer's
+> `apps/web/utils/app-env.ts` both read a missing `DENO_ENV` as `production`. Every development-only
+> switch (the Dev Context Switcher's server-side cookies, stub token trust, simulations, the
+> relaxed CSP, insecure cookies on plain HTTP) therefore needs `DENO_ENV=development` by name, so a
+> deploy that forgets the variable fails closed. `deno task dev` and `deno task dev:mock` set it
+> themselves; `deno task serve` / `start` set nothing and run as production.
+
 ```env
 # Application
-DENO_ENV=development
+DENO_ENV=development   # unset = production; the dev tasks set development
 APP_URL=http://localhost:3000   # defaults to http://localhost:$PORT
 PORT=3000                       # dev server port; per-machine overrides go in the untracked .env.local
 

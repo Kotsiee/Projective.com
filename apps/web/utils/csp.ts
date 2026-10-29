@@ -25,6 +25,8 @@
  * frames. The middleware pairs that one profile, and no other, with `x-frame-options: SAMEORIGIN`.
  */
 
+import { isProductionEnv } from "@web/utils/app-env.ts";
+
 /** Page-scoped loosenings of the platform policy; each is off unless a profile asks for it. */
 export interface CspRelaxations {
 	/** Adds `'wasm-unsafe-eval'` to `script-src`: WebAssembly compilation only, never JS `eval`. */
@@ -127,7 +129,7 @@ export function cspHeaderFor(profile: CspProfile): string {
 	const cached = cachedHeaders.get(profile);
 	if (cached !== undefined) return cached;
 	const header = contentSecurityPolicy({
-		dev: (Deno.env.get("DENO_ENV") ?? "development").toLowerCase() !== "production",
+		dev: !isProductionEnv(),
 		supabaseOrigin: originOf(Deno.env.get("SUPABASE_PUBLIC_URL") ?? Deno.env.get("SUPABASE_URL")),
 		relax: PROFILE_RELAXATIONS[profile],
 	});

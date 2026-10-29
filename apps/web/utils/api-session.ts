@@ -3,6 +3,7 @@ import { actorFrom, type ReadActor } from "@server/services/read-actor.ts";
 import { readCookies, SB_ACCESS_COOKIE } from "./auth-cookies.ts";
 import { resolveRequestContext } from "./user-context.ts";
 import type { State } from "./state.ts";
+import { isDevelopmentEnv } from "@web/utils/app-env.ts";
 
 /**
  * api-session — resolve the acting reader for a route under `apps/web/routes/api/`.
@@ -50,17 +51,8 @@ export function readActor(ctx: SessionContext): ReadActor {
 	const cookies = readCookies(ctx.req);
 	const accessToken = ctx.state.accessToken ?? cookies[SB_ACCESS_COOKIE];
 	const actor = actorFrom(context, accessToken);
-	const planGatesOverride = isDevelopment()
+	const planGatesOverride = isDevelopmentEnv()
 		? parsePlanGatesOverride(cookies[PLAN_GATES_OVERRIDE_COOKIE])
 		: null;
 	return planGatesOverride && actor.userId ? { ...actor, planGatesOverride } : actor;
-}
-
-/** Whether `DENO_ENV` is `development` (the backend's default when unset) — the dev overrides' gate. */
-function isDevelopment(): boolean {
-	try {
-		return (Deno.env.get("DENO_ENV") ?? "development").toLowerCase() === "development";
-	} catch {
-		return false;
-	}
 }

@@ -32,9 +32,9 @@ export function toFieldErrors(
 }
 
 /**
- * A write's JSON body, whatever it was labelled. `navigator.sendBeacon` sends a `text/plain` Blob,
- * so a body is parsed on its content, never its content type. Unparseable is `null`, which every
- * schema refuses.
+ * A write's JSON body, parsed on its content. The `/api` write guard (`utils/csrf.ts`) has already
+ * refused any body not declared `application/json`, the workspace's unload beacon included.
+ * Unparseable is `null`, which every schema refuses.
  */
 export async function readJsonBody(req: Request): Promise<unknown> {
 	const text = await req.text().catch(() => "");

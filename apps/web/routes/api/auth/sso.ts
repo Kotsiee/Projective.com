@@ -2,6 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { fieldErrors, SsoSchema } from "@features/auth/core/schema.ts";
 import { safeRedirect, withRedirect } from "@features/auth/core/redirect.ts";
 import { oauthStoreCookies } from "@web/utils/auth-cookies.ts";
+import { authSubject, refuseIfThrottled } from "@features/auth/core/throttle.ts";
 import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
 
 /**
@@ -23,6 +24,13 @@ export const handler = define.handlers({
 		if (!parsed.success) {
 			return Response.json({ ok: false, errors: fieldErrors(parsed.error) }, { status: 422 });
 		}
+
+		const refused = refuseIfThrottled(
+			ctx.req,
+			"sso",
+			authSubject(ctx.req, ctx.info.remoteAddr, parsed.data.domain),
+		);
+		if (refused) return refused;
 
 		const redirectTo = safeRedirect(parsed.data.redirectTo);
 		const callbackUrl =

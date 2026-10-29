@@ -40,7 +40,7 @@ export interface ListingWorkspaceProps {
 }
 
 function sendBeacon(url: string, body: string): boolean {
-	const blob = new Blob([body], { type: "text/plain" });
+	const blob = new Blob([body], { type: "application/json" });
 	return navigator.sendBeacon?.(catalogueApiPath(url), blob) ?? false;
 }
 

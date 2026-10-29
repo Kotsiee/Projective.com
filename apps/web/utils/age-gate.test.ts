@@ -52,9 +52,9 @@ Deno.test(
 );
 
 Deno.test(
-	"age gate: an unset DENO_ENV is development, as the backend reads it",
+	"age gate: an unset DENO_ENV is production, so the switcher cookie is ignored (IW-M1)",
 	withEnv(undefined, () => {
-		assert(isRestrictedRequest(request("pj.dev.age=minor"), adult));
+		assertEquals(isRestrictedRequest(request("pj.dev.age=minor"), adult), false);
 	}),
 );
 

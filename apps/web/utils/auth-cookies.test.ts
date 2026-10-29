@@ -56,7 +56,13 @@ function request(url: string, headers: Record<string, string> = {}, body?: unkno
 
 async function call(handlers: unknown, req: Request): Promise<string[]> {
 	const fn = (handlers as Record<string, Handler>)[req.method];
-	const res = await fn({ req, url: new URL(req.url), params: {}, state: {} });
+	const res = await fn({
+		req,
+		url: new URL(req.url),
+		params: {},
+		state: {},
+		info: { remoteAddr: { transport: "tcp", hostname: "127.0.0.1", port: 1 } },
+	});
 	return res.headers.getSetCookie();
 }
 
@@ -71,8 +77,8 @@ const TRANSIENT = { cookie: `${SESSION_TRANSIENT_COOKIE}=1` };
 
 // #region Secure
 Deno.test(
-	"secure: plain http on localhost stays insecure outside production",
-	withDenoEnv(undefined, () => {
+	"secure: plain http on localhost stays insecure in development",
+	withDenoEnv("development", () => {
 		const req = request(LOCAL);
 		assertFalse(isSecureRequest(req));
 		assert(sessionSetCookies(req, TOKENS).every((c) => !c.includes("Secure")));
@@ -93,12 +99,19 @@ Deno.test(
 
 Deno.test(
 	"secure: X-Forwarded-Proto https behind a TLS-terminating proxy, first hop wins",
-	withDenoEnv(undefined, () => {
+	withDenoEnv("development", () => {
 		const internal = "http://10.0.0.4:8000/api/auth/login";
 		assert(isSecureRequest(request(internal, { "x-forwarded-proto": "https" })));
 		assert(isSecureRequest(request(internal, { "x-forwarded-proto": " HTTPS , http" })));
 		assertFalse(isSecureRequest(request(internal, { "x-forwarded-proto": "http" })));
 		assertFalse(isSecureRequest(request(internal, { "x-forwarded-proto": "http, https" })));
+	}),
+);
+
+Deno.test(
+	"secure: an unset DENO_ENV is production, so always Secure (IW-M1)",
+	withDenoEnv(undefined, () => {
+		assert(isSecureRequest(request(LOCAL)));
 	}),
 );
 
@@ -113,7 +126,7 @@ Deno.test(
 // #region Lifetime
 Deno.test(
 	"lifetime: remember=true keeps a 30-day refresh cookie and no transient flag",
-	withDenoEnv(undefined, () => {
+	withDenoEnv("development", () => {
 		const cookies = sessionSetCookies(request(LOCAL), { ...TOKENS, remember: true });
 		assert(cookie(cookies, SB_REFRESH_COOKIE)?.includes(THIRTY_DAYS));
 		assertEquals(cookie(cookies, SESSION_TRANSIENT_COOKIE), undefined);
@@ -122,7 +135,7 @@ Deno.test(
 
 Deno.test(
 	"lifetime: remember=false makes the refresh cookie a session cookie and sets the flag",
-	withDenoEnv(undefined, () => {
+	withDenoEnv("development", () => {
 		const cookies = sessionSetCookies(request(LOCAL), { ...TOKENS, remember: false });
 		assertFalse(cookie(cookies, SB_REFRESH_COOKIE)?.includes("Max-Age"));
 		assertEquals(
@@ -135,7 +148,7 @@ Deno.test(
 
 Deno.test(
 	"lifetime: a renewal inherits the request's choice",
-	withDenoEnv(undefined, () => {
+	withDenoEnv("development", () => {
 		const transient = sessionSetCookies(request(LOCAL, TRANSIENT), TOKENS);
 		assertFalse(cookie(transient, SB_REFRESH_COOKIE)?.includes("Max-Age"));
 		assert(
@@ -150,7 +163,7 @@ Deno.test(
 
 Deno.test(
 	"lifetime: signing in with remember=true over a transient session clears the flag",
-	withDenoEnv(undefined, () => {
+	withDenoEnv("development", () => {
 		const cookies = sessionSetCookies(request(LOCAL, TRANSIENT), { ...TOKENS, remember: true });
 		assert(cookie(cookies, SB_REFRESH_COOKIE)?.includes(THIRTY_DAYS));
 		assert(cookie(cookies, SESSION_TRANSIENT_COOKIE)?.includes("Max-Age=0"));
@@ -159,7 +172,7 @@ Deno.test(
 
 Deno.test(
 	"lifetime: sign-out clears the flag only when the browser holds it",
-	withDenoEnv(undefined, () => {
+	withDenoEnv("development", () => {
 		assertEquals(sessionClearCookies(request(LOCAL)).length, 2);
 		const cleared = sessionClearCookies(request(LOCAL, TRANSIENT));
 		assertEquals(cleared.length, 3);
@@ -172,7 +185,7 @@ Deno.test(
 for (const remember of [false, true]) {
 	Deno.test(
 		`login: remember=${remember} reaches the service and sets the matching refresh lifetime over https`,
-		withDenoEnv(undefined, async () => {
+		withDenoEnv("development", async () => {
 			let seen: AuthenticateInput | undefined;
 			const s = stub(AuthBackendService, "authenticate", (input: AuthenticateInput) => {
 				seen = input;
@@ -202,7 +215,7 @@ const RENEWED: ServiceResult<AuthPayload> = ok({}, {
 
 Deno.test(
 	"refresh: a transient session stays transient across the renewal",
-	withDenoEnv(undefined, async () => {
+	withDenoEnv("development", async () => {
 		const s = stub(AuthBackendService, "refreshSession", () => Promise.resolve(RENEWED));
 		try {
 			const cookies = await call(
@@ -226,7 +239,7 @@ Deno.test(
 
 Deno.test(
 	"refresh: a remembered session keeps its 30 days",
-	withDenoEnv(undefined, async () => {
+	withDenoEnv("development", async () => {
 		const s = stub(AuthBackendService, "refreshSession", () => Promise.resolve(RENEWED));
 		try {
 			const cookies = await call(
@@ -245,7 +258,7 @@ Deno.test(
 
 Deno.test(
 	"ensureSession: the dashboard guard's silent renewal keeps a transient session transient",
-	withDenoEnv(undefined, async () => {
+	withDenoEnv("development", async () => {
 		const s = stub(AuthBackendService, "refreshSession", () => Promise.resolve(RENEWED));
 		try {
 			const session = await ensureSession(
@@ -264,7 +277,7 @@ Deno.test(
 
 Deno.test(
 	"logout: clears the session and its transient flag",
-	withDenoEnv(undefined, async () => {
+	withDenoEnv("development", async () => {
 		const s = stub(AuthBackendService, "signOut", () => Promise.resolve(ok({})));
 		try {
 			const cookies = await call(

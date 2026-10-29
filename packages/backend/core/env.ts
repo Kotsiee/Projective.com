@@ -29,7 +29,12 @@ function firstEnv(...names: string[]): string | undefined {
 
 /** The resolved server environment. Read via {@link serverEnv}. */
 export interface ServerEnv {
-	/** `development` | `production` — drives log verbosity and safety rails. */
+	/**
+	 * `development` | `production`, from `DENO_ENV` — drives log verbosity and safety rails. **Unset
+	 * means `production`** (IW-M1 / K10): every development-only switch (dev cookies, stub token
+	 * trust, simulations) must be asked for by name, so a deploy that forgets the variable fails
+	 * closed rather than open. The dev tasks set `DENO_ENV=development` themselves.
+	 */
 	appEnv: string;
 	/** Public base URL of the app (for building absolute links in emails, OAuth callbacks). */
 	appUrl: string;
@@ -315,7 +320,7 @@ export interface ServerEnv {
 /** Resolve the current server environment from the canonical Environment Variable Contract names. */
 export function serverEnv(): ServerEnv {
 	return {
-		appEnv: firstEnv("DENO_ENV") ?? "development",
+		appEnv: firstEnv("DENO_ENV") ?? "production",
 		appUrl: firstEnv("APP_URL") ?? `http://localhost:${firstEnv("PORT") ?? "3000"}`,
 		supabaseUrl: firstEnv("SUPABASE_URL"),
 		supabasePublicUrl: firstEnv("SUPABASE_PUBLIC_URL", "SUPABASE_URL"),

@@ -6,6 +6,7 @@ import {
 	getServiceClient,
 	getUserClient,
 	isAuthBackendLive,
+	runWithClientAddress,
 } from "../../core/supabase.ts";
 import { serverEnv } from "../../core/env.ts";
 import {
@@ -62,6 +63,21 @@ function str(value: unknown): string | undefined {
 // #region Sign-in identifier helpers
 /** The one refusal every failed password sign-in gets, whichever half was wrong. */
 const INVALID_CREDENTIALS = "Invalid credentials — check your email or username and your password.";
+/**
+ * The one refusal a sign-up that GoTrue or the database turned down receives (IW-M3). It never says
+ * whether the address already has an account, and never carries GoTrue or SQL text.
+ */
+export const JOIN_REFUSED =
+	"We couldn't create an account with those details. If you already have one, sign in or reset your password.";
+/** The refusal when the enterprise record itself could not be written (the owner account is undone). */
+export const ENTERPRISE_REFUSED =
+	"We couldn't register that business. Check its handle and details, then try again.";
+/** The refusal when an OAuth identity could not finish onboarding. */
+const ONBOARDING_REFUSED =
+	"We couldn't finish setting up your account. Check your details and try again.";
+/** The refusal when provisioning failed on our side. */
+const JOIN_UNAVAILABLE =
+	"We couldn't finish creating your account just now. Please try again in a moment.";
 
 /** Whether a sign-in identifier is an email address (carries `@`) rather than a username. */
 function isEmailIdentifier(identifier: string): boolean {
@@ -263,6 +279,16 @@ function appOrigin(): string {
 }
 
 export class AuthBackendService {
+	// #region Request scope
+	/**
+	 * Run `fn` with `address` as the client address every GoTrue call inside it forwards
+	 * (`X-Forwarded-For`), so GoTrue's per-IP limits count the client, not this server (IW-H3).
+	 */
+	static withClientAddress<T>(address: string, fn: () => T): T {
+		return runWithClientAddress(address, fn);
+	}
+	// #endregion
+
 	// #region Account creation & sign-in
 	/**
 	 * Provision a new account.
@@ -276,8 +302,13 @@ export class AuthBackendService {
 	 *    profile-less on `/join`), so provision in-context via the `complete_onboarding` RPC. OAuth
 	 *    email is pre-verified → `requiresVerification: false`.
 	 *  - **Enterprise** — admin-create the owner identity, then insert the enterprise + owner membership
-	 *    atomically via the `create_enterprise` RPC (migrations 0314/0315). Email unconfirmed → the
-	 *    confirmation email is dispatched, then `requiresVerification: true`.
+	 *    atomically via the `create_enterprise` RPC (migrations 0314/0315); when that RPC fails, the
+	 *    owner identity is deleted again. Email unconfirmed → the confirmation email is dispatched,
+	 *    then `requiresVerification: true`.
+	 *
+	 * Every refusal GoTrue or the database returns is answered with {@link JOIN_REFUSED} (or its
+	 * enterprise / onboarding sibling), never the raw text, so `/join` does not reveal whether an
+	 * address already has an account.
 	 *
 	 * The admin create sends no mail of its own, so both unconfirmed paths dispatch explicitly through
 	 * {@link dispatchConfirmation}. A refused send does not fail the signup — the account already
@@ -349,19 +380,26 @@ export class AuthBackendService {
 					},
 				});
 				if (error || !created?.user) {
-					return fail(422, {
-						message: error?.message ?? "We couldn't create the enterprise owner account.",
-					});
+					console.error("[auth:join]", error?.code ?? error?.status ?? "no-user");
+					return fail(422, { message: JOIN_REFUSED });
 				}
-				const { error: rpcError } = await admin.rpc("create_enterprise", {
-					p_owner: created.user.id,
-					p_payload: input.enterprise,
-				});
-				if (rpcError) {
-					// e.g. a duplicate handle surfaces here as a unique_violation.
-					return fail(422, {
-						message: rpcError.message ?? "We couldn't create the enterprise.",
+				// The owner account and the enterprise are two writes. When the second fails (a taken
+				// handle surfaces as a unique_violation), the first is undone, so a retry with the same
+				// address is not refused as "already registered" (IW-H8).
+				let rpcFailed = true;
+				try {
+					const { error: rpcError } = await admin.rpc("create_enterprise", {
+						p_owner: created.user.id,
+						p_payload: input.enterprise,
 					});
+					if (rpcError) console.error("[auth:create-enterprise]", rpcError.code);
+					rpcFailed = !!rpcError;
+				} catch (e) {
+					console.error("[auth:create-enterprise]", e instanceof Error ? e.name : "error");
+				}
+				if (rpcFailed) {
+					await AuthBackendService.discardOrphanedOwner(created.user.id);
+					return fail(422, { message: ENTERPRISE_REFUSED });
 				}
 				return ok({
 					requiresVerification: true,
@@ -394,9 +432,8 @@ export class AuthBackendService {
 					return AuthBackendService.refuseUnderMinimum(input);
 				}
 				if (error) {
-					return fail(422, {
-						message: error.message ?? "We couldn't finish setting up your account.",
-					});
+					console.error("[auth:complete-onboarding]", error.code);
+					return fail(422, { message: ONBOARDING_REFUSED });
 				}
 				return ok({ requiresVerification: false, redirectTo: input.redirectTo });
 			}
@@ -409,7 +446,8 @@ export class AuthBackendService {
 				user_metadata: meta,
 			});
 			if (error || !created?.user) {
-				return fail(422, { message: error?.message ?? "We couldn't create your account." });
+				console.error("[auth:join]", error?.code ?? error?.status ?? "no-user");
+				return fail(422, { message: JOIN_REFUSED });
 			}
 			return ok({
 				requiresVerification: true,
@@ -417,9 +455,23 @@ export class AuthBackendService {
 				redirectTo: input.redirectTo,
 			}, { pendingVerification: await AuthBackendService.pendingTokenFor(created.user.id) });
 		} catch (e) {
-			return fail(500, {
-				message: e instanceof Error ? e.message : "Account provisioning failed.",
-			});
+			console.error("[auth:join]", e instanceof Error ? e.name : "error");
+			return fail(500, { message: JOIN_UNAVAILABLE });
+		}
+	}
+
+	/**
+	 * Delete an enterprise owner's GoTrue user whose enterprise could not be written. The account was
+	 * created moments ago in this request, holds no profile (an enterprise owner gets no
+	 * `users_public` row) and has never signed in, so nothing else references it. A failed delete is
+	 * logged, not surfaced: the sign-up is refused either way.
+	 */
+	private static async discardOrphanedOwner(userId: string): Promise<void> {
+		try {
+			const { error } = await getServiceClient().auth.admin.deleteUser(userId);
+			if (error) console.error("[auth:orphan-cleanup]", error.code ?? error.status);
+		} catch (e) {
+			console.error("[auth:orphan-cleanup]", e instanceof Error ? e.name : "error");
 		}
 	}
 

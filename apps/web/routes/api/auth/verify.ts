@@ -2,6 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { fieldErrors, VerifySchema } from "@features/auth/core/schema.ts";
 import { safeRedirect } from "@features/auth/core/redirect.ts";
 import { toAuthResponse } from "@features/auth/core/respond.ts";
+import { authSubject, noteAuthOutcome, refuseIfThrottled } from "@features/auth/core/throttle.ts";
 import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
 
 /**
@@ -21,13 +22,16 @@ export const handler = define.handlers({
 			return Response.json({ ok: false, errors: fieldErrors(parsed.error) }, { status: 422 });
 		}
 
-		return toAuthResponse(
-			ctx.req,
-			await AuthBackendService.confirmEmail({
-				code: parsed.data.code,
-				email: parsed.data.email,
-				redirectTo: safeRedirect(parsed.data.redirectTo),
-			}),
-		);
+		const subject = authSubject(ctx.req, ctx.info.remoteAddr, parsed.data.email);
+		const refused = refuseIfThrottled(ctx.req, "verify", subject);
+		if (refused) return refused;
+
+		const result = await AuthBackendService.confirmEmail({
+			code: parsed.data.code,
+			email: parsed.data.email,
+			redirectTo: safeRedirect(parsed.data.redirectTo),
+		});
+		noteAuthOutcome("verify", subject, result);
+		return toAuthResponse(ctx.req, result);
 	},
 });

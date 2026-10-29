@@ -2,6 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { fieldErrors, JoinSchema } from "@features/auth/core/schema.ts";
 import { safeRedirect } from "@features/auth/core/redirect.ts";
 import { toAuthResponse } from "@features/auth/core/respond.ts";
+import { authSubject, refuseIfThrottled } from "@features/auth/core/throttle.ts";
 import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
 import type { EmployeeScale } from "@projective/types/org";
 import { JOIN_AGE_LOCK_COOKIE, UNDER_MINIMUM_REASON, UNDER_MINIMUM_REFUSAL } from "@projective/types/auth";
@@ -69,6 +70,17 @@ export const handler = define.handlers({
 		}
 
 		const data = parsed.data;
+		const refused = refuseIfThrottled(
+			ctx.req,
+			"join",
+			authSubject(
+				ctx.req,
+				ctx.info.remoteAddr,
+				data.type === "individual" ? data.email : data.corporateEmail,
+			),
+		);
+		if (refused) return refused;
+
 		const redirectTo = safeRedirect(data.redirectTo);
 
 		if (data.type === "individual") {

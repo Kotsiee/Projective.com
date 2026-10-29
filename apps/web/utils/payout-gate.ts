@@ -7,23 +7,16 @@ import {
 	type PayoutGateDetails,
 } from "@projective/types/finance";
 import { readCookies } from "@web/utils/auth-cookies.ts";
+import { isDevelopmentEnv } from "@web/utils/app-env.ts";
 
 /**
  * Whether the Dev Context Switcher simulates the viewer as not payout-ready (`pj.dev.payout=not_ready`).
- * Honoured only when `DENO_ENV` is `development` (the backend's default when unset); readiness itself
+ * Honoured only when `DENO_ENV` is `development` (never when unset); readiness itself
  * is a database fact the routes never read.
  */
 export function isPayoutNotReadyRequest(req: Request): boolean {
-	if (!isDevelopment()) return false;
+	if (!isDevelopmentEnv()) return false;
 	return parsePayoutOverride(readCookies(req)[PAYOUT_OVERRIDE_COOKIE]) === "not_ready";
-}
-
-function isDevelopment(): boolean {
-	try {
-		return (Deno.env.get("DENO_ENV") ?? "development").toLowerCase() === "development";
-	} catch {
-		return false;
-	}
 }
 
 /**
