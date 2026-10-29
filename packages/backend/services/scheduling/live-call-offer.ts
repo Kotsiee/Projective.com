@@ -39,27 +39,25 @@ export async function readPublicCallOffer(
 	owner: { type: ProfileOwnerType; id: string },
 ): Promise<PublicCallOffer | null | undefined> {
 	try {
+		// One request: the settings (one-to-one by schedule_id) and platforms embed in the schedule.
 		const schedule = await client.schema("scheduling").from("schedules")
-			.select("id, is_published")
+			.select(
+				`is_published, call_settings(${CALL_COLUMNS}), call_platforms(provider_slug, position)`,
+			)
 			.eq("owner_type", scheduleOwnerType(owner.type))
 			.eq("owner_id", owner.id)
+			.order("position", { referencedTable: "call_platforms" })
 			.maybeSingle();
 		if (schedule.error) return undefined;
-		const row = schedule.data as { id: string; is_published: boolean } | null;
-		if (!row || !row.is_published) return null;
-		const [call, platforms] = await Promise.all([
-			client.schema("scheduling").from("call_settings")
-				.select(CALL_COLUMNS)
-				.eq("schedule_id", row.id)
-				.maybeSingle(),
-			client.schema("scheduling").from("call_platforms")
-				.select("provider_slug, position")
-				.eq("schedule_id", row.id)
-				.order("position"),
-		]);
-		if (call.error || platforms.error) return undefined;
-		if (!call.data) return null;
-		const settings = toCallSettings(call.data as CallRow);
+		const row = schedule.data as
+			| {
+				is_published: boolean;
+				call_settings: CallRow | null;
+				call_platforms: Array<{ provider_slug: string }> | null;
+			}
+			| null;
+		if (!row || !row.is_published || !row.call_settings) return null;
+		const settings = toCallSettings(row.call_settings);
 		const priced = settings.paidEnabled && settings.feeAmountMinor !== null &&
 			settings.feeAmountMinor > 0 &&
 			settings.feeCurrency !== null;
@@ -73,7 +71,7 @@ export async function readPublicCallOffer(
 			feeAmountMinor: priced ? settings.feeAmountMinor : null,
 			feeCurrency: priced ? settings.feeCurrency : null,
 			agendaRequired: settings.agendaRequired,
-			platforms: ((platforms.data ?? []) as Array<{ provider_slug: string }>)
+			platforms: (row.call_platforms ?? [])
 				.map((p) => ConferencingProviderSchema.safeParse(p.provider_slug))
 				.flatMap((r) => (r.success ? [r.data] : [])),
 		};
