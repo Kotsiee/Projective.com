@@ -114,7 +114,12 @@ const queue: Queued[] = [];
 let nextId = 1;
 
 function spawn(url: URL): Slot {
-	const worker = new Worker(url, { type: "module" });
+	// A decoder meets hostile bytes first: it reads its own modules and nothing else — no env (the
+	// service-role key), net, write, run, ffi or sys. Needs `"unstable": ["worker-options"]` (deno.json).
+	const worker = new Worker(url, {
+		type: "module",
+		deno: { permissions: { read: true, env: false, net: false, write: false, run: false, ffi: false, sys: false } },
+	} as WorkerOptions);
 	const slot: Slot = { worker, busy: false, current: null };
 	worker.onmessage = (event: MessageEvent) => {
 		const reply = event.data as

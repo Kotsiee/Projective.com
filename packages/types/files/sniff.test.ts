@@ -35,6 +35,7 @@ Deno.test("sniffBytes: executables and markup are recognised so they can be refu
 	assertEquals(sniffBytes(bytes([0x7f], "ELF"))?.family, "executable");
 	assertEquals(sniffBytes(bytes("  <svg xmlns"))?.family, "markup");
 	assertEquals(sniffBytes(bytes([0xef, 0xbb, 0xbf], "<!DOCTYPE html>"))?.family, "markup");
+	assertEquals(sniffBytes(bytes('<?xml version="1.0"?><feed>'))?.mime, "application/xml");
 });
 
 Deno.test("sniffBytes: a renamed file is judged by its bytes — a PNG called .jpg is a PNG", () => {

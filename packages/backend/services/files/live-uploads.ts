@@ -5,7 +5,6 @@ import {
 	describeFile,
 	type DedupVerdict,
 	libraryLocation,
-	PROCESSABLE_IMAGE_MIME,
 	quarantineLocation,
 	sniffBytes,
 	SNIFF_BYTES,
@@ -19,8 +18,9 @@ import { getServiceClient, getUserClient } from "../../core/supabase.ts";
 import { downloadObject, removeObjects, signedUploadUrl, uploadObject } from "../../core/storage-signed.ts";
 import type { ReadActor } from "../read-actor.ts";
 import { imageEnvelope, objectName, writeTiers } from "../media/library.ts";
-import { MediaPipeline } from "../media/pipeline.ts";
+import { MediaPipeline, MediaRejectedError } from "../media/pipeline.ts";
 import { canFileInto, dedupVerdicts, type FilesOwner, readAsset, readQuota } from "./live-library.ts";
+import { acceptUpload, UNDECODABLE } from "./upload-acceptance.ts";
 
 /**
  * live-uploads — the `/files` hub's upload handshake, live: declare → PUT → complete.
@@ -32,7 +32,8 @@ import { canFileInto, dedupVerdicts, type FilesOwner, readAsset, readQuota } fro
  *  2. The browser PUTs the file straight to storage.
  *  3. {@link completeUpload} claims the row (`pending_upload → scanning`, so two completes cannot both
  *     process one upload), reads the stored bytes, sniffs what they really are (a filename's type is a
- *     guess), refuses a program, re-digests the content in full (a client's hash is a hint, never
+ *     guess), refuses a program, a markup document or a picture that will not decode, re-digests the
+ *     content in full (a client's hash is a hint, never
  *     evidence), processes a picture into WebP tiers and a BlurHash through the media pipeline, and
  *     promotes the original out of quarantine into the owner's private `personal` bucket (or the
  *     entity's `workspace`). Only then is it `uploaded`.
@@ -271,25 +272,28 @@ export async function completeUpload(actor: Actor, input: UploadComplete): Promi
 		}
 
 		const sniffed = sniffBytes(bytes.subarray(0, SNIFF_BYTES));
-		if (sniffed?.family === "executable") return await refuse(row, true, "Programs can't be uploaded.");
-		const mime = sniffed?.mime ?? (row.mime_type || "application/octet-stream");
+		const verdict = acceptUpload(sniffed, input.metadata);
+		if (!verdict.ok) return await refuse(row, verdict.hostile, verdict.message);
+		const mime = verdict.mime;
 		const ext = sniffed?.ext ?? ((/\.([a-z0-9]{1,8})$/i.exec(row.display_name)?.[1] ?? "bin").toLowerCase());
 		const destination = destinationFor(owner, row.owner_user_id, row.id, objectName(row.display_name, ext));
 
-		// A picture the pipeline can read gets its tiers and a measured envelope; one it cannot is
-		// admitted as a plain file — the hub holds any file, and failing to preview is not a refusal.
-		let metadata: AssetMetadata | undefined = input.metadata ?? undefined;
+		// A picture the pipeline can read gets its tiers and a measured envelope. Bytes that sniff as a
+		// picture but will not decode are refused, not stored; a pipeline outage is a 503 and a retry.
+		let metadata: AssetMetadata | undefined = verdict.metadata;
 		let tiers: Awaited<ReturnType<typeof writeTiers>> = [];
-		if (sniffed && PROCESSABLE_IMAGE_MIME.includes(sniffed.mime)) {
+		if (verdict.decode) {
+			let result;
 			try {
-				const result = await MediaPipeline.run({ kind: "ingest", bytes, mime: sniffed.mime });
-				const tierPaths: string[] = [];
-				tiers = await writeTiers(destination.bucket, destination.path, result.tiers, tierPaths, false);
-				for (const p of tierPaths) written.push({ bucket: destination.bucket, path: p });
-				metadata = imageEnvelope(result);
-			} catch {
-				tiers = [];
+				result = await MediaPipeline.run({ kind: "ingest", bytes, mime });
+			} catch (error) {
+				if (error instanceof MediaRejectedError) return await refuse(row, false, UNDECODABLE);
+				throw error;
 			}
+			const tierPaths: string[] = [];
+			tiers = await writeTiers(destination.bucket, destination.path, result.tiers, tierPaths, false);
+			for (const p of tierPaths) written.push({ bucket: destination.bucket, path: p });
+			metadata = imageEnvelope(result);
 		}
 
 		if (!await uploadObject(destination.bucket, destination.path, bytes, mime)) {

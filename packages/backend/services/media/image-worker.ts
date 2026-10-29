@@ -4,7 +4,7 @@ import { ImageRejection } from "./image-codec.ts";
 /**
  * image-worker — the media pipeline's Worker entry.
  *
- * Loaded by `pipeline.ts` with `new Worker(url, { type: "module" })`, so this module and everything
+ * Loaded by `pipeline.ts` as a read-only module Worker (no env, net, write or run), so this module and everything
  * it imports (imagescript, @jsquash/webp) are loaded by Deno NATIVELY — outside the Vite SSR module
  * graph and outside the production bundle. That is deliberate twice over: a CPU-bound decode never
  * blocks the request thread, and two WASM codec libraries never pass through a bundler that would

@@ -107,6 +107,8 @@ export function sniffBytes(head: Uint8Array): Sniffed | null {
 	if (lead.startsWith("<!doctype html") || lead.startsWith("<html") || lead.startsWith("<script")) {
 		return { mime: "text/html", family: "markup", ext: "html" };
 	}
+	// Any other XML document: XSLT or XHTML runs script when a browser renders it.
+	if (lead.startsWith("<?xml")) return { mime: "application/xml", family: "markup", ext: "xml" };
 	// #endregion
 
 	return null;
@@ -142,7 +144,7 @@ export const SHOWCASE_VIDEO_MIME: readonly string[] = ["video/mp4", "video/webm"
 export function unsupportedReason(sniffed: Sniffed | null, allowVideo: boolean): string | null {
 	if (!sniffed) return "This file isn't a picture we can read. Upload a JPG, PNG, WebP or GIF.";
 	if (sniffed.family === "executable") return "Programs can't be uploaded here.";
-	if (sniffed.family === "markup") return "SVG and HTML files can't be used as profile media.";
+	if (sniffed.family === "markup") return "SVG, HTML and XML files can't be used as profile media.";
 	if (sniffed.family === "video") {
 		if (!allowVideo) return "This slot takes a still image. Choose a picture instead.";
 		return SHOWCASE_VIDEO_MIME.includes(sniffed.mime)
