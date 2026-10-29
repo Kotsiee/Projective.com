@@ -10,6 +10,11 @@
 -- it. A replayed idempotency key still replays the order and credits nothing, whatever amount it
 -- carries.
 --
+-- The limit holds under concurrency (N5): the order takes a transaction-scoped advisory lock keyed on
+-- the business and currency before it reads what the business owes, so two baskets bought at once
+-- are serialised and the second reads the first's credit. Asserted by the lock being held after an
+-- order, and by an order that would pass the limit (counting every earlier basket) being refused PF402.
+--
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated, seeded DB:
 --   docker exec -i supabase_db_Projective psql -U postgres -d postgres -X -q -v ON_ERROR_STOP=1 \
 --     < supabase/probes/on_account_amount.sql
@@ -189,6 +194,41 @@ BEGIN
                 (SELECT balance_cents FROM finance.wallets WHERE id = v_wallet) - v_b0);
         END IF;
     EXCEPTION WHEN OTHERS THEN v_fail := v_fail || format('%s: refused %s %s', v_case, SQLSTATE, SQLERRM);
+    END;
+    -- #endregion
+
+    -- #region 5. The order took the per-(business, currency) lock and holds it to commit (N5)
+    v_case := '5 on-account lock held';
+    IF EXISTS (
+        SELECT 1 FROM pg_catalog.pg_locks l
+         WHERE l.locktype = 'advisory' AND l.pid = pg_catalog.pg_backend_pid() AND l.granted
+           AND l.objsubid = 1
+           AND l.classid::bigint = (pg_catalog.hashtextextended('finance.on_account:' || v_biz::text || ':' || v_currency, 0) >> 32) & 4294967295
+           AND l.objid::bigint = pg_catalog.hashtextextended('finance.on_account:' || v_biz::text || ':' || v_currency, 0) & 4294967295
+    ) THEN
+        RAISE NOTICE 'PASS %: a concurrent on-account order for this business and currency waits for this one', v_case;
+    ELSE
+        v_fail := v_fail || format('%s: no advisory lock keyed on the business and currency', v_case);
+    END IF;
+    -- #endregion
+
+    -- #region 6. An order that would pass the limit is refused, the owed figure counting every basket
+    v_case := '6 limit counts every basket';
+    UPDATE security.platform_params
+       SET value = pg_catalog.to_jsonb(finance.fn_on_account_owed(v_biz, v_currency) + c_price - 1)
+     WHERE key = 'on_account_limit_cents';
+    v_line := pg_temp.line(v_project, v_biz, v_currency, c_price);
+    v_basket := pg_temp.basket_of(v_line);
+    BEGIN
+        PERFORM finance.place_on_account_order(v_basket, ARRAY[v_line], v_currency,
+            jsonb_build_object(v_line::text, c_price), NULL, 'probe-oa-6', c_price);
+        v_fail := v_fail || format('%s: accepted past the limit', v_case);
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLSTATE = 'PF402' THEN
+            RAISE NOTICE 'PASS %: % %', v_case, SQLSTATE, SQLERRM;
+        ELSE
+            v_fail := v_fail || format('%s: refused %s %s (expected PF402)', v_case, SQLSTATE, SQLERRM);
+        END IF;
     END;
     -- #endregion
 

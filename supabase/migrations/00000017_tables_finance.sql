@@ -425,7 +425,11 @@ CREATE TABLE finance.deposit_rules (
     -- Who authorised the standing charge. Every run is recorded as an inbound payment made BY this
     -- person (finance.inbound_payments.created_by is NOT NULL), so a rule nobody authorised cannot run.
     created_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
-    created_at timestamptz NOT NULL DEFAULT now()
+    -- Set once by finance.update_deposit_rule(p_archive => true); an archived rule is inactive for good
+    -- (trg_deposit_rules_immutable). Rules are never deleted.
+    archived_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (archived_at IS NULL OR NOT active)
 );
 
 CREATE TABLE finance.payout_schedules (

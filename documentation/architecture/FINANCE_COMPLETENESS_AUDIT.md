@@ -69,6 +69,18 @@ Thirty-four new findings are logged here.
 > the change and pass after it. The local DB has not been reset since, so run `deno task db:reset`
 > before relying on it. Still open from those backlog rows: N5 (the on-account limit race), A4 (pot
 > write RLS) and A13 (pause / edit / cancel a rule).
+>
+> **Fixed 2026-10-30 (Wave 0):** **A4** `finance.wallet_pots` is SELECT-only for clients (P2013, G2520;
+> probe `wallet_pot_authority.sql`). **A13 (door only)** `finance.update_deposit_rule` pauses,
+> resumes, re-prices and archives a rule (F1240; `archived_at` on T17), and `trg_deposit_rules_immutable`
+> fixes a rule's wallet, currency, card and interval (probe `deposit_rule_authority.sql` §6–12); no UI
+> or service calls it yet. **N1** `settle_card_payment` binds an unbound payment by
+> `metadata.projective_payment_id`, and `finance.claim_unsettled_card_payments` +
+> `PaymentBackendService.sweepUnsettledCardPayments` (`POST /api/finance/cron/card-payments`) recover a
+> charge whose every delivery was lost (probe `card_payment_metadata_bind.sql`); the scheduled job is
+> not registered yet. **N5** `place_on_account_order` takes an advisory lock per (business, currency)
+> before the owed read (probe `on_account_amount.sql` §5–6). Ledger invariants:
+> `supabase/probes/finance_invariants.sql`.
 
 | # | P0 risk | Class | Where |
 | :-- | :-- | :-- | :-- |
@@ -359,9 +371,9 @@ Database edits are made in place, in the file named.
 
 | Pri | Item | Files |
 | :-- | :-- | :-- |
-| ~~P0~~ ✅ | ~~**CO20**: assert `p_amount` = the order's charge~~ (fixed 2026-10-29). Still open: lock per business · currency (N5) | F1250 |
-| ~~P0~~ ✅ | ~~**A12**: `deposit_rules` SELECT-only for clients~~ (fixed 2026-10-29). Still open: `wallet_pots` SELECT-only (A4); `update_deposit_rule` door (A13) | P2013 · F1240 · G2520 |
-| **P0** | **N1**: bind-by-metadata in `settle_card_payment`; recovery sweep | F1230 · PBS · `stripe-webhook.ts` |
+| ~~P0~~ ✅ | ~~**CO20**: assert `p_amount` = the order's charge~~ (fixed 2026-10-29). ~~Lock per business · currency (N5)~~ (fixed 2026-10-30) | F1250 |
+| ~~P0~~ ✅ | ~~**A12**: `deposit_rules` SELECT-only for clients~~ (fixed 2026-10-29). ~~`wallet_pots` SELECT-only (A4); `update_deposit_rule` door (A13)~~ (fixed 2026-10-30; the A13 UI is still open) | P2013 · F1240 · G2520 |
+| ~~P0~~ ✅ | ~~**N1**: bind-by-metadata in `settle_card_payment`; recovery sweep~~ (fixed 2026-10-30; register the `cron/card-payments` job in `00005060`) | F1230 · PBS · `stripe-webhook.ts` |
 | **P0** | **N2**: refuse paid calls until the money path lands | F1520 · `ConsultationModal.tsx` |
 | **P0** | **CO6** promo `FOR UPDATE` + guarded increment; **CO8** `promo_not_applicable` blocker before any charge; **CO4** `p_expected_minor` | F1210 · CBS · `live-basket.ts` |
 | **P0** | **C13** / **N7**: never drop a currency; "wallet covers" in the charge currency | `wallet-scope.ts` · `live-wallet.ts` · `commerce-owner.ts` |

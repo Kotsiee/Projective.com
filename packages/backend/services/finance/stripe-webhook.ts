@@ -37,7 +37,14 @@ import {
 // #region The plan
 /** What one verified event asks the ledger to do. */
 export type StripePlan =
-	| { kind: "payment_succeeded"; paymentIntent: string; amountReceived: number; currency: string }
+	| {
+		kind: "payment_succeeded";
+		paymentIntent: string;
+		/** `metadata.projective_payment_id` — binds the intent when the browser's bind was lost (N1). */
+		paymentId: string;
+		amountReceived: number;
+		currency: string;
+	}
 	| {
 		kind: "payment_failed";
 		paymentIntent: string;
@@ -125,6 +132,7 @@ export function planStripeEvent(event: Stripe.Event): StripePlan {
 			return {
 				kind: "payment_succeeded",
 				paymentIntent: intent.id,
+				paymentId,
 				amountReceived: intent.amount_received,
 				currency: intent.currency.toUpperCase(),
 			};
@@ -315,6 +323,7 @@ export function applyStripePlan(
 			return settleCardPayment({
 				eventId,
 				paymentIntent: plan.paymentIntent,
+				paymentId: plan.paymentId,
 				amountReceived: plan.amountReceived,
 				currency: plan.currency,
 				livemode,

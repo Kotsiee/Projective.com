@@ -541,6 +541,12 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Pay the overdue invoice before buying on account again' USING ERRCODE = 'PK403';
     END IF;
+    -- One on-account order per business and currency at a time (FINANCE_COMPLETENESS_AUDIT N5). The
+    -- basket lock above serialises only THIS basket, so two baskets bought at once would each read the
+    -- same owed figure and together pass the limit. Taken before the owed read, held to commit: the read
+    -- below is a new statement, so it sees every on-account credit committed while this waited.
+    PERFORM pg_catalog.pg_advisory_xact_lock(
+        pg_catalog.hashtextextended('finance.on_account:' || v_business.id::text || ':' || v_currency, 0));
     SELECT COALESCE((pp.value #>> '{}')::bigint, 0) INTO v_limit
       FROM security.platform_params pp WHERE pp.key = 'on_account_limit_cents';
     IF finance.fn_on_account_owed(v_business.id, v_currency) + p_amount > COALESCE(v_limit, 0) THEN

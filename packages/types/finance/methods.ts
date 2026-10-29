@@ -62,9 +62,29 @@ export const DepositRuleSchema = z.object({
 	active: z.boolean(),
 	failureCount: z.number().int().min(0),
 	lastError: z.string().max(2000).nullable(),
+	/** Who authorised the standing charge; re-stamped when a member re-prices or resumes it. */
+	createdBy: uuid.nullable(),
+	/** Set once when the rule is archived; an archived rule never runs again. */
+	archivedAt: timestamp.nullable(),
 	createdAt: timestamp,
 });
 export type DepositRule = z.infer<typeof DepositRuleSchema>;
+
+/**
+ * The arguments of `finance.update_deposit_rule` (FINANCE_COMPLETENESS_AUDIT A13): pause or resume
+ * (`active`), re-price (`amountCents`), or archive for good (`archive`, alone). The wallet, currency,
+ * card and interval never change — a different one is a new rule.
+ */
+export const UpdateDepositRuleSchema = z.object({
+	ruleId: uuid,
+	active: z.boolean().optional(),
+	amountCents: minorUnitsPositive.optional(),
+	archive: z.boolean().optional(),
+}).refine((v) => !v.archive || (v.active !== true && v.amountCents === undefined), {
+	message: "Archiving a recurring deposit changes nothing else",
+	path: ["archive"],
+});
+export type UpdateDepositRule = z.infer<typeof UpdateDepositRuleSchema>;
 // #endregion
 
 // #region Payout schedules

@@ -650,6 +650,31 @@ export const StalePayoutSweepSchema = z.object({
 	})).max(200),
 });
 export type StalePayoutSweep = z.infer<typeof StalePayoutSweepSchema>;
+
+/**
+ * What the card-payment recovery sweep did with one payment still unsettled after its grace period
+ * (`POST /api/finance/cron/card-payments`, FINANCE_COMPLETENESS_AUDIT N1): `settled` (Stripe holds a
+ * succeeded intent for it and `finance.settle_card_payment` credited it, or held it for
+ * reconciliation), `unpaid` (no succeeded intent yet — asked again a grace period later), `retry`
+ * (Stripe or the ledger could not be reached; the next sweep tries again).
+ */
+export const CardPaymentSweepOutcome = z.enum(["settled", "unpaid", "retry"]);
+export type CardPaymentSweepOutcome = z.infer<typeof CardPaymentSweepOutcome>;
+
+/** One card-payment sweep's answer: how many payments it leased, and what happened to each. */
+export const CardPaymentSweepSchema = z.object({
+	claimed: z.number().int().min(0),
+	settled: z.number().int().min(0),
+	unpaid: z.number().int().min(0),
+	retry: z.number().int().min(0),
+	results: z.array(z.object({
+		paymentId: uuid,
+		outcome: CardPaymentSweepOutcome,
+		paymentIntent: z.string().max(255).nullable(),
+		detail: z.string().max(200).nullable(),
+	})).max(200),
+});
+export type CardPaymentSweep = z.infer<typeof CardPaymentSweepSchema>;
 // #endregion
 
 // #region Card-backed wallet actions

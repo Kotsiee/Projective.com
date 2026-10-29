@@ -1063,6 +1063,154 @@ BEGIN
 END;
 $$;
 
+-- Pause, resume, re-price or archive a standing top-up (user door, FINANCE_COMPLETENESS_AUDIT A13).
+-- Clients hold SELECT only on finance.deposit_rules (00002013), so this is the one way to change a
+-- rule. It takes the authority that creates one: the owner of a personal wallet, `add_funds` on a
+-- shared one. What it may change is the amount and whether the rule runs; the wallet, currency, card
+-- and interval are the rule's identity (trg_deposit_rules_immutable) — a different one is a new rule.
+--
+-- A rule charges its AUTHOR's card, so a change that can lead to a charge — a new amount, or resuming
+-- a paused rule — is the caller's consent to that charge: `created_by` becomes the caller and the card
+-- is re-checked as it is at creation (the wallet owner's card, or the caller's own). A member whose
+-- name is not on the card therefore cannot re-price or restart a charge on it. Stopping a charge needs
+-- no such consent: any member with the authority may pause or archive a rule without becoming its
+-- author. Archiving is final (`archived_at`; the row is never deleted). Every change writes one
+-- security.audit_logs row; a call that changes nothing writes none and returns the rule as it is.
+CREATE OR REPLACE FUNCTION finance.update_deposit_rule(
+    p_rule uuid,
+    p_active boolean DEFAULT NULL,
+    p_amount_cents bigint DEFAULT NULL,
+    p_archive boolean DEFAULT false
+)
+RETURNS finance.deposit_rules
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_rule finance.deposit_rules;
+    v_before finance.deposit_rules;
+    v_wallet finance.wallets;
+    v_method finance.payment_methods;
+    v_archive boolean := COALESCE(p_archive, false);
+    v_reprices boolean;
+    v_resumes boolean;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'auth: sign in to change a recurring deposit' USING ERRCODE = '42501';
+    END IF;
+    SELECT * INTO v_rule FROM finance.deposit_rules WHERE id = p_rule FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'rule: that recurring deposit does not exist' USING ERRCODE = 'P0002';
+    END IF;
+    SELECT * INTO v_wallet FROM finance.wallets WHERE id = v_rule.wallet_id;
+    IF NOT (
+        (v_wallet.owner_type IN ('user', 'freelancer') AND v_wallet.owner_id = v_uid)
+        OR (
+            v_wallet.owner_type IN ('team', 'business', 'enterprise')
+            AND finance.fn_has_vault_capability(v_wallet.id, v_uid, 'add_funds'::finance.vault_capability)
+        )
+    ) THEN
+        RAISE EXCEPTION 'auth: you can''t change recurring deposits on this wallet' USING ERRCODE = '42501';
+    END IF;
+    IF v_rule.archived_at IS NOT NULL THEN
+        RAISE EXCEPTION 'rule: this recurring deposit is archived — set up a new one' USING ERRCODE = '55000';
+    END IF;
+    IF p_amount_cents IS NOT NULL AND p_amount_cents <= 0 THEN
+        RAISE EXCEPTION 'amountMinor: enter an amount to deposit' USING ERRCODE = '22023';
+    END IF;
+    IF v_archive AND (p_active IS TRUE OR p_amount_cents IS NOT NULL) THEN
+        RAISE EXCEPTION 'archive: archiving a recurring deposit changes nothing else' USING ERRCODE = '22023';
+    END IF;
+
+    v_reprices := p_amount_cents IS NOT NULL AND p_amount_cents <> v_rule.amount_cents;
+    v_resumes := NOT v_archive AND p_active IS TRUE AND NOT v_rule.active;
+    IF NOT v_archive AND NOT v_reprices AND NOT v_resumes
+       AND (p_active IS NULL OR p_active = v_rule.active) THEN
+        RETURN v_rule;
+    END IF;
+
+    IF v_reprices OR v_resumes THEN
+        IF v_wallet.owner_type = 'business' THEN
+            PERFORM org.fn_assert_business_not_archived(v_wallet.owner_id);
+        END IF;
+        SELECT * INTO v_method FROM finance.payment_methods WHERE id = v_rule.source_method_id;
+        IF NOT FOUND OR v_method.status <> 'active' OR v_method.provider <> 'stripe'
+           OR v_method.method_role NOT IN ('funding', 'both') THEN
+            RAISE EXCEPTION 'sourceMethodId: the card this deposit charged is gone — set up a new one'
+                USING ERRCODE = '55000';
+        END IF;
+        IF NOT (
+            (v_method.owner_type = v_wallet.owner_type AND v_method.owner_id = v_wallet.owner_id)
+            OR (v_method.owner_type IN ('user', 'freelancer') AND v_method.owner_id = v_uid)
+        ) THEN
+            RAISE EXCEPTION 'sourceMethodId: this deposit charges another member''s card — set up your own instead'
+                USING ERRCODE = '42501';
+        END IF;
+    END IF;
+
+    v_before := v_rule;
+    UPDATE finance.deposit_rules d
+       SET amount_cents = COALESCE(p_amount_cents, d.amount_cents),
+           active = CASE WHEN v_archive THEN false ELSE COALESCE(p_active, d.active) END,
+           archived_at = CASE WHEN v_archive THEN pg_catalog.now() END,
+           created_by = CASE WHEN v_reprices OR v_resumes THEN v_uid ELSE d.created_by END,
+           -- A resumed rule starts clean and is not charged for the periods it sat paused.
+           failure_count = CASE WHEN v_resumes THEN 0 ELSE d.failure_count END,
+           last_error = CASE WHEN v_resumes THEN NULL ELSE d.last_error END,
+           next_run_at = CASE
+               WHEN v_resumes AND d.interval <> 'below_floor' AND d.next_run_at <= pg_catalog.now()
+                   THEN pg_catalog.now()
+                        + CASE d.interval WHEN 'weekly' THEN interval '1 week' ELSE interval '1 month' END
+               ELSE d.next_run_at
+           END
+     WHERE d.id = v_rule.id
+    RETURNING * INTO v_rule;
+
+    INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
+    VALUES (
+        v_uid,
+        CASE WHEN v_archive THEN 'deposit_rule.archived' ELSE 'deposit_rule.updated' END,
+        'finance.deposit_rules',
+        v_rule.id,
+        pg_catalog.jsonb_build_object(
+            'wallet_id', v_rule.wallet_id,
+            'amount_cents', pg_catalog.jsonb_build_object('from', v_before.amount_cents, 'to', v_rule.amount_cents),
+            'active', pg_catalog.jsonb_build_object('from', v_before.active, 'to', v_rule.active),
+            'created_by', pg_catalog.jsonb_build_object('from', v_before.created_by, 'to', v_rule.created_by)
+        )
+    );
+    RETURN v_rule;
+END;
+$$;
+
+-- BEFORE UPDATE on finance.deposit_rules, for EVERY role (the door and the scheduler included): a
+-- rule's wallet, currency, card and interval are what its author consented to, so none of them changes
+-- — a different one is a new rule. The one exception is the card going away: the foreign key's
+-- ON DELETE SET NULL clears `source_method_id`, and the next run pauses the rule for want of a card.
+-- Archiving is final: `archived_at` is never cleared and an archived rule never runs again.
+CREATE OR REPLACE FUNCTION finance.fn_deposit_rules_immutable()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    IF NEW.wallet_id IS DISTINCT FROM OLD.wallet_id
+       OR NEW.currency IS DISTINCT FROM OLD.currency
+       OR NEW.interval IS DISTINCT FROM OLD.interval
+       OR (NEW.source_method_id IS DISTINCT FROM OLD.source_method_id AND NEW.source_method_id IS NOT NULL) THEN
+        RAISE EXCEPTION 'deposit_rules: a recurring deposit''s wallet, currency, card and interval never change — set up a new one'
+            USING ERRCODE = '42501';
+    END IF;
+    IF OLD.archived_at IS NOT NULL AND (NEW.archived_at IS DISTINCT FROM OLD.archived_at OR NEW.active) THEN
+        RAISE EXCEPTION 'deposit_rules: an archived recurring deposit stays archived' USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
 -- What a deposit rule's run would be charged to, re-authorised NOW (internal; revoked from every role).
 -- The rule's author is checked AS THEM (they may have lost the right to move this wallet's money), the
 -- card must still be active and attached to a Stripe Customer, and a business wallet's business must

@@ -48,6 +48,14 @@ CREATE TRIGGER trg_deposit_rules_derived
     FOR EACH ROW
     EXECUTE FUNCTION security.fn_guard_derived_columns ('failure_count', 'last_error', 'created_by');
 
+-- …and unlike the client guards above, a rule's identity binds the doors too: the wallet, currency,
+-- card and interval its author consented to never change, and an archived rule stays archived
+-- (finance.fn_deposit_rules_immutable; FINANCE_BUILD_PROMPTS DB1).
+CREATE TRIGGER trg_deposit_rules_immutable
+    BEFORE UPDATE ON finance.deposit_rules
+    FOR EACH ROW
+    EXECUTE FUNCTION finance.fn_deposit_rules_immutable ();
+
 -- A payment method is created by the processor's setup handshake, which alone can say an instrument
 -- exists and is usable. The owner may relabel it or change which one is the default; the rest is the
 -- processor's word.

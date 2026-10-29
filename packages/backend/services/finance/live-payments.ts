@@ -760,10 +760,15 @@ function outcomeOf(row: Row): EventOutcome {
 	return { outcome, detail: typeof row.detail === "string" ? row.detail : null, raw: row };
 }
 
-/** `payment_intent.succeeded` → `finance.settle_card_payment`. */
+/**
+ * `payment_intent.succeeded` → `finance.settle_card_payment`. `paymentId` is the intent's
+ * `metadata.projective_payment_id`: when no payment is bound to the intent yet, the door binds the
+ * unbound payment it names and settles it (FINANCE_COMPLETENESS_AUDIT N1).
+ */
 export async function settleCardPayment(args: {
 	eventId: string;
 	paymentIntent: string;
+	paymentId: string | null;
 	amountReceived: number;
 	currency: string;
 	livemode: boolean;
@@ -775,8 +780,40 @@ export async function settleCardPayment(args: {
 			p_amount_received: args.amountReceived,
 			p_currency: args.currency,
 			p_livemode: args.livemode,
+			p_payment_id: args.paymentId,
 		}),
 	);
+}
+
+/** A card payment the recovery sweep leased (`finance.claim_unsettled_card_payments`). */
+export interface UnsettledCardPayment {
+	paymentId: string;
+	/** The intent it is bound to; `null` when the bind was lost. */
+	providerRef: string | null;
+	amountCents: number;
+	currency: string;
+}
+
+/** Lease the card payments still unsettled after `olderThanMinutes` (`finance.claim_unsettled_card_payments`). */
+export async function claimUnsettledCardPayments(
+	limit: number,
+	olderThanMinutes = 15,
+): Promise<UnsettledCardPayment[]> {
+	const { data, error } = await getServiceClient().schema("finance").rpc("claim_unsettled_card_payments", {
+		p_older_than: `${olderThanMinutes} minutes`,
+		p_limit: limit,
+	});
+	if (error) {
+		throw new Error(
+			`finance.claim_unsettled_card_payments failed (${error.code ?? "no code"}): ${error.message}`,
+		);
+	}
+	return ((data ?? []) as Row[]).map((row) => ({
+		paymentId: String(row.payment_id),
+		providerRef: typeof row.provider_ref === "string" ? row.provider_ref : null,
+		amountCents: num(row.amount_cents) ?? 0,
+		currency: String(row.currency).toUpperCase(),
+	}));
 }
 
 /** `payment_intent.payment_failed` / `.canceled` → `finance.record_card_payment_failure`. */

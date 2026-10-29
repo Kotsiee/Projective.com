@@ -651,7 +651,8 @@ CREATE OR REPLACE FUNCTION finance.settle_card_payment(
     p_provider_ref text,
     p_amount_received bigint,
     p_currency text,
-    p_livemode boolean
+    p_livemode boolean,
+    p_payment_id uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -709,7 +710,31 @@ BEGIN
       FROM finance.inbound_payments
      WHERE provider = 'stripe' AND provider_ref = p_provider_ref
        FOR UPDATE;
-    IF NOT FOUND THEN
+    -- Bind by the intent's metadata (FINANCE_COMPLETENESS_AUDIT N1). A saved card is charged at
+    -- creation (`confirm: true`) BEFORE attach_card_payment binds the intent, so a bind lost to a
+    -- dropped request left money Stripe captured that no delivery could ever match. Every intent
+    -- Projective creates names its payment (`metadata.projective_payment_id`, read from the signed
+    -- event), so an UNBOUND payment with that id is bound to this intent here and settled below. A
+    -- canceled one is bound too: a run canceled before its bind may still have been charged, and money
+    -- that arrived is credited, never dropped. Amount and currency are not part of the match — a
+    -- mismatch is bound and then handed to reconciliation below, where a human sees it.
+    IF NOT FOUND AND p_payment_id IS NOT NULL THEN
+        UPDATE finance.inbound_payments
+           SET provider_ref = p_provider_ref, updated_at = pg_catalog.now()
+         WHERE id = p_payment_id
+           AND provider = 'stripe'
+           AND provider_ref IS NULL
+           AND status IN ('requires_payment', 'processing', 'canceled', 'failed')
+        RETURNING * INTO v_payment;
+        IF FOUND THEN
+            UPDATE finance.idempotency_keys
+               SET status = 'succeeded',
+                   response = pg_catalog.jsonb_build_object('payment_id', v_payment.id, 'provider_ref', p_provider_ref)
+             WHERE key = v_payment.idempotency_key
+               AND status <> 'succeeded';
+        END IF;
+    END IF;
+    IF v_payment.id IS NULL THEN
         PERFORM finance.fn_release_stripe_event(p_event_id);
         RETURN pg_catalog.jsonb_build_object(
             'outcome', 'unmatched', 'detail', 'no inbound payment is bound to this PaymentIntent yet',
@@ -1031,6 +1056,61 @@ BEGIN
 
     RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
         'outcome', 'applied', 'payment_id', v_payment.id, 'status', v_payment.status));
+END;
+$$;
+
+-- The recovery sweep's worklist (processor door, FINANCE_COMPLETENESS_AUDIT N1): card payments still
+-- unsettled — `requires_payment` or `processing`, bound or not — once `p_older_than` has passed since
+-- they last moved, from the last 30 days (Stripe's webhook retries stop after three). For each, the
+-- service asks Stripe whether an intent for it succeeded (by `provider_ref`, or by
+-- `metadata.projective_payment_id` when the bind was lost) and settles it through
+-- finance.settle_card_payment, so a charge whose every webhook delivery was lost is still credited.
+-- Each row is leased by touching `updated_at`, so overlapping sweeps skip it and one that is not yet
+-- paid is asked about again only one `p_older_than` later. An unbound scheduled deposit is left to
+-- finance.claim_due_deposit_rules, which re-sends it under its Stripe idempotency key (a lease here
+-- would starve that retry). Changes no money.
+CREATE OR REPLACE FUNCTION finance.claim_unsettled_card_payments(
+    p_older_than interval DEFAULT interval '15 minutes',
+    p_limit integer DEFAULT 50
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_out jsonb;
+BEGIN
+    WITH due AS (
+        SELECT p.id
+          FROM finance.inbound_payments p
+         WHERE p.provider = 'stripe'
+           AND p.status IN ('requires_payment', 'processing')
+           AND p.created_at > pg_catalog.now() - interval '30 days'
+           -- An unbound scheduled run is finance.claim_due_deposit_rules' to re-offer under its own lease.
+           AND (p.deposit_rule_id IS NULL OR p.provider_ref IS NOT NULL)
+           AND p.updated_at <= pg_catalog.now() - GREATEST(COALESCE(p_older_than, interval '15 minutes'), interval '1 minute')
+         ORDER BY p.updated_at
+         LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 200)
+           FOR UPDATE SKIP LOCKED
+    ), leased AS (
+        UPDATE finance.inbound_payments p
+           SET updated_at = pg_catalog.now()
+          FROM due
+         WHERE p.id = due.id
+        RETURNING p.id, p.provider_ref, p.amount_cents, p.currency, p.created_at
+    )
+    SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+               'payment_id', l.id,
+               'provider_ref', l.provider_ref,
+               'amount_cents', l.amount_cents,
+               'currency', l.currency,
+               'created_at', l.created_at
+           ) ORDER BY l.created_at), '[]'::jsonb)
+      INTO v_out
+      FROM leased l;
+    RETURN v_out;
 END;
 $$;
 -- #endregion

@@ -151,6 +151,44 @@ export async function retrievePaymentIntent(stripe: Stripe, id: string): Promise
 	const intent = await stripe.paymentIntents.retrieve(id);
 	return { id: intent.id, clientSecret: intent.client_secret, status: intent.status };
 }
+
+/** A PaymentIntent Stripe reports as succeeded, with the figures `settle_card_payment` credits. */
+export interface SucceededIntent {
+	id: string;
+	amountReceived: number;
+	currency: string;
+	livemode: boolean;
+}
+
+/**
+ * The succeeded PaymentIntent for one inbound payment, or `null` while it has none — the recovery
+ * sweep's question (FINANCE_COMPLETENESS_AUDIT N1). A bound payment is read by its intent id; an
+ * unbound one (its bind was lost after Stripe charged it) is found by the `projective_payment_id`
+ * every intent here carries ({@link paymentIntentParams}). Search is eventually consistent, which the
+ * sweep's grace period absorbs. Read-only: it never creates or confirms anything.
+ */
+export async function findSucceededIntent(
+	stripe: Stripe,
+	payment: { paymentId: string; providerRef: string | null },
+): Promise<SucceededIntent | null> {
+	const candidates = payment.providerRef
+		? [await stripe.paymentIntents.retrieve(payment.providerRef)]
+		: (await stripe.paymentIntents.search({
+			query: `metadata['projective_payment_id']:'${payment.paymentId}'`,
+			limit: 10,
+		})).data;
+	const intent = candidates.find((pi) =>
+		pi.status === "succeeded" && pi.metadata?.projective_payment_id === payment.paymentId
+	);
+	return intent
+		? {
+			id: intent.id,
+			amountReceived: intent.amount_received,
+			currency: intent.currency.toUpperCase(),
+			livemode: intent.livemode,
+		}
+		: null;
+}
 // #endregion
 
 // #region Connect (payout accounts)
