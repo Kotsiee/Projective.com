@@ -44,9 +44,9 @@ const MOVEMENT_ICON: Record<TicketPaymentKind, IconName> = {
 };
 
 /** A signed movement reads with its sign, so a fee is visibly money leaving. */
-function signedMoney(cents: number): string {
+function signedMoney(cents: number, currency: string): string {
 	if (cents === 0) return "—";
-	return `${cents < 0 ? "−" : "+"}${formatTicketMoney(Math.abs(cents))}`;
+	return `${cents < 0 ? "−" : "+"}${formatTicketMoney(Math.abs(cents), currency)}`;
 }
 
 export function TicketFinanceTab(props: TicketFinanceTabProps): JSX.Element {
@@ -102,13 +102,13 @@ export function TicketFinanceTab(props: TicketFinanceTabProps): JSX.Element {
 										<td class="tkv-table__num">
 											{l.baseCents === null
 												? <span class="tkv-table__none">No rate</span>
-												: formatTicketMoney(l.baseCents)}
+												: formatTicketMoney(l.baseCents, card.currency)}
 										</td>
 										<td class="tkv-table__num tkv-table__mult">{multiplierLabel(l.multiplier)}</td>
 										<td class="tkv-table__num tkv-table__total">
 											{l.costCents === null
 												? <span class="tkv-table__none">—</span>
-												: formatTicketMoney(l.costCents)}
+												: formatTicketMoney(l.costCents, card.currency)}
 										</td>
 									</tr>
 								))}
@@ -117,7 +117,9 @@ export function TicketFinanceTab(props: TicketFinanceTabProps): JSX.Element {
 								<tr>
 									<th scope="row" colSpan={4}>Ticket total</th>
 									<td class="tkv-table__num tkv-table__grand">
-										{card.budgetCents === null ? "Not priced" : formatTicketMoney(card.budgetCents)}
+										{card.budgetCents === null
+											? "Not priced"
+											: formatTicketMoney(card.budgetCents, card.currency)}
 									</td>
 								</tr>
 							</tfoot>
@@ -197,7 +199,7 @@ export function TicketFinanceTab(props: TicketFinanceTabProps): JSX.Element {
 									</span>
 									<span class="tkv-ledger__state" data-state={p.state}>{p.state}</span>
 									<span class="tkv-ledger__amount" data-negative={p.amountCents < 0 || undefined}>
-										{signedMoney(p.amountCents)}
+										{signedMoney(p.amountCents, card.currency)}
 									</span>
 								</li>
 							))}

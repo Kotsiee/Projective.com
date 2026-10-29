@@ -121,11 +121,13 @@ Deno.test("the scrollbar track is not registered as a palette token", () => {
  * `--on-surface` / `--surface` is tier 2's monochrome inverted pair (§B.8.1, §D.7.7) — the fill of
  * `.ui-button--structural`, `.ui-lane-create` and the profile rig's `--mono` override. It is not a
  * severity, but it is a filled control's ink-on-fill relationship, so it answers to the same floors.
+ * `--danger` is the one status ramp listed: every destructive commit is a filled Button (§B.8.3).
  */
 const ADAPTIVE_PAIRS = [
 	["--secondary", "--on-secondary"],
 	["--tertiary", "--on-tertiary"],
 	["--on-surface", "--surface"],
+	["--danger", "--on-danger"],
 ] as const;
 /** Every filled pair a `Button` severity or the structural tone can resolve to, brand included. */
 const FILLED_PAIRS = [["--primary", "--on-primary"], ...ADAPTIVE_PAIRS] as const;
@@ -193,6 +195,25 @@ Deno.test(`mode-adaptive pairs clear ${ADAPTIVE_DARK_FLOOR}:1 in dark`, () => {
 		}
 	}
 });
+
+/** A `text`/`link` danger Button inks its label in `--danger` straight on the page (§B.8.3). */
+for (const dark of [false, true]) {
+	for (const highContrast of [false, true]) {
+		const label = `${dark ? "dark" : "light"}${highContrast ? " + high contrast" : ""}`;
+		Deno.test(`--danger ink clears ${AA_FLOOR}:1 on every surface — ${label}`, () => {
+			const scheme = buildScheme({ seed: SEED, dark, highContrast });
+			for (const surface of SURFACES) {
+				const ratio = contrast(scheme["--danger"], scheme[surface]);
+				assert(
+					ratio >= AA_FLOOR,
+					`--danger (${scheme["--danger"]}) on ${surface} (${scheme[surface]}) is ${
+						ratio.toFixed(2)
+					}:1 in ${label} — a destructive label below the text floor`,
+				);
+			}
+		});
+	}
+}
 
 /**
  * Brand invariance (product owner, 2026-09-07).
@@ -288,6 +309,7 @@ const MIX_FOR: Record<string, { hover: number; active: number }> = {
 	"--primary": { hover: 100, active: 100 },
 	"--secondary": { hover: HOVER_MIX, active: ACTIVE_MIX },
 	"--tertiary": { hover: HOVER_MIX, active: ACTIVE_MIX },
+	"--danger": { hover: HOVER_MIX, active: ACTIVE_MIX },
 	// `.ui-button--structural`: the fill IS the pole, so its hover is the border channel.
 	"--on-surface": { hover: 100, active: 100 },
 };

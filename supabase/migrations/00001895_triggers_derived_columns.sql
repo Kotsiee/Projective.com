@@ -39,6 +39,20 @@ CREATE TRIGGER trg_project_participants_derived
     BEFORE INSERT OR UPDATE ON projects.project_participants
     FOR EACH ROW EXECUTE FUNCTION security.fn_guard_derived_columns('can_manage_tickets');
 
+-- The protected phase (Decision #147) ends only at settlement. `handover_unlocked_at` is stamped by
+-- projects.tg_project_handover_on_complete under set_project_status / approve_stage, and `status`
+-- moves only through those definers and the definer sweeps, which run the settlement checks. The
+-- reviewers' UPDATE policy (00002011) still edits the brief; it can no longer lift every mask.
+DROP TRIGGER IF EXISTS trg_projects_derived ON projects.projects;
+CREATE TRIGGER trg_projects_derived
+    BEFORE INSERT OR UPDATE ON projects.projects
+    FOR EACH ROW EXECUTE FUNCTION security.fn_guard_derived_columns('handover_unlocked_at');
+
+DROP TRIGGER IF EXISTS trg_projects_immutable ON projects.projects;
+CREATE TRIGGER trg_projects_immutable
+    BEFORE UPDATE ON projects.projects
+    FOR EACH ROW EXECUTE FUNCTION security.fn_guard_immutable_columns('status');
+
 -- A quote request is between a buyer and the seller of one blueprint. Either may move its status;
 -- neither may re-address it or point it at another listing (`security.fn_guard_immutable_columns`).
 DROP TRIGGER IF EXISTS trg_quote_requests_parties ON marketplace.quote_requests;

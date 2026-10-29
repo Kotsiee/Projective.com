@@ -28,7 +28,7 @@ import type { FilledTier } from "./header-model.ts";
  *     immutable.
  *   - **Lifecycle** shows the status as a `Tag` and offers ONE control: while `draft`, Publish is the
  *     header band's filled commit (tier 3, `manage_settings`) and this section says what publishing
- *     does; an `archive_entity` holder on a draft or active entity gets "Archive …" (danger, outlined,
+ *     does; an `archive_entity` holder on a draft or active entity gets "Archive …" (danger, text,
  *     confirmed, its facts worded for the status it leaves) — or, while the server lists anything that
  *     would refuse it (a held escrow, live work) in the read or in a refusal that raced it, the
  *     blockers instead, each with the link that leads to clearing it, never a button that would fail;
@@ -87,7 +87,7 @@ export interface ArchiveConfirm {
 export type LifecycleControl =
 	| {
 		kind: "archive";
-		/** "Archive team…" — a danger outlined Button that opens {@link confirm}. */
+		/** "Archive team…" — a danger text Button that opens {@link confirm}. */
 		label: string;
 		/** What archiving does, said beside the button before it is pressed. */
 		facts: MetaLineEntry[];

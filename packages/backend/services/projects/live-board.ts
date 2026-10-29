@@ -1337,6 +1337,7 @@ function toCard(ticket: TicketRow, ctx: CardContext): BoardCard {
 		budgetLabel: budgetCents === null
 			? null
 			: clamp(formatTicketMoney(budgetCents, ctx.currency), 24),
+		currency: ctx.currency,
 		activity: NO_ACTIVITY_SIGNAL,
 		frozen: isFrozen(ticket, ctx.nowMs),
 		commentCount: NO_COMMENT_COUNT,
@@ -1858,6 +1859,7 @@ export async function fetchBoardPage(
 		format: summary.format,
 		structure,
 		title: boardTitle(kind, summary.kind, summary.format),
+		currency,
 		view,
 		viewerIsClient,
 		viewerStageIds,

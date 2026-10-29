@@ -125,6 +125,9 @@ CREATE TABLE scheduling.events (
         NOT meeting_pending
         OR meeting_url IS NULL
     ),
+    -- The room is rendered as a join link to every party, and a schedule's manager writes this row
+    -- directly: anything but an https address (a `javascript:` URL above all) is refused.
+    CONSTRAINT ck_event_meeting_url_https CHECK (meeting_url ~ '^https://[^[:space:]]+$'),
     CONSTRAINT uq_event_external UNIQUE (source_connection_id, external_event_id)
 );
 
@@ -443,6 +446,8 @@ CREATE TABLE scheduling.discovery_calls (
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT ck_call_parties_distinct CHECK (host_user_id <> requester_user_id),
+    -- Rendered as a join link, like `events.meeting_url` (ck_event_meeting_url_https).
+    CONSTRAINT ck_call_meeting_url_https CHECK (meeting_url ~ '^https://[^[:space:]]+$'),
     CONSTRAINT ck_call_proposed_span CHECK (proposed_end > proposed_start),
     CONSTRAINT ck_call_confirmed_span CHECK (
         confirmed_end IS NULL

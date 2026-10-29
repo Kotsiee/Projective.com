@@ -533,7 +533,7 @@
 .tkv-h__note {
 	margin-inline-start: auto;
 	font-size: var(--text-2xs);
-	font-weight: var(--fw-regular);
+	font-weight: var(--fw-normal);
 	letter-spacing: 0;
 	text-transform: none;
 	color: var(--text-secondary);
@@ -755,7 +755,7 @@
 
 .tkv-facts__note {
 	margin-inline-start: var(--space-2);
-	font-weight: var(--fw-regular);
+	font-weight: var(--fw-normal);
 	color: var(--text-secondary);
 }
 

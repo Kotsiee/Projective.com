@@ -501,6 +501,14 @@ so a private profile's existence is never disclosed by a different answer. The f
 | `get_profile_portfolio(handle)`      | The "Selected work" pieces with their cover references; a piece with no picture is omitted, never drawn empty.                                                                                                                                                                                                          |
 | `get_profile_past_projects(handle)`  | Up to 24 **completed** projects the profile posted or delivered on (a delivery assignment that was not declined, cancelled or never funded), only where the project is `public` **and** its `portfolio_display_rights = 'allowed'`, newest first.                                                                        |
 
+### `org.get_own_private_profile()` — the owner's own date of birth and zone
+
+`STABLE` · `SECURITY DEFINER` · `search_path = ''` · granted to `authenticated` (not `anon`).
+Returns `(dob, timezone)` for `auth.uid()`'s own row, and nothing for anyone else's. Clients hold
+no column grant on `users_public.dob · city · country · timezone` (`Policies.md` § `org.users_public`),
+so this is how Settings → Account reads the date of birth and how the calendar, the wallet and the
+listing heatmap read the zone they draw in.
+
 ### `org.get_party_cards(p_user_ids uuid[])` — the identity door for every other surface
 
 `STABLE` · `SECURITY DEFINER` · granted to `authenticated` (not `anon`). Returns

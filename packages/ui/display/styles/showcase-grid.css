@@ -67,7 +67,7 @@
 	display: grid;
 	place-items: center;
 	padding: 0;
-	border: 1px dashed var(--outline-variant, var(--outline));
+	border: 1px dashed var(--outline);
 	background: var(--surface-2);
 	color: var(--text-secondary);
 	cursor: pointer;

@@ -308,8 +308,10 @@ BEGIN
 END;
 $$;
 
--- BEFORE INSERT gate: mask + flag messages sent while the parent project is in its protected phase.
--- This is the authoritative enforcement point — it fires for every insert path (service or direct).
+-- BEFORE INSERT OR UPDATE gate: mask + flag messages sent while the parent project is in its
+-- protected phase. This is the authoritative enforcement point — it fires for every insert path
+-- (service or direct) and for every edit of `body` / `body_delta`, since the sender's column grant
+-- (00002520) lets them rewrite a stored body. An edit's categories add to the row's, never replace them.
 --
 -- A masked message also LOSES its formatting (`body_delta := NULL`). The Delta spells the ORIGINAL
 -- words run by run, so leaving it in place would keep every address and number this trigger just
@@ -345,7 +347,9 @@ BEGIN
         NEW.body := v_masked;
         NEW.body_delta := NULL;
         NEW.pii_masked := true;
-        NEW.pii_categories := v_cats;
+        NEW.pii_categories := CASE WHEN TG_OP = 'UPDATE'
+            THEN ARRAY(SELECT DISTINCT c FROM unnest(coalesce(OLD.pii_categories, '{}') || v_cats) c)
+            ELSE v_cats END;
     END IF;
 
     RETURN NEW;

@@ -178,9 +178,7 @@ async function sellerZone(
 		.maybeSingle();
 	const own = (schedule.data as { timezone: string | null } | null)?.timezone;
 	if (own?.trim()) return own;
-	const profile = await db.schema("org").from("users_public").select("timezone")
-		.eq("user_id", actor.userId)
-		.maybeSingle();
+	const profile = await db.schema("org").rpc("get_own_private_profile").maybeSingle();
 	const tz = (profile.data as { timezone: string | null } | null)?.timezone;
 	return tz?.trim() ? tz : FALLBACK_TZ;
 }

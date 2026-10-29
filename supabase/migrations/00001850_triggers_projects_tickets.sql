@@ -53,6 +53,12 @@ CREATE OR REPLACE TRIGGER trg_stage_reorder_lock
     FOR EACH ROW
     EXECUTE FUNCTION projects.fn_stage_reorder_lock();
 
+CREATE OR REPLACE TRIGGER trg_stage_price_lock
+    BEFORE UPDATE OF unit_price_cents ON projects.project_stages
+    FOR EACH ROW
+    WHEN (OLD.unit_price_cents IS DISTINCT FROM NEW.unit_price_cents)
+    EXECUTE FUNCTION projects.fn_stage_price_lock();
+
 CREATE OR REPLACE TRIGGER trg_stage_delete_cascade
     BEFORE DELETE ON projects.project_stages
     FOR EACH ROW

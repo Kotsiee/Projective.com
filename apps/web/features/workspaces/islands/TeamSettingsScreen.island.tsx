@@ -50,7 +50,7 @@ import {
  *     #230 (h)), named by its visible label, with what the choice means and, until the team is live,
  *     that only members see it.
  *   - **Lifecycle** — the status Tag and what it means, then ONE control: an `archive_entity` holder's
- *     "Archive team…" (danger, outlined, confirmed) — replaced, while the read lists a held escrow or
+ *     "Archive team…" (danger, text, confirmed) — replaced, while the read lists a held escrow or
  *     live work, by those blockers, each with the link that clears it, never a button that would fail;
  *     on an archived team, Restore (tier 3) named for where the server says it lands (Decision #250
  *     (c)). A refusal that raced the read is said in the same words, in the button's place: its codes
@@ -442,7 +442,7 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 									<div class="wsp-settings__action">
 										<Button
 											severity="danger"
-											variant="outlined"
+											variant="text"
 											label={control.label}
 											loading={moving.value === "archive"}
 											disabled={moving.value !== null}

@@ -66,6 +66,22 @@ REVOKE ALL ON TABLE org.recent_views FROM anon;
 REVOKE INSERT, UPDATE, DELETE ON TABLE org.supported_locales FROM anon, authenticated;
 -- #endregion
 
+-- #region org: users_public private columns (IDENTITY_AND_WORKSPACES_AUDIT IW-C1)
+-- Its SELECT policy (00002010) admits every signed-in reader to every row, and a policy is row-level,
+-- so the table-level grant from 00002500 is taken back and re-issued per column WITHOUT dob · city ·
+-- country · timezone. A PostgREST select of any of them — or of * — is refused; others see a person's
+-- location and local time only through get_profile_view / profiles_index, which mask a minor's, and
+-- the owner reads their own through org.get_own_private_profile (00001040). A guest reads no row
+-- through the policy, so it keeps no column either.
+REVOKE SELECT ON org.users_public FROM anon, authenticated;
+
+GRANT SELECT (user_id, username, first_name, last_name, avatar_file_id, banner_file_id, headline,
+    languages, visibility, bio, interests, rating_average, rating_count, active_project_count,
+    total_project_count, service_count, product_count, created_at, updated_at, is_freelancer,
+    has_business, has_team, is_operator)
+    ON org.users_public TO authenticated;
+-- #endregion
+
 -- #region Finance: escrow visibility (writes are SECURITY DEFINER only)
 GRANT SELECT ON TABLE finance.escrows TO authenticated;
 
@@ -178,7 +194,8 @@ GRANT SELECT, UPDATE ON TABLE finance.payment_methods TO authenticated;
 
 GRANT ALL ON TABLE finance.payment_methods TO service_role;
 
-GRANT SELECT, INSERT, UPDATE ON TABLE finance.deposit_rules TO authenticated;
+-- Read only: a rule is written through finance.create_deposit_rule and the scheduler (00002013).
+GRANT SELECT ON TABLE finance.deposit_rules TO authenticated;
 
 GRANT ALL ON TABLE finance.deposit_rules TO service_role;
 
@@ -805,16 +822,21 @@ projects.project_required_skills TO anon;
 --
 -- Evidence and money-adjacent state is definer-written only: a seat hold is placed by
 -- projects.reserve_seat (under a row lock) and converted by fn_confirm_seat, attendance by
--- record_presence / record_host_attendance, progress by complete_lesson. 00002500's blanket grant is
--- narrowed back to SELECT for the client roles.
+-- record_presence / record_host_attendance, progress by complete_lesson. Cohorts, seats and sittings
+-- are written by fn_book_session_slot, fn_confirm_seat, cancel_cohort_membership and the payout sweep:
+-- the sweep releases a held escrow on a sitting's `status` and `end_time`, so an owner able to write a
+-- sitting could mark a future one completed and be paid for it, and one able to write a seat could
+-- strand the buyer's escrow. 00002500's blanket grant is narrowed back to SELECT for the client roles.
 REVOKE INSERT, UPDATE, DELETE ON projects.cohort_seat_holds,
 projects.session_attendance,
-projects.lesson_progress FROM anon, authenticated;
+projects.lesson_progress,
+projects.cohorts,
+projects.cohort_memberships,
+projects.session_events FROM anon, authenticated;
 
 -- The two join URLs are handed out only by projects.session_join_link — to the right party, once the
 -- seat is funded and the join window is open — so no client role may SELECT them; every other column
--- of a sitting stays readable under its policy. The owner keeps INSERT/UPDATE (it schedules sittings)
--- and must write with `return=minimal`, since a representation would SELECT the URLs back.
+-- of a sitting stays readable under its policy.
 REVOKE SELECT ON projects.session_events FROM anon, authenticated;
 
 GRANT SELECT (

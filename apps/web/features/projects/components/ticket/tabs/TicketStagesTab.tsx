@@ -28,6 +28,8 @@ export interface TicketStagesTabProps {
 	selected: Signal<string | null>;
 	/** Whether the viewer may change the ticket's composition. */
 	editable: boolean;
+	/** The engagement's currency (`BoardCard.currency`). */
+	currency: string;
 	onToggle: (stageId: string) => void;
 	onMove: (from: number, to: number) => void;
 	onParallel: (stageId: string, parallel: boolean) => void;
@@ -40,6 +42,7 @@ export function TicketStagesTab(props: TicketStagesTabProps): JSX.Element {
 			available={props.available}
 			selectedStageId={props.selected.value}
 			editable={props.editable}
+			currency={props.currency}
 			onSelect={(id) => (props.selected.value = id)}
 			onToggle={props.onToggle}
 			onMove={props.onMove}

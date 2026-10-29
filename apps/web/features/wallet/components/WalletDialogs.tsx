@@ -1257,7 +1257,7 @@ function ApprovalDialog(
 				: (
 					<>
 						<Button
-							variant="outlined"
+							variant="text"
 							severity="danger"
 							label="Decline"
 							disabled={phase.value === "sending"}

@@ -46,8 +46,9 @@ export const NotificationSchema = z.object({
 	contextId: uuid.nullable(),
 	/** Who caused it. `null` = the platform itself (cron, webhook, system action). */
 	actorUserId: uuid.nullable(),
-	/** Resolved deep link, or `null` when no unambiguous link exists (never a broken one). */
-	actionUrl: z.string().nullable(),
+	/** Resolved deep link, or `null` when no unambiguous link exists (never a broken one). An in-app
+	 * path only — `notifications_action_url_relative` (00000016) refuses anything else. */
+	actionUrl: z.string().regex(/^\/[^/\\]/).nullable(),
 	/** Render/localization data only (amounts, counts, display names). NEVER PII or secrets. */
 	payload: z.record(z.string(), z.unknown()),
 	/** Collapse key for the catalog's `groupWindow`, e.g. `msg:{channel_id}`. */

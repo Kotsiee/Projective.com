@@ -324,7 +324,7 @@
  * rhythm stays even whether or not today is in the window.
  */
 .sbk-day[data-today="true"] {
-    outline: 1px solid var(--hairline);
+    outline: var(--hairline);
     outline-offset: -1px;
 }
 
@@ -375,7 +375,7 @@
     gap: 1px;
     min-block-size: var(--sbk-slot-h);
     padding-inline: var(--space-2);
-    border: 1px solid var(--hairline);
+    border: var(--hairline);
     border-radius: var(--radius-base);
     background: var(--surface-1);
     color: var(--on-surface);
@@ -444,7 +444,7 @@
     flex: 1 1 0;
     min-inline-size: 0;
     padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--hairline);
+    border: var(--hairline);
     border-radius: var(--radius-base);
     background: var(--surface-1);
     color: var(--on-surface);
@@ -480,7 +480,7 @@
     align-items: flex-start;
     gap: 2px;
     padding: var(--space-3);
-    border: 1px solid var(--hairline);
+    border: var(--hairline);
     border-radius: var(--radius-base);
     background: var(--surface-1);
     color: var(--on-surface);
@@ -526,7 +526,7 @@
     justify-content: space-between;
     gap: var(--space-3);
     padding-block: var(--space-2);
-    border-block-end: 1px solid var(--hairline);
+    border-block-end: var(--hairline);
 }
 
 .sbk__stagerow:last-child {
@@ -608,7 +608,7 @@
 .sbk__input {
     inline-size: 100%;
     padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--hairline);
+    border: var(--hairline);
     border-radius: var(--radius-base);
     background: var(--surface-1);
     color: var(--on-surface);
@@ -638,40 +638,6 @@
     }
 }
 
-.sbk__inputwrap {
-    display: flex;
-    align-items: stretch;
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-base);
-    background: var(--surface-1);
-    overflow: hidden;
-}
-
-.sbk__inputwrap:focus-within {
-    box-shadow: none;
-    border-color: var(--primary);
-}
-
-.sbk__prefix {
-    display: inline-flex;
-    align-items: center;
-    padding-inline: var(--space-3);
-    background: var(--surface-2);
-    color: var(--text-secondary);
-    font-size: var(--text-xs);
-    letter-spacing: var(--tracking-wide);
-}
-
-.sbk__inputwrap .sbk__input {
-    border: none;
-    border-radius: 0;
-    background: transparent;
-}
-
-.sbk__inputwrap .sbk__input:focus-visible {
-    box-shadow: none;
-}
-
 .sbk__seats {
     display: flex;
     align-items: center;
@@ -687,7 +653,7 @@
 .sbk__seatsinput {
     inline-size: 5rem;
     padding: var(--space-2);
-    border: 1px solid var(--hairline);
+    border: var(--hairline);
     border-radius: var(--radius-base);
     background: var(--surface-1);
     color: var(--on-surface);
@@ -709,7 +675,7 @@
     gap: var(--space-2);
     align-self: flex-start;
     padding: var(--space-2) var(--space-3);
-    border: 1px dashed var(--hairline);
+    border: 1px dashed var(--hairline-color);
     border-radius: var(--radius-base);
     color: var(--text-secondary);
     font-size: var(--text-sm);
@@ -740,7 +706,7 @@
     align-items: center;
     gap: var(--space-2);
     padding-block: var(--space-2);
-    border-block-end: 1px solid var(--hairline);
+    border-block-end: var(--hairline);
     font-size: var(--text-sm);
 }
 
@@ -813,7 +779,7 @@
     align-items: center;
     gap: var(--space-2);
     padding: var(--space-3);
-    border-block-end: 1px solid var(--hairline);
+    border-block-end: var(--hairline);
 }
 
 .sbk-contact__who {
@@ -909,7 +875,7 @@
 .sbk-contact__field {
     inline-size: 100%;
     padding: var(--space-2);
-    border: 1px solid var(--hairline);
+    border: var(--hairline);
     border-radius: var(--radius-base);
     background: var(--surface-1);
     color: var(--on-surface);
@@ -1080,9 +1046,7 @@
     background: var(--surface-2);
 }
 
-.evp-cta__draftaction:focus-visible,
-.evp-cta__confirmno:focus-visible,
-.evp-cta__confirmyes:focus-visible {
+.evp-cta__draftaction:focus-visible {
     outline: none;
     box-shadow: none;
 }
@@ -1095,38 +1059,12 @@
     font-size: var(--text-xs);
 }
 
+/*
+ * Keep / Archive are text Buttons (§B.8.3): Archive carries `--danger` as its ink, never a fill that
+ * would out-weigh the primary CTA sitting directly above it.
+ */
 .evp-cta__confirmtext {
     color: var(--on-surface);
-}
-
-.evp-cta__confirmno,
-.evp-cta__confirmyes {
-    padding: var(--space-1) var(--space-2);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-base);
-    background: transparent;
-    font-size: var(--text-xs);
-    cursor: pointer;
-}
-
-.evp-cta__confirmno {
-    color: var(--text-secondary);
-}
-
-/*
- * Archive is destructive, and severity does the work rather than a fill.
- *
- * §B.8: a destructive action carries `--danger` as its INK and border, not as a filled block that
- * would out-weigh the primary CTA sitting directly above it. The confirmation step is what makes it
- * safe; the colour is what makes it legible as the thing that needs confirming.
- */
-.evp-cta__confirmyes {
-    color: var(--danger);
-    border-color: color-mix(in srgb, var(--danger) 45%, transparent);
-}
-
-.evp-cta__confirmyes:hover {
-    background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
 /* ============================================================================

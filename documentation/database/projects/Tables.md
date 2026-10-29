@@ -50,7 +50,7 @@ and high-level metadata.
 | `is_personal`               | boolean                       | NOT NULL `DEFAULT false`. A personal management project (Decision #192): set on insert whenever the owner is under 18, and permanent. One owner (no business, team or enterprise), `visibility`/`publish_visibility` pinned to `invite_only`, no sessions, budget, auto-fund or deadline bonuses, no prices on its stages or tickets, nobody joins it, and its tickets move without escrow — `trg_projects_personal_guard` and the triggers in [Functions.md](Functions.md#personal-projects-and-under-18-accounts-00001130-decision-192). |
 | `created_at`                | timestamptz                   | NOT NULL `DEFAULT now()`.                                                                               |
 | `updated_at`                | timestamptz                   | NOT NULL `DEFAULT now()`.                                                                               |
-| `handover_unlocked_at`      | timestamptz                   | Protected-phase handover; stamped by `trg_project_handover_on_complete` on entering `completed`.       |
+| `handover_unlocked_at`      | timestamptz                   | Protected-phase handover; stamped by `trg_project_handover_on_complete` on entering `completed`. Derived (`trg_projects_derived`), and `status` is door-only (`trg_projects_immutable`, both `00001895`): a client can neither stamp it nor reach `completed` past `set_project_status`. |
 | `source_blueprint_id`       | uuid                          | FK → `marketplace.service_blueprints.id`, `ON DELETE SET NULL`; `NULL` when hand-built.                 |
 | `last_activity_at`          | timestamptz                   | NOT NULL `DEFAULT now()`. Last meaningful activity — what the draft sweep measures idleness by.         |
 | `archived_at`               | timestamptz                   | Set iff `status = 'archived'` (`ck_projects_archived_at`).                                              |
@@ -845,8 +845,8 @@ One scheduled sitting of a cohort.
 | `slug`              | text UNIQUE                   | NOT NULL, no default. **The public address.** `ssn-` + 10 symbols. Minted once, immutable. |
 | `start_time`        | timestamptz                   | NOT NULL.                                                            |
 | `end_time`          | timestamptz                   | NOT NULL.                                                            |
-| `host_join_url`     | text                          |                                                                      |
-| `attendee_join_url` | text                          |                                                                      |
+| `host_join_url`     | text                          | https only (`ck_session_events_join_urls_https`): it is handed out as a join link. |
+| `attendee_join_url` | text                          | https only (`ck_session_events_join_urls_https`).                    |
 | `status`            | projects.session_event_status | NOT NULL `DEFAULT 'scheduled'`. `scheduled`, `completed`, `cancelled_by_freelancer`, `cancelled_by_client`. |
 | `created_at`        | timestamptz                   | NOT NULL `DEFAULT now()`.                                            |
 | `updated_at`        | timestamptz                   | NOT NULL `DEFAULT now()`.                                            |

@@ -11,6 +11,7 @@ import type {
 	MeetingProvider,
 } from "@projective/types/scheduling";
 import { MEETING_PROVIDER_LABEL } from "@projective/types/scheduling";
+import { normalizeLink } from "@projective/types/links";
 import { durationLabel, type EventMode } from "../../core/event-view.ts";
 
 /**
@@ -62,6 +63,8 @@ function meetingOf(event: CalendarEvent): EventMeeting {
 export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 	const { event, tz, hour12, canEdit } = props;
 	const meeting = meetingOf(event);
+	// Only an http(s) address becomes a link — a `javascript:` "room" would run in this origin.
+	const joinHref = meeting.joinUrl ? normalizeLink(meeting.joinUrl) : null;
 	const creating = props.mode === "create";
 
 	function patchMeeting(next: Partial<EventMeeting>): void {
@@ -246,11 +249,11 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 							<div class="evm-facts__row">
 								<dt>Join link</dt>
 								<dd>
-									{meeting.joinUrl
+									{joinHref
 										? (
 											<a
 												class="evm-link"
-												href={meeting.joinUrl}
+												href={joinHref}
 												target="_blank"
 												rel="noopener noreferrer"
 											>
@@ -258,6 +261,8 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 												<Icon name="external-link" size="2xs" />
 											</a>
 										)
+										: meeting.joinUrl
+										? <span class="evm-facts__note">{meeting.joinUrl}</span>
 										: meeting.pending
 										? (
 											<span class="evm-facts__note">

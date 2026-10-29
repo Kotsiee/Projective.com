@@ -90,8 +90,8 @@
 	justify-content: center;
 	inline-size: 2rem;
 	block-size: 2rem;
-	border: 1px solid var(--outline-variant);
-	border-radius: var(--radius-pill);
+	border: var(--hairline);
+	border-radius: var(--radius-full);
 	background: var(--surface);
 	color: var(--text-secondary);
 	cursor: pointer;

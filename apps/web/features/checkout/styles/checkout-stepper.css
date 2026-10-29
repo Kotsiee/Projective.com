@@ -97,7 +97,7 @@
 	align-items: center;
 	flex: none;
 	font-size: var(--text-md);
-	font-weight: var(--fw-regular);
+	font-weight: var(--fw-normal);
 	color: var(--cko-step-upcoming);
 	text-decoration: none;
 	white-space: nowrap;

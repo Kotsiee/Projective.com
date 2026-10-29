@@ -538,7 +538,7 @@
 
 .tkc-stage__cost--none {
 	font-size: var(--text-2xs);
-	font-weight: var(--fw-regular);
+	font-weight: var(--fw-normal);
 	color: var(--text-secondary);
 }
 

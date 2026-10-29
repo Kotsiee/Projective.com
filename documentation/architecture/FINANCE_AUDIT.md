@@ -1,5 +1,10 @@
 # Finance Engine, Stripe Rails, Currency, Checkout & `/wallet` Audit (2026-10-17)
 
+> **Re-verified 2026-10-29** in [`FINANCE_COMPLETENESS_AUDIT.md`](FINANCE_COMPLETENESS_AUDIT.md) (§5
+> gives each finding's status today). The "Decision #251" proposed in §4.6 was never recorded, and
+> #251 went to Teams W1. Its open flags are carried by **Decision #337** in
+> [`FINANCE_DISCREPANCIES_AND_DECISIONS.md`](FINANCE_DISCREPANCIES_AND_DECISIONS.md).
+
 > Read-only evaluation of the finance subsystem (`finance.*` schema, `packages/backend/services/finance/`,
 > `packages/types/finance/`), the Stripe integration layer, multi-currency and FX handling (§1.12),
 > the checkout pipeline from basket to fulfilment (§1.13), and the four `/wallet` pages against

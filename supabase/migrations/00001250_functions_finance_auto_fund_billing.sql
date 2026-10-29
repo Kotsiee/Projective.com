@@ -475,7 +475,10 @@ $$;
 -- so every hold still comes from a wallet, and a refused order takes its credit with it. Only a
 -- KYB-verified business on monthly invoicing, with no overdue invoice, within its on-account limit
 -- (`on_account_limit_cents`, finance-model §15). `p_amount` is the charge the checkout computed for
--- these lines — what place_wallet_order debits; a replayed key replays the order without crediting again.
+-- these lines. It is caller input, so it must equal what place_wallet_order actually charges or the
+-- whole call is refused PC409: a surplus would stay in the wallet as spendable balance, and a shortfall
+-- would come out of money already there (FINANCE_COMPLETENESS_AUDIT CO20). A replayed key replays the
+-- order without crediting again.
 CREATE OR REPLACE FUNCTION finance.place_on_account_order(
     p_basket_id uuid,
     p_item_ids uuid[],
@@ -496,6 +499,7 @@ DECLARE
     v_business org.business_profiles;
     v_currency text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, '')));
     v_limit bigint;
+    v_order jsonb;
 BEGIN
     IF auth.uid() IS NULL THEN
         RAISE EXCEPTION 'Sign in to pay' USING ERRCODE = '42501';
@@ -548,7 +552,13 @@ BEGIN
     -- below, on what the order actually charges; a refusal there takes this credit back with it.
     PERFORM finance.fn_ensure_wallet('business', v_business.id, v_currency);
     PERFORM finance.fn_wallet_credit(v_business.id, 'business', v_currency, p_amount, 'on_account_credit', 'baskets', v_basket.id);
-    RETURN finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key);
+    v_order := finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key);
+    IF (SELECT o.charged_minor FROM finance.orders o WHERE o.idempotency_key = p_idempotency_key)
+       IS DISTINCT FROM p_amount THEN
+        RAISE EXCEPTION 'The amount to pay on account no longer matches this order — review the basket and try again'
+            USING ERRCODE = 'PC409';
+    END IF;
+    RETURN v_order;
 END;
 $$;
 

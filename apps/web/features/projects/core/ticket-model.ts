@@ -100,6 +100,8 @@ export interface NewTicketOptions {
 export function newTicketCard(
 	defaultStageId: string | null,
 	stages: readonly BoardStageRef[],
+	/** The board's currency (`BoardPage.currency`) — what the draft's totals are formatted in. */
+	currency: string,
 	owner: ProjectParty | null = null,
 	options: NewTicketOptions = {},
 ): BoardCard {
@@ -128,6 +130,7 @@ export function newTicketCard(
 		dueLabel: null,
 		budgetCents: null,
 		budgetLabel: null,
+		currency,
 		activity: null,
 		frozen: false,
 		commentCount: 0,
@@ -212,7 +215,7 @@ export function reconcileCard(card: BoardCard, stages: readonly BoardStageRef[])
 		hasDescription: hasContent(card.description),
 		workload,
 		budgetCents: totalCents,
-		budgetLabel: totalCents === null ? null : formatTicketMoney(totalCents),
+		budgetLabel: totalCents === null ? null : formatTicketMoney(totalCents, card.currency),
 		dueLabel: formatDueDate(card.dueDate),
 		checklistDone: card.tasks.filter((t) => t.done).length,
 		checklistTotal: card.tasks.length,
@@ -379,7 +382,7 @@ export function ticketTotals(card: BoardCard): TicketTotals {
 	return {
 		stageCount: refs.length,
 		totalCents,
-		totalLabel: totalCents === null ? null : formatTicketMoney(totalCents),
+		totalLabel: totalCents === null ? null : formatTicketMoney(totalCents, card.currency),
 		workload: card.workload,
 		bandCount: executionBands(refs).length,
 		unpricedCount: refs.filter((r) => r.costCents === null).length,

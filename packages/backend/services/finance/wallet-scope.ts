@@ -167,8 +167,7 @@ export async function resolveWalletContext(
 			.limit(1),
 		safeTimeZone(query.timezone)
 			? Promise.resolve({ data: null, error: null })
-			: db.schema("org").from("users_public").select("timezone").eq("user_id", actor.userId)
-				.maybeSingle(),
+			: db.schema("org").rpc("get_own_private_profile").maybeSingle(),
 	]);
 	if (walletsRes.error) throw new Error(`finance.wallets read failed: ${walletsRes.error.message}`);
 	if (permsRes.error) throw new Error(`finance.vault_permissions read failed: ${permsRes.error.message}`);

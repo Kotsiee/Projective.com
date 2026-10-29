@@ -440,14 +440,21 @@ RETURNS uuid AS $$
 DECLARE
     v_desc     jsonb;
     v_assignee uuid;
+    v_status   ticket_status;
     v_verdict  jsonb;
     v_detail   text;
 BEGIN
-    SELECT description, current_assignee_id INTO v_desc, v_assignee
+    SELECT description, current_assignee_id, status INTO v_desc, v_assignee, v_status
     FROM projects.tickets WHERE id = p_ticket_id FOR UPDATE;
 
     IF NOT FOUND THEN RAISE EXCEPTION 'Ticket % not found.', p_ticket_id; END IF;
     IF v_assignee IS NOT NULL THEN RAISE EXCEPTION 'Ticket has already been claimed.'; END IF;
+    -- Only open work is handed out: New (where a removal or an expired claim returns it, "so
+    -- another freelancer can claim it") or Ready. Delivered, settled, cancelled or suspended work is
+    -- not, and neither is an unclaimed ticket the client already moved into work.
+    IF v_status NOT IN ('backlog'::ticket_status, 'todo'::ticket_status) THEN
+        RAISE EXCEPTION 'This ticket is not open to claim.' USING ERRCODE = 'check_violation';
+    END IF;
     IF v_desc IS NULL OR v_desc = '{}'::jsonb THEN
         RAISE EXCEPTION 'A comprehensive description is required before a ticket can be claimed/funded.';
     END IF;

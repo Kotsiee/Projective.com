@@ -172,6 +172,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	// #region State
 	const cards = useSignal<BoardCard[]>(initial?.cards ?? []);
 	const stages = useSignal<BoardStageRef[]>(initial?.stages ?? []);
+	const currency = useSignal(initial?.currency ?? "USD");
 	const assigneesList = initial?.assignees ?? [];
 	const boardKind: "project" | "stage" = initial?.kind ??
 		(scope === "channel" ? "stage" : "project");
@@ -493,6 +494,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		if (res.ok && res.data) {
 			cards.value = res.data.page.cards;
 			stages.value = res.data.page.stages;
+			currency.value = res.data.page.currency;
 		}
 	}
 
@@ -772,7 +774,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	 * not choose.
 	 */
 	function openCompose(stageId: string | null): void {
-		const blank = newTicketCard(stageId, stages.value, null, {
+		const blank = newTicketCard(stageId, stages.value, currency.value, null, {
 			selectAllStages: access.value.canEditTicket,
 		});
 		composing.value = blank;
@@ -1040,7 +1042,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 						class="brd-funding"
 						align="start"
 						text={`${rollup.count} ${rollup.count === 1 ? "ticket needs" : "tickets need"} ${
-							formatTicketMoney(rollup.totalMinor, rollup.currency ?? undefined)
+							formatTicketMoney(rollup.totalMinor, rollup.currency ?? currency.value)
 						} to start.`}
 						actionLabel={boardStageId ? "Fund stage" : "Fund all"}
 						onAction={() => {

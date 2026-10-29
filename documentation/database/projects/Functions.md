@@ -680,7 +680,12 @@ probe: `supabase/probes/ticket_move_authority.sql`.
 ("Sign in to claim a ticket."); `p_assignee_id` ≠ `auth.uid()` → `42501` (pinning someone else is
 `assign_ticket_manual`); unknown ticket → `no_data_found` (`P0002`); not
 `has_project_access(ticket's project)` → `42501`; the ticket's stage not in `open_pull` assignment
-mode (a ticket with no stage counts as `open_pull`) → `check_violation`. Then delegates to
+mode (a ticket with no stage counts as `open_pull`) → `check_violation`; the caller holds no live
+seat on the ticket's stage — a `stage_assignments` row in `assigned` / `accepted`, their own
+(`assignee_type = 'freelancer'`) or an accepted team's they are an active member of — or the ticket has
+no stage → `42501` "You are not hired on this ticket's stage, so you cannot claim it." (Decision #338
+(i): project access alone let a freelancer seated on one stage hold the client's money for work on
+another). Then delegates to
 `fn_assign_ticket_core(p_ticket_id, p_assignee_id, true)` and returns its answer: the held escrow's id,
 or `NULL` when the hold was **refused** — the claim did not happen and the ticket is now
 `needs_funding` (Decision #165). `SECURITY DEFINER`,
@@ -697,7 +702,9 @@ an unclaimed card into In Progress both land here — never on `move_ticket`, wh
 so always meets `PF402` from the escrow sync. `claimRefusal` words each refusal: `NULL` → 402
 `needs_funding`; `PK403 payout_not_ready` → 403 with the payout gate's `details` (fix link for
 `self`); `PM403` → the age gate's 403; a cap breach → 409 `over_capacity` in the database's own
-sentence; a lost race → 409 `already_claimed`; no description → 422; not `open_pull` → 422.
+sentence; a lost race → 409 `already_claimed`; no description → 422; not `open_pull` → 422; no seat
+→ 403 `not_permitted` in the database's sentence; a ticket not open to claim → `refusalFrom`'s answer.
+`supabase/probes/claim_seat_and_price_lock.sql` is the regression check for the seat and status rules.
 
 **Ticket triggers** (`00001110`, bound in `00001850`). The settlement guard is under
 [Escrow settlement doors](#escrow-settlement-doors). The rest below are all `FOR EACH ROW` on
@@ -735,7 +742,8 @@ what the freelancer agreed to deliver is not the client's.
 | Once `OLD.current_assignee_id` is set, `title`, `description`, `text_description`, `unit_price_cents`, `required_stages` and `workload_intensity` do not change | Every signed-in caller, **the assignee included** | Client side `P0001` "…its content is locked to the client."; the assignee `42501` "You claimed this ticket on its client's terms…" |
 | Once claimed, `current_stage_id` moves only with `projects.can_review_project` | The assignee, and another freelancer on the project, on every path — `move_ticket` included | `42501` "Only the client moves a claimed ticket to another stage." |
 | A claimed ticket's `status` / `current_stage_id` move by `projects.fn_assert_ticket_move` (under [Tickets](#tickets), Decision #293). A change of assignee is not a move. | A statement run as `anon` / `authenticated`. `move_ticket` applies the same rule itself. | `42501`, the predicate's sentences |
-| An `INSERT` that names a `current_assignee_id` needs `projects.can_review_project` | Every signed-in caller | `42501` "A ticket is written by its client; a freelancer claims it." |
+| A statement never names or swaps a `current_assignee_id` — an `INSERT` with one, or an `UPDATE` that sets or changes it; clearing it (the owner's removal) stays a direct statement. Work is handed out only through `fn_assign_ticket_core`'s doors, which ask for the seat, the caps, the age and payout gates and the routing mode; a swap would also leave the held escrow bound to the previous payee (Decision #338 (i)) | A statement run as `anon` / `authenticated` | `42501` "A ticket is claimed or assigned through the board, not written to somebody directly." |
+| An `INSERT` that names a `current_assignee_id` needs `projects.can_review_project` (the definer doors' backstop; a direct statement already met the row above) | Every signed-in caller | `42501` "A ticket is written by its client; a freelancer claims it." |
 | `payment_status` and `total_amount_paid` do not change; an `INSERT` starts them `unpaid` / `0` | A statement run as `anon` / `authenticated` | `42501` |
 | A ticket manager's statement changes only the composer's columns (`title`, `description`, `text_description`, `current_stage_id`, `owner_user_id`, `priority`, `workload_intensity`, `required_stages`, `tasks`, `due_date`, `unit_price_cents`, `sort_order`); its `INSERT` starts unclaimed in `backlog` | A statement run as `anon` / `authenticated` by neither the owner nor the ticket's assignee — admitted only by the _Ticket managers_ policies (Decision #294) | `42501` "You may edit a ticket's content for the client, not its assignee, status or payment." / "A ticket you write for the client starts unclaimed in the backlog…" |
 
@@ -996,7 +1004,10 @@ roster member rather than fail the run. The predicate has no client grant.
 pin or routed assignment seats a minor on paid work.
 
 `00001140` §5. The one path that attaches an assignee: locks the ticket `FOR UPDATE`; refuses
-(`P0001`) an unknown, already-claimed or description-less (`description` `NULL` / `{}`) ticket; when
+(`P0001`) an unknown, already-claimed or description-less (`description` `NULL` / `{}`) ticket, and
+(`check_violation`, "This ticket is not open to claim.") one whose `status` is not `backlog` or `todo` —
+only open work is handed out, New included because a removal or an expired claim returns a ticket there
+"so another freelancer can claim it" (PRODUCT_SPEC §Freelancer Removal Mid-Ticket); when
 `p_enforce_capacity`, refuses a failed `check_ticket_capacity` verdict with `check_violation`; sets
 `current_assignee_id`, `claimed_at`, `status = 'claimed'` (the trigger holds the escrow) and returns the
 held escrow's id. **No hold, no work (Decision #165):** the assignment runs in a subtransaction; when the
@@ -1338,6 +1349,25 @@ only when either value actually changes. Refuses (`check_violation`) once any `s
 on the project has a status other than `declined` / `pending_funding` — the same deny-list as
 `ONBOARDED_ASSIGNMENT_EXCLUDED` in `packages/types/projects/setup.ts`. The database backstop of
 Decision #89's shape lock (Decision #139).
+
+### `projects.fn_stage_price_lock() → trigger` · `projects.fn_project_price_lock() → trigger`
+
+The money half of the shape lock (PRODUCT_SPEC §Post-Onboarding Immutability; Decision #338 (j)), on
+the same deny-list. `00001130`, bound in `00001850` / `00001820`; `SECURITY DEFINER`,
+`search_path = public, projects`; `EXECUTE` moot (triggers). The setup service refuses first
+(`lockedStagePriceIds` / `projectPriceLocked`, `live-writes.ts`); these hold every other write path.
+
+- `trg_stage_price_lock` — `BEFORE UPDATE OF unit_price_cents ON projects.project_stages`, fired only
+  when the price changes. A staged run refuses once **that stage** has an onboarded seat; a flat
+  engagement (`single_task`, `single_stage`) refuses once **any** stage of the project has one, since
+  its root stage is the engagement. `check_violation`, "Ticket price is locked — a freelancer has been
+  onboarded onto this stage." (or "…onto this project." on a flat engagement).
+- `trg_project_price_lock` — `BEFORE UPDATE OF budget_amount_cents ON projects.projects`, fired only
+  when the budget changes. Only a Task (`single_task`) prices on the project row; it refuses once any
+  stage of the project has an onboarded seat. A milestone run's budget is the rolled-up sum the service
+  rewrites, so it is not locked here.
+
+`supabase/probes/claim_seat_and_price_lock.sql` is the regression check.
 
 ### `projects.fn_guard_project_ownership() → trigger`
 

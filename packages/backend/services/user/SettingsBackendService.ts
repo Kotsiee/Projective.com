@@ -103,7 +103,8 @@ export function deviceBase(device: DeviceAppearance | null | undefined): Appeara
 export class SettingsBackendService {
 	// #region Identity
 	/**
-	 * The caller's own names, handle and date of birth (`org.users_public`, own row). `null` when it
+	 * The caller's own names, handle and date of birth (`org.users_public`, own row; the date of birth
+	 * through `org.get_own_private_profile`, since clients hold no column grant on it). `null` when it
 	 * cannot be read — the section then says so instead of drawing empty fields that look like data.
 	 */
 	static async identity(
@@ -112,25 +113,26 @@ export class SettingsBackendService {
 		if (!actor.userId) return fail(401, { message: "Sign in to see your account." });
 		if (!isAuthBackendLive() || !canReadLive(actor)) return ok({ identity: null });
 		try {
-			const { data, error } = await getUserClient(actor.accessToken)
-				.schema("org")
-				.from("users_public")
-				.select("first_name,last_name,username,dob")
-				.eq("user_id", actor.userId)
-				.maybeSingle();
-			if (error || !data) return ok({ identity: null });
-			const row = data as {
+			const org = getUserClient(actor.accessToken).schema("org");
+			const [names, own] = await Promise.all([
+				org.from("users_public")
+					.select("first_name,last_name,username")
+					.eq("user_id", actor.userId)
+					.maybeSingle(),
+				org.rpc("get_own_private_profile").maybeSingle(),
+			]);
+			if (names.error || !names.data || own.error) return ok({ identity: null });
+			const row = names.data as {
 				first_name: string | null;
 				last_name: string | null;
 				username: string | null;
-				dob: string | null;
 			};
 			return ok({
 				identity: {
 					firstName: row.first_name ?? "",
 					lastName: row.last_name ?? "",
 					username: row.username,
-					dob: row.dob,
+					dob: (own.data as { dob: string | null } | null)?.dob ?? null,
 				},
 			});
 		} catch {

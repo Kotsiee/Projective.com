@@ -42,6 +42,8 @@ export interface StageInspectorProps {
 	/** Tickets already routed through this stage — the load the client is adding to. */
 	stageTickets: BoardCard[];
 	editable: boolean;
+	/** The engagement's currency (`BoardCard.currency`). */
+	currency: string;
 	onClose: () => void;
 	onPatch: (patch: Partial<TicketStageRef>) => void;
 	/**
@@ -79,7 +81,7 @@ function Fact({ label, children }: { label: string; children: JSX.Element | stri
 }
 
 export function StageInspector(props: StageInspectorProps): JSX.Element {
-	const { item, stageTickets, editable } = props;
+	const { item, stageTickets, editable, currency } = props;
 	const { ref, stage, costCents, workload } = item;
 	const tab = useSignal<"overview" | "config">("config");
 
@@ -107,12 +109,12 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 
 			<div class="tkc-insp__price">
 				<span class="tkc-insp__amount">
-					{costCents === null ? "Not priced" : formatTicketMoney(costCents)}
+					{costCents === null ? "Not priced" : formatTicketMoney(costCents, currency)}
 				</span>
 				<span class="tkc-insp__amountsub">
 					{baseCents === null
 						? "This stage has no ticket rate yet"
-						: `${formatTicketMoney(baseCents)} base · ${
+						: `${formatTicketMoney(baseCents, currency)} base · ${
 							TICKET_INTENSITY_LABEL[ref.intensity]
 						} intensity`}
 				</span>
@@ -269,7 +271,7 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 											? (
 												<p class="tkc-insp__none">
 													{owed.count} {owed.count === 1 ? "needs" : "need"}{" "}
-													{formatTicketMoney(owed.totalMinor, owed.currency ?? undefined)}{" "}
+													{formatTicketMoney(owed.totalMinor, owed.currency ?? currency)}{" "}
 													before work can start.
 												</p>
 											)
@@ -307,7 +309,9 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 											<Fact label="Ticket rate">
 												{stage.unitPriceCents === null
 													? "Not set"
-													: `${formatTicketMoney(stage.unitPriceCents)} per standard ticket`}
+													: `${
+														formatTicketMoney(stage.unitPriceCents, currency)
+													} per standard ticket`}
 											</Fact>
 											<Fact label="Routing">{ASSIGNMENT_MODE_LABEL[stage.assignmentMode]}</Fact>
 											<Fact label="Capacity cap">

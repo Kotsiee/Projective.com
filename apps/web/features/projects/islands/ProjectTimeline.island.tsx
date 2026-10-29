@@ -184,6 +184,9 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 	function stagesOf(): BoardStageRef[] {
 		return board.value?.stages ?? [];
 	}
+	function currencyOf(): string {
+		return board.value?.currency ?? "USD";
+	}
 	function patchBoard(fn: (b: BoardPage) => BoardPage): void {
 		if (board.value) board.value = fn(board.value);
 	}
@@ -232,7 +235,7 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 	/** Start composing a ticket in `stageId` (or the backlog), optionally already dated. */
 	function openCompose(stageId: string | null, dueDate: string | null): void {
 		const blank = reconcileCard(
-			{ ...newTicketCard(stageId, stagesOf()), dueDate },
+			{ ...newTicketCard(stageId, stagesOf(), currencyOf()), dueDate },
 			stagesOf(),
 		);
 		composing.value = blank;
@@ -326,7 +329,7 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 
 	/** The popover's quick-create: a titled ticket in that stage, due at the range's end, saved at once. */
 	function onQuickCreate(laneId: string, range: GanttRange, title: string): void {
-		const blank = newTicketCard(stageOfLane(laneId), stagesOf());
+		const blank = newTicketCard(stageOfLane(laneId), stagesOf(), currencyOf());
 		void commitTicket({ ...blank, title, dueDate: new Date(range.end).toISOString() });
 	}
 

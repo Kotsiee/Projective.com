@@ -142,6 +142,27 @@ REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA editorial, community FROM PUBLIC, anon
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA editorial, community TO service_role;
 -- #endregion
 
+-- #region comms — deny by default (SECURITY_MODERATION_AND_AI_GAPS E3)
+-- `comms` is exposed to PostgREST and every new function is EXECUTE-able by PUBLIC, so each definer
+-- here was an RPC any signed-in user could reach: comms.fn_notify wrote a forged "payout failed"
+-- notice, with any link, into anybody's inbox, and the queue / digest / escalation runners could be
+-- forced. EXECUTE is revoked from PUBLIC and both client roles on the whole schema here, before the
+-- per-function grants further down, so those grants and this region are the complete list of client
+-- doors. A trigger function needs no EXECUTE to fire, and the service role keeps everything.
+REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA comms FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA comms TO service_role;
+
+-- The DM read predicates (policies run as the invoking role) and the DM doors the messaging service
+-- calls under the user's JWT; each answers only for auth.uid().
+GRANT EXECUTE ON FUNCTION comms.is_dm_participant (uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION comms.can_read_message (text, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION comms.get_or_create_dm_thread (uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION comms.dm_thread_roster (uuid[]) TO authenticated;
+-- community.fn_feedback_idea_screen (INVOKER) masks a feedback idea through it; it reads no table.
+GRANT EXECUTE ON FUNCTION comms.mask_pii (text) TO authenticated;
+-- #endregion
+
 
 -- #region [editorial.help]
 -- #endregion
@@ -224,6 +245,13 @@ EXECUTE ON FUNCTION search.fn_norm (
 authenticated,
 service_role;
 
+-- Service role only (SECURITY_MODERATION_AND_AI_GAPS E5): both are definers that join org.users_public
+-- and projects.projects past their RLS — real names of private profiles, non-active projects — with an
+-- unclamped limit, and no app path calls them (Explore ranks in ExploreBackendService).
+REVOKE ALL ON FUNCTION search.fn_search_entities (text, text, jsonb, text, integer, integer, uuid, public.vector)
+FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION search.fn_search_global (text, uuid, integer) FROM PUBLIC, anon, authenticated;
+
 GRANT
 EXECUTE ON FUNCTION search.fn_search_entities (
     text,
@@ -234,14 +262,10 @@ EXECUTE ON FUNCTION search.fn_search_entities (
     integer,
     uuid,
     public.vector
-) TO anon,
-authenticated,
-service_role;
+) TO service_role;
 
 GRANT
-EXECUTE ON FUNCTION search.fn_search_global (text, uuid, integer) TO anon,
-authenticated,
-service_role;
+EXECUTE ON FUNCTION search.fn_search_global (text, uuid, integer) TO service_role;
 
 GRANT
 EXECUTE ON FUNCTION search.fn_log_query (
@@ -1440,6 +1464,11 @@ service_role;
 REVOKE ALL ON FUNCTION org.get_party_cards(uuid[]) FROM public, anon;
 
 GRANT EXECUTE ON FUNCTION org.get_party_cards(uuid[]) TO authenticated, service_role;
+
+-- The owner's own date of birth and zone: answers only for auth.uid(), so a guest has nothing to read.
+REVOKE ALL ON FUNCTION org.get_own_private_profile() FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION org.get_own_private_profile() TO authenticated, service_role;
 
 -- Followers / following lists are public (a follow is a public edge), so anon may read the cards too;
 -- the function itself drops every profile the caller may not see.

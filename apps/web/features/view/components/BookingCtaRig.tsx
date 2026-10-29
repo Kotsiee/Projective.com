@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
 import { Icon } from "@projective/ui/icons";
+import { Button } from "@projective/ui/fields";
 import { CtaButton, CtaLink } from "./CtaButton.tsx";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
 import { BookingService } from "../core/BookingService.ts";
@@ -262,20 +263,20 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 						? (
 							<div class="evp-cta__confirm" role="group" aria-label="Confirm archiving this draft">
 								<span class="evp-cta__confirmtext">Archive this draft?</span>
-								<button
-									type="button"
-									class="evp-cta__confirmno"
+								<Button
+									severity="secondary"
+									variant="text"
+									size="sm"
+									label="Keep"
 									onClick={() => (confirmArchive.value = false)}
-								>
-									Keep
-								</button>
-								<button
-									type="button"
-									class="evp-cta__confirmyes"
+								/>
+								<Button
+									severity="danger"
+									variant="text"
+									size="sm"
+									label="Archive"
 									onClick={() => void archiveDraft()}
-								>
-									Archive
-								</button>
+								/>
 							</div>
 						)
 						: (

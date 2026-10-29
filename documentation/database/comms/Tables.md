@@ -123,7 +123,7 @@ additive.
 | `actor_user_id` | uuid                           | Who caused it. NULL = the platform (cron, webhook, system).                |
 | `context_type`  | text                           | `personal`/`project`/`team`/`business`/`enterprise`/`conversation`.      |
 | `context_id`    | uuid                           | Scopes the inbox to the active context (Decision #16).                     |
-| `action_url`    | text                           | Resolved deep link, or NULL — never a broken one.                          |
+| `action_url`    | text                           | Resolved deep link, or NULL — never a broken one. An in-app path only: `notifications_action_url_relative` CHECK (`^/[^/\\]`), since the inbox renders it as an `href`. |
 | `payload`       | jsonb                          | Render/localization data only. **Never PII, never secrets.**               |
 | `group_key`     | text                           | Collapse key for the catalog's `group_window`.                             |
 | `group_count`   | integer                        | How many source events this row represents (1 = not collapsed).            |

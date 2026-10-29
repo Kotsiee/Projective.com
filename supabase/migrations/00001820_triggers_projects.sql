@@ -21,6 +21,12 @@ CREATE TRIGGER trg_project_shape_lock
         OR OLD.structure_variation IS DISTINCT FROM NEW.structure_variation)
     EXECUTE FUNCTION projects.fn_project_shape_lock();
 
+CREATE TRIGGER trg_project_price_lock
+    BEFORE UPDATE OF budget_amount_cents ON projects.projects
+    FOR EACH ROW
+    WHEN (OLD.budget_amount_cents IS DISTINCT FROM NEW.budget_amount_cents)
+    EXECUTE FUNCTION projects.fn_project_price_lock();
+
 CREATE TRIGGER trg_guard_project_ownership
     BEFORE UPDATE OF owner_user_id, client_business_id ON projects.projects
     FOR EACH ROW

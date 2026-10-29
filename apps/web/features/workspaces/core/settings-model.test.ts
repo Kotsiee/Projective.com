@@ -452,8 +452,8 @@ Deno.test("settings island: Publish rides the band, Save the rig, Archive confir
 	assert(/useModuleCommit\(\(\) => \{[\s\S]*?model\.value\.commit/.test(ISLAND), "Publish → band");
 	assert(/usePolicyBridge\(\{ dirty, save, discard \}\)/.test(ISLAND), "Save/Discard → rig");
 	assert(
-		/severity="danger"\s+variant="outlined"\s+label=\{control\.label\}/.test(ISLAND),
-		"Archive is the danger outlined control",
+		/severity="danger"\s+variant="text"\s+label=\{control\.label\}/.test(ISLAND),
+		"Archive is the danger text control",
 	);
 	assert(/<ConfirmDialog\b[\s\S]*?acceptSeverity="danger"/.test(ISLAND), "…behind a confirm");
 	assert(

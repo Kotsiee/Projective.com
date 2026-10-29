@@ -345,6 +345,17 @@
 			"autoPort": false
 		},
 		{
+			"name": "web-sched-mock",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13420'; deno task dev:mock --port 13420 --strictPort"
+			],
+			"port": 13420,
+			"autoPort": false
+		},
+		{
 			"name": "web-rail-mock",
 			"runtimeExecutable": "powershell",
 			"runtimeArgs": [
@@ -353,6 +364,28 @@
 				"$env:PORT = '13404'; deno task dev:mock --port 13404 --strictPort"
 			],
 			"port": 13404,
+			"autoPort": false
+		},
+		{
+			"name": "web-pm-mock",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13431'; deno task dev:mock --port 13431 --strictPort"
+			],
+			"port": 13431,
+			"autoPort": false
+		},
+		{
+			"name": "web-qw-mock",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13441'; deno task dev:mock --port 13441 --strictPort"
+			],
+			"port": 13441,
 			"autoPort": false
 		}
 	]

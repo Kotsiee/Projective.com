@@ -59,34 +59,6 @@ function str(value: unknown): string | undefined {
 }
 // #endregion
 
-// #region Corporate-domain matching helpers
-/** The lowercased domain of an email address (`ada@Acme.com` → `acme.com`), or null. */
-function emailDomain(email: string): string | null {
-	const at = email.lastIndexOf("@");
-	if (at < 0) return null;
-	const domain = email.slice(at + 1).trim().toLowerCase();
-	return domain.length > 0 ? domain : null;
-}
-
-/** Normalise an enterprise website/domain to a bare host (strip scheme, `www.`, port, and path). */
-function siteDomain(website: string | null | undefined): string | null {
-	if (!website) return null;
-	const host = website
-		.trim()
-		.toLowerCase()
-		.replace(/^https?:\/\//, "")
-		.replace(/^www\./, "")
-		.split(/[/?#]/)[0]
-		.split(":")[0];
-	return host.length > 0 ? host : null;
-}
-
-/** True when an email's domain equals — or is a sub-domain of — an enterprise's registered domain. */
-function domainMatches(emailDom: string, enterpriseDom: string): boolean {
-	return emailDom === enterpriseDom || emailDom.endsWith(`.${enterpriseDom}`);
-}
-// #endregion
-
 // #region Sign-in identifier helpers
 /** The one refusal every failed password sign-in gets, whichever half was wrong. */
 const INVALID_CREDENTIALS = "Invalid credentials — check your email or username and your password.";
@@ -439,9 +411,6 @@ export class AuthBackendService {
 			if (error || !created?.user) {
 				return fail(422, { message: error?.message ?? "We couldn't create your account." });
 			}
-			// Corporate-domain signal: if this address belongs to a registered enterprise's domain,
-			// alert that enterprise so it can invite/approve the colleague. Best-effort — never blocks signup.
-			await AuthBackendService.alertEnterprisesForDomain(input.email, created.user.id);
 			return ok({
 				requiresVerification: true,
 				verificationSent: await AuthBackendService.dispatchConfirmation(input.email),
@@ -451,70 +420,6 @@ export class AuthBackendService {
 			return fail(500, {
 				message: e instanceof Error ? e.message : "Account provisioning failed.",
 			});
-		}
-	}
-
-	/**
-	 * Corporate-domain onboarding signal.
-	 *
-	 * When a standard (email/password) individual signs up with an address whose domain matches an
-	 * existing Enterprise's registered domain (e.g. `ada@acme.com` ↔ an enterprise whose website is
-	 * `acme.com`), notify that enterprise's owners and admins (catalog key `enterprise.domain_colleague`) so they
-	 * can invite or approve the new colleague. Sub-domains (`ada@eu.acme.com`) match too. Live-only,
-	 * best-effort, and non-blocking — every failure is swallowed so it can never affect account
-	 * creation.
-	 */
-	private static async alertEnterprisesForDomain(
-		email: string,
-		newUserId?: string,
-	): Promise<void> {
-		if (!isAuthBackendLive()) return;
-		const dom = emailDomain(email);
-		if (!dom) return;
-		try {
-			const db = getServiceClient();
-			const { data: enterprises } = await db
-				.schema("org")
-				.from("enterprises")
-				.select("id, legal_name, website")
-				.not("website", "is", null);
-
-			const matched = (enterprises ?? []).filter((o) => {
-				const enterpriseDom = siteDomain(o.website as string | null);
-				return enterpriseDom ? domainMatches(dom, enterpriseDom) : false;
-			});
-
-			for (const enterprise of matched) {
-				const { data: members } = await db
-					.schema("org")
-					.from("enterprise_members")
-					.select("user_id")
-					.eq("enterprise_id", enterprise.id)
-					.eq("status", "active")
-					.in("role", ["owner", "admin"]);
-
-				const recipients = (members ?? [])
-					// Don't notify the joiner about themselves (e.g. an enterprise owner re-registering).
-					.filter((m) => m.user_id !== newUserId);
-
-				// Through the router, not a raw insert: comms.fn_notify applies the catalog row (category,
-				// channels, the 1-day collapse window) and the recipient's preferences.
-				for (const m of recipients) {
-					await db.schema("comms").rpc("fn_notify", {
-						p_user_id: m.user_id as string,
-						p_type: "enterprise.domain_colleague",
-						p_title: "Someone from your domain just joined",
-						p_body: `${email} signed up on Projective using your ${dom} domain.`,
-						p_entity_table: "org.enterprises",
-						p_entity_id: enterprise.id as string,
-						p_context_type: "enterprise",
-						p_context_id: enterprise.id as string,
-						p_group_key: `enterprise-domain:${enterprise.id}`,
-					});
-				}
-			}
-		} catch {
-			// Non-blocking: a failed alert must never fail the signup.
 		}
 	}
 

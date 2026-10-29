@@ -79,7 +79,7 @@ export function DeleteAccountBlock(props: DeleteAccountBlockProps): JSX.Element 
 						description="You'll be asked to confirm, and told anything that has to be finished first."
 						control={
 							<Button
-								variant="outlined"
+								variant="text"
 								severity="danger"
 								size="sm"
 								label="Delete account…"

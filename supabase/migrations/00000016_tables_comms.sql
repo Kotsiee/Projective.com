@@ -125,7 +125,9 @@ CREATE TABLE comms.notifications (
             FOREIGN KEY (actor_user_id) REFERENCES org.users_public (user_id) ON DELETE SET NULL,
         CONSTRAINT notifications_context_type_check
             CHECK (context_type IS NULL OR context_type IN ('personal', 'project', 'team', 'business', 'enterprise', 'conversation')),
-        CONSTRAINT notifications_group_count_positive CHECK (group_count >= 1)
+        CONSTRAINT notifications_group_count_positive CHECK (group_count >= 1),
+        -- The inbox renders it as an href: an in-app path only, never `//host`, `/\host` or `javascript:`.
+        CONSTRAINT notifications_action_url_relative CHECK (action_url IS NULL OR action_url ~ '^/[^/\\]')
 );
 
 CREATE TABLE comms.dm_threads (

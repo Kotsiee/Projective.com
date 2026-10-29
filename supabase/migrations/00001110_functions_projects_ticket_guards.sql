@@ -224,6 +224,19 @@ BEGIN
                     || 'directly.';
         END IF;
 
+        -- Work is handed to somebody only through the doors that ask for the stage seat, the caps,
+        -- the age and payout gates and the routing mode (claim_ticket and the owner's routing RPCs,
+        -- all through fn_assign_ticket_core). A direct statement may release work — the owner's
+        -- removal clears the assignee — but never name or swap one: a swap would also leave the held
+        -- escrow bound to the previous payee.
+        IF NEW.current_assignee_id IS NOT NULL
+            AND (TG_OP = 'INSERT' OR NEW.current_assignee_id IS DISTINCT FROM OLD.current_assignee_id) THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'A ticket is claimed or assigned through the board, not written to '
+                    || 'somebody directly.';
+        END IF;
+
         -- Neither the owner nor the ticket's own assignee: admitted only as a ticket manager.
         IF v_uid IS NOT NULL
             AND NOT EXISTS (

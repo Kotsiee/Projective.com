@@ -460,10 +460,7 @@ async function readerZone(
 	own: OwnSchedule | null,
 ): Promise<string> {
 	if (own?.timezone) return own.timezone;
-	const { data } = await db(actor, "org").from("users_public")
-		.select("timezone")
-		.eq("user_id", actor.userId)
-		.maybeSingle();
+	const { data } = await db(actor, "org").rpc("get_own_private_profile").maybeSingle();
 	const tz = (data as { timezone: string | null } | null)?.timezone;
 	return tz && tz.trim() ? tz : FALLBACK_TZ;
 }

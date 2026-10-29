@@ -2,6 +2,8 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import "../styles/calendar-page.css";
+import "@features/view/styles/service-booking.css";
+import "@features/profile/styles/profile-hire.css";
 import { Calendar } from "@projective/ui/calendar";
 import type { CalendarRange } from "@projective/ui/calendar";
 import { Message } from "@projective/ui/feedback";
@@ -17,6 +19,7 @@ import {
 } from "../core/event-access.ts";
 import { ScheduleService } from "../core/ScheduleService.ts";
 import { useCalendarComposer } from "../hooks/useCalendarComposer.ts";
+import ConsultationModal from "@features/profile/components/hire/ConsultationModal.tsx";
 
 /** What a schedule surface can create. */
 const CREATE_KINDS: { value: CalendarEventKind; label: string }[] = [
@@ -46,6 +49,9 @@ export interface ScheduleViewProps {
 	entityId?: string;
 	/** Fill the whole page (the `/[handle]/availability` full-page surface) instead of an embedded block. */
 	fullPage?: boolean;
+	/** The provider's display name, for the call request a picked slot opens. */
+	sellerName?: string;
+	authed?: boolean;
 }
 
 export default function ScheduleView(props: ScheduleViewProps): JSX.Element {
@@ -55,6 +61,8 @@ export default function ScheduleView(props: ScheduleViewProps): JSX.Element {
 	const access = useSignal<EventAccess>(resolveEventAccess({ viewerIsClient: true }, null));
 	/** A refetch that failed. Held so the stale page on screen is never passed off as the new one. */
 	const loadError = useSignal<string | null>(null);
+	const consultOpen = useSignal(false);
+	const consultFrom = useSignal<number | null>(null);
 	const composer = useCalendarComposer({
 		initial: props.initial?.events ?? [],
 		kind: "session",
@@ -165,28 +173,32 @@ export default function ScheduleView(props: ScheduleViewProps): JSX.Element {
 							entityId: props.entityId,
 						}}
 						createKinds={CREATE_KINDS}
-						canBook={p.viewerCanBook}
+						canBook={p.viewerCanBook && !!p.callOffer && !!props.handle}
 						onClose={composer.close}
 						onMinimise={composer.minimise}
 						onSubmit={composer.submit}
 						onBook={(ev) => {
-							/*
-							 * A booked slot is a NEW entry over the same span; the open block it came from is
-							 * deliberately left in place, because consuming it is the server's job and the
-							 * surface must not claim a seat the backend has not taken. Session-local until the
-							 * gate lands.
-							 */
-							events.value = [...events.value, {
-								...ev,
-								id: `booking-${ev.id}-${ev.start}`,
-								title: "You're booked",
-								kind: "booking",
-								status: "confirmed",
-								masked: false,
-							}];
+							// A slot is booked by asking for it: the call request the profile's Book a call
+							// opens, on the picked day, whose answer is the host's (or auto-confirm's).
 							composer.close();
+							consultFrom.value = ev.start;
+							consultOpen.value = true;
 						}}
 						onServerUpdate={composer.serverUpdate}
+					/>
+				)
+				: null}
+			{p.callOffer && props.handle
+				? (
+					<ConsultationModal
+						open={consultOpen}
+						handle={props.handle}
+						sellerName={props.sellerName ?? props.handle}
+						offer={p.callOffer}
+						authed={props.authed ?? false}
+						from={consultFrom.value}
+						// A request occupies the provider's time, so the grid re-reads its busy spans.
+						onNotice={() => void load()}
 					/>
 				)
 				: null}

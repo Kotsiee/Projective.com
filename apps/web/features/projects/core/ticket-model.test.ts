@@ -1,7 +1,7 @@
 import { assertEquals } from "@std/assert";
-import { TICKET_MAX_STAGES } from "@projective/types/projects";
+import { formatTicketMoney, TICKET_MAX_STAGES } from "@projective/types/projects";
 import type { BoardStageRef } from "@projective/types/projects";
-import { newTicketCard, seedStageSelection } from "./ticket-model.ts";
+import { newTicketCard, seedStageSelection, ticketTotals } from "./ticket-model.ts";
 
 /**
  * The stage SEED rule (Decision: board-composed tickets default to the whole pipeline).
@@ -64,7 +64,7 @@ Deno.test("the seed never exceeds what the write payload accepts", () => {
 });
 
 Deno.test("a New-lane ticket carries the seeded pipeline, ordered and priced", () => {
-	const card = newTicketCard(null, STAGES, null, { selectAllStages: true });
+	const card = newTicketCard(null, STAGES, "USD", null, { selectAllStages: true });
 	assertEquals(card.stages.map((s) => s.stageId), ["stg-0", "stg-1", "stg-2"]);
 	assertEquals(card.stages.map((s) => s.order), [0, 1, 2]);
 	// Every ref is priced from the live stage, so the footer total is the sum and not a partial.
@@ -75,7 +75,19 @@ Deno.test("a New-lane ticket carries the seeded pipeline, ordered and priced", (
 });
 
 Deno.test("without the option a New-lane ticket is still composed empty", () => {
-	const card = newTicketCard(null, STAGES);
+	const card = newTicketCard(null, STAGES, "USD");
 	assertEquals(card.stages, []);
 	assertEquals(card.budgetCents, null);
+});
+
+Deno.test("a draft prices in the board's currency, not dollars", () => {
+	const card = newTicketCard(null, STAGES, "GBP", null, { selectAllStages: true });
+	assertEquals(card.currency, "GBP");
+	assertEquals(card.budgetLabel, "£600");
+	assertEquals(ticketTotals(card).totalLabel, "£600");
+});
+
+Deno.test("formatTicketMoney follows the currency's minor-unit exponent", () => {
+	assertEquals(formatTicketMoney(9_950, "USD"), "$99.50");
+	assertEquals(formatTicketMoney(5_000, "JPY"), "¥5,000");
 });

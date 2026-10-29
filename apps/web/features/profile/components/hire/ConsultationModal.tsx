@@ -69,6 +69,8 @@ export interface ConsultationModalProps {
 	offer: PublicCallOffer;
 	authed: boolean;
 	onNotice: (text: string) => void;
+	/** Open the slot grid on the window starting at this instant (a slot picked on a calendar). */
+	from?: number | null;
 }
 
 const WINDOW_DAYS = 14;
@@ -76,7 +78,7 @@ const WINDOW_DAYS = 14;
 const MINUTE_STEP = 5;
 
 export default function ConsultationModal(
-	{ open, handle, sellerName, offer, authed, onNotice }: ConsultationModalProps,
+	{ open, handle, sellerName, offer, authed, onNotice, from = null }: ConsultationModalProps,
 ): JSX.Element {
 	const callType = useSignal<CallType>(defaultCallType(offer));
 	const grid = useSignal<SlotGrid | null>(null);
@@ -165,7 +167,7 @@ export default function ConsultationModal(
 			agenda.value = "";
 			attempted.value = false;
 			done.value = null;
-			void loadGrid(null);
+			void loadGrid(from);
 			return;
 		}
 		grid.value = null;

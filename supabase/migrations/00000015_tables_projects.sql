@@ -771,9 +771,10 @@ CREATE TABLE projects.cohorts (
 );
 
 
--- A confirmed seat. Written only by `projects.fn_confirm_seat` when the order that paid for it
--- settles (the provider may also comp one under "Manage cohort memberships"); a hold that was never
--- paid for is `cohort_seat_holds`, never a membership.
+-- A confirmed seat. Written only by definers — `projects.fn_confirm_seat` when the order that paid
+-- for it settles, `fn_book_session_slot` for a 1-1, and the cancel and payout paths (no client role
+-- holds a write grant, 00002520); a hold that was never paid for is `cohort_seat_holds`, never a
+-- membership.
 CREATE TABLE projects.cohort_memberships (
 	id uuid NOT NULL DEFAULT gen_random_uuid(),
 	cohort_id uuid NOT NULL,
@@ -869,6 +870,10 @@ CREATE TABLE projects.session_events (
 	),
 	CONSTRAINT ck_session_events_provider_room CHECK (
 		provider_meeting_id IS NULL OR meeting_provider IS NOT NULL
+	),
+	-- Each is handed to its party as a join link (`session_join_link`), so only an https address.
+	CONSTRAINT ck_session_events_join_urls_https CHECK (
+		host_join_url ~ '^https://[^[:space:]]+$' AND attendee_join_url ~ '^https://[^[:space:]]+$'
 	),
 	CONSTRAINT uq_session_events_provider_room UNIQUE (meeting_provider, provider_meeting_id)
 );

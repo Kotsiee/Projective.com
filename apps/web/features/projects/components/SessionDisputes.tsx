@@ -100,7 +100,7 @@ export function SessionDisputes(props: SessionDisputesProps): JSX.Element | null
 						<Button
 							label="Report no-show"
 							severity="danger"
-							variant="outlined"
+							variant="text"
 							size="sm"
 							onClick={() => {
 								reportError.value = null;

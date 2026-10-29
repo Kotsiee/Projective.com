@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { fulfilmentKindOf, itemKindMeta } from "@projective/types/finance";
+import { normalizeLink } from "@projective/types/links";
 import { Icon } from "@projective/ui/icons";
 import { Amount } from "./Amount.tsx";
 import { groupIconName } from "./checkout-glyphs.tsx";
@@ -126,6 +127,8 @@ function Fulfilment({ line, kind }: FulfilmentProps): JSX.Element | null {
  * time by the page than by the confirmation email.
  */
 function SessionFulfilment({ line }: { line: OrderLine }): JSX.Element {
+	// Only an http(s) address becomes the Join control; anything else reads as "no room yet".
+	const joinHref = line.joinUrl ? normalizeLink(line.joinUrl) : null;
 	return (
 		<div class="cko-order__fulfil">
 			<p class="cko-order__slot">
@@ -140,11 +143,11 @@ function SessionFulfilment({ line }: { line: OrderLine }): JSX.Element {
 			</p>
 
 			<div class="cko-order__fulfilrow">
-				{line.joinUrl
+				{joinHref
 					? (
 						<a
 							class="cko-order__act"
-							href={line.joinUrl}
+							href={joinHref}
 							target="_blank"
 							rel="noopener noreferrer"
 							aria-label={`Join ${line.title}${

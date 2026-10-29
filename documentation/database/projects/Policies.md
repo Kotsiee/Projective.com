@@ -352,9 +352,9 @@ none, and a direct `INSERT` is refused.
 | `projects.ticket_workload_reports`        | Reporter, project owner, or project access.              | `INSERT` by the assignee only.              |
 | `projects.project_activity`               | Project owner.                                           | `INSERT` as self.                           |
 | `projects.project_status_history`         | Actor, project access, owner, or client-business member. | Definer RPCs only.                          |
-| `projects.cohorts`                        | Member (`is_cohort_member(cohorts.id)`), owner, or a project with `visibility = 'public'` (any status). | Owner (`FOR ALL`).                          |
-| `projects.cohort_memberships`             | Self, or the cohort's project owner.                     | Owner (`FOR ALL`).                          |
-| `projects.session_events`                 | Member of **this row's** cohort (`is_cohort_member(session_events.cohort_id)`), or project owner. | Owner (`FOR ALL`).                          |
+| `projects.cohorts`                        | Member (`is_cohort_member(cohorts.id)`), owner, or a project with `visibility = 'public'` (any status). | Definer RPCs only (no client write grant, `00002520`). |
+| `projects.cohort_memberships`             | Self, or the cohort's project owner.                     | Definer RPCs only (no client write grant, `00002520`). |
+| `projects.session_events`                 | Member of **this row's** cohort (`is_cohort_member(session_events.cohort_id)`), or project owner. | Definer RPCs only (no client write grant, `00002520`): the payout sweep releases on a sitting's `status` and `end_time`, so an owner able to write one could be paid for a session that never happened (2026-10-29). |
 | `projects.session_attendance`             | Self, or project owner.                                  | Definer only (`record_presence`); no client `INSERT`. |
 | `projects.waitlists`                      | Self, or the blueprint's freelancer.                     | Join/leave as self; either side may update. |
 | `projects.maintenance_contracts`          | Freelancer or project owner (`FOR ALL`).                 | Same.                                       |
@@ -365,8 +365,8 @@ own_ / _Manage seats own_; _View seat skills_; _View roles public or own_ / _Man
 budget rules_ / _Owner manage budget rules_; _View participants_ / _Owner manage participants_; _View
 own or owned applications_; _View application targets_; _View revisions_;
 _View workload reports_ / _File workload report_; _Project owner can view activity_ / _Users can
-insert their own activity_; _View project status history_; _View cohorts_ / _Manage cohorts_; _View
-cohort memberships_ / _Manage cohort memberships_; _View session events_ / _Manage session events_;
+insert their own activity_; _View project status history_; _View cohorts_; _View
+cohort memberships_; _View session events_;
 _View own attendance_; _View waitlists_ / _Join waitlist_ / _Manage waitlists_
 (`UPDATE`) / _Leave waitlist_ (`DELETE`); _Users can view/manage own contracts_; and the three
 attachment policies below. The public-active read arms are `status = 'active' AND visibility =
@@ -411,8 +411,7 @@ the two owner write policies above.)
   a `NULL` `auth.uid()` itself and needs its own `GRANT` before any client can call it.
 - Several older `FOR ALL` policies carry a `USING` clause and **no `WITH CHECK`**
   (`stage_assignments`, `stage_budget_rules`, `stage_open_seats`, `project_participants`,
-  `stage_staffing_roles`, `project_stages`, `cohorts`, `cohort_memberships`, `session_events`,
-  `maintenance_contracts`). As the `projects.projects` note above
+  `stage_staffing_roles`, `project_stages`, `maintenance_contracts`). As the `projects.projects` note above
   verifies, Postgres reuses `USING` as the post-image check, so an `UPDATE` cannot move a row out of
   the tenancy `USING` validated — these are not open. Each may still deserve a narrower post-image
   predicate, and needs its own read before being tightened, because that predicate is not always
@@ -443,8 +442,8 @@ and at least one policy in `00002011`; none is RLS-off and none is RLS-on with z
 | `stage_budget_rules`          |        2 | `stage_revision_requests`   |        2 |
 | `project_applications`        |        1 | `project_application_targets` |      1 |
 | `project_activity`            |        2 | `project_status_history`    |        1 |
-| `cohorts`                     |        2 | `cohort_memberships`        |        2 |
-| `session_events`              |        2 | `session_attendance`        |        1 |
+| `cohorts`                     |        1 | `cohort_memberships`        |        1 |
+| `session_events`              |        1 | `session_attendance`        |        1 |
 | `waitlists`                   |        4 | `maintenance_contracts`     |        1 |
 | `stage_invite_links`          |        1 | `view_reads`                |        1 |
 

@@ -1576,6 +1576,21 @@ palette. Two rules follow:
   the matrix makes amber; the wallet's movement commits ship as tier 1. Which rule wins is open as
   Decision #157 flag (p); the reading proposed there is that `danger` is for destructive or loss
   actions, and an irreversible financial commit the person intends is tier 1.
+- **The destructive fill is the commit; everything that leads to it is `text` (Decision #342).**
+  `variant="filled" severity="danger"` is the confirm's accept (`ConfirmDialog` / `ConfirmPopup`
+  `acceptSeverity="danger"`, a removal dialog's footer) or a destructive action that commits with no
+  confirm and is its region's one fill (B.8.2). The control that OPENS that confirm, and every
+  repeated or secondary destructive action, is `variant="text" severity="danger"`: `--danger` ink at
+  rest, the `text` variant's danger tint on hover, no border. The ink stays red at rest because a
+  hover-only warning does not exist on touch. `outlined` danger is retired: Delete account…, Switch
+  to client only, a team's Archive, Report no-show, a member's Remove, the catalogue batch Delete,
+  the spend request's Decline and the booking rig's Archive confirm all moved to `text`. A loud
+  opener makes the riskiest path on a settings page the most prominent one. The fill belongs to the
+  step where the person has already read the consequence. The fill is legal because `--danger` /
+  `--on-danger` is the one status ramp held to the filled-control floor: light fill tone 42
+  (6.00:1 under white), dark ink tone 10 (7.46:1), and `--danger` ink clears 4.5:1 on every surface
+  in all four states. `theme-engine.test.ts` pins all three. `success` / `warning` / `info` keep the
+  shared tones (3.17:1 in light), open as Decision #342 flag (a).
 - **Do not invent a severity by re-tinting.** The severity pair block (`--x-accent` / `--x-on`) is
   hand-copied across `Button` · `Badge` · `Tag` · `Alert` · `Message` · `Toast`, so a wrong pair
   appears **six times, not once**. `secondary` once paired with `--on-surface` and measured **2.67:1
@@ -3171,7 +3186,7 @@ session engagement's no-show section and its case dialog. `SessionDisputes` moun
 `ProjectSidebar` under the Normal or Group session panel (props: `workspace` — the viewer's
 `SessionWorkspace` after the dev preview — and `onNotice(message, severity)`, the sidebar's toast).
 It is static text and controls, not a card (§3 gate 6): a meta-register label ("No-show claims")
-under one hairline, then **Report no-show** (`--danger` outlined `sm` button, with the sitting's title
+under one hairline, then **Report no-show** (`--danger` text `sm` button, with the sitting's title
 and UTC time as meta text) for an attendee on `workspace.claimable` only — the provider never sees it,
 because PRODUCT_SPEC lets only the client claim — and one row per live claim plus the latest ruling:
 the lifecycle `Tag` (`subtle`, rounded; warning for open / awaiting response, info under review,

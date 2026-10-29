@@ -11,7 +11,9 @@ handler documentation as those handlers are implemented.
   [`../business/PRODUCT_SPEC.md`](../business/PRODUCT_SPEC.md) §"Sitemap and Route Overview".
 - **Integration blueprints (Stripe, Conferencing):** currently authoritative in
   [`../architecture/SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md) §"Integration
-  Blueprints". Expand provider-specific flows here as they are built.
+  Blueprints". Expand provider-specific flows here as they are built. The operational runbook for
+  every external provider (setup, data contracts, dev/prod fallbacks) is
+  [`EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md`](EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md).
 - **Environment variable contract:**
   [`../architecture/SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md) §"Environment
   Variable Contract". Use `XXXX-XXXX` placeholders everywhere.
@@ -31,3 +33,7 @@ route + its Zod schema (Zod SSOT rule).
 
 - [`projects-settlement.md`](projects-settlement.md): submission review, stage approval and Fair
   Exit cancellation.
+- [`EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md`](EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md):
+  the provider register (Stripe, Voyage, the self-hosted safety node, connectors, push and email,
+  Turnstile, Storage, Vault, KMS), each with its wiring, data contract, setup runbook and dev/prod
+  fallbacks. Binding only where it repeats a source of truth; its proposals wait on Decision #335.

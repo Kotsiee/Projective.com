@@ -34,5 +34,14 @@ export const handler = define.handlers({
 export default define.page<typeof handler>(function ProfileAvailabilityPage(ctx) {
 	const profile = ctx.state.profile;
 	if (!profile) return null;
-	return <ScheduleView scope="availability" handle={profile.handle} initial={ctx.data.schedule} fullPage />;
+	return (
+		<ScheduleView
+			scope="availability"
+			handle={profile.handle}
+			sellerName={profile.name}
+			authed={!!ctx.state.isAuthenticated}
+			initial={ctx.data.schedule}
+			fullPage
+		/>
+	);
 });

@@ -652,7 +652,7 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 						<div class="subm-review__actions" aria-busy={busy}>
 							<button
 								type="button"
-								class="subm-btn subm-btn--danger"
+								class="subm-btn subm-btn--soft"
 								disabled={!canRequestRevision || busy}
 								onClick={requestRevision}
 							>

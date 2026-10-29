@@ -508,7 +508,12 @@ and the client not while it is `claimed` / `in_progress` (#94). No move enters `
 `cancelled` or `reported_hidden`. A move into `claimed` would restamp the claim, and the TTL
 refund above would then return the money for work already delivered to the client
 (`projects.fn_assert_ticket_move`, called by `move_ticket` and by the ticket guard for a direct
-statement).
+statement). (9) **A claim takes only open work, by somebody hired on its stage** (Decision #338): the
+ticket is in New or Ready (`backlog` / `todo`) — New because a removal or an expired claim returns it
+there for another freelancer — and the claimant holds a live seat (`assigned` / `accepted`, their own
+or an active team's) on the ticket's stage. Every routing door asks for open work through
+`fn_assign_ticket_core`; nobody writes an assignee onto a ticket directly, though the owner's removal
+still clears one.
 
 **How it is built (#165).** One pure derivation, `deriveFundingState(ticket, escrow, inboundPayment)`
 (`packages/backend/services/finance/funding-state.ts`, schema `FundingStatusSchema` in

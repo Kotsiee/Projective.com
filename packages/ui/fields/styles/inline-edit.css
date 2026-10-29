@@ -54,7 +54,7 @@
 
 .ui-inline-edit__empty {
 	color: var(--fld-placeholder-fg);
-	font-weight: var(--fw-regular);
+	font-weight: var(--fw-normal);
 }
 
 /* The pencil is a hint, not a control: it rides at the value's cap height and only resolves on
@@ -94,7 +94,7 @@
 
 .ui-inline-edit__input::placeholder {
 	color: var(--fld-placeholder-fg);
-	font-weight: var(--fw-regular);
+	font-weight: var(--fw-normal);
 }
 
 @media (prefers-reduced-motion: reduce) {

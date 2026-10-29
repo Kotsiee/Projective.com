@@ -32,7 +32,9 @@ through the same `fn_notify`.
 parameters — `(p_user_id, p_type, p_title, p_body, p_entity_table, p_entity_id)` — keep their order
 and meaning; eight optional ones follow (`p_payload`, `p_actor_user_id`, `p_context_type`,
 `p_context_id`, `p_group_key`, `p_action_url`, `p_urgency`, `p_expires_at`). Every existing
-six-argument call site therefore resolves to the new function **unchanged**.
+six-argument call site therefore resolves to the new function **unchanged**. `EXECUTE`:
+`service_role` only — `comms` is deny-by-default (`00002510` region "comms"), so no client can write
+a notification into another user's inbox.
 
 > It is replaced with `DROP` + `CREATE`, not `CREATE OR REPLACE`, because adding parameters changes
 > the signature — leaving both in place would make a six-argument call ambiguous (_"function is not
@@ -369,7 +371,9 @@ follows.
 
 ### `comms.tg_mask_message_pii()` — trigger
 
-`BEFORE INSERT ON comms.project_messages` (`trg_mask_message_pii`), `SECURITY DEFINER`. Phase check:
+`BEFORE INSERT OR UPDATE OF body, body_delta ON comms.project_messages` (`trg_mask_message_pii`),
+`SECURITY DEFINER`. An edit is masked like an insert (the sender's column grant reaches `body`), and
+an edit's categories are added to the row's, never replacing them. Phase check:
 resolves the channel's `project_id` from `comms.project_channels` and returns `NEW` untouched when
 there is none or `projects.is_protected_phase(project)` is false — i.e. once
 `projects.projects.handover_unlocked_at` is set (the final stage settling through

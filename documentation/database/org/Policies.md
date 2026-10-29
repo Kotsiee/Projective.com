@@ -45,6 +45,15 @@ provisioning and onboarding, `org.save_profile` (the profile editor — it names
 touches), `org.set_profile_avatar` (checks the file is the caller's own), and the rating/counter
 triggers. Reading another person's name and photo goes through `org.get_party_cards`.
 
+**The private columns carry no client grant** (`00002520`, 2026-10-29, `IDENTITY_AND_WORKSPACES_AUDIT.md`
+IW-C1). The policy admits every signed-in reader to every row, so with the blanket `00002500` grant
+any account could select `dob`, `city`, `country` and `timezone` for everyone, minors included,
+straight from PostgREST. `SELECT` is revoked from `anon` and `authenticated` and re-granted to
+`authenticated` per column without those four. A select naming any of them, or `*`, is refused.
+Others see a person's location and local time only through `get_profile_view` / `profiles_index`,
+which mask a minor's. The owner reads their own date of birth and zone through
+`org.get_own_private_profile()`. Probe: `supabase/probes/users_public_private_columns.sql`.
+
 ### `org.freelancer_profiles`
 
 Protects seller-specific data and professional settings. **SELECT only, owner or admin.**

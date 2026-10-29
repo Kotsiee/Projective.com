@@ -111,8 +111,6 @@ import {
 	CreateSubmissionModal,
 	type CreateSubmissionPayload,
 } from "../components/CreateSubmissionModal.tsx";
-import { UploadFilesModal } from "../components/UploadFilesModal.tsx";
-import { DeleteSubmissionDialog } from "../components/DeleteSubmissionDialog.tsx";
 import { PRESUBMIT_LIBRARY_TRIGGER, PreSubmitModal } from "../components/PreSubmitModal.tsx";
 import { TasksPanel } from "../components/TasksPanel.tsx";
 import { ExplorerToolbar } from "../components/ExplorerToolbar.tsx";
@@ -377,8 +375,6 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 
 	// Workflow modal / dialog visibility (the review and pre-submit review are frames of `modals`).
 	const createOpen = useSignal(false);
-	const uploadOpen = useSignal(false);
-	const deleteOpen = useSignal(false);
 	/**
 	 * Deliverables picked from the freelancer's own library in the pre-submit review.
 	 *
@@ -587,6 +583,10 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 		if (top?.kind !== "presubmit") return;
 		modals.write(top.uid, FILE_FRAME_TRIGGER, PRESUBMIT_LIBRARY_TRIGGER);
 		modals.push("picker", PRESUBMIT_PICKER_ID);
+	}
+	/** The draft bar's Add Files: the same picker, whose Upload source takes files from this device. */
+	function openFilePicker(): void {
+		modals.open("picker", PRESUBMIT_PICKER_ID);
 	}
 	/** Dismiss the top frame, restoring the one beneath it. */
 	function popModal(): void {
@@ -825,16 +825,10 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 		localDraft.value = null;
 		workflowError.value = res.message ?? "That submission could not be created.";
 	}
-	function onDeleteSubmission(): void {
-		deleteOpen.value = false;
-		if (localDraft.value) {
-			localDraft.value = null;
-		} else if (path.value.length > 0) {
-			// A real (self-owned) unit — navigate back to its parent (removal persists with the backend).
-			navigate(path.value.slice(0, -1));
-		}
-	}
-	/** Stage picked library assets onto the pending submission, ignoring ones already staged. */
+	/**
+	 * Stage picked or freshly uploaded assets onto the pending submission, ignoring ones already staged.
+	 * They are linked when the draft is sent: saving a draft cannot add files to an existing row.
+	 */
 	function addLibraryPicks(assets: AssetItem[]): void {
 		if (assets.length === 0) return;
 		const known = new Set([
@@ -844,27 +838,32 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 		const next = assets.filter((a) => !known.has(a.id));
 		if (next.length === 0) return;
 		libraryPicks.value = [...libraryPicks.value, ...next];
+		workflowNotice.value = `${libraryPicks.value.length} file${
+			libraryPicks.value.length === 1 ? "" : "s"
+		} ready to go with this submission when you submit it.`;
 	}
 
 	/**
 	 * Submit for review — the delivery claim that starts the client's clock.
 	 *
-	 * The staged library picks travel as `fileIds`; they are already `files.items` ids, so there is
-	 * nothing to upload. This surface has no device-file source to upload FROM: `UploadFilesModal` is a
-	 * drop target with no input behind it yet, and building an upload branch over a permanently empty
-	 * list would be a code path nothing on the surface can reach.
+	 * The staged picks travel as `fileIds`; they are already `files.items` ids (the picker uploads a
+	 * device file before handing it back), so nothing uploads here.
 	 *
 	 * A draft that already exists server-side is sent by NAMING it (`submissionId`), which the endpoint
 	 * turns into a status transition. Posting without the id inserts, so the same delivery would be
-	 * filed twice — once as the draft and once as the submission.
+	 * filed twice — once as the draft and once as the submission. A draft this tab did not create (one
+	 * reopened from the tree) is named by its unit's own id, the last segment of its path.
 	 */
 	async function onConfirmSubmit(): Promise<void> {
 		modals.close();
 		if (workflowBusy.value) return;
-		const draft = localDraft.value;
+		const unit = activeUnit.value;
+		const draft = localDraft.value ??
+			(unit?.status === "draft"
+				? { id: unit.path[unit.path.length - 1] ?? null, name: unit.name, status: unit.status }
+				: null);
 		if (!draft) {
-			libraryPicks.value = [];
-			updateActiveStatus("pending_review");
+			workflowError.value = "Open your draft before submitting it.";
 			return;
 		}
 
@@ -1053,8 +1052,7 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 							actions={workflow}
 							onReview={openReview}
 							onCreate={() => (createOpen.value = true)}
-							onUpload={() => (uploadOpen.value = true)}
-							onDelete={() => (deleteOpen.value = true)}
+							onUpload={openFilePicker}
 							onSubmit={openPreSubmit}
 							onApproveStage={() => (approveOpen.value = true)}
 							approveBusy={approveBusy.value}
@@ -1191,19 +1189,6 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 				tickets={tickets}
 				onClose={() => (createOpen.value = false)}
 				onCreate={(payload) => void onCreateSubmission(payload)}
-			/>
-
-			<UploadFilesModal
-				open={uploadOpen}
-				submissionName={draftName}
-				onClose={() => (uploadOpen.value = false)}
-			/>
-
-			<DeleteSubmissionDialog
-				open={deleteOpen}
-				name={draftName}
-				onClose={() => (deleteOpen.value = false)}
-				onConfirm={onDeleteSubmission}
 			/>
 
 			{modalTop?.kind === "presubmit"

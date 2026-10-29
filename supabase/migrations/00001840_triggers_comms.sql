@@ -4,7 +4,7 @@
 -- ============================================================================
 
 CREATE TRIGGER trg_mask_message_pii
-    BEFORE INSERT ON comms.project_messages
+    BEFORE INSERT OR UPDATE OF body, body_delta ON comms.project_messages
     FOR EACH ROW
     EXECUTE FUNCTION comms.tg_mask_message_pii();
 

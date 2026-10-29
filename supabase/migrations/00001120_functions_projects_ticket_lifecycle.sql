@@ -468,6 +468,22 @@ BEGIN
             USING ERRCODE = 'check_violation';
     END IF;
 
+    -- The backlog belongs to the stage's roster (PRODUCT_SPEC §The Claim-and-Commit Protocol):
+    -- project access alone would let a freelancer hired on one stage claim, and hold the client's
+    -- money for, work on another. A live seat is the claimant's own or an accepted team's they are
+    -- an active member of; a released, completed or unfunded seat is not one.
+    IF v_stage IS NULL OR NOT EXISTS (
+        SELECT 1 FROM projects.stage_assignments sa
+        WHERE sa.project_stage_id = v_stage
+          AND sa.status IN ('assigned', 'accepted')
+          AND ((sa.assignee_type = 'freelancer' AND sa.freelancer_profile_id = v_actor)
+            OR (sa.assignee_type = 'team' AND sa.team_id IS NOT NULL
+                AND org.is_active_team_member(sa.team_id)))
+    ) THEN
+        RAISE EXCEPTION 'You are not hired on this ticket''s stage, so you cannot claim it.'
+            USING ERRCODE = '42501';
+    END IF;
+
     RETURN projects.fn_assign_ticket_core(p_ticket_id, p_assignee_id, true);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, org, security, auth;

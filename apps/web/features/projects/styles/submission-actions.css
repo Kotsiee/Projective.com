@@ -173,63 +173,6 @@
 }
 /* #endregion */
 
-/* #region Upload drop zone (stub) */
-.subm-upload__drop {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: var(--space-2);
-	padding: var(--space-6) var(--space-4);
-	border: 1.5px dashed color-mix(in srgb, var(--on-surface) 26%, transparent);
-	border-radius: var(--radius-lg);
-	background: color-mix(in srgb, var(--on-surface) 3%, transparent);
-	color: var(--text-secondary);
-	text-align: center;
-	cursor: pointer;
-	transition: border-color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard);
-}
-.subm-upload__drop:hover,
-.subm-upload__drop:focus-visible {
-	outline: none;
-	border-color: color-mix(in srgb, var(--primary) 55%, transparent);
-	background: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
-}
-.subm-upload__icon {
-	color: var(--text-secondary);
-}
-.subm-upload__primary {
-	font-size: 0.875rem;
-	font-weight: 600;
-	color: var(--on-surface);
-}
-.subm-upload__secondary {
-	font-size: 0.75rem;
-}
-/* #endregion */
-
-/* #region Delete confirmation (alertdialog) */
-/*
- * `DeleteSubmissionDialog` is a binding over the shared `ConfirmDialog`, so the panel, the action pair,
- * the `alertdialog` role and every dismissal path come from the package. The one thing that does not
- * survive that move is the icon's DANGER tone: `.ui-confirm__icon` is deliberately neutral
- * (`--on-surface-variant`), because severity belongs on the control that acts, not on decoration
- * (§B.8.3). An irreversible delete is the case where the mark should carry it too, so this is a
- * scoped, token-only exception on that one dialog — never a re-tint of the shared class.
- */
-.subm-delete .ui-confirm__icon {
-	flex: none;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 3rem;
-	block-size: 3rem;
-	border-radius: var(--radius-full);
-	color: var(--danger);
-	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
-}
-/* #endregion */
-
 /* #region Tasks panel (sticky right column) */
 .subm-tasks {
 	position: sticky;

@@ -1128,15 +1128,17 @@ the contract is unchanged. **Today Tier 1 is only the composer's advisory warnin
 in `comms.mask_pii` in the same change — otherwise a direct write stores what the edge refuses.
 
 **Tier 2 — database enforcement (shipped).** `trg_mask_message_pii` (`comms.project_messages`) and
-`trg_dm_messages_mask_pii` (`comms.dm_messages`), both `BEFORE INSERT`, `SECURITY DEFINER`
+`trg_dm_messages_mask_pii` (`comms.dm_messages`), `BEFORE INSERT` (the stage-room one also on
+`UPDATE OF body, body_delta`), `SECURITY DEFINER`
 (`00001300` / `00001840`). Each resolves the protected engagement (`projects.is_protected_phase` for
 a channel's project; `comms.fn_dm_protected_project` for a DM), runs the `IMMUTABLE`
 `comms.mask_pii(text)`, and on any hit rewrites `body`, nulls `body_delta`, and sets `pii_masked` /
 `pii_categories`. It fires on every insert path, so a client that skips the services is still
-masked. **Known gap:** both triggers are `INSERT`-only, and `comms.project_messages` carries the
-`edit_own_messages` `UPDATE` policy with no column restriction (`GRANT ALL` on `comms` to
-`authenticated`) — a sender can edit a stored body, or `pii_masked`, after the mask ran
-(Decision #147 flag (c)). `comms.dm_messages` has no `UPDATE` policy and is not exposed.
+masked. A sender's edit (`edit_own_messages`, column grant `UPDATE (body, body_delta, edited_at,
+deleted_at)`) is masked the same way, and `pii_masked` / `pii_categories` are not client-writable, so
+an edit cannot clear an earlier hit (closes Decision #147 flag (c)). `comms.dm_messages` has no
+`UPDATE` policy. The phase cannot be lifted by a client: `handover_unlocked_at` is a derived column
+and `status` moves only through `set_project_status` (`00001895`).
 
 **Tier 3 — asynchronous deep NLP (planned).** A dedicated, Dockerised **Microsoft Presidio**
 analyzer (spaCy NER + Presidio pattern/context recognisers, plus custom recognisers for spelled-out
@@ -2282,15 +2284,14 @@ the command palette.
   `/api/auth/callback`** completes the exchange. Enabling SAML needs `[auth.sso.saml]` +
   `SAML_PRIVATE_KEY` and a per-domain provider registered via the CLI (see `supabase/config.toml`);
   with none configured the panel shows a friendly "no provider" note.
-- **Corporate-domain member signal.** On a standard (email/password) individual signup,
-  `AuthBackendService.provisionAccount` fires a best-effort, non-blocking check: if the new
-  address's domain matches an existing `org.enterprises` registered domain (`website`, normalised
-  — scheme / `www.` / path stripped; sub-domains match), it inserts a `comms.notifications` row
-  (`type: "enterprise.domain_member_signup"`) for that enterprise's active **owners/admins** so they can
-  invite or approve the colleague. No new schema — it reuses `comms.notifications` + the org
-  membership join. Gated by `AUTH_BACKEND_LIVE` (non-live: no-op); any failure is swallowed so it
-  can never fail account creation. OAuth completions are excluded (only inbound email
-  registrations).
+- **No corporate-domain member signal (removed 2026-10-29, Decision #336 (e)).** Sign-up used to
+  notify the owners and admins of every enterprise whose free-text `org.enterprises.website` matched
+  the new address's domain, naming the address. Nothing verified that domain: anyone could register
+  an enterprise with `website = gmail.com` and receive every new Gmail sign-up's address, a minor's
+  included, before confirmation (`IDENTITY_AND_WORKSPACES_AUDIT.md` IW-H1). It returns, if the
+  founder rules for it (F5), only over DNS-verified domains, after the colleague confirms, and
+  without naming them. The `enterprise.domain_colleague` catalogue row stays seeded and nothing
+  sends it.
 
 ---
 
@@ -3104,6 +3105,12 @@ the account-menu row and Settings remain the guaranteed paths.
 
 "Integrations" must be structurally defined to prevent autonomous agents from hallucinating
 incorrect API flows.
+
+The per-provider operational runbook (setup steps, data contracts, dev/prod fallbacks, the
+proposed safety node and env additions) is
+[`api/EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md`](../api/EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md).
+It is a satellite of this section: where they differ, this section wins, and its proposals wait on
+§8 Decision #335.
 
 ### 1. Stripe (Financial Engine)
 

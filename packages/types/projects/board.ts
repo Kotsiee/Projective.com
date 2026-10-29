@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ContextType } from "../auth/mod.ts";
 import { FundingRollupSchema, FundingStatusSchema } from "../finance/funding.ts";
+import { currencyExponent } from "../finance/wallet.ts";
 import { ProjectFormat, ProjectPartySchema, ProjectStatus } from "./summary.ts";
 import { ProjectStructure } from "./setup.ts";
 import { StageActivity } from "./detail.ts";
@@ -149,15 +150,20 @@ export function stageCostCents(
 	return Math.round(unitPriceCents * INTENSITY_MULTIPLIER[intensity]);
 }
 
-/** Format minor units as a plain money string (`$1,240`, `$99.50` when the cents are significant). */
-export function formatTicketMoney(cents: number, currency = "USD"): string {
-	const whole = cents % 100 === 0;
+/**
+ * Format minor units in the engagement's currency (`£1,240`, `$99.50` when the minor part is
+ * significant). The currency is required: a defaulted one printed every GBP ticket in dollars.
+ */
+export function formatTicketMoney(minor: number, currency: string): string {
+	const exponent = currencyExponent(currency);
+	const factor = 10 ** exponent;
+	const digits = minor % factor === 0 ? 0 : exponent;
 	return new Intl.NumberFormat("en-US", {
 		style: "currency",
 		currency,
-		minimumFractionDigits: whole ? 0 : 2,
-		maximumFractionDigits: whole ? 0 : 2,
-	}).format(cents / 100);
+		minimumFractionDigits: digits,
+		maximumFractionDigits: digits,
+	}).format(minor / factor);
 }
 // #endregion
 
@@ -680,6 +686,11 @@ export const BoardCardSchema = z.object({
 	budgetCents: z.number().int().min(0).nullable(),
 	/** Pre-formatted price/budget label ("$450") or `null`. */
 	budgetLabel: z.string().max(24).nullable(),
+	/**
+	 * The engagement's ISO-4217 currency (`projects.projects.currency`), stamped on every card so the
+	 * ticket modal re-formats {@link budgetCents} in the currency the server formatted it in.
+	 */
+	currency: z.string().length(3).default("USD"),
 	/** The single icon-only activity signal (reuses the {@link StageActivity} vocabulary). */
 	activity: StageActivity.nullable().optional(),
 	/** `reported_hidden` overlay — a 48h "Frozen" workload-report card, shown striped in New. */
@@ -889,6 +900,8 @@ export const BoardPageSchema = z.object({
 	structure: ProjectStructure.default("standard"),
 	/** Pre-resolved board label (e.g. "Pipeline") so SSR + the client render identically. */
 	title: z.string().min(1).max(60),
+	/** The engagement's ISO-4217 currency — what a ticket drafted on this board is priced in. */
+	currency: z.string().length(3).default("USD"),
 	/** The active grouping (project board). */
 	view: BoardView,
 	/** Whether the acting user is the client — gates ticket moves, stage reorder + the create actions. */

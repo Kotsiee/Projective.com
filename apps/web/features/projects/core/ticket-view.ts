@@ -498,9 +498,11 @@ export function ticketMoney(card: BoardCard): TicketMoney {
 	const spentCents = ticketSpentCents(card.payments);
 	return {
 		totalCents: card.budgetCents,
-		totalLabel: card.budgetCents === null ? null : formatTicketMoney(card.budgetCents),
+		totalLabel: card.budgetCents === null
+			? null
+			: formatTicketMoney(card.budgetCents, card.currency),
 		spentCents,
-		spentLabel: formatTicketMoney(spentCents),
+		spentLabel: formatTicketMoney(spentCents, card.currency),
 		spentShare: card.budgetCents === null || card.budgetCents === 0
 			? null
 			: Math.min(1, spentCents / card.budgetCents),
@@ -650,11 +652,6 @@ export function activeStagesFor(card: BoardCard): TicketStageRef[] {
 // #endregion
 
 // #region Labels
-/** `$1,225` / `Not priced` — the one money string the modal shows for a possibly-unpriced figure. */
-export function moneyOrDash(cents: number | null): string {
-	return cents === null ? "Not priced" : formatTicketMoney(cents);
-}
-
 /** `×0.5` — the multiplier as ARITHMETIC, for the Finances tab only. Never a badge label. */
 export function multiplierLabel(multiplier: number): string {
 	return `×${multiplier % 1 === 0 ? multiplier : multiplier.toFixed(1)}`;

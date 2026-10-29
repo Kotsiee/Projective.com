@@ -540,7 +540,9 @@ an island can classify identically for instant UI.
   refuses programs and executable markup. A real AV scan belongs between the sniff and the promote.
   `files.items.target_bucket` is written only as the contact pipeline's destination marker
   (`'contact'` at declare, cleared on promotion — `services/contact/live-attachments.ts`), and
-  nothing writes `target_path`.
+  nothing writes `target_path`: `fn_guard_pipeline_columns` refuses a client INSERT naming any other
+  target. The unauthenticated `scan-file` mock that streamed quarantine bytes to a row's `target_*`
+  as the service role is deleted (SECURITY_MODERATION_AND_AI_GAPS E4).
 - **Abandoned uploads are never swept.** A `pending_upload` row whose browser went away before the
   `PUT` finished keeps its quarantine row (and any partial object) and **reserves its declared size**
   in `files.storage_usage` (see [Functions.md](Functions.md)). Harmless while

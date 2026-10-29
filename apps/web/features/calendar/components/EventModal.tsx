@@ -362,9 +362,9 @@ export function EventModal(props: EventModalProps): JSX.Element {
 			?.focus();
 	}
 
-	// The booking gate the retired dialog carried, unchanged: an open slot or a session, not cancelled.
-	const bookable = props.canBook && !creating &&
-		(event.kind === "availability" || event.kind === "session") &&
+	// An open slot, not cancelled or passed. A session's seat is bought from its listing, which this
+	// modal has no door to.
+	const bookable = props.canBook && !creating && event.kind === "availability" &&
 		event.status !== "cancelled" && live.state !== "passed";
 
 	// A host is going by definition — they are running it — so the answer controls belong to the seats

@@ -164,7 +164,7 @@ export function TicketDetailsTab(props: TicketDetailsTabProps): JSX.Element {
 													<span class="tkv-stagepick__rate">
 														{stage.unitPriceCents === null
 															? "No rate"
-															: formatTicketMoney(stage.unitPriceCents)}
+															: formatTicketMoney(stage.unitPriceCents, card.currency)}
 													</span>
 												</button>
 											</li>

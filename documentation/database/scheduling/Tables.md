@@ -113,7 +113,7 @@ One positioned calendar entry — the persisted backing for the `CalendarEvent` 
 | `accent`                          | text                      | A CSS custom-property **name** (`--primary`), never a literal colour.                 |
 | `location` · `meta` · `href`      | text                      | Presentational.                                                                       |
 | `meeting_provider` · `meeting_provider_label` · `meeting_pending` | text · text · boolean | The online room's provider (a slug, or `custom`; deliberately no FK), its display label, and "still to be minted". Readable wherever the row is. |
-| `meeting_url` · `meeting_passcode` · `meeting_details` | text      | **The room.** Withheld from every client role at the COLUMN level (`00002520`, since 2026-09-28): a party — the creator, or someone seated — reads them through `scheduling.get_event_rooms`. See [Policies.md](Policies.md). |
+| `meeting_url` · `meeting_passcode` · `meeting_details` | text      | **The room.** Withheld from every client role at the COLUMN level (`00002520`, since 2026-09-28): a party — the creator, or someone seated — reads them through `scheduling.get_event_rooms`. See [Policies.md](Policies.md). `meeting_url` is https only (`ck_event_meeting_url_https`, since 2026-10-29): a schedule's manager writes the row directly and every party is shown it as a join link, so a `javascript:` URL was stored script. |
 | `attendee_count` · `capacity`     | integer                   | Group-session counters (`CHECK >= 0`).                                                |
 | `source_connection_id`            | uuid                      | → `integrations.user_connections` (SET NULL) when mirrored in.                        |
 | `external_event_id`               | text                      | The provider's own id.                                                                |
@@ -288,9 +288,10 @@ The booking record.
 | Money        | `fee_amount_minor` · `fee_currency` · `payment_ref` · `escrow_id` · `refund_amount_minor` · `penalty_amount_minor`                                                                   |
 | Lifecycle    | `proposed_at` · `responded_at` · `confirmed_at` · `cancelled_at` · `cancelled_by` · `cancellation_reason` · `is_late_cancel` · `completed_at` · `no_show_party` · `reschedule_count` |
 
-Constraints worth knowing: `ck_call_confirmed_has_slot` (a confirmed call must have an agreed slot)
-and `ck_call_fee_matches_type` — **a paid call must carry its price and a courtesy call must not**
-(free means free, enforced in-DB).
+Constraints worth knowing: `ck_call_confirmed_has_slot` (a confirmed call must have an agreed slot),
+`ck_call_fee_matches_type` — **a paid call must carry its price and a courtesy call must not**
+(free means free, enforced in-DB) — and `ck_call_meeting_url_https` (the room is an https address
+or nothing, as on `events`).
 
 > ⚠️ **FLAGGED — paid calls cannot ride `finance.escrows` yet** (root `CLAUDE.md` §8).
 > `finance.escrows` requires **both** `project_stage_id` and `payer_business_id` NOT NULL, so a

@@ -41,8 +41,8 @@ CREATE TRIGGER trg_wallet_pots_immutable
 
 -- A recurring deposit's failure count and last error are the scheduler's record of what happened,
 -- not the owner's to reset. `created_by` is who AUTHORISED the standing charge, stamped only by
--- finance.create_deposit_rule: a client row starts it empty (and so never runs), because a rule whose
--- author could be written freely could charge a card in somebody else's name.
+-- finance.create_deposit_rule, because a rule whose author could be written freely could charge a card
+-- in somebody else's name. Clients hold SELECT only (00002013, 00002520); this guard is the backstop.
 CREATE TRIGGER trg_deposit_rules_derived
     BEFORE INSERT OR UPDATE ON finance.deposit_rules
     FOR EACH ROW

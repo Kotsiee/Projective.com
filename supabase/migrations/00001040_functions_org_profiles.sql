@@ -525,6 +525,20 @@ BEGIN
     );
 END;
 $$;
+
+-- The caller's own date of birth and time zone. Clients hold no column grant on
+-- org.users_public.dob · city · country · timezone (00002520), because a SELECT policy is row-level
+-- and the table's admits every signed-in reader: this definer is how the owner, and only the owner,
+-- reads them (Settings → Account, the zone a calendar, wallet or heatmap is drawn in).
+CREATE OR REPLACE FUNCTION org.get_own_private_profile()
+RETURNS TABLE (dob date, timezone text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT u.dob, u.timezone FROM org.users_public u WHERE u.user_id = auth.uid();
+$$;
 -- #endregion
 
 -- #region 3. The section reads

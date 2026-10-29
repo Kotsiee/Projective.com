@@ -36,6 +36,8 @@ export interface StagePipelineProps {
 	selectedStageId: string | null;
 	/** Whether the viewer may change the ticket's composition. */
 	editable: boolean;
+	/** The engagement's currency (`BoardCard.currency`). */
+	currency: string;
 	onSelect: (stageId: string | null) => void;
 	onToggle: (stageId: string) => void;
 	onMove: (from: number, to: number) => void;
@@ -62,6 +64,7 @@ interface CardProps {
 	previousName: string | null;
 	selected: boolean;
 	editable: boolean;
+	currency: string;
 	onSelect: () => void;
 	onRemove: () => void;
 }
@@ -182,7 +185,7 @@ function StageCard(props: CardProps): JSX.Element {
 						<span class="tkc-stage__cost" tabIndex={0}>
 							{costCents === null
 								? <span class="tkc-stage__cost--none">No rate</span>
-								: formatTicketMoney(costCents)}
+								: formatTicketMoney(costCents, props.currency)}
 						</span>
 					</Tooltip>
 				</div>
@@ -343,6 +346,7 @@ export function StagePipeline(props: StagePipelineProps): JSX.Element {
 											previousName={previous?.ref.name ?? null}
 											selected={selectedStageId === item.ref.stageId}
 											editable={editable}
+											currency={props.currency}
 											onSelect={() =>
 												props.onSelect(
 													selectedStageId === item.ref.stageId ? null : item.ref.stageId,
@@ -375,7 +379,7 @@ export function StagePipeline(props: StagePipelineProps): JSX.Element {
 										<span class="tkc-avail__cost">
 											{s.unitPriceCents === null
 												? "No rate"
-												: `${formatTicketMoney(s.unitPriceCents)} / ticket`}
+												: `${formatTicketMoney(s.unitPriceCents, props.currency)} / ticket`}
 										</span>
 									</button>
 								</li>

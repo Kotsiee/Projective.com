@@ -464,7 +464,7 @@ label.evm-meta__k {
 .evm-h__note {
 	margin-inline-start: auto;
 	font-size: var(--text-2xs);
-	font-weight: var(--fw-regular);
+	font-weight: var(--fw-normal);
 	letter-spacing: 0;
 	text-transform: none;
 	color: var(--text-secondary);
@@ -571,7 +571,7 @@ label.evm-meta__k {
 }
 
 .evm-facts__note {
-	font-weight: var(--fw-regular);
+	font-weight: var(--fw-normal);
 	color: var(--text-secondary);
 }
 
@@ -735,7 +735,7 @@ label.evm-meta__k {
 
 .evm-prop__time {
 	font-size: var(--text-xs);
-	font-weight: var(--fw-regular);
+	font-weight: var(--fw-normal);
 	color: var(--text-secondary);
 }
 
@@ -756,7 +756,7 @@ label.evm-meta__k {
 }
 
 .evm-prop__role {
-	font-weight: var(--fw-regular);
+	font-weight: var(--fw-normal);
 	color: var(--text-secondary);
 }
 
@@ -1021,7 +1021,7 @@ label.evm-meta__k {
 
 .evm-people__you {
 	font-size: var(--text-2xs);
-	font-weight: var(--fw-regular);
+	font-weight: var(--fw-normal);
 	color: var(--primary);
 }
 

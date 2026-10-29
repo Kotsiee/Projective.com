@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import "../styles/log-inspector.css";
+import { Tooltip } from "@projective/ui/feedback";
 import type { LogLevel } from "@projective/types/logging";
 import { logger } from "@web/utils/logger.ts";
 import { JsonView } from "./JsonView.tsx";
@@ -150,15 +151,16 @@ export function LogInspector(): JSX.Element {
 						>
 							<IconSort />
 						</button>
-						<button
-							type="button"
-							class="dev-log__tool dev-log__tool--danger"
-							aria-label="Clear session logs"
-							title="Clear session logs"
-							onClick={clear}
-						>
-							<IconClearCache />
-						</button>
+						<Tooltip content="Clear session logs" placement="top">
+							<button
+								type="button"
+								class="dev-log__tool dev-log__tool--danger"
+								aria-label="Clear session logs"
+								onClick={clear}
+							>
+								<IconClearCache />
+							</button>
+						</Tooltip>
 					</div>
 				</div>
 			</div>

@@ -9,7 +9,6 @@ import {
 	ReviewGlyph,
 	SendGlyph,
 	SubmissionStatusIcon,
-	TrashGlyph,
 	UploadGlyph,
 } from "./submission-glyphs.tsx";
 
@@ -22,8 +21,9 @@ import {
  * - **Reviewer** anywhere inside a stage → **End Stage (Fair Exit)**, which opens the tier preview
  *   (Decision #198).
  * - **Freelancer** at the root → **Create New Submission**.
- * - **Freelancer** inside an unsubmitted draft → **Upload Files** · **Delete Submission** ·
- *   **Submit for Review**.
+ * - **Freelancer** inside an unsubmitted draft → **Add Files** (the shared file picker: upload from
+ *   this device or choose from the library) · **Submit for Review**. There is no Delete: a draft has no
+ *   discard door yet, and removing one is the hard-delete question Decision #338 (d) leaves open.
  * - **Freelancer** inside a submitted unit → a read-only **status badge** (In Review / Approved /
  *   Revision Requested).
  *
@@ -35,7 +35,6 @@ export interface SubmissionActionBarProps {
 	onReview: () => void;
 	onCreate: () => void;
 	onUpload: () => void;
-	onDelete: () => void;
 	onSubmit: () => void;
 	/** Open the stage-approval confirmation (reviewer, accepted unit). */
 	onApproveStage: () => void;
@@ -72,8 +71,7 @@ function StatusBadge({ status }: { status: SubmissionStatus }): JSX.Element {
 }
 
 export function SubmissionActionBar(props: SubmissionActionBarProps): JSX.Element | null {
-	const { actions, onReview, onCreate, onUpload, onDelete, onSubmit, onApproveStage, onEndStage } =
-		props;
+	const { actions, onReview, onCreate, onUpload, onSubmit, onApproveStage, onEndStage } = props;
 	const approveBusy = props.approveBusy === true;
 
 	if (actions.review || actions.approveStage || actions.endStage) {
@@ -155,17 +153,7 @@ export function SubmissionActionBar(props: SubmissionActionBarProps): JSX.Elemen
 					<span class="subm-actions__icon" aria-hidden="true">
 						<UploadGlyph size={16} />
 					</span>
-					Upload Files
-				</button>
-				<button
-					type="button"
-					class="subm-actions__btn subm-actions__btn--danger"
-					onClick={onDelete}
-				>
-					<span class="subm-actions__icon" aria-hidden="true">
-						<TrashGlyph size={16} />
-					</span>
-					<span class="subm-actions__btnlabel">Delete Submission</span>
+					Add Files
 				</button>
 				<button
 					type="button"

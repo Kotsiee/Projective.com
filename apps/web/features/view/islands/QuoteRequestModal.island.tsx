@@ -16,8 +16,7 @@ import {
 import { SimulationOutcome } from "../components/SimulationNotices.tsx";
 import { announce, closeBookingPanel, currentOffer, openPanel } from "../core/booking-state.ts";
 import type { ServiceBookingOffer } from "@projective/types/services";
-import { toMinorUnits } from "@projective/types/finance";
-import { ResizeFrame } from "@projective/ui/fields";
+import { MoneyInput, ResizeFrame } from "@projective/ui/fields";
 
 /**
  * QuoteRequestModal — the Contact menu's **Request a custom quote**.
@@ -52,7 +51,8 @@ export default function QuoteRequestModal(
 	const open = useComputed(() => openPanel.value === "quote");
 
 	const scope = useSignal("");
-	const budget = useSignal("");
+	/** Integer MINOR units, read in the viewer's locale by `MoneyInput`; `null` = no budget given. */
+	const budget = useSignal<number | null>(null);
 	const timeline = useSignal("");
 	const error = useSignal<string | null>(null);
 	const cta = useCtaFeedback();
@@ -63,7 +63,7 @@ export default function QuoteRequestModal(
 			return;
 		}
 		scope.value = "";
-		budget.value = "";
+		budget.value = null;
 		timeline.value = "";
 		error.value = null;
 		cta.reset();
@@ -75,23 +75,11 @@ export default function QuoteRequestModal(
 			error.value = "Describe what you need.";
 			return false;
 		}
-		/*
-		 * Parse the budget into integer MINOR units here, once.
-		 *
-		 * `toMinorUnits` rather than a float or `× 100`: money in this platform is integer minor units
-		 * everywhere, and a value that arrives as 49.99 and is stored as 4998.9999999 is the classic way
-		 * a currency ends up a penny short at the third handoff. An unparseable entry is refused rather
-		 * than coerced to zero — "£0" is a real offer and a very different one from "I did not say".
-		 */
-		let budgetMinor: number | undefined;
-		const raw = budget.value.trim();
-		if (raw) {
-			const major = Number(raw.replace(/[^0-9.]/g, ""));
-			if (!Number.isFinite(major) || major < 0) {
-				error.value = "That budget could not be read. Use a plain number.";
-				return false;
-			}
-			budgetMinor = toMinorUnits(major, currency) ?? undefined;
+		// `null` stays "I did not say", never £0 — a real, and very different, offer.
+		const budgetMinor = budget.value ?? undefined;
+		if (budgetMinor !== undefined && budgetMinor < 0) {
+			error.value = "A budget cannot be negative.";
+			return false;
 		}
 		error.value = null;
 
@@ -168,18 +156,13 @@ export default function QuoteRequestModal(
 				<div class="sbk__row">
 					<label class="sbk__field">
 						<span class="sbk__notelabel">Rough budget (optional)</span>
-						<span class="sbk__inputwrap">
-							<span class="sbk__prefix" aria-hidden="true">{currency}</span>
-							<input
-								class="sbk__input"
-								type="text"
-								inputMode="decimal"
-								placeholder="2,500"
-								value={budget.value}
-								aria-describedby="sbk-budget-hint"
-								onInput={(e) => (budget.value = (e.target as HTMLInputElement).value)}
-							/>
-						</span>
+						<MoneyInput
+							value={budget.value}
+							currency={currency}
+							fluid
+							aria-describedby="sbk-budget-hint"
+							onValueChange={(minor) => (budget.value = minor)}
+						/>
 						<span id="sbk-budget-hint" class="sbk__notehint">
 							A guide, not an offer — they set the price.
 						</span>

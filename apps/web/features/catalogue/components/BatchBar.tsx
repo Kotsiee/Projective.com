@@ -103,7 +103,7 @@ export function BatchBar(): JSX.Element {
 					<Button
 						size="sm"
 						severity="danger"
-						variant="outlined"
+						variant="text"
 						label="Delete"
 						icon={<Icon name="trash" />}
 						loading={busy(DELETE)}

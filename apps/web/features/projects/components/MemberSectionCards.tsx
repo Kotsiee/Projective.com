@@ -140,7 +140,7 @@ export function InviteAction(props: InviteActionProps): JSX.Element | null {
 			if (!props.removable) return null;
 			return (
 				<Button
-					variant="outlined"
+					variant="text"
 					severity="danger"
 					size="sm"
 					label="Remove"

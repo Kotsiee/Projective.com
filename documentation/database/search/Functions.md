@@ -10,6 +10,9 @@ Documented here: the **index-sync triggers**, `fn_log_query`, the **discovery-si
 query RPCs (`fn_search_entities`, which now takes a trailing nullable `p_query_embedding vector(1024)`
 and scores the vector term 0 without one, `fn_search_global`, `fn_search_analytics`, `fn_get_weights`,
 `fn_set_weight`, `fn_norm`, `is_admin`) are not yet written up. `fn_mock_embedding` is deleted.
+`fn_search_entities` and `fn_search_global` are `service_role` only: both are definers that join
+`org.users_public` and `projects.projects` past their RLS, and no app path calls them
+(SECURITY_MODERATION_AND_AI_GAPS E5).
 
 ---
 

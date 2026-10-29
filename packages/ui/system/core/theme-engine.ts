@@ -316,10 +316,13 @@ export function buildScheme(
 	// Fixed-hue semantic ramps + their on- pairs. These take `hc` too: without it success/warning/
 	// danger/info were byte-identical in high contrast, so a third of the palette opted out of the
 	// overlay entirely.
+	// `danger` alone is held to the filled-control floor (§B.12.2), because every destructive commit
+	// is a filled Button (§B.8.3): at the shared tones it measured 3.17:1 in light and 5.74:1 in dark.
 	for (const [name, hex] of Object.entries(SEMANTIC_SEEDS)) {
 		const sc = CorePalette.of(argbFromHex(hex));
-		vars[`--${name}`] = hx(sc.a1.tone(dark ? fg(70) : fg(60)));
-		vars[`--on-${name}`] = hx(sc.a1.tone(dark ? on(20) : on(100)));
+		const filled = name === "danger";
+		vars[`--${name}`] = hx(sc.a1.tone(dark ? fg(70) : fg(filled ? 42 : 60)));
+		vars[`--on-${name}`] = hx(sc.a1.tone(dark ? on(filled ? 10 : 20) : on(100)));
 	}
 
 	const accent = accentTones(dark, hc);

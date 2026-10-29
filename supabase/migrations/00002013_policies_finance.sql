@@ -54,11 +54,11 @@ WITH CHECK (finance.fn_owner_capability (owner_type, owner_id, 'manage_billing':
 CREATE POLICY "View own deposit rules" ON finance.deposit_rules FOR
 SELECT TO authenticated USING (finance.fn_can_view_wallet (wallet_id));
 
--- A recurring deposit moves money into the wallet on a schedule, so configuring one is a move of
--- funds: seeing the wallet (membership) is not enough.
-CREATE POLICY "Manage own deposit rules" ON finance.deposit_rules FOR ALL TO authenticated
-USING (finance.fn_can_move_wallet_funds (wallet_id))
-WITH CHECK (finance.fn_can_move_wallet_funds (wallet_id));
+-- No write policy on purpose. A recurring deposit charges the card of the member who authorised it
+-- (`created_by`), so it is written only by its doors: finance.create_deposit_rule (which needs
+-- `add_funds` and stamps the author) and the scheduler. A client write keyed on `spend` let any
+-- spender rewrite another member's rule and have the author's card charged
+-- (FINANCE_COMPLETENESS_AUDIT A12; supabase/probes/deposit_rule_authority.sql).
 
 CREATE POLICY "View own payout schedule" ON finance.payout_schedules FOR
 SELECT TO authenticated USING (finance.fn_owner_visible (owner_type, owner_id));

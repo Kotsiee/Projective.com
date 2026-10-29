@@ -613,7 +613,8 @@ async function listingSchedulePage(
 		title: item.title,
 		subtitle: `With ${item.owner.name}`,
 		ownerHandle: item.owner.handle,
-		viewerCanBook: true,
+		// A listing is bought from its lane (gate 10), never from a slot on this page.
+		viewerCanBook: false,
 		now,
 	}, pageWindow(now));
 	if (page === undefined) return scheduleUnavailable();

@@ -152,8 +152,8 @@
 	min-block-size: 2rem;
 	margin-block-start: var(--space-2);
 	padding-inline: var(--space-3);
-	border: 1px solid var(--outline-variant);
-	border-radius: var(--radius-pill);
+	border: var(--hairline);
+	border-radius: var(--radius-full);
 	background: transparent;
 	color: var(--text-secondary);
 	font-size: var(--text-sm);
@@ -626,14 +626,6 @@ a.subm-ctx__who:hover .subm-ctx__name {
 }
 .subm-btn--soft:hover:not(:disabled) {
 	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
-}
-.subm-btn--danger {
-	border-color: color-mix(in srgb, var(--danger) var(--tint-heavy), transparent);
-	background: transparent;
-	color: var(--danger);
-}
-.subm-btn--danger:hover:not(:disabled) {
-	background: color-mix(in srgb, var(--danger) var(--tint-soft), transparent);
 }
 .subm-btn--primary {
 	background: var(--primary);

@@ -579,6 +579,7 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 												available={available}
 												selected={selectedStage}
 												editable={canEdit}
+												currency={card.currency}
 												onToggle={toggleStage}
 												onMove={(from, to) =>
 													patch({ stages: stageOps.move(card.stages, from, to, stages) })}
@@ -655,6 +656,7 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 														(c) => c.stageId === inspected.ref.stageId && c.id !== card.id,
 													)}
 													editable={canEdit}
+													currency={card.currency}
 													funding={inspected.ref.stageId === server.stageId
 														? fundingLine(undefined, false)
 														: null}

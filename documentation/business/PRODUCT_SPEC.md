@@ -2394,8 +2394,9 @@ already have moved against it. Only two states never onboarded anybody: an invit
 **declined**, and a blueprint-instantiated seat still **awaiting funding**, where nobody is committed
 to anything and no escrow exists. A seat a freelancer accepted while the project was still a **draft**
 is staged, not yet taken: publishing takes it, and from that moment it locks like any other
-(Decision #139). The lock is enforced in the database as well as the form and the service, so no
-write path can change the type of a staffed project.
+(Decision #139). Both locks are enforced in the database as well as the form and the service (the
+price since Decision #338), so no write path can change the type of a staffed project or the price a
+provider was hired against.
 
 The client is told this **before** it happens: publishing a project opens a confirmation naming
 exactly what will lock and when, so the constraint is something they accepted rather than something

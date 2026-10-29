@@ -1308,7 +1308,7 @@
 }
 
 .proj-stage-modal__hint {
-	font-weight: var(--fw-regular);
+	font-weight: var(--fw-normal);
 	text-transform: none;
 	color: var(--text-secondary);
 	opacity: 0.8;

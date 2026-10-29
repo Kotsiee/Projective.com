@@ -336,7 +336,9 @@ scan, and every reader that trusts "uploaded" would serve it. So the columns tha
   into a live native folder of its own library", [`fn_folder_in_library`](#-filesfn_folder_in_library--boolean)).
 - **INSERT:** a client row must be `purpose = 'library'` with no `derived_from_id`
   (`42501` "renditions are written by the media pipeline only"); a `supabase`-sourced row must
-  start `pending_upload` in `quarantine` (`42501` "an upload starts pending in quarantine"); and a
+  start `pending_upload` in `quarantine` (`42501` "an upload starts pending in quarantine"); it names
+  no promotion target — `target_path` NULL and `target_bucket` NULL or the contact pipeline's
+  `'contact'` (`42501` "an upload's destination is the pipeline's to choose"); and a
   client never inserts a **mounted** row — a connector `source`, or any row carrying
   `source_connection_id` / `external_file_id`, is refused (`42501` "a mounted asset is written by
   the connector service only", Decision #313). A **link** starts `link_scan_status = 'pending'` with

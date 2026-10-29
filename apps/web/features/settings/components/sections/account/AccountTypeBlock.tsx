@@ -96,7 +96,7 @@ export function AccountTypeBlock(props: AccountTypeBlockProps): JSX.Element {
 				description="You can sell your skills and hire others."
 				control={
 					<Button
-						variant="outlined"
+						variant="text"
 						severity="danger"
 						size="sm"
 						label="Switch to client only"

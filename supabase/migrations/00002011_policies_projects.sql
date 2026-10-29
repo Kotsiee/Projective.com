@@ -443,16 +443,6 @@ SELECT TO public USING (
         )
     );
 
-CREATE POLICY "Manage cohorts" ON projects.cohorts FOR ALL TO public USING (
-    EXISTS (
-        SELECT 1
-        FROM projects.projects p
-        WHERE
-            p.id = project_id
-            AND p.owner_user_id = auth.uid ()
-    )
-);
-
 CREATE POLICY "View cohort memberships" ON projects.cohort_memberships FOR
 SELECT TO public USING (
         user_id = auth.uid ()
@@ -466,16 +456,6 @@ SELECT TO public USING (
         )
     );
 
-CREATE POLICY "Manage cohort memberships" ON projects.cohort_memberships FOR ALL TO public USING (
-    EXISTS (
-        SELECT 1
-        FROM projects.cohorts c
-            JOIN projects.projects p ON p.id = c.project_id
-        WHERE
-            c.id = cohort_id
-            AND p.owner_user_id = auth.uid ()
-    )
-);
 
 -- Member arm qualified to this row's cohort: a bare `cohort_id` bound to cm.cohort_id, letting any
 -- cohort member read every event (host_join_url included).
@@ -491,17 +471,6 @@ SELECT TO public USING (
                 AND p.owner_user_id = auth.uid ()
         )
     );
-
-CREATE POLICY "Manage session events" ON projects.session_events FOR ALL TO public USING (
-    EXISTS (
-        SELECT 1
-        FROM projects.cohorts c
-            JOIN projects.projects p ON p.id = c.project_id
-        WHERE
-            c.id = cohort_id
-            AND p.owner_user_id = auth.uid ()
-    )
-);
 
 CREATE POLICY "View own attendance" ON projects.session_attendance FOR
 SELECT TO public USING (

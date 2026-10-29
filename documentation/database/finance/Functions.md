@@ -849,7 +849,11 @@ already on an order replays that order through `place_wallet_order` without cred
 purchase`, BB2); KYB, `intervaled_monthly` invoicing and no overdue invoice (each an un-prefixed
 `PK403`); owed (`fn_on_account_owed`) + `p_amount` within `on_account_limit_cents` (`PF402`). The
 active-business check and the spend gate (BB3 / BB5) run once, inside `place_wallet_order`, on what
-the order actually charges; a refusal there rolls the credit back with it. `SECURITY DEFINER`,
+the order actually charges; a refusal there rolls the credit back with it. `p_amount` is caller input,
+so the order's `charged_minor` must equal it or the whole call is refused `PC409` (the checkout's
+"price changed") and the credit with it: a surplus would otherwise stay in the wallet as spendable,
+withdrawable balance, and a shortfall would come out of money already there (FINANCE_COMPLETENESS_AUDIT
+CO20; `supabase/probes/on_account_amount.sql`). `SECURITY DEFINER`,
 `search_path = finance, org, security, public`; granted to `authenticated` (`00002510`).
 
 ### `finance.get_on_account_standing(p_business_id, p_currency)` → `jsonb | NULL` (`00001250`)

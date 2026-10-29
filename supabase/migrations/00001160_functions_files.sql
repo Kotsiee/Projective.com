@@ -592,6 +592,14 @@ BEGIN
                 ERRCODE = '42501',
                 MESSAGE = 'files: an upload starts pending in quarantine; only the upload pipeline promotes it';
         END IF;
+        -- `target_*` name where a promotion writes. Only the /contact pipeline declares one, `contact`,
+        -- which it alone finishes; any other target would aim a service-role write at someone else's object.
+        IF NEW.target_path IS NOT NULL
+           OR (NEW.target_bucket IS NOT NULL AND NEW.target_bucket <> 'contact') THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'files: an upload''s destination is the pipeline''s to choose';
+        END IF;
         IF NEW.source NOT IN ('supabase'::files.file_source, 'link'::files.file_source)
            OR NEW.source_connection_id IS NOT NULL
            OR NEW.external_file_id IS NOT NULL THEN

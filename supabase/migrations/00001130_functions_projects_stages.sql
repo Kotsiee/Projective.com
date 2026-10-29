@@ -169,6 +169,57 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects;
 
+-- Post-onboarding price lock, the money half of the shape lock above (PRODUCT_SPEC §Post-Onboarding
+-- Immutability). The setup service asks `lockedStagePriceIds` / `projectPriceLocked`
+-- (packages/types/projects/setup.ts) first; these are the backstop for every other write path, on the
+-- same deny-list. A staged run freezes each stage's ticket price as that stage is staffed. A flat
+-- engagement (`single_task`, `single_stage`) is one price hired against project-wide, so it freezes at
+-- the first onboarding anywhere on it — on its stage rows and, for a Task, on the project budget its
+-- price lives in.
+CREATE OR REPLACE FUNCTION projects.fn_stage_price_lock()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_flat boolean;
+BEGIN
+    SELECT p.structure_variation IN ('single_task', 'single_stage') INTO v_flat
+    FROM projects.projects p WHERE p.id = OLD.project_id;
+
+    IF EXISTS (
+        SELECT 1
+        FROM projects.stage_assignments sa
+        JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+        WHERE ps.project_id = OLD.project_id
+            AND (ps.id = OLD.id OR v_flat)
+            AND sa.status NOT IN ('declined', 'pending_funding')
+    ) THEN
+        RAISE EXCEPTION '%', CASE WHEN v_flat
+                THEN 'Ticket price is locked — a freelancer has been onboarded onto this project.'
+                ELSE 'Ticket price is locked — a freelancer has been onboarded onto this stage.' END
+            USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects;
+
+-- Only a Task prices on the project row; on a milestone run `budget_amount_cents` is the rolled-up sum
+-- of stage fees the service rewrites, so locking it there would fight the derivation.
+CREATE OR REPLACE FUNCTION projects.fn_project_price_lock()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF OLD.structure_variation = 'single_task' AND EXISTS (
+        SELECT 1
+        FROM projects.stage_assignments sa
+        JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+        WHERE ps.project_id = OLD.id
+            AND sa.status NOT IN ('declined', 'pending_funding')
+    ) THEN
+        RAISE EXCEPTION 'Ticket price is locked — a freelancer has been onboarded onto this project.'
+            USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects;
+
 -- Ownership guard. Review authority (projects.can_review_project) may update the project row, but
 -- who owns the engagement and which business pays for it are the OWNER's to change — a business
 -- member re-pointing `client_business_id` would otherwise grant themselves the authority they used.

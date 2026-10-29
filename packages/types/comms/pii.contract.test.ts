@@ -22,7 +22,7 @@ Deno.test("every pattern the mirror documents is the one comms.mask_pii runs", (
 	}
 });
 
-Deno.test("direct messages are masked by a BEFORE INSERT trigger, like stage messages", () => {
+Deno.test("direct messages are masked by a BEFORE INSERT trigger, stage messages on insert and edit", () => {
 	const triggers = read(TRIGGERS_SQL);
 	assert(
 		/BEFORE INSERT ON comms\.dm_messages\s+FOR EACH ROW\s+EXECUTE FUNCTION comms\.tg_mask_dm_message_pii\(\)/
@@ -30,7 +30,7 @@ Deno.test("direct messages are masked by a BEFORE INSERT trigger, like stage mes
 		"the DM masking trigger is not wired",
 	);
 	assert(
-		/BEFORE INSERT ON comms\.project_messages\s+FOR EACH ROW\s+EXECUTE FUNCTION comms\.tg_mask_message_pii\(\)/
+		/BEFORE INSERT OR UPDATE OF body, body_delta ON comms\.project_messages\s+FOR EACH ROW\s+EXECUTE FUNCTION comms\.tg_mask_message_pii\(\)/
 			.test(triggers),
 		"the stage-room masking trigger is not wired",
 	);
