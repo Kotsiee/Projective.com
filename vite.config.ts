@@ -779,6 +779,65 @@ function devClientAddress(): Plugin {
 }
 // #endregion
 
+// #region Dev SSR recovery
+/**
+ * Lets `vite dev` recover from a failed server-entry load on the next request, instead of serving
+ * the same error until it is restarted.
+ *
+ * The first request after start-up evaluates `fresh:server_entry`, whose snapshot imports every
+ * island (see {@link discoverFeatureIslands}) — about 3,600 modules, fetched one at a time over the
+ * module runner's transport, and each fetch has a fixed 60s timeout that Vite exposes no option
+ * for. On a loaded machine one fetch can miss that window ("transport invoke timed out after
+ * 60000ms"). The timer counts wall-clock time, so a machine that sleeps mid-load fails this way the
+ * moment it wakes. The transform itself still finishes and is cached; what does not recover is the
+ * import chain above it. Vite records the error as `ssrError` on every module in that chain,
+ * `ssrLoadModule` rethrows the entry's `ssrError` before importing anything, and the runner keeps
+ * each module's rejected promise. Every later request then fails with the original error — the
+ * same `send:<id>` — until a restart, or until an edit happens to invalidate the right file.
+ *
+ * The runner drops a module's promise only when a fetch answers `invalidate: true`, which Vite
+ * sends when it had to transform the module afresh. So after a failed load, every SSR module that
+ * was transformed but never evaluated — the failed chain, plus any module whose re-fetch was itself
+ * the one that timed out — is invalidated: Vite drops the error and the transform, the next fetch
+ * tells the runner to drop its promise, and the import re-runs. What already evaluated stays
+ * cached, so the retry resumes where the failed load stopped; a deterministic failure (an island
+ * that throws on import) just fails again with the same error.
+ *
+ * The reset runs inside `server.ssrLoadModule` — the call Fresh's dev middleware makes for every
+ * page — immediately before the retry, not when the failure is reported: a transform still in
+ * flight when the fetch timed out may land in between, and resetting first would miss it. Doing it
+ * only after a failure matters too, because while a load is evaluating, its modules look exactly
+ * like this (transformed, not yet evaluated) and must not be reset.
+ */
+function recoverFailedSsrLoad(): Plugin {
+	return {
+		name: "projective:recover-failed-ssr-load",
+		apply: "serve",
+		configureServer(server) {
+			const load = server.ssrLoadModule.bind(server);
+			let failed = false;
+
+			server.ssrLoadModule = async (url, opts) => {
+				if (failed) {
+					failed = false;
+					const graph = server.environments.ssr.moduleGraph;
+					for (const mod of graph.idToModuleMap.values()) {
+						const unevaluated = mod.transformResult !== null && mod.ssrModule === null;
+						if (unevaluated || mod.ssrError !== null) graph.invalidateModule(mod);
+					}
+				}
+				try {
+					return await load(url, opts);
+				} catch (error) {
+					failed = true;
+					throw error;
+				}
+			};
+		},
+	};
+}
+// #endregion
+
 // #region Vite Configuration
 export default defineConfig(({ mode }) => {
 	const isProduction = mode === "production";
@@ -799,6 +858,7 @@ export default defineConfig(({ mode }) => {
 			flattenManifestCss(),
 			vendorAssets(),
 			devClientAddress(),
+			recoverFailedSsrLoad(),
 			fresh({
 				islandSpecifiers,
 			}),
