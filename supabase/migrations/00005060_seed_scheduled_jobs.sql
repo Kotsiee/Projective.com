@@ -100,3 +100,96 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
         'Deletes /contact attachments nobody sent — older than 6 hours and linked to no request: soft-deletes each files.items row and removes its object (ContactBackendService.sweepAttachments).')
 ON CONFLICT (name) DO NOTHING;
 -- #endregion
+
+-- #region [comms] The notification engine (Q0.3: #343 D9, Decision #203 flag (a))
+-- The cadences of database/comms/Functions.md §Scheduled jobs, moved onto minutes no job above uses.
+-- The worker runs every minute so a T-5 reminder lands on time; each sweep is safe to repeat.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('comms-process-queue', 'sql', '* * * * *',
+        'SELECT comms.fn_process_queue(500);', NULL, NULL,
+        'Turns every due comms.notification_queue promise (session T-60/T-15/T-5 reminders, basket nudges, ghosting timers) into a notification through fn_notify; overlapping ticks skip each other''s rows, and a row that fails three times is parked as failed.'),
+    ('comms-escalate-unread', 'sql', '4-59/5 * * * *',
+        'SELECT comms.fn_escalate_unread(500);', NULL, NULL,
+        'Falls back to email, once, for each critical or high notification still unread past the user''s escalate_after window (within its first 24 hours).'),
+    ('comms-digest-daily', 'sql', '2 * * * *',
+        'SELECT comms.fn_build_digests(''daily'');', NULL, NULL,
+        'Builds the daily digest for every user whose local clock is in their digest_hour; a second run in the hour adds nothing.'),
+    ('comms-digest-weekly', 'sql', '8 * * * *',
+        'SELECT comms.fn_build_digests(''weekly'');', NULL, NULL,
+        'Builds the weekly digest, gated like the daily one and also on the user''s local digest weekday.'),
+    ('comms-sweep-expired', 'sql', '35 * * * *',
+        'SELECT comms.fn_sweep_expired();', NULL, NULL,
+        'Archives (never deletes) every notification past its expires_at.'),
+    ('comms-reap-devices', 'sql', '32 3 * * *',
+        'SELECT comms.fn_reap_dead_devices();', NULL, NULL,
+        'Soft-revokes each push device with 5 or more gateway failures or unseen for 180 days, and clears its keys.'),
+    ('comms-compact-events', 'sql', '47 3 * * *',
+        'SELECT comms.fn_compact_delivery_events();', NULL, NULL,
+        'Empties the raw provider body of delivery callbacks older than 30 days; the row stays, as it is the idempotency key.')
+ON CONFLICT (name) DO NOTHING;
+-- #endregion
+
+-- #region [projects] Claim-TTL auto-release (Q0.3: #338 D1)
+-- Registered PAUSED: as written the sweep takes no row lock and never re-checks `claimed`, so it can
+-- reset a ticket whose work has started (#338 flag (a)). PM-WP1 hardens it (SKIP LOCKED, a `claimed`
+-- re-check, a ticket_history row, notices to both sides) and turns it on here.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description, enabled) VALUES
+    ('projects-release-expired-claims', 'sql', '3,18,33,48 * * * *',
+        'SELECT projects.fn_release_expired_claims();', NULL, NULL,
+        'Claim-TTL auto-release ("Ticket Parking"): a ticket claimed for longer than claim_ttl_minutes goes back to the backlog and its escrow is refunded to the client.',
+        false)
+ON CONFLICT (name) DO NOTHING;
+-- #endregion
+
+-- #region [scheduling] Discovery-call expiry and vote settlement (Q0.3: #343 D9)
+-- Neither function exists yet; the scheduling track writes them (S-11, S-13). Each job registers itself
+-- on the first reset after its function lands, matched by name rather than signature so any argument
+-- list with defaults counts.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description)
+SELECT v.name, 'sql', v.schedule, v.command, NULL, NULL, v.description
+  FROM (VALUES
+    ('scheduling-expire-discovery-calls', '1,16,31,46 * * * *', 'SELECT scheduling.fn_expire_discovery_calls();',
+        'scheduling.fn_expire_discovery_calls',
+        'Expires every proposed discovery call past its proposal TTL (discovery_call_proposal_ttl_hours) or its proposed start, so a stale request stops holding free/busy (#343 D3).'),
+    ('scheduling-settle-votes', '11,26,41,56 * * * *', 'SELECT scheduling.fn_settle_votes();',
+        'scheduling.fn_settle_votes',
+        'Settles every reschedule vote past its deadline (fn_vote_deadline), so the round closes and its notices go out without anyone opening the event.')
+  ) AS v (name, schedule, command, function_name, description)
+ WHERE pg_catalog.to_regproc(v.function_name) IS NOT NULL
+ON CONFLICT (name) DO NOTHING;
+-- #endregion
+
+-- #region [finance] Card-payment recovery, spend-approval expiry, idempotency keys (Q0.3: #337)
+-- The N1 recovery sweep calls Stripe, so it is an http job on the deposits route's secret. Every 15
+-- minutes matches the claim's grace, after which an unpaid payment is asked about again.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('finance-sweep-card-payments', 'http', '13,28,43,58 * * * *',
+        NULL, '/api/finance/cron/card-payments?limit=50', 'FINANCE_CRON_SECRET',
+        'Credits card payments Stripe charged but the ledger never settled because every webhook delivery was lost: each payment unsettled 15 minutes after it last moved is looked up at Stripe, and a succeeded intent is settled through the webhook''s own door (PaymentBackendService.sweepUnsettledCardPayments).')
+ON CONFLICT (name) DO NOTHING;
+
+-- Neither function exists yet (FINANCE_BUILD_PROMPTS DB3 writes them); matched by name like the
+-- scheduling sweeps above.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description)
+SELECT v.name, 'sql', v.schedule, v.command, NULL, NULL, v.description
+  FROM (VALUES
+    ('finance-expire-spend-approvals', '12 * * * *', 'SELECT finance.fn_expire_spend_approvals();',
+        'finance.fn_expire_spend_approvals',
+        'Expires every pending spend approval past its 7-day expires_at, so a stale request stops waiting on an approver.'),
+    ('finance-sweep-idempotency-keys', '27 4 * * *', 'SELECT finance.fn_sweep_idempotency_keys();',
+        'finance.fn_sweep_idempotency_keys',
+        'Deletes finance.idempotency_keys rows expired more than 30 days ago; Stripe webhook keys are kept for replay safety.')
+  ) AS v (name, schedule, command, function_name, description)
+ WHERE pg_catalog.to_regproc(v.function_name) IS NOT NULL
+ON CONFLICT (name) DO NOTHING;
+-- #endregion
+
+-- #region [search] Query-log retention (Q0.3; finance-model.md §17)
+-- Query logs are kept 90 days, a security.platform_params dial per §17, so the job passes no period.
+-- No function prunes them yet; matched by name like the sweeps above.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description)
+SELECT 'search-query-log-retention', 'sql', '36 4 * * *', 'SELECT search.fn_prune_query_logs();', NULL, NULL,
+       'Deletes search.query_logs rows past their 90-day retention (finance-model.md §17).'
+ WHERE pg_catalog.to_regproc('search.fn_prune_query_logs') IS NOT NULL
+ON CONFLICT (name) DO NOTHING;
+-- #endregion
