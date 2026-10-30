@@ -40,7 +40,7 @@ import {
 } from "./live-wallet.ts";
 import * as actions from "./wallet-actions.ts";
 import { type RenderedDocument, renderInvoicePdf, renderStatementPdf } from "./finance-documents.ts";
-import type { WalletActionOutcome } from "./wallet-actions.ts";
+import type { RecurringRuleRequest, WalletActionOutcome } from "./wallet-actions.ts";
 import { resolveWalletContext, type WalletContext } from "./wallet-scope.ts";
 import type { ProposalAllowanceStatus } from "@projective/types/finance";
 import {
@@ -251,6 +251,10 @@ export class WalletBackendService {
 		return write("smoother", () => actions.enrolSmoother(input, query, actor));
 	}
 
+	static changeRecurring(input: RecurringRuleRequest, query: WalletQuery, actor: ReadActor) {
+		return write("recurring-change", () => actions.changeRecurring(input, query, actor));
+	}
+
 	/** Perform one validated {@link WalletActionRequest} — the single dispatch behind `POST /api/wallet/action`. */
 	static perform(
 		input: WalletActionRequest,
@@ -280,6 +284,11 @@ export class WalletBackendService {
 				return WalletBackendService.decideSpend(input, query, actor);
 			case "enrol_smoother":
 				return WalletBackendService.enrolSmoother(input, query, actor);
+			case "pause_recurring":
+			case "resume_recurring":
+			case "edit_recurring":
+			case "archive_recurring":
+				return WalletBackendService.changeRecurring(input, query, actor);
 		}
 	}
 	// #endregion

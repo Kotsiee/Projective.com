@@ -305,11 +305,15 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   dialogs the lane opens are hosted wherever the reader is. Their state lives in the query string:
   `?w=scope:id` selects which wallet is shown (a view filter, never a context switch — builders
   `walletHref()` and `walletPageHref()` in `apps/web/features/wallet/core/wallet-model.ts`, which keep
-  `w` and `display` on every page link), `?flow=7d|1m|3m|6m|1y|5y|all` the window on the three
-  pages read over one (overview · analytics draw cash flow over it, the ledger lists it; set from the
-  pinned range ruler; the pre-ruler names `week|month|quarter|year` still resolve; each page omits its
-  OWN default — `1m` for the cash-flow pages, `all` for the ledger, `defaultPeriodFor`),
-  `?display=` the currency the figures are drawn in. Two intents open the wallet mid-flow
+  `w` and `display` on every page link). `w` is `personal` · `aggregate` · `team:<id>` ·
+  `business:<id>` · `enterprise:<id>`, and every builder writes it, `w=personal` included: an
+  address without `w` shows the acting context's wallet, which in a team or business context is not
+  the personal one (`buildWalletQuery`, also for the island's `/api/wallet/*` reads).
+  `?flow=7d|1m|3m|6m|1y|5y|all` is the window on the three pages read over one (overview · analytics
+  draw cash flow over it, the ledger lists it; set from the pinned range ruler; the pre-ruler names
+  `week|month|quarter|year` still resolve; each page omits its OWN default — `1m` for the cash-flow
+  pages, `all` for the ledger, `defaultPeriodFor`), and `?display=` the currency the figures are drawn
+  in. Two intents open the wallet mid-flow
   (`apps/web/features/wallet/core/wallet-intent.ts`, Decision #243): `?do=<action>` opens that
   action's dialog once — only an action the wallet draws for the viewer, offered or locked with its
   reason — and is stripped from the address at once (`replaceState`), so a reload does not reopen it;

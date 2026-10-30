@@ -5,6 +5,7 @@ import type {
 	LedgerLine,
 	MoneyView,
 	PayoutScheduleView,
+	RecurringRuleAction,
 	SpendApprovalView,
 	WalletAction,
 	WalletOverview,
@@ -147,6 +148,13 @@ export type UpcomingAction =
 	| { kind: "action"; action: WalletAction; label: string; stageId?: string }
 	| { kind: "approval"; approvalId: string; label: string };
 
+/** An entry of a recurring deposit's row menu: an action on the rule the row shows. */
+export interface UpcomingRuleAction {
+	action: RecurringRuleAction;
+	ruleId: string;
+	label: string;
+}
+
 /** The kind of obligation a row represents. */
 export type UpcomingKind =
 	| "verify"
@@ -172,6 +180,8 @@ export interface UpcomingItem {
 	progress: number | null;
 	href: string | null;
 	action: UpcomingAction | null;
+	/** A recurring deposit's menu (Pause or Resume · Change amount · Remove), each entry as offered. */
+	menu?: UpcomingRuleAction[];
 	/** Needs a look: an overdue bill, a failing rule, an unstarted verification. */
 	attention: boolean;
 }
@@ -194,13 +204,21 @@ const MODE_LABEL: Readonly<Record<PayoutScheduleView["mode"], string>> = {
 
 /**
  * Assembles obligations, most urgent first: what needs the viewer, then money on its way in, then
- * standing arrangements. A row carries an action only when the server offered it.
+ * standing arrangements. A row carries an action only when the server offered it, and automation the
+ * server reports locked (Decision #337, ruling M6) never reads as running.
  */
 export function upcomingItems(src: UpcomingSources): UpcomingItem[] {
 	const { overview } = src;
 	const offered = new Set(overview.quickActions);
 	const offer = (action: WalletAction, label: string, stageId?: string): UpcomingAction | null =>
 		offered.has(action) ? { kind: "action", action, label, stageId } : null;
+	const ruleActions = new Set(overview.recurringActions);
+	const offerRule = (
+		action: RecurringRuleAction,
+		label: string,
+		ruleId: string,
+	): UpcomingRuleAction[] => ruleActions.has(action) ? [{ action, ruleId, label }] : [];
+	const locked = new Set(overview.locks.map((lock) => lock.code));
 	const items: UpcomingItem[] = [];
 
 	const v = overview.verification;
@@ -283,8 +301,8 @@ export function upcomingItems(src: UpcomingSources): UpcomingItem[] {
 		});
 	}
 
+	// A paused rule stays listed: its row is where it is resumed.
 	for (const rule of src.rules ?? []) {
-		if (!rule.active && !rule.failureNote) continue;
 		items.push({
 			id: `rule-${rule.id}`,
 			kind: "recurring",
@@ -299,6 +317,15 @@ export function upcomingItems(src: UpcomingSources): UpcomingItem[] {
 			progress: null,
 			href: null,
 			action: null,
+			menu: [
+				...offerRule(
+					rule.active ? "pause_recurring" : "resume_recurring",
+					rule.active ? "Pause" : "Resume",
+					rule.id,
+				),
+				...offerRule("edit_recurring", "Change amount", rule.id),
+				...offerRule("archive_recurring", "Remove", rule.id),
+			],
 			attention: rule.failureNote !== null,
 		});
 	}
@@ -310,7 +337,7 @@ export function upcomingItems(src: UpcomingSources): UpcomingItem[] {
 			kind: "payout",
 			title: `${MODE_LABEL[schedule.mode]} payout`,
 			meta: schedule.destinationLabel ? `To ${schedule.destinationLabel}` : null,
-			when: schedule.nextRunLabel,
+			when: locked.has("schedule_not_running") ? "Not running yet" : schedule.nextRunLabel,
 			amount: schedule.mode === "threshold" ? schedule.threshold : null,
 			progress: null,
 			href: null,
@@ -321,12 +348,13 @@ export function upcomingItems(src: UpcomingSources): UpcomingItem[] {
 
 	const smoother = overview.personal?.incomeSmoother;
 	if (smoother?.status === "enrolled") {
+		const planned = locked.has("smoother_planned");
 		items.push({
 			id: "smoother",
 			kind: "smoother",
 			title: "Income Smoother",
-			meta: "Paid out as a steady monthly figure",
-			when: "Monthly",
+			meta: planned ? "Enrolled · not paying out yet" : "Paid out as a steady monthly figure",
+			when: planned ? null : "Monthly",
 			amount: smoother.projected ?? smoother.targetMonthly,
 			progress: null,
 			href: null,

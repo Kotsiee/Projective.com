@@ -1,4 +1,5 @@
 import { assert, assertEquals, assertFalse } from "@std/assert";
+import type { UserContext } from "@projective/types/auth";
 import type { LedgerLine, MoneyView, WalletAction, WalletOverview } from "../types/wallet-types.ts";
 import { allocationSlices } from "../types/wallet-types.ts";
 import {
@@ -11,6 +12,7 @@ import {
 	upcomingItems,
 } from "./wallet-home.ts";
 import {
+	buildWalletQuery,
 	defaultPeriodFor,
 	FLOW_PERIODS,
 	hasTrend,
@@ -27,6 +29,7 @@ import {
 	viewShowsRuler,
 	walletHref,
 	walletPageHref,
+	walletQueryFrom,
 	withLedgerFilters,
 } from "./wallet-model.ts";
 
@@ -72,6 +75,8 @@ function overview(patch: Partial<WalletOverview> = {}): WalletOverview {
 		recent: [],
 		quickActions: [],
 		unavailable: [],
+		locks: [],
+		recurringActions: [],
 		capabilities: ["view"],
 		verification: {
 			subject: "freelancer",
@@ -298,6 +303,81 @@ Deno.test("a payout schedule row is omitted while payouts are manual", () => {
 	assertEquals(items, []);
 });
 
+Deno.test("a recurring row carries the rule actions offered, and a paused rule stays to be resumed", () => {
+	const rule = (id: string, active: boolean) => ({
+		id,
+		amount: money(2_500),
+		interval: "monthly" as const,
+		sourceLabel: "Visa ·· 4242",
+		nextRunLabel: "Wed 1 Oct",
+		active,
+		failureNote: null,
+	});
+	const rules = [rule("r-on", true), rule("r-off", false)];
+	const items = upcomingItems({
+		overview: overview({
+			recurringActions: [
+				"pause_recurring",
+				"resume_recurring",
+				"edit_recurring",
+				"archive_recurring",
+			],
+		}),
+		rules,
+	});
+	assertEquals(items.map((i) => i.when), ["Wed 1 Oct", "Paused"]);
+	assertEquals(items.map((i) => i.id), ["rule-r-on", "rule-r-off"]);
+	assertEquals(items[0].menu?.map((m) => m.label), ["Pause", "Change amount", "Remove"]);
+	assertEquals(items[1].menu?.map((m) => [m.action, m.ruleId]), [
+		["resume_recurring", "r-off"],
+		["edit_recurring", "r-off"],
+		["archive_recurring", "r-off"],
+	]);
+	assertEquals(items[0].action, null, "a rule's actions are its menu, not one trailing button");
+	const refused = upcomingItems({ overview: overview(), rules });
+	assertEquals(
+		refused.map((i) => i.menu),
+		[[], []],
+		"a viewer the door would refuse is offered none",
+	);
+});
+
+Deno.test("automation the server reports locked never reads as running (Decision #337, ruling M6)", () => {
+	const schedule = {
+		mode: "scheduled_monthly" as const,
+		destinationLabel: "Monzo ·· 4410",
+		threshold: null,
+		instant: false,
+		nextRunLabel: "Next run Wed 1 Oct",
+	};
+	const personal = {
+		incomeSmoother: {
+			status: "enrolled" as const,
+			feeBp: 50,
+			monthsRequired: 3,
+			monthsElapsed: 5,
+			weeksToGo: 0,
+			targetMonthly: money(300_000),
+			projected: money(298_500),
+		},
+		taxPot: null,
+		pots: [],
+		projectedFromLocked: null,
+		fundingSource: null,
+		spentThisMonth: null,
+		fundable: [],
+	};
+	const locks = [
+		{ code: "schedule_not_running" as const, reason: "Scheduled payouts don't run yet." },
+		{ code: "smoother_planned" as const, reason: "The smoother is planned." },
+	];
+	const [payout, smoother] = upcomingItems({ overview: overview({ personal, locks }), schedule });
+	assertEquals([payout.kind, payout.when], ["payout", "Not running yet"]);
+	assertEquals([smoother.meta, smoother.when], ["Enrolled · not paying out yet", null]);
+	const [runs, pays] = upcomingItems({ overview: overview({ personal }), schedule });
+	assertEquals([runs.when, pays.when], ["Next run Wed 1 Oct", "Monthly"], "once the engines run");
+});
+
 Deno.test("flow bars share one peak across money in and out, and an empty window is flat", () => {
 	const bars = flowBars([
 		{ label: "1 Sep", start: "2026-09-01", inMinor: 400, outMinor: 100, netMinor: 300 },
@@ -332,7 +412,7 @@ Deno.test("period, range and address helpers", () => {
 	for (const period of FLOW_PERIODS) {
 		assertEquals(toActivityRange(periodRange(period)), periodRange(period));
 	}
-	assertEquals(walletHref("personal", null), "/wallet");
+	assertEquals(walletHref("personal", null), "/wallet?w=personal");
 	assertEquals(
 		walletHref("team:abc", "EUR", "upcoming"),
 		"/wallet?w=team%3Aabc&display=EUR#upcoming",
@@ -455,27 +535,42 @@ Deno.test("the ledger's filters live in its address, defaults omitted, and map t
 });
 
 Deno.test("wallet pages keep the wallet and currency, and carry a window only where one is drawn", () => {
-	assertEquals(walletPageHref("overview", "personal", "GBP"), "/wallet?display=GBP");
+	assertEquals(walletPageHref("overview", "personal", "GBP"), "/wallet?w=personal&display=GBP");
 	assertEquals(
 		walletPageHref("transactions", "team:t1", "EUR", "1y"),
 		"/wallet/transactions?w=team%3At1&display=EUR&flow=1y",
 	);
 	// Each page leaves off its OWN default window: the ledger lists everything, the charts a month.
-	assertEquals(walletPageHref("transactions", "personal", null, "all"), "/wallet/transactions");
+	assertEquals(
+		walletPageHref("transactions", "personal", null, "all"),
+		"/wallet/transactions?w=personal",
+	);
 	assertEquals(
 		walletPageHref("transactions", "personal", null, "1m"),
-		"/wallet/transactions?flow=1m",
+		"/wallet/transactions?w=personal&flow=1m",
 	);
 	assertEquals(defaultPeriodFor("transactions"), "all");
 	assertEquals(defaultPeriodFor("analytics"), "1m");
 	assertEquals(
 		walletPageHref("analytics", "personal", null, "1y"),
-		"/wallet/analytics?flow=1y",
+		"/wallet/analytics?w=personal&flow=1y",
 	);
 	// The default window is the absence of `?flow=`, never a redundant copy of it.
-	assertEquals(walletPageHref("analytics", "personal", null, "1m"), "/wallet/analytics");
+	assertEquals(walletPageHref("analytics", "personal", null, "1m"), "/wallet/analytics?w=personal");
 	assert(viewShowsRuler("overview"));
 	assertFalse(viewShowsRuler("invoices"));
+});
+
+Deno.test("the personal wallet is addressed by name, so a team or business context never swaps it", () => {
+	const team = "4b1d0c2e-9f3a-4d5b-8c6e-7a8b9c0d1e2f";
+	const acting = (contextType: string) =>
+		({ contextType, contextId: team, displayCurrency: null }) as unknown as UserContext;
+	for (const context of [acting("team"), acting("business"), acting("personal")]) {
+		const query = new URLSearchParams(buildWalletQuery({ wallet: "personal" }));
+		assertEquals(walletQueryFrom(query, context).wallet, "personal", context.contextType);
+	}
+	// An address with no `w` is the acting context's own wallet.
+	assertEquals(walletQueryFrom(new URLSearchParams(""), acting("team")).wallet, `team:${team}`);
 });
 
 Deno.test("a pathname names a wallet page, or none", () => {

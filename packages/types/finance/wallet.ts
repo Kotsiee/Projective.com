@@ -122,6 +122,33 @@ export const WalletAction = z.enum([
 	"enrol_smoother",
 ]);
 export type WalletAction = z.infer<typeof WalletAction>;
+
+/**
+ * What a viewer may do to one standing top-up through `finance.update_deposit_rule`
+ * (FINANCE_COMPLETENESS_AUDIT A13): pause it, resume it, change its amount, or remove it for good.
+ * Each acts on a single rule, so none is a quick action: a rule's Upcoming row carries them.
+ */
+export const RecurringRuleAction = z.enum([
+	"pause_recurring",
+	"resume_recurring",
+	"edit_recurring",
+	"archive_recurring",
+]);
+export type RecurringRuleAction = z.infer<typeof RecurringRuleAction>;
+
+/**
+ * Why an automation control is locked until its engine runs (Decision #337, ruling M6), in the order
+ * the engines are built: `schedule_not_running` locks set_payout's scheduled modes (a manual payout
+ * stays savable; DB4 lifts it), `pots_not_running` every pot control (UI3 lifts it), and
+ * `smoother_planned` the Income Smoother's enrolment (it stays until a PRODUCT_SPEC.md entry and an
+ * engine exist). A refusal names its lock in `details.reason`.
+ */
+export const WalletLockCode = z.enum([
+	"schedule_not_running",
+	"pots_not_running",
+	"smoother_planned",
+]);
+export type WalletLockCode = z.infer<typeof WalletLockCode>;
 // #endregion
 
 // #region Wallet reference + switcher
@@ -775,6 +802,19 @@ export const WalletOverviewSchema = z.object({
 	 */
 	unavailable: z.array(z.object({ action: WalletAction, reason: z.string().max(200) })).max(10)
 		.default([]),
+	/**
+	 * Automation offered here that stays locked until its engine runs (Decision #337, ruling M6), each
+	 * with the sentence its LockedDialog shows: listed whenever the control would be offered, never
+	 * dropped for being locked, and refused server-side regardless. The smoother's enrolment, locked
+	 * whole, is also `unavailable`.
+	 */
+	locks: z.array(z.object({ code: WalletLockCode, reason: z.string().max(200) })).max(3)
+		.default([]),
+	/**
+	 * The recurring-deposit actions this viewer may take on the wallet's rules: the ones
+	 * `finance.update_deposit_rule` accepts from them (the wallet's owner, or `add_funds` on a vault).
+	 */
+	recurringActions: z.array(RecurringRuleAction).max(4).default([]),
 	capabilities: z.array(VaultCapability),
 	verification: WalletVerificationSchema,
 	/**
@@ -1311,9 +1351,15 @@ export const AddMethodInputSchema = z.object({
 });
 export type AddMethodInput = z.infer<typeof AddMethodInputSchema>;
 
-/** Set the payout schedule. */
+/**
+ * Set the payout schedule of the wallet's `currency` (one per owner and currency; FCA N17). Without
+ * one it is the wallet's only currency; a wallet holding several is refused until one is named (a
+ * money path fails closed, never a guess). Only `manual` saves while scheduled payouts do not run
+ * (`schedule_not_running`, Decision #337, ruling M6).
+ */
 export const PayoutScheduleInputSchema = z.object({
 	...targetShape,
+	currency: currency.optional(),
 	mode: PayoutMode,
 	thresholdMinor: minorUnitsPositive.nullable(),
 	destinationId: z.string().max(64).nullable(),
@@ -1358,6 +1404,20 @@ export const IncomeSmootherEnrolInputSchema = z.object({
 });
 export type IncomeSmootherEnrolInput = z.infer<typeof IncomeSmootherEnrolInputSchema>;
 
+/** Pause, resume or remove one recurring deposit on the target wallet. */
+export const RecurringRuleInputSchema = z.object({
+	...targetShape,
+	ruleId: uuid,
+});
+export type RecurringRuleInput = z.infer<typeof RecurringRuleInputSchema>;
+
+/** Change a recurring deposit's amount, in the rule's own currency (a rule's currency never changes). */
+export const RecurringAmountInputSchema = RecurringRuleInputSchema.extend({
+	amountMinor: minorUnitsPositive,
+	currency,
+});
+export type RecurringAmountInput = z.infer<typeof RecurringAmountInputSchema>;
+
 /**
  * The `POST /api/wallet/action` body: one of the mutation payloads above, discriminated by `action`.
  * Each member's field errors keep the same paths as its own schema.
@@ -1374,6 +1434,10 @@ export const WalletActionRequestSchema = z.discriminatedUnion("action", [
 	SpendRequestInputSchema.extend({ action: z.literal("request_spend") }),
 	SpendDecisionInputSchema.extend({ action: z.literal("spend_decision") }),
 	IncomeSmootherEnrolInputSchema.extend({ action: z.literal("enrol_smoother") }),
+	RecurringRuleInputSchema.extend({ action: z.literal("pause_recurring") }),
+	RecurringRuleInputSchema.extend({ action: z.literal("resume_recurring") }),
+	RecurringAmountInputSchema.extend({ action: z.literal("edit_recurring") }),
+	RecurringRuleInputSchema.extend({ action: z.literal("archive_recurring") }),
 ]);
 export type WalletActionRequest = z.infer<typeof WalletActionRequestSchema>;
 

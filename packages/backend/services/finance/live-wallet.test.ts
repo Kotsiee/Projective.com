@@ -1,7 +1,9 @@
 import { assert, assertEquals, assertFalse } from "@std/assert";
 import type { MoneyProjector } from "./commerce-money.ts";
 import {
+	actionsFor,
 	decidableBy,
+	LOCK_REASON,
 	pendingByState,
 	type SmootherRow,
 	smootherRowFor,
@@ -10,7 +12,7 @@ import {
 	walletParamsOf,
 } from "./live-wallet.ts";
 import type { TxnRow } from "./wallet-ledger.ts";
-import { expandCapabilities } from "./wallet-scope.ts";
+import { expandCapabilities, type WalletAccount } from "./wallet-scope.ts";
 
 /** A projector that prices every amount in its own currency, so a test reads the stored figures. */
 function projector(): MoneyProjector {
@@ -55,6 +57,105 @@ function smoother(currency: string, enrolled: boolean, target: number | null = n
 		eligibility_met: enrolled,
 	};
 }
+
+// #region M6: locked automation, and who may change a recurring deposit
+const TEAM = "4b1d0c2e-9f3a-4d5b-8c6e-7a8b9c0d1e2f";
+
+function account(scope: "personal" | "team", caps: string[]): WalletAccount {
+	return {
+		scope,
+		id: scope === "personal" ? "" : TEAM,
+		key: scope === "personal" ? "personal" : `team:${TEAM}`,
+		owner: {} as WalletAccount["owner"],
+		rows: [{
+			id: `w-${scope}`,
+			owner_type: scope === "personal" ? "freelancer" : "team",
+			owner_id: scope === "personal" ? "u-1" : TEAM,
+			currency: "USD",
+			balance_cents: 10_000,
+			approval_threshold_cents: null,
+		}],
+		role: scope === "personal" ? null : "member",
+		capabilities: expandCapabilities(caps),
+	};
+}
+
+const SELLER = account("personal", ["manage_members"]);
+const ELIGIBLE = smootherState(projector(), null, "USD", [earning("USD", 130)], PARAMS);
+const ALL_RULE_ACTIONS = [
+	"pause_recurring",
+	"resume_recurring",
+	"edit_recurring",
+	"archive_recurring",
+];
+
+Deno.test("actionsFor: a holder is offered every automation, locked with its reason, never dropped", () => {
+	assertEquals(ELIGIBLE.status, "eligible");
+	const out = actionsFor("personal", SELLER, [SELLER], ELIGIBLE, [], true, false);
+	assert(out.offered.includes("set_payout"), "a manual payout stays offered");
+	assert(out.offered.includes("enrol_smoother"), "a locked enrolment is still drawn");
+	assertEquals(out.locks.map((l) => l.code), [
+		"schedule_not_running",
+		"pots_not_running",
+		"smoother_planned",
+	]);
+	assertEquals(out.locks.map((l) => l.reason), out.locks.map((l) => LOCK_REASON[l.code]));
+	assertEquals(
+		out.unavailable.find((u) => u.action === "enrol_smoother")?.reason,
+		LOCK_REASON.smoother_planned,
+		"the enrolment opens LockedDialog with the lock's sentence",
+	);
+	assertFalse(
+		out.unavailable.some((u) => u.action === "set_payout"),
+		"only the scheduled modes are locked; a manual payout saves",
+	);
+	assertEquals(out.recurring, ALL_RULE_ACTIONS, "the owner of a personal wallet changes its rules");
+});
+
+Deno.test("actionsFor: a member holding nothing is offered nothing, so nothing is locked", () => {
+	const viewer = account("team", ["view"]);
+	const out = actionsFor("team", viewer, [SELLER, viewer], null, [], true, true);
+	assertEquals([out.offered, out.unavailable, out.locks, out.recurring], [[], [], [], []]);
+});
+
+Deno.test("actionsFor: each lock follows the control it locks", () => {
+	const lockOf = (caps: string[]) =>
+		actionsFor("team", account("team", caps), [SELLER], null, [], true, true).locks.map((l) =>
+			l.code
+		);
+	assertEquals(
+		lockOf(["view", "withdraw"]),
+		["schedule_not_running"],
+		"set_payout's scheduled modes",
+	);
+	assertEquals(
+		lockOf(["view", "distribute"]),
+		["pots_not_running"],
+		"a pot is saved with distribute",
+	);
+	assertEquals(lockOf(["view", "add_funds"]), []);
+	const ineligible = smootherState(projector(), null, "USD", [], PARAMS);
+	const seller = actionsFor("personal", SELLER, [SELLER], ineligible, [], true, false);
+	assert(
+		seller.locks.some((l) => l.code === "smoother_planned"),
+		"the smoother card is locked too",
+	);
+	assertFalse(
+		seller.offered.includes("enrol_smoother"),
+		"an ineligible seller has nothing to enrol in",
+	);
+});
+
+Deno.test("actionsFor: recurring deposits are changed by an add_funds holder on a vault, and no one else", () => {
+	const funder = account("team", ["view", "add_funds"]);
+	assertEquals(
+		actionsFor("team", funder, [SELLER], null, [], true, true).recurring,
+		ALL_RULE_ACTIONS,
+	);
+	const spender = account("team", ["view", "spend", "withdraw"]);
+	assertEquals(actionsFor("team", spender, [SELLER], null, [], true, true).recurring, []);
+});
+// #endregion
 
 // #region V6: decidable
 Deno.test("decidable: an approver decides a colleague's pending request, and no one else does", () => {
