@@ -204,16 +204,15 @@ Deno.test("voyageEmbed — a response with the wrong width is refused, not store
 	if (!out.ok) assertEquals(out.reason, "invalid_response");
 });
 
-Deno.test("embeddingsUrlFor — Atlas by default, Voyage for a platform key, an explicit host wins", () => {
-	assertEquals(embeddingsUrlFor("al-atlas-model-key"), "https://ai.mongodb.com/v1/embeddings");
-	assertEquals(embeddingsUrlFor("pa-platform-key"), "https://api.voyageai.com/v1/embeddings");
+Deno.test("embeddingsUrlFor — Voyage AI by default, whatever the key; an explicit mock host wins", () => {
+	assertEquals(embeddingsUrlFor(), "https://api.voyageai.com/v1/embeddings");
 	assertEquals(
-		embeddingsUrlFor("pa-platform-key", "https://eu.ai.mongodb.com/"),
-		"https://eu.ai.mongodb.com/v1/embeddings",
+		embeddingsUrlFor("http://127.0.0.1:8787/"),
+		"http://127.0.0.1:8787/v1/embeddings",
 	);
 	assertEquals(
-		embeddingsUrlFor("al-atlas-model-key", "not a url"),
-		"https://ai.mongodb.com/v1/embeddings",
+		embeddingsUrlFor("not a url"),
+		"https://api.voyageai.com/v1/embeddings",
 		"an unusable override is ignored, not followed",
 	);
 });

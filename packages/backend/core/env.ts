@@ -205,14 +205,14 @@ export interface ServerEnv {
 	/**
 	 * The Voyage AI key, from `VOYAGE_API_KEY`. Server-only: it is sent only as the `Authorization`
 	 * header of `POST {host}/v1/embeddings` and is never logged, echoed in an error or sent to a client.
-	 * The `XXXX-XXXX` placeholder counts as absent. A MongoDB Atlas model API key is answered by
-	 * `https://ai.mongodb.com`; a Voyage platform key (`pa-…`) only by `https://api.voyageai.com` — the
-	 * client picks the host from the key unless {@link voyageApiBase} names one.
+	 * The `XXXX-XXXX` placeholder counts as absent. It is a Voyage platform key (`pa-…`): every call
+	 * goes to `https://api.voyageai.com` whatever the key looks like (Decision #340, ruling T5), unless
+	 * {@link voyageApiBase} points the client at a mock.
 	 */
 	voyageApiKey: string | undefined;
 	/**
-	 * Optional explicit embeddings host (`https://ai.mongodb.com`, `https://api.voyageai.com`, or a mock),
-	 * from `VOYAGE_API_BASE`. Absent: chosen from the key's kind (`services/search/voyage-client.ts`).
+	 * Optional embeddings host for a mock, from `VOYAGE_API_BASE`. Absent: Voyage AI
+	 * (`services/search/voyage-client.ts`).
 	 */
 	voyageApiBase: string | undefined;
 	/**
@@ -294,9 +294,10 @@ export interface ServerEnv {
 	 */
 	contactCronSecret: string | undefined;
 	/**
-	 * The Google Safe Browsing (v4 Lookup) API key a link's reputation is checked against, from
-	 * `LINK_SAFETY_API_KEY`. Server-only. The `XXXX-XXXX` placeholder counts as absent
-	 * (`files/link-reputation.ts`), and an absent key skips the reputation check rather than failing it.
+	 * The Google Web Risk API key a link's reputation is checked against (Decision #340, ruling T5),
+	 * from `LINK_SAFETY_API_KEY`. Server-only, sent only in the `x-goog-api-key` header. The
+	 * `XXXX-XXXX` placeholder counts as absent (`files/link-reputation.ts`), and an absent key skips
+	 * the reputation check rather than failing it.
 	 */
 	linkSafetyApiKey: string | undefined;
 	/**

@@ -66,12 +66,12 @@ or Upwork-style platform that pipes every message through a hosted trust-and-saf
 | 1  | Stripe Payments + Connect Express (Accounts v2)         | Financial rails        | MVP                  | **Shipped** in test mode; live mode never exercised          | `FINANCE_BACKEND_LIVE`                                            | `core/stripe.ts` · `services/finance/{PaymentBackendService,stripe-rails,stripe-webhook}.ts` |
 | 2  | Stripe Identity (Level 2 KYC)                           | Identity               | MVP                  | **Shipped** (test)                                           | same + `security.platform_params.identity_sessions_per_day`       | `PaymentBackendService.createIdentitySession`                                                |
 | 3  | Stripe Connect onboarding as KYB (Level 3)              | Identity               | MVP                  | **Shipped** (test)                                           | same                                                              | `PaymentBackendService.startKybOnboarding`                                                   |
-| 4  | Voyage AI `voyage-4`                                    | AI / embeddings        | MVP (off by default) | **Wired · gated off**                                        | `EMBEDDINGS_ENABLED` (+ `pj.dev.embeddings` in development)       | `services/search/{EmbeddingBackendService,voyage-client,embedding-sync}.ts`                  |
+| 4  | Voyage AI `voyage-4` (`api.voyageai.com` only, T5)      | AI / embeddings        | MVP (off by default) | **Wired · gated off**                                        | `EMBEDDINGS_ENABLED` (+ `pj.dev.embeddings` in development)       | `services/search/{EmbeddingBackendService,voyage-client,embedding-sync}.ts`                  |
 | 5  | Microsoft Presidio Analyzer + Anonymizer                | Content safety         | MVP (Tier 3)         | **Planned (SSOT)**                                           | **Proposed** `MODERATION_BACKEND_LIVE`                            | **Proposed** `services/moderation/`                                                          |
 | 6  | NudeNet + Presidio Image Redactor                       | Content safety         | MVP (public media)   | **Planned (SSOT)**                                           | same                                                              | `services/media/MediaBackendService.ts` (publish step)                                       |
 | 7  | ClamAV                                                  | Upload hygiene         | MVP                  | **Stub**: magic-byte sniff only                              | **Proposed** `MALWARE_SCAN_LIVE`                                  | `services/files/live-uploads.ts` · `services/contact/live-attachments.ts`                    |
 | 8  | VirusTotal                                              | Upload hygiene         | Growth, optional     | **Stub**: an unused key in a defective Edge Function         | none                                                              | none (see §6.4)                                                                              |
-| 9  | Google Safe Browsing v4 (→ Web Risk, §6.5)              | Link safety            | MVP                  | **Wired · gated off**                                        | `FILES_BACKEND_LIVE`                                              | `services/files/link-reputation.ts`                                                          |
+| 9  | Google Web Risk (§6.5; replaced Safe Browsing v4, T5)   | Link safety            | MVP                  | **Wired · gated off**                                        | `FILES_BACKEND_LIVE`                                              | `services/files/link-reputation.ts`                                                          |
 | 10 | Google Calendar + Meet                                  | Connector              | MVP                  | **Stub**: catalogue row disabled, consent refused            | `INTEGRATIONS_BACKEND_LIVE` + `integrations.providers.is_enabled` | `services/integrations/IntegrationsBackendService.ts`                                        |
 | 11 | Google Drive                                            | Connector              | Growth               | **Stub**: adapter built, unreachable                         | same                                                              | `services/integrations/adapters/GoogleDriveAdapter.ts`                                       |
 | 12 | Microsoft Graph (Outlook, Teams, OneDrive / SharePoint) | Connector              | MVP / Growth         | **Stub**                                                     | same                                                              | `IntegrationsBackendService.ts` · `adapters/OneDriveAdapter.ts`                              |
@@ -109,8 +109,9 @@ In order of risk:
    and the Connect platform profile are not set up, and the manual test-mode run is still
    outstanding (`SYSTEM_ARCHITECTURE.md` §1.3: hosted onboarding, the 3-D Secure UI and live
    `stripe listen` were "not exercised"). See §4.
-6. **The link-safety licence.** The Safe Browsing Lookup API v4 is licensed for non-commercial use.
-   A commercial platform must use Google Web Risk. See §6.5.
+6. **Link safety.** The Safe Browsing Lookup API v4 is licensed for non-commercial use, so
+   `link-reputation.ts` calls Google Web Risk (ruling T5). Each environment still needs a Google
+   Cloud project and a key restricted to Web Risk. See §6.5.
 7. **Presidio Tier 3.** This is desirable but can trail the others. Tier 2 (`comms.mask_pii`) is the
    guarantee. Tier 3 supplies evidence for the Consequences ladder. See §6.2.
 
@@ -150,7 +151,7 @@ Browser / PWA ──────►│ Fresh app (Deno)  thin routes → fat ser
                      │   │                                                                            │
                      │   ├── Zone D: safety node (private link only) ── Presidio · NudeNet/OCR · ClamAV  │
                      │   │                                                                            │
-                     │   └── Zone E: SaaS ── Stripe · Voyage/Atlas · Web Risk · Turnstile siteverify ·  │
+                     │   └── Zone E: SaaS ── Stripe · Voyage · Web Risk · Turnstile siteverify ·        │
                      │                      Google / Microsoft / Zoom APIs · email · push gateways ·   │
                      │                      AWS KMS + STS                                              │
                      └────────────────────────────────────────────────────────────────────────────────┘
@@ -188,12 +189,12 @@ Every inbound endpoint follows the webhook standard in §3.3. A new route lands 
 These are the hosts each runtime must reach. The table feeds the production firewall and the Deno
 `--allow-net` manifest (`SYSTEM_ARCHITECTURE.md` §Runtime: "never `--allow-all` in production").
 
-| Runtime        | Hosts                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| :------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| App (Zone B)   | `api.stripe.com` · `ai.mongodb.com` **or** `api.voyageai.com` · `webrisk.googleapis.com` (today `safebrowsing.googleapis.com`) · `challenges.cloudflare.com` · `oauth2.googleapis.com` · `www.googleapis.com` · `login.microsoftonline.com` · `graph.microsoft.com` · `zoom.us` · `api.zoom.us` · `api.dropboxapi.com` · `content.dropboxapi.com` · `sts.{region}.amazonaws.com` · `kms.{region}.amazonaws.com` · the email API host · the safety node's private address · the Supabase origin |
-| App, exception | **Arbitrary hosts.** The link scanner (`link-fetch.ts`) and custom S3-compatible endpoints connect to a host a person chose, through a pinned, guarded socket. The app's `--allow-net` therefore cannot be a closed list while those paths are live. The guards (§6.5) are the control, not the permission flag.                                                                                                                                                                               |
-| Edge Functions | `api.push.apple.com` · `fcm.googleapis.com` · `oauth2.googleapis.com` · the email API host · **arbitrary Web Push endpoints** (each browser vendor's push service). This is one reason dispatch runs in Zone C rather than in the app.                                                                                                                                                                                                                                                         |
-| Safety node    | `database.clamav.net` (freshclam) only. Everything else is denied. Models are baked into the images at build time.                                                                                                                                                                                                                                                                                                                                                                             |
+| Runtime        | Hosts                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| :------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| App (Zone B)   | `api.stripe.com` · `api.voyageai.com` · `webrisk.googleapis.com` · `challenges.cloudflare.com` · `oauth2.googleapis.com` · `www.googleapis.com` · `login.microsoftonline.com` · `graph.microsoft.com` · `zoom.us` · `api.zoom.us` · `api.dropboxapi.com` · `content.dropboxapi.com` · `sts.{region}.amazonaws.com` · `kms.{region}.amazonaws.com` · the email API host · the safety node's private address · the Supabase origin |
+| App, exception | **Arbitrary hosts.** The link scanner (`link-fetch.ts`) and custom S3-compatible endpoints connect to a host a person chose, through a pinned, guarded socket. The app's `--allow-net` therefore cannot be a closed list while those paths are live. The guards (§6.5) are the control, not the permission flag.                                                                                                                 |
+| Edge Functions | `api.push.apple.com` · `fcm.googleapis.com` · `oauth2.googleapis.com` · the email API host · **arbitrary Web Push endpoints** (each browser vendor's push service). This is one reason dispatch runs in Zone C rather than in the app.                                                                                                                                                                                           |
+| Safety node    | `database.clamav.net` (freshclam) only. Everything else is denied. Models are baked into the images at build time.                                                                                                                                                                                                                                                                                                               |
 
 ---
 
@@ -267,7 +268,7 @@ The Stripe and Zoom handlers set the house pattern. Every new inbound endpoint c
 | Provider                                          | Personal data it receives                                                                                                        | Zone             | Basis                                | Before go-live                                                                                          |
 | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------- | :--------------- | :----------------------------------- | :------------------------------------------------------------------------------------------------------ |
 | Stripe (Payments, Connect, Identity)              | Collected **by Stripe directly**: card, bank, legal name, date of birth, ID document, selfie. Projective stores opaque ids only. | Money            | Contract; legal obligation (KYC/AML) | Stripe DPA; Identity data-retention settings; list Stripe in the privacy notice                         |
-| Voyage AI / MongoDB Atlas                         | Public catalogue text, plus **search queries**, which can contain whatever a person types                                        | Public           | Legitimate interest                  | DPA. Confirm no-training and retention terms in writing, and keep `EMBEDDINGS_ENABLED=false` until then |
+| Voyage AI (`api.voyageai.com` only, T5)           | Public catalogue text, plus **search queries**, which can contain whatever a person types                                        | Public           | Legitimate interest                  | DPA. Confirm no-training and retention terms in writing, and keep `EMBEDDINGS_ENABLED=false` until then |
 | Google Web Risk                                   | Full URLs posted in messages and attachments                                                                                     | Private metadata | Legitimate interest (security)       | Google Cloud DPA. Disclosed in Decision #128                                                            |
 | Cloudflare Turnstile                              | IP address and browser signals                                                                                                   | Public           | Legitimate interest                  | Cloudflare DPA. Projective also stores `ip` + `token_prefix` and must purge them (§9.1)                 |
 | Email provider                                    | Recipient address and name; message content (links, notification text)                                                           | Account          | Contract                             | DPA, EU region if offered, provider log retention configured                                            |
@@ -506,7 +507,7 @@ heuristic ranking (`SEMANTIC_BLEND_WEIGHT`) and serves the `/view` "Similar" rai
 | Concern                         | File                                                                                                      |
 | :------------------------------ | :-------------------------------------------------------------------------------------------------------- |
 | The single switch               | `isEmbeddingsLive(req?)` in `packages/backend/core/supabase.ts` (gate logic in `core/embeddings-gate.ts`) |
-| HTTP client, host choice        | `services/search/voyage-client.ts` (`ATLAS_EMBEDDINGS_URL` · `VOYAGE_PLATFORM_EMBEDDINGS_URL`)            |
+| HTTP client (Voyage only, T5)   | `services/search/voyage-client.ts` (`VOYAGE_PLATFORM_EMBEDDINGS_URL`)                                     |
 | Query embedding, cache, breaker | `services/search/EmbeddingBackendService.ts`                                                              |
 | Text to embed                   | `packages/backend/core/embedding-text.ts`                                                                 |
 | Post-commit re-embed            | `services/search/embedding-sync.ts` (30 s settle, `REEMBED_SETTLE_MS`)                                    |
@@ -539,11 +540,9 @@ heuristic ranking (`SEMANTIC_BLEND_WEIGHT`) and serves the `/view` "Similar" rai
 
 ### 5.3 Setup runbook
 
-1. **Choose the host.**
-   - A **MongoDB Atlas model API key** is answered at `https://ai.mongodb.com`. This is the default.
-   - A **Voyage platform key** (`pa-…`) is answered at `https://api.voyageai.com`.
-   - The client picks the host from the key. Set `VOYAGE_API_BASE` only to force one, or to point at
-     a mock.
+1. **The host is Voyage AI.** Every call goes to `https://api.voyageai.com` with a Voyage platform
+   key (`pa-…`), whatever the key looks like (Decision #340, ruling T5; #339 (d)). MongoDB Atlas is
+   not a processor. Set `VOYAGE_API_BASE` only to point the client at a mock.
 2. Put `VOYAGE_API_KEY` in the host's secret store. It is server-only and never logged.
 3. Run `deno task db:reset` (local) or apply the migrations (hosted) so that pgvector and the HNSW
    indexes exist.
@@ -551,7 +550,8 @@ heuristic ranking (`SEMANTIC_BLEND_WEIGHT`) and serves the `/view` "Similar" rai
    which empties every vector.
 5. Optional: run the server with `--unstable-kv` to share the query cache across isolates. Without
    it, `openSharedKv` answers `null` and only the memory layer runs.
-6. Set `EMBEDDINGS_ENABLED=true`.
+6. Once Voyage's written no-training and retention terms are on file (ruling T5), set
+   `EMBEDDINGS_ENABLED=true`.
 7. Verify. In development, responses carry `x-discovery-ranking: semantic`, and
    `GET /api/explore/ranking` shows the effective state (404 in production).
 
@@ -1046,7 +1046,7 @@ length-prefixed chunks, ended by a zero-length chunk. It maps `stream: OK` to `c
 **Development.** Upload the EICAR test file and expect `quarantined`. Set `pj.dev.malware` to
 exercise each branch without the node.
 
-### 6.5 Link safety: Google Safe Browsing → Web Risk
+### 6.5 Link safety: Google Web Risk
 
 **Built (Decision #128, #314):**
 
@@ -1059,20 +1059,20 @@ exercise each branch without the node.
   every redirect (2 at most), has a 5 s deadline and a stream-enforced 512 KiB cap.
 - `link-favicon.ts`: **re-hosts** the favicon into `public_assets` (the same guarded fetch, an image
   sniff, 64 KiB) so viewers' IP addresses never reach the link author's host.
-- Verdict cache: safe 1 h · flagged 24 h · unscannable 10 min. A link stays `pending` behind `/exit`
-  until the service role writes `safe`.
+- Verdict cache: safe 1 h · flagged 24 h, never past the listing's `expireTime` · unscannable 10
+  min. A link stays `pending` behind `/exit` until the service role writes `safe`.
 
-**The licence problem (flag (c)).** Google licenses the Safe Browsing APIs for **non-commercial**
-use and points commercial users to the **Web Risk API**. Projective is commercial. The switch is
-small and changes one module (`services/files/link-reputation.ts`). The env name
-`LINK_SAFETY_API_KEY` is provider-neutral and stays.
+**Why Web Risk (flag (c), ruling T5).** Google licenses the Safe Browsing APIs for
+**non-commercial** use and points commercial users to the **Web Risk API**. Projective is
+commercial, so `services/files/link-reputation.ts` calls Web Risk. The env name
+`LINK_SAFETY_API_KEY` is provider-neutral and stayed.
 
-| Item     | Today (Safe Browsing v4)                                         | Proposed (Web Risk)                                                                                                                            |
+| Item     | Before (Safe Browsing v4)                                        | Built (Web Risk)                                                                                                                               |
 | :------- | :--------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
 | Endpoint | `POST https://safebrowsing.googleapis.com/v4/threatMatches:find` | `GET https://webrisk.googleapis.com/v1/uris:search?uri=<enc>&threatTypes=MALWARE&threatTypes=SOCIAL_ENGINEERING&threatTypes=UNWANTED_SOFTWARE` |
 | Auth     | `?key=` query                                                    | `x-goog-api-key` header (keeps the key out of URL logs)                                                                                        |
 | Clean    | `{}`                                                             | `{}`                                                                                                                                           |
-| Listed   | `{ matches: [{ threatType }] }`                                  | `{ threat: { threatTypes: [...], expireTime } }`. Cap the flagged-verdict TTL at `expireTime`                                                  |
+| Listed   | `{ matches: [{ threatType }] }`                                  | `{ threat: { threatTypes: [...], expireTime } }`; the flagged-verdict TTL is capped at it                                                      |
 | Timeout  | 2.5 s → `unavailable`                                            | unchanged                                                                                                                                      |
 
 **Setup.**
@@ -1900,21 +1900,21 @@ VAPID_PUBLIC_KEY=XXXX-XXXX
 Each step lands as its own change, with its code, migration, Zod schema, docs and Dev Context
 Switcher control together.
 
-| Phase               | Step                                                                         | Depends on                     | Proven by                                                                                              |
-| :------------------ | :--------------------------------------------------------------------------- | :----------------------------- | :----------------------------------------------------------------------------------------------------- |
-| **MVP-0: blockers** | 1. Disable and delete `scan-file` (flag (d))                                 | A go-ahead                     | `config.toml` diff; `supabase functions list` on every project                                         |
-|                     | 2. Email: domain + DNS + GoTrue SMTP + the app transport (§8.5)              | Flag (f) ruling                | A confirmation from `/join` arrives with DKIM pass; `/settings` secondary email verifies               |
-|                     | 3. Turnstile on GoTrue + the auth schemas (§9.1)                             | Keys                           | A bot sign-up via `/auth/v1/signup` without a token is refused; the dummy "fail" key refuses in the UI |
-|                     | 4. Stripe live configuration (§4.3) + the Vault cron secrets (§9.3)          | Stripe account review          | SSOT §1.3 manual checklist in the sandbox; one live end-to-end, refunded                               |
-|                     | 5. Web Risk in `link-reputation.ts` (§6.5)                                   | Flag (c) ruling, a GCP project | `link-scan.test.ts` updated; the Safe Browsing test host still `blocked`                               |
-|                     | 6. Safety node: ClamAV + the publication gate (§6.1, §6.3, §6.4)             | Flag (g) sizing, a VM          | EICAR → `quarantined`; a flagged fixture image → 422; node down → 503                                  |
-| **MVP-1: trust**    | 7. Presidio Tier 3: queue, worker, review sink (§6.2)                        | Flag (g) schema ruling         | A seeded obfuscated message produces one automated review row; latency on send unchanged               |
-|                     | 8. Web Push + the dispatch bearer + the comms sweeps registered (§8.1, §8.2) | Flag (e)                       | An unauthenticated POST to `comms-dispatch` → 404; a 410 revokes the device                            |
-|                     | 9. Voyage on (§5)                                                            | DPA confirmed                  | `x-discovery-ranking: semantic`; breaker test; backfill idempotent                                     |
-| **Growth**          | 10. KMS envelope + the schema fix (§9.4)                                     | Decision #59 + flag (b)        | `seal → unseal → rewrap` round-trip test; nonce-uniqueness test; production refuses `local`            |
-|                     | 11. Connectors: Google, then Microsoft, then Zoom OAuth (§7)                 | Step 10, flag (a), flag (i)    | Consent → callback → `v_my_connections` active; refresh job; channel renewal; erasure revokes          |
-|                     | 12. APNs / FCM with the native apps (§8.3, §8.4)                             | Native apps                    | Device registration → delivery → revocation on `Unregistered` / `UNREGISTERED`                         |
-|                     | 13. SMS / Level 1 phone verification (§8.6)                                  | Twilio account                 | GoTrue phone OTP; geo-permissions limited                                                              |
+| Phase               | Step                                                                         | Depends on                           | Proven by                                                                                              |
+| :------------------ | :--------------------------------------------------------------------------- | :----------------------------------- | :----------------------------------------------------------------------------------------------------- |
+| **MVP-0: blockers** | 1. Disable and delete `scan-file` (flag (d))                                 | A go-ahead                           | `config.toml` diff; `supabase functions list` on every project                                         |
+|                     | 2. Email: domain + DNS + GoTrue SMTP + the app transport (§8.5)              | Flag (f) ruling                      | A confirmation from `/join` arrives with DKIM pass; `/settings` secondary email verifies               |
+|                     | 3. Turnstile on GoTrue + the auth schemas (§9.1)                             | Keys                                 | A bot sign-up via `/auth/v1/signup` without a token is refused; the dummy "fail" key refuses in the UI |
+|                     | 4. Stripe live configuration (§4.3) + the Vault cron secrets (§9.3)          | Stripe account review                | SSOT §1.3 manual checklist in the sandbox; one live end-to-end, refunded                               |
+|                     | 5. Web Risk in `link-reputation.ts` (§6.5): built (ruling T5)                | A GCP project, a restricted key      | `link-scan.test.ts` against a stubbed Web Risk; the Safe Browsing test host still `blocked` offline    |
+|                     | 6. Safety node: ClamAV + the publication gate (§6.1, §6.3, §6.4)             | Flag (g) sizing, a VM                | EICAR → `quarantined`; a flagged fixture image → 422; node down → 503                                  |
+| **MVP-1: trust**    | 7. Presidio Tier 3: queue, worker, review sink (§6.2)                        | Flag (g) schema ruling               | A seeded obfuscated message produces one automated review row; latency on send unchanged               |
+|                     | 8. Web Push + the dispatch bearer + the comms sweeps registered (§8.1, §8.2) | Flag (e)                             | An unauthenticated POST to `comms-dispatch` → 404; a 410 revokes the device                            |
+|                     | 9. Voyage on (§5)                                                            | DPA + written no-training terms (T5) | `x-discovery-ranking: semantic`; breaker test; backfill idempotent                                     |
+| **Growth**          | 10. KMS envelope + the schema fix (§9.4)                                     | Decision #59 + flag (b)              | `seal → unseal → rewrap` round-trip test; nonce-uniqueness test; production refuses `local`            |
+|                     | 11. Connectors: Google, then Microsoft, then Zoom OAuth (§7)                 | Step 10, flag (a), flag (i)          | Consent → callback → `v_my_connections` active; refresh job; channel renewal; erasure revokes          |
+|                     | 12. APNs / FCM with the native apps (§8.3, §8.4)                             | Native apps                          | Device registration → delivery → revocation on `Unregistered` / `UNREGISTERED`                         |
+|                     | 13. SMS / Level 1 phone verification (§8.6)                                  | Twilio account                       | GoTrue phone OTP; geo-permissions limited                                                              |
 
 **The go-live gate:** every MVP-0 row is proven, every `*_BACKEND_LIVE` gate in production is set
 deliberately (none is left at its default by accident), and the §3.4 register is reflected in the

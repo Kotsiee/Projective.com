@@ -1157,8 +1157,8 @@ above threshold become review-queue entries for the **Consequences** ladder (`PR
 after scoring, and is not a sub-processor (message bodies never leave Projective's own
 infrastructure). **One thing does leave: a URL a message carries.** When a reader previews it
 (`POST /api/links/preview`) or opens it through `/exit`, `files/link-scan.ts` sends the URL alone,
-never the message, to Google Safe Browsing v4 (`files/link-reputation.ts`) (#340 (j)). The ruled
-replacement is Google Web Risk, the commercial twin (Decision #340, ruling T5), **not built yet**.
+never the message, to Google Web Risk (`files/link-reputation.ts`) (#340 (j)), which replaced Safe
+Browsing v4 because that licence is non-commercial (Decision #340, ruling T5).
 The queue table, the review-queue table, the worker and the analyzer's environment key are not yet
 designed; each lands with its migration, Zod schema, `documentation/database/*` entry and
 Environment Variable Contract line in one change (§1 Additive Rule, Zod SSOT).
@@ -1706,12 +1706,14 @@ forbidden** (rebinding), then **connects to the pinned, checked address itself**
 speaks a minimal HTTP/1.1 (`Connection: close`, `Accept-Encoding: identity`, chunked decoding) with
 **no** ambient credential; it re-validates **every** redirect hop (max 2), enforces a hard 5 s
 deadline by closing the socket, and a **stream-enforced** 512 KiB cap (`Content-Length` is
-attacker-supplied and a chunked response has none); `link-reputation.ts` asks Google Safe Browsing
-(`LINK_SAFETY_API_KEY`); `link-favicon.ts` **re-hosts the favicon** into `public_assets` (the same
-guarded fetch, an image sniff, 64 KiB) rather than hotlinking it, because a hotlinked favicon sends
-every viewer's IP to a host the link's author chose. Verdicts are cached per URL (safe 1 h, flagged
-24 h, unscannable 10 min) and concurrent scans of one URL share one promise. The verdict axis keeps
-`unscannable` distinct from `suspicious`: *"we could not reach it"* is not *"we found something"*.
+attacker-supplied and a chunked response has none); `link-reputation.ts` asks Google Web Risk
+(`uris:search`, with `LINK_SAFETY_API_KEY` in the `x-goog-api-key` header, never in the URL);
+`link-favicon.ts` **re-hosts the favicon** into `public_assets` (the same guarded fetch, an image
+sniff, 64 KiB) rather than hotlinking it, because a hotlinked favicon sends every viewer's IP to a
+host the link's author chose. Verdicts are cached per URL (safe 1 h, flagged 24 h but never past
+the listing's `expireTime`, unscannable 10 min) and concurrent scans of one URL share one promise.
+The verdict axis keeps `unscannable` distinct from `suspicious`: *"we could not reach it"* is not
+*"we found something"*.
 Pinned by `link-scan.test.ts` (guards, rebinding, redirects, caps, deadline, favicon).
 
 **The client never writes the verdict (Decision #314).** `attachLink` inserts the link under the
@@ -3732,21 +3734,23 @@ FRAMEIO_CLIENT_SECRET=XXXX-XXXX
 S3_ACCESS_KEY_ID=XXXX-XXXX
 S3_SECRET_ACCESS_KEY=XXXX-XXXX
 
-# Link safety — a Google Safe Browsing v4 Lookup API key (files/link-reputation.ts), read at call
-# time and never inlined; absent or the placeholder → no reputation lookup (the scan's own guards
-# still run). The lookup sends the full URL to Google (Decision #128).
+# Link safety — a Google Web Risk API key (files/link-reputation.ts; Decision #340, ruling T5), read
+# at call time, sent only in the x-goog-api-key header and never inlined; absent or the placeholder
+# → no reputation lookup (the scan's own guards still run). The lookup sends the full URL to Google
+# (Decision #128).
 LINK_SAFETY_API_KEY=XXXX-XXXX
 
 # Discovery embeddings — Voyage AI voyage-4 (Decision #179). EMBEDDINGS_ENABLED is a boolean, default
 # false like the gates below: off, discovery ranks heuristically and nothing calls Voyage. In
 # development the Dev Context Switcher overrides it per browser (`pj.dev.embeddings`); production
-# never reads that cookie. The key is a secret, server-only. An Atlas model API key is answered by
-# https://ai.mongodb.com, a Voyage platform key (pa-…) by https://api.voyageai.com; the client picks
-# the host from the key unless VOYAGE_API_BASE names one. `db:reset` leaves every vector empty — run
-# `deno task embeddings:backfill` after it.
+# never reads that cookie. The key is a secret, server-only: a Voyage platform key (pa-…). Every call
+# goes to https://api.voyageai.com, the disclosed processor, whatever the key looks like (Decision
+# #340, ruling T5); VOYAGE_API_BASE names another host only to point at a mock. EMBEDDINGS_ENABLED
+# stays false until Voyage's written no-training and retention terms are on file. `db:reset` leaves
+# every vector empty — run `deno task embeddings:backfill` after it.
 EMBEDDINGS_ENABLED=false
 VOYAGE_API_KEY=XXXX-XXXX
-# VOYAGE_API_BASE=https://ai.mongodb.com
+# VOYAGE_API_BASE=https://api.voyageai.com
 
 # Stripe (Finance) — read only by packages/backend/core/stripe.ts; a value not shaped like its key
 # (sk_/rk_, whsec_, pk_) counts as absent, so the placeholder degrades to "not connected here".

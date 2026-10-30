@@ -10,10 +10,9 @@ import { hasVoyageKey } from "../../core/embeddings-gate.ts";
  * SDK. Server-only: it carries `VOYAGE_API_KEY`, which goes into the `Authorization` header and
  * nowhere else — never a log line, never an error detail.
  *
- * Two hosts serve the same API and refuse each other's keys (HTTP 403): MongoDB Atlas
- * (`ai.mongodb.com`, Atlas model API keys) and Voyage AI itself (`api.voyageai.com`, platform keys,
- * which start `pa-`). {@link embeddingsUrlFor} picks the host from the key unless `VOYAGE_API_BASE`
- * names one.
+ * Every call goes to Voyage AI itself (`api.voyageai.com`), the processor the privacy notice names,
+ * whatever the key looks like (Decision #340, ruling T5; #339 (d)). `VOYAGE_API_BASE` exists only to
+ * point the client at a mock.
  *
  * Limits, from the Atlas Embedding and Reranking API reference (`POST /v1/embeddings`, read
  * 2026-10-12; the Voyage reference states the same): at most 1,000 inputs and 320K tokens per
@@ -23,17 +22,14 @@ import { hasVoyageKey } from "../../core/embeddings-gate.ts";
  */
 
 // #region Contract
-/** MongoDB Atlas's embeddings endpoint — the default, answered for an Atlas model API key. */
-export const ATLAS_EMBEDDINGS_URL = "https://ai.mongodb.com/v1/embeddings";
-
-/** Voyage AI's own endpoint — the only one that accepts a Voyage platform key (`pa-…`). */
+/** Voyage AI's own endpoint — the only provider host the client calls. */
 export const VOYAGE_PLATFORM_EMBEDDINGS_URL = "https://api.voyageai.com/v1/embeddings";
 
-/** The endpoint for `key`: an explicit `base` host wins; else a `pa-` key goes to Voyage, any other to Atlas. */
-export function embeddingsUrlFor(key: string, base?: string): string {
+/** The endpoint: an explicit `base` host (a mock) wins; otherwise Voyage AI, whatever the key. */
+export function embeddingsUrlFor(base?: string): string {
 	const explicit = base?.trim().replace(/\/+$/, "");
 	if (explicit && /^https?:\/\/[^/\s]+$/i.test(explicit)) return `${explicit}/v1/embeddings`;
-	return key.startsWith("pa-") ? VOYAGE_PLATFORM_EMBEDDINGS_URL : ATLAS_EMBEDDINGS_URL;
+	return VOYAGE_PLATFORM_EMBEDDINGS_URL;
 }
 
 /** At most two retries — three attempts — and only for a 429, a 5xx, a timeout or a network error. */
@@ -201,7 +197,7 @@ async function attempt(
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), timeoutMs);
 	try {
-		const res = await deps.fetch(embeddingsUrlFor(key, deps.apiBase()), {
+		const res = await deps.fetch(embeddingsUrlFor(deps.apiBase()), {
 			method: "POST",
 			headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
 			body: JSON.stringify({
