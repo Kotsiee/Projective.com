@@ -11,7 +11,8 @@ import {
 } from "./link-fetch.ts";
 import { extractPageFacts } from "./link-html.ts";
 import { pngFromIco, sniffFavicon } from "./link-favicon.ts";
-import { clearScanCache, scanLink } from "./link-scan.ts";
+import { checkReputation } from "./link-reputation.ts";
+import { cachedScan, clearScanCache, scanLink } from "./link-scan.ts";
 
 // #region Address ranges (the brief's list, then the forms that bypass a naive guard)
 Deno.test("loopback 127.0.0.0/8 is refused", () => {
@@ -266,6 +267,80 @@ Deno.test("a timeout and an unresolvable name are unreachable, not refused", asy
 });
 // #endregion
 
+// #region Reputation (Google Web Risk, over a stubbed fetch)
+const KEY = "web-risk-test-key-0123456789abcdef";
+
+interface Lookup {
+	url: string;
+	method: string;
+	key: string | null;
+}
+
+function webRisk(answer: () => Response, lookups: Lookup[] = []): typeof fetch {
+	return (input, init) => {
+		lookups.push({
+			url: String(input),
+			method: init?.method ?? "GET",
+			key: new Headers(init?.headers).get("x-goog-api-key"),
+		});
+		return Promise.resolve(answer());
+	};
+}
+
+const LISTED = {
+	threat: { threatTypes: ["SOCIAL_ENGINEERING"], expireTime: "2026-10-30T12:05:00.123456789Z" },
+};
+
+Deno.test("Web Risk: {} is clean; the link and three threat lists ride the query, the key only the header", async () => {
+	const lookups: Lookup[] = [];
+	const link = "https://example.com/a b?x=1&y=2#top";
+	assertEquals(
+		await checkReputation(link, { key: KEY, fetch: webRisk(() => Response.json({}), lookups) }),
+		{ status: "clean" },
+	);
+	const sent = new URL(lookups[0].url);
+	assertEquals(`${sent.origin}${sent.pathname}`, "https://webrisk.googleapis.com/v1/uris:search");
+	assertEquals(sent.searchParams.get("uri"), link);
+	assertEquals(sent.searchParams.getAll("threatTypes"), [
+		"MALWARE",
+		"SOCIAL_ENGINEERING",
+		"UNWANTED_SOFTWARE",
+	]);
+	assertEquals([lookups[0].method, lookups[0].key], ["GET", KEY]);
+	assertFalse(lookups[0].url.includes(KEY), "the key never rides the URL");
+});
+
+Deno.test("Web Risk: a listing names its threat and carries expireTime out", async () => {
+	assertEquals(
+		await checkReputation("https://bad.example/", {
+			key: KEY,
+			fetch: webRisk(() => Response.json(LISTED)),
+		}),
+		{ status: "listed", threat: "phishing", expiresAt: Date.parse("2026-10-30T12:05:00.123Z") },
+	);
+});
+
+Deno.test("Web Risk: a non-2xx answer or a 2.5 s stall is unavailable", async () => {
+	for (const status of [400, 403, 429, 500, 503]) {
+		const answer = await checkReputation("https://example.com/", {
+			key: KEY,
+			fetch: webRisk(() => new Response("{}", { status })),
+		});
+		assertEquals(answer, { status: "unavailable" }, `HTTP ${status}`);
+	}
+	const stalled: typeof fetch = (_input, init) =>
+		new Promise((_resolve, reject) => {
+			init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+		});
+	const started = Date.now();
+	assertEquals(await checkReputation("https://example.com/", { key: KEY, fetch: stalled }), {
+		status: "unavailable",
+	});
+	const waited = Date.now() - started;
+	assert(waited >= 2_400 && waited < 10_000, `gave up after ${waited} ms`);
+});
+// #endregion
+
 // #region Verdicts
 const PAGE = `<!doctype html><html><head>
 <title>Fallback</title>
@@ -304,8 +379,26 @@ Deno.test("a listed site is blocked, whatever the page says", async () => {
 		reputation: () => Promise.resolve({ status: "listed", threat: "phishing" }),
 	});
 	assertEquals(scan.verdict, "blocked");
-	assertEquals(scan.reason, "Google Safe Browsing lists this site for phishing.");
+	assertEquals(scan.reason, "Google Web Risk lists this site for phishing.");
 	assertEquals(scan.faviconUrl, null);
+});
+
+Deno.test("a listing is remembered until its expireTime, not for the flagged day", async () => {
+	clearScanCache();
+	const listedAt = Date.parse(LISTED.threat.expireTime) - 5 * 60_000;
+	const scan = await scanLink("http://listed.example/", {
+		live: true,
+		now: () => listedAt,
+		reputation: (url) =>
+			checkReputation(url, { key: KEY, fetch: webRisk(() => Response.json(LISTED)) }),
+	});
+	assertEquals([scan.verdict, scan.reason], [
+		"blocked",
+		"Google Web Risk lists this site for phishing.",
+	]);
+	assertFalse("listedUntil" in scan, "the cache's bookkeeping never reaches a caller");
+	assertEquals(cachedScan("http://listed.example/", listedAt + 4 * 60_000)?.verdict, "blocked");
+	assertEquals(cachedScan("http://listed.example/", listedAt + 6 * 60_000), null);
 });
 
 Deno.test("a link into a private network is suspicious and is never sent to the reputation feed", async () => {

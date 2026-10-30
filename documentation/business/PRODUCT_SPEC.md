@@ -1246,7 +1246,7 @@ context without "ping fatigue."
   mini card read with the reader's own permissions (a project's escrow position only for someone
   party to it). An external link is checked server-side before anyone is sent to it: the sender's
   link is never fetched by the reader's browser, private and local addresses are refused, and the
-  address is checked against Google Safe Browsing. A link found **safe** opens directly and may
+  address is checked against Google Web Risk. A link found **safe** opens directly and may
   show the page's title; a **suspicious** or **blocked** link shows no preview, carries the badge
   "Suspicious link — proceed with caution" (or "Blocked link"), and opens only through the
   `/exit` interstitial, which asks for an explicit "I understand" first — and never opens a

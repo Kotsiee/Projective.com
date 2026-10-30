@@ -140,7 +140,7 @@ const YOUNG_PEOPLE: LegalClause = {
 	],
 };
 
-/** `.env.example` processors (Supabase, Stripe, Google Safe Browsing, Voyage AI, connected sign-in, storage — S3-compatible included — and calendar providers (`GOOGLE_/MICROSOFT_INTEGRATION_*`), Zoom) · `integrations.provider_kind` `calendar` / `freebusy` (seed `00005050`) · PRODUCT_SPEC.md §Settings (Connected accounts). */
+/** `.env.example` processors (Supabase, Stripe, Google Web Risk, Voyage AI, connected sign-in, storage — S3-compatible included — and calendar providers (`GOOGLE_/MICROSOFT_INTEGRATION_*`), Zoom) · `integrations.provider_kind` `calendar` / `freebusy` (seed `00005050`) · PRODUCT_SPEC.md §Settings (Connected accounts). */
 const SHARING: LegalClause = {
 	id: "sharing",
 	heading: "Who we share it with",
@@ -164,7 +164,7 @@ const SHARING: LegalClause = {
 					"When you pay, earn or verify",
 				],
 				[
-					"Google Safe Browsing",
+					"Google Web Risk",
 					"Checks links shared in messages; the full link is sent",
 					"When link checks are switched on",
 				],
@@ -311,7 +311,7 @@ export const PRIVACY_VERSIONS = defineLegalVersions([
 		summary:
 			"What personal data Projective stores, why, who processes it for us, how long we keep it and the rights you have over it.",
 		version: "1.0",
-		updatedAt: "2026-10-17",
+		updatedAt: "2026-10-30",
 		effectiveDate: "2026-10-17",
 		reviewedAt: null,
 		changeSummary: "First published.",

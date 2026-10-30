@@ -21,7 +21,7 @@ export { MAX_FAVICON_BYTES } from "./link-favicon.ts";
  *    credentials, at a bare IP, at a look-alike internationalised name or an unusual port is
  *    `suspicious`. A private target is never resolved or sent anywhere — it is the reader's own
  *    network the link is aimed at.
- * 2. **Reputation** (Google Safe Browsing, `link-reputation.ts`): a listed site is `blocked`.
+ * 2. **Reputation** (Google Web Risk, `link-reputation.ts`): a listed site is `blocked`.
  * 3. **The page** (`link-fetch.ts`, every SSRF rule on every hop): a hop the guards refuse is
  *    `suspicious` — the link leads somewhere the platform will not go; a network that fails is
  *    `unscannable` — "we could not reach it" is not "we found something"; a page that answers is
@@ -39,9 +39,9 @@ export { MAX_FAVICON_BYTES } from "./link-favicon.ts";
  *
  * ## Caching
  *
- * A verdict is remembered per URL for a while (an hour for safe, a day for flagged, minutes for
- * unscannable) and concurrent scans of one URL share one promise, so a busy conversation scans a
- * link once rather than once per reader.
+ * A verdict is remembered per URL for a while (an hour for safe, a day for flagged but never past
+ * the listing's own `expireTime`, minutes for unscannable) and concurrent scans of one URL share one
+ * promise, so a busy conversation scans a link once rather than once per reader.
  */
 
 // #region Result
@@ -80,9 +80,12 @@ const TTL_MS: Record<LinkScan["verdict"], number> = {
 const cache = new Map<string, { scan: LinkScan; expires: number }>();
 const inflight = new Map<string, Promise<LinkScan>>();
 
-function remember(scan: LinkScan, now: number): LinkScan {
+/** A scan, plus the moment a dated listing behind it lapses (epoch ms); never handed to a caller. */
+type Scanned = LinkScan & { listedUntil?: number };
+
+function remember({ listedUntil = Infinity, ...scan }: Scanned, now: number): LinkScan {
 	cache.delete(scan.url);
-	cache.set(scan.url, { scan, expires: now + TTL_MS[scan.verdict] });
+	cache.set(scan.url, { scan, expires: Math.min(now + TTL_MS[scan.verdict], listedUntil) });
 	while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value!);
 	return scan;
 }
@@ -141,7 +144,7 @@ function result(
 	};
 }
 
-async function runScan(url: string, deps: ScanDeps): Promise<LinkScan> {
+async function runScan(url: string, deps: ScanDeps): Promise<Scanned> {
 	const now = deps.now ?? Date.now;
 	const started = now();
 	const live = deps.live ?? isFilesBackendLive();
@@ -160,7 +163,7 @@ async function runScan(url: string, deps: ScanDeps): Promise<LinkScan> {
 	if (!live) {
 		if (domain === TEST_THREAT_HOST) {
 			return result(url, "blocked", started, {
-				reason: "Google Safe Browsing lists this site for malware.",
+				reason: "Google Web Risk lists this site for malware.",
 			});
 		}
 		if (suspicion) return result(url, "suspicious", started, { reason: suspicion.reason });
@@ -180,9 +183,12 @@ async function runScan(url: string, deps: ScanDeps): Promise<LinkScan> {
 	]);
 
 	if (reputation.status === "listed") {
-		return result(url, "blocked", now(), {
-			reason: `Google Safe Browsing lists this site for ${reputation.threat}.`,
-		});
+		return {
+			...result(url, "blocked", now(), {
+				reason: `Google Web Risk lists this site for ${reputation.threat}.`,
+			}),
+			listedUntil: reputation.expiresAt,
+		};
 	}
 	if (suspicion) return result(url, "suspicious", now(), { reason: suspicion.reason });
 	if (!fetched) {
