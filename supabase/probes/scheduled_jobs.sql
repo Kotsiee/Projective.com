@@ -14,8 +14,9 @@ BEGIN;
 
 -- #region 1. Every sweep the platform depends on is registered with pg_cron
 -- The contract, by name and cadence. Before #203 the two HTTP sweeps had no job at all, and a
--- registration that failed left only a NOTICE in the migration output. The M3 / M4 sweeps are expected
--- wherever their function exists, matching the seed.
+-- registration that failed left only a NOTICE in the migration output. The M3 / M4 sweeps, and the Wave 1
+-- rows the seed registers by function name, are expected wherever their function exists. The claim-TTL
+-- sweep is registered PAUSED until PM-WP1 hardens it; PM-WP1 moves it into the list below.
 DO $$
 DECLARE
     v_expected text[][] := ARRAY[
@@ -26,7 +27,23 @@ DECLARE
         ARRAY['account-erasures',                 '10 4 * * *'],
         ARRAY['ops-watch-jobs',                   '*/10 * * * *'],
         ARRAY['analytics-listing-rollups',        '10 2 * * *'],
-        ARRAY['scheduling-availability-horizon',  '5 3 * * *']
+        ARRAY['scheduling-availability-horizon',  '5 3 * * *'],
+        ARRAY['comms-process-queue',              '* * * * *'],
+        ARRAY['comms-escalate-unread',            '4-59/5 * * * *'],
+        ARRAY['comms-digest-daily',               '2 * * * *'],
+        ARRAY['comms-digest-weekly',              '8 * * * *'],
+        ARRAY['comms-sweep-expired',              '35 * * * *'],
+        ARRAY['comms-reap-devices',               '32 3 * * *'],
+        ARRAY['comms-compact-events',             '47 3 * * *'],
+        ARRAY['finance-sweep-card-payments',      '13,28,43,58 * * * *'],
+        ARRAY['ops-prune-job-history',            '53 4 * * *']
+    ];
+    v_by_name text[][] := ARRAY[
+        ARRAY['scheduling.fn_expire_discovery_calls', 'scheduling-expire-discovery-calls', '1,16,31,46 * * * *'],
+        ARRAY['scheduling.fn_settle_votes',           'scheduling-settle-votes',           '11,26,41,56 * * * *'],
+        ARRAY['finance.fn_expire_spend_approvals',    'finance-expire-spend-approvals',    '12 * * * *'],
+        ARRAY['finance.fn_sweep_idempotency_keys',    'finance-sweep-idempotency-keys',    '27 4 * * *'],
+        ARRAY['search.fn_prune_query_logs',           'search-query-log-retention',        '36 4 * * *']
     ];
     v_missing text[] := ARRAY[]::text[];
     i integer;
@@ -43,8 +60,20 @@ BEGIN
     IF pg_catalog.to_regprocedure('finance.sweep_disputes(timestamptz)') IS NOT NULL THEN
         v_expected := v_expected || ARRAY[ARRAY['finance-dispute-sweep', '7,22,37,52 * * * *']];
     END IF;
+    FOR i IN 1 .. pg_catalog.array_length(v_by_name, 1) LOOP
+        IF pg_catalog.to_regproc(v_by_name[i][1]) IS NOT NULL THEN
+            v_expected := v_expected || ARRAY[ARRAY[v_by_name[i][2], v_by_name[i][3]]];
+        ELSIF EXISTS (SELECT 1 FROM ops.scheduled_jobs s WHERE s.name = v_by_name[i][2]) THEN
+            RAISE EXCEPTION 'FAIL 1: % is registered but % does not exist', v_by_name[i][2], v_by_name[i][1];
+        END IF;
+    END LOOP;
     IF pg_catalog.to_regnamespace('cron') IS NULL THEN
         RAISE EXCEPTION 'FAIL 1: pg_cron is not installed in this database';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM ops.scheduled_jobs s
+                    WHERE s.name = 'projects-release-expired-claims' AND NOT s.enabled)
+       OR EXISTS (SELECT 1 FROM cron.job j WHERE j.jobname = 'projects-release-expired-claims') THEN
+        RAISE EXCEPTION 'FAIL 1: the claim-TTL sweep must stay registered and paused until PM-WP1 hardens it';
     END IF;
     FOR i IN 1 .. pg_catalog.array_length(v_expected, 1) LOOP
         IF NOT EXISTS (
@@ -285,6 +314,35 @@ BEGIN
     RAISE NOTICE 'PASS 7: a failed pg_cron run becomes one ops error row';
 END $$;
 ROLLBACK TO s7;
+-- #endregion
+
+-- #region 8. Run history past a week is pruned, and newer runs are kept
+SAVEPOINT s8;
+DO $$
+DECLARE
+    v_job bigint;
+    v_old bigint;
+    v_new bigint;
+BEGIN
+    SELECT j.jobid INTO v_job FROM cron.job j WHERE j.jobname = 'ops-watch-jobs';
+    -- Explicit run ids: postgres may insert into cron.job_run_details but not use cron.runid_seq.
+    SELECT COALESCE(pg_catalog.max(d.runid), 0) + 1000000 INTO v_old FROM cron.job_run_details d;
+    v_new := v_old + 1;
+    INSERT INTO cron.job_run_details (jobid, runid, database, username, command, status, start_time, end_time)
+    VALUES (v_job, v_old, 'postgres', 'postgres', 'SELECT 1', 'succeeded',
+            pg_catalog.now() - interval '9 days', pg_catalog.now() - interval '9 days'),
+           (v_job, v_new, 'postgres', 'postgres', 'SELECT 1', 'succeeded',
+            pg_catalog.now() - interval '1 day', pg_catalog.now() - interval '1 day');
+    PERFORM ops.fn_prune_job_history();
+    IF EXISTS (SELECT 1 FROM cron.job_run_details d WHERE d.runid = v_old) THEN
+        RAISE EXCEPTION 'FAIL 8: a run that ended 9 days ago survived ops.fn_prune_job_history';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM cron.job_run_details d WHERE d.runid = v_new) THEN
+        RAISE EXCEPTION 'FAIL 8: ops.fn_prune_job_history deleted a run from yesterday';
+    END IF;
+    RAISE NOTICE 'PASS 8: run history older than a week is pruned, and newer runs are kept';
+END $$;
+ROLLBACK TO s8;
 -- #endregion
 
 ROLLBACK;

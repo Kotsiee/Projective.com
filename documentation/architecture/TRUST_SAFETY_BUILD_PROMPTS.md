@@ -101,7 +101,7 @@ Track and step names are Part B's; the comms prompt IDs (MS1–MS5, NT1–NT5, S
 - SN1 / SN2 / R5 / SN6 (`00005060`)
 - R3 / SN1 / SN3 (devtools + `dev-seam.ts`)
 - SN2 / SN3 / SN5 / H1 (the upload and publish pipeline: `services/files/*`, `services/media/*`)
-- SN1 / SN3 / SN5 (`infra/safety-node/`)
+- SN1 / SN3 / SN5 (each waits for the node prompt that adds its route, §0.5)
 - P2a / SN4 (the public-copy write services)
 - P2c / P2d / SN6 (`00001840`)
 - R3 / SN3 (`00005010`)
@@ -134,6 +134,24 @@ RAM VPS" (SN1); SA §Content moderation's and EPI §6.3's "hosted fallback, off 
 §6.3's "up to 16 sampled stills" against ruling T2's 30 (SN3); EPI §1.1 row 9's Safe Browsing (W1).
 
 ---
+
+### 0.5 The safety node lives in its own repo
+
+The owner created the node's repository, `Projective-Safety`, a sibling folder of this repo, and
+committed its N0 (the scaffold and the HTTP contract) there, as
+[`SAFETY_NODE_SETUP_AND_BUILD_PROMPTS.md`](SAFETY_NODE_SETUP_AND_BUILD_PROMPTS.md) §1 recommended.
+That file owns the node: the human setup (H1–H5) and the node prompts (N1–N5). This file is the app
+side only, and nothing here creates `infra/safety-node/`.
+
+- **The contract wins on route names.** The node's `contract/openapi.yaml` serves `GET /healthz`,
+  `POST /scan/file`, `POST /screen/image`, `POST /screen/video` and
+  `POST /presidio/analyzer/analyze`, and node prompt N3 adds `POST /remux/video`. EPI §6's `/v1/…`
+  examples yield to it, and the app's Zod is copied from it.
+- **Order across the two repos.** Node N1 (the gateway) and N2 (ClamAV) before SN1; N3 (NudeNet,
+  OCR, frame sampling and the video remux) before SN3 and SN5; N4 (Presidio) before SN6.
+- **Sightengine stays in the app.** SN4 calls it for public media and public text only (ruling T2).
+  The node has no Sightengine code and nudity never falls back to it, so the node file's N6 is
+  withdrawn.
 
 ## 1. Standard header — paste above EVERY prompt
 
@@ -230,8 +248,8 @@ each reset; finish with your own clean `deno task test:probes:fresh`. Then `deno
 directory). Four theme-engine.test.ts failures are pre-existing (Decision #96(a)). UI prompts:
 `deno task dev`, sign in as the seeded personas (documentation/database/Seed.md), and capture
 screenshots at 1440, 900 and 390 px in light, dark, data-contrast="high" and data-motion="reduced".
-Safety-node prompts: `docker compose up` bound to 127.0.0.1 with
-SAFETY_NODE_URL=http://127.0.0.1:8443.
+Safety-node prompts: run the node from its own repo, Projective-Safety (`docker compose up`, the
+gateway bound to 127.0.0.1), with SAFETY_NODE_URL=http://127.0.0.1:8443.
 Commit on the branch you were given with a clear message; do not push or open a PR unless I ask.
 ```
 
@@ -923,11 +941,10 @@ node's half); #340 (h) (Decision #340, ruling T5: the node, 4 vCPU / 8 GB).
 DEPENDS: E8 (AV-1). May start as soon as E8 merges (SEC §6 step 2).
 
 FILES:
-  - infra/safety-node/ (new; the only non-Deno code in the repo; exclude it from the Deno
-    workspace, fmt and lint; if you think it belongs elsewhere, ask before creating it):
-    compose.yaml with all five EPI §6.1 services (so later prompts never edit it), Caddyfile,
-    clamd.conf, safety-api/{Dockerfile, requirements.txt, app/} serving GET /v1/health and
-    POST /v1/files/scan only. No README there: the runbook is EPI §6.
+  - NOT the node: it lives in its own repo, Projective-Safety (§0.5), where node prompt N2
+    (SAFETY_NODE_SETUP_AND_BUILD_PROMPTS.md §4) builds clamd and POST /scan/file on the
+    committed contract (contract/openapi.yaml). Run N1 and N2 there first; this prompt is the app
+    half, and its Zod copies that contract.
   - packages/backend/core/safety-node.ts (new: URL, bearer, timeouts, the placeholder rule)
   - packages/backend/core/env.ts, .env.example, SA's Environment Variable Contract:
     MALWARE_SCAN_LIVE, SAFETY_NODE_URL, SAFETY_NODE_TOKEN, FILES_CRON_SECRET (also a Vault secret)
@@ -944,16 +961,11 @@ FILES:
 STEPS:
   1. Reproduce: upload the EICAR test string through /files and through the media picker. Both
      are admitted today.
-  2. Bring the node up per EPI §6.1: every image pinned by digest; the gateway bound to the
-     private interface (127.0.0.1 locally); the bearer SAFETY_NODE_TOKEN (mTLS where the host can
-     present a certificate); clamd's port never exposed; no volume holds content; uvicorn's access
-     log off.
-  3. /v1/files/scan streams the body to clamd with zINSTREAM: "stream: OK" → clean, "FOUND" →
-     infected, a size limit or socket error → error. clamd.conf per EPI §6.4 (StreamMaxLength and
-     MaxFileSize 64M, MaxScanSize 256M, MaxRecursion 16, ConcurrentDatabaseReload no,
-     AlertEncrypted no). AV-5: AlertOLE2Macros yes, and the node maps
-     Heuristics.OLE2.ContainsMacros to { verdict: 'clean', flags: ['macros'] }, never infected.
-     Return engine, db_version and db_time.
+  2. Bring the node up from Projective-Safety with N2 merged there (`docker compose up`, the
+     gateway on 127.0.0.1:8443, the bearer SAFETY_NODE_TOKEN).
+  3. Read N2's POST /scan/file in the node's contract: clean · infected · error, with engine,
+     db_version and db_time; a macro Office file comes back clean with flags ['macros'] (AV-5).
+     Copy its schema as Zod; never re-implement the scan here.
   4. App: at each hook, after the sniff and before the promote, scan the bytes already in memory.
      clean → continue; infected → refuse(row, hostile = true) (the object deleted, the row
      quarantined, a person-readable reason); error or unreachable with MALWARE_SCAN_LIVE=true →
@@ -1054,8 +1066,9 @@ images or videos:
   not advised.
 
 FILES:
-  - infra/safety-node/safety-api/app: POST /v1/images/screen (NudeNet 320n + Presidio Image
-    Redactor + Tesseract); frames of an animated image sampled on the node with ffmpeg
+  - NOT the node: node prompt N3 (Projective-Safety) builds POST /screen/image and
+    POST /screen/video (NudeNet 320n + Presidio Image Redactor + Tesseract; frames sampled on the
+    node per ruling T2). Run N3 there first; this prompt calls those routes.
   - packages/backend/services/media/* (the one publish step; showcase-rendition.ts),
     services/messaging/live-group-photo.ts (T3 (b)), services/catalogue/live-catalogue-writes.ts
     (P-1: catalogue media through cutShowcaseRendition), services/files/live-objects.ts and the
@@ -1173,8 +1186,8 @@ T2: one frame every 2 s, at most 30, the first and last always, and every derive
 DEPENDS: SN3, SN4.
 
 FILES:
-  - infra/safety-node/safety-api/app: POST /v1/video/remux (ffmpeg -map_metadata -1
-    -map_chapters -1 -c copy, faststart; the output re-sniffed) and video frame sampling
+  - NOT the node: node prompt N3 adds POST /remux/video (ffmpeg -map_metadata -1
+    -map_chapters -1 -c copy, faststart; the output re-sniffed) beside /screen/video's sampling
   - services/media/showcase-rendition.ts (lift Wave 0's video MediaRejectedError),
     services/media/library.ts (poster and tiers), apps/web/features/files/components/media-crop/
     MediaCropPicker.tsx (offer videos again where the target takes them)
@@ -1203,7 +1216,7 @@ window
 ROLE: Backend + Postgres engineer. EPI §6.2; SEC §2.4, T3-1 to T3-4 (Decision #340, ruling T2
 with T2.2 and T2.3: a rolling window, protected phase only, no payload kept, an
 evasion_fragmentation report, a penalty only after review; ruling T4: one sink).
-DEPENDS: SN1 (the node's Presidio containers), R1, R3, P2b (the one predicate), P1d (the
+DEPENDS: node prompt N4 (Presidio), R1, R3, P2b (the one predicate), P1d (the
 normaliser and the corpus).
 
 FILES:

@@ -594,6 +594,13 @@ The full behaviour is in the SSOT. In outline:
 
 ## 6. Content moderation and upload safety: the safety node
 
+> **As built (2026-10-30).** The node is its own repository, `Projective-Safety`
+> ([`SAFETY_NODE_SETUP_AND_BUILD_PROMPTS.md`](../architecture/SAFETY_NODE_SETUP_AND_BUILD_PROMPTS.md)).
+> Its route contract is that repo's `contract/openapi.yaml`: `GET /healthz`, `POST /scan/file`,
+> `POST /screen/image`, `POST /screen/video`, `POST /presidio/analyzer/analyze`, and the
+> `POST /remux/video` its N3 adds. Where this section's reference configuration and examples say
+> `/v1/…`, the contract wins. The app side is `TRUST_SAFETY_BUILD_PROMPTS.md` (Decision #340).
+
 **Authority:** `SYSTEM_ARCHITECTURE.md` §Contact & financial leakage prevention (Decision #147),
 §Content moderation: the Two-Zone model (Decision #148) and §Storage Lifecycle; `PRODUCT_SPEC.md`
 §Messaging 1.A–1.C. Both decisions say the queue, the review table, the worker and the env keys are

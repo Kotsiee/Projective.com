@@ -682,7 +682,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance
 -- #endregion
 
 -- #region 7. Claim-TTL auto-release sweep ("Ticket Parking", spec §1)
--- Called by an Edge Function / external cron (mirrors projects.fn_resolve_expired_workload_reports).
+-- Registered PAUSED in 00005060 (projects-release-expired-claims) until PM-WP1 hardens it (#338 (a)).
 -- p_now is injectable for deterministic tests. A parked ticket's escrow is REFUNDED to the client:
 -- we flip held -> refunded BEFORE clearing the assignee, so the AFTER-clear escrow-sync trigger's
 -- release-to-freelancer path finds nothing 'held' and is a no-op. The freelancer earns nothing.

@@ -20,11 +20,12 @@ role (`service_role`); `ops` is exposed to PostgREST, so every other one is revo
 | `fn_settle_http_dispatches()`                                | `integer` | Settles pending dispatches from `net._http_response` (`FOR UPDATE SKIP LOCKED`), logs every non-2xx, error or timeout (`http_failed`) and every dispatch unanswered after 7 hours (`no_response`) as `error`; returns the failure count. |
 | `fn_report_failed_runs()`                                    | `integer` | Reports every failed pg_cron run of the last day (`cron.job_run_details`) as one `run_failed` error row, keyed by run id so it is reported once; returns the number newly reported. |
 | `fn_watch_jobs()`                                            | `integer` | `fn_settle_http_dispatches() + fn_report_failed_runs()` — the `ops-watch-jobs` job, every 10 minutes. |
+| `fn_prune_job_history(keep)`                                 | `integer` | Deletes pg_cron run history (`cron.job_run_details`) that ended more than `keep` ago (default 7 days; `fn_report_failed_runs` has reported every failure by then); a run in progress is kept — the `ops-prune-job-history` job, daily 04:53. |
 | `run_job(name)` — **`service_role`**                         | `jsonb`   | Runs one job now, enabled or not: a sql job's `SELECT` (`{job, kind, result}`, the result as jsonb) or an http job's dispatch (`{job, kind, request_id}`). Unknown name: `PJ404`. Behind `deno task cron:run` (`ScheduledJobsBackendService`).                                   |
 
 Probe: [`supabase/probes/scheduled_jobs.sql`](../../../supabase/probes/scheduled_jobs.sql) (registration,
 registry ↔ `cron.job` agreement, reschedule/disable, loud skips, the queued request and its bearer,
-settlement, grants).
+settlement, grants, history pruning).
 
 ## The contact intake (Decision #276)
 

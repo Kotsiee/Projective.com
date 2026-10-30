@@ -1,10 +1,11 @@
 # Wave 1 — proposed root `CLAUDE.md` diff (for the owner to apply)
 
-> **Status: PROPOSAL.** Agents may not edit guardrail files. This is the diff that
-> `FOUNDER_QUESTIONNAIRE.md` Q0.5 asks for. The owner rulings behind it are recorded on Decision
-> #341 (flag (a), ADC Q1) and Decision #337 (X4, ruling M1). The questionnaire's Q0.5 also gave
-> permission to edit `CLAUDE.md` directly. The Wave 1 brief said to draft only, and that instruction
-> was kept. Apply the hunks by hand, or tell an agent in chat to apply this file.
+> **Status: APPLIED 2026-10-30** by the owner (commit `f1f10e31`); kept as the record of Q0.5.
+> Agents may not edit guardrail files. This is the diff that `FOUNDER_QUESTIONNAIRE.md` Q0.5 asks
+> for. The owner rulings behind it are recorded on Decision #341 (flag (a), ADC Q1) and Decision
+> #337 (X4, ruling M1). The questionnaire's Q0.5 also gave permission to edit `CLAUDE.md` directly.
+> The Wave 1 brief said to draft only, and that instruction was kept. Apply the hunks by hand, or
+> tell an agent in chat to apply this file.
 
 ## Why
 

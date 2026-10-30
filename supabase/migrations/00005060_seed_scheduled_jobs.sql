@@ -193,3 +193,13 @@ SELECT 'search-query-log-retention', 'sql', '36 4 * * *', 'SELECT search.fn_prun
  WHERE pg_catalog.to_regproc('search.fn_prune_query_logs') IS NOT NULL
 ON CONFLICT (name) DO NOTHING;
 -- #endregion
+
+-- #region [ops] pg_cron run history
+-- pg_cron keeps a row per run and never prunes it; with comms-process-queue every minute that is about
+-- 2,000 rows a day. Daily, on a minute no other job uses.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('ops-prune-job-history', 'sql', '53 4 * * *',
+        'SELECT ops.fn_prune_job_history();', NULL, NULL,
+        'Deletes pg_cron run history (cron.job_run_details) older than 7 days; ops-watch-jobs has already reported every failed run in it.')
+ON CONFLICT (name) DO NOTHING;
+-- #endregion

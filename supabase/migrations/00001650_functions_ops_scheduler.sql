@@ -398,6 +398,34 @@ $$;
 COMMENT ON FUNCTION ops.fn_watch_jobs() IS
 'The ops-watch-jobs job: settles HTTP dispatches and reports failed pg_cron runs. Returns the number
 of failures reported this run.';
+
+-- pg_cron writes one cron.job_run_details row per run and never prunes it: comms-process-queue alone
+-- adds 1,440 a day. fn_report_failed_runs reads only the last day, so a week of history is plenty.
+CREATE OR REPLACE FUNCTION ops.fn_prune_job_history (p_keep interval DEFAULT interval '7 days')
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_count integer;
+BEGIN
+    IF pg_catalog.to_regclass('cron.job_run_details') IS NULL THEN
+        RETURN 0;
+    END IF;
+
+    DELETE FROM cron.job_run_details d
+     WHERE d.end_time < pg_catalog.now() - p_keep;
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN v_count;
+END;
+$$;
+
+COMMENT ON FUNCTION ops.fn_prune_job_history(interval) IS
+'The ops-prune-job-history job: deletes pg_cron run history (cron.job_run_details) that ended more
+than p_keep ago (default 7 days; fn_report_failed_runs has reported every failure by then). A run
+still in progress is kept. Returns the number of rows deleted.';
 -- #endregion
 
 -- #region 5. Manual runs

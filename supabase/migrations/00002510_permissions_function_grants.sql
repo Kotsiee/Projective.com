@@ -2055,6 +2055,7 @@ REVOKE ALL ON FUNCTION ops.fn_dispatch_http_job (text) FROM PUBLIC, anon, authen
 REVOKE ALL ON FUNCTION ops.fn_settle_http_dispatches () FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION ops.fn_report_failed_runs () FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION ops.fn_watch_jobs () FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION ops.fn_prune_job_history (interval) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION ops.run_job (text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION ops.run_job (text) TO service_role;
 -- #endregion
