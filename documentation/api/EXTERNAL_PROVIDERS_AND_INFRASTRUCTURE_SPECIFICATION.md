@@ -1054,8 +1054,10 @@ to `infected`. `INSTREAM size limit exceeded` answers a typed `413` and a socket
 - `ConcurrentDatabaseReload no`, to halve peak memory at the cost of a short pause.
 - `AlertEncrypted no`. Password-protected archives are a normal creative deliverable. Record them,
   don't refuse them. A human can tighten this.
-- freshclam runs inside the image. Alert when `db_time` is older than 24 h: the app writes an
-  `ops.log_entries` `warn` row with `scope = 'files.malware_scan'`.
+- freshclam runs inside the image. Alert when `db_time` is older than 48 h: the app writes an
+  `ops.log_entries` `warn` row with `scope = 'files.malware_scan'`. Not 24 h: the daily database is
+  published about once a day, so a healthy node's `db_time` is already past 24 h just before the
+  next release (Decision #345).
 
 **VirusTotal: hash lookups only, and only under a Premium licence.**
 

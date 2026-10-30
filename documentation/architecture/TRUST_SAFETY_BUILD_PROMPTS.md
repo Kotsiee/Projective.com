@@ -983,8 +983,8 @@ STEPS:
      quarantined, a person-readable reason); a typed 503 or no answer with MALWARE_SCAN_LIVE=true →
      the row back to pending_upload and a 503; gate off → skip, one log line in development.
   5. AV-2: files.items.metadata.av = { engine, db_version, verdict, signature?, flags?, at }.
-  6. Staleness: a db_time older than 24 h writes an ops.log_entries warn row, scope
-     files.malware_scan.
+  6. Staleness: a db_time older than 48 h writes an ops.log_entries warn row, scope
+     files.malware_scan (not 24 h, which a healthy node crosses daily; Decision #345).
   7. AV-3: files-av-rescan (http, daily) rescans originals scanned under an older db_version in the
      last av_rescan_days; a hit is handled as at admission and logged. A deno task backfills
      objects admitted before this change.
