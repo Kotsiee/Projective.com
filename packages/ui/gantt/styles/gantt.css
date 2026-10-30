@@ -520,14 +520,14 @@
 	flex: none;
 	inline-size: 0.75rem;
 	block-size: 0.5rem;
-	border-radius: 2px;
+	border-radius: var(--radius-xs);
 	background: var(--gantt-pop-accent, var(--primary));
 }
 
 .gantt-pop__mark--milestone {
 	inline-size: 0.625rem;
 	block-size: 0.625rem;
-	border-radius: 1px;
+	border-radius: calc(var(--radius-xs) / 4);
 	transform: rotate(45deg);
 }
 

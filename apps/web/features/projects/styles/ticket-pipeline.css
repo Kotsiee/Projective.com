@@ -247,7 +247,7 @@
 .tkc-pipe__title {
 	margin: 0;
 	font-size: var(--text-sm);
-	font-weight: var(--fw-bold);
+	font-weight: var(--fw-semibold);
 	letter-spacing: 0.02em;
 	text-transform: uppercase;
 	color: var(--on-surface);
@@ -357,7 +357,7 @@
 	inset-block: 0;
 	inline-size: 2px;
 	border-radius: var(--radius-full);
-	background: color-mix(in srgb, var(--primary) 28%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
 }
 
 .tkc-row[data-band="solo"] .tkc-row__rail::before {
@@ -627,7 +627,7 @@
 }
 
 .tkc-join[data-parallel="true"] .tkc-join__rail {
-	background: color-mix(in srgb, var(--primary) 28%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
 }
 
 .tkc-join__btn {
@@ -773,7 +773,7 @@
 .tkc-insp__title {
 	margin: 0;
 	font-size: var(--text-base);
-	font-weight: var(--fw-bold);
+	font-weight: var(--fw-semibold);
 	line-height: var(--leading-tight);
 	color: var(--on-surface);
 }

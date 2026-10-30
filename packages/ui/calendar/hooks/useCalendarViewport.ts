@@ -23,7 +23,12 @@
 import { batch, type ReadonlySignal, type Signal, useComputed, useSignal } from "@preact/signals";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "preact/hooks";
 import type { RefObject } from "preact";
-import { createSpring, type Spring, SPRING_STANDARD } from "../../core/motion.ts";
+import {
+	createSpring,
+	prefersJumpToFinal,
+	type Spring,
+	SPRING_STANDARD,
+} from "../../core/motion.ts";
 import {
 	MOMENTUM_DECAY,
 	MOMENTUM_MIN_RELEASE_V,
@@ -38,8 +43,9 @@ import {
  * — both timed views derive their virtualized window from `scrollTop`, so the offset IS which period
  * the grid renders. It therefore degrades to an instant jump wherever a frame may never arrive:
  *
- *  - `prefers-reduced-motion: reduce` — the §B.5 jump-to-final rule. CSS cannot apply it to a JS
- *    `scrollTo`, so it has to be honoured here or not at all.
+ *  - reduced motion, from the OS `prefers-reduced-motion: reduce` query or the in-app
+ *    `:root[data-motion="reduced"]` switch — the §B.5 jump-to-final rule. CSS cannot apply either to
+ *    a JS `scrollTo`, so they have to be honoured here or not at all.
  *  - a hidden/background document, where the animation clock is paused. Measured: with the tab
  *    hidden, `scrollTo({ behavior: "smooth" })` never advances `scrollTop` at all, so the header,
  *    period label and mini-map moved to the next week while the grid stayed on the previous one.
@@ -48,8 +54,8 @@ import {
  * smooth path cannot do because it has not arrived yet.
  */
 export function scrollBehaviorFor(): ScrollBehavior {
-	if (typeof document !== "undefined" && document.hidden) return "auto";
-	return globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+	// The spring gate reads the same conditions; delegating keeps "does this move" one answer.
+	return prefersJumpToFinal() ? "auto" : "smooth";
 }
 
 // #region Shared zoom vocabulary

@@ -412,6 +412,15 @@ const STATE = {
 			<path d="M3 3l18 18" />
 		</>
 	),
+	/** Light colour mode — the theme toggle's mark while the page is light. */
+	"sun": () => (
+		<>
+			<circle cx="12" cy="12" r="3.75" />
+			<path d="M12 2.75v2M12 19.25v2M5.46 5.46l1.41 1.41M17.13 17.13l1.41 1.41M2.75 12h2M19.25 12h2M5.46 18.54l1.41-1.41M17.13 6.87l1.41-1.41" />
+		</>
+	),
+	/** Dark colour mode — a crescent; the theme toggle's mark while the page is dark. */
+	"moon": () => <path d="M20 13.4A8 8 0 0 1 10.6 4a7.5 7.5 0 1 0 9.4 9.4z" />,
 	/** Favourite / rate. `data-filled` gives the solid state — never a second component. */
 	"star": () => (
 		<path d="M12 3.8l2.65 5.37 5.93.86-4.29 4.18 1.01 5.9L12 17.32l-5.3 2.79 1.01-5.9-4.29-4.18 5.93-.86z" />

@@ -194,18 +194,7 @@
 }
 
 .artl-topic__check {
-	inline-size: var(--icon-xs);
-	block-size: var(--icon-xs);
 	flex: none;
-	fill: none;
-	stroke: currentColor;
-	stroke-width: var(--icon-stroke);
-	stroke-linecap: round;
-	stroke-linejoin: round;
-}
-
-.artl-topic__check path {
-	vector-effect: non-scaling-stroke;
 }
 
 .artl-topic__count {

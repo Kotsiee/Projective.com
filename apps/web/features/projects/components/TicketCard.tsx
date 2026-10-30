@@ -15,6 +15,9 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  * is the interactive element: it is the drag handle, the tab stop, and what opens the ticket on click
  * or Enter — so nothing here carries a `role`, a `tabIndex` on its root, or a click handler, because a
  * second focusable root inside the card would make every ticket two tab stops that both open it.
+ * Nor do its tooltip triggers take focus: each carries its tooltip's sentence as its `aria-label`, and
+ * the KanbanCard root names this body as its description, so keyboard and screen-reader users get the
+ * same facts from the card's one tab stop.
  *
  * Icon-first (§B.6): the priority flag, the stage activity signal, the client's drag lock and the
  * frozen state are icon-only or a short chip with a portal Tooltip. The ticket's funding state is the
@@ -56,7 +59,6 @@ export function TicketCard(
 								data-tone={priorityTone(card.priority)}
 								role="img"
 								aria-label={`${priorityLabel(card.priority)} priority`}
-								tabIndex={0}
 							>
 								<PriorityFlagIcon size={13} />
 							</span>
@@ -71,8 +73,7 @@ export function TicketCard(
 							<span
 								class="tkt__lock"
 								role="img"
-								aria-label="Locked while a freelancer works this ticket"
-								tabIndex={0}
+								aria-label="Locked: a freelancer is working this ticket. It can be moved again once the work is handed back for review, or the ticket is reassigned."
 							>
 								<Icon name="lock" size="2xs" />
 							</span>
@@ -91,7 +92,6 @@ export function TicketCard(
 								<span
 									class="tkt__m"
 									data-overdue={overdue || undefined}
-									tabIndex={0}
 									aria-label={overdue
 										? `Overdue, was due ${card.dueLabel}`
 										: `Due ${card.dueLabel}`}
@@ -112,8 +112,9 @@ export function TicketCard(
 								<span
 									class="tkt__m"
 									data-level={card.intensity}
-									tabIndex={0}
-									aria-label={`${TICKET_INTENSITY_LABEL[card.intensity]} workload intensity`}
+									aria-label={`${
+										TICKET_INTENSITY_LABEL[card.intensity]
+									} workload intensity, ${card.workload} units of capacity`}
 								>
 									<Icon name="analytics" size="2xs" />
 									{TICKET_INTENSITY_LABEL[card.intensity]}
@@ -151,7 +152,10 @@ export function TicketCard(
 					{card.frozen
 						? (
 							<Tooltip content="Frozen — a workload report paused this ticket for 48 hours">
-								<span class="tkt__flag tkt__flag--frozen" tabIndex={0} aria-label="Frozen ticket">
+								<span
+									class="tkt__flag tkt__flag--frozen"
+									aria-label="Frozen: a workload report paused this ticket for 48 hours"
+								>
 									Frozen
 								</span>
 							</Tooltip>

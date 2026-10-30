@@ -435,7 +435,7 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 
 	return (
 		<BodyPortal>
-			<div class="pjc" data-state={state} style={`z-index:${stack.zIndex}`}>
+			<div class="pjc" data-state={state} style={`--z-portal:${stack.zIndex}`}>
 				<Backdrop visible={state === "open"} onClick={onClose} />
 				<div
 					ref={panelRef}

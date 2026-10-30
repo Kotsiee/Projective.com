@@ -299,4 +299,17 @@ Deno.test("prefersJumpToFinal — no DOM, no matchMedia: falls through to false 
 	// total: a caller reading it on the server must get an answer, not an exception.
 	assertEquals(typeof prefersJumpToFinal(), "boolean");
 });
+
+Deno.test("prefersJumpToFinal — the in-app data-motion switch alone jumps to final", () => {
+	const g = globalThis as { document?: unknown };
+	const prior = g.document;
+	try {
+		g.document = { hidden: false, documentElement: { dataset: { motion: "reduced" } } };
+		assertEquals(prefersJumpToFinal(), true);
+		g.document = { hidden: false, documentElement: { dataset: {} } };
+		assertEquals(prefersJumpToFinal(), false);
+	} finally {
+		g.document = prior;
+	}
+});
 // #endregion

@@ -8,7 +8,7 @@
 /* #region Links + rows */
 .auth-link {
 	color: var(--primary);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	text-decoration: none;
 }
 
@@ -67,7 +67,7 @@
 	margin-bottom: var(--space-4);
 	padding: var(--space-3) var(--space-4);
 	border-radius: var(--radius-lg);
-	font-size: 0.9rem;
+	font-size: var(--text-md);
 	line-height: 1.45;
 }
 
@@ -119,8 +119,8 @@
 	color: var(--on-surface);
 	border: 0;
 	border-radius: var(--radius-lg);
-	font-weight: 600;
-	font-size: 0.95rem;
+	font-weight: var(--fw-semibold);
+	font-size: var(--text-base);
 	text-decoration: none;
 	cursor: pointer;
 	transition: background-color var(--dur-fast) var(--ease-standard);
@@ -132,7 +132,7 @@
 
 .auth-oauth__btn:focus-visible {
 	outline: none;
-	box-shadow: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .auth-oauth__glyph {
@@ -147,7 +147,7 @@
 	gap: var(--space-3);
 	margin: var(--space-4) 0;
 	color: var(--text-secondary);
-	font-size: 0.78rem;
+	font-size: var(--text-xs);
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
 }
@@ -156,8 +156,7 @@
 .auth-divider::after {
 	content: "";
 	flex: 1;
-	height: 1px;
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	border-block-start: var(--hairline);
 }
 
 .auth-sso {
@@ -168,7 +167,7 @@
 }
 
 .auth-sso__hint {
-	font-size: 0.82rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 	margin: 0 0 var(--space-3);
 	line-height: 1.4;

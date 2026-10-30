@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import type { BoardCard } from "../types/projects-types.ts";
 import { asksToFund } from "../core/funding-ui.ts";
-import { priorityLabel, priorityTone, statusLabel, statusTone } from "../core/board-model.ts";
+import { priorityLabel, statusLabel, statusTone } from "../core/board-model.ts";
 
 /**
  * TicketListView — the flat List presentation of the board (the footer's Kanban⁄List switch). A dense,
@@ -57,11 +57,7 @@ export function TicketListView({ cards, laneOf, onOpen }: TicketListViewProps): 
 						</span>
 					</span>
 					<span class="brd-list__cell" role="cell">{c.assignee?.name ?? "—"}</span>
-					<span class="brd-list__cell" role="cell">
-						<span class="brd-list__prio" data-tone={priorityTone(c.priority)}>
-							{priorityLabel(c.priority)}
-						</span>
-					</span>
+					<span class="brd-list__cell brd-list__prio" role="cell">{priorityLabel(c.priority)}</span>
 					<span class="brd-list__cell brd-list__cell--num" role="cell">
 						{c.budgetLabel ?? "—"}
 						{c.funding && asksToFund(c.funding)

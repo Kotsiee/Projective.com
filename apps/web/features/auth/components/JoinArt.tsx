@@ -37,7 +37,6 @@ export function HeroScene({ step, progress }: { step: StepId; progress: number }
 			viewBox="0 0 320 360"
 			role="img"
 			aria-hidden="true"
-			style={{ "--hero-progress": progress }}
 		>
 			<defs>
 				<filter id="join-hero-soft" x="-40%" y="-40%" width="180%" height="180%">
@@ -93,7 +92,10 @@ export function HeroScene({ step, progress }: { step: StepId; progress: number }
 				cx="160"
 				cy="176"
 				r="104"
+				// The offset is an SVG attribute, never an inline style; auth.css eases it between steps.
 				pathLength={100}
+				stroke-dasharray={100}
+				stroke-dashoffset={100 - progress * 100}
 				fill="none"
 				stroke="var(--on-primary)"
 				stroke-width="3"

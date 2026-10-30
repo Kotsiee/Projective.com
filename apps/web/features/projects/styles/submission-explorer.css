@@ -67,7 +67,7 @@
 	backdrop-filter: blur(var(--glass-blur, 18px));
 	-webkit-backdrop-filter: blur(var(--glass-blur, 18px));
 	pointer-events: none;
-	border-radius: 50px;
+	border-radius: var(--radius-full);
 }
 
 .subm-crumbbar__trail {

@@ -126,7 +126,7 @@ export function PreSubmitModal(props: PreSubmitModalProps): JSX.Element | null {
 
 	return (
 		<BodyPortal>
-			<div class="subm-review" data-state={state} style={`z-index:${stack.zIndex}`}>
+			<div class="subm-review" data-state={state} style={`--z-portal:${stack.zIndex}`}>
 				<Backdrop visible={state === "open"} onClick={onClose} />
 				<div
 					ref={panelRef}

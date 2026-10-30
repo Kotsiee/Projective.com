@@ -25,12 +25,27 @@
 	   left/right white-space bug). `clip` — not `hidden` — so it never creates a scroll container that
 	   would break the `position: fixed` header or in-page sticky elements. */
 	overflow-x: clip;
+	/* A column, so `<main>` can take the height the page has left (see `.site__main`). */
+	display: flex;
+	flex-direction: column;
 }
 
-/* Fixed header overlays the page; reserve its band so non-hero pages clear it (the hero cancels this
-   with a negative margin so it can fill the viewport behind the transparent header). */
+/*
+ * Fixed header overlays the page; reserve its band so non-hero pages clear it (the hero cancels this
+ * with a negative margin so it can fill the viewport behind the transparent header).
+ *
+ * The same flex column the dashboard's `.ui-page-canvas__body` is: it grows into the rest of the
+ * viewport and hands that height on by FLEX, so a surface that fills its host (the signed-out
+ * `/[handle]/availability` calendar, whose `block-size: 100%` chain otherwise resolves against an
+ * auto-height block and paints at 0px) has something to fill. `flex: 1 0 auto` rather than the
+ * dashboard's `1 1 auto` because the guest page scrolls the window, not a frame: content never shrinks
+ * below its own height, so ordinary scrolling pages size exactly as they did in block flow.
+ */
 .site__main {
-	display: block;
+	display: flex;
+	flex-direction: column;
+	flex: 1 0 auto;
+	min-block-size: 0;
 	padding-block-start: var(--site-header-h);
 }
 /* #endregion */
@@ -414,11 +429,6 @@
 	background: transparent;
 	color: var(--on-surface-variant);
 	cursor: pointer;
-}
-
-.site-header__search-go svg {
-	inline-size: 16px;
-	block-size: 16px;
 }
 
 .site-header__search-go:hover {

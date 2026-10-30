@@ -1,5 +1,7 @@
 import type { JSX } from "preact";
+import { useContext } from "preact/hooks";
 import type { EditorialArticleTopic } from "@projective/types/editorial";
+import { ArticleGlyphContext } from "../core/article-glyphs.ts";
 import { articlesIndexHref } from "../core/index-query.ts";
 
 /** Props for {@link ArticlePagination}. */
@@ -21,6 +23,7 @@ const PAGER_LINK = "ui-button ui-button--neutral ui-button--outlined ui-button--
 export function ArticlePagination(
 	{ page, pageCount, topics }: ArticlePaginationProps,
 ): JSX.Element | null {
+	const glyphs = useContext(ArticleGlyphContext);
 	if (pageCount <= 1) return null;
 	return (
 		<nav class="artl-pager" aria-label="Pages of articles">
@@ -33,7 +36,7 @@ export function ArticlePagination(
 							href={articlesIndexHref({ topics: [...topics], page: page - 1 })}
 						>
 							<span class="ui-button__label">
-								<span aria-hidden="true">←</span> Previous
+								{glyphs.back?.()} Previous
 							</span>
 						</a>
 					)
@@ -49,7 +52,7 @@ export function ArticlePagination(
 							href={articlesIndexHref({ topics: [...topics], page: page + 1 })}
 						>
 							<span class="ui-button__label">
-								Next <span aria-hidden="true">→</span>
+								Next {glyphs.forward?.()}
 							</span>
 						</a>
 					)

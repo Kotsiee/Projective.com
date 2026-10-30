@@ -203,7 +203,7 @@
 	}
 
 	18% {
-		box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent);
+		box-shadow: 0 0 0 var(--space-px) color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
 	}
 }
 

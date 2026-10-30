@@ -160,11 +160,6 @@
     cursor: pointer;
 }
 
-.shell-search__search-go svg {
-    inline-size: 16px;
-    block-size: 16px;
-}
-
 .shell-search__search-go:hover {
     color: var(--primary);
 }

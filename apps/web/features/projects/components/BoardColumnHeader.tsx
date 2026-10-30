@@ -46,7 +46,11 @@ export function BoardColumnHeader(
 			{col?.locked
 				? (
 					<Tooltip content="This stage has started or been claimed — its order is locked">
-						<span class="brd-colhead__lock" role="img" aria-label="Stage order locked" tabIndex={0}>
+						<span
+							class="brd-colhead__lock"
+							role="img"
+							aria-label="Stage order locked: this stage has started or been claimed"
+						>
 							<LockIcon size={13} />
 						</span>
 					</Tooltip>

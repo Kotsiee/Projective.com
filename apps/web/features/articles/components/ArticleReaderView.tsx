@@ -1,4 +1,5 @@
 import type { ComponentType, JSX } from "preact";
+import { useContext } from "preact/hooks";
 import type { Doc } from "@projective/types/content";
 import {
 	EDITORIAL_ARTICLE_TOPIC_LABEL,
@@ -11,6 +12,7 @@ import { DocumentDate } from "@projective/ui/display/editorial";
 import type { DocumentPageProps } from "@features/marketing/components/DocumentPageView.tsx";
 import { articleCtaFor, ctaSectionIndex } from "../core/article-cta.ts";
 import { readTimeLabel, updatedAfterPublishing } from "../core/article-format.ts";
+import { ArticleGlyphContext } from "../core/article-glyphs.ts";
 import { articlesIndexHref } from "../core/index-query.ts";
 import { ArticleByline } from "./ArticleByline.tsx";
 import { ArticleCta } from "./ArticleCta.tsx";
@@ -110,6 +112,7 @@ function ArticleFooter(
 		related: EditorialArticleCard[];
 	},
 ): JSX.Element {
+	const glyphs = useContext(ArticleGlyphContext);
 	return (
 		<div class="artl-footer" data-print="hide">
 			<section aria-labelledby="artl-author-title">
@@ -144,7 +147,7 @@ function ArticleFooter(
 				)
 				: null}
 			<a class="artl-footer__back" href={articlesIndexHref()}>
-				<span aria-hidden="true">←</span> All articles
+				{glyphs.back?.()} All articles
 			</a>
 		</div>
 	);

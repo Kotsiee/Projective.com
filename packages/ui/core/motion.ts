@@ -117,8 +117,10 @@ export const SPRING_EXPRESSIVE_EXIT: SpringConfig = { mass: 1, stiffness: 300, d
  * Two independent triggers, checked in this order and for different reasons:
  * 1. `document.hidden` — rAF, CSS transitions and CSS `@keyframes` are all frozen in a hidden or
  *    background tab, so a value that needed a frame would never arrive at all.
- * 2. `prefers-reduced-motion: reduce` — the §B.5 jump-to-final rule. A media query cannot reach a
- *    JS integrator, so it is honoured here or not at all.
+ * 2. Reduced motion, from either channel (§A.5): the OS `prefers-reduced-motion: reduce` query, or
+ *    the in-app Settings → Appearance → Reduce motion switch, which writes
+ *    `:root[data-motion="reduced"]` (CSS honours it in `styles/index.css`). Neither a media query nor
+ *    an attribute selector can reach a JS integrator, so both are honoured here or not at all.
  *
  * Optional-chained `matchMedia?.` so a non-DOM environment falls through to `false`, and the caller
  * then still has a synchronous path because {@link createSpring} degrades when
@@ -129,7 +131,10 @@ export const SPRING_EXPRESSIVE_EXIT: SpringConfig = { mass: 1, stiffness: 300, d
  * halves of "does this move" can never answer differently.
  */
 export function prefersJumpToFinal(): boolean {
-	if (typeof document !== "undefined" && document.hidden) return true;
+	if (typeof document !== "undefined") {
+		if (document.hidden) return true;
+		if (document.documentElement?.dataset.motion === "reduced") return true;
+	}
 	return globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
 }
 // #endregion

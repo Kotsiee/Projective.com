@@ -760,4 +760,96 @@
 	block-size: 1.1rem;
 }
 
+/*
+ * The FORCED-COLORS palette (gate 2). The browser repaints DOM in the reader's system colours, but a
+ * canvas holds pixels it never sees, so the swatches have to carry those colours themselves.
+ * `forced-color-adjust: none` keeps the engine from forcing the probes (it would turn every `color`
+ * into CanvasText, i.e. a solid band over the whole grid); each value below is a CSS system colour,
+ * which `getComputedStyle` resolves to the reader's actual choice. Fills collapse to Canvas and every
+ * shape is carried by a CanvasText edge instead, because a forced theme has no tints to spend.
+ * `useGridCanvas` repaints when the `(forced-colors: active)` query flips.
+ */
+@media (forced-colors: active) {
+	.cal-grid__swatch {
+		forced-color-adjust: none;
+	}
+
+	.cal-grid__swatch--rule {
+		border-block-start-color: GrayText;
+	}
+
+	.cal-grid__swatch--boundary,
+	.cal-grid__swatch--tooltip {
+		border-block-start-color: CanvasText;
+	}
+
+	.cal-grid__swatch--band,
+	.cal-grid__swatch--lift {
+		color: transparent;
+	}
+
+	.cal-grid__swatch--band-edge,
+	.cal-grid__swatch--now {
+		border-block-start-color: Highlight;
+	}
+
+	.cal-grid__swatch--blackout,
+	.cal-grid__swatch--masked {
+		color: GrayText;
+	}
+
+	.cal-grid__swatch--hour,
+	.cal-grid__swatch--title,
+	.cal-grid__swatch--meta,
+	.cal-grid__swatch--avatar,
+	.cal-grid__swatch--pin {
+		color: CanvasText;
+	}
+
+	.cal-grid__swatch--marker {
+		color: CanvasText;
+		background-color: Canvas;
+	}
+
+	.cal-grid__swatch--selection {
+		background-color: Canvas;
+		border-block-start-color: Highlight;
+	}
+
+	.cal-grid__swatch--bar {
+		background-color: GrayText;
+		border-block-start-color: CanvasText;
+		outline-color: Highlight;
+	}
+
+	.cal-grid__swatch--ball {
+		background-color: Highlight;
+	}
+
+	.cal-grid__swatch--pill {
+		color: ButtonText;
+		background-color: ButtonFace;
+		border-block-start-color: ButtonText;
+	}
+
+	.cal-grid__swatch--focus {
+		outline-color: Highlight;
+		border-block-start-color: Canvas;
+	}
+
+	.cal-grid__swatch--tooltip {
+		background-color: Canvas;
+	}
+
+	.cal-grid__swatch--accent {
+		color: CanvasText;
+		background-color: Canvas;
+		border-block-start-color: Canvas;
+		outline-color: Canvas;
+		text-decoration-color: CanvasText;
+		column-rule-color: CanvasText;
+		column-gap: var(--focus-ring-w);
+	}
+}
+
 /* #endregion */
