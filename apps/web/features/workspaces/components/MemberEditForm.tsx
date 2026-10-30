@@ -49,6 +49,7 @@ import {
 	roleOptions,
 	TITLE_EXAMPLE,
 	toggleCapability,
+	viewerRankOf,
 } from "../core/members-model.ts";
 import { ConsequenceIcon } from "./MemberCard.tsx";
 import { ManagerCapNotice } from "./ManagerCapNotice.tsx";
@@ -203,7 +204,9 @@ export function MemberEditForm(props: MemberEditFormProps): JSX.Element {
 						<Select
 							id={id}
 							aria-describedby={describedBy}
-							options={roleOptions(assignableRoles(ws.roles, caps, member.roleId))}
+							options={roleOptions(
+								assignableRoles(ws.roles, caps, viewerRankOf(ws), member.roleId),
+							)}
 							value={roleId}
 							onValueChange={() => (error.value = null)}
 							fluid

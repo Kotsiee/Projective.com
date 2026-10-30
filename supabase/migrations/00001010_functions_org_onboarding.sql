@@ -739,7 +739,14 @@ BEGIN
 END;
 $$;
 
--- Whether a person is 13–17 today. False for anyone without a profile row.
+-- Whether a person is NOT provably 18 today: 13–17 by their stored date of birth, or an identity
+-- (an auth.users row) with no profile row and so no date of birth at all. It fails CLOSED (IW-H2,
+-- FOUNDER_QUESTIONNAIRE F4): an identity that never gave a DoB (a profile-less enterprise owner; a
+-- future SSO identity) used to answer `false` here and pass every fn_assert_adult door. Whatever F4
+-- rules — a profile for every owner, or a DoB on the enterprise step — no DoB means not provably
+-- adult. An id that names no identity at all stays `false`: several callers pass a polymorphic id
+-- (trg_project_joiner_adult sees a business profile id as a participant), and a NULL user is no
+-- person either (a signed-out caller, the service role).
 CREATE OR REPLACE FUNCTION org.fn_is_minor(p_user uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -749,7 +756,7 @@ SET search_path = ''
 AS $$
     SELECT COALESCE(
         (SELECT org.fn_age_years(u.dob, u.timezone) < 18 FROM org.users_public u WHERE u.user_id = p_user),
-        false
+        EXISTS (SELECT 1 FROM auth.users a WHERE a.id = p_user)
     );
 $$;
 

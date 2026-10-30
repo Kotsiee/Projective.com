@@ -133,6 +133,9 @@ const ROLES: WorkspaceRoleDef[] = [
 
 const byId = (id: string) => ROLES.find((r) => r.id === id)!;
 
+/** A custom role ranking below a lead — the one a lead with Change roles may edit. */
+const HELPER = role("r-helper", null, "member", ["view_analytics"], "Helper", 0);
+
 function viewer(preset: WorkspaceRole, kind: WorkspaceKind = "team"): RolesViewer {
 	const caps = presetCapabilities(preset, kind);
 	const rank = { owner: 4, admin: 3, lead: 2, member: 1 }[preset];
@@ -382,19 +385,23 @@ Deno.test("canvas: on follows the draft; the owner holds everything; a rule show
 	assert(rowsOf(owner).every((r) => r.on && r.rule === null));
 });
 
-Deno.test("canvas: a preset, a role above the viewer, or no Change roles — read-only, said once", () => {
+Deno.test("canvas: a preset, a role not below the viewer, or no Change roles — read-only, said once", () => {
 	const owner = viewer("owner");
 	assertEquals(roleLock(byId("r-admin"), owner), PRESET_LOCK);
 	assertStrictEquals(roleLock(byId("r-designer"), owner), null);
 	assertEquals(roleLock(byId("r-designer"), { ...owner, canManage: false }), VIEW_LOCK);
-	// A lead granted manage_roles on top of their role: Treasurer ranks above them.
+	// A lead granted manage_roles on top of their role: Treasurer ranks above them, and the Designer
+	// (based on Lead) ranks as they do — a peer's role, which org.fn_assert_role_below refuses too.
 	const lead = {
 		...viewer("lead"),
 		caps: [...LEAD_CAPS, "manage_roles" as const],
 		canManage: true,
 	};
 	assertEquals(roleLock(byId("r-treasurer"), lead), RANK_LOCK);
-	assertStrictEquals(roleLock(byId("r-designer"), lead), null);
+	assertEquals(roleLock(byId("r-designer"), lead), RANK_LOCK);
+	assertStrictEquals(roleLock(HELPER, lead), null);
+	// An admin may not rewrite the admin-ranked role a peer admin may hold (IW-H4).
+	assertEquals(roleLock(byId("r-treasurer"), viewer("admin")), RANK_LOCK);
 	// The whole-role lock is the canvas's, never repeated on its rows.
 	for (
 		const [id, who, lock] of [
@@ -416,7 +423,7 @@ Deno.test("canvas: on a role the viewer may edit, a row they may not grant says 
 		caps: [...LEAD_CAPS, "manage_roles" as const],
 		canManage: true,
 	};
-	const rows = rowsOf(canvasFor("r-designer", lead));
+	const rows = rowsOf(canvasFor(HELPER.id, lead, { roles: [...ROLES, HELPER] }));
 	assertEquals(rows.find((r) => r.capability === "withdraw_funds")?.lock, GRANT_LOCK);
 	assertStrictEquals(
 		rows.find((r) => r.capability === "view_analytics")?.lock,
@@ -572,15 +579,21 @@ Deno.test("actions: none on a preset or without manage_roles; Edit details only 
 		"duplicate",
 		"archive",
 	]);
-	// A role carrying what the viewer can't grant: Edit details refused in place, with the reason.
+	// A role ranking as the viewer does is locked the same way: an admin on the admin-ranked Treasurer.
 	const admin = viewer("admin");
+	assertEquals(roleActionRows(byId("r-treasurer"), admin, []).map((r) => r.action), [
+		"duplicate",
+		"archive",
+	]);
+	// A role below them carrying what they can't grant: Edit details refused in place, with the reason.
+	const payer = role("r-payer", null, "lead", ["manage_finances", "withdraw_funds"], "Payer", 0);
 	assertEquals(
-		editBlock(byId("r-treasurer"), admin),
-		"Treasurer allows Withdraw funds, which you can't give a role.",
+		editBlock(payer, admin),
+		"Payer allows Withdraw funds, which you can't give a role.",
 	);
-	assertEquals(roleActionRows(byId("r-treasurer"), admin, [])[0], {
+	assertEquals(roleActionRows(payer, admin, [])[0], {
 		action: "edit",
-		disabledReason: "Treasurer allows Withdraw funds, which you can't give a role.",
+		disabledReason: "Payer allows Withdraw funds, which you can't give a role.",
 		hint: EDIT_BLOCKED_HINT,
 	});
 	assertStrictEquals(roleActionRows(byId("r-designer"), owner, [])[0].hint, null);
@@ -879,24 +892,27 @@ Deno.test("clone sources: a clean slate, the kind's templates, then every role, 
 	);
 });
 
-Deno.test("ranks: never owner, never above the author, no lead on a business", () => {
+Deno.test("ranks: never owner, never at or above the author, no lead on a business", () => {
 	assertEquals(baseOptions("team", 4), ["admin", "lead", "member"]);
-	assertEquals(baseOptions("team", 3), ["admin", "lead", "member"]);
-	assertEquals(baseOptions("team", 2), ["lead", "member"]);
+	assertEquals(baseOptions("team", 3), ["lead", "member"]);
+	assertEquals(baseOptions("team", 2), ["member"]);
+	assertEquals(baseOptions("team", 1), []);
 	assertEquals(baseOptions("business", 4), ["admin", "member"]);
+	assertEquals(baseOptions("business", 3), ["member"]);
 	assertEquals(clampBase("owner", baseOptions("team", 4)), "admin");
-	assertEquals(clampBase("admin", baseOptions("team", 2)), "lead");
+	assertEquals(clampBase("admin", baseOptions("team", 3)), "lead");
+	assertEquals(clampBase("admin", baseOptions("team", 2)), "member");
 	assertEquals(clampBase("lead", baseOptions("business", 4)), "member");
 	assertEquals(clampBase("member", []), "member");
 });
 
-Deno.test("seed: only what the author may grant, the rest named; the rank clamped to theirs", () => {
+Deno.test("seed: only what the author may grant, the rest named; the rank clamped below theirs", () => {
 	const points = startPoints("team", ROLES);
 	const lead = viewer("lead");
 	const copyOfAdmin = seedFrom(startPointOf(points, "role:r-admin"), lead);
 	assert(copyOfAdmin.capabilities.every((c) => LEAD_CAPS.includes(c)));
 	assert(copyOfAdmin.dropped.includes("manage_roles"));
-	assertEquals(copyOfAdmin.basePreset, "lead");
+	assertEquals(copyOfAdmin.basePreset, "member");
 	assertEquals(
 		seedNote(["manage_roles"], "team"),
 		"Change roles is left out — you can't grant what you don't hold.",

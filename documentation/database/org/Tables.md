@@ -206,7 +206,7 @@ Micro-agencies or collaborative units.
 | `name`               | text  | 2–80 characters (`org.create_workspace` / `org.update_workspace`).                                                                          |
 | `slug`               | text  | UNIQUE — the team's `@handle`, in the one handle namespace; the console is addressed by it (`/teams/[teamHandle]`).                        |
 | `status`             | text  | `CHECK IN ('draft','active','archived')`, default `draft`. Moved only by `org.set_workspace_status`.                                         |
-| `visibility`         | text  | `NOT NULL DEFAULT 'invite_only'` — `public` · `unlisted` · `invite_only` (no CHECK on this table; `org.update_workspace` validates the value); created `invite_only` by `org.create_workspace`, set by `org.update_workspace`. `org.profiles_index` lists an `active` team only when `public` and resolves it by handle when `unlisted`. It decides, with `status`, whether a stranger may open the team's `/@handle`: `org.fn_profile_visible` admits an outsider only while it is `active` and `public`/`unlisted`; a member always, told why by `get_profile_view`'s `workspace.hidden_reason` (Teams P1). Seeded teams are `public`. |
+| `visibility`         | text  | `NOT NULL DEFAULT 'invite_only'` — `CHECK IN ('public','unlisted','invite_only')` (`teams_visibility_check`, 2026-10-30; the `business_profiles` vocabulary, Zod `WorkspaceVisibility`); created `invite_only` by `org.create_workspace`, set by `org.update_workspace`. `org.profiles_index` lists an `active` team only when `public` and resolves it by handle when `unlisted`. It decides, with `status`, whether a stranger may open the team's `/@handle`: `org.fn_profile_visible` admits an outsider only while it is `active` and `public`/`unlisted`; a member always, told why by `get_profile_view`'s `workspace.hidden_reason` (Teams P1). Seeded teams are `public`. |
 | `subscription_tier`  | text  | The team's plan tier. **Guarded** (`trg_teams_immutable`) — a plan is bought, never PATCHed.                                                |
 | `treasury_wallet_id` | uuid  | The team's wallet, set by `org.create_workspace` (and by the seed). Guarded.                                                                |
 | `payout_model`       | text  | Internal distribution logic.                                                                                                                |
@@ -680,7 +680,7 @@ Join table mapping users to enterprises with a role — the multi-tenant link.
 | `enterprise_id` | uuid                    | FK → `org.enterprises.id` (ON DELETE CASCADE).                |
 | `user_id`         | uuid                    | FK → `auth.users.id` (ON DELETE CASCADE).                       |
 | `role`            | `org.enterprise_role` | `owner` / `admin` / `member`.                                   |
-| `status`          | text                    | Default `active`.                                               |
+| `status`          | text                    | Default `active`; `CHECK IN ('active','left')` (`ck_enterprise_member_status`, IW-M10), the seat vocabulary of the team and business rosters. Every reader matches `active`. Zod `EnterpriseMemberStatus`. |
 | `invited_by`      | uuid                    | FK → `auth.users.id` (ON DELETE SET NULL).                      |
 | UNIQUE            | —                       | `(enterprise_id, user_id)` — one membership per user per org. |
 

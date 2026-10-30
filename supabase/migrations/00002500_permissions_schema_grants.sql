@@ -39,19 +39,14 @@ FROM
     authenticated,
     service_role;
 
+-- `org` is exposed to PostgREST, and usage is all a client role receives here (IDENTITY_AND_WORKSPACES_AUDIT
+-- IW-H7). The schema-wide `GRANT ALL` on every table and sequence, and the default privileges that
+-- handed the same to every FUTURE table and view, are gone: they made RLS the only barrier, so a table
+-- that shipped without it (org.profile_follows, Decision #102(a)) was writable by a signed-out caller.
+-- Every org table a client role reaches is now named in 00002520 with the verbs its policies give a
+-- meaning to, and every org view in 00003005. A new org table or view is unreachable until somebody
+-- grants it by name, which the probe rls_exposed_tables.sql holds to RLS plus a policy.
 GRANT USAGE ON SCHEMA org TO anon, authenticated;
-
-GRANT ALL ON ALL TABLES IN SCHEMA org TO anon, authenticated;
-
-GRANT ALL ON ALL SEQUENCES IN SCHEMA org TO anon, authenticated;
-
-ALTER DEFAULT PRIVILEGES IN SCHEMA org
-GRANT ALL ON TABLES TO anon,
-authenticated;
-
-ALTER DEFAULT PRIVILEGES IN SCHEMA org
-GRANT ALL ON SEQUENCES TO anon,
-authenticated;
 
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 
@@ -85,7 +80,7 @@ GRANT ALL ON SEQUENCES TO authenticated;
 -- maintenance act and belongs to the service role, which is unaffected by this.
 --
 -- SCOPE, stated rather than assumed: the same `GRANT ALL` pattern is used for
--- `org`, `public`, `files`, `projects`, `marketplace` and `reviews`, so the same
+-- `public`, `files`, `projects`, `marketplace` and `reviews`, so the same
 -- reasoning applies to every one of them. Only `comms` is revoked here because
 -- that is the schema this change is about; the rest is recorded in
 -- documentation/architecture/READ_API_FINDINGS.md for a human to decide, since a
@@ -143,7 +138,7 @@ service_role;
 -- Nothing in the application truncates as `authenticated`; truncation is a
 -- maintenance act and belongs to the service role, which is unaffected.
 --
--- SCOPE, unchanged: `org`, `public`, `files`, `marketplace` and `reviews` still
+-- SCOPE, unchanged: `public`, `files`, `marketplace` and `reviews` still
 -- carry the same `GRANT ALL` pattern and are recorded in
 -- documentation/architecture/READ_API_FINDINGS.md for a human, since a
 -- platform-wide privilege change deserves its own review.
@@ -344,15 +339,11 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA marketplace REVOKE TRUNCATE ON TABLES FROM an
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA reviews REVOKE TRUNCATE ON TABLES FROM anon, authenticated;
 
--- The same for `org` and `files` (2026-09-23), the two schemas the public profile and its media
--- pipeline live in. Both are `GRANT ALL` above — `org` to `anon` as well — so every profile table,
--- including the showcase, the privacy switches and the certifications, and every media row and WebP
--- tier, could be emptied by a caller RLS would not let read a single row of it. The service role and
--- the definer functions are unaffected; nothing in the application truncates as a client.
-REVOKE TRUNCATE ON ALL TABLES IN SCHEMA org FROM anon, authenticated;
-
+-- The same for `files` (2026-09-23), the schema the public profile's media pipeline lives in. It is
+-- `GRANT ALL` above, so every media row and WebP tier could be emptied by a caller RLS would not let
+-- read a single row of it. The service role and the definer functions are unaffected; nothing in the
+-- application truncates as a client. (`org` needed the same revoke until IW-H7 took its blanket grant
+-- away: 00002520 grants no org table TRUNCATE.)
 REVOKE TRUNCATE ON ALL TABLES IN SCHEMA files FROM anon, authenticated;
-
-ALTER DEFAULT PRIVILEGES IN SCHEMA org REVOKE TRUNCATE ON TABLES FROM anon, authenticated;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA files REVOKE TRUNCATE ON TABLES FROM anon, authenticated;

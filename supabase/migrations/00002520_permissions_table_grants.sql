@@ -34,52 +34,68 @@ GRANT ALL ON TABLE security.platform_params TO service_role;
 
 -- #endregion
 
--- #region org: email addresses + verification tokens (00001050, 2026-10-06)
--- 00002500 grants ALL on every org table to both client roles. org.user_emails keeps SELECT (filtered
--- to the caller's own rows by its one policy, 00002010) and loses every write verb: its writers are
--- definers, because `verified_at` unlocks invitations. The token table is definer-only — no client
--- verb at all, so not even a policy mistake could expose a token hash.
-REVOKE INSERT, UPDATE, DELETE ON TABLE org.user_emails FROM anon, authenticated;
+-- #region org — deny by default, granted by name (IDENTITY_AND_WORKSPACES_AUDIT IW-H7)
+-- 00002500 gives the client roles USAGE on `org` and nothing else: no schema-wide table grant and no
+-- default privileges. A client role reaches exactly the tables named below, with exactly the verbs the
+-- table's policies (00002010; the Standing tables in 00002016) give a meaning to, and only the roles
+-- those policies admit. RLS still decides WHICH rows; the grant decides which VERBS and which roles.
+-- Never `ALL`: it carries TRUNCATE, REFERENCES and TRIGGER, none of which RLS bounds. The probe
+-- rls_exposed_tables.sql fails on any table a client role holds a privilege on without RLS and a
+-- policy, and on any org privilege outside SELECT · INSERT · UPDATE · DELETE.
+--
+-- No client grant at all, deliberately: these are definer-only, read and written through the RPCs
+-- that guard them, so a direct PostgREST read is refused rather than answered `[]`.
+--   * org.business_profiles — no client policy (Decision #150): a row carries the tax id and the
+--     address, so members read it through org.get_workspace_detail and the other definers.
+--   * org.org_invitations · org.org_invite_links · org.org_join_requests — the token IS the accept
+--     capability (00001020 §12), so every read and write is a definer.
+--   * org.portfolios · org.profile_links · org.user_skills — read through org.get_profile_view and
+--     written through org.save_profile, which validate what a policy cannot.
+--   * org.email_verification_tokens — not even a policy mistake can expose a token hash.
 
-REVOKE ALL ON TABLE org.email_verification_tokens FROM anon, authenticated;
--- #endregion
+-- Read by a guest as well as a signed-in reader: reference data, the public follow graph, and the
+-- profile detail whose policies follow the profile (org.fn_profile_visible).
+GRANT SELECT ON org.skills, org.supported_locales, org.profile_follows, org.education_entries,
+    org.experience_entries, org.user_languages, org.certifications, org.profile_showcase_items,
+    org.profile_settings
+    TO anon, authenticated;
 
--- #region org: handle history + scheduled removals (00001060)
--- Read-own through their policies; written only by the 00001060 definers.
-REVOKE INSERT, UPDATE, DELETE ON TABLE org.handle_changes FROM anon, authenticated;
+-- A follow is the caller's own edge ("Users follow as themselves" / "unfollow their own"); there is
+-- no UPDATE, because a follow has no mutable column.
+GRANT INSERT, DELETE ON org.profile_follows TO authenticated;
 
-REVOKE INSERT, UPDATE, DELETE ON TABLE org.deletion_requests FROM anon, authenticated;
+-- Signed-in reads only. Several of these policies are `TO public` but key on auth.uid() or a
+-- membership predicate, which a guest never satisfies, so `anon` is granted nothing it could use.
+-- Every write is a definer (the workspace RPCs, provisioning, 00001050 / 00001060).
+GRANT SELECT ON org.teams, org.team_members, org.team_roles, org.business_members, org.business_roles,
+    org.enterprises, org.enterprise_members, org.freelancer_profiles, org.user_emails,
+    org.handle_changes, org.deletion_requests
+    TO authenticated;
 
-REVOKE ALL ON TABLE org.handle_changes, org.deletion_requests FROM anon;
--- #endregion
+-- The caller's own settings and lists. Discovery history is read and cleared, never written by a
+-- client (search.record_view stamps `viewed_at` itself); preferences are never deleted (the seed
+-- trigger writes the row, the settings screen updates it); bookmarks and their collections are the
+-- caller's to manage wholesale.
+GRANT SELECT, DELETE ON org.recent_views TO authenticated;
 
--- #region org: discovery history (00001400 search.record_view)
--- Read and clear your own through the two policies (00002010); written only by the definer, so the
--- client keeps SELECT + DELETE and a guest holds nothing at all.
-REVOKE INSERT, UPDATE ON TABLE org.recent_views FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE ON org.user_preferences TO authenticated;
 
-REVOKE ALL ON TABLE org.recent_views FROM anon;
--- #endregion
+GRANT SELECT, INSERT, UPDATE, DELETE ON org.user_bookmarks, org.user_bookmark_collections TO authenticated;
 
--- #region org: supported locales (00005050 reference data, Decision #207)
--- Readable by everyone through its policy (00002010); written only by the seed.
-REVOKE INSERT, UPDATE, DELETE ON TABLE org.supported_locales FROM anon, authenticated;
--- #endregion
-
--- #region org: users_public private columns (IDENTITY_AND_WORKSPACES_AUDIT IW-C1)
--- Its SELECT policy (00002010) admits every signed-in reader to every row, and a policy is row-level,
--- so the table-level grant from 00002500 is taken back and re-issued per column WITHOUT dob · city ·
--- country · timezone. A PostgREST select of any of them — or of * — is refused; others see a person's
--- location and local time only through get_profile_view / profiles_index, which mask a minor's, and
--- the owner reads their own through org.get_own_private_profile (00001040). A guest reads no row
--- through the policy, so it keeps no column either.
-REVOKE SELECT ON org.users_public FROM anon, authenticated;
-
+-- users_public private columns (IW-C1). Its SELECT policy (00002010) admits every signed-in reader to
+-- every row, and a policy is row-level, so the grant is per column WITHOUT dob · city · country ·
+-- timezone. A PostgREST select of any of them — or of * — is refused; others see a person's location
+-- and local time only through get_profile_view / profiles_index, which mask a minor's, and the owner
+-- reads their own through org.get_own_private_profile (00001040). A guest reads no row through the
+-- policy, so it holds no column either. No write verb: org.save_profile names every column it touches.
 GRANT SELECT (user_id, username, first_name, last_name, avatar_file_id, banner_file_id, headline,
     languages, visibility, bio, interests, rating_average, rating_count, active_project_count,
     total_project_count, service_count, product_count, created_at, updated_at, is_freelancer,
     has_business, has_team, is_operator)
     ON org.users_public TO authenticated;
+
+-- The Standing tables are granted with the rest of their surface, under
+-- "from 20260724111000_standing_reputation.sql" below (SELECT to authenticated).
 -- #endregion
 
 -- #region Finance: escrow visibility (writes are SECURITY DEFINER only)
@@ -309,6 +325,10 @@ GRANT SELECT ON TABLE comms.channel_suppressions TO authenticated;
 GRANT ALL ON TABLE comms.channel_suppressions TO service_role;
 
 GRANT ALL ON TABLE comms.delivery_events TO service_role;
+
+-- "No access at all to raw gateway events", made true: 00002500's `GRANT ALL ON ALL TABLES IN SCHEMA
+-- comms TO authenticated` reached this table too, and only its policy-less RLS stood in the way.
+REVOKE ALL ON TABLE comms.delivery_events FROM authenticated;
 -- #endregion
 
 -- #region 2. Column-scoped UPDATE and INSERT — what a row policy cannot say

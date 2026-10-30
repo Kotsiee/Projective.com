@@ -292,18 +292,33 @@ export function roleOptions(roles: readonly WorkspaceRoleDef[]): RoleOption[] {
 	}));
 }
 
+/** `roleRank` of the viewer's own seat in a detail (a custom role ranks as its base); `0` for none. */
+export function viewerRankOf(
+	ws: Pick<WorkspaceDetail, "members" | "viewerMemberId">,
+): number {
+	const self = ws.members.find((m) => m.id === ws.viewerMemberId) ??
+		ws.members.find((m) => m.isSelf) ?? null;
+	return self ? roleRank(self.rolePreset) : 0;
+}
+
 /**
- * The roles a viewer may OFFER — the invite dialog's list and the drawer's role picker. The mirror of
- * `org.invite_workspace_member` / `org.update_workspace_member`: never the owner seat (ownership moves
- * only by transfer), and never a role carrying a capability the viewer does not hold, because offering
- * a role is granting it. Archived roles never reach the detail.
+ * The roles a viewer may OFFER — the invite dialog's list, the join-request approval and the drawer's
+ * role picker. The mirror of `org.invite_workspace_member` / `org.respond_to_join_request` /
+ * `org.update_workspace_member`: never the owner seat (ownership moves only by transfer), never a
+ * role carrying a capability the viewer does not hold, because offering a role is granting it, and
+ * never a role that does not rank strictly below the viewer's own seat (`org.fn_assert_role_below`:
+ * a role at your rank is your peers' standing). Archived roles never reach the detail.
  */
 export function grantableRoles(
 	roles: readonly WorkspaceRoleDef[],
 	caps: readonly WorkspaceCapability[],
+	viewerRank: number,
 ): WorkspaceRoleDef[] {
 	const held = new Set(caps);
-	return roles.filter((r) => r.basePreset !== "owner" && r.capabilities.every((c) => held.has(c)));
+	return roles.filter((r) =>
+		r.basePreset !== "owner" && roleRank(r.basePreset) < viewerRank &&
+		r.capabilities.every((c) => held.has(c))
+	);
 }
 
 /**
@@ -313,9 +328,10 @@ export function grantableRoles(
 export function assignableRoles(
 	roles: readonly WorkspaceRoleDef[],
 	caps: readonly WorkspaceCapability[],
+	viewerRank: number,
 	currentRoleId: string,
 ): WorkspaceRoleDef[] {
-	const grantable = new Set(grantableRoles(roles, caps).map((r) => r.id));
+	const grantable = new Set(grantableRoles(roles, caps, viewerRank).map((r) => r.id));
 	return roles.filter((r) => r.id === currentRoleId || grantable.has(r.id));
 }
 // #endregion

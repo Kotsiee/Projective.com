@@ -18,7 +18,12 @@ GRANT SELECT ON comms.notification_delivery_health TO authenticated;
 -- #endregion
 
 -- #region org
-REVOKE ALL ON org.view_business_staff FROM anon;
+-- `org` sets no default privileges (IW-H7, 00002500), so a view is unreachable until it is named
+-- here. Both are read-only: a view that joins is not auto-updatable, and SELECT is all either needs.
+-- profiles_index is a definer view that masks a minor's location itself; it serves the signed-out
+-- directory, so `anon` reads it too.
+GRANT SELECT ON org.profiles_index TO anon, authenticated;
+-- security_invoker: the caller's own policies on business_members, users_public and user_emails apply.
 GRANT SELECT ON org.view_business_staff TO authenticated;
 -- #endregion
 

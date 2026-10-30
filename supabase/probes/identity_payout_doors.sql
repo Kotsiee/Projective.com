@@ -149,25 +149,30 @@ SELECT pg_temp.expect_refusal('anon cannot call apply_identity_event', 'anon', N
     $q$SELECT finance.apply_identity_event('evt_probe_forged', 'identity.verification_session.verified', 'vs_probe_forged', NULL, false)$q$,
     '42501');
 
--- The profile row is the user's to read, never to write: RLS has no UPDATE policy, so a direct
--- self-verification touches nothing.
+-- The profile row is the user's to read, never to write: `authenticated` holds SELECT only (00002520,
+-- IW-H7) and RLS has no UPDATE policy either, so a direct self-verification is refused outright.
 DO $$
 DECLARE
     v_rows integer;
+    v_refused boolean := false;
 BEGIN
     PERFORM pg_temp.act('authenticated', pg_temp.f());
-    UPDATE org.freelancer_profiles
-       SET kyc_status = 'verified', kyc_verified_at = now(), payout_ready = true
-     WHERE user_id = pg_temp.f();
-    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    BEGIN
+        UPDATE org.freelancer_profiles
+           SET kyc_status = 'verified', kyc_verified_at = now(), payout_ready = true
+         WHERE user_id = pg_temp.f();
+        GET DIAGNOSTICS v_rows = ROW_COUNT;
+    EXCEPTION WHEN insufficient_privilege THEN
+        v_refused := true;
+    END;
     RESET ROLE;
-    IF v_rows <> 0 THEN
-        RAISE EXCEPTION 'FAIL a freelancer self-verified through a direct UPDATE (% rows)', v_rows;
+    IF NOT v_refused THEN
+        RAISE EXCEPTION 'FAIL authenticated holds UPDATE on org.freelancer_profiles (the statement ran, % rows)', v_rows;
     END IF;
     IF finance.fn_freelancer_payout_ready(pg_temp.f()) THEN
         RAISE EXCEPTION 'FAIL the earning gate opened after a direct UPDATE';
     END IF;
-    RAISE NOTICE 'PASS a direct UPDATE of the KYC / payout cache touches 0 rows (RLS)';
+    RAISE NOTICE 'PASS a direct UPDATE of the KYC / payout cache is refused (no UPDATE grant, 42501)';
 END $$;
 -- #endregion
 

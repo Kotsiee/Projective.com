@@ -1,7 +1,19 @@
 # security: Functions
 
-Context resolution + JWT claim stamping for the `security` schema. Other `security` functions
-(penalty aggregation, admin checks) remain `_Not yet documented._` until their sections are written.
+Context resolution + JWT claim stamping for the `security` schema. Penalty aggregation remains
+`_Not yet documented._` until its section is written.
+
+## `security.is_admin() → boolean`
+
+Whether the CALLER is a platform operator (`auth.uid()` in `ops.admin_users`). `STABLE`,
+`SECURITY DEFINER` because `ops.admin_users` is readable by no client role; it answers only about
+`auth.uid()`, so it is no oracle. **`search_path = ''`** and **`EXECUTE` granted by name** to
+`anon`, `authenticated` and `service_role`, revoked from `PUBLIC` (`00002510`, IW-M8, 2026-10-30).
+Until then it resolved names through the caller's path and was executable by every role in the
+cluster. Both client roles keep it because it is an arm of policies they are evaluated against
+(`integrations.plugins` for a guest; most `org`, `projects` and `ops` read policies). Probe:
+`supabase/probes/identity_schema_guards.sql`, which also holds every `org` / `security` definer to a
+pinned `search_path`.
 
 ## Context switching & the access-token hook
 
@@ -28,9 +40,11 @@ before calling it.
 
 ### `security.switch_session_context(p_type public.profile_type, p_id uuid)`
 
-A **freelancer** profile (the caller's own — `p_id` must be the caller's user id and a
-`org.freelancer_profiles` row must exist) or a **business** the caller is an ACTIVE member of and
-that is **not archived**. Anything else → `22023` ("choose a freelancer profile or a business").
+A **freelancer** profile (the caller's own and live — `p_id` must be the caller's user id, a
+`org.freelancer_profiles` row must exist and `users_public.is_freelancer` must be on, so a profile
+given up and waiting out its 90-day window is refused, IW-L2) or a **business** the caller is an
+ACTIVE member of and that is **not archived**. Anything else → `22023` ("choose a freelancer profile
+or a business").
 
 ### `security.switch_team_context(p_team_id uuid)` — new
 
@@ -40,7 +54,9 @@ A **team** the caller is an active member of and that is not archived. The hook 
 ### `security.switch_enterprise_context(p_enterprise_id uuid)`
 
 An **enterprise** the caller owns or is an active member of (the buyer-only entity, Decisions
-#9/#10). (Migration `20260715120000`; rewritten onto the shared writer 2026-09-28.)
+#9/#10) and that is **not archived** (IW-L1, 2026-10-30), the rule the team and business switches
+already applied and the list `ContextBackendService.enterprises` offers. (Migration
+`20260715120000`; rewritten onto the shared writer 2026-09-28.)
 
 ### `security.clear_session_context()` — new
 
@@ -134,9 +150,11 @@ the token's claims:
 > amount.
 
 > **A stored context is only a PREFERENCE** (2026-09-28). The hook honours `session_context` only
-> while the membership it names still holds, re-checked at **every mint**: an enterprise the user
-> no longer owns or actively belongs to, a team they are no longer an active member of or that is
-> archived, or a business likewise, is dropped — back to personal, raw claims included. So a member
+> while the membership it names still holds, re-checked at **every mint** with exactly the switch's
+> question: an enterprise the user no longer owns or actively belongs to, or that is archived (IW-L1);
+> a team they are no longer an active member of or that is archived; a business likewise; or a
+> freelancer slot that is not the user's own live profile (`is_freelancer` off, IW-L2) — is dropped,
+> back to personal, raw claims included. So a member
 > removed from a team, or a team archived, stops acting as it at the next token refresh instead of
 > carrying the claim (and the RLS inputs `security.current_context()` reads) until they happen to
 > switch.

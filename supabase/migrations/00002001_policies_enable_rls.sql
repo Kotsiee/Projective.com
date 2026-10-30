@@ -249,6 +249,21 @@ ALTER TABLE search.query_logs ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE security.session_context ENABLE ROW LEVEL SECURITY;
 
+-- The rest of `security` (IDENTITY_AND_WORKSPACES_AUDIT IW-M6). `security` is exposed to PostgREST and
+-- these four had RLS OFF, guarded only by holding no table grant: one stray GRANT would have published
+-- every audit row's IP and user agent, or every flag. RLS on with NO policy is default-deny for every
+-- client role whatever a later grant says; their writers and readers are definers owned by the table
+-- owner, which RLS does not bind (no FORCE, as everywhere). `refresh_tokens` and
+-- `turnstile_verifications` are referenced by nothing; dropping them awaits the owner's approval
+-- (FOUNDER_QUESTIONNAIRE), so until then they are held shut like the rest.
+ALTER TABLE security.audit_logs ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE security.feature_flags ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE security.refresh_tokens ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE security.turnstile_verifications ENABLE ROW LEVEL SECURITY;
+
 
 -- --- from 0208_files.sql ---
 

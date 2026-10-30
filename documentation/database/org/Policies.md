@@ -10,6 +10,9 @@ These functions are used throughout the policies to provide a clean and consiste
 layer.
 
 - **`security.is_admin()`**: Returns true if the `auth.uid()` exists in `ops.admin_users`.
+  `SECURITY DEFINER` with `search_path = ''`; `EXECUTE` is granted by name to `anon`,
+  `authenticated` and `service_role` and revoked from `PUBLIC` (`00002510`, IW-M8). Both client
+  roles need it: it is an arm of policies they are evaluated against.
 - **`org.is_active_team_member(_team_id)`** / **`org.is_active_business_member(_business_id)`**:
   `SECURITY DEFINER`; true if `auth.uid()` holds an `active` row in `org.team_members` /
   `org.business_members` for that entity. These (with `is_enterprise_member`) are the only `org`
@@ -20,6 +23,45 @@ layer.
   `auth.uid()` is an active member of the enterprise at or above `p_min_role`
   (`member`/`admin`/`owner`). Definer context bypasses RLS so the enterprise policies below don't
   recurse. See `org/Functions.md`.
+
+---
+
+## 🔑 Table grants: deny by default (IW-H7, 2026-10-30)
+
+`00002500` gives `anon` and `authenticated` **`USAGE` on `org` and nothing else**: no schema-wide
+table or sequence grant and no `ALTER DEFAULT PRIVILEGES`. Until 2026-10-30 the schema carried
+`GRANT ALL ON ALL TABLES` plus default privileges that handed the same to every future table and
+view, so RLS was the only barrier, and a table that shipped without it (`org.profile_follows`,
+below) was writable by a signed-out caller. Now every client privilege is named in `00002520`
+(tables) or `00003005` (views), with exactly the verbs the table's policies give a meaning to and
+only the roles those policies admit. A new org table or view is unreachable until somebody grants it
+by name. Never `ALL`: it carries `TRUNCATE`, `REFERENCES` and `TRIGGER`, which RLS does not bound.
+
+| Table / view                                                                                                                                                       | `anon`   | `authenticated`                     |
+| :----------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------- | :---------------------------------- |
+| `skills` · `supported_locales` · `education_entries` · `experience_entries` · `user_languages` · `certifications` · `profile_showcase_items` · `profile_settings` | `SELECT` | `SELECT`                            |
+| `profile_follows`                                                                                                                                                  | `SELECT` | `SELECT` · `INSERT` · `DELETE`      |
+| `teams` · `team_members` · `team_roles` · `business_members` · `business_roles` · `enterprises` · `enterprise_members` · `freelancer_profiles`                     | —        | `SELECT`                            |
+| `user_emails` · `handle_changes` · `deletion_requests`                                                                                                             | —        | `SELECT`                            |
+| `recent_views`                                                                                                                                                     | —        | `SELECT` · `DELETE`                 |
+| `user_preferences`                                                                                                                                                 | —        | `SELECT` · `INSERT` · `UPDATE`      |
+| `user_bookmarks` · `user_bookmark_collections`                                                                                                                     | —        | all four row verbs                  |
+| `users_public`                                                                                                                                                     | —        | `SELECT` on the public columns only |
+| Standing: `standing_levels` · `entity_standing` · `standing_events` · `create_mastery` · `achievements` · `entity_achievements` · `quality_streaks`                | —        | `SELECT`                            |
+| `profiles_index` (definer view)                                                                                                                                    | `SELECT` | `SELECT`                            |
+| `view_business_staff` (invoker view)                                                                                                                               | —        | `SELECT`                            |
+| **Definer-only:** `business_profiles` · `org_invitations` · `org_invite_links` · `org_join_requests` · `portfolios` · `profile_links` · `user_skills` · `email_verification_tokens` | — | — |
+
+Several `TO public` policies (`teams`, `team_members`, `enterprises`, `enterprise_members`,
+`freelancer_profiles`, `user_bookmarks`) key on `auth.uid()` or a membership predicate that a guest
+never satisfies, so `anon` holds nothing on them. A definer-only table answers a direct PostgREST
+read with `42501` rather than `200 []`. The app's few direct reads of `business_profiles`
+(`live-detail.ts`, `live-members.ts`, `live-queries.ts`) already degrade to no label on an error.
+
+Probe: `supabase/probes/rls_exposed_tables.sql`. Across every exposed schema, a table a client role
+holds any privilege on has RLS on and a policy. In `org` and `security`, every client grant is
+answered by a policy for that role, every table has RLS on, and no client privilege goes beyond the
+four row verbs or arrives through a default privilege.
 
 ---
 
@@ -45,13 +87,13 @@ provisioning and onboarding, `org.save_profile` (the profile editor — it names
 touches), `org.set_profile_avatar` (checks the file is the caller's own), and the rating/counter
 triggers. Reading another person's name and photo goes through `org.get_party_cards`.
 
-**The private columns carry no client grant** (`00002520`, 2026-10-29, `IDENTITY_AND_WORKSPACES_AUDIT.md`
-IW-C1). The policy admits every signed-in reader to every row, so with the blanket `00002500` grant
-any account could select `dob`, `city`, `country` and `timezone` for everyone, minors included,
-straight from PostgREST. `SELECT` is revoked from `anon` and `authenticated` and re-granted to
-`authenticated` per column without those four. A select naming any of them, or `*`, is refused.
-Others see a person's location and local time only through `get_profile_view` / `profiles_index`,
-which mask a minor's. The owner reads their own date of birth and zone through
+**The private columns carry no client grant** (`00002520`, 2026-10-29,
+`IDENTITY_AND_WORKSPACES_AUDIT.md` IW-C1). The policy admits every signed-in reader to every row, so
+with the then-blanket `00002500` grant any account could select `dob`, `city`, `country` and
+`timezone` for everyone, minors included, straight from PostgREST. `authenticated` is granted
+`SELECT` per column without those four, and `anon` holds nothing. A select naming any of them, or
+`*`, is refused. Others see a person's location and local time only through `get_profile_view` /
+`profiles_index`, which mask a minor's. The owner reads their own date of birth and zone through
 `org.get_own_private_profile()`. Probe: `supabase/probes/users_public_private_columns.sql`.
 
 ### `org.freelancer_profiles`
@@ -91,16 +133,17 @@ USING (user_id = auth.uid() OR security.is_admin());
 ```
 
 This section used to document a single own-row `FOR ALL` policy; what was actually migrated was four
-`TO public` policies — SELECT, INSERT (`WITH CHECK` own row), UPDATE (own row, **no** `WITH CHECK`) and
-DELETE — under the schema-wide `GRANT ALL`. Either way a signed-in user could INSERT somebody else's
-address with `verified_at` already set, or UPDATE it onto a row they had, and `verified_at` is what the
-`projects.project_invitations` SELECT policy, `org.fn_is_invitee` and `projects.invite_by_email` trust:
-it read and accepted invitations meant for that person. The three write policies are gone,
-`INSERT`/`UPDATE`/`DELETE` are revoked from `anon`/`authenticated` (`00002520`), and every write is a
-definer — provisioning, `public.handle_email_confirmed`, and the `00001050` email functions, where a
-secondary address is verified only by redeeming a token mailed to it
-([Functions.md](Functions.md#-email-addresses-00001050)). `org.trg_user_emails_guard` refuses a client
-write to `verified_at` / `email` / `is_primary` / `user_id` should a grant or policy ever return.
+`TO public` policies — SELECT, INSERT (`WITH CHECK` own row), UPDATE (own row, **no** `WITH CHECK`)
+and DELETE — under the schema-wide `GRANT ALL`. Either way a signed-in user could INSERT somebody
+else's address with `verified_at` already set, or UPDATE it onto a row they had, and `verified_at`
+is what the `projects.project_invitations` SELECT policy, `org.fn_is_invitee` and
+`projects.invite_by_email` trust: it read and accepted invitations meant for that person. The three
+write policies are gone, no client role holds `INSERT`/`UPDATE`/`DELETE` (`authenticated` reads
+only, `00002520`), and every write is a definer — provisioning, `public.handle_email_confirmed`, and
+the `00001050` email functions, where a secondary address is verified only by redeeming a token
+mailed to it ([Functions.md](Functions.md#-email-addresses-00001050)). `org.trg_user_emails_guard`
+refuses a client write to `verified_at` / `email` / `is_primary` / `user_id` should a grant or
+policy ever return.
 
 ### `org.handle_changes` / `org.deletion_requests`
 
@@ -229,9 +272,9 @@ is a definer door — `get_workspace_invite_link` · `revoke_workspace_invite_li
 
 ### `org.view_business_staff` (view)
 
-`security_invoker = true` since 2026-09-28 (`00003001`), and `REVOKE ALL … FROM anon` (`00003005`).
-As a definer view it read past every policy and handed any signed-in user **every business member's
-primary email**; under the caller's own rights the roster is their own businesses'
+`security_invoker = true` since 2026-09-28 (`00003001`); `SELECT` to `authenticated` only
+(`00003005`). As a definer view it read past every policy and handed any signed-in user **every
+business member's primary email**; under the caller's own rights the roster is their own businesses'
 (`org.business_members` policy) and an email is only ever their own (`org.user_emails` policy).
 
 ---
@@ -315,8 +358,8 @@ the only symptom was a control that renders and offers nothing (root `CLAUDE.md`
 
 **Read by `anon` as well as `authenticated`** because the list is genuinely public reference data:
 three columns (`id`, `slug`, `label`), no owner, no membership, no personal information, and it is
-rendered on the signed-out `/explore` filters. `anon` already holds `USAGE` on the schema and `ALL`
-on its tables (`00002500`), so the policy is what actually decides.
+rendered on the signed-out `/explore` filters. `00002520` grants `SELECT`, and nothing else, to both
+client roles.
 
 **`SELECT` only, deliberately.** The vocabulary is a controlled list seeded in `00005050`. A client
 that could `INSERT` would let one person's typo become an option everybody else picks from, and the
@@ -346,8 +389,10 @@ USING (follower_user_id = auth.uid());
 `00002500` grants `ALL ON ALL TABLES IN SCHEMA org TO anon, authenticated`. RLS off plus a blanket
 grant is not weak protection, it is none: any caller — signed in or not — could `INSERT` a row
 naming somebody else as `follower_user_id`, delete anybody's follows, or rewrite the graph. The
-follower count on every profile was forgeable by anyone with the URL. Found and closed by the
-ranked contact picker (Decision #102), which is the first reader of this table.
+follower count on every profile was forgeable by anyone with the URL. Found and closed by the ranked
+contact picker (Decision #102), which is the first reader of this table. The blanket grant itself is
+gone since 2026-10-30 (IW-H7): `anon` holds `SELECT` here, and `authenticated` holds `SELECT`,
+`INSERT` and `DELETE`.
 
 **`SELECT` is public on purpose.** The table's own comment calls a follow "a public, counted
 edge", the profile prints the count to guests, and the picker needs BOTH directions (who I
@@ -379,11 +424,11 @@ ON org.recent_views FOR DELETE TO authenticated
 USING (user_id = auth.uid());
 ```
 
-**`org.recent_views` has no `INSERT` or `UPDATE` policy, and both grants are revoked** (`anon` holds
-nothing at all, 00002520). Its one writer is the `search.record_view` definer, which takes the person
-from `auth.uid()` and stamps `viewed_at` itself: a client-written future timestamp would hold an item
-inside the Trending window forever, and one row per person per entity is what keeps each person to a
-single vote.
+**`org.recent_views` has no `INSERT` or `UPDATE` policy and no grant for either** (`authenticated`
+holds `SELECT` and `DELETE`; `anon` holds nothing at all, 00002520). Its one writer is the
+`search.record_view` definer, which takes the person from `auth.uid()` and stamps `viewed_at`
+itself: a client-written future timestamp would hold an item inside the Trending window forever, and
+one row per person per entity is what keeps each person to a single vote.
 
 ---
 
@@ -396,8 +441,7 @@ USING (true);
 ```
 
 The offered locale tags (Decision #207) — no owner and nothing personal, so `anon` reads them too.
-`INSERT` / `UPDATE` / `DELETE` are revoked from both client roles (`00002520`); only the seed
-writes the list.
+Both client roles hold `SELECT` only (`00002520`); only the seed writes the list.
 
 ---
 
@@ -405,6 +449,10 @@ writes the list.
 
 - **Recursive Triggers**: The `is_active_team_member` helper must be used carefully to avoid
   infinite recursion in policies where `org.team_members` checks itself.
+- **Never `FORCE ROW LEVEL SECURITY` here.** The membership helpers (`is_active_team_member`,
+  `is_active_business_member`, `is_enterprise_member`, `fn_profile_visible`) break the policy
+  recursion only because they run as the table owner, whom RLS does not bind. FORCE RLS would bind
+  the owner too, and every policy that calls a helper would recurse into itself.
 - **Admin Bypass**: All policies include an `OR security.is_admin()` check to allow platform-level
   moderation and support.
 - **Public Discovery**: Currently, `freelancer_profiles` are only visible to the owner. To enable
@@ -417,7 +465,9 @@ writes the list.
 
 RLS is enabled on all six tables. The posture is **public read, definer-only write** — Standing is a
 client-facing trust signal, so it must be visible before hiring; but nothing client-side can move a
-rung, because no `INSERT`/`UPDATE` grant or policy exists for `authenticated` on any of them.
+rung, because no `INSERT`/`UPDATE` grant or policy exists for either client role on any of them.
+(Until 2026-10-30 the grant half of that was false: `00002500`'s blanket `GRANT ALL` covered these
+tables and RLS alone held them. The blanket grant is gone, IW-H7.)
 
 | Table                     | Policy                       | Effect                                                                                                         |
 | :------------------------ | :--------------------------- | :------------------------------------------------------------------------------------------------------------- |
@@ -429,9 +479,10 @@ rung, because no `INSERT`/`UPDATE` grant or policy exists for `authenticated` on
 | `org.entity_achievements` | `Read awarded achievements`  | Public when the catalogue row is `is_public`; otherwise subject-scoped or admin.                               |
 | `org.quality_streaks`     | `Read quality streaks`       | `SELECT ... USING (true)` — clients see on-time/response streaks, which is the point of having them.           |
 
-**Grants.** `authenticated` gets `SELECT` only, plus `EXECUTE` on the two read helpers
-(`org.fn_level_for_score`, `org.fn_standing_level`). The four mutating functions are `REVOKE`d from
-`public` and granted to `service_role` alone — see [Functions.md](Functions.md).
+**Grants.** `authenticated` gets `SELECT` only and `anon` nothing (`00002520`), plus `EXECUTE` on
+the two read helpers (`org.fn_level_for_score`, `org.fn_standing_level`). The four mutating
+functions are `REVOKE`d from `public` and granted to `service_role` alone — see
+[Functions.md](Functions.md).
 
 ---
 
@@ -442,6 +493,7 @@ rung, because no `INSERT`/`UPDATE` grant or policy exists for `authenticated` on
 | `org.user_bookmarks`            | `Users manage own bookmarks`            | `FOR ALL USING (user_id = auth.uid())` (also the implicit `WITH CHECK`) — a bookmark is private; nobody else can read or write it.                             |
 | `org.user_bookmark_collections` | `Users manage own bookmark collections` | `FOR ALL TO authenticated USING / WITH CHECK (user_id = auth.uid())`. The composite FK on `user_bookmarks` keeps a bookmark out of another user's collection. |
 
-Grants come from the org schema's blanket table grant (`00002500`); RLS is the boundary. The follow
-graph's policies (`org.profile_follows`: public `SELECT`, own-edge `INSERT` / `DELETE`) are unchanged —
-the profile's Follow control and the new followers / following lists read and write through them.
+`authenticated` holds all four row verbs on both and `anon` nothing (`00002520`); RLS decides whose
+rows. The follow graph's policies (`org.profile_follows`: public `SELECT`, own-edge `INSERT` /
+`DELETE`) are unchanged — the profile's Follow control and the new followers / following lists read
+and write through them.

@@ -54,7 +54,7 @@ CREATE OR REPLACE FUNCTION org.enable_freelancer_profile(p_payload jsonb DEFAULT
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, org, security, auth
+SET search_path = ''
 AS $$
 DECLARE
     v_uid uuid := auth.uid();
@@ -634,6 +634,27 @@ AS $$
     SELECT m.id, m.role, org.fn_preset_rank(m.role)
       FROM org.business_members m
      WHERE p_kind = 'business' AND m.business_id = p_entity AND m.user_id = p_user AND m.status = 'active';
+$$;
+
+-- The rank rule (SYSTEM_ARCHITECTURE §Teams & Businesses: "only someone you outrank"; IW-H4, IW-M4).
+-- A member offers, assigns or edits only a role that ranks strictly BELOW their own seat. Equal is
+-- refused as well as higher: a role at your own rank is your peers' standing, so seating somebody in
+-- it, or rewriting it, is how one admin out-votes another — demote the role a peer holds, then remove
+-- the peer. A seat ranks as its role (org.fn_member_role_sync), so outranking a role also means not
+-- holding it. Not a member (`p_actor_rank` NULL): refused. One raise for the four doors that ask it —
+-- invite_workspace_member, respond_to_join_request, update_workspace_member and upsert_workspace_role
+-- — so they cannot word it four ways; `p_field` is the input the refusal names. Internal.
+CREATE OR REPLACE FUNCTION org.fn_assert_role_below(p_actor_rank integer, p_role_base text, p_field text)
+RETURNS void
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+BEGIN
+    IF p_actor_rank IS NULL OR org.fn_preset_rank(p_role_base) >= p_actor_rank THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = p_field || ': that role does not rank below yours';
+    END IF;
+END;
 $$;
 -- #endregion
 
@@ -1728,6 +1749,7 @@ DECLARE
     v_note text := NULLIF(btrim(COALESCE(p_note, '')), '');
     v_role record;
     v_caller org.workspace_capability[];
+    v_rank integer;
     v_target uuid;
     v_entity_name text;
     v_entity_status text;
@@ -1772,6 +1794,9 @@ BEGIN
     IF EXISTS (SELECT 1 FROM unnest(v_role.capabilities) c WHERE NOT (c = ANY (v_caller))) THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'roleId: that role carries permissions you do not hold';
     END IF;
+    -- Nor seat anybody at or above their own rank (IW-M4).
+    SELECT s.rank INTO v_rank FROM org.fn_member_seat(p_kind, p_entity, v_uid) s;
+    PERFORM org.fn_assert_role_below(v_rank, v_role.base_preset, 'roleId');
 
     IF v_handle IS NOT NULL THEN
         SELECT u.user_id INTO v_target FROM org.users_public u WHERE lower(u.username) = v_handle;
@@ -2518,6 +2543,7 @@ DECLARE
     v_kind text;
     v_entity uuid;
     v_caller org.workspace_capability[];
+    v_rank integer;
     v_role_id uuid;
     v_role record;
     v_member uuid;
@@ -2572,6 +2598,9 @@ BEGIN
     IF EXISTS (SELECT 1 FROM unnest(v_role.capabilities) c WHERE NOT (c = ANY (v_caller))) THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'roleId: that role carries permissions you do not hold';
     END IF;
+    -- Approving is seating, so the invitation's rank rule holds too (IW-M4).
+    SELECT s.rank INTO v_rank FROM org.fn_member_seat(v_kind, v_entity, v_uid) s;
+    PERFORM org.fn_assert_role_below(v_rank, v_role.base_preset, 'roleId');
     -- A request holds no seat, so admitting it adds one (and a manager's role, one manager seat).
     v_member := org.fn_admit_workspace_member(v_kind, v_entity, v_req.requester_user_id, v_role_id, v_uid, 1, 'request');
 
@@ -2836,6 +2865,8 @@ BEGIN
         IF EXISTS (SELECT 1 FROM unnest(v_role.capabilities) c WHERE NOT (c = ANY (v_actor))) THEN
             RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'roleId: that role carries permissions you do not hold';
         END IF;
+        -- The target already ranks below the actor (above); the role they move to must as well (IW-M4).
+        PERFORM org.fn_assert_role_below(v_actor_rank, v_role.base_preset, 'roleId');
         IF p_kind = 'team' THEN
             UPDATE org.team_members SET role_id = v_role.id WHERE id = p_member;
         ELSE
@@ -3152,9 +3183,9 @@ BEGIN
        OR (p_kind = 'business' AND p_base_preset = 'lead') THEN
         RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'basePreset: choose which role this one ranks as';
     END IF;
-    IF org.fn_preset_rank(p_base_preset) > v_actor_rank THEN
-        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'basePreset: a role cannot rank above you';
-    END IF;
+    -- What the role WILL rank as must sit below the author (IW-H4); an edit is also held to what it
+    -- ranks as NOW, below.
+    PERFORM org.fn_assert_role_below(v_actor_rank, p_base_preset, 'basePreset');
     v_caps := org.fn_role_capabilities(p_kind, NULL, COALESCE(p_capabilities, '{}'));
     IF EXISTS (SELECT 1 FROM unnest(v_caps) c WHERE NOT (c = ANY (v_actor))) THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'capabilities: you cannot grant a permission you do not hold';
@@ -3182,6 +3213,9 @@ BEGIN
             IF v_existing.preset IS NOT NULL THEN
                 RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'role: presets are read-only — duplicate it to a custom role';
             END IF;
+            -- The role as it stands, and so everyone who holds it, must rank below the editor: an
+            -- admin may not demote the admin-ranked role a peer holds (IW-H4), nor edit their own.
+            PERFORM org.fn_assert_role_below(v_actor_rank, v_existing.base_preset, 'role');
             IF p_kind = 'team' THEN
                 UPDATE org.team_roles SET name = v_name, summary = v_summary, base_preset = p_base_preset, capabilities = v_caps, updated_at = now() WHERE id = p_role;
                 UPDATE org.team_members SET role_id = role_id WHERE role_id = p_role;

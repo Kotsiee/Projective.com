@@ -66,6 +66,7 @@ import {
 	showsSpending,
 	showsStake,
 	spendingFact,
+	viewerRankOf,
 } from "../core/members-model.ts";
 import { afterPanelLeaves } from "../core/overlay-handoff.ts";
 import { MemberCard } from "../components/MemberCard.tsx";
@@ -491,7 +492,7 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 						? (
 							<JoinRequestQueue
 								requests={ws.joinRequests}
-								roles={grantableRoles(ws.roles, ws.viewerCapabilities)}
+								roles={grantableRoles(ws.roles, ws.viewerCapabilities, viewerRankOf(ws))}
 								busyId={busyId.value}
 								errors={requestErrors.value}
 								onRespond={(r, accept, roleId) => void onJoinRequest(r, accept, roleId)}

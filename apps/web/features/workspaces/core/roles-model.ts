@@ -36,6 +36,7 @@ import {
 	managerCapContextOf,
 	managerCapText,
 	sensitiveWarning,
+	viewerRankOf,
 } from "./members-model.ts";
 import { ROLE_TEMPLATES, type RoleTemplate, templatesForKind } from "./role-templates.ts";
 import { type ButtonTier, isFilledTier } from "./header-model.ts";
@@ -86,12 +87,10 @@ export interface RolesViewer {
 export function rolesViewerOf(
 	ws: Pick<WorkspaceDetail, "kind" | "viewerCapabilities" | "members" | "viewerMemberId">,
 ): RolesViewer {
-	const self = ws.members.find((m) => m.id === ws.viewerMemberId) ??
-		ws.members.find((m) => m.isSelf) ?? null;
 	return {
 		kind: ws.kind,
 		caps: ws.viewerCapabilities,
-		rank: self ? roleRank(self.rolePreset) : 0,
+		rank: viewerRankOf(ws),
 		canManage: ws.viewerCapabilities.includes("manage_roles"),
 	};
 }
@@ -126,8 +125,9 @@ export function memberCountText(count: number): string {
 export const PRESET_LOCK =
 	"Preset roles are fixed, so everyone's baseline stays predictable. Clone it to make a custom role you can change.";
 
-/** Why a custom role that ranks above the viewer is theirs to read, not to change. */
-export const RANK_LOCK = "This role ranks above yours, so only someone of its rank can change it.";
+/** Why a custom role that does not rank below the viewer is theirs to read, not to change. */
+export const RANK_LOCK =
+	"This role doesn't rank below yours, so only someone who outranks it can change it.";
 
 /** Why a viewer without `manage_roles` reads every role and changes none. */
 export const VIEW_LOCK =
@@ -149,8 +149,8 @@ export const BUSY_LOCK = "Saving — this can change again once the save lands."
 /**
  * Why a whole role is read-only for the viewer, or `null` when its permissions are theirs to change: a
  * preset is fixed (the server refuses any edit of one), a viewer without `manage_roles` changes no role,
- * and a custom role that ranks above the viewer cannot be saved by them (`basePreset: a role cannot
- * rank above you`).
+ * and a custom role that does not rank strictly below the viewer — their own rank included — cannot be
+ * saved by them (`role: that role does not rank below yours`, `org.fn_assert_role_below`).
  */
 export function roleLock(
 	role: Pick<WorkspaceRoleDef, "preset" | "basePreset">,
@@ -158,7 +158,7 @@ export function roleLock(
 ): string | null {
 	if (role.preset) return PRESET_LOCK;
 	if (!viewer.canManage) return VIEW_LOCK;
-	if (roleRank(role.basePreset) > viewer.rank) return RANK_LOCK;
+	if (roleRank(role.basePreset) >= viewer.rank) return RANK_LOCK;
 	return null;
 }
 
@@ -1025,12 +1025,12 @@ function asCustomBase(role: WorkspaceRole): CustomRoleBase {
 
 /**
  * The ranks a custom role may take: the kind's presets (no `lead` on a business), never `owner`, and
- * never above the author's own rank — the database refuses the rest, so they are not offered.
- * Most-privileged first.
+ * only below the author's own rank — `org.fn_assert_role_below` refuses the author's rank and above,
+ * so they are not offered. Most-privileged first.
  */
 export function baseOptions(kind: WorkspaceKind, viewerRank: number): CustomRoleBase[] {
 	return rolesForKind(kind).filter((r): r is CustomRoleBase =>
-		r !== "owner" && roleRank(r) <= viewerRank
+		r !== "owner" && roleRank(r) < viewerRank
 	);
 }
 

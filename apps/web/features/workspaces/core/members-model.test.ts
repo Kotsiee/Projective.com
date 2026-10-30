@@ -87,6 +87,7 @@ import {
 	transferConsequences,
 	transferFooter,
 	transferRefusal,
+	viewerRankOf,
 	workloadText,
 } from "./members-model.ts";
 
@@ -355,32 +356,54 @@ Deno.test("row menu: only the rows the viewer has, terminal act last", () => {
 
 // #region Invite roles
 Deno.test("invite: the role list holds only roles the inviter may grant", () => {
-	const ids = (caps: readonly WorkspaceCapability[]) =>
-		grantableRoles(ROLES, caps).map((r) => r.id);
-	assertEquals(ids(OWNER_CAPS), ["r-admin", "r-lead", "r-member", "r-designer", "r-treasurer"]);
-	// An admin lacks withdraw_funds, so the Treasurer role (which carries it) is not theirs to offer.
-	assertEquals(ids(ADMIN_CAPS), ["r-admin", "r-lead", "r-member", "r-designer"]);
-	assertEquals(ids(LEAD_CAPS), ["r-lead", "r-member", "r-designer"]);
-	assertEquals(ids(MEMBER_CAPS), ["r-member"]);
-	assert(!ids(OWNER_CAPS).includes("r-owner"), "the owner seat moves only by transfer");
+	const ids = (caps: readonly WorkspaceCapability[], rank: number) =>
+		grantableRoles(ROLES, caps, rank).map((r) => r.id);
+	assertEquals(ids(OWNER_CAPS, 4), ["r-admin", "r-lead", "r-member", "r-designer", "r-treasurer"]);
+	// An admin lacks withdraw_funds, so the Treasurer role (which carries it) is not theirs to offer;
+	// nor is the Admin preset, which ranks as theirs does (org.fn_assert_role_below).
+	assertEquals(ids(ADMIN_CAPS, 3), ["r-lead", "r-member", "r-designer"]);
+	// A lead offers only what ranks below a lead: the Designer (based on Lead) is a peer's role.
+	assertEquals(ids(LEAD_CAPS, 2), ["r-member"]);
+	assertEquals(ids(MEMBER_CAPS, 1), []);
+	assert(!ids(OWNER_CAPS, 4).includes("r-owner"), "the owner seat moves only by transfer");
+	assertEquals(ids(OWNER_CAPS, 0), [], "no seat, no rank: nothing to offer");
+});
+
+Deno.test("invite: a role at or above the inviter's rank is never offered, whatever it carries", () => {
+	// Every capability held, so only the rank decides.
+	for (const [rank, offered] of [[4, 5], [3, 3], [2, 1], [1, 0]] as const) {
+		assertEquals(grantableRoles(ROLES, OWNER_CAPS, rank).length, offered, `rank ${rank}`);
+	}
 });
 
 Deno.test("invite: the dialog opens on the seed if offerable, else Member, else the first", () => {
-	const lead = grantableRoles(ROLES, LEAD_CAPS);
-	assertEquals(inviteRoleSeed(lead, "r-designer"), "r-designer");
-	assertEquals(inviteRoleSeed(lead, "r-admin"), "r-member");
-	assertEquals(inviteRoleSeed(lead, null), "r-member");
+	const admin = grantableRoles(ROLES, ADMIN_CAPS, 3);
+	assertEquals(inviteRoleSeed(admin, "r-designer"), "r-designer");
+	assertEquals(inviteRoleSeed(admin, "r-admin"), "r-member");
+	assertEquals(inviteRoleSeed(admin, null), "r-member");
 	const noMember = ROLES.filter((r) => r.id !== "r-member");
 	assertEquals(
-		inviteRoleSeed(grantableRoles(noMember, ["publish_listings", "view_analytics"]), null),
+		inviteRoleSeed(grantableRoles(noMember, ["publish_listings", "view_analytics"], 3), null),
 		"r-designer",
 	);
 	assertEquals(inviteRoleSeed([], null), "");
 });
 
 Deno.test("drawer: the role picker lists the held role and the grantable ones", () => {
-	const ids = assignableRoles(ROLES, LEAD_CAPS, "r-treasurer").map((r) => r.id);
+	const ids = assignableRoles(ROLES, ADMIN_CAPS, 3, "r-treasurer").map((r) => r.id);
 	assertEquals(ids, ["r-lead", "r-member", "r-designer", "r-treasurer"]);
+	assertEquals(
+		assignableRoles(ROLES, LEAD_CAPS, 2, "r-designer").map((r) => r.id),
+		["r-member", "r-designer"],
+	);
+});
+
+Deno.test("viewerRankOf: the viewer's own seat by id, else the self row, else no rank", () => {
+	const ana = member("ana", "admin");
+	const bo = { ...member("bo", "lead"), isSelf: true };
+	assertEquals(viewerRankOf({ members: [ana, bo], viewerMemberId: ana.id }), 3);
+	assertEquals(viewerRankOf({ members: [ana, bo], viewerMemberId: "" }), 2);
+	assertEquals(viewerRankOf({ members: [ana], viewerMemberId: "" }), 0);
 });
 
 Deno.test("roles: a custom role reads 'Name · based on Lead'; options carry the summary", () => {
