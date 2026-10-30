@@ -2435,11 +2435,15 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 `finance-reconcile-wallets` and `finance-mature-pending-releases` are seeded only where their
 function exists (M3 / M4 reached `main` separately), so the seed holds whichever order they land in.
 
-**Implemented but not registered (Decision #203 flag (a), awaiting a human):** the comms engine's
-`fn_process_queue`, `fn_escalate_unread`, `fn_build_digests` (daily and weekly), `fn_sweep_expired`,
-`fn_reap_dead_devices` and `fn_compact_delivery_events` (their intended cadences are in `database/comms/Functions.md`), and
-`projects.fn_release_expired_claims` and `projects.fn_resolve_expired_workload_reports`. No
-migration has ever scheduled them. Each is one registry row once its go-live is decided.
+**Registered by the Wave 1 jobs change** (`00005060`; Decision #203 flag (a), ruled as
+FOUNDER_QUESTIONNAIRE Q0.3): the comms engine's `fn_process_queue`, `fn_escalate_unread`,
+`fn_build_digests` (daily and weekly), `fn_sweep_expired`, `fn_reap_dead_devices` and
+`fn_compact_delivery_events` run on the minutes that file sets, and so does the N1 card-payment
+recovery sweep (`finance-sweep-card-payments`). `projects.fn_release_expired_claims` is registered
+**paused** until PM-WP1 hardens it (#338 flag (a)); `projects.fn_resolve_expired_workload_reports`
+is not registered, and PM-WP5 adds it with its fixes. Five more rows (discovery-call expiry, vote
+settlement, spend-approval expiry, the idempotency-key sweep and query-log retention) register
+themselves at the first reset after their function exists.
 
 ### Edge Functions & Webhooks
 
@@ -2481,7 +2485,7 @@ Event (RPC / trigger / cron)
                       │                                  flag-off, placeholder URL — #339 (i))
                       ├─ INSERT comms.notification_deliveries (per channel/device)
                       └─ security.audit_logs                                    (financial/security events)
-pg_cron ─ fn_process_queue · fn_escalate_unread · fn_build_digests · sweeps   (not registered yet — §Scheduled jobs)
+pg_cron ─ fn_process_queue · fn_escalate_unread · fn_build_digests · sweeps   (registered in 00005060 — §Scheduled jobs)
 ```
 
 **Boundaries that matter:**
@@ -3305,7 +3309,7 @@ The same two-door order as §1.1; the new database doors are `00001240_functions
 | Pay at checkout by card or express wallet | `POST /api/checkout/create` (`provider: "card"` · `"express"`) → `GET /api/finance/payments/[id]` | `CheckoutBackendService.create` → `createCheckoutCardPayment` | `ensure_purchase_wallet` + the §1.1 card doors + `attach_checkout_order` (user, Decision #153), then `place_wallet_order` — by the browser AND by `settle_card_payment`, under one key. A one-ticket line (Decision #166) settles inside it by `projects.fund_ticket` (an escrow hold from the topped-up wallet), not a sale |
 | Recurring deposits | the wallet's `new_recurring` action · `POST /api/finance/cron/deposits` (bearer `FINANCE_CRON_SECRET`, 404 otherwise) | `processDueDeposits` → `chargeScheduledDeposit` (`scheduled-deposits.ts`). A transient Stripe / network failure leaves the run unbound; the next sweep re-offers the SAME run (`retry`) under the same idempotency key `scheduled_deposit:<payment id>` for up to 23 h (then it is failed with an ops row, never re-sent past the key's life), so a period is neither lost nor charged twice. Only a declined card / required authentication counts against the rule | `create_deposit_rule` (user) · `claim_due_deposit_rules` · `bind_scheduled_payment` (service role) |
 | Stale payouts | `POST /api/finance/cron/payouts` (bearer `FINANCE_CRON_SECRET`, 404 otherwise; R2 job `finance-sweep-stale-payouts`) | `sweepStalePayouts` | `fn_claim_stale_payouts` · `complete_payout` · `fail_payout` (service role) |
-| Unsettled card payments (N1 recovery) | `POST /api/finance/cron/card-payments` (bearer `FINANCE_CRON_SECRET`, 404 otherwise; no scheduled job registered yet) | `sweepUnsettledCardPayments` — each leased payment is looked up at Stripe by its intent or `metadata.projective_payment_id`; a succeeded intent is settled under the claim `evt_sweep_<intent>` | `claim_unsettled_card_payments` · `settle_card_payment(…, p_payment_id)` (service role) |
+| Unsettled card payments (N1 recovery) | `POST /api/finance/cron/card-payments` (bearer `FINANCE_CRON_SECRET`, 404 otherwise; the `finance-sweep-card-payments` job, every 15 minutes) | `sweepUnsettledCardPayments` — each leased payment is looked up at Stripe by its intent or `metadata.projective_payment_id`; a succeeded intent is settled under the claim `evt_sweep_<intent>` | `claim_unsettled_card_payments` · `settle_card_payment(…, p_payment_id)` (service role) |
 | Income Smoother enrolment | the wallet's `enrol_smoother` action | `WalletBackendService.enrolSmoother` | `set_income_smoother` (user) |
 | Verification console (`/settings/verification`) | `GET /api/finance/verify/status` · `POST /api/finance/verify/kyc` · `POST /api/finance/verify/kyb` | `verificationStatus` · `createIdentitySession` · `startKybOnboarding` | `my_verification_status` · the §1.1 identity + Connect doors |
 | Force the earning gate open (development only — Dev Tools Context Switcher → Money → Earning gate) | `POST /api/finance/verify/force` (404 unless `DENO_ENV=development`) | `DevVerificationBackendService.forcePayoutReady` | `begin_identity_verification` · `attach_identity_session` (user, synthetic `vs_dev_…`) → `apply_identity_event` (service role, synthetic `evt_dev_…`) · `record_payout_account` (user, synthetic `acct_DEV…` when none exists) → `sync_payout_account` `verified` (service role). A synthetic account is not a Stripe account: withdrawals and Stripe status syncs refuse it |

@@ -25,8 +25,7 @@ off by default (`security.feature_flags` `comms.dispatch_webhook`, a placeholder
 
 Time-based flows go the other way round: a scheduler calls `comms.fn_enqueue`, and
 `comms.fn_process_queue` turns each due promise into a real notification through the same
-`fn_notify`. It is meant to run every minute but is **not registered** in `00005060` today (#339
-(i); Decision #203 flag (a)).
+`fn_notify`. It runs every minute as the `comms-process-queue` job (`00005060`).
 
 ---
 
@@ -140,21 +139,20 @@ could call `fn_notify` could spoof any notification to any user; one that could 
 
 ## Scheduled jobs (`pg_cron`)
 
-> ⚠️ **None of these jobs is registered** (Decision #203 flag (a)): no migration has ever scheduled
-> them, so the table below is the intended cadence, not running work. Every recurring job is now a
-> row of `ops.scheduled_jobs` (`00005060`); registering one of these is one row there, and it then
-> runs in every environment and can be run by hand with `deno task cron:run <job>`. See
-> `SYSTEM_ARCHITECTURE.md` §Scheduled jobs.
+> Every job below is a row of `ops.scheduled_jobs` in `00005060` (Decision #203 flag (a), ruled as
+> FOUNDER_QUESTIONNAIRE Q0.3), which is the source of truth for its minute; the minutes avoid ticks
+> other jobs use. Each runs in every environment and can be run by hand with
+> `deno task cron:run <job>`. See `SYSTEM_ARCHITECTURE.md` §Scheduled jobs.
 
 | Job                     | Schedule     | Function                       | What it does                                                                                       |
 | :---------------------- | :----------- | :----------------------------- | :------------------------------------------------------------------------------------------------- |
 | `comms-process-queue`   | every minute | `fn_process_queue(500)`        | Materialises due reminders (session T-60/T-15/T-5, basket nudges, ghosting timers).                |
 | `comms-escalate-unread` | every 5 min  | `fn_escalate_unread(500)`      | Unread `critical`/`high` past the user's `escalate_after` → email fallback.                        |
-| `comms-digest-daily`    | hourly (:05) | `fn_build_digests('daily')`    | Builds the digest for users whose **local** clock just hit `digest_hour`.                          |
-| `comms-digest-weekly`   | hourly (:10) | `fn_build_digests('weekly')`   | Same, gated additionally on the local ISO weekday.                                                 |
-| `comms-sweep-expired`   | hourly       | `fn_sweep_expired()`           | Archives (never deletes) notifications past `expires_at`.                                          |
-| `comms-reap-devices`    | daily 03:30  | `fn_reap_dead_devices()`       | Soft-revokes tokens with ≥5 gateway failures or unseen for 180 days.                               |
-| `comms-compact-events`  | daily 03:45  | `fn_compact_delivery_events()` | Empties the `raw` body of callbacks older than 30 days; keeps the row (it is the idempotency key). |
+| `comms-digest-daily`    | hourly (:02) | `fn_build_digests('daily')`    | Builds the digest for users whose **local** clock just hit `digest_hour`.                          |
+| `comms-digest-weekly`   | hourly (:08) | `fn_build_digests('weekly')`   | Same, gated additionally on the local ISO weekday.                                                 |
+| `comms-sweep-expired`   | hourly (:35) | `fn_sweep_expired()`           | Archives (never deletes) notifications past `expires_at`.                                          |
+| `comms-reap-devices`    | daily 03:32  | `fn_reap_dead_devices()`       | Soft-revokes tokens with ≥5 gateway failures or unseen for 180 days.                               |
+| `comms-compact-events`  | daily 03:47  | `fn_compact_delivery_events()` | Empties the `raw` body of callbacks older than 30 days; keeps the row (it is the idempotency key). |
 
 `fn_escalate_unread` is idempotent by construction: a `NOT EXISTS` guard on an existing `email`
 delivery row is what stops every tick sending another copy. `fn_build_digests` is idempotent by the

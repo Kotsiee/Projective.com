@@ -146,6 +146,9 @@ structured, stage-based micro-agency marketplace that wins trust where Upwork an
 
 ### D1 — Turn on the claim-TTL and workload-report sweeps
 
+> **Status 2026-10-30:** ruled (Decision #338, ruling Q0.3). The claim-TTL sweep is registered
+> paused in `00005060` until PM-WP1 hardens it; the workload-report sweep waits for PM-WP5.
+
 - **Conflict.** PS:1989-1994 and PS:2258-2262 promise both clocks; neither is scheduled
   (`SYSTEM_ARCHITECTURE.md:2423-2427`, "awaiting a human", Decision #203 (a), #290 (a)).
 - **Options.** (A) Register both now, after S2's hardening. (B) Keep them off until notifications for

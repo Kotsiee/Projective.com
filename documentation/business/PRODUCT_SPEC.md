@@ -2158,9 +2158,10 @@ and ensure accountability.
   `projects.fn_release_expired_claims` sweep auto-releases the ticket back to the backlog. A parked
   claim earns nothing: any escrow held at claim is **refunded to the client in full** and the
   freelancer is paid $0 — deliberately distinct from a mid-work removal (see "Freelancer Removal
-  Mid-Ticket"), where the freelancer is compensated. **Not built yet:** the sweep is written but not
-  yet scheduled; it is registered every 15 minutes with a row lock, a re-check that the ticket is
-  still only claimed, a ticket-history row and a notice to both sides (Decision #338, ruling Q0.3).
+  Mid-Ticket"), where the freelancer is compensated. **Not built yet:** the sweep is registered but
+  paused until it takes a row lock, re-checks that the ticket is still only claimed, writes a
+  ticket-history row and tells both sides; then it runs every 15 minutes (Decision #338, ruling
+  Q0.3).
 
 #### 2. The Weighting Engine (Workload Intensity)
 

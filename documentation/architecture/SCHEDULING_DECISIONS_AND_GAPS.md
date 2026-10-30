@@ -328,6 +328,9 @@ The flags are in `database/scheduling/Functions.md` §9. **Recommendation:**
 
 ### 3.7 D9 — the comms queue worker
 
+> **Status 2026-10-30:** ruled (Decision #343, ruling Q0.3). The worker and its sibling jobs are
+> registered in `00005060`; the `scheduling-reminders` job is SCH-WP3's.
+
 Decision #203 flag (a) leaves `comms.fn_process_queue` unregistered. As a result,
 `session.reminder_60m/15m/5m` and `discovery_call_reminder_lead_minutes` have neither a producer nor
 a worker (S-18). The reminder is the cheapest no-show prevention there is. **Recommendation:**

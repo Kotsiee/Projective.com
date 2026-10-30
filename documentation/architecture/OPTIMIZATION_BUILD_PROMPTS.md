@@ -142,11 +142,12 @@ These cannot run in parallel because they edit the same files:
     single-flight (the `through()` comment still argues against it), the shared request memo (six
     copies), `cachedGlobal`, every SC row, DB-1, DB-2, DB-5 to DB-10.
 - **Owned by [`COMMS_BUILD_PROMPTS.md`](COMMS_BUILD_PROMPTS.md) (track M):** RED WP12, the inbox
-  (DB-3: D-04, D-05; #339 N1 = ADC Q8), with QW-5 (D-06, D-13) and D-27; messaging invalidation
-  across isolates (D-22, #339 N2); RED WP14, search (DB-9: D-28 at `ef_search` 200 plus
-  `iterative_scan` per #339 N4, D-29, and Q0.2 (f)'s deletion of `fn_search_entities` /
-  `fn_search_global`, which #340 (E) / G11 also names for track T). Track M consumes WP10a's
-  primitives. If an M step lands first, it creates them at WP10a's paths and names.
+  (DB-3: D-04, D-05; #339 N1 = ADC Q8), with QW-5 (D-06, D-13); D-27 is declined there and closed
+  (the id cursor stays: a JavaScript timestamp would drop the microseconds the keyset needs);
+  messaging invalidation across isolates (D-22, #339 N2); RED WP14, search (DB-9: D-28 at
+  `ef_search` 200 plus `iterative_scan` per #339 N4, D-29, and Q0.2 (f)'s deletion of
+  `fn_search_entities` / `fn_search_global`, which #340 (E) / G11 also names for track T). Track M
+  consumes WP10a's primitives. If an M step lands first, it creates them at WP10a's paths and names.
 - **Owned by [`PM_BUILD_PROMPTS.md`](PM_BUILD_PROMPTS.md) (track P), PM-WP6:** L-03, the ticket-move
   matrix: the P5 (a)–(d) changes to `projects.fn_assert_ticket_move`, the pure TS mirror in
   `@projective/types/projects/board.ts` with its SQL-probe parity test, and replacing

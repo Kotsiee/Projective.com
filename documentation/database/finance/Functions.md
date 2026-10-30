@@ -1410,7 +1410,8 @@ scheduled run, which `claim_due_deposit_rules` re-sends under its own lease. Ret
 `PaymentBackendService.sweepUnsettledCardPayments` (`POST /api/finance/cron/card-payments`) asks
 Stripe for each one's succeeded intent (by `provider_ref`, else by `metadata.projective_payment_id`)
 and settles it through `settle_card_payment` under the claim `evt_sweep_<intent>`, so the real event
-arriving later replays. Changes no money. Not yet registered as a scheduled job.
+arriving later replays. Changes no money. Runs as the `finance-sweep-card-payments` job every 15
+minutes (`00005060`).
 
 **Always a ledger row, or loud (Decision #200).** The wallet is re-read `FOR UPDATE` and confirmed
 through `finance.fn_ensure_wallet` (owner, payment currency) before the credit; a missing wallet, or a

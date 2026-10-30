@@ -240,7 +240,7 @@ Each provider fails in a fixed direction:
 | Presidio Tier 3  | The queue backs up; Tier 2 still masks                                                             | Fail open (the floor holds) |
 | Turnstile        | **Proposed**: production refuses the protected write; development with no secret skips it and logs | Fail closed (prod)          |
 | Email            | `logged` in development; `unavailable` in production, and the UI says no mail went out             | Surfaced                    |
-| Push             | Deliveries stay pending for `fn_process_queue` (unregistered, #203 (a))                            | Deferred                    |
+| Push             | Deliveries stay pending: `fn_process_queue` runs (`00005060`), no push transport yet               | Deferred                    |
 | Connectors       | 409 / 503 refusal in words; the platform-room fallback                                             | Fail closed                 |
 
 ### 3.3 The webhook standard
