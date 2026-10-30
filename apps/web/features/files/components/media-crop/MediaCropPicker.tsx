@@ -37,7 +37,9 @@ export function MediaCropPicker(props: MediaCropPickerProps): JSX.Element {
 	const positions = target === "showcase" ? props.positions ?? [1] : [];
 	const config: MediaPickConfig = {
 		target,
-		allowVideo: positions.some((p) => p !== 1),
+		// shortcut: showcase videos are refused server-side until a remux step exists (SEC Z2); restore
+		// `positions.some((p) => p !== 1)` with it.
+		allowVideo: false,
 		max: Math.max(1, positions.length),
 		positions,
 		initialAlt: props.initialAlt,

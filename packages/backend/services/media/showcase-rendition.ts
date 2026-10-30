@@ -25,7 +25,7 @@ import { MediaPipeline, MediaRejectedError, MediaUnavailableError } from "./pipe
  *
  * A library asset is private; what a profile, a listing or a group conversation shows is a public
  * copy cut from it: a still re-drawn by the pipeline (crop clamped to the decoded pixels, WebP tiers,
- * no EXIF), or a video published as uploaded with the poster tiers the library already holds. The
+ * no EXIF). Videos are refused until a remux step exists (SEC Z2 / P-2). The
  * cut is made with the service role and recorded as a `files.items` row owned by the surface's owner,
  * so the surface's own door (`org.save_showcase`, `catalogue.apply_listing_media`, …) can decide,
  * under the caller's session, whether it may be used. If that door refuses, the caller retires the
@@ -65,6 +65,8 @@ export interface ShowcaseCut {
 
 // #region Write + retire
 const UNAVAILABLE = "Your changes couldn't be saved right now. Try again in a moment.";
+/** The refusal a video source gets until published videos are remuxed without their metadata. */
+export const VIDEO_REFUSED = "Videos can't be published yet. Choose a picture instead.";
 
 /** Retire a rendition the surface would not take: soft-delete its row, remove its objects. */
 export async function retireRendition(rendition: Rendition): Promise<void> {
@@ -83,8 +85,8 @@ function renditionName(purpose: RenditionPurpose, position: number | undefined):
 
 /**
  * Cut and store a rendition of `source` for `request.target`. Stills are re-drawn by the pipeline
- * (crop clamped against the decoded pixels, re-encoded WebP, no EXIF); a video is published as
- * uploaded with the poster tiers the library already holds for it. `displayName` overrides the name
+ * (crop clamped against the decoded pixels, re-encoded WebP, no EXIF); a video is refused with
+ * {@link VIDEO_REFUSED} (a {@link MediaRejectedError}). `displayName` overrides the name
  * the row carries in the owner's history (default: "Profile photo" / "Showcase slot N").
  */
 export async function writeRendition(
@@ -98,109 +100,72 @@ export async function writeRendition(
 	const bucket = purpose === "avatar" ? "avatars" as const : "showcase" as const;
 	const id = crypto.randomUUID();
 	const rendition: Rendition = { id, bucket, paths: [] };
+	// A video would be published byte-for-byte, GPS and device atoms included (SEC Z2): refused until
+	// a remux step strips them.
+	if (source.kind !== "image") throw new MediaRejectedError(VIDEO_REFUSED);
 	const service = getServiceClient();
 
 	try {
 		const bytes = await downloadObject(source.bucket, source.path);
 		if (!bytes) throw new MediaUnavailableError("That file couldn't be read. Try another.");
 
-		let fullPath: string;
-		let mime: string;
-		let size: number;
-		let metadata: AssetMetadata;
 		const variants: Array<
 			{ tier: VariantTier; path: string; width: number; height: number; size: number }
 		> = [];
 
-		if (source.kind === "image") {
-			const sniffed = sniffBytes(bytes.subarray(0, SNIFF_BYTES));
-			const reason = unsupportedReason(sniffed, false);
-			if (reason || !sniffed) {
-				throw new MediaRejectedError(reason ?? "That file can't be used here.");
-			}
-			const result = await MediaPipeline.run({
-				kind: "render",
-				bytes,
-				mime: sniffed.mime,
-				purpose,
-				crop: request.crop ?? INITIAL_CROP,
-			});
-			if (!result.full) throw new MediaUnavailableError("The picture couldn't be processed.");
-			const location = renditionLocation(bucket, owner.id, id, "full.webp");
-			fullPath = location.path;
-			mime = "image/webp";
-			size = result.full.bytes.byteLength;
-			if (!await uploadObject(bucket, fullPath, result.full.bytes, mime, { immutable: true })) {
+		const sniffed = sniffBytes(bytes.subarray(0, SNIFF_BYTES));
+		const reason = unsupportedReason(sniffed, false);
+		if (reason || !sniffed) {
+			throw new MediaRejectedError(reason ?? "That file can't be used here.");
+		}
+		const result = await MediaPipeline.run({
+			kind: "render",
+			bytes,
+			mime: sniffed.mime,
+			purpose,
+			crop: request.crop ?? INITIAL_CROP,
+		});
+		if (!result.full) throw new MediaUnavailableError("The picture couldn't be processed.");
+		const location = renditionLocation(bucket, owner.id, id, "full.webp");
+		const fullPath = location.path;
+		const mime = "image/webp";
+		const size = result.full.bytes.byteLength;
+		if (!await uploadObject(bucket, fullPath, result.full.bytes, mime, { immutable: true })) {
+			throw new MediaUnavailableError("The picture couldn't be stored.");
+		}
+		rendition.paths.push(fullPath);
+		for (const tier of VARIANT_TIERS) {
+			const t = result.tiers[tier];
+			const tierPath = variantObjectPath(fullPath, tier);
+			if (!await uploadObject(bucket, tierPath, t.bytes, "image/webp", { immutable: true })) {
 				throw new MediaUnavailableError("The picture couldn't be stored.");
 			}
-			rendition.paths.push(fullPath);
-			for (const tier of VARIANT_TIERS) {
-				const t = result.tiers[tier];
-				const tierPath = variantObjectPath(fullPath, tier);
-				if (!await uploadObject(bucket, tierPath, t.bytes, "image/webp", { immutable: true })) {
-					throw new MediaUnavailableError("The picture couldn't be stored.");
-				}
-				rendition.paths.push(tierPath);
-				variants.push({
-					tier,
-					path: tierPath,
-					width: t.width,
-					height: t.height,
-					size: t.bytes.byteLength,
-				});
-			}
-			metadata = {
-				version: ASSET_METADATA_VERSION as 1,
-				source: "server",
-				extractedAt: new Date().toISOString(),
-				media: {
-					kind: "image",
-					width: result.full.width,
-					height: result.full.height,
-					aspectRatio: Math.round((result.full.width / result.full.height) * 10_000) / 10_000,
-					blurhash: result.blurhash,
-					colors: result.colors,
-					animated: false,
-					vector: false,
-					hasAlpha: result.source.hasAlpha,
-				},
-				notes: [],
-			};
-		} else {
-			const ext = source.mimeType === "video/webm"
-				? "webm"
-				: source.mimeType === "video/quicktime"
-				? "mov"
-				: "mp4";
-			const location = renditionLocation(bucket, owner.id, id, `video.${ext}`);
-			fullPath = location.path;
-			mime = source.mimeType;
-			size = bytes.byteLength;
-			if (!await uploadObject(bucket, fullPath, bytes, mime, { immutable: true })) {
-				throw new MediaUnavailableError("The video couldn't be stored.");
-			}
-			rendition.paths.push(fullPath);
-			// The poster stills travel with it: the library's tiers, copied into the public bucket.
-			for (const tier of VARIANT_TIERS) {
-				const t = source.tiers[tier];
-				if (!t) continue;
-				const posterBytes = await downloadObject(t.bucket, t.path);
-				if (!posterBytes) continue;
-				const tierPath = variantObjectPath(fullPath, tier);
-				if (!await uploadObject(bucket, tierPath, posterBytes, "image/webp", { immutable: true })) {
-					throw new MediaUnavailableError("The video's poster couldn't be stored.");
-				}
-				rendition.paths.push(tierPath);
-				variants.push({
-					tier,
-					path: tierPath,
-					width: t.width,
-					height: t.height,
-					size: posterBytes.byteLength,
-				});
-			}
-			metadata = source.metadata as AssetMetadata;
+			rendition.paths.push(tierPath);
+			variants.push({
+				tier,
+				path: tierPath,
+				width: t.width,
+				height: t.height,
+				size: t.bytes.byteLength,
+			});
 		}
+		const metadata: AssetMetadata = {
+			version: ASSET_METADATA_VERSION as 1,
+			source: "server",
+			extractedAt: new Date().toISOString(),
+			media: {
+				kind: "image",
+				width: result.full.width,
+				height: result.full.height,
+				aspectRatio: Math.round((result.full.width / result.full.height) * 10_000) / 10_000,
+				blurhash: result.blurhash,
+				colors: result.colors,
+				animated: false,
+				vector: false,
+				hasAlpha: result.source.hasAlpha,
+			},
+			notes: [],
+		};
 
 		const inserted = await service.schema("files").from("items").insert({
 			id,
