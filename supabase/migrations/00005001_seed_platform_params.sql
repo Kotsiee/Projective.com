@@ -74,16 +74,17 @@ ON CONFLICT (key) DO NOTHING;
 
 -- from 20260723093000
 INSERT INTO security.platform_params (key, value, description) VALUES
-    ('vault_approval_threshold_cents', '0'::jsonb,
-        'Wallet spend amount (minor units) at or above which a second approver is required (in addition to per-member spending caps). Magnitude in finance-model.md §Vault Permissions, Caps & Approvals; default 0 = disabled.')
+    ('vault_approval_threshold_cents', '{"default": 0}'::jsonb,
+        'Wallet spend amount at or above which a second approver is required (in addition to per-member spending caps), per currency in that currency''s minor units, with a "default" for any currency not listed; 0 = none. A business wallet with no threshold of its own answers to it (finance.fn_business_threshold, through finance.fn_param_minor). Decision #337, ruling M5 (e); finance-model.md §14. Seeded: none in any currency.')
 ON CONFLICT (key) DO NOTHING;
 
 -- Business billing (PRODUCT_SPEC §Escrow, Wallets & Finance #4; finance-model.md §15; Decision #172)
 INSERT INTO security.platform_params (key, value, description) VALUES
     ('invoice_due_days', '14'::jsonb,
         'Days after issue a consolidated business invoice is due (finance.fn_generate_consolidated_invoice). finance-model.md §15.'),
-    ('on_account_limit_cents', '2500000'::jsonb,
-        'Most a business may owe on account at once, per currency, in that currency''s minor units (finance.place_on_account_order). Product-owner figure 25,000.00 (2026-10-10). finance-model.md §15.')
+    ('on_account_limit_cents',
+        '{"GBP": 2500000, "USD": 3200000, "EUR": 2900000, "CHF": 2800000, "CAD": 4300000, "AUD": 4800000, "SGD": 4300000, "JPY": 4800000, "INR": 270000000, "ZAR": 58000000, "NGN": 5000000000, "AED": 12000000}'::jsonb,
+        'Most a business may owe on account at once, per currency in that currency''s minor units (finance.place_on_account_order, through finance.fn_param_minor). GBP 25,000.00 is the product owner''s figure (2026-10-10); every other display currency is about £25,000 at the seeded reference rates, rounded to two significant figures, as dials pending product sign-off. No "default": a currency not listed cannot be bought on account (PF402 limit_not_configured). Decision #337, ruling M5 (e); finance-model.md §15.')
 ON CONFLICT (key) DO NOTHING;
 
 -- from 20260723094000

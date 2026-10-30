@@ -17,6 +17,7 @@ import {
 	destinationEmail,
 	EMPTY_ADDRESS,
 	formatMoney,
+	paramMinor,
 } from "@projective/types/finance";
 import { evaluateSpend } from "@projective/types/workspace";
 import { isPlanGateRefusal, planGateHeaders, planGateRefusal } from "../../core/plan-gate.ts";
@@ -561,7 +562,7 @@ export async function spendPositionFor(
 	const thresholdCents = ownThreshold !== null
 		? ownThreshold
 		: business && wallet !== null
-		? await platformThresholdCents(actor.accessToken)
+		? await platformThresholdCents(actor.accessToken, wallet.currency)
 		: null;
 	const threshold = thresholdCents !== null ? convert(thresholdCents) : null;
 
@@ -751,18 +752,22 @@ function periodLapsed(
 /**
  * The platform's approval threshold (`security.platform_params` `vault_approval_threshold_cents`), the
  * one a business wallet with no threshold of its own answers to (`finance.fn_business_threshold`), in
- * the wallet's minor units. `null` when it is unset or zero — no threshold. Read as the caller ("Read
- * platform params" — any signed-in member).
+ * the wallet's currency and its minor units: the per-currency map's entry, else its default
+ * (`paramMinor`, Decision #337, ruling M5 (e)). `null` when it is unset or zero — no threshold. Read
+ * as the caller ("Read platform params" — any signed-in member).
  */
-async function platformThresholdCents(accessToken: string): Promise<number | null> {
+async function platformThresholdCents(
+	accessToken: string,
+	currency: string,
+): Promise<number | null> {
 	const { data, error } = await getUserClient(accessToken).schema("security")
 		.from("platform_params")
 		.select("value")
 		.eq("key", "vault_approval_threshold_cents")
 		.maybeSingle();
 	if (error) throw new Error(`security.platform_params read failed: ${error.message}`);
-	const cents = Number((data as { value: unknown } | null)?.value ?? 0);
-	return Number.isFinite(cents) && cents > 0 ? cents : null;
+	const cents = paramMinor((data as { value: unknown } | null)?.value, currency);
+	return cents !== null && cents > 0 ? cents : null;
 }
 
 /** The wallet's vault permissions, read through RLS ("View vault permissions" — any member). */

@@ -13,6 +13,11 @@
 -- the basket, the owner at the hold); the basket ignored the platform threshold when the wallet had
 -- none; and fund_stage / fund_ticket / fund_paid_revision / the card escrow lock / the claim-lock hold
 -- applied neither KYB nor any threshold. Every case runs and reports; a clean run prints only PASS.
+--
+-- The platform threshold is per currency (FINANCE_AUDIT C15; Decision #337, ruling M5 (e)): the
+-- `vault_approval_threshold_cents` map's entry for the wallet's currency, else its default, else none
+-- (finance.fn_business_threshold through finance.fn_param_minor) — another currency's entry never
+-- gates this wallet, and a bare number (the shape before the maps) gates as the default.
 -- =============================================================================================
 
 BEGIN;
@@ -58,6 +63,7 @@ DECLARE
     v_pm uuid;         -- the project's owner_user_id: a business admin who created it
     v_fl uuid;
     v_currency text;
+    v_other text;
     v_wallet uuid;
     v_basket uuid;
     v_line uuid;
@@ -106,7 +112,7 @@ BEGIN
     v_wallet := finance.fn_ensure_wallet('business', v_biz, v_currency);
     PERFORM finance.fn_wallet_credit(v_biz, 'business', v_currency, 2000000, 'topup', 'inbound_payments', gen_random_uuid());
     UPDATE finance.wallets SET approval_threshold_cents = NULL WHERE id = v_wallet;
-    UPDATE security.platform_params SET value = '0'::jsonb WHERE key = 'vault_approval_threshold_cents';
+    UPDATE security.platform_params SET value = '{"default": 0}'::jsonb WHERE key = 'vault_approval_threshold_cents';
     -- Both envelopes uncapped and empty, counted over the whole life of the row.
     DELETE FROM finance.spending_limits WHERE wallet_id = v_wallet AND member_user_id IN (v_owner, v_pm);
     INSERT INTO finance.spending_limits (wallet_id, member_user_id, cap_cents, per_transaction_cents, period_interval, spent_cents)
@@ -194,7 +200,9 @@ BEGIN
     -- #endregion
 
     -- #region 5. Platform threshold, wallet threshold NULL → needs_approval at the basket and fund_stage (BF19)
-    UPDATE security.platform_params SET value = '30000'::jsonb WHERE key = 'vault_approval_threshold_cents';
+    -- The wallet currency's own entry, beside a default of none (M5 (e)).
+    UPDATE security.platform_params SET value = jsonb_build_object('default', 0, v_currency, 30000)
+     WHERE key = 'vault_approval_threshold_cents';
     v_case := '5a basket at the platform threshold';
     v_stage := pg_temp.stage(v_project, 'Probe S5a', 30000, 1);
     v_ticket := pg_temp.ticket(v_stage);
@@ -243,7 +251,50 @@ BEGIN
         ELSE v_fail := v_fail || format('%s: %s %s (expected PF402 needs_approval)', v_case, v_code, v_detail); END IF;
     END;
     PERFORM pg_temp.act(v_owner);
-    UPDATE security.platform_params SET value = '0'::jsonb WHERE key = 'vault_approval_threshold_cents';
+
+    v_other := CASE WHEN v_currency = 'INR' THEN 'JPY' ELSE 'INR' END;
+    v_case := '5e another currency''s entry does not gate this wallet';
+    UPDATE security.platform_params SET value = jsonb_build_object('default', 0, v_other, 1)
+     WHERE key = 'vault_approval_threshold_cents';
+    v_stage := pg_temp.stage(v_project, 'Probe S5e', 20000, 2);
+    BEGIN
+        PERFORM projects.fund_stage(v_project, v_stage);
+        IF finance.fn_business_threshold(v_wallet) = 0 THEN
+            RAISE NOTICE 'PASS %: 40000 funds under a 1-unit % threshold (threshold 0)', v_case, v_other;
+        ELSE
+            v_fail := v_fail || format('%s: threshold read %s (expected 0)', v_case, finance.fn_business_threshold(v_wallet));
+        END IF;
+    EXCEPTION WHEN OTHERS THEN v_fail := v_fail || format('%s: refused %s %s', v_case, SQLSTATE, SQLERRM);
+    END;
+
+    v_case := '5f the default gates a currency the map does not list';
+    UPDATE security.platform_params SET value = jsonb_build_object('default', 30000, v_other, 0)
+     WHERE key = 'vault_approval_threshold_cents';
+    v_stage := pg_temp.stage(v_project, 'Probe S5f', 20000, 2);
+    BEGIN
+        PERFORM projects.fund_stage(v_project, v_stage);
+        v_fail := v_fail || format('%s: passed (expected PA403 needs_approval)', v_case);
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS v_code = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+        IF v_code = 'PA403' AND v_msg LIKE 'needs_approval:%' THEN RAISE NOTICE 'PASS %: PA403 needs_approval (40000 >= the default 30000)', v_case;
+        ELSE v_fail := v_fail || format('%s: %s %s (expected PA403 needs_approval)', v_case, v_code, v_msg); END IF;
+    END;
+
+    -- A database still holding the flat shape keeps its gate: a bare number is the map's default.
+    v_case := '5g a bare number gates exactly as its {"default": n}';
+    UPDATE security.platform_params SET value = '30000'::jsonb WHERE key = 'vault_approval_threshold_cents';
+    v_stage := pg_temp.stage(v_project, 'Probe S5g', 20000, 2);
+    BEGIN
+        PERFORM projects.fund_stage(v_project, v_stage);
+        v_fail := v_fail || format('%s: passed (expected PA403 needs_approval)', v_case);
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS v_code = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+        IF v_code = 'PA403' AND v_msg LIKE 'needs_approval:%' AND finance.fn_business_threshold(v_wallet) = 30000 THEN
+            RAISE NOTICE 'PASS %: PA403 needs_approval (40000 >= a bare 30000)', v_case;
+        ELSE v_fail := v_fail || format('%s: %s %s, threshold %s (expected PA403 needs_approval, 30000)', v_case,
+            v_code, v_msg, finance.fn_business_threshold(v_wallet)); END IF;
+    END;
+    UPDATE security.platform_params SET value = '{"default": 0}'::jsonb WHERE key = 'vault_approval_threshold_cents';
     -- #endregion
 
     -- #region 6. Over the funder's per-transaction ceiling → over_limit (the actor's envelope bites)
@@ -332,7 +383,7 @@ BEGIN
     -- #endregion
 
     -- #region 8. Regression: an individual client's funding ignores the vault rules
-    UPDATE security.platform_params SET value = '1'::jsonb WHERE key = 'vault_approval_threshold_cents';
+    UPDATE security.platform_params SET value = '{"default": 1}'::jsonb WHERE key = 'vault_approval_threshold_cents';
     v_case := '8 personal fund_ticket under a platform threshold';
     SELECT p.id, p.owner_user_id INTO v_personal, v_powner
       FROM projects.projects p
@@ -383,7 +434,7 @@ BEGIN
         EXCEPTION WHEN OTHERS THEN v_fail := v_fail || format('%s: refused %s %s', v_case, SQLSTATE, SQLERRM);
         END;
     END IF;
-    UPDATE security.platform_params SET value = '0'::jsonb WHERE key = 'vault_approval_threshold_cents';
+    UPDATE security.platform_params SET value = '{"default": 0}'::jsonb WHERE key = 'vault_approval_threshold_cents';
     PERFORM pg_temp.act(NULL);
     -- #endregion
 
@@ -412,7 +463,7 @@ BEGIN
     -- #endregion
 
     IF cardinality(v_fail) > 0 THEN
-        RAISE EXCEPTION E'FAIL %/% case(s):\n  %', cardinality(v_fail), 17, array_to_string(v_fail, E'\n  ');
+        RAISE EXCEPTION E'FAIL %/% case(s):\n  %', cardinality(v_fail), 20, array_to_string(v_fail, E'\n  ');
     END IF;
     RAISE NOTICE 'PASS all business spend gate cases';
 END $$;

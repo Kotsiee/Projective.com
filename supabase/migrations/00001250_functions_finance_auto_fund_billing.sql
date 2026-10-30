@@ -555,9 +555,14 @@ BEGIN
         RETURN finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code,
             p_idempotency_key, p_amount);
     END IF;
-    SELECT COALESCE((pp.value #>> '{}')::bigint, 0) INTO v_limit
-      FROM security.platform_params pp WHERE pp.key = 'on_account_limit_cents';
-    IF finance.fn_on_account_owed(v_business.id, v_currency) + p_amount > COALESCE(v_limit, 0) THEN
+    -- The limit in this currency's own minor units (Decision #337, ruling M5 (e)). A currency the map
+    -- does not list, with no "default", is not offered on account at all.
+    v_limit := finance.fn_param_minor('on_account_limit_cents', v_currency);
+    IF v_limit IS NULL THEN
+        RAISE EXCEPTION 'limit_not_configured: paying on account is not available in % — pay from the wallet instead', v_currency
+            USING ERRCODE = 'PF402';
+    END IF;
+    IF finance.fn_on_account_owed(v_business.id, v_currency) + p_amount > v_limit THEN
         RAISE EXCEPTION 'This would take the business past its on-account limit — pay from the wallet instead'
             USING ERRCODE = 'PF402';
     END IF;
@@ -582,7 +587,8 @@ END;
 $$;
 
 -- What the checkout and the Billing module need about paying on account: whether the business is on
--- monthly invoicing, whether an invoice is overdue, and what it owes against its limit in this currency.
+-- monthly invoicing, whether an invoice is overdue, and what it owes against its limit in this currency
+-- (finance.fn_param_minor; 0, so no headroom, in a currency with no limit set).
 CREATE OR REPLACE FUNCTION finance.get_on_account_standing(p_business_id uuid, p_currency text)
 RETURNS jsonb
 LANGUAGE sql
@@ -591,8 +597,7 @@ SECURITY DEFINER
 SET search_path = finance, org, security, public
 AS $$
     WITH f AS (
-        SELECT COALESCE((SELECT (pp.value #>> '{}')::bigint FROM security.platform_params pp
-                          WHERE pp.key = 'on_account_limit_cents'), 0) AS limit_minor,
+        SELECT COALESCE(finance.fn_param_minor('on_account_limit_cents', p_currency), 0) AS limit_minor,
                finance.fn_on_account_owed(p_business_id, p_currency) AS owed_minor
     )
     SELECT CASE WHEN NOT finance.fn_owner_visible('business', p_business_id) THEN NULL ELSE

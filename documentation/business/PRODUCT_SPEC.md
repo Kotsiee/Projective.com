@@ -1677,15 +1677,16 @@ Projective is currency-global by design.
   settled.
 - **Settlement is reproducible.** The exchange rate used is captured at the moment money is
   committed, so a settlement figure never drifts with the market afterward.
+- **Limits are set per currency.** Thresholds that guard money — the on-account limit and a vault's
+  approval threshold — are set per currency, each in that currency's own units (Decision #337,
+  ruling M5 (e)).
 - **Your currency comes from your country.** An entity's currency is the currency of its owner's
   confirmed country, through one country-to-currency map, and a new project defaults to its owner's
   currency rather than US dollars. Location and browser settings only _suggest_ a country at
   sign-up, for the person to confirm, and choose a guest's display currency; they never set an
   entity's currency (Decision #337, ruling M5 (b)).
 - **Money is held per currency.** The platform keeps a separate balance for each of the twelve
-  display currencies, so money settles in the currency it was earned in (ruling M5 (a)). Thresholds
-  that guard money — the on-account limit and a vault's approval threshold — are set per currency
-  (ruling M5 (e)).
+  display currencies, so money settles in the currency it was earned in (ruling M5 (a)).
 - **Converting a balance is disclosed.** A wallet holder may convert a balance into another of the
   twelve currencies at the mid-market rate plus a disclosed margin, paid by whoever converts; the
   margin is shown before the conversion is confirmed (rulings M5 (c), (d)).

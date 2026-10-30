@@ -94,6 +94,27 @@ BEGIN
 END;
 $$;
 
+-- A per-currency platform param in one currency's minor units (Decision #337, ruling M5 (e)): the
+-- `security.platform_params` value is an object keyed by ISO code with an optional "default" for any
+-- currency it does not list, shaped like min_withdrawal_minor (on_account_limit_cents,
+-- vault_approval_threshold_cents). A bare number, the flat shape these params had before, reads as
+-- {"default": n}: a database that still holds one keeps its approval threshold rather than silently
+-- losing it. NULL when neither the currency nor a default is set: each caller decides what unset
+-- means and never substitutes a flat figure of its own. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_param_minor(p_key text, p_currency text)
+RETURNS bigint
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE(pp.value ->> pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, ''))),
+                    pp.value ->> 'default',
+                    CASE WHEN pg_catalog.jsonb_typeof(pp.value) = 'number' THEN pp.value #>> '{}' END)::bigint
+      FROM security.platform_params pp
+     WHERE pp.key = p_key;
+$$;
+
 -- The team payout plan (finance-model §5) — ONE implementation read by the release
 -- (fn_split_team_payout) and the console's preview (preview_team_split), so what a team is shown it
 -- will receive is what it does receive. Integer arithmetic, floored at every cut:

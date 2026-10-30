@@ -135,9 +135,10 @@ $$;
 
 -- #region Business spend gate (BUSINESSES_AUDIT BF19, BF21, BF22)
 -- The approval threshold that governs ONE vault: its own `approval_threshold_cents`, else the platform's
--- `vault_approval_threshold_cents`, else 0 (no threshold). A NULL on the wallet is "no local override"
--- (00000017), so every reader falls back the same way — the basket, the spend gate, a spend request
--- and the auto-fund drain read this, never the column.
+-- `vault_approval_threshold_cents` in the vault's currency (finance.fn_param_minor, Decision #337,
+-- ruling M5 (e)), else 0 (no threshold). A NULL on the wallet is "no local override" (00000017), so
+-- every reader falls back the same way — the basket, the spend gate, a spend request and the auto-fund
+-- drain read this, never the column.
 CREATE OR REPLACE FUNCTION finance.fn_business_threshold(p_wallet uuid)
 RETURNS bigint
 LANGUAGE sql
@@ -146,9 +147,9 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
     SELECT COALESCE(
-        (SELECT w.approval_threshold_cents FROM finance.wallets w WHERE w.id = p_wallet),
-        (SELECT (pp.value #>> '{}')::bigint FROM security.platform_params pp
-          WHERE pp.key = 'vault_approval_threshold_cents'),
+        (SELECT COALESCE(w.approval_threshold_cents,
+                         finance.fn_param_minor('vault_approval_threshold_cents', w.currency))
+           FROM finance.wallets w WHERE w.id = p_wallet),
         0
     );
 $$;

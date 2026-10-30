@@ -69,7 +69,8 @@ END $$;
 
 -- #region 1. The platform threshold stands behind a NULL wallet threshold — and a member can read it
 UPDATE finance.wallets SET approval_threshold_cents = NULL WHERE id = current_setting('probe.wallet')::uuid;
-UPDATE security.platform_params SET value = '50000'::jsonb WHERE key = 'vault_approval_threshold_cents';
+-- A per-currency map whose default stands for the USD wallet (Decision #337, ruling M5 (e)).
+UPDATE security.platform_params SET value = '{"default": 50000}'::jsonb WHERE key = 'vault_approval_threshold_cents';
 
 SELECT set_config('request.jwt.claims',
     json_build_object('sub', current_setting('probe.admin'), 'role', 'authenticated')::text, true);
@@ -81,7 +82,7 @@ DECLARE
     v_resets timestamptz;
 BEGIN
     SELECT value INTO v_value FROM security.platform_params WHERE key = 'vault_approval_threshold_cents';
-    IF v_value IS NULL OR (v_value #>> '{}')::bigint <> 50000 THEN
+    IF (v_value ->> 'default')::bigint IS DISTINCT FROM 50000 THEN
         RAISE EXCEPTION 'FAIL a member cannot read the platform threshold (read %)', v_value;
     END IF;
     RAISE NOTICE 'PASS a member reads the platform threshold (%)', v_value;
@@ -178,7 +179,7 @@ RESET ROLE;
 
 -- #region 3. A lapsed envelope window counts nothing, as the pre-flight now reads it
 UPDATE finance.wallets SET approval_threshold_cents = 100000000 WHERE id = current_setting('probe.wallet')::uuid;
-UPDATE security.platform_params SET value = '0'::jsonb WHERE key = 'vault_approval_threshold_cents';
+UPDATE security.platform_params SET value = '{"default": 0}'::jsonb WHERE key = 'vault_approval_threshold_cents';
 UPDATE finance.spending_limits
    SET cap_cents = 100000, spent_cents = 100000, resets_at = now() - interval '1 day'
  WHERE id = current_setting('probe.limit')::uuid;
