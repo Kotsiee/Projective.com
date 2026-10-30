@@ -10,7 +10,10 @@
  *   2. If the refresh succeeds, retry the original request seamlessly (the browser now carries the
  *      fresh `sb-*` cookies) — the UI never sees the blip.
  *   3. If the refresh fails (the session is truly gone), redirect to `/login`, preserving the current
- *      location as `redirectTo` so the user returns exactly where they were after signing back in.
+ *      location as `redirectTo` so the user returns exactly where they were after signing back in —
+ *      unless the request is BACKGROUND work (`isBackgroundRequest`: the `x-pj-background` marker, a
+ *      `keepalive` send, a background path). Nobody asked for that request, so it gets the 401 back
+ *      and its surface degrades; the next thing the user actually does carries the redirect.
  *
  * Concurrent 401s share a single in-flight refresh (no stampede). Only pass re-sendable requests
  * (string/undefined bodies — every feature `api.ts` helper JSON-stringifies its body, so this holds).
@@ -26,6 +29,7 @@
  * code that bypasses this client; the check is repeated here so the client is correct on its own.
  */
 import { browserIsOffline, refuseOfflineWrite } from "./offline-guards.ts";
+import { isBackgroundRequest, requestFacts } from "./offline.ts";
 
 /**
  * What a refresh attempt established: a new session, a session the server REFUSED (dead — sign in
@@ -84,6 +88,11 @@ export async function apiFetch(input: string, init?: RequestInit): Promise<Respo
 	// the reader to `/login` would sign them out over an outage. The 401 reaches the caller's soft
 	// error handling instead, and the cookies survive for the next attempt.
 	if (outcome === "unavailable" || browserIsOffline()) return res;
+
+	// A background read navigating the reader away is a page that reloads under them, and where the
+	// server and the page guard disagree about the session (`dev:mock`) a loop (Decision #348).
+	const base = globalThis.location?.href ?? "http://localhost/";
+	if (isBackgroundRequest(requestFacts(input, init, base))) return res;
 
 	// Still unauthorized after a refresh attempt → the session is genuinely gone.
 	redirectToLogin();

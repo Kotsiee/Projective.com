@@ -1,4 +1,10 @@
-import { deleteCheckout, getCheckout, patchCheckout, postCheckout } from "./api.ts";
+import {
+	type CheckoutReadOptions,
+	deleteCheckout,
+	getCheckout,
+	patchCheckout,
+	postCheckout,
+} from "./api.ts";
 import { buildCheckoutQuery, withContext } from "./basket-model.ts";
 import type { CheckoutResponse } from "../types/results.ts";
 import type {
@@ -52,17 +58,24 @@ export const BasketService = {
 	 * renders the switcher and the basket together, so splitting them would only open a window in which
 	 * the two disagree.
 	 */
-	get(ctx: CheckoutContext): Promise<CheckoutResponse<BasketPayload>> {
-		return getCheckout(`/api/basket${qs(ctx)}`);
+	get(
+		ctx: CheckoutContext,
+		options?: CheckoutReadOptions,
+	): Promise<CheckoutResponse<BasketPayload>> {
+		return getCheckout(`/api/basket${qs(ctx)}`, options);
 	},
 
 	/**
 	 * Every account the caller can buy for, each with its baskets and lists, counts and selected
 	 * subtotals in the context's display currency — the basket switcher's model.
 	 */
-	owners(ctx: CheckoutContext): Promise<CheckoutResponse<BasketOwnerSummary[]>> {
+	owners(
+		ctx: CheckoutContext,
+		options?: CheckoutReadOptions,
+	): Promise<CheckoutResponse<BasketOwnerSummary[]>> {
 		return getCheckout(
 			`/api/basket/owners${ctx.display ? `?display=${encodeURIComponent(ctx.display)}` : ""}`,
+			options,
 		);
 	},
 

@@ -49,10 +49,11 @@ function persist(): void {
  *
  * A failed read leaves the persisted mirror in place rather than clearing it: an outage is not evidence
  * that the buyer's basket is empty, and a CTA that silently flips back to "Add to basket" invites a
- * second line for something already in there.
+ * second line for something already in there. The read is the page's own reconcile, not the buyer's
+ * act, so it is sent as background work.
  */
 export async function syncBasket(): Promise<void> {
-	const res = await BasketService.get(currentCheckoutContext());
+	const res = await BasketService.get(currentCheckoutContext(), { background: true });
 	if (!applyResponse(res, applyBasket)) return;
 	const basket = res.data?.basket;
 	if (!basket) return;
@@ -72,7 +73,8 @@ export async function syncBasket(): Promise<void> {
  * server read runs once per page, from whichever CTA mounts first.
  *
  * A guest has no basket, so `authed: false` empties the mirror and never calls `/api/basket`: that
- * read answers a guest with a 401, which `apiFetch` turns into a hard redirect to `/login`.
+ * read answers a guest with a 401 and a refused refresh. The read is background work, so a 401 that
+ * does reach it fails softly rather than bouncing the page to `/login` (Decision #348).
  */
 export function hydrateBasket(authed: boolean): void {
 	if (!authed) {

@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { apiFetch } from "./api-client.ts";
+import { BACKGROUND_HEADER } from "./offline.ts";
 
 /**
  * api-client_test — the 401 → refresh → retry interceptor against a scripted `fetch` and a fake
@@ -14,7 +15,7 @@ interface Scene {
 	calls: string[];
 }
 
-async function scene(refreshStatus: number, retryStatus = 200): Promise<Scene> {
+async function scene(refreshStatus: number, retryStatus = 200, init?: RequestInit): Promise<Scene> {
 	const g = globalThis as { location?: unknown };
 	const hadLocation = "location" in g;
 	const prevLocation = g.location;
@@ -40,7 +41,7 @@ async function scene(refreshStatus: number, retryStatus = 200): Promise<Scene> {
 		return Promise.resolve(new Response(null, { status: dataCalls === 1 ? 401 : retryStatus }));
 	};
 	try {
-		const res = await apiFetch("/api/projects/list");
+		const res = await apiFetch("/api/projects/list", init);
 		return { status: res.status, navigatedTo, calls };
 	} finally {
 		globalThis.fetch = realFetch;
@@ -61,6 +62,15 @@ Deno.test("apiFetch: a refused refresh routes to sign-in with the return path", 
 	const { status, navigatedTo } = await scene(401);
 	assertEquals(status, 401);
 	assertEquals(navigatedTo, `/login?redirectTo=${encodeURIComponent("/projects?tab=board")}`);
+});
+
+Deno.test("apiFetch: a background request with a refused refresh stays on the page", async () => {
+	const { status, navigatedTo, calls } = await scene(401, 200, {
+		headers: { [BACKGROUND_HEADER]: "1" },
+	});
+	assertEquals(status, 401);
+	assertEquals(navigatedTo, null);
+	assertEquals(calls, ["/api/projects/list", "/api/auth/refresh"]);
 });
 
 Deno.test("apiFetch: an unavailable refresh keeps the reader where they are", async () => {

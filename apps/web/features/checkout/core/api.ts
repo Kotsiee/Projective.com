@@ -1,5 +1,6 @@
 import type { CheckoutResponse } from "../types/results.ts";
 import { apiFetch } from "@web/utils/api-client.ts";
+import { BACKGROUND_HEADER } from "@web/utils/offline.ts";
 
 /**
  * Checkout transport primitives — the `fetch` helpers the thin {@link BasketService},
@@ -19,10 +20,25 @@ import { apiFetch } from "@web/utils/api-client.ts";
 /** The verbs the checkout API exposes for a JSON-bodied mutation. */
 type MutationMethod = "POST" | "PATCH" | "DELETE";
 
+/** How a checkout read is made. */
+export interface CheckoutReadOptions {
+	/**
+	 * A read the buyer did not ask for — the shell badge's mount-time read, a re-read after another
+	 * region's write. Sent as background work, so a dead session fails it softly instead of bouncing
+	 * the page to `/login` (Decision #348).
+	 */
+	background?: boolean;
+}
+
 /** GET a checkout endpoint, folding the response into a soft {@link CheckoutResponse}. */
-export async function getCheckout<T>(path: string): Promise<CheckoutResponse<T>> {
+export async function getCheckout<T>(
+	path: string,
+	options: CheckoutReadOptions = {},
+): Promise<CheckoutResponse<T>> {
 	try {
-		const res = await apiFetch(path, { headers: { accept: "application/json" } });
+		const headers: Record<string, string> = { accept: "application/json" };
+		if (options.background) headers[BACKGROUND_HEADER] = "1";
+		const res = await apiFetch(path, { headers });
 		const body = await res.json().catch(() => null);
 		if (body && typeof body.ok === "boolean") return body as CheckoutResponse<T>;
 		return { ok: false, message: "Unexpected response from the basket service." };
