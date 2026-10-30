@@ -63,10 +63,10 @@ with every other track.
 | SR3    | `00001400`, `00002510`, `00005050`                                                               |
 | SR4    | `00005050`                                                                                       |
 
-Recommended serial order inside the track: MS1 → NT1 → SR1 → MS3 → NT2 → MS4 → NT3 → MS5 → NT5 → SR2
-→ SR3 → SR4. MS2 and NT4 run in the app lane as soon as their predecessor has merged. These pairs
-have disjoint files and may share the two slots: MS1 ∥ NT1, SR1 ∥ MS3, NT2 ∥ MS4, NT5 ∥ SR2 and SR3
-∥ NT5.
+Recommended serial order inside the track: MS1 → ✅ NT1 → SR1 → MS3 → NT2 → MS4 → NT3 → MS5 → NT5 →
+SR2 → SR3 → SR4. MS2 and NT4 run in the app lane as soon as their predecessor has merged. These
+pairs have disjoint files and may share the two slots: MS1 ∥ NT1, SR1 ∥ MS3, NT2 ∥ MS4, NT5 ∥ SR2
+and SR3 ∥ NT5.
 
 These cannot run in parallel because they edit the same files:
 

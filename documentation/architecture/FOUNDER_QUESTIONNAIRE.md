@@ -935,6 +935,9 @@ now clean.
 
 ## B.3 Wave 2: domain tracks in parallel
 
+> **Status 2026-10-31:** batch 1 is merged (`f5955b7c`): T·E8, M·NT1, F·SV2, O·WP10a and T·W1. Batch
+> 2 runs F·DB10 and I·OWN1 (SQL) beside F·SV6 and F·SV3 (app).
+
 Run about **one SQL track step and two or three app/UI steps at a time**. Arrows are serial inside a
 track. "⏳ X" means wait for step X in another track.
 

@@ -38,7 +38,7 @@ lanes. The waves are indicative: inside a wave, §0.2 and §0.3 still decide wha
 | Wave | SQL lane (serial)                                                                                        | App lane (parallel, file-disjoint)                                                 |
 | :--- | :------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------- |
 | Done | ✅ DB1 · ✅ DB7 (remainder → DB19) · ✅ N1 · ✅ N5                                                       | ✅ SV1 Zod half (CHECKs → DB8)                                                     |
-| 1    | DB10 per-currency thresholds (P0)                                                                        | SV6 wallet covers (P0) · SV2 wallet honesty (P0) · UI1 wallet styles               |
+| 1    | DB10 per-currency thresholds (P0)                                                                        | SV6 wallet covers (P0) · ✅ SV2 wallet honesty (P0) · UI1 wallet styles            |
 | 2    | DB11 seller commission (P0)                                                                              | SV4 checkout service (P0; after SV6) · SV3 locks and recurring actions (after SV2) |
 | 3    | DB16 conservation identity                                                                               | UI2 island and money-verb tiers (after SV2, UI1)                                   |
 | 4    | DB12 bonus refused → DB2 webhooks → DB3 money doors → DB6 dispute freeze → SV8 failed payout (after SV3) | UI6 checkout gates (after SV4, UI2)                                                |
