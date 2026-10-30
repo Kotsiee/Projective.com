@@ -178,11 +178,16 @@ export interface ProviderContext {
 	ownerType: PurchaseOwnerType;
 	/** Whether the acting user is an authorised member of that owner (always true for their own money). */
 	actingIsMember: boolean;
-	/** The wallet's Available balance in {@link currency}, integer minor units. */
-	walletAvailableMinor: number;
-	/** What the checkout will charge, integer minor units. */
+	/**
+	 * The ONE wallet a wallet payment debits (`finance.place_wallet_order`): the account's wallet in
+	 * the charge's own currency, its Available balance and the charge both in that currency's integer
+	 * minor units, never converted or totalled across currencies. `null` when the lines are priced in
+	 * more than one currency, so no single charge, and no single wallet, exists.
+	 */
+	wallet: { availableMinor: number; chargeMinor: number; currency: string } | null;
+	/** The order total in {@link currency}, integer minor units. */
 	totalMinor: number;
-	/** The checkout currency, used to phrase a shortfall. */
+	/** The checkout's display currency, used to phrase the on-account headroom. */
 	currency: string;
 	savedCards: readonly SavedCard[];
 	/** KYB status of the spending entity; `null` for an individual. */
@@ -234,8 +239,6 @@ export function availableProviders(ctx: ProviderContext): ProviderAvailability[]
 		return PaymentProvider.options.map((provider) => ({ provider, available: false, reason }));
 	}
 
-	const covers = ctx.walletAvailableMinor >= ctx.totalMinor;
-	const shortfall = Math.max(ctx.totalMinor - ctx.walletAvailableMinor, 0);
 	const businessCards = ctx.savedCards.filter((c) => c.isBusinessCard && !c.isExpired);
 	const kybVerified = ctx.kybStatus === "verified" && (ctx.verificationTier ?? 0) >= KYB_TIER;
 
@@ -262,15 +265,7 @@ export function availableProviders(ctx: ProviderContext): ProviderAvailability[]
 				break;
 			}
 			case "wallet": {
-				offer.push(
-					covers ? { provider, available: true, reason: null } : {
-						provider,
-						available: false,
-						reason: `Not enough available balance — ${
-							money(shortfall)
-						} short. Top up to pay from the wallet.`,
-					},
-				);
+				offer.push(walletOffer(ctx.wallet));
 				break;
 			}
 			case "express": {
@@ -323,6 +318,31 @@ export function availableProviders(ctx: ProviderContext): ProviderAvailability[]
 	}
 
 	return offer;
+}
+
+/**
+ * The wallet route: offered only when the ONE wallet that pays covers the charge, compared in that
+ * wallet's own currency. A refusal names that wallet and what it holds; it never quotes a balance
+ * converted or totalled across currencies.
+ */
+function walletOffer(wallet: ProviderContext["wallet"]): ProviderAvailability {
+	if (!wallet) {
+		return {
+			provider: "wallet",
+			available: false,
+			reason:
+				"This basket mixes currencies, so no one wallet can pay it. Pay for each currency separately.",
+		};
+	}
+	const shortfall = wallet.chargeMinor - wallet.availableMinor;
+	if (shortfall <= 0) return { provider: "wallet", available: true, reason: null };
+	return {
+		provider: "wallet",
+		available: false,
+		reason: `This order is paid from the ${wallet.currency} wallet, which holds ${
+			formatMoney(wallet.availableMinor, wallet.currency)
+		} — ${formatMoney(shortfall, wallet.currency)} short. Top up to pay from the wallet.`,
+	};
 }
 // #endregion
 
@@ -645,10 +665,16 @@ export const CheckoutPreselectSchema = z.object({
 });
 export type CheckoutPreselect = z.infer<typeof CheckoutPreselectSchema>;
 
-/** The wallet's standing against this checkout — balance, whether it covers, and by how much it falls short. */
+/**
+ * The paying wallet's standing against this checkout's charge — balance, whether it covers, and by
+ * how much it falls short. The paying wallet is the account's wallet in the charge currency, the one
+ * `finance.place_wallet_order` debits, and these figures are in THAT currency, like the session's
+ * `charge`: never converted, never totalled across wallets. When the lines mix currencies no wallet
+ * pays: the display currency's wallet is shown, with no shortfall and never covering.
+ */
 export const CheckoutWalletSchema = z.object({
 	available: MoneyViewSchema,
-	/** The uncovered remainder; a zero-valued `MoneyView` when the balance covers the total. */
+	/** The uncovered remainder; a zero-valued `MoneyView` when the balance covers the charge. */
 	shortfall: MoneyViewSchema,
 	covers: z.boolean(),
 });

@@ -9,6 +9,7 @@ import type {
 	CheckoutResult,
 	CheckoutSessionContext,
 	CheckoutTotals,
+	CheckoutWallet,
 	CreateCheckout,
 	MoneyView,
 	MonthlyInvoicing,
@@ -38,7 +39,7 @@ import { canReadLive, type ReadActor } from "../read-actor.ts";
 import type { BasketQuery } from "./basket-query.ts";
 import { authorityBlocker, businessNotActiveBlocker, refusalBlocker } from "./checkout-refusal.ts";
 import type { MoneyProjector } from "./commerce-money.ts";
-import { listOwners, type ResolvedOwner, walletAvailableMinor } from "./commerce-owner.ts";
+import { listOwners, type ResolvedOwner, walletBalances } from "./commerce-owner.ts";
 import { type BasketView, promoMinorFor, readBasket } from "./live-basket.ts";
 import { defaultCardOf, listCards } from "./live-cards.ts";
 import {
@@ -124,7 +125,8 @@ interface Resolved {
 	money: MoneyProjector;
 	items: BasketItem[];
 	cards: SavedCard[];
-	walletMinor: number;
+	/** Per currency, the Available of the one wallet that pays a charge in it (`walletBalances`). */
+	wallets: Map<string, number>;
 	basketId: string;
 	/** A business's standing for paying on account, in the display currency; `null` for anyone else. */
 	onAccount: ProviderContext["onAccount"];
@@ -363,12 +365,16 @@ function chargeCurrencyOf(items: readonly BasketItem[]): string | null {
 	return currency;
 }
 
-/** The provider offer for a resolved checkout at a given total. */
-function offerFor(resolved: Resolved, totalMinor: number): ProviderAvailability[] {
+/** The provider offer at a given total, the wallet route against the wallet that pays. */
+function offerFor(
+	resolved: Resolved,
+	totalMinor: number,
+	wallet: ProviderContext["wallet"],
+): ProviderAvailability[] {
 	return settleableHere(availableProviders({
 		ownerType: resolved.owner.ownerType,
 		actingIsMember: resolved.owner.actingIsMember,
-		walletAvailableMinor: resolved.walletMinor,
+		wallet,
 		totalMinor,
 		currency: resolved.money.display,
 		savedCards: resolved.cards,
@@ -376,6 +382,53 @@ function offerFor(resolved: Resolved, totalMinor: number): ProviderAvailability[
 		verificationTier: resolved.owner.verificationTier,
 		onAccount: resolved.onAccount,
 	}));
+}
+
+/**
+ * The wallet a wallet payment debits, against the charge: the account's wallet in the charge's own
+ * currency (`finance.place_wallet_order` pays from no other), its Available and the charge both in
+ * that currency's minor units. `null` when the lines mix currencies and no single charge exists.
+ */
+export function payingWalletOf(
+	wallets: ReadonlyMap<string, number>,
+	charge: MoneyView | null,
+): ProviderContext["wallet"] {
+	if (!charge) return null;
+	return {
+		availableMinor: wallets.get(charge.currency) ?? 0,
+		chargeMinor: charge.minor,
+		currency: charge.currency,
+	};
+}
+
+/**
+ * The session's wallet standing, in the paying wallet's own currency: its balance, the shortfall
+ * against the charge and whether it covers. With no single charge nothing covers, and the balance
+ * shown is the display currency's wallet.
+ */
+export function walletStandingOf(
+	paying: ProviderContext["wallet"],
+	wallets: ReadonlyMap<string, number>,
+	money: MoneyProjector,
+): CheckoutWallet {
+	if (!paying) {
+		return {
+			available: money.derived(wallets.get(money.display) ?? 0),
+			shortfall: money.derived(0),
+			covers: false,
+		};
+	}
+	const shortfall = Math.max(paying.chargeMinor - paying.availableMinor, 0);
+	return {
+		available: moneyIn(paying.availableMinor, paying.currency),
+		shortfall: moneyIn(shortfall, paying.currency),
+		covers: shortfall === 0,
+	};
+}
+
+/** A figure stated in its own currency, never converted into the display one. */
+function moneyIn(minor: number, currency: string): MoneyView {
+	return { minor, currency, display: formatMoney(minor, currency, DEFAULT_LOCALE), origin: null };
 }
 
 /**
@@ -420,9 +473,9 @@ async function resolve(query: BasketQuery, actor: ReadActor): Promise<Resolved |
 	const read = await readBasket(query, actor);
 	if (!read.ok) return null;
 	const view = read.value;
-	const [cards, walletMinor, onAccount] = await Promise.all([
+	const [cards, wallets, onAccount] = await Promise.all([
 		listCards(view.owner, actor),
-		walletAvailableMinor(view.owner, view.money, actor),
+		walletBalances(view.owner, actor),
 		onAccountStanding(view.owner, view.money.display, actor),
 	]);
 	return {
@@ -432,7 +485,7 @@ async function resolve(query: BasketQuery, actor: ReadActor): Promise<Resolved |
 		basketId: view.basket.id,
 		items: narrow(view.basket.items, query.projectId ?? null, query.serviceId ?? null),
 		cards,
-		walletMinor,
+		wallets,
 		onAccount,
 	};
 }
@@ -524,11 +577,8 @@ export class CheckoutBackendService {
 				feeBpOf(owner),
 				processingOffer.optedIn ? processingOffer.amount.minor : 0,
 			);
-			const providers = offerFor(resolved, totals.total.minor);
-			const shortfall = Math.max(totals.total.minor - resolved.walletMinor, 0);
-			const requirements = checkoutRequirements(items);
-			// The charge first: it names the wallet the order is paid from, whose limit, threshold and
-			// approvals the spend read then answers for.
+			// The charge first: it names the wallet the order is paid from, whose balance the wallet route
+			// is offered against, and whose limit, threshold and approvals the spend read answers for.
 			const charge = await chargeFor(
 				query,
 				actor,
@@ -536,6 +586,9 @@ export class CheckoutBackendService {
 				items,
 				() => toTotals(items, promoMinorFor(promo), money, feeBpOf(owner), 0).total,
 			);
+			const paying = payingWalletOf(resolved.wallets, charge);
+			const providers = offerFor(resolved, totals.total.minor, paying);
+			const requirements = checkoutRequirements(items);
 			const [details, position] = await Promise.all([
 				detailsFor(owner, query, actor),
 				spendPositionFor(owner, totals.total.minor, money, actor, {
@@ -568,11 +621,7 @@ export class CheckoutBackendService {
 					},
 					provider: null,
 					providers,
-					wallet: {
-						available: money.derived(resolved.walletMinor),
-						shortfall: money.derived(shortfall),
-						covers: shortfall === 0,
-					},
+					wallet: walletStandingOf(paying, resolved.wallets, money),
 					savedCards: resolved.cards,
 					defaultCardId: defaultCardOf(resolved.cards, owner),
 					cardsConnected: processorConnected(),
@@ -724,21 +773,29 @@ export class CheckoutBackendService {
 			const promo = await view.resolvePromo(view.promoCode, eligible);
 			const totals = toTotals(eligible, promoMinorFor(promo), money, feeBpOf(owner), 0);
 			const priced: Resolved = { ...resolved, items: eligible };
-			const providers = offerFor(priced, totals.total.minor);
-			// A business's approval is matched against the charge in its own currency, exactly as the
-			// redeemer will match it; nobody else's pre-flight needs the charge.
-			const spendCharge = owner.ownerType === "business"
-				? await chargeFor(query, actor, resolved, eligible, () => totals.total)
-				: null;
+			// What every route pays, in the lines' own currency: the wallet route is offered against it,
+			// and a card, an express wallet or an on-account credit is made for exactly it.
+			const charge = await chargeFor(query, actor, resolved, eligible, () => totals.total);
+			const providers = offerFor(
+				priced,
+				totals.total.minor,
+				payingWalletOf(resolved.wallets, charge),
+			);
 			const [details, spendLimit] = await Promise.all([
 				detailsFor(owner, query, actor),
 				spendLimitFor(owner, totals.total.minor, money, actor, {
 					basketId: resolved.basketId,
-					charge: spendCharge,
+					// A business's approval is matched against the charge in its own currency, exactly as
+					// the redeemer will match it; nobody else's pre-flight needs the charge.
+					charge: owner.ownerType === "business" ? charge : null,
 				}),
 			]);
 			const blocking = blockersFor(priced, providers, { buyer: details.buyer, spendLimit });
 			if (blocking.length > 0) return refusal(blocking[0].message, blocking);
+			if (!charge) {
+				const message = "This basket mixes currencies. Pay for each currency separately.";
+				return refusal(message, [blocker("price_changed", message)]);
+			}
 
 			// A card and the express wallets are the same charge path: a processor top-up of the paying
 			// wallet, then the wallet order. Only a card can name a saved instrument. Invoice is the wallet
@@ -802,12 +859,7 @@ export class CheckoutBackendService {
 
 			if (onAccount) {
 				// Credited on account in the lines' OWN currency — exactly what place_wallet_order then
-				// debits, computed by the same function a card charge uses — in one database transaction.
-				const charge = await chargeFor(query, actor, resolved, eligible, () => totals.total);
-				if (!charge) {
-					const message = "This basket mixes currencies. Pay for each currency separately.";
-					return refusal(message, [blocker("price_changed", message)]);
-				}
+				// debits, the same charge a card is made for — in one database transaction.
 				const { data, error } = await getUserClient(actor.accessToken).schema("finance").rpc(
 					"place_on_account_order",
 					{ ...rpcArgs, p_amount: charge.minor },
@@ -843,19 +895,8 @@ export class CheckoutBackendService {
 
 			if (byProcessor) {
 				// The processor is charged in the lines' OWN currency — the figure the session showed as
-				// `charge`, computed again here by the same function — and the order is then paid from the
+				// `charge`, computed again above by the same function — and the order is then paid from the
 				// wallet in that same currency, so the top-up and the debit are one amount.
-				const charge = await chargeFor(
-					query,
-					actor,
-					resolved,
-					eligible,
-					() => totals.total,
-				);
-				if (!charge) {
-					const message = "This basket mixes currencies. Pay for each currency separately.";
-					return refusal(message, [blocker("price_changed", message)]);
-				}
 				// The saved card the buyer chose, re-checked against the owner's OWN list (read as the
 				// caller, so a card id from another account resolves to nothing). An express payment
 				// names no saved card: the wallet sheet supplies the instrument.
@@ -921,11 +962,6 @@ export class CheckoutBackendService {
 			}
 
 			// The total the buyer was shown, in the charge currency: the database refuses any other net.
-			const charge = await chargeFor(query, actor, resolved, eligible, () => totals.total);
-			if (!charge) {
-				const message = "This basket mixes currencies. Pay for each currency separately.";
-				return refusal(message, [blocker("price_changed", message)]);
-			}
 			const { data, error } = await getUserClient(actor.accessToken).schema("finance").rpc(
 				"place_wallet_order",
 				{ ...rpcArgs, p_expected_minor: charge.minor },
@@ -1120,12 +1156,7 @@ async function placedOrderFor(key: string, accessToken: string): Promise<PlacedO
  * listing's own — never re-converted: a receipt quotes what happened, not what it would cost today.
  */
 function succeeded(placed: PlacedOrder): CheckoutResult {
-	const charged: MoneyView = {
-		minor: placed.charged_minor,
-		currency: placed.currency,
-		display: formatMoney(placed.charged_minor, placed.currency, DEFAULT_LOCALE),
-		origin: null,
-	};
+	const charged = moneyIn(placed.charged_minor, placed.currency);
 	return {
 		status: "succeeded",
 		orderId: placed.order_id,
