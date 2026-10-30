@@ -1,6 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { readCookies, SB_REFRESH_COOKIE, sessionClearCookies } from "@web/utils/auth-cookies.ts";
 import { toAuthResponse } from "@features/auth/core/respond.ts";
+import { authSubject, refuseIfThrottled } from "@features/auth/core/throttle.ts";
 import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
 
 /**
@@ -41,6 +42,14 @@ export const handler = define.handlers({
 	async POST(ctx) {
 		const refresh = readCookies(ctx.req)[SB_REFRESH_COOKIE];
 		if (!refresh) return unauthorized(ctx.req);
+
+		// A throttled renewal leaves the cookies alone, like an outage: the token may still be good.
+		const refused = refuseIfThrottled(
+			ctx.req,
+			"refresh",
+			authSubject(ctx.req, ctx.info.remoteAddr),
+		);
+		if (refused) return refused;
 
 		const result = await AuthBackendService.refreshSession(refresh);
 		if (!result.ok || !result.session) {

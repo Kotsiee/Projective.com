@@ -2,6 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { ForgotPasswordSchema } from "@features/auth/core/schema.ts";
 import { safeRedirect } from "@features/auth/core/redirect.ts";
 import { toAuthResponse } from "@features/auth/core/respond.ts";
+import { authSubject, refuseIfThrottled } from "@features/auth/core/throttle.ts";
 import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
 
 /**
@@ -22,6 +23,13 @@ export const handler = define.handlers({
 				status: 422,
 			});
 		}
+
+		const refused = refuseIfThrottled(
+			ctx.req,
+			"forgot",
+			authSubject(ctx.req, ctx.info.remoteAddr, parsed.data.email),
+		);
+		if (refused) return refused;
 
 		return toAuthResponse(
 			ctx.req,

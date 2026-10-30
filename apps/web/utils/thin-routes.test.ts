@@ -34,7 +34,13 @@ async function call(
 		body: init.body === undefined ? undefined : JSON.stringify(init.body),
 	});
 	const fn = (handlers as Record<string, Handler>)[method];
-	const res = await fn({ req, url, params: init.params ?? {}, state: init.state ?? {} });
+	const res = await fn({
+		req,
+		url,
+		params: init.params ?? {},
+		state: init.state ?? {},
+		info: { remoteAddr: { transport: "tcp", hostname: "127.0.0.1", port: 1 } },
+	});
 	const text = res.status === 204 ? "" : await res.text();
 	return { status: res.status, body: text ? JSON.parse(text) : null, res };
 }

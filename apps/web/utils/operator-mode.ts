@@ -11,14 +11,15 @@ import {
 import { canUseTeams } from "@features/shell/core/restricted-surfaces.ts";
 import { isRestrictedRequest } from "@web/utils/age-gate.ts";
 import { readCookies } from "@web/utils/auth-cookies.ts";
+import { isDevelopmentEnv } from "@web/utils/app-env.ts";
 
 /**
  * Whether a request acts in operator mode: the token's `isOperator` claim, or — when `DENO_ENV` is
- * `development` (the backend's default when unset) — the Dev Context Switcher's `pj.dev.operator-mode`
+ * `development` (never when unset) — the Dev Context Switcher's `pj.dev.operator-mode`
  * override.
  */
 export function isOperatorRequest(req: Request, context: UserContext | null | undefined): boolean {
-	const override = isDevelopment()
+	const override = isDevelopmentEnv()
 		? parseOperatorModeOverride(readCookies(req)[OPERATOR_MODE_OVERRIDE_COOKIE])
 		: null;
 	if (override) return override === "on";
@@ -45,7 +46,7 @@ export function mayUseTeamsRequest(req: Request, context: UserContext | null | u
  * carry on. Development only — in live mode the database refuses a real client or operator itself.
  */
 export function refuseIfSimulatedOperator(req: Request): Response | null {
-	if (!isDevelopment()) return null;
+	if (!isDevelopmentEnv()) return null;
 	if (parseOperatorModeOverride(readCookies(req)[OPERATOR_MODE_OVERRIDE_COOKIE]) !== "on") {
 		return null;
 	}
@@ -55,12 +56,4 @@ export function refuseIfSimulatedOperator(req: Request): Response | null {
 		persona: "operator",
 	};
 	return Response.json({ ok: false, message: TEAM_PERSONA_REFUSAL, details }, { status: 403 });
-}
-
-function isDevelopment(): boolean {
-	try {
-		return (Deno.env.get("DENO_ENV") ?? "development").toLowerCase() === "development";
-	} catch {
-		return false;
-	}
 }

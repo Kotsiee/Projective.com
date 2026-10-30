@@ -97,6 +97,8 @@ async function signedIn(browser: Browser): Promise<BrowserContext> {
 	});
 	const res = await context.request.post("/api/auth/login", {
 		data: { identifier: IDENTIFIER, password: await password(), remember: true },
+		// The `/api` write guard wants this site's Origin, which a browser would send.
+		headers: { origin: new URL(BASE).origin },
 	});
 	assertEquals(res.status(), 200, `sign-in as ${IDENTIFIER} failed (${res.status()})`);
 	return context;

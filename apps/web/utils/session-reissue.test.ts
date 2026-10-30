@@ -55,7 +55,13 @@ async function call(
 		body: body === undefined ? undefined : JSON.stringify(body),
 	});
 	const fn = (handlers as Record<string, Handler>)[method];
-	const res = await fn({ req, url, params: {}, state });
+	const res = await fn({
+		req,
+		url,
+		params: {},
+		state,
+		info: { remoteAddr: { transport: "tcp", hostname: "127.0.0.1", port: 1 } },
+	});
 	const text = await res.text();
 	return {
 		status: res.status,

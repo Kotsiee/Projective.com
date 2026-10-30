@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createClient, type SupabaseClient } from "supabaseClient";
 import type { EmbeddingsStatus } from "@projective/types/explore";
 import { serverEnv } from "./env.ts";
@@ -181,10 +182,32 @@ export function getServiceClient(): SupabaseClient {
 	});
 }
 
+// #region Client address
+/**
+ * The address of the client a request acts for, carried across the request's async subtree so the
+ * anon and OAuth clients can forward it to GoTrue as `X-Forwarded-For` (IW-H3). Without it GoTrue's
+ * per-IP limits count the app server's address: one bucket for the whole platform. The address is
+ * the one the app's own limiter keys on (`apps/web/utils/client-key.ts`, never a client-written
+ * header), opened by the `/api/auth/*` middleware.
+ */
+const clientAddressScope = new AsyncLocalStorage<string>();
+
+/** Run `fn` with `address` as the client address forwarded to GoTrue. */
+export function runWithClientAddress<T>(address: string, fn: () => T): T {
+	return clientAddressScope.run(address, fn);
+}
+
+/** The forwarded-address header for the current request, or none outside a scope. */
+export function clientAddressHeaders(): Record<string, string> {
+	const address = clientAddressScope.getStore();
+	return address ? { "X-Forwarded-For": address } : {};
+}
+// #endregion
+
 /**
  * A stateless anon-key client for public GoTrue operations (password grant, `verifyOtp`, recovery
  * email, resend). No session is persisted server-side — the caller lifts the returned tokens onto
- * HttpOnly cookies itself.
+ * HttpOnly cookies itself. Inside {@link runWithClientAddress} it forwards the client's address.
  */
 export function getAnonClient(): SupabaseClient {
 	const env = serverEnv();
@@ -192,6 +215,7 @@ export function getAnonClient(): SupabaseClient {
 		throw new Error("Supabase is not configured (SUPABASE_URL / SUPABASE_ANON_KEY).");
 	}
 	return createClient(env.supabaseUrl, env.supabaseAnonKey, {
+		global: { headers: clientAddressHeaders() },
 		auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
 	});
 }
@@ -242,6 +266,7 @@ export function getOAuthClient(store: CookieStore): SupabaseClient {
 		throw new Error("Supabase is not configured (SUPABASE_URL / SUPABASE_ANON_KEY).");
 	}
 	return createClient(env.supabaseUrl, env.supabaseAnonKey, {
+		global: { headers: clientAddressHeaders() },
 		auth: {
 			flowType: "pkce",
 			detectSessionInUrl: false,

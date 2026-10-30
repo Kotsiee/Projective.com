@@ -320,6 +320,8 @@ Deno.test({
 					const context = await guarded(browser);
 					const login = await context.request.post("/api/auth/login", {
 						data: { identifier: `${PERSONA}@projective.dev`, password: await password() },
+						// The `/api` write guard wants this site's Origin, which a browser would send.
+						headers: { origin: new URL(BASE).origin },
 					});
 					assertEquals(login.status(), 200, `sign-in as ${PERSONA} failed (${login.status()})`);
 

@@ -100,3 +100,37 @@ export class SlidingWindowLimiter {
 	}
 }
 // #endregion
+
+// #region Buckets
+/** One bucket an action is counted against: a limiter and the key inside it. */
+export interface RateLimitBucket {
+	readonly limiter: SlidingWindowLimiter;
+	readonly key: string;
+}
+
+/**
+ * Count one event against EVERY bucket, or against none. Each bucket is peeked first, so a request
+ * one bucket refuses (say, per identifier) does not spend the allowance of another (per client
+ * address). The refusal reports the longest wait among the refusing buckets: the caller is not
+ * admitted again until all of them have room.
+ */
+export function takeAll(
+	buckets: readonly RateLimitBucket[],
+	nowMs: number = Date.now(),
+): RateLimitDecision {
+	let retryAfterMs = 0;
+	let remaining = Number.POSITIVE_INFINITY;
+	for (const { limiter, key } of buckets) {
+		const seen = limiter.peek(key, nowMs);
+		if (!seen.allowed) retryAfterMs = Math.max(retryAfterMs, seen.retryAfterMs);
+		remaining = Math.min(remaining, seen.remaining);
+	}
+	if (retryAfterMs > 0) return { allowed: false, remaining: 0, retryAfterMs };
+	for (const { limiter, key } of buckets) limiter.take(key, nowMs);
+	return {
+		allowed: true,
+		remaining: Number.isFinite(remaining) ? remaining - 1 : 0,
+		retryAfterMs: 0,
+	};
+}
+// #endregion
