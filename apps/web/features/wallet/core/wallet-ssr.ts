@@ -1,5 +1,5 @@
 import type { UserContext } from "@projective/types/auth";
-import { toDisplayCurrency } from "@projective/types/finance";
+import { toDisplayCurrency, walletPageRedirect } from "@projective/types/finance";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import type { ServiceResult } from "@server/services/ServiceResult.ts";
 import { WalletBackendService } from "@server/services/finance/WalletBackendService.ts";
@@ -30,6 +30,9 @@ import type {
 
 /** A read's projection, or the reason it could not be produced. */
 export type WalletRead<T> = { ok: true; data: T } | { ok: false; message: string };
+
+/** What a wallet page answers: its first paint, or the address it redirects to (303) instead. */
+export type WalletPage = WalletRead<WalletHomeData> | { redirect: string };
 
 /**
  * Everything a wallet page paints in its first byte. The overview is required; each other part is its
@@ -68,17 +71,28 @@ function vaultScope(param: string | null | undefined): boolean {
 	return !!param && /^(team|business|enterprise):/.test(param);
 }
 
+/** The page's own path carrying a redirect's query. */
+function pageAt(url: URL, search: string): string {
+	return `${url.pathname}${search ? `?${search}` : ""}`;
+}
+
 /**
  * Resolves a wallet page's first paint as the signed-in viewer, running every read in parallel. Every
  * page reads the payment data its dialogs need, because the lane's actions open those dialogs on any
  * wallet page. Fails as a whole only when the overview itself cannot be read.
+ *
+ * The address is honest before anything paints ({@link walletPageRedirect}): a query the page must
+ * correct redirects to its canonical form before any read (Audit R3), and a `?w=` the viewer cannot
+ * open redirects to the wallet the read resolved, with no `do` or `back` (Audit R5).
  */
 export async function resolveWalletHome(
 	context: UserContext,
 	url: URL,
 	actor: ReadActor,
 	view: WalletView = "overview",
-): Promise<WalletRead<WalletHomeData>> {
+): Promise<WalletPage> {
+	const canonical = walletPageRedirect(url.searchParams);
+	if (canonical !== null) return { redirect: pageAt(url, canonical) };
 	const query = walletQueryFrom(url.searchParams, context);
 	const filters = view === "transactions" ? ledgerFiltersFrom(url.searchParams) : null;
 	const period = filters?.period ??
@@ -102,6 +116,8 @@ export async function resolveWalletHome(
 
 	if (!main.ok || !main.data) return { ok: false, message: main.message ?? FALLBACK };
 	const { overview, switcher } = main.data;
+	const moved = walletPageRedirect(url.searchParams, switcher);
+	if (moved !== null) return { redirect: pageAt(url, moved) };
 	const active = switcher.active;
 
 	return {

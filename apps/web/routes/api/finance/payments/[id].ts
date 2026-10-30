@@ -1,9 +1,8 @@
 import { define } from "@web/utils/state.ts";
+import { uuid } from "@projective/types/finance";
 import { readActor } from "@web/utils/api-session.ts";
 import { toPaymentsResponse } from "@features/payments/core/respond.ts";
 import { PaymentBackendService } from "@server/services/finance/PaymentBackendService.ts";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * `GET /api/finance/payments/[id]` — where one card payment stands, for a surface waiting on it (a
@@ -12,10 +11,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  */
 export const handler = define.handlers({
 	async GET(ctx) {
-		const id = ctx.params.id;
-		if (!UUID_RE.test(id)) {
+		const id = uuid.safeParse(ctx.params.id);
+		if (!id.success) {
 			return Response.json({ ok: false, message: "That payment wasn't found." }, { status: 404 });
 		}
-		return toPaymentsResponse(await PaymentBackendService.paymentStatus(id, readActor(ctx)));
+		return toPaymentsResponse(await PaymentBackendService.paymentStatus(id.data, readActor(ctx)));
 	},
 });

@@ -7,12 +7,16 @@ import { resolveWalletHome } from "@features/wallet/core/wallet-ssr.ts";
 
 /**
  * `/wallet/invoices` — the wallet's invoices page, for the wallet `?w=` names in the currency
- * `?display=` names, as the signed-in viewer; a 503 when the wallet itself cannot be read.
+ * `?display=` names, as the signed-in viewer; a 503 when the wallet itself cannot be read, and a 303
+ * when the address must be corrected or names a wallet the viewer cannot open (ROUTING.md).
  */
 export const handler = define.handlers({
 	async GET(ctx) {
 		const context = asAuthenticatedContext(ctx.state.userContext);
 		const home = await resolveWalletHome(context, ctx.url, readActor(ctx), "invoices");
+		if ("redirect" in home) {
+			return new Response(null, { status: 303, headers: { location: home.redirect } });
+		}
 		ctx.state.title = "Invoices · Wallet · Projective";
 		return page({ home }, home.ok ? undefined : { status: 503 });
 	},

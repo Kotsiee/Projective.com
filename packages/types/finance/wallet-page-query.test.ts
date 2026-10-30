@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { parseWalletPageQuery, walletPageSearch } from "./wallet.ts";
+import { parseWalletPageQuery, walletPageRedirect, walletPageSearch } from "./wallet.ts";
 
 const TEAM = "team:0b5e3a52-3d0c-4c2e-9f61-2a7c1d9e8f00";
 
@@ -86,4 +86,27 @@ Deno.test("the canonical search keeps params the schema does not name", () => {
 	const base = new URLSearchParams("notice=wallet-unavailable&do=nope&w=personal");
 	const { value } = parseWalletPageQuery(base);
 	assertEquals(walletPageSearch(value, base), "w=personal&notice=wallet-unavailable");
+});
+
+Deno.test("a corrected address redirects to its canonical form; a canonical one renders", () => {
+	assertEquals(
+		walletPageRedirect(new URLSearchParams("flow=quarter&display=eur&utm_source=mail")),
+		"flow=3m&display=EUR&utm_source=mail",
+	);
+	assertEquals(walletPageRedirect(new URLSearchParams(`w=${TEAM}&flow=3m`)), null);
+	assertEquals(walletPageRedirect(new URLSearchParams("")), null);
+});
+
+Deno.test("a wallet the viewer cannot open redirects to the resolved one, without do or back", () => {
+	const asked = new URLSearchParams(`w=${TEAM}&display=EUR&do=top_up&back=%2Fcheckout%2Fpay`);
+	assertEquals(
+		walletPageRedirect(asked, { requested: TEAM, resolved: "personal" }),
+		"w=personal&display=EUR&notice=wallet-unavailable",
+	);
+	// The active context's wallet, asked for implicitly, follows the same rule.
+	assertEquals(
+		walletPageRedirect(new URLSearchParams(""), { requested: TEAM, resolved: "personal" }),
+		"w=personal&notice=wallet-unavailable",
+	);
+	assertEquals(walletPageRedirect(asked, { requested: TEAM, resolved: TEAM }), null);
 });

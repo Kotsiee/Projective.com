@@ -1,9 +1,8 @@
 import { define } from "@web/utils/state.ts";
+import { uuid } from "@projective/types/finance";
 import { readActor } from "@web/utils/api-session.ts";
 import { toWorkspaceResponse } from "@features/workspaces/core/respond.ts";
 import { BillingBackendService } from "@server/services/finance/BillingBackendService.ts";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * `POST /api/finance/invoices/[id]/pay` — pay a business invoice's amount due from the business wallet.
@@ -14,11 +13,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  */
 export const handler = define.handlers({
 	async POST(ctx) {
-		if (!UUID_RE.test(ctx.params.id)) {
+		const id = uuid.safeParse(ctx.params.id);
+		if (!id.success) {
 			return Response.json({ ok: false, message: "That invoice wasn't found." }, { status: 404 });
 		}
 		return toWorkspaceResponse(
-			await BillingBackendService.payInvoice(ctx.params.id, readActor(ctx)),
+			await BillingBackendService.payInvoice(id.data, readActor(ctx)),
 		);
 	},
 });
